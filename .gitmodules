@@ -1,0 +1,9 @@
+[submodule "src/thirdparty/googletest"]
+	path = src/thirdparty/googletest
+	url = https://codehub-dg-y.huawei.com/OpenSourceCenter/googletest.git
+[submodule "src/thirdparty/spdlog"]
+	path = src/thirdparty/spdlog
+	url = https://codehub-dg-y.huawei.com/OpenSourceCenter/spdlog.git
+[submodule "src/thirdparty/pybind11"]
+	path = src/thirdparty/pybind11
+	url = https://codehub-dg-y.huawei.com/OpenSourceCenter/pybind11.git

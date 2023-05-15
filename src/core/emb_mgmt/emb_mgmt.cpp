@@ -1,0 +1,574 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2021-2022. All rights reserved.
+ * Description: common module
+ * Author: MindX SDK
+ * Date: 2022/11/15
+ */
+#include "emb_mgmt.h"
+#include <spdlog/spdlog.h>
+#include <spdlog/fmt/bundled/ranges.h>
+#include "checkpoint/checkpoint.h"
+#include "utils/time_cost.h"
+
+using namespace MxRec;
+using namespace std;
+
+bool HybridMgmt::Initialize(RankInfo rankInfo,
+                            const vector<EmbInfo>& embInfos,
+                            int seed,
+                            const vector<ThresholdValue>& thresholdValues,
+                            bool ifLoad)
+{
+    SetLog(rankInfo.rankId);
+    if (isRunning) {
+        return true;
+    }
+    MPI_Comm_size(MPI_COMM_WORLD, &rankInfo.rankSize);
+    int localRankId = rankInfo.deviceId;
+    spdlog::info(MGMT + "begin initialize, localRankSize:{}, localRankId {}, rank {}", rankInfo.localRankSize,
+                 localRankId, rankInfo.rankId);
+    rankInfo.localRankId = localRankId;
+    size_t totHostVocabSize = 0;
+    for (const auto& emb : embInfos) {
+        totHostVocabSize += emb.hostVocabSize;
+    }
+    if (totHostVocabSize == 0) {
+        rankInfo.noDDR = true;
+    }
+    rankInfo.useDataset = getenv("DATASET") != nullptr;
+    mgmtRankInfo = rankInfo;
+    mgmtEmbInfo = embInfos;
+    skipUpdate = getenv("SKIP_UPDATE") != nullptr;
+    hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
+    hdTransfer->Init(embInfos, rankInfo.deviceId);
+    preprocess = Singleton<KeyProcess>::GetInstance();
+    preprocess->Initialize(rankInfo, embInfos, thresholdValues, ifLoad, seed);
+    preprocess->Start();
+    lookUpKeysQueue = make_unique<Common::TaskQueue<vector<Tensor>>>();
+    restoreQueue = make_unique<Common::TaskQueue<vector<Tensor>>>();
+    isRunning = true;
+    if (!rankInfo.noDDR) {
+        hostEmbs = make_unique<HostEmb>();
+        hostHashMaps = make_unique<EmbHashMap>();
+        hostEmbs->Initialize(embInfos, seed, ifLoad);
+        hostHashMaps->Init(rankInfo, embInfos, ifLoad);
+    }
+    isLoad = ifLoad;
+    if (!rankInfo.useDataset && !isLoad) {
+        Start();
+    }
+    for (const auto& info: embInfos) {
+        spdlog::info(MGMT + "emb[{}] vocab size {}+{} sc:{}", info.name, info.devVocabSize, info.hostVocabSize,
+            info.sendCount);
+    }
+    spdlog::info(MGMT + "end initialize, useDataset:{}, noDDR:{}, maxStep:{}, rank:{}",
+        rankInfo.useDataset, rankInfo.noDDR, rankInfo.maxStep, rankInfo.rankId);
+    return true;
+}
+
+bool HybridMgmt::Save(string savePath)
+{
+    preprocess->LoadSaveLock();
+
+    CkptData saveData;
+    Checkpoint saveCkpt;
+    if (!mgmtRankInfo.noDDR) {
+        spdlog::debug(MGMT + "Start host side save: ddr mode hashmap");
+        saveData.hostEmbs = hostEmbs->GetHostEmbs();
+        saveData.embHashMaps = hostHashMaps->GetHashMaps();
+    } else {
+        spdlog::debug(MGMT + "Start host side save: no ddr mode hashmap");
+        saveData.maxOffset = preprocess->GetMaxOffset();
+        saveData.keyOffsetMap = preprocess->GetKeyOffsetMap();
+    }
+
+    auto& featAdmitNEvict = preprocess->GetFeatAdmitAndEvict();
+    if (featAdmitNEvict.GetFunctionSwitch()) {
+        spdlog::debug(MGMT + "Start host side save: feature admit and evict");
+        saveData.tens2Thresh = featAdmitNEvict.GetTensorThresholds();
+        saveData.histRec.timestamps = featAdmitNEvict.GetHistoryRecords().timestamps;
+        saveData.histRec.historyRecords = featAdmitNEvict.GetHistoryRecords().historyRecords;
+    }
+
+    saveCkpt.SaveModel(savePath, saveData, mgmtRankInfo, mgmtEmbInfo);
+
+    preprocess->LoadSaveUnlock();
+
+    return true;
+}
+
+bool HybridMgmt::Load(const string& loadPath)
+{
+    preprocess->LoadSaveLock();
+
+    spdlog::debug(MGMT + "Start host side load process");
+
+    CkptData loadData;
+    Checkpoint loadCkpt;
+    vector<CkptFeatureType> loadFeatures;
+    if (!mgmtRankInfo.noDDR) {
+        loadFeatures.push_back(CkptFeatureType::HOST_EMB);
+        loadFeatures.push_back(CkptFeatureType::EMB_HASHMAP);
+    } else {
+        loadFeatures.push_back(CkptFeatureType::MAX_OFFSET);
+        loadFeatures.push_back(CkptFeatureType::KEY_OFFSET_MAP);
+    }
+
+    auto& featAdmitNEvict = preprocess->GetFeatAdmitAndEvict();
+    if (featAdmitNEvict.GetFunctionSwitch()) {
+        loadFeatures.push_back(CkptFeatureType::FEAT_ADMIT_N_EVICT);
+    }
+
+    loadCkpt.LoadModel(loadPath, loadData, mgmtRankInfo, mgmtEmbInfo, loadFeatures);
+    if (!mgmtRankInfo.noDDR && !LoadMatchesDDRSetup(loadData)) {
+        return false;
+    }
+
+    if (!mgmtRankInfo.noDDR) {
+        spdlog::debug(MGMT + "Start host side load: ddr mode hashmap");
+        hostEmbs->LoadEmb(loadData.hostEmbs);
+        hostHashMaps->LoadHashMap(loadData.embHashMaps);
+    } else {
+        spdlog::debug(MGMT + "Start host side load: no ddr mode hashmap");
+        preprocess->LoadMaxOffset(loadData.maxOffset);
+        preprocess->LoadKeyOffsetMap(loadData.keyOffsetMap);
+    }
+    if (featAdmitNEvict.GetFunctionSwitch()) {
+        spdlog::debug(MGMT + "Start host side load: feature admit and evict");
+        featAdmitNEvict.LoadTensorThresholds(loadData.tens2Thresh);
+        featAdmitNEvict.LoadHistoryRecords(loadData.histRec);
+    }
+
+    spdlog::debug(MGMT + "Finish host side load process");
+
+    preprocess->LoadSaveUnlock();
+
+    if (!mgmtRankInfo.useDataset && isLoad) {
+        Start();
+    }
+
+    return true;
+}
+
+bool HybridMgmt::LoadMatchesDDRSetup(const CkptData& loadData)
+{
+    bool loadDataMatches { true };
+    size_t embTableCount { 0 };
+    const auto& loadHostEmbs { loadData.hostEmbs };
+    for (const auto& setupHostEmbs : mgmtEmbInfo) {
+        const auto& loadEmbTable { loadHostEmbs.find(setupHostEmbs.name) };
+        if (loadEmbTable != loadHostEmbs.end()) {
+            embTableCount++;
+
+            const auto& loadEmbInfo { loadEmbTable->second.hostEmbInfo };
+            if (setupHostEmbs.sendCount != loadEmbInfo.sendCount) {
+                spdlog::error(MGMT + "Load data sendCount {} for table {} does not match setup sendCound {}",
+                    setupHostEmbs.sendCount, setupHostEmbs.name, loadEmbInfo.sendCount);
+                loadDataMatches = false;
+            }
+            if (setupHostEmbs.embeddingSize != loadEmbInfo.embeddingSize) {
+                spdlog::error(MGMT + "Load data embeddingSize {} for table {} does not match setup embeddingSize {}",
+                    setupHostEmbs.embeddingSize, setupHostEmbs.name, loadEmbInfo.embeddingSize);
+                loadDataMatches = false;
+            }
+            if (setupHostEmbs.devVocabSize != loadEmbInfo.devVocabSize) {
+                spdlog::error(MGMT + "Load data devVocabSize {} for table {} does not match setup devVocabSize {}",
+                    setupHostEmbs.devVocabSize, setupHostEmbs.name, loadEmbInfo.devVocabSize);
+                loadDataMatches = false;
+            }
+            if (setupHostEmbs.hostVocabSize != loadEmbInfo.hostVocabSize) {
+                spdlog::error(MGMT + "Load data hostVocabSize {} for table {} does not match setup hostVocabSize {}",
+                    setupHostEmbs.hostVocabSize, setupHostEmbs.name, loadEmbInfo.hostVocabSize);
+                loadDataMatches = false;
+            }
+            if (!loadDataMatches) {
+                return loadDataMatches;
+            }
+        } else {
+            spdlog::error(MGMT + "Load data does not contain table with table name: {}", setupHostEmbs.name);
+            return false;
+        }
+    }
+
+    if (embTableCount < loadHostEmbs.size()) {
+        spdlog::error(MGMT + "Load data has {} tables more than setup table num {}",
+                      loadHostEmbs.size(), embTableCount);
+        return false;
+    }
+    return true;
+}
+
+void HybridMgmt::Start()
+{
+    if (mgmtRankInfo.noDDR) {
+        auto getInfoTask = [this]() {
+            auto ret = GetInfoTask();
+            spdlog::info("getInfoTask done");
+            return ret;
+        };
+        procThreads.emplace_back(getInfoTask);
+
+        auto sendInfoTask = [this]() {
+            auto ret = SendTask();
+            spdlog::info("sendInfoTask done");
+            return ret;
+        };
+        procThreads.emplace_back(sendInfoTask);
+    }
+
+    if (!mgmtRankInfo.noDDR) {
+        auto parseKeysTask = [this]() {
+            auto ret = ParseKeysTask();
+            spdlog::info("parseKeysTask done");
+            return ret;
+        };
+        procThreads.emplace_back(parseKeysTask);
+    }
+}
+
+bool HybridMgmt::TrainParseKeys()
+{
+    do {
+        if (!isRunning) {
+            return false;
+        }
+        ParseKeys(TRAIN_CHANNEL_ID, getInfoBatchId);
+        spdlog::info(MGMT + "parseKeysBatchId = {}", getInfoBatchId);
+    } while (getInfoBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
+             mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1);
+
+    return true;
+}
+
+bool HybridMgmt::EvalParseKeys()
+{
+    int evalGetInfoBatchId = 0; // 0-99, 0-99
+    do {
+        if (!isRunning) {
+            return false;
+        }
+        bool status = ParseKeys(EVAL_CHANNEL_ID, evalGetInfoBatchId);
+        if (!status) {
+            mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] = evalGetInfoBatchId;
+            break;
+        }
+    } while (evalGetInfoBatchId % mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] != 0 ||
+             mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1);
+
+    return true;
+}
+
+// 腾讯需要DDR开启特性
+bool HybridMgmt::ParseKeysTask()
+{
+    while (isRunning) {
+        spdlog::info(MGMT + "Start Mgmt ParseKeysTask");
+        if (mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1 || mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] > 0) {
+            if (!TrainParseKeys()) {
+                return false;
+            }
+        }
+
+        if (mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1 || mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] > 0) {
+            if (!EvalParseKeys()) {
+                return false;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool HybridMgmt::GetInfoTask()
+{
+    while (isRunning) {
+        spdlog::info(MGMT + "Start Mgmt GetInfoTask");
+        do {
+            if (!isRunning) {
+                return false;
+            }
+            GetLookupAndRestore(TRAIN_CHANNEL_ID, getInfoBatchId);
+            spdlog::info(MGMT + "getInfoBatchId = {}", getInfoBatchId);
+        } while (getInfoBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
+                mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1);
+
+        int evalGetInfoBatchId = 0; // 0-99, 0-99
+        do {
+            if (!isRunning) {
+                return false;
+            }
+            bool status = GetLookupAndRestore(EVAL_CHANNEL_ID, evalGetInfoBatchId);
+            if (!status) {
+                mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] = evalGetInfoBatchId;
+                break;
+            }
+        } while (evalGetInfoBatchId % mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] != 0 ||
+                mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1);
+    }
+    return false;
+}
+
+bool HybridMgmt::SendTask()
+{
+    while (isRunning) {
+        spdlog::info(MGMT + "Start Mgmt SendTask");
+        do {
+            if (!isRunning) {
+                return false;
+            }
+            SendLookupAndRestore(TRAIN_CHANNEL_ID, sendBatchId);
+#if defined(PROFILING) && defined(BUILD_WITH_EASY_PROFILER)
+            spdlog::info(MGMT + "sendBatchId = {}", sendBatchId);
+            if (trainBatchId == PROFILING_START_BATCH_ID) {
+                EASY_PROFILER_ENABLE
+            } else if (trainBatchId == PROFILING_END_BATCH_ID) {
+                EASY_PROFILER_DISABLE
+                ::profiler::dumpBlocksToFile(
+                    fmt::format("/home/MX_REC-mgmt-profile-{}.prof", mgmtRankInfo.rankId).c_str());
+            }
+#endif
+        } while (sendBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
+                 mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1);
+
+        int evalSendBatchId = 0;
+        do {
+            if (!isRunning) {
+                return false;
+            }
+            bool status = SendLookupAndRestore(EVAL_CHANNEL_ID, evalSendBatchId);
+            if (!status) {
+                mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] = evalSendBatchId;
+                break;
+            }
+        } while (evalSendBatchId % mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] != 0 ||
+                 mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1);
+    }
+    return false;
+}
+
+bool HybridMgmt::GetLookupAndRestore(int channelId, int &batchId)
+{
+    spdlog::info(MGMT + "start parse keys, nBatch:{} , [{}]:{}", mgmtRankInfo.nBatch, channelId, batchId);
+    for (const auto& embInfo: mgmtEmbInfo) {
+        TimeCost getAllTensorTC;
+        auto infoVecs = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::RESTORE);
+        if (infoVecs == nullptr) {
+            spdlog::info(MGMT + "ParseKeys infoVecs empty ! batchId:{}, channelId:{}", batchId, channelId);
+            return false;
+        }
+        lookUpKeysQueue->Pushv({ infoVecs->back() });
+        infoVecs->pop_back();
+        restoreQueue->Pushv(*infoVecs);
+        TIME_PRINT("getAllTensorTC TimeCost(ms):{}", getAllTensorTC.ElapsedMS());
+    }
+    batchId++;
+    return true;
+}
+
+bool HybridMgmt::SendLookupAndRestore(int channelId, int &batchId)
+{
+    for (const auto& embInfo: mgmtEmbInfo) {
+        if (!mgmtRankInfo.useStatic) {
+            auto all2all = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::ALL2ALL);
+            hdTransfer->Send(ALL2ALL, { *all2all }, channelId, embInfo.name);
+        }
+        spdlog::info("SendLookupAndRestore batchId: {}, name: {}, channelId: {}",
+                     batchId, embInfo.name, channelId);
+
+        TimeCost sendTensorTC;
+        omp_set_num_threads(SEND_TENSOR_TYPE_NUM);
+#pragma omp parallel sections
+        {
+#pragma omp section
+            {
+                TimeCost sendLookupTC;
+                auto lookUpKeys = lookUpKeysQueue->WaitAndPop();
+                hdTransfer->Send(LOOKUP, lookUpKeys, channelId, embInfo.name);
+                TIME_PRINT("LOOKUP Send TimeCost(ms):{}", sendLookupTC.ElapsedMS());
+            }
+#pragma omp section
+            {
+                TimeCost sendRestoreTC;
+                auto restore = restoreQueue->WaitAndPop();
+                hdTransfer->Send(RESTORE, restore, channelId, embInfo.name);
+                TIME_PRINT("RESTORE Send TimeCost(ms):{}", sendRestoreTC.ElapsedMS());
+            }
+        }
+        TIME_PRINT("sendTensorTC TimeCost(ms):{}", sendTensorTC.ElapsedMS());
+    }
+    batchId++;
+    return true;
+}
+
+bool HybridMgmt::EndBatch(int batchId, int channelId)
+{
+    return (batchId % mgmtRankInfo.maxStep[channelId] == 0 && mgmtRankInfo.maxStep[channelId] != -1);
+}
+
+bool HybridMgmt::ParseKeys(int channelId, int& batchId)
+{
+    spdlog::info(MGMT + "DDR mode, start parse keys, nBatch:{} , [{}]:{}", mgmtRankInfo.nBatch, channelId, batchId);
+    TimeCost parseKeyTC;
+    int start = batchId, iBatch = 0;
+    bool ifHashmapFree = true, remainBatch = true;
+    while (true) {
+        spdlog::info(MGMT + "parse keys, [{}]:{}", channelId, batchId);
+        for (const auto& embInfo : mgmtEmbInfo) {
+            auto& embHashMap = hostHashMaps->embHashMaps.at(embInfo.name);
+            if (iBatch == 0) {
+                embHashMap.SetStartCount();
+            }
+            auto lookupKeys = preprocess->GetLookupKeys(batchId, embInfo.name, channelId);
+            if (lookupKeys.empty()) {
+                remainBatch = false;
+                break;
+            }
+            auto restore = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::RESTORE);
+            hdTransfer->Send(RESTORE, *restore, channelId, embInfo.name);
+
+            auto tmpData = hostHashMaps->Process(embInfo.name, lookupKeys, iBatch);
+            hdTransfer->Send(LOOKUP, { tmpData.front() }, channelId, embInfo.name);
+            tmpData.erase(tmpData.begin());
+            hdTransfer->Send(SWAP, tmpData, channelId, embInfo.name);
+
+            if (!mgmtRankInfo.useStatic) {
+                auto all2all = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::ALL2ALL);
+                hdTransfer->Send(ALL2ALL, *all2all, channelId, embInfo.name);
+            }
+
+            if (embHashMap.HasFree(lookupKeys.size())) { // check free > next one batch
+                spdlog::warn(MGMT + "embName {}[{}]{},iBatch:{} freeSize not enough, {}", embInfo.name, channelId,
+                             batchId, iBatch, lookupKeys.size());
+                ifHashmapFree = false;
+            }
+        }
+        if (!remainBatch) {
+            EmbHDTransWrap(channelId, batchId, start, iBatch);
+            return false;
+        }
+        batchId++;
+        iBatch++;
+        if (EndBatch(batchId, channelId) || iBatch == mgmtRankInfo.nBatch || !ifHashmapFree || !isRunning) {
+            break;
+        }
+    }
+    if (!isRunning) {
+        return false;
+    }
+    EmbHDTransWrap(channelId, batchId - 1, start, iBatch);
+    TIME_PRINT("[{}]-{}, parseKeyTC TimeCost(ms):{}", channelId, batchId, parseKeyTC.ElapsedMS());
+    return true;
+}
+
+// send h2d & recv d2h emb
+void HybridMgmt::EmbHDTransWrap(int channelId, const int& batchId, int start, int iBatch)
+{
+    if (iBatch == 0) {
+        return;
+    }
+    spdlog::info(MGMT + "trans emb, batchId:[{}-{}]", start, batchId);
+    hostEmbs->Join();
+    EmbHDTrans(channelId, batchId);
+
+    for (int i = 0; i < iBatch - 1; ++i) {
+        // need send empty
+        spdlog::info(MGMT + "trans emb dummy, batchId:{}, ", start + 1 + i);
+        EmbHDTrans(channelId, batchId);
+    }
+}
+
+void HybridMgmt::EmbHDTrans(int channelId, int batchId)
+{
+    EASY_FUNCTION(profiler::colors::Blue)
+    EASY_VALUE("mgmtProcess", batchId)
+    spdlog::debug(MGMT + "trans emb, batchId:{}, channelId:{}", batchId, channelId);
+    TimeCost tr;
+    for (const auto& embInfo: mgmtEmbInfo) {
+        auto& missingKeys = hostHashMaps->embHashMaps.at(embInfo.name).missingKeysHostPos;
+        auto h2dEmb = hostEmbs->GetH2DEmb(missingKeys, embInfo.name); // order!
+        hdTransfer->Send(H2D, h2dEmb, channelId, embInfo.name, batchId);
+    }
+    for (const auto& embInfo: mgmtEmbInfo) {
+        const auto& missingKeys = hostHashMaps->GetMissingKeys(embInfo.name);
+        if (!(skipUpdate && missingKeys.empty())) {
+            hostEmbs->UpdateEmbV2(missingKeys, channelId, embInfo.name); // order!
+        } // skip when skip update and empty missing keys
+        hostHashMaps->ClearMissingKeys(embInfo.name);
+    }
+    TIME_PRINT("EmbHDTrans TimeCost(ms):{} batchId: {} ", tr.ElapsedMS(), batchId);
+}
+
+void HybridMgmt::EmbHDTransDummy(int channelId, int batchId, const EmbInfo& embInfo)
+{
+    EASY_FUNCTION(profiler::colors::Blue)
+    EASY_VALUE("mgmtProcess", batchId)
+    spdlog::info(MGMT + "trans emb dummy, batchId:{}, channelId:{}", batchId, channelId);
+    auto transferName = TransferChannel::D2H;
+    auto d2hEmb = hdTransfer->Recv(transferName, channelId, embInfo.name)[0];
+    hdTransfer->Send(H2D, {}, channelId, embInfo.name);
+}
+
+/*
+* hook通过时间或者step数触发淘汰
+*/
+void HybridMgmt::Evict()
+{
+    auto& featAdmitNEvict = preprocess->GetFeatAdmitAndEvict();
+    if (featAdmitNEvict.GetFunctionSwitch()) {
+        featAdmitNEvict.FeatureEvict(evictKeyMap);
+    } else {
+        spdlog::warn(MGMT + "Hook can not trigger evict, cause AdmitNEvict is not open");
+        return;
+    }
+    spdlog::debug(MGMT + "evict triggered by hook, evict TableNum {} ", evictKeyMap.size());
+
+    if (mgmtRankInfo.noDDR) {
+        for (auto evict : evictKeyMap) {
+            preprocess->EvictKeys(evict.first, evict.second);
+        }
+    } else {
+        for (auto evict : evictKeyMap) {
+            EvictKeys(evict.first, evict.second);
+        }
+    }
+}
+
+// ddr模式淘汰->删除映射表、初始化host表、发送dev淘汰位置
+void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
+{
+    spdlog::debug(MGMT + "ddr mode, delete emb: [{}]! evict keySize:{}", embName, keys.size());
+    // 删除映射关系
+    if (keys.size() != 0) {
+        hostHashMaps->EvictDeleteEmb(embName, keys);
+    }
+
+    // 初始化host侧的emb
+    auto& evictOffset = hostHashMaps->embHashMaps.at(embName).evictPos;
+    if (evictOffset.size() != 0) {
+        spdlog::debug(MGMT + "ddr mode, delete emb: [{}]! evict size on host:{}", embName, evictOffset.size());
+        hostEmbs->EvictInitEmb(embName, evictOffset);
+    } else {
+        spdlog::info(MGMT + "ddr mode, evict size on host is empty");
+    }
+
+    // 发送dev侧的淘汰pos，以便dev侧初始化emb
+    auto evictDevOffset = hostHashMaps->embHashMaps.at(embName).evictDevPos;
+    spdlog::debug(MGMT + "ddr mode, init dev emb: [{}]! evict size on dev :{}", embName, evictDevOffset.size());
+
+    for (const auto& embInfo : mgmtEmbInfo) {
+        if (embInfo.name != embName) {
+            continue;
+        }
+        if (evictDevOffset.size() > embInfo.devVocabSize) {
+            spdlog::error(MGMT + "{} overflow! evict pos on dev {} bigger than dev vocabSize {}",
+                          embName, evictDevOffset.size(), embInfo.devVocabSize);
+        }
+        if (mgmtRankInfo.useStatic) {
+            evictDevOffset.resize(embInfo.devVocabSize, -1);
+        }
+        break;
+    }
+
+    auto tmpData = Vec2TensorI32(evictDevOffset);
+    hdTransfer->Send(EVICT, { tmpData }, TRAIN_CHANNEL_ID, embName);
+}

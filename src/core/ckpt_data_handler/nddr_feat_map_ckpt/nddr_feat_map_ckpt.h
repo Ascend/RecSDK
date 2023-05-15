@@ -1,0 +1,43 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ * Description:
+ * Author: MindX SDK
+ * Create: 2022-11-17
+ */
+
+#ifndef MX_REC_NDDR_FEAT_MAP_CKPT_H
+#define MX_REC_NDDR_FEAT_MAP_CKPT_H
+
+#include "ckpt_data_handler/ckpt_data_handler.h"
+
+namespace MxRec {
+    using namespace std;
+
+    class NddrFeatMapCkpt : public CkptDataHandler {
+    public:
+        NddrFeatMapCkpt() = default;
+        ~NddrFeatMapCkpt() override {}
+
+        void SetProcessData(CkptData& processData) override;
+        void GetProcessData(CkptData& processData) override;
+
+        vector<CkptDataType> GetDataTypes() override;
+
+        vector<string> GetDirNames() override;
+        vector<string> GetEmbNames() override;
+        CkptTransData GetDataset(CkptDataType dataType, string embName) override;
+
+        void SetDataset(CkptDataType dataType, string embName, CkptTransData& loadedData) override;
+
+    private:
+        const vector<string> fileDirNames { "HashTable", "HBM" };
+        const vector<CkptDataType> saveDataTypes { CkptDataType::NDDR_FEATMAP };
+
+        const int embHashElmtNum { 2 };
+
+        key_offset_mem_t saveKeyOffsetMap;
+        key_offset_mem_t loadKeyOffsetMap;
+    };
+}
+
+#endif // MX_REC_NDDR_FEAT_MAP_CKPT_H
