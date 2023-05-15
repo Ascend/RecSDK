@@ -1,0 +1,90 @@
+/*
+* Copyright (c) Huawei Technologies Co., Ltd. 2021-2022. All rights reserved.
+* Description: common module
+* Author: MindX SDK
+* Date: 2022/11/15
+*/
+
+#ifndef MX_REC_HD_TRANSFER_H
+#define MX_REC_HD_TRANSFER_H
+
+#include "acl/acl_base.h"
+#include "acl/acl.h"
+#include "acl/acl_tdt.h"
+#include "acl/acl_tdt_queue.h"
+#include "acl_channel.h"
+#include "utils/common.h"
+
+#ifndef tdtCreateChannel
+#define tdtCreateChannel acltdtCreateChannelWithCapacity
+#endif
+
+namespace MxRec {
+    using namespace std;
+    const std::string MGMT = "\033[32m[Mgmt]\033[0m ";
+    const std::string HD = "\033[32m[HD]\033[0m ";
+    const std::string HOSTEMB = "\033[32m[HostEmb]\033[0m ";
+    const int PING_PONG_SIZE = 12;
+    const int LARGE_CHANNEL_SIZE = 100;
+
+    enum TransferChannel {
+        D2H,
+        RESTORE,
+        ALL2ALL,
+        LOOKUP,
+        EVICT,
+        H2D,
+        SWAP,
+        INVALID
+    };
+
+    inline string TransferChannel2Str(TransferChannel e)
+    {
+        switch (e) {
+            case D2H:
+                return "d2h";
+            case RESTORE:
+                return "restore";
+            case ALL2ALL:
+                return "all2all";
+            case LOOKUP:
+                return "lookup";
+            case EVICT:
+                return "evict";
+            case H2D:
+                return "h2d";
+            case SWAP:
+                return "swap";
+            default:
+                throw std::invalid_argument("Invalid TransferChannel");
+        }
+    };
+
+    class HDTransfer {
+    public:
+        HDTransfer() = default;
+
+        int Init(const vector<EmbInfo>& embInfos, uint32_t localRankId);
+
+        void Send(TransferChannel channel, const vector<Tensor>& tensors,
+                  int channelId, const string& embName, int batchId = -1);
+
+        vector<Tensor> Recv(TransferChannel channel, int channelId, const string& embName);
+
+        tuple<acltdtDataset*, size_t> RecvAcl(TransferChannel channel, int channelId, const string& embName);
+
+        size_t QueryChannelSize(const string& channelName);
+
+        auto Vec2Tensor(const vector<size_t>& tmpVec) const -> vector<Tensor>;
+
+        void Destroy();
+
+    private:
+#ifndef GTEST
+        std::unordered_map<std::string, acltdtChannelHandle*> transferChannels;
+#endif
+        bool running;
+        void CreateChannel(uint32_t localRankId, const string& embName, int channelNum);
+    };
+}
+#endif // MX_REC_HD_TRANSFER_H

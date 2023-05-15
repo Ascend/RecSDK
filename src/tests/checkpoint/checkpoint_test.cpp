@@ -1,0 +1,449 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2022-2022. All rights reserved.
+ * Description:
+ * Author: MindX SDK
+ * Create: 2022-11-15
+ */
+
+#include <mpi.h>
+#include <gtest/gtest.h>
+#include <spdlog/spdlog.h>
+#include <spdlog/fmt/bundled/ranges.h>
+
+#include "checkpoint/checkpoint.h"
+#include "ckpt_data_handler/host_emb_ckpt/host_emb_ckpt.h"
+#include "ckpt_data_handler/emb_hash_ckpt/emb_hash_ckpt.h"
+#include "ckpt_data_handler/nddr_offset_ckpt/nddr_offset_ckpt.h"
+#include "ckpt_data_handler/nddr_feat_map_ckpt/nddr_feat_map_ckpt.h"
+#include "ckpt_data_handler/feat_admit_n_evict_ckpt/feat_admit_n_evict_ckpt.h"
+
+
+using namespace std;
+using namespace MxRec;
+
+class CheckpointTest : public testing::Test {
+protected:
+    string testPath { "./ckpt_mgmt_test" };
+    int rankId;
+
+    int floatBytes { 4 };
+    int int32Bytes { 4 };
+    int int64Bytes { 8 };
+
+    int64_t int64Min { static_cast<int64_t>(UINT32_MAX) };
+
+    int maxChannelNum = MAX_CHANNEL_NUM;
+    int keyProcessThread = KEY_PROCESS_THREAD;
+
+    int embInfoNum { 10 };
+
+    float floatMem { 0.5 };
+    int64_t featMem { static_cast<int64_t>(UINT32_MAX) };
+    int32_t offsetMem { 0 };
+
+    string name { "table" };
+    int sendCount { 8 };
+    int embeddingSize { 100 };
+    int devVocabSize { 8 };
+    int hostVocabSize { 16 };
+
+    vector<EmbInfo> testEmbInfos;
+    RankInfo rankInfo;
+
+    void SetUp()
+    {
+        spdlog::set_level(spdlog::level::trace);
+        int claimed;
+
+        MPI_Query_thread(&claimed);
+        ASSERT_EQ(claimed, MPI_THREAD_MULTIPLE);
+        MPI_Comm_rank(MPI_COMM_WORLD, &rankId);
+        rankInfo.rankId = rankId;
+        rankInfo.useDynamicExpansion = false;
+    }
+
+    void SetEmbInfo()
+    {
+        int idx { 0 };
+        testEmbInfos.resize(embInfoNum);
+        for (auto& testEmbInfo : testEmbInfos) {
+            testEmbInfo.name = name + to_string(idx);
+            testEmbInfo.sendCount = sendCount;
+            testEmbInfo.embeddingSize = embeddingSize;
+            testEmbInfo.devVocabSize = devVocabSize;
+            testEmbInfo.hostVocabSize = hostVocabSize;
+            ++idx;
+        }
+    }
+
+    void SetEmbData(vector<vector<float>>& testEmbData)
+    {
+        testEmbData.resize(hostVocabSize);
+        for (auto& testData : testEmbData) {
+            testData.resize(embeddingSize);
+            for (auto& testValue : testData) {
+                testValue = floatMem;
+                floatMem++;
+            }
+        }
+    }
+
+    void SetHostEmbs(emb_mem_t& testHostEmbs)
+    {
+        vector<vector<float>> testEmbData;
+        for (const auto& testEmbInfo : testEmbInfos) {
+            SetEmbData(testEmbData);
+            HostEmbTable embTable { testEmbInfo, move(testEmbData) };
+            testHostEmbs[testEmbInfo.name] = move(embTable); // set test input data
+        }
+    }
+
+    void SetHashMapInfo(absl::flat_hash_map<emb_key_t, size_t>& testHash,
+                        vector<int32_t>& testDev2B,
+                        vector<int64_t>& testDev2K)
+    {
+        testDev2B.resize(devVocabSize);
+        testDev2K.resize(devVocabSize);
+        for (int i { 0 }; i < devVocabSize; ++i) {
+            testDev2K.at(i) = offsetMem;
+            testHash[featMem] = offsetMem;
+
+            featMem++;
+            offsetMem++;
+        }
+        fill(testDev2B.begin(), testDev2B.end(), -1);
+    }
+
+    void SetEmbHashMaps(emb_hash_mem_t& testEmbHashMaps)
+    {
+        EmbHashMapInfo embHashInfo;
+        absl::flat_hash_map<emb_key_t, size_t> testHash;
+        vector<int32_t> testDev2B;
+        vector<int64_t> testDev2K;
+        for (const auto& testEmbInfo : testEmbInfos) {
+            SetHashMapInfo(testHash, testDev2B, testDev2K);
+
+            embHashInfo.hostHashMap = std::move(testHash);
+
+            embHashInfo.devOffset2Batch = move(testDev2B);
+            embHashInfo.devOffset2Key = move(testDev2K);
+
+            embHashInfo.currentUpdatePos = 0;
+            embHashInfo.hostVocabSize = hostVocabSize;
+            embHashInfo.devVocabSize = devVocabSize;
+
+            testEmbHashMaps[testEmbInfo.name] = move(embHashInfo);
+        }
+    }
+
+    void SetMaxOffset(offset_mem_t& testMaxOffset)
+    {
+        for (const auto& testEmbInfo : testEmbInfos) {
+            testMaxOffset[testEmbInfo.name] = offsetMem;
+        }
+    }
+
+    void SetKeyOffsetMap(absl::flat_hash_map<emb_key_t, int64_t>& testKeyOffsetMap)
+    {
+        for (int64_t i { 0 }; i < hostVocabSize; ++i) {
+            testKeyOffsetMap[featMem] = i;
+
+            featMem++;
+        }
+    }
+
+    void SetKeyOffsetMaps(key_offset_mem_t& testKeyOffsetMaps)
+    {
+        absl::flat_hash_map<emb_key_t, int64_t> testKeyOffsetMap;
+        for (const auto& testEmbInfo : testEmbInfos) {
+            SetKeyOffsetMap(testKeyOffsetMap);
+            testKeyOffsetMaps[testEmbInfo.name] = std::move(testKeyOffsetMap);
+        }
+    }
+
+    void SetTens2Threshold(tensor_2_thresh_mem_t& testTens2Threshold)
+    {
+        for (const auto& testEmbInfo : testEmbInfos) {
+            ThresholdValue val;
+            val.tensorName = testEmbInfo.name;
+            val.countThreshold = offsetMem;
+            val.timeThreshold = offsetMem;
+
+            offsetMem++;
+
+            testTens2Threshold[testEmbInfo.name] = move(val);
+        }
+    }
+
+    void SetHistRec(AdmitAndEvictData& histRec)
+    {
+        int64_t featureId { int64Min };
+        int count { 1 };
+        time_t lastTime { 1000 };
+        time_t timeStamp { 10000 };
+
+        for (const auto& testEmbInfo : testEmbInfos) {
+            auto& historyRecords { histRec.historyRecords[testEmbInfo.name] };
+            auto& timestamps { histRec.timestamps[testEmbInfo.name] };
+
+            timestamps = timeStamp;
+
+            for (int i = 0; i < count; ++i) {
+                historyRecords[featureId].featureId = featureId;
+                historyRecords[featureId].count = count;
+                historyRecords[featureId].tensorName = testEmbInfo.name;
+                historyRecords[featureId].lastTime = lastTime;
+
+                featureId++;
+            }
+
+            count++;
+            lastTime++;
+            timeStamp++;
+        }
+    }
+};
+
+TEST_F(CheckpointTest, HostEmbs)
+{
+    emb_mem_t testHostEmbs;
+    emb_mem_t validHostEmbs;
+
+    SetEmbInfo();
+    SetHostEmbs(testHostEmbs);
+    validHostEmbs = testHostEmbs;
+
+    CkptData testSaveData;
+    CkptData validLoadData;
+    CkptData testLoadData;
+
+    testSaveData.hostEmbs = testHostEmbs;
+    validLoadData.hostEmbs = validHostEmbs;
+
+    Checkpoint testCkpt;
+    testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
+    testCkpt.LoadModel(testPath, testLoadData, rankInfo, testEmbInfos,
+                       { CkptFeatureType::HOST_EMB });
+
+    for (const auto& it : validLoadData.hostEmbs) {
+        const auto& embInfo = testLoadData.hostEmbs.at(it.first).hostEmbInfo;
+        const auto& embData = testLoadData.hostEmbs.at(it.first).embData;
+
+        EXPECT_EQ(it.second.hostEmbInfo.name, embInfo.name);
+        EXPECT_EQ(it.second.hostEmbInfo.sendCount, embInfo.sendCount);
+        EXPECT_EQ(it.second.hostEmbInfo.embeddingSize, embInfo.embeddingSize);
+        EXPECT_EQ(it.second.hostEmbInfo.devVocabSize, embInfo.devVocabSize);
+        EXPECT_EQ(it.second.hostEmbInfo.hostVocabSize, embInfo.hostVocabSize);
+
+        EXPECT_EQ(it.second.embData, embData);
+    }
+}
+
+TEST_F(CheckpointTest, EmbHashMaps)
+{
+    emb_hash_mem_t testEmbHashMaps;
+    emb_hash_mem_t validEmbHashMaps;
+
+    SetEmbInfo();
+    SetEmbHashMaps(testEmbHashMaps);
+    validEmbHashMaps = testEmbHashMaps;
+
+    CkptData testSaveData;
+    CkptData validLoadData;
+    CkptData testLoadData;
+
+    testSaveData.embHashMaps = std::move(testEmbHashMaps);
+    validLoadData.embHashMaps = std::move(validEmbHashMaps);
+
+    Checkpoint testCkpt;
+    testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
+    testCkpt.LoadModel(testPath, testLoadData, rankInfo, testEmbInfos, { CkptFeatureType::EMB_HASHMAP });
+
+    EXPECT_EQ(validLoadData.embHashMaps.size(), testLoadData.embHashMaps.size());
+    for (const auto& it : validLoadData.embHashMaps) {
+        EXPECT_EQ(1, testLoadData.embHashMaps.count(it.first));
+
+        const auto& hostHashMap = testLoadData.embHashMaps.at(it.first).hostHashMap;
+        const auto& devOffset2Batch = testLoadData.embHashMaps.at(it.first).devOffset2Batch;
+        const auto& devOffset2Key = testLoadData.embHashMaps.at(it.first).devOffset2Key;
+        const auto& currentUpdatePos = testLoadData.embHashMaps.at(it.first).currentUpdatePos;
+        const auto& hostVocabSize = testLoadData.embHashMaps.at(it.first).hostVocabSize;
+        const auto& devVocabSize = testLoadData.embHashMaps.at(it.first).devVocabSize;
+
+        EXPECT_EQ(it.second.hostHashMap, hostHashMap);
+
+        EXPECT_EQ(it.second.devOffset2Batch, devOffset2Batch);
+        EXPECT_EQ(it.second.devOffset2Key, devOffset2Key);
+
+        EXPECT_EQ(it.second.currentUpdatePos, currentUpdatePos);
+        EXPECT_EQ(it.second.hostVocabSize, hostVocabSize);
+        EXPECT_EQ(it.second.devVocabSize, devVocabSize);
+    }
+}
+
+TEST_F(CheckpointTest, MaxOffset)
+{
+    offset_mem_t testMaxOffset;
+    offset_mem_t validMaxOffset;
+
+    SetEmbInfo();
+    SetMaxOffset(testMaxOffset);
+    validMaxOffset = testMaxOffset;
+
+    CkptData testSaveData;
+    CkptData validLoadData;
+    CkptData testLoadData;
+
+    testSaveData.maxOffset = std::move(testMaxOffset);
+    validLoadData.maxOffset = std::move(validMaxOffset);
+
+    Checkpoint testCkpt;
+    testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
+    testCkpt.LoadModel(testPath, testLoadData, rankInfo, testEmbInfos, { CkptFeatureType::MAX_OFFSET });
+
+    EXPECT_EQ(validLoadData.maxOffset.size(), testLoadData.maxOffset.size());
+    for (const auto& it : validLoadData.maxOffset) {
+        EXPECT_EQ(1, testLoadData.maxOffset.count(it.first));
+
+        const auto& maxOffset = testLoadData.maxOffset.at(it.first);
+
+        EXPECT_EQ(it.second, maxOffset);
+    }
+}
+
+TEST_F(CheckpointTest, KeyOffsetMaps)
+{
+    key_offset_mem_t testKeyOffsetMaps;
+    key_offset_mem_t validKeyOffsetMaps;
+
+    SetEmbInfo();
+    SetKeyOffsetMaps(testKeyOffsetMaps);
+    validKeyOffsetMaps = testKeyOffsetMaps;
+
+    CkptData testSaveData;
+    CkptData validLoadData;
+    CkptData testLoadData;
+
+    testSaveData.keyOffsetMap = std::move(testKeyOffsetMaps);
+    validLoadData.keyOffsetMap = std::move(validKeyOffsetMaps);
+
+    Checkpoint testCkpt;
+    testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
+    testCkpt.LoadModel(testPath, testLoadData, rankInfo, testEmbInfos, { CkptFeatureType::KEY_OFFSET_MAP });
+
+    EXPECT_EQ(validLoadData.keyOffsetMap.size(), testLoadData.keyOffsetMap.size());
+    for (const auto& it : validLoadData.keyOffsetMap) {
+        EXPECT_EQ(1, testLoadData.keyOffsetMap.count(it.first));
+        const auto& maxOffset = testLoadData.keyOffsetMap.at(it.first);
+        EXPECT_EQ(it.second, maxOffset);
+    }
+}
+
+TEST_F(CheckpointTest, AllMgmt)
+{
+    offset_mem_t testMaxOffset;
+    offset_mem_t validMaxOffset;
+    key_offset_mem_t testKeyOffsetMaps;
+    key_offset_mem_t validKeyOffsetMaps;
+
+    SetEmbInfo();
+    SetMaxOffset(testMaxOffset);
+    validMaxOffset = testMaxOffset;
+    SetKeyOffsetMaps(testKeyOffsetMaps);
+    validKeyOffsetMaps = testKeyOffsetMaps;
+
+    CkptData testSaveData;
+    CkptData validLoadData;
+    CkptData testLoadData;
+
+    testSaveData.maxOffset = std::move(testMaxOffset);
+    validLoadData.maxOffset = std::move(validMaxOffset);
+    testSaveData.keyOffsetMap = std::move(testKeyOffsetMaps);
+    validLoadData.keyOffsetMap = std::move(validKeyOffsetMaps);
+
+    Checkpoint testCkpt;
+    testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
+    testCkpt.LoadModel(testPath,
+        testLoadData,
+        rankInfo,
+        testEmbInfos,
+        { CkptFeatureType::MAX_OFFSET, CkptFeatureType::KEY_OFFSET_MAP });
+
+    EXPECT_EQ(validLoadData.maxOffset.size(), testLoadData.maxOffset.size());
+    for (const auto& it : validLoadData.maxOffset) {
+        EXPECT_EQ(1, testLoadData.maxOffset.count(it.first));
+
+        const auto& maxOffset = testLoadData.maxOffset.at(it.first);
+
+        EXPECT_EQ(it.second, maxOffset);
+    }
+
+    EXPECT_EQ(validLoadData.keyOffsetMap.size(), testLoadData.keyOffsetMap.size());
+    for (const auto& it : validLoadData.keyOffsetMap) {
+        EXPECT_EQ(1, testLoadData.keyOffsetMap.count(it.first));
+
+        const auto& maxOffset = testLoadData.keyOffsetMap.at(it.first);
+        EXPECT_EQ(it.second, maxOffset);
+    }
+}
+
+TEST_F(CheckpointTest, FeatAdmitNEvict)
+{
+    tensor_2_thresh_mem_t testTrens2Thresh;
+    tensor_2_thresh_mem_t validTrens2Thresh;
+    AdmitAndEvictData testHistRec;
+    AdmitAndEvictData validHistRec;
+
+    SetEmbInfo();
+    SetTens2Threshold(testTrens2Thresh);
+    validTrens2Thresh = testTrens2Thresh;
+    SetHistRec(testHistRec);
+    validHistRec = testHistRec;
+
+    CkptData testSaveData;
+    CkptData validLoadData;
+    CkptData testLoadData;
+
+    testSaveData.tens2Thresh = testTrens2Thresh;
+    testSaveData.histRec.timestamps = testHistRec.timestamps;
+    testSaveData.histRec.historyRecords = testHistRec.historyRecords;
+    validLoadData.tens2Thresh = validTrens2Thresh;
+    validLoadData.histRec = validHistRec;
+    validLoadData.histRec.timestamps = validHistRec.timestamps;
+    validLoadData.histRec.historyRecords = validHistRec.historyRecords;
+
+    Checkpoint testCkpt;
+    testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
+    testCkpt.LoadModel(testPath, testLoadData, rankInfo, testEmbInfos, { CkptFeatureType::FEAT_ADMIT_N_EVICT });
+
+    EXPECT_EQ(validLoadData.tens2Thresh.size(), testLoadData.tens2Thresh.size());
+    EXPECT_EQ(validLoadData.histRec.historyRecords.size(), testLoadData.histRec.historyRecords.size());
+    for (const auto& it : validLoadData.tens2Thresh) {
+        EXPECT_EQ(1, testLoadData.tens2Thresh.count(it.first));
+
+        const auto& tens2Thresh = testLoadData.tens2Thresh.at(it.first);
+
+        EXPECT_EQ(it.second.tensorName, tens2Thresh.tensorName);
+        EXPECT_EQ(it.second.countThreshold, tens2Thresh.countThreshold);
+        EXPECT_EQ(it.second.timeThreshold, tens2Thresh.timeThreshold);
+    }
+
+    for (const auto& it : validLoadData.histRec.timestamps) {
+        EXPECT_EQ(1, testLoadData.histRec.timestamps.count(it.first));
+        EXPECT_EQ(1, testLoadData.histRec.historyRecords.count(it.first));
+
+        const auto& timestamps = testLoadData.histRec.timestamps.at(it.first);
+        const auto& historyRecords = testLoadData.histRec.historyRecords.at(it.first);
+        const auto& validHistRec = validLoadData.histRec.historyRecords.at(it.first);
+
+        EXPECT_EQ(it.second, timestamps);
+        for (const auto& validHR : validHistRec) {
+            const auto& testHR = historyRecords.at(validHR.first);
+
+            EXPECT_EQ(validHR.second.featureId, testHR.featureId);
+            EXPECT_EQ(validHR.second.count, testHR.count);
+            EXPECT_EQ(validHR.second.tensorName, testHR.tensorName);
+            EXPECT_EQ(validHR.second.lastTime, testHR.lastTime);
+        }
+    }
+}
