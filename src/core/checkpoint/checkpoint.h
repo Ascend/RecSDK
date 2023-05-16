@@ -64,6 +64,8 @@ namespace MxRec {
         vector<EmbInfo> mgmtEmbInfo;
 
         const int embHashNum { 2 };
+        const int attribEmbDataOuterIdx { 0 };
+        const int attribEmbDataInnerIdx { 1 };
 
         void SetDataHandler(CkptData& ckptData);
         void SetDataHandler(const vector<CkptFeatureType>& featureTypes);
@@ -87,8 +89,10 @@ namespace MxRec {
         void GetUpperLayerLoadDir(const vector<string>& dirNames);
         vector<string> GetTableLayerLoadDir();
         void LoadDataset(const vector<string>& embNames, const vector<CkptDataType>& saveDataTypes,
-            const unique_ptr<CkptDataHandler>& dataHandler);
+            const unique_ptr<CkptDataHandler>& dataHandler, CkptData& ckptData);
         void ReadStream(CkptTransData& transData, const string& dataDir, CkptDataType dataType, uint32_t dataElmtBytes);
+        void ReadStreamForEmbData(CkptTransData& transData, const string& dataDir, uint32_t dataElmtBytes,
+                                  CkptData& ckptData, string embName);
         void SetTransDataSize(CkptTransData& transData, size_t datasetSize, CkptDataType dataType);
         void ReadDataset(CkptTransData& transData, ifstream& readFile, size_t readSize, CkptDataType dataType,
             size_t idx);

@@ -61,7 +61,7 @@ void Checkpoint::LoadModel(string loadPath, CkptData& ckptData, RankInfo& mgmtRa
 void Checkpoint::SetDataHandler(CkptData& ckptData)
 {
     dataHandlers.clear();
-    if (!ckptData.hostEmbs.empty()) {
+    if (ckptData.hostEmbs != nullptr) {
         dataHandlers.push_back(make_unique<HostEmbCkpt>());
     }
     if (!ckptData.embHashMaps.empty()) {
@@ -265,24 +265,35 @@ void Checkpoint::WriteStream(CkptTransData& transData, const string& dataDir, si
     ofstream writeFile;
     writeFile.open(dataDir.c_str(), std::ios::out | std::ios::trunc | std::ios::binary);
 
-    if (writeFile.is_open()) {
-        size_t idx = 0;
-        size_t writeSize = 0;
-        while (dataSize != 0) {
-            if (dataSize > oneTimeReadWriteLen) {
-                writeSize = oneTimeReadWriteLen;
-            } else {
-                writeSize = dataSize;
-            }
-
-            WriteDataset(transData, writeFile, writeSize, dataType, idx);
-
-            dataSize -= writeSize;
-            idx += writeSize;
-        }
-    } else {
+    if (!writeFile.is_open()) {
         spdlog::debug("unable to open save file: {}", dataDir);
     }
+
+    int loops = 1;
+    if (dataType == CkptDataType::EMB_DATA) {
+        loops = transData.floatArr.size();
+    }
+    for (int i = 0; i < loops; i++) {
+        size_t idx = 0;
+        size_t writeSize = 0;
+        size_t dataCol = dataSize;
+        while (dataCol != 0) {
+            if (dataCol > oneTimeReadWriteLen) {
+                writeSize = oneTimeReadWriteLen;
+            } else {
+                writeSize = dataCol;
+            }
+            if (floatTransSet.find(dataType) != floatTransSet.end()) {
+                writeFile.write((const char*)(transData.floatArr[i]) + idx, writeSize);
+            } else {
+                WriteDataset(transData, writeFile, writeSize, dataType, idx);
+            }
+
+            dataCol -= writeSize;
+            idx += writeSize;
+        }
+    }
+
     writeFile.close();
 }
 
@@ -296,8 +307,6 @@ void Checkpoint::WriteDataset(CkptTransData& transData,
         writeFile.write((const char*)(transData.int32Arr.data()) + idx, writeSize);
     } else if (int64TransSet.find(dataType) != int64TransSet.end()) {
         writeFile.write((const char*)(transData.int64Arr.data()) + idx, writeSize);
-    } else if (floatTransSet.find(dataType) != floatTransSet.end()) {
-        writeFile.write((const char*)(transData.floatArr.data()) + idx, writeSize);
     } else if (dataType == CkptDataType::ATTRIBUTE) {
         writeFile.write((const char*)(transData.attribute.data()) + idx, writeSize);
     }
@@ -313,7 +322,7 @@ void Checkpoint::LoadProcess(CkptData& ckptData)
         GetUpperLayerLoadDir(dirNames);
         embNames = GetTableLayerLoadDir();
 
-        LoadDataset(embNames, saveDataTypes, dataHandler);
+        LoadDataset(embNames, saveDataTypes, dataHandler, ckptData);
 
         dataHandler->GetProcessData(ckptData);
     }
@@ -351,7 +360,8 @@ vector<string> Checkpoint::GetTableLayerLoadDir()
 
 void Checkpoint::LoadDataset(const vector<string>& embNames,
                              const vector<CkptDataType>& saveDataTypes,
-                             const unique_ptr<CkptDataHandler>& dataHandler)
+                             const unique_ptr<CkptDataHandler>& dataHandler,
+                             CkptData& ckptData)
 {
     for (const auto& embName : embNames) {
         auto dataDir { innerDirPath + dirSeparator + embName };
@@ -364,14 +374,19 @@ void Checkpoint::LoadDataset(const vector<string>& embNames,
             auto attributeDir { datasetPath + dirSeparator + datasetName + to_string(rankId) + attribFileType };
 
             CkptTransData transData;
-            auto dataElmtBytes { dataHandler->GetDataElmtBytes(saveDataType) };
-
-            spdlog::debug("====Start reading data from: {}", datasetDir);
-            ReadStream(transData, datasetDir, saveDataType, dataElmtBytes);
 
             spdlog::debug("====Start reading data from: {}", attributeDir);
-            dataElmtBytes = dataHandler->GetDataElmtBytes(CkptDataType::ATTRIBUTE);
+            auto dataElmtBytes { dataHandler->GetDataElmtBytes(CkptDataType::ATTRIBUTE) };
             ReadStream(transData, attributeDir, CkptDataType::ATTRIBUTE, dataElmtBytes);
+
+            dataElmtBytes = dataHandler->GetDataElmtBytes(saveDataType);
+            if (saveDataType == CkptDataType::EMB_DATA) {
+                ReadStreamForEmbData(transData, datasetDir, dataElmtBytes, ckptData, embName);
+                continue;
+            } else {
+                spdlog::debug("====Start reading data from: {}", datasetDir);
+                ReadStream(transData, datasetDir, saveDataType, dataElmtBytes);
+            }
 
             // load embedding when use dynamic expansion is open
             if ((saveDataType == CkptDataType::NDDR_FEATMAP) && useDynamicExpansion)  {
@@ -382,7 +397,11 @@ void Checkpoint::LoadDataset(const vector<string>& embNames,
             }
 
             spdlog::debug("====Start loading data from: {} to data handler.", attributeDir);
-            dataHandler->SetDataset(saveDataType, embName, transData);
+            if ((saveDataType == CkptDataType::EMB_INFO))  {
+                dataHandler->SetDatasetForLoadEmb(saveDataType, embName, transData, ckptData);
+            } else {
+                dataHandler->SetDataset(saveDataType, embName, transData);
+            }
         }
     }
 }
@@ -425,6 +444,57 @@ void Checkpoint::ReadStream(CkptTransData& transData,
         spdlog::debug("unable to open load file: {}", dataDir);
     }
 
+    readFile.close();
+}
+
+void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
+                                      const string& dataDir,
+                                      uint32_t dataElmtBytes,
+                                      CkptData& ckptData,
+                                      string embName)
+{
+    if (dataElmtBytes == 0) {
+        spdlog::error("dataElmtBytes is 0, don't handle [/ %] operation");
+        return ;
+    }
+
+    auto embDataOuterSize = transData.attribute.at(attribEmbDataOuterIdx);
+
+    auto loadHostEmbs = ckptData.hostEmbs;
+    auto& dst = (*loadHostEmbs)[embName].embData;
+    dst.reserve(embDataOuterSize);
+
+    std::ifstream readFile;
+    readFile.open(dataDir.c_str(), std::ios::in | std::ios::binary | std::ios::ate);
+
+    size_t datasetSize = readFile.tellg();
+    readFile.seekg(0, std::ios::beg);
+
+    if (datasetSize % embDataOuterSize > 0 || datasetSize % dataElmtBytes > 0) {
+        spdlog::debug("data is missing or incomplete in load file: {}", dataDir);
+    }
+    auto onceReadByteSize { datasetSize / embDataOuterSize };
+
+    if (!readFile.is_open()) {
+        spdlog::debug("unable to open load file: {}", dataDir);
+    }
+    for (size_t i = 0; i < embDataOuterSize; ++i) {
+        size_t idx = 0;
+        size_t readSize = 0;
+        size_t dataCol = onceReadByteSize;
+        while (dataCol != 0) {
+            if (dataCol > oneTimeReadWriteLen) {
+                readSize = oneTimeReadWriteLen;
+            } else {
+                readSize = dataCol;
+            }
+
+            readFile.read((char*)(dst[i].data()) + idx, readSize);
+
+            dataCol -= readSize;
+            idx += readSize;
+        }
+    }
     readFile.close();
 }
 

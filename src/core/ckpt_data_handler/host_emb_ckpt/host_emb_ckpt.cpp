@@ -15,16 +15,15 @@ using namespace MxRec;
 
 void HostEmbCkpt::SetProcessData(CkptData& processData)
 {
-    saveHostEmbs.clear();
-    loadHostEmbs.clear();
-    saveHostEmbs = std::move(processData.hostEmbs);
+    saveHostEmbs = nullptr;
+    loadHostEmbs = nullptr;
+    saveHostEmbs = processData.hostEmbs;
 }
 
 void HostEmbCkpt::GetProcessData(CkptData& processData)
 {
-    processData.hostEmbs = std::move(loadHostEmbs);
-    saveHostEmbs.clear();
-    loadHostEmbs.clear();
+    saveHostEmbs = nullptr;
+    loadHostEmbs = nullptr;
 }
 
 vector<CkptDataType> HostEmbCkpt::GetDataTypes()
@@ -40,12 +39,13 @@ vector<string> HostEmbCkpt::GetDirNames()
 vector<string> HostEmbCkpt::GetEmbNames()
 {
     vector<string> embNames;
-    for (const auto& item : saveHostEmbs) {
+    for (const auto& item : *saveHostEmbs) {
         embNames.push_back(item.first);
     }
     return embNames;
 }
 
+// save info and data
 CkptTransData HostEmbCkpt::GetDataset(CkptDataType dataType, string embName)
 {
     map<CkptDataType, function<void()>> dataTransMap { { CkptDataType::EMB_INFO, [=] { SetEmbInfoTrans(embName); } },
@@ -58,19 +58,28 @@ CkptTransData HostEmbCkpt::GetDataset(CkptDataType dataType, string embName)
 
 void HostEmbCkpt::SetDataset(CkptDataType dataType, string embName, CkptTransData& loadedData)
 {
-    map<CkptDataType, function<void()>> dataLoadMap { { CkptDataType::EMB_INFO, [=] { SetEmbInfo(embName); } },
-        { CkptDataType::EMB_DATA, [=] { SetEmbData(embName); } } };
+    return;
+}
+
+// load info and data
+void HostEmbCkpt::SetDatasetForLoadEmb(CkptDataType dataType, string embName, CkptTransData& loadedData,
+                                       CkptData& ckptData)
+{
+    map<CkptDataType, function<void()>> dataLoadMap {
+        { CkptDataType::EMB_INFO, [&] { SetEmbInfo(embName, ckptData); } },
+        { CkptDataType::EMB_DATA, [&] { SetEmbData(embName, ckptData); } } };
 
     CleanTransfer();
     transferData = move(loadedData);
     dataLoadMap.at(dataType)();
 }
 
+// save Emb info
 void HostEmbCkpt::SetEmbInfoTrans(string embName)
 {
     auto embInfoSize = GetEmbInfoSize();
     auto& transArr = transferData.int32Arr;
-    const auto& hostEmbInfo = saveHostEmbs.at(embName).hostEmbInfo;
+    const auto& hostEmbInfo = saveHostEmbs->at(embName).hostEmbInfo;
 
     transArr.reserve(embInfoSize);
     transArr.push_back(hostEmbInfo.sendCount);
@@ -79,18 +88,21 @@ void HostEmbCkpt::SetEmbInfoTrans(string embName)
     transArr.push_back(static_cast<int>(hostEmbInfo.hostVocabSize));
 }
 
+// save Emb data
 void HostEmbCkpt::SetEmbDataTrans(string embName)
 {
-    auto embDataSize = GetEmbDataSize(embName);
-    transferData.floatArr.reserve(embDataSize);
-    for (const auto& item : saveHostEmbs.at(embName).embData) {
-        transferData.floatArr.insert(transferData.floatArr.end(), item.begin(), item.end());
+    auto embDataRows = GetEmbDataRows(embName);
+    transferData.floatArr.reserve(embDataRows);
+    for (auto& item : saveHostEmbs->at(embName).embData) {
+        transferData.floatArr.push_back(&item[0]);
     }
 }
 
-void HostEmbCkpt::SetEmbInfo(string embName)
+// load Emb info
+void HostEmbCkpt::SetEmbInfo(string embName, CkptData& ckptData)
 {
-    auto& hostEmbInfo = loadHostEmbs[embName].hostEmbInfo;
+    loadHostEmbs = ckptData.hostEmbs;
+    auto& hostEmbInfo = (*loadHostEmbs)[embName].hostEmbInfo;
     const auto& transArr = transferData.int32Arr;
 
     hostEmbInfo.name = embName;
@@ -100,20 +112,10 @@ void HostEmbCkpt::SetEmbInfo(string embName)
     hostEmbInfo.hostVocabSize = static_cast<size_t>(transArr.at(attribEmbInfoHostVocabIdx));
 }
 
-void HostEmbCkpt::SetEmbData(string embName)
+// load Emb data
+void HostEmbCkpt::SetEmbData(string embName, CkptData& ckptData)
 {
-    vector<float> embValues;
-    auto embDataOuterSize = transferData.attribute.at(attribEmbDataOuterIdx);
-    auto embDataInnerSize = transferData.attribute.at(attribEmbDataInnerIdx);
-    auto rawBegin = transferData.floatArr.begin();
-    loadHostEmbs[embName].embData.reserve(embDataOuterSize);
-    for (size_t i = 0; i < embDataOuterSize; ++i) {
-        size_t beginShift = i * embDataInnerSize;
-        size_t endShift = (i + 1) * embDataInnerSize;
-        embValues.reserve(embDataInnerSize);
-        embValues.insert(embValues.begin(), rawBegin + beginShift, rawBegin + endShift);
-        loadHostEmbs[embName].embData.push_back(move(embValues));
-    }
+    return;
 }
 
 int HostEmbCkpt::GetEmbInfoSize()
@@ -128,10 +130,10 @@ int HostEmbCkpt::GetEmbInfoSize()
 
 size_t HostEmbCkpt::GetEmbDataSize(string embName)
 {
-    auto embDataOuterSize = saveHostEmbs.at(embName).embData.size();
+    auto embDataOuterSize = saveHostEmbs->at(embName).embData.size();
     transferData.attribute.push_back(embDataOuterSize);
 
-    auto embDataInnerSize = saveHostEmbs.at(embName).embData.at(0).size();
+    auto embDataInnerSize = saveHostEmbs->at(embName).embData.at(0).size();
     transferData.attribute.push_back(embDataInnerSize);
 
     transferData.attribute.push_back(fourBytes);
@@ -140,4 +142,20 @@ size_t HostEmbCkpt::GetEmbDataSize(string embName)
     transferData.attributeSize = transferData.attribute.size() * eightBytes;
 
     return embDataOuterSize * embDataInnerSize;
+}
+
+size_t HostEmbCkpt::GetEmbDataRows(string embName)
+{
+    auto embDataOuterSize = saveHostEmbs->at(embName).embData.size();
+    transferData.attribute.push_back(embDataOuterSize);
+
+    auto embDataInnerSize = saveHostEmbs->at(embName).embData.at(0).size();
+    transferData.attribute.push_back(embDataInnerSize);
+
+    transferData.attribute.push_back(fourBytes);
+
+    transferData.datasetSize = embDataInnerSize * fourBytes;
+    transferData.attributeSize = transferData.attribute.size() * eightBytes;
+
+    return embDataOuterSize;
 }

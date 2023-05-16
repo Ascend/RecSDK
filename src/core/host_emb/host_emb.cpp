@@ -21,15 +21,13 @@ using namespace chrono;
 
 bool HostEmb::Initialize(const vector<EmbInfo>& embInfos, int seed, bool ifLoad)
 {
-    if (!ifLoad) {
-        for (const auto& embInfo: embInfos) {
-            HostEmbTable hostEmb;
-            hostEmb.hostEmbInfo = embInfo;
-            EmbDataGenerator(embInfo.initializeInfos, seed, embInfo.hostVocabSize, embInfo.embeddingSize,
-                hostEmb.embData);
-            hostEmbs[embInfo.name] = move(hostEmb);
-            spdlog::info(HOSTEMB + "HostEmb Initialize End");
-        }
+    for (const auto& embInfo: embInfos) {
+        HostEmbTable hostEmb;
+        hostEmb.hostEmbInfo = embInfo;
+        EmbDataGenerator(embInfo.initializeInfos, seed, embInfo.hostVocabSize, embInfo.embeddingSize,
+            hostEmb.embData);
+        hostEmbs[embInfo.name] = move(hostEmb);
+        spdlog::info(HOSTEMB + "HostEmb Initialize End");
     }
     return true;
 }
@@ -196,9 +194,9 @@ vector<Tensor> HostEmb::GetH2DEmb(const vector<size_t>& missingKeysHostPos, cons
     return h2d_emb;
 }
 
-auto HostEmb::GetHostEmbs() -> absl::flat_hash_map<string, HostEmbTable>
+auto HostEmb::GetHostEmbs() -> absl::flat_hash_map<string, HostEmbTable>*
 {
-    return hostEmbs;
+    return &hostEmbs;
 }
 
 EmbInfo::EmbInfo(const string &name, int sendCount, int embeddingSize, vector<size_t> vocabsize,

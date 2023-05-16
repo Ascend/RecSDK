@@ -40,7 +40,7 @@ namespace MxRec {
 
         vector<Tensor> GetH2DEmb(const vector<size_t>& missingKeysHostPos, const string& embName);
 
-        auto GetHostEmbs() -> absl::flat_hash_map<string, HostEmbTable>;
+        auto GetHostEmbs() -> absl::flat_hash_map<string, HostEmbTable>*;
 
         void EvictInitEmb(const string& embName, const vector<size_t>& offset);
 
