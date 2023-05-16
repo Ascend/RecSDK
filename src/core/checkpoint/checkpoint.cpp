@@ -267,6 +267,8 @@ void Checkpoint::WriteStream(CkptTransData& transData, const string& dataDir, si
 
     if (!writeFile.is_open()) {
         spdlog::debug("unable to open save file: {}", dataDir);
+        writeFile.close();
+        return;
     }
 
     int loops = 1;
@@ -471,12 +473,15 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
     readFile.seekg(0, std::ios::beg);
 
     if (datasetSize % embDataOuterSize > 0 || datasetSize % dataElmtBytes > 0) {
-        spdlog::debug("data is missing or incomplete in load file: {}", dataDir);
+        spdlog::error("data is missing or incomplete in load file: {}", dataDir);
+        throw runtime_error("unable to load EMB_DATA cause wrong-format saved emb data");
     }
     auto onceReadByteSize { datasetSize / embDataOuterSize };
 
     if (!readFile.is_open()) {
         spdlog::debug("unable to open load file: {}", dataDir);
+        readFile.close();
+        return;
     }
     for (size_t i = 0; i < embDataOuterSize; ++i) {
         size_t idx = 0;
