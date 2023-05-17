@@ -82,7 +82,7 @@ src_path=${project_root_folder}/src
 
 cd "${project_root_folder}"
 
-release_tar=Ascend-${pkg_dir}-${VERSION}-linux-${ARCH}.tar.gz
+release_tar=Ascend-${pkg_dir}_${VERSION}_linux-${ARCH}.tar.gz
 
 install_abseil()
 {
