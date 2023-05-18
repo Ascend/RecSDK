@@ -79,7 +79,7 @@ def find_dangling_table(table_names):
             if tensor in the_op.inputs:
                 spread_tensors.extend(the_op.outputs)
 
-    def bfs_lookup(table_name,next_to_visit):
+    def bfs_lookup(table_name, next_to_visit):
         tensors_visited = set()
         while next_to_visit:
             spread_tensors = []
@@ -94,7 +94,7 @@ def find_dangling_table(table_names):
         return False
 
     for table_name, table_op in table_reachable_tensor.items():
-        found = bfs_lookup(table_name,table_op)
+        found = bfs_lookup(table_name, table_op)
         if not found:
             dangling_table.append(table_name)
     return dangling_table
