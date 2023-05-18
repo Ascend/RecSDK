@@ -11,6 +11,7 @@ from mx_rec.util.initialize import get_rank_id, get_device_id, get_rank_size, se
     is_asc_manager_initialized, get_train_interval, get_eval_steps, get_prefetch_batch_number, \
     export_table_instances, export_feature_spec, get_if_load, get_training_mode_channel_id, get_use_static, \
     get_use_hot, get_use_dynamic_expansion, export_optimizer
+from mx_rec.core.asc.helper import find_dangling_table
 
 
 def generate_table_info_list():
@@ -28,11 +29,16 @@ def generate_table_info_list():
 
     optimizer = export_optimizer()
     # generate table info
+    dangling_table = find_dangling_table([table_instance.table_name for _, table_instance in export_table_instances().items()])
     for _, table_instance in export_table_instances().items():
         # When dynamic expansion mode, ext_emb_size is set by optimizer
         if optimizer is not None:
             table_instance.ext_emb_size = table_instance.scalar_emb_size * (1 + optimizer.slot_num)
             logging.debug(f"ext_emb_size is reset to be {table_instance.ext_emb_size} for EmbInfo")
+
+        if table_instance.table_name in dangling_table:
+            logging.info(f"Found dangling table: {table_instance.table_name} which does not need to be provided to the EmbInfo.")
+            continue
         # Only the tables that need to be used after table combination are retained in meituan situation.
         # Current solution has error in same situations. For example, a sparse table has not been auto-merged.
         logging.debug(f"In EmbInfo, ASCEND_TABLE_NAME_MUST_CONTAIN: {ASCEND_TABLE_NAME_MUST_CONTAIN}")
