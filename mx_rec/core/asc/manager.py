@@ -29,7 +29,8 @@ def generate_table_info_list():
 
     optimizer = export_optimizer()
     # generate table info
-    dangling_table = find_dangling_table([table_instance.table_name for _, table_instance in export_table_instances().items()])
+    dangling_table = find_dangling_table([table_instance.table_name
+                                          for _, table_instance in export_table_instances().items()])
     for _, table_instance in export_table_instances().items():
         # When dynamic expansion mode, ext_emb_size is set by optimizer
         if optimizer is not None:
@@ -37,7 +38,8 @@ def generate_table_info_list():
             logging.debug(f"ext_emb_size is reset to be {table_instance.ext_emb_size} for EmbInfo")
 
         if table_instance.table_name in dangling_table:
-            logging.info(f"Found dangling table: {table_instance.table_name} which does not need to be provided to the EmbInfo.")
+            logging.info(f"Found dangling table: {table_instance.table_name} "
+                         f"which does not need to be provided to the EmbInfo.")
             continue
         # Only the tables that need to be used after table combination are retained in meituan situation.
         # Current solution has error in same situations. For example, a sparse table has not been auto-merged.

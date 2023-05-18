@@ -43,52 +43,63 @@ def create_asc_insert_func_with_acg(args_index_list, feature_counts, table_names
                                      feature_counts=feature_counts,
                                      table_names=table_names,
                                      **kwargs)
-def check_tensor(table_name,table_reachable_tensor):
-    if "/update_"+table_name+"/" in table_reachable_tensor.name or table_reachable_tensor.op.type == 'ApplyAdam':
+
+
+def check_tensor(table_name, table_reachable_tensor):
+    if "/update_" + table_name + "/" in table_reachable_tensor.name \
+            or table_reachable_tensor.op.type == 'ApplyAdam':
         return True
     if 'gradients/' in table_reachable_tensor.name:
         return True
     return False
+
+
 def find_dangling_table(table_names):
+    def find_table_op(table_name, op, table_lookup_op, table_reachable_tensor):
+        if table_name in op.name and op.type == "IdentityN":
+            if table_name not in table_lookup_op:
+                table_lookup_op[table_name] = [op]
+                table_reachable_tensor[table_name] = op.outputs
+            else:
+                table_lookup_op[table_name].append(op)
+                table_reachable_tensor[table_name].extend(op.outputs)
+
     op_list = tf.get_default_graph().get_operations()
     table_lookup_op = {}
     table_reachable_tensor = {}
     for op in op_list:
-        for tn in table_names:
-            if tn in op.name and op.type == "IdentityN":
-                if tn not in table_lookup_op:
-                    table_lookup_op[tn] = [op]
-                    table_reachable_tensor[tn] = op.outputs
-                else:
-                    table_lookup_op[tn].append(op)
-                    table_reachable_tensor[tn].extend(op.outputs)
+        for table_name in table_names:
+            find_table_op(table_name, op, table_lookup_op, table_reachable_tensor)
+
     logging.info(f"*********** find tables: {table_lookup_op}***********")
     logging.info(f"looking for dangling table")
     dangling_table = []
-    for k in  table_reachable_tensor:
-        tmp_tensor = table_reachable_tensor[k]
-        tensors_to_keep = set()
-        found = False
-        while tmp_tensor:
-            out_tensor = []
 
-            for tensor in tmp_tensor:
-                if tensor in tensors_to_keep:
+    def extend(op_list, tensor, spread_tensors):
+        for op in op_list:
+            if tensor in op.inputs:
+                spread_tensors.extend(op.outputs)
+
+    def bfs_lookup(next_to_visit):
+        tensors_visited = set()
+        while next_to_visit:
+            spread_tensors = []
+            for tensor in next_to_visit:
+                if tensor in tensors_visited:
                     continue
-                if check_tensor(k,tensor):
-                    found = True
-                    break
-                tensors_to_keep.add(tensor)
-                for op in op_list:
-                    if tensor in op.inputs:
-                        out_tensor.extend(op.outputs)
-            if found:
-                break
-            tmp_tensor = out_tensor
+                if check_tensor(k, tensor):
+                    return True
+                tensors_visited.add(tensor)
+                extend(op_list, tensor, spread_tensors)
+            next_to_visit = spread_tensors
+        return False
+
+    for k in table_reachable_tensor:
+        found = bfs_lookup(table_reachable_tensor[k])
         if not found:
             dangling_table.append(k)
-
     return dangling_table
+
 
 def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_counts=None,
                               table_names=None, **kwargs):
@@ -109,8 +120,10 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
             if len(args) == 1:
                 data_src = args[0]
 
-            read_emb_key_inputs_dict = {"insert_tensors": [], "table_names": [],
-                                        "feature_spec_names": [], "splits": []}
+            read_emb_key_inputs_dict = {
+                "insert_tensors": [], "table_names": [],
+                                        "feature_spec_names": [], "splits": []
+            }
             get_target_tensors_with_feature_specs(tgt_key_specs, data_src, is_training, read_emb_key_inputs_dict)
             logging.debug(f"do_insert with spec for {read_emb_key_inputs_dict['table_names']}")
             return do_insert(args,
@@ -130,9 +143,11 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
         logging.info(f"all table_names: {table_names}")
         dangling_tables = find_dangling_table(table_names)
         for table_name in dangling_tables:
-            logging.info(f"In insert found dangling table: {table_name} which does not need to be provided to the EmbInfo.")
+            logging.info(f"In insert found dangling table: {table_name} "
+                         f"which does not need to be provided to the EmbInfo.")
             table_names.remove(table_name)
         logging.info(f"used table_names: {table_names}")
+
         def insert_fn_for_arg_indexes(*args):
             insert_tensors = get_target_tensors_with_args_indexes(args_index_list)
             # config timestamp later
