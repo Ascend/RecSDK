@@ -111,12 +111,17 @@ class ConfigInitializer:
                 raise AttributeError(f"Lack of attribute device.")
 
         for server_list in table_hccl.get("server_list"):
-            for device in server_list.get("device"):
+            devices = server_list.get("device")
+            if devices is None:
+                raise ValueError("device is empty")
+            local_rank_size = len(devices)
+            for device in devices:
                 if "rank_id" not in device or not device["rank_id"].isdigit():
                     raise ValueError(f"hccl_json rank_id wrong.")
+                rank_id = int(device["rank_id"])
                 if "device_id" not in device or not device["device_id"].isdigit():
                     raise ValueError(f"hccl_json device_id wrong.")
-                self._rank_to_device_dict[int(device["rank_id"])] = int(device["device_id"])
+                self._rank_to_device_dict[rank_id] = rank_id % local_rank_size
 
     def set_device_dict(self):
         ascend_visible_devices = os.getenv("ASCEND_VISIBLE_DEVICES")
@@ -135,7 +140,7 @@ class ConfigInitializer:
             rank_size = int(rank_size)
             local_rank_size = rank_size if rank_size < 8 else 8
             for device_index in range(rank_size):
-                self._rank_to_device_dict[device_index] = int(device_index % local_rank_size) + rank_start
+                self._rank_to_device_dict[device_index] = int(device_index % local_rank_size)
         else:
             raise ValueError("get CM_WORKER_SIZE failed.")
 
