@@ -208,7 +208,7 @@ if __name__ == "__main__":
             grads_and_vars = [(grad, variable) for grad, variable in zip(sparse_grads, sparse_variables)]
             train_ops.append(sparse_optimizer.apply_gradients(grads_and_vars))
 
-    saver = tf.compat.v1.train.Saver()
+    # saver = tf.compat.v1.train.Saver()
     if MODIFY_GRAPH_FLAG:
         logging.info("start to modifying graph")
         modify_graph_and_start_emb_cache(dump_graph=True)
@@ -222,10 +222,10 @@ if __name__ == "__main__":
             sess.run(train_iterator.initializer)
         sess.run(tf.compat.v1.global_variables_initializer())
         EPOCH = 0
-        if os.path.exists(f"./saved-model/sparse-model-{rank_id}-%d" % 0):
-            saver.restore(sess, f"./saved-model/model-{rank_id}-%d" % 0)
-        else:
-            saver.save(sess, f"./saved-model/model-{rank_id}", global_step=0)
+        # if os.path.exists(f"./saved-model/sparse-model-{rank_id}-%d" % 0):
+        #     saver.restore(sess, f"./saved-model/model-{rank_id}-%d" % 0)
+        # else:
+        #     saver.save(sess, f"./saved-model/model-{rank_id}", global_step=0)
 
         for i in range(1, 201):
             logging.info(f"################    training at step {i}    ################")
@@ -237,12 +237,12 @@ if __name__ == "__main__":
             else:
                 if i % TRAIN_INTERVAL == 0:
                     EPOCH += 1
-                    evaluate()
+                    # evaluate()
 
-                if i % SAVING_INTERVAL == 0:
-                    saver.save(sess, f"./saved-model/model-{rank_id}", global_step=i)
-
-        saver.save(sess, f"./saved-model/model-{rank_id}", global_step=i)
+        #         if i % SAVING_INTERVAL == 0:
+        #             saver.save(sess, f"./saved-model/model-{rank_id}", global_step=i)
+        #
+        # saver.save(sess, f"./saved-model/model-{rank_id}", global_step=i)
 
     terminate_config_initializer()
     logging.info("Demo done!")

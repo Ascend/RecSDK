@@ -175,26 +175,35 @@ class CustomizedLazyAdamByAddress(optimizer.Optimizer, CustomizedOptimizer):
 
         host_pipeline_ops = get_host_pipeline_ops()
         dim = grad.shape.as_list()[-1]
-        combined_tensor = \
-            host_pipeline_ops.embedding_lookup_by_address(addr, embedding_dim=3 * dim, embedding_type=1)
 
-        split_length = [dim] + [dim] + [dim]
-        split_tensors = tf.split(combined_tensor, split_length, axis=1)
+        addr_m = tf.add(addr, 4*dim)
+        addr_v = tf.add(addr, 8*dim)
+        old_m_slice = \
+            host_pipeline_ops.embedding_lookup_by_address(addr_m, embedding_dim=dim, embedding_type=1)
+        old_v_slice = \
+            host_pipeline_ops.embedding_lookup_by_address(addr_v, embedding_dim=dim, embedding_type=1)
 
-        old_m_slice = split_tensors[1]
+        # combined_tensor = \
+        #     host_pipeline_ops.embedding_lookup_by_address(addr, embedding_dim=3 * dim, embedding_type=1)
+        # split_length = [dim] + [dim] + [dim]
+        # split_tensors = tf.split(combined_tensor, split_length, axis=1)
+
+        # old_m_slice = split_tensors[1]
         m_t_slice = temp_b1 * old_m_slice + (1 - temp_b1) * grad
+        m_update_op = host_pipeline_ops.embedding_update_by_address(addr_m, m_t_slice - old_m_slice, update_type=0)
 
-        old_v_slice = split_tensors[2]
+        # old_v_slice = split_tensors[2]
         v_t_slice = temp_b2 * old_v_slice + (1 - temp_b2) * math_ops.square(grad)
+        v_update_op = host_pipeline_ops.embedding_update_by_address(addr_v, v_t_slice - old_v_slice, update_type=0)
 
         denominator_slice = math_ops.sqrt(v_t_slice) + temp_epsilon
-        update_list = [tf.divide(-learning_rate * m_t_slice, denominator_slice)] + [m_t_slice - old_m_slice] + \
-                      [v_t_slice - old_v_slice]
-        update_tensor = tf.concat(update_list, axis=1)
-        var_update_op = host_pipeline_ops.embedding_update_by_address(addr, update_tensor, update_type=0)
-        var_update_op = tf.identity(var_update_op, name="identity_var_update_op")
+        # update_list = [tf.divide(-learning_rate * m_t_slice, denominator_slice)] + [m_t_slice - old_m_slice] + \
+        #               [v_t_slice - old_v_slice]
+        # update_tensor = tf.concat(update_list, axis=1)
+        var_update_op = host_pipeline_ops.embedding_update_by_address(addr, tf.divide(-learning_rate * m_t_slice,
+                                                                                      denominator_slice), update_type=0)
 
-        return var_update_op
+        return control_flow_ops.group(m_update_op, v_update_op, var_update_op)
 
     def _convert_grads_and_addrs(self, grads_and_vars):
         converted_grads_and_addrs = []
