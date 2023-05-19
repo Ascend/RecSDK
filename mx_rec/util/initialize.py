@@ -1,10 +1,10 @@
 # coding: UTF-8
-
 import json
 import logging
 import os
 import psutil
 
+import mxrec_pybind
 import mx_rec.util.constants
 from mx_rec.util.constants import LOCAL_RANK_SIZE, MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE, \
     ASCEND_GLOBAL_HASHTABLE_COLLECTION
@@ -114,14 +114,16 @@ class ConfigInitializer:
             devices = server_list.get("device")
             if devices is None:
                 raise ValueError("device is empty")
-            local_rank_size = len(devices)
             for device in devices:
                 if "rank_id" not in device or not device["rank_id"].isdigit():
                     raise ValueError(f"hccl_json rank_id wrong.")
                 rank_id = int(device["rank_id"])
                 if "device_id" not in device or not device["device_id"].isdigit():
                     raise ValueError(f"hccl_json device_id wrong.")
-                self._rank_to_device_dict[rank_id] = rank_id % local_rank_size
+                device_id = mxrec_pybind.get_logic_id(int(device["device_id"]))
+                if device_id > 16:
+                    raise ValueError(f"get logic id from physic id fail.")
+                self._rank_to_device_dict[rank_id] = device_id
 
     def set_device_dict(self):
         ascend_visible_devices = os.getenv("ASCEND_VISIBLE_DEVICES")
@@ -129,18 +131,23 @@ class ConfigInitializer:
             raise ValueError("env variable ascend_visible_devices is null.")
         if "-" in ascend_visible_devices:
             rank_start = int(ascend_visible_devices.strip().split("-")[0])
+            device_list = [i for i in range(rank_start, int(ascend_visible_devices.strip().split("-")[-1]))]
         elif "," in ascend_visible_devices:
-            rank_start = int(ascend_visible_devices.strip().split(",")[0])
+            device_list = list(map(int, ascend_visible_devices.strip().split(",")))
         elif ascend_visible_devices in ["0", "1", "2", "3", "4", "5", "6", "7"]:
-            rank_start = int(ascend_visible_devices.strip())
+            device_list = [int(ascend_visible_devices.strip())]
         else:
             raise ValueError("invalid env variable ascend_visible_devices.")
-        rank_size = os.getenv("CM_WORKER_SIZE")
+        rank_size = int(os.getenv("CM_WORKER_SIZE"))
+        self._rank_to_device_dict[0] = int(os.getenv("CM_CHIEF_DEVICE"))
+        device_list.pop(int(os.getenv("CM_CHIEF_DEVICE")))
         if rank_size:
-            rank_size = int(rank_size)
             local_rank_size = rank_size if rank_size < 8 else 8
-            for device_index in range(rank_size):
-                self._rank_to_device_dict[device_index] = int(device_index % local_rank_size)
+            for device_index in range(local_rank_size - 1):
+                device_id = mxrec_pybind.get_logic_id(int(device_list[device_index]))
+                if device_id > 16:
+                    raise ValueError(f"get logic id from physic id fail.")
+                self._rank_to_device_dict[device_index + 1] = device_id
         else:
             raise ValueError("get CM_WORKER_SIZE failed.")
 
