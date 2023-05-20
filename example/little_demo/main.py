@@ -53,25 +53,16 @@ def model_forward(input_list, batch, is_train, modify_graph, config_dict=None):
 
 
 def build_graph(hash_table_list, is_train, use_timestamp=False, config_dict=None, batch_number=100):
-    batch, iterator = make_batch_and_iterator(is_training=is_train, use_timestamp=use_timestamp, 
-        dump_graph=is_train, batch_number=batch_number)
+    batch, iterator = make_batch_and_iterator(is_training=is_train, use_timestamp=use_timestamp, dump_graph=is_train,
+                                              batch_number=batch_number)
     if MODIFY_GRAPH_FLAG:
-        input_list = [
-            [batch["user_ids"], batch["item_ids"]],
-            [hash_table_list[0], hash_table_list[1]],
-            [cfg.user_send_cnt, cfg.item_send_cnt],
-        ]
+        feature_list = [batch["user_ids"], batch["item_ids"]]
         if USE_TIMESTAMP:
             tf.add_to_collection(ASCEND_TIMESTAMP, batch["timestamp"])
-        model = model_forward(input_list, batch,
+        model = model_forward([feature_list, hash_table_list, [cfg.user_send_cnt, cfg.item_send_cnt]], batch,
                               is_train=is_train, modify_graph=True, config_dict=config_dict)
     else:
-        input_list = [
-            [feature_spec for feature_spec in feature_spec_list],
-            [hash_table_list[0], hash_table_list[0], hash_table_list[0],  hash_table_list[1]],
-            [cfg.user_send_cnt, cfg.user_send_cnt, cfg.item_send_cnt, cfg.item_send_cnt],
-        ]
-        model = model_forward(input_list, batch,
+        model = model_forward([feature_spec_list, hash_table_list, [cfg.user_send_cnt, cfg.item_send_cnt]], batch,
                               is_train=is_train, modify_graph=False, config_dict=config_dict)
 
     return iterator, model
@@ -106,11 +97,11 @@ if __name__ == "__main__":
     use_dynamic_expansion = bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0)))
 
     # nbatch function needs to be used together with the prefetch and host_vocabulary_size != 0
-    init(use_mpi = bool(int(os.getenv("USE_MPI"))), 
+    init(use_mpi=bool(int(os.getenv("USE_MPI"))),
          train_interval=TRAIN_INTERVAL,
          eval_steps=EVAL_STEPS,
          prefetch_batch_number=5,
-         use_dynamic=int(os.getenv("LITTLE_DEMO_USE_DYNAMIC", 0)),
+         use_dynamic=int(os.getenv("USE_DYNAMIC", 0)),
          use_hot=bool(int(os.getenv("USE_HOT", 0))),
          use_dynamic_expansion=use_dynamic_expansion)
     IF_LOAD = False
@@ -129,12 +120,6 @@ if __name__ == "__main__":
         feature_spec_list = [FeatureSpec("user_ids", feat_count=cfg.user_feat_cnt, table_name="user_table",
                                          access_threshold=cfg.access_threshold,
                                          eviction_threshold=cfg.eviction_threshold),
-                             FeatureSpec("user_ids", feat_count=cfg.user_feat_cnt, table_name="user_table",
-                                         access_threshold=cfg.access_threshold,
-                                         eviction_threshold=cfg.eviction_threshold),
-                             FeatureSpec("item_ids", feat_count=cfg.item_feat_cnt, table_name="user_table",
-                                         access_threshold=cfg.access_threshold,
-                                         eviction_threshold=cfg.eviction_threshold),
                              FeatureSpec("item_ids", feat_count=cfg.item_feat_cnt, table_name="item_table",
                                          access_threshold=cfg.access_threshold,
                                          eviction_threshold=cfg.eviction_threshold),
@@ -146,8 +131,6 @@ if __name__ == "__main__":
 
     else:
         feature_spec_list = [FeatureSpec("user_ids", feat_count=cfg.user_feat_cnt, table_name="user_table"),
-                             FeatureSpec("user_ids", feat_count=cfg.user_feat_cnt, table_name="user_table"),
-                             FeatureSpec("item_ids", feat_count=cfg.item_feat_cnt, table_name="user_table"),
                              FeatureSpec("item_ids", feat_count=cfg.item_feat_cnt, table_name="item_table")]
 
     optimizer_list = [get_dense_and_sparse_optimizer(cfg) for _ in range(2)]
