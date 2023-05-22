@@ -393,7 +393,7 @@ struct BatchTask {
     };
 
     struct CkptData {
-        emb_mem_t hostEmbs;
+        emb_mem_t* hostEmbs = nullptr;
         emb_hash_mem_t embHashMaps;
         offset_mem_t maxOffset;
         key_offset_mem_t keyOffsetMap;
@@ -403,7 +403,7 @@ struct BatchTask {
 
     struct CkptTransData {
         std::vector<int64_t> int64Arr;
-        std::vector<float> floatArr;
+        std::vector<float*> floatArr;
         std::vector<int32_t> int32Arr;
         std::vector<trans_serialize_t> transDataset; // may all use this to transfer data
         std::vector<size_t> attribute; // may need to use other form for attributes

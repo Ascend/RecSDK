@@ -21,6 +21,8 @@
 using namespace std;
 using namespace MxRec;
 
+const float MEM_INIT_VALUE = 0.5;
+
 class CheckpointTest : public testing::Test {
 protected:
     string testPath { "./ckpt_mgmt_test" };
@@ -37,7 +39,7 @@ protected:
 
     int embInfoNum { 10 };
 
-    float floatMem { 0.5 };
+    float floatMem { MEM_INIT_VALUE };
     int64_t featMem { static_cast<int64_t>(UINT32_MAX) };
     int32_t offsetMem { 0 };
 
@@ -79,6 +81,7 @@ protected:
     void SetEmbData(vector<vector<float>>& testEmbData)
     {
         testEmbData.resize(hostVocabSize);
+        floatMem = MEM_INIT_VALUE;
         for (auto& testData : testEmbData) {
             testData.resize(embeddingSize);
             for (auto& testValue : testData) {
@@ -88,13 +91,30 @@ protected:
         }
     }
 
-    void SetHostEmbs(emb_mem_t& testHostEmbs)
+    void SetHostEmbs(std::shared_ptr<emb_mem_t> testHostEmbs)
     {
         vector<vector<float>> testEmbData;
         for (const auto& testEmbInfo : testEmbInfos) {
             SetEmbData(testEmbData);
             HostEmbTable embTable { testEmbInfo, move(testEmbData) };
-            testHostEmbs[testEmbInfo.name] = move(embTable); // set test input data
+            testHostEmbs->insert({testEmbInfo.name,  move(embTable)}); // set test input data
+        }
+    }
+
+    void SetHostEmptyEmbs(std::shared_ptr<emb_mem_t> loadHostEmbs)
+    {
+        vector<vector<float>> testEmbData;
+        for (const auto& testEmbInfo : testEmbInfos) {
+            // SetEmbData
+            testEmbData.resize(hostVocabSize);
+            for (auto& testData : testEmbData) {
+                testData.resize(embeddingSize);
+                for (auto& testValue : testData) {
+                    testValue = 0;
+                }
+            }
+            HostEmbTable embTable { testEmbInfo, move(testEmbData) };
+            loadHostEmbs->insert({testEmbInfo.name,  move(embTable)}); // set test input data
         }
     }
 
@@ -206,28 +226,30 @@ protected:
 
 TEST_F(CheckpointTest, HostEmbs)
 {
-    emb_mem_t testHostEmbs;
-    emb_mem_t validHostEmbs;
-
+    std::shared_ptr<emb_mem_t> testHostEmbs = std::make_shared<emb_mem_t>();
     SetEmbInfo();
     SetHostEmbs(testHostEmbs);
-    validHostEmbs = testHostEmbs;
+    shared_ptr<emb_mem_t> validHostEmbs = std::make_shared<emb_mem_t>();
+    SetHostEmbs(validHostEmbs);
+    shared_ptr<emb_mem_t> loadHostEmbs = std::make_shared<emb_mem_t>();
+    SetHostEmptyEmbs(loadHostEmbs);
 
     CkptData testSaveData;
     CkptData validLoadData;
     CkptData testLoadData;
 
-    testSaveData.hostEmbs = testHostEmbs;
-    validLoadData.hostEmbs = validHostEmbs;
+    testSaveData.hostEmbs = testHostEmbs.get();
+    validLoadData.hostEmbs = validHostEmbs.get();
+    testLoadData.hostEmbs = loadHostEmbs.get();
 
     Checkpoint testCkpt;
     testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
     testCkpt.LoadModel(testPath, testLoadData, rankInfo, testEmbInfos,
                        { CkptFeatureType::HOST_EMB });
 
-    for (const auto& it : validLoadData.hostEmbs) {
-        const auto& embInfo = testLoadData.hostEmbs.at(it.first).hostEmbInfo;
-        const auto& embData = testLoadData.hostEmbs.at(it.first).embData;
+    for (const auto& it : *validLoadData.hostEmbs) {
+        const auto& embInfo = testLoadData.hostEmbs->at(it.first).hostEmbInfo;
+        const auto& embData = testLoadData.hostEmbs->at(it.first).embData;
 
         EXPECT_EQ(it.second.hostEmbInfo.name, embInfo.name);
         EXPECT_EQ(it.second.hostEmbInfo.sendCount, embInfo.sendCount);

@@ -119,6 +119,7 @@ bool HybridMgmt::Load(const string& loadPath)
         loadFeatures.push_back(CkptFeatureType::FEAT_ADMIT_N_EVICT);
     }
 
+    loadData.hostEmbs = hostEmbs->GetHostEmbs();
     loadCkpt.LoadModel(loadPath, loadData, mgmtRankInfo, mgmtEmbInfo, loadFeatures);
     if (!mgmtRankInfo.noDDR && !LoadMatchesDDRSetup(loadData)) {
         return false;
@@ -126,7 +127,6 @@ bool HybridMgmt::Load(const string& loadPath)
 
     if (!mgmtRankInfo.noDDR) {
         spdlog::debug(MGMT + "Start host side load: ddr mode hashmap");
-        hostEmbs->LoadEmb(loadData.hostEmbs);
         hostHashMaps->LoadHashMap(loadData.embHashMaps);
     } else {
         spdlog::debug(MGMT + "Start host side load: no ddr mode hashmap");
@@ -154,10 +154,10 @@ bool HybridMgmt::LoadMatchesDDRSetup(const CkptData& loadData)
 {
     bool loadDataMatches { true };
     size_t embTableCount { 0 };
-    const auto& loadHostEmbs { loadData.hostEmbs };
+    auto loadHostEmbs { loadData.hostEmbs };
     for (const auto& setupHostEmbs : mgmtEmbInfo) {
-        const auto& loadEmbTable { loadHostEmbs.find(setupHostEmbs.name) };
-        if (loadEmbTable != loadHostEmbs.end()) {
+        const auto& loadEmbTable { loadHostEmbs->find(setupHostEmbs.name) };
+        if (loadEmbTable != loadHostEmbs->end()) {
             embTableCount++;
 
             const auto& loadEmbInfo { loadEmbTable->second.hostEmbInfo };
@@ -190,9 +190,9 @@ bool HybridMgmt::LoadMatchesDDRSetup(const CkptData& loadData)
         }
     }
 
-    if (embTableCount < loadHostEmbs.size()) {
+    if (embTableCount < loadHostEmbs->size()) {
         spdlog::error(MGMT + "Load data has {} tables more than setup table num {}",
-                      loadHostEmbs.size(), embTableCount);
+                      loadHostEmbs->size(), embTableCount);
         return false;
     }
     return true;
