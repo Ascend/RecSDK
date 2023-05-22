@@ -4,10 +4,12 @@
  * Author: MindX SDK
  * Date: 2022/11/15
  */
-#include "module_main.h"
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <dcmi_interface_api.h>
+
 #include "emb_mgmt/emb_mgmt.h"
+#include "module_main.h"
 
 namespace py = pybind11;
 using namespace MxRec;
@@ -33,9 +35,22 @@ int GetUBHotSize(int devID)
     return static_cast<int>(MxRec::GetUBSize(devID)/ sizeof(float) * HOT_EMB_CACHE_PCT) ;
 }
 
+uint32_t GetLogicID(uint32_t phyid)
+{
+    int32_t ret = 0;
+    uint32_t logicId;
+    ret = dcmi_get_device_logicid_from_phyid(phyid, &logicId);
+    if (ret != 0) {
+        return ret;
+    }
+    return logicId;
+}
+
 PYBIND11_MODULE(mxrec_pybind, m)
 {
     m.def("get_ub_hot_size", &GetUBHotSize, py::arg("device_id"));
+
+    m.def("get_logic_id", &GetLogicID, py::arg("physic_id"));
 
     m.attr("USE_STATIC") = py::int_(HybridOption::USE_STATIC);
 

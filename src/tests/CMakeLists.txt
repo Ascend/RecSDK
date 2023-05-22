@@ -51,7 +51,7 @@ target_link_directories(test_main
 target_link_libraries(test_main PUBLIC ${TF_LIB}
         securec
         OpenMP::OpenMP_CXX ${HDF5_CXX_LIBRARIES}  ${MPI_CXX_LIBRARIES}
-        ${PYTHON_LIBRARY} drvdsmi_host
+        ${PYTHON_LIBRARY} drvdsmi_host dcmi
         )
 
 target_link_libraries(test_main PUBLIC
