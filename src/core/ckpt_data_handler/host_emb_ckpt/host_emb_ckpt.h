@@ -28,6 +28,8 @@ namespace MxRec {
         CkptTransData GetDataset(CkptDataType dataType, string embName) override;
 
         void SetDataset(CkptDataType dataType, string embName, CkptTransData& loadedData) override;
+        void SetDatasetForLoadEmb(
+                CkptDataType dataType, string embName, CkptTransData& loadedData, CkptData& ckptData) override;
 
     private:
         const vector<string> fileDirNames { "HashTable", "DDR" };
@@ -42,17 +44,18 @@ namespace MxRec {
         const int attribEmbDataInnerIdx { 1 };
 
         const int embSveElmtNum { 4 };
-        emb_mem_t saveHostEmbs;
-        emb_mem_t loadHostEmbs;
+        emb_mem_t* saveHostEmbs;
+        emb_mem_t* loadHostEmbs;
 
         void SetEmbInfoTrans(string embName);
         void SetEmbDataTrans(string embName);
 
-        void SetEmbInfo(string embName);
-        void SetEmbData(string embName);
+        void SetEmbInfo(string embName, CkptData& ckptData);
+        void SetEmbData(string embName, CkptData& ckptData);
 
         int GetEmbInfoSize();
         size_t GetEmbDataSize(string embName);
+        size_t GetEmbDataRows(string embName);
     };
 }
 

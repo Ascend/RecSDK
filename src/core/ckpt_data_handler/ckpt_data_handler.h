@@ -35,6 +35,9 @@ namespace MxRec {
 
         virtual void SetDataset(CkptDataType dataType, string embName, CkptTransData& loadedData) = 0;
 
+        virtual void SetDatasetForLoadEmb(
+                CkptDataType dataType, string embName, CkptTransData& loadedData, CkptData& ckptData);
+
     protected:
         const vector<string> dataDirNames {
             "embedding_info",

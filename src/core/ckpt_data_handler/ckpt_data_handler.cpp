@@ -30,3 +30,9 @@ void CkptDataHandler::CleanTransfer()
     transferData.datasetSize = 0;
     transferData.attributeSize = 0;
 }
+
+void CkptDataHandler::SetDatasetForLoadEmb(CkptDataType dataType, string embName, CkptTransData& loadedData,
+                                           CkptData& ckptData)
+{
+    throw std::runtime_error("Wrong CkptDataType, only EMB_INFO and EMB_DATA supported for load host emb");
+}
