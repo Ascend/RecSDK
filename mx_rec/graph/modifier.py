@@ -16,7 +16,8 @@ from mx_rec.core.embedding import SparseEmbedding
 from mx_rec.util.constants import ASCEND_CUTTING_POINT_INITIALIZER, ASCEND_CUTTING_POINT, \
     ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCAnchorAttr, ASCEND_TIMESTAMP
 from mx_rec.util.initialize import get_rank_size, destroy_asc_manager, get_training_mode_channel_id, \
-    get_feature_spec, insert_feature_spec, set_initializer, get_use_static, get_use_hot, get_device_id
+    get_feature_spec, insert_feature_spec, set_initializer, get_use_static, get_use_hot, get_device_id, \
+    get_use_dynamic_expansion
 from mx_rec.util.perf import performance
 from mx_rec.graph.utils import check_input_list, find_parent_op, check_cutting_points, replace_anchor, \
     record_ops_to_replace, export_pb_graph, make_sorted_key_to_tensor_list
@@ -342,7 +343,7 @@ def modify_graph_for_asc(dump_graph=False, prefetch=10):
                 send_count=table_instance.send_count, channel_id=channel_id, rank_size=get_rank_size(),
                 table_name=table_instance.table_name, skip_emb_transfer=table_instance.skip_emb_transfer,
                 ext_emb_size=table_instance.ext_emb_size, _emb_size=table_instance._emb_size, use_hot=get_use_hot(),
-                device_id=get_device_id())
+                device_id=get_device_id(), use_dynamic_expansion=get_use_dynamic_expansion())
             build_asc_graph(table_instance, cutting_point, config)
 
     logging.info("Graph has been revised.")
