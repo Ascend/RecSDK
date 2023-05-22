@@ -8,7 +8,7 @@ import os
 import tensorflow as tf
 
 from mx_rec.util.initialize import get_host_pipeline_ops, insert_feature_spec, insert_training_mode_channel_id, \
-    get_training_mode_channel_id, get_use_static
+    get_training_mode_channel_id, get_use_static,insert_dangling_table
 from .feature_spec import FeatureSpec
 
 
@@ -64,9 +64,11 @@ def find_dangling_table(table_names):
                 table_reachable_tensor[table_name].extend(the_op.outputs)
 
     op_list = tf.get_default_graph().get_operations()
+
     table_lookup_op = {}
     table_reachable_tensor = {}
     for the_op in op_list:
+        logging.info(f"** the_op: {the_op}**")
         for table_name in table_names:
             find_table_op(table_name, the_op, table_lookup_op, table_reachable_tensor)
 
@@ -97,6 +99,7 @@ def find_dangling_table(table_names):
         found = bfs_lookup(table_name, table_op)
         if not found:
             dangling_table.append(table_name)
+            insert_dangling_table(table_name)
     return dangling_table
 
 
@@ -125,10 +128,17 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
             }
             get_target_tensors_with_feature_specs(tgt_key_specs, data_src, is_training, read_emb_key_inputs_dict)
             logging.debug(f"do_insert with spec for {read_emb_key_inputs_dict['table_names']}")
+            table_names = read_emb_key_inputs_dict["table_names"]
+            logging.info(f"all table_names: {table_names}")
+            dangling_tables = find_dangling_table(table_names)
+            for table_name in dangling_tables:
+                logging.info(f"In insert found dangling table: {table_name} "
+                     f"which does not need to be provided to the EmbInfo.")
+                table_names.remove(table_name)
             return do_insert(args,
                              insert_tensors=read_emb_key_inputs_dict["insert_tensors"],
                              splits=read_emb_key_inputs_dict["splits"],
-                             table_names=read_emb_key_inputs_dict["table_names"],
+                             table_names=table_names,
                              input_dict={"is_training": is_training, "dump_graph": dump_graph,
                                          "timestamp": FeatureSpec.use_timestamp(is_training),
                                          "feature_spec_names": read_emb_key_inputs_dict["feature_spec_names"],
@@ -255,16 +265,8 @@ def do_insert(args, insert_tensors, splits, table_names, input_dict):
     feature_spec_names = input_dict["feature_spec_names"]
     auto_change_graph = input_dict["auto_change_graph"]
 
-    # Only the tables that need to be used after table combination are retained in meituan situation.
-    # Current solution has error in same situations. For example, a sparse table has not been auto-merged.
-    from mx_rec.util.constants import ASCEND_TABLE_NAME_MUST_CONTAIN
     new_insert_tensors, new_splits, new_table_names = [], [], []
-    logging.debug(f"In do_insert function, ASCEND_TABLE_NAME_MUST_CONTAIN: {ASCEND_TABLE_NAME_MUST_CONTAIN}")
     for idx, table_name in enumerate(table_names):
-        if ASCEND_TABLE_NAME_MUST_CONTAIN is not None and ASCEND_TABLE_NAME_MUST_CONTAIN not in table_name:
-            logging.info(f"After the tables are combined, the information about the"
-                         f" {table_name} table does not need to be provided to the read_emb_key operator.")
-            continue
         new_insert_tensors.append(insert_tensors[idx])
         new_splits.append(splits[idx])
         new_table_names.append(table_names[idx])

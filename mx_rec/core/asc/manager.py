@@ -10,7 +10,7 @@ from mx_rec.util.constants import MxRecMode
 from mx_rec.util.initialize import get_rank_id, get_device_id, get_rank_size, set_asc_manager, \
     is_asc_manager_initialized, get_train_interval, get_eval_steps, get_prefetch_batch_number, \
     export_table_instances, export_feature_spec, get_if_load, get_training_mode_channel_id, get_use_static, \
-    get_use_hot, get_use_dynamic_expansion, export_optimizer
+    get_use_hot, get_use_dynamic_expansion, export_optimizer,export_dangling_table
 from mx_rec.core.asc.helper import find_dangling_table
 
 
@@ -29,8 +29,9 @@ def generate_table_info_list():
 
     optimizer = export_optimizer()
     # generate table info
-    dangling_table = find_dangling_table([table_instance.table_name
-                                          for _, table_instance in export_table_instances().items()])
+    dangling_table = export_dangling_table()
+    # dangling_table = find_dangling_table([table_instance.table_name
+    #                                       for _, table_instance in export_table_instances().items()])
     for _, table_instance in export_table_instances().items():
         # When dynamic expansion mode, ext_emb_size is set by optimizer
         if optimizer is not None:
@@ -41,14 +42,7 @@ def generate_table_info_list():
             logging.info(f"Found dangling table: {table_instance.table_name} "
                          f"which does not need to be provided to the EmbInfo.")
             continue
-        # Only the tables that need to be used after table combination are retained in meituan situation.
-        # Current solution has error in same situations. For example, a sparse table has not been auto-merged.
-        logging.debug(f"In EmbInfo, ASCEND_TABLE_NAME_MUST_CONTAIN: {ASCEND_TABLE_NAME_MUST_CONTAIN}")
-        if ASCEND_TABLE_NAME_MUST_CONTAIN is not None and \
-                ASCEND_TABLE_NAME_MUST_CONTAIN not in table_instance.table_name:
-            logging.info(f"After the tables are combined, the information about the"
-                         f" {table_instance.table_name} table does not need to be provided to the EmbInfo.")
-            continue
+
         rec_mode_asc_flag = table_instance.mode == MxRecMode.ASC
         static_shape_rec_flag = rec_mode_asc_flag and get_use_static() and table_instance.send_count > 0
         dynamic_shape_rec_flag = rec_mode_asc_flag and not get_use_static()
