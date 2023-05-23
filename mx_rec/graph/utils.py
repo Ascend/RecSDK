@@ -60,10 +60,20 @@ def replace_anchor(replacement_specs: defaultdict, new_tensor_list: list):
             operator._update_input(input_idx, new_tensor_list[tensor_idx])
 
 
-def export_pb_graph(file_name, dump_graph, graph_def=None, export_path="./export_graph"):
+def export_pb_graph(file_name, dump_graph, graph_def=None, export_path="./export_graph", as_text=False):
+    """
+    Save tensorflow graph before and after modifier graph
+    :param file_name: FileName of the graph
+    :param dump_graph: Is serialize graph or not
+    :param graph_def: A Graph or a GraphDef protocol buffer.
+    :param export_path: Directory where to write the graph.
+    This can refer to remote filesystems, such as Google Cloud Storage (GCS).
+    :param as_text: If True, writes the graph as an ASCII proto
+    :return: None
+    """
     if dump_graph:
-        graph_def = graph_def if graph_def else tf.get_default_graph().as_graph_def()
-        tf.train.write_graph(graph_def, export_path, file_name, False)
+        graph_def = graph_def if graph_def else tf.compat.v1.get_default_graph().as_graph_def()
+        tf.io.write_graph(graph_def, export_path, file_name, as_text)
 
 
 def make_sorted_key_to_tensor_list(element_spec, sorted_keys, prefix=""):

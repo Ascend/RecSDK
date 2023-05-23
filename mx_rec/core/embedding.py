@@ -10,6 +10,7 @@ from collections import defaultdict
 import numpy as np
 import tensorflow as tf
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 
 from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
 from mx_rec.core.asc.helper import FeatureSpec
@@ -365,14 +366,16 @@ class SparseEmbedding:
 
         """
         logging.debug(f"Enter ASC Branch.")
+        if not kwargs.get("modify_graph"):
+            raise ValueError(f"modify_graph must be turn-on when lookup by ids(Tensor, not FeatureSpec).")
+
         self.check_mode(MxRecMode.ASC)
         is_training = kwargs.get("is_train")
         if is_asc_frozen() and is_training:
-            raise EnvironmentError(f"Cannot build new sparse forward graph after emb cache management was built.")
-        if not kwargs.get("modify_graph"):
-            raise RuntimeError(f"modify_graph must be turn-on when lookup by ids(Tensor, not FeatureSpec).")
+            raise RuntimeError(f"Cannot build new sparse forward graph after emb cache management was built.")
+        if is_asc_frozen() and not is_training:
+            clear_channel(is_train_channel=False)
 
-        rank_size = get_rank_size()
         access_threshold = None
         eviction_threshold = None
         if kwargs.get("access_and_evict_config"):
@@ -383,9 +386,6 @@ class SparseEmbedding:
                                    access_threshold=access_threshold,
                                    eviction_threshold=eviction_threshold)
         feature_spec.set_feat_attribute(ids, is_training)
-
-        if is_asc_frozen() and not is_training:
-            clear_channel(is_train_channel=False)
 
         self.check_and_format_lookup_params(ids, send_count, is_training)
         anchor_ids = tf.identity(ids, name="ids")
@@ -398,6 +398,7 @@ class SparseEmbedding:
         logging.debug(f"In lookup_for_asc function, table name: {self.table_name}, ids: {ids}, use_dynamic_expansion: "
                       f"{use_dynamic_expansion}, use_static: {use_static}, use_hot: {use_hot}")
 
+        rank_size = get_rank_size()
         id_offsets = tf.ones(shape=[send_count * rank_size if use_static else 1 * rank_size, ],
                              dtype=tf.int64 if get_use_dynamic_expansion() else tf.int32, name="id_offsets")
         id_offsets = tf.identity(id_offsets, name=ASCAnchorAttr.ID_OFFSETS.value)
@@ -414,7 +415,13 @@ class SparseEmbedding:
         @tf.custom_gradient
         def sparse_forward(table, feat_ids):
             logging.debug(f"fp rank size: {rank_size}")
-            restore_vector = tf.ones(shape=[np.prod(feat_ids.shape.as_list()), ], dtype=tf.int32, name="restore_vector")
+            if use_static:
+                restore_vector = tf.ones(shape=[np.prod(feat_ids.shape.as_list()), ], dtype=tf.int32,
+                                         name="restore_vector")
+            else:
+                restore_vector = tf.ones(shape=[tf.math.reduce_prod(array_ops.shape(feat_ids)[0]), ], dtype=tf.int32,
+                                         name="restore_vector")
+
             restore_vector = tf.identity(restore_vector, name=ASCAnchorAttr.RESTORE_VECTOR.value)
             tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_RESTORE_VECTOR, restore_vector)
             SparseEmbedding.anchor_tensor_specs[anchor_ids][ASCAnchorAttr.RESTORE_VECTOR] = restore_vector
@@ -448,7 +455,11 @@ class SparseEmbedding:
                                                unique_embeddings], axis=0)
 
             embeddings = tf.gather(unique_embeddings, restore_vector, axis=0, name="gather_for_restore_vector")
-            lookup_result = tf.reshape(embeddings, feat_ids.shape.as_list() + [self.scalar_emb_size])
+            if use_static:
+                lookup_result = tf.reshape(embeddings, feat_ids.shape.as_list() + [self.scalar_emb_size])
+            else:
+                dest_shape = array_ops.concat([array_ops.shape(feat_ids), [self.scalar_emb_size]], 0)
+                lookup_result = array_ops.reshape(embeddings, dest_shape)
 
             def grad(lookup_diff):
                 embedding_diff = tf.reshape(lookup_diff, [-1, self.scalar_emb_size])
