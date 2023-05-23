@@ -1,6 +1,6 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2021-2023 Huawei Technologies Co., Ltd
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 import logging
 
@@ -16,11 +16,11 @@ def get_restore_vector(config):
     logging.debug(f'Channel {config.get("table_name")}_restore_{config.get("channel_id")} was built for getnext')
     emb_size = None
     if config.get("skip_emb_transfer"):
-        if not isinstance(config.get("_emb_size"), int) or config.get("_emb_size") < 1:
-            raise TypeError(f"_emb_size must be a int")
-        if config.get("_emb_size") < 1:
-            raise ValueError(f"_emb_size is less than 1")
-        emb_size = config.get("_emb_size")
+        if not isinstance(config.get("emb_size"), int) or config.get("emb_size") < 1:
+            raise TypeError(f"emb_size must be a int")
+        if config.get("emb_size") < 1:
+            raise ValueError(f"emb_size is less than 1")
+        emb_size = config.get("emb_size")
     else:
         if not isinstance(config.get("ext_emb_size"), int) or config.get("ext_emb_size") < 1:
             raise TypeError(f"ext_emb_size must be a int")
@@ -90,7 +90,7 @@ def get_all2all_args(use_static: bool, config: dict) -> list:
                 output_types=[tf.int64],
                 output_shapes=[[config.get("rank_size"), config.get("rank_size")]],
                 channel_name=f'{config.get("table_name")}_all2all_{config.get("channel_id")}',
-                name="a2a_get_next")[0] * config.get("_emb_size")
+                name="a2a_get_next")[0] * config.get("emb_size")
 
     return all2all_args
 

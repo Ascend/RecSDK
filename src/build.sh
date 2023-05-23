@@ -1,4 +1,11 @@
-rm -rf build;
+#!/bin/bash
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+# Description: build script.
+# Author: MindX SDK
+# Create: 2022
+# History: NA
+set -e
+[ -d build ] && rm -rf build;
 mkdir build && cd build || exit 1
 # HDF5_PATH, EASY_PROFILER_PATH is optional
 python_path="$(dirname $(dirname $(realpath $(which python3))))"

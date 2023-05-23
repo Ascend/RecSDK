@@ -1,8 +1,7 @@
-# coding: UTF-8
-# Copyright (c) Huawei Technologies Co., Ltd. 2021-2025. All rights reserved.
-# Description: build script.
-# Author: MindX SDK
-# pylint: disable=W0212
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+
 import logging
 from collections import defaultdict
 
@@ -342,7 +341,7 @@ def modify_graph_for_asc(dump_graph=False, prefetch=10):
                 batch_size=feature_spec.batch_size, feat_cnt=feature_spec.feat_cnt,
                 send_count=table_instance.send_count, channel_id=channel_id, rank_size=get_rank_size(),
                 table_name=table_instance.table_name, skip_emb_transfer=table_instance.skip_emb_transfer,
-                ext_emb_size=table_instance.ext_emb_size, _emb_size=table_instance._emb_size, use_hot=get_use_hot(),
+                ext_emb_size=table_instance.ext_emb_size, emb_size=table_instance.emb_size, use_hot=get_use_hot(),
                 device_id=get_device_id(), use_dynamic_expansion=get_use_dynamic_expansion())
             build_asc_graph(table_instance, cutting_point, config)
 

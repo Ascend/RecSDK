@@ -1,7 +1,6 @@
-# coding: UTF-8
-# Copyright (c) Huawei Technologies Co., Ltd. 2021-2025. All rights reserved.
-# Description: build script.
-# Author: MindX SDK
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 from __future__ import absolute_import
 from __future__ import division

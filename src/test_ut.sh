@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 # Description: NA
 # Author: MindX SDK
 # Create: 2022
@@ -14,41 +14,41 @@ source /etc/profile
 source /opt/rh/devtoolset-7/enable
 
 CUR_DIR=$(dirname "$(readlink -f "$0")")
+ROOT_DIR=$(dirname "${CUR_DIR}")
 
 compile_securec()
 {
-    if [[ ! -d ${CUR_DIR}/../platform/securec ]]; then
+    if [[ ! -d "${ROOT_DIR}"/platform/securec ]]; then
         echo "securec is not exist"
         exit 1
     fi
 
-    if [[ ! -f ${CUR_DIR}/../platform/securec/lib/libsecurec.so ]]; then
-        cd ${CUR_DIR}/../platform/securec/src
+    if [[ ! -f "${ROOT_DIR}"/platform/securec/lib/libsecurec.so ]]; then
+        cd "${ROOT_DIR}"/platform/securec/src
         make -j
     fi
 }
 compile_securec
 
-cd ${CUR_DIR}
-cd ../src/
+cd "${ROOT_DIR}"/src
 
 find ./ -name "*.sh" -exec dos2unix {} \;
 find ./ -name "*.sh" -exec chmod +x {} \;
 
-rm -rf build
+[ -d build ] && rm -rf build
 
 mkdir build
 cd build
 
 cmake -DCMAKE_BUILD_TYPE=Debug \
-    -DTF_PATH=/opt/buildtools/python-3.7.5/lib/python3.7/site-packages/tensorflow_core \
+    -DTF_PATH="$(dirname "$(dirname "$(which python3.7)")")"/lib/python3.7/site-packages/tensorflow_core \
     -DOMPI_PATH=/usr/local/openmpi/ \
-    -DPYTHON_PATH=/opt/buildtools/python-3.7.5/ \
+    -DPYTHON_PATH="$(dirname "$(dirname "$(which python3.7)")")" \
     -DEASY_PROFILER_PATH=/opt/buildtools/ \
     -DASCEND_PATH=/usr/local/Ascend/ascend-toolkit/latest \
-    -DABSEIL_PATH=${PWD}/../../install/abseil/ \
-    -DSECUREC_PATH=${CUR_DIR}/../platform/securec \
-    -DBUILD_TESTS=on -DCOVERAGE=on ../
+    -DABSEIL_PATH="$(dirname "$(dirname "${PWD}")")"/install/abseil/ \
+    -DSECUREC_PATH="${ROOT_DIR}"/platform/securec \
+    -DBUILD_TESTS=on -DCOVERAGE=on "$(dirname "${PWD}")"
 
 make -j
 make install
@@ -56,16 +56,16 @@ make install
 # Run Test
 mpirun -np 4 ./tests/test_main
 
-cd ../
+cd "$(dirname "${PWD}")"
 
 COVERAGE_FILE=coverage.info
 REPORT_FOLDER=coverage_report
-lcov --rc lcov_branch_coverage=1 -c -d build -o ${COVERAGE_FILE}_tmp
-lcov --rc lcov_branch_coverage=1  -e ${COVERAGE_FILE}_tmp "*src*" -o ${COVERAGE_FILE}
-genhtml --rc genhtml_branch_coverage=1 ${COVERAGE_FILE} -o ${REPORT_FOLDER}
-rm -rf ${COVERAGE_FILE}_tmp
-rm -rf ${COVERAGE_FILE}
+lcov --rc lcov_branch_coverage=1 -c -d build -o "${COVERAGE_FILE}"_tmp
+lcov --rc lcov_branch_coverage=1  -e "${COVERAGE_FILE}"_tmp "*src*" -o "${COVERAGE_FILE}"
+genhtml --rc genhtml_branch_coverage=1 "${COVERAGE_FILE}" -o "${REPORT_FOLDER}"
+[ -d "${COVERAGE_FILE}"_tmp ] && rm -rf "${COVERAGE_FILE}"_tmp
+[ -d "${COVERAGE_FILE}" ] && rm -rf "${COVERAGE_FILE}"
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    open ./${REPORT_FOLDER}/index.html
+    open ./"${REPORT_FOLDER}"/index.html
 fi
