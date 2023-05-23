@@ -1,5 +1,7 @@
-# Copyright (c) Huawei Technologies Co., Ltd. 2021-2025. All rights reserved.
-# Description: build script.
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+# Description: setup script.
 # Author: MindX SDK
 # Create: 2022
 # History: NA
@@ -8,7 +10,8 @@ import os
 from setuptools import setup, find_packages
 
 try:
-    LONG_DESCRIPTION = open("README.md").read()
+    with open("README.md") as file:
+        LONG_DESCRIPTION = file.read()
 except IOError:
     LONG_DESCRIPTION = ""
 

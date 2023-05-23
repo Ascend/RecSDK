@@ -1,6 +1,7 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2021-2023 Huawei Technologies Co., Ltd
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+
 import logging
 import math
 import time
@@ -131,7 +132,7 @@ class SparseEmbedding:
         self._use_feature_mapping = False
         self.skip_emb_transfer = True if self.host_vocabulary_size <= 0 else False
         self._default_name_count = -1
-        self._emb_size = None
+        self.emb_size = None
         self.ext_emb_size = None
         self.ext_coefficient = 1
         self._optimizer = dict()
@@ -146,7 +147,7 @@ class SparseEmbedding:
         self.set_emb_size()
         if self._mode == MxRecMode.ASC and is_asc_frozen() and self.table_name in get_name_to_var_dict():
             self.variable = tf.compat.v1.get_variable(self.table_name,
-                                                      shape=(self.slice_device_vocabulary_size, self._emb_size))
+                                                      shape=(self.slice_device_vocabulary_size, self.emb_size))
             if not self.skip_emb_transfer:
                 self.set_ext_emb_size()
         else:
@@ -210,13 +211,13 @@ class SparseEmbedding:
         self._use_feature_mapping = True
 
     def set_emb_size(self):
-        self._emb_size = self.embedding_size.as_list()[0]
+        self.emb_size = self.embedding_size.as_list()[0]
 
     def set_ext_emb_size(self):
         self.ext_coefficient += len(self.optimizer_slot_info_list)
         if self.use_dynamic_expansion and len(self._optimizer_instance_list) != 0:
             self.ext_coefficient += self._slot_num[self.table_name]
-        self.ext_emb_size = self._emb_size * self.ext_coefficient
+        self.ext_emb_size = self.emb_size * self.ext_coefficient
         logging.debug(f"init table, ext_emb_size is set to be {self.ext_emb_size}")
 
     def set_slice_vocab_size(self):
@@ -236,7 +237,7 @@ class SparseEmbedding:
 
     @property
     def scalar_emb_size(self):
-        return self._emb_size
+        return self.emb_size
 
     @property
     def mode(self):
@@ -404,7 +405,7 @@ class SparseEmbedding:
         local_embeddings = None
         if use_dynamic_expansion:
             local_embeddings = get_host_pipeline_ops().embedding_lookup_by_address(id_offsets,
-                                                                                   embedding_dim=self._emb_size,
+                                                                                   embedding_dim=self.emb_size,
                                                                                    embedding_type=1)
         if is_training:
             tf.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
@@ -428,7 +429,7 @@ class SparseEmbedding:
             hot_pos = None
             if use_hot:
                 import mxrec_pybind
-                hot_size = int(mxrec_pybind.get_ub_hot_size(get_device_id()) / self._emb_size)
+                hot_size = int(mxrec_pybind.get_ub_hot_size(get_device_id()) / self.emb_size)
                 hot_pos = tf.ones(shape=[hot_size, ], dtype=tf.int32, name="hot_pos")
                 hot_pos = tf.identity(hot_pos, name=ASCAnchorAttr.HOT_POS.value)
                 tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_HOT_POS, hot_pos)
@@ -555,7 +556,7 @@ class SparseEmbedding:
         config = dict(batch_size=feature_spec.batch_size, feat_cnt=feature_spec.feat_cnt, send_count=send_count,
                       rank_size=rank_size, channel_id=channel_id, table_name=self.table_name,
                       skip_emb_transfer=self.skip_emb_transfer, ext_emb_size=self.ext_emb_size,
-                      _emb_size=self._emb_size, use_hot=use_hot, device_id=device_id,
+                      emb_size=self.emb_size, use_hot=use_hot, device_id=device_id,
                       use_dynamic_expansion=use_dynamic_expansion)
 
         if self.skip_emb_transfer:
@@ -627,7 +628,7 @@ class SparseEmbedding:
                 return sparse_forward(self.variable)
 
             local_embeddings = \
-                host_pipeline_ops.embedding_lookup_by_address(id_offsets, embedding_dim=self._emb_size,
+                host_pipeline_ops.embedding_lookup_by_address(id_offsets, embedding_dim=self.emb_size,
                                                               embedding_type=1)
             if is_training:
                 tf.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)

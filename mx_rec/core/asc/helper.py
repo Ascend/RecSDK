@@ -1,6 +1,7 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2021-2023 Huawei Technologies Co., Ltd
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+
 import logging
 from functools import reduce
 import os

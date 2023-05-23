@@ -1,6 +1,6 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2023 Huawei Technologies Co., Ltd
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 from __future__ import absolute_import
 from __future__ import division

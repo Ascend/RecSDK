@@ -1,7 +1,6 @@
-# coding: UTF-8
-# Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
-# Description: CustomizedLazyAdamByAddress.
-# Author: MindX SDK
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 from __future__ import absolute_import
 from __future__ import division
@@ -238,7 +237,7 @@ class CustomizedLazyAdamByAddress(optimizer.Optimizer, CustomizedOptimizer):
                 else:
                     scope_name = addr.op.name
                 with ops.name_scope(
-                        "update_" + scope_name), ops.colocate_with(addr):
+                        f"update_{scope_name}"), ops.colocate_with(addr):
                     update_ops.append(processor.update_op(self, grad))
 
             apply_updates = self._finish(update_ops, name)
