@@ -5,6 +5,8 @@
 import json
 import logging
 import os
+from collections import defaultdict
+
 import psutil
 
 import mxrec_pybind
@@ -599,13 +601,58 @@ def set_ascend_env():
     logging.debug(f"Ascend env has been set.")
 
 
+def get_available_cpu_num_and_range():
+    """
+    获取当前环境可用的cpu数量和numa范围
+    Returns:
+
+    """
+    cpu_available = os.sched_getaffinity(os.getpid())  # 获取可被绑定的核心
+
+    is_ok = True
+    cpu_pkg_id_file = "/sys/devices/system/cpu/cpu{}/topology/physical_package_id"
+    pkg_id2cpu_list = defaultdict(list)
+    for cpu in cpu_available:
+        f_path = cpu_pkg_id_file.format(cpu)
+        if not os.path.exists(f_path):
+            logging.warning(f"failed to get numa node of cpu: {cpu}")
+            is_ok = False
+            break
+        with open(f_path, "r", encoding="utf-8") as f_in:
+            pkg_id = f_in.readline().strip()
+            pkg_id2cpu_list[pkg_id].append(cpu)
+
+    def parse_range(cpu_list, cpu_range):
+        sorted_cpu_list = sorted(cpu_list)
+        pre_cpu = sorted_cpu_list[0]
+        cpu_range.append([pre_cpu])
+
+        for sorted_cpu in sorted_cpu_list[1:]:
+            if sorted_cpu - pre_cpu != 1:
+                cpu_range[-1].append(pre_cpu)
+                cpu_range.append([sorted_cpu])
+            pre_cpu = sorted_cpu
+
+        if len(cpu_range[-1]) == 1:
+            cpu_range[-1].append(pre_cpu)
+
+    valid_cpu_range_list = []
+    if is_ok:
+        logging.info(f"available numa node num: {len(pkg_id2cpu_list)}")
+        for k, part_cpu_list in pkg_id2cpu_list.items():
+            parse_range(part_cpu_list, valid_cpu_range_list)
+    else:
+        parse_range(list(cpu_available), valid_cpu_range_list)
+    return len(cpu_available), valid_cpu_range_list
+
+
 def bind_cpu(rank_id: int, rank_size: int = None):
     """
     以均衡的方式为每个进程绑定CPU
     :param rank_id:当前进程的rank_id
+    :param rank_size: 进程数
     :return:
     """
-    from multiprocessing import cpu_count
     import math
 
     try:
@@ -619,14 +666,32 @@ def bind_cpu(rank_id: int, rank_size: int = None):
                         f"{DEFAULT_DEVICE_NUM_LOCAL_MACHINE} is set as default value")
         local_rank_size = DEFAULT_DEVICE_NUM_LOCAL_MACHINE
 
-    total_cpu = cpu_count()
+    total_cpu, cpu_range_list = get_available_cpu_num_and_range()
     avg_count = math.ceil(total_cpu / local_rank_size)
-    max_index = total_cpu - 1
-    start = rank_id * avg_count
-    cpu_list = [start + i for i in range(avg_count) if start + i <= max_index]
+    while True:
+        if avg_count == 0:
+            logging.warning(f"not enough cpu to bind. cpu num: {total_cpu}, range: {cpu_range_list}")
+            return
+
+        max_split = 0
+        for cpu_range in cpu_range_list:
+            max_split += (cpu_range[1] - cpu_range[0] + 1) // avg_count
+        if max_split >= local_rank_size:
+            break
+        avg_count -= 1
+
+    candidate_list = []
+    for cpu_range in cpu_range_list:
+        start = cpu_range[0]
+        splits = (cpu_range[1] - cpu_range[0] + 1) // avg_count
+        candidate_range = [list(range(start + i * avg_count, start + ((i + 1) * avg_count))) for i in range(splits)]
+        candidate_list.extend(candidate_range)
+
+    cpu_list = candidate_list[rank_id]
 
     process = psutil.Process()
     try:
         process.cpu_affinity(cpu_list)
+        logging.info(f"bind cpu for rank {rank_id}: {cpu_list}")
     except IndexError:
         logging.error(f"failed to bind cpu for rank {rank_id}: {cpu_list}")
