@@ -10,3 +10,8 @@ from .graph.patch import patch_for_dataset
 
 patch_for_saver()
 patch_for_dataset()
+__version__ = "5.0.RC2"
+
+
+def version():
+    return __version__
