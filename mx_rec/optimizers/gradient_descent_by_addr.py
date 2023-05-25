@@ -41,20 +41,9 @@ class CustomizedGradientDescentByAddr(optimizer.Optimizer, CustomizedOptimizer):
         self._learning_rate_tensor = None
         self._slot_num = 0
 
-    def _convert_grads_and_addrs(self, grads_and_vars):
-        converted_grads_and_addrs = []
-        for grad, addr in grads_and_vars:
-            if grad is not None:
-                try:
-                    # Convert the grad to Tensor or IndexedSlices if necessary.
-                    grad = ops.convert_to_tensor_or_indexed_slices(grad)
-                except TypeError as error:
-                    raise TypeError("Gradient must be convertible to a Tensor or IndexedSlices, or None") from error
-                if not isinstance(grad, (ops.Tensor, indexed_slices.IndexedSlices)):
-                    raise TypeError("Gradient must be a Tensor, IndexedSlices, or None")
-            processor = _get_processor(addr)
-            converted_grads_and_addrs.append((grad, addr, processor))
-        return converted_grads_and_addrs
+    @property
+    def slot_num(self):
+        return self._slot_num
 
     def apply_gradients(self, grads_and_vars, global_step=None, name=None):
         # No DistributionStrategy case.
@@ -101,17 +90,28 @@ class CustomizedGradientDescentByAddr(optimizer.Optimizer, CustomizedOptimizer):
 
             return apply_updates
 
-    @property
-    def slot_num(self):
-        return self._slot_num
+    def get_slot_init_values(self):
+        return []
+
+    def _convert_grads_and_addrs(self, grads_and_vars):
+        converted_grads_and_addrs = []
+        for grad, addr in grads_and_vars:
+            if grad is not None:
+                try:
+                    # Convert the grad to Tensor or IndexedSlices if necessary.
+                    grad = ops.convert_to_tensor_or_indexed_slices(grad)
+                except TypeError as error:
+                    raise TypeError("Gradient must be convertible to a Tensor or IndexedSlices, or None") from error
+                if not isinstance(grad, (ops.Tensor, indexed_slices.IndexedSlices)):
+                    raise TypeError("Gradient must be a Tensor, IndexedSlices, or None")
+            processor = _get_processor(addr)
+            converted_grads_and_addrs.append((grad, addr, processor))
+        return converted_grads_and_addrs
 
     def _prepare(self):
         learning_rate = self._call_if_callable(self._learning_rate)
         self._learning_rate_tensor = ops.convert_to_tensor(
             learning_rate, name="learning_rate")
-
-    def get_slot_init_values(self):
-        return []
 
     def _apply_sparse(self, grad, addr):
         logging.debug(">>>> Enter _apply_sparse SGD by addr")
@@ -168,11 +168,11 @@ class _TensorByAddressProcessor(_OptimizableAddr):
     def __init__(self, addr):
         self._a = addr
 
-    def target(self):
-        return self._a
-
     def __str__(self):
         return "<_TensorByAddressProcessor(%s)>" % self._a
+
+    def target(self):
+        return self._a
 
     def update_op(self, opt, grad):
         if isinstance(grad, ops.Tensor):

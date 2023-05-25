@@ -10,7 +10,7 @@ import tensorflow as tf
 
 from mx_rec.util.initialize import get_host_pipeline_ops, insert_feature_spec, insert_training_mode_channel_id, \
     get_training_mode_channel_id, get_use_static
-from .feature_spec import FeatureSpec
+from mx_rec.core.asc.feature_spec import FeatureSpec
 
 
 def get_asc_insert_func(tgt_key_specs=None, args_index_list=None, feature_numbers=None,
@@ -68,14 +68,14 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
             read_emb_key_inputs_dict = {"insert_tensors": [], "table_names": [],
                                         "feature_spec_names": [], "splits": []}
             get_target_tensors_with_feature_specs(tgt_key_specs, data_src, is_training, read_emb_key_inputs_dict)
-            logging.debug(f"do_insert with spec for {read_emb_key_inputs_dict['table_names']}")
+            logging.debug(f"do_insert with spec for {read_emb_key_inputs_dict.get('table_names')}")
             return do_insert(args,
-                             insert_tensors=read_emb_key_inputs_dict["insert_tensors"],
-                             splits=read_emb_key_inputs_dict["splits"],
-                             table_names=read_emb_key_inputs_dict["table_names"],
+                             insert_tensors=read_emb_key_inputs_dict.get("insert_tensors"),
+                             splits=read_emb_key_inputs_dict.get("splits"),
+                             table_names=read_emb_key_inputs_dict.get("table_names"),
                              input_dict={"is_training": is_training, "dump_graph": dump_graph,
                                          "timestamp": FeatureSpec.use_timestamp(is_training),
-                                         "feature_spec_names": read_emb_key_inputs_dict["feature_spec_names"],
+                                         "feature_spec_names": read_emb_key_inputs_dict.get("feature_spec_names"),
                                          "auto_change_graph": False})
 
         insert_fn = insert_fn_for_feature_specs

@@ -74,11 +74,11 @@ def matched_emb_initializer(tabel_info):
                                 tf.__version__.startswith("2") and
                                 isinstance(tabel_info.emb_initializer, tf.keras.initializers.TruncatedNormal),
                             }
-    if initializer_case_map["tf1/tf2_constant_initializer"]:
+    if initializer_case_map.get("tf1/tf2_constant_initializer"):
         initializer = InitializeInfo(name="constant_initializer", start=0, len=tabel_info.scalar_emb_size,
                                      constant_initializer_info=ConstantInitializerInfo(
                                          constant_val=tabel_info.emb_initializer.value))
-    elif initializer_case_map["tf1/tf2_random_normal_initializer"]:
+    elif initializer_case_map.get("tf1/tf2_random_normal_initializer"):
         random_seed = 0 if tabel_info.emb_initializer.seed is None else tabel_info.emb_initializer.seed
         initializer = InitializeInfo(name="random_normal_initializer", start=0, len=tabel_info.scalar_emb_size,
                                      normal_initializer_info=NormalInitializerInfo(
@@ -86,8 +86,8 @@ def matched_emb_initializer(tabel_info):
                                          stddev=tabel_info.emb_initializer.stddev,
                                          seed=random_seed
                                      ))
-    elif initializer_case_map["tf1_truncated_normal_initializer"] or \
-            initializer_case_map["tf2_truncated_normal_initializer"]:
+    elif initializer_case_map.get("tf1_truncated_normal_initializer") or \
+            initializer_case_map.get("tf2_truncated_normal_initializer"):
         random_seed = 0 if tabel_info.emb_initializer.seed is None else tabel_info.emb_initializer.seed
         initializer = InitializeInfo(name="truncated_normal_initializer", start=0, len=tabel_info.scalar_emb_size,
                                      normal_initializer_info=NormalInitializerInfo(

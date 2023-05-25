@@ -17,7 +17,7 @@ class CustomizedOptimizer:
         self.unique_name = ""
         self.base_name = ""
 
-    def __get_name__(self, name="CustomizedOptimizer"):
+    def _get_name(self, name="CustomizedOptimizer"):
         if name in CustomizedOptimizer.name_counter:
             CustomizedOptimizer.name_counter[name] += 1
             count = CustomizedOptimizer.name_counter.get(name)

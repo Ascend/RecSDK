@@ -73,6 +73,86 @@ class ConfigInitializer:
     def __del__(self):
         self.terminate()
 
+    @property
+    def feature_spec_dict(self):
+        return self._feature_spec_dict
+
+    @property
+    def table_name_set(self):
+        return self._table_name_set
+
+    @property
+    def table_name_to_feature_spec(self):
+        return self._table_name_to_feature_spec
+
+    @property
+    def table_instance_dict(self):
+        return self._table_instance_dict
+
+    @property
+    def optimizer_instance(self):
+        return self._optimizer_instance
+
+    @property
+    def is_frozen(self):
+        return self._is_frozen
+
+    @property
+    def name_to_var_dict(self):
+        return self._name_to_var_dict
+
+    @property
+    def use_mpi(self):
+        return self._use_mpi
+
+    @property
+    def rank_size(self):
+        return self._rank_size
+
+    @property
+    def rank_id(self):
+        return self._rank_id
+
+    @property
+    def device_id(self):
+        if self._rank_id not in self._rank_to_device_dict:
+            raise KeyError(f"rank id not in rank_to_device_dict. {self._rank_id} {self._rank_to_device_dict}")
+        return self._rank_to_device_dict[self._rank_id]
+
+    @property
+    def train_interval(self):
+        return self._train_interval
+
+    @property
+    def eval_steps(self):
+        return self._eval_steps
+
+    @property
+    def prefetch_batch_number(self):
+        return self._prefetch_batch_number
+
+    @property
+    def if_load(self):
+        return self._if_load
+
+    @property
+    def ascend_global_hashtable_collection(self):
+        return self._ascend_global_hashtable_collection
+
+    @staticmethod
+    def get_instance():
+        if ConfigInitializer._single_instance is None:
+            raise EnvironmentError("Please init the environment for mx_rec at first.")
+
+        return ConfigInitializer._single_instance
+
+    @staticmethod
+    def set_instance(use_mpi, **kwargs):
+        if ConfigInitializer._single_instance is not None:
+            raise EnvironmentError("ConfigInitializer has been initialized once, twice initialization was forbidden.")
+
+        ConfigInitializer._single_instance = ConfigInitializer(use_mpi, **kwargs)
+
     def terminate(self):
         if self._asc_manager is not None:
             self.del_asc_manager()
@@ -90,20 +170,8 @@ class ConfigInitializer:
     def get_feature_spec(self, key):
         return self._feature_spec_dict.get(key)
 
-    @property
-    def feature_spec_dict(self):
-        return self._feature_spec_dict
-
-    @property
-    def table_name_set(self):
-        return self._table_name_set
-
-    @property
-    def table_name_to_feature_spec(self):
-        return self._table_name_to_feature_spec
-
     def parse_hccl_json(self):
-        rank_table_path = os.getenv("RANK_TABLE_FILE")
+        rank_table_path = os.path.realpath(os.getenv("RANK_TABLE_FILE"))
         if not os.path.exists(rank_table_path):
             raise FileExistsError(f"Target_hccl_json_dir {rank_table_path} does not exist when reading.")
         with open(rank_table_path, "r", encoding="utf-8") as file:
@@ -191,16 +259,8 @@ class ConfigInitializer:
         key = self._name_to_var_dict.get(table_name)
         return self._table_instance_dict.get(key)
 
-    @property
-    def table_instance_dict(self):
-        return self._table_instance_dict
-
     def insert_optimizer(self, optimizer):
         self._optimizer_instance = optimizer
-
-    @property
-    def optimizer_instance(self):
-        return self._optimizer_instance
 
     def check_parameters(self):
         if not isinstance(self._use_mpi, bool):
@@ -224,14 +284,6 @@ class ConfigInitializer:
     def unfreeze(self):
         self._is_frozen = False
 
-    @property
-    def is_frozen(self):
-        return self._is_frozen
-
-    @property
-    def name_to_var_dict(self):
-        return self._name_to_var_dict
-
     def set_asc_manager(self, manager):
         from mxrec_pybind import HybridMgmt
         if not isinstance(manager, HybridMgmt):
@@ -250,46 +302,6 @@ class ConfigInitializer:
         self.unfreeze()
         logging.debug("ASC manager has been destroyed.")
 
-    @property
-    def use_mpi(self):
-        return self._use_mpi
-
-    @property
-    def rank_size(self):
-        return self._rank_size
-
-    @property
-    def rank_id(self):
-        return self._rank_id
-
-    @property
-    def device_id(self):
-        if self._rank_id not in self._rank_to_device_dict:
-            raise KeyError(f"rank id not in rank_to_device_dict. {self._rank_id} {self._rank_to_device_dict}")
-        return self._rank_to_device_dict[self._rank_id]
-
-    @staticmethod
-    def get_instance():
-        if ConfigInitializer._single_instance is None:
-            raise EnvironmentError("Please init the environment for mx_rec at first.")
-
-        return ConfigInitializer._single_instance
-
-    @staticmethod
-    def set_instance(use_mpi, **kwargs):
-        if ConfigInitializer._single_instance is not None:
-            raise EnvironmentError("ConfigInitializer has been initialized once, twice initialization was forbidden.")
-
-        ConfigInitializer._single_instance = ConfigInitializer(use_mpi, **kwargs)
-
-    @property
-    def train_interval(self):
-        return self._train_interval
-
-    @property
-    def eval_steps(self):
-        return self._eval_steps
-
     @train_interval.setter
     def train_interval(self, interval):
         check_step(interval)
@@ -300,18 +312,10 @@ class ConfigInitializer:
         check_step(steps)
         self._eval_steps = steps
 
-    @property
-    def prefetch_batch_number(self):
-        return self._prefetch_batch_number
-
     @prefetch_batch_number.setter
     def prefetch_batch_number(self, number):
         check_step(number, 1)
         self._prefetch_batch_number = number
-
-    @property
-    def if_load(self):
-        return self._if_load
 
     @if_load.setter
     def if_load(self, flag):
@@ -319,10 +323,6 @@ class ConfigInitializer:
             raise TypeError(f"Flag if load should be a boolean.")
 
         self._if_load = flag
-
-    @property
-    def ascend_global_hashtable_collection(self):
-        return self._ascend_global_hashtable_collection
 
     @ascend_global_hashtable_collection.setter
     def ascend_global_hashtable_collection(self, name):

@@ -42,7 +42,7 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
 
     def __init__(self, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8, use_locking=False, name="LazyAdam"):
         self.optimizer_type = "LazyAdam"
-        super(CustomizedLazyAdam, self).__get_name__(name=name)
+        super(CustomizedLazyAdam, self)._get_name(name=name)
         super(CustomizedLazyAdam, self).__init__(learning_rate=learning_rate, beta1=beta1, beta2=beta2,
                                                  epsilon=epsilon, use_locking=use_locking, name=self.unique_name)
 
@@ -56,6 +56,40 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
         check_param_range("epsilon", epsilon, 0, 1)
 
         check_param_type("use_locking", use_locking, bool)
+
+    def initialize_slots(self, var, table_instance):
+        # Create slots for the first and second moments.
+        def creat_one_single_slot(var, op_name):
+            new_slot_variable = slot_creator.create_zeros_slot(var, op_name)
+            # make sure sparse optimizer statements will not be saved and restored within tf checkpoint.
+            return new_slot_variable
+
+        momentum = creat_one_single_slot(var, self._name + "/" + "momentum")
+        velocity = creat_one_single_slot(var, self._name + "/" + "velocity")
+        remove_saving_var(momentum)
+        remove_saving_var(velocity)
+        named_slot_key = (var.op.graph, var.op.name)
+        table_instance = get_table_instance(var)
+        if self._name in table_instance.optimizer:
+            raise EnvironmentError(f"Sparse optimizer named {self._name} has exists.")
+
+        table_instance.set_optimizer(self._name, {"momentum": momentum, "velocity": velocity})
+        return [{"slot": momentum, "named_slot_key": named_slot_key, "slot_name": "m", "optimizer": self},
+                {"slot": velocity, "named_slot_key": named_slot_key, "slot_name": "v", "optimizer": self}]
+
+    def insert_slot(self, slot, named_slots_key, slot_name):
+        named_slots = self._slot_dict(slot_name)
+        if named_slots_key in named_slots:
+            raise EnvironmentError(f"named_slots_key should be global unique, but it has been in use now, "
+                                   f"please double check.")
+
+        named_slots[named_slots_key] = slot
+
+    def get_slot_init_values(self):
+        # return state value list of adam that needs to initialize in ASC DDR.
+        initial_momentum_value = 0.0
+        initial_velocity_value = 0.0
+        return [initial_momentum_value, initial_velocity_value]
 
 
     def _apply_sparse_duplicate_indices(self, grad, var):
@@ -147,37 +181,3 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
 
             if self._name not in table_instance.optimizer:
                 table_instance.set_optimizer(self._name, {"momentum": momentum, "velocity": velocity})
-
-    def initialize_slots(self, var, table_instance):
-        # Create slots for the first and second moments.
-        def creat_one_single_slot(var, op_name):
-            new_slot_variable = slot_creator.create_zeros_slot(var, op_name)
-            # make sure sparse optimizer statements will not be saved and restored within tf checkpoint.
-            return new_slot_variable
-
-        momentum = creat_one_single_slot(var, self._name + "/" + "momentum")
-        velocity = creat_one_single_slot(var, self._name + "/" + "velocity")
-        remove_saving_var(momentum)
-        remove_saving_var(velocity)
-        named_slot_key = (var.op.graph, var.op.name)
-        table_instance = get_table_instance(var)
-        if self._name in table_instance.optimizer:
-            raise EnvironmentError(f"Sparse optimizer named {self._name} has exists.")
-
-        table_instance.set_optimizer(self._name, {"momentum": momentum, "velocity": velocity})
-        return [{"slot": momentum, "named_slot_key": named_slot_key, "slot_name": "m", "optimizer": self},
-                {"slot": velocity, "named_slot_key": named_slot_key, "slot_name": "v", "optimizer": self}]
-
-    def insert_slot(self, slot, named_slots_key, slot_name):
-        named_slots = self._slot_dict(slot_name)
-        if named_slots_key in named_slots:
-            raise EnvironmentError(f"named_slots_key should be global unique, but it has been in use now, "
-                                   f"please double check.")
-
-        named_slots[named_slots_key] = slot
-
-    def get_slot_init_values(self):
-        # return state value list of adam that needs to initialize in ASC DDR.
-        initial_momentum_value = 0.0
-        initial_velocity_value = 0.0
-        return [initial_momentum_value, initial_velocity_value]
