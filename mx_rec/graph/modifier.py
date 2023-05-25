@@ -16,7 +16,7 @@ from mx_rec.util.constants import ASCEND_CUTTING_POINT_INITIALIZER, ASCEND_CUTTI
     ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCAnchorAttr, ASCEND_TIMESTAMP
 from mx_rec.util.initialize import get_rank_size, destroy_asc_manager, get_training_mode_channel_id, \
     get_feature_spec, insert_feature_spec, set_initializer, get_use_static, get_use_hot, get_device_id, \
-    get_use_dynamic_expansion
+    get_use_dynamic_expansion, terminate_config_initializer
 from mx_rec.util.perf import performance
 from mx_rec.graph.utils import check_input_list, find_parent_op, check_cutting_points, replace_anchor, \
     record_ops_to_replace, export_pb_graph, make_sorted_key_to_tensor_list
@@ -423,3 +423,6 @@ class GraphModifierHook(tf.estimator.SessionRunHook):
     def after_create_session(self, session, coord):
         if self.modify_graph:
             session.run(tf.compat.v1.get_collection(ASCEND_CUTTING_POINT_INITIALIZER))
+
+    def end(self, session):
+        terminate_config_initializer()
