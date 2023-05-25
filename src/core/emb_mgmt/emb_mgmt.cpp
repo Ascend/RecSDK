@@ -162,13 +162,14 @@ bool HybridMgmt::LoadMatchesDDRSetup(const CkptData& loadData)
 
             const auto& loadEmbInfo { loadEmbTable->second.hostEmbInfo };
             if (setupHostEmbs.sendCount != loadEmbInfo.sendCount) {
-                spdlog::error(MGMT + "Load data sendCount {} for table {} does not match setup sendCound {}",
+                spdlog::error(MGMT + "Load data sendCount {} for table {} does not match setup sendCount {}",
                     setupHostEmbs.sendCount, setupHostEmbs.name, loadEmbInfo.sendCount);
                 loadDataMatches = false;
             }
-            if (setupHostEmbs.embeddingSize != loadEmbInfo.embeddingSize) {
-                spdlog::error(MGMT + "Load data embeddingSize {} for table {} does not match setup embeddingSize {}",
-                    setupHostEmbs.embeddingSize, setupHostEmbs.name, loadEmbInfo.embeddingSize);
+            if (setupHostEmbs.extEmbeddingSize != loadEmbInfo.extEmbeddingSize) {
+                spdlog::error(MGMT + "Load data extEmbeddingSize {} for table {} does not match "
+                                     "setup extEmbeddingSize {}",
+                              setupHostEmbs.extEmbeddingSize, setupHostEmbs.name, loadEmbInfo.extEmbeddingSize);
                 loadDataMatches = false;
             }
             if (setupHostEmbs.devVocabSize != loadEmbInfo.devVocabSize) {
@@ -351,14 +352,22 @@ bool HybridMgmt::GetLookupAndRestore(int channelId, int &batchId)
     spdlog::info(MGMT + "start parse keys, nBatch:{} , [{}]:{}", mgmtRankInfo.nBatch, channelId, batchId);
     for (const auto& embInfo: mgmtEmbInfo) {
         TimeCost getAllTensorTC;
-        auto infoVecs = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::RESTORE);
-        if (infoVecs == nullptr) {
-            spdlog::info(MGMT + "ParseKeys infoVecs empty ! batchId:{}, channelId:{}", batchId, channelId);
-            return false;
+        vector<string> names = {embInfo.name};
+        if (embInfo.modifyGraph) {
+            names = embInfo.channelNames;
         }
-        lookUpKeysQueue->Pushv({ infoVecs->back() });
-        infoVecs->pop_back();
-        restoreQueue->Pushv(*infoVecs);
+        spdlog::debug(MGMT + "GetLookupAndRestore embInfoName:{}, modifyGraph:{}, names:{}",
+                      embInfo.name, embInfo.modifyGraph, names);
+        for (const string& name: names) {
+            auto infoVecs = preprocess->GetInfoVec(batchId, name, channelId, ProcessedInfo::RESTORE);
+            if (infoVecs == nullptr) {
+                spdlog::info(MGMT + "ParseKeys infoVecs empty ! batchId:{}, channelId:{}", batchId, channelId);
+                return false;
+            }
+            lookUpKeysQueue->Pushv({ infoVecs->back() });
+            infoVecs->pop_back();
+            restoreQueue->Pushv(*infoVecs);
+        }
         TIME_PRINT("getAllTensorTC TimeCost(ms):{}", getAllTensorTC.ElapsedMS());
     }
     batchId++;
@@ -368,9 +377,17 @@ bool HybridMgmt::GetLookupAndRestore(int channelId, int &batchId)
 bool HybridMgmt::SendLookupAndRestore(int channelId, int &batchId)
 {
     for (const auto& embInfo: mgmtEmbInfo) {
+        vector<string> names = {embInfo.name};
+        if (embInfo.modifyGraph) {
+            names = embInfo.channelNames;
+        }
+        spdlog::debug(MGMT + "SendLookupAndRestore embInfoName:{}, modifyGraph:{}, names:{}",
+                      embInfo.name, embInfo.modifyGraph, names);
         if (!mgmtRankInfo.useStatic) {
-            auto all2all = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::ALL2ALL);
-            hdTransfer->Send(ALL2ALL, { *all2all }, channelId, embInfo.name);
+            for (const string& name: names) {
+                auto all2all = preprocess->GetInfoVec(batchId, name, channelId, ProcessedInfo::ALL2ALL);
+                hdTransfer->Send(ALL2ALL, { *all2all }, channelId, name);
+            }
         }
         spdlog::info("SendLookupAndRestore batchId: {}, name: {}, channelId: {}",
                      batchId, embInfo.name, channelId);
@@ -382,15 +399,19 @@ bool HybridMgmt::SendLookupAndRestore(int channelId, int &batchId)
 #pragma omp section
             {
                 TimeCost sendLookupTC;
-                auto lookUpKeys = lookUpKeysQueue->WaitAndPop();
-                hdTransfer->Send(LOOKUP, lookUpKeys, channelId, embInfo.name);
+                for (const string& name: names) {
+                    auto lookUpKeys = lookUpKeysQueue->WaitAndPop();
+                    hdTransfer->Send(LOOKUP, lookUpKeys, channelId, name);
+                }
                 TIME_PRINT("LOOKUP Send TimeCost(ms):{}", sendLookupTC.ElapsedMS());
             }
 #pragma omp section
             {
                 TimeCost sendRestoreTC;
-                auto restore = restoreQueue->WaitAndPop();
-                hdTransfer->Send(RESTORE, restore, channelId, embInfo.name);
+                for (const string& name: names) {
+                    auto restore = restoreQueue->WaitAndPop();
+                    hdTransfer->Send(RESTORE, restore, channelId, name);
+                }
                 TIME_PRINT("RESTORE Send TimeCost(ms):{}", sendRestoreTC.ElapsedMS());
             }
         }

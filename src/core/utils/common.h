@@ -136,10 +136,12 @@ namespace MxRec {
         std::vector<T> sample;
         void *tensorAddr = nullptr;
         std::string name;
+        std::string channelName;
         size_t batchSize;
         int batchId;
         int channel = 0;
         bool isInt64; // true int64 false int32
+        bool modifyGraph;
         time_t timestamp { -1 };
     };
 
@@ -340,15 +342,30 @@ struct BatchTask {
         EmbInfo(const std::string& name,
                 int sendCount,
                 int embeddingSize,
+                int extEmbeddingSize,
+                bool modifyGraph,
+                std::vector<std::string> channelNames,
                 std::vector<size_t> vocabsize,
-                std::vector<InitializeInfo> initializeInfos);
+                std::vector<InitializeInfo> initializeInfos,
+                std::map<std::string, int> sendCountMap)
+            : name(name), sendCount(sendCount), embeddingSize(embeddingSize), extEmbeddingSize(extEmbeddingSize),
+              modifyGraph(modifyGraph), channelNames(channelNames), initializeInfos(initializeInfos),
+              sendCountMap(sendCountMap)
+        {
+            devVocabSize = vocabsize[0];
+            hostVocabSize = vocabsize[1];
+        }
 
         std::string name;
         int sendCount;
         int embeddingSize;
+        int extEmbeddingSize;
+        bool modifyGraph;
         size_t devVocabSize;
         size_t hostVocabSize;
+        std::vector<std::string> channelNames;
         std::vector<InitializeInfo> initializeInfos;
+        std::map<std::string, int> sendCountMap;
     };
 
     struct HostEmbTable {

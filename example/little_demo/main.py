@@ -10,7 +10,8 @@ from dataset import generate_dataset
 from optimizer import get_dense_and_sparse_optimizer
 from model import MyModel
 from mx_rec.util.tf_version_adapter import hccl_ops
-from mx_rec.core.asc.helper import FeatureSpec, get_asc_insert_func
+from mx_rec.core.asc.feature_spec import FeatureSpec
+from mx_rec.core.asc.helper import get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
@@ -56,10 +57,14 @@ def build_graph(hash_table_list, is_train, use_timestamp=False, config_dict=None
     batch, iterator = make_batch_and_iterator(is_training=is_train, use_timestamp=use_timestamp, dump_graph=is_train,
                                               batch_number=batch_number)
     if MODIFY_GRAPH_FLAG:
-        feature_list = [batch["user_ids"], batch["item_ids"]]
+        input_list = [
+            [batch["user_ids"], batch["item_ids"], batch["user_ids"], batch["item_ids"]],
+            [hash_table_list[0], hash_table_list[0], hash_table_list[0], hash_table_list[1]],
+            [cfg.user_send_cnt, cfg.item_send_cnt, cfg.user_send_cnt, cfg.item_send_cnt],
+        ]
         if USE_TIMESTAMP:
             tf.add_to_collection(ASCEND_TIMESTAMP, batch["timestamp"])
-        model = model_forward([feature_list, hash_table_list, [cfg.user_send_cnt, cfg.item_send_cnt]], batch,
+        model = model_forward(input_list, batch,
                               is_train=is_train, modify_graph=True, config_dict=config_dict)
     else:
         model = model_forward([feature_spec_list, hash_table_list, [cfg.user_send_cnt, cfg.item_send_cnt]], batch,
@@ -141,7 +146,7 @@ if __name__ == "__main__":
                                   name='user_table',
                                   emb_initializer=tf.compat.v1.truncated_normal_initializer(),
                                   device_vocabulary_size=cfg.user_vocab_size * 10,
-                                  host_vocabulary_size=0, # cfg.user_vocab_size * 100, # for h2d test
+                                  host_vocabulary_size=0,  # cfg.user_vocab_size * 100, # for h2d test
                                   optimizer_list=sparse_optimizer_list,
                                   mode=mode)
 
@@ -150,7 +155,7 @@ if __name__ == "__main__":
                                   name='item_table',
                                   emb_initializer=tf.compat.v1.truncated_normal_initializer(),
                                   device_vocabulary_size=cfg.item_vocab_size * 10,
-                                  host_vocabulary_size=0, # cfg.user_vocab_size * 100, # for h2d test
+                                  host_vocabulary_size=0,  # cfg.user_vocab_size * 100, # for h2d test
                                   optimizer_list=sparse_optimizer_list,
                                   mode=mode)
 

@@ -13,7 +13,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 
 from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
-from mx_rec.core.asc.helper import FeatureSpec
+from mx_rec.core.asc.feature_spec import FeatureSpec, get_feature_spec
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_HOT_POS, \
     ASCEND_SPARSE_LOOKUP_ID_OFFSET, ASCEND_SPARSE_LOOKUP_RESTORE_VECTOR, MxRecMode, \
@@ -137,12 +137,16 @@ class SparseEmbedding:
         self.ext_emb_size = None
         self.ext_coefficient = 1
         self._optimizer = dict()
-        self.slice_device_vocabulary_size = None
-        self.slice_host_vocabulary_size = None
+        self.slice_device_vocabulary_size = 0
+        self.slice_host_vocabulary_size = 0
         self.variable = None
         self.lookup_info = set()
         self.lookup_result = None
         self.use_dynamic_expansion = get_use_dynamic_expansion()
+        self.channel_name_list = []
+        self.send_count_map = dict()
+        self.channel_name_dict = {True: [], False: []}
+        self.modify_graph = False
 
         self.set_slice_vocab_size()
         self.set_emb_size()
@@ -350,6 +354,12 @@ class SparseEmbedding:
 
         self._optimizer[key] = state_dict
 
+    def set_channel_name(self, ids_channel_name, eval_mode):
+        self.channel_name_list.append(ids_channel_name)
+        if not eval_mode:
+            self.channel_name_dict.get(True).insert(0, ids_channel_name)
+        self.channel_name_dict.get(False).insert(0, ids_channel_name)
+
     def lookup_for_asc(self, ids: tf.Tensor, send_count, **kwargs):
         """
 
@@ -373,19 +383,12 @@ class SparseEmbedding:
         is_training = kwargs.get("is_train")
         if is_asc_frozen() and is_training:
             raise RuntimeError(f"Cannot build new sparse forward graph after emb cache management was built.")
+
+        feature_spec = get_feature_spec(self.table_name, kwargs.get("access_and_evict_config"))
+        feature_spec.set_feat_attribute(ids, is_training)
+        # 'clear_channel()' function needs to be executed after 'set_feat_attribute()' function
         if is_asc_frozen() and not is_training:
             clear_channel(is_train_channel=False)
-
-        access_threshold = None
-        eviction_threshold = None
-        if kwargs.get("access_and_evict_config"):
-            access_and_evict_config = kwargs.get("access_and_evict_config")
-            access_threshold = access_and_evict_config.get("access_threshold")
-            eviction_threshold = access_and_evict_config.get("eviction_threshold")
-        feature_spec = FeatureSpec(self.table_name,
-                                   access_threshold=access_threshold,
-                                   eviction_threshold=eviction_threshold)
-        feature_spec.set_feat_attribute(ids, is_training)
 
         self.check_and_format_lookup_params(ids, send_count, is_training)
         anchor_ids = tf.identity(ids, name="ids")
@@ -395,8 +398,19 @@ class SparseEmbedding:
         use_dynamic_expansion = get_use_dynamic_expansion()
         use_static = get_use_static()
         use_hot = get_use_hot()
-        logging.debug(f"In lookup_for_asc function, table name: {self.table_name}, ids: {ids}, use_dynamic_expansion: "
-                      f"{use_dynamic_expansion}, use_static: {use_static}, use_hot: {use_hot}")
+        eval_mode = not is_training and len(self.channel_name_dict.get(not is_training)) == 0
+        ids_channel_name = ""
+        # set in train mode, train and eval mode, eval mode
+        if is_training or eval_mode:
+            ids_channel_name = feature_spec.name + "_lookup_ids"
+            self.set_channel_name(ids_channel_name, eval_mode)
+            send_count = send_count if send_count is not None else 0
+            self._send_count = send_count
+            self.send_count_map[ids_channel_name] = send_count
+        self.modify_graph = kwargs.get("modify_graph", True)
+        logging.debug(f"In lookup_for_asc function, table name: {self.table_name}, anchor_ids: {anchor_ids}, "
+                      f"ids_channel_name: {ids_channel_name}, use_dynamic_expansion: {use_dynamic_expansion}, "
+                      f"use_static: {use_static}, use_hot: {use_hot}")
 
         rank_size = get_rank_size()
         id_offsets = tf.ones(shape=[send_count * rank_size if use_static else 1 * rank_size, ],
