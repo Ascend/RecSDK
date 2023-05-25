@@ -172,3 +172,12 @@ class FeatureSpec:
 
         insert_feature_spec(self, is_training)
         return tensor, self.table_name, self.feat_cnt, self.split
+
+
+def get_feature_spec(table_name, access_and_evict_config):
+    access_threshold = None
+    eviction_threshold = None
+    if access_and_evict_config:
+        access_threshold = access_and_evict_config.get("access_threshold")
+        eviction_threshold = access_and_evict_config.get("eviction_threshold")
+    return FeatureSpec(table_name, access_threshold=access_threshold, eviction_threshold=eviction_threshold)

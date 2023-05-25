@@ -14,7 +14,6 @@ from mx_rec.util.tf_version_adapter import npu_ops
 
 def get_restore_vector(config):
     logging.debug(f'Channel {config.get("table_name")}_restore_{config.get("channel_id")} was built for getnext')
-    emb_size = None
     if config.get("skip_emb_transfer"):
         if not isinstance(config.get("emb_size"), int) or config.get("emb_size") < 1:
             raise TypeError(f"emb_size must be a int")
@@ -95,11 +94,15 @@ def get_all2all_args(use_static: bool, config: dict) -> list:
     return all2all_args
 
 
-def get_preprocessed_tensor_for_asc(table, config):
+def get_preprocessed_tensor_for_asc(table, config, ids_channel_name=None, modify_graph=False):
     use_static = get_use_static()
     max_lookup_vec_size = None
     if use_static:
         max_lookup_vec_size = config.get("send_count") * config.get("rank_size")
+
+    if modify_graph:
+        config["table_name"] = ids_channel_name
+    logging.debug(f"GetNext, table_name: {config.get('table_name')}, modify_graph: {modify_graph}")
 
     with tf.compat.v1.variable_scope("restore_vector"):
         restore_vector, hot_pos = get_restore_vector(config)
@@ -138,5 +141,5 @@ def get_preprocessed_tensor_for_asc(table, config):
             table_num = len(table)
             h2d_emb_split = tf.split(h2d_emb, table_num, axis=1)
             swap_in = [tf.compat.v1.scatter_nd_update(table[i], nd_swap_pos, h2d_emb_split[i])
-                        for i in range(len(table))]
+                       for i in range(len(table))]
     return restore_vector, hot_pos, id_offsets, swap_in, all2all_args

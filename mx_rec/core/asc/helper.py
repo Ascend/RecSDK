@@ -4,12 +4,11 @@
 
 import logging
 from functools import reduce
-import os
 
 import tensorflow as tf
 
-from mx_rec.util.initialize import get_host_pipeline_ops, insert_feature_spec, insert_training_mode_channel_id, \
-    get_training_mode_channel_id, get_use_static
+from mx_rec.util.initialize import get_host_pipeline_ops, get_training_mode_channel_id, get_use_static, \
+    export_table_instances
 from mx_rec.core.asc.feature_spec import FeatureSpec
 
 
@@ -142,8 +141,7 @@ def merge_feature_id_request(feature_id_list, split_list, table_name_list, featu
     return output_feature_id_list, output_split_list, output_table_name_list, output_tensorshape_split_list
 
 
-def send_feature_id_request_async(feature_id_list, split_list,
-                                  table_name_list, input_dict):
+def send_feature_id_request_async(feature_id_list, split_list, table_name_list, input_dict):
     is_training = input_dict["is_training"]
     timestamp = input_dict["timestamp"]
     feature_spec_names = input_dict["feature_spec_names"]
@@ -170,18 +168,37 @@ def send_feature_id_request_async(feature_id_list, split_list,
         feature_id_list = timestamp_feature_id + feature_id_list
     concat_tensor = tf.concat(feature_id_list, axis=0)
 
+    ids_channel_name_list = []
+    if auto_change_graph:
+        for _, table_instance in export_table_instances().items():
+            if table_instance.table_name not in table_name_list:
+                logging.info(f"table_name ('{table_instance.table_name}') not in table_name_list: {table_name_list}")
+                continue
+            if len(table_instance.channel_name_list) > 1:
+                ids_channel_name_list.extend(table_instance.channel_name_list)
+            else:
+                ids_channel_name_list.append(table_instance.table_name)
+        if len(ids_channel_name_list) != len(tensorshape_split_list):
+            raise RuntimeError(f"The length of ids_channel_name_list and tensorshape_split_list must be equal, "
+                               f"ids_channel_name_list: {ids_channel_name_list}, "
+                               f"tensorshape_split_list: {tensorshape_split_list}")
+
+    if len(split_list) == 0 or len(tensorshape_split_list) == 0:
+        raise RuntimeError(f"The length of split list can not be 0.")
+
     if use_static:
-        logging.debug(f"read_emb_key_v2(static), table_name_list: {table_name_list}, split_list: {split_list}")
+        logging.debug(f"read_emb_key_v2(static), table_name_list: {table_name_list}, split_list: {split_list}, "
+                      f"ids_channel_name_list: {ids_channel_name_list}")
         return host_pipeline_ops.read_emb_key_v2(concat_tensor, channel_id=channel_id, splits=split_list,
-                                                 emb_name=table_name_list, timestamp=timestamp)
+                                                 emb_name=table_name_list, timestamp=timestamp,
+                                                 channel_name=ids_channel_name_list, modify_graph=auto_change_graph)
 
     logging.debug(f"read_emb_key_v2_dynamic, table_name_list: {table_name_list}, "
-                  f"tensorshape_split_list: {tensorshape_split_list}")
-    pipeline_op = host_pipeline_ops.read_emb_key_v2_dynamic(concat_tensor, tensorshape_split_list,
-                                                            channel_id=channel_id,
-                                                            emb_name=table_name_list, timestamp=timestamp)
-
-    return pipeline_op
+                  f"tensorshape_split_list: {tensorshape_split_list}, ids_channel_name_list: {ids_channel_name_list}")
+    return host_pipeline_ops.read_emb_key_v2_dynamic(concat_tensor, tensorshape_split_list,
+                                                     channel_id=channel_id, emb_name=table_name_list,
+                                                     timestamp=timestamp, channel_name=ids_channel_name_list,
+                                                     modify_graph=auto_change_graph)
 
 
 def do_insert(args, insert_tensors, splits, table_names, input_dict):
