@@ -103,6 +103,7 @@ install_abseil()
 
     cd "${abseil_src_path}"
     echo "${abseil_src_path}"
+    remove CMakeCache.txt
     cmake -DCMAKE_INSTALL_PREFIX="${abseil_install_path}" . && make -j8 && make install
 
     echo "${project_output_path}"/abseil
@@ -178,6 +179,7 @@ gen_tar_file()
 
 clean()
 {
+  remove "${ROOT_DIR}"/dist
   remove "${ROOT_DIR}"/install
   remove "${ROOT_DIR}"/mx_rec.egg-info
   remove "${ROOT_DIR}"/src/build
