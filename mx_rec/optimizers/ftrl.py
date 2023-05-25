@@ -34,7 +34,7 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
 
     def __init__(self, learning_rate, use_locking=False, name="Ftrl", **kwargs):
         self.optimizer_type = "ftrl"
-        super(CustomizedFtrl, self).__get_name__(name=name)
+        super(CustomizedFtrl, self)._get_name(name=name)
         super(CustomizedFtrl, self).__init__(
             learning_rate=learning_rate,
             learning_rate_power=kwargs.get("learning_rate_power", -0.5),
@@ -66,6 +66,36 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
         check_param_type("use_locking", use_locking, bool)
 
         _check_param_type_range(param_name_list)
+
+    def initialize_slots(self, var, table_instance):
+        val = constant_op.constant(
+            self._initial_accumulator_value, dtype=var.dtype, shape=var.get_shape())
+
+        accum = slot_creator.create_slot(var, val, self._name + "/" + "accum")
+        linear = slot_creator.create_zeros_slot(var, self._name + "/" + "linear")
+        remove_saving_var(accum)
+        remove_saving_var(linear)
+        named_slot_key = (var.op.graph, var.op.name)
+        table_instance = get_table_instance(var)
+        if self._name in table_instance.optimizer:
+            raise EnvironmentError(f"Sparse optimizer named {self._name} has exists.")
+
+        table_instance.set_optimizer(self._name, {"accum": accum, "linear": linear})
+        return [{"slot": accum, "named_slot_key": named_slot_key, "slot_name": "accum", "optimizer": self},
+                {"slot": linear, "named_slot_key": named_slot_key, "slot_name": "linear", "optimizer": self}]
+
+    def insert_slot(self, slot, named_slots_key, slot_name):
+        named_slots = self._slot_dict(slot_name)
+        if named_slots_key in named_slots:
+            raise EnvironmentError(f"named_slots_key should be global unique, but it has been in use now, "
+                                   f"please double check.")
+
+        named_slots[named_slots_key] = slot
+
+    def get_slot_init_values(self):
+        # return state value list of ftrl that needs to initialize in ASC DDR.
+        initial_linear_value = 0.0
+        return [self._initial_accumulator_value, initial_linear_value]
 
     def _apply_sparse_duplicate_indices(self, grad, var):
         logging.debug(f"######### _apply_sparse_duplicate_indices {var}")
@@ -211,33 +241,3 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
 
                 if self._name not in table_instance.optimizer:
                     table_instance.set_optimizer(self._name, {"accum": accum, "linear": linear})
-
-    def initialize_slots(self, var, table_instance):
-        val = constant_op.constant(
-            self._initial_accumulator_value, dtype=var.dtype, shape=var.get_shape())
-
-        accum = slot_creator.create_slot(var, val, self._name + "/" + "accum")
-        linear = slot_creator.create_zeros_slot(var, self._name + "/" + "linear")
-        remove_saving_var(accum)
-        remove_saving_var(linear)
-        named_slot_key = (var.op.graph, var.op.name)
-        table_instance = get_table_instance(var)
-        if self._name in table_instance.optimizer:
-            raise EnvironmentError(f"Sparse optimizer named {self._name} has exists.")
-
-        table_instance.set_optimizer(self._name, {"accum": accum, "linear": linear})
-        return [{"slot": accum, "named_slot_key": named_slot_key, "slot_name": "accum", "optimizer": self},
-                {"slot": linear, "named_slot_key": named_slot_key, "slot_name": "linear", "optimizer": self}]
-
-    def insert_slot(self, slot, named_slots_key, slot_name):
-        named_slots = self._slot_dict(slot_name)
-        if named_slots_key in named_slots:
-            raise EnvironmentError(f"named_slots_key should be global unique, but it has been in use now, "
-                                   f"please double check.")
-
-        named_slots[named_slots_key] = slot
-
-    def get_slot_init_values(self):
-        # return state value list of ftrl that needs to initialize in ASC DDR.
-        initial_linear_value = 0.0
-        return [self._initial_accumulator_value, initial_linear_value]

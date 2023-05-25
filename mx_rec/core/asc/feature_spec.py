@@ -39,19 +39,6 @@ class FeatureSpec:
         self._pipeline_mode = set()
         self.check_params()
 
-    @staticmethod
-    def include_timestamp(is_training):
-        if is_training:
-            if FeatureSpec.use_timestamp_train:
-                raise EnvironmentError(f"Timestamp was set twice for training mode.")
-            FeatureSpec.use_timestamp_train = True
-        else:
-            FeatureSpec.use_timestamp_eval = True
-
-    @staticmethod
-    def use_timestamp(is_training):
-        return FeatureSpec.use_timestamp_train if is_training else FeatureSpec.use_timestamp_eval
-
     @property
     def is_timestamp(self):
         return self._is_timestamp
@@ -75,6 +62,23 @@ class FeatureSpec:
     @property
     def feat_cnt(self):
         return self._feat_cnt
+
+    @property
+    def pipeline_mode(self):
+        return self._pipeline_mode
+
+    @staticmethod
+    def include_timestamp(is_training):
+        if is_training:
+            if FeatureSpec.use_timestamp_train:
+                raise EnvironmentError(f"Timestamp was set twice for training mode.")
+            FeatureSpec.use_timestamp_train = True
+        else:
+            FeatureSpec.use_timestamp_eval = True
+
+    @staticmethod
+    def use_timestamp(is_training):
+        return FeatureSpec.use_timestamp_train if is_training else FeatureSpec.use_timestamp_eval
 
     def check_params(self):
         def check_str(arg, param_name):
@@ -116,10 +120,6 @@ class FeatureSpec:
         else:
             self.feat_pos_eval = FeatureSpec.instance_count_eval
             FeatureSpec.instance_count_eval += 1
-
-    @property
-    def pipeline_mode(self):
-        return self._pipeline_mode
 
     def insert_pipeline_mode(self, mode):
         if not isinstance(mode, bool):

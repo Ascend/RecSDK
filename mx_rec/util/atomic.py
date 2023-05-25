@@ -10,6 +10,9 @@ class AtomicInteger():
         self._value = int(value)
         self._lock = threading.Lock()
 
+    def __str__(self):
+        return str(self.value())
+
     def increase(self, num=1):
         with self._lock:
             self._value += int(num)
@@ -21,6 +24,3 @@ class AtomicInteger():
     def value(self):
         with self._lock:
             return self._value
-
-    def __str__(self):
-        return str(self.value())
