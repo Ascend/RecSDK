@@ -6,6 +6,8 @@ mkdir -p build_out
 rm -rf build_out/*
 cd build_out
 
+chmod +x $script_path/cmake/util/gen_ops_filter.sh
+
 cmake_version=$(cmake --version | grep "cmake version" | awk '{print $3}')
 if [ "$cmake_version" \< "3.19.0" ] ; then
     opts=$(python3 $script_path/cmake/util/preset_parse.py $script_path/CMakePresets.json)
