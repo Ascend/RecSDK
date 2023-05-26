@@ -82,7 +82,7 @@ void HDTransfer::CreateChannel(const uint32_t localRankId, const string& embName
         }
     }
     spdlog::info("user config all2all restore lookup channel size:{}", channelSize);
-    for (int c = D2H; c != INVALID; c++) {
+    for (int c = static_cast<int>(TransferChannel::D2H); c != static_cast<int>(TransferChannel::INVALID); c++) {
         auto channel = static_cast<TransferChannel>(c);
         string sendName = fmt::format("{}_{}_{}", embName, TransferChannel2Str(channel), channelNum);
         if (TransferChannel2Str(channel) == "all2all" ||

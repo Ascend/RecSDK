@@ -115,7 +115,7 @@ namespace MxRec {
         bool EvalParseKeys();
 
         bool GetLookupAndRestore(const int channelId, int &batchId);
-        bool SendLookupAndRestore(const int channelId, const int &batchId);
+        bool SendLookupAndRestore(const int channelId, int &batchId);
 
         void EmbHDTransDummy(int channelId, int batchId, const EmbInfo& embInfo);
 

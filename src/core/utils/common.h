@@ -126,8 +126,8 @@ namespace MxRec {
         {
             std::string s;
             constexpr size_t MAX_DISP_LEN = 20;
-            int max_len = std::min(sample.size(), MAX_DISP_LEN);
-            for (int i = 0; i < max_len; i++) {
+            int maxLen = std::min(sample.size(), MAX_DISP_LEN);
+            for (int i = 0; i < maxLen; i++) {
                 s += std::to_string(sample[i]) + " ";
             }
             return s;

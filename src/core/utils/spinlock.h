@@ -12,11 +12,6 @@
 #include <mutex>
 #include <thread>  // NOLINT
 
-#define DISALLOW_COPY_MOVE_AND_ASSIGN_(type) \
-    type(type const &) = delete;             \
-    type(type &&) noexcept = delete;         \
-    type &operator=(type const &) = delete
-
 static __inline void cpu_pause()
 {
 #ifdef __GNUC__
@@ -61,7 +56,9 @@ class SpinLock final {
 public:
     SpinLock() = default;
 
-    DISALLOW_COPY_MOVE_AND_ASSIGN_(SpinLock);
+    SpinLock(SpinLock const &) = delete;
+    SpinLock(SpinLock &&) noexcept = delete;
+    SpinLock &operator=(SpinLock const &) = delete;
 
     inline void lock() noexcept
     {
@@ -108,7 +105,9 @@ class RWSpinLock final {
 public:
     RWSpinLock() = default;
 
-    DISALLOW_COPY_MOVE_AND_ASSIGN_(RWSpinLock);
+    RWSpinLock(RWSpinLock const &) = delete;
+    RWSpinLock(RWSpinLock &&) noexcept = delete;
+    RWSpinLock &operator=(RWSpinLock const &) = delete;
 
     inline void r_lock() noexcept
     {

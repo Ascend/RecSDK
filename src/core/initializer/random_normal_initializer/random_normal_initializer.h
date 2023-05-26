@@ -23,7 +23,7 @@ namespace MxRec {
 
         ~RandomNormalInitializer() override {};
 
-        void GenerateData(const float* emb, const int embSize) override;
+        void GenerateData( float* const emb, const int embSize) override;
 
         int start;
         int len;

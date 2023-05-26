@@ -374,7 +374,7 @@ bool HybridMgmt::GetLookupAndRestore(const int channelId, int &batchId)
     return true;
 }
 
-bool HybridMgmt::SendLookupAndRestore(const int channelId, const int &batchId)
+bool HybridMgmt::SendLookupAndRestore(const int channelId, int &batchId)
 {
     for (const auto& embInfo: mgmtEmbInfo) {
         vector<string> names = {embInfo.name};
@@ -386,7 +386,7 @@ bool HybridMgmt::SendLookupAndRestore(const int channelId, const int &batchId)
         if (!mgmtRankInfo.useStatic) {
             for (const string& name: names) {
                 auto all2all = preprocess->GetInfoVec(batchId, name, channelId, ProcessedInfo::ALL2ALL);
-                hdTransfer->Send(ALL2ALL, { *all2all }, channelId, name);
+                hdTransfer->Send(TransferChannel::ALL2ALL, { *all2all }, channelId, name);
             }
         }
         spdlog::info("SendLookupAndRestore batchId: {}, name: {}, channelId: {}",
@@ -401,7 +401,7 @@ bool HybridMgmt::SendLookupAndRestore(const int channelId, const int &batchId)
                 TimeCost sendLookupTC;
                 for (const string& name: names) {
                     auto lookUpKeys = lookUpKeysQueue->WaitAndPop();
-                    hdTransfer->Send(LOOKUP, lookUpKeys, channelId, name);
+                    hdTransfer->Send(TransferChannel::LOOKUP, lookUpKeys, channelId, name);
                 }
                 TIME_PRINT("LOOKUP Send TimeCost(ms):{}", sendLookupTC.ElapsedMS());
             }
@@ -410,7 +410,7 @@ bool HybridMgmt::SendLookupAndRestore(const int channelId, const int &batchId)
                 TimeCost sendRestoreTC;
                 for (const string& name: names) {
                     auto restore = restoreQueue->WaitAndPop();
-                    hdTransfer->Send(RESTORE, restore, channelId, name);
+                    hdTransfer->Send(TransferChannel::RESTORE, restore, channelId, name);
                 }
                 TIME_PRINT("RESTORE Send TimeCost(ms):{}", sendRestoreTC.ElapsedMS());
             }
@@ -447,16 +447,16 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
                 break;
             }
             auto restore = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::RESTORE);
-            hdTransfer->Send(RESTORE, *restore, channelId, embInfo.name);
+            hdTransfer->Send(TransferChannel::RESTORE, *restore, channelId, embInfo.name);
 
             auto tmpData = hostHashMaps->Process(embInfo.name, lookupKeys, iBatch);
-            hdTransfer->Send(LOOKUP, { tmpData.front() }, channelId, embInfo.name);
+            hdTransfer->Send(TransferChannel::LOOKUP, { tmpData.front() }, channelId, embInfo.name);
             tmpData.erase(tmpData.begin());
-            hdTransfer->Send(SWAP, tmpData, channelId, embInfo.name);
+            hdTransfer->Send(TransferChannel::SWAP, tmpData, channelId, embInfo.name);
 
             if (!mgmtRankInfo.useStatic) {
                 auto all2all = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::ALL2ALL);
-                hdTransfer->Send(ALL2ALL, *all2all, channelId, embInfo.name);
+                hdTransfer->Send(TransferChannel::ALL2ALL, *all2all, channelId, embInfo.name);
             }
 
             if (embHashMap.HasFree(lookupKeys.size())) { // check free > next one batch
@@ -509,7 +509,7 @@ void HybridMgmt::EmbHDTrans(const int channelId, const int batchId)
     for (const auto& embInfo: mgmtEmbInfo) {
         auto& missingKeys = hostHashMaps->embHashMaps.at(embInfo.name).missingKeysHostPos;
         auto h2dEmb = hostEmbs->GetH2DEmb(missingKeys, embInfo.name); // order!
-        hdTransfer->Send(H2D, h2dEmb, channelId, embInfo.name, batchId);
+        hdTransfer->Send(TransferChannel::H2D, h2dEmb, channelId, embInfo.name, batchId);
     }
     for (const auto& embInfo: mgmtEmbInfo) {
         const auto& missingKeys = hostHashMaps->GetMissingKeys(embInfo.name);
@@ -528,7 +528,7 @@ void HybridMgmt::EmbHDTransDummy(int channelId, int batchId, const EmbInfo& embI
     spdlog::info(MGMT + "trans emb dummy, batchId:{}, channelId:{}", batchId, channelId);
     auto transferName = TransferChannel::D2H;
     auto d2hEmb = hdTransfer->Recv(transferName, channelId, embInfo.name)[0];
-    hdTransfer->Send(H2D, {}, channelId, embInfo.name);
+    hdTransfer->Send(TransferChannel::H2D, {}, channelId, embInfo.name);
 }
 
 /*
@@ -593,5 +593,5 @@ void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
     }
 
     auto tmpData = Vec2TensorI32(evictDevOffset);
-    hdTransfer->Send(EVICT, { tmpData }, TRAIN_CHANNEL_ID, embName);
+    hdTransfer->Send(TransferChannel::EVICT, { tmpData }, TRAIN_CHANNEL_ID, embName);
 }

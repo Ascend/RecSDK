@@ -1016,7 +1016,7 @@ void KeyProcess::EvictInitDeviceEmb(const string& embName, vector<size_t> offset
     auto trans = Singleton<HDTransfer>::GetInstance();
     // evict key发送给dev侧，dev侧初始化emb
     auto tmpData = Vec2TensorI32(offset);
-    trans->Send(EVICT, { tmpData }, TRAIN_CHANNEL_ID, embName);
+    trans->Send(TransferChannel::EVICT, { tmpData }, TRAIN_CHANNEL_ID, embName);
 
     spdlog::info(KEY_PROCESS "hbm EvictInitDeviceEmb: [{}]! send offsetSize:{}", embName, offset.size());
 }
