@@ -133,7 +133,6 @@ TEST_F(EmbMgmtTest, Initialize)
 
     int currentBatchId = 0;
     vector<emb_key_t> lookupKeys = { 1, 3, 5, 7 };
-    vector<Tensor> tmpData;
     vector<Tensor> d2h_emb;
     vector<vector<float>> tmpDatas;
     vector<Tensor> tmpData;
