@@ -415,6 +415,14 @@ struct BatchTask {
         All2AllInfo all2AllInfo;
     };
 
+    struct KeySendInfo {
+
+        KeySendInfo() = default;
+        KeySendInfo(keys_t keySend, vector<int32_t> keyCount);
+
+        keys_t keySend;
+        vector<int32_t> keyCount;
+    };
 
 
     using emb_mem_t = absl::flat_hash_map<std::string, HostEmbTable>;

@@ -131,7 +131,7 @@ namespace MxRec {
 
         size_t GetKeySize(const unique_ptr<emb_batch_t> &batch);
 
-        void All2All(vector<int>& sc, int id, int channel, keys_t& keySend, vector<int32_t>& keyCount,
+        void All2All(vector<int>& sc, int id, int channel, KeySendInfo& keySendInfo,
                      All2AllInfo& all2AllInfo);
 
         auto HashSplit(const unique_ptr<emb_batch_t>& batch) const -> tuple<vector<keys_t>, vector<int32_t>>;

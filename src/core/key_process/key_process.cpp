@@ -418,14 +418,14 @@ void KeyProcess::ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &ba
     TimeCost unique_tc;
 
     SimpleThreadPool pool_;
-    keys_t keySend;
+    KeySendInfo keySendInfo;
     size_t size = GetKeySize(batch);
-    keySend.resize(size);
+    keySendInfo.keySend.resize(size);
     vector<int32_t> splitSize(rankInfo.rankSize);
     vector<int64_t> uniqueVector(batch->batchSize);
     uniqueInfo.restore.resize(batch->batchSize);
     vector<int32_t> idCount(batch->batchSize);
-    vector<int32_t> keyCount(size);
+    keySendInfo.keyCount.resize(size);
     std::shared_lock<std::shared_mutex> lock(g_smut);
     auto hotMap = hotKey[batch->name];
     lock.unlock();
@@ -438,7 +438,7 @@ void KeyProcess::ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &ba
     absl::flat_hash_map<emb_key_t, int> keyCountMap;
 
     UniqueData uniqueData = {batch->tensorAddr, batch->batchSize, uniqueInfo.restore.data(), uniqueVector.data(),
-                             splitSize.data(), keySend.data(), idCount.data(), keyCount.data()};
+                             splitSize.data(), keySendInfo.keySend.data(), idCount.data(), keySendInfo.keyCount.data()};
     UniqueFlag uniqueFlag = {batch->isInt64, rankInfo.useStatic, rankInfo.useHot};
     UniqueForHot uniqueForHot = {hotOffset, uniqueInfo.hotPos.data(), hotMap, keyCountMap};
     UniqueThreadNum uniqueThreadNum = {MIN_UNIQUE_THREAD_NUM, MAX_UNIQUE_THREAD_NUM};
@@ -461,16 +461,16 @@ void KeyProcess::ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &ba
             sc[i] = splitSize[i];
         }
     }
-    All2All(sc, id, batch->channel, keySend, keyCount, uniqueInfo.all2AllInfo);
+    All2All(sc, id, batch->channel, keySendInfo, uniqueInfo.all2AllInfo);
 
     spdlog::debug(KEY_PROCESS "ProcessBatchWithUniqueCompute get batchId:{}, batchSize:{}, channel:{}, "
                              "channelName:{}, name:{}, restore:{}, keyCount:{}", batch->batchId, batch->batchSize,
                              batch->channel, batch->channelName, batch->name, uniqueInfo.restore.size(),
-                             keyCount.size());
+                             keySendInfo.keyCount.size());
 
 }
 
-void KeyProcess::All2All(vector<int>& sc, int id, int channel, keys_t& keySend, vector<int32_t>& keyCount,
+void KeyProcess::All2All(vector<int>& sc, int id, int channel, KeySendInfo& keySendInfo,
                          All2AllInfo& all2AllInfo)
 
 {
@@ -488,12 +488,12 @@ void KeyProcess::All2All(vector<int>& sc, int id, int channel, keys_t& keySend, 
     auto rs = Count2Start(rc); // receive displays/offset 接受数据的起始偏移量
     all2AllInfo.keyRecv.resize(rs.back() + rc.back());
     EASY_BLOCK("all2all")
-    MPI_Alltoallv(keySend.data(), sc.data(), ss.data(), MPI_INT64_T, all2AllInfo.keyRecv.data(), rc.data(), rs.data(),
+    MPI_Alltoallv(keySendInfo.keySend.data(), sc.data(), ss.data(), MPI_INT64_T, all2AllInfo.keyRecv.data(), rc.data(), rs.data(),
                   MPI_INT64_T, comm[channel][id]);
 
     all2AllInfo.countRecv.resize(rs.back() + rc.back());
     if (isWithFAAE) {
-        MPI_Alltoallv(keyCount.data(), sc.data(), ss.data(), MPI_UINT32_T, all2AllInfo.countRecv.data(), rc.data(),
+        MPI_Alltoallv(keySendInfo.keyCount.data(), sc.data(), ss.data(), MPI_UINT32_T, all2AllInfo.countRecv.data(), rc.data(),
                       rs.data(), MPI_UINT32_T, comm[channel][id]);
     }
     TIME_PRINT("all2allTC TimeCost(ms):{}", all2allTC.ElapsedMS());
