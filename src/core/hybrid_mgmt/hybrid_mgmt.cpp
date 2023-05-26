@@ -4,7 +4,7 @@
  * Author: MindX SDK
  * Date: 2022/11/15
  */
-#include "emb_mgmt.h"
+#include "hybrid_mgmt.h"
 #include <spdlog/spdlog.h>
 #include <spdlog/fmt/bundled/ranges.h>
 #include "checkpoint/checkpoint.h"

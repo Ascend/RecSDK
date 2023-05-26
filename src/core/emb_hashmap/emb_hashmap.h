@@ -9,9 +9,9 @@
 #define MX_REC_EMB_HASHMAP_H
 
 #include <vector>
-#include "absl/container/flat_hash_map.h"
 #include <memory>
 #include <array>
+#include "absl/container/flat_hash_map.h"
 #include "host_emb/host_emb.h"
 
 namespace MxRec {

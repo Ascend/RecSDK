@@ -33,8 +33,6 @@
 #include "spinlock.h"
 #include "time_cost.h"
 
-using namespace MxRec;
-
 struct UniqueData {
     void *inputData;
     size_t dataSize;
@@ -115,7 +113,7 @@ template <int N = 4> class Dedup {
     static const int kDefaultBucketCountMask = kDefaultBucketCount - 1;
 
     template <int M> struct Meta {
-        static_assert(M <= UNIQUE_MAX_BUCKET_WIDTH, "should be no larger than max bucket width");
+        static_assert(M <= MxRec::UNIQUE_MAX_BUCKET_WIDTH, "should be no larger than max bucket width");
         SpinLock lock;
         volatile int8_t count;
         int8_t pad[3];
@@ -392,7 +390,7 @@ public:
 
     uint32_t UniqueRawForHot(int64_t *output, uint32_t priorTotal, int32_t* idCount,
                              map<int64_t, int> &hotMap, map<int64_t, int> &hotPosMap, int &hotCount,
-                             absl::flat_hash_map<emb_key_t, int> &keyCountMap)
+                             absl::flat_hash_map<MxRec::emb_key_t, int> &keyCountMap)
     {
         uint32_t total = priorTotal;
         int32_t replace_offset = priorTotal;

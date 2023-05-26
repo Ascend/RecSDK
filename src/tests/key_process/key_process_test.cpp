@@ -18,7 +18,7 @@
 #include "utils/common.h"
 #include "host_emb/host_emb.h"
 #include "key_process/key_process.h"
-#include "emb_mgmt/emb_mgmt.h"
+#include "hybrid_mgmt/hybrid_mgmt.h"
 
 using namespace std;
 using namespace MxRec;

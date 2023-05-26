@@ -66,11 +66,11 @@ int KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
         }
     }
     spdlog::info(KEY_PROCESS "hot emb count info:{}", hotEmbTotCount);
-    MPI_Group world_group;
-    MPI_Comm_group(MPI_COMM_WORLD, &world_group);
+    MPI_Group worldGroup;
+    MPI_Comm_group(MPI_COMM_WORLD, &worldGroup);
     for (auto& i: comm) {
         for (auto& j: i) {
-            MPI_Comm_create(MPI_COMM_WORLD, world_group, &j);
+            MPI_Comm_create(MPI_COMM_WORLD, worldGroup, &j);
         }
     }
     isRunning = true;
