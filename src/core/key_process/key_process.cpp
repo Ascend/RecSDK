@@ -193,7 +193,7 @@ void KeyProcess::KeyProcessTask(int channel, int id) // thread id [0, KEY_PROCES
 {
     unique_ptr<emb_batch_t> batch;
     ShardedDedup<GroupMethod, UNIQUE_BUCKET> *unique = nullptr;
-
+    int preSendCount = 0;
     spdlog::stopwatch sw;
     try {
         while (true) {
@@ -209,7 +209,7 @@ void KeyProcess::KeyProcessTask(int channel, int id) // thread id [0, KEY_PROCES
             auto getBatchTime = TO_MS(sw);
             sw.reset();
 
-            if (unique == nullptr) {
+            if (unique == nullptr || preSendCount != embInfos[batch->name].sendCount) {
                 GroupMethod groupMethod;
                 groupMethod.SetGroupCount(rankInfo.rankSize);
                 auto sendCountSize = GetSendCount(batch->name, batch->channelName, batch->modifyGraph);
@@ -217,6 +217,7 @@ void KeyProcess::KeyProcessTask(int channel, int id) // thread id [0, KEY_PROCES
             } else {
                 unique->StartNewRound();
             }
+            preSendCount = embInfos[batch->name].sendCount;
             auto batchQueue = SingletonQueue<emb_batch_t>::getInstances(id + KEY_PROCESS_THREAD * batch->channel);
             if (!KeyProcessTaskHelper(batch, unique, channel, id, sw)) {
                 free(batch->tensorAddr);

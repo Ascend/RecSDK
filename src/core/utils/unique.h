@@ -111,7 +111,7 @@ template <int N = 4> class Dedup {
         int8_t pad[3];
         int32_t replace_base;
         volatile uint64_t data[M];
-        volatile uint64_t idCount[M];
+        std::atomic<uint16_t> idCount[M];
     } __attribute__((__aligned__(64)));
 
     struct Statistics {
@@ -732,18 +732,19 @@ public:
                 start = index;
             }
 
-            size_t mem_size = uniqueSizeVector[i] * sizeof(int64_t);
-            auto rc = memcpy_s(uniqueIds + start, mem_size, uniqueVector + index, mem_size);
-            if (rc != 0) {
-                spdlog::error("[TileAndFill/uniqueIds] memcpy_s failded... mem_size: {}",mem_size);
-                return;
-            }
-
-            mem_size = uniqueSizeVector[i] * sizeof(int32_t);
-            rc = memcpy_s(idCountFill + start, mem_size, idCount + index, mem_size);
-            if (rc != 0) {
-                spdlog::error("[TileAndFill/idCountFill] memcpy_s failded... mem_size: {}", mem_size);
-                return;
+            if (uniqueSizeVector[i] > 0) {
+                size_t mem_size = uniqueSizeVector[i] * sizeof(int64_t);
+                auto rc = memcpy_s(uniqueIds + start, mem_size, uniqueVector + index, mem_size);
+                if (rc != 0) {
+                    spdlog::error("[TileAndFill/uniqueIds] memcpy_s failded... mem_size: {}",mem_size);
+                    return;
+                }
+                mem_size = uniqueSizeVector[i] * sizeof(int32_t);
+                rc = memcpy_s(idCountFill + start, mem_size, idCount + index, mem_size);
+                if (rc != 0) {
+                    spdlog::error("[TileAndFill/idCountFill] memcpy_s failded... mem_size: {}", mem_size);
+                    return;
+                }
             }
 
             int fillLen = send_cnt_ - uniqueSizeVector[i];
