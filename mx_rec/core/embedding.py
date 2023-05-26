@@ -406,7 +406,10 @@ class SparseEmbedding:
             local_embeddings = get_host_pipeline_ops().embedding_lookup_by_address(id_offsets,
                                                                                    embedding_dim=self._emb_size,
                                                                                    embedding_type=1)
-        if is_training:
+
+        from mx_rec.util.constants import ASCEND_TABLE_NAME_MUST_CONTAIN
+        if is_training and use_dynamic_expansion and ASCEND_TABLE_NAME_MUST_CONTAIN is not None and \
+                ASCEND_TABLE_NAME_MUST_CONTAIN in self.table_name:
             tf.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
             tf.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
 
@@ -569,8 +572,6 @@ class SparseEmbedding:
 
         id_offsets = tf.identity(id_offsets, name="identity_addr")
         restore_vector = tf.identity(restore_vector, name="identity_restore")
-        if is_training and use_dynamic_expansion:
-            tf.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
 
         use_static = get_use_static()
         host_pipeline_ops = get_host_pipeline_ops()
@@ -629,7 +630,11 @@ class SparseEmbedding:
             local_embeddings = \
                 host_pipeline_ops.embedding_lookup_by_address(id_offsets, embedding_dim=self._emb_size,
                                                               embedding_type=1)
-            if is_training:
+
+            from mx_rec.util.constants import ASCEND_TABLE_NAME_MUST_CONTAIN
+            if is_training and use_dynamic_expansion and ASCEND_TABLE_NAME_MUST_CONTAIN is not None and \
+                    ASCEND_TABLE_NAME_MUST_CONTAIN in self.table_name:
+                tf.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
                 tf.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
 
             return sparse_forward(local_embeddings)

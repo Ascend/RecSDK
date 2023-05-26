@@ -9,6 +9,10 @@ from __future__ import print_function
 
 from collections import defaultdict
 
+import logging
+from tensorflow.python.framework import ops
+from tensorflow.python.training.optimizer import _TensorProcessor
+
 
 class CustomizedOptimizer:
 
@@ -36,3 +40,18 @@ class CustomizedOptimizer:
 
     def get_slot_init_values(self):
         raise NotImplementedError(f"Please define a specific realization on {self.__class__.__name__}")
+
+
+def my_update_op(self, opt, grad):
+    logging.debug("tf.compat.v1.training.optimizer._TensorProcessor has been patched, update_op.")
+    if isinstance(grad, ops.Tensor):
+        logging.debug(">>>>Enter update_op ops.Tensor")
+        update_op = opt._apply_sparse(grad, self._v)  # pylint: disable=protected-access
+        return update_op
+    else:
+        raise RuntimeError("Only support g with type Tensor.")
+
+
+def patch_for_optimizer():
+    _TensorProcessor.update_op = my_update_op
+    logging.debug("Class tf.compat.v1.training.optimizer._TensorProcessor has been patched.")

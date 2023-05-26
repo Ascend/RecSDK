@@ -97,7 +97,7 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore")
 
     mode = MxRecMode.mapping(os.getenv("MXREC_MODE"))
-    TRAIN_INTERVAL = 100
+    TRAIN_INTERVAL = 200
     EVAL_STEPS = 10
     SAVING_INTERVAL = 100
     USE_TIMESTAMP = False
