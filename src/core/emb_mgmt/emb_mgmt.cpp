@@ -447,7 +447,8 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
             auto restore = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::RESTORE);
             hdTransfer->Send(RESTORE, *restore, channelId, embInfo.name);
 
-            auto tmpData = hostHashMaps->Process(embInfo.name, lookupKeys, iBatch);
+            vector<Tensor> tmpData;
+            hostHashMaps->Process(embInfo.name, lookupKeys, iBatch, tmpData);
             hdTransfer->Send(LOOKUP, { tmpData.front() }, channelId, embInfo.name);
             tmpData.erase(tmpData.begin());
             hdTransfer->Send(SWAP, tmpData, channelId, embInfo.name);
@@ -506,7 +507,8 @@ void HybridMgmt::EmbHDTrans(int channelId, int batchId)
     TimeCost tr;
     for (const auto& embInfo: mgmtEmbInfo) {
         auto& missingKeys = hostHashMaps->embHashMaps.at(embInfo.name).missingKeysHostPos;
-        auto h2dEmb = hostEmbs->GetH2DEmb(missingKeys, embInfo.name); // order!
+        vector<Tensor> h2dEmb;
+        hostEmbs->GetH2DEmb(missingKeys, embInfo.name, h2dEmb); // order!
         hdTransfer->Send(H2D, h2dEmb, channelId, embInfo.name, batchId);
     }
     for (const auto& embInfo: mgmtEmbInfo) {

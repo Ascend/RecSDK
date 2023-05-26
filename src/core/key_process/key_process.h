@@ -125,13 +125,14 @@ namespace MxRec {
                                   int channel, int id, spdlog::stopwatch& sw);
         auto ProcessSplitKeys(const unique_ptr<emb_batch_t>& batch, int id,
                               vector<keys_t>& splitKeys) -> tuple<keys_t, vector<int>, vector<int>>;
-        auto ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &batch, sharded_dedup unique_, int id)
-            -> tuple<keys_t, vector<int32_t>, vector<int32_t>, vector<int>, vector<uint32_t>>;
+
+        void ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &batch, sharded_dedup unique, int id,
+                                           UniqueInfo& uniqueInfo);
 
         size_t GetKeySize(const unique_ptr<emb_batch_t> &batch);
 
-        auto All2All(vector<int>& sc, int id, int channel, keys_t& keySend, vector<int32_t>& keyCount)
-            -> tuple<keys_t, vector<int>, vector<uint32_t>>;
+        void All2All(vector<int>& sc, int id, int channel, keys_t& keySend, vector<int32_t>& keyCount,
+                     All2AllInfo& all2AllInfo);
 
         auto HashSplit(const unique_ptr<emb_batch_t>& batch) const -> tuple<vector<keys_t>, vector<int32_t>>;
 
@@ -139,7 +140,7 @@ namespace MxRec {
 
         auto HashSplit_withFAAE(const unique_ptr<emb_batch_t>& batch) const
         -> tuple<vector<keys_t>, vector<int32_t>, vector<vector<uint32_t>>>;
-        [[nodiscard]] vector<int> GetScAll(const vector<int>& keyScLocal, int commId, int channel) const;
+        void GetScAll(const vector<int>& keyScLocal, int commId, int channel, vector<int> &scAll) const;
 
         void Key2Offset(const emb_name_t& embName, keys_t& splitKey);
 

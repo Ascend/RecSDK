@@ -171,10 +171,10 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
  * 找到host侧需要发送的emb，通过hdTransfer发送给device。
  * missingKeysHostPos为host侧需要发送的emb的位置
  */
-vector<Tensor> HostEmb::GetH2DEmb(const vector<size_t>& missingKeysHostPos, const string& embName)
+void HostEmb::GetH2DEmb(const vector<size_t>& missingKeysHostPos, const string& embName,
+                        vector<Tensor>& h2d_emb)
 {
     EASY_FUNCTION()
-    vector<Tensor> h2d_emb;
     const auto& emb = hostEmbs[embName];
     const int embeddingSize = emb.hostEmbInfo.extEmbeddingSize;
     h2d_emb.emplace_back(Tensor(tensorflow::DT_FLOAT, {
@@ -191,7 +191,6 @@ vector<Tensor> HostEmb::GetH2DEmb(const vector<size_t>& missingKeysHostPos, cons
         }
     }
     spdlog::info("GetH2DEmb end, missingKeys count:{}", missingKeysHostPos.size());
-    return h2d_emb;
 }
 
 auto HostEmb::GetHostEmbs() -> absl::flat_hash_map<string, HostEmbTable>*

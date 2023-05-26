@@ -37,7 +37,8 @@ void EmbHashMap::Init(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
     }
 }
 
-vector<Tensor> EmbHashMap::Process(const string& embName, const vector<emb_key_t>& keys, size_t iBatch)
+void EmbHashMap::Process(const string& embName, const vector<emb_key_t>& keys, size_t iBatch,
+                                   vector<Tensor>& tmpData)
 {
     EASY_FUNCTION(profiler::colors::Pink)
     auto keepBatch = swapId - iBatch;
@@ -46,7 +47,6 @@ vector<Tensor> EmbHashMap::Process(const string& embName, const vector<emb_key_t
     EASY_BLOCK("hostHashMaps->tdt")
 
     auto& embHashMap = embHashMaps.at(embName);
-    vector<Tensor> tmpData;
     auto lookUpVecSize = static_cast<int>(embHashMap.lookUpVec.size());
     tmpData.emplace_back(Tensor(tensorflow::DT_INT32, { lookUpVecSize }));
 
@@ -73,7 +73,6 @@ vector<Tensor> EmbHashMap::Process(const string& embName, const vector<emb_key_t
     auto swapLen = tmpData.back().flat<int32>();
     swapLen(0) = swapSize;
     EASY_END_BLOCK
-    return tmpData;
 }
 
 /*
