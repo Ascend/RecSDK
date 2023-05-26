@@ -136,7 +136,8 @@ TEST_F(EmbMgmtTest, Initialize)
     vector<Tensor> tmpData;
     vector<Tensor> d2h_emb;
     vector<vector<float>> tmpDatas;
-    tmpData = hostHashMaps->Process(embInfo.name, lookupKeys, currentBatchId);
+    vector<Tensor> tmpData;
+    hostHashMaps->Process(embInfo.name, lookupKeys, currentBatchId, tmpData);
     auto missingKeys = hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos;
     spdlog::info("missingKeys {}", missingKeys);
     hostEmbs->EmbDataGenerator(initializeInfos, seed, missingKeys.size(), embeddingSize, tmpDatas);
@@ -146,7 +147,7 @@ TEST_F(EmbMgmtTest, Initialize)
     hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos.clear();
 
     lookupKeys = { 2, 3, 5, 6 };
-    tmpData = hostHashMaps->Process(embInfo.name, lookupKeys, currentBatchId);
+    hostHashMaps->Process(embInfo.name, lookupKeys, currentBatchId, tmpData);
     missingKeys = hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos;
     spdlog::info("missingKeys {}", missingKeys);
     hostEmbs->EmbDataGenerator(initializeInfos, seed, missingKeys.size(), embeddingSize, tmpDatas);
@@ -156,7 +157,7 @@ TEST_F(EmbMgmtTest, Initialize)
     hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos.clear();
 
     lookupKeys = { 1, 7, 9, 10 };
-    tmpData = hostHashMaps->Process(embInfo.name, lookupKeys, currentBatchId);
+    hostHashMaps->Process(embInfo.name, lookupKeys, currentBatchId, tmpData);
     missingKeys = hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos;
     spdlog::info("missingKeys {}", missingKeys);
     hostEmbs->EmbDataGenerator(initializeInfos, seed, missingKeys.size(), embeddingSize, tmpDatas);
