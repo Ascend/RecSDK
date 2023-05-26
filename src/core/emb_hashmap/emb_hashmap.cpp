@@ -38,7 +38,7 @@ void EmbHashMap::Init(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
 }
 
 void EmbHashMap::Process(const string& embName, const vector<emb_key_t>& keys, size_t iBatch,
-                                   vector<Tensor>& tmpData)
+                         vector<Tensor>& tmpData)
 {
     EASY_FUNCTION(profiler::colors::Pink)
     auto keepBatch = swapId - iBatch;

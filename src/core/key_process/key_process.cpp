@@ -253,11 +253,10 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t> &batch, sharded_de
     ProcessBatchWithUniqueCompute(batch, unique, id, uniqueInfo);
     TIME_PRINT("no copy ProcessBatchWithUniqueCompute TimeCost(ms):{}", tc.ElapsedMS());
 
-
     // 特征准入&淘汰
     if (isWithFAAE &&
         (m_featureAdmitAndEvict.FeatureAdmit(channel, batch, uniqueInfo.all2AllInfo.keyRecv,
-                                             uniqueInfo.all2AllInfo.countRecv) == FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR)) {
+         uniqueInfo.all2AllInfo.countRecv) == FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR)) {
         spdlog::error(KEY_PROCESS "rank:{} thread:{}, channel:{}, Feature-admit-and-evict error ...",
                       rankInfo.rankId, id, channel);
         return false;
@@ -444,7 +443,6 @@ void KeyProcess::ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &ba
     UniqueThreadNum uniqueThreadNum = {MIN_UNIQUE_THREAD_NUM, MAX_UNIQUE_THREAD_NUM};
 
     unique->Compute<int, SimpleThreadPool>(&pool_,  uniqueData, uniqueFlag, uniqueForHot, uniqueThreadNum);
-
     EASY_END_BLOCK
     TIME_PRINT("UniqueCompute TimeCost(ms):{}", unique_tc.ElapsedMS());
 
@@ -467,7 +465,6 @@ void KeyProcess::ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &ba
                              "channelName:{}, name:{}, restore:{}, keyCount:{}", batch->batchId, batch->batchSize,
                              batch->channel, batch->channelName, batch->name, uniqueInfo.restore.size(),
                              keySendInfo.keyCount.size());
-
 }
 
 void KeyProcess::All2All(vector<int>& sc, int id, int channel, KeySendInfo& keySendInfo,
@@ -488,17 +485,16 @@ void KeyProcess::All2All(vector<int>& sc, int id, int channel, KeySendInfo& keyS
     auto rs = Count2Start(rc); // receive displays/offset 接受数据的起始偏移量
     all2AllInfo.keyRecv.resize(rs.back() + rc.back());
     EASY_BLOCK("all2all")
-    MPI_Alltoallv(keySendInfo.keySend.data(), sc.data(), ss.data(), MPI_INT64_T, all2AllInfo.keyRecv.data(), rc.data(), rs.data(),
-                  MPI_INT64_T, comm[channel][id]);
+    MPI_Alltoallv(keySendInfo.keySend.data(), sc.data(), ss.data(), MPI_INT64_T, all2AllInfo.keyRecv.data(), rc.data(),
+                  rs.data(), MPI_INT64_T, comm[channel][id]);
 
     all2AllInfo.countRecv.resize(rs.back() + rc.back());
     if (isWithFAAE) {
-        MPI_Alltoallv(keySendInfo.keyCount.data(), sc.data(), ss.data(), MPI_UINT32_T, all2AllInfo.countRecv.data(), rc.data(),
-                      rs.data(), MPI_UINT32_T, comm[channel][id]);
+        MPI_Alltoallv(keySendInfo.keyCount.data(), sc.data(), ss.data(), MPI_UINT32_T, all2AllInfo.countRecv.data(),
+                      rc.data(), rs.data(), MPI_UINT32_T, comm[channel][id]);
     }
     TIME_PRINT("all2allTC TimeCost(ms):{}", all2allTC.ElapsedMS());
     EASY_END_BLOCK
-
 }
 
 auto KeyProcess::ProcessSplitKeys(const unique_ptr<emb_batch_t>& batch, int id,

@@ -395,7 +395,6 @@ struct BatchTask {
     };
 
     struct All2AllInfo {
-
         All2AllInfo() = default;
         All2AllInfo(keys_t keyRecv, vector<int> scAll, vector<uint32_t> countRecv);
 
@@ -405,10 +404,8 @@ struct BatchTask {
     };
 
     struct UniqueInfo {
-
         UniqueInfo() = default;
         UniqueInfo(vector<int32_t> restore, vector<int32_t> hotPos, All2AllInfo all2AllInfo);
-
 
         vector<int32_t> restore;
         vector<int32_t> hotPos;
@@ -416,14 +413,12 @@ struct BatchTask {
     };
 
     struct KeySendInfo {
-
         KeySendInfo() = default;
         KeySendInfo(keys_t keySend, vector<int32_t> keyCount);
 
         keys_t keySend;
         vector<int32_t> keyCount;
     };
-
 
     using emb_mem_t = absl::flat_hash_map<std::string, HostEmbTable>;
     using emb_hash_mem_t = absl::flat_hash_map<std::string, EmbHashMapInfo>;
