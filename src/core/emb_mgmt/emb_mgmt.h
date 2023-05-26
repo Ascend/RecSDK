@@ -46,7 +46,7 @@ namespace MxRec {
         bool Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, int seed,
                         const vector<ThresholdValue>& thresholdValues, bool ifLoad);
 
-        bool Save(string savePath);
+        bool Save(const string savePath);
 
         bool Load(const string& loadPath);
 
@@ -83,7 +83,7 @@ namespace MxRec {
 
         bool ParseKeys(int channelId, int& batchId);
 
-        void EmbHDTrans(int channelId, int batchId);
+        void EmbHDTrans(const int channelId, const int batchId);
 
         void Evict();
 
@@ -114,8 +114,8 @@ namespace MxRec {
         bool TrainParseKeys();
         bool EvalParseKeys();
 
-        bool GetLookupAndRestore(int channelId, int &batchId);
-        bool SendLookupAndRestore(int channelId, int &batchId);
+        bool GetLookupAndRestore(const int channelId, int &batchId);
+        bool SendLookupAndRestore(const int channelId, const int &batchId);
 
         void EmbHDTransDummy(int channelId, int batchId, const EmbInfo& embInfo);
 

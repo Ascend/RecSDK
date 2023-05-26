@@ -263,8 +263,8 @@ struct BatchTask {
                                     std::default_random_engine& generator,
                                     RandomInfo& randomInfo)
     {
-        float min = ((randomInfo.randomMin == 0) ? -0.1f : randomInfo.randomMin);
-        float max = ((randomInfo.randomMax == 0) ? 0.1f : randomInfo.randomMax);
+        float min = ((!randomInfo.randomMin) ? -0.1f : randomInfo.randomMin);
+        float max = ((!randomInfo.randomMax) ? 0.1f : randomInfo.randomMax);
         if (randomInfo.len == 0) {
             return;
         }

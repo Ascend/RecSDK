@@ -109,7 +109,7 @@ void EmbHashMap::FindAndUpdateOffset(const string& embName, const vector<emb_key
     EASY_END_BLOCK
     EASY_BLOCK("FindPos")
     size_t swapSize = KeysAndOffset.size();
-    FindPos(embHashMap, swapSize, currentBatchId, keepBatchId);
+    FindPos(embHashMap, swapSize, keepBatchId);
     EASY_END_BLOCK
     EASY_BLOCK("ChangeInfo")
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) \
@@ -193,8 +193,7 @@ void EmbHashMap::FindAndUpdateBatchId(const vector<emb_key_t>& keys, size_t curr
     }
 }
 
-void EmbHashMap::FindPos(EmbHashMapInfo& embHashMap, int num, size_t currentBatchId,
-                         size_t keepBatchId)
+void EmbHashMap::FindPos(EmbHashMapInfo& embHashMap, int num, size_t keepBatchId)
 {
     while (num != 0) {
         if (embHashMap.devOffset2Batch[embHashMap.currentUpdatePos] < static_cast<int>(keepBatchId)) {

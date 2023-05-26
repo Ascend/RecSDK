@@ -119,7 +119,7 @@ namespace MxRec {
 
         auto GetSendCount(const string& name, const string& channelName, bool modifyGraph);
 
-        void KeyProcessTask(int channel, int id);
+        void KeyProcessTask(const int channel, const int id);
 
         bool KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, sharded_dedup unique_,
                                   int channel, int id, spdlog::stopwatch& sw);

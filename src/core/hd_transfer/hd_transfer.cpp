@@ -60,7 +60,7 @@ void HDTransfer::Destroy()
 #endif
 }
 
-void HDTransfer::CreateChannel(uint32_t localRankId, const string& embName, int channelNum)
+void HDTransfer::CreateChannel(const uint32_t localRankId, const string& embName, const int channelNum)
 {
 #ifndef GTEST
     int channelSize;

@@ -50,7 +50,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo,
     if (!rankInfo.noDDR) {
         hostEmbs = make_unique<HostEmb>();
         hostHashMaps = make_unique<EmbHashMap>();
-        hostEmbs->Initialize(embInfos, seed, ifLoad);
+        hostEmbs->Initialize(embInfos, seed);
         hostHashMaps->Init(rankInfo, embInfos, ifLoad);
     }
     isLoad = ifLoad;
@@ -66,7 +66,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo,
     return true;
 }
 
-bool HybridMgmt::Save(string savePath)
+bool HybridMgmt::Save(const string savePath)
 {
     preprocess->LoadSaveLock();
 
@@ -347,7 +347,7 @@ bool HybridMgmt::SendTask()
     return false;
 }
 
-bool HybridMgmt::GetLookupAndRestore(int channelId, int &batchId)
+bool HybridMgmt::GetLookupAndRestore(const int channelId, int &batchId)
 {
     spdlog::info(MGMT + "start parse keys, nBatch:{} , [{}]:{}", mgmtRankInfo.nBatch, channelId, batchId);
     for (const auto& embInfo: mgmtEmbInfo) {
@@ -374,7 +374,7 @@ bool HybridMgmt::GetLookupAndRestore(int channelId, int &batchId)
     return true;
 }
 
-bool HybridMgmt::SendLookupAndRestore(int channelId, int &batchId)
+bool HybridMgmt::SendLookupAndRestore(const int channelId, const int &batchId)
 {
     for (const auto& embInfo: mgmtEmbInfo) {
         vector<string> names = {embInfo.name};
@@ -430,8 +430,10 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
 {
     spdlog::info(MGMT + "DDR mode, start parse keys, nBatch:{} , [{}]:{}", mgmtRankInfo.nBatch, channelId, batchId);
     TimeCost parseKeyTC;
-    int start = batchId, iBatch = 0;
-    bool ifHashmapFree = true, remainBatch = true;
+    int start = batchId;
+    int iBatch = 0;
+    bool ifHashmapFree = true;
+    bool remainBatch = true;
     while (true) {
         spdlog::info(MGMT + "parse keys, [{}]:{}", channelId, batchId);
         for (const auto& embInfo : mgmtEmbInfo) {
@@ -498,7 +500,7 @@ void HybridMgmt::EmbHDTransWrap(int channelId, const int& batchId, int start, in
     }
 }
 
-void HybridMgmt::EmbHDTrans(int channelId, int batchId)
+void HybridMgmt::EmbHDTrans(const int channelId, const int batchId)
 {
     EASY_FUNCTION(profiler::colors::Blue)
     EASY_VALUE("mgmtProcess", batchId)

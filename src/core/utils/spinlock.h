@@ -17,7 +17,8 @@
     type(type &&) noexcept = delete;         \
     type &operator=(type const &) = delete
 
-static __inline void cpu_pause() {
+static __inline void cpu_pause()
+{
 #ifdef __GNUC__
     #ifdef __aarch64__
     __asm volatile("yield" ::: "memory");
@@ -62,7 +63,8 @@ public:
 
     DISALLOW_COPY_MOVE_AND_ASSIGN_(SpinLock);
 
-    inline void lock() noexcept {
+    inline void lock() noexcept
+    {
         while (true) {
             if (!lock_.exchange(true, std::memory_order_acquire)) {
                 break;
@@ -80,7 +82,8 @@ public:
         }
     }
 
-    inline bool try_lock() noexcept {
+    inline bool try_lock() noexcept
+    {
         if (lock_.load(std::memory_order_relaxed)) {
             return false;
         }
@@ -107,21 +110,22 @@ public:
 
     DISALLOW_COPY_MOVE_AND_ASSIGN_(RWSpinLock);
 
-    inline void r_lock() noexcept {
-        LockData oldData, newData;
+    inline void r_lock() noexcept
+    {
+        LockData oldData;
+        LockData newData;
         while (true) {
             uint16_t counter = 0;
             for (;;) {
                 oldData.raw = lock_.load(std::memory_order_relaxed);
-                if (oldData.lock.writer > 0) {
-                    cpu_pause();
-                    if (++counter > g_kMaxSpinCountBeforeThreadYield) {
-                        std::this_thread::yield();
-                        // reset counter
-                        counter = 0;
-                    }
-                } else {
+                if (oldData.lock.writer <= 0) {
                     break;
+                }
+                cpu_pause();
+                if (++counter > g_kMaxSpinCountBeforeThreadYield) {
+                    std::this_thread::yield();
+                    // reset counter
+                    counter = 0;
                 }
             }
 
@@ -135,21 +139,22 @@ public:
         }
     }
 
-    inline void w_lock() noexcept {
-        LockData oldData, newData;
+    inline void w_lock() noexcept
+    {
+        LockData oldData;
+        LockData newData;
         while (true) {
             uint16_t counter = 0;
             for (;;) {
                 oldData.raw = lock_.load(std::memory_order_relaxed);
-                if (oldData.raw != 0) {
-                    cpu_pause();
-                    if (++counter > g_kMaxSpinCountBeforeThreadYield) {
-                        std::this_thread::yield();
-                        // reset counter
-                        counter = 0;
-                    }
-                } else {
+                if (oldData.raw == 0) {
                     break;
+                }
+                cpu_pause();
+                if (++counter > g_kMaxSpinCountBeforeThreadYield) {
+                    std::this_thread::yield();
+                    // reset counter
+                    counter = 0;
                 }
             }
 

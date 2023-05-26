@@ -189,7 +189,7 @@ void KeyProcess::LoadSaveUnlock()
     }
 }
 
-void KeyProcess::KeyProcessTask(int channel, int id) // thread id [0, KEY_PROCESS_THREAD-1]
+void KeyProcess::KeyProcessTask(const int channel, const int id) // thread id [0, KEY_PROCESS_THREAD-1]
 {
     unique_ptr<emb_batch_t> batch;
     ShardedDedup<GroupMethod, UNIQUE_BUCKET> *unique = nullptr;
@@ -885,11 +885,11 @@ keys_t KeyProcess::GetLookupKeys(int batch, const string& embName, int channel)
             return get<keys_t>(ret);
         } catch (EmptyList&) {
             spdlog::trace("GetLookupKeys GetInfo failed {}[{}]:{} no input, wait and retry",
-                embName, channel, batch);
+                          embName, channel, batch);
             this_thread::sleep_for(1ms);
         } catch (WrongListTop&) {
             spdlog::trace("GetLookupKeys GetInfo failed {}[{}]:{} wrong top",
-                embName, channel, batch);
+                          embName, channel, batch);
             this_thread::sleep_for(1ms);
         }
     }

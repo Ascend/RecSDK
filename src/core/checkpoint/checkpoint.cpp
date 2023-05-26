@@ -23,8 +23,6 @@ using namespace MxRec;
 
 void Checkpoint::SaveModel(string savePath, CkptData& ckptData, RankInfo& mgmtRankInfo, const vector<EmbInfo>& EmbInfo)
 {
-    // TODO: check savePath
-
     processPath = savePath;
     rankId = mgmtRankInfo.rankId;
     deviceId = mgmtRankInfo.deviceId;
@@ -42,8 +40,6 @@ void Checkpoint::SaveModel(string savePath, CkptData& ckptData, RankInfo& mgmtRa
 void Checkpoint::LoadModel(string loadPath, CkptData& ckptData, RankInfo& mgmtRankInfo, const vector<EmbInfo>& EmbInfo,
                            const vector<CkptFeatureType>& featureTypes)
 {
-    // TODO: check loadPath
-
     processPath = loadPath;
     rankId = mgmtRankInfo.rankId;
     deviceId = mgmtRankInfo.deviceId;
@@ -186,7 +182,7 @@ void Checkpoint::SaveDataset(const vector<string>& embNames,
     }
 }
 
-void Checkpoint::WriteEmbedding(CkptTransData& transData, const string& dataDir, int& embeddingSize)
+void Checkpoint::WriteEmbedding(const CkptTransData& transData, const string& dataDir, const int& embeddingSize)
 {
     ofstream writeFile;
     writeFile.open(dataDir.c_str(), std::ios::out | std::ios::trunc | std::ios::binary);
@@ -333,11 +329,9 @@ void Checkpoint::LoadProcess(CkptData& ckptData)
 void Checkpoint::GetUpperLayerLoadDir(const vector<string>& dirNames)
 {
     innerDirPath = processPath;
-    // TODO: check existence
 
     for (const auto& dirName : dirNames) {
         innerDirPath = innerDirPath + dirSeparator + dirName;
-        // TODO: check existence
     }
 }
 
@@ -355,7 +349,6 @@ vector<string> Checkpoint::GetTableLayerLoadDir()
         }
         closedir(dir);
     }
-    // TODO: may cause memory problem? need to check
 
     return loadTableDir;
 }
@@ -367,10 +360,8 @@ void Checkpoint::LoadDataset(const vector<string>& embNames,
 {
     for (const auto& embName : embNames) {
         auto dataDir { innerDirPath + dirSeparator + embName };
-        // TODO: check existence
         for (const auto& saveDataType : saveDataTypes) {
             auto datasetPath { dataDir + dirSeparator + dataHandler->GetDataDirName(saveDataType) };
-            // TODO: check existence
 
             auto datasetDir { datasetPath + dirSeparator + datasetName + to_string(rankId) + dataFileType };
             auto attributeDir { datasetPath + dirSeparator + datasetName + to_string(rankId) + attribFileType };

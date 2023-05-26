@@ -19,7 +19,7 @@ using namespace MxRec;
 using namespace std;
 using namespace chrono;
 
-bool HostEmb::Initialize(const vector<EmbInfo>& embInfos, int seed, bool ifLoad)
+bool HostEmb::Initialize(const vector<EmbInfo>& embInfos, int seed)
 {
     for (const auto& embInfo: embInfos) {
         HostEmbTable hostEmb;

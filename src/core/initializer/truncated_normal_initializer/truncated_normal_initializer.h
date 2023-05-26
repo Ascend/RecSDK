@@ -23,7 +23,7 @@ namespace MxRec {
 
         ~TruncatedNormalInitializer() override {};
 
-        void GenerateData(float* emb, const int embSize) override;
+        void GenerateData(const float* emb, const int embSize) override;
 
         int boundNum = 2;
 

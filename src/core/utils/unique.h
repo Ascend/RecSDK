@@ -64,6 +64,16 @@ struct UniqueThreadNum {
     int maxThread;
 };
 
+namespace {
+    const int LEVEL1_CACHE = 64;
+    const int DEFAULT_DEDUPLICATION_RATE = 4;
+    const int DEDUPLICATION_RATE = 2;
+    const int HASH_SPLIT_BUCKERT_1 = 16;
+    const int HASH_SPLIT_BUCKERT_2 = 32;
+    const int HASH_SPLIT_BUCKERT_3 = 48;
+    const int PRE_APPLY_MEMORY = 256;
+}
+
 class SendCntTooSmallError : public std::exception {
 };
 
@@ -123,7 +133,7 @@ public:
     Dedup(int bucketCountPower2 = kDefaultBucketCount, int groups = 1)
         : bucketCount_(bucketCountPower2), bucketCountMask_(bucketCount_ - 1), groupCount_(groups)
     {
-        void *area = aligned_alloc(64, sizeof(Meta<N>) * bucketCount_);
+        void *area = aligned_alloc(LEVEL1_CACHE, sizeof(Meta<N>) * bucketCount_);
         table_ = reinterpret_cast<Meta<N> *>(area);
         Clear(bucketCount_);
     }
@@ -270,7 +280,7 @@ public:
             // sake.
             uint64_t shardedTableSize = newBucketCountPowerOf2 * N * groupCount_;
             int largeCount = 0;
-            while (shardedTableSize > stats_.totalUniques * 4 && largeCount_ != 1) {
+            while (shardedTableSize > stats_.totalUniques * DEFAULT_DEDUPLICATION_RATE && largeCount_ != 1) {
                 // too large
                 newBucketCountPowerOf2 >>= 1;
                 shardedTableSize >>= 1;
@@ -285,7 +295,7 @@ public:
                 }
             }
 
-            while (shardedTableSize < stats_.totalUniques + (stats_.totalUniques >> 2)) {
+            while (shardedTableSize < stats_.totalUniques + (stats_.totalUniques >> DEDUPLICATION_RATE)) {
                 newBucketCountPowerOf2 <<= 1;
                 shardedTableSize <<= 1;
             }
@@ -365,7 +375,8 @@ public:
         return total - priorTotal;
     }
 
-    void handleHotKey(int key, map<int64_t, int> &hotMap, map<int64_t, int> &hotPosMap, int &hotCount) {
+    void handleHotKey(int key, map<int64_t, int> &hotMap, map<int64_t, int> &hotPosMap, int &hotCount)
+    {
         auto hot = hotMap.find(key);
         if (hot != hotMap.end()) {
             if (hot->second == -1) {
@@ -445,7 +456,7 @@ private:
 
     static inline uint64_t hash(uint64_t val)
     {
-        return val ^ (val >> 16) ^ (val >> 32) ^ (val >> 48);
+        return val ^ (val >> HASH_SPLIT_BUCKERT_1) ^ (val >> HASH_SPLIT_BUCKERT_2) ^ (val >> HASH_SPLIT_BUCKERT_3);
     }
 
     void insertOverflow(uint64_t val)
@@ -503,7 +514,7 @@ public:
 
     ShardedDedup(const GroupMethod &groupMethod, int desiredSize, int send_cnt,
         int estimatedDuplicateRatio = kDefaultDuplicateRatio)
-        : groupMethod_(groupMethod), bucketCountPower2_(256), send_cnt_(send_cnt)
+        : groupMethod_(groupMethod), bucketCountPower2_(PRE_APPLY_MEMORY), send_cnt_(send_cnt)
     {
         const int numOfGroupsInShard = groupMethod_.GroupCount();
 
