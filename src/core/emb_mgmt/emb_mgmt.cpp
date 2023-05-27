@@ -452,7 +452,6 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
             hdTransfer->Send(LOOKUP, { tmpData.front() }, channelId, embInfo.name);
             tmpData.erase(tmpData.begin());
             hdTransfer->Send(SWAP, tmpData, channelId, embInfo.name);
-
             if (!mgmtRankInfo.useStatic) {
                 auto all2all = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::ALL2ALL);
                 hdTransfer->Send(ALL2ALL, *all2all, channelId, embInfo.name);
