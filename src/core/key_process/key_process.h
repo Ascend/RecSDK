@@ -37,7 +37,7 @@ namespace MxRec {
     constexpr int MAX_UNIQUE_THREAD_NUM = 8;
 
     using a2a_info_t = vector<int>;
-    using sharded_dedup = ShardedDedup<GroupMethod, UNIQUE_BUCKET>*;
+    using sharded_dedup = ShardedDedup<GroupMethod, UNIQUE_BUCKET>;
 
     template <class T> struct Cmp {
         bool operator () (const T &a, const T &b)
@@ -121,13 +121,13 @@ namespace MxRec {
 
         void KeyProcessTask(int channel, int id);
 
-        bool KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, sharded_dedup unique_,
+        bool KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, shared_ptr<sharded_dedup> unique,
                                   int channel, int id, spdlog::stopwatch& sw);
         auto ProcessSplitKeys(const unique_ptr<emb_batch_t>& batch, int id,
                               vector<keys_t>& splitKeys) -> tuple<keys_t, vector<int>, vector<int>>;
 
-        void ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &batch, sharded_dedup unique, int id,
-                                           UniqueInfo& uniqueInfoOut);
+        void ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &batch, shared_ptr<sharded_dedup> unique,
+                                           int id, UniqueInfo& uniqueInfoOut);
 
         size_t GetKeySize(const unique_ptr<emb_batch_t> &batch);
 
