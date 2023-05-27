@@ -34,8 +34,8 @@ static constexpr uint16_t g_kMaxSpinCountBeforeThreadYield = 64;
 class SpinLock final {
    public:
     void lock() noexcept {}
-    bool try_lock() noexcept { return true; }
     void unlock() noexcept {}
+    bool try_lock() noexcept { return true; }
 };
 
 #elif defined(USE_MUTEX)
