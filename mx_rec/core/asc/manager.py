@@ -13,12 +13,15 @@ from mx_rec.util.initialize import get_rank_id, get_device_id, get_rank_size, se
     get_use_hot, get_use_dynamic_expansion, export_optimizer, export_dangling_table
 from mx_rec.core.asc.helper import find_dangling_table
 
+
 def check_dangling_table():
     dangling_table = export_dangling_table()
     if not dangling_table:
         dangling_table = find_dangling_table([table_instance.table_name
                                               for _, table_instance in export_table_instances().items()])
     return dangling_table
+
+
 def generate_table_info_list():
     from mxrec_pybind import EmbInfo
     from mx_rec.util.constants import ASCEND_TABLE_NAME_MUST_CONTAIN
