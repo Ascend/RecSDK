@@ -7,15 +7,19 @@
  */
 
 #include "common.h"
+
 #include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>
 #include <mpi.h>
+
 #include <dsmi_common_interface.h>
 
 using namespace std;
 using std::chrono::system_clock;
 
 namespace MxRec {
+    int PerfConfig::keyProcessThreadNum = DEFAULT_KEY_PROCESS_THREAD;
+
     RankInfo::RankInfo(int rankId, int deviceId, int localRankSize, int option, int nBatch,
         const vector<int>& maxStep) : rankId(rankId), deviceId(deviceId), localRankSize(localRankSize), option(option),
         nBatch(nBatch), maxStep(maxStep)
@@ -104,4 +108,4 @@ namespace MxRec {
 
         throw std::runtime_error("dsmi_get_chip_info failed, ret = " + to_string(ret));
     }
-}
+} // end namespace MxRec

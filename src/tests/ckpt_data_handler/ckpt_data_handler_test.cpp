@@ -33,7 +33,7 @@ protected:
     int64_t int64Min { static_cast<int64_t>(UINT32_MAX) };
 
     int maxChannelNum { MAX_CHANNEL_NUM };
-    int keyProcessThread { KEY_PROCESS_THREAD };
+    int keyProcessThread { PerfConfig::keyProcessThreadNum };
 
     vector<EmbInfo> testEmbInfos;
     valid_int_t validEmbInfo;

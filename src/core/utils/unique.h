@@ -121,7 +121,7 @@ template <int N = 4> class Dedup {
 
 public:
     Dedup(int bucketCountPower2 = kDefaultBucketCount, int groups = 1)
-        : bucketCount_(bucketCountPower2), bucketCountMask_(bucketCount_ - 1), groupCount_(groups)
+            : bucketCount_(bucketCountPower2), bucketCountMask_(bucketCount_ - 1), groupCount_(groups)
     {
         void *area = aligned_alloc(64, sizeof(Meta<N>) * bucketCount_);
         table_ = reinterpret_cast<Meta<N> *>(area);
@@ -419,7 +419,7 @@ public:
     }
 
     std::vector<uint32_t> Replacement(const std::vector<uint64_t> &input, std::vector<uint64_t> *unique = nullptr,
-        int32_t base = 0)
+                                      int32_t base = 0)
     {
         std::vector<uint32_t> output;
         if (unique) {
@@ -502,8 +502,8 @@ public:
     using DedupT = Dedup<BucketWidth>;
 
     ShardedDedup(const GroupMethod &groupMethod, int desiredSize, int send_cnt,
-        int estimatedDuplicateRatio = kDefaultDuplicateRatio)
-        : groupMethod_(groupMethod), bucketCountPower2_(256), send_cnt_(send_cnt)
+                 int estimatedDuplicateRatio = kDefaultDuplicateRatio)
+            : groupMethod_(groupMethod), bucketCountPower2_(256), send_cnt_(send_cnt)
     {
         const int numOfGroupsInShard = groupMethod_.GroupCount();
 
@@ -636,7 +636,7 @@ public:
 
         int32_t *partBeginPtr = beginPtr;
         int32_t *partEndPtr =
-            reinterpret_cast<int32_t *>(CACHE_LINE_ALIGN(reinterpret_cast<uintptr_t>(partBeginPtr + partSize)));
+                reinterpret_cast<int32_t *>(CACHE_LINE_ALIGN(reinterpret_cast<uintptr_t>(partBeginPtr + partSize)));
 
         if(uniqueFlag.useStatic){
             for (int i = 0; i < groupMethod_.GroupCount(); i++) {
@@ -668,7 +668,7 @@ public:
                 // should be +/-1 off.
                 const int numOfGroupsInShard = groupMethod_.GroupCount();
                 tasks.push_back([this, input, &baseVector, beginPtr, partBeginPtr, partEndPtr, numOfGroupsInShard,
-                    totalUniqueSize, useStatic, isInt64, useHot, offset, hotMap, hotPos, hotPosMap]() -> TaskReturnType {
+                                        totalUniqueSize, useStatic, isInt64, useHot, offset, hotMap, hotPos, hotPosMap]() -> TaskReturnType {
                     for (int32_t *ptr = partBeginPtr; ptr < partEndPtr; ++ptr) {
                         auto val = isInt64 ? ((int64_t *)input)[ptr - beginPtr] : ((int32_t *)input)[ptr - beginPtr];
                         auto group = groupMethod_.GroupId(val);

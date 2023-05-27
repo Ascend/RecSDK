@@ -6,9 +6,10 @@
  * History: NA
  */
 
-#include <map>
+
 #include <algorithm>
 #include <atomic>
+#include <map>
 
 #include <spdlog/spdlog.h>
 #include <spdlog/stopwatch.h>
@@ -28,7 +29,6 @@
 #include "utils/common.h"
 #include "utils/safe_queue.h"
 #include "utils/singleton.h"
-
 #include "utils/time_cost.h"
 
 using namespace tensorflow;
@@ -189,9 +189,9 @@ public:
         // 保证所有embNames在m_embStatus中有状态记录
         SetCurrEmbNamesStatus(embNames, FeatureAdmitAndEvict::m_embStatus);
 
-        // [batchId % KEY_PROCESS_THREAD] which thread process this batch
-        // [KEY_PROCESS_THREAD * 0 or 1] train or inference
-        int batchQueueId = batchId % KEY_PROCESS_THREAD + KEY_PROCESS_THREAD * channelId;
+        // [batchId % PerfConfig::keyProcessThreadNum] which thread process this batch
+        // [PerfConfig::keyProcessThreadNum * 0 or 1] train or inference
+        int batchQueueId = batchId % PerfConfig::keyProcessThreadNum + PerfConfig::keyProcessThreadNum * channelId;
         Tensor* output = nullptr;
         OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape {}, &output));
         auto out = output->flat<int32>();
@@ -414,9 +414,9 @@ public:
         // 保证所有embNames在m_embStatus中有状态记录
         SetCurrEmbNamesStatus(embNames, FeatureAdmitAndEvict::m_embStatus);
 
-        // [batchId % KEY_PROCESS_THREAD] which thread process this batch
-        // [KEY_PROCESS_THREAD * 0 or 1] train or inference
-        int batchQueueId = batchId % KEY_PROCESS_THREAD + KEY_PROCESS_THREAD * channelId;
+        // [batchId % PerfConfig::keyProcessThreadNum] which thread process this batch
+        // [PerfConfig::keyProcessThreadNum * 0 or 1] train or inference
+        int batchQueueId = batchId % PerfConfig::keyProcessThreadNum + PerfConfig::keyProcessThreadNum * channelId;
         OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape {}, &output));
         auto out = output->flat<int32>();
         out(0) = batchId;

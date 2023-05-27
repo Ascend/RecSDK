@@ -9,6 +9,10 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#include <sys/stat.h>
+
+#include <cstring>
+#include <cassert>
 
 #include <vector>
 #include <random>
@@ -17,11 +21,9 @@
 #include <map>
 #include <queue>
 #include <sstream>
-#include <cstring>
 #include <fstream>
 #include <algorithm>
-#include <sys/stat.h>
-#include <cassert>
+
 #include "tensorflow/core/framework/tensor.h"
 #include "absl/container/flat_hash_map.h"
 
@@ -52,13 +54,22 @@ namespace MxRec {
     // read batch cost
     // key process cost
 	using namespace tensorflow;
+
     constexpr int TRAIN_CHANNEL_ID = 0;
     constexpr int EVAL_CHANNEL_ID = 1;
+
     constexpr int MAX_CHANNEL_NUM = 2;
-    constexpr int KEY_PROCESS_THREAD = 6;
-    constexpr int MAX_QUEUE_NUM = MAX_CHANNEL_NUM * KEY_PROCESS_THREAD;
+    constexpr int MAX_KEY_PROCESS_THREAD = 10;
+    constexpr int MAX_QUEUE_NUM = MAX_CHANNEL_NUM * MAX_KEY_PROCESS_THREAD;
+    
+    constexpr int DEFAULT_KEY_PROCESS_THREAD = 6;
+    struct PerfConfig {
+        static int keyProcessThreadNum;
+    };
+
     constexpr int KEY_PROCESS_TIMEOUT = 120;
     constexpr int GET_BATCH_TIMEOUT = 300;
+
     constexpr size_t DEFAULT_RANDOM_SEED = 10086;
     constexpr int INVALID_KEY_VALUE = -1;
     constexpr int PROFILING_START_BATCH_ID = 100;
@@ -440,7 +451,8 @@ struct BatchTask {
         HIST_REC = 8,
         ATTRIBUTE = 9
     };
-}
+} // end namespace MxRec
+
 #define KEY_PROCESS "\033[45m[KeyProcess]\033[0m "
 #ifdef GTEST
     #define GTEST_PRIVATE public
