@@ -77,7 +77,6 @@ def find_dangling_table(table_names):
             find_table_op(table_name, the_op, table_lookup_op, table_reachable_tensor)
 
     logging.info(f"*********** find tables: {table_lookup_op}***********")
-    logging.info(f"opTypes{[x for x in opTypes]}")
     dangling_table = []
 
     def extend(op_list, tensor, spread_tensors):
