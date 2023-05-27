@@ -9,7 +9,7 @@
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/fmt/bundled/ranges.h>
-#include "emb_mgmt/emb_mgmt.h"
+#include "hybrid_mgmt/hybrid_mgmt.h"
 #include "host_emb/host_emb.h"
 #include "utils/common.h"
 

@@ -131,7 +131,7 @@ template <int N = 4> class Dedup {
 
 public:
     Dedup(int bucketCountPower2 = kDefaultBucketCount, int groups = 1)
-        : bucketCount_(bucketCountPower2), bucketCountMask_(bucketCount_ - 1), groupCount_(groups)
+            : bucketCount_(bucketCountPower2), bucketCountMask_(bucketCount_ - 1), groupCount_(groups)
     {
         void *area = aligned_alloc(SysytemConst::LEVEL1_CACHE, sizeof(Meta<N>) * bucketCount_);
         table_ = reinterpret_cast<Meta<N> *>(area);
@@ -431,7 +431,7 @@ public:
     }
 
     std::vector<uint32_t> Replacement(const std::vector<uint64_t> &input, std::vector<uint64_t> *unique = nullptr,
-        int32_t base = 0)
+                                      int32_t base = 0)
     {
         std::vector<uint32_t> output;
         if (unique) {
@@ -647,7 +647,7 @@ public:
 
         int32_t *partBeginPtr = beginPtr;
         int32_t *partEndPtr =
-            reinterpret_cast<int32_t *>(((reinterpret_cast<uintptr_t>(partBeginPtr + partSize)) + 63ul) & ~63ul);
+            reinterpret_cast<int32_t *>(CACHE_LINE_ALIGN(reinterpret_cast<uintptr_t>(partBeginPtr + partSize)));
 
         if (uniqueFlag.useStatic) {
             for (int i = 0; i < groupMethod_.GroupCount(); i++) {

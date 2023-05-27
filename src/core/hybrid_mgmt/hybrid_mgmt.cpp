@@ -13,21 +13,31 @@
 using namespace MxRec;
 using namespace std;
 
-bool HybridMgmt::Initialize(RankInfo rankInfo,
-                            const vector<EmbInfo>& embInfos,
-                            int seed,
-                            const vector<ThresholdValue>& thresholdValues,
-                            bool ifLoad)
+bool HybridMgmt::InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
+                                const vector<ThresholdValue>& thresholdValues, bool ifLoad, int seed)
 {
-    SetLog(rankInfo.rankId);
-    if (isRunning) {
-        return true;
+    if (getenv("KEY_PROCESS_THREAD_NUM") != nullptr) {
+        int num = std::atoi(getenv("KEY_PROCESS_THREAD_NUM"));
+        if (num > MAX_KEY_PROCESS_THREAD) {
+            spdlog::error("[HybridMgmt::InitKeyProcess] KEY_PROCESS_THREAD_NUM:{} should be less than {}",
+                          num, MAX_KEY_PROCESS_THREAD);
+            return false;
+        }
+        PerfConfig::keyProcessThreadNum = num;
+        spdlog::info("config KEY_PROCESS_THREAD_NUM:{}", num);
     }
+
+    preprocess = Singleton<KeyProcess>::GetInstance();
+    preprocess->Initialize(rankInfo, embInfos, thresholdValues, ifLoad, seed);
+    preprocess->Start();
+    return true;
+}
+
+void HybridMgmt::InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfos)
+{
     MPI_Comm_size(MPI_COMM_WORLD, &rankInfo.rankSize);
-    int localRankId = rankInfo.deviceId;
-    spdlog::info(MGMT + "begin initialize, localRankSize:{}, localRankId {}, rank {}", rankInfo.localRankSize,
-                 localRankId, rankInfo.rankId);
-    rankInfo.localRankId = localRankId;
+    rankInfo.localRankId = rankInfo.deviceId;
+
     size_t totHostVocabSize = 0;
     for (const auto& emb : embInfos) {
         totHostVocabSize += emb.hostVocabSize;
@@ -36,17 +46,36 @@ bool HybridMgmt::Initialize(RankInfo rankInfo,
         rankInfo.noDDR = true;
     }
     rankInfo.useDataset = getenv("DATASET") != nullptr;
+}
+
+bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, int seed,
+                            const vector<ThresholdValue>& thresholdValues, bool ifLoad)
+{
+    if (isRunning) {
+        return true;
+    }
+    SetLog(rankInfo.rankId);
+    InitRankInfo(rankInfo, embInfos);
+
+    spdlog::info(MGMT + "begin initialize, localRankSize:{}, localRankId {}, rank {}",
+                 rankInfo.localRankSize, rankInfo.localRankId, rankInfo.rankId);
+
+    bool rc = InitKeyProcess(rankInfo, embInfos, thresholdValues, ifLoad, seed);
+    if (!rc) {
+        return false;
+    }
+
     mgmtRankInfo = rankInfo;
     mgmtEmbInfo = embInfos;
     skipUpdate = getenv("SKIP_UPDATE") != nullptr;
+
     hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
     hdTransfer->Init(embInfos, rankInfo.deviceId);
-    preprocess = Singleton<KeyProcess>::GetInstance();
-    preprocess->Initialize(rankInfo, embInfos, thresholdValues, ifLoad, seed);
-    preprocess->Start();
+
     lookUpKeysQueue = make_unique<Common::TaskQueue<vector<Tensor>>>();
     restoreQueue = make_unique<Common::TaskQueue<vector<Tensor>>>();
     isRunning = true;
+
     if (!rankInfo.noDDR) {
         hostEmbs = make_unique<HostEmb>();
         hostHashMaps = make_unique<EmbHashMap>();
@@ -57,6 +86,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo,
     if (!rankInfo.useDataset && !isLoad) {
         Start();
     }
+
     for (const auto& info: embInfos) {
         spdlog::info(MGMT + "emb[{}] vocab size {}+{} sc:{}", info.name, info.devVocabSize, info.hostVocabSize,
             info.sendCount);

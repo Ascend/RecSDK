@@ -92,6 +92,12 @@ namespace MxRec {
         void EvictKeys(const string& embName, const vector<emb_key_t>& keys);
 
     private:
+        bool InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
+                            const vector<ThresholdValue>& thresholdValues, bool ifLoad, int seed);
+        
+        void InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfos);
+
+    private:
         int currentBatchId;
         int trainBatchId = 0; // 0-199, 200-
         int getInfoBatchId;

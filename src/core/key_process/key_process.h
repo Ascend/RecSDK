@@ -9,25 +9,28 @@
 #define MX_REC_KEY_PROCESS_H
 
 #include <vector>
-#include <thread>
 #include <deque>
 #include <queue>
 #include <map>
-#include <string>
-#include <mpi.h>
 #include <memory>
+#include <string>
+#include <thread>
+
+#include <absl/container/flat_hash_map.h>
+#include <absl/container/flat_hash_set.h>
+#include <mpi.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/stopwatch.h>
+
 #include "utils/common.h"
 #include "utils/safe_queue.h"
 #include "utils/unique.h"
 #include "utils/spinlock.h"
 #include "utils/task_queue.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
+
 #include "host_emb/host_emb.h"
-#include "feature_admit_and_evict.h"
 #include "emb_table/emb_table.h"
+#include "feature_admit_and_evict.h"
 
 namespace MxRec {
     using namespace std;
@@ -37,7 +40,7 @@ namespace MxRec {
     constexpr int MAX_UNIQUE_THREAD_NUM = 8;
 
     using a2a_info_t = vector<int>;
-    using sharded_dedup = ShardedDedup<GroupMethod, UNIQUE_BUCKET>*;
+    using sharded_dedup = ShardedDedup<GroupMethod, UNIQUE_BUCKET>;
 
     template <class T> struct Cmp {
         bool operator () (const T &a, const T &b)
@@ -48,8 +51,10 @@ namespace MxRec {
 
     template<class T>
     using heap_t = priority_queue<T, deque<T>, Cmp<T>>;
+
     template<class T>
     using info_list_t = map<emb_name_t, array<heap_t<T>, MAX_QUEUE_NUM>>;
+
     enum class ProcessedInfo {
         RESTORE,
         ALL2ALL,
@@ -58,6 +63,8 @@ namespace MxRec {
 
     class KeyProcess {
     public:
+        KeyProcess();
+
         int Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
                        const vector<ThresholdValue>& thresholdValues = {}, bool ifLoad = false, int seed = 0);
 
@@ -90,21 +97,25 @@ namespace MxRec {
         bool isRunning { false };
 
     GTEST_PRIVATE:
-
         template<class T>
-        T GetInfo(array<info_list_t<T>, KEY_PROCESS_THREAD>& list, int batch, const string& embName, int channel);
+        T GetInfo(std::vector<info_list_t<T>>& list, int batch, const string& embName, int channel);
 
         RankInfo rankInfo;
         map<emb_name_t, EmbInfo> embInfos;
-        MPI_Comm comm[MAX_CHANNEL_NUM][KEY_PROCESS_THREAD];
+
+        std::vector<MPI_Comm> comm[MAX_CHANNEL_NUM] {};
+
         vector<std::thread> procThread {};
         std::mutex key2OffsetMut {};
-        std::mutex loadSaveMut[MAX_CHANNEL_NUM][KEY_PROCESS_THREAD] {};
-        std::mutex getInfoMut[KEY_PROCESS_THREAD] {};
-        array<info_list_t<lookup_key_t>, KEY_PROCESS_THREAD> lookupKeysList;
-        list<unique_ptr<vector<Tensor>>> storage[KEY_PROCESS_THREAD];
-        array<info_list_t<tensor_info_t>, KEY_PROCESS_THREAD> infoList;
-        array<info_list_t<tensor_info_t>, KEY_PROCESS_THREAD> all2AllList;
+
+        std::vector<std::mutex> loadSaveMut[MAX_CHANNEL_NUM];
+        std::vector<std::mutex> getInfoMut;
+
+        std::vector<list<unique_ptr<vector<Tensor>>>> storage;
+        std::vector<info_list_t<lookup_key_t>> lookupKeysList;
+        std::vector<info_list_t<tensor_info_t>> infoList;
+        std::vector<info_list_t<tensor_info_t>> all2AllList;
+
         map<emb_name_t, size_t> maxOffset {};
         map<emb_name_t, absl::flat_hash_map<emb_key_t, int64_t>> keyOffsetMap {};
         FeatureAdmitAndEvict m_featureAdmitAndEvict {};
@@ -121,11 +132,12 @@ namespace MxRec {
 
         void KeyProcessTask(const int channel, const int id);
 
-        bool KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, sharded_dedup unique_,
+        bool KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, shared_ptr<sharded_dedup> unique,
                                   int channel, int id, spdlog::stopwatch& sw);
         auto ProcessSplitKeys(const unique_ptr<emb_batch_t>& batch, int id,
                               vector<keys_t>& splitKeys) -> tuple<keys_t, vector<int>, vector<int>>;
-        auto ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &batch, sharded_dedup unique_, int id)
+        auto ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &batch,
+                                           shared_ptr<sharded_dedup> unique, int id)
             -> tuple<keys_t, vector<int32_t>, vector<int32_t>, vector<int>, vector<uint32_t>>;
 
         size_t GetKeySize(const unique_ptr<emb_batch_t> &batch);
@@ -167,7 +179,5 @@ namespace MxRec {
         vector<uint32_t> GetCountRecv(const unique_ptr<emb_batch_t>& batch, int id,
                                       vector<vector<uint32_t>>& keyCount, vector<int> scAll, vector<int> ss);
     };
-}
-
-
+} // end namespace MxRec
 #endif // MX_REC_KEY_PROCESS_H
