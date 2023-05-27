@@ -8,7 +8,7 @@ from functools import reduce
 import tensorflow as tf
 
 from mx_rec.util.initialize import get_host_pipeline_ops, get_training_mode_channel_id, get_use_static, \
-    export_table_instances,insert_dangling_table
+    export_table_instances, insert_dangling_table
 from mx_rec.core.asc.feature_spec import FeatureSpec
 
 

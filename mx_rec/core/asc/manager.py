@@ -10,7 +10,7 @@ from mx_rec.util.constants import MxRecMode
 from mx_rec.util.initialize import get_rank_id, get_device_id, get_rank_size, set_asc_manager, \
     is_asc_manager_initialized, get_train_interval, get_eval_steps, get_prefetch_batch_number, \
     export_table_instances, export_feature_spec, get_if_load, get_training_mode_channel_id, get_use_static, \
-    get_use_hot, get_use_dynamic_expansion, export_optimizer,export_dangling_table
+    get_use_hot, get_use_dynamic_expansion, export_optimizer, export_dangling_table
 from mx_rec.core.asc.helper import find_dangling_table
 
 
