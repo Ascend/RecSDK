@@ -481,8 +481,8 @@ void KeyProcess::All2All(vector<int>& sc, int id, int channel, KeySendInfo& keyS
     auto rs = Count2Start(rc); // receive displays/offset 接受数据的起始偏移量
     all2AllInfoOut.keyRecv.resize(rs.back() + rc.back());
     EASY_BLOCK("all2all")
-    MPI_Alltoallv(keySendInfo.keySend.data(), sc.data(), ss.data(), MPI_INT64_T, all2AllInfoOut.keyRecv.data(), rc.data(),
-                  rs.data(), MPI_INT64_T, comm[channel][id]);
+    MPI_Alltoallv(keySendInfo.keySend.data(), sc.data(), ss.data(), MPI_INT64_T, all2AllInfoOut.keyRecv.data(),
+                  rc.data(), rs.data(), MPI_INT64_T, comm[channel][id]);
 
     all2AllInfoOut.countRecv.resize(rs.back() + rc.back());
     if (isWithFAAE) {

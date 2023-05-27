@@ -457,7 +457,6 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
                 auto all2all = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::ALL2ALL);
                 hdTransfer->Send(ALL2ALL, *all2all, channelId, embInfo.name);
             }
-
             if (embHashMap.HasFree(lookupKeys.size())) { // check free > next one batch
                 spdlog::warn(MGMT + "embName {}[{}]{},iBatch:{} freeSize not enough, {}", embInfo.name, channelId,
                              batchId, iBatch, lookupKeys.size());

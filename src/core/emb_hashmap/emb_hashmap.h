@@ -23,7 +23,8 @@ namespace MxRec {
 
         void Init(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos, bool ifLoad = false);
 
-        void Process(const string& embName, const std::vector<emb_key_t>& keys, size_t iBatch, vector<Tensor>& tmpDataOut);
+        void Process(const string& embName, const std::vector<emb_key_t>& keys, size_t iBatch,
+                     vector<Tensor>& tmpDataOut);
 
         void FindAndUpdateOffset(const string& embName, const vector<emb_key_t>& keys, size_t currentBatchId,
                                  size_t keepBatchId);
