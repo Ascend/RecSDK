@@ -199,7 +199,7 @@ public:
         EnqueueBatchData(std::vector<int>{batchId, batchQueueId}, timestamp, inputTensor, splits);
         TIME_PRINT(KEY_PROCESS "read batch cost: {}, elapsed from last:{}, batch[{}]:{}, "
                    "splits: {}, dataSize: {}, filedNum: {}, channelNames: {}, modifyGraph: {}",
-                   TO_MS(sw), TO_MS(staticSw),
+                duration_cast<milliseconds>((sw).elapsed()), duration_cast<milliseconds>((staticSw).elapsed()),
                    channelId, batchId, splits.size(), dataSize, fieldNum, channelNames, modifyGraph);
         staticSw.reset();
     }
@@ -427,8 +427,9 @@ public:
         EnqueueBatchData(batchId, batchQueueId, timestamp, inputTensor);
         TIME_PRINT("EnqueueBatchData TimeCost(ms):{}", tc.ElapsedMS());
 
-        TIME_PRINT(KEY_PROCESS "read batch cost: {}, elapsed from last:{}, batch[{}]:{}", TO_MS(sw),
-            TO_MS(staticSw), channelId, batchId);
+        TIME_PRINT(KEY_PROCESS
+        "read batch cost: {}, elapsed from last:{}, batch[{}]:{}", duration_cast<milliseconds>((sw).elapsed()),
+                duration_cast<milliseconds>((staticSw).elapsed()), channelId, batchId);
         staticSw.reset();
     }
 
@@ -603,7 +604,8 @@ public:
         for (int i { 0 }; i < restoreLen; ++i) {
             r(i) = i % lookupLen;
         }
-        spdlog::warn("dummy read batch cost: {},elapsed from last {}", TO_MS(sw), TO_MS(staticSw));
+        spdlog::warn("dummy read batch cost: {},elapsed from last {}", duration_cast<milliseconds>((sw).elapsed()),
+                     duration_cast<milliseconds>((staticSw).elapsed()));
         staticSw.reset();
     }
 
@@ -674,8 +676,10 @@ public:
                 floatDataIndex += floatList.value_size();
             }
         }
-        spdlog::info("ReadRaw sampleId:{} cost:{} copy:{} , elapsed from last:{}", sampleId++, TO_MS(sw),
-                     TO_MS(sw_copy), TO_MS(staticReadRaw));
+        spdlog::info("ReadRaw sampleId:{} cost:{} copy:{} , elapsed from last:{}", sampleId++,
+                     duration_cast<milliseconds>((sw).elapsed()),
+                     duration_cast<milliseconds>((sw_copy).elapsed()),
+                     duration_cast<milliseconds>((staticReadRaw).elapsed()));
         staticReadRaw.reset();
     }
 
@@ -727,8 +731,9 @@ public:
         auto input = inputTensor.flat<int64>();
         int32_t batchId = input(0);
 
-        spdlog::info("ReadRawDummy cost:{}, elapsed from last:{} , batchId = {}", TO_MS(sw), TO_MS(staticReadRaw),
-                     batchId);
+        spdlog::info("ReadRawDummy cost:{}, elapsed from last:{} , batchId = {}",
+                     duration_cast<milliseconds>((sw).elapsed()),
+                     duration_cast<milliseconds>((staticReadRaw).elapsed()), batchId);
         staticReadRaw.reset();
     }
 

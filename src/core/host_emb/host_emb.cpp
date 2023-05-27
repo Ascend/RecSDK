@@ -89,7 +89,7 @@ void HostEmb::Join()
         t->join();
     }
     procThread.clear();
-    spdlog::info(HOSTEMB + "hostemb end join, cost:{}", TO_MS(sw));
+    spdlog::info(HOSTEMB + "hostemb end join, cost:{}", duration_cast<milliseconds>((sw).elapsed()));
 }
 
 /*

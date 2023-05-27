@@ -43,7 +43,6 @@
 #endif
 
 namespace MxRec {
-#define TO_MS(arg) duration_cast<milliseconds>((arg).elapsed())
 #define INFO_PTR shared_ptr
 #define TIME_PRINT spdlog::info
 #define MGMT_CPY_THREADS 4

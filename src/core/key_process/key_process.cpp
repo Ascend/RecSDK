@@ -206,7 +206,7 @@ void KeyProcess::KeyProcessTask(const int channel, const int id) // thread id [0
                 spdlog::info(KEY_PROCESS "batch is nullptr");
                 break;
             }
-            auto getBatchTime = TO_MS(sw);
+            auto getBatchTime = duration_cast<milliseconds>((sw).elapsed());
             sw.reset();
 
             if (unique == nullptr || preSendCount != embInfos[batch->name].sendCount) {
@@ -226,7 +226,8 @@ void KeyProcess::KeyProcessTask(const int channel, const int id) // thread id [0
             }
             TIME_PRINT("getAndProcesTC TimeCost(ms):{}", getAndProcesTC.ElapsedMS());
             spdlog::info(KEY_PROCESS "key process cost:{}, get data time:{} batch {}[{}]:{} ",
-                         TO_MS(sw), getBatchTime, batch->name, batch->channel, batch->batchId);
+                    duration_cast<milliseconds>(
+                            (sw).elapsed()), getBatchTime, batch->name, batch->channel, batch->batchId);
             free(batch->tensorAddr);
             batchQueue->PutDirty(move(batch));
         }
@@ -750,7 +751,7 @@ vector<int> KeyProcess::GetScAll(const vector<int>& keyScLocal, int commId, int 
         throw EndRunError("GetScAll end run.");
     }
     EASY_END_BLOCK;
-    spdlog::debug(KEY_PROCESS "barrier time:{}", TO_MS(sw));
+    spdlog::debug(KEY_PROCESS "barrier time:{}", duration_cast<milliseconds>((sw).elapsed()));
     // allgather keyScLocal(key all2all keyScLocal = device all2all rc)
     MPI_Allgather(keyScLocal.data(), rankInfo.rankSize, MPI_INT,
                   scAll.data(), rankInfo.rankSize, MPI_INT, comm[channel][commId]);
