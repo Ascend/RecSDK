@@ -83,6 +83,8 @@ namespace MxRec {
 
         bool ParseKeys(int channelId, int& batchId);
 
+        bool ProcessEmbInfo(const std::string& embName, int& batchId, int channelId, int iBatch, bool& remainBatch);
+
         void EmbHDTrans(int channelId, int batchId);
 
         void Evict();
