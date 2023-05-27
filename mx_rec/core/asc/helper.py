@@ -149,7 +149,6 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
         dangling_tables = find_dangling_table(table_names)
         logging.info(f"In insert found dangling table(s): {dangling_tables} "
                          f"which does not need to be provided to the EmbInfo.")
-            # table_names.remove(table_name)
 
         def insert_fn_for_arg_indexes(*args):
             insert_tensors = get_target_tensors_with_args_indexes(args_index_list)
