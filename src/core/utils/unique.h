@@ -647,7 +647,7 @@ public:
 
         int32_t *partBeginPtr = beginPtr;
         int32_t *partEndPtr =
-            reinterpret_cast<int32_t *>(CACHE_LINE_ALIGN(reinterpret_cast<uintptr_t>(partBeginPtr + partSize)));
+                reinterpret_cast<int32_t *>(((reinterpret_cast<uintptr_t>(partBeginPtr + partSize)) + 63ul) & ~63ul);
 
         if (uniqueFlag.useStatic) {
             for (int i = 0; i < groupMethod_.GroupCount(); i++) {
