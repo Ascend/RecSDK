@@ -64,7 +64,7 @@ struct UniqueThreadNum {
     int maxThread;
 };
 
-namespace SysytemConst{
+namespace SysytemConst {
     const int LEVEL1_CACHE = 64;
     const int DEFAULT_DEDUPLICATION_RATE = 4;
     const int DEDUPLICATION_RATE = 2;
@@ -264,7 +264,7 @@ public:
             free(table_);
             bucketCount_ = newBucketCountPowerOf2;
             bucketCountMask_ = bucketCount_ - 1;
-            table_ = reinterpret_cast<Meta<N> *>(aligned_alloc(64, sizeof(Meta<N>) * bucketCount_));
+            table_ = reinterpret_cast<Meta<N> *>(aligned_alloc(LEVEL1_CACHE, sizeof(Meta<N>) * bucketCount_));
         }
         bzero(table_, sizeof(Meta<N>) * bucketCount_);
         overflow_.clear();
@@ -280,7 +280,8 @@ public:
             // sake.
             uint64_t shardedTableSize = newBucketCountPowerOf2 * N * groupCount_;
             int largeCount = 0;
-            while (shardedTableSize > stats_.totalUniques * SysytemConst::DEFAULT_DEDUPLICATION_RATE && largeCount_ != 1) {
+            while (shardedTableSize > stats_.totalUniques * SysytemConst::DEFAULT_DEDUPLICATION_RATE &&
+                   largeCount_ != 1) {
                 // too large
                 newBucketCountPowerOf2 >>= 1;
                 shardedTableSize >>= 1;
@@ -312,7 +313,6 @@ public:
     }
 
     // Warning: functions below are not thread safe!
-    //
     // Return the unique values
     // Also update the hash-order base of each bucket
     std::vector<uint64_t> Unique()
@@ -490,8 +490,6 @@ private:
     }
 }; // Dedup
 
-#define CACHE_LINE_ALIGN(size) (((size) + 63ul) & ~63ul)
-
 class OneSimpleGroupMethod {
 public:
     inline int GroupCount()
@@ -641,19 +639,20 @@ public:
         baseVector.push_back(base);
         base += total;
 
-        partSize = CACHE_LINE_ALIGN(partSize);
+        partSize = ((partSize) + 63ul) & ~63ul;
 
         int32_t *beginPtr = output;
         int32_t *finishPtr = beginPtr + inputSize;
 
         int32_t *partBeginPtr = beginPtr;
         int32_t *partEndPtr =
-            reinterpret_cast<int32_t *>(CACHE_LINE_ALIGN(reinterpret_cast<uintptr_t>(partBeginPtr + partSize)));
+            reinterpret_cast<int32_t *>(((reinterpret_cast<uintptr_t>(partBeginPtr + partSize)) + 63ul) & ~63ul);
 
-        if(uniqueFlag.useStatic){
+        if (uniqueFlag.useStatic) {
             for (int i = 0; i < groupMethod_.GroupCount(); i++) {
-                if (send_cnt_ < uniqueSizeVector[i]){
-                    spdlog::error("sendCnt should not be smaller than uniqueSize, sendCnt {}, uniqueSize {}", send_cnt_, uniqueSizeVector[i]);
+                if (send_cnt_ < uniqueSizeVector[i]) {
+                    spdlog::error("sendCnt should not be smaller than uniqueSize, sendCnt {}, uniqueSize {}", send_cnt_,
+                                  uniqueSizeVector[i]);
                     throw SendCntTooSmallError();
                 }
             }
@@ -680,7 +679,8 @@ public:
                 // should be +/-1 off.
                 const int numOfGroupsInShard = groupMethod_.GroupCount();
                 tasks.push_back([this, input, &baseVector, beginPtr, partBeginPtr, partEndPtr, numOfGroupsInShard,
-                    totalUniqueSize, useStatic, isInt64, useHot, offset, hotMap, hotPos, hotPosMap]() -> TaskReturnType {
+                                        totalUniqueSize, useStatic, isInt64, useHot, offset, hotMap, hotPos,
+                                        hotPosMap]() -> TaskReturnType {
                     for (int32_t *ptr = partBeginPtr; ptr < partEndPtr; ++ptr) {
                         auto val = isInt64 ? ((int64_t *)input)[ptr - beginPtr] : ((int32_t *)input)[ptr - beginPtr];
                         auto group = groupMethod_.GroupId(val);
@@ -698,14 +698,16 @@ public:
             pool->SyncRun(tasks);
         }
 
-
-        TileAndFill(groupMethod_.GroupCount(), uniqueVector, uniqueSize, uniqueIds, idCount, idCountFill, useStatic, uniqueSizeVector);
+        TileAndFill(groupMethod_.GroupCount(), uniqueVector, uniqueSize, uniqueIds, idCount, idCountFill, useStatic,
+                    uniqueSizeVector);
 
         return 0;
     }
 
-    void ComputeRestore(bool useHot, int offset,const map<int64_t, int> &hotMap, int *hotPos,const map<int64_t, int> &hotPosMap,
-                        int32_t *ptr, int64_t val, uint32_t fillOffset) const {
+    void ComputeRestore(bool useHot, int offset, const map<int64_t, int> &hotMap, int *hotPos,
+                        const map<int64_t, int> &hotPosMap,
+                        int32_t *ptr, int64_t val, uint32_t fillOffset) const
+                        {
         auto hot = hotPosMap.find(val);
         if (!useHot) {
             *ptr = fillOffset;
@@ -720,16 +722,20 @@ public:
     }
 
     uint32_t GetFillOffset(bool useStatic, const vector<uint32_t> &baseVector, const vector<size_t> &totalUniqueSize,
-                           int64_t val, int32_t group) {
+                           int64_t val, int32_t group)
+                           {
         if (!useStatic) {
             return dedupShards_[group]->GetReplaceOffsetUnsafe(val) + baseVector[0];
         } else {
-            return dedupShards_[group]->GetReplaceOffsetUnsafe(val) + baseVector[0] + send_cnt_ * group - totalUniqueSize[group];
+            return dedupShards_[group]->GetReplaceOffsetUnsafe(val) + baseVector[0] + send_cnt_ * group -
+                   totalUniqueSize[group];
         }
     }
 
-    void TileAndFill(int groupCount, const int64_t *uniqueVector, int32_t *uniqueSize, int64_t *uniqueIds, const int32_t *idCount,
-                     int32_t *idCountFill, bool useStatic, const std::vector<int64_t> &uniqueSizeVector) const {
+    void TileAndFill(int groupCount, const int64_t *uniqueVector, int32_t *uniqueSize, int64_t *uniqueIds,
+                     const int32_t *idCount, int32_t *idCountFill, bool useStatic,
+                     const std::vector <int64_t> &uniqueSizeVector) const
+                     {
         int start = 0;
         int index = 0;
 
@@ -748,7 +754,7 @@ public:
                 size_t mem_size = uniqueSizeVector[i] * sizeof(int64_t);
                 auto rc = memcpy_s(uniqueIds + start, mem_size, uniqueVector + index, mem_size);
                 if (rc != 0) {
-                    spdlog::error("[TileAndFill/uniqueIds] memcpy_s failded... mem_size: {}",mem_size);
+                    spdlog::error("[TileAndFill/uniqueIds] memcpy_s failded... mem_size: {}", mem_size);
                     return;
                 }
                 mem_size = uniqueSizeVector[i] * sizeof(int32_t);
