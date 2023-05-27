@@ -192,8 +192,11 @@ void KeyProcess::LoadSaveUnlock()
 void KeyProcess::KeyProcessTask(int channel, int id) // thread id [0, KEY_PROCESS_THREAD-1]
 {
     unique_ptr<emb_batch_t> batch;
-    ShardedDedup<GroupMethod, UNIQUE_BUCKET> *unique = nullptr;
-    int preSendCount = 0;
+    GroupMethod groupMethod;
+    groupMethod.SetGroupCount(rankInfo.rankSize);
+    shared_ptr<sharded_dedup> unique;
+    map<int, shared_ptr<sharded_dedup>> uniquePtrMap;
+
     spdlog::stopwatch sw;
     try {
         while (true) {
@@ -209,15 +212,18 @@ void KeyProcess::KeyProcessTask(int channel, int id) // thread id [0, KEY_PROCES
             auto getBatchTime = TO_MS(sw);
             sw.reset();
 
-            if (unique == nullptr || preSendCount != embInfos[batch->name].sendCount) {
-                GroupMethod groupMethod;
-                groupMethod.SetGroupCount(rankInfo.rankSize);
-                auto sendCountSize = GetSendCount(batch->name, batch->channelName, batch->modifyGraph);
-                unique = new ShardedDedup<GroupMethod, UNIQUE_BUCKET>(groupMethod, batch->batchSize, sendCountSize);
-            } else {
+            auto sendCountSize = GetSendCount(batch->name, batch->channelName, batch->modifyGraph);
+            shared_ptr<sharded_dedup> uniquePtr;
+            if (uniquePtrMap.find(sendCountSize) == uniquePtrMap.end()) {
+                uniquePtr.reset(new sharded_dedup(groupMethod, batch->batchSize, sendCountSize));
+                uniquePtrMap.insert(std::make_pair(sendCountSize, uniquePtr));
+            }
+            unique = uniquePtrMap[sendCountSize];
+
+            if (unique != nullptr) {
                 unique->StartNewRound();
             }
-            preSendCount = embInfos[batch->name].sendCount;
+
             auto batchQueue = SingletonQueue<emb_batch_t>::getInstances(id + KEY_PROCESS_THREAD * batch->channel);
             if (!KeyProcessTaskHelper(batch, unique, channel, id, sw)) {
                 free(batch->tensorAddr);
@@ -230,14 +236,13 @@ void KeyProcess::KeyProcessTask(int channel, int id) // thread id [0, KEY_PROCES
             free(batch->tensorAddr);
             batchQueue->PutDirty(move(batch));
         }
-        delete unique;
     } catch (const EndRunError &e) {
         spdlog::debug(KEY_PROCESS "abort run: {}", e.what());
     }
     spdlog::info(KEY_PROCESS "KeyProcessTask exit. rank:{} thread:{}, channel:{}", rankInfo.rankId, id, channel);
 }
 
-bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t> &batch, sharded_dedup unique,
+bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t> &batch, shared_ptr<sharded_dedup> unique,
                                       int channel, int id, spdlog::stopwatch &sw)
 {
     // tuple for keyRec restore hotPos scAll countRecv
@@ -402,7 +407,8 @@ size_t KeyProcess::GetKeySize(const unique_ptr<emb_batch_t> &batch)
     return size;
 }
 
-auto KeyProcess::ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &batch, sharded_dedup unique, int id)
+auto KeyProcess::ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &batch,
+                                               shared_ptr<sharded_dedup> unique, int id)
     -> tuple<keys_t, vector<int32_t>, vector<int32_t>, vector<int>, vector<uint32_t>>
 {
     EASY_FUNCTION(profiler::colors::Purple)
