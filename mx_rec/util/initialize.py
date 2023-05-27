@@ -234,9 +234,8 @@ class ConfigInitializer:
         return self._training_mode_channel_dict.get(is_training)
 
     def insert_dangling_table(self, name):
-        if name in  self._dangling_table:
-            return
-        self._dangling_table.append(name)
+        if name not in self._dangling_table:
+            self._dangling_table.append(name)
 
     @property
     def dangling_table(self):

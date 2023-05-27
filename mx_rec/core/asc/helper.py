@@ -48,7 +48,7 @@ def create_asc_insert_func_with_acg(args_index_list, feature_counts, table_names
 def find_dangling_table(table_names):
     def check_tensor(table_name, table_reachable_tensor):
         the_op = table_reachable_tensor.op
-        logging.info(f"** the_op:{the_op.outputs} {the_op.name} {the_op.type}**")
+        logging.info(f"** table_reachable_op:{the_op.outputs} {the_op.name} {the_op.type}**")
 
         if table_reachable_tensor.op.type == 'ApplyAdam':
             return True
@@ -147,10 +147,9 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
             raise ValueError("Please config 'args_index_list', 'feature_counts' and 'table_names' at the same time.")
 
         dangling_tables = find_dangling_table(table_names)
-        for table_name in dangling_tables:
-            logging.info(f"In insert found dangling table: {table_name} "
+        logging.info(f"In insert found dangling table(s): {dangling_tables} "
                          f"which does not need to be provided to the EmbInfo.")
-            table_names.remove(table_name)
+            # table_names.remove(table_name)
 
         def insert_fn_for_arg_indexes(*args):
             insert_tensors = get_target_tensors_with_args_indexes(args_index_list)
@@ -168,7 +167,8 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
                              input_dict={"is_training": is_training, "dump_graph": dump_graph,
                                          "timestamp": FeatureSpec.use_timestamp(is_training),
                                          "feature_spec_names": None,
-                                         "auto_change_graph": True})
+                                         "auto_change_graph": True,
+                                         "dangling_tables":dangling_tables})
 
         insert_fn = insert_fn_for_arg_indexes
 
@@ -277,9 +277,13 @@ def do_insert(args, insert_tensors, splits, table_names, input_dict):
     timestamp = input_dict["timestamp"]
     feature_spec_names = input_dict["feature_spec_names"]
     auto_change_graph = input_dict["auto_change_graph"]
+    dangling_tables = input_dict["dangling_tables"]
 
     new_insert_tensors, new_splits, new_table_names = [], [], []
     for idx, table_name in enumerate(table_names):
+        if table_name in dangling_tables:
+            logging.info(f"do_insert skip table: {table_name}")
+            continue
         new_insert_tensors.append(insert_tensors[idx])
         new_splits.append(splits[idx])
         new_table_names.append(table_names[idx])
