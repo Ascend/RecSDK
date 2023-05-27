@@ -250,13 +250,15 @@ public:
         if (inputTensor.dtype() == tensorflow::DT_INT32 || inputTensor.dtype() == tensorflow::DT_INT32_REF) {
             batchData->isInt64 = false;
             memSize = len * sizeof(int32_t);
-            src = reinterpret_cast<void *>(reinterpret_cast<int32_t *>(const_cast<char *>(inputTensor.tensor_data().
-                    data())) + offset);
+            src = reinterpret_cast<void *>(
+                    reinterpret_cast<int32_t *>(const_cast<string *>((string *)(inputTensor.tensor_data().data()))) +
+                    offset);
         } else {
             batchData->isInt64 = true;
             memSize = len * sizeof(int64_t);
-            src = reinterpret_cast<void *>(reinterpret_cast<int64_t *>(const_cast<char *>(inputTensor.tensor_data().
-                    data())) + offset);
+            src = reinterpret_cast<void *>(
+                    reinterpret_cast<int64_t *>(const_cast<string *>((string *)(inputTensor.tensor_data().
+                            data()))) + offset);
         }
         batchData->tensorAddr = malloc(memSize);
         if (batchData->tensorAddr == nullptr) {
@@ -482,13 +484,15 @@ public:
         if (inputTensor.dtype() == tensorflow::DT_INT32 || inputTensor.dtype() == tensorflow::DT_INT32_REF) {
             batchData->isInt64 = false;
             memSize = len * sizeof(int32_t);
-            src = reinterpret_cast<void *>(reinterpret_cast<int32_t *>(const_cast<char *>(inputTensor.tensor_data()
-                    .data())) + offset);
+            src = reinterpret_cast<void *>(
+                    reinterpret_cast<int32_t *>(const_cast<string *>((string *)(inputTensor.tensor_data().data()))) +
+                    offset);
         } else {
             batchData->isInt64 = true;
             memSize = len * sizeof(int64_t);
-            src = reinterpret_cast<void *>(reinterpret_cast<int64_t *>(const_cast<char *>(inputTensor.tensor_data()
-                    .data())) + offset);
+            src = reinterpret_cast<void *>(
+                    reinterpret_cast<int64_t *>(const_cast<string *>((string *)(inputTensor.tensor_data().data()))) +
+                    offset);
         }
         batchData->tensorAddr = malloc(memSize);
         if (batchData->tensorAddr == nullptr) {
