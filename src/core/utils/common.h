@@ -395,9 +395,6 @@ struct BatchTask {
     };
 
     struct All2AllInfo {
-        All2AllInfo() = default;
-        All2AllInfo(keys_t keyRecv, vector<int> scAll, vector<uint32_t> countRecv);
-
         keys_t keyRecv;
         vector<int> scAll;
         vector<uint32_t> countRecv;
