@@ -30,8 +30,9 @@ def generate_table_info_list():
     optimizer = export_optimizer()
     # generate table info
     dangling_table = export_dangling_table()
-    # dangling_table = find_dangling_table([table_instance.table_name
-    #                                       for _, table_instance in export_table_instances().items()])
+    if not dangling_table:
+        dangling_table = find_dangling_table([table_instance.table_name
+                                           for _, table_instance in export_table_instances().items()])
     for _, table_instance in export_table_instances().items():
         # When dynamic expansion mode, ext_emb_size is set by optimizer
         if optimizer is not None:
@@ -192,6 +193,5 @@ def start_asc_pipeline():
     threshold_list = generate_threshold_list()
     if not table_info_list:
         logging.warning(f"table_info_list is empty")
-
     if not is_asc_manager_initialized() and table_info_list:
         initialize_emb_cache(table_info_list, threshold_list)

@@ -47,11 +47,15 @@ def create_asc_insert_func_with_acg(args_index_list, feature_counts, table_names
 
 def find_dangling_table(table_names):
     def check_tensor(table_name, table_reachable_tensor):
-        if ''.join(["/update_", table_name]) in table_reachable_tensor.name \
-                or table_reachable_tensor.op.type == 'ApplyAdam':
+        the_op = table_reachable_tensor.op
+        logging.info(f"** the_op:{the_op.outputs} {the_op.name} {the_op.type}**")
+
+        if table_reachable_tensor.op.type == 'ApplyAdam':
             return True
-        if 'gradients/' in table_reachable_tensor.name:
+
+        if 'gradients/' in table_reachable_tensor.name and table_reachable_tensor.op.type == 'Identity':
             return True
+
         return False
 
     def find_table_op(table_name, the_op, table_lookup_op, table_reachable_tensor):
@@ -67,13 +71,13 @@ def find_dangling_table(table_names):
 
     table_lookup_op = {}
     table_reachable_tensor = {}
+
     for the_op in op_list:
-        logging.info(f"** the_op: {the_op}**")
         for table_name in table_names:
             find_table_op(table_name, the_op, table_lookup_op, table_reachable_tensor)
 
     logging.info(f"*********** find tables: {table_lookup_op}***********")
-    logging.info(f"looking for dangling table")
+    logging.info(f"opTypes{[x for x in opTypes]}")
     dangling_table = []
 
     def extend(op_list, tensor, spread_tensors):
@@ -128,17 +132,10 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
             }
             get_target_tensors_with_feature_specs(tgt_key_specs, data_src, is_training, read_emb_key_inputs_dict)
             logging.debug(f"do_insert with spec for {read_emb_key_inputs_dict['table_names']}")
-            table_names = read_emb_key_inputs_dict["table_names"]
-            logging.info(f"all table_names: {table_names}")
-            dangling_tables = find_dangling_table(table_names)
-            for table_name in dangling_tables:
-                logging.info(f"In insert found dangling table: {table_name} "
-                     f"which does not need to be provided to the EmbInfo.")
-                table_names.remove(table_name)
             return do_insert(args,
                              insert_tensors=read_emb_key_inputs_dict["insert_tensors"],
                              splits=read_emb_key_inputs_dict["splits"],
-                             table_names=table_names,
+                             table_names=read_emb_key_inputs_dict["table_names"],
                              input_dict={"is_training": is_training, "dump_graph": dump_graph,
                                          "timestamp": FeatureSpec.use_timestamp(is_training),
                                          "feature_spec_names": read_emb_key_inputs_dict["feature_spec_names"],
@@ -149,13 +146,12 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
     else:
         if feature_counts is None or table_names is None:
             raise ValueError("Please config 'args_index_list', 'feature_counts' and 'table_names' at the same time.")
-        logging.info(f"all table_names: {table_names}")
+
         dangling_tables = find_dangling_table(table_names)
         for table_name in dangling_tables:
             logging.info(f"In insert found dangling table: {table_name} "
                          f"which does not need to be provided to the EmbInfo.")
             table_names.remove(table_name)
-        logging.info(f"used table_names: {table_names}")
 
         def insert_fn_for_arg_indexes(*args):
             insert_tensors = get_target_tensors_with_args_indexes(args_index_list)
