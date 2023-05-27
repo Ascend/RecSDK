@@ -43,7 +43,6 @@
 #endif
 
 namespace MxRec {
-#define ASSERT(arg) assert(arg)
 #define TO_MS(arg) duration_cast<milliseconds>((arg).elapsed())
 #define INFO_PTR shared_ptr
 #define TIME_PRINT spdlog::info
@@ -268,7 +267,7 @@ struct BatchTask {
         if (randomInfo.len == 0) {
             return;
         }
-        ASSERT(static_cast<int>(vecData.size()) >= randomInfo.len + randomInfo.start);
+        assert(static_cast<int>(vecData.size()) >= randomInfo.len + randomInfo.start);
         std::uniform_real_distribution<float> distribution(min, max);
         std::generate_n(vecData.begin() + randomInfo.start, randomInfo.len, [&]() { return distribution(generator); });
     }

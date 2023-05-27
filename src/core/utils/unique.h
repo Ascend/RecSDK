@@ -264,7 +264,7 @@ public:
             free(table_);
             bucketCount_ = newBucketCountPowerOf2;
             bucketCountMask_ = bucketCount_ - 1;
-            table_ = reinterpret_cast<Meta<N> *>(aligned_alloc(LEVEL1_CACHE, sizeof(Meta<N>) * bucketCount_));
+            table_ = reinterpret_cast<Meta<N> *>(aligned_alloc(SysytemConst::LEVEL1_CACHE, sizeof(Meta<N>) * bucketCount_));
         }
         bzero(table_, sizeof(Meta<N>) * bucketCount_);
         overflow_.clear();
