@@ -9,11 +9,11 @@
 #define MX_REC_EMB_MGMT_H
 
 #include <vector>
-#include "absl/container/flat_hash_map.h"
 #include <memory>
 #include <array>
 #include <csignal>
 #include <pthread.h>
+#include "absl/container/flat_hash_map.h"
 #include "utils/common.h"
 #include "utils/singleton.h"
 #include "utils/task_queue.h"
