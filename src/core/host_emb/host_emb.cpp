@@ -172,15 +172,15 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
  * missingKeysHostPos为host侧需要发送的emb的位置
  */
 void HostEmb::GetH2DEmb(const vector<size_t>& missingKeysHostPos, const string& embName,
-                        vector<Tensor>& h2d_emb)
+                        vector<Tensor>& h2dEmbOut)
 {
     EASY_FUNCTION()
     const auto& emb = hostEmbs[embName];
     const int embeddingSize = emb.hostEmbInfo.extEmbeddingSize;
-    h2d_emb.emplace_back(Tensor(tensorflow::DT_FLOAT, {
+    h2dEmbOut.emplace_back(Tensor(tensorflow::DT_FLOAT, {
         int(missingKeysHostPos.size()), embeddingSize
     }));
-    auto& tmpTensor = h2d_emb.back();
+    auto& tmpTensor = h2dEmbOut.back();
     auto tmpData = tmpTensor.flat<float>();
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) shared(missingKeysHostPos, emb, tmpData)
     for (size_t i = 0; i < missingKeysHostPos.size(); i++) {

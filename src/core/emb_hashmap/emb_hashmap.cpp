@@ -38,7 +38,7 @@ void EmbHashMap::Init(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
 }
 
 void EmbHashMap::Process(const string& embName, const vector<emb_key_t>& keys, size_t iBatch,
-                         vector<Tensor>& tmpData)
+                         vector<Tensor>& tmpDataOut)
 {
     EASY_FUNCTION(profiler::colors::Pink)
     auto keepBatch = swapId - iBatch;
@@ -48,17 +48,17 @@ void EmbHashMap::Process(const string& embName, const vector<emb_key_t>& keys, s
 
     auto& embHashMap = embHashMaps.at(embName);
     auto lookUpVecSize = static_cast<int>(embHashMap.lookUpVec.size());
-    tmpData.emplace_back(Tensor(tensorflow::DT_INT32, { lookUpVecSize }));
+    tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { lookUpVecSize }));
 
-    auto lookupTensorData = tmpData.back().flat<int32>();
+    auto lookupTensorData = tmpDataOut.back().flat<int32>();
     for (int i = 0; i < lookUpVecSize; i++) {
         lookupTensorData(i) = static_cast<int32_t>(embHashMap.lookUpVec[i]);
     }
     spdlog::trace("lookupTensor, {}", embHashMap.lookUpVec);
     auto swapSize = static_cast<int>(embHashMap.swapPos.size());
-    tmpData.emplace_back(Tensor(tensorflow::DT_INT32, { swapSize }));
+    tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { swapSize }));
 
-    auto swapTensorData = tmpData.back().flat<int32>();
+    auto swapTensorData = tmpDataOut.back().flat<int32>();
     for (int i = 0; i < swapSize; i++) {
         swapTensorData(i) = static_cast<int>(embHashMap.swapPos[i]);
     }
@@ -69,8 +69,8 @@ void EmbHashMap::Process(const string& embName, const vector<emb_key_t>& keys, s
     embHashMap.swapPos.clear();
     spdlog::info("current dev emb usage:{}-{}/[{}+{}]", embName, embHashMap.maxOffset, embHashMap.devVocabSize,
                  embHashMap.hostVocabSize);
-    tmpData.emplace_back(Tensor(tensorflow::DT_INT32, { 1 }));
-    auto swapLen = tmpData.back().flat<int32>();
+    tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { 1 }));
+    auto swapLen = tmpDataOut.back().flat<int32>();
     swapLen(0) = swapSize;
     EASY_END_BLOCK
 }

@@ -127,12 +127,12 @@ namespace MxRec {
                               vector<keys_t>& splitKeys) -> tuple<keys_t, vector<int>, vector<int>>;
 
         void ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &batch, sharded_dedup unique, int id,
-                                           UniqueInfo& uniqueInfo);
+                                           UniqueInfo& uniqueInfoOut);
 
         size_t GetKeySize(const unique_ptr<emb_batch_t> &batch);
 
         void All2All(vector<int>& sc, int id, int channel, KeySendInfo& keySendInfo,
-                     All2AllInfo& all2AllInfo);
+                     All2AllInfo& all2AllInfoOut);
 
         auto HashSplit(const unique_ptr<emb_batch_t>& batch) const -> tuple<vector<keys_t>, vector<int32_t>>;
 
@@ -140,7 +140,7 @@ namespace MxRec {
 
         auto HashSplit_withFAAE(const unique_ptr<emb_batch_t>& batch) const
         -> tuple<vector<keys_t>, vector<int32_t>, vector<vector<uint32_t>>>;
-        void GetScAll(const vector<int>& keyScLocal, int commId, int channel, vector<int> &scAll) const;
+        void GetScAll(const vector<int>& keyScLocal, int commId, int channel, vector<int> &scAllOut) const;
 
         void Key2Offset(const emb_name_t& embName, keys_t& splitKey);
 
