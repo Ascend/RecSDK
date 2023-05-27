@@ -159,15 +159,27 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
             for insert_tensor in insert_tensors:
                 split = reduce(lambda x, y: x * y, insert_tensor.shape.as_list())
                 splits.append(split if split is not None else tf.math.reduce_prod(tf.shape(insert_tensor)))
+
+            new_insert_tensors, new_splits, new_table_names = [], [], []
+            for idx, table_name in enumerate(table_names):
+                if table_name in dangling_tables:
+                    logging.info(f"do_insert skip table: {table_name}")
+                    continue
+                new_insert_tensors.append(insert_tensors[idx])
+                new_splits.append(splits[idx])
+                new_table_names.append(table_names[idx])
+
+            if FeatureSpec.use_timestamp(is_training):
+                new_insert_tensors = insert_tensors
+
             return do_insert(args,
-                             insert_tensors=insert_tensors,
-                             splits=splits,
-                             table_names=table_names,
+                             insert_tensors=new_insert_tensors,
+                             splits=new_splits,
+                             table_names=new_table_names,
                              input_dict={"is_training": is_training, "dump_graph": dump_graph,
                                          "timestamp": FeatureSpec.use_timestamp(is_training),
                                          "feature_spec_names": None,
-                                         "auto_change_graph": True,
-                                         "dangling_tables":dangling_tables})
+                                         "auto_change_graph": True})
 
         insert_fn = insert_fn_for_arg_indexes
 
@@ -276,24 +288,11 @@ def do_insert(args, insert_tensors, splits, table_names, input_dict):
     timestamp = input_dict["timestamp"]
     feature_spec_names = input_dict["feature_spec_names"]
     auto_change_graph = input_dict["auto_change_graph"]
-    dangling_tables = input_dict["dangling_tables"]
-
-    new_insert_tensors, new_splits, new_table_names = [], [], []
-    for idx, table_name in enumerate(table_names):
-        if table_name in dangling_tables:
-            logging.info(f"do_insert skip table: {table_name}")
-            continue
-        new_insert_tensors.append(insert_tensors[idx])
-        new_splits.append(splits[idx])
-        new_table_names.append(table_names[idx])
-
-    if timestamp:
-        new_insert_tensors = insert_tensors
 
     pipeline_op = \
-        send_feature_id_request_async(feature_id_list=new_insert_tensors,
-                                      split_list=new_splits,
-                                      table_name_list=new_table_names,
+        send_feature_id_request_async(feature_id_list=insert_tensors,
+                                      split_list=splits,
+                                      table_name_list=table_names,
                                       input_dict={"is_training": is_training,
                                                   "timestamp": timestamp,
                                                   "feature_spec_names": feature_spec_names,
