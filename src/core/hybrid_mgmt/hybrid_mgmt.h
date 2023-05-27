@@ -83,6 +83,8 @@ namespace MxRec {
 
         bool ParseKeys(int channelId, int& batchId);
 
+        bool getResult(int channelId, int& batchId, int start, int iBatch, TimeCost parseKeyTC);
+
         void EmbHDTrans(const int channelId, const int batchId);
 
         void Evict();

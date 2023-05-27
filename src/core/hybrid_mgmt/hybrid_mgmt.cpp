@@ -475,6 +475,11 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
             break;
         }
     }
+    return getResult(channelId, batchId, start, iBatch, parseKeyTC);
+}
+
+bool HybridMgmt::getResult(int channelId, int& batchId, int start, int iBatch, TimeCost parseKeyTC)
+{
     if (!isRunning) {
         return false;
     }
