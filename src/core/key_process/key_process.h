@@ -88,7 +88,8 @@ namespace MxRec {
         void EvictKeys(const string& embName, const vector<emb_key_t>& keys);
 
         bool isRunning { false };
-        inline bool hasEmbName(const string& emb_name ){
+        inline bool hasEmbName(const string& emb_name )
+        {
             return embInfos.find(emb_name) != embInfos.end();
         };
     GTEST_PRIVATE:

@@ -204,13 +204,14 @@ public:
         staticSw.reset();
     }
 
-    void CheckEmbTables(){
+    void CheckEmbTables()
+    {
         auto keyProcess = Singleton<KeyProcess>::GetInstance();
         for (size_t i = 0; i < embNames.size(); ++i) {
             if (!keyProcess->hasEmbName(embNames.at(i))) {
                 spdlog::info("ReadEmbKeyV2Dynamic not found emb_name:{} {}", i, embNames.at(i));
                 tableUsed.push_back(false);
-            }else{
+            } else {
                 tableUsed.push_back(true);
             }
         }
@@ -219,7 +220,7 @@ public:
     void EnqueueBatchData(std::vector<int> ids, time_t timestamp,
                           const Tensor& inputTensor, const TTypes<int32>::ConstFlat& splits)
     {
-        if(tableUsed.empty()){
+        if (tableUsed.empty()) {
             CheckEmbTables();
         }
         auto queue = SingletonQueue<emb_batch_t>::getInstances(ids[1]);
@@ -228,7 +229,7 @@ public:
             offset += 1; // 前面8个字节是unix时间戳
         }
         for (int i = 0; i < splits.size(); ++i) {
-            if(!tableUsed.at(i)){
+            if (!tableUsed.at(i)) {
                 offset += splits(i);
                 continue;
             }
@@ -453,13 +454,14 @@ public:
         staticSw.reset();
     }
 
-    void CheckEmbTables(){
+    void CheckEmbTables()
+    {
         auto keyProcess = Singleton<KeyProcess>::GetInstance();
         for (size_t i = 0; i < splits.size(); ++i) {
             if (!keyProcess->hasEmbName(embNames.at(i))) {
                 spdlog::info("ReadEmbKeyV2 not found emb_name:{} {}", i, embNames.at(i));
                 tableUsed.push_back(false);
-            }else{
+            } else {
                 tableUsed.push_back(true);
             }
         }
@@ -467,7 +469,7 @@ public:
 
     int EnqueueBatchData(int batchId, int batchQueueId, time_t timestamp, const Tensor& inputTensor)
     {
-        if(tableUsed.empty()){
+        if (tableUsed.empty()) {
             CheckEmbTables();
         }
         auto queue = SingletonQueue<emb_batch_t>::getInstances(batchQueueId);
@@ -478,7 +480,7 @@ public:
         }
         TimeCost ctAll;
         for (size_t i = 0; i < splits.size(); ++i) {
-            if(!tableUsed.at(i)){
+            if (!tableUsed.at(i)) {
                 offset += splits.at(i);
                 continue;
             }
