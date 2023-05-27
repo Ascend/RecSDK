@@ -127,7 +127,7 @@ TEST_F(EmbMgmtTest, Initialize)
     allRank = RankInfo(rankId, deviceId, localRankSize, useStatic, nBatch, maxStep);
     hybridMgmt->Initialize(allRank, embInfos, seed, thresholdValues, false);
     auto hostEmbs = make_unique<HostEmb>();
-    hostEmbs->Initialize(embInfos, seed, false);
+    hostEmbs->Initialize(embInfos, seed);
     auto hostHashMaps = make_unique<EmbHashMap>();
     hostHashMaps->Init(allRank, embInfos, false);
 
