@@ -115,12 +115,12 @@ namespace MxRec {
     }
 
     template <class T> struct Batch {
-        size_t Size()
+        size_t Size() const
         {
             return sample.size();
         }
 
-        std::string UnParse()
+        std::string UnParse() const
         {
             std::string s;
             constexpr size_t MAX_DISP_LEN = 20;

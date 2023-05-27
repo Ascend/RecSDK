@@ -139,7 +139,7 @@ void Checkpoint::MakeSaveDir(const string& dirName)
     }
 }
 
-int Checkpoint::GetEmbeddingSize(const string& embName)
+int Checkpoint::GetEmbeddingSize(const string& embName) const
 {
     for (const auto &embInfo: mgmtEmbInfo) {
         if (embInfo.name == embName) {

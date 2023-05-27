@@ -421,7 +421,7 @@ bool HybridMgmt::SendLookupAndRestore(const int channelId, int &batchId)
     return true;
 }
 
-bool HybridMgmt::EndBatch(int batchId, int channelId)
+bool HybridMgmt::EndBatch(int batchId, int channelId) const
 {
     return (batchId % mgmtRankInfo.maxStep[channelId] == 0 && mgmtRankInfo.maxStep[channelId] != -1);
 }

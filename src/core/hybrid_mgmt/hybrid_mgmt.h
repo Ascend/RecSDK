@@ -121,7 +121,7 @@ namespace MxRec {
 
         void EmbHDTransDummy(int channelId, int batchId, const EmbInfo& embInfo);
 
-        bool EndBatch(int batchId, int channelId);
+        bool EndBatch(int batchId, int channelId) const;
 
         void EmbHDTransWrap(int channelId, const int& batchId, int start, int iBatch);
 
