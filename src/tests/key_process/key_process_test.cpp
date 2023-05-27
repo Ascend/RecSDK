@@ -122,7 +122,7 @@ protected:
             ss.str("");
             ss.clear();
             temp.sendCount = distribution(generator);
-            temp.embeddingSize = pow(base, embSizeDistribution(generator));
+            temp.extEmbeddingSize = pow(base, embSizeDistribution(generator));
             geFieldNums.push_back(sampleSize);
             allEmbInfos.push_back(move(temp));
         }

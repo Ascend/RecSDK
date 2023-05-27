@@ -117,6 +117,10 @@ namespace MxRec {
         int hotEmbUpdateStep = HOT_EMB_UPDATE_STEP_DEFAULT;
         bool isWithFAAE;
 
+        void InitHotEmbTotCount(const EmbInfo& info, const RankInfo& rInfo);
+
+        auto GetSendCount(const string& name, const string& channelName, bool modifyGraph);
+
         void KeyProcessTask(int channel, int id);
 
         bool KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, sharded_dedup unique_,
@@ -125,6 +129,8 @@ namespace MxRec {
                               vector<keys_t>& splitKeys) -> tuple<keys_t, vector<int>, vector<int>>;
         auto ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &batch, sharded_dedup unique_, int id)
             -> tuple<keys_t, vector<int32_t>, vector<int32_t>, vector<int>, vector<uint32_t>>;
+
+        size_t GetKeySize(const unique_ptr<emb_batch_t> &batch);
 
         auto All2All(vector<int>& sc, int id, int channel, keys_t& keySend, vector<int32_t>& keyCount)
             -> tuple<keys_t, vector<int>, vector<uint32_t>>;

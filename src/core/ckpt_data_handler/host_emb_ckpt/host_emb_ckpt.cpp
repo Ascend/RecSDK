@@ -83,7 +83,7 @@ void HostEmbCkpt::SetEmbInfoTrans(string embName)
 
     transArr.reserve(embInfoSize);
     transArr.push_back(hostEmbInfo.sendCount);
-    transArr.push_back(hostEmbInfo.embeddingSize);
+    transArr.push_back(hostEmbInfo.extEmbeddingSize);
     transArr.push_back(static_cast<int>(hostEmbInfo.devVocabSize));
     transArr.push_back(static_cast<int>(hostEmbInfo.hostVocabSize));
 }
@@ -107,7 +107,7 @@ void HostEmbCkpt::SetEmbInfo(string embName, CkptData& ckptData)
 
     hostEmbInfo.name = embName;
     hostEmbInfo.sendCount = transArr.at(attribEmbInfoSendCntIdx);
-    hostEmbInfo.embeddingSize = transArr.at(attribEmbInfoEmbSizeIdx);
+    hostEmbInfo.extEmbeddingSize = transArr.at(attribEmbInfoEmbSizeIdx);
     hostEmbInfo.devVocabSize = static_cast<size_t>(transArr.at(attribEmbInfoDevVocabIdx));
     hostEmbInfo.hostVocabSize = static_cast<size_t>(transArr.at(attribEmbInfoHostVocabIdx));
 }

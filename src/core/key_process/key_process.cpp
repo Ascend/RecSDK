@@ -49,11 +49,11 @@ int KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
 
     map<emb_name_t, int> scInfo;
     for (const auto& info: eInfos) {
+        spdlog::debug(KEY_PROCESS "Init sendCountMap:{}, channelNames:{}", info.sendCountMap, info.channelNames);
         embInfos[info.name] = info;
         scInfo[info.name] = info.sendCount;
         if (rankInfo.useHot) {
-            hotEmbTotCount[info.name] = static_cast<int>(GetUBSize(rInfo.deviceId) / sizeof(float) * HOT_EMB_CACHE_PCT /
-                                                         info.embeddingSize);
+            InitHotEmbTotCount(info, rInfo);
         }
         if (rankInfo.useDynamicExpansion) {
             // 动态扩容
@@ -115,6 +115,25 @@ int KeyProcess::Start()
     return 0;
 }
 
+void KeyProcess::InitHotEmbTotCount(const EmbInfo& info, const RankInfo& rInfo)
+{
+    auto embeddingSize = info.extEmbeddingSize;
+    if (rankInfo.useDynamicExpansion) {
+        embeddingSize = info.embeddingSize;
+    }
+    hotEmbTotCount[info.name] = static_cast<int>(GetUBSize(rInfo.deviceId) / sizeof(float) * HOT_EMB_CACHE_PCT /
+                                                 embeddingSize);
+}
+
+auto KeyProcess::GetSendCount(const string& name, const string& channelName, bool modifyGraph)
+{
+    auto sendCountSize = embInfos[name].sendCount;
+    if (modifyGraph) {
+        sendCountSize = embInfos[name].sendCountMap[channelName];
+    }
+    return sendCountSize;
+}
+
 auto KeyProcess::GetMaxOffset() -> offset_mem_t
 {
     return maxOffset;
@@ -174,7 +193,7 @@ void KeyProcess::KeyProcessTask(int channel, int id) // thread id [0, KEY_PROCES
 {
     unique_ptr<emb_batch_t> batch;
     ShardedDedup<GroupMethod, UNIQUE_BUCKET> *unique = nullptr;
-
+    int preSendCount = 0;
     spdlog::stopwatch sw;
     try {
         while (true) {
@@ -184,19 +203,21 @@ void KeyProcess::KeyProcessTask(int channel, int id) // thread id [0, KEY_PROCES
             TIME_PRINT("GetBatchData TimeCost(ms):{}", getBatchTC.ElapsedMS());
 
             if (batch == nullptr) {
+                spdlog::info(KEY_PROCESS "batch is nullptr");
                 break;
             }
             auto getBatchTime = TO_MS(sw);
             sw.reset();
 
-            if (unique == nullptr) {
+            if (unique == nullptr || preSendCount != embInfos[batch->name].sendCount) {
                 GroupMethod groupMethod;
                 groupMethod.SetGroupCount(rankInfo.rankSize);
-                unique = new ShardedDedup<GroupMethod, UNIQUE_BUCKET>(groupMethod, batch->batchSize,
-                    embInfos[batch->name].sendCount);
+                auto sendCountSize = GetSendCount(batch->name, batch->channelName, batch->modifyGraph);
+                unique = new ShardedDedup<GroupMethod, UNIQUE_BUCKET>(groupMethod, batch->batchSize, sendCountSize);
             } else {
                 unique->StartNewRound();
             }
+            preSendCount = embInfos[batch->name].sendCount;
             auto batchQueue = SingletonQueue<emb_batch_t>::getInstances(id + KEY_PROCESS_THREAD * batch->channel);
             if (!KeyProcessTaskHelper(batch, unique, channel, id, sw)) {
                 free(batch->tensorAddr);
@@ -246,7 +267,11 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t> &batch, sharded_de
         TIME_PRINT("Key2Offset TimeCost(ms):{}", key2OffsetTc.ElapsedMS());
     }
     if (!rankInfo.useStatic) { // Static all2all，need send count
-        SendA2A(scAll, batch->name, batch->channel, batch->batchId);
+        auto embName = batch->name;
+        if (batch->modifyGraph) {
+            embName = batch->channelName;
+        }
+        SendA2A(scAll, embName, batch->channel, batch->batchId);
     }
 
     auto tensors = make_unique<vector<Tensor>>();
@@ -301,8 +326,13 @@ void KeyProcess::PushResult(unique_ptr<emb_batch_t>& batch, unique_ptr<vector<Te
 {
     std::unique_lock<std::mutex> lockGuard(getInfoMut[id]);
     storage[id].push_front(move(tensors));
-    infoList[id][batch->name][batch->channel].push(
-        make_tuple(batch->batchId, batch->name, storage[id].begin()));
+    if (batch->modifyGraph) {
+        infoList[id][batch->channelName][batch->channel].push(
+            make_tuple(batch->batchId, batch->channelName, storage[id].begin()));
+    } else {
+        infoList[id][batch->name][batch->channel].push(
+            make_tuple(batch->batchId, batch->name, storage[id].begin()));
+    }
     if (!rankInfo.noDDR) {
         lookupKeysList[id][batch->name][batch->channel].push(
             make_tuple(batch->batchId, batch->name, move(lookupKeys)));
@@ -346,9 +376,9 @@ unique_ptr<emb_batch_t> KeyProcess::GetBatchData(int channel, int commId)
         }
     }
     EASY_END_BLOCK
-    spdlog::info(KEY_PROCESS "GetBatchData get batchId:{}, batchSize:{}, batch.channel:{}, name:{}, "
-                 "channel:{}, commId:{}, ",
-                 batch->batchId, batch->batchSize, batch->channel, batch->name, channel, commId);
+    spdlog::info(KEY_PROCESS "GetBatchData get batchId:{}, batchSize:{}, batch.channel:{}, batch.channelName:{}, "
+                 "name:{}, channel:{}, commId:{}, ",
+                 batch->batchId, batch->batchSize, batch->channel, batch->channelName, batch->name, channel, commId);
 #if defined(PROFILING) && defined(BUILD_WITH_EASY_PROFILER)
     if (batch->batchId == PROFILING_START_BATCH_ID) {
         EASY_PROFILER_ENABLE
@@ -358,6 +388,18 @@ unique_ptr<emb_batch_t> KeyProcess::GetBatchData(int channel, int commId)
     }
 #endif
     return batch;
+}
+
+size_t KeyProcess::GetKeySize(const unique_ptr<emb_batch_t> &batch)
+{
+    size_t size = rankInfo.rankSize * embInfos[batch->name].sendCount;
+    if (batch->modifyGraph) {
+        size = rankInfo.rankSize * embInfos[batch->name].sendCountMap[batch->channelName];
+    }
+    if (!rankInfo.useStatic) {
+        size = batch->batchSize;
+    }
+    return size;
 }
 
 auto KeyProcess::ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &batch, sharded_dedup unique, int id)
@@ -372,10 +414,7 @@ auto KeyProcess::ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &ba
 
     SimpleThreadPool pool_;
     keys_t keySend;
-    size_t size = rankInfo.rankSize * embInfos[batch->name].sendCount;
-    if (!rankInfo.useStatic) {
-        size = batch->batchSize;
-    }
+    size_t size = GetKeySize(batch);
     keySend.resize(size);
     vector<int32_t> splitSize(rankInfo.rankSize);
     vector<int64_t> uniqueVector(batch->batchSize);
@@ -411,7 +450,7 @@ auto KeyProcess::ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &ba
 
     vector<int> sc; // send count
     if (rankInfo.useStatic) {
-        sc.resize(rankInfo.rankSize, embInfos[batch->name].sendCount);
+        sc.resize(rankInfo.rankSize, GetSendCount(batch->name, batch->channelName, batch->modifyGraph));
     } else {
         sc.resize(rankInfo.rankSize);
         for (int i = 0;i < rankInfo.rankSize; i++) {
@@ -420,6 +459,9 @@ auto KeyProcess::ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &ba
     }
     auto [keyRecv, scAll, countRecv]  = All2All(sc, id, batch->channel, keySend, keyCount);
 
+    spdlog::debug(KEY_PROCESS "ProcessBatchWithUniqueCompute get batchId:{}, batchSize:{}, channel:{}, "
+                             "channelName:{}, name:{}, restore:{}, keyCount:{}", batch->batchId, batch->batchSize,
+                             batch->channel, batch->channelName, batch->name, restore.size(), keyCount.size());
     return { keyRecv, restore, hotPos, scAll, countRecv};
 }
 

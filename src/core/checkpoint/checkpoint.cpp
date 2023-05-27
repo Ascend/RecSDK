@@ -147,7 +147,7 @@ int Checkpoint::GetEmbeddingSize(const string& embName)
 {
     for (const auto &embInfo: mgmtEmbInfo) {
         if (embInfo.name == embName) {
-            return embInfo.embeddingSize;
+            return embInfo.extEmbeddingSize;
         }
     }
     return 0;

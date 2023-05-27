@@ -1,4 +1,7 @@
-# coding: UTF-8
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+
 import os
 import logging
 
@@ -16,7 +19,3 @@ def get_log_level():
     date_format = "%m/%d/%Y %H:%M:%S %p"
 
     logging.basicConfig(level=log_level, format=log_format, datefmt=date_format)
-
-
-if __name__ == "__main__":
-    logging.debug("haha")

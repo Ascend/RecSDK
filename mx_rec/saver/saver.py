@@ -1,6 +1,6 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2021-2023 Huawei Technologies Co., Ltd
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 import json
 import os
@@ -48,6 +48,56 @@ class Saver(object):
 
         logging.debug("Save & Restore graph was built.")
 
+    @performance("Save")
+    def save(self, sess, save_path="model", global_step=None):
+        """
+        Save sparse tables
+        :param sess: A Session to use to save the sparse table variables
+        :param save_path: Only absolute path supported
+        :param global_step: If provided the global step number is appended to save_path to create
+         the checkpoint filenames. The optional argument can be a Tensor, a Tensor name or an integer.
+        :return: None
+        """
+        logging.debug(f"======== Start saving for rank id {self.rank_id} ========")
+        save_path = save_path if save_path else self._prefix_name
+        directory, base_name = os.path.split(save_path)
+        if global_step:
+            if not isinstance(global_step, compat.integral_types):
+                global_step = int(sess.run(global_step))
+            ckpt_name = "sparse-%s-%d" % (base_name, global_step)
+        else:
+            ckpt_name = "sparse-%s" % base_name
+
+        integrated_path = os.path.join(directory, ckpt_name)
+        saving_path = integrated_path
+        if integrated_path.startswith("/"):
+            saving_path = os.path.abspath(integrated_path)
+
+        if os.path.exists(saving_path):
+            shutil.rmtree(saving_path, ignore_errors=True)
+            logging.debug(f"rank id {self.rank_id} | Saving_path '{saving_path}' has been deleted.")
+        os.makedirs(saving_path, exist_ok=True)
+        logging.debug(f"rank id {self.rank_id} | Saving_path '{saving_path}' has been made.")
+
+        self._save(sess, saving_path)
+        logging.info(f"sparse model was saved in dir '{saving_path}' .")
+        logging.debug(f"======== Saving finished for rank id {self.rank_id} ========")
+
+    @performance("Restore")
+    def restore(self, sess, reading_path):
+        logging.debug("======== Start restoring ========")
+        directory, base_name = os.path.split(reading_path)
+        ckpt_name = "sparse-%s" % base_name
+
+        integrated_path = os.path.join(directory, ckpt_name)
+        reading_path = os.path.abspath(integrated_path)
+        if not os.path.exists(reading_path):
+            raise FileExistsError(f"Given dir {reading_path} does not exist, please double check.")
+
+        self._restore(sess, reading_path)
+        logging.info(f"sparse model was restored from dir '{reading_path}' .")
+        logging.debug("======== Restoring finished ========")
+
     def _build_save(self):
         for var in self.var_list:
             table_instance = get_table_instance(var)
@@ -87,39 +137,15 @@ class Saver(object):
                 assign_op = state.assign(sub_optimizer_placeholder_dict.get(key_state))
                 self.restore_fetch_list.append(assign_op)
 
-    @performance("Save")
-    def save(self, sess, save_path="model", global_step=None):
-        logging.debug(f"======== Start saving for rank id {self.rank_id} ========")
-        save_path = save_path if save_path else self._prefix_name
-        directory, base_name = os.path.split(save_path)
-        if global_step is not None:
-            if not isinstance(global_step, compat.integral_types):
-                global_step = int(sess.run(global_step))
-            ckpt_name = "sparse-%s-%d" % (base_name, global_step)
-        else:
-            ckpt_name = "sparse-%s" % base_name
-
-        integrated_path = os.path.join(directory, ckpt_name)
-        saving_path = os.path.abspath(integrated_path)
-        if os.path.exists(saving_path):
-            shutil.rmtree(saving_path, ignore_errors=True)
-            logging.debug(f"rank id {self.rank_id} | Saving_path '{saving_path}' has been deleted.")
-        os.makedirs(saving_path, exist_ok=True)
-        logging.debug(f"rank id {self.rank_id} | Saving_path '{saving_path}' has been made.")
-
-        self._save(sess, saving_path)
-        logging.info(f"sparse model was saved in dir '{saving_path}' .")
-        logging.debug(f"======== Saving finished for rank id {self.rank_id} ========")
-
     def _save(self, sess, root_dir):
-        if is_asc_manager_initialized():
-            save_host_data(root_dir)
-            logging.debug(f"host data was saved.")
-
         result = sess.run(self.save_op_dict)
         for table_name, dump_data_dict in result.items():
             save_embedding_data(root_dir, table_name, dump_data_dict, self.rank_id)
             table_instance = get_table_instance_by_name(table_name)
+            if is_asc_manager_initialized():
+                save_host_data(root_dir)
+                logging.debug(f"host data was saved.")
+
             if table_instance.use_feature_mapping:
                 save_feature_mapping_data(root_dir, table_name, dump_data_dict, self.rank_id)
                 save_offset_data(root_dir, table_name, dump_data_dict, self.rank_id)
@@ -128,21 +154,6 @@ class Saver(object):
                 for optimizer_name, dump_optimizer_data in dump_optimizer_data_dict.items():
                     save_optimizer_state_data(root_dir, table_name, optimizer_name, dump_optimizer_data,
                                               self.rank_id)
-
-    @performance("Restore")
-    def restore(self, sess, reading_path):
-        logging.debug("======== Start restoring ========")
-        directory, base_name = os.path.split(reading_path)
-        ckpt_name = "sparse-%s" % base_name
-
-        integrated_path = os.path.join(directory, ckpt_name)
-        reading_path = os.path.abspath(integrated_path)
-        if not os.path.exists(reading_path):
-            raise FileExistsError(f"Given dir {reading_path} does not exist, please double check.")
-
-        self._restore(sess, reading_path)
-        logging.info(f"sparse model was restored from dir '{reading_path}' .")
-        logging.debug("======== Restoring finished ========")
 
     def _restore(self, sess, reading_path):
         if is_asc_manager_initialized():

@@ -1,4 +1,6 @@
-# coding: UTF-8
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 import tensorflow as tf
 from tensorflow.python.framework import ops

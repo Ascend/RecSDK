@@ -1,8 +1,7 @@
-# coding: UTF-8
-# Copyright (c) Huawei Technologies Co., Ltd. 2021-2025. All rights reserved.
-# Description: build script.
-# Author: MindX SDK
-# pylint: disable=W0212
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+
 import logging
 from collections import defaultdict
 
@@ -10,14 +9,15 @@ import tensorflow as tf
 from tensorflow.python.data.ops.dataset_ops import DatasetV1Adapter
 
 from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
-from mx_rec.core.asc.helper import get_asc_insert_func, FeatureSpec
+from mx_rec.core.asc.helper import get_asc_insert_func
+from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import SparseEmbedding
-from mx_rec.util.constants import ASCEND_CUTTING_POINT_INITIALIZER, ASCEND_CUTTING_POINT, \
-    ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCAnchorAttr, ASCEND_TIMESTAMP
-from mx_rec.util.initialize import get_rank_size, destroy_asc_manager, get_training_mode_channel_id, \
-    get_feature_spec, insert_feature_spec, set_initializer, get_use_static, get_use_hot, get_device_id, \
-    get_use_dynamic_expansion
+from mx_rec.util.constants import ASCEND_CUTTING_POINT_INITIALIZER, ASCEND_SPARSE_LOOKUP_ENTRANCE, \
+    ASCAnchorAttr, ASCEND_TIMESTAMP
+from mx_rec.util.initialize import get_rank_size, get_training_mode_channel_id, get_feature_spec, \
+    insert_feature_spec, set_initializer, get_use_static, get_use_hot, get_device_id, get_use_dynamic_expansion, \
+    terminate_config_initializer
 from mx_rec.util.perf import performance
 from mx_rec.graph.utils import check_input_list, find_parent_op, check_cutting_points, replace_anchor, \
     record_ops_to_replace, export_pb_graph, make_sorted_key_to_tensor_list
@@ -342,9 +342,9 @@ def modify_graph_for_asc(dump_graph=False, prefetch=10):
                 batch_size=feature_spec.batch_size, feat_cnt=feature_spec.feat_cnt,
                 send_count=table_instance.send_count, channel_id=channel_id, rank_size=get_rank_size(),
                 table_name=table_instance.table_name, skip_emb_transfer=table_instance.skip_emb_transfer,
-                ext_emb_size=table_instance.ext_emb_size, _emb_size=table_instance._emb_size, use_hot=get_use_hot(),
-                device_id=get_device_id(), use_dynamic_expansion=get_use_dynamic_expansion())
-            build_asc_graph(table_instance, cutting_point, config)
+                ext_emb_size=table_instance.ext_emb_size, emb_size=table_instance.scalar_emb_size,
+                use_hot=get_use_hot(), device_id=get_device_id(), use_dynamic_expansion=get_use_dynamic_expansion())
+            build_asc_graph(table_instance, cutting_point, config, is_training)
 
     logging.info("Graph has been revised.")
     export_pb_graph("new_graph.pb", dump_graph)
@@ -371,19 +371,31 @@ def get_timestamp_index(get_next_op, is_training):
     return timestamp_index
 
 
-def build_asc_graph(table_instance, cutting_point, config):
+def build_asc_graph(table_instance, cutting_point, config, is_training):
     # returned results swap_pos and swap_len were not in used, will be applied for DDR mode
     logging.debug(f"try to replace anchors for table {config.get('table_name')} on channel {config.get('channel_id')}")
     skip_emb_transfer = config.get("skip_emb_transfer")
     logging.info(f"modifier build_asc_graph skip_emb_transfer: {skip_emb_transfer}")
+
+    if len(table_instance.channel_name_list) > 1:
+        channel_name_queue = table_instance.channel_name_dict.get(is_training)
+        if len(channel_name_queue) < 1:
+            raise ValueError(f"The length of channel_name_queue must be greater than or equal to 1.")
+        ids_channel_name = channel_name_queue.pop()
+        config["send_count"] = table_instance.send_count_map.get(ids_channel_name)
+    elif len(table_instance.channel_name_list) == 1:
+        ids_channel_name = config.get('table_name')
+    else:
+        raise ValueError(f"The length of channel_name_list must be greater than or equal to 1.")
+
     if skip_emb_transfer:
         restore_vector, hot_pos, id_offsets, swap_in, all2all_matrix = get_preprocessed_tensor_for_asc(
-            table_instance.variable, config)
+            table_instance.variable, config, ids_channel_name, table_instance.modify_graph)
     else:
         variable_list = [table_instance.variable] \
-            + [slot_info.get("slot") for slot_info in table_instance.optimizer_slot_info_list]
-        restore_vector, hot_pos, id_offsets, swap_in, all2all_matrix =  get_preprocessed_tensor_for_asc(
-            variable_list, config)
+                        + [slot_info.get("slot") for slot_info in table_instance.optimizer_slot_info_list]
+        restore_vector, hot_pos, id_offsets, swap_in, all2all_matrix = get_preprocessed_tensor_for_asc(
+            variable_list, config, ids_channel_name, table_instance.modify_graph)
 
     with tf.control_dependencies(swap_in):
         id_offsets = tf.identity(id_offsets)
@@ -424,3 +436,6 @@ class GraphModifierHook(tf.estimator.SessionRunHook):
     def after_create_session(self, session, coord):
         if self.modify_graph:
             session.run(tf.compat.v1.get_collection(ASCEND_CUTTING_POINT_INITIALIZER))
+
+    def end(self, session):
+        terminate_config_initializer()

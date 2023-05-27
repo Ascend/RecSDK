@@ -37,9 +37,13 @@ protected:
     string name = "model";
     int sendCount = 5;
     int embeddingSize = 8;
+    int extEmbeddingSize = 24;
+    bool modifyGraph = false;
     size_t devVocabSize = 5;
     size_t hostVocabSize = 15;
     vector<RandomInfo> randomInfos;
+    vector<std::string> channelNames = {"model_1", "model_2"};
+    map<std::string, int> sendCountMap = {{"model_1", 500}, {"model_2", 500}};
     RandomInfo randomInfo;
     int start = 0;
     int len = hostVocabSize * embeddingSize;
@@ -68,8 +72,8 @@ protected:
         for (size_t i = 0; i < missingKeysHostPos.size(); i++) {
             (hostEmb->GetEmb(embName).embData[missingKeysHostPos[i]]).assign(
                 tensorPtr,
-                tensorPtr + hostEmb->GetEmb(embName).hostEmbInfo.embeddingSize);
-            tensorPtr = tensorPtr + hostEmb->GetEmb(embName).hostEmbInfo.embeddingSize;
+                tensorPtr + hostEmb->GetEmb(embName).hostEmbInfo.extEmbeddingSize);
+            tensorPtr = tensorPtr + hostEmb->GetEmb(embName).hostEmbInfo.extEmbeddingSize;
         }
         for (size_t i = 0; i < hostEmb->GetEmb(embName).embData.size(); ++i) {
             spdlog::info("hostEmb: embName {}, {} is: {}", embName, i, hostEmb->GetEmb(embName).embData[i]);
@@ -112,7 +116,8 @@ protected:
 TEST_F(EmbMgmtTest, Initialize)
 {
     vector<size_t> vocabsize = { devVocabSize, hostVocabSize };
-    embInfo = EmbInfo(name, sendCount, embeddingSize, vocabsize, initializeInfos);
+    embInfo = EmbInfo(name, sendCount, embeddingSize, extEmbeddingSize, modifyGraph, channelNames, vocabsize,
+                      initializeInfos, sendCountMap);
     embInfos.emplace_back(embInfo);
     vector<ThresholdValue> thresholdValues = {};
 
@@ -169,7 +174,8 @@ TEST_F(EmbMgmtTest, Initialize_HBM)
     devVocabSize = HBM_DEVICE_SIZE;
     hostVocabSize = HBM_HOST_SIZE;
     vector<size_t> vocabsize = { devVocabSize, hostVocabSize };
-    embInfo = EmbInfo(name, sendCount, embeddingSize, vocabsize, initializeInfos);
+    embInfo = EmbInfo(name, sendCount, embeddingSize, extEmbeddingSize, modifyGraph, channelNames, vocabsize,
+                      initializeInfos, sendCountMap);
     embInfos.emplace_back(embInfo);
     vector<ThresholdValue> thresholdValues;
     thresholdValues.emplace_back(name, 1, 1);
@@ -187,7 +193,8 @@ TEST_F(EmbMgmtTest, Evict)
     size_t devVocabSize = DDR_DEVICE_SIZE;
     size_t hostVocabSize = DDR_HOST_SIZE;
     vector<size_t> vocabsize = { devVocabSize, hostVocabSize };
-    embInfo = EmbInfo(name, sendCount, embeddingSize, vocabsize, initializeInfos);
+    embInfo = EmbInfo(name, sendCount, embeddingSize, extEmbeddingSize, modifyGraph, channelNames, vocabsize,
+                      initializeInfos, sendCountMap);
     embInfos.emplace_back(embInfo);
     vector<ThresholdValue> thresholdValues;
     thresholdValues.emplace_back(name, 1, 1);
@@ -208,7 +215,8 @@ TEST_F(EmbMgmtTest, Evict_HBM)
     devVocabSize = HBM_DEVICE_SIZE;
     hostVocabSize = HBM_HOST_SIZE;
     vector<size_t> vocabsize = { devVocabSize, hostVocabSize };
-    embInfo = EmbInfo(name, sendCount, embeddingSize, vocabsize, initializeInfos);
+    embInfo = EmbInfo(name, sendCount, embeddingSize, extEmbeddingSize, modifyGraph, channelNames, vocabsize,
+                      initializeInfos, sendCountMap);
     embInfos.emplace_back(embInfo);
     vector<ThresholdValue> thresholdValues;
     thresholdValues.emplace_back(name, 1, 1);

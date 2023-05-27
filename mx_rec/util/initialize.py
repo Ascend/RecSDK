@@ -1,7 +1,12 @@
-# coding: UTF-8
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+
 import json
 import logging
 import os
+from collections import defaultdict
+
 import psutil
 
 import mxrec_pybind
@@ -69,6 +74,86 @@ class ConfigInitializer:
     def __del__(self):
         self.terminate()
 
+    @property
+    def feature_spec_dict(self):
+        return self._feature_spec_dict
+
+    @property
+    def table_name_set(self):
+        return self._table_name_set
+
+    @property
+    def table_name_to_feature_spec(self):
+        return self._table_name_to_feature_spec
+
+    @property
+    def table_instance_dict(self):
+        return self._table_instance_dict
+
+    @property
+    def optimizer_instance(self):
+        return self._optimizer_instance
+
+    @property
+    def is_frozen(self):
+        return self._is_frozen
+
+    @property
+    def name_to_var_dict(self):
+        return self._name_to_var_dict
+
+    @property
+    def use_mpi(self):
+        return self._use_mpi
+
+    @property
+    def rank_size(self):
+        return self._rank_size
+
+    @property
+    def rank_id(self):
+        return self._rank_id
+
+    @property
+    def device_id(self):
+        if self._rank_id not in self._rank_to_device_dict:
+            raise KeyError(f"rank id not in rank_to_device_dict. {self._rank_id} {self._rank_to_device_dict}")
+        return self._rank_to_device_dict[self._rank_id]
+
+    @property
+    def train_interval(self):
+        return self._train_interval
+
+    @property
+    def eval_steps(self):
+        return self._eval_steps
+
+    @property
+    def prefetch_batch_number(self):
+        return self._prefetch_batch_number
+
+    @property
+    def if_load(self):
+        return self._if_load
+
+    @property
+    def ascend_global_hashtable_collection(self):
+        return self._ascend_global_hashtable_collection
+
+    @staticmethod
+    def get_instance():
+        if ConfigInitializer._single_instance is None:
+            raise EnvironmentError("Please init the environment for mx_rec at first.")
+
+        return ConfigInitializer._single_instance
+
+    @staticmethod
+    def set_instance(use_mpi, **kwargs):
+        if ConfigInitializer._single_instance is not None:
+            raise EnvironmentError("ConfigInitializer has been initialized once, twice initialization was forbidden.")
+
+        ConfigInitializer._single_instance = ConfigInitializer(use_mpi, **kwargs)
+
     def terminate(self):
         if self._asc_manager is not None:
             self.del_asc_manager()
@@ -86,20 +171,8 @@ class ConfigInitializer:
     def get_feature_spec(self, key):
         return self._feature_spec_dict.get(key)
 
-    @property
-    def feature_spec_dict(self):
-        return self._feature_spec_dict
-
-    @property
-    def table_name_set(self):
-        return self._table_name_set
-
-    @property
-    def table_name_to_feature_spec(self):
-        return self._table_name_to_feature_spec
-
     def parse_hccl_json(self):
-        rank_table_path = os.getenv("RANK_TABLE_FILE")
+        rank_table_path = os.path.realpath(os.getenv("RANK_TABLE_FILE"))
         if not os.path.exists(rank_table_path):
             raise FileExistsError(f"Target_hccl_json_dir {rank_table_path} does not exist when reading.")
         with open(rank_table_path, "r", encoding="utf-8") as file:
@@ -196,16 +269,8 @@ class ConfigInitializer:
         key = self._name_to_var_dict.get(table_name)
         return self._table_instance_dict.get(key)
 
-    @property
-    def table_instance_dict(self):
-        return self._table_instance_dict
-
     def insert_optimizer(self, optimizer):
         self._optimizer_instance = optimizer
-
-    @property
-    def optimizer_instance(self):
-        return self._optimizer_instance
 
     def check_parameters(self):
         if not isinstance(self._use_mpi, bool):
@@ -229,14 +294,6 @@ class ConfigInitializer:
     def unfreeze(self):
         self._is_frozen = False
 
-    @property
-    def is_frozen(self):
-        return self._is_frozen
-
-    @property
-    def name_to_var_dict(self):
-        return self._name_to_var_dict
-
     def set_asc_manager(self, manager):
         from mxrec_pybind import HybridMgmt
         if not isinstance(manager, HybridMgmt):
@@ -255,46 +312,6 @@ class ConfigInitializer:
         self.unfreeze()
         logging.debug("ASC manager has been destroyed.")
 
-    @property
-    def use_mpi(self):
-        return self._use_mpi
-
-    @property
-    def rank_size(self):
-        return self._rank_size
-
-    @property
-    def rank_id(self):
-        return self._rank_id
-
-    @property
-    def device_id(self):
-        if self._rank_id not in self._rank_to_device_dict:
-            raise KeyError(f"rank id not in rank_to_device_dict. {self._rank_id} {self._rank_to_device_dict}")
-        return self._rank_to_device_dict[self._rank_id]
-
-    @staticmethod
-    def get_instance():
-        if ConfigInitializer._single_instance is None:
-            raise EnvironmentError("Please init the environment for mx_rec at first.")
-
-        return ConfigInitializer._single_instance
-
-    @staticmethod
-    def set_instance(use_mpi, **kwargs):
-        if ConfigInitializer._single_instance is not None:
-            raise EnvironmentError("ConfigInitializer has been initialized once, twice initialization was forbidden.")
-
-        ConfigInitializer._single_instance = ConfigInitializer(use_mpi, **kwargs)
-
-    @property
-    def train_interval(self):
-        return self._train_interval
-
-    @property
-    def eval_steps(self):
-        return self._eval_steps
-
     @train_interval.setter
     def train_interval(self, interval):
         check_step(interval)
@@ -305,18 +322,10 @@ class ConfigInitializer:
         check_step(steps)
         self._eval_steps = steps
 
-    @property
-    def prefetch_batch_number(self):
-        return self._prefetch_batch_number
-
     @prefetch_batch_number.setter
     def prefetch_batch_number(self, number):
         check_step(number, 1)
         self._prefetch_batch_number = number
-
-    @property
-    def if_load(self):
-        return self._if_load
 
     @if_load.setter
     def if_load(self, flag):
@@ -324,10 +333,6 @@ class ConfigInitializer:
             raise TypeError(f"Flag if load should be a boolean.")
 
         self._if_load = flag
-
-    @property
-    def ascend_global_hashtable_collection(self):
-        return self._ascend_global_hashtable_collection
 
     @ascend_global_hashtable_collection.setter
     def ascend_global_hashtable_collection(self, name):
@@ -614,13 +619,58 @@ def set_ascend_env():
     logging.debug(f"Ascend env has been set.")
 
 
+def get_available_cpu_num_and_range():
+    """
+    获取当前环境可用的cpu数量和numa范围
+    Returns:
+
+    """
+    cpu_available = os.sched_getaffinity(os.getpid())  # 获取可被绑定的核心
+
+    is_ok = True
+    cpu_pkg_id_file = "/sys/devices/system/cpu/cpu{}/topology/physical_package_id"
+    pkg_id2cpu_list = defaultdict(list)
+    for cpu in cpu_available:
+        f_path = cpu_pkg_id_file.format(cpu)
+        if not os.path.exists(f_path):
+            logging.warning(f"failed to get numa node of cpu: {cpu}")
+            is_ok = False
+            break
+        with open(f_path, "r", encoding="utf-8") as f_in:
+            pkg_id = f_in.readline().strip()
+            pkg_id2cpu_list[pkg_id].append(cpu)
+
+    def parse_range(cpu_list, cpu_range):
+        sorted_cpu_list = sorted(cpu_list)
+        pre_cpu = sorted_cpu_list[0]
+        cpu_range.append([pre_cpu])
+
+        for sorted_cpu in sorted_cpu_list[1:]:
+            if sorted_cpu - pre_cpu != 1:
+                cpu_range[-1].append(pre_cpu)
+                cpu_range.append([sorted_cpu])
+            pre_cpu = sorted_cpu
+
+        if len(cpu_range[-1]) == 1:
+            cpu_range[-1].append(pre_cpu)
+
+    valid_cpu_range_list = []
+    if is_ok:
+        logging.info(f"available numa node num: {len(pkg_id2cpu_list)}")
+        for k, part_cpu_list in pkg_id2cpu_list.items():
+            parse_range(part_cpu_list, valid_cpu_range_list)
+    else:
+        parse_range(list(cpu_available), valid_cpu_range_list)
+    return len(cpu_available), valid_cpu_range_list
+
+
 def bind_cpu(rank_id: int, rank_size: int = None):
     """
     以均衡的方式为每个进程绑定CPU
     :param rank_id:当前进程的rank_id
+    :param rank_size: 进程数
     :return:
     """
-    from multiprocessing import cpu_count
     import math
 
     try:
@@ -634,14 +684,32 @@ def bind_cpu(rank_id: int, rank_size: int = None):
                         f"{DEFAULT_DEVICE_NUM_LOCAL_MACHINE} is set as default value")
         local_rank_size = DEFAULT_DEVICE_NUM_LOCAL_MACHINE
 
-    total_cpu = cpu_count()
+    total_cpu, cpu_range_list = get_available_cpu_num_and_range()
     avg_count = math.ceil(total_cpu / local_rank_size)
-    max_index = total_cpu - 1
-    start = rank_id * avg_count
-    cpu_list = [start + i for i in range(avg_count) if start + i <= max_index]
+    while True:
+        if avg_count == 0:
+            logging.warning(f"not enough cpu to bind. cpu num: {total_cpu}, range: {cpu_range_list}")
+            return
+
+        max_split = 0
+        for cpu_range in cpu_range_list:
+            max_split += (cpu_range[1] - cpu_range[0] + 1) // avg_count
+        if max_split >= local_rank_size:
+            break
+        avg_count -= 1
+
+    candidate_list = []
+    for cpu_range in cpu_range_list:
+        start = cpu_range[0]
+        splits = (cpu_range[1] - cpu_range[0] + 1) // avg_count
+        candidate_range = [list(range(start + i * avg_count, start + ((i + 1) * avg_count))) for i in range(splits)]
+        candidate_list.extend(candidate_range)
+
+    cpu_list = candidate_list[rank_id]
 
     process = psutil.Process()
     try:
         process.cpu_affinity(cpu_list)
+        logging.info(f"bind cpu for rank {rank_id}: {cpu_list}")
     except IndexError:
         logging.error(f"failed to bind cpu for rank {rank_id}: {cpu_list}")

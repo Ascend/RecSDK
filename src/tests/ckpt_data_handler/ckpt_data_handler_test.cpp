@@ -54,7 +54,7 @@ protected:
         for (auto& testEmbInfo : testEmbInfos) {
             testEmbInfo.name = name + to_string(idx);
             testEmbInfo.sendCount = sendCount;
-            testEmbInfo.embeddingSize = embeddingSize;
+            testEmbInfo.extEmbeddingSize = embeddingSize;
             testEmbInfo.devVocabSize = devVocabSize;
             testEmbInfo.hostVocabSize = hostVocabSize;
 

@@ -28,7 +28,10 @@ export TF_CPP_MIN_LOG_LEVEL=3 # tensorflow日志级别,3对应FATAL
 export ASCEND_GLOBAL_LOG_LEVEL=3 # “设置日志级别”章节0:debug, 1:info, 2:warning, 3:error, 4:NULL
 export MXREC_MODE="ASC"
 export USE_MPI=1
-export USE_DYNAMIC=0  # 0: 静态；1：动态
+
+export USE_DYNAMIC=0            # 0：静态shape；1：动态shape
+export USE_HOT=0                # 0：关闭hot emb；1: 开启hot emb
+export USE_DYNAMIC_EXPANSION=0  # 0：关闭动态扩容；1: 开启动态扩容
 
 #################使用去除ranktable方案时开启######################
 #export CM_CHIEF_IP="192.168.1.1"  # 主节点ip

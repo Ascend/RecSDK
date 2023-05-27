@@ -1,6 +1,6 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2023 Huawei Technologies Co., Ltd
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 from __future__ import absolute_import
 from __future__ import division
@@ -54,7 +54,7 @@ class CustomizedMomentum(momentum.MomentumOptimizer, CustomizedOptimizer):
                  name="Momentum",
                  use_nesterov=False):
         self.optimizer_type = "Momentum"
-        super(CustomizedMomentum, self).__get_name__(name=name)
+        super(CustomizedMomentum, self)._get_name(name=name)
         super(CustomizedMomentum, self).__init__(learning_rate=learning_rate,
                                                  momentum=momentum_var,
                                                  use_locking=use_locking,
@@ -62,6 +62,36 @@ class CustomizedMomentum(momentum.MomentumOptimizer, CustomizedOptimizer):
                                                  use_nesterov=use_nesterov)
 
         self._check_input_param()
+
+    def initialize_slots(self, var, table_instance):
+        # Create slots for the first and second moments.
+        def creat_one_single_slot(var, op_name):
+            new_slot_variable = slot_creator.create_zeros_slot(var, op_name)
+            # make sure sparse optimizer statements will not be saved and restored within tf checkpoint.
+            return new_slot_variable
+
+        momentum_slot = creat_one_single_slot(var, self._name + "/" + "momentum")
+        remove_saving_var(momentum_slot)
+        named_slot_key = (var.op.graph, var.op.name)
+        table_instance = get_table_instance(var)
+        if self._name in table_instance.optimizer:
+            raise EnvironmentError(f"Sparse optimizer named {self._name} has exists.")
+
+        table_instance.set_optimizer(self._name, {"momentum": momentum_slot})
+        return [{"slot": momentum_slot, "named_slot_key": named_slot_key, "slot_name": "m", "optimizer": self}]
+
+    def insert_slot(self, slot, named_slots_key, slot_name):
+        named_slots = self._slot_dict(slot_name)
+        if named_slots_key in named_slots:
+            raise EnvironmentError(f"named_slots_key should be global unique, but it has been in use now, "
+                                   f"please double check.")
+
+        named_slots[named_slots_key] = slot
+
+    def get_slot_init_values(self):
+        # return state value list of momentum that needs to initialize in ASC DDR.
+        initial_momentum_value = 0.0
+        return [initial_momentum_value]
 
     def _check_input_param(self):
         check_param_type("learning_rate", self._learning_rate, (tf.Tensor, float))
@@ -98,33 +128,3 @@ class CustomizedMomentum(momentum.MomentumOptimizer, CustomizedOptimizer):
             grad, indices, math_ops.cast(self._momentum_tensor, grad.dtype),
             use_locking=self._use_locking,
             use_nesterov=self._use_nesterov)
-
-    def initialize_slots(self, var, table_instance):
-        # Create slots for the first and second moments.
-        def creat_one_single_slot(var, op_name):
-            new_slot_variable = slot_creator.create_zeros_slot(var, op_name)
-            # make sure sparse optimizer statements will not be saved and restored within tf checkpoint.
-            return new_slot_variable
-
-        momentum_slot = creat_one_single_slot(var, self._name + "/" + "momentum")
-        remove_saving_var(momentum_slot)
-        named_slot_key = (var.op.graph, var.op.name)
-        table_instance = get_table_instance(var)
-        if self._name in table_instance.optimizer:
-            raise EnvironmentError(f"Sparse optimizer named {self._name} has exists.")
-
-        table_instance.set_optimizer(self._name, {"momentum": momentum_slot})
-        return [{"slot": momentum_slot, "named_slot_key": named_slot_key, "slot_name": "m", "optimizer": self}]
-
-    def insert_slot(self, slot, named_slots_key, slot_name):
-        named_slots = self._slot_dict(slot_name)
-        if named_slots_key in named_slots:
-            raise EnvironmentError(f"named_slots_key should be global unique, but it has been in use now, "
-                                   f"please double check.")
-
-        named_slots[named_slots_key] = slot
-
-    def get_slot_init_values(self):
-        # return state value list of momentum that needs to initialize in ASC DDR.
-        initial_momentum_value = 0.0
-        return [initial_momentum_value]

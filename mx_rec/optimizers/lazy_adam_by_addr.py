@@ -1,7 +1,6 @@
-# coding: UTF-8
-# Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
-# Description: CustomizedLazyAdamByAddress.
-# Author: MindX SDK
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 from __future__ import absolute_import
 from __future__ import division
@@ -70,6 +69,61 @@ class CustomizedLazyAdamByAddress(optimizer.Optimizer, CustomizedOptimizer):
 
         self._check_input_param()
 
+    @property
+    def slot_num(self):
+        return self._slot_num
+
+    def get_slot_init_values(self):
+        # return state value list of adam that needs to initialize in ASC DDR.
+        initial_momentum_value = 0.0
+        initial_velocity_value = 0.0
+        return [initial_momentum_value, initial_velocity_value]
+
+    def apply_gradients(self, grads_and_vars, global_step=None, name=None):
+
+        # No DistributionStrategy case.
+        grads_and_vars = tuple(grads_and_vars)  # Make sure repeat iteration works.
+        if not grads_and_vars:
+            raise ValueError("No variables provided.")
+
+        converted_grads_and_addrs = tuple(self._convert_grads_and_addrs(grads_and_vars))
+        addr_list = [a for g, a, _ in converted_grads_and_addrs if g is not None]
+        if not addr_list:
+            raise ValueError("No gradients provided for any address: %s." %
+                             ([str(a) for _, a, _ in converted_grads_and_addrs],))
+        with ops.init_scope():
+            self._create_slots(addr_list)
+        update_ops = []
+        with ops.name_scope(name, self._name) as name:
+            self._prepare()
+            for grad, addr, processor in converted_grads_and_addrs:
+                if grad is None:
+                    continue
+                if (context.executing_eagerly() or
+                        resource_variable_ops.is_resource_variable(addr)
+                        and not addr._in_graph_mode):  # pylint: disable=protected-access
+                    scope_name = ""
+                else:
+                    scope_name = addr.op.name
+                with ops.name_scope(
+                        f"update_{scope_name}"), ops.colocate_with(addr):
+                    update_ops.append(processor.update_op(self, grad))
+
+            apply_updates = self._finish(update_ops, name)
+
+            if not context.executing_eagerly():
+                if isinstance(apply_updates, ops.Tensor):
+                    logging.debug(">>>>Enter ops.Tensor")
+                    apply_updates = apply_updates.op
+                train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+                if apply_updates not in train_op:
+                    logging.debug(">>>>Enter apply_updates not in train_op")
+                    train_op.append(apply_updates)
+            else:
+                raise RuntimeError("eager wrong.")
+
+            return apply_updates
+
     def _check_input_param(self):
         check_param_type("beta1", self._beta1, (int, float))
         check_param_range("beta1", self._beta1, 0, 1)
@@ -81,10 +135,6 @@ class CustomizedLazyAdamByAddress(optimizer.Optimizer, CustomizedOptimizer):
         check_param_range("epsilon", self._epsilon, 0, 1)
 
         check_param_type("use_locking", self._use_locking, bool)
-
-    @property
-    def slot_num(self):
-        return self._slot_num
 
     def _get_beta_accumulators(self):
         with ops.init_scope():
@@ -141,12 +191,6 @@ class CustomizedLazyAdamByAddress(optimizer.Optimizer, CustomizedOptimizer):
                 update_beta2 = beta2_power.assign(
                     beta2_power * self._beta2_t, use_locking=self._use_locking)
         return control_flow_ops.group(*update_ops + [update_beta1, update_beta2], name=name_scope)
-
-    def get_slot_init_values(self):
-        # return state value list of adam that needs to initialize in ASC DDR.
-        initial_momentum_value = 0.0
-        initial_velocity_value = 0.0
-        return [initial_momentum_value, initial_velocity_value]
 
     def _apply_dense(self, grad, var):
         logging.debug(">>>>Enter _apply_dense")
@@ -211,51 +255,6 @@ class CustomizedLazyAdamByAddress(optimizer.Optimizer, CustomizedOptimizer):
             converted_grads_and_addrs.append((grad, addr, processor))
         return converted_grads_and_addrs
 
-    def apply_gradients(self, grads_and_vars, global_step=None, name=None):
-
-        # No DistributionStrategy case.
-        grads_and_vars = tuple(grads_and_vars)  # Make sure repeat iteration works.
-        if not grads_and_vars:
-            raise ValueError("No variables provided.")
-
-        converted_grads_and_addrs = tuple(self._convert_grads_and_addrs(grads_and_vars))
-        addr_list = [a for g, a, _ in converted_grads_and_addrs if g is not None]
-        if not addr_list:
-            raise ValueError("No gradients provided for any address: %s." %
-                             ([str(a) for _, a, _ in converted_grads_and_addrs],))
-        with ops.init_scope():
-            self._create_slots(addr_list)
-        update_ops = []
-        with ops.name_scope(name, self._name) as name:
-            self._prepare()
-            for grad, addr, processor in converted_grads_and_addrs:
-                if grad is None:
-                    continue
-                if (context.executing_eagerly() or
-                        resource_variable_ops.is_resource_variable(addr)
-                        and not addr._in_graph_mode):  # pylint: disable=protected-access
-                    scope_name = ""
-                else:
-                    scope_name = addr.op.name
-                with ops.name_scope(
-                        "update_" + scope_name), ops.colocate_with(addr):
-                    update_ops.append(processor.update_op(self, grad))
-
-            apply_updates = self._finish(update_ops, name)
-
-            if not context.executing_eagerly():
-                if isinstance(apply_updates, ops.Tensor):
-                    logging.debug(">>>>Enter ops.Tensor")
-                    apply_updates = apply_updates.op
-                train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
-                if apply_updates not in train_op:
-                    logging.debug(">>>>Enter apply_updates not in train_op")
-                    train_op.append(apply_updates)
-            else:
-                raise RuntimeError("eager wrong.")
-
-            return apply_updates
-
 
 def get_filtered_grad_fn(grad_fn):
     def filtered_grad_fn(*args, **kwargs):
@@ -284,11 +283,11 @@ class _TensorByAddressProcessor(_OptimizableAddr):
     def __init__(self, addr):
         self._a = addr
 
-    def target(self):
-        return self._a
-
     def __str__(self):
         return "<_TensorByAddressProcessor(%s)>" % self._a
+
+    def target(self):
+        return self._a
 
     def update_op(self, opt, grad):
         if isinstance(grad, ops.Tensor):
