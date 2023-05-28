@@ -127,7 +127,8 @@ namespace MxRec {
         throw std::runtime_error("unknown chip ub size" + GetChipName(devID));
     }
 
-    template <class T> struct Batch {
+    template <class T>
+    struct Batch {
         size_t Size()
         {
             return sample.size();
@@ -142,6 +143,14 @@ namespace MxRec {
                 s += std::to_string(sample[i]) + " ";
             }
             return s;
+        }
+
+        ~Batch()
+        {
+            if (tensorAddr) {
+                free(tensorAddr);
+                tensorAddr = nullptr;
+            }
         }
 
         std::vector<T> sample;
