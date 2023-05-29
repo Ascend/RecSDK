@@ -128,38 +128,3 @@ class CustomizedLazyAdamByAddress(adam.AdamOptimizer, CustomizedOptimizer):
         var_update_op = host_pipeline_ops.embedding_update_by_address(addr, update_tensor, update_type=0)
 
         return var_update_op
-
-
-    # def _apply_sparse_shared(self, grad, addr):
-    #     power_b1, power_b2 = self._get_beta_accumulators()
-    #     power_b1 = math_ops.cast(power_b1, grad.dtype.base_dtype)
-    #     power_b2 = math_ops.cast(power_b2, grad.dtype.base_dtype)
-    #     temp_lr, temp_b1, temp_b2, temp_epsilon = self._cast_to_base_type(grad)
-    #     learning_rate = tf.divide(temp_lr * math_ops.sqrt(1 - power_b2), (1 - power_b1))
-    #
-    #     host_pipeline_ops = get_host_pipeline_ops()
-    #     dim = grad.shape.as_list()[-1]
-    #
-    #     # addr_m = tf.where(tf.math.greater(addr, 0), addr + 4*dim, addr)
-    #     # addr_v = tf.where(tf.math.greater(addr, 0), addr + 8*dim, addr)
-    #     addr_m = tf.add(addr, 4*dim)
-    #     addr_v = tf.add(addr, 8*dim)
-    #
-    #     logging.debug(f'lazy adam by addr, addr is {addr}, addr_m is {addr_m}, addr_v is {addr_v}')
-    #     old_m_slice = \
-    #         host_pipeline_ops.embedding_lookup_by_address(addr_m, embedding_dim=dim, embedding_type=1)
-    #     old_v_slice = \
-    #         host_pipeline_ops.embedding_lookup_by_address(addr_v, embedding_dim=dim, embedding_type=1)
-    #
-    #     m_t_slice = temp_b1 * old_m_slice + (1 - temp_b1) * grad
-    #     m_update_op = host_pipeline_ops.embedding_update_by_address(addr_m, m_t_slice - old_m_slice, update_type=0)
-    #
-    #     v_t_slice = temp_b2 * old_v_slice + (1 - temp_b2) * math_ops.square(grad)
-    #     v_update_op = host_pipeline_ops.embedding_update_by_address(addr_v, v_t_slice - old_v_slice, update_type=0)
-    #
-    #     denominator_slice = math_ops.sqrt(v_t_slice) + temp_epsilon
-    #
-    #     var_update_op = host_pipeline_ops.embedding_update_by_address(addr, tf.divide(-learning_rate * m_t_slice,
-    #                                                                                denominator_slice), update_type=0)
-    #
-    #     return control_flow_ops.group(m_update_op, v_update_op, var_update_op)

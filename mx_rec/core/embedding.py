@@ -632,7 +632,7 @@ class SparseEmbedding:
                                                               embedding_type=1)
 
             from mx_rec.util.constants import ASCEND_TABLE_NAME_MUST_CONTAIN
-            if is_training and use_dynamic_expansion and ASCEND_TABLE_NAME_MUST_CONTAIN is not None and \
+            if is_training and ASCEND_TABLE_NAME_MUST_CONTAIN is not None and \
                     ASCEND_TABLE_NAME_MUST_CONTAIN in self.table_name:
                 tf.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
                 tf.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
