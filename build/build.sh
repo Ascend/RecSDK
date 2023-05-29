@@ -210,5 +210,5 @@ deactivate tf2_env
 echo "-----Build gen tar -----"
 gen_tar_file
 
-#clean
+clean
 echo "-----Done-----"
