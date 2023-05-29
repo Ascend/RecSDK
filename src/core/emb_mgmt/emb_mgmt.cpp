@@ -455,7 +455,8 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
     return true;
 }
 
-bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int& batchId, int channelId, int iBatch, bool& remainBatch)
+bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
+                                int channelId, int iBatch, bool& remainBatchOut)
 {
     auto& embHashMap = hostHashMaps->embHashMaps.at(embName);
     if (iBatch == 0) {
@@ -463,7 +464,7 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int& batchId, int ch
     }
     auto lookupKeys = preprocess->GetLookupKeys(batchId, embName, channelId);
     if (lookupKeys.empty()) {
-        remainBatch = false;
+        remainBatchOut = false;
     }
     auto restore = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::RESTORE);
     hdTransfer->Send(RESTORE, *restore, channelId, embName);
