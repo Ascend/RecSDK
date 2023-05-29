@@ -338,10 +338,10 @@ def get_target_tensors_with_feature_specs(tgt_key_specs, batch, is_training, rea
             raise ValueError(f"Encounter a invalid batch.")
 
         if feature_spec.is_timestamp is None:
-            reslt = feature_spec.set_feat_attribute(tensor, is_training)
-            tensor = reslt.get("tensor")
-            table_name = reslt.get("table_name")
-            split = reslt.get("split")
+            result = feature_spec.set_feat_attribute(tensor, is_training)
+            tensor = result.get("tensor")
+            table_name = result.get("table_name")
+            split = result.get("split")
             if tensor.dtype != tf.int64:
                 tensor = tf.cast(tensor, dtype=tf.int64)
 
