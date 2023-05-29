@@ -323,9 +323,9 @@ class ConfigInitializer:
 
     def del_asc_manager(self):
         self.delete_initializers()
-        self.unfreeze()
         self._asc_manager.destroy()
         self._asc_manager = None
+        self.unfreeze()
         logging.debug("ASC manager has been destroyed.")
 
     @train_interval.setter
