@@ -33,7 +33,7 @@ protected:
     int64_t int64Min { static_cast<int64_t>(UINT32_MAX) };
 
     int maxChannelNum { MAX_CHANNEL_NUM };
-    int keyProcessThread { KEY_PROCESS_THREAD };
+    int keyProcessThread { PerfConfig::keyProcessThreadNum };
 
     vector<EmbInfo> testEmbInfos;
     valid_int_t validEmbInfo;
@@ -54,7 +54,7 @@ protected:
         for (auto& testEmbInfo : testEmbInfos) {
             testEmbInfo.name = name + to_string(idx);
             testEmbInfo.sendCount = sendCount;
-            testEmbInfo.embeddingSize = embeddingSize;
+            testEmbInfo.extEmbeddingSize = embeddingSize;
             testEmbInfo.devVocabSize = devVocabSize;
             testEmbInfo.hostVocabSize = hostVocabSize;
 

@@ -1,7 +1,6 @@
-# coding=utf-8
-# Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
-# Description:
-# Author: MindX SDK
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 from __future__ import absolute_import
 from __future__ import division
@@ -35,7 +34,7 @@ class CustomizedFtrlT(optimizer.Optimizer, CustomizedOptimizer):
 
     def __init__(self, learning_rate, use_locking=False, name="Ftrl_t", **kwargs):
         self.optimizer_type = "ftrl"
-        super(CustomizedFtrlT, self).__get_name__(name=name)
+        super(CustomizedFtrlT, self)._get_name(name=name)
 
         self._learning_rate = learning_rate
         self._alpha = kwargs.get("alpha", 0.06)
@@ -55,6 +54,41 @@ class CustomizedFtrlT(optimizer.Optimizer, CustomizedOptimizer):
         self._epsilon_tensor = None
         self._grad_factor_tensor = None
         super(CustomizedFtrlT, self).__init__(use_locking, self.unique_name)
+
+    def initialize_slots(self, var, table_instance):
+        z = slot_creator.create_zeros_slot(var, self._name + "/" + "z")
+        n = slot_creator.create_zeros_slot(var, self._name + "/" + "n")
+        g = slot_creator.create_zeros_slot(var, self._name + "/" + "g")
+        w = slot_creator.create_zeros_slot(var, self._name + "/" + "w")
+        remove_saving_var(z)
+        remove_saving_var(n)
+        remove_saving_var(g)
+        remove_saving_var(w)
+        named_slot_key = (var.op.graph, var.op.name)
+        table_instance = get_table_instance(var)
+        if self._name in table_instance.optimizer:
+            raise EnvironmentError(f"Sparse optimizer named {self._name} has exists.")
+
+        table_instance.set_optimizer(self._name, {"z": z, "n": n, "g": g, "w": w})
+        return [{"slot": z, "named_slot_key": named_slot_key, "slot_name": "z", "optimizer": self},
+                {"slot": n, "named_slot_key": named_slot_key, "slot_name": "n", "optimizer": self},
+                {"slot": g, "named_slot_key": named_slot_key, "slot_name": "g", "optimizer": self},
+                {"slot": w, "named_slot_key": named_slot_key, "slot_name": "w", "optimizer": self}]
+
+    def insert_slot(self, slot, named_slots_key, slot_name):
+        named_slots = self._slot_dict(slot_name)
+        if named_slots_key in named_slots:
+            raise EnvironmentError(f"named_slots_key should be global unique, but it has been in use now, "
+                                   f"please double check.")
+
+        named_slots[named_slots_key] = slot
+
+    def get_slot_init_values(self):
+        initial_z_value = 0.0
+        initial_n_value = 0.0
+        initial_g_value = 0.0
+        initial_w_value = 0.0
+        return [initial_z_value, initial_n_value, initial_g_value, initial_w_value]
 
     def _prepare(self):
         self._learning_rate_tensor = ops.convert_to_tensor(
@@ -218,38 +252,3 @@ class CustomizedFtrlT(optimizer.Optimizer, CustomizedOptimizer):
 
                 if self._name not in table_instance.optimizer:
                     table_instance.set_optimizer(self._name, {"z": z, "n": n, "g": g, "w": w})
-
-    def initialize_slots(self, var, table_instance):
-        z = slot_creator.create_zeros_slot(var, self._name + "/" + "z")
-        n = slot_creator.create_zeros_slot(var, self._name + "/" + "n")
-        g = slot_creator.create_zeros_slot(var, self._name + "/" + "g")
-        w = slot_creator.create_zeros_slot(var, self._name + "/" + "w")
-        remove_saving_var(z)
-        remove_saving_var(n)
-        remove_saving_var(g)
-        remove_saving_var(w)
-        named_slot_key = (var.op.graph, var.op.name)
-        table_instance = get_table_instance(var)
-        if self._name in table_instance.optimizer:
-            raise EnvironmentError(f"Sparse optimizer named {self._name} has exists.")
-
-        table_instance.set_optimizer(self._name, {"z": z, "n": n, "g": g, "w": w})
-        return [{"slot": z, "named_slot_key": named_slot_key, "slot_name": "z", "optimizer": self},
-                {"slot": n, "named_slot_key": named_slot_key, "slot_name": "n", "optimizer": self},
-                {"slot": g, "named_slot_key": named_slot_key, "slot_name": "g", "optimizer": self},
-                {"slot": w, "named_slot_key": named_slot_key, "slot_name": "w", "optimizer": self}]
-
-    def insert_slot(self, slot, named_slots_key, slot_name):
-        named_slots = self._slot_dict(slot_name)
-        if named_slots_key in named_slots:
-            raise EnvironmentError(f"named_slots_key should be global unique, but it has been in use now, "
-                                   f"please double check.")
-
-        named_slots[named_slots_key] = slot
-
-    def get_slot_init_values(self):
-        initial_z_value = 0.0
-        initial_n_value = 0.0
-        initial_g_value = 0.0
-        initial_w_value = 0.0
-        return [initial_z_value, initial_n_value, initial_g_value, initial_w_value]

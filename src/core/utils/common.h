@@ -9,6 +9,10 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#include <sys/stat.h>
+
+#include <cstring>
+#include <cassert>
 
 #include <vector>
 #include <random>
@@ -17,11 +21,9 @@
 #include <map>
 #include <queue>
 #include <sstream>
-#include <cstring>
 #include <fstream>
 #include <algorithm>
-#include <sys/stat.h>
-#include <cassert>
+
 #include "tensorflow/core/framework/tensor.h"
 #include "absl/container/flat_hash_map.h"
 
@@ -52,13 +54,22 @@ namespace MxRec {
     // read batch cost
     // key process cost
 	using namespace tensorflow;
+
     constexpr int TRAIN_CHANNEL_ID = 0;
     constexpr int EVAL_CHANNEL_ID = 1;
+
     constexpr int MAX_CHANNEL_NUM = 2;
-    constexpr int KEY_PROCESS_THREAD = 6;
-    constexpr int MAX_QUEUE_NUM = MAX_CHANNEL_NUM * KEY_PROCESS_THREAD;
+    constexpr int MAX_KEY_PROCESS_THREAD = 10;
+    constexpr int MAX_QUEUE_NUM = MAX_CHANNEL_NUM * MAX_KEY_PROCESS_THREAD;
+    
+    constexpr int DEFAULT_KEY_PROCESS_THREAD = 6;
+    struct PerfConfig {
+        static int keyProcessThreadNum;
+    };
+
     constexpr int KEY_PROCESS_TIMEOUT = 120;
     constexpr int GET_BATCH_TIMEOUT = 300;
+
     constexpr size_t DEFAULT_RANDOM_SEED = 10086;
     constexpr int INVALID_KEY_VALUE = -1;
     constexpr int PROFILING_START_BATCH_ID = 100;
@@ -116,7 +127,8 @@ namespace MxRec {
         throw std::runtime_error("unknown chip ub size" + GetChipName(devID));
     }
 
-    template <class T> struct Batch {
+    template <class T>
+    struct Batch {
         size_t Size()
         {
             return sample.size();
@@ -133,13 +145,23 @@ namespace MxRec {
             return s;
         }
 
+        ~Batch()
+        {
+            if (tensorAddr) {
+                free(tensorAddr);
+                tensorAddr = nullptr;
+            }
+        }
+
         std::vector<T> sample;
         void *tensorAddr = nullptr;
         std::string name;
+        std::string channelName;
         size_t batchSize;
         int batchId;
         int channel = 0;
         bool isInt64; // true int64 false int32
+        bool modifyGraph;
         time_t timestamp { -1 };
     };
 
@@ -340,15 +362,30 @@ struct BatchTask {
         EmbInfo(const std::string& name,
                 int sendCount,
                 int embeddingSize,
+                int extEmbeddingSize,
+                bool modifyGraph,
+                std::vector<std::string> channelNames,
                 std::vector<size_t> vocabsize,
-                std::vector<InitializeInfo> initializeInfos);
+                std::vector<InitializeInfo> initializeInfos,
+                std::map<std::string, int> sendCountMap)
+            : name(name), sendCount(sendCount), embeddingSize(embeddingSize), extEmbeddingSize(extEmbeddingSize),
+              modifyGraph(modifyGraph), channelNames(channelNames), initializeInfos(initializeInfos),
+              sendCountMap(sendCountMap)
+        {
+            devVocabSize = vocabsize[0];
+            hostVocabSize = vocabsize[1];
+        }
 
         std::string name;
         int sendCount;
         int embeddingSize;
+        int extEmbeddingSize;
+        bool modifyGraph;
         size_t devVocabSize;
         size_t hostVocabSize;
+        std::vector<std::string> channelNames;
         std::vector<InitializeInfo> initializeInfos;
+        std::map<std::string, int> sendCountMap;
     };
 
     struct HostEmbTable {
@@ -423,7 +460,8 @@ struct BatchTask {
         HIST_REC = 8,
         ATTRIBUTE = 9
     };
-}
+} // end namespace MxRec
+
 #define KEY_PROCESS "\033[45m[KeyProcess]\033[0m "
 #ifdef GTEST
     #define GTEST_PRIVATE public

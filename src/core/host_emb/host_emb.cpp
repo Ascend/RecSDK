@@ -24,7 +24,7 @@ bool HostEmb::Initialize(const vector<EmbInfo>& embInfos, int seed, bool ifLoad)
     for (const auto& embInfo: embInfos) {
         HostEmbTable hostEmb;
         hostEmb.hostEmbInfo = embInfo;
-        EmbDataGenerator(embInfo.initializeInfos, seed, embInfo.hostVocabSize, embInfo.embeddingSize,
+        EmbDataGenerator(embInfo.initializeInfos, seed, embInfo.hostVocabSize, embInfo.extEmbeddingSize,
             hostEmb.embData);
         hostEmbs[embInfo.name] = move(hostEmb);
         spdlog::info(HOSTEMB + "HostEmb Initialize End");
@@ -62,7 +62,7 @@ void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, in
                 break;
             }
             default: {
-                spdlog::error(HOSTEMB + "Invalid Initializer Type. Using default Constant Initializer with value 0.");
+                spdlog::warn(HOSTEMB + "Invalid Initializer Type. Using default Constant Initializer with value 0.");
                 ConstantInitializer defaultInitializer(initializeInfo.start, initializeInfo.len, 0);
                 initializer = &defaultInitializer;
             }
@@ -84,11 +84,11 @@ void HostEmb::LoadEmb(emb_mem_t& loadData)
 void HostEmb::Join()
 {
     spdlog::stopwatch sw;
-    spdlog::debug(HOSTEMB + "hostemb start join {}", procThread.size());
-    for (auto& t: procThread) {
+    spdlog::debug(HOSTEMB + "hostemb start join {}", procThreads.size());
+    for (auto& t: procThreads) {
         t->join();
     }
-    procThread.clear();
+    procThreads.clear();
     spdlog::info(HOSTEMB + "hostemb end join, cost:{}", TO_MS(sw));
 }
 
@@ -111,7 +111,7 @@ void HostEmb::UpdateEmb(const vector<size_t>& missingKeysHostPos, int channelId,
     spdlog::info(HOSTEMB + "UpdateEmb End missingkeys len = {}", missingKeysHostPos.size());
     EASY_BLOCK("Update")
     const float* tensorPtr = d2hEmb.flat<float>().data();
-    auto embeddingSize = hostEmbs[embName].hostEmbInfo.embeddingSize;
+    auto embeddingSize = hostEmbs[embName].hostEmbInfo.extEmbeddingSize;
     auto& embData = hostEmbs[embName].embData;
 
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) \
@@ -132,7 +132,7 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
 {
 #ifndef GTEST
     EASY_FUNCTION(profiler::colors::Purple)
-    procThread.emplace_back(make_unique<thread>(
+    procThreads.emplace_back(make_unique<thread>(
         [&, missingKeysHostPos, channelId, embName] {
             auto hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
             TransferChannel transferName = TransferChannel::D2H;
@@ -145,7 +145,7 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
             spdlog::info(HOSTEMB + "UpdateEmb End missingkeys len = {}", missingKeysHostPos.size());
             EASY_BLOCK("Update")
             auto& embData = hostEmbs[embName].embData;
-            auto embeddingSize = hostEmbs[embName].hostEmbInfo.embeddingSize;
+            auto embeddingSize = hostEmbs[embName].hostEmbInfo.extEmbeddingSize;
             auto aclData = acltdtGetDataItem(aclDataset, 0);
             if (aclData == nullptr) {
                 throw runtime_error("Acl get tensor data from dataset failed.");
@@ -176,7 +176,7 @@ vector<Tensor> HostEmb::GetH2DEmb(const vector<size_t>& missingKeysHostPos, cons
     EASY_FUNCTION()
     vector<Tensor> h2d_emb;
     const auto& emb = hostEmbs[embName];
-    const int embeddingSize = emb.hostEmbInfo.embeddingSize;
+    const int embeddingSize = emb.hostEmbInfo.extEmbeddingSize;
     h2d_emb.emplace_back(Tensor(tensorflow::DT_FLOAT, {
         int(missingKeysHostPos.size()), embeddingSize
     }));
@@ -197,14 +197,6 @@ vector<Tensor> HostEmb::GetH2DEmb(const vector<size_t>& missingKeysHostPos, cons
 auto HostEmb::GetHostEmbs() -> absl::flat_hash_map<string, HostEmbTable>*
 {
     return &hostEmbs;
-}
-
-EmbInfo::EmbInfo(const string &name, int sendCount, int embeddingSize, vector<size_t> vocabsize,
-    vector<InitializeInfo> initializeInfos)
-    : name(name), sendCount(sendCount), embeddingSize(embeddingSize), initializeInfos(initializeInfos)
-{
-    devVocabSize = vocabsize[0];
-    hostVocabSize = vocabsize[1];
 }
 
 void HostEmb::EmbPartGenerator(const vector<InitializeInfo> &initializeInfos, vector<vector<float>> &embData,

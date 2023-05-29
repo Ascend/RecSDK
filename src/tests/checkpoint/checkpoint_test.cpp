@@ -35,7 +35,7 @@ protected:
     int64_t int64Min { static_cast<int64_t>(UINT32_MAX) };
 
     int maxChannelNum = MAX_CHANNEL_NUM;
-    int keyProcessThread = KEY_PROCESS_THREAD;
+    int keyProcessThread = PerfConfig::keyProcessThreadNum;
 
     int embInfoNum { 10 };
 
@@ -71,7 +71,7 @@ protected:
         for (auto& testEmbInfo : testEmbInfos) {
             testEmbInfo.name = name + to_string(idx);
             testEmbInfo.sendCount = sendCount;
-            testEmbInfo.embeddingSize = embeddingSize;
+            testEmbInfo.extEmbeddingSize = embeddingSize;
             testEmbInfo.devVocabSize = devVocabSize;
             testEmbInfo.hostVocabSize = hostVocabSize;
             ++idx;
@@ -253,7 +253,7 @@ TEST_F(CheckpointTest, HostEmbs)
 
         EXPECT_EQ(it.second.hostEmbInfo.name, embInfo.name);
         EXPECT_EQ(it.second.hostEmbInfo.sendCount, embInfo.sendCount);
-        EXPECT_EQ(it.second.hostEmbInfo.embeddingSize, embInfo.embeddingSize);
+        EXPECT_EQ(it.second.hostEmbInfo.extEmbeddingSize, embInfo.extEmbeddingSize);
         EXPECT_EQ(it.second.hostEmbInfo.devVocabSize, embInfo.devVocabSize);
         EXPECT_EQ(it.second.hostEmbInfo.hostVocabSize, embInfo.hostVocabSize);
 

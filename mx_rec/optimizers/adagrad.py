@@ -1,6 +1,6 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2023 Huawei Technologies Co., Ltd
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 from __future__ import absolute_import
 from __future__ import division
@@ -47,13 +47,43 @@ class CustomizedAdagrad(adagrad.AdagradOptimizer, CustomizedOptimizer):
                  use_locking=False,
                  name="Adagrad"):
         self.optimizer_type = "Adagrad"
-        super(CustomizedAdagrad, self).__get_name__(name=name)
+        super(CustomizedAdagrad, self)._get_name(name=name)
         super(CustomizedAdagrad, self).__init__(learning_rate=learning_rate,
                                                 initial_accumulator_value=initial_accumulator_value,
                                                 use_locking=use_locking,
                                                 name=self.unique_name)
 
         self._check_input_param()
+
+    def initialize_slots(self, var, table_instance):
+        # Create slots for the first and second moments.
+        def creat_one_single_slot(var, op_name):
+            new_slot_variable = slot_creator.create_zeros_slot(var, op_name)
+            # make sure sparse optimizer statements will not be saved and restored within tf checkpoint.
+            return new_slot_variable
+
+        accumulator = creat_one_single_slot(var, self._name + "/" + "accumulator")
+        remove_saving_var(accumulator)
+        named_slot_key = (var.op.graph, var.op.name)
+        table_instance = get_table_instance(var)
+        if self._name in table_instance.optimizer:
+            raise EnvironmentError(f"Sparse optimizer named {self._name} has exists.")
+
+        table_instance.set_optimizer(self._name, {"accumulator": accumulator})
+        return [{"slot": accumulator, "named_slot_key": named_slot_key, "slot_name": "acc", "optimizer": self}]
+
+    def insert_slot(self, slot, named_slots_key, slot_name):
+        named_slots = self._slot_dict(slot_name)
+        if named_slots_key in named_slots:
+            raise EnvironmentError(f"named_slots_key should be global unique, but it has been in use now, "
+                                   f"please double check.")
+
+        named_slots[named_slots_key] = slot
+
+    def get_slot_init_values(self):
+        # return state value list of adagrad that needs to initialize in ASC DDR.
+        initial_accumulator_value = 0.0
+        return [initial_accumulator_value]
 
     def _check_input_param(self):
         check_param_type("learning_rate", self._learning_rate, (tf.Tensor, float))
@@ -87,33 +117,3 @@ class CustomizedAdagrad(adagrad.AdagradOptimizer, CustomizedOptimizer):
         return training_ops.resource_sparse_apply_adagrad(
             var.handle, acc.handle, math_ops.cast(self._learning_rate_tensor, grad.dtype),
             grad, indices, use_locking=self._use_locking)
-
-    def initialize_slots(self, var, table_instance):
-        # Create slots for the first and second moments.
-        def creat_one_single_slot(var, op_name):
-            new_slot_variable = slot_creator.create_zeros_slot(var, op_name)
-            # make sure sparse optimizer statements will not be saved and restored within tf checkpoint.
-            return new_slot_variable
-
-        accumulator = creat_one_single_slot(var, self._name + "/" + "accumulator")
-        remove_saving_var(accumulator)
-        named_slot_key = (var.op.graph, var.op.name)
-        table_instance = get_table_instance(var)
-        if self._name in table_instance.optimizer:
-            raise EnvironmentError(f"Sparse optimizer named {self._name} has exists.")
-
-        table_instance.set_optimizer(self._name, {"accumulator": accumulator})
-        return [{"slot": accumulator, "named_slot_key": named_slot_key, "slot_name": "acc", "optimizer": self}]
-
-    def insert_slot(self, slot, named_slots_key, slot_name):
-        named_slots = self._slot_dict(slot_name)
-        if named_slots_key in named_slots:
-            raise EnvironmentError(f"named_slots_key should be global unique, but it has been in use now, "
-                                   f"please double check.")
-
-        named_slots[named_slots_key] = slot
-
-    def get_slot_init_values(self):
-        # return state value list of adagrad that needs to initialize in ASC DDR.
-        initial_accumulator_value = 0.0
-        return [initial_accumulator_value]

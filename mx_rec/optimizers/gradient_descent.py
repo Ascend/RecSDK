@@ -1,8 +1,6 @@
-# coding=utf-8
-# Copyright (c) Huawei Technologies Co., Ltd. 2022-2022. All rights reserved.
-# Description:
-# Author: MindX SDK
-# Create: 2022-12-01
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 from __future__ import absolute_import
 from __future__ import division
@@ -31,11 +29,17 @@ class CustomizedGradientDescent(gradient_descent.GradientDescentOptimizer, Custo
 
     def __init__(self, learning_rate, use_locking=False, name="GradientDescent"):
         self.optimizer_type = "gradient_descent"
-        super(CustomizedGradientDescent, self).__get_name__(name=name)
+        super(CustomizedGradientDescent, self)._get_name(name=name)
         super(CustomizedGradientDescent, self).__init__(learning_rate=learning_rate, use_locking=use_locking,
                                                         name=self.unique_name)
 
         check_param_type("use_locking", use_locking, bool)
+
+    def initialize_slots(self, var, table_instance):
+        return []
+
+    def get_slot_init_values(self):
+        return []
 
     def _apply_sparse_duplicate_indices(self, grad, var):
         logging.debug(" Enter _apply_sparse_duplicate_indices")
@@ -47,9 +51,3 @@ class CustomizedGradientDescent(gradient_descent.GradientDescentOptimizer, Custo
     def _apply_dense(self, grad, var):
         logging.debug(" Enter _apply_dense")
         raise NotImplementedError("You are using a wrong type of variable.")
-
-    def initialize_slots(self, var, table_instance):
-        return []
-
-    def get_slot_init_values(self):
-        return []

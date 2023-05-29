@@ -1,6 +1,7 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2021-2023 Huawei Technologies Co., Ltd
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+
 import logging
 from functools import reduce
 
@@ -38,19 +39,6 @@ class FeatureSpec:
         self._pipeline_mode = set()
         self.check_params()
 
-    @staticmethod
-    def include_timestamp(is_training):
-        if is_training:
-            if FeatureSpec.use_timestamp_train:
-                raise EnvironmentError(f"Timestamp was set twice for training mode.")
-            FeatureSpec.use_timestamp_train = True
-        else:
-            FeatureSpec.use_timestamp_eval = True
-
-    @staticmethod
-    def use_timestamp(is_training):
-        return FeatureSpec.use_timestamp_train if is_training else FeatureSpec.use_timestamp_eval
-
     @property
     def is_timestamp(self):
         return self._is_timestamp
@@ -74,6 +62,23 @@ class FeatureSpec:
     @property
     def feat_cnt(self):
         return self._feat_cnt
+
+    @property
+    def pipeline_mode(self):
+        return self._pipeline_mode
+
+    @staticmethod
+    def include_timestamp(is_training):
+        if is_training:
+            if FeatureSpec.use_timestamp_train:
+                raise EnvironmentError(f"Timestamp was set twice for training mode.")
+            FeatureSpec.use_timestamp_train = True
+        else:
+            FeatureSpec.use_timestamp_eval = True
+
+    @staticmethod
+    def use_timestamp(is_training):
+        return FeatureSpec.use_timestamp_train if is_training else FeatureSpec.use_timestamp_eval
 
     def check_params(self):
         def check_str(arg, param_name):
@@ -115,10 +120,6 @@ class FeatureSpec:
         else:
             self.feat_pos_eval = FeatureSpec.instance_count_eval
             FeatureSpec.instance_count_eval += 1
-
-    @property
-    def pipeline_mode(self):
-        return self._pipeline_mode
 
     def insert_pipeline_mode(self, mode):
         if not isinstance(mode, bool):
@@ -171,3 +172,12 @@ class FeatureSpec:
 
         insert_feature_spec(self, is_training)
         return tensor, self.table_name, self.feat_cnt, self.split
+
+
+def get_feature_spec(table_name, access_and_evict_config):
+    access_threshold = None
+    eviction_threshold = None
+    if access_and_evict_config:
+        access_threshold = access_and_evict_config.get("access_threshold")
+        eviction_threshold = access_and_evict_config.get("eviction_threshold")
+    return FeatureSpec(table_name, access_threshold=access_threshold, eviction_threshold=eviction_threshold)

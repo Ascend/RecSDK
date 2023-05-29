@@ -34,6 +34,7 @@
 #include "time_cost.h"
 
 using namespace MxRec;
+using namespace std;
 
 struct UniqueData {
     void *inputData;
@@ -111,7 +112,7 @@ template <int N = 4> class Dedup {
         int8_t pad[3];
         int32_t replace_base;
         volatile uint64_t data[M];
-        volatile uint64_t idCount[M];
+        std::atomic<uint16_t> idCount[M];
     } __attribute__((__aligned__(64)));
 
     struct Statistics {
@@ -121,7 +122,7 @@ template <int N = 4> class Dedup {
 
 public:
     Dedup(int bucketCountPower2 = kDefaultBucketCount, int groups = 1)
-        : bucketCount_(bucketCountPower2), bucketCountMask_(bucketCount_ - 1), groupCount_(groups)
+            : bucketCount_(bucketCountPower2), bucketCountMask_(bucketCount_ - 1), groupCount_(groups)
     {
         void *area = aligned_alloc(64, sizeof(Meta<N>) * bucketCount_);
         table_ = reinterpret_cast<Meta<N> *>(area);
@@ -419,7 +420,7 @@ public:
     }
 
     std::vector<uint32_t> Replacement(const std::vector<uint64_t> &input, std::vector<uint64_t> *unique = nullptr,
-        int32_t base = 0)
+                                      int32_t base = 0)
     {
         std::vector<uint32_t> output;
         if (unique) {
@@ -502,8 +503,8 @@ public:
     using DedupT = Dedup<BucketWidth>;
 
     ShardedDedup(const GroupMethod &groupMethod, int desiredSize, int send_cnt,
-        int estimatedDuplicateRatio = kDefaultDuplicateRatio)
-        : groupMethod_(groupMethod), bucketCountPower2_(256), send_cnt_(send_cnt)
+                 int estimatedDuplicateRatio = kDefaultDuplicateRatio)
+            : groupMethod_(groupMethod), bucketCountPower2_(256), send_cnt_(send_cnt)
     {
         const int numOfGroupsInShard = groupMethod_.GroupCount();
 
@@ -636,13 +637,12 @@ public:
 
         int32_t *partBeginPtr = beginPtr;
         int32_t *partEndPtr =
-            reinterpret_cast<int32_t *>(CACHE_LINE_ALIGN(reinterpret_cast<uintptr_t>(partBeginPtr + partSize)));
+                reinterpret_cast<int32_t *>(CACHE_LINE_ALIGN(reinterpret_cast<uintptr_t>(partBeginPtr + partSize)));
 
         if(uniqueFlag.useStatic){
             for (int i = 0; i < groupMethod_.GroupCount(); i++) {
                 if (send_cnt_ < uniqueSizeVector[i]){
                     spdlog::error("sendCnt should not be smaller than uniqueSize, sendCnt {}, uniqueSize {}", send_cnt_, uniqueSizeVector[i]);
-                    throw SendCntTooSmallError();
                 }
             }
         }
@@ -668,7 +668,7 @@ public:
                 // should be +/-1 off.
                 const int numOfGroupsInShard = groupMethod_.GroupCount();
                 tasks.push_back([this, input, &baseVector, beginPtr, partBeginPtr, partEndPtr, numOfGroupsInShard,
-                    totalUniqueSize, useStatic, isInt64, useHot, offset, hotMap, hotPos, hotPosMap]() -> TaskReturnType {
+                                        totalUniqueSize, useStatic, isInt64, useHot, offset, hotMap, hotPos, hotPosMap]() -> TaskReturnType {
                     for (int32_t *ptr = partBeginPtr; ptr < partEndPtr; ++ptr) {
                         auto val = isInt64 ? ((int64_t *)input)[ptr - beginPtr] : ((int32_t *)input)[ptr - beginPtr];
                         auto group = groupMethod_.GroupId(val);
@@ -732,18 +732,19 @@ public:
                 start = index;
             }
 
-            size_t mem_size = uniqueSizeVector[i] * sizeof(int64_t);
-            auto rc = memcpy_s(uniqueIds + start, mem_size, uniqueVector + index, mem_size);
-            if (rc != 0) {
-                spdlog::error("[TileAndFill/uniqueIds] memcpy_s failded... mem_size: {}",mem_size);
-                return;
-            }
-
-            mem_size = uniqueSizeVector[i] * sizeof(int32_t);
-            rc = memcpy_s(idCountFill + start, mem_size, idCount + index, mem_size);
-            if (rc != 0) {
-                spdlog::error("[TileAndFill/idCountFill] memcpy_s failded... mem_size: {}", mem_size);
-                return;
+            if (uniqueSizeVector[i] > 0) {
+                size_t mem_size = uniqueSizeVector[i] * sizeof(int64_t);
+                auto rc = memcpy_s(uniqueIds + start, mem_size, uniqueVector + index, mem_size);
+                if (rc != 0) {
+                    spdlog::error("[TileAndFill/uniqueIds] memcpy_s failded... mem_size: {}",mem_size);
+                    throw std::runtime_error(fmt::format("[TileAndFill/uniqueIds] memcpy_s failded... mem_size: {}",mem_size).c_str());
+                }
+                mem_size = uniqueSizeVector[i] * sizeof(int32_t);
+                rc = memcpy_s(idCountFill + start, mem_size, idCount + index, mem_size);
+                if (rc != 0) {
+                    spdlog::error("[TileAndFill/idCountFill] memcpy_s failded... mem_size: {}", mem_size);
+                    throw std::runtime_error(fmt::format("[TileAndFill/idCountFill] memcpy_s failded... mem_size: {}", mem_size).c_str());
+                }
             }
 
             int fillLen = send_cnt_ - uniqueSizeVector[i];

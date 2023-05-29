@@ -27,7 +27,7 @@ protected:
     {
         spdlog::set_level(spdlog::level::debug);
         // 设置测试用的EmbInfo
-        embInfo.embeddingSize = embTable.TEST_EMB_SIZE;
+        embInfo.extEmbeddingSize = embTable.TEST_EMB_SIZE;
         spdlog::info("EmbTable BLOCK_EMB_COUNT {} INIT_BLOCK_COUNT {}",
             embTable.BLOCK_EMB_COUNT, embTable.INIT_BLOCK_COUNT);
         rankInfo.rankId = 0;

@@ -1,7 +1,6 @@
-# coding=utf-8
-# Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
-# Description:
-# Author: MindX SDK
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 from __future__ import absolute_import
 from __future__ import division
@@ -74,7 +73,7 @@ class CustomizedFtrlTZ(optimizer.Optimizer):
             return self._apply_dense_shared_v2(
                 grad,
                 handle)
-            
+
     def _apply_dense(self, grad, var):
         if self._lambda1 > 1e-10:
             return self._apply_dense_shared(

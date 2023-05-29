@@ -6,9 +6,10 @@
  * History: NA
  */
 
-#include <map>
+
 #include <algorithm>
 #include <atomic>
+#include <map>
 
 #include <spdlog/spdlog.h>
 #include <spdlog/stopwatch.h>
@@ -28,7 +29,6 @@
 #include "utils/common.h"
 #include "utils/safe_queue.h"
 #include "utils/singleton.h"
-
 #include "utils/time_cost.h"
 
 using namespace tensorflow;
@@ -110,8 +110,10 @@ REGISTER_OP("ReadEmbKeyV2Dynamic")
     .Output("output: int32")
     .Attr("T: {int64, int32}")
     .Attr("channel_id: int")
-    .Attr("emb_name: list(string)") // for which table to lookup
-    .Attr("timestamp: bool")        // use for feature evict, (unix timestamp)
+    .Attr("emb_name: list(string)")     // for which table to lookup
+    .Attr("timestamp: bool")            // use for feature evict, (unix timestamp)
+    .Attr("channel_name: list(string)") // use for multi lookup
+    .Attr("modify_graph: bool")         // auto modify graph enabled
     .SetShapeFn([](InferenceContextPtr c) {
         c->set_output(TensorIndex::TENSOR_INDEX_0, c->Scalar());
         return Status::OK();
@@ -127,6 +129,8 @@ public:
         OP_REQUIRES_OK(context, context->GetAttr("channel_id", &channelId)); // 0 train or 1 inference
         OP_REQUIRES_OK(context, context->GetAttr("emb_name", &embNames));
         OP_REQUIRES_OK(context, context->GetAttr("timestamp", &isTimestamp));
+        OP_REQUIRES_OK(context, context->GetAttr("channel_name", &channelNames));
+        OP_REQUIRES_OK(context, context->GetAttr("modify_graph", &modifyGraph));
 
         // 特征准入&淘汰功能 相关校验
 
@@ -185,18 +189,18 @@ public:
         // 保证所有embNames在m_embStatus中有状态记录
         SetCurrEmbNamesStatus(embNames, FeatureAdmitAndEvict::m_embStatus);
 
-        // [batchId % KEY_PROCESS_THREAD] which thread process this batch
-        // [KEY_PROCESS_THREAD * 0 or 1] train or inference
-        int batchQueueId = batchId % KEY_PROCESS_THREAD + KEY_PROCESS_THREAD * channelId;
+        // [batchId % PerfConfig::keyProcessThreadNum] which thread process this batch
+        // [PerfConfig::keyProcessThreadNum * 0 or 1] train or inference
+        int batchQueueId = batchId % PerfConfig::keyProcessThreadNum + PerfConfig::keyProcessThreadNum * channelId;
         Tensor* output = nullptr;
         OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape {}, &output));
         auto out = output->flat<int32>();
         out(0) = batchId;
         EnqueueBatchData(std::vector<int>{batchId, batchQueueId}, timestamp, inputTensor, splits);
         TIME_PRINT(KEY_PROCESS "read batch cost: {}, elapsed from last:{}, batch[{}]:{}, "
-                   "splits: {}, dataSize: {}, filedNum: {}",
+                   "splits: {}, dataSize: {}, filedNum: {}, channelNames: {}, modifyGraph: {}",
                    TO_MS(sw), TO_MS(staticSw),
-                   channelId, batchId, splits.size(), dataSize, fieldNum);
+                   channelId, batchId, splits.size(), dataSize, fieldNum, channelNames, modifyGraph);
         staticSw.reset();
     }
 
@@ -211,6 +215,10 @@ public:
         for (int i = 0; i < splits.size(); ++i) {
             auto batchData = queue->WaitAndGetOne(); // get dirty or empty data block
             batchData->name = embNames.at(i);
+            if (modifyGraph) {
+                batchData->modifyGraph = modifyGraph;
+                batchData->channelName = channelNames.at(i);
+            }
             size_t len = splits(i);
             batchData->channel = channelId;
             batchData->batchId = ids[0];
@@ -222,7 +230,7 @@ public:
             std::unique_ptr<emb_batch_t> batch = TensorCopy(inputTensor, move(batchData), len, offset);
             if (batch == nullptr) {
                 spdlog::error("batch can not be null");
-                return;
+                throw runtime_error("batch can not be null");
             }
             queue->Pushv(move(batch));
         }
@@ -233,8 +241,8 @@ public:
                                             const size_t& len, size_t& offset)
     {
         if (len == 0) {
-            spdlog::error("len can not be zero");
-            return nullptr;
+            spdlog::error("the length of batchData can not be zero");
+            throw runtime_error("the length of batchData can not be zero");
         }
         TimeCost ct;
         void* src = nullptr;
@@ -253,11 +261,13 @@ public:
         batchData->tensorAddr = malloc(memSize);
         if (batchData->tensorAddr == nullptr) {
             spdlog::error("mmemory allocation failded...");
+            throw runtime_error("mmemory allocation failded...");
         }
         void* dst = reinterpret_cast<void *>(batchData->tensorAddr);
         auto rc = memcpy_s(dst, memSize, src, memSize);
         if (rc != 0) {
             spdlog::error("[ReadEmbKeyV2Dynamic]memcpy_s failded... memSize: {}", memSize);
+            throw runtime_error(fmt::format("[ReadEmbKeyV2Dynamic]memcpy_s failded... memSize: {}", memSize).c_str());
         }
         TIME_PRINT("copy TimeCost(ms):{}", ct.ElapsedMS());
         offset += len;
@@ -302,8 +312,10 @@ public:
 
     int channelId {};
     vector<string> embNames {};
+    vector<string> channelNames {};
     int maxStep = 0;
     bool isTimestamp { false };
+    bool modifyGraph { false };
 };
 
 REGISTER_KERNEL_BUILDER(Name("ReadEmbKeyV2Dynamic").Device(DEVICE_CPU), ReadEmbKeyV2Dynamic);
@@ -315,8 +327,10 @@ REGISTER_OP("ReadEmbKeyV2")
     .Attr("T: {int64, int32}")
     .Attr("channel_id: int")
     .Attr("splits: list(int)")
-    .Attr("emb_name: list(string)") // for which table to lookup
-    .Attr("timestamp: bool")        // use for feature evict, (unix timestamp)
+    .Attr("emb_name: list(string)")     // for which table to lookup
+    .Attr("timestamp: bool")            // use for feature evict, (unix timestamp)
+    .Attr("channel_name: list(string)") // use for multi lookup
+    .Attr("modify_graph: bool")         // auto modify graph enabled
     .SetShapeFn([](InferenceContextPtr c) {
         c->set_output(TensorIndex::TENSOR_INDEX_0, c->Scalar());
         return Status::OK();
@@ -333,6 +347,8 @@ public:
         OP_REQUIRES_OK(context, context->GetAttr("emb_name", &embNames));
         OP_REQUIRES_OK(context, context->GetAttr("splits", &splits)); // 每个表的field Number
         OP_REQUIRES_OK(context, context->GetAttr("timestamp", &isTimestamp));
+        OP_REQUIRES_OK(context, context->GetAttr("channel_name", &channelNames));
+        OP_REQUIRES_OK(context, context->GetAttr("modify_graph", &modifyGraph));
         fieldNum = accumulate(splits.begin(), splits.end(), 0);
 
         // 特征准入&淘汰功能 相关校验
@@ -400,9 +416,9 @@ public:
         // 保证所有embNames在m_embStatus中有状态记录
         SetCurrEmbNamesStatus(embNames, FeatureAdmitAndEvict::m_embStatus);
 
-        // [batchId % KEY_PROCESS_THREAD] which thread process this batch
-        // [KEY_PROCESS_THREAD * 0 or 1] train or inference
-        int batchQueueId = batchId % KEY_PROCESS_THREAD + KEY_PROCESS_THREAD * channelId;
+        // [batchId % PerfConfig::keyProcessThreadNum] which thread process this batch
+        // [PerfConfig::keyProcessThreadNum * 0 or 1] train or inference
+        int batchQueueId = batchId % PerfConfig::keyProcessThreadNum + PerfConfig::keyProcessThreadNum * channelId;
         OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape {}, &output));
         auto out = output->flat<int32>();
         out(0) = batchId;
@@ -430,6 +446,10 @@ public:
             TIME_PRINT("TryPopTimeCost(ms):{}", tp.ElapsedMS());
 
             batchData->name = embNames.at(i);
+            if (modifyGraph) {
+                batchData->modifyGraph = modifyGraph;
+                batchData->channelName = channelNames.at(i);
+            }
             size_t len = splits.at(i);
             batchData->channel = channelId;
             batchData->batchId = batchId;
@@ -443,7 +463,7 @@ public:
             std::unique_ptr<emb_batch_t> batch = TensorCopy(inputTensor, move(batchData), len, offset);
             if (batch == nullptr) {
                 spdlog::error("batch can not be null");
-                return -1;
+                throw runtime_error("batch can not be null");
             }
             queue->Pushv(move(batch));
         }
@@ -456,7 +476,7 @@ public:
     {
         if (len == 0) {
             spdlog::error("len can not be zero");
-            return nullptr;
+            throw runtime_error("len can not be zero");
         }
         TimeCost ct;
         void* src = nullptr;
@@ -475,11 +495,13 @@ public:
         batchData->tensorAddr = malloc(memSize);
         if (batchData->tensorAddr == nullptr) {
             spdlog::error("mmemory allocation failded...");
+            throw runtime_error("mmemory allocation failded...");
         }
         void* dst = reinterpret_cast<void *>(batchData->tensorAddr);
         auto rc = memcpy_s(dst, memSize, src, memSize);
         if (rc != 0) {
             spdlog::error("[ReadEmbKeyV2Static]memcpy_s failded... memSize: {}", memSize);
+            throw runtime_error(fmt::format("[ReadEmbKeyV2Static]memcpy_s failded... memSize: {}", memSize).c_str());
         }
         TIME_PRINT("copy TimeCost(ms):{}", ct.ElapsedMS());
         offset += len;
@@ -525,8 +547,10 @@ public:
     vector<int> splits {};
     int fieldNum {};
     vector<string> embNames {};
+    vector<string> channelNames {};
     int maxStep = 0;
     bool isTimestamp { false };
+    bool modifyGraph { false };
 };
 
 REGISTER_KERNEL_BUILDER(Name("ReadEmbKeyV2").Device(DEVICE_CPU), ReadEmbKeyV2);

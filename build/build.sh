@@ -1,14 +1,15 @@
 #!/bin/bash
-# Copyright (c) Huawei Technologies Co., Ltd. 2021-2022. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2021-2023. All rights reserved.
 # Description: build script.
 # Author: MindX SDK
-# Create: 2022
+# Create: 2021
 # History: NA
 
 set -e
 warn() { echo >&2 -e "\033[1;31m[WARN ][Depend  ] $1\033[1;37m" ; }
 ARCH="$(uname -m)"
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+ROOT_DIR=$(dirname "${SCRIPT_DIR}")
 cd "$SCRIPT_DIR"
 if [ "$(uname -m)" = "aarch64" ]
 then
@@ -48,7 +49,7 @@ then
   deactivate tf1_env
 fi
 
-VERSION_FILE=${SCRIPT_DIR}/../../mindxsdk/build/conf/config.yaml
+VERSION_FILE="${ROOT_DIR}"/../mindxsdk/build/conf/config.yaml
 get_version() {
   if [ -f "$VERSION_FILE" ]; then
     VERSION=$(sed '/.*mindxsdk:/!d;s/.*: //' "$VERSION_FILE")
@@ -60,40 +61,49 @@ get_version() {
   fi
 }
 
-project_root_folder=${SCRIPT_DIR}/..
-project_output_path=${project_root_folder}/output/
-rm -rf "${project_output_path}"
-rm -rf "${SCRIPT_DIR}/lib"
+remove()
+{
+  if [ -d "$1" ]; then
+    rm -rf "$1"
+  elif [ -f "$1" ]; then
+    rm -f "$1"
+  fi
+}
+
+project_output_path="${ROOT_DIR}"/output/
+remove "${project_output_path}"
+remove "${SCRIPT_DIR}/lib"
 get_version
 export VERSION
 echo "MindX SDK mxrec: ${VERSION}" >> ./version.info
 
 pkg_dir=mindxsdk-mxrec
-[ -d ${pkg_dir} ] && rm -rf ${pkg_dir}
-mkdir ${pkg_dir}
-mv version.info ${pkg_dir}
+remove "${pkg_dir}"
+mkdir "${pkg_dir}"
+mv version.info "${pkg_dir}"
 
-opensource_path=${project_root_folder}/../opensource/opensource
+opensource_path="${ROOT_DIR}"/../opensource/opensource
 abseil_src_path=${opensource_path}/abseil
 echo "${abseil_src_path}"
-abseil_install_path=${project_root_folder}/install/abseil
+abseil_install_path="${ROOT_DIR}"/install/abseil
 
-src_path=${project_root_folder}/src
+src_path="${ROOT_DIR}"/src
 
-cd "${project_root_folder}"
+cd "${ROOT_DIR}"
 
-release_tar=Ascend-${pkg_dir}-${VERSION}-linux-${ARCH}.tar.gz
+release_tar=Ascend-"${pkg_dir}"_"${VERSION}"_linux-"${ARCH}".tar.gz
 
 install_abseil()
 {
-    rm -rf "${abseil_install_path}"
+    remove "${abseil_install_path}"
     echo "${abseil_install_path}"
-    if [[ ! -d ${abseil_install_path} ]]
+    if [[ ! -d "${abseil_install_path}" ]]
     then mkdir -p "${abseil_install_path}"
     fi
 
     cd "${abseil_src_path}"
     echo "${abseil_src_path}"
+    remove CMakeCache.txt
     cmake -DCMAKE_INSTALL_PREFIX="${abseil_install_path}" . && make -j8 && make install
 
     echo "${project_output_path}"/abseil
@@ -110,13 +120,13 @@ install_abseil()
 
 compile_securec()
 {
-    if [[ ! -d ${project_root_folder}/platform/securec ]]; then
+    if [[ ! -d "${ROOT_DIR}"/platform/securec ]]; then
         echo "securec is not exist"
         exit 1
     fi
 
-    if [[ ! -f ${project_root_folder}/platform/securec/lib/libsecurec.so ]]; then
-        cd ${project_root_folder}/platform/securec/src
+    if [[ ! -f "${ROOT_DIR}"/platform/securec/lib/libsecurec.so ]]; then
+        cd "${ROOT_DIR}"/platform/securec/src
         make -j
     fi
 }
@@ -125,39 +135,39 @@ compile_so_file()
 {
   cd "${src_path}"
   chmod u+x build.sh
-  ./build.sh "$1" "${project_root_folder}"
+  ./build.sh "$1" "${ROOT_DIR}"
   cd ..
 }
 
 collect_so_file()
 {
   cd "${src_path}"
-  rm -rf "${src_path}"/libasc
+  remove "${src_path}"/libasc
   mkdir -p "${src_path}"/libasc
   chmod u+x libasc
 
-  cp -df "${project_root_folder}"/output/*.so* libasc
-  cp ${project_root_folder}/platform/securec/lib/libsecurec.so libasc
+  cp -df "${ROOT_DIR}"/output/*.so* libasc
+  cp "${ROOT_DIR}"/platform/securec/lib/libsecurec.so libasc
 }
 
 gen_wheel_file()
 {
-  cd "${project_root_folder}"
+  cd "${ROOT_DIR}"
   touch "${src_path}"/libasc/__init__.py
-  [ -d "${project_root_folder}"/mx_rec/libasc ] && rm -rf "${project_root_folder}"/mx_rec/libasc
-  mv "${src_path}"/libasc "${project_root_folder}"/mx_rec
+  remove "${ROOT_DIR}"/mx_rec/libasc
+  mv "${src_path}"/libasc "${ROOT_DIR}"/mx_rec
   python3 setup.py bdist_wheel
   mkdir -p "$1"
   mv dist/mx_rec*.whl "$1"
-  rm -rf "${project_root_folder}"/mx_rec/libasc
+  remove "${ROOT_DIR}"/mx_rec/libasc
 }
 
 gen_tar_file()
 {
   cd "${src_path}"
-  mv  "${project_root_folder}"/tf1_whl ../build/${pkg_dir}
-  mv  "${project_root_folder}"/tf2_whl ../build/${pkg_dir}
-  cp -r  "${src_path}"/../example ../build/${pkg_dir}
+  mv  "${ROOT_DIR}"/tf1_whl ../build/"${pkg_dir}"
+  mv  "${ROOT_DIR}"/tf2_whl ../build/"${pkg_dir}"
+  cp -r  "${src_path}"/../example ../build/"${pkg_dir}"
   cd ../build
   tar -zvcf "${release_tar}" "${pkg_dir}" || {
       warn "compression failed, packages might be broken"
@@ -167,6 +177,19 @@ gen_tar_file()
 
 }
 
+clean()
+{
+  remove "${ROOT_DIR}"/dist
+  remove "${ROOT_DIR}"/install
+  remove "${ROOT_DIR}"/mx_rec.egg-info
+  remove "${ROOT_DIR}"/src/build
+  remove "${ROOT_DIR}"/build/bdist.linux-"$(arch)"
+  remove "${ROOT_DIR}"/build/tf1_env
+  remove "${ROOT_DIR}"/build/tf2_env
+  remove "${ROOT_DIR}"/build/lib
+  remove "${ROOT_DIR}"/build/mindxsdk-mxrec
+}
+
 install_abseil
 compile_securec
 
@@ -174,17 +197,18 @@ echo "-----Build Start tf1 -----"
 source "${SCRIPT_DIR}"/tf1_env/bin/activate
 compile_so_file "${tf1_path}"
 collect_so_file
-gen_wheel_file  "${project_root_folder}"/tf1_whl
+gen_wheel_file  "${ROOT_DIR}"/tf1_whl
 deactivate tf1_env
 
 echo "-----Build Start tf2 -----"
 source "${SCRIPT_DIR}"/tf2_env/bin/activate
 compile_so_file "${tf2_path}"
 collect_so_file
-gen_wheel_file  "${project_root_folder}"/tf2_whl
+gen_wheel_file  "${ROOT_DIR}"/tf2_whl
 deactivate tf2_env
 
 echo "-----Build gen tar -----"
 gen_tar_file
 
+clean
 echo "-----Done-----"

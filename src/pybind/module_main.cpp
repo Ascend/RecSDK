@@ -4,10 +4,12 @@
  * Author: MindX SDK
  * Date: 2022/11/15
  */
-#include "module_main.h"
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <dcmi_interface_api.h>
+
 #include "emb_mgmt/emb_mgmt.h"
+#include "module_main.h"
 
 namespace py = pybind11;
 using namespace MxRec;
@@ -33,9 +35,22 @@ int GetUBHotSize(int devID)
     return static_cast<int>(MxRec::GetUBSize(devID)/ sizeof(float) * HOT_EMB_CACHE_PCT) ;
 }
 
+uint32_t GetLogicID(uint32_t phyid)
+{
+    int32_t ret = 0;
+    uint32_t logicId;
+    ret = dcmi_get_device_logicid_from_phyid(phyid, &logicId);
+    if (ret != 0) {
+        return ret;
+    }
+    return logicId;
+}
+
 PYBIND11_MODULE(mxrec_pybind, m)
 {
     m.def("get_ub_hot_size", &GetUBHotSize, py::arg("device_id"));
+
+    m.def("get_logic_id", &GetLogicID, py::arg("physic_id"));
 
     m.attr("USE_STATIC") = py::int_(HybridOption::USE_STATIC);
 
@@ -78,15 +93,21 @@ void GetRankInfo(pybind11::module_& m)
 void GetEmbInfo(pybind11::module_& m)
 {
     pybind11::class_<EmbInfo>(m, "EmbInfo")
-            .def(pybind11::init<const std::string&, int, int, std::vector<size_t>, std::vector<InitializeInfo>&>(),
-                 py::arg("name"), py::arg("send_count"), py::arg("embedding_size"), py::arg("vocab_size"),
-                 py::arg("initialize_infos"))
+            .def(pybind11::init<const std::string&, int, int, int, bool, std::vector<string>, std::vector<size_t>,
+                    std::vector<InitializeInfo>&, std::map<std::string, int>>(),
+                 py::arg("name"), py::arg("send_count"), py::arg("embedding_size"),
+                 py::arg("ext_embedding_size"), py::arg("modify_graph"), py::arg("channel_name_list"),
+                 py::arg("vocab_size"), py::arg("initialize_infos"), py::arg("send_count_map"))
             .def_readwrite("name", &EmbInfo::name)
             .def_readwrite("send_count", &EmbInfo::sendCount)
             .def_readwrite("embedding_size", &EmbInfo::embeddingSize)
+            .def_readwrite("ext_embedding_size", &EmbInfo::extEmbeddingSize)
+            .def_readwrite("modify_graph", &EmbInfo::modifyGraph)
+            .def_readwrite("channel_name_list", &EmbInfo::channelNames)
             .def_readwrite("dev_vocab_size", &EmbInfo::devVocabSize)
             .def_readwrite("host_vocab_size", &EmbInfo::hostVocabSize)
-            .def_readwrite("initialize_infos", &EmbInfo::initializeInfos);
+            .def_readwrite("initialize_infos", &EmbInfo::initializeInfos)
+            .def_readwrite("send_count_map", &EmbInfo::sendCountMap);
 }
 
 void GetRandomInfo(pybind11::module_& m)

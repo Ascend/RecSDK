@@ -1,6 +1,7 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2021-2023 Huawei Technologies Co., Ltd
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+
 import logging
 import math
 import time
@@ -9,11 +10,12 @@ from collections import defaultdict
 import numpy as np
 import tensorflow as tf
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 
 from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
-from mx_rec.core.asc.helper import FeatureSpec
+from mx_rec.core.asc.feature_spec import FeatureSpec, get_feature_spec
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.util.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_HOT_POS, \
+from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_HOT_POS, \
     ASCEND_SPARSE_LOOKUP_ID_OFFSET, ASCEND_SPARSE_LOOKUP_RESTORE_VECTOR, MxRecMode, \
     ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_ALL2ALL_MATRIX, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, \
     DEFAULT_EVICT_TIME_INTERVAL, TRAIN_CHANNEL_ID
@@ -131,22 +133,26 @@ class SparseEmbedding:
         self._use_feature_mapping = False
         self.skip_emb_transfer = True if self.host_vocabulary_size <= 0 else False
         self._default_name_count = -1
-        self._emb_size = None
+        self.emb_size = None
         self.ext_emb_size = None
         self.ext_coefficient = 1
         self._optimizer = dict()
-        self.slice_device_vocabulary_size = None
-        self.slice_host_vocabulary_size = None
+        self.slice_device_vocabulary_size = 0
+        self.slice_host_vocabulary_size = 0
         self.variable = None
         self.lookup_info = set()
         self.lookup_result = None
         self.use_dynamic_expansion = get_use_dynamic_expansion()
+        self.channel_name_list = []
+        self.send_count_map = dict()
+        self.channel_name_dict = {True: [], False: []}
+        self.modify_graph = False
 
         self.set_slice_vocab_size()
         self.set_emb_size()
         if self._mode == MxRecMode.ASC and is_asc_frozen() and self.table_name in get_name_to_var_dict():
             self.variable = tf.compat.v1.get_variable(self.table_name,
-                                                      shape=(self.slice_device_vocabulary_size, self._emb_size))
+                                                      shape=(self.slice_device_vocabulary_size, self.emb_size))
             if not self.skip_emb_transfer:
                 self.set_ext_emb_size()
         else:
@@ -154,6 +160,53 @@ class SparseEmbedding:
             self._initialize_variables()
             self.set_ext_emb_size()
             tf.compat.v1.add_to_collection(get_ascend_global_hashtable_collection(), self.variable)
+
+    @property
+    def use_feature_mapping(self):
+        return self._use_feature_mapping
+
+    @property
+    def scalar_emb_size(self):
+        return self.emb_size
+
+    @property
+    def mode(self):
+        return self._mode
+
+    @property
+    def send_count(self):
+        return self._send_count
+
+    @property
+    def optimizer(self):
+        return self._optimizer
+
+    @property
+    def optimizer_instance_list(self):
+        return self._optimizer_instance_list
+
+    @staticmethod
+    def get_anchor_attribute(anchor, attr):
+        if not isinstance(anchor, tf.Tensor):
+            raise ValueError("Anchor must be a Tensor.")
+
+        if attr not in ASCAnchorAttr:
+            raise ValueError("Given attr must be limited in Enum 'ASCAnchorAttr'.")
+
+        specs = SparseEmbedding.anchor_tensor_specs.get(anchor)
+        if specs is None:
+            raise ValueError(f"Given anchor '{anchor}' was not registered.")
+
+        return specs.get(attr)
+
+    @staticmethod
+    def set_optimizer_slot(slot_info):
+        slot = slot_info.get("slot")
+        slot_name = slot_info.get("slot_name")
+        optimizer = slot_info.get("optimizer")
+        named_slot_key = slot_info.get("named_slot_key")
+
+        optimizer.insert_slot(slot, named_slot_key, slot_name)
 
     def check_optimizer_instance(self):
         for optimizer_instance in self._optimizer_instance_list:
@@ -210,13 +263,13 @@ class SparseEmbedding:
         self._use_feature_mapping = True
 
     def set_emb_size(self):
-        self._emb_size = self.embedding_size.as_list()[0]
+        self.emb_size = self.embedding_size.as_list()[0]
 
     def set_ext_emb_size(self):
         self.ext_coefficient += len(self.optimizer_slot_info_list)
         if self.use_dynamic_expansion and len(self._optimizer_instance_list) != 0:
-            self.ext_coefficient += self._slot_num[self.table_name]
-        self.ext_emb_size = self._emb_size * self.ext_coefficient
+            self.ext_coefficient += self._slot_num.get(self.table_name)
+        self.ext_emb_size = self.emb_size * self.ext_coefficient
         logging.debug(f"init table, ext_emb_size is set to be {self.ext_emb_size}")
 
     def set_slice_vocab_size(self):
@@ -229,41 +282,6 @@ class SparseEmbedding:
         else:
             self.slice_device_vocabulary_size = math.ceil(self.device_vocabulary_size / rank_size)
             self.slice_host_vocabulary_size = math.ceil(self.host_vocabulary_size / rank_size)
-
-    @property
-    def use_feature_mapping(self):
-        return self._use_feature_mapping
-
-    @property
-    def scalar_emb_size(self):
-        return self._emb_size
-
-    @property
-    def mode(self):
-        return self._mode
-
-    def _record(self):
-        insert_table_instance(self.table_name, self.variable, self)
-        logging.debug(f"Device vocabulary_size for table {self.table_name} is {self.device_vocabulary_size}.")
-        logging.debug(f"Slice_device_vocabulary_size for table {self.table_name} is"
-                      f" {self.slice_device_vocabulary_size}.")
-        logging.debug(f"Host vocabulary size for table {self.table_name} is {self.host_vocabulary_size}.")
-        logging.debug(f"Slice host vocabulary_size for table {self.table_name} is"
-                      f" {self.slice_host_vocabulary_size}.")
-
-    @staticmethod
-    def get_anchor_attribute(anchor, attr):
-        if not isinstance(anchor, tf.Tensor):
-            raise ValueError("Anchor must be a Tensor.")
-
-        if attr not in ASCAnchorAttr:
-            raise ValueError("Given attr must be limited in Enum 'ASCAnchorAttr'.")
-
-        specs = SparseEmbedding.anchor_tensor_specs.get(anchor)
-        if specs is None:
-            raise ValueError(f"Given anchor '{anchor}' was not registered.")
-
-        return specs.get(attr)
 
     def register_anchor_attribute(self, anchor_ids, feature_spec, kwargs):
         SparseEmbedding.anchor_tensor_specs[anchor_ids][ASCAnchorAttr.TABLE_INSTANCE] = self
@@ -336,17 +354,11 @@ class SparseEmbedding:
 
         self._optimizer[key] = state_dict
 
-    @property
-    def send_count(self):
-        return self._send_count
-
-    @property
-    def optimizer(self):
-        return self._optimizer
-
-    @property
-    def optimizer_instance_list(self):
-        return self._optimizer_instance_list
+    def set_channel_name(self, ids_channel_name, eval_mode):
+        self.channel_name_list.append(ids_channel_name)
+        if not eval_mode:
+            self.channel_name_dict.get(True).insert(0, ids_channel_name)
+        self.channel_name_dict.get(False).insert(0, ids_channel_name)
 
     def lookup_for_asc(self, ids: tf.Tensor, send_count, **kwargs):
         """
@@ -364,25 +376,17 @@ class SparseEmbedding:
 
         """
         logging.debug(f"Enter ASC Branch.")
+        if not kwargs.get("modify_graph"):
+            raise ValueError(f"modify_graph must be turn-on when lookup by ids(Tensor, not FeatureSpec).")
+
         self.check_mode(MxRecMode.ASC)
         is_training = kwargs.get("is_train")
         if is_asc_frozen() and is_training:
-            raise EnvironmentError(f"Cannot build new sparse forward graph after emb cache management was built.")
-        if not kwargs.get("modify_graph"):
-            raise RuntimeError(f"modify_graph must be turn-on when lookup by ids(Tensor, not FeatureSpec).")
+            raise RuntimeError(f"Cannot build new sparse forward graph after emb cache management was built.")
 
-        rank_size = get_rank_size()
-        access_threshold = None
-        eviction_threshold = None
-        if kwargs.get("access_and_evict_config"):
-            access_and_evict_config = kwargs.get("access_and_evict_config")
-            access_threshold = access_and_evict_config.get("access_threshold")
-            eviction_threshold = access_and_evict_config.get("eviction_threshold")
-        feature_spec = FeatureSpec(self.table_name,
-                                   access_threshold=access_threshold,
-                                   eviction_threshold=eviction_threshold)
+        feature_spec = get_feature_spec(self.table_name, kwargs.get("access_and_evict_config"))
         feature_spec.set_feat_attribute(ids, is_training)
-
+        # 'clear_channel()' function needs to be executed after 'set_feat_attribute()' function
         if is_asc_frozen() and not is_training:
             clear_channel(is_train_channel=False)
 
@@ -394,9 +398,21 @@ class SparseEmbedding:
         use_dynamic_expansion = get_use_dynamic_expansion()
         use_static = get_use_static()
         use_hot = get_use_hot()
-        logging.debug(f"In lookup_for_asc function, table name: {self.table_name}, ids: {ids}, use_dynamic_expansion: "
-                      f"{use_dynamic_expansion}, use_static: {use_static}, use_hot: {use_hot}")
+        eval_mode = not is_training and len(self.channel_name_dict.get(not is_training)) == 0
+        ids_channel_name = ""
+        # set in train mode, train and eval mode, eval mode
+        if is_training or eval_mode:
+            ids_channel_name = feature_spec.name + "_lookup_ids"
+            self.set_channel_name(ids_channel_name, eval_mode)
+            send_count = send_count if send_count is not None else 0
+            self._send_count = send_count
+            self.send_count_map[ids_channel_name] = send_count
+        self.modify_graph = kwargs.get("modify_graph", True)
+        logging.debug(f"In lookup_for_asc function, table name: {self.table_name}, anchor_ids: {anchor_ids}, "
+                      f"ids_channel_name: {ids_channel_name}, use_dynamic_expansion: {use_dynamic_expansion}, "
+                      f"use_static: {use_static}, use_hot: {use_hot}")
 
+        rank_size = get_rank_size()
         id_offsets = tf.ones(shape=[send_count * rank_size if use_static else 1 * rank_size, ],
                              dtype=tf.int64 if get_use_dynamic_expansion() else tf.int32, name="id_offsets")
         id_offsets = tf.identity(id_offsets, name=ASCAnchorAttr.ID_OFFSETS.value)
@@ -404,7 +420,7 @@ class SparseEmbedding:
         local_embeddings = None
         if use_dynamic_expansion:
             local_embeddings = get_host_pipeline_ops().embedding_lookup_by_address(id_offsets,
-                                                                                   embedding_dim=self._emb_size,
+                                                                                   embedding_dim=self.emb_size,
                                                                                    embedding_type=1)
 
         from mx_rec.util.constants import ASCEND_TABLE_NAME_MUST_CONTAIN
@@ -416,7 +432,13 @@ class SparseEmbedding:
         @tf.custom_gradient
         def sparse_forward(table, feat_ids):
             logging.debug(f"fp rank size: {rank_size}")
-            restore_vector = tf.ones(shape=[np.prod(feat_ids.shape.as_list()), ], dtype=tf.int32, name="restore_vector")
+            if feat_ids.shape.as_list()[0] is not None:
+                restore_vector = tf.ones(shape=[np.prod(feat_ids.shape.as_list()), ], dtype=tf.int32,
+                                         name="restore_vector")
+            else:
+                restore_vector = tf.ones(shape=[tf.math.reduce_prod(array_ops.shape(feat_ids)[0]), ], dtype=tf.int32,
+                                         name="restore_vector")
+
             restore_vector = tf.identity(restore_vector, name=ASCAnchorAttr.RESTORE_VECTOR.value)
             tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_RESTORE_VECTOR, restore_vector)
             SparseEmbedding.anchor_tensor_specs[anchor_ids][ASCAnchorAttr.RESTORE_VECTOR] = restore_vector
@@ -431,7 +453,7 @@ class SparseEmbedding:
             hot_pos = None
             if use_hot:
                 import mxrec_pybind
-                hot_size = int(mxrec_pybind.get_ub_hot_size(get_device_id()) / self._emb_size)
+                hot_size = int(mxrec_pybind.get_ub_hot_size(get_device_id()) / self.emb_size)
                 hot_pos = tf.ones(shape=[hot_size, ], dtype=tf.int32, name="hot_pos")
                 hot_pos = tf.identity(hot_pos, name=ASCAnchorAttr.HOT_POS.value)
                 tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_HOT_POS, hot_pos)
@@ -450,7 +472,11 @@ class SparseEmbedding:
                                                unique_embeddings], axis=0)
 
             embeddings = tf.gather(unique_embeddings, restore_vector, axis=0, name="gather_for_restore_vector")
-            lookup_result = tf.reshape(embeddings, feat_ids.shape.as_list() + [self.scalar_emb_size])
+            if use_static:
+                lookup_result = tf.reshape(embeddings, feat_ids.shape.as_list() + [self.scalar_emb_size])
+            else:
+                dest_shape = array_ops.concat([array_ops.shape(feat_ids), [self.scalar_emb_size]], 0)
+                lookup_result = array_ops.reshape(embeddings, dest_shape)
 
             def grad(lookup_diff):
                 embedding_diff = tf.reshape(lookup_diff, [-1, self.scalar_emb_size])
@@ -494,8 +520,8 @@ class SparseEmbedding:
         spec_name = feature_spec.name
         is_training = kwargs.get("is_train")
         if self.lookup_result is not None and spec_name in self.lookup_result \
-                and is_training in self.lookup_result[spec_name]:
-            return self.lookup_result[spec_name][is_training]
+                and is_training in self.lookup_result.get(spec_name):
+            return self.lookup_result.get(spec_name).get(is_training)
 
         table_name = feature_spec.table_name
         same_table_feature_spec = ConfigInitializer.get_instance().table_name_to_feature_spec[table_name][is_training]
@@ -504,7 +530,7 @@ class SparseEmbedding:
         if len(same_table_feature_spec) == 1:
             lookup_result = self.lookup_for_asc_with_feature_spec_inner(feature_spec, send_count, **kwargs)
             self.lookup_result = {spec_name: {is_training: lookup_result}}
-            return self.lookup_result[spec_name][is_training]
+            return self.lookup_result.get(spec_name).get(is_training)
         else:
             same_table_feature_spec = sorted(same_table_feature_spec, key=lambda x: x.name)
             same_table_spec_count = len(same_table_feature_spec)
@@ -525,7 +551,7 @@ class SparseEmbedding:
             lookup_result_split = tf.split(lookup_result, split_size)
             self.lookup_result = {k.name: {is_training: tf.reshape(v, k.dims + [self.scalar_emb_size])}
                                   for k, v in zip(same_table_feature_spec, lookup_result_split)}
-            return self.lookup_result[spec_name][is_training]
+            return self.lookup_result.get(spec_name).get(is_training)
 
     def lookup_for_asc_with_feature_spec_inner(self, feature_spec: FeatureSpec, send_count: int, **kwargs):
         """
@@ -558,7 +584,7 @@ class SparseEmbedding:
         config = dict(batch_size=feature_spec.batch_size, feat_cnt=feature_spec.feat_cnt, send_count=send_count,
                       rank_size=rank_size, channel_id=channel_id, table_name=self.table_name,
                       skip_emb_transfer=self.skip_emb_transfer, ext_emb_size=self.ext_emb_size,
-                      _emb_size=self._emb_size, use_hot=use_hot, device_id=device_id,
+                      emb_size=self.emb_size, use_hot=use_hot, device_id=device_id,
                       use_dynamic_expansion=use_dynamic_expansion)
 
         if self.skip_emb_transfer:
@@ -628,7 +654,7 @@ class SparseEmbedding:
                 return sparse_forward(self.variable)
 
             local_embeddings = \
-                host_pipeline_ops.embedding_lookup_by_address(id_offsets, embedding_dim=self._emb_size,
+                host_pipeline_ops.embedding_lookup_by_address(id_offsets, embedding_dim=self.emb_size,
                                                               embedding_type=1)
 
             from mx_rec.util.constants import ASCEND_TABLE_NAME_MUST_CONTAIN
@@ -638,6 +664,15 @@ class SparseEmbedding:
                 tf.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
 
             return sparse_forward(local_embeddings)
+
+    def _record(self):
+        insert_table_instance(self.table_name, self.variable, self)
+        logging.debug(f"Device vocabulary_size for table {self.table_name} is {self.device_vocabulary_size}.")
+        logging.debug(f"Slice_device_vocabulary_size for table {self.table_name} is"
+                      f" {self.slice_device_vocabulary_size}.")
+        logging.debug(f"Host vocabulary size for table {self.table_name} is {self.host_vocabulary_size}.")
+        logging.debug(f"Slice host vocabulary_size for table {self.table_name} is"
+                      f" {self.slice_host_vocabulary_size}.")
 
     def _initialize_variables(self):
         initialized_tensor = self.emb_initializer(self.slice_device_vocabulary_size + self.embedding_size)
@@ -659,15 +694,6 @@ class SparseEmbedding:
 
             for slot_info in self.optimizer_slot_info_list:
                 self.set_optimizer_slot(slot_info)
-
-    @staticmethod
-    def set_optimizer_slot(slot_info):
-        slot = slot_info.get("slot")
-        slot_name = slot_info.get("slot_name")
-        optimizer = slot_info.get("optimizer")
-        named_slot_key = slot_info.get("named_slot_key")
-
-        optimizer.insert_slot(slot, named_slot_key, slot_name)
 
 
 def get_own_ids(unique_ids, origin_id_lens, send_cnt, self):
@@ -808,7 +834,7 @@ class _EvictHook(tf.compat.v1.train.SessionRunHook):
             trigger_evict()
             self._start_time = cur_time
             for name in self._hash_table_instance.keys():
-                run_context.session.run(self._evict_op[name])
+                run_context.session.run(self._evict_op.get(name))
 
     def check_name_and_get_hashtable(self):
         for _, feature_spec in export_feature_spec().items():

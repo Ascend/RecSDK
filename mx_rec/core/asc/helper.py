@@ -1,15 +1,15 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2021-2023 Huawei Technologies Co., Ltd
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+
 import logging
 from functools import reduce
-import os
 
 import tensorflow as tf
 
-from mx_rec.util.initialize import get_host_pipeline_ops, insert_feature_spec, insert_training_mode_channel_id, \
-    get_training_mode_channel_id, get_use_static
-from .feature_spec import FeatureSpec
+from mx_rec.util.initialize import get_host_pipeline_ops, get_training_mode_channel_id, get_use_static, \
+    export_table_instances
+from mx_rec.core.asc.feature_spec import FeatureSpec
 
 
 def get_asc_insert_func(tgt_key_specs=None, args_index_list=None, feature_numbers=None,
@@ -67,14 +67,14 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
             read_emb_key_inputs_dict = {"insert_tensors": [], "table_names": [],
                                         "feature_spec_names": [], "splits": []}
             get_target_tensors_with_feature_specs(tgt_key_specs, data_src, is_training, read_emb_key_inputs_dict)
-            logging.debug(f"do_insert with spec for {read_emb_key_inputs_dict['table_names']}")
+            logging.debug(f"do_insert with spec for {read_emb_key_inputs_dict.get('table_names')}")
             return do_insert(args,
-                             insert_tensors=read_emb_key_inputs_dict["insert_tensors"],
-                             splits=read_emb_key_inputs_dict["splits"],
-                             table_names=read_emb_key_inputs_dict["table_names"],
+                             insert_tensors=read_emb_key_inputs_dict.get("insert_tensors"),
+                             splits=read_emb_key_inputs_dict.get("splits"),
+                             table_names=read_emb_key_inputs_dict.get("table_names"),
                              input_dict={"is_training": is_training, "dump_graph": dump_graph,
                                          "timestamp": FeatureSpec.use_timestamp(is_training),
-                                         "feature_spec_names": read_emb_key_inputs_dict["feature_spec_names"],
+                                         "feature_spec_names": read_emb_key_inputs_dict.get("feature_spec_names"),
                                          "auto_change_graph": False})
 
         insert_fn = insert_fn_for_feature_specs
@@ -141,8 +141,7 @@ def merge_feature_id_request(feature_id_list, split_list, table_name_list, featu
     return output_feature_id_list, output_split_list, output_table_name_list, output_tensorshape_split_list
 
 
-def send_feature_id_request_async(feature_id_list, split_list,
-                                  table_name_list, input_dict):
+def send_feature_id_request_async(feature_id_list, split_list, table_name_list, input_dict):
     is_training = input_dict["is_training"]
     timestamp = input_dict["timestamp"]
     feature_spec_names = input_dict["feature_spec_names"]
@@ -169,18 +168,37 @@ def send_feature_id_request_async(feature_id_list, split_list,
         feature_id_list = timestamp_feature_id + feature_id_list
     concat_tensor = tf.concat(feature_id_list, axis=0)
 
+    ids_channel_name_list = []
+    if auto_change_graph:
+        for _, table_instance in export_table_instances().items():
+            if table_instance.table_name not in table_name_list:
+                logging.info(f"table_name ('{table_instance.table_name}') not in table_name_list: {table_name_list}")
+                continue
+            if len(table_instance.channel_name_list) > 1:
+                ids_channel_name_list.extend(table_instance.channel_name_list)
+            else:
+                ids_channel_name_list.append(table_instance.table_name)
+        if len(ids_channel_name_list) != len(tensorshape_split_list):
+            raise RuntimeError(f"The length of ids_channel_name_list and tensorshape_split_list must be equal, "
+                               f"ids_channel_name_list: {ids_channel_name_list}, "
+                               f"tensorshape_split_list: {tensorshape_split_list}")
+
+    if len(split_list) == 0 or len(tensorshape_split_list) == 0:
+        raise RuntimeError(f"The length of split list can not be 0.")
+
     if use_static:
-        logging.debug(f"read_emb_key_v2(static), table_name_list: {table_name_list}, split_list: {split_list}")
+        logging.debug(f"read_emb_key_v2(static), table_name_list: {table_name_list}, split_list: {split_list}, "
+                      f"ids_channel_name_list: {ids_channel_name_list}")
         return host_pipeline_ops.read_emb_key_v2(concat_tensor, channel_id=channel_id, splits=split_list,
-                                                 emb_name=table_name_list, timestamp=timestamp)
+                                                 emb_name=table_name_list, timestamp=timestamp,
+                                                 channel_name=ids_channel_name_list, modify_graph=auto_change_graph)
 
     logging.debug(f"read_emb_key_v2_dynamic, table_name_list: {table_name_list}, "
-                  f"tensorshape_split_list: {tensorshape_split_list}")
-    pipeline_op = host_pipeline_ops.read_emb_key_v2_dynamic(concat_tensor, tensorshape_split_list,
-                                                            channel_id=channel_id,
-                                                            emb_name=table_name_list, timestamp=timestamp)
-
-    return pipeline_op
+                  f"tensorshape_split_list: {tensorshape_split_list}, ids_channel_name_list: {ids_channel_name_list}")
+    return host_pipeline_ops.read_emb_key_v2_dynamic(concat_tensor, tensorshape_split_list,
+                                                     channel_id=channel_id, emb_name=table_name_list,
+                                                     timestamp=timestamp, channel_name=ids_channel_name_list,
+                                                     modify_graph=auto_change_graph)
 
 
 def do_insert(args, insert_tensors, splits, table_names, input_dict):
@@ -192,7 +210,7 @@ def do_insert(args, insert_tensors, splits, table_names, input_dict):
 
     # Only the tables that need to be used after table combination are retained in meituan situation.
     # Current solution has error in same situations. For example, a sparse table has not been auto-merged.
-    from mx_rec.util.constants import ASCEND_TABLE_NAME_MUST_CONTAIN
+    from mx_rec.constants.constants import ASCEND_TABLE_NAME_MUST_CONTAIN
     new_insert_tensors, new_splits, new_table_names = [], [], []
     logging.debug(f"In do_insert function, ASCEND_TABLE_NAME_MUST_CONTAIN: {ASCEND_TABLE_NAME_MUST_CONTAIN}")
     for idx, table_name in enumerate(table_names):

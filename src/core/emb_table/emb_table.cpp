@@ -25,14 +25,14 @@ void EmbTable::Init(const EmbInfo& embInfo, const RankInfo& rInfo, int seed)
 #ifndef GTEST
     this->rankInfo = rInfo;
     this->seed = seed;
-    spdlog::info("EmbTable init, deviceID {}, embSize {} running", rInfo.deviceId, embInfo.embeddingSize);
+    spdlog::info("EmbTable init, deviceID {}, embSize {} running", rInfo.deviceId, embInfo.extEmbeddingSize);
     // 计算embedding table需要分配的内存块数
     auto ret = aclrtSetDevice(static_cast<int32_t>(rInfo.deviceId));
     if (ret != ACL_ERROR_NONE) {
         spdlog::error("Set device failed, device_id:{}, ret={}", rInfo.deviceId, ret);
         throw AclError();
     }
-    embSize = embInfo.embeddingSize;
+    embSize = embInfo.extEmbeddingSize;
     blockSize = BLOCK_EMB_COUNT * embSize;
     for (int i = 0; i < INIT_BLOCK_COUNT; ++i) {
         // 申请新的内存块
@@ -54,7 +54,7 @@ void EmbTable::Init(const EmbInfo& embInfo, const RankInfo& rInfo, int seed)
         }
     }
     totalCapacity = memoryList.size();
-    spdlog::info("aclrtMalloc success, emb name:{}", embInfo.name);
+    spdlog::info("aclrtMalloc success, emb name:{}, total capacity:{}", embInfo.name, totalCapacity);
 #endif
 }
 
@@ -136,7 +136,7 @@ void EmbTable::RandomInit(void* newBlock, const vector<InitializeInfo>& initiali
                 break;
             }
             default: {
-                spdlog::error("Device Invalid Initializer Type. Using default Constant Initializer with value 0.");
+                spdlog::warn("Device Invalid Initializer Type. Using default Constant Initializer with value 0.");
                 ConstantInitializer defaultInitializer(initializeInfo.start, initializeInfo.len, 0);
                 initializer = &defaultInitializer;
             }
