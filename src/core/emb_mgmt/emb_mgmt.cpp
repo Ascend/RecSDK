@@ -467,37 +467,11 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
     while (true) {
         spdlog::info(MGMT + "parse keys, [{}]:{}", channelId, batchId);
         for (const auto& embInfo : mgmtEmbInfo) {
-            auto& embHashMap = hostHashMaps->embHashMaps.at(embInfo.name);
-            if (iBatch == 0) {
-                embHashMap.SetStartCount();
+            ifHashmapFree = ProcessEmbInfo(embInfo.name, batchId, channelId, iBatch, remainBatch);
+            if (!remainBatch) {
+                EmbHDTransWrap(channelId, batchId, start, iBatch);
+                return false;
             }
-            auto lookupKeys = preprocess->GetLookupKeys(batchId, embInfo.name, channelId);
-            if (lookupKeys.empty()) {
-                remainBatch = false;
-                break;
-            }
-            auto restore = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::RESTORE);
-            hdTransfer->Send(RESTORE, *restore, channelId, embInfo.name);
-
-            auto tmpData = hostHashMaps->Process(embInfo.name, lookupKeys, iBatch);
-            hdTransfer->Send(LOOKUP, { tmpData.front() }, channelId, embInfo.name);
-            tmpData.erase(tmpData.begin());
-            hdTransfer->Send(SWAP, tmpData, channelId, embInfo.name);
-
-            if (!mgmtRankInfo.useStatic) {
-                auto all2all = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::ALL2ALL);
-                hdTransfer->Send(ALL2ALL, *all2all, channelId, embInfo.name);
-            }
-
-            if (embHashMap.HasFree(lookupKeys.size())) { // check free > next one batch
-                spdlog::warn(MGMT + "embName {}[{}]{},iBatch:{} freeSize not enough, {}", embInfo.name, channelId,
-                             batchId, iBatch, lookupKeys.size());
-                ifHashmapFree = false;
-            }
-        }
-        if (!remainBatch) {
-            EmbHDTransWrap(channelId, batchId, start, iBatch);
-            return false;
         }
         batchId++;
         iBatch++;
@@ -510,6 +484,36 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
     }
     EmbHDTransWrap(channelId, batchId - 1, start, iBatch);
     TIME_PRINT("[{}]-{}, parseKeyTC TimeCost(ms):{}", channelId, batchId, parseKeyTC.ElapsedMS());
+    return true;
+}
+
+bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
+                                int channelId, int iBatch, bool& remainBatchOut)
+{
+    auto& embHashMap = hostHashMaps->embHashMaps.at(embName);
+    if (iBatch == 0) {
+        embHashMap.SetStartCount();
+    }
+    auto lookupKeys = preprocess->GetLookupKeys(batchId, embName, channelId);
+    if (lookupKeys.empty()) {
+        remainBatchOut = false;
+    }
+    auto restore = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::RESTORE);
+    hdTransfer->Send(RESTORE, *restore, channelId, embName);
+    vector<Tensor> tmpData;
+    hostHashMaps->Process(embName, lookupKeys, iBatch, tmpData);
+    hdTransfer->Send(LOOKUP, { tmpData.front() }, channelId, embName);
+    tmpData.erase(tmpData.begin());
+    hdTransfer->Send(SWAP, tmpData, channelId, embName);
+    if (!mgmtRankInfo.useStatic) {
+        auto all2all = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::ALL2ALL);
+        hdTransfer->Send(ALL2ALL, *all2all, channelId, embName);
+    }
+    if (embHashMap.HasFree(lookupKeys.size())) { // check free > next one batch
+        spdlog::warn(MGMT + "embName {}[{}]{},iBatch:{} freeSize not enough, {}", embName, channelId,
+                     batchId, iBatch, lookupKeys.size());
+        return false;
+    }
     return true;
 }
 
@@ -538,7 +542,8 @@ void HybridMgmt::EmbHDTrans(int channelId, int batchId)
     TimeCost tr;
     for (const auto& embInfo: mgmtEmbInfo) {
         auto& missingKeys = hostHashMaps->embHashMaps.at(embInfo.name).missingKeysHostPos;
-        auto h2dEmb = hostEmbs->GetH2DEmb(missingKeys, embInfo.name); // order!
+        vector<Tensor> h2dEmb;
+        hostEmbs->GetH2DEmb(missingKeys, embInfo.name, h2dEmb); // order!
         hdTransfer->Send(H2D, h2dEmb, channelId, embInfo.name, batchId);
     }
     for (const auto& embInfo: mgmtEmbInfo) {

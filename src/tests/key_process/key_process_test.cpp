@@ -261,7 +261,8 @@ TEST_F(KeyProcessTest, GetScAll)
     }
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
     ASSERT_EQ(process.isRunning, true);
-    auto scAll = process.GetScAll(keyScLocal, 0, 0);
+    vector<int> scAll;
+    process.GetScAll(keyScLocal, 0, 0, scAll);
     ASSERT_THAT(scAll, ElementsAreArray(expectScAll));
 }
 

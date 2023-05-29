@@ -414,6 +414,23 @@ struct BatchTask {
         bool HasFree(size_t i);
     };
 
+    struct All2AllInfo {
+        keys_t keyRecv;
+        vector<int> scAll;
+        vector<uint32_t> countRecv;
+    };
+
+    struct UniqueInfo {
+        vector<int32_t> restore;
+        vector<int32_t> hotPos;
+        All2AllInfo all2AllInfo;
+    };
+
+    struct KeySendInfo {
+        keys_t keySend;
+        vector<int32_t> keyCount;
+    };
+
     using emb_mem_t = absl::flat_hash_map<std::string, HostEmbTable>;
     using emb_hash_mem_t = absl::flat_hash_map<std::string, EmbHashMapInfo>;
     using offset_mem_t = std::map<emb_name_t, size_t>;
