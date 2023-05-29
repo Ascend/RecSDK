@@ -15,7 +15,7 @@ from tensorflow.python.ops import array_ops
 from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
 from mx_rec.core.asc.feature_spec import FeatureSpec, get_feature_spec
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.util.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_HOT_POS, \
+from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_HOT_POS, \
     ASCEND_SPARSE_LOOKUP_ID_OFFSET, ASCEND_SPARSE_LOOKUP_RESTORE_VECTOR, MxRecMode, \
     ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_ALL2ALL_MATRIX, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, \
     DEFAULT_EVICT_TIME_INTERVAL, TRAIN_CHANNEL_ID
@@ -429,7 +429,7 @@ class SparseEmbedding:
         @tf.custom_gradient
         def sparse_forward(table, feat_ids):
             logging.debug(f"fp rank size: {rank_size}")
-            if use_static:
+            if feat_ids.shape.as_list()[0] is not None:
                 restore_vector = tf.ones(shape=[np.prod(feat_ids.shape.as_list()), ], dtype=tf.int32,
                                          name="restore_vector")
             else:

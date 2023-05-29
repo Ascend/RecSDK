@@ -33,6 +33,15 @@ DEFAULT_EVICT_TIME_INTERVAL = 60 * 60 * 24
 TRAIN_CHANNEL_ID = 0
 EVAL_CHANNEL_ID = 1
 
+# RANK INFO
+VALID_DEVICE_ID_LIST = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"]
+MIN_SIZE = 1
+MAX_SIZE = 1024 * 1024 * 1024 * 1024
+MAX_DEVICE_NUM = 16
+MAX_RANK_SIZE = 4095
+MIN_DEVICE_NUM = 1
+MIN_RANK_SIZE = 1
+
 
 class BaseEnum(Enum):
     @classmethod
