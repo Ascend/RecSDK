@@ -10,9 +10,9 @@ from collections import defaultdict
 import mxrec_pybind
 import psutil
 
-import mx_rec.constants.constants
-from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION, VALID_DEVICE_ID_LIST
-from mx_rec.constants.constants import LOCAL_RANK_SIZE, MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE
+import mx_rec.util.constants
+from mx_rec.util.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION, VALID_DEVICE_ID_LIST
+from mx_rec.util.constants import LOCAL_RANK_SIZE, MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE
 from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.validator.validator import RankInfoValidator
 
@@ -205,7 +205,7 @@ class ConfigInitializer:
         Now, only less than or equal 8p training job is supported.
         :return: None
         """
-        RankInfoValidator()
+        RankInfoValidator().check_visible_devices()
         ascend_visible_devices = os.getenv("ASCEND_VISIBLE_DEVICES")
         device_list = []
         try:
@@ -583,7 +583,7 @@ def set_initializer(is_training, initializer):
 
 
 def set_ascend_table_name_must_contain(name="merged"):
-    mx_rec.constants.constants.ASCEND_TABLE_NAME_MUST_CONTAIN = name
+    mx_rec.util.constants.ASCEND_TABLE_NAME_MUST_CONTAIN = name
 
 
 def set_ascend_env():

@@ -7,12 +7,12 @@ import os
 from typing import Callable, Any
 from typing import List, Optional, Tuple
 
-from mx_rec.constants.constants import MIN_SIZE
-from mx_rec.constants.constants import MAX_SIZE
-from mx_rec.constants.constants import MAX_DEVICE_NUM
-from mx_rec.constants.constants import MAX_RANK_SIZE
-from mx_rec.constants.constants import MIN_DEVICE_NUM
-from mx_rec.constants.constants import MIN_RANK_SIZE
+from mx_rec.util.constants import MIN_SIZE
+from mx_rec.util.constants import MAX_SIZE
+from mx_rec.util.constants import MAX_DEVICE_NUM
+from mx_rec.util.constants import MAX_RANK_SIZE
+from mx_rec.util.constants import MIN_DEVICE_NUM
+from mx_rec.util.constants import MIN_RANK_SIZE
 
 
 class Validator:

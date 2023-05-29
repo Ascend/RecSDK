@@ -7,7 +7,7 @@ import os
 
 import tensorflow as tf
 
-from mx_rec.constants.constants import HOST_PIPELINE_OPS_LIB_PATH
+from mx_rec.util.constants import HOST_PIPELINE_OPS_LIB_PATH
 
 
 def import_host_pipeline_ops():
