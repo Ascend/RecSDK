@@ -91,8 +91,8 @@ FeatureAdmitReturnType FeatureAdmitAndEvict::FeatureAdmit(int channel,
     return FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_OK;
 }
 
-FeatureAdmitType FeatureAdmitAndEvict::FeatureAdmitHelper(int channel, const std::string& tensorName,
-                                                          int64_t featureId, uint32_t featureCnt)
+FeatureAdmitType FeatureAdmitAndEvict::FeatureAdmitHelper(const int channel, const std::string& tensorName,
+                                                          const int64_t featureId, const uint32_t featureCnt)
 {
     // “特征准入”逻辑
     uint32_t currKeyCount = 0;

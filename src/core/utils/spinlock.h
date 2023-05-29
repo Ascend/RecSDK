@@ -12,12 +12,8 @@
 #include <mutex>
 #include <thread>  // NOLINT
 
-#define DISALLOW_COPY_MOVE_AND_ASSIGN_(type) \
-    type(type const &) = delete;             \
-    type(type &&) noexcept = delete;         \
-    type &operator=(type const &) = delete
-
-static __inline void cpu_pause() {
+static __inline void cpu_pause()
+{
 #ifdef __GNUC__
     #ifdef __aarch64__
     __asm volatile("yield" ::: "memory");
@@ -38,8 +34,8 @@ static constexpr uint16_t g_kMaxSpinCountBeforeThreadYield = 64;
 class SpinLock final {
    public:
     void lock() noexcept {}
-    bool try_lock() noexcept { return true; }
     void unlock() noexcept {}
+    bool try_lock() noexcept { return true; }
 };
 
 #elif defined(USE_MUTEX)
@@ -60,9 +56,12 @@ class SpinLock final {
 public:
     SpinLock() = default;
 
-    DISALLOW_COPY_MOVE_AND_ASSIGN_(SpinLock);
+    SpinLock(SpinLock const &) = delete;
+    SpinLock(SpinLock &&) noexcept = delete;
+    SpinLock &operator=(SpinLock const &) = delete;
 
-    inline void lock() noexcept {
+    inline void lock() noexcept
+    {
         while (true) {
             if (!lock_.exchange(true, std::memory_order_acquire)) {
                 break;
@@ -80,7 +79,8 @@ public:
         }
     }
 
-    inline bool try_lock() noexcept {
+    inline bool try_lock() noexcept
+    {
         if (lock_.load(std::memory_order_relaxed)) {
             return false;
         }
@@ -105,23 +105,26 @@ class RWSpinLock final {
 public:
     RWSpinLock() = default;
 
-    DISALLOW_COPY_MOVE_AND_ASSIGN_(RWSpinLock);
+    RWSpinLock(RWSpinLock const &) = delete;
+    RWSpinLock(RWSpinLock &&) noexcept = delete;
+    RWSpinLock &operator=(RWSpinLock const &) = delete;
 
-    inline void r_lock() noexcept {
-        LockData oldData, newData;
+    inline void r_lock() noexcept
+    {
+        LockData oldData;
+        LockData newData;
         while (true) {
             uint16_t counter = 0;
             for (;;) {
                 oldData.raw = lock_.load(std::memory_order_relaxed);
-                if (oldData.lock.writer > 0) {
-                    cpu_pause();
-                    if (++counter > g_kMaxSpinCountBeforeThreadYield) {
-                        std::this_thread::yield();
-                        // reset counter
-                        counter = 0;
-                    }
-                } else {
+                if (oldData.lock.writer <= 0) {
                     break;
+                }
+                cpu_pause();
+                if (++counter > g_kMaxSpinCountBeforeThreadYield) {
+                    std::this_thread::yield();
+                    // reset counter
+                    counter = 0;
                 }
             }
 
@@ -135,21 +138,22 @@ public:
         }
     }
 
-    inline void w_lock() noexcept {
-        LockData oldData, newData;
+    inline void w_lock() noexcept
+    {
+        LockData oldData;
+        LockData newData;
         while (true) {
             uint16_t counter = 0;
             for (;;) {
                 oldData.raw = lock_.load(std::memory_order_relaxed);
-                if (oldData.raw != 0) {
-                    cpu_pause();
-                    if (++counter > g_kMaxSpinCountBeforeThreadYield) {
-                        std::this_thread::yield();
-                        // reset counter
-                        counter = 0;
-                    }
-                } else {
+                if (oldData.raw == 0) {
                     break;
+                }
+                cpu_pause();
+                if (++counter > g_kMaxSpinCountBeforeThreadYield) {
+                    std::this_thread::yield();
+                    // reset counter
+                    counter = 0;
                 }
             }
 

@@ -9,7 +9,7 @@
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/fmt/bundled/ranges.h>
-#include "emb_mgmt/emb_mgmt.h"
+#include "hybrid_mgmt/hybrid_mgmt.h"
 #include "host_emb/host_emb.h"
 #include "utils/common.h"
 
@@ -127,7 +127,7 @@ TEST_F(EmbMgmtTest, Initialize)
     allRank = RankInfo(rankId, deviceId, localRankSize, useStatic, nBatch, maxStep);
     hybridMgmt->Initialize(allRank, embInfos, seed, thresholdValues, false);
     auto hostEmbs = make_unique<HostEmb>();
-    hostEmbs->Initialize(embInfos, seed, false);
+    hostEmbs->Initialize(embInfos, seed);
     auto hostHashMaps = make_unique<EmbHashMap>();
     hostHashMaps->Init(allRank, embInfos, false);
 

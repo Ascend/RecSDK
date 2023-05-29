@@ -94,11 +94,11 @@ int KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
         }
     }
     spdlog::info(KEY_PROCESS "hot emb count info:{}", hotEmbTotCount);
-    MPI_Group world_group;
-    MPI_Comm_group(MPI_COMM_WORLD, &world_group);
+    MPI_Group worldGroup;
+    MPI_Comm_group(MPI_COMM_WORLD, &worldGroup);
     for (auto& i: comm) {
         for (auto& j: i) {
-            MPI_Comm_create(MPI_COMM_WORLD, world_group, &j);
+            MPI_Comm_create(MPI_COMM_WORLD, worldGroup, &j);
         }
     }
     isRunning = true;
@@ -217,7 +217,7 @@ void KeyProcess::LoadSaveUnlock()
     }
 }
 
-void KeyProcess::KeyProcessTask(int channel, int id)
+void KeyProcess::KeyProcessTask(const int channel, const int id) // thread id [0, KEY_PROCESS_THREAD-1]
 {
     unique_ptr<emb_batch_t> batch;
 
@@ -239,7 +239,7 @@ void KeyProcess::KeyProcessTask(int channel, int id)
                 spdlog::info(KEY_PROCESS "batch is nullptr");
                 break;
             }
-            auto getBatchTime = TO_MS(sw);
+            auto getBatchTime = duration_cast<milliseconds>((sw).elapsed());
             sw.reset();
 
             auto sendCountSize = GetSendCount(batch->name, batch->channelName, batch->modifyGraph);
@@ -264,7 +264,8 @@ void KeyProcess::KeyProcessTask(int channel, int id)
             }
             TIME_PRINT("getAndProcesTC TimeCost(ms):{}", getAndProcesTC.ElapsedMS());
             spdlog::info(KEY_PROCESS "key process cost:{}, get data time:{} batch {}[{}]:{} ",
-                         TO_MS(sw), getBatchTime, batch->name, batch->channel, batch->batchId);
+                    duration_cast<milliseconds>(
+                            (sw).elapsed()), getBatchTime, batch->name, batch->channel, batch->batchId);
             free(batch->tensorAddr);
             batch->tensorAddr = nullptr;
             batchQueue->PutDirty(move(batch));
@@ -591,7 +592,7 @@ auto KeyProcess::HashSplit(const unique_ptr<emb_batch_t>& batch) const -> tuple<
     EASY_FUNCTION(profiler::colors::Gold)
     auto* batchData = batch->sample.data();
     size_t miniBs = batch->Size();
-    ASSERT(batchData != nullptr);
+    assert(batchData != nullptr);
     vector<keys_t> splitKeys(rankInfo.rankSize);
     vector<int32_t> restore(batch->Size());
     vector<int> hashSplitLens(rankInfo.rankSize); // 初始化全0，记录每个桶的长度
@@ -630,7 +631,7 @@ auto KeyProcess::HashSplit_withFAAE(const unique_ptr<emb_batch_t>& batch) const
     EASY_FUNCTION(profiler::colors::Gold)
     auto* batchData = batch->sample.data();
     size_t miniBs = batch->Size();
-    ASSERT(batchData != nullptr);
+    assert(batchData != nullptr);
     vector<keys_t> splitKeys(rankInfo.rankSize);
     vector<vector<uint32_t>> keyCount(rankInfo.rankSize); // splitKeys在原始batch中对应的频次
     vector<int32_t> restore(batch->Size());
@@ -788,7 +789,7 @@ void KeyProcess::GetScAll(const vector<int>& keyScLocal, int commId, int channel
         throw EndRunError("GetScAll end run.");
     }
     EASY_END_BLOCK;
-    spdlog::debug(KEY_PROCESS "barrier time:{}", TO_MS(sw));
+    spdlog::debug(KEY_PROCESS "barrier time:{}", duration_cast<milliseconds>((sw).elapsed()));
     // allgather keyScLocal(key all2all keyScLocal = device all2all rc)
     MPI_Allgather(keyScLocal.data(), rankInfo.rankSize, MPI_INT,
                   scAllOut.data(), rankInfo.rankSize, MPI_INT, comm[channel][commId]);
@@ -921,11 +922,11 @@ keys_t KeyProcess::GetLookupKeys(int batch, const string& embName, int channel)
             return get<keys_t>(ret);
         } catch (EmptyList&) {
             spdlog::trace("GetLookupKeys GetInfo failed {}[{}]:{} no input, wait and retry",
-                embName, channel, batch);
+                          embName, channel, batch);
             this_thread::sleep_for(1ms);
         } catch (WrongListTop&) {
             spdlog::trace("GetLookupKeys GetInfo failed {}[{}]:{} wrong top",
-                embName, channel, batch);
+                          embName, channel, batch);
             this_thread::sleep_for(1ms);
         }
     }
@@ -1054,7 +1055,7 @@ void KeyProcess::EvictInitDeviceEmb(const string& embName, vector<size_t> offset
     auto trans = Singleton<HDTransfer>::GetInstance();
     // evict key发送给dev侧，dev侧初始化emb
     auto tmpData = Vec2TensorI32(offset);
-    trans->Send(EVICT, { tmpData }, TRAIN_CHANNEL_ID, embName);
+    trans->Send(TransferChannel::EVICT, { tmpData }, TRAIN_CHANNEL_ID, embName);
 
     spdlog::info(KEY_PROCESS "hbm EvictInitDeviceEmb: [{}]! send offsetSize:{}", embName, offset.size());
 }

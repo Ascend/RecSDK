@@ -41,8 +41,8 @@ namespace MxRec {
         if (localRankSize != 0) {
             localRankId = rankId % localRankSize;
         }
-        useStatic = option bitand HybridOption::USE_STATIC;
-        useHot = option bitand HybridOption::USE_HOT;
+        useStatic = option & HybridOption::USE_STATIC;
+        useHot = option & HybridOption::USE_HOT;
     }
 
     RandomInfo::RandomInfo(int start, int len, float constantVal, float randomMin, float randomMax)

@@ -45,8 +45,6 @@
 #endif
 
 namespace MxRec {
-#define ASSERT(arg) assert(arg)
-#define TO_MS(arg) duration_cast<milliseconds>((arg).elapsed())
 #define INFO_PTR shared_ptr
 #define TIME_PRINT spdlog::info
 #define MGMT_CPY_THREADS 4
@@ -129,28 +127,20 @@ namespace MxRec {
 
     template <class T>
     struct Batch {
-        size_t Size()
+        size_t Size() const
         {
             return sample.size();
         }
 
-        std::string UnParse()
+        std::string UnParse() const
         {
             std::string s;
             constexpr size_t MAX_DISP_LEN = 20;
-            int max_len = std::min(sample.size(), MAX_DISP_LEN);
-            for (int i = 0; i < max_len; i++) {
+            int maxLen = std::min(sample.size(), MAX_DISP_LEN);
+            for (int i = 0; i < maxLen; i++) {
                 s += std::to_string(sample[i]) + " ";
             }
             return s;
-        }
-
-        ~Batch()
-        {
-            if (tensorAddr) {
-                free(tensorAddr);
-                tensorAddr = nullptr;
-            }
         }
 
         std::vector<T> sample;
@@ -283,12 +273,12 @@ struct BatchTask {
                                     std::default_random_engine& generator,
                                     RandomInfo& randomInfo)
     {
-        float min = ((randomInfo.randomMin == 0) ? -0.1f : randomInfo.randomMin);
-        float max = ((randomInfo.randomMax == 0) ? 0.1f : randomInfo.randomMax);
+        float min = ((!randomInfo.randomMin) ? -0.1f : randomInfo.randomMin);
+        float max = ((!randomInfo.randomMax) ? 0.1f : randomInfo.randomMax);
         if (randomInfo.len == 0) {
             return;
         }
-        ASSERT(static_cast<int>(vecData.size()) >= randomInfo.len + randomInfo.start);
+        assert(static_cast<int>(vecData.size()) >= randomInfo.len + randomInfo.start);
         std::uniform_real_distribution<float> distribution(min, max);
         std::generate_n(vecData.begin() + randomInfo.start, randomInfo.len, [&]() { return distribution(generator); });
     }

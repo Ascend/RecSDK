@@ -21,7 +21,7 @@ TruncatedNormalInitializer::TruncatedNormalInitializer(int start, int len, float
 }
 
 
-void TruncatedNormalInitializer::GenerateData(float* emb, const int embSize)
+void TruncatedNormalInitializer::GenerateData(float* const emb, const int embSize)
 {
     if (len == 0) {
         return;

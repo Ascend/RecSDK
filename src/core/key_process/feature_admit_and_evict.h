@@ -84,8 +84,8 @@ namespace MxRec {
         // 解析m_tensor2Threshold
         bool ParseThresholdCfg(const std::vector<ThresholdValue>& thresholdValues);
         std::vector<std::string> GetAllNeedEvictTensorNames();
-        FeatureAdmitType FeatureAdmitHelper(int channel, const std::string& tensorName,
-                                            int64_t featureId, uint32_t featureCnt);
+        FeatureAdmitType FeatureAdmitHelper(const int channel, const std::string& tensorName,
+                                            const int64_t featureId, const uint32_t featureCnt);
         void FeatureEvictHelper(const std::string& embName, std::vector<emb_key_t>& evictKey);
         void ResetAllRecords();
 

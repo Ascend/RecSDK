@@ -80,10 +80,10 @@ namespace MxRec {
         void WriteStream(CkptTransData& transData, const string& dataDir, size_t dataSize, CkptDataType dataType);
         void WriteDataset(CkptTransData& transData, ofstream& writeFile, size_t writeSize, CkptDataType dataType,
             size_t idx);
-        void WriteEmbedding(CkptTransData& transData, const string& dataDir, int& embeddingSize);
+        void WriteEmbedding(const CkptTransData& transData, const string& dataDir, const int& embeddingSize);
         void ReadEmbedding(CkptTransData& transData, const string& dataDir);
 
-        int  GetEmbeddingSize(const string& embName);
+        int  GetEmbeddingSize(const string& embName) const;
 
         void LoadProcess(CkptData& ckptData);
         void GetUpperLayerLoadDir(const vector<string>& dirNames);
