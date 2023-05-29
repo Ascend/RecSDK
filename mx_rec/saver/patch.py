@@ -123,8 +123,12 @@ def get_model_checkpoint_path(self, checkpoint_file, sess):
     return model_checkpoint_path
 
 
-def update_checkpoint_state(self, model_checkpoint_path, parent_save_path, latest_file_name, suffix_meta_graph,
-                            save_path):
+def update_checkpoint_state(self, **kwargs):
+    model_checkpoint_path = kwargs.get("model_checkpoint_path")
+    parent_save_path = kwargs.get("parent_save_path")
+    latest_file_name = kwargs.get("latest_file_name")
+    suffix_meta_graph = kwargs.get("suffix_meta_graph")
+    save_path = kwargs.get("save_path")
     self._RecordLastCheckpoint(model_checkpoint_path)
     try:
         checkpoint_management.update_checkpoint_state_internal(save_dir=parent_save_path,
@@ -182,8 +186,9 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
 
     model_checkpoint_path = compat.as_str(get_model_checkpoint_path(self, checkpoint_file, sess))
     if write_state:
-        update_checkpoint_state(self, model_checkpoint_path, save_path_parent, latest_filename, meta_graph_suffix,
-                                save_path)
+        update_checkpoint_state(self, model_checkpoint_path=model_checkpoint_path, save_path_parent=save_path_parent,
+                                latest_filename=latest_filename, meta_graph_suffix=meta_graph_suffix,
+                                save_path=save_path)
     if write_meta_graph:
         write_meta_graph_task(self, checkpoint_file, meta_graph_suffix, sess, strip_default_attrs, save_debug_info)
     return model_checkpoint_path

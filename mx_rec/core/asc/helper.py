@@ -64,8 +64,12 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
             if len(args) == 1:
                 data_src = args[0]
 
-            read_emb_key_inputs_dict = {"insert_tensors": [], "table_names": [],
-                                        "feature_spec_names": [], "splits": []}
+            read_emb_key_inputs_dict = {
+                "insert_tensors": [],
+                "table_names": [],
+                "feature_spec_names": [],
+                "splits": []
+            }
             get_target_tensors_with_feature_specs(tgt_key_specs, data_src, is_training, read_emb_key_inputs_dict)
             logging.debug(f"do_insert with spec for {read_emb_key_inputs_dict.get('table_names')}")
             return do_insert(args,
@@ -138,7 +142,13 @@ def merge_feature_id_request(feature_id_list, split_list, table_name_list, featu
         output_tensorshape_split_list.append(last_tensorshape_split)
     logging.debug(f"merge request from {table_name_list} {split_list} "
                   f" to {output_table_name_list} {output_split_list}")
-    return output_feature_id_list, output_split_list, output_table_name_list, output_tensorshape_split_list
+    list_set = {
+        'output_feature_id_list' : output_feature_id_list,
+        'output_split_list' : output_split_list,
+        'output_table_name_list' : output_table_name_list,
+        'output_tensorshape_split_list' : output_tensorshape_split_list,
+    }
+    return list_set
 
 
 def send_feature_id_request_async(feature_id_list, split_list, table_name_list, input_dict):
@@ -155,9 +165,11 @@ def send_feature_id_request_async(feature_id_list, split_list, table_name_list, 
         feature_id_list = feature_id_list[1:]
 
     if not auto_change_graph:  # future support acg
-        feature_id_list, split_list, table_name_list, tensorshape_split_list = \
-            merge_feature_id_request(feature_id_list, split_list,
-                                     table_name_list, feature_spec_names)
+        list_set = merge_feature_id_request(feature_id_list, split_list, table_name_list, feature_spec_names)
+        feature_id_list = list_set.get("output_feature_id_list")
+        split_list = list_set.get("output_split_list")
+        table_name_list = list_set.get("output_table_name_list")
+        tensorshape_split_list = list_set.get("output_tensorshape_split_list")
     else:
         tensorshape_split_list = split_list
 
@@ -326,7 +338,10 @@ def get_target_tensors_with_feature_specs(tgt_key_specs, batch, is_training, rea
             raise ValueError(f"Encounter a invalid batch.")
 
         if feature_spec.is_timestamp is None:
-            tensor, table_name, feat_count, split = feature_spec.set_feat_attribute(tensor, is_training)
+            result = feature_spec.set_feat_attribute(tensor, is_training)
+            tensor = result.get("tensor")
+            table_name = result.get("table_name")
+            split = result.get("split")
             if tensor.dtype != tf.int64:
                 tensor = tf.cast(tensor, dtype=tf.int64)
 
