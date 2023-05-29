@@ -43,7 +43,7 @@ class CustomizedLazyAdamByAddress(adam.AdamOptimizer, CustomizedOptimizer):
     def __init__(self, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8, use_locking=False,
                  name="LazyAdamByAddress"):
         self.optimizer_type = "LazyAdamByAddress"
-        super(CustomizedLazyAdamByAddress, self).__get_name__(name=name)
+        super(CustomizedLazyAdamByAddress, self)._get_name(name=name)
         super(CustomizedLazyAdamByAddress, self).__init__(learning_rate=learning_rate, beta1=beta1, beta2=beta2,
                                                           epsilon=epsilon, use_locking=use_locking,
                                                           name=self.unique_name)

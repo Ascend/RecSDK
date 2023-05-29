@@ -428,6 +428,8 @@ class SparseEmbedding:
         if is_training and use_dynamic_expansion and is_table_name_valid:
             tf.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
             tf.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
+            logging.debug(f"modify graph mode, table_name: {self.table_name}, "
+                          f"ASCEND_TABLE_NAME_MUST_CONTAIN: {ASCEND_TABLE_NAME_MUST_CONTAIN}")
 
         @tf.custom_gradient
         def sparse_forward(table, feat_ids):
@@ -662,6 +664,8 @@ class SparseEmbedding:
             if is_training and is_table_name_valid:
                 tf.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
                 tf.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
+                logging.debug(f"modify graph mode, table_name: {self.table_name}, "
+                              f"ASCEND_TABLE_NAME_MUST_CONTAIN: {ASCEND_TABLE_NAME_MUST_CONTAIN}")
 
             return sparse_forward(local_embeddings)
 
