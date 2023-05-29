@@ -323,9 +323,9 @@ class ConfigInitializer:
 
     def del_asc_manager(self):
         self.delete_initializers()
+        self.unfreeze()
         self._asc_manager.destroy()
         self._asc_manager = None
-        self.unfreeze()
         logging.debug("ASC manager has been destroyed.")
 
     @train_interval.setter
@@ -665,7 +665,7 @@ def get_available_cpu_num_and_range():
     valid_cpu_range_list = []
     if is_ok:
         logging.info(f"available numa node num: {len(pkg_id2cpu_list)}")
-        for k, part_cpu_list in pkg_id2cpu_list.items():
+        for _, part_cpu_list in pkg_id2cpu_list.items():
             parse_range(part_cpu_list, valid_cpu_range_list)
     else:
         parse_range(list(cpu_available), valid_cpu_range_list)
@@ -718,6 +718,6 @@ def bind_cpu(rank_id: int, rank_size: int = None):
     process = psutil.Process()
     try:
         process.cpu_affinity(cpu_list)
-        logging.info(f"bind cpu for rank {rank_id}: {cpu_list}")
     except IndexError:
         logging.error(f"failed to bind cpu for rank {rank_id}: {cpu_list}")
+    logging.info(f"bind cpu for rank {rank_id}: {cpu_list}")

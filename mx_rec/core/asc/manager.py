@@ -54,8 +54,8 @@ def generate_table_info_list():
             if len(table_instance.channel_name_list) == 1:
                 ids_channel_name = table_instance.channel_name_list[0]
                 table_instance.channel_name_list = [table_instance.table_name]
+                table_instance.send_count_map.pop(ids_channel_name)
                 try:
-                    table_instance.send_count_map.pop(ids_channel_name)
                     table_instance.send_count_map[table_instance.table_name] = table_instance.send_count
                 except KeyError as error:
                     raise KeyError(f"ids_channel_name '{ids_channel_name}' not in send_count_map "
