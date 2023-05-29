@@ -38,7 +38,6 @@ public:
         return *this;
     }
 
-
     void Pushv(T &t)
     {
         std::lock_guard<std::mutex> lk(mut);
@@ -57,14 +56,14 @@ public:
     {
         std::unique_lock<std::mutex> lk(mut);
         dataCond.wait(lk, [this] {
-            if (!finished){
+            if (!finished) {
                 return !dataQueue.empty();
-            } else{
+            } else {
                 return true;
             }
         });
         T res;
-        if (finished){
+        if (finished) {
             return res;
         }
         res = dataQueue.front();
@@ -72,11 +71,11 @@ public:
         return res;
     }
 
-    void DestroyQueue(){
+    void DestroyQueue()
+    {
         finished = true;
         dataCond.notify_one();
     }
-
 
     bool Empty() const
     {

@@ -9,9 +9,9 @@
 #define MX_REC_EMB_HASHMAP_H
 
 #include <vector>
-#include "absl/container/flat_hash_map.h"
 #include <memory>
 #include <array>
+#include "absl/container/flat_hash_map.h"
 #include "host_emb/host_emb.h"
 
 namespace MxRec {
@@ -32,8 +32,7 @@ namespace MxRec {
         void ChangeSwapInfo(EmbHashMapInfo& embHashMap, emb_key_t key, size_t hostOffset, size_t currentBatchId,
                             int pos);
 
-        void FindPos(EmbHashMapInfo& embHashMap, int num, size_t currentBatchId,
-                     size_t keepBatchId);
+        void FindPos(EmbHashMapInfo& embHashMap, int num, size_t keepBatchId);
 
         auto GetHashMaps() -> absl::flat_hash_map<string, EmbHashMapInfo>;
 

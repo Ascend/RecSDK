@@ -9,11 +9,11 @@
 #define MX_REC_EMB_MGMT_H
 
 #include <vector>
-#include "absl/container/flat_hash_map.h"
 #include <memory>
 #include <array>
 #include <csignal>
 #include <pthread.h>
+#include "absl/container/flat_hash_map.h"
 #include "utils/common.h"
 #include "utils/singleton.h"
 #include "utils/task_queue.h"
@@ -46,7 +46,7 @@ namespace MxRec {
         bool Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, int seed,
                         const vector<ThresholdValue>& thresholdValues, bool ifLoad);
 
-        bool Save(string savePath);
+        bool Save(const string savePath);
 
         bool Load(const string& loadPath);
 
@@ -85,7 +85,7 @@ namespace MxRec {
 
         bool ProcessEmbInfo(const std::string& embName, int batchId, int channelId, int iBatch, bool& remainBatchOut);
 
-        void EmbHDTrans(int channelId, int batchId);
+        void EmbHDTrans(const int channelId, const int batchId);
 
         void Evict();
 
@@ -122,12 +122,12 @@ namespace MxRec {
         bool TrainParseKeys();
         bool EvalParseKeys();
 
-        bool GetLookupAndRestore(int channelId, int &batchId);
-        bool SendLookupAndRestore(int channelId, int &batchId);
+        bool GetLookupAndRestore(const int channelId, int &batchId);
+        bool SendLookupAndRestore(const int channelId, int &batchId);
 
         void EmbHDTransDummy(int channelId, int batchId, const EmbInfo& embInfo);
 
-        bool EndBatch(int batchId, int channelId);
+        bool EndBatch(int batchId, int channelId) const;
 
         void EmbHDTransWrap(int channelId, const int& batchId, int start, int iBatch);
 
