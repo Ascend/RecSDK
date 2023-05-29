@@ -112,7 +112,13 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
         temp_b1 = math_ops.cast(self._beta1_t, var_type)
         temp_b2 = math_ops.cast(self._beta2_t, var_type)
         temp_epsilon = math_ops.cast(self._epsilon_t, var_type)
-        return temp_lr, temp_b1, temp_b2, temp_epsilon
+        temp = {
+            'temp_lr' : temp_lr,
+            'temp_b1' : temp_b1,
+            'temp_b2' : temp_b2,
+            'temp_epsilon' : temp_epsilon,
+        }
+        return temp
 
     def _resource_apply_sparse(self, grad, handle, indices):
         logging.debug("Enter _resource_apply_sparse")
@@ -134,7 +140,11 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
         power_b1, power_b2 = self._get_beta_accumulators()
         power_b1 = math_ops.cast(power_b1, var.dtype.base_dtype)
         power_b2 = math_ops.cast(power_b2, var.dtype.base_dtype)
-        temp_lr, temp_b1, temp_b2, temp_epsilon = self._cast_to_base_type(var)
+        temp = self._cast_to_base_type(var)
+        temp_lr = temp.get("temp_lr")
+        temp_b1 = temp.get("temp_b1")
+        temp_b2 = temp.get("temp_b2")
+        temp_epsilon = temp.get("temp_epsilon")
         learning_rate = tf.divide(temp_lr * math_ops.sqrt(1 - power_b2), (1 - power_b1))
 
         abs_indices = tf.math.maximum(indices, 0)
