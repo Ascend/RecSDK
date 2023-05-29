@@ -18,6 +18,7 @@ void FeatAdmitNEvictCkpt::SetProcessData(CkptData& processData)
     if (processData.tens2Thresh.empty() || processData.histRec.timestamps.empty() ||
         processData.histRec.historyRecords.empty()) {
         spdlog::error("Missing Feature Admit and Evict data");
+        throw std::runtime_error("Missing Feature Admit and Evict data");
     }
     saveTens2Thresh = std::move(processData.tens2Thresh);
     saveHistRec = std::move(processData.histRec);

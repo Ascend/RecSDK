@@ -62,7 +62,7 @@ void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, in
                 break;
             }
             default: {
-                spdlog::error(HOSTEMB + "Invalid Initializer Type. Using default Constant Initializer with value 0.");
+                spdlog::warn(HOSTEMB + "Invalid Initializer Type. Using default Constant Initializer with value 0.");
                 ConstantInitializer defaultInitializer(initializeInfo.start, initializeInfo.len, 0);
                 initializer = &defaultInitializer;
             }

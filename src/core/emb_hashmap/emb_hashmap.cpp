@@ -247,7 +247,7 @@ void EmbHashMap::EvictDeleteEmb(const string& embName, const vector<emb_key_t>& 
         size_t offset;
         auto key = keys[i];
         if (key == -1) {
-            spdlog::error("evict key equal -1!");
+            spdlog::warn("evict key equal -1!");
             continue;
         }
         const auto& iter = embHashMap.hostHashMap.find(key);

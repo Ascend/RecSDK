@@ -548,6 +548,8 @@ auto KeyProcess::ProcessSplitKeys(const unique_ptr<emb_batch_t>& batch, int id,
             if (static_cast<int>(i.size()) > embInfos[batch->name].sendCount) {
                 spdlog::error("{}[{}]:{} overflow! set send count bigger than {}",
                               batch->name, batch->channel, batch->batchId, i.size());
+                throw runtime_error(fmt::format("{}[{}]:{} overflow! set send count bigger than {}",
+                                                batch->name, batch->channel, batch->batchId, i.size()).c_str());
             }
             i.resize(embInfos[batch->name].sendCount, -1);
         }
@@ -894,9 +896,8 @@ T KeyProcess::GetInfo(std::vector<info_list_t<T>>& list, int batch, const string
     }
     auto topBatch = get<int>(list[batchListId][embName][channel].top());
     if (topBatch < batch) {
-        spdlog::error("wrong batch id, top:{} expect:{}, channel:{}, embName: {}, queue_size:{}, "
-                      "may not clear channel",
-                      topBatch, batch, channel, embName, list[batchListId][embName][channel].size());
+        spdlog::warn("wrong batch id, top:{} expect:{}, channel:{}, embName: {}, queue_size:{}, may not clear channel",
+                     topBatch, batch, channel, embName, list[batchListId][embName][channel].size());
         this_thread::sleep_for(1s);
     }
     if (topBatch != batch) {
@@ -1027,7 +1028,7 @@ void KeyProcess::EvictDeleteDeviceEmb(const string& embName, const vector<emb_ke
         size_t offset;
         auto key = keys[i];
         if (key == -1) {
-            spdlog::error("evict key equal -1!");
+            spdlog::warn("evict key equal -1!");
             continue;
         }
         const auto& iter = devHashMap.find(key);
@@ -1047,6 +1048,8 @@ void KeyProcess::EvictInitDeviceEmb(const string& embName, vector<size_t> offset
     if (offset.size() > embInfos[embName].devVocabSize) {
         spdlog::error("{} overflow! init evict dev, evictOffset size {} bigger than dev vocabSize {}",
                       embName, offset.size(), embInfos[embName].devVocabSize);
+        throw runtime_error(fmt::format("{} overflow! init evict dev, evictOffset size {} bigger than dev vocabSize {}",
+                                        embName, offset.size(), embInfos[embName].devVocabSize).c_str());
     }
     if (rankInfo.useStatic) {
         offset.resize(embInfos[embName].devVocabSize, -1);

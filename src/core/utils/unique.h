@@ -34,6 +34,7 @@
 #include "time_cost.h"
 
 using namespace MxRec;
+using namespace std;
 
 struct UniqueData {
     void *inputData;
@@ -642,7 +643,6 @@ public:
             for (int i = 0; i < groupMethod_.GroupCount(); i++) {
                 if (send_cnt_ < uniqueSizeVector[i]){
                     spdlog::error("sendCnt should not be smaller than uniqueSize, sendCnt {}, uniqueSize {}", send_cnt_, uniqueSizeVector[i]);
-                    throw SendCntTooSmallError();
                 }
             }
         }
@@ -737,13 +737,13 @@ public:
                 auto rc = memcpy_s(uniqueIds + start, mem_size, uniqueVector + index, mem_size);
                 if (rc != 0) {
                     spdlog::error("[TileAndFill/uniqueIds] memcpy_s failded... mem_size: {}",mem_size);
-                    return;
+                    throw std::runtime_error(fmt::format("[TileAndFill/uniqueIds] memcpy_s failded... mem_size: {}",mem_size).c_str());
                 }
                 mem_size = uniqueSizeVector[i] * sizeof(int32_t);
                 rc = memcpy_s(idCountFill + start, mem_size, idCount + index, mem_size);
                 if (rc != 0) {
                     spdlog::error("[TileAndFill/idCountFill] memcpy_s failded... mem_size: {}", mem_size);
-                    return;
+                    throw std::runtime_error(fmt::format("[TileAndFill/idCountFill] memcpy_s failded... mem_size: {}", mem_size).c_str());
                 }
             }
 
