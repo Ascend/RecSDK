@@ -239,14 +239,14 @@ void HybridMgmt::Start()
             spdlog::info("getInfoTask done");
             return ret;
         };
-        procThreads.emplace_back(getInfoTask);
+        procThreads.emplace_back(std::make_unique<std::thread>(getInfoTask));
 
         auto sendInfoTask = [this]() {
             auto ret = SendTask();
             spdlog::info("sendInfoTask done");
             return ret;
         };
-        procThreads.emplace_back(sendInfoTask);
+        procThreads.emplace_back(std::make_unique<std::thread>(sendInfoTask));
     }
 
     if (!mgmtRankInfo.noDDR) {
@@ -255,7 +255,7 @@ void HybridMgmt::Start()
             spdlog::info("parseKeysTask done");
             return ret;
         };
-        procThreads.emplace_back(parseKeysTask);
+        procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTask));
     }
 }
 

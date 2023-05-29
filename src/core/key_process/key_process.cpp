@@ -137,7 +137,7 @@ int KeyProcess::Start()
     }; // for clean code
     for (int channel = 0; channel < MAX_CHANNEL_NUM; ++channel) {
         for (int id = 0; id < PerfConfig::keyProcessThreadNum; ++id) {
-            procThread.emplace_back(fn, channel, id); // use lambda expression initialize thread
+            procThreads.emplace_back(std::make_unique<std::thread>(fn, channel, id));
         }
     }
     return 0;
@@ -192,10 +192,10 @@ void KeyProcess::Destroy()
 {
     isRunning = false;
     spdlog::info(KEY_PROCESS "rank {} begin destroy.", rankInfo.rankId);
-    for (auto& i: procThread) {
-        i.join();
+    for (auto& t: procThreads) {
+        t->join();
     }
-    procThread.clear();
+    procThreads.clear();
     spdlog::info(KEY_PROCESS "rank {} destroy success.", rankInfo.rankId);
 }
 
@@ -266,6 +266,7 @@ void KeyProcess::KeyProcessTask(int channel, int id)
             spdlog::info(KEY_PROCESS "key process cost:{}, get data time:{} batch {}[{}]:{} ",
                          TO_MS(sw), getBatchTime, batch->name, batch->channel, batch->batchId);
             free(batch->tensorAddr);
+            batch->tensorAddr = nullptr;
             batchQueue->PutDirty(move(batch));
         }
     } catch (const EndRunError &e) {

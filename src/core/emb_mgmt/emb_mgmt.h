@@ -66,8 +66,8 @@ namespace MxRec {
         preprocess->isRunning = false;
         // 停止hdTransfer，用于停止mgmt的recv中卡住状态
         hdTransfer->Destroy();
-        for (auto &i : procThreads) {
-            i.join();
+        for (auto& t : procThreads) {
+            t->join();
         }
         if (hostEmbs != nullptr) {
             hostEmbs->Join();
@@ -104,7 +104,7 @@ namespace MxRec {
         RankInfo mgmtRankInfo;
         unique_ptr<HostEmb> hostEmbs {};
         unique_ptr<EmbHashMap> hostHashMaps {};
-        vector<std::thread> procThreads {};
+        vector<std::unique_ptr<std::thread>> procThreads {};
         unique_ptr<Common::TaskQueue<vector<Tensor>>> lookUpKeysQueue;
         unique_ptr<Common::TaskQueue<vector<Tensor>>> restoreQueue;
         map<std::string, std::vector<emb_key_t>> evictKeyMap {};

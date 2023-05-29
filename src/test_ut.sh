@@ -54,7 +54,14 @@ make -j
 make install
 
 # Run Test
-mpirun -np 4 ./tests/test_main
+DATE=$(date +%Y-%m-%d-%H-%M-%S)
+if [[ "$1" == "--with-memcheck" ]]; then
+  echo "we are going to run test_main with memcheck via valgrind"
+  valgrind --tool=memcheck --leak-check=full --show-leak-kinds=all --log-file=../"memcheck_${DATE}.log" \
+    ./tests/test_main 2>&1 |tee ../"test_main_${DATE}.log"
+else
+  mpirun -np 4 ./tests/test_main
+fi
 
 cd "$(dirname "${PWD}")"
 
