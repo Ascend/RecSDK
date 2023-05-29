@@ -34,17 +34,33 @@ static constexpr uint16_t g_kMaxSpinCountBeforeThreadYield = 64;
 class SpinLock final {
    public:
     void lock() noexcept {}
+
     void unlock() noexcept {}
-    bool try_lock() noexcept { return true; }
+
+    bool try_lock() noexcept
+    {
+        return true;
+    }
 };
 
 #elif defined(USE_MUTEX)
 
 class SpinLock final {
 public:
-    void lock() noexcept { mt_.lock(); }
-    bool try_lock() noexcept { return mt_.try_lock(); }
-    void unlock() noexcept { mt_.unlock(); }
+    void lock() noexcept
+    {
+        mt_.lock();
+    }
+
+    bool try_lock() noexcept
+    {
+        return mt_.try_lock();
+    }
+
+    void unlock() noexcept
+    {
+        mt_.unlock();
+    }
 
 private:
     std::mutex mt_;
@@ -87,7 +103,10 @@ public:
         return !lock_.exchange(true, std::memory_order_acquire);
     }
 
-    inline void unlock() noexcept { lock_.store(false, std::memory_order_release); }
+    inline void unlock() noexcept
+    {
+        lock_.store(false, std::memory_order_release);
+    }
 
 private:
     std::atomic<bool> lock_{false};
@@ -167,9 +186,15 @@ public:
         }
     }
 
-    inline void r_unlock() noexcept { --lock_; }
+    inline void r_unlock() noexcept
+    {
+        --lock_;
+    }
 
-    inline void w_unlock() noexcept { lock_.store(0, std::memory_order_release); }
+    inline void w_unlock() noexcept
+    {
+        lock_.store(0, std::memory_order_release);
+    }
 
 private:
     std::atomic<uint64_t> lock_{0};
