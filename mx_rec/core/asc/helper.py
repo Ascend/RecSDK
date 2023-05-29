@@ -222,7 +222,7 @@ def do_insert(args, insert_tensors, splits, table_names, input_dict):
 
     # Only the tables that need to be used after table combination are retained in meituan situation.
     # Current solution has error in same situations. For example, a sparse table has not been auto-merged.
-    from mx_rec.constants.constants import ASCEND_TABLE_NAME_MUST_CONTAIN
+    from mx_rec.util.constants import ASCEND_TABLE_NAME_MUST_CONTAIN
     new_insert_tensors, new_splits, new_table_names = [], [], []
     logging.debug(f"In do_insert function, ASCEND_TABLE_NAME_MUST_CONTAIN: {ASCEND_TABLE_NAME_MUST_CONTAIN}")
     for idx, table_name in enumerate(table_names):
