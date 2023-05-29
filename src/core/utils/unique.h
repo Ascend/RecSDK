@@ -132,7 +132,7 @@ template <int N = 4> class Dedup {
 
 public:
     Dedup(int bucketCountPower2 = kDefaultBucketCount, int groups = 1)
-            : bucketCount_(bucketCountPower2), bucketCountMask_(bucketCount_ - 1), groupCount_(groups)
+        : bucketCount_(bucketCountPower2), bucketCountMask_(bucketCount_ - 1), groupCount_(groups)
     {
         void *area = aligned_alloc(SysytemConst::LEVEL1_CACHE, sizeof(Meta<N>) * bucketCount_);
         table_ = reinterpret_cast<Meta<N> *>(area);
@@ -652,7 +652,7 @@ public:
 
         if (uniqueFlag.useStatic) {
             for (int i = 0; i < groupMethod_.GroupCount(); i++) {
-                if (send_cnt_ < uniqueSizeVector[i]){
+                if (send_cnt_ < uniqueSizeVector[i]) {
                     spdlog::error("sendCnt should not be smaller than uniqueSize, sendCnt {}, uniqueSize {}", send_cnt_,
                                   uniqueSizeVector[i]);
                 }
@@ -757,14 +757,14 @@ public:
                 if (rc != 0) {
                     spdlog::error("[TileAndFill/uniqueIds] memcpy_s failded... mem_size: {}", mem_size);
                     throw std::runtime_error(
-                            fmt::format("[TileAndFill/uniqueIds] memcpy_s failded... mem_size: {}", mem_size).c_str());
+                        fmt::format("[TileAndFill/uniqueIds] memcpy_s failded... mem_size: {}", mem_size).c_str());
                 }
                 mem_size = uniqueSizeVector[i] * sizeof(int32_t);
                 rc = memcpy_s(idCountFill + start, mem_size, idCount + index, mem_size);
                 if (rc != 0) {
                     spdlog::error("[TileAndFill/idCountFill] memcpy_s failded... mem_size: {}", mem_size);
                     throw std::runtime_error(fmt::format("[TileAndFill/idCountFill] memcpy_s failded... mem_size: {}",
-                                                         mem_size).c_str());
+                        mem_size).c_str());
                 }
             }
 
