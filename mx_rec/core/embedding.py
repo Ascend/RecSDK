@@ -34,7 +34,7 @@ def create_table(**kwargs):
     emb_initializer = kwargs.get("emb_initializer")
     device_vocabulary_size = kwargs.get("device_vocabulary_size", 1)
     host_vocabulary_size = kwargs.get("host_vocabulary_size", 0)
-    optimizer_list = kwargs.get("optimizer_list", None)
+    optimizer_list = kwargs.get("optimizer_list")
     mode = kwargs.get("mode", MxRecMode.ASC)
     value_dtype = kwargs.get("value_dtype", tf.float32)
     shard_num = kwargs.get("shard_num", 1)
