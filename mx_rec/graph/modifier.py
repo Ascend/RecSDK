@@ -389,13 +389,17 @@ def build_asc_graph(table_instance, cutting_point, config, is_training):
         raise ValueError(f"The length of channel_name_list must be greater than or equal to 1.")
 
     if skip_emb_transfer:
-        restore_vector, hot_pos, id_offsets, swap_in, all2all_matrix = get_preprocessed_tensor_for_asc(
-            table_instance.variable, config, ids_channel_name, table_instance.modify_graph)
+        result = get_preprocessed_tensor_for_asc(table_instance.variable, config, ids_channel_name,
+                                                 table_instance.modify_graph)
     else:
         variable_list = [table_instance.variable] \
                         + [slot_info.get("slot") for slot_info in table_instance.optimizer_slot_info_list]
-        restore_vector, hot_pos, id_offsets, swap_in, all2all_matrix = get_preprocessed_tensor_for_asc(
-            variable_list, config, ids_channel_name, table_instance.modify_graph)
+        result = get_preprocessed_tensor_for_asc(variable_list, config, ids_channel_name, table_instance.modify_graph)
+    restore_vector = result.get("restore_vector")
+    hot_pos = result.get("hot_pos")
+    id_offsets = result.get("id_offsets")
+    swap_in = result.get("swap_in")
+    all2all_matrix = result.get("all2all_args")
 
     with tf.control_dependencies(swap_in):
         id_offsets = tf.identity(id_offsets)

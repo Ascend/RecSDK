@@ -19,7 +19,7 @@ using namespace MxRec;
 using namespace std;
 using namespace chrono;
 
-bool HostEmb::Initialize(const vector<EmbInfo>& embInfos, int seed, bool ifLoad)
+bool HostEmb::Initialize(const vector<EmbInfo>& embInfos, int seed)
 {
     for (const auto& embInfo: embInfos) {
         HostEmbTable hostEmb;
@@ -62,7 +62,7 @@ void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, in
                 break;
             }
             default: {
-                spdlog::error(HOSTEMB + "Invalid Initializer Type. Using default Constant Initializer with value 0.");
+                spdlog::warn(HOSTEMB + "Invalid Initializer Type. Using default Constant Initializer with value 0.");
                 ConstantInitializer defaultInitializer(initializeInfo.start, initializeInfo.len, 0);
                 initializer = &defaultInitializer;
             }
@@ -84,12 +84,12 @@ void HostEmb::LoadEmb(emb_mem_t& loadData)
 void HostEmb::Join()
 {
     spdlog::stopwatch sw;
-    spdlog::debug(HOSTEMB + "hostemb start join {}", procThread.size());
-    for (auto& t: procThread) {
+    spdlog::debug(HOSTEMB + "hostemb start join {}", procThreads.size());
+    for (auto& t: procThreads) {
         t->join();
     }
-    procThread.clear();
-    spdlog::info(HOSTEMB + "hostemb end join, cost:{}", TO_MS(sw));
+    procThreads.clear();
+    spdlog::info(HOSTEMB + "hostemb end join, cost:{}", duration_cast<milliseconds>((sw).elapsed()));
 }
 
 /*
@@ -132,7 +132,7 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
 {
 #ifndef GTEST
     EASY_FUNCTION(profiler::colors::Purple)
-    procThread.emplace_back(make_unique<thread>(
+    procThreads.emplace_back(make_unique<thread>(
         [&, missingKeysHostPos, channelId, embName] {
             auto hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
             TransferChannel transferName = TransferChannel::D2H;
@@ -171,16 +171,16 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
  * 找到host侧需要发送的emb，通过hdTransfer发送给device。
  * missingKeysHostPos为host侧需要发送的emb的位置
  */
-vector<Tensor> HostEmb::GetH2DEmb(const vector<size_t>& missingKeysHostPos, const string& embName)
+void HostEmb::GetH2DEmb(const vector<size_t>& missingKeysHostPos, const string& embName,
+                        vector<Tensor>& h2dEmbOut)
 {
     EASY_FUNCTION()
-    vector<Tensor> h2d_emb;
     const auto& emb = hostEmbs[embName];
     const int embeddingSize = emb.hostEmbInfo.extEmbeddingSize;
-    h2d_emb.emplace_back(Tensor(tensorflow::DT_FLOAT, {
+    h2dEmbOut.emplace_back(Tensor(tensorflow::DT_FLOAT, {
         int(missingKeysHostPos.size()), embeddingSize
     }));
-    auto& tmpTensor = h2d_emb.back();
+    auto& tmpTensor = h2dEmbOut.back();
     auto tmpData = tmpTensor.flat<float>();
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) shared(missingKeysHostPos, emb, tmpData)
     for (size_t i = 0; i < missingKeysHostPos.size(); i++) {
@@ -191,7 +191,6 @@ vector<Tensor> HostEmb::GetH2DEmb(const vector<size_t>& missingKeysHostPos, cons
         }
     }
     spdlog::info("GetH2DEmb end, missingKeys count:{}", missingKeysHostPos.size());
-    return h2d_emb;
 }
 
 auto HostEmb::GetHostEmbs() -> absl::flat_hash_map<string, HostEmbTable>*

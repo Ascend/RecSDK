@@ -23,8 +23,6 @@ using namespace MxRec;
 
 void Checkpoint::SaveModel(string savePath, CkptData& ckptData, RankInfo& mgmtRankInfo, const vector<EmbInfo>& EmbInfo)
 {
-    // TODO: check savePath
-
     processPath = savePath;
     rankId = mgmtRankInfo.rankId;
     deviceId = mgmtRankInfo.deviceId;
@@ -42,8 +40,6 @@ void Checkpoint::SaveModel(string savePath, CkptData& ckptData, RankInfo& mgmtRa
 void Checkpoint::LoadModel(string loadPath, CkptData& ckptData, RankInfo& mgmtRankInfo, const vector<EmbInfo>& EmbInfo,
                            const vector<CkptFeatureType>& featureTypes)
 {
-    // TODO: check loadPath
-
     processPath = loadPath;
     rankId = mgmtRankInfo.rankId;
     deviceId = mgmtRankInfo.deviceId;
@@ -143,7 +139,7 @@ void Checkpoint::MakeSaveDir(const string& dirName)
     }
 }
 
-int Checkpoint::GetEmbeddingSize(const string& embName)
+int Checkpoint::GetEmbeddingSize(const string& embName) const
 {
     for (const auto &embInfo: mgmtEmbInfo) {
         if (embInfo.name == embName) {
@@ -186,7 +182,7 @@ void Checkpoint::SaveDataset(const vector<string>& embNames,
     }
 }
 
-void Checkpoint::WriteEmbedding(CkptTransData& transData, const string& dataDir, int& embeddingSize)
+void Checkpoint::WriteEmbedding(const CkptTransData& transData, const string& dataDir, const int& embeddingSize)
 {
     ofstream writeFile;
     writeFile.open(dataDir.c_str(), std::ios::out | std::ios::trunc | std::ios::binary);
@@ -195,6 +191,7 @@ void Checkpoint::WriteEmbedding(CkptTransData& transData, const string& dataDir,
     auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
     if (res != ACL_ERROR_NONE) {
         spdlog::error("Set device failed, device_id:{}", deviceId);
+        throw runtime_error(fmt::format("Set device failed, device_id:{}", deviceId).c_str());
     }
 
     auto &transArr = transData.int64Arr;
@@ -208,6 +205,7 @@ void Checkpoint::WriteEmbedding(CkptTransData& transData, const string& dataDir,
                                    ACL_MEMCPY_DEVICE_TO_HOST);
         if (ret != ACL_SUCCESS) {
             spdlog::error("aclrtMemcpy failed, ret={}", ret);
+            throw runtime_error(fmt::format("aclrtMemcpy failed, ret={}", ret).c_str());
         }
 
         writeFile.write((const char *) (row.data()), embeddingSize * sizeof(float));
@@ -225,6 +223,7 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir)
     auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
     if (res != ACL_ERROR_NONE) {
         spdlog::error("Set device failed, device_id:{}", deviceId);
+        throw runtime_error(fmt::format("Set device failed, device_id:{}", deviceId).c_str());
     }
 
     auto &AttributeArr = transData.attribute;
@@ -238,6 +237,7 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir)
     ret = aclrtMalloc(&newBlock, static_cast<int>(datasetSize), ACL_MEM_MALLOC_HUGE_FIRST);
     if (ret != ACL_SUCCESS) {
         spdlog::error("aclrtMalloc failed, ret={}", ret);
+        throw runtime_error(fmt::format("aclrtMemcpy failed, ret={}", ret).c_str());
     }
 
     float *floatPtr = static_cast<float *>(newBlock);
@@ -251,6 +251,7 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir)
                                    ACL_MEMCPY_HOST_TO_DEVICE);
         if (ret != ACL_SUCCESS) {
             spdlog::error("aclrtMemcpy failed, ret={}", ret);
+            throw runtime_error(fmt::format("aclrtMemcpy failed, ret={}", ret).c_str());
         }
 
         int64_t address = reinterpret_cast<int64_t>(floatPtr + i * embeddingSize);
@@ -333,11 +334,9 @@ void Checkpoint::LoadProcess(CkptData& ckptData)
 void Checkpoint::GetUpperLayerLoadDir(const vector<string>& dirNames)
 {
     innerDirPath = processPath;
-    // TODO: check existence
 
     for (const auto& dirName : dirNames) {
         innerDirPath = innerDirPath + dirSeparator + dirName;
-        // TODO: check existence
     }
 }
 
@@ -355,7 +354,6 @@ vector<string> Checkpoint::GetTableLayerLoadDir()
         }
         closedir(dir);
     }
-    // TODO: may cause memory problem? need to check
 
     return loadTableDir;
 }
@@ -367,10 +365,8 @@ void Checkpoint::LoadDataset(const vector<string>& embNames,
 {
     for (const auto& embName : embNames) {
         auto dataDir { innerDirPath + dirSeparator + embName };
-        // TODO: check existence
         for (const auto& saveDataType : saveDataTypes) {
             auto datasetPath { dataDir + dirSeparator + dataHandler->GetDataDirName(saveDataType) };
-            // TODO: check existence
 
             auto datasetDir { datasetPath + dirSeparator + datasetName + to_string(rankId) + dataFileType };
             auto attributeDir { datasetPath + dirSeparator + datasetName + to_string(rankId) + attribFileType };
@@ -414,7 +410,7 @@ void Checkpoint::ReadStream(CkptTransData& transData,
                             uint32_t dataElmtBytes)
 {
     if (dataElmtBytes == 0) {
-        spdlog::error("dataElmtBytes is 0, don't handle [/ %] operation");
+        spdlog::warn("dataElmtBytes is 0, don't handle [/ %] operation");
         return ;
     }
     std::ifstream readFile;

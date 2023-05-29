@@ -204,7 +204,7 @@ class ConfigInitializer:
             raise ValueError("env variable ascend_visible_devices is null.")
         if "-" in ascend_visible_devices:
             rank_start = int(ascend_visible_devices.strip().split("-")[0])
-            device_list = [i for i in range(rank_start, int(ascend_visible_devices.strip().split("-")[-1]))]
+            device_list = list(range(rank_start, int(ascend_visible_devices.strip().split("-")[-1])))
         elif "," in ascend_visible_devices:
             device_list = list(map(int, ascend_visible_devices.strip().split(",")))
         elif ascend_visible_devices in ["0", "1", "2", "3", "4", "5", "6", "7"]:
@@ -639,7 +639,7 @@ def get_available_cpu_num_and_range():
     valid_cpu_range_list = []
     if is_ok:
         logging.info(f"available numa node num: {len(pkg_id2cpu_list)}")
-        for k, part_cpu_list in pkg_id2cpu_list.items():
+        for _, part_cpu_list in pkg_id2cpu_list.items():
             parse_range(part_cpu_list, valid_cpu_range_list)
     else:
         parse_range(list(cpu_available), valid_cpu_range_list)
@@ -692,6 +692,6 @@ def bind_cpu(rank_id: int, rank_size: int = None):
     process = psutil.Process()
     try:
         process.cpu_affinity(cpu_list)
-        logging.info(f"bind cpu for rank {rank_id}: {cpu_list}")
     except IndexError:
         logging.error(f"failed to bind cpu for rank {rank_id}: {cpu_list}")
+    logging.info(f"bind cpu for rank {rank_id}: {cpu_list}")

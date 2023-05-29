@@ -4,30 +4,42 @@
  * Author: MindX SDK
  * Date: 2022/11/15
  */
-#include "emb_mgmt.h"
+#include "hybrid_mgmt.h"
+
 #include <spdlog/spdlog.h>
 #include <spdlog/fmt/bundled/ranges.h>
+
 #include "checkpoint/checkpoint.h"
 #include "utils/time_cost.h"
 
 using namespace MxRec;
 using namespace std;
 
-bool HybridMgmt::Initialize(RankInfo rankInfo,
-                            const vector<EmbInfo>& embInfos,
-                            int seed,
-                            const vector<ThresholdValue>& thresholdValues,
-                            bool ifLoad)
+bool HybridMgmt::InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
+                                const vector<ThresholdValue>& thresholdValues, bool ifLoad, int seed)
 {
-    SetLog(rankInfo.rankId);
-    if (isRunning) {
-        return true;
+    if (getenv("KEY_PROCESS_THREAD_NUM") != nullptr) {
+        int num = std::atoi(getenv("KEY_PROCESS_THREAD_NUM"));
+        if (num > MAX_KEY_PROCESS_THREAD) {
+            spdlog::error("[HybridMgmt::InitKeyProcess] KEY_PROCESS_THREAD_NUM:{} should be less than {}",
+                          num, MAX_KEY_PROCESS_THREAD);
+            return false;
+        }
+        PerfConfig::keyProcessThreadNum = num;
+        spdlog::info("config KEY_PROCESS_THREAD_NUM:{}", num);
     }
+
+    preprocess = Singleton<KeyProcess>::GetInstance();
+    preprocess->Initialize(rankInfo, embInfos, thresholdValues, ifLoad, seed);
+    preprocess->Start();
+    return true;
+}
+
+void HybridMgmt::InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfos)
+{
     MPI_Comm_size(MPI_COMM_WORLD, &rankInfo.rankSize);
-    int localRankId = rankInfo.deviceId;
-    spdlog::info(MGMT + "begin initialize, localRankSize:{}, localRankId {}, rank {}", rankInfo.localRankSize,
-                 localRankId, rankInfo.rankId);
-    rankInfo.localRankId = localRankId;
+    rankInfo.localRankId = rankInfo.deviceId;
+
     size_t totHostVocabSize = 0;
     for (const auto& emb : embInfos) {
         totHostVocabSize += emb.hostVocabSize;
@@ -36,27 +48,47 @@ bool HybridMgmt::Initialize(RankInfo rankInfo,
         rankInfo.noDDR = true;
     }
     rankInfo.useDataset = getenv("DATASET") != nullptr;
+}
+
+bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, int seed,
+                            const vector<ThresholdValue>& thresholdValues, bool ifLoad)
+{
+    if (isRunning) {
+        return true;
+    }
+    SetLog(rankInfo.rankId);
+    InitRankInfo(rankInfo, embInfos);
+
+    spdlog::info(MGMT + "begin initialize, localRankSize:{}, localRankId {}, rank {}",
+                 rankInfo.localRankSize, rankInfo.localRankId, rankInfo.rankId);
+
+    bool rc = InitKeyProcess(rankInfo, embInfos, thresholdValues, ifLoad, seed);
+    if (!rc) {
+        return false;
+    }
+
     mgmtRankInfo = rankInfo;
     mgmtEmbInfo = embInfos;
     skipUpdate = getenv("SKIP_UPDATE") != nullptr;
+
     hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
     hdTransfer->Init(embInfos, rankInfo.deviceId);
-    preprocess = Singleton<KeyProcess>::GetInstance();
-    preprocess->Initialize(rankInfo, embInfos, thresholdValues, ifLoad, seed);
-    preprocess->Start();
+
     lookUpKeysQueue = make_unique<Common::TaskQueue<vector<Tensor>>>();
     restoreQueue = make_unique<Common::TaskQueue<vector<Tensor>>>();
     isRunning = true;
+
     if (!rankInfo.noDDR) {
         hostEmbs = make_unique<HostEmb>();
         hostHashMaps = make_unique<EmbHashMap>();
-        hostEmbs->Initialize(embInfos, seed, ifLoad);
+        hostEmbs->Initialize(embInfos, seed);
         hostHashMaps->Init(rankInfo, embInfos, ifLoad);
     }
     isLoad = ifLoad;
     if (!rankInfo.useDataset && !isLoad) {
         Start();
     }
+
     for (const auto& info: embInfos) {
         spdlog::info(MGMT + "emb[{}] vocab size {}+{} sc:{}", info.name, info.devVocabSize, info.hostVocabSize,
             info.sendCount);
@@ -66,7 +98,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo,
     return true;
 }
 
-bool HybridMgmt::Save(string savePath)
+bool HybridMgmt::Save(const string savePath)
 {
     preprocess->LoadSaveLock();
 
@@ -207,14 +239,14 @@ void HybridMgmt::Start()
             spdlog::info("getInfoTask done");
             return ret;
         };
-        procThreads.emplace_back(getInfoTask);
+        procThreads.emplace_back(std::make_unique<std::thread>(getInfoTask));
 
         auto sendInfoTask = [this]() {
             auto ret = SendTask();
             spdlog::info("sendInfoTask done");
             return ret;
         };
-        procThreads.emplace_back(sendInfoTask);
+        procThreads.emplace_back(std::make_unique<std::thread>(sendInfoTask));
     }
 
     if (!mgmtRankInfo.noDDR) {
@@ -223,7 +255,7 @@ void HybridMgmt::Start()
             spdlog::info("parseKeysTask done");
             return ret;
         };
-        procThreads.emplace_back(parseKeysTask);
+        procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTask));
     }
 }
 
@@ -347,7 +379,7 @@ bool HybridMgmt::SendTask()
     return false;
 }
 
-bool HybridMgmt::GetLookupAndRestore(int channelId, int &batchId)
+bool HybridMgmt::GetLookupAndRestore(const int channelId, int &batchId)
 {
     spdlog::info(MGMT + "start parse keys, nBatch:{} , [{}]:{}", mgmtRankInfo.nBatch, channelId, batchId);
     for (const auto& embInfo: mgmtEmbInfo) {
@@ -374,7 +406,7 @@ bool HybridMgmt::GetLookupAndRestore(int channelId, int &batchId)
     return true;
 }
 
-bool HybridMgmt::SendLookupAndRestore(int channelId, int &batchId)
+bool HybridMgmt::SendLookupAndRestore(const int channelId, int &batchId)
 {
     for (const auto& embInfo: mgmtEmbInfo) {
         vector<string> names = {embInfo.name};
@@ -386,7 +418,7 @@ bool HybridMgmt::SendLookupAndRestore(int channelId, int &batchId)
         if (!mgmtRankInfo.useStatic) {
             for (const string& name: names) {
                 auto all2all = preprocess->GetInfoVec(batchId, name, channelId, ProcessedInfo::ALL2ALL);
-                hdTransfer->Send(ALL2ALL, { *all2all }, channelId, name);
+                hdTransfer->Send(TransferChannel::ALL2ALL, { *all2all }, channelId, name);
             }
         }
         spdlog::info("SendLookupAndRestore batchId: {}, name: {}, channelId: {}",
@@ -401,7 +433,7 @@ bool HybridMgmt::SendLookupAndRestore(int channelId, int &batchId)
                 TimeCost sendLookupTC;
                 for (const string& name: names) {
                     auto lookUpKeys = lookUpKeysQueue->WaitAndPop();
-                    hdTransfer->Send(LOOKUP, lookUpKeys, channelId, name);
+                    hdTransfer->Send(TransferChannel::LOOKUP, lookUpKeys, channelId, name);
                 }
                 TIME_PRINT("LOOKUP Send TimeCost(ms):{}", sendLookupTC.ElapsedMS());
             }
@@ -410,7 +442,7 @@ bool HybridMgmt::SendLookupAndRestore(int channelId, int &batchId)
                 TimeCost sendRestoreTC;
                 for (const string& name: names) {
                     auto restore = restoreQueue->WaitAndPop();
-                    hdTransfer->Send(RESTORE, restore, channelId, name);
+                    hdTransfer->Send(TransferChannel::RESTORE, restore, channelId, name);
                 }
                 TIME_PRINT("RESTORE Send TimeCost(ms):{}", sendRestoreTC.ElapsedMS());
             }
@@ -421,7 +453,7 @@ bool HybridMgmt::SendLookupAndRestore(int channelId, int &batchId)
     return true;
 }
 
-bool HybridMgmt::EndBatch(int batchId, int channelId)
+bool HybridMgmt::EndBatch(int batchId, int channelId) const
 {
     return (batchId % mgmtRankInfo.maxStep[channelId] == 0 && mgmtRankInfo.maxStep[channelId] != -1);
 }
@@ -430,42 +462,18 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
 {
     spdlog::info(MGMT + "DDR mode, start parse keys, nBatch:{} , [{}]:{}", mgmtRankInfo.nBatch, channelId, batchId);
     TimeCost parseKeyTC;
-    int start = batchId, iBatch = 0;
-    bool ifHashmapFree = true, remainBatch = true;
+    int start = batchId;
+    int iBatch = 0;
+    bool ifHashmapFree = true;
+    bool remainBatch = true;
     while (true) {
         spdlog::info(MGMT + "parse keys, [{}]:{}", channelId, batchId);
         for (const auto& embInfo : mgmtEmbInfo) {
-            auto& embHashMap = hostHashMaps->embHashMaps.at(embInfo.name);
-            if (iBatch == 0) {
-                embHashMap.SetStartCount();
+            ifHashmapFree = ProcessEmbInfo(embInfo.name, batchId, channelId, iBatch, remainBatch);
+            if (!remainBatch) {
+                EmbHDTransWrap(channelId, batchId, start, iBatch);
+                return false;
             }
-            auto lookupKeys = preprocess->GetLookupKeys(batchId, embInfo.name, channelId);
-            if (lookupKeys.empty()) {
-                remainBatch = false;
-                break;
-            }
-            auto restore = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::RESTORE);
-            hdTransfer->Send(RESTORE, *restore, channelId, embInfo.name);
-
-            auto tmpData = hostHashMaps->Process(embInfo.name, lookupKeys, iBatch);
-            hdTransfer->Send(LOOKUP, { tmpData.front() }, channelId, embInfo.name);
-            tmpData.erase(tmpData.begin());
-            hdTransfer->Send(SWAP, tmpData, channelId, embInfo.name);
-
-            if (!mgmtRankInfo.useStatic) {
-                auto all2all = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::ALL2ALL);
-                hdTransfer->Send(ALL2ALL, *all2all, channelId, embInfo.name);
-            }
-
-            if (embHashMap.HasFree(lookupKeys.size())) { // check free > next one batch
-                spdlog::warn(MGMT + "embName {}[{}]{},iBatch:{} freeSize not enough, {}", embInfo.name, channelId,
-                             batchId, iBatch, lookupKeys.size());
-                ifHashmapFree = false;
-            }
-        }
-        if (!remainBatch) {
-            EmbHDTransWrap(channelId, batchId, start, iBatch);
-            return false;
         }
         batchId++;
         iBatch++;
@@ -478,6 +486,36 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
     }
     EmbHDTransWrap(channelId, batchId - 1, start, iBatch);
     TIME_PRINT("[{}]-{}, parseKeyTC TimeCost(ms):{}", channelId, batchId, parseKeyTC.ElapsedMS());
+    return true;
+}
+
+bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
+                                int channelId, int iBatch, bool& remainBatchOut)
+{
+    auto& embHashMap = hostHashMaps->embHashMaps.at(embName);
+    if (iBatch == 0) {
+        embHashMap.SetStartCount();
+    }
+    auto lookupKeys = preprocess->GetLookupKeys(batchId, embName, channelId);
+    if (lookupKeys.empty()) {
+        remainBatchOut = false;
+    }
+    auto restore = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::RESTORE);
+    hdTransfer->Send(TransferChannel::RESTORE, *restore, channelId, embName);
+    vector<Tensor> tmpData;
+    hostHashMaps->Process(embName, lookupKeys, iBatch, tmpData);
+    hdTransfer->Send(TransferChannel::LOOKUP, { tmpData.front() }, channelId, embName);
+    tmpData.erase(tmpData.begin());
+    hdTransfer->Send(TransferChannel::SWAP, tmpData, channelId, embName);
+    if (!mgmtRankInfo.useStatic) {
+        auto all2all = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::ALL2ALL);
+        hdTransfer->Send(TransferChannel::ALL2ALL, *all2all, channelId, embName);
+    }
+    if (embHashMap.HasFree(lookupKeys.size())) { // check free > next one batch
+        spdlog::warn(MGMT + "embName {}[{}]{},iBatch:{} freeSize not enough, {}", embName, channelId,
+                     batchId, iBatch, lookupKeys.size());
+        return false;
+    }
     return true;
 }
 
@@ -498,7 +536,7 @@ void HybridMgmt::EmbHDTransWrap(int channelId, const int& batchId, int start, in
     }
 }
 
-void HybridMgmt::EmbHDTrans(int channelId, int batchId)
+void HybridMgmt::EmbHDTrans(const int channelId, const int batchId)
 {
     EASY_FUNCTION(profiler::colors::Blue)
     EASY_VALUE("mgmtProcess", batchId)
@@ -506,8 +544,9 @@ void HybridMgmt::EmbHDTrans(int channelId, int batchId)
     TimeCost tr;
     for (const auto& embInfo: mgmtEmbInfo) {
         auto& missingKeys = hostHashMaps->embHashMaps.at(embInfo.name).missingKeysHostPos;
-        auto h2dEmb = hostEmbs->GetH2DEmb(missingKeys, embInfo.name); // order!
-        hdTransfer->Send(H2D, h2dEmb, channelId, embInfo.name, batchId);
+        vector<Tensor> h2dEmb;
+        hostEmbs->GetH2DEmb(missingKeys, embInfo.name, h2dEmb); // order!
+        hdTransfer->Send(TransferChannel::H2D, h2dEmb, channelId, embInfo.name, batchId);
     }
     for (const auto& embInfo: mgmtEmbInfo) {
         const auto& missingKeys = hostHashMaps->GetMissingKeys(embInfo.name);
@@ -526,7 +565,7 @@ void HybridMgmt::EmbHDTransDummy(int channelId, int batchId, const EmbInfo& embI
     spdlog::info(MGMT + "trans emb dummy, batchId:{}, channelId:{}", batchId, channelId);
     auto transferName = TransferChannel::D2H;
     auto d2hEmb = hdTransfer->Recv(transferName, channelId, embInfo.name)[0];
-    hdTransfer->Send(H2D, {}, channelId, embInfo.name);
+    hdTransfer->Send(TransferChannel::H2D, {}, channelId, embInfo.name);
 }
 
 /*
@@ -583,6 +622,8 @@ void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
         if (evictDevOffset.size() > embInfo.devVocabSize) {
             spdlog::error(MGMT + "{} overflow! evict pos on dev {} bigger than dev vocabSize {}",
                           embName, evictDevOffset.size(), embInfo.devVocabSize);
+            throw runtime_error(fmt::format(MGMT + "{} overflow! evict pos on dev {} bigger than dev vocabSize {}",
+                                            embName, evictDevOffset.size(), embInfo.devVocabSize).c_str());
         }
         if (mgmtRankInfo.useStatic) {
             evictDevOffset.resize(embInfo.devVocabSize, -1);
@@ -591,5 +632,5 @@ void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
     }
 
     auto tmpData = Vec2TensorI32(evictDevOffset);
-    hdTransfer->Send(EVICT, { tmpData }, TRAIN_CHANNEL_ID, embName);
+    hdTransfer->Send(TransferChannel::EVICT, { tmpData }, TRAIN_CHANNEL_ID, embName);
 }

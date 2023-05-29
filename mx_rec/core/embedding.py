@@ -27,11 +27,21 @@ from mx_rec.util.tf_version_adapter import npu_ops
 from mx_rec.util.variable import remove_saving_var
 
 
-def create_table(key_dtype, dim, name, emb_initializer, device_vocabulary_size=1, host_vocabulary_size=0,
-                 optimizer_list=None, mode=MxRecMode.ASC, value_dtype=tf.float32, shard_num=1,
-                 fusion_optimizer_var=True, hashtable_threshold=0):
-    """
+def create_table(**kwargs):
+    key_dtype = kwargs.get("key_dtype")
+    dim = kwargs.get("dim")
+    name = kwargs.get("name")
+    emb_initializer = kwargs.get("emb_initializer")
+    device_vocabulary_size = kwargs.get("device_vocabulary_size", 1)
+    host_vocabulary_size = kwargs.get("host_vocabulary_size", 0)
+    optimizer_list = kwargs.get("optimizer_list")
+    mode = kwargs.get("mode", MxRecMode.ASC)
+    value_dtype = kwargs.get("value_dtype", tf.float32)
+    shard_num = kwargs.get("shard_num", 1)
+    fusion_optimizer_var = kwargs.get("fusion_optimizer_var", True)
+    hashtable_threshold = kwargs.get("hashtable_threshold", 0)
 
+    """
     Args:
         key_dtype: data type for feature id
         dim: embedding vector size
@@ -46,10 +56,8 @@ def create_table(key_dtype, dim, name, emb_initializer, device_vocabulary_size=1
         shard_num: embedding partition number
         fusion_optimizer_var: fusion optimizer variable with embedding
         hashtable_threshold: choose to implement based on hash table or linear layer
-
-    Returns: SparseEmbedding instance
-
     """
+
     config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
                   device_vocabulary_size=device_vocabulary_size, host_vocabulary_size=host_vocabulary_size,
                   optimizer_list=optimizer_list, mode=mode, value_dtype=value_dtype, shard_num=shard_num,
@@ -585,12 +593,15 @@ class SparseEmbedding:
                       use_dynamic_expansion=use_dynamic_expansion)
 
         if self.skip_emb_transfer:
-            restore_vector, hot_pos, id_offsets, swap_in, all2all_matrix = get_preprocessed_tensor_for_asc(
-                self.variable, config)
+            result = get_preprocessed_tensor_for_asc(self.variable, config)
         else:
             variable_list = [self.variable] + [slot_info.get("slot") for slot_info in self.optimizer_slot_info_list]
-            restore_vector, hot_pos, id_offsets, swap_in, all2all_matrix = get_preprocessed_tensor_for_asc(
-                variable_list, config)
+            result = get_preprocessed_tensor_for_asc(variable_list, config)
+        restore_vector = result.get("restore_vector")
+        hot_pos = result.get("hot_pos")
+        id_offsets = result.get("id_offsets")
+        swap_in = result.get("swap_in")
+        all2all_matrix = result.get("all2all_matrix")
         control_ops = swap_in
 
         id_offsets = tf.identity(id_offsets, name="identity_addr")

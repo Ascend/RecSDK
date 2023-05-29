@@ -18,7 +18,7 @@
 #include "utils/common.h"
 #include "host_emb/host_emb.h"
 #include "key_process/key_process.h"
-#include "emb_mgmt/emb_mgmt.h"
+#include "hybrid_mgmt/hybrid_mgmt.h"
 
 using namespace std;
 using namespace MxRec;
@@ -52,16 +52,16 @@ protected:
 
     vector<vector<emb_batch_t>> PrepareBatch()
     {
-        vector<vector<emb_batch_t>> result(KEY_PROCESS_THREAD * MAX_CHANNEL_NUM);
-        // 向共享队列中写入本进程所有线程要处理的 KEY_PROCESS_THREAD * BATCH_NUM_EACH_THREAD 个batch数据
-        for (size_t threadId = 0; threadId < KEY_PROCESS_THREAD; ++threadId) {
-            int batchQueueId = threadId + KEY_PROCESS_THREAD * channel;
+        vector<vector<emb_batch_t>> result(PerfConfig::keyProcessThreadNum * MAX_CHANNEL_NUM);
+        // 向共享队列中写入本进程所有线程要处理的 PerfConfig::keyProcessThreadNum * BATCH_NUM_EACH_THREAD 个batch数据
+        for (size_t threadId = 0; threadId < PerfConfig::keyProcessThreadNum; ++threadId) {
+            int batchQueueId = threadId + PerfConfig::keyProcessThreadNum * channel;
             unsigned int seed = batchQueueId * 10;
             auto queue = SingletonQueue<emb_batch_t>::getInstances(batchQueueId);
 
             for (size_t batchNum = 0; batchNum < BATCH_NUM_EACH_THREAD; ++batchNum) {
                 size_t batchId =
-                        batchNum * KEY_PROCESS_THREAD + threadId;
+                        batchNum * PerfConfig::keyProcessThreadNum + threadId;
 
                 for (size_t i = 0; i < embInfos.size(); i++) { // key按照不同emb表的存储切分开
                     auto batch = queue->GetOne();
@@ -261,7 +261,8 @@ TEST_F(KeyProcessTest, GetScAll)
     }
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
     ASSERT_EQ(process.isRunning, true);
-    auto scAll = process.GetScAll(keyScLocal, 0, 0);
+    vector<int> scAll;
+    process.GetScAll(keyScLocal, 0, 0, scAll);
     ASSERT_THAT(scAll, ElementsAreArray(expectScAll));
 }
 
@@ -308,8 +309,9 @@ TEST_F(KeyProcessTest, ProcessKeySplit_rebuilt)
                      hotPos);
     }; // for clean code
     for (int channel = 0; channel < 1; ++channel) {
-        for (int id = 0; id < KEY_PROCESS_THREAD; ++id) {
-            process.procThread.emplace_back(fn, channel, id); // use lambda expression initialize thread
+        for (int id = 0; id < PerfConfig::keyProcessThreadNum; ++id) {
+            // use lambda expression initialize thread
+            process.procThreads.emplace_back(std::make_unique<std::thread>(fn, channel, id));
         }
     }
     this_thread::sleep_for(20s);
@@ -337,8 +339,9 @@ TEST_F(KeyProcessTest, BuildRestoreVec_rebuilt)
             batch->batchId, lookupKeys, scAll, restore);
     }; // for clean code
     for (int channel = 0; channel < 1; ++channel) {
-        for (int id = 0; id < KEY_PROCESS_THREAD; ++id) {
-            process.procThread.emplace_back(fn, channel, id); // use lambda expression initialize thread
+        for (int id = 0; id < PerfConfig::keyProcessThreadNum; ++id) {
+            // use lambda expression initialize thread
+            process.procThreads.emplace_back(std::make_unique<std::thread>(fn, channel, id));
         }
     }
     this_thread::sleep_for(20s);
