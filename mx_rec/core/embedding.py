@@ -18,7 +18,7 @@ from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_HOT_POS, \
     ASCEND_SPARSE_LOOKUP_ID_OFFSET, ASCEND_SPARSE_LOOKUP_RESTORE_VECTOR, MxRecMode, \
     ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_ALL2ALL_MATRIX, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, \
-    DEFAULT_EVICT_TIME_INTERVAL, TRAIN_CHANNEL_ID
+    DEFAULT_EVICT_TIME_INTERVAL, TRAIN_CHANNEL_ID, ASCEND_TABLE_NAME_MUST_CONTAIN
 from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is_asc_frozen, get_customized_ops, \
     insert_table_instance, get_training_mode_channel_id, get_use_static, get_name_to_var_dict, \
     clear_channel, trigger_evict, get_table_instance_by_name, get_use_hot, get_device_id, export_feature_spec, \
@@ -423,9 +423,9 @@ class SparseEmbedding:
                                                                                    embedding_dim=self.emb_size,
                                                                                    embedding_type=1)
 
-        from mx_rec.util.constants import ASCEND_TABLE_NAME_MUST_CONTAIN
-        if is_training and use_dynamic_expansion and ASCEND_TABLE_NAME_MUST_CONTAIN is not None and \
-                ASCEND_TABLE_NAME_MUST_CONTAIN in self.table_name:
+        is_table_name_valid = ASCEND_TABLE_NAME_MUST_CONTAIN is not None and \
+                              ASCEND_TABLE_NAME_MUST_CONTAIN in self.table_name
+        if is_training and use_dynamic_expansion and is_table_name_valid:
             tf.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
             tf.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
 
@@ -657,9 +657,9 @@ class SparseEmbedding:
                 host_pipeline_ops.embedding_lookup_by_address(id_offsets, embedding_dim=self.emb_size,
                                                               embedding_type=1)
 
-            from mx_rec.util.constants import ASCEND_TABLE_NAME_MUST_CONTAIN
-            if is_training and ASCEND_TABLE_NAME_MUST_CONTAIN is not None and \
-                    ASCEND_TABLE_NAME_MUST_CONTAIN in self.table_name:
+            is_table_name_valid = ASCEND_TABLE_NAME_MUST_CONTAIN is not None and \
+                                  ASCEND_TABLE_NAME_MUST_CONTAIN in self.table_name
+            if is_training and is_table_name_valid:
                 tf.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
                 tf.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
 
