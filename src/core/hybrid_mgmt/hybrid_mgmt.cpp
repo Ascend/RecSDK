@@ -501,15 +501,15 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
         remainBatchOut = false;
     }
     auto restore = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::RESTORE);
-    hdTransfer->Send(RESTORE, *restore, channelId, embName);
+    hdTransfer->Send(TransferChannel::RESTORE, *restore, channelId, embName);
     vector<Tensor> tmpData;
     hostHashMaps->Process(embName, lookupKeys, iBatch, tmpData);
-    hdTransfer->Send(LOOKUP, { tmpData.front() }, channelId, embName);
+    hdTransfer->Send(TransferChannel::LOOKUP, { tmpData.front() }, channelId, embName);
     tmpData.erase(tmpData.begin());
-    hdTransfer->Send(SWAP, tmpData, channelId, embName);
+    hdTransfer->Send(TransferChannel::SWAP, tmpData, channelId, embName);
     if (!mgmtRankInfo.useStatic) {
         auto all2all = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::ALL2ALL);
-        hdTransfer->Send(ALL2ALL, *all2all, channelId, embName);
+        hdTransfer->Send(TransferChannel::ALL2ALL, *all2all, channelId, embName);
     }
     if (embHashMap.HasFree(lookupKeys.size())) { // check free > next one batch
         spdlog::warn(MGMT + "embName {}[{}]{},iBatch:{} freeSize not enough, {}", embName, channelId,
