@@ -309,7 +309,8 @@ TEST_F(KeyProcessTest, ProcessKeySplit_rebuilt)
     }; // for clean code
     for (int channel = 0; channel < 1; ++channel) {
         for (int id = 0; id < PerfConfig::keyProcessThreadNum; ++id) {
-            process.procThread.emplace_back(fn, channel, id); // use lambda expression initialize thread
+            // use lambda expression initialize thread
+            process.procThreads.emplace_back(std::make_unique<std::thread>(fn, channel, id));
         }
     }
     this_thread::sleep_for(20s);
@@ -338,7 +339,8 @@ TEST_F(KeyProcessTest, BuildRestoreVec_rebuilt)
     }; // for clean code
     for (int channel = 0; channel < 1; ++channel) {
         for (int id = 0; id < PerfConfig::keyProcessThreadNum; ++id) {
-            process.procThread.emplace_back(fn, channel, id); // use lambda expression initialize thread
+            // use lambda expression initialize thread
+            process.procThreads.emplace_back(std::make_unique<std::thread>(fn, channel, id));
         }
     }
     this_thread::sleep_for(20s);

@@ -52,7 +52,7 @@ namespace MxRec {
     GTEST_PRIVATE:
         absl::flat_hash_map<string, HostEmbTable> hostEmbs;
 
-        std::vector<unique_ptr<std::thread>> procThread;
+        std::vector<unique_ptr<std::thread>> procThreads;
 
         void EmbDataGenerator(const vector<InitializeInfo>& initializeInfos, int seed, int vocabSize, int embeddingSize,
                                        vector<vector<float>>& embData);

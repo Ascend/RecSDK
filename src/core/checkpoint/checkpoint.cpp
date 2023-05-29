@@ -191,6 +191,7 @@ void Checkpoint::WriteEmbedding(const CkptTransData& transData, const string& da
     auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
     if (res != ACL_ERROR_NONE) {
         spdlog::error("Set device failed, device_id:{}", deviceId);
+        throw runtime_error(fmt::format("Set device failed, device_id:{}", deviceId).c_str());
     }
 
     auto &transArr = transData.int64Arr;
@@ -204,6 +205,7 @@ void Checkpoint::WriteEmbedding(const CkptTransData& transData, const string& da
                                    ACL_MEMCPY_DEVICE_TO_HOST);
         if (ret != ACL_SUCCESS) {
             spdlog::error("aclrtMemcpy failed, ret={}", ret);
+            throw runtime_error(fmt::format("aclrtMemcpy failed, ret={}", ret).c_str());
         }
 
         writeFile.write((const char *) (row.data()), embeddingSize * sizeof(float));
@@ -221,6 +223,7 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir)
     auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
     if (res != ACL_ERROR_NONE) {
         spdlog::error("Set device failed, device_id:{}", deviceId);
+        throw runtime_error(fmt::format("Set device failed, device_id:{}", deviceId).c_str());
     }
 
     auto &AttributeArr = transData.attribute;
@@ -234,6 +237,7 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir)
     ret = aclrtMalloc(&newBlock, static_cast<int>(datasetSize), ACL_MEM_MALLOC_HUGE_FIRST);
     if (ret != ACL_SUCCESS) {
         spdlog::error("aclrtMalloc failed, ret={}", ret);
+        throw runtime_error(fmt::format("aclrtMemcpy failed, ret={}", ret).c_str());
     }
 
     float *floatPtr = static_cast<float *>(newBlock);
@@ -247,6 +251,7 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir)
                                    ACL_MEMCPY_HOST_TO_DEVICE);
         if (ret != ACL_SUCCESS) {
             spdlog::error("aclrtMemcpy failed, ret={}", ret);
+            throw runtime_error(fmt::format("aclrtMemcpy failed, ret={}", ret).c_str());
         }
 
         int64_t address = reinterpret_cast<int64_t>(floatPtr + i * embeddingSize);
@@ -405,7 +410,7 @@ void Checkpoint::ReadStream(CkptTransData& transData,
                             uint32_t dataElmtBytes)
 {
     if (dataElmtBytes == 0) {
-        spdlog::error("dataElmtBytes is 0, don't handle [/ %] operation");
+        spdlog::warn("dataElmtBytes is 0, don't handle [/ %] operation");
         return ;
     }
     std::ifstream readFile;

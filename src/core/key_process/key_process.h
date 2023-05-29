@@ -105,7 +105,7 @@ namespace MxRec {
 
         std::vector<MPI_Comm> comm[MAX_CHANNEL_NUM] {};
 
-        vector<std::thread> procThread {};
+        vector<std::unique_ptr<std::thread>> procThreads {};
         std::mutex key2OffsetMut {};
 
         std::vector<std::mutex> loadSaveMut[MAX_CHANNEL_NUM];

@@ -62,7 +62,7 @@ void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, in
                 break;
             }
             default: {
-                spdlog::error(HOSTEMB + "Invalid Initializer Type. Using default Constant Initializer with value 0.");
+                spdlog::warn(HOSTEMB + "Invalid Initializer Type. Using default Constant Initializer with value 0.");
                 ConstantInitializer defaultInitializer(initializeInfo.start, initializeInfo.len, 0);
                 initializer = &defaultInitializer;
             }
@@ -84,11 +84,11 @@ void HostEmb::LoadEmb(emb_mem_t& loadData)
 void HostEmb::Join()
 {
     spdlog::stopwatch sw;
-    spdlog::debug(HOSTEMB + "hostemb start join {}", procThread.size());
-    for (auto& t: procThread) {
+    spdlog::debug(HOSTEMB + "hostemb start join {}", procThreads.size());
+    for (auto& t: procThreads) {
         t->join();
     }
-    procThread.clear();
+    procThreads.clear();
     spdlog::info(HOSTEMB + "hostemb end join, cost:{}", duration_cast<milliseconds>((sw).elapsed()));
 }
 
@@ -132,7 +132,7 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
 {
 #ifndef GTEST
     EASY_FUNCTION(profiler::colors::Purple)
-    procThread.emplace_back(make_unique<thread>(
+    procThreads.emplace_back(make_unique<thread>(
         [&, missingKeysHostPos, channelId, embName] {
             auto hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
             TransferChannel transferName = TransferChannel::D2H;

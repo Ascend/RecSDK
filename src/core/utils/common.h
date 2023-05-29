@@ -125,7 +125,8 @@ namespace MxRec {
         throw std::runtime_error("unknown chip ub size" + GetChipName(devID));
     }
 
-    template <class T> struct Batch {
+    template <class T>
+    struct Batch {
         size_t Size() const
         {
             return sample.size();

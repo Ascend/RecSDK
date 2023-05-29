@@ -230,7 +230,7 @@ public:
             std::unique_ptr<emb_batch_t> batch = TensorCopy(inputTensor, move(batchData), len, offset);
             if (batch == nullptr) {
                 spdlog::error("batch can not be null");
-                return;
+                throw runtime_error("batch can not be null");
             }
             queue->Pushv(move(batch));
         }
@@ -241,8 +241,8 @@ public:
                                             const size_t& len, size_t& offset)
     {
         if (len == 0) {
-            spdlog::error("len can not be zero");
-            return nullptr;
+            spdlog::error("the length of batchData can not be zero");
+            throw runtime_error("the length of batchData can not be zero");
         }
         TimeCost ct;
         void* src = nullptr;
@@ -263,11 +263,13 @@ public:
         batchData->tensorAddr = malloc(memSize);
         if (batchData->tensorAddr == nullptr) {
             spdlog::error("mmemory allocation failded...");
+            throw runtime_error("mmemory allocation failded...");
         }
         void* dst = reinterpret_cast<void *>(batchData->tensorAddr);
         auto rc = memcpy_s(dst, memSize, src, memSize);
         if (rc != 0) {
             spdlog::error("[ReadEmbKeyV2Dynamic]memcpy_s failded... memSize: {}", memSize);
+            throw runtime_error(fmt::format("[ReadEmbKeyV2Dynamic]memcpy_s failded... memSize: {}", memSize).c_str());
         }
         TIME_PRINT("copy TimeCost(ms):{}", ct.ElapsedMS());
         offset += len;
@@ -464,7 +466,7 @@ public:
             std::unique_ptr<emb_batch_t> batch = TensorCopy(inputTensor, move(batchData), len, offset);
             if (batch == nullptr) {
                 spdlog::error("batch can not be null");
-                return -1;
+                throw runtime_error("batch can not be null");
             }
             queue->Pushv(move(batch));
         }
@@ -477,7 +479,7 @@ public:
     {
         if (len == 0) {
             spdlog::error("len can not be zero");
-            return nullptr;
+            throw runtime_error("len can not be zero");
         }
         TimeCost ct;
         void* src = nullptr;
@@ -498,11 +500,13 @@ public:
         batchData->tensorAddr = malloc(memSize);
         if (batchData->tensorAddr == nullptr) {
             spdlog::error("mmemory allocation failded...");
+            throw runtime_error("mmemory allocation failded...");
         }
         void* dst = reinterpret_cast<void *>(batchData->tensorAddr);
         auto rc = memcpy_s(dst, memSize, src, memSize);
         if (rc != 0) {
             spdlog::error("[ReadEmbKeyV2Static]memcpy_s failded... memSize: {}", memSize);
+            throw runtime_error(fmt::format("[ReadEmbKeyV2Static]memcpy_s failded... memSize: {}", memSize).c_str());
         }
         TIME_PRINT("copy TimeCost(ms):{}", ct.ElapsedMS());
         offset += len;

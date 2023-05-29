@@ -5,8 +5,10 @@
  * Date: 2022/11/15
  */
 #include "hybrid_mgmt.h"
+
 #include <spdlog/spdlog.h>
 #include <spdlog/fmt/bundled/ranges.h>
+
 #include "checkpoint/checkpoint.h"
 #include "utils/time_cost.h"
 
@@ -237,14 +239,14 @@ void HybridMgmt::Start()
             spdlog::info("getInfoTask done");
             return ret;
         };
-        procThreads.emplace_back(getInfoTask);
+        procThreads.emplace_back(std::make_unique<std::thread>(getInfoTask));
 
         auto sendInfoTask = [this]() {
             auto ret = SendTask();
             spdlog::info("sendInfoTask done");
             return ret;
         };
-        procThreads.emplace_back(sendInfoTask);
+        procThreads.emplace_back(std::make_unique<std::thread>(sendInfoTask));
     }
 
     if (!mgmtRankInfo.noDDR) {
@@ -253,7 +255,7 @@ void HybridMgmt::Start()
             spdlog::info("parseKeysTask done");
             return ret;
         };
-        procThreads.emplace_back(parseKeysTask);
+        procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTask));
     }
 }
 
@@ -620,6 +622,8 @@ void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
         if (evictDevOffset.size() > embInfo.devVocabSize) {
             spdlog::error(MGMT + "{} overflow! evict pos on dev {} bigger than dev vocabSize {}",
                           embName, evictDevOffset.size(), embInfo.devVocabSize);
+            throw runtime_error(fmt::format(MGMT + "{} overflow! evict pos on dev {} bigger than dev vocabSize {}",
+                                            embName, evictDevOffset.size(), embInfo.devVocabSize).c_str());
         }
         if (mgmtRankInfo.useStatic) {
             evictDevOffset.resize(embInfo.devVocabSize, -1);
