@@ -615,6 +615,8 @@ void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
         if (evictDevOffset.size() > embInfo.devVocabSize) {
             spdlog::error(MGMT + "{} overflow! evict pos on dev {} bigger than dev vocabSize {}",
                           embName, evictDevOffset.size(), embInfo.devVocabSize);
+            throw runtime_error(fmt::format(MGMT + "{} overflow! evict pos on dev {} bigger than dev vocabSize {}",
+                                            embName, evictDevOffset.size(), embInfo.devVocabSize).c_str());
         }
         if (mgmtRankInfo.useStatic) {
             evictDevOffset.resize(embInfo.devVocabSize, -1);
