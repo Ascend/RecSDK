@@ -15,7 +15,7 @@ from mx_rec.core.asc.helper import get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
-from mx_rec.constants.constants import MxRecMode, ASCEND_TIMESTAMP
+from mx_rec.util.constants import MxRecMode, ASCEND_TIMESTAMP
 from mx_rec.util.initialize import get_rank_id, get_rank_size, init, clear_channel, terminate_config_initializer, \
     set_if_load, get_initializer
 from mx_rec.util.variable import get_dense_and_sparse_variable
@@ -183,7 +183,7 @@ if __name__ == "__main__":
         train_ops.append(dense_optimizer.apply_gradients(avg_grads))
 
         if use_dynamic_expansion:
-            from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_ID_OFFSET
+            from mx_rec.util.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_ID_OFFSET
             train_emb_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)
             train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET)
             # do sparse optimization by addr

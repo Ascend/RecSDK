@@ -171,7 +171,13 @@ class FeatureSpec:
                                      f"is not {is_training}. ")
 
         insert_feature_spec(self, is_training)
-        return tensor, self.table_name, self.feat_cnt, self.split
+        result = {
+            'tensor' : tensor,
+            'table_name' : self.table_name,
+            'feat_count' : self.feat_cnt,
+            'split' : self.split,
+        }
+        return result
 
 
 def get_feature_spec(table_name, access_and_evict_config):

@@ -18,7 +18,7 @@
 #include "utils/common.h"
 #include "host_emb/host_emb.h"
 #include "key_process/key_process.h"
-#include "emb_mgmt/emb_mgmt.h"
+#include "hybrid_mgmt/hybrid_mgmt.h"
 
 using namespace std;
 using namespace MxRec;
@@ -261,7 +261,8 @@ TEST_F(KeyProcessTest, GetScAll)
     }
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
     ASSERT_EQ(process.isRunning, true);
-    auto scAll = process.GetScAll(keyScLocal, 0, 0);
+    vector<int> scAll;
+    process.GetScAll(keyScLocal, 0, 0, scAll);
     ASSERT_THAT(scAll, ElementsAreArray(expectScAll));
 }
 

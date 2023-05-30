@@ -7,7 +7,7 @@ import logging
 import tensorflow as tf
 
 import mxrec_pybind
-from mx_rec.constants.constants import AVOID_TENSOR_POS
+from mx_rec.util.constants import AVOID_TENSOR_POS
 from mx_rec.util.initialize import get_use_static
 from mx_rec.util.tf_version_adapter import npu_ops
 
@@ -142,4 +142,11 @@ def get_preprocessed_tensor_for_asc(table, config, ids_channel_name=None, modify
             h2d_emb_split = tf.split(h2d_emb, table_num, axis=1)
             swap_in = [tf.compat.v1.scatter_nd_update(table[i], nd_swap_pos, h2d_emb_split[i])
                        for i in range(len(table))]
-    return restore_vector, hot_pos, id_offsets, swap_in, all2all_args
+    result = {
+        'restore_vector' : restore_vector,
+        'hot_pos' : hot_pos,
+        'id_offsets' : id_offsets,
+        'swap_in' : swap_in,
+        'all2all_args' : all2all_args,
+    }
+    return result

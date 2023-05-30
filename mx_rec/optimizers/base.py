@@ -21,6 +21,15 @@ class CustomizedOptimizer:
         self.unique_name = ""
         self.base_name = ""
 
+    def initialize_slots(self, var, table_instance):
+        raise NotImplementedError(f"Please define a specific realization on {self.__class__.__name__}")
+
+    def insert_slot(self, slot, named_slots_key, slot_name):
+        raise NotImplementedError(f"Please define a specific realization on {self.__class__.__name__}")
+
+    def get_slot_init_values(self):
+        raise NotImplementedError(f"Please define a specific realization on {self.__class__.__name__}")
+
     def _get_name(self, name="CustomizedOptimizer"):
         if name in CustomizedOptimizer.name_counter:
             CustomizedOptimizer.name_counter[name] += 1
@@ -30,15 +39,6 @@ class CustomizedOptimizer:
             count = CustomizedOptimizer.name_counter[name]
         self.unique_name = name + "_" + str(count)
         self.base_name = name
-
-    def initialize_slots(self, var, table_instance):
-        raise NotImplementedError(f"Please define a specific realization on {self.__class__.__name__}")
-
-    def insert_slot(self, slot, named_slots_key, slot_name):
-        raise NotImplementedError(f"Please define a specific realization on {self.__class__.__name__}")
-
-    def get_slot_init_values(self):
-        raise NotImplementedError(f"Please define a specific realization on {self.__class__.__name__}")
 
 
 def my_update_op(self, opt, grad):

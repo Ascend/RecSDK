@@ -8,7 +8,7 @@
 #include <pybind11/stl.h>
 #include <dcmi_interface_api.h>
 
-#include "emb_mgmt/emb_mgmt.h"
+#include "hybrid_mgmt/hybrid_mgmt.h"
 #include "module_main.h"
 
 namespace py = pybind11;
