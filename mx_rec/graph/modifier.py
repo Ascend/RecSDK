@@ -17,7 +17,7 @@ from mx_rec.util.constants import ASCEND_CUTTING_POINT_INITIALIZER, ASCEND_SPARS
     ASCAnchorAttr, ASCEND_TIMESTAMP
 from mx_rec.util.initialize import get_rank_size, get_training_mode_channel_id, get_feature_spec, \
     insert_feature_spec, set_initializer, get_use_static, get_use_hot, get_device_id, get_use_dynamic_expansion, \
-    terminate_config_initializer
+    terminate_config_initializer, set_is_graph_modify_hook_running
 from mx_rec.util.perf import performance
 from mx_rec.graph.utils import check_input_list, find_parent_op, check_cutting_points, replace_anchor, \
     record_ops_to_replace, export_pb_graph, make_sorted_key_to_tensor_list
@@ -427,9 +427,10 @@ def replace_anchor_vec(cutting_point, attribute, anchor):
 
 
 class GraphModifierHook(tf.estimator.SessionRunHook):
-    def __init__(self, dump_graph=True, modify_graph=False):
+    def __init__(self, dump_graph=True, modify_graph=True):
         self.dump_graph = dump_graph
         self.modify_graph = modify_graph
+        set_is_graph_modify_hook_running(True)
 
     def begin(self):
         if self.modify_graph:

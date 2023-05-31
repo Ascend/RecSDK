@@ -22,7 +22,8 @@ from mx_rec.util.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_L
 from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is_asc_frozen, get_customized_ops, \
     insert_table_instance, get_training_mode_channel_id, get_use_static, get_name_to_var_dict, \
     clear_channel, trigger_evict, get_table_instance_by_name, get_use_hot, get_device_id, export_feature_spec, \
-    ConfigInitializer, get_ascend_global_hashtable_collection, get_host_pipeline_ops, get_use_dynamic_expansion
+    ConfigInitializer, get_ascend_global_hashtable_collection, get_host_pipeline_ops, get_use_dynamic_expansion, \
+    set_modify_graph
 from mx_rec.util.tf_version_adapter import npu_ops
 from mx_rec.util.variable import remove_saving_var
 
@@ -100,8 +101,7 @@ def sparse_lookup(hashtable, ids, send_count, **kwargs):
 
     def check_modify_graph():
         if not kwargs.get("modify_graph"):
-            logging.warning(f"MxRecMode {MxRecMode.ASC} must config with a 'True' "
-                            f"modify_graph.")
+            raise ValueError(f"modify_graph must be turn-on when lookup by ids(Tensor, not FeatureSpec).")
 
     check_lookup_kwargs()
     scope_name = "{0}//{1}".format(hashtable.table_name, kwargs.get("name"))
@@ -112,6 +112,7 @@ def sparse_lookup(hashtable, ids, send_count, **kwargs):
                 return hashtable.lookup_for_asc_with_feature_spec(ids, send_count, **kwargs)
             else:
                 check_modify_graph()
+                set_modify_graph(True)
                 return hashtable.lookup_for_asc(ids, send_count, **kwargs)
         else:
             raise EnvironmentError(f"Invalid MxRec Mode.")
@@ -392,8 +393,6 @@ class SparseEmbedding:
 
         """
         logging.debug(f"Enter ASC Branch.")
-        if not kwargs.get("modify_graph"):
-            raise ValueError(f"modify_graph must be turn-on when lookup by ids(Tensor, not FeatureSpec).")
 
         self.check_mode(MxRecMode.ASC)
         is_training = kwargs.get("is_train")

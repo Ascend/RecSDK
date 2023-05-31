@@ -41,6 +41,8 @@ class ConfigInitializer:
         self._rank_to_device_dict = dict()
         self._initializer_dict = {}
         self._optimizer_instance = None
+        self._is_graph_modify_hook_running = False
+        self._modify_graph = False
 
         if self._use_mpi:
             logging.debug(f"Using mpi to launch task.")
@@ -72,6 +74,14 @@ class ConfigInitializer:
 
     def __del__(self):
         self.terminate()
+
+    @property
+    def is_graph_modify_hook_running(self):
+        return self._is_graph_modify_hook_running
+
+    @property
+    def modify_graph(self):
+        return self._modify_graph
 
     @property
     def feature_spec_dict(self):
@@ -324,6 +334,20 @@ class ConfigInitializer:
 
         self._if_load = flag
 
+    @is_graph_modify_hook_running.setter
+    def is_graph_modify_hook_running(self, is_hook_running):
+        if not isinstance(is_hook_running, bool):
+            raise TypeError(f"is_hook_running should be a boolean.")
+
+        self._is_graph_modify_hook_running = is_hook_running
+
+    @modify_graph.setter
+    def modify_graph(self, is_modify_graph):
+        if not isinstance(is_modify_graph, bool):
+            raise TypeError(f"is_modify_graph should be a boolean.")
+
+        self._modify_graph = is_modify_graph
+
     @ascend_global_hashtable_collection.setter
     def ascend_global_hashtable_collection(self, name):
         if not isinstance(name, str):
@@ -368,6 +392,22 @@ def check_step(param, min_value=-1):
 def init(use_mpi, **kwargs):
     ConfigInitializer.set_instance(use_mpi, **kwargs)
     set_ascend_env()
+
+
+def get_is_graph_modify_hook_running():
+    return ConfigInitializer.get_instance().is_graph_modify_hook_running
+
+
+def set_is_graph_modify_hook_running(is_running):
+    ConfigInitializer.get_instance().is_graph_modify_hook_running = is_running
+
+
+def get_modify_graph():
+    return ConfigInitializer.get_instance().modify_graph
+
+
+def set_modify_graph(is_modify_graph):
+    ConfigInitializer.get_instance().modify_graph = is_modify_graph
 
 
 def is_mpi_in_use():

@@ -4,11 +4,12 @@
 
 from mx_rec.util.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION
 from mx_rec.saver.patch import patch_for_saver
-from mx_rec.graph.patch import patch_for_dataset
+from mx_rec.graph.patch import patch_for_dataset, patch_for_chief_session_creator
 
 
 patch_for_saver()
 patch_for_dataset()
+patch_for_chief_session_creator()
 __version__ = "5.0.RC2"
 
 
