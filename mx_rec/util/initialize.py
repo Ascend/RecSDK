@@ -12,7 +12,7 @@ import psutil
 import mxrec_pybind
 import mx_rec.util.constants
 from mx_rec.util.constants import LOCAL_RANK_SIZE, MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE, \
-    ASCEND_GLOBAL_HASHTABLE_COLLECTION
+    ASCEND_GLOBAL_HASHTABLE_COLLECTION, HASHTABLE_COLLECTION_NAME_LENGTH
 from mx_rec.util.ops import import_host_pipeline_ops
 
 
@@ -328,6 +328,9 @@ class ConfigInitializer:
     def ascend_global_hashtable_collection(self, name):
         if not isinstance(name, str):
             raise TypeError(f"collection name '{name}' must be a string.")
+        if len(name) > HASHTABLE_COLLECTION_NAME_LENGTH:
+            raise ValueError(f"The length of the collection name '{name}' should be between "
+                             f"[0, {HASHTABLE_COLLECTION_NAME_LENGTH}].")
         self._ascend_global_hashtable_collection = name
 
     def get_initializer(self, is_training):
