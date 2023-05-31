@@ -18,7 +18,7 @@ from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_HOT_POS, \
     ASCEND_SPARSE_LOOKUP_ID_OFFSET, ASCEND_SPARSE_LOOKUP_RESTORE_VECTOR, MxRecMode, \
     ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_ALL2ALL_MATRIX, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, \
-    DEFAULT_EVICT_TIME_INTERVAL, TRAIN_CHANNEL_ID, MULTI_LOOKUP_TIMES
+    DEFAULT_EVICT_TIME_INTERVAL, TRAIN_CHANNEL_ID, MULTI_LOOKUP_TIMES, ASCEND_TABLE_NAME_MUST_CONTAIN, MAX_INT32
 from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is_asc_frozen, get_customized_ops, \
     insert_table_instance, get_training_mode_channel_id, get_use_static, get_name_to_var_dict, \
     clear_channel, trigger_evict, get_table_instance_by_name, get_use_hot, get_device_id, export_feature_spec, \
@@ -345,8 +345,7 @@ class SparseEmbedding:
                     raise ValueError("Send count must be a integer which is larger than 0.")
 
         check_params()
-        max_int32 = np.iinfo(np.int32).max
-        if self.slice_host_vocabulary_size + self.slice_device_vocabulary_size > max_int32:
+        if self.slice_host_vocabulary_size + self.slice_device_vocabulary_size > MAX_INT32:
             raise ValueError(f"Given device_vocabulary_size and host_vocabulary_size was too big for table "
                              f"'{self.table_name}', in which slice_device_vocabulary_size was "
                              f"{self.slice_device_vocabulary_size} and slice_host_vocabulary_size was "
@@ -438,9 +437,14 @@ class SparseEmbedding:
             local_embeddings = get_host_pipeline_ops().embedding_lookup_by_address(id_offsets,
                                                                                    embedding_dim=self.emb_size,
                                                                                    embedding_type=1)
-        if is_training:
+
+        is_table_name_valid = ASCEND_TABLE_NAME_MUST_CONTAIN is None or \
+                              ASCEND_TABLE_NAME_MUST_CONTAIN in self.table_name
+        if is_training and use_dynamic_expansion and is_table_name_valid:
             tf.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
             tf.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
+            logging.debug(f"modify graph mode, table_name: {self.table_name}, "
+                          f"ASCEND_TABLE_NAME_MUST_CONTAIN: {ASCEND_TABLE_NAME_MUST_CONTAIN}")
 
         @tf.custom_gradient
         def sparse_forward(table, feat_ids):
@@ -615,8 +619,6 @@ class SparseEmbedding:
 
         id_offsets = tf.identity(id_offsets, name="identity_addr")
         restore_vector = tf.identity(restore_vector, name="identity_restore")
-        if is_training and use_dynamic_expansion:
-            tf.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
 
         use_static = get_use_static()
         host_pipeline_ops = get_host_pipeline_ops()
@@ -675,8 +677,14 @@ class SparseEmbedding:
             local_embeddings = \
                 host_pipeline_ops.embedding_lookup_by_address(id_offsets, embedding_dim=self.emb_size,
                                                               embedding_type=1)
-            if is_training:
+
+            is_table_name_valid = ASCEND_TABLE_NAME_MUST_CONTAIN is None or \
+                                  ASCEND_TABLE_NAME_MUST_CONTAIN in self.table_name
+            if is_training and is_table_name_valid:
+                tf.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
                 tf.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
+                logging.debug(f"feature spec mode, table_name: {self.table_name}, "
+                              f"ASCEND_TABLE_NAME_MUST_CONTAIN: {ASCEND_TABLE_NAME_MUST_CONTAIN}")
 
             return sparse_forward(local_embeddings)
 

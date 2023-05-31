@@ -6,7 +6,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 from collections import defaultdict
+
+from tensorflow.python.framework import ops
+from tensorflow.python.training.optimizer import _TensorProcessor
 
 
 class CustomizedOptimizer:
@@ -35,3 +39,17 @@ class CustomizedOptimizer:
             count = CustomizedOptimizer.name_counter[name]
         self.unique_name = name + "_" + str(count)
         self.base_name = name
+
+
+def my_update_op(self, opt, grad):
+    if isinstance(grad, ops.Tensor):
+        logging.debug(">>>>Enter update_op ops.Tensor")
+        update_op = opt._apply_sparse(grad, self._v)  # pylint: disable=protected-access
+        return update_op
+    else:
+        raise RuntimeError("Only support g with type Tensor.")
+
+
+def patch_for_optimizer():
+    _TensorProcessor.update_op = my_update_op
+    logging.debug("update_op in Class optimizer._TensorProcessor has been patched.")

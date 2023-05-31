@@ -9,6 +9,7 @@ import tensorflow as tf
 
 from mx_rec.util.atomic import AtomicInteger
 from mx_rec.util.initialize import insert_feature_spec, insert_training_mode_channel_id, get_use_static
+from mx_rec.util.constants import MAX_INT32
 
 feature_spec_global_id = AtomicInteger()
 
@@ -104,11 +105,16 @@ class FeatureSpec:
 
         if self._access_threshold is not None:
             check_natural_number(self._access_threshold, "access_threshold")
+            if self._access_threshold > MAX_INT32:
+                raise ValueError(f"Access_threshold is too big that exceed int32.")
+
         elif self._eviction_threshold is not None:
             raise ValueError(f"Access_threshold should be configured before eviction_threshold.")
 
         if self._eviction_threshold is not None:
             check_natural_number(self._eviction_threshold, "eviction_threshold")
+            if self._eviction_threshold > MAX_INT32:
+                raise ValueError(f"Eviction_threshold is too big that exceed int32.")
 
         if self._is_timestamp is not None:
             check_bool(self._is_timestamp, "is_timestamp")
