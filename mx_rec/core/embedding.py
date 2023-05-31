@@ -18,7 +18,7 @@ from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_HOT_POS, \
     ASCEND_SPARSE_LOOKUP_ID_OFFSET, ASCEND_SPARSE_LOOKUP_RESTORE_VECTOR, MxRecMode, \
     ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_ALL2ALL_MATRIX, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, \
-    DEFAULT_EVICT_TIME_INTERVAL, TRAIN_CHANNEL_ID
+    DEFAULT_EVICT_TIME_INTERVAL, TRAIN_CHANNEL_ID, MULTI_LOOKUP_TIMES
 from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is_asc_frozen, get_customized_ops, \
     insert_table_instance, get_training_mode_channel_id, get_use_static, get_name_to_var_dict, \
     clear_channel, trigger_evict, get_table_instance_by_name, get_use_hot, get_device_id, export_feature_spec, \
@@ -301,6 +301,14 @@ class SparseEmbedding:
             raise RuntimeError(f"Current sparse table was config in {self.mode.value} mode, but sparse lookup method "
                                f"for {method_mode} was in use.")
 
+    def check_multi_lookup_times(self):
+        if self.modify_graph:
+            self.lookup_result = dict()
+        if len(self.channel_name_list) > MULTI_LOOKUP_TIMES or len(self.lookup_result) > MULTI_LOOKUP_TIMES:
+            run_mode = "Modify Graph" if self.modify_graph else "Feature Spec"
+            raise RuntimeError(f"In '{run_mode}' mode, the number of multiple sparse lookup for a table"
+                               f"({self.table_name}) is {MULTI_LOOKUP_TIMES}.")
+
     def check_and_format_lookup_params(self, feature, send_count, is_training):
         logging.debug(f"sparse lookup for table {self.table_name} with is_training {is_training}")
 
@@ -416,6 +424,7 @@ class SparseEmbedding:
             self._send_count = send_count
             self.send_count_map[ids_channel_name] = send_count
         self.modify_graph = kwargs.get("modify_graph", True)
+        self.check_multi_lookup_times()
         logging.debug(f"In lookup_for_asc function, table name: {self.table_name}, anchor_ids: {anchor_ids}, "
                       f"ids_channel_name: {ids_channel_name}, use_dynamic_expansion: {use_dynamic_expansion}, "
                       f"use_static: {use_static}, use_hot: {use_hot}")
@@ -535,7 +544,6 @@ class SparseEmbedding:
         if len(same_table_feature_spec) == 1:
             lookup_result = self.lookup_for_asc_with_feature_spec_inner(feature_spec, send_count, **kwargs)
             self.lookup_result = {spec_name: {is_training: lookup_result}}
-            return self.lookup_result.get(spec_name).get(is_training)
         else:
             same_table_feature_spec = sorted(same_table_feature_spec, key=lambda x: x.name)
             same_table_spec_count = len(same_table_feature_spec)
@@ -556,7 +564,9 @@ class SparseEmbedding:
             lookup_result_split = tf.split(lookup_result, split_size)
             self.lookup_result = {k.name: {is_training: tf.reshape(v, k.dims + [self.scalar_emb_size])}
                                   for k, v in zip(same_table_feature_spec, lookup_result_split)}
-            return self.lookup_result.get(spec_name).get(is_training)
+
+        self.check_multi_lookup_times()
+        return self.lookup_result.get(spec_name).get(is_training)
 
     def lookup_for_asc_with_feature_spec_inner(self, feature_spec: FeatureSpec, send_count: int, **kwargs):
         """
