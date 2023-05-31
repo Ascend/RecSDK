@@ -431,7 +431,7 @@ class SparseEmbedding:
                                                                                    embedding_dim=self.emb_size,
                                                                                    embedding_type=1)
 
-        is_table_name_valid = ASCEND_TABLE_NAME_MUST_CONTAIN is not None and \
+        is_table_name_valid = ASCEND_TABLE_NAME_MUST_CONTAIN is None or \
                               ASCEND_TABLE_NAME_MUST_CONTAIN in self.table_name
         if is_training and use_dynamic_expansion and is_table_name_valid:
             tf.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
@@ -670,7 +670,7 @@ class SparseEmbedding:
                 host_pipeline_ops.embedding_lookup_by_address(id_offsets, embedding_dim=self.emb_size,
                                                               embedding_type=1)
 
-            is_table_name_valid = ASCEND_TABLE_NAME_MUST_CONTAIN is not None and \
+            is_table_name_valid = ASCEND_TABLE_NAME_MUST_CONTAIN is None or \
                                   ASCEND_TABLE_NAME_MUST_CONTAIN in self.table_name
             if is_training and is_table_name_valid:
                 tf.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
