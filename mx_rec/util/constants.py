@@ -3,6 +3,7 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 from enum import Enum
+import numpy as np
 
 ASCEND_GLOBAL_HASHTABLE_COLLECTION = "ASCEND_GLOBAL_HASHTABLE_COLLECTION"
 ASCEND_CUTTING_POINT_INITIALIZER = "ASCEND_CUTTING_POINT_INITIALIZER"
@@ -32,6 +33,8 @@ DEFAULT_DEVICE_NUM_LOCAL_MACHINE = 8  # 单台服务器默认的卡数
 DEFAULT_EVICT_TIME_INTERVAL = 60 * 60 * 24
 TRAIN_CHANNEL_ID = 0
 EVAL_CHANNEL_ID = 1
+
+MAX_INT32 = np.iinfo(np.int32).max
 
 
 class BaseEnum(Enum):

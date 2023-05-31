@@ -18,7 +18,7 @@ from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_HOT_POS, \
     ASCEND_SPARSE_LOOKUP_ID_OFFSET, ASCEND_SPARSE_LOOKUP_RESTORE_VECTOR, MxRecMode, \
     ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_ALL2ALL_MATRIX, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, \
-    DEFAULT_EVICT_TIME_INTERVAL, TRAIN_CHANNEL_ID, ASCEND_TABLE_NAME_MUST_CONTAIN
+    DEFAULT_EVICT_TIME_INTERVAL, TRAIN_CHANNEL_ID, ASCEND_TABLE_NAME_MUST_CONTAIN, MAX_INT32
 from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is_asc_frozen, get_customized_ops, \
     insert_table_instance, get_training_mode_channel_id, get_use_static, get_name_to_var_dict, \
     clear_channel, trigger_evict, get_table_instance_by_name, get_use_hot, get_device_id, export_feature_spec, \
@@ -336,8 +336,7 @@ class SparseEmbedding:
                     raise ValueError("Send count must be a integer which is larger than 0.")
 
         check_params()
-        max_int32 = np.iinfo(np.int32).max
-        if self.slice_host_vocabulary_size + self.slice_device_vocabulary_size > max_int32:
+        if self.slice_host_vocabulary_size + self.slice_device_vocabulary_size > MAX_INT32:
             raise ValueError(f"Given device_vocabulary_size and host_vocabulary_size was too big for table "
                              f"'{self.table_name}', in which slice_device_vocabulary_size was "
                              f"{self.slice_device_vocabulary_size} and slice_host_vocabulary_size was "
