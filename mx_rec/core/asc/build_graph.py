@@ -7,7 +7,7 @@ import logging
 import tensorflow as tf
 
 import mxrec_pybind
-from mx_rec.util.constants import AVOID_TENSOR_POS
+from mx_rec.constants.constants import AVOID_TENSOR_POS
 from mx_rec.util.initialize import get_use_static
 from mx_rec.util.tf_version_adapter import npu_ops
 

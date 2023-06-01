@@ -6,7 +6,7 @@ import logging
 
 import tensorflow as tf
 
-from mx_rec.util.constants import MxRecMode
+from mx_rec.constants.constants import MxRecMode
 from mx_rec.util.initialize import get_rank_id, get_device_id, get_rank_size, set_asc_manager, \
     is_asc_manager_initialized, get_train_interval, get_eval_steps, get_prefetch_batch_number, \
     export_table_instances, export_feature_spec, get_if_load, get_training_mode_channel_id, get_use_static, \
@@ -15,7 +15,7 @@ from mx_rec.util.initialize import get_rank_id, get_device_id, get_rank_size, se
 
 def generate_table_info_list():
     from mxrec_pybind import EmbInfo
-    from mx_rec.util.constants import ASCEND_TABLE_NAME_MUST_CONTAIN
+    from mx_rec.constants.constants import ASCEND_TABLE_NAME_MUST_CONTAIN
     # table_name is corresponding to channel_name which is in used in operator gen_npu_ops.get_next
     table_info_list = []
 
