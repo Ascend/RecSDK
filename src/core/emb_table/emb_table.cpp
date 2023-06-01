@@ -136,7 +136,7 @@ void EmbTable::RandomInit(void* newBlock, const vector<InitializeInfo>& initiali
                 break;
             }
             default: {
-                spdlog::error("Device Invalid Initializer Type. Using default Constant Initializer with value 0.");
+                spdlog::warn("Device Invalid Initializer Type. Using default Constant Initializer with value 0.");
                 ConstantInitializer defaultInitializer(initializeInfo.start, initializeInfo.len, 0);
                 initializer = &defaultInitializer;
             }

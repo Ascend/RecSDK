@@ -9,11 +9,11 @@
 #define MX_REC_EMB_MGMT_H
 
 #include <vector>
-#include "absl/container/flat_hash_map.h"
 #include <memory>
 #include <array>
 #include <csignal>
 #include <pthread.h>
+#include "absl/container/flat_hash_map.h"
 #include "utils/common.h"
 #include "utils/singleton.h"
 #include "utils/task_queue.h"
@@ -46,7 +46,7 @@ namespace MxRec {
         bool Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, int seed,
                         const vector<ThresholdValue>& thresholdValues, bool ifLoad);
 
-        bool Save(string savePath);
+        bool Save(const string savePath);
 
         bool Load(const string& loadPath);
 
@@ -66,8 +66,8 @@ namespace MxRec {
         preprocess->isRunning = false;
         // 停止hdTransfer，用于停止mgmt的recv中卡住状态
         hdTransfer->Destroy();
-        for (auto &i : procThreads) {
-            i.join();
+        for (auto& t : procThreads) {
+            t->join();
         }
         if (hostEmbs != nullptr) {
             hostEmbs->Join();
@@ -83,11 +83,19 @@ namespace MxRec {
 
         bool ParseKeys(int channelId, int& batchId);
 
-        void EmbHDTrans(int channelId, int batchId);
+        bool ProcessEmbInfo(const std::string& embName, int batchId, int channelId, int iBatch, bool& remainBatchOut);
+
+        void EmbHDTrans(const int channelId, const int batchId);
 
         void Evict();
 
         void EvictKeys(const string& embName, const vector<emb_key_t>& keys);
+
+    private:
+        bool InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
+                            const vector<ThresholdValue>& thresholdValues, bool ifLoad, int seed);
+        
+        void InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfos);
 
     private:
         int currentBatchId;
@@ -98,7 +106,7 @@ namespace MxRec {
         RankInfo mgmtRankInfo;
         unique_ptr<HostEmb> hostEmbs {};
         unique_ptr<EmbHashMap> hostHashMaps {};
-        vector<std::thread> procThreads {};
+        vector<std::unique_ptr<std::thread>> procThreads {};
         unique_ptr<Common::TaskQueue<vector<Tensor>>> lookUpKeysQueue;
         unique_ptr<Common::TaskQueue<vector<Tensor>>> restoreQueue;
         map<std::string, std::vector<emb_key_t>> evictKeyMap {};
@@ -114,12 +122,12 @@ namespace MxRec {
         bool TrainParseKeys();
         bool EvalParseKeys();
 
-        bool GetLookupAndRestore(int channelId, int &batchId);
-        bool SendLookupAndRestore(int channelId, int &batchId);
+        bool GetLookupAndRestore(const int channelId, int &batchId);
+        bool SendLookupAndRestore(const int channelId, int &batchId);
 
         void EmbHDTransDummy(int channelId, int batchId, const EmbInfo& embInfo);
 
-        bool EndBatch(int batchId, int channelId);
+        bool EndBatch(int batchId, int channelId) const;
 
         void EmbHDTransWrap(int channelId, const int& batchId, int start, int iBatch);
 

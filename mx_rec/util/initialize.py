@@ -12,7 +12,7 @@ import psutil
 import mxrec_pybind
 import mx_rec.util.constants
 from mx_rec.util.constants import LOCAL_RANK_SIZE, MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE, \
-    ASCEND_GLOBAL_HASHTABLE_COLLECTION
+    ASCEND_GLOBAL_HASHTABLE_COLLECTION, HASHTABLE_COLLECTION_NAME_LENGTH
 from mx_rec.util.ops import import_host_pipeline_ops
 
 
@@ -42,6 +42,8 @@ class ConfigInitializer:
         self._rank_to_device_dict = dict()
         self._initializer_dict = {}
         self._optimizer_instance = None
+        self._is_graph_modify_hook_running = False
+        self._modify_graph = False
 
         if self._use_mpi:
             logging.debug(f"Using mpi to launch task.")
@@ -73,6 +75,14 @@ class ConfigInitializer:
 
     def __del__(self):
         self.terminate()
+
+    @property
+    def is_graph_modify_hook_running(self):
+        return self._is_graph_modify_hook_running
+
+    @property
+    def modify_graph(self):
+        return self._modify_graph
 
     @property
     def feature_spec_dict(self):
@@ -205,7 +215,7 @@ class ConfigInitializer:
             raise ValueError("env variable ascend_visible_devices is null.")
         if "-" in ascend_visible_devices:
             rank_start = int(ascend_visible_devices.strip().split("-")[0])
-            device_list = [i for i in range(rank_start, int(ascend_visible_devices.strip().split("-")[-1]))]
+            device_list = list(range(rank_start, int(ascend_visible_devices.strip().split("-")[-1])))
         elif "," in ascend_visible_devices:
             device_list = list(map(int, ascend_visible_devices.strip().split(",")))
         elif ascend_visible_devices in ["0", "1", "2", "3", "4", "5", "6", "7"]:
@@ -333,10 +343,27 @@ class ConfigInitializer:
 
         self._if_load = flag
 
+    @is_graph_modify_hook_running.setter
+    def is_graph_modify_hook_running(self, is_hook_running):
+        if not isinstance(is_hook_running, bool):
+            raise TypeError(f"is_hook_running should be a boolean.")
+
+        self._is_graph_modify_hook_running = is_hook_running
+
+    @modify_graph.setter
+    def modify_graph(self, is_modify_graph):
+        if not isinstance(is_modify_graph, bool):
+            raise TypeError(f"is_modify_graph should be a boolean.")
+
+        self._modify_graph = is_modify_graph
+
     @ascend_global_hashtable_collection.setter
     def ascend_global_hashtable_collection(self, name):
         if not isinstance(name, str):
             raise TypeError(f"collection name '{name}' must be a string.")
+        if len(name) > HASHTABLE_COLLECTION_NAME_LENGTH:
+            raise ValueError(f"The length of the collection name '{name}' should be between "
+                             f"[0, {HASHTABLE_COLLECTION_NAME_LENGTH}].")
         self._ascend_global_hashtable_collection = name
 
     def get_initializer(self, is_training):
@@ -374,6 +401,22 @@ def check_step(param, min_value=-1):
 def init(use_mpi, **kwargs):
     ConfigInitializer.set_instance(use_mpi, **kwargs)
     set_ascend_env()
+
+
+def get_is_graph_modify_hook_running():
+    return ConfigInitializer.get_instance().is_graph_modify_hook_running
+
+
+def set_is_graph_modify_hook_running(is_running):
+    ConfigInitializer.get_instance().is_graph_modify_hook_running = is_running
+
+
+def get_modify_graph():
+    return ConfigInitializer.get_instance().modify_graph
+
+
+def set_modify_graph(is_modify_graph):
+    ConfigInitializer.get_instance().modify_graph = is_modify_graph
 
 
 def is_mpi_in_use():
@@ -656,7 +699,7 @@ def get_available_cpu_num_and_range():
     valid_cpu_range_list = []
     if is_ok:
         logging.info(f"available numa node num: {len(pkg_id2cpu_list)}")
-        for k, part_cpu_list in pkg_id2cpu_list.items():
+        for _, part_cpu_list in pkg_id2cpu_list.items():
             parse_range(part_cpu_list, valid_cpu_range_list)
     else:
         parse_range(list(cpu_available), valid_cpu_range_list)
@@ -709,6 +752,6 @@ def bind_cpu(rank_id: int, rank_size: int = None):
     process = psutil.Process()
     try:
         process.cpu_affinity(cpu_list)
-        logging.info(f"bind cpu for rank {rank_id}: {cpu_list}")
     except IndexError:
         logging.error(f"failed to bind cpu for rank {rank_id}: {cpu_list}")
+    logging.info(f"bind cpu for rank {rank_id}: {cpu_list}")

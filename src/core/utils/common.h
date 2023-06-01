@@ -9,6 +9,10 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#include <sys/stat.h>
+
+#include <cstring>
+#include <cassert>
 
 #include <vector>
 #include <random>
@@ -17,11 +21,9 @@
 #include <map>
 #include <queue>
 #include <sstream>
-#include <cstring>
 #include <fstream>
 #include <algorithm>
-#include <sys/stat.h>
-#include <cassert>
+
 #include "tensorflow/core/framework/tensor.h"
 #include "absl/container/flat_hash_map.h"
 
@@ -43,8 +45,6 @@
 #endif
 
 namespace MxRec {
-#define ASSERT(arg) assert(arg)
-#define TO_MS(arg) duration_cast<milliseconds>((arg).elapsed())
 #define INFO_PTR shared_ptr
 #define TIME_PRINT spdlog::info
 #define MGMT_CPY_THREADS 4
@@ -52,13 +52,22 @@ namespace MxRec {
     // read batch cost
     // key process cost
 	using namespace tensorflow;
+
     constexpr int TRAIN_CHANNEL_ID = 0;
     constexpr int EVAL_CHANNEL_ID = 1;
+
     constexpr int MAX_CHANNEL_NUM = 2;
-    constexpr int KEY_PROCESS_THREAD = 6;
-    constexpr int MAX_QUEUE_NUM = MAX_CHANNEL_NUM * KEY_PROCESS_THREAD;
+    constexpr int MAX_KEY_PROCESS_THREAD = 10;
+    constexpr int MAX_QUEUE_NUM = MAX_CHANNEL_NUM * MAX_KEY_PROCESS_THREAD;
+    
+    constexpr int DEFAULT_KEY_PROCESS_THREAD = 6;
+    struct PerfConfig {
+        static int keyProcessThreadNum;
+    };
+
     constexpr int KEY_PROCESS_TIMEOUT = 120;
     constexpr int GET_BATCH_TIMEOUT = 300;
+
     constexpr size_t DEFAULT_RANDOM_SEED = 10086;
     constexpr int INVALID_KEY_VALUE = -1;
     constexpr int PROFILING_START_BATCH_ID = 100;
@@ -116,18 +125,19 @@ namespace MxRec {
         throw std::runtime_error("unknown chip ub size" + GetChipName(devID));
     }
 
-    template <class T> struct Batch {
-        size_t Size()
+    template <class T>
+    struct Batch {
+        size_t Size() const
         {
             return sample.size();
         }
 
-        std::string UnParse()
+        std::string UnParse() const
         {
             std::string s;
             constexpr size_t MAX_DISP_LEN = 20;
-            int max_len = std::min(sample.size(), MAX_DISP_LEN);
-            for (int i = 0; i < max_len; i++) {
+            int maxLen = std::min(sample.size(), MAX_DISP_LEN);
+            for (int i = 0; i < maxLen; i++) {
                 s += std::to_string(sample[i]) + " ";
             }
             return s;
@@ -263,12 +273,12 @@ struct BatchTask {
                                     std::default_random_engine& generator,
                                     RandomInfo& randomInfo)
     {
-        float min = ((randomInfo.randomMin == 0) ? -0.1f : randomInfo.randomMin);
-        float max = ((randomInfo.randomMax == 0) ? 0.1f : randomInfo.randomMax);
+        float min = ((!randomInfo.randomMin) ? -0.1f : randomInfo.randomMin);
+        float max = ((!randomInfo.randomMax) ? 0.1f : randomInfo.randomMax);
         if (randomInfo.len == 0) {
             return;
         }
-        ASSERT(static_cast<int>(vecData.size()) >= randomInfo.len + randomInfo.start);
+        assert(static_cast<int>(vecData.size()) >= randomInfo.len + randomInfo.start);
         std::uniform_real_distribution<float> distribution(min, max);
         std::generate_n(vecData.begin() + randomInfo.start, randomInfo.len, [&]() { return distribution(generator); });
     }
@@ -394,6 +404,23 @@ struct BatchTask {
         bool HasFree(size_t i);
     };
 
+    struct All2AllInfo {
+        keys_t keyRecv;
+        vector<int> scAll;
+        vector<uint32_t> countRecv;
+    };
+
+    struct UniqueInfo {
+        vector<int32_t> restore;
+        vector<int32_t> hotPos;
+        All2AllInfo all2AllInfo;
+    };
+
+    struct KeySendInfo {
+        keys_t keySend;
+        vector<int32_t> keyCount;
+    };
+
     using emb_mem_t = absl::flat_hash_map<std::string, HostEmbTable>;
     using emb_hash_mem_t = absl::flat_hash_map<std::string, EmbHashMapInfo>;
     using offset_mem_t = std::map<emb_name_t, size_t>;
@@ -440,7 +467,8 @@ struct BatchTask {
         HIST_REC = 8,
         ATTRIBUTE = 9
     };
-}
+} // end namespace MxRec
+
 #define KEY_PROCESS "\033[45m[KeyProcess]\033[0m "
 #ifdef GTEST
     #define GTEST_PRIVATE public

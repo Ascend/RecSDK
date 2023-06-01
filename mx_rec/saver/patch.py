@@ -139,8 +139,14 @@ def update_checkpoint_state(self, model_checkpoint_path, parent_save_path, lates
     self._MaybeDeleteOldCheckpoints(meta_graph_suffix=suffix_meta_graph)
 
 
-def write_meta_graph_task(self, checkpoint_file, suffix_meta_graph, sess, strip_default_attrs, save_debug_info):
-    meta_graph_name = checkpoint_management.meta_graph_filename(checkpoint_file, meta_graph_suffix=suffix_meta_graph)
+def write_meta_graph_task(self, **kwargs):
+    checkpoint_file = kwargs.get("checkpoint_file")
+    meta_graph_suffix = kwargs.get("meta_graph_suffix")
+    sess = kwargs.get("sess")
+    strip_default_attrs = kwargs.get("strip_default_attrs")
+    save_debug_info = kwargs.get("save_debug_info")
+
+    meta_graph_name = checkpoint_management.meta_graph_filename(checkpoint_file, meta_graph_suffix=meta_graph_suffix)
     if not context.executing_eagerly():
         with sess.graph.as_default():
             self.export_meta_graph(meta_graph_name, strip_default_attrs=strip_default_attrs,
@@ -185,7 +191,8 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
         update_checkpoint_state(self, model_checkpoint_path, save_path_parent, latest_filename, meta_graph_suffix,
                                 save_path)
     if write_meta_graph:
-        write_meta_graph_task(self, checkpoint_file, meta_graph_suffix, sess, strip_default_attrs, save_debug_info)
+        write_meta_graph_task(self, checkpoint_file=checkpoint_file, meta_graph_suffix=meta_graph_suffix, sess=sess,
+                              strip_default_attrs=strip_default_attrs, save_debug_info=save_debug_info)
     return model_checkpoint_path
 
 

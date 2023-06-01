@@ -17,7 +17,7 @@ from mx_rec.util.constants import ASCEND_CUTTING_POINT_INITIALIZER, ASCEND_SPARS
     ASCAnchorAttr, ASCEND_TIMESTAMP
 from mx_rec.util.initialize import get_rank_size, get_training_mode_channel_id, get_feature_spec, \
     insert_feature_spec, set_initializer, get_use_static, get_use_hot, get_device_id, get_use_dynamic_expansion, \
-    terminate_config_initializer
+    terminate_config_initializer, set_is_graph_modify_hook_running
 from mx_rec.util.perf import performance
 from mx_rec.graph.utils import check_input_list, find_parent_op, check_cutting_points, replace_anchor, \
     record_ops_to_replace, export_pb_graph, make_sorted_key_to_tensor_list
@@ -389,13 +389,17 @@ def build_asc_graph(table_instance, cutting_point, config, is_training):
         raise ValueError(f"The length of channel_name_list must be greater than or equal to 1.")
 
     if skip_emb_transfer:
-        restore_vector, hot_pos, id_offsets, swap_in, all2all_matrix = get_preprocessed_tensor_for_asc(
-            table_instance.variable, config, ids_channel_name, table_instance.modify_graph)
+        result = get_preprocessed_tensor_for_asc(table_instance.variable, config, ids_channel_name,
+                                                 table_instance.modify_graph)
     else:
         variable_list = [table_instance.variable] \
                         + [slot_info.get("slot") for slot_info in table_instance.optimizer_slot_info_list]
-        restore_vector, hot_pos, id_offsets, swap_in, all2all_matrix = get_preprocessed_tensor_for_asc(
-            variable_list, config, ids_channel_name, table_instance.modify_graph)
+        result = get_preprocessed_tensor_for_asc(variable_list, config, ids_channel_name, table_instance.modify_graph)
+    restore_vector = result.get("restore_vector")
+    hot_pos = result.get("hot_pos")
+    id_offsets = result.get("id_offsets")
+    swap_in = result.get("swap_in")
+    all2all_matrix = result.get("all2all_args")
 
     with tf.control_dependencies(swap_in):
         id_offsets = tf.identity(id_offsets)
@@ -423,9 +427,10 @@ def replace_anchor_vec(cutting_point, attribute, anchor):
 
 
 class GraphModifierHook(tf.estimator.SessionRunHook):
-    def __init__(self, dump_graph=True, modify_graph=False):
+    def __init__(self, dump_graph=True, modify_graph=True):
         self.dump_graph = dump_graph
         self.modify_graph = modify_graph
+        set_is_graph_modify_hook_running(True)
 
     def begin(self):
         if self.modify_graph:

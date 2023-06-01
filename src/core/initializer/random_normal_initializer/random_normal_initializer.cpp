@@ -18,7 +18,7 @@ RandomNormalInitializer::RandomNormalInitializer(int start, int len, float mean,
     distribution = std::normal_distribution<float>(mean, stddev);
 }
 
-void RandomNormalInitializer::GenerateData(float* emb, const int embSize)
+void RandomNormalInitializer::GenerateData(float* const emb, const int embSize)
 {
     if (len == 0) {
         return;

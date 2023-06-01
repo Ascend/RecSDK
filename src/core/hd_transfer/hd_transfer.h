@@ -27,7 +27,7 @@ namespace MxRec {
     const int PING_PONG_SIZE = 12;
     const int LARGE_CHANNEL_SIZE = 100;
 
-    enum TransferChannel {
+    enum class TransferChannel {
         D2H,
         RESTORE,
         ALL2ALL,
@@ -41,19 +41,19 @@ namespace MxRec {
     inline string TransferChannel2Str(TransferChannel e)
     {
         switch (e) {
-            case D2H:
+            case TransferChannel::D2H:
                 return "d2h";
-            case RESTORE:
+            case TransferChannel::RESTORE:
                 return "restore";
-            case ALL2ALL:
+            case TransferChannel::ALL2ALL:
                 return "all2all";
-            case LOOKUP:
+            case TransferChannel::LOOKUP:
                 return "lookup";
-            case EVICT:
+            case TransferChannel::EVICT:
                 return "evict";
-            case H2D:
+            case TransferChannel::H2D:
                 return "h2d";
-            case SWAP:
+            case TransferChannel::SWAP:
                 return "swap";
             default:
                 throw std::invalid_argument("Invalid TransferChannel");
@@ -84,7 +84,7 @@ namespace MxRec {
         std::unordered_map<std::string, acltdtChannelHandle*> transferChannels;
 #endif
         bool running;
-        void CreateChannel(uint32_t localRankId, const string& embName, int channelNum);
+        void CreateChannel(const uint32_t localRankId, const string& embName, const int channelNum);
     };
 }
 #endif // MX_REC_HD_TRANSFER_H

@@ -9,7 +9,7 @@
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/fmt/bundled/ranges.h>
-#include "emb_mgmt/emb_mgmt.h"
+#include "hybrid_mgmt/hybrid_mgmt.h"
 #include "host_emb/host_emb.h"
 #include "utils/common.h"
 
@@ -127,16 +127,16 @@ TEST_F(EmbMgmtTest, Initialize)
     allRank = RankInfo(rankId, deviceId, localRankSize, useStatic, nBatch, maxStep);
     hybridMgmt->Initialize(allRank, embInfos, seed, thresholdValues, false);
     auto hostEmbs = make_unique<HostEmb>();
-    hostEmbs->Initialize(embInfos, seed, false);
+    hostEmbs->Initialize(embInfos, seed);
     auto hostHashMaps = make_unique<EmbHashMap>();
     hostHashMaps->Init(allRank, embInfos, false);
 
     int currentBatchId = 0;
     vector<emb_key_t> lookupKeys = { 1, 3, 5, 7 };
-    vector<Tensor> tmpData;
     vector<Tensor> d2h_emb;
     vector<vector<float>> tmpDatas;
-    tmpData = hostHashMaps->Process(embInfo.name, lookupKeys, currentBatchId);
+    vector<Tensor> tmpData;
+    hostHashMaps->Process(embInfo.name, lookupKeys, currentBatchId, tmpData);
     auto missingKeys = hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos;
     spdlog::info("missingKeys {}", missingKeys);
     hostEmbs->EmbDataGenerator(initializeInfos, seed, missingKeys.size(), embeddingSize, tmpDatas);
@@ -146,7 +146,7 @@ TEST_F(EmbMgmtTest, Initialize)
     hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos.clear();
 
     lookupKeys = { 2, 3, 5, 6 };
-    tmpData = hostHashMaps->Process(embInfo.name, lookupKeys, currentBatchId);
+    hostHashMaps->Process(embInfo.name, lookupKeys, currentBatchId, tmpData);
     missingKeys = hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos;
     spdlog::info("missingKeys {}", missingKeys);
     hostEmbs->EmbDataGenerator(initializeInfos, seed, missingKeys.size(), embeddingSize, tmpDatas);
@@ -156,7 +156,7 @@ TEST_F(EmbMgmtTest, Initialize)
     hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos.clear();
 
     lookupKeys = { 1, 7, 9, 10 };
-    tmpData = hostHashMaps->Process(embInfo.name, lookupKeys, currentBatchId);
+    hostHashMaps->Process(embInfo.name, lookupKeys, currentBatchId, tmpData);
     missingKeys = hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos;
     spdlog::info("missingKeys {}", missingKeys);
     hostEmbs->EmbDataGenerator(initializeInfos, seed, missingKeys.size(), embeddingSize, tmpDatas);

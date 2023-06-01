@@ -18,20 +18,31 @@ from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_HOT_POS, \
     ASCEND_SPARSE_LOOKUP_ID_OFFSET, ASCEND_SPARSE_LOOKUP_RESTORE_VECTOR, MxRecMode, \
     ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_ALL2ALL_MATRIX, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, \
-    DEFAULT_EVICT_TIME_INTERVAL, TRAIN_CHANNEL_ID
+    DEFAULT_EVICT_TIME_INTERVAL, TRAIN_CHANNEL_ID, MULTI_LOOKUP_TIMES, ASCEND_TABLE_NAME_MUST_CONTAIN, MAX_INT32
 from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is_asc_frozen, get_customized_ops, \
     insert_table_instance, get_training_mode_channel_id, get_use_static, get_name_to_var_dict, \
     clear_channel, trigger_evict, get_table_instance_by_name, get_use_hot, get_device_id, export_feature_spec, \
-    ConfigInitializer, get_ascend_global_hashtable_collection, get_host_pipeline_ops, get_use_dynamic_expansion
+    ConfigInitializer, get_ascend_global_hashtable_collection, get_host_pipeline_ops, get_use_dynamic_expansion, \
+    set_modify_graph
 from mx_rec.util.tf_version_adapter import npu_ops
 from mx_rec.util.variable import remove_saving_var
 
 
-def create_table(key_dtype, dim, name, emb_initializer, device_vocabulary_size=1, host_vocabulary_size=0,
-                 optimizer_list=None, mode=MxRecMode.ASC, value_dtype=tf.float32, shard_num=1,
-                 fusion_optimizer_var=True, hashtable_threshold=0):
-    """
+def create_table(**kwargs):
+    key_dtype = kwargs.get("key_dtype")
+    dim = kwargs.get("dim")
+    name = kwargs.get("name")
+    emb_initializer = kwargs.get("emb_initializer")
+    device_vocabulary_size = kwargs.get("device_vocabulary_size", 1)
+    host_vocabulary_size = kwargs.get("host_vocabulary_size", 0)
+    optimizer_list = kwargs.get("optimizer_list")
+    mode = kwargs.get("mode", MxRecMode.ASC)
+    value_dtype = kwargs.get("value_dtype", tf.float32)
+    shard_num = kwargs.get("shard_num", 1)
+    fusion_optimizer_var = kwargs.get("fusion_optimizer_var", True)
+    hashtable_threshold = kwargs.get("hashtable_threshold", 0)
 
+    """
     Args:
         key_dtype: data type for feature id
         dim: embedding vector size
@@ -46,10 +57,8 @@ def create_table(key_dtype, dim, name, emb_initializer, device_vocabulary_size=1
         shard_num: embedding partition number
         fusion_optimizer_var: fusion optimizer variable with embedding
         hashtable_threshold: choose to implement based on hash table or linear layer
-
-    Returns: SparseEmbedding instance
-
     """
+
     config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
                   device_vocabulary_size=device_vocabulary_size, host_vocabulary_size=host_vocabulary_size,
                   optimizer_list=optimizer_list, mode=mode, value_dtype=value_dtype, shard_num=shard_num,
@@ -92,8 +101,7 @@ def sparse_lookup(hashtable, ids, send_count, **kwargs):
 
     def check_modify_graph():
         if not kwargs.get("modify_graph"):
-            logging.warning(f"MxRecMode {MxRecMode.ASC} must config with a 'True' "
-                            f"modify_graph.")
+            raise ValueError(f"modify_graph must be turn-on when lookup by ids(Tensor, not FeatureSpec).")
 
     check_lookup_kwargs()
     scope_name = "{0}//{1}".format(hashtable.table_name, kwargs.get("name"))
@@ -104,6 +112,7 @@ def sparse_lookup(hashtable, ids, send_count, **kwargs):
                 return hashtable.lookup_for_asc_with_feature_spec(ids, send_count, **kwargs)
             else:
                 check_modify_graph()
+                set_modify_graph(True)
                 return hashtable.lookup_for_asc(ids, send_count, **kwargs)
         else:
             raise EnvironmentError(f"Invalid MxRec Mode.")
@@ -293,6 +302,14 @@ class SparseEmbedding:
             raise RuntimeError(f"Current sparse table was config in {self.mode.value} mode, but sparse lookup method "
                                f"for {method_mode} was in use.")
 
+    def check_multi_lookup_times(self):
+        if self.modify_graph:
+            self.lookup_result = dict()
+        if len(self.channel_name_list) > MULTI_LOOKUP_TIMES or len(self.lookup_result) > MULTI_LOOKUP_TIMES:
+            run_mode = "Modify Graph" if self.modify_graph else "Feature Spec"
+            raise RuntimeError(f"In '{run_mode}' mode, the number of multiple sparse lookup for a table"
+                               f"({self.table_name}) is {MULTI_LOOKUP_TIMES}.")
+
     def check_and_format_lookup_params(self, feature, send_count, is_training):
         logging.debug(f"sparse lookup for table {self.table_name} with is_training {is_training}")
 
@@ -328,8 +345,7 @@ class SparseEmbedding:
                     raise ValueError("Send count must be a integer which is larger than 0.")
 
         check_params()
-        max_int32 = np.iinfo(np.int32).max
-        if self.slice_host_vocabulary_size + self.slice_device_vocabulary_size > max_int32:
+        if self.slice_host_vocabulary_size + self.slice_device_vocabulary_size > MAX_INT32:
             raise ValueError(f"Given device_vocabulary_size and host_vocabulary_size was too big for table "
                              f"'{self.table_name}', in which slice_device_vocabulary_size was "
                              f"{self.slice_device_vocabulary_size} and slice_host_vocabulary_size was "
@@ -376,8 +392,6 @@ class SparseEmbedding:
 
         """
         logging.debug(f"Enter ASC Branch.")
-        if not kwargs.get("modify_graph"):
-            raise ValueError(f"modify_graph must be turn-on when lookup by ids(Tensor, not FeatureSpec).")
 
         self.check_mode(MxRecMode.ASC)
         is_training = kwargs.get("is_train")
@@ -408,6 +422,7 @@ class SparseEmbedding:
             self._send_count = send_count
             self.send_count_map[ids_channel_name] = send_count
         self.modify_graph = kwargs.get("modify_graph", True)
+        self.check_multi_lookup_times()
         logging.debug(f"In lookup_for_asc function, table name: {self.table_name}, anchor_ids: {anchor_ids}, "
                       f"ids_channel_name: {ids_channel_name}, use_dynamic_expansion: {use_dynamic_expansion}, "
                       f"use_static: {use_static}, use_hot: {use_hot}")
@@ -422,14 +437,19 @@ class SparseEmbedding:
             local_embeddings = get_host_pipeline_ops().embedding_lookup_by_address(id_offsets,
                                                                                    embedding_dim=self.emb_size,
                                                                                    embedding_type=1)
-        if is_training:
+
+        is_table_name_valid = ASCEND_TABLE_NAME_MUST_CONTAIN is None or \
+                              ASCEND_TABLE_NAME_MUST_CONTAIN in self.table_name
+        if is_training and use_dynamic_expansion and is_table_name_valid:
             tf.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
             tf.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
+            logging.debug(f"modify graph mode, table_name: {self.table_name}, "
+                          f"ASCEND_TABLE_NAME_MUST_CONTAIN: {ASCEND_TABLE_NAME_MUST_CONTAIN}")
 
         @tf.custom_gradient
         def sparse_forward(table, feat_ids):
             logging.debug(f"fp rank size: {rank_size}")
-            if use_static:
+            if feat_ids.shape.as_list()[0] is not None:
                 restore_vector = tf.ones(shape=[np.prod(feat_ids.shape.as_list()), ], dtype=tf.int32,
                                          name="restore_vector")
             else:
@@ -527,7 +547,6 @@ class SparseEmbedding:
         if len(same_table_feature_spec) == 1:
             lookup_result = self.lookup_for_asc_with_feature_spec_inner(feature_spec, send_count, **kwargs)
             self.lookup_result = {spec_name: {is_training: lookup_result}}
-            return self.lookup_result.get(spec_name).get(is_training)
         else:
             same_table_feature_spec = sorted(same_table_feature_spec, key=lambda x: x.name)
             same_table_spec_count = len(same_table_feature_spec)
@@ -548,7 +567,9 @@ class SparseEmbedding:
             lookup_result_split = tf.split(lookup_result, split_size)
             self.lookup_result = {k.name: {is_training: tf.reshape(v, k.dims + [self.scalar_emb_size])}
                                   for k, v in zip(same_table_feature_spec, lookup_result_split)}
-            return self.lookup_result.get(spec_name).get(is_training)
+
+        self.check_multi_lookup_times()
+        return self.lookup_result.get(spec_name).get(is_training)
 
     def lookup_for_asc_with_feature_spec_inner(self, feature_spec: FeatureSpec, send_count: int, **kwargs):
         """
@@ -585,18 +606,19 @@ class SparseEmbedding:
                       use_dynamic_expansion=use_dynamic_expansion)
 
         if self.skip_emb_transfer:
-            restore_vector, hot_pos, id_offsets, swap_in, all2all_matrix = get_preprocessed_tensor_for_asc(
-                self.variable, config)
+            result = get_preprocessed_tensor_for_asc(self.variable, config)
         else:
             variable_list = [self.variable] + [slot_info.get("slot") for slot_info in self.optimizer_slot_info_list]
-            restore_vector, hot_pos, id_offsets, swap_in, all2all_matrix = get_preprocessed_tensor_for_asc(
-                variable_list, config)
+            result = get_preprocessed_tensor_for_asc(variable_list, config)
+        restore_vector = result.get("restore_vector")
+        hot_pos = result.get("hot_pos")
+        id_offsets = result.get("id_offsets")
+        swap_in = result.get("swap_in")
+        all2all_matrix = result.get("all2all_matrix")
         control_ops = swap_in
 
         id_offsets = tf.identity(id_offsets, name="identity_addr")
         restore_vector = tf.identity(restore_vector, name="identity_restore")
-        if is_training and use_dynamic_expansion:
-            tf.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
 
         use_static = get_use_static()
         host_pipeline_ops = get_host_pipeline_ops()
@@ -655,8 +677,14 @@ class SparseEmbedding:
             local_embeddings = \
                 host_pipeline_ops.embedding_lookup_by_address(id_offsets, embedding_dim=self.emb_size,
                                                               embedding_type=1)
-            if is_training:
+
+            is_table_name_valid = ASCEND_TABLE_NAME_MUST_CONTAIN is None or \
+                                  ASCEND_TABLE_NAME_MUST_CONTAIN in self.table_name
+            if is_training and is_table_name_valid:
+                tf.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
                 tf.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
+                logging.debug(f"feature spec mode, table_name: {self.table_name}, "
+                              f"ASCEND_TABLE_NAME_MUST_CONTAIN: {ASCEND_TABLE_NAME_MUST_CONTAIN}")
 
             return sparse_forward(local_embeddings)
 

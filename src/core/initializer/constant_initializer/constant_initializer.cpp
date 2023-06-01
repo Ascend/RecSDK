@@ -13,7 +13,7 @@ using namespace MxRec;
 
 ConstantInitializer::ConstantInitializer(int start, int len, float value) : start(start), len(len), value(value) {}
 
-void ConstantInitializer::GenerateData(float* emb, const int embSize)
+void ConstantInitializer::GenerateData(float* const emb, const int embSize)
 {
     if (len == 0) {
         return;
