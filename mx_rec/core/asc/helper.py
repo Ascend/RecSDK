@@ -47,9 +47,6 @@ def create_asc_insert_func_with_acg(args_index_list, feature_counts, table_names
 
 def find_dangling_table(table_names):
     def check_tensor(table_name, table_reachable_tensor):
-        the_op = table_reachable_tensor.op
-        logging.info(f"** table_reachable_op:{the_op.outputs} {the_op.name} {the_op.type}**")
-
         if table_reachable_tensor.op.type == 'ApplyAdam':
             return True
 
