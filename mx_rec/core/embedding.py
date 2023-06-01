@@ -15,7 +15,7 @@ from tensorflow.python.ops import array_ops
 from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
 from mx_rec.core.asc.feature_spec import FeatureSpec, get_feature_spec
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.util.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_HOT_POS, \
+from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_HOT_POS, \
     ASCEND_SPARSE_LOOKUP_ID_OFFSET, ASCEND_SPARSE_LOOKUP_RESTORE_VECTOR, MxRecMode, \
     ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_ALL2ALL_MATRIX, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, \
     DEFAULT_EVICT_TIME_INTERVAL, TRAIN_CHANNEL_ID, MULTI_LOOKUP_TIMES, ASCEND_TABLE_NAME_MUST_CONTAIN, MAX_INT32
@@ -441,8 +441,8 @@ class SparseEmbedding:
         is_table_name_valid = ASCEND_TABLE_NAME_MUST_CONTAIN is None or \
                               ASCEND_TABLE_NAME_MUST_CONTAIN in self.table_name
         if is_training and use_dynamic_expansion and is_table_name_valid:
-            tf.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
-            tf.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
+            tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
+            tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
             logging.debug(f"modify graph mode, table_name: {self.table_name}, "
                           f"ASCEND_TABLE_NAME_MUST_CONTAIN: {ASCEND_TABLE_NAME_MUST_CONTAIN}")
 
@@ -681,8 +681,8 @@ class SparseEmbedding:
             is_table_name_valid = ASCEND_TABLE_NAME_MUST_CONTAIN is None or \
                                   ASCEND_TABLE_NAME_MUST_CONTAIN in self.table_name
             if is_training and is_table_name_valid:
-                tf.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
-                tf.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
+                tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
+                tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
                 logging.debug(f"feature spec mode, table_name: {self.table_name}, "
                               f"ASCEND_TABLE_NAME_MUST_CONTAIN: {ASCEND_TABLE_NAME_MUST_CONTAIN}")
 

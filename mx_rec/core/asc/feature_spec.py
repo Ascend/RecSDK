@@ -9,7 +9,7 @@ import tensorflow as tf
 
 from mx_rec.util.atomic import AtomicInteger
 from mx_rec.util.initialize import insert_feature_spec, insert_training_mode_channel_id, get_use_static
-from mx_rec.util.constants import MAX_INT32
+from mx_rec.constants.constants import MAX_INT32
 
 feature_spec_global_id = AtomicInteger()
 

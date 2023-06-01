@@ -7,13 +7,13 @@ import logging
 import os
 from collections import defaultdict
 
+import mxrec_pybind
 import psutil
 
-import mxrec_pybind
-import mx_rec.util.constants
-from mx_rec.util.constants import LOCAL_RANK_SIZE, MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE, \
-    ASCEND_GLOBAL_HASHTABLE_COLLECTION, HASHTABLE_COLLECTION_NAME_LENGTH
+from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION, VALID_DEVICE_ID_LIST
+from mx_rec.constants.constants import LOCAL_RANK_SIZE, MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE
 from mx_rec.util.ops import import_host_pipeline_ops
+from mx_rec.validator.validator import RankInfoValidator
 
 
 class ConfigInitializer:
@@ -59,7 +59,7 @@ class ConfigInitializer:
         if os.getenv("RANK_TABLE_FILE"):
             self.parse_hccl_json()
         else:
-            self.set_device_dict()
+            self.set_hccl_info_without_json()
         self.check_parameters()
         self.train_interval = kwargs.get("train_interval", -1)
         self.eval_steps = kwargs.get("eval_steps", -1)
@@ -209,31 +209,56 @@ class ConfigInitializer:
                     raise ValueError(f"get logic id from physic id fail.")
                 self._rank_to_device_dict[rank_id] = device_id
 
-    def set_device_dict(self):
+    def set_hccl_info_without_json(self):
+        """
+        Used for no rank table file configured training situation.
+        Now, only less than or equal 8p training job is supported.
+        :return: None
+        """
+        RankInfoValidator().check_visible_devices()
         ascend_visible_devices = os.getenv("ASCEND_VISIBLE_DEVICES")
-        if not ascend_visible_devices:
-            raise ValueError("env variable ascend_visible_devices is null.")
-        if "-" in ascend_visible_devices:
-            rank_start = int(ascend_visible_devices.strip().split("-")[0])
-            device_list = list(range(rank_start, int(ascend_visible_devices.strip().split("-")[-1])))
-        elif "," in ascend_visible_devices:
-            device_list = list(map(int, ascend_visible_devices.strip().split(",")))
-        elif ascend_visible_devices in ["0", "1", "2", "3", "4", "5", "6", "7"]:
-            device_list = [int(ascend_visible_devices.strip())]
-        else:
-            raise ValueError("invalid env variable ascend_visible_devices.")
-        rank_size = int(os.getenv("CM_WORKER_SIZE"))
-        self._rank_to_device_dict[0] = int(os.getenv("CM_CHIEF_DEVICE"))
-        device_list.pop(int(os.getenv("CM_CHIEF_DEVICE")))
-        if rank_size:
-            local_rank_size = rank_size if rank_size < 8 else 8
-            for device_index in range(local_rank_size - 1):
-                device_id = mxrec_pybind.get_logic_id(int(device_list[device_index]))
-                if device_id > 16:
-                    raise ValueError(f"get logic id from physic id fail.")
-                self._rank_to_device_dict[device_index + 1] = device_id
-        else:
-            raise ValueError("get CM_WORKER_SIZE failed.")
+        device_list = []
+        try:
+            if "-" in ascend_visible_devices:
+                split_devices = ascend_visible_devices.strip().split("-")
+                if len(split_devices) >= 1:
+                    rank_start = int(split_devices[0])
+                    device_list = list(range(rank_start, int(ascend_visible_devices.strip().split("-")[-1]) + 1))
+            elif "," in ascend_visible_devices:
+                device_list = list(map(int, ascend_visible_devices.strip().split(","))).sort()
+            elif ascend_visible_devices in VALID_DEVICE_ID_LIST:
+                device_list = [int(ascend_visible_devices.strip())]
+            else:
+                raise ValueError("invalid env variable ascend_visible_devices.")
+        except ValueError as error:
+            raise ValueError("Invalid env variable ascend_visible_devices, no valid device id is configured. "
+                             "Please refer to the document https://www.hiascend.com/document/detail/zh/"
+                             "CANNCommunityEdition/63RC2alpha002/ptmoddevg/ptmigr/ptmigr_0151.html for "
+                             "the correct configuration method.") from error
+        except IndexError as error:
+            raise IndexError(
+                f"Index of ascend_visible_devices {ascend_visible_devices.strip().split('-')[-1]} is out of range") \
+                from error
+
+        chief_device = os.getenv("CM_CHIEF_DEVICE")
+        rank_size = os.getenv("CM_WORKER_SIZE")
+        if int(rank_size) != len(device_list):
+            raise ValueError(f"Rank size {rank_size} is different from device num {len(device_list)}.")
+        try:
+            self._rank_to_device_dict[0] = int(chief_device)
+            device_list.pop(int(chief_device))
+        except IndexError as err:
+            raise IndexError(
+                f"Config CM_CHIEF_DEVICE {chief_device} not in training container device list {device_list}.") from err
+        except ValueError as err:
+            raise ValueError("CM_WORKER_SIZE or CM_CHIEF_DEVICE uncorrected configured.") from err
+
+        for device_idx in device_list:
+            device_id = mxrec_pybind.get_logic_id(int(device_idx))
+            if device_id > 16:
+                raise ValueError(f"get logic id from physic id fail.")
+            index = device_list.index(device_idx)
+            self._rank_to_device_dict[index + 1] = device_id
 
     def insert_training_mode_channel_id(self, is_training):
         if is_training not in self._training_mode_channel_dict:
@@ -361,9 +386,6 @@ class ConfigInitializer:
     def ascend_global_hashtable_collection(self, name):
         if not isinstance(name, str):
             raise TypeError(f"collection name '{name}' must be a string.")
-        if len(name) > HASHTABLE_COLLECTION_NAME_LENGTH:
-            raise ValueError(f"The length of the collection name '{name}' should be between "
-                             f"[0, {HASHTABLE_COLLECTION_NAME_LENGTH}].")
         self._ascend_global_hashtable_collection = name
 
     def get_initializer(self, is_training):
@@ -617,7 +639,7 @@ def set_initializer(is_training, initializer):
 
 
 def set_ascend_table_name_must_contain(name="merged"):
-    mx_rec.util.constants.ASCEND_TABLE_NAME_MUST_CONTAIN = name
+    mx_rec.constants.constants.ASCEND_TABLE_NAME_MUST_CONTAIN = name
 
 
 def set_ascend_env():
@@ -626,7 +648,6 @@ def set_ascend_env():
     """
     rank = get_rank_id()
     rank_size = get_rank_size()
-    local_rank_size = 8
 
     os.environ["MOX_USE_NPU"] = "1"
     os.environ["FUSION_TENSOR_SIZE"] = "2000000000"
