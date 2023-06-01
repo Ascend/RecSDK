@@ -62,17 +62,17 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     spdlog::info(MGMT + "begin initialize, localRankSize:{}, localRankId {}, rank {}",
                  rankInfo.localRankSize, rankInfo.localRankId, rankInfo.rankId);
 
-    bool rc = InitKeyProcess(rankInfo, embInfos, thresholdValues, ifLoad, seed);
-    if (!rc) {
-        return false;
-    }
-
     mgmtRankInfo = rankInfo;
     mgmtEmbInfo = embInfos;
     skipUpdate = getenv("SKIP_UPDATE") != nullptr;
 
     hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
     hdTransfer->Init(embInfos, rankInfo.deviceId);
+
+    bool rc = InitKeyProcess(rankInfo, embInfos, thresholdValues, ifLoad, seed);
+    if (!rc) {
+        return false;
+    }
 
     lookUpKeysQueue = make_unique<Common::TaskQueue<vector<Tensor>>>();
     restoreQueue = make_unique<Common::TaskQueue<vector<Tensor>>>();
