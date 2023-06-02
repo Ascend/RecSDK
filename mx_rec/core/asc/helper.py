@@ -4,9 +4,9 @@
 
 import logging
 from functools import reduce
-import tensorflow as tf
 from typing import List
 from typing import Dict
+import tensorflow as tf
 from tensorflow import Tensor
 from tensorflow import Operation
 
@@ -73,8 +73,8 @@ def find_dangling_table(table_names: List[str]):
 
     def find_table_op(table_name: str,
                       the_op: Operation,
-                      table_lookup_op: Dict[str,List[Operation]],
-                      table_reachable_tensor: Dict[str,List[Tensor]]):
+                      table_lookup_op: Dict[str, List[Operation]],
+                      table_reachable_tensor: Dict[str, List[Tensor]]):
         """ find all the table lookup op.
         :param table_name: tables' names
         :param the_op: the op to be
