@@ -4,8 +4,11 @@
 
 import logging
 from functools import reduce
-
 import tensorflow as tf
+from typing import List
+from typing import Dict
+from tensorflow import Tensor
+from tensorflow import Operation
 
 from mx_rec.util.initialize import get_host_pipeline_ops, get_training_mode_channel_id, get_use_static, \
     export_table_instances, insert_dangling_table
@@ -45,14 +48,14 @@ def create_asc_insert_func_with_acg(args_index_list, feature_counts, table_names
                                      **kwargs)
 
 
-def find_dangling_table(table_names):
+def find_dangling_table(table_names: List[str]):
     """ Find the tables which are disconenct with the forward training graph. And
     these table will not be backward updated.
 
-    :param table_names: all created tables' names, which is a list
-    :return: A list of dangling table names.
+    :param table_names: list of all created tables' names
+    :return: a list of dangling table names.
     """
-    def check_tensor(table_reachable_tensor):
+    def check_tensor(table_reachable_tensor: Tensor):
         """Check whether the tensor op is optimizer op or backward gradient.
 
         Args:
@@ -68,9 +71,12 @@ def find_dangling_table(table_names):
 
         return False
 
-    def find_table_op(table_name, the_op, table_lookup_op, table_reachable_tensor):
+    def find_table_op(table_name: str,
+                      the_op: Operation,
+                      table_lookup_op: Dict[str,List[Operation]],
+                      table_reachable_tensor: Dict[str,List[Tensor]]):
         """ find all the table lookup op.
-        :param table_name: a list of all created tables' names
+        :param table_name: tables' names
         :param the_op: the op to be
         :param table_lookup_op: list of the table lookup ops
         :param table_reachable_tensor: the tensors which table lookup op can reach (
@@ -98,7 +104,9 @@ def find_dangling_table(table_names):
     logging.info(f"*********** find tables: {table_lookup_op}***********")
     dangling_table = []
 
-    def extend(op_list, tensor, spread_tensors):
+    def extend(op_list:List[Operation],
+               tensor: Tensor,
+               spread_tensors: List[Tensor]):
         """extend the tensors which table lookup op can reach
 
         :param op_list: all op in the graph
@@ -110,7 +118,7 @@ def find_dangling_table(table_names):
             if tensor in the_op.inputs:
                 spread_tensors.extend(the_op.outputs)
 
-    def bfs_lookup(next_to_visit):
+    def bfs_lookup(next_to_visit: List[Tensor]):
         """find all the tensors which table lookup op can reach
 
         :param next_to_visit: the tensor list to be visited by bfs
