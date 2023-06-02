@@ -33,6 +33,7 @@ class ConfigInitializer:
         self._prefetch_batch_number = None
         self._if_load = None
         self._table_instance_dict = dict()
+        self._dangling_table = []
         self._name_to_var_dict = dict()
         self._table_name_set = set()
         self._table_name_to_feature_spec = dict()
@@ -266,6 +267,14 @@ class ConfigInitializer:
 
     def get_training_mode_channel_id(self, is_training):
         return self._training_mode_channel_dict.get(is_training)
+
+    def insert_dangling_table(self, name):
+        if name not in self._dangling_table:
+            self._dangling_table.append(name)
+
+    @property
+    def dangling_table(self):
+        return self._dangling_table
 
     def insert_table_instance(self, name, key, instance):
         if key in self._table_instance_dict:
@@ -549,12 +558,20 @@ def get_table_instance_by_name(table_name):
     return ConfigInitializer.get_instance().get_table_instance_by_name(table_name)
 
 
+def insert_dangling_table(table_name):
+    ConfigInitializer.get_instance().insert_dangling_table(table_name)
+
+
 def insert_table_instance(name, key, instance):
     ConfigInitializer.get_instance().insert_table_instance(name, key, instance)
 
 
 def export_table_instances():
     return ConfigInitializer.get_instance().table_instance_dict
+
+
+def export_dangling_table():
+    return ConfigInitializer.get_instance().dangling_table
 
 
 def insert_optimizer(optimizer):

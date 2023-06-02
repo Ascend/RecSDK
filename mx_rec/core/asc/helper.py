@@ -4,11 +4,14 @@
 
 import logging
 from functools import reduce
-
+from typing import List
+from typing import Dict
 import tensorflow as tf
+from tensorflow import Tensor
+from tensorflow import Operation
 
 from mx_rec.util.initialize import get_host_pipeline_ops, get_training_mode_channel_id, get_use_static, \
-    export_table_instances
+    export_table_instances, insert_dangling_table
 from mx_rec.core.asc.feature_spec import FeatureSpec
 
 
@@ -43,6 +46,103 @@ def create_asc_insert_func_with_acg(args_index_list, feature_counts, table_names
                                      feature_counts=feature_counts,
                                      table_names=table_names,
                                      **kwargs)
+
+
+def find_dangling_table(table_names: List[str]):
+    """ Find the tables which are disconenct with the forward training graph. And
+    these table will not be backward updated.
+
+    :param table_names: list of all created tables' names
+    :return: a list of dangling table names.
+    """
+    def check_tensor(table_reachable_tensor: Tensor):
+        """Check whether the tensor op is optimizer op or backward gradient.
+
+        Args:
+            table_reachable_tensor: tensor
+        Returns:
+            bool
+        """
+        if table_reachable_tensor.op.type == 'ApplyAdam':
+            return True
+
+        if 'gradients/' in table_reachable_tensor.name and table_reachable_tensor.op.type == 'Identity':
+            return True
+
+        return False
+
+    def find_table_op(table_name: str,
+                      the_op: Operation,
+                      table_lookup_op: Dict[str, List[Operation]],
+                      table_reachable_tensor: Dict[str, List[Tensor]]):
+        """ find all the table lookup op.
+        :param table_name: tables' names
+        :param the_op: the op to be
+        :param table_lookup_op: list of the table lookup ops
+        :param table_reachable_tensor: the tensors which table lookup op can reach (
+                here we just add the table lookup op's output tensors).
+                The data structure is map, key is table_name, value is the output tensors of table lookup op.
+        :return: None
+        """
+        if table_name in the_op.name and the_op.type == "IdentityN":
+            if table_name not in table_lookup_op:
+                table_lookup_op[table_name] = [the_op]
+                table_reachable_tensor[table_name] = the_op.outputs
+            else:
+                table_lookup_op[table_name].append(the_op)
+                table_reachable_tensor[table_name].extend(the_op.outputs)
+
+    op_list = tf.get_default_graph().get_operations()
+
+    table_lookup_op = {}
+    table_reachable_tensor = {}
+
+    for the_op in op_list:
+        for table_name in table_names:
+            find_table_op(table_name, the_op, table_lookup_op, table_reachable_tensor)
+
+    logging.info(f"*********** find tables: {table_lookup_op}***********")
+    dangling_table = []
+
+    def extend(op_list:List[Operation],
+               tensor: Tensor,
+               spread_tensors: List[Tensor]):
+        """extend the tensors which table lookup op can reach
+
+        :param op_list: all op in the graph
+        :param tensor: the tensor visited by bfs
+        :param spread_tensors: the list of tensors which table lookup op can reach
+        :return:
+        """
+        for the_op in op_list:
+            if tensor in the_op.inputs:
+                spread_tensors.extend(the_op.outputs)
+
+    def bfs_lookup(next_to_visit: List[Tensor]):
+        """find all the tensors which table lookup op can reach
+
+        :param next_to_visit: the tensor list to be visited by bfs
+        :return: bool value indicate whether reached optimizer op or backward gradient op
+        """
+        tensors_visited = set()
+        while next_to_visit:
+            spread_tensors = []
+            for tensor in next_to_visit:
+                if tensor in tensors_visited:
+                    continue
+                if check_tensor(tensor):
+                    return True
+                tensors_visited.add(tensor)
+                extend(op_list, tensor, spread_tensors)
+            next_to_visit = spread_tensors
+        return False
+
+    for table_name, table_op in table_reachable_tensor.items():
+        found = bfs_lookup(table_op)
+        if not found:
+            dangling_table.append(table_name)
+            insert_dangling_table(table_name)
+    return dangling_table
 
 
 def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_counts=None,
@@ -87,18 +187,36 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
         if feature_counts is None or table_names is None:
             raise ValueError("Please config 'args_index_list', 'feature_counts' and 'table_names' at the same time.")
 
+        dangling_tables = find_dangling_table(table_names)
+        logging.info(f"In insert found dangling table(s): {dangling_tables} "
+                         f"which does not need to be provided to the EmbInfo.")
+
         def insert_fn_for_arg_indexes(*args):
             insert_tensors = get_target_tensors_with_args_indexes(args_index_list)
             # config timestamp later
+
             logging.debug(f"do_insert without spec for {table_names}")
             splits = []
             for insert_tensor in insert_tensors:
                 split = reduce(lambda x, y: x * y, insert_tensor.shape.as_list())
                 splits.append(split if split is not None else tf.math.reduce_prod(tf.shape(insert_tensor)))
+
+            new_insert_tensors, new_splits, new_table_names = [], [], []
+            for idx, table_name in enumerate(table_names):
+                if table_name in dangling_tables:
+                    logging.info(f"do_insert skip table: {table_name}")
+                    continue
+                new_insert_tensors.append(insert_tensors[idx])
+                new_splits.append(splits[idx])
+                new_table_names.append(table_names[idx])
+
+            if FeatureSpec.use_timestamp(is_training):
+                new_insert_tensors = insert_tensors
+
             return do_insert(args,
-                             insert_tensors=insert_tensors,
-                             splits=splits,
-                             table_names=table_names,
+                             insert_tensors=new_insert_tensors,
+                             splits=new_splits,
+                             table_names=new_table_names,
                              input_dict={"is_training": is_training, "dump_graph": dump_graph,
                                          "timestamp": FeatureSpec.use_timestamp(is_training),
                                          "feature_spec_names": None,
@@ -220,27 +338,10 @@ def do_insert(args, insert_tensors, splits, table_names, input_dict):
     feature_spec_names = input_dict["feature_spec_names"]
     auto_change_graph = input_dict["auto_change_graph"]
 
-    # Only the tables that need to be used after table combination are retained in meituan situation.
-    # Current solution has error in same situations. For example, a sparse table has not been auto-merged.
-    from mx_rec.constants.constants import ASCEND_TABLE_NAME_MUST_CONTAIN
-    new_insert_tensors, new_splits, new_table_names = [], [], []
-    logging.debug(f"In do_insert function, ASCEND_TABLE_NAME_MUST_CONTAIN: {ASCEND_TABLE_NAME_MUST_CONTAIN}")
-    for idx, table_name in enumerate(table_names):
-        if ASCEND_TABLE_NAME_MUST_CONTAIN is not None and ASCEND_TABLE_NAME_MUST_CONTAIN not in table_name:
-            logging.info(f"After the tables are combined, the information about the"
-                         f" {table_name} table does not need to be provided to the read_emb_key operator.")
-            continue
-        new_insert_tensors.append(insert_tensors[idx])
-        new_splits.append(splits[idx])
-        new_table_names.append(table_names[idx])
-
-    if timestamp:
-        new_insert_tensors = insert_tensors
-
     pipeline_op = \
-        send_feature_id_request_async(feature_id_list=new_insert_tensors,
-                                      split_list=new_splits,
-                                      table_name_list=new_table_names,
+        send_feature_id_request_async(feature_id_list=insert_tensors,
+                                      split_list=splits,
+                                      table_name_list=table_names,
                                       input_dict={"is_training": is_training,
                                                   "timestamp": timestamp,
                                                   "feature_spec_names": feature_spec_names,

@@ -96,6 +96,10 @@ namespace MxRec {
 
         bool isRunning { false };
 
+        inline bool hasEmbName(const string &emb_name)
+        {
+            return embInfos.find(emb_name) != embInfos.end();
+        };
     GTEST_PRIVATE:
         template<class T>
         T GetInfo(std::vector<info_list_t<T>>& list, int batch, const string& embName, int channel);
