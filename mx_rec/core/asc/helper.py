@@ -92,7 +92,7 @@ def find_dangling_table(table_names: List[str]):
                 table_lookup_op[table_name].append(the_op)
                 table_reachable_tensor[table_name].extend(the_op.outputs)
 
-    op_list = tf.get_default_graph().get_operations()
+    op_list = tf.compat.v1.get_default_graph().get_operations()
 
     table_lookup_op = {}
     table_reachable_tensor = {}
