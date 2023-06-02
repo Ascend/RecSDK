@@ -46,7 +46,20 @@ def create_asc_insert_func_with_acg(args_index_list, feature_counts, table_names
 
 
 def find_dangling_table(table_names):
-    def check_tensor(table_name, table_reachable_tensor):
+    """ Find the tables which are disconenct with the forward training graph. And
+    these table will not be backward updated.
+
+    :param table_names: all created tables' names, which is a list
+    :return: A list of dangling table names.
+    """
+    def check_tensor(table_reachable_tensor):
+        """Check whether the tensor op is optimizer op or backward gradient.
+
+        Args:
+            table_reachable_tensor: tensor
+        Returns:
+            bool
+        """
         if table_reachable_tensor.op.type == 'ApplyAdam':
             return True
 
@@ -56,6 +69,15 @@ def find_dangling_table(table_names):
         return False
 
     def find_table_op(table_name, the_op, table_lookup_op, table_reachable_tensor):
+        """ find all the table lookup op.
+        :param table_name: a list of all created tables' names
+        :param the_op: the op to be
+        :param table_lookup_op: list of the table lookup ops
+        :param table_reachable_tensor: the tensors which table lookup op can reach (
+                here we just add the table lookup op's output tensors).
+                The data structure is map, key is table_name, value is the output tensors of table lookup op.
+        :return: None
+        """
         if table_name in the_op.name and the_op.type == "IdentityN":
             if table_name not in table_lookup_op:
                 table_lookup_op[table_name] = [the_op]
@@ -77,18 +99,30 @@ def find_dangling_table(table_names):
     dangling_table = []
 
     def extend(op_list, tensor, spread_tensors):
+        """extend the tensors which table lookup op can reach
+
+        :param op_list: all op in the graph
+        :param tensor: the tensor visited by bfs
+        :param spread_tensors: the list of tensors which table lookup op can reach
+        :return:
+        """
         for the_op in op_list:
             if tensor in the_op.inputs:
                 spread_tensors.extend(the_op.outputs)
 
-    def bfs_lookup(table_name, next_to_visit):
+    def bfs_lookup(next_to_visit):
+        """find all the tensors which table lookup op can reach
+
+        :param next_to_visit: the tensor list to be visited by bfs
+        :return: bool value indicate whether reached optimizer op or backward gradient op
+        """
         tensors_visited = set()
         while next_to_visit:
             spread_tensors = []
             for tensor in next_to_visit:
                 if tensor in tensors_visited:
                     continue
-                if check_tensor(table_name, tensor):
+                if check_tensor(tensor):
                     return True
                 tensors_visited.add(tensor)
                 extend(op_list, tensor, spread_tensors)
@@ -96,7 +130,7 @@ def find_dangling_table(table_names):
         return False
 
     for table_name, table_op in table_reachable_tensor.items():
-        found = bfs_lookup(table_name, table_op)
+        found = bfs_lookup(table_op)
         if not found:
             dangling_table.append(table_name)
             insert_dangling_table(table_name)

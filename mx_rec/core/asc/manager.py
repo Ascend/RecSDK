@@ -15,6 +15,10 @@ from mx_rec.core.asc.helper import find_dangling_table
 
 
 def check_dangling_table():
+    """
+    If the dangling_table list is empty(maybe feature_spec mode), try to find again
+    :return: list of dangling_table
+    """
     dangling_table = export_dangling_table()
     if not dangling_table:
         dangling_table = find_dangling_table([table_instance.table_name
