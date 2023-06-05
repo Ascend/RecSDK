@@ -178,10 +178,10 @@ class FeatureSpec:
 
         insert_feature_spec(self, is_training)
         result = {
-            'tensor' : tensor,
-            'table_name' : self.table_name,
-            'feat_count' : self.feat_cnt,
-            'split' : self.split,
+            'tensor': tensor,
+            'table_name': self.table_name,
+            'feat_count': self.feat_cnt,
+            'split': self.split,
         }
         return result
 

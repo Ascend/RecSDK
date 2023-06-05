@@ -23,7 +23,8 @@ from mx_rec.util.variable import get_dense_and_sparse_variable
 tf.compat.v1.disable_eager_execution()
 
 
-def make_batch_and_iterator(is_training, use_timestamp=False, dump_graph=False, batch_number=100):
+def make_batch_and_iterator(is_training, feature_spec_list=None,
+                            use_timestamp=False, dump_graph=False, batch_number=100):
     dataset = generate_dataset(cfg, use_timestamp=use_timestamp, batch_number=batch_number)
     if not MODIFY_GRAPH_FLAG:
         insert_fn = get_asc_insert_func(tgt_key_specs=feature_spec_list, is_training=is_training, dump_graph=dump_graph)
@@ -43,7 +44,7 @@ def model_forward(input_list, batch, is_train, modify_graph, config_dict=None):
             access_and_evict_config = config_dict.get(hash_table.table_name)
         embedding = sparse_lookup(hash_table, feature, send_count, dim=None, is_train=is_train,
                                   access_and_evict_config=access_and_evict_config,
-                                  name=hash_table.table_name + "_lookup", modify_graph=modify_graph)
+                                  name=hash_table.table_name + "_lookup", modify_graph=modify_graph, batch=batch)
 
         reduced_embedding = tf.reduce_sum(embedding, axis=1, keepdims=False)
         embedding_list.append(reduced_embedding)
@@ -53,8 +54,9 @@ def model_forward(input_list, batch, is_train, modify_graph, config_dict=None):
     return my_model
 
 
-def build_graph(hash_table_list, is_train, use_timestamp=False, config_dict=None, batch_number=100):
-    batch, iterator = make_batch_and_iterator(is_training=is_train, use_timestamp=use_timestamp, dump_graph=is_train,
+def build_graph(hash_table_list, is_train, feature_spec_list=None, config_dict=None, batch_number=100):
+    batch, iterator = make_batch_and_iterator(is_train, feature_spec_list=feature_spec_list,
+                                              use_timestamp=USE_TIMESTAMP, dump_graph=is_train,
                                               batch_number=batch_number)
     if MODIFY_GRAPH_FLAG:
         input_list = [
@@ -67,7 +69,9 @@ def build_graph(hash_table_list, is_train, use_timestamp=False, config_dict=None
         model = model_forward(input_list, batch,
                               is_train=is_train, modify_graph=True, config_dict=config_dict)
     else:
-        model = model_forward([feature_spec_list, hash_table_list, [cfg.user_send_cnt, cfg.item_send_cnt]], batch,
+        hash_table_list = [hash_table_list[0], hash_table_list[0], hash_table_list[0], hash_table_list[1]]
+        send_cnt_list = [cfg.user_send_cnt, cfg.user_send_cnt, cfg.item_send_cnt, cfg.item_send_cnt]
+        model = model_forward([feature_spec_list, hash_table_list, send_cnt_list], batch,
                               is_train=is_train, modify_graph=False, config_dict=config_dict)
 
     return iterator, model
@@ -86,6 +90,26 @@ def evaluate():
         except tf.errors.OutOfRangeError:
             logging.info(f"Encounter the end of Sequence for eval.")
             break
+
+
+def create_feature_spec_list(use_timestamp=False):
+    access_threshold = cfg.access_threshold if use_timestamp else None
+    eviction_threshold = cfg.eviction_threshold if use_timestamp else None
+    feature_spec_list = [FeatureSpec("user_ids", feat_count=cfg.user_feat_cnt, table_name="user_table",
+                                     access_threshold=access_threshold,
+                                     eviction_threshold=eviction_threshold),
+                         FeatureSpec("user_ids", feat_count=cfg.user_feat_cnt, table_name="user_table",
+                                     access_threshold=access_threshold,
+                                     eviction_threshold=eviction_threshold),
+                         FeatureSpec("item_ids", feat_count=cfg.item_feat_cnt, table_name="user_table",
+                                     access_threshold=access_threshold,
+                                     eviction_threshold=eviction_threshold),
+                         FeatureSpec("item_ids", feat_count=cfg.item_feat_cnt, table_name="item_table",
+                                     access_threshold=access_threshold,
+                                     eviction_threshold=eviction_threshold)]
+    if use_timestamp:
+        feature_spec_list.append(FeatureSpec("timestamp", is_timestamp=True))
+    return feature_spec_list
 
 
 if __name__ == "__main__":
@@ -122,21 +146,11 @@ if __name__ == "__main__":
     # access_threshold unit counts; eviction_threshold unit seconds
     ACCESS_AND_EVICT = None
     if USE_TIMESTAMP:
-        feature_spec_list = [FeatureSpec("user_ids", feat_count=cfg.user_feat_cnt, table_name="user_table",
-                                         access_threshold=cfg.access_threshold,
-                                         eviction_threshold=cfg.eviction_threshold),
-                             FeatureSpec("item_ids", feat_count=cfg.item_feat_cnt, table_name="item_table",
-                                         access_threshold=cfg.access_threshold,
-                                         eviction_threshold=cfg.eviction_threshold),
-                             FeatureSpec("timestamp", is_timestamp=True)]
-
         config_for_user_table = dict(access_threshold=cfg.access_threshold, eviction_threshold=cfg.eviction_threshold)
         config_for_item_table = dict(access_threshold=cfg.access_threshold, eviction_threshold=cfg.eviction_threshold)
         ACCESS_AND_EVICT = dict(user_table=config_for_user_table, item_table=config_for_item_table)
-
-    else:
-        feature_spec_list = [FeatureSpec("user_ids", feat_count=cfg.user_feat_cnt, table_name="user_table"),
-                             FeatureSpec("item_ids", feat_count=cfg.item_feat_cnt, table_name="item_table")]
+    train_feature_spec_list = create_feature_spec_list(use_timestamp=USE_TIMESTAMP)
+    eval_feature_spec_list = create_feature_spec_list(use_timestamp=USE_TIMESTAMP)
 
     optimizer_list = [get_dense_and_sparse_optimizer(cfg) for _ in range(2)]
     sparse_optimizer_list = [sparse_optimizer for dense_optimizer, sparse_optimizer in optimizer_list]
@@ -160,11 +174,11 @@ if __name__ == "__main__":
                                   mode=mode)
 
     train_iterator, train_model = build_graph([user_hashtable, item_hashtable], is_train=True,
-                                              use_timestamp=USE_TIMESTAMP, config_dict=ACCESS_AND_EVICT,
-                                              batch_number=cfg.batch_number)
+                                              feature_spec_list=train_feature_spec_list,
+                                              config_dict=ACCESS_AND_EVICT, batch_number=cfg.batch_number)
     eval_iterator, eval_model = build_graph([user_hashtable, item_hashtable], is_train=False,
-                                            use_timestamp=USE_TIMESTAMP, config_dict=ACCESS_AND_EVICT,
-                                            batch_number=cfg.batch_number)
+                                            feature_spec_list=eval_feature_spec_list,
+                                            config_dict=ACCESS_AND_EVICT, batch_number=cfg.batch_number)
     dense_variables, sparse_variables = get_dense_and_sparse_variable()
 
     rank_size = get_rank_size()
