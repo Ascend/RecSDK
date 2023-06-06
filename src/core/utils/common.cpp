@@ -78,9 +78,7 @@ namespace MxRec {
                 normalInitializerInfo.mean, normalInitializerInfo.stddev, normalInitializerInfo.seed);
         } else if (name == "random_normal_initializer") {
             initializerType = InitializerType::RANDOM_NORMAL;
-            randomNormalInitializer = RandomNormalInitializer(start, len,
-                normalInitializerInfo.mean, normalInitializerInfo.stddev, normalInitializerInfo.seed,
-                normalInitializerInfo.initK);
+            randomNormalInitializer = RandomNormalInitializer(start, len, normalInitializerInfo);
         } else {
             throw std::invalid_argument("Invalid Initializer Type.");
         }

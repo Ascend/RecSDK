@@ -111,7 +111,7 @@ def matched_emb_initializer(tabel_info):
     elif initializer_case_map.get("tf1/tf2_random_normal_initializer"):
         random_seed = 0 if tabel_info.emb_initializer.seed is None else tabel_info.emb_initializer.seed
         init_param = tabel_info.init_param
-        logging.debug(f"tabel_info.initK is {init_param}.")
+        logging.debug(f"tabel: {tabel_info.table_name}, initK is {init_param}.")
         initializer = InitializeInfo(name="random_normal_initializer", start=0, len=tabel_info.scalar_emb_size,
                                      normal_initializer_info=NormalInitializerInfo(
                                          mean=tabel_info.emb_initializer.mean,

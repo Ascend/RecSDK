@@ -12,6 +12,7 @@
 #include <random>
 
 #include "initializer/initializer.h"
+#include "utils/common.h"
 
 namespace MxRec {
     using namespace std;
@@ -19,7 +20,7 @@ namespace MxRec {
     class RandomNormalInitializer : public Initializer {
     public:
         RandomNormalInitializer() = default;
-        RandomNormalInitializer(int start, int len, float mean, float stddev, int seed, float initK);
+        RandomNormalInitializer(int start, int len, NormalInitializerInfo normalInitializerInfo);
 
         ~RandomNormalInitializer() override {};
 

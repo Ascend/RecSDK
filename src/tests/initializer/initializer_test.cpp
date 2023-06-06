@@ -75,7 +75,8 @@ TEST(InitializerTest, TruncatedNormalInitializerTest)
 
 TEST(InitializerTest, RandomNormalInitializerTest)
 {
-    RandomNormalInitializer randomNormalInitializer(1, 10, 2.0, 0.5, 1);
+    NormalInitializerInfo normalInitializerInfo{2.0, 0.5, 1, 0.1};
+    RandomNormalInitializer randomNormalInitializer(1, 10, normalInitializerInfo);
 
     vector<vector<float>> embData;
     int vocabSize = 5;
