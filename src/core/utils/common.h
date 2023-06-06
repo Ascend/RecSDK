@@ -298,11 +298,12 @@ struct BatchTask {
 
     struct NormalInitializerInfo {
         NormalInitializerInfo() = default;
-        NormalInitializerInfo(float mean, float stddev, int seed);
+        NormalInitializerInfo(float mean, float stddev, int seed, float initK);
 
         float mean;
         float stddev;
         int seed;
+        float initK = 1.0;
     };
 
     struct InitializeInfo {

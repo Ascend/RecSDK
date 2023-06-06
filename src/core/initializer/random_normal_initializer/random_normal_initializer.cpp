@@ -11,9 +11,10 @@
 
 using namespace MxRec;
 
-RandomNormalInitializer::RandomNormalInitializer(int start, int len, float mean, float stddev, int seed)
+RandomNormalInitializer::RandomNormalInitializer(int start, int len, float mean, float stddev, int seed, float initK)
     : start(start), len(len), mean(mean), stddev(stddev), seed(seed)
 {
+    initParam = initK;
     generator = std::default_random_engine(seed);
     distribution = std::normal_distribution<float>(mean, stddev);
 }
@@ -29,5 +30,5 @@ void RandomNormalInitializer::GenerateData(float* const emb, const int embSize)
             start, len, embSize);
         return;
     }
-    std::generate_n(emb + start, len, [&]() { return distribution(generator); });
+    std::generate_n(emb + start, len, [&]() { return initParam*distribution(generator); });
 }

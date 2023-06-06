@@ -145,10 +145,12 @@ void GetConstantInitializerInfo(pybind11::module_ &m)
 void GetNormalInitializerInfo(pybind11::module_ &m)
 {
     pybind11::class_<NormalInitializerInfo>(m, "NormalInitializerInfo")
-        .def(py::init<float, float, int>(), py::arg("mean") = 0.0, py::arg("stddev") = 1.0, py::arg("seed") = 0)
+        .def(py::init<float, float, int, float>(), py::arg("mean") = 0.0, py::arg("stddev") = 1.0, py::arg("seed") = 0,
+             py::arg("initK") = 1.0)
         .def_readwrite("mean", &NormalInitializerInfo::mean)
         .def_readwrite("stddev", &NormalInitializerInfo::stddev)
-        .def_readwrite("seed", &NormalInitializerInfo::seed);
+        .def_readwrite("seed", &NormalInitializerInfo::seed)
+        .def_readwrite("initK", &NormalInitializerInfo::initK);
 }
 
 void GetHybridMgmt(pybind11::module_& m)

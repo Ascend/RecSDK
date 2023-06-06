@@ -110,11 +110,14 @@ def matched_emb_initializer(tabel_info):
                                          constant_val=tabel_info.emb_initializer.value))
     elif initializer_case_map.get("tf1/tf2_random_normal_initializer"):
         random_seed = 0 if tabel_info.emb_initializer.seed is None else tabel_info.emb_initializer.seed
+        init_param = tabel_info.init_param
+        logging.debug(f"tabel_info.initK is {init_param}.")
         initializer = InitializeInfo(name="random_normal_initializer", start=0, len=tabel_info.scalar_emb_size,
                                      normal_initializer_info=NormalInitializerInfo(
                                          mean=tabel_info.emb_initializer.mean,
                                          stddev=tabel_info.emb_initializer.stddev,
-                                         seed=random_seed
+                                         seed=random_seed,
+                                         initK=init_param
                                      ))
     elif initializer_case_map.get("tf1_truncated_normal_initializer") or \
             initializer_case_map.get("tf2_truncated_normal_initializer"):
