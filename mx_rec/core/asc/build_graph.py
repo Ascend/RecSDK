@@ -143,10 +143,10 @@ def get_preprocessed_tensor_for_asc(table, config, ids_channel_name=None, modify
             swap_in = [tf.compat.v1.scatter_nd_update(table[i], nd_swap_pos, h2d_emb_split[i])
                        for i in range(len(table))]
     result = {
-        'restore_vector' : restore_vector,
-        'hot_pos' : hot_pos,
-        'id_offsets' : id_offsets,
-        'swap_in' : swap_in,
-        'all2all_args' : all2all_args,
+        'restore_vector': restore_vector,
+        'hot_pos': hot_pos,
+        'id_offsets': id_offsets,
+        'swap_in': swap_in,
+        'all2all_args': all2all_args,
     }
     return result
