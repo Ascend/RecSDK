@@ -20,13 +20,24 @@ bool HybridMgmt::InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>&
 {
     if (getenv("KEY_PROCESS_THREAD_NUM") != nullptr) {
         int num = std::atoi(getenv("KEY_PROCESS_THREAD_NUM"));
-        if (num > MAX_KEY_PROCESS_THREAD) {
-            spdlog::error("[HybridMgmt::InitKeyProcess] KEY_PROCESS_THREAD_NUM:{} should be less than {}",
+        if (num < 1 || num > MAX_KEY_PROCESS_THREAD) {
+            spdlog::error("[HybridMgmt::InitKeyProcess] KEY_PROCESS_THREAD_NUM:{}, should in range [1, {}]",
                           num, MAX_KEY_PROCESS_THREAD);
             return false;
         }
         PerfConfig::keyProcessThreadNum = num;
         spdlog::info("config KEY_PROCESS_THREAD_NUM:{}", num);
+    }
+
+    if (getenv("MAX_UNIQUE_THREAD_NUM") != nullptr) {
+        int num = std::atoi(getenv("MAX_UNIQUE_THREAD_NUM"));
+        if (num < 1 || num > DEFAULT_MAX_UNIQUE_THREAD_NUM) {
+            spdlog::error("[HybridMgmt::InitKeyProcess] MAX_UNIQUE_THREAD_NUM:{}, should in range [1, {}]",
+                          num, DEFAULT_MAX_UNIQUE_THREAD_NUM);
+            return false;
+        }
+        PerfConfig::maxUniqueThreadNum = num;
+        spdlog::info("config MAX_UNIQUE_THREAD_NUM:{}", num);
     }
 
     preprocess = Singleton<KeyProcess>::GetInstance();
