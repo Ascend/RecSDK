@@ -84,6 +84,7 @@ namespace MxRec {
         void ReadEmbedding(CkptTransData& transData, const string& dataDir);
 
         int  GetEmbeddingSize(const string& embName) const;
+        bool CheckEmbNames(const string& embNames);
 
         void LoadProcess(CkptData& ckptData);
         void GetUpperLayerLoadDir(const vector<string>& dirNames);

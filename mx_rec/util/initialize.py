@@ -34,6 +34,7 @@ class ConfigInitializer:
         self._if_load = None
         self._table_instance_dict = dict()
         self._dangling_table = []
+        self._removing_var_list = []
         self._name_to_var_dict = dict()
         self._table_name_set = set()
         self._table_name_to_feature_spec = dict()
@@ -272,9 +273,17 @@ class ConfigInitializer:
         if name not in self._dangling_table:
             self._dangling_table.append(name)
 
+    def insert_removing_var_list(self, name):
+        if name not in self._removing_var_list:
+            self._removing_var_list.append(name)
+
     @property
     def dangling_table(self):
         return self._dangling_table
+
+    @property
+    def removing_var_list(self):
+        return self._removing_var_list
 
     def insert_table_instance(self, name, key, instance):
         if key in self._table_instance_dict:
@@ -562,6 +571,10 @@ def insert_dangling_table(table_name):
     ConfigInitializer.get_instance().insert_dangling_table(table_name)
 
 
+def insert_removing_var_list(var_name):
+    ConfigInitializer.get_instance().insert_removing_var_list(var_name)
+
+
 def insert_table_instance(name, key, instance):
     ConfigInitializer.get_instance().insert_table_instance(name, key, instance)
 
@@ -572,6 +585,10 @@ def export_table_instances():
 
 def export_dangling_table():
     return ConfigInitializer.get_instance().dangling_table
+
+
+def export_removing_var_list():
+    return ConfigInitializer.get_instance().removing_var_list
 
 
 def insert_optimizer(optimizer):
