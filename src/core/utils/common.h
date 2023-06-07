@@ -360,12 +360,13 @@ struct BatchTask {
                 int embeddingSize,
                 int extEmbeddingSize,
                 bool modifyGraph,
+                bool isSave,
                 std::vector<std::string> channelNames,
                 std::vector<size_t> vocabsize,
                 std::vector<InitializeInfo> initializeInfos,
                 std::map<std::string, int> sendCountMap)
             : name(name), sendCount(sendCount), embeddingSize(embeddingSize), extEmbeddingSize(extEmbeddingSize),
-              modifyGraph(modifyGraph), channelNames(channelNames), initializeInfos(initializeInfos),
+              modifyGraph(modifyGraph), isSave(isSave), channelNames(channelNames), initializeInfos(initializeInfos),
               sendCountMap(sendCountMap)
         {
             devVocabSize = vocabsize[0];
@@ -377,6 +378,7 @@ struct BatchTask {
         int embeddingSize;
         int extEmbeddingSize;
         bool modifyGraph;
+        bool isSave;
         size_t devVocabSize;
         size_t hostVocabSize;
         std::vector<std::string> channelNames;

@@ -19,8 +19,8 @@ from tensorflow.python.training import adam
 from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.util.initialize import get_table_instance
-from mx_rec.util.variable import remove_saving_var, check_and_get_config_via_var, check_param_type, check_param_range
+from mx_rec.util.initialize import get_table_instance, insert_removing_var_list
+from mx_rec.util.variable import check_and_get_config_via_var, check_param_type, check_param_range
 
 
 def create_hash_optimizer(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8, name="LazyAdam"):
@@ -66,8 +66,8 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
 
         momentum = creat_one_single_slot(var, self._name + "/" + "momentum")
         velocity = creat_one_single_slot(var, self._name + "/" + "velocity")
-        remove_saving_var(momentum)
-        remove_saving_var(velocity)
+        insert_removing_var_list(momentum.name)
+        insert_removing_var_list(velocity.name)
         named_slot_key = (var.op.graph, var.op.name)
         table_instance = get_table_instance(var)
         if self._name in table_instance.optimizer:
@@ -186,8 +186,8 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
             momentum = self._zeros_slot(each_var, "m", m_state_name)
             velocity = self._zeros_slot(each_var, "v", v_state_name)
             # make sure sparse optimizer statements will not be saved and restored within tf checkpoint.
-            remove_saving_var(momentum)
-            remove_saving_var(velocity)
+            insert_removing_var_list(momentum.name)
+            insert_removing_var_list(velocity.name)
 
             if self._name not in table_instance.optimizer:
                 table_instance.set_optimizer(self._name, {"momentum": momentum, "velocity": velocity})

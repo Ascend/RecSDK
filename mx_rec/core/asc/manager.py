@@ -76,7 +76,7 @@ def generate_table_info_list():
             logging.debug(f"table_instance, table_name: {table_instance.table_name}, channel_name_list: "
                           f"{table_instance.channel_name_list}, send_count_map: {table_instance.send_count_map}")
             table_info = EmbInfo(table_instance.table_name, table_instance.send_count, table_instance.scalar_emb_size,
-                                 table_instance.ext_emb_size, table_instance.modify_graph,
+                                 table_instance.ext_emb_size, table_instance.modify_graph, table_instance.is_save,
                                  table_instance.channel_name_list,
                                  [table_instance.slice_device_vocabulary_size,
                                   table_instance.slice_host_vocabulary_size],

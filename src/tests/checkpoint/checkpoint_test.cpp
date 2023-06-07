@@ -74,6 +74,7 @@ protected:
             testEmbInfo.extEmbeddingSize = embeddingSize;
             testEmbInfo.devVocabSize = devVocabSize;
             testEmbInfo.hostVocabSize = hostVocabSize;
+            testEmbInfo.isSave = true;
             ++idx;
         }
     }

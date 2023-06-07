@@ -149,12 +149,25 @@ int Checkpoint::GetEmbeddingSize(const string& embName) const
     return 0;
 }
 
+bool Checkpoint::CheckEmbNames(const string& embName)
+{
+    for (const auto &embInfo: mgmtEmbInfo) {
+        if (embInfo.name == embName && embInfo.isSave == true)  {
+            return true;
+        }
+    }
+    return false;
+}
 
 void Checkpoint::SaveDataset(const vector<string>& embNames,
                              const vector<CkptDataType>& saveDataTypes,
                              const unique_ptr<CkptDataHandler>& dataHandler)
 {
     for (const auto& embName: embNames) {
+        if (!CheckEmbNames(embName)) {
+            continue;
+        }
+
         auto dataDir{innerDirPath + dirSeparator + embName};
         for (const auto& saveDataType: saveDataTypes) {
             auto datasetPath { dataDir + dirSeparator + dataHandler->GetDataDirName(saveDataType) };

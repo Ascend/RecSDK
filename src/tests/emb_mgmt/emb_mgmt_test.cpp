@@ -39,6 +39,7 @@ protected:
     int embeddingSize = 8;
     int extEmbeddingSize = 24;
     bool modifyGraph = false;
+    bool isSave = true;
     size_t devVocabSize = 5;
     size_t hostVocabSize = 15;
     vector<RandomInfo> randomInfos;
@@ -116,7 +117,7 @@ protected:
 TEST_F(EmbMgmtTest, Initialize)
 {
     vector<size_t> vocabsize = { devVocabSize, hostVocabSize };
-    embInfo = EmbInfo(name, sendCount, embeddingSize, extEmbeddingSize, modifyGraph, channelNames, vocabsize,
+    embInfo = EmbInfo(name, sendCount, embeddingSize, extEmbeddingSize, modifyGraph, isSave, channelNames, vocabsize,
                       initializeInfos, sendCountMap);
     embInfos.emplace_back(embInfo);
     vector<ThresholdValue> thresholdValues = {};
@@ -174,7 +175,7 @@ TEST_F(EmbMgmtTest, Initialize_HBM)
     devVocabSize = HBM_DEVICE_SIZE;
     hostVocabSize = HBM_HOST_SIZE;
     vector<size_t> vocabsize = { devVocabSize, hostVocabSize };
-    embInfo = EmbInfo(name, sendCount, embeddingSize, extEmbeddingSize, modifyGraph, channelNames, vocabsize,
+    embInfo = EmbInfo(name, sendCount, embeddingSize, extEmbeddingSize, modifyGraph, isSave, channelNames, vocabsize,
                       initializeInfos, sendCountMap);
     embInfos.emplace_back(embInfo);
     vector<ThresholdValue> thresholdValues;
@@ -193,7 +194,7 @@ TEST_F(EmbMgmtTest, Evict)
     size_t devVocabSize = DDR_DEVICE_SIZE;
     size_t hostVocabSize = DDR_HOST_SIZE;
     vector<size_t> vocabsize = { devVocabSize, hostVocabSize };
-    embInfo = EmbInfo(name, sendCount, embeddingSize, extEmbeddingSize, modifyGraph, channelNames, vocabsize,
+    embInfo = EmbInfo(name, sendCount, embeddingSize, extEmbeddingSize, modifyGraph, isSave, channelNames, vocabsize,
                       initializeInfos, sendCountMap);
     embInfos.emplace_back(embInfo);
     vector<ThresholdValue> thresholdValues;
@@ -215,7 +216,7 @@ TEST_F(EmbMgmtTest, Evict_HBM)
     devVocabSize = HBM_DEVICE_SIZE;
     hostVocabSize = HBM_HOST_SIZE;
     vector<size_t> vocabsize = { devVocabSize, hostVocabSize };
-    embInfo = EmbInfo(name, sendCount, embeddingSize, extEmbeddingSize, modifyGraph, channelNames, vocabsize,
+    embInfo = EmbInfo(name, sendCount, embeddingSize, extEmbeddingSize, modifyGraph, isSave, channelNames, vocabsize,
                       initializeInfos, sendCountMap);
     embInfos.emplace_back(embInfo);
     vector<ThresholdValue> thresholdValues;
