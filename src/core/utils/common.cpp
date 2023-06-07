@@ -19,6 +19,8 @@ using std::chrono::system_clock;
 
 namespace MxRec {
     int PerfConfig::keyProcessThreadNum = DEFAULT_KEY_PROCESS_THREAD;
+    int PerfConfig::maxUniqueThreadNum = DEFAULT_MAX_UNIQUE_THREAD_NUM;
+
 
     RankInfo::RankInfo(int rankId, int deviceId, int localRankSize, int option, int nBatch,
         const vector<int>& maxStep) : rankId(rankId), deviceId(deviceId), localRankSize(localRankSize), option(option),

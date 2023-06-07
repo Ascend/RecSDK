@@ -35,10 +35,6 @@
 namespace MxRec {
     using namespace std;
 
-    constexpr int UNIQUE_BUCKET = 6;
-    constexpr int MIN_UNIQUE_THREAD_NUM = 1;
-    constexpr int MAX_UNIQUE_THREAD_NUM = 8;
-
     using a2a_info_t = vector<int>;
     using sharded_dedup = ShardedDedup<GroupMethod, UNIQUE_BUCKET>;
 

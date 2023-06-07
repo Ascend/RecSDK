@@ -476,7 +476,7 @@ void KeyProcess::ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &ba
                              splitSize.data(), keySendInfo.keySend.data(), idCount.data(), keySendInfo.keyCount.data()};
     UniqueFlag uniqueFlag = {batch->isInt64, rankInfo.useStatic, rankInfo.useHot};
     UniqueForHot uniqueForHot = {hotOffset, uniqueInfoOut.hotPos.data(), hotMap, keyCountMap};
-    UniqueThreadNum uniqueThreadNum = {MIN_UNIQUE_THREAD_NUM, MAX_UNIQUE_THREAD_NUM};
+    UniqueThreadNum uniqueThreadNum = {MIN_UNIQUE_THREAD_NUM, PerfConfig::maxUniqueThreadNum};
 
     unique->Compute<int, SimpleThreadPool>(&pool_,  uniqueData, uniqueFlag, uniqueForHot, uniqueThreadNum);
     EASY_END_BLOCK

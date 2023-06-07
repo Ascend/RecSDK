@@ -59,10 +59,16 @@ namespace MxRec {
     constexpr int MAX_CHANNEL_NUM = 2;
     constexpr int MAX_KEY_PROCESS_THREAD = 10;
     constexpr int MAX_QUEUE_NUM = MAX_CHANNEL_NUM * MAX_KEY_PROCESS_THREAD;
-    
     constexpr int DEFAULT_KEY_PROCESS_THREAD = 6;
+
+    // unique related config
+    constexpr int UNIQUE_BUCKET = 6;
+    constexpr int MIN_UNIQUE_THREAD_NUM = 1;
+    constexpr int DEFAULT_MAX_UNIQUE_THREAD_NUM = 8;
+
     struct PerfConfig {
         static int keyProcessThreadNum;
+        static int maxUniqueThreadNum;
     };
 
     constexpr int KEY_PROCESS_TIMEOUT = 120;
