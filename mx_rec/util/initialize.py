@@ -45,6 +45,7 @@ class ConfigInitializer:
         self._optimizer_instance = None
         self._is_graph_modify_hook_running = False
         self._modify_graph = False
+        self._is_terminated = False
 
         if self._use_mpi:
             logging.debug(f"Using mpi to launch task.")
@@ -166,12 +167,18 @@ class ConfigInitializer:
         ConfigInitializer._single_instance = ConfigInitializer(use_mpi, **kwargs)
 
     def terminate(self):
+        if self._is_terminated:
+            logging.warning("The initializer has already been released once, please do not release it again.")
+            return
+
         if self._asc_manager is not None:
             self.del_asc_manager()
 
         if self._mpi:
             self._mpi.Finalize()
             logging.debug("MPI has been destroyed.")
+
+        self._is_terminated = True
 
     def insert_feature_spec(self, feature, is_training):
         self._feature_spec_dict[feature.name] = feature
