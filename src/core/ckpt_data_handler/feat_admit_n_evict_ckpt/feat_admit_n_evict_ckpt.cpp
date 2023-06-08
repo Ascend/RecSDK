@@ -136,7 +136,7 @@ void FeatAdmitNEvictCkpt::SetHistRec(string embName)
         const auto& lastTime = transArr[i + lastTimeIdxOffset];
 
         histRecs[featureId].featureId = featureId;
-        histRecs[featureId].count = count;
+        histRecs[featureId].count = static_cast<uint32_t>(count);
         histRecs[featureId].lastTime = lastTime;
         histRecs[featureId].tensorName = embName;
     }

@@ -32,7 +32,7 @@ void GetNormalInitializerInfo(pybind11::module_& m);
 
 int GetUBHotSize(int devID)
 {
-    return static_cast<int>(MxRec::GetUBSize(devID)/ sizeof(float) * HOT_EMB_CACHE_PCT) ;
+    return static_cast<int>(static_cast<float>(MxRec::GetUBSize(devID)) / sizeof(float) * HOT_EMB_CACHE_PCT) ;
 }
 
 uint32_t GetLogicID(uint32_t phyid)

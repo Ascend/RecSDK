@@ -81,7 +81,7 @@ namespace MxRec {
     constexpr int MGMT_THREAD_BIND = 48;
     constexpr int UNIQUE_MAX_BUCKET_WIDTH = 6;
     constexpr int HOT_EMB_UPDATE_STEP_DEFAULT = 1000;
-    constexpr float HOT_EMB_CACHE_PCT = 1. / 3;  // hot emb cache percent
+    constexpr float HOT_EMB_CACHE_PCT = static_cast<float>(1. / 3);  // hot emb cache percent
 
     using emb_key_t = int64_t;
     using emb_name_t = std::string;

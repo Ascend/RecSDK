@@ -53,7 +53,7 @@ void EmbTable::Init(const EmbInfo& embInfo, const RankInfo& rInfo, int seed)
             SplitMemoryBlock(newBlock);
         }
     }
-    totalCapacity = memoryList.size();
+    totalCapacity = static_cast<int>(memoryList.size());
     spdlog::info("aclrtMalloc success, emb name:{}, total capacity:{}", embInfo.name, totalCapacity);
 #endif
 }
@@ -208,12 +208,12 @@ list<float*> EmbTable::LoadEmb(const vector<vector<float>> &savedEmb)
 {
 #ifndef GTEST
     list<float *> addressList;
-    int embCapacity = savedEmb.size();
+    int embCapacity = static_cast<int>(savedEmb.size());
     if (savedEmb.size() == 0 || savedEmb[0].size() == 0) {
         spdlog::error("Load invalid savedEmb");
         return addressList;
     }
-    embSize = savedEmb[0].size();
+    embSize = static_cast<int>(savedEmb[0].size());
     void *newBlock = nullptr;
     aclError ret = aclrtMalloc(&newBlock, embCapacity * embSize * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST);
     if (ret != ACL_SUCCESS) {

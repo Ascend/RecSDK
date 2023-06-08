@@ -24,8 +24,8 @@ bool HostEmb::Initialize(const vector<EmbInfo>& embInfos, int seed)
     for (const auto& embInfo: embInfos) {
         HostEmbTable hostEmb;
         hostEmb.hostEmbInfo = embInfo;
-        EmbDataGenerator(embInfo.initializeInfos, seed, embInfo.hostVocabSize, embInfo.extEmbeddingSize,
-            hostEmb.embData);
+        EmbDataGenerator(embInfo.initializeInfos, seed, static_cast<int>(embInfo.hostVocabSize),
+                         embInfo.extEmbeddingSize, hostEmb.embData);
         hostEmbs[embInfo.name] = move(hostEmb);
         spdlog::info(HOSTEMB + "HostEmb Initialize End");
     }
@@ -231,7 +231,7 @@ void HostEmb::EmbPartGenerator(const vector<InitializeInfo> &initializeInfos, ve
         }
 
         for (size_t i = 0; i < offset.size(); i++) {
-            initializer->GenerateData(embData.at(offset.at(i)).data(), embData[0].size());
+            initializer->GenerateData(embData.at(offset.at(i)).data(), static_cast<int>(embData[0].size()));
         }
     }
 }

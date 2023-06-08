@@ -108,7 +108,7 @@ void EmbHashMap::FindAndUpdateOffset(const string& embName, const vector<emb_key
     EASY_END_BLOCK
     EASY_BLOCK("FindPos")
     size_t swapSize = KeysAndOffset.size();
-    FindPos(embHashMap, swapSize, keepBatchId);
+    FindPos(embHashMap, static_cast<int>(swapSize), keepBatchId);
     EASY_END_BLOCK
     EASY_BLOCK("ChangeInfo")
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) \
@@ -137,25 +137,25 @@ void EmbHashMap::ChangeSwapInfo(EmbHashMapInfo& embHashMap, emb_key_t key, size_
 
 int32_t EmbHashMap::FindNewOffset(const emb_key_t& key, EmbHashMapInfo& embHashMap)
 {
-    int offset;
+    int32_t offset;
     const auto& iter = embHashMap.hostHashMap.find(key);
     if (iter != embHashMap.hostHashMap.end()) { // 由于未全局去重，需要再次查询确保是新key
-        offset = iter->second;
+        offset = static_cast<int32_t>(iter->second);
     } else if (embHashMap.evictDevPos.size() != 0) { // 优先复用hbm表
-        offset = embHashMap.evictDevPos.back();
+        offset = static_cast<int32_t>(embHashMap.evictDevPos.back());
         embHashMap.hostHashMap[key] = offset;
         spdlog::trace("ddr mode, dev evictPos is not null, key [{}] reuse offset [{}], evictSize [{}]",
                       key, offset, embHashMap.evictDevPos.size());
         embHashMap.evictDevPos.pop_back();
     } else if (embHashMap.evictPos.size() != 0) { // hbm不足，再复用ddr表
-        offset = embHashMap.evictPos.back();
+        offset = static_cast<int32_t>(embHashMap.evictPos.back());
         embHashMap.hostHashMap[key] = offset;
         spdlog::trace("ddr mode, host evictPos is not null, key [{}] reuse offset [{}], evictSize [{}]",
                       key, offset, embHashMap.evictPos.size());
         embHashMap.evictPos.pop_back();
     } else {
         embHashMap.hostHashMap[key] = embHashMap.maxOffset;
-        offset = embHashMap.maxOffset;
+        offset = static_cast<int32_t>(embHashMap.maxOffset);
         embHashMap.maxOffset++;
         if (embHashMap.maxOffset == embHashMap.devVocabSize) {
             spdlog::info("start using host vocab!");
@@ -185,7 +185,7 @@ void EmbHashMap::FindAndUpdateBatchId(const vector<emb_key_t>& keys, size_t curr
             embHashMap.lookUpVec[i] = offset; // convert to offset(current)
             spdlog::trace("key will be used, {} , offset , {}", key, offset);
             if (offset < static_cast<int>(embHashMap.devVocabSize)) {
-                embHashMap.devOffset2Batch[offset] = currentBatchId;
+                embHashMap.devOffset2Batch[offset] = static_cast<int>(currentBatchId);
                 embHashMap.devOffset2Key[offset] = key;
             }
         }

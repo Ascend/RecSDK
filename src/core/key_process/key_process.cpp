@@ -149,8 +149,8 @@ void KeyProcess::InitHotEmbTotCount(const EmbInfo& info, const RankInfo& rInfo)
     if (rankInfo.useDynamicExpansion) {
         embeddingSize = info.embeddingSize;
     }
-    hotEmbTotCount[info.name] = static_cast<int>(GetUBSize(rInfo.deviceId) / sizeof(float) * HOT_EMB_CACHE_PCT /
-                                                 embeddingSize);
+    hotEmbTotCount[info.name] = static_cast<int>(static_cast<float>(GetUBSize(rInfo.deviceId) / sizeof(float)) *
+                                                 HOT_EMB_CACHE_PCT / static_cast<float>(embeddingSize));
 }
 
 auto KeyProcess::GetSendCount(const string& name, const string& channelName, bool modifyGraph)
@@ -245,7 +245,7 @@ void KeyProcess::KeyProcessTask(const int channel, const int id) // thread id [0
             auto sendCountSize = GetSendCount(batch->name, batch->channelName, batch->modifyGraph);
             shared_ptr<sharded_dedup> uniquePtr;
             if (uniquePtrMap.find(sendCountSize) == uniquePtrMap.end()) {
-                uniquePtr.reset(new sharded_dedup(groupMethod, batch->batchSize, sendCountSize));
+                uniquePtr.reset(new sharded_dedup(groupMethod, static_cast<int>(batch->batchSize), sendCountSize));
                 uniquePtrMap.insert(std::make_pair(sendCountSize, uniquePtr));
             }
             unique = uniquePtrMap[sendCountSize];
@@ -287,7 +287,7 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t> &batch, shared_ptr
     UniqueInfo uniqueInfo;
     ProcessBatchWithUniqueCompute(batch, unique, id, uniqueInfo);
     TIME_PRINT("no copy ProcessBatchWithUniqueCompute TimeCost(ms):{}", tc.ElapsedMS());
-
+    sw.reset();
     // 特征准入&淘汰
     if (isWithFAAE &&
         (m_featureAdmitAndEvict.FeatureAdmit(channel, batch, uniqueInfo.all2AllInfo.keyRecv,
@@ -712,7 +712,8 @@ tuple<vector<keys_t>, vector<int32_t>, vector<int>>
         auto hot = hotMap.find(key);
         if (hot != hotMap.end()) { // is hot key
             if (hot->second == -1) { // is new hot key in this batch
-                hotPos[hotCount] = splitKeys[devId].size() - 1;  // pos in lookup vec (need add ss) for hot-gather
+                // pos in lookup vec (need add ss) for hot-gather
+                hotPos[hotCount] = static_cast<int>(splitKeys[devId].size()) - 1;
                 hotPosDev[hotCount] = devId; // which dev, for get ss
                 hot->second = hotCount;
                 restore[i] = hotCount++; // get pos of hot emb
@@ -720,7 +721,8 @@ tuple<vector<keys_t>, vector<int32_t>, vector<int>>
                 restore[i] = hot->second;
             }
         } else { // is not hot key
-            restore[i] = splitKeys[devId].size() + hotOffset - 1;    // restore记录去重后key在桶内偏移量（用于计算恢复向量）
+            // restore记录去重后key在桶内偏移量（用于计算恢复向量）
+            restore[i] = static_cast<int32_t>(splitKeys[devId].size() + (hotOffset - 1));
         }
         uKey[key] = restore[i];
     }
@@ -741,7 +743,7 @@ void KeyProcess::AddCountStartToHotPos(vector<keys_t>& splitKeys, vector<int>& h
         }
     } else {
         for (auto& splitKey: splitKeys) {
-            splitKeysSize.push_back(splitKey.size());
+            splitKeysSize.push_back(static_cast<int>(splitKey.size()));
         }
     }
     auto cs = Count2Start(splitKeysSize);
