@@ -5,6 +5,7 @@
  * Create: 2022-11-17
  */
 
+#include <spdlog/spdlog.h>
 #include "nddr_offset_ckpt.h"
 
 
@@ -47,11 +48,12 @@ vector<string> NddrOffsetCkpt::GetEmbNames()
 CkptTransData NddrOffsetCkpt::GetDataset(CkptDataType dataType, string embName)
 {
     CleanTransfer();
-    transferData.int32Arr.push_back(saveMaxOffset.at(embName));
+    transferData.int32Arr.push_back(static_cast<int>(saveMaxOffset.at(embName)));
     transferData.datasetSize = fourBytes;
     transferData.attribute.push_back(1);
     transferData.attribute.push_back(fourBytes);
     transferData.attributeSize = transferData.attribute.size() * eightBytes;
+    spdlog::info("CkptDataType::EMB_INFO:{}, dataType:{} is", CkptDataType::EMB_INFO, dataType);
     return move(transferData);
 }
 
@@ -60,4 +62,5 @@ void NddrOffsetCkpt::SetDataset(CkptDataType dataType, string embName, CkptTrans
     CleanTransfer();
     transferData = move(loadedData);
     loadMaxOffset[embName] = transferData.int32Arr.front();
+    spdlog::info("CkptDataType::EMB_INFO:{}, dataType:{} is", CkptDataType::EMB_INFO, dataType);
 }

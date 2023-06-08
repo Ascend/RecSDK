@@ -287,7 +287,7 @@ void Checkpoint::WriteStream(CkptTransData& transData, const string& dataDir, si
 
     int loops = 1;
     if (dataType == CkptDataType::EMB_DATA) {
-        loops = transData.floatArr.size();
+        loops = static_cast<int>(transData.floatArr.size());
     }
     for (int i = 0; i < loops; i++) {
         size_t idx = 0;

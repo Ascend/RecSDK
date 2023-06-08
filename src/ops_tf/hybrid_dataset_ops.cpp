@@ -66,7 +66,7 @@ public:
 
     void Compute(OpKernelContextPtr context) override
     {
-        spdlog::info("clear channel {}", channelId);
+        spdlog::info("clear channel {}, context {}", channelId, context->step_id());
         batchIdsInfo.at(channelId) = 0;
     }
 
@@ -780,7 +780,7 @@ public:
 
         const Tensor& inputTensor = context->input(TENSOR_INDEX_0);
         auto input = inputTensor.flat<int64>();
-        int32_t batchId = input(0);
+        int32_t batchId = static_cast<int32_t>(input(0));
 
         spdlog::info("ReadRawDummy cost:{}, elapsed from last:{} , batchId = {}",
                      duration_cast<milliseconds>((sw).elapsed()),
@@ -802,6 +802,7 @@ public:
 
     void Compute(OpKernelContextPtr context) override
     {
+        spdlog::info("context {}", context->step_id());
         std::cout << " Cust opp not installed!!" << std::endl;
     }
 

@@ -84,9 +84,9 @@ public:
     {
         return groupCount_;
     }
-    inline int GroupId(uint64_t val)
+    inline uint64_t GroupId(uint64_t val)
     {
-        return val & (groupCount_ - 1);
+        return val & static_cast<uint64_t>(groupCount_ - 1);
     }
     void SetGroupCount(int count)
     {
@@ -263,7 +263,7 @@ public:
         std::lock_guard<SpinLock> lg(overflowMutex_);
         if (newBucketCountPowerOf2 > 0 && newBucketCountPowerOf2 != (uint64_t)bucketCount_) {
             free(table_);
-            bucketCount_ = newBucketCountPowerOf2;
+            bucketCount_ = static_cast<int>(newBucketCountPowerOf2);
             bucketCountMask_ = bucketCount_ - 1;
             table_ = reinterpret_cast<Meta<N> *>(aligned_alloc(SysytemConst::LEVEL1_CACHE,
                                                                sizeof(Meta<N>) * bucketCount_));
@@ -356,7 +356,7 @@ public:
             }
             bucket->replace_base = replace_offset;
             for (int j = 0; j < bucket->count; ++j) {
-                idCount[total] = bucket->idCount[j];
+                idCount[total] = static_cast<int32_t>(bucket->idCount[j]);
                 output[total++] = bucket->data[j];
             }
             replace_offset += bucket->count;
@@ -406,10 +406,10 @@ public:
             }
             bucket->replace_base = replace_offset;
             for (int j = 0; j < bucket->count; ++j) {
-                idCount[total] = bucket->idCount[j];
+                idCount[total] = static_cast<int32_t>(bucket->idCount[j]);
                 output[total++] = bucket->data[j];
-                handleHotKey(bucket->data[j], hotMap, hotPosMap, hotCount);
-                keyCountMap[bucket->data[j]] = bucket->idCount[j];
+                handleHotKey(static_cast<int>(bucket->data[j]), hotMap, hotPosMap, hotCount);
+                keyCountMap[bucket->data[j]] = static_cast<int>(bucket->idCount[j]);
             }
             replace_offset += bucket->count;
         }
@@ -419,7 +419,7 @@ public:
             idCount[total] = idCountOverflow_[it->first];
             keyCountMap[it->first] = idCountOverflow_[it->first];
             output[total++] = it->first;
-            handleHotKey(it->first, hotMap, hotPosMap, hotCount);
+            handleHotKey(static_cast<int>(it->first), hotMap, hotPosMap, hotCount);
             it->second = replace_offset++;
             ++it;
             ++totalOverflow;
@@ -428,7 +428,7 @@ public:
         // set total overflow count
         stats_.totalUniques = total - priorTotal;
         stats_.totalOverflowUniques = totalOverflow;
-        return total - priorTotal;
+        return static_cast<uint32_t>(total - priorTotal);
     }
 
     std::vector<uint32_t> Replacement(const std::vector<uint64_t> &input, std::vector<uint64_t> *unique = nullptr,
@@ -498,8 +498,9 @@ public:
     {
         return 1;
     }
-    inline int GroupId(uint64_t val)
+    inline int32_t GroupId(uint64_t val)
     {
+        spdlog::info("val:{} is", val);
         return 0;
     }
 };
@@ -530,9 +531,9 @@ public:
 
     ~ShardedDedup() {}
 
-    const int NumOfGroupsInEachShard()
+    int NumOfGroupsInEachShard() const
     {
-        return groupMethod_.GroupCount();
+        return static_cast<int>(groupMethod_.GroupCount());
     }
 
     /* *
@@ -591,7 +592,7 @@ public:
 
         size_t inputSize = size;
 
-        uint32_t threadNum = (inputSize + kMinimalWorkloadPerWorker - 1) / kMinimalWorkloadPerWorker;
+        uint32_t threadNum = static_cast<uint32_t>(inputSize + kMinimalWorkloadPerWorker - 1) / kMinimalWorkloadPerWorker;
         threadNum = std::min(maxThreadCount, std::max(threadNum, minThreadCount));
 
         size_t partSize = (inputSize + threadNum - 1) / threadNum;
@@ -617,14 +618,14 @@ public:
 
         std::vector<uint32_t> baseVector;
         // Collect Unique and base vectors
-        uint64_t base = 0;
-        uint64_t total = 0;
+        uint32_t base = 0;
+        uint32_t total = 0;
 
         int hotCount = 0;
         map<int64_t, int> hotPosMap;
 
         for (int j = 0; j < groupMethod_.GroupCount(); ++j) {
-            uint64_t inGroupTotal = 0;
+            uint32_t inGroupTotal = 0;
             if (useHot) {
                 inGroupTotal = dedupShards_[j]->UniqueRawForHot(uniqueVector, total, idCount,
                                                                 hotMap, hotPosMap, hotCount,
@@ -684,7 +685,7 @@ public:
                                         hotPosMap]() -> TaskReturnType {
                     for (int32_t *ptr = partBeginPtr; ptr < partEndPtr; ++ptr) {
                         auto val = isInt64 ? ((int64_t *)input)[ptr - beginPtr] : ((int32_t *)input)[ptr - beginPtr];
-                        auto group = groupMethod_.GroupId(val);
+                        int32_t group = static_cast<int32_t>(groupMethod_.GroupId(val));
                         uint32_t fillOffset = GetFillOffset(useStatic, baseVector, totalUniqueSize, val, group);
                         ComputeRestore(useHot, offset, hotMap, hotPos, hotPosMap, ptr, val, fillOffset);
                     }
@@ -726,10 +727,9 @@ public:
                            int64_t val, int32_t group)
                            {
         if (!useStatic) {
-            return dedupShards_[group]->GetReplaceOffsetUnsafe(val) + baseVector[0];
+            return static_cast<uint32_t>(dedupShards_[group]->GetReplaceOffsetUnsafe(val) + baseVector[0]);
         } else {
-            return dedupShards_[group]->GetReplaceOffsetUnsafe(val) + baseVector[0] + send_cnt_ * group -
-                   totalUniqueSize[group];
+            return static_cast<uint32_t>(dedupShards_[group]->GetReplaceOffsetUnsafe(val) + baseVector[0] + send_cnt_ * group - totalUniqueSize[group]);
         }
     }
 
@@ -742,7 +742,7 @@ public:
 
         for (int i = 0; i < groupCount; i++) {
             if (i > 0) {
-                index += uniqueSizeVector[i - 1];
+                index += static_cast<int>(uniqueSizeVector[i - 1]);
             }
 
             if (useStatic) {
@@ -768,7 +768,7 @@ public:
                 }
             }
 
-            int fillLen = send_cnt_ - uniqueSizeVector[i];
+            long int fillLen = send_cnt_ - uniqueSizeVector[i];
             if (useStatic) {
                 for (int j = 0; j < fillLen; j++) {
                     uniqueIds[start + uniqueSizeVector[i] + j] = -1;
@@ -776,7 +776,7 @@ public:
                 }
             }
 
-            uniqueSize[i] = uniqueSizeVector[i];
+            uniqueSize[i] = static_cast<int32_t>(uniqueSizeVector[i]);
         }
     }
 

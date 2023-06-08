@@ -16,8 +16,8 @@ TruncatedNormalInitializer::TruncatedNormalInitializer(int start, int len, float
 {
     generator = std::default_random_engine(seed);
     distribution = std::normal_distribution<float>(mean, stddev);
-    minBound = mean - boundNum * stddev;
-    maxBound = mean + boundNum * stddev;
+    minBound = mean - static_cast<float>(boundNum) * stddev;
+    maxBound = mean + static_cast<float>(boundNum) * stddev;
 }
 
 
