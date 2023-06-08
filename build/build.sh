@@ -16,15 +16,17 @@ then
   pip3 install virtualenv --force-reinstall
   virtualenv -p "$(which python3.7)" tf2_env
   source tf2_env/bin/activate
-  [ ! -f tensorflow-2.6.5-cp37-cp37m-manylinux2014_aarch64.whl ] && wget  --no-check-certificate https://cmc-szver-artifactory.cmc.tools.huawei.com/artifactory/cmc-software-release/MindX/mindx_img_tools/1.0.0/tensorflow-2.6.5-cp37-cp37m-manylinux2014_aarch64.whl
-  pip3  install tensorflow-2.6.5-cp37-cp37m-manylinux2014_aarch64.whl --no-deps
+  tf265="tensorflow-2.6.5-cp37-cp37m-manylinux2014_aarch64.whl"
+  [ ! -f "${tf265}" ] && artget pull "mindx_img_tools 1.0.0" -ru software -rp "${tf265}" -ap ./
+  pip3  install "${tf265}" --no-deps
   pip3 install setuptools==49.2.1
   tf2_path=$(dirname "$(dirname "$(which python3)")")/lib/python3.7/site-packages/tensorflow
   deactivate tf2_env
   virtualenv -p "$(which python3.7)" tf1_env
   source tf1_env/bin/activate
-  [ ! -f tensorflow-1.15.0-cp37-cp37m-manylinux2014_aarch64.whl ] && wget  --no-check-certificate  https://cmc-szver-artifactory.cmc.tools.huawei.com/artifactory/cmc-software-release/MindX/mindx_img_tools/1.0.0/tensorflow-1.15.0-cp37-cp37m-manylinux2014_aarch64.whl
-  pip3  install tensorflow-1.15.0-cp37-cp37m-manylinux2014_aarch64.whl --no-deps
+  tf115="tensorflow-1.15.0-cp37-cp37m-manylinux2014_aarch64.whl"
+  [ ! -f "${tf115}" ] && artget pull "mindx_img_tools 1.0.0" -ru software -rp "${tf115}" -ap ./
+  pip3  install "${tf115}" --no-deps
   pip3 install setuptools==49.2.1
   tf1_path=$(dirname "$(dirname "$(which python3)")")/lib/python3.7/site-packages/tensorflow_core
   deactivate tf1_env
@@ -35,15 +37,17 @@ then
   pip3 install virtualenv --force-reinstall
   virtualenv -p "$(which python3.7)" tf2_env
   source tf2_env/bin/activate
-  [ ! -f tensorflow-2.6.5-cp37-cp37m-manylinux2010_x86_64.whl ] && wget  --no-check-certificate https://cmc-hgh-artifactory.cmc.tools.huawei.com/artifactory/opensource_general/Tensorflow/2.6.5/package/tensorflow-2.6.5-cp37-cp37m-manylinux2010_x86_64.whl
-  pip3  install tensorflow-2.6.5-cp37-cp37m-manylinux2010_x86_64.whl --no-deps
+  tf265="tensorflow_cpu-2.6.5-cp37-cp37m-manylinux2010_x86_64.whl"
+  [ ! -f "${tf265}" ] && artget pull "mindx_img_tools 1.0.0" -ru software -rp "${tf265}" -ap ./
+  pip3  install "${tf265}" --no-deps
   pip3 install setuptools==49.2.1
   tf2_path=$(dirname "$(dirname "$(which python3)")")/lib/python3.7/site-packages/tensorflow
   deactivate tf2_env
   virtualenv -p "$(which python3.7)" tf1_env
   source tf1_env/bin/activate
-  [ ! -f tensorflow-1.15.0-cp37-cp37m-manylinux2010_x86_64.whl ] && wget  --no-check-certificate  https://cmc-szver-artifactory.cmc.tools.huawei.com/artifactory/cmc-software-release/MindX/mindx_img_tools/1.0.0/tensorflow-1.15.0-cp37-cp37m-manylinux2010_x86_64.whl
-  pip3  install tensorflow-1.15.0-cp37-cp37m-manylinux2010_x86_64.whl --no-deps
+  tf115="tensorflow-1.15.0-cp37-cp37m-manylinux2010_x86_64.whl"
+  [ ! -f "${tf115}" ] && artget pull "mindx_img_tools 1.0.0" -ru software -rp "${tf115}" -ap ./
+  pip3  install "${tf115}" --no-deps
   pip3 install setuptools==49.2.1
   tf1_path=$(dirname "$(dirname "$(which python3)")")/lib/python3.7/site-packages/tensorflow_core
   deactivate tf1_env
