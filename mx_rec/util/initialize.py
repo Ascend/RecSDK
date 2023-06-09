@@ -10,10 +10,10 @@ from collections import defaultdict
 import mxrec_pybind
 import psutil
 
-from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION, VALID_DEVICE_ID_LIST
-from mx_rec.constants.constants import LOCAL_RANK_SIZE, MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE
+from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION, VALID_DEVICE_ID_LIST, LOCAL_RANK_SIZE, \
+    MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE, HASHTABLE_COLLECTION_NAME_LENGTH
 from mx_rec.util.ops import import_host_pipeline_ops
-from mx_rec.validator.validator import RankInfoValidator
+from mx_rec.validator.validator import RankInfoValidator, StringValidator
 
 
 class ConfigInitializer:
@@ -400,8 +400,9 @@ class ConfigInitializer:
 
     @ascend_global_hashtable_collection.setter
     def ascend_global_hashtable_collection(self, name):
-        if not isinstance(name, str):
-            raise TypeError(f"collection name '{name}' must be a string.")
+        string_validator = StringValidator(name, max_len=HASHTABLE_COLLECTION_NAME_LENGTH, min_len=1)
+        if not string_validator.check_string_length().check_whitelist().is_valid():
+            raise ValueError(string_validator.msg)
         self._ascend_global_hashtable_collection = name
 
     def get_initializer(self, is_training):

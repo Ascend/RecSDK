@@ -4,6 +4,7 @@
 
 
 import os
+import re
 from typing import Callable, Any
 from typing import List, Optional, Tuple
 
@@ -78,6 +79,7 @@ class StringValidator(Validator):
         super().__init__(value)
         self.max_len = max_len
         self.min_len = min_len
+        self.whitelist = "^[0-9A-Za-z_]+$"
         self.register_checker(lambda x: isinstance(x, str), "type is not str")
 
     def check_string_length(self):
@@ -89,6 +91,13 @@ class StringValidator(Validator):
 
     def check_not_contain_black_element(self, element):
         self.register_checker(lambda x: x is not None and element is not None and x.find(element) == -1)
+        return self
+
+    def check_whitelist(self):
+        """Perform whitelist verification on the input string"""
+        self.register_checker(lambda x: x is not None and re.match(self.whitelist, x) is not None,
+                              "The string is invalid, please check the input string. "
+                              "Note: It should be a string consisting of numbers, letters, and underscores.")
         return self
 
     def can_be_transformed2int(self, min_value: int = None, max_value: int = None):
@@ -275,6 +284,7 @@ class RankInfoValidator:
     """
     Check replace rank table system environment configuration.
     """
+
     @staticmethod
     def check_visible_devices():
         visible_devices = os.getenv("ASCEND_VISIBLE_DEVICES")
