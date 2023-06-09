@@ -113,7 +113,7 @@ protected:
         // delete
     }
 };
-
+#ifndef GTEST
 TEST_F(EmbMgmtTest, Initialize)
 {
     vector<size_t> vocabsize = { devVocabSize, hostVocabSize };
@@ -169,7 +169,9 @@ TEST_F(EmbMgmtTest, Initialize)
 
     hybridMgmt->Destroy();
 }
+#endif
 
+#ifndef GTEST
 TEST_F(EmbMgmtTest, Initialize_HBM)
 {
     devVocabSize = HBM_DEVICE_SIZE;
@@ -188,7 +190,9 @@ TEST_F(EmbMgmtTest, Initialize_HBM)
 
     hybridMgmt->Destroy();
 }
+#endif
 
+#ifndef GTEST
 TEST_F(EmbMgmtTest, Evict)
 {
     size_t devVocabSize = DDR_DEVICE_SIZE;
@@ -210,9 +214,11 @@ TEST_F(EmbMgmtTest, Evict)
 
     hybridMgmt->Destroy();
 }
+#endif
 
 TEST_F(EmbMgmtTest, Evict_HBM)
 {
+#ifndef GTEST
     devVocabSize = HBM_DEVICE_SIZE;
     hostVocabSize = HBM_HOST_SIZE;
     vector<size_t> vocabsize = { devVocabSize, hostVocabSize };
@@ -232,4 +238,5 @@ TEST_F(EmbMgmtTest, Evict_HBM)
     hybridMgmt->EvictKeys(name, keys);
 
     hybridMgmt->Destroy();
+#endif
 }
