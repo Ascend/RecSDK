@@ -59,19 +59,26 @@ def build_graph(hash_table_list, is_train, feature_spec_list=None, config_dict=N
                                               use_timestamp=USE_TIMESTAMP, dump_graph=is_train,
                                               batch_number=batch_number)
     if MODIFY_GRAPH_FLAG:
-        input_list = [
-            [batch["user_ids"], batch["item_ids"], batch["user_ids"], batch["item_ids"]],
-            [hash_table_list[0], hash_table_list[0], hash_table_list[0], hash_table_list[1]],
-            [cfg.user_send_cnt, cfg.item_send_cnt, cfg.user_send_cnt, cfg.item_send_cnt],
-        ]
+        input_list = [[batch["user_ids"], batch["item_ids"]],
+                      [hash_table_list[0], hash_table_list[1]],
+                      [cfg.user_send_cnt, cfg.item_send_cnt]]
+        if use_multi_lookup:
+            input_list = [[batch["user_ids"], batch["item_ids"], batch["user_ids"], batch["item_ids"]],
+                          [hash_table_list[0], hash_table_list[0], hash_table_list[0], hash_table_list[1]],
+                          [cfg.user_send_cnt, cfg.item_send_cnt, cfg.user_send_cnt, cfg.item_send_cnt]]
         if USE_TIMESTAMP:
             tf.add_to_collection(ASCEND_TIMESTAMP, batch["timestamp"])
         model = model_forward(input_list, batch,
                               is_train=is_train, modify_graph=True, config_dict=config_dict)
     else:
-        hash_table_list = [hash_table_list[0], hash_table_list[0], hash_table_list[0], hash_table_list[1]]
-        send_cnt_list = [cfg.user_send_cnt, cfg.user_send_cnt, cfg.item_send_cnt, cfg.item_send_cnt]
-        model = model_forward([feature_spec_list, hash_table_list, send_cnt_list], batch,
+        input_list = [feature_spec_list,
+                      [hash_table_list[0], hash_table_list[1]],
+                      [cfg.user_send_cnt, cfg.item_send_cnt]]
+        if use_multi_lookup:
+            input_list = [feature_spec_list,
+                          [hash_table_list[0], hash_table_list[1], hash_table_list[0], hash_table_list[0]],
+                          [cfg.user_send_cnt, cfg.item_send_cnt, cfg.user_send_cnt, cfg.item_send_cnt]]
+        model = model_forward(input_list, batch,
                               is_train=is_train, modify_graph=False, config_dict=config_dict)
 
     return iterator, model
@@ -98,15 +105,16 @@ def create_feature_spec_list(use_timestamp=False):
     feature_spec_list = [FeatureSpec("user_ids", feat_count=cfg.user_feat_cnt, table_name="user_table",
                                      access_threshold=access_threshold,
                                      eviction_threshold=eviction_threshold),
-                         FeatureSpec("user_ids", feat_count=cfg.user_feat_cnt, table_name="user_table",
-                                     access_threshold=access_threshold,
-                                     eviction_threshold=eviction_threshold),
-                         FeatureSpec("item_ids", feat_count=cfg.item_feat_cnt, table_name="user_table",
-                                     access_threshold=access_threshold,
-                                     eviction_threshold=eviction_threshold),
                          FeatureSpec("item_ids", feat_count=cfg.item_feat_cnt, table_name="item_table",
                                      access_threshold=access_threshold,
                                      eviction_threshold=eviction_threshold)]
+    if use_multi_lookup:
+        feature_spec_list.extend([FeatureSpec("user_ids", feat_count=cfg.user_feat_cnt, table_name="user_table",
+                                              access_threshold=access_threshold,
+                                              eviction_threshold=eviction_threshold),
+                                  FeatureSpec("item_ids", feat_count=cfg.item_feat_cnt, table_name="user_table",
+                                              access_threshold=access_threshold,
+                                              eviction_threshold=eviction_threshold)])
     if use_timestamp:
         feature_spec_list.append(FeatureSpec("timestamp", is_timestamp=True))
     return feature_spec_list
@@ -120,18 +128,23 @@ if __name__ == "__main__":
     TRAIN_INTERVAL = 100
     EVAL_STEPS = 10
     SAVING_INTERVAL = 100
-    USE_TIMESTAMP = False
 
-    # add dynamic expansion support
+    # get init configuration
+    use_mpi = bool(int(os.getenv("USE_MPI", 1)))
+    use_dynamic = int(os.getenv("USE_DYNAMIC", 0))
+    use_hot = bool(int(os.getenv("USE_HOT", 0)))
     use_dynamic_expansion = bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0)))
+    use_multi_lookup = bool(int(os.getenv("USE_MULTI_LOOKUP", 1)))
+    MODIFY_GRAPH_FLAG = bool(int(os.getenv("USE_MODIFY_GRAPH", 0)))
+    USE_TIMESTAMP = bool(int(os.getenv("USE_TIMESTAMP", 0)))
 
     # nbatch function needs to be used together with the prefetch and host_vocabulary_size != 0
-    init(use_mpi=bool(int(os.getenv("USE_MPI"))),
+    init(use_mpi=use_mpi,
          train_interval=TRAIN_INTERVAL,
          eval_steps=EVAL_STEPS,
          prefetch_batch_number=5,
-         use_dynamic=int(os.getenv("USE_DYNAMIC", 0)),
-         use_hot=bool(int(os.getenv("USE_HOT", 0))),
+         use_dynamic=use_dynamic,
+         use_hot=use_hot,
          use_dynamic_expansion=use_dynamic_expansion)
     IF_LOAD = False
     rank_id = get_rank_id()
@@ -139,8 +152,6 @@ if __name__ == "__main__":
     if filelist:
         IF_LOAD = True
     set_if_load(IF_LOAD)
-
-    MODIFY_GRAPH_FLAG = False  # ASC + use_MPI + modify_graph
 
     cfg = Config()
     # access_threshold unit counts; eviction_threshold unit seconds
@@ -198,6 +209,7 @@ if __name__ == "__main__":
 
         if use_dynamic_expansion:
             from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_ID_OFFSET
+
             train_emb_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)
             train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET)
             # do sparse optimization by addr
