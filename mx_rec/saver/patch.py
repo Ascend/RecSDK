@@ -60,7 +60,8 @@ def saver_init(self, var_list=None, reshape=False, sharded=False, max_to_keep=5,
                name=None, restore_sequentially=False, saver_def=None, builder=None, defer_build=False,
                allow_empty=False, write_version=saver_pb2.SaverDef.V2, pad_step_number=False, save_relative_paths=False,
                filename=None, fid_version=0):
-    var_list = build_var_list(var_list)
+    if not defer_build:
+        var_list = build_var_list(var_list)
     self._last_checkpoints = []
     self._checkpoints_to_be_deleted = []
     self._var_list = var_list
