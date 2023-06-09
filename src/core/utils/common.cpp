@@ -9,6 +9,7 @@
 #include "common.h"
 
 #include <spdlog/spdlog.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/cfg/env.h>
 #include <mpi.h>
 
@@ -89,6 +90,8 @@ namespace MxRec {
 
     void SetLog(int rank)
     {
+        auto logger = spdlog::stderr_color_mt("console");
+        spdlog::set_default_logger(logger);
         std::string pattern = "[%H:%M:%S.%e] [" + std::to_string(rank) + "] [%^%l%$] %v";
         spdlog::default_logger()->set_pattern(pattern);
         auto env_val = spdlog::details::os::getenv("SPDLOG_LEVEL");

@@ -23,7 +23,11 @@
 #include <sstream>
 #include <fstream>
 #include <algorithm>
-
+#include <spdlog/spdlog.h>
+#include <spdlog/stopwatch.h>
+#include <spdlog/fmt/chrono.h>
+#include <spdlog/fmt/bundled/ranges.h>
+#include <spdlog/cfg/env.h>
 #include "tensorflow/core/framework/tensor.h"
 #include "absl/container/flat_hash_map.h"
 
@@ -49,10 +53,7 @@ namespace MxRec {
 #define TIME_PRINT spdlog::info
 #define MGMT_CPY_THREADS 4
 #define PROFILING
-    // read batch cost
-    // key process cost
-	using namespace tensorflow;
-
+    using namespace tensorflow;
     constexpr int TRAIN_CHANNEL_ID = 0;
     constexpr int EVAL_CHANNEL_ID = 1;
 
@@ -60,6 +61,7 @@ namespace MxRec {
     constexpr int MAX_KEY_PROCESS_THREAD = 10;
     constexpr int MAX_QUEUE_NUM = MAX_CHANNEL_NUM * MAX_KEY_PROCESS_THREAD;
     constexpr int DEFAULT_KEY_PROCESS_THREAD = 6;
+    constexpr int KEY_PROCESS_THREAD = 6;
 
     // unique related config
     constexpr int UNIQUE_BUCKET = 6;
@@ -131,6 +133,11 @@ namespace MxRec {
         throw std::runtime_error("unknown chip ub size" + GetChipName(devID));
     }
 
+    inline  std::chrono::milliseconds::rep Format2Ms(spdlog::stopwatch& sw)
+    {
+        return std::chrono::duration_cast<std::chrono::milliseconds>((sw).elapsed()).count();
+    }
+
     template <class T>
     struct Batch {
         size_t Size() const
@@ -142,7 +149,7 @@ namespace MxRec {
         {
             std::string s;
             constexpr size_t MAX_DISP_LEN = 20;
-            int maxLen = std::min(sample.size(), MAX_DISP_LEN);
+            int maxLen = static_cast<int>(std::min(sample.size(), MAX_DISP_LEN));
             for (int i = 0; i < maxLen; i++) {
                 s += std::to_string(sample[i]) + " ";
             }
@@ -406,6 +413,11 @@ struct BatchTask {
         size_t maxOffset { 0 };
         std::vector<size_t> evictPos;
         std::vector<size_t> evictDevPos;
+        size_t maxOffsetOld { 0 };
+        std::vector<size_t> evictPosChange;
+        std::vector<size_t> evictDevPosChange;
+        std::vector<std::pair<int, emb_key_t>> devOffset2KeyOld;
+        std::vector<std::pair<emb_key_t, emb_key_t>> oldSwap; // (old on dev, old on host)
 
         void SetStartCount();
 

@@ -19,14 +19,12 @@
 #include <absl/container/flat_hash_map.h>
 #include <absl/container/flat_hash_set.h>
 #include <mpi.h>
+#include <memory>
 #include <spdlog/spdlog.h>
 #include <spdlog/stopwatch.h>
 
 #include "utils/common.h"
 #include "utils/safe_queue.h"
-#include "utils/unique.h"
-#include "utils/spinlock.h"
-#include "utils/task_queue.h"
 
 #include "host_emb/host_emb.h"
 #include "emb_table/emb_table.h"
@@ -35,11 +33,9 @@
 namespace MxRec {
     using namespace std;
 
-    using a2a_info_t = vector<int>;
-    using sharded_dedup = ShardedDedup<GroupMethod, UNIQUE_BUCKET>;
-
-    template <class T> struct Cmp {
-        bool operator () (const T &a, const T &b)
+    template<class T>
+    struct Cmp {
+        bool operator()(const T& a, const T& b)
         {
             return get<int>(a) > get<int>(b); // batch id order
         }
@@ -59,10 +55,8 @@ namespace MxRec {
 
     class KeyProcess {
     public:
-        KeyProcess();
-
         int Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
-                       const vector<ThresholdValue>& thresholdValues = {}, bool ifLoad = false, int seed = 0);
+                       const vector<ThresholdValue>& thresholdValues = {}, int seed = 0);
 
         unique_ptr<vector<Tensor>> GetInfoVec(int batch, const string& embName, int channel, ProcessedInfo type);
 
@@ -98,24 +92,18 @@ namespace MxRec {
         };
     GTEST_PRIVATE:
         template<class T>
-        T GetInfo(std::vector<info_list_t<T>>& list, int batch, const string& embName, int channel);
+        T GetInfo(info_list_t<T>& list, int batch, const string& embName, int channel);
 
         RankInfo rankInfo;
         map<emb_name_t, EmbInfo> embInfos;
-
-        std::vector<MPI_Comm> comm[MAX_CHANNEL_NUM] {};
-
+        MPI_Comm comm[MAX_CHANNEL_NUM][KEY_PROCESS_THREAD];
+        std::mutex mut {};
         vector<std::unique_ptr<std::thread>> procThreads {};
-        std::mutex key2OffsetMut {};
-
-        std::vector<std::mutex> loadSaveMut[MAX_CHANNEL_NUM];
-        std::vector<std::mutex> getInfoMut;
-
-        std::vector<list<unique_ptr<vector<Tensor>>>> storage;
-        std::vector<info_list_t<lookup_key_t>> lookupKeysList;
-        std::vector<info_list_t<tensor_info_t>> infoList;
-        std::vector<info_list_t<tensor_info_t>> all2AllList;
-
+        std::mutex loadSaveMut[MAX_CHANNEL_NUM][KEY_PROCESS_THREAD] {};
+        info_list_t<lookup_key_t> lookupKeysList;
+        list<unique_ptr<vector<Tensor>>> storage;
+        info_list_t<tensor_info_t> infoList;
+        info_list_t<tensor_info_t> all2AllList;
         map<emb_name_t, size_t> maxOffset {};
         map<emb_name_t, absl::flat_hash_map<emb_key_t, int64_t>> keyOffsetMap {};
         FeatureAdmitAndEvict m_featureAdmitAndEvict {};
@@ -130,20 +118,12 @@ namespace MxRec {
 
         auto GetSendCount(const string& name, const string& channelName, bool modifyGraph);
 
-        void KeyProcessTask(const int channel, const int id);
+        void KeyProcessTask(int channel, int id);
 
-        bool KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, shared_ptr<sharded_dedup> unique,
-                                  int channel, int id, spdlog::stopwatch& sw);
+        bool KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channel, int id);
+
         auto ProcessSplitKeys(const unique_ptr<emb_batch_t>& batch, int id,
                               vector<keys_t>& splitKeys) -> tuple<keys_t, vector<int>, vector<int>>;
-
-        void ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &batch, shared_ptr<sharded_dedup> unique,
-                                           int id, UniqueInfo& uniqueInfoOut);
-
-        size_t GetKeySize(const unique_ptr<emb_batch_t> &batch);
-
-        void All2All(vector<int>& sc, int id, int channel, KeySendInfo& keySendInfo,
-                     All2AllInfo& all2AllInfoOut);
 
         auto HashSplit(const unique_ptr<emb_batch_t>& batch) const -> tuple<vector<keys_t>, vector<int32_t>>;
 
@@ -151,7 +131,8 @@ namespace MxRec {
 
         auto HashSplit_withFAAE(const unique_ptr<emb_batch_t>& batch) const
         -> tuple<vector<keys_t>, vector<int32_t>, vector<vector<uint32_t>>>;
-        void GetScAll(const vector<int>& keyScLocal, int commId, int channel, vector<int> &scAllOut) const;
+
+        vector<int> GetScAll(const vector<int>& keyScLocal, int commId, int channel) const;
 
         void Key2Offset(const emb_name_t& embName, keys_t& splitKey);
 
@@ -162,8 +143,6 @@ namespace MxRec {
 
         void SendA2A(const vector<int>& a2aInfo, const string& embName, int channel, int batch);
 
-        void Key2OffsetInit(const emb_name_t& embName);
-
         void EvictDeleteDeviceEmb(const string& embName, const vector<emb_key_t>& keys);
 
         void EvictInitDeviceEmb(const string& embName, vector<size_t> offset);
@@ -171,13 +150,17 @@ namespace MxRec {
         void UpdateHotMap(absl::flat_hash_map<emb_key_t, int>& keyCountMap, uint32_t count, bool refresh,
                           const string& embName);
 
-        void PushResult(unique_ptr<emb_batch_t>& batch, unique_ptr<vector<Tensor>> tensors, keys_t& lookupKeys, int id);
+        void PushResult(unique_ptr<emb_batch_t>& batch, unique_ptr<vector<Tensor>> tensors, keys_t& lookupKeys);
 
         void AddCountStartToHotPos(vector<keys_t>& splitKeys, vector<int>& hotPos, const vector<int>& hotPosDev,
-                                   const string& embName) const;
+                                   const unique_ptr<emb_batch_t>& batch);
 
         vector<uint32_t> GetCountRecv(const unique_ptr<emb_batch_t>& batch, int id,
                                       vector<vector<uint32_t>>& keyCount, vector<int> scAll, vector<int> ss);
+
+        void HashSplitHelper(const unique_ptr <emb_batch_t>& batch, vector <keys_t>& splitKeys,
+                             vector <int32_t>& restore, vector <int32_t>& hotPos,
+                             vector <vector<uint32_t>>& keyCount);
     };
 } // end namespace MxRec
 #endif // MX_REC_KEY_PROCESS_H

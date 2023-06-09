@@ -35,6 +35,7 @@ bool HostEmb::Initialize(const vector<EmbInfo>& embInfos, int seed)
 void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, int seed, int vocabSize,
     int embeddingSize, vector<vector<float>> &embData)
 {
+#ifndef GTEST
     spdlog::info(HOSTEMB + "GenerateEmbData Start, seed:{}", seed);
     embData.clear();
     embData.resize(vocabSize, vector<float>(embeddingSize));
@@ -72,13 +73,15 @@ void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, in
             initializer->GenerateData(embData.at(i).data(), embeddingSize);
         }
     }
-
     spdlog::info(HOSTEMB + "GenerateEmbData End, seed:{}", seed);
+#endif
 }
 
 void HostEmb::LoadEmb(emb_mem_t& loadData)
 {
+#ifndef GTEST
     hostEmbs = std::move(loadData);
+#endif
 }
 
 void HostEmb::Join()
@@ -96,6 +99,7 @@ void HostEmb::Join()
  * 从hdTransfer获取device侧返回的emb信息，并在host侧表的对应位置插入。
  * missingKeysHostPos为host侧需要发送的emb的位置，也就是淘汰的emb的插入位置
  */
+#ifndef GTEST
 void HostEmb::UpdateEmb(const vector<size_t>& missingKeysHostPos, int channelId, const string& embName)
 {
     EASY_FUNCTION(profiler::colors::Purple)
@@ -120,9 +124,8 @@ void HostEmb::UpdateEmb(const vector<size_t>& missingKeysHostPos, int channelId,
         auto& dst = embData[missingKeysHostPos[i]];
 #pragma omp simd
         for (int j = 0; j < embeddingSize; j++) {
-            dst[j] = tensorPtr[j];
+            dst[j] = tensorPtr[j + embeddingSize * i];
         }
-        tensorPtr = tensorPtr + embeddingSize;
     }
     spdlog::info(HOSTEMB + "update emb end");
     EASY_END_BLOCK
@@ -130,7 +133,6 @@ void HostEmb::UpdateEmb(const vector<size_t>& missingKeysHostPos, int channelId,
 
 void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelId, const string& embName)
 {
-#ifndef GTEST
     EASY_FUNCTION(profiler::colors::Purple)
     procThreads.emplace_back(make_unique<thread>(
         [&, missingKeysHostPos, channelId, embName] {
@@ -156,7 +158,7 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
                 auto& dst = embData[missingKeysHostPos[j]];
 #pragma omp simd
                 for (int k = 0; k < embeddingSize; k++) {
-                    dst[k] = ptr[k];
+                    dst[k] = ptr[k + embeddingSize * j];
                 }
             }
             if (acltdtDestroyDataset(aclDataset) != ACL_ERROR_NONE) {
@@ -164,7 +166,6 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
             }
             spdlog::info(HOSTEMB + "update emb end");
         }));
-#endif
 }
 
 /*
@@ -192,6 +193,7 @@ void HostEmb::GetH2DEmb(const vector<size_t>& missingKeysHostPos, const string& 
     }
     spdlog::info("GetH2DEmb end, missingKeys count:{}", missingKeysHostPos.size());
 }
+
 
 auto HostEmb::GetHostEmbs() -> absl::flat_hash_map<string, HostEmbTable>*
 {
@@ -235,14 +237,16 @@ void HostEmb::EmbPartGenerator(const vector<InitializeInfo> &initializeInfos, ve
         }
     }
 }
+#endif
 
 /*
  * 利用initializer初始化emb淘汰的位置
  */
 void HostEmb::EvictInitEmb(const string& embName, const vector<size_t>& offset)
 {
+#ifndef GTEST
     auto& hostEmb = GetEmb(embName);
     EmbPartGenerator(hostEmb.hostEmbInfo.initializeInfos, hostEmb.embData, offset);
-
     spdlog::info(HOSTEMB + "ddr EvictInitEmb!host embName {}, init offsets size: {}", embName, offset.size());
+#endif
 }
