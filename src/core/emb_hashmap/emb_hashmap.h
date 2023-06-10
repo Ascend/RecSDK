@@ -23,10 +23,10 @@ namespace MxRec {
 
         void Init(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos, bool ifLoad = false);
 
-        void Process(const string& embName, const std::vector<emb_key_t>& keys, size_t iBatch,
+        void Process(const string& embName, std::vector<emb_key_t>& keys, size_t iBatch,
                      vector<Tensor>& tmpDataOut);
 
-        void FindAndUpdateOffset(const string& embName, const vector<emb_key_t>& keys, size_t currentBatchId,
+        void FindAndUpdateOffset(const string& embName, vector<emb_key_t>& keys, size_t currentBatchId,
                                  size_t keepBatchId);
 
         void ChangeSwapInfo(EmbHashMapInfo& embHashMap, emb_key_t key, size_t hostOffset, size_t currentBatchId,
@@ -52,11 +52,25 @@ namespace MxRec {
 
         absl::flat_hash_map<string, EmbHashMapInfo> embHashMaps;
 
+        void FindOffset(const string& embName, const vector<emb_key_t>& keys,
+                        size_t currentBatchId, size_t keepBatchId);
+
+        size_t FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHashMap);
+
+        void UpdateBatchId(const vector<emb_key_t>& keys, size_t currentBatchId, size_t keySize,
+                           EmbHashMapInfo& embHashMap) const;
+
+        int FindSwapPosV2(const string& embName, emb_key_t key, size_t hostOffset, size_t currentBatchId,
+                          size_t keepBatchId);
+
+        bool FindSwapPosOld(const string& embName, emb_key_t key, size_t hostOffset, size_t currentBatchId,
+                            size_t keepBatchId);
+
     private:
         RankInfo rankInfo;
         int swapId { 0 };
 
-        void FindAndUpdateBatchId(const vector<emb_key_t>& keys, size_t currentBatchId, size_t keySize,
+        void FindAndUpdateBatchId(vector<emb_key_t>& keys, size_t currentBatchId, size_t keySize,
                                   EmbHashMapInfo& embHashMap) const;
 
         int32_t FindNewOffset(const emb_key_t& key, EmbHashMapInfo& embHashMap);

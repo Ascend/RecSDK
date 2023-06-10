@@ -93,7 +93,7 @@ namespace MxRec {
 
     private:
         bool InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
-                            const vector<ThresholdValue>& thresholdValues, bool ifLoad, int seed);
+                            const vector<ThresholdValue>& thresholdValues, int seed);
         
         void InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfos);
 

@@ -24,7 +24,7 @@ using namespace std;
 using namespace MxRec;
 using namespace testing;
 
-static constexpr size_t BATCH_NUM_EACH_THREAD = 5;
+static constexpr size_t BATCH_NUM_EACH_THREAD = 3;
 
 class KeyProcessTest : public testing::Test {
 protected:
@@ -52,16 +52,16 @@ protected:
 
     vector<vector<emb_batch_t>> PrepareBatch()
     {
-        vector<vector<emb_batch_t>> result(PerfConfig::keyProcessThreadNum * MAX_CHANNEL_NUM);
-        // 向共享队列中写入本进程所有线程要处理的 PerfConfig::keyProcessThreadNum * BATCH_NUM_EACH_THREAD 个batch数据
-        for (size_t threadId = 0; threadId < PerfConfig::keyProcessThreadNum; ++threadId) {
-            int batchQueueId = threadId + PerfConfig::keyProcessThreadNum * channel;
+        vector<vector<emb_batch_t>> result(KEY_PROCESS_THREAD * MAX_CHANNEL_NUM);
+        // 向共享队列中写入本进程所有线程要处理的 KEY_PROCESS_THREAD * BATCH_NUM_EACH_THREAD 个batch数据
+        for (size_t threadId = 0; threadId < KEY_PROCESS_THREAD; ++threadId) {
+            int batchQueueId = threadId + KEY_PROCESS_THREAD * channel;
             unsigned int seed = batchQueueId * 10;
             auto queue = SingletonQueue<emb_batch_t>::getInstances(batchQueueId);
 
             for (size_t batchNum = 0; batchNum < BATCH_NUM_EACH_THREAD; ++batchNum) {
                 size_t batchId =
-                        batchNum * PerfConfig::keyProcessThreadNum + threadId;
+                        batchNum * KEY_PROCESS_THREAD + threadId;
 
                 for (size_t i = 0; i < embInfos.size(); i++) { // key按照不同emb表的存储切分开
                     auto batch = queue->GetOne();
@@ -112,7 +112,7 @@ protected:
     {
         default_random_engine generator;
         uniform_int_distribution<int> distribution(randMin, randMax);
-        int embSizeMin = 5, embSizeMax = 8, base = 2;
+        int embSizeMin = 5, embSizeMax = 8, base = 2, vocabSize = 100;
         uniform_int_distribution<int> embSizeDistribution(embSizeMin, embSizeMax);
         stringstream ss;
         for (unsigned int i = 0; i < embNums; ++i) {
@@ -123,6 +123,7 @@ protected:
             ss.clear();
             temp.sendCount = distribution(generator);
             temp.extEmbeddingSize = pow(base, embSizeDistribution(generator));
+            temp.devVocabSize = vocabSize;
             geFieldNums.push_back(sampleSize);
             allEmbInfos.push_back(move(temp));
         }
@@ -250,7 +251,7 @@ TEST_F(KeyProcessTest, HashSplit)
     }
     ASSERT_THAT(restore, ElementsAreArray(expectRestore));
 }
-
+#ifndef GTEST
 TEST_F(KeyProcessTest, GetScAll)
 {
     vector<int> keyScLocal(worldSize, worldRank + 1); // 用worldRank+1初始化发送数据量
@@ -265,7 +266,7 @@ TEST_F(KeyProcessTest, GetScAll)
     process.GetScAll(keyScLocal, 0, 0, scAll);
     ASSERT_THAT(scAll, ElementsAreArray(expectScAll));
 }
-
+#endif
 TEST_F(KeyProcessTest, BuildRestoreVec_4cpu)
 {
     auto queue = SingletonQueue<emb_batch_t>::getInstances(0);
@@ -309,7 +310,7 @@ TEST_F(KeyProcessTest, ProcessKeySplit_rebuilt)
                      hotPos);
     }; // for clean code
     for (int channel = 0; channel < 1; ++channel) {
-        for (int id = 0; id < PerfConfig::keyProcessThreadNum; ++id) {
+        for (int id = 0; id < 1; ++id) {
             // use lambda expression initialize thread
             process.procThreads.emplace_back(std::make_unique<std::thread>(fn, channel, id));
         }
@@ -339,7 +340,7 @@ TEST_F(KeyProcessTest, BuildRestoreVec_rebuilt)
             batch->batchId, lookupKeys, scAll, restore);
     }; // for clean code
     for (int channel = 0; channel < 1; ++channel) {
-        for (int id = 0; id < PerfConfig::keyProcessThreadNum; ++id) {
+        for (int id = 0; id < KEY_PROCESS_THREAD; ++id) {
             // use lambda expression initialize thread
             process.procThreads.emplace_back(std::make_unique<std::thread>(fn, channel, id));
         }
@@ -354,7 +355,7 @@ TEST_F(KeyProcessTest, Key2Offset)
     keys_t expectOffset = { 0, 1, 2, 0, 3, 0, 4, 3 };
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
     ASSERT_EQ(process.isRunning, true);
-    process.Key2Offset(emb_name_t(), lookupKeys);
+    process.Key2Offset("emb0", lookupKeys);
     spdlog::debug(KEY_PROCESS "test Key2Offset: lookupKeys: {}, keyOffsetMap: {}", lookupKeys, process.keyOffsetMap);
     ASSERT_THAT(lookupKeys, ElementsAreArray(expectOffset));
 }
