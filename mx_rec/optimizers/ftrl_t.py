@@ -20,8 +20,8 @@ from tensorflow.python.training import optimizer
 from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.util.initialize import get_table_instance
-from mx_rec.util.variable import remove_saving_var, check_and_get_config_via_var
+from mx_rec.util.initialize import get_table_instance, insert_removing_var_list
+from mx_rec.util.variable import check_and_get_config_via_var
 
 
 def create_hash_optimizer(learning_rate, use_locking=False, name="Ftrl_t", **kwargs):
@@ -60,10 +60,10 @@ class CustomizedFtrlT(optimizer.Optimizer, CustomizedOptimizer):
         n = slot_creator.create_zeros_slot(var, self._name + "/" + "n")
         g = slot_creator.create_zeros_slot(var, self._name + "/" + "g")
         w = slot_creator.create_zeros_slot(var, self._name + "/" + "w")
-        remove_saving_var(z)
-        remove_saving_var(n)
-        remove_saving_var(g)
-        remove_saving_var(w)
+        insert_removing_var_list(z.name)
+        insert_removing_var_list(n.name)
+        insert_removing_var_list(g.name)
+        insert_removing_var_list(w.name)
         named_slot_key = (var.op.graph, var.op.name)
         table_instance = get_table_instance(var)
         if self._name in table_instance.optimizer:
@@ -245,10 +245,10 @@ class CustomizedFtrlT(optimizer.Optimizer, CustomizedOptimizer):
                 g = self._zeros_slot(each_var, "g", g_state_name)
                 w = self._zeros_slot(each_var, "w", w_state_name)
                 # make sure sparse optimizer statements will not be saved and restored within tf checkpoint.
-                remove_saving_var(z)
-                remove_saving_var(n)
-                remove_saving_var(g)
-                remove_saving_var(w)
+                insert_removing_var_list(z.name)
+                insert_removing_var_list(n.name)
+                insert_removing_var_list(g.name)
+                insert_removing_var_list(w.name)
 
                 if self._name not in table_instance.optimizer:
                     table_instance.set_optimizer(self._name, {"z": z, "n": n, "g": g, "w": w})

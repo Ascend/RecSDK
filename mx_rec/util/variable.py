@@ -14,16 +14,6 @@ def get_dense_and_sparse_variable():
     return dense_variables, sparse_variables
 
 
-def remove_saving_var(variable):
-    global_variables = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    savable_objects = ops.get_collection(ops.GraphKeys.SAVEABLE_OBJECTS)
-    if variable in global_variables:
-        global_variables.remove(variable)
-
-    if variable in savable_objects:
-        savable_objects.remove(variable)
-
-
 def check_and_get_config_via_var(variable, optimizer_type: str):
     table_instance = get_table_instance(variable)
 

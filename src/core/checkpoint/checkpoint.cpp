@@ -377,6 +377,10 @@ void Checkpoint::LoadDataset(const vector<string>& embNames,
                              CkptData& ckptData)
 {
     for (const auto& embName : embNames) {
+        if (!CheckEmbNames(embName)) {
+            continue;
+        }
+
         auto dataDir { innerDirPath + dirSeparator + embName };
         for (const auto& saveDataType : saveDataTypes) {
             auto datasetPath { dataDir + dirSeparator + dataHandler->GetDataDirName(saveDataType) };

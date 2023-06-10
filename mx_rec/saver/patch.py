@@ -30,19 +30,18 @@ from mx_rec.util.initialize import get_ascend_global_hashtable_collection, expor
 
 
 def get_sparse_vars(var_list):
+    sparse_var_list = []
     # build sparse saver
     if var_list is not None:
         if not isinstance(var_list, (list, tuple)):
             raise TypeError("A non-None var_list must be a list or tuple.")
         ascend_variables = tf.compat.v1.get_collection(get_ascend_global_hashtable_collection())
-        sparse_var_list = []
         for var in var_list:
             if var in ascend_variables:
                 sparse_var_list.append(var)
-        var_list = sparse_var_list
     else:
-        var_list = tf.compat.v1.get_collection(get_ascend_global_hashtable_collection())
-    return var_list
+        sparse_var_list = tf.compat.v1.get_collection(get_ascend_global_hashtable_collection())
+    return sparse_var_list
 
 
 def init_check(defer_build, var_list):
@@ -60,11 +59,10 @@ def saver_init(self, var_list=None, reshape=False, sharded=False, max_to_keep=5,
                name=None, restore_sequentially=False, saver_def=None, builder=None, defer_build=False,
                allow_empty=False, write_version=saver_pb2.SaverDef.V2, pad_step_number=False, save_relative_paths=False,
                filename=None, fid_version=0):
-    if not defer_build:
-        var_list = build_var_list(var_list)
+
+    self._var_list = var_list
     self._last_checkpoints = []
     self._checkpoints_to_be_deleted = []
-    self._var_list = var_list
     self._is_built = False
     self._is_empty = None
     init_check(defer_build, var_list)
@@ -92,6 +90,7 @@ def saver_init(self, var_list=None, reshape=False, sharded=False, max_to_keep=5,
         keep_time = self._keep_checkpoint_every_n_hours * 3600
         self._next_checkpoint_time = (time.time() + keep_time)
     elif not defer_build:
+        self._var_list = build_var_list(var_list)
         self.build()
     self._object_restllore_saver = None
     # mxRec Patch
@@ -316,12 +315,13 @@ def saver_from_object_based_checkpoint(checkpoint_path, var_list=None, builder=N
 
 def build_var_list(var_list):
     if var_list is None:
-        var_list = []
+        save_var_list = []
         tmp_list = variables._all_saveable_objects()
         removing_var_list = export_removing_var_list()
         for var in tmp_list:
             if var.name not in removing_var_list:
-                var_list.append(var)
+                save_var_list.append(var)
+        return save_var_list
     return var_list
 
 
