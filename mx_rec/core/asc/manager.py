@@ -140,7 +140,8 @@ def matched_opt_slot_initializers(table_instance):
 
     start_index = table_instance.scalar_emb_size
     slot_initializers = []
-
+    logging.debug(f"matched_opt_slot_initializers, scalar emb size:{table_instance.ext_emb_size}, "
+                  f"optimizer_instance_list size:{len(table_instance.optimizer_instance_list)}")
     for optimizer in table_instance.optimizer_instance_list:
         for slot_init_value in optimizer.get_slot_init_values():
             slot_initializer = InitializeInfo(name="constant_initializer",
