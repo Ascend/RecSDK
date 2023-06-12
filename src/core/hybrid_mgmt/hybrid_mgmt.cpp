@@ -596,7 +596,7 @@ void HybridMgmt::EmbHDTransDummy(int channelId, int batchId, const EmbInfo& embI
 /*
 * hook通过时间或者step数触发淘汰
 */
-void HybridMgmt::Evict()
+bool HybridMgmt::Evict()
 {
 #ifndef GTEST
     auto& featAdmitNEvict = preprocess->GetFeatAdmitAndEvict();
@@ -604,9 +604,13 @@ void HybridMgmt::Evict()
         featAdmitNEvict.FeatureEvict(evictKeyMap);
     } else {
         spdlog::warn(MGMT + "Hook can not trigger evict, cause AdmitNEvict is not open");
-        return;
+        return false;
     }
     spdlog::debug(MGMT + "evict triggered by hook, evict TableNum {} ", evictKeyMap.size());
+    if (evictKeyMap.size() == 0) {
+        spdlog::warn(MGMT + "evict triggered by hook before dataset in injected");
+        return false;
+    }
 
     if (mgmtRankInfo.noDDR) {
         for (auto evict : evictKeyMap) {
@@ -617,6 +621,7 @@ void HybridMgmt::Evict()
             EvictKeys(evict.first, evict.second);
         }
     }
+    return true;
 #endif
 }
 

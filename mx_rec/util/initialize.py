@@ -482,8 +482,11 @@ def trigger_evict():
     if not is_asc_manager_initialized():
         raise RuntimeError("ASC manager does not exist.")
 
-    ConfigInitializer.get_instance().get_asc_manager().evict()
-    logging.debug("Feature evict is triggered by ops.")
+    if ConfigInitializer.get_instance().get_asc_manager().evict():
+        logging.debug("Feature evict is triggered by ops.")
+        return True
+    logging.warning("Feature evict not success, skip this time!")
+    return False
 
 
 def clear_channel(is_train_channel=False):
