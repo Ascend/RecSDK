@@ -134,9 +134,6 @@ def get_preprocessed_tensor_for_asc(table, config, ids_channel_name=None, modify
         swap_out_op = npu_ops.outfeed_enqueue_op(
             channel_name=f'{config.get("table_name")}_d2h_{config.get("channel_id")}', inputs=[swap_out])
         with tf.control_dependencies([swap_out_op]):
-            # fix empty nd update
-            swap_pos = tf.concat([swap_pos, tf.constant([AVOID_TENSOR_POS])], axis=0)
-            h2d_emb = tf.concat([h2d_emb, tf.constant([[0.1] * config.get("ext_emb_size")])], axis=0)
             nd_swap_pos = tf.expand_dims(swap_pos, 1)
             table_num = len(table)
             h2d_emb_split = tf.split(h2d_emb, table_num, axis=1)
