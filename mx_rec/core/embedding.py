@@ -886,7 +886,7 @@ class _EvictHook(tf.compat.v1.train.SessionRunHook):
                         channel_name=f'{instance.table_name}_evict_{TRAIN_CHANNEL_ID}')[0]
 
                     initialized_tensor = instance.emb_initializer(
-                        evict_pos.shape.as_list()[0] + instance.embedding_size)
+                        tf.shape(evict_pos)[0] + instance.embedding_size)
 
                 logging.debug(f'evict_pos output shape {evict_pos}, and slice_device_vocabulary_size '
                               f'{instance.slice_device_vocabulary_size}, '
@@ -909,7 +909,8 @@ class _EvictHook(tf.compat.v1.train.SessionRunHook):
         if cur_time - self._start_time > self._evict_time_interval or \
                 (self._evict_step_interval is not None and self._global_step % self._evict_step_interval == 0):
             logging.info(f"_EvictHook - > evict switch on!!! after_run step: {self._global_step}")
-            trigger_evict()
+            if not trigger_evict():
+                return
             self._start_time = cur_time
             for name in self._hash_table_instance.keys():
                 run_context.session.run(self._evict_op.get(name))

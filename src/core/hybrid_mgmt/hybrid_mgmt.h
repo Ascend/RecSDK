@@ -87,7 +87,7 @@ namespace MxRec {
 
         void EmbHDTrans(const int channelId, const int batchId);
 
-        void Evict();
+        bool Evict();
 
         void EvictKeys(const string& embName, const vector<emb_key_t>& keys);
 
