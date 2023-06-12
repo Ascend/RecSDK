@@ -36,7 +36,7 @@ void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, in
     int embeddingSize, vector<vector<float>> &embData)
 {
 #ifndef GTEST
-    spdlog::info(HOSTEMB + "GenerateEmbData Start, seed:{}", seed);
+    spdlog::info(HOSTEMB + "GenerateEmbData Start, seed:{}, initializer num: {}", seed, initializeInfos.size());
     embData.clear();
     embData.resize(vocabSize, vector<float>(embeddingSize));
 
@@ -45,20 +45,25 @@ void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, in
 
         switch (initializeInfo.initializerType) {
             case InitializerType::CONSTANT: {
-                spdlog::info(HOSTEMB + "GenerateEmbData ing using Constant Initializer by value {}.",
-                    initializeInfo.constantInitializerInfo.constantValue);
+                spdlog::info(HOSTEMB + "GenerateEmbData ing using Constant Initializer by value {}. name {}, "
+                             "start {}, len {}.", initializeInfo.constantInitializerInfo.constantValue,
+                             initializeInfo.name, initializeInfo.start, initializeInfo.len);
                 initializer = &initializeInfo.constantInitializer;
                 break;
             }
             case InitializerType::TRUNCATED_NORMAL: {
-                spdlog::info(HOSTEMB + "GenerateEmbData ing using Truncated Normal Initializer by mean: {} stddev: {}.",
-                    initializeInfo.normalInitializerInfo.mean, initializeInfo.normalInitializerInfo.stddev);
+                spdlog::info(HOSTEMB + "GenerateEmbData ing using Truncated Normal Initializer by mean: {} stddev: {}. "
+                             "name {}, start {}, len {}.", initializeInfo.normalInitializerInfo.mean,
+                             initializeInfo.normalInitializerInfo.stddev, initializeInfo.name,
+                             initializeInfo.start, initializeInfo.len);
                 initializer = &initializeInfo.truncatedNormalInitializer;
                 break;
             }
             case InitializerType::RANDOM_NORMAL: {
-                spdlog::info(HOSTEMB + "GenerateEmbData ing using Random Normal Initializer by mean: {} stddev: {}.",
-                    initializeInfo.normalInitializerInfo.mean, initializeInfo.normalInitializerInfo.stddev);
+                spdlog::info(HOSTEMB + "GenerateEmbData ing using Random Normal Initializer by mean: {} stddev: {}. "
+                             "name {}, start {}, len {}.", initializeInfo.normalInitializerInfo.mean,
+                             initializeInfo.normalInitializerInfo.stddev, initializeInfo.name,
+                             initializeInfo.start, initializeInfo.len);
                 initializer = &initializeInfo.randomNormalInitializer;
                 break;
             }
