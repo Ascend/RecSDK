@@ -60,7 +60,7 @@ def get_preprocessing_map_func(graph_def, input_names, output_names, batch_tenso
                 input_tensors.append(tensor)
 
         else:
-            graph = tf.get_default_graph()
+            graph = tf.compat.v1.get_default_graph()
             for index in pipeline_input_indexes:
                 tensor = graph.get_tensor_by_name("args_%d:0" % index)
                 input_tensors.append(tensor)
@@ -94,7 +94,7 @@ def get_input_index_list(cutting_point_list, replacement_specs, mapping_name_lis
 
 
 def find_make_iterator_op(batch_tensor):
-    graph = tf.get_default_graph()
+    graph = tf.compat.v1.get_default_graph()
     operations = graph.get_operations()
     for each_op in operations:
         for input_tensor in batch_tensor.op.inputs:
@@ -132,10 +132,17 @@ def get_op_before_optimize_dataset(get_next_op):
     # looking for the MakeIterator operator which corresponds to given batch_tensor
     base_op = find_make_iterator_op(get_next_op.outputs[0])
     # looking for the op which is the one before OptimizeDataset operator
-    target_op = find_target_dataset_op(base_op, "OptimizeDataset")
-    if find_parent_op(target_op)[0].type == "PrefetchDataset":
-        target_op = find_parent_op(target_op)[0]
-
+    if tf.__version__.startswith("1"):
+        optimize_dataset_op = find_target_dataset_op(base_op, "OptimizeDataset")
+        target_op = find_parent_op(optimize_dataset_op)
+        if not target_op:
+            raise RuntimeError(f"The parent op for 'OptimizeDataset' op was not found.")
+        if target_op[0].type != "PrefetchDataset":
+            raise TypeError(f"Op PrefetchDataset was not found.")
+        target_op = target_op[0]
+    else:
+        # 'OptimizeDataset' is not available in TensorFlow2.X
+        target_op = find_target_dataset_op(base_op, "PrefetchDataset")
     return target_op
 
 

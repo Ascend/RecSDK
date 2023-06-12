@@ -401,7 +401,7 @@ def get_valid_op_key(batch_dict: dict) -> str:
 
 def get_target_tensors_with_args_indexes(args_index_list):
     insert_tensors = []
-    graph = tf.get_default_graph()
+    graph = tf.compat.v1.get_default_graph()
 
     for index in args_index_list:
         tensor = graph.get_tensor_by_name("args_%d:0" % index)

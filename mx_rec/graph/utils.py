@@ -40,7 +40,7 @@ def check_cutting_points(cutting_point_list):
 def record_ops_to_replace(src_op):
     replacement_specs = defaultdict(list)
     output_list = src_op.outputs
-    op_list = tf.get_default_graph().get_operations()
+    op_list = tf.compat.v1.get_default_graph().get_operations()
     for tensor in output_list:
         for operator in op_list:
             if tensor in operator.inputs:
