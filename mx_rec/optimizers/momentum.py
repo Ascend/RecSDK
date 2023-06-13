@@ -16,8 +16,8 @@ from tensorflow.python.training import momentum
 from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.util.initialize import get_table_instance
-from mx_rec.util.variable import remove_saving_var, check_and_get_config_via_var, check_param_type, check_param_range
+from mx_rec.util.initialize import get_table_instance, insert_removing_var_list
+from mx_rec.util.variable import check_and_get_config_via_var, check_param_type, check_param_range
 
 
 def create_hash_optimizer(learning_rate_input=0.001, mom=0.9, enable_locking=False, optimizer_name="momentum",
@@ -71,7 +71,7 @@ class CustomizedMomentum(momentum.MomentumOptimizer, CustomizedOptimizer):
             return new_slot_variable
 
         momentum_slot = creat_one_single_slot(var, self._name + "/" + "momentum")
-        remove_saving_var(momentum_slot)
+        insert_removing_var_list(momentum_slot.name)
         named_slot_key = (var.op.graph, var.op.name)
         table_instance = get_table_instance(var)
         if self._name in table_instance.optimizer:
@@ -107,8 +107,7 @@ class CustomizedMomentum(momentum.MomentumOptimizer, CustomizedOptimizer):
         for var in var_list:
             table_instance = check_and_get_config_via_var(var, self.optimizer_type)
             momentum_slot = self._zeros_slot(var, "m", m_state_name)
-
-            remove_saving_var(momentum_slot)
+            insert_removing_var_list(momentum_slot.name)
             if self._name not in table_instance.optimizer:
                 table_instance.set_optimizer(self._name, {"momentum": momentum_slot})
         logging.debug(" End  _create_slots")

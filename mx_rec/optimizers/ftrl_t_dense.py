@@ -20,8 +20,8 @@ from tensorflow.python.training import optimizer
 from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.util.initialize import get_table_instance
-from mx_rec.util.variable import remove_saving_var, check_and_get_config_via_var
+from mx_rec.util.initialize import get_table_instance, insert_removing_var_list
+from mx_rec.util.variable import check_and_get_config_via_var
 
 
 def create_ftrl_dense_optimizer(learning_rate, use_locking=False, name="Ftrl_t_dense", **kwargs):
@@ -183,8 +183,9 @@ class CustomizedFtrlTZ(optimizer.Optimizer):
                 g_zero = self._zeros_slot(each_var, "g", g_state_name)
                 w_zero = self._zeros_slot(each_var, "w", w_state_name)
                 # make sure sparse optimizer statements will not be saved and restored within tf checkpoint.
-                remove_saving_var(z_zero)
-                remove_saving_var(n_zero)
-                remove_saving_var(g_zero)
-                remove_saving_var(w_zero)
+                insert_removing_var_list(z_zero.name)
+                insert_removing_var_list(n_zero.name)
+                insert_removing_var_list(g_zero.name)
+                insert_removing_var_list(w_zero.name)
+
 

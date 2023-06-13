@@ -20,8 +20,8 @@ from tensorflow.python.training import ftrl
 from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.util.initialize import get_table_instance
-from mx_rec.util.variable import remove_saving_var, check_and_get_config_via_var, check_param_type, check_param_range
+from mx_rec.util.initialize import get_table_instance, insert_removing_var_list
+from mx_rec.util.variable import check_and_get_config_via_var, check_param_type, check_param_range
 
 
 def create_hash_optimizer(learning_rate, use_locking=False, name="Ftrl", **kwargs):
@@ -73,8 +73,8 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
 
         accum = slot_creator.create_slot(var, val, self._name + "/" + "accum")
         linear = slot_creator.create_zeros_slot(var, self._name + "/" + "linear")
-        remove_saving_var(accum)
-        remove_saving_var(linear)
+        insert_removing_var_list(accum.name)
+        insert_removing_var_list(linear.name)
         named_slot_key = (var.op.graph, var.op.name)
         table_instance = get_table_instance(var)
         if self._name in table_instance.optimizer:
@@ -236,8 +236,8 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
                 accum = self._get_or_make_slot(each_var, val, "accum", accum_state_name)
                 linear = self._zeros_slot(each_var, "linear", linear_state_name)
                 # make sure sparse optimizer statements will not be saved and restored within tf checkpoint.
-                remove_saving_var(accum)
-                remove_saving_var(linear)
+                insert_removing_var_list(accum.name)
+                insert_removing_var_list(linear.name)
 
                 if self._name not in table_instance.optimizer:
                     table_instance.set_optimizer(self._name, {"accum": accum, "linear": linear})

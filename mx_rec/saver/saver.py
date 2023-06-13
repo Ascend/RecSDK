@@ -162,14 +162,14 @@ class Saver(object):
 
     def _restore(self, sess, reading_path):
         restore_feed_dict = defaultdict(dict)
+        if is_asc_manager_initialized():
+            restore_host_data(reading_path)
+            logging.debug(f"host data was restored.")
+
         for table_name, sub_placeholder_dict in self.placeholder_dict.items():
             fill_placeholder(reading_path, sub_placeholder_dict, restore_feed_dict, self.rank_id,
                              NameDescriptor(table_name, DataName.EMBEDDING.value))
             table_instance = get_table_instance_by_name(table_name)
-
-            if is_asc_manager_initialized():
-                restore_host_data(reading_path)
-                logging.debug(f"host data was restored.")
 
             if table_instance.use_feature_mapping:
                 fill_placeholder(reading_path, sub_placeholder_dict, restore_feed_dict, self.rank_id,

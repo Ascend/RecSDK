@@ -26,7 +26,6 @@ from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is
     ConfigInitializer, get_ascend_global_hashtable_collection, get_host_pipeline_ops, get_use_dynamic_expansion, \
     set_modify_graph, insert_removing_var_list
 from mx_rec.util.tf_version_adapter import npu_ops
-from mx_rec.util.variable import remove_saving_var
 
 
 def create_table(**kwargs):
@@ -754,9 +753,8 @@ class SparseEmbedding:
     def _initialize_variables(self):
         initialized_tensor = self.emb_initializer(self.slice_device_vocabulary_size + self.embedding_size)
         self.variable = tf.compat.v1.get_variable(self.table_name, trainable=False, initializer=initialized_tensor)
-        insert_removing_var_list(self.variable.name)
         # make sure sparse table variable will not be saved and restored within tf checkpoint.
-        remove_saving_var(self.variable)
+        insert_removing_var_list(self.variable.name)
         self._record()
 
         if self.use_dynamic_expansion:
