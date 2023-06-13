@@ -110,7 +110,7 @@ int KeyProcess::Start()
     }; // for clean code
     int threadNum;
     for (int channel = 0; channel < MAX_CHANNEL_NUM; ++channel) {
-        const char* threadNumEnv = getenv("THREAD_NUM");
+        const char* threadNumEnv = getenv("KEY_PROCESS_THREAD_NUM");
         if (threadNumEnv != nullptr) {
             threadNum = static_cast<int>(*threadNumEnv) - static_cast<int>('0');
             if (threadNum > KEY_PROCESS_THREAD || threadNum < 0) {
@@ -119,6 +119,7 @@ int KeyProcess::Start()
         } else {
             threadNum = KEY_PROCESS_THREAD;
         }
+        spdlog::info(KEY_PROCESS "key process thread num: {}", threadNum);
         for (int id = 0; id < threadNum; ++id) {
             procThreads.emplace_back(
                 std::make_unique<std::thread>(fn, channel, id)); // use lambda expression initialize thread

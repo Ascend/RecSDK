@@ -148,7 +148,7 @@ vector<tensorflow::Tensor> HDTransfer::Recv(TransferChannel channel, int channel
     std::vector<tensorflow::Tensor> tensors;
     string recvName = fmt::format("{}_{}_{}", embName, TransferChannel2Str(channel), channelId);
     spdlog::debug("hd transfer try recv:{}", recvName);
-
+    spdlog::stopwatch sw;
     tensorflow::Status status = tensorflow::RecvTensorByAcl(transferChannels[recvName], tensors);
     if (!running) {
         return {};
@@ -162,7 +162,7 @@ vector<tensorflow::Tensor> HDTransfer::Recv(TransferChannel channel, int channel
     for (auto& t: tensors) {
         sizes.push_back(t.NumElements());
     }
-    spdlog::info("hd transfer recv:{}, size:{}", recvName, sizes);
+    spdlog::info("hd transfer recv:{}, size:{} cost:{}ms", recvName, sizes, Format2Ms(sw));
     return tensors;
 #endif
     return {};
@@ -175,6 +175,7 @@ tuple<acltdtDataset*, size_t> HDTransfer::RecvAcl(TransferChannel channel, int c
     std::vector<tensorflow::Tensor> tensors;
     string recvName = fmt::format("{}_{}_{}", embName, TransferChannel2Str(channel), channelId);
     spdlog::debug("hd transfer try recv:{}", recvName);
+    spdlog::stopwatch sw;
     acltdtDataset* aclDataset = acltdtCreateDataset();
     if (aclDataset == nullptr) {
         throw runtime_error(fmt::format("Failed recv:{}.", recvName).c_str());
@@ -186,7 +187,7 @@ tuple<acltdtDataset*, size_t> HDTransfer::RecvAcl(TransferChannel channel, int c
     if (aclStatus != ACL_ERROR_NONE && aclStatus != ACL_ERROR_RT_QUEUE_EMPTY) {
         throw runtime_error(fmt::format("Failed receive data from acl channel, acl status:{}", aclStatus).c_str());
     }
-    spdlog::info("hd transfer recv:{}", recvName);
+    spdlog::info("hd transfer recv:{} cost:{}ms", recvName, Format2Ms(sw));
     return {aclDataset, acltdtGetDatasetSize(aclDataset)};
 #endif
     return {nullptr, 0};

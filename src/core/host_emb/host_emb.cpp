@@ -107,7 +107,8 @@ void HostEmb::Join()
 #ifndef GTEST
 void HostEmb::UpdateEmb(const vector<size_t>& missingKeysHostPos, int channelId, const string& embName)
 {
-    EASY_FUNCTION(profiler::colors::Purple)
+    EASY_FUNCTION(profiler::colors::Purple);
+    spdlog::stopwatch sw;
     auto hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
     TransferChannel transferName = TransferChannel::D2H;
     spdlog::info(HOSTEMB + "wait D2H embs, channelId:{}", channelId);
@@ -132,7 +133,7 @@ void HostEmb::UpdateEmb(const vector<size_t>& missingKeysHostPos, int channelId,
             dst[j] = tensorPtr[j + embeddingSize * i];
         }
     }
-    spdlog::info(HOSTEMB + "update emb end");
+    spdlog::info(HOSTEMB + "update emb end cost: {}ms", Format2Ms(sw));
     EASY_END_BLOCK
 }
 
@@ -149,6 +150,7 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
                 spdlog::warn(HOSTEMB + "recv empty data");
                 return;
             }
+            spdlog::stopwatch sw;
             spdlog::info(HOSTEMB + "UpdateEmb End missingkeys len = {}", missingKeysHostPos.size());
             EASY_BLOCK("Update")
             auto& embData = hostEmbs[embName].embData;
@@ -169,7 +171,7 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
             if (acltdtDestroyDataset(aclDataset) != ACL_ERROR_NONE) {
                 throw runtime_error("Acl destroy tensor dataset failed.");
             }
-            spdlog::info(HOSTEMB + "update emb end");
+            spdlog::info(HOSTEMB + "update emb end cost: {}ms", Format2Ms(sw));
         }));
 }
 
@@ -181,6 +183,7 @@ void HostEmb::GetH2DEmb(const vector<size_t>& missingKeysHostPos, const string& 
                         vector<Tensor>& h2dEmbOut)
 {
     EASY_FUNCTION()
+    spdlog::stopwatch sw;
     const auto& emb = hostEmbs[embName];
     const int embeddingSize = emb.hostEmbInfo.extEmbeddingSize;
     h2dEmbOut.emplace_back(Tensor(tensorflow::DT_FLOAT, {
@@ -190,13 +193,13 @@ void HostEmb::GetH2DEmb(const vector<size_t>& missingKeysHostPos, const string& 
     auto tmpData = tmpTensor.flat<float>();
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) shared(missingKeysHostPos, emb, tmpData)
     for (size_t i = 0; i < missingKeysHostPos.size(); i++) {
-        const auto src = emb.embData[missingKeysHostPos[i]];
+        const auto& src = emb.embData[missingKeysHostPos[i]];
 #pragma omp simd
         for (int j = 0; j < embeddingSize; j++) {
             tmpData(j + i * embeddingSize) = src[j];
         }
     }
-    spdlog::info("GetH2DEmb end, missingKeys count:{}", missingKeysHostPos.size());
+    spdlog::info("GetH2DEmb end, missingKeys count:{} cost:{}ms", missingKeysHostPos.size(), Format2Ms(sw));
 }
 
 
