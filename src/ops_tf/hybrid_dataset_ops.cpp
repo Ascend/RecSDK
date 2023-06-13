@@ -156,7 +156,7 @@ public:
         }
         batchIdsInfo.at(channelId) = 0;
 
-        const char* threadNumEnv = getenv("THREAD_NUM");
+        const char* threadNumEnv = getenv("KEY_PROCESS_THREAD_NUM");
         if (threadNumEnv != nullptr) {
             threadNum = static_cast<int>(*threadNumEnv) - static_cast<int>('0');
             if (threadNum > KEY_PROCESS_THREAD || threadNum < 0) {
