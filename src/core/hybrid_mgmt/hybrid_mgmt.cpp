@@ -40,6 +40,12 @@ bool HybridMgmt::InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>&
         spdlog::info("config MAX_UNIQUE_THREAD_NUM:{}", num);
     }
 
+    if (getenv("FAST_UNIQUE") != nullptr) {
+        bool isFastUnique = std::atoi(getenv("FAST_UNIQUE"));
+        PerfConfig::fastUnique = isFastUnique;
+        spdlog::info("config FAST_UNIQUE:{}", PerfConfig::fastUnique);
+    }
+
     preprocess = Singleton<KeyProcess>::GetInstance();
     preprocess->Initialize(rankInfo, embInfos, thresholdValues, seed);
     preprocess->Start();

@@ -110,6 +110,7 @@ public:
         }
     }
 };
+
 template <int N = 4> class Dedup {
     static constexpr uint32_t kMinimalWorkloadPerWorker = 1 << 12;
     static const int kDefaultBucketCount = 1 << 24;

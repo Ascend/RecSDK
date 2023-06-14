@@ -25,13 +25,16 @@
 
 #include "utils/common.h"
 #include "utils/safe_queue.h"
+#include "utils/task_queue.h"
 
 #include "host_emb/host_emb.h"
 #include "emb_table/emb_table.h"
 #include "feature_admit_and_evict.h"
+#include "ock_ctr_common/include/factory.h"
 
 namespace MxRec {
     using namespace std;
+    using namespace ock::ctr;
 
     template<class T>
     struct Cmp {
@@ -111,6 +114,8 @@ namespace MxRec {
         map<emb_name_t, map<emb_key_t, int>> hotKey {};
         map<emb_name_t, int> hotEmbTotCount;
         map<emb_name_t, EmbTable> embeddingTableMap {};
+
+        FactoryPtr factory {};
         int hotEmbUpdateStep = HOT_EMB_UPDATE_STEP_DEFAULT;
         bool isWithFAAE;
 
@@ -122,8 +127,24 @@ namespace MxRec {
 
         bool KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channel, int id);
 
+        bool KeyProcessTaskHelperWithUnique(unique_ptr<emb_batch_t> &batch, UniquePtr& unique,
+                                            int channel, int id);
+
         auto ProcessSplitKeys(const unique_ptr<emb_batch_t>& batch, int id,
                               vector<keys_t>& splitKeys) -> tuple<keys_t, vector<int>, vector<int>>;
+
+        void GetUniqueConfig(UniqueConf& uniqueConf);
+
+        void InitializeUnique(UniqueConf& uniqueConf, size_t& preBatchSize, bool& uniqueInitialize,
+                                  const unique_ptr <emb_batch_t>& batch, UniquePtr& unique);
+
+        void ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &batch, UniquePtr& unique,
+                                           int id, UniqueInfo& uniqueInfoOut);
+
+        size_t GetKeySize(const unique_ptr<emb_batch_t> &batch);
+
+        void All2All(vector<int>& sc, int id, int channel, KeySendInfo& keySendInfo,
+                     All2AllInfo& all2AllInfoOut);
 
         auto HashSplit(const unique_ptr<emb_batch_t>& batch) const -> tuple<vector<keys_t>, vector<int32_t>>;
 
@@ -133,6 +154,8 @@ namespace MxRec {
         -> tuple<vector<keys_t>, vector<int32_t>, vector<vector<uint32_t>>>;
 
         vector<int> GetScAll(const vector<int>& keyScLocal, int commId, int channel) const;
+
+        void GetScAllForUnique(const vector<int>& keyScLocal, int commId, int channel, vector<int> &scAllOut) const;
 
         void Key2Offset(const emb_name_t& embName, keys_t& splitKey);
 
@@ -150,10 +173,19 @@ namespace MxRec {
         void UpdateHotMap(absl::flat_hash_map<emb_key_t, int>& keyCountMap, uint32_t count, bool refresh,
                           const string& embName);
 
+        void UpdateHotMapForUnique(const keys_t &keySend, const vector<int32_t> &keyCount,
+                                   uint32_t count, bool refresh, const string& embName);
+
+        void HandleHotAndSendCount(const unique_ptr<emb_batch_t> &batch, UniqueInfo& uniqueInfoOut,
+                                       KeySendInfo& keySendInfo, vector<int>& sc, vector<int>& splitSize);
+
         void PushResult(unique_ptr<emb_batch_t>& batch, unique_ptr<vector<Tensor>> tensors, keys_t& lookupKeys);
 
         void AddCountStartToHotPos(vector<keys_t>& splitKeys, vector<int>& hotPos, const vector<int>& hotPosDev,
                                    const unique_ptr<emb_batch_t>& batch);
+
+        void ComputeHotPos(const unique_ptr<emb_batch_t> &batch, map<emb_key_t, int> &hotMap,
+                           vector<int> &hotPos, vector<int32_t> &restore, const int hotOffset);
 
         vector<uint32_t> GetCountRecv(const unique_ptr<emb_batch_t>& batch, int id,
                                       vector<vector<uint32_t>>& keyCount, vector<int> scAll, vector<int> ss);

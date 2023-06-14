@@ -92,7 +92,8 @@ echo "${abseil_src_path}"
 abseil_install_path="${ROOT_DIR}"/install/abseil
 
 src_path="${ROOT_DIR}"/src
-
+acc_ctr_path="${ROOT_DIR}"/src/platform/AccCTR
+cp -rf ../platform/securec/* /usr1/mxRec/src/platform/AccCTR/3rdparty/huawei_secure_c
 cd "${ROOT_DIR}"
 
 release_tar=Ascend-"${pkg_dir}"_"${VERSION}"_linux-"${ARCH}".tar.gz
@@ -143,6 +144,13 @@ compile_so_file()
   cd ..
 }
 
+compile_acc_ctr_so_file()
+{
+  cd "${acc_ctr_path}"
+  chmod u+x build.sh
+  ./build.sh "release"
+}
+
 collect_so_file()
 {
   cd "${src_path}"
@@ -150,6 +158,7 @@ collect_so_file()
   mkdir -p "${src_path}"/libasc
   chmod u+x libasc
 
+  cp ${acc_ctr_path}/output/ock_ctr_common/lib/* libasc
   cp -df "${ROOT_DIR}"/output/*.so* libasc
   cp "${ROOT_DIR}"/platform/securec/lib/libsecurec.so libasc
 }
@@ -196,6 +205,9 @@ clean()
 
 install_abseil
 compile_securec
+
+echo "-----Build AccCTR -----"
+compile_acc_ctr_so_file
 
 echo "-----Build Start tf1 -----"
 source "${SCRIPT_DIR}"/tf1_env/bin/activate

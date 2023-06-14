@@ -52,6 +52,7 @@ target_link_libraries(test_main PUBLIC ${TF_LIB}
         securec
         OpenMP::OpenMP_CXX ${HDF5_CXX_LIBRARIES}  ${MPI_CXX_LIBRARIES}
         ${PYTHON_LIBRARY} drvdsmi_host dcmi
+        -ldl
         )
 
 target_link_libraries(test_main PUBLIC
