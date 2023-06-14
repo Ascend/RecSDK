@@ -50,7 +50,7 @@
 
 namespace MxRec {
 #define INFO_PTR shared_ptr
-#define TIME_PRINT spdlog::info
+#define TIME_PRINT spdlog::debug
 #define MGMT_CPY_THREADS 4
 #define PROFILING
     using namespace tensorflow;
@@ -71,6 +71,7 @@ namespace MxRec {
     struct PerfConfig {
         static int keyProcessThreadNum;
         static int maxUniqueThreadNum;
+        static bool fastUnique;
     };
 
     constexpr int KEY_PROCESS_TIMEOUT = 120;

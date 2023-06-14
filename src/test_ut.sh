@@ -15,6 +15,9 @@ source /opt/rh/devtoolset-7/enable
 
 CUR_DIR=$(dirname "$(readlink -f "$0")")
 ROOT_DIR=$(dirname "${CUR_DIR}")
+acc_ctr_path="${ROOT_DIR}"/src/platform/AccCTR
+cp -rf ../platform/securec/* /usr1/mxRec/src/platform/AccCTR/3rdparty/huawei_secure_c
+export LD_LIBRARY_PATH="${acc_ctr_path}"/output/ock_ctr_common/lib:$LD_LIBRARY_PATH
 
 compile_securec()
 {
@@ -29,6 +32,16 @@ compile_securec()
     fi
 }
 compile_securec
+
+compile_acc_ctr_so_file()
+{
+  cd "${acc_ctr_path}"
+  chmod u+x build.sh
+  ./build.sh "release"
+}
+
+echo "-----Build AccCTR -----"
+compile_acc_ctr_so_file
 
 cd "${ROOT_DIR}"/src
 

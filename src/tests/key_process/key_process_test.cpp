@@ -19,12 +19,40 @@
 #include "host_emb/host_emb.h"
 #include "key_process/key_process.h"
 #include "hybrid_mgmt/hybrid_mgmt.h"
+#include "ock_ctr_common/include/unique.h"
 
 using namespace std;
 using namespace MxRec;
 using namespace testing;
 
 static constexpr size_t BATCH_NUM_EACH_THREAD = 3;
+static constexpr int DESIRED_SIZE = 1;
+FactoryPtr factory;
+
+class SimpleThreadPool {
+public:
+    static void SyncRun(const std::vector<std::function<void()>> &tasks)
+    {
+        std::vector<std::future<void>> futs;
+        for (auto &task : tasks) {
+            futs.push_back(std::async(task));
+        }
+        for (auto &fut : futs) {
+            fut.wait();
+        }
+    }
+};
+
+static void CTRLog(int level, const char *msg)
+{
+    switch (level) {
+        case 0:
+            spdlog::debug("{}", msg);
+            break;
+        default:
+            break;
+    }
+}
 
 class KeyProcessTest : public testing::Test {
 protected:
@@ -222,6 +250,8 @@ TEST_F(KeyProcessTest, Initialize)
     for (const EmbInfo& info: embInfos) {
         ASSERT_NE(process.embInfos.find(info.name), process.embInfos.end());
     }
+
+    Factory::Create(factory);
 }
 
 TEST_F(KeyProcessTest, Start)
@@ -251,6 +281,7 @@ TEST_F(KeyProcessTest, HashSplit)
     }
     ASSERT_THAT(restore, ElementsAreArray(expectRestore));
 }
+
 #ifndef GTEST
 TEST_F(KeyProcessTest, GetScAll)
 {
@@ -267,6 +298,22 @@ TEST_F(KeyProcessTest, GetScAll)
     ASSERT_THAT(scAll, ElementsAreArray(expectScAll));
 }
 #endif
+
+TEST_F(KeyProcessTest, GetScAllForUnique)
+{
+    vector<int> keyScLocal(worldSize, worldRank + 1); // 用worldRank+1初始化发送数据量
+    spdlog::debug(KEY_PROCESS "rank {} keyScLocal: {}", worldRank, keyScLocal);
+    vector<int> expectScAll(worldSize * worldSize);
+    for (unsigned int i = 0; i < expectScAll.size(); ++i) {
+        expectScAll[i] = floor(i / worldSize) + 1;
+    }
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    ASSERT_EQ(process.isRunning, true);
+    vector<int> scAll;
+    process.GetScAllForUnique(keyScLocal, 0, 0, scAll);
+    ASSERT_THAT(scAll, ElementsAreArray(expectScAll));
+}
+
 TEST_F(KeyProcessTest, BuildRestoreVec_4cpu)
 {
     auto queue = SingletonQueue<emb_batch_t>::getInstances(0);
@@ -359,6 +406,17 @@ TEST_F(KeyProcessTest, Key2Offset)
     spdlog::debug(KEY_PROCESS "test Key2Offset: lookupKeys: {}, keyOffsetMap: {}", lookupKeys, process.keyOffsetMap);
     ASSERT_THAT(lookupKeys, ElementsAreArray(expectOffset));
 }
+
+TEST_F(KeyProcessTest, GetUniqueConfig)
+{
+    UniqueConf uniqueConf;
+    process.rankInfo.rankSize = worldSize;
+    process.rankInfo.useStatic = true;
+    process.GetUniqueConfig(uniqueConf);
+    process.rankInfo.useStatic = false;
+    process.GetUniqueConfig(uniqueConf);
+}
+
 // 自动化测试用例
 // 边界值、重复度测试
 TEST_F(KeyProcessTest, ProcessPrefetchTask)
@@ -372,6 +430,72 @@ TEST_F(KeyProcessTest, ProcessPrefetchTask)
     // 所有线程处理完（训练结束）后调用
     this_thread::sleep_for(5s);
     spdlog::info("wait 20s for thread running");
+    this_thread::sleep_for(20s);
+    process.Destroy();
+}
+
+TEST_F(KeyProcessTest, InitializeUnique)
+{
+    ASSERT_EQ(Factory::Create(factory), -1);
+    UniquePtr unique;
+    ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    PrepareBatch();
+    unique_ptr<emb_batch_t> batch;
+    batch = process.GetBatchData(0, 0);
+    UniqueConf uniqueConf;
+    process.rankInfo.rankSize = worldSize;
+    process.rankInfo.useStatic = true;
+    bool uniqueInitialize = false;
+    size_t preBatchSize = 0;
+    process.InitializeUnique(uniqueConf, preBatchSize, uniqueInitialize, batch, unique);
+}
+
+TEST_F(KeyProcessTest, GetKeySize)
+{
+    PrepareBatch();
+    unique_ptr<emb_batch_t> batch;
+    batch = process.GetBatchData(0, 0);
+    process.rankInfo.rankSize = worldSize;
+    process.rankInfo.useStatic = true;
+    process.GetKeySize(batch);
+}
+
+TEST_F(KeyProcessTest, ProcessBatchWithUniqueCompute)
+{
+    PrepareBatch();
+    
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    spdlog::info("CPU Core Num: {}", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
+
+    auto fn = [this](int channel, int id) {
+        UniquePtr unique;
+        
+        auto embName = embInfos[0].name;
+        process.hotEmbTotCount[embName] = 10;
+        vector<keys_t> splitKeys;
+        vector<int32_t> restore;
+        vector<int32_t> hotPos;
+        unique_ptr<emb_batch_t> batch;
+        UniqueInfo uniqueInfo;
+        batch = process.GetBatchData(channel, id); // get batch data from SingletonQueue<emb_batch_t>
+
+        ASSERT_EQ(factory->CreateUnique(unique), 0);
+        UniqueConf uniqueConf;
+        process.GetUniqueConfig(uniqueConf);
+        unique->Initialize(uniqueConf);
+        
+        spdlog::info("rankid :{},batchid: {}", rankInfo.rankId, batch->batchId);
+        process.KeyProcessTaskHelperWithUnique(batch, unique, channel, id);
+        spdlog::info("rankid :{},batchid: {}, hotPos {}", rankInfo.rankId, batch->batchId,
+                     hotPos);
+    }; // for clean code
+    for (int channel = 0; channel < 1; ++channel) {
+        for (int id = 0; id < 1; ++id) {
+            // use lambda expression initialize thread
+            process.procThreads.emplace_back(std::make_unique<std::thread>(fn, channel, id));
+        }
+    }
     this_thread::sleep_for(20s);
     process.Destroy();
 }
