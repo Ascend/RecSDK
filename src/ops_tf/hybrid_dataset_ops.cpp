@@ -130,8 +130,12 @@ class ReadEmbKeyV2Dynamic : public OpKernel {
 public:
     explicit ReadEmbKeyV2Dynamic(OpKernelConstructionPtr context) : OpKernel(context)
     {
-        auto logger = spdlog::stderr_color_mt("console");
-        spdlog::set_default_logger(logger);
+        if (!spdlog::get("console")) {
+            auto logger = spdlog::stderr_color_mt("console");
+            spdlog::set_default_logger(logger);
+        } else {
+            spdlog::set_default_logger(spdlog::get("console"));
+        }
         spdlog::cfg::load_env_levels();
         spdlog::default_logger()->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
         spdlog::debug("ReadEmbKeyV2Dynamic init");
@@ -346,8 +350,12 @@ class ReadEmbKeyV2 : public OpKernel {
 public:
     explicit ReadEmbKeyV2(OpKernelConstructionPtr context) : OpKernel(context)
     {
-        auto logger = spdlog::stderr_color_mt("console");
-        spdlog::set_default_logger(logger);
+        auto logger = spdlog::get("console");
+        if (!logger) {
+            logger = spdlog::stderr_color_mt("console");
+        }
+        spdlog::set_default_logger(spdlog::get("console"));
+        
         spdlog::cfg::load_env_levels();
         spdlog::default_logger()->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
         spdlog::debug("ReadEmbKeyV2 init");
@@ -389,10 +397,7 @@ public:
             if (threadNum > KEY_PROCESS_THREAD || threadNum < 0) {
                 throw runtime_error(fmt::format("{} is not valid", threadNum));
             }
-        } else {
-            threadNum = KEY_PROCESS_THREAD;
         }
-
         auto keyProcess = Singleton<KeyProcess>::GetInstance();
         if (!keyProcess->isRunning) {
             context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ", "KeyProcess not running."));
@@ -546,7 +551,7 @@ public:
     int maxStep = 0;
     bool isTimestamp { false };
     bool modifyGraph { false };
-    int threadNum = 0;
+    int threadNum = KEY_PROCESS_THREAD;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ReadEmbKeyV2").Device(DEVICE_CPU), ReadEmbKeyV2);
