@@ -13,6 +13,7 @@
 
 #include <spdlog/spdlog.h>
 #include <spdlog/stopwatch.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/fmt/chrono.h>
 #include <spdlog/fmt/bundled/ranges.h>
 #include <spdlog/cfg/env.h>
@@ -129,6 +130,8 @@ class ReadEmbKeyV2Dynamic : public OpKernel {
 public:
     explicit ReadEmbKeyV2Dynamic(OpKernelConstructionPtr context) : OpKernel(context)
     {
+        auto logger = spdlog::stderr_color_mt("console");
+        spdlog::set_default_logger(logger);
         spdlog::cfg::load_env_levels();
         spdlog::default_logger()->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
         spdlog::debug("ReadEmbKeyV2Dynamic init");
@@ -343,6 +346,8 @@ class ReadEmbKeyV2 : public OpKernel {
 public:
     explicit ReadEmbKeyV2(OpKernelConstructionPtr context) : OpKernel(context)
     {
+        auto logger = spdlog::stderr_color_mt("console");
+        spdlog::set_default_logger(logger);
         spdlog::cfg::load_env_levels();
         spdlog::default_logger()->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
         spdlog::debug("ReadEmbKeyV2 init");
@@ -378,7 +383,7 @@ public:
         }
         batchIdsInfo.at(channelId) = 0;
 
-        const char* threadNumEnv = getenv("THREAD_NUM");
+        const char* threadNumEnv = getenv("KEY_PROCESS_THREAD_NUM");
         if (threadNumEnv != nullptr) {
             threadNum = static_cast<int>(*threadNumEnv) - static_cast<int>('0');
             if (threadNum > KEY_PROCESS_THREAD || threadNum < 0) {
