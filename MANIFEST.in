@@ -1,0 +1,2 @@
+include mx_rec/tools/*
+include mx_rec/tools/*/*

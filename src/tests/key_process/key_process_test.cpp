@@ -461,7 +461,7 @@ TEST_F(KeyProcessTest, GetKeySize)
     process.GetKeySize(batch);
 }
 
-TEST_F(KeyProcessTest, ProcessBatchWithUniqueCompute)
+TEST_F(KeyProcessTest, ProcessBatchWithFastUnique)
 {
     PrepareBatch();
     
@@ -486,7 +486,7 @@ TEST_F(KeyProcessTest, ProcessBatchWithUniqueCompute)
         unique->Initialize(uniqueConf);
         
         spdlog::info("rankid :{},batchid: {}", rankInfo.rankId, batch->batchId);
-        process.KeyProcessTaskHelperWithUnique(batch, unique, channel, id);
+        process.KeyProcessTaskHelperWithFastUnique(batch, unique, channel, id);
         spdlog::info("rankid :{},batchid: {}, hotPos {}", rankInfo.rankId, batch->batchId,
                      hotPos);
     }; // for clean code

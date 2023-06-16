@@ -169,6 +169,7 @@ gen_wheel_file()
   touch "${src_path}"/libasc/__init__.py
   remove "${ROOT_DIR}"/mx_rec/libasc
   mv "${src_path}"/libasc "${ROOT_DIR}"/mx_rec
+  cp -rf "${ROOT_DIR}"/tools "${ROOT_DIR}"/mx_rec
   python3 setup.py bdist_wheel --plat-name=linux_$(arch)
   mkdir -p "$1"
   mv dist/mx_rec*.whl "$1"

@@ -34,9 +34,10 @@ export USE_DYNAMIC_EXPANSION=0  # 0：关闭动态扩容；1: 开启动态扩容
 export USE_MULTI_LOOKUP=1       # 0：一表一查；1：一表多查
 export USE_MODIFY_GRAPH=0       # 0：feature spec模式；1：自动改图模式
 export USE_TIMESTAMP=0          # 0：关闭特征准入淘汰；1：开启特征准入淘汰
-################################################
-
+################# 性能调优相关 ####################
 export KEY_PROCESS_THREAD_NUM=6 #default 6, max 10
+export FAST_UNIQUE=0   #if use fast unique
+################################################
 
 # 帮助信息，不需要修改
 if [[ $1 == --help || $1 == -h ]];then

@@ -22,15 +22,18 @@
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/example/example.pb.h"
+
 #include "key_process/key_process.h"
 #include "key_process/feature_admit_and_evict.h"
 #include "utils/common.h"
 #include "utils/safe_queue.h"
 #include "utils/singleton.h"
+#include "utils/time_cost.h"
 
 using namespace tensorflow;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
+
 using namespace std;
 using namespace chrono;
 using namespace MxRec;
@@ -220,10 +223,12 @@ public:
         OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape {}, &output));
         auto out = output->flat<int32>();
         out(0) = batchId;
+
+        TimeCost enqueueTC;
         EnqueueBatchData(std::vector<int>{batchId, batchQueueId}, timestamp, inputTensor, splits);
-        TIME_PRINT(KEY_PROCESS "read batch cost: {}, elapsed from last:{}, batch[{}]:{}",
-                   Format2Ms(sw), Format2Ms(staticSw),
-            channelId, batchId);
+        TIME_PRINT(KEY_PROCESS "ReadEmbKeyV2Dynamic read batch cost(ms):{}, elapsed from last(ms):{}, "
+                        "enqueueTC(ms):{}, batch[{}]:{}",
+                        Format2Ms(sw), Format2Ms(staticSw), enqueueTC.ElapsedMS(), channelId, batchId);
         staticSw.reset();
     }
 
@@ -445,10 +450,12 @@ public:
         OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape {}, &output));
         auto out = output->flat<int32>();
         out(0) = batchId;
+
+        TimeCost enqueueTC;
         EnqueueBatchData(batchId, batchQueueId, timestamp, inputTensor);
-        TIME_PRINT(KEY_PROCESS "read batch cost: {}, elapsed from last:{}, batch[{}]:{}",
-                   Format2Ms(sw), Format2Ms(staticSw),
-            channelId, batchId);
+        TIME_PRINT(KEY_PROCESS "ReadEmbKeyV2Static read batch cost(ms):{}, elapsed from last(ms):{}, "
+                        "enqueueTC(ms):{}, batch[{}]:{}",
+                        Format2Ms(sw), Format2Ms(staticSw), enqueueTC.ElapsedMS(), channelId, batchId);
         staticSw.reset();
     }
 
