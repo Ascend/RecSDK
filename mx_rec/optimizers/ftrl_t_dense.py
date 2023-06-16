@@ -77,11 +77,11 @@ class CustomizedFtrlTZ(optimizer.Optimizer):
     def _apply_dense(self, grad, var):
         if self._lambda1 > 1e-10:
             return self._apply_dense_shared(
-                grad.values,
+                grad,
                 var)
         else:
             return self._apply_dense_shared_v2(
-                grad.values,
+                grad,
                 var)
 
     def _apply_dense_shared(self, grad, var):
