@@ -221,6 +221,7 @@ def start_asc_pipeline():
     table_info_list = generate_table_info_list()
     threshold_list = generate_threshold_list()
     if not table_info_list:
-        logging.warning(f"table_info_list is empty")
+        logging.error("table_info_list is empty!")
+        raise RuntimeError("table_info_list is empty!")
     if not is_asc_manager_initialized() and table_info_list:
         initialize_emb_cache(table_info_list, threshold_list)

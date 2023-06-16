@@ -51,6 +51,16 @@ class CustomizedLazyAdamByAddress(adam.AdamOptimizer, CustomizedOptimizer):
         self._slot_num = 2
         self._check_input_param()
 
+    @property
+    def slot_num(self):
+        return self._slot_num
+
+    def get_slot_init_values(self):
+        # return state value list of adam that needs to initialize in ASC DDR.
+        initial_momentum_value = 0.0
+        initial_velocity_value = 0.0
+        return [initial_momentum_value, initial_velocity_value]
+
     def _check_input_param(self):
         check_param_type("beta1", self._beta1, (int, float))
         check_param_range("beta1", self._beta1, 0, 1)
@@ -63,22 +73,12 @@ class CustomizedLazyAdamByAddress(adam.AdamOptimizer, CustomizedOptimizer):
 
         check_param_type("use_locking", self._use_locking, bool)
 
-    @property
-    def slot_num(self):
-        return self._slot_num
-
     def _create_slots(self, addr_list):
         first_addr = addr_list[0]
         self._create_non_slot_variable(
             initial_value=self._beta1, name="beta1_power", colocate_with=first_addr)
         self._create_non_slot_variable(
             initial_value=self._beta2, name="beta2_power", colocate_with=first_addr)
-
-    def get_slot_init_values(self):
-        # return state value list of adam that needs to initialize in ASC DDR.
-        initial_momentum_value = 0.0
-        initial_velocity_value = 0.0
-        return [initial_momentum_value, initial_velocity_value]
 
     def _apply_dense(self, grad, var):
         logging.debug(">>>>Enter _apply_dense")

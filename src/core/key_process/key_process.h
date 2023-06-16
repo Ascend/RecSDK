@@ -58,7 +58,7 @@ namespace MxRec {
 
     class KeyProcess {
     public:
-        int Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
+        bool Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
                        const vector<ThresholdValue>& thresholdValues = {}, int seed = 0);
 
         unique_ptr<vector<Tensor>> GetInfoVec(int batch, const string& embName, int channel, ProcessedInfo type);

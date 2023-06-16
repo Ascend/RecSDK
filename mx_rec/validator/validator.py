@@ -301,11 +301,12 @@ class RankInfoValidator:
 
         try:
             rank_size_value = int(rank_size)
-            res = RankSizeValidator(rank_size_value, 1, 16).check_rank_size_valid()
-            if not res and rank_size_value not in [1, 2, 4, 8, 16]:
-                raise ValueError("Invalid rank size, rank size must between 0 and 15 in recommendation training.")
         except ValueError as err:
             raise ValueError("Invalid rank size, rank size is a valid integer.") from err
+
+        res = RankSizeValidator(rank_size_value, 1, 16).check_rank_size_valid()
+        if not res and rank_size_value not in [1, 2, 4, 8, 16]:
+            raise ValueError("Invalid rank size, rank size must between 0 and 15 in recommendation training.")
 
         chief_device = os.getenv("CM_CHIEF_DEVICE")
         chief_device_res = StringValidator(chief_device).check()
