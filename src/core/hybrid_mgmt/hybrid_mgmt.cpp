@@ -91,8 +91,10 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
         return false;
     }
 
-    lookUpKeysQueue = make_unique<Common::TaskQueue<vector<Tensor>>>();
-    restoreQueue = make_unique<Common::TaskQueue<vector<Tensor>>>();
+    lookUpKeysQueueForTrain = make_unique<Common::TaskQueue<vector<Tensor>>>();
+    restoreQueueForTrain = make_unique<Common::TaskQueue<vector<Tensor>>>();
+    lookUpKeysQueueForEval = make_unique<Common::TaskQueue<vector<Tensor>>>();
+    restoreQueueForEval = make_unique<Common::TaskQueue<vector<Tensor>>>();
     isRunning = true;
 
     if (!rankInfo.noDDR) {
@@ -254,52 +256,70 @@ void HybridMgmt::Start()
 {
 #ifndef GTEST
     if (mgmtRankInfo.noDDR) {
-        auto getInfoTask = [this]() {
-            auto ret = Task(TaskType::GETINFO);
-            spdlog::info("getInfoTask done");
-            return ret;
+        auto getInfoTaskForTrain = [this]() {
+            TaskForTrain(TaskType::GETINFO);
+            spdlog::info("getInfoTaskForTrain done");
         };
-        procThreads.emplace_back(std::make_unique<std::thread>(getInfoTask));
+        procThreads.emplace_back(std::make_unique<std::thread>(getInfoTaskForTrain));
 
-        auto sendInfoTask = [this]() {
-            auto ret = Task(TaskType::SEND);
-            spdlog::info("sendInfoTask done");
-            return ret;
+        auto getInfoTaskForEval = [this]() {
+            TaskForEval(TaskType::GETINFO);
+            spdlog::info("getInfoTaskForEval done");
         };
-        procThreads.emplace_back(std::make_unique<std::thread>(sendInfoTask));
+        procThreads.emplace_back(std::make_unique<std::thread>(getInfoTaskForEval));
+
+        auto sendInfoTaskForTrain = [this]() {
+            TaskForTrain(TaskType::SEND);
+            spdlog::info("sendInfoTaskForTrain done");
+        };
+        procThreads.emplace_back(std::make_unique<std::thread>(sendInfoTaskForTrain));
+
+        auto sendInfoTaskForEval = [this]() {
+            TaskForEval(TaskType::SEND);
+            spdlog::info("sendInfoTaskForEval done");
+        };
+        procThreads.emplace_back(std::make_unique<std::thread>(sendInfoTaskForEval));
     }
 
     if (!mgmtRankInfo.noDDR) {
-        auto parseKeysTask = [this]() {
-            auto ret = Task(TaskType::DDR);
-            spdlog::info("parseKeysTask done");
-            return ret;
+        auto parseKeysTaskForTrain = [this]() {
+            TaskForTrain(TaskType::DDR);
+            spdlog::info("parseKeysTaskForTrain done");
         };
-        procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTask));
+        procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForTrain));
+
+        auto parseKeysTaskForEval = [this]() {
+            TaskForEval(TaskType::DDR);
+            spdlog::info("parseKeysTaskForEval done");
+        };
+        procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForEval));
     }
 #endif
 }
 
 #ifndef GTEST
-bool HybridMgmt::Task(TaskType type)
+void HybridMgmt::TaskForTrain(TaskType type)
 {
     while (isRunning) {
-        spdlog::info(MGMT + "Start Mgmt Train Task: {}", type);
+        spdlog::info(MGMT + "Start Train Task: {}", type);
         if (mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1 || mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] > 0) {
             if (!TrainTask(type)) {
-                return false;
-            }
-        }
-
-        spdlog::info(MGMT + "Start Mgmt Eval Task: {}", type);
-        if (mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1 || mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] > 0) {
-            if (!EvalTask(type)) {
-                return false;
+                return;
             }
         }
     }
+}
 
-    return false;
+void HybridMgmt::TaskForEval(TaskType type)
+{
+    while (isRunning) {
+        spdlog::info(MGMT + "Start Eval Task: {}", type);
+        if (mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1 || mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] > 0) {
+            if (!EvalTask(type)) {
+                return;
+            }
+        }
+    }
 }
 
 bool HybridMgmt::TrainTask(TaskType type)
@@ -309,15 +329,17 @@ bool HybridMgmt::TrainTask(TaskType type)
         if (!isRunning) {
             return false;
         }
+        bool status = false;
+
         switch (type) {
             case TaskType::GETINFO:
-                GetLookupAndRestore(TRAIN_CHANNEL_ID, getInfoBatchId);
+                status = GetLookupAndRestore(TRAIN_CHANNEL_ID, getInfoBatchId);
                 isContinue = getInfoBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
                         mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1;
                 spdlog::info(MGMT + "getInfoBatchId = {}", getInfoBatchId);
                 break;
             case TaskType::SEND:
-                SendLookupAndRestore(TRAIN_CHANNEL_ID, sendBatchId);
+                status = SendLookupAndRestore(TRAIN_CHANNEL_ID, sendBatchId);
                 isContinue = sendBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
                         mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1;
                 spdlog::info(MGMT + "sendBatchId = {}", sendBatchId);
@@ -332,13 +354,17 @@ bool HybridMgmt::TrainTask(TaskType type)
 #endif
                 break;
             case TaskType::DDR:
-                ParseKeys(TRAIN_CHANNEL_ID, trainBatchId);
+                status =  ParseKeys(TRAIN_CHANNEL_ID, trainBatchId);
                 isContinue = trainBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
                         mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1;
                 spdlog::info(MGMT + "parseKeysBatchId = {}", trainBatchId);
                 break;
             default:
                 throw std::invalid_argument("Invalid TaskType Type.");
+        }
+
+        if (!status) {
+            return false;
         }
     } while (isContinue);
 
@@ -372,8 +398,7 @@ bool HybridMgmt::EvalTask(TaskType type)
         }
 
         if (!status) {
-            mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] = evalBatchId;
-            break;
+            return false;
         }
     } while (evalBatchId % mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] != 0 ||
              mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1);
@@ -398,14 +423,66 @@ bool HybridMgmt::GetLookupAndRestore(const int channelId, int &batchId)
                 spdlog::info(MGMT + "ParseKeys infoVecs empty ! batchId:{}, channelId:{}", batchId, channelId);
                 return false;
             }
-            lookUpKeysQueue->Pushv({ infoVecs->back() });
-            infoVecs->pop_back();
-            restoreQueue->Pushv(*infoVecs);
+
+            switch (channelId) {
+                case TRAIN_CHANNEL_ID:
+                    lookUpKeysQueueForTrain->Pushv({ infoVecs->back() });
+                    infoVecs->pop_back();
+                    restoreQueueForTrain->Pushv(*infoVecs);
+                    break;
+                case EVAL_CHANNEL_ID:
+                    lookUpKeysQueueForEval->Pushv({ infoVecs->back() });
+                    infoVecs->pop_back();
+                    restoreQueueForEval->Pushv(*infoVecs);
+                    break;
+                default:
+                    throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
+            }
         }
         TIME_PRINT("getAllTensorTC(ms):{}", getAllTensorTC.ElapsedMS());
     }
     batchId++;
     return true;
+}
+
+void HybridMgmt::LookupKeys(const int channelId, vector<string> names)
+{
+    TimeCost sendLookupTC;
+    for (const string& name: names) {
+        vector<Tensor> lookUpKeys;
+        switch (channelId) {
+            case TRAIN_CHANNEL_ID:
+                lookUpKeys = lookUpKeysQueueForTrain->WaitAndPop();
+                break;
+            case EVAL_CHANNEL_ID:
+                lookUpKeys = lookUpKeysQueueForEval->WaitAndPop();
+                break;
+            default:
+                throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
+        }
+        hdTransfer->Send(TransferChannel::LOOKUP, lookUpKeys, channelId, name);
+    }
+    TIME_PRINT("sendLookupTC(ms):{}", sendLookupTC.ElapsedMS());
+}
+
+void HybridMgmt::RestoreKeys(const int channelId, vector<string> names)
+{
+    TimeCost sendRestoreTC;
+    for (const string& name: names) {
+        vector<Tensor> restore;
+        switch (channelId) {
+            case TRAIN_CHANNEL_ID:
+                restore = restoreQueueForTrain->WaitAndPop();
+                break;
+            case EVAL_CHANNEL_ID:
+                restore = restoreQueueForEval->WaitAndPop();
+                break;
+            default:
+                throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
+        }
+        hdTransfer->Send(TransferChannel::RESTORE, restore, channelId, name);
+    }
+    TIME_PRINT("sendRestoreTC(ms):{}", sendRestoreTC.ElapsedMS());
 }
 
 bool HybridMgmt::SendLookupAndRestore(const int channelId, int &batchId)
@@ -432,21 +509,11 @@ bool HybridMgmt::SendLookupAndRestore(const int channelId, int &batchId)
         {
 #pragma omp section
             {
-                TimeCost sendLookupTC;
-                for (const string& name: names) {
-                    auto lookUpKeys = lookUpKeysQueue->WaitAndPop();
-                    hdTransfer->Send(TransferChannel::LOOKUP, lookUpKeys, channelId, name);
-                }
-                TIME_PRINT("sendLookupTC(ms):{}", sendLookupTC.ElapsedMS());
+                LookupKeys(channelId, names);
             }
 #pragma omp section
             {
-                TimeCost sendRestoreTC;
-                for (const string& name: names) {
-                    auto restore = restoreQueue->WaitAndPop();
-                    hdTransfer->Send(TransferChannel::RESTORE, restore, channelId, name);
-                }
-                TIME_PRINT("sendRestoreTC(ms):{}", sendRestoreTC.ElapsedMS());
+                RestoreKeys(channelId, names);
             }
         }
         TIME_PRINT("sendTensorsTC(ms):{}", sendTensorsTC.ElapsedMS());
