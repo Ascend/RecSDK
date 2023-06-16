@@ -422,7 +422,7 @@ bool HybridMgmt::GetLookupAndRestore(const int channelId, int &batchId)
             infoVecs->pop_back();
             restoreQueue->Pushv(*infoVecs);
         }
-        TIME_PRINT("getAllTensorTC TimeCost(ms):{}", getAllTensorTC.ElapsedMS());
+        TIME_PRINT("getAllTensorTC(ms):{}", getAllTensorTC.ElapsedMS());
     }
     batchId++;
     return true;
@@ -446,7 +446,7 @@ bool HybridMgmt::SendLookupAndRestore(const int channelId, int &batchId)
         spdlog::info("SendLookupAndRestore batchId: {}, name: {}, channelId: {}",
                      batchId, embInfo.name, channelId);
 
-        TimeCost sendTensorTC;
+        TimeCost sendTensorsTC;
         omp_set_num_threads(SEND_TENSOR_TYPE_NUM);
 #pragma omp parallel sections
         {
@@ -457,7 +457,7 @@ bool HybridMgmt::SendLookupAndRestore(const int channelId, int &batchId)
                     auto lookUpKeys = lookUpKeysQueue->WaitAndPop();
                     hdTransfer->Send(TransferChannel::LOOKUP, lookUpKeys, channelId, name);
                 }
-                TIME_PRINT("LOOKUP Send TimeCost(ms):{}", sendLookupTC.ElapsedMS());
+                TIME_PRINT("sendLookupTC(ms):{}", sendLookupTC.ElapsedMS());
             }
 #pragma omp section
             {
@@ -466,10 +466,10 @@ bool HybridMgmt::SendLookupAndRestore(const int channelId, int &batchId)
                     auto restore = restoreQueue->WaitAndPop();
                     hdTransfer->Send(TransferChannel::RESTORE, restore, channelId, name);
                 }
-                TIME_PRINT("RESTORE Send TimeCost(ms):{}", sendRestoreTC.ElapsedMS());
+                TIME_PRINT("sendRestoreTC(ms):{}", sendRestoreTC.ElapsedMS());
             }
         }
-        TIME_PRINT("sendTensorTC TimeCost(ms):{}", sendTensorTC.ElapsedMS());
+        TIME_PRINT("sendTensorsTC(ms):{}", sendTensorsTC.ElapsedMS());
     }
     batchId++;
     return true;
@@ -526,6 +526,8 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
     if (lookupKeys.empty()) {
         remainBatchOut = false;
     }
+
+    TimeCost getAndSendTensorsTC;
     auto restore = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::RESTORE);
     hdTransfer->Send(TransferChannel::RESTORE, *restore, channelId, embName);
     vector<Tensor> tmpData;
@@ -537,6 +539,8 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
         auto all2all = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::ALL2ALL);
         hdTransfer->Send(TransferChannel::ALL2ALL, *all2all, channelId, embName);
     }
+    TIME_PRINT("getAndSendTensorsTC(ms):{}", getAndSendTensorsTC.ElapsedMS());
+
     if (embHashMap.HasFree(lookupKeys.size())) { // check free > next one batch
         spdlog::warn(MGMT + "embName {}[{}]{},iBatch:{} freeSize not enough, {}", embName, channelId,
                      batchId, iBatch, lookupKeys.size());

@@ -127,7 +127,7 @@ namespace MxRec {
 
         bool KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channel, int id);
 
-        bool KeyProcessTaskHelperWithUnique(unique_ptr<emb_batch_t> &batch, UniquePtr& unique,
+        bool KeyProcessTaskHelperWithFastUnique(unique_ptr<emb_batch_t> &batch, UniquePtr& unique,
                                             int channel, int id);
 
         auto ProcessSplitKeys(const unique_ptr<emb_batch_t>& batch, int id,
@@ -138,7 +138,7 @@ namespace MxRec {
         void InitializeUnique(UniqueConf& uniqueConf, size_t& preBatchSize, bool& uniqueInitialize,
                                   const unique_ptr <emb_batch_t>& batch, UniquePtr& unique);
 
-        void ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &batch, UniquePtr& unique,
+        void ProcessBatchWithFastUnique(const unique_ptr<emb_batch_t> &batch, UniquePtr& unique,
                                            int id, UniqueInfo& uniqueInfoOut);
 
         size_t GetKeySize(const unique_ptr<emb_batch_t> &batch);
