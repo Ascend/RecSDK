@@ -255,14 +255,14 @@ void HybridMgmt::Start()
 #ifndef GTEST
     if (mgmtRankInfo.noDDR) {
         auto getInfoTask = [this]() {
-            auto ret = GetInfoTask();
+            auto ret = Task(TaskType::GETINFO);
             spdlog::info("getInfoTask done");
             return ret;
         };
         procThreads.emplace_back(std::make_unique<std::thread>(getInfoTask));
 
         auto sendInfoTask = [this]() {
-            auto ret = SendTask();
+            auto ret = Task(TaskType::SEND);
             spdlog::info("sendInfoTask done");
             return ret;
         };
@@ -271,7 +271,7 @@ void HybridMgmt::Start()
 
     if (!mgmtRankInfo.noDDR) {
         auto parseKeysTask = [this]() {
-            auto ret = ParseKeysTask();
+            auto ret = Task(TaskType::DDR);
             spdlog::info("parseKeysTask done");
             return ret;
         };
@@ -281,124 +281,104 @@ void HybridMgmt::Start()
 }
 
 #ifndef GTEST
-bool HybridMgmt::TrainParseKeys()
+bool HybridMgmt::Task(TaskType type)
 {
+    while (isRunning) {
+        spdlog::info(MGMT + "Start Mgmt Train Task: {}", type);
+        if (mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1 || mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] > 0) {
+            if (!TrainTask(type)) {
+                return false;
+            }
+        }
+
+        spdlog::info(MGMT + "Start Mgmt Eval Task: {}", type);
+        if (mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1 || mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] > 0) {
+            if (!EvalTask(type)) {
+                return false;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool HybridMgmt::TrainTask(TaskType type)
+{
+    bool isContinue = false;
     do {
         if (!isRunning) {
             return false;
         }
-        ParseKeys(TRAIN_CHANNEL_ID, getInfoBatchId);
-        spdlog::info(MGMT + "parseKeysBatchId = {}", getInfoBatchId);
-    } while (getInfoBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
-             mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1);
+        switch (type) {
+            case TaskType::GETINFO:
+                GetLookupAndRestore(TRAIN_CHANNEL_ID, getInfoBatchId);
+                isContinue = getInfoBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
+                        mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1;
+                spdlog::info(MGMT + "getInfoBatchId = {}", getInfoBatchId);
+                break;
+            case TaskType::SEND:
+                SendLookupAndRestore(TRAIN_CHANNEL_ID, sendBatchId);
+                isContinue = sendBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
+                        mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1;
+                spdlog::info(MGMT + "sendBatchId = {}", sendBatchId);
+#if defined(PROFILING) && defined(BUILD_WITH_EASY_PROFILER)
+                if (sendBatchId == PROFILING_START_BATCH_ID) {
+                    EASY_PROFILER_ENABLE
+                } else if (sendBatchId == PROFILING_END_BATCH_ID) {
+                    EASY_PROFILER_DISABLE
+                    ::profiler::dumpBlocksToFile(fmt::format("/home/MX_REC-mgmt-profile-{}.prof",
+                                                             mgmtRankInfo.rankId).c_str());
+                }
+#endif
+                break;
+            case TaskType::DDR:
+                ParseKeys(TRAIN_CHANNEL_ID, trainBatchId);
+                isContinue = trainBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
+                        mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1;
+                spdlog::info(MGMT + "parseKeysBatchId = {}", trainBatchId);
+                break;
+            default:
+                throw std::invalid_argument("Invalid TaskType Type.");
+        }
+    } while (isContinue);
 
     return true;
 }
 
-bool HybridMgmt::EvalParseKeys()
+bool HybridMgmt::EvalTask(TaskType type)
 {
-    int evalGetInfoBatchId = 0; // 0-99, 0-99
+    int evalBatchId = 0; // 0-99, 0-99
     do {
         if (!isRunning) {
             return false;
         }
-        bool status = ParseKeys(EVAL_CHANNEL_ID, evalGetInfoBatchId);
+        bool status = false;
+
+        switch (type) {
+            case TaskType::GETINFO:
+                status = GetLookupAndRestore(EVAL_CHANNEL_ID, evalBatchId);
+                spdlog::info(MGMT + "GETINFO evalBatchId = {}", evalBatchId);
+                break;
+            case TaskType::SEND:
+                status = SendLookupAndRestore(EVAL_CHANNEL_ID, evalBatchId);
+                spdlog::info(MGMT + "SEND evalBatchId = {}", evalBatchId);
+                break;
+            case TaskType::DDR:
+                status = ParseKeys(EVAL_CHANNEL_ID, evalBatchId);
+                spdlog::info(MGMT + "DDR evalBatchId = {}", evalBatchId);
+                break;
+            default:
+                throw std::invalid_argument("Invalid TaskType Type.");
+        }
+
         if (!status) {
-            mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] = evalGetInfoBatchId;
+            mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] = evalBatchId;
             break;
         }
-    } while (evalGetInfoBatchId % mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] != 0 ||
+    } while (evalBatchId % mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] != 0 ||
              mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1);
 
     return true;
-}
-
-// 腾讯需要DDR开启特性
-bool HybridMgmt::ParseKeysTask()
-{
-    while (isRunning) {
-        spdlog::info(MGMT + "Start Mgmt ParseKeysTask");
-        if (mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1 || mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] > 0) {
-            if (!TrainParseKeys()) {
-                return false;
-            }
-        }
-
-        if (mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1 || mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] > 0) {
-            if (!EvalParseKeys()) {
-                return false;
-            }
-        }
-    }
-
-    return false;
-}
-
-bool HybridMgmt::GetInfoTask()
-{
-    while (isRunning) {
-        spdlog::info(MGMT + "Start Mgmt GetInfoTask");
-        do {
-            if (!isRunning) {
-                return false;
-            }
-            GetLookupAndRestore(TRAIN_CHANNEL_ID, getInfoBatchId);
-            spdlog::info(MGMT + "getInfoBatchId = {}", getInfoBatchId);
-        } while (getInfoBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
-                mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1);
-
-        int evalGetInfoBatchId = 0; // 0-99, 0-99
-        do {
-            if (!isRunning) {
-                return false;
-            }
-            bool status = GetLookupAndRestore(EVAL_CHANNEL_ID, evalGetInfoBatchId);
-            if (!status) {
-                mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] = evalGetInfoBatchId;
-                break;
-            }
-        } while (evalGetInfoBatchId % mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] != 0 ||
-                mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1);
-    }
-    return false;
-}
-
-bool HybridMgmt::SendTask()
-{
-    while (isRunning) {
-        spdlog::info(MGMT + "Start Mgmt SendTask");
-        do {
-            if (!isRunning) {
-                return false;
-            }
-            SendLookupAndRestore(TRAIN_CHANNEL_ID, sendBatchId);
-#if defined(PROFILING) && defined(BUILD_WITH_EASY_PROFILER)
-            spdlog::info(MGMT + "sendBatchId = {}", sendBatchId);
-            if (trainBatchId == PROFILING_START_BATCH_ID) {
-                EASY_PROFILER_ENABLE
-            } else if (trainBatchId == PROFILING_END_BATCH_ID) {
-                EASY_PROFILER_DISABLE
-                ::profiler::dumpBlocksToFile(
-                    fmt::format("/home/MX_REC-mgmt-profile-{}.prof", mgmtRankInfo.rankId).c_str());
-            }
-#endif
-        } while (sendBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
-                 mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1);
-
-        int evalSendBatchId = 0;
-        do {
-            if (!isRunning) {
-                return false;
-            }
-            bool status = SendLookupAndRestore(EVAL_CHANNEL_ID, evalSendBatchId);
-            if (!status) {
-                mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] = evalSendBatchId;
-                break;
-            }
-        } while (evalSendBatchId % mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] != 0 ||
-                 mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1);
-    }
-    return false;
 }
 
 bool HybridMgmt::GetLookupAndRestore(const int channelId, int &batchId)

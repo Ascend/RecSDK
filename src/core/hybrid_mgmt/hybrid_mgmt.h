@@ -28,6 +28,12 @@ namespace MxRec {
 
     constexpr int SEND_TENSOR_TYPE_NUM = 2;
 
+    enum class TaskType {
+        GETINFO,
+        SEND,
+        DDR
+    };
+
     class HybridMgmt {
     public:
         HybridMgmt() = default;
@@ -100,7 +106,7 @@ namespace MxRec {
     private:
         int currentBatchId;
         int trainBatchId = 0; // 0-199, 200-
-        int getInfoBatchId;
+        int getInfoBatchId; // 0-199, 200-
         int sendBatchId;
         vector<EmbInfo> mgmtEmbInfo;
         RankInfo mgmtRankInfo;
@@ -116,11 +122,9 @@ namespace MxRec {
         bool skipUpdate;
         bool isLoad { false };
 
-        bool ParseKeysTask();
-        bool GetInfoTask();
-        bool SendTask();
-        bool TrainParseKeys();
-        bool EvalParseKeys();
+        bool Task(TaskType type);
+        bool TrainTask(TaskType type);
+        bool EvalTask(TaskType type);
 
         bool GetLookupAndRestore(const int channelId, int &batchId);
         bool SendLookupAndRestore(const int channelId, int &batchId);

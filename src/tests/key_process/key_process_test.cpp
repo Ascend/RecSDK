@@ -239,7 +239,7 @@ protected:
 
 TEST_F(KeyProcessTest, Initialize)
 {
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     ASSERT_EQ(process.rankInfo.rankId, rankInfo.rankId);
     ASSERT_EQ(process.rankInfo.rankSize, rankInfo.rankSize);
@@ -256,7 +256,7 @@ TEST_F(KeyProcessTest, Initialize)
 
 TEST_F(KeyProcessTest, Start)
 {
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     ASSERT_EQ(process.Start(), 0);
     process.Destroy();
@@ -272,7 +272,7 @@ TEST_F(KeyProcessTest, HashSplit)
     vector<vector<int>> expectSplitKeys = { { 4, 16 }, { 1, 21, 29 }, { 14, 2 }, { 23, 7 } };
     batch->sample = std::move(batchKeys);
     spdlog::debug(KEY_PROCESS "batch sample: {}", batch->sample);
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     process.rankInfo.rankSize = rankSize;
     auto [splitKeys, restore] = process.HashSplit(batch);
@@ -291,7 +291,7 @@ TEST_F(KeyProcessTest, GetScAll)
     for (unsigned int i = 0; i < expectScAll.size(); ++i) {
         expectScAll[i] = floor(i / worldSize) + 1;
     }
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     vector<int> scAll;
     process.GetScAll(keyScLocal, 0, 0, scAll);
@@ -307,7 +307,7 @@ TEST_F(KeyProcessTest, GetScAllForUnique)
     for (unsigned int i = 0; i < expectScAll.size(); ++i) {
         expectScAll[i] = floor(i / worldSize) + 1;
     }
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     vector<int> scAll;
     process.GetScAllForUnique(keyScLocal, 0, 0, scAll);
@@ -329,7 +329,7 @@ TEST_F(KeyProcessTest, BuildRestoreVec_4cpu)
                                              { 6, 3, 7, 4, 3, 0, 1, 2, 5, 8 } };
     batch->sample = std::move(allBatchKeys[worldRank]);
     spdlog::info(KEY_PROCESS "test BuildRestoreVec: rank {}, batchKeys {}", worldRank, batch->sample);
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     auto [splitKeys, restore] = process.HashSplit(batch);
     spdlog::debug("rank: {} splitKeys: {}", worldRank, splitKeys);
@@ -340,7 +340,7 @@ TEST_F(KeyProcessTest, BuildRestoreVec_4cpu)
 TEST_F(KeyProcessTest, ProcessKeySplit_rebuilt)
 {
     PrepareBatch();
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     spdlog::info("CPU Core Num: {}", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
 
     auto fn = [this](int channel, int id) {
@@ -369,7 +369,7 @@ TEST_F(KeyProcessTest, ProcessKeySplit_rebuilt)
 TEST_F(KeyProcessTest, BuildRestoreVec_rebuilt)
 {
     PrepareBatch();
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     spdlog::info("CPU Core Num: {}", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
 
     auto fn = [this](int channel, int id) {
@@ -400,7 +400,7 @@ TEST_F(KeyProcessTest, Key2Offset)
 {
     keys_t lookupKeys = { 4, 16, 28, 4, 24, 4, 20, 24 };
     keys_t expectOffset = { 0, 1, 2, 0, 3, 0, 4, 3 };
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     process.Key2Offset("emb0", lookupKeys);
     spdlog::debug(KEY_PROCESS "test Key2Offset: lookupKeys: {}, keyOffsetMap: {}", lookupKeys, process.keyOffsetMap);
@@ -422,7 +422,7 @@ TEST_F(KeyProcessTest, GetUniqueConfig)
 TEST_F(KeyProcessTest, ProcessPrefetchTask)
 {
     PrepareBatch();
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     process.rankInfo.rankSize = worldSize;
     process.rankInfo.localRankId = process.rankInfo.rankId % process.rankInfo.localRankSize;
     ASSERT_EQ(process.isRunning, true);
@@ -465,7 +465,7 @@ TEST_F(KeyProcessTest, ProcessBatchWithFastUnique)
 {
     PrepareBatch();
     
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     spdlog::info("CPU Core Num: {}", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
 
     auto fn = [this](int channel, int id) {

@@ -62,9 +62,9 @@ class ConfigInitializer:
             self.parse_hccl_json()
         else:
             self.set_hccl_info_without_json()
-        self.check_parameters()
         self.train_interval = kwargs.get("train_interval", -1)
         self.eval_steps = kwargs.get("eval_steps", -1)
+        self.check_parameters()
         self.prefetch_batch_number = kwargs.get("prefetch_batch_number", 1)
         self.if_load = kwargs.get("if_load", False)
         if_dynamic = kwargs.get("use_dynamic", 1)
@@ -151,6 +151,14 @@ class ConfigInitializer:
     @property
     def ascend_global_hashtable_collection(self):
         return self._ascend_global_hashtable_collection
+
+    @property
+    def dangling_table(self):
+        return self._dangling_table
+
+    @property
+    def removing_var_list(self):
+        return self._removing_var_list
 
     @staticmethod
     def get_instance():
@@ -254,12 +262,13 @@ class ConfigInitializer:
             raise ValueError(f"Rank size {rank_size} is different from device num {len(device_list)}.")
         try:
             self._rank_to_device_dict[0] = int(chief_device)
+        except ValueError as err:
+            raise ValueError("CM_WORKER_SIZE or CM_CHIEF_DEVICE uncorrected configured.") from err
+        try:
             device_list.pop(int(chief_device))
         except IndexError as err:
             raise IndexError(
                 f"Config CM_CHIEF_DEVICE {chief_device} not in training container device list {device_list}.") from err
-        except ValueError as err:
-            raise ValueError("CM_WORKER_SIZE or CM_CHIEF_DEVICE uncorrected configured.") from err
 
         for device_idx in device_list:
             device_id = mxrec_pybind.get_logic_id(int(device_idx))
@@ -283,14 +292,6 @@ class ConfigInitializer:
     def insert_removing_var_list(self, name):
         if name not in self._removing_var_list:
             self._removing_var_list.append(name)
-
-    @property
-    def dangling_table(self):
-        return self._dangling_table
-
-    @property
-    def removing_var_list(self):
-        return self._removing_var_list
 
     def insert_table_instance(self, name, key, instance):
         if key in self._table_instance_dict:
@@ -337,6 +338,9 @@ class ConfigInitializer:
 
         if self.rank_id >= self.rank_size:
             raise ValueError(f"Rank_id must be within the range from 0 to rank_size.")
+
+        if self._train_interval == 0 and self._eval_steps == 0:
+            raise ValueError(f"Train interval and eval steps could not both equal 0.")
 
     def freeze(self):
         self._is_frozen = True
@@ -432,9 +436,6 @@ def check_step(param, min_value=-1):
 
     if param < min_value:
         raise ValueError(f"Valid value range is larger than or equals to {min_value}.")
-
-    if param == 0:
-        raise ValueError("Arg train_interval or eval_steps cannot equal to 0.")
 
 
 def init(use_mpi, **kwargs):

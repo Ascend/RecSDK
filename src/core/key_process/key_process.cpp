@@ -37,9 +37,9 @@ inline vector<T> Count2Start(const vector<T>& count)
     return start;
 }
 
-int KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
-                           const vector<ThresholdValue>& thresholdValues,
-                           int seed)
+bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
+                            const vector<ThresholdValue>& thresholdValues,
+                            int seed)
 {
     this->rankInfo = rInfo;
     if (rankInfo.useHot) {
@@ -93,7 +93,7 @@ int KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
 
     spdlog::info(KEY_PROCESS "scInfo:{}, localRankSize:{}, rankSize:{}, useStatic:{}, useHot:{}", scInfo,
         rInfo.localRankSize, rInfo.rankSize, rInfo.useStatic, rInfo.useHot);
-    return 0;
+    return true;
 }
 
 // bind and start main process
@@ -1135,7 +1135,7 @@ unique_ptr<vector<Tensor>> KeyProcess::GetInfoVec(int batch, const string& embNa
             list = &infoList;
             break;
         default:
-            throw runtime_error("ERROR list type");
+            throw std::invalid_argument("Invalid ProcessedInfo Type.");
     }
     while (true) {
         if (!isRunning) {
