@@ -93,7 +93,7 @@ abseil_install_path="${ROOT_DIR}"/install/abseil
 
 src_path="${ROOT_DIR}"/src
 acc_ctr_path="${ROOT_DIR}"/src/platform/AccCTR
-cp -rf ../platform/securec/* /usr1/mxRec/src/platform/AccCTR/3rdparty/huawei_secure_c
+cp -rf "${ROOT_DIR}"/platform/securec/* "${acc_ctr_path}"/3rdparty/huawei_secure_c
 cd "${ROOT_DIR}"
 
 release_tar=Ascend-"${pkg_dir}"_"${VERSION}"_linux-"${ARCH}".tar.gz
