@@ -255,7 +255,42 @@ bool HybridMgmt::LoadMatchesDDRSetup(const CkptData& loadData)
 void HybridMgmt::Start()
 {
 #ifndef GTEST
+    int mode = 0;
+    const char* envTaskMode = std::getenv("MGMT_HBM_TASK_MODE"); // 获取环境变量
+    if (envTaskMode != nullptr) { // 如果环境变量存在
+        try {
+            mode = std::stoi(envTaskMode); // 将字符串转换为整数
+            spdlog::info("The value of MGMT_HBM_TASK_MODE is an integer： {}", mode);
+        } catch (const std::invalid_argument& e) { // 如果转换失败
+            spdlog::info("The value of MGMT_HBM_TASK_MODE is not an integer!");
+        }
+    } else { // 如果环境变量不存在
+        mode = 0;
+    }
     if (mgmtRankInfo.noDDR) {
+        InsertThreadForHBM(mode);
+    }
+
+    if (!mgmtRankInfo.noDDR) {
+        auto parseKeysTaskForTrain = [this]() {
+            TaskForTrain(TaskType::DDR);
+            spdlog::info("parseKeysTaskForTrain done");
+        };
+        procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForTrain));
+
+        auto parseKeysTaskForEval = [this]() {
+            TaskForEval(TaskType::DDR);
+            spdlog::info("parseKeysTaskForEval done");
+        };
+        procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForEval));
+    }
+#endif
+}
+
+void HybridMgmt::InsertThreadForHBM(int mode)
+{
+#ifndef GTEST
+    if (mode == 1) {
         auto getInfoTaskForTrain = [this]() {
             TaskForTrain(TaskType::GETINFO);
             spdlog::info("getInfoTaskForTrain done");
@@ -279,20 +314,18 @@ void HybridMgmt::Start()
             spdlog::info("sendInfoTaskForEval done");
         };
         procThreads.emplace_back(std::make_unique<std::thread>(sendInfoTaskForEval));
-    }
-
-    if (!mgmtRankInfo.noDDR) {
-        auto parseKeysTaskForTrain = [this]() {
-            TaskForTrain(TaskType::DDR);
-            spdlog::info("parseKeysTaskForTrain done");
+    } else {
+        auto parseKeysTaskForHBMTrain = [this]() {
+            TaskForTrain(TaskType::HBM);
+            spdlog::info("parseKeysTaskForHBMTrain done");
         };
-        procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForTrain));
+        procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForHBMTrain));
 
-        auto parseKeysTaskForEval = [this]() {
-            TaskForEval(TaskType::DDR);
-            spdlog::info("parseKeysTaskForEval done");
+        auto parseKeysTaskForHBMEval = [this]() {
+            TaskForEval(TaskType::HBM);
+            spdlog::info("parseKeysTaskForHBMEval done");
         };
-        procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForEval));
+        procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForHBMEval));
     }
 #endif
 }
@@ -353,6 +386,12 @@ bool HybridMgmt::TrainTask(TaskType type)
                 }
 #endif
                 break;
+            case TaskType::HBM:
+                status = ParseKeysHBM(TRAIN_CHANNEL_ID, trainBatchId);
+                isContinue = trainBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
+                             mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1;
+                spdlog::info(MGMT + "ParseKeysHBMBatchId = {}", trainBatchId);
+                break;
             case TaskType::DDR:
                 status =  ParseKeys(TRAIN_CHANNEL_ID, trainBatchId);
                 isContinue = trainBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
@@ -389,6 +428,10 @@ bool HybridMgmt::EvalTask(TaskType type)
                 status = SendLookupAndRestore(EVAL_CHANNEL_ID, evalBatchId);
                 spdlog::info(MGMT + "SEND evalBatchId = {}", evalBatchId);
                 break;
+            case TaskType::HBM:
+                status = ParseKeysHBM(EVAL_CHANNEL_ID, evalBatchId);
+                spdlog::info(MGMT + "HBM evalBatchId = {}", evalBatchId);
+                break;
             case TaskType::DDR:
                 status = ParseKeys(EVAL_CHANNEL_ID, evalBatchId);
                 spdlog::info(MGMT + "DDR evalBatchId = {}", evalBatchId);
@@ -419,6 +462,19 @@ bool HybridMgmt::GetLookupAndRestore(const int channelId, int &batchId)
                       embInfo.name, embInfo.modifyGraph, names);
         for (const string& name: names) {
             auto infoVecs = preprocess->GetInfoVec(batchId, name, channelId, ProcessedInfo::RESTORE);
+            if (!mgmtRankInfo.useStatic) {
+                auto all2all = preprocess->GetInfoVec(batchId, name, channelId, ProcessedInfo::ALL2ALL);
+                switch (channelId) {
+                    case TRAIN_CHANNEL_ID:
+                        a2aQueueForTrain->Pushv({ *all2all });
+                        break;
+                    case EVAL_CHANNEL_ID:
+                        a2aQueueForEval->Pushv({ *all2all });
+                        break;
+                    default:
+                        throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
+                }
+            }
             if (infoVecs == nullptr) {
                 spdlog::info(MGMT + "ParseKeys infoVecs empty ! batchId:{}, channelId:{}", batchId, channelId);
                 return false;
@@ -443,6 +499,26 @@ bool HybridMgmt::GetLookupAndRestore(const int channelId, int &batchId)
     }
     batchId++;
     return true;
+}
+
+void HybridMgmt::All2AllKeys(const int channelId, vector<string> names)
+{
+    TimeCost a2aKeysTC;
+    for (const string &name : names) {
+        vector<Tensor> all2allKeys;
+        switch (channelId) {
+            case TRAIN_CHANNEL_ID:
+                all2allKeys = a2aQueueForTrain->WaitAndPop();
+                break;
+            case EVAL_CHANNEL_ID:
+                all2allKeys = a2aQueueForEval->WaitAndPop();
+                break;
+            default:
+                throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
+        }
+        hdTransfer->Send(TransferChannel::ALL2ALL, all2allKeys, channelId, name);
+    }
+    TIME_PRINT("All2AllKeysTC(ms):{}", a2aKeysTC.ElapsedMS());
 }
 
 void HybridMgmt::LookupKeys(const int channelId, vector<string> names)
@@ -494,29 +570,49 @@ bool HybridMgmt::SendLookupAndRestore(const int channelId, int &batchId)
         }
         spdlog::debug(MGMT + "SendLookupAndRestore embInfoName:{}, modifyGraph:{}, names:{}",
                       embInfo.name, embInfo.modifyGraph, names);
+        TimeCost sendTensorsTC;
         if (!mgmtRankInfo.useStatic) {
-            for (const string& name: names) {
-                auto all2all = preprocess->GetInfoVec(batchId, name, channelId, ProcessedInfo::ALL2ALL);
-                hdTransfer->Send(TransferChannel::ALL2ALL, { *all2all }, channelId, name);
-            }
+            All2AllKeys(channelId, names);
         }
+
         spdlog::info("SendLookupAndRestore batchId: {}, name: {}, channelId: {}",
                      batchId, embInfo.name, channelId);
 
-        TimeCost sendTensorsTC;
-        omp_set_num_threads(SEND_TENSOR_TYPE_NUM);
-#pragma omp parallel sections
-        {
-#pragma omp section
-            {
-                LookupKeys(channelId, names);
-            }
-#pragma omp section
-            {
-                RestoreKeys(channelId, names);
-            }
-        }
+        LookupKeys(channelId, names);
+        RestoreKeys(channelId, names);
         TIME_PRINT("sendTensorsTC(ms):{}", sendTensorsTC.ElapsedMS());
+    }
+    batchId++;
+    return true;
+}
+
+bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
+{
+    spdlog::info(MGMT + "start parse keys HBM, nBatch:{} , [{}]:{}", mgmtRankInfo.nBatch, channelId, batchId);
+    for (const auto& embInfo: mgmtEmbInfo) {
+        TimeCost ParseKeysTC;
+        vector<string> names = {embInfo.name};
+        if (embInfo.modifyGraph) {
+            names = embInfo.channelNames;
+        }
+        spdlog::debug(MGMT + "ParseKeysHBM embInfoName:{}, modifyGraph:{}, names:{}",
+                      embInfo.name, embInfo.modifyGraph, names);
+        for (const string& name: names) {
+            auto infoVecs = preprocess->GetInfoVec(batchId, name, channelId, ProcessedInfo::RESTORE);
+            if (infoVecs == nullptr) {
+                spdlog::info(MGMT + "ParseKeys infoVecs empty ! batchId:{}, channelId:{}", batchId, channelId);
+                return false;
+            }
+
+            if (!mgmtRankInfo.useStatic) {
+                auto all2all = preprocess->GetInfoVec(batchId, name, channelId, ProcessedInfo::ALL2ALL);
+                hdTransfer->Send(TransferChannel::ALL2ALL, { *all2all }, channelId, name);
+            }
+            hdTransfer->Send(TransferChannel::LOOKUP, { infoVecs->back() }, channelId, name);
+            infoVecs->pop_back();
+            hdTransfer->Send(TransferChannel::RESTORE, *infoVecs, channelId, name);
+        }
+        TIME_PRINT("ParseKeysTC HBM mode (ms):{}", ParseKeysTC.ElapsedMS());
     }
     batchId++;
     return true;
