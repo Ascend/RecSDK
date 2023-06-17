@@ -31,6 +31,7 @@ namespace MxRec {
     enum class TaskType {
         GETINFO,
         SEND,
+        HBM,
         DDR
     };
 
@@ -57,6 +58,8 @@ namespace MxRec {
         bool Load(const string& loadPath);
 
         void Start();
+
+        void InsertThreadForHBM(int mode);
 
     void Destroy()
     {
@@ -91,6 +94,8 @@ namespace MxRec {
 
         bool ParseKeys(int channelId, int& batchId);
 
+        bool ParseKeysHBM(int channelId, int& batchId);
+
         bool ProcessEmbInfo(const std::string& embName, int batchId, int channelId, int iBatch, bool& remainBatchOut);
 
         void EmbHDTrans(const int channelId, const int batchId);
@@ -119,6 +124,8 @@ namespace MxRec {
         unique_ptr<Common::TaskQueue<vector<Tensor>>> restoreQueueForTrain;
         unique_ptr<Common::TaskQueue<vector<Tensor>>> lookUpKeysQueueForEval;
         unique_ptr<Common::TaskQueue<vector<Tensor>>> restoreQueueForEval;
+        unique_ptr<Common::TaskQueue<vector<Tensor>>> a2aQueueForTrain;
+        unique_ptr<Common::TaskQueue<vector<Tensor>>> a2aQueueForEval;
         map<std::string, std::vector<emb_key_t>> evictKeyMap {};
         KeyProcess *preprocess;
         HDTransfer *hdTransfer;
@@ -131,6 +138,7 @@ namespace MxRec {
         bool TrainTask(TaskType type);
         bool EvalTask(TaskType type);
 
+        void All2AllKeys(const int channelId, vector<string> names);
         void LookupKeys(const int channelId, vector<string> names);
         void RestoreKeys(const int channelId, vector<string> names);
         bool GetLookupAndRestore(const int channelId, int &batchId);
