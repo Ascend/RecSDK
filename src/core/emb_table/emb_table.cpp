@@ -53,7 +53,7 @@ void EmbTable::Init(const EmbInfo& embInfo, const RankInfo& rInfo, int seed)
             SplitMemoryBlock(newBlock);
         }
     }
-    totalCapacity = memoryList.size();
+    totalCapacity = static_cast<int>(memoryList.size());
     spdlog::info("aclrtMalloc success, emb name:{}, total capacity:{}", embInfo.name, totalCapacity);
 #endif
 }
@@ -112,26 +112,31 @@ void EmbTable::PutEmbAddress(int64_t curAddress)
 void EmbTable::RandomInit(void* newBlock, const vector<InitializeInfo>& initializeInfos, int seed)
 {
 #ifndef GTEST
-    spdlog::info("Device GenerateEmbData Start, seed:{}", seed);
+    spdlog::info("Device GenerateEmbData Start, seed:{}, initializer num: {}", seed, initializeInfos.size());
     vector<float> devEmb(blockSize);
     for (auto initializeInfo: initializeInfos) {
         Initializer* initializer;
         switch (initializeInfo.initializerType) {
             case InitializerType::CONSTANT: {
-                spdlog::info("Device GenerateEmbData ing using Constant Initializer by value {}.",
-                             initializeInfo.constantInitializerInfo.constantValue);
+                spdlog::info("Device GenerateEmbData ing using Constant Initializer by value {}. name {}, start {}, "
+                             "len {}.", initializeInfo.constantInitializerInfo.constantValue,
+                             initializeInfo.name, initializeInfo.start, initializeInfo.len);
                 initializer = &initializeInfo.constantInitializer;
                 break;
             }
             case InitializerType::TRUNCATED_NORMAL: {
-                spdlog::info("Device GenerateEmbData ing using Truncated Normal Initializer by mean: {} stddev: {}.",
-                             initializeInfo.normalInitializerInfo.mean, initializeInfo.normalInitializerInfo.stddev);
+                spdlog::info("Device GenerateEmbData ing using Truncated Normal Initializer by mean: {} stddev: {}. "
+                             "name {}, start {}, len {}.", initializeInfo.normalInitializerInfo.mean,
+                             initializeInfo.normalInitializerInfo.stddev, initializeInfo.name,
+                             initializeInfo.start, initializeInfo.len);
                 initializer = &initializeInfo.truncatedNormalInitializer;
                 break;
             }
             case InitializerType::RANDOM_NORMAL: {
-                spdlog::info("Device GenerateEmbData ing using Random Normal Initializer by mean: {} stddev: {}.",
-                             initializeInfo.normalInitializerInfo.mean, initializeInfo.normalInitializerInfo.stddev);
+                spdlog::info("Device GenerateEmbData ing using Random Normal Initializer by mean: {} stddev: {}. "
+                             "name {}, start {}, len {}.", initializeInfo.normalInitializerInfo.mean,
+                             initializeInfo.normalInitializerInfo.stddev, initializeInfo.name,
+                             initializeInfo.start, initializeInfo.len);
                 initializer = &initializeInfo.randomNormalInitializer;
                 break;
             }
@@ -208,12 +213,12 @@ list<float*> EmbTable::LoadEmb(const vector<vector<float>> &savedEmb)
 {
 #ifndef GTEST
     list<float *> addressList;
-    int embCapacity = savedEmb.size();
+    int embCapacity = static_cast<int>(savedEmb.size());
     if (savedEmb.size() == 0 || savedEmb[0].size() == 0) {
         spdlog::error("Load invalid savedEmb");
         return addressList;
     }
-    embSize = savedEmb[0].size();
+    embSize = static_cast<int>(savedEmb[0].size());
     void *newBlock = nullptr;
     aclError ret = aclrtMalloc(&newBlock, embCapacity * embSize * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST);
     if (ret != ACL_SUCCESS) {

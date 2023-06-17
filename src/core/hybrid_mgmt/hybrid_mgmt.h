@@ -28,6 +28,12 @@ namespace MxRec {
 
     constexpr int SEND_TENSOR_TYPE_NUM = 2;
 
+    enum class TaskType {
+        GETINFO,
+        SEND,
+        DDR
+    };
+
     class HybridMgmt {
     public:
         HybridMgmt() = default;
@@ -87,20 +93,20 @@ namespace MxRec {
 
         void EmbHDTrans(const int channelId, const int batchId);
 
-        void Evict();
+        bool Evict();
 
         void EvictKeys(const string& embName, const vector<emb_key_t>& keys);
 
     private:
         bool InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
-                            const vector<ThresholdValue>& thresholdValues, bool ifLoad, int seed);
+                            const vector<ThresholdValue>& thresholdValues, int seed);
         
         void InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfos);
 
     private:
         int currentBatchId;
         int trainBatchId = 0; // 0-199, 200-
-        int getInfoBatchId;
+        int getInfoBatchId; // 0-199, 200-
         int sendBatchId;
         vector<EmbInfo> mgmtEmbInfo;
         RankInfo mgmtRankInfo;
@@ -116,11 +122,9 @@ namespace MxRec {
         bool skipUpdate;
         bool isLoad { false };
 
-        bool ParseKeysTask();
-        bool GetInfoTask();
-        bool SendTask();
-        bool TrainParseKeys();
-        bool EvalParseKeys();
+        bool Task(TaskType type);
+        bool TrainTask(TaskType type);
+        bool EvalTask(TaskType type);
 
         bool GetLookupAndRestore(const int channelId, int &batchId);
         bool SendLookupAndRestore(const int channelId, int &batchId);

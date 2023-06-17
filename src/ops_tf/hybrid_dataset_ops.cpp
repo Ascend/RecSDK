@@ -13,6 +13,7 @@
 
 #include <spdlog/spdlog.h>
 #include <spdlog/stopwatch.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/fmt/chrono.h>
 #include <spdlog/fmt/bundled/ranges.h>
 #include <spdlog/cfg/env.h>
@@ -21,8 +22,6 @@
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/example/example.pb.h"
-
-#include "securec.h"
 
 #include "key_process/key_process.h"
 #include "key_process/feature_admit_and_evict.h"
@@ -34,6 +33,7 @@
 using namespace tensorflow;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
+
 using namespace std;
 using namespace chrono;
 using namespace MxRec;
@@ -44,7 +44,17 @@ using InferenceContextPtr = ::tensorflow::shape_inference::InferenceContext*;
 
 spdlog::stopwatch staticSw {};
 spdlog::stopwatch staticReadRaw {};
-array<atomic<int>, MAX_CHANNEL_NUM> batchIdsInfo {};
+array<int, MAX_CHANNEL_NUM> batchIdsInfo {};
+
+size_t GetBatchSize(OpKernelContextPtr context, const size_t dataSize, const size_t fieldNum)
+{
+    if (fieldNum == 0 || dataSize / fieldNum <= 0) {
+        context->SetStatus(
+            errors::Aborted(__FILE__, ":", __LINE__, " ", fmt::format("batchSize error. {}/{}", dataSize, fieldNum)));
+        return 0;
+    }
+    return dataSize / fieldNum;
+}
 
 REGISTER_OP("ClearChannel").Attr("channel_id : int");
 
@@ -56,8 +66,8 @@ public:
 
         if (channelId < 0 || channelId >= MAX_CHANNEL_NUM) {
             context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ",
-                fmt::format("ClearChannel channelId invalid. It should be in range [0, MAX_CHANNEL_NUM:{})",
-                MAX_CHANNEL_NUM)));
+                                               fmt::format("ClearChannel channelId invalid. It should be in range "
+                                                           "[0, MAX_CHANNEL_NUM:{})", MAX_CHANNEL_NUM)));
             return;
         }
     }
@@ -66,7 +76,7 @@ public:
 
     void Compute(OpKernelContextPtr context) override
     {
-        spdlog::info("clear channel {}", channelId);
+        spdlog::info("clear channel {}, context {}", channelId, context->step_id());
         batchIdsInfo.at(channelId) = 0;
     }
 
@@ -123,6 +133,12 @@ class ReadEmbKeyV2Dynamic : public OpKernel {
 public:
     explicit ReadEmbKeyV2Dynamic(OpKernelConstructionPtr context) : OpKernel(context)
     {
+        if (!spdlog::get("console")) {
+            auto logger = spdlog::stderr_color_mt("console");
+            spdlog::set_default_logger(logger);
+        } else {
+            spdlog::set_default_logger(spdlog::get("console"));
+        }
         spdlog::cfg::load_env_levels();
         spdlog::default_logger()->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
         spdlog::debug("ReadEmbKeyV2Dynamic init");
@@ -144,11 +160,21 @@ public:
 
         if (channelId < 0 || channelId >= MAX_CHANNEL_NUM) {
             context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ",
-                fmt::format("ReadEmbKeyV2Dynamic channelId invalid. It should be in range [0, MAX_CHANNEL_NUM:{})",
-                            MAX_CHANNEL_NUM)));
+                                               fmt::format("ReadEmbKeyV2Dynamic channelId invalid. It should be in "
+                                                           "range [0, MAX_CHANNEL_NUM:{})", MAX_CHANNEL_NUM)));
             return;
         }
         batchIdsInfo.at(channelId) = 0;
+
+        const char* threadNumEnv = getenv("KEY_PROCESS_THREAD_NUM");
+        if (threadNumEnv != nullptr) {
+            threadNum = static_cast<int>(*threadNumEnv) - static_cast<int>('0');
+            if (threadNum > KEY_PROCESS_THREAD || threadNum < 0) {
+                throw runtime_error(fmt::format("{} is not valid", threadNum));
+            }
+        } else {
+            threadNum = KEY_PROCESS_THREAD;
+        }
 
         auto keyProcess = Singleton<KeyProcess>::GetInstance();
         if (!keyProcess->isRunning) {
@@ -164,7 +190,7 @@ public:
         EASY_FUNCTION();
         spdlog::debug("enter ReadEmbKeyV2Dynamic");
         spdlog::stopwatch sw;
-        int batchId = batchIdsInfo.at(channelId).fetch_add(1);
+        int batchId = batchIdsInfo.at(channelId)++;
         if (channelId == 1) {
             if (maxStep != -1 && batchId >= maxStep) {
                 spdlog::warn("skip excess batch after {}/{}", batchId, maxStep);
@@ -183,24 +209,26 @@ public:
         // 如果传递了时间戳，解析和校验
         if (isTimestamp && !ParseTimestampAndCheck(inputTensor, batchId, fieldNum, timestamp, dataSize)) {
             context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ",
-                fmt::format("timestamp[{}] error, skip excess batch after {}/{}", timestamp, batchId, maxStep)));
+                                               fmt::format("timestamp[{}] error, skip excess batch after {}/{}",
+                                                           timestamp, batchId, maxStep)));
             return;
         }
         // 保证所有embNames在m_embStatus中有状态记录
         SetCurrEmbNamesStatus(embNames, FeatureAdmitAndEvict::m_embStatus);
 
-        // [batchId % PerfConfig::keyProcessThreadNum] which thread process this batch
-        // [PerfConfig::keyProcessThreadNum * 0 or 1] train or inference
-        int batchQueueId = batchId % PerfConfig::keyProcessThreadNum + PerfConfig::keyProcessThreadNum * channelId;
+        // [batchId % KEY_PROCESS_THREAD] which thread process this batch
+        // [KEY_PROCESS_THREAD * 0 or 1] train or inference
+        int batchQueueId = batchId % threadNum + KEY_PROCESS_THREAD * channelId;
         Tensor* output = nullptr;
         OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape {}, &output));
         auto out = output->flat<int32>();
         out(0) = batchId;
+
+        TimeCost enqueueTC;
         EnqueueBatchData(std::vector<int>{batchId, batchQueueId}, timestamp, inputTensor, splits);
-        TIME_PRINT(KEY_PROCESS "read batch cost: {}, elapsed from last:{}, batch[{}]:{}, "
-                   "splits: {}, dataSize: {}, filedNum: {}, channelNames: {}, modifyGraph: {}",
-                duration_cast<milliseconds>((sw).elapsed()), duration_cast<milliseconds>((staticSw).elapsed()),
-                   channelId, batchId, splits.size(), dataSize, fieldNum, channelNames, modifyGraph);
+        TIME_PRINT(KEY_PROCESS "ReadEmbKeyV2Dynamic read batch cost(ms):{}, elapsed from last(ms):{}, "
+                        "enqueueTC(ms):{}, batch[{}]:{}",
+                        Format2Ms(sw), Format2Ms(staticSw), enqueueTC.ElapsedMS(), channelId, batchId);
         staticSw.reset();
     }
 
@@ -233,7 +261,7 @@ public:
                 offset += splits(i);
                 continue;
             }
-            auto batchData = queue->WaitAndGetOne(); // get dirty or empty data block
+            auto batchData = queue->GetOne(); // get dirty or empty data block
             batchData->name = embNames.at(i);
             if (modifyGraph) {
                 batchData->modifyGraph = modifyGraph;
@@ -242,61 +270,21 @@ public:
             size_t len = splits(i);
             batchData->channel = channelId;
             batchData->batchId = ids[0];
-            batchData->batchSize = len;
+            batchData->sample.resize(len);
             if (isTimestamp) {
                 batchData->timestamp = timestamp;
             }
-            spdlog::info("split size:{} {}", i, splits(i));
-            spdlog::info("emb_name:{} {}", i, embNames.at(i));
 
-            spdlog::debug("batch[{}/{}] flatten bs: {}", ids[0], i+1, len);
-            std::unique_ptr<emb_batch_t> batch = TensorCopy(inputTensor, move(batchData), len, offset);
-            if (batch == nullptr) {
-                spdlog::error("batch can not be null");
-                throw runtime_error("batch can not be null");
+            if (inputTensor.dtype() == tensorflow::DT_INT32 || inputTensor.dtype() == tensorflow::DT_INT32_REF) {
+                auto src = (const int32_t*)inputTensor.tensor_data().data();
+                copy(src + offset, src + offset + len, batchData->sample.data());
+            } else {
+                auto src = (const int64_t*)inputTensor.tensor_data().data();
+                copy(src + offset, src + offset + len, batchData->sample.data());
             }
-            queue->Pushv(move(batch));
+            offset += len;
+            queue->Pushv(move(batchData));
         }
-        TIME_PRINT(KEY_PROCESS "EnqueueBatchData, batchId:{}, channelId:{}", ids[0], channelId);
-    }
-
-    std::unique_ptr<emb_batch_t> TensorCopy(const Tensor& inputTensor, std::unique_ptr<emb_batch_t> batchData,
-                                            const size_t& len, size_t& offset)
-    {
-        if (len == 0) {
-            spdlog::error("the length of batchData can not be zero");
-            throw runtime_error("the length of batchData can not be zero");
-        }
-        TimeCost ct;
-        void* src = nullptr;
-        size_t memSize;
-        if (inputTensor.dtype() == tensorflow::DT_INT32 || inputTensor.dtype() == tensorflow::DT_INT32_REF) {
-            batchData->isInt64 = false;
-            memSize = len * sizeof(int32_t);
-            src = reinterpret_cast<void *>(
-                    reinterpret_cast<int32_t *>(const_cast<string *>((string *)(inputTensor.tensor_data().data()))) +
-                    offset);
-        } else {
-            batchData->isInt64 = true;
-            memSize = len * sizeof(int64_t);
-            src = reinterpret_cast<void *>(
-                    reinterpret_cast<int64_t *>(const_cast<string *>((string *)(inputTensor.tensor_data().
-                            data()))) + offset);
-        }
-        batchData->tensorAddr = malloc(memSize);
-        if (batchData->tensorAddr == nullptr) {
-            spdlog::error("mmemory allocation failded...");
-            throw runtime_error("mmemory allocation failded...");
-        }
-        void* dst = reinterpret_cast<void *>(batchData->tensorAddr);
-        auto rc = memcpy_s(dst, memSize, src, memSize);
-        if (rc != 0) {
-            spdlog::error("[ReadEmbKeyV2Dynamic]memcpy_s failded... memSize: {}", memSize);
-            throw runtime_error(fmt::format("[ReadEmbKeyV2Dynamic]memcpy_s failded... memSize: {}", memSize).c_str());
-        }
-        TIME_PRINT("copy TimeCost(ms):{}", ct.ElapsedMS());
-        offset += len;
-        return move(batchData);
     }
 
     bool ParseTimestampAndCheck(const Tensor& inputTensor, int batchId, int fieldNumTmp, time_t& timestamp,
@@ -342,6 +330,7 @@ public:
     int maxStep = 0;
     bool isTimestamp { false };
     bool modifyGraph { false };
+    int threadNum = 0;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ReadEmbKeyV2Dynamic").Device(DEVICE_CPU), ReadEmbKeyV2Dynamic);
@@ -366,6 +355,12 @@ class ReadEmbKeyV2 : public OpKernel {
 public:
     explicit ReadEmbKeyV2(OpKernelConstructionPtr context) : OpKernel(context)
     {
+        auto logger = spdlog::get("console");
+        if (!logger) {
+            logger = spdlog::stderr_color_mt("console");
+        }
+        spdlog::set_default_logger(spdlog::get("console"));
+        
         spdlog::cfg::load_env_levels();
         spdlog::default_logger()->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
         spdlog::debug("ReadEmbKeyV2 init");
@@ -389,17 +384,25 @@ public:
 
         if (splits.size() != embNames.size()) {
             context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ",
-                fmt::format("splits & embNames size error.{} {}", splits.size(), embNames.size())));
+                                               fmt::format("splits & embNames size error.{} {}", splits.size(),
+                                                           embNames.size())));
             return;
         }
         if (channelId < 0 || channelId >= MAX_CHANNEL_NUM) {
             context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ",
-                fmt::format("ReadEmbKeyV2 channelId invalid. It should be in range [0, MAX_CHANNEL_NUM:{})",
-                            MAX_CHANNEL_NUM)));
+                                               fmt::format("ReadEmbKeyV2 channelId invalid. It should be in range "
+                                                           "[0, MAX_CHANNEL_NUM:{})", MAX_CHANNEL_NUM)));
             return;
         }
         batchIdsInfo.at(channelId) = 0;
 
+        const char* threadNumEnv = getenv("KEY_PROCESS_THREAD_NUM");
+        if (threadNumEnv != nullptr) {
+            threadNum = static_cast<int>(*threadNumEnv) - static_cast<int>('0');
+            if (threadNum > KEY_PROCESS_THREAD || threadNum < 0) {
+                throw runtime_error(fmt::format("{} is not valid", threadNum));
+            }
+        }
         auto keyProcess = Singleton<KeyProcess>::GetInstance();
         if (!keyProcess->isRunning) {
             context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ", "KeyProcess not running."));
@@ -433,29 +436,26 @@ public:
         // 如果传递了时间戳，解析和校验
         if (isTimestamp && !ParseTimestampAndCheck(inputTensor, batchId, fieldNum, timestamp, dataSize)) {
             context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ",
-                fmt::format("timestamp[{}] error, skip excess batch after {}/{}", timestamp, batchId, maxStep)));
-            OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape {}, &output));
-            auto out = output->flat<int32>();
-            out(0) = batchId;
+                                               fmt::format("timestamp[{}] error, skip excess batch after {}/{}",
+                                                           timestamp, batchId, maxStep)));
             return;
         }
         // 保证所有embNames在m_embStatus中有状态记录
         SetCurrEmbNamesStatus(embNames, FeatureAdmitAndEvict::m_embStatus);
 
-        // [batchId % PerfConfig::keyProcessThreadNum] which thread process this batch
-        // [PerfConfig::keyProcessThreadNum * 0 or 1] train or inference
-        int batchQueueId = batchId % PerfConfig::keyProcessThreadNum + PerfConfig::keyProcessThreadNum * channelId;
+        // [batchId % KEY_PROCESS_THREAD] which thread process this batch
+        // [KEY_PROCESS_THREAD * 0 or 1] train or inference
+        int batchQueueId = batchId % threadNum + KEY_PROCESS_THREAD * channelId;
+
         OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape {}, &output));
         auto out = output->flat<int32>();
         out(0) = batchId;
 
-        TimeCost tc;
+        TimeCost enqueueTC;
         EnqueueBatchData(batchId, batchQueueId, timestamp, inputTensor);
-        TIME_PRINT("EnqueueBatchData TimeCost(ms):{}", tc.ElapsedMS());
-
-        TIME_PRINT(KEY_PROCESS
-        "read batch cost: {}, elapsed from last:{}, batch[{}]:{}", duration_cast<milliseconds>((sw).elapsed()),
-                duration_cast<milliseconds>((staticSw).elapsed()), channelId, batchId);
+        TIME_PRINT(KEY_PROCESS "ReadEmbKeyV2Static read batch cost(ms):{}, elapsed from last(ms):{}, "
+                        "enqueueTC(ms):{}, batch[{}]:{}",
+                        Format2Ms(sw), Format2Ms(staticSw), enqueueTC.ElapsedMS(), channelId, batchId);
         staticSw.reset();
     }
 
@@ -472,7 +472,7 @@ public:
         }
     }
 
-    int EnqueueBatchData(int batchId, int batchQueueId, time_t timestamp, const Tensor& inputTensor)
+    void EnqueueBatchData(int batchId, int batchQueueId, time_t timestamp, const Tensor& inputTensor)
     {
         if (tableUsed.empty()) {
             CheckEmbTables();
@@ -483,17 +483,12 @@ public:
         if (isTimestamp) {
             offset += 1; // 前面8个字节是unix时间戳
         }
-        TimeCost ctAll;
         for (size_t i = 0; i < splits.size(); ++i) {
             if (!tableUsed.at(i)) {
                 offset += splits.at(i);
                 continue;
             }
-
-            TimeCost tp;
-            auto batchData = queue->WaitAndGetOne(); // get dirty or empty data block
-            TIME_PRINT("TryPopTimeCost(ms):{}", tp.ElapsedMS());
-
+            auto batchData = queue->GetOne(); // get dirty or empty data block
             batchData->name = embNames.at(i);
             if (modifyGraph) {
                 batchData->modifyGraph = modifyGraph;
@@ -502,61 +497,21 @@ public:
             size_t len = splits.at(i);
             batchData->channel = channelId;
             batchData->batchId = batchId;
-            batchData->batchSize = len;
-            TimeCost fz;
+            batchData->sample.resize(len);
             if (isTimestamp) {
                 batchData->timestamp = timestamp;
             }
-            TIME_PRINT("fz TimeCost(ms):{}", fz.ElapsedMS());
 
-            std::unique_ptr<emb_batch_t> batch = TensorCopy(inputTensor, move(batchData), len, offset);
-            if (batch == nullptr) {
-                spdlog::error("batch can not be null");
-                throw runtime_error("batch can not be null");
+            if (inputTensor.dtype() == tensorflow::DT_INT32 || inputTensor.dtype() == tensorflow::DT_INT32_REF) {
+                auto src = (const int32_t*)inputTensor.tensor_data().data();
+                copy(src + offset, src + offset + len, batchData->sample.data());
+            } else {
+                auto src = (const int64_t*)inputTensor.tensor_data().data();
+                copy(src + offset, src + offset + len, batchData->sample.data());
             }
-            queue->Pushv(move(batch));
+            offset += len;
+            queue->Pushv(move(batchData));
         }
-        TIME_PRINT("all copy TimeCost(ms):{}", ctAll.ElapsedMS());
-        return 0;
-    }
-
-    std::unique_ptr<emb_batch_t> TensorCopy(const Tensor& inputTensor, std::unique_ptr<emb_batch_t> batchData,
-                                            const size_t& len, size_t& offset)
-    {
-        if (len == 0) {
-            spdlog::error("len can not be zero");
-            throw runtime_error("len can not be zero");
-        }
-        TimeCost ct;
-        void* src = nullptr;
-        size_t memSize;
-        if (inputTensor.dtype() == tensorflow::DT_INT32 || inputTensor.dtype() == tensorflow::DT_INT32_REF) {
-            batchData->isInt64 = false;
-            memSize = len * sizeof(int32_t);
-            src = reinterpret_cast<void *>(
-                    reinterpret_cast<int32_t *>(const_cast<string *>((string *)(inputTensor.tensor_data().data()))) +
-                    offset);
-        } else {
-            batchData->isInt64 = true;
-            memSize = len * sizeof(int64_t);
-            src = reinterpret_cast<void *>(
-                    reinterpret_cast<int64_t *>(const_cast<string *>((string *)(inputTensor.tensor_data().data()))) +
-                    offset);
-        }
-        batchData->tensorAddr = malloc(memSize);
-        if (batchData->tensorAddr == nullptr) {
-            spdlog::error("mmemory allocation failded...");
-            throw runtime_error("mmemory allocation failded...");
-        }
-        void* dst = reinterpret_cast<void *>(batchData->tensorAddr);
-        auto rc = memcpy_s(dst, memSize, src, memSize);
-        if (rc != 0) {
-            spdlog::error("[ReadEmbKeyV2Static]memcpy_s failded... memSize: {}", memSize);
-            throw runtime_error(fmt::format("[ReadEmbKeyV2Static]memcpy_s failded... memSize: {}", memSize).c_str());
-        }
-        TIME_PRINT("copy TimeCost(ms):{}", ct.ElapsedMS());
-        offset += len;
-        return move(batchData);
     }
 
     bool ParseTimestampAndCheck(const Tensor& inputTensor, int batchId, int fieldNumTmp, time_t& timestamp,
@@ -603,6 +558,7 @@ public:
     int maxStep = 0;
     bool isTimestamp { false };
     bool modifyGraph { false };
+    int threadNum = KEY_PROCESS_THREAD;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ReadEmbKeyV2").Device(DEVICE_CPU), ReadEmbKeyV2);
@@ -655,8 +611,8 @@ public:
         for (int i { 0 }; i < restoreLen; ++i) {
             r(i) = i % lookupLen;
         }
-        spdlog::warn("dummy read batch cost: {},elapsed from last {}", duration_cast<milliseconds>((sw).elapsed()),
-                     duration_cast<milliseconds>((staticSw).elapsed()));
+        spdlog::warn("dummy read batch cost: {},elapsed from last {}",
+                     Format2Ms(sw), Format2Ms(staticSw));
         staticSw.reset();
     }
 
@@ -664,135 +620,6 @@ public:
 };
 
 REGISTER_KERNEL_BUILDER(Name("ReadEmbKeyDatasetDummy").Device(DEVICE_CPU), ReadEmbKeyDatasetDummy);
-
-
-// ##################### ReadRaw #######################
-REGISTER_OP("ReadRaw")
-    .Input("sample: string")
-    .Output("int_output: int64")
-    .Output("float_output: float")
-    .Attr("int_len: int")
-    .Attr("float_len: int")
-    .Attr("feat_order: list(string)")
-    .SetShapeFn([](InferenceContextPtr c) {
-        int temp;
-        TF_RETURN_IF_ERROR(c->GetAttr("int_len", &temp));
-        c->set_output(TENSOR_INDEX_0, c->Vector(temp));
-        TF_RETURN_IF_ERROR(c->GetAttr("float_len", &temp));
-        c->set_output(TENSOR_INDEX_1, c->Vector(temp));
-        return Status::OK();
-    });
-
-class ReadRaw : public OpKernel {
-public:
-    explicit ReadRaw(OpKernelConstructionPtr context) : OpKernel(context)
-    {
-        OP_REQUIRES_OK(context, context->GetAttr("int_len", &intLen));
-        OP_REQUIRES_OK(context, context->GetAttr("float_len", &floatLen));
-        OP_REQUIRES_OK(context, context->GetAttr("feat_order", &featOrder));
-        sampleId = 0;
-    }
-
-    ~ReadRaw() override = default;
-
-    void Compute(OpKernelContextPtr context) override
-    {
-        spdlog::stopwatch sw;
-        Tensor* intTensor = nullptr;
-        Tensor* floatTensor = nullptr;
-        int intDataIndex = 0;
-        int floatDataIndex = 0;
-        OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape { intLen }, &intTensor));
-        OP_REQUIRES_OK(context, context->allocate_output(1, TensorShape { floatLen }, &floatTensor));
-        const Tensor& inputTensor = context->input(TENSOR_INDEX_0);
-        auto input = inputTensor.flat<tstring>()(0);
-        tensorflow::Example example;
-        if (!example.ParseFromString(input)) {
-            cerr << "Failed to parse file." << endl;
-        }
-        spdlog::stopwatch sw_copy;
-        auto all_feature_map = example.features().feature();
-        for (const auto& featName: featOrder) {
-            auto& cur_feature_value = all_feature_map.at(featName);
-            if (cur_feature_value.has_int64_list()) {
-                auto int64List = cur_feature_value.int64_list();
-                int64* flat = intTensor->flat<int64>().data() + intDataIndex;
-                std::copy(int64List.value().begin(), int64List.value().end(), flat);
-                intDataIndex += int64List.value_size();
-            }
-            if (cur_feature_value.has_float_list()) {
-                auto floatList = cur_feature_value.float_list();
-                float* flat = floatTensor->flat<float>().data() + floatDataIndex;
-                std::copy(floatList.value().begin(), floatList.value().end(), flat);
-                floatDataIndex += floatList.value_size();
-            }
-        }
-        spdlog::info("ReadRaw sampleId:{} cost:{} copy:{} , elapsed from last:{}", sampleId++,
-                     duration_cast<milliseconds>((sw).elapsed()),
-                     duration_cast<milliseconds>((sw_copy).elapsed()),
-                     duration_cast<milliseconds>((staticReadRaw).elapsed()));
-        staticReadRaw.reset();
-    }
-
-    int intLen;
-    int floatLen;
-    vector<string> featOrder;
-    atomic<int> sampleId;
-};
-
-REGISTER_KERNEL_BUILDER(Name("ReadRaw").Device(DEVICE_CPU), ReadRaw);
-
-
-// ##################### ReadRawDummy #######################
-REGISTER_OP("ReadRawDummy")
-    .Input("sample: int64")
-    .Output("int_output: int64")
-    .Output("float_output: float")
-    .Attr("int_len: int")
-    .Attr("float_len: int")
-    .SetShapeFn([](InferenceContextPtr c) {
-        int temp;
-        TF_RETURN_IF_ERROR(c->GetAttr("int_len", &temp));
-        c->set_output(TENSOR_INDEX_0, c->Vector(temp));
-        TF_RETURN_IF_ERROR(c->GetAttr("float_len", &temp));
-        c->set_output(TENSOR_INDEX_1, c->Vector(temp));
-        return Status::OK();
-    });
-
-class ReadRawDummy : public OpKernel {
-public:
-    explicit ReadRawDummy(OpKernelConstructionPtr context) : OpKernel(context)
-    {
-        OP_REQUIRES_OK(context, context->GetAttr("int_len", &intLen));
-        OP_REQUIRES_OK(context, context->GetAttr("float_len", &floatLen));
-    }
-
-    ~ReadRawDummy() override = default;
-
-    void Compute(OpKernelContextPtr context) override
-    {
-        spdlog::stopwatch sw;
-        Tensor* intTensor = nullptr;
-        Tensor* floatTensor = nullptr;
-
-        OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape { intLen }, &intTensor));
-        OP_REQUIRES_OK(context, context->allocate_output(1, TensorShape { floatLen }, &floatTensor));
-
-        const Tensor& inputTensor = context->input(TENSOR_INDEX_0);
-        auto input = inputTensor.flat<int64>();
-        int32_t batchId = input(0);
-
-        spdlog::info("ReadRawDummy cost:{}, elapsed from last:{} , batchId = {}",
-                     duration_cast<milliseconds>((sw).elapsed()),
-                     duration_cast<milliseconds>((staticReadRaw).elapsed()), batchId);
-        staticReadRaw.reset();
-    }
-
-    int intLen;
-    int floatLen;
-};
-
-REGISTER_KERNEL_BUILDER(Name("ReadRawDummy").Device(DEVICE_CPU), ReadRawDummy);
 
 class CustOps : public OpKernel {
 public:
@@ -802,6 +629,7 @@ public:
 
     void Compute(OpKernelContextPtr context) override
     {
+        spdlog::info("context {}", context->step_id());
         std::cout << " Cust opp not installed!!" << std::endl;
     }
 

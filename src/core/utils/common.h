@@ -23,7 +23,11 @@
 #include <sstream>
 #include <fstream>
 #include <algorithm>
-
+#include <spdlog/spdlog.h>
+#include <spdlog/stopwatch.h>
+#include <spdlog/fmt/chrono.h>
+#include <spdlog/fmt/bundled/ranges.h>
+#include <spdlog/cfg/env.h>
 #include "tensorflow/core/framework/tensor.h"
 #include "absl/container/flat_hash_map.h"
 
@@ -46,23 +50,28 @@
 
 namespace MxRec {
 #define INFO_PTR shared_ptr
-#define TIME_PRINT spdlog::info
+#define TIME_PRINT spdlog::debug
 #define MGMT_CPY_THREADS 4
 #define PROFILING
-    // read batch cost
-    // key process cost
-	using namespace tensorflow;
-
+    using namespace tensorflow;
     constexpr int TRAIN_CHANNEL_ID = 0;
     constexpr int EVAL_CHANNEL_ID = 1;
 
     constexpr int MAX_CHANNEL_NUM = 2;
     constexpr int MAX_KEY_PROCESS_THREAD = 10;
     constexpr int MAX_QUEUE_NUM = MAX_CHANNEL_NUM * MAX_KEY_PROCESS_THREAD;
-    
     constexpr int DEFAULT_KEY_PROCESS_THREAD = 6;
+    constexpr int KEY_PROCESS_THREAD = 6;
+
+    // unique related config
+    constexpr int UNIQUE_BUCKET = 6;
+    constexpr int MIN_UNIQUE_THREAD_NUM = 1;
+    constexpr int DEFAULT_MAX_UNIQUE_THREAD_NUM = 8;
+
     struct PerfConfig {
         static int keyProcessThreadNum;
+        static int maxUniqueThreadNum;
+        static bool fastUnique;
     };
 
     constexpr int KEY_PROCESS_TIMEOUT = 120;
@@ -75,7 +84,7 @@ namespace MxRec {
     constexpr int MGMT_THREAD_BIND = 48;
     constexpr int UNIQUE_MAX_BUCKET_WIDTH = 6;
     constexpr int HOT_EMB_UPDATE_STEP_DEFAULT = 1000;
-    constexpr float HOT_EMB_CACHE_PCT = 1. / 3;  // hot emb cache percent
+    constexpr float HOT_EMB_CACHE_PCT = static_cast<float>(1. / 3);  // hot emb cache percent
 
     using emb_key_t = int64_t;
     using emb_name_t = std::string;
@@ -125,6 +134,11 @@ namespace MxRec {
         throw std::runtime_error("unknown chip ub size" + GetChipName(devID));
     }
 
+    inline  std::chrono::milliseconds::rep Format2Ms(spdlog::stopwatch& sw)
+    {
+        return std::chrono::duration_cast<std::chrono::milliseconds>((sw).elapsed()).count();
+    }
+
     template <class T>
     struct Batch {
         size_t Size() const
@@ -136,7 +150,7 @@ namespace MxRec {
         {
             std::string s;
             constexpr size_t MAX_DISP_LEN = 20;
-            int maxLen = std::min(sample.size(), MAX_DISP_LEN);
+            int maxLen = static_cast<int>(std::min(sample.size(), MAX_DISP_LEN));
             for (int i = 0; i < maxLen; i++) {
                 s += std::to_string(sample[i]) + " ";
             }
@@ -355,12 +369,13 @@ struct BatchTask {
                 int embeddingSize,
                 int extEmbeddingSize,
                 bool modifyGraph,
+                bool isSave,
                 std::vector<std::string> channelNames,
                 std::vector<size_t> vocabsize,
                 std::vector<InitializeInfo> initializeInfos,
                 std::map<std::string, int> sendCountMap)
             : name(name), sendCount(sendCount), embeddingSize(embeddingSize), extEmbeddingSize(extEmbeddingSize),
-              modifyGraph(modifyGraph), channelNames(channelNames), initializeInfos(initializeInfos),
+              modifyGraph(modifyGraph), isSave(isSave), channelNames(channelNames), initializeInfos(initializeInfos),
               sendCountMap(sendCountMap)
         {
             devVocabSize = vocabsize[0];
@@ -372,6 +387,7 @@ struct BatchTask {
         int embeddingSize;
         int extEmbeddingSize;
         bool modifyGraph;
+        bool isSave;
         size_t devVocabSize;
         size_t hostVocabSize;
         std::vector<std::string> channelNames;
@@ -399,6 +415,11 @@ struct BatchTask {
         size_t maxOffset { 0 };
         std::vector<size_t> evictPos;
         std::vector<size_t> evictDevPos;
+        size_t maxOffsetOld { 0 };
+        std::vector<size_t> evictPosChange;
+        std::vector<size_t> evictDevPosChange;
+        std::vector<std::pair<int, emb_key_t>> devOffset2KeyOld;
+        std::vector<std::pair<emb_key_t, emb_key_t>> oldSwap; // (old on dev, old on host)
 
         void SetStartCount();
 

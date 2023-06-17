@@ -56,7 +56,7 @@ namespace MxRec {
         list<float*> LoadEmb(const vector<vector<float>> &savedEmb);
 
     GTEST_PRIVATE:
-        constexpr static int BLOCK_EMB_COUNT = 1000;
+        constexpr static int BLOCK_EMB_COUNT = 100000;
         constexpr static int INIT_BLOCK_COUNT = 5;
         constexpr static int TEST_EMB_SIZE = 12;
         EmbInfo embInfo;

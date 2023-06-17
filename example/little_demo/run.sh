@@ -18,10 +18,8 @@ export PYTHONPATH=${so_path}:$PYTHONPATH # 环境python安装路径
 export LD_PRELOAD=/usr/lib64/libgomp.so.1 # GNU OpenMP动态库路径
 export LD_LIBRARY_PATH=${so_path}:/usr/local/lib:$LD_LIBRARY_PATH
 # 集合通信文件，格式请参考昇腾官网CANN文档，“准备资源配置文件”章节。
-export RANK_TABLE_FILE="${cur_path}/hccl_json_${local_rank_size}p.json"  # 若使用去除ranktable方案，请注释掉这一行
 export JOB_ID=10086
 # 训练任务使用的NPU卡数总数
-export RANK_SIZE=$num_process # 若使用去除ranktable方案，请注释掉这一行
 export MXREC_LOG_LEVEL="DEBUG" # 框架日志等级
 export TF_CPP_MIN_LOG_LEVEL=3 # tensorflow日志级别,3对应FATAL
 # 设置应用类日志的全局日志级别及各模块日志级别，具体请参考昇腾官网CANN文档
@@ -29,18 +27,73 @@ export ASCEND_GLOBAL_LOG_LEVEL=3 # “设置日志级别”章节0:debug, 1:info
 export MXREC_MODE="ASC"
 export USE_MPI=1
 
+################# 参数配置 ######################
 export USE_DYNAMIC=0            # 0：静态shape；1：动态shape
 export USE_HOT=0                # 0：关闭hot emb；1: 开启hot emb
 export USE_DYNAMIC_EXPANSION=0  # 0：关闭动态扩容；1: 开启动态扩容
-
+export USE_MULTI_LOOKUP=1       # 0：一表一查；1：一表多查
+export USE_MODIFY_GRAPH=0       # 0：feature spec模式；1：自动改图模式
+export USE_TIMESTAMP=0          # 0：关闭特征准入淘汰；1：开启特征准入淘汰
+################# 性能调优相关 ####################
 export KEY_PROCESS_THREAD_NUM=6 #default 6, max 10
-#################使用去除ranktable方案时开启######################
-#export CM_CHIEF_IP="192.168.1.1"  # 主节点ip
-#export CM_CHIEF_PORT=6000  # 主节点监听端口
-#export CM_CHIEF_DEVICE=0  # 主节点device id
-#export CM_WORKER_IP="192.168.1.1"  # 当前节点ip
-#export CM_WORKER_SIZE=$num_process  # 参与集群训练的device数量
-#########################################################
+export FAST_UNIQUE=0   #if use fast unique
+################################################
+
+# 帮助信息，不需要修改
+if [[ $1 == --help || $1 == -h ]];then
+    echo "Usage: ./run.sh [OPTION]... [IP]..."
+    echo " "
+    echo "parameter explain:
+    [OPTION]       main.py
+    [IP]           IP address of the host
+    -h/--help		   show help message
+    "
+    exit 1
+fi
+
+# 使用ranktable方案
+function rankTableSolution() {
+  echo "The ranktable solution"
+  export RANK_TABLE_FILE="${cur_path}/hccl_json_${local_rank_size}p.json"
+  export RANK_SIZE=$num_process
+  echo "RANK_TABLE_FILE=$RANK_TABLE_FILE"
+  if [ ! -f "$RANK_TABLE_FILE" ];then
+    echo "the rank table file does not exit. Please reference {hccl_json_8p.json} to correctly config rank table file"
+    exit 1
+  fi
+}
+
+ip=$2
+if [ ! -n "$ip" ]; then
+  rankTableSolution
+else
+  VALID_CHECK=$(echo $ip|awk -F. '$1<=255&&$2<=255&&$3<=255&&$4<=255{print "yes"}')
+  if echo $ip|grep -E "^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$">/dev/null; then
+    if [ "$VALID_CHECK" == "yes" ]; then
+      #################使用去除ranktable方案时开启######################
+      echo "ip: $ip available."
+      echo "The ranktable solution is removed."
+      export CM_CHIEF_IP=$ip  # 主节点ip
+      export CM_CHIEF_PORT=6000  # 主节点监听端口
+      export CM_CHIEF_DEVICE=0  # 主节点device id
+      export CM_WORKER_IP=$ip  # 当前节点ip
+      export CM_WORKER_SIZE=$num_process  # 参与集群训练的device数量
+      echo "CM_CHIEF_IP=$CM_CHIEF_IP"
+      echo "CM_CHIEF_PORT=$CM_CHIEF_PORT"
+      echo "CM_CHIEF_DEVICE=$CM_CHIEF_DEVICE"
+      echo "CM_WORKER_IP=$CM_WORKER_IP"
+      echo "CM_WORKER_SIZE=$CM_WORKER_SIZE"
+      echo "ASCEND_VISIBLE_DEVICES=$ASCEND_VISIBLE_DEVICES"
+      #########################################################
+    else
+      echo "ip: $ip not available!" # 使用ranktable方案
+      rankTableSolution
+    fi
+  else
+    echo "ip: $ip not available!" # 使用ranktable方案
+    rankTableSolution
+  fi
+fi
 
 py=$1
 echo "py is $py"

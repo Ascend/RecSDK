@@ -9,6 +9,7 @@
 #include "common.h"
 
 #include <spdlog/spdlog.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/cfg/env.h>
 #include <mpi.h>
 
@@ -19,6 +20,9 @@ using std::chrono::system_clock;
 
 namespace MxRec {
     int PerfConfig::keyProcessThreadNum = DEFAULT_KEY_PROCESS_THREAD;
+    int PerfConfig::maxUniqueThreadNum = DEFAULT_MAX_UNIQUE_THREAD_NUM;
+    bool PerfConfig::fastUnique = false;
+
 
     RankInfo::RankInfo(int rankId, int deviceId, int localRankSize, int option, int nBatch,
         const vector<int>& maxStep) : rankId(rankId), deviceId(deviceId), localRankSize(localRankSize), option(option),
@@ -88,6 +92,8 @@ namespace MxRec {
 
     void SetLog(int rank)
     {
+        auto logger = spdlog::stderr_color_mt("console");
+        spdlog::set_default_logger(logger);
         std::string pattern = "[%H:%M:%S.%e] [" + std::to_string(rank) + "] [%^%l%$] %v";
         spdlog::default_logger()->set_pattern(pattern);
         auto env_val = spdlog::details::os::getenv("SPDLOG_LEVEL");

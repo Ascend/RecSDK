@@ -38,8 +38,13 @@ class Saver(object):
 
     def build(self):
         if self.var_list is None:
+            self.var_list = []
             logging.debug(f"optimizer collection name: {get_ascend_global_hashtable_collection()}")
-            self.var_list = tf.compat.v1.get_collection(get_ascend_global_hashtable_collection())
+            temp_var_list = tf.compat.v1.get_collection(get_ascend_global_hashtable_collection())
+            for var in temp_var_list:
+                table_instance = get_table_instance(var)
+                if table_instance.is_save:
+                    self.var_list.append(var)
 
         with tf.compat.v1.variable_scope("mx_rec_save"):
             self._build_save()
@@ -156,15 +161,16 @@ class Saver(object):
                                               self.rank_id)
 
     def _restore(self, sess, reading_path):
+        restore_feed_dict = defaultdict(dict)
         if is_asc_manager_initialized():
             restore_host_data(reading_path)
             logging.debug(f"host data was restored.")
 
-        restore_feed_dict = defaultdict(dict)
         for table_name, sub_placeholder_dict in self.placeholder_dict.items():
             fill_placeholder(reading_path, sub_placeholder_dict, restore_feed_dict, self.rank_id,
                              NameDescriptor(table_name, DataName.EMBEDDING.value))
             table_instance = get_table_instance_by_name(table_name)
+
             if table_instance.use_feature_mapping:
                 fill_placeholder(reading_path, sub_placeholder_dict, restore_feed_dict, self.rank_id,
                                  NameDescriptor(table_name, DataName.FEATURE_MAPPING.value))
@@ -199,7 +205,7 @@ def fill_placeholder(reading_path, placeholder_dict, feed_dict, suffix, name_des
     else:
         target_path = generate_path(reading_path, "HashTable", "HBM", name_descriptor.table_name,
                                     name_descriptor.data_name)
-    restore_data_dict = read_binary_data(target_path, suffix, name_descriptor.data_name)
+    restore_data_dict = read_binary_data(target_path, suffix, name_descriptor.data_name, name_descriptor.table_name)
 
     for key, data in restore_data_dict.items():
         embedding_placeholder = placeholder_dict.get(key)
@@ -278,7 +284,15 @@ def write_binary_data(writing_path, suffix, data, attributes=None):
             file.write(json.dumps(attributes))
 
 
-def read_binary_data(reading_path, suffix, data_name):
+def read_binary_data(reading_path: str, suffix: int, data_name: str, table_name: str) -> dict:
+    """
+    Read sparse origin data from binary file
+    :param reading_path: sparse data path
+    :param suffix: suffix of sparse data
+    :param data_name: the data type,including embedding, offset, etc.
+    :param table_name: the sparse table name
+    :return: the sparse data dict
+    """
     data_file, attribute_file = generate_file_name(suffix)
     target_data_dir = os.path.join(reading_path, data_file)
     target_attribute_dir = os.path.join(reading_path, attribute_file)
@@ -294,8 +308,14 @@ def read_binary_data(reading_path, suffix, data_name):
         raise AttributeError(f"Lack of attribute {DataAttr.DATATYPE.value}.")
 
     data_to_restore = np.fromfile(target_data_dir, dtype=attributes.pop(DataAttr.DATATYPE.value))
+
     if DataAttr.SHAPE.value in attributes:
-        data_to_restore = data_to_restore.reshape(attributes.pop(DataAttr.SHAPE.value))
+        data_shape = attributes.pop(DataAttr.SHAPE.value)
+        data_to_restore = data_to_restore.reshape(data_shape)
+        table_instance = get_table_instance_by_name(table_name)
+        current_data_shape = [table_instance.slice_device_vocabulary_size, table_instance.scalar_emb_size]
+        if data_shape != current_data_shape:
+            data_to_restore = process_embedding_data(data_to_restore, current_data_shape, data_shape)
 
     data_dict = {data_name: data_to_restore}
     for key, item in attributes.items():
@@ -304,3 +324,29 @@ def read_binary_data(reading_path, suffix, data_name):
     logging.debug(f"Reading shape is {data_to_restore.shape}.")
 
     return data_dict
+
+
+def process_embedding_data(data_to_restore: np.ndarray, current_data_shape: list, data_shape: list) -> np.ndarray:
+    """
+    Process embedding data when reading binary file
+    :param data_to_restore: the embedding data reading from the binary file
+    :param current_data_shape: current embedding data shape set by user
+    :param data_shape: embedding data shape saved in the binary file
+    :return: the embedding data
+    """
+    try:
+        restore_vocab_size, restore_emb_size = current_data_shape
+        vocab_size, emb_size = data_shape
+    except ValueError as err:
+        raise ValueError(f"The shape dimension of a sparse table cannot exceed two dimensions. ") from err
+
+    if restore_vocab_size > vocab_size:
+        pad_count = restore_vocab_size - vocab_size
+        pad_matrix = np.zeros((pad_count, restore_emb_size))
+        data_to_restore = np.concatenate((data_to_restore, pad_matrix), axis=0)
+
+    elif restore_vocab_size < vocab_size:
+        raise Exception(f"restore vocabulary size {restore_vocab_size} cannot be less than "
+                        f"saved vocabulary size {vocab_size},which would loss the mapping between keys and embeddings ")
+
+    return data_to_restore

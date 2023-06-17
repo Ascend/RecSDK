@@ -5,6 +5,7 @@
 import logging
 import math
 import time
+from typing import Union
 from collections import defaultdict
 
 import numpy as np
@@ -23,9 +24,8 @@ from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is
     insert_table_instance, get_training_mode_channel_id, get_use_static, get_name_to_var_dict, \
     clear_channel, trigger_evict, get_table_instance_by_name, get_use_hot, get_device_id, export_feature_spec, \
     ConfigInitializer, get_ascend_global_hashtable_collection, get_host_pipeline_ops, get_use_dynamic_expansion, \
-    set_modify_graph
+    set_modify_graph, insert_removing_var_list
 from mx_rec.util.tf_version_adapter import npu_ops
-from mx_rec.util.variable import remove_saving_var
 
 
 def create_table(**kwargs):
@@ -41,7 +41,7 @@ def create_table(**kwargs):
     shard_num = kwargs.get("shard_num", 1)
     fusion_optimizer_var = kwargs.get("fusion_optimizer_var", True)
     hashtable_threshold = kwargs.get("hashtable_threshold", 0)
-    init_param = kwargs.get("init_param", 1.0)
+    is_save =  kwargs.get("is_save", True)
 
     """
     Args:
@@ -58,14 +58,12 @@ def create_table(**kwargs):
         shard_num: embedding partition number
         fusion_optimizer_var: fusion optimizer variable with embedding
         hashtable_threshold: choose to implement based on hash table or linear layer
-        init_param: embedding init param-coefficient
     """
 
     config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
                   device_vocabulary_size=device_vocabulary_size, host_vocabulary_size=host_vocabulary_size,
                   optimizer_list=optimizer_list, mode=mode, value_dtype=value_dtype, shard_num=shard_num,
-                  fusion_optimizer_var=fusion_optimizer_var, hashtable_threshold=hashtable_threshold,
-                  init_param=init_param)
+                  fusion_optimizer_var=fusion_optimizer_var, hashtable_threshold=hashtable_threshold, is_save=is_save)
     embedding = SparseEmbedding(config)
     return embedding
 
@@ -139,6 +137,7 @@ class SparseEmbedding:
         self._optimizer_instance_list = config.get("optimizer_list")
         self.emb_initializer = config.get("emb_initializer")
         self._mode = config.get("mode")
+        self.is_save = config.get("is_save")
         self.optimizer_slot_info_list = []
         self._slot_num = dict()
         self._send_count = 0
@@ -153,13 +152,12 @@ class SparseEmbedding:
         self.slice_host_vocabulary_size = 0
         self.variable = None
         self.lookup_info = set()
-        self.lookup_result = None
+        self.lookup_result = dict()
         self.use_dynamic_expansion = get_use_dynamic_expansion()
         self.channel_name_list = []
         self.send_count_map = dict()
         self.channel_name_dict = {True: [], False: []}
         self.modify_graph = False
-        self.init_param = config.get("init_param")
 
         self.set_slice_vocab_size()
         self.set_emb_size()
@@ -268,9 +266,10 @@ class SparseEmbedding:
         self.check_optimizer_instance()
 
     def get_default_lookup_name(self):
-        logging.debug(f"getting one default lookup name")
         self._default_name_count += 1
-        return "sparse_lookup_%d" % self._default_name_count
+        default_name = "sparse_lookup_%d" % self._default_name_count
+        logging.debug(f"getting one default lookup name {default_name}")
+        return default_name
 
     def set_using_feature_mapping(self):
         self._use_feature_mapping = True
@@ -324,7 +323,6 @@ class SparseEmbedding:
             if isinstance(feature, FeatureSpec):
                 if not feature.initialized:
                     raise ValueError(f"Feature Spec has not been initialized.")
-                key_info = "{}_{}".format(feature.name, feature.index_key)
                 if is_training not in feature.pipeline_mode:
                     raise ValueError(f"You have not config feature for is training mode '{is_training}', please config "
                                      f"feature with func sparse_lookup at first.")
@@ -540,37 +538,81 @@ class SparseEmbedding:
         """
         spec_name = feature_spec.name
         is_training = kwargs.get("is_train")
-        if self.lookup_result is not None and spec_name in self.lookup_result \
-                and is_training in self.lookup_result.get(spec_name):
+        if spec_name in self.lookup_result and is_training in self.lookup_result.get(spec_name):
             return self.lookup_result.get(spec_name).get(is_training)
 
+        if not get_use_static() and kwargs.get("batch") is None:
+            raise RuntimeError(f"When the 'feature spec' mode and 'dynamic shape' are used, the 'batch' is required.")
         table_name = feature_spec.table_name
         same_table_feature_spec = ConfigInitializer.get_instance().table_name_to_feature_spec[table_name][is_training]
-        if len(same_table_feature_spec) == 0:
+        same_table_spec_count = len(same_table_feature_spec)
+        if same_table_spec_count == 0:
             raise RuntimeError(f"spec_name {spec_name} not in table {table_name}")
-        if len(same_table_feature_spec) == 1:
+        if same_table_spec_count == 1:
             lookup_result = self.lookup_for_asc_with_feature_spec_inner(feature_spec, send_count, **kwargs)
-            self.lookup_result = {spec_name: {is_training: lookup_result}}
+            if spec_name not in self.lookup_result:
+                self.lookup_result[spec_name] = {}
+            self.lookup_result[spec_name][is_training] = lookup_result
         else:
+            def get_tensor_list() -> list:
+                """
+                Use 'feature spec' to find the corresponding tensor from batch.
+                Returns: Tensor list in batch.
+                """
+                same_table_tensor_list = []
+                for feat_spec in same_table_feature_spec:
+                    tensor = kwargs.get("batch").get(feat_spec.index_key)
+                    if tensor is None:
+                        raise KeyError(f"index_key '{feat_spec.index_key}' does not exist in batch.")
+                    same_table_tensor_list.append(tensor)
+                return same_table_tensor_list
+
+            def set_feature_spec_attr(mock_feature_spec: FeatureSpec, total_feature_count: Union[int, tf.Tensor]):
+                """
+                Set properties for a temporary feature_spec.
+                Args:
+                    mock_feature_spec: A temporary feature_spec consisting of multiple feature_spec with the same table.
+                    total_feature_count: Inner product of the shape of a tensor.
+                Returns: None
+                """
+                mock_feature_spec.batch_size = total_feature_count
+                mock_feature_spec.dims = [total_feature_count, 1]
+                mock_feature_spec.initialized = True
+                mock_feature_spec.pipeline_mode.add(True)
+                mock_feature_spec.pipeline_mode.add(False)
+
             same_table_feature_spec = sorted(same_table_feature_spec, key=lambda x: x.name)
-            same_table_spec_count = len(same_table_feature_spec)
-            feature_count = [x.feat_cnt * x.batch_size for x in same_table_feature_spec]
-            total_feature_count = sum(feature_count)
-            mock_feature_spec = FeatureSpec(f"mock_feature_spec_{table_name}",
-                                            feat_count=total_feature_count, table_name=table_name)
-            mock_feature_spec.batch_size = 1
-            mock_feature_spec.dims = [1, total_feature_count]
-            mock_feature_spec.initialized = True
-            mock_feature_spec.pipeline_mode.add(True)
-            mock_feature_spec.pipeline_mode.add(False)
+            mock_feature_spec = FeatureSpec(f"mock_feature_spec_{table_name}", feat_count=1, table_name=table_name)
+
+            if get_use_static():
+                tensor_list = []
+                tensor_split_list = [feat_spec.split for feat_spec in same_table_feature_spec]
+                total_feature_count = sum(tensor_split_list)
+            else:
+                tensor_list = get_tensor_list()
+                tensor_split_list = [tf.math.reduce_prod(array_ops.shape(tensor)) for tensor in tensor_list]
+                total_feature_count = tf.add_n(tensor_split_list)
+            set_feature_spec_attr(mock_feature_spec, total_feature_count)
+
+            kwargs["multi_lookup"] = True
             lookup_result = self.lookup_for_asc_with_feature_spec_inner(mock_feature_spec,
                                                                         send_count * same_table_spec_count, **kwargs)
-            logging.debug(f"lookup table {table_name} via {feature_count}")
-            lookup_result = tf.reshape(lookup_result, [-1, self.scalar_emb_size])
-            split_size = [x.feat_cnt * x.batch_size for x in same_table_feature_spec]
-            lookup_result_split = tf.split(lookup_result, split_size)
-            self.lookup_result = {k.name: {is_training: tf.reshape(v, k.dims + [self.scalar_emb_size])}
-                                  for k, v in zip(same_table_feature_spec, lookup_result_split)}
+            logging.debug(f"lookup table {table_name} via {tensor_split_list}")
+
+            lookup_result_split = tf.split(lookup_result, tensor_split_list)
+            if len(lookup_result_split) != len(same_table_feature_spec) or (
+                    not get_use_static() and len(same_table_feature_spec) != len(tensor_list)):
+                raise RuntimeError(f"shape not match. len(lookup_result_split): {len(lookup_result_split)},"
+                                   f"len(same_table_feature_spec): {len(same_table_feature_spec)}"
+                                   f"len(tensor_list): {len(tensor_list)}")
+            for idx, (one_feature_spec, one_result) in enumerate(zip(same_table_feature_spec, lookup_result_split)):
+                if one_feature_spec.name not in self.lookup_result:
+                    self.lookup_result[one_feature_spec.name] = {}
+                if get_use_static():
+                    dest_shape = one_feature_spec.dims + [self.scalar_emb_size]
+                else:
+                    dest_shape = array_ops.concat([array_ops.shape(tensor_list[idx]), [self.scalar_emb_size]], 0)
+                self.lookup_result[one_feature_spec.name][is_training] = array_ops.reshape(one_result, dest_shape)
 
         self.check_multi_lookup_times()
         return self.lookup_result.get(spec_name).get(is_training)
@@ -618,7 +660,7 @@ class SparseEmbedding:
         hot_pos = result.get("hot_pos")
         id_offsets = result.get("id_offsets")
         swap_in = result.get("swap_in")
-        all2all_matrix = result.get("all2all_matrix")
+        all2all_matrix = result.get("all2all_args")
         control_ops = swap_in
 
         id_offsets = tf.identity(id_offsets, name="identity_addr")
@@ -651,7 +693,14 @@ class SparseEmbedding:
             if use_static:
                 lookup_result = tf.reshape(embeddings, feature_spec.dims + [self.scalar_emb_size])
             else:
-                lookup_result = tf.reshape(embeddings, [-1, self.scalar_emb_size])
+                if kwargs.get("multi_lookup"):
+                    lookup_result = tf.reshape(embeddings, [-1, self.scalar_emb_size])
+                else:
+                    tensor = kwargs.get("batch").get(feature_spec.index_key)
+                    if tensor is None:
+                        raise KeyError(f"index_key '{feature_spec.index_key}' does not exist in batch.")
+                    dest_shape = array_ops.concat([array_ops.shape(tensor), [self.scalar_emb_size]], 0)
+                    lookup_result = array_ops.reshape(embeddings, dest_shape)
 
             def grad(lookup_diff):
                 embedding_diff = tf.reshape(lookup_diff, [-1, self.scalar_emb_size])
@@ -702,11 +751,10 @@ class SparseEmbedding:
                       f" {self.slice_host_vocabulary_size}.")
 
     def _initialize_variables(self):
-        initialized_tensor = \
-            self.emb_initializer(self.slice_device_vocabulary_size + self.embedding_size) * self.init_param
+        initialized_tensor = self.emb_initializer(self.slice_device_vocabulary_size + self.embedding_size)
         self.variable = tf.compat.v1.get_variable(self.table_name, trainable=False, initializer=initialized_tensor)
         # make sure sparse table variable will not be saved and restored within tf checkpoint.
-        remove_saving_var(self.variable)
+        insert_removing_var_list(self.variable.name)
         self._record()
 
         if self.use_dynamic_expansion:
@@ -836,7 +884,7 @@ class _EvictHook(tf.compat.v1.train.SessionRunHook):
                         channel_name=f'{instance.table_name}_evict_{TRAIN_CHANNEL_ID}')[0]
 
                     initialized_tensor = instance.emb_initializer(
-                        evict_pos.shape.as_list()[0] + instance.embedding_size)
+                        tf.shape(evict_pos)[0] + instance.embedding_size)
 
                 logging.debug(f'evict_pos output shape {evict_pos}, and slice_device_vocabulary_size '
                               f'{instance.slice_device_vocabulary_size}, '
@@ -859,7 +907,8 @@ class _EvictHook(tf.compat.v1.train.SessionRunHook):
         if cur_time - self._start_time > self._evict_time_interval or \
                 (self._evict_step_interval is not None and self._global_step % self._evict_step_interval == 0):
             logging.info(f"_EvictHook - > evict switch on!!! after_run step: {self._global_step}")
-            trigger_evict()
+            if not trigger_evict():
+                return
             self._start_time = cur_time
             for name in self._hash_table_instance.keys():
                 run_context.session.run(self._evict_op.get(name))

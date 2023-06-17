@@ -16,12 +16,12 @@ using namespace MxRec;
 using namespace std;
 
 bool HybridMgmt::InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
-                                const vector<ThresholdValue>& thresholdValues, bool ifLoad, int seed)
+                                const vector<ThresholdValue>& thresholdValues, int seed)
 {
     if (getenv("KEY_PROCESS_THREAD_NUM") != nullptr) {
         int num = std::atoi(getenv("KEY_PROCESS_THREAD_NUM"));
-        if (num > MAX_KEY_PROCESS_THREAD) {
-            spdlog::error("[HybridMgmt::InitKeyProcess] KEY_PROCESS_THREAD_NUM:{} should be less than {}",
+        if (num < 1 || num > MAX_KEY_PROCESS_THREAD) {
+            spdlog::error("[HybridMgmt::InitKeyProcess] KEY_PROCESS_THREAD_NUM:{}, should in range [1, {}]",
                           num, MAX_KEY_PROCESS_THREAD);
             return false;
         }
@@ -29,8 +29,25 @@ bool HybridMgmt::InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>&
         spdlog::info("config KEY_PROCESS_THREAD_NUM:{}", num);
     }
 
+    if (getenv("MAX_UNIQUE_THREAD_NUM") != nullptr) {
+        int num = std::atoi(getenv("MAX_UNIQUE_THREAD_NUM"));
+        if (num < 1 || num > DEFAULT_MAX_UNIQUE_THREAD_NUM) {
+            spdlog::error("[HybridMgmt::InitKeyProcess] MAX_UNIQUE_THREAD_NUM:{}, should in range [1, {}]",
+                          num, DEFAULT_MAX_UNIQUE_THREAD_NUM);
+            return false;
+        }
+        PerfConfig::maxUniqueThreadNum = num;
+        spdlog::info("config MAX_UNIQUE_THREAD_NUM:{}", num);
+    }
+
+    if (getenv("FAST_UNIQUE") != nullptr) {
+        bool isFastUnique = std::atoi(getenv("FAST_UNIQUE"));
+        PerfConfig::fastUnique = isFastUnique;
+        spdlog::info("config FAST_UNIQUE:{}", PerfConfig::fastUnique);
+    }
+
     preprocess = Singleton<KeyProcess>::GetInstance();
-    preprocess->Initialize(rankInfo, embInfos, thresholdValues, ifLoad, seed);
+    preprocess->Initialize(rankInfo, embInfos, thresholdValues, seed);
     preprocess->Start();
     return true;
 }
@@ -69,7 +86,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
     hdTransfer->Init(embInfos, rankInfo.deviceId);
 
-    bool rc = InitKeyProcess(rankInfo, embInfos, thresholdValues, ifLoad, seed);
+    bool rc = InitKeyProcess(rankInfo, embInfos, thresholdValues, seed);
     if (!rc) {
         return false;
     }
@@ -100,6 +117,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
 
 bool HybridMgmt::Save(const string savePath)
 {
+#ifndef GTEST
     preprocess->LoadSaveLock();
 
     CkptData saveData;
@@ -125,12 +143,13 @@ bool HybridMgmt::Save(const string savePath)
     saveCkpt.SaveModel(savePath, saveData, mgmtRankInfo, mgmtEmbInfo);
 
     preprocess->LoadSaveUnlock();
-
+#endif
     return true;
 }
 
 bool HybridMgmt::Load(const string& loadPath)
 {
+#ifndef GTEST
     preprocess->LoadSaveLock();
 
     spdlog::debug(MGMT + "Start host side load process");
@@ -178,7 +197,7 @@ bool HybridMgmt::Load(const string& loadPath)
     if (!mgmtRankInfo.useDataset && isLoad) {
         Start();
     }
-
+#endif
     return true;
 }
 
@@ -233,16 +252,17 @@ bool HybridMgmt::LoadMatchesDDRSetup(const CkptData& loadData)
 
 void HybridMgmt::Start()
 {
+#ifndef GTEST
     if (mgmtRankInfo.noDDR) {
         auto getInfoTask = [this]() {
-            auto ret = GetInfoTask();
+            auto ret = Task(TaskType::GETINFO);
             spdlog::info("getInfoTask done");
             return ret;
         };
         procThreads.emplace_back(std::make_unique<std::thread>(getInfoTask));
 
         auto sendInfoTask = [this]() {
-            auto ret = SendTask();
+            auto ret = Task(TaskType::SEND);
             spdlog::info("sendInfoTask done");
             return ret;
         };
@@ -251,132 +271,114 @@ void HybridMgmt::Start()
 
     if (!mgmtRankInfo.noDDR) {
         auto parseKeysTask = [this]() {
-            auto ret = ParseKeysTask();
+            auto ret = Task(TaskType::DDR);
             spdlog::info("parseKeysTask done");
             return ret;
         };
         procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTask));
     }
+#endif
 }
 
-bool HybridMgmt::TrainParseKeys()
+#ifndef GTEST
+bool HybridMgmt::Task(TaskType type)
 {
+    while (isRunning) {
+        spdlog::info(MGMT + "Start Mgmt Train Task: {}", type);
+        if (mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1 || mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] > 0) {
+            if (!TrainTask(type)) {
+                return false;
+            }
+        }
+
+        spdlog::info(MGMT + "Start Mgmt Eval Task: {}", type);
+        if (mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1 || mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] > 0) {
+            if (!EvalTask(type)) {
+                return false;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool HybridMgmt::TrainTask(TaskType type)
+{
+    bool isContinue = false;
     do {
         if (!isRunning) {
             return false;
         }
-        ParseKeys(TRAIN_CHANNEL_ID, getInfoBatchId);
-        spdlog::info(MGMT + "parseKeysBatchId = {}", getInfoBatchId);
-    } while (getInfoBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
-             mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1);
+        switch (type) {
+            case TaskType::GETINFO:
+                GetLookupAndRestore(TRAIN_CHANNEL_ID, getInfoBatchId);
+                isContinue = getInfoBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
+                        mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1;
+                spdlog::info(MGMT + "getInfoBatchId = {}", getInfoBatchId);
+                break;
+            case TaskType::SEND:
+                SendLookupAndRestore(TRAIN_CHANNEL_ID, sendBatchId);
+                isContinue = sendBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
+                        mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1;
+                spdlog::info(MGMT + "sendBatchId = {}", sendBatchId);
+#if defined(PROFILING) && defined(BUILD_WITH_EASY_PROFILER)
+                if (sendBatchId == PROFILING_START_BATCH_ID) {
+                    EASY_PROFILER_ENABLE
+                } else if (sendBatchId == PROFILING_END_BATCH_ID) {
+                    EASY_PROFILER_DISABLE
+                    ::profiler::dumpBlocksToFile(fmt::format("/home/MX_REC-mgmt-profile-{}.prof",
+                                                             mgmtRankInfo.rankId).c_str());
+                }
+#endif
+                break;
+            case TaskType::DDR:
+                ParseKeys(TRAIN_CHANNEL_ID, trainBatchId);
+                isContinue = trainBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
+                        mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1;
+                spdlog::info(MGMT + "parseKeysBatchId = {}", trainBatchId);
+                break;
+            default:
+                throw std::invalid_argument("Invalid TaskType Type.");
+        }
+    } while (isContinue);
 
     return true;
 }
 
-bool HybridMgmt::EvalParseKeys()
+bool HybridMgmt::EvalTask(TaskType type)
 {
-    int evalGetInfoBatchId = 0; // 0-99, 0-99
+    int evalBatchId = 0; // 0-99, 0-99
     do {
         if (!isRunning) {
             return false;
         }
-        bool status = ParseKeys(EVAL_CHANNEL_ID, evalGetInfoBatchId);
+        bool status = false;
+
+        switch (type) {
+            case TaskType::GETINFO:
+                status = GetLookupAndRestore(EVAL_CHANNEL_ID, evalBatchId);
+                spdlog::info(MGMT + "GETINFO evalBatchId = {}", evalBatchId);
+                break;
+            case TaskType::SEND:
+                status = SendLookupAndRestore(EVAL_CHANNEL_ID, evalBatchId);
+                spdlog::info(MGMT + "SEND evalBatchId = {}", evalBatchId);
+                break;
+            case TaskType::DDR:
+                status = ParseKeys(EVAL_CHANNEL_ID, evalBatchId);
+                spdlog::info(MGMT + "DDR evalBatchId = {}", evalBatchId);
+                break;
+            default:
+                throw std::invalid_argument("Invalid TaskType Type.");
+        }
+
         if (!status) {
-            mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] = evalGetInfoBatchId;
+            mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] = evalBatchId;
             break;
         }
-    } while (evalGetInfoBatchId % mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] != 0 ||
+    } while (evalBatchId % mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] != 0 ||
              mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1);
 
     return true;
-}
-
-// 腾讯需要DDR开启特性
-bool HybridMgmt::ParseKeysTask()
-{
-    while (isRunning) {
-        spdlog::info(MGMT + "Start Mgmt ParseKeysTask");
-        if (mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1 || mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] > 0) {
-            if (!TrainParseKeys()) {
-                return false;
-            }
-        }
-
-        if (mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1 || mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] > 0) {
-            if (!EvalParseKeys()) {
-                return false;
-            }
-        }
-    }
-
-    return false;
-}
-
-bool HybridMgmt::GetInfoTask()
-{
-    while (isRunning) {
-        spdlog::info(MGMT + "Start Mgmt GetInfoTask");
-        do {
-            if (!isRunning) {
-                return false;
-            }
-            GetLookupAndRestore(TRAIN_CHANNEL_ID, getInfoBatchId);
-            spdlog::info(MGMT + "getInfoBatchId = {}", getInfoBatchId);
-        } while (getInfoBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
-                mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1);
-
-        int evalGetInfoBatchId = 0; // 0-99, 0-99
-        do {
-            if (!isRunning) {
-                return false;
-            }
-            bool status = GetLookupAndRestore(EVAL_CHANNEL_ID, evalGetInfoBatchId);
-            if (!status) {
-                mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] = evalGetInfoBatchId;
-                break;
-            }
-        } while (evalGetInfoBatchId % mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] != 0 ||
-                mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1);
-    }
-    return false;
-}
-
-bool HybridMgmt::SendTask()
-{
-    while (isRunning) {
-        spdlog::info(MGMT + "Start Mgmt SendTask");
-        do {
-            if (!isRunning) {
-                return false;
-            }
-            SendLookupAndRestore(TRAIN_CHANNEL_ID, sendBatchId);
-#if defined(PROFILING) && defined(BUILD_WITH_EASY_PROFILER)
-            spdlog::info(MGMT + "sendBatchId = {}", sendBatchId);
-            if (trainBatchId == PROFILING_START_BATCH_ID) {
-                EASY_PROFILER_ENABLE
-            } else if (trainBatchId == PROFILING_END_BATCH_ID) {
-                EASY_PROFILER_DISABLE
-                ::profiler::dumpBlocksToFile(
-                    fmt::format("/home/MX_REC-mgmt-profile-{}.prof", mgmtRankInfo.rankId).c_str());
-            }
-#endif
-        } while (sendBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
-                 mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1);
-
-        int evalSendBatchId = 0;
-        do {
-            if (!isRunning) {
-                return false;
-            }
-            bool status = SendLookupAndRestore(EVAL_CHANNEL_ID, evalSendBatchId);
-            if (!status) {
-                mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] = evalSendBatchId;
-                break;
-            }
-        } while (evalSendBatchId % mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] != 0 ||
-                 mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1);
-    }
-    return false;
 }
 
 bool HybridMgmt::GetLookupAndRestore(const int channelId, int &batchId)
@@ -400,7 +402,7 @@ bool HybridMgmt::GetLookupAndRestore(const int channelId, int &batchId)
             infoVecs->pop_back();
             restoreQueue->Pushv(*infoVecs);
         }
-        TIME_PRINT("getAllTensorTC TimeCost(ms):{}", getAllTensorTC.ElapsedMS());
+        TIME_PRINT("getAllTensorTC(ms):{}", getAllTensorTC.ElapsedMS());
     }
     batchId++;
     return true;
@@ -424,7 +426,7 @@ bool HybridMgmt::SendLookupAndRestore(const int channelId, int &batchId)
         spdlog::info("SendLookupAndRestore batchId: {}, name: {}, channelId: {}",
                      batchId, embInfo.name, channelId);
 
-        TimeCost sendTensorTC;
+        TimeCost sendTensorsTC;
         omp_set_num_threads(SEND_TENSOR_TYPE_NUM);
 #pragma omp parallel sections
         {
@@ -435,7 +437,7 @@ bool HybridMgmt::SendLookupAndRestore(const int channelId, int &batchId)
                     auto lookUpKeys = lookUpKeysQueue->WaitAndPop();
                     hdTransfer->Send(TransferChannel::LOOKUP, lookUpKeys, channelId, name);
                 }
-                TIME_PRINT("LOOKUP Send TimeCost(ms):{}", sendLookupTC.ElapsedMS());
+                TIME_PRINT("sendLookupTC(ms):{}", sendLookupTC.ElapsedMS());
             }
 #pragma omp section
             {
@@ -444,14 +446,15 @@ bool HybridMgmt::SendLookupAndRestore(const int channelId, int &batchId)
                     auto restore = restoreQueue->WaitAndPop();
                     hdTransfer->Send(TransferChannel::RESTORE, restore, channelId, name);
                 }
-                TIME_PRINT("RESTORE Send TimeCost(ms):{}", sendRestoreTC.ElapsedMS());
+                TIME_PRINT("sendRestoreTC(ms):{}", sendRestoreTC.ElapsedMS());
             }
         }
-        TIME_PRINT("sendTensorTC TimeCost(ms):{}", sendTensorTC.ElapsedMS());
+        TIME_PRINT("sendTensorsTC(ms):{}", sendTensorsTC.ElapsedMS());
     }
     batchId++;
     return true;
 }
+#endif
 
 bool HybridMgmt::EndBatch(int batchId, int channelId) const
 {
@@ -460,6 +463,7 @@ bool HybridMgmt::EndBatch(int batchId, int channelId) const
 
 bool HybridMgmt::ParseKeys(int channelId, int& batchId)
 {
+#ifndef GTEST
     spdlog::info(MGMT + "DDR mode, start parse keys, nBatch:{} , [{}]:{}", mgmtRankInfo.nBatch, channelId, batchId);
     TimeCost parseKeyTC;
     int start = batchId;
@@ -486,9 +490,11 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
     }
     EmbHDTransWrap(channelId, batchId - 1, start, iBatch);
     TIME_PRINT("[{}]-{}, parseKeyTC TimeCost(ms):{}", channelId, batchId, parseKeyTC.ElapsedMS());
+#endif
     return true;
 }
 
+#ifndef GTEST
 bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
                                 int channelId, int iBatch, bool& remainBatchOut)
 {
@@ -500,6 +506,8 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
     if (lookupKeys.empty()) {
         remainBatchOut = false;
     }
+
+    TimeCost getAndSendTensorsTC;
     auto restore = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::RESTORE);
     hdTransfer->Send(TransferChannel::RESTORE, *restore, channelId, embName);
     vector<Tensor> tmpData;
@@ -511,6 +519,8 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
         auto all2all = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::ALL2ALL);
         hdTransfer->Send(TransferChannel::ALL2ALL, *all2all, channelId, embName);
     }
+    TIME_PRINT("getAndSendTensorsTC(ms):{}", getAndSendTensorsTC.ElapsedMS());
+
     if (embHashMap.HasFree(lookupKeys.size())) { // check free > next one batch
         spdlog::warn(MGMT + "embName {}[{}]{},iBatch:{} freeSize not enough, {}", embName, channelId,
                      batchId, iBatch, lookupKeys.size());
@@ -551,7 +561,12 @@ void HybridMgmt::EmbHDTrans(const int channelId, const int batchId)
     for (const auto& embInfo: mgmtEmbInfo) {
         const auto& missingKeys = hostHashMaps->GetMissingKeys(embInfo.name);
         if (!(skipUpdate && missingKeys.empty())) {
-            hostEmbs->UpdateEmbV2(missingKeys, channelId, embInfo.name); // order!
+            bool updateEmbV2 = getenv("UpdateEmb_V2") != nullptr;
+            if (updateEmbV2) {
+                hostEmbs->UpdateEmbV2(missingKeys, channelId, embInfo.name); // order!
+            } else {
+                hostEmbs->UpdateEmb(missingKeys, channelId, embInfo.name); // order!
+            }
         } // skip when skip update and empty missing keys
         hostHashMaps->ClearMissingKeys(embInfo.name);
     }
@@ -567,20 +582,25 @@ void HybridMgmt::EmbHDTransDummy(int channelId, int batchId, const EmbInfo& embI
     auto d2hEmb = hdTransfer->Recv(transferName, channelId, embInfo.name)[0];
     hdTransfer->Send(TransferChannel::H2D, {}, channelId, embInfo.name);
 }
-
+#endif
 /*
 * hook通过时间或者step数触发淘汰
 */
-void HybridMgmt::Evict()
+bool HybridMgmt::Evict()
 {
+#ifndef GTEST
     auto& featAdmitNEvict = preprocess->GetFeatAdmitAndEvict();
     if (featAdmitNEvict.GetFunctionSwitch()) {
         featAdmitNEvict.FeatureEvict(evictKeyMap);
     } else {
         spdlog::warn(MGMT + "Hook can not trigger evict, cause AdmitNEvict is not open");
-        return;
+        return false;
     }
     spdlog::debug(MGMT + "evict triggered by hook, evict TableNum {} ", evictKeyMap.size());
+    if (evictKeyMap.size() == 0) {
+        spdlog::warn(MGMT + "evict triggered by hook before dataset in injected");
+        return false;
+    }
 
     if (mgmtRankInfo.noDDR) {
         for (auto evict : evictKeyMap) {
@@ -591,11 +611,14 @@ void HybridMgmt::Evict()
             EvictKeys(evict.first, evict.second);
         }
     }
+    return true;
+#endif
 }
 
 // ddr模式淘汰->删除映射表、初始化host表、发送dev淘汰位置
 void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
 {
+#ifndef GTEST
     spdlog::debug(MGMT + "ddr mode, delete emb: [{}]! evict keySize:{}", embName, keys.size());
     // 删除映射关系
     if (keys.size() != 0) {
@@ -633,4 +656,5 @@ void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
 
     auto tmpData = Vec2TensorI32(evictDevOffset);
     hdTransfer->Send(TransferChannel::EVICT, { tmpData }, TRAIN_CHANNEL_ID, embName);
+#endif
 }

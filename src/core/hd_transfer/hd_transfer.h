@@ -24,8 +24,8 @@ namespace MxRec {
     const std::string MGMT = "\033[32m[Mgmt]\033[0m ";
     const std::string HD = "\033[32m[HD]\033[0m ";
     const std::string HOSTEMB = "\033[32m[HostEmb]\033[0m ";
-    const int PING_PONG_SIZE = 12;
-    const int LARGE_CHANNEL_SIZE = 100;
+    const int PING_PONG_SIZE = 6;
+    const int LARGE_CHANNEL_SIZE = 40;
 
     enum class TransferChannel {
         D2H,

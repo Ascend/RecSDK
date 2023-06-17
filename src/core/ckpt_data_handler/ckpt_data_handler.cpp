@@ -4,7 +4,7 @@
  * Author: MindX SDK
  * Create: 2022-11-12
  */
-
+#include <spdlog/spdlog.h>
 #include "ckpt_data_handler.h"
 
 
@@ -34,5 +34,7 @@ void CkptDataHandler::CleanTransfer()
 void CkptDataHandler::SetDatasetForLoadEmb(CkptDataType dataType, string embName, CkptTransData& loadedData,
                                            CkptData& ckptData)
 {
-    throw std::runtime_error("Wrong CkptDataType, only EMB_INFO and EMB_DATA supported for load host emb");
+    spdlog::error("Load host emb failed. dataType:{}, embName:{}, loadedData:{}, ckptData:{}", dataType, embName,
+                  loadedData.datasetSize, ckptData.embHashMaps.empty());
+    throw runtime_error("only EMB_INFO and EMB_DATA supported for load host emb");
 }

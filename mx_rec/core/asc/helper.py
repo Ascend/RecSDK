@@ -55,6 +55,7 @@ def find_dangling_table(table_names: List[str]):
     :param table_names: list of all created tables' names
     :return: a list of dangling table names.
     """
+
     def check_tensor(table_reachable_tensor: Tensor):
         """Check whether the tensor op is optimizer op or backward gradient.
 
@@ -104,7 +105,7 @@ def find_dangling_table(table_names: List[str]):
     logging.info(f"*********** find tables: {table_lookup_op}***********")
     dangling_table = []
 
-    def extend(op_list:List[Operation],
+    def extend(op_list: List[Operation],
                tensor: Tensor,
                spread_tensors: List[Tensor]):
         """extend the tensors which table lookup op can reach
@@ -189,7 +190,7 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
 
         dangling_tables = find_dangling_table(table_names)
         logging.info(f"In insert found dangling table(s): {dangling_tables} "
-                         f"which does not need to be provided to the EmbInfo.")
+                     f"which does not need to be provided to the EmbInfo.")
 
         def insert_fn_for_arg_indexes(*args):
             insert_tensors = get_target_tensors_with_args_indexes(args_index_list)
@@ -227,7 +228,7 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
     return insert_fn
 
 
-def merge_feature_id_request(feature_id_list, split_list, table_name_list, feature_spec_names):
+def merge_feature_id_request(feature_id_list, split_list, table_name_list):
     if not (len(feature_id_list) == len(split_list) and len(split_list) == len(table_name_list)):
         raise RuntimeError(f"shape not match. len(feature_id_list): {len(feature_id_list)},"
                            f"len(split_list): {len(split_list)}"
@@ -261,10 +262,10 @@ def merge_feature_id_request(feature_id_list, split_list, table_name_list, featu
     logging.debug(f"merge request from {table_name_list} {split_list} "
                   f" to {output_table_name_list} {output_split_list}")
     list_set = {
-        'output_feature_id_list' : output_feature_id_list,
-        'output_split_list' : output_split_list,
-        'output_table_name_list' : output_table_name_list,
-        'output_tensorshape_split_list' : output_tensorshape_split_list,
+        'output_feature_id_list': output_feature_id_list,
+        'output_split_list': output_split_list,
+        'output_table_name_list': output_table_name_list,
+        'output_tensorshape_split_list': output_tensorshape_split_list,
     }
     return list_set
 
@@ -272,7 +273,6 @@ def merge_feature_id_request(feature_id_list, split_list, table_name_list, featu
 def send_feature_id_request_async(feature_id_list, split_list, table_name_list, input_dict):
     is_training = input_dict["is_training"]
     timestamp = input_dict["timestamp"]
-    feature_spec_names = input_dict["feature_spec_names"]
     auto_change_graph = input_dict["auto_change_graph"]
     host_pipeline_ops = get_host_pipeline_ops()
     use_static = get_use_static()
@@ -283,7 +283,7 @@ def send_feature_id_request_async(feature_id_list, split_list, table_name_list, 
         feature_id_list = feature_id_list[1:]
 
     if not auto_change_graph:  # future support acg
-        list_set = merge_feature_id_request(feature_id_list, split_list, table_name_list, feature_spec_names)
+        list_set = merge_feature_id_request(feature_id_list, split_list, table_name_list)
         feature_id_list = list_set.get("output_feature_id_list")
         split_list = list_set.get("output_split_list")
         table_name_list = list_set.get("output_table_name_list")
@@ -401,7 +401,7 @@ def get_valid_op_key(batch_dict: dict) -> str:
 
 def get_target_tensors_with_args_indexes(args_index_list):
     insert_tensors = []
-    graph = tf.get_default_graph()
+    graph = tf.compat.v1.get_default_graph()
 
     for index in args_index_list:
         tensor = graph.get_tensor_by_name("args_%d:0" % index)

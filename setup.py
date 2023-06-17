@@ -65,7 +65,7 @@ setup(
     ),
     package_dir={},
     # other file
-    package_data={'': ['*.yml', '*.sh', '*.so*']},
+    package_data={'': ['tools/*', 'tools/*/*', '*.yml', '*.sh', '*.so*']},
     # dependency
     python_requires='>=3.7.5'
 )

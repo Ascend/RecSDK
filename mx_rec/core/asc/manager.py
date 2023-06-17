@@ -76,7 +76,7 @@ def generate_table_info_list():
             logging.debug(f"table_instance, table_name: {table_instance.table_name}, channel_name_list: "
                           f"{table_instance.channel_name_list}, send_count_map: {table_instance.send_count_map}")
             table_info = EmbInfo(table_instance.table_name, table_instance.send_count, table_instance.scalar_emb_size,
-                                 table_instance.ext_emb_size, table_instance.modify_graph,
+                                 table_instance.ext_emb_size, table_instance.modify_graph, table_instance.is_save,
                                  table_instance.channel_name_list,
                                  [table_instance.slice_device_vocabulary_size,
                                   table_instance.slice_host_vocabulary_size],
@@ -143,7 +143,8 @@ def matched_opt_slot_initializers(table_instance):
 
     start_index = table_instance.scalar_emb_size
     slot_initializers = []
-
+    logging.debug(f"matched_opt_slot_initializers, scalar emb size:{table_instance.ext_emb_size}, "
+                  f"optimizer_instance_list size:{len(table_instance.optimizer_instance_list)}")
     for optimizer in table_instance.optimizer_instance_list:
         for slot_init_value in optimizer.get_slot_init_values():
             slot_initializer = InitializeInfo(name="constant_initializer",
@@ -223,6 +224,7 @@ def start_asc_pipeline():
     table_info_list = generate_table_info_list()
     threshold_list = generate_threshold_list()
     if not table_info_list:
-        logging.warning(f"table_info_list is empty")
+        logging.error("table_info_list is empty!")
+        raise RuntimeError("table_info_list is empty!")
     if not is_asc_manager_initialized() and table_info_list:
         initialize_emb_cache(table_info_list, threshold_list)

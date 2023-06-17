@@ -13,6 +13,7 @@
 #include <spdlog/fmt/chrono.h>
 #include <spdlog/fmt/bundled/ranges.h>
 #include <mpi.h>
+#include <climits>
 
 #include "checkpoint/checkpoint.h"
 #include "hd_transfer/hd_transfer.h"
@@ -22,6 +23,7 @@
 using namespace std;
 using namespace chrono;
 using namespace MxRec;
+using namespace ock::ctr;
 
 static shared_mutex g_smut;
 
@@ -35,32 +37,9 @@ inline vector<T> Count2Start(const vector<T>& count)
     return start;
 }
 
-KeyProcess::KeyProcess()
-{
-    // init class members with PerfConfig::keyProcessThreadNum
-    for (size_t i = 0; i < MAX_CHANNEL_NUM; ++i) {
-        comm[i].resize(PerfConfig::keyProcessThreadNum);
-        for (int j = 0; j < PerfConfig::keyProcessThreadNum; ++j) {
-            comm[i][j] = MPI_COMM_WORLD;
-        }
-    }
-
-    for (size_t i = 0; i < MAX_CHANNEL_NUM; ++i) {
-        std::vector<std::mutex> tmp(PerfConfig::keyProcessThreadNum);
-        loadSaveMut[i].swap(tmp);
-    }
-    std::vector<std::mutex> tmp(PerfConfig::keyProcessThreadNum);
-    getInfoMut.swap(tmp);
-
-    storage.resize(PerfConfig::keyProcessThreadNum);
-    lookupKeysList.resize(PerfConfig::keyProcessThreadNum);
-    infoList.resize(PerfConfig::keyProcessThreadNum);
-    all2AllList.resize(PerfConfig::keyProcessThreadNum);
-}
-
-int KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
-                           const vector<ThresholdValue>& thresholdValues,
-                           bool ifLoad, int seed)
+bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
+                            const vector<ThresholdValue>& thresholdValues,
+                            int seed)
 {
     this->rankInfo = rInfo;
     if (rankInfo.useHot) {
@@ -88,10 +67,6 @@ int KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
             embeddingTableMap[info.name].Init(info, rInfo, seed);
             spdlog::info(KEY_PROCESS "EmbeddingTableMap：{} init success", info.name);
         }
-
-        if (rankInfo.rankId == 0 && !ifLoad) {
-            Key2OffsetInit(info.name);
-        }
     }
     spdlog::info(KEY_PROCESS "hot emb count info:{}", hotEmbTotCount);
     MPI_Group worldGroup;
@@ -112,9 +87,13 @@ int KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
         spdlog::warn(KEY_PROCESS "Feature admit-and-evict function is unavailable ...");
     }
 
+    if (PerfConfig::fastUnique) {
+        Factory::Create(factory);
+    }
+
     spdlog::info(KEY_PROCESS "scInfo:{}, localRankSize:{}, rankSize:{}, useStatic:{}, useHot:{}", scInfo,
         rInfo.localRankSize, rInfo.rankSize, rInfo.useStatic, rInfo.useHot);
-    return 0;
+    return true;
 }
 
 // bind and start main process
@@ -123,7 +102,7 @@ int KeyProcess::Start()
     // bind like:
     // 0 1 2 3 4 5 0 1 2 3 4 5
     // |  rank0  | |  rank1  |
-    // each rank creates PerfConfig::keyProcessThreadNum threads, each thread process one batchdata
+    // each rank creates KEY_PROCESS_THREAD threads, each thread process one batchdata
     spdlog::info("CPU Core Num: {}", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
     auto fn = [this](int channel, int id) {
 #ifndef GTEST
@@ -135,9 +114,21 @@ int KeyProcess::Start()
 #endif
         KeyProcessTask(channel, id);
     }; // for clean code
+    int threadNum;
     for (int channel = 0; channel < MAX_CHANNEL_NUM; ++channel) {
-        for (int id = 0; id < PerfConfig::keyProcessThreadNum; ++id) {
-            procThreads.emplace_back(std::make_unique<std::thread>(fn, channel, id));
+        const char* threadNumEnv = getenv("KEY_PROCESS_THREAD_NUM");
+        if (threadNumEnv != nullptr) {
+            threadNum = static_cast<int>(*threadNumEnv) - static_cast<int>('0');
+            if (threadNum > KEY_PROCESS_THREAD || threadNum < 0) {
+                throw runtime_error(fmt::format("{} is not valid", threadNum));
+            }
+        } else {
+            threadNum = KEY_PROCESS_THREAD;
+        }
+        spdlog::info(KEY_PROCESS "key process thread num: {}", threadNum);
+        for (int id = 0; id < threadNum; ++id) {
+            procThreads.emplace_back(
+                std::make_unique<std::thread>(fn, channel, id)); // use lambda expression initialize thread
         }
     }
     return 0;
@@ -149,8 +140,8 @@ void KeyProcess::InitHotEmbTotCount(const EmbInfo& info, const RankInfo& rInfo)
     if (rankInfo.useDynamicExpansion) {
         embeddingSize = info.embeddingSize;
     }
-    hotEmbTotCount[info.name] = static_cast<int>(GetUBSize(rInfo.deviceId) / sizeof(float) * HOT_EMB_CACHE_PCT /
-                                                 embeddingSize);
+    hotEmbTotCount[info.name] = static_cast<int>(static_cast<float>(GetUBSize(rInfo.deviceId) / sizeof(float)) *
+                                                 HOT_EMB_CACHE_PCT / static_cast<float>(embeddingSize));
 }
 
 auto KeyProcess::GetSendCount(const string& name, const string& channelName, bool modifyGraph)
@@ -192,8 +183,8 @@ void KeyProcess::Destroy()
 {
     isRunning = false;
     spdlog::info(KEY_PROCESS "rank {} begin destroy.", rankInfo.rankId);
-    for (auto& t: procThreads) {
-        t->join();
+    for (auto& i: procThreads) {
+        i->join();
     }
     procThreads.clear();
     spdlog::info(KEY_PROCESS "rank {} destroy success.", rankInfo.rankId);
@@ -202,7 +193,7 @@ void KeyProcess::Destroy()
 void KeyProcess::LoadSaveLock()
 {
     for (int channelId { 0 }; channelId < MAX_CHANNEL_NUM; ++channelId) {
-        for (int threadId { 0 }; threadId < PerfConfig::keyProcessThreadNum; ++threadId) {
+        for (int threadId { 0 }; threadId < KEY_PROCESS_THREAD; ++threadId) {
             loadSaveMut[channelId][threadId].lock();
         }
     }
@@ -211,64 +202,96 @@ void KeyProcess::LoadSaveLock()
 void KeyProcess::LoadSaveUnlock()
 {
     for (int channelId { 0 }; channelId < MAX_CHANNEL_NUM; ++channelId) {
-        for (int threadId { 0 }; threadId < PerfConfig::keyProcessThreadNum; ++threadId) {
+        for (int threadId { 0 }; threadId < KEY_PROCESS_THREAD; ++threadId) {
             loadSaveMut[channelId][threadId].unlock();
         }
     }
 }
 
-void KeyProcess::KeyProcessTask(const int channel, const int id) // thread id [0, KEY_PROCESS_THREAD-1]
+void KeyProcess::GetUniqueConfig(UniqueConf& uniqueConf)
+{
+    if (rankInfo.rankSize > 0) {
+        uniqueConf.useSharding = true;
+        uniqueConf.shardingNum = rankInfo.rankSize;
+    }
+
+    if (rankInfo.useStatic) {
+        uniqueConf.usePadding = true;
+        uniqueConf.paddingVal = -1;
+    } else {
+        uniqueConf.usePadding = false;
+    }
+
+    uniqueConf.useIdCount = true;
+    uniqueConf.outputType = OutputType::ENHANCED;
+    uniqueConf.minThreadNum = MIN_UNIQUE_THREAD_NUM;
+    uniqueConf.maxThreadNum = PerfConfig::maxUniqueThreadNum;
+}
+
+void KeyProcess::InitializeUnique(UniqueConf& uniqueConf, size_t& preBatchSize, bool& uniqueInitialize,
+                                  const unique_ptr <emb_batch_t>& batch, UniquePtr& unique)
+{
+    uniqueConf.desiredSize = (uint32_t)batch->Size();
+    if (preBatchSize != batch->Size()) {
+        uniqueInitialize = false;
+        preBatchSize = batch->Size();
+    }
+
+    if (!uniqueInitialize) {
+        if (rankInfo.useStatic) {
+            uniqueConf.paddingSize = GetSendCount(batch->name, batch->channelName, batch->modifyGraph);
+        }
+
+        uniqueConf.maxIdVal = INT64_MAX;
+        uniqueConf.dataType = ock::ctr::DataType::INT64;
+
+        unique->Initialize(uniqueConf);
+        uniqueInitialize = true;
+    }
+}
+
+void KeyProcess::KeyProcessTask(int channel, int id) // thread id [0, KEY_PROCESS_THREAD-1]
 {
     unique_ptr<emb_batch_t> batch;
+    UniquePtr unique = nullptr;
+    UniqueConf uniqueConf;
+    size_t preBatchSize = 0;
+    bool uniqueInitialize = false;
 
-    GroupMethod groupMethod;
-    groupMethod.SetGroupCount(rankInfo.rankSize);
-
-    shared_ptr<sharded_dedup> unique;
-    map<int, shared_ptr<sharded_dedup>> uniquePtrMap;
+    if (PerfConfig::fastUnique) {
+        factory->CreateUnique(unique);
+        GetUniqueConfig(uniqueConf);
+    }
 
     spdlog::stopwatch sw;
     try {
         while (true) {
-            TimeCost getAndProcesTC;
-            TimeCost getBatchTC;
+            TimeCost getAndProcessTC;
             batch = GetBatchData(channel, id); // get batch data from SingletonQueue<emb_batch_t>
-            TIME_PRINT("GetBatchData TimeCost(ms):{}", getBatchTC.ElapsedMS());
-
             if (batch == nullptr) {
-                spdlog::info(KEY_PROCESS "batch is nullptr");
                 break;
             }
-            auto getBatchTime = duration_cast<milliseconds>((sw).elapsed());
+            auto getBatchTime = Format2Ms(sw);
             sw.reset();
 
-            auto sendCountSize = GetSendCount(batch->name, batch->channelName, batch->modifyGraph);
-            shared_ptr<sharded_dedup> uniquePtr;
-            if (uniquePtrMap.find(sendCountSize) == uniquePtrMap.end()) {
-                uniquePtr.reset(new sharded_dedup(groupMethod, batch->batchSize, sendCountSize));
-                uniquePtrMap.insert(std::make_pair(sendCountSize, uniquePtr));
-            }
-            unique = uniquePtrMap[sendCountSize];
-
-            if (unique != nullptr) {
-                unique->StartNewRound();
+            bool ret = false;
+            if (PerfConfig::fastUnique) {
+                InitializeUnique(uniqueConf, preBatchSize, uniqueInitialize, batch, unique);
+                ret = KeyProcessTaskHelperWithFastUnique(batch, unique, channel, id);
+            } else {
+                ret = KeyProcessTaskHelper(batch, channel, id);
             }
 
-            auto batchQueue =
-                    SingletonQueue<emb_batch_t>::getInstances(id + PerfConfig::keyProcessThreadNum * batch->channel);
-
-            if (!KeyProcessTaskHelper(batch, unique, channel, id, sw)) {
-                free(batch->tensorAddr);
-                batchQueue->PutDirty(move(batch));
+            if (!ret) {
                 break;
             }
-            TIME_PRINT("getAndProcesTC TimeCost(ms):{}", getAndProcesTC.ElapsedMS());
-            spdlog::info(KEY_PROCESS "key process cost:{}, get data time:{} batch {}[{}]:{} ",
-                    duration_cast<milliseconds>(
-                            (sw).elapsed()), getBatchTime, batch->name, batch->channel, batch->batchId);
-            free(batch->tensorAddr);
-            batch->tensorAddr = nullptr;
+            spdlog::info(KEY_PROCESS "getAndProcessTC(ms):{}, key process cost:{}, get data time:{} batch {}[{}]:{} ",
+                getAndProcessTC.ElapsedMS(), Format2Ms(sw), getBatchTime, batch->name, batch->channel, batch->batchId);
+            auto batchQueue = SingletonQueue<emb_batch_t>::getInstances(id + KEY_PROCESS_THREAD * batch->channel);
             batchQueue->PutDirty(move(batch));
+        }
+        if (PerfConfig::fastUnique) {
+            unique->UnInitialize();
         }
     } catch (const EndRunError &e) {
         spdlog::debug(KEY_PROCESS "abort run: {}", e.what());
@@ -276,17 +299,34 @@ void KeyProcess::KeyProcessTask(const int channel, const int id) // thread id [0
     spdlog::info(KEY_PROCESS "KeyProcessTask exit. rank:{} thread:{}, channel:{}", rankInfo.rankId, id, channel);
 }
 
-bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t> &batch, shared_ptr<sharded_dedup> unique,
-                                      int channel, int id, spdlog::stopwatch &sw)
+void KeyProcess::HashSplitHelper(const unique_ptr <emb_batch_t>& batch, vector <keys_t>& splitKeys,
+                                 vector <int32_t>& restore, vector <int32_t>& hotPos,
+                                 vector <vector<uint32_t>>& keyCount)
+{
+    TimeCost UniqueTC;
+    if (m_featureAdmitAndEvict.GetFunctionSwitch() &&
+        FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE) {
+        tie(splitKeys, restore, keyCount) = HashSplit_withFAAE(batch); // 按存储dev id切分并去重
+    } else {
+        if (rankInfo.useHot) {
+            tie(splitKeys, restore, hotPos) = HotHashSplit(batch);   // 按存储dev id切分并去重
+        } else {
+            tie(splitKeys, restore) = HashSplit(batch);   // 按存储dev id切分并去重
+        }
+    }
+    TIME_PRINT("UniqueTC(ms):{}", UniqueTC.ElapsedMS());
+}
+
+bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<emb_batch_t>& batch, UniquePtr& unique,
+                                                    int channel, int id)
 {
     // tuple for keyRec restore hotPos scAll countRecv
-    std::tuple<keys_t, vector<int32_t>, vector<int32_t>, vector<int32_t>, vector<int>, vector<uint32_t>> rets;
     isWithFAAE = m_featureAdmitAndEvict.GetFunctionSwitch() &&
                   FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE;
-    TimeCost tc;
+    TimeCost fastUniqueTC;
     UniqueInfo uniqueInfo;
-    ProcessBatchWithUniqueCompute(batch, unique, id, uniqueInfo);
-    TIME_PRINT("no copy ProcessBatchWithUniqueCompute TimeCost(ms):{}", tc.ElapsedMS());
+    ProcessBatchWithFastUnique(batch, unique, id, uniqueInfo);
+    TIME_PRINT("ProcessBatchWithFastUnique(ms):{}", fastUniqueTC.ElapsedMS());
 
     // 特征准入&淘汰
     if (isWithFAAE &&
@@ -297,14 +337,13 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t> &batch, shared_ptr
                       rankInfo.rankId, id, channel);
         return false;
     }
-    int batchListId = batch->batchId % PerfConfig::keyProcessThreadNum;
 
     // without host, just device, all embedding vectors were stored in device
     // map key to offset directly by lookup keyOffsetMap (hashmap)
     if (rankInfo.noDDR) {
-        TimeCost key2OffsetTc;
+        TimeCost key2OffsetTC;
         Key2Offset(batch->name, uniqueInfo.all2AllInfo.keyRecv);
-        TIME_PRINT("Key2Offset TimeCost(ms):{}", key2OffsetTc.ElapsedMS());
+        TIME_PRINT("key2OffsetTC(ms):{}", key2OffsetTC.ElapsedMS());
     }
     if (!rankInfo.useStatic) { // Static all2all，need send count
         auto embName = batch->name;
@@ -327,18 +366,80 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t> &batch, shared_ptr
             tensors->push_back(Vec2TensorI32(uniqueInfo.all2AllInfo.keyRecv));
         }
     }
-    TimeCost pushTensorTc;
-    PushResult(batch, move(tensors), uniqueInfo.all2AllInfo.keyRecv, batchListId);
-    TIME_PRINT("pushTensorToListTC TimeCost(ms):{}", pushTensorTc.ElapsedMS());
+    TimeCost pushResultTC;
+    PushResult(batch, move(tensors), uniqueInfo.all2AllInfo.keyRecv);
+    TIME_PRINT("pushResultTC(ms):{}", pushResultTC.ElapsedMS());
+    return true;
+}
+
+bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channel, int id)
+{
+    vector<keys_t> splitKeys;
+    vector<int32_t> restore;
+    vector<int32_t> hotPos;
+    vector<vector<uint32_t>> keyCount;
+
+    HashSplitHelper(batch, splitKeys, restore, hotPos, keyCount);
+    auto [lookupKeys, scAll, ss] = ProcessSplitKeys(batch, id, splitKeys);
+
+    vector<uint32_t> countRecv;
+    if (m_featureAdmitAndEvict.GetFunctionSwitch() &&
+        FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE) {
+        countRecv = GetCountRecv(batch, id, keyCount, scAll, ss);
+    }
+
+    BuildRestoreVec(batch, ss, restore, static_cast<int>(hotPos.size()));
+
+    // 特征准入&淘汰
+    if (m_featureAdmitAndEvict.GetFunctionSwitch() &&
+        FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE &&
+        (m_featureAdmitAndEvict.FeatureAdmit(channel, batch, lookupKeys,
+                                             countRecv) == FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR)) {
+        spdlog::error(KEY_PROCESS "rank:{} thread:{}, channel:{}, Feature-admit-and-evict error ...",
+            rankInfo.rankId, id, channel);
+        return false;
+    }
+
+    // without host, just device, all embedding vectors were stored in device
+    // map key to offset directly by lookup keyOffsetMap (hashmap)
+    if (rankInfo.noDDR) {
+        Key2Offset(batch->name, lookupKeys);
+    }
+
+    if (!rankInfo.useStatic) { // Static all2all，need send count
+        auto embName = batch->name;
+        if (batch->modifyGraph) {
+            embName = batch->channelName;
+        }
+        SendA2A(scAll, embName, batch->channel, batch->batchId);
+    }
+
+    TimeCost pushResultTC;
+    auto tensors = make_unique<vector<Tensor>>();
+    tensors->push_back(Vec2TensorI32(restore));
+    if (rankInfo.useHot) {
+        hotPos.resize(hotEmbTotCount[batch->name], 0);
+        tensors->push_back(Vec2TensorI32(hotPos));
+    }
+    if (rankInfo.noDDR) {
+        if (rankInfo.useDynamicExpansion) {
+            tensors->push_back(Vec2TensorI64(lookupKeys));
+        } else {
+            tensors->push_back(Vec2TensorI32(lookupKeys));
+        }
+    }
+    PushResult(batch, move(tensors), lookupKeys);
+    TIME_PRINT("pushResultTC(ms):{}", pushResultTC.ElapsedMS());
     return true;
 }
 
 vector<uint32_t> KeyProcess::GetCountRecv(const unique_ptr<emb_batch_t>& batch, int id,
                                           vector<vector<uint32_t>>& keyCount, vector<int> scAll, vector<int> ss)
 {
+    TimeCost getCountRecvTC;
     if (rankInfo.useStatic) {
         for (auto& cnt: keyCount) {
-            cnt.resize(embInfos[batch->name].sendCount, 0);
+            cnt.resize(GetSendCount(batch->name, batch->channelName, batch->modifyGraph), 0);
         }
     }
     vector<uint32_t> countSend;
@@ -358,23 +459,24 @@ vector<uint32_t> KeyProcess::GetCountRecv(const unique_ptr<emb_batch_t>& batch, 
     countRecv.resize(rs.back() + rc.back());
     MPI_Alltoallv(countSend.data(), sc.data(), ss.data(), MPI_UINT32_T, countRecv.data(),
                   rc.data(), rs.data(), MPI_UINT32_T, comm[batch->channel][id]);
+    TIME_PRINT("getCountRecvTC(ms)(with-all2all):{}", getCountRecvTC.ElapsedMS());
     return countRecv;
 }
 
 void KeyProcess::PushResult(unique_ptr<emb_batch_t>& batch, unique_ptr<vector<Tensor>> tensors,
-                            keys_t& lookupKeys, int id)
+                            keys_t& lookupKeys)
 {
-    std::unique_lock<std::mutex> lockGuard(getInfoMut[id]);
-    storage[id].push_front(move(tensors));
+    std::unique_lock<std::mutex> lockGuard(mut);
+    storage.push_front(move(tensors));
     if (batch->modifyGraph) {
-        infoList[id][batch->channelName][batch->channel].push(
-            make_tuple(batch->batchId, batch->channelName, storage[id].begin()));
+        infoList[batch->channelName][batch->channel].push(
+            make_tuple(batch->batchId, batch->channelName, storage.begin()));
     } else {
-        infoList[id][batch->name][batch->channel].push(
-            make_tuple(batch->batchId, batch->name, storage[id].begin()));
+        infoList[batch->name][batch->channel].push(
+            make_tuple(batch->batchId, batch->name, storage.begin()));
     }
     if (!rankInfo.noDDR) {
-        lookupKeysList[id][batch->name][batch->channel].push(
+        lookupKeysList[batch->name][batch->channel].push(
             make_tuple(batch->batchId, batch->name, move(lookupKeys)));
     }
     lockGuard.unlock();
@@ -382,14 +484,15 @@ void KeyProcess::PushResult(unique_ptr<emb_batch_t>& batch, unique_ptr<vector<Te
 
 /*
  * 从共享队列SingletonQueue<emb_batch_t>中读取batch数据并返回。batch数据由 ReadEmbKeyV2 写入。
- * commID为线程标识[0, PerfConfig::keyProcessThreadNum-1]，不同线程、训练或推理数据用不同的共享队列通信
+ * commID为线程标识[0, KEY_PROCESS_THREAD-1]，不同线程、训练或推理数据用不同的共享队列通信
  */
 unique_ptr<emb_batch_t> KeyProcess::GetBatchData(int channel, int commId)
 {
     EASY_FUNCTION()
     unique_ptr<emb_batch_t> batch = nullptr;
-    // train data, queue id = thread id [0, PerfConfig::keyProcessThreadNum-1]
-    auto batchQueue = SingletonQueue<emb_batch_t>::getInstances(commId + PerfConfig::keyProcessThreadNum * channel);
+
+    // train data, queue id = thread id [0, KEY_PROCESS_THREAD-1]
+    auto batchQueue = SingletonQueue<emb_batch_t>::getInstances(commId + KEY_PROCESS_THREAD * channel);
     EASY_BLOCK("get samples")
     EASY_VALUE("run on CPU", sched_getcpu())
     spdlog::stopwatch sw;
@@ -403,7 +506,7 @@ unique_ptr<emb_batch_t> KeyProcess::GetBatchData(int channel, int commId)
         if (duration_cast<seconds>(sw.elapsed()).count() > GET_BATCH_TIMEOUT) {
             if (commId == 0) {
                 spdlog::warn(KEY_PROCESS "getting batch timeout! 1. check last 'read batch cost' print. "
-                             "channel[{}] commId[{}]", channel, commId);
+                                         "channel[{}] commId[{}]", channel, commId);
             }
             this_thread::sleep_for(seconds(1));
             sw.reset();
@@ -416,14 +519,13 @@ unique_ptr<emb_batch_t> KeyProcess::GetBatchData(int channel, int commId)
         }
     }
     EASY_END_BLOCK
-    spdlog::info(KEY_PROCESS "GetBatchData get batchId:{}, batchSize:{}, batch.channel:{}, batch.channelName:{}, "
-                 "name:{}, channel:{}, commId:{}, ",
-                 batch->batchId, batch->batchSize, batch->channel, batch->channelName, batch->name, channel, commId);
+    spdlog::debug(KEY_PROCESS "rank {} thread {} get batch {}[{}]:{} done. bs:{} sample:[{}]",
+        rankInfo.rankId, commId, batch->name, batch->channel, batch->batchId, batch->Size(),
+        batch->UnParse());
 #if defined(PROFILING) && defined(BUILD_WITH_EASY_PROFILER)
     if (batch->batchId == PROFILING_START_BATCH_ID) {
         EASY_PROFILER_ENABLE
     } else if (batch->batchId == PROFILING_END_BATCH_ID) {
-        EASY_PROFILER_ENABLE
         ::profiler::dumpBlocksToFile(fmt::format("/home/MX_REC-profile-{}.prof", rankInfo.rankId).c_str());
     }
 #endif
@@ -437,56 +539,78 @@ size_t KeyProcess::GetKeySize(const unique_ptr<emb_batch_t> &batch)
         size = rankInfo.rankSize * embInfos[batch->name].sendCountMap[batch->channelName];
     }
     if (!rankInfo.useStatic) {
-        size = batch->batchSize;
+        size = batch->Size();
     }
     return size;
 }
 
-void KeyProcess::ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &batch, shared_ptr<sharded_dedup> unique,
-                                               int id, UniqueInfo& uniqueInfoOut)
+void KeyProcess::ProcessBatchWithFastUnique(const unique_ptr<emb_batch_t> &batch, UniquePtr& unique,
+                                            int id, UniqueInfo& uniqueInfoOut)
 {
     EASY_FUNCTION(profiler::colors::Purple)
     EASY_VALUE("batchId", batch->batchId)
 
     EASY_BLOCK("ock-unique")
 
-    TimeCost unique_tc;
-
-    SimpleThreadPool pool_;
     KeySendInfo keySendInfo;
     size_t size = GetKeySize(batch);
     keySendInfo.keySend.resize(size);
-    vector<int32_t> splitSize(rankInfo.rankSize);
-    vector<int64_t> uniqueVector(batch->batchSize);
-    uniqueInfoOut.restore.resize(batch->batchSize);
-    vector<int32_t> idCount(batch->batchSize);
-    keySendInfo.keyCount.resize(size);
+    vector<int> splitSize(rankInfo.rankSize);
+    vector<int64_t> uniqueVector(batch->Size());
+    uniqueInfoOut.restore.resize(batch->Size());
+    vector<int32_t> idCount(batch->Size());
+    if (rankInfo.useStatic) {
+        keySendInfo.keyCount.resize(size);
+    }
+
+    UniqueIn uniqueIn;
+    uniqueIn.inputIdCnt = (uint32_t)batch->Size();
+    uniqueIn.inputId = reinterpret_cast<void *>(batch->sample.data());
+
+    EnhancedUniqueOut uniqueOut;
+    uniqueOut.uniqueId = reinterpret_cast<void *>(keySendInfo.keySend.data());
+    uniqueOut.index = (uint32_t*)uniqueInfoOut.restore.data();
+    uniqueOut.idCnt = idCount.data();
+    uniqueOut.idCntFill = keySendInfo.keyCount.data();
+    uniqueOut.uniqueIdCntInBucket = splitSize.data();
+    uniqueOut.uniqueIdInBucket = reinterpret_cast<void *>(uniqueVector.data());
+    uniqueOut.uniqueIdCnt = 0;
+
+    TimeCost uniqueTC;
+    int ret = unique->DoEnhancedUnique(uniqueIn, uniqueOut);
+    EASY_END_BLOCK
+    TIME_PRINT("FastUniqueCompute(ms):{}, ret:{}", uniqueTC.ElapsedMS(), ret);
+
+    vector<int> sc;
+    HandleHotAndSendCount(batch, uniqueInfoOut, keySendInfo, sc, splitSize);
+
+    All2All(sc, id, batch->channel, keySendInfo, uniqueInfoOut.all2AllInfo);
+
+    spdlog::debug(KEY_PROCESS "ProcessBatchWithFastUnique get batchId:{}, batchSize:{}, channel:{}, "
+                             "channelName:{}, name:{}, restore:{}, keyCount:{}", batch->batchId, batch->Size(),
+                             batch->channel, batch->channelName, batch->name, uniqueInfoOut.restore.size(),
+                             keySendInfo.keyCount.size());
+}
+
+void KeyProcess::HandleHotAndSendCount(const unique_ptr<emb_batch_t> &batch, UniqueInfo& uniqueInfoOut,
+                                       KeySendInfo& keySendInfo, vector<int>& sc, vector<int>& splitSize)
+{
     std::shared_lock<std::shared_mutex> lock(g_smut);
     auto hotMap = hotKey[batch->name];
     lock.unlock();
-    int hotOffset = 0;
 
     if (rankInfo.useHot) {
+        int hotOffset = 0;
         uniqueInfoOut.hotPos.resize(hotEmbTotCount[batch->name]);
         hotOffset = hotEmbTotCount[batch->name];
-    }
-    absl::flat_hash_map<emb_key_t, int> keyCountMap;
-
-    UniqueData uniqueData = {batch->tensorAddr, batch->batchSize, uniqueInfoOut.restore.data(), uniqueVector.data(),
-                             splitSize.data(), keySendInfo.keySend.data(), idCount.data(), keySendInfo.keyCount.data()};
-    UniqueFlag uniqueFlag = {batch->isInt64, rankInfo.useStatic, rankInfo.useHot};
-    UniqueForHot uniqueForHot = {hotOffset, uniqueInfoOut.hotPos.data(), hotMap, keyCountMap};
-    UniqueThreadNum uniqueThreadNum = {MIN_UNIQUE_THREAD_NUM, MAX_UNIQUE_THREAD_NUM};
-
-    unique->Compute<int, SimpleThreadPool>(&pool_,  uniqueData, uniqueFlag, uniqueForHot, uniqueThreadNum);
-    EASY_END_BLOCK
-    TIME_PRINT("UniqueCompute TimeCost(ms):{}", unique_tc.ElapsedMS());
-
-    if (rankInfo.useHot) {
-        UpdateHotMap(keyCountMap, hotEmbTotCount[batch->name], batch->batchId % hotEmbUpdateStep == 0, batch->name);
+    
+        TimeCost ComputeHotTc;
+        ComputeHotPos(batch, hotMap, uniqueInfoOut.hotPos, uniqueInfoOut.restore, hotOffset);
+        TIME_PRINT("ComputeHot TimeCost(ms):{}", ComputeHotTc.ElapsedMS());
+        UpdateHotMapForUnique(keySendInfo.keySend, keySendInfo.keyCount,
+                              hotOffset, batch->batchId % hotEmbUpdateStep == 0, batch->name);
     }
 
-    vector<int> sc; // send count
     if (rankInfo.useStatic) {
         sc.resize(rankInfo.rankSize, GetSendCount(batch->name, batch->channelName, batch->modifyGraph));
     } else {
@@ -495,21 +619,37 @@ void KeyProcess::ProcessBatchWithUniqueCompute(const unique_ptr<emb_batch_t> &ba
             sc[i] = splitSize[i];
         }
     }
-    All2All(sc, id, batch->channel, keySendInfo, uniqueInfoOut.all2AllInfo);
+}
 
-    spdlog::debug(KEY_PROCESS "ProcessBatchWithUniqueCompute get batchId:{}, batchSize:{}, channel:{}, "
-                             "channelName:{}, name:{}, restore:{}, keyCount:{}", batch->batchId, batch->batchSize,
-                             batch->channel, batch->channelName, batch->name, uniqueInfoOut.restore.size(),
-                             keySendInfo.keyCount.size());
+void KeyProcess::ComputeHotPos(const unique_ptr<emb_batch_t> &batch, map<emb_key_t, int> &hotMap,
+                               vector<int> &hotPos, vector<int32_t> &restore, const int hotOffset)
+{
+    auto inputData = batch->sample.data();
+
+    int hotCount = 0;
+    for (size_t i = 0;i < batch->Size(); ++i) {
+        auto key = inputData[i];
+        auto hot = hotMap.find(key);
+        if (hot != hotMap.end()) {
+            if (hot->second == -1) {
+                hotPos[hotCount] = restore[i];
+                hot->second = hotCount;
+                restore[i] = hotCount++;
+            } else {
+                restore[i] = hot->second;
+            }
+        } else {
+            restore[i] += hotOffset;
+        }
+    }
 }
 
 void KeyProcess::All2All(vector<int>& sc, int id, int channel, KeySendInfo& keySendInfo,
                          All2AllInfo& all2AllInfoOut)
-
 {
-    TimeCost get_sc_all;
-    GetScAll(sc, id, channel, all2AllInfoOut.scAll); // Allgather通信获取所有（不同rank相同thread id的）
-    TIME_PRINT("GetScAll TimeCost(ms):{}", get_sc_all.ElapsedMS());
+    TimeCost getScAllTC;
+    GetScAllForUnique(sc, id, channel, all2AllInfoOut.scAll); // Allgather通信获取所有（不同rank相同thread id的）
+    TIME_PRINT("GetScAll TimeCost(ms):{}", getScAllTC.ElapsedMS());
 
     TimeCost all2allTC;
     auto ss = Count2Start(sc); // send displays/offset 发送数据的起始偏移量
@@ -536,6 +676,7 @@ void KeyProcess::All2All(vector<int>& sc, int id, int channel, KeySendInfo& keyS
 auto KeyProcess::ProcessSplitKeys(const unique_ptr<emb_batch_t>& batch, int id,
                                   vector<keys_t>& splitKeys) -> tuple<keys_t, vector<int>, vector<int>>
 {
+    TimeCost processSplitKeysTC;
     EASY_FUNCTION(profiler::colors::Purple)
     EASY_VALUE("batchId", batch->batchId)
     spdlog::info(KEY_PROCESS "ProcessSplitKeys start batchId:{}, channel:{}", batch->batchId, batch->channel);
@@ -543,13 +684,13 @@ auto KeyProcess::ProcessSplitKeys(const unique_ptr<emb_batch_t>& batch, int id,
     // 使用静态all2all通信：发送或接受量为预置固定值 scInfo[batch->name] = 65536 / rankSize 经验值
     if (rankInfo.useStatic) { // maybe move after all2all
         for (auto& i: splitKeys) {
-            if (static_cast<int>(i.size()) > embInfos[batch->name].sendCount) {
+            if (static_cast<int>(i.size()) > GetSendCount(batch->name, batch->channelName, batch->modifyGraph)) {
                 spdlog::error("{}[{}]:{} overflow! set send count bigger than {}",
                               batch->name, batch->channel, batch->batchId, i.size());
                 throw runtime_error(fmt::format("{}[{}]:{} overflow! set send count bigger than {}",
                                                 batch->name, batch->channel, batch->batchId, i.size()).c_str());
             }
-            i.resize(embInfos[batch->name].sendCount, -1);
+            i.resize(GetSendCount(batch->name, batch->channelName, batch->modifyGraph), -1);
         }
     }
     keys_t keySend;
@@ -559,8 +700,11 @@ auto KeyProcess::ProcessSplitKeys(const unique_ptr<emb_batch_t>& batch, int id,
         keySend.insert(keySend.end(), i.begin(), i.end());
     }
     keys_t keyRecv;
-    vector<int> scAll;
-    GetScAll(sc, id, batch->channel, scAll);     // Allgather通信获取所有（不同rank相同thread id的）线程间通信量矩阵
+
+    TimeCost getScAllTC;
+    auto scAll = GetScAll(sc, id, batch->channel);    // Allgather通信获取所有（不同rank相同thread id的）线程间通信量矩阵
+    TIME_PRINT("getScAllTC(ms)(AllReduce-AllGather):{}", getScAllTC.ElapsedMS());
+
     auto ss = Count2Start(sc);  // send displays/offset 发送数据的起始偏移量
     vector<int> rc; // receive count
     for (int i = 0; i < rankInfo.rankSize; ++i) {
@@ -569,16 +713,20 @@ auto KeyProcess::ProcessSplitKeys(const unique_ptr<emb_batch_t>& batch, int id,
     }
     auto rs = Count2Start(rc); // receive displays/offset 接受数据的起始偏移量
     keyRecv.resize(rs.back() + rc.back());
-    spdlog::trace(KEY_PROCESS "MPI_Alltoallv begin. rank {} thread {} batch {} {}",
-                  rankInfo.rankId, id, batch->batchId, batch->name);
+    spdlog::trace(KEY_PROCESS "MPI_Alltoallv begin. rank {} thread {} batch {} {}", rankInfo.rankId, id, batch->batchId,
+        batch->name);
     EASY_BLOCK("all2all")
+
+    TimeCost uniqueAll2AllTC;
     MPI_Alltoallv(keySend.data(), sc.data(), ss.data(), MPI_INT64_T,
                   keyRecv.data(), rc.data(), rs.data(), MPI_INT64_T,
                   comm[batch->channel][id]);
+    TIME_PRINT("uniqueAll2AllTC(ms):{}", uniqueAll2AllTC.ElapsedMS());
+
     EASY_END_BLOCK
     spdlog::trace(KEY_PROCESS "MPI_Alltoallv finish. rank {} thread {} batch {} {}",
-                  rankInfo.rankId, id, batch->batchId, batch->name);
-
+        rankInfo.rankId, id, batch->batchId, batch->name);
+    TIME_PRINT("processSplitKeysTC(ms):{}", processSplitKeysTC.ElapsedMS());
     return { keyRecv, scAll, ss };
 }
 
@@ -592,7 +740,6 @@ auto KeyProcess::HashSplit(const unique_ptr<emb_batch_t>& batch) const -> tuple<
     EASY_FUNCTION(profiler::colors::Gold)
     auto* batchData = batch->sample.data();
     size_t miniBs = batch->Size();
-    assert(batchData != nullptr);
     vector<keys_t> splitKeys(rankInfo.rankSize);
     vector<int32_t> restore(batch->Size());
     vector<int> hashSplitLens(rankInfo.rankSize); // 初始化全0，记录每个桶的长度
@@ -631,7 +778,6 @@ auto KeyProcess::HashSplit_withFAAE(const unique_ptr<emb_batch_t>& batch) const
     EASY_FUNCTION(profiler::colors::Gold)
     auto* batchData = batch->sample.data();
     size_t miniBs = batch->Size();
-    assert(batchData != nullptr);
     vector<keys_t> splitKeys(rankInfo.rankSize);
     vector<vector<uint32_t>> keyCount(rankInfo.rankSize); // splitKeys在原始batch中对应的频次
     vector<int32_t> restore(batch->Size());
@@ -712,7 +858,8 @@ tuple<vector<keys_t>, vector<int32_t>, vector<int>>
         auto hot = hotMap.find(key);
         if (hot != hotMap.end()) { // is hot key
             if (hot->second == -1) { // is new hot key in this batch
-                hotPos[hotCount] = splitKeys[devId].size() - 1;  // pos in lookup vec (need add ss) for hot-gather
+                // pos in lookup vec (need add ss) for hot-gather
+                hotPos[hotCount] = static_cast<int>(splitKeys[devId].size()) - 1;
                 hotPosDev[hotCount] = devId; // which dev, for get ss
                 hot->second = hotCount;
                 restore[i] = hotCount++; // get pos of hot emb
@@ -720,33 +867,59 @@ tuple<vector<keys_t>, vector<int32_t>, vector<int>>
                 restore[i] = hot->second;
             }
         } else { // is not hot key
-            restore[i] = splitKeys[devId].size() + hotOffset - 1;    // restore记录去重后key在桶内偏移量（用于计算恢复向量）
+            // restore记录去重后key在桶内偏移量（用于计算恢复向量）
+            restore[i] = static_cast<int32_t>(splitKeys[devId].size() + (hotOffset - 1));
         }
         uKey[key] = restore[i];
     }
 
     UpdateHotMap(keyCountMap, hotEmbTotCount[batch->name], batch->batchId % hotEmbUpdateStep == 0, batch->name);
-    AddCountStartToHotPos(splitKeys, hotPos, hotPosDev, batch->name);
+    AddCountStartToHotPos(splitKeys, hotPos, hotPosDev, batch);
 
     return { splitKeys, restore, hotPos };
 }
 
 void KeyProcess::AddCountStartToHotPos(vector<keys_t>& splitKeys, vector<int>& hotPos, const vector<int>& hotPosDev,
-                                       const string& embName) const
+                                       const unique_ptr<emb_batch_t>& batch)
 {
     vector<int> splitKeysSize {};
     if (rankInfo.useStatic) {
         for (size_t i = 0; i < splitKeys.size(); i++) {
-            splitKeysSize.push_back(embInfos.at(embName).sendCount);
+            splitKeysSize.push_back(GetSendCount(batch->name, batch->channelName, batch->modifyGraph));
         }
     } else {
         for (auto& splitKey: splitKeys) {
-            splitKeysSize.push_back(splitKey.size());
+            splitKeysSize.push_back(static_cast<int>(splitKey.size()));
         }
     }
     auto cs = Count2Start(splitKeysSize);
     for (size_t i = 0; i < hotPos.size(); ++i) {
         hotPos[i] += cs[hotPosDev[i]];
+    }
+}
+
+void KeyProcess::UpdateHotMapForUnique(const keys_t &keySend, const vector<int32_t> &keyCount,
+                                       uint32_t count, bool refresh, const string& embName)
+{
+    auto& hotMap = hotKey[embName];
+    if (refresh) {
+        priority_queue<pair<int, emb_key_t>> pq;
+        for (size_t i = 0;i < keySend.size(); ++i) {
+            if (keySend[i] == -1) {
+                continue;
+            }
+            pq.push(pair<int, emb_key_t>(-keyCount[i], keySend[i]));
+            if (pq.size() > count) {
+                pq.pop();
+            }
+        }
+        // gen new hot map
+        std::unique_lock<std::shared_mutex> lock(g_smut);
+        hotMap.clear();
+        while (!pq.empty()) {
+            hotMap.insert(make_pair(pq.top().second, -1));
+            pq.pop();
+        }
     }
 }
 
@@ -776,7 +949,29 @@ void KeyProcess::UpdateHotMap(absl::flat_hash_map<emb_key_t, int>& keyCountMap, 
  * 将本地（rank）batch要发送的key数据量进行Allgather通信，获取所有（不同rank相同thread id的）线程间的通信量矩阵
  * scAll返回：所有线程间的通信量矩阵（按行平铺的一维向量）
  */
-void KeyProcess::GetScAll(const vector<int>& keyScLocal, int commId, int channel, vector<int> &scAllOut) const
+vector<int> KeyProcess::GetScAll(const vector<int>& keyScLocal, int commId, int channel) const
+{
+    EASY_FUNCTION()
+    vector<int> scAll;
+    scAll.resize(rankInfo.rankSize * rankInfo.rankSize);
+    EASY_BLOCK("barrier");
+    // 通信终止信号，同步退出，防止线程卡住
+    spdlog::stopwatch sw;
+    int exitFlag = isRunning;
+    MPI_Allreduce(&exitFlag, &exitFlag, 1, MPI_INT, MPI_SUM, comm[channel][commId]);
+    if (exitFlag < rankInfo.rankSize) {
+        throw EndRunError("GetScAll end run.");
+    }
+    EASY_END_BLOCK;
+    spdlog::debug(KEY_PROCESS "barrier time:{}", Format2Ms(sw));
+    // allgather keyScLocal(key all2all keyScLocal = device all2all rc)
+    MPI_Allgather(keyScLocal.data(), rankInfo.rankSize, MPI_INT,
+                  scAll.data(), rankInfo.rankSize, MPI_INT, comm[channel][commId]);
+    spdlog::debug("rank {} key scAll matrix:\n{}", rankInfo.rankId, scAll);
+    return scAll;
+}
+
+void KeyProcess::GetScAllForUnique(const vector<int>& keyScLocal, int commId, int channel, vector<int> &scAllOut) const
 {
     EASY_FUNCTION()
     scAllOut.resize(rankInfo.rankSize * rankInfo.rankSize);
@@ -798,8 +993,9 @@ void KeyProcess::GetScAll(const vector<int>& keyScLocal, int commId, int channel
 
 void KeyProcess::Key2Offset(const emb_name_t& embName, keys_t& splitKey)
 {
+    TimeCost key2OffsetTC;
     EASY_FUNCTION(profiler::colors::Blue600)
-    std::lock_guard<std::mutex> lk(key2OffsetMut); // lock for PROCESS_THREAD
+    std::lock_guard<std::mutex> lk(mut); // lock for PROCESS_THREAD
     auto& key2Offset = keyOffsetMap[embName];
     auto& maxOffsetTmp  = maxOffset[embName];
     auto& evictPos = evictPosMap[embName];
@@ -827,28 +1023,24 @@ void KeyProcess::Key2Offset(const emb_name_t& embName, keys_t& splitKey)
         } else {
             // 新值
             if (rankInfo.useDynamicExpansion) {
+#ifndef GTEST
                 auto addr = curEmbTable.GetEmbAddress();
                 key2Offset[key] = addr;
                 key = addr;
+#endif
                 maxOffsetTmp++;
             } else {
-                key2Offset[key] = maxOffsetTmp;
-                key = maxOffsetTmp++;
-            }
+            key2Offset[key] = maxOffsetTmp;
+            key = maxOffsetTmp++;
         }
+    }
     }
     if (!rankInfo.useDynamicExpansion && maxOffsetTmp > embInfos[embName].devVocabSize) {
         spdlog::error("dev cache overflow {}>{}", maxOffsetTmp, embInfos[embName].devVocabSize);
+        throw std::runtime_error("dev cache overflow!");
     }
     spdlog::debug("current dev emb usage:{}/{}", maxOffsetTmp, embInfos[embName].devVocabSize);
-}
-
-void KeyProcess::Key2OffsetInit(const emb_name_t& embName)
-{
-    auto& key2Offset = keyOffsetMap[embName];
-    auto& offset = maxOffset[embName];
-    key2Offset[rankInfo.rankId] = offset; // 0 rank init feature id 0 to offset 0
-    offset++;
+    TIME_PRINT("key2OffsetTC(ms):{}", key2OffsetTC.ElapsedMS());
 }
 
 /*
@@ -861,6 +1053,7 @@ void KeyProcess::Key2OffsetInit(const emb_name_t& embName)
 void KeyProcess::BuildRestoreVec(const unique_ptr<emb_batch_t>& batch, const vector<int>& blockOffset,
                                  vector<int>& restoreVec, int hotPosSize) const
 {
+    TimeCost buildRestoreVecTC;
     EASY_FUNCTION()
     int hotNum = 0;
     bool spdDebug = (spdlog::get_level() == spdlog::level::debug);
@@ -874,6 +1067,7 @@ void KeyProcess::BuildRestoreVec(const unique_ptr<emb_batch_t>& batch, const vec
         }
     }
     spdlog::debug("hot num in all:{}/{}", hotNum, batch->Size());
+    TIME_PRINT("buildRestoreVecTC(ms):{}", buildRestoreVecTC.ElapsedMS());
 }
 
 class EmptyList : public std::exception {
@@ -883,26 +1077,25 @@ class WrongListTop : public std::exception {
 };
 
 template<class T>
-T KeyProcess::GetInfo(std::vector<info_list_t<T>>& list, int batch, const string& embName, int channel)
+T KeyProcess::GetInfo(info_list_t<T>& list, int batch, const string& embName, int channel)
 {
-    int batchListId = batch % PerfConfig::keyProcessThreadNum;
-    std::lock_guard<std::mutex> lockGuard(getInfoMut[batchListId]);
-    if (list[batchListId][embName][channel].empty()) {
+    std::lock_guard<std::mutex> lockGuard(mut);
+    if (list[embName][channel].empty()) {
         spdlog::trace("get info list is empty.");
         throw EmptyList();
     }
-    auto topBatch = get<int>(list[batchListId][embName][channel].top());
+    auto topBatch = get<int>(list[embName][channel].top());
     if (topBatch < batch) {
-        spdlog::warn("wrong batch id, top:{} expect:{}, channel:{}, embName: {}, queue_size:{}, may not clear channel",
-                     topBatch, batch, channel, embName, list[batchListId][embName][channel].size());
+        spdlog::error("wrong batch id, top:{} getting:{}, channel:{}, may not clear channel", topBatch,
+                      batch, channel);
         this_thread::sleep_for(1s);
     }
     if (topBatch != batch) {
         spdlog::trace("topBatch({}) is not equal batch({}).", topBatch, batch);
         throw WrongListTop();
     }
-    auto t = list[batchListId][embName][channel].top();
-    list[batchListId][embName][channel].pop();
+    auto t = list[embName][channel].top();
+    list[embName][channel].pop();
     return move(t);
 }
 
@@ -921,12 +1114,10 @@ keys_t KeyProcess::GetLookupKeys(int batch, const string& embName, int channel)
             auto ret = GetInfo(lookupKeysList, batch, embName, channel);
             return get<keys_t>(ret);
         } catch (EmptyList&) {
-            spdlog::trace("GetLookupKeys GetInfo failed {}[{}]:{} no input, wait and retry",
-                          embName, channel, batch);
+            spdlog::trace("getting info failed {}[{}]:{}", embName, channel, batch);
             this_thread::sleep_for(1ms);
         } catch (WrongListTop&) {
-            spdlog::trace("GetLookupKeys GetInfo failed {}[{}]:{} wrong top",
-                          embName, channel, batch);
+            spdlog::trace("getting info failed {}[{}]:{} wrong top", embName, channel, batch);
             this_thread::sleep_for(1ms);
         }
     }
@@ -935,7 +1126,7 @@ keys_t KeyProcess::GetLookupKeys(int batch, const string& embName, int channel)
 unique_ptr<vector<Tensor>> KeyProcess::GetInfoVec(int batch, const string& embName, int channel, ProcessedInfo type)
 {
     spdlog::stopwatch sw;
-    std::vector<info_list_t<tensor_info_t>>* list;
+    info_list_t<tensor_info_t>* list;
     switch (type) {
         case ProcessedInfo::ALL2ALL:
             list = &all2AllList;
@@ -944,7 +1135,7 @@ unique_ptr<vector<Tensor>> KeyProcess::GetInfoVec(int batch, const string& embNa
             list = &infoList;
             break;
         default:
-            throw runtime_error("ERROR list type");
+            throw std::invalid_argument("Invalid ProcessedInfo Type.");
     }
     while (true) {
         if (!isRunning) {
@@ -958,23 +1149,20 @@ unique_ptr<vector<Tensor>> KeyProcess::GetInfoVec(int batch, const string& embNa
             auto ret = GetInfo(*list, batch, embName, channel);
             auto it = get<std::list<unique_ptr<vector<Tensor>>>::iterator>(ret);
             auto uTensor = move(*it);
-            int batchListId = batch % PerfConfig::keyProcessThreadNum;
-            unique_lock<mutex> lockGuard(getInfoMut[batchListId]);
-            storage[batchListId].erase(it);
+            std::unique_lock<std::mutex> lockGuard(mut);
+            storage.erase(it);
             return uTensor;
         } catch (EmptyList&) {
-            spdlog::trace("GetInfoVec GetInfo failed {}[{}]:{} type: {} no input and retry",
-                embName, channel, batch, type);
+            spdlog::trace("getting info failed {}[{}]:{}", embName, channel, batch);
             this_thread::sleep_for(1ms);
         } catch (WrongListTop&) {
-            spdlog::trace("GetInfoVec GetInfo failed {}[{}]:{} type: {} wrong top",
-                embName, channel, batch, type);
+            spdlog::trace("getting info failed {}[{}]:{} wrong top", embName, channel, batch);
             this_thread::sleep_for(1ms);
         }
     }
 }
 
-void KeyProcess::SendA2A(const vector<int>& a2aInfo, const string& embName, int channel, int batchId)
+void KeyProcess::SendA2A(const vector<int>& a2aInfo, const string& embName, int channel, int batch)
 {
     // 数据放到队列里，在mgmt里面发送（检查发送数据量）
     auto tensors = make_unique<vector<Tensor>>();
@@ -987,10 +1175,9 @@ void KeyProcess::SendA2A(const vector<int>& a2aInfo, const string& embName, int 
     }
     tensors->emplace_back(move(tmpTensor));
 
-    int batchListId = batchId % PerfConfig::keyProcessThreadNum;
-    std::unique_lock<std::mutex> lockGuard(getInfoMut[batchListId]);
-    storage[batchListId].push_front(move(tensors));
-    all2AllList[batchListId][embName][channel].push(make_tuple(batchId, embName, storage[batchListId].begin()));
+    std::unique_lock<std::mutex> lockGuard(mut);
+    storage.push_front(move(tensors));
+    all2AllList[embName][channel].push(make_tuple(batch, embName, storage.begin()));
     lockGuard.unlock();
 }
 
@@ -1015,7 +1202,7 @@ void KeyProcess::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
 void KeyProcess::EvictDeleteDeviceEmb(const string& embName, const vector<emb_key_t>& keys)
 {
     EASY_FUNCTION(profiler::colors::Blue600)
-    std::lock_guard<std::mutex> lk(key2OffsetMut); // lock for PROCESS_THREAD
+    std::lock_guard<std::mutex> lk(mut); // lock for PROCESS_THREAD
 
     size_t keySize = keys.size();
     auto& devHashMap = keyOffsetMap.at(embName);
@@ -1025,7 +1212,7 @@ void KeyProcess::EvictDeleteDeviceEmb(const string& embName, const vector<emb_ke
         size_t offset;
         auto key = keys[i];
         if (key == -1) {
-            spdlog::warn("evict key equal -1!");
+            spdlog::error("evict key equal -1!");
             continue;
         }
         const auto& iter = devHashMap.find(key);
@@ -1049,7 +1236,7 @@ void KeyProcess::EvictInitDeviceEmb(const string& embName, vector<size_t> offset
                                         embName, offset.size(), embInfos[embName].devVocabSize).c_str());
     }
     if (rankInfo.useStatic) {
-        offset.resize(embInfos[embName].devVocabSize, -1);
+    offset.resize(embInfos[embName].devVocabSize, -1);
     }
 
     auto trans = Singleton<HDTransfer>::GetInstance();

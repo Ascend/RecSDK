@@ -16,8 +16,8 @@ from tensorflow.python.training import adagrad, training_ops
 from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.util.initialize import get_table_instance
-from mx_rec.util.variable import remove_saving_var, check_param_type
+from mx_rec.util.initialize import get_table_instance, insert_removing_var_list
+from mx_rec.util.variable import check_param_type
 
 
 def create_hash_optimizer(learning_rate=0.001,
@@ -63,7 +63,7 @@ class CustomizedAdagrad(adagrad.AdagradOptimizer, CustomizedOptimizer):
             return new_slot_variable
 
         accumulator = creat_one_single_slot(var, self._name + "/" + "accumulator")
-        remove_saving_var(accumulator)
+        insert_removing_var_list(accumulator.name)
         named_slot_key = (var.op.graph, var.op.name)
         table_instance = get_table_instance(var)
         if self._name in table_instance.optimizer:

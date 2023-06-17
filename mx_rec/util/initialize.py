@@ -10,10 +10,10 @@ from collections import defaultdict
 import mxrec_pybind
 import psutil
 
-from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION, VALID_DEVICE_ID_LIST
-from mx_rec.constants.constants import LOCAL_RANK_SIZE, MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE
+from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION, VALID_DEVICE_ID_LIST, LOCAL_RANK_SIZE, \
+    MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE, HASHTABLE_COLLECTION_NAME_LENGTH
 from mx_rec.util.ops import import_host_pipeline_ops
-from mx_rec.validator.validator import RankInfoValidator
+from mx_rec.validator.validator import RankInfoValidator, StringValidator
 
 
 class ConfigInitializer:
@@ -34,6 +34,7 @@ class ConfigInitializer:
         self._if_load = None
         self._table_instance_dict = dict()
         self._dangling_table = []
+        self._removing_var_list = []
         self._name_to_var_dict = dict()
         self._table_name_set = set()
         self._table_name_to_feature_spec = dict()
@@ -44,6 +45,7 @@ class ConfigInitializer:
         self._optimizer_instance = None
         self._is_graph_modify_hook_running = False
         self._modify_graph = False
+        self._is_terminated = False
 
         if self._use_mpi:
             logging.debug(f"Using mpi to launch task.")
@@ -60,9 +62,9 @@ class ConfigInitializer:
             self.parse_hccl_json()
         else:
             self.set_hccl_info_without_json()
-        self.check_parameters()
         self.train_interval = kwargs.get("train_interval", -1)
         self.eval_steps = kwargs.get("eval_steps", -1)
+        self.check_parameters()
         self.prefetch_batch_number = kwargs.get("prefetch_batch_number", 1)
         self.if_load = kwargs.get("if_load", False)
         if_dynamic = kwargs.get("use_dynamic", 1)
@@ -150,6 +152,14 @@ class ConfigInitializer:
     def ascend_global_hashtable_collection(self):
         return self._ascend_global_hashtable_collection
 
+    @property
+    def dangling_table(self):
+        return self._dangling_table
+
+    @property
+    def removing_var_list(self):
+        return self._removing_var_list
+
     @staticmethod
     def get_instance():
         if ConfigInitializer._single_instance is None:
@@ -165,12 +175,18 @@ class ConfigInitializer:
         ConfigInitializer._single_instance = ConfigInitializer(use_mpi, **kwargs)
 
     def terminate(self):
+        if self._is_terminated:
+            logging.warning("The initializer has already been released once, please do not release it again.")
+            return
+
         if self._asc_manager is not None:
             self.del_asc_manager()
 
         if self._mpi:
             self._mpi.Finalize()
             logging.debug("MPI has been destroyed.")
+
+        self._is_terminated = True
 
     def insert_feature_spec(self, feature, is_training):
         self._feature_spec_dict[feature.name] = feature
@@ -246,12 +262,13 @@ class ConfigInitializer:
             raise ValueError(f"Rank size {rank_size} is different from device num {len(device_list)}.")
         try:
             self._rank_to_device_dict[0] = int(chief_device)
+        except ValueError as err:
+            raise ValueError("CM_WORKER_SIZE or CM_CHIEF_DEVICE uncorrected configured.") from err
+        try:
             device_list.pop(int(chief_device))
         except IndexError as err:
             raise IndexError(
                 f"Config CM_CHIEF_DEVICE {chief_device} not in training container device list {device_list}.") from err
-        except ValueError as err:
-            raise ValueError("CM_WORKER_SIZE or CM_CHIEF_DEVICE uncorrected configured.") from err
 
         for device_idx in device_list:
             device_id = mxrec_pybind.get_logic_id(int(device_idx))
@@ -272,9 +289,9 @@ class ConfigInitializer:
         if name not in self._dangling_table:
             self._dangling_table.append(name)
 
-    @property
-    def dangling_table(self):
-        return self._dangling_table
+    def insert_removing_var_list(self, name):
+        if name not in self._removing_var_list:
+            self._removing_var_list.append(name)
 
     def insert_table_instance(self, name, key, instance):
         if key in self._table_instance_dict:
@@ -321,6 +338,9 @@ class ConfigInitializer:
 
         if self.rank_id >= self.rank_size:
             raise ValueError(f"Rank_id must be within the range from 0 to rank_size.")
+
+        if self._train_interval == 0 and self._eval_steps == 0:
+            raise ValueError(f"Train interval and eval steps could not both equal 0.")
 
     def freeze(self):
         self._is_frozen = True
@@ -384,8 +404,9 @@ class ConfigInitializer:
 
     @ascend_global_hashtable_collection.setter
     def ascend_global_hashtable_collection(self, name):
-        if not isinstance(name, str):
-            raise TypeError(f"collection name '{name}' must be a string.")
+        string_validator = StringValidator(name, max_len=HASHTABLE_COLLECTION_NAME_LENGTH, min_len=1)
+        if not string_validator.check_string_length().check_whitelist().is_valid():
+            raise ValueError(string_validator.msg)
         self._ascend_global_hashtable_collection = name
 
     def get_initializer(self, is_training):
@@ -415,9 +436,6 @@ def check_step(param, min_value=-1):
 
     if param < min_value:
         raise ValueError(f"Valid value range is larger than or equals to {min_value}.")
-
-    if param == 0:
-        raise ValueError("Arg train_interval or eval_steps cannot equal to 0.")
 
 
 def init(use_mpi, **kwargs):
@@ -465,8 +483,11 @@ def trigger_evict():
     if not is_asc_manager_initialized():
         raise RuntimeError("ASC manager does not exist.")
 
-    ConfigInitializer.get_instance().get_asc_manager().evict()
-    logging.debug("Feature evict is triggered by ops.")
+    if ConfigInitializer.get_instance().get_asc_manager().evict():
+        logging.debug("Feature evict is triggered by ops.")
+        return True
+    logging.warning("Feature evict not success, skip this time!")
+    return False
 
 
 def clear_channel(is_train_channel=False):
@@ -562,6 +583,10 @@ def insert_dangling_table(table_name):
     ConfigInitializer.get_instance().insert_dangling_table(table_name)
 
 
+def insert_removing_var_list(var_name):
+    ConfigInitializer.get_instance().insert_removing_var_list(var_name)
+
+
 def insert_table_instance(name, key, instance):
     ConfigInitializer.get_instance().insert_table_instance(name, key, instance)
 
@@ -572,6 +597,10 @@ def export_table_instances():
 
 def export_dangling_table():
     return ConfigInitializer.get_instance().dangling_table
+
+
+def export_removing_var_list():
+    return ConfigInitializer.get_instance().removing_var_list
 
 
 def insert_optimizer(optimizer):

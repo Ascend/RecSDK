@@ -24,8 +24,8 @@ bool HostEmb::Initialize(const vector<EmbInfo>& embInfos, int seed)
     for (const auto& embInfo: embInfos) {
         HostEmbTable hostEmb;
         hostEmb.hostEmbInfo = embInfo;
-        EmbDataGenerator(embInfo.initializeInfos, seed, embInfo.hostVocabSize, embInfo.extEmbeddingSize,
-            hostEmb.embData);
+        EmbDataGenerator(embInfo.initializeInfos, seed, static_cast<int>(embInfo.hostVocabSize),
+                         embInfo.extEmbeddingSize, hostEmb.embData);
         hostEmbs[embInfo.name] = move(hostEmb);
         spdlog::info(HOSTEMB + "HostEmb Initialize End");
     }
@@ -35,7 +35,8 @@ bool HostEmb::Initialize(const vector<EmbInfo>& embInfos, int seed)
 void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, int seed, int vocabSize,
     int embeddingSize, vector<vector<float>> &embData)
 {
-    spdlog::info(HOSTEMB + "GenerateEmbData Start, seed:{}", seed);
+#ifndef GTEST
+    spdlog::info(HOSTEMB + "GenerateEmbData Start, seed:{}, initializer num: {}", seed, initializeInfos.size());
     embData.clear();
     embData.resize(vocabSize, vector<float>(embeddingSize));
 
@@ -44,20 +45,25 @@ void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, in
 
         switch (initializeInfo.initializerType) {
             case InitializerType::CONSTANT: {
-                spdlog::info(HOSTEMB + "GenerateEmbData ing using Constant Initializer by value {}.",
-                    initializeInfo.constantInitializerInfo.constantValue);
+                spdlog::info(HOSTEMB + "GenerateEmbData ing using Constant Initializer by value {}. name {}, "
+                             "start {}, len {}.", initializeInfo.constantInitializerInfo.constantValue,
+                             initializeInfo.name, initializeInfo.start, initializeInfo.len);
                 initializer = &initializeInfo.constantInitializer;
                 break;
             }
             case InitializerType::TRUNCATED_NORMAL: {
-                spdlog::info(HOSTEMB + "GenerateEmbData ing using Truncated Normal Initializer by mean: {} stddev: {}.",
-                    initializeInfo.normalInitializerInfo.mean, initializeInfo.normalInitializerInfo.stddev);
+                spdlog::info(HOSTEMB + "GenerateEmbData ing using Truncated Normal Initializer by mean: {} stddev: {}. "
+                             "name {}, start {}, len {}.", initializeInfo.normalInitializerInfo.mean,
+                             initializeInfo.normalInitializerInfo.stddev, initializeInfo.name,
+                             initializeInfo.start, initializeInfo.len);
                 initializer = &initializeInfo.truncatedNormalInitializer;
                 break;
             }
             case InitializerType::RANDOM_NORMAL: {
-                spdlog::info(HOSTEMB + "GenerateEmbData ing using Random Normal Initializer by mean: {} stddev: {}.",
-                    initializeInfo.normalInitializerInfo.mean, initializeInfo.normalInitializerInfo.stddev);
+                spdlog::info(HOSTEMB + "GenerateEmbData ing using Random Normal Initializer by mean: {} stddev: {}. "
+                             "name {}, start {}, len {}.", initializeInfo.normalInitializerInfo.mean,
+                             initializeInfo.normalInitializerInfo.stddev, initializeInfo.name,
+                             initializeInfo.start, initializeInfo.len);
                 initializer = &initializeInfo.randomNormalInitializer;
                 break;
             }
@@ -72,13 +78,15 @@ void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, in
             initializer->GenerateData(embData.at(i).data(), embeddingSize);
         }
     }
-
     spdlog::info(HOSTEMB + "GenerateEmbData End, seed:{}", seed);
+#endif
 }
 
 void HostEmb::LoadEmb(emb_mem_t& loadData)
 {
+#ifndef GTEST
     hostEmbs = std::move(loadData);
+#endif
 }
 
 void HostEmb::Join()
@@ -96,9 +104,11 @@ void HostEmb::Join()
  * 从hdTransfer获取device侧返回的emb信息，并在host侧表的对应位置插入。
  * missingKeysHostPos为host侧需要发送的emb的位置，也就是淘汰的emb的插入位置
  */
+#ifndef GTEST
 void HostEmb::UpdateEmb(const vector<size_t>& missingKeysHostPos, int channelId, const string& embName)
 {
-    EASY_FUNCTION(profiler::colors::Purple)
+    EASY_FUNCTION(profiler::colors::Purple);
+    spdlog::stopwatch sw;
     auto hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
     TransferChannel transferName = TransferChannel::D2H;
     spdlog::info(HOSTEMB + "wait D2H embs, channelId:{}", channelId);
@@ -120,17 +130,15 @@ void HostEmb::UpdateEmb(const vector<size_t>& missingKeysHostPos, int channelId,
         auto& dst = embData[missingKeysHostPos[i]];
 #pragma omp simd
         for (int j = 0; j < embeddingSize; j++) {
-            dst[j] = tensorPtr[j];
+            dst[j] = tensorPtr[j + embeddingSize * i];
         }
-        tensorPtr = tensorPtr + embeddingSize;
     }
-    spdlog::info(HOSTEMB + "update emb end");
+    spdlog::info(HOSTEMB + "update emb end cost: {}ms", Format2Ms(sw));
     EASY_END_BLOCK
 }
 
 void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelId, const string& embName)
 {
-#ifndef GTEST
     EASY_FUNCTION(profiler::colors::Purple)
     procThreads.emplace_back(make_unique<thread>(
         [&, missingKeysHostPos, channelId, embName] {
@@ -142,6 +150,7 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
                 spdlog::warn(HOSTEMB + "recv empty data");
                 return;
             }
+            spdlog::stopwatch sw;
             spdlog::info(HOSTEMB + "UpdateEmb End missingkeys len = {}", missingKeysHostPos.size());
             EASY_BLOCK("Update")
             auto& embData = hostEmbs[embName].embData;
@@ -156,15 +165,14 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
                 auto& dst = embData[missingKeysHostPos[j]];
 #pragma omp simd
                 for (int k = 0; k < embeddingSize; k++) {
-                    dst[k] = ptr[k];
+                    dst[k] = ptr[k + embeddingSize * j];
                 }
             }
             if (acltdtDestroyDataset(aclDataset) != ACL_ERROR_NONE) {
                 throw runtime_error("Acl destroy tensor dataset failed.");
             }
-            spdlog::info(HOSTEMB + "update emb end");
+            spdlog::info(HOSTEMB + "update emb end cost: {}ms", Format2Ms(sw));
         }));
-#endif
 }
 
 /*
@@ -175,6 +183,7 @@ void HostEmb::GetH2DEmb(const vector<size_t>& missingKeysHostPos, const string& 
                         vector<Tensor>& h2dEmbOut)
 {
     EASY_FUNCTION()
+    spdlog::stopwatch sw;
     const auto& emb = hostEmbs[embName];
     const int embeddingSize = emb.hostEmbInfo.extEmbeddingSize;
     h2dEmbOut.emplace_back(Tensor(tensorflow::DT_FLOAT, {
@@ -184,14 +193,15 @@ void HostEmb::GetH2DEmb(const vector<size_t>& missingKeysHostPos, const string& 
     auto tmpData = tmpTensor.flat<float>();
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) shared(missingKeysHostPos, emb, tmpData)
     for (size_t i = 0; i < missingKeysHostPos.size(); i++) {
-        const auto src = emb.embData[missingKeysHostPos[i]];
+        const auto& src = emb.embData[missingKeysHostPos[i]];
 #pragma omp simd
         for (int j = 0; j < embeddingSize; j++) {
             tmpData(j + i * embeddingSize) = src[j];
         }
     }
-    spdlog::info("GetH2DEmb end, missingKeys count:{}", missingKeysHostPos.size());
+    spdlog::info("GetH2DEmb end, missingKeys count:{} cost:{}ms", missingKeysHostPos.size(), Format2Ms(sw));
 }
+
 
 auto HostEmb::GetHostEmbs() -> absl::flat_hash_map<string, HostEmbTable>*
 {
@@ -231,18 +241,20 @@ void HostEmb::EmbPartGenerator(const vector<InitializeInfo> &initializeInfos, ve
         }
 
         for (size_t i = 0; i < offset.size(); i++) {
-            initializer->GenerateData(embData.at(offset.at(i)).data(), embData[0].size());
+            initializer->GenerateData(embData.at(offset.at(i)).data(), static_cast<int>(embData[0].size()));
         }
     }
 }
+#endif
 
 /*
  * 利用initializer初始化emb淘汰的位置
  */
 void HostEmb::EvictInitEmb(const string& embName, const vector<size_t>& offset)
 {
+#ifndef GTEST
     auto& hostEmb = GetEmb(embName);
     EmbPartGenerator(hostEmb.hostEmbInfo.initializeInfos, hostEmb.embData, offset);
-
     spdlog::info(HOSTEMB + "ddr EvictInitEmb!host embName {}, init offsets size: {}", embName, offset.size());
+#endif
 }

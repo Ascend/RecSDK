@@ -19,12 +19,40 @@
 #include "host_emb/host_emb.h"
 #include "key_process/key_process.h"
 #include "hybrid_mgmt/hybrid_mgmt.h"
+#include "ock_ctr_common/include/unique.h"
 
 using namespace std;
 using namespace MxRec;
 using namespace testing;
 
-static constexpr size_t BATCH_NUM_EACH_THREAD = 5;
+static constexpr size_t BATCH_NUM_EACH_THREAD = 3;
+static constexpr int DESIRED_SIZE = 1;
+FactoryPtr factory;
+
+class SimpleThreadPool {
+public:
+    static void SyncRun(const std::vector<std::function<void()>> &tasks)
+    {
+        std::vector<std::future<void>> futs;
+        for (auto &task : tasks) {
+            futs.push_back(std::async(task));
+        }
+        for (auto &fut : futs) {
+            fut.wait();
+        }
+    }
+};
+
+static void CTRLog(int level, const char *msg)
+{
+    switch (level) {
+        case 0:
+            spdlog::debug("{}", msg);
+            break;
+        default:
+            break;
+    }
+}
 
 class KeyProcessTest : public testing::Test {
 protected:
@@ -52,16 +80,16 @@ protected:
 
     vector<vector<emb_batch_t>> PrepareBatch()
     {
-        vector<vector<emb_batch_t>> result(PerfConfig::keyProcessThreadNum * MAX_CHANNEL_NUM);
-        // 向共享队列中写入本进程所有线程要处理的 PerfConfig::keyProcessThreadNum * BATCH_NUM_EACH_THREAD 个batch数据
-        for (size_t threadId = 0; threadId < PerfConfig::keyProcessThreadNum; ++threadId) {
-            int batchQueueId = threadId + PerfConfig::keyProcessThreadNum * channel;
+        vector<vector<emb_batch_t>> result(KEY_PROCESS_THREAD * MAX_CHANNEL_NUM);
+        // 向共享队列中写入本进程所有线程要处理的 KEY_PROCESS_THREAD * BATCH_NUM_EACH_THREAD 个batch数据
+        for (size_t threadId = 0; threadId < KEY_PROCESS_THREAD; ++threadId) {
+            int batchQueueId = threadId + KEY_PROCESS_THREAD * channel;
             unsigned int seed = batchQueueId * 10;
             auto queue = SingletonQueue<emb_batch_t>::getInstances(batchQueueId);
 
             for (size_t batchNum = 0; batchNum < BATCH_NUM_EACH_THREAD; ++batchNum) {
                 size_t batchId =
-                        batchNum * PerfConfig::keyProcessThreadNum + threadId;
+                        batchNum * KEY_PROCESS_THREAD + threadId;
 
                 for (size_t i = 0; i < embInfos.size(); i++) { // key按照不同emb表的存储切分开
                     auto batch = queue->GetOne();
@@ -112,7 +140,7 @@ protected:
     {
         default_random_engine generator;
         uniform_int_distribution<int> distribution(randMin, randMax);
-        int embSizeMin = 5, embSizeMax = 8, base = 2;
+        int embSizeMin = 5, embSizeMax = 8, base = 2, vocabSize = 100;
         uniform_int_distribution<int> embSizeDistribution(embSizeMin, embSizeMax);
         stringstream ss;
         for (unsigned int i = 0; i < embNums; ++i) {
@@ -123,6 +151,7 @@ protected:
             ss.clear();
             temp.sendCount = distribution(generator);
             temp.extEmbeddingSize = pow(base, embSizeDistribution(generator));
+            temp.devVocabSize = vocabSize;
             geFieldNums.push_back(sampleSize);
             allEmbInfos.push_back(move(temp));
         }
@@ -210,7 +239,7 @@ protected:
 
 TEST_F(KeyProcessTest, Initialize)
 {
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     ASSERT_EQ(process.rankInfo.rankId, rankInfo.rankId);
     ASSERT_EQ(process.rankInfo.rankSize, rankInfo.rankSize);
@@ -221,11 +250,13 @@ TEST_F(KeyProcessTest, Initialize)
     for (const EmbInfo& info: embInfos) {
         ASSERT_NE(process.embInfos.find(info.name), process.embInfos.end());
     }
+
+    Factory::Create(factory);
 }
 
 TEST_F(KeyProcessTest, Start)
 {
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     ASSERT_EQ(process.Start(), 0);
     process.Destroy();
@@ -241,7 +272,7 @@ TEST_F(KeyProcessTest, HashSplit)
     vector<vector<int>> expectSplitKeys = { { 4, 16 }, { 1, 21, 29 }, { 14, 2 }, { 23, 7 } };
     batch->sample = std::move(batchKeys);
     spdlog::debug(KEY_PROCESS "batch sample: {}", batch->sample);
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     process.rankInfo.rankSize = rankSize;
     auto [splitKeys, restore] = process.HashSplit(batch);
@@ -251,6 +282,7 @@ TEST_F(KeyProcessTest, HashSplit)
     ASSERT_THAT(restore, ElementsAreArray(expectRestore));
 }
 
+#ifndef GTEST
 TEST_F(KeyProcessTest, GetScAll)
 {
     vector<int> keyScLocal(worldSize, worldRank + 1); // 用worldRank+1初始化发送数据量
@@ -259,10 +291,26 @@ TEST_F(KeyProcessTest, GetScAll)
     for (unsigned int i = 0; i < expectScAll.size(); ++i) {
         expectScAll[i] = floor(i / worldSize) + 1;
     }
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     vector<int> scAll;
     process.GetScAll(keyScLocal, 0, 0, scAll);
+    ASSERT_THAT(scAll, ElementsAreArray(expectScAll));
+}
+#endif
+
+TEST_F(KeyProcessTest, GetScAllForUnique)
+{
+    vector<int> keyScLocal(worldSize, worldRank + 1); // 用worldRank+1初始化发送数据量
+    spdlog::debug(KEY_PROCESS "rank {} keyScLocal: {}", worldRank, keyScLocal);
+    vector<int> expectScAll(worldSize * worldSize);
+    for (unsigned int i = 0; i < expectScAll.size(); ++i) {
+        expectScAll[i] = floor(i / worldSize) + 1;
+    }
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
+    ASSERT_EQ(process.isRunning, true);
+    vector<int> scAll;
+    process.GetScAllForUnique(keyScLocal, 0, 0, scAll);
     ASSERT_THAT(scAll, ElementsAreArray(expectScAll));
 }
 
@@ -281,7 +329,7 @@ TEST_F(KeyProcessTest, BuildRestoreVec_4cpu)
                                              { 6, 3, 7, 4, 3, 0, 1, 2, 5, 8 } };
     batch->sample = std::move(allBatchKeys[worldRank]);
     spdlog::info(KEY_PROCESS "test BuildRestoreVec: rank {}, batchKeys {}", worldRank, batch->sample);
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     auto [splitKeys, restore] = process.HashSplit(batch);
     spdlog::debug("rank: {} splitKeys: {}", worldRank, splitKeys);
@@ -292,7 +340,7 @@ TEST_F(KeyProcessTest, BuildRestoreVec_4cpu)
 TEST_F(KeyProcessTest, ProcessKeySplit_rebuilt)
 {
     PrepareBatch();
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     spdlog::info("CPU Core Num: {}", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
 
     auto fn = [this](int channel, int id) {
@@ -309,7 +357,7 @@ TEST_F(KeyProcessTest, ProcessKeySplit_rebuilt)
                      hotPos);
     }; // for clean code
     for (int channel = 0; channel < 1; ++channel) {
-        for (int id = 0; id < PerfConfig::keyProcessThreadNum; ++id) {
+        for (int id = 0; id < 1; ++id) {
             // use lambda expression initialize thread
             process.procThreads.emplace_back(std::make_unique<std::thread>(fn, channel, id));
         }
@@ -321,7 +369,7 @@ TEST_F(KeyProcessTest, ProcessKeySplit_rebuilt)
 TEST_F(KeyProcessTest, BuildRestoreVec_rebuilt)
 {
     PrepareBatch();
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     spdlog::info("CPU Core Num: {}", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
 
     auto fn = [this](int channel, int id) {
@@ -339,7 +387,7 @@ TEST_F(KeyProcessTest, BuildRestoreVec_rebuilt)
             batch->batchId, lookupKeys, scAll, restore);
     }; // for clean code
     for (int channel = 0; channel < 1; ++channel) {
-        for (int id = 0; id < PerfConfig::keyProcessThreadNum; ++id) {
+        for (int id = 0; id < KEY_PROCESS_THREAD; ++id) {
             // use lambda expression initialize thread
             process.procThreads.emplace_back(std::make_unique<std::thread>(fn, channel, id));
         }
@@ -352,18 +400,29 @@ TEST_F(KeyProcessTest, Key2Offset)
 {
     keys_t lookupKeys = { 4, 16, 28, 4, 24, 4, 20, 24 };
     keys_t expectOffset = { 0, 1, 2, 0, 3, 0, 4, 3 };
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
-    process.Key2Offset(emb_name_t(), lookupKeys);
+    process.Key2Offset("emb0", lookupKeys);
     spdlog::debug(KEY_PROCESS "test Key2Offset: lookupKeys: {}, keyOffsetMap: {}", lookupKeys, process.keyOffsetMap);
     ASSERT_THAT(lookupKeys, ElementsAreArray(expectOffset));
 }
+
+TEST_F(KeyProcessTest, GetUniqueConfig)
+{
+    UniqueConf uniqueConf;
+    process.rankInfo.rankSize = worldSize;
+    process.rankInfo.useStatic = true;
+    process.GetUniqueConfig(uniqueConf);
+    process.rankInfo.useStatic = false;
+    process.GetUniqueConfig(uniqueConf);
+}
+
 // 自动化测试用例
 // 边界值、重复度测试
 TEST_F(KeyProcessTest, ProcessPrefetchTask)
 {
     PrepareBatch();
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), 0);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     process.rankInfo.rankSize = worldSize;
     process.rankInfo.localRankId = process.rankInfo.rankId % process.rankInfo.localRankSize;
     ASSERT_EQ(process.isRunning, true);
@@ -371,6 +430,72 @@ TEST_F(KeyProcessTest, ProcessPrefetchTask)
     // 所有线程处理完（训练结束）后调用
     this_thread::sleep_for(5s);
     spdlog::info("wait 20s for thread running");
+    this_thread::sleep_for(20s);
+    process.Destroy();
+}
+
+TEST_F(KeyProcessTest, InitializeUnique)
+{
+    ASSERT_EQ(Factory::Create(factory), -1);
+    UniquePtr unique;
+    ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    PrepareBatch();
+    unique_ptr<emb_batch_t> batch;
+    batch = process.GetBatchData(0, 0);
+    UniqueConf uniqueConf;
+    process.rankInfo.rankSize = worldSize;
+    process.rankInfo.useStatic = true;
+    bool uniqueInitialize = false;
+    size_t preBatchSize = 0;
+    process.InitializeUnique(uniqueConf, preBatchSize, uniqueInitialize, batch, unique);
+}
+
+TEST_F(KeyProcessTest, GetKeySize)
+{
+    PrepareBatch();
+    unique_ptr<emb_batch_t> batch;
+    batch = process.GetBatchData(0, 0);
+    process.rankInfo.rankSize = worldSize;
+    process.rankInfo.useStatic = true;
+    process.GetKeySize(batch);
+}
+
+TEST_F(KeyProcessTest, ProcessBatchWithFastUnique)
+{
+    PrepareBatch();
+    
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
+    spdlog::info("CPU Core Num: {}", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
+
+    auto fn = [this](int channel, int id) {
+        UniquePtr unique;
+        
+        auto embName = embInfos[0].name;
+        process.hotEmbTotCount[embName] = 10;
+        vector<keys_t> splitKeys;
+        vector<int32_t> restore;
+        vector<int32_t> hotPos;
+        unique_ptr<emb_batch_t> batch;
+        UniqueInfo uniqueInfo;
+        batch = process.GetBatchData(channel, id); // get batch data from SingletonQueue<emb_batch_t>
+
+        ASSERT_EQ(factory->CreateUnique(unique), 0);
+        UniqueConf uniqueConf;
+        process.GetUniqueConfig(uniqueConf);
+        unique->Initialize(uniqueConf);
+        
+        spdlog::info("rankid :{},batchid: {}", rankInfo.rankId, batch->batchId);
+        process.KeyProcessTaskHelperWithFastUnique(batch, unique, channel, id);
+        spdlog::info("rankid :{},batchid: {}, hotPos {}", rankInfo.rankId, batch->batchId,
+                     hotPos);
+    }; // for clean code
+    for (int channel = 0; channel < 1; ++channel) {
+        for (int id = 0; id < 1; ++id) {
+            // use lambda expression initialize thread
+            process.procThreads.emplace_back(std::make_unique<std::thread>(fn, channel, id));
+        }
+    }
     this_thread::sleep_for(20s);
     process.Destroy();
 }
