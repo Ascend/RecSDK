@@ -10,6 +10,7 @@ from collections import defaultdict
 import mxrec_pybind
 import psutil
 
+import mx_rec.constants.constants
 from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION, VALID_DEVICE_ID_LIST, LOCAL_RANK_SIZE, \
     MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE, HASHTABLE_COLLECTION_NAME_LENGTH
 from mx_rec.util.ops import import_host_pipeline_ops
@@ -74,6 +75,7 @@ class ConfigInitializer:
         self.use_dynamic_expansion = kwargs.get("use_dynamic_expansion", False)
         if kwargs.get("bind_cpu", True):
             bind_cpu(self._rank_id, self._rank_size)
+        self.enable_table_merge = True if os.getenv("TF_DEVICE") == "NPU" else False
 
     def __del__(self):
         self.terminate()
@@ -645,6 +647,10 @@ def get_use_static():
 
 def get_use_hot():
     return ConfigInitializer.get_instance().use_hot
+
+
+def get_enable_table_merge():
+    return ConfigInitializer.get_instance().enable_table_merge
 
 
 def get_use_dynamic_expansion():
