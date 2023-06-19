@@ -47,7 +47,8 @@ TEST(InitializerTest, TruncatedNormalInitializerTest)
 {
     TruncatedNormalInitializer truncatedNormalInitializer;
 
-    truncatedNormalInitializer = TruncatedNormalInitializer(1, 10, 1.0, 0.3, 1);
+    std::tuple<float, float, int, float> ret(1.0, 0.3, 1, 0.1);
+    truncatedNormalInitializer = TruncatedNormalInitializer(1, 10, ret);
 
     vector<vector<float>> embData;
     int vocabSize = 5;
@@ -75,7 +76,8 @@ TEST(InitializerTest, TruncatedNormalInitializerTest)
 
 TEST(InitializerTest, RandomNormalInitializerTest)
 {
-    RandomNormalInitializer randomNormalInitializer(1, 10, 2.0, 0.5, 1, 0.1);
+    std::tuple<float, float, int, float> ret(2.0, 0.5, 1, 0.1);
+    RandomNormalInitializer randomNormalInitializer(1, 10, ret);
 
     vector<vector<float>> embData;
     int vocabSize = 5;

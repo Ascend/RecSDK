@@ -5,17 +5,18 @@
  * Date: 2022/12/22
  */
 
-#include "truncated_normal_initializer.h"
-#include <spdlog/spdlog.h>
 #include <algorithm>
+#include <tuple>
+#include <spdlog/spdlog.h>
+#include "truncated_normal_initializer.h"
 
 using namespace MxRec;
 
-TruncatedNormalInitializer::TruncatedNormalInitializer(int start, int len, float mean, float stddev, int seed,
-                                                       float initK)
-    : start(start), len(len), mean(mean), stddev(stddev), seed(seed)
+TruncatedNormalInitializer::TruncatedNormalInitializer(int start, int len, std::tuple<float, float, int, float> ret)
+    : start(start), len(len)
 {
-    initParam = initK;
+    std::tie(mean, stddev, seed, initParam) = ret;
+
     generator = std::default_random_engine(seed);
     distribution = std::normal_distribution<float>(mean, stddev);
     minBound = mean - static_cast<float>(boundNum) * stddev;

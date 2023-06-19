@@ -11,10 +11,10 @@
 
 using namespace MxRec;
 
-RandomNormalInitializer::RandomNormalInitializer(int start, int len, float mean, float stddev, int seed, float initK)
-    : start(start), len(len), mean(mean), stddev(stddev), seed(seed)
+RandomNormalInitializer::RandomNormalInitializer(int start, int len, std::tuple<float, float, int, float> ret)
+    : start(start), len(len)
 {
-    initParam = initK;
+    std::tie(mean, stddev, seed, initParam) = ret;
     generator = std::default_random_engine(seed);
     distribution = std::normal_distribution<float>(mean, stddev);
 }

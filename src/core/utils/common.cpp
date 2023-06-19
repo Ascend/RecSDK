@@ -76,16 +76,15 @@ namespace MxRec {
     InitializeInfo::InitializeInfo(std::string& name, int start, int len, NormalInitializerInfo normalInitializerInfo)
         : name(name), start(start), len(len), normalInitializerInfo(normalInitializerInfo)
     {
+        std::tuple<float, float, int, float> ret(normalInitializerInfo.mean, normalInitializerInfo.stddev,
+                                                 normalInitializerInfo.seed, normalInitializerInfo.initK);
+
         if (name == "truncated_normal_initializer") {
             initializerType = InitializerType::TRUNCATED_NORMAL;
-            truncatedNormalInitializer = TruncatedNormalInitializer(start, len,
-                normalInitializerInfo.mean, normalInitializerInfo.stddev, normalInitializerInfo.seed,
-                normalInitializerInfo.initK);
+            truncatedNormalInitializer = TruncatedNormalInitializer(start, len, ret);
         } else if (name == "random_normal_initializer") {
             initializerType = InitializerType::RANDOM_NORMAL;
-            randomNormalInitializer = RandomNormalInitializer(start, len,
-                normalInitializerInfo.mean, normalInitializerInfo.stddev, normalInitializerInfo.seed,
-                normalInitializerInfo.initK);
+            randomNormalInitializer = RandomNormalInitializer(start, len, ret);
         } else {
             throw std::invalid_argument("Invalid Initializer Type.");
         }

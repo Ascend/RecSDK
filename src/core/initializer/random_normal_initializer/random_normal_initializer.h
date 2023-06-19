@@ -19,7 +19,7 @@ namespace MxRec {
     class RandomNormalInitializer : public Initializer {
     public:
         RandomNormalInitializer() = default;
-        RandomNormalInitializer(int start, int len, float mean, float stddev, int seed, float initK);
+        RandomNormalInitializer(int start, int len, std::tuple<float, float, int, float>);
 
         ~RandomNormalInitializer() override {};
 
