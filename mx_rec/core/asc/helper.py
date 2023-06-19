@@ -11,7 +11,7 @@ from tensorflow import Tensor
 from tensorflow import Operation
 
 from mx_rec.util.initialize import get_host_pipeline_ops, get_training_mode_channel_id, get_use_static, \
-    export_table_instances, insert_dangling_table
+    get_enable_table_merge, export_table_instances, insert_dangling_table
 from mx_rec.core.asc.feature_spec import FeatureSpec
 
 
@@ -70,6 +70,13 @@ def find_dangling_table(table_names: List[str]):
         if 'gradients/' in table_reachable_tensor.name and table_reachable_tensor.op.type == 'Identity':
             return True
 
+        if 'logistic_loss' in table_reachable_tensor.op.name and table_reachable_tensor.op.type == 'AddV2':
+            return True
+
+        if 'SparseSoftmaxCrossEntropyWithLogits' in table_reachable_tensor.op.name \
+                and table_reachable_tensor.op.type == 'SparseSoftmaxCrossEntropyWithLogits':
+            return True
+
         return False
 
     def find_table_op(table_name: str,
@@ -98,12 +105,24 @@ def find_dangling_table(table_names: List[str]):
     table_lookup_op = {}
     table_reachable_tensor = {}
 
+    for _, table_instance in export_table_instances().items():
+        if table_instance.table_name not in table_names:
+            table_names.append(table_instance.table_name)
+
     for the_op in op_list:
         for table_name in table_names:
             find_table_op(table_name, the_op, table_lookup_op, table_reachable_tensor)
 
-    logging.info(f"*********** find tables: {table_lookup_op}***********")
+    logging.info(f"*********** find tables: {table_lookup_op} ***********")
+
     dangling_table = []
+
+    for table_name in table_names:
+        if table_name not in table_lookup_op:
+            logging.info(f"*********** created table {table_name} but never look up***********")
+            dangling_table.append(table_name)
+            insert_dangling_table(table_name)
+
 
     def extend(op_list: List[Operation],
                tensor: Tensor,
@@ -144,6 +163,23 @@ def find_dangling_table(table_names: List[str]):
             dangling_table.append(table_name)
             insert_dangling_table(table_name)
     return dangling_table
+
+
+def should_skip(table_name):
+    from mx_rec.constants.constants import ASCEND_TABLE_NAME_MUST_CONTAIN
+    if ASCEND_TABLE_NAME_MUST_CONTAIN is not None \
+            and isinstance(ASCEND_TABLE_NAME_MUST_CONTAIN, str) \
+            and ASCEND_TABLE_NAME_MUST_CONTAIN not in table_name:
+        return True
+    if ASCEND_TABLE_NAME_MUST_CONTAIN is not None \
+            and isinstance(ASCEND_TABLE_NAME_MUST_CONTAIN, list):
+        skip = True
+        for key_word in ASCEND_TABLE_NAME_MUST_CONTAIN:
+            if isinstance(key_word, str) and key_word in table_name:
+                skip = False
+                break
+        return skip
+    return False
 
 
 def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_counts=None,
@@ -188,7 +224,10 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
         if feature_counts is None or table_names is None:
             raise ValueError("Please config 'args_index_list', 'feature_counts' and 'table_names' at the same time.")
 
-        dangling_tables = find_dangling_table(table_names)
+        dangling_tables = []
+        if get_enable_table_merge():
+            dangling_tables = find_dangling_table(table_names)
+
         logging.info(f"In insert found dangling table(s): {dangling_tables} "
                      f"which does not need to be provided to the EmbInfo.")
 
@@ -205,8 +244,16 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
             new_insert_tensors, new_splits, new_table_names = [], [], []
             for idx, table_name in enumerate(table_names):
                 if table_name in dangling_tables:
-                    logging.info(f"do_insert skip table: {table_name}")
+                    logging.info(f"do_insert skip table : {table_name}")
                     continue
+
+                skip = should_skip(table_name)
+                if skip:
+                    logging.info(f"do_insert skip table 2: {table_name}")
+                    continue
+
+
+
                 new_insert_tensors.append(insert_tensors[idx])
                 new_splits.append(splits[idx])
                 new_table_names.append(table_names[idx])

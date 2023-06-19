@@ -31,6 +31,7 @@ namespace MxRec {
     enum class TaskType {
         GETINFO,
         SEND,
+        HBM,
         DDR
     };
 
@@ -58,6 +59,8 @@ namespace MxRec {
 
         void Start();
 
+        void InsertThreadForHBM(int mode);
+
     void Destroy()
     {
         if (!isRunning) {
@@ -65,8 +68,10 @@ namespace MxRec {
         }
         // 先发送停止信号mgmt，先停止新lookup查询, 解除queue的限制防止卡住
         isRunning = false;
-        restoreQueue->DestroyQueue();
-        lookUpKeysQueue->DestroyQueue();
+        restoreQueueForTrain->DestroyQueue();
+        lookUpKeysQueueForTrain->DestroyQueue();
+        restoreQueueForEval->DestroyQueue();
+        lookUpKeysQueueForEval->DestroyQueue();
 
         // 先发送停止信号给preprocess，用于停止查询中lookup卡住状态
         preprocess->isRunning = false;
@@ -88,6 +93,8 @@ namespace MxRec {
     };
 
         bool ParseKeys(int channelId, int& batchId);
+
+        bool ParseKeysHBM(int channelId, int& batchId);
 
         bool ProcessEmbInfo(const std::string& embName, int batchId, int channelId, int iBatch, bool& remainBatchOut);
 
@@ -113,8 +120,12 @@ namespace MxRec {
         unique_ptr<HostEmb> hostEmbs {};
         unique_ptr<EmbHashMap> hostHashMaps {};
         vector<std::unique_ptr<std::thread>> procThreads {};
-        unique_ptr<Common::TaskQueue<vector<Tensor>>> lookUpKeysQueue;
-        unique_ptr<Common::TaskQueue<vector<Tensor>>> restoreQueue;
+        unique_ptr<Common::TaskQueue<vector<Tensor>>> lookUpKeysQueueForTrain;
+        unique_ptr<Common::TaskQueue<vector<Tensor>>> restoreQueueForTrain;
+        unique_ptr<Common::TaskQueue<vector<Tensor>>> lookUpKeysQueueForEval;
+        unique_ptr<Common::TaskQueue<vector<Tensor>>> restoreQueueForEval;
+        unique_ptr<Common::TaskQueue<vector<Tensor>>> a2aQueueForTrain;
+        unique_ptr<Common::TaskQueue<vector<Tensor>>> a2aQueueForEval;
         map<std::string, std::vector<emb_key_t>> evictKeyMap {};
         KeyProcess *preprocess;
         HDTransfer *hdTransfer;
@@ -122,11 +133,16 @@ namespace MxRec {
         bool skipUpdate;
         bool isLoad { false };
 
-        bool Task(TaskType type);
+        void TaskForTrain(TaskType type);
+        void TaskForEval(TaskType type);
         bool TrainTask(TaskType type);
         bool EvalTask(TaskType type);
 
+        void All2AllKeys(const int channelId, vector<string> names);
+        void LookupKeys(const int channelId, vector<string> names);
+        void RestoreKeys(const int channelId, vector<string> names);
         bool GetLookupAndRestore(const int channelId, int &batchId);
+        void GetAll2All(const int channelId, int &batchId, const string &name);
         bool SendLookupAndRestore(const int channelId, int &batchId);
 
         void EmbHDTransDummy(int channelId, int batchId, const EmbInfo& embInfo);
