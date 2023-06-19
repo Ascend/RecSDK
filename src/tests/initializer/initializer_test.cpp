@@ -6,8 +6,8 @@
  * History: NA
  */
 
-#include "tuple"
 #include <gtest/gtest.h>
+#include <tuple>
 #include <spdlog/spdlog.h>
 
 #include "initializer/initializer.h"
