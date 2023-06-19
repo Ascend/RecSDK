@@ -95,6 +95,8 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     restoreQueueForTrain = make_unique<Common::TaskQueue<vector<Tensor>>>();
     lookUpKeysQueueForEval = make_unique<Common::TaskQueue<vector<Tensor>>>();
     restoreQueueForEval = make_unique<Common::TaskQueue<vector<Tensor>>>();
+    a2aQueueForTrain = make_unique<Common::TaskQueue<vector<Tensor>>>();
+    a2aQueueForEval = make_unique<Common::TaskQueue<vector<Tensor>>>();
     isRunning = true;
 
     if (!rankInfo.noDDR) {
@@ -262,7 +264,8 @@ void HybridMgmt::Start()
             mode = std::stoi(envTaskMode); // 将字符串转换为整数
             spdlog::info("The value of MGMT_HBM_TASK_MODE is an integer： {}", mode);
         } catch (const std::invalid_argument& e) { // 如果转换失败
-            spdlog::info("The value of MGMT_HBM_TASK_MODE is not an integer!");
+            spdlog::error("The value of MGMT_HBM_TASK_MODE is not an integer!");
+            throw std::invalid_argument("Invalid env value MGMT_HBM_TASK_MODE");
         }
     } else { // 如果环境变量不存在
         mode = 0;
@@ -449,6 +452,21 @@ bool HybridMgmt::EvalTask(TaskType type)
     return true;
 }
 
+void HybridMgmt::GetAll2All(const int channelId, int &batchId, const string &name)
+{
+    auto all2all = preprocess->GetInfoVec(batchId, name, channelId, ProcessedInfo::ALL2ALL);
+    switch (channelId) {
+        case TRAIN_CHANNEL_ID:
+            a2aQueueForTrain->Pushv(*all2all);
+            break;
+        case EVAL_CHANNEL_ID:
+            a2aQueueForEval->Pushv(*all2all);
+            break;
+        default:
+            throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
+    }
+}
+
 bool HybridMgmt::GetLookupAndRestore(const int channelId, int &batchId)
 {
     spdlog::info(MGMT + "start parse keys, nBatch:{} , [{}]:{}", mgmtRankInfo.nBatch, channelId, batchId);
@@ -462,24 +480,10 @@ bool HybridMgmt::GetLookupAndRestore(const int channelId, int &batchId)
                       embInfo.name, embInfo.modifyGraph, names);
         for (const string& name: names) {
             auto infoVecs = preprocess->GetInfoVec(batchId, name, channelId, ProcessedInfo::RESTORE);
-            if (!mgmtRankInfo.useStatic) {
-                auto all2all = preprocess->GetInfoVec(batchId, name, channelId, ProcessedInfo::ALL2ALL);
-                switch (channelId) {
-                    case TRAIN_CHANNEL_ID:
-                        a2aQueueForTrain->Pushv({ *all2all });
-                        break;
-                    case EVAL_CHANNEL_ID:
-                        a2aQueueForEval->Pushv({ *all2all });
-                        break;
-                    default:
-                        throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
-                }
-            }
             if (infoVecs == nullptr) {
                 spdlog::info(MGMT + "ParseKeys infoVecs empty ! batchId:{}, channelId:{}", batchId, channelId);
                 return false;
             }
-
             switch (channelId) {
                 case TRAIN_CHANNEL_ID:
                     lookUpKeysQueueForTrain->Pushv({ infoVecs->back() });
@@ -493,6 +497,10 @@ bool HybridMgmt::GetLookupAndRestore(const int channelId, int &batchId)
                     break;
                 default:
                     throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
+            }
+
+            if (!mgmtRankInfo.useStatic) {
+                GetAll2All(channelId, batchId, name);
             }
         }
         TIME_PRINT("getAllTensorTC(ms):{}", getAllTensorTC.ElapsedMS());
@@ -606,7 +614,7 @@ bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
 
             if (!mgmtRankInfo.useStatic) {
                 auto all2all = preprocess->GetInfoVec(batchId, name, channelId, ProcessedInfo::ALL2ALL);
-                hdTransfer->Send(TransferChannel::ALL2ALL, { *all2all }, channelId, name);
+                hdTransfer->Send(TransferChannel::ALL2ALL, *all2all, channelId, name);
             }
             hdTransfer->Send(TransferChannel::LOOKUP, { infoVecs->back() }, channelId, name);
             infoVecs->pop_back();

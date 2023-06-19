@@ -142,6 +142,7 @@ namespace MxRec {
         void LookupKeys(const int channelId, vector<string> names);
         void RestoreKeys(const int channelId, vector<string> names);
         bool GetLookupAndRestore(const int channelId, int &batchId);
+        void GetAll2All(const int channelId, int &batchId, const string &name);
         bool SendLookupAndRestore(const int channelId, int &batchId);
 
         void EmbHDTransDummy(int channelId, int batchId, const EmbInfo& embInfo);
