@@ -19,7 +19,7 @@ namespace MxRec {
     class TruncatedNormalInitializer : public Initializer {
     public:
         TruncatedNormalInitializer() = default;
-        TruncatedNormalInitializer(int start, int len, float mean, float stddev, int seed);
+        TruncatedNormalInitializer(int start, int len, float mean, float stddev, int seed, float initK);
 
         ~TruncatedNormalInitializer() override {};
 

@@ -41,6 +41,7 @@ def create_table(**kwargs):
     shard_num = kwargs.get("shard_num", 1)
     fusion_optimizer_var = kwargs.get("fusion_optimizer_var", True)
     hashtable_threshold = kwargs.get("hashtable_threshold", 0)
+    init_param = kwargs.get("init_param", 1.0)
     is_save =  kwargs.get("is_save", True)
 
     """
@@ -58,12 +59,14 @@ def create_table(**kwargs):
         shard_num: embedding partition number
         fusion_optimizer_var: fusion optimizer variable with embedding
         hashtable_threshold: choose to implement based on hash table or linear layer
+        init_param: embedding init param-coefficient
     """
 
     config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
                   device_vocabulary_size=device_vocabulary_size, host_vocabulary_size=host_vocabulary_size,
                   optimizer_list=optimizer_list, mode=mode, value_dtype=value_dtype, shard_num=shard_num,
-                  fusion_optimizer_var=fusion_optimizer_var, hashtable_threshold=hashtable_threshold, is_save=is_save)
+                  fusion_optimizer_var=fusion_optimizer_var, hashtable_threshold=hashtable_threshold,
+                  init_param=init_param, is_save=is_save)
     embedding = SparseEmbedding(config)
     return embedding
 
@@ -158,6 +161,7 @@ class SparseEmbedding:
         self.send_count_map = dict()
         self.channel_name_dict = {True: [], False: []}
         self.modify_graph = False
+        self.init_param = config.get("init_param")
 
         self.set_slice_vocab_size()
         self.set_emb_size()
@@ -751,7 +755,9 @@ class SparseEmbedding:
                       f" {self.slice_host_vocabulary_size}.")
 
     def _initialize_variables(self):
-        initialized_tensor = self.emb_initializer(self.slice_device_vocabulary_size + self.embedding_size)
+        initialized_tensor = \
+            self.emb_initializer(self.slice_device_vocabulary_size + self.embedding_size) * self.init_param
+
         self.variable = tf.compat.v1.get_variable(self.table_name, trainable=False, initializer=initialized_tensor)
         # make sure sparse table variable will not be saved and restored within tf checkpoint.
         insert_removing_var_list(self.variable.name)

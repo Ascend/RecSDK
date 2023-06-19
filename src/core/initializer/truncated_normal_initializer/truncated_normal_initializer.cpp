@@ -11,9 +11,11 @@
 
 using namespace MxRec;
 
-TruncatedNormalInitializer::TruncatedNormalInitializer(int start, int len, float mean, float stddev, int seed)
+TruncatedNormalInitializer::TruncatedNormalInitializer(int start, int len, float mean, float stddev, int seed,
+                                                       float initK)
     : start(start), len(len), mean(mean), stddev(stddev), seed(seed)
 {
+    initParam = initK;
     generator = std::default_random_engine(seed);
     distribution = std::normal_distribution<float>(mean, stddev);
     minBound = mean - static_cast<float>(boundNum) * stddev;
@@ -33,9 +35,9 @@ void TruncatedNormalInitializer::GenerateData(float* const emb, const int embSiz
         return;
     }
     std::generate_n(emb + start, len, [&]() {
-        float tmp = distribution(generator);
+        float tmp = initParam * distribution(generator);
         while (tmp < minBound || tmp > maxBound) {
-            tmp = distribution(generator);
+            tmp = initParam * distribution(generator);
         }
         return tmp;
     });

@@ -79,7 +79,8 @@ namespace MxRec {
         if (name == "truncated_normal_initializer") {
             initializerType = InitializerType::TRUNCATED_NORMAL;
             truncatedNormalInitializer = TruncatedNormalInitializer(start, len,
-                normalInitializerInfo.mean, normalInitializerInfo.stddev, normalInitializerInfo.seed);
+                normalInitializerInfo.mean, normalInitializerInfo.stddev, normalInitializerInfo.seed,
+                normalInitializerInfo.initK);
         } else if (name == "random_normal_initializer") {
             initializerType = InitializerType::RANDOM_NORMAL;
             randomNormalInitializer = RandomNormalInitializer(start, len,
