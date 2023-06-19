@@ -5,9 +5,9 @@
  * Date: 2022/12/23
  */
 
-#include "random_normal_initializer.h"
-#include <spdlog/spdlog.h>
 #include <algorithm>
+#include <spdlog/spdlog.h>
+#include "random_normal_initializer.h"
 
 using namespace MxRec;
 

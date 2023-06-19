@@ -10,6 +10,7 @@
 
 #include <vector>
 #include <random>
+#include <tuple>
 
 #include "initializer/initializer.h"
 

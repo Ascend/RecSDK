@@ -6,6 +6,7 @@
  * History: NA
  */
 
+#include "tuple"
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
 

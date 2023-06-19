@@ -6,7 +6,6 @@
  */
 
 #include <algorithm>
-#include <tuple>
 #include <spdlog/spdlog.h>
 #include "truncated_normal_initializer.h"
 
