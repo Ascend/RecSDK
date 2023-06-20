@@ -700,11 +700,6 @@ def set_ascend_env():
 
     if os.getenv("RANK_TABLE_FILE"):
         os.environ["RANK_SIZE"] = str(rank_size)
-    else:
-        import socket
-        host_name = socket.gethostname()
-        host_ip = socket.gethostbyname(host_name)
-        os.environ["CM_WORKER_IP"] = host_ip
     os.environ["HCCL_CONNECT_TIMEOUT"] = "1200"
 
     os.environ["JOB_ID"] = "10086"
