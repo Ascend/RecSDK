@@ -267,7 +267,9 @@ void KeyProcess::KeyProcessTask(int channel, int id) // thread id [0, KEY_PROCES
     try {
         while (true) {
             TimeCost getAndProcessTC;
+            TimeCost getBatchDataTC;
             batch = GetBatchData(channel, id); // get batch data from SingletonQueue<emb_batch_t>
+            TIME_PRINT("getBatchDataTC(ms):{}", getBatchDataTC.ElapsedMS());
             if (batch == nullptr) {
                 break;
             }
