@@ -31,14 +31,9 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId)
     }
     spdlog::info(MGMT + "end Set device, rank:{}", localRankId);
     for (const auto& embInfo: embInfos) {
-        vector<string> names = {embInfo.name};
-        if (embInfo.modifyGraph) {
-            names = embInfo.channelNames;
-        }
-        for (const string& name: names) {
-            for (int i = 0; i < MAX_CHANNEL_NUM; ++i) {
-                CreateChannel(localRankId, name, i);
-            }
+        auto embName = embInfo.name;
+        for (int i = 0; i < MAX_CHANNEL_NUM; ++i) {
+            CreateChannel(localRankId, embInfo.name, i);
         }
     }
     running = true;

@@ -4,13 +4,15 @@
 
 import logging
 from collections import defaultdict
+from functools import reduce
 
 import tensorflow as tf
+from tensorflow.python.ops import array_ops
 from tensorflow.python.data.ops.dataset_ops import DatasetV1Adapter
 
 from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
 from mx_rec.core.asc.helper import get_asc_insert_func
-from mx_rec.core.asc.feature_spec import FeatureSpec
+from mx_rec.core.asc.feature_spec import FeatureSpec, set_temporary_feature_spec_attribute
 from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import SparseEmbedding
 from mx_rec.constants.constants import ASCEND_CUTTING_POINT_INITIALIZER, ASCEND_SPARSE_LOOKUP_ENTRANCE, \
@@ -324,6 +326,7 @@ def modify_graph_for_asc(dump_graph=False, prefetch=10):
                            cutting_point in sub_cutting_point_list]
         table_names = [SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.FEATURE_SPEC).table_name for
                        cutting_point in sub_cutting_point_list]
+
         tgt_dataset = tgt_dataset.map(
             get_asc_insert_func(feature_numbers=feature_numbers, table_names=table_names,
                                 args_index_list=input_index_list, is_training=is_training, dump_graph=dump_graph))
@@ -341,20 +344,105 @@ def modify_graph_for_asc(dump_graph=False, prefetch=10):
         new_get_next_op_name = find_target_dataset_op(one_tensor.op, "IteratorGetNext").name
         update_input_tensor_with_new_batch(records.get("replacement_specs"), new_get_next_op_name)
 
-        for _, cutting_point in enumerate(sub_cutting_point_list):
-            feature_spec = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.FEATURE_SPEC)
-            table_instance = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.TABLE_INSTANCE)
-            channel_id = get_training_mode_channel_id(is_training)
-            config = dict(
-                batch_size=feature_spec.batch_size, feat_cnt=feature_spec.feat_cnt,
-                send_count=table_instance.send_count, channel_id=channel_id, rank_size=get_rank_size(),
-                table_name=table_instance.table_name, skip_emb_transfer=table_instance.skip_emb_transfer,
-                ext_emb_size=table_instance.ext_emb_size, emb_size=table_instance.scalar_emb_size,
-                use_hot=get_use_hot(), device_id=get_device_id(), use_dynamic_expansion=get_use_dynamic_expansion())
-            build_asc_graph(table_instance, cutting_point, config, is_training)
+        # multiple lookups of a same table
+        lookup_for_same_table(sub_cutting_point_list, is_training)
+        # replace the stub node for sparse lookup from the graph
+        replace_stub_node_with_asc_graph(sub_cutting_point_list, is_training)
 
     logging.info("Graph has been revised.")
     export_pb_graph("new_graph.pb", dump_graph)
+
+
+def lookup_for_same_table(sub_cutting_point_list: list, is_training: bool):
+    """
+    Merge multiple lookups of a sparse table into one lookup.
+
+    Args:
+        sub_cutting_point_list: the feature ids list passed in by sparse lookup
+        is_training: indicates whether the training mode is used
+
+    Returns: None
+
+    """
+    same_table_feature_spec_dict = {}
+    feature_spec_ids_dict = {}
+    for cutting_point in sub_cutting_point_list:
+        feature_spec = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.FEATURE_SPEC)
+        table_instance = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.TABLE_INSTANCE)
+        if len(table_instance.lookup_name_list) > 1:
+            if same_table_feature_spec_dict.get(table_instance.table_name) is None:
+                same_table_feature_spec_dict[table_instance.table_name] = []
+            same_table_feature_spec_dict[table_instance.table_name].append(feature_spec)
+            feature_spec_ids_dict[feature_spec.name] = cutting_point
+
+    for table_name, same_feature_spec_list in same_table_feature_spec_dict.items():
+        same_table_feature_spec = sorted(same_feature_spec_list, key=lambda x: x.name)
+        mock_feature_spec = FeatureSpec(f"mock_feature_spec_{table_name}", feat_count=1, table_name=table_name)
+
+        tensor_split_list = []
+        tensor_list = []
+        table_instance = None
+        for one_feature_spec in same_table_feature_spec:
+            feature_ids = feature_spec_ids_dict.get(one_feature_spec.name)
+            if feature_ids is None:
+                raise RuntimeError(f"In the case of multiple lookups of a table, feature ids cannot be None.")
+            tensor_list.append(feature_ids)
+            table_instance = SparseEmbedding.get_anchor_attribute(feature_ids, ASCAnchorAttr.TABLE_INSTANCE)
+
+            # dynamic shape
+            if not get_use_static():
+                tensor_split_list.append(tf.math.reduce_prod(array_ops.shape(feature_ids)))
+                continue
+
+            # static shape
+            rank = feature_ids.shape.rank
+            if rank < 1:
+                raise ValueError(f"Given tensor rank cannot be smaller than 1, which is {rank} now.")
+            dims = feature_ids.shape.as_list()
+            feat_cnt = 1 if rank == 1 else reduce(lambda x, y: x * y, dims[1:])
+            tensor_split_list.append(dims[0] * feat_cnt)
+
+        total_feature_count = sum(tensor_split_list) if get_use_static() else tf.add_n(tensor_split_list)
+        set_temporary_feature_spec_attribute(mock_feature_spec, total_feature_count)
+
+        kwargs = {"multi_lookup": True, "is_train": is_training}
+        if table_instance is None:
+            raise RuntimeError(f"In the case of multiple lookups of a table, table instance cannot be None.")
+        lookup_result = table_instance.lookup_for_asc_with_feature_spec_inner(mock_feature_spec,
+                                                                              table_instance.same_table_send_count,
+                                                                              **kwargs)
+        table_instance.split_lookup_result(same_table_feature_spec, tensor_split_list, tensor_list, lookup_result,
+                                           is_training)
+        logging.info(f"Multiple lookups of a table for '{table_name}' have completed.")
+
+
+def replace_stub_node_with_asc_graph(sub_cutting_point_list: list, is_training: bool):
+    """
+    Replace the stub node for sparse lookup from the graph. e.g., id_offset, restore_vector, etc.
+
+    Args:
+        sub_cutting_point_list: the feature ids list passed in by sparse lookup
+        is_training: indicates whether the training mode is used
+
+    Returns: None
+
+    """
+    for _, cutting_point in enumerate(sub_cutting_point_list):
+        feature_spec = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.FEATURE_SPEC)
+        table_instance = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.TABLE_INSTANCE)
+        channel_id = get_training_mode_channel_id(is_training)
+        config = dict(
+            batch_size=feature_spec.batch_size, feat_cnt=feature_spec.feat_cnt,
+            send_count=table_instance.send_count, channel_id=channel_id, rank_size=get_rank_size(),
+            table_name=table_instance.table_name, skip_emb_transfer=table_instance.skip_emb_transfer,
+            ext_emb_size=table_instance.ext_emb_size, emb_size=table_instance.scalar_emb_size,
+            use_hot=get_use_hot(), device_id=get_device_id(), use_dynamic_expansion=get_use_dynamic_expansion())
+
+        lookup_result = None
+        if len(table_instance.lookup_name_list) > 1 and feature_spec.name in table_instance.lookup_result and \
+                is_training in table_instance.lookup_result.get(feature_spec.name):
+            lookup_result = table_instance.lookup_result.get(feature_spec.name).get(is_training)
+        build_asc_graph(config, table_instance, cutting_point, lookup_result)
 
 
 def get_timestamp_index(get_next_op, is_training):
@@ -378,30 +466,39 @@ def get_timestamp_index(get_next_op, is_training):
     return timestamp_index
 
 
-def build_asc_graph(table_instance, cutting_point, config, is_training):
+def build_asc_graph(config: dict, table_instance: SparseEmbedding, cutting_point: tf.Tensor, lookup_result: tf.Tensor):
+    """
+    Build the GetNext node in the graph and replace the stub node with this node.
+
+    Args:
+        config: parameters required for GetNext
+        table_instance: sparse embedding table
+        cutting_point: the feature ids passed in by sparse lookup
+        lookup_result: results of the sparse lookup
+
+    Returns: None
+
+    """
     # returned results swap_pos and swap_len were not in used, will be applied for DDR mode
     logging.debug(f"try to replace anchors for table {config.get('table_name')} on channel {config.get('channel_id')}")
+
+    # In the case of multiple lookups of a table, replace the stub node of the lookup result in the graph
+    if len(table_instance.lookup_name_list) > 1:
+        if lookup_result is None:
+            raise RuntimeError(f"In the case of multiple lookups of a table, lookup result cannot be None.")
+        replace_anchor_vec(cutting_point, ASCAnchorAttr.LOOKUP_RESULT, lookup_result)
+        logging.info(f"The lookup result corresponding to feature ids '{cutting_point}' has been replaced by "
+                     f"'{lookup_result}'.")
+        return
+
     skip_emb_transfer = config.get("skip_emb_transfer")
     logging.info(f"modifier build_asc_graph skip_emb_transfer: {skip_emb_transfer}")
-
-    if len(table_instance.channel_name_list) > 1:
-        channel_name_queue = table_instance.channel_name_dict.get(is_training)
-        if len(channel_name_queue) < 1:
-            raise ValueError(f"The length of channel_name_queue must be greater than or equal to 1.")
-        ids_channel_name = channel_name_queue.pop()
-        config["send_count"] = table_instance.send_count_map.get(ids_channel_name)
-    elif len(table_instance.channel_name_list) == 1:
-        ids_channel_name = config.get('table_name')
-    else:
-        raise ValueError(f"The length of channel_name_list must be greater than or equal to 1.")
-
     if skip_emb_transfer:
-        result = get_preprocessed_tensor_for_asc(table_instance.variable, config, ids_channel_name,
-                                                 table_instance.modify_graph)
+        result = get_preprocessed_tensor_for_asc(table_instance.variable, config)
     else:
         variable_list = [table_instance.variable] \
                         + [slot_info.get("slot") for slot_info in table_instance.optimizer_slot_info_list]
-        result = get_preprocessed_tensor_for_asc(variable_list, config, ids_channel_name, table_instance.modify_graph)
+        result = get_preprocessed_tensor_for_asc(variable_list, config)
     restore_vector = result.get("restore_vector")
     hot_pos = result.get("hot_pos")
     id_offsets = result.get("id_offsets")

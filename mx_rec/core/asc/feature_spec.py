@@ -3,6 +3,7 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 import logging
+from typing import Union
 from functools import reduce
 
 import tensorflow as tf
@@ -193,3 +194,21 @@ def get_feature_spec(table_name, access_and_evict_config):
         access_threshold = access_and_evict_config.get("access_threshold")
         eviction_threshold = access_and_evict_config.get("eviction_threshold")
     return FeatureSpec(table_name, access_threshold=access_threshold, eviction_threshold=eviction_threshold)
+
+
+def set_temporary_feature_spec_attribute(mock_feature_spec: FeatureSpec, total_feature_count: Union[int, tf.Tensor]):
+    """
+    Set properties for a temporary feature_spec.
+
+    Args:
+        mock_feature_spec: A temporary feature_spec consisting of multiple feature_spec with the same table.
+        total_feature_count: Inner product of the shape of a tensor.
+
+    Returns: None
+
+    """
+    mock_feature_spec.batch_size = total_feature_count
+    mock_feature_spec.dims = [total_feature_count, 1]
+    mock_feature_spec.initialized = True
+    mock_feature_spec.pipeline_mode.add(True)
+    mock_feature_spec.pipeline_mode.add(False)

@@ -138,9 +138,9 @@ namespace MxRec {
         bool TrainTask(TaskType type);
         bool EvalTask(TaskType type);
 
-        void All2AllKeys(const int channelId, vector<string> names);
-        void LookupKeys(const int channelId, vector<string> names);
-        void RestoreKeys(const int channelId, vector<string> names);
+        void All2AllKeys(const int channelId, const string &embName);
+        void LookupKeys(const int channelId, const string &embName);
+        void RestoreKeys(const int channelId, const string &embName);
         bool GetLookupAndRestore(const int channelId, int &batchId);
         void GetAll2All(const int channelId, int &batchId, const string &name);
         bool SendLookupAndRestore(const int channelId, int &batchId);
