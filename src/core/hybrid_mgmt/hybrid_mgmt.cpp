@@ -472,36 +472,28 @@ bool HybridMgmt::GetLookupAndRestore(const int channelId, int &batchId)
     spdlog::info(MGMT + "start parse keys, nBatch:{} , [{}]:{}", mgmtRankInfo.nBatch, channelId, batchId);
     for (const auto& embInfo: mgmtEmbInfo) {
         TimeCost getAllTensorTC;
-        vector<string> names = {embInfo.name};
-        if (embInfo.modifyGraph) {
-            names = embInfo.channelNames;
+        auto infoVecs = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::RESTORE);
+        if (infoVecs == nullptr) {
+            spdlog::info(MGMT + "ParseKeys infoVecs empty ! batchId:{}, channelId:{}", batchId, channelId);
+            return false;
         }
-        spdlog::debug(MGMT + "GetLookupAndRestore embInfoName:{}, modifyGraph:{}, names:{}",
-                      embInfo.name, embInfo.modifyGraph, names);
-        for (const string& name: names) {
-            auto infoVecs = preprocess->GetInfoVec(batchId, name, channelId, ProcessedInfo::RESTORE);
-            if (infoVecs == nullptr) {
-                spdlog::info(MGMT + "ParseKeys infoVecs empty ! batchId:{}, channelId:{}", batchId, channelId);
-                return false;
-            }
-            switch (channelId) {
-                case TRAIN_CHANNEL_ID:
-                    lookUpKeysQueueForTrain->Pushv({ infoVecs->back() });
-                    infoVecs->pop_back();
-                    restoreQueueForTrain->Pushv(*infoVecs);
-                    break;
-                case EVAL_CHANNEL_ID:
-                    lookUpKeysQueueForEval->Pushv({ infoVecs->back() });
-                    infoVecs->pop_back();
-                    restoreQueueForEval->Pushv(*infoVecs);
-                    break;
-                default:
-                    throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
-            }
+        switch (channelId) {
+            case TRAIN_CHANNEL_ID:
+                lookUpKeysQueueForTrain->Pushv({ infoVecs->back() });
+                infoVecs->pop_back();
+                restoreQueueForTrain->Pushv(*infoVecs);
+                break;
+            case EVAL_CHANNEL_ID:
+                lookUpKeysQueueForEval->Pushv({ infoVecs->back() });
+                infoVecs->pop_back();
+                restoreQueueForEval->Pushv(*infoVecs);
+                break;
+            default:
+                throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
+        }
 
-            if (!mgmtRankInfo.useStatic) {
-                GetAll2All(channelId, batchId, name);
-            }
+        if (!mgmtRankInfo.useStatic) {
+            GetAll2All(channelId, batchId, embInfo.name);
         }
         TIME_PRINT("getAllTensorTC(ms):{}", getAllTensorTC.ElapsedMS());
     }
@@ -509,85 +501,73 @@ bool HybridMgmt::GetLookupAndRestore(const int channelId, int &batchId)
     return true;
 }
 
-void HybridMgmt::All2AllKeys(const int channelId, vector<string> names)
+void HybridMgmt::All2AllKeys(const int channelId, const string &embName)
 {
     TimeCost a2aKeysTC;
-    for (const string &name : names) {
-        vector<Tensor> all2allKeys;
-        switch (channelId) {
-            case TRAIN_CHANNEL_ID:
-                all2allKeys = a2aQueueForTrain->WaitAndPop();
-                break;
-            case EVAL_CHANNEL_ID:
-                all2allKeys = a2aQueueForEval->WaitAndPop();
-                break;
-            default:
-                throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
-        }
-        hdTransfer->Send(TransferChannel::ALL2ALL, all2allKeys, channelId, name);
+    vector<Tensor> all2allKeys;
+    switch (channelId) {
+        case TRAIN_CHANNEL_ID:
+            all2allKeys = a2aQueueForTrain->WaitAndPop();
+            break;
+        case EVAL_CHANNEL_ID:
+            all2allKeys = a2aQueueForEval->WaitAndPop();
+            break;
+        default:
+            throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
     }
+    hdTransfer->Send(TransferChannel::ALL2ALL, all2allKeys, channelId, embName);
     TIME_PRINT("All2AllKeysTC(ms):{}", a2aKeysTC.ElapsedMS());
 }
 
-void HybridMgmt::LookupKeys(const int channelId, vector<string> names)
+void HybridMgmt::LookupKeys(const int channelId, const string &embName)
 {
     TimeCost sendLookupTC;
-    for (const string& name: names) {
-        vector<Tensor> lookUpKeys;
-        switch (channelId) {
-            case TRAIN_CHANNEL_ID:
-                lookUpKeys = lookUpKeysQueueForTrain->WaitAndPop();
-                break;
-            case EVAL_CHANNEL_ID:
-                lookUpKeys = lookUpKeysQueueForEval->WaitAndPop();
-                break;
-            default:
-                throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
-        }
-        hdTransfer->Send(TransferChannel::LOOKUP, lookUpKeys, channelId, name);
+    vector<Tensor> lookUpKeys;
+    switch (channelId) {
+        case TRAIN_CHANNEL_ID:
+            lookUpKeys = lookUpKeysQueueForTrain->WaitAndPop();
+            break;
+        case EVAL_CHANNEL_ID:
+            lookUpKeys = lookUpKeysQueueForEval->WaitAndPop();
+            break;
+        default:
+            throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
     }
+    hdTransfer->Send(TransferChannel::LOOKUP, lookUpKeys, channelId, embName);
     TIME_PRINT("sendLookupTC(ms):{}", sendLookupTC.ElapsedMS());
 }
 
-void HybridMgmt::RestoreKeys(const int channelId, vector<string> names)
+void HybridMgmt::RestoreKeys(const int channelId, const string &embName)
 {
     TimeCost sendRestoreTC;
-    for (const string& name: names) {
-        vector<Tensor> restore;
-        switch (channelId) {
-            case TRAIN_CHANNEL_ID:
-                restore = restoreQueueForTrain->WaitAndPop();
-                break;
-            case EVAL_CHANNEL_ID:
-                restore = restoreQueueForEval->WaitAndPop();
-                break;
-            default:
-                throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
-        }
-        hdTransfer->Send(TransferChannel::RESTORE, restore, channelId, name);
+    vector<Tensor> restore;
+    switch (channelId) {
+        case TRAIN_CHANNEL_ID:
+            restore = restoreQueueForTrain->WaitAndPop();
+            break;
+        case EVAL_CHANNEL_ID:
+            restore = restoreQueueForEval->WaitAndPop();
+            break;
+        default:
+            throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
     }
+    hdTransfer->Send(TransferChannel::RESTORE, restore, channelId, embName);
     TIME_PRINT("sendRestoreTC(ms):{}", sendRestoreTC.ElapsedMS());
 }
 
 bool HybridMgmt::SendLookupAndRestore(const int channelId, int &batchId)
 {
     for (const auto& embInfo: mgmtEmbInfo) {
-        vector<string> names = {embInfo.name};
-        if (embInfo.modifyGraph) {
-            names = embInfo.channelNames;
-        }
-        spdlog::debug(MGMT + "SendLookupAndRestore embInfoName:{}, modifyGraph:{}, names:{}",
-                      embInfo.name, embInfo.modifyGraph, names);
         TimeCost sendTensorsTC;
         if (!mgmtRankInfo.useStatic) {
-            All2AllKeys(channelId, names);
+            All2AllKeys(channelId, embInfo.name);
         }
 
         spdlog::info("SendLookupAndRestore batchId: {}, name: {}, channelId: {}",
                      batchId, embInfo.name, channelId);
 
-        LookupKeys(channelId, names);
-        RestoreKeys(channelId, names);
+        LookupKeys(channelId, embInfo.name);
+        RestoreKeys(channelId, embInfo.name);
         TIME_PRINT("sendTensorsTC(ms):{}", sendTensorsTC.ElapsedMS());
     }
     batchId++;
@@ -599,27 +579,19 @@ bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
     spdlog::info(MGMT + "start parse keys HBM, nBatch:{} , [{}]:{}", mgmtRankInfo.nBatch, channelId, batchId);
     for (const auto& embInfo: mgmtEmbInfo) {
         TimeCost ParseKeysTC;
-        vector<string> names = {embInfo.name};
-        if (embInfo.modifyGraph) {
-            names = embInfo.channelNames;
+        auto infoVecs = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::RESTORE);
+        if (infoVecs == nullptr) {
+            spdlog::info(MGMT + "ParseKeys infoVecs empty ! batchId:{}, channelId:{}", batchId, channelId);
+            return false;
         }
-        spdlog::debug(MGMT + "ParseKeysHBM embInfoName:{}, modifyGraph:{}, names:{}",
-                      embInfo.name, embInfo.modifyGraph, names);
-        for (const string& name: names) {
-            auto infoVecs = preprocess->GetInfoVec(batchId, name, channelId, ProcessedInfo::RESTORE);
-            if (infoVecs == nullptr) {
-                spdlog::info(MGMT + "ParseKeys infoVecs empty ! batchId:{}, channelId:{}", batchId, channelId);
-                return false;
-            }
 
-            if (!mgmtRankInfo.useStatic) {
-                auto all2all = preprocess->GetInfoVec(batchId, name, channelId, ProcessedInfo::ALL2ALL);
-                hdTransfer->Send(TransferChannel::ALL2ALL, *all2all, channelId, name);
-            }
-            hdTransfer->Send(TransferChannel::LOOKUP, { infoVecs->back() }, channelId, name);
-            infoVecs->pop_back();
-            hdTransfer->Send(TransferChannel::RESTORE, *infoVecs, channelId, name);
+        if (!mgmtRankInfo.useStatic) {
+            auto all2all = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::ALL2ALL);
+            hdTransfer->Send(TransferChannel::ALL2ALL, *all2all, channelId, embInfo.name);
         }
+        hdTransfer->Send(TransferChannel::LOOKUP, { infoVecs->back() }, channelId, embInfo.name);
+        infoVecs->pop_back();
+        hdTransfer->Send(TransferChannel::RESTORE, *infoVecs, channelId, embInfo.name);
         TIME_PRINT("ParseKeysTC HBM mode (ms):{}", ParseKeysTC.ElapsedMS());
     }
     batchId++;

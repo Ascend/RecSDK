@@ -94,15 +94,11 @@ def get_all2all_args(use_static: bool, config: dict) -> list:
     return all2all_args
 
 
-def get_preprocessed_tensor_for_asc(table, config, ids_channel_name=None, modify_graph=False):
+def get_preprocessed_tensor_for_asc(table, config):
     use_static = get_use_static()
     max_lookup_vec_size = None
     if use_static:
         max_lookup_vec_size = config.get("send_count") * config.get("rank_size")
-
-    if modify_graph:
-        config["table_name"] = ids_channel_name
-    logging.debug(f"GetNext, table_name: {config.get('table_name')}, modify_graph: {modify_graph}")
 
     with tf.compat.v1.variable_scope("restore_vector"):
         restore_vector, hot_pos = get_restore_vector(config)
