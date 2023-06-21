@@ -305,9 +305,10 @@ struct BatchTask {
 
     struct ConstantInitializerInfo {
         ConstantInitializerInfo() = default;
-        explicit ConstantInitializerInfo(float constantValue);
+        explicit ConstantInitializerInfo(float constantValue, float initK);
 
         float constantValue;
+        float initK = 1.0;
     };
 
     struct NormalInitializerInfo {

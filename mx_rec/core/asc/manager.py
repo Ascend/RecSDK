@@ -105,9 +105,11 @@ def matched_emb_initializer(tabel_info):
                                 isinstance(tabel_info.emb_initializer, tf.keras.initializers.TruncatedNormal),
                             }
     if initializer_case_map.get("tf1/tf2_constant_initializer"):
+        init_param = tabel_info.init_param
+        logging.debug(f"constant_initializer, tabel: {tabel_info.table_name}, initK is {init_param}.")
         initializer = InitializeInfo(name="constant_initializer", start=0, len=tabel_info.scalar_emb_size,
                                      constant_initializer_info=ConstantInitializerInfo(
-                                         constant_val=tabel_info.emb_initializer.value))
+                                         constant_val=tabel_info.emb_initializer.value, initK=init_param))
     elif initializer_case_map.get("tf1/tf2_random_normal_initializer"):
         random_seed = 0 if tabel_info.emb_initializer.seed is None else tabel_info.emb_initializer.seed
         init_param = tabel_info.init_param

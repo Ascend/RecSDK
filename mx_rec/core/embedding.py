@@ -340,6 +340,9 @@ class SparseEmbedding:
             if is_training not in self.lookup_info:
                 self.lookup_info.add(is_training)
 
+            if not isinstance(self.init_param, int):
+                raise ValueError("Arg is_train should be a integer.")
+
             if get_use_static():
                 if isinstance(send_count, int) and send_count > 0:
                     if self._send_count and self._send_count != send_count:

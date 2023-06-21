@@ -53,8 +53,8 @@ namespace MxRec {
         : start(start), len(len), constantVal(constantVal), randomMin(randomMin), randomMax(randomMax)
     {}
 
-    ConstantInitializerInfo::ConstantInitializerInfo(float constantValue)
-        : constantValue(constantValue)
+    ConstantInitializerInfo::ConstantInitializerInfo(float constantValue, float initK)
+        : constantValue(constantValue), initK(initK)
     {}
 
     NormalInitializerInfo::NormalInitializerInfo(float mean, float stddev, int seed, float initK)
@@ -67,7 +67,8 @@ namespace MxRec {
     {
         if (name == "constant_initializer") {
             initializerType = InitializerType::CONSTANT;
-            constantInitializer = ConstantInitializer(start, len, constantInitializerInfo.constantValue);
+            constantInitializer = ConstantInitializer(start, len, constantInitializerInfo.constantValue,
+                                                      constantInitializerInfo.initK);
         } else {
             throw std::invalid_argument("Invalid Initializer Type.");
         }

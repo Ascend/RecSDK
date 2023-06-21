@@ -22,7 +22,7 @@ TEST(InitializerTest, ConstantInitializerTest)
 {
     ConstantInitializer constant_initializer; // start; end; constant_val;
 
-    constant_initializer = ConstantInitializer(1, 5, 7);
+    constant_initializer = ConstantInitializer(1, 5, 7, 0.1);
 
     vector<vector<float>> embData;
     int vocabSize = 5;
@@ -40,7 +40,7 @@ TEST(InitializerTest, ConstantInitializerTest)
         std::cout << std::endl;
     }
 
-    ASSERT_EQ(embData.at(2).at(2), 7);
+    ASSERT_EQ(embData.at(2).at(2), 0.7);
     ASSERT_EQ(embData.at(2).at(0), 0);
 }
 

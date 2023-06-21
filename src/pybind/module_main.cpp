@@ -140,8 +140,9 @@ void GetInitializeInfo(pybind11::module_ &m)
 void GetConstantInitializerInfo(pybind11::module_ &m)
 {
     pybind11::class_<ConstantInitializerInfo>(m, "ConstantInitializerInfo")
-        .def(py::init<float>(), py::arg("constant_val") = 0)
-        .def_readwrite("constant_val", &ConstantInitializerInfo::constantValue);
+        .def(py::init<float, float>(), py::arg("constant_val") = 0, py::arg("initK") = 1.0)
+        .def_readwrite("constant_val", &ConstantInitializerInfo::constantValue)
+        .def_readwrite("initK", &ConstantInitializerInfo::initK);
 }
 
 void GetNormalInitializerInfo(pybind11::module_ &m)
