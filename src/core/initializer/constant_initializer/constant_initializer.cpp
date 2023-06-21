@@ -12,7 +12,7 @@ using namespace std;
 using namespace MxRec;
 
 ConstantInitializer::ConstantInitializer(int start, int len, float value, float initK)
-: start(start), len(len), value(value)
+    : start(start), len(len), value(value)
 {
     initParam = initK;
 }
