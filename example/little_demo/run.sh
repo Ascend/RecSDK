@@ -37,6 +37,7 @@ export USE_TIMESTAMP=0          # 0：关闭特征准入淘汰；1：开启特�
 ################# 性能调优相关 ####################
 export KEY_PROCESS_THREAD_NUM=6 #default 6, max 10
 export FAST_UNIQUE=0   #if use fast unique
+export MGMT_HBM_TASK_MODE=0 #if async h2d (get and send tensors)
 ################################################
 
 # 帮助信息，不需要修改

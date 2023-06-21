@@ -192,9 +192,9 @@ parse_pipe_2_key_process()
   # common end
 }
 
-parse_pipe_3_get_tensors_no_ddr()
+parse_pipe_3_get_tensors_async_no_ddr()
 {
-  LOG_NOTICE "Pipe-3: Get Tensors (no DDR)"
+  LOG_NOTICE "Pipe-3: Get Tensors async (no DDR)"
 
   $(grep 'getAllTensorTC(ms)' $logfile > /dev/null 2>&1)
   if [ $? == 0 ]; then
@@ -203,9 +203,9 @@ parse_pipe_3_get_tensors_no_ddr()
   fi
 }
 
-parse_pipe_4_send_tensors_no_ddr()
+parse_pipe_4_send_tensors_async_no_ddr()
 {
-  LOG_NOTICE "Pipe-4: H2D Send Tensors (no DDR)"
+  LOG_NOTICE "Pipe-4: H2D Send Tensors async (no DDR)"
 
   $(grep 'sendTensorsTC(ms)' $logfile > /dev/null 2>&1)
   if [ $? == 0 ]; then
@@ -237,9 +237,9 @@ parse_pipe_3_get_and_send_tensors_with_ddr()
   fi
 }
 
-parse_pipe_3_get_and_send_tensors_without_ddr()
+parse_pipe_3_get_and_send_tensors_sync_without_ddr()
 {
-  LOG_NOTICE "Pipe-3: Get and Send Tensors (without DDR)"
+  LOG_NOTICE "Pipe-3: Get and Send Tensors sync (no DDR)"
 
   $(grep 'ParseKeysTC HBM mode (ms)' $logfile > /dev/null 2>&1)
   if [ $? == 0 ]; then
@@ -267,10 +267,10 @@ main()
   else
     $(grep 'ParseKeysTC HBM mode (ms)' $logfile > /dev/null 2>&1)
     if [ $? -eq 0 ]; then
-      parse_pipe_3_get_and_send_tensors_without_ddr
+      parse_pipe_3_get_and_send_tensors_sync_without_ddr
     else
-      parse_pipe_3_get_tensors_no_ddr
-      parse_pipe_4_send_tensors_no_ddr
+      parse_pipe_3_get_tensors_async_no_ddr
+      parse_pipe_4_send_tensors_async_no_ddr
     fi
   fi
 }
