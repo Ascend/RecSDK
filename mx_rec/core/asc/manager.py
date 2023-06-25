@@ -12,6 +12,7 @@ from mx_rec.util.initialize import get_rank_id, get_device_id, get_rank_size, se
     export_table_instances, export_feature_spec, get_if_load, get_training_mode_channel_id, get_use_static, \
     get_use_hot, get_use_dynamic_expansion, get_enable_table_merge, export_optimizer, export_dangling_table
 from mx_rec.core.asc.helper import find_dangling_table, should_skip
+from mxrec_pybind import InitializeInfo, ConstantInitializerInfo, NormalInitializerInfo
 
 
 def check_dangling_table():
@@ -71,8 +72,41 @@ def generate_table_info_list():
     return table_info_list
 
 
+def matched_constant_initializer(tabel_info):
+    init_param = tabel_info.init_param
+    logging.debug(f"constant_initializer, tabel: {tabel_info.table_name}, initK is {init_param}.")
+    return InitializeInfo(name="constant_initializer", start=0, len=tabel_info.scalar_emb_size,
+                             constant_initializer_info=ConstantInitializerInfo(
+                                 constant_val=tabel_info.emb_initializer.value, initK=init_param))
+
+
+def matched_random_normal_initializer(tabel_info):
+    random_seed = 0 if tabel_info.emb_initializer.seed is None else tabel_info.emb_initializer.seed
+    init_param = tabel_info.init_param
+    logging.debug(f"random_normal_initializer, tabel: {tabel_info.table_name}, initK is {init_param}.")
+    return InitializeInfo(name="random_normal_initializer", start=0, len=tabel_info.scalar_emb_size,
+                                 normal_initializer_info=NormalInitializerInfo(
+                                     mean=tabel_info.emb_initializer.mean,
+                                     stddev=tabel_info.emb_initializer.stddev,
+                                     seed=random_seed,
+                                     initK=init_param
+                                 ))
+
+
+def matched_truncated_normal_initializer(tabel_info):
+    random_seed = 0 if tabel_info.emb_initializer.seed is None else tabel_info.emb_initializer.seed
+    init_param = tabel_info.init_param
+    logging.debug(f"truncated_normal_initializer, tabel: {tabel_info.table_name}, initK is {init_param}.")
+    return InitializeInfo(name="truncated_normal_initializer", start=0, len=tabel_info.scalar_emb_size,
+                                 normal_initializer_info=NormalInitializerInfo(
+                                     mean=tabel_info.emb_initializer.mean,
+                                     stddev=tabel_info.emb_initializer.stddev,
+                                     seed=random_seed,
+                                     initK=init_param
+                                 ))
+
+
 def matched_emb_initializer(tabel_info):
-    from mxrec_pybind import InitializeInfo, ConstantInitializerInfo, NormalInitializerInfo
     initializer_case_map = {"tf1/tf2_constant_initializer":
                                 isinstance(tabel_info.emb_initializer, tf.keras.initializers.Constant) or
                                 isinstance(tabel_info.emb_initializer, tf.constant_initializer),
@@ -88,34 +122,12 @@ def matched_emb_initializer(tabel_info):
                                 isinstance(tabel_info.emb_initializer, tf.keras.initializers.TruncatedNormal),
                             }
     if initializer_case_map.get("tf1/tf2_constant_initializer"):
-        init_param = tabel_info.init_param
-        logging.debug(f"constant_initializer, tabel: {tabel_info.table_name}, initK is {init_param}.")
-        initializer = InitializeInfo(name="constant_initializer", start=0, len=tabel_info.scalar_emb_size,
-                                     constant_initializer_info=ConstantInitializerInfo(
-                                         constant_val=tabel_info.emb_initializer.value, initK=init_param))
+        initializer = matched_constant_initializer(tabel_info)
     elif initializer_case_map.get("tf1/tf2_random_normal_initializer"):
-        random_seed = 0 if tabel_info.emb_initializer.seed is None else tabel_info.emb_initializer.seed
-        init_param = tabel_info.init_param
-        logging.debug(f"random_normal_initializer, tabel: {tabel_info.table_name}, initK is {init_param}.")
-        initializer = InitializeInfo(name="random_normal_initializer", start=0, len=tabel_info.scalar_emb_size,
-                                     normal_initializer_info=NormalInitializerInfo(
-                                         mean=tabel_info.emb_initializer.mean,
-                                         stddev=tabel_info.emb_initializer.stddev,
-                                         seed=random_seed,
-                                         initK=init_param
-                                     ))
+        initializer = matched_random_normal_initializer(tabel_info)
     elif initializer_case_map.get("tf1_truncated_normal_initializer") or \
             initializer_case_map.get("tf2_truncated_normal_initializer"):
-        random_seed = 0 if tabel_info.emb_initializer.seed is None else tabel_info.emb_initializer.seed
-        init_param = tabel_info.init_param
-        logging.debug(f"truncated_normal_initializer, tabel: {tabel_info.table_name}, initK is {init_param}.")
-        initializer = InitializeInfo(name="truncated_normal_initializer", start=0, len=tabel_info.scalar_emb_size,
-                                     normal_initializer_info=NormalInitializerInfo(
-                                         mean=tabel_info.emb_initializer.mean,
-                                         stddev=tabel_info.emb_initializer.stddev,
-                                         seed=random_seed,
-                                         initK=init_param
-                                     ))
+        initializer = matched_truncated_normal_initializer(tabel_info)
     else:
         initializer = InitializeInfo(name="truncated_normal_initializer", start=0, len=tabel_info.scalar_emb_size,
                                      normal_initializer_info=NormalInitializerInfo(
