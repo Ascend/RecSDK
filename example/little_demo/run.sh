@@ -1,6 +1,5 @@
 kill -9 `ps -ef | grep python | grep -v grep | awk '{print $2}'` > /dev/null 2>&1
 rm -rf /root/ascend/log/*
-rm -rf ./saved-model/*
 rm -rf ./kernel*
 rm -rf ./export_graph/*
 
@@ -26,6 +25,12 @@ export TF_CPP_MIN_LOG_LEVEL=3 # tensorflow日志级别,3对应FATAL
 export ASCEND_GLOBAL_LOG_LEVEL=3 # “设置日志级别”章节0:debug, 1:info, 2:warning, 3:error, 4:NULL
 export MXREC_MODE="ASC"
 export USE_MPI=1
+export USE_MODE="train" # 支持[train, predict]
+
+if [ $USE_MODE = "train" ];then
+  echo "train mode: saved-model will be deleted"
+  rm -rf ./saved-model
+fi
 
 ################# 参数配置 ######################
 export USE_DYNAMIC=0            # 0：静态shape；1：动态shape
