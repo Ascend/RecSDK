@@ -20,7 +20,7 @@ using namespace MxRec;
 
 TEST(InitializerTest, ConstantInitializerTest)
 {
-    ConstantInitializer constant_initializer; // start; end; constant_val;
+    ConstantInitializer constant_initializer; // start; end; constant_val; initK;
 
     constant_initializer = ConstantInitializer(1, 5, 7, 0.1);
 
