@@ -3,8 +3,9 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 import logging
-
 import tensorflow as tf
+
+from mxrec_pybind import InitializeInfo, ConstantInitializerInfo, NormalInitializerInfo
 
 from mx_rec.constants.constants import MxRecMode
 from mx_rec.util.initialize import get_rank_id, get_device_id, get_rank_size, set_asc_manager, \
@@ -12,7 +13,6 @@ from mx_rec.util.initialize import get_rank_id, get_device_id, get_rank_size, se
     export_table_instances, export_feature_spec, get_if_load, get_training_mode_channel_id, get_use_static, \
     get_use_hot, get_use_dynamic_expansion, get_enable_table_merge, export_optimizer, export_dangling_table
 from mx_rec.core.asc.helper import find_dangling_table, should_skip
-from mxrec_pybind import InitializeInfo, ConstantInitializerInfo, NormalInitializerInfo
 
 
 def check_dangling_table():
@@ -139,8 +139,6 @@ def matched_emb_initializer(tabel_info):
 
 
 def matched_opt_slot_initializers(table_instance):
-    from mxrec_pybind import InitializeInfo, ConstantInitializerInfo
-
     start_index = table_instance.scalar_emb_size
     slot_initializers = []
     logging.debug(f"matched_opt_slot_initializers, scalar emb size:{table_instance.ext_emb_size}, "
