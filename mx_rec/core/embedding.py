@@ -5,7 +5,6 @@
 import logging
 import math
 import time
-from typing import Union
 from collections import defaultdict
 
 import numpy as np
@@ -14,12 +13,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 
 from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
-from mx_rec.core.asc.feature_spec import FeatureSpec, get_feature_spec
+from mx_rec.core.asc.feature_spec import FeatureSpec, get_feature_spec, set_temporary_feature_spec_attribute
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_HOT_POS, \
     ASCEND_SPARSE_LOOKUP_ID_OFFSET, ASCEND_SPARSE_LOOKUP_RESTORE_VECTOR, MxRecMode, \
     ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_ALL2ALL_MATRIX, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, \
-    DEFAULT_EVICT_TIME_INTERVAL, TRAIN_CHANNEL_ID, MULTI_LOOKUP_TIMES, ASCEND_TABLE_NAME_MUST_CONTAIN, MAX_INT32
+    DEFAULT_EVICT_TIME_INTERVAL, TRAIN_CHANNEL_ID, MULTI_LOOKUP_TIMES, ASCEND_TABLE_NAME_MUST_CONTAIN, MAX_INT32, \
+    ASCEND_SPARSE_LOOKUP_LOOKUP_RESULT
 from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is_asc_frozen, get_customized_ops, \
     insert_table_instance, get_training_mode_channel_id, get_use_static, get_name_to_var_dict, \
     clear_channel, trigger_evict, get_table_instance_by_name, get_use_hot, get_device_id, export_feature_spec, \
@@ -41,8 +41,8 @@ def create_table(**kwargs):
     shard_num = kwargs.get("shard_num", 1)
     fusion_optimizer_var = kwargs.get("fusion_optimizer_var", True)
     hashtable_threshold = kwargs.get("hashtable_threshold", 0)
+    is_save = kwargs.get("is_save", True)
     init_param = kwargs.get("init_param", 1.0)
-    is_save =  kwargs.get("is_save", True)
 
     """
     Args:
@@ -144,6 +144,7 @@ class SparseEmbedding:
         self.optimizer_slot_info_list = []
         self._slot_num = dict()
         self._send_count = 0
+        self.same_table_send_count = 0
         self._use_feature_mapping = False
         self.skip_emb_transfer = True if self.host_vocabulary_size <= 0 else False
         self._default_name_count = -1
@@ -157,9 +158,7 @@ class SparseEmbedding:
         self.lookup_info = set()
         self.lookup_result = dict()
         self.use_dynamic_expansion = get_use_dynamic_expansion()
-        self.channel_name_list = []
-        self.send_count_map = dict()
-        self.channel_name_dict = {True: [], False: []}
+        self.lookup_name_list = []
         self.modify_graph = False
         self.init_param = config.get("init_param")
 
@@ -312,7 +311,7 @@ class SparseEmbedding:
     def check_multi_lookup_times(self):
         if self.modify_graph:
             self.lookup_result = dict()
-        if len(self.channel_name_list) > MULTI_LOOKUP_TIMES or len(self.lookup_result) > MULTI_LOOKUP_TIMES:
+        if len(self.lookup_name_list) > MULTI_LOOKUP_TIMES or len(self.lookup_result) > MULTI_LOOKUP_TIMES:
             run_mode = "Modify Graph" if self.modify_graph else "Feature Spec"
             raise RuntimeError(f"In '{run_mode}' mode, the number of multiple sparse lookup for a table"
                                f"({self.table_name}) is {MULTI_LOOKUP_TIMES}.")
@@ -379,12 +378,6 @@ class SparseEmbedding:
 
         self._optimizer[key] = state_dict
 
-    def set_channel_name(self, ids_channel_name, eval_mode):
-        self.channel_name_list.append(ids_channel_name)
-        if not eval_mode:
-            self.channel_name_dict.get(True).insert(0, ids_channel_name)
-        self.channel_name_dict.get(False).insert(0, ids_channel_name)
-
     def lookup_for_asc(self, ids: tf.Tensor, send_count, **kwargs):
         """
 
@@ -407,6 +400,7 @@ class SparseEmbedding:
         if is_asc_frozen() and is_training:
             raise RuntimeError(f"Cannot build new sparse forward graph after emb cache management was built.")
 
+        self.same_table_send_count += send_count if send_count is not None else 0
         feature_spec = get_feature_spec(self.table_name, kwargs.get("access_and_evict_config"))
         feature_spec.set_feat_attribute(ids, is_training)
         # 'clear_channel()' function needs to be executed after 'set_feat_attribute()' function
@@ -421,19 +415,15 @@ class SparseEmbedding:
         use_dynamic_expansion = get_use_dynamic_expansion()
         use_static = get_use_static()
         use_hot = get_use_hot()
-        eval_mode = not is_training and len(self.channel_name_dict.get(not is_training)) == 0
-        ids_channel_name = ""
+        eval_mode = not is_training and get_training_mode_channel_id(is_training) is None
+        ids_lookup_name = feature_spec.name + "_lookup_ids"
         # set in train mode, train and eval mode, eval mode
         if is_training or eval_mode:
-            ids_channel_name = feature_spec.name + "_lookup_ids"
-            self.set_channel_name(ids_channel_name, eval_mode)
-            send_count = send_count if send_count is not None else 0
-            self._send_count = send_count
-            self.send_count_map[ids_channel_name] = send_count
+            self.lookup_name_list.append(ids_lookup_name)
         self.modify_graph = kwargs.get("modify_graph", True)
         self.check_multi_lookup_times()
         logging.debug(f"In lookup_for_asc function, table name: {self.table_name}, anchor_ids: {anchor_ids}, "
-                      f"ids_channel_name: {ids_channel_name}, use_dynamic_expansion: {use_dynamic_expansion}, "
+                      f"ids_lookup_name: {ids_lookup_name}, use_dynamic_expansion: {use_dynamic_expansion}, "
                       f"use_static: {use_static}, use_hot: {use_hot}")
 
         rank_size = get_rank_size()
@@ -471,7 +461,11 @@ class SparseEmbedding:
 
             all2all_matrix = None
             if not use_static:
-                all2all_matrix = tf.ones(shape=[rank_size, rank_size], dtype=tf.int64, name="all2all_matrix")
+                # In the case of multiple lookups of a table, the all2all_matrix does not run the 'getnext' op
+                # to obtain the actual value. Instead, the initial value is 1. So it needs to be multiplied by
+                # 'self.scalar_emb_size' to ensure the correctness of the 'Reshape' op in the get_own_emb function.
+                all2all_matrix = tf.ones(shape=[rank_size, rank_size],
+                                         dtype=tf.int64, name="all2all_matrix") * self.scalar_emb_size
                 all2all_matrix = tf.identity(all2all_matrix, name=ASCAnchorAttr.ALL2ALL_MATRIX.value)
                 tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_ALL2ALL_MATRIX, all2all_matrix)
                 SparseEmbedding.anchor_tensor_specs[anchor_ids][ASCAnchorAttr.ALL2ALL_MATRIX] = all2all_matrix
@@ -479,7 +473,8 @@ class SparseEmbedding:
             hot_pos = None
             if use_hot:
                 import mxrec_pybind
-                hot_size = int(mxrec_pybind.get_ub_hot_size(get_device_id()) / self.emb_size)
+                emb_size = self.scalar_emb_size if self.skip_emb_transfer else self.ext_emb_size
+                hot_size = int(mxrec_pybind.get_ub_hot_size(get_device_id()) / emb_size)
                 hot_pos = tf.ones(shape=[hot_size, ], dtype=tf.int32, name="hot_pos")
                 hot_pos = tf.identity(hot_pos, name=ASCAnchorAttr.HOT_POS.value)
                 tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_HOT_POS, hot_pos)
@@ -503,6 +498,12 @@ class SparseEmbedding:
             else:
                 dest_shape = array_ops.concat([array_ops.shape(feat_ids), [self.scalar_emb_size]], 0)
                 lookup_result = array_ops.reshape(embeddings, dest_shape)
+
+            # In the case of multiple lookups of a table, the lookup result node needs to be recorded and
+            # replaced during modify graph.
+            lookup_result = tf.identity(lookup_result, name=ASCAnchorAttr.LOOKUP_RESULT.value)
+            tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_LOOKUP_RESULT, lookup_result)
+            SparseEmbedding.anchor_tensor_specs[anchor_ids][ASCAnchorAttr.LOOKUP_RESULT] = lookup_result
 
             def grad(lookup_diff):
                 embedding_diff = tf.reshape(lookup_diff, [-1, self.scalar_emb_size])
@@ -574,20 +575,6 @@ class SparseEmbedding:
                     same_table_tensor_list.append(tensor)
                 return same_table_tensor_list
 
-            def set_feature_spec_attr(mock_feature_spec: FeatureSpec, total_feature_count: Union[int, tf.Tensor]):
-                """
-                Set properties for a temporary feature_spec.
-                Args:
-                    mock_feature_spec: A temporary feature_spec consisting of multiple feature_spec with the same table.
-                    total_feature_count: Inner product of the shape of a tensor.
-                Returns: None
-                """
-                mock_feature_spec.batch_size = total_feature_count
-                mock_feature_spec.dims = [total_feature_count, 1]
-                mock_feature_spec.initialized = True
-                mock_feature_spec.pipeline_mode.add(True)
-                mock_feature_spec.pipeline_mode.add(False)
-
             same_table_feature_spec = sorted(same_table_feature_spec, key=lambda x: x.name)
             mock_feature_spec = FeatureSpec(f"mock_feature_spec_{table_name}", feat_count=1, table_name=table_name)
 
@@ -599,30 +586,47 @@ class SparseEmbedding:
                 tensor_list = get_tensor_list()
                 tensor_split_list = [tf.math.reduce_prod(array_ops.shape(tensor)) for tensor in tensor_list]
                 total_feature_count = tf.add_n(tensor_split_list)
-            set_feature_spec_attr(mock_feature_spec, total_feature_count)
+            set_temporary_feature_spec_attribute(mock_feature_spec, total_feature_count)
 
             kwargs["multi_lookup"] = True
             lookup_result = self.lookup_for_asc_with_feature_spec_inner(mock_feature_spec,
                                                                         send_count * same_table_spec_count, **kwargs)
             logging.debug(f"lookup table {table_name} via {tensor_split_list}")
-
-            lookup_result_split = tf.split(lookup_result, tensor_split_list)
-            if len(lookup_result_split) != len(same_table_feature_spec) or (
-                    not get_use_static() and len(same_table_feature_spec) != len(tensor_list)):
-                raise RuntimeError(f"shape not match. len(lookup_result_split): {len(lookup_result_split)},"
-                                   f"len(same_table_feature_spec): {len(same_table_feature_spec)}"
-                                   f"len(tensor_list): {len(tensor_list)}")
-            for idx, (one_feature_spec, one_result) in enumerate(zip(same_table_feature_spec, lookup_result_split)):
-                if one_feature_spec.name not in self.lookup_result:
-                    self.lookup_result[one_feature_spec.name] = {}
-                if get_use_static():
-                    dest_shape = one_feature_spec.dims + [self.scalar_emb_size]
-                else:
-                    dest_shape = array_ops.concat([array_ops.shape(tensor_list[idx]), [self.scalar_emb_size]], 0)
-                self.lookup_result[one_feature_spec.name][is_training] = array_ops.reshape(one_result, dest_shape)
+            self.split_lookup_result(same_table_feature_spec, tensor_split_list, tensor_list, lookup_result,
+                                     is_training)
 
         self.check_multi_lookup_times()
         return self.lookup_result.get(spec_name).get(is_training)
+
+    def split_lookup_result(self, same_table_feature_spec: list, tensor_split_list: list, tensor_list: list,
+                            lookup_result: tf.Tensor, is_training: bool):
+        """
+        Splits the result of the merge sparse lookup.
+
+        Args:
+            same_table_feature_spec: a list of feature specs in a same table
+            tensor_split_list: a list of tensor split in a same table
+            tensor_list: a list of tensor in a same table
+            lookup_result: results of the sparse lookup
+            is_training: indicates whether the training mode is used.
+
+        Returns: None
+
+        """
+        lookup_result_split = tf.split(lookup_result, tensor_split_list)
+        if len(lookup_result_split) != len(same_table_feature_spec) or (
+                not get_use_static() and len(same_table_feature_spec) != len(tensor_list)):
+            raise RuntimeError(f"shape not match. len(lookup_result_split): {len(lookup_result_split)},"
+                               f"len(same_table_feature_spec): {len(same_table_feature_spec)}"
+                               f"len(tensor_list): {len(tensor_list)}")
+        for idx, (one_feature_spec, one_result) in enumerate(zip(same_table_feature_spec, lookup_result_split)):
+            if one_feature_spec.name not in self.lookup_result:
+                self.lookup_result[one_feature_spec.name] = {}
+            if get_use_static():
+                dest_shape = one_feature_spec.dims + [self.scalar_emb_size]
+            else:
+                dest_shape = array_ops.concat([array_ops.shape(tensor_list[idx]), [self.scalar_emb_size]], 0)
+            self.lookup_result[one_feature_spec.name][is_training] = array_ops.reshape(one_result, dest_shape)
 
     def lookup_for_asc_with_feature_spec_inner(self, feature_spec: FeatureSpec, send_count: int, **kwargs):
         """

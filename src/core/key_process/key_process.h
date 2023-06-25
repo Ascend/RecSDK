@@ -121,8 +121,6 @@ namespace MxRec {
 
         void InitHotEmbTotCount(const EmbInfo& info, const RankInfo& rInfo);
 
-        auto GetSendCount(const string& name, const string& channelName, bool modifyGraph);
-
         void KeyProcessTask(int channel, int id);
 
         bool KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channel, int id);

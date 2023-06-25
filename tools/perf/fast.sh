@@ -1,4 +1,4 @@
-#! /bin/bash
+#!/bin/bash
 # Copyright (c) Huawei Technologies Co., Ltd. 2021-2023. All rights reserved.
 # Description: performace analysis tool
 # Author: MindX SDK
@@ -102,21 +102,18 @@ parse_pipe_2_key_process()
 
   LOG_INFO "Step-2.1 GetBatchData"
 
-  grep 'get data time' $logfile | cut -d" " -f11 | \
-    awk -F"[:,]" '{print $2}' | \
-    awk 'BEGIN { max=0 } { sum+=$NF; if($NF>max) max=$NF } END \
-     {printf "--|get data time: total=%d, max=%0.1f, avg=%0.1f\n", NR, max, sum/NR}'
+  grep 'getBatchDataTC' $logfile | \
+    awk -F":" 'BEGIN { max=0 } { sum+=$NF; if($NF>max) max=$NF } END \
+    {printf "--|get data time: total=%d, max=%0.1f, avg=%0.1f\n", NR, max, sum/NR}'
 
-  grep 'get data time' $logfile | cut -d" " -f11 | \
-    awk -F"[:,]" '{print $2}' | \
-    awk 'BEGIN {sum=0; count=0;} {if($NF<2000) {sum+=$NF; count++;}} END \
-        {printf "--|get data time(filter>2000ms): count=%d, avg=%0.1f\n", count, sum/count}'
+  grep 'getBatchDataTC' $logfile | \
+    awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<2000) {sum+=$NF; count++;}} END \
+    {printf "--|get data time(filter>2000ms): count=%d, avg=%0.1f\n", count, sum/count}'
 
-  grep 'get data time' $logfile | cut -d" " -f11 | \
-      awk -F"[:,]" '{print $2}' | \
-      awk 'BEGIN { total=0; none_zero_ms_num=0 } { total++; if($NF>0) none_zero_ms_num++ } END \
-          {printf "--|get data time: total=%d, none_zero_ms_num=%d, none_zero_ms_rate=%0.3f, zero_ms_rate=%0.3f\n", \
-          total, none_zero_ms_num, none_zero_ms_num/total, (1-none_zero_ms_num/total)}'
+  grep 'getBatchDataTC' $logfile | \
+    awk -F":" 'BEGIN { total=0; none_zero_ms_num=0 } { total++; if($NF>0) none_zero_ms_num++ } END \
+      {printf "--|get data time: total=%d, none_zero_ms_num=%d, none_zero_ms_rate=%0.3f, zero_ms_rate=%0.3f\n", \
+      total, none_zero_ms_num, none_zero_ms_num/total, (1-none_zero_ms_num/total)}'
 
   LOG_INFO "Step-2.2 KeyProcess"
 
@@ -195,9 +192,9 @@ parse_pipe_2_key_process()
   # common end
 }
 
-parse_pipe_3_get_tensors_no_ddr()
+parse_pipe_3_get_tensors_async_no_ddr()
 {
-  LOG_NOTICE "Pipe-3: Get Tensors (no DDR)"
+  LOG_NOTICE "Pipe-3: Get Tensors async (no DDR)"
 
   $(grep 'getAllTensorTC(ms)' $logfile > /dev/null 2>&1)
   if [ $? == 0 ]; then
@@ -206,9 +203,9 @@ parse_pipe_3_get_tensors_no_ddr()
   fi
 }
 
-parse_pipe_4_send_tensors_no_ddr()
+parse_pipe_4_send_tensors_async_no_ddr()
 {
-  LOG_NOTICE "Pipe-4: H2D Send Tensors (no DDR)"
+  LOG_NOTICE "Pipe-4: H2D Send Tensors async (no DDR)"
 
   $(grep 'sendTensorsTC(ms)' $logfile > /dev/null 2>&1)
   if [ $? == 0 ]; then
@@ -240,6 +237,18 @@ parse_pipe_3_get_and_send_tensors_with_ddr()
   fi
 }
 
+parse_pipe_3_get_and_send_tensors_sync_without_ddr()
+{
+  LOG_NOTICE "Pipe-3: Get and Send Tensors sync (no DDR)"
+
+  $(grep 'ParseKeysTC HBM mode (ms)' $logfile > /dev/null 2>&1)
+  if [ $? == 0 ]; then
+      grep 'ParseKeysTC HBM mode (ms)' $logfile | \
+        awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<2000) {sum+=$NF; count++;}} END \
+        {printf "--|ParseKeysTC(filter>2000ms): avg=%0.1f\n", sum/count}'
+  fi
+}
+
 main()
 {
   validate_options $@
@@ -256,8 +265,13 @@ main()
   if [ $? -eq 0 ]; then
       parse_pipe_3_get_and_send_tensors_with_ddr
   else
-    parse_pipe_3_get_tensors_no_ddr
-    parse_pipe_4_send_tensors_no_ddr
+    $(grep 'ParseKeysTC HBM mode (ms)' $logfile > /dev/null 2>&1)
+    if [ $? -eq 0 ]; then
+      parse_pipe_3_get_and_send_tensors_sync_without_ddr
+    else
+      parse_pipe_3_get_tensors_async_no_ddr
+      parse_pipe_4_send_tensors_async_no_ddr
+    fi
   fi
 }
 

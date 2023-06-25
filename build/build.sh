@@ -182,6 +182,7 @@ gen_tar_file()
   mv  "${ROOT_DIR}"/tf1_whl ../build/"${pkg_dir}"
   mv  "${ROOT_DIR}"/tf2_whl ../build/"${pkg_dir}"
   cp -r  "${src_path}"/../example ../build/"${pkg_dir}"
+  cp -r  "${src_path}"/../cust_op ../build/"${pkg_dir}"
   cd ../build
   tar -zvcf "${release_tar}" "${pkg_dir}" || {
       warn "compression failed, packages might be broken"
