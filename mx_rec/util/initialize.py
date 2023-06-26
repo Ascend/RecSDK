@@ -243,7 +243,7 @@ class ConfigInitializer:
                     rank_start = int(split_devices[0])
                     device_list = list(range(rank_start, int(ascend_visible_devices.strip().split("-")[-1]) + 1))
             elif "," in ascend_visible_devices:
-                device_list = list(map(int, ascend_visible_devices.strip().split(","))).sort()
+                device_list = list(map(int, ascend_visible_devices.strip().split(",")))
             elif ascend_visible_devices in VALID_DEVICE_ID_LIST:
                 device_list = [int(ascend_visible_devices.strip())]
             else:
@@ -260,23 +260,25 @@ class ConfigInitializer:
 
         chief_device = os.getenv("CM_CHIEF_DEVICE")
         rank_size = os.getenv("CM_WORKER_SIZE")
-        if int(rank_size) != len(device_list):
-            raise ValueError(f"Rank size {rank_size} is different from device num {len(device_list)}.")
+        sorted_device_list = sorted(device_list)
+        if int(rank_size) != len(sorted_device_list):
+            raise ValueError(f"Rank size {rank_size} is different from device num {len(sorted_device_list)}.")
         try:
             self._rank_to_device_dict[0] = int(chief_device)
         except ValueError as err:
             raise ValueError("CM_WORKER_SIZE or CM_CHIEF_DEVICE uncorrected configured.") from err
         try:
-            device_list.pop(int(chief_device))
+            sorted_device_list.pop(int(chief_device))
         except IndexError as err:
             raise IndexError(
-                f"Config CM_CHIEF_DEVICE {chief_device} not in training container device list {device_list}.") from err
+                f"Config CM_CHIEF_DEVICE {chief_device} not in training container device list {sorted_device_list}.") \
+                from err
 
-        for device_idx in device_list:
+        for device_idx in sorted_device_list:
             device_id = mxrec_pybind.get_logic_id(int(device_idx))
             if device_id > 16:
                 raise ValueError(f"get logic id from physic id fail.")
-            index = device_list.index(device_idx)
+            index = sorted_device_list.index(device_idx)
             self._rank_to_device_dict[index + 1] = device_id
 
     def insert_training_mode_channel_id(self, is_training):
