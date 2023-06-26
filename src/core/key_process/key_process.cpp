@@ -525,6 +525,7 @@ void KeyProcess::ProcessBatchWithFastUnique(const unique_ptr<emb_batch_t> &batch
     EASY_VALUE("batchId", batch->batchId)
 
     EASY_BLOCK("ock-unique")
+    TimeCost uniqueTC;
 
     KeySendInfo keySendInfo;
     size_t size = GetKeySize(batch);
@@ -550,7 +551,6 @@ void KeyProcess::ProcessBatchWithFastUnique(const unique_ptr<emb_batch_t> &batch
     uniqueOut.uniqueIdInBucket = reinterpret_cast<void *>(uniqueVector.data());
     uniqueOut.uniqueIdCnt = 0;
 
-    TimeCost uniqueTC;
     int ret = unique->DoEnhancedUnique(uniqueIn, uniqueOut);
     EASY_END_BLOCK
     TIME_PRINT("FastUniqueCompute(ms):{}, ret:{}", uniqueTC.ElapsedMS(), ret);
@@ -594,14 +594,15 @@ void KeyProcess::HandleHotAndSendCount(const unique_ptr<emb_batch_t> &batch, Uni
     }
 }
 
-void KeyProcess::ComputeHotPos(const unique_ptr<emb_batch_t> &batch, map<emb_key_t, int> &hotMap,
+void KeyProcess::ComputeHotPos(const unique_ptr<emb_batch_t> &batch, absl::flat_hash_map<emb_key_t, int> &hotMap,
                                vector<int> &hotPos, vector<int32_t> &restore, const int hotOffset)
 {
-    auto inputData = batch->sample.data();
+    auto* inputData = batch->sample.data();
+    size_t miniBs = batch->Size();
 
     int hotCount = 0;
-    for (size_t i = 0;i < batch->Size(); ++i) {
-        auto key = inputData[i];
+    for (size_t i = 0;i < miniBs; i++) {
+        const emb_key_t& key = inputData[i];
         auto hot = hotMap.find(key);
         if (hot != hotMap.end()) {
             if (hot->second == -1) {
