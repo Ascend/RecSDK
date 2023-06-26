@@ -97,7 +97,7 @@ protected:
     void SetUp()
     {
         // init key_process (RankInfo rankInfo, const vector<EmbInfo> &embInfos)
-        constantInitializerInfo = ConstantInitializerInfo(constantVal);
+        constantInitializerInfo = ConstantInitializerInfo(constantVal, 1);
         initializeInfo = InitializeInfo(constantInitializerName, start, embeddingSize, constantInitializerInfo);
         initializeInfos.push_back(initializeInfo);
 

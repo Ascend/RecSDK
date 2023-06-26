@@ -17,7 +17,7 @@ namespace MxRec {
     class ConstantInitializer : public Initializer {
     public:
         ConstantInitializer() = default;
-        ConstantInitializer(int start, int len, float value);
+        ConstantInitializer(int start, int len, float value, float initK);
 
         ~ConstantInitializer() override {};
 

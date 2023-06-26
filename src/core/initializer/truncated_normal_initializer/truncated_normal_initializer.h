@@ -10,6 +10,7 @@
 
 #include <vector>
 #include <random>
+#include <tuple>
 
 #include "initializer/initializer.h"
 
@@ -19,7 +20,7 @@ namespace MxRec {
     class TruncatedNormalInitializer : public Initializer {
     public:
         TruncatedNormalInitializer() = default;
-        TruncatedNormalInitializer(int start, int len, float mean, float stddev, int seed);
+        TruncatedNormalInitializer(int start, int len, std::tuple<float, float, int, float>);
 
         ~TruncatedNormalInitializer() override {};
 

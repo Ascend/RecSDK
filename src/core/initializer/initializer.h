@@ -20,6 +20,7 @@ namespace MxRec {
         virtual void GenerateData(float* emb, int embSize)= 0;
         int start;
         int len;
+        float initParam = 1.0;
     };
 }
 

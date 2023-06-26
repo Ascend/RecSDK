@@ -11,7 +11,11 @@
 using namespace std;
 using namespace MxRec;
 
-ConstantInitializer::ConstantInitializer(int start, int len, float value) : start(start), len(len), value(value) {}
+ConstantInitializer::ConstantInitializer(int start, int len, float value, float initK)
+    : start(start), len(len), value(value)
+{
+    initParam = initK;
+}
 
 void ConstantInitializer::GenerateData(float* const emb, const int embSize)
 {
@@ -24,5 +28,5 @@ void ConstantInitializer::GenerateData(float* const emb, const int embSize)
             start, len, embSize);
         return;
     }
-    std::fill_n(emb + start, len, value);
+    std::fill_n(emb + start, len, initParam * value);
 }

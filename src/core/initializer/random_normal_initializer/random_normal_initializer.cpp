@@ -5,15 +5,16 @@
  * Date: 2022/12/23
  */
 
-#include "random_normal_initializer.h"
-#include <spdlog/spdlog.h>
 #include <algorithm>
+#include <spdlog/spdlog.h>
+#include "random_normal_initializer.h"
 
 using namespace MxRec;
 
-RandomNormalInitializer::RandomNormalInitializer(int start, int len, float mean, float stddev, int seed)
-    : start(start), len(len), mean(mean), stddev(stddev), seed(seed)
+RandomNormalInitializer::RandomNormalInitializer(int start, int len, std::tuple<float, float, int, float> ret)
+    : start(start), len(len)
 {
+    std::tie(mean, stddev, seed, initParam) = ret;
     generator = std::default_random_engine(seed);
     distribution = std::normal_distribution<float>(mean, stddev);
 }
@@ -29,5 +30,5 @@ void RandomNormalInitializer::GenerateData(float* const emb, const int embSize)
             start, len, embSize);
         return;
     }
-    std::generate_n(emb + start, len, [&]() { return distribution(generator); });
+    std::generate_n(emb + start, len, [&]() { return initParam * distribution(generator); });
 }

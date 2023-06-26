@@ -64,7 +64,9 @@ FeatureAdmitReturnType FeatureAdmitAndEvict::FeatureAdmit(int channel,
     spdlog::debug("FeatureAdmitAndEvict PrintSize, name:[{}], history key:[{}] ...", tensorName,
                   m_recordsData.historyRecords[tensorName].size());
 
-    m_recordsData.timestamps[tensorName] = batch->timestamp;
+    if (batch->timestamp > m_recordsData.timestamps[tensorName]) {
+        m_recordsData.timestamps[tensorName] = batch->timestamp;
+    }
     absl::flat_hash_map<int64_t, bool> visitedRecords;
     for (auto& key : splitKey) {
         if (key == -1) {

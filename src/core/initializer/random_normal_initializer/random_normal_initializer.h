@@ -10,6 +10,7 @@
 
 #include <vector>
 #include <random>
+#include <tuple>
 
 #include "initializer/initializer.h"
 
@@ -19,7 +20,7 @@ namespace MxRec {
     class RandomNormalInitializer : public Initializer {
     public:
         RandomNormalInitializer() = default;
-        RandomNormalInitializer(int start, int len, float mean, float stddev, int seed);
+        RandomNormalInitializer(int start, int len, std::tuple<float, float, int, float>);
 
         ~RandomNormalInitializer() override {};
 

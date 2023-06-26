@@ -42,6 +42,7 @@ def create_table(**kwargs):
     fusion_optimizer_var = kwargs.get("fusion_optimizer_var", True)
     hashtable_threshold = kwargs.get("hashtable_threshold", 0)
     is_save = kwargs.get("is_save", True)
+    init_param = kwargs.get("init_param", 1.0)
 
     """
     Args:
@@ -58,12 +59,14 @@ def create_table(**kwargs):
         shard_num: embedding partition number
         fusion_optimizer_var: fusion optimizer variable with embedding
         hashtable_threshold: choose to implement based on hash table or linear layer
+        init_param: embedding init param-coefficient
     """
 
     config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
                   device_vocabulary_size=device_vocabulary_size, host_vocabulary_size=host_vocabulary_size,
                   optimizer_list=optimizer_list, mode=mode, value_dtype=value_dtype, shard_num=shard_num,
-                  fusion_optimizer_var=fusion_optimizer_var, hashtable_threshold=hashtable_threshold, is_save=is_save)
+                  fusion_optimizer_var=fusion_optimizer_var, hashtable_threshold=hashtable_threshold,
+                  init_param=init_param, is_save=is_save)
     embedding = SparseEmbedding(config)
     return embedding
 
@@ -157,6 +160,7 @@ class SparseEmbedding:
         self.use_dynamic_expansion = get_use_dynamic_expansion()
         self.lookup_name_list = []
         self.modify_graph = False
+        self.init_param = config.get("init_param")
 
         self.set_slice_vocab_size()
         self.set_emb_size()
@@ -334,6 +338,9 @@ class SparseEmbedding:
 
             if is_training not in self.lookup_info:
                 self.lookup_info.add(is_training)
+
+            if not isinstance(self.init_param, float):
+                raise ValueError("Arg init_param should be a float.")
 
             if get_use_static():
                 if isinstance(send_count, int) and send_count > 0:
@@ -755,7 +762,9 @@ class SparseEmbedding:
                       f" {self.slice_host_vocabulary_size}.")
 
     def _initialize_variables(self):
-        initialized_tensor = self.emb_initializer(self.slice_device_vocabulary_size + self.embedding_size)
+        initialized_tensor = \
+            self.emb_initializer(self.slice_device_vocabulary_size + self.embedding_size) * self.init_param
+
         self.variable = tf.compat.v1.get_variable(self.table_name, trainable=False, initializer=initialized_tensor)
         # make sure sparse table variable will not be saved and restored within tf checkpoint.
         insert_removing_var_list(self.variable.name)
@@ -880,7 +889,7 @@ class _EvictHook(tf.compat.v1.train.SessionRunHook):
                         output_shapes=[instance.slice_device_vocabulary_size],
                         channel_name=f'{instance.table_name}_evict_{TRAIN_CHANNEL_ID}')[0]
                     initialized_tensor = instance.emb_initializer(
-                        instance.slice_device_vocabulary_size + instance.embedding_size)
+                        instance.slice_device_vocabulary_size + instance.embedding_size) * instance.init_param
                 else:
                     evict_pos = npu_ops.gen_npu_ops.get_next(
                         output_types=[tf.int32],
