@@ -111,7 +111,7 @@ namespace MxRec {
         map<emb_name_t, absl::flat_hash_map<emb_key_t, int64_t>> keyOffsetMap {};
         FeatureAdmitAndEvict m_featureAdmitAndEvict {};
         map<emb_name_t, std::vector<size_t>> evictPosMap {};
-        map<emb_name_t, map<emb_key_t, int>> hotKey {};
+        map<emb_name_t, absl::flat_hash_map<emb_key_t, int>> hotKey {};
         map<emb_name_t, int> hotEmbTotCount;
         map<emb_name_t, EmbTable> embeddingTableMap {};
 
@@ -182,7 +182,7 @@ namespace MxRec {
         void AddCountStartToHotPos(vector<keys_t>& splitKeys, vector<int>& hotPos, const vector<int>& hotPosDev,
                                    const unique_ptr<emb_batch_t>& batch);
 
-        void ComputeHotPos(const unique_ptr<emb_batch_t> &batch, map<emb_key_t, int> &hotMap,
+        void ComputeHotPos(const unique_ptr<emb_batch_t> &batch, absl::flat_hash_map<emb_key_t, int> &hotMap,
                            vector<int> &hotPos, vector<int32_t> &restore, const int hotOffset);
 
         vector<uint32_t> GetCountRecv(const unique_ptr<emb_batch_t>& batch, int id,
