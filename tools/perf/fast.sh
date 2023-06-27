@@ -15,7 +15,7 @@
 #
 # 3. 注意事项
 # 基于spdlog::info，mxRec中添加了TimeCost打点日志，因此，在执行前务必确保run.sh中设置
-# SPDLOG_LEVEL=info 或者 SPDLOG_LEEL=debug  (如果没有设置，本工具会退出，并给予提示)
+# SPDLOG_LEEL=debug  (如果没有设置，本工具会退出，并给予提示)
 #
 # 4. 解读结果
 # (1) Pipeline: 整个Pipeline由多个Pipe串行构成，性能分析结果分Pipe呈现，例如Pipe-1/Pipe-2/Pipe-3/Pipe-4等；
@@ -62,7 +62,7 @@ check_spdlog_level()
     $(grep 'ReadEmbKeyV2Dynamic' $logfile > /dev/null 2>&1)
     if [ $? != 0 ]; then
         LOG_ERROR "No timecost-related logs, please check 'mpi_args' in your run.sh,
-                make sure SPDLOG_LEVEL=info or SPDLOG_LEEL=debug, and run again!"
+                make sure SPDLOG_LEEL=debug, and run again!"
         exit 1
     fi
   fi
@@ -245,8 +245,31 @@ parse_pipe_3_get_and_send_tensors_sync_without_ddr()
   if [ $? == 0 ]; then
       grep 'ParseKeysTC HBM mode (ms)' $logfile | \
         awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<2000) {sum+=$NF; count++;}} END \
-        {printf "--|ParseKeysTC(filter>2000ms): avg=%0.1f\n", sum/count}'
+        {printf "ParseKeysTC(filter>2000ms): avg=%0.1f\n", sum/count}'
   fi
+
+  grep 'getTensorsSyncTC(ms)' $logfile | \
+      awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<1000) {sum+=$NF; count++;}} END \
+      {printf "--|getTensorsSyncTC(filter>1000ms): avg=%0.1f\n", sum/count}'
+
+  grep 'sendTensorsSyncTC(ms)' $logfile | \
+      awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<1000) {sum+=$NF; count++;}} END \
+      {printf "--|sendTensorsSyncTC(filter>1000ms): avg=%0.1f\n", sum/count}'
+
+  $(grep 'sendAll2AllScSyncTC(ms)' $logfile > /dev/null 2>&1)
+  if [ $? == 0 ]; then
+    grep 'sendAll2AllScSyncTC(ms)' $logfile | \
+          awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<200) {sum+=$NF; count++;}} END \
+          {printf "----|sendAll2AllScSyncTC(filter>200ms): avg=%0.1f\n", sum/count}'
+  fi
+
+  grep 'sendLookupSyncTC(ms)' $logfile | \
+        awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<200) {sum+=$NF; count++;}} END \
+        {printf "----|sendLookupSyncTC(filter>200ms): avg=%0.1f\n", sum/count}'
+
+  grep 'sendRestoreSyncTC(ms)' $logfile | \
+          awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<200) {sum+=$NF; count++;}} END \
+          {printf "----|sendRestoreSyncTC(filter>200ms): avg=%0.1f\n", sum/count}'
 }
 
 main()
