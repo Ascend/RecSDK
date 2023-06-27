@@ -579,19 +579,38 @@ bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
     spdlog::info(MGMT + "start parse keys HBM, nBatch:{} , [{}]:{}", mgmtRankInfo.nBatch, channelId, batchId);
     for (const auto& embInfo: mgmtEmbInfo) {
         TimeCost ParseKeysTC;
+        // get
+        TimeCost getTensorsSyncTC;
         auto infoVecs = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::RESTORE);
         if (infoVecs == nullptr) {
             spdlog::info(MGMT + "ParseKeys infoVecs empty ! batchId:{}, channelId:{}", batchId, channelId);
             return false;
         }
-
+        unique_ptr<vector<Tensor>> all2all = nullptr;
         if (!mgmtRankInfo.useStatic) {
-            auto all2all = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::ALL2ALL);
-            hdTransfer->Send(TransferChannel::ALL2ALL, *all2all, channelId, embInfo.name);
+            all2all = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::ALL2ALL);
         }
+        TIME_PRINT("getTensorsSyncTC(ms):{}", getTensorsSyncTC.ElapsedMS());
+
+        // send
+        TimeCost sendTensorsSyncTC;
+        if (!mgmtRankInfo.useStatic) {
+            TimeCost sendAll2AllScSyncTC;
+            hdTransfer->Send(TransferChannel::ALL2ALL, *all2all, channelId, embInfo.name);
+            TIME_PRINT("sendAll2AllScSyncTC(ms):{}", sendAll2AllScSyncTC.ElapsedMS());
+        }
+
+        TimeCost sendLookupSyncTC;
         hdTransfer->Send(TransferChannel::LOOKUP, { infoVecs->back() }, channelId, embInfo.name);
         infoVecs->pop_back();
+        TIME_PRINT("sendLookupSyncTC(ms):{}", sendLookupSyncTC.ElapsedMS());
+
+        TimeCost sendRestoreSyncTC;
         hdTransfer->Send(TransferChannel::RESTORE, *infoVecs, channelId, embInfo.name);
+        TIME_PRINT("sendRestoreSyncTC(ms):{}", sendRestoreSyncTC.ElapsedMS());
+
+        TIME_PRINT("sendTensorsSyncTC(ms):{}", sendTensorsSyncTC.ElapsedMS());
+
         TIME_PRINT("ParseKeysTC HBM mode (ms):{}", ParseKeysTC.ElapsedMS());
     }
     batchId++;
