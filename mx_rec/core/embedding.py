@@ -474,6 +474,8 @@ class SparseEmbedding:
             if use_hot:
                 import mxrec_pybind
                 emb_size = self.scalar_emb_size if self.skip_emb_transfer else self.ext_emb_size
+                if emb_size == 0:
+                    raise RuntimeError("emb_size is 0, please set a valid value.")
                 hot_size = int(mxrec_pybind.get_ub_hot_size(get_device_id()) / emb_size)
                 hot_pos = tf.ones(shape=[hot_size, ], dtype=tf.int32, name="hot_pos")
                 hot_pos = tf.identity(hot_pos, name=ASCAnchorAttr.HOT_POS.value)
