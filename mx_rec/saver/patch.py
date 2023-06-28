@@ -90,7 +90,6 @@ def saver_init(self, var_list=None, reshape=False, sharded=False, max_to_keep=5,
         keep_time = self._keep_checkpoint_every_n_hours * 3600
         self._next_checkpoint_time = (time.time() + keep_time)
     elif not defer_build:
-        self._var_list = build_var_list(var_list)
         self.build()
     self._object_restllore_saver = None
     # mxRec Patch
@@ -161,6 +160,13 @@ def get_checkpoint_file(self, global_step, sess, save_path):
     if self._pad_step_number:
         checkpoint_file = f"{save_path}-{global_step:08d}"
     return checkpoint_file
+
+
+def build(self):
+    self._var_list = build_var_list()
+    if context.executing_eagerly():
+        raise RuntimeError("Use save/restore instead of build in eager mode.")
+    self._build(self._filename, build_save=True, build_restore=True)
 
 
 def save(self, sess, save_path, global_step=None, latest_filename=None, meta_graph_suffix="meta", write_meta_graph=True,
@@ -313,16 +319,14 @@ def saver_from_object_based_checkpoint(checkpoint_path, var_list=None, builder=N
     return cached_saver
 
 
-def build_var_list(var_list):
-    if var_list is None:
-        save_var_list = []
-        tmp_list = variables._all_saveable_objects()
-        removing_var_list = export_removing_var_list()
-        for var in tmp_list:
-            if var.name not in removing_var_list:
-                save_var_list.append(var)
-        return save_var_list
-    return var_list
+def build_var_list():
+    save_var_list = []
+    tmp_list = variables._all_saveable_objects()
+    removing_var_list = export_removing_var_list()
+    for var in tmp_list:
+        if var.name not in removing_var_list:
+            save_var_list.append(var)
+    return save_var_list
 
 
 class BaseSaverBuilder(object):
@@ -370,6 +374,7 @@ def patch_for_saver():
     dense_saver.__init__ = saver_init
     dense_saver.save = save
     dense_saver.restore = restore
+    dense_saver.build = build
     logging.debug("Class tf.train.Saver has been patched.")
 
 

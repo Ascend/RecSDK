@@ -9,6 +9,7 @@
 #include <iostream>
 #include <sys/mman.h>
 #include <cstring>
+#include <unistd.h>
 
 #include "ckpt_data_handler//emb_hash_ckpt/emb_hash_ckpt.h"
 #include "ckpt_data_handler/host_emb_ckpt/host_emb_ckpt.h"
@@ -134,8 +135,10 @@ void Checkpoint::MakeDataLayerSaveDir(const vector<string>& embNames,
 
 void Checkpoint::MakeSaveDir(const string& dirName)
 {
-    if (mkdir(dirName.c_str(), dirMode) == -1) {
-        spdlog::debug("Unable to create directory: {}", dirName);
+    if (access(dirName.c_str(), F_OK) == -1) {
+        if (mkdir(dirName.c_str(), dirMode) == -1) {
+            spdlog::debug("Unable to create directory: {}", dirName);
+        }
     }
 }
 
