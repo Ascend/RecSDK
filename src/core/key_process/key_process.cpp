@@ -534,9 +534,7 @@ void KeyProcess::ProcessBatchWithFastUnique(const unique_ptr<emb_batch_t> &batch
     vector<int64_t> uniqueVector(batch->Size());
     uniqueInfoOut.restore.resize(batch->Size());
     vector<int32_t> idCount(batch->Size());
-    if (rankInfo.useStatic) {
-        keySendInfo.keyCount.resize(size);
-    }
+    keySendInfo.keyCount.resize(size);
 
     UniqueIn uniqueIn;
     uniqueIn.inputIdCnt = (uint32_t)batch->Size();
@@ -545,8 +543,12 @@ void KeyProcess::ProcessBatchWithFastUnique(const unique_ptr<emb_batch_t> &batch
     EnhancedUniqueOut uniqueOut;
     uniqueOut.uniqueId = reinterpret_cast<void *>(keySendInfo.keySend.data());
     uniqueOut.index = (uint32_t*)uniqueInfoOut.restore.data();
-    uniqueOut.idCnt = idCount.data();
-    uniqueOut.idCntFill = keySendInfo.keyCount.data();
+    if (rankInfo.useStatic) {
+        uniqueOut.idCnt = idCount.data();
+        uniqueOut.idCntFill = keySendInfo.keyCount.data();
+    } else {
+        uniqueOut.idCnt = keySendInfo.keyCount.data();
+    }
     uniqueOut.uniqueIdCntInBucket = splitSize.data();
     uniqueOut.uniqueIdInBucket = reinterpret_cast<void *>(uniqueVector.data());
     uniqueOut.uniqueIdCnt = 0;
