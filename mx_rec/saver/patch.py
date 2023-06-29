@@ -278,7 +278,7 @@ def saver_from_object_based_checkpoint(checkpoint_path, var_list=None, builder=N
             raise ValueError("Checkpoint in %s not an object-based checkpoint." %
                              checkpoint_path) from err
     if var_list is None:
-        var_list = build_var_list(var_list)
+        var_list = build_var_list()
 
     if builder is None:
         builder = BulkSaverBuilder()

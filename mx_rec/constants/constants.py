@@ -63,6 +63,7 @@ class BaseEnum(Enum):
 
 
 class DataName(Enum):
+    KEY = "key"
     EMBEDDING = "embedding"
     FEATURE_MAPPING = "feature_mapping"
     OFFSET = "offset"
