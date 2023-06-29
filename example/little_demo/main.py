@@ -67,7 +67,7 @@ def build_graph(hash_table_list, is_train, feature_spec_list=None, config_dict=N
                           [hash_table_list[0], hash_table_list[0], hash_table_list[0], hash_table_list[1]],
                           [cfg.user_send_cnt, cfg.item_send_cnt, cfg.user_send_cnt, cfg.item_send_cnt]]
         if USE_TIMESTAMP:
-            tf.add_to_collection(ASCEND_TIMESTAMP, batch["timestamp"])
+            tf.compat.v1.add_to_collection(ASCEND_TIMESTAMP, batch["timestamp"])
         model = model_forward(input_list, batch,
                               is_train=is_train, modify_graph=True, config_dict=config_dict)
     else:

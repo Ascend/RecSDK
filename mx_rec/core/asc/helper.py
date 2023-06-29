@@ -252,14 +252,16 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
                     logging.info(f"do_insert skip table 2: {table_name}")
                     continue
 
-
-
                 new_insert_tensors.append(insert_tensors[idx])
                 new_splits.append(splits[idx])
                 new_table_names.append(table_names[idx])
 
             if FeatureSpec.use_timestamp(is_training):
                 new_insert_tensors = insert_tensors
+                if len(splits) < 1:
+                    raise ValueError(f"When use_timestamp is set to True, "
+                                     f"the length of the splits list must be greater than or equal to 1.")
+                new_splits = splits[1:]
 
             return do_insert(args,
                              insert_tensors=new_insert_tensors,
