@@ -6,6 +6,7 @@ import logging
 import math
 import time
 from collections import defaultdict
+from typing import Optional
 
 import numpy as np
 import tensorflow as tf
@@ -442,8 +443,7 @@ class SparseEmbedding:
         if is_training and use_dynamic_expansion and is_table_name_valid:
             tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
             tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
-            logging.debug(f"modify graph mode, table_name: {self.table_name}, "
-                          f"ASCEND_TABLE_NAME_MUST_CONTAIN: {ASCEND_TABLE_NAME_MUST_CONTAIN}")
+            logging.debug(f"modify graph, table_name: {self.table_name}, contain: {ASCEND_TABLE_NAME_MUST_CONTAIN}")
 
         @tf.custom_gradient
         def sparse_forward(table, feat_ids):
@@ -475,7 +475,7 @@ class SparseEmbedding:
                 import mxrec_pybind
                 emb_size = self.scalar_emb_size if self.skip_emb_transfer else self.ext_emb_size
                 if emb_size == 0:
-                    raise RuntimeError("emb_size is 0, please set a valid value.")
+                    raise ValueError("emb_size is 0, please set a valid value.")
                 hot_size = int(mxrec_pybind.get_ub_hot_size(get_device_id()) / emb_size)
                 hot_pos = tf.ones(shape=[hot_size, ], dtype=tf.int32, name="hot_pos")
                 hot_pos = tf.identity(hot_pos, name=ASCAnchorAttr.HOT_POS.value)
@@ -485,6 +485,7 @@ class SparseEmbedding:
             if not use_dynamic_expansion:
                 id_offsets_abs = tf.abs(id_offsets)
                 local_emb = tf.gather(table, id_offsets_abs, axis=0, name="gather_for_id_offsets")
+                local_emb = set_zero_for_non_valid_key(id_offsets, local_emb)
             else:
                 local_emb = tf.identity(table, name="identity_local_emb")
             all2all_args = send_count if use_static else all2all_matrix
@@ -512,8 +513,7 @@ class SparseEmbedding:
                 logging.debug(f"bp rank size: {rank_size}")
                 unique_embeddings_shape = unique_embeddings.shape.as_list() if use_static \
                     else tf.shape(unique_embeddings)
-                unique_grads = tf.compat.v1.unsorted_segment_sum(embedding_diff,
-                                                                 restore_vector,
+                unique_grads = tf.compat.v1.unsorted_segment_sum(embedding_diff, restore_vector,
                                                                  unique_embeddings_shape[0])
                 bp_all2all_args = all2all_args if use_static else tf.transpose(all2all_args)
                 if hot_pos is not None:
@@ -688,6 +688,7 @@ class SparseEmbedding:
             if not use_dynamic_expansion:
                 id_offsets_abs = tf.abs(id_offsets)
                 local_embeddings = tf.gather(table, id_offsets_abs, axis=0, name="gather_for_id_offsets")
+                local_embeddings = set_zero_for_non_valid_key(id_offsets, local_embeddings)
             else:
                 local_embeddings = tf.identity(table, name="identity_local_emb")
 
@@ -947,3 +948,15 @@ class _EvictHook(tf.compat.v1.train.SessionRunHook):
             check_type(self._evict_time_interval, int, "evict_time_interval")
         if self._evict_step_interval is not None:
             check_type(self._evict_step_interval, int, "evict_time_interval")
+
+
+def set_zero_for_non_valid_key(id_offsets: Optional[tf.Tensor], embeddings: Optional[tf.Tensor]):
+    """
+    将key为-1的特征对应的emb置为0
+    :param id_offsets: 特征索引
+    :param embeddings: 稀疏表
+    :return:
+    """
+    id_offsets_expand = tf.expand_dims(id_offsets >= 0, axis=-1)
+    embeddings = tf.where(id_offsets_expand, embeddings, tf.zeros_like(embeddings))
+    return embeddings
