@@ -6,7 +6,7 @@
  */
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
-#include <dcmi_interface_api.h>
+#include <dsmi_common_interface.h>
 
 #include "hybrid_mgmt/hybrid_mgmt.h"
 #include "module_main.h"
@@ -39,7 +39,7 @@ uint32_t GetLogicID(uint32_t phyid)
 {
     int32_t ret = 0;
     uint32_t logicId;
-    ret = dcmi_get_device_logicid_from_phyid(phyid, &logicId);
+    ret = dsmi_get_logicid_from_phyid(phyid, &logicId);
     if (ret != 0) {
         return ret;
     }
