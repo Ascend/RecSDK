@@ -54,6 +54,7 @@ using UniqueConf = struct UniqueConfCTR {
     uint32_t maxThreadNum = 8;                  // 最大工作线程数
     int64_t maxIdVal = 0;                       // 最大id值
     bool trace = false;                         // 是否开启性能检测，需要配合外部日志输出
+    bool performance = false;                   // 是否开启增强接口，增强接口shardingNum必须是2的幂次方，默认用取模分桶
 } __attribute__((packed));
 
 using UniqueIn = struct UniqueInCTR {

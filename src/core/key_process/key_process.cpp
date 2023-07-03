@@ -216,6 +216,7 @@ void KeyProcess::GetUniqueConfig(UniqueConf& uniqueConf)
     uniqueConf.outputType = OutputType::ENHANCED;
     uniqueConf.minThreadNum = MIN_UNIQUE_THREAD_NUM;
     uniqueConf.maxThreadNum = PerfConfig::maxUniqueThreadNum;
+    uniqueConf.performance = true;
 }
 
 void KeyProcess::InitializeUnique(UniqueConf& uniqueConf, size_t& preBatchSize, bool& uniqueInitialize,
