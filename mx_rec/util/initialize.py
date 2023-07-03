@@ -268,11 +268,13 @@ class ConfigInitializer:
         except ValueError as err:
             raise ValueError("CM_WORKER_SIZE or CM_CHIEF_DEVICE uncorrected configured.") from err
         try:
-            sorted_device_list.pop(int(chief_device))
+            sorted_device_list.pop(int(chief_device) % len(sorted_device_list))
         except IndexError as err:
             raise IndexError(
                 f"Config CM_CHIEF_DEVICE {chief_device} not in training container device list {sorted_device_list}.") \
                 from err
+        except ZeroDivisionError as err:
+            raise ZeroDivisionError("sorted_device_list length can not equal to 0.") from err
 
         for device_idx in sorted_device_list:
             device_id = mxrec_pybind.get_logic_id(int(device_idx))
