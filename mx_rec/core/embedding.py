@@ -485,7 +485,7 @@ class SparseEmbedding:
             if not use_dynamic_expansion:
                 id_offsets_abs = tf.abs(id_offsets)
                 local_emb = tf.gather(table, id_offsets_abs, axis=0, name="gather_for_id_offsets")
-                local_emb = set_zero_for_non_valid_key(id_offsets, local_emb)
+                local_emb = set_zero_for_non_valid_key(id_offsets, local_emb, feature_spec.access_threshold)
             else:
                 local_emb = tf.identity(table, name="identity_local_emb")
             all2all_args = send_count if use_static else all2all_matrix
@@ -688,7 +688,8 @@ class SparseEmbedding:
             if not use_dynamic_expansion:
                 id_offsets_abs = tf.abs(id_offsets)
                 local_embeddings = tf.gather(table, id_offsets_abs, axis=0, name="gather_for_id_offsets")
-                local_embeddings = set_zero_for_non_valid_key(id_offsets, local_embeddings)
+                local_embeddings = set_zero_for_non_valid_key(id_offsets, local_embeddings,
+                                                              feature_spec.access_threshold)
             else:
                 local_embeddings = tf.identity(table, name="identity_local_emb")
 
@@ -950,13 +951,19 @@ class _EvictHook(tf.compat.v1.train.SessionRunHook):
             check_type(self._evict_step_interval, int, "evict_time_interval")
 
 
-def set_zero_for_non_valid_key(id_offsets: Optional[tf.Tensor], embeddings: Optional[tf.Tensor]):
+def set_zero_for_non_valid_key(id_offsets: Optional[tf.Tensor], embeddings: Optional[tf.Tensor],
+                               access_threshold: bool):
     """
     将key为-1的特征对应的emb置为0
     :param id_offsets: 特征索引
     :param embeddings: 稀疏表
+    :param access_threshold: 准入阈值
     :return:
     """
+    if access_threshold is None or access_threshold <= 0:
+        return embeddings
     id_offsets_expand = tf.expand_dims(id_offsets >= 0, axis=-1)
+    if get_use_static():
+        id_offsets_expand = tf.compat.v1.broadcast_to(id_offsets_expand, embeddings.shape.as_list())
     embeddings = tf.where(id_offsets_expand, embeddings, tf.zeros_like(embeddings))
     return embeddings
