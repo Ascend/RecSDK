@@ -4,13 +4,20 @@
 
 import weakref
 import logging
+from typing import Any
 
 import tensorflow as tf
+import tensorflow_estimator as tensorflow_estimator_lib
+from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.data.ops.dataset_ops import DatasetV2
 from tensorflow.python.data.ops.dataset_ops import _VariantTracker
 from tensorflow.python.framework import ops
+from tensorflow_estimator.python.estimator.training import EvalSpec
+from tensorflow.python.eager.monitoring import BoolGauge, BoolGaugeCell
+from npu_bridge.estimator.npu.npu_hook import NPUCheckpointSaverHook
 
-from mx_rec.util.initialize import get_is_graph_modify_hook_running, get_modify_graph
+from mx_rec.util.initialize import get_is_graph_modify_hook_running, get_modify_graph, insert_bool_gauge, \
+    get_bool_gauge_set, terminate_config_initializer, get_run_times, set_is_last_round
 
 
 def init_dataset(self, input_data):
@@ -69,3 +76,83 @@ def patch_for_chief_session_creator():
     """
     tf.compat.v1.train.ChiefSessionCreator.__init__ = chief_session_creator_init
     logging.debug("__init__ in Class 'monitored_session.ChiefSessionCreator' has been patched.")
+
+
+def get_cell(self: BoolGauge, *labels: Any) -> Any:
+    """
+    Retrieves the cell.
+    Args:
+        self: An `BoolGauge` instance.
+        *labels: The label list of the new metric.
+
+    Returns: Obtains the cell value set by the user.
+    """
+
+    logging.debug(f"Enter patch 'BoolGauge.get_cell'.")
+    if len(labels) > 0:
+        insert_bool_gauge(labels[0])
+    return BoolGaugeCell(super(BoolGauge, self).get_cell(*labels))
+
+
+def patch_for_bool_gauge():
+    """Patch for 'BoolGauge.get_cell'."""
+
+    BoolGauge.get_cell = get_cell
+    logging.debug(f"Function 'get_cell' in Class 'BoolGauge' has been patched.")
+
+
+def end(self: NPUCheckpointSaverHook, session: tf.Session):
+    """
+    Call at the end of session hook.
+
+    Args:
+        self: An `NPUCheckpointSaverHook` instance.
+        session: A TensorFlow Session that will be soon closed.
+
+    Returns: None
+
+    """
+
+    logging.debug(f"Enter patch 'NPUCheckpointSaverHook.end'.")
+    logging.info("NPUCheckpointSaverHook end...")
+    basic_session_run_hooks.CheckpointSaverHook.end(self, session)
+
+    if 'train_and_evaluate' in get_bool_gauge_set() and get_run_times() == 1:
+        set_is_last_round(True)
+        return
+    logging.debug(f"NPUCheckpointSaverHook call 'terminate_config_initializer'...")
+    terminate_config_initializer()
+
+
+def patch_for_end():
+    """Patch for 'NPUCheckpointSaverHook.end'."""
+
+    NPUCheckpointSaverHook.end = end
+    logging.debug(f"Function 'end' in Class 'NPUCheckpointSaverHook' has been patched.")
+
+
+def assert_eval_spec(eval_spec: EvalSpec):
+    """
+    Raise error if `eval_spec` is not of the right type.
+
+    Args:
+        eval_spec: A `TrainSpec` instance to specify the training specification.
+
+    Returns: None
+
+    """
+
+    logging.debug(f"Enter patch 'tensorflow_estimator.python.estimator.training._assert_eval_spec'.")
+    if not isinstance(eval_spec, EvalSpec):
+        raise TypeError('`eval_spec` must have type `tf.estimator.EvalSpec`. Got: {}'.format(type(eval_spec)))
+
+    if 'train_and_evaluate' not in get_bool_gauge_set():
+        insert_bool_gauge('train_and_evaluate')
+        logging.debug("assert_eval_spec: add 'train_and_evaluate' to BoolGaugeCell.")
+
+
+def patch_for_assert_eval_spec():
+    """Patch for 'tensorflow_estimator.python.estimator.training._assert_eval_spec'."""
+
+    tensorflow_estimator_lib.python.estimator.training._assert_eval_spec = assert_eval_spec
+    logging.debug(f"Function '_assert_eval_spec' in 'tensorflow_estimator.python.estimator.training' has been patched.")

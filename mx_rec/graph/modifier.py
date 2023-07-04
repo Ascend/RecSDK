@@ -19,7 +19,8 @@ from mx_rec.constants.constants import ASCEND_CUTTING_POINT_INITIALIZER, ASCEND_
     ASCAnchorAttr, ASCEND_TIMESTAMP
 from mx_rec.util.initialize import get_rank_size, get_training_mode_channel_id, get_feature_spec, \
     insert_feature_spec, set_initializer, get_use_static, get_use_hot, get_device_id, get_use_dynamic_expansion, \
-    terminate_config_initializer, set_is_graph_modify_hook_running
+    terminate_config_initializer, set_is_graph_modify_hook_running, get_bool_gauge_set, increase_run_times, \
+    get_is_last_round
 from mx_rec.util.perf import performance
 from mx_rec.graph.utils import check_input_list, find_parent_op, check_cutting_points, replace_anchor, \
     record_ops_to_replace, export_pb_graph, make_sorted_key_to_tensor_list
@@ -547,4 +548,18 @@ class GraphModifierHook(tf.estimator.SessionRunHook):
             session.run(tf.compat.v1.get_collection(ASCEND_CUTTING_POINT_INITIALIZER))
 
     def end(self, session):
-        terminate_config_initializer()
+        bool_gauge_set = get_bool_gauge_set()
+        logging.debug(f"GraphModifierHook, bool_gauge_set: {bool_gauge_set}")
+
+        # In eval or predict mode, the initializer can be directly terminated.
+        if 'train' not in bool_gauge_set:
+            logging.debug(f"In evaluate or predict case, GraphModifierHook call 'terminate_config_initializer'...")
+            terminate_config_initializer()
+            return
+
+        if 'train_and_evaluate' in bool_gauge_set:
+            increase_run_times()
+            # In 'train_and_evaluate' mode, the terminate function should be executed last.
+            if get_is_last_round():
+                logging.debug(f"In train_and_evaluate case, GraphModifierHook call 'terminate_config_initializer'...")
+                terminate_config_initializer()

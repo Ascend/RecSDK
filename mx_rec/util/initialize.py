@@ -15,6 +15,7 @@ from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION, VALID
     MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE, HASHTABLE_COLLECTION_NAME_LENGTH
 from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.validator.validator import RankInfoValidator, StringValidator
+from mx_rec.util.atomic import AtomicInteger
 
 
 class ConfigInitializer:
@@ -43,10 +44,13 @@ class ConfigInitializer:
         self._training_mode_channel_dict = dict()
         self._rank_to_device_dict = dict()
         self._initializer_dict = {}
+        self._bool_gauge_set = set()
         self._optimizer_instance = None
         self._is_graph_modify_hook_running = False
         self._modify_graph = False
         self._is_terminated = False
+        self._is_last_round = False
+        self._run_times = AtomicInteger()
 
         if self._use_mpi:
             logging.debug(f"Using mpi to launch task.")
@@ -59,10 +63,7 @@ class ConfigInitializer:
             self._rank_id = kwargs.get("rank_id")
             self._rank_size = kwargs.get("rank_size")
 
-        if os.getenv("RANK_TABLE_FILE"):
-            self.parse_hccl_json()
-        else:
-            self.set_hccl_info_without_json()
+        self.parse_hccl_json() if os.getenv("RANK_TABLE_FILE") else self.set_hccl_info_without_json()
         self.train_interval = kwargs.get("train_interval", -1)
         self.eval_steps = kwargs.get("eval_steps", -1)
         self.check_parameters()
@@ -79,6 +80,18 @@ class ConfigInitializer:
 
     def __del__(self):
         self.terminate()
+
+    @property
+    def is_last_round(self):
+        return self._is_last_round
+
+    @property
+    def run_times(self):
+        return self._run_times
+
+    @property
+    def bool_gauge_set(self):
+        return self._bool_gauge_set
 
     @property
     def is_graph_modify_hook_running(self):
@@ -313,6 +326,12 @@ class ConfigInitializer:
         self._name_to_var_dict[name] = key
         self._table_instance_dict[key] = instance
 
+    def insert_bool_gauge(self, name):
+        if not isinstance(name, str):
+            raise TypeError(f"bool gauge name '{name}' should be str.")
+
+        self._bool_gauge_set.add(name)
+
     def get_table_instance(self, key):
         if key not in self._table_instance_dict:
             raise KeyError(f"Given key does not exist.")
@@ -408,6 +427,13 @@ class ConfigInitializer:
 
         self._modify_graph = is_modify_graph
 
+    @is_last_round.setter
+    def is_last_round(self, last_round):
+        if not isinstance(last_round, bool):
+            raise TypeError(f"last_round should be a boolean.")
+
+        self._is_last_round = last_round
+
     @ascend_global_hashtable_collection.setter
     def ascend_global_hashtable_collection(self, name):
         string_validator = StringValidator(name, max_len=HASHTABLE_COLLECTION_NAME_LENGTH, min_len=1)
@@ -455,6 +481,30 @@ def get_is_graph_modify_hook_running():
 
 def set_is_graph_modify_hook_running(is_running):
     ConfigInitializer.get_instance().is_graph_modify_hook_running = is_running
+
+
+def get_run_times():
+    return ConfigInitializer.get_instance().run_times
+
+
+def increase_run_times():
+    ConfigInitializer.get_instance().run_times.increase()
+
+
+def get_is_last_round():
+    return ConfigInitializer.get_instance().is_last_round
+
+
+def set_is_last_round(last_round):
+    ConfigInitializer.get_instance().is_last_round = last_round
+
+
+def get_bool_gauge_set():
+    return ConfigInitializer.get_instance().bool_gauge_set
+
+
+def insert_bool_gauge(name):
+    ConfigInitializer.get_instance().insert_bool_gauge(name)
 
 
 def get_modify_graph():
