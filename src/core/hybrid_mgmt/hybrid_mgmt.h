@@ -57,6 +57,10 @@ namespace MxRec {
 
         bool Load(const string& loadPath);
 
+        key_offset_map_t SendHostMap(const string tableName);
+
+        void ReceiveHostMap(all_key_offset_map_t keyOffsetMap);
+
         void Start();
 
         void InsertThreadForHBM(int mode);

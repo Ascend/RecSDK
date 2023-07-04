@@ -4,9 +4,7 @@
 
 import json
 import os
-import shutil
 import logging
-import stat
 from collections import defaultdict
 
 import numpy as np
@@ -15,8 +13,8 @@ from tensorflow.python.util import compat
 
 from mx_rec.constants.constants import DataName, DataAttr
 from mx_rec.util.initialize import get_rank_id, get_rank_size, get_customized_ops, get_table_instance, \
-    get_table_instance_by_name, is_asc_manager_initialized, save_host_data, restore_host_data, \
-    get_ascend_global_hashtable_collection
+    get_table_instance_by_name, is_asc_manager_initialized, save_host_data, restore_host_data, get_host_data, \
+    send_host_data, get_ascend_global_hashtable_collection
 from mx_rec.util.perf import performance
 
 
@@ -34,6 +32,8 @@ class Saver(object):
         self.save_op_dict = defaultdict(dict)
         self.restore_fetch_list = []
         self.placeholder_dict = defaultdict(dict)
+        # save_easy_mode : only save the embedding and key data of sparse tables
+        self.save_easy_mode = os.getenv("SAVE_EASY", 0)
         self.build()
 
     def build(self):
@@ -66,6 +66,7 @@ class Saver(object):
         logging.debug(f"======== Start saving for rank id {self.rank_id} ========")
         save_path = save_path if save_path else self._prefix_name
         directory, base_name = os.path.split(save_path)
+
         if global_step:
             if not isinstance(global_step, compat.integral_types):
                 global_step = int(sess.run(global_step))
@@ -75,13 +76,11 @@ class Saver(object):
 
         integrated_path = os.path.join(directory, ckpt_name)
         saving_path = integrated_path
-        if integrated_path.startswith("/"):
-            saving_path = os.path.abspath(integrated_path)
 
-        if os.path.exists(saving_path):
-            shutil.rmtree(saving_path, ignore_errors=True)
+        if tf.io.gfile.exists(saving_path):
+            tf.io.gfile.rmtree(saving_path)
             logging.debug(f"rank id {self.rank_id} | Saving_path '{saving_path}' has been deleted.")
-        os.makedirs(saving_path, exist_ok=True)
+        tf.io.gfile.makedirs(saving_path)
         logging.debug(f"rank id {self.rank_id} | Saving_path '{saving_path}' has been made.")
 
         self._save(sess, saving_path)
@@ -94,9 +93,8 @@ class Saver(object):
         directory, base_name = os.path.split(reading_path)
         ckpt_name = "sparse-%s" % base_name
 
-        integrated_path = os.path.join(directory, ckpt_name)
-        reading_path = os.path.abspath(integrated_path)
-        if not os.path.exists(reading_path):
+        reading_path = os.path.join(directory, ckpt_name)
+        if not tf.io.gfile.exists(reading_path):
             raise FileExistsError(f"Given dir {reading_path} does not exist, please double check.")
 
         self._restore(sess, reading_path)
@@ -145,11 +143,17 @@ class Saver(object):
     def _save(self, sess, root_dir):
         result = sess.run(self.save_op_dict)
         for table_name, dump_data_dict in result.items():
-            save_embedding_data(root_dir, table_name, dump_data_dict, self.rank_id)
-            table_instance = get_table_instance_by_name(table_name)
-            if is_asc_manager_initialized():
+            if is_asc_manager_initialized() and self.save_easy_mode:
+                host_data = get_host_data(table_name)
+                key = np.array(list(host_data.keys()))
+                offset = list(host_data.values())
+                get_valid_dict_data(dump_data_dict, offset)
+                save_key_data(root_dir, table_name, key, self.rank_id)
+            if is_asc_manager_initialized() and not self.save_easy_mode:
                 save_host_data(root_dir)
                 logging.debug(f"host data was saved.")
+            save_embedding_data(root_dir, table_name, dump_data_dict, self.rank_id)
+            table_instance = get_table_instance_by_name(table_name)
 
             if table_instance.use_feature_mapping:
                 save_feature_mapping_data(root_dir, table_name, dump_data_dict, self.rank_id)
@@ -162,13 +166,12 @@ class Saver(object):
 
     def _restore(self, sess, reading_path):
         restore_feed_dict = defaultdict(dict)
-        if is_asc_manager_initialized():
-            restore_host_data(reading_path)
-            logging.debug(f"host data was restored.")
-
+        key_offset_dict = defaultdict(dict)
         for table_name, sub_placeholder_dict in self.placeholder_dict.items():
             fill_placeholder(reading_path, sub_placeholder_dict, restore_feed_dict, self.rank_id,
                              NameDescriptor(table_name, DataName.EMBEDDING.value))
+            if self.save_easy_mode:
+                fill_key_offset_dict(reading_path, self.rank_id, table_name, key_offset_dict)
             table_instance = get_table_instance_by_name(table_name)
 
             if table_instance.use_feature_mapping:
@@ -188,6 +191,12 @@ class Saver(object):
                                          name_descriptor=NameDescriptor(table_name, state_key,
                                                                         optimizer_name=optimizer_name))
 
+        if is_asc_manager_initialized() and self.save_easy_mode:
+            send_host_data(key_offset_dict)
+            logging.debug(f"host data was sent to the host pipeline.")
+        if is_asc_manager_initialized() and not self.save_easy_mode:
+            restore_host_data(reading_path)
+            logging.debug(f"host data was restored.")
         sess.run(self.restore_fetch_list, feed_dict=restore_feed_dict)
 
 
@@ -196,6 +205,41 @@ class NameDescriptor:
         self.table_name = table_name
         self.data_name = data_name
         self.optimizer_name = optimizer_name
+
+
+def get_valid_dict_data(dump_data_dict: dict, offset: list):
+    """
+    Extract embedding and optimizer data from the dict based on offset.
+    :param dump_data_dict: sparse data dict to be saved
+    :param offset: offset of the sparse table
+    """
+    embedding_data = dump_data_dict.get(DataName.EMBEDDING.value)[offset, :]
+    dump_data_dict[DataName.EMBEDDING.value] = embedding_data
+    if "optimizer" in dump_data_dict:
+        dump_optimizer_data_dict = dump_data_dict.get("optimizer")
+        for optimizer_name, dump_optimizer_data in dump_optimizer_data_dict.items():
+            for state_key, state in dump_optimizer_data.items():
+                state = state[offset, :]
+                dump_optimizer_data[state_key] = state
+            dump_optimizer_data_dict[optimizer_name] = dump_optimizer_data
+        dump_data_dict["optimizer"] = dump_optimizer_data_dict
+
+
+def fill_key_offset_dict(reading_path: str, rank_id: int, table_name: str, key_offset_dict: dict):
+    """
+    Filling data in the key-offset dictionary , which is sent to the host pipeline.
+    :param reading_path: the path restoring the model
+    :param rank_id: rank id
+    :param table_name: the sparse table name
+    :param key_offset_dict: key-offset dictionary saving mapping relationship
+    """
+    target_path = generate_path(reading_path, "HashTable", "HBM", table_name,
+                                DataName.KEY.value)
+    key = read_binary_data(target_path, rank_id, DataName.KEY.value, table_name)
+    key = key.get(DataName.KEY.value)
+    offsets = list(range(key.shape[0]))
+    key_offset_map = dict(zip(key, offsets))
+    key_offset_dict[table_name] = key_offset_map
 
 
 def fill_placeholder(reading_path, placeholder_dict, feed_dict, suffix, name_descriptor):
@@ -216,6 +260,21 @@ def save_embedding_data(root_dir, table_name, dump_data_dict, suffix):
     target_path = generate_path(root_dir, "HashTable", "HBM", table_name, DataName.EMBEDDING.value)
     data_to_write = dump_data_dict.get(DataName.EMBEDDING.value)
 
+    attribute = dict()
+    attribute[DataAttr.DATATYPE.value] = data_to_write.dtype.name
+    attribute[DataAttr.SHAPE.value] = data_to_write.shape
+    write_binary_data(target_path, suffix, data_to_write, attributes=attribute)
+
+
+def save_key_data(root_dir: str, table_name: str, data_to_write: np.ndarray, suffix: int):
+    """
+    Save the keys of the sparse table
+    :param root_dir: the root path saving the model
+    :param table_name: the sparse table name
+    :param data_to_write: the key array to be written
+    :param suffix: suffix of sparse data
+    """
+    target_path = generate_path(root_dir, "HashTable", "HBM", table_name, DataName.KEY.value)
     attribute = dict()
     attribute[DataAttr.DATATYPE.value] = data_to_write.dtype.name
     attribute[DataAttr.SHAPE.value] = data_to_write.shape
@@ -265,22 +324,24 @@ def generate_file_name(suffix):
 
 
 def write_binary_data(writing_path, suffix, data, attributes=None):
-    os.makedirs(writing_path, exist_ok=True)
+    tf.io.gfile.makedirs(writing_path)
     data_file, attribute_file = generate_file_name(suffix)
     target_data_dir = os.path.join(writing_path, data_file)
     target_attribute_dir = os.path.join(writing_path, attribute_file)
-    if os.path.exists(target_data_dir):
+    if tf.io.gfile.exists(target_data_dir):
         raise FileExistsError(f"Target_data_dir {target_data_dir} exists before writing.")
-    if os.path.exists(target_attribute_dir):
+    if tf.io.gfile.exists(target_attribute_dir):
         raise FileExistsError(f"Target_attribute_dir {target_attribute_dir} exists before writing.")
-    data.tofile(target_data_dir)
+
+    with tf.io.gfile.GFile(target_data_dir, "wb") as file:
+        data = json.dumps(data.flatten().tolist())
+        file.write(data)
 
     if attributes is not None:
         if not isinstance(attributes, dict):
             raise TypeError(f"Parameter 'attributes' must be one dict instance, instead of {type(attributes)}")
-        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-        mode = stat.S_IRUSR | stat.S_IWUSR
-        with os.fdopen(os.open(target_attribute_dir, flags, mode), 'w') as file:
+
+        with tf.io.gfile.GFile(target_attribute_dir, "w") as file:
             file.write(json.dumps(attributes))
 
 
@@ -296,20 +357,22 @@ def read_binary_data(reading_path: str, suffix: int, data_name: str, table_name:
     data_file, attribute_file = generate_file_name(suffix)
     target_data_dir = os.path.join(reading_path, data_file)
     target_attribute_dir = os.path.join(reading_path, attribute_file)
-    if not os.path.exists(target_data_dir):
+    if not tf.io.gfile.exists(target_data_dir):
         raise FileExistsError(f"Target_data_dir {target_data_dir} does not exist when reading.")
-    if not os.path.exists(target_attribute_dir):
+    if not tf.io.gfile.exists(target_attribute_dir):
         raise FileExistsError(f"Target_attribute_dir {target_attribute_dir} does not exist when reading.")
 
-    with open(target_attribute_dir, "r") as fin:
+    with tf.io.gfile.GFile(target_attribute_dir, "r") as fin:
         attributes = json.load(fin)
 
     if DataAttr.DATATYPE.value not in attributes:
         raise AttributeError(f"Lack of attribute {DataAttr.DATATYPE.value}.")
 
-    data_to_restore = np.fromfile(target_data_dir, dtype=attributes.pop(DataAttr.DATATYPE.value))
+    with tf.io.gfile.GFile(target_data_dir, "rb") as file:
+        data_to_restore = file.read()
+        data_to_restore = np.array(json.loads(data_to_restore))
 
-    if DataAttr.SHAPE.value in attributes:
+    if DataAttr.SHAPE.value in attributes and data_name != DataName.KEY.value:
         data_shape = attributes.pop(DataAttr.SHAPE.value)
         data_to_restore = data_to_restore.reshape(data_shape)
         table_instance = get_table_instance_by_name(table_name)
@@ -318,8 +381,6 @@ def read_binary_data(reading_path: str, suffix: int, data_name: str, table_name:
             data_to_restore = process_embedding_data(data_to_restore, current_data_shape, data_shape)
 
     data_dict = {data_name: data_to_restore}
-    for key, item in attributes.items():
-        data_dict[key] = item
     logging.debug(f"Attribute: '{target_attribute_dir}' and data file: '{target_data_dir}' have been read.")
     logging.debug(f"Reading shape is {data_to_restore.shape}.")
 

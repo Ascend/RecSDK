@@ -432,6 +432,8 @@ struct BatchTask {
     using key_offset_mem_t = std::map<emb_name_t, absl::flat_hash_map<emb_key_t, int64_t>>;
     using tensor_2_thresh_mem_t = absl::flat_hash_map<std::string, ThresholdValue>;
     using trans_serialize_t = uint8_t;
+    using key_offset_map_t = std::map<int64_t, int64_t>;
+    using all_key_offset_map_t = std::map<std::string, std::map<int64_t, int64_t>>;
 
     enum class CkptFeatureType {
         HOST_EMB = 0,

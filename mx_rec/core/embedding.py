@@ -60,6 +60,7 @@ def create_table(**kwargs):
         shard_num: embedding partition number
         fusion_optimizer_var: fusion optimizer variable with embedding
         hashtable_threshold: choose to implement based on hash table or linear layer
+        is_save: switch whether to store sparse table data.
         init_param: embedding init param-coefficient
     """
 

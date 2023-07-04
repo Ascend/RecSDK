@@ -9,8 +9,7 @@ import json
 import tensorflow as tf
 import numpy as np
 
-from mx_rec.util.initialize import get_ascend_global_hashtable_collection, get_table_instance, \
-    get_table_instance_by_name
+from mx_rec.util.initialize import get_table_instance, get_table_instance_by_name, export_table_name_set
 
 
 class SparseProcessor:
@@ -33,7 +32,7 @@ class SparseProcessor:
         if not os.path.exists(model_dir):
             raise FileExistsError(f"the model_dir supported {model_dir} does not exist.")
         self.table_list = kwargs.get("table_list")
-        self.default_table_list = get_table_list()
+        self.default_table_list = list(export_table_name_set())
 
         if not self.table_list:
             logging.debug("table list not be set, use default value : all table created ")
@@ -171,16 +170,6 @@ def export(model_dir, **kwargs):
     else:
         logging.warning("no table can be exported ,please check if you have saved or created tables")
         return empty_value
-
-
-def get_table_list():
-    var_list = tf.compat.v1.get_collection(get_ascend_global_hashtable_collection())
-    table_list = []
-    for var in var_list:
-        table_instance = get_table_instance(var)
-        table_name = table_instance.table_name
-        table_list.append(table_name)
-    return table_list
 
 
 def check_table_param(table_list, default_table_list):

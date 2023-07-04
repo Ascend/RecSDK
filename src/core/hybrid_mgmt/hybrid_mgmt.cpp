@@ -11,6 +11,7 @@
 
 #include "checkpoint/checkpoint.h"
 #include "utils/time_cost.h"
+#include "utils/common.h"
 
 using namespace MxRec;
 using namespace std;
@@ -203,6 +204,62 @@ bool HybridMgmt::Load(const string& loadPath)
     }
 #endif
     return true;
+}
+
+key_offset_map_t HybridMgmt::SendHostMap(const string tableName)
+{
+#ifndef GTEST
+    preprocess->LoadSaveLock();
+    key_offset_mem_t keyOffsetMap;
+    key_offset_map_t sendKeyOffsetMap;
+
+    if (!mgmtRankInfo.noDDR) {
+        spdlog::debug(MGMT + "Start send sparse data: ddr mode hashmap");
+    } else {
+        spdlog::debug(MGMT + "Start send sparse data: no ddr mode hashmap");
+        keyOffsetMap = preprocess->GetKeyOffsetMap();
+    }
+
+    if ((!keyOffsetMap.empty()) && keyOffsetMap.count(tableName)) {
+        for (const auto& it : keyOffsetMap.at(tableName)) {
+            sendKeyOffsetMap[it.first] = it.second;
+        }
+    }
+
+    preprocess->LoadSaveUnlock();
+    return sendKeyOffsetMap;
+#endif
+}
+
+void HybridMgmt::ReceiveHostMap(all_key_offset_map_t ReceiveKeyOffsetMap)
+{
+#ifndef GTEST
+    preprocess->LoadSaveLock();
+    key_offset_mem_t loadKeyOffsetMap;
+    offset_mem_t loadMaxOffset;
+    if (!ReceiveKeyOffsetMap.empty()) {
+        for (const auto& KeyOffsetMap : ReceiveKeyOffsetMap) {
+            auto& SingleHashMap = loadKeyOffsetMap[KeyOffsetMap.first];
+            auto& MaxOffset = loadMaxOffset[KeyOffsetMap.first];
+            for (const auto& it : KeyOffsetMap.second) {
+                SingleHashMap[it.first] = it.second;
+            }
+            MaxOffset = KeyOffsetMap.second.size();
+        }
+    }
+    if (!mgmtRankInfo.noDDR) {
+        spdlog::debug(MGMT + "Start receive sparse data: ddr mode hashmap");
+    } else {
+        spdlog::debug(MGMT + "Start receive sparse data: no ddr mode hashmap");
+        preprocess->LoadKeyOffsetMap(loadKeyOffsetMap);
+        preprocess->LoadMaxOffset(loadMaxOffset);
+    }
+
+    preprocess->LoadSaveUnlock();
+    if (!mgmtRankInfo.useDataset && isLoad) {
+        Start();
+    }
+#endif
 }
 
 bool HybridMgmt::LoadMatchesDDRSetup(const CkptData& loadData)

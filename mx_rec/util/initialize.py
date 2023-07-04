@@ -559,6 +559,20 @@ def is_asc_manager_initialized():
     return ConfigInitializer.get_instance().get_asc_manager() is not None
 
 
+def get_host_data(table_name):
+    if not is_asc_manager_initialized():
+        raise RuntimeError("ASC manager does not exist.")
+    logging.debug("start to get host data.")
+    return ConfigInitializer.get_instance().get_asc_manager().send(table_name)
+
+
+def send_host_data(key_offset_map):
+    if not is_asc_manager_initialized():
+        raise RuntimeError("ASC manager does not exist.")
+    ConfigInitializer.get_instance().get_asc_manager().receive(key_offset_map)
+    logging.debug("Data has been send to the host pipeline.")
+
+
 def save_host_data(root_dir):
     if not is_asc_manager_initialized():
         raise RuntimeError("ASC manager does not exist.")
