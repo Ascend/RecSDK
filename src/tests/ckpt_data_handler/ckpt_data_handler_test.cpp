@@ -111,9 +111,7 @@ protected:
             validA.push_back(timeStamp);
 
             for (int i = 0; i < count; ++i) {
-                historyRecords[featureId].featureId = featureId;
                 historyRecords[featureId].count = count;
-                historyRecords[featureId].tensorName = testEmbInfo.name;
                 historyRecords[featureId].lastTime = lastTime;
 
                 validA.push_back(featureId);
@@ -216,9 +214,7 @@ TEST_F(CkptDataHandlerTest, FeatAdmitNEvict)
         for (const auto& validHR : validHistRec) {
             const auto& testHR = historyRecords.at(validHR.first);
 
-            EXPECT_EQ(validHR.second.featureId, testHR.featureId);
             EXPECT_EQ(validHR.second.count, testHR.count);
-            EXPECT_EQ(validHR.second.tensorName, testHR.tensorName);
             EXPECT_EQ(validHR.second.lastTime, testHR.lastTime);
         }
     }

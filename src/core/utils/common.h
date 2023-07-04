@@ -256,23 +256,14 @@ struct BatchTask {
 
     struct FeatureItemInfo {
         FeatureItemInfo() = default;
-        FeatureItemInfo(int64_t id, uint32_t cnt, std::string name, time_t lastT)
-            : featureId(id), count(cnt), tensorName(name), lastTime(lastT)
+        FeatureItemInfo(uint32_t cnt, time_t lastT)
+            : count(cnt), lastTime(lastT)
         {}
 
-        bool operator > (const FeatureItemInfo& item) const
-        {
-            return lastTime > item.lastTime;
-        }
-
-        int64_t featureId { -1 };
         uint32_t count { 0 };
-        std::string tensorName { "" };
         time_t lastTime { 0 };
     };
 
-    using SortedRecords =
-        std::priority_queue<FeatureItemInfo, std::vector<FeatureItemInfo>, std::greater<FeatureItemInfo>>;
     using HistoryRecords = absl::flat_hash_map<std::string, absl::flat_hash_map<int64_t, FeatureItemInfo>>;
     struct AdmitAndEvictData {
         HistoryRecords historyRecords;                       // embName ---> {id, FeatureItemInfo} 映射
