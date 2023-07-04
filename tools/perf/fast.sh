@@ -14,8 +14,8 @@
 # bash fast.sh your_log_file.log
 #
 # 3. 注意事项
-# 基于spdlog::info，mxRec中添加了TimeCost打点日志，因此，在执行前务必确保run.sh中设置
-# SPDLOG_LEEL=debug  (如果没有设置，本工具会退出，并给予提示)
+# 基于spdlog::debug，mxRec中添加了TimeCost打点日志，因此，在执行前务必确保run.sh中设置
+# SPDLOG_LEVEL=debug  (如果没有设置，本工具会退出，并给予提示)
 #
 # 4. 解读结果
 # (1) Pipeline: 整个Pipeline由多个Pipe串行构成，性能分析结果分Pipe呈现，例如Pipe-1/Pipe-2/Pipe-3/Pipe-4等；
@@ -104,15 +104,15 @@ parse_pipe_2_key_process()
 
   grep 'getBatchDataTC' $logfile | \
     awk -F":" 'BEGIN { max=0 } { sum+=$NF; if($NF>max) max=$NF } END \
-    {printf "--|get data time: total=%d, max=%0.1f, avg=%0.1f\n", NR, max, sum/NR}'
+    {printf "--|getBatchDataTC: total=%d, max=%0.1f, avg=%0.1f\n", NR, max, sum/NR}'
 
   grep 'getBatchDataTC' $logfile | \
     awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<2000) {sum+=$NF; count++;}} END \
-    {printf "--|get data time(filter>2000ms): count=%d, avg=%0.1f\n", count, sum/count}'
+    {printf "--|getBatchDataTC(filter>2000ms): count=%d, avg=%0.1f\n", count, sum/count}'
 
   grep 'getBatchDataTC' $logfile | \
     awk -F":" 'BEGIN { total=0; none_zero_ms_num=0 } { total++; if($NF>0) none_zero_ms_num++ } END \
-      {printf "--|get data time: total=%d, none_zero_ms_num=%d, none_zero_ms_rate=%0.3f, zero_ms_rate=%0.3f\n", \
+      {printf "--|getBatchDataTC: total=%d, none_zero_ms_num=%d, none_zero_ms_rate=%0.3f, zero_ms_rate=%0.3f\n", \
       total, none_zero_ms_num, none_zero_ms_num/total, (1-none_zero_ms_num/total)}'
 
   LOG_INFO "Step-2.2 KeyProcess"
