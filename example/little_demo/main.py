@@ -163,7 +163,7 @@ if __name__ == "__main__":
     train_feature_spec_list = create_feature_spec_list(use_timestamp=USE_TIMESTAMP)
     eval_feature_spec_list = create_feature_spec_list(use_timestamp=USE_TIMESTAMP)
 
-    optimizer_list = [get_dense_and_sparse_optimizer(cfg) for _ in range(2)]
+    optimizer_list = [get_dense_and_sparse_optimizer(cfg) for _ in range(1)]
     sparse_optimizer_list = [sparse_optimizer for dense_optimizer, sparse_optimizer in optimizer_list]
 
     user_hashtable = create_table(key_dtype=tf.int64,

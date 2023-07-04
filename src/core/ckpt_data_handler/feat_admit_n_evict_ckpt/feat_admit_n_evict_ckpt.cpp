@@ -104,7 +104,7 @@ void FeatAdmitNEvictCkpt::SetHistRecTrans(string embName)
 
     transArr.push_back(timeStamp);
     for (const auto& histRec : histRecs) {
-        transArr.push_back(histRec.second.featureId);
+        transArr.push_back(histRec.first);
         transArr.push_back(static_cast<int64_t>(histRec.second.count));
         transArr.push_back(static_cast<int64_t>(histRec.second.lastTime));
     }
@@ -135,10 +135,8 @@ void FeatAdmitNEvictCkpt::SetHistRec(string embName)
         const auto& count = transArr[i + countIdxOffset];
         const auto& lastTime = transArr[i + lastTimeIdxOffset];
 
-        histRecs[featureId].featureId = featureId;
         histRecs[featureId].count = static_cast<uint32_t>(count);
         histRecs[featureId].lastTime = lastTime;
-        histRecs[featureId].tensorName = embName;
     }
 }
 

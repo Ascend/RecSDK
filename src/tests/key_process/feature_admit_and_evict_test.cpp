@@ -73,7 +73,7 @@ protected:
                 oldInfos.erase(ele.first);
             }
 
-            FeatureItemInfo info = {ele.first, ele.second + oldCnt, embName, ts};
+            FeatureItemInfo info = {ele.second + oldCnt, ts};
             newInfos.insert(std::pair<int64_t, FeatureItemInfo>(ele.first, info));
         }
 
@@ -83,8 +83,8 @@ protected:
 
         printf("now, expect history info: \n");
         for (auto& ele : newInfos) {
-            printf("\t{featureId[%ld], count[%d], embName[%s], lastTime[%ld]}\n", ele.second.featureId,
-                ele.second.count, ele.second.tensorName.c_str(), ele.second.lastTime);
+            printf("\t{featureId[%ld], count[%d], lastTime[%ld]}\n", ele.first,
+                ele.second.count, ele.second.lastTime);
         }
         printf("\n");
 
@@ -106,9 +106,7 @@ protected:
             }
 
             FeatureItemInfo& info2 = records2[ele1.first];
-            if (info1.featureId != info2.featureId ||
-                info1.count != info2.count ||
-                info1.tensorName != info2.tensorName ||
+            if (info1.count != info2.count ||
                 info1.lastTime != info2.lastTime) {
                 printf("IsAllTheSameMap() 333333\n");
                 return false;
@@ -367,8 +365,7 @@ protected:
         for (auto& ele : mergeKeys) {
             auto it = history.find(ele.first);
             ASSERT_EQ(it != history.end(), true);
-            ASSERT_EQ((history[ele.first].featureId == ele.first &&
-                history[ele.first].count == ele.second), true);
+            ASSERT_EQ(history[ele.first].count == ele.second, true);
         }
     }
     static void TestMultiThread(FeatureAdmitAndEvictTest* testObj, std::string& thrName)

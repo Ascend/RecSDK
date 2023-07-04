@@ -68,6 +68,8 @@ FeatureAdmitReturnType FeatureAdmitAndEvict::FeatureAdmit(int channel,
         m_recordsData.timestamps[tensorName] = batch->timestamp;
     }
     absl::flat_hash_map<int64_t, bool> visitedRecords;
+    spdlog::trace("FeatureAdmit, name:[{}], channel:[{}], before admit, splitKey:[{}] ...", tensorName, channel,
+                  splitKey);
     for (auto& key : splitKey) {
         if (key == -1) {
             continue;
@@ -89,6 +91,8 @@ FeatureAdmitReturnType FeatureAdmitAndEvict::FeatureAdmit(int channel,
             key = -1;
         }
     }
+    spdlog::trace("FeatureAdmit, name:[{}], channel:[{}], after admit, splitKey:[{}] ...", tensorName, channel,
+                  splitKey);
 
     return FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_OK;
 }
@@ -104,7 +108,7 @@ FeatureAdmitType FeatureAdmitAndEvict::FeatureAdmitHelper(const int channel, con
     if (channel == TRAIN_CHANNEL_ID) {
         if (innerIt == historyRecordInfos.end()) {
             // 维护 m_historyRecords
-            FeatureItemInfo info(featureId, featureCnt, tensorName, m_recordsData.timestamps[tensorName]);
+            FeatureItemInfo info(featureCnt, m_recordsData.timestamps[tensorName]);
             historyRecordInfos[featureId] = info;
             currKeyCount = featureCnt;
         } else {
@@ -153,15 +157,17 @@ void FeatureAdmitAndEvict::FeatureEvictHelper(const std::string& embName, std::v
     // 从 m_historyRecords 中淘汰删除
     time_t currTime = m_recordsData.timestamps[embName];
     // 从 m_tensor2SortedLastTime 获取当前要淘汰的featureId
-    SortedRecords lastTimePriority;
+    auto cmp = [](const auto& a, const auto& b) { return a.second.lastTime > b.second.lastTime; };
+    std::priority_queue<std::pair<int64_t, FeatureItemInfo>,
+            std::vector<std::pair<int64_t, FeatureItemInfo>>, decltype(cmp)> lastTimePriority(cmp);
     for (auto& item : m_recordsData.historyRecords[embName]) {
-        lastTimePriority.push(item.second);
+        lastTimePriority.emplace(item);
     }
     while (!lastTimePriority.empty()) {
-        if (currTime - lastTimePriority.top().lastTime < m_tensor2Threshold[embName].timeThreshold) {
+        if (currTime - lastTimePriority.top().second.lastTime < m_tensor2Threshold[embName].timeThreshold) {
             break;
         }
-        evictKey.emplace_back(lastTimePriority.top().featureId);
+        evictKey.emplace_back(lastTimePriority.top().first);
         lastTimePriority.pop();
     }
 
@@ -171,6 +177,7 @@ void FeatureAdmitAndEvict::FeatureEvictHelper(const std::string& embName, std::v
     }
     spdlog::info("tensor-name[{}]'s lastTime[{}], had size[{}] keys to delete ...", embName, currTime,
                  evictKey.size());
+    spdlog::trace("tensor-name[{}]'s lastTime[{}], evictKey:[{}] ...", embName, currTime, evictKey);
 
     // 真正从 m_historyRecords 中淘汰
     absl::flat_hash_map<int64_t, FeatureItemInfo>& historyRecords = m_recordsData.historyRecords[embName];
