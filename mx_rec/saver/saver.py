@@ -35,6 +35,9 @@ class Saver(object):
         # save_easy_mode : only save the embedding and key data of sparse tables
         self.save_easy_mode = os.getenv("SAVE_EASY", 0)
         self.build()
+        # since tf 2.6.0, tf needs tensorflow_io to support hdfs path
+        if tf.__version__.startswith("2"):
+            import tensorflow_io as tfio
 
     def build(self):
         if self.var_list is None:
@@ -333,9 +336,14 @@ def write_binary_data(writing_path, suffix, data, attributes=None):
     if tf.io.gfile.exists(target_attribute_dir):
         raise FileExistsError(f"Target_attribute_dir {target_attribute_dir} exists before writing.")
 
-    with tf.io.gfile.GFile(target_data_dir, "wb") as file:
-        data = json.dumps(data.flatten().tolist())
-        file.write(data)
+    if target_data_dir.find("://") != -1:
+        logging.debug(f"use hdfs path {target_data_dir} to save sparse data.")
+        with tf.io.gfile.GFile(target_data_dir, "w") as file:
+            data = json.dumps(data.flatten().tolist())
+            file.write(data)
+    else:
+        logging.debug(f"use local file path {target_data_dir} to save sparse data.")
+        data.tofile(target_data_dir)
 
     if attributes is not None:
         if not isinstance(attributes, dict):
@@ -368,9 +376,14 @@ def read_binary_data(reading_path: str, suffix: int, data_name: str, table_name:
     if DataAttr.DATATYPE.value not in attributes:
         raise AttributeError(f"Lack of attribute {DataAttr.DATATYPE.value}.")
 
-    with tf.io.gfile.GFile(target_data_dir, "rb") as file:
-        data_to_restore = file.read()
-        data_to_restore = np.array(json.loads(data_to_restore))
+    if target_data_dir.find("://") != -1:
+        logging.debug(f"use hdfs path {target_data_dir} to restore sparse data.")
+        with tf.io.gfile.GFile(target_data_dir, "r") as file:
+            data_to_restore = file.read()
+            data_to_restore = np.array(json.loads(data_to_restore))
+    else:
+        logging.debug(f"use local file path {target_data_dir} to restore sparse data.")
+        data_to_restore = np.fromfile(target_data_dir)
 
     if DataAttr.SHAPE.value in attributes and data_name != DataName.KEY.value:
         data_shape = attributes.pop(DataAttr.SHAPE.value)
