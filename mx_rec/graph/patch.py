@@ -14,10 +14,10 @@ from tensorflow.python.data.ops.dataset_ops import _VariantTracker
 from tensorflow.python.framework import ops
 from tensorflow_estimator.python.estimator.training import EvalSpec
 from tensorflow.python.eager.monitoring import BoolGauge, BoolGaugeCell
-from npu_bridge.estimator.npu.npu_hook import NPUCheckpointSaverHook
 
 from mx_rec.util.initialize import get_is_graph_modify_hook_running, get_modify_graph, insert_bool_gauge, \
     get_bool_gauge_set, terminate_config_initializer, get_run_times, set_is_last_round
+from mx_rec.util.tf_version_adapter import NPUCheckpointSaverHook
 
 
 def init_dataset(self, input_data):
@@ -101,7 +101,7 @@ def patch_for_bool_gauge():
     logging.debug(f"Function 'get_cell' in Class 'BoolGauge' has been patched.")
 
 
-def end(self: NPUCheckpointSaverHook, session: tf.Session):
+def end(self: NPUCheckpointSaverHook, session: tf.compat.v1.Session):
     """
     Call at the end of session hook.
 
