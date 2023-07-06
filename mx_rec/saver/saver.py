@@ -383,7 +383,7 @@ def read_binary_data(reading_path: str, suffix: int, data_name: str, table_name:
             data_to_restore = np.array(json.loads(data_to_restore))
     else:
         logging.debug(f"use local file path {target_data_dir} to restore sparse data.")
-        data_to_restore = np.fromfile(target_data_dir)
+        data_to_restore = np.fromfile(target_data_dir, dtype=attributes.pop(DataAttr.DATATYPE.value))
 
     if DataAttr.SHAPE.value in attributes and data_name != DataName.KEY.value:
         data_shape = attributes.pop(DataAttr.SHAPE.value)
