@@ -190,7 +190,8 @@ private:
   GlobalTensor<int64_t> srcAddrGlobal;
 };
 
-extern "C" __global__ __aicore__ void embedding_lookup_by_address(GM_ADDR address, GM_ADDR y, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void embedding_lookup_by_address(GM_ADDR address, GM_ADDR y, GM_ADDR usrWorkspace,
+                                                                  GM_ADDR tiling)
 {
   GET_TILING_DATA(constData, tiling);
   // // TODO: user kernel impl

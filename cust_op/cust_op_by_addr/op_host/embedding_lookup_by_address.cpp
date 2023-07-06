@@ -12,6 +12,12 @@ namespace optiling
     static ge::graphStatus TilingFunc(gert::TilingContext *context)
     {
         TilingData1 tiling;
+
+        size_t usrSize = 256;
+        size_t sysWorkspaceSize = 16 * 1024 * 1024;
+        size_t *currentWorkspace = context->GetWorkspaceSizes(1);
+        currentWorkspace[0] = sysWorkspaceSize + usrSize;
+
         int32_t block_total_nums = 48;
         int32_t ub_limit = 160 * 1024;
         auto *attrs = context->GetAttrs();
