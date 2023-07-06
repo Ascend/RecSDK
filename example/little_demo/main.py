@@ -166,12 +166,14 @@ if __name__ == "__main__":
     optimizer_list = [get_dense_and_sparse_optimizer(cfg) for _ in range(1)]
     sparse_optimizer_list = [sparse_optimizer for dense_optimizer, sparse_optimizer in optimizer_list]
 
+    # 如需验证DDR模式，请按照key数量、batch unique数量合理设置device与host表大小。
+    # 验证DDR的配置参考：数据集key总量大于device表，小于device+host；一个batch的unique key数量小于device表。
     user_hashtable = create_table(key_dtype=tf.int64,
                                   dim=tf.TensorShape([cfg.user_hashtable_dim]),
                                   name='user_table',
                                   emb_initializer=tf.compat.v1.truncated_normal_initializer(),
                                   device_vocabulary_size=cfg.user_vocab_size * 10,
-                                  host_vocabulary_size=0,  # cfg.user_vocab_size * 100, # for h2d test
+                                  host_vocabulary_size=0,
                                   optimizer_list=sparse_optimizer_list,
                                   mode=mode)
 
@@ -180,7 +182,7 @@ if __name__ == "__main__":
                                   name='item_table',
                                   emb_initializer=tf.compat.v1.truncated_normal_initializer(),
                                   device_vocabulary_size=cfg.item_vocab_size * 10,
-                                  host_vocabulary_size=0,  # cfg.user_vocab_size * 100, # for h2d test
+                                  host_vocabulary_size=0,
                                   optimizer_list=sparse_optimizer_list,
                                   mode=mode)
 

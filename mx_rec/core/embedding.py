@@ -964,7 +964,7 @@ def set_zero_for_non_valid_key(id_offsets: Optional[tf.Tensor], embeddings: Opti
     if access_threshold is None or access_threshold <= 0:
         return embeddings
     id_offsets_expand = tf.expand_dims(id_offsets >= 0, axis=-1)
-    if get_use_static():
-        id_offsets_expand = tf.compat.v1.broadcast_to(id_offsets_expand, embeddings.shape.as_list())
+    if tf.__version__.startswith("1"):
+        id_offsets_expand = tf.repeat(id_offsets_expand, [tf.shape(embeddings)[-1]], axis=-1)
     embeddings = tf.where(id_offsets_expand, embeddings, tf.zeros_like(embeddings))
     return embeddings
