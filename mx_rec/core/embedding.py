@@ -902,7 +902,7 @@ class _EvictHook(tf.compat.v1.train.SessionRunHook):
                         channel_name=f'{instance.table_name}_evict_{TRAIN_CHANNEL_ID}')[0]
 
                     initialized_tensor = instance.emb_initializer(
-                        tf.shape(evict_pos)[0] + instance.embedding_size)
+                        tf.shape(evict_pos)[0] + instance.embedding_size) * instance.init_param
 
                 logging.debug(f'evict_pos output shape {evict_pos}, and slice_device_vocabulary_size '
                               f'{instance.slice_device_vocabulary_size}, '
