@@ -9,7 +9,7 @@ from mxrec_pybind import InitializeInfo, ConstantInitializerInfo, NormalInitiali
 
 from mx_rec.constants.constants import MxRecMode
 from mx_rec.util.initialize import get_rank_id, get_device_id, get_rank_size, set_asc_manager, \
-    is_asc_manager_initialized, get_train_interval, get_eval_steps, get_prefetch_batch_number, \
+    is_asc_manager_initialized, get_train_steps, get_eval_steps, get_prefetch_batch_number, \
     export_table_instances, export_feature_spec, get_if_load, get_training_mode_channel_id, get_use_static, \
     get_use_hot, get_use_dynamic_expansion, get_enable_table_merge, export_optimizer, export_dangling_table
 from mx_rec.core.asc.helper import find_dangling_table, should_skip
@@ -183,7 +183,7 @@ def initialize_emb_cache(table_info_list, threshold_list):
     rank_id = get_rank_id()
     device_id = get_device_id()
     rank_size = get_rank_size()
-    evaluate_stride = get_train_interval()
+    train_steps = get_train_steps()
     eval_steps = get_eval_steps()
     n_batch_to_prefetch = get_prefetch_batch_number()
     if_load = get_if_load()
@@ -195,12 +195,8 @@ def initialize_emb_cache(table_info_list, threshold_list):
     if get_use_dynamic_expansion():
         option = option | USE_DYNAMIC_EXPANSION
 
-    if get_training_mode_channel_id(is_training=False) == 0:
-        rank_info = RankInfo(rank_id, device_id, rank_size, option, n_batch_to_prefetch,
-                             [eval_steps, evaluate_stride])
-    else:
-        rank_info = RankInfo(rank_id, device_id, rank_size, option, n_batch_to_prefetch,
-                             [evaluate_stride, eval_steps])
+    # [train_steps, eval_steps] pass step information to HybridMgmt for data process loop
+    rank_info = RankInfo(rank_id, device_id, rank_size, option, n_batch_to_prefetch, [train_steps, eval_steps])
 
     emb_cache = HybridMgmt()
     if threshold_list:
@@ -213,7 +209,7 @@ def initialize_emb_cache(table_info_list, threshold_list):
     logging.info("Preprocessing has been sunk into the host pipeline.")
     logging.debug(f"Flag if load is {if_load}.")
     logging.debug(f"n_batch_to_prefetch is {n_batch_to_prefetch}.")
-    logging.debug(f"evaluate_stride is {evaluate_stride}.")
+    logging.debug(f"train_steps is {train_steps}.")
     logging.debug(f"eval_steps is {eval_steps}.")
     logging.debug(f"threshold_values are {threshold_list}.")
 

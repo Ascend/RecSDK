@@ -1,23 +1,26 @@
-# coding: UTF-8
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+
 import logging
 import os
 import warnings
 from glob import glob
-import tensorflow as tf
 
-from config import sess_config, Config
+import tensorflow as tf
+from config import Config
 from dataset import generate_dataset
-from optimizer import get_dense_and_sparse_optimizer
+from optimizer import create_dense_and_sparse_optimizer
 from model import MyModel
-from mx_rec.util.tf_version_adapter import hccl_ops
+from run_mode import RunMode, UseMode
+
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.helper import get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
 from mx_rec.constants.constants import MxRecMode, ASCEND_TIMESTAMP
-from mx_rec.util.initialize import get_rank_id, get_rank_size, init, clear_channel, terminate_config_initializer, \
-    set_if_load, get_initializer
+from mx_rec.util.initialize import get_rank_id, init, terminate_config_initializer, set_if_load
 from mx_rec.util.variable import get_dense_and_sparse_variable
 
 tf.compat.v1.disable_eager_execution()
@@ -84,21 +87,6 @@ def build_graph(hash_table_list, is_train, feature_spec_list=None, config_dict=N
     return iterator, model
 
 
-def evaluate():
-    if MODIFY_GRAPH_FLAG:
-        sess.run(get_initializer(False))
-    else:
-        sess.run(eval_iterator.initializer)
-    clear_channel(is_train_channel=False)
-    for j in range(1, EVAL_STEPS + 1):
-        logging.info(f"################    eval at step {j} epoch {EPOCH}    ################")
-        try:
-            sess.run(eval_model.loss_list)
-        except tf.errors.OutOfRangeError:
-            logging.info(f"Encounter the end of Sequence for eval.")
-            break
-
-
 def create_feature_spec_list(use_timestamp=False):
     access_threshold = cfg.access_threshold if use_timestamp else None
     eviction_threshold = cfg.eviction_threshold if use_timestamp else None
@@ -124,8 +112,10 @@ if __name__ == "__main__":
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     warnings.filterwarnings("ignore")
 
+    use_mode = UseMode.mapping(os.getenv("USE_MODE"))
     mode = MxRecMode.mapping(os.getenv("MXREC_MODE"))
-    TRAIN_INTERVAL = 100
+    TRAIN_STEPS = 100
+    EVAL_INTERVAL = 100
     EVAL_STEPS = 10
     SAVING_INTERVAL = 100
 
@@ -140,7 +130,7 @@ if __name__ == "__main__":
 
     # nbatch function needs to be used together with the prefetch and host_vocabulary_size != 0
     init(use_mpi=use_mpi,
-         train_interval=TRAIN_INTERVAL,
+         train_steps=TRAIN_STEPS,
          eval_steps=EVAL_STEPS,
          prefetch_batch_number=5,
          use_dynamic=use_dynamic,
@@ -163,7 +153,7 @@ if __name__ == "__main__":
     train_feature_spec_list = create_feature_spec_list(use_timestamp=USE_TIMESTAMP)
     eval_feature_spec_list = create_feature_spec_list(use_timestamp=USE_TIMESTAMP)
 
-    optimizer_list = [get_dense_and_sparse_optimizer(cfg) for _ in range(1)]
+    optimizer_list = [create_dense_and_sparse_optimizer(cfg)]
     sparse_optimizer_list = [sparse_optimizer for dense_optimizer, sparse_optimizer in optimizer_list]
 
     # 如需验证DDR模式，请按照key数量、batch unique数量合理设置device与host表大小。
@@ -194,71 +184,21 @@ if __name__ == "__main__":
                                             config_dict=ACCESS_AND_EVICT, batch_number=cfg.batch_number)
     dense_variables, sparse_variables = get_dense_and_sparse_variable()
 
-    rank_size = get_rank_size()
-    train_ops = []
-    # multi task training
-    for loss, (dense_optimizer, sparse_optimizer) in zip(train_model.loss_list, optimizer_list):
-        # do dense optimization
-        grads = dense_optimizer.compute_gradients(loss, var_list=dense_variables)
-        avg_grads = []
-        for grad, var in grads:
-            if rank_size > 1:
-                grad = hccl_ops.allreduce(grad, "sum") if grad is not None else None
-            if grad is not None:
-                avg_grads.append((grad, var))
-        # apply gradients: update variables
-        train_ops.append(dense_optimizer.apply_gradients(avg_grads))
+    run_mode = RunMode(
+        MODIFY_GRAPH_FLAG, optimizer_list, train_model, eval_model, train_iterator, eval_iterator,
+        TRAIN_STEPS, EVAL_STEPS
+    )
 
-        if use_dynamic_expansion:
-            from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_ID_OFFSET
-
-            train_emb_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)
-            train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET)
-            # do sparse optimization by addr
-            local_grads = tf.gradients(loss, train_emb_list)  # local_embedding
-            grads_and_vars = [(grad, address) for grad, address in zip(local_grads, train_address_list)]
-            train_ops.append(sparse_optimizer.apply_gradients(grads_and_vars))
-        else:
-            # do sparse optimization
-            sparse_grads = tf.gradients(loss, sparse_variables)
-            grads_and_vars = [(grad, variable) for grad, variable in zip(sparse_grads, sparse_variables)]
-            train_ops.append(sparse_optimizer.apply_gradients(grads_and_vars))
-
-    saver = tf.compat.v1.train.Saver()
     if MODIFY_GRAPH_FLAG:
         logging.info("start to modifying graph")
         modify_graph_and_start_emb_cache(dump_graph=True)
     else:
         start_asc_pipeline()
 
-    with tf.compat.v1.Session(config=sess_config(dump_data=False)) as sess:
-        if MODIFY_GRAPH_FLAG:
-            sess.run(get_initializer(True))
-        else:
-            sess.run(train_iterator.initializer)
-        sess.run(tf.compat.v1.global_variables_initializer())
-        EPOCH = 0
-        if os.path.exists(f"./saved-model/sparse-model-{rank_id}-%d" % 0):
-            saver.restore(sess, f"./saved-model/model-{rank_id}-%d" % 0)
-        else:
-            saver.save(sess, f"./saved-model/model-{rank_id}", global_step=0)
-
-        for i in range(1, 201):
-            logging.info(f"################    training at step {i}    ################")
-            try:
-                sess.run([train_ops, train_model.loss_list])
-            except tf.errors.OutOfRangeError:
-                logging.info(f"Encounter the end of Sequence for training.")
-                break
-            else:
-                if i % TRAIN_INTERVAL == 0:
-                    EPOCH += 1
-                    evaluate()
-
-                if i % SAVING_INTERVAL == 0:
-                    saver.save(sess, f"./saved-model/model-{rank_id}", global_step=i)
-
-        saver.save(sess, f"./saved-model/model-{rank_id}", global_step=i)
+    if use_mode == UseMode.TRAIN:
+        run_mode.train(EVAL_INTERVAL, SAVING_INTERVAL)
+    elif use_mode == UseMode.PREDICT:
+        run_mode.predict()
 
     terminate_config_initializer()
     logging.info("Demo done!")

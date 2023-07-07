@@ -393,25 +393,35 @@ void HybridMgmt::InsertThreadForHBM(int mode)
 #ifndef GTEST
 void HybridMgmt::TaskForTrain(TaskType type)
 {
+    bool isFirstIn = true;
     while (isRunning) {
-        spdlog::info(MGMT + "Start Train Task: {}", type);
+        if (isFirstIn) {
+            spdlog::info(MGMT + "Start Train Task: {}", type);
+            isFirstIn = false;
+        }
         if (mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1 || mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] > 0) {
             if (!TrainTask(type)) {
                 return;
             }
         }
+        this_thread::sleep_for(1ms);
     }
 }
 
 void HybridMgmt::TaskForEval(TaskType type)
 {
+    bool isFirstIn = true;
     while (isRunning) {
-        spdlog::info(MGMT + "Start Eval Task: {}", type);
+        if (isFirstIn) {
+            spdlog::info(MGMT + "Start Eval Task: {}", type);
+            isFirstIn = false;
+        }
         if (mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1 || mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] > 0) {
             if (!EvalTask(type)) {
                 return;
             }
         }
+        this_thread::sleep_for(1ms);
     }
 }
 

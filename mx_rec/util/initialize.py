@@ -12,7 +12,8 @@ import psutil
 
 import mx_rec.constants.constants
 from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION, VALID_DEVICE_ID_LIST, LOCAL_RANK_SIZE, \
-    MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE, HASHTABLE_COLLECTION_NAME_LENGTH
+    MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE, HASHTABLE_COLLECTION_NAME_LENGTH,\
+    TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID
 from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.validator.validator import RankInfoValidator, StringValidator
 from mx_rec.util.atomic import AtomicInteger
@@ -30,7 +31,7 @@ class ConfigInitializer:
         self._asc_manager = None
         self._mpi = None
         self._is_frozen = False
-        self._train_interval = None
+        self._train_steps = None
         self._eval_steps = None
         self._prefetch_batch_number = None
         self._if_load = None
@@ -64,7 +65,7 @@ class ConfigInitializer:
             self._rank_size = kwargs.get("rank_size")
 
         self.parse_hccl_json() if os.getenv("RANK_TABLE_FILE") else self.set_hccl_info_without_json()
-        self.train_interval = kwargs.get("train_interval", -1)
+        self.train_steps = kwargs.get("train_steps", -1)
         self.eval_steps = kwargs.get("eval_steps", -1)
         self.check_parameters()
         self.prefetch_batch_number = kwargs.get("prefetch_batch_number", 1)
@@ -148,8 +149,8 @@ class ConfigInitializer:
         return self._rank_to_device_dict[self._rank_id]
 
     @property
-    def train_interval(self):
-        return self._train_interval
+    def train_steps(self):
+        return self._train_steps
 
     @property
     def eval_steps(self):
@@ -298,8 +299,10 @@ class ConfigInitializer:
 
     def insert_training_mode_channel_id(self, is_training):
         if is_training not in self._training_mode_channel_dict:
-            # mx_rec has 2 channel for data input. it would bind channel_id to training mode recorded in dict.
-            self._training_mode_channel_dict[is_training] = len(self._training_mode_channel_dict)
+            # mx_rec has 2 channel for data input.
+            # train_model bind to channel TRAIN_CHANNEL_ID
+            # eval_model bind to channel EVAL_CHANNEL_ID
+            self._training_mode_channel_dict[is_training] = TRAIN_CHANNEL_ID if is_training else EVAL_CHANNEL_ID
 
     def get_training_mode_channel_id(self, is_training):
         return self._training_mode_channel_dict.get(is_training)
@@ -364,8 +367,8 @@ class ConfigInitializer:
         if self.rank_id >= self.rank_size:
             raise ValueError(f"Rank_id must be within the range from 0 to rank_size.")
 
-        if self._train_interval == 0 and self._eval_steps == 0:
-            raise ValueError(f"Train interval and eval steps could not both equal 0.")
+        if self._train_steps == 0 and self._eval_steps == 0:
+            raise ValueError(f"Train steps and eval steps could not both equal 0.")
 
     def freeze(self):
         self._is_frozen = True
@@ -391,10 +394,10 @@ class ConfigInitializer:
         self.unfreeze()
         logging.debug("ASC manager has been destroyed.")
 
-    @train_interval.setter
-    def train_interval(self, interval):
-        check_step(interval)
-        self._train_interval = interval
+    @train_steps.setter
+    def train_steps(self, step: int):
+        check_step(step)
+        self._train_steps = step
 
     @eval_steps.setter
     def eval_steps(self, steps):
@@ -617,19 +620,19 @@ def get_customized_ops():
     return ConfigInitializer.customized_ops
 
 
-def get_train_interval():
-    return ConfigInitializer.get_instance().train_interval
+def get_train_steps():
+    return ConfigInitializer.get_instance().train_steps
 
 
 def get_eval_steps():
     return ConfigInitializer.get_instance().eval_steps
 
 
-def set_train_interval(interval):
-    ConfigInitializer.get_instance().train_interval = interval
+def set_train_steps(steps: int):
+    ConfigInitializer.get_instance().train_steps = steps
 
 
-def set_eval_steps(steps):
+def set_eval_steps(steps: int):
     ConfigInitializer.get_instance().eval_steps = steps
 
 
