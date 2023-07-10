@@ -334,7 +334,7 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<emb_batch_t>& bat
     // map key to offset directly by lookup keyOffsetMap (hashmap)
     if (rankInfo.noDDR) {
         TimeCost key2OffsetTC;
-        Key2Offset(batch->name, uniqueInfo.all2AllInfo.keyRecv);
+        Key2Offset(batch->name, uniqueInfo.all2AllInfo.keyRecv, channel);
         TIME_PRINT("key2OffsetTC(ms):{}", key2OffsetTC.ElapsedMS());
     }
     if (!rankInfo.useStatic) { // Static all2all，need send count
@@ -391,7 +391,11 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channe
     // without host, just device, all embedding vectors were stored in device
     // map key to offset directly by lookup keyOffsetMap (hashmap)
     if (rankInfo.noDDR) {
-        Key2Offset(batch->name, lookupKeys);
+        if (rankInfo.useDynamicExpansion) {
+            Key2OffsetDynamicExpansion(batch->name, lookupKeys, channel);
+        } else {
+            Key2Offset(batch->name, lookupKeys, channel);
+        }
     }
 
     if (!rankInfo.useStatic) { // Static all2all，need send count
@@ -967,7 +971,7 @@ void KeyProcess::GetScAllForUnique(const vector<int>& keyScLocal, int commId, in
     spdlog::debug("rank {} key scAllOut matrix:\n{}", rankInfo.rankId, scAllOut);
 }
 
-void KeyProcess::Key2Offset(const emb_name_t& embName, keys_t& splitKey)
+void KeyProcess::Key2Offset(const emb_name_t& embName, keys_t& splitKey, int channel)
 {
     TimeCost key2OffsetTC;
     EASY_FUNCTION(profiler::colors::Blue600)
@@ -975,19 +979,14 @@ void KeyProcess::Key2Offset(const emb_name_t& embName, keys_t& splitKey)
     auto& key2Offset = keyOffsetMap[embName];
     auto& maxOffsetTmp  = maxOffset[embName];
     auto& evictPos = evictPosMap[embName];
-    auto& curEmbTable = embeddingTableMap[embName]; // empty when not use dynamic expansion
     for (long& key : splitKey) {
         if (key == -1) {
-            if (rankInfo.useDynamicExpansion) {
-                key = 0;
-            }
             continue;
         }
         const auto& iter = key2Offset.find(key);
         if (iter != key2Offset.end()) {
-            // 老值
             key = iter->second;
-        } else if (evictPos.size() != 0) {
+        } else if (evictPos.size() != 0 && channel == TRAIN_CHANNEL_ID) {
             size_t offset;
             // 新值, emb有pos可复用
             offset = evictPos.back();
@@ -998,22 +997,51 @@ void KeyProcess::Key2Offset(const emb_name_t& embName, keys_t& splitKey)
             evictPos.pop_back();
         } else {
             // 新值
-            if (rankInfo.useDynamicExpansion) {
+            if (channel == TRAIN_CHANNEL_ID) {
+                key2Offset[key] = maxOffsetTmp;
+                key = maxOffsetTmp++;
+            } else {
+                key = INVALID_KEY_VALUE;
+            }
+        }
+    }
+    if (maxOffsetTmp > embInfos[embName].devVocabSize) {
+        spdlog::error("dev cache overflow {}>{}", maxOffsetTmp, embInfos[embName].devVocabSize);
+        throw std::runtime_error("dev cache overflow!");
+    }
+    spdlog::debug("current dev emb usage:{}/{}", maxOffsetTmp, embInfos[embName].devVocabSize);
+    TIME_PRINT("key2OffsetTC(ms):{}", key2OffsetTC.ElapsedMS());
+}
+
+void KeyProcess::Key2OffsetDynamicExpansion(const emb_name_t& embName, keys_t& splitKey, int channel)
+{
+    TimeCost key2OffsetTC;
+    EASY_FUNCTION(profiler::colors::Blue600)
+    std::lock_guard<std::mutex> lk(mut); // lock for PROCESS_THREAD
+    auto& key2Offset = keyOffsetMap[embName];
+    auto& maxOffsetTmp  = maxOffset[embName];
+    auto& curEmbTable = embeddingTableMap[embName]; // empty when not use dynamic expansion
+    for (long& key : splitKey) {
+        if (key == -1) {
+            key = 0;
+            continue;
+        }
+        const auto& iter = key2Offset.find(key);
+        if (iter != key2Offset.end()) {
+            key = iter->second;
+        } else {
+            // 新值
+            if (channel == TRAIN_CHANNEL_ID) {
 #ifndef GTEST
                 auto addr = curEmbTable.GetEmbAddress();
                 key2Offset[key] = addr;
                 key = addr;
 #endif
                 maxOffsetTmp++;
-            } else {
-            key2Offset[key] = maxOffsetTmp;
-            key = maxOffsetTmp++;
+                continue;
+            }
+            key = 0;
         }
-    }
-    }
-    if (!rankInfo.useDynamicExpansion && maxOffsetTmp > embInfos[embName].devVocabSize) {
-        spdlog::error("dev cache overflow {}>{}", maxOffsetTmp, embInfos[embName].devVocabSize);
-        throw std::runtime_error("dev cache overflow!");
     }
     spdlog::debug("current dev emb usage:{}/{}", maxOffsetTmp, embInfos[embName].devVocabSize);
     TIME_PRINT("key2OffsetTC(ms):{}", key2OffsetTC.ElapsedMS());

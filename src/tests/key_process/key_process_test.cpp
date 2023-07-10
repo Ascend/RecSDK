@@ -402,7 +402,24 @@ TEST_F(KeyProcessTest, Key2Offset)
     keys_t expectOffset = { 0, 1, 2, 0, 3, 0, 4, 3 };
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
-    process.Key2Offset("emb0", lookupKeys);
+    process.Key2Offset("emb0", lookupKeys, TRAIN_CHANNEL_ID);
+    spdlog::debug(KEY_PROCESS "test Key2Offset: lookupKeys: {}, keyOffsetMap: {}", lookupKeys, process.keyOffsetMap);
+    ASSERT_THAT(lookupKeys, ElementsAreArray(expectOffset));
+
+    keys_t lookupKeys2 = { 5, 17, 29, 5, 25, 5, 21, 25 };
+    keys_t expectOffset2 = { -1, -1, -1, -1, -1, -1, -1, -1 };
+    process.Key2Offset("emb0", lookupKeys2, EVAL_CHANNEL_ID);
+    spdlog::debug(KEY_PROCESS "test Key2Offset: lookupKeys: {}, keyOffsetMap: {}", lookupKeys2, process.keyOffsetMap);
+    ASSERT_THAT(lookupKeys2, ElementsAreArray(expectOffset2));
+}
+
+TEST_F(KeyProcessTest, Key2OffsetDynamicExpansion)
+{
+    keys_t lookupKeys = { 4, 16, 28, -1, 24, -1, 20, 24 };
+    keys_t expectOffset = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
+    ASSERT_EQ(process.isRunning, true);
+    process.Key2OffsetDynamicExpansion("emb0", lookupKeys, EVAL_CHANNEL_ID);
     spdlog::debug(KEY_PROCESS "test Key2Offset: lookupKeys: {}, keyOffsetMap: {}", lookupKeys, process.keyOffsetMap);
     ASSERT_THAT(lookupKeys, ElementsAreArray(expectOffset));
 }

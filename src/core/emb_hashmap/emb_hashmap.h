@@ -24,10 +24,10 @@ namespace MxRec {
         void Init(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos, bool ifLoad = false);
 
         void Process(const string& embName, std::vector<emb_key_t>& keys, size_t iBatch,
-                     vector<Tensor>& tmpDataOut);
+                     vector<Tensor>& tmpDataOut, int channelId);
 
         void FindAndUpdateOffset(const string& embName, vector<emb_key_t>& keys, size_t currentBatchId,
-                                 size_t keepBatchId);
+                                 size_t keepBatchId, int channelId);
 
         void ChangeSwapInfo(EmbHashMapInfo& embHashMap, emb_key_t key, size_t hostOffset, size_t currentBatchId,
                             int pos);
@@ -53,9 +53,9 @@ namespace MxRec {
         absl::flat_hash_map<string, EmbHashMapInfo> embHashMaps;
 
         void FindOffset(const string& embName, const vector<emb_key_t>& keys,
-                        size_t currentBatchId, size_t keepBatchId);
+                        size_t currentBatchId, size_t keepBatchId, int channelId);
 
-        size_t FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHashMap);
+        size_t FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHashMap, int channelId);
 
         void UpdateBatchId(const vector<emb_key_t>& keys, size_t currentBatchId, size_t keySize,
                            EmbHashMapInfo& embHashMap) const;
