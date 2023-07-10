@@ -155,7 +155,9 @@ namespace MxRec {
 
         void GetScAllForUnique(const vector<int>& keyScLocal, int commId, int channel, vector<int> &scAllOut) const;
 
-        void Key2Offset(const emb_name_t& embName, keys_t& splitKey);
+        void Key2Offset(const emb_name_t& embName, keys_t& splitKey, int channel);
+
+        void Key2OffsetDynamicExpansion(const emb_name_t& embName, keys_t& splitKey, int channel);
 
         unique_ptr<emb_batch_t> GetBatchData(int channel, int commId);
 

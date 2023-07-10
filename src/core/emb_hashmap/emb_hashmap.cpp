@@ -38,7 +38,7 @@ void EmbHashMap::Init(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
 }
 
 void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t iBatch,
-                         vector<Tensor>& tmpDataOut)
+                         vector<Tensor>& tmpDataOut, int channelId)
 {
 #ifndef GTEST
     EASY_FUNCTION(profiler::colors::Pink)
@@ -52,9 +52,9 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     spdlog::debug("FindOffset, {}", findOffsetV2);
 
     if (findOffsetV2) {
-        FindAndUpdateOffset(embName, keys, swapId, keepBatch);
+        FindAndUpdateOffset(embName, keys, swapId, keepBatch, channelId);
     } else {
-        FindOffset(embName, keys, swapId, keepBatch);
+        FindOffset(embName, keys, swapId, keepBatch, channelId);
     }
     spdlog::debug("FindOffset end");
 
@@ -96,7 +96,7 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
  */
 #ifndef GTEST
 void EmbHashMap::FindAndUpdateOffset(const string& embName, vector<emb_key_t>& keys,
-                                     size_t currentBatchId, size_t keepBatchId)
+                                     size_t currentBatchId, size_t keepBatchId, int channelId)
 {
     EASY_FUNCTION()
     size_t keySize = keys.size();
@@ -109,7 +109,7 @@ void EmbHashMap::FindAndUpdateOffset(const string& embName, vector<emb_key_t>& k
             continue;
         }
         auto& offset = embHashMap.lookUpVec[i];
-        if (offset == INVALID_KEY_VALUE) {
+        if (offset == INVALID_KEY_VALUE && channelId == TRAIN_CHANNEL_ID) {
             offset = FindNewOffset(key, embHashMap);
             if (offset < devVocabSize) {
                 embHashMap.devOffset2KeyOld.emplace_back(offset, embHashMap.devOffset2Key[offset]);
@@ -302,7 +302,7 @@ void EmbHashMap::EvictDeleteEmb(const string& embName, const vector<emb_key_t>& 
  */
 
 void EmbHashMap::FindOffset(const string& embName, const vector<emb_key_t>& keys,
-                            size_t currentBatchId, size_t keepBatchId)
+                            size_t currentBatchId, size_t keepBatchId, int channelId)
 {
     EASY_FUNCTION()
     size_t keySize = keys.size();
@@ -314,7 +314,7 @@ void EmbHashMap::FindOffset(const string& embName, const vector<emb_key_t>& keys
             embHashMap.lookUpVec.emplace_back(INVALID_KEY_VALUE);
             continue;
         }
-        auto offset = FindOffsetHelper(key, embHashMap);
+        auto offset = FindOffsetHelper(key, embHashMap, channelId);
         if (offset < embHashMap.devVocabSize) {
             embHashMap.lookUpVec.emplace_back(offset);
             embHashMap.devOffset2KeyOld.emplace_back(offset, static_cast<int>(embHashMap.devOffset2Key[offset]));
@@ -331,7 +331,7 @@ void EmbHashMap::FindOffset(const string& embName, const vector<emb_key_t>& keys
 }
 
 
-size_t EmbHashMap::FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHashMap)
+size_t EmbHashMap::FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHashMap, int channelId)
 
 {
     size_t offset;
@@ -339,29 +339,33 @@ size_t EmbHashMap::FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHas
     if (iter != embHashMap.hostHashMap.end()) {
         offset = iter->second;
         spdlog::trace("devVocabSize, {} , offset , {}", embHashMap.devVocabSize, offset);
-    } else if (embHashMap.evictDevPos.size() != 0) { // 优先复用hbm表
+    } else if (embHashMap.evictDevPos.size() != 0 && channelId == TRAIN_CHANNEL_ID) { // 优先复用hbm表
         offset = embHashMap.evictDevPos.back();
         embHashMap.hostHashMap[key] = offset;
         spdlog::trace("ddr mode, dev evictPos is not null, key [{}] reuse offset [{}], evictSize [{}]",
                       key, offset, embHashMap.evictDevPos.size());
         embHashMap.evictDevPos.pop_back();
-    } else if (embHashMap.evictPos.size() != 0) { // hbm不足，再复用ddr表
+    } else if (embHashMap.evictPos.size() != 0 && channelId == TRAIN_CHANNEL_ID) { // hbm不足，再复用ddr表
         offset = embHashMap.evictPos.back();
         embHashMap.hostHashMap[key] = offset;
         spdlog::trace("ddr mode, host evictPos is not null, key [{}] reuse offset [{}], evictSize [{}]",
                       key, offset, embHashMap.evictPos.size());
         embHashMap.evictPos.pop_back();
     } else {
-        embHashMap.hostHashMap[key] = embHashMap.maxOffset;
-        offset = embHashMap.maxOffset;
-        embHashMap.maxOffset++;
-        if (embHashMap.maxOffset == embHashMap.devVocabSize) {
-            spdlog::info("start using host vocab!");
-        }
-        if (embHashMap.maxOffset > embHashMap.hostVocabSize + embHashMap.devVocabSize) {
-            spdlog::error("hostVocabSize too small! dev:{} host:{}", embHashMap.devVocabSize,
-                          embHashMap.hostVocabSize);
-            throw runtime_error("hostVocabSize too small");
+        if (channelId == TRAIN_CHANNEL_ID) {
+            embHashMap.hostHashMap[key] = embHashMap.maxOffset;
+            offset = embHashMap.maxOffset;
+            embHashMap.maxOffset++;
+            if (embHashMap.maxOffset == embHashMap.devVocabSize) {
+                spdlog::info("start using host vocab!");
+            }
+            if (embHashMap.maxOffset > embHashMap.hostVocabSize + embHashMap.devVocabSize) {
+                spdlog::error("hostVocabSize too small! dev:{} host:{}", embHashMap.devVocabSize,
+                              embHashMap.hostVocabSize);
+                throw runtime_error("hostVocabSize too small");
+            }
+        } else {
+            offset = -1;
         }
     }
     return offset;

@@ -740,7 +740,7 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
     auto restore = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::RESTORE);
     hdTransfer->Send(TransferChannel::RESTORE, *restore, channelId, embName);
     vector<Tensor> tmpData;
-    hostHashMaps->Process(embName, lookupKeys, iBatch, tmpData);
+    hostHashMaps->Process(embName, lookupKeys, iBatch, tmpData, channelId);
     hdTransfer->Send(TransferChannel::LOOKUP, { tmpData.front() }, channelId, embName);
     tmpData.erase(tmpData.begin());
     hdTransfer->Send(TransferChannel::SWAP, tmpData, channelId, embName);
