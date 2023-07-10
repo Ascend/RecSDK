@@ -171,6 +171,10 @@ def build(self):
 
 def save(self, sess, save_path, global_step=None, latest_filename=None, meta_graph_suffix="meta", write_meta_graph=True,
          write_state=True, strip_default_attrs=False, save_debug_info=False):
+    # since tf 2.6.0, tf needs tensorflow_io to support hdfs path
+    if tf.__version__.startswith("2") and save_path.find("://") != -1:
+        import tensorflow_io as tfio
+
     if not self._is_built and not context.executing_eagerly():
         raise RuntimeError("`build()` should be called before save if defer_build==True")
     if latest_filename is None:
@@ -206,6 +210,10 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
 def restore(self, sess, save_path):
     if save_path is None:
         raise ValueError("Can't load save_path when it is None.")
+    # since tf 2.6.0, tf needs tensorflow_io to support hdfs path
+    if tf.__version__.startswith("2") and save_path.find("://") != -1:
+        import tensorflow_io as tfio
+
     checkpoint_prefix = compat.as_text(save_path)
     if self._is_empty:
         return

@@ -35,9 +35,6 @@ class Saver(object):
         # save_easy_mode : only save the embedding and key data of sparse tables
         self.save_easy_mode = os.getenv("SAVE_EASY", 0)
         self.build()
-        # since tf 2.6.0, tf needs tensorflow_io to support hdfs path
-        if tf.__version__.startswith("2"):
-            import tensorflow_io as tfio
 
     def build(self):
         if self.var_list is None:
