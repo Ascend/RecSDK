@@ -63,7 +63,7 @@ namespace optiling
         return ge::GRAPH_SUCCESS;
     }
 
-    static int check_op_support(const ge::Operator &op, ge::AscendString &result)
+    static ge::graphStatus check_op_support(const ge::Operator &op, ge::AscendString &result)
     {
         std::string res_json_str = "{\"ret_code\": \"0\",\"reason\": \"check_supported_stub\"}";
         result = ge::AscendString(res_json_str.c_str());
