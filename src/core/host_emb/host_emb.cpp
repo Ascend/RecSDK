@@ -89,15 +89,41 @@ void HostEmb::LoadEmb(emb_mem_t& loadData)
 #endif
 }
 
-void HostEmb::Join()
+void HostEmb::Join(int channelId)
 {
     spdlog::stopwatch sw;
-    spdlog::debug(HOSTEMB + "hostemb start join {}", procThreads.size());
-    for (auto& t: procThreads) {
-        t->join();
+    switch (channelId) {
+        case TRAIN_CHANNEL_ID:
+            spdlog::debug(
+                HOSTEMB + "start join, channelId:{}, procThreadsForTrain num:{}",
+                channelId, procThreadsForTrain.size()
+            );
+            for (auto& t: procThreadsForTrain) {
+                t->join();
+            }
+            procThreadsForTrain.clear();
+            spdlog::debug(
+                HOSTEMB + "end join, channelId:{}, cost:{}",
+                channelId, duration_cast<milliseconds>((sw).elapsed())
+            );
+            break;
+        case EVAL_CHANNEL_ID:
+            spdlog::debug(
+                HOSTEMB + "start join, channelId:{}, procThreadsForEval num:{}",
+                channelId, procThreadsForEval.size()
+            );
+            for (auto& t: procThreadsForEval) {
+                t->join();
+            }
+            procThreadsForEval.clear();
+            spdlog::debug(
+                HOSTEMB + "end join, channelId:{}, cost:{}",
+                channelId, duration_cast<milliseconds>((sw).elapsed())
+            );
+            break;
+        default:
+            throw invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
     }
-    procThreads.clear();
-    spdlog::info(HOSTEMB + "hostemb end join, cost:{}", duration_cast<milliseconds>((sw).elapsed()));
 }
 
 /*
@@ -107,6 +133,7 @@ void HostEmb::Join()
 #ifndef GTEST
 void HostEmb::UpdateEmb(const vector<size_t>& missingKeysHostPos, int channelId, const string& embName)
 {
+    spdlog::info(HOSTEMB + "UpdateEmb, channelId:{}, embName:{}", channelId, embName);
     EASY_FUNCTION(profiler::colors::Purple);
     spdlog::stopwatch sw;
     auto hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
@@ -139,8 +166,9 @@ void HostEmb::UpdateEmb(const vector<size_t>& missingKeysHostPos, int channelId,
 
 void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelId, const string& embName)
 {
+    spdlog::info(HOSTEMB + "UpdateEmbV2, channelId:{}, embName:{}", channelId, embName);
     EASY_FUNCTION(profiler::colors::Purple)
-    procThreads.emplace_back(make_unique<thread>(
+    auto updateThread =
         [&, missingKeysHostPos, channelId, embName] {
             auto hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
             TransferChannel transferName = TransferChannel::D2H;
@@ -172,7 +200,18 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
                 throw runtime_error("Acl destroy tensor dataset failed.");
             }
             spdlog::info(HOSTEMB + "update emb end cost: {}ms", Format2Ms(sw));
-        }));
+    };
+
+    switch (channelId) {
+        case TRAIN_CHANNEL_ID:
+            procThreadsForTrain.emplace_back(make_unique<thread>(updateThread));
+            break;
+        case EVAL_CHANNEL_ID:
+            procThreadsForEval.emplace_back(make_unique<thread>(updateThread));
+            break;
+        default:
+            throw invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
+    }
 }
 
 /*

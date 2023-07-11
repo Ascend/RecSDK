@@ -85,7 +85,8 @@ namespace MxRec {
             t->join();
         }
         if (hostEmbs != nullptr) {
-            hostEmbs->Join();
+            hostEmbs->Join(TRAIN_CHANNEL_ID);
+            hostEmbs->Join(EVAL_CHANNEL_ID);
             hostEmbs = nullptr;
         }
         procThreads.clear();

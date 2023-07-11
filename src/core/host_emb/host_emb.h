@@ -32,7 +32,7 @@ namespace MxRec {
 
         void LoadEmb(absl::flat_hash_map<string, HostEmbTable>& loadData);
 
-        void Join();
+        void Join(int channelId);
 
         void UpdateEmb(const vector<size_t>& missingKeysHostPos, int channelId, const string& embName);
 
@@ -52,7 +52,8 @@ namespace MxRec {
     GTEST_PRIVATE:
         absl::flat_hash_map<string, HostEmbTable> hostEmbs;
 
-        std::vector<unique_ptr<std::thread>> procThreads;
+        std::vector<unique_ptr<std::thread>> procThreadsForTrain;
+        std::vector<unique_ptr<std::thread>> procThreadsForEval;
 
         void EmbDataGenerator(const vector<InitializeInfo>& initializeInfos, int seed, int vocabSize, int embeddingSize,
                                        vector<vector<float>>& embData);

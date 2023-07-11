@@ -748,7 +748,7 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
         auto all2all = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::ALL2ALL);
         hdTransfer->Send(TransferChannel::ALL2ALL, *all2all, channelId, embName);
     }
-    TIME_PRINT("getAndSendTensorsTC(ms):{}", getAndSendTensorsTC.ElapsedMS());
+    TIME_PRINT("getAndSendTensorsTC(ms):{}, channelId:{}", getAndSendTensorsTC.ElapsedMS(), channelId);
 
     if (embHashMap.HasFree(lookupKeys.size())) { // check free > next one batch
         spdlog::warn(MGMT + "embName {}[{}]{},iBatch:{} freeSize not enough, {}", embName, channelId,
@@ -764,8 +764,8 @@ void HybridMgmt::EmbHDTransWrap(int channelId, const int& batchId, int start, in
     if (iBatch == 0) {
         return;
     }
-    spdlog::info(MGMT + "trans emb, batchId:[{}-{}]", start, batchId);
-    hostEmbs->Join();
+    spdlog::info(MGMT + "trans emb, batchId:[{}-{}], channelId:{}", start, batchId, channelId);
+    hostEmbs->Join(channelId);
     EmbHDTrans(channelId, batchId);
 
     for (int i = 0; i < iBatch - 1; ++i) {
@@ -790,8 +790,8 @@ void HybridMgmt::EmbHDTrans(const int channelId, const int batchId)
     for (const auto& embInfo: mgmtEmbInfo) {
         const auto& missingKeys = hostHashMaps->GetMissingKeys(embInfo.name);
         if (!(skipUpdate && missingKeys.empty())) {
-            bool updateEmbV2 = getenv("UpdateEmb_V2") != nullptr;
-            if (updateEmbV2) {
+            auto updateEmbV2 = getenv("UpdateEmb_V2");
+            if (updateEmbV2 != nullptr and atoi(updateEmbV2) == 1) {
                 hostEmbs->UpdateEmbV2(missingKeys, channelId, embInfo.name); // order!
             } else {
                 hostEmbs->UpdateEmb(missingKeys, channelId, embInfo.name); // order!
@@ -799,7 +799,7 @@ void HybridMgmt::EmbHDTrans(const int channelId, const int batchId)
         } // skip when skip update and empty missing keys
         hostHashMaps->ClearMissingKeys(embInfo.name);
     }
-    TIME_PRINT("EmbHDTrans TimeCost(ms):{} batchId: {} ", tr.ElapsedMS(), batchId);
+    TIME_PRINT("EmbHDTrans TimeCost(ms):{} batchId:{} channelId:{}", tr.ElapsedMS(), batchId, channelId);
 }
 
 void HybridMgmt::EmbHDTransDummy(int channelId, int batchId, const EmbInfo& embInfo)
