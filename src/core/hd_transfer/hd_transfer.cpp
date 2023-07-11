@@ -35,7 +35,19 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId)
         for (int i = 0; i < MAX_CHANNEL_NUM; ++i) {
             CreateChannel(localRankId, embInfo.name, i);
         }
+        aclDatasets[embInfo.name] = acltdtCreateDataset();
     }
+    const char* timeoutEnv = getenv("AclTimeout");
+    if (timeoutEnv != nullptr) {
+        int32_t timeoutEnvCast = static_cast<int32_t>(std::atoi(timeoutEnv));
+        spdlog::debug("timeoutEnv:{}", timeoutEnvCast);
+        if (timeoutEnvCast > INT32_MAX || timeoutEnvCast < -1) {
+            spdlog::warn("AclTimeout={} is not valid", timeoutEnvCast);
+        } else {
+            timeout = timeoutEnvCast;
+        }
+    }
+    spdlog::debug("hd transfer timeout:{}", timeout);
     running = true;
     spdlog::info("hd_transfer init");
 #endif
@@ -50,6 +62,11 @@ void HDTransfer::Destroy()
     for (auto& c: transferChannels) {
         tensorflow::StopRecvTensorByAcl(&c.second, c.first);
         spdlog::info(HD + "destroy channel:{}", c.first);
+    }
+    for (auto& d: aclDatasets) {
+        if (acltdtDestroyDataset(d.second) != ACL_ERROR_NONE) {
+            throw runtime_error("Acl destroy tensor dataset failed.");
+        }
     }
     aclFinalize();
 #endif
@@ -163,7 +180,7 @@ vector<tensorflow::Tensor> HDTransfer::Recv(TransferChannel channel, int channel
     return {};
 }
 
-tuple<acltdtDataset*, size_t> HDTransfer::RecvAcl(TransferChannel channel, int channelId, const string& embName)
+size_t HDTransfer::RecvAcl(TransferChannel channel, int channelId, const string& embName)
 {
     EASY_FUNCTION()
 #ifndef GTEST
@@ -171,21 +188,20 @@ tuple<acltdtDataset*, size_t> HDTransfer::RecvAcl(TransferChannel channel, int c
     string recvName = fmt::format("{}_{}_{}", embName, TransferChannel2Str(channel), channelId);
     spdlog::debug("hd transfer try recv:{}", recvName);
     spdlog::stopwatch sw;
-    acltdtDataset* aclDataset = acltdtCreateDataset();
-    if (aclDataset == nullptr) {
+    if (aclDatasets[embName] == nullptr) {
         throw runtime_error(fmt::format("Failed recv:{}.", recvName).c_str());
     }
-    auto aclStatus = acltdtReceiveTensor(transferChannels[recvName], aclDataset, -1 /* no timeout */);
+    auto aclStatus = acltdtReceiveTensor(transferChannels[recvName], aclDatasets[embName], timeout /*-1 no timeout */);
     if (!running) {
-        return {nullptr, 0};
+        return 0;
     }
     if (aclStatus != ACL_ERROR_NONE && aclStatus != ACL_ERROR_RT_QUEUE_EMPTY) {
         throw runtime_error(fmt::format("Failed receive data from acl channel, acl status:{}", aclStatus).c_str());
     }
     spdlog::info("hd transfer recv:{} cost:{}ms", recvName, Format2Ms(sw));
-    return {aclDataset, acltdtGetDatasetSize(aclDataset)};
+    return acltdtGetDatasetSize(aclDatasets[embName]);
 #endif
-    return {nullptr, 0};
+    return 0;
 }
 
 size_t HDTransfer::QueryChannelSize(const string& channelName)
