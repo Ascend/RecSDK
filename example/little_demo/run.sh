@@ -3,6 +3,48 @@ rm -rf /root/ascend/log/*
 rm -rf ./kernel*
 rm -rf ./export_graph/*
 
+# 获取输入参数：py、ip
+if [ $# -ge 1 ]; then
+  py=$1
+  ip=$2
+else
+  echo "for example: bash run.sh main.py 10.10.10.10 or bash run.sh main.py"
+  exit 1
+fi
+
+# 检查输入的python文件是否合法
+if [[ $py =~ ^[a-z0-9_]+\.py$ ]]; then
+  echo "File $py is a valid Python file"
+else
+  echo "File $py is not a Python file"
+  exit 1
+fi
+
+# 判断IP地址是否有效
+if [ -n "$ip" ]; then
+  if [[ $ip =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    # 将IP地址拆分成四个数字
+    ip_array=(${ip//./ })
+    # 判断每个数字是否在0-255之间
+    valid=true
+    for i in "${ip_array[@]}"; do
+      if ((i < 0 || i > 255)); then
+        valid=false
+        break
+      fi
+    done
+    if $valid; then
+      echo "ip: $ip is valid"
+    else
+      echo "ip: $ip is not valid"
+      exit 1
+    fi
+  else
+    echo "ip: $ip is not valid."
+    exit 1
+  fi
+fi
+
 cur_path=`pwd`
 mx_rec_package_path="/usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec" # please config
 so_path=${mx_rec_package_path}/libasc
@@ -69,7 +111,6 @@ function rankTableSolution() {
   fi
 }
 
-ip=$2
 if [ ! -n "$ip" ]; then
   rankTableSolution
 else
@@ -101,8 +142,6 @@ else
   fi
 fi
 
-py=$1
-echo "py is $py"
 echo "use horovod to start tasks"
 DATE=$(date +%Y-%m-%d-%H-%M-%S)
 horovodrun --network-interface ${interface} -np ${num_process} --mpi-args "${mpi_args}" --mpi -H localhost:${local_rank_size} \
