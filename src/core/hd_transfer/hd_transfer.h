@@ -62,6 +62,8 @@ namespace MxRec {
 
     class HDTransfer {
     public:
+        std::unordered_map<std::string, acltdtDataset*> aclDatasets;
+
         HDTransfer() = default;
 
         int Init(const vector<EmbInfo>& embInfos, uint32_t localRankId);
@@ -71,7 +73,7 @@ namespace MxRec {
 
         vector<Tensor> Recv(TransferChannel channel, int channelId, const string& embName);
 
-        tuple<acltdtDataset*, size_t> RecvAcl(TransferChannel channel, int channelId, const string& embName);
+        size_t RecvAcl(TransferChannel channel, int channelId, const string& embName);
 
         size_t QueryChannelSize(const string& channelName);
 
@@ -84,6 +86,7 @@ namespace MxRec {
         std::unordered_map<std::string, acltdtChannelHandle*> transferChannels;
 #endif
         bool running;
+        int32_t timeout{-1};
         void CreateChannel(const uint32_t localRankId, const string& embName, const int channelNum);
     };
 }

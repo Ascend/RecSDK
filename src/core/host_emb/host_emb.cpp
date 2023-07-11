@@ -145,7 +145,7 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
             auto hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
             TransferChannel transferName = TransferChannel::D2H;
             spdlog::info(HOSTEMB + "wait D2H embs, channelId:{}", channelId);
-            auto [aclDataset, size] = hdTransfer->RecvAcl(transferName, channelId, embName);
+            auto size = hdTransfer->RecvAcl(transferName, channelId, embName);
             if (size == 0) {
                 spdlog::warn(HOSTEMB + "recv empty data");
                 return;
@@ -155,7 +155,7 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
             EASY_BLOCK("Update")
             auto& embData = hostEmbs[embName].embData;
             auto embeddingSize = hostEmbs[embName].hostEmbInfo.extEmbeddingSize;
-            auto aclData = acltdtGetDataItem(aclDataset, 0);
+            auto aclData = acltdtGetDataItem(hdTransfer->aclDatasets[embName], 0);
             if (aclData == nullptr) {
                 throw runtime_error("Acl get tensor data from dataset failed.");
             }
@@ -167,9 +167,6 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
                 for (int k = 0; k < embeddingSize; k++) {
                     dst[k] = ptr[k + embeddingSize * j];
                 }
-            }
-            if (acltdtDestroyDataset(aclDataset) != ACL_ERROR_NONE) {
-                throw runtime_error("Acl destroy tensor dataset failed.");
             }
             spdlog::info(HOSTEMB + "update emb end cost: {}ms", Format2Ms(sw));
         }));
