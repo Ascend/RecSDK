@@ -15,7 +15,7 @@ from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION, VALID
     MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE, HASHTABLE_COLLECTION_NAME_LENGTH,\
     TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID
 from mx_rec.util.ops import import_host_pipeline_ops
-from mx_rec.validator.validator import RankInfoValidator, StringValidator
+from mx_rec.validator.validator import RankInfoValidator, StringValidator, FileValidator
 from mx_rec.util.atomic import AtomicInteger
 
 
@@ -217,7 +217,16 @@ class ConfigInitializer:
         rank_table_path = os.path.realpath(os.getenv("RANK_TABLE_FILE"))
         if not os.path.exists(rank_table_path):
             raise FileExistsError(f"Target_hccl_json_dir {rank_table_path} does not exist when reading.")
+
         with open(rank_table_path, "r", encoding="utf-8") as file:
+            # check whether json file is valid
+            file_validator = FileValidator(rank_table_path)
+            # 1.check whether rank_table_path is soft link
+            file_validator.check_not_soft_link()
+            # 2.check json file size
+            file_validator.check_file_size(file)
+            file_validator.check()
+
             table_hccl = json.load(file)
             if "server_list" not in table_hccl:
                 raise AttributeError(f"Lack of attribute server_list.")
@@ -800,7 +809,15 @@ def get_available_cpu_num_and_range():
             logging.warning(f"failed to get numa node of cpu: {cpu}")
             is_ok = False
             break
+
         with open(f_path, "r", encoding="utf-8") as f_in:
+            # check whether file is valid
+            file_validator = FileValidator(f_path)
+            # 1.check whether f_path is soft link
+            file_validator.check_not_soft_link()
+            # 2.check file size
+            file_validator.check_file_size(f_in)
+            file_validator.check()
             pkg_id = f_in.readline().strip()
             pkg_id2cpu_list[pkg_id].append(cpu)
 

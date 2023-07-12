@@ -10,6 +10,7 @@ import tensorflow as tf
 import numpy as np
 
 from mx_rec.util.initialize import get_table_instance, get_table_instance_by_name, export_table_name_set
+from mx_rec.validator.validator import FileValidator
 
 
 class SparseProcessor:
@@ -46,6 +47,15 @@ class SparseProcessor:
 
     @staticmethod
     def _get_data(data_dir, dtype, data_shape):
+        with open(data_dir, "rb", encoding="utf-8") as file:
+            # check whether data file is valid
+            file_validator = FileValidator(data_dir)
+            # 1.check whether data_dir is soft link
+            file_validator.check_not_soft_link()
+            # 2.check data file size
+            file_validator.check_file_size(file)
+            file_validator.check()
+
         try:
             data = np.fromfile(data_dir, dtype=dtype)
         except FileNotFoundError as err:
@@ -58,6 +68,13 @@ class SparseProcessor:
         if is_json:
             try:
                 with open(attribute_dir, "r") as fin:
+                    # check whether attribute file is valid
+                    file_validator = FileValidator(attribute_dir)
+                    # 1.check whether attribute_dir is soft link
+                    file_validator.check_not_soft_link()
+                    # 2.check attribute file size
+                    file_validator.check_file_size(fin)
+                    file_validator.check()
                     attributes = json.load(fin)
             except FileNotFoundError as err:
                 raise FileNotFoundError(f"attribute dir not found.") from err
@@ -91,7 +108,6 @@ class SparseProcessor:
                 emb_data = emb_data[offset]
                 transformed_data = dict(zip(key[:], emb_data[:]))
                 np.save(out_dir + self.sep + self.export_name + ".npy", transformed_data)
-
 
     def get_embedding(self, device_table_dir, host_table_dir, ddr):
         emb_dir = os.path.join(device_table_dir, self.device_emb_dir)

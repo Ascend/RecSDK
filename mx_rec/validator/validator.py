@@ -38,10 +38,9 @@ class Validator:
         if self.is_valid_state is None:
             self.is_valid_state = True
         for checker, msg in self.checkers:
-            self.is_valid_state &= checker(self.value)
-            if not self.is_valid_state:
+            if not checker(self.value):
                 self.msg = msg
-                break
+                raise ValueError(self.msg)
         if self.is_valid_state:
             self.msg = None
         return self
@@ -257,16 +256,17 @@ class FileValidator(StringValidator):
         @param value: the file path, should not be emtpy string, should not contain double dot(../)
         """
         super().__init__(value)
-        self.register_checker(lambda x: isinstance(x, str), "type is not str")
+        self.register_checker(lambda x: isinstance(x, str), "parameter value's type is not str")
 
-    def check_file_size(self, max_size=MAX_SIZE, min_size=MIN_SIZE):
-        self.register_checker(lambda path: min_size < os.path.getsize(self.value) <= max_size,
-                              "file size is invalid")
+    def check_file_size(self, file_obj, max_size=MAX_SIZE, min_size=MIN_SIZE):
+        file_info = os.stat(file_obj.fileno())
+        self.register_checker(lambda path: min_size < file_info.st_size <= max_size,
+                              f"file size: {file_info.st_size} is invalid, not in [{min_size}, {max_size}]")
         return self
 
     def check_not_soft_link(self):
-        self.register_checker(lambda path: os.path.realpath(self.value) == self.value,
-                              "soft link or relative path should not be in the path parameter")
+        self.register_checker(lambda path: not os.path.islink(self.value),
+                              f"soft link or relative path: {self.value} should not be in the path parameter")
         return self
 
     def check_user_group(self):
