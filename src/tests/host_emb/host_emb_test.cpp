@@ -51,3 +51,15 @@ TEST(HostEmb, Tensor2Float)
     std::cout << q[1].flat<int32_t>()(0) << std::endl;
     ASSERT_EQ(1, 1);
 }
+
+TEST(HostEmb, DefaultConstructor)
+{
+    HostEmb h;
+    h.procThreadsForTrain.emplace_back(make_unique<thread>([] {}));
+    h.Join(TRAIN_CHANNEL_ID);
+    ASSERT_EQ(h.procThreadsForTrain.size(), 0);
+
+    h.procThreadsForEval.emplace_back(make_unique<thread>([] {}));
+    h.Join(EVAL_CHANNEL_ID);
+    ASSERT_EQ(h.procThreadsForEval.size(), 0);
+}

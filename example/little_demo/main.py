@@ -132,7 +132,7 @@ if __name__ == "__main__":
     init(use_mpi=use_mpi,
          train_steps=TRAIN_STEPS,
          eval_steps=EVAL_STEPS,
-         prefetch_batch_number=5,
+         prefetch_batch_number=1,
          use_dynamic=use_dynamic,
          use_hot=use_hot,
          use_dynamic_expansion=use_dynamic_expansion)
