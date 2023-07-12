@@ -85,7 +85,6 @@ class CustomizedFtrlTZ(optimizer.Optimizer):
                 var)
 
     def _apply_dense_shared(self, grad, var):
-        logging.debug("Enter _apply_dense_shared")
         z_var = self.get_slot(var, "z")
         n_var = self.get_slot(var, "n")
         g_var = self.get_slot(var, "g")
@@ -126,7 +125,6 @@ class CustomizedFtrlTZ(optimizer.Optimizer):
         return control_flow_ops.group(g_update, z_update, n_update, w_update, var_updata)
 
     def _apply_dense_shared_v2(self, grad, var):
-        logging.debug("Enter _apply_dense_shared_v2")
         z_var = self.get_slot(var, "z")
         n_var = self.get_slot(var, "n")
         g_var = self.get_slot(var, "g")
@@ -169,7 +167,6 @@ class CustomizedFtrlTZ(optimizer.Optimizer):
             return x_input.value()
 
     def _create_slots(self, var_list):
-        logging.debug(" Enter _create_slots")
 
         # Create slots for the first and second moments.
         z_state_name = self._name + "/" + "z"

@@ -53,11 +53,15 @@ class BaseEnum(Enum):
     @classmethod
     def mapping(cls, key):
         for mode in cls:
-            if key == mode.value:
+            if isinstance(key, BaseEnum):
+                key_value = key.value
+            else:
+                key_value = key
+            if key_value == mode.value:
                 return mode
 
         raise KeyError(f"Cannot find a corresponding mode in current Enum "
-                       f"class {cls}, given parameter '{key}' is illegal, "
+                       f"class {cls}, given parameter '{key}[{key.__class__}]' is illegal, "
                        f"please choose a valid one from "
                        f"'{list(map(lambda c: c.value, cls))}'.")
 
@@ -106,3 +110,15 @@ class OptimizerType(Enum):
 
 OPTIMIZER_STATE_META = {OptimizerType.LAZY_ADAM: ["momentum", "velocity"],
                         OptimizerType.SGD: []}
+
+
+class All2allGradientsOp(BaseEnum):
+    SUM_GRADIENTS = "sum_gradients" 
+    SUM_GRADIENTS_AND_DIV_BY_RANKSIZE = "sum_gradients_and_div_by_ranksize" 
+
+
+class ApplyGradientsStrategy(BaseEnum):
+    DIRECT_APPLY = "direct_apply" 
+    SUM_SAME_ID_GRADIENTS_AND_APPLY = "sum_same_id_gradients_and_apply" 
+
+

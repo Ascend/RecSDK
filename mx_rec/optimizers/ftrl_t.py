@@ -101,15 +101,12 @@ class CustomizedFtrlT(optimizer.Optimizer, CustomizedOptimizer):
         self._grad_factor_tensor = ops.convert_to_tensor(self._grad_factor, name="grad_factor")
 
     def _apply_sparse_duplicate_indices(self, grad, var):
-        logging.debug(f"######### _apply_sparse_duplicate_indices {var}")
         return self._apply_sparse(grad, var)
 
     def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
-        logging.debug(f"######### _resource_apply_sparse_duplicate_indices {indices}")
         return self._resource_apply_sparse(grad, handle, indices)
 
     def _resource_apply_sparse(self, grad, handle, indices):
-        logging.debug("Enter _resource_apply_sparse")
         if self._lambda1 > 1e-10:
             return self._apply_sparse_shared(
                 grad,
@@ -124,7 +121,6 @@ class CustomizedFtrlT(optimizer.Optimizer, CustomizedOptimizer):
                 self._resource_scatter_nd_update)
 
     def _apply_sparse(self, grad, var):
-        logging.debug("Enter _apply_sparse")
         if self._lambda1 > 1e-10:
             return self._apply_sparse_shared(
                 grad.values,
@@ -139,7 +135,6 @@ class CustomizedFtrlT(optimizer.Optimizer, CustomizedOptimizer):
                 lambda x, i, v: tf.compat.v1.scatter_nd_update(x, i, v))
 
     def _apply_sparse_shared(self, grad, var, indices, scatter_nd_update):
-        logging.debug("Enter _apply_sparse_shared")
         z = self.get_slot(var, "z")
         n = self.get_slot(var, "n")
         g = self.get_slot(var, "g")
@@ -183,7 +178,6 @@ class CustomizedFtrlT(optimizer.Optimizer, CustomizedOptimizer):
         return control_flow_ops.group(g_update, z_update, n_update, w_update, var_update)
 
     def _apply_sparse_shared_v2(self, grad, var, indices, scatter_nd_update):
-        logging.debug("Enter _apply_sparse_shared_v2")
         z = self.get_slot(var, "z")
         n = self.get_slot(var, "n")
         g = self.get_slot(var, "g")
@@ -229,7 +223,6 @@ class CustomizedFtrlT(optimizer.Optimizer, CustomizedOptimizer):
             return x.value()
 
     def _create_slots(self, var_list):
-        logging.debug(" Enter _create_slots")
 
         # Create slots for the first and second moments.
         z_state_name = self._name + "/" + "z"

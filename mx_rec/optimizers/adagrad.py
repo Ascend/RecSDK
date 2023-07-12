@@ -91,7 +91,6 @@ class CustomizedAdagrad(adagrad.AdagradOptimizer, CustomizedOptimizer):
         check_param_type("use_locking", self._use_locking, bool)
 
     def _create_slots(self, var_list):
-        logging.debug(" Start _create_slots")
         for var in var_list:
             dtype = var.dtype.base_dtype
             if var.get_shape().is_fully_defined():
