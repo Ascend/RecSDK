@@ -12,6 +12,8 @@ import os
 import re
 import numpy as np
 
+from mx_rec.validator.validator import FileValidator
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--path', type=str, required=True, help='path of the root dir of saved file')
@@ -185,6 +187,13 @@ class Formatter:
         file_dir = os.path.join(directory, file_name)
         if is_json:
             with open(file_dir, "r") as fin:
+                # check whether attribute file is valid
+                file_validator = FileValidator(file_dir)
+                # 1.check whether file_dir is soft link
+                file_validator.check_not_soft_link()
+                # 2.check attribute file size
+                file_validator.check_file_size(fin)
+                file_validator.check()
                 attributes = json.load(fin)
                 return attributes
         else:
