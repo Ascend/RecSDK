@@ -11,14 +11,34 @@ ARCH="$(uname -m)"
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 ROOT_DIR=$(dirname "${SCRIPT_DIR}")
 cd "$SCRIPT_DIR"
+if [ "$(uname -m)" = "aarch64" ]
+then
+  virtualenv -p "$(which python3.7)" tf2_env
+  source tf2_env/bin/activate
+  tf265="tensorflow-2.6.5-cp37-cp37m-manylinux2014_aarch64.whl"
+  [ ! -f "${tf265}" ] && artget pull "mindx_img_tools 1.0.0" -ru software -rp "${tf265}" -ap ./
+  tf2_path=$(dirname "$(dirname "$(which python3)")")/lib/python3.7/site-packages/tensorflow
+  deactivate tf2_env
+  virtualenv -p "$(which python3.7)" tf1_env
+  source tf1_env/bin/activate
+  tf115="tensorflow-1.15.0-cp37-cp37m-manylinux2014_aarch64.whl"
+  [ ! -f "${tf115}" ] && artget pull "mindx_img_tools 1.0.0" -ru software -rp "${tf115}" -ap ./
+  tf1_path=$(dirname "$(dirname "$(which python3)")")/lib/python3.7/site-packages/tensorflow_core
+  deactivate tf1_env
+fi
 
 if [ "$(uname -m)" = "x86_64" ]
 then
-  source /opt/buildtools/tf2_env/bin/activate
-  tf2_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/tensorflow
+  source tf2_env/bin/activate
+  tf265="tensorflow_cpu-2.6.5-cp37-cp37m-manylinux2010_x86_64.whl"
+  [ ! -f "${tf265}" ] && artget pull "mindx_img_tools 1.0.0" -ru software -rp "${tf265}" -ap ./
+  tf2_path=$(dirname "$(dirname "$(which python3)")")/lib/python3.7/site-packages/tensorflow
   deactivate tf2_env
-  source /opt/buildtools/tf1_env/bin/activate
-  tf1_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/tensorflow_core
+  virtualenv -p "$(which python3.7)" tf1_env
+  source tf1_env/bin/activate
+  tf115="tensorflow-1.15.0-cp37-cp37m-manylinux2010_x86_64.whl"
+  [ ! -f "${tf115}" ] && artget pull "mindx_img_tools 1.0.0" -ru software -rp "${tf115}" -ap ./
+  tf1_path=$(dirname "$(dirname "$(which python3)")")/lib/python3.7/site-packages/tensorflow_core
   deactivate tf1_env
 fi
 
@@ -139,7 +159,7 @@ gen_wheel_file()
   remove "${ROOT_DIR}"/mx_rec/libasc
   mv "${src_path}"/libasc "${ROOT_DIR}"/mx_rec
   cp -rf "${ROOT_DIR}"/tools "${ROOT_DIR}"/mx_rec
-  python3.7 setup.py bdist_wheel --plat-name=linux_$(arch)
+  python3 setup.py bdist_wheel --plat-name=linux_$(arch)
   mkdir -p "$1"
   mv dist/mx_rec*.whl "$1"
   remove "${ROOT_DIR}"/mx_rec/libasc
@@ -174,31 +194,28 @@ clean()
   remove "${ROOT_DIR}"/build/mindxsdk-mxrec
 }
 
-if [ "$(uname -m)" = "x86_64" ]
-then
-  install_abseil
-  compile_securec
+install_abseil
+compile_securec
 
-  echo "-----Build AccCTR -----"
-  compile_acc_ctr_so_file
+echo "-----Build AccCTR -----"
+compile_acc_ctr_so_file
 
-  echo "-----Build Start tf1 -----"
-  source /opt/buildtools/tf1_env/bin/activate
-  compile_so_file "${tf1_path}"
-  collect_so_file
-  gen_wheel_file  "${ROOT_DIR}"/tf1_whl
-  deactivate tf1_env
+echo "-----Build Start tf1 -----"
+source "${SCRIPT_DIR}"/tf1_env/bin/activate
+compile_so_file "${tf1_path}"
+collect_so_file
+gen_wheel_file  "${ROOT_DIR}"/tf1_whl
+deactivate tf1_env
 
-  echo "-----Build Start tf2 -----"
-  source /opt/buildtools/tf2_env/bin/activate
-  compile_so_file "${tf2_path}"
-  collect_so_file
-  gen_wheel_file  "${ROOT_DIR}"/tf2_whl
-  deactivate tf2_env
+echo "-----Build Start tf2 -----"
+source "${SCRIPT_DIR}"/tf2_env/bin/activate
+compile_so_file "${tf2_path}"
+collect_so_file
+gen_wheel_file  "${ROOT_DIR}"/tf2_whl
+deactivate tf2_env
 
-  echo "-----Build gen tar -----"
-  gen_tar_file
+echo "-----Build gen tar -----"
+gen_tar_file
 
-  clean
-  echo "-----Done-----"
-fi
+clean
+echo "-----Done-----"
