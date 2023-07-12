@@ -12,6 +12,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.init_ops import Initializer
 
 from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
 from mx_rec.core.asc.feature_spec import FeatureSpec, get_feature_spec, set_temporary_feature_spec_attribute
@@ -27,6 +28,7 @@ from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is
     ConfigInitializer, get_ascend_global_hashtable_collection, get_host_pipeline_ops, get_use_dynamic_expansion, \
     set_modify_graph, insert_removing_var_list
 from mx_rec.util.tf_version_adapter import npu_ops
+from mx_rec.validator.validator import ClassValidator, StringValidator
 
 
 def create_table(**kwargs):
@@ -63,6 +65,7 @@ def create_table(**kwargs):
         is_save: switch whether to store sparse table data.
         init_param: embedding init param-coefficient
     """
+    check_create_table_params(key_dtype, dim, name, emb_initializer)
 
     config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
                   device_vocabulary_size=device_vocabulary_size, host_vocabulary_size=host_vocabulary_size,
@@ -968,3 +971,30 @@ def set_zero_for_non_valid_key(id_offsets: Optional[tf.Tensor], embeddings: Opti
         id_offsets_expand = tf.repeat(id_offsets_expand, [tf.shape(embeddings)[-1]], axis=-1)
     embeddings = tf.where(id_offsets_expand, embeddings, tf.zeros_like(embeddings))
     return embeddings
+
+
+def check_create_table_params(key_dtype, dim, name, emb_initializer):
+    """
+    校验create_table接口必选参数：key_dtype, dim, name, emb_initializer和optimizer_list（已有校验）
+    :param key_dtype: data type for feature id, tf.int64 or tf.int32 or tf.string
+    :param dim: embedding vector size, dim's type: int or tf.TensorShape
+    :param name: hash table name, name's type: str
+    :param emb_initializer: the initializer for embedding values
+    :return:
+    """
+    # check key_dtype
+    if key_dtype not in [tf.int64, tf.int32, tf.string]:
+        raise ValueError(f"key_dtype: {key_dtype} not in [tf.int64, tf.int32, tf.string]")
+    # check dim
+    dim_validator = ClassValidator(value=dim, classes=(int, tf.TensorShape))
+    dim_validator.check_isinstance()
+    dim_validator.check()
+    # check name
+    name_validator = StringValidator(name)
+    name_validator.check_string_length()
+    name_validator.check_whitelist()
+    name_validator.check()
+    # check emb_initializer
+    emb_initializer_validator = ClassValidator(value=emb_initializer, classes=Initializer)
+    emb_initializer_validator.check_isinstance()
+    emb_initializer_validator.check()

@@ -65,7 +65,8 @@ class ClassValidator(Validator):
 
     def check_isinstance(self):
         """Check arg isinstance of classes"""
-        self.register_checker(lambda path: isinstance(self.value, self.classes), "Invalid parameter type")
+        self.register_checker(lambda path: isinstance(self.value, self.classes), f"Invalid parameter type, not "
+                                                                                 f"in {self.classes}")
         return self
 
 
