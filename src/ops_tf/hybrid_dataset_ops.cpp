@@ -584,6 +584,11 @@ public:
         auto l = lookupVec->flat<int32>();
         auto r = restoreVecTensor->flat<int32>();
 
+        // check whether lookupLen is zero
+        if (lookupLen == 0) {
+            throw runtime_error("lookupLen is 0, it causes the denominator to be 0 during division");
+        }
+
         // dummy data
         for (int i { 0 }; i < lookupLen; ++i) {
             l(i) = i;

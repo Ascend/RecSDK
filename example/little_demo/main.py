@@ -120,13 +120,17 @@ if __name__ == "__main__":
     SAVING_INTERVAL = 100
 
     # get init configuration
-    use_mpi = bool(int(os.getenv("USE_MPI", 1)))
-    use_dynamic = int(os.getenv("USE_DYNAMIC", 0))
-    use_hot = bool(int(os.getenv("USE_HOT", 0)))
-    use_dynamic_expansion = bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0)))
-    use_multi_lookup = bool(int(os.getenv("USE_MULTI_LOOKUP", 1)))
-    MODIFY_GRAPH_FLAG = bool(int(os.getenv("USE_MODIFY_GRAPH", 0)))
-    USE_TIMESTAMP = bool(int(os.getenv("USE_TIMESTAMP", 0)))
+    try:
+        use_mpi = bool(int(os.getenv("USE_MPI", 1)))
+        use_dynamic = bool(int(os.getenv("USE_DYNAMIC", 0)))
+        use_hot = bool(int(os.getenv("USE_HOT", 0)))
+        use_dynamic_expansion = bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0)))
+        use_multi_lookup = bool(int(os.getenv("USE_MULTI_LOOKUP", 1)))
+        MODIFY_GRAPH_FLAG = bool(int(os.getenv("USE_MODIFY_GRAPH", 0)))
+        USE_TIMESTAMP = bool(int(os.getenv("USE_TIMESTAMP", 0)))
+    except ValueError as err:
+        raise ValueError(f"please correctly config USE_MPI or USE_DYNAMIC or USE_HOT or USE_DYNAMIC_EXPANSION or "
+                         f"USE_MULTI_LOOKUP or USE_MODIFY_GRAPH or USE_TIMESTAMP only 0 or 1 is supported.") from err
 
     # nbatch function needs to be used together with the prefetch and host_vocabulary_size != 0
     init(use_mpi=use_mpi,
