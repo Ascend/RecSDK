@@ -7,7 +7,6 @@ import logging
 import tensorflow as tf
 
 import mxrec_pybind
-from mx_rec.constants.constants import AVOID_TENSOR_POS
 from mx_rec.util.initialize import get_use_static
 from mx_rec.util.tf_version_adapter import npu_ops
 
@@ -35,18 +34,20 @@ def get_restore_vector(config):
     else:
         restore_size = None
 
-    if use_hot:
-        device_id = int(config.get("device_id"))
-        hot_size = int(mxrec_pybind.get_ub_hot_size(device_id) / emb_size)
-        restore_vector, hot_pos = npu_ops.gen_npu_ops.get_next(
-            output_types=[tf.int32, tf.int32],
-            output_shapes=[restore_size, [hot_size]],
-            channel_name=f'{config.get("table_name")}_restore_{config.get("channel_id")}')
-    else:
-        restore_vector = npu_ops.gen_npu_ops.get_next(
-            output_types=[tf.int32],
-            output_shapes=[restore_size],
-            channel_name=f'{config.get("table_name")}_restore_{config.get("channel_id")}')[0]
+    with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
+        if use_hot:
+            device_id = int(config.get("device_id"))
+            hot_size = int(mxrec_pybind.get_ub_hot_size(device_id) / emb_size)
+            restore_vector, hot_pos = npu_ops.gen_npu_ops.get_next(
+                output_types=[tf.int32, tf.int32],
+                output_shapes=[restore_size, [hot_size]],
+                channel_name=f'{config.get("table_name")}_restore_{config.get("channel_id")}'
+            )
+        else:
+            restore_vector = npu_ops.gen_npu_ops.get_next(
+                output_types=[tf.int32],
+                output_shapes=[restore_size],
+                channel_name=f'{config.get("table_name")}_restore_{config.get("channel_id")}')[0]
 
     return restore_vector, hot_pos
 
@@ -54,23 +55,24 @@ def get_restore_vector(config):
 def get_id_offsets(max_lookup_vec_size, config):
     logging.debug(f'Channel {config.get("table_name")}_lookup_{config.get("channel_id")} was built for getnext')
     # 自动扩容当前只支持HBM模式，默认没有换入换出
-    if config.get("use_dynamic_expansion"):
+    with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
+        if config.get("use_dynamic_expansion"):
+            [id_offsets] = npu_ops.gen_npu_ops.get_next(
+                output_types=[tf.int64],
+                output_shapes=[[max_lookup_vec_size]],
+                channel_name=f'{config.get("table_name")}_lookup_{config.get("channel_id")}')
+            return id_offsets, [], 0
+
         [id_offsets] = npu_ops.gen_npu_ops.get_next(
-            output_types=[tf.int64],
+            output_types=[tf.int32],
             output_shapes=[[max_lookup_vec_size]],
             channel_name=f'{config.get("table_name")}_lookup_{config.get("channel_id")}')
-        return id_offsets, [], 0
-
-    [id_offsets] = npu_ops.gen_npu_ops.get_next(
-        output_types=[tf.int32],
-        output_shapes=[[max_lookup_vec_size]],
-        channel_name=f'{config.get("table_name")}_lookup_{config.get("channel_id")}')
-    if config.get("skip_emb_transfer"):
-        return id_offsets, [], 0
-    swap_pos, swap_len = npu_ops.gen_npu_ops.get_next(
-        output_types=[tf.int32, tf.int32],
-        output_shapes=[[max_lookup_vec_size], []],
-        channel_name=f'{config.get("table_name")}_swap_{config.get("channel_id")}')
+        if config.get("skip_emb_transfer"):
+            return id_offsets, [], 0
+        swap_pos, swap_len = npu_ops.gen_npu_ops.get_next(
+            output_types=[tf.int32, tf.int32],
+            output_shapes=[[max_lookup_vec_size], []],
+            channel_name=f'{config.get("table_name")}_swap_{config.get("channel_id")}')
     return id_offsets, swap_pos, swap_len
 
 
@@ -82,14 +84,16 @@ def get_all2all_args(use_static: bool, config: dict) -> list:
     :return: all2all parametrs
     """
     all2all_args = None
-    if not use_static:
-        with tf.compat.v1.variable_scope("all2all"):
-            logging.debug(f'Channel {config.get("table_name")}_a2a_{config.get("channel_id")} was built for getnext')
-            all2all_args = npu_ops.gen_npu_ops.get_next(
-                output_types=[tf.int64],
-                output_shapes=[[config.get("rank_size"), config.get("rank_size")]],
-                channel_name=f'{config.get("table_name")}_all2all_{config.get("channel_id")}',
-                name="a2a_get_next")[0] * config.get("emb_size")
+    with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
+        if not use_static:
+            with tf.compat.v1.variable_scope("all2all"):
+                logging.debug(
+                    f'Channel {config.get("table_name")}_a2a_{config.get("channel_id")} was built for getnext')
+                all2all_args = npu_ops.gen_npu_ops.get_next(
+                    output_types=[tf.int64],
+                    output_shapes=[[config.get("rank_size"), config.get("rank_size")]],
+                    channel_name=f'{config.get("table_name")}_all2all_{config.get("channel_id")}',
+                    name="a2a_get_next")[0] * config.get("emb_size")
 
     return all2all_args
 
