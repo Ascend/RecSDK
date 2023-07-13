@@ -230,11 +230,56 @@ parse_pipe_3_get_and_send_tensors_with_ddr()
 {
   LOG_NOTICE "Pipe-3: Get and Send Tensors (with DDR)"
 
-  $(grep 'getAndSendTensorsTC(ms)' $logfile > /dev/null 2>&1)
+  grep 'parseKeyTC' $logfile | \
+  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<10000) {sum+=$NF; count++;}} END \
+  {printf "parseKeyTC(filter>1000ms): avg=%0.1f\n", sum/count}'
+
+
+  grep 'getAndSendTensorsTC' $logfile | \
+  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<10000) {sum+=$NF; count++;}} END \
+  {printf "--getAndSendTensorsTC(filter>1000ms): avg=%0.1f\n", sum/count}'
+
+  grep 'getTensorsTC' $logfile | \
+  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<10000) {sum+=$NF; count++;}} END \
+  {printf "----getTensorsTC(filter>1000ms): avg=%0.1f\n", sum/count}'
+
+  $(grep 'hostHashMapProcessTC(ms)' $logfile > /dev/null 2>&1)
   if [ $? == 0 ]; then
-      grep 'getAndSendTensorsTC(ms)' $logfile | \
-            awk -F":"  '{sum+=$NF} END {print "GetAndSendTensors, avg=", sum/NR}'
+      grep 'hostHashMapProcessTC(ms)' $logfile | \
+            awk -F":"  '{sum+=$NF} END {print "----hostHashMapProcessTC, avg=", sum/NR}'
   fi
+
+  $(grep 'sendTensorsTC(ms)' $logfile > /dev/null 2>&1)
+  if [ $? == 0 ]; then
+      grep 'sendTensorsTC(ms)' $logfile | \
+            awk -F":"  '{sum+=$NF} END {print "----sendTensorsTC, avg=", sum/NR}'
+  fi
+
+  $(grep 'embHdTrans1TC(ms)' $logfile > /dev/null 2>&1)
+  if [ $? == 0 ]; then
+      grep 'embHdTrans1TC(ms)' $logfile | \
+            awk -F":"  '{sum+=$NF} END {print "--embHdTrans1TC, avg=", sum/NR}'
+  fi
+
+  grep 'embHdTrans2TC' $logfile | \
+  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<10000) {sum+=$NF; count++;}} END \
+  {printf "--embHdTrans2TC(filter>1000ms): avg=%0.1f\n", sum/count}'
+
+  grep 'hostEmbsTC' $logfile | \
+  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<10000) {sum+=$NF; count++;}} END \
+  {printf "----hostEmbsTC(filter>1000ms): avg=%0.1f\n", sum/count}'
+
+  grep 'EmbHDTrans' $logfile | \
+  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<10000) {sum+=$NF; count++;}} END \
+  {printf "----EmbHDTrans(filter>1000ms): avg=%0.1f\n", sum/count}'
+
+  grep 'h2dTC' $logfile | \
+  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<10000) {sum+=$NF; count++;}} END \
+  {printf "------h2dTC(filter>1000ms): avg=%0.1f\n", sum/count}'
+
+  grep 'd2hTC' $logfile | \
+  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<10000) {sum+=$NF; count++;}} END \
+  {printf "------d2hTC(filter>1000ms): avg=%0.1f\n", sum/count}'
 }
 
 parse_pipe_3_get_and_send_tensors_sync_without_ddr()
