@@ -890,23 +890,15 @@ void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
     auto evictDevOffset = hostHashMaps->embHashMaps.at(embName).evictDevPos;
     spdlog::debug(MGMT + "ddr mode, init dev emb: [{}]! evict size on dev :{}", embName, evictDevOffset.size());
 
-    for (const auto& embInfo : mgmtEmbInfo) {
-        if (embInfo.name != embName) {
-            continue;
-        }
-        if (evictDevOffset.size() > embInfo.devVocabSize) {
-            spdlog::error(MGMT + "{} overflow! evict pos on dev {} bigger than dev vocabSize {}",
-                          embName, evictDevOffset.size(), embInfo.devVocabSize);
-            throw runtime_error(fmt::format(MGMT + "{} overflow! evict pos on dev {} bigger than dev vocabSize {}",
-                                            embName, evictDevOffset.size(), embInfo.devVocabSize).c_str());
-        }
-        if (mgmtRankInfo.useStatic) {
-            evictDevOffset.resize(embInfo.devVocabSize, -1);
-        }
-        break;
-    }
+    vector<Tensor> tmpDataOut;
+    Tensor tmpData = Vec2TensorI32(evictDevOffset);
+    tmpDataOut.emplace_back(tmpData);
+    tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { 1 }));
 
-    auto tmpData = Vec2TensorI32(evictDevOffset);
-    hdTransfer->Send(TransferChannel::EVICT, { tmpData }, TRAIN_CHANNEL_ID, embName);
+    auto evictLen = tmpDataOut.back().flat<int32>();
+    auto evictSize = static_cast<int>(evictDevOffset.size());
+    evictLen(0) = evictSize;
+
+    hdTransfer->Send(TransferChannel::EVICT, tmpDataOut, TRAIN_CHANNEL_ID, embName);
 #endif
 }
