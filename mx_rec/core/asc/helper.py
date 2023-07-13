@@ -70,9 +70,6 @@ def find_dangling_table(table_names: List[str]):
         if 'gradients/' in table_reachable_tensor.name and table_reachable_tensor.op.type == 'Identity':
             return True
 
-        # if 'logistic_loss' in table_reachable_tensor.op.name and table_reachable_tensor.op.type == 'AddV2':
-        #     return True
-
         if 'SparseSoftmaxCrossEntropyWithLogits' in table_reachable_tensor.op.name \
                 and table_reachable_tensor.op.type == 'SparseSoftmaxCrossEntropyWithLogits':
             return True
