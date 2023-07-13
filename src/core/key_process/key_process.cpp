@@ -1239,14 +1239,19 @@ void KeyProcess::EvictInitDeviceEmb(const string& embName, vector<size_t> offset
         throw runtime_error(fmt::format("{} overflow! init evict dev, evictOffset size {} bigger than dev vocabSize {}",
                                         embName, offset.size(), embInfos[embName].devVocabSize).c_str());
     }
-    if (rankInfo.useStatic) {
-    offset.resize(embInfos[embName].devVocabSize, -1);
-    }
 
-    auto trans = Singleton<HDTransfer>::GetInstance();
+    vector<Tensor> tmpDataOut;
+    Tensor tmpData = Vec2TensorI32(offset);
+    tmpDataOut.emplace_back(tmpData);
+    tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { 1 }));
+
+    auto evictLen = tmpDataOut.back().flat<int32>();
+    auto evictSize = static_cast<int>(offset.size());
+    evictLen(0) = evictSize;
+
     // evict key发送给dev侧，dev侧初始化emb
-    auto tmpData = Vec2TensorI32(offset);
-    trans->Send(TransferChannel::EVICT, { tmpData }, TRAIN_CHANNEL_ID, embName);
+    auto trans = Singleton<HDTransfer>::GetInstance();
+    trans->Send(TransferChannel::EVICT, tmpDataOut, TRAIN_CHANNEL_ID, embName);
 
     spdlog::info(KEY_PROCESS "hbm EvictInitDeviceEmb: [{}]! send offsetSize:{}", embName, offset.size());
 }

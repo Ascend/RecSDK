@@ -895,22 +895,15 @@ class _EvictHook(tf.compat.v1.train.SessionRunHook):
                 logging.debug(f'Channel {instance.table_name}_evict_{TRAIN_CHANNEL_ID} was built for op '
                               f'getnext')
 
-                use_static = get_use_static()
-                if use_static:
-                    evict_pos = npu_ops.gen_npu_ops.get_next(
-                        output_types=[tf.int32],
-                        output_shapes=[instance.slice_device_vocabulary_size],
-                        channel_name=f'{instance.table_name}_evict_{TRAIN_CHANNEL_ID}')[0]
-                    initialized_tensor = instance.emb_initializer(
-                        instance.slice_device_vocabulary_size + instance.embedding_size) * instance.init_param
-                else:
-                    evict_pos = npu_ops.gen_npu_ops.get_next(
-                        output_types=[tf.int32],
-                        output_shapes=[None],
-                        channel_name=f'{instance.table_name}_evict_{TRAIN_CHANNEL_ID}')[0]
+                evict_pos, evict_len = npu_ops.gen_npu_ops.get_next(
+                    output_types=[tf.int32, tf.int32],
+                    output_shapes=[[None], []],
+                    channel_name=f'{instance.table_name}_evict_{TRAIN_CHANNEL_ID}')
 
-                    initialized_tensor = instance.emb_initializer(
-                        tf.shape(evict_pos)[0] + instance.embedding_size) * instance.init_param
+                initialized_tensor = instance.emb_initializer(
+                    instance.slice_device_vocabulary_size + instance.embedding_size) * instance.init_param
+
+                initialized_tensor = initialized_tensor[0:evict_len, :]
 
                 logging.debug(f'evict_pos output shape {evict_pos}, and slice_device_vocabulary_size '
                               f'{instance.slice_device_vocabulary_size}, '
