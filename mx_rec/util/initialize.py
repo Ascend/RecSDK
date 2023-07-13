@@ -70,9 +70,9 @@ class ConfigInitializer:
         self.check_parameters()
         self.prefetch_batch_number = kwargs.get("prefetch_batch_number", 1)
         self.if_load = kwargs.get("if_load", False)
-        if_dynamic = kwargs.get("use_dynamic", 1)
+        if_dynamic = kwargs.get("use_dynamic", True)
 
-        self.use_static = 0 if if_dynamic == 1 else 1
+        self.use_static = not if_dynamic
         self.use_hot = kwargs.get("use_hot", True)
         self.use_dynamic_expansion = kwargs.get("use_dynamic_expansion", False)
         if kwargs.get("bind_cpu", True):

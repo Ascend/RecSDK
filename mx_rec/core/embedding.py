@@ -76,13 +76,14 @@ def create_table(**kwargs):
     return embedding
 
 
-def sparse_lookup(hashtable, ids, send_count, **kwargs):
+def sparse_lookup(hashtable, ids, send_count, is_train, **kwargs):
     """
 
     Args:
         hashtable: SparseEmbedding instance to be looked up
         ids: Tensor to lookup from hashtable
         send_count: used to config all2all communication parameters
+        is_train: indicates whether the mode is train.
         kwargs:
             dim: not in use
             is_train: not in use
@@ -102,6 +103,9 @@ def sparse_lookup(hashtable, ids, send_count, **kwargs):
         if not isinstance(kwargs.get("modify_graph"), bool):
             raise TypeError("Given name must be a boolean.")
 
+        if not isinstance(kwargs.get("is_train"), bool):
+            raise TypeError("Given name must be a boolean.")
+
     def check_table_legality_for_feature_spec(table, feature_spec):
         # check whether the name of the table exists with FeatureSpec.
         if table.table_name != feature_spec.table_name:
@@ -112,6 +116,7 @@ def sparse_lookup(hashtable, ids, send_count, **kwargs):
         if not kwargs.get("modify_graph"):
             raise ValueError(f"modify_graph must be turn-on when lookup by ids(Tensor, not FeatureSpec).")
 
+    kwargs["is_train"] = is_train
     check_lookup_kwargs()
     scope_name = "{0}//{1}".format(hashtable.table_name, kwargs.get("name"))
     with tf.compat.v1.variable_scope(scope_name):
