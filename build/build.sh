@@ -148,7 +148,6 @@ gen_wheel_file()
 gen_tar_file()
 {
   cd "${src_path}"
-  mv  "${ROOT_DIR}"/tf1_whl ../build/"${pkg_dir}"
   mv  "${ROOT_DIR}"/tf2_whl ../build/"${pkg_dir}"
   cp -r  "${src_path}"/../example ../build/"${pkg_dir}"
   cp -r  "${src_path}"/../cust_op ../build/"${pkg_dir}"
@@ -168,7 +167,6 @@ clean()
   remove "${ROOT_DIR}"/mx_rec.egg-info
   remove "${ROOT_DIR}"/src/build
   remove "${ROOT_DIR}"/build/bdist.linux-"$(arch)"
-  remove "${ROOT_DIR}"/build/tf1_env
   remove "${ROOT_DIR}"/build/tf2_env
   remove "${ROOT_DIR}"/build/lib
   remove "${ROOT_DIR}"/build/mindxsdk-mxrec
@@ -181,13 +179,6 @@ then
 
   echo "-----Build AccCTR -----"
   compile_acc_ctr_so_file
-
-  echo "-----Build Start tf1 -----"
-  source /opt/buildtools/tf1_env/bin/activate
-  compile_so_file "${tf1_path}"
-  collect_so_file
-  gen_wheel_file  "${ROOT_DIR}"/tf1_whl
-  deactivate tf1_env
 
   echo "-----Build Start tf2 -----"
   source /opt/buildtools/tf2_env/bin/activate
