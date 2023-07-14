@@ -43,7 +43,6 @@ class CustomizedOptimizer:
 
 def my_update_op(self, opt, grad):
     if isinstance(grad, ops.Tensor):
-        logging.debug(">>>>Enter update_op ops.Tensor")
         update_op = opt._apply_sparse(grad, self._v)  # pylint: disable=protected-access
         return update_op
     else:

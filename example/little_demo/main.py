@@ -20,8 +20,9 @@ from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
 from mx_rec.constants.constants import MxRecMode, ASCEND_TIMESTAMP
-from mx_rec.util.initialize import get_rank_id, init, terminate_config_initializer, set_if_load
+from mx_rec.util.initialize import get_rank_id, init, terminate_config_initializer, set_if_load, get_rank_size
 from mx_rec.util.variable import get_dense_and_sparse_variable
+from mx_rec.constants.constants import ApplyGradientsStrategy
 
 tf.compat.v1.disable_eager_execution()
 
@@ -169,7 +170,9 @@ if __name__ == "__main__":
                                   device_vocabulary_size=cfg.user_vocab_size * 10,
                                   host_vocabulary_size=0,
                                   optimizer_list=sparse_optimizer_list,
-                                  mode=mode)
+                                  mode=mode,
+                                  all2all_gradients_op="sum_gradients_and_div_by_ranksize",
+                                  apply_gradients_strategy = ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY)
 
     item_hashtable = create_table(key_dtype=tf.int64,
                                   dim=tf.TensorShape([cfg.item_hashtable_dim]),
@@ -182,10 +185,12 @@ if __name__ == "__main__":
 
     train_iterator, train_model = build_graph([user_hashtable, item_hashtable], is_train=True,
                                               feature_spec_list=train_feature_spec_list,
-                                              config_dict=ACCESS_AND_EVICT, batch_number=cfg.batch_number)
+                                              config_dict=ACCESS_AND_EVICT,
+                                              batch_number=TRAIN_STEPS * get_rank_size())
     eval_iterator, eval_model = build_graph([user_hashtable, item_hashtable], is_train=False,
                                             feature_spec_list=eval_feature_spec_list,
-                                            config_dict=ACCESS_AND_EVICT, batch_number=cfg.batch_number)
+                                            config_dict=ACCESS_AND_EVICT,
+                                            batch_number=EVAL_STEPS * get_rank_size())
     dense_variables, sparse_variables = get_dense_and_sparse_variable()
 
     run_mode = RunMode(

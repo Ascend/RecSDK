@@ -21,7 +21,7 @@ from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPA
     ASCEND_SPARSE_LOOKUP_ID_OFFSET, ASCEND_SPARSE_LOOKUP_RESTORE_VECTOR, MxRecMode, \
     ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_ALL2ALL_MATRIX, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, \
     DEFAULT_EVICT_TIME_INTERVAL, TRAIN_CHANNEL_ID, MULTI_LOOKUP_TIMES, ASCEND_TABLE_NAME_MUST_CONTAIN, MAX_INT32, \
-    ASCEND_SPARSE_LOOKUP_LOOKUP_RESULT
+    ASCEND_SPARSE_LOOKUP_LOOKUP_RESULT, All2allGradientsOp, ApplyGradientsStrategy
 from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is_asc_frozen, get_customized_ops, \
     insert_table_instance, get_training_mode_channel_id, get_use_static, get_name_to_var_dict, \
     clear_channel, trigger_evict, get_table_instance_by_name, get_use_hot, get_device_id, export_feature_spec, \
@@ -32,21 +32,6 @@ from mx_rec.validator.validator import ClassValidator, StringValidator
 
 
 def create_table(**kwargs):
-    key_dtype = kwargs.get("key_dtype")
-    dim = kwargs.get("dim")
-    name = kwargs.get("name")
-    emb_initializer = kwargs.get("emb_initializer")
-    device_vocabulary_size = kwargs.get("device_vocabulary_size", 1)
-    host_vocabulary_size = kwargs.get("host_vocabulary_size", 0)
-    optimizer_list = kwargs.get("optimizer_list")
-    mode = kwargs.get("mode", MxRecMode.ASC)
-    value_dtype = kwargs.get("value_dtype", tf.float32)
-    shard_num = kwargs.get("shard_num", 1)
-    fusion_optimizer_var = kwargs.get("fusion_optimizer_var", True)
-    hashtable_threshold = kwargs.get("hashtable_threshold", 0)
-    is_save = kwargs.get("is_save", True)
-    init_param = kwargs.get("init_param", 1.0)
-
     """
     Args:
         key_dtype: data type for feature id
@@ -64,14 +49,34 @@ def create_table(**kwargs):
         hashtable_threshold: choose to implement based on hash table or linear layer
         is_save: switch whether to store sparse table data.
         init_param: embedding init param-coefficient
+        all2all_gradients_op: sum_grads (default) or sum_gradients_and_div_by_ranksize.
+        apply_gradients_strategy: direct_apply (default) or sum_same_id_gradients_and_apply.
+
     """
     check_create_table_params(key_dtype, dim, name, emb_initializer)
+    key_dtype = kwargs.get("key_dtype")
+    dim = kwargs.get("dim")
+    name = kwargs.get("name")
+    emb_initializer = kwargs.get("emb_initializer")
+    device_vocabulary_size = kwargs.get("device_vocabulary_size", 1)
+    host_vocabulary_size = kwargs.get("host_vocabulary_size", 0)
+    optimizer_list = kwargs.get("optimizer_list")
+    mode = kwargs.get("mode", MxRecMode.ASC)
+    value_dtype = kwargs.get("value_dtype", tf.float32)
+    shard_num = kwargs.get("shard_num", 1)
+    fusion_optimizer_var = kwargs.get("fusion_optimizer_var", True)
+    hashtable_threshold = kwargs.get("hashtable_threshold", 0)
+    is_save = kwargs.get("is_save", True)
+    init_param = kwargs.get("init_param", 1.0)
+    all2all_gradients_op = kwargs.get("all2all_gradients_op", All2allGradientsOp.SUM_GRADIENTS)
+    apply_gradients_strategy = kwargs.get("apply_gradients_strategy", ApplyGradientsStrategy.DIRECT_APPLY)
 
     config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
                   device_vocabulary_size=device_vocabulary_size, host_vocabulary_size=host_vocabulary_size,
                   optimizer_list=optimizer_list, mode=mode, value_dtype=value_dtype, shard_num=shard_num,
                   fusion_optimizer_var=fusion_optimizer_var, hashtable_threshold=hashtable_threshold,
-                  init_param=init_param, is_save=is_save)
+                  init_param=init_param, is_save=is_save, all2all_gradients_op=all2all_gradients_op,
+                  apply_gradients_strategy=apply_gradients_strategy)
     embedding = SparseEmbedding(config)
     return embedding
 
@@ -171,6 +176,9 @@ class SparseEmbedding:
         self.lookup_name_list = []
         self.modify_graph = False
         self.init_param = config.get("init_param")
+        self.all2all_gradients_op = All2allGradientsOp.mapping(config.get("all2all_gradients_op"))
+        self.apply_gradients_strategy = ApplyGradientsStrategy.mapping(
+            config.get("apply_gradients_strategy"))
 
         self.set_slice_vocab_size()
         self.set_emb_size()
@@ -519,7 +527,6 @@ class SparseEmbedding:
 
             def grad(lookup_diff):
                 embedding_diff = tf.reshape(lookup_diff, [-1, self.scalar_emb_size])
-                logging.debug(f"bp rank size: {rank_size}")
                 unique_embeddings_shape = unique_embeddings.shape.as_list() if use_static \
                     else tf.shape(unique_embeddings)
                 unique_grads = tf.compat.v1.unsorted_segment_sum(embedding_diff, restore_vector,
@@ -530,9 +537,20 @@ class SparseEmbedding:
                                                         tf.shape(unique_grads)[0] - tf.shape(hot_pos)[0]], axis=0)
                     unique_grads = tf.tensor_scatter_nd_update(cold, tf.expand_dims(hot_pos, 1), hot)
                 local_grad = get_own_emb(unique_grads, bp_all2all_args, self.scalar_emb_size, use_static)
-
+                if self.all2all_gradients_op == All2allGradientsOp.SUM_GRADIENTS_AND_DIV_BY_RANKSIZE:
+                    local_grad = local_grad / get_rank_size()
+                
                 if use_dynamic_expansion:
                     return local_grad, feat_ids
+                
+                if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
+                    unique_id_offsets, unique_id_offsets_position = array_ops.unique(id_offsets)
+                    unique_local_grad = tf.compat.v1.unsorted_segment_sum(local_grad,
+                                                                   unique_id_offsets_position,
+                                                                   array_ops.shape(unique_id_offsets)[0])
+                    return ops.IndexedSlices(values=unique_local_grad, indices=unique_id_offsets, 
+                        dense_shape=tf.shape(table)), feat_ids
+
                 return ops.IndexedSlices(values=local_grad, indices=id_offsets, dense_shape=tf.shape(table)), feat_ids
 
             return lookup_result, grad
@@ -728,7 +746,6 @@ class SparseEmbedding:
 
             def grad(lookup_diff):
                 embedding_diff = tf.reshape(lookup_diff, [-1, self.scalar_emb_size])
-                logging.debug(f"bp rank size: {rank_size}")
                 unique_grads = tf.compat.v1.unsorted_segment_sum(embedding_diff,
                                                                  restore_vector,
                                                                  unique_embeddings_shape[0])
@@ -738,11 +755,23 @@ class SparseEmbedding:
                                                         tf.shape(unique_grads)[0] - tf.shape(hot_pos)[0]], axis=0)
                     unique_grads = tf.tensor_scatter_nd_update(cold, tf.expand_dims(hot_pos, 1), hot)
                 local_grad = get_own_emb(unique_grads, bp_all2all_args, self.scalar_emb_size, use_static)
+                if self.all2all_gradients_op == All2allGradientsOp.SUM_GRADIENTS_AND_DIV_BY_RANKSIZE:
+                    local_grad = local_grad / get_rank_size()
+
                 if use_dynamic_expansion:
                     update_grad = local_grad
                 else:
-                    update_grad = ops.IndexedSlices(values=local_grad, indices=id_offsets,
-                                                    dense_shape=tf.shape(table))
+                    if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
+                        unique_id_offsets, unique_id_offsets_position = array_ops.unique(id_offsets)
+                        unique_local_grad = tf.compat.v1.unsorted_segment_sum(local_grad,
+                                                                       unique_id_offsets_position,
+                                                                       array_ops.shape(unique_id_offsets)[0])
+                        update_grad = ops.IndexedSlices(values=unique_local_grad, indices=unique_id_offsets,
+                                                        dense_shape=tf.shape(table))
+                    else:
+
+                        update_grad = ops.IndexedSlices(values=local_grad, indices=id_offsets,
+                                                        dense_shape=tf.shape(table))
                 return update_grad
 
             return lookup_result, grad

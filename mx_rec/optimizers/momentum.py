@@ -102,7 +102,6 @@ class CustomizedMomentum(momentum.MomentumOptimizer, CustomizedOptimizer):
         check_param_range("momentum", self._momentum, 0.0, 1.0)
 
     def _create_slots(self, var_list):
-        logging.debug(" Start _create_slots")
         m_state_name = self._name + "/" + "momentum"
         for var in var_list:
             table_instance = check_and_get_config_via_var(var, self.optimizer_type)
@@ -110,7 +109,6 @@ class CustomizedMomentum(momentum.MomentumOptimizer, CustomizedOptimizer):
             insert_removing_var_list(momentum_slot.name)
             if self._name not in table_instance.optimizer:
                 table_instance.set_optimizer(self._name, {"momentum": momentum_slot})
-        logging.debug(" End  _create_slots")
 
     def _apply_sparse(self, grad, var):
         mom = self.get_slot(var, "m")

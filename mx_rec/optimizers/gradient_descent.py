@@ -42,12 +42,10 @@ class CustomizedGradientDescent(gradient_descent.GradientDescentOptimizer, Custo
         return []
 
     def _apply_sparse_duplicate_indices(self, grad, var):
-        logging.debug(" Enter _apply_sparse_duplicate_indices")
         nd_indices = tf.expand_dims(grad.indices, 1)
         nd_value = grad.values * math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype)
         var_update_op = tf.scatter_nd_add(var, nd_indices, -nd_value, use_locking=self._use_locking)
         return var_update_op
 
     def _apply_dense(self, grad, var):
-        logging.debug(" Enter _apply_dense")
         raise NotImplementedError("You are using a wrong type of variable.")

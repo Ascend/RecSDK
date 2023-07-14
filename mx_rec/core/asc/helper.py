@@ -555,7 +555,6 @@ def get_asc_read_raw_func(cfg_list):
 
         float_split_res = tf.split(raw_float_sample, [i * line_per_sample_list[0] for i in float_len_list])
 
-        logging.debug(f"############ Enter read_raw_fn ########")
 
         for name_id, name in enumerate(int_name_order):
             batch[name] = int_split_res[name_id]
