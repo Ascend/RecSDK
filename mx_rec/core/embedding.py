@@ -12,7 +12,8 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops.init_ops import Initializer
+from tensorflow.python.ops.init_ops import Initializer as InitializerV1
+from tensorflow.python.ops.init_ops_v2 import Initializer as InitializerV2
 
 from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
 from mx_rec.core.asc.feature_spec import FeatureSpec, get_feature_spec, set_temporary_feature_spec_attribute
@@ -540,17 +541,17 @@ class SparseEmbedding:
                 local_grad = get_own_emb(unique_grads, bp_all2all_args, self.scalar_emb_size, use_static)
                 if self.all2all_gradients_op == All2allGradientsOp.SUM_GRADIENTS_AND_DIV_BY_RANKSIZE:
                     local_grad = local_grad / get_rank_size()
-                
+
                 if use_dynamic_expansion:
                     return local_grad, feat_ids
-                
+
                 if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
                     unique_id_offsets, unique_id_offsets_position = array_ops.unique(id_offsets)
                     unique_local_grad = tf.compat.v1.unsorted_segment_sum(local_grad,
-                                                                   unique_id_offsets_position,
-                                                                   array_ops.shape(unique_id_offsets)[0])
-                    return ops.IndexedSlices(values=unique_local_grad, indices=unique_id_offsets, 
-                        dense_shape=tf.shape(table)), feat_ids
+                                                                          unique_id_offsets_position,
+                                                                          array_ops.shape(unique_id_offsets)[0])
+                    return ops.IndexedSlices(values=unique_local_grad, indices=unique_id_offsets,
+                                             dense_shape=tf.shape(table)), feat_ids
 
                 return ops.IndexedSlices(values=local_grad, indices=id_offsets, dense_shape=tf.shape(table)), feat_ids
 
@@ -765,8 +766,8 @@ class SparseEmbedding:
                     if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
                         unique_id_offsets, unique_id_offsets_position = array_ops.unique(id_offsets)
                         unique_local_grad = tf.compat.v1.unsorted_segment_sum(local_grad,
-                                                                       unique_id_offsets_position,
-                                                                       array_ops.shape(unique_id_offsets)[0])
+                                                                              unique_id_offsets_position,
+                                                                              array_ops.shape(unique_id_offsets)[0])
                         update_grad = ops.IndexedSlices(values=unique_local_grad, indices=unique_id_offsets,
                                                         dense_shape=tf.shape(table))
                     else:
@@ -1023,6 +1024,6 @@ def check_create_table_params(key_dtype, dim, name, emb_initializer):
     name_validator.check_whitelist()
     name_validator.check()
     # check emb_initializer
-    emb_initializer_validator = ClassValidator(value=emb_initializer, classes=Initializer)
+    emb_initializer_validator = ClassValidator(value=emb_initializer, classes=(InitializerV1, InitializerV2))
     emb_initializer_validator.check_isinstance()
     emb_initializer_validator.check()
