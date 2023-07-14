@@ -1,6 +1,6 @@
 
 #include "kernel_operator.h"
-using namespace tik2;
+using namespace AscendC;
 template <typename T>
 class KernelEimtable
 {
