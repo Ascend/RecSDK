@@ -53,7 +53,6 @@ def create_table(**kwargs):
         apply_gradients_strategy: direct_apply (default) or sum_same_id_gradients_and_apply.
 
     """
-    check_create_table_params(key_dtype, dim, name, emb_initializer)
     key_dtype = kwargs.get("key_dtype")
     dim = kwargs.get("dim")
     name = kwargs.get("name")
@@ -70,6 +69,8 @@ def create_table(**kwargs):
     init_param = kwargs.get("init_param", 1.0)
     all2all_gradients_op = kwargs.get("all2all_gradients_op", All2allGradientsOp.SUM_GRADIENTS)
     apply_gradients_strategy = kwargs.get("apply_gradients_strategy", ApplyGradientsStrategy.DIRECT_APPLY)
+
+    check_create_table_params(key_dtype, dim, name, emb_initializer)
 
     config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
                   device_vocabulary_size=device_vocabulary_size, host_vocabulary_size=host_vocabulary_size,
