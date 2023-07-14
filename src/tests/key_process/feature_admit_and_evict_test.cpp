@@ -12,8 +12,6 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include <easy/profiler.h>
-#include <spdlog/spdlog.h>
-#include <spdlog/fmt/bundled/ranges.h>
 
 #include "utils/common.h"
 #include "key_process/feature_admit_and_evict.h"
@@ -149,7 +147,7 @@ protected:
         batch->name = embName;
         batch->timestamp = ts;
         printf("\n");
-        spdlog::info("current admit embName[{}] at time[{}] ...", embName.c_str(), ts);
+        LOG(INFO) << StringFormat("current admit embName[%s] at time[%d] ...", embName.c_str(), ts);
 
         // 校验调接口不出错
         ASSERT_EQ(faae.FeatureAdmit(channel, batch, args.keys, args.cnt) !=
@@ -172,7 +170,7 @@ protected:
         batch->name = embName;
         batch->timestamp = ts;
         printf("\n");
-        spdlog::info("current admit embName[{}] at time[{}] ...", embName.c_str(), ts);
+        LOG(INFO) << StringFormat("current admit embName[%s] at time[%d] ...", embName.c_str(), ts);
 
         // 校验调接口不出错
         faae.FeatureAdmit(channel, batch, args.keys, args.cnt);
@@ -233,7 +231,7 @@ protected:
     void StartEvictThread()
     {
         evictThr = std::thread([&]() {
-            spdlog::info("Evict-thread start ...");
+            LOG(INFO) << "Evict-thread start ...";
 
             time_t currTime = 0;
             time_t lastTime = 0;
@@ -241,13 +239,13 @@ protected:
                 std::this_thread::sleep_for(std::chrono::seconds(SleepTime::SLEEP_SECOND_2));
                 currTime = time(nullptr);
                 if (currTime - lastTime >= SleepTime::SLEEP_SECOND_4) {
-                    spdlog::info("Evict-thread doing at currTime[{}] ...", currTime);
+                    LOG(INFO) << StringFormat("Evict-thread doing at currTime[%d] ...", currTime);
                     map<std::string, std::vector<emb_key_t>> evictPosMap {};
                     faae.FeatureEvict(evictPosMap);
                     lastTime = currTime;
                 }
             }
-            spdlog::info("Evict-thread exit ...");
+            LOG(INFO) << "Evict-thread exit ...";
         });
     }
     void WaitEvictThread()
@@ -319,7 +317,7 @@ protected:
         FeatureAdmitCommon(faae, 0, thresholds[1].tensorName, args5);
 
         WaitEvictThread();
-        spdlog::info("TestCase1(): single thread test over ...");
+        LOG(INFO) << "TestCase1: single thread test over ...";
     }
 
     // 进行“准入”逻辑时，若(splitKey.size() != keyCount.size())，则业务报错退出；（说明是前面all2all通信数据错误）
@@ -339,7 +337,7 @@ protected:
         // 校验调接口，出错
         ASSERT_EQ(faae.FeatureAdmit(0, batch, tmpKeys, tmpCnt) ==
                   FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR, true);
-        spdlog::info("TestCase2() over ...");
+        LOG(INFO) << "TestCase2 over ...";
     }
 
     // 准入、淘汰阈值可单独配置；只配置“准入”阈值、却不配置“淘汰”阈值，功能正常；
@@ -413,7 +411,7 @@ protected:
         }
 
         WaitEvictThread();
-        spdlog::info("TestCase5(): multi thread test over ...");
+        LOG(INFO) << "TestCase5: multi thread test over ...";
     }
 
     // 同时不配置“准入、淘汰”阈值，特征准入&淘汰功能“不支持”；
@@ -428,7 +426,7 @@ protected:
         batch->timestamp = time(nullptr);
 
         // 校验调接口，不支持
-        spdlog::info("TestCase6() over ...");
+        LOG(INFO) << "TestCase6 over ...";
     }
 
     bool isExitFlag { false };

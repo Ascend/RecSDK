@@ -48,7 +48,9 @@ fi
 cur_path=`pwd`
 mx_rec_package_path="/usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec" # please config
 so_path=${mx_rec_package_path}/libasc
-mpi_args='-x BIND_INFO="0:12 12:48 60:48" -x SPDLOG_LEVEL=debug -bind-to none'
+# GLOG_stderrthreshold 0:INFO 1:WARNING 2:ERROR 3:FATAL
+# GLOG_v 1:DEBUG(print as INFO) 2:TRACE(print as INFO)
+mpi_args='-x BIND_INFO="0:12 12:48 60:48" -x GLOG_stderrthreshold=0 -x GLOG_logtostderr=true -x GLOG_v=0 -bind-to none'
 interface="lo"
 local_rank_size=8 # 每个节点使用的NPU卡数
 num_server=1 # 训练节点数

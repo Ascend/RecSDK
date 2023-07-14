@@ -7,7 +7,6 @@
  */
 
 #include <gtest/gtest.h>
-#include <spdlog/spdlog.h>
 
 #include "host_emb/host_emb.h"
 #include "tensorflow/core/framework/tensor.h"

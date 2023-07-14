@@ -7,11 +7,6 @@
 
 #include "feature_admit_and_evict.h"
 #include <chrono>
-#include <spdlog/spdlog.h>
-#include <spdlog/stopwatch.h>
-#include <spdlog/fmt/chrono.h>
-#include <spdlog/fmt/bundled/ranges.h>
-#include "checkpoint/checkpoint.h"
 
 using namespace MxRec;
 
@@ -33,7 +28,7 @@ bool FeatureAdmitAndEvict::Init(const std::vector<ThresholdValue>& thresholdValu
 {
     if (!ParseThresholdCfg(thresholdValues)) {
         m_isEnableFunction = false;
-        spdlog::error("Config is error, feature admin-and-evict function is not available ...\n");
+        LOG(ERROR) << "Config is error, feature admin-and-evict function is not available ...\n";
         return false;
     }
 
@@ -45,7 +40,7 @@ FeatureAdmitReturnType FeatureAdmitAndEvict::FeatureAdmit(int channel,
     const std::unique_ptr<emb_batch_t>& batch, keys_t& splitKey, std::vector<uint32_t>& keyCount)
 {
     if (splitKey.size() != keyCount.size()) {
-        spdlog::error("splitKey.size {} != keyCount.size {}", splitKey.size(), keyCount.size());
+        LOG(ERROR) << StringFormat("splitKey.size %d != keyCount.size %d", splitKey.size(), keyCount.size());
         return FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR;
     }
 
@@ -61,15 +56,14 @@ FeatureAdmitReturnType FeatureAdmitAndEvict::FeatureAdmit(int channel,
         absl::flat_hash_map<int64_t, FeatureItemInfo> records(m_recordsInitSize);
         m_recordsData.historyRecords[tensorName] = records;
     }
-    spdlog::debug("FeatureAdmitAndEvict PrintSize, name:[{}], history key:[{}] ...", tensorName,
-                  m_recordsData.historyRecords[tensorName].size());
+    VLOG(GLOG_DEBUG) << StringFormat(
+        "FeatureAdmitAndEvict PrintSize, name:[%s], history key:[%d] ...", tensorName.c_str(),
+        m_recordsData.historyRecords[tensorName].size());
 
     if (batch->timestamp > m_recordsData.timestamps[tensorName]) {
         m_recordsData.timestamps[tensorName] = batch->timestamp;
     }
     absl::flat_hash_map<int64_t, bool> visitedRecords;
-    spdlog::trace("FeatureAdmit, name:[{}], channel:[{}], before admit, splitKey:[{}] ...", tensorName, channel,
-                  splitKey);
     for (auto& key : splitKey) {
         if (key == -1) {
             continue;
@@ -87,12 +81,15 @@ FeatureAdmitReturnType FeatureAdmitAndEvict::FeatureAdmit(int channel,
             continue;
         }
 
-        if (visitedRecords[key] == false) {
+        if (!visitedRecords[key]) {
             key = -1;
         }
     }
-    spdlog::trace("FeatureAdmit, name:[{}], channel:[{}], after admit, splitKey:[{}] ...", tensorName, channel,
-                  splitKey);
+    if (VLOG_IS_ON(GLOG_TRACE)) {
+        VLOG(GLOG_TRACE) << StringFormat(
+            "FeatureAdmit, name:[%s], channel:[%d], after admit, splitKey:[%s] ...", tensorName.c_str(), channel,
+            VectorToString(splitKey).c_str());
+    }
 
     return FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_OK;
 }
@@ -137,11 +134,11 @@ void FeatureAdmitAndEvict::FeatureEvict(map<std::string, std::vector<emb_key_t>>
 {
     std::vector<std::string> tensorNames = GetAllNeedEvictTensorNames();
     if (tensorNames.empty()) {
-        spdlog::info("EmbNames is empty, no evict function ...");
+        LOG(INFO) << "EmbNames is empty, no evict function ...";
         return ;
     }
     if (!m_isEnableFunction) {
-        spdlog::warn("m_isEnableFunction switch is false, no evict function ...");
+        LOG(WARNING) << "m_isEnableFunction switch is false, no evict function ...";
         return ;
     }
     std::lock_guard<std::mutex> lock(m_syncMutexs);
@@ -172,12 +169,12 @@ void FeatureAdmitAndEvict::FeatureEvictHelper(const std::string& embName, std::v
     }
 
     if (evictKey.size() == 0) {
-        spdlog::info("tensor-name[{}]'s lastTime[{}], had no key to delete ...", embName, currTime);
+        LOG(INFO) << StringFormat(
+            "tensor-name[%s]'s lastTime[%d], had no key to delete ...", embName.c_str(), currTime);
         return;
     }
-    spdlog::info("tensor-name[{}]'s lastTime[{}], had size[{}] keys to delete ...", embName, currTime,
-                 evictKey.size());
-    spdlog::trace("tensor-name[{}]'s lastTime[{}], evictKey:[{}] ...", embName, currTime, evictKey);
+    LOG(INFO) << StringFormat(
+        "tensor-name[%s]'s lastTime[%d], had size[%d] keys to delete ...", embName.c_str(), currTime, evictKey.size());
 
     // 真正从 m_historyRecords 中淘汰
     absl::flat_hash_map<int64_t, FeatureItemInfo>& historyRecords = m_recordsData.historyRecords[embName];
@@ -193,9 +190,9 @@ void FeatureAdmitAndEvict::FeatureEvictHelper(const std::string& embName, std::v
 void FeatureAdmitAndEvict::SetFunctionSwitch(bool isEnableEvict)
 {
     if (isEnableEvict) {
-        spdlog::info("feature admit-and-evict switch is opened ...");
+        LOG(INFO) << "feature admit-and-evict switch is opened ...";
     } else {
-        spdlog::info("feature admit-and-evict switch is closed ...");
+        LOG(INFO) << "feature admit-and-evict switch is closed ...";
     }
     m_isEnableFunction = isEnableEvict;
 }
@@ -227,15 +224,16 @@ bool FeatureAdmitAndEvict::IsThresholdCfgOK(const std::vector<ThresholdValue>& t
     for (size_t i = 0; i < thresholds.size(); ++i) {
         auto it = std::find(embNames.begin(), embNames.end(), thresholds[i].tensorName);
         if (it == embNames.end()) { // 配置不存在于当前跑的模型，也要报错
-            spdlog::error("embName[{}] is not exist at current model ...", thresholds[i].tensorName);
+            LOG(ERROR) << StringFormat(
+                "embName[%s] is not exist at current model ...", thresholds[i].tensorName.c_str());
             return false;
         } else {
             // 同时支持“准入&淘汰”，却没有传时间戳
             if (m_embStatus[*it] == SingleEmbTableStatus::SETS_ERROR) {
-                spdlog::error("embName[{}] config error, please check ...", embNames[i]);
+                LOG(ERROR) << StringFormat("embName[%s] config error, please check ...", embNames[i].c_str());
                 return false;
             } else if (m_embStatus[*it] == SingleEmbTableStatus::SETS_BOTH && !isTimestamp) {
-                spdlog::error("embName[{}] admit and evict, but no timestamp", embNames[i]);
+                LOG(ERROR) << StringFormat("embName[%s] admit and evict, but no timestamp", embNames[i].c_str());
                 return false;
             }
         }
@@ -272,18 +270,19 @@ void FeatureAdmitAndEvict::LoadHistoryRecords(AdmitAndEvictData& loadData)
 bool FeatureAdmitAndEvict::ParseThresholdCfg(const std::vector<ThresholdValue>& thresholdValues)
 {
     if (thresholdValues.empty()) {
-        spdlog::error("thresholdValues is empty ...");
+        LOG(ERROR) << "thresholdValues is empty ...";
         return false;
     }
 
     m_cfgThresholds = thresholdValues;
     for (const auto& value : thresholdValues) {
-        spdlog::info("embName[{}], count[{}], time[{}] ...",
-                     value.tensorName, value.countThreshold, value.timeThreshold);
+        LOG(INFO) << StringFormat(
+            "embName[%s], count[%d], time[%d] ...",
+            value.tensorName.c_str(), value.countThreshold, value.timeThreshold);
         auto it = m_tensor2Threshold.find(value.tensorName);
         if (it != m_tensor2Threshold.end()) {
             // train和eval同时开启，会出现表重复配置
-            spdlog::info("[{}] is repeated configuration ...", value.tensorName);
+            LOG(INFO) << StringFormat("[%s] is repeated configuration ...", value.tensorName.c_str());
             return true;
         }
         m_tensor2Threshold[value.tensorName] = value;
@@ -293,7 +292,7 @@ bool FeatureAdmitAndEvict::ParseThresholdCfg(const std::vector<ThresholdValue>& 
         } else if (value.countThreshold != -1 && value.timeThreshold == -1) {
             m_embStatus[value.tensorName] = SingleEmbTableStatus::SETS_ONLY_ADMIT;
         } else {
-            spdlog::error("[{}] config error, have evict but no admit ...", value.tensorName);
+            LOG(ERROR) << StringFormat("[%s] config error, have evict but no admit ...", value.tensorName.c_str());
             m_embStatus[value.tensorName] = SingleEmbTableStatus::SETS_ERROR;
             return false;
         }

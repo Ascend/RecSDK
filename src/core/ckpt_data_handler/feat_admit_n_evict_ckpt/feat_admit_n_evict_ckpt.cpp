@@ -5,7 +5,6 @@
  * Create: 2022-11-22
  */
 
-#include <spdlog/spdlog.h>
 
 #include "feat_admit_n_evict_ckpt.h"
 
@@ -17,7 +16,7 @@ void FeatAdmitNEvictCkpt::SetProcessData(CkptData& processData)
     ClearData();
     if (processData.tens2Thresh.empty() || processData.histRec.timestamps.empty() ||
         processData.histRec.historyRecords.empty()) {
-        spdlog::error("Missing Feature Admit and Evict data");
+        LOG(ERROR) << "Missing Feature Admit and Evict data";
         throw std::runtime_error("Missing Feature Admit and Evict data");
     }
     saveTens2Thresh = std::move(processData.tens2Thresh);

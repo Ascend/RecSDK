@@ -17,7 +17,6 @@
 #include <mutex>
 #include <string>
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "host_emb/host_emb.h"
 #include "utils/common.h"
 #include "utils/safe_queue.h"
@@ -58,6 +57,8 @@ namespace MxRec {
 
         // 特征淘汰接口
         void FeatureEvict(map<std::string, std::vector<emb_key_t>>& evictKeyMap);
+        void ExecuteFeatureAdmit(
+            const string& tensorName, int channel, keys_t& splitKey, absl::flat_hash_map<int64_t, uint32_t>& mergeKeys);
 
         // 特征淘汰的使能接口
         void SetFunctionSwitch(bool isEnableEvict);

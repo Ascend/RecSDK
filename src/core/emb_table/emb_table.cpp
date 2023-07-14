@@ -8,8 +8,6 @@
 #include <list>
 #include <stdexcept>
 #include <random>
-#include <spdlog/spdlog.h>
-#include <spdlog/fmt/bundled/ranges.h>
 #include <acl/acl_rt.h>
 #include "acl/acl_base.h"
 #include "utils/common.h"
@@ -25,11 +23,12 @@ void EmbTable::Init(const EmbInfo& embInfo, const RankInfo& rInfo, int seed)
 #ifndef GTEST
     this->rankInfo = rInfo;
     this->seed = seed;
-    spdlog::info("EmbTable init, deviceID {}, embSize {} running", rInfo.deviceId, embInfo.extEmbeddingSize);
+    LOG(INFO) << StringFormat(
+        "EmbTable init, deviceID %d, embSize %d running", rInfo.deviceId, embInfo.extEmbeddingSize);
     // 计算embedding table需要分配的内存块数
     auto ret = aclrtSetDevice(static_cast<int32_t>(rInfo.deviceId));
     if (ret != ACL_ERROR_NONE) {
-        spdlog::error("Set device failed, device_id:{}, ret={}", rInfo.deviceId, ret);
+        LOG(ERROR) << StringFormat("Set device failed, device_id:%d, ret=%d", rInfo.deviceId, ret);
         throw AclError();
     }
     embSize = embInfo.extEmbeddingSize;
@@ -39,7 +38,7 @@ void EmbTable::Init(const EmbInfo& embInfo, const RankInfo& rInfo, int seed)
         void *newBlock = nullptr;
         aclError ret = aclrtMalloc(&newBlock, blockSize * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST);
         if (ret != ACL_SUCCESS) {
-            spdlog::error("aclrtMalloc failed, ret={}", ret);
+            LOG(ERROR) << StringFormat("aclrtMalloc failed, ret=%d", ret);
             throw AclError();
         }
         if (newBlock == nullptr) {
@@ -54,7 +53,9 @@ void EmbTable::Init(const EmbInfo& embInfo, const RankInfo& rInfo, int seed)
         }
     }
     totalCapacity = static_cast<int>(memoryList.size());
-    spdlog::info("aclrtMalloc success, emb name:{}, total capacity:{}", embInfo.name, totalCapacity);
+    LOG(INFO) << StringFormat(
+        "aclrtMalloc success, emb name:%s, total capacity:%d", embInfo.name.c_str(), totalCapacity
+    );
 #endif
 }
 
@@ -65,7 +66,7 @@ EmbTable::~EmbTable()
         // 释放内存块
         aclError ret = aclrtFree(block);
         if (ret != ACL_SUCCESS) {
-            spdlog::error("aclrtFree failed, ret={}", ret);
+            LOG(ERROR) << StringFormat("aclrtFree failed, ret=%d", ret);
         }
     }
 #endif
@@ -77,11 +78,11 @@ int64_t EmbTable::GetEmbAddress()
 #ifndef GTEST
     if (embeddingList.empty()) {
         PrintStatus();
-        spdlog::debug("GetEmbAddress, embedding_list size: empty! Add block!");
+        VLOG(GLOG_DEBUG) << "GetEmbAddress, embedding_list size: empty! Add block!";
         void *addBlock = nullptr;
         aclError ret = aclrtMalloc(&addBlock, blockSize * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST);
         if (ret != ACL_SUCCESS) {
-            spdlog::error("aclrtMalloc failed, ret={}", ret);
+            LOG(ERROR) << StringFormat("aclrtMalloc failed, ret=%d", ret);
             throw AclError();
         }
         if (addBlock == nullptr) {
@@ -105,43 +106,49 @@ int64_t EmbTable::GetEmbAddress()
 // 将一个emb地址放入embeddingList中
 void EmbTable::PutEmbAddress(int64_t curAddress)
 {
+#ifndef GTEST
     embeddingList.push_back(reinterpret_cast<float*>(curAddress));
     usedCapacity--;
+#endif
 }
 
 void EmbTable::RandomInit(void* newBlock, const vector<InitializeInfo>& initializeInfos, int seed)
 {
 #ifndef GTEST
-    spdlog::info("Device GenerateEmbData Start, seed:{}, initializer num: {}", seed, initializeInfos.size());
+    LOG(INFO) << StringFormat(
+        "Device GenerateEmbData Start, seed:%d, initializer num: %d", seed, initializeInfos.size());
     vector<float> devEmb(blockSize);
     for (auto initializeInfo: initializeInfos) {
         Initializer* initializer;
         switch (initializeInfo.initializerType) {
             case InitializerType::CONSTANT: {
-                spdlog::info("Device GenerateEmbData ing using Constant Initializer by value {}. name {}, start {}, "
-                             "len {}.", initializeInfo.constantInitializerInfo.constantValue,
-                             initializeInfo.name, initializeInfo.start, initializeInfo.len);
+                LOG(INFO) << StringFormat(
+                    "Device GenerateEmbData ing using Constant Initializer by value %d. name %s, start %d, len %d.",
+                    initializeInfo.constantInitializerInfo.constantValue,
+                    initializeInfo.name.c_str(), initializeInfo.start, initializeInfo.len);
                 initializer = &initializeInfo.constantInitializer;
                 break;
             }
             case InitializerType::TRUNCATED_NORMAL: {
-                spdlog::info("Device GenerateEmbData ing using Truncated Normal Initializer by mean: {} stddev: {}. "
-                             "name {}, start {}, len {}.", initializeInfo.normalInitializerInfo.mean,
-                             initializeInfo.normalInitializerInfo.stddev, initializeInfo.name,
-                             initializeInfo.start, initializeInfo.len);
+                LOG(INFO) << StringFormat(
+                    "Device GenerateEmbData ing using Truncated Normal Initializer by mean: %f stddev: %f. "
+                    "name %s, start %d, len %d.", initializeInfo.normalInitializerInfo.mean,
+                    initializeInfo.normalInitializerInfo.stddev, initializeInfo.name.c_str(),
+                    initializeInfo.start, initializeInfo.len);
                 initializer = &initializeInfo.truncatedNormalInitializer;
                 break;
             }
             case InitializerType::RANDOM_NORMAL: {
-                spdlog::info("Device GenerateEmbData ing using Random Normal Initializer by mean: {} stddev: {}. "
-                             "name {}, start {}, len {}.", initializeInfo.normalInitializerInfo.mean,
-                             initializeInfo.normalInitializerInfo.stddev, initializeInfo.name,
-                             initializeInfo.start, initializeInfo.len);
+                LOG(INFO) << StringFormat(
+                    "Device GenerateEmbData ing using Random Normal Initializer by mean: %f stddev: %f. "
+                    "name %s, start %d, len %d.", initializeInfo.normalInitializerInfo.mean,
+                    initializeInfo.normalInitializerInfo.stddev, initializeInfo.name.c_str(),
+                    initializeInfo.start, initializeInfo.len);
                 initializer = &initializeInfo.randomNormalInitializer;
                 break;
             }
             default: {
-                spdlog::warn("Device Invalid Initializer Type. Using default Constant Initializer with value 0.");
+                LOG(WARNING) << "Device Invalid Initializer Type. Using default Constant Initializer with value 0.";
                 ConstantInitializer defaultInitializer(initializeInfo.start, initializeInfo.len, 0, 1);
                 initializer = &defaultInitializer;
             }
@@ -150,12 +157,18 @@ void EmbTable::RandomInit(void* newBlock, const vector<InitializeInfo>& initiali
             initializer->GenerateData(&devEmb[i * embSize], embSize);
         }
     }
-    spdlog::info("Device GenerateEmbData End, seed:{}", seed);
-    aclError ret = aclrtMemcpy(newBlock, blockSize * sizeof(float),
-        devEmb.data(), blockSize * sizeof(float),
-        ACL_MEMCPY_HOST_TO_DEVICE);
+    LOG(INFO) << StringFormat("Device GenerateEmbData End, seed:%d", seed);
+    ExecuteAclMemcpy(newBlock, devEmb);
+#endif
+}
+
+void EmbTable::ExecuteAclMemcpy(void* newBlock, vector<float> devEmb)
+{
+#ifndef GTEST
+    aclError ret = aclrtMemcpy(
+        newBlock, blockSize * sizeof(float), devEmb.data(), blockSize * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
     if (ret != ACL_SUCCESS) {
-        spdlog::error("aclrtMemcpy failed, ret={}", ret);
+        LOG(ERROR) << StringFormat("aclrtMemcpy failed, ret=%d", ret);
         throw AclError();
     }
 #endif
@@ -164,6 +177,7 @@ void EmbTable::RandomInit(void* newBlock, const vector<InitializeInfo>& initiali
 
 void EmbTable::SplitMemoryBlock(void *newBlock)
 {
+#ifndef GTEST
     if (embSize == 0) {
         throw std::runtime_error("SplitMemoryBlock by embSize=0!");
     }
@@ -171,14 +185,15 @@ void EmbTable::SplitMemoryBlock(void *newBlock)
         float *embPtr = static_cast<float*>(newBlock) + i * embSize;
         embeddingList.push_back(embPtr);
     }
+#endif
 }
 
 void EmbTable::PrintStatus()
 {
     // 输出embedding table的总容量
-    spdlog::info("Total capacity:{}", totalCapacity * blockSize);
+    LOG(INFO) << StringFormat("Total capacity:%d", totalCapacity * blockSize);
     // 输出embedding table的未使用的使用容量
-    spdlog::info("Unused capacity:{}", totalCapacity * blockSize - usedCapacity * embSize);
+    LOG(INFO) << StringFormat("Unused capacity:%d", totalCapacity * blockSize - usedCapacity * embSize);
 }
 
 // 用于保存
@@ -198,7 +213,7 @@ map<int64, vector<float>> EmbTable::SaveEmb()
                 floatPtr + i * embSize, embSize * sizeof(float),
                 ACL_MEMCPY_HOST_TO_DEVICE);
             if (ret != ACL_SUCCESS) {
-                spdlog::error("aclrtMemcpy failed, ret={}", ret);
+                LOG(ERROR) << StringFormat("aclrtMemcpy failed, ret=%d", ret);
                 throw AclError();
             }
             savedEmb[reinterpret_cast<int64>(floatPtr + i * embSize)] = move(row);
@@ -215,14 +230,14 @@ list<float*> EmbTable::LoadEmb(const vector<vector<float>> &savedEmb)
     list<float *> addressList;
     int embCapacity = static_cast<int>(savedEmb.size());
     if (savedEmb.size() == 0 || savedEmb[0].size() == 0) {
-        spdlog::error("Load invalid savedEmb");
+        LOG(ERROR) << "Load invalid savedEmb";
         return addressList;
     }
     embSize = static_cast<int>(savedEmb[0].size());
     void *newBlock = nullptr;
     aclError ret = aclrtMalloc(&newBlock, embCapacity * embSize * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST);
     if (ret != ACL_SUCCESS) {
-        spdlog::error("aclrtMalloc failed, ret={}", ret);
+        LOG(ERROR) << StringFormat("aclrtMalloc failed, ret=%d", ret);
         throw AclError();
     }
     if (newBlock == nullptr) {
@@ -235,7 +250,7 @@ list<float*> EmbTable::LoadEmb(const vector<vector<float>> &savedEmb)
             savedEmb[i].data(), embSize * sizeof(float),
             ACL_MEMCPY_HOST_TO_DEVICE);
         if (ret != ACL_SUCCESS) {
-            spdlog::error("aclrtMemcpy failed, ret={}", ret);
+            LOG(ERROR) << StringFormat("aclrtMemcpy failed, ret=%d", ret);
             throw AclError();
         }
         addressList.push_back(floatPtr + i * embSize);

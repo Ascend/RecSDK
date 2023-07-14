@@ -4,9 +4,6 @@
  * Author: MindX SDK
  * Create: 2022-11-17
  */
-#include <spdlog/spdlog.h>
-#include <spdlog/fmt/bundled/ranges.h>
-
 #include "nddr_feat_map_ckpt.h"
 
 
@@ -67,7 +64,7 @@ CkptTransData NddrFeatMapCkpt::GetDataset(CkptDataType dataType, string embName)
         transArr.push_back(it.first);
         transArr.push_back(it.second);
     }
-    spdlog::info("CkptDataType::EMB_INFO:{}, dataType{} is", CkptDataType::EMB_INFO, dataType);
+    LOG(INFO) << StringFormat("CkptDataType::EMB_INFO:%d, dataType%d is", CkptDataType::EMB_INFO, dataType);
     return move(transferData);
 }
 
@@ -86,5 +83,5 @@ void NddrFeatMapCkpt::SetDataset(CkptDataType dataType, string embName, CkptTran
         int64_t key { transArr.at(i) };
         hostHashMap[key] = transArr.at(i + 1);
     }
-    spdlog::info("dataType{} is", dataType);
+    LOG(INFO) << StringFormat("dataType%d is", dataType);
 }

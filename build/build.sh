@@ -5,6 +5,8 @@
 # Create: 2021
 # History: NA
 
+export GLOG_CUSTOM_PREFIX_SUPPORT=1
+
 set -e
 warn() { echo >&2 -e "\033[1;31m[WARN ][Depend  ] $1\033[1;37m" ; }
 ARCH="$(uname -m)"

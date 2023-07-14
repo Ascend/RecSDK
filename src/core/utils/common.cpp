@@ -8,12 +8,15 @@
 
 #include "common.h"
 
-#include <spdlog/spdlog.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
-#include <spdlog/cfg/env.h>
+#include <memory>
+#include <string>
+#include <stdexcept>
+
 #include <mpi.h>
+#include <glog/logging.h>
 
 #include <dsmi_common_interface.h>
+#include <iomanip>
 
 using namespace std;
 using std::chrono::system_clock;
@@ -22,6 +25,8 @@ namespace MxRec {
     int PerfConfig::keyProcessThreadNum = DEFAULT_KEY_PROCESS_THREAD;
     int PerfConfig::maxUniqueThreadNum = DEFAULT_MAX_UNIQUE_THREAD_NUM;
     bool PerfConfig::fastUnique = false;
+    string g_rankId;
+    int g_glogLevel;
 
 
     RankInfo::RankInfo(int rankId, int deviceId, int localRankSize, int option, int nBatch,
@@ -91,14 +96,15 @@ namespace MxRec {
         }
     }
 
-    void SetLog(int rank)
+    void SetLog()
     {
-        auto logger = spdlog::stderr_color_mt("console");
-        spdlog::set_default_logger(logger);
-        std::string pattern = "[%H:%M:%S.%e] [" + std::to_string(rank) + "] [%^%l%$] %v";
-        spdlog::default_logger()->set_pattern(pattern);
-        auto env_val = spdlog::details::os::getenv("SPDLOG_LEVEL");
-        spdlog::cfg::load_env_levels();
+        // glog 0.5.0 can't pass any args into, and not support custom format
+        auto logLevel = getenv("GLOG_stderrthreshold");
+        if (logLevel == nullptr) {
+            g_glogLevel = 0;  // default as INFO
+        } else {
+            g_glogLevel = atoi(logLevel);
+        }
     }
 
     string GetChipName(int devID)
@@ -109,8 +115,10 @@ namespace MxRec {
                                            { 0 }};
         ret = dsmi_get_chip_info(devID, &info);
         if (ret == 0) {
-            spdlog::debug("dsmi_get_chip_info successful, ret = {}, chip_name = {}", ret,
-                          reinterpret_cast<const char*>(info.chip_name));
+            VLOG(GLOG_DEBUG) << StringFormat(
+                "dsmi_get_chip_info successful, ret = %d, chip_name = %s", ret,
+                reinterpret_cast<const char*>(info.chip_name)
+            );
             return reinterpret_cast<const char*>(info.chip_name);
         }
 

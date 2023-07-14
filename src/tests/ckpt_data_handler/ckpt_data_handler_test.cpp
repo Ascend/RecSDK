@@ -6,8 +6,6 @@
  */
 
 #include <gtest/gtest.h>
-#include <spdlog/spdlog.h>
-#include <spdlog/fmt/bundled/ranges.h>
 
 #include "ckpt_data_handler/host_emb_ckpt/host_emb_ckpt.h"
 #include "ckpt_data_handler/emb_hash_ckpt/emb_hash_ckpt.h"

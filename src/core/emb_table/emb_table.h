@@ -49,6 +49,8 @@ namespace MxRec {
 
         EmbTable& operator=(EmbTable&&) = delete;
 
+        void ExecuteAclMemcpy(void* newBlock, vector<float> devEmb);
+
         // 用于保存
         map<int64, vector<float>> SaveEmb();
 
