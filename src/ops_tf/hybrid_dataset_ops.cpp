@@ -65,6 +65,11 @@ public:
         OP_REQUIRES_OK(context, context->GetAttr("channel_id", &channelId));
 
         if (channelId < 0 || channelId >= MAX_CHANNEL_NUM) {
+            throw runtime_error(fmt::format("channelId is invalid, It should be in range [0, {})",
+                                            MAX_CHANNEL_NUM));
+        }
+
+        if (channelId < 0 || channelId >= MAX_CHANNEL_NUM) {
             context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ",
                                                fmt::format("ClearChannel channelId invalid. It should be in range "
                                                            "[0, MAX_CHANNEL_NUM:{})", MAX_CHANNEL_NUM)));
