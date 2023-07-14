@@ -54,9 +54,6 @@ mkdir "${pkg_dir}"
 mv version.info "${pkg_dir}"
 
 opensource_path="${ROOT_DIR}"/../opensource/opensource
-abseil_src_path=${opensource_path}/abseil
-echo "${abseil_src_path}"
-abseil_install_path="${ROOT_DIR}"/install/abseil
 
 src_path="${ROOT_DIR}"/src
 acc_ctr_path="${ROOT_DIR}"/src/platform/AccCTR
@@ -64,31 +61,6 @@ cp -rf "${ROOT_DIR}"/platform/securec/* "${acc_ctr_path}"/3rdparty/huawei_secure
 cd "${ROOT_DIR}"
 
 release_tar=Ascend-"${pkg_dir}"_"${VERSION}"_linux-"${ARCH}".tar.gz
-
-install_abseil()
-{
-    remove "${abseil_install_path}"
-    echo "${abseil_install_path}"
-    if [[ ! -d "${abseil_install_path}" ]]
-    then mkdir -p "${abseil_install_path}"
-    fi
-
-    cd "${abseil_src_path}"
-    echo "${abseil_src_path}"
-    remove CMakeCache.txt
-    cmake -DCMAKE_INSTALL_PREFIX="${abseil_install_path}" . && make -j8 && make install
-
-    echo "${project_output_path}"/abseil
-    mkdir -p "${project_output_path}"/abseil
-    if [ -d "${abseil_install_path}"/lib64/ ]; then
-        cp -rf "${abseil_install_path}"/lib64/libabsl* "${project_output_path}"/abseil
-    elif [ -d "${abseil_install_path}"/lib/ ]; then
-        cp -rf "${abseil_install_path}"/lib/libabsl* "${project_output_path}"/abseil
-    else
-        echo "${abseil_install_path}"/lib64/ not exist
-        exit 1
-    fi
-}
 
 compile_securec()
 {
@@ -145,7 +117,6 @@ gen_wheel_file()
 
 if [ "$(uname -m)" = "x86_64" ]
 then
-  install_abseil
   compile_securec
 
   echo "-----Build AccCTR -----"

@@ -1,8 +1,10 @@
 cmake_minimum_required(VERSION 3.12)
 set(CMAKE_CXX_STANDARD 17)
+
 if(NOT ABSEIL_PATH)
-    set(ABSEIL_PATH ${PROJECT_SOURCE_DIR}/../install/abseil/)
+    set(ABSEIL_PATH ${PYTHON_PATH}/lib/python3.7/site-packages/tensorflow_core/)
 endif()
+
 message("ABSEIL_PATH: " ${ABSEIL_PATH})
 
 if(NOT SECUREC_PATH)
