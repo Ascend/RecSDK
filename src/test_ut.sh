@@ -59,7 +59,7 @@ cmake -DCMAKE_BUILD_TYPE=Debug \
     -DPYTHON_PATH="$(dirname "$(dirname "$(which python3.7)")")" \
     -DEASY_PROFILER_PATH=/opt/buildtools/ \
     -DASCEND_PATH=/usr/local/Ascend/ascend-toolkit/latest \
-    -DABSEIL_PATH="$(dirname "$(dirname "${PWD}")")"/install/abseil/ \
+    -DABSEIL_PATH="$python_path"/lib/python3.7/site-packages/tensorflow_core/ \
     -DSECUREC_PATH="${ROOT_DIR}"/platform/securec \
     -DBUILD_TESTS=on -DCOVERAGE=on "$(dirname "${PWD}")"
 
