@@ -4,11 +4,6 @@
 
 namespace optiling
 {
-    struct TilingCompileInfo
-    {
-        int64_t ub_size;
-    };
-
     static ge::graphStatus TilingFunc(gert::TilingContext *context)
     {
         TilingData1 tiling;
@@ -19,9 +14,9 @@ namespace optiling
         currentWorkspace[0] = sysWorkspaceSize + usrSize;
 
         int32_t block_total_nums = 48;
-        int32_t ub_limit = 160 * 1024;
+        int32_t ub_limit = 175 * 1024;
         auto *attrs = context->GetAttrs();
-	const auto *attr0_value = attrs->GetAttrPointer<int64_t>(0);
+        const auto *attr0_value = attrs->GetAttrPointer<int64_t>(0);
         int32_t embbeding_dim = *attr0_value;
         const auto *attr1_value = attrs->GetAttrPointer<int64_t>(1);
         int32_t embbeding_type = *attr1_value;
@@ -38,23 +33,11 @@ namespace optiling
 
         return ge::GRAPH_SUCCESS;
     }
-
-    static ge::graphStatus TilingPrepare(gert::TilingParseContext *context)
-    {
-        return ge::GRAPH_SUCCESS;
-    }
-
-    static ge::graphStatus check_op_support(const ge::Operator &op, ge::AscendString &result)
-    {
-        std::string res_json_str = "{\"ret_code\": \"0\",\"reason\": \"check_supported_stub\"}";
-        result = ge::AscendString(res_json_str.c_str());
-        return 1;
-    }
 }
 
 namespace ge
 {
-    ge::graphStatus InferShape1(gert::InferShapeContext *context)
+    static ge::graphStatus InferShape1(gert::InferShapeContext *context)
     {
 
         gert::Shape *y_shape = context->GetOutputShape(0);
@@ -67,11 +50,7 @@ namespace ge
         y_shape->SetDim(1, update_dim);
         return GRAPH_SUCCESS;
     }
-    ge::graphStatus InferShapeRange1(gert::InferShapeRangeContext *context)
-    {
-        return GRAPH_SUCCESS;
-    }
-    ge::graphStatus InferDataType1(gert::InferDataTypeContext *context)
+    static ge::graphStatus InferDataType1(gert::InferDataTypeContext *context)
     {
 
         int64_t embbeding_type;
@@ -126,27 +105,25 @@ namespace ops
                 .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
             this->Attr("embedding_dim").AttrType(OPTIONAL).Int(32);
             this->Attr("embedding_type").AttrType(OPTIONAL).Int(1);
+
             this->SetInferShape(ge::InferShape1)
                 .SetInferDataType(ge::InferDataType1);
 
             this->AICore()
-                .SetTiling(optiling::TilingFunc)
-                .SetTilingParse(optiling::TilingPrepare)
-                .SetCheckSupport(optiling::check_op_support);
+                .SetTiling(optiling::TilingFunc);
 
             OpAICoreConfig aicConfig;
-            aicConfig.AsyncFlag(true)
-                .DynamicCompileStaticFlag(true)
+            aicConfig.DynamicCompileStaticFlag(true)
                 .DynamicFormatFlag(true)
                 .DynamicRankSupportFlag(true)
                 .DynamicShapeSupportFlag(true)
                 .NeedCheckSupportFlag(false)
-                .PrecisionReduceFlag(false)
-                .RangeLimitValue("limited");
+                .PrecisionReduceFlag(false);
+
             this->AICore().AddConfig("ascend910b", aicConfig);
             this->AICore().AddConfig("ascend910", aicConfig);
         }
     };
 
-    OP_ADD(EmbeddingLookupByAddress, optiling::TilingCompileInfo);
+    OP_ADD(EmbeddingLookupByAddress);
 }

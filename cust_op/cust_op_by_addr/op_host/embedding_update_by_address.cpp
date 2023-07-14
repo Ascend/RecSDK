@@ -4,10 +4,6 @@
 
 namespace optiling
 {
-    struct TilingCompileInfo
-    {
-        int64_t ub_size;
-    };
 
     static ge::graphStatus TilingFunc(gert::TilingContext *context)
     {
@@ -19,14 +15,14 @@ namespace optiling
         currentWorkspace[0] = sysWorkspaceSize + usrSize;
 
         int32_t block_total_nums = 48;
-        int32_t ub_limit = 160 * 1024;
+        int32_t ub_limit = 175 * 1024;
 
         int32_t update_dim;
         int32_t embbeding_type;
 
         int32_t input_shape = context->GetInputTensor(0)->GetShapeSize();
         int32_t input_dim = context->GetInputTensor(1)->GetShapeSize() / input_shape;
-        int32_t update_type=*(context->GetAttrs()->GetAttrPointer<int64_t>(0));
+        int32_t update_type = *(context->GetAttrs()->GetAttrPointer<int64_t>(0));
         ge::DataType input_datatype = context->GetInputTensor(1)->GetDataType();
 
         switch (input_datatype)
@@ -57,23 +53,11 @@ namespace optiling
 
         return ge::GRAPH_SUCCESS;
     }
-
-    static ge::graphStatus TilingPrepare(gert::TilingParseContext *context)
-    {
-        return ge::GRAPH_SUCCESS;
-    }
-
-    static ge::graphStatus check_op_support(const ge::Operator &op, ge::AscendString &result)
-    {
-        std::string res_json_str = "{\"ret_code\": \"0\",\"reason\": \"check_supported_stub\"}";
-        result = ge::AscendString(res_json_str.c_str());
-        return 1;
-    }
 }
 
 namespace ge
 {
-    ge::graphStatus InferShape(gert::InferShapeContext *context)
+    static ge::graphStatus InferShape(gert::InferShapeContext *context)
     {
         gert::Shape *y_shape = context->GetOutputShape(0);
         int64_t input_shape = context->GetInputTensor(0)->GetShapeSize();
@@ -83,11 +67,7 @@ namespace ge
         y_shape->SetDim(1, input_dim);
         return GRAPH_SUCCESS;
     }
-    ge::graphStatus InferShapeRange(gert::InferShapeRangeContext *context)
-    {
-        return GRAPH_SUCCESS;
-    }
-    ge::graphStatus InferDataType(gert::InferDataTypeContext *context)
+    static ge::graphStatus InferDataType(gert::InferDataTypeContext *context)
     {
         context->SetOutputDataType(0, ge::DataType(DT_FLOAT));
         return GRAPH_SUCCESS;
@@ -121,22 +101,19 @@ namespace ops
                 .SetInferDataType(ge::InferDataType);
 
             this->AICore()
-                .SetTiling(optiling::TilingFunc)
-                .SetTilingParse(optiling::TilingPrepare)
-                .SetCheckSupport(optiling::check_op_support);
+                .SetTiling(optiling::TilingFunc);
 
             OpAICoreConfig aicConfig;
-            aicConfig.AsyncFlag(true)
-                .DynamicCompileStaticFlag(true)
+            aicConfig.DynamicCompileStaticFlag(true)
                 .DynamicFormatFlag(true)
                 .DynamicRankSupportFlag(true)
                 .DynamicShapeSupportFlag(true)
                 .NeedCheckSupportFlag(false)
-                .PrecisionReduceFlag(false)
-                .RangeLimitValue("limited");
+                .PrecisionReduceFlag(false);
+
             this->AICore().AddConfig("ascend910b", aicConfig);
             this->AICore().AddConfig("ascend910", aicConfig);
         }
     };
-    OP_ADD(EmbeddingUpdateByAddress, optiling::TilingCompileInfo);
+    OP_ADD(EmbeddingUpdateByAddress);
 }
