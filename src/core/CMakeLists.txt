@@ -12,7 +12,12 @@ message("SECUREC_PATH: " ${SECUREC_PATH})
 
 include_directories(${ABSEIL_PATH}/include)
 link_directories(${ABSEIL_PATH}/lib)
-include_directories(${PYTHON_PATH}/lib/python3.7/site-packages/tensorflow_core/include)
+
+if (${TF_PATH} MATCHES "tensorflow_core")
+    include_directories(${PYTHON_PATH}/lib/python3.7/site-packages/tensorflow_core/include)
+else()
+    include_directories(${PYTHON_PATH}/lib/python3.7/site-packages/tensorflow/include)
+endif()
 
 file(GLOB_RECURSE MXREC_SRC ./*.cpp)
 add_library(ASC SHARED ${MXREC_SRC})
