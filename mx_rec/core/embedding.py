@@ -540,17 +540,17 @@ class SparseEmbedding:
                 local_grad = get_own_emb(unique_grads, bp_all2all_args, self.scalar_emb_size, use_static)
                 if self.all2all_gradients_op == All2allGradientsOp.SUM_GRADIENTS_AND_DIV_BY_RANKSIZE:
                     local_grad = local_grad / get_rank_size()
-                
+
                 if use_dynamic_expansion:
                     return local_grad, feat_ids
-                
+
                 if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
                     unique_id_offsets, unique_id_offsets_position = array_ops.unique(id_offsets)
                     unique_local_grad = tf.compat.v1.unsorted_segment_sum(local_grad,
-                                                                   unique_id_offsets_position,
-                                                                   array_ops.shape(unique_id_offsets)[0])
-                    return ops.IndexedSlices(values=unique_local_grad, indices=unique_id_offsets, 
-                        dense_shape=tf.shape(table)), feat_ids
+                                                                          unique_id_offsets_position,
+                                                                          array_ops.shape(unique_id_offsets)[0])
+                    return ops.IndexedSlices(values=unique_local_grad, indices=unique_id_offsets,
+                                             dense_shape=tf.shape(table)), feat_ids
 
                 return ops.IndexedSlices(values=local_grad, indices=id_offsets, dense_shape=tf.shape(table)), feat_ids
 
@@ -765,8 +765,8 @@ class SparseEmbedding:
                     if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
                         unique_id_offsets, unique_id_offsets_position = array_ops.unique(id_offsets)
                         unique_local_grad = tf.compat.v1.unsorted_segment_sum(local_grad,
-                                                                       unique_id_offsets_position,
-                                                                       array_ops.shape(unique_id_offsets)[0])
+                                                                              unique_id_offsets_position,
+                                                                              array_ops.shape(unique_id_offsets)[0])
                         update_grad = ops.IndexedSlices(values=unique_local_grad, indices=unique_id_offsets,
                                                         dense_shape=tf.shape(table))
                     else:
