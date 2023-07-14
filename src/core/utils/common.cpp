@@ -13,7 +13,6 @@
 #include <stdexcept>
 
 #include <mpi.h>
-#include <glog/logging.h>
 
 #include <dsmi_common_interface.h>
 #include <iomanip>
@@ -27,6 +26,7 @@ namespace MxRec {
     bool PerfConfig::fastUnique = false;
     string g_rankId;
     int g_glogLevel;
+    bool g_isGlogInit = false;
 
 
     RankInfo::RankInfo(int rankId, int deviceId, int localRankSize, int option, int nBatch,
@@ -96,15 +96,33 @@ namespace MxRec {
         }
     }
 
-    void SetLog()
+    void SetLog(int rank)
     {
-        // glog 0.5.0 can't pass any args into, and not support custom format
         auto logLevel = getenv("GLOG_stderrthreshold");
         if (logLevel == nullptr) {
             g_glogLevel = 0;  // default as INFO
         } else {
             g_glogLevel = atoi(logLevel);
         }
+        if (!g_isGlogInit) {
+            google::InitGoogleLogging("mxRec", &CustomGlogFormat, &rank);
+            g_isGlogInit = true;
+        }
+    }
+
+    void CustomGlogFormat(std::ostream &s, const LogMessageInfo &l, void* rank)
+    {
+        if (g_rankId.empty()) {
+            g_rankId = std::to_string(*static_cast<int*>(rank));
+        }
+
+        s << "["
+          << setw(GLOG_TIME_WIDTH_2) << l.time.hour() << ':'
+          << setw(GLOG_TIME_WIDTH_2) << l.time.min()  << ':'
+          << setw(GLOG_TIME_WIDTH_2) << l.time.sec() << "."
+          << setw(GLOG_TIME_WIDTH_6) << l.time.usec() << "]"
+          << " [" + g_rankId + "]"
+          << " [" <<  l.severity << "] ";
     }
 
     string GetChipName(int devID)

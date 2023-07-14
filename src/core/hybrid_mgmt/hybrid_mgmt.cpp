@@ -78,7 +78,8 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     if (isRunning) {
         return true;
     }
-    SetLog();
+
+    SetLog(rankInfo.rankId);
     InitRankInfo(rankInfo, embInfos);
 
     LOG(INFO) << StringFormat(

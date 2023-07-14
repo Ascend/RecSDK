@@ -23,8 +23,8 @@
 #include <sstream>
 #include <fstream>
 #include <algorithm>
-#include <glog/logging.h>
 #include "tensorflow/core/framework/tensor.h"
+#include "glog/logging.h"  // note: must set behind any tensorflow reference, otherwise will overwrite logging.h
 #include "absl/container/flat_hash_map.h"
 #include "securec.h"
 
@@ -49,8 +49,6 @@ namespace MxRec {
 #define INFO_PTR shared_ptr
 #define MGMT_CPY_THREADS 4
 #define PROFILING
-    extern int g_glogLevel;
-
     using namespace tensorflow;
     constexpr int TRAIN_CHANNEL_ID = 0;
     constexpr int EVAL_CHANNEL_ID = 1;
@@ -62,7 +60,10 @@ namespace MxRec {
     constexpr int KEY_PROCESS_THREAD = 6;
 
     // for GLOG
-    constexpr int GLOG_MAX_BUF_SIZE = 2048;
+    extern int g_glogLevel;
+    constexpr int GLOG_MAX_BUF_SIZE = 1024;
+    constexpr int GLOG_TIME_WIDTH_2 = 2;
+    constexpr int GLOG_TIME_WIDTH_6 = 6;
 
     // unique related config
     constexpr int UNIQUE_BUCKET = 6;
@@ -266,7 +267,9 @@ struct BatchTask {
         absl::flat_hash_map<std::string, time_t> timestamps; // 用于特征准入&淘汰的时间戳
     };
 
-    void SetLog();
+    void SetLog(int rank);
+
+    void CustomGlogFormat(std::ostream &s, const LogMessageInfo &l, void* rank);
 
     template<typename ... Args>
     string StringFormat(const string& format, Args ... args)
@@ -274,8 +277,11 @@ struct BatchTask {
         auto size = static_cast<size_t>(GLOG_MAX_BUF_SIZE);
         unique_ptr<char[]> buf(new char[size]);
         memset_s(buf.get(), size, 0, size);
-        snprintf_s(buf.get(), size, SECUREC_STRING_MAX_LEN-1, format.c_str(), args ...);
-        return string(buf.get(), buf.get() + size);
+        int nChar =  snprintf_s(buf.get(), size, size-1, format.c_str(), args ...);
+        if (nChar == -1) {
+            throw invalid_argument("StringFormat failed");
+        }
+        return string(buf.get(), buf.get() + nChar);
     }
 
     // use environment variable GLOG_v to decide if showing debug log.

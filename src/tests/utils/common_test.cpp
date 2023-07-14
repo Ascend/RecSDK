@@ -18,11 +18,12 @@ using namespace testing;
 
 TEST(common, SetLog)
 {
-    SetLog();
+    int rankId = 0;
+    SetLog(rankId);
     ASSERT_EQ(g_glogLevel, 0);
 
     putenv("GLOG_stderrthreshold=1");
-    SetLog();
+    SetLog(rankId);
     ASSERT_EQ(g_glogLevel, 1);
 }
 

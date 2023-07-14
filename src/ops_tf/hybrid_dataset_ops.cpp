@@ -485,18 +485,18 @@ public:
                                 size_t& dataSize)
     {
         if (dataSize - fieldNumTmp != 1) { // 说明没有传时间戳
-            LOG(ERROR) << StringFormat("dataSize[{}], fieldNum[{}] ...", dataSize, fieldNumTmp);
+            LOG(ERROR) << StringFormat("dataSize[%d], fieldNum[%d] ...", dataSize, fieldNumTmp);
             return false;
         }
 
         // 前面8个字节、即占一个featureId位，是unix时间戳
         auto src = (const time_t*)inputTensor.tensor_data().data();
         std::copy(src, src + 1, &timestamp);
-        LOG(INFO) << StringFormat("current batchId[{}] timestamp[{}]", batchId, timestamp);
+        LOG(INFO) << StringFormat("current batchId[%d] timestamp[%d]", batchId, timestamp);
         dataSize -= 1;
 
         if (timestamp <= 0) {
-            LOG(ERROR) << StringFormat("timestamp[{}] <= 0 ", timestamp);
+            LOG(ERROR) << StringFormat("timestamp[%d] <= 0 ", timestamp);
             return false;
         }
 
@@ -599,7 +599,7 @@ public:
 
     void Compute(OpKernelContextPtr context) override
     {
-        LOG(INFO) << StringFormat("context {}", context->step_id());
+        LOG(INFO) << StringFormat("context %d", context->step_id());
         std::cout << " Cust opp not installed!!" << std::endl;
     }
 
