@@ -12,7 +12,8 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops.init_ops import Initializer
+from tensorflow.python.ops.init_ops import Initializer as InitializerV1
+from tensorflow.python.ops.init_ops_v2 import Initializer as InitializerV2
 
 from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
 from mx_rec.core.asc.feature_spec import FeatureSpec, get_feature_spec, set_temporary_feature_spec_attribute
@@ -1023,6 +1024,6 @@ def check_create_table_params(key_dtype, dim, name, emb_initializer):
     name_validator.check_whitelist()
     name_validator.check()
     # check emb_initializer
-    emb_initializer_validator = ClassValidator(value=emb_initializer, classes=Initializer)
+    emb_initializer_validator = ClassValidator(value=emb_initializer, classes=(InitializerV1, InitializerV2))
     emb_initializer_validator.check_isinstance()
     emb_initializer_validator.check()
