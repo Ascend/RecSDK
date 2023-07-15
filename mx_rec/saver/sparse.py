@@ -76,12 +76,12 @@ class SparseProcessor:
                     file_validator.check()
                     attributes = json.load(fin)
             except FileNotFoundError as err:
-                raise FileNotFoundError(f"attribute dir not found.") from err
+                raise FileNotFoundError("attribute dir not found.") from err
         else:
             try:
                 attributes = np.fromfile(attribute_dir, np.uint64)
             except FileNotFoundError as err:
-                raise FileNotFoundError(f"attribute dir not found.") from err
+                raise FileNotFoundError("attribute dir not found.") from err
 
         return attributes
 

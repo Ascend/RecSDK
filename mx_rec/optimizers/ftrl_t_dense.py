@@ -25,7 +25,6 @@ from mx_rec.util.variable import check_and_get_config_via_var
 
 
 def create_ftrl_dense_optimizer(learning_rate, use_locking=False, name="Ftrl_t_dense", **kwargs):
-
     return CustomizedFtrlTZ(learning_rate=learning_rate, use_locking=use_locking, name=name, **kwargs)
 
 
@@ -169,10 +168,10 @@ class CustomizedFtrlTZ(optimizer.Optimizer):
     def _create_slots(self, var_list):
 
         # Create slots for the first and second moments.
-        z_state_name = self._name + "/" + "z"
-        n_state_name = self._name + "/" + "n"
-        g_state_name = self._name + "/" + "g"
-        w_state_name = self._name + "/" + "w"
+        z_state_name = f"{self._name}/z"
+        n_state_name = f"{self._name}/n"
+        g_state_name = f"{self._name}/g"
+        w_state_name = f"{self._name}/w"
         for each_var in var_list:
             with ops.colocate_with(each_var):
                 z_zero = self._zeros_slot(each_var, "z", z_state_name)
@@ -184,5 +183,3 @@ class CustomizedFtrlTZ(optimizer.Optimizer):
                 insert_removing_var_list(n_zero.name)
                 insert_removing_var_list(g_zero.name)
                 insert_removing_var_list(w_zero.name)
-
-
