@@ -242,6 +242,42 @@ class SparseEmbedding:
 
         optimizer.insert_slot(slot, named_slot_key, slot_name)
 
+    @staticmethod
+    def _get_own_emb(emb, all2all_args, emb_size, use_static):
+        """
+        obtain embedding of source data
+        :param emb: origin embeddding
+        :param all2all_args: dynamic shape condition parameters
+        :param emb_size: size of embedding table
+        :param use_static: enable static shape training or not
+        :return: local embedding after all2all
+        """
+        from mx_rec.util.tf_version_adapter import hccl_ops
+        rank_size = get_rank_size()
+        rank_id = get_rank_id()
+
+        src_emb = emb
+
+        reshape_info = [all2all_args * rank_size, emb_size] if use_static else [-1, emb_size]
+
+        if rank_size == 1 and use_static:
+            return tf.reshape(src_emb, reshape_info)
+
+        if use_static:
+            emb_send_cnt = tf.constant([all2all_args * emb_size] * rank_size, dtype=tf.int64)
+            emb_send_offset = tf.constant([all2all_args * emb_size * i for i in range(rank_size)], dtype=tf.int64)
+            src_emb = hccl_ops.all_to_all_v(send_data=emb,
+                                            send_counts=emb_send_cnt,
+                                            send_displacements=emb_send_offset,
+                                            recv_counts=emb_send_cnt,
+                                            recv_displacements=emb_send_offset)
+        else:
+            src_emb = hccl_ops.all_to_all_v_c(send_data=emb,
+                                              send_count_matrix=all2all_args,
+                                              rank=rank_id)
+
+        return tf.reshape(src_emb, reshape_info)
+
     def check_optimizer_instance(self):
         for optimizer_instance in self._optimizer_instance_list:
             if tf.__version__.startswith("1"):
@@ -482,7 +518,7 @@ class SparseEmbedding:
             if not use_static:
                 # In the case of multiple lookups of a table, the all2all_matrix does not run the 'getnext' op
                 # to obtain the actual value. Instead, the initial value is 1. So it needs to be multiplied by
-                # 'self.scalar_emb_size' to ensure the correctness of the 'Reshape' op in the get_own_emb function.
+                # 'self.scalar_emb_size' to ensure the correctness of the 'Reshape' op in the _get_own_emb function.
                 all2all_matrix = tf.ones(shape=[rank_size, rank_size],
                                          dtype=tf.int64, name="all2all_matrix") * self.scalar_emb_size
                 all2all_matrix = tf.identity(all2all_matrix, name=ASCAnchorAttr.ALL2ALL_MATRIX.value)
@@ -508,7 +544,7 @@ class SparseEmbedding:
             else:
                 local_emb = tf.identity(table, name="identity_local_emb")
             all2all_args = send_count if use_static else all2all_matrix
-            unique_embeddings = get_own_emb(local_emb, all2all_args, self.scalar_emb_size, use_static)
+            unique_embeddings = self._get_own_emb(local_emb, all2all_args, self.scalar_emb_size, use_static)
 
             if hot_pos is not None:
                 unique_embeddings = tf.concat([tf.gather(unique_embeddings, hot_pos, name="hot_pos"),
@@ -529,8 +565,8 @@ class SparseEmbedding:
 
             def grad(lookup_diff):
                 embedding_diff = tf.reshape(lookup_diff, [-1, self.scalar_emb_size])
-                unique_embeddings_shape = unique_embeddings.shape.as_list() if use_static \
-                    else tf.shape(unique_embeddings)
+                unique_embeddings_shape = unique_embeddings.shape.as_list() if use_static else tf.shape(
+                    unique_embeddings)
                 unique_grads = tf.compat.v1.unsorted_segment_sum(embedding_diff, restore_vector,
                                                                  unique_embeddings_shape[0])
                 bp_all2all_args = all2all_args if use_static else tf.transpose(all2all_args)
@@ -538,7 +574,7 @@ class SparseEmbedding:
                     hot, cold = tf.split(unique_grads, [tf.shape(hot_pos)[0],
                                                         tf.shape(unique_grads)[0] - tf.shape(hot_pos)[0]], axis=0)
                     unique_grads = tf.tensor_scatter_nd_update(cold, tf.expand_dims(hot_pos, 1), hot)
-                local_grad = get_own_emb(unique_grads, bp_all2all_args, self.scalar_emb_size, use_static)
+                local_grad = self._get_own_emb(unique_grads, bp_all2all_args, self.scalar_emb_size, use_static)
                 if self.all2all_gradients_op == All2allGradientsOp.SUM_GRADIENTS_AND_DIV_BY_RANKSIZE:
                     local_grad = local_grad / get_rank_size()
 
@@ -723,7 +759,7 @@ class SparseEmbedding:
                 local_embeddings = tf.identity(table, name="identity_local_emb")
 
             all2all_args = send_count if use_static else all2all_matrix
-            unique_embeddings = get_own_emb(local_embeddings, all2all_args, self.scalar_emb_size, use_static)
+            unique_embeddings = self._get_own_emb(local_embeddings, all2all_args, self.scalar_emb_size, use_static)
 
             if hot_pos is not None:
                 unique_embeddings = tf.concat([tf.gather(unique_embeddings, hot_pos, name="hot_pos"),
@@ -756,7 +792,7 @@ class SparseEmbedding:
                     hot, cold = tf.split(unique_grads, [tf.shape(hot_pos)[0],
                                                         tf.shape(unique_grads)[0] - tf.shape(hot_pos)[0]], axis=0)
                     unique_grads = tf.tensor_scatter_nd_update(cold, tf.expand_dims(hot_pos, 1), hot)
-                local_grad = get_own_emb(unique_grads, bp_all2all_args, self.scalar_emb_size, use_static)
+                local_grad = self._get_own_emb(unique_grads, bp_all2all_args, self.scalar_emb_size, use_static)
                 if self.all2all_gradients_op == All2allGradientsOp.SUM_GRADIENTS_AND_DIV_BY_RANKSIZE:
                     local_grad = local_grad / get_rank_size()
 
@@ -829,70 +865,39 @@ class SparseEmbedding:
                 self.set_optimizer_slot(slot_info)
 
 
-def get_own_ids(unique_ids, origin_id_lens, send_cnt, self):
-    from mx_rec.util.tf_version_adapter import hccl_ops
-    rank_size = get_rank_size()
-    if rank_size > 1:
-        ids_send_cnt = tf.constant([send_cnt] * rank_size, dtype=tf.int64)
-        ids_send_offset = tf.constant([send_cnt * i for i in range(rank_size)], dtype=tf.int64)
-        own_ids = hccl_ops.all_to_all_v(send_data=unique_ids,
-                                        send_counts=ids_send_cnt,
-                                        send_displacements=ids_send_offset,
-                                        recv_counts=ids_send_cnt,
-                                        recv_displacements=ids_send_offset)
-
-        lens_sc = tf.constant([1] * rank_size, dtype=tf.int64)
-        lens_sd = tf.constant([i for i in range(rank_size)], dtype=tf.int64)
-        local_id_lens = hccl_ops.all_to_all_v(send_data=origin_id_lens,
-                                              send_counts=lens_sc,
-                                              send_displacements=lens_sd,
-                                              recv_counts=lens_sc,
-                                              recv_displacements=lens_sd)
-
-    else:
-        own_ids = unique_ids
-        local_id_lens = origin_id_lens
-
-    def feature_mapping():
-        self.set_using_feature_mapping()
-        id_offsets = SparseEmbedding.customized_ops.feature_mapping(own_ids, table_name=self.table_name)
-        return id_offsets
-
-    id_offsets = feature_mapping()
-    id_offsets.set_shape([send_cnt * rank_size])
-
-    return id_offsets, local_id_lens
-
-
-def get_own_emb(emb, all2all_args, emb_size, use_static):
-    '''
-    obtain embedding of source data
-    '''
-    from mx_rec.util.tf_version_adapter import hccl_ops
-    rank_size = get_rank_size()
-    rank_id = get_rank_id()
-
-    src_emb = emb
-
-    reshape_info = [all2all_args * rank_size, emb_size] if use_static else [-1, emb_size]
-
-    if rank_size == 1 and use_static:
-        return tf.reshape(src_emb, reshape_info)
-
-    if use_static:
-        emb_send_cnt = tf.constant([all2all_args * emb_size] * rank_size, dtype=tf.int64)
-        emb_send_offset = tf.constant([all2all_args * emb_size * i for i in range(rank_size)], dtype=tf.int64)
-        src_emb = hccl_ops.all_to_all_v(send_data=emb,
-                                        send_counts=emb_send_cnt,
-                                        send_displacements=emb_send_offset,
-                                        recv_counts=emb_send_cnt,
-                                        recv_displacements=emb_send_offset)
-    else:
-        src_emb = hccl_ops.all_to_all_v_c(send_data=emb,
-                                          send_count_matrix=all2all_args,
-                                          rank=rank_id)
-
-    return tf.reshape(src_emb, reshape_info)
+# def get_own_ids(unique_ids, origin_id_lens, send_cnt, self):
+#     from mx_rec.util.tf_version_adapter import hccl_ops
+#     rank_size = get_rank_size()
+#     if rank_size > 1:
+#         ids_send_cnt = tf.constant([send_cnt] * rank_size, dtype=tf.int64)
+#         ids_send_offset = tf.constant([send_cnt * i for i in range(rank_size)], dtype=tf.int64)
+#         own_ids = hccl_ops.all_to_all_v(send_data=unique_ids,
+#                                         send_counts=ids_send_cnt,
+#                                         send_displacements=ids_send_offset,
+#                                         recv_counts=ids_send_cnt,
+#                                         recv_displacements=ids_send_offset)
+#
+#         lens_sc = tf.constant([1] * rank_size, dtype=tf.int64)
+#         lens_sd = tf.constant([i for i in range(rank_size)], dtype=tf.int64)
+#         local_id_lens = hccl_ops.all_to_all_v(send_data=origin_id_lens,
+#                                               send_counts=lens_sc,
+#                                               send_displacements=lens_sd,
+#                                               recv_counts=lens_sc,
+#                                               recv_displacements=lens_sd)
+#
+#     else:
+#         own_ids = unique_ids
+#         local_id_lens = origin_id_lens
+#
+#     def feature_mapping():
+#         self.set_using_feature_mapping()
+#         id_offsets = SparseEmbedding.customized_ops.feature_mapping(own_ids, table_name=self.table_name)
+#         return id_offsets
+#
+#     id_offsets = feature_mapping()
+#     id_offsets.set_shape([send_cnt * rank_size])
+#
+#     return id_offsets, local_id_lens
 
 
 class _EvictHook(tf.compat.v1.train.SessionRunHook):
@@ -995,9 +1000,13 @@ def set_zero_for_non_valid_key(id_offsets: Optional[tf.Tensor], embeddings: Opti
     """
     if access_threshold is None or access_threshold <= 0:
         return embeddings
-    id_offsets_expand = tf.expand_dims(id_offsets >= 0, axis=-1)
+
     if tf.__version__.startswith("1"):
-        id_offsets_expand = tf.repeat(id_offsets_expand, [tf.shape(embeddings)[-1]], axis=-1)
+        id_offsets_expand = tf.math.greater_equal(id_offsets, 0)
+        embeddings = tf.where(id_offsets_expand, embeddings, tf.zeros_like())
+        return embeddings
+
+    id_offsets_expand = tf.compat.v1.expand_dims(id_offsets >= 0, axis=-1)
     embeddings = tf.where(id_offsets_expand, embeddings, tf.zeros_like(embeddings))
     return embeddings
 

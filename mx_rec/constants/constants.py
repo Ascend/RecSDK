@@ -46,6 +46,8 @@ MAX_RANK_SIZE = 4095
 MIN_DEVICE_NUM = 1
 MIN_RANK_SIZE = 1
 
+LOG_MAX_SIZE = 1024 * 1024
+
 MAX_INT32 = np.iinfo(np.int32).max
 
 
