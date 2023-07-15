@@ -5,7 +5,6 @@
  * Create: 2022-11-12
  */
 
-#include <spdlog/spdlog.h>
 #include "host_emb_ckpt.h"
 
 
@@ -25,7 +24,7 @@ void HostEmbCkpt::GetProcessData(CkptData& processData)
 {
     saveHostEmbs = nullptr;
     loadHostEmbs = nullptr;
-    spdlog::info("processData.embHashMaps.empty():{}", processData.embHashMaps.empty());
+    LOG(INFO) << StringFormat("processData.embHashMaps.empty():%d", processData.embHashMaps.empty());
 }
 
 vector<CkptDataType> HostEmbCkpt::GetDataTypes()
@@ -60,7 +59,9 @@ CkptTransData HostEmbCkpt::GetDataset(CkptDataType dataType, string embName)
 
 void HostEmbCkpt::SetDataset(CkptDataType dataType, string embName, CkptTransData& loadedData)
 {
-    spdlog::info("Parameter dataType:{}, embName:{}, loadedData:{}", dataType, embName, loadedData.datasetSize);
+    LOG(INFO) << StringFormat(
+        "Parameter dataType:%d, embName:%s, loadedData:%d", dataType, embName.c_str(), loadedData.datasetSize
+    );
     return;
 }
 
@@ -118,7 +119,7 @@ void HostEmbCkpt::SetEmbInfo(string embName, CkptData& ckptData)
 // load Emb data
 void HostEmbCkpt::SetEmbData(string embName, CkptData& ckptData)
 {
-    spdlog::info("Parameter embName:{}, ckptData:{}", embName, ckptData.embHashMaps.empty());
+    LOG(INFO) << StringFormat("Parameter embName:%s, ckptData:%d", embName.c_str(), ckptData.embHashMaps.empty());
     return;
 }
 

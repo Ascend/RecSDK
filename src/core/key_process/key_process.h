@@ -17,11 +17,8 @@
 #include <thread>
 
 #include <absl/container/flat_hash_map.h>
-#include <absl/container/flat_hash_set.h>
 #include <mpi.h>
 #include <memory>
-#include <spdlog/spdlog.h>
-#include <spdlog/stopwatch.h>
 
 #include "utils/common.h"
 #include "utils/safe_queue.h"
@@ -86,6 +83,8 @@ namespace MxRec {
         void LoadSaveUnlock();
 
         void EvictKeys(const string& embName, const vector<emb_key_t>& keys);
+
+        void SetupHotEmbUpdateStep();
 
         bool isRunning { false };
 

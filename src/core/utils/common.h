@@ -23,13 +23,10 @@
 #include <sstream>
 #include <fstream>
 #include <algorithm>
-#include <spdlog/spdlog.h>
-#include <spdlog/stopwatch.h>
-#include <spdlog/fmt/chrono.h>
-#include <spdlog/fmt/bundled/ranges.h>
-#include <spdlog/cfg/env.h>
+#include <glog/logging.h>
 #include "tensorflow/core/framework/tensor.h"
 #include "absl/container/flat_hash_map.h"
+#include "securec.h"
 
 #include "initializer/initializer.h"
 #include "initializer/constant_initializer/constant_initializer.h"
@@ -50,9 +47,10 @@
 
 namespace MxRec {
 #define INFO_PTR shared_ptr
-#define TIME_PRINT spdlog::debug
 #define MGMT_CPY_THREADS 4
 #define PROFILING
+    extern int g_glogLevel;
+
     using namespace tensorflow;
     constexpr int TRAIN_CHANNEL_ID = 0;
     constexpr int EVAL_CHANNEL_ID = 1;
@@ -62,6 +60,9 @@ namespace MxRec {
     constexpr int MAX_QUEUE_NUM = MAX_CHANNEL_NUM * MAX_KEY_PROCESS_THREAD;
     constexpr int DEFAULT_KEY_PROCESS_THREAD = 6;
     constexpr int KEY_PROCESS_THREAD = 6;
+
+    // for GLOG
+    constexpr int GLOG_MAX_BUF_SIZE = 2048;
 
     // unique related config
     constexpr int UNIQUE_BUCKET = 6;
@@ -132,11 +133,6 @@ namespace MxRec {
         }
 
         throw std::runtime_error("unknown chip ub size" + GetChipName(devID));
-    }
-
-    inline  std::chrono::milliseconds::rep Format2Ms(spdlog::stopwatch& sw)
-    {
-        return std::chrono::duration_cast<std::chrono::milliseconds>((sw).elapsed()).count();
     }
 
     template <class T>
@@ -270,7 +266,67 @@ struct BatchTask {
         absl::flat_hash_map<std::string, time_t> timestamps; // 用于特征准入&淘汰的时间戳
     };
 
-    void SetLog(int rank);
+    void SetLog();
+
+    template<typename ... Args>
+    string StringFormat(const string& format, Args ... args)
+    {
+        auto size = static_cast<size_t>(GLOG_MAX_BUF_SIZE);
+        unique_ptr<char[]> buf(new char[size]);
+        memset_s(buf.get(), size, 0, size);
+        snprintf_s(buf.get(), size, SECUREC_STRING_MAX_LEN-1, format.c_str(), args ...);
+        return string(buf.get(), buf.get() + size);
+    }
+
+    // use environment variable GLOG_v to decide if showing debug log.
+    // default 0, debug message will not display.
+    // 1 for debug, 2 for trace
+    const int GLOG_DEBUG = 1, GLOG_TRACE = 2;
+
+    template<typename T>
+    std::string VectorToString(const std::vector<T>& vec)
+    {
+        std::stringstream ss;
+        ss << "[";
+        for (size_t i = 0; i < vec.size(); ++i) {
+            ss << vec[i];
+            if (i != vec.size() - 1) {
+                ss << ", ";
+            }
+        }
+        ss << "]";
+        return ss.str();
+    }
+
+    template<typename K, typename V>
+    std::string MapToString(const std::map<K, V>& map)
+    {
+        std::stringstream ss;
+        ss << "{";
+        for (auto it = map.begin(); it != map.end(); ++it) {
+            ss << it->first << ": " << it->second;
+            if (std::next(it) != map.end()) {
+                ss << ", ";
+            }
+        }
+        ss << "}";
+        return ss.str();
+    }
+
+    template<typename K, typename V>
+    std::string MapToString(const absl::flat_hash_map<K, V>& map)
+    {
+        std::stringstream ss;
+        ss << "{";
+        for (auto it = map.begin(); it != map.end(); ++it) {
+            ss << it->first << ": " << it->second;
+            if (std::next(it) != map.end()) {
+                ss << ", ";
+            }
+        }
+        ss << "}";
+        return ss.str();
+    }
 
     inline void GenerateRandomValue(std::vector<float>& vecData,
                                     std::default_random_engine& generator,

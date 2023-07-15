@@ -7,15 +7,9 @@
 
 #include <mpi.h>
 #include <gtest/gtest.h>
-#include <spdlog/spdlog.h>
-#include <spdlog/fmt/bundled/ranges.h>
 
 #include "checkpoint/checkpoint.h"
-#include "ckpt_data_handler/host_emb_ckpt/host_emb_ckpt.h"
-#include "ckpt_data_handler/emb_hash_ckpt/emb_hash_ckpt.h"
-#include "ckpt_data_handler/nddr_offset_ckpt/nddr_offset_ckpt.h"
 #include "ckpt_data_handler/nddr_feat_map_ckpt/nddr_feat_map_ckpt.h"
-#include "ckpt_data_handler/feat_admit_n_evict_ckpt/feat_admit_n_evict_ckpt.h"
 
 
 using namespace std;
@@ -54,7 +48,6 @@ protected:
 
     void SetUp()
     {
-        spdlog::set_level(spdlog::level::trace);
         int claimed;
 
         MPI_Query_thread(&claimed);

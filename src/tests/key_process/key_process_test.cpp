@@ -7,18 +7,13 @@
  */
 
 #include <random>
-#include <limits>
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include <easy/profiler.h>
-#include <spdlog/spdlog.h>
-#include <spdlog/fmt/bundled/ranges.h>
 
 #include "utils/common.h"
-#include "host_emb/host_emb.h"
 #include "key_process/key_process.h"
-#include "hybrid_mgmt/hybrid_mgmt.h"
 #include "ock_ctr_common/include/unique.h"
 
 using namespace std;
@@ -26,7 +21,6 @@ using namespace MxRec;
 using namespace testing;
 
 static constexpr size_t BATCH_NUM_EACH_THREAD = 3;
-static constexpr int DESIRED_SIZE = 1;
 FactoryPtr factory;
 
 class SimpleThreadPool {
@@ -47,7 +41,7 @@ static void CTRLog(int level, const char *msg)
 {
     switch (level) {
         case 0:
-            spdlog::debug("{}", msg);
+            VLOG(GLOG_DEBUG) << StringFormat("%s", msg);
             break;
         default:
             break;
@@ -58,13 +52,12 @@ class KeyProcessTest : public testing::Test {
 protected:
     void SetUp()
     {
-        spdlog::set_level(spdlog::level::debug);
         int claimed;
         MPI_Query_thread(&claimed);
         ASSERT_EQ(claimed, MPI_THREAD_MULTIPLE);
         MPI_Comm_rank(MPI_COMM_WORLD, &worldRank);
         MPI_Comm_size(MPI_COMM_WORLD, &worldSize);
-        spdlog::info(KEY_PROCESS "wordRank: {}, worldSize: {}", worldRank, worldSize);
+        LOG(INFO) << StringFormat(KEY_PROCESS "wordRank: %d, worldSize: %d", worldRank, worldSize);
         // 初始化rank信息
         rankInfo.rankId = worldRank;
         rankInfo.rankSize = worldSize;
@@ -98,9 +91,11 @@ protected:
                     batch->name = embInfos[i].name;
                     batch->batchId = batchId;
                     batch->channel = channel;
-                    spdlog::debug("[{}/{}]"
-                    KEY_PROCESS "PrepareBatch: batchQueueId: {}, {}[{}]{}, sampleSize:{}", worldRank, worldSize,
-                        batchQueueId, batch->name, batch->channel, batch->batchId, batch->sample.size());
+                    VLOG(GLOG_DEBUG) << StringFormat(
+                        "[%d/%d]" KEY_PROCESS "PrepareBatch: batchQueueId: %d, %s[%d]%d, sampleSize:%d",
+                        worldRank, worldSize,
+                        batchQueueId, batch->name.c_str(), batch->channel, batch->batchId, batch->sample.size()
+                    );
                     emb_batch_t temp;
                     temp.sample = batch->sample;
                     temp.name = batch->name;
@@ -183,12 +178,18 @@ protected:
     {
         for (int i = 0; i < rankSize; ++i) {
             std::cout << "splitKeys dev" << i << std::endl;
-            spdlog::info("{}", splitKeys[i]);
+            if (g_glogLevel >= INFO) {
+                LOG(INFO) << StringFormat("%d", VectorToString(splitKeys[i]).c_str());
+            }
         }
         std::cout << "restore" << std::endl;
-        spdlog::info("{}", restore);
+        if (g_glogLevel >= INFO) {
+            LOG(INFO) << StringFormat("%d", VectorToString(restore).c_str());
+        }
         std::cout << "hotPos" << std::endl;
-        spdlog::info("{}", hotPos);
+        if (g_glogLevel >= INFO) {
+            LOG(INFO) << StringFormat("%d", VectorToString(hotPos).c_str());
+        }
     }
 
     void GetExpectRestore(keys_t& sample, vector<int>& blockOffset, vector<int>& restoreVec)
@@ -271,7 +272,9 @@ TEST_F(KeyProcessTest, HashSplit)
     vector<int> expectRestore = { 0, 0, 0, 0, 1, 1, 1, 1, 1, 2 };
     vector<vector<int>> expectSplitKeys = { { 4, 16 }, { 1, 21, 29 }, { 14, 2 }, { 23, 7 } };
     batch->sample = std::move(batchKeys);
-    spdlog::debug(KEY_PROCESS "batch sample: {}", batch->sample);
+    if (VLOG_IS_ON(GLOG_DEBUG)) {
+        VLOG(GLOG_DEBUG) << StringFormat(KEY_PROCESS "batch sample: %s", VectorToString(batch->sample).c_str());
+    }
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     process.rankInfo.rankSize = rankSize;
@@ -286,7 +289,11 @@ TEST_F(KeyProcessTest, HashSplit)
 TEST_F(KeyProcessTest, GetScAll)
 {
     vector<int> keyScLocal(worldSize, worldRank + 1); // 用worldRank+1初始化发送数据量
-    spdlog::debug(KEY_PROCESS "rank {} keyScLocal: {}", worldRank, keyScLocal);
+    if (VLOG_IS_ON(GLOG_DEBUG)) {
+        VLOG(GLOG_DEBUG) << StringFormat(
+            KEY_PROCESS "rank %d keyScLocal: %s", worldRank, VectorToString(keyScLocal).c_str()
+        );
+    }
     vector<int> expectScAll(worldSize * worldSize);
     for (unsigned int i = 0; i < expectScAll.size(); ++i) {
         expectScAll[i] = floor(i / worldSize) + 1;
@@ -302,7 +309,11 @@ TEST_F(KeyProcessTest, GetScAll)
 TEST_F(KeyProcessTest, GetScAllForUnique)
 {
     vector<int> keyScLocal(worldSize, worldRank + 1); // 用worldRank+1初始化发送数据量
-    spdlog::debug(KEY_PROCESS "rank {} keyScLocal: {}", worldRank, keyScLocal);
+    if (VLOG_IS_ON(GLOG_DEBUG)) {
+        VLOG(GLOG_DEBUG) << StringFormat(
+            KEY_PROCESS "rank %d keyScLocal: %s", worldRank, VectorToString(keyScLocal).c_str()
+        );
+    }
     vector<int> expectScAll(worldSize * worldSize);
     for (unsigned int i = 0; i < expectScAll.size(); ++i) {
         expectScAll[i] = floor(i / worldSize) + 1;
@@ -328,11 +339,22 @@ TEST_F(KeyProcessTest, BuildRestoreVec_4cpu)
                                              { 5, 0, 6, 2, 1, 3, 1, 7, 4, 8 },
                                              { 6, 3, 7, 4, 3, 0, 1, 2, 5, 8 } };
     batch->sample = std::move(allBatchKeys[worldRank]);
-    spdlog::info(KEY_PROCESS "test BuildRestoreVec: rank {}, batchKeys {}", worldRank, batch->sample);
+    if (g_glogLevel >= INFO) {
+        LOG(INFO) << StringFormat(
+            KEY_PROCESS "test BuildRestoreVec: rank %d, batchKeys %s",
+            worldRank, VectorToString(batch->sample).c_str()
+        );
+    }
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     auto [splitKeys, restore] = process.HashSplit(batch);
-    spdlog::debug("rank: {} splitKeys: {}", worldRank, splitKeys);
+    if (VLOG_IS_ON(GLOG_DEBUG)) {
+        vector<string> tmp;
+        for (const auto& i : splitKeys) {
+            tmp.emplace_back(VectorToString(i));
+        }
+        VLOG(GLOG_DEBUG) << StringFormat("rank: %d splitKeys: %s", worldRank, VectorToString(tmp).c_str());
+    }
     process.BuildRestoreVec(batch, allExpectSs[worldRank], restore);
     ASSERT_THAT(restore, ElementsAreArray(allExpectRestore[worldRank]));
 }
@@ -341,7 +363,7 @@ TEST_F(KeyProcessTest, ProcessKeySplit_rebuilt)
 {
     PrepareBatch();
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
-    spdlog::info("CPU Core Num: {}", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
+    LOG(INFO) << StringFormat("CPU Core Num: %d", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
 
     auto fn = [this](int channel, int id) {
         auto embName = embInfos[0].name;
@@ -351,10 +373,13 @@ TEST_F(KeyProcessTest, ProcessKeySplit_rebuilt)
         vector<int32_t> hotPos;
         unique_ptr<emb_batch_t> batch;
         batch = process.GetBatchData(channel, id); // get batch data from SingletonQueue<emb_batch_t>
-        spdlog::info("rankid :{},batchid: {}", rankInfo.rankId, batch->batchId);
+        LOG(INFO) << StringFormat("rankid :%d,batchid: %d", rankInfo.rankId, batch->batchId);
         tie(splitKeys, restore, hotPos) = process.HotHashSplit(batch);
-        spdlog::info("rankid :{},batchid: {}, hotPos {}", rankInfo.rankId, batch->batchId,
-                     hotPos);
+        if (g_glogLevel >= INFO) {
+            LOG(INFO) << StringFormat(
+                "rankid :%d,batchid: %d, hotPos %s", rankInfo.rankId, batch->batchId, VectorToString(hotPos).c_str()
+            );
+        }
     }; // for clean code
     for (int channel = 0; channel < 1; ++channel) {
         for (int id = 0; id < 1; ++id) {
@@ -370,7 +395,7 @@ TEST_F(KeyProcessTest, BuildRestoreVec_rebuilt)
 {
     PrepareBatch();
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
-    spdlog::info("CPU Core Num: {}", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
+    LOG(INFO) << StringFormat("CPU Core Num: %d", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
 
     auto fn = [this](int channel, int id) {
         auto embName = embInfos[0].name;
@@ -379,12 +404,17 @@ TEST_F(KeyProcessTest, BuildRestoreVec_rebuilt)
         vector<int32_t> hotPos;
         unique_ptr<emb_batch_t> batch;
         batch = process.GetBatchData(channel, id); // get batch data from SingletonQueue<emb_batch_t>
-        spdlog::info("rankid :{},batchid: {}", rankInfo.rankId, batch->batchId);
+        LOG(INFO) << StringFormat("rankid :%d,batchid: %d", rankInfo.rankId, batch->batchId);
         tie(splitKeys, restore, hotPos) = process.HotHashSplit(batch);
         auto[lookupKeys, scAll, ss] = process.ProcessSplitKeys(batch, id, splitKeys);
         process.BuildRestoreVec(batch, ss, restore, hotPos.size());
-        spdlog::info("rankid :{},batchid: {}, lookupKeys: {}, scAll: {}, restore after build {}", rankInfo.rankId,
-            batch->batchId, lookupKeys, scAll, restore);
+        if (g_glogLevel >= INFO) {
+            LOG(INFO) << StringFormat(
+                "rankid :%d,batchid: %d, lookupKeys: %s, scAll: %s, restore after build %s",
+                rankInfo.rankId, batch->batchId, VectorToString(lookupKeys).c_str(),
+                VectorToString(scAll).c_str(), VectorToString(restore).c_str()
+            );
+        }
     }; // for clean code
     for (int channel = 0; channel < 1; ++channel) {
         for (int id = 0; id < KEY_PROCESS_THREAD; ++id) {
@@ -403,13 +433,27 @@ TEST_F(KeyProcessTest, Key2Offset)
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     process.Key2Offset("emb0", lookupKeys, TRAIN_CHANNEL_ID);
-    spdlog::debug(KEY_PROCESS "test Key2Offset: lookupKeys: {}, keyOffsetMap: {}", lookupKeys, process.keyOffsetMap);
+//    map<emb_name_t, absl::flat_hash_map<emb_key_t, int64_t>> keyOffsetMap {};
+    map<emb_name_t, string> tmp;
+    for (auto it = process.keyOffsetMap.begin(); it != process.keyOffsetMap.end(); ++it) {
+        tmp.insert(pair<emb_name_t, string>(it->first, MapToString(it->second).c_str()));
+    }
+
+    VLOG(GLOG_DEBUG) << StringFormat(
+        KEY_PROCESS "test Key2Offset: lookupKeys: %s, keyOffsetMap: %s",
+        VectorToString(lookupKeys).c_str(), MapToString(tmp).c_str());
     ASSERT_THAT(lookupKeys, ElementsAreArray(expectOffset));
 
     keys_t lookupKeys2 = { 5, 17, 29, 5, 25, 5, 21, 25 };
     keys_t expectOffset2 = { -1, -1, -1, -1, -1, -1, -1, -1 };
     process.Key2Offset("emb0", lookupKeys2, EVAL_CHANNEL_ID);
-    spdlog::debug(KEY_PROCESS "test Key2Offset: lookupKeys: {}, keyOffsetMap: {}", lookupKeys2, process.keyOffsetMap);
+    map<emb_name_t, string> tmp2;
+    for (auto it = process.keyOffsetMap.begin(); it != process.keyOffsetMap.end(); ++it) {
+        tmp.insert(pair<emb_name_t, string>(it->first, MapToString(it->second).c_str()));
+    }
+    VLOG(GLOG_DEBUG) << StringFormat(
+        KEY_PROCESS "test Key2Offset: lookupKeys: %s, keyOffsetMap: %s", VectorToString(lookupKeys2).c_str(),
+        MapToString(tmp2).c_str());
     ASSERT_THAT(lookupKeys2, ElementsAreArray(expectOffset2));
 }
 
@@ -420,7 +464,17 @@ TEST_F(KeyProcessTest, Key2OffsetDynamicExpansion)
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     process.Key2OffsetDynamicExpansion("emb0", lookupKeys, EVAL_CHANNEL_ID);
-    spdlog::debug(KEY_PROCESS "test Key2Offset: lookupKeys: {}, keyOffsetMap: {}", lookupKeys, process.keyOffsetMap);
+    if (VLOG_IS_ON(GLOG_DEBUG)) {
+        map<emb_name_t, string> tmp;
+        for (auto it = process.keyOffsetMap.begin(); it != process.keyOffsetMap.end(); ++it) {
+            tmp.insert(pair<emb_name_t, string>(it->first, MapToString(it->second).c_str()));
+        }
+
+        VLOG(GLOG_DEBUG) << StringFormat(
+            KEY_PROCESS "test Key2Offset: lookupKeys: %s, keyOffsetMap: %s",
+            VectorToString(lookupKeys).c_str(), MapToString(tmp).c_str()
+        );
+    }
     ASSERT_THAT(lookupKeys, ElementsAreArray(expectOffset));
 }
 
@@ -446,7 +500,7 @@ TEST_F(KeyProcessTest, ProcessPrefetchTask)
     ASSERT_EQ(process.Start(), 0);
     // 所有线程处理完（训练结束）后调用
     this_thread::sleep_for(5s);
-    spdlog::info("wait 20s for thread running");
+    LOG(INFO) << "wait 20s for thread running";
     this_thread::sleep_for(20s);
     process.Destroy();
 }
@@ -483,7 +537,7 @@ TEST_F(KeyProcessTest, ProcessBatchWithFastUnique)
     PrepareBatch();
     
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
-    spdlog::info("CPU Core Num: {}", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
+    LOG(INFO) << StringFormat("CPU Core Num: %d", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
 
     auto fn = [this](int channel, int id) {
         UniquePtr unique;
@@ -502,10 +556,11 @@ TEST_F(KeyProcessTest, ProcessBatchWithFastUnique)
         process.GetUniqueConfig(uniqueConf);
         unique->Initialize(uniqueConf);
         
-        spdlog::info("rankid :{},batchid: {}", rankInfo.rankId, batch->batchId);
+        LOG(INFO) << StringFormat("rankid :%d,batchid: %d", rankInfo.rankId, batch->batchId);
         process.KeyProcessTaskHelperWithFastUnique(batch, unique, channel, id);
-        spdlog::info("rankid :{},batchid: {}, hotPos {}", rankInfo.rankId, batch->batchId,
-                     hotPos);
+        LOG(INFO) << StringFormat(
+            "rankid :%d,batchid: %d, hotPos %s", rankInfo.rankId, batch->batchId, VectorToString(hotPos).c_str()
+        );
     }; // for clean code
     for (int channel = 0; channel < 1; ++channel) {
         for (int id = 0; id < 1; ++id) {
@@ -515,4 +570,20 @@ TEST_F(KeyProcessTest, ProcessBatchWithFastUnique)
     }
     this_thread::sleep_for(20s);
     process.Destroy();
+}
+
+TEST(KeyProcess, SetupHotEmbUpdateStep)
+{
+    KeyProcess kp;
+
+    kp.SetupHotEmbUpdateStep();
+    ASSERT_EQ(kp.hotEmbUpdateStep, HOT_EMB_UPDATE_STEP_DEFAULT);
+
+    putenv("HOT_EMB_UPDATE_STEP=1");
+    kp.SetupHotEmbUpdateStep();
+    ASSERT_EQ(kp.hotEmbUpdateStep, 1);
+
+    putenv("HOT_EMB_UPDATE_STEP=0");
+    kp.SetupHotEmbUpdateStep();
+    ASSERT_EQ(kp.hotEmbUpdateStep, HOT_EMB_UPDATE_STEP_DEFAULT);
 }

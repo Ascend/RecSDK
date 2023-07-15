@@ -9,7 +9,6 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include <easy/profiler.h>
-#include <spdlog/spdlog.h>
 #include <acl/acl.h>
 #include <acl/acl_rt.h>
 #include <limits>
@@ -25,11 +24,10 @@ class EmbTableTest : public testing::Test {
 protected:
     void SetUp()
     {
-        spdlog::set_level(spdlog::level::debug);
         // 设置测试用的EmbInfo
         embInfo.extEmbeddingSize = embTable.TEST_EMB_SIZE;
-        spdlog::info("EmbTable BLOCK_EMB_COUNT {} INIT_BLOCK_COUNT {}",
-            embTable.BLOCK_EMB_COUNT, embTable.INIT_BLOCK_COUNT);
+        LOG(INFO) << StringFormat(
+            "EmbTable BLOCK_EMB_COUNT %d INIT_BLOCK_COUNT %d", embTable.BLOCK_EMB_COUNT, embTable.INIT_BLOCK_COUNT);
         rankInfo.rankId = 0;
         rankInfo.rankSize = 1;
         rankInfo.localRankSize = 1;
@@ -40,7 +38,7 @@ protected:
         rankInfo.deviceId = 0;
         // 初始化EmbeddingTable
 #ifndef GTEST
-        spdlog::info("rank {} running", rankInfo.deviceId);
+        LOG(INFO) << StringFormat("rank %d running", rankInfo.deviceId);
         aclInit(nullptr);
 #endif
     }
@@ -60,14 +58,15 @@ TEST_F(EmbTableTest, Init)
 #ifndef GTEST
     // 测试初始化是否出现异常
     EXPECT_NO_THROW(embTable.Init(embInfo, rankInfo, 0));
-    spdlog::info("embTable Init succeed!");
-    ASSERT_EQ(embTable.rankInfo.rankId, rankInfo.rankId);
+    LOG(INFO) << "embTable Init succeed!";
+    ASSERT_EQ(embTable.rankInfo.g_rankId, rankInfo.g_rankId);
     ASSERT_EQ(embTable.rankInfo.rankSize, rankInfo.rankSize);
     ASSERT_EQ(embTable.rankInfo.localRankSize, rankInfo.localRankSize);
     ASSERT_EQ(embTable.rankInfo.useStatic, rankInfo.useStatic);
     ASSERT_EQ(embTable.rankInfo.localRankId, rankInfo.localRankId);
     // 测试容量是否正常
-    spdlog::info("totalCapacity {}, INIT_BLOCK_COUNT {}", embTable.totalCapacity, embTable.INIT_BLOCK_COUNT);
+    LOG(INFO) << StringFormat(
+        "totalCapacity %d, INIT_BLOCK_COUNT %d", embTable.totalCapacity, embTable.INIT_BLOCK_COUNT);
     EXPECT_EQ(embTable.totalCapacity, embTable.INIT_BLOCK_COUNT);
 #endif
 }
