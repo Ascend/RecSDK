@@ -13,7 +13,7 @@ import psutil
 import mx_rec.constants.constants
 from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION, VALID_DEVICE_ID_LIST, LOCAL_RANK_SIZE, \
     MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE, HASHTABLE_COLLECTION_NAME_LENGTH,\
-    TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID
+    TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID, MIN_SIZE, MAX_CONFIG_SIZE
 from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.validator.validator import RankInfoValidator, StringValidator, FileValidator
 from mx_rec.util.atomic import AtomicInteger
@@ -224,7 +224,7 @@ class ConfigInitializer:
             # 1.check whether rank_table_path is soft link
             file_validator.check_not_soft_link()
             # 2.check json file size
-            file_validator.check_file_size(file)
+            file_validator.check_file_size(file, MAX_CONFIG_SIZE, MIN_SIZE)
             file_validator.check()
 
             table_hccl = json.load(file)
@@ -816,7 +816,7 @@ def get_available_cpu_num_and_range():
             # 1.check whether f_path is soft link
             file_validator.check_not_soft_link()
             # 2.check file size
-            file_validator.check_file_size(f_in)
+            file_validator.check_file_size(f_in, MAX_CONFIG_SIZE, MIN_SIZE)
             file_validator.check()
             pkg_id = f_in.readline().strip()
             pkg_id2cpu_list[pkg_id].append(cpu)
