@@ -433,7 +433,6 @@ TEST_F(KeyProcessTest, Key2Offset)
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     process.Key2Offset("emb0", lookupKeys, TRAIN_CHANNEL_ID);
-//    map<emb_name_t, absl::flat_hash_map<emb_key_t, int64_t>> keyOffsetMap {};
     map<emb_name_t, string> tmp;
     for (auto it = process.keyOffsetMap.begin(); it != process.keyOffsetMap.end(); ++it) {
         tmp.insert(pair<emb_name_t, string>(it->first, MapToString(it->second).c_str()));
