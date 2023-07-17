@@ -103,7 +103,7 @@ def save_check(latest_filename, sess):
     if os.path.split(latest_filename)[0]:
         raise ValueError("'latest_filename' must not contain path components")
     if not context.executing_eagerly() and not isinstance(sess, session.SessionInterface):
-        raise TypeError("'sess' must be a Session; %s" % sess)
+        raise TypeError(f"'sess' must be a Session; {sess}")
 
 
 def get_model_checkpoint_path(self, checkpoint_file, sess):
@@ -283,8 +283,7 @@ def saver_from_object_based_checkpoint(checkpoint_path, var_list=None, builder=N
         try:
             names_to_keys = object_graph_key_mapping(checkpoint_path)
         except errors.NotFoundError as err:
-            raise ValueError("Checkpoint in %s not an object-based checkpoint." %
-                             checkpoint_path) from err
+            raise ValueError(f"Checkpoint in {checkpoint_path} not an object-based checkpoint.") from err
     if var_list is None:
         var_list = build_var_list()
 

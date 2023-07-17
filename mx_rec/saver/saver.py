@@ -70,9 +70,9 @@ class Saver(object):
         if global_step:
             if not isinstance(global_step, compat.integral_types):
                 global_step = int(sess.run(global_step))
-            ckpt_name = "sparse-%s-%d" % (base_name, global_step)
+            ckpt_name = f"sparse-{base_name}-{global_step}"
         else:
-            ckpt_name = "sparse-%s" % base_name
+            ckpt_name = f"sparse-{base_name}"
 
         integrated_path = os.path.join(directory, ckpt_name)
         saving_path = integrated_path
@@ -91,7 +91,7 @@ class Saver(object):
     def restore(self, sess, reading_path):
         logging.debug("======== Start restoring ========")
         directory, base_name = os.path.split(reading_path)
-        ckpt_name = "sparse-%s" % base_name
+        ckpt_name = f"sparse-{base_name}"
 
         reading_path = os.path.join(directory, ckpt_name)
         if not tf.io.gfile.exists(reading_path):

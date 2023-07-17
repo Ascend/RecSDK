@@ -6,10 +6,9 @@ import logging
 import os
 import json
 
-import tensorflow as tf
 import numpy as np
 
-from mx_rec.util.initialize import get_table_instance, get_table_instance_by_name, export_table_name_set
+from mx_rec.util.initialize import get_table_instance_by_name, export_table_name_set
 from mx_rec.validator.validator import FileValidator
 
 
@@ -77,12 +76,12 @@ class SparseProcessor:
                     file_validator.check()
                     attributes = json.load(fin)
             except FileNotFoundError as err:
-                raise FileNotFoundError(f"attribute dir not found.") from err
+                raise FileNotFoundError("attribute dir not found.") from err
         else:
             try:
                 attributes = np.fromfile(attribute_dir, np.uint64)
             except FileNotFoundError as err:
-                raise FileNotFoundError(f"attribute dir not found.") from err
+                raise FileNotFoundError("attribute dir not found.") from err
 
         return attributes
 

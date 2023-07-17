@@ -252,6 +252,9 @@ class DirectoryValidator(StringValidator):
 
 
 class FileValidator(StringValidator):
+    """
+    Check if file is valid.
+    """
     def __init__(self, value):
         """
         @param value: the file path, should not be emtpy string, should not contain double dot(../)

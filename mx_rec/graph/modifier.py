@@ -230,7 +230,7 @@ def update_input_tensor_with_new_batch(replacement_specs, new_get_next_op_name):
         for idx, operator in item:
             old_tensor_name = old_tensor.name
             output_index = old_tensor_name.split(":")[-1]
-            new_tensor_name = "%s:%s" % (new_get_next_op_name, output_index)
+            new_tensor_name = f"{new_get_next_op_name}:{output_index}"
             new_tensor = graph.get_tensor_by_name(new_tensor_name)
             operator._update_input(idx, new_tensor)
 
@@ -285,7 +285,7 @@ def generate_get_next_op_specs(cutting_point_list, dump_graph):
             get_next_op_map[get_next_op]["is_training"] = \
                 SparseEmbedding.get_anchor_attribute(input_tensor, ASCAnchorAttr.IS_TRAINING)
 
-            export_pb_graph("cut_graph_%s.pb" % get_next_op.name, dump_graph, graph_def=sub_graph_def)
+            export_pb_graph(f"cut_graph_{get_next_op.name}.pb", dump_graph, graph_def=sub_graph_def)
 
     return get_next_op_map
 
@@ -341,7 +341,7 @@ def modify_graph_for_asc(dump_graph=False, prefetch=10):
         try:
             one_tensor = [v for _, v in new_batch.items()][0]
         except IndexError as err:
-            raise IndexError(f"Cannot find a tensor from given batch.") from err
+            raise IndexError("Cannot find a tensor from given batch.") from err
         new_get_next_op_name = find_target_dataset_op(one_tensor.op, "IteratorGetNext").name
         update_input_tensor_with_new_batch(records.get("replacement_specs"), new_get_next_op_name)
 
@@ -386,7 +386,7 @@ def lookup_for_same_table(sub_cutting_point_list: list, is_training: bool):
         for one_feature_spec in same_table_feature_spec:
             feature_ids = feature_spec_ids_dict.get(one_feature_spec.name)
             if feature_ids is None:
-                raise RuntimeError(f"In the case of multiple lookups of a table, feature ids cannot be None.")
+                raise RuntimeError("In the case of multiple lookups of a table, feature ids cannot be None.")
             tensor_list.append(feature_ids)
             table_instance = SparseEmbedding.get_anchor_attribute(feature_ids, ASCAnchorAttr.TABLE_INSTANCE)
 
@@ -408,7 +408,7 @@ def lookup_for_same_table(sub_cutting_point_list: list, is_training: bool):
 
         kwargs = {"multi_lookup": True, "is_train": is_training}
         if table_instance is None:
-            raise RuntimeError(f"In the case of multiple lookups of a table, table instance cannot be None.")
+            raise RuntimeError("In the case of multiple lookups of a table, table instance cannot be None.")
         lookup_result = table_instance.lookup_for_asc_with_feature_spec_inner(mock_feature_spec,
                                                                               table_instance.same_table_send_count,
                                                                               **kwargs)
@@ -486,7 +486,7 @@ def build_asc_graph(config: dict, table_instance: SparseEmbedding, cutting_point
     # In the case of multiple lookups of a table, replace the stub node of the lookup result in the graph
     if len(table_instance.lookup_name_list) > 1:
         if lookup_result is None:
-            raise RuntimeError(f"In the case of multiple lookups of a table, lookup result cannot be None.")
+            raise RuntimeError("In the case of multiple lookups of a table, lookup result cannot be None.")
         replace_anchor_vec(cutting_point, ASCAnchorAttr.LOOKUP_RESULT, lookup_result)
         logging.info(f"The lookup result corresponding to feature ids '{cutting_point}' has been replaced by "
                      f"'{lookup_result}'.")
