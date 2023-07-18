@@ -563,10 +563,9 @@ class SparseEmbedding:
 
             def grad(lookup_diff):
                 embedding_diff = tf.reshape(lookup_diff, [-1, self.scalar_emb_size])
-                unique_embeddings_shape = unique_embeddings.shape.as_list() if use_static else tf.shape(
-                    unique_embeddings)
+                unique_embed_shape = unique_embeddings.shape.as_list() if use_static else tf.shape(unique_embeddings)
                 unique_grads = tf.compat.v1.unsorted_segment_sum(embedding_diff, restore_vector,
-                                                                 unique_embeddings_shape[0])
+                                                                 unique_embed_shape[0])
                 bp_all2all_args = all2all_args if use_static else tf.transpose(all2all_args)
                 if hot_pos is not None:
                     hot, cold = tf.split(unique_grads, [tf.shape(hot_pos)[0],
