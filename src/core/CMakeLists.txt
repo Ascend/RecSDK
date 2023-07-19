@@ -1,8 +1,6 @@
 cmake_minimum_required(VERSION 3.12)
 set(CMAKE_CXX_STANDARD 17)
 
-set(WITH_CUSTOM_PREFIX ON)
-
 if(NOT ABSEIL_PATH)
     set(ABSEIL_PATH ${PYTHON_PATH}/lib/python3.7/site-packages/tensorflow_core/)
 endif()
@@ -48,8 +46,8 @@ target_link_libraries(ASC PUBLIC
         -l:_tf_adapter.so
         OpenMP::OpenMP_CXX ${MPI_CXX_LIBRARIES}
         ${PYTHON_LIBRARY}
-        PUBLIC glog::glog
-        )
+        glog::glog
+)
 find_package(easy_profiler PATHS ${EASY_PROFILER_PATH} NO_DEFAULT_PATH)
 if (easy_profiler_FOUND)
     message("==link with easy_profiler==")
