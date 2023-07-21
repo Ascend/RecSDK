@@ -109,7 +109,7 @@ namespace MxRec {
 
         void EvictKeys(const string& embName, const vector<emb_key_t>& keys);
 
-        bool IsLoadDataMatches(emb_mem_t* loadHostEmbs, EmbInfo* setupHostEmbs, size_t* embTableCount);
+        bool IsLoadDataMatches(emb_mem_t* loadHostEmbs, EmbInfo* setupHostEmbs, size_t& embTableCount);
 
     private:
         bool InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,

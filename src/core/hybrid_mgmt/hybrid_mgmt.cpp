@@ -272,7 +272,7 @@ void HybridMgmt::ReceiveHostMap(all_key_offset_map_t ReceiveKeyOffsetMap)
 #endif
 }
 
-bool HybridMgmt::IsLoadDataMatches(emb_mem_t* loadHostEmbs, EmbInfo* setupHostEmbs, size_t* embTableCount)
+bool HybridMgmt::IsLoadDataMatches(emb_mem_t* loadHostEmbs, EmbInfo* setupHostEmbs, size_t& embTableCount)
 {
     bool loadDataMatches = { true };
     const auto& loadEmbTable { loadHostEmbs->find(setupHostEmbs->name) };
@@ -321,7 +321,7 @@ bool HybridMgmt::LoadMatchesDDRSetup(const CkptData& loadData)
     size_t embTableCount { 0 };
     auto loadHostEmbs { loadData.hostEmbs };
     for (EmbInfo setupHostEmbs : mgmtEmbInfo) {
-        if (!IsLoadDataMatches(loadHostEmbs, &setupHostEmbs, &embTableCount)) {
+        if (!IsLoadDataMatches(loadHostEmbs, &setupHostEmbs, embTableCount)) {
             return false;
         }
     }
