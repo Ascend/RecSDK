@@ -214,7 +214,7 @@ public:
         EnqueueBatchData(std::vector<int>{batchId, batchQueueId}, timestamp, inputTensor, splits);
         VLOG(GLOG_DEBUG) << StringFormat(
             KEY_PROCESS "ReadEmbKeyV2Dynamic read batch cost(ms):%d, elapsed from last(ms):%d,"
-            " enqueueTC(ms):%d, batch[%d}]:%d",
+            " enqueueTC(ms):%d, batch[%d]:%d",
             tc.ElapsedMS(), staticSw.ElapsedMS(), enqueueTC.ElapsedMS(), channelId, batchId
         );
         staticSw = TimeCost();

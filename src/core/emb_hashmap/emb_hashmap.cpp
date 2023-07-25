@@ -57,7 +57,7 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
 
     auto keepBatch = swapId - iBatch;
     bool findOffsetV2 = getenv("FIND_OFFSET_V2") != nullptr;
-    VLOG(GLOG_DEBUG) << StringFormat("FindOffset, %s", findOffsetV2);
+    VLOG(GLOG_DEBUG) << StringFormat("FindOffset version:%d", findOffsetV2);
 
     if (findOffsetV2) {
         FindAndUpdateOffset(embName, keys, swapId, keepBatch, channelId);
@@ -332,7 +332,13 @@ void EmbHashMap::FindOffset(const string& embName, const vector<emb_key_t>& keys
             embHashMap.lookUpVec.emplace_back(INVALID_KEY_VALUE);
             continue;
         }
-        auto offset = FindOffsetHelper(key, embHashMap, channelId);
+        size_t offset;
+        auto isOffsetValid = FindOffsetHelper(key, embHashMap, channelId, offset);
+        if (!isOffsetValid) {
+            embHashMap.lookUpVec.emplace_back(INVALID_KEY_VALUE);
+            continue;
+        }
+
         if (offset < embHashMap.devVocabSize) {
             embHashMap.lookUpVec.emplace_back(offset);
             embHashMap.devOffset2KeyOld.emplace_back(offset, static_cast<int>(embHashMap.devOffset2Key[offset]));
@@ -351,10 +357,9 @@ void EmbHashMap::FindOffset(const string& embName, const vector<emb_key_t>& keys
 }
 
 
-size_t EmbHashMap::FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHashMap, int channelId)
+bool EmbHashMap::FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHashMap, int channelId, size_t& offset)
 
 {
-    size_t offset;
     const auto& iter = embHashMap.hostHashMap.find(key);
     if (iter != embHashMap.hostHashMap.end()) {
         offset = iter->second;
@@ -388,10 +393,10 @@ size_t EmbHashMap::FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHas
                 throw runtime_error("hostVocabSize too small");
             }
         } else {
-            offset = -1;
+            return false;
         }
     }
-    return offset;
+    return true;
 }
 
 void EmbHashMap::UpdateBatchId(const vector<emb_key_t>& keys, size_t currentBatchId, size_t keySize,
