@@ -123,7 +123,7 @@ void EmbTable::RandomInit(void* newBlock, const vector<InitializeInfo>& initiali
         switch (initializeInfo.initializerType) {
             case InitializerType::CONSTANT: {
                 LOG(INFO) << StringFormat(
-                    "Device GenerateEmbData ing using Constant Initializer by value %d. name %s, start %d, len %d.",
+                    "Device GenerateEmbData ing using Constant Initializer by value %f. name %s, start %d, len %d.",
                     initializeInfo.constantInitializerInfo.constantValue,
                     initializeInfo.name.c_str(), initializeInfo.start, initializeInfo.len);
                 initializer = &initializeInfo.constantInitializer;

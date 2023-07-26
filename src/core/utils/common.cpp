@@ -104,18 +104,17 @@ namespace MxRec {
         } else {
             g_glogLevel = atoi(logLevel);
         }
+        if (g_rankId.empty()) {
+            g_rankId = std::to_string(rank);
+        }
         if (!g_isGlogInit) {
-            google::InitGoogleLogging("mxRec", &CustomGlogFormat, &rank);
+            google::InitGoogleLogging("mxRec", &CustomGlogFormat);
             g_isGlogInit = true;
         }
     }
 
-    void CustomGlogFormat(std::ostream &s, const LogMessageInfo &l, void* rank)
+    void CustomGlogFormat(std::ostream &s, const LogMessageInfo &l, void*)
     {
-        if (g_rankId.empty()) {
-            g_rankId = std::to_string(*static_cast<int*>(rank));
-        }
-
         s << "["
           << setw(GLOG_TIME_WIDTH_2) << l.time.hour() << ':'
           << setw(GLOG_TIME_WIDTH_2) << l.time.min()  << ':'
