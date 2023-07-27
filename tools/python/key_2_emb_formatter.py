@@ -12,7 +12,8 @@ import os
 import re
 import numpy as np
 
-from mx_rec.validator.validator import FileValidator
+MIN_SIZE = 1
+MAX_SIZE = 1024 * 1024 * 1024 * 1024
 
 
 parser = argparse.ArgumentParser()
@@ -56,7 +57,7 @@ class Formatter:
         self._json_attrib_dtype = "data_type"
         self._json_attrib_shape = "shape"
         self._host_attrib_dtype = np.uint64
-        self._hashmap_dtype = np.uint32
+        self._hashmap_dtype = np.uint64
         self._raw_key_dtype = np.uint64
         self._key_dtype = np.int64
         self._raw_key_offset = np.iinfo(np.uint32).max
@@ -125,12 +126,15 @@ class Formatter:
 
         if self._is_ddr_mode:
             data_file, attribute_file = self._get_file_names(host_hashmap_dir)
+            attribute = self._get_attribute(host_hashmap_dir, attribute_file, is_json=False)
+            data_shape = attribute[:2]
+            raw_hashmap = self._get_data(host_hashmap_dir, data_file, self._hashmap_dtype, data_shape)
         else:
             data_file, attribute_file = self._get_file_names(dev_hashmap_dir)
+            attribute = self._get_attribute(dev_hashmap_dir, attribute_file, is_json=False)
+            data_shape = attribute[:2]
+            raw_hashmap = self._get_data(dev_hashmap_dir, data_file, self._hashmap_dtype, data_shape)
 
-        attribute = self._get_attribute(host_hashmap_dir, attribute_file, is_json=False)
-        data_shape = attribute[:2]
-        raw_hashmap = self._get_data(host_hashmap_dir, data_file, self._hashmap_dtype, data_shape)
         offset = raw_hashmap[:, -1]
         raw_key = raw_hashmap[:, :2].astype(self._raw_key_dtype)
         key = raw_key[:, 0] * self._raw_key_offset + raw_key[:, 1]
@@ -187,13 +191,12 @@ class Formatter:
         file_dir = os.path.join(directory, file_name)
         if is_json:
             with open(file_dir, "r") as fin:
-                # check whether attribute file is valid
-                file_validator = FileValidator(file_dir)
-                # 1.check whether file_dir is soft link
-                file_validator.check_not_soft_link()
-                # 2.check attribute file size
-                file_validator.check_file_size(fin)
-                file_validator.check()
+                # check file whether is valid
+                file_info = os.stat(fin.fileno())
+                if file_info.st_size < MIN_SIZE or file_info.st_size > MAX_SIZE:
+                    raise ValueError(f"file size {file_info.st_size} is not in range[{MIN_SIZE}, {MAX_SIZE}]")
+                if os.path.islink(file_dir):
+                    raise ValueError(f"file dir {file_dir} is soft link or relative path")
                 attributes = json.load(fin)
                 return attributes
         else:
