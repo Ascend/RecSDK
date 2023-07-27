@@ -42,7 +42,7 @@ namespace MxRec {
             CkptDataType::EMB_INFO,
             CkptDataType::EMB_CURR_STAT,
             CkptDataType::NDDR_OFFSET,
-            CkptDataType::TENSOR_2_THRESH
+            CkptDataType::TABLE_2_THRESH
         };
         const set<CkptDataType> int64TransSet{
             CkptDataType::EMB_HASHMAP,
