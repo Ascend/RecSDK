@@ -88,6 +88,8 @@ namespace MxRec {
     constexpr int HOT_EMB_UPDATE_STEP_DEFAULT = 1000;
     constexpr float HOT_EMB_CACHE_PCT = static_cast<float>(1. / 3);  // hot emb cache percent
 
+    const string COMBINE_HISTORY_NAME = "combine_table_history";
+
     using emb_key_t = int64_t;
     using emb_name_t = std::string;
     using keys_t = std::vector<emb_key_t>;
@@ -102,6 +104,7 @@ namespace MxRec {
     };
 
     string GetChipName(int devID);
+    bool GetCombineSwitch();
 
     namespace UBSize {
         const int ASCEND910_PREMIUM_A = 262144;
@@ -239,16 +242,18 @@ struct BatchTask {
 
     struct ThresholdValue {
         ThresholdValue() = default;
-        ThresholdValue(emb_name_t name, int countThre, int timeThre)
+        ThresholdValue(emb_name_t name, int countThre, int timeThre, int faaeCoef)
         {
-            tensorName = name;
+            tableName = name;
             countThreshold = countThre;
             timeThreshold = timeThre;
+            faaeCoefficient = faaeCoef;
         }
 
-        emb_name_t tensorName { "" }; // embName
+        emb_name_t tableName { "" }; // embName
         int countThreshold { -1 }; // 只配置count，即“只有准入、而没有淘汰”功能，对应SingleHostEmbTableStatus::SETS_ONLY_ADMIT状态
         int timeThreshold { -1 };  // 只配置time，配置错误；即准入是淘汰的前提，对应SingleHostEmbTableStatus::SETS_BOTH状态
+        int faaeCoefficient { 1 }; // 配置后,该表在准入时，count计数会乘以该系数
     };
 
     struct FeatureItemInfo {
@@ -492,7 +497,7 @@ struct BatchTask {
     using emb_hash_mem_t = absl::flat_hash_map<std::string, EmbHashMapInfo>;
     using offset_mem_t = std::map<emb_name_t, size_t>;
     using key_offset_mem_t = std::map<emb_name_t, absl::flat_hash_map<emb_key_t, int64_t>>;
-    using tensor_2_thresh_mem_t = absl::flat_hash_map<std::string, ThresholdValue>;
+    using table_2_thresh_mem_t = absl::flat_hash_map<std::string, ThresholdValue>;
     using trans_serialize_t = uint8_t;
     using key_offset_map_t = std::map<int64_t, int64_t>;
     using all_key_offset_map_t = std::map<std::string, std::map<int64_t, int64_t>>;
@@ -510,7 +515,7 @@ struct BatchTask {
         emb_hash_mem_t embHashMaps;
         offset_mem_t maxOffset;
         key_offset_mem_t keyOffsetMap;
-        tensor_2_thresh_mem_t tens2Thresh;
+        table_2_thresh_mem_t table2Thresh;
         AdmitAndEvictData histRec;
     };
 
@@ -532,7 +537,7 @@ struct BatchTask {
         EMB_CURR_STAT = 4,
         NDDR_OFFSET = 5,
         NDDR_FEATMAP = 6,
-        TENSOR_2_THRESH = 7,
+        TABLE_2_THRESH = 7,
         HIST_REC = 8,
         ATTRIBUTE = 9
     };

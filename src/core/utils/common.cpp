@@ -141,4 +141,20 @@ namespace MxRec {
 
         throw std::runtime_error("dsmi_get_chip_info failed, ret = " + to_string(ret));
     }
+
+    bool GetCombineSwitch()
+    {
+        const char* faaeMode = std::getenv("FAAE_MODE"); // 获取环境变量
+        bool isCombine = true;
+        if (faaeMode != nullptr) {
+            try {
+                isCombine = (std::stoi(faaeMode) == 0);
+                LOG(INFO) << StringFormat("If combine history table： %d", isCombine);
+            } catch (const std::invalid_argument& e) {
+                LOG(ERROR) << "The value of FAAE_MODE is invalid!";
+                throw std::invalid_argument("Invalid env value FAAE_MODE");
+            }
+        }
+        return isCombine;
+    }
 } // end namespace MxRec
