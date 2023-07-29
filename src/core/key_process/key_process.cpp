@@ -768,9 +768,7 @@ auto KeyProcess::HashSplit(const unique_ptr<emb_batch_t>& batch) const -> tuple<
             }
             ssTrace << '|';
         }
-        VLOG(GLOG_TRACE) << StringFormat(
-            "dump splitKeys\n%s", ssTrace.str().c_str()
-        );
+        VLOG(GLOG_TRACE) << "dump splitKeys " << ssTrace.str();
     }
     return { splitKeys, restore };
 }
@@ -821,7 +819,7 @@ auto KeyProcess::HashSplit_withFAAE(const unique_ptr<emb_batch_t>& batch) const
             }
             ssTrace << '|';
         }
-        VLOG(GLOG_TRACE) << StringFormat("dump splitKeys\n%s", ssTrace.str().c_str());
+        VLOG(GLOG_TRACE) << "dump splitKeys " << ssTrace.str();
     }
 
     return { splitKeys, restore, keyCount };
