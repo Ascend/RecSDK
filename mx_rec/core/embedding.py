@@ -4,6 +4,7 @@
 
 import logging
 import math
+import re
 from collections import defaultdict
 from typing import Optional
 
@@ -69,6 +70,7 @@ def create_table(**kwargs):
     all2all_gradients_op = kwargs.get("all2all_gradients_op", All2allGradientsOp.SUM_GRADIENTS)
     apply_gradients_strategy = kwargs.get("apply_gradients_strategy", ApplyGradientsStrategy.DIRECT_APPLY)
 
+    name = fix_invalid_table_name(name)
     check_create_table_params(key_dtype, dim, name, emb_initializer)
 
     config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
@@ -907,7 +909,7 @@ def check_create_table_params(key_dtype, dim, name, emb_initializer):
     dim_validator.check_isinstance()
     dim_validator.check()
     # check name
-    name_validator = StringValidator(name)
+    name_validator = StringValidator(value=name, max_len=255)
     name_validator.check_string_length()
     name_validator.check_whitelist()
     name_validator.check()
@@ -915,3 +917,18 @@ def check_create_table_params(key_dtype, dim, name, emb_initializer):
     emb_initializer_validator = ClassValidator(value=emb_initializer, classes=(InitializerV1, InitializerV2))
     emb_initializer_validator.check_isinstance()
     emb_initializer_validator.check()
+
+
+def fix_invalid_table_name(name):
+    """
+    校验table name字符串中是否含有特殊字符，如有，替换为下划线
+    :param name: table name
+    :return : the fixed table name
+    """
+    if re.match("^[0-9A-Za-z_]+$", name):
+        return name
+    fix_name = re.sub(r'\W+', '_', name)
+    logging.warning(f"The table name {name} contains invalid characters."
+                    f"The system automatically replaces invalid characters with underscores (_). "
+                    f"The table name was changed to {fix_name}")
+    return fix_name
