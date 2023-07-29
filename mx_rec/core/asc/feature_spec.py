@@ -3,6 +3,7 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 import logging
+import re
 from typing import Union
 from functools import reduce
 
@@ -40,6 +41,8 @@ class FeatureSpec:
         self.split = None  # usually split == batch_size * feature_count
         self.initialized = False
         self._pipeline_mode = set()
+
+        self.fix_invalid_table_name()
         self.check_params()
 
     @property
@@ -129,6 +132,10 @@ class FeatureSpec:
 
         if self._is_timestamp is not None:
             check_bool(self._is_timestamp, "is_timestamp")
+
+    def fix_invalid_table_name(self):
+        if not re.match("^[0-9A-Za-z_]+$", self._table_name):
+            self._table_name = re.sub(r'\W+', '_', self._table_name)
 
     def set_feat_pos(self, is_training):
         if is_training:

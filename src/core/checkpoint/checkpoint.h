@@ -88,7 +88,7 @@ namespace MxRec {
 
         void LoadProcess(CkptData& ckptData);
         void GetUpperLayerLoadDir(const vector<string>& dirNames);
-        vector<string> GetTableLayerLoadDir();
+        vector<string> GetEmbedTableNames();
         void LoadDataset(const vector<string>& embNames, const vector<CkptDataType>& saveDataTypes,
             const unique_ptr<CkptDataHandler>& dataHandler, CkptData& ckptData);
         void ReadStream(CkptTransData& transData, const string& dataDir, CkptDataType dataType, uint32_t dataElmtBytes);

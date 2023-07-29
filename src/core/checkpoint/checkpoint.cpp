@@ -338,7 +338,7 @@ void Checkpoint::LoadProcess(CkptData& ckptData)
         vector<CkptDataType> saveDataTypes { dataHandler->GetDataTypes() };
 
         GetUpperLayerLoadDir(dirNames);
-        embNames = GetTableLayerLoadDir();
+        embNames = GetEmbedTableNames();
 
         LoadDataset(embNames, saveDataTypes, dataHandler, ckptData);
 
@@ -355,22 +355,16 @@ void Checkpoint::GetUpperLayerLoadDir(const vector<string>& dirNames)
     }
 }
 
-vector<string> Checkpoint::GetTableLayerLoadDir()
+vector<string> Checkpoint::GetEmbedTableNames()
 {
-    vector<string> loadTableDir;
-    auto dir { opendir(innerDirPath.c_str()) };
-    struct dirent* en;
-    if (dir != nullptr) {
-        while ((en = readdir(dir)) != nullptr) {
-            if (strcmp(en->d_name, currDir.c_str()) != 0 &&
-                strcmp(en->d_name, prevDir.c_str()) != 0) {
-                loadTableDir.emplace_back(en->d_name);
-            }
+    vector<string> loadTableNames;
+    for (const auto& embInfo : mgmtEmbInfo) {
+        if (embInfo.isSave == true) {
+            loadTableNames.push_back(embInfo.name);
         }
-        closedir(dir);
     }
 
-    return loadTableDir;
+    return loadTableNames;
 }
 
 void Checkpoint::LoadDataset(const vector<string>& embNames,
@@ -379,10 +373,6 @@ void Checkpoint::LoadDataset(const vector<string>& embNames,
                              CkptData& ckptData)
 {
     for (const auto& embName : embNames) {
-        if (!CheckEmbNames(embName)) {
-            continue;
-        }
-
         auto dataDir { innerDirPath + dirSeparator + embName };
         for (const auto& saveDataType : saveDataTypes) {
             auto datasetPath { dataDir + dirSeparator + dataHandler->GetDataDirName(saveDataType) };
