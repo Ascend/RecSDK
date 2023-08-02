@@ -94,8 +94,8 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     }
     embHashMap.swapPos.clear();
     embHashMap.lookUpVec.clear();
-    LOG(INFO) << StringFormat("current ddr emb:%s, usage:%d/[%d+%d]", embName.c_str(), embHashMap.maxOffset,
-                              embHashMap.devVocabSize, embHashMap.hostVocabSize);
+    LOG(INFO) << StringFormat("current dev emb usage:%d/[%d+%d]", embHashMap.maxOffset, embHashMap.devVocabSize,
+        embHashMap.hostVocabSize);
     tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { 1 }));
     auto swapLen = tmpDataOut.back().flat<int32>();
     swapLen(0) = swapSize;
