@@ -1040,8 +1040,7 @@ void KeyProcess::Key2Offset(const emb_name_t& embName, keys_t& splitKey, int cha
         LOG(ERROR) << StringFormat("dev cache overflow %d>%d", maxOffsetTmp, embInfos[embName].devVocabSize);
         throw std::runtime_error("dev cache overflow!");
     }
-    VLOG(GLOG_DEBUG) << StringFormat("current hbm emb:%s, usage:%d/%d", embName.c_str(), maxOffsetTmp,
-                                     embInfos[embName].devVocabSize);
+    VLOG(GLOG_DEBUG) << StringFormat("current dev emb usage:%d/%d", maxOffsetTmp, embInfos[embName].devVocabSize);
     VLOG(GLOG_DEBUG) << StringFormat("key2OffsetTC(ms):%d", key2OffsetTC.ElapsedMS());
 }
 
@@ -1075,8 +1074,7 @@ void KeyProcess::Key2OffsetDynamicExpansion(const emb_name_t& embName, keys_t& s
             key = 0;
         }
     }
-    VLOG(GLOG_DEBUG) << StringFormat("current expansion emb:%s, usage:%d/%d", embName.c_str(), maxOffsetTmp,
-                                     embInfos[embName].devVocabSize);
+    VLOG(GLOG_DEBUG) << StringFormat("current dev emb usage:%d/%d", maxOffsetTmp, embInfos[embName].devVocabSize);
     VLOG(GLOG_DEBUG) << StringFormat("key2OffsetTC(ms):%d", key2OffsetTC.ElapsedMS());
 }
 
@@ -1135,7 +1133,6 @@ T KeyProcess::GetInfo(info_list_t<T>& list, int batch, const string& embName, in
     return move(t);
 }
 
-// DDR
 keys_t KeyProcess::GetLookupKeys(int batch, const string& embName, int channel)
 {
     TimeCost tc = TimeCost();
@@ -1162,7 +1159,6 @@ keys_t KeyProcess::GetLookupKeys(int batch, const string& embName, int channel)
     }
 }
 
-// HBM
 unique_ptr<vector<Tensor>> KeyProcess::GetInfoVec(int batch, const string& embName, int channel, ProcessedInfo type)
 {
     TimeCost tc = TimeCost();
