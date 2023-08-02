@@ -31,7 +31,7 @@ namespace MxRec {
 
     private:
         const vector<string> fileDirNames { "HashTable", "DDR" };
-        const vector<CkptDataType> saveDataTypes { CkptDataType::TABLE_2_THRESH, CkptDataType::HIST_REC };
+        const vector<CkptDataType> saveDataTypes { CkptDataType::TENSOR_2_THRESH, CkptDataType::HIST_REC };
 
         const int featItemInfoSaveNum { 3 };
         const int threshValSaveNum { 2 };
@@ -45,21 +45,21 @@ namespace MxRec {
         const int countIdxOffset { 1 };
         const int lastTimeIdxOffset { 2 };
 
-        table_2_thresh_mem_t saveTable2Thresh;
-        table_2_thresh_mem_t loadTable2Thresh;
+        tensor_2_thresh_mem_t saveTens2Thresh;
+        tensor_2_thresh_mem_t loadTens2Thresh;
 
         AdmitAndEvictData saveHistRec;
         AdmitAndEvictData loadHistRec;
 
         void ClearData();
 
-        void SetTable2ThreshTrans(string embName);
+        void SetTens2ThreshTrans(string embName);
         void SetHistRecTrans(string embName);
 
-        void SetTable2Thresh(string embName);
+        void SetTens2Thresh(string embName);
         void SetHistRec(string embName);
 
-        int GetTable2ThreshSize();
+        int GetTens2ThreshSize();
         size_t GetHistRecSize(string embName);
     };
 }

@@ -175,18 +175,17 @@ protected:
         }
     }
 
-    void SetTable2Threshold(table_2_thresh_mem_t& testTable2Threshold)
+    void SetTens2Threshold(tensor_2_thresh_mem_t& testTens2Threshold)
     {
         for (const auto& testEmbInfo : testEmbInfos) {
             ThresholdValue val;
-            val.tableName = testEmbInfo.name;
+            val.tensorName = testEmbInfo.name;
             val.countThreshold = offsetMem;
             val.timeThreshold = offsetMem;
-            val.faaeCoefficient = 1;
 
             offsetMem++;
 
-            testTable2Threshold[testEmbInfo.name] = move(val);
+            testTens2Threshold[testEmbInfo.name] = move(val);
         }
     }
 
@@ -214,30 +213,6 @@ protected:
             lastTime++;
             timeStamp++;
         }
-    }
-
-    void SetHistRecCombine(AdmitAndEvictData& histRec)
-    {
-        int64_t featureId { int64Min };
-        int count { 1 };
-        time_t lastTime { 1000 };
-        time_t timeStamp { 10000 };
-
-        auto& historyRecords { histRec.historyRecords[COMBINE_HISTORY_NAME] };
-        auto& timestamps { histRec.timestamps[COMBINE_HISTORY_NAME] };
-
-        timestamps = timeStamp;
-
-        for (int i = 0; i < count; ++i) {
-            historyRecords[featureId].count = count;
-            historyRecords[featureId].lastTime = lastTime;
-
-            featureId++;
-        }
-
-        count++;
-        lastTime++;
-        timeStamp++;
     }
 };
 
@@ -428,31 +403,25 @@ TEST_F(CheckpointTest, AllMgmt)
 
 TEST_F(CheckpointTest, FeatAdmitNEvict)
 {
-    table_2_thresh_mem_t testTrens2Thresh;
-    table_2_thresh_mem_t validTrens2Thresh;
+    tensor_2_thresh_mem_t testTrens2Thresh;
+    tensor_2_thresh_mem_t validTrens2Thresh;
     AdmitAndEvictData testHistRec;
     AdmitAndEvictData validHistRec;
 
     SetEmbInfo();
-    SetTable2Threshold(testTrens2Thresh);
+    SetTens2Threshold(testTrens2Thresh);
     validTrens2Thresh = testTrens2Thresh;
-
-    if (GetCombineSwitch()) {
-        SetHistRecCombine(testHistRec);
-    } else {
-        SetHistRec(testHistRec);
-    }
-
+    SetHistRec(testHistRec);
     validHistRec = testHistRec;
 
     CkptData testSaveData;
     CkptData validLoadData;
     CkptData testLoadData;
 
-    testSaveData.table2Thresh = testTrens2Thresh;
+    testSaveData.tens2Thresh = testTrens2Thresh;
     testSaveData.histRec.timestamps = testHistRec.timestamps;
     testSaveData.histRec.historyRecords = testHistRec.historyRecords;
-    validLoadData.table2Thresh = validTrens2Thresh;
+    validLoadData.tens2Thresh = validTrens2Thresh;
     validLoadData.histRec = validHistRec;
     validLoadData.histRec.timestamps = validHistRec.timestamps;
     validLoadData.histRec.historyRecords = validHistRec.historyRecords;
@@ -461,16 +430,16 @@ TEST_F(CheckpointTest, FeatAdmitNEvict)
     testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
     testCkpt.LoadModel(testPath, testLoadData, rankInfo, testEmbInfos, { CkptFeatureType::FEAT_ADMIT_N_EVICT });
 
-    EXPECT_EQ(validLoadData.table2Thresh.size(), testLoadData.table2Thresh.size());
+    EXPECT_EQ(validLoadData.tens2Thresh.size(), testLoadData.tens2Thresh.size());
     EXPECT_EQ(validLoadData.histRec.historyRecords.size(), testLoadData.histRec.historyRecords.size());
-    for (const auto& it : validLoadData.table2Thresh) {
-        EXPECT_EQ(1, testLoadData.table2Thresh.count(it.first));
+    for (const auto& it : validLoadData.tens2Thresh) {
+        EXPECT_EQ(1, testLoadData.tens2Thresh.count(it.first));
 
-        const auto& table2Thresh = testLoadData.table2Thresh.at(it.first);
+        const auto& tens2Thresh = testLoadData.tens2Thresh.at(it.first);
 
-        EXPECT_EQ(it.second.tableName, table2Thresh.tableName);
-        EXPECT_EQ(it.second.countThreshold, table2Thresh.countThreshold);
-        EXPECT_EQ(it.second.timeThreshold, table2Thresh.timeThreshold);
+        EXPECT_EQ(it.second.tensorName, tens2Thresh.tensorName);
+        EXPECT_EQ(it.second.countThreshold, tens2Thresh.countThreshold);
+        EXPECT_EQ(it.second.timeThreshold, tens2Thresh.timeThreshold);
     }
 
     for (const auto& it : validLoadData.histRec.timestamps) {

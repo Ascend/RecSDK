@@ -162,19 +162,16 @@ def generate_threshold_list():
     threshold_list = []
 
     for _, feature_spec in export_feature_spec().items():
-        coef = 1 if feature_spec.faae_coefficent is None else feature_spec.faae_coefficent
         if feature_spec.eviction_threshold:
             threshold = ThresholdValue(feature_spec.table_name,
                                        feature_spec.access_threshold,
-                                       feature_spec.eviction_threshold,
-                                       coef)
+                                       feature_spec.eviction_threshold)
             threshold_list.append(threshold)
             continue
         if feature_spec.access_threshold:
             threshold = ThresholdValue(feature_spec.table_name,
                                        feature_spec.access_threshold,
-                                       -1,
-                                       coef)
+                                       -1)
             threshold_list.append(threshold)
 
     return threshold_list
