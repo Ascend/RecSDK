@@ -31,7 +31,6 @@ bool FeatureAdmitAndEvict::Init(const std::vector<ThresholdValue>& thresholdValu
         LOG(ERROR) << "Config is error, feature admin-and-evict function is not available ...\n";
         return false;
     }
-    SetCombineSwitch();
 
     return true;
 }
@@ -45,27 +44,24 @@ FeatureAdmitReturnType FeatureAdmitAndEvict::FeatureAdmit(int channel,
         return FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR;
     }
 
-    std::string tableName = batch->name;
-    if (m_isCombine) {
-        tableName = COMBINE_HISTORY_NAME;
-    }
+    // 如果当前 tensorName 不在准入范围之内，则不进行“特征准入”逻辑
+    std::string tensorName = batch->name;
     absl::flat_hash_map<int64_t, uint32_t> mergeKeys;
     mergeKeys.reserve(splitKey.size());
     PreProcessKeys(splitKey, keyCount, mergeKeys);
 
     std::lock_guard<std::mutex> lock(m_syncMutexs);
-    // 如果当前 tableName 不在准入范围之内，则不进行“特征准入”逻辑
-    auto iter = m_recordsData.historyRecords.find(tableName);
-    if (iter == m_recordsData.historyRecords.end()) { // 之前tableName没出现过时，数据初始化
+    auto iter = m_recordsData.historyRecords.find(tensorName);
+    if (iter == m_recordsData.historyRecords.end()) { // 之前tensorName没出现过时，数据初始化
         absl::flat_hash_map<int64_t, FeatureItemInfo> records(m_recordsInitSize);
-        m_recordsData.historyRecords[tableName] = records;
+        m_recordsData.historyRecords[tensorName] = records;
     }
     VLOG(GLOG_DEBUG) << StringFormat(
-        "FeatureAdmitAndEvict PrintSize, name:[%s], history key:[%d] ...", tableName.c_str(),
-        m_recordsData.historyRecords[tableName].size());
+        "FeatureAdmitAndEvict PrintSize, name:[%s], history key:[%d] ...", tensorName.c_str(),
+        m_recordsData.historyRecords[tensorName].size());
 
-    if (batch->timestamp > m_recordsData.timestamps[tableName]) {
-        m_recordsData.timestamps[tableName] = batch->timestamp;
+    if (batch->timestamp > m_recordsData.timestamps[tensorName]) {
+        m_recordsData.timestamps[tensorName] = batch->timestamp;
     }
     absl::flat_hash_map<int64_t, bool> visitedRecords;
     for (auto& key : splitKey) {
@@ -77,7 +73,7 @@ FeatureAdmitReturnType FeatureAdmitAndEvict::FeatureAdmit(int channel,
         auto it = visitedRecords.find(key);
         if (it == visitedRecords.end()) {
             visitedRecords[key] = true;
-            if (FeatureAdmitHelper(channel, batch->name, key, mergeKeys[key]) ==
+            if (FeatureAdmitHelper(channel, tensorName, key, mergeKeys[key]) ==
                 FeatureAdmitType::FEATURE_ADMIT_FAILED) {
                 visitedRecords[key] = false;
                 key = -1; // 被淘汰的Feature ID
@@ -91,38 +87,32 @@ FeatureAdmitReturnType FeatureAdmitAndEvict::FeatureAdmit(int channel,
     }
     if (VLOG_IS_ON(GLOG_TRACE)) {
         VLOG(GLOG_TRACE) << StringFormat(
-            "FeatureAdmit, name:[%s], channel:[%d], after admit, splitKey:[%s] ...", tableName.c_str(), channel,
+            "FeatureAdmit, name:[%s], channel:[%d], after admit, splitKey:[%s] ...", tensorName.c_str(), channel,
             VectorToString(splitKey).c_str());
     }
 
     return FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_OK;
 }
 
-FeatureAdmitType FeatureAdmitAndEvict::FeatureAdmitHelper(const int channel, const std::string& tableNameOrigin,
+FeatureAdmitType FeatureAdmitAndEvict::FeatureAdmitHelper(const int channel, const std::string& tensorName,
                                                           const int64_t featureId, const uint32_t featureCnt)
 {
     // “特征准入”逻辑
     uint32_t currKeyCount = 0;
-    std::string tableName = tableNameOrigin;
-    if (m_isCombine) {
-        tableName = COMBINE_HISTORY_NAME;
-    }
-
-    absl::flat_hash_map<int64_t, FeatureItemInfo>& historyRecordInfos = m_recordsData.historyRecords[tableName];
+    absl::flat_hash_map<int64_t, FeatureItemInfo>& historyRecordInfos = m_recordsData.historyRecords[tensorName];
     auto innerIt = historyRecordInfos.find(featureId);
 
     if (channel == TRAIN_CHANNEL_ID) {
         if (innerIt == historyRecordInfos.end()) {
             // 维护 m_historyRecords
-            FeatureItemInfo info(featureCnt, m_recordsData.timestamps[tableName]);
-            info.count *= m_table2Threshold[tableNameOrigin].faaeCoefficient;
+            FeatureItemInfo info(featureCnt, m_recordsData.timestamps[tensorName]);
             historyRecordInfos[featureId] = info;
-            currKeyCount = info.count;
+            currKeyCount = featureCnt;
         } else {
             // 维护 m_historyRecords
             FeatureItemInfo &info = historyRecordInfos[featureId];
-            info.count += m_table2Threshold[tableNameOrigin].faaeCoefficient * featureCnt;
-            info.lastTime = m_recordsData.timestamps[tableName];
+            info.count += featureCnt;
+            info.lastTime = m_recordsData.timestamps[tensorName];
             currKeyCount = info.count;
         }
     } else if (channel == EVAL_CHANNEL_ID) { // eval
@@ -132,7 +122,7 @@ FeatureAdmitType FeatureAdmitAndEvict::FeatureAdmitHelper(const int channel, con
     }
 
     // 准入条件判断
-    if (currKeyCount >= static_cast<uint32_t>(m_table2Threshold[tableNameOrigin].countThreshold)) {
+    if (currKeyCount >= static_cast<uint32_t>(m_tensor2Threshold[tensorName].countThreshold)) {
         return FeatureAdmitType::FEATURE_ADMIT_OK;
     }
 
@@ -142,8 +132,8 @@ FeatureAdmitType FeatureAdmitAndEvict::FeatureAdmitHelper(const int channel, con
 // 特征淘汰接口
 void FeatureAdmitAndEvict::FeatureEvict(map<std::string, std::vector<emb_key_t>>& evictKeyMap)
 {
-    std::vector<std::string> tableNames = GetAllNeedEvictTableNames();
-    if (tableNames.empty()) {
+    std::vector<std::string> tensorNames = GetAllNeedEvictTensorNames();
+    if (tensorNames.empty()) {
         LOG(INFO) << "EmbNames is empty, no evict function ...";
         return ;
     }
@@ -153,9 +143,9 @@ void FeatureAdmitAndEvict::FeatureEvict(map<std::string, std::vector<emb_key_t>>
     }
     std::lock_guard<std::mutex> lock(m_syncMutexs);
     // 从 m_historyRecords 中淘汰删除
-    size_t tableCnt = tableNames.size();
-    for (size_t i = 0; i < tableCnt; ++i) {
-        FeatureEvictHelper(tableNames[i], evictKeyMap[tableNames[i]]);
+    size_t tensorCnt = tensorNames.size();
+    for (size_t i = 0; i < tensorCnt; ++i) {
+        FeatureEvictHelper(tensorNames[i], evictKeyMap[tensorNames[i]]);
     }
 }
 
@@ -163,7 +153,7 @@ void FeatureAdmitAndEvict::FeatureEvictHelper(const std::string& embName, std::v
 {
     // 从 m_historyRecords 中淘汰删除
     time_t currTime = m_recordsData.timestamps[embName];
-    // 从 m_table2SortedLastTime 获取当前要淘汰的featureId
+    // 从 m_tensor2SortedLastTime 获取当前要淘汰的featureId
     auto cmp = [](const auto& a, const auto& b) { return a.second.lastTime > b.second.lastTime; };
     std::priority_queue<std::pair<int64_t, FeatureItemInfo>,
             std::vector<std::pair<int64_t, FeatureItemInfo>>, decltype(cmp)> lastTimePriority(cmp);
@@ -171,7 +161,7 @@ void FeatureAdmitAndEvict::FeatureEvictHelper(const std::string& embName, std::v
         lastTimePriority.emplace(item);
     }
     while (!lastTimePriority.empty()) {
-        if (currTime - lastTimePriority.top().second.lastTime < m_table2Threshold[embName].timeThreshold) {
+        if (currTime - lastTimePriority.top().second.lastTime < m_tensor2Threshold[embName].timeThreshold) {
             break;
         }
         evictKey.emplace_back(lastTimePriority.top().first);
@@ -180,11 +170,11 @@ void FeatureAdmitAndEvict::FeatureEvictHelper(const std::string& embName, std::v
 
     if (evictKey.size() == 0) {
         LOG(INFO) << StringFormat(
-            "table-name[%s]'s lastTime[%d], had no key to delete ...", embName.c_str(), currTime);
+            "tensor-name[%s]'s lastTime[%d], had no key to delete ...", embName.c_str(), currTime);
         return;
     }
     LOG(INFO) << StringFormat(
-        "table-name[%s]'s lastTime[%d], had size[%d] keys to delete ...", embName.c_str(), currTime, evictKey.size());
+        "tensor-name[%s]'s lastTime[%d], had size[%d] keys to delete ...", embName.c_str(), currTime, evictKey.size());
 
     // 真正从 m_historyRecords 中淘汰
     absl::flat_hash_map<int64_t, FeatureItemInfo>& historyRecords = m_recordsData.historyRecords[embName];
@@ -206,12 +196,6 @@ void FeatureAdmitAndEvict::SetFunctionSwitch(bool isEnableEvict)
     }
     m_isEnableFunction = isEnableEvict;
 }
-
-void FeatureAdmitAndEvict::SetCombineSwitch()
-{
-    m_isCombine = GetCombineSwitch();
-}
-
 bool FeatureAdmitAndEvict::GetFunctionSwitch() const
 {
     return m_isEnableFunction;
@@ -238,10 +222,10 @@ bool FeatureAdmitAndEvict::IsThresholdCfgOK(const std::vector<ThresholdValue>& t
     const std::vector<std::string>& embNames, bool isTimestamp)
 {
     for (size_t i = 0; i < thresholds.size(); ++i) {
-        auto it = std::find(embNames.begin(), embNames.end(), thresholds[i].tableName);
+        auto it = std::find(embNames.begin(), embNames.end(), thresholds[i].tensorName);
         if (it == embNames.end()) { // 配置不存在于当前跑的模型，也要报错
             LOG(ERROR) << StringFormat(
-                "embName[%s] is not exist at current model ...", thresholds[i].tableName.c_str());
+                "embName[%s] is not exist at current model ...", thresholds[i].tensorName.c_str());
             return false;
         } else {
             // 同时支持“准入&淘汰”，却没有传时间戳
@@ -258,10 +242,10 @@ bool FeatureAdmitAndEvict::IsThresholdCfgOK(const std::vector<ThresholdValue>& t
     return true;
 }
 
-auto FeatureAdmitAndEvict::GetTableThresholds() -> table_2_thresh_mem_t
+auto FeatureAdmitAndEvict::GetTensorThresholds() -> tensor_2_thresh_mem_t
 {
     std::lock_guard<std::mutex> lock(m_syncMutexs);
-    return m_table2Threshold;
+    return m_tensor2Threshold;
 }
 
 auto FeatureAdmitAndEvict::GetHistoryRecords() -> AdmitAndEvictData&
@@ -270,10 +254,10 @@ auto FeatureAdmitAndEvict::GetHistoryRecords() -> AdmitAndEvictData&
     return m_recordsData;
 }
 
-void FeatureAdmitAndEvict::LoadTableThresholds(table_2_thresh_mem_t& loadData)
+void FeatureAdmitAndEvict::LoadTensorThresholds(tensor_2_thresh_mem_t& loadData)
 {
     std::lock_guard<std::mutex> lock(m_syncMutexs);
-    m_table2Threshold = std::move(loadData);
+    m_tensor2Threshold = std::move(loadData);
 }
 
 void FeatureAdmitAndEvict::LoadHistoryRecords(AdmitAndEvictData& loadData)
@@ -282,7 +266,7 @@ void FeatureAdmitAndEvict::LoadHistoryRecords(AdmitAndEvictData& loadData)
     m_recordsData = std::move(loadData);
 }
 
-// 解析m_table2Threshold
+// 解析m_tensor2Threshold
 bool FeatureAdmitAndEvict::ParseThresholdCfg(const std::vector<ThresholdValue>& thresholdValues)
 {
     if (thresholdValues.empty()) {
@@ -293,26 +277,23 @@ bool FeatureAdmitAndEvict::ParseThresholdCfg(const std::vector<ThresholdValue>& 
     m_cfgThresholds = thresholdValues;
     for (const auto& value : thresholdValues) {
         LOG(INFO) << StringFormat(
-            "embName[%s], count[%d], time[%d], coefficient[%d] ...",
-            value.tableName.c_str(), value.countThreshold, value.timeThreshold, value.faaeCoefficient);
-        auto it = m_table2Threshold.find(value.tableName);
-        if (it != m_table2Threshold.end()) {
+            "embName[%s], count[%d], time[%d] ...",
+            value.tensorName.c_str(), value.countThreshold, value.timeThreshold);
+        auto it = m_tensor2Threshold.find(value.tensorName);
+        if (it != m_tensor2Threshold.end()) {
             // train和eval同时开启，会出现表重复配置
-            LOG(INFO) << StringFormat("[%s] is repeated configuration ...", value.tableName.c_str());
+            LOG(INFO) << StringFormat("[%s] is repeated configuration ...", value.tensorName.c_str());
             return true;
         }
-        m_table2Threshold[value.tableName] = value;
+        m_tensor2Threshold[value.tensorName] = value;
 
-        if (value.faaeCoefficient < 1) {
-            LOG(ERROR) << StringFormat("[%s] config error, coefficient smaller than 1 ...", value.tableName.c_str());
-        }
         if (value.countThreshold != -1 && value.timeThreshold != -1) {
-            m_embStatus[value.tableName] = SingleEmbTableStatus::SETS_BOTH;
+            m_embStatus[value.tensorName] = SingleEmbTableStatus::SETS_BOTH;
         } else if (value.countThreshold != -1 && value.timeThreshold == -1) {
-            m_embStatus[value.tableName] = SingleEmbTableStatus::SETS_ONLY_ADMIT;
+            m_embStatus[value.tensorName] = SingleEmbTableStatus::SETS_ONLY_ADMIT;
         } else {
-            LOG(ERROR) << StringFormat("[%s] config error, have evict but no admit ...", value.tableName.c_str());
-            m_embStatus[value.tableName] = SingleEmbTableStatus::SETS_ERROR;
+            LOG(ERROR) << StringFormat("[%s] config error, have evict but no admit ...", value.tensorName.c_str());
+            m_embStatus[value.tensorName] = SingleEmbTableStatus::SETS_ERROR;
             return false;
         }
     }
@@ -320,7 +301,7 @@ bool FeatureAdmitAndEvict::ParseThresholdCfg(const std::vector<ThresholdValue>& 
     return true;
 }
 
-std::vector<std::string> FeatureAdmitAndEvict::GetAllNeedEvictTableNames()
+std::vector<std::string> FeatureAdmitAndEvict::GetAllNeedEvictTensorNames()
 {
     std::vector<std::string> names;
     std::lock_guard<std::mutex> lock(m_syncMutexs);

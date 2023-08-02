@@ -93,21 +93,17 @@ def create_feature_spec_list(use_timestamp=False):
     eviction_threshold = cfg.eviction_threshold if use_timestamp else None
     feature_spec_list = [FeatureSpec("user_ids", feat_count=cfg.user_feat_cnt, table_name="user_table",
                                      access_threshold=access_threshold,
-                                     eviction_threshold=eviction_threshold,
-                                     faae_coefficient=1),
+                                     eviction_threshold=eviction_threshold),
                          FeatureSpec("item_ids", feat_count=cfg.item_feat_cnt, table_name="item_table",
                                      access_threshold=access_threshold,
-                                     eviction_threshold=eviction_threshold,
-                                     faae_coefficient=4)]
+                                     eviction_threshold=eviction_threshold)]
     if use_multi_lookup:
         feature_spec_list.extend([FeatureSpec("user_ids", feat_count=cfg.user_feat_cnt, table_name="user_table",
                                               access_threshold=access_threshold,
-                                              eviction_threshold=eviction_threshold,
-                                              faae_coefficient=1),
+                                              eviction_threshold=eviction_threshold),
                                   FeatureSpec("item_ids", feat_count=cfg.item_feat_cnt, table_name="user_table",
                                               access_threshold=access_threshold,
-                                              eviction_threshold=eviction_threshold,
-                                              faae_coefficient=4)])
+                                              eviction_threshold=eviction_threshold)])
     if use_timestamp:
         feature_spec_list.append(FeatureSpec("timestamp", is_timestamp=True))
     return feature_spec_list
@@ -156,10 +152,8 @@ if __name__ == "__main__":
     # access_threshold unit counts; eviction_threshold unit seconds
     ACCESS_AND_EVICT = None
     if USE_TIMESTAMP:
-        config_for_user_table = dict(access_threshold=cfg.access_threshold, eviction_threshold=cfg.eviction_threshold,
-                                     faae_coefficient=1)
-        config_for_item_table = dict(access_threshold=cfg.access_threshold, eviction_threshold=cfg.eviction_threshold,
-                                     faae_coefficient=4)
+        config_for_user_table = dict(access_threshold=cfg.access_threshold, eviction_threshold=cfg.eviction_threshold)
+        config_for_item_table = dict(access_threshold=cfg.access_threshold, eviction_threshold=cfg.eviction_threshold)
         ACCESS_AND_EVICT = dict(user_table=config_for_user_table, item_table=config_for_item_table)
     train_feature_spec_list = create_feature_spec_list(use_timestamp=USE_TIMESTAMP)
     eval_feature_spec_list = create_feature_spec_list(use_timestamp=USE_TIMESTAMP)

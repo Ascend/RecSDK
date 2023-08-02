@@ -47,7 +47,7 @@ namespace MxRec {
             "embedding_current_status",
             "max_offset",
             "key_offset_map",
-            "table_2_threshold",
+            "tensor_2_threshold",
             "history_record"
         };
         const vector<uint32_t> dataElmtBytes { 4, 4, 8, 8, 4, 4, 8, 4, 8, 8 };

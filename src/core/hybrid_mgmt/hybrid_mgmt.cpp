@@ -150,7 +150,7 @@ bool HybridMgmt::Save(const string savePath)
     auto& featAdmitNEvict = preprocess->GetFeatAdmitAndEvict();
     if (featAdmitNEvict.GetFunctionSwitch()) {
         VLOG(GLOG_DEBUG) << (MGMT + "Start host side save: feature admit and evict");
-        saveData.table2Thresh = featAdmitNEvict.GetTableThresholds();
+        saveData.tens2Thresh = featAdmitNEvict.GetTensorThresholds();
         saveData.histRec.timestamps = featAdmitNEvict.GetHistoryRecords().timestamps;
         saveData.histRec.historyRecords = featAdmitNEvict.GetHistoryRecords().historyRecords;
     }
@@ -201,7 +201,7 @@ bool HybridMgmt::Load(const string& loadPath)
     }
     if (featAdmitNEvict.GetFunctionSwitch()) {
         VLOG(GLOG_DEBUG) << (MGMT + "Start host side load: feature admit and evict");
-        featAdmitNEvict.LoadTableThresholds(loadData.table2Thresh);
+        featAdmitNEvict.LoadTensorThresholds(loadData.tens2Thresh);
         featAdmitNEvict.LoadHistoryRecords(loadData.histRec);
     }
 

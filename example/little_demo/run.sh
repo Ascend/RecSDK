@@ -84,7 +84,6 @@ export USE_MULTI_LOOKUP=1       # 0：一表一查；1：一表多查
 export USE_MODIFY_GRAPH=0       # 0：feature spec模式；1：自动改图模式
 export USE_TIMESTAMP=0          # 0：关闭特征准入淘汰；1：开启特征准入淘汰
 export UpdateEmb_V2=0           # 0: UpdateEmb同步更新；1：UpdateEmb_V2异步更新
-export FAAE_MODE=0              # 0: combine history when faae; 1: separate history when faae
 ################# 性能调优相关 ####################
 export KEY_PROCESS_THREAD_NUM=6 #default 6, max 10
 export FAST_UNIQUE=0   #if use fast unique

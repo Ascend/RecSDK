@@ -31,7 +31,6 @@ class FeatureSpec:
         self._feat_cnt = kwargs.get("feat_count")
         self._access_threshold = kwargs.get("access_threshold")
         self._eviction_threshold = kwargs.get("eviction_threshold")
-        self._faae_coefficient = kwargs.get("faae_coefficient", 1)
         self._is_timestamp = kwargs.get("is_timestamp")
         self.feat_pos_train = None
         self.feat_pos_eval = None
@@ -56,10 +55,6 @@ class FeatureSpec:
     @property
     def eviction_threshold(self):
         return self._eviction_threshold
-
-    @property
-    def faae_coefficient(self):
-        return self._faae_coefficient
 
     @property
     def index_key(self):
@@ -123,11 +118,6 @@ class FeatureSpec:
         if self._eviction_threshold is not None:
             check_natural_number(self._eviction_threshold, "eviction_threshold")
             if self._eviction_threshold > MAX_INT32:
-                raise ValueError(f"Eviction_threshold is too big that exceed int32.")
-
-        if self._faae_coefficient is not None:
-            check_natural_number(self._faae_coefficient, "eviction_threshold")
-            if self._faae_coefficient > MAX_INT32:
                 raise ValueError(f"Eviction_threshold is too big that exceed int32.")
 
         if self._is_timestamp is not None:
@@ -207,13 +197,10 @@ class FeatureSpec:
 def get_feature_spec(table_name, access_and_evict_config):
     access_threshold = None
     eviction_threshold = None
-    faae_coefficient = None
     if access_and_evict_config:
         access_threshold = access_and_evict_config.get("access_threshold")
         eviction_threshold = access_and_evict_config.get("eviction_threshold")
-        faae_coefficient = access_and_evict_config.get("faae_coefficient", 1)
-    return FeatureSpec(table_name, access_threshold=access_threshold, eviction_threshold=eviction_threshold,
-                       faae_coefficient=faae_coefficient)
+    return FeatureSpec(table_name, access_threshold=access_threshold, eviction_threshold=eviction_threshold)
 
 
 def set_temporary_feature_spec_attribute(mock_feature_spec: FeatureSpec, total_feature_count: Union[int, tf.Tensor]):
