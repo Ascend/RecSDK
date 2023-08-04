@@ -198,11 +198,13 @@ if __name__ == "__main__":
         TRAIN_STEPS, EVAL_STEPS
     )
 
-    if MODIFY_GRAPH_FLAG:
+    # start host pipeline
+    if not MODIFY_GRAPH_FLAG:
+        start_asc_pipeline()
+    # start modify graph
+    if MODIFY_GRAPH_FLAG and use_mode != UseMode.TRAIN:
         logging.info("start to modifying graph")
         modify_graph_and_start_emb_cache(dump_graph=True)
-    else:
-        start_asc_pipeline()
 
     if use_mode == UseMode.TRAIN:
         run_mode.train(EVAL_INTERVAL, SAVING_INTERVAL)
