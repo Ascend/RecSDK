@@ -3,8 +3,11 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 from collections import defaultdict
+import os
 
 import tensorflow as tf
+
+from mx_rec.constants.constants import DUMP_MIDIFY_GRAPH_FILE_MODE
 
 
 def check_input_list(objs, obj_type):
@@ -72,6 +75,8 @@ def export_pb_graph(file_name, dump_graph, graph_def=None, export_path="./export
     :return: None
     """
     if dump_graph:
+        dir_path = os.path.dirname(os.path.join(export_path, file_name))
+        os.makedirs(dir_path, mode=DUMP_MIDIFY_GRAPH_FILE_MODE, exist_ok=True)
         graph_def = graph_def if graph_def else tf.compat.v1.get_default_graph().as_graph_def()
         tf.io.write_graph(graph_def, export_path, file_name, as_text)
 

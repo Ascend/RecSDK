@@ -46,7 +46,7 @@ class SparseProcessor:
 
     @staticmethod
     def _get_data(data_dir, dtype, data_shape):
-        with open(data_dir, "rb", encoding="utf-8") as file:
+        with open(data_dir, "rb") as file:
             # check whether data file is valid
             file_validator = FileValidator(data_dir)
             # 1.check whether data_dir is soft link

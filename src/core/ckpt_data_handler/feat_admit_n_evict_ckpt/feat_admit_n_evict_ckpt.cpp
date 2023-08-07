@@ -14,18 +14,18 @@ using namespace MxRec;
 void FeatAdmitNEvictCkpt::SetProcessData(CkptData& processData)
 {
     ClearData();
-    if (processData.tens2Thresh.empty() || processData.histRec.timestamps.empty() ||
+    if (processData.table2Thresh.empty() || processData.histRec.timestamps.empty() ||
         processData.histRec.historyRecords.empty()) {
         LOG(ERROR) << "Missing Feature Admit and Evict data";
         throw std::runtime_error("Missing Feature Admit and Evict data");
     }
-    saveTens2Thresh = std::move(processData.tens2Thresh);
+    saveTable2Thresh = std::move(processData.table2Thresh);
     saveHistRec = std::move(processData.histRec);
 }
 
 void FeatAdmitNEvictCkpt::GetProcessData(CkptData& processData)
 {
-    processData.tens2Thresh = std::move(loadTens2Thresh);
+    processData.table2Thresh = std::move(loadTable2Thresh);
     processData.histRec = std::move(loadHistRec);
     ClearData();
 }
@@ -43,7 +43,7 @@ vector<string> FeatAdmitNEvictCkpt::GetDirNames()
 vector<string> FeatAdmitNEvictCkpt::GetEmbNames()
 {
     vector<string> embNames;
-    for (const auto& item : saveTens2Thresh) {
+    for (const auto& item : saveTable2Thresh) {
         embNames.push_back(item.first);
     }
     return embNames;
@@ -51,8 +51,8 @@ vector<string> FeatAdmitNEvictCkpt::GetEmbNames()
 
 CkptTransData FeatAdmitNEvictCkpt::GetDataset(CkptDataType dataType, string embName)
 {
-    map<CkptDataType, function<void()>> dataTransMap { { CkptDataType::TENSOR_2_THRESH,
-        [=] { SetTens2ThreshTrans(embName); } },
+    map<CkptDataType, function<void()>> dataTransMap { { CkptDataType::TABLE_2_THRESH,
+        [=] { SetTable2ThreshTrans(embName); } },
         { CkptDataType::HIST_REC, [=] { SetHistRecTrans(embName); } } };
 
     CleanTransfer();
@@ -62,8 +62,8 @@ CkptTransData FeatAdmitNEvictCkpt::GetDataset(CkptDataType dataType, string embN
 
 void FeatAdmitNEvictCkpt::SetDataset(CkptDataType dataType, string embName, CkptTransData& loadedData)
 {
-    map<CkptDataType, function<void()>> dataLoadMap { { CkptDataType::TENSOR_2_THRESH,
-        [=] { SetTens2Thresh(embName); } },
+    map<CkptDataType, function<void()>> dataLoadMap { { CkptDataType::TABLE_2_THRESH,
+        [=] { SetTable2Thresh(embName); } },
         { CkptDataType::HIST_REC, [=] { SetHistRec(embName); } } };
 
     CleanTransfer();
@@ -73,27 +73,31 @@ void FeatAdmitNEvictCkpt::SetDataset(CkptDataType dataType, string embName, Ckpt
 
 void FeatAdmitNEvictCkpt::ClearData()
 {
-    saveTens2Thresh.clear();
-    loadTens2Thresh.clear();
+    saveTable2Thresh.clear();
+    loadTable2Thresh.clear();
     saveHistRec.timestamps.clear();
     saveHistRec.historyRecords.clear();
     loadHistRec.timestamps.clear();
     loadHistRec.historyRecords.clear();
 }
 
-void FeatAdmitNEvictCkpt::SetTens2ThreshTrans(string embName)
+void FeatAdmitNEvictCkpt::SetTable2ThreshTrans(string embName)
 {
-    auto tens2ThreshSize = GetTens2ThreshSize();
+    auto table2ThreshSize = GetTable2ThreshSize();
     auto& transArr = transferData.int32Arr;
-    const auto& tens2Thresh = saveTens2Thresh.at(embName);
+    const auto& table2Thresh = saveTable2Thresh.at(embName);
 
-    transArr.reserve(tens2ThreshSize);
-    transArr.push_back(tens2Thresh.countThreshold);
-    transArr.push_back(tens2Thresh.timeThreshold);
+    transArr.reserve(table2ThreshSize);
+    transArr.push_back(table2Thresh.countThreshold);
+    transArr.push_back(table2Thresh.timeThreshold);
 }
 
+// save
 void FeatAdmitNEvictCkpt::SetHistRecTrans(string embName)
 {
+    if (GetCombineSwitch()) {
+        embName = COMBINE_HISTORY_NAME;
+    }
     auto histRecSize = GetHistRecSize(embName);
     auto& transArr = transferData.int64Arr;
     const auto& timeStamp = saveHistRec.timestamps.at(embName);
@@ -109,18 +113,22 @@ void FeatAdmitNEvictCkpt::SetHistRecTrans(string embName)
     }
 }
 
-void FeatAdmitNEvictCkpt::SetTens2Thresh(string embName)
+void FeatAdmitNEvictCkpt::SetTable2Thresh(string embName)
 {
     const auto& transArr = transferData.int32Arr;
-    auto& tens2Thresh = loadTens2Thresh[embName];
+    auto& tens2Thresh = loadTable2Thresh[embName];
 
-    tens2Thresh.tensorName = embName;
+    tens2Thresh.tableName = embName;
     tens2Thresh.countThreshold = transArr[countThresholdIdx];
     tens2Thresh.timeThreshold = transArr[timeThresholdIdx];
 }
 
+// load
 void FeatAdmitNEvictCkpt::SetHistRec(string embName)
 {
+    if (GetCombineSwitch()) {
+        embName = COMBINE_HISTORY_NAME;
+    }
     const auto& transArr = transferData.int64Arr;
     const auto& attribute = transferData.attribute;
     auto& timestamp = loadHistRec.timestamps[embName];
@@ -129,17 +137,26 @@ void FeatAdmitNEvictCkpt::SetHistRec(string embName)
     timestamp = transArr.front();
 
     size_t featItemInfoTotalSize = attribute.front() * static_cast<size_t>(featItemInfoSaveNum);
-    for (size_t i = featItemInfoOffset; i < featItemInfoTotalSize + featItemInfoOffset; i += featItemInfoSaveNum) {
-        const auto& featureId = transArr[i + featureIdIdxOffset];
-        const auto& count = transArr[i + countIdxOffset];
-        const auto& lastTime = transArr[i + lastTimeIdxOffset];
+    VLOG(GLOG_DEBUG) << StringFormat("====Start SetHistRec, name: %s, featItemInfoTotalSize: %ld", embName.c_str(),
+                                     featItemInfoTotalSize);
 
-        histRecs[featureId].count = static_cast<uint32_t>(count);
-        histRecs[featureId].lastTime = lastTime;
+    size_t process = 0;
+    size_t printPerStep = ((featItemInfoTotalSize / 100) > 0 ? (featItemInfoTotalSize / 100) : 1);
+    for (size_t i = featItemInfoOffset; i < featItemInfoTotalSize + featItemInfoOffset; i += featItemInfoSaveNum) {
+        process = i % printPerStep;
+        if (process == 1) {
+            VLOG(GLOG_DEBUG) << StringFormat("====in SetHistRec, process : %f",  i/featItemInfoTotalSize);
+        }
+        auto featureId = transArr[i + featureIdIdxOffset];
+        auto count = transArr[i + countIdxOffset];
+        auto lastTime = transArr[i + lastTimeIdxOffset];
+
+        histRecs.emplace(featureId, FeatureItemInfo(static_cast<uint32_t>(count), lastTime));
     }
+    VLOG(GLOG_DEBUG) << StringFormat("====End SetHistRec, name: %s", embName.c_str());
 }
 
-int FeatAdmitNEvictCkpt::GetTens2ThreshSize()
+int FeatAdmitNEvictCkpt::GetTable2ThreshSize()
 {
     auto& attribute = transferData.attribute;
     auto& attribSize = transferData.attributeSize;
