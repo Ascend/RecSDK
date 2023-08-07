@@ -11,8 +11,8 @@ from mx_rec.constants.constants import MxRecMode
 from mx_rec.util.initialize import get_rank_id, get_device_id, get_rank_size, set_asc_manager, \
     is_asc_manager_initialized, get_train_steps, get_eval_steps, get_prefetch_batch_number, \
     export_table_instances, export_feature_spec, get_if_load, get_training_mode_channel_id, get_use_static, \
-    get_use_hot, get_use_dynamic_expansion, get_enable_table_merge, export_optimizer, export_dangling_table
-from mx_rec.core.asc.helper import find_dangling_table, should_skip
+    get_use_hot, get_use_dynamic_expansion, export_optimizer, export_dangling_table
+from mx_rec.core.asc.merge_table import find_dangling_table, should_skip
 
 
 def check_dangling_table():
@@ -21,7 +21,7 @@ def check_dangling_table():
     :return: list of dangling_table
     """
     dangling_table = export_dangling_table()
-    if not dangling_table and get_enable_table_merge():
+    if not dangling_table:
         dangling_table = find_dangling_table([table_instance.table_name
                                               for _, table_instance in export_table_instances().items()])
     return dangling_table
