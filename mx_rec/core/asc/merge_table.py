@@ -25,10 +25,12 @@ def check_op(table_reachable_op: Operation):
         return True
 
     if 'gradients' in table_reachable_op.name and \
-            table_reachable_op.type in ['UnsortedSegmentSum','TensorScatterUpdate']:
+            table_reachable_op.type in ['UnsortedSegmentSum', 'TensorScatterUpdate']:
         return True
 
     return False
+
+
 
 def find_dangling_table(table_names: List[str]):
     """ Find the tables which are disconenct with the forward training graph. And
@@ -79,13 +81,12 @@ def find_dangling_table(table_names: List[str]):
         for table_name in table_names:
             find_table_op(table_name, the_op, table_lookup_op, table_reachable_tensor)
 
-    logging.debug(f"*********** find tables: {table_lookup_op} ***********")
-
+    logging.debug("*********** find tables: %s ***********",table_lookup_op)
     dangling_table = []
 
     for table_name in table_names:
         if table_name not in table_lookup_op:
-            logging.debug(f"*********** created table {table_name} but never look up***********")
+            logging.debug("*********** created table %s but never look up***********",table_name)
             dangling_table.append(table_name)
             insert_dangling_table(table_name)
 
@@ -125,15 +126,17 @@ def find_dangling_table(table_names: List[str]):
             next_to_visit = spread_tensors
         return op_visited, False
 
+    def _affirm(reach_op:List[Operation]):
+        for node in reach_op:
+            if node.type not in ["IdentityN", "Reshape"]:
+                return False
+        return True
+
     for table_name, table_op in table_reachable_tensor.items():
-        reach_op,found = bfs_lookup(table_op)
+        reach_op, found = bfs_lookup(table_op)
         affirm = False
         if not found:
-            for node in reach_op:
-                if node.type not in ["IdentityN","Reshape"]:
-                    break
-                else:
-                    affirm = True
+            affirm = _affirm(reach_op)
         if affirm:
             dangling_table.append(table_name)
             insert_dangling_table(table_name)
@@ -156,6 +159,7 @@ def should_skip(table_name):
         return skip
     return False
 
+
 def is_train_task():
     bool_gauge_set = get_bool_gauge_set()
     if len(bool_gauge_set) > 0:
@@ -165,7 +169,7 @@ def is_train_task():
             return False
     else:
         op_list = tf.compat.v1.get_default_graph().get_operations()
-        for op in op_list:
-            if check_op(op):
+        for t_op in op_list:
+            if check_op(t_op):
                 return True
     return False

@@ -43,6 +43,7 @@ def create_asc_insert_func_with_acg(args_index_list, feature_counts, table_names
                                      table_names=table_names,
                                      **kwargs)
 
+
 def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_counts=None,
                               table_names=None, **kwargs):
     both_none = tgt_key_specs is None and args_index_list is None
