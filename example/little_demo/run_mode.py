@@ -12,6 +12,7 @@ from mx_rec.util.initialize import get_initializer, get_rank_id, get_rank_size, 
 from mx_rec.util.variable import get_dense_and_sparse_variable
 from mx_rec.util.tf_version_adapter import hccl_ops
 from mx_rec.constants.constants import BaseEnum
+from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
 
 
 class UseMode(BaseEnum):
@@ -85,7 +86,11 @@ class RunMode:
 
     def train(self, eval_interval: int, saving_interval: int):
         self.set_train_ops()
+
+        # In train mode, graph modify needs to be performed after compute gradients
         if self.is_modify_graph:
+            logging.info("start to modifying graph")
+            modify_graph_and_start_emb_cache(dump_graph=True)
             self.session.run(get_initializer(True))
         else:
             self.session.run(self.train_iterator.initializer)

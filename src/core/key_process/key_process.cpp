@@ -9,7 +9,6 @@
 
 #include <iostream>
 #include <shared_mutex>
-#include <regex>
 
 #include <mpi.h>
 
@@ -126,8 +125,14 @@ int KeyProcess::Start()
     int threadNum;
     for (int channel = 0; channel < MAX_CHANNEL_NUM; ++channel) {
         const char* threadNumEnv = getenv("KEY_PROCESS_THREAD_NUM");
-        if (threadNumEnv != nullptr && regex_match(threadNumEnv, regex("[0-9]+"))) {
-            threadNum = std::atoi(threadNumEnv);
+        if (threadNumEnv != nullptr) {
+            try {
+                threadNum = std::stoi(threadNumEnv);
+            } catch (const std::invalid_argument& e) {
+                LOG(WARNING) << StringFormat("error value of ENV $KEY_PROCESS_THREAD_NUM,"
+                                             " use default PROCESS_THREAD %d", threadNum);
+                threadNum = KEY_PROCESS_THREAD;
+            }
             if (threadNum > KEY_PROCESS_THREAD || threadNum < 0) {
                 throw runtime_error(StringFormat("%d is not valid", threadNum));
             }
