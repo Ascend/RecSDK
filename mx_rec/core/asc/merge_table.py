@@ -81,12 +81,12 @@ def find_dangling_table(table_names: List[str]):
         for table_name in table_names:
             find_table_op(table_name, the_op, table_lookup_op, table_reachable_tensor)
 
-    logging.debug("*********** find tables: %s ***********",table_lookup_op)
+    logging.debug("*********** find tables: %s ***********", table_lookup_op)
     dangling_table = []
 
     for table_name in table_names:
         if table_name not in table_lookup_op:
-            logging.debug("*********** created table %s but never look up***********",table_name)
+            logging.debug("*********** created table %s but never look up***********", table_name)
             dangling_table.append(table_name)
             insert_dangling_table(table_name)
 
