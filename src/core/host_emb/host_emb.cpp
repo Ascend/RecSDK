@@ -142,11 +142,14 @@ void HostEmb::UpdateEmb(const vector<size_t>& missingKeysHostPos, int channelId,
         return;
     }
     const Tensor& d2hEmb = tensors[0];
-    LOG(INFO) << StringFormat(HOSTEMB + "UpdateEmb End missingkeys len = %d", missingKeysHostPos.size());
     EASY_BLOCK("Update")
     const float* tensorPtr = d2hEmb.flat<float>().data();
     auto embeddingSize = hostEmbs[embName].hostEmbInfo.extEmbeddingSize;
     auto& embData = hostEmbs[embName].embData;
+
+    VLOG(GLOG_DEBUG) << StringFormat(HOSTEMB + "embName:%s, UpdateEmb missingKeys len = %d, embeddingSize = %d, "
+                                     "embData.size = %d", embName.c_str(), missingKeysHostPos.size(), embeddingSize,
+                                     embData.size());
 
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) \
                          shared(missingKeysHostPos, tensorPtr, embData, embeddingSize)
@@ -176,7 +179,7 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
                 return;
             }
             TimeCost tc = TimeCost();
-            LOG(INFO) << StringFormat(HOSTEMB + "UpdateEmb End missingkeys len = %d", missingKeysHostPos.size());
+
             EASY_BLOCK("Update")
             auto& embData = hostEmbs[embName].embData;
             auto embeddingSize = hostEmbs[embName].hostEmbInfo.extEmbeddingSize;
@@ -185,6 +188,13 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
                 throw runtime_error("Acl get tensor data from dataset failed.");
             }
             float* ptr = reinterpret_cast<float *>(acltdtGetDataAddrFromItem(aclData));
+
+            size_t elementSize = acltdtGetDataSizeFromItem(aclData);
+            size_t dimNum = acltdtGetDimNumFromItem(aclData);
+            VLOG(GLOG_DEBUG) << StringFormat(HOSTEMB + "embName:%s, UpdateEmb missingKeys len = %d, embeddingSize = %d,"
+                                             " embData.size = %d, RecvAcl = %d, elementSize = %d, dimNum = %d",
+                                             embName.c_str(), missingKeysHostPos.size(), embeddingSize, embData.size(),
+                                             size, elementSize, dimNum);
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) shared(ptr, embData, embeddingSize)
             for (size_t j = 0; j < missingKeysHostPos.size(); j++) {
                 auto& dst = embData[missingKeysHostPos[j]];

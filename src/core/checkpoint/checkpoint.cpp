@@ -69,7 +69,7 @@ void Checkpoint::SetDataHandler(CkptData& ckptData)
     if (!ckptData.keyOffsetMap.empty()) {
         dataHandlers.push_back(make_unique<NddrFeatMapCkpt>());
     }
-    if (!ckptData.tens2Thresh.empty() && !ckptData.histRec.timestamps.empty() &&
+    if (!ckptData.table2Thresh.empty() && !ckptData.histRec.timestamps.empty() &&
         !ckptData.histRec.historyRecords.empty()) {
         dataHandlers.push_back(make_unique<FeatAdmitNEvictCkpt>());
     }
