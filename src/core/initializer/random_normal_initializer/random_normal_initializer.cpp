@@ -6,7 +6,7 @@
  */
 
 #include <algorithm>
-#include <spdlog/spdlog.h>
+#include "utils/common.h"
 #include "random_normal_initializer.h"
 
 using namespace MxRec;
@@ -25,9 +25,8 @@ void RandomNormalInitializer::GenerateData(float* const emb, const int embSize)
         return;
     }
     if (embSize < (start + len)) {
-        spdlog::warn(
-            "InitializeInfo start {} + len {} is larger than embedding size {}.",
-            start, len, embSize);
+        LOG(WARNING) << StringFormat(
+            "InitializeInfo start %d + len %d is larger than embedding size %d.", start, len, embSize);
         return;
     }
     std::generate_n(emb + start, len, [&]() { return initParam * distribution(generator); });

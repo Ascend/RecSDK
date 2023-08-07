@@ -42,7 +42,7 @@ namespace MxRec {
             CkptDataType::EMB_INFO,
             CkptDataType::EMB_CURR_STAT,
             CkptDataType::NDDR_OFFSET,
-            CkptDataType::TENSOR_2_THRESH
+            CkptDataType::TABLE_2_THRESH
         };
         const set<CkptDataType> int64TransSet{
             CkptDataType::EMB_HASHMAP,
@@ -88,7 +88,7 @@ namespace MxRec {
 
         void LoadProcess(CkptData& ckptData);
         void GetUpperLayerLoadDir(const vector<string>& dirNames);
-        vector<string> GetTableLayerLoadDir();
+        vector<string> GetEmbedTableNames();
         void LoadDataset(const vector<string>& embNames, const vector<CkptDataType>& saveDataTypes,
             const unique_ptr<CkptDataHandler>& dataHandler, CkptData& ckptData);
         void ReadStream(CkptTransData& transData, const string& dataDir, CkptDataType dataType, uint32_t dataElmtBytes);

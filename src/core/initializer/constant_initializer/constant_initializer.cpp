@@ -6,7 +6,7 @@
  */
 
 #include "constant_initializer.h"
-#include <spdlog/spdlog.h>
+#include "utils/common.h"
 
 using namespace std;
 using namespace MxRec;
@@ -23,9 +23,8 @@ void ConstantInitializer::GenerateData(float* const emb, const int embSize)
         return;
     }
     if (embSize < (start + len)) {
-        spdlog::warn(
-            "InitializeInfo start {}  + len {} is larger than embedding size {}.",
-            start, len, embSize);
+        LOG(WARNING) << StringFormat(
+            "InitializeInfo start %d  + len %d is larger than embedding size %d.", start, len, embSize);
         return;
     }
     std::fill_n(emb + start, len, initParam * value);

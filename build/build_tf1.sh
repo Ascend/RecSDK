@@ -1,0 +1,149 @@
+#!/bin/bash
+# Copyright (c) Huawei Technologies Co., Ltd. 2021-2023. All rights reserved.
+# Description: build script.
+# Author: MindX SDK
+# Create: 2021
+# History: NA
+
+set -e
+warn() { echo >&2 -e "\033[1;31m[WARN ][Depend  ] $1\033[1;37m" ; }
+ARCH="$(uname -m)"
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+ROOT_DIR=$(dirname "${SCRIPT_DIR}")
+cd "$SCRIPT_DIR"
+
+if [ "$(uname -m)" = "x86_64" ]
+then
+  virtualenv -p "$(which python3.7)" tf1_env
+  source /opt/buildtools/tf1_env/bin/activate
+  tf1_path=$(dirname "$(dirname "$(which python3)")")/lib/python3.7/site-packages/tensorflow_core
+  deactivate tf1_env
+fi
+
+VERSION_FILE="${ROOT_DIR}"/../mindxsdk/build/conf/config.yaml
+get_version() {
+  if [ -f "$VERSION_FILE" ]; then
+    VERSION=$(sed '/.*mindxsdk:/!d;s/.*: //' "$VERSION_FILE")
+    if [[ "$VERSION" == *.[b/B]* ]] && [[ "$VERSION" != *.[RC/rc]* ]]; then
+      VERSION=${VERSION%.*}
+    fi
+  else
+    VERSION="5.0.T104"
+  fi
+}
+
+remove()
+{
+  if [ -d "$1" ]; then
+    rm -rf "$1"
+  elif [ -f "$1" ]; then
+    rm -f "$1"
+  fi
+}
+
+project_output_path="${ROOT_DIR}"/output/
+remove "${project_output_path}"
+remove "${SCRIPT_DIR}/lib"
+get_version
+export VERSION
+echo "MindX SDK mxrec: ${VERSION}" >> ./version.info
+
+pkg_dir=mindxsdk-mxrec
+remove "${pkg_dir}"
+mkdir "${pkg_dir}"
+mv version.info "${pkg_dir}"
+
+opensource_path="${ROOT_DIR}"/../opensource/opensource
+
+src_path="${ROOT_DIR}"/src
+acc_ctr_path="${ROOT_DIR}"/src/platform/AccCTR
+cp -rf "${ROOT_DIR}"/platform/securec/* "${acc_ctr_path}"/3rdparty/huawei_secure_c
+cd "${ROOT_DIR}"
+
+compile_securec()
+{
+    if [[ ! -d "${ROOT_DIR}"/platform/securec ]]; then
+        echo "securec is not exist"
+        exit 1
+    fi
+
+    if [[ ! -f "${ROOT_DIR}"/platform/securec/lib/libsecurec.so ]]; then
+        cd "${ROOT_DIR}"/platform/securec/src
+        make -j
+    fi
+}
+
+compile_so_file()
+{
+  cd "${src_path}"
+  chmod u+x build.sh
+  ./build.sh "$1" "${ROOT_DIR}"
+  cd ..
+}
+
+compile_acc_ctr_so_file()
+{
+  cd "${acc_ctr_path}"
+  chmod u+x build.sh
+  ./build.sh "release"
+}
+
+collect_so_file()
+{
+  cd "${src_path}"
+  remove "${src_path}"/libasc
+  mkdir -p "${src_path}"/libasc
+  chmod u+x libasc
+
+  cp ${acc_ctr_path}/output/ock_ctr_common/lib/* libasc
+  cp -df "${ROOT_DIR}"/output/*.so* libasc
+  cp "${ROOT_DIR}"/platform/securec/lib/libsecurec.so libasc
+}
+
+gen_wheel_file()
+{
+  cd "${ROOT_DIR}"
+  touch "${src_path}"/libasc/__init__.py
+  remove "${ROOT_DIR}"/mx_rec/libasc
+  mv "${src_path}"/libasc "${ROOT_DIR}"/mx_rec
+  cp -rf "${ROOT_DIR}"/tools "${ROOT_DIR}"/mx_rec
+  python3.7 setup.py bdist_wheel --plat-name=linux_$(arch)
+  mkdir -p "$1"
+  mv dist/mx_rec*.whl "$1"
+  remove "${ROOT_DIR}"/mx_rec/libasc
+}
+
+gen_tar_file()
+{
+  cd "${src_path}"
+  mv  "${ROOT_DIR}"/tf1_whl ../build/"${pkg_dir}"
+  mv  "${ROOT_DIR}"/tf2_whl ../build/"${pkg_dir}"
+  cp -r  "${src_path}"/../example ../build/"${pkg_dir}"
+  cp -r  "${src_path}"/../cust_op ../build/"${pkg_dir}"
+  cd ../build
+  tar -zvcf "${release_tar}" "${pkg_dir}" || {
+      warn "compression failed, packages might be broken"
+  }
+
+  mv "${release_tar}" "${SCRIPT_DIR}"/../output/
+
+}
+
+
+if [ "$(uname -m)" = "x86_64" ]
+then
+  compile_securec
+
+  echo "-----Build AccCTR -----"
+  compile_acc_ctr_so_file
+
+  echo "-----Build Start tf1 -----"
+  virtualenv -p "$(which python3.7)" tf1_env
+  echo "--tf1 env ${env}---"
+  source /opt/buildtools/tf1_env/bin/activate
+  compile_so_file "${tf1_path}"
+  collect_so_file
+  gen_wheel_file  "${ROOT_DIR}"/tf1_whl
+  deactivate tf1_env
+  echo "-----Build tf1 finished-----"
+fi

@@ -5,7 +5,6 @@
  * Create: 2022-11-15
  */
 
-#include <spdlog/spdlog.h>
 #include <iostream>
 #include <sys/mman.h>
 #include <cstring>
@@ -30,12 +29,12 @@ void Checkpoint::SaveModel(string savePath, CkptData& ckptData, RankInfo& mgmtRa
     useDynamicExpansion = mgmtRankInfo.useDynamicExpansion;
     mgmtEmbInfo = EmbInfo;
 
-    spdlog::info("Start host side saving data.");
-    spdlog::debug("==Start to create save data handler.");
+    LOG(INFO) << "Start host side saving data.";
+    VLOG(GLOG_DEBUG) << "==Start to create save data handler.";
     SetDataHandler(ckptData);
-    spdlog::debug("==Start save data process.");
+    VLOG(GLOG_DEBUG) << "==Start save data process.";
     SaveProcess(ckptData);
-    spdlog::info("Finish host side saving data.");
+    LOG(INFO) << "Finish host side saving data.";
 }
 
 void Checkpoint::LoadModel(string loadPath, CkptData& ckptData, RankInfo& mgmtRankInfo, const vector<EmbInfo>& EmbInfo,
@@ -47,12 +46,12 @@ void Checkpoint::LoadModel(string loadPath, CkptData& ckptData, RankInfo& mgmtRa
     useDynamicExpansion = mgmtRankInfo.useDynamicExpansion;
     mgmtEmbInfo = EmbInfo;
 
-    spdlog::info("Start host side loading data.");
-    spdlog::debug("==Start to create load data handler.");
+    LOG(INFO) << "Start host side loading data.";
+    VLOG(GLOG_DEBUG) << "==Start to create load data handler.";
     SetDataHandler(featureTypes);
-    spdlog::debug("==Start load data process.");
+    VLOG(GLOG_DEBUG) << "==Start load data process.";
     LoadProcess(ckptData);
-    spdlog::info("Finish host side loading data.");
+    LOG(INFO) << "Finish host side loading data.";
 }
 
 void Checkpoint::SetDataHandler(CkptData& ckptData)
@@ -70,7 +69,7 @@ void Checkpoint::SetDataHandler(CkptData& ckptData)
     if (!ckptData.keyOffsetMap.empty()) {
         dataHandlers.push_back(make_unique<NddrFeatMapCkpt>());
     }
-    if (!ckptData.tens2Thresh.empty() && !ckptData.histRec.timestamps.empty() &&
+    if (!ckptData.table2Thresh.empty() && !ckptData.histRec.timestamps.empty() &&
         !ckptData.histRec.historyRecords.empty()) {
         dataHandlers.push_back(make_unique<FeatAdmitNEvictCkpt>());
     }
@@ -137,7 +136,7 @@ void Checkpoint::MakeSaveDir(const string& dirName)
 {
     if (access(dirName.c_str(), F_OK) == -1) {
         if (mkdir(dirName.c_str(), dirMode) == -1) {
-            spdlog::debug("Unable to create directory: {}", dirName);
+            VLOG(GLOG_DEBUG) << StringFormat("Unable to create directory: %s", dirName.c_str());
         }
     }
 }
@@ -177,7 +176,7 @@ void Checkpoint::SaveDataset(const vector<string>& embNames,
             auto datasetDir { datasetPath + dirSeparator + datasetName + to_string(rankId) + dataFileType };
             auto attributeDir { datasetPath + dirSeparator + datasetName + to_string(rankId) + attribFileType };
 
-            spdlog::debug("====Start getting data from handler to: {}", datasetDir);
+            VLOG(GLOG_DEBUG) << StringFormat("====Start getting data from handler to: %s", datasetDir.c_str());
             auto transData { dataHandler->GetDataset(saveDataType, embName) };
 
             // save embedding when dynamic expansion is open
@@ -186,13 +185,13 @@ void Checkpoint::SaveDataset(const vector<string>& embNames,
                 auto embedDatasetDir { embedPath + dirSeparator + datasetName + to_string(rankId) + dataFileType };
                 auto embeddingSize = GetEmbeddingSize(embName);
                 MakeSaveDir(embedPath);
-                spdlog::debug("====Start saving embedding data to: {}", datasetDir);
+                VLOG(GLOG_DEBUG) << StringFormat("====Start saving embedding data to: %s", datasetDir.c_str());
                 WriteEmbedding(transData, embedDatasetDir, embeddingSize);
             }
 
-            spdlog::debug("====Start saving data to: {}", datasetDir);
+            VLOG(GLOG_DEBUG) << StringFormat("====Start saving data to: %s", datasetDir.c_str());
             WriteStream(transData, datasetDir, transData.datasetSize, saveDataType);
-            spdlog::debug("====Start saving data to: {}", attributeDir);
+            VLOG(GLOG_DEBUG) << StringFormat("====Start saving data to: %s", attributeDir.c_str());
             WriteStream(transData, attributeDir, transData.attributeSize, CkptDataType::ATTRIBUTE);
         }
     }
@@ -206,8 +205,8 @@ void Checkpoint::WriteEmbedding(const CkptTransData& transData, const string& da
 #ifndef GTEST
     auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
     if (res != ACL_ERROR_NONE) {
-        spdlog::error("Set device failed, device_id:{}", deviceId);
-        throw runtime_error(fmt::format("Set device failed, device_id:{}", deviceId).c_str());
+        LOG(ERROR) << StringFormat("Set device failed, device_id:%d", deviceId);
+        throw runtime_error(StringFormat("Set device failed, device_id:%d", deviceId).c_str());
     }
 
     auto &transArr = transData.int64Arr;
@@ -220,8 +219,8 @@ void Checkpoint::WriteEmbedding(const CkptTransData& transData, const string& da
                                    floatPtr, embeddingSize * sizeof(float),
                                    ACL_MEMCPY_DEVICE_TO_HOST);
         if (ret != ACL_SUCCESS) {
-            spdlog::error("aclrtMemcpy failed, ret={}", ret);
-            throw runtime_error(fmt::format("aclrtMemcpy failed, ret={}", ret).c_str());
+            LOG(ERROR) << StringFormat("aclrtMemcpy failed, ret=%d", ret);
+            throw runtime_error(StringFormat("aclrtMemcpy failed, ret=%d", ret).c_str());
         }
 
         writeFile.write((const char *) (row.data()), embeddingSize * sizeof(float));
@@ -238,8 +237,8 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir)
 #ifndef GTEST
     auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
     if (res != ACL_ERROR_NONE) {
-        spdlog::error("Set device failed, device_id:{}", deviceId);
-        throw runtime_error(fmt::format("Set device failed, device_id:{}", deviceId).c_str());
+        LOG(ERROR) << StringFormat("Set device failed, device_id:%d", deviceId);
+        throw runtime_error(StringFormat("Set device failed, device_id:%d", deviceId).c_str());
     }
 
     auto &AttributeArr = transData.attribute;
@@ -252,8 +251,8 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir)
     void *newBlock = nullptr;
     ret = aclrtMalloc(&newBlock, static_cast<int>(datasetSize), ACL_MEM_MALLOC_HUGE_FIRST);
     if (ret != ACL_SUCCESS) {
-        spdlog::error("aclrtMalloc failed, ret={}", ret);
-        throw runtime_error(fmt::format("aclrtMemcpy failed, ret={}", ret).c_str());
+        LOG(ERROR) << StringFormat("aclrtMalloc failed, ret=%d", ret);
+        throw runtime_error(StringFormat("aclrtMemcpy failed, ret=%d", ret).c_str());
     }
 
     float *floatPtr = static_cast<float *>(newBlock);
@@ -266,8 +265,8 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir)
                                    row.data(), embeddingSize * sizeof(float),
                                    ACL_MEMCPY_HOST_TO_DEVICE);
         if (ret != ACL_SUCCESS) {
-            spdlog::error("aclrtMemcpy failed, ret={}", ret);
-            throw runtime_error(fmt::format("aclrtMemcpy failed, ret={}", ret).c_str());
+            LOG(ERROR) << StringFormat("aclrtMemcpy failed, ret=%d", ret);
+            throw runtime_error(StringFormat("aclrtMemcpy failed, ret=%d", ret).c_str());
         }
 
         int64_t address = reinterpret_cast<int64_t>(floatPtr + i * embeddingSize);
@@ -283,7 +282,7 @@ void Checkpoint::WriteStream(CkptTransData& transData, const string& dataDir, si
     writeFile.open(dataDir.c_str(), std::ios::out | std::ios::trunc | std::ios::binary);
 
     if (!writeFile.is_open()) {
-        spdlog::debug("unable to open save file: {}", dataDir);
+        VLOG(GLOG_DEBUG) << StringFormat("unable to open save file: %s", dataDir.c_str());
         writeFile.close();
         return;
     }
@@ -339,7 +338,7 @@ void Checkpoint::LoadProcess(CkptData& ckptData)
         vector<CkptDataType> saveDataTypes { dataHandler->GetDataTypes() };
 
         GetUpperLayerLoadDir(dirNames);
-        embNames = GetTableLayerLoadDir();
+        embNames = GetEmbedTableNames();
 
         LoadDataset(embNames, saveDataTypes, dataHandler, ckptData);
 
@@ -356,22 +355,16 @@ void Checkpoint::GetUpperLayerLoadDir(const vector<string>& dirNames)
     }
 }
 
-vector<string> Checkpoint::GetTableLayerLoadDir()
+vector<string> Checkpoint::GetEmbedTableNames()
 {
-    vector<string> loadTableDir;
-    auto dir { opendir(innerDirPath.c_str()) };
-    struct dirent* en;
-    if (dir != nullptr) {
-        while ((en = readdir(dir)) != nullptr) {
-            if (strcmp(en->d_name, currDir.c_str()) != 0 &&
-                strcmp(en->d_name, prevDir.c_str()) != 0) {
-                loadTableDir.emplace_back(en->d_name);
-            }
+    vector<string> loadTableNames;
+    for (const auto& embInfo : mgmtEmbInfo) {
+        if (embInfo.isSave == true) {
+            loadTableNames.push_back(embInfo.name);
         }
-        closedir(dir);
     }
 
-    return loadTableDir;
+    return loadTableNames;
 }
 
 void Checkpoint::LoadDataset(const vector<string>& embNames,
@@ -380,10 +373,6 @@ void Checkpoint::LoadDataset(const vector<string>& embNames,
                              CkptData& ckptData)
 {
     for (const auto& embName : embNames) {
-        if (!CheckEmbNames(embName)) {
-            continue;
-        }
-
         auto dataDir { innerDirPath + dirSeparator + embName };
         for (const auto& saveDataType : saveDataTypes) {
             auto datasetPath { dataDir + dirSeparator + dataHandler->GetDataDirName(saveDataType) };
@@ -393,7 +382,7 @@ void Checkpoint::LoadDataset(const vector<string>& embNames,
 
             CkptTransData transData;
 
-            spdlog::debug("====Start reading data from: {}", attributeDir);
+            VLOG(GLOG_DEBUG) << StringFormat("====Start reading data from: %s", attributeDir.c_str());
             auto dataElmtBytes { dataHandler->GetDataElmtBytes(CkptDataType::ATTRIBUTE) };
             ReadStream(transData, attributeDir, CkptDataType::ATTRIBUTE, dataElmtBytes);
 
@@ -402,7 +391,7 @@ void Checkpoint::LoadDataset(const vector<string>& embNames,
                 ReadStreamForEmbData(transData, datasetDir, dataElmtBytes, ckptData, embName);
                 continue;
             } else {
-                spdlog::debug("====Start reading data from: {}", datasetDir);
+                VLOG(GLOG_DEBUG) << StringFormat("====Start reading data from: %s", datasetDir.c_str());
                 ReadStream(transData, datasetDir, saveDataType, dataElmtBytes);
             }
 
@@ -410,11 +399,13 @@ void Checkpoint::LoadDataset(const vector<string>& embNames,
             if ((saveDataType == CkptDataType::NDDR_FEATMAP) && useDynamicExpansion)  {
                 auto embedPath { dataDir + dirSeparator + "key_embedding" };
                 auto embedDatasetDir { embedPath + dirSeparator + datasetName + to_string(rankId) + dataFileType };
-                spdlog::debug("====Start loading embedding data from: {}", datasetDir);
+                VLOG(GLOG_DEBUG) << StringFormat("====Start loading embedding data from: %s", datasetDir.c_str());
                 ReadEmbedding(transData, embedDatasetDir);
             }
 
-            spdlog::debug("====Start loading data from: {} to data handler.", attributeDir);
+            VLOG(GLOG_DEBUG) << StringFormat(
+                "====Start loading data from: %s to data handler.", attributeDir.c_str()
+            );
             if ((saveDataType == CkptDataType::EMB_INFO))  {
                 dataHandler->SetDatasetForLoadEmb(saveDataType, embName, transData, ckptData);
             } else {
@@ -430,7 +421,7 @@ void Checkpoint::ReadStream(CkptTransData& transData,
                             uint32_t dataElmtBytes)
 {
     if (dataElmtBytes == 0) {
-        spdlog::warn("dataElmtBytes is 0, don't handle [/ %] operation");
+        LOG(WARNING) << "dataElmtBytes is 0, don't handle [/ %] operation";
         return ;
     }
     std::ifstream readFile;
@@ -440,7 +431,7 @@ void Checkpoint::ReadStream(CkptTransData& transData,
     readFile.seekg(0, std::ios::beg);
 
     if (datasetSize % dataElmtBytes > 0) {
-        spdlog::debug("data is missing or incomplete in load file: {}", dataDir);
+        VLOG(GLOG_DEBUG) << StringFormat("data is missing or incomplete in load file: %s", dataDir.c_str());
     }
     auto resizeSize { datasetSize / dataElmtBytes };
     SetTransDataSize(transData, resizeSize, dataType);
@@ -459,7 +450,7 @@ void Checkpoint::ReadStream(CkptTransData& transData,
             idx += readSize;
         }
     } else {
-        spdlog::debug("unable to open load file: {}", dataDir);
+        VLOG(GLOG_DEBUG) << StringFormat("unable to open load file: %s", dataDir.c_str());
     }
 
     readFile.close();
@@ -472,7 +463,7 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
                                       string embName)
 {
     if (dataElmtBytes == 0) {
-        spdlog::error("dataElmtBytes is 0, don't handle [/ %] operation");
+        LOG(ERROR) << "dataElmtBytes is 0, don't handle [/ %] operation";
         return ;
     }
 
@@ -489,13 +480,13 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
     readFile.seekg(0, std::ios::beg);
 
     if (datasetSize % embDataOuterSize > 0 || datasetSize % dataElmtBytes > 0) {
-        spdlog::error("data is missing or incomplete in load file: {}", dataDir);
+        LOG(ERROR) << StringFormat("data is missing or incomplete in load file: %s", dataDir.c_str());
         throw runtime_error("unable to load EMB_DATA cause wrong-format saved emb data");
     }
     auto onceReadByteSize { datasetSize / embDataOuterSize };
 
     if (!readFile.is_open()) {
-        spdlog::debug("unable to open load file: {}", dataDir);
+        VLOG(GLOG_DEBUG) << StringFormat("unable to open load file: %s", dataDir.c_str());
         readFile.close();
         return;
     }

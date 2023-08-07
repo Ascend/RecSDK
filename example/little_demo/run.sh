@@ -48,7 +48,9 @@ fi
 cur_path=`pwd`
 mx_rec_package_path="/usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec" # please config
 so_path=${mx_rec_package_path}/libasc
-mpi_args='-x BIND_INFO="0:12 12:48 60:48" -x SPDLOG_LEVEL=debug -bind-to none'
+# GLOG_stderrthreshold 0:INFO 1:WARNING 2:ERROR 3:FATAL
+# GLOG_v 1:DEBUG(print as INFO) 2:TRACE(print as INFO)
+mpi_args='-x BIND_INFO="0:12 12:48 60:48" -x GLOG_stderrthreshold=0 -x GLOG_logtostderr=true -x GLOG_v=0 -bind-to none'
 interface="lo"
 local_rank_size=8 # 每个节点使用的NPU卡数
 num_server=1 # 训练节点数
@@ -56,7 +58,7 @@ num_process=$((${num_server} * ${local_rank_size})) # 训练总的进程数，�
 
 export HCCL_CONNECT_TIMEOUT=1200 # HCCL集合通信 建链超时时间，取值范围[120,7200]
 export PYTHONPATH=${so_path}:$PYTHONPATH # 环境python安装路径
-export LD_PRELOAD=/usr/lib64/libgomp.so.1 # GNU OpenMP动态库路径
+#export LD_PRELOAD=/usr/lib64/libgomp.so.1 # GNU OpenMP动态库路径. 不应该使用LD_PRELOAD这种方式加载！
 export LD_LIBRARY_PATH=${so_path}:/usr/local/lib:$LD_LIBRARY_PATH
 # 集合通信文件，格式请参考昇腾官网CANN文档，“准备资源配置文件”章节。
 export JOB_ID=10086
@@ -81,7 +83,8 @@ export USE_DYNAMIC_EXPANSION=0  # 0：关闭动态扩容；1: 开启动态扩容
 export USE_MULTI_LOOKUP=1       # 0：一表一查；1：一表多查
 export USE_MODIFY_GRAPH=0       # 0：feature spec模式；1：自动改图模式
 export USE_TIMESTAMP=0          # 0：关闭特征准入淘汰；1：开启特征准入淘汰
-export UpdateEmb_V2=0           # 0: UpdateEmb同步更新；1：UpdateEmb_V2异步更新
+export UpdateEmb_V2=1           # 0: UpdateEmb同步更新；1：UpdateEmb_V2异步更新
+export USE_COMBINE_FAAE=0      # 0: separate history when faae; 1: combine history when faae
 ################# 性能调优相关 ####################
 export KEY_PROCESS_THREAD_NUM=6 #default 6, max 10
 export FAST_UNIQUE=0   #if use fast unique

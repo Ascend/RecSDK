@@ -5,7 +5,10 @@
 import threading
 
 
-class AtomicInteger():
+class AtomicInteger:
+    """
+    counter atomic increment/decrement
+    """
     def __init__(self, value=0):
         self._value = int(value)
         self._lock = threading.Lock()
@@ -19,7 +22,7 @@ class AtomicInteger():
             return self._value
 
     def decrease(self, num=1):
-        return self.inc(-num)
+        return self.increase(-num)
 
     def value(self):
         with self._lock:

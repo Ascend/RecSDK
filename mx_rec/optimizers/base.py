@@ -41,9 +41,8 @@ class CustomizedOptimizer:
         self.base_name = name
 
 
-def my_update_op(self, opt, grad):
+def custom_update_op(self, opt, grad):
     if isinstance(grad, ops.Tensor):
-        logging.debug(">>>>Enter update_op ops.Tensor")
         update_op = opt._apply_sparse(grad, self._v)  # pylint: disable=protected-access
         return update_op
     else:
@@ -51,5 +50,5 @@ def my_update_op(self, opt, grad):
 
 
 def patch_for_optimizer():
-    _TensorProcessor.update_op = my_update_op
+    _TensorProcessor.update_op = custom_update_op
     logging.debug("update_op in Class optimizer._TensorProcessor has been patched.")

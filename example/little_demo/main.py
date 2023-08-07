@@ -20,8 +20,9 @@ from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
 from mx_rec.constants.constants import MxRecMode, ASCEND_TIMESTAMP
-from mx_rec.util.initialize import get_rank_id, init, terminate_config_initializer, set_if_load
+from mx_rec.util.initialize import get_rank_id, init, terminate_config_initializer, set_if_load, get_rank_size
 from mx_rec.util.variable import get_dense_and_sparse_variable
+from mx_rec.constants.constants import ApplyGradientsStrategy
 
 tf.compat.v1.disable_eager_execution()
 
@@ -92,17 +93,21 @@ def create_feature_spec_list(use_timestamp=False):
     eviction_threshold = cfg.eviction_threshold if use_timestamp else None
     feature_spec_list = [FeatureSpec("user_ids", feat_count=cfg.user_feat_cnt, table_name="user_table",
                                      access_threshold=access_threshold,
-                                     eviction_threshold=eviction_threshold),
+                                     eviction_threshold=eviction_threshold,
+                                     faae_coefficient=1),
                          FeatureSpec("item_ids", feat_count=cfg.item_feat_cnt, table_name="item_table",
                                      access_threshold=access_threshold,
-                                     eviction_threshold=eviction_threshold)]
+                                     eviction_threshold=eviction_threshold,
+                                     faae_coefficient=4)]
     if use_multi_lookup:
         feature_spec_list.extend([FeatureSpec("user_ids", feat_count=cfg.user_feat_cnt, table_name="user_table",
                                               access_threshold=access_threshold,
-                                              eviction_threshold=eviction_threshold),
+                                              eviction_threshold=eviction_threshold,
+                                              faae_coefficient=1),
                                   FeatureSpec("item_ids", feat_count=cfg.item_feat_cnt, table_name="user_table",
                                               access_threshold=access_threshold,
-                                              eviction_threshold=eviction_threshold)])
+                                              eviction_threshold=eviction_threshold,
+                                              faae_coefficient=4)])
     if use_timestamp:
         feature_spec_list.append(FeatureSpec("timestamp", is_timestamp=True))
     return feature_spec_list
@@ -151,8 +156,10 @@ if __name__ == "__main__":
     # access_threshold unit counts; eviction_threshold unit seconds
     ACCESS_AND_EVICT = None
     if USE_TIMESTAMP:
-        config_for_user_table = dict(access_threshold=cfg.access_threshold, eviction_threshold=cfg.eviction_threshold)
-        config_for_item_table = dict(access_threshold=cfg.access_threshold, eviction_threshold=cfg.eviction_threshold)
+        config_for_user_table = dict(access_threshold=cfg.access_threshold, eviction_threshold=cfg.eviction_threshold,
+                                     faae_coefficient=1)
+        config_for_item_table = dict(access_threshold=cfg.access_threshold, eviction_threshold=cfg.eviction_threshold,
+                                     faae_coefficient=4)
         ACCESS_AND_EVICT = dict(user_table=config_for_user_table, item_table=config_for_item_table)
     train_feature_spec_list = create_feature_spec_list(use_timestamp=USE_TIMESTAMP)
     eval_feature_spec_list = create_feature_spec_list(use_timestamp=USE_TIMESTAMP)
@@ -169,7 +176,9 @@ if __name__ == "__main__":
                                   device_vocabulary_size=cfg.user_vocab_size * 10,
                                   host_vocabulary_size=0,
                                   optimizer_list=sparse_optimizer_list,
-                                  mode=mode)
+                                  mode=mode,
+                                  all2all_gradients_op="sum_gradients_and_div_by_ranksize",
+                                  apply_gradients_strategy = ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY)
 
     item_hashtable = create_table(key_dtype=tf.int64,
                                   dim=tf.TensorShape([cfg.item_hashtable_dim]),
@@ -182,10 +191,12 @@ if __name__ == "__main__":
 
     train_iterator, train_model = build_graph([user_hashtable, item_hashtable], is_train=True,
                                               feature_spec_list=train_feature_spec_list,
-                                              config_dict=ACCESS_AND_EVICT, batch_number=cfg.batch_number)
+                                              config_dict=ACCESS_AND_EVICT,
+                                              batch_number=TRAIN_STEPS * get_rank_size())
     eval_iterator, eval_model = build_graph([user_hashtable, item_hashtable], is_train=False,
                                             feature_spec_list=eval_feature_spec_list,
-                                            config_dict=ACCESS_AND_EVICT, batch_number=cfg.batch_number)
+                                            config_dict=ACCESS_AND_EVICT,
+                                            batch_number=EVAL_STEPS * get_rank_size())
     dense_variables, sparse_variables = get_dense_and_sparse_variable()
 
     run_mode = RunMode(
@@ -193,11 +204,13 @@ if __name__ == "__main__":
         TRAIN_STEPS, EVAL_STEPS
     )
 
-    if MODIFY_GRAPH_FLAG:
+    # start host pipeline
+    if not MODIFY_GRAPH_FLAG:
+        start_asc_pipeline()
+    # start modify graph
+    if MODIFY_GRAPH_FLAG and use_mode != UseMode.TRAIN:
         logging.info("start to modifying graph")
         modify_graph_and_start_emb_cache(dump_graph=True)
-    else:
-        start_asc_pipeline()
 
     if use_mode == UseMode.TRAIN:
         run_mode.train(EVAL_INTERVAL, SAVING_INTERVAL)

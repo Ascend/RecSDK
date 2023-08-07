@@ -25,7 +25,6 @@ from mx_rec.util.variable import check_and_get_config_via_var
 
 
 def create_ftrl_dense_optimizer(learning_rate, use_locking=False, name="Ftrl_t_dense", **kwargs):
-
     return CustomizedFtrlTZ(learning_rate=learning_rate, use_locking=use_locking, name=name, **kwargs)
 
 
@@ -85,7 +84,6 @@ class CustomizedFtrlTZ(optimizer.Optimizer):
                 var)
 
     def _apply_dense_shared(self, grad, var):
-        logging.debug("Enter _apply_dense_shared")
         z_var = self.get_slot(var, "z")
         n_var = self.get_slot(var, "n")
         g_var = self.get_slot(var, "g")
@@ -126,7 +124,6 @@ class CustomizedFtrlTZ(optimizer.Optimizer):
         return control_flow_ops.group(g_update, z_update, n_update, w_update, var_updata)
 
     def _apply_dense_shared_v2(self, grad, var):
-        logging.debug("Enter _apply_dense_shared_v2")
         z_var = self.get_slot(var, "z")
         n_var = self.get_slot(var, "n")
         g_var = self.get_slot(var, "g")
@@ -169,13 +166,12 @@ class CustomizedFtrlTZ(optimizer.Optimizer):
             return x_input.value()
 
     def _create_slots(self, var_list):
-        logging.debug(" Enter _create_slots")
 
         # Create slots for the first and second moments.
-        z_state_name = self._name + "/" + "z"
-        n_state_name = self._name + "/" + "n"
-        g_state_name = self._name + "/" + "g"
-        w_state_name = self._name + "/" + "w"
+        z_state_name = f"{self._name}/z"
+        n_state_name = f"{self._name}/n"
+        g_state_name = f"{self._name}/g"
+        w_state_name = f"{self._name}/w"
         for each_var in var_list:
             with ops.colocate_with(each_var):
                 z_zero = self._zeros_slot(each_var, "z", z_state_name)
@@ -187,5 +183,3 @@ class CustomizedFtrlTZ(optimizer.Optimizer):
                 insert_removing_var_list(n_zero.name)
                 insert_removing_var_list(g_zero.name)
                 insert_removing_var_list(w_zero.name)
-
-

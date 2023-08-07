@@ -48,7 +48,6 @@ class CustomizedGradientDescentByAddr(gradient_descent.GradientDescentOptimizer,
         return []
 
     def _apply_sparse(self, grad, addr):
-        logging.debug(">>>> Enter _apply_sparse SGD by addr")
         host_pipeline_ops = get_host_pipeline_ops()
         dim = grad.shape.as_list()[-1]
         if self.weight_decay is None:
@@ -63,7 +62,6 @@ class CustomizedGradientDescentByAddr(gradient_descent.GradientDescentOptimizer,
         return var_update_op
 
     def _apply_dense(self, grad, var):
-        logging.debug(">>>> Enter _apply_dense")
         raise NotImplementedError("You are using a wrong type of variable.")
 
 

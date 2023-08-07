@@ -108,5 +108,6 @@ def sess_config(dump_data=False, dump_path="./dump_output", dump_steps="0|1|2"):
         custom_op.parameter_map["dump_mode"].s = tf.compat.as_bytes("all")
 
     session_config.graph_options.rewrite_options.remapping = RewriterConfig.OFF
+    session_config.graph_options.rewrite_options.memory_optimization = RewriterConfig.OFF
 
     return session_config

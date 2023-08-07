@@ -95,15 +95,12 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
     def _apply_sparse_duplicate_indices(self, grad, var):
         #  _apply_sparse_duplicate_indices method include tf.unique and unsorted_segment_sum operations which may
         #  introduce dynamic shape problem, if encounter that, please de-annotation the method below.
-        logging.debug(f"_apply_sparse_duplicate_indices {var}")
         return self._apply_sparse(grad, var)
 
     def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
-        logging.debug(f"_resource_apply_sparse_duplicate_indices {indices}")
         return self._resource_apply_sparse(grad, handle, indices)
 
     def _apply_dense(self, grad, var):
-        logging.debug("Enter _apply_dense")
         raise NotImplementedError("You are using a wrong type of variable.")
 
     def _cast_to_base_type(self, var):
@@ -121,7 +118,6 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
         return temp
 
     def _resource_apply_sparse(self, grad, handle, indices):
-        logging.debug("Enter _resource_apply_sparse")
         return self._apply_sparse_shared(
             grad,
             handle,
@@ -129,7 +125,6 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
             self._resource_scatter_nd_add)
 
     def _apply_sparse(self, grad, var):
-        logging.debug("Enter _apply_sparse")
         return self._apply_sparse_shared(
             grad.values,
             var,
@@ -170,7 +165,6 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
             return x.value()
 
     def _create_slots(self, var_list):
-        logging.debug(" Enter _create_slots")
         first_var = min(var_list, key=lambda x: x.name)
         self._create_non_slot_variable(
             initial_value=self._beta1, name="beta1_power", colocate_with=first_var)

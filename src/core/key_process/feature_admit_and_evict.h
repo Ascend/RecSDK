@@ -17,7 +17,6 @@
 #include <mutex>
 #include <string>
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "host_emb/host_emb.h"
 #include "utils/common.h"
 #include "utils/safe_queue.h"
@@ -58,9 +57,14 @@ namespace MxRec {
 
         // 特征淘汰接口
         void FeatureEvict(map<std::string, std::vector<emb_key_t>>& evictKeyMap);
+        void ExecuteFeatureAdmit(
+            const string& tableName, int channel, keys_t& splitKey, absl::flat_hash_map<int64_t, uint32_t>& mergeKeys);
 
         // 特征淘汰的使能接口
         void SetFunctionSwitch(bool isEnableEvict);
+        // 特征准入合表统计
+        void SetCombineSwitch();
+
         bool GetFunctionSwitch() const;
         void PreProcessKeys(const std::vector<int64_t>& splitKey, std::vector<uint32_t>& keyCount,
             absl::flat_hash_map<int64_t, uint32_t>& mergeKeys);
@@ -70,10 +74,10 @@ namespace MxRec {
             const std::vector<std::string>& embNames, bool isTimestamp);
 
         // 与模型保存加载交互的接口
-        auto GetTensorThresholds() -> tensor_2_thresh_mem_t;
+        auto GetTableThresholds() -> table_2_thresh_mem_t;
         auto GetHistoryRecords() -> AdmitAndEvictData&;
 
-        void LoadTensorThresholds(tensor_2_thresh_mem_t& loadData);
+        void LoadTableThresholds(table_2_thresh_mem_t& loadData);
         void LoadHistoryRecords(AdmitAndEvictData& loadData);
 
         static std::vector<ThresholdValue> m_cfgThresholds;                        // 用于判断阈值配置的有效性
@@ -81,17 +85,18 @@ namespace MxRec {
 
         GTEST_PRIVATE :
 
-        // 解析m_tensor2Threshold
+        // 解析m_table2Threshold
         bool ParseThresholdCfg(const std::vector<ThresholdValue>& thresholdValues);
-        std::vector<std::string> GetAllNeedEvictTensorNames();
-        FeatureAdmitType FeatureAdmitHelper(const int channel, const std::string& tensorName,
+        std::vector<std::string> GetAllNeedEvictTableNames();
+        FeatureAdmitType FeatureAdmitHelper(const int channel, const std::string& tableName,
                                             const int64_t featureId, const uint32_t featureCnt);
         void FeatureEvictHelper(const std::string& embName, std::vector<emb_key_t>& evictKey);
         void ResetAllRecords();
 
         bool m_isEnableFunction { true };                                    // “特征淘汰”的使能开关
         bool m_isExit { false };                                             // 淘汰线程退出的标识
-        absl::flat_hash_map<std::string, ThresholdValue> m_tensor2Threshold; // tensor-X ---> ThresholdValue 映射
+        bool m_isCombine { false };                                          // 是否合并统计history
+        absl::flat_hash_map<std::string, ThresholdValue> m_table2Threshold; // table-X ---> ThresholdValue 映射
         AdmitAndEvictData m_recordsData;
         std::mutex m_syncMutexs;         // 特征准入与特征淘汰竞争的同步锁
         int m_recordsInitSize { DEFAULT_RECORDS_INIT_SIZE }; // m_historyRecords表初始容量

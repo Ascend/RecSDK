@@ -12,8 +12,6 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include <easy/profiler.h>
-#include <spdlog/spdlog.h>
-#include <spdlog/fmt/bundled/ranges.h>
 
 #include "utils/common.h"
 #include "key_process/feature_admit_and_evict.h"
@@ -149,7 +147,7 @@ protected:
         batch->name = embName;
         batch->timestamp = ts;
         printf("\n");
-        spdlog::info("current admit embName[{}] at time[{}] ...", embName.c_str(), ts);
+        LOG(INFO) << StringFormat("current admit embName[%s] at time[%d] ...", embName.c_str(), ts);
 
         // 校验调接口不出错
         ASSERT_EQ(faae.FeatureAdmit(channel, batch, args.keys, args.cnt) !=
@@ -172,7 +170,7 @@ protected:
         batch->name = embName;
         batch->timestamp = ts;
         printf("\n");
-        spdlog::info("current admit embName[{}] at time[{}] ...", embName.c_str(), ts);
+        LOG(INFO) << StringFormat("current admit embName[%s] at time[%d] ...", embName.c_str(), ts);
 
         // 校验调接口不出错
         faae.FeatureAdmit(channel, batch, args.keys, args.cnt);
@@ -183,48 +181,48 @@ protected:
         printf("\t############# [%s] tid[%lu] ############# begin ...\n",
                thrName.c_str(), std::hash<std::thread::id>{}(std::this_thread::get_id()));
         /*
-        {"tensorAAA", 2, 5}
+        {"tableAAA", 2, 5}
         keys1 = {11, 11, 33, 44, 11, 55, 88, 55}
         cnt1 =   1   2   1   3   1   1   4   1
         */
         InputArgs args1 = {keys1, cnt1, {}, initHistory, {}}; // 每个表的第一次记录，要用initHistory追加
-        FeatureAdmitCommonMultiThr(faae, 0, thresholds[0].tensorName, args1);
+        FeatureAdmitCommonMultiThr(faae, 0, thresholds[0].tableName, args1);
         std::this_thread::sleep_for(std::chrono::seconds(SleepTime::SLEEP_SECOND_1));
 
         /*
-        {"tensorAAA", 2, 5}
+        {"tableAAA", 2, 5}
         keys2 = {11, 12, 33, 21, 11, 12}
         cnt2 =   1   2   1   1   2   3
         */
         InputArgs args2 = {keys2, cnt2, {}, args1.expectHistory, {}};
-        FeatureAdmitCommonMultiThr(faae, 0, thresholds[0].tensorName, args2);
+        FeatureAdmitCommonMultiThr(faae, 0, thresholds[0].tableName, args2);
         std::this_thread::sleep_for(std::chrono::seconds(SleepTime::SLEEP_SECOND_2));
 
         /*
-        {"tensorBBB", 3, 7}
+        {"tableBBB", 3, 7}
         keys3 = {123, 121, 121, 212, 211}
         cnt3 =   1    2    1    1    2
         */
         InputArgs args3 = {keys3, cnt3, {}, initHistory, {}};
-        FeatureAdmitCommonMultiThr(faae, 0, thresholds[1].tensorName, args3);
+        FeatureAdmitCommonMultiThr(faae, 0, thresholds[1].tableName, args3);
         std::this_thread::sleep_for(std::chrono::seconds(SleepTime::SLEEP_SECOND_6));
 
         /*
-        {"tensorAAA", 2, 5}
+        {"tableAAA", 2, 5}
         keys4 = {11, 11, 33, 44, 55, 88, 55}
         cnt4 =   1   2   3   2   1   2   1
         */
         InputArgs args4 = {keys4, cnt4, {}, args2.expectHistory, {}};
-        FeatureAdmitCommonMultiThr(faae, 0, thresholds[0].tensorName, args4);
+        FeatureAdmitCommonMultiThr(faae, 0, thresholds[0].tableName, args4);
         std::this_thread::sleep_for(std::chrono::seconds(SleepTime::SLEEP_SECOND_2));
 
         /*
-        {"tensorBBB", 3, 7}
+        {"tableBBB", 3, 7}
         keys5 = {125, 121, 122, 212, 211}
         cnt5 =   1    2    1    3    1
         */
         InputArgs args5 = {keys5, cnt5, {}, args3.expectHistory, {}};
-        FeatureAdmitCommonMultiThr(faae, 0, thresholds[1].tensorName, args5);
+        FeatureAdmitCommonMultiThr(faae, 0, thresholds[1].tableName, args5);
 
         printf("\t############# [%s] tid[%lu] ############# end ...\n", thrName.c_str(),
                std::hash<std::thread::id>{}(std::this_thread::get_id()));
@@ -233,7 +231,7 @@ protected:
     void StartEvictThread()
     {
         evictThr = std::thread([&]() {
-            spdlog::info("Evict-thread start ...");
+            LOG(INFO) << "Evict-thread start ...";
 
             time_t currTime = 0;
             time_t lastTime = 0;
@@ -241,13 +239,13 @@ protected:
                 std::this_thread::sleep_for(std::chrono::seconds(SleepTime::SLEEP_SECOND_2));
                 currTime = time(nullptr);
                 if (currTime - lastTime >= SleepTime::SLEEP_SECOND_4) {
-                    spdlog::info("Evict-thread doing at currTime[{}] ...", currTime);
+                    LOG(INFO) << StringFormat("Evict-thread doing at currTime[%d] ...", currTime);
                     map<std::string, std::vector<emb_key_t>> evictPosMap {};
                     faae.FeatureEvict(evictPosMap);
                     lastTime = currTime;
                 }
             }
-            spdlog::info("Evict-thread exit ...");
+            LOG(INFO) << "Evict-thread exit ...";
         });
     }
     void WaitEvictThread()
@@ -265,61 +263,62 @@ protected:
     {
         faae.ResetAllRecords();
         faae.ParseThresholdCfg(thresholds);
+        faae.SetCombineSwitch();
         StartEvictThread();
 
         printf("Current test single-thread is [%lu]\n",
                std::hash<std::thread::id>{}(std::this_thread::get_id()));
         /*
-        {"tensorAAA", 2, 5}
+        {"tableAAA", 2, 5}
         keys1 = {11, 11, 33, 44, 11, 55, 88, 55}
         cnt1 =   1   2   1   3   1   1   4   1
         */
         keys_t expectRet1 = {11, 11, -1, 44, 11, 55, 88, 55};
         InputArgs args1 = {keys1, cnt1, expectRet1, initHistory, {}}; // 每个表的第一次记录，要用initHistory追加
-        FeatureAdmitCommon(faae, 0, thresholds[0].tensorName, args1);
+        FeatureAdmitCommon(faae, 0, thresholds[0].tableName, args1);
         std::this_thread::sleep_for(std::chrono::seconds(SleepTime::SLEEP_SECOND_1));
 
         /*
-        {"tensorAAA", 2, 5}
+        {"tableAAA", 2, 5}
         keys2 = {11, 12, 33, 21, 11, 12}
         cnt2 =   1   2   1   1   2   3
         */
         keys_t expectRet2 = {11, 12, 33, -1, 11, 12};
         InputArgs args2 = {keys2, cnt2, expectRet2, args1.expectHistory, {}};
-        FeatureAdmitCommon(faae, 0, thresholds[0].tensorName, args2);
+        FeatureAdmitCommon(faae, 0, thresholds[0].tableName, args2);
         std::this_thread::sleep_for(std::chrono::seconds(SleepTime::SLEEP_SECOND_2));
 
         /*
-        {"tensorBBB", 3, 7}
+        {"tableBBB", 3, 7}
         keys3 = {123, 121, 121, 212, 211}
         cnt3 =   1    2    1    1    2
         */
         keys_t expectRet3 = {-1, 121, 121, -1, -1};
         InputArgs args3 = {keys3, cnt3, expectRet3, initHistory, {}};
-        FeatureAdmitCommon(faae, 0, thresholds[1].tensorName, args3);
+        FeatureAdmitCommon(faae, 0, thresholds[1].tableName, args3);
         std::this_thread::sleep_for(std::chrono::seconds(SleepTime::SLEEP_SECOND_6));
 
         /*
-        {"tensorAAA", 2, 5}
+        {"tableAAA", 2, 5}
         keys4 = {11, 11, 33, 44, 55, 88, 55}
         cnt4 =   1   2   3   2   1   2   1
         */
         keys_t expectRet4 = {11, 11, 33, 44, 55, 88, 55};
         InputArgs args4 = {keys4, cnt4, expectRet4, args2.expectHistory, {}};
-        FeatureAdmitCommon(faae, 0, thresholds[0].tensorName, args4);
+        FeatureAdmitCommon(faae, 0, thresholds[0].tableName, args4);
         std::this_thread::sleep_for(std::chrono::seconds(SleepTime::SLEEP_SECOND_2));
 
         /*
-        {"tensorBBB", 3, 7}
+        {"tableBBB", 3, 7}
         keys5 = {125, 121, 122, 212, 211}
         cnt5 =   1    2    1    3    1
         */
         keys_t expectRet5 = {-1, 121, -1, 212, 211};
         InputArgs args5 = {keys5, cnt5, expectRet5, args3.expectHistory, {}};
-        FeatureAdmitCommon(faae, 0, thresholds[1].tensorName, args5);
+        FeatureAdmitCommon(faae, 0, thresholds[1].tableName, args5);
 
         WaitEvictThread();
-        spdlog::info("TestCase1(): single thread test over ...");
+        LOG(INFO) << "TestCase1: single thread test over ...";
     }
 
     // 进行“准入”逻辑时，若(splitKey.size() != keyCount.size())，则业务报错退出；（说明是前面all2all通信数据错误）
@@ -333,13 +332,13 @@ protected:
         vector<uint32_t> tmpCnt = {1, 2, 1, 3, 1, 1, 4};
 
         std::unique_ptr<emb_batch_t> batch = make_unique<emb_batch_t>();
-        batch->name = thresholds[0].tensorName;
+        batch->name = thresholds[0].tableName;
         batch->timestamp = time(nullptr);
 
         // 校验调接口，出错
         ASSERT_EQ(faae.FeatureAdmit(0, batch, tmpKeys, tmpCnt) ==
                   FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR, true);
-        spdlog::info("TestCase2() over ...");
+        LOG(INFO) << "TestCase2 over ...";
     }
 
     // 准入、淘汰阈值可单独配置；只配置“准入”阈值、却不配置“淘汰”阈值，功能正常；
@@ -377,6 +376,7 @@ protected:
     {
         faae.ResetAllRecords();
         faae.ParseThresholdCfg(thresholds);
+        faae.SetCombineSwitch();
         StartEvictThread();
 
         std::thread thrs[PerfConfig::keyProcessThreadNum];
@@ -398,9 +398,9 @@ protected:
         {
             /*
             如果没有淘汰功能
-            tensorAAA数据将会是 {11, 12, 21, 33, 44, 55, 88}
+            tableAAA数据将会是 {11, 12, 21, 33, 44, 55, 88}
                                10  5   1   5   5   4   6
-            tensorBBB数据将会是 {121, 122, 123, 125, 211, 212};
+            tableBBB数据将会是 {121, 122, 123, 125, 211, 212};
                                5    1    1    1    3    4
             */
             keys_t expectKeys1 = {11, 33, 44, 55, 88};      // 12,21被淘汰掉了
@@ -408,12 +408,12 @@ protected:
             keys_t expectKeys2 = {121, 122, 125, 211, 212}; // 123被淘汰掉了
             vector<uint32_t> expectCnt2 = {5, 1, 1, 3, 4};
             std::lock_guard <std::mutex> lock(faae.m_syncMutexs); // 与 evict-thread 竞争资源
-            CheckMultiThreadRet(expectKeys1, expectCnt1, thresholds[0].tensorName, PerfConfig::keyProcessThreadNum);
-            CheckMultiThreadRet(expectKeys2, expectCnt2, thresholds[1].tensorName, PerfConfig::keyProcessThreadNum);
+            CheckMultiThreadRet(expectKeys1, expectCnt1, thresholds[0].tableName, PerfConfig::keyProcessThreadNum);
+            CheckMultiThreadRet(expectKeys2, expectCnt2, thresholds[1].tableName, PerfConfig::keyProcessThreadNum);
         }
 
         WaitEvictThread();
-        spdlog::info("TestCase5(): multi thread test over ...");
+        LOG(INFO) << "TestCase5: multi thread test over ...";
     }
 
     // 同时不配置“准入、淘汰”阈值，特征准入&淘汰功能“不支持”；
@@ -423,12 +423,12 @@ protected:
         faae.ParseThresholdCfg(thresholds);
 
         std::unique_ptr<emb_batch_t> batch = make_unique<emb_batch_t>();
-        // 测试点：tensorDDD表没有配置阈值，则不支持
-        batch->name = std::string("tensorDDD");
+        // 测试点：tableDDD表没有配置阈值，则不支持
+        batch->name = std::string("tableDDD");
         batch->timestamp = time(nullptr);
 
         // 校验调接口，不支持
-        spdlog::info("TestCase6() over ...");
+        LOG(INFO) << "TestCase6 over ...";
     }
 
     bool isExitFlag { false };
@@ -445,11 +445,21 @@ protected:
     vector<uint32_t> cnt4 = {1, 2, 3, 2, 1, 2, 1};
     keys_t keys5 = {125, 121, 122, 212, 211};
     vector<uint32_t> cnt5 = {1, 2, 1, 3, 1};
-    std::vector<ThresholdValue> thresholds = {{"tensorAAA", 2, 5}, {"tensorBBB", 3, 7}, {"tensorCCC", 5, 9}};
+    std::vector<ThresholdValue> thresholds = {{"tableAAA", 2, 5, 1}, {"tableBBB", 3, 7, 1}, {"tableCCC", 5, 9, 1}};
 };
+
+void SetEnv()
+{
+    const char* name = "USE_COMBINE_FAAE";
+    const char* mode = "0";
+    int overwrite = 1;
+
+    ASSERT_EQ(setenv(name, mode, overwrite), 0);
+}
 
 TEST_F(FeatureAdmitAndEvictTest, TestAdmitAndEvict1)
 {
+    SetEnv();
     TestCase1();
 }
 TEST_F(FeatureAdmitAndEvictTest, TestAdmitAndEvict2)
@@ -466,6 +476,7 @@ TEST_F(FeatureAdmitAndEvictTest, TestAdmitAndEvict4)
 }
 TEST_F(FeatureAdmitAndEvictTest, TestAdmitAndEvict5)
 {
+    SetEnv();
     TestCase5();
 }
 TEST_F(FeatureAdmitAndEvictTest, TestAdmitAndEvict6)

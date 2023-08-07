@@ -6,14 +6,11 @@
  */
 
 #include "host_emb.h"
-#include <spdlog/spdlog.h>
-#include <spdlog/stopwatch.h>
-#include <spdlog/fmt/chrono.h>
-#include <spdlog/fmt/bundled/ranges.h>
 #include <utility>
 #include "hd_transfer/hd_transfer.h"
 #include "checkpoint/checkpoint.h"
 #include "initializer/initializer.h"
+#include "utils/time_cost.h"
 
 using namespace MxRec;
 using namespace std;
@@ -27,7 +24,7 @@ bool HostEmb::Initialize(const vector<EmbInfo>& embInfos, int seed)
         EmbDataGenerator(embInfo.initializeInfos, seed, static_cast<int>(embInfo.hostVocabSize),
                          embInfo.extEmbeddingSize, hostEmb.embData);
         hostEmbs[embInfo.name] = move(hostEmb);
-        spdlog::info(HOSTEMB + "HostEmb Initialize End");
+        LOG(INFO) << (HOSTEMB + "HostEmb Initialize End");
     }
     return true;
 }
@@ -36,7 +33,9 @@ void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, in
     int embeddingSize, vector<vector<float>> &embData)
 {
 #ifndef GTEST
-    spdlog::info(HOSTEMB + "GenerateEmbData Start, seed:{}, initializer num: {}", seed, initializeInfos.size());
+    LOG(INFO) << StringFormat(
+        HOSTEMB + "GenerateEmbData Start, seed:%d, initializer num: %d", seed, initializeInfos.size()
+    );
     embData.clear();
     embData.resize(vocabSize, vector<float>(embeddingSize));
 
@@ -45,30 +44,34 @@ void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, in
 
         switch (initializeInfo.initializerType) {
             case InitializerType::CONSTANT: {
-                spdlog::info(HOSTEMB + "GenerateEmbData ing using Constant Initializer by value {}. name {}, "
-                             "start {}, len {}.", initializeInfo.constantInitializerInfo.constantValue,
-                             initializeInfo.name, initializeInfo.start, initializeInfo.len);
+                LOG(INFO) << StringFormat(
+                    HOSTEMB + "GenerateEmbData ing using Constant Initializer by value %f. name %s, "
+                    "start %d, len %d.", initializeInfo.constantInitializerInfo.constantValue,
+                    initializeInfo.name.c_str(), initializeInfo.start, initializeInfo.len);
                 initializer = &initializeInfo.constantInitializer;
                 break;
             }
             case InitializerType::TRUNCATED_NORMAL: {
-                spdlog::info(HOSTEMB + "GenerateEmbData ing using Truncated Normal Initializer by mean: {} stddev: {}. "
-                             "name {}, start {}, len {}.", initializeInfo.normalInitializerInfo.mean,
-                             initializeInfo.normalInitializerInfo.stddev, initializeInfo.name,
-                             initializeInfo.start, initializeInfo.len);
+                LOG(INFO) << StringFormat(
+                    HOSTEMB + "GenerateEmbData ing using Truncated Normal Initializer by mean: %f stddev: %f. "
+                    "name %s, start %d, len %d.", initializeInfo.normalInitializerInfo.mean,
+                    initializeInfo.normalInitializerInfo.stddev, initializeInfo.name.c_str(),
+                    initializeInfo.start, initializeInfo.len);
                 initializer = &initializeInfo.truncatedNormalInitializer;
                 break;
             }
             case InitializerType::RANDOM_NORMAL: {
-                spdlog::info(HOSTEMB + "GenerateEmbData ing using Random Normal Initializer by mean: {} stddev: {}. "
-                             "name {}, start {}, len {}.", initializeInfo.normalInitializerInfo.mean,
-                             initializeInfo.normalInitializerInfo.stddev, initializeInfo.name,
-                             initializeInfo.start, initializeInfo.len);
+                LOG(INFO) << StringFormat(
+                    HOSTEMB + "GenerateEmbData ing using Random Normal Initializer by mean: %f stddev: %f. "
+                    "name %s, start %d, len %d.", initializeInfo.normalInitializerInfo.mean,
+                    initializeInfo.normalInitializerInfo.stddev, initializeInfo.name.c_str(),
+                    initializeInfo.start, initializeInfo.len);
                 initializer = &initializeInfo.randomNormalInitializer;
                 break;
             }
             default: {
-                spdlog::warn(HOSTEMB + "Invalid Initializer Type. Using default Constant Initializer with value 0.");
+                LOG(WARNING) << (
+                    HOSTEMB + "Invalid Initializer Type. Using default Constant Initializer with value 0.");
                 ConstantInitializer defaultInitializer(initializeInfo.start, initializeInfo.len, 0, 1);
                 initializer = &defaultInitializer;
             }
@@ -78,7 +81,7 @@ void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, in
             initializer->GenerateData(embData.at(i).data(), embeddingSize);
         }
     }
-    spdlog::info(HOSTEMB + "GenerateEmbData End, seed:{}", seed);
+    LOG(INFO) << StringFormat(HOSTEMB + "GenerateEmbData End, seed:%d", seed);
 #endif
 }
 
@@ -91,35 +94,29 @@ void HostEmb::LoadEmb(emb_mem_t& loadData)
 
 void HostEmb::Join(int channelId)
 {
-    spdlog::stopwatch sw;
+    TimeCost tc = TimeCost();
     switch (channelId) {
         case TRAIN_CHANNEL_ID:
-            spdlog::debug(
-                HOSTEMB + "start join, channelId:{}, procThreadsForTrain num:{}",
-                channelId, procThreadsForTrain.size()
-            );
+            VLOG(GLOG_DEBUG) << StringFormat(
+                HOSTEMB + "start join, channelId:%d, procThreadsForTrain num:%d",
+                channelId, procThreadsForTrain.size());
             for (auto& t: procThreadsForTrain) {
                 t->join();
             }
             procThreadsForTrain.clear();
-            spdlog::debug(
-                HOSTEMB + "end join, channelId:{}, cost:{}",
-                channelId, duration_cast<milliseconds>((sw).elapsed())
-            );
+            VLOG(GLOG_DEBUG) << StringFormat(
+                HOSTEMB + "end join, channelId:%d, cost:%dms", channelId, tc.ElapsedMS());
             break;
         case EVAL_CHANNEL_ID:
-            spdlog::debug(
-                HOSTEMB + "start join, channelId:{}, procThreadsForEval num:{}",
-                channelId, procThreadsForEval.size()
-            );
+            VLOG(GLOG_DEBUG) << StringFormat(
+                HOSTEMB + "start join, channelId:%d, procThreadsForEval num:%d",
+                channelId, procThreadsForEval.size());
             for (auto& t: procThreadsForEval) {
                 t->join();
             }
             procThreadsForEval.clear();
-            spdlog::debug(
-                HOSTEMB + "end join, channelId:{}, cost:{}",
-                channelId, duration_cast<milliseconds>((sw).elapsed())
-            );
+            VLOG(GLOG_DEBUG) << StringFormat(
+                HOSTEMB + "end join, channelId:%d, cost:%dms", channelId, tc.ElapsedMS());
             break;
         default:
             throw invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
@@ -133,23 +130,26 @@ void HostEmb::Join(int channelId)
 #ifndef GTEST
 void HostEmb::UpdateEmb(const vector<size_t>& missingKeysHostPos, int channelId, const string& embName)
 {
-    spdlog::info(HOSTEMB + "UpdateEmb, channelId:{}, embName:{}", channelId, embName);
+    LOG(INFO) << StringFormat(HOSTEMB + "UpdateEmb, channelId:%d, embName:%s", channelId, embName.c_str());
     EASY_FUNCTION(profiler::colors::Purple);
-    spdlog::stopwatch sw;
+    TimeCost tc = TimeCost();
     auto hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
     TransferChannel transferName = TransferChannel::D2H;
-    spdlog::info(HOSTEMB + "wait D2H embs, channelId:{}", channelId);
+    LOG(INFO) << StringFormat(HOSTEMB + "wait D2H embs, channelId:%d", channelId);
     const auto tensors = hdTransfer->Recv(transferName, channelId, embName);
     if (tensors.empty()) {
-        spdlog::warn(HOSTEMB + "recv empty data");
+        LOG(WARNING) << (HOSTEMB + "recv empty data");
         return;
     }
     const Tensor& d2hEmb = tensors[0];
-    spdlog::info(HOSTEMB + "UpdateEmb End missingkeys len = {}", missingKeysHostPos.size());
     EASY_BLOCK("Update")
     const float* tensorPtr = d2hEmb.flat<float>().data();
     auto embeddingSize = hostEmbs[embName].hostEmbInfo.extEmbeddingSize;
     auto& embData = hostEmbs[embName].embData;
+
+    VLOG(GLOG_DEBUG) << StringFormat(HOSTEMB + "embName:%s, UpdateEmb missingKeys len = %d, embeddingSize = %d, "
+                                     "embData.size = %d", embName.c_str(), missingKeysHostPos.size(), embeddingSize,
+                                     embData.size());
 
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) \
                          shared(missingKeysHostPos, tensorPtr, embData, embeddingSize)
@@ -160,26 +160,26 @@ void HostEmb::UpdateEmb(const vector<size_t>& missingKeysHostPos, int channelId,
             dst[j] = tensorPtr[j + embeddingSize * i];
         }
     }
-    spdlog::info(HOSTEMB + "update emb end cost: {}ms", Format2Ms(sw));
+    LOG(INFO) << StringFormat(HOSTEMB + "update emb end cost: %dms", tc.ElapsedMS());
     EASY_END_BLOCK
 }
 
 void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelId, const string& embName)
 {
-    spdlog::info(HOSTEMB + "UpdateEmbV2, channelId:{}, embName:{}", channelId, embName);
+    LOG(INFO) << StringFormat(HOSTEMB + "UpdateEmbV2, channelId:%d, embName:%s", channelId, embName.c_str());
     EASY_FUNCTION(profiler::colors::Purple)
     auto updateThread =
         [&, missingKeysHostPos, channelId, embName] {
             auto hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
             TransferChannel transferName = TransferChannel::D2H;
-            spdlog::info(HOSTEMB + "wait D2H embs, channelId:{}", channelId);
+            LOG(INFO) << StringFormat(HOSTEMB + "wait D2H embs, channelId:%d", channelId);
             auto size = hdTransfer->RecvAcl(transferName, channelId, embName);
             if (size == 0) {
-                spdlog::warn(HOSTEMB + "recv empty data");
+                LOG(WARNING) << (HOSTEMB + "recv empty data");
                 return;
             }
-            spdlog::stopwatch sw;
-            spdlog::info(HOSTEMB + "UpdateEmb End missingkeys len = {}", missingKeysHostPos.size());
+            TimeCost tc = TimeCost();
+
             EASY_BLOCK("Update")
             auto& embData = hostEmbs[embName].embData;
             auto embeddingSize = hostEmbs[embName].hostEmbInfo.extEmbeddingSize;
@@ -188,6 +188,13 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
                 throw runtime_error("Acl get tensor data from dataset failed.");
             }
             float* ptr = reinterpret_cast<float *>(acltdtGetDataAddrFromItem(aclData));
+
+            size_t elementSize = acltdtGetDataSizeFromItem(aclData);
+            size_t dimNum = acltdtGetDimNumFromItem(aclData);
+            VLOG(GLOG_DEBUG) << StringFormat(HOSTEMB + "embName:%s, UpdateEmb missingKeys len = %d, embeddingSize = %d,"
+                                             " embData.size = %d, RecvAcl = %d, elementSize = %d, dimNum = %d",
+                                             embName.c_str(), missingKeysHostPos.size(), embeddingSize, embData.size(),
+                                             size, elementSize, dimNum);
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) shared(ptr, embData, embeddingSize)
             for (size_t j = 0; j < missingKeysHostPos.size(); j++) {
                 auto& dst = embData[missingKeysHostPos[j]];
@@ -196,7 +203,7 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
                     dst[k] = ptr[k + embeddingSize * j];
                 }
             }
-            spdlog::info(HOSTEMB + "update emb end cost: {}ms", Format2Ms(sw));
+            LOG(INFO) << StringFormat(HOSTEMB + "update emb end cost: %dms", tc.ElapsedMS());
     };
 
     switch (channelId) {
@@ -219,7 +226,7 @@ void HostEmb::GetH2DEmb(const vector<size_t>& missingKeysHostPos, const string& 
                         vector<Tensor>& h2dEmbOut)
 {
     EASY_FUNCTION()
-    spdlog::stopwatch sw;
+    TimeCost tc = TimeCost();
     const auto& emb = hostEmbs[embName];
     const int embeddingSize = emb.hostEmbInfo.extEmbeddingSize;
     h2dEmbOut.emplace_back(Tensor(tensorflow::DT_FLOAT, {
@@ -235,7 +242,8 @@ void HostEmb::GetH2DEmb(const vector<size_t>& missingKeysHostPos, const string& 
             tmpData(j + i * embeddingSize) = src[j];
         }
     }
-    spdlog::info("GetH2DEmb end, missingKeys count:{} cost:{}ms", missingKeysHostPos.size(), Format2Ms(sw));
+    LOG(INFO) << StringFormat(
+        "GetH2DEmb end, missingKeys count:%d cost:%dms", missingKeysHostPos.size(), tc.ElapsedMS());
 }
 
 
@@ -252,25 +260,27 @@ void HostEmb::EmbPartGenerator(const vector<InitializeInfo> &initializeInfos, ve
 
         switch (initializeInfo.initializerType) {
             case InitializerType::CONSTANT: {
-                spdlog::info(HOSTEMB + "GenerateEmbData ing using Constant Initializer by value {}.",
-                             initializeInfo.constantInitializerInfo.constantValue);
+                LOG(INFO) << StringFormat(HOSTEMB + "GenerateEmbData ing using Constant Initializer by value %d.",
+                    initializeInfo.constantInitializerInfo.constantValue);
                 initializer = &initializeInfo.constantInitializer;
                 break;
             }
             case InitializerType::TRUNCATED_NORMAL: {
-                spdlog::info(HOSTEMB + "GenerateEmbData ing using Truncated Normal Initializer by mean: {} stddev: {}.",
-                             initializeInfo.normalInitializerInfo.mean, initializeInfo.normalInitializerInfo.stddev);
+                LOG(INFO) << StringFormat(
+                    HOSTEMB + "GenerateEmbData ing using Truncated Normal Initializer by mean: %f stddev: %f.",
+                    initializeInfo.normalInitializerInfo.mean, initializeInfo.normalInitializerInfo.stddev);
                 initializer = &initializeInfo.truncatedNormalInitializer;
                 break;
             }
             case InitializerType::RANDOM_NORMAL: {
-                spdlog::info(HOSTEMB + "GenerateEmbData ing using Random Normal Initializer by mean: {} stddev: {}.",
-                             initializeInfo.normalInitializerInfo.mean, initializeInfo.normalInitializerInfo.stddev);
+                LOG(INFO) << StringFormat(
+                    HOSTEMB + "GenerateEmbData ing using Random Normal Initializer by mean: %f stddev: %f.",
+                    initializeInfo.normalInitializerInfo.mean, initializeInfo.normalInitializerInfo.stddev);
                 initializer = &initializeInfo.randomNormalInitializer;
                 break;
             }
             default: {
-                spdlog::error(HOSTEMB + "Invalid Initializer Type. Using default Constant Initializer with value 0.");
+                LOG(ERROR) << (HOSTEMB + "Invalid Initializer Type. Using default Constant Initializer with value 0.");
                 ConstantInitializer defaultInitializer(initializeInfo.start, initializeInfo.len, 0, 1);
                 initializer = &defaultInitializer;
             }
@@ -291,6 +301,7 @@ void HostEmb::EvictInitEmb(const string& embName, const vector<size_t>& offset)
 #ifndef GTEST
     auto& hostEmb = GetEmb(embName);
     EmbPartGenerator(hostEmb.hostEmbInfo.initializeInfos, hostEmb.embData, offset);
-    spdlog::info(HOSTEMB + "ddr EvictInitEmb!host embName {}, init offsets size: {}", embName, offset.size());
+    LOG(INFO) << StringFormat(
+        HOSTEMB + "ddr EvictInitEmb!host embName %s, init offsets size: %d", embName.c_str(), offset.size());
 #endif
 }

@@ -18,18 +18,13 @@ else
     exit 1
 fi
 
-if [ ! -d "$2"/install/abseil/ ]; then
-    echo "ERROR: $2/install/abseil/ not exist"
-    exit 1
-fi
-
 cmake -DCMAKE_BUILD_TYPE=Release \
     -DTF_PATH="$1" \
     -DOMPI_PATH=/usr/local/openmpi/ \
     -DPYTHON_PATH="$python_path" \
     -DEASY_PROFILER_PATH=/ \
     -DASCEND_PATH="$ascend_path" \
-    -DABSEIL_PATH="$2"/install/abseil/ \
+    -DABSEIL_PATH="$python_path"/lib/python3.7/site-packages/tensorflow_core/ \
     -DSECUREC_PATH="$2"/platform/securec \
     -DCMAKE_INSTALL_PREFIX="$2"/output ..
 make -j

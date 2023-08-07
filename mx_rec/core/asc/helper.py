@@ -43,8 +43,6 @@ def create_asc_insert_func_with_acg(args_index_list, feature_counts, table_names
                                      table_names=table_names,
                                      **kwargs)
 
-
-
 def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_counts=None,
                               table_names=None, **kwargs):
     both_none = tgt_key_specs is None and args_index_list is None
@@ -419,7 +417,6 @@ def get_asc_read_raw_func(cfg_list):
 
         float_split_res = tf.split(raw_float_sample, [i * line_per_sample_list[0] for i in float_len_list])
 
-        logging.debug(f"############ Enter read_raw_fn ########")
 
         for name_id, name in enumerate(int_name_order):
             batch[name] = int_split_res[name_id]

@@ -5,6 +5,8 @@
 # Create: 2021
 # History: NA
 
+export GLOG_CUSTOM_PREFIX_SUPPORT=1
+
 set -e
 warn() { echo >&2 -e "\033[1;31m[WARN ][Depend  ] $1\033[1;37m" ; }
 ARCH="$(uname -m)"
@@ -12,15 +14,6 @@ SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 ROOT_DIR=$(dirname "${SCRIPT_DIR}")
 cd "$SCRIPT_DIR"
 
-if [ "$(uname -m)" = "x86_64" ]
-then
-  source /opt/buildtools/tf2_env/bin/activate
-  tf2_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/tensorflow
-  deactivate tf2_env
-  source /opt/buildtools/tf1_env/bin/activate
-  tf1_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/tensorflow_core
-  deactivate tf1_env
-fi
 
 VERSION_FILE="${ROOT_DIR}"/../mindxsdk/build/conf/config.yaml
 get_version() {
@@ -55,95 +48,10 @@ remove "${pkg_dir}"
 mkdir "${pkg_dir}"
 mv version.info "${pkg_dir}"
 
-opensource_path="${ROOT_DIR}"/../opensource/opensource
-abseil_src_path=${opensource_path}/abseil
-echo "${abseil_src_path}"
-abseil_install_path="${ROOT_DIR}"/install/abseil
-
 src_path="${ROOT_DIR}"/src
-acc_ctr_path="${ROOT_DIR}"/src/platform/AccCTR
-cp -rf "${ROOT_DIR}"/platform/securec/* "${acc_ctr_path}"/3rdparty/huawei_secure_c
 cd "${ROOT_DIR}"
 
 release_tar=Ascend-"${pkg_dir}"_"${VERSION}"_linux-"${ARCH}".tar.gz
-
-install_abseil()
-{
-    remove "${abseil_install_path}"
-    echo "${abseil_install_path}"
-    if [[ ! -d "${abseil_install_path}" ]]
-    then mkdir -p "${abseil_install_path}"
-    fi
-
-    cd "${abseil_src_path}"
-    echo "${abseil_src_path}"
-    remove CMakeCache.txt
-    cmake -DCMAKE_INSTALL_PREFIX="${abseil_install_path}" . && make -j8 && make install
-
-    echo "${project_output_path}"/abseil
-    mkdir -p "${project_output_path}"/abseil
-    if [ -d "${abseil_install_path}"/lib64/ ]; then
-        cp -rf "${abseil_install_path}"/lib64/libabsl* "${project_output_path}"/abseil
-    elif [ -d "${abseil_install_path}"/lib/ ]; then
-        cp -rf "${abseil_install_path}"/lib/libabsl* "${project_output_path}"/abseil
-    else
-        echo "${abseil_install_path}"/lib64/ not exist
-        exit 1
-    fi
-}
-
-compile_securec()
-{
-    if [[ ! -d "${ROOT_DIR}"/platform/securec ]]; then
-        echo "securec is not exist"
-        exit 1
-    fi
-
-    if [[ ! -f "${ROOT_DIR}"/platform/securec/lib/libsecurec.so ]]; then
-        cd "${ROOT_DIR}"/platform/securec/src
-        make -j
-    fi
-}
-
-compile_so_file()
-{
-  cd "${src_path}"
-  chmod u+x build.sh
-  ./build.sh "$1" "${ROOT_DIR}"
-  cd ..
-}
-
-compile_acc_ctr_so_file()
-{
-  cd "${acc_ctr_path}"
-  chmod u+x build.sh
-  ./build.sh "release"
-}
-
-collect_so_file()
-{
-  cd "${src_path}"
-  remove "${src_path}"/libasc
-  mkdir -p "${src_path}"/libasc
-  chmod u+x libasc
-
-  cp ${acc_ctr_path}/output/ock_ctr_common/lib/* libasc
-  cp -df "${ROOT_DIR}"/output/*.so* libasc
-  cp "${ROOT_DIR}"/platform/securec/lib/libsecurec.so libasc
-}
-
-gen_wheel_file()
-{
-  cd "${ROOT_DIR}"
-  touch "${src_path}"/libasc/__init__.py
-  remove "${ROOT_DIR}"/mx_rec/libasc
-  mv "${src_path}"/libasc "${ROOT_DIR}"/mx_rec
-  cp -rf "${ROOT_DIR}"/tools "${ROOT_DIR}"/mx_rec
-  python3.7 setup.py bdist_wheel --plat-name=linux_$(arch)
-  mkdir -p "$1"
-  mv dist/mx_rec*.whl "$1"
-  remove "${ROOT_DIR}"/mx_rec/libasc
-}
 
 gen_tar_file()
 {
@@ -168,36 +76,20 @@ clean()
   remove "${ROOT_DIR}"/mx_rec.egg-info
   remove "${ROOT_DIR}"/src/build
   remove "${ROOT_DIR}"/build/bdist.linux-"$(arch)"
-  remove "${ROOT_DIR}"/build/tf1_env
   remove "${ROOT_DIR}"/build/tf2_env
+  remove "${ROOT_DIR}"/build/tf1_env
   remove "${ROOT_DIR}"/build/lib
   remove "${ROOT_DIR}"/build/mindxsdk-mxrec
 }
 
+
 if [ "$(uname -m)" = "x86_64" ]
 then
-  install_abseil
-  compile_securec
-
-  echo "-----Build AccCTR -----"
-  compile_acc_ctr_so_file
-
-  echo "-----Build Start tf1 -----"
-  source /opt/buildtools/tf1_env/bin/activate
-  compile_so_file "${tf1_path}"
-  collect_so_file
-  gen_wheel_file  "${ROOT_DIR}"/tf1_whl
-  deactivate tf1_env
-
-  echo "-----Build Start tf2 -----"
-  source /opt/buildtools/tf2_env/bin/activate
-  compile_so_file "${tf2_path}"
-  collect_so_file
-  gen_wheel_file  "${ROOT_DIR}"/tf2_whl
-  deactivate tf2_env
-
   echo "-----Build gen tar -----"
+  bash ${ROOT_DIR}/build/build_tf1.sh
+  bash ${ROOT_DIR}/build/build_tf2.sh
   gen_tar_file
+  echo "-----Build gen tar finished-----"
 
   clean
   echo "-----Done-----"

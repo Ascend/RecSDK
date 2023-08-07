@@ -1,8 +1,10 @@
 cmake_minimum_required(VERSION 3.12)
 set(CMAKE_CXX_STANDARD 17)
+
 if(NOT ABSEIL_PATH)
-    set(ABSEIL_PATH ${PROJECT_SOURCE_DIR}/../install/abseil/)
+    set(ABSEIL_PATH ${PYTHON_PATH}/lib/python3.7/site-packages/tensorflow_core/)
 endif()
+
 message("ABSEIL_PATH: " ${ABSEIL_PATH})
 
 if(NOT SECUREC_PATH)
@@ -12,7 +14,12 @@ message("SECUREC_PATH: " ${SECUREC_PATH})
 
 include_directories(${ABSEIL_PATH}/include)
 link_directories(${ABSEIL_PATH}/lib)
-include_directories(${PYTHON_PATH}/lib/python3.7/site-packages/tensorflow_core/include)
+
+if (${TF_PATH} MATCHES "tensorflow_core")
+    include_directories(${PYTHON_PATH}/lib/python3.7/site-packages/tensorflow_core/include)
+else()
+    include_directories(${PYTHON_PATH}/lib/python3.7/site-packages/tensorflow/include)
+endif()
 
 file(GLOB_RECURSE MXREC_SRC ./*.cpp)
 add_library(ASC SHARED ${MXREC_SRC})
@@ -39,8 +46,8 @@ target_link_libraries(ASC PUBLIC
         -l:_tf_adapter.so
         OpenMP::OpenMP_CXX ${MPI_CXX_LIBRARIES}
         ${PYTHON_LIBRARY}
-        PRIVATE spdlog::spdlog
-        )
+        glog::glog
+)
 find_package(easy_profiler PATHS ${EASY_PROFILER_PATH} NO_DEFAULT_PATH)
 if (easy_profiler_FOUND)
     message("==link with easy_profiler==")

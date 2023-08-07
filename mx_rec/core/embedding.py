@@ -4,7 +4,7 @@
 
 import logging
 import math
-import time
+import re
 from collections import defaultdict
 from typing import Optional
 
@@ -12,7 +12,8 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops.init_ops import Initializer
+from tensorflow.python.ops.init_ops import Initializer as InitializerV1
+from tensorflow.python.ops.init_ops_v2 import Initializer as InitializerV2
 
 from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
 from mx_rec.core.asc.feature_spec import FeatureSpec, get_feature_spec, set_temporary_feature_spec_attribute
@@ -20,33 +21,17 @@ from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_HOT_POS, \
     ASCEND_SPARSE_LOOKUP_ID_OFFSET, ASCEND_SPARSE_LOOKUP_RESTORE_VECTOR, MxRecMode, \
     ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_ALL2ALL_MATRIX, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, \
-    DEFAULT_EVICT_TIME_INTERVAL, TRAIN_CHANNEL_ID, MULTI_LOOKUP_TIMES, ASCEND_TABLE_NAME_MUST_CONTAIN, MAX_INT32, \
-    ASCEND_SPARSE_LOOKUP_LOOKUP_RESULT
+    MULTI_LOOKUP_TIMES, ASCEND_TABLE_NAME_MUST_CONTAIN, MAX_INT32, \
+    ASCEND_SPARSE_LOOKUP_LOOKUP_RESULT, All2allGradientsOp, ApplyGradientsStrategy
 from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is_asc_frozen, get_customized_ops, \
     insert_table_instance, get_training_mode_channel_id, get_use_static, get_name_to_var_dict, \
-    clear_channel, trigger_evict, get_table_instance_by_name, get_use_hot, get_device_id, export_feature_spec, \
-    ConfigInitializer, get_ascend_global_hashtable_collection, get_host_pipeline_ops, get_use_dynamic_expansion, \
+    clear_channel, get_use_hot, get_device_id, ConfigInitializer, get_ascend_global_hashtable_collection, \
+    get_host_pipeline_ops, get_use_dynamic_expansion, \
     set_modify_graph, insert_removing_var_list
-from mx_rec.util.tf_version_adapter import npu_ops
 from mx_rec.validator.validator import ClassValidator, StringValidator
 
 
 def create_table(**kwargs):
-    key_dtype = kwargs.get("key_dtype")
-    dim = kwargs.get("dim")
-    name = kwargs.get("name")
-    emb_initializer = kwargs.get("emb_initializer")
-    device_vocabulary_size = kwargs.get("device_vocabulary_size", 1)
-    host_vocabulary_size = kwargs.get("host_vocabulary_size", 0)
-    optimizer_list = kwargs.get("optimizer_list")
-    mode = kwargs.get("mode", MxRecMode.ASC)
-    value_dtype = kwargs.get("value_dtype", tf.float32)
-    shard_num = kwargs.get("shard_num", 1)
-    fusion_optimizer_var = kwargs.get("fusion_optimizer_var", True)
-    hashtable_threshold = kwargs.get("hashtable_threshold", 0)
-    is_save = kwargs.get("is_save", True)
-    init_param = kwargs.get("init_param", 1.0)
-
     """
     Args:
         key_dtype: data type for feature id
@@ -64,14 +49,36 @@ def create_table(**kwargs):
         hashtable_threshold: choose to implement based on hash table or linear layer
         is_save: switch whether to store sparse table data.
         init_param: embedding init param-coefficient
+        all2all_gradients_op: sum_grads (default) or sum_gradients_and_div_by_ranksize.
+        apply_gradients_strategy: direct_apply (default) or sum_same_id_gradients_and_apply.
+
     """
+    key_dtype = kwargs.get("key_dtype")
+    dim = kwargs.get("dim")
+    name = kwargs.get("name")
+    emb_initializer = kwargs.get("emb_initializer")
+    device_vocabulary_size = kwargs.get("device_vocabulary_size", 1)
+    host_vocabulary_size = kwargs.get("host_vocabulary_size", 0)
+    optimizer_list = kwargs.get("optimizer_list")
+    mode = kwargs.get("mode", MxRecMode.ASC)
+    value_dtype = kwargs.get("value_dtype", tf.float32)
+    shard_num = kwargs.get("shard_num", 1)
+    fusion_optimizer_var = kwargs.get("fusion_optimizer_var", True)
+    hashtable_threshold = kwargs.get("hashtable_threshold", 0)
+    is_save = kwargs.get("is_save", True)
+    init_param = kwargs.get("init_param", 1.0)
+    all2all_gradients_op = kwargs.get("all2all_gradients_op", All2allGradientsOp.SUM_GRADIENTS)
+    apply_gradients_strategy = kwargs.get("apply_gradients_strategy", ApplyGradientsStrategy.DIRECT_APPLY)
+
+    name = fix_invalid_table_name(name)
     check_create_table_params(key_dtype, dim, name, emb_initializer)
 
     config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
                   device_vocabulary_size=device_vocabulary_size, host_vocabulary_size=host_vocabulary_size,
                   optimizer_list=optimizer_list, mode=mode, value_dtype=value_dtype, shard_num=shard_num,
                   fusion_optimizer_var=fusion_optimizer_var, hashtable_threshold=hashtable_threshold,
-                  init_param=init_param, is_save=is_save)
+                  init_param=init_param, is_save=is_save, all2all_gradients_op=all2all_gradients_op,
+                  apply_gradients_strategy=apply_gradients_strategy)
     embedding = SparseEmbedding(config)
     return embedding
 
@@ -171,6 +178,9 @@ class SparseEmbedding:
         self.lookup_name_list = []
         self.modify_graph = False
         self.init_param = config.get("init_param")
+        self.all2all_gradients_op = All2allGradientsOp.mapping(config.get("all2all_gradients_op"))
+        self.apply_gradients_strategy = ApplyGradientsStrategy.mapping(
+            config.get("apply_gradients_strategy"))
 
         self.set_slice_vocab_size()
         self.set_emb_size()
@@ -231,6 +241,42 @@ class SparseEmbedding:
         named_slot_key = slot_info.get("named_slot_key")
 
         optimizer.insert_slot(slot, named_slot_key, slot_name)
+
+    @staticmethod
+    def _get_own_emb(emb, all2all_args, emb_size, use_static):
+        """
+        obtain embedding of source data
+        :param emb: origin embeddding
+        :param all2all_args: dynamic shape condition parameters
+        :param emb_size: size of embedding table
+        :param use_static: enable static shape training or not
+        :return: local embedding after all2all
+        """
+        from mx_rec.util.tf_version_adapter import hccl_ops
+        rank_size = get_rank_size()
+        rank_id = get_rank_id()
+
+        src_emb = emb
+
+        reshape_info = [all2all_args * rank_size, emb_size] if use_static else [-1, emb_size]
+
+        if rank_size == 1 and use_static:
+            return tf.reshape(src_emb, reshape_info)
+
+        if use_static:
+            emb_send_cnt = tf.constant([all2all_args * emb_size] * rank_size, dtype=tf.int64)
+            emb_send_offset = tf.constant([all2all_args * emb_size * i for i in range(rank_size)], dtype=tf.int64)
+            src_emb = hccl_ops.all_to_all_v(send_data=emb,
+                                            send_counts=emb_send_cnt,
+                                            send_displacements=emb_send_offset,
+                                            recv_counts=emb_send_cnt,
+                                            recv_displacements=emb_send_offset)
+        else:
+            src_emb = hccl_ops.all_to_all_v_c(send_data=emb,
+                                              send_count_matrix=all2all_args,
+                                              rank=rank_id)
+
+        return tf.reshape(src_emb, reshape_info)
 
     def check_optimizer_instance(self):
         for optimizer_instance in self._optimizer_instance_list:
@@ -472,7 +518,7 @@ class SparseEmbedding:
             if not use_static:
                 # In the case of multiple lookups of a table, the all2all_matrix does not run the 'getnext' op
                 # to obtain the actual value. Instead, the initial value is 1. So it needs to be multiplied by
-                # 'self.scalar_emb_size' to ensure the correctness of the 'Reshape' op in the get_own_emb function.
+                # 'self.scalar_emb_size' to ensure the correctness of the 'Reshape' op in the _get_own_emb function.
                 all2all_matrix = tf.ones(shape=[rank_size, rank_size],
                                          dtype=tf.int64, name="all2all_matrix") * self.scalar_emb_size
                 all2all_matrix = tf.identity(all2all_matrix, name=ASCAnchorAttr.ALL2ALL_MATRIX.value)
@@ -498,7 +544,7 @@ class SparseEmbedding:
             else:
                 local_emb = tf.identity(table, name="identity_local_emb")
             all2all_args = send_count if use_static else all2all_matrix
-            unique_embeddings = get_own_emb(local_emb, all2all_args, self.scalar_emb_size, use_static)
+            unique_embeddings = self._get_own_emb(local_emb, all2all_args, self.scalar_emb_size, use_static)
 
             if hot_pos is not None:
                 unique_embeddings = tf.concat([tf.gather(unique_embeddings, hot_pos, name="hot_pos"),
@@ -519,20 +565,32 @@ class SparseEmbedding:
 
             def grad(lookup_diff):
                 embedding_diff = tf.reshape(lookup_diff, [-1, self.scalar_emb_size])
-                logging.debug(f"bp rank size: {rank_size}")
-                unique_embeddings_shape = unique_embeddings.shape.as_list() if use_static \
-                    else tf.shape(unique_embeddings)
+                unique_embed_shape = unique_embeddings.shape.as_list() if use_static else tf.shape(unique_embeddings)
                 unique_grads = tf.compat.v1.unsorted_segment_sum(embedding_diff, restore_vector,
-                                                                 unique_embeddings_shape[0])
+                                                                 unique_embed_shape[0])
                 bp_all2all_args = all2all_args if use_static else tf.transpose(all2all_args)
                 if hot_pos is not None:
                     hot, cold = tf.split(unique_grads, [tf.shape(hot_pos)[0],
                                                         tf.shape(unique_grads)[0] - tf.shape(hot_pos)[0]], axis=0)
                     unique_grads = tf.tensor_scatter_nd_update(cold, tf.expand_dims(hot_pos, 1), hot)
-                local_grad = get_own_emb(unique_grads, bp_all2all_args, self.scalar_emb_size, use_static)
+                local_grad = self._get_own_emb(unique_grads, bp_all2all_args, self.scalar_emb_size, use_static)
+                if self.all2all_gradients_op == All2allGradientsOp.SUM_GRADIENTS_AND_DIV_BY_RANKSIZE:
+                    try:
+                        local_grad = local_grad / get_rank_size()
+                    except ZeroDivisionError as exp:
+                        raise ZeroDivisionError("Rank size cannot be zero.") from exp
 
                 if use_dynamic_expansion:
                     return local_grad, feat_ids
+
+                if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
+                    unique_id_offsets, unique_id_offsets_position = array_ops.unique(id_offsets)
+                    unique_local_grad = tf.compat.v1.unsorted_segment_sum(local_grad,
+                                                                          unique_id_offsets_position,
+                                                                          array_ops.shape(unique_id_offsets)[0])
+                    return ops.IndexedSlices(values=unique_local_grad, indices=unique_id_offsets,
+                                             dense_shape=tf.shape(table)), feat_ids
+
                 return ops.IndexedSlices(values=local_grad, indices=id_offsets, dense_shape=tf.shape(table)), feat_ids
 
             return lookup_result, grad
@@ -703,7 +761,7 @@ class SparseEmbedding:
                 local_embeddings = tf.identity(table, name="identity_local_emb")
 
             all2all_args = send_count if use_static else all2all_matrix
-            unique_embeddings = get_own_emb(local_embeddings, all2all_args, self.scalar_emb_size, use_static)
+            unique_embeddings = self._get_own_emb(local_embeddings, all2all_args, self.scalar_emb_size, use_static)
 
             if hot_pos is not None:
                 unique_embeddings = tf.concat([tf.gather(unique_embeddings, hot_pos, name="hot_pos"),
@@ -728,7 +786,6 @@ class SparseEmbedding:
 
             def grad(lookup_diff):
                 embedding_diff = tf.reshape(lookup_diff, [-1, self.scalar_emb_size])
-                logging.debug(f"bp rank size: {rank_size}")
                 unique_grads = tf.compat.v1.unsorted_segment_sum(embedding_diff,
                                                                  restore_vector,
                                                                  unique_embeddings_shape[0])
@@ -737,12 +794,27 @@ class SparseEmbedding:
                     hot, cold = tf.split(unique_grads, [tf.shape(hot_pos)[0],
                                                         tf.shape(unique_grads)[0] - tf.shape(hot_pos)[0]], axis=0)
                     unique_grads = tf.tensor_scatter_nd_update(cold, tf.expand_dims(hot_pos, 1), hot)
-                local_grad = get_own_emb(unique_grads, bp_all2all_args, self.scalar_emb_size, use_static)
+                local_grad = self._get_own_emb(unique_grads, bp_all2all_args, self.scalar_emb_size, use_static)
+                if self.all2all_gradients_op == All2allGradientsOp.SUM_GRADIENTS_AND_DIV_BY_RANKSIZE:
+                    try:
+                        local_grad = local_grad / get_rank_size()
+                    except ZeroDivisionError as exp:
+                        raise ZeroDivisionError("Rank size cannot be zero.") from exp
+
                 if use_dynamic_expansion:
                     update_grad = local_grad
                 else:
-                    update_grad = ops.IndexedSlices(values=local_grad, indices=id_offsets,
-                                                    dense_shape=tf.shape(table))
+                    if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
+                        unique_id_offsets, unique_id_offsets_position = array_ops.unique(id_offsets)
+                        unique_local_grad = tf.compat.v1.unsorted_segment_sum(local_grad,
+                                                                              unique_id_offsets_position,
+                                                                              array_ops.shape(unique_id_offsets)[0])
+                        update_grad = ops.IndexedSlices(values=unique_local_grad, indices=unique_id_offsets,
+                                                        dense_shape=tf.shape(table))
+                    else:
+
+                        update_grad = ops.IndexedSlices(values=local_grad, indices=id_offsets,
+                                                        dense_shape=tf.shape(table))
                 return update_grad
 
             return lookup_result, grad
@@ -798,168 +870,6 @@ class SparseEmbedding:
                 self.set_optimizer_slot(slot_info)
 
 
-def get_own_ids(unique_ids, origin_id_lens, send_cnt, self):
-    from mx_rec.util.tf_version_adapter import hccl_ops
-    rank_size = get_rank_size()
-    if rank_size > 1:
-        ids_send_cnt = tf.constant([send_cnt] * rank_size, dtype=tf.int64)
-        ids_send_offset = tf.constant([send_cnt * i for i in range(rank_size)], dtype=tf.int64)
-        own_ids = hccl_ops.all_to_all_v(send_data=unique_ids,
-                                        send_counts=ids_send_cnt,
-                                        send_displacements=ids_send_offset,
-                                        recv_counts=ids_send_cnt,
-                                        recv_displacements=ids_send_offset)
-
-        lens_sc = tf.constant([1] * rank_size, dtype=tf.int64)
-        lens_sd = tf.constant([i for i in range(rank_size)], dtype=tf.int64)
-        local_id_lens = hccl_ops.all_to_all_v(send_data=origin_id_lens,
-                                              send_counts=lens_sc,
-                                              send_displacements=lens_sd,
-                                              recv_counts=lens_sc,
-                                              recv_displacements=lens_sd)
-
-    else:
-        own_ids = unique_ids
-        local_id_lens = origin_id_lens
-
-    def feature_mapping():
-        self.set_using_feature_mapping()
-        id_offsets = SparseEmbedding.customized_ops.feature_mapping(own_ids, table_name=self.table_name)
-        return id_offsets
-
-    id_offsets = feature_mapping()
-    id_offsets.set_shape([send_cnt * rank_size])
-
-    return id_offsets, local_id_lens
-
-
-def get_own_emb(emb, all2all_args, emb_size, use_static):
-    '''
-    obtain embedding of source data
-    '''
-    from mx_rec.util.tf_version_adapter import hccl_ops
-    rank_size = get_rank_size()
-    rank_id = get_rank_id()
-
-    src_emb = emb
-
-    reshape_info = [all2all_args * rank_size, emb_size] if use_static else [-1, emb_size]
-
-    if rank_size == 1 and use_static:
-        return tf.reshape(src_emb, reshape_info)
-
-    if use_static:
-        emb_send_cnt = tf.constant([all2all_args * emb_size] * rank_size, dtype=tf.int64)
-        emb_send_offset = tf.constant([all2all_args * emb_size * i for i in range(rank_size)], dtype=tf.int64)
-        src_emb = hccl_ops.all_to_all_v(send_data=emb,
-                                        send_counts=emb_send_cnt,
-                                        send_displacements=emb_send_offset,
-                                        recv_counts=emb_send_cnt,
-                                        recv_displacements=emb_send_offset)
-    else:
-        src_emb = hccl_ops.all_to_all_v_c(send_data=emb,
-                                          send_count_matrix=all2all_args,
-                                          rank=rank_id)
-
-    return tf.reshape(src_emb, reshape_info)
-
-
-class _EvictHook(tf.compat.v1.train.SessionRunHook):
-    """Sets evict based on global step or time."""
-
-    def __init__(self,
-                 evict_enable=False,
-                 evict_time_interval=DEFAULT_EVICT_TIME_INTERVAL,
-                 evict_step_interval=None):
-        self._evict_enable = evict_enable
-        self._evict_time_interval = evict_time_interval
-        self._evict_step_interval = evict_step_interval
-        self._hash_table_instance = dict()
-        self._start_time = time.time()
-        self._global_step = 0
-        self._evict_op = dict()
-        self._global_step_tensor = None
-
-        self.check_evict_init_params()
-        logging.info(f"_EvictHook - > evict_time_interval: {self._evict_time_interval}, "
-                     f"evict_step_interval: {self._evict_step_interval}")
-
-    def begin(self):
-        self._global_step_tensor = tf.compat.v1.train.get_or_create_global_step()
-        if self._global_step_tensor is None:
-            raise RuntimeError("Global step should be created to use _EvictHook.")
-        self.check_name_and_get_hashtable()
-        for name, instance in self._hash_table_instance.items():
-            scope_name = "{0}//{1}".format(instance.table_name, "evict")
-            with tf.compat.v1.variable_scope(scope_name):
-                logging.debug(f'Channel {instance.table_name}_evict_{TRAIN_CHANNEL_ID} was built for op '
-                              f'getnext')
-
-                use_static = get_use_static()
-                if use_static:
-                    evict_pos = npu_ops.gen_npu_ops.get_next(
-                        output_types=[tf.int32],
-                        output_shapes=[instance.slice_device_vocabulary_size],
-                        channel_name=f'{instance.table_name}_evict_{TRAIN_CHANNEL_ID}')[0]
-                    initialized_tensor = instance.emb_initializer(
-                        instance.slice_device_vocabulary_size + instance.embedding_size) * instance.init_param
-                else:
-                    evict_pos = npu_ops.gen_npu_ops.get_next(
-                        output_types=[tf.int32],
-                        output_shapes=[None],
-                        channel_name=f'{instance.table_name}_evict_{TRAIN_CHANNEL_ID}')[0]
-
-                    initialized_tensor = instance.emb_initializer(
-                        tf.shape(evict_pos)[0] + instance.embedding_size) * instance.init_param
-
-                logging.debug(f'evict_pos output shape {evict_pos}, and slice_device_vocabulary_size '
-                              f'{instance.slice_device_vocabulary_size}, '
-                              f'initialized_tensor shape: {initialized_tensor}')
-
-                nd_evict_pos = tf.expand_dims(evict_pos, 1)
-                self._evict_op[name] = tf.compat.v1.scatter_nd_update(instance.variable, nd_evict_pos,
-                                                                      initialized_tensor)
-
-    def after_create_session(self, session, coord):
-        self._global_step = session.run(self._global_step_tensor)
-        logging.debug(f"_EvictHook - > after_create_session, step: {self._global_step}")
-
-    def after_run(self, run_context, run_values):
-        if not self._evict_enable:
-            return
-
-        self._global_step = run_context.session.run(self._global_step_tensor)
-        cur_time = time.time()
-        if cur_time - self._start_time > self._evict_time_interval or \
-                (self._evict_step_interval is not None and self._global_step % self._evict_step_interval == 0):
-            logging.info(f"_EvictHook - > evict switch on!!! after_run step: {self._global_step}")
-            if not trigger_evict():
-                return
-            self._start_time = cur_time
-            for name in self._hash_table_instance.keys():
-                run_context.session.run(self._evict_op.get(name))
-
-    def check_name_and_get_hashtable(self):
-        for _, feature_spec in export_feature_spec().items():
-            if feature_spec.eviction_threshold:
-                logging.debug(f"_EvictHook - > check and get instance: table_names {feature_spec.table_name}")
-                self._hash_table_instance[feature_spec.table_name] = get_table_instance_by_name(feature_spec.table_name)
-
-    def check_evict_init_params(self):
-        def check_type(arg, n_type, param_name):
-            if not isinstance(arg, n_type):
-                raise TypeError(f"{param_name} should be type '{n_type}', whose value is {arg} with type "
-                                f"'{type(arg)}' in fact.")
-            if type(arg) == int and arg < 1:
-                raise ValueError(f"{param_name} should be bigger than 0, whose value is {arg} in fact")
-
-        check_type(self._evict_enable, bool, "evict_enable")
-        if self._evict_time_interval is not None:
-            check_type(self._evict_time_interval, int, "evict_time_interval")
-        if self._evict_step_interval is not None:
-            check_type(self._evict_step_interval, int, "evict_time_interval")
-
-
 def set_zero_for_non_valid_key(id_offsets: Optional[tf.Tensor], embeddings: Optional[tf.Tensor],
                                access_threshold: bool):
     """
@@ -971,9 +881,13 @@ def set_zero_for_non_valid_key(id_offsets: Optional[tf.Tensor], embeddings: Opti
     """
     if access_threshold is None or access_threshold <= 0:
         return embeddings
-    id_offsets_expand = tf.expand_dims(id_offsets >= 0, axis=-1)
+
     if tf.__version__.startswith("1"):
-        id_offsets_expand = tf.repeat(id_offsets_expand, [tf.shape(embeddings)[-1]], axis=-1)
+        id_offsets_expand = tf.math.greater_equal(id_offsets, 0)
+        embeddings = tf.where(id_offsets_expand, embeddings, tf.zeros_like(embeddings))
+        return embeddings
+
+    id_offsets_expand = tf.compat.v1.expand_dims(id_offsets >= 0, axis=-1)
     embeddings = tf.where(id_offsets_expand, embeddings, tf.zeros_like(embeddings))
     return embeddings
 
@@ -995,11 +909,26 @@ def check_create_table_params(key_dtype, dim, name, emb_initializer):
     dim_validator.check_isinstance()
     dim_validator.check()
     # check name
-    name_validator = StringValidator(name)
+    name_validator = StringValidator(value=name, max_len=255)
     name_validator.check_string_length()
     name_validator.check_whitelist()
     name_validator.check()
     # check emb_initializer
-    emb_initializer_validator = ClassValidator(value=emb_initializer, classes=Initializer)
+    emb_initializer_validator = ClassValidator(value=emb_initializer, classes=(InitializerV1, InitializerV2))
     emb_initializer_validator.check_isinstance()
     emb_initializer_validator.check()
+
+
+def fix_invalid_table_name(name):
+    """
+    校验table name字符串中是否含有特殊字符，如有，替换为下划线
+    :param name: table name
+    :return : the fixed table name
+    """
+    if re.match("^[0-9A-Za-z_]+$", name):
+        return name
+    fix_name = re.sub(r'\W+', '_', name)
+    logging.warning(f"The table name {name} contains invalid characters."
+                    f"The system automatically replaces invalid characters with underscores (_). "
+                    f"The table name was changed to {fix_name}")
+    return fix_name

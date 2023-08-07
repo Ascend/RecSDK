@@ -6,9 +6,6 @@
  */
 #include "hybrid_mgmt.h"
 
-#include <spdlog/spdlog.h>
-#include <spdlog/fmt/bundled/ranges.h>
-
 #include "checkpoint/checkpoint.h"
 #include "utils/time_cost.h"
 #include "utils/common.h"
@@ -19,42 +16,47 @@ using namespace std;
 bool HybridMgmt::InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
                                 const vector<ThresholdValue>& thresholdValues, int seed)
 {
+#ifndef GTEST
     if (getenv("KEY_PROCESS_THREAD_NUM") != nullptr) {
         int num = std::atoi(getenv("KEY_PROCESS_THREAD_NUM"));
         if (num < 1 || num > MAX_KEY_PROCESS_THREAD) {
-            spdlog::error("[HybridMgmt::InitKeyProcess] KEY_PROCESS_THREAD_NUM:{}, should in range [1, {}]",
-                          num, MAX_KEY_PROCESS_THREAD);
+            LOG(ERROR) << StringFormat(
+                "[HybridMgmt::InitKeyProcess] KEY_PROCESS_THREAD_NUM:%d, should in range [1, %d]",
+                num, MAX_KEY_PROCESS_THREAD);
             return false;
         }
         PerfConfig::keyProcessThreadNum = num;
-        spdlog::info("config KEY_PROCESS_THREAD_NUM:{}", num);
+        LOG(INFO) << StringFormat("config KEY_PROCESS_THREAD_NUM:%d", num);
     }
 
     if (getenv("MAX_UNIQUE_THREAD_NUM") != nullptr) {
         int num = std::atoi(getenv("MAX_UNIQUE_THREAD_NUM"));
         if (num < 1 || num > DEFAULT_MAX_UNIQUE_THREAD_NUM) {
-            spdlog::error("[HybridMgmt::InitKeyProcess] MAX_UNIQUE_THREAD_NUM:{}, should in range [1, {}]",
-                          num, DEFAULT_MAX_UNIQUE_THREAD_NUM);
+            LOG(ERROR) << StringFormat(
+                "[HybridMgmt::InitKeyProcess] MAX_UNIQUE_THREAD_NUM:%d, should in range [1, %d]",
+                num, DEFAULT_MAX_UNIQUE_THREAD_NUM);
             return false;
         }
         PerfConfig::maxUniqueThreadNum = num;
-        spdlog::info("config MAX_UNIQUE_THREAD_NUM:{}", num);
+        LOG(INFO) << StringFormat("config MAX_UNIQUE_THREAD_NUM:%d", num);
     }
 
     if (getenv("FAST_UNIQUE") != nullptr) {
         bool isFastUnique = std::atoi(getenv("FAST_UNIQUE"));
         PerfConfig::fastUnique = isFastUnique;
-        spdlog::info("config FAST_UNIQUE:{}", PerfConfig::fastUnique);
+        LOG(INFO) << StringFormat("config FAST_UNIQUE:%d", PerfConfig::fastUnique);
     }
 
     preprocess = Singleton<KeyProcess>::GetInstance();
     preprocess->Initialize(rankInfo, embInfos, thresholdValues, seed);
     preprocess->Start();
+#endif
     return true;
 }
 
 void HybridMgmt::InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfos)
 {
+#ifndef GTEST
     MPI_Comm_size(MPI_COMM_WORLD, &rankInfo.rankSize);
     rankInfo.localRankId = rankInfo.deviceId;
 
@@ -66,19 +68,23 @@ void HybridMgmt::InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfo
         rankInfo.noDDR = true;
     }
     rankInfo.useDataset = getenv("DATASET") != nullptr;
+#endif
 }
 
 bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, int seed,
                             const vector<ThresholdValue>& thresholdValues, bool ifLoad)
 {
+#ifndef GTEST
     if (isRunning) {
         return true;
     }
+
     SetLog(rankInfo.rankId);
     InitRankInfo(rankInfo, embInfos);
 
-    spdlog::info(MGMT + "begin initialize, localRankSize:{}, localRankId {}, rank {}",
-                 rankInfo.localRankSize, rankInfo.localRankId, rankInfo.rankId);
+    LOG(INFO) << StringFormat(
+        MGMT + "begin initialize, localRankSize:%d, localRankId:%d, rank:%d",
+        rankInfo.localRankSize, rankInfo.localRankId, rankInfo.rankId);
 
     mgmtRankInfo = rankInfo;
     mgmtEmbInfo = embInfos;
@@ -112,11 +118,15 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     }
 
     for (const auto& info: embInfos) {
-        spdlog::info(MGMT + "emb[{}] vocab size {}+{} sc:{}", info.name, info.devVocabSize, info.hostVocabSize,
-            info.sendCount);
+        LOG(INFO) << StringFormat(
+            MGMT + "emb[%s] vocab size %d+%d sc:%d",
+            info.name.c_str(), info.devVocabSize, info.hostVocabSize, info.sendCount);
     }
-    spdlog::info(MGMT + "end initialize, useDataset:{}, noDDR:{}, maxStep:{}, rank:{}",
-        rankInfo.useDataset, rankInfo.noDDR, rankInfo.maxStep, rankInfo.rankId);
+    LOG(INFO) << StringFormat(
+        MGMT + "end initialize, useDataset:%d, noDDR:%d, maxStep:[%d, %d], rank:%d",
+        rankInfo.useDataset, rankInfo.noDDR,
+        rankInfo.maxStep.at(TRAIN_CHANNEL_ID), rankInfo.maxStep.at(EVAL_CHANNEL_ID), rankInfo.rankId);
+#endif
     return true;
 }
 
@@ -128,19 +138,19 @@ bool HybridMgmt::Save(const string savePath)
     CkptData saveData;
     Checkpoint saveCkpt;
     if (!mgmtRankInfo.noDDR) {
-        spdlog::debug(MGMT + "Start host side save: ddr mode hashmap");
+        VLOG(GLOG_DEBUG) << (MGMT + "Start host side save: ddr mode hashmap");
         saveData.hostEmbs = hostEmbs->GetHostEmbs();
         saveData.embHashMaps = hostHashMaps->GetHashMaps();
     } else {
-        spdlog::debug(MGMT + "Start host side save: no ddr mode hashmap");
+        VLOG(GLOG_DEBUG) << (MGMT + "Start host side save: no ddr mode hashmap");
         saveData.maxOffset = preprocess->GetMaxOffset();
         saveData.keyOffsetMap = preprocess->GetKeyOffsetMap();
     }
 
     auto& featAdmitNEvict = preprocess->GetFeatAdmitAndEvict();
     if (featAdmitNEvict.GetFunctionSwitch()) {
-        spdlog::debug(MGMT + "Start host side save: feature admit and evict");
-        saveData.tens2Thresh = featAdmitNEvict.GetTensorThresholds();
+        VLOG(GLOG_DEBUG) << (MGMT + "Start host side save: feature admit and evict");
+        saveData.table2Thresh = featAdmitNEvict.GetTableThresholds();
         saveData.histRec.timestamps = featAdmitNEvict.GetHistoryRecords().timestamps;
         saveData.histRec.historyRecords = featAdmitNEvict.GetHistoryRecords().historyRecords;
     }
@@ -157,7 +167,7 @@ bool HybridMgmt::Load(const string& loadPath)
 #ifndef GTEST
     preprocess->LoadSaveLock();
 
-    spdlog::debug(MGMT + "Start host side load process");
+    VLOG(GLOG_DEBUG) << (MGMT + "Start host side load process");
 
     CkptData loadData;
     Checkpoint loadCkpt;
@@ -182,20 +192,20 @@ bool HybridMgmt::Load(const string& loadPath)
     }
 
     if (!mgmtRankInfo.noDDR) {
-        spdlog::debug(MGMT + "Start host side load: ddr mode hashmap");
+        VLOG(GLOG_DEBUG) << (MGMT + "Start host side load: ddr mode hashmap");
         hostHashMaps->LoadHashMap(loadData.embHashMaps);
     } else {
-        spdlog::debug(MGMT + "Start host side load: no ddr mode hashmap");
+        VLOG(GLOG_DEBUG) << (MGMT + "Start host side load: no ddr mode hashmap");
         preprocess->LoadMaxOffset(loadData.maxOffset);
         preprocess->LoadKeyOffsetMap(loadData.keyOffsetMap);
     }
     if (featAdmitNEvict.GetFunctionSwitch()) {
-        spdlog::debug(MGMT + "Start host side load: feature admit and evict");
-        featAdmitNEvict.LoadTensorThresholds(loadData.tens2Thresh);
+        VLOG(GLOG_DEBUG) << (MGMT + "Start host side load: feature admit and evict");
+        featAdmitNEvict.LoadTableThresholds(loadData.table2Thresh);
         featAdmitNEvict.LoadHistoryRecords(loadData.histRec);
     }
 
-    spdlog::debug(MGMT + "Finish host side load process");
+    VLOG(GLOG_DEBUG) << (MGMT + "Finish host side load process");
 
     preprocess->LoadSaveUnlock();
 
@@ -214,9 +224,9 @@ key_offset_map_t HybridMgmt::SendHostMap(const string tableName)
     key_offset_map_t sendKeyOffsetMap;
 
     if (!mgmtRankInfo.noDDR) {
-        spdlog::debug(MGMT + "Start send sparse data: ddr mode hashmap");
+        VLOG(GLOG_DEBUG) << (MGMT + "Start send sparse data: ddr mode hashmap");
     } else {
-        spdlog::debug(MGMT + "Start send sparse data: no ddr mode hashmap");
+        VLOG(GLOG_DEBUG) << (MGMT + "Start send sparse data: no ddr mode hashmap");
         keyOffsetMap = preprocess->GetKeyOffsetMap();
     }
 
@@ -248,9 +258,9 @@ void HybridMgmt::ReceiveHostMap(all_key_offset_map_t ReceiveKeyOffsetMap)
         }
     }
     if (!mgmtRankInfo.noDDR) {
-        spdlog::debug(MGMT + "Start receive sparse data: ddr mode hashmap");
+        VLOG(GLOG_DEBUG) << (MGMT + "Start receive sparse data: ddr mode hashmap");
     } else {
-        spdlog::debug(MGMT + "Start receive sparse data: no ddr mode hashmap");
+        VLOG(GLOG_DEBUG) << (MGMT + "Start receive sparse data: no ddr mode hashmap");
         preprocess->LoadKeyOffsetMap(loadKeyOffsetMap);
         preprocess->LoadMaxOffset(loadMaxOffset);
     }
@@ -262,50 +272,63 @@ void HybridMgmt::ReceiveHostMap(all_key_offset_map_t ReceiveKeyOffsetMap)
 #endif
 }
 
+bool HybridMgmt::IsLoadDataMatches(emb_mem_t* loadHostEmbs, EmbInfo* setupHostEmbs, size_t& embTableCount)
+{
+    bool loadDataMatches = { true };
+    const auto& loadEmbTable { loadHostEmbs->find(setupHostEmbs->name) };
+    if (loadEmbTable != loadHostEmbs->end()) {
+        embTableCount++;
+
+        const auto& loadEmbInfo { loadEmbTable->second.hostEmbInfo };
+        if (setupHostEmbs->sendCount != loadEmbInfo.sendCount) {
+            LOG(ERROR) << StringFormat(
+                MGMT + "Load data sendCount %d for table %s does not match setup sendCount %d",
+                setupHostEmbs->sendCount, setupHostEmbs->name.c_str(), loadEmbInfo.sendCount);
+            loadDataMatches = false;
+        }
+        if (setupHostEmbs->extEmbeddingSize != loadEmbInfo.extEmbeddingSize) {
+            LOG(ERROR) << StringFormat(
+                MGMT + "Load data extEmbeddingSize %d for table %s does not match setup extEmbeddingSize %d",
+                setupHostEmbs->extEmbeddingSize, setupHostEmbs->name.c_str(), loadEmbInfo.extEmbeddingSize);
+            loadDataMatches = false;
+        }
+        if (setupHostEmbs->devVocabSize != loadEmbInfo.devVocabSize) {
+            LOG(ERROR) << StringFormat(
+                MGMT + "Load data devVocabSize %d for table %s does not match setup devVocabSize %d",
+                setupHostEmbs->devVocabSize, setupHostEmbs->name.c_str(), loadEmbInfo.devVocabSize);
+            loadDataMatches = false;
+        }
+        if (setupHostEmbs->hostVocabSize != loadEmbInfo.hostVocabSize) {
+            LOG(ERROR) << StringFormat(
+                MGMT + "Load data hostVocabSize %d for table %s does not match setup hostVocabSize %d",
+                setupHostEmbs->hostVocabSize, setupHostEmbs->name.c_str(), loadEmbInfo.hostVocabSize);
+            loadDataMatches = false;
+        }
+        if (!loadDataMatches) {
+            return false;
+        }
+    } else {
+        LOG(ERROR) << StringFormat(
+            MGMT + "Load data does not contain table with table name: %s", setupHostEmbs->name.c_str()
+        );
+        return false;
+    }
+    return true;
+}
+
 bool HybridMgmt::LoadMatchesDDRSetup(const CkptData& loadData)
 {
-    bool loadDataMatches { true };
     size_t embTableCount { 0 };
     auto loadHostEmbs { loadData.hostEmbs };
-    for (const auto& setupHostEmbs : mgmtEmbInfo) {
-        const auto& loadEmbTable { loadHostEmbs->find(setupHostEmbs.name) };
-        if (loadEmbTable != loadHostEmbs->end()) {
-            embTableCount++;
-
-            const auto& loadEmbInfo { loadEmbTable->second.hostEmbInfo };
-            if (setupHostEmbs.sendCount != loadEmbInfo.sendCount) {
-                spdlog::error(MGMT + "Load data sendCount {} for table {} does not match setup sendCount {}",
-                    setupHostEmbs.sendCount, setupHostEmbs.name, loadEmbInfo.sendCount);
-                loadDataMatches = false;
-            }
-            if (setupHostEmbs.extEmbeddingSize != loadEmbInfo.extEmbeddingSize) {
-                spdlog::error(MGMT + "Load data extEmbeddingSize {} for table {} does not match "
-                                     "setup extEmbeddingSize {}",
-                              setupHostEmbs.extEmbeddingSize, setupHostEmbs.name, loadEmbInfo.extEmbeddingSize);
-                loadDataMatches = false;
-            }
-            if (setupHostEmbs.devVocabSize != loadEmbInfo.devVocabSize) {
-                spdlog::error(MGMT + "Load data devVocabSize {} for table {} does not match setup devVocabSize {}",
-                    setupHostEmbs.devVocabSize, setupHostEmbs.name, loadEmbInfo.devVocabSize);
-                loadDataMatches = false;
-            }
-            if (setupHostEmbs.hostVocabSize != loadEmbInfo.hostVocabSize) {
-                spdlog::error(MGMT + "Load data hostVocabSize {} for table {} does not match setup hostVocabSize {}",
-                    setupHostEmbs.hostVocabSize, setupHostEmbs.name, loadEmbInfo.hostVocabSize);
-                loadDataMatches = false;
-            }
-            if (!loadDataMatches) {
-                return loadDataMatches;
-            }
-        } else {
-            spdlog::error(MGMT + "Load data does not contain table with table name: {}", setupHostEmbs.name);
+    for (EmbInfo setupHostEmbs : mgmtEmbInfo) {
+        if (!IsLoadDataMatches(loadHostEmbs, &setupHostEmbs, embTableCount)) {
             return false;
         }
     }
 
     if (embTableCount < loadHostEmbs->size()) {
-        spdlog::error(MGMT + "Load data has {} tables more than setup table num {}",
-                      loadHostEmbs->size(), embTableCount);
+        LOG(ERROR) << StringFormat(MGMT + "Load data has %d tables more than setup table num %d",
+            loadHostEmbs->size(), embTableCount);
         return false;
     }
     return true;
@@ -319,9 +342,9 @@ void HybridMgmt::Start()
     if (envTaskMode != nullptr) { // 如果环境变量存在
         try {
             mode = std::stoi(envTaskMode); // 将字符串转换为整数
-            spdlog::info("The value of MGMT_HBM_TASK_MODE is an integer： {}", mode);
+            LOG(INFO) << StringFormat("The value of MGMT_HBM_TASK_MODE is an integer： %d", mode);
         } catch (const std::invalid_argument& e) { // 如果转换失败
-            spdlog::error("The value of MGMT_HBM_TASK_MODE is not an integer!");
+            LOG(ERROR) << "The value of MGMT_HBM_TASK_MODE is not an integer!";
             throw std::invalid_argument("Invalid env value MGMT_HBM_TASK_MODE");
         }
     } else { // 如果环境变量不存在
@@ -334,13 +357,13 @@ void HybridMgmt::Start()
     if (!mgmtRankInfo.noDDR) {
         auto parseKeysTaskForTrain = [this]() {
             TaskForTrain(TaskType::DDR);
-            spdlog::info("parseKeysTaskForTrain done");
+            LOG(INFO) << StringFormat("parseKeysTaskForTrain done");
         };
         procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForTrain));
 
         auto parseKeysTaskForEval = [this]() {
             TaskForEval(TaskType::DDR);
-            spdlog::info("parseKeysTaskForEval done");
+            LOG(INFO) << StringFormat("parseKeysTaskForEval done");
         };
         procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForEval));
     }
@@ -353,37 +376,37 @@ void HybridMgmt::InsertThreadForHBM(int mode)
     if (mode == 1) {
         auto getInfoTaskForTrain = [this]() {
             TaskForTrain(TaskType::GETINFO);
-            spdlog::info("getInfoTaskForTrain done");
+            LOG(INFO) << "getInfoTaskForTrain done";
         };
         procThreads.emplace_back(std::make_unique<std::thread>(getInfoTaskForTrain));
 
         auto getInfoTaskForEval = [this]() {
             TaskForEval(TaskType::GETINFO);
-            spdlog::info("getInfoTaskForEval done");
+            LOG(INFO) << "getInfoTaskForEval done";
         };
         procThreads.emplace_back(std::make_unique<std::thread>(getInfoTaskForEval));
 
         auto sendInfoTaskForTrain = [this]() {
             TaskForTrain(TaskType::SEND);
-            spdlog::info("sendInfoTaskForTrain done");
+            LOG(INFO) << "sendInfoTaskForTrain done";
         };
         procThreads.emplace_back(std::make_unique<std::thread>(sendInfoTaskForTrain));
 
         auto sendInfoTaskForEval = [this]() {
             TaskForEval(TaskType::SEND);
-            spdlog::info("sendInfoTaskForEval done");
+            LOG(INFO) << "sendInfoTaskForEval done";
         };
         procThreads.emplace_back(std::make_unique<std::thread>(sendInfoTaskForEval));
     } else {
         auto parseKeysTaskForHBMTrain = [this]() {
             TaskForTrain(TaskType::HBM);
-            spdlog::info("parseKeysTaskForHBMTrain done");
+            LOG(INFO) << "parseKeysTaskForHBMTrain done";
         };
         procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForHBMTrain));
 
         auto parseKeysTaskForHBMEval = [this]() {
             TaskForEval(TaskType::HBM);
-            spdlog::info("parseKeysTaskForHBMEval done");
+            LOG(INFO) << "parseKeysTaskForHBMEval done";
         };
         procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForHBMEval));
     }
@@ -396,7 +419,7 @@ void HybridMgmt::TaskForTrain(TaskType type)
     bool isFirstIn = true;
     while (isRunning) {
         if (isFirstIn) {
-            spdlog::info(MGMT + "Start Train Task: {}", type);
+            LOG(INFO) << StringFormat(MGMT + "Start Train Task: %d", type);
             isFirstIn = false;
         }
         if (mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1 || mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] > 0) {
@@ -413,7 +436,7 @@ void HybridMgmt::TaskForEval(TaskType type)
     bool isFirstIn = true;
     while (isRunning) {
         if (isFirstIn) {
-            spdlog::info(MGMT + "Start Eval Task: {}", type);
+            LOG(INFO) << StringFormat(MGMT + "Start Eval Task: %d", type);
             isFirstIn = false;
         }
         if (mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1 || mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] > 0) {
@@ -439,20 +462,20 @@ bool HybridMgmt::TrainTask(TaskType type)
                 status = GetLookupAndRestore(TRAIN_CHANNEL_ID, getInfoBatchId);
                 isContinue = getInfoBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
                         mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1;
-                spdlog::info(MGMT + "getInfoBatchId = {}", getInfoBatchId);
+                LOG(INFO) << StringFormat(MGMT + "getInfoBatchId = %d", getInfoBatchId);
                 break;
             case TaskType::SEND:
                 status = SendLookupAndRestore(TRAIN_CHANNEL_ID, sendBatchId);
                 isContinue = sendBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
                         mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1;
-                spdlog::info(MGMT + "sendBatchId = {}", sendBatchId);
+                LOG(INFO) << StringFormat(MGMT + "sendBatchId = %d", sendBatchId);
 #if defined(PROFILING) && defined(BUILD_WITH_EASY_PROFILER)
                 if (sendBatchId == PROFILING_START_BATCH_ID) {
                     EASY_PROFILER_ENABLE
                 } else if (sendBatchId == PROFILING_END_BATCH_ID) {
                     EASY_PROFILER_DISABLE
-                    ::profiler::dumpBlocksToFile(fmt::format("/home/MX_REC-mgmt-profile-{}.prof",
-                                                             mgmtRankInfo.rankId).c_str());
+                    ::profiler::dumpBlocksToFile(
+                        StringFormat("/home/MX_REC-mgmt-profile-%s.prof", mgmtRankInfo.rankId).c_str());
                 }
 #endif
                 break;
@@ -460,13 +483,13 @@ bool HybridMgmt::TrainTask(TaskType type)
                 status = ParseKeysHBM(TRAIN_CHANNEL_ID, trainBatchId);
                 isContinue = trainBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
                              mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1;
-                spdlog::info(MGMT + "ParseKeysHBMBatchId = {}", trainBatchId);
+                LOG(INFO) << StringFormat(MGMT + "ParseKeysHBMBatchId = %d", trainBatchId);
                 break;
             case TaskType::DDR:
                 status =  ParseKeys(TRAIN_CHANNEL_ID, trainBatchId);
                 isContinue = trainBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
                         mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1;
-                spdlog::info(MGMT + "parseKeysBatchId = {}", trainBatchId);
+                LOG(INFO) << StringFormat(MGMT + "parseKeysBatchId = %d", trainBatchId);
                 break;
             default:
                 throw std::invalid_argument("Invalid TaskType Type.");
@@ -492,19 +515,19 @@ bool HybridMgmt::EvalTask(TaskType type)
         switch (type) {
             case TaskType::GETINFO:
                 status = GetLookupAndRestore(EVAL_CHANNEL_ID, evalBatchId);
-                spdlog::info(MGMT + "GETINFO evalBatchId = {}", evalBatchId);
+                LOG(INFO) << StringFormat(MGMT + "GETINFO evalBatchId = %d", evalBatchId);
                 break;
             case TaskType::SEND:
                 status = SendLookupAndRestore(EVAL_CHANNEL_ID, evalBatchId);
-                spdlog::info(MGMT + "SEND evalBatchId = {}", evalBatchId);
+                LOG(INFO) << StringFormat(MGMT + "SEND evalBatchId = %d", evalBatchId);
                 break;
             case TaskType::HBM:
                 status = ParseKeysHBM(EVAL_CHANNEL_ID, evalBatchId);
-                spdlog::info(MGMT + "HBM evalBatchId = {}", evalBatchId);
+                LOG(INFO) << StringFormat(MGMT + "HBM evalBatchId = %d", evalBatchId);
                 break;
             case TaskType::DDR:
                 status = ParseKeys(EVAL_CHANNEL_ID, evalBatchId);
-                spdlog::info(MGMT + "DDR evalBatchId = {}", evalBatchId);
+                LOG(INFO) << StringFormat(MGMT + "DDR evalBatchId = %d", evalBatchId);
                 break;
             default:
                 throw std::invalid_argument("Invalid TaskType Type.");
@@ -536,12 +559,13 @@ void HybridMgmt::GetAll2All(const int channelId, int &batchId, const string &nam
 
 bool HybridMgmt::GetLookupAndRestore(const int channelId, int &batchId)
 {
-    spdlog::info(MGMT + "start parse keys, nBatch:{} , [{}]:{}", mgmtRankInfo.nBatch, channelId, batchId);
+    LOG(INFO) << StringFormat(MGMT + "start parse keys, nBatch:%d , [%d]:%d", mgmtRankInfo.nBatch, channelId, batchId);
     for (const auto& embInfo: mgmtEmbInfo) {
         TimeCost getAllTensorTC;
         auto infoVecs = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::RESTORE);
         if (infoVecs == nullptr) {
-            spdlog::info(MGMT + "ParseKeys infoVecs empty ! batchId:{}, channelId:{}", batchId, channelId);
+            LOG(INFO) << StringFormat(
+                MGMT + "ParseKeys infoVecs empty ! batchId:%d, channelId:%d", batchId, channelId);
             return false;
         }
         switch (channelId) {
@@ -562,7 +586,7 @@ bool HybridMgmt::GetLookupAndRestore(const int channelId, int &batchId)
         if (!mgmtRankInfo.useStatic) {
             GetAll2All(channelId, batchId, embInfo.name);
         }
-        TIME_PRINT("getAllTensorTC(ms):{}", getAllTensorTC.ElapsedMS());
+        VLOG(GLOG_DEBUG) << StringFormat("getAllTensorTC(ms):%d", getAllTensorTC.ElapsedMS());
     }
     batchId++;
     return true;
@@ -583,7 +607,7 @@ void HybridMgmt::All2AllKeys(const int channelId, const string &embName)
             throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
     }
     hdTransfer->Send(TransferChannel::ALL2ALL, all2allKeys, channelId, embName);
-    TIME_PRINT("All2AllKeysTC(ms):{}", a2aKeysTC.ElapsedMS());
+    VLOG(GLOG_DEBUG) << StringFormat("All2AllKeysTC(ms):%d", a2aKeysTC.ElapsedMS());
 }
 
 void HybridMgmt::LookupKeys(const int channelId, const string &embName)
@@ -601,7 +625,7 @@ void HybridMgmt::LookupKeys(const int channelId, const string &embName)
             throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
     }
     hdTransfer->Send(TransferChannel::LOOKUP, lookUpKeys, channelId, embName);
-    TIME_PRINT("sendLookupTC(ms):{}", sendLookupTC.ElapsedMS());
+    VLOG(GLOG_DEBUG) << StringFormat("sendLookupTC(ms):%d", sendLookupTC.ElapsedMS());
 }
 
 void HybridMgmt::RestoreKeys(const int channelId, const string &embName)
@@ -619,7 +643,7 @@ void HybridMgmt::RestoreKeys(const int channelId, const string &embName)
             throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
     }
     hdTransfer->Send(TransferChannel::RESTORE, restore, channelId, embName);
-    TIME_PRINT("sendRestoreTC(ms):{}", sendRestoreTC.ElapsedMS());
+    VLOG(GLOG_DEBUG) << StringFormat("sendRestoreTC(ms):%d", sendRestoreTC.ElapsedMS());
 }
 
 bool HybridMgmt::SendLookupAndRestore(const int channelId, int &batchId)
@@ -630,12 +654,14 @@ bool HybridMgmt::SendLookupAndRestore(const int channelId, int &batchId)
             All2AllKeys(channelId, embInfo.name);
         }
 
-        spdlog::info("SendLookupAndRestore batchId: {}, name: {}, channelId: {}",
-                     batchId, embInfo.name, channelId);
+        LOG(INFO) << StringFormat(
+            "SendLookupAndRestore batchId:%d, name:%s, channelId:%d",
+            batchId, embInfo.name.c_str(), channelId
+        );
 
         LookupKeys(channelId, embInfo.name);
         RestoreKeys(channelId, embInfo.name);
-        TIME_PRINT("sendTensorsTC(ms):{}", sendTensorsTC.ElapsedMS());
+        VLOG(GLOG_DEBUG) << StringFormat("sendTensorsTC(ms):%d", sendTensorsTC.ElapsedMS());
     }
     batchId++;
     return true;
@@ -643,42 +669,44 @@ bool HybridMgmt::SendLookupAndRestore(const int channelId, int &batchId)
 
 bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
 {
-    spdlog::info(MGMT + "start parse keys HBM, nBatch:{} , [{}]:{}", mgmtRankInfo.nBatch, channelId, batchId);
+    LOG(INFO) << StringFormat(
+        MGMT + "start parse keys HBM, nBatch:%d , [%d]:%d", mgmtRankInfo.nBatch, channelId, batchId);
     for (const auto& embInfo: mgmtEmbInfo) {
         TimeCost ParseKeysTC;
         // get
         TimeCost getTensorsSyncTC;
         auto infoVecs = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::RESTORE);
         if (infoVecs == nullptr) {
-            spdlog::info(MGMT + "ParseKeys infoVecs empty ! batchId:{}, channelId:{}", batchId, channelId);
+            LOG(INFO) << StringFormat(
+                MGMT + "ParseKeys infoVecs empty ! batchId:%d, channelId:%d", batchId, channelId);
             return false;
         }
         unique_ptr<vector<Tensor>> all2all = nullptr;
         if (!mgmtRankInfo.useStatic) {
             all2all = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::ALL2ALL);
         }
-        TIME_PRINT("getTensorsSyncTC(ms):{}", getTensorsSyncTC.ElapsedMS());
+        VLOG(GLOG_DEBUG) << StringFormat("getTensorsSyncTC(ms):%d", getTensorsSyncTC.ElapsedMS());
 
         // send
         TimeCost sendTensorsSyncTC;
         if (!mgmtRankInfo.useStatic) {
             TimeCost sendAll2AllScSyncTC;
             hdTransfer->Send(TransferChannel::ALL2ALL, *all2all, channelId, embInfo.name);
-            TIME_PRINT("sendAll2AllScSyncTC(ms):{}", sendAll2AllScSyncTC.ElapsedMS());
+            VLOG(GLOG_DEBUG) << StringFormat("sendAll2AllScSyncTC(ms):%d", sendAll2AllScSyncTC.ElapsedMS());
         }
 
         TimeCost sendLookupSyncTC;
         hdTransfer->Send(TransferChannel::LOOKUP, { infoVecs->back() }, channelId, embInfo.name);
         infoVecs->pop_back();
-        TIME_PRINT("sendLookupSyncTC(ms):{}", sendLookupSyncTC.ElapsedMS());
+        VLOG(GLOG_DEBUG) << StringFormat("sendLookupSyncTC(ms):%d", sendLookupSyncTC.ElapsedMS());
 
         TimeCost sendRestoreSyncTC;
         hdTransfer->Send(TransferChannel::RESTORE, *infoVecs, channelId, embInfo.name);
-        TIME_PRINT("sendRestoreSyncTC(ms):{}", sendRestoreSyncTC.ElapsedMS());
+        VLOG(GLOG_DEBUG) << StringFormat("sendRestoreSyncTC(ms):%d", sendRestoreSyncTC.ElapsedMS());
 
-        TIME_PRINT("sendTensorsSyncTC(ms):{}", sendTensorsSyncTC.ElapsedMS());
+        VLOG(GLOG_DEBUG) << StringFormat("sendTensorsSyncTC(ms):%d", sendTensorsSyncTC.ElapsedMS());
 
-        TIME_PRINT("ParseKeysTC HBM mode (ms):{}", ParseKeysTC.ElapsedMS());
+        VLOG(GLOG_DEBUG) << StringFormat("ParseKeysTC HBM mode (ms):%d", ParseKeysTC.ElapsedMS());
     }
     batchId++;
     return true;
@@ -693,18 +721,22 @@ bool HybridMgmt::EndBatch(int batchId, int channelId) const
 bool HybridMgmt::ParseKeys(int channelId, int& batchId)
 {
 #ifndef GTEST
-    spdlog::info(MGMT + "DDR mode, start parse keys, nBatch:{} , [{}]:{}", mgmtRankInfo.nBatch, channelId, batchId);
+    LOG(INFO) << StringFormat(
+        MGMT + "DDR mode, start parse keys, nBatch:%d , [%d]:%d",
+        mgmtRankInfo.nBatch, channelId, batchId);
     TimeCost parseKeyTC;
     int start = batchId;
     int iBatch = 0;
     bool ifHashmapFree = true;
     bool remainBatch = true;
     while (true) {
-        spdlog::info(MGMT + "parse keys, [{}]:{}", channelId, batchId);
+        LOG(INFO) << StringFormat(MGMT + "parse keys, [%d]:%d", channelId, batchId);
         for (const auto& embInfo : mgmtEmbInfo) {
             ifHashmapFree = ProcessEmbInfo(embInfo.name, batchId, channelId, iBatch, remainBatch);
             if (!remainBatch) {
+                TimeCost embHdTrans1;
                 EmbHDTransWrap(channelId, batchId, start, iBatch);
+                VLOG(GLOG_DEBUG) << StringFormat("embHdTrans1TC TimeCost(ms):%d", embHdTrans1.ElapsedMS());
                 return false;
             }
         }
@@ -717,8 +749,10 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
     if (!isRunning) {
         return false;
     }
+    TimeCost embHdTrans2TC;
     EmbHDTransWrap(channelId, batchId - 1, start, iBatch);
-    TIME_PRINT("[{}]-{}, parseKeyTC TimeCost(ms):{}", channelId, batchId, parseKeyTC.ElapsedMS());
+    VLOG(GLOG_DEBUG) << StringFormat("embHdTrans2TC TimeCost(ms):%d", embHdTrans2TC.ElapsedMS());
+    VLOG(GLOG_DEBUG) << StringFormat("[%d]-%d, parseKeyTC TimeCost(ms):%d", channelId, batchId, parseKeyTC.ElapsedMS());
 #endif
     return true;
 }
@@ -727,6 +761,8 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
 bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
                                 int channelId, int iBatch, bool& remainBatchOut)
 {
+    TimeCost getAndSendTensorsTC;
+    TimeCost getTensorsTC;
     auto& embHashMap = hostHashMaps->embHashMaps.at(embName);
     if (iBatch == 0) {
         embHashMap.SetStartCount();
@@ -736,11 +772,17 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
         remainBatchOut = false;
     }
 
-    TimeCost getAndSendTensorsTC;
     auto restore = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::RESTORE);
+    VLOG(GLOG_DEBUG) << StringFormat("getTensorsTC(ms):%d", getTensorsTC.ElapsedMS());
+
     hdTransfer->Send(TransferChannel::RESTORE, *restore, channelId, embName);
     vector<Tensor> tmpData;
+
+    TimeCost hostHashMapProcessTC;
     hostHashMaps->Process(embName, lookupKeys, iBatch, tmpData, channelId);
+    VLOG(GLOG_DEBUG) << StringFormat("hostHashMapProcessTC(ms):%d", hostHashMapProcessTC.ElapsedMS());
+
+    TimeCost sendTensorsTC;
     hdTransfer->Send(TransferChannel::LOOKUP, { tmpData.front() }, channelId, embName);
     tmpData.erase(tmpData.begin());
     hdTransfer->Send(TransferChannel::SWAP, tmpData, channelId, embName);
@@ -748,11 +790,16 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
         auto all2all = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::ALL2ALL);
         hdTransfer->Send(TransferChannel::ALL2ALL, *all2all, channelId, embName);
     }
-    TIME_PRINT("getAndSendTensorsTC(ms):{}, channelId:{}", getAndSendTensorsTC.ElapsedMS(), channelId);
+    VLOG(GLOG_DEBUG) << StringFormat("sendTensorsTC(ms):%d", sendTensorsTC.ElapsedMS());
+
+    VLOG(GLOG_DEBUG) << StringFormat(
+        "getAndSendTensorsTC(ms):%d, channelId:%d", getAndSendTensorsTC.ElapsedMS(), channelId);
 
     if (embHashMap.HasFree(lookupKeys.size())) { // check free > next one batch
-        spdlog::warn(MGMT + "embName {}[{}]{},iBatch:{} freeSize not enough, {}", embName, channelId,
-                     batchId, iBatch, lookupKeys.size());
+        LOG(WARNING) << StringFormat(
+            MGMT + "embName %s[%d]%d,iBatch:%d freeSize not enough, %d", embName.c_str(), channelId,
+            batchId, iBatch, lookupKeys.size()
+        );
         return false;
     }
     return true;
@@ -764,13 +811,16 @@ void HybridMgmt::EmbHDTransWrap(int channelId, const int& batchId, int start, in
     if (iBatch == 0) {
         return;
     }
-    spdlog::info(MGMT + "trans emb, batchId:[{}-{}], channelId:{}", start, batchId, channelId);
+    LOG(INFO) << StringFormat(MGMT + "trans emb, batchId:[%d-%d], channelId:%d", start, batchId, channelId);
+    TimeCost hostEmbsTC;
     hostEmbs->Join(channelId);
+    VLOG(GLOG_DEBUG) << StringFormat("hostEmbsTC(ms):%d", hostEmbsTC.ElapsedMS());
+
     EmbHDTrans(channelId, batchId);
 
     for (int i = 0; i < iBatch - 1; ++i) {
         // need send empty
-        spdlog::info(MGMT + "trans emb dummy, batchId:{}, ", start + 1 + i);
+        LOG(INFO) << StringFormat(MGMT + "trans emb dummy, batchId:%d, ", start + 1 + i);
         EmbHDTrans(channelId, batchId);
     }
 }
@@ -779,14 +829,18 @@ void HybridMgmt::EmbHDTrans(const int channelId, const int batchId)
 {
     EASY_FUNCTION(profiler::colors::Blue)
     EASY_VALUE("mgmtProcess", batchId)
-    spdlog::debug(MGMT + "trans emb, batchId:{}, channelId:{}", batchId, channelId);
+    VLOG(GLOG_DEBUG) << StringFormat(MGMT + "trans emb, batchId:%d, channelId:%d", batchId, channelId);
     TimeCost tr;
+    TimeCost h2dTC;
     for (const auto& embInfo: mgmtEmbInfo) {
         auto& missingKeys = hostHashMaps->embHashMaps.at(embInfo.name).missingKeysHostPos;
         vector<Tensor> h2dEmb;
         hostEmbs->GetH2DEmb(missingKeys, embInfo.name, h2dEmb); // order!
         hdTransfer->Send(TransferChannel::H2D, h2dEmb, channelId, embInfo.name, batchId);
     }
+    VLOG(GLOG_DEBUG) << StringFormat("h2dTC(ms):%d", h2dTC.ElapsedMS());
+
+    TimeCost d2hTC;
     for (const auto& embInfo: mgmtEmbInfo) {
         const auto& missingKeys = hostHashMaps->GetMissingKeys(embInfo.name);
         if (!(skipUpdate && missingKeys.empty())) {
@@ -799,14 +853,18 @@ void HybridMgmt::EmbHDTrans(const int channelId, const int batchId)
         } // skip when skip update and empty missing keys
         hostHashMaps->ClearMissingKeys(embInfo.name);
     }
-    TIME_PRINT("EmbHDTrans TimeCost(ms):{} batchId:{} channelId:{}", tr.ElapsedMS(), batchId, channelId);
+    VLOG(GLOG_DEBUG) << StringFormat("d2hTC(ms):%d", d2hTC.ElapsedMS());
+
+    VLOG(GLOG_DEBUG) << StringFormat(
+        "EmbHDTrans TimeCost(ms):%d batchId: %d channelId:%d", tr.ElapsedMS(), batchId, channelId
+    );
 }
 
 void HybridMgmt::EmbHDTransDummy(int channelId, int batchId, const EmbInfo& embInfo)
 {
     EASY_FUNCTION(profiler::colors::Blue)
     EASY_VALUE("mgmtProcess", batchId)
-    spdlog::info(MGMT + "trans emb dummy, batchId:{}, channelId:{}", batchId, channelId);
+    LOG(INFO) << StringFormat(MGMT + "trans emb dummy, batchId:%d, channelId:%d", batchId, channelId);
     auto transferName = TransferChannel::D2H;
     auto d2hEmb = hdTransfer->Recv(transferName, channelId, embInfo.name)[0];
     hdTransfer->Send(TransferChannel::H2D, {}, channelId, embInfo.name);
@@ -822,12 +880,12 @@ bool HybridMgmt::Evict()
     if (featAdmitNEvict.GetFunctionSwitch()) {
         featAdmitNEvict.FeatureEvict(evictKeyMap);
     } else {
-        spdlog::warn(MGMT + "Hook can not trigger evict, cause AdmitNEvict is not open");
+        LOG(WARNING) << (MGMT + "Hook can not trigger evict, cause AdmitNEvict is not open");
         return false;
     }
-    spdlog::debug(MGMT + "evict triggered by hook, evict TableNum {} ", evictKeyMap.size());
+    VLOG(GLOG_DEBUG) << StringFormat(MGMT + "evict triggered by hook, evict TableNum %d ", evictKeyMap.size());
     if (evictKeyMap.size() == 0) {
-        spdlog::warn(MGMT + "evict triggered by hook before dataset in injected");
+        LOG(WARNING) << (MGMT + "evict triggered by hook before dataset in injected");
         return false;
     }
 
@@ -848,7 +906,9 @@ bool HybridMgmt::Evict()
 void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
 {
 #ifndef GTEST
-    spdlog::debug(MGMT + "ddr mode, delete emb: [{}]! evict keySize:{}", embName, keys.size());
+    VLOG(GLOG_DEBUG) << StringFormat(
+        MGMT + "ddr mode, delete emb: [%s]! evict keySize:%d", embName.c_str(), keys.size()
+    );
     // 删除映射关系
     if (keys.size() != 0) {
         hostHashMaps->EvictDeleteEmb(embName, keys);
@@ -857,33 +917,29 @@ void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
     // 初始化host侧的emb
     auto& evictOffset = hostHashMaps->embHashMaps.at(embName).evictPos;
     if (evictOffset.size() != 0) {
-        spdlog::debug(MGMT + "ddr mode, delete emb: [{}]! evict size on host:{}", embName, evictOffset.size());
+        VLOG(GLOG_DEBUG) << StringFormat(
+            MGMT + "ddr mode, delete emb: [%s]! evict size on host:%d", embName.c_str(), evictOffset.size()
+        );
         hostEmbs->EvictInitEmb(embName, evictOffset);
     } else {
-        spdlog::info(MGMT + "ddr mode, evict size on host is empty");
+        LOG(INFO) << StringFormat(MGMT + "ddr mode, evict size on host is empty");
     }
 
     // 发送dev侧的淘汰pos，以便dev侧初始化emb
     auto evictDevOffset = hostHashMaps->embHashMaps.at(embName).evictDevPos;
-    spdlog::debug(MGMT + "ddr mode, init dev emb: [{}]! evict size on dev :{}", embName, evictDevOffset.size());
+    VLOG(GLOG_DEBUG) << StringFormat(
+        MGMT + "ddr mode, init dev emb: [%s]! evict size on dev :%d", embName.c_str(), evictDevOffset.size()
+    );
 
-    for (const auto& embInfo : mgmtEmbInfo) {
-        if (embInfo.name != embName) {
-            continue;
-        }
-        if (evictDevOffset.size() > embInfo.devVocabSize) {
-            spdlog::error(MGMT + "{} overflow! evict pos on dev {} bigger than dev vocabSize {}",
-                          embName, evictDevOffset.size(), embInfo.devVocabSize);
-            throw runtime_error(fmt::format(MGMT + "{} overflow! evict pos on dev {} bigger than dev vocabSize {}",
-                                            embName, evictDevOffset.size(), embInfo.devVocabSize).c_str());
-        }
-        if (mgmtRankInfo.useStatic) {
-            evictDevOffset.resize(embInfo.devVocabSize, -1);
-        }
-        break;
-    }
+    vector<Tensor> tmpDataOut;
+    Tensor tmpData = Vec2TensorI32(evictDevOffset);
+    tmpDataOut.emplace_back(tmpData);
+    tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { 1 }));
 
-    auto tmpData = Vec2TensorI32(evictDevOffset);
-    hdTransfer->Send(TransferChannel::EVICT, { tmpData }, TRAIN_CHANNEL_ID, embName);
+    auto evictLen = tmpDataOut.back().flat<int32>();
+    auto evictSize = static_cast<int>(evictDevOffset.size());
+    evictLen(0) = evictSize;
+
+    hdTransfer->Send(TransferChannel::EVICT, tmpDataOut, TRAIN_CHANNEL_ID, embName);
 #endif
 }

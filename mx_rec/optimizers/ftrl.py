@@ -98,15 +98,12 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
         return [self._initial_accumulator_value, initial_linear_value]
 
     def _apply_sparse_duplicate_indices(self, grad, var):
-        logging.debug(f"######### _apply_sparse_duplicate_indices {var}")
         return self._apply_sparse(grad, var)
 
     def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
-        logging.debug(f"######### _resource_apply_sparse_duplicate_indices {indices}")
         return self._resource_apply_sparse(grad, handle, indices)
 
     def _resource_apply_sparse(self, grad, handle, indices):
-        logging.debug("Enter _resource_apply_sparse")
         if self._l2_shrinkage_regularization_strength <= 0.0:
             return self._apply_sparse_shared(
                 grad,
@@ -121,7 +118,6 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
                 self._resource_scatter_nd_update)
 
     def _apply_sparse(self, grad, var):
-        logging.debug("Enter _apply_sparse")
         if self._l2_shrinkage_regularization_strength <= 0.0:
             return self._apply_sparse_shared(
                 grad.values,
@@ -136,7 +132,6 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
                 lambda x, i, v: tf.compat.v1.scatter_nd_update(x, i, v))
 
     def _apply_sparse_shared(self, grad, var, indices, scatter_nd_update):
-        logging.debug("Enter _apply_sparse_shared")
         accum = self.get_slot(var, "accum")
         linear = self.get_slot(var, "linear")
         lr = math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype)
@@ -174,7 +169,6 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
         return control_flow_ops.group(accum_update_op, linear_update_op, var_update_op)
 
     def _apply_sparse_shared_v2(self, grad, var, indices, scatter_nd_update):
-        logging.debug("Enter _apply_sparse_shared_v2")
         accum = self.get_slot(var, "accum")
         linear = self.get_slot(var, "linear")
         lr = math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype)
@@ -221,7 +215,6 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
             return x.value()
 
     def _create_slots(self, var_list):
-        logging.debug(" Enter _create_slots")
 
         # Create slots for the first and second moments.
         accum_state_name = self._name + "/" + "accum"

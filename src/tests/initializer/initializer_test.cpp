@@ -8,7 +8,6 @@
 
 #include <gtest/gtest.h>
 #include <tuple>
-#include <spdlog/spdlog.h>
 
 #include "initializer/initializer.h"
 #include "initializer/constant_initializer/constant_initializer.h"

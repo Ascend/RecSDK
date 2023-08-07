@@ -81,7 +81,6 @@ class CustomizedLazyAdamByAddress(adam.AdamOptimizer, CustomizedOptimizer):
             initial_value=self._beta2, name="beta2_power", colocate_with=first_addr)
 
     def _apply_dense(self, grad, var):
-        logging.debug(">>>>Enter _apply_dense")
         raise NotImplementedError("You are using a wrong type of variable.")
 
     def _cast_to_base_type(self, var):
@@ -99,7 +98,6 @@ class CustomizedLazyAdamByAddress(adam.AdamOptimizer, CustomizedOptimizer):
         return temp
 
     def _apply_sparse(self, grad, addr):
-        logging.debug(">>>> Enter _apply_sparse Lazy_adam by addr")
         return self._apply_sparse_shared(
             grad,
             addr)

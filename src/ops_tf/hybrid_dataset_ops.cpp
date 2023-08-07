@@ -11,17 +11,9 @@
 #include <atomic>
 #include <map>
 
-#include <spdlog/spdlog.h>
-#include <spdlog/stopwatch.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
-#include <spdlog/fmt/chrono.h>
-#include <spdlog/fmt/bundled/ranges.h>
-#include <spdlog/cfg/env.h>
-
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/example/example.pb.h"
 
 #include "key_process/key_process.h"
 #include "key_process/feature_admit_and_evict.h"
@@ -42,15 +34,15 @@ using OpKernelConstructionPtr = OpKernelConstruction*;
 using OpKernelContextPtr = OpKernelContext*;
 using InferenceContextPtr = ::tensorflow::shape_inference::InferenceContext*;
 
-spdlog::stopwatch staticSw {};
-spdlog::stopwatch staticReadRaw {};
+TimeCost staticSw {};
+TimeCost staticReadRaw {};
 array<int, MAX_CHANNEL_NUM> batchIdsInfo {};
 
 size_t GetBatchSize(OpKernelContextPtr context, const size_t dataSize, const size_t fieldNum)
 {
     if (fieldNum == 0 || dataSize / fieldNum <= 0) {
         context->SetStatus(
-            errors::Aborted(__FILE__, ":", __LINE__, " ", fmt::format("batchSize error. {}/{}", dataSize, fieldNum)));
+            errors::Aborted(__FILE__, ":", __LINE__, " ", StringFormat("batchSize error. %d/%d", dataSize, fieldNum)));
         return 0;
     }
     return dataSize / fieldNum;
@@ -65,9 +57,14 @@ public:
         OP_REQUIRES_OK(context, context->GetAttr("channel_id", &channelId));
 
         if (channelId < 0 || channelId >= MAX_CHANNEL_NUM) {
-            context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ",
-                                               fmt::format("ClearChannel channelId invalid. It should be in range "
-                                                           "[0, MAX_CHANNEL_NUM:{})", MAX_CHANNEL_NUM)));
+            throw runtime_error(StringFormat(
+                "channelId is invalid, It should be in range [0, %d)", MAX_CHANNEL_NUM));
+        }
+
+        if (channelId < 0 || channelId >= MAX_CHANNEL_NUM) {
+            context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ", StringFormat(
+                "ClearChannel channelId invalid. It should be in range [0, MAX_CHANNEL_NUM:%d)",
+                MAX_CHANNEL_NUM)));
             return;
         }
     }
@@ -76,7 +73,7 @@ public:
 
     void Compute(OpKernelContextPtr context) override
     {
-        spdlog::info("clear channel {}, context {}", channelId, context->step_id());
+        LOG(INFO) << StringFormat("clear channel %d, context %d", channelId, context->step_id());
         batchIdsInfo.at(channelId) = 0;
     }
 
@@ -131,15 +128,7 @@ class ReadEmbKeyV2Dynamic : public OpKernel {
 public:
     explicit ReadEmbKeyV2Dynamic(OpKernelConstructionPtr context) : OpKernel(context)
     {
-        if (!spdlog::get("console")) {
-            auto logger = spdlog::stderr_color_mt("console");
-            spdlog::set_default_logger(logger);
-        } else {
-            spdlog::set_default_logger(spdlog::get("console"));
-        }
-        spdlog::cfg::load_env_levels();
-        spdlog::default_logger()->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
-        spdlog::debug("ReadEmbKeyV2Dynamic init");
+        VLOG(GLOG_DEBUG) << "ReadEmbKeyV2Dynamic init";
         OP_REQUIRES_OK(context, context->GetAttr("channel_id", &channelId)); // 0 train or 1 inference
         OP_REQUIRES_OK(context, context->GetAttr("emb_name", &embNames));
         OP_REQUIRES_OK(context, context->GetAttr("timestamp", &isTimestamp));
@@ -148,16 +137,18 @@ public:
 
         // 配置了，也不能多配、配不相关的；同时支持“准入&淘汰”，则不能没有时间戳
         if (!FeatureAdmitAndEvict::m_cfgThresholds.empty() &&
-            !FeatureAdmitAndEvict::IsThresholdCfgOK(FeatureAdmitAndEvict::m_cfgThresholds, embNames, isTimestamp)) {
-            context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ",
-                                               fmt::format("threshold config, or timestamp error ...")));
+            !FeatureAdmitAndEvict::IsThresholdCfgOK(
+                FeatureAdmitAndEvict::m_cfgThresholds, embNames, isTimestamp)
+            ) {
+            context->SetStatus(
+                errors::Aborted(__FILE__, ":", __LINE__, " ", "threshold config, or timestamp error ..."));
             return;
         }
 
         if (channelId < 0 || channelId >= MAX_CHANNEL_NUM) {
-            context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ",
-                                               fmt::format("ReadEmbKeyV2Dynamic channelId invalid. It should be in "
-                                                           "range [0, MAX_CHANNEL_NUM:{})", MAX_CHANNEL_NUM)));
+            context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ", StringFormat(
+                "ReadEmbKeyV2Dynamic channelId invalid. It should be in range [0, MAX_CHANNEL_NUM:%d)",
+                MAX_CHANNEL_NUM)));
             return;
         }
         batchIdsInfo.at(channelId) = 0;
@@ -166,7 +157,7 @@ public:
         if (threadNumEnv != nullptr) {
             threadNum = static_cast<int>(*threadNumEnv) - static_cast<int>('0');
             if (threadNum > KEY_PROCESS_THREAD || threadNum < 0) {
-                throw runtime_error(fmt::format("{} is not valid", threadNum));
+                throw runtime_error(StringFormat("%d is not valid", threadNum));
             }
         } else {
             threadNum = KEY_PROCESS_THREAD;
@@ -184,12 +175,12 @@ public:
     void Compute(OpKernelContextPtr context) override
     {
         EASY_FUNCTION();
-        spdlog::debug("enter ReadEmbKeyV2Dynamic");
-        spdlog::stopwatch sw;
+        VLOG(GLOG_DEBUG) << "enter ReadEmbKeyV2Dynamic";
+        TimeCost tc = TimeCost();
         int batchId = batchIdsInfo.at(channelId)++;
         if (channelId == 1) {
             if (maxStep != -1 && batchId >= maxStep) {
-                spdlog::warn("skip excess batch after {}/{}", batchId, maxStep);
+                LOG(WARNING) << StringFormat("skip excess batch after %d/%d", batchId, maxStep);
                 return;
             }
         }
@@ -204,9 +195,8 @@ public:
         time_t timestamp = -1;
         // 如果传递了时间戳，解析和校验
         if (isTimestamp && !ParseTimestampAndCheck(inputTensor, batchId, fieldNum, timestamp, dataSize)) {
-            context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ",
-                                               fmt::format("timestamp[{}] error, skip excess batch after {}/{}",
-                                                           timestamp, batchId, maxStep)));
+            context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ", StringFormat(
+                "timestamp[%d] error, skip excess batch after %d/%d", timestamp, batchId, maxStep)));
             return;
         }
         // 保证所有embNames在m_embStatus中有状态记录
@@ -222,10 +212,12 @@ public:
 
         TimeCost enqueueTC;
         EnqueueBatchData(std::vector<int>{batchId, batchQueueId}, timestamp, inputTensor, splits);
-        TIME_PRINT(KEY_PROCESS "ReadEmbKeyV2Dynamic read batch cost(ms):{}, elapsed from last(ms):{}, "
-                        "enqueueTC(ms):{}, batch[{}]:{}",
-                        Format2Ms(sw), Format2Ms(staticSw), enqueueTC.ElapsedMS(), channelId, batchId);
-        staticSw.reset();
+        VLOG(GLOG_DEBUG) << StringFormat(
+            KEY_PROCESS "ReadEmbKeyV2Dynamic read batch cost(ms):%d, elapsed from last(ms):%d,"
+            " enqueueTC(ms):%d, batch[%d]:%d",
+            tc.ElapsedMS(), staticSw.ElapsedMS(), enqueueTC.ElapsedMS(), channelId, batchId
+        );
+        staticSw = TimeCost();
     }
 
     void CheckEmbTables()
@@ -233,7 +225,9 @@ public:
         auto keyProcess = Singleton<KeyProcess>::GetInstance();
         for (size_t i = 0; i < embNames.size(); ++i) {
             if (!keyProcess->hasEmbName(embNames.at(i))) {
-                spdlog::info("ReadEmbKeyV2Dynamic not found emb_name:{} {}", i, embNames.at(i));
+                LOG(INFO) << StringFormat(
+                    "ReadEmbKeyV2Dynamic not found emb_name:%d %s", i, embNames.at(i).c_str()
+                );
                 tableUsed.push_back(false);
             } else {
                 tableUsed.push_back(true);
@@ -283,18 +277,18 @@ public:
                                 size_t& dataSize)
     {
         if (dataSize - fieldNumTmp != 1) { // 说明没有传时间戳
-            spdlog::error("dataSize[{}], fieldNum[{}] ...", dataSize, fieldNumTmp);
+            LOG(ERROR) << StringFormat("dataSize[%d], fieldNum[%d] ...", dataSize, fieldNumTmp);
             return false;
         }
 
         // 前面8个字节、即占一个featureId位，是unix时间戳
         auto src = (const time_t*)inputTensor.tensor_data().data();
         std::copy(src, src + 1, &timestamp);
-        spdlog::info("current batchId[{}] timestamp[{}]", batchId, timestamp);
+        LOG(INFO) << StringFormat("current batchId[%d] timestamp[%d]", batchId, timestamp);
         dataSize -= 1;
 
         if (timestamp <= 0) {
-            spdlog::error("timestamp[{}] <= 0 ", timestamp);
+            LOG(ERROR) << StringFormat("timestamp[%d] <= 0 ", timestamp);
             return false;
         }
 
@@ -343,15 +337,7 @@ class ReadEmbKeyV2 : public OpKernel {
 public:
     explicit ReadEmbKeyV2(OpKernelConstructionPtr context) : OpKernel(context)
     {
-        auto logger = spdlog::get("console");
-        if (!logger) {
-            logger = spdlog::stderr_color_mt("console");
-        }
-        spdlog::set_default_logger(spdlog::get("console"));
-
-        spdlog::cfg::load_env_levels();
-        spdlog::default_logger()->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
-        spdlog::debug("ReadEmbKeyV2 init");
+        VLOG(GLOG_DEBUG) << "ReadEmbKeyV2 init";
         OP_REQUIRES_OK(context, context->GetAttr("channel_id", &channelId)); // 0 train or 1 inference
         OP_REQUIRES_OK(context, context->GetAttr("emb_name", &embNames));
         OP_REQUIRES_OK(context, context->GetAttr("splits", &splits)); // 每个表的field Number
@@ -363,21 +349,20 @@ public:
         // 配置了，也不能多配、配不相关的；同时支持“准入&淘汰”，则不能没有时间戳
         if (!FeatureAdmitAndEvict::m_cfgThresholds.empty() &&
             !FeatureAdmitAndEvict::IsThresholdCfgOK(FeatureAdmitAndEvict::m_cfgThresholds, embNames, isTimestamp)) {
-            context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ",
-                                               fmt::format("threshold config, or timestamp error ...")));
+            context->SetStatus(
+                errors::Aborted(__FILE__, ":", __LINE__, " ", "threshold config, or timestamp error ...")
+            );
             return;
         }
 
         if (splits.size() != embNames.size()) {
-            context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ",
-                                               fmt::format("splits & embNames size error.{} {}", splits.size(),
-                                                           embNames.size())));
+            context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ", StringFormat(
+                "splits & embNames size error.%d %d", splits.size(), embNames.size())));
             return;
         }
         if (channelId < 0 || channelId >= MAX_CHANNEL_NUM) {
-            context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ",
-                                               fmt::format("ReadEmbKeyV2 channelId invalid. It should be in range "
-                                                           "[0, MAX_CHANNEL_NUM:{})", MAX_CHANNEL_NUM)));
+            context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ", StringFormat(
+                "ReadEmbKeyV2 channelId invalid. It should be in range [0, MAX_CHANNEL_NUM:%d)", MAX_CHANNEL_NUM)));
             return;
         }
         batchIdsInfo.at(channelId) = 0;
@@ -386,7 +371,7 @@ public:
         if (threadNumEnv != nullptr) {
             threadNum = static_cast<int>(*threadNumEnv) - static_cast<int>('0');
             if (threadNum > KEY_PROCESS_THREAD || threadNum < 0) {
-                throw runtime_error(fmt::format("{} is not valid", threadNum));
+                throw runtime_error(StringFormat("%d is not valid", threadNum));
             }
         }
         auto keyProcess = Singleton<KeyProcess>::GetInstance();
@@ -402,13 +387,13 @@ public:
     void Compute(OpKernelContextPtr context) override
     {
         EASY_FUNCTION();
-        spdlog::debug("enter ReadEmbKeyV2");
-        spdlog::stopwatch sw;
+        VLOG(GLOG_DEBUG) << "enter ReadEmbKeyV2";
+        TimeCost tc = TimeCost();
         int batchId = batchIdsInfo.at(channelId)++;
         Tensor* output = nullptr;
         if (channelId == 1) {
             if (maxStep != -1 && batchId >= maxStep) {
-                spdlog::warn("skip excess batch after {}/{}", batchId, maxStep);
+                LOG(WARNING) << StringFormat("skip excess batch after %d/%d", batchId, maxStep);
                 OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape {}, &output));
                 auto out = output->flat<int32>();
                 out(0) = batchId;
@@ -421,9 +406,8 @@ public:
         time_t timestamp = -1;
         // 如果传递了时间戳，解析和校验
         if (isTimestamp && !ParseTimestampAndCheck(inputTensor, batchId, fieldNum, timestamp, dataSize)) {
-            context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ",
-                                               fmt::format("timestamp[{}] error, skip excess batch after {}/{}",
-                                                           timestamp, batchId, maxStep)));
+            context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ", StringFormat(
+                "timestamp[%d] error, skip excess batch after %d/%d", timestamp, batchId, maxStep)));
             return;
         }
         // 保证所有embNames在m_embStatus中有状态记录
@@ -439,10 +423,11 @@ public:
 
         TimeCost enqueueTC;
         EnqueueBatchData(batchId, batchQueueId, timestamp, inputTensor);
-        TIME_PRINT(KEY_PROCESS "ReadEmbKeyV2Static read batch cost(ms):{}, elapsed from last(ms):{}, "
-                        "enqueueTC(ms):{}, batch[{}]:{}",
-                        Format2Ms(sw), Format2Ms(staticSw), enqueueTC.ElapsedMS(), channelId, batchId);
-        staticSw.reset();
+        VLOG(GLOG_DEBUG) << StringFormat(
+            KEY_PROCESS "ReadEmbKeyV2Static read batch cost(ms):%d, elapsed from last(ms):%d,"
+            " enqueueTC(ms):%d, batch[%d]:%d",
+            tc.ElapsedMS(), staticSw.ElapsedMS(), enqueueTC.ElapsedMS(), channelId, batchId);
+        staticSw = TimeCost();
     }
 
     void CheckEmbTables()
@@ -450,7 +435,7 @@ public:
         auto keyProcess = Singleton<KeyProcess>::GetInstance();
         for (size_t i = 0; i < splits.size(); ++i) {
             if (!keyProcess->hasEmbName(embNames.at(i))) {
-                spdlog::info("ReadEmbKeyV2 not found emb_name:{} {}", i, embNames.at(i));
+                LOG(INFO) << StringFormat("ReadEmbKeyV2 not found emb_name:%d %s", i, embNames.at(i).c_str());
                 tableUsed.push_back(false);
             } else {
                 tableUsed.push_back(true);
@@ -500,18 +485,18 @@ public:
                                 size_t& dataSize)
     {
         if (dataSize - fieldNumTmp != 1) { // 说明没有传时间戳
-            spdlog::error("dataSize[{}], fieldNum[{}] ...", dataSize, fieldNumTmp);
+            LOG(ERROR) << StringFormat("dataSize[%d], fieldNum[%d] ...", dataSize, fieldNumTmp);
             return false;
         }
 
         // 前面8个字节、即占一个featureId位，是unix时间戳
         auto src = (const time_t*)inputTensor.tensor_data().data();
         std::copy(src, src + 1, &timestamp);
-        spdlog::info("current batchId[{}] timestamp[{}]", batchId, timestamp);
+        LOG(INFO) << StringFormat("current batchId[%d] timestamp[%d]", batchId, timestamp);
         dataSize -= 1;
 
         if (timestamp <= 0) {
-            spdlog::error("timestamp[{}] <= 0 ", timestamp);
+            LOG(ERROR) << StringFormat("timestamp[%d] <= 0 ", timestamp);
             return false;
         }
 
@@ -570,7 +555,7 @@ public:
     void Compute(OpKernelContextPtr context) override
     {
         EASY_FUNCTION();
-        spdlog::stopwatch sw;
+        TimeCost tc = TimeCost();
         const Tensor& inputTensor = context->input(TensorIndex::TENSOR_INDEX_0);
         auto input = inputTensor.flat<int64>();
         const int restoreLen = static_cast<int>(input.size());
@@ -596,9 +581,9 @@ public:
         for (int i { 0 }; i < restoreLen; ++i) {
             r(i) = i % lookupLen;
         }
-        spdlog::warn("dummy read batch cost: {},elapsed from last {}",
-                     Format2Ms(sw), Format2Ms(staticSw));
-        staticSw.reset();
+        LOG(WARNING) << StringFormat("dummy read batch cost: %d,elapsed from last %d",
+            tc.ElapsedMS(), staticSw.ElapsedMS());
+        tc = TimeCost();
     }
 
     int lookupLen {};
@@ -614,7 +599,7 @@ public:
 
     void Compute(OpKernelContextPtr context) override
     {
-        spdlog::info("context {}", context->step_id());
+        LOG(INFO) << StringFormat("context %d", context->step_id());
         std::cout << " Cust opp not installed!!" << std::endl;
     }
 

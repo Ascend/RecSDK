@@ -55,7 +55,7 @@ namespace MxRec {
         void FindOffset(const string& embName, const vector<emb_key_t>& keys,
                         size_t currentBatchId, size_t keepBatchId, int channelId);
 
-        size_t FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHashMap, int channelId);
+        bool FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHashMap, int channelId, size_t& offset);
 
         void UpdateBatchId(const vector<emb_key_t>& keys, size_t currentBatchId, size_t keySize,
                            EmbHashMapInfo& embHashMap) const;

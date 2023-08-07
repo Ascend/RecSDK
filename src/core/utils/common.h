@@ -23,13 +23,10 @@
 #include <sstream>
 #include <fstream>
 #include <algorithm>
-#include <spdlog/spdlog.h>
-#include <spdlog/stopwatch.h>
-#include <spdlog/fmt/chrono.h>
-#include <spdlog/fmt/bundled/ranges.h>
-#include <spdlog/cfg/env.h>
 #include "tensorflow/core/framework/tensor.h"
+#include "glog/logging.h"  // note: must set behind any tensorflow reference, otherwise will overwrite logging.h
 #include "absl/container/flat_hash_map.h"
+#include "securec.h"
 
 #include "initializer/initializer.h"
 #include "initializer/constant_initializer/constant_initializer.h"
@@ -50,7 +47,6 @@
 
 namespace MxRec {
 #define INFO_PTR shared_ptr
-#define TIME_PRINT spdlog::debug
 #define MGMT_CPY_THREADS 4
 #define PROFILING
     using namespace tensorflow;
@@ -62,6 +58,12 @@ namespace MxRec {
     constexpr int MAX_QUEUE_NUM = MAX_CHANNEL_NUM * MAX_KEY_PROCESS_THREAD;
     constexpr int DEFAULT_KEY_PROCESS_THREAD = 6;
     constexpr int KEY_PROCESS_THREAD = 6;
+
+    // for GLOG
+    extern int g_glogLevel;
+    constexpr int GLOG_MAX_BUF_SIZE = 1024;
+    constexpr int GLOG_TIME_WIDTH_2 = 2;
+    constexpr int GLOG_TIME_WIDTH_6 = 6;
 
     // unique related config
     constexpr int UNIQUE_BUCKET = 6;
@@ -86,6 +88,8 @@ namespace MxRec {
     constexpr int HOT_EMB_UPDATE_STEP_DEFAULT = 1000;
     constexpr float HOT_EMB_CACHE_PCT = static_cast<float>(1. / 3);  // hot emb cache percent
 
+    const string COMBINE_HISTORY_NAME = "combine_table_history";
+
     using emb_key_t = int64_t;
     using emb_name_t = std::string;
     using keys_t = std::vector<emb_key_t>;
@@ -100,6 +104,7 @@ namespace MxRec {
     };
 
     string GetChipName(int devID);
+    bool GetCombineSwitch();
 
     namespace UBSize {
         const int ASCEND910_PREMIUM_A = 262144;
@@ -132,11 +137,6 @@ namespace MxRec {
         }
 
         throw std::runtime_error("unknown chip ub size" + GetChipName(devID));
-    }
-
-    inline  std::chrono::milliseconds::rep Format2Ms(spdlog::stopwatch& sw)
-    {
-        return std::chrono::duration_cast<std::chrono::milliseconds>((sw).elapsed()).count();
     }
 
     template <class T>
@@ -242,16 +242,18 @@ struct BatchTask {
 
     struct ThresholdValue {
         ThresholdValue() = default;
-        ThresholdValue(emb_name_t name, int countThre, int timeThre)
+        ThresholdValue(emb_name_t name, int countThre, int timeThre, int faaeCoef)
         {
-            tensorName = name;
+            tableName = name;
             countThreshold = countThre;
             timeThreshold = timeThre;
+            faaeCoefficient = faaeCoef;
         }
 
-        emb_name_t tensorName { "" }; // embName
+        emb_name_t tableName { "" }; // embName
         int countThreshold { -1 }; // 只配置count，即“只有准入、而没有淘汰”功能，对应SingleHostEmbTableStatus::SETS_ONLY_ADMIT状态
         int timeThreshold { -1 };  // 只配置time，配置错误；即准入是淘汰的前提，对应SingleHostEmbTableStatus::SETS_BOTH状态
+        int faaeCoefficient { 1 }; // 配置后,该表在准入时，count计数会乘以该系数
     };
 
     struct FeatureItemInfo {
@@ -271,6 +273,71 @@ struct BatchTask {
     };
 
     void SetLog(int rank);
+
+    void CustomGlogFormat(std::ostream &s, const LogMessageInfo &l, void*);
+
+    template<typename ... Args>
+    string StringFormat(const string& format, Args ... args)
+    {
+        auto size = static_cast<size_t>(GLOG_MAX_BUF_SIZE);
+        unique_ptr<char[]> buf(new char[size]);
+        memset_s(buf.get(), size, 0, size);
+        int nChar =  snprintf_s(buf.get(), size, size-1, format.c_str(), args ...);
+        if (nChar == -1) {
+            throw invalid_argument("StringFormat failed");
+        }
+        return string(buf.get(), buf.get() + nChar);
+    }
+
+    // use environment variable GLOG_v to decide if showing debug log.
+    // default 0, debug message will not display.
+    // 1 for debug, 2 for trace
+    const int GLOG_DEBUG = 1, GLOG_TRACE = 2;
+
+    template<typename T>
+    std::string VectorToString(const std::vector<T>& vec)
+    {
+        std::stringstream ss;
+        ss << "[";
+        for (size_t i = 0; i < vec.size(); ++i) {
+            ss << vec[i];
+            if (i != vec.size() - 1) {
+                ss << ", ";
+            }
+        }
+        ss << "]";
+        return ss.str();
+    }
+
+    template<typename K, typename V>
+    std::string MapToString(const std::map<K, V>& map)
+    {
+        std::stringstream ss;
+        ss << "{";
+        for (auto it = map.begin(); it != map.end(); ++it) {
+            ss << it->first << ": " << it->second;
+            if (std::next(it) != map.end()) {
+                ss << ", ";
+            }
+        }
+        ss << "}";
+        return ss.str();
+    }
+
+    template<typename K, typename V>
+    std::string MapToString(const absl::flat_hash_map<K, V>& map)
+    {
+        std::stringstream ss;
+        ss << "{";
+        for (auto it = map.begin(); it != map.end(); ++it) {
+            ss << it->first << ": " << it->second;
+            if (std::next(it) != map.end()) {
+                ss << ", ";
+            }
+        }
+        ss << "}";
+        return ss.str();
+    }
 
     inline void GenerateRandomValue(std::vector<float>& vecData,
                                     std::default_random_engine& generator,
@@ -430,7 +497,7 @@ struct BatchTask {
     using emb_hash_mem_t = absl::flat_hash_map<std::string, EmbHashMapInfo>;
     using offset_mem_t = std::map<emb_name_t, size_t>;
     using key_offset_mem_t = std::map<emb_name_t, absl::flat_hash_map<emb_key_t, int64_t>>;
-    using tensor_2_thresh_mem_t = absl::flat_hash_map<std::string, ThresholdValue>;
+    using table_2_thresh_mem_t = absl::flat_hash_map<std::string, ThresholdValue>;
     using trans_serialize_t = uint8_t;
     using key_offset_map_t = std::map<int64_t, int64_t>;
     using all_key_offset_map_t = std::map<std::string, std::map<int64_t, int64_t>>;
@@ -448,7 +515,7 @@ struct BatchTask {
         emb_hash_mem_t embHashMaps;
         offset_mem_t maxOffset;
         key_offset_mem_t keyOffsetMap;
-        tensor_2_thresh_mem_t tens2Thresh;
+        table_2_thresh_mem_t table2Thresh;
         AdmitAndEvictData histRec;
     };
 
@@ -470,7 +537,7 @@ struct BatchTask {
         EMB_CURR_STAT = 4,
         NDDR_OFFSET = 5,
         NDDR_FEATMAP = 6,
-        TENSOR_2_THRESH = 7,
+        TABLE_2_THRESH = 7,
         HIST_REC = 8,
         ATTRIBUTE = 9
     };

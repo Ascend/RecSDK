@@ -7,8 +7,6 @@
  */
 
 #include <gtest/gtest.h>
-#include <spdlog/spdlog.h>
-#include <spdlog/fmt/bundled/ranges.h>
 #include "hybrid_mgmt/hybrid_mgmt.h"
 #include "host_emb/host_emb.h"
 #include "utils/common.h"
@@ -60,9 +58,9 @@ protected:
     void UpdateEmb(vector<size_t> &missingKeysHostPos, int channelId, const string &embName,
         std::unique_ptr<HostEmb> &hostEmb, vector<Tensor> &d2h_emb)
     {
-        spdlog::info(HD + "update emb start");
+        LOG(INFO) << (HD + "update emb start");
         if (d2h_emb.size() == 0) {
-            spdlog::info(HD + "emb is none", channelId);
+            LOG(INFO) << StringFormat(HD + "emb is none channelId:%d", channelId);
             return;
         }
 
@@ -74,9 +72,14 @@ protected:
             tensorPtr = tensorPtr + hostEmb->GetEmb(embName).hostEmbInfo.extEmbeddingSize;
         }
         for (size_t i = 0; i < hostEmb->GetEmb(embName).embData.size(); ++i) {
-            spdlog::info("hostEmb: embName {}, {} is: {}", embName, i, hostEmb->GetEmb(embName).embData[i]);
+            if (g_glogLevel >= INFO) {
+                LOG(INFO) << StringFormat(
+                    "hostEmb: embName %s, %d is: %s", embName.c_str(), i,
+                    VectorToString(hostEmb->GetEmb(embName).embData[i]).c_str()
+                );
+            }
         }
-        spdlog::info(HD + "update emb end");
+        LOG(INFO) << (HD + "update emb end");
         d2h_emb.clear();
     }
 
@@ -121,7 +124,7 @@ TEST_F(EmbMgmtTest, Initialize)
     auto hybridMgmt = Singleton<HybridMgmt>::GetInstance();
     cout << "setup..." << endl;
 
-    allRank = RankInfo(rankId, deviceId, localRankSize, useStatic, nBatch, maxStep);
+    allRank = RankInfo(g_rankId, deviceId, localRankSize, useStatic, nBatch, maxStep);
     hybridMgmt->Initialize(allRank, embInfos, seed, thresholdValues, false);
     auto hostEmbs = make_unique<HostEmb>();
     hostEmbs->Initialize(embInfos, seed);
@@ -135,7 +138,7 @@ TEST_F(EmbMgmtTest, Initialize)
     vector<Tensor> tmpData;
     hostHashMaps->Process(embInfo.name, lookupKeys, currentBatchId, tmpData);
     auto missingKeys = hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos;
-    spdlog::info("missingKeys {}", missingKeys);
+    LOG(INFO) << StringFormat("missingKeys %d", missingKeys);
     hostEmbs->EmbDataGenerator(initializeInfos, seed, missingKeys.size(), embeddingSize, tmpDatas);
     auto status = Float2TensorVec(tmpDatas, d2h_emb);
     ASSERT_EQ(status, true);
@@ -145,7 +148,7 @@ TEST_F(EmbMgmtTest, Initialize)
     lookupKeys = { 2, 3, 5, 6 };
     hostHashMaps->Process(embInfo.name, lookupKeys, currentBatchId, tmpData);
     missingKeys = hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos;
-    spdlog::info("missingKeys {}", missingKeys);
+    LOG(INFO) << StringFormat("missingKeys %d", missingKeys);
     hostEmbs->EmbDataGenerator(initializeInfos, seed, missingKeys.size(), embeddingSize, tmpDatas);
     status = Float2TensorVec(tmpDatas, d2h_emb);
     ASSERT_EQ(status, true);
@@ -155,7 +158,7 @@ TEST_F(EmbMgmtTest, Initialize)
     lookupKeys = { 1, 7, 9, 10 };
     hostHashMaps->Process(embInfo.name, lookupKeys, currentBatchId, tmpData);
     missingKeys = hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos;
-    spdlog::info("missingKeys {}", missingKeys);
+    LOG(INFO) << StringFormat("missingKeys %d", missingKeys);
     hostEmbs->EmbDataGenerator(initializeInfos, seed, missingKeys.size(), embeddingSize, tmpDatas);
     Float2TensorVec(tmpDatas, d2h_emb);
     status = Float2TensorVec(tmpDatas, d2h_emb);
@@ -176,11 +179,11 @@ TEST_F(EmbMgmtTest, Initialize_HBM)
     embInfo = EmbInfo(name, sendCount, embeddingSize, extEmbeddingSize, isSave, vocabsize, initializeInfos);
     embInfos.emplace_back(embInfo);
     vector<ThresholdValue> thresholdValues;
-    thresholdValues.emplace_back(name, 1, 1);
+    thresholdValues.emplace_back(name, 1, 1, 1);
 
     auto hybridMgmt = Singleton<HybridMgmt>::GetInstance();
     cout << "setup..." << endl;
-    allRank = RankInfo(rankId, deviceId, localRankSize, useStatic, nBatch, maxStep);
+    allRank = RankInfo(g_rankId, deviceId, localRankSize, useStatic, nBatch, maxStep);
     hybridMgmt->Initialize(allRank, embInfos, seed, thresholdValues, false);
 
     hybridMgmt->Destroy();
@@ -196,11 +199,11 @@ TEST_F(EmbMgmtTest, Evict)
     embInfo = EmbInfo(name, sendCount, embeddingSize, extEmbeddingSize, isSave, vocabsize, initializeInfos);
     embInfos.emplace_back(embInfo);
     vector<ThresholdValue> thresholdValues;
-    thresholdValues.emplace_back(name, 1, 1);
+    thresholdValues.emplace_back(name, 1, 1, 1);
 
     auto hybridMgmt = Singleton<HybridMgmt>::GetInstance();
     cout << "setup..." << endl;
-    allRank = RankInfo(rankId, deviceId, localRankSize, true, nBatch, maxStep);
+    allRank = RankInfo(g_rankId, deviceId, localRankSize, true, nBatch, maxStep);
     hybridMgmt->Initialize(allRank, embInfos, seed, thresholdValues, false);
 
     // evict test, ddr
@@ -219,11 +222,11 @@ TEST_F(EmbMgmtTest, Evict_HBM)
     embInfo = EmbInfo(name, sendCount, embeddingSize, extEmbeddingSize, isSave, vocabsize, initializeInfos);
     embInfos.emplace_back(embInfo);
     vector<ThresholdValue> thresholdValues;
-    thresholdValues.emplace_back(name, 1, 1);
+    thresholdValues.emplace_back(name, 1, 1, 1);
 
     auto hybridMgmt = Singleton<HybridMgmt>::GetInstance();
     cout << "setup..." << endl;
-    allRank = RankInfo(rankId, deviceId, localRankSize, true, nBatch, maxStep);
+    allRank = RankInfo(g_rankId, deviceId, localRankSize, true, nBatch, maxStep);
     hybridMgmt->Initialize(allRank, embInfos, seed, thresholdValues, false);
 
     // evict test, hbm
