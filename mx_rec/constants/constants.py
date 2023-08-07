@@ -51,6 +51,8 @@ LOG_MAX_SIZE = 1024 * 1024
 
 MAX_INT32 = np.iinfo(np.int32).max
 
+DUMP_MIDIFY_GRAPH_FILE_MODE = 0o550
+
 
 class BaseEnum(Enum):
     @classmethod
@@ -116,12 +118,10 @@ OPTIMIZER_STATE_META = {OptimizerType.LAZY_ADAM: ["momentum", "velocity"],
 
 
 class All2allGradientsOp(BaseEnum):
-    SUM_GRADIENTS = "sum_gradients" 
-    SUM_GRADIENTS_AND_DIV_BY_RANKSIZE = "sum_gradients_and_div_by_ranksize" 
+    SUM_GRADIENTS = "sum_gradients"
+    SUM_GRADIENTS_AND_DIV_BY_RANKSIZE = "sum_gradients_and_div_by_ranksize"
 
 
 class ApplyGradientsStrategy(BaseEnum):
-    DIRECT_APPLY = "direct_apply" 
-    SUM_SAME_ID_GRADIENTS_AND_APPLY = "sum_same_id_gradients_and_apply" 
-
-
+    DIRECT_APPLY = "direct_apply"
+    SUM_SAME_ID_GRADIENTS_AND_APPLY = "sum_same_id_gradients_and_apply"
