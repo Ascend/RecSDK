@@ -259,7 +259,11 @@ TEST_F(KeyProcessTest, Start)
 {
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
+    setenv("KEY_PROCESS_THREAD_NUM", "2", 1);
     ASSERT_EQ(process.Start(), 0);
+    setenv("KEY_PROCESS_THREAD_NUM", "abc", 1);
+    ASSERT_EQ(process.Start(), 0);
+    CTRLog(0, "key process start successful");
     process.Destroy();
 }
 
