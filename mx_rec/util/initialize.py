@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
-
-import json
 import logging
 import os
 from collections import defaultdict
 
-import mxrec_pybind
 import psutil
 
 import mx_rec.constants.constants
 from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION, VALID_DEVICE_ID_LIST, LOCAL_RANK_SIZE, \
     MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE, HASHTABLE_COLLECTION_NAME_LENGTH,\
     TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID, MIN_SIZE, MAX_CONFIG_SIZE
+from mx_rec.util.communication.hccl_mgmt import parse_hccl_json, set_hccl_info_without_json
 from mx_rec.util.ops import import_host_pipeline_ops
-from mx_rec.validator.validator import RankInfoValidator, StringValidator, FileValidator
+from mx_rec.validator.validator import StringValidator, FileValidator
 from mx_rec.util.atomic import AtomicInteger
 
 
@@ -64,7 +62,7 @@ class ConfigInitializer:
             self._rank_id = kwargs.get("rank_id")
             self._rank_size = kwargs.get("rank_size")
 
-        self.parse_hccl_json() if os.getenv("RANK_TABLE_FILE") else self.set_hccl_info_without_json()
+        self._rank_to_device_dict = parse_hccl_json() if os.getenv("RANK_TABLE_FILE") else set_hccl_info_without_json()
         self.train_steps = kwargs.get("train_steps", -1)
         self.eval_steps = kwargs.get("eval_steps", -1)
         self.check_parameters()
@@ -191,16 +189,14 @@ class ConfigInitializer:
         ConfigInitializer._single_instance = ConfigInitializer(use_mpi, **kwargs)
 
     def terminate(self):
+        logging.info("python process run into terminate")
         if self._is_terminated:
             logging.warning("The initializer has already been released once, please do not release it again.")
             return
 
         if self._asc_manager is not None:
             self.del_asc_manager()
-
-        if self._mpi:
-            self._mpi.Finalize()
-            logging.debug("MPI has been destroyed.")
+        logging.info("python process run terminate success")
 
         self._is_terminated = True
 
@@ -212,99 +208,6 @@ class ConfigInitializer:
 
     def get_feature_spec(self, key):
         return self._feature_spec_dict.get(key)
-
-    def parse_hccl_json(self):
-        rank_table_path = os.path.realpath(os.getenv("RANK_TABLE_FILE"))
-        if not os.path.exists(rank_table_path):
-            raise FileExistsError(f"Target_hccl_json_dir {rank_table_path} does not exist when reading.")
-
-        with open(rank_table_path, "r", encoding="utf-8") as file:
-            # check whether json file is valid
-            file_validator = FileValidator(rank_table_path)
-            # 1.check whether rank_table_path is soft link
-            file_validator.check_not_soft_link()
-            # 2.check json file size
-            file_validator.check_file_size(file, MAX_CONFIG_SIZE, MIN_SIZE)
-            file_validator.check()
-
-            table_hccl = json.load(file)
-            if "server_list" not in table_hccl:
-                raise AttributeError(f"Lack of attribute server_list.")
-            if not table_hccl["server_list"]:
-                raise ValueError(f"Server_list is empty.")
-            if "device" not in table_hccl["server_list"][0]:
-                raise AttributeError(f"Lack of attribute device.")
-
-        for server_list in table_hccl.get("server_list"):
-            devices = server_list.get("device")
-            if devices is None:
-                raise ValueError("device is empty")
-            for device in devices:
-                if "rank_id" not in device or not device["rank_id"].isdigit():
-                    raise ValueError(f"hccl_json rank_id wrong.")
-                rank_id = int(device["rank_id"])
-                if "device_id" not in device or not device["device_id"].isdigit():
-                    raise ValueError(f"hccl_json device_id wrong.")
-                device_id = mxrec_pybind.get_logic_id(int(device["device_id"]))
-                if device_id > 16:
-                    raise ValueError(f"get logic id from physic id fail.")
-                self._rank_to_device_dict[rank_id] = device_id
-
-    def set_hccl_info_without_json(self):
-        """
-        Used for no rank table file configured training situation.
-        Now, only less than or equal 8p training job is supported.
-        :return: None
-        """
-        RankInfoValidator().check_visible_devices()
-        ascend_visible_devices = os.getenv("ASCEND_VISIBLE_DEVICES")
-        device_list = []
-        try:
-            if "-" in ascend_visible_devices:
-                split_devices = ascend_visible_devices.strip().split("-")
-                if len(split_devices) >= 1:
-                    rank_start = int(split_devices[0])
-                    device_list = list(range(rank_start, int(ascend_visible_devices.strip().split("-")[-1]) + 1))
-            elif "," in ascend_visible_devices:
-                device_list = list(map(int, ascend_visible_devices.strip().split(",")))
-            elif ascend_visible_devices in VALID_DEVICE_ID_LIST:
-                device_list = [int(ascend_visible_devices.strip())]
-            else:
-                raise ValueError("invalid env variable ascend_visible_devices.")
-        except ValueError as error:
-            raise ValueError("Invalid env variable ascend_visible_devices, no valid device id is configured. "
-                             "Please refer to the document https://www.hiascend.com/document/detail/zh/"
-                             "CANNCommunityEdition/63RC2alpha002/ptmoddevg/ptmigr/ptmigr_0151.html for "
-                             "the correct configuration method.") from error
-        except IndexError as error:
-            raise IndexError(
-                f"Index of ascend_visible_devices {ascend_visible_devices.strip().split('-')[-1]} is out of range") \
-                from error
-
-        chief_device = os.getenv("CM_CHIEF_DEVICE")
-        rank_size = os.getenv("CM_WORKER_SIZE")
-        sorted_device_list = sorted(device_list)
-        if int(rank_size) != len(sorted_device_list):
-            raise ValueError(f"Rank size {rank_size} is different from device num {len(sorted_device_list)}.")
-        try:
-            self._rank_to_device_dict[0] = int(chief_device)
-        except ValueError as err:
-            raise ValueError("CM_WORKER_SIZE or CM_CHIEF_DEVICE uncorrected configured.") from err
-        try:
-            sorted_device_list.pop(int(chief_device) % len(sorted_device_list))
-        except IndexError as err:
-            raise IndexError(
-                f"Config CM_CHIEF_DEVICE {chief_device} not in training container device list {sorted_device_list}.") \
-                from err
-        except ZeroDivisionError as err:
-            raise ZeroDivisionError("sorted_device_list length can not equal to 0.") from err
-
-        for device_idx in sorted_device_list:
-            device_id = mxrec_pybind.get_logic_id(int(device_idx))
-            if device_id > 16:
-                raise ValueError(f"get logic id from physic id fail.")
-            index = sorted_device_list.index(device_idx)
-            self._rank_to_device_dict[index + 1] = device_id
 
     def insert_training_mode_channel_id(self, is_training):
         if is_training not in self._training_mode_channel_dict:
