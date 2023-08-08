@@ -3,6 +3,7 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 import logging
+
 import tensorflow as tf
 
 from mxrec_pybind import InitializeInfo, ConstantInitializerInfo, NormalInitializerInfo
