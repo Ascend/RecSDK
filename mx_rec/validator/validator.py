@@ -231,11 +231,11 @@ class DirectoryValidator(StringValidator):
 
     def with_blacklist(self, lst: List = None, exact_compare: bool = True, msg: str = None):
         if lst is None:
-            lst = ["/usr/bin", "/usr/sbin", "/etc", "/usr/lib", "/usr/lib64"]
+            lst = ["/usr/bin", "/usr/sbin", "/etc", "/usr/lib", "/usr/lib64", "/usr/local"]
         if len(lst) == 0:
             return self
         if msg is None:
-            msg = "path should is in blacklist"
+            msg = "path should not in blacklist"
         if exact_compare:
             self.register_checker(lambda path: path not in [os.path.realpath(each) for each in lst], msg)
         else:
@@ -255,6 +255,7 @@ class FileValidator(StringValidator):
     """
     Check if file is valid.
     """
+
     def __init__(self, value):
         """
         @param value: the file path, should not be emtpy string, should not contain double dot(../)

@@ -16,6 +16,7 @@ from mx_rec.util.initialize import get_rank_id, get_rank_size, get_customized_op
     get_table_instance_by_name, is_asc_manager_initialized, save_host_data, restore_host_data, get_host_data, \
     send_host_data, get_ascend_global_hashtable_collection
 from mx_rec.util.perf import performance
+from mx_rec.validator.validator import DirectoryValidator
 
 
 class Saver(object):
@@ -74,8 +75,13 @@ class Saver(object):
         else:
             ckpt_name = f"sparse-{base_name}"
 
-        integrated_path = os.path.join(directory, ckpt_name)
-        saving_path = integrated_path
+        saving_path = os.path.join(directory, ckpt_name)
+        try:
+            if save_path.find("://") == -1:
+                DirectoryValidator(saving_path).with_blacklist(exact_compare=False).check()
+        except ValueError as err:
+            raise ValueError(f"The saving path {saving_path} cannot be a system directory "
+                             f"or a subdirectory of the system directory.") from err
 
         if tf.io.gfile.exists(saving_path):
             tf.io.gfile.rmtree(saving_path)
