@@ -113,10 +113,7 @@ def get_device_list(ascend_visible_devices):
         else:
             raise ValueError("invalid env variable ascend_visible_devices.")
     except ValueError as error:
-        raise ValueError("Invalid env variable ascend_visible_devices, no valid device id is configured. "
-                         "Please refer to the document https://www.hiascend.com/document/detail/zh/"
-                         "CANNCommunityEdition/63RC2alpha002/ptmoddevg/ptmigr/ptmigr_0151.html for "
-                         "the correct configuration method.") from error
+        raise ValueError("Invalid env variable ascend_visible_devices, no valid device id is configured.") from error
     except IndexError as error:
         raise IndexError(
             f"Index of ascend_visible_devices {ascend_visible_devices.strip().split('-')[-1]} is out of range") \
