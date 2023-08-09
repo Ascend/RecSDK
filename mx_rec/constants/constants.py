@@ -52,6 +52,7 @@ LOG_MAX_SIZE = 1024 * 1024
 MAX_INT32 = np.iinfo(np.int32).max
 
 DUMP_MIDIFY_GRAPH_FILE_MODE = 0o550
+MAX_DEVICE_ID = 15
 
 
 class BaseEnum(Enum):
