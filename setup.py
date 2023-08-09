@@ -55,7 +55,6 @@ setup(
     name='mx_rec',
     version=VERSION,
     author='HUAWEI Inc',
-    url='https://www.hiascend.com/zh/software/mindx-sdk',
     description='MindX SDK Recommend',
     long_description=LONG_DESCRIPTION,
     # include mx_rec
