@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
-from mx_rec.util.log import get_log_level
+__all__ = ["initialize", "variable"]
 
+from mx_rec.util.log import get_log_level
 
 get_log_level()
