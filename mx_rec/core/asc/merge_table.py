@@ -39,16 +39,15 @@ def check_op(table_reachable_op: Operation) -> bool:
 
 def is_train_task():
     bool_gauge_set = get_bool_gauge_set()
-    if bool_gauge_set:
-        if 'train' in bool_gauge_set or 'train_and_evaluate' in bool_gauge_set:
-            return True
-        if 'predict' in bool_gauge_set:
-            return False
-    else:
+    if not bool_gauge_set:
         op_list = tf.compat.v1.get_default_graph().get_operations()
         for t_op in op_list:
             if check_op(t_op):
                 return True
+
+    if 'train' in bool_gauge_set or 'train_and_evaluate' in bool_gauge_set:
+        return True
+
     return False
 
 
