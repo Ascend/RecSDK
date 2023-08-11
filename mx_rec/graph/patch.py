@@ -24,7 +24,6 @@ def init_dataset(self, input_data):
     """
     input_data: A DT_VARIANT tensor that represents the dataset.
     """
-    # pylint: disable=W
     tf.compat.v1.add_to_collection("dataset_group", self)
     self._variant_tensor_attr = input_data
     # get obj

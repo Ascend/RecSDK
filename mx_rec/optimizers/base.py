@@ -43,7 +43,7 @@ class CustomizedOptimizer:
 
 def custom_update_op(self, opt, grad):
     if isinstance(grad, ops.Tensor):
-        update_op = opt._apply_sparse(grad, self._v)  # pylint: disable=protected-access
+        update_op = opt._apply_sparse(grad, self._v)
         return update_op
     else:
         raise RuntimeError("Only support g with type Tensor.")

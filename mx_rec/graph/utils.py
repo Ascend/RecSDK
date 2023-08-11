@@ -54,7 +54,6 @@ def record_ops_to_replace(src_op):
 
 
 def replace_anchor(replacement_specs: defaultdict, new_tensor_list: list):
-    # pylint: disable=W0212
     if len(replacement_specs) != len(new_tensor_list):
         raise ValueError("Given replacement_specs and new_tensor_list must have the same length.")
 
