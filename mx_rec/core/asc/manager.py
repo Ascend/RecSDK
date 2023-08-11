@@ -203,11 +203,12 @@ def initialize_emb_cache(table_info_list, threshold_list):
     rank_info = RankInfo(rank_id, device_id, rank_size, option, n_batch_to_prefetch, [train_steps, eval_steps])
 
     emb_cache = HybridMgmt()
-    if threshold_list:
-        emb_cache.initialize(rank_info=rank_info, emb_info=table_info_list, if_load=if_load,
+
+    is_initialized = emb_cache.initialize(rank_info=rank_info, emb_info=table_info_list, if_load=if_load,
                              threshold_values=threshold_list)
-    else:
-        emb_cache.initialize(rank_info=rank_info, emb_info=table_info_list, if_load=if_load)
+    if is_initialized is False:
+        logging.error("Failed to init emb_cache!")
+        raise RuntimeError("emb_cache has not been initialized successfully.")
 
     set_asc_manager(emb_cache)
     logging.info("Preprocessing has been sunk into the host pipeline.")
