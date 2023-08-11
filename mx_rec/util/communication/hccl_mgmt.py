@@ -87,14 +87,14 @@ def set_hccl_info_without_json():
 
         try:
             device_id = mxrec_pybind.get_logic_id(int(device_idx))
-            if device_id > MAX_DEVICE_ID:
-                raise ValueError(f"get logic id from physic id fail.")
-            index = sorted_device_list.index(device_idx)
-            rank_to_device_dict[index + 1] = device_id
         except RuntimeError as exp:
             raise RuntimeError(f"get logic id from physic id fail. Possible reasons: 1) running user permission "
                                f"is not enough to call dsmi api 2) driver has been used by other process") from \
                 exp
+        if device_id > MAX_DEVICE_ID:
+            raise ValueError(f"get logic id from physic id fail.")
+        index = sorted_device_list.index(device_idx)
+        rank_to_device_dict[index + 1] = device_id
     return rank_to_device_dict
 
 
