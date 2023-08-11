@@ -60,6 +60,8 @@ acc_ctr_path="${ROOT_DIR}"/src/platform/AccCTR
 cp -rf "${ROOT_DIR}"/platform/securec/* "${acc_ctr_path}"/3rdparty/huawei_secure_c
 cd "${ROOT_DIR}"
 
+release_tar=Ascend-"${pkg_dir}"_"${VERSION}"_linux-"${ARCH}".tar.gz
+
 compile_securec()
 {
     if [[ ! -d "${ROOT_DIR}"/platform/securec ]]; then
@@ -116,7 +118,6 @@ gen_tar_file()
 {
   cd "${src_path}"
   mv  "${ROOT_DIR}"/tf1_whl ../build/"${pkg_dir}"
-  mv  "${ROOT_DIR}"/tf2_whl ../build/"${pkg_dir}"
   cp -r  "${src_path}"/../cust_op ../build/"${pkg_dir}"
   cd ../build
   tar -zvcf "${release_tar}" "${pkg_dir}" || {

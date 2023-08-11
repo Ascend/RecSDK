@@ -20,6 +20,13 @@ then
   deactivate tf2_env
 fi
 
+if [ "$(uname -m)" = "aarch64" ]
+then
+  source /opt/buildtools/tf2_env/bin/activate
+  tf2_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/tensorflow
+  deactivate tf2_env
+fi
+
 VERSION_FILE="${ROOT_DIR}"/../mindxsdk/build/conf/config.yaml
 get_version() {
   if [ -f "$VERSION_FILE" ]; then
@@ -114,6 +121,20 @@ gen_wheel_file()
   remove "${ROOT_DIR}"/mx_rec/libasc
 }
 
+gen_tar_file()
+{
+  cd "${src_path}"
+  mv  "${ROOT_DIR}"/tf2_whl ../build/"${pkg_dir}"
+  cp -r  "${src_path}"/../cust_op ../build/"${pkg_dir}"
+  cd ../build
+  tar -zvcf "${release_tar}" "${pkg_dir}" || {
+      warn "compression failed, packages might be broken"
+  }
+
+  mv "${release_tar}" "${SCRIPT_DIR}"/../output/
+
+}
+
 if [ "$(uname -m)" = "x86_64" ]
 then
   compile_securec
@@ -130,4 +151,23 @@ then
 
   deactivate tf2_env
   echo "-----Build tf2 finished -----"
+fi
+
+if [ "$(uname -m)" = "aarch64" ]
+then
+  compile_securec
+
+  echo "-----Build AccCTR -----"
+  compile_acc_ctr_so_file
+
+  echo "-----Build Start tf2 -----"
+  source /opt/buildtools/tf2_env/bin/activate
+  compile_so_file "${tf2_path}"
+  collect_so_file
+  gen_wheel_file  "${ROOT_DIR}"/tf2_whl
+
+  deactivate tf2_env
+  echo "-----Build tf2 finished -----"
+  gen_tar_file
+  echo "-----Build gen tar finished-----"
 fi
