@@ -93,3 +93,14 @@ then
   clean
   echo "-----Done-----"
 fi
+
+if [ "$(uname -m)" = "aarch64" ]
+then
+  echo "-----Build gen tar -----"
+  bash ${ROOT_DIR}/build/build_tf2.sh
+  gen_tar_file
+  echo "-----Build gen tar finished-----"
+
+  clean
+  echo "-----Done-----"
+fi
