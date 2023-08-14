@@ -109,12 +109,12 @@ namespace MxRec {
             g_rankId = std::to_string(rank);
         }
         if (!g_isGlogInit) {
-            google::InitGoogleLogging("mxRec", &CustomGlogFormat);
+            InitGoogleLogging("mxRec", &CustomGlogFormat);
             g_isGlogInit = true;
         }
     }
 
-    void CustomGlogFormat(std::ostream &s, const LogMessageInfo &l, void*)
+    void CustomGlogFormat(std::ostream &s, const google::LogMessageInfo &l, void*)
     {
         s << "["
           << setw(GLOG_TIME_WIDTH_2) << l.time.hour() << ':'

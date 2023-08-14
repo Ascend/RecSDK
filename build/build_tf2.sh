@@ -35,7 +35,7 @@ get_version() {
       VERSION=${VERSION%.*}
     fi
   else
-    VERSION="5.0.T104"
+    VERSION="5.0.rc3"
   fi
 }
 
