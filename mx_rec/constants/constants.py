@@ -96,6 +96,9 @@ class ASCAnchorAttr(Enum):
     ALL2ALL_MATRIX = "all2all_matrix"
     HOT_POS = "hot_pos"
     LOOKUP_RESULT = "lookup_result"
+    RESTORE_VECTOR_SECOND = "restore_vector_second"
+    UNIQUE_KEYS = "unique_keys"
+    GRADIENTS_STRATEGY = "gradients_strategy"
 
 
 class MxRecMode(BaseEnum):

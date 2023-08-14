@@ -17,6 +17,12 @@ bool HybridMgmt::InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>&
                                 const vector<ThresholdValue>& thresholdValues, int seed)
 {
 #ifndef GTEST
+    if (getenv("APPLY_GRADIENTS_STRATEGY") != nullptr) {
+        bool strategy = (!strcmp(getenv("APPLY_GRADIENTS_STRATEGY"), SUM_SAME_ID));
+        PerfConfig::gradientStrategy = strategy;
+        LOG(INFO) << StringFormat("config GRADIENTS_STRATEGY:%d", strategy);
+    }
+
     if (getenv("KEY_PROCESS_THREAD_NUM") != nullptr) {
         int num = std::atoi(getenv("KEY_PROCESS_THREAD_NUM"));
         if (num < 1 || num > MAX_KEY_PROCESS_THREAD) {
@@ -700,6 +706,18 @@ bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
         infoVecs->pop_back();
         VLOG(GLOG_DEBUG) << StringFormat("sendLookupSyncTC(ms):%d", sendLookupSyncTC.ElapsedMS());
 
+        if (PerfConfig::gradientStrategy && channelId == TRAIN_CHANNEL_ID) {
+            TimeCost sendUnikeysSyncTC;
+            hdTransfer->Send(TransferChannel::UNIQKEYS, { infoVecs->back() }, channelId, embInfo.name);
+            infoVecs->pop_back();
+            VLOG(GLOG_DEBUG) << StringFormat("sendUnikeysSyncTC(ms):%d", sendUnikeysSyncTC.ElapsedMS());
+
+            TimeCost sendRestoreVecSecSyncTC;
+            hdTransfer->Send(TransferChannel::RESTORE_SECOND, { infoVecs->back() }, channelId, embInfo.name);
+            infoVecs->pop_back();
+            VLOG(GLOG_DEBUG) << StringFormat("sendRestoreVecSecSyncTC(ms):%d", sendRestoreVecSecSyncTC.ElapsedMS());
+        }
+
         TimeCost sendRestoreSyncTC;
         hdTransfer->Send(TransferChannel::RESTORE, *infoVecs, channelId, embInfo.name);
         VLOG(GLOG_DEBUG) << StringFormat("sendRestoreSyncTC(ms):%d", sendRestoreSyncTC.ElapsedMS());
@@ -772,12 +790,26 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
         remainBatchOut = false;
     }
 
-    auto restore = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::RESTORE);
+    auto infoVecs = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::RESTORE);
     VLOG(GLOG_DEBUG) << StringFormat("getTensorsTC(ms):%d", getTensorsTC.ElapsedMS());
 
-    hdTransfer->Send(TransferChannel::RESTORE, *restore, channelId, embName);
-    vector<Tensor> tmpData;
+    if (PerfConfig::gradientStrategy && channelId == TRAIN_CHANNEL_ID && remainBatchOut) {
+        TimeCost sendUnikeysSyncTC;
+        hdTransfer->Send(TransferChannel::UNIQKEYS, { infoVecs->back() }, channelId, embName);
+        infoVecs->pop_back();
+        VLOG(GLOG_DEBUG) << StringFormat("sendUnikeysSyncTC(ms):%d", sendUnikeysSyncTC.ElapsedMS());
 
+        TimeCost sendRestoreVecSecSyncTC;
+        hdTransfer->Send(TransferChannel::RESTORE_SECOND, { infoVecs->back() }, channelId, embName);
+        infoVecs->pop_back();
+        VLOG(GLOG_DEBUG) << StringFormat("sendRestoreVecSecSyncTC(ms):%d", sendRestoreVecSecSyncTC.ElapsedMS());
+    }
+
+    TimeCost sendRestoreSyncTC;
+    hdTransfer->Send(TransferChannel::RESTORE, *infoVecs, channelId, embName);
+    VLOG(GLOG_DEBUG) << StringFormat("sendRestoreSyncTC(ms):%d", sendRestoreSyncTC.ElapsedMS());
+
+    vector<Tensor> tmpData;
     TimeCost hostHashMapProcessTC;
     hostHashMaps->Process(embName, lookupKeys, iBatch, tmpData, channelId);
     VLOG(GLOG_DEBUG) << StringFormat("hostHashMapProcessTC(ms):%d", hostHashMapProcessTC.ElapsedMS());

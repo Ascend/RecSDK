@@ -59,6 +59,7 @@ void HDTransfer::Destroy()
     running = false;
     LOG(INFO) << (HD + "destroy channel start");
     for (auto& c: transferChannels) {
+        LOG(INFO) << StringFormat(HD + "start destroy channel:%s", c.first.c_str());
         tensorflow::StopRecvTensorByAcl(&c.second, c.first);
         LOG(INFO) << StringFormat(HD + "destroy channel:%s", c.first.c_str());
     }
@@ -101,6 +102,8 @@ void HDTransfer::CreateChannel(const uint32_t localRankId, const string& embName
         if (TransferChannel2Str(channel) == "all2all" ||
             TransferChannel2Str(channel) == "restore" ||
             TransferChannel2Str(channel) == "lookup"  ||
+            TransferChannel2Str(channel) == "restore_second" ||
+            TransferChannel2Str(channel) == "uniquekeys" ||
             TransferChannel2Str(channel) == "evict"  /* for noDDR */
                 ) {
             transferChannels[sendName] = tdtCreateChannel(localRankId, sendName.c_str(), channelSize);

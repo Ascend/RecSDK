@@ -367,13 +367,9 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<emb_batch_t>& bat
         uniqueInfo.hotPos.resize(hotEmbTotCount[batch->name], -1);
         tensors->push_back(Vec2TensorI32(uniqueInfo.hotPos));
     }
-    if (rankInfo.noDDR) {
-        if (rankInfo.useDynamicExpansion) {
-            tensors->push_back(Vec2TensorI64(uniqueInfo.all2AllInfo.keyRecv));
-        } else {
-            tensors->push_back(Vec2TensorI32(uniqueInfo.all2AllInfo.keyRecv));
-        }
-    }
+
+    PushGlobalUniqueTensors(move(tensors), uniqueInfo.all2AllInfo.keyRecv, channel);
+
     TimeCost pushResultTC;
     PushResult(batch, move(tensors), uniqueInfo.all2AllInfo.keyRecv);
     VLOG(GLOG_DEBUG) << StringFormat("pushResultTC(ms):%d", pushResultTC.ElapsedMS());
@@ -429,16 +425,56 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channe
         hotPos.resize(hotEmbTotCount[batch->name], 0);
         tensors->push_back(Vec2TensorI32(hotPos));
     }
-    if (rankInfo.noDDR) {
-        if (rankInfo.useDynamicExpansion) {
-            tensors->push_back(Vec2TensorI64(lookupKeys));
-        } else {
-            tensors->push_back(Vec2TensorI32(lookupKeys));
-        }
-    }
+
+    PushGlobalUniqueTensors(tensors, lookupKeys, channel);
+
     PushResult(batch, move(tensors), lookupKeys);
     VLOG(GLOG_DEBUG) << StringFormat("pushResultTC(ms):%d", pushResultTC.ElapsedMS());
     return true;
+}
+
+void KeyProcess::PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, keys_t& lookupKeys, int channel)
+{
+    if (PerfConfig::gradientStrategy && channel == TRAIN_CHANNEL_ID) {
+        keys_t uniqueKeys;
+        vector<int32_t> restoreVecSec;
+        GlobalUnique(lookupKeys, uniqueKeys, restoreVecSec);
+        tensors->push_back(Vec2TensorI32(restoreVecSec));
+        tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(uniqueKeys) : Vec2TensorI32(uniqueKeys));
+    }
+
+    if (rankInfo.noDDR) {
+        tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(lookupKeys) : Vec2TensorI32(lookupKeys));
+    }
+}
+
+void KeyProcess::GlobalUnique(const keys_t& lookupKeys, keys_t& uniqueKeys, vector<int32_t>& restoreVecSec)
+{
+    absl::flat_hash_map<emb_key_t, int32_t> umap;
+    restoreVecSec.resize(lookupKeys.size(), -1);
+    int32_t length = 0;
+
+    for (size_t i = 0; i < lookupKeys.size(); ++i) {
+        int64_t key = lookupKeys[i];
+        if (key == -1) {
+            continue;
+        }
+        auto result = umap.find(key);
+        if (result == umap.end()) {
+            uniqueKeys.push_back(lookupKeys[i]);
+            umap[key] = length;
+            restoreVecSec[i] = length;
+            length++;
+        } else {
+            restoreVecSec[i] = result->second;
+        }
+    }
+
+    if (rankInfo.useStatic) {
+        uniqueKeys.resize(lookupKeys.size(), -1);
+    } else {
+        restoreVecSec.erase(std::remove(restoreVecSec.begin(), restoreVecSec.end(), -1), restoreVecSec.end());
+    }
 }
 
 vector<uint32_t> KeyProcess::GetCountRecv(const unique_ptr<emb_batch_t>& batch, int id,

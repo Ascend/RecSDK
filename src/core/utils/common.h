@@ -58,6 +58,7 @@ namespace MxRec {
     constexpr int MAX_QUEUE_NUM = MAX_CHANNEL_NUM * MAX_KEY_PROCESS_THREAD;
     constexpr int DEFAULT_KEY_PROCESS_THREAD = 6;
     constexpr int KEY_PROCESS_THREAD = 6;
+    constexpr char SUM_SAME_ID[] = "sum_same_id_gradients_and_apply";
 
     // for GLOG
     extern int g_glogLevel;
@@ -74,6 +75,7 @@ namespace MxRec {
         static int keyProcessThreadNum;
         static int maxUniqueThreadNum;
         static bool fastUnique;
+        static bool gradientStrategy;
     };
 
     constexpr int KEY_PROCESS_TIMEOUT = 120;

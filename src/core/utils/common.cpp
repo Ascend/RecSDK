@@ -24,6 +24,7 @@ namespace MxRec {
     int PerfConfig::keyProcessThreadNum = DEFAULT_KEY_PROCESS_THREAD;
     int PerfConfig::maxUniqueThreadNum = DEFAULT_MAX_UNIQUE_THREAD_NUM;
     bool PerfConfig::fastUnique = false;
+    bool PerfConfig::gradientStrategy = false;
     string g_rankId;
     int g_glogLevel;
     bool g_isGlogInit = false;

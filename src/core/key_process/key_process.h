@@ -132,6 +132,8 @@ namespace MxRec {
 
         void GetUniqueConfig(UniqueConf& uniqueConf);
 
+        void GlobalUnique(const keys_t& lookupKeys, keys_t& uniqueKeys, vector<int32_t>& restoreVecSec);
+
         void InitializeUnique(UniqueConf& uniqueConf, size_t& preBatchSize, bool& uniqueInitialize,
                                   const unique_ptr <emb_batch_t>& batch, UniquePtr& unique);
 
@@ -179,6 +181,8 @@ namespace MxRec {
                                        KeySendInfo& keySendInfo, vector<int>& sc, vector<int>& splitSize);
 
         void PushResult(unique_ptr<emb_batch_t>& batch, unique_ptr<vector<Tensor>> tensors, keys_t& lookupKeys);
+
+        void PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, keys_t& lookupKeys, int chanel);
 
         void AddCountStartToHotPos(vector<keys_t>& splitKeys, vector<int>& hotPos, const vector<int>& hotPosDev,
                                    const unique_ptr<emb_batch_t>& batch);
