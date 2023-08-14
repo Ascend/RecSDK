@@ -136,12 +136,12 @@ def get_op_before_optimize_dataset(get_next_op):
     base_op = find_make_iterator_op(get_next_op.outputs[0])
     # looking for the op which is the one before OptimizeDataset operator
     if tf.__version__.startswith("1"):
-        optimize_dataset_op = find_target_dataset_op(base_op, "OptimizeDataset")
+        optimize_dataset_op = find_target_dataset_op(base_op, "ModelDataset")
         target_op = find_parent_op(optimize_dataset_op)
         if not target_op:
-            raise RuntimeError(f"The parent op for 'OptimizeDataset' op was not found.")
-        if target_op[0].type != "PrefetchDataset":
-            raise TypeError(f"Op PrefetchDataset was not found.")
+            raise RuntimeError(f"The parent op for 'ModelDataset' op was not found.")
+        if target_op[0].type != "OptimizeDataset":
+            raise TypeError(f"Op OptimizeDataset was not found.")
         target_op = target_op[0]
     else:
         # 'OptimizeDataset' is not available in TensorFlow2.X
