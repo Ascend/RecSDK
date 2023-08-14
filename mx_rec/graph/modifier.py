@@ -16,7 +16,7 @@ from mx_rec.core.asc.feature_spec import FeatureSpec, set_temporary_feature_spec
 from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import SparseEmbedding
 from mx_rec.constants.constants import ASCEND_CUTTING_POINT_INITIALIZER, ASCEND_SPARSE_LOOKUP_ENTRANCE, \
-    ASCAnchorAttr, ASCEND_TIMESTAMP
+    ASCAnchorAttr, ASCEND_TIMESTAMP, ApplyGradientsStrategy
 from mx_rec.util.initialize import get_rank_size, get_training_mode_channel_id, get_feature_spec, \
     insert_feature_spec, set_initializer, get_use_static, get_use_hot, get_device_id, get_use_dynamic_expansion, \
     terminate_config_initializer, set_is_graph_modify_hook_running, get_bool_gauge_set, increase_run_times, \
@@ -348,7 +348,7 @@ def modify_graph_for_asc(dump_graph=False, prefetch=10):
         # multiple lookups of a same table
         lookup_for_same_table(sub_cutting_point_list, is_training)
         # replace the stub node for sparse lookup from the graph
-        replace_stub_node_with_asc_graph(sub_cutting_point_list, is_training)
+
 
     logging.info("Graph has been revised.")
     export_pb_graph("new_graph.pb", dump_graph)
@@ -437,7 +437,8 @@ def replace_stub_node_with_asc_graph(sub_cutting_point_list: list, is_training: 
             send_count=table_instance.send_count, channel_id=channel_id, rank_size=get_rank_size(),
             table_name=table_instance.table_name, skip_emb_transfer=table_instance.skip_emb_transfer,
             ext_emb_size=table_instance.ext_emb_size, emb_size=table_instance.scalar_emb_size,
-            use_hot=get_use_hot(), device_id=get_device_id(), use_dynamic_expansion=get_use_dynamic_expansion())
+            use_hot=get_use_hot(), device_id=get_device_id(), use_dynamic_expansion=get_use_dynamic_expansion(),
+            is_training=is_training)
 
         lookup_result = None
         if len(table_instance.lookup_name_list) > 1 and feature_spec.name in table_instance.lookup_result and \
