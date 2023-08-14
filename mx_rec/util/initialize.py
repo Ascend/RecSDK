@@ -9,7 +9,7 @@ import psutil
 
 import mx_rec.constants.constants
 from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION, VALID_DEVICE_ID_LIST, LOCAL_RANK_SIZE, \
-    MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE, HASHTABLE_COLLECTION_NAME_LENGTH,\
+    MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE, HASHTABLE_COLLECTION_NAME_LENGTH, \
     TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID, MIN_SIZE, MAX_CONFIG_SIZE
 from mx_rec.util.communication.hccl_mgmt import parse_hccl_json, set_hccl_info_without_json
 from mx_rec.util.ops import import_host_pipeline_ops
@@ -31,7 +31,6 @@ class ConfigInitializer:
         self._is_frozen = False
         self._train_steps = None
         self._eval_steps = None
-        self._prefetch_batch_number = None
         self._if_load = None
         self._table_instance_dict = dict()
         self._dangling_table = []
@@ -50,6 +49,8 @@ class ConfigInitializer:
         self._is_terminated = False
         self._is_last_round = False
         self._run_times = AtomicInteger()
+        self._merged_multi_lookup = dict()
+        self._target_batch = dict()
 
         if self._use_mpi:
             logging.debug(f"Using mpi to launch task.")
@@ -66,11 +67,10 @@ class ConfigInitializer:
         self.train_steps = kwargs.get("train_steps", -1)
         self.eval_steps = kwargs.get("eval_steps", -1)
         self.check_parameters()
-        self.prefetch_batch_number = kwargs.get("prefetch_batch_number", 1)
+        self._prefetch_batch_number = kwargs.get("prefetch_batch_number", 1)
         self.if_load = kwargs.get("if_load", False)
-        if_dynamic = kwargs.get("use_dynamic", True)
 
-        self.use_static = not if_dynamic
+        self.use_static = not kwargs.get("use_dynamic", True)
         self.use_hot = kwargs.get("use_hot", True)
         self.use_dynamic_expansion = kwargs.get("use_dynamic_expansion", False)
         if kwargs.get("bind_cpu", True):
@@ -79,6 +79,14 @@ class ConfigInitializer:
 
     def __del__(self):
         self.terminate()
+
+    @property
+    def merged_multi_lookup(self):
+        return self._merged_multi_lookup
+
+    @property
+    def target_batch(self):
+        return self._target_batch
 
     @property
     def is_last_round(self):
@@ -364,6 +372,24 @@ class ConfigInitializer:
             raise ValueError(f"Given key must be a boolean, but got {is_training}.")
 
         self._initializer_dict[is_training] = initializer
+
+    def insert_merged_multi_lookup(self, is_training, value=True):
+        if not isinstance(is_training, bool):
+            raise TypeError(f"Given key must be a boolean, but got {is_training} for `merged_multi_lookup`.")
+
+        self._merged_multi_lookup[is_training] = value
+
+    def get_merged_multi_lookup(self, is_training):
+        return self._merged_multi_lookup.get(is_training)
+
+    def set_target_batch(self, is_training, batch):
+        if not isinstance(is_training, bool):
+            raise TypeError(f"Given key must be a boolean, but got {is_training} for `target_batch`.")
+
+        self._target_batch[is_training] = batch
+
+    def get_target_batch(self, is_training):
+        return self._target_batch.get(is_training)
 
     def delete_initializers(self):
         self._initializer_dict = {}
@@ -658,6 +684,48 @@ def set_initializer(is_training, initializer):
 
 def set_ascend_table_name_must_contain(name="merged"):
     mx_rec.constants.constants.ASCEND_TABLE_NAME_MUST_CONTAIN = name
+
+
+def insert_merged_multi_lookup(is_training: bool, value: bool = True):
+    """
+    记录自动改图模式下是否调用了合并lookup的函数.
+    Args:
+        is_training: 当前是否为训练模式，训练模式为True，否则为False
+        value: 是否调用了合并lookup的函数, 调用了为True，否则为False
+    Returns: None
+    """
+    ConfigInitializer.get_instance().insert_merged_multi_lookup(is_training, value)
+
+
+def get_merged_multi_lookup(is_training: bool) -> bool:
+    """
+    返回自动改图模式下是否调用了合并lookup函数的记录.
+    Args:
+        is_training: 当前是否为训练模式，训练模式为True，否则为False
+    Returns: 调用记录，调用了为True，否则为False
+    """
+    return ConfigInitializer.get_instance().get_merged_multi_lookup(is_training)
+
+
+def set_target_batch(is_training: bool, batch: dict):
+    """
+    记录自动改图模式下生成新数据集中的batch.
+    Args:
+        is_training: 当前是否为训练模式，训练模式为True，否则为False
+        batch: 数据集中的batch
+    Returns: None
+    """
+    ConfigInitializer.get_instance().set_target_batch(is_training, batch)
+
+
+def get_target_batch(is_training: bool) -> dict:
+    """
+    返回自动改图模式下生成新数据集中batch的记录.
+    Args:
+        is_training: 当前是否为训练模式，训练模式为True，否则为False
+    Returns: 新数据集中的batch
+    """
+    return ConfigInitializer.get_instance().get_target_batch(is_training)
 
 
 def set_ascend_env():

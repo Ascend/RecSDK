@@ -7,7 +7,8 @@ import os
 
 import tensorflow as tf
 
-from mx_rec.constants.constants import DUMP_MIDIFY_GRAPH_FILE_MODE
+from mx_rec.constants.constants import ASCAnchorAttr, DUMP_MIDIFY_GRAPH_FILE_MODE
+from mx_rec.core.embedding import SparseEmbedding
 
 
 def check_input_list(objs, obj_type):
@@ -55,7 +56,8 @@ def record_ops_to_replace(src_op):
 
 def replace_anchor(replacement_specs: defaultdict, new_tensor_list: list):
     if len(replacement_specs) != len(new_tensor_list):
-        raise ValueError("Given replacement_specs and new_tensor_list must have the same length.")
+        raise ValueError(f"Given replacement_specs and new_tensor_list must have the same length. "
+                         f"replacement_specs: {replacement_specs}, new_tensor_list: {new_tensor_list}")
 
     for tensor_idx, (_, items) in enumerate(replacement_specs.items()):
         for input_idx, operator in items:
@@ -103,3 +105,27 @@ def make_sorted_key_to_tensor_list(element_spec, sorted_keys, prefix=""):
         return sorted_keys
 
     raise TypeError(f"Given element_spec, whose type is {type(element_spec)}, is invalid.")
+
+
+def replace_anchor_vec(cutting_point: tf.Tensor, attribute: ASCAnchorAttr, anchor: tf.Tensor):
+    """
+    根据打桩节点的名字找到以此为输入的op，并将该op的输入替换为入参anchor.
+
+    Args:
+        cutting_point: sparse lookup查询的ids
+        attribute: 被替换的打桩节点的名字
+        anchor: 用来替换打桩节点的tensor
+
+    Returns: None
+
+    """
+
+    # get stub node
+    anchor_vec = SparseEmbedding.get_anchor_attribute(cutting_point, attribute)
+    if anchor_vec is None:
+        raise RuntimeError(f"Node `{attribute.value}` does not exist. Check whether the sparse lookup interface "
+                           f"is correctly invoked.")
+    # find the op with stub node as the input
+    replacement_specs_for_anchor_vec = record_ops_to_replace(anchor_vec.op)
+    # replace anchor_vec with anchor
+    replace_anchor(replacement_specs_for_anchor_vec, [anchor])
