@@ -9,12 +9,14 @@
 #include <sys/mman.h>
 #include <cstring>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #include "ckpt_data_handler//emb_hash_ckpt/emb_hash_ckpt.h"
 #include "ckpt_data_handler/host_emb_ckpt/host_emb_ckpt.h"
 #include "ckpt_data_handler/nddr_offset_ckpt/nddr_offset_ckpt.h"
 #include "ckpt_data_handler/nddr_feat_map_ckpt/nddr_feat_map_ckpt.h"
 #include "ckpt_data_handler/feat_admit_n_evict_ckpt/feat_admit_n_evict_ckpt.h"
+#include "utils/time_cost.h"
 
 #include "checkpoint.h"
 
@@ -233,18 +235,25 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir)
 {
     std::ifstream readFile;
     readFile.open(dataDir.c_str(), std::ios::in | std::ios::binary | std::ios::ate);
+    size_t datasetSize = static_cast<size_t>(readFile.tellg());
+    readFile.seekg(0, std::ios::beg);
+    try {
+        ValidateReadFile(dataDir, datasetSize);
+    } catch (const std::invalid_argument& e) {
+        readFile.close();
+        throw runtime_error(StringFormat("Invalid read file path: %s", e.what()));
+    }
 
 #ifndef GTEST
     auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
     if (res != ACL_ERROR_NONE) {
         LOG(ERROR) << StringFormat("Set device failed, device_id:%d", deviceId);
+        readFile.close();
         throw runtime_error(StringFormat("Set device failed, device_id:%d", deviceId).c_str());
     }
 
     auto &AttributeArr = transData.attribute;
     auto embHashMapSize = AttributeArr.at(0);
-    size_t datasetSize = readFile.tellg();
-    readFile.seekg(0, std::ios::beg);
     auto embeddingSize = static_cast<int>(datasetSize / sizeof(float) / embHashMapSize);
 
     aclError ret;
@@ -252,6 +261,7 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir)
     ret = aclrtMalloc(&newBlock, static_cast<int>(datasetSize), ACL_MEM_MALLOC_HUGE_FIRST);
     if (ret != ACL_SUCCESS) {
         LOG(ERROR) << StringFormat("aclrtMalloc failed, ret=%d", ret);
+        readFile.close();
         throw runtime_error(StringFormat("aclrtMemcpy failed, ret=%d", ret).c_str());
     }
 
@@ -266,6 +276,7 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir)
                                    ACL_MEMCPY_HOST_TO_DEVICE);
         if (ret != ACL_SUCCESS) {
             LOG(ERROR) << StringFormat("aclrtMemcpy failed, ret=%d", ret);
+            readFile.close();
             throw runtime_error(StringFormat("aclrtMemcpy failed, ret=%d", ret).c_str());
         }
 
@@ -424,17 +435,25 @@ void Checkpoint::ReadStream(CkptTransData& transData,
         LOG(WARNING) << "dataElmtBytes is 0, don't handle [/ %] operation";
         return ;
     }
+
     std::ifstream readFile;
     readFile.open(dataDir.c_str(), std::ios::in | std::ios::binary | std::ios::ate);
-
-    size_t datasetSize = readFile.tellg();
+    size_t datasetSize = static_cast<size_t>(readFile.tellg());
     readFile.seekg(0, std::ios::beg);
+    try {
+        ValidateReadFile(dataDir, datasetSize);
+    } catch (const std::invalid_argument& e) {
+        readFile.close();
+        throw runtime_error(StringFormat("Invalid read file path: %s", e.what()));
+    }
 
     if (datasetSize % dataElmtBytes > 0) {
         VLOG(GLOG_DEBUG) << StringFormat("data is missing or incomplete in load file: %s", dataDir.c_str());
     }
+
     auto resizeSize { datasetSize / dataElmtBytes };
     SetTransDataSize(transData, resizeSize, dataType);
+
     if (readFile.is_open()) {
         size_t idx = 0;
         size_t readSize = 0;
@@ -445,7 +464,6 @@ void Checkpoint::ReadStream(CkptTransData& transData,
                 readSize = datasetSize;
             }
             ReadDataset(transData, readFile, readSize, dataType, idx);
-
             datasetSize -= readSize;
             idx += readSize;
         }
@@ -468,7 +486,6 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
     }
 
     auto embDataOuterSize = transData.attribute.at(attribEmbDataOuterIdx);
-
     auto loadHostEmbs = ckptData.hostEmbs;
     auto& dst = (*loadHostEmbs)[embName].embData;
     dst.reserve(embDataOuterSize);
@@ -476,11 +493,19 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
     std::ifstream readFile;
     readFile.open(dataDir.c_str(), std::ios::in | std::ios::binary | std::ios::ate);
 
-    size_t datasetSize = readFile.tellg();
+    size_t datasetSize = static_cast<size_t>(readFile.tellg());
     readFile.seekg(0, std::ios::beg);
+
+    try {
+        ValidateReadFile(dataDir, datasetSize);
+    } catch (const std::invalid_argument& e) {
+        readFile.close();
+        throw runtime_error(StringFormat("Invalid read file path: %s", e.what()));
+    }
 
     if (datasetSize % embDataOuterSize > 0 || datasetSize % dataElmtBytes > 0) {
         LOG(ERROR) << StringFormat("data is missing or incomplete in load file: %s", dataDir.c_str());
+        readFile.close();
         throw runtime_error("unable to load EMB_DATA cause wrong-format saved emb data");
     }
     auto onceReadByteSize { datasetSize / embDataOuterSize };
@@ -500,9 +525,7 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
             } else {
                 readSize = dataCol;
             }
-
             readFile.read((char*)(dst[i].data()) + idx, readSize);
-
             dataCol -= readSize;
             idx += readSize;
         }
@@ -537,5 +560,23 @@ void Checkpoint::ReadDataset(CkptTransData& transData,
         readFile.read((char*)(transData.floatArr.data()) + idx, readSize);
     } else if (dataType == CkptDataType::ATTRIBUTE) {
         readFile.read((char*)(transData.attribute.data()) + idx, readSize);
+    }
+}
+
+void Checkpoint::ValidateReadFile(const string& dataDir, size_t datasetSize)
+{
+    // validate soft link
+    struct stat fileInfo;
+    if (lstat(dataDir.c_str(), &fileInfo) != -1) {
+        if (S_ISLNK(fileInfo.st_mode)) {
+            LOG(ERROR) << StringFormat("soft link %s should not in the path parameter", dataDir.c_str());
+            throw invalid_argument(StringFormat("soft link should not be the path parameter"));
+        }
+    }
+    // validate file size
+    if (datasetSize <= FILE_MIN_SIZE || datasetSize > FILE_MAX_SIZE) {
+        LOG(ERROR) << StringFormat("the reading file size is invalid, "
+                                   "not in not in (%d,%d]", FILE_MIN_SIZE, FILE_MAX_SIZE);
+        throw invalid_argument(StringFormat("file size invalid"));
     }
 }

@@ -31,7 +31,7 @@ namespace MxRec {
         const string dataFileType { ".data" };
         const string attribFileType { ".attribute" };
         const string dirSeparator { "/" };
-        const mode_t dirMode { 0755 };
+        const mode_t dirMode { 0400 };
 
         const string currDir { "." };
         const string prevDir { ".." };
@@ -97,6 +97,8 @@ namespace MxRec {
         void SetTransDataSize(CkptTransData& transData, size_t datasetSize, CkptDataType dataType);
         void ReadDataset(CkptTransData& transData, ifstream& readFile, size_t readSize, CkptDataType dataType,
             size_t idx);
+
+        void ValidateReadFile(const string& dataDir, size_t datasetSize);
     };
 }
 

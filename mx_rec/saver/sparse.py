@@ -52,7 +52,7 @@ class SparseProcessor:
             # 1.check whether data_dir is soft link
             file_validator.check_not_soft_link()
             # 2.check data file size
-            file_validator.check_file_size(file)
+            file_validator.check_file_size()
             file_validator.check()
 
         try:
@@ -72,7 +72,7 @@ class SparseProcessor:
                     # 1.check whether attribute_dir is soft link
                     file_validator.check_not_soft_link()
                     # 2.check attribute file size
-                    file_validator.check_file_size(fin)
+                    file_validator.check_file_size()
                     file_validator.check()
                     attributes = json.load(fin)
             except FileNotFoundError as err:

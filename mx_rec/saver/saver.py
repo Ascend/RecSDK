@@ -11,12 +11,12 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.util import compat
 
-from mx_rec.constants.constants import DataName, DataAttr
+from mx_rec.constants.constants import DataName, DataAttr, MIN_SIZE, MAX_SIZE
 from mx_rec.util.initialize import get_rank_id, get_rank_size, get_customized_ops, get_table_instance, \
     get_table_instance_by_name, is_asc_manager_initialized, save_host_data, restore_host_data, get_host_data, \
     send_host_data, get_ascend_global_hashtable_collection
 from mx_rec.util.perf import performance
-from mx_rec.validator.validator import DirectoryValidator
+from mx_rec.validator.validator import DirectoryValidator, FileValidator
 
 
 class Saver(object):
@@ -374,19 +374,21 @@ def read_binary_data(reading_path: str, suffix: int, data_name: str, table_name:
         raise FileExistsError(f"Target_attribute_dir {target_attribute_dir} does not exist when reading.")
 
     with tf.io.gfile.GFile(target_attribute_dir, "r") as fin:
+        validate_read_file(target_attribute_dir)
         attributes = json.load(fin)
 
     if DataAttr.DATATYPE.value not in attributes:
         raise AttributeError(f"Lack of attribute {DataAttr.DATATYPE.value}.")
 
-    if target_data_dir.find("://") != -1:
-        logging.debug(f"use hdfs path {target_data_dir} to restore sparse data.")
-        with tf.io.gfile.GFile(target_data_dir, "r") as file:
+    with tf.io.gfile.GFile(target_data_dir, "r") as file:
+        validate_read_file(target_data_dir)
+        if target_data_dir.find("://") != -1:
+            logging.debug("use hdfs path %s to restore sparse data.", target_data_dir)
             data_to_restore = file.read()
             data_to_restore = np.array(json.loads(data_to_restore))
-    else:
-        logging.debug(f"use local file path {target_data_dir} to restore sparse data.")
-        data_to_restore = np.fromfile(target_data_dir, dtype=attributes.pop(DataAttr.DATATYPE.value))
+        else:
+            logging.debug("use local file path %s to restore sparse data.", target_data_dir)
+            data_to_restore = np.fromfile(target_data_dir, dtype=attributes.pop(DataAttr.DATATYPE.value))
 
     if DataAttr.SHAPE.value in attributes and data_name != DataName.KEY.value:
         data_shape = attributes.pop(DataAttr.SHAPE.value)
@@ -401,6 +403,19 @@ def read_binary_data(reading_path: str, suffix: int, data_name: str, table_name:
     logging.debug(f"Reading shape is {data_to_restore.shape}.")
 
     return data_dict
+
+
+def validate_read_file(read_file_path):
+    """
+    Validate file before reading，including validating soft link, file size
+    :param read_file_path: the file path to be validated
+    """
+    file_validator = FileValidator(read_file_path)
+    file_validator.check_file_size(MAX_SIZE, MIN_SIZE)
+    # local file need to check soft link
+    if read_file_path.find("://") == -1:
+        file_validator.check_not_soft_link()
+    file_validator.check()
 
 
 def process_embedding_data(data_to_restore: np.ndarray, current_data_shape: list, data_shape: list) -> np.ndarray:

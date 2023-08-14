@@ -8,6 +8,8 @@ import re
 from typing import Callable, Any
 from typing import List, Optional, Tuple
 
+import tensorflow as tf
+
 from mx_rec.constants.constants import MIN_SIZE
 from mx_rec.constants.constants import MAX_SIZE
 from mx_rec.constants.constants import MAX_DEVICE_NUM
@@ -263,10 +265,10 @@ class FileValidator(StringValidator):
         super().__init__(value)
         self.register_checker(lambda x: isinstance(x, str), "parameter value's type is not str")
 
-    def check_file_size(self, file_obj, max_size=MAX_SIZE, min_size=MIN_SIZE):
-        file_info = os.stat(file_obj.fileno())
-        self.register_checker(lambda path: min_size < file_info.st_size <= max_size,
-                              f"file size: {file_info.st_size} is invalid, not in [{min_size}, {max_size}]")
+    def check_file_size(self, max_size=MAX_SIZE, min_size=MIN_SIZE):
+        file_stat = tf.io.gfile.stat(self.value)
+        self.register_checker(lambda path: min_size < file_stat.length <= max_size,
+                              f"file size: {file_stat.length} is invalid, not in ({min_size}, {max_size}]")
         return self
 
     def check_not_soft_link(self):
