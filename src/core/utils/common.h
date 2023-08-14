@@ -280,7 +280,7 @@ struct BatchTask {
 
     void SetLog(int rank);
 
-    void CustomGlogFormat(std::ostream &s, const LogMessageInfo &l, void*);
+    void CustomGlogFormat(std::ostream &s, const google::LogMessageInfo &l, void*);
 
     template<typename ... Args>
     string StringFormat(const string& format, Args ... args)
