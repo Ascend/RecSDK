@@ -31,7 +31,7 @@ LOCAL_RANK_SIZE = "LOCAL_RANK_SIZE"  # 训练时，当前服务器使用的NPU�
 MAX_DEVICE_NUM_LOCAL_MACHINE = 16  # 单台服务器最大的卡数
 DEFAULT_DEVICE_NUM_LOCAL_MACHINE = 8  # 单台服务器默认的卡数
 
-MULTI_LOOKUP_TIMES = 2048
+MULTI_LOOKUP_TIMES = 128
 DEFAULT_EVICT_TIME_INTERVAL = 60 * 60 * 24
 TRAIN_CHANNEL_ID = 0
 EVAL_CHANNEL_ID = 1
@@ -96,6 +96,7 @@ class ASCAnchorAttr(Enum):
     ALL2ALL_MATRIX = "all2all_matrix"
     HOT_POS = "hot_pos"
     LOOKUP_RESULT = "lookup_result"
+    MOCK_LOOKUP_RESULT = "mock_lookup_result"
     RESTORE_VECTOR_SECOND = "restore_vector_second"
     UNIQUE_KEYS = "unique_keys"
     GRADIENTS_STRATEGY = "gradients_strategy"
