@@ -719,7 +719,7 @@ def get_available_cpu_num_and_range():
             # 1.check whether f_path is soft link
             file_validator.check_not_soft_link()
             # 2.check file size
-            file_validator.check_file_size(f_in, MAX_CONFIG_SIZE, MIN_SIZE)
+            file_validator.check_file_size(MAX_CONFIG_SIZE, MIN_SIZE)
             file_validator.check()
             pkg_id = f_in.readline().strip()
             pkg_id2cpu_list[pkg_id].append(cpu)

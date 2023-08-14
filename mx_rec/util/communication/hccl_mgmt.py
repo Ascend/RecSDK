@@ -20,7 +20,7 @@ def parse_hccl_json():
         # 1.check whether rank_table_path is soft link
         file_validator.check_not_soft_link()
         # 2.check json file size
-        file_validator.check_file_size(file, MAX_CONFIG_SIZE, MIN_SIZE)
+        file_validator.check_file_size(MAX_CONFIG_SIZE, MIN_SIZE)
         file_validator.check()
 
         table_hccl = json.load(file)

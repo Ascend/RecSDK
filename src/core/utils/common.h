@@ -71,6 +71,10 @@ namespace MxRec {
     constexpr int MIN_UNIQUE_THREAD_NUM = 1;
     constexpr int DEFAULT_MAX_UNIQUE_THREAD_NUM = 8;
 
+    // validate file
+    constexpr long long FILE_MAX_SIZE = 1LL << 40;
+    constexpr int FILE_MIN_SIZE = 1;
+
     struct PerfConfig {
         static int keyProcessThreadNum;
         static int maxUniqueThreadNum;
