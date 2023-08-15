@@ -358,8 +358,6 @@ class SparseEmbedding:
         SparseEmbedding.anchor_tensor_specs[anchor_ids][ASCAnchorAttr.TABLE_INSTANCE] = self
         SparseEmbedding.anchor_tensor_specs[anchor_ids][ASCAnchorAttr.IS_TRAINING] = kwargs.get("is_train")
         SparseEmbedding.anchor_tensor_specs[anchor_ids][ASCAnchorAttr.FEATURE_SPEC] = feature_spec
-        SparseEmbedding.anchor_tensor_specs[anchor_ids][ASCAnchorAttr.GRADIENTS_STRATEGY] = \
-            self.apply_gradients_strategy
 
     def check_mode(self, method_mode):
         if self.mode != method_mode:
@@ -484,9 +482,9 @@ class SparseEmbedding:
         self.check_multi_lookup_times()
 
         # return the stub tensor of the lookup result
-        result_shape = ids.shape.as_list() + [self.scalar_emb_size] if get_use_static() else \
-            array_ops.concat([array_ops.shape(ids), [self.scalar_emb_size]], 0)
-        mock_lookup_result = tf.ones(shape=result_shape, dtype=tf.float32, name="mock_lookup_result")
+        if not get_use_static():
+            kwargs["ids"] = ids
+        mock_lookup_result = self.lookup_for_asc_with_feature_spec_inner(feature_spec, send_count, **kwargs)
         mock_lookup_result = tf.identity(mock_lookup_result, name=ASCAnchorAttr.MOCK_LOOKUP_RESULT.value)
         SparseEmbedding.anchor_tensor_specs[anchor_ids][ASCAnchorAttr.MOCK_LOOKUP_RESULT] = mock_lookup_result
         logging.debug("Return the stub tensor `%s` of the `%s` table.", mock_lookup_result, self.table_name)
