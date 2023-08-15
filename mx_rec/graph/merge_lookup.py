@@ -9,7 +9,7 @@ import tensorflow as tf
 from mx_rec.constants.constants import ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_ENTRANCE
 from mx_rec.core.embedding import SparseEmbedding
 from mx_rec.graph.utils import check_cutting_points, replace_anchor_vec
-from mx_rec.util.initialize import get_modify_graph, get_merged_multi_lookup, insert_merged_multi_lookup
+from mx_rec.util.initialize import get_modify_graph, get_merged_multi_lookup, insert_merged_multi_lookup, get_use_static
 
 
 def do_merge_lookup(is_train: bool = True):
@@ -52,7 +52,7 @@ def do_merge_lookup(is_train: bool = True):
             continue
 
         table_instance = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.TABLE_INSTANCE)
-        if len(table_instance.lookup_name_list) > 1:
+        if not get_use_static() and len(table_instance.lookup_name_list) > 1:
             feature_spec = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.FEATURE_SPEC)
             feature_spec_name_ids_dict[feature_spec.name] = cutting_point
         if sub_cutting_points_dict.get(is_training) is None:
@@ -65,12 +65,16 @@ def do_merge_lookup(is_train: bool = True):
         raise RuntimeError(f"The current mode(train: True, eval: False) is {is_train}, and the sparse table does not "
                            f"have anchor ids.")
     for cutting_point in sub_cutting_point_list:
-        feature_spec = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.FEATURE_SPEC)
         table_instance = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.TABLE_INSTANCE)
+        feature_spec = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.FEATURE_SPEC)
+        if len(table_instance.lookup_name_list) == 1:
+            logging.debug("The origin lookup result of %s for %s does not need to be replaced.", feature_spec.name,
+                          table_instance.table_name)
+            continue
+
         send_count = table_instance.send_count
-        kwargs = dict(is_train=is_train, ids=cutting_point)
-        if len(table_instance.lookup_name_list) > 1:
-            kwargs["multi_lookup"] = True
+        kwargs = dict(is_train=is_train, ids=cutting_point, multi_lookup=True)
+        if not get_use_static():
             kwargs["feature_spec_name_ids_dict"] = feature_spec_name_ids_dict
         lookup_result = table_instance.lookup_for_asc_with_feature_spec(feature_spec, send_count, **kwargs)
         replace_anchor_vec(cutting_point, ASCAnchorAttr.MOCK_LOOKUP_RESULT, lookup_result)
