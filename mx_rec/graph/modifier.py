@@ -502,7 +502,7 @@ class GraphModifierHook(tf.estimator.SessionRunHook):
             start_asc_pipeline()
 
         self._iterator_type = get_iterator_type()
-        if self._iterator_type not in ("MakeIterator", "OneShotIterator"):
+        if self._modify_graph and self._iterator_type not in ("MakeIterator", "OneShotIterator"):
             raise ValueError("The value of iterator type should be like `MakeIterator` or `OneShotIterator`.")
         logging.debug("In GraphModifierHook, iterator type is `%s`.", self._iterator_type)
 
