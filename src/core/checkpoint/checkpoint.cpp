@@ -254,6 +254,9 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir)
 
     auto &AttributeArr = transData.attribute;
     auto embHashMapSize = AttributeArr.at(0);
+    if (embHashMapSize <= 0) {
+        throw runtime_error(StringFormat("Invalid EmbHashMapSize:%d, must be greater than 0", embHashMapSize).c_str());
+    }
     auto embeddingSize = static_cast<int>(datasetSize / sizeof(float) / embHashMapSize);
 
     aclError ret;
@@ -272,14 +275,12 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir)
         readFile.read((char *) (row.data()), embeddingSize * sizeof(float));
 
         aclError ret = aclrtMemcpy(floatPtr + i * embeddingSize, embeddingSize * sizeof(float),
-                                   row.data(), embeddingSize * sizeof(float),
-                                   ACL_MEMCPY_HOST_TO_DEVICE);
+                                   row.data(), embeddingSize * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
         if (ret != ACL_SUCCESS) {
             LOG(ERROR) << StringFormat("aclrtMemcpy failed, ret=%d", ret);
             readFile.close();
             throw runtime_error(StringFormat("aclrtMemcpy failed, ret=%d", ret).c_str());
         }
-
         int64_t address = reinterpret_cast<int64_t>(floatPtr + i * embeddingSize);
         transArr.at(i + 1) = address;
     }
@@ -484,18 +485,14 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
         LOG(ERROR) << "dataElmtBytes is 0, don't handle [/ %] operation";
         return ;
     }
-
     auto embDataOuterSize = transData.attribute.at(attribEmbDataOuterIdx);
-    auto loadHostEmbs = ckptData.hostEmbs;
-    auto& dst = (*loadHostEmbs)[embName].embData;
-    dst.reserve(embDataOuterSize);
-
+    if (embDataOuterSize <= 0) {
+        throw runtime_error(StringFormat("Invalid embDataOuterSize :%d", embDataOuterSize).c_str());
+    }
     std::ifstream readFile;
     readFile.open(dataDir.c_str(), std::ios::in | std::ios::binary | std::ios::ate);
-
     size_t datasetSize = static_cast<size_t>(readFile.tellg());
     readFile.seekg(0, std::ios::beg);
-
     try {
         ValidateReadFile(dataDir, datasetSize);
     } catch (const std::invalid_argument& e) {
@@ -508,6 +505,9 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
         readFile.close();
         throw runtime_error("unable to load EMB_DATA cause wrong-format saved emb data");
     }
+    auto loadHostEmbs = ckptData.hostEmbs;
+    auto& dst = (*loadHostEmbs)[embName].embData;
+    dst.reserve(embDataOuterSize);
     auto onceReadByteSize { datasetSize / embDataOuterSize };
 
     if (!readFile.is_open()) {
