@@ -211,6 +211,7 @@ class ConfigInitializer:
         logging.info("python process run terminate success")
 
         self._is_terminated = True
+        ConfigInitializer._single_instance = None
 
     def insert_feature_spec(self, feature, is_training):
         self._feature_spec_dict[feature.name] = feature
