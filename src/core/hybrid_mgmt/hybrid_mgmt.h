@@ -8,18 +8,22 @@
 #ifndef MX_REC_EMB_MGMT_H
 #define MX_REC_EMB_MGMT_H
 
+#include <csignal>
+
+#include <pthread.h>
+
+#include <array>
 #include <vector>
 #include <memory>
-#include <array>
-#include <csignal>
-#include <pthread.h>
+
 #include "absl/container/flat_hash_map.h"
+
 #include "utils/common.h"
 #include "utils/singleton.h"
-#include "utils/task_queue.h"
-#include "hd_transfer/hd_transfer.h"
+
 #include "host_emb/host_emb.h"
 #include "emb_hashmap/emb_hashmap.h"
+#include "hd_transfer/hd_transfer.h"
 #include "key_process/key_process.h"
 
 namespace MxRec {
@@ -29,8 +33,6 @@ namespace MxRec {
     constexpr int SEND_TENSOR_TYPE_NUM = 2;
 
     enum class TaskType {
-        GETINFO,
-        SEND,
         HBM,
         DDR
     };
@@ -63,7 +65,7 @@ namespace MxRec {
 
         void Start();
 
-        void InsertThreadForHBM(int mode);
+        void InsertThreadForHBM();
 
     void Destroy()
     {
@@ -72,10 +74,6 @@ namespace MxRec {
         }
         // 先发送停止信号mgmt，先停止新lookup查询, 解除queue的限制防止卡住
         isRunning = false;
-        restoreQueueForTrain->DestroyQueue();
-        lookUpKeysQueueForTrain->DestroyQueue();
-        restoreQueueForEval->DestroyQueue();
-        lookUpKeysQueueForEval->DestroyQueue();
 
         // 先发送停止信号给preprocess，用于停止查询中lookup卡住状态
         preprocess->isRunning = false;
@@ -127,12 +125,6 @@ namespace MxRec {
         unique_ptr<HostEmb> hostEmbs {};
         unique_ptr<EmbHashMap> hostHashMaps {};
         vector<std::unique_ptr<std::thread>> procThreads {};
-        unique_ptr<Common::TaskQueue<vector<Tensor>>> lookUpKeysQueueForTrain;
-        unique_ptr<Common::TaskQueue<vector<Tensor>>> restoreQueueForTrain;
-        unique_ptr<Common::TaskQueue<vector<Tensor>>> lookUpKeysQueueForEval;
-        unique_ptr<Common::TaskQueue<vector<Tensor>>> restoreQueueForEval;
-        unique_ptr<Common::TaskQueue<vector<Tensor>>> a2aQueueForTrain;
-        unique_ptr<Common::TaskQueue<vector<Tensor>>> a2aQueueForEval;
         map<std::string, std::vector<emb_key_t>> evictKeyMap {};
         KeyProcess *preprocess;
         HDTransfer *hdTransfer;
@@ -144,13 +136,6 @@ namespace MxRec {
         void TaskForEval(TaskType type);
         bool TrainTask(TaskType type);
         bool EvalTask(TaskType type);
-
-        void All2AllKeys(const int channelId, const string &embName);
-        void LookupKeys(const int channelId, const string &embName);
-        void RestoreKeys(const int channelId, const string &embName);
-        bool GetLookupAndRestore(const int channelId, int &batchId);
-        void GetAll2All(const int channelId, int &batchId, const string &name);
-        bool SendLookupAndRestore(const int channelId, int &batchId);
 
         void EmbHDTransDummy(int channelId, int batchId, const EmbInfo& embInfo);
 

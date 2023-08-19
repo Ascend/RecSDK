@@ -6,9 +6,8 @@
  */
 #include "hybrid_mgmt.h"
 
-#include "checkpoint/checkpoint.h"
 #include "utils/time_cost.h"
-#include "utils/common.h"
+#include "checkpoint/checkpoint.h"
 
 using namespace MxRec;
 using namespace std;
@@ -104,12 +103,6 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
         return false;
     }
 
-    lookUpKeysQueueForTrain = make_unique<Common::TaskQueue<vector<Tensor>>>();
-    restoreQueueForTrain = make_unique<Common::TaskQueue<vector<Tensor>>>();
-    lookUpKeysQueueForEval = make_unique<Common::TaskQueue<vector<Tensor>>>();
-    restoreQueueForEval = make_unique<Common::TaskQueue<vector<Tensor>>>();
-    a2aQueueForTrain = make_unique<Common::TaskQueue<vector<Tensor>>>();
-    a2aQueueForEval = make_unique<Common::TaskQueue<vector<Tensor>>>();
     isRunning = true;
 
     if (!rankInfo.noDDR) {
@@ -343,21 +336,8 @@ bool HybridMgmt::LoadMatchesDDRSetup(const CkptData& loadData)
 void HybridMgmt::Start()
 {
 #ifndef GTEST
-    int mode = 0;
-    const char* envTaskMode = std::getenv("MGMT_HBM_TASK_MODE"); // 获取环境变量
-    if (envTaskMode != nullptr) { // 如果环境变量存在
-        try {
-            mode = std::stoi(envTaskMode); // 将字符串转换为整数
-            LOG(INFO) << StringFormat("The value of MGMT_HBM_TASK_MODE is an integer： %d", mode);
-        } catch (const std::invalid_argument& e) { // 如果转换失败
-            LOG(ERROR) << "The value of MGMT_HBM_TASK_MODE is not an integer!";
-            throw std::invalid_argument("Invalid env value MGMT_HBM_TASK_MODE");
-        }
-    } else { // 如果环境变量不存在
-        mode = 0;
-    }
     if (mgmtRankInfo.noDDR) {
-        InsertThreadForHBM(mode);
+        InsertThreadForHBM();
     }
 
     if (!mgmtRankInfo.noDDR) {
@@ -376,34 +356,9 @@ void HybridMgmt::Start()
 #endif
 }
 
-void HybridMgmt::InsertThreadForHBM(int mode)
+void HybridMgmt::InsertThreadForHBM()
 {
 #ifndef GTEST
-    if (mode == 1) {
-        auto getInfoTaskForTrain = [this]() {
-            TaskForTrain(TaskType::GETINFO);
-            LOG(INFO) << "getInfoTaskForTrain done";
-        };
-        procThreads.emplace_back(std::make_unique<std::thread>(getInfoTaskForTrain));
-
-        auto getInfoTaskForEval = [this]() {
-            TaskForEval(TaskType::GETINFO);
-            LOG(INFO) << "getInfoTaskForEval done";
-        };
-        procThreads.emplace_back(std::make_unique<std::thread>(getInfoTaskForEval));
-
-        auto sendInfoTaskForTrain = [this]() {
-            TaskForTrain(TaskType::SEND);
-            LOG(INFO) << "sendInfoTaskForTrain done";
-        };
-        procThreads.emplace_back(std::make_unique<std::thread>(sendInfoTaskForTrain));
-
-        auto sendInfoTaskForEval = [this]() {
-            TaskForEval(TaskType::SEND);
-            LOG(INFO) << "sendInfoTaskForEval done";
-        };
-        procThreads.emplace_back(std::make_unique<std::thread>(sendInfoTaskForEval));
-    } else {
         auto parseKeysTaskForHBMTrain = [this]() {
             TaskForTrain(TaskType::HBM);
             LOG(INFO) << "parseKeysTaskForHBMTrain done";
@@ -415,7 +370,6 @@ void HybridMgmt::InsertThreadForHBM(int mode)
             LOG(INFO) << "parseKeysTaskForHBMEval done";
         };
         procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForHBMEval));
-    }
 #endif
 }
 
@@ -464,27 +418,6 @@ bool HybridMgmt::TrainTask(TaskType type)
         bool status = false;
 
         switch (type) {
-            case TaskType::GETINFO:
-                status = GetLookupAndRestore(TRAIN_CHANNEL_ID, getInfoBatchId);
-                isContinue = getInfoBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
-                        mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1;
-                LOG(INFO) << StringFormat(MGMT + "getInfoBatchId = %d", getInfoBatchId);
-                break;
-            case TaskType::SEND:
-                status = SendLookupAndRestore(TRAIN_CHANNEL_ID, sendBatchId);
-                isContinue = sendBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
-                        mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1;
-                LOG(INFO) << StringFormat(MGMT + "sendBatchId = %d", sendBatchId);
-#if defined(PROFILING) && defined(BUILD_WITH_EASY_PROFILER)
-                if (sendBatchId == PROFILING_START_BATCH_ID) {
-                    EASY_PROFILER_ENABLE
-                } else if (sendBatchId == PROFILING_END_BATCH_ID) {
-                    EASY_PROFILER_DISABLE
-                    ::profiler::dumpBlocksToFile(
-                        StringFormat("/home/MX_REC-mgmt-profile-%s.prof", mgmtRankInfo.rankId).c_str());
-                }
-#endif
-                break;
             case TaskType::HBM:
                 status = ParseKeysHBM(TRAIN_CHANNEL_ID, trainBatchId);
                 isContinue = trainBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
@@ -519,14 +452,6 @@ bool HybridMgmt::EvalTask(TaskType type)
         bool status = false;
 
         switch (type) {
-            case TaskType::GETINFO:
-                status = GetLookupAndRestore(EVAL_CHANNEL_ID, evalBatchId);
-                LOG(INFO) << StringFormat(MGMT + "GETINFO evalBatchId = %d", evalBatchId);
-                break;
-            case TaskType::SEND:
-                status = SendLookupAndRestore(EVAL_CHANNEL_ID, evalBatchId);
-                LOG(INFO) << StringFormat(MGMT + "SEND evalBatchId = %d", evalBatchId);
-                break;
             case TaskType::HBM:
                 status = ParseKeysHBM(EVAL_CHANNEL_ID, evalBatchId);
                 LOG(INFO) << StringFormat(MGMT + "HBM evalBatchId = %d", evalBatchId);
@@ -545,131 +470,6 @@ bool HybridMgmt::EvalTask(TaskType type)
     } while (evalBatchId % mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] != 0 ||
              mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1);
 
-    return true;
-}
-
-void HybridMgmt::GetAll2All(const int channelId, int &batchId, const string &name)
-{
-    auto all2all = preprocess->GetInfoVec(batchId, name, channelId, ProcessedInfo::ALL2ALL);
-    switch (channelId) {
-        case TRAIN_CHANNEL_ID:
-            a2aQueueForTrain->Pushv(*all2all);
-            break;
-        case EVAL_CHANNEL_ID:
-            a2aQueueForEval->Pushv(*all2all);
-            break;
-        default:
-            throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
-    }
-}
-
-bool HybridMgmt::GetLookupAndRestore(const int channelId, int &batchId)
-{
-    LOG(INFO) << StringFormat(MGMT + "start parse keys, nBatch:%d , [%d]:%d", mgmtRankInfo.nBatch, channelId, batchId);
-    for (const auto& embInfo: mgmtEmbInfo) {
-        TimeCost getAllTensorTC;
-        auto infoVecs = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::RESTORE);
-        if (infoVecs == nullptr) {
-            LOG(INFO) << StringFormat(
-                MGMT + "ParseKeys infoVecs empty ! batchId:%d, channelId:%d", batchId, channelId);
-            return false;
-        }
-        switch (channelId) {
-            case TRAIN_CHANNEL_ID:
-                lookUpKeysQueueForTrain->Pushv({ infoVecs->back() });
-                infoVecs->pop_back();
-                restoreQueueForTrain->Pushv(*infoVecs);
-                break;
-            case EVAL_CHANNEL_ID:
-                lookUpKeysQueueForEval->Pushv({ infoVecs->back() });
-                infoVecs->pop_back();
-                restoreQueueForEval->Pushv(*infoVecs);
-                break;
-            default:
-                throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
-        }
-
-        if (!mgmtRankInfo.useStatic) {
-            GetAll2All(channelId, batchId, embInfo.name);
-        }
-        VLOG(GLOG_DEBUG) << StringFormat("getAllTensorTC(ms):%d", getAllTensorTC.ElapsedMS());
-    }
-    batchId++;
-    return true;
-}
-
-void HybridMgmt::All2AllKeys(const int channelId, const string &embName)
-{
-    TimeCost a2aKeysTC;
-    vector<Tensor> all2allKeys;
-    switch (channelId) {
-        case TRAIN_CHANNEL_ID:
-            all2allKeys = a2aQueueForTrain->WaitAndPop();
-            break;
-        case EVAL_CHANNEL_ID:
-            all2allKeys = a2aQueueForEval->WaitAndPop();
-            break;
-        default:
-            throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
-    }
-    hdTransfer->Send(TransferChannel::ALL2ALL, all2allKeys, channelId, embName);
-    VLOG(GLOG_DEBUG) << StringFormat("All2AllKeysTC(ms):%d", a2aKeysTC.ElapsedMS());
-}
-
-void HybridMgmt::LookupKeys(const int channelId, const string &embName)
-{
-    TimeCost sendLookupTC;
-    vector<Tensor> lookUpKeys;
-    switch (channelId) {
-        case TRAIN_CHANNEL_ID:
-            lookUpKeys = lookUpKeysQueueForTrain->WaitAndPop();
-            break;
-        case EVAL_CHANNEL_ID:
-            lookUpKeys = lookUpKeysQueueForEval->WaitAndPop();
-            break;
-        default:
-            throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
-    }
-    hdTransfer->Send(TransferChannel::LOOKUP, lookUpKeys, channelId, embName);
-    VLOG(GLOG_DEBUG) << StringFormat("sendLookupTC(ms):%d", sendLookupTC.ElapsedMS());
-}
-
-void HybridMgmt::RestoreKeys(const int channelId, const string &embName)
-{
-    TimeCost sendRestoreTC;
-    vector<Tensor> restore;
-    switch (channelId) {
-        case TRAIN_CHANNEL_ID:
-            restore = restoreQueueForTrain->WaitAndPop();
-            break;
-        case EVAL_CHANNEL_ID:
-            restore = restoreQueueForEval->WaitAndPop();
-            break;
-        default:
-            throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
-    }
-    hdTransfer->Send(TransferChannel::RESTORE, restore, channelId, embName);
-    VLOG(GLOG_DEBUG) << StringFormat("sendRestoreTC(ms):%d", sendRestoreTC.ElapsedMS());
-}
-
-bool HybridMgmt::SendLookupAndRestore(const int channelId, int &batchId)
-{
-    for (const auto& embInfo: mgmtEmbInfo) {
-        TimeCost sendTensorsTC;
-        if (!mgmtRankInfo.useStatic) {
-            All2AllKeys(channelId, embInfo.name);
-        }
-
-        LOG(INFO) << StringFormat(
-            "SendLookupAndRestore batchId:%d, name:%s, channelId:%d",
-            batchId, embInfo.name.c_str(), channelId
-        );
-
-        LookupKeys(channelId, embInfo.name);
-        RestoreKeys(channelId, embInfo.name);
-        VLOG(GLOG_DEBUG) << StringFormat("sendTensorsTC(ms):%d", sendTensorsTC.ElapsedMS());
-    }
-    batchId++;
     return true;
 }
 
