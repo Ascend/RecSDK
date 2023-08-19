@@ -7,15 +7,8 @@
 
 #include "key_process.h"
 
-#include <iostream>
-#include <shared_mutex>
-
-#include <mpi.h>
-
 #include "checkpoint/checkpoint.h"
 #include "hd_transfer/hd_transfer.h"
-#include "utils/common.h"
-#include "utils/time_cost.h"
 
 using namespace std;
 using namespace chrono;
