@@ -55,7 +55,7 @@ class ModelConverter:
     def convert(self):
         insert_op_list = []
         var_list = []
-
+        hash_table_list = []
         # load old checkpoint and get var list
         if not os.path.exists(self._load_ckpt_path):
             raise FileNotFoundError(f"the checkpoint path {self._load_ckpt_path} does not exists.")
@@ -70,21 +70,29 @@ class ModelConverter:
         for table_name, emb_size in self.table_info_dict.items():
             initialize_value = np.zeros((emb_size,))
             # create mutable hashtable
-            hash_table = tf.contrib.lookup.MutableHashTable(key_dtype=tf.int64, value_dtype=tf.float32,
-                                                            default_value=initialize_value, name=table_name,
-                                                            checkpoint=True)
-            
+            if tf.__version__.startswith("2"):
+                hash_table = tf.lookup.experimental.MutableHashTable(key_dtype=tf.int64, value_dtype=tf.float32,
+                                                                default_value=initialize_value, name=table_name)
+            else:
+                hash_table = tf.contrib.lookup.MutableHashTable(key_dtype=tf.int64, value_dtype=tf.float32,
+                                                                default_value=initialize_value, name=table_name)
+                
             for rank in range(self._rank_size):
                 offset, key = self._get_key_and_offset(self.sparse_file_list[rank], table_name)
                 emb_data = self._get_embedding_array(self.sparse_file_list[rank], table_name)[list(offset)]
                 insert_op = hash_table.insert(tf.convert_to_tensor(key), tf.convert_to_tensor(emb_data))
                 insert_op_list.append(insert_op)
-
-        with tf.Session() as sess:
-            sess.run(tf.global_variables_initializer())
-            sess.run(insert_op_list)
-            saver = tf.train.Saver()
-            saver.save(sess, self._output_path + "model.ckpt-0")
+            hash_table_list.append(insert_op)
+        if tf.__version__.startswith("2"):
+            checkpoint = tf.train.Checkpoint(table_list = hash_table_list)
+            manager = tf.train.CheckpointManager(checkpoint, directory=self._output_path, max_to_keep=5)
+            manager.save()
+        else:
+            with tf.Session() as sess:
+                sess.run(tf.global_variables_initializer())
+                sess.run(insert_op_list)
+                saver = tf.train.Saver()
+                saver.save(sess, self._output_path + "model.ckpt-0")
 
     def _get_key_and_offset(self, sparse_file_path, table_name):
         if self._is_ddr:
