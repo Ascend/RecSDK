@@ -194,6 +194,7 @@ bool HybridMgmt::Load(const string& loadPath)
     loadData.hostEmbs = hostEmbs->GetHostEmbs();
     loadCkpt.LoadModel(loadPath, loadData, mgmtRankInfo, mgmtEmbInfo, loadFeatures);
     if (!mgmtRankInfo.noDDR && !LoadMatchesDDRSetup(loadData)) {
+        preprocess->LoadSaveUnlock();
         return false;
     }
 
@@ -219,6 +220,7 @@ bool HybridMgmt::Load(const string& loadPath)
         Start();
     }
 #endif
+    preprocess->LoadSaveUnlock();
     return true;
 }
 
