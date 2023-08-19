@@ -220,7 +220,6 @@ bool HybridMgmt::Load(const string& loadPath)
         Start();
     }
 #endif
-    preprocess->LoadSaveUnlock();
     return true;
 }
 
