@@ -124,24 +124,8 @@ int KeyProcess::Start()
 #endif
         KeyProcessTask(channel, id);
     }; // for clean code
-    int threadNum;
+    int threadNum = GetThreadNumEnv();
     for (int channel = 0; channel < MAX_CHANNEL_NUM; ++channel) {
-        const char* threadNumEnv = getenv("KEY_PROCESS_THREAD_NUM");
-        if (threadNumEnv != nullptr) {
-            try {
-                threadNum = std::stoi(threadNumEnv);
-            } catch (const std::invalid_argument& e) {
-                threadNum = KEY_PROCESS_THREAD;
-                LOG(WARNING) << StringFormat("error value of threadNum, use default KEY_PROCESS_THREAD: %d",
-                                             threadNum);
-            }
-            if (threadNum > KEY_PROCESS_THREAD || threadNum < 0) {
-                throw runtime_error(StringFormat("%d is not valid", threadNum));
-            }
-        } else {
-            threadNum = KEY_PROCESS_THREAD;
-            LOG(INFO) << StringFormat("use default KEY_PROCESS_THREAD: %d", threadNum);
-        }
         LOG(INFO) << StringFormat(KEY_PROCESS "key process thread num: %d", threadNum);
         for (int id = 0; id < threadNum; ++id) {
             procThreads.emplace_back(
