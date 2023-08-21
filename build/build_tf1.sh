@@ -20,6 +20,13 @@ then
   deactivate tf1_env
 fi
 
+if [ "$(uname -m)" = "aarch64" ]
+then
+  source /opt/buildtools/tf1_env/bin/activate
+  tf1_path=$(dirname "$(dirname "$(which python3)")")/lib/python3.7/site-packages/tensorflow_core
+  deactivate tf1_env
+fi
+
 VERSION_FILE="${ROOT_DIR}"/../mindxsdk/build/conf/config.yaml
 get_version() {
   if [ -f "$VERSION_FILE" ]; then
@@ -139,6 +146,22 @@ then
   echo "-----Build Start tf1 -----"
   virtualenv -p "$(which python3.7)" tf1_env
   echo "--tf1 env ${env}---"
+  source /opt/buildtools/tf1_env/bin/activate
+  compile_so_file "${tf1_path}"
+  collect_so_file
+  gen_wheel_file  "${ROOT_DIR}"/tf1_whl
+  deactivate tf1_env
+  echo "-----Build tf1 finished-----"
+fi
+
+if [ "$(uname -m)" = "aarch64" ]
+then
+  compile_securec
+
+  echo "-----Build AccCTR -----"
+  compile_acc_ctr_so_file
+
+  echo "-----Build Start tf1 -----"
   source /opt/buildtools/tf1_env/bin/activate
   compile_so_file "${tf1_path}"
   collect_so_file
