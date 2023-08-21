@@ -111,6 +111,7 @@ namespace MxRec {
 
     string GetChipName(int devID);
     bool GetCombineSwitch();
+    int GetThreadNumEnv();
 
     namespace UBSize {
         const int ASCEND910_PREMIUM_A = 262144;
