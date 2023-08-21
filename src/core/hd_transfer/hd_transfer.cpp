@@ -36,14 +36,21 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId)
         }
         aclDatasets[embInfo.name] = acltdtCreateDataset();
     }
-    const char* timeoutEnv = getenv("AclTimeout");
-    if (timeoutEnv != nullptr) {
-        int32_t timeoutEnvCast = static_cast<int32_t>(std::atoi(timeoutEnv));
-        VLOG(GLOG_DEBUG) << StringFormat("timeoutEnv:%d", timeoutEnvCast);
-        if (timeoutEnvCast > INT32_MAX || timeoutEnvCast < -1) {
-            LOG(WARNING) << StringFormat("AclTimeout=%d is not valid", timeoutEnvCast);
-        } else {
-            timeout = timeoutEnvCast;
+    const int defaultAclTimeout = -1;
+    this->timeout = defaultAclTimeout;
+    const char *envTimeout = getenv("AclTimeout");
+    if (envTimeout != nullptr) {
+        try {
+            int32_t tmp = std::stoi(envTimeout);
+            if (tmp >= -1 && tmp <= INT32_MAX) {
+                this->timeout = tmp;
+                LOG(INFO) << StringFormat("Succeed to parse ${env:AclTimeout}: %d", tmp);
+            } else {
+                LOG(ERROR) << StringFormat("Failed to parse ${env:AclTimeout}: %d, expected in (0, INT32_MAX)", tmp);
+            }
+        } catch (const std::invalid_argument &e) {
+            LOG(ERROR) << StringFormat("Failed to parse ${env:AclTimeout}: %s, expected a integer, set to default: %d",
+                envTimeout, defaultAclTimeout);
         }
     }
     VLOG(GLOG_DEBUG) << StringFormat("hd transfer timeout:%d", timeout);

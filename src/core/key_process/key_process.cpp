@@ -29,13 +29,22 @@ inline vector<T> Count2Start(const vector<T>& count)
 
 void KeyProcess::SetupHotEmbUpdateStep()
 {
-    const char* env = getenv("HOT_EMB_UPDATE_STEP");
-    if (env == nullptr) {
-        hotEmbUpdateStep = HOT_EMB_UPDATE_STEP_DEFAULT;
-    } else {
-        hotEmbUpdateStep = stoi(env);
-        if (hotEmbUpdateStep == 0) {
-            hotEmbUpdateStep = HOT_EMB_UPDATE_STEP_DEFAULT;
+    const auto maxUpdateStep = 1000;
+    this->hotEmbUpdateStep = HOT_EMB_UPDATE_STEP_DEFAULT;
+    const char *envUpdateStep = getenv("HOT_EMB_UPDATE_STEP");
+    if (envUpdateStep != nullptr) {
+        try {
+            int tmp = std::stoi(envUpdateStep);
+            if (tmp >= 1 && tmp <= maxUpdateStep) {
+                this->hotEmbUpdateStep = tmp;
+                LOG(INFO) << StringFormat("Succeed to parse ${env:HOT_EMB_UPDATE_STEP}: %d.", this->hotEmbUpdateStep);
+            } else {
+                LOG(ERROR) << StringFormat("${env:HOT_EMB_UPDATE_STEP}: %d should be in [1, 1000], set default: %d.",
+                    tmp, HOT_EMB_UPDATE_STEP_DEFAULT);
+            }
+        } catch (const std::invalid_argument &e) {
+            LOG(ERROR) << StringFormat("Failed to parse ${env:HOT_EMB_UPDATE_STEP}: %s, set default: %d.",
+                envUpdateStep, HOT_EMB_UPDATE_STEP_DEFAULT);
         }
     }
 }
