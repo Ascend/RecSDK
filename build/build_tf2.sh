@@ -168,6 +168,4 @@ then
 
   deactivate tf2_env
   echo "-----Build tf2 finished -----"
-  gen_tar_file
-  echo "-----Build gen tar finished-----"
 fi
