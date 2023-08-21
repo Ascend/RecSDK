@@ -23,8 +23,7 @@ from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPA
 from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is_asc_frozen, get_customized_ops, \
     insert_table_instance, get_training_mode_channel_id, get_use_static, get_name_to_var_dict, \
     clear_channel, get_use_hot, get_device_id, ConfigInitializer, get_ascend_global_hashtable_collection, \
-    get_host_pipeline_ops, get_use_dynamic_expansion, \
-    set_modify_graph, insert_removing_var_list
+    get_host_pipeline_ops, get_use_dynamic_expansion, set_modify_graph, insert_removing_var_list, get_bool_gauge_set
 from mx_rec.validator.validator import ClassValidator, StringValidator
 
 
@@ -456,9 +455,13 @@ class SparseEmbedding:
         self.check_mode(MxRecMode.ASC)
         is_training = kwargs.get("is_train")
         self.check_and_format_lookup_params(ids, send_count, is_training)
-        self.same_table_send_count += send_count if send_count is not None and is_training else 0
         if is_asc_frozen() and is_training:
             raise RuntimeError(f"Cannot build new sparse forward graph after emb cache management was built.")
+
+        # record send count
+        eval_mode = not is_training and get_training_mode_channel_id(True) is None
+        if is_training or eval_mode or "train_and_evaluate" in get_bool_gauge_set():
+            self.same_table_send_count += send_count if send_count is not None else 0
 
         # create feature spec
         feature_spec = get_feature_spec(self.table_name, kwargs.get("access_and_evict_config"))
@@ -473,7 +476,6 @@ class SparseEmbedding:
         self.register_anchor_attribute(anchor_ids, feature_spec, kwargs)
 
         # record multi lookup info
-        eval_mode = not is_training and get_training_mode_channel_id(True) is None
         ids_lookup_name = feature_spec.name + "_lookup_ids"
         # set in train mode, train and eval mode, eval mode
         if is_training or eval_mode:
