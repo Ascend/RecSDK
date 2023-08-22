@@ -45,9 +45,7 @@ class ModelConverter:
         if not os.path.exists(self._input_path):
             raise FileNotFoundError(f"the input path {self._input_path} does not exists. please check it.")
         if not os.path.exists(self._output_path):
-            raise FileExistsError(
-                f"the output path {self._output_path} is already exists and is not an empty directory.")
-        os.makedirs(self._output_path)
+            os.makedirs(self._output_path)
         self._build_input_model_list(self._is_estimator)
         self._build_sparse_file_list()
         self._build_table_info_dict()
@@ -59,7 +57,7 @@ class ModelConverter:
         # load old checkpoint and get var list
         if not os.path.exists(self._load_ckpt_path):
             raise FileNotFoundError(f"the checkpoint path {self._load_ckpt_path} does not exists.")
-        ckpt = tf.load_checkpoint(self._load_ckpt_path)
+        ckpt = tf.train.load_checkpoint(self._load_ckpt_path)
         var_names = ckpt.get_variable_to_shape_map().keys()
         var_values = [ckpt.get_tensor(name) for name in var_names]
         for i, name in enumerate(var_names):
@@ -92,7 +90,7 @@ class ModelConverter:
                 sess.run(tf.global_variables_initializer())
                 sess.run(insert_op_list)
                 saver = tf.train.Saver()
-                saver.save(sess, self._output_path + "model.ckpt-0")
+                saver.save(sess, self._output_path + "/model.ckpt-0")
 
     def _get_key_and_offset(self, sparse_file_path, table_name):
         if self._is_ddr:
@@ -256,3 +254,4 @@ if __name__ == "__main__":
                                       rank_size=args.rank_size,
                                       estimator=args.estimator, ddr=args.ddr)
     convert_instance.convert()
+    print("convert model success.")
