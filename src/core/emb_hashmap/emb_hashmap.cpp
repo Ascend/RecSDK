@@ -46,7 +46,7 @@ void EmbHashMap::Init(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
 }
 
 void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t iBatch,
-                         vector<Tensor>& tmpDataOut, int channelId)
+                         vector<Tensor>& tmpDataOut, int channelId, vector<int32_t>& offsetsOut)
 {
 #ifndef GTEST
     EASY_FUNCTION(profiler::colors::Pink)
@@ -68,6 +68,9 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
 
     swapId++;
     EASY_BLOCK("hostHashMaps->tdt")
+
+//    std::copy(embHashMap.lookUpVec.begin(), embHashMap.lookUpVec.end(), offsetsOut.begin());
+    std::copy(embHashMap.lookUpVec.begin(), embHashMap.lookUpVec.end(), std::back_inserter(offsetsOut));
 
     auto lookUpVecSize = static_cast<int>(embHashMap.lookUpVec.size());
     tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { lookUpVecSize }));

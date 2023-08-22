@@ -691,6 +691,8 @@ class SparseEmbedding:
             def grad(lookup_diff):
                 logging.debug("Into lookup grad function, feature spec name: %s.", feature_spec.name)
                 embedding_diff = tf.reshape(lookup_diff, [-1, self.scalar_emb_size])
+                self.unique_id_offsets = unique_keys
+                self.unique_id_offsets_position = restore_vector_second
                 unique_grads = tf.compat.v1.unsorted_segment_sum(embedding_diff,
                                                                  restore_vector,
                                                                  unique_embeddings_shape[0])

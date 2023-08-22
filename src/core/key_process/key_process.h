@@ -86,6 +86,10 @@ namespace MxRec {
 
         void SetupHotEmbUpdateStep();
 
+        void GlobalUnique(const keys_t& lookupKeys, keys_t& uniqueKeys, vector<int32_t>& restoreVecSec);
+
+        void GlobalUnique(const vector<int32_t>& lookupKeys, vector<int32_t>& uniqueKeys, vector<int32_t>& restoreVecSec);
+
         bool isRunning { false };
 
         inline bool hasEmbName(const string &emb_name)
@@ -131,8 +135,6 @@ namespace MxRec {
                               vector<keys_t>& splitKeys) -> tuple<keys_t, vector<int>, vector<int>>;
 
         void GetUniqueConfig(UniqueConf& uniqueConf);
-
-        void GlobalUnique(const keys_t& lookupKeys, keys_t& uniqueKeys, vector<int32_t>& restoreVecSec);
 
         void InitializeUnique(UniqueConf& uniqueConf, size_t& preBatchSize, bool& uniqueInitialize,
                                   const unique_ptr <emb_batch_t>& batch, UniquePtr& unique);
