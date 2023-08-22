@@ -80,7 +80,8 @@ class ModelConverter:
                 emb_data = self._get_embedding_array(self.sparse_file_list[rank], table_name)[list(offset)]
                 insert_op = hash_table.insert(tf.convert_to_tensor(key), tf.convert_to_tensor(emb_data))
                 insert_op_list.append(insert_op)
-            hash_table_list.append(insert_op)
+            print("build save table:", table_name)
+            hash_table_list.append(hash_table)
         if tf.__version__.startswith("2"):
             checkpoint = tf.train.Checkpoint(table_list = hash_table_list)
             manager = tf.train.CheckpointManager(checkpoint, directory=self._output_path, max_to_keep=5)
