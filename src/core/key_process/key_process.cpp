@@ -456,7 +456,7 @@ void KeyProcess::GlobalUnique(const keys_t& lookupKeys, keys_t& uniqueKeys, vect
 
     for (size_t i = 0; i < lookupKeys.size(); ++i) {
         int64_t key = lookupKeys[i];
-        if (key == -1) {
+        if (rankInfo.useStatic && key == -1) {
             continue;
         }
         auto result = umap.find(key);
