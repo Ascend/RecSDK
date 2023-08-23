@@ -709,7 +709,12 @@ class SparseEmbedding:
                         raise ZeroDivisionError("Rank size cannot be zero.") from exp
 
                 if use_dynamic_expansion:
-                    update_grad = local_grad
+                    if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
+                        update_grad = tf.compat.v1.unsorted_segment_sum(local_grad,
+                                                                        restore_vector_second,
+                                                                        array_ops.shape(unique_keys)[0])
+                    else:
+                        update_grad = local_grad
                 else:
                     if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
                         unique_local_grad = tf.compat.v1.unsorted_segment_sum(local_grad,
@@ -738,6 +743,11 @@ class SparseEmbedding:
             if is_training and is_table_name_valid:
                 tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
                 tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
+                if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
+                    tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS, unique_keys)
+                else:
+                    tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
+
                 logging.debug(f"feature spec mode, table_name: {self.table_name}, "
                               f"ASCEND_TABLE_NAME_MUST_CONTAIN: {ASCEND_TABLE_NAME_MUST_CONTAIN}")
 

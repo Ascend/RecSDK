@@ -368,7 +368,11 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<emb_batch_t>& bat
         tensors->push_back(Vec2TensorI32(uniqueInfo.hotPos));
     }
 
-    PushGlobalUniqueTensors(move(tensors), uniqueInfo.all2AllInfo.keyRecv, channel);
+    if (rankInfo.noDDR) {
+        PushGlobalUniqueTensors(move(tensors), uniqueInfo.all2AllInfo.keyRecv, channel);
+        tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(uniqueInfo.all2AllInfo.keyRecv) :
+                                                            Vec2TensorI32(uniqueInfo.all2AllInfo.keyRecv));
+    }
 
     TimeCost pushResultTC;
     PushResult(batch, move(tensors), uniqueInfo.all2AllInfo.keyRecv);
@@ -426,7 +430,7 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channe
         tensors->push_back(Vec2TensorI32(hotPos));
     }
 
-    if (rankInfo.noDDR) {      //HBM
+    if (rankInfo.noDDR) {
         PushGlobalUniqueTensors(tensors, lookupKeys, channel);
         tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(lookupKeys) : Vec2TensorI32(lookupKeys));
     }
@@ -444,65 +448,6 @@ void KeyProcess::PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tenso
         GlobalUnique(lookupKeys, uniqueKeys, restoreVecSec);
         tensors->push_back(Vec2TensorI32(restoreVecSec));
         tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(uniqueKeys) : Vec2TensorI32(uniqueKeys));
-    }
-}
-
-
-void KeyProcess::GlobalUnique(const keys_t& lookupKeys, keys_t& uniqueKeys, vector<int32_t>& restoreVecSec)
-{
-    absl::flat_hash_map<emb_key_t, int32_t> umap;
-    restoreVecSec.resize(lookupKeys.size(), -1);
-    int32_t length = 0;
-
-    for (size_t i = 0; i < lookupKeys.size(); ++i) {
-        int64_t key = lookupKeys[i];
-        if (rankInfo.useStatic && key == -1) {
-            continue;
-        }
-        auto result = umap.find(key);
-        if (result == umap.end()) {
-            uniqueKeys.push_back(lookupKeys[i]);
-            umap[key] = length;
-            restoreVecSec[i] = length;
-            length++;
-        } else {
-            restoreVecSec[i] = result->second;
-        }
-    }
-
-    if (rankInfo.useStatic) {
-        uniqueKeys.resize(lookupKeys.size(), -1);
-    } else {
-        restoreVecSec.erase(std::remove(restoreVecSec.begin(), restoreVecSec.end(), -1), restoreVecSec.end());
-    }
-}
-
-void KeyProcess::GlobalUnique(const vector<int32_t>& lookupKeys, vector<int32_t>& uniqueKeys, vector<int32_t>& restoreVecSec)
-{
-    absl::flat_hash_map<emb_key_t, int32_t> umap;
-    restoreVecSec.resize(lookupKeys.size(), -1);
-    int32_t length = 0;
-
-    for (size_t i = 0; i < lookupKeys.size(); ++i) {
-        int64_t key = lookupKeys[i];
-        if (rankInfo.useStatic && key == -1) {
-            continue;
-        }
-        auto result = umap.find(key);
-        if (result == umap.end()) {
-            uniqueKeys.push_back(lookupKeys[i]);
-            umap[key] = length;
-            restoreVecSec[i] = length;
-            length++;
-        } else {
-            restoreVecSec[i] = result->second;
-        }
-    }
-
-    if (rankInfo.useStatic) {
-        uniqueKeys.resize(lookupKeys.size(), -1);
-    } else {
-        restoreVecSec.erase(std::remove(restoreVecSec.begin(), restoreVecSec.end(), -1), restoreVecSec.end());
     }
 }
 

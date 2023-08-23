@@ -69,7 +69,6 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     swapId++;
     EASY_BLOCK("hostHashMaps->tdt")
 
-//    std::copy(embHashMap.lookUpVec.begin(), embHashMap.lookUpVec.end(), offsetsOut.begin());
     std::copy(embHashMap.lookUpVec.begin(), embHashMap.lookUpVec.end(), std::back_inserter(offsetsOut));
 
     auto lookUpVecSize = static_cast<int>(embHashMap.lookUpVec.size());

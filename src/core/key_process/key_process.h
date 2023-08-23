@@ -86,9 +86,37 @@ namespace MxRec {
 
         void SetupHotEmbUpdateStep();
 
-        void GlobalUnique(const keys_t& lookupKeys, keys_t& uniqueKeys, vector<int32_t>& restoreVecSec);
+        template <typename T>
+        void GlobalUnique(T& lookupKeys, T& uniqueKeys, vector<int32_t>& restoreVecSec)
+        {
+            absl::flat_hash_map<emb_key_t, int32_t> umap;
+            restoreVecSec.resize(lookupKeys.size(), -1);
+            int32_t length = 0;
 
-        void GlobalUnique(const vector<int32_t>& lookupKeys, vector<int32_t>& uniqueKeys, vector<int32_t>& restoreVecSec);
+            for (size_t i = 0; i < lookupKeys.size(); ++i) {
+                int64_t key = lookupKeys[i];
+                if (rankInfo.useStatic && key == -1) {
+                    continue;
+                }
+                auto result = umap.find(key);
+                if (result == umap.end()) {
+                    uniqueKeys.push_back(lookupKeys[i]);
+                    umap[key] = length;
+                    restoreVecSec[i] = length;
+                    length++;
+                } else {
+                    restoreVecSec[i] = result->second;
+                }
+            }
+
+            if (rankInfo.useStatic) {
+                if (rankInfo.useDynamicExpansion) {
+                    uniqueKeys.resize(lookupKeys.size(), 0);
+                } else {
+                    uniqueKeys.resize(lookupKeys.size(), -1);
+                }
+            }
+        }
 
         bool isRunning { false };
 
