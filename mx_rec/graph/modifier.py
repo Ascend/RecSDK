@@ -311,8 +311,8 @@ def get_src_dataset(get_next_op: Operation, is_training: bool) -> DatasetV1Adapt
         target_op = get_dataset_op(get_next_op)
     except (ValueError, TypeError, RuntimeError) as err:
         logging.warning("The dataset op was not found, the error is `%s`. Start to traverse the operations.", err)
-        dataset_op_list = [op for op in tf.compat.v1.get_default_graph().get_operations()
-                           if ANCHOR_DATASET_NAME in op.name]
+        graph = tf.compat.v1.get_default_graph()
+        dataset_op_list = [op for op in graph.get_operations() if ANCHOR_DATASET_NAME in op.name]
         logging.debug("In get_src_dataset function, current mode(train: True, eval: False): %s, dataset_op_list: %s.",
                       is_training, dataset_op_list)
 

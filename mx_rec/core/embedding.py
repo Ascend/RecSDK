@@ -531,13 +531,16 @@ class SparseEmbedding:
                 """
                 same_table_tensor_list = []
                 for feat_spec in same_table_feature_spec:
-                    batch_tensor_dict = kwargs.get("batch") if not self.modify_graph else \
-                        kwargs.get("feature_spec_name_ids_dict")
+                    feature_spec_tensor_dict = kwargs.get("batch")
+                    modify_graph_tensor_dict = kwargs.get("feature_spec_name_ids_dict")
+                    batch_tensor_dict = feature_spec_tensor_dict if not self.modify_graph else modify_graph_tensor_dict
                     if batch_tensor_dict is None:
-                        raise KeyError(f"The tensor dict of batch does not exist in kwargs, "
-                                       f"and modify graph is `{self.modify_graph}`.")
-                    tensor = batch_tensor_dict.get(feat_spec.index_key) if not self.modify_graph else \
-                        batch_tensor_dict.get(feat_spec.name)
+                        raise KeyError(f"The tensor dict of batch does not exist in kwargs, and modify graph "
+                                       f"is `{self.modify_graph}`.")
+
+                    feature_spec_tensor = batch_tensor_dict.get(feat_spec.index_key)
+                    modify_graph_tensor = batch_tensor_dict.get(feat_spec.name)
+                    tensor = feature_spec_tensor if not self.modify_graph else modify_graph_tensor
                     if tensor is None:
                         tensor_key = feat_spec.index_key if not self.modify_graph else feat_spec.name
                         raise KeyError(f"Key `{tensor_key}` does not exist in batch_tensor_dict.")
@@ -683,8 +686,9 @@ class SparseEmbedding:
                 if kwargs.get("multi_lookup"):
                     lookup_result = tf.reshape(embeddings, [-1, self.scalar_emb_size])
                 else:
-                    tensor = kwargs.get("batch").get(feature_spec.index_key) \
-                        if not self.modify_graph else kwargs.get("ids")
+                    feature_spec_tensor = kwargs.get("batch").get(feature_spec.index_key)
+                    modify_graph_tensor = kwargs.get("ids")
+                    tensor = feature_spec_tensor if not self.modify_graph else modify_graph_tensor
                     if tensor is None:
                         raise KeyError(f"key or ids does not exist in batch, now modify graph is {self.modify_graph}.")
                     dest_shape = array_ops.concat([array_ops.shape(tensor), [self.scalar_emb_size]], 0)
