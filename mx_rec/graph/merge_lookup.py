@@ -57,7 +57,7 @@ def do_merge_lookup(is_train: bool = True):
             feature_spec_name_ids_dict[feature_spec.name] = cutting_point
         if sub_cutting_points_dict.get(is_training) is None:
             sub_cutting_points_dict[is_training] = []
-        sub_cutting_points_dict[is_training].append(cutting_point)
+        sub_cutting_points_dict.get(is_training).append(cutting_point)
 
     # merge or restore lookup
     sub_cutting_point_list = sub_cutting_points_dict.get(is_train)
