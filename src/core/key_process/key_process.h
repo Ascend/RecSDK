@@ -15,19 +15,23 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <iostream>
+#include <shared_mutex>
 
-#include <absl/container/flat_hash_map.h>
 #include <mpi.h>
-#include <memory>
+#include <absl/container/flat_hash_map.h>
+
+#include "ock_ctr_common/include/factory.h"
 
 #include "utils/common.h"
+#include "utils/time_cost.h"
 #include "utils/safe_queue.h"
-#include "utils/task_queue.h"
 
 #include "host_emb/host_emb.h"
 #include "emb_table/emb_table.h"
+
 #include "feature_admit_and_evict.h"
-#include "ock_ctr_common/include/factory.h"
+
 
 namespace MxRec {
     using namespace std;
@@ -132,6 +136,8 @@ namespace MxRec {
 
         void GetUniqueConfig(UniqueConf& uniqueConf);
 
+        void GlobalUnique(const keys_t& lookupKeys, keys_t& uniqueKeys, vector<int32_t>& restoreVecSec);
+
         void InitializeUnique(UniqueConf& uniqueConf, size_t& preBatchSize, bool& uniqueInitialize,
                                   const unique_ptr <emb_batch_t>& batch, UniquePtr& unique);
 
@@ -179,6 +185,8 @@ namespace MxRec {
                                        KeySendInfo& keySendInfo, vector<int>& sc, vector<int>& splitSize);
 
         void PushResult(unique_ptr<emb_batch_t>& batch, unique_ptr<vector<Tensor>> tensors, keys_t& lookupKeys);
+
+        void PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, keys_t& lookupKeys, int chanel);
 
         void AddCountStartToHotPos(vector<keys_t>& splitKeys, vector<int>& hotPos, const vector<int>& hotPosDev,
                                    const unique_ptr<emb_batch_t>& batch);

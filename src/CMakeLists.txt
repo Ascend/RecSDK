@@ -95,7 +95,6 @@ endif()
 if(IS_DIRECTORY ${OPENSOURCE_DIR})
     add_subdirectory(${OPENSOURCE_DIR}/pybind11 pybind11.out)
 
-    option(WITH_CUSTOM_PREFIX "use for glog v0.5.0 to enable custom log format" ON)
     add_subdirectory(${OPENSOURCE_DIR}/glog glog.out)
     include_directories(glog.out)
     install(TARGETS glog LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX})

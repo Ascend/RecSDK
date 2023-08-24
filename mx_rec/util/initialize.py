@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
-
-import json
 import logging
 import os
 from collections import defaultdict
 
-import mxrec_pybind
 import psutil
 
 import mx_rec.constants.constants
 from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION, VALID_DEVICE_ID_LIST, LOCAL_RANK_SIZE, \
-    MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE, HASHTABLE_COLLECTION_NAME_LENGTH,\
+    MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE, HASHTABLE_COLLECTION_NAME_LENGTH, \
     TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID, MIN_SIZE, MAX_CONFIG_SIZE
+from mx_rec.util.communication.hccl_mgmt import parse_hccl_json, set_hccl_info_without_json
 from mx_rec.util.ops import import_host_pipeline_ops
-from mx_rec.validator.validator import RankInfoValidator, StringValidator, FileValidator
+from mx_rec.validator.validator import StringValidator, FileValidator
 from mx_rec.util.atomic import AtomicInteger
 
 
@@ -26,6 +24,8 @@ class ConfigInitializer:
 
     def __init__(self, use_mpi, **kwargs):
         self._use_mpi = use_mpi
+        self._rank_id = kwargs.get("rank_id", 0)
+        self._rank_size = kwargs.get("rank_size", 1)
         self._ascend_global_hashtable_collection = ASCEND_GLOBAL_HASHTABLE_COLLECTION
         self._comm = None
         self._asc_manager = None
@@ -33,7 +33,6 @@ class ConfigInitializer:
         self._is_frozen = False
         self._train_steps = None
         self._eval_steps = None
-        self._prefetch_batch_number = None
         self._if_load = None
         self._table_instance_dict = dict()
         self._dangling_table = []
@@ -52,6 +51,9 @@ class ConfigInitializer:
         self._is_terminated = False
         self._is_last_round = False
         self._run_times = AtomicInteger()
+        self._merged_multi_lookup = dict()
+        self._target_batch = dict()
+        self._iterator_type = ""
 
         if self._use_mpi:
             logging.debug(f"Using mpi to launch task.")
@@ -60,19 +62,15 @@ class ConfigInitializer:
             self._comm = MPI.COMM_WORLD
             self._rank_id = self._comm.Get_rank()
             self._rank_size = self._comm.Get_size()
-        else:
-            self._rank_id = kwargs.get("rank_id")
-            self._rank_size = kwargs.get("rank_size")
 
-        self.parse_hccl_json() if os.getenv("RANK_TABLE_FILE") else self.set_hccl_info_without_json()
+        self._rank_to_device_dict = parse_hccl_json() if os.getenv("RANK_TABLE_FILE") else set_hccl_info_without_json()
         self.train_steps = kwargs.get("train_steps", -1)
         self.eval_steps = kwargs.get("eval_steps", -1)
         self.check_parameters()
-        self.prefetch_batch_number = kwargs.get("prefetch_batch_number", 1)
+        self._prefetch_batch_number = kwargs.get("prefetch_batch_number", 1)
         self.if_load = kwargs.get("if_load", False)
-        if_dynamic = kwargs.get("use_dynamic", True)
 
-        self.use_static = not if_dynamic
+        self.use_static = not kwargs.get("use_dynamic", True)
         self.use_hot = kwargs.get("use_hot", True)
         self.use_dynamic_expansion = kwargs.get("use_dynamic_expansion", False)
         if kwargs.get("bind_cpu", True):
@@ -81,6 +79,18 @@ class ConfigInitializer:
 
     def __del__(self):
         self.terminate()
+
+    @property
+    def iterator_type(self):
+        return self._iterator_type
+
+    @property
+    def merged_multi_lookup(self):
+        return self._merged_multi_lookup
+
+    @property
+    def target_batch(self):
+        return self._target_batch
 
     @property
     def is_last_round(self):
@@ -191,18 +201,17 @@ class ConfigInitializer:
         ConfigInitializer._single_instance = ConfigInitializer(use_mpi, **kwargs)
 
     def terminate(self):
+        logging.info("python process run into terminate")
         if self._is_terminated:
             logging.warning("The initializer has already been released once, please do not release it again.")
             return
 
         if self._asc_manager is not None:
             self.del_asc_manager()
-
-        if self._mpi:
-            self._mpi.Finalize()
-            logging.debug("MPI has been destroyed.")
+        logging.info("python process run terminate success")
 
         self._is_terminated = True
+        ConfigInitializer._single_instance = None
 
     def insert_feature_spec(self, feature, is_training):
         self._feature_spec_dict[feature.name] = feature
@@ -212,99 +221,6 @@ class ConfigInitializer:
 
     def get_feature_spec(self, key):
         return self._feature_spec_dict.get(key)
-
-    def parse_hccl_json(self):
-        rank_table_path = os.path.realpath(os.getenv("RANK_TABLE_FILE"))
-        if not os.path.exists(rank_table_path):
-            raise FileExistsError(f"Target_hccl_json_dir {rank_table_path} does not exist when reading.")
-
-        with open(rank_table_path, "r", encoding="utf-8") as file:
-            # check whether json file is valid
-            file_validator = FileValidator(rank_table_path)
-            # 1.check whether rank_table_path is soft link
-            file_validator.check_not_soft_link()
-            # 2.check json file size
-            file_validator.check_file_size(file, MAX_CONFIG_SIZE, MIN_SIZE)
-            file_validator.check()
-
-            table_hccl = json.load(file)
-            if "server_list" not in table_hccl:
-                raise AttributeError(f"Lack of attribute server_list.")
-            if not table_hccl["server_list"]:
-                raise ValueError(f"Server_list is empty.")
-            if "device" not in table_hccl["server_list"][0]:
-                raise AttributeError(f"Lack of attribute device.")
-
-        for server_list in table_hccl.get("server_list"):
-            devices = server_list.get("device")
-            if devices is None:
-                raise ValueError("device is empty")
-            for device in devices:
-                if "rank_id" not in device or not device["rank_id"].isdigit():
-                    raise ValueError(f"hccl_json rank_id wrong.")
-                rank_id = int(device["rank_id"])
-                if "device_id" not in device or not device["device_id"].isdigit():
-                    raise ValueError(f"hccl_json device_id wrong.")
-                device_id = mxrec_pybind.get_logic_id(int(device["device_id"]))
-                if device_id > 16:
-                    raise ValueError(f"get logic id from physic id fail.")
-                self._rank_to_device_dict[rank_id] = device_id
-
-    def set_hccl_info_without_json(self):
-        """
-        Used for no rank table file configured training situation.
-        Now, only less than or equal 8p training job is supported.
-        :return: None
-        """
-        RankInfoValidator().check_visible_devices()
-        ascend_visible_devices = os.getenv("ASCEND_VISIBLE_DEVICES")
-        device_list = []
-        try:
-            if "-" in ascend_visible_devices:
-                split_devices = ascend_visible_devices.strip().split("-")
-                if len(split_devices) >= 1:
-                    rank_start = int(split_devices[0])
-                    device_list = list(range(rank_start, int(ascend_visible_devices.strip().split("-")[-1]) + 1))
-            elif "," in ascend_visible_devices:
-                device_list = list(map(int, ascend_visible_devices.strip().split(",")))
-            elif ascend_visible_devices in VALID_DEVICE_ID_LIST:
-                device_list = [int(ascend_visible_devices.strip())]
-            else:
-                raise ValueError("invalid env variable ascend_visible_devices.")
-        except ValueError as error:
-            raise ValueError("Invalid env variable ascend_visible_devices, no valid device id is configured. "
-                             "Please refer to the document https://www.hiascend.com/document/detail/zh/"
-                             "CANNCommunityEdition/63RC2alpha002/ptmoddevg/ptmigr/ptmigr_0151.html for "
-                             "the correct configuration method.") from error
-        except IndexError as error:
-            raise IndexError(
-                f"Index of ascend_visible_devices {ascend_visible_devices.strip().split('-')[-1]} is out of range") \
-                from error
-
-        chief_device = os.getenv("CM_CHIEF_DEVICE")
-        rank_size = os.getenv("CM_WORKER_SIZE")
-        sorted_device_list = sorted(device_list)
-        if int(rank_size) != len(sorted_device_list):
-            raise ValueError(f"Rank size {rank_size} is different from device num {len(sorted_device_list)}.")
-        try:
-            self._rank_to_device_dict[0] = int(chief_device)
-        except ValueError as err:
-            raise ValueError("CM_WORKER_SIZE or CM_CHIEF_DEVICE uncorrected configured.") from err
-        try:
-            sorted_device_list.pop(int(chief_device) % len(sorted_device_list))
-        except IndexError as err:
-            raise IndexError(
-                f"Config CM_CHIEF_DEVICE {chief_device} not in training container device list {sorted_device_list}.") \
-                from err
-        except ZeroDivisionError as err:
-            raise ZeroDivisionError("sorted_device_list length can not equal to 0.") from err
-
-        for device_idx in sorted_device_list:
-            device_id = mxrec_pybind.get_logic_id(int(device_idx))
-            if device_id > 16:
-                raise ValueError(f"get logic id from physic id fail.")
-            index = sorted_device_list.index(device_idx)
-            self._rank_to_device_dict[index + 1] = device_id
 
     def insert_training_mode_channel_id(self, is_training):
         if is_training not in self._training_mode_channel_dict:
@@ -403,6 +319,13 @@ class ConfigInitializer:
         self.unfreeze()
         logging.debug("ASC manager has been destroyed.")
 
+    @iterator_type.setter
+    def iterator_type(self, iterator_type):
+        if not isinstance(iterator_type, str):
+            raise TypeError(f"iterator_type `{iterator_type}` should be str.")
+
+        self._iterator_type = iterator_type
+
     @train_steps.setter
     def train_steps(self, step: int):
         check_step(step)
@@ -461,6 +384,24 @@ class ConfigInitializer:
             raise ValueError(f"Given key must be a boolean, but got {is_training}.")
 
         self._initializer_dict[is_training] = initializer
+
+    def insert_merged_multi_lookup(self, is_training, value=True):
+        if not isinstance(is_training, bool):
+            raise TypeError(f"Given key must be a boolean, but got {is_training} for `merged_multi_lookup`.")
+
+        self._merged_multi_lookup[is_training] = value
+
+    def get_merged_multi_lookup(self, is_training):
+        return self._merged_multi_lookup.get(is_training)
+
+    def set_target_batch(self, is_training, batch):
+        if not isinstance(is_training, bool):
+            raise TypeError(f"Given key must be a boolean, but got {is_training} for `target_batch`.")
+
+        self._target_batch[is_training] = batch
+
+    def get_target_batch(self, is_training):
+        return self._target_batch.get(is_training)
 
     def delete_initializers(self):
         self._initializer_dict = {}
@@ -757,6 +698,66 @@ def set_ascend_table_name_must_contain(name="merged"):
     mx_rec.constants.constants.ASCEND_TABLE_NAME_MUST_CONTAIN = name
 
 
+def insert_merged_multi_lookup(is_training: bool, value: bool = True):
+    """
+    记录自动改图模式下是否调用了合并lookup的函数.
+    Args:
+        is_training: 当前是否为训练模式，训练模式为True，否则为False
+        value: 是否调用了合并lookup的函数, 调用了为True，否则为False
+    Returns: None
+    """
+    ConfigInitializer.get_instance().insert_merged_multi_lookup(is_training, value)
+
+
+def get_merged_multi_lookup(is_training: bool) -> bool:
+    """
+    返回自动改图模式下是否调用了合并lookup函数的记录.
+    Args:
+        is_training: 当前是否为训练模式，训练模式为True，否则为False
+    Returns: 调用记录，调用了为True，否则为False
+    """
+    return ConfigInitializer.get_instance().get_merged_multi_lookup(is_training)
+
+
+def set_target_batch(is_training: bool, batch: dict):
+    """
+    记录自动改图模式下生成新数据集中的batch.
+    Args:
+        is_training: 当前是否为训练模式，训练模式为True，否则为False
+        batch: 数据集中的batch
+    Returns: None
+    """
+    ConfigInitializer.get_instance().set_target_batch(is_training, batch)
+
+
+def get_target_batch(is_training: bool) -> dict:
+    """
+    返回自动改图模式下生成新数据集中batch的记录.
+    Args:
+        is_training: 当前是否为训练模式，训练模式为True，否则为False
+    Returns: 新数据集中的batch
+    """
+    return ConfigInitializer.get_instance().get_target_batch(is_training)
+
+
+def get_iterator_type() -> str:
+    """
+    返回数据集的迭代器类型.
+    Returns: 数据集的迭代器类型
+    """
+    return ConfigInitializer.get_instance().iterator_type
+
+
+def set_iterator_type(iterator_type: str):
+    """
+    记录数据集的迭代器类型.
+    Args:
+        iterator_type: 数据集的迭代器类型
+    Returns: None
+    """
+    ConfigInitializer.get_instance().iterator_type = iterator_type
+
+
 def set_ascend_env():
     """
     配置昇腾相关的参数和环境变量，生成hccl配置
@@ -816,7 +817,7 @@ def get_available_cpu_num_and_range():
             # 1.check whether f_path is soft link
             file_validator.check_not_soft_link()
             # 2.check file size
-            file_validator.check_file_size(f_in, MAX_CONFIG_SIZE, MIN_SIZE)
+            file_validator.check_file_size(MAX_CONFIG_SIZE, MIN_SIZE)
             file_validator.check()
             pkg_id = f_in.readline().strip()
             pkg_id2cpu_list[pkg_id].append(cpu)

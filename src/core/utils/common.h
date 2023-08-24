@@ -58,9 +58,11 @@ namespace MxRec {
     constexpr int MAX_QUEUE_NUM = MAX_CHANNEL_NUM * MAX_KEY_PROCESS_THREAD;
     constexpr int DEFAULT_KEY_PROCESS_THREAD = 6;
     constexpr int KEY_PROCESS_THREAD = 6;
+    constexpr char SUM_SAME_ID[] = "sum_same_id_gradients_and_apply";
 
     // for GLOG
     extern int g_glogLevel;
+    extern string g_rankId;
     constexpr int GLOG_MAX_BUF_SIZE = 1024;
     constexpr int GLOG_TIME_WIDTH_2 = 2;
     constexpr int GLOG_TIME_WIDTH_6 = 6;
@@ -70,10 +72,15 @@ namespace MxRec {
     constexpr int MIN_UNIQUE_THREAD_NUM = 1;
     constexpr int DEFAULT_MAX_UNIQUE_THREAD_NUM = 8;
 
+    // validate file
+    constexpr long long FILE_MAX_SIZE = 1LL << 40;
+    constexpr int FILE_MIN_SIZE = 1;
+
     struct PerfConfig {
         static int keyProcessThreadNum;
         static int maxUniqueThreadNum;
         static bool fastUnique;
+        static bool gradientStrategy;
     };
 
     constexpr int KEY_PROCESS_TIMEOUT = 120;
@@ -105,6 +112,7 @@ namespace MxRec {
 
     string GetChipName(int devID);
     bool GetCombineSwitch();
+    int GetThreadNumEnv();
 
     namespace UBSize {
         const int ASCEND910_PREMIUM_A = 262144;
@@ -199,7 +207,6 @@ struct BatchTask {
         bool useHot {};
         uint32_t option {};
         int nBatch {};
-        bool useDataset { false }; // deprecated
         bool noDDR { false };
         bool useDynamicExpansion {false};
         std::vector<int> maxStep;
@@ -274,7 +281,7 @@ struct BatchTask {
 
     void SetLog(int rank);
 
-    void CustomGlogFormat(std::ostream &s, const LogMessageInfo &l, void*);
+    void CustomGlogFormat(std::ostream &s, const google::LogMessageInfo &l, void*);
 
     template<typename ... Args>
     string StringFormat(const string& format, Args ... args)
@@ -338,6 +345,8 @@ struct BatchTask {
         ss << "}";
         return ss.str();
     }
+
+    void ValidateReadFile(const string& dataDir, size_t datasetSize);
 
     inline void GenerateRandomValue(std::vector<float>& vecData,
                                     std::default_random_engine& generator,
@@ -451,7 +460,7 @@ struct BatchTask {
     };
 
     struct EmbHashMapInfo {
-        absl::flat_hash_map<emb_key_t, size_t> hostHashMap;
+        absl::flat_hash_map<emb_key_t, size_t> hostHashMap; // key在HBM中的偏移
         std::vector<int> devOffset2Batch; // has -1
         std::vector<emb_key_t> devOffset2Key;
         size_t currentUpdatePos;
@@ -460,7 +469,7 @@ struct BatchTask {
         size_t devVocabSize;
         size_t freeSize;
         std::vector<int32_t> lookUpVec;
-        std::vector<size_t> missingKeysHostPos;
+        std::vector<size_t> missingKeysHostPos; // 用于记录当前batch在host上需要换出的偏移
         std::vector<size_t> swapPos;
         size_t maxOffset { 0 };
         std::vector<size_t> evictPos;

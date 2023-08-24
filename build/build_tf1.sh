@@ -20,6 +20,13 @@ then
   deactivate tf1_env
 fi
 
+if [ "$(uname -m)" = "aarch64" ]
+then
+  source /opt/buildtools/tf1_env/bin/activate
+  tf1_path=$(dirname "$(dirname "$(which python3)")")/lib/python3.7/site-packages/tensorflow_core
+  deactivate tf1_env
+fi
+
 VERSION_FILE="${ROOT_DIR}"/../mindxsdk/build/conf/config.yaml
 get_version() {
   if [ -f "$VERSION_FILE" ]; then
@@ -28,7 +35,7 @@ get_version() {
       VERSION=${VERSION%.*}
     fi
   else
-    VERSION="5.0.T104"
+    VERSION="5.0.rc3"
   fi
 }
 
@@ -59,6 +66,8 @@ src_path="${ROOT_DIR}"/src
 acc_ctr_path="${ROOT_DIR}"/src/platform/AccCTR
 cp -rf "${ROOT_DIR}"/platform/securec/* "${acc_ctr_path}"/3rdparty/huawei_secure_c
 cd "${ROOT_DIR}"
+
+release_tar=Ascend-"${pkg_dir}"_"${VERSION}"_linux-"${ARCH}".tar.gz
 
 compile_securec()
 {
@@ -106,7 +115,6 @@ gen_wheel_file()
   touch "${src_path}"/libasc/__init__.py
   remove "${ROOT_DIR}"/mx_rec/libasc
   mv "${src_path}"/libasc "${ROOT_DIR}"/mx_rec
-  cp -rf "${ROOT_DIR}"/tools "${ROOT_DIR}"/mx_rec
   python3.7 setup.py bdist_wheel --plat-name=linux_$(arch)
   mkdir -p "$1"
   mv dist/mx_rec*.whl "$1"
@@ -117,8 +125,6 @@ gen_tar_file()
 {
   cd "${src_path}"
   mv  "${ROOT_DIR}"/tf1_whl ../build/"${pkg_dir}"
-  mv  "${ROOT_DIR}"/tf2_whl ../build/"${pkg_dir}"
-  cp -r  "${src_path}"/../example ../build/"${pkg_dir}"
   cp -r  "${src_path}"/../cust_op ../build/"${pkg_dir}"
   cd ../build
   tar -zvcf "${release_tar}" "${pkg_dir}" || {
@@ -140,6 +146,22 @@ then
   echo "-----Build Start tf1 -----"
   virtualenv -p "$(which python3.7)" tf1_env
   echo "--tf1 env ${env}---"
+  source /opt/buildtools/tf1_env/bin/activate
+  compile_so_file "${tf1_path}"
+  collect_so_file
+  gen_wheel_file  "${ROOT_DIR}"/tf1_whl
+  deactivate tf1_env
+  echo "-----Build tf1 finished-----"
+fi
+
+if [ "$(uname -m)" = "aarch64" ]
+then
+  compile_securec
+
+  echo "-----Build AccCTR -----"
+  compile_acc_ctr_so_file
+
+  echo "-----Build Start tf1 -----"
   source /opt/buildtools/tf1_env/bin/activate
   compile_so_file "${tf1_path}"
   collect_so_file

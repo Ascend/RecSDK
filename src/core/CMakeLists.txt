@@ -21,6 +21,8 @@ else()
     include_directories(${PYTHON_PATH}/lib/python3.7/site-packages/tensorflow/include)
 endif()
 
+link_libraries(stdc++fs)
+
 file(GLOB_RECURSE MXREC_SRC ./*.cpp)
 add_library(ASC SHARED ${MXREC_SRC})
 

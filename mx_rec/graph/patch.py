@@ -14,17 +14,21 @@ from tensorflow.python.data.ops.dataset_ops import _VariantTracker
 from tensorflow.python.framework import ops
 from tensorflow_estimator.python.estimator.training import EvalSpec
 from tensorflow.python.eager.monitoring import BoolGauge, BoolGaugeCell
+from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
+from tensorflow.python.distribute import reduce_util as ds_reduce_util
+from tensorflow.python.training.optimizer import Optimizer
 
 from mx_rec.util.initialize import get_is_graph_modify_hook_running, get_modify_graph, insert_bool_gauge, \
     get_bool_gauge_set, terminate_config_initializer, get_run_times, set_is_last_round
 from mx_rec.util.tf_version_adapter import NPUCheckpointSaverHook
+from mx_rec.graph.merge_lookup import do_merge_lookup
 
 
 def init_dataset(self, input_data):
     """
     input_data: A DT_VARIANT tensor that represents the dataset.
     """
-    # pylint: disable=W
     tf.compat.v1.add_to_collection("dataset_group", self)
     self._variant_tensor_attr = input_data
     # get obj
@@ -88,8 +92,9 @@ def get_cell(self: BoolGauge, *labels: Any) -> Any:
     Returns: Obtains the cell value set by the user.
     """
 
-    logging.debug(f"Enter patch 'BoolGauge.get_cell'.")
+    logging.debug("Enter patch 'BoolGauge.get_cell'.")
     if len(labels) > 0:
+        logging.debug("BoolGauge insert: %s.", labels[0])
         insert_bool_gauge(labels[0])
     return BoolGaugeCell(super(BoolGauge, self).get_cell(*labels))
 
@@ -98,7 +103,7 @@ def patch_for_bool_gauge():
     """Patch for 'BoolGauge.get_cell'."""
 
     BoolGauge.get_cell = get_cell
-    logging.debug(f"Function 'get_cell' in Class 'BoolGauge' has been patched.")
+    logging.debug("Function 'get_cell' in Class 'BoolGauge' has been patched.")
 
 
 def end(self: NPUCheckpointSaverHook, session: tf.compat.v1.Session):
@@ -113,14 +118,14 @@ def end(self: NPUCheckpointSaverHook, session: tf.compat.v1.Session):
 
     """
 
-    logging.debug(f"Enter patch 'NPUCheckpointSaverHook.end'.")
+    logging.debug("Enter patch 'NPUCheckpointSaverHook.end'.")
     logging.info("NPUCheckpointSaverHook end...")
     basic_session_run_hooks.CheckpointSaverHook.end(self, session)
 
     if 'train_and_evaluate' in get_bool_gauge_set() and get_run_times() == 1:
         set_is_last_round(True)
         return
-    logging.debug(f"NPUCheckpointSaverHook call 'terminate_config_initializer'...")
+    logging.debug("NPUCheckpointSaverHook call 'terminate_config_initializer'...")
     terminate_config_initializer()
 
 
@@ -128,7 +133,7 @@ def patch_for_end():
     """Patch for 'NPUCheckpointSaverHook.end'."""
 
     NPUCheckpointSaverHook.end = end
-    logging.debug(f"Function 'end' in Class 'NPUCheckpointSaverHook' has been patched.")
+    logging.debug("Function 'end' in Class 'NPUCheckpointSaverHook' has been patched.")
 
 
 def assert_eval_spec(eval_spec: EvalSpec):
@@ -142,7 +147,7 @@ def assert_eval_spec(eval_spec: EvalSpec):
 
     """
 
-    logging.debug(f"Enter patch 'tensorflow_estimator.python.estimator.training._assert_eval_spec'.")
+    logging.debug("Enter patch 'tensorflow_estimator.python.estimator.training._assert_eval_spec'.")
     if not isinstance(eval_spec, EvalSpec):
         raise TypeError('`eval_spec` must have type `tf.estimator.EvalSpec`. Got: {}'.format(type(eval_spec)))
 
@@ -155,4 +160,40 @@ def patch_for_assert_eval_spec():
     """Patch for 'tensorflow_estimator.python.estimator.training._assert_eval_spec'."""
 
     tensorflow_estimator_lib.python.estimator.training._assert_eval_spec = assert_eval_spec
-    logging.debug(f"Function '_assert_eval_spec' in 'tensorflow_estimator.python.estimator.training' has been patched.")
+    logging.debug("Function '_assert_eval_spec' in 'tensorflow_estimator.python.estimator.training' has been patched.")
+
+
+def scale_loss(self: Optimizer, loss_value: tf.Tensor) -> tf.Tensor:
+    """
+    Multiply the loss value by a scalar factor.
+
+    Args:
+        self: self: An `Optimizer` instance.
+        loss_value: A Tensor containing the value to minimize or a callable taking no arguments which returns the value
+                    to minimize. When eager execution is enabled it must be a callable.
+
+    Returns: loss_value
+
+    """
+
+    logging.debug("Enter patch 'Optimizer._scale_loss'.")
+    # In train mode, merge lookup must be completed during compute gradients.
+    # Ensure that the backward of graph is constructed and the gradient calculation is correct.
+    do_merge_lookup(is_train=True)
+
+    # origin code
+    ops.get_default_graph()._is_loss_scaled_by_optimizer = False
+    if distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
+        # origin name is num_replicas
+        loss_num_replicas = distribute_ctx.get_strategy().num_replicas_in_sync
+        if loss_num_replicas > 1:
+            loss_value *= (1. / loss_num_replicas)
+            ops.get_default_graph()._is_loss_scaled_by_optimizer = True
+    return loss_value
+
+
+def patch_for_scale_loss():
+    """Patch for 'Optimizer._scale_loss'."""
+
+    Optimizer._scale_loss = scale_loss
+    logging.debug("Function '_scale_loss' in Class 'Optimizer' has been patched.")

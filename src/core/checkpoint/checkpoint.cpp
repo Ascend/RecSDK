@@ -7,14 +7,16 @@
 
 #include <iostream>
 #include <sys/mman.h>
-#include <cstring>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #include "ckpt_data_handler//emb_hash_ckpt/emb_hash_ckpt.h"
 #include "ckpt_data_handler/host_emb_ckpt/host_emb_ckpt.h"
 #include "ckpt_data_handler/nddr_offset_ckpt/nddr_offset_ckpt.h"
 #include "ckpt_data_handler/nddr_feat_map_ckpt/nddr_feat_map_ckpt.h"
 #include "ckpt_data_handler/feat_admit_n_evict_ckpt/feat_admit_n_evict_ckpt.h"
+#include "utils/time_cost.h"
+#include "utils/common.h"
 
 #include "checkpoint.h"
 
@@ -233,18 +235,28 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir)
 {
     std::ifstream readFile;
     readFile.open(dataDir.c_str(), std::ios::in | std::ios::binary | std::ios::ate);
+    size_t datasetSize = static_cast<size_t>(readFile.tellg());
+    readFile.seekg(0, std::ios::beg);
+    try {
+        ValidateReadFile(dataDir, datasetSize);
+    } catch (const std::invalid_argument& e) {
+        readFile.close();
+        throw runtime_error(StringFormat("Invalid read file path: %s", e.what()));
+    }
 
 #ifndef GTEST
     auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
     if (res != ACL_ERROR_NONE) {
         LOG(ERROR) << StringFormat("Set device failed, device_id:%d", deviceId);
+        readFile.close();
         throw runtime_error(StringFormat("Set device failed, device_id:%d", deviceId).c_str());
     }
 
     auto &AttributeArr = transData.attribute;
     auto embHashMapSize = AttributeArr.at(0);
-    size_t datasetSize = readFile.tellg();
-    readFile.seekg(0, std::ios::beg);
+    if (embHashMapSize <= 0) {
+        throw runtime_error(StringFormat("Invalid EmbHashMapSize:%d, must be greater than 0", embHashMapSize).c_str());
+    }
     auto embeddingSize = static_cast<int>(datasetSize / sizeof(float) / embHashMapSize);
 
     aclError ret;
@@ -252,6 +264,7 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir)
     ret = aclrtMalloc(&newBlock, static_cast<int>(datasetSize), ACL_MEM_MALLOC_HUGE_FIRST);
     if (ret != ACL_SUCCESS) {
         LOG(ERROR) << StringFormat("aclrtMalloc failed, ret=%d", ret);
+        readFile.close();
         throw runtime_error(StringFormat("aclrtMemcpy failed, ret=%d", ret).c_str());
     }
 
@@ -262,13 +275,12 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir)
         readFile.read((char *) (row.data()), embeddingSize * sizeof(float));
 
         aclError ret = aclrtMemcpy(floatPtr + i * embeddingSize, embeddingSize * sizeof(float),
-                                   row.data(), embeddingSize * sizeof(float),
-                                   ACL_MEMCPY_HOST_TO_DEVICE);
+                                   row.data(), embeddingSize * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
         if (ret != ACL_SUCCESS) {
             LOG(ERROR) << StringFormat("aclrtMemcpy failed, ret=%d", ret);
+            readFile.close();
             throw runtime_error(StringFormat("aclrtMemcpy failed, ret=%d", ret).c_str());
         }
-
         int64_t address = reinterpret_cast<int64_t>(floatPtr + i * embeddingSize);
         transArr.at(i + 1) = address;
     }
@@ -424,17 +436,25 @@ void Checkpoint::ReadStream(CkptTransData& transData,
         LOG(WARNING) << "dataElmtBytes is 0, don't handle [/ %] operation";
         return ;
     }
+
     std::ifstream readFile;
     readFile.open(dataDir.c_str(), std::ios::in | std::ios::binary | std::ios::ate);
-
-    size_t datasetSize = readFile.tellg();
+    size_t datasetSize = static_cast<size_t>(readFile.tellg());
     readFile.seekg(0, std::ios::beg);
+    try {
+        ValidateReadFile(dataDir, datasetSize);
+    } catch (const std::invalid_argument& e) {
+        readFile.close();
+        throw runtime_error(StringFormat("Invalid read file path: %s", e.what()));
+    }
 
     if (datasetSize % dataElmtBytes > 0) {
         VLOG(GLOG_DEBUG) << StringFormat("data is missing or incomplete in load file: %s", dataDir.c_str());
     }
+
     auto resizeSize { datasetSize / dataElmtBytes };
     SetTransDataSize(transData, resizeSize, dataType);
+
     if (readFile.is_open()) {
         size_t idx = 0;
         size_t readSize = 0;
@@ -445,7 +465,6 @@ void Checkpoint::ReadStream(CkptTransData& transData,
                 readSize = datasetSize;
             }
             ReadDataset(transData, readFile, readSize, dataType, idx);
-
             datasetSize -= readSize;
             idx += readSize;
         }
@@ -466,23 +485,29 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
         LOG(ERROR) << "dataElmtBytes is 0, don't handle [/ %] operation";
         return ;
     }
-
     auto embDataOuterSize = transData.attribute.at(attribEmbDataOuterIdx);
-
-    auto loadHostEmbs = ckptData.hostEmbs;
-    auto& dst = (*loadHostEmbs)[embName].embData;
-    dst.reserve(embDataOuterSize);
-
+    if (embDataOuterSize <= 0) {
+        throw runtime_error(StringFormat("Invalid embDataOuterSize :%d", embDataOuterSize).c_str());
+    }
     std::ifstream readFile;
     readFile.open(dataDir.c_str(), std::ios::in | std::ios::binary | std::ios::ate);
-
-    size_t datasetSize = readFile.tellg();
+    size_t datasetSize = static_cast<size_t>(readFile.tellg());
     readFile.seekg(0, std::ios::beg);
+    try {
+        ValidateReadFile(dataDir, datasetSize);
+    } catch (const std::invalid_argument& e) {
+        readFile.close();
+        throw runtime_error(StringFormat("Invalid read file path: %s", e.what()));
+    }
 
     if (datasetSize % embDataOuterSize > 0 || datasetSize % dataElmtBytes > 0) {
         LOG(ERROR) << StringFormat("data is missing or incomplete in load file: %s", dataDir.c_str());
+        readFile.close();
         throw runtime_error("unable to load EMB_DATA cause wrong-format saved emb data");
     }
+    auto loadHostEmbs = ckptData.hostEmbs;
+    auto& dst = (*loadHostEmbs)[embName].embData;
+    dst.reserve(embDataOuterSize);
     auto onceReadByteSize { datasetSize / embDataOuterSize };
 
     if (!readFile.is_open()) {
@@ -500,9 +525,7 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
             } else {
                 readSize = dataCol;
             }
-
             readFile.read((char*)(dst[i].data()) + idx, readSize);
-
             dataCol -= readSize;
             idx += readSize;
         }

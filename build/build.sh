@@ -23,7 +23,7 @@ get_version() {
       VERSION=${VERSION%.*}
     fi
   else
-    VERSION="5.0.T104"
+    VERSION="5.0.rc3"
   fi
 }
 
@@ -58,7 +58,6 @@ gen_tar_file()
   cd "${src_path}"
   mv  "${ROOT_DIR}"/tf1_whl ../build/"${pkg_dir}"
   mv  "${ROOT_DIR}"/tf2_whl ../build/"${pkg_dir}"
-  cp -r  "${src_path}"/../example ../build/"${pkg_dir}"
   cp -r  "${src_path}"/../cust_op ../build/"${pkg_dir}"
   cd ../build
   tar -zvcf "${release_tar}" "${pkg_dir}" || {
@@ -84,6 +83,18 @@ clean()
 
 
 if [ "$(uname -m)" = "x86_64" ]
+then
+  echo "-----Build gen tar -----"
+  bash ${ROOT_DIR}/build/build_tf1.sh
+  bash ${ROOT_DIR}/build/build_tf2.sh
+  gen_tar_file
+  echo "-----Build gen tar finished-----"
+
+  clean
+  echo "-----Done-----"
+fi
+
+if [ "$(uname -m)" = "aarch64" ]
 then
   echo "-----Build gen tar -----"
   bash ${ROOT_DIR}/build/build_tf1.sh

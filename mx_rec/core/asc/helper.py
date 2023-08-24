@@ -94,7 +94,6 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
 
         def insert_fn_for_arg_indexes(*args):
             insert_tensors = get_target_tensors_with_args_indexes(args_index_list)
-            # config timestamp later
 
             logging.debug(f"do_insert without spec for {table_names}")
             splits = []
@@ -293,7 +292,6 @@ def get_valid_op_key(batch_dict: dict) -> str:
 def get_target_tensors_with_args_indexes(args_index_list):
     insert_tensors = []
     graph = tf.compat.v1.get_default_graph()
-
     for index in args_index_list:
         tensor = graph.get_tensor_by_name("args_%d:0" % index)
         if tensor.dtype != tf.int64:
@@ -329,6 +327,9 @@ def get_target_tensors_with_feature_specs(tgt_key_specs, batch, is_training, rea
         else:
             raise ValueError(f"Encounter a invalid batch.")
 
+        # Ensure that the sequence of the `read emb key` op input tensor is the same as that of the split result
+        # of the multi lookup in a same table.
+        reshape_name = "reshape_" + feature_spec.name
         if feature_spec.is_timestamp is None:
             result = feature_spec.set_feat_attribute(tensor, is_training)
             tensor = result.get("tensor")
@@ -337,15 +338,15 @@ def get_target_tensors_with_feature_specs(tgt_key_specs, batch, is_training, rea
             if tensor.dtype != tf.int64:
                 tensor = tf.cast(tensor, dtype=tf.int64)
 
-            read_emb_key_inputs_dict["insert_tensors"].append(tf.reshape(tensor, [-1, ]))
+            read_emb_key_inputs_dict["insert_tensors"].append(tf.reshape(tensor, [-1, ], name=reshape_name))
             read_emb_key_inputs_dict["table_names"].append(table_name)
             read_emb_key_inputs_dict["splits"].append(split)
             read_emb_key_inputs_dict["feature_spec_names"].append(feature_spec.name)
         elif feature_spec.is_timestamp:
             if len(tensor.shape.as_list()) != 0:
                 raise ValueError(f"Given TimeStamp Tensor must be a scalar.")
-            read_emb_key_inputs_dict["insert_tensors"] = [tf.reshape(tensor, [-1, ])] + \
-                                                         read_emb_key_inputs_dict["insert_tensors"]
+            read_emb_key_inputs_dict["insert_tensors"] = [tf.reshape(
+                tensor, [-1, ], name=reshape_name)] + read_emb_key_inputs_dict.get("insert_tensors", [])
             feature_spec.include_timestamp(is_training)
         elif tensor is not None:
             raise ValueError(f"Spec timestamp should be true when batch contains timestamp.")

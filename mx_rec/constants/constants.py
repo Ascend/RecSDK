@@ -21,6 +21,9 @@ CUSTOMIZED_OPS_LIB_PATH = "CUSTOMIZED_OPS_LIB_PATH"
 HOST_PIPELINE_OPS_LIB_PATH = "HOST_PIPELINE_OPS_LIB_PATH"
 ASCEND_SPARSE_LOOKUP_LOCAL_EMB = "ASCEND_SPARSE_LOOKUP_LOCAL_EMB"
 
+# 自动改图模式下从计算图中寻找dataset的锚点名称
+ANCHOR_DATASET_NAME = "PrefetchDataset"
+
 # the name of the embedding table merged by third party
 ASCEND_TABLE_NAME_MUST_CONTAIN = None
 
@@ -31,7 +34,7 @@ LOCAL_RANK_SIZE = "LOCAL_RANK_SIZE"  # 训练时，当前服务器使用的NPU�
 MAX_DEVICE_NUM_LOCAL_MACHINE = 16  # 单台服务器最大的卡数
 DEFAULT_DEVICE_NUM_LOCAL_MACHINE = 8  # 单台服务器默认的卡数
 
-MULTI_LOOKUP_TIMES = 2048
+MULTI_LOOKUP_TIMES = 128
 DEFAULT_EVICT_TIME_INTERVAL = 60 * 60 * 24
 TRAIN_CHANNEL_ID = 0
 EVAL_CHANNEL_ID = 1
@@ -50,6 +53,9 @@ MIN_RANK_SIZE = 1
 LOG_MAX_SIZE = 1024 * 1024
 
 MAX_INT32 = np.iinfo(np.int32).max
+
+DUMP_MIDIFY_GRAPH_FILE_MODE = 0o550
+MAX_DEVICE_ID = 15
 
 
 class BaseEnum(Enum):
@@ -93,6 +99,10 @@ class ASCAnchorAttr(Enum):
     ALL2ALL_MATRIX = "all2all_matrix"
     HOT_POS = "hot_pos"
     LOOKUP_RESULT = "lookup_result"
+    MOCK_LOOKUP_RESULT = "mock_lookup_result"
+    RESTORE_VECTOR_SECOND = "restore_vector_second"
+    UNIQUE_KEYS = "unique_keys"
+    GRADIENTS_STRATEGY = "gradients_strategy"
 
 
 class MxRecMode(BaseEnum):
@@ -116,12 +126,10 @@ OPTIMIZER_STATE_META = {OptimizerType.LAZY_ADAM: ["momentum", "velocity"],
 
 
 class All2allGradientsOp(BaseEnum):
-    SUM_GRADIENTS = "sum_gradients" 
-    SUM_GRADIENTS_AND_DIV_BY_RANKSIZE = "sum_gradients_and_div_by_ranksize" 
+    SUM_GRADIENTS = "sum_gradients"
+    SUM_GRADIENTS_AND_DIV_BY_RANKSIZE = "sum_gradients_and_div_by_ranksize"
 
 
 class ApplyGradientsStrategy(BaseEnum):
-    DIRECT_APPLY = "direct_apply" 
-    SUM_SAME_ID_GRADIENTS_AND_APPLY = "sum_same_id_gradients_and_apply" 
-
-
+    DIRECT_APPLY = "direct_apply"
+    SUM_SAME_ID_GRADIENTS_AND_APPLY = "sum_same_id_gradients_and_apply"

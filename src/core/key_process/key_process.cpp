@@ -7,15 +7,8 @@
 
 #include "key_process.h"
 
-#include <iostream>
-#include <shared_mutex>
-
-#include <mpi.h>
-
 #include "checkpoint/checkpoint.h"
 #include "hd_transfer/hd_transfer.h"
-#include "utils/common.h"
-#include "utils/time_cost.h"
 
 using namespace std;
 using namespace chrono;
@@ -36,13 +29,22 @@ inline vector<T> Count2Start(const vector<T>& count)
 
 void KeyProcess::SetupHotEmbUpdateStep()
 {
-    const char* env = getenv("HOT_EMB_UPDATE_STEP");
-    if (env == nullptr) {
-        hotEmbUpdateStep = HOT_EMB_UPDATE_STEP_DEFAULT;
-    } else {
-        hotEmbUpdateStep = stoi(env);
-        if (hotEmbUpdateStep == 0) {
-            hotEmbUpdateStep = HOT_EMB_UPDATE_STEP_DEFAULT;
+    const auto maxUpdateStep = 1000;
+    this->hotEmbUpdateStep = HOT_EMB_UPDATE_STEP_DEFAULT;
+    const char *envUpdateStep = getenv("HOT_EMB_UPDATE_STEP");
+    if (envUpdateStep != nullptr) {
+        try {
+            int tmp = std::stoi(envUpdateStep);
+            if (tmp >= 1 && tmp <= maxUpdateStep) {
+                this->hotEmbUpdateStep = tmp;
+                LOG(INFO) << StringFormat("Succeed to parse ${env:HOT_EMB_UPDATE_STEP}: %d.", this->hotEmbUpdateStep);
+            } else {
+                LOG(ERROR) << StringFormat("${env:HOT_EMB_UPDATE_STEP}: %d should be in [1, 1000], set default: %d.",
+                    tmp, HOT_EMB_UPDATE_STEP_DEFAULT);
+            }
+        } catch (const std::invalid_argument &e) {
+            LOG(ERROR) << StringFormat("Failed to parse ${env:HOT_EMB_UPDATE_STEP}: %s, set default: %d.",
+                envUpdateStep, HOT_EMB_UPDATE_STEP_DEFAULT);
         }
     }
 }
@@ -122,17 +124,8 @@ int KeyProcess::Start()
 #endif
         KeyProcessTask(channel, id);
     }; // for clean code
-    int threadNum;
+    int threadNum = GetThreadNumEnv();
     for (int channel = 0; channel < MAX_CHANNEL_NUM; ++channel) {
-        const char* threadNumEnv = getenv("KEY_PROCESS_THREAD_NUM");
-        if (threadNumEnv != nullptr) {
-            threadNum = static_cast<int>(*threadNumEnv) - static_cast<int>('0');
-            if (threadNum > KEY_PROCESS_THREAD || threadNum < 0) {
-                throw runtime_error(StringFormat("%d is not valid", threadNum));
-            }
-        } else {
-            threadNum = KEY_PROCESS_THREAD;
-        }
         LOG(INFO) << StringFormat(KEY_PROCESS "key process thread num: %d", threadNum);
         for (int id = 0; id < threadNum; ++id) {
             procThreads.emplace_back(
@@ -172,6 +165,8 @@ void KeyProcess::LoadMaxOffset(offset_mem_t& loadData)
     maxOffset = std::move(loadData);
 }
 
+/// 加载每张表key到offset的映射
+/// \param loadData
 void KeyProcess::LoadKeyOffsetMap(key_offset_mem_t& loadData)
 {
     keyOffsetMap = std::move(loadData);
@@ -189,6 +184,7 @@ void KeyProcess::Destroy()
     LOG(INFO) << StringFormat(KEY_PROCESS "rank %d destroy success.", rankInfo.rankId);
 }
 
+/// 每个数据通道的所有数据处理线程上锁
 void KeyProcess::LoadSaveLock()
 {
     for (int channelId { 0 }; channelId < MAX_CHANNEL_NUM; ++channelId) {
@@ -198,6 +194,7 @@ void KeyProcess::LoadSaveLock()
     }
 }
 
+/// 每个数据通道的所有数据处理线程释放锁
 void KeyProcess::LoadSaveUnlock()
 {
     for (int channelId { 0 }; channelId < MAX_CHANNEL_NUM; ++channelId) {
@@ -360,13 +357,9 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<emb_batch_t>& bat
         uniqueInfo.hotPos.resize(hotEmbTotCount[batch->name], -1);
         tensors->push_back(Vec2TensorI32(uniqueInfo.hotPos));
     }
-    if (rankInfo.noDDR) {
-        if (rankInfo.useDynamicExpansion) {
-            tensors->push_back(Vec2TensorI64(uniqueInfo.all2AllInfo.keyRecv));
-        } else {
-            tensors->push_back(Vec2TensorI32(uniqueInfo.all2AllInfo.keyRecv));
-        }
-    }
+
+    PushGlobalUniqueTensors(move(tensors), uniqueInfo.all2AllInfo.keyRecv, channel);
+
     TimeCost pushResultTC;
     PushResult(batch, move(tensors), uniqueInfo.all2AllInfo.keyRecv);
     VLOG(GLOG_DEBUG) << StringFormat("pushResultTC(ms):%d", pushResultTC.ElapsedMS());
@@ -422,16 +415,56 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channe
         hotPos.resize(hotEmbTotCount[batch->name], 0);
         tensors->push_back(Vec2TensorI32(hotPos));
     }
-    if (rankInfo.noDDR) {
-        if (rankInfo.useDynamicExpansion) {
-            tensors->push_back(Vec2TensorI64(lookupKeys));
-        } else {
-            tensors->push_back(Vec2TensorI32(lookupKeys));
-        }
-    }
+
+    PushGlobalUniqueTensors(tensors, lookupKeys, channel);
+
     PushResult(batch, move(tensors), lookupKeys);
     VLOG(GLOG_DEBUG) << StringFormat("pushResultTC(ms):%d", pushResultTC.ElapsedMS());
     return true;
+}
+
+void KeyProcess::PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, keys_t& lookupKeys, int channel)
+{
+    if (PerfConfig::gradientStrategy && channel == TRAIN_CHANNEL_ID) {
+        keys_t uniqueKeys;
+        vector<int32_t> restoreVecSec;
+        GlobalUnique(lookupKeys, uniqueKeys, restoreVecSec);
+        tensors->push_back(Vec2TensorI32(restoreVecSec));
+        tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(uniqueKeys) : Vec2TensorI32(uniqueKeys));
+    }
+
+    if (rankInfo.noDDR) {
+        tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(lookupKeys) : Vec2TensorI32(lookupKeys));
+    }
+}
+
+void KeyProcess::GlobalUnique(const keys_t& lookupKeys, keys_t& uniqueKeys, vector<int32_t>& restoreVecSec)
+{
+    absl::flat_hash_map<emb_key_t, int32_t> umap;
+    restoreVecSec.resize(lookupKeys.size(), -1);
+    int32_t length = 0;
+
+    for (size_t i = 0; i < lookupKeys.size(); ++i) {
+        int64_t key = lookupKeys[i];
+        if (key == -1) {
+            continue;
+        }
+        auto result = umap.find(key);
+        if (result == umap.end()) {
+            uniqueKeys.push_back(lookupKeys[i]);
+            umap[key] = length;
+            restoreVecSec[i] = length;
+            length++;
+        } else {
+            restoreVecSec[i] = result->second;
+        }
+    }
+
+    if (rankInfo.useStatic) {
+        uniqueKeys.resize(lookupKeys.size(), -1);
+    } else {
+        restoreVecSec.erase(std::remove(restoreVecSec.begin(), restoreVecSec.end(), -1), restoreVecSec.end());
+    }
 }
 
 vector<uint32_t> KeyProcess::GetCountRecv(const unique_ptr<emb_batch_t>& batch, int id,
@@ -1135,10 +1168,15 @@ T KeyProcess::GetInfo(info_list_t<T>& list, int batch, const string& embName, in
     return move(t);
 }
 
-// DDR
+/// DDR模式下，从list中获取查询tensor向量
+/// \param batch 已处理的batch数
+/// \param embName 表名
+/// \param channel 通道索引（训练/推理）
+/// \return
 keys_t KeyProcess::GetLookupKeys(int batch, const string& embName, int channel)
 {
     TimeCost tc = TimeCost();
+    // 循环尝试获取list中的数据；如果key process线程退出或者处理数据超时，返回空vector
     while (true) {
         if (!isRunning) {
             return {};
@@ -1162,11 +1200,18 @@ keys_t KeyProcess::GetLookupKeys(int batch, const string& embName, int channel)
     }
 }
 
-// HBM
+/// HBM模式下，从list中获取指定类型的tensor向量
+/// \param batch 已处理的batch数
+/// \param embName 表名
+/// \param channel 通道索引（训练/推理）
+/// \param type 数据类型
+/// \return
 unique_ptr<vector<Tensor>> KeyProcess::GetInfoVec(int batch, const string& embName, int channel, ProcessedInfo type)
 {
     TimeCost tc = TimeCost();
     info_list_t<tensor_info_t>* list;
+
+    // 根据数据类型，选择对应的list
     switch (type) {
         case ProcessedInfo::ALL2ALL:
             list = &all2AllList;
@@ -1177,6 +1222,8 @@ unique_ptr<vector<Tensor>> KeyProcess::GetInfoVec(int batch, const string& embNa
         default:
             throw std::invalid_argument("Invalid ProcessedInfo Type.");
     }
+
+    // 循环尝试获取list中的数据；如果key process线程退出或者处理数据超时，返回空指针
     while (true) {
         if (!isRunning) {
             return nullptr;

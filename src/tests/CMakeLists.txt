@@ -13,6 +13,8 @@ message("MXREC_TEST_SRC: " ${MXREC_TEST_SRC})
 
 set(CMAKE_CXX_FLAGS "--coverage")
 
+link_libraries(stdc++fs)
+
 add_executable(test_main ${MXREC_SRC} ${MXREC_TEST_SRC})
 
 if(NOT SECUREC_PATH)

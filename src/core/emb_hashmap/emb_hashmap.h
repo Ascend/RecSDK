@@ -66,6 +66,11 @@ namespace MxRec {
         bool FindSwapPosOld(const string& embName, emb_key_t key, size_t hostOffset, size_t currentBatchId,
                             size_t keepBatchId);
 
+        std::vector<size_t>& GetEvictPos(const string& embName)
+        {
+            return embHashMaps.at(embName).evictPos;
+        }
+
     private:
         RankInfo rankInfo;
         int swapId { 0 };

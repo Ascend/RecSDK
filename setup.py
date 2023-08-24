@@ -34,7 +34,7 @@ except IOError:
     LONG_DESCRIPTION = ""
 
 env_version = os.getenv("VERSION")
-VERSION = env_version if env_version is not None else '5.0.T104'
+VERSION = env_version if env_version is not None else '5.0.rc3'
 
 INIT_FILE = "mx_rec/__init__.py"
 with open(INIT_FILE, 'r') as file:
@@ -55,7 +55,6 @@ setup(
     name='mx_rec',
     version=VERSION,
     author='HUAWEI Inc',
-    url='https://www.hiascend.com/zh/software/mindx-sdk',
     description='MindX SDK Recommend',
     long_description=LONG_DESCRIPTION,
     # include mx_rec

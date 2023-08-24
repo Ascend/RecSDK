@@ -31,7 +31,7 @@ namespace MxRec {
         const string dataFileType { ".data" };
         const string attribFileType { ".attribute" };
         const string dirSeparator { "/" };
-        const mode_t dirMode { 0755 };
+        const mode_t dirMode { 0400 };
 
         const string currDir { "." };
         const string prevDir { ".." };

@@ -24,6 +24,7 @@ namespace MxRec {
     int PerfConfig::keyProcessThreadNum = DEFAULT_KEY_PROCESS_THREAD;
     int PerfConfig::maxUniqueThreadNum = DEFAULT_MAX_UNIQUE_THREAD_NUM;
     bool PerfConfig::fastUnique = false;
+    bool PerfConfig::gradientStrategy = false;
     string g_rankId;
     int g_glogLevel;
     bool g_isGlogInit = false;
@@ -108,12 +109,12 @@ namespace MxRec {
             g_rankId = std::to_string(rank);
         }
         if (!g_isGlogInit) {
-            google::InitGoogleLogging("mxRec", &CustomGlogFormat);
+            InitGoogleLogging("mxRec", &CustomGlogFormat);
             g_isGlogInit = true;
         }
     }
 
-    void CustomGlogFormat(std::ostream &s, const LogMessageInfo &l, void*)
+    void CustomGlogFormat(std::ostream &s, const google::LogMessageInfo &l, void*)
     {
         s << "["
           << setw(GLOG_TIME_WIDTH_2) << l.time.hour() << ':'
@@ -157,4 +158,45 @@ namespace MxRec {
         }
         return isCombine;
     }
+
+    int GetThreadNumEnv()
+    {
+        int threadNum = 0;
+        const char* threadNumEnv = getenv("KEY_PROCESS_THREAD_NUM");
+        if (threadNumEnv != nullptr) {
+            try {
+                threadNum = std::stoi(threadNumEnv);
+            } catch (const std::invalid_argument& e) {
+                threadNum = KEY_PROCESS_THREAD;
+                LOG(INFO) << StringFormat("error value of threadNum, use default KEY_PROCESS_THREAD: %d",
+                                          threadNum);
+            }
+            if (threadNum > KEY_PROCESS_THREAD || threadNum < 0) {
+                throw runtime_error(StringFormat("%d is not valid", threadNum));
+            }
+        } else {
+            threadNum = KEY_PROCESS_THREAD;
+            LOG(INFO) << StringFormat("use default KEY_PROCESS_THREAD: %d", threadNum);
+        }
+        return threadNum;
+    }
+
+    void ValidateReadFile(const string& dataDir, size_t datasetSize)
+    {
+        // validate soft link
+        struct stat fileInfo;
+        if (lstat(dataDir.c_str(), &fileInfo) != -1) {
+            if (S_ISLNK(fileInfo.st_mode)) {
+                LOG(ERROR) << StringFormat("soft link %s should not in the path parameter", dataDir.c_str());
+                throw invalid_argument(StringFormat("soft link should not be the path parameter"));
+            }
+        }
+        // validate file size
+        if (datasetSize <= FILE_MIN_SIZE || datasetSize > FILE_MAX_SIZE) {
+            LOG(ERROR) << StringFormat("the reading file size is invalid, "
+                                       "not in range (%d,%d]", FILE_MIN_SIZE, FILE_MAX_SIZE);
+            throw invalid_argument(StringFormat("file size invalid"));
+        }
+    }
+
 } // end namespace MxRec

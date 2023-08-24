@@ -30,7 +30,9 @@ namespace MxRec {
     enum class TransferChannel {
         D2H,
         RESTORE,
+        RESTORE_SECOND,
         ALL2ALL,
+        UNIQKEYS,
         LOOKUP,
         EVICT,
         H2D,
@@ -41,12 +43,16 @@ namespace MxRec {
     inline string TransferChannel2Str(TransferChannel e)
     {
         switch (e) {
+            case TransferChannel::RESTORE_SECOND:
+                return "restore_second";
             case TransferChannel::D2H:
                 return "d2h";
             case TransferChannel::RESTORE:
                 return "restore";
             case TransferChannel::ALL2ALL:
                 return "all2all";
+            case TransferChannel::UNIQKEYS:
+                return "uniquekeys";
             case TransferChannel::LOOKUP:
                 return "lookup";
             case TransferChannel::EVICT:
@@ -74,10 +80,6 @@ namespace MxRec {
         vector<Tensor> Recv(TransferChannel channel, int channelId, const string& embName);
 
         size_t RecvAcl(TransferChannel channel, int channelId, const string& embName);
-
-        size_t QueryChannelSize(const string& channelName);
-
-        auto Vec2Tensor(const vector<size_t>& tmpVec) const -> vector<Tensor>;
 
         void Destroy();
 
