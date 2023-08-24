@@ -17,8 +17,8 @@ from tensorflow.python.ops.init_ops_v2 import Initializer as InitializerV2
 from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
 from mx_rec.core.asc.feature_spec import FeatureSpec, get_feature_spec, set_temporary_feature_spec_attribute
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_ID_OFFSET, MxRecMode, \
-    ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, MULTI_LOOKUP_TIMES, ASCEND_TABLE_NAME_MUST_CONTAIN, \
+from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_ID_OFFSET, ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS,\
+    MxRecMode, ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, MULTI_LOOKUP_TIMES, ASCEND_TABLE_NAME_MUST_CONTAIN, \
     MAX_INT32, All2allGradientsOp, ApplyGradientsStrategy
 from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is_asc_frozen, get_customized_ops, \
     insert_table_instance, get_training_mode_channel_id, get_use_static, get_name_to_var_dict, \
@@ -655,8 +655,7 @@ class SparseEmbedding:
             if not use_dynamic_expansion:
                 id_offsets_abs = tf.abs(id_offsets)
                 local_embeddings = tf.gather(table, id_offsets_abs, axis=0, name="gather_for_id_offsets")
-                local_embeddings = set_zero_for_non_valid_key(id_offsets, local_embeddings,
-                                                              feature_spec.access_threshold)
+                local_embeddings = set_zero_for_non_valid_key(id_offsets, local_embeddings, feature_spec.access_threshold)
             else:
                 local_embeddings = tf.identity(table, name="identity_local_emb")
 
@@ -689,8 +688,7 @@ class SparseEmbedding:
                 logging.debug("Into lookup grad function, feature spec name: %s.", feature_spec.name)
                 embedding_diff = tf.reshape(lookup_diff, [-1, self.scalar_emb_size])
 
-                unique_grads = tf.compat.v1.unsorted_segment_sum(embedding_diff,
-                                                                 restore_vector,
+                unique_grads = tf.compat.v1.unsorted_segment_sum(embedding_diff, restore_vector,
                                                                  unique_embeddings_shape[0])
                 bp_all2all_args = all2all_args if use_static else tf.transpose(all2all_args)
                 if hot_pos is not None:
@@ -712,13 +710,11 @@ class SparseEmbedding:
                         update_grad = local_grad
                 else:
                     if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
-                        unique_local_grad = tf.compat.v1.unsorted_segment_sum(local_grad,
-                                                                              restore_vector_second,
+                        unique_local_grad = tf.compat.v1.unsorted_segment_sum(local_grad, restore_vector_second,
                                                                               array_ops.shape(unique_keys)[0])
                         update_grad = ops.IndexedSlices(values=unique_local_grad, indices=unique_keys,
                                                         dense_shape=tf.shape(table))
                     else:
-
                         update_grad = ops.IndexedSlices(values=local_grad, indices=id_offsets,
                                                         dense_shape=tf.shape(table))
                 return update_grad
@@ -736,7 +732,6 @@ class SparseEmbedding:
             is_table_name_valid = ASCEND_TABLE_NAME_MUST_CONTAIN is None or \
                                   ASCEND_TABLE_NAME_MUST_CONTAIN in self.table_name
             if is_training and is_table_name_valid:
-                tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
                 tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
                 if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
                     tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS, unique_keys)
