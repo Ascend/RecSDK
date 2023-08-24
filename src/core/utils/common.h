@@ -62,6 +62,7 @@ namespace MxRec {
 
     // for GLOG
     extern int g_glogLevel;
+    extern string g_rankId;
     constexpr int GLOG_MAX_BUF_SIZE = 1024;
     constexpr int GLOG_TIME_WIDTH_2 = 2;
     constexpr int GLOG_TIME_WIDTH_6 = 6;
@@ -344,6 +345,8 @@ struct BatchTask {
         ss << "}";
         return ss.str();
     }
+
+    void ValidateReadFile(const string& dataDir, size_t datasetSize);
 
     inline void GenerateRandomValue(std::vector<float>& vecData,
                                     std::default_random_engine& generator,
