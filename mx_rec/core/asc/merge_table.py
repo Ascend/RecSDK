@@ -14,7 +14,7 @@ from mx_rec.util.initialize import get_enable_table_merge, export_table_instance
 
 def affirm(reach_op:List[Operation]) -> bool:
     for node in reach_op:
-        if node.type not in ("IdentityN", "Reshape"):
+        if node.type not in ("IdentityN", "Reshape", "Identity"):
             return False
     return True
 
