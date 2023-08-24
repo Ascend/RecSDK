@@ -608,9 +608,6 @@ class SparseEmbedding:
                 is_train:
                 name: not in use
                 modify_graph: if True, the original graph will be modified before building a Session instance
-
-        Returns: Tensor for lookup result
-
         """
         logging.debug(f"Enter ASC Branch, looking up with FeatureSpec.")
         self.check_mode(MxRecMode.ASC)
@@ -691,8 +688,7 @@ class SparseEmbedding:
             def grad(lookup_diff):
                 logging.debug("Into lookup grad function, feature spec name: %s.", feature_spec.name)
                 embedding_diff = tf.reshape(lookup_diff, [-1, self.scalar_emb_size])
-                self.unique_id_offsets = unique_keys
-                self.unique_id_offsets_position = restore_vector_second
+
                 unique_grads = tf.compat.v1.unsorted_segment_sum(embedding_diff,
                                                                  restore_vector,
                                                                  unique_embeddings_shape[0])
@@ -704,14 +700,13 @@ class SparseEmbedding:
                 local_grad = self._get_own_emb(unique_grads, bp_all2all_args, self.scalar_emb_size, use_static)
                 if self.all2all_gradients_op == All2allGradientsOp.SUM_GRADIENTS_AND_DIV_BY_RANKSIZE:
                     try:
-                        local_grad = local_grad / get_rank_size()
+                        local_grad = local_grad / get_rank_sizemin  ()
                     except ZeroDivisionError as exp:
                         raise ZeroDivisionError("Rank size cannot be zero.") from exp
 
                 if use_dynamic_expansion:
                     if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
-                        update_grad = tf.compat.v1.unsorted_segment_sum(local_grad,
-                                                                        restore_vector_second,
+                        update_grad = tf.compat.v1.unsorted_segment_sum(local_grad, restore_vector_second,
                                                                         array_ops.shape(unique_keys)[0])
                     else:
                         update_grad = local_grad

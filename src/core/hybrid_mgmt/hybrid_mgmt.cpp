@@ -779,8 +779,7 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
 bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
                                 int channelId, int iBatch, bool& remainBatchOut)
 {
-    TimeCost getAndSendTensorsTC;
-    TimeCost getTensorsTC;
+    TimeCost getAndSendTensorsTC, getTensorsTC;
     auto& embHashMap = hostHashMaps->embHashMaps.at(embName);
     if (iBatch == 0) {
         embHashMap.SetStartCount();
@@ -801,18 +800,15 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
     vector<int32_t> offsetsOut;
     TimeCost hostHashMapProcessTC;
     hostHashMaps->Process(embName, lookupKeys, iBatch, tmpData, channelId, offsetsOut);
-
     VLOG(GLOG_DEBUG) << StringFormat("hostHashMapProcessTC(ms):%d", hostHashMapProcessTC.ElapsedMS());
 
     if (PerfConfig::gradientStrategy && channelId == TRAIN_CHANNEL_ID && remainBatchOut) {
-        vector<int32_t> uniqueKeys;
-        vector<int32_t> restoreVecSec;
+        vector<int32_t> uniqueKeys, restoreVecSec;
         preprocess->GlobalUnique(offsetsOut, uniqueKeys, restoreVecSec);
 
         TimeCost sendUnikeysSyncTC;
-        hdTransfer->Send(TransferChannel::UNIQKEYS,
-                         { mgmtRankInfo.useDynamicExpansion ? Vec2TensorI64(uniqueKeys) : Vec2TensorI32(uniqueKeys) },
-                         channelId, embName);
+        hdTransfer->Send(TransferChannel::UNIQKEYS, { mgmtRankInfo.useDynamicExpansion ? Vec2TensorI64(uniqueKeys) :
+                                                                    Vec2TensorI32(uniqueKeys) }, channelId, embName);
         VLOG(GLOG_DEBUG) << StringFormat("sendUnikeysSyncTC(ms):%d", sendUnikeysSyncTC.ElapsedMS());
 
         TimeCost sendRestoreVecSecSyncTC;
@@ -836,8 +832,7 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
     if (embHashMap.HasFree(lookupKeys.size())) { // check free > next one batch
         LOG(WARNING) << StringFormat(
             MGMT + "embName %s[%d]%d,iBatch:%d freeSize not enough, %d", embName.c_str(), channelId,
-            batchId, iBatch, lookupKeys.size()
-        );
+            batchId, iBatch, lookupKeys.size());
         return false;
     }
     return true;
