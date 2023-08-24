@@ -16,7 +16,11 @@ using namespace MxRec;
 using namespace std;
 using namespace chrono;
 
-bool HostEmb::Initialize(const vector<EmbInfo>& embInfos, int seed)
+/// 初始化host emb
+/// \param embInfos 表信息列表
+/// \param seed 随机种子
+/// \return
+void HostEmb::Initialize(const vector<EmbInfo>& embInfos, int seed)
 {
     for (const auto& embInfo: embInfos) {
         HostEmbTable hostEmb;
@@ -26,9 +30,14 @@ bool HostEmb::Initialize(const vector<EmbInfo>& embInfos, int seed)
         hostEmbs[embInfo.name] = move(hostEmb);
         LOG(INFO) << (HOSTEMB + "HostEmb Initialize End");
     }
-    return true;
 }
 
+/// 根据指定的初始化器对emb进行初始化
+/// \param initializeInfos emb初始化信息列表
+/// \param seed 随机种子
+/// \param vocabSize host表大小
+/// \param embeddingSize emb维度
+/// \param embData emb数据
 void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, int seed, int vocabSize,
     int embeddingSize, vector<vector<float>> &embData)
 {
@@ -85,13 +94,8 @@ void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, in
 #endif
 }
 
-void HostEmb::LoadEmb(emb_mem_t& loadData)
-{
-#ifndef GTEST
-    hostEmbs = std::move(loadData);
-#endif
-}
-
+/// 停止用于异步更新D2H emb的线程
+/// \param channelId 通道索引（训练/推理）
 void HostEmb::Join(int channelId)
 {
     TimeCost tc = TimeCost();
@@ -123,11 +127,12 @@ void HostEmb::Join(int channelId)
     }
 }
 
-/*
- * 从hdTransfer获取device侧返回的emb信息，并在host侧表的对应位置插入。
- * missingKeysHostPos为host侧需要发送的emb的位置，也就是淘汰的emb的插入位置
- */
 #ifndef GTEST
+/// 从hdTransfer获取device侧返回的emb信息，并在host侧表的对应位置插入。
+/// missingKeysHostPos为host侧需要发送的emb的位置，也就是淘汰的emb的插入位置
+/// \param missingKeysHostPos 当前batch在host上需要换出的偏移
+/// \param channelId 通道索引（训练/推理）
+/// \param embName 表名
 void HostEmb::UpdateEmb(const vector<size_t>& missingKeysHostPos, int channelId, const string& embName)
 {
     LOG(INFO) << StringFormat(HOSTEMB + "UpdateEmb, channelId:%d, embName:%s", channelId, embName.c_str());
@@ -164,6 +169,10 @@ void HostEmb::UpdateEmb(const vector<size_t>& missingKeysHostPos, int channelId,
     EASY_END_BLOCK
 }
 
+/// 用从device获取的数据更新host的emb（使用aclTDT原生接口）
+/// \param missingKeysHostPos 当前batch在host上需要换出的偏移
+/// \param channelId 通道索引（训练/推理）
+/// \param embName 表名
 void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelId, const string& embName)
 {
     LOG(INFO) << StringFormat(HOSTEMB + "UpdateEmbV2, channelId:%d, embName:%s", channelId, embName.c_str());
@@ -218,10 +227,10 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
     }
 }
 
-/*
- * 找到host侧需要发送的emb，通过hdTransfer发送给device。
- * missingKeysHostPos为host侧需要发送的emb的位置
- */
+/// 查找host侧需要发送给device的emb数据。
+/// \param missingKeysHostPos 当前batch在host上需要换出的偏移
+/// \param embName
+/// \param h2dEmbOut
 void HostEmb::GetH2DEmb(const vector<size_t>& missingKeysHostPos, const string& embName,
                         vector<Tensor>& h2dEmbOut)
 {
@@ -246,12 +255,17 @@ void HostEmb::GetH2DEmb(const vector<size_t>& missingKeysHostPos, const string& 
         "GetH2DEmb end, missingKeys count:%d cost:%dms", missingKeysHostPos.size(), tc.ElapsedMS());
 }
 
-
+/// 获取hostEmbs的指针
+/// \return
 auto HostEmb::GetHostEmbs() -> absl::flat_hash_map<string, HostEmbTable>*
 {
     return &hostEmbs;
 }
 
+/// 对指定offset的emb进行初始化
+/// \param initializeInfos emb初始化信息列表
+/// \param embData emb数据
+/// \param offset 偏移列表
 void HostEmb::EmbPartGenerator(const vector<InitializeInfo> &initializeInfos, vector<vector<float>> &embData,
                                const vector<size_t>& offset)
 {
@@ -293,9 +307,9 @@ void HostEmb::EmbPartGenerator(const vector<InitializeInfo> &initializeInfos, ve
 }
 #endif
 
-/*
- * 利用initializer初始化emb淘汰的位置
- */
+/// 利用initializer初始化emb淘汰的位置
+/// \param embName 表名
+/// \param offset 淘汰的偏移列表
 void HostEmb::EvictInitEmb(const string& embName, const vector<size_t>& offset)
 {
 #ifndef GTEST

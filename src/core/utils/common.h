@@ -206,7 +206,6 @@ struct BatchTask {
         bool useHot {};
         uint32_t option {};
         int nBatch {};
-        bool useDataset { false }; // deprecated
         bool noDDR { false };
         bool useDynamicExpansion {false};
         std::vector<int> maxStep;
@@ -458,7 +457,7 @@ struct BatchTask {
     };
 
     struct EmbHashMapInfo {
-        absl::flat_hash_map<emb_key_t, size_t> hostHashMap;
+        absl::flat_hash_map<emb_key_t, size_t> hostHashMap; // key在HBM中的偏移
         std::vector<int> devOffset2Batch; // has -1
         std::vector<emb_key_t> devOffset2Key;
         size_t currentUpdatePos;
@@ -467,7 +466,7 @@ struct BatchTask {
         size_t devVocabSize;
         size_t freeSize;
         std::vector<int32_t> lookUpVec;
-        std::vector<size_t> missingKeysHostPos;
+        std::vector<size_t> missingKeysHostPos; // 用于记录当前batch在host上需要换出的偏移
         std::vector<size_t> swapPos;
         size_t maxOffset { 0 };
         std::vector<size_t> evictPos;

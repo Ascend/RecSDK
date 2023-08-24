@@ -165,6 +165,8 @@ void KeyProcess::LoadMaxOffset(offset_mem_t& loadData)
     maxOffset = std::move(loadData);
 }
 
+/// 加载每张表key到offset的映射
+/// \param loadData
 void KeyProcess::LoadKeyOffsetMap(key_offset_mem_t& loadData)
 {
     keyOffsetMap = std::move(loadData);
@@ -182,6 +184,7 @@ void KeyProcess::Destroy()
     LOG(INFO) << StringFormat(KEY_PROCESS "rank %d destroy success.", rankInfo.rankId);
 }
 
+/// 每个数据通道的所有数据处理线程上锁
 void KeyProcess::LoadSaveLock()
 {
     for (int channelId { 0 }; channelId < MAX_CHANNEL_NUM; ++channelId) {
@@ -191,6 +194,7 @@ void KeyProcess::LoadSaveLock()
     }
 }
 
+/// 每个数据通道的所有数据处理线程释放锁
 void KeyProcess::LoadSaveUnlock()
 {
     for (int channelId { 0 }; channelId < MAX_CHANNEL_NUM; ++channelId) {
@@ -1164,10 +1168,15 @@ T KeyProcess::GetInfo(info_list_t<T>& list, int batch, const string& embName, in
     return move(t);
 }
 
-// DDR
+/// DDR模式下，从list中获取查询tensor向量
+/// \param batch 已处理的batch数
+/// \param embName 表名
+/// \param channel 通道索引（训练/推理）
+/// \return
 keys_t KeyProcess::GetLookupKeys(int batch, const string& embName, int channel)
 {
     TimeCost tc = TimeCost();
+    // 循环尝试获取list中的数据；如果key process线程退出或者处理数据超时，返回空vector
     while (true) {
         if (!isRunning) {
             return {};
@@ -1191,11 +1200,18 @@ keys_t KeyProcess::GetLookupKeys(int batch, const string& embName, int channel)
     }
 }
 
-// HBM
+/// HBM模式下，从list中获取指定类型的tensor向量
+/// \param batch 已处理的batch数
+/// \param embName 表名
+/// \param channel 通道索引（训练/推理）
+/// \param type 数据类型
+/// \return
 unique_ptr<vector<Tensor>> KeyProcess::GetInfoVec(int batch, const string& embName, int channel, ProcessedInfo type)
 {
     TimeCost tc = TimeCost();
     info_list_t<tensor_info_t>* list;
+
+    // 根据数据类型，选择对应的list
     switch (type) {
         case ProcessedInfo::ALL2ALL:
             list = &all2AllList;
@@ -1206,6 +1222,8 @@ unique_ptr<vector<Tensor>> KeyProcess::GetInfoVec(int batch, const string& embNa
         default:
             throw std::invalid_argument("Invalid ProcessedInfo Type.");
     }
+
+    // 循环尝试获取list中的数据；如果key process线程退出或者处理数据超时，返回空指针
     while (true) {
         if (!isRunning) {
             return nullptr;
