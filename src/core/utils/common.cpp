@@ -180,4 +180,23 @@ namespace MxRec {
         }
         return threadNum;
     }
+
+    void ValidateReadFile(const string& dataDir, size_t datasetSize)
+    {
+        // validate soft link
+        struct stat fileInfo;
+        if (lstat(dataDir.c_str(), &fileInfo) != -1) {
+            if (S_ISLNK(fileInfo.st_mode)) {
+                LOG(ERROR) << StringFormat("soft link %s should not in the path parameter", dataDir.c_str());
+                throw invalid_argument(StringFormat("soft link should not be the path parameter"));
+            }
+        }
+        // validate file size
+        if (datasetSize <= FILE_MIN_SIZE || datasetSize > FILE_MAX_SIZE) {
+            LOG(ERROR) << StringFormat("the reading file size is invalid, "
+                                       "not in range (%d,%d]", FILE_MIN_SIZE, FILE_MAX_SIZE);
+            throw invalid_argument(StringFormat("file size invalid"));
+        }
+    }
+
 } // end namespace MxRec

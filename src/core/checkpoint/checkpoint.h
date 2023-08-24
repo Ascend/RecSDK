@@ -97,8 +97,6 @@ namespace MxRec {
         void SetTransDataSize(CkptTransData& transData, size_t datasetSize, CkptDataType dataType);
         void ReadDataset(CkptTransData& transData, ifstream& readFile, size_t readSize, CkptDataType dataType,
             size_t idx);
-
-        void ValidateReadFile(const string& dataDir, size_t datasetSize);
     };
 }
 

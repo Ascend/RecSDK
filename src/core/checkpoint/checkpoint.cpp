@@ -7,7 +7,6 @@
 
 #include <iostream>
 #include <sys/mman.h>
-#include <cstring>
 #include <unistd.h>
 #include <sys/stat.h>
 
@@ -17,6 +16,7 @@
 #include "ckpt_data_handler/nddr_feat_map_ckpt/nddr_feat_map_ckpt.h"
 #include "ckpt_data_handler/feat_admit_n_evict_ckpt/feat_admit_n_evict_ckpt.h"
 #include "utils/time_cost.h"
+#include "utils/common.h"
 
 #include "checkpoint.h"
 
@@ -560,23 +560,5 @@ void Checkpoint::ReadDataset(CkptTransData& transData,
         readFile.read((char*)(transData.floatArr.data()) + idx, readSize);
     } else if (dataType == CkptDataType::ATTRIBUTE) {
         readFile.read((char*)(transData.attribute.data()) + idx, readSize);
-    }
-}
-
-void Checkpoint::ValidateReadFile(const string& dataDir, size_t datasetSize)
-{
-    // validate soft link
-    struct stat fileInfo;
-    if (lstat(dataDir.c_str(), &fileInfo) != -1) {
-        if (S_ISLNK(fileInfo.st_mode)) {
-            LOG(ERROR) << StringFormat("soft link %s should not in the path parameter", dataDir.c_str());
-            throw invalid_argument(StringFormat("soft link should not be the path parameter"));
-        }
-    }
-    // validate file size
-    if (datasetSize <= FILE_MIN_SIZE || datasetSize > FILE_MAX_SIZE) {
-        LOG(ERROR) << StringFormat("the reading file size is invalid, "
-                                   "not in not in (%d,%d]", FILE_MIN_SIZE, FILE_MAX_SIZE);
-        throw invalid_argument(StringFormat("file size invalid"));
     }
 }
