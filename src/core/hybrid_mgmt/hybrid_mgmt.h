@@ -30,8 +30,6 @@ namespace MxRec {
     using namespace std;
     using namespace tensorflow;
 
-    constexpr int SEND_TENSOR_TYPE_NUM = 2;
-
     enum class TaskType {
         HBM,
         DDR
@@ -131,15 +129,12 @@ namespace MxRec {
         KeyProcess *preprocess;
         HDTransfer *hdTransfer;
         bool isRunning;
-        bool skipUpdate;
         bool isLoad { false };
 
         void TaskForTrain(TaskType type);
         void TaskForEval(TaskType type);
         bool TrainTask(TaskType type);
         bool EvalTask(TaskType type);
-
-        void EmbHDTransDummy(int channelId, int batchId, const EmbInfo& embInfo);
 
         bool EndBatch(int batchId, int channelId) const;
 
