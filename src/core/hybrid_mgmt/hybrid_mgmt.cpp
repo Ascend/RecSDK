@@ -712,9 +712,7 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
 
     // 获取查询向量
     auto lookupKeys = preprocess->GetLookupKeys(batchId, embName, channelId);
-    if (lookupKeys.empty()) {
-        remainBatchOut = false;
-    }
+    if (lookupKeys.empty()) { remainBatchOut = false; }
 
     // 获取各类向量，如果为空指针，退出当前函数
     auto infoVecs = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::RESTORE);
@@ -728,8 +726,8 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
     // 计算查询向量；记录需要被换出的HBM偏移
     vector<Tensor> tmpData;
     vector<int32_t> offsetsOut;
-    TimeCost hostHashMapProcessTC;
     DDRParam ddrParam(tmpData, offsetsOut);
+    TimeCost hostHashMapProcessTC;
     hostHashMaps->Process(embName, lookupKeys, iBatch, ddrParam, channelId);
     VLOG(GLOG_DEBUG) << StringFormat("hostHashMapProcessTC(ms):%d", hostHashMapProcessTC.ElapsedMS());
 
@@ -761,9 +759,8 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
         "getAndSendTensorsTC(ms):%d, channelId:%d", getAndSendTensorsTC.ElapsedMS(), channelId);
 
     if (embHashMap.HasFree(lookupKeys.size())) { // check free > next one batch
-        LOG(WARNING) << StringFormat(
-            MGMT + "embName %s[%d]%d,iBatch:%d freeSize not enough, %d", embName.c_str(), channelId,
-            batchId, iBatch, lookupKeys.size());
+        LOG(WARNING) << StringFormat(MGMT + "embName %s[%d]%d,iBatch:%d freeSize not enough, %d",
+                                     embName.c_str(), channelId, batchId, iBatch, lookupKeys.size());
         return false;
     }
     return true;

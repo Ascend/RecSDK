@@ -14,7 +14,7 @@ from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import SparseEmbedding
 from mx_rec.constants.constants import ASCEND_CUTTING_POINT_INITIALIZER, ASCEND_SPARSE_LOOKUP_ENTRANCE, \
-    ASCAnchorAttr, ASCEND_TIMESTAMP,ANCHOR_DATASET_NAME
+    ASCAnchorAttr, ASCEND_TIMESTAMP, ANCHOR_DATASET_NAME
 from mx_rec.util.initialize import get_feature_spec, insert_feature_spec, set_initializer, \
     terminate_config_initializer, set_is_graph_modify_hook_running, get_bool_gauge_set, increase_run_times, \
     get_is_last_round, insert_merged_multi_lookup, get_merged_multi_lookup, set_target_batch, get_iterator_type, \
