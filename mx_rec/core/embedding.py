@@ -19,7 +19,7 @@ from mx_rec.core.asc.feature_spec import FeatureSpec, get_feature_spec, set_temp
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_ID_OFFSET, MxRecMode, \
     ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, MULTI_LOOKUP_TIMES, ASCEND_TABLE_NAME_MUST_CONTAIN, \
-    MAX_INT32, All2allGradientsOp, ApplyGradientsStrategy
+    MAX_INT32, All2allGradientsOp, ApplyGradientsStrategy, MAX_HOST_VOCABULARY_SIZE
 from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is_asc_frozen, get_customized_ops, \
     insert_table_instance, get_training_mode_channel_id, get_use_static, get_name_to_var_dict, \
     clear_channel, get_use_hot, get_device_id, ConfigInitializer, get_ascend_global_hashtable_collection, \
@@ -152,6 +152,9 @@ class SparseEmbedding:
             self.embedding_size = tf.TensorShape([self.embedding_size])
         self.device_vocabulary_size = config.get("device_vocabulary_size")
         self.host_vocabulary_size = config.get("host_vocabulary_size")
+        if self.host_vocabulary_size > MAX_HOST_VOCABULARY_SIZE:
+            raise ValueError(f"host_vocabulary_size is larger than {MAX_HOST_VOCABULARY_SIZE}.")
+
         self.table_name = config.get("table_name")
         self.key_dtype = config.get("key_dtype")
         self._optimizer_instance_list = config.get("optimizer_list")

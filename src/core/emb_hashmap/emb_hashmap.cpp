@@ -62,7 +62,8 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     embHashMap.maxOffsetOld = embHashMap.maxOffset;
 
     auto keepBatch = swapId - iBatch; // 处理batch的次数，多个预取一起处理算一次
-    bool findOffsetV2 = getenv("FIND_OFFSET_V2") != nullptr;
+    bool findOffsetV2 = GetEnv("FIND_OFFSET_V2");
+
     VLOG(GLOG_DEBUG) << StringFormat("FindOffset version:%d", findOffsetV2);
 
     // 找到所有key的偏移；dev和host需要交换的位置
@@ -203,7 +204,7 @@ void EmbHashMap::FindAndUpdateBatchId(vector<emb_key_t>& keys, size_t currentBat
                                       EmbHashMapInfo& embHashMap) const
 {
     EASY_FUNCTION()
-    bool findOffsetV3 = getenv("FIND_OFFSET_V3") != nullptr;
+    bool findOffsetV3 = GetEnv("FIND_OFFSET_V3");
     for (size_t i = 0; i < keySize; i++) {
         int offset;
         auto& key = keys[i];

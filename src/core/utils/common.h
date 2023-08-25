@@ -283,6 +283,8 @@ struct BatchTask {
 
     void CustomGlogFormat(std::ostream &s, const google::LogMessageInfo &l, void*);
 
+    bool GetEnv(const char *envName);
+
     template<typename ... Args>
     string StringFormat(const string& format, Args ... args)
     {
