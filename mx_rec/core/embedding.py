@@ -613,6 +613,8 @@ class SparseEmbedding:
                 is_train:
                 name: not in use
                 modify_graph: if True, the original graph will be modified before building a Session instance
+
+            Returns: Tensors for lookup result
         """
         logging.debug(f"Enter ASC Branch, looking up with FeatureSpec.")
         self.check_mode(MxRecMode.ASC)
