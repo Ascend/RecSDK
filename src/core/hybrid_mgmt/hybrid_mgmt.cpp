@@ -702,7 +702,8 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
 bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
                                 int channelId, int iBatch, bool& remainBatchOut)
 {
-    TimeCost getAndSendTensorsTC, getTensorsTC;
+    TimeCost getAndSendTensorsTC;
+    TimeCost getTensorsTC;
     auto& embHashMap = hostHashMaps->embHashMaps.at(embName);
 
     // 进行新一批预取数据时，计数初始化
