@@ -17,9 +17,9 @@ from tensorflow.python.ops.init_ops_v2 import Initializer as InitializerV2
 from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
 from mx_rec.core.asc.feature_spec import FeatureSpec, get_feature_spec, set_temporary_feature_spec_attribute
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_ID_OFFSET, MxRecMode, \
-    ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, MULTI_LOOKUP_TIMES, ASCEND_TABLE_NAME_MUST_CONTAIN, \
-    MAX_INT32, All2allGradientsOp, ApplyGradientsStrategy, MAX_HOST_VOCABULARY_SIZE
+from mx_rec.constants.constants import (ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_ID_OFFSET,\
+    ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS, MxRecMode, ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, MULTI_LOOKUP_TIMES,\
+    ASCEND_TABLE_NAME_MUST_CONTAIN, MAX_INT32, All2allGradientsOp, ApplyGradientsStrategy, MAX_HOST_VOCABULARY_SIZE)
 from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is_asc_frozen, get_customized_ops, \
     insert_table_instance, get_training_mode_channel_id, get_use_static, get_name_to_var_dict, \
     clear_channel, get_use_hot, get_device_id, ConfigInitializer, get_ascend_global_hashtable_collection, \
@@ -716,17 +716,23 @@ class SparseEmbedding:
                         raise ZeroDivisionError("Rank size cannot be zero.") from exp
 
                 if use_dynamic_expansion:
-                    update_grad = local_grad
+                    if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
+                        update_grad = tf.compat.v1.unsorted_segment_sum(local_grad,
+                                                                        restore_vector_second,
+                                                                        array_ops.shape(unique_keys)[0])
+                    else:
+                        update_grad = local_grad
                 else:
                     if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
                         unique_local_grad = tf.compat.v1.unsorted_segment_sum(local_grad,
                                                                               restore_vector_second,
                                                                               array_ops.shape(unique_keys)[0])
-                        update_grad = ops.IndexedSlices(values=unique_local_grad, indices=unique_keys,
+                        update_grad = ops.IndexedSlices(values=unique_local_grad,
+                                                        indices=unique_keys,
                                                         dense_shape=tf.shape(table))
                     else:
-
-                        update_grad = ops.IndexedSlices(values=local_grad, indices=id_offsets,
+                        update_grad = ops.IndexedSlices(values=local_grad,
+                                                        indices=id_offsets,
                                                         dense_shape=tf.shape(table))
                 return update_grad
 
@@ -742,11 +748,18 @@ class SparseEmbedding:
 
             is_table_name_valid = ASCEND_TABLE_NAME_MUST_CONTAIN is None or \
                                   ASCEND_TABLE_NAME_MUST_CONTAIN in self.table_name
-            if is_training and is_table_name_valid:
-                tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
+
+            def add_to_collection():
                 tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
+                if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
+                    tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS, unique_keys)
+                else:
+                    tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
+
                 logging.debug(f"feature spec mode, table_name: {self.table_name}, "
                               f"ASCEND_TABLE_NAME_MUST_CONTAIN: {ASCEND_TABLE_NAME_MUST_CONTAIN}")
+            if is_training and is_table_name_valid:
+                add_to_collection()
 
             return sparse_forward(local_embeddings)
 

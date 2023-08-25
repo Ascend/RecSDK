@@ -691,46 +691,43 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
 
     // 获取查询向量
     auto lookupKeys = preprocess->GetLookupKeys(batchId, embName, channelId);
-    if (lookupKeys.empty()) {
-        remainBatchOut = false;
-    }
+    if (lookupKeys.empty()) { remainBatchOut = false; }
 
     // 获取各类向量，如果为空指针，退出当前函数
     auto infoVecs = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::RESTORE);
     if (infoVecs == nullptr) { return false; }
     VLOG(GLOG_DEBUG) << StringFormat("getTensorsTC(ms):%d", getTensorsTC.ElapsedMS());
 
-    // 训练时，使用全局去重聚合梯度，发送全局去重的key和对应的恢复向量
-    if (PerfConfig::gradientStrategy && channelId == TRAIN_CHANNEL_ID && remainBatchOut) {
-        TimeCost sendUnikeysSyncTC;
-        hdTransfer->Send(TransferChannel::UNIQKEYS, { infoVecs->back() }, channelId, embName);
-        infoVecs->pop_back();
-        VLOG(GLOG_DEBUG) << StringFormat("sendUnikeysSyncTC(ms):%d", sendUnikeysSyncTC.ElapsedMS());
-
-        TimeCost sendRestoreVecSecSyncTC;
-        hdTransfer->Send(TransferChannel::RESTORE_SECOND, { infoVecs->back() }, channelId, embName);
-        infoVecs->pop_back();
-        VLOG(GLOG_DEBUG) << StringFormat("sendRestoreVecSecSyncTC(ms):%d", sendRestoreVecSecSyncTC.ElapsedMS());
-    }
-
-    // 发送恢复向量
     TimeCost sendRestoreSyncTC;
     hdTransfer->Send(TransferChannel::RESTORE, *infoVecs, channelId, embName);
     VLOG(GLOG_DEBUG) << StringFormat("sendRestoreSyncTC(ms):%d", sendRestoreSyncTC.ElapsedMS());
 
     // 计算查询向量；记录需要被换出的HBM偏移
     vector<Tensor> tmpData;
+    vector<int32_t> offsetsOut;
+    DDRParam ddrParam(tmpData, offsetsOut);
     TimeCost hostHashMapProcessTC;
-    hostHashMaps->Process(embName, lookupKeys, iBatch, tmpData, channelId);
+    hostHashMaps->Process(embName, lookupKeys, iBatch, ddrParam, channelId);
     VLOG(GLOG_DEBUG) << StringFormat("hostHashMapProcessTC(ms):%d", hostHashMapProcessTC.ElapsedMS());
 
-    // 发送查询、换出向量
-    TimeCost sendTensorsTC;
-    hdTransfer->Send(TransferChannel::LOOKUP, { tmpData.front() }, channelId, embName);
-    tmpData.erase(tmpData.begin());
-    hdTransfer->Send(TransferChannel::SWAP, tmpData, channelId, embName);
+    if (PerfConfig::gradientStrategy && channelId == TRAIN_CHANNEL_ID && remainBatchOut) {
+        vector<int32_t> uniqueKeys, restoreVecSec;
+        preprocess->GlobalUnique(offsetsOut, uniqueKeys, restoreVecSec);
 
-    // 动态shape场景下，获取与发送all2all向量（通信量矩阵）
+        TimeCost sendUnikeysSyncTC;
+        hdTransfer->Send(TransferChannel::UNIQKEYS, { mgmtRankInfo.useDynamicExpansion ? Vec2TensorI64(uniqueKeys) :
+                                                                    Vec2TensorI32(uniqueKeys) }, channelId, embName);
+        VLOG(GLOG_DEBUG) << StringFormat("sendUnikeysSyncTC(ms):%d", sendUnikeysSyncTC.ElapsedMS());
+
+        TimeCost sendRestoreVecSecSyncTC;
+        hdTransfer->Send(TransferChannel::RESTORE_SECOND, { Vec2TensorI32(restoreVecSec) }, channelId, embName);
+        VLOG(GLOG_DEBUG) << StringFormat("sendRestoreVecSecSyncTC(ms):%d", sendRestoreVecSecSyncTC.ElapsedMS());
+    }
+
+    TimeCost sendTensorsTC;
+    hdTransfer->Send(TransferChannel::LOOKUP, { ddrParam.tmpDataOut.front() }, channelId, embName);
+    ddrParam.tmpDataOut.erase(ddrParam.tmpDataOut.begin());
+    hdTransfer->Send(TransferChannel::SWAP, ddrParam.tmpDataOut, channelId, embName);
     if (!mgmtRankInfo.useStatic) {
         auto all2all = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::ALL2ALL);
         hdTransfer->Send(TransferChannel::ALL2ALL, *all2all, channelId, embName);
@@ -741,10 +738,8 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
         "getAndSendTensorsTC(ms):%d, channelId:%d", getAndSendTensorsTC.ElapsedMS(), channelId);
 
     if (embHashMap.HasFree(lookupKeys.size())) { // check free > next one batch
-        LOG(WARNING) << StringFormat(
-            MGMT + "embName %s[%d]%d,iBatch:%d freeSize not enough, %d", embName.c_str(), channelId,
-            batchId, iBatch, lookupKeys.size()
-        );
+        LOG(WARNING) << StringFormat(MGMT + "embName %s[%d]%d,iBatch:%d freeSize not enough, %d",
+                                     embName.c_str(), channelId, batchId, iBatch, lookupKeys.size());
         return false;
     }
     return true;
