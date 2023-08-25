@@ -71,10 +71,10 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     } else {
         FindOffset(embName, keys, swapId, keepBatch, channelId);
     }
-//    VLOG(GLOG_DEBUG) << "FindOffset end";
+    VLOG(GLOG_DEBUG) << "FindOffset end";
 
     swapId++;
-//    EASY_BLOCK("hostHashMaps->tdt")
+    EASY_BLOCK("hostHashMaps->tdt")
 
     std::copy(embHashMap.lookUpVec.begin(), embHashMap.lookUpVec.end(), std::back_inserter(ddrParam.offsetsOut));
 

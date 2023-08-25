@@ -149,7 +149,7 @@ then
   collect_so_file
   gen_wheel_file  "${ROOT_DIR}"/tf2_whl
 
-#  deactivate tf2_env
+  deactivate tf2_env
   echo "-----Build tf2 finished -----"
 fi
 
