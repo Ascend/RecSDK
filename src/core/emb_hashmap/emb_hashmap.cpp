@@ -45,6 +45,12 @@ void EmbHashMap::Init(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
 #endif
 }
 
+/// DDR模型下处理特征的offset、swap信息等
+/// \param embName 表名
+/// \param keys 查询向量
+/// \param iBatch 预取数据处理计数
+/// \param tmpDataOut 临时向量
+/// \param channelId 通道索引（训练/推理）
 void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t iBatch,
                          DDRParam& ddrParam, int channelId)
 {
@@ -55,10 +61,11 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     embHashMap.oldSwap.clear();
     embHashMap.maxOffsetOld = embHashMap.maxOffset;
 
-    auto keepBatch = swapId - iBatch;
+    auto keepBatch = swapId - iBatch; // 处理batch的次数，多个预取一起处理算一次
     bool findOffsetV2 = getenv("FIND_OFFSET_V2") != nullptr;
     VLOG(GLOG_DEBUG) << StringFormat("FindOffset version:%d", findOffsetV2);
 
+    // 找到所有key的偏移；dev和host需要交换的位置
     if (findOffsetV2) {
         FindAndUpdateOffset(embName, keys, swapId, keepBatch, channelId);
     } else {
@@ -71,6 +78,7 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
 
     std::copy(embHashMap.lookUpVec.begin(), embHashMap.lookUpVec.end(), std::back_inserter(ddrParam.offsetsOut));
 
+    // 构造查询向量tensor
     auto lookUpVecSize = static_cast<int>(embHashMap.lookUpVec.size());
     ddrParam.tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { lookUpVecSize }));
 
@@ -81,6 +89,8 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     if (VLOG_IS_ON(GLOG_TRACE)) {
         VLOG(GLOG_TRACE) << StringFormat("lookupTensor, %s", VectorToString(embHashMap.lookUpVec).c_str());
     }
+
+    // 构造交换向量tensor
     auto swapSize = static_cast<int>(embHashMap.swapPos.size());
     ddrParam.tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { swapSize }));
 
@@ -94,6 +104,8 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     if (VLOG_IS_ON(GLOG_TRACE)) {
         VLOG(GLOG_TRACE) << StringFormat("swapTensor, %s", VectorToString(embHashMap.swapPos).c_str());
     }
+
+    // 清空本次记录的查询偏移和交换偏移
     embHashMap.swapPos.clear();
     embHashMap.lookUpVec.clear();
     LOG(INFO) << StringFormat("current ddr emb:%s, usage:%d/[%d+%d]", embName.c_str(), embHashMap.maxOffset,
@@ -260,12 +272,16 @@ void EmbHashMap::LoadHashMap(emb_hash_mem_t& loadData)
     embHashMaps = std::move(loadData);
 }
 
+/// 对HBM剩余空间和更新位置进行初始化
 void EmbHashMapInfo::SetStartCount()
 {
     currentUpdatePosStart = currentUpdatePos;
     freeSize = devVocabSize;
 }
 
+/// 判断HBM是否有剩余空间
+/// \param i 查询向量的大小
+/// \return
 bool EmbHashMapInfo::HasFree(size_t i)
 {
     return freeSize < i;
@@ -316,11 +332,12 @@ void EmbHashMap::EvictDeleteEmb(const string& embName, const vector<emb_key_t>& 
     }
 }
 
-// old version
-/*
- * 从embHashMaps获取key对应的位置，并更新devOffset2Batch
- */
-
+/// 从embHashMaps获取key对应的位置，构造查询向量；更新devOffset2Batch；记录dev与host需要交换的偏移
+/// \param embName 表名
+/// \param keys 查询向量
+/// \param currentBatchId 已处理的batch数
+/// \param keepBatchId 处理batch的次数，多个预取一起处理算一次
+/// \param channelId 通道索引（训练/推理）
 void EmbHashMap::FindOffset(const string& embName, const vector<emb_key_t>& keys,
                             size_t currentBatchId, size_t keepBatchId, int channelId)
 {
@@ -342,10 +359,12 @@ void EmbHashMap::FindOffset(const string& embName, const vector<emb_key_t>& keys
         }
 
         if (offset < embHashMap.devVocabSize) {
+            // 偏移小于等于HBM容量：直接放入查询向量；更新偏移之前关联的key和当前关联的key
             embHashMap.lookUpVec.emplace_back(offset);
             embHashMap.devOffset2KeyOld.emplace_back(offset, static_cast<int>(embHashMap.devOffset2Key[offset]));
             embHashMap.devOffset2Key[offset] = key;
         } else {
+            // 偏移大于HBM容量：记录在host emb上的偏移；找到需要交换的HBM偏移
             embHashMap.missingKeysHostPos.emplace_back(offset - embHashMap.devVocabSize);
             FindSwapPosOld(embName, key, offset, currentBatchId, keepBatchId);
         }
@@ -359,6 +378,12 @@ void EmbHashMap::FindOffset(const string& embName, const vector<emb_key_t>& keys
 }
 
 
+/// 查找key对应的偏移；1. 已在hash map中，直接返回对应的offset；2. 开启淘汰的情况下，复用淘汰的位置；3. 没有则新分配
+/// \param key 输入特征
+/// \param embHashMap hash map实例
+/// \param channelId 通道索引（训练/推理）
+/// \param offset 未初始化变量，用于记录
+/// \return
 bool EmbHashMap::FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHashMap, int channelId, size_t& offset)
 
 {
@@ -401,6 +426,11 @@ bool EmbHashMap::FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHashM
     return true;
 }
 
+/// 更新HBM中的key相应offset最近出现的batch步数，用于跟踪哪些offset是最近在使用的
+/// \param keys 查询向量
+/// \param currentBatchId 已处理的batch数
+/// \param keySize 查询向量长度
+/// \param embHashMap hash map实例
 void EmbHashMap::UpdateBatchId(const vector<emb_key_t>& keys, size_t currentBatchId, size_t keySize,
                                EmbHashMapInfo& embHashMap) const
 {
@@ -458,33 +488,43 @@ int EmbHashMap::FindSwapPosV2(const string& embName, emb_key_t key, size_t hostO
     return newDevOffset;
 }
 
-/*
- * 利用devOffset2Batch上key最近使用的batchId，来选择需要淘汰的key，记录淘汰位置和device侧所需的keys
- */
+/// 利用devOffset2Batch上key最近使用的batchId，来选择需要淘汰的key，记录淘汰位置和device侧所需的keys
+/// \param embName 表名
+/// \param key 输入特征
+/// \param hostOffset 全局偏移
+/// \param currentBatchId 已处理的batch数
+/// \param keepBatchId 处理batch的次数，多个预取一起处理算一次
+/// \return 是否找到需要交换的位置
 bool EmbHashMap::FindSwapPosOld(const string& embName, emb_key_t key, size_t hostOffset, size_t currentBatchId,
                                 size_t keepBatchId)
 {
     bool notFind = true;
     auto& embHashMap = embHashMaps.at(embName);
     while (notFind) {
+        // 找到本次预取之前的偏移（保证所有预取batch的key都在HBM中）
         if (embHashMap.devOffset2Batch[embHashMap.currentUpdatePos] < static_cast<int>(keepBatchId)) {
             embHashMap.devOffset2Batch[embHashMap.currentUpdatePos] = static_cast<int>(currentBatchId);
-            embHashMap.swapPos.emplace_back(embHashMap.currentUpdatePos);
-            embHashMap.lookUpVec.emplace_back(embHashMap.currentUpdatePos);
-            embHashMap.hostHashMap[key] = embHashMap.currentUpdatePos;
+            embHashMap.swapPos.emplace_back(embHashMap.currentUpdatePos); // 记录需要被换出的HBM偏移
+            embHashMap.lookUpVec.emplace_back(embHashMap.currentUpdatePos); // 交换的位置就是该key查询的偏移
+            embHashMap.hostHashMap[key] = embHashMap.currentUpdatePos;  // 更新key对应的HBM偏移
+            // 记录HBM偏移之前的key
             embHashMap.devOffset2KeyOld.emplace_back(embHashMap.currentUpdatePos,
                                                      embHashMap.devOffset2Key[embHashMap.currentUpdatePos]);
             auto& oldKey = embHashMap.devOffset2Key[embHashMap.currentUpdatePos];
-            embHashMap.oldSwap.emplace_back(oldKey, key);
-            embHashMap.hostHashMap[oldKey] = hostOffset;
+            embHashMap.oldSwap.emplace_back(oldKey, key); // 记录交换的两个key
+            embHashMap.hostHashMap[oldKey] = hostOffset; // 更新被替换的key的偏移
             oldKey = key;
             notFind = false;
         }
-        embHashMap.currentUpdatePos++;
-        embHashMap.freeSize--;
+        embHashMap.currentUpdatePos++; // 查找位置+1
+        embHashMap.freeSize--; // HBM可用空间-1
+
+        // 遍历完一遍整个HBM表后，从头开始遍历
         if (embHashMap.currentUpdatePos == embHashMap.devVocabSize) {
             embHashMap.currentUpdatePos = 0;
         }
+
+        // 已经找完了整个HBM空间，没有找到可用位置，表示HBM空间不足以放下整个batch（预取batch数）的key，无法正常执行训练，固运行时错误退出
         if (embHashMap.currentUpdatePos == embHashMap.currentUpdatePosStart) {
             LOG(ERROR) << "devVocabSize is too small";
             throw runtime_error("devVocabSize is too small");

@@ -81,10 +81,6 @@ namespace MxRec {
 
         size_t RecvAcl(TransferChannel channel, int channelId, const string& embName);
 
-        size_t QueryChannelSize(const string& channelName);
-
-        auto Vec2Tensor(const vector<size_t>& tmpVec) const -> vector<Tensor>;
-
         void Destroy();
 
     private:

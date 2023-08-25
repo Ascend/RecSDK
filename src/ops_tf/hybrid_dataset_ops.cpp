@@ -153,16 +153,7 @@ public:
         }
         batchIdsInfo.at(channelId) = 0;
 
-        const char* threadNumEnv = getenv("KEY_PROCESS_THREAD_NUM");
-        if (threadNumEnv != nullptr) {
-            threadNum = static_cast<int>(*threadNumEnv) - static_cast<int>('0');
-            if (threadNum > KEY_PROCESS_THREAD || threadNum < 0) {
-                throw runtime_error(StringFormat("%d is not valid", threadNum));
-            }
-        } else {
-            threadNum = KEY_PROCESS_THREAD;
-        }
-
+        threadNum = GetThreadNumEnv();
         auto keyProcess = Singleton<KeyProcess>::GetInstance();
         if (!keyProcess->isRunning) {
             context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ", "KeyProcess not running."));
@@ -367,13 +358,7 @@ public:
         }
         batchIdsInfo.at(channelId) = 0;
 
-        const char* threadNumEnv = getenv("KEY_PROCESS_THREAD_NUM");
-        if (threadNumEnv != nullptr) {
-            threadNum = static_cast<int>(*threadNumEnv) - static_cast<int>('0');
-            if (threadNum > KEY_PROCESS_THREAD || threadNum < 0) {
-                throw runtime_error(StringFormat("%d is not valid", threadNum));
-            }
-        }
+        threadNum = GetThreadNumEnv();
         auto keyProcess = Singleton<KeyProcess>::GetInstance();
         if (!keyProcess->isRunning) {
             context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ", "KeyProcess not running."));

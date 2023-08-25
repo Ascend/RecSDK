@@ -7,6 +7,7 @@ from collections import defaultdict
 
 import tensorflow as tf
 from tensorflow.python.data.ops.dataset_ops import DatasetV1Adapter
+from tensorflow.python.framework.ops import Operation
 
 from mx_rec.core.asc.helper import get_asc_insert_func
 from mx_rec.core.asc.feature_spec import FeatureSpec
@@ -14,9 +15,11 @@ from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import SparseEmbedding
 from mx_rec.constants.constants import ASCEND_CUTTING_POINT_INITIALIZER, ASCEND_SPARSE_LOOKUP_ENTRANCE, \
     ASCAnchorAttr, ASCEND_TIMESTAMP
+    ASCAnchorAttr, ASCEND_TIMESTAMP, ANCHOR_DATASET_NAME
 from mx_rec.util.initialize import get_feature_spec, insert_feature_spec, set_initializer, \
     terminate_config_initializer, set_is_graph_modify_hook_running, get_bool_gauge_set, increase_run_times, \
-    get_is_last_round, insert_merged_multi_lookup, get_merged_multi_lookup, set_target_batch
+    get_is_last_round, insert_merged_multi_lookup, get_merged_multi_lookup, set_target_batch, get_iterator_type, \
+    set_iterator_type
 from mx_rec.util.perf import performance
 from mx_rec.graph.utils import check_input_list, find_parent_op, check_cutting_points, record_ops_to_replace, \
     export_pb_graph, make_sorted_key_to_tensor_list
@@ -125,7 +128,17 @@ def find_target_dataset_op(base_ops, op_type):
             raise ValueError(f"Op {op_type} was not found.")
 
 
-def get_op_before_optimize_dataset(get_next_op):
+def get_dataset_op(get_next_op: Operation) -> Operation:
+    """
+    根据`IteratorGetNext`算子从图中找到`OptimizeDataset`的dataset op. 注: TF2没有`OptimizeDataset`，则找的是dataset的默认锚点.
+
+    Args:
+        get_next_op: `IteratorGetNext`算子
+
+    Returns: TF1返回`OptimizeDataset`算子，TF2返回dataset默认锚点的算子
+
+    """
+
     if get_next_op.type != "IteratorGetNext":
         raise TypeError("Op '{get_next_op}' must be one instance of IteratorGetNext.")
 
@@ -142,7 +155,7 @@ def get_op_before_optimize_dataset(get_next_op):
         target_op = target_op[0]
     else:
         # 'OptimizeDataset' is not available in TensorFlow2.X
-        target_op = find_target_dataset_op(base_op, "PrefetchDataset")
+        target_op = find_target_dataset_op(base_op, ANCHOR_DATASET_NAME)
     return target_op
 
 
@@ -232,29 +245,25 @@ def update_input_tensor_with_new_batch(replacement_specs, new_get_next_op_name):
             operator._update_input(idx, new_tensor)
 
 
-def make_src_to_tgt_mapping(src_element_spec, tgt_element_spec):
-    # adding '_0' to the prefix
+def get_dataset_tensor_count(dataset: DatasetV1Adapter) -> int:
+    """
+    获取数据集中batch的tensor数量.
+
+    Args:
+        dataset: 数据集实例
+
+    Returns: 数据集batch中的tensor数量
+
+    """
+
+    src_element_spec = dataset.element_spec
     if not isinstance(src_element_spec, (list, tuple)):
         src_element_spec = [src_element_spec]
     src_sorted_keys = make_sorted_key_to_tensor_list(src_element_spec, [])
-    tgt_sorted_keys = make_sorted_key_to_tensor_list(tgt_element_spec, [])
-    index_to_src_key_mapping = dict([(idx, key) for idx, key in enumerate(src_sorted_keys)])
-    tgt_key_to_index_mapping = dict([(key, idx) for idx, key in enumerate(tgt_sorted_keys)])
 
-    original_tensor_count = len(src_sorted_keys)
-
-    def mapping_func(src_idx):
-        key = index_to_src_key_mapping.get(src_idx)
-        if key is None:
-            raise ValueError("Given src_idx is out of range.")
-
-        tgt_idx = tgt_key_to_index_mapping.get(key)
-        return tgt_idx
-
-    return mapping_func, original_tensor_count
+    return len(src_sorted_keys)
 
 
-@performance("graph_modifier")
 def modify_graph_and_start_emb_cache(dump_graph=False):
     modify_graph_for_asc(dump_graph=dump_graph)
     start_asc_pipeline()
@@ -287,18 +296,129 @@ def generate_get_next_op_specs(cutting_point_list, dump_graph):
     return get_next_op_map
 
 
-def get_src_and_generate_tgt_dataset(get_next_op, records):
-    target_op = get_op_before_optimize_dataset(get_next_op)
+def get_src_dataset(get_next_op: Operation, is_training: bool) -> DatasetV1Adapter:
+    """
+    根据`IteratorGetNext`算子在计算图中找出原始dataset.
+
+    Args:
+        get_next_op: `IteratorGetNext`算子
+        is_training: 当前是否为训练模式，训练模式为True，否则为False
+
+    Returns: 原始数据集
+
+    """
+
+    try:
+        target_op = get_dataset_op(get_next_op)
+    except (ValueError, TypeError, RuntimeError) as err:
+        logging.warning("The dataset op was not found, the error is `%s`. Start to traverse the operations.", err)
+        graph = tf.compat.v1.get_default_graph()
+        dataset_op_list = [op for op in graph.get_operations() if ANCHOR_DATASET_NAME in op.name]
+        logging.debug("In get_src_dataset function, current mode(train: True, eval: False): %s, dataset_op_list: %s.",
+                      is_training, dataset_op_list)
+
+        if len(dataset_op_list) == 1:
+            target_op = dataset_op_list[0]
+        elif is_training and len(dataset_op_list) == 2:
+            prefetch_dataset_op_list = sorted(dataset_op_list, key=lambda op: op.name)
+            target_op = prefetch_dataset_op_list[0]
+        elif not is_training and len(dataset_op_list) == 3:
+            prefetch_dataset_op_list = sorted(dataset_op_list, key=lambda op: op.name)
+            target_op = prefetch_dataset_op_list[1]
+        else:
+            raise RuntimeError(f"The `{ANCHOR_DATASET_NAME}` was not found from the operations, dataset_op_list: "
+                               f"{dataset_op_list}.") from err
+    except Exception as err:
+        raise RuntimeError(f"The dataset was not found, the error is `{err}`.") from err
+
+    if not target_op.outputs:
+        raise ValueError(f"The length of the outputs of target op `{target_op}` is 0.")
+    logging.debug("Find target op `%s`, and output is `%s`.", target_op.name, target_op.outputs)
     src_dataset = find_target_instance_dataset(target_op.outputs[0])
+    return src_dataset
+
+
+def get_tgt_dataset(src_dataset: DatasetV1Adapter, sub_cutting_point_list: list, records: dict,
+                    dump_graph: bool = False, prefetch: int = 10) -> DatasetV1Adapter:
+    """
+    根据原始数据集生成新的数据集实例.
+
+    Args:
+        src_dataset: 原始数据集实例
+        sub_cutting_point_list: 打桩的lookup ids列表
+        records: 记录被打桩ids对应输入/输出算子、子图关系等信息的字典
+        dump_graph: 是否dump计算图，默认为False
+        prefetch: dataset预取数据量，默认为10
+
+    Returns: 新数据集实例
+
+    """
+
     tgt_dataset = src_dataset.map(get_preprocessing_map_func(records.get("sub_graph_def"),
                                                              records.get("input_name_list"),
                                                              records.get("output_name_list"),
                                                              pipeline_input_indexes=records.get(
                                                                  "batch_tensor_index_list")))
 
-    return src_dataset, tgt_dataset
+    feature_numbers = [SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.FEATURE_SPEC).feat_cnt for
+                       cutting_point in sub_cutting_point_list]
+    table_names = [SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.FEATURE_SPEC).table_name for
+                   cutting_point in sub_cutting_point_list]
+    tgt_dataset = tgt_dataset.map(get_asc_insert_func(feature_numbers=feature_numbers,
+                                                      table_names=table_names,
+                                                      args_index_list=records.get("input_index_list"),
+                                                      is_training=records.get("is_training"),
+                                                      dump_graph=dump_graph))
+
+    tgt_dataset = tgt_dataset.prefetch(prefetch)
+    return tgt_dataset
 
 
+def update_iterator_getnext(get_next_op: Operation, tgt_dataset: DatasetV1Adapter, is_training: bool, records: dict):
+    """
+    用新数据集中的`IteratorGetNext`算子替换计算图中原始数据集的`IteratorGetNext`算子，即用新数据集的batch替换原始数据集的batch.
+
+    Args:
+        get_next_op: `IteratorGetNext`算子
+        tgt_dataset: 新数据集
+        is_training: 当前是否为训练模式，训练模式为True，否则为False
+        records: 记录被打桩ids对应输入/输出算子、子图关系等信息的字典
+
+    Returns: None
+
+    """
+
+    if not get_next_op.outputs:
+        raise RuntimeError("There is no tensor in the dataset. Please check the dataset and data processing.")
+    iterator_type = ""
+    if get_next_op.outputs[0].op.inputs:
+        iterator_type = get_next_op.outputs[0].op.inputs[0].op.type
+    if iterator_type == "IteratorV2":
+        iterator_type = find_make_iterator_op(get_next_op.outputs[0]).type
+    if iterator_type not in ("MakeIterator", "OneShotIterator"):
+        raise RuntimeError(f"Only iterators `MakeIterator` and `OneShotIterator` are supported in `graph modify` mode, "
+                           f"but the current iterator is `{iterator_type}`.")
+    set_iterator_type(iterator_type)
+    logging.info("The iterator type of dataset is `%s`.", iterator_type)
+
+    if iterator_type == "MakeIterator":
+        new_iterator = tgt_dataset.make_initializable_iterator()
+        tf.compat.v1.add_to_collection(ASCEND_CUTTING_POINT_INITIALIZER, new_iterator.initializer)
+        set_initializer(is_training, new_iterator.initializer)
+    else:
+        new_iterator = tgt_dataset.make_one_shot_iterator()
+    new_batch = new_iterator.get_next()
+    set_target_batch(is_training, new_batch)
+
+    try:
+        new_batch_tensor = list(new_batch.values())[0]
+    except IndexError as err:
+        raise IndexError("Cannot find a tensor from given batch.") from err
+    new_get_next_op_name = find_target_dataset_op(new_batch_tensor.op, "IteratorGetNext").name
+    update_input_tensor_with_new_batch(records.get("replacement_specs"), new_get_next_op_name)
+
+
+@performance("graph_modifier")
 def modify_graph_for_asc(dump_graph=False, prefetch=10):
     cutting_point_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ENTRANCE)
     check_cutting_points(cutting_point_list)
@@ -308,40 +428,29 @@ def modify_graph_for_asc(dump_graph=False, prefetch=10):
 
     export_pb_graph("old_graph.pb", dump_graph)
     get_next_op_map = generate_get_next_op_specs(cutting_point_list, dump_graph)
+    logging.debug("In modify_graph_for_asc function, get_next_op_map.len: %d, get_next_op_map.key: %s.",
+                  len(get_next_op_map), get_next_op_map.keys())
 
     for get_next_op, records in get_next_op_map.items():
         is_training = records.get("is_training")
+
+        # get source dataset
+        src_dataset = get_src_dataset(get_next_op, is_training)
+
+        # generate target dataset
         timestamp_index = get_timestamp_index(get_next_op, is_training)
-        src_dataset, tgt_dataset = get_src_and_generate_tgt_dataset(get_next_op, records)
-        mapping_func, original_tensor_count = make_src_to_tgt_mapping(src_dataset.element_spec,
-                                                                      tgt_dataset.element_spec)
+        original_batch_tensor_count = get_dataset_tensor_count(src_dataset)
         sub_cutting_point_list = records.get("sub_cutting_point_list")
         input_index_list = get_input_index_list(sub_cutting_point_list,
                                                 records.get("replacement_specs"),
                                                 records.get("output_name_list"),
-                                                original_tensor_count, timestamp_index=timestamp_index)
-        feature_numbers = [SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.FEATURE_SPEC).feat_cnt for
-                           cutting_point in sub_cutting_point_list]
-        table_names = [SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.FEATURE_SPEC).table_name for
-                       cutting_point in sub_cutting_point_list]
+                                                original_batch_tensor_count, timestamp_index=timestamp_index)
+        records["input_index_list"] = input_index_list
+        tgt_dataset = get_tgt_dataset(src_dataset, sub_cutting_point_list, records,
+                                      dump_graph=dump_graph, prefetch=prefetch)
 
-        tgt_dataset = tgt_dataset.map(
-            get_asc_insert_func(feature_numbers=feature_numbers, table_names=table_names,
-                                args_index_list=input_index_list, is_training=is_training, dump_graph=dump_graph))
-
-        tgt_dataset = tgt_dataset.prefetch(prefetch)
-        new_iterator = tgt_dataset.make_initializable_iterator()
-        new_batch = new_iterator.get_next()
-        tf.compat.v1.add_to_collection(ASCEND_CUTTING_POINT_INITIALIZER, new_iterator.initializer)
-        set_initializer(is_training, new_iterator.initializer)
-        set_target_batch(is_training, new_batch)
-
-        try:
-            one_tensor = [v for _, v in new_batch.items()][0]
-        except IndexError as err:
-            raise IndexError("Cannot find a tensor from given batch.") from err
-        new_get_next_op_name = find_target_dataset_op(one_tensor.op, "IteratorGetNext").name
-        update_input_tensor_with_new_batch(records.get("replacement_specs"), new_get_next_op_name)
+        # update the batch of dataset
+        update_iterator_getnext(get_next_op, tgt_dataset, is_training, records)
 
         # In eval mode, backward is not required. In addition, compute gradients is not executed when
         # only eval is used. Therefore, `do_merge_lookup` needs to be invoked during modify graph.
@@ -382,18 +491,24 @@ def get_timestamp_index(get_next_op, is_training):
 
 class GraphModifierHook(tf.estimator.SessionRunHook):
     def __init__(self, dump_graph=True, modify_graph=True):
-        self.dump_graph = dump_graph
-        self.modify_graph = modify_graph
+        self._dump_graph = dump_graph
+        self._modify_graph = modify_graph
+        self._iterator_type = ""
         set_is_graph_modify_hook_running(True)
 
     def begin(self):
-        if self.modify_graph:
-            modify_graph_and_start_emb_cache(dump_graph=self.dump_graph)
+        if self._modify_graph:
+            modify_graph_and_start_emb_cache(dump_graph=self._dump_graph)
         else:
             start_asc_pipeline()
 
+        self._iterator_type = get_iterator_type()
+        if self._modify_graph and self._iterator_type not in ("MakeIterator", "OneShotIterator"):
+            raise ValueError("The value of iterator type should be like `MakeIterator` or `OneShotIterator`.")
+        logging.debug("In GraphModifierHook, iterator type is `%s`.", self._iterator_type)
+
     def after_create_session(self, session, coord):
-        if self.modify_graph:
+        if self._modify_graph and self._iterator_type == "MakeIterator":
             session.run(tf.compat.v1.get_collection(ASCEND_CUTTING_POINT_INITIALIZER))
 
     def end(self, session):

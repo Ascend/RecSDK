@@ -24,6 +24,8 @@ class ConfigInitializer:
 
     def __init__(self, use_mpi, **kwargs):
         self._use_mpi = use_mpi
+        self._rank_id = kwargs.get("rank_id", 0)
+        self._rank_size = kwargs.get("rank_size", 1)
         self._ascend_global_hashtable_collection = ASCEND_GLOBAL_HASHTABLE_COLLECTION
         self._comm = None
         self._asc_manager = None
@@ -51,6 +53,7 @@ class ConfigInitializer:
         self._run_times = AtomicInteger()
         self._merged_multi_lookup = dict()
         self._target_batch = dict()
+        self._iterator_type = ""
 
         if self._use_mpi:
             logging.debug(f"Using mpi to launch task.")
@@ -59,9 +62,6 @@ class ConfigInitializer:
             self._comm = MPI.COMM_WORLD
             self._rank_id = self._comm.Get_rank()
             self._rank_size = self._comm.Get_size()
-        else:
-            self._rank_id = kwargs.get("rank_id")
-            self._rank_size = kwargs.get("rank_size")
 
         self._rank_to_device_dict = parse_hccl_json() if os.getenv("RANK_TABLE_FILE") else set_hccl_info_without_json()
         self.train_steps = kwargs.get("train_steps", -1)
@@ -79,6 +79,10 @@ class ConfigInitializer:
 
     def __del__(self):
         self.terminate()
+
+    @property
+    def iterator_type(self):
+        return self._iterator_type
 
     @property
     def merged_multi_lookup(self):
@@ -207,6 +211,7 @@ class ConfigInitializer:
         logging.info("python process run terminate success")
 
         self._is_terminated = True
+        ConfigInitializer._single_instance = None
 
     def insert_feature_spec(self, feature, is_training):
         self._feature_spec_dict[feature.name] = feature
@@ -313,6 +318,13 @@ class ConfigInitializer:
         self._asc_manager = None
         self.unfreeze()
         logging.debug("ASC manager has been destroyed.")
+
+    @iterator_type.setter
+    def iterator_type(self, iterator_type):
+        if not isinstance(iterator_type, str):
+            raise TypeError(f"iterator_type `{iterator_type}` should be str.")
+
+        self._iterator_type = iterator_type
 
     @train_steps.setter
     def train_steps(self, step: int):
@@ -726,6 +738,24 @@ def get_target_batch(is_training: bool) -> dict:
     Returns: 新数据集中的batch
     """
     return ConfigInitializer.get_instance().get_target_batch(is_training)
+
+
+def get_iterator_type() -> str:
+    """
+    返回数据集的迭代器类型.
+    Returns: 数据集的迭代器类型
+    """
+    return ConfigInitializer.get_instance().iterator_type
+
+
+def set_iterator_type(iterator_type: str):
+    """
+    记录数据集的迭代器类型.
+    Args:
+        iterator_type: 数据集的迭代器类型
+    Returns: None
+    """
+    ConfigInitializer.get_instance().iterator_type = iterator_type
 
 
 def set_ascend_env():

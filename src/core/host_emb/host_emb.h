@@ -28,9 +28,7 @@ namespace MxRec {
         ~HostEmb()
         {};
 
-        bool Initialize(const vector<EmbInfo>& embInfos, int seed);
-
-        void LoadEmb(absl::flat_hash_map<string, HostEmbTable>& loadData);
+        void Initialize(const vector<EmbInfo>& embInfos, int seed);
 
         void Join(int channelId);
 

@@ -6,22 +6,30 @@
  */
 #include "hybrid_mgmt.h"
 
-#include "checkpoint/checkpoint.h"
 #include "utils/time_cost.h"
+#include "checkpoint/checkpoint.h"
 
 using namespace MxRec;
 using namespace std;
 
+/// 启动数据处理线程
+/// \param rankInfo 当前rank基本配置信息
+/// \param embInfos 表信息list
+/// \param thresholdValues 准入淘汰相关配置
+/// \param seed 随机种子
+/// \return bool类型 启动成功/失败
 bool HybridMgmt::InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
                                 const vector<ThresholdValue>& thresholdValues, int seed)
 {
 #ifndef GTEST
+    // 是否设置全局去重（相同key的梯度先累加），默认为false
     if (getenv("APPLY_GRADIENTS_STRATEGY") != nullptr) {
         bool strategy = (!strcmp(getenv("APPLY_GRADIENTS_STRATEGY"), SUM_SAME_ID));
         PerfConfig::gradientStrategy = strategy;
         LOG(INFO) << StringFormat("config GRADIENTS_STRATEGY:%d", strategy);
     }
 
+    // 设置当前进程用于数据处理的线程数，默认为6，取值1-10；取值不在范围内，则数据处理线程启动失败退出
     if (getenv("KEY_PROCESS_THREAD_NUM") != nullptr) {
         int num = std::atoi(getenv("KEY_PROCESS_THREAD_NUM"));
         if (num < 1 || num > MAX_KEY_PROCESS_THREAD) {
@@ -34,6 +42,7 @@ bool HybridMgmt::InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>&
         LOG(INFO) << StringFormat("config KEY_PROCESS_THREAD_NUM:%d", num);
     }
 
+    // 设置AccCTR去重线程数，默认为8，取值1-8；取值不在范围内，则数据处理线程启动失败退出
     if (getenv("MAX_UNIQUE_THREAD_NUM") != nullptr) {
         int num = std::atoi(getenv("MAX_UNIQUE_THREAD_NUM"));
         if (num < 1 || num > DEFAULT_MAX_UNIQUE_THREAD_NUM) {
@@ -46,12 +55,13 @@ bool HybridMgmt::InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>&
         LOG(INFO) << StringFormat("config MAX_UNIQUE_THREAD_NUM:%d", num);
     }
 
-    if (getenv("FAST_UNIQUE") != nullptr) {
-        bool isFastUnique = std::atoi(getenv("FAST_UNIQUE"));
-        PerfConfig::fastUnique = isFastUnique;
-        LOG(INFO) << StringFormat("config FAST_UNIQUE:%d", PerfConfig::fastUnique);
-    }
+    // 设置是否使用AccCTR库提供的去重、分桶功能，默认关闭
+    const int defaultFastUnique = false;
+    PerfConfig::fastUnique = defaultFastUnique;
+    const char* envFastUnique = getenv("FAST_UNIQUE");
+    HybridMgmt::CheckFastUnique(envFastUnique);
 
+    // 初始化数据处理类，配置相关信息，启动处理线程
     preprocess = Singleton<KeyProcess>::GetInstance();
     preprocess->Initialize(rankInfo, embInfos, thresholdValues, seed);
     preprocess->Start();
@@ -59,31 +69,63 @@ bool HybridMgmt::InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>&
     return true;
 }
 
+void HybridMgmt::CheckFastUnique(const char *envFastUnique)
+{
+    if (envFastUnique != nullptr) {
+        try {
+            int tmp = std::stoi(envFastUnique);
+            if (tmp == 0 || tmp == 1) {
+                PerfConfig::fastUnique = (tmp == 1) ? true : false;
+                LOG(INFO) << StringFormat("Succeed to parse ${env:FAST_UNIQUE}: %d.", PerfConfig::fastUnique);
+            } else {
+                LOG(ERROR) << StringFormat("Invalid ${env:FAST_UNIQUE}: %s, which should be an 0 or 1.", envFastUnique);
+            }
+        } catch (const std::invalid_argument &e) {
+            LOG(ERROR) <<
+                StringFormat("Failed to parse ${env:FAST_UNIQUE}: %s, which should be an integer.", envFastUnique);
+        }
+    }
+}
+
+/// Openmpi通信域进程数设置、计算所有表host特征数量总数、设置训练模式（HBM/DDR）
+/// \param rankInfo
+/// \param embInfos
 void HybridMgmt::InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfos)
 {
 #ifndef GTEST
     MPI_Comm_size(MPI_COMM_WORLD, &rankInfo.rankSize);
     rankInfo.localRankId = rankInfo.deviceId;
 
+    // 计算训练任务涉及的所有表在DDR中需要分配的key数量
     size_t totHostVocabSize = 0;
     for (const auto& emb : embInfos) {
         totHostVocabSize += emb.hostVocabSize;
     }
+
+    // 根据DDR的key数量，配置存储模式HBM/DDR
     if (totHostVocabSize == 0) {
         rankInfo.noDDR = true;
     }
-    rankInfo.useDataset = getenv("DATASET") != nullptr;
 #endif
 }
 
+/// 处理进程初始化入口，由python侧调用
+/// \param rankInfo 当前rank基本配置信息
+/// \param embInfos 表信息list
+/// \param seed 随机种子
+/// \param thresholdValues 准入淘汰相关配置
+/// \param ifLoad 是否断点续训
+/// \return
 bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, int seed,
                             const vector<ThresholdValue>& thresholdValues, bool ifLoad)
 {
 #ifndef GTEST
+    // 判断是否已经拉起特征处理线程（key process）
     if (isRunning) {
         return true;
     }
 
+    // 设置日志的级别，对日志格式进行配置
     SetLog(rankInfo.rankId);
     InitRankInfo(rankInfo, embInfos);
 
@@ -93,32 +135,30 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
 
     mgmtRankInfo = rankInfo;
     mgmtEmbInfo = embInfos;
-    skipUpdate = getenv("SKIP_UPDATE") != nullptr;
 
+    // 进行acl资源初始化，设置当前训练进程的device，为每张表创建数据传输通道
     hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
     hdTransfer->Init(embInfos, rankInfo.deviceId);
 
+    // 启动数据处理线程
     bool rc = InitKeyProcess(rankInfo, embInfos, thresholdValues, seed);
     if (!rc) {
         return false;
     }
 
-    lookUpKeysQueueForTrain = make_unique<Common::TaskQueue<vector<Tensor>>>();
-    restoreQueueForTrain = make_unique<Common::TaskQueue<vector<Tensor>>>();
-    lookUpKeysQueueForEval = make_unique<Common::TaskQueue<vector<Tensor>>>();
-    restoreQueueForEval = make_unique<Common::TaskQueue<vector<Tensor>>>();
-    a2aQueueForTrain = make_unique<Common::TaskQueue<vector<Tensor>>>();
-    a2aQueueForEval = make_unique<Common::TaskQueue<vector<Tensor>>>();
     isRunning = true;
 
+    // DDR模式，初始化hashmap和host emb
     if (!rankInfo.noDDR) {
         hostEmbs = make_unique<HostEmb>();
         hostHashMaps = make_unique<EmbHashMap>();
         hostEmbs->Initialize(embInfos, seed);
         hostHashMaps->Init(rankInfo, embInfos, ifLoad);
     }
+
+    // 非断点续训模式，启动数据传输
     isLoad = ifLoad;
-    if (!rankInfo.useDataset && !isLoad) {
+    if (!isLoad) {
         Start();
     }
 
@@ -128,30 +168,36 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
             info.name.c_str(), info.devVocabSize, info.hostVocabSize, info.sendCount);
     }
     LOG(INFO) << StringFormat(
-        MGMT + "end initialize, useDataset:%d, noDDR:%d, maxStep:[%d, %d], rank:%d",
-        rankInfo.useDataset, rankInfo.noDDR,
+        MGMT + "end initialize, noDDR:%d, maxStep:[%d, %d], rank:%d", rankInfo.noDDR,
         rankInfo.maxStep.at(TRAIN_CHANNEL_ID), rankInfo.maxStep.at(EVAL_CHANNEL_ID), rankInfo.rankId);
 #endif
     return true;
 }
 
+/// 保存模型
+/// \param savePath 保存路径
+/// \return
 bool HybridMgmt::Save(const string savePath)
 {
 #ifndef GTEST
+    // 数据处理线程上锁
     preprocess->LoadSaveLock();
 
     CkptData saveData;
     Checkpoint saveCkpt;
     if (!mgmtRankInfo.noDDR) {
+        // DDR模式保存host的emb表以及hashmap
         VLOG(GLOG_DEBUG) << (MGMT + "Start host side save: ddr mode hashmap");
         saveData.hostEmbs = hostEmbs->GetHostEmbs();
         saveData.embHashMaps = hostHashMaps->GetHashMaps();
     } else {
+        // HBM模式保存最大偏移（真正使用了多少vocab容量），特征到偏移的映射
         VLOG(GLOG_DEBUG) << (MGMT + "Start host side save: no ddr mode hashmap");
         saveData.maxOffset = preprocess->GetMaxOffset();
         saveData.keyOffsetMap = preprocess->GetKeyOffsetMap();
     }
 
+    // 保存特征准入淘汰相关的数据
     auto& featAdmitNEvict = preprocess->GetFeatAdmitAndEvict();
     if (featAdmitNEvict.GetFunctionSwitch()) {
         VLOG(GLOG_DEBUG) << (MGMT + "Start host side save: feature admit and evict");
@@ -160,16 +206,22 @@ bool HybridMgmt::Save(const string savePath)
         saveData.histRec.historyRecords = featAdmitNEvict.GetHistoryRecords().historyRecords;
     }
 
+    // 执行保存操作
     saveCkpt.SaveModel(savePath, saveData, mgmtRankInfo, mgmtEmbInfo);
 
+    // 数据处理线程释放锁
     preprocess->LoadSaveUnlock();
 #endif
     return true;
 }
 
+/// 加载模型
+/// \param loadPath
+/// \return
 bool HybridMgmt::Load(const string& loadPath)
 {
 #ifndef GTEST
+    // 数据处理线程上锁
     preprocess->LoadSaveLock();
 
     VLOG(GLOG_DEBUG) << (MGMT + "Start host side load process");
@@ -178,32 +230,44 @@ bool HybridMgmt::Load(const string& loadPath)
     Checkpoint loadCkpt;
     vector<CkptFeatureType> loadFeatures;
     if (!mgmtRankInfo.noDDR) {
+        // DDR模式加载的类型为host的emb表以及hashmap
         loadFeatures.push_back(CkptFeatureType::HOST_EMB);
         loadFeatures.push_back(CkptFeatureType::EMB_HASHMAP);
     } else {
+        // HBM模式加载的类型为最大偏移（真正使用了多少vocab容量），特征到偏移的映射
         loadFeatures.push_back(CkptFeatureType::MAX_OFFSET);
         loadFeatures.push_back(CkptFeatureType::KEY_OFFSET_MAP);
     }
 
+    // 添加特征准入淘汰相关的数据类型的加载
     auto& featAdmitNEvict = preprocess->GetFeatAdmitAndEvict();
     if (featAdmitNEvict.GetFunctionSwitch()) {
         loadFeatures.push_back(CkptFeatureType::FEAT_ADMIT_N_EVICT);
     }
 
-    loadData.hostEmbs = hostEmbs->GetHostEmbs();
+    loadData.hostEmbs = hostEmbs->GetHostEmbs(); // 获取已经初始化好的host emb
+
+    // 执行加载操作
     loadCkpt.LoadModel(loadPath, loadData, mgmtRankInfo, mgmtEmbInfo, loadFeatures);
+
+    // 检查DDR模式保存的模型和当前训练配置是否一致，不一致则退出
     if (!mgmtRankInfo.noDDR && !LoadMatchesDDRSetup(loadData)) {
+        preprocess->LoadSaveUnlock();
         return false;
     }
 
     if (!mgmtRankInfo.noDDR) {
+        // DDR模式 将加载的hash map进行赋值
         VLOG(GLOG_DEBUG) << (MGMT + "Start host side load: ddr mode hashmap");
         hostHashMaps->LoadHashMap(loadData.embHashMaps);
     } else {
+        // HBM模式 将加载的最大偏移（真正使用了多少vocab容量）、特征到偏移的映射，进行赋值
         VLOG(GLOG_DEBUG) << (MGMT + "Start host side load: no ddr mode hashmap");
         preprocess->LoadMaxOffset(loadData.maxOffset);
         preprocess->LoadKeyOffsetMap(loadData.keyOffsetMap);
     }
+
+    // 将加载的特征准入淘汰记录进行赋值
     if (featAdmitNEvict.GetFunctionSwitch()) {
         VLOG(GLOG_DEBUG) << (MGMT + "Start host side load: feature admit and evict");
         featAdmitNEvict.LoadTableThresholds(loadData.table2Thresh);
@@ -214,13 +278,17 @@ bool HybridMgmt::Load(const string& loadPath)
 
     preprocess->LoadSaveUnlock();
 
-    if (!mgmtRankInfo.useDataset && isLoad) {
+    // 执行训练
+    if (isLoad) {
         Start();
     }
 #endif
     return true;
 }
 
+/// 获取key对应的offset，python侧调用
+/// \param tableName 表名
+/// \return
 key_offset_map_t HybridMgmt::SendHostMap(const string tableName)
 {
 #ifndef GTEST
@@ -246,6 +314,8 @@ key_offset_map_t HybridMgmt::SendHostMap(const string tableName)
 #endif
 }
 
+/// 加载key对应的offset，python侧调用；启动数据处理线程
+/// \param ReceiveKeyOffsetMap
 void HybridMgmt::ReceiveHostMap(all_key_offset_map_t ReceiveKeyOffsetMap)
 {
 #ifndef GTEST
@@ -271,12 +341,17 @@ void HybridMgmt::ReceiveHostMap(all_key_offset_map_t ReceiveKeyOffsetMap)
     }
 
     preprocess->LoadSaveUnlock();
-    if (!mgmtRankInfo.useDataset && isLoad) {
+    if (isLoad) {
         Start();
     }
 #endif
 }
 
+/// 对加载的数据和训练配置进行一致性校验
+/// \param loadHostEmbs
+/// \param setupHostEmbs
+/// \param embTableCount
+/// \return
 bool HybridMgmt::IsLoadDataMatches(emb_mem_t* loadHostEmbs, EmbInfo* setupHostEmbs, size_t& embTableCount)
 {
     bool loadDataMatches = { true };
@@ -321,6 +396,9 @@ bool HybridMgmt::IsLoadDataMatches(emb_mem_t* loadHostEmbs, EmbInfo* setupHostEm
     return true;
 }
 
+/// 对DDR模式保存的模型和训练配置进行一致性校验
+/// \param loadData
+/// \return 是否一致
 bool HybridMgmt::LoadMatchesDDRSetup(const CkptData& loadData)
 {
     size_t embTableCount { 0 };
@@ -339,24 +417,12 @@ bool HybridMgmt::LoadMatchesDDRSetup(const CkptData& loadData)
     return true;
 }
 
+/// 根据HBM/DDR模式，启动数据处理线程
 void HybridMgmt::Start()
 {
 #ifndef GTEST
-    int mode = 0;
-    const char* envTaskMode = std::getenv("MGMT_HBM_TASK_MODE"); // 获取环境变量
-    if (envTaskMode != nullptr) { // 如果环境变量存在
-        try {
-            mode = std::stoi(envTaskMode); // 将字符串转换为整数
-            LOG(INFO) << StringFormat("The value of MGMT_HBM_TASK_MODE is an integer： %d", mode);
-        } catch (const std::invalid_argument& e) { // 如果转换失败
-            LOG(ERROR) << "The value of MGMT_HBM_TASK_MODE is not an integer!";
-            throw std::invalid_argument("Invalid env value MGMT_HBM_TASK_MODE");
-        }
-    } else { // 如果环境变量不存在
-        mode = 0;
-    }
     if (mgmtRankInfo.noDDR) {
-        InsertThreadForHBM(mode);
+        InsertThreadForHBM();
     }
 
     if (!mgmtRankInfo.noDDR) {
@@ -375,34 +441,10 @@ void HybridMgmt::Start()
 #endif
 }
 
-void HybridMgmt::InsertThreadForHBM(int mode)
+/// 启动HBM模式数据处理线程
+void HybridMgmt::InsertThreadForHBM()
 {
 #ifndef GTEST
-    if (mode == 1) {
-        auto getInfoTaskForTrain = [this]() {
-            TaskForTrain(TaskType::GETINFO);
-            LOG(INFO) << "getInfoTaskForTrain done";
-        };
-        procThreads.emplace_back(std::make_unique<std::thread>(getInfoTaskForTrain));
-
-        auto getInfoTaskForEval = [this]() {
-            TaskForEval(TaskType::GETINFO);
-            LOG(INFO) << "getInfoTaskForEval done";
-        };
-        procThreads.emplace_back(std::make_unique<std::thread>(getInfoTaskForEval));
-
-        auto sendInfoTaskForTrain = [this]() {
-            TaskForTrain(TaskType::SEND);
-            LOG(INFO) << "sendInfoTaskForTrain done";
-        };
-        procThreads.emplace_back(std::make_unique<std::thread>(sendInfoTaskForTrain));
-
-        auto sendInfoTaskForEval = [this]() {
-            TaskForEval(TaskType::SEND);
-            LOG(INFO) << "sendInfoTaskForEval done";
-        };
-        procThreads.emplace_back(std::make_unique<std::thread>(sendInfoTaskForEval));
-    } else {
         auto parseKeysTaskForHBMTrain = [this]() {
             TaskForTrain(TaskType::HBM);
             LOG(INFO) << "parseKeysTaskForHBMTrain done";
@@ -414,11 +456,12 @@ void HybridMgmt::InsertThreadForHBM(int mode)
             LOG(INFO) << "parseKeysTaskForHBMEval done";
         };
         procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForHBMEval));
-    }
 #endif
 }
 
 #ifndef GTEST
+/// 启动训练数据处理线程
+/// \param type 存储模式
 void HybridMgmt::TaskForTrain(TaskType type)
 {
     bool isFirstIn = true;
@@ -436,6 +479,8 @@ void HybridMgmt::TaskForTrain(TaskType type)
     }
 }
 
+/// 启动推理数据处理线程
+/// \param type 存储模式
 void HybridMgmt::TaskForEval(TaskType type)
 {
     bool isFirstIn = true;
@@ -453,47 +498,27 @@ void HybridMgmt::TaskForEval(TaskType type)
     }
 }
 
+/// 训练数据处理：数据处理状态正常，处理的batch数小于用户预设值或者设为-1时，会循环处理；
+/// \param type 存储模式
+/// \return
 bool HybridMgmt::TrainTask(TaskType type)
 {
-    bool isContinue = false;
+    bool isContinue;
+    bool status;
     do {
         if (!isRunning) {
             return false;
         }
-        bool status = false;
 
         switch (type) {
-            case TaskType::GETINFO:
-                status = GetLookupAndRestore(TRAIN_CHANNEL_ID, getInfoBatchId);
-                isContinue = getInfoBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
-                        mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1;
-                LOG(INFO) << StringFormat(MGMT + "getInfoBatchId = %d", getInfoBatchId);
-                break;
-            case TaskType::SEND:
-                status = SendLookupAndRestore(TRAIN_CHANNEL_ID, sendBatchId);
-                isContinue = sendBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
-                        mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1;
-                LOG(INFO) << StringFormat(MGMT + "sendBatchId = %d", sendBatchId);
-#if defined(PROFILING) && defined(BUILD_WITH_EASY_PROFILER)
-                if (sendBatchId == PROFILING_START_BATCH_ID) {
-                    EASY_PROFILER_ENABLE
-                } else if (sendBatchId == PROFILING_END_BATCH_ID) {
-                    EASY_PROFILER_DISABLE
-                    ::profiler::dumpBlocksToFile(
-                        StringFormat("/home/MX_REC-mgmt-profile-%s.prof", mgmtRankInfo.rankId).c_str());
-                }
-#endif
-                break;
             case TaskType::HBM:
                 status = ParseKeysHBM(TRAIN_CHANNEL_ID, trainBatchId);
-                isContinue = trainBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
-                             mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1;
+                isContinue = !EndBatch(trainBatchId, TRAIN_CHANNEL_ID);
                 LOG(INFO) << StringFormat(MGMT + "ParseKeysHBMBatchId = %d", trainBatchId);
                 break;
             case TaskType::DDR:
                 status =  ParseKeys(TRAIN_CHANNEL_ID, trainBatchId);
-                isContinue = trainBatchId % mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] != 0 ||
-                        mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1;
+                isContinue = !EndBatch(trainBatchId, TRAIN_CHANNEL_ID);
                 LOG(INFO) << StringFormat(MGMT + "parseKeysBatchId = %d", trainBatchId);
                 break;
             default:
@@ -508,6 +533,9 @@ bool HybridMgmt::TrainTask(TaskType type)
     return true;
 }
 
+/// 推理数据处理：数据处理状态正常，处理的batch数小于用户预设值或者设为-1时，会循环处理；
+/// \param type 存储模式
+/// \return
 bool HybridMgmt::EvalTask(TaskType type)
 {
     int evalBatchId = 0; // 0-99, 0-99
@@ -518,14 +546,6 @@ bool HybridMgmt::EvalTask(TaskType type)
         bool status = false;
 
         switch (type) {
-            case TaskType::GETINFO:
-                status = GetLookupAndRestore(EVAL_CHANNEL_ID, evalBatchId);
-                LOG(INFO) << StringFormat(MGMT + "GETINFO evalBatchId = %d", evalBatchId);
-                break;
-            case TaskType::SEND:
-                status = SendLookupAndRestore(EVAL_CHANNEL_ID, evalBatchId);
-                LOG(INFO) << StringFormat(MGMT + "SEND evalBatchId = %d", evalBatchId);
-                break;
             case TaskType::HBM:
                 status = ParseKeysHBM(EVAL_CHANNEL_ID, evalBatchId);
                 LOG(INFO) << StringFormat(MGMT + "HBM evalBatchId = %d", evalBatchId);
@@ -541,158 +561,42 @@ bool HybridMgmt::EvalTask(TaskType type)
         if (!status) {
             return false;
         }
-    } while (evalBatchId % mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] != 0 ||
-             mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1);
+    } while (!EndBatch(evalBatchId, EVAL_CHANNEL_ID));
 
     return true;
 }
 
-void HybridMgmt::GetAll2All(const int channelId, int &batchId, const string &name)
-{
-    auto all2all = preprocess->GetInfoVec(batchId, name, channelId, ProcessedInfo::ALL2ALL);
-    switch (channelId) {
-        case TRAIN_CHANNEL_ID:
-            a2aQueueForTrain->Pushv(*all2all);
-            break;
-        case EVAL_CHANNEL_ID:
-            a2aQueueForEval->Pushv(*all2all);
-            break;
-        default:
-            throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
-    }
-}
-
-bool HybridMgmt::GetLookupAndRestore(const int channelId, int &batchId)
-{
-    LOG(INFO) << StringFormat(MGMT + "start parse keys, nBatch:%d , [%d]:%d", mgmtRankInfo.nBatch, channelId, batchId);
-    for (const auto& embInfo: mgmtEmbInfo) {
-        TimeCost getAllTensorTC;
-        auto infoVecs = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::RESTORE);
-        if (infoVecs == nullptr) {
-            LOG(INFO) << StringFormat(
-                MGMT + "ParseKeys infoVecs empty ! batchId:%d, channelId:%d", batchId, channelId);
-            return false;
-        }
-        switch (channelId) {
-            case TRAIN_CHANNEL_ID:
-                lookUpKeysQueueForTrain->Pushv({ infoVecs->back() });
-                infoVecs->pop_back();
-                restoreQueueForTrain->Pushv(*infoVecs);
-                break;
-            case EVAL_CHANNEL_ID:
-                lookUpKeysQueueForEval->Pushv({ infoVecs->back() });
-                infoVecs->pop_back();
-                restoreQueueForEval->Pushv(*infoVecs);
-                break;
-            default:
-                throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
-        }
-
-        if (!mgmtRankInfo.useStatic) {
-            GetAll2All(channelId, batchId, embInfo.name);
-        }
-        VLOG(GLOG_DEBUG) << StringFormat("getAllTensorTC(ms):%d", getAllTensorTC.ElapsedMS());
-    }
-    batchId++;
-    return true;
-}
-
-void HybridMgmt::All2AllKeys(const int channelId, const string &embName)
-{
-    TimeCost a2aKeysTC;
-    vector<Tensor> all2allKeys;
-    switch (channelId) {
-        case TRAIN_CHANNEL_ID:
-            all2allKeys = a2aQueueForTrain->WaitAndPop();
-            break;
-        case EVAL_CHANNEL_ID:
-            all2allKeys = a2aQueueForEval->WaitAndPop();
-            break;
-        default:
-            throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
-    }
-    hdTransfer->Send(TransferChannel::ALL2ALL, all2allKeys, channelId, embName);
-    VLOG(GLOG_DEBUG) << StringFormat("All2AllKeysTC(ms):%d", a2aKeysTC.ElapsedMS());
-}
-
-void HybridMgmt::LookupKeys(const int channelId, const string &embName)
-{
-    TimeCost sendLookupTC;
-    vector<Tensor> lookUpKeys;
-    switch (channelId) {
-        case TRAIN_CHANNEL_ID:
-            lookUpKeys = lookUpKeysQueueForTrain->WaitAndPop();
-            break;
-        case EVAL_CHANNEL_ID:
-            lookUpKeys = lookUpKeysQueueForEval->WaitAndPop();
-            break;
-        default:
-            throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
-    }
-    hdTransfer->Send(TransferChannel::LOOKUP, lookUpKeys, channelId, embName);
-    VLOG(GLOG_DEBUG) << StringFormat("sendLookupTC(ms):%d", sendLookupTC.ElapsedMS());
-}
-
-void HybridMgmt::RestoreKeys(const int channelId, const string &embName)
-{
-    TimeCost sendRestoreTC;
-    vector<Tensor> restore;
-    switch (channelId) {
-        case TRAIN_CHANNEL_ID:
-            restore = restoreQueueForTrain->WaitAndPop();
-            break;
-        case EVAL_CHANNEL_ID:
-            restore = restoreQueueForEval->WaitAndPop();
-            break;
-        default:
-            throw std::invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
-    }
-    hdTransfer->Send(TransferChannel::RESTORE, restore, channelId, embName);
-    VLOG(GLOG_DEBUG) << StringFormat("sendRestoreTC(ms):%d", sendRestoreTC.ElapsedMS());
-}
-
-bool HybridMgmt::SendLookupAndRestore(const int channelId, int &batchId)
-{
-    for (const auto& embInfo: mgmtEmbInfo) {
-        TimeCost sendTensorsTC;
-        if (!mgmtRankInfo.useStatic) {
-            All2AllKeys(channelId, embInfo.name);
-        }
-
-        LOG(INFO) << StringFormat(
-            "SendLookupAndRestore batchId:%d, name:%s, channelId:%d",
-            batchId, embInfo.name.c_str(), channelId
-        );
-
-        LookupKeys(channelId, embInfo.name);
-        RestoreKeys(channelId, embInfo.name);
-        VLOG(GLOG_DEBUG) << StringFormat("sendTensorsTC(ms):%d", sendTensorsTC.ElapsedMS());
-    }
-    batchId++;
-    return true;
-}
-
+/// HBM模式下，发送key process线程已处理好的各类型向量到指定通道中
+/// \param channelId 通道索引（训练/推理）
+/// \param batchId 已处理的batch数
+/// \return
 bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
 {
     LOG(INFO) << StringFormat(
         MGMT + "start parse keys HBM, nBatch:%d , [%d]:%d", mgmtRankInfo.nBatch, channelId, batchId);
+
+    // 循环处理每个表的数据
     for (const auto& embInfo: mgmtEmbInfo) {
         TimeCost ParseKeysTC;
         // get
         TimeCost getTensorsSyncTC;
+
+        // 获取各类向量，如果为空指针，退出当前函数
         auto infoVecs = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::RESTORE);
         if (infoVecs == nullptr) {
             LOG(INFO) << StringFormat(
                 MGMT + "ParseKeys infoVecs empty ! batchId:%d, channelId:%d", batchId, channelId);
             return false;
         }
+
+        // 动态shape场景下，获取all2all向量（通信量矩阵）
         unique_ptr<vector<Tensor>> all2all = nullptr;
         if (!mgmtRankInfo.useStatic) {
             all2all = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::ALL2ALL);
         }
         VLOG(GLOG_DEBUG) << StringFormat("getTensorsSyncTC(ms):%d", getTensorsSyncTC.ElapsedMS());
 
-        // send
+        // 动态shape场景下，发送all2all向量（通信量矩阵）
         TimeCost sendTensorsSyncTC;
         if (!mgmtRankInfo.useStatic) {
             TimeCost sendAll2AllScSyncTC;
@@ -700,11 +604,13 @@ bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
             VLOG(GLOG_DEBUG) << StringFormat("sendAll2AllScSyncTC(ms):%d", sendAll2AllScSyncTC.ElapsedMS());
         }
 
+        // 发送查询向量
         TimeCost sendLookupSyncTC;
         hdTransfer->Send(TransferChannel::LOOKUP, { infoVecs->back() }, channelId, embInfo.name);
         infoVecs->pop_back();
         VLOG(GLOG_DEBUG) << StringFormat("sendLookupSyncTC(ms):%d", sendLookupSyncTC.ElapsedMS());
 
+        // 训练时，使用全局去重聚合梯度，发送全局去重的key和对应的恢复向量
         if (PerfConfig::gradientStrategy && channelId == TRAIN_CHANNEL_ID) {
             TimeCost sendUnikeysSyncTC;
             hdTransfer->Send(TransferChannel::UNIQKEYS, { infoVecs->back() }, channelId, embInfo.name);
@@ -717,6 +623,7 @@ bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
             VLOG(GLOG_DEBUG) << StringFormat("sendRestoreVecSecSyncTC(ms):%d", sendRestoreVecSecSyncTC.ElapsedMS());
         }
 
+        // 发送恢复向量
         TimeCost sendRestoreSyncTC;
         hdTransfer->Send(TransferChannel::RESTORE, *infoVecs, channelId, embInfo.name);
         VLOG(GLOG_DEBUG) << StringFormat("sendRestoreSyncTC(ms):%d", sendRestoreSyncTC.ElapsedMS());
@@ -730,11 +637,19 @@ bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
 }
 #endif
 
+/// 当前处理的batch是否是最后一个batch
+/// \param batchId 已处理的batch数
+/// \param channelId 通道索引（训练/推理）
+/// \return
 bool HybridMgmt::EndBatch(int batchId, int channelId) const
 {
     return (batchId % mgmtRankInfo.maxStep[channelId] == 0 && mgmtRankInfo.maxStep[channelId] != -1);
 }
 
+/// DDR模式下，发送key process线程已处理好的各类型向量到指定通道中
+/// \param channelId 通道索引（训练/推理）
+/// \param batchId 已处理的batch数
+/// \return
 bool HybridMgmt::ParseKeys(int channelId, int& batchId)
 {
 #ifndef GTEST
@@ -743,13 +658,15 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
         mgmtRankInfo.nBatch, channelId, batchId);
     TimeCost parseKeyTC;
     int start = batchId;
-    int iBatch = 0;
+    int iBatch = 0; // 预取数据处理计数
     bool ifHashmapFree = true;
-    bool remainBatch = true;
+    bool remainBatch = true; // 是否从通道获取了数据
     while (true) {
         LOG(INFO) << StringFormat(MGMT + "parse keys, [%d]:%d", channelId, batchId);
         for (const auto& embInfo : mgmtEmbInfo) {
             ifHashmapFree = ProcessEmbInfo(embInfo.name, batchId, channelId, iBatch, remainBatch);
+
+            // 通道数据已空
             if (!remainBatch) {
                 TimeCost embHdTrans1;
                 EmbHDTransWrap(channelId, batchId, start, iBatch);
@@ -775,26 +692,40 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
 }
 
 #ifndef GTEST
+/// 构造训练所需的各种向量数据
+/// \param embName 表名
+/// \param batchId 已处理的batch数
+/// \param channelId 通道索引（训练/推理）
+/// \param iBatch 预取数据处理计数
+/// \param remainBatchOut 是否从通道获取了数据
+/// \return HBM是否还有剩余空间
 bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
                                 int channelId, int iBatch, bool& remainBatchOut)
 {
     TimeCost getAndSendTensorsTC, getTensorsTC;
     auto& embHashMap = hostHashMaps->embHashMaps.at(embName);
+
+    // 进行新一批预取数据时，计数初始化
     if (iBatch == 0) {
         embHashMap.SetStartCount();
     }
+
+    // 获取查询向量
     auto lookupKeys = preprocess->GetLookupKeys(batchId, embName, channelId);
     if (lookupKeys.empty()) {
         remainBatchOut = false;
     }
 
+    // 获取各类向量，如果为空指针，退出当前函数
     auto infoVecs = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::RESTORE);
+    if (infoVecs == nullptr) { return false; }
     VLOG(GLOG_DEBUG) << StringFormat("getTensorsTC(ms):%d", getTensorsTC.ElapsedMS());
 
     TimeCost sendRestoreSyncTC;
     hdTransfer->Send(TransferChannel::RESTORE, *infoVecs, channelId, embName);
     VLOG(GLOG_DEBUG) << StringFormat("sendRestoreSyncTC(ms):%d", sendRestoreSyncTC.ElapsedMS());
 
+    // 计算查询向量；记录需要被换出的HBM偏移
     vector<Tensor> tmpData;
     vector<int32_t> offsetsOut;
     TimeCost hostHashMapProcessTC;
@@ -838,7 +769,11 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
     return true;
 }
 
-// send h2d & recv d2h emb
+/// 发送H2D和接收D2H向量
+/// \param channelId 通道索引（训练/推理）
+/// \param batchId 已处理的batch数
+/// \param start
+/// \param iBatch 预取数据处理计数
 void HybridMgmt::EmbHDTransWrap(int channelId, const int& batchId, int start, int iBatch)
 {
     if (iBatch == 0) {
@@ -858,6 +793,9 @@ void HybridMgmt::EmbHDTransWrap(int channelId, const int& batchId, int start, in
     }
 }
 
+/// 发送H2D和接收D2H向量，并更新host emb
+/// \param channelId 通道索引（训练/推理）
+/// \param batchId 已处理的batch数
 void HybridMgmt::EmbHDTrans(const int channelId, const int batchId)
 {
     EASY_FUNCTION(profiler::colors::Blue)
@@ -865,8 +803,9 @@ void HybridMgmt::EmbHDTrans(const int channelId, const int batchId)
     VLOG(GLOG_DEBUG) << StringFormat(MGMT + "trans emb, batchId:%d, channelId:%d", batchId, channelId);
     TimeCost tr;
     TimeCost h2dTC;
+    // 发送host需要换出的emb
     for (const auto& embInfo: mgmtEmbInfo) {
-        auto& missingKeys = hostHashMaps->embHashMaps.at(embInfo.name).missingKeysHostPos;
+        auto& missingKeys = hostHashMaps->GetMissingKeys(embInfo.name);
         vector<Tensor> h2dEmb;
         hostEmbs->GetH2DEmb(missingKeys, embInfo.name, h2dEmb); // order!
         hdTransfer->Send(TransferChannel::H2D, h2dEmb, channelId, embInfo.name, batchId);
@@ -874,16 +813,15 @@ void HybridMgmt::EmbHDTrans(const int channelId, const int batchId)
     VLOG(GLOG_DEBUG) << StringFormat("h2dTC(ms):%d", h2dTC.ElapsedMS());
 
     TimeCost d2hTC;
+    // 接收device换出的emb，并更新到host上
     for (const auto& embInfo: mgmtEmbInfo) {
         const auto& missingKeys = hostHashMaps->GetMissingKeys(embInfo.name);
-        if (!(skipUpdate && missingKeys.empty())) {
-            auto updateEmbV2 = getenv("UpdateEmb_V2");
-            if (updateEmbV2 != nullptr and atoi(updateEmbV2) == 1) {
-                hostEmbs->UpdateEmbV2(missingKeys, channelId, embInfo.name); // order!
-            } else {
-                hostEmbs->UpdateEmb(missingKeys, channelId, embInfo.name); // order!
-            }
-        } // skip when skip update and empty missing keys
+        auto updateEmbV2 = getenv("UpdateEmb_V2");
+        if (updateEmbV2 != nullptr and atoi(updateEmbV2) == 1) {
+            hostEmbs->UpdateEmbV2(missingKeys, channelId, embInfo.name); // order!
+        } else {
+            hostEmbs->UpdateEmb(missingKeys, channelId, embInfo.name); // order!
+        }
         hostHashMaps->ClearMissingKeys(embInfo.name);
     }
     VLOG(GLOG_DEBUG) << StringFormat("d2hTC(ms):%d", d2hTC.ElapsedMS());
@@ -892,23 +830,14 @@ void HybridMgmt::EmbHDTrans(const int channelId, const int batchId)
         "EmbHDTrans TimeCost(ms):%d batchId: %d channelId:%d", tr.ElapsedMS(), batchId, channelId
     );
 }
-
-void HybridMgmt::EmbHDTransDummy(int channelId, int batchId, const EmbInfo& embInfo)
-{
-    EASY_FUNCTION(profiler::colors::Blue)
-    EASY_VALUE("mgmtProcess", batchId)
-    LOG(INFO) << StringFormat(MGMT + "trans emb dummy, batchId:%d, channelId:%d", batchId, channelId);
-    auto transferName = TransferChannel::D2H;
-    auto d2hEmb = hdTransfer->Recv(transferName, channelId, embInfo.name)[0];
-    hdTransfer->Send(TransferChannel::H2D, {}, channelId, embInfo.name);
-}
 #endif
-/*
-* hook通过时间或者step数触发淘汰
-*/
+
+/// hook通过时间或者step数触发淘汰
+/// \return
 bool HybridMgmt::Evict()
 {
 #ifndef GTEST
+    // 配置了淘汰选项，则触发
     auto& featAdmitNEvict = preprocess->GetFeatAdmitAndEvict();
     if (featAdmitNEvict.GetFunctionSwitch()) {
         featAdmitNEvict.FeatureEvict(evictKeyMap);
@@ -917,6 +846,8 @@ bool HybridMgmt::Evict()
         return false;
     }
     VLOG(GLOG_DEBUG) << StringFormat(MGMT + "evict triggered by hook, evict TableNum %d ", evictKeyMap.size());
+
+    // 表为空，淘汰触发失败
     if (evictKeyMap.size() == 0) {
         LOG(WARNING) << (MGMT + "evict triggered by hook before dataset in injected");
         return false;
@@ -935,7 +866,9 @@ bool HybridMgmt::Evict()
 #endif
 }
 
-// ddr模式淘汰->删除映射表、初始化host表、发送dev淘汰位置
+/// DDR模式下的淘汰：删除映射表、初始化host表、发送dev淘汰位置
+/// \param embName
+/// \param keys
 void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
 {
 #ifndef GTEST
@@ -948,7 +881,7 @@ void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
     }
 
     // 初始化host侧的emb
-    auto& evictOffset = hostHashMaps->embHashMaps.at(embName).evictPos;
+    auto& evictOffset = hostHashMaps->GetEvictPos(embName);
     if (evictOffset.size() != 0) {
         VLOG(GLOG_DEBUG) << StringFormat(
             MGMT + "ddr mode, delete emb: [%s]! evict size on host:%d", embName.c_str(), evictOffset.size()

@@ -12,10 +12,15 @@
 using namespace MxRec;
 using namespace std;
 
+/// 1. acl初始化 2. 设置device 3. 为每张表创建数据传输通道
+/// \param embInfos 稀疏表元信息类的list
+/// \param localRankId 设备逻辑ID
+/// \return
 int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId)
 {
 #ifndef GTEST
     LOG(INFO) << StringFormat(MGMT + "begin hd_transfer initialize, rank:%d", localRankId);
+    // 使用AscendCL接口开发应用时，必须先调用aclInit接口，否则可能会导致后续系统内部资源初始化出错，进而导致其它业务异常。
     aclError retOk = aclInit(nullptr);
     LOG(INFO) << StringFormat(MGMT + "end aclInit, rank:%d", localRankId);
     if (retOk != ACL_SUCCESS) {
@@ -23,6 +28,7 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId)
         return false;
     }
     LOG(INFO) << StringFormat(MGMT + "start Set device, rank:%d", localRankId);
+    // 指定当前进程或线程中用于运算的Device，同时隐式创建默认Context
     auto ret = aclrtSetDevice(static_cast<int32_t>(localRankId));
     if (ret != ACL_ERROR_NONE) {
         LOG(ERROR) << StringFormat("Set device failed, device_id:%d", localRankId);
@@ -34,16 +40,24 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId)
         for (int i = 0; i < MAX_CHANNEL_NUM; ++i) {
             CreateChannel(localRankId, embInfo.name, i);
         }
+        // 创建acltdtDataset类型的数据，对等一个Vector<tensor>。同步接口。
         aclDatasets[embInfo.name] = acltdtCreateDataset();
     }
-    const char* timeoutEnv = getenv("AclTimeout");
-    if (timeoutEnv != nullptr) {
-        int32_t timeoutEnvCast = static_cast<int32_t>(std::atoi(timeoutEnv));
-        VLOG(GLOG_DEBUG) << StringFormat("timeoutEnv:%d", timeoutEnvCast);
-        if (timeoutEnvCast > INT32_MAX || timeoutEnvCast < -1) {
-            LOG(WARNING) << StringFormat("AclTimeout=%d is not valid", timeoutEnvCast);
-        } else {
-            timeout = timeoutEnvCast;
+    const int defaultAclTimeout = -1;
+    this->timeout = defaultAclTimeout;
+    const char *envTimeout = getenv("AclTimeout");
+    if (envTimeout != nullptr) {
+        try {
+            int32_t tmp = std::stoi(envTimeout);
+            if (tmp >= -1 && tmp <= INT32_MAX) {
+                this->timeout = tmp;
+                LOG(INFO) << StringFormat("Succeed to parse ${env:AclTimeout}: %d", tmp);
+            } else {
+                LOG(ERROR) << StringFormat("Failed to parse ${env:AclTimeout}: %d, expected in (0, INT32_MAX)", tmp);
+            }
+        } catch (const std::invalid_argument &e) {
+            LOG(ERROR) << StringFormat("Failed to parse ${env:AclTimeout}: %s, expected a integer, set to default: %d",
+                envTimeout, defaultAclTimeout);
         }
     }
     VLOG(GLOG_DEBUG) << StringFormat("hd transfer timeout:%d", timeout);
@@ -53,6 +67,7 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId)
     return true;
 }
 
+/// 删除所有通道和TDT dataset
 void HDTransfer::Destroy()
 {
 #ifndef GTEST
@@ -72,6 +87,10 @@ void HDTransfer::Destroy()
 #endif
 }
 
+/// 为每张表创建相应的数据传输通道（all2ll、restore、lookup等）
+/// \param localRankId 设备逻辑ID
+/// \param embName 表名
+/// \param channelNum 通道索引
 void HDTransfer::CreateChannel(const uint32_t localRankId, const string& embName, const int channelNum)
 {
 #ifndef GTEST
@@ -117,6 +136,12 @@ void HDTransfer::CreateChannel(const uint32_t localRankId, const string& embName
 #endif
 }
 
+/// 将tensor发送到channel
+/// \param channel 通道实例
+/// \param tensors 待发送数据
+/// \param channelId 通道索引（训练/推理）
+/// \param embName 表名
+/// \param batchId 已处理的batch数
 void HDTransfer::Send(TransferChannel channel, const vector<Tensor> &tensors, int channelId, const string &embName,
                       int batchId)
 {
@@ -167,6 +192,11 @@ void HDTransfer::Send(TransferChannel channel, const vector<Tensor> &tensors, in
 #endif
 }
 
+/// 接收从device发送过来的数据（D2H）；使用tfa封装的接口
+/// \param channel 通道实例
+/// \param channelId 通道索引（训练/推理）
+/// \param embName 表名
+/// \return
 vector<tensorflow::Tensor> HDTransfer::Recv(TransferChannel channel, int channelId, const string& embName)
 {
     EASY_FUNCTION()
@@ -195,9 +225,13 @@ vector<tensorflow::Tensor> HDTransfer::Recv(TransferChannel channel, int channel
     }
     return tensors;
 #endif
-    return {};
 }
 
+/// 接收从device发送过来的数据（D2H）, updateEmbV2函数使用；使用原生的aclTDT接口
+/// \param channel 通道实例
+/// \param channelId 通道索引（训练/推理）
+/// \param embName 表名
+/// \return
 size_t HDTransfer::RecvAcl(TransferChannel channel, int channelId, const string& embName)
 {
     EASY_FUNCTION()
@@ -219,14 +253,4 @@ size_t HDTransfer::RecvAcl(TransferChannel channel, int channelId, const string&
     LOG(INFO) << StringFormat("hd transfer recv:%s cost:%dms", recvName.c_str(), tc.ElapsedMS());
     return acltdtGetDatasetSize(aclDatasets[embName]);
 #endif
-    return 0;
-}
-
-size_t HDTransfer::QueryChannelSize(const string& channelName)
-{
-    size_t size = -1;
-#ifndef GTEST
-    acltdtQueryChannelSize(transferChannels[channelName], &size);
-#endif
-    return size;
 }

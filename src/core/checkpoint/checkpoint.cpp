@@ -7,7 +7,6 @@
 
 #include <iostream>
 #include <sys/mman.h>
-#include <cstring>
 #include <unistd.h>
 #include <sys/stat.h>
 
@@ -17,6 +16,7 @@
 #include "ckpt_data_handler/nddr_feat_map_ckpt/nddr_feat_map_ckpt.h"
 #include "ckpt_data_handler/feat_admit_n_evict_ckpt/feat_admit_n_evict_ckpt.h"
 #include "utils/time_cost.h"
+#include "utils/common.h"
 
 #include "checkpoint.h"
 
@@ -254,6 +254,9 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir)
 
     auto &AttributeArr = transData.attribute;
     auto embHashMapSize = AttributeArr.at(0);
+    if (embHashMapSize <= 0) {
+        throw runtime_error(StringFormat("Invalid EmbHashMapSize:%d, must be greater than 0", embHashMapSize).c_str());
+    }
     auto embeddingSize = static_cast<int>(datasetSize / sizeof(float) / embHashMapSize);
 
     aclError ret;
@@ -272,14 +275,12 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir)
         readFile.read((char *) (row.data()), embeddingSize * sizeof(float));
 
         aclError ret = aclrtMemcpy(floatPtr + i * embeddingSize, embeddingSize * sizeof(float),
-                                   row.data(), embeddingSize * sizeof(float),
-                                   ACL_MEMCPY_HOST_TO_DEVICE);
+                                   row.data(), embeddingSize * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
         if (ret != ACL_SUCCESS) {
             LOG(ERROR) << StringFormat("aclrtMemcpy failed, ret=%d", ret);
             readFile.close();
             throw runtime_error(StringFormat("aclrtMemcpy failed, ret=%d", ret).c_str());
         }
-
         int64_t address = reinterpret_cast<int64_t>(floatPtr + i * embeddingSize);
         transArr.at(i + 1) = address;
     }
@@ -484,18 +485,14 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
         LOG(ERROR) << "dataElmtBytes is 0, don't handle [/ %] operation";
         return ;
     }
-
     auto embDataOuterSize = transData.attribute.at(attribEmbDataOuterIdx);
-    auto loadHostEmbs = ckptData.hostEmbs;
-    auto& dst = (*loadHostEmbs)[embName].embData;
-    dst.reserve(embDataOuterSize);
-
+    if (embDataOuterSize <= 0) {
+        throw runtime_error(StringFormat("Invalid embDataOuterSize :%d", embDataOuterSize).c_str());
+    }
     std::ifstream readFile;
     readFile.open(dataDir.c_str(), std::ios::in | std::ios::binary | std::ios::ate);
-
     size_t datasetSize = static_cast<size_t>(readFile.tellg());
     readFile.seekg(0, std::ios::beg);
-
     try {
         ValidateReadFile(dataDir, datasetSize);
     } catch (const std::invalid_argument& e) {
@@ -508,6 +505,9 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
         readFile.close();
         throw runtime_error("unable to load EMB_DATA cause wrong-format saved emb data");
     }
+    auto loadHostEmbs = ckptData.hostEmbs;
+    auto& dst = (*loadHostEmbs)[embName].embData;
+    dst.reserve(embDataOuterSize);
     auto onceReadByteSize { datasetSize / embDataOuterSize };
 
     if (!readFile.is_open()) {
@@ -560,23 +560,5 @@ void Checkpoint::ReadDataset(CkptTransData& transData,
         readFile.read((char*)(transData.floatArr.data()) + idx, readSize);
     } else if (dataType == CkptDataType::ATTRIBUTE) {
         readFile.read((char*)(transData.attribute.data()) + idx, readSize);
-    }
-}
-
-void Checkpoint::ValidateReadFile(const string& dataDir, size_t datasetSize)
-{
-    // validate soft link
-    struct stat fileInfo;
-    if (lstat(dataDir.c_str(), &fileInfo) != -1) {
-        if (S_ISLNK(fileInfo.st_mode)) {
-            LOG(ERROR) << StringFormat("soft link %s should not in the path parameter", dataDir.c_str());
-            throw invalid_argument(StringFormat("soft link should not be the path parameter"));
-        }
-    }
-    // validate file size
-    if (datasetSize <= FILE_MIN_SIZE || datasetSize > FILE_MAX_SIZE) {
-        LOG(ERROR) << StringFormat("the reading file size is invalid, "
-                                   "not in not in (%d,%d]", FILE_MIN_SIZE, FILE_MAX_SIZE);
-        throw invalid_argument(StringFormat("file size invalid"));
     }
 }
