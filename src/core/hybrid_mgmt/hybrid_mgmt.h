@@ -17,6 +17,8 @@
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
+
+#include "utils/common.h"
 #include "utils/singleton.h"
 
 #include "host_emb/host_emb.h"
@@ -108,8 +110,6 @@ namespace MxRec {
     private:
         bool InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
                             const vector<ThresholdValue>& thresholdValues, int seed);
-
-        void CheckFastUnique(const char* envFastUnique);
 
         void InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfos);
 

@@ -18,8 +18,8 @@ from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
 from mx_rec.core.asc.feature_spec import FeatureSpec, get_feature_spec, set_temporary_feature_spec_attribute
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.constants.constants import (ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_ID_OFFSET,\
-    ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS, MxRecMode, ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, \
-    MULTI_LOOKUP_TIMES, ASCEND_TABLE_NAME_MUST_CONTAIN, MAX_INT32, All2allGradientsOp, ApplyGradientsStrategy)
+    ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS, MxRecMode, ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, MULTI_LOOKUP_TIMES,\
+    ASCEND_TABLE_NAME_MUST_CONTAIN, MAX_INT32, All2allGradientsOp, ApplyGradientsStrategy, MAX_HOST_VOCABULARY_SIZE)
 from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is_asc_frozen, get_customized_ops, \
     insert_table_instance, get_training_mode_channel_id, get_use_static, get_name_to_var_dict, \
     clear_channel, get_use_hot, get_device_id, ConfigInitializer, get_ascend_global_hashtable_collection, \
@@ -152,6 +152,9 @@ class SparseEmbedding:
             self.embedding_size = tf.TensorShape([self.embedding_size])
         self.device_vocabulary_size = config.get("device_vocabulary_size")
         self.host_vocabulary_size = config.get("host_vocabulary_size")
+        if self.host_vocabulary_size > MAX_HOST_VOCABULARY_SIZE:
+            raise ValueError(f"host_vocabulary_size is larger than {MAX_HOST_VOCABULARY_SIZE}.")
+
         self.table_name = config.get("table_name")
         self.key_dtype = config.get("key_dtype")
         self._optimizer_instance_list = config.get("optimizer_list")
@@ -614,7 +617,8 @@ class SparseEmbedding:
                 name: not in use
                 modify_graph: if True, the original graph will be modified before building a Session instance
 
-            Returns: Tensors for lookup result
+        Returns: Tensor for lookup result
+
         """
         logging.debug(f"Enter ASC Branch, looking up with FeatureSpec.")
         self.check_mode(MxRecMode.ASC)
@@ -696,7 +700,6 @@ class SparseEmbedding:
             def grad(lookup_diff):
                 logging.debug("Into lookup grad function, feature spec name: %s.", feature_spec.name)
                 embedding_diff = tf.reshape(lookup_diff, [-1, self.scalar_emb_size])
-
                 unique_grads = tf.compat.v1.unsorted_segment_sum(embedding_diff,
                                                                  restore_vector,
                                                                  unique_embeddings_shape[0])
@@ -740,7 +743,8 @@ class SparseEmbedding:
                 return sparse_forward(self.variable)
 
             local_embeddings = \
-                host_pipeline_ops.embedding_lookup_by_address(id_offsets, embedding_dim=self.emb_size, embedding_type=1)
+                host_pipeline_ops.embedding_lookup_by_address(id_offsets, embedding_dim=self.emb_size,
+                                                              embedding_type=1)
 
             is_table_name_valid = ASCEND_TABLE_NAME_MUST_CONTAIN is None or \
                                   ASCEND_TABLE_NAME_MUST_CONTAIN in self.table_name

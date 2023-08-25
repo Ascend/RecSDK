@@ -56,35 +56,13 @@ bool HybridMgmt::InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>&
     }
 
     // 设置是否使用AccCTR库提供的去重、分桶功能，默认关闭
-    const int defaultFastUnique = false;
-    PerfConfig::fastUnique = defaultFastUnique;
-    const char* envFastUnique = getenv("FAST_UNIQUE");
-    HybridMgmt::CheckFastUnique(envFastUnique);
-
+    PerfConfig::fastUnique = GetEnv("FAST_UNIQUE");
     // 初始化数据处理类，配置相关信息，启动处理线程
     preprocess = Singleton<KeyProcess>::GetInstance();
     preprocess->Initialize(rankInfo, embInfos, thresholdValues, seed);
     preprocess->Start();
 #endif
     return true;
-}
-
-void HybridMgmt::CheckFastUnique(const char *envFastUnique)
-{
-    if (envFastUnique != nullptr) {
-        try {
-            int tmp = std::stoi(envFastUnique);
-            if (tmp == 0 || tmp == 1) {
-                PerfConfig::fastUnique = (tmp == 1) ? true : false;
-                LOG(INFO) << StringFormat("Succeed to parse ${env:FAST_UNIQUE}: %d.", PerfConfig::fastUnique);
-            } else {
-                LOG(ERROR) << StringFormat("Invalid ${env:FAST_UNIQUE}: %s, which should be an 0 or 1.", envFastUnique);
-            }
-        } catch (const std::invalid_argument &e) {
-            LOG(ERROR) <<
-                StringFormat("Failed to parse ${env:FAST_UNIQUE}: %s, which should be an integer.", envFastUnique);
-        }
-    }
 }
 
 /// Openmpi通信域进程数设置、计算所有表host特征数量总数、设置训练模式（HBM/DDR）
