@@ -111,8 +111,6 @@ namespace MxRec {
         bool InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
                             const vector<ThresholdValue>& thresholdValues, int seed);
 
-        void CheckFastUnique(const char* envFastUnique);
-        
         void InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfos);
 
     private:
