@@ -486,7 +486,7 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
         return ;
     }
     auto embDataOuterSize = transData.attribute.at(attribEmbDataOuterIdx);
-    if (embDataOuterSize <= 0) {
+    if (embDataOuterSize <= 0 || embDataOuterSize > MAX_VOCABULARY_SIZE) {
         throw runtime_error(StringFormat("Invalid embDataOuterSize :%d", embDataOuterSize).c_str());
     }
     std::ifstream readFile;
