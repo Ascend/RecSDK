@@ -1,6 +1,9 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
  */
+#ifndef MXREC_ENGINE_H
+#define MXREC_ENGINE_H
+
 #include "table.h"
 
 #include <string>
@@ -54,3 +57,4 @@ namespace MxRec {
     };
 }
 
+#endif // MXREC_ENGINE_H
