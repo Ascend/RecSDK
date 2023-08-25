@@ -46,7 +46,7 @@ void EmbHashMap::Init(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
 }
 
 void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t iBatch,
-                         vector<Tensor>& tmpDataOut, int channelId, vector<int32_t>& offsetsOut)
+                         DDRParam& ddrParam, int channelId)
 {
 #ifndef GTEST
     EASY_FUNCTION(profiler::colors::Pink)
@@ -69,12 +69,12 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     swapId++;
     EASY_BLOCK("hostHashMaps->tdt")
 
-    std::copy(embHashMap.lookUpVec.begin(), embHashMap.lookUpVec.end(), std::back_inserter(offsetsOut));
+    std::copy(embHashMap.lookUpVec.begin(), embHashMap.lookUpVec.end(), std::back_inserter(ddrParam.offsetsOut));
 
     auto lookUpVecSize = static_cast<int>(embHashMap.lookUpVec.size());
-    tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { lookUpVecSize }));
+    ddrParam.tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { lookUpVecSize }));
 
-    auto lookupTensorData = tmpDataOut.back().flat<int32>();
+    auto lookupTensorData = ddrParam.tmpDataOut.back().flat<int32>();
     for (int i = 0; i < lookUpVecSize; i++) {
         lookupTensorData(i) = static_cast<int32_t>(embHashMap.lookUpVec[i]);
     }
@@ -82,9 +82,9 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
         VLOG(GLOG_TRACE) << StringFormat("lookupTensor, %s", VectorToString(embHashMap.lookUpVec).c_str());
     }
     auto swapSize = static_cast<int>(embHashMap.swapPos.size());
-    tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { swapSize }));
+    ddrParam.tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { swapSize }));
 
-    auto swapTensorData = tmpDataOut.back().flat<int32>();
+    auto swapTensorData = ddrParam.tmpDataOut.back().flat<int32>();
     for (int i = 0; i < swapSize; i++) {
         swapTensorData(i) = static_cast<int>(embHashMap.swapPos[i]);
     }
@@ -98,8 +98,8 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     embHashMap.lookUpVec.clear();
     LOG(INFO) << StringFormat("current ddr emb:%s, usage:%d/[%d+%d]", embName.c_str(), embHashMap.maxOffset,
                               embHashMap.devVocabSize, embHashMap.hostVocabSize);
-    tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { 1 }));
-    auto swapLen = tmpDataOut.back().flat<int32>();
+    ddrParam.tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { 1 }));
+    auto swapLen = ddrParam.tmpDataOut.back().flat<int32>();
     swapLen(0) = swapSize;
     EASY_END_BLOCK
 #endif

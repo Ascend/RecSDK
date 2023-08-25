@@ -14,7 +14,6 @@
 #include <csignal>
 #include <pthread.h>
 #include "absl/container/flat_hash_map.h"
-#include "utils/common.h"
 #include "utils/singleton.h"
 #include "utils/task_queue.h"
 #include "hd_transfer/hd_transfer.h"

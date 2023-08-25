@@ -173,21 +173,30 @@ namespace MxRec {
         time_t timestamp { -1 };
     };
 
-struct BatchTask {
-    vector<int> splits;
-    vector<string> embNames;
-    size_t batchSize;
-    int batchQueueId;
-    int batchId;
-    int channelId;
-    time_t timestamp { -1 };
-    bool flag; // true int64 false int32
-    const void *tensor;
-};
+    struct BatchTask {
+        vector<int> splits;
+        vector<string> embNames;
+        size_t batchSize;
+        int batchQueueId;
+        int batchId;
+        int channelId;
+        time_t timestamp { -1 };
+        bool flag; // true int64 false int32
+        const void *tensor;
+    };
 
     using emb_batch_t = Batch<int64_t>;
     using batch_task_t = BatchTask;
 
+    struct DDRParam {
+        vector<Tensor> tmpDataOut;
+        vector<int32_t> offsetsOut;
+        DDRParam(vector<Tensor> tmpData, vector<int32_t> offset)
+        {
+            tmpDataOut = tmpData;
+            offsetsOut = offset;
+        }
+    };
 
     struct RankInfo {
         RankInfo() = default;

@@ -13,6 +13,7 @@
 #include <array>
 #include "absl/container/flat_hash_map.h"
 #include "host_emb/host_emb.h"
+#include "utils/common.h"
 
 namespace MxRec {
     using namespace std;
@@ -24,7 +25,7 @@ namespace MxRec {
         void Init(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos, bool ifLoad = false);
 
         void Process(const string& embName, std::vector<emb_key_t>& keys, size_t iBatch,
-                     vector<Tensor>& tmpDataOut, int channelId, vector<int32_t>& offsetsOut);
+                     DDRParam& ddrParam, int channelId);
 
         void FindAndUpdateOffset(const string& embName, vector<emb_key_t>& keys, size_t currentBatchId,
                                  size_t keepBatchId, int channelId);

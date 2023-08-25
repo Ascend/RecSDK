@@ -8,7 +8,6 @@
 
 #include "checkpoint/checkpoint.h"
 #include "utils/time_cost.h"
-#include "utils/common.h"
 
 using namespace MxRec;
 using namespace std;
@@ -799,7 +798,8 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
     vector<Tensor> tmpData;
     vector<int32_t> offsetsOut;
     TimeCost hostHashMapProcessTC;
-    hostHashMaps->Process(embName, lookupKeys, iBatch, tmpData, channelId, offsetsOut);
+    DDRParam ddrParam(tmpData, offsetsOut);
+    hostHashMaps->Process(embName, lookupKeys, iBatch, ddrParam, channelId);
     VLOG(GLOG_DEBUG) << StringFormat("hostHashMapProcessTC(ms):%d", hostHashMapProcessTC.ElapsedMS());
 
     if (PerfConfig::gradientStrategy && channelId == TRAIN_CHANNEL_ID && remainBatchOut) {
@@ -817,9 +817,9 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
     }
 
     TimeCost sendTensorsTC;
-    hdTransfer->Send(TransferChannel::LOOKUP, { tmpData.front() }, channelId, embName);
-    tmpData.erase(tmpData.begin());
-    hdTransfer->Send(TransferChannel::SWAP, tmpData, channelId, embName);
+    hdTransfer->Send(TransferChannel::LOOKUP, { ddrParam.tmpDataOut.front() }, channelId, embName);
+    ddrParam.tmpDataOut.erase(ddrParam.tmpDataOut.begin());
+    hdTransfer->Send(TransferChannel::SWAP, ddrParam.tmpDataOut, channelId, embName);
     if (!mgmtRankInfo.useStatic) {
         auto all2all = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::ALL2ALL);
         hdTransfer->Send(TransferChannel::ALL2ALL, *all2all, channelId, embName);

@@ -688,7 +688,8 @@ class SparseEmbedding:
                 logging.debug("Into lookup grad function, feature spec name: %s.", feature_spec.name)
                 embedding_diff = tf.reshape(lookup_diff, [-1, self.scalar_emb_size])
 
-                unique_grads = tf.compat.v1.unsorted_segment_sum(embedding_diff, restore_vector,
+                unique_grads = tf.compat.v1.unsorted_segment_sum(embedding_diff,
+                                                                 restore_vector,
                                                                  unique_embeddings_shape[0])
                 bp_all2all_args = all2all_args if use_static else tf.transpose(all2all_args)
                 if hot_pos is not None:
@@ -698,24 +699,28 @@ class SparseEmbedding:
                 local_grad = self._get_own_emb(unique_grads, bp_all2all_args, self.scalar_emb_size, use_static)
                 if self.all2all_gradients_op == All2allGradientsOp.SUM_GRADIENTS_AND_DIV_BY_RANKSIZE:
                     try:
-                        local_grad = local_grad / get_rank_sizemin  ()
+                        local_grad = local_grad / get_rank_size()
                     except ZeroDivisionError as exp:
                         raise ZeroDivisionError("Rank size cannot be zero.") from exp
 
                 if use_dynamic_expansion:
                     if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
-                        update_grad = tf.compat.v1.unsorted_segment_sum(local_grad, restore_vector_second,
+                        update_grad = tf.compat.v1.unsorted_segment_sum(local_grad,
+                                                                        restore_vector_second,
                                                                         array_ops.shape(unique_keys)[0])
                     else:
                         update_grad = local_grad
                 else:
                     if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
-                        unique_local_grad = tf.compat.v1.unsorted_segment_sum(local_grad, restore_vector_second,
+                        unique_local_grad = tf.compat.v1.unsorted_segment_sum(local_grad,
+                                                                              restore_vector_second,
                                                                               array_ops.shape(unique_keys)[0])
-                        update_grad = ops.IndexedSlices(values=unique_local_grad, indices=unique_keys,
+                        update_grad = ops.IndexedSlices(values=unique_local_grad,
+                                                        indices=unique_keys,
                                                         dense_shape=tf.shape(table))
                     else:
-                        update_grad = ops.IndexedSlices(values=local_grad, indices=id_offsets,
+                        update_grad = ops.IndexedSlices(values=local_grad,
+                                                        indices=id_offsets,
                                                         dense_shape=tf.shape(table))
                 return update_grad
 
@@ -726,12 +731,11 @@ class SparseEmbedding:
                 return sparse_forward(self.variable)
 
             local_embeddings = \
-                host_pipeline_ops.embedding_lookup_by_address(id_offsets, embedding_dim=self.emb_size,
-                                                              embedding_type=1)
+                host_pipeline_ops.embedding_lookup_by_address(id_offsets, embedding_dim=self.emb_size, embedding_type=1)
 
             is_table_name_valid = ASCEND_TABLE_NAME_MUST_CONTAIN is None or \
                                   ASCEND_TABLE_NAME_MUST_CONTAIN in self.table_name
-            if is_training and is_table_name_valid:
+            def add_to_collection():
                 tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
                 if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
                     tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS, unique_keys)
@@ -740,6 +744,8 @@ class SparseEmbedding:
 
                 logging.debug(f"feature spec mode, table_name: {self.table_name}, "
                               f"ASCEND_TABLE_NAME_MUST_CONTAIN: {ASCEND_TABLE_NAME_MUST_CONTAIN}")
+            if is_training and is_table_name_valid:
+                add_to_collection()
 
             return sparse_forward(local_embeddings)
 

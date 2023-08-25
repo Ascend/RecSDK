@@ -12,13 +12,13 @@ SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 ROOT_DIR=$(dirname "${SCRIPT_DIR}")
 cd "$SCRIPT_DIR"
 
-if [ "$(uname -m)" = "x86_64" ]
-then
-  virtualenv -p "$(which python3.7)" tf2_env
-  source /opt/buildtools/tf2_env/bin/activate
-  tf2_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/tensorflow
-  deactivate tf2_env
-fi
+#if [ "$(uname -m)" = "x86_64" ]
+#then
+#  virtualenv -p "$(which python3.7)" tf2_env
+#  source /opt/buildtools/tf2_env/bin/activate
+#  tf2_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/tensorflow
+#  deactivate tf2_env
+#fi
 
 if [ "$(uname -m)" = "aarch64" ]
 then
@@ -143,13 +143,13 @@ then
   compile_acc_ctr_so_file
 
   echo "-----Build Start tf2 -----"
-  virtualenv -p "$(which python3.7)" tf2_env
-  source /opt/buildtools/tf2_env/bin/activate
+#  virtualenv -p "$(which python3.7)" tf2_env
+#  source /opt/buildtools/tf2_env/bin/activate
   compile_so_file "${tf2_path}"
   collect_so_file
   gen_wheel_file  "${ROOT_DIR}"/tf2_whl
 
-  deactivate tf2_env
+#  deactivate tf2_env
   echo "-----Build tf2 finished -----"
 fi
 
@@ -161,12 +161,12 @@ then
   compile_acc_ctr_so_file
 
   echo "-----Build Start tf2 -----"
-  source /opt/buildtools/tf2_env/bin/activate
+#  source /opt/buildtools/tf2_env/bin/activate
   compile_so_file "${tf2_path}"
   collect_so_file
   gen_wheel_file  "${ROOT_DIR}"/tf2_whl
 
-  deactivate tf2_env
+#  deactivate tf2_env
   echo "-----Build tf2 finished -----"
   gen_tar_file
   echo "-----Build gen tar finished-----"
