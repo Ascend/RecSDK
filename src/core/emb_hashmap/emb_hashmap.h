@@ -13,6 +13,7 @@
 #include <array>
 #include "absl/container/flat_hash_map.h"
 #include "host_emb/host_emb.h"
+#include "ssd_cache/cache_manager.h"
 #include "utils/common.h"
 
 namespace MxRec {
@@ -72,14 +73,22 @@ namespace MxRec {
             return embHashMaps.at(embName).evictPos;
         }
 
-    private:
-        RankInfo rankInfo;
-        int swapId { 0 };
+        bool isSSDEnabled { false };
+        CacheManager* cacheManager;
 
+    private:
         void FindAndUpdateBatchId(vector<emb_key_t>& keys, size_t currentBatchId, size_t keySize,
                                   EmbHashMapInfo& embHashMap) const;
 
         int32_t FindNewOffset(const emb_key_t& key, EmbHashMapInfo& embHashMap);
+
+        void RefreshFreqInfoWithSwap(const string& embName,
+                                     const std::vector<std::pair<emb_key_t, emb_key_t>>& oldSwap);
+
+        void AddKeyFreqInfo(const string& embTableName, const emb_key_t& key, RecordType type);
+
+        RankInfo rankInfo;
+        int swapId { 0 };
     };
 }
 

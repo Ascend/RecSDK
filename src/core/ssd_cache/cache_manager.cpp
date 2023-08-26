@@ -447,3 +447,25 @@ CacheManager::~CacheManager()
     ddrKeyFreqMap.clear();
     excludeDDRKeyCountMap.clear();
 }
+
+/// 加载数据到CacheManager
+/// \param ddrFreqInitMap ddr内key频次数据
+/// \param excludeDdrFreqInitMap 非DDR key频次数据
+void CacheManager::Load(unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>>& ddrFreqInitMap,
+                        unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>>& excludeDdrFreqInitMap)
+{
+    for (auto& it : ddrFreqInitMap) {
+        auto& embTableName = it.first;
+        auto& freqMap = it.second;
+        for (auto& freqIt : freqMap) {
+            ddrKeyFreqMap[embTableName].PutWithInit(freqIt.first, freqIt.second);
+        }
+    }
+    for (auto& it : excludeDdrFreqInitMap) {
+        auto& embTableName = it.first;
+        auto& freqMap = it.second;
+        for (auto& freqIt : freqMap) {
+            excludeDDRKeyCountMap[embTableName].emplace(freqIt.first, freqIt.second);
+        }
+    }
+}

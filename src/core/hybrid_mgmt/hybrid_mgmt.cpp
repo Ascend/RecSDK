@@ -76,13 +76,18 @@ void HybridMgmt::InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfo
 
     // 计算训练任务涉及的所有表在DDR中需要分配的key数量
     size_t totHostVocabSize = 0;
+    size_t totalSsdVocabSize = 0;
     for (const auto& emb : embInfos) {
         totHostVocabSize += emb.hostVocabSize;
+        totalSsdVocabSize += emb.ssdVocabSize;
     }
 
     // 根据DDR的key数量，配置存储模式HBM/DDR
     if (totHostVocabSize == 0) {
         rankInfo.noDDR = true;
+    }
+    if (totalSsdVocabSize != 0) {
+        rankInfo.isSSDEnabled = true;
     }
 #endif
 }
@@ -128,13 +133,20 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
 
     // DDR模式，初始化hashmap和host emb
     if (!rankInfo.noDDR) {
-        hostEmbs = make_unique<HostEmb>();
+        hostEmbs = Singleton<MxRec::HostEmb>::GetInstance();
         hostHashMaps = make_unique<EmbHashMap>();
         hostEmbs->Initialize(embInfos, seed);
         hostHashMaps->Init(rankInfo, embInfos, ifLoad);
     }
 
     // 非断点续训模式，启动数据传输
+    isSSDEnabled = rankInfo.isSSDEnabled;
+    if (isSSDEnabled) {
+        cacheManager = Singleton<MxRec::CacheManager>::GetInstance();
+        cacheManager->Init(hostEmbs, mgmtEmbInfo);
+        hostHashMaps->isSSDEnabled = this->isSSDEnabled;
+        hostHashMaps->cacheManager = this->cacheManager;
+    }
     isLoad = ifLoad;
     if (!isLoad) {
         Start();
@@ -669,6 +681,20 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
     return true;
 }
 
+inline void HandlePrepareDDRDataRet(TransferRet prepareSSDRet)
+{
+    LOG(ERROR) << "Transfer embedding with DDR and SSD error.";
+    if (prepareSSDRet == TransferRet::SSD_SPACE_NOT_ENOUGH) {
+        LOG(ERROR) << "PrepareDDRData: SSD available space is not enough.";
+        throw runtime_error("ssdVocabSize too small");
+    }
+    if (prepareSSDRet == TransferRet::DDR_SPACE_NOT_ENOUGH) {
+        LOG(ERROR) << "PrepareDDRData: DDR available space is not enough.";
+        throw runtime_error("ddrVocabSize too small");
+    }
+    throw runtime_error("Transfer embedding with DDR and SSD error.");
+}
+
 #ifndef GTEST
 /// 构造训练所需的各种向量数据
 /// \param embName 表名
@@ -685,9 +711,7 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
     auto& embHashMap = hostHashMaps->embHashMaps.at(embName);
 
     // 进行新一批预取数据时，计数初始化
-    if (iBatch == 0) {
-        embHashMap.SetStartCount();
-    }
+    if (iBatch == 0) { embHashMap.SetStartCount(); }
 
     // 获取查询向量
     auto lookupKeys = preprocess->GetLookupKeys(batchId, embName, channelId);
@@ -701,6 +725,9 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
     TimeCost sendRestoreSyncTC;
     hdTransfer->Send(TransferChannel::RESTORE, *infoVecs, channelId, embName);
     VLOG(GLOG_DEBUG) << StringFormat("sendRestoreSyncTC(ms):%d", sendRestoreSyncTC.ElapsedMS());
+
+    // 调用SSD cache缓存处理流程
+    PrepareDDRData(embName, embHashMap, lookupKeys, channelId);
 
     // 计算查询向量；记录需要被换出的HBM偏移
     vector<Tensor> tmpData;
@@ -836,6 +863,7 @@ bool HybridMgmt::Evict()
     } else {
         for (auto evict : evictKeyMap) {
             EvictKeys(evict.first, evict.second);
+            EvictSSDKeys(evict.first, evict.second);
         }
     }
     return true;
@@ -884,4 +912,33 @@ void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
 
     hdTransfer->Send(TransferChannel::EVICT, tmpDataOut, TRAIN_CHANNEL_ID, embName);
 #endif
+}
+
+inline void HybridMgmt::PrepareDDRData(const string& embTableName, EmbHashMapInfo& embHashMap,
+                                       const vector<emb_key_t>& keys, int channelId)
+{
+    if (!isSSDEnabled) {
+        return;
+    }
+    VLOG(GLOG_DEBUG) << "PrepareDDRData start.";
+    TimeCost prepareDDRDataTc;
+    TransferRet ret = cacheManager->TransferDDREmbWithSSD(embTableName, embHashMap, keys, channelId);
+    if (ret != TransferRet::TRANSFER_OK) {
+        HandlePrepareDDRDataRet(ret);
+    }
+    VLOG(GLOG_DEBUG) << StringFormat("PrepareDDRData end, TimeCost(ms):%d", prepareDDRDataTc.ElapsedMS());
+}
+
+void HybridMgmt::EvictSSDKeys(const string& embName, const vector<emb_key_t>& keys)
+{
+    if (!isSSDEnabled) {
+        return;
+    }
+    vector<emb_key_t> ssdKeys;
+    for (auto& key : keys) {
+        if (cacheManager->IsKeyInSSD(embName, key)) {
+            ssdKeys.emplace_back(key);
+        }
+    }
+    cacheManager->EvictSSDEmbedding(embName, ssdKeys);
 }

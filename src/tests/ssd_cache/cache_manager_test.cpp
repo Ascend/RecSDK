@@ -9,6 +9,8 @@
 #include <gtest/gtest.h>
 #include <mpi.h>
 
+#define GTEST
+
 #include "absl/container/flat_hash_map.h"
 #include "host_emb/host_emb.h"
 #include "ssd_cache/lfu_cache.h"
@@ -349,4 +351,35 @@ TEST_F(CacheManagerTest, EvictSSDEmbedding)
     const auto it = cacheManager.excludeDDRKeyCountMap[embTableName].find(key);
     ASSERT_EQ(it, cacheManager.excludeDDRKeyCountMap[embTableName].end());
     LOG(INFO) << "test EvictSSDEmbedding end.";
+}
+
+TEST_F(CacheManagerTest, LoadTest)
+{
+    cacheManager.ddrKeyFreqMap.clear();
+    cacheManager.excludeDDRKeyCountMap.clear();
+    unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>> ddrMap;
+    string embTableName = "table1";
+    unordered_map<emb_key_t, freq_num_t> ddrTableMap;
+    ddrTableMap.emplace(1, 3);
+    ddrTableMap.emplace(2, 3);
+    ddrTableMap.emplace(3, 3);
+    ddrTableMap.emplace(4, 2);
+    ddrTableMap.emplace(6, 2);
+    ddrTableMap.emplace(8, 1);
+    ddrTableMap.emplace(9, 1);
+    ddrMap.emplace(embTableName, ddrTableMap);
+    unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>> excludeDdrMap;
+    unordered_map<emb_key_t, freq_num_t> excludeDdrTableMap;
+    excludeDdrTableMap.emplace(15, 1);
+    excludeDdrTableMap.emplace(25, 5);
+    excludeDdrMap.emplace(embTableName, excludeDdrTableMap);
+    cacheManager.Load(ddrMap, excludeDdrMap);
+    // 数据检查
+    auto& ddrKeyFreqMap = cacheManager.ddrKeyFreqMap;
+    auto& excludeDDRKeyCountMap = cacheManager.excludeDDRKeyCountMap;
+    ASSERT_EQ(ddrKeyFreqMap[embTableName].minFreq, 1);
+    ASSERT_EQ(ddrKeyFreqMap[embTableName].freqTable.size(), 3);
+    ASSERT_EQ(ddrKeyFreqMap[embTableName].Get(2), 3);
+    ASSERT_EQ(ddrKeyFreqMap[embTableName].Get(12), -1);
+    ASSERT_EQ(excludeDDRKeyCountMap[embTableName][25], 5);
 }

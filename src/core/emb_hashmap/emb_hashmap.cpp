@@ -45,6 +45,12 @@ void EmbHashMap::Init(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
 #endif
 }
 
+inline void ClearLookupAndSwapOffset(EmbHashMapInfo& embHashMap)
+{
+    embHashMap.swapPos.clear();
+    embHashMap.lookUpVec.clear();
+}
+
 /// DDR模型下处理特征的offset、swap信息等
 /// \param embName 表名
 /// \param keys 查询向量
@@ -73,6 +79,9 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
         FindOffset(embName, keys, swapId, keepBatch, channelId);
     }
     VLOG(GLOG_DEBUG) << "FindOffset end";
+
+    // 调用刷新频次数据方法
+    RefreshFreqInfoWithSwap(embName, embHashMap.oldSwap);
 
     swapId++;
     EASY_BLOCK("hostHashMaps->tdt")
@@ -107,8 +116,7 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     }
 
     // 清空本次记录的查询偏移和交换偏移
-    embHashMap.swapPos.clear();
-    embHashMap.lookUpVec.clear();
+    ClearLookupAndSwapOffset(embHashMap);
     LOG(INFO) << StringFormat("current ddr emb:%s, usage:%d/[%d+%d]", embName.c_str(), embHashMap.maxOffset,
                               embHashMap.devVocabSize, embHashMap.hostVocabSize);
     ddrParam.tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { 1 }));
@@ -296,7 +304,8 @@ void EmbHashMap::EvictDeleteEmb(const string& embName, const vector<emb_key_t>& 
     EASY_FUNCTION()
     size_t keySize = keys.size();
     auto& embHashMap = embHashMaps.at(embName);
-
+    vector<emb_key_t> evictHBMRKeys;
+    vector<emb_key_t> evictDDRKeys;
     for (size_t i = 0; i < keySize; i++) {
         size_t offset;
         auto key = keys[i];
@@ -319,10 +328,14 @@ void EmbHashMap::EvictDeleteEmb(const string& embName, const vector<emb_key_t>& 
             embHashMap.devOffset2KeyOld.emplace_back(offset, embHashMap.devOffset2Key[offset]);
             embHashMap.devOffset2Key[offset] = -1;
             embHashMap.evictDevPos.emplace_back(offset);
+            evictHBMRKeys.emplace_back(key);
         } else {
-            embHashMap.evictPos.emplace_back(offset - embHashMap.devVocabSize);
+            embHashMap.evictPos.emplace_back(offset);
+            evictDDRKeys.emplace_back(key);
         }
     }
+    cacheManager->RefreshFreqInfoCommon(embName, evictHBMRKeys, TransferType::HBM_2_EVICT);
+    cacheManager->RefreshFreqInfoCommon(embName, evictDDRKeys, TransferType::DDR_2_EVICT);
 
     LOG(INFO) << StringFormat(
         "ddr EvictDeleteEmb, emb: [%s], hostEvictSize: %d, devEvictSize: %d ",
@@ -364,10 +377,12 @@ void EmbHashMap::FindOffset(const string& embName, const vector<emb_key_t>& keys
             embHashMap.lookUpVec.emplace_back(offset);
             embHashMap.devOffset2KeyOld.emplace_back(offset, static_cast<int>(embHashMap.devOffset2Key[offset]));
             embHashMap.devOffset2Key[offset] = key;
+            AddKeyFreqInfo(embName, key, RecordType::NOT_DDR);
         } else {
             // 偏移大于HBM容量：记录在host emb上的偏移；找到需要交换的HBM偏移
             embHashMap.missingKeysHostPos.emplace_back(offset - embHashMap.devVocabSize);
             FindSwapPosOld(embName, key, offset, currentBatchId, keepBatchId);
+            AddKeyFreqInfo(embName, key, RecordType::DDR);
         }
     }
     if (currentBatchId == 0) {
@@ -533,4 +548,36 @@ bool EmbHashMap::FindSwapPosOld(const string& embName, emb_key_t key, size_t hos
     }
     return true;
 }
+
+/// HBM-DDR换入换出时刷新频次信息
+/// \param embName emb表名
+/// \param oldSwap 换入换出key列表，元素为pair: pair<oldKey, key> oldKey为从HBM移出的key, key为从DDR移出的key
+void EmbHashMap::RefreshFreqInfoWithSwap(const string& embName,
+                                         const std::vector<std::pair<emb_key_t, emb_key_t>>& oldSwap)
+{
+    if (!isSSDEnabled) {
+        return;
+    }
+    vector<emb_key_t> enterDDRKeys;
+    vector<emb_key_t> leaveDDRKeys;
+    for (auto keyPair : oldSwap) {
+        enterDDRKeys.emplace_back(keyPair.first);
+        leaveDDRKeys.emplace_back(keyPair.second);
+    }
+    cacheManager->RefreshFreqInfoCommon(embName, enterDDRKeys, TransferType::HBM_2_DDR);
+    cacheManager->RefreshFreqInfoCommon(embName, leaveDDRKeys, TransferType::DDR_2_HBM);
+}
+
+/// 记录key频次数据
+/// \param embTableName emb表名
+/// \param key key
+/// \param type 记录类型枚举
+void EmbHashMap::AddKeyFreqInfo(const string& embTableName, const emb_key_t& key, RecordType type)
+{
+    if (!isSSDEnabled) {
+        return;
+    }
+    cacheManager->PutKey(embTableName, key, type);
+}
+
 #endif
