@@ -60,6 +60,7 @@ namespace MxRec {
     constexpr int KEY_PROCESS_THREAD = 6;
     constexpr char SUM_SAME_ID[] = "sum_same_id_gradients_and_apply";
     constexpr int MAX_VOCABULARY_SIZE = 1e9;
+    constexpr int SSD_SIZE_INDEX = 2;
 
     // for GLOG
     extern int g_glogLevel;
@@ -218,6 +219,7 @@ namespace MxRec {
         uint32_t option {};
         int nBatch {};
         bool noDDR { false };
+        bool isSSDEnabled { false };
         bool useDynamicExpansion {false};
         std::vector<int> maxStep;
     };
@@ -448,12 +450,14 @@ namespace MxRec {
                 int extEmbeddingSize,
                 bool isSave,
                 std::vector<size_t> vocabsize,
-                std::vector<InitializeInfo> initializeInfos)
+                std::vector<InitializeInfo> initializeInfos,
+                std::vector<std::string> ssdDataPath)
             : name(name), sendCount(sendCount), embeddingSize(embeddingSize), extEmbeddingSize(extEmbeddingSize),
-              isSave(isSave), initializeInfos(initializeInfos)
+              isSave(isSave), initializeInfos(initializeInfos), ssdDataPath(std::move(ssdDataPath))
         {
             devVocabSize = vocabsize[0];
             hostVocabSize = vocabsize[1];
+            ssdVocabSize = vocabsize[SSD_SIZE_INDEX];
         }
 
         std::string name;
@@ -463,7 +467,9 @@ namespace MxRec {
         bool isSave;
         size_t devVocabSize;
         size_t hostVocabSize;
+        size_t ssdVocabSize;
         std::vector<InitializeInfo> initializeInfos;
+        std::vector<std::string> ssdDataPath;
     };
 
     struct HostEmbTable {
