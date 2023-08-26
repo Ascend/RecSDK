@@ -11,7 +11,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.util import compat
 
-from mx_rec.constants.constants import DataName, DataAttr, MIN_SIZE, MAX_SIZE
+from mx_rec.constants.constants import DataName, DataAttr, MIN_SIZE, MAX_FILE_SIZE
 from mx_rec.util.initialize import get_rank_id, get_rank_size, get_customized_ops, get_table_instance, \
     get_table_instance_by_name, is_asc_manager_initialized, save_host_data, restore_host_data, get_host_data, \
     send_host_data, get_ascend_global_hashtable_collection
@@ -411,7 +411,7 @@ def validate_read_file(read_file_path):
     :param read_file_path: the file path to be validated
     """
     file_validator = FileValidator(read_file_path)
-    file_validator.check_file_size(MAX_SIZE, MIN_SIZE)
+    file_validator.check_file_size(MAX_FILE_SIZE, MIN_SIZE)
     # local file need to check soft link
     if read_file_path.find("://") == -1:
         file_validator.check_not_soft_link()

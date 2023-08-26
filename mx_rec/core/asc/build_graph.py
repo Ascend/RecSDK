@@ -102,11 +102,18 @@ def get_unique_keys(max_lookup_vec_size: int, config: dict) -> tf.Tensor:
     """
     logging.debug(f'Channel {config.get("table_name")}_uniquekeys_{config.get("channel_id")} was built for getnext')
     with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
+        if config.get("use_dynamic_expansion"):
+            unique_keys = npu_ops.gen_npu_ops.get_next(
+                output_types=[tf.int64],
+                output_shapes=[[max_lookup_vec_size]],
+                channel_name=f'{config.get("table_name")}_uniquekeys_{config.get("channel_id")}')[0]
+            return unique_keys
+
         unique_keys = npu_ops.gen_npu_ops.get_next(
             output_types=[tf.int32],
             output_shapes=[[max_lookup_vec_size]],
             channel_name=f'{config.get("table_name")}_uniquekeys_{config.get("channel_id")}')[0]
-    return unique_keys
+        return unique_keys
 
 
 def get_all2all_args(use_static: bool, config: dict) -> list:

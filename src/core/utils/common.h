@@ -59,6 +59,8 @@ namespace MxRec {
     constexpr int DEFAULT_KEY_PROCESS_THREAD = 6;
     constexpr int KEY_PROCESS_THREAD = 6;
     constexpr char SUM_SAME_ID[] = "sum_same_id_gradients_and_apply";
+    constexpr int MAX_VOCABULARY_SIZE = 1e9;
+    constexpr int SSD_SIZE_INDEX = 2;
 
     // for GLOG
     extern int g_glogLevel;
@@ -175,21 +177,30 @@ namespace MxRec {
         time_t timestamp { -1 };
     };
 
-struct BatchTask {
-    vector<int> splits;
-    vector<string> embNames;
-    size_t batchSize;
-    int batchQueueId;
-    int batchId;
-    int channelId;
-    time_t timestamp { -1 };
-    bool flag; // true int64 false int32
-    const void *tensor;
-};
+    struct BatchTask {
+        vector<int> splits;
+        vector<string> embNames;
+        size_t batchSize;
+        int batchQueueId;
+        int batchId;
+        int channelId;
+        time_t timestamp { -1 };
+        bool flag; // true int64 false int32
+        const void *tensor;
+    };
 
     using emb_batch_t = Batch<int64_t>;
     using batch_task_t = BatchTask;
 
+    struct DDRParam {
+        vector<Tensor> tmpDataOut;
+        vector<int32_t> offsetsOut;
+        DDRParam(vector<Tensor> tmpData, vector<int32_t> offset)
+        {
+            tmpDataOut = tmpData;
+            offsetsOut = offset;
+        }
+    };
 
     struct RankInfo {
         RankInfo() = default;
@@ -283,6 +294,8 @@ struct BatchTask {
     void SetLog(int rank);
 
     void CustomGlogFormat(std::ostream &s, const google::LogMessageInfo &l, void*);
+
+    bool GetEnv(const char *envName);
 
     template<typename ... Args>
     string StringFormat(const string& format, Args ... args)
@@ -444,7 +457,7 @@ struct BatchTask {
         {
             devVocabSize = vocabsize[0];
             hostVocabSize = vocabsize[1];
-            ssdVocabSize = vocabsize[2];
+            ssdVocabSize = vocabsize[SSD_SIZE_INDEX];
         }
 
         std::string name;

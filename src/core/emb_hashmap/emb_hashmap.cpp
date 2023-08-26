@@ -52,7 +52,7 @@ void EmbHashMap::Init(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
 /// \param tmpDataOut 临时向量
 /// \param channelId 通道索引（训练/推理）
 void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t iBatch,
-                         vector<Tensor>& tmpDataOut, int channelId)
+                         DDRParam& ddrParam, int channelId)
 {
 #ifndef GTEST
     EASY_FUNCTION(profiler::colors::Pink)
@@ -62,7 +62,8 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     embHashMap.maxOffsetOld = embHashMap.maxOffset;
 
     auto keepBatch = swapId - iBatch; // 处理batch的次数，多个预取一起处理算一次
-    bool findOffsetV2 = getenv("FIND_OFFSET_V2") != nullptr;
+    bool findOffsetV2 = GetEnv("FIND_OFFSET_V2");
+
     VLOG(GLOG_DEBUG) << StringFormat("FindOffset version:%d", findOffsetV2);
 
     // 找到所有key的偏移；dev和host需要交换的位置
@@ -76,11 +77,13 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     swapId++;
     EASY_BLOCK("hostHashMaps->tdt")
 
+    std::copy(embHashMap.lookUpVec.begin(), embHashMap.lookUpVec.end(), std::back_inserter(ddrParam.offsetsOut));
+
     // 构造查询向量tensor
     auto lookUpVecSize = static_cast<int>(embHashMap.lookUpVec.size());
-    tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { lookUpVecSize }));
+    ddrParam.tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { lookUpVecSize }));
 
-    auto lookupTensorData = tmpDataOut.back().flat<int32>();
+    auto lookupTensorData = ddrParam.tmpDataOut.back().flat<int32>();
     for (int i = 0; i < lookUpVecSize; i++) {
         lookupTensorData(i) = static_cast<int32_t>(embHashMap.lookUpVec[i]);
     }
@@ -90,9 +93,9 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
 
     // 构造交换向量tensor
     auto swapSize = static_cast<int>(embHashMap.swapPos.size());
-    tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { swapSize }));
+    ddrParam.tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { swapSize }));
 
-    auto swapTensorData = tmpDataOut.back().flat<int32>();
+    auto swapTensorData = ddrParam.tmpDataOut.back().flat<int32>();
     for (int i = 0; i < swapSize; i++) {
         swapTensorData(i) = static_cast<int>(embHashMap.swapPos[i]);
     }
@@ -108,10 +111,8 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     embHashMap.lookUpVec.clear();
     LOG(INFO) << StringFormat("current ddr emb:%s, usage:%d/[%d+%d]", embName.c_str(), embHashMap.maxOffset,
                               embHashMap.devVocabSize, embHashMap.hostVocabSize);
-
-    // 构造交换数量的tensor
-    tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { 1 }));
-    auto swapLen = tmpDataOut.back().flat<int32>();
+    ddrParam.tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { 1 }));
+    auto swapLen = ddrParam.tmpDataOut.back().flat<int32>();
     swapLen(0) = swapSize;
     EASY_END_BLOCK
 #endif
@@ -203,7 +204,7 @@ void EmbHashMap::FindAndUpdateBatchId(vector<emb_key_t>& keys, size_t currentBat
                                       EmbHashMapInfo& embHashMap) const
 {
     EASY_FUNCTION()
-    bool findOffsetV3 = getenv("FIND_OFFSET_V3") != nullptr;
+    bool findOffsetV3 = GetEnv("FIND_OFFSET_V3");
     for (size_t i = 0; i < keySize; i++) {
         int offset;
         auto& key = keys[i];

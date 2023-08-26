@@ -163,10 +163,10 @@ TransferRet CacheManager::TransferDDREmbWithSSD(const std::string& embTableName,
 void CacheManager::RefreshRelateInfoWithSSD2DDR(const std::string& embTableName, EmbHashMapInfo& embHashMap,
                                                 vector<emb_key_t>& externalSSDKeys, vector<size_t>& ddrTransferPos)
 {
-    for (size_t i = 0; i < externalSSDKeys.size(); i++) {
+    for (size_t i = 0; i < externalSSDKeys.size(); ++i) {
         // 映射关系 ddrTransferPos是在ddrEmbHash中的位置，记录映射时需加上devVocabSize
         auto& key = externalSSDKeys[i];
-        embHashMap.hostHashMap[externalSSDKeys[i]] = ddrTransferPos[i] + embHashMap.devVocabSize;
+        embHashMap.hostHashMap[key] = ddrTransferPos[i] + embHashMap.devVocabSize;
         // 频次
         ddrKeyFreqMap[embTableName].PutWithInit(key, excludeDDRKeyCountMap[embTableName][key]);
         excludeDDRKeyCountMap[embTableName].erase(key);
@@ -189,7 +189,7 @@ void CacheManager::GetDDREmbInfo(vector<emb_key_t>& keys, const std::string& emb
     ddrEmbData.resize(keys.size());
     const auto& emb = hostEmbs->GetEmb(embTableName);
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) shared(ddrTransferPos, emb, ddrEmbData)
-    for (size_t i = 0; i < ddrTransferPos.size(); i++) {
+    for (size_t i = 0; i < ddrTransferPos.size(); ++i) {
         auto& missingKeyPo = ddrTransferPos[i];
         const auto& src = emb.embData[missingKeyPo];
         ddrEmbData[i] = src;
@@ -207,7 +207,7 @@ void CacheManager::UpdateDDREmbInfo(const std::string& embTableName,
     auto& emb = hostEmbs->GetEmb(embTableName);
     auto& embData = emb.embData;
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) shared(ddrTransferPos, embData, ssdEmbData)
-    for (size_t i = 0; i < ddrTransferPos.size(); i++) {
+    for (size_t i = 0; i < ddrTransferPos.size(); ++i) {
         embData[ddrTransferPos[i]] = ssdEmbData[i];
     }
 }
@@ -222,7 +222,7 @@ void CacheManager::RefreshRelateInfoWithDDR2SSD(const string& embTableName, EmbH
                                                 vector<freq_num_t>& ddrSwapOutCounts)
 {
     auto& excludeFreqMap = excludeDDRKeyCountMap[embTableName];
-    for (size_t i = 0; i < ddrSwapOutKeys.size(); i++) {
+    for (size_t i = 0; i < ddrSwapOutKeys.size(); ++i) {
         auto& key = ddrSwapOutKeys[i];
         embHashMap.hostHashMap.erase(key);
         excludeFreqMap[key] = ddrSwapOutCounts[i];
@@ -366,7 +366,7 @@ TransferRet CacheManager::TransferDDREmb2SSD(const string& embTableName, EmbHash
     vector<freq_num_t> ddrSwapOutCounts;
     ddrKeyFreqMap[embTableName].GetAndDeleteLeastFreqKeyInfo(ddrSwapOutSize, keys, ddrSwapOutKeys,
                                                              ddrSwapOutCounts);
-    if (ddrSwapOutKeys.size() != ddrSwapOutSize) {
+    if (static_cast<int64_t>(ddrSwapOutKeys.size()) != ddrSwapOutSize) {
         // 获取的最低频次key数量和预期不一致，DDR空间不足，不能放置当前批次数据
         LOG(ERROR) << StringFormat(
             "TransferDDREmbWithSSD, vector length is not equal, ddrSwapOutKeys size:%d, ddrSwapOutSize:%lld",
@@ -401,10 +401,10 @@ TransferRet CacheManager::TransferSSDEmb2DDR(const string& embTableName, EmbHash
     TimeCost ssd2DdrTc;
     VLOG(GLOG_DEBUG) << StringFormat("TransferDDREmbWithSSD: get SSD embeddings and save to DDR, size:%d",
                                      externalSSDKeys.size());
-    if (ddrTransferPos.size() != externalSSDKeys.size()) {
+    if (ddrTransferPos.size() != externalSSDKeys.size() || externalSSDKeys.size() != ssdEmbData.size()) {
         LOG(ERROR) << StringFormat(
-            "TransferDDREmbWithSSD, vector length is not equal, ddrTransferPos len:%d, externalSSDKeys len:%d",
-            ddrTransferPos.size(), externalSSDKeys.size());
+            "TransferDDREmbWithSSD, vector length is not equal, ddrTransferPos len:%d, externalSSDKeys len:%d, "
+            "ssdEmbData len:%d", ddrTransferPos.size(), externalSSDKeys.size(), ssdEmbData.size());
         return TransferError();
     }
     // 将SSD emb存储到DDR中 刷新频次信息
@@ -426,6 +426,7 @@ void CacheManager::CreateSSDTableIfNotExist(const std::string& embTableName)
         LOG(INFO) << ("create ssd table end, embTableName:" + embTableName);
         return;
     }
+    // 续训场景：embBaseInfos 没有保存，不会初始化；SSD表会初始化，此时表已存在
     embBaseInfos[embTableName].isExist = true;
     LOG(INFO) << ("ssd table is exist, embTableName:" + embTableName);
 }
@@ -434,7 +435,7 @@ void CacheManager::RestoreLeastFreqInfo(const std::string& embTableName, vector<
                                         vector<freq_num_t>& ddrSwapOutCounts)
 {
     auto& lfuCache = ddrKeyFreqMap[embTableName];
-    for (size_t i = 0; i < ddrSwapOutKeys.size(); i++) {
+    for (size_t i = 0; i < ddrSwapOutKeys.size(); ++i) {
         lfuCache.PutWithInit(ddrSwapOutKeys[i], ddrSwapOutCounts[i]);
     }
 }
