@@ -4,6 +4,7 @@
 
 import logging
 import math
+import os
 import re
 from collections import defaultdict
 from typing import Optional
@@ -27,6 +28,24 @@ from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is
 from mx_rec.validator.validator import ClassValidator, StringValidator
 
 
+def check_ssd_vocab_param(host_vocabulary_size, ssd_vocabulary_size, ssd_data_path):
+    h_size = 0
+    s_size = 0
+    try:
+        h_size = int(host_vocabulary_size)
+        s_size = int(ssd_vocabulary_size)
+    except ValueError:
+        raise ValueError("exist invalid value in host_vocabulary_size or ssd_vocabulary_size or both.")
+    if h_size == 0 and s_size != 0:
+        raise ValueError("ssd_vocabulary_size value is invalid, it need host_vocabulary_size value not equals 0.")
+    invalid_ssd_data_path = []
+    for tmpPath in ssd_data_path:
+        if not os.path.exists(tmpPath) or not os.path.isdir(tmpPath) or ".." in tmpPath:
+            invalid_ssd_data_path.append(tmpPath)
+    if invalid_ssd_data_path:
+        raise ValueError("ssd_data_path value is invalid, detail:{}.".format(", ".join(invalid_ssd_data_path)))
+
+
 def create_table(**kwargs):
     """
     Args:
@@ -36,6 +55,8 @@ def create_table(**kwargs):
         emb_initializer: the initializer for embedding values
         device_vocabulary_size: embedding vector numbers on device
         host_vocabulary_size: embedding vector numbers on ddr
+        ssd_vocabulary_size: embedding vector numbers on ssd
+        ssd_data_path: ssd embedding data save and load path
         relation from feature to variable offset will be built
         optimizer_list: specify the optimizers to use for current hash table
         mode: specify which mode to run for current sparse table
@@ -55,6 +76,8 @@ def create_table(**kwargs):
     emb_initializer = kwargs.get("emb_initializer")
     device_vocabulary_size = kwargs.get("device_vocabulary_size", 1)
     host_vocabulary_size = kwargs.get("host_vocabulary_size", 0)
+    ssd_vocabulary_size = kwargs.get("ssd_vocabulary_size", 0)
+    ssd_data_path = kwargs.get("ssd_data_path", [os.getcwd()])
     optimizer_list = kwargs.get("optimizer_list")
     mode = kwargs.get("mode", MxRecMode.ASC)
     value_dtype = kwargs.get("value_dtype", tf.float32)
@@ -68,9 +91,11 @@ def create_table(**kwargs):
 
     name = fix_invalid_table_name(name)
     check_create_table_params(key_dtype, dim, name, emb_initializer)
+    check_ssd_vocab_param(host_vocabulary_size, ssd_vocabulary_size, ssd_data_path)
 
     config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
                   device_vocabulary_size=device_vocabulary_size, host_vocabulary_size=host_vocabulary_size,
+                  ssd_vocabulary_size=ssd_vocabulary_size, ssd_data_path=ssd_data_path,
                   optimizer_list=optimizer_list, mode=mode, value_dtype=value_dtype, shard_num=shard_num,
                   fusion_optimizer_var=fusion_optimizer_var, hashtable_threshold=hashtable_threshold,
                   init_param=init_param, is_save=is_save, all2all_gradients_op=all2all_gradients_op,
@@ -152,6 +177,8 @@ class SparseEmbedding:
             self.embedding_size = tf.TensorShape([self.embedding_size])
         self.device_vocabulary_size = config.get("device_vocabulary_size")
         self.host_vocabulary_size = config.get("host_vocabulary_size")
+        self.ssd_vocabulary_size = config.get("ssd_vocabulary_size")
+        self.ssd_data_path = config.get("ssd_data_path")
         self.table_name = config.get("table_name")
         self.key_dtype = config.get("key_dtype")
         self._optimizer_instance_list = config.get("optimizer_list")
@@ -171,6 +198,7 @@ class SparseEmbedding:
         self._optimizer = dict()
         self.slice_device_vocabulary_size = 0
         self.slice_host_vocabulary_size = 0
+        self.slice_ssd_vocabulary_size = 0
         self.variable = None
         self.lookup_info = set()
         self.lookup_result = dict()
@@ -352,6 +380,7 @@ class SparseEmbedding:
         else:
             self.slice_device_vocabulary_size = math.ceil(self.device_vocabulary_size / rank_size)
             self.slice_host_vocabulary_size = math.ceil(self.host_vocabulary_size / rank_size)
+            self.slice_ssd_vocabulary_size = math.ceil(self.ssd_vocabulary_size / rank_size)
 
     def register_anchor_attribute(self, anchor_ids, feature_spec, kwargs):
         SparseEmbedding.anchor_tensor_specs[anchor_ids][ASCAnchorAttr.TABLE_INSTANCE] = self
@@ -755,6 +784,9 @@ class SparseEmbedding:
         logging.debug(f"Host vocabulary size for table {self.table_name} is {self.host_vocabulary_size}.")
         logging.debug(f"Slice host vocabulary_size for table {self.table_name} is"
                       f" {self.slice_host_vocabulary_size}.")
+        logging.debug(f"SSD vocabulary size for table {self.table_name} is {self.ssd_vocabulary_size}.")
+        logging.debug("Slice ssd vocabulary_size for table {self.table_name} is"
+                      f" {self.slice_ssd_vocabulary_size}.")
 
     def _initialize_variables(self):
         initialized_tensor = \

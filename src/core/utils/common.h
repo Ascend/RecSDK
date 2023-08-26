@@ -208,6 +208,7 @@ struct BatchTask {
         uint32_t option {};
         int nBatch {};
         bool noDDR { false };
+        bool isSSDEnabled { false };
         bool useDynamicExpansion {false};
         std::vector<int> maxStep;
     };
@@ -436,12 +437,14 @@ struct BatchTask {
                 int extEmbeddingSize,
                 bool isSave,
                 std::vector<size_t> vocabsize,
-                std::vector<InitializeInfo> initializeInfos)
+                std::vector<InitializeInfo> initializeInfos,
+                std::vector<std::string> ssdDataPath)
             : name(name), sendCount(sendCount), embeddingSize(embeddingSize), extEmbeddingSize(extEmbeddingSize),
-              isSave(isSave), initializeInfos(initializeInfos)
+              isSave(isSave), initializeInfos(initializeInfos), ssdDataPath(std::move(ssdDataPath))
         {
             devVocabSize = vocabsize[0];
             hostVocabSize = vocabsize[1];
+            ssdVocabSize = vocabsize[2];
         }
 
         std::string name;
@@ -451,7 +454,9 @@ struct BatchTask {
         bool isSave;
         size_t devVocabSize;
         size_t hostVocabSize;
+        size_t ssdVocabSize;
         std::vector<InitializeInfo> initializeInfos;
+        std::vector<std::string> ssdDataPath;
     };
 
     struct HostEmbTable {

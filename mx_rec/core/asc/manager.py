@@ -62,12 +62,13 @@ def generate_table_info_list():
         if static_shape_rec_flag or dynamic_shape_rec_flag:
             logging.debug(f"table_instance.slice_device_vocabulary_size: {table_instance.slice_device_vocabulary_size}")
             logging.debug(f"table_instance.slice_host_vocabulary_size: {table_instance.slice_host_vocabulary_size}")
+            logging.debug(f"table_instance.slice_ssd_vocabulary_size: {table_instance.slice_ssd_vocabulary_size}")
             table_info = EmbInfo(table_instance.table_name, table_instance.send_count, table_instance.scalar_emb_size,
                                  table_instance.ext_emb_size, table_instance.is_save,
                                  [table_instance.slice_device_vocabulary_size,
-                                  table_instance.slice_host_vocabulary_size],
+                                  table_instance.slice_host_vocabulary_size, table_instance.slice_ssd_vocabulary_size],
                                  [matched_emb_initializer(table_instance)] +
-                                 matched_opt_slot_initializers(table_instance))
+                                 matched_opt_slot_initializers(table_instance), table_instance.ssd_data_path)
             table_info_list.append(table_info)
 
     return table_info_list

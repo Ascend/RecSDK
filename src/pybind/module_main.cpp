@@ -94,9 +94,10 @@ void GetEmbInfo(pybind11::module_& m)
 {
     pybind11::class_<EmbInfo>(m, "EmbInfo")
             .def(pybind11::init<const std::string&, int, int, int, bool, std::vector<size_t>,
-                    std::vector<InitializeInfo>&>(),
+                std::vector<InitializeInfo>&, std::vector<std::string>&>(),
                  py::arg("name"), py::arg("send_count"), py::arg("embedding_size"), py::arg("ext_embedding_size"),
-                 py::arg("is_save"),  py::arg("vocab_size"), py::arg("initialize_infos"))
+                 py::arg("is_save"),  py::arg("vocab_size"), py::arg("initialize_infos"),
+                 py::arg("ssd_data_path"))
             .def_readwrite("name", &EmbInfo::name)
             .def_readwrite("send_count", &EmbInfo::sendCount)
             .def_readwrite("embedding_size", &EmbInfo::embeddingSize)
@@ -104,7 +105,8 @@ void GetEmbInfo(pybind11::module_& m)
             .def_readwrite("is_save", &EmbInfo::isSave)
             .def_readwrite("dev_vocab_size", &EmbInfo::devVocabSize)
             .def_readwrite("host_vocab_size", &EmbInfo::hostVocabSize)
-            .def_readwrite("initialize_infos", &EmbInfo::initializeInfos);
+            .def_readwrite("initialize_infos", &EmbInfo::initializeInfos)
+            .def_readwrite("ssd_data_path", &EmbInfo::ssdDataPath);
 }
 
 void GetRandomInfo(pybind11::module_& m)
