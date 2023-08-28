@@ -25,6 +25,7 @@
 #include "emb_hashmap/emb_hashmap.h"
 #include "hd_transfer/hd_transfer.h"
 #include "key_process/key_process.h"
+#include "ssd_cache/cache_manager.h"
 
 namespace MxRec {
     using namespace std;
@@ -80,6 +81,9 @@ namespace MxRec {
         for (auto& t : procThreads) {
             t->join();
         }
+        if (cacheManager != nullptr) {
+            cacheManager = nullptr;
+        }
         if (hostEmbs != nullptr) {
             hostEmbs->Join(TRAIN_CHANNEL_ID);
             hostEmbs->Join(EVAL_CHANNEL_ID);
@@ -113,6 +117,11 @@ namespace MxRec {
 
         void InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfos);
 
+        void EvictSSDKeys(const string& embName, const vector<emb_key_t>& keys);
+
+        void PrepareDDRData(const std::string& embTableName, EmbHashMapInfo& embHashMap,
+                                   const vector<emb_key_t>& keys, int channelId);
+
     private:
         int currentBatchId;
         int trainBatchId = 0; // 0-199, 200-
@@ -120,12 +129,14 @@ namespace MxRec {
         int sendBatchId;
         vector<EmbInfo> mgmtEmbInfo;
         RankInfo mgmtRankInfo;
-        unique_ptr<HostEmb> hostEmbs {};
+        CacheManager* cacheManager;
+        HostEmb* hostEmbs {};
         unique_ptr<EmbHashMap> hostHashMaps {};
         vector<std::unique_ptr<std::thread>> procThreads {};
         map<std::string, std::vector<emb_key_t>> evictKeyMap {};
         KeyProcess *preprocess;
         HDTransfer *hdTransfer;
+        bool isSSDEnabled { false };
         bool isRunning;
         bool isLoad { false };
 

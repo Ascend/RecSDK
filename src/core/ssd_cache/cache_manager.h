@@ -48,8 +48,8 @@ namespace MxRec {
 
         void Init(HostEmb* hostEmbPtr, vector<EmbInfo>& mgmtEmbInfo);
 
-        // 保存/初始化模块相关数据
-        bool SaveCacheManagerData();
+        void Load(unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>>& ddrFreqInitMap,
+                  unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>>& excludeDdrFreqInitMap);
 
         // 转换DDR和SSD数据
         TransferRet TransferDDREmbWithSSD(const std::string& embTableName, EmbHashMapInfo& embHashMap,
