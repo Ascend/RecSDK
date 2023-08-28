@@ -81,9 +81,13 @@ namespace MxRec {
         void WriteDataset(CkptTransData& transData, ofstream& writeFile, size_t writeSize, CkptDataType dataType,
             size_t idx);
         void WriteEmbedding(const CkptTransData& transData, const string& dataDir, const int& embeddingSize);
-        void ReadEmbedding(CkptTransData& transData, const string& dataDir);
+        void ReadEmbedding(CkptTransData& transData, const string& dataDir, const string& embName);
 
-        int  GetEmbeddingSize(const string& embName) const;
+        struct EmbSizeInfo {
+            int embSize;
+            int extEmbSize;  // embSize + (optimizer's slot) * embSize
+        };
+        EmbSizeInfo GetEmbeddingSize(const string& embName);
         bool CheckEmbNames(const string& embNames);
 
         void LoadProcess(CkptData& ckptData);
