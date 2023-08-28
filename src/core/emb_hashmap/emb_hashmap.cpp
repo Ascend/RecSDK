@@ -304,7 +304,7 @@ void EmbHashMap::EvictDeleteEmb(const string& embName, const vector<emb_key_t>& 
     EASY_FUNCTION()
     size_t keySize = keys.size();
     auto& embHashMap = embHashMaps.at(embName);
-    vector<emb_key_t> evictHBMRKeys;
+    vector<emb_key_t> evictHBMKeys;
     vector<emb_key_t> evictDDRKeys;
     for (size_t i = 0; i < keySize; i++) {
         size_t offset;
@@ -328,13 +328,13 @@ void EmbHashMap::EvictDeleteEmb(const string& embName, const vector<emb_key_t>& 
             embHashMap.devOffset2KeyOld.emplace_back(offset, embHashMap.devOffset2Key[offset]);
             embHashMap.devOffset2Key[offset] = -1;
             embHashMap.evictDevPos.emplace_back(offset);
-            evictHBMRKeys.emplace_back(key);
+            evictHBMKeys.emplace_back(key);
         } else {
             embHashMap.evictPos.emplace_back(offset);
             evictDDRKeys.emplace_back(key);
         }
     }
-    cacheManager->RefreshFreqInfoCommon(embName, evictHBMRKeys, TransferType::HBM_2_EVICT);
+    cacheManager->RefreshFreqInfoCommon(embName, evictHBMKeys, TransferType::HBM_2_EVICT);
     cacheManager->RefreshFreqInfoCommon(embName, evictDDRKeys, TransferType::DDR_2_EVICT);
 
     LOG(INFO) << StringFormat(
@@ -558,6 +558,7 @@ void EmbHashMap::RefreshFreqInfoWithSwap(const string& embName,
     if (!isSSDEnabled) {
         return;
     }
+    VLOG(GLOG_DEBUG) << StringFormat("RefreshFreqInfoWithSwap:oldSwap Size:%lld", oldSwap.size());
     vector<emb_key_t> enterDDRKeys;
     vector<emb_key_t> leaveDDRKeys;
     for (auto keyPair : oldSwap) {

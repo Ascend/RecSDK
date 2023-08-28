@@ -30,41 +30,59 @@ inline TransferRet TransferSpaceWarning()
     return TransferRet::SSD_SPACE_NOT_ENOUGH;
 }
 
-inline void GetExternalKeys(EmbHashMapInfo& embHashMap, vector<emb_key_t>& externalKeys, const vector<emb_key_t>& keys)
+inline void GetExternalKeys(EmbHashMapInfo& embHashMap, vector<emb_key_t>& externalKeys,
+                            vector<emb_key_t>& internalKeys, const vector<emb_key_t>& keys)
 {
     auto& hostHashMap = embHashMap.hostHashMap;
     for (auto key : keys) {
         if (hostHashMap.find(key) == hostHashMap.end()) {
             externalKeys.emplace_back(key);
+        } else {
+            internalKeys.emplace_back(key);
         }
     }
 }
 
-void AddDebugAndTraceLog(vector<emb_key_t>& externalKeys, vector<emb_key_t>& externalSSDKeys)
+void AddDebugAndTraceLog(size_t batchKeySize, vector<emb_key_t>& externalKeys, vector<emb_key_t>& externalSSDKeys)
 {
-    VLOG(GLOG_DEBUG) << StringFormat("TransferDDREmbWithSSD: externalKeys size:%d, externalSSDKeys size:%d",
-                                     externalKeys.size(), externalSSDKeys.size());
+    VLOG(GLOG_DEBUG) << StringFormat("TransferDDREmbWithSSD: batchKeySize:%d, externalKeys size:%d,"
+                                     " externalSSDKeys size:%d",
+                                     batchKeySize, externalKeys.size(), externalSSDKeys.size());
     if (VLOG_IS_ON(GLOG_TRACE)) {
-        VLOG(GLOG_TRACE) << StringFormat("TransferDDREmbWithSSD: externalKeys:%s, externalSSDKeys:%s",
-                                         VectorToString(externalKeys).c_str(), VectorToString(externalSSDKeys).c_str());
+        VLOG(GLOG_TRACE) << "TransferDDREmbWithSSD: externalKeys:" << VectorToString(externalKeys).c_str()
+                         << ", externalSSDKeys:%s" << VectorToString(externalSSDKeys).c_str();
     }
+}
+
+inline vector<emb_key_t> DeleteRepeatKey(const vector<emb_key_t>& originalKeys)
+{
+    // 去重并保持原key的顺序 结果可测试
+    unordered_set<emb_key_t> keySet;
+    vector<emb_key_t> keys;
+    for (auto& key : originalKeys) {
+        if (keySet.find(key) == keySet.end()) {
+            keySet.emplace(key);
+            keys.emplace_back(key);
+        }
+    }
+    return keys;
 }
 
 /// DDR与SSD数据转移，使DDR内剩余空间能放置当前批次key
 /// \param embTableName emb表名
 /// \param embHashMap emb表
-/// \param keys 当前批次key
+/// \param originalKeys 当前批次key
 /// \param channelId 通道id
 /// \return 转移结果枚举
 TransferRet CacheManager::TransferDDREmbWithSSD(const std::string& embTableName, EmbHashMapInfo& embHashMap,
-                                                const vector<emb_key_t>& keys, int channelId)
+                                                const vector<emb_key_t>& originalKeys, int channelId)
 {
+    vector<emb_key_t> keys = DeleteRepeatKey(originalKeys); // 去重
     // 区分HBM+DDR内key，和HBM+DDR外的key(新key或保存在SSD中的key)
     vector<emb_key_t> externalKeys;
-    GetExternalKeys(embHashMap, externalKeys, keys);
-    if (externalKeys.empty()) {
-        return TransferSuccess();
-    }
+    vector<emb_key_t> internalKeys;
+    GetExternalKeys(embHashMap, externalKeys, internalKeys, keys);
+    if (externalKeys.empty()) { return TransferSuccess(); }
 
     // 判断剩余内存空间是否足够; 可用内存空间计算：HBM+DDR-已占用; 若是训练，再加DDR已淘汰;
     // SSD仅与DDR交互，不考虑HBM淘汰位置
@@ -86,7 +104,7 @@ TransferRet CacheManager::TransferDDREmbWithSSD(const std::string& embTableName,
         return TransferSuccess();
     }
 
-    AddDebugAndTraceLog(externalKeys, externalSSDKeys);
+    AddDebugAndTraceLog(keys.size(), externalKeys, externalSSDKeys);
     /*
      * 前面 externalSSDKeys = 0 ，评估场景的 ddr空间可用、不可用已返回； 训练的可用已返回；
      * 剩下的情况如下：
@@ -141,7 +159,7 @@ TransferRet CacheManager::TransferDDREmbWithSSD(const std::string& embTableName,
      */
     // 记录要从DDR转移到SSD的key对应的offset(相对值，需减去devVocabSize)
     vector<size_t> ddrTransferPos;
-    TransferRet ddr2SsdRet = TransferDDREmb2SSD(embTableName, embHashMap, ddrSwapOutSize, keys, ddrTransferPos);
+    TransferRet ddr2SsdRet = TransferDDREmb2SSD(embTableName, embHashMap, ddrSwapOutSize, internalKeys, ddrTransferPos);
     if (ddr2SsdRet == TransferRet::DDR_SPACE_NOT_ENOUGH) {
         ssdEngine->InsertEmbeddings(embTableName, externalSSDKeys, ssdEmbData);
         return ddr2SsdRet;
@@ -231,11 +249,12 @@ void CacheManager::RefreshRelateInfoWithDDR2SSD(const string& embTableName, EmbH
 
 /// key从DDR移入、移出、HBM淘汰时刷新频次信息；仅刷新频次信息
 /// \param embTableName emb表名
-/// \param keys 操作的key集合
+/// \param originalKeys 操作的key集合
 /// \param type TransferType
-void CacheManager::RefreshFreqInfoCommon(const string& embTableName, vector<emb_key_t>& keys,
+void CacheManager::RefreshFreqInfoCommon(const string& embTableName, vector<emb_key_t>& originalKeys,
                                          TransferType type)
 {
+    vector<emb_key_t> keys = DeleteRepeatKey(originalKeys);
     if (type == TransferType::DDR_2_HBM) {
         for (auto& key : keys) {
             // 频次数据记录到 excludeDDRKeyCountMap,并删除ddrKeyFreqMap中频次数据
@@ -278,14 +297,16 @@ bool CacheManager::IsKeyInSSD(const string& embTableName, emb_key_t key)
 
 /// 淘汰SSD中Emb信息
 /// \param embTableName emb表名
-/// \param keys 淘汰key列表
-void CacheManager::EvictSSDEmbedding(const string& embTableName, vector<emb_key_t>& keys)
+/// \param originalKeys 淘汰key列表
+void CacheManager::EvictSSDEmbedding(const string& embTableName, vector<emb_key_t>& originalKeys)
 {
+    vector<emb_key_t> keys = DeleteRepeatKey(originalKeys);
     // 1 删除缓存中记录的key的次数 2 删除SSD中保存的Emb数据
     for (auto& key : keys) {
         excludeDDRKeyCountMap[embTableName].erase(key);
     }
-    ssdEngine->DeleteEmbeddings(embTableName, keys);
+    vector<emb_key_t> currentKeys(keys.begin(), keys.end());
+    ssdEngine->DeleteEmbeddings(embTableName, currentKeys);
 }
 
 /// 放入key，新增/更新(次数+1)次数
@@ -367,10 +388,11 @@ TransferRet CacheManager::TransferDDREmb2SSD(const string& embTableName, EmbHash
     ddrKeyFreqMap[embTableName].GetAndDeleteLeastFreqKeyInfo(ddrSwapOutSize, keys, ddrSwapOutKeys,
                                                              ddrSwapOutCounts);
     if (static_cast<int64_t>(ddrSwapOutKeys.size()) != ddrSwapOutSize) {
+        auto keyTableSize = ddrKeyFreqMap[embTableName].keyTable.size();
         // 获取的最低频次key数量和预期不一致，DDR空间不足，不能放置当前批次数据
-        LOG(ERROR) << StringFormat(
-            "TransferDDREmbWithSSD, vector length is not equal, ddrSwapOutKeys size:%d, ddrSwapOutSize:%lld",
-            ddrSwapOutKeys.size(), ddrSwapOutSize);
+        LOG(ERROR) << StringFormat("TransferDDREmbWithSSD, vector length is not equal, ddrSwapOutKeys size:%d, "
+                                   "ddrSwapOutSize:%lld, ddr lfu keyTable size:%lld", ddrSwapOutKeys.size(),
+                                   ddrSwapOutSize, keyTableSize);
         RestoreLeastFreqInfo(embTableName, ddrSwapOutKeys, ddrSwapOutCounts);
         return TransferRet::DDR_SPACE_NOT_ENOUGH;
     }
