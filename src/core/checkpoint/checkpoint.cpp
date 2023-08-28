@@ -143,14 +143,17 @@ void Checkpoint::MakeSaveDir(const string& dirName)
     }
 }
 
-int Checkpoint::GetEmbeddingSize(const string& embName) const
+Checkpoint::EmbSizeInfo Checkpoint::GetEmbeddingSize(const string& embName)
 {
+    EmbSizeInfo embSizeInfo;
     for (const auto &embInfo: mgmtEmbInfo) {
         if (embInfo.name == embName) {
-            return embInfo.extEmbeddingSize;
+            embSizeInfo.embSize = embInfo.embeddingSize;
+            embSizeInfo.extEmbSize = embInfo.extEmbeddingSize;
+            return embSizeInfo;
         }
     }
-    return 0;
+    return embSizeInfo;
 }
 
 bool Checkpoint::CheckEmbNames(const string& embName)
@@ -185,10 +188,10 @@ void Checkpoint::SaveDataset(const vector<string>& embNames,
             if ((saveDataType == CkptDataType::NDDR_FEATMAP) && useDynamicExpansion) {
                 auto embedPath { dataDir + dirSeparator + "key_embedding" };
                 auto embedDatasetDir { embedPath + dirSeparator + datasetName + to_string(rankId) + dataFileType };
-                auto embeddingSize = GetEmbeddingSize(embName);
+                auto embeddingSizeInfo = GetEmbeddingSize(embName);
                 MakeSaveDir(embedPath);
                 VLOG(GLOG_DEBUG) << StringFormat("====Start saving embedding data to: %s", datasetDir.c_str());
-                WriteEmbedding(transData, embedDatasetDir, embeddingSize);
+                WriteEmbedding(transData, embedDatasetDir, embeddingSizeInfo.extEmbSize);
             }
 
             VLOG(GLOG_DEBUG) << StringFormat("====Start saving data to: %s", datasetDir.c_str());
@@ -231,7 +234,7 @@ void Checkpoint::WriteEmbedding(const CkptTransData& transData, const string& da
     writeFile.close();
 }
 
-void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir)
+void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir, const string& embName)
 {
     std::ifstream readFile;
     readFile.open(dataDir.c_str(), std::ios::in | std::ios::binary | std::ios::ate);
@@ -270,18 +273,26 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir)
 
     float *floatPtr = static_cast<float *>(newBlock);
     auto &transArr = transData.int64Arr;
-    for (size_t i{0}; i < transArr.size(); i += embHashNum) {
+    EmbSizeInfo embSizeInfo = GetEmbeddingSize(embName);
+    if (embSizeInfo.embSize == 0) {
+        throw runtime_error(StringFormat("embsize is 0").c_str());
+    }
+    auto keyAddrElem = embSizeInfo.extEmbSize / embSizeInfo.embSize - 1;
+    if (keyAddrElem < 0) {
+        throw runtime_error(StringFormat("keyAddrElem: %d is less than 0", keyAddrElem).c_str());
+    }
+    for (size_t i{0}, j{0}; i < transArr.size(); i += keyAddrElem, ++j) {
         vector<float> row(embeddingSize);
         readFile.read((char *) (row.data()), embeddingSize * sizeof(float));
 
-        aclError ret = aclrtMemcpy(floatPtr + i * embeddingSize, embeddingSize * sizeof(float),
+        aclError ret = aclrtMemcpy(floatPtr + j * embeddingSize, embeddingSize * sizeof(float),
                                    row.data(), embeddingSize * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
         if (ret != ACL_SUCCESS) {
             LOG(ERROR) << StringFormat("aclrtMemcpy failed, ret=%d", ret);
             readFile.close();
             throw runtime_error(StringFormat("aclrtMemcpy failed, ret=%d", ret).c_str());
         }
-        int64_t address = reinterpret_cast<int64_t>(floatPtr + i * embeddingSize);
+        int64_t address = reinterpret_cast<int64_t>(floatPtr + j * embeddingSize);
         transArr.at(i + 1) = address;
     }
 #endif
@@ -412,7 +423,7 @@ void Checkpoint::LoadDataset(const vector<string>& embNames,
                 auto embedPath { dataDir + dirSeparator + "key_embedding" };
                 auto embedDatasetDir { embedPath + dirSeparator + datasetName + to_string(rankId) + dataFileType };
                 VLOG(GLOG_DEBUG) << StringFormat("====Start loading embedding data from: %s", datasetDir.c_str());
-                ReadEmbedding(transData, embedDatasetDir);
+                ReadEmbedding(transData, embedDatasetDir, embName);
             }
 
             VLOG(GLOG_DEBUG) << StringFormat(
