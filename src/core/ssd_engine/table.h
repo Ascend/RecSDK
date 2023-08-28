@@ -62,8 +62,9 @@ namespace MxRec {
         mutex rwLock{};
         shared_ptr<File> curFile = nullptr;
         uint64_t curMaxFileID = 0; // no concurrent writing, always atomic increase
+        const uint32_t maxNameSize = 1024;
 
-        /* args for performance
+        /* args for performance(not expose to user yet)
          * 2 read thread is optimal when:
          *   embedding's dimension=240, maxDataNumInFile=10000
          *   fetch 1000000 keys at a time
@@ -74,7 +75,7 @@ namespace MxRec {
         int readThreadNum = 2;
         uint32_t maxDataNumInFile = 10000;  // relax constrain for performance, need tuning
         double compactThreshold = 0.5;
-        double diskFreeSpaceThreshold = 0.05;
+        double diskFreeSpaceThreshold = 0.05;  // in range [0, 1), leave diskFreeSpaceThreshold*100 % for disk space
     };
 }
 
