@@ -21,7 +21,7 @@ Table::Table(const string &name, vector<string> &savePaths, uint64_t maxTableSiz
 {
     curTablePath = fs::absolute(savePaths.at(curSavePathIdx) + "/" + g_rankId + "/" + name).string();
     if (!fs::exists(curTablePath) && !fs::create_directories(curTablePath)) {
-            throw runtime_error("fail to create table directory");
+        throw runtime_error("fail to create table directory");
     }
     LOG(INFO) << StringFormat("create table:%s at path:%s", name.c_str(), curTablePath.c_str());
 }
@@ -190,6 +190,9 @@ void Table::Load(const string &metaFilePath, int step)
     // Load table name and validate
     uint32_t nameSize;
     metaFile->read(reinterpret_cast<char *>(&nameSize), sizeof(nameSize));
+    if (nameSize > maxNameSize) {
+        throw invalid_argument("table name too large, file may broken");
+    }
     char *tmpArr = new char[nameSize + 1];
     metaFile->read(tmpArr, static_cast<long>(nameSize));
     tmpArr[nameSize] = '\0';
