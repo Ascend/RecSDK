@@ -121,6 +121,7 @@ namespace MxRec {
 
         void PrepareDDRData(const std::string& embTableName, EmbHashMapInfo& embHashMap,
                                    const vector<emb_key_t>& keys, int channelId);
+        void AddCacheManagerTraceLog(absl::flat_hash_map<basic_string<char>, EmbHashMapInfo>& embHashMaps);
 
     private:
         int currentBatchId;

@@ -488,10 +488,19 @@ namespace MxRec {
         size_t freeSize;
         std::vector<int32_t> lookUpVec;
         std::vector<size_t> missingKeysHostPos; // 用于记录当前batch在host上需要换出的偏移
-        std::vector<size_t> swapPos;
+        std::vector<size_t> swapPos; // 记录从HBM换出到DDR的offset
+        /*
+         * 取值范围：[0,devVocabSize+hostVocabSize);
+         * [0,devVocabSize-1]时存储在HBM, [devVocabSize,devVocabSize+hostVocabSize)存储在DDR
+         */
         size_t maxOffset { 0 };
+        /*
+         * 记录DDR内淘汰列表，其值为相对HBM+DDR大表的；hostHashMap可直接使用；操作ddr内emb时需减掉devVocabSize
+         * 例如：HBM表大小20(offset:0~19)，DDR表大小为100（offset:0~99）；
+         * 若DDR内0位置被淘汰，记录到evictPos的值为0+20=20
+         */
         std::vector<size_t> evictPos;
-        std::vector<size_t> evictDevPos;
+        std::vector<size_t> evictDevPos; // 记录HBM内淘汰列表
         size_t maxOffsetOld { 0 };
         std::vector<size_t> evictPosChange;
         std::vector<size_t> evictDevPosChange;

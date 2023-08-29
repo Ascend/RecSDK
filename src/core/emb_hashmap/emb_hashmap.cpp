@@ -81,7 +81,7 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     VLOG(GLOG_DEBUG) << "FindOffset end";
 
     // 调用刷新频次数据方法
-    RefreshFreqInfoWithSwap(embName, embHashMap.oldSwap);
+    RefreshFreqInfoWithSwap(embName, embHashMap);
 
     swapId++;
     EASY_BLOCK("hostHashMaps->tdt")
@@ -260,17 +260,27 @@ auto EmbHashMap::GetHashMaps() -> absl::flat_hash_map<string, EmbHashMapInfo>
 {
     auto embHashMapsOld = embHashMaps;
     for (auto& temp: embHashMapsOld) {
+        auto& embTableName = temp.first;
         auto& embHashMap = temp.second;
+        vector<emb_key_t> hbm2DdrKeys;
+        vector<emb_key_t> ddr2HbmKeys;
         for (auto& swapKeys: embHashMap.oldSwap) {
             emb_key_t oldKey = swapKeys.first;
             emb_key_t key = swapKeys.second;
             int tempOffset = static_cast<int>(embHashMap.hostHashMap[key]);
             embHashMap.hostHashMap[key] = embHashMap.hostHashMap[oldKey];
             embHashMap.hostHashMap[oldKey] = static_cast<int>(tempOffset);
+            hbm2DdrKeys.emplace_back(key);
+            ddr2HbmKeys.emplace_back(oldKey);
         }
         embHashMap.maxOffset = embHashMap.maxOffsetOld;
         for (auto& Offset2Key: embHashMap.devOffset2KeyOld) {
             embHashMap.devOffset2Key[Offset2Key.first] = Offset2Key.second;
+        }
+        if (isSSDEnabled) {
+            // 恢复CacheManager中频次数据
+            cacheManager->RefreshFreqInfoCommon(embTableName, hbm2DdrKeys, TransferType::HBM_2_DDR);
+            cacheManager->RefreshFreqInfoCommon(embTableName, ddr2HbmKeys, TransferType::DDR_2_HBM);
         }
     }
     return embHashMapsOld;
@@ -551,13 +561,14 @@ bool EmbHashMap::FindSwapPosOld(const string& embName, emb_key_t key, size_t hos
 
 /// HBM-DDR换入换出时刷新频次信息
 /// \param embName emb表名
-/// \param oldSwap 换入换出key列表，元素为pair: pair<oldKey, key> oldKey为从HBM移出的key, key为从DDR移出的key
-void EmbHashMap::RefreshFreqInfoWithSwap(const string& embName,
-                                         const std::vector<std::pair<emb_key_t, emb_key_t>>& oldSwap)
+/// \param embHashMap emb hash map
+void EmbHashMap::RefreshFreqInfoWithSwap(const string& embName, EmbHashMapInfo& embHashMap)
 {
     if (!isSSDEnabled) {
         return;
     }
+    // 换入换出key列表，元素为pair: pair<oldKey, key> oldKey为从HBM移出的key, key为从DDR移出的key
+    auto& oldSwap = embHashMap.oldSwap;
     VLOG(GLOG_DEBUG) << StringFormat("RefreshFreqInfoWithSwap:oldSwap Size:%lld", oldSwap.size());
     vector<emb_key_t> enterDDRKeys;
     vector<emb_key_t> leaveDDRKeys;
@@ -567,6 +578,50 @@ void EmbHashMap::RefreshFreqInfoWithSwap(const string& embName,
     }
     cacheManager->RefreshFreqInfoCommon(embName, enterDDRKeys, TransferType::HBM_2_DDR);
     cacheManager->RefreshFreqInfoCommon(embName, leaveDDRKeys, TransferType::DDR_2_HBM);
+
+    AddCacheManagerTraceLog(embName, embHashMap);
+}
+
+/// 记录日志：HBM和DDR换入换出后，比较hostHashMap中DDR内key和表对应的lfuCache对象中的key内容
+void EmbHashMap::AddCacheManagerTraceLog(const string& embTableName, const EmbHashMapInfo& embHashMap) const
+{
+    if (!VLOG_IS_ON(GLOG_TRACE)) {
+        return;
+    }
+    auto& hostMap = embHashMap.hostHashMap;
+    auto& devSize = embHashMap.devVocabSize;
+    auto& lfu = cacheManager->ddrKeyFreqMap[embTableName];
+    const auto& lfuTab = lfu.GetFreqTable();
+    if (lfuTab.empty()) {
+        return;
+    }
+    size_t tableKeyInDdr = 0;
+    vector<emb_key_t> ddrKeys; // 获取hostHashMap中保存在DDR的key
+    for (const auto& item : hostMap) {
+        if (item.second < devSize) {
+            continue;
+        }
+        ddrKeys.emplace_back(item.first);
+        ++tableKeyInDdr;
+    }
+    vector<emb_key_t> lfuKeys;
+    for (const auto& it : lfuTab) {
+        lfuKeys.emplace_back(it.first);
+    }
+    std::sort(ddrKeys.begin(), ddrKeys.end());
+    std::sort(lfuKeys.begin(), lfuKeys.end());
+    std::string ddrKeysString = VectorToString(ddrKeys);
+    std::string lfuKeysString = VectorToString(lfuKeys);
+    if (ddrKeysString != lfuKeysString) {
+        LOG(ERROR) << "ERROR STRING not equal, ddrKeysString:" << ddrKeysString << ", lfuKeysString:" << lfuKeysString;
+    } else {
+        LOG(INFO) << "After HBM swap with DDR, table:" << embTableName <<
+                     ", ddrKeysString is equals with lfuKeysString, string length:" << lfuKeysString.length();
+    }
+
+    LOG(INFO)
+        << "After HBM swap with DDR, table:" << embTableName << ", tableKeyInDdr:" << tableKeyInDdr <<
+           ", tableKeyInLfu:" << lfu.keyTable.size();
 }
 
 /// 记录key频次数据

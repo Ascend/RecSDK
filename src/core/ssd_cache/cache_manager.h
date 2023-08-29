@@ -49,7 +49,9 @@ namespace MxRec {
         void Init(HostEmb* hostEmbPtr, vector<EmbInfo>& mgmtEmbInfo);
 
         void Load(unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>>& ddrFreqInitMap,
-                  unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>>& excludeDdrFreqInitMap);
+                  unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>>& excludeDdrFreqInitMap, int step);
+
+        void SaveSSDEngine(int step);
 
         // 转换DDR和SSD数据
         TransferRet TransferDDREmbWithSSD(const std::string& embTableName, EmbHashMapInfo& embHashMap,

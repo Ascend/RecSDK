@@ -371,7 +371,7 @@ TEST_F(CacheManagerTest, LoadTest)
     excludeDdrTableMap.emplace(15, 1);
     excludeDdrTableMap.emplace(25, 5);
     excludeDdrMap.emplace(embTableName, excludeDdrTableMap);
-    cacheManager.Load(ddrMap, excludeDdrMap);
+    cacheManager.Load(ddrMap, excludeDdrMap, 0);
     // 数据检查
     auto& ddrKeyFreqMap = cacheManager.ddrKeyFreqMap;
     auto& excludeDDRKeyCountMap = cacheManager.excludeDDRKeyCountMap;
