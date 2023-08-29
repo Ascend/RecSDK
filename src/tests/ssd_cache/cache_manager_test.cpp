@@ -9,8 +9,6 @@
 #include <gtest/gtest.h>
 #include <mpi.h>
 
-#define GTEST
-
 #include "absl/container/flat_hash_map.h"
 #include "host_emb/host_emb.h"
 #include "ssd_cache/lfu_cache.h"
