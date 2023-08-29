@@ -22,6 +22,7 @@
 #include <absl/container/flat_hash_map.h>
 
 #include "ock_ctr_common/include/factory.h"
+#include "ock_ctr_common/include/error_code.h"
 
 #include "utils/common.h"
 #include "utils/time_cost.h"
@@ -156,12 +157,14 @@ namespace MxRec {
 
         void InitHotEmbTotCount(const EmbInfo& info, const RankInfo& rInfo);
 
-        void KeyProcessTask(int channel, int id);
+        void KeyProcessTask(int channel, int threadId);
 
-        bool KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channel, int id);
+        void KeyProcessTaskWithFastUnique(int channel, int threadId);
+
+        bool KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channel, int threadId);
 
         bool KeyProcessTaskHelperWithFastUnique(unique_ptr<emb_batch_t> &batch, UniquePtr& unique,
-                                            int channel, int id);
+                                            int channel, int threadId);
 
         auto ProcessSplitKeys(const unique_ptr<emb_batch_t>& batch, int id,
                               vector<keys_t>& splitKeys) -> tuple<keys_t, vector<int>, vector<int>>;

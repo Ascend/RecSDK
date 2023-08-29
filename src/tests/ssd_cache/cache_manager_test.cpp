@@ -68,6 +68,11 @@ class CacheManagerTest : public testing::Test {
 protected:
     void SetUp()
     {
+        // 设置全局rankId，ssdEngine保存时会使用
+        int workRankId;
+        MPI_Comm_rank(MPI_COMM_WORLD, &workRankId);
+        g_rankId = to_string(workRankId);
+
         cacheManager.ddrKeyFreqMap[embTableName] = cache;
         cacheManager.ddrKeyFreqMap[embTableName].PutKeys(input_keys);
         LFUCache cache2;
@@ -92,11 +97,6 @@ protected:
         cacheManager.hostEmbs->hostEmbs = loadData;
 
         auto& embMap = cacheManager.hostEmbs->hostEmbs;
-
-        // 设置全局rankId，ssdEngine保存时会使用
-        int workRankId;
-        MPI_Comm_rank(MPI_COMM_WORLD, &workRankId);
-        g_rankId = to_string(workRankId);
     }
 
     CacheManager cacheManager;
