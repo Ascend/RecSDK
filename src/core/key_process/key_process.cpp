@@ -114,7 +114,7 @@ int KeyProcess::Start()
     // |  rank0  | |  rank1  |
     // each rank creates KEY_PROCESS_THREAD threads, each thread process one batchdata
     LOG(INFO) << StringFormat("CPU Core Num: %d", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
-    auto fn = [this](int channel, int id) {
+    auto fn = [this](int channel, int threadId) {
 #ifndef GTEST
         auto ret = aclrtSetDevice(static_cast<int32_t>(rankInfo.deviceId));
         if (ret != ACL_ERROR_NONE) {
@@ -122,7 +122,11 @@ int KeyProcess::Start()
             return;
         }
 #endif
-        KeyProcessTask(channel, id);
+        if (PerfConfig::fastUnique) {
+            KeyProcessTaskWithFastUnique(channel, threadId);
+        } else {
+            KeyProcessTask(channel, threadId);
+        }
     }; // for clean code
     int threadNum = GetThreadNumEnv();
     for (int channel = 0; channel < MAX_CHANNEL_NUM; ++channel) {
@@ -241,12 +245,15 @@ void KeyProcess::InitializeUnique(UniqueConf& uniqueConf, size_t& preBatchSize, 
         uniqueConf.maxIdVal = INT64_MAX;
         uniqueConf.dataType = ock::ctr::DataType::INT64;
 
-        unique->Initialize(uniqueConf);
+        auto ret = unique->Initialize(uniqueConf);
+        if (ret != ock::ctr::H_OK) {
+            throw runtime_error(StringFormat("fast unique init failed, code:%d", ret));
+        }
         uniqueInitialize = true;
     }
 }
 
-void KeyProcess::KeyProcessTask(int channel, int id) // thread id [0, KEY_PROCESS_THREAD-1]
+void KeyProcess::KeyProcessTaskWithFastUnique(int channel, int threadId)
 {
     unique_ptr<emb_batch_t> batch;
     UniquePtr unique = nullptr;
@@ -254,17 +261,18 @@ void KeyProcess::KeyProcessTask(int channel, int id) // thread id [0, KEY_PROCES
     size_t preBatchSize = 0;
     bool uniqueInitialize = false;
 
-    if (PerfConfig::fastUnique) {
-        factory->CreateUnique(unique);
-        GetUniqueConfig(uniqueConf);
+    auto ret = factory->CreateUnique(unique);
+    if (ret != ock::ctr::H_OK) {
+        throw runtime_error(StringFormat("create fast unique failed, error code:%d", ret));
     }
+    GetUniqueConfig(uniqueConf);
 
     TimeCost tc = TimeCost();
     try {
         while (true) {
             TimeCost getAndProcessTC;
             TimeCost getBatchDataTC;
-            batch = GetBatchData(channel, id); // get batch data from SingletonQueue<emb_batch_t>
+            batch = GetBatchData(channel, threadId); // get batch data from SingletonQueue<emb_batch_t>
             VLOG(GLOG_DEBUG) << StringFormat("getBatchDataTC(ms):%d", getBatchDataTC.ElapsedMS());
             if (batch == nullptr) {
                 break;
@@ -272,33 +280,62 @@ void KeyProcess::KeyProcessTask(int channel, int id) // thread id [0, KEY_PROCES
             auto getBatchTime = tc.ElapsedMS();
             tc = TimeCost();
 
-            bool ret = false;
-            if (PerfConfig::fastUnique) {
-                InitializeUnique(uniqueConf, preBatchSize, uniqueInitialize, batch, unique);
-                ret = KeyProcessTaskHelperWithFastUnique(batch, unique, channel, id);
-            } else {
-                ret = KeyProcessTaskHelper(batch, channel, id);
-            }
-
-            if (!ret) {
+            InitializeUnique(uniqueConf, preBatchSize, uniqueInitialize, batch, unique);
+            if (!KeyProcessTaskHelperWithFastUnique(batch, unique, channel, threadId)) {
                 break;
             }
             LOG(INFO) << StringFormat(
-                KEY_PROCESS "getAndProcessTC(ms):%d, key process cost:%d, get data time:%d batch %s[%d]:%d",
+                KEY_PROCESS "getAndProcessTC(ms):%d, key process with fast unique cost:%d,"
+                            " get data time(ms):%d, batch name:%s, channel:%d, batchID:%d",
                 getAndProcessTC.ElapsedMS(), tc.ElapsedMS(), getBatchTime,
                 batch->name.c_str(), batch->channel, batch->batchId
             );
-            auto batchQueue = SingletonQueue<emb_batch_t>::getInstances(id + KEY_PROCESS_THREAD * batch->channel);
+            auto batchQueue = SingletonQueue<emb_batch_t>::getInstances(threadId + KEY_PROCESS_THREAD * batch->channel);
             batchQueue->PutDirty(move(batch));
         }
-        if (PerfConfig::fastUnique) {
-            unique->UnInitialize();
+        unique->UnInitialize();
+    } catch (const EndRunError &e) {
+        VLOG(GLOG_DEBUG) << StringFormat(KEY_PROCESS "abort run: %s", e.what());
+    }
+    LOG(INFO) << StringFormat(
+        KEY_PROCESS "KeyProcessTaskWithFastUnique exit. rank:%d thread:%d, channel:%d",
+        rankInfo.rankId, threadId, channel);
+}
+
+
+void KeyProcess::KeyProcessTask(int channel, int threadId)
+{
+    unique_ptr<emb_batch_t> batch;
+    TimeCost tc = TimeCost();
+    try {
+        while (true) {
+            TimeCost getAndProcessTC;
+            TimeCost getBatchDataTC;
+            batch = GetBatchData(channel, threadId); // get batch data from SingletonQueue<emb_batch_t>
+            VLOG(GLOG_DEBUG) << StringFormat("getBatchDataTC(ms):%d", getBatchDataTC.ElapsedMS());
+            if (batch == nullptr) {
+                break;
+            }
+            auto getBatchTime = tc.ElapsedMS();
+            tc = TimeCost();
+
+            if (!KeyProcessTaskHelper(batch, channel, threadId)) {
+                break;
+            }
+            LOG(INFO) << StringFormat(
+                KEY_PROCESS "getAndProcessTC(ms):%d, key process cost:%d,"
+                            " get data time(ms):%d, batch name:%s, channel:%d, batchID:%d",
+                getAndProcessTC.ElapsedMS(), tc.ElapsedMS(), getBatchTime,
+                batch->name.c_str(), batch->channel, batch->batchId
+            );
+            auto batchQueue = SingletonQueue<emb_batch_t>::getInstances(threadId + KEY_PROCESS_THREAD * batch->channel);
+            batchQueue->PutDirty(move(batch));
         }
     } catch (const EndRunError &e) {
         VLOG(GLOG_DEBUG) << StringFormat(KEY_PROCESS "abort run: %s", e.what());
     }
     LOG(INFO) << StringFormat(
-        KEY_PROCESS "KeyProcessTask exit. rank:%d thread:%d, channel:%d", rankInfo.rankId, id, channel);
+        KEY_PROCESS "KeyProcessTask exit. rank:%d thread:%d, channel:%d", rankInfo.rankId, threadId, channel);
 }
 
 void KeyProcess::HashSplitHelper(const unique_ptr <emb_batch_t>& batch, vector <keys_t>& splitKeys,
@@ -320,14 +357,14 @@ void KeyProcess::HashSplitHelper(const unique_ptr <emb_batch_t>& batch, vector <
 }
 
 bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<emb_batch_t>& batch, UniquePtr& unique,
-                                                    int channel, int id)
+                                                    int channel, int threadId)
 {
     // tuple for keyRec restore hotPos scAll countRecv
     isWithFAAE = m_featureAdmitAndEvict.GetFunctionSwitch() &&
                   FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE;
     TimeCost fastUniqueTC;
     UniqueInfo uniqueInfo;
-    ProcessBatchWithFastUnique(batch, unique, id, uniqueInfo);
+    ProcessBatchWithFastUnique(batch, unique, threadId, uniqueInfo);
     VLOG(GLOG_DEBUG) << StringFormat("ProcessBatchWithFastUnique(ms):%d", fastUniqueTC.ElapsedMS());
 
     // 特征准入&淘汰
@@ -336,7 +373,7 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<emb_batch_t>& bat
                                              uniqueInfo.all2AllInfo.countRecv)
                                              == FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR)) {
         LOG(ERROR) << StringFormat(KEY_PROCESS "rank:%d thread:%d, channel:%d, Feature-admit-and-evict error ...",
-                      rankInfo.rankId, id, channel);
+                                   rankInfo.rankId, threadId, channel);
         return false;
     }
 
@@ -370,7 +407,7 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<emb_batch_t>& bat
     return true;
 }
 
-bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channel, int id)
+bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channel, int threadId)
 {
     vector<keys_t> splitKeys;
     vector<int32_t> restore;
@@ -378,12 +415,12 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channe
     vector<vector<uint32_t>> keyCount;
 
     HashSplitHelper(batch, splitKeys, restore, hotPos, keyCount);
-    auto [lookupKeys, scAll, ss] = ProcessSplitKeys(batch, id, splitKeys);
+    auto [lookupKeys, scAll, ss] = ProcessSplitKeys(batch, threadId, splitKeys);
 
     vector<uint32_t> countRecv;
     if (m_featureAdmitAndEvict.GetFunctionSwitch() &&
         FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE) {
-        countRecv = GetCountRecv(batch, id, keyCount, scAll, ss);
+        countRecv = GetCountRecv(batch, threadId, keyCount, scAll, ss);
     }
 
     BuildRestoreVec(batch, ss, restore, static_cast<int>(hotPos.size()));
@@ -394,7 +431,7 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channe
         (m_featureAdmitAndEvict.FeatureAdmit(channel, batch, lookupKeys,
                                              countRecv) == FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR)) {
         LOG(ERROR) << StringFormat(KEY_PROCESS "rank:%d thread:%d, channel:%d, Feature-admit-and-evict error ...",
-            rankInfo.rankId, id, channel);
+                                   rankInfo.rankId, threadId, channel);
         return false;
     }
 
@@ -582,6 +619,9 @@ void KeyProcess::ProcessBatchWithFastUnique(const unique_ptr<emb_batch_t> &batch
     uniqueOut.uniqueIdCnt = 0;
 
     int ret = unique->DoEnhancedUnique(uniqueIn, uniqueOut);
+    if (ret != ock::ctr::H_OK) {
+        throw runtime_error(StringFormat("fast unique DoEnhancedUnique failed, code:%d", ret));
+    }
     EASY_END_BLOCK
     VLOG(GLOG_DEBUG) << StringFormat("FastUniqueCompute(ms):%d, ret:%d", uniqueTC.ElapsedMS(), ret);
 

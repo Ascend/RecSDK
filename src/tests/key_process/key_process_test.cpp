@@ -554,11 +554,13 @@ TEST_F(KeyProcessTest, ProcessBatchWithFastUnique)
         UniqueInfo uniqueInfo;
         batch = process.GetBatchData(channel, id); // get batch data from SingletonQueue<emb_batch_t>
 
-        ASSERT_EQ(factory->CreateUnique(unique), 0);
+        ASSERT_EQ(factory->CreateUnique(unique), ock::ctr::H_OK);
         UniqueConf uniqueConf;
+        size_t preBatchSize = 0;
+        bool uniqueInitialize = false;
         process.GetUniqueConfig(uniqueConf);
-        unique->Initialize(uniqueConf);
-        
+        process.InitializeUnique(uniqueConf, preBatchSize, uniqueInitialize, batch, unique);
+
         LOG(INFO) << StringFormat("rankid :%d,batchid: %d", rankInfo.rankId, batch->batchId);
         process.KeyProcessTaskHelperWithFastUnique(batch, unique, channel, id);
         LOG(INFO) << StringFormat(
