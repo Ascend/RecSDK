@@ -31,15 +31,8 @@ namespace MxRec {
         // 从embeddingList获取获取一个可用的emb地址
         int64_t GetEmbAddress();
 
-        // 将一个emb地址放入embeddingList中
-        void PutEmbAddress(int64_t curAddress);
-
         // 打印emb表使用情况
         void PrintStatus();
-
-        int GetTotalCap();
-
-        int GetUsedCap();
 
         EmbTable(const EmbTable&) = delete;
 
@@ -50,12 +43,6 @@ namespace MxRec {
         EmbTable& operator=(EmbTable&&) = delete;
 
         void ExecuteAclMemcpy(void* newBlock, vector<float> devEmb);
-
-        // 用于保存
-        map<int64, vector<float>> SaveEmb();
-
-        // 用于加载 输入一个vector，创建一个embeddingtable类，申请内存，存储输入信息 , list<flaot*>返回全部地址
-        list<float*> LoadEmb(const vector<vector<float>> &savedEmb);
 
     GTEST_PRIVATE:
         constexpr static int BLOCK_EMB_COUNT = 100000;

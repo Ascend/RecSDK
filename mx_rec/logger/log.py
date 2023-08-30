@@ -6,9 +6,8 @@ import logging.config
 import os
 import yaml
 
-from mx_rec.constants.constants import MAX_SIZE, LOG_MAX_SIZE
+from mx_rec.constants.constants import LOG_MAX_SIZE
 from mx_rec.validator.validator import FileValidator
-from mx_rec.validator.validator import DirectoryValidator
 
 
 def init_sys_log():
@@ -31,38 +30,6 @@ def init_sys_log():
         log_cfg = yaml.safe_load(data)
 
     logging.config.dictConfig(log_cfg)
-
-
-def init_log_dir_for_dt(log_cfg):
-    """Create log directory for local environment dt test.
-
-    :param log_cfg: log configuration dictionary from yml file.
-    :return: None
-    """
-    handlers = log_cfg.get('handlers')
-    if not handlers:
-        return
-
-    for handler_name in handlers:
-        handler_dict = handlers.get(handler_name)
-        log_file = handler_dict.get('filename')
-
-        if not log_file:
-            continue
-
-        log_file_standard = os.path.realpath(log_file)
-        if log_file_standard != log_file:
-            continue
-
-        log_dir = os.path.dirname(log_file_standard)
-        if not DirectoryValidator(log_dir) \
-                .check_is_not_none() \
-                .check_dir_name() \
-                .should_not_contains_sensitive_words() \
-                .with_blacklist() \
-                .check() \
-                .is_valid():
-            continue
 
 
 init_sys_log()
