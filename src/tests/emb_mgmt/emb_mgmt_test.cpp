@@ -72,12 +72,10 @@ protected:
             tensorPtr = tensorPtr + hostEmb->GetEmb(embName).hostEmbInfo.extEmbeddingSize;
         }
         for (size_t i = 0; i < hostEmb->GetEmb(embName).embData.size(); ++i) {
-            if (g_glogLevel >= INFO) {
-                LOG(INFO) << StringFormat(
-                    "hostEmb: embName %s, %d is: %s", embName.c_str(), i,
-                    VectorToString(hostEmb->GetEmb(embName).embData[i]).c_str()
-                );
-            }
+            REC_LOG(INFO) << StringFormat(
+                "hostEmb: embName %s, %d is: %s", embName.c_str(), i,
+                VectorToString(hostEmb->GetEmb(embName).embData[i]).c_str()
+            );
         }
         LOG(INFO) << (HD + "update emb end");
         d2h_emb.clear();

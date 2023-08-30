@@ -45,6 +45,8 @@
     #define EASY_PROFILER_DISABLE
 #endif
 
+#define REC_LOG(severity) if (g_glogLevel >= severity) LOG(severity)
+
 namespace MxRec {
 #define INFO_PTR shared_ptr
 #define MGMT_CPY_THREADS 4
@@ -313,7 +315,8 @@ namespace MxRec {
     // use environment variable GLOG_v to decide if showing debug log.
     // default 0, debug message will not display.
     // 1 for debug, 2 for trace
-    const int GLOG_DEBUG = 1, GLOG_TRACE = 2;
+    constexpr int GLOG_DEBUG = 1;
+    constexpr int GLOG_TRACE = 2;
 
     template<typename T>
     std::string VectorToString(const std::vector<T>& vec)

@@ -156,12 +156,10 @@ void HDTransfer::Send(TransferChannel channel, const vector<Tensor> &tensors, in
     }
     string sendName = StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channel).c_str(), channelId);
 
-    if (g_glogLevel >= INFO) {
-        LOG(INFO) << StringFormat(
-            HD + "hd transfer send %s, send count is %d, size list:%s",
-            sendName.c_str(), sizes.size(), VectorToString(sizes).c_str()
-        );
-    }
+    REC_LOG(INFO) << StringFormat(
+        HD + "hd transfer send %s, send count is %d, size list:%s",
+        sendName.c_str(), sizes.size(), VectorToString(sizes).c_str()
+    );
 
     if (sizes.size() == 0) {
         LOG(WARNING) << "tensors num can not be zero";
@@ -218,11 +216,9 @@ vector<tensorflow::Tensor> HDTransfer::Recv(TransferChannel channel, int channel
     for (auto& t: tensors) {
         sizes.push_back(t.NumElements());
     }
-    if (g_glogLevel >= INFO) {
-        LOG(INFO) << StringFormat(
-            "hd transfer recv:%s, size:%d cost:%dms", recvName.c_str(), VectorToString(sizes).c_str(), tc.ElapsedMS()
-        );
-    }
+    REC_LOG(INFO) << StringFormat(
+        "hd transfer recv:%s, size:%d cost:%dms", recvName.c_str(), VectorToString(sizes).c_str(), tc.ElapsedMS()
+    );
     return tensors;
 #endif
 }

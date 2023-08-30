@@ -178,18 +178,12 @@ protected:
     {
         for (int i = 0; i < rankSize; ++i) {
             std::cout << "splitKeys dev" << i << std::endl;
-            if (g_glogLevel >= INFO) {
-                LOG(INFO) << StringFormat("%d", VectorToString(splitKeys[i]).c_str());
-            }
+            REC_LOG(INFO) << StringFormat("%d", VectorToString(splitKeys[i]).c_str());
         }
         std::cout << "restore" << std::endl;
-        if (g_glogLevel >= INFO) {
-            LOG(INFO) << StringFormat("%d", VectorToString(restore).c_str());
-        }
+        REC_LOG(INFO) << StringFormat("%d", VectorToString(restore).c_str());
         std::cout << "hotPos" << std::endl;
-        if (g_glogLevel >= INFO) {
-            LOG(INFO) << StringFormat("%d", VectorToString(hotPos).c_str());
-        }
+        REC_LOG(INFO) << StringFormat("%d", VectorToString(hotPos).c_str());
     }
 
     void GetExpectRestore(keys_t& sample, vector<int>& blockOffset, vector<int>& restoreVec)
@@ -343,12 +337,10 @@ TEST_F(KeyProcessTest, BuildRestoreVec_4cpu)
                                              { 5, 0, 6, 2, 1, 3, 1, 7, 4, 8 },
                                              { 6, 3, 7, 4, 3, 0, 1, 2, 5, 8 } };
     batch->sample = std::move(allBatchKeys[worldRank]);
-    if (g_glogLevel >= INFO) {
-        LOG(INFO) << StringFormat(
-            KEY_PROCESS "test BuildRestoreVec: rank %d, batchKeys %s",
-            worldRank, VectorToString(batch->sample).c_str()
-        );
-    }
+    LOG(INFO) << StringFormat(
+        KEY_PROCESS "test BuildRestoreVec: rank %d, batchKeys %s",
+        worldRank, VectorToString(batch->sample).c_str()
+    );
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     auto [splitKeys, restore] = process.HashSplit(batch);
@@ -379,11 +371,9 @@ TEST_F(KeyProcessTest, ProcessKeySplit_rebuilt)
         batch = process.GetBatchData(channel, id); // get batch data from SingletonQueue<emb_batch_t>
         LOG(INFO) << StringFormat("rankid :%d,batchid: %d", rankInfo.rankId, batch->batchId);
         tie(splitKeys, restore, hotPos) = process.HotHashSplit(batch);
-        if (g_glogLevel >= INFO) {
-            LOG(INFO) << StringFormat(
-                "rankid :%d,batchid: %d, hotPos %s", rankInfo.rankId, batch->batchId, VectorToString(hotPos).c_str()
-            );
-        }
+        LOG(INFO) << StringFormat(
+            "rankid :%d,batchid: %d, hotPos %s", rankInfo.rankId, batch->batchId, VectorToString(hotPos).c_str()
+        );
     }; // for clean code
     for (int channel = 0; channel < 1; ++channel) {
         for (int id = 0; id < 1; ++id) {
@@ -412,13 +402,11 @@ TEST_F(KeyProcessTest, BuildRestoreVec_rebuilt)
         tie(splitKeys, restore, hotPos) = process.HotHashSplit(batch);
         auto[lookupKeys, scAll, ss] = process.ProcessSplitKeys(batch, id, splitKeys);
         process.BuildRestoreVec(batch, ss, restore, hotPos.size());
-        if (g_glogLevel >= INFO) {
-            LOG(INFO) << StringFormat(
-                "rankid :%d,batchid: %d, lookupKeys: %s, scAll: %s, restore after build %s",
-                rankInfo.rankId, batch->batchId, VectorToString(lookupKeys).c_str(),
-                VectorToString(scAll).c_str(), VectorToString(restore).c_str()
-            );
-        }
+        REC_LOG(INFO) << StringFormat(
+            "rankid :%d,batchid: %d, lookupKeys: %s, scAll: %s, restore after build %s",
+            rankInfo.rankId, batch->batchId, VectorToString(lookupKeys).c_str(),
+            VectorToString(scAll).c_str(), VectorToString(restore).c_str()
+        );
     }; // for clean code
     for (int channel = 0; channel < 1; ++channel) {
         for (int id = 0; id < KEY_PROCESS_THREAD; ++id) {
