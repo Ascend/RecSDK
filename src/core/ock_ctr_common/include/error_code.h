@@ -12,4 +12,4 @@ namespace ock {
     }
 }
 
-#endif //OCK_CTR_ERROR_CODE_H
+#endif // OCK_CTR_ERROR_CODE_H
