@@ -72,9 +72,7 @@ bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos
         }
     }
 
-    if (g_glogLevel >= INFO) {
-        LOG(INFO) << StringFormat(KEY_PROCESS "hot emb count info:%s", MapToString(hotEmbTotCount).c_str());
-    }
+    REC_LOG(INFO) << StringFormat(KEY_PROCESS "hot emb count info:%s", MapToString(hotEmbTotCount).c_str());
     MPI_Group worldGroup;
     MPI_Comm_group(MPI_COMM_WORLD, &worldGroup);
     for (auto& i: comm) {
@@ -97,12 +95,10 @@ bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos
         Factory::Create(factory);
     }
 
-    if (g_glogLevel >= INFO) {
-        LOG(INFO) << StringFormat(
-            KEY_PROCESS "scInfo:%s, localRankSize:%d, rankSize:%d, useStatic:%d, useHot:%d",
-            MapToString(scInfo).c_str(), rInfo.localRankSize, rInfo.rankSize, rInfo.useStatic, rInfo.useHot
-        );
-    }
+    REC_LOG(INFO) << StringFormat(
+        KEY_PROCESS "scInfo:%s, localRankSize:%d, rankSize:%d, useStatic:%d, useHot:%d",
+        MapToString(scInfo).c_str(), rInfo.localRankSize, rInfo.rankSize, rInfo.useStatic, rInfo.useHot
+    );
     return true;
 }
 
