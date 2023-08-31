@@ -29,6 +29,7 @@ public:
   {
     GET_TILING_DATA(constData, tiling);
     // TODO: user kernel impl
+    // 数据的维度数
     int32_t update_dim = constData.update_dim;
     int32_t embbeding_type = constData.embbeding_type;
     int32_t block_total_nums = block_num;
@@ -37,24 +38,29 @@ public:
     addr_nums = constData.addr_nums;
     if (embbeding_type == 2)
     {
-      single_data_size = 2;
+      singleDataSize = 2;
     }
     else
     {
-      single_data_size = 4;
+      singleDataSize = 4;
     }
+    // 缓冲区数量
     PingpongNum = 1;
-    int min_move_num = 32 / single_data_size;
-    once_move_nums = min_move_num * ((int)(update_dim - 1 + min_move_num) / min_move_num);
-
-    int addr_max_num = ((int)((int)(ub_limit / (sizeof(int64_t) + single_data_size * (once_move_nums * ((int32_t)(update_dim - 1 + once_move_nums) / once_move_nums)) * PingpongNum * 2)) / 4)) * 4;
+    int min_move_num = 32 / singleDataSize;
+    // onceMoveNums表示每个数据维度需要移动的次数，(update_dim - 1 + min_move_num) / min_move_num表示除以min_move_num向下取整
+    int onceMoveNums = min_move_num * ((int)(update_dim - 1 + min_move_num) / min_move_num);
+    int num_to_move = (int32_t)(update_dim - 1 + onceMoveNums) / onceMoveNums
+    // 每个地址需要占用sizeof(int64_t)个字节，singleDataSize表示每个数据的字节数，需要使用2倍的内存空间，因为每次移动都需要复制一份数据
+    int occupy_address_bytes_num = sizeof(int64_t) + singleDataSize * onceMoveNums * num_to_move * PingpongNum * 2
+    // 计算一轮计算中最多计算多少个addr，最后的 /4 再*4 是为了与32对齐，因为sizeof(int64_t) = 8
+    int addr_max_num = ((int)((int)(ub_limit / occupy_address_bytes_num) / 4)) * 4;
     int singlenum = (int)(addr_nums / block_total_nums);
     if (singlenum % 4)
     {
       singlenum -= singlenum % 4;
     }
-    roundSize = addr_max_num; // addr_max_num;
-    Veclen = roundSize * single_data_size * once_move_nums;
+    roundSize = addr_max_num;
+    Veclen = roundSize * singleDataSize * onceMoveNums;
     SingleCoreAddrLen = singlenum * sizeof(int64_t);
     cache = roundSize;
     dim = update_dim;
@@ -98,10 +104,10 @@ private:
     int out_index = 0;
     int offset = 0;
     int64_t address = 0;
-    if (dim == once_move_nums)
+    if (dim == onceMoveNums)
     {
       dataLocal = inQueue.AllocTensor<T>();
-      DataCopy(dataLocal, srcDataBufferGm[turns * roundSize], sizes * once_move_nums);
+      DataCopy(dataLocal, srcDataBufferGm[turns * roundSize], sizes * onceMoveNums);
       inQueue.EnQue(dataLocal);
       Compute(sizes);
       LocalTensor<T> dstLocal = outQueue.DeQue<T>();
@@ -115,7 +121,7 @@ private:
         if (address != 0)
         {
           dstDataGm.SetGlobalBuffer((__gm__ T*)(address));
-          DataCopy(dstDataGm, dstLocal[i*once_move_nums], once_move_nums);
+          DataCopy(dstDataGm, dstLocal[i*onceMoveNums], onceMoveNums);
         }
       }
       if (update_type == 0)
@@ -129,7 +135,7 @@ private:
       for (int i = 0; i < sizes; i++)
       {
         dataLocal = inQueue.AllocTensor<T>();
-        DataCopy(dataLocal, srcDataBufferGm[i * dim + turns * roundSize], once_move_nums);
+        DataCopy(dataLocal, srcDataBufferGm[i * dim + turns * roundSize], onceMoveNums);
         inQueue.EnQue<T>(dataLocal);
         Compute(1);
         address = srcAddrLocal.GetValue(i);
@@ -145,7 +151,7 @@ private:
     LocalTensor<T> dstLocal = outQueue.AllocTensor<T>();
     DataCopyParams copyparams;
     copyparams.blockCount = 1;
-    copyparams.blockLen = once_move_nums * sizeof(T) * nums / 32;
+    copyparams.blockLen = onceMoveNums * sizeof(T) * nums / 32;
     DataCopy(dstLocal, srcLocal, copyparams);
     outQueue.EnQue<T>(dstLocal);
     inQueue.FreeTensor(srcLocal);
@@ -167,19 +173,19 @@ private:
       }
 
 #if defined(__DAV_C220_VEC__)
-      if (single_data_size == 4)
+      if (singleDataSize == 4)
       {
 
         copy_ubuf_to_gm_align_b32((__gm__ T *)dstDataGm.GetPhyAddr(), (__ubuf__ T *)dstLocal.GetPhyAddr(), 0,
                                   1, dim * sizeof(T), 0, 0, 0, 0);
       }
-      else if (single_data_size == 2)
+      else if (singleDataSize == 2)
       {
         copy_ubuf_to_gm_align_b16((__gm__ T *)dstDataGm.GetPhyAddr(), (__ubuf__ T *)dstLocal.GetPhyAddr(), 0,
                                   1, dim * sizeof(T), 0, 0, 0, 0);
       }
 #else
-      DataCopy(dstDataGm, dstLocal, once_move_nums);
+      DataCopy(dstDataGm, dstLocal, onceMoveNums);
 #endif
     }
     if (update_type == 0)
@@ -191,7 +197,7 @@ private:
 
 public:
   int32_t roundSize, round, SingleCoreAddrLen, NeedComputeAddrLen, addr_nums, cache, Veclen, dim, PingpongNum;
-  int32_t once_move_nums, single_data_size, update_type;
+  int32_t onceMoveNums, singleDataSize, update_type;
 
 private:
   TPipe pipe;
@@ -214,14 +220,6 @@ extern "C" __global__ __aicore__ void embedding_update_by_address(GM_ADDR addres
   case 0:
   {
     KernelEimtable_update<int32_t> op;
-    op.Init_param(tiling);
-    op.Init(address, embedding, y);
-    op.Process();
-  }
-  break;
-  case 1:
-  {
-    KernelEimtable_update<float> op;
     op.Init_param(tiling);
     op.Init(address, embedding, y);
     op.Process();

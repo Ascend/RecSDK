@@ -11,6 +11,11 @@ namespace optiling
 
         size_t usrSize = 256;
         size_t sysWorkspaceSize = 16 * 1024 * 1024;
+        if (context == nullptr) {
+            printf("Update embbeding_type context nullptr\n");
+            return ge::GRAPH_FAILED;
+        }
+
         size_t *currentWorkspace = context->GetWorkspaceSizes(1);
         currentWorkspace[0] = sysWorkspaceSize + usrSize;
 
@@ -21,24 +26,25 @@ namespace optiling
         int32_t embbeding_type;
 
         int32_t input_shape = context->GetInputTensor(0)->GetShapeSize();
+        if (input_shape <= 0) {
+            printf("input_shape must larger than 0\n");
+            return ge::GRAPH_FAILED;
+        }
+
         int32_t input_dim = context->GetInputTensor(1)->GetShapeSize() / input_shape;
         int32_t update_type = *(context->GetAttrs()->GetAttrPointer<int64_t>(0));
         ge::DataType input_datatype = context->GetInputTensor(1)->GetDataType();
 
-        switch (input_datatype)
-        {
-        case ge::DT_FLOAT16:
-            embbeding_type = 2;
-            break;
-        case ge::DT_FLOAT:
-            embbeding_type = 1;
-            break;
-        case ge::DT_INT32:
-            embbeding_type = 0;
-            break;
-        default:
-            embbeding_type = 1;
-            break;
+        switch (input_datatype) {
+            case ge::DT_FLOAT16:
+                embbeding_type = 2;
+                break;
+            case ge::DT_INT32:
+                embbeding_type = 0;
+                break;
+            default:
+                embbeding_type = 1;
+                break;
         }
 
         update_dim = input_dim;
@@ -61,6 +67,11 @@ namespace ge
     {
         gert::Shape *y_shape = context->GetOutputShape(0);
         int64_t input_shape = context->GetInputTensor(0)->GetShapeSize();
+        if (input_shape <= 0) {
+            printf("input_shape must larger than 0\n");
+            return GRAPH_FAILED;
+        }
+
         int64_t input_dim = context->GetInputTensor(1)->GetShapeSize() / input_shape;
         y_shape->SetDimNum(2);
         y_shape->SetDim(0, input_shape);
