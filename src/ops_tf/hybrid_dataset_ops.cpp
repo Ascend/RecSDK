@@ -38,16 +38,6 @@ TimeCost staticSw {};
 TimeCost staticReadRaw {};
 array<int, MAX_CHANNEL_NUM> batchIdsInfo {};
 
-size_t GetBatchSize(OpKernelContextPtr context, const size_t dataSize, const size_t fieldNum)
-{
-    if (fieldNum == 0 || dataSize / fieldNum <= 0) {
-        context->SetStatus(
-            errors::Aborted(__FILE__, ":", __LINE__, " ", StringFormat("batchSize error. %d/%d", dataSize, fieldNum)));
-        return 0;
-    }
-    return dataSize / fieldNum;
-}
-
 REGISTER_OP("ClearChannel").Attr("channel_id : int");
 
 class ClearChannel : public OpKernel {

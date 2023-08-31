@@ -10,6 +10,11 @@ namespace optiling
 
         size_t usrSize = 256;
         size_t sysWorkspaceSize = 16 * 1024 * 1024;
+        if (context == nullptr) {
+            printf("Tiling context nullptr\n");
+            return ge::GRAPH_FAILED;
+        }
+
         size_t *currentWorkspace = context->GetWorkspaceSizes(1);
         currentWorkspace[0] = sysWorkspaceSize + usrSize;
 
@@ -17,9 +22,21 @@ namespace optiling
         int32_t ub_limit = 175 * 1024;
         auto *attrs = context->GetAttrs();
         const auto *attr0_value = attrs->GetAttrPointer<int64_t>(0);
-        int32_t embbeding_dim = *attr0_value;
+        if (attr0_value == nullptr) {
+            printf(" Lookup embbeding_type attr0_value nullptr\n");
+        }
+        else {
+            int32_t embbeding_dim = *attr0_value;
+        }
+
         const auto *attr1_value = attrs->GetAttrPointer<int64_t>(1);
-        int32_t embbeding_type = *attr1_value;
+        if (attr1_value == nullptr) {
+            printf(" Lookup embbeding_type attr1_value nullptr\n");
+        }
+        else {
+            int32_t embbeding_type = *attr1_value;
+        }
+
         int32_t input_shape = context->GetInputTensor(0)->GetShapeSize();
 
         tiling.set_embbeding_type(embbeding_type);
@@ -43,7 +60,13 @@ namespace ge
         gert::Shape *y_shape = context->GetOutputShape(0);
         auto *attrs = context->GetAttrs();
         const auto *attr0_value = attrs->GetAttrPointer<int64_t>(0);
-        int64_t update_dim = *attr0_value;
+        if (attr0_value == nullptr) {
+            printf(" Lookup embbeding_type attr0_value nullptr\n");
+        }
+        else {
+            int64_t update_dim = *attr0_value;
+        }
+
         int64_t input_shape = context->GetInputTensor(0)->GetShapeSize();
         y_shape->SetDimNum(2);
         y_shape->SetDim(0, input_shape);
@@ -56,8 +79,7 @@ namespace ge
         int64_t embbeding_type;
         auto *attrs = context->GetAttrs();
         const auto *attr1_value = attrs->GetAttrPointer<int64_t>(1);
-        if (attr1_value == nullptr)
-        {
+        if (attr1_value == nullptr) {
             printf(" Lookup embbeding_type nullptr\n");
         }
         else
