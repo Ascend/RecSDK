@@ -722,7 +722,9 @@ class SparseEmbedding:
                 if kwargs.get("multi_lookup"):
                     lookup_result = tf.reshape(embeddings, [-1, self.scalar_emb_size])
                 else:
-                    feature_spec_tensor = kwargs.get("batch").get(feature_spec.index_key)
+                    feature_spec_tensor = None
+                    if not self.modify_graph:
+                        feature_spec_tensor = kwargs.get("batch").get(feature_spec.index_key)
                     modify_graph_tensor = kwargs.get("ids")
                     tensor = feature_spec_tensor if not self.modify_graph else modify_graph_tensor
                     if tensor is None:
