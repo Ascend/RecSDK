@@ -33,9 +33,8 @@ inline TransferRet TransferSpaceWarning()
 inline void GetExternalKeys(EmbHashMapInfo& embHashMap, vector<emb_key_t>& externalKeys,
                             vector<emb_key_t>& internalKeys, const vector<emb_key_t>& keys)
 {
-    auto& hostHashMap = embHashMap.hostHashMap;
-    for (auto key : keys) {
-        if (hostHashMap.find(key) == hostHashMap.end()) {
+    for (const emb_key_t key : keys) {
+        if (embHashMap.hostHashMap.find(key) == embHashMap.hostHashMap.end()) {
             externalKeys.emplace_back(key);
         } else {
             internalKeys.emplace_back(key);
@@ -54,18 +53,22 @@ void AddDebugAndTraceLog(size_t batchKeySize, vector<emb_key_t>& externalKeys, v
     }
 }
 
-inline vector<emb_key_t> DeleteRepeatKey(const vector<emb_key_t>& originalKeys)
+/// 去重和过滤无效key
+/// \param originalKeys 原有keys
+/// \param keys 处理后的keys
+void HandleRepeatAndInvalidKey(const vector<emb_key_t>& originalKeys, vector<emb_key_t>& keys)
 {
     // 去重并保持原key的顺序 结果可测试
     unordered_set<emb_key_t> keySet;
-    vector<emb_key_t> keys;
     for (auto& key : originalKeys) {
+        if (key == INVALID_KEY_VALUE) {
+            continue;
+        }
         if (keySet.find(key) == keySet.end()) {
             keySet.emplace(key);
             keys.emplace_back(key);
         }
     }
-    return keys;
 }
 
 /// DDR与SSD数据转移，使DDR内剩余空间能放置当前批次key
@@ -77,7 +80,8 @@ inline vector<emb_key_t> DeleteRepeatKey(const vector<emb_key_t>& originalKeys)
 TransferRet CacheManager::TransferDDREmbWithSSD(const std::string& embTableName, EmbHashMapInfo& embHashMap,
                                                 const vector<emb_key_t>& originalKeys, int channelId)
 {
-    vector<emb_key_t> keys = DeleteRepeatKey(originalKeys); // 去重
+    vector<emb_key_t> keys; // 去重和删除无效key
+    HandleRepeatAndInvalidKey(originalKeys, keys);
     // 区分HBM+DDR内key，和HBM+DDR外的key(新key或保存在SSD中的key)
     vector<emb_key_t> externalKeys;
     vector<emb_key_t> internalKeys;
@@ -85,12 +89,13 @@ TransferRet CacheManager::TransferDDREmbWithSSD(const std::string& embTableName,
     if (externalKeys.empty()) { return TransferSuccess(); }
 
     // 判断剩余内存空间是否足够; 可用内存空间计算：HBM+DDR-已占用; 若是训练，再加DDR已淘汰;
-    // SSD仅与DDR交互，不考虑HBM淘汰位置
+    // SSD仅与DDR交互，不考虑HBM淘汰位置；由于maxOffset比实际使用大1，所以虽然从0开始也不用再减1
     size_t ddrAvailableSize = embHashMap.devVocabSize + embHashMap.hostVocabSize - embHashMap.maxOffset;
     if (channelId == TRAIN_CHANNEL_ID) {
         ddrAvailableSize += embHashMap.evictPos.size();
     }
-
+    VLOG(GLOG_DEBUG) << StringFormat("TransferDDREmbWithSSD, maxOffset:%d, evictPos size:%d, ddrAvailableSize:%d",
+                                     embHashMap.maxOffset, embHashMap.evictPos.size(), ddrAvailableSize);
     CreateSSDTableIfNotExist(embTableName);
 
     // 调用ssdEngine查询当前批次key中保存在SSD中的key
@@ -151,8 +156,7 @@ TransferRet CacheManager::TransferDDREmbWithSSD(const std::string& embTableName,
     // 从ddr转移到ssd的key个数
     size_t ddrSwapOutSizeTmp = ddrSpaceEnoughOrEval ? externalSSDKeys.size() : externalKeys.size();
     auto ddrSwapOutSize = static_cast<int64_t>(ddrSwapOutSizeTmp - ddrAvailableSize);
-    VLOG(GLOG_DEBUG) << StringFormat("TransferDDREmbWithSSD: ddrSwapOutSize:%d, ddrAvailableSize:%lld", ddrSwapOutSize,
-                                     ddrAvailableSize);
+    VLOG(GLOG_DEBUG) << StringFormat("TransferDDREmbWithSSD: ddrSwapOutSize:%d", ddrSwapOutSize);
 
     /*
      * 转移DDR中数据到SSD
@@ -254,7 +258,8 @@ void CacheManager::RefreshRelateInfoWithDDR2SSD(const string& embTableName, EmbH
 void CacheManager::RefreshFreqInfoCommon(const string& embTableName, vector<emb_key_t>& originalKeys,
                                          TransferType type)
 {
-    vector<emb_key_t> keys = DeleteRepeatKey(originalKeys);
+    vector<emb_key_t> keys;
+    HandleRepeatAndInvalidKey(originalKeys, keys);
     if (type == TransferType::DDR_2_HBM) {
         for (auto& key : keys) {
             // 频次数据记录到 excludeDDRKeyCountMap,并删除ddrKeyFreqMap中频次数据
@@ -300,7 +305,8 @@ bool CacheManager::IsKeyInSSD(const string& embTableName, emb_key_t key)
 /// \param originalKeys 淘汰key列表
 void CacheManager::EvictSSDEmbedding(const string& embTableName, vector<emb_key_t>& originalKeys)
 {
-    vector<emb_key_t> keys = DeleteRepeatKey(originalKeys);
+    vector<emb_key_t> keys;
+    HandleRepeatAndInvalidKey(originalKeys, keys);
     // 1 删除缓存中记录的key的次数 2 删除SSD中保存的Emb数据
     for (auto& key : keys) {
         excludeDDRKeyCountMap[embTableName].erase(key);
@@ -336,7 +342,8 @@ void CacheManager::HandleDDRTransferPos(vector<size_t>& ddrTransferPos, vector<e
         return;
     }
     VLOG(GLOG_DEBUG) << StringFormat("TransferDDREmbWithSSD: operate length is not equal, will padding or clipping, "
-                                     "pos len:%d, keys len:%d", ddrTransferPos.size(), externalSSDKeys.size());
+                                     "ddrTransferPos size:%d, externalSSDKeys size:%d",
+                                     ddrTransferPos.size(), externalSSDKeys.size());
     // ddrTransferPos中是DDR内偏移位置，存入evictPos时，需加上devVocabSize;取出时需减去
     if (ddrTransferPos.size() > externalSSDKeys.size()) {
         while (ddrTransferPos.size() > externalSSDKeys.size()) {
@@ -473,9 +480,12 @@ CacheManager::~CacheManager()
 /// 加载数据到CacheManager
 /// \param ddrFreqInitMap ddr内key频次数据
 /// \param excludeDdrFreqInitMap 非DDR key频次数据
+/// \param step 加载SSDEngine传入步数
 void CacheManager::Load(unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>>& ddrFreqInitMap,
-                        unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>>& excludeDdrFreqInitMap)
+                        unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>>& excludeDdrFreqInitMap,
+                        int step)
 {
+    // 加载CacheManager数据
     for (auto& it : ddrFreqInitMap) {
         auto& embTableName = it.first;
         auto& freqMap = it.second;
@@ -490,4 +500,19 @@ void CacheManager::Load(unordered_map<std::string, unordered_map<emb_key_t, freq
             excludeDDRKeyCountMap[embTableName].emplace(freqIt.first, freqIt.second);
         }
     }
+    // 加载SSDEngine数据
+#ifndef GTEST
+    for (auto& it : embBaseInfos) {
+        string embTableName = it.first;
+        EmbBaseInfo& embBase = it.second;
+        ssdEngine->Load(embTableName, embBase.savePath, embBase.maxTableSize, step);
+    }
+#endif
+}
+
+void CacheManager::SaveSSDEngine(int step)
+{
+#ifndef GTEST
+    ssdEngine->Save(step);
+#endif
 }

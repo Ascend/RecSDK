@@ -164,6 +164,35 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     return true;
 }
 
+// 比较hostHashMap和cacheManager的数据是否一致
+void HybridMgmt::AddCacheManagerTraceLog(absl::flat_hash_map<basic_string<char>, EmbHashMapInfo>& embHashMaps)
+{
+    if (!isSSDEnabled || !VLOG_IS_ON(GLOG_TRACE)) {
+        return;
+    }
+    for (auto& it : embHashMaps) {
+        string embTableName = it.first;
+        auto& hostMap = it.second.hostHashMap;
+        auto& devSize = it.second.devVocabSize;
+        auto& lfu = cacheManager->ddrKeyFreqMap[embTableName];
+        size_t tableKeyInDdr = 0;
+        for (const auto& item : hostMap) {
+            if (item.second < devSize) {
+                continue;
+            }
+            ++tableKeyInDdr;
+            auto cuKey = item.first;
+            auto lfuKeyCount = lfu.Get(cuKey);
+            if (lfuKeyCount == -1) {
+                LOG(ERROR) << "ERROR, SAVE Step, ddr key:" << cuKey << ", lfu count by key:" <<
+                              lfuKeyCount << ", hostHashMap offset:" << item.second;
+            }
+        }
+        LOG(INFO) << "SAVE Step, table:" << embTableName << ", tableKeyInDdr:" << tableKeyInDdr <<
+                     ", tableKeyInLfu:" << lfu.keyTable.size();
+    }
+}
+
 /// 保存模型
 /// \param savePath 保存路径
 /// \return
@@ -180,6 +209,7 @@ bool HybridMgmt::Save(const string savePath)
         VLOG(GLOG_DEBUG) << (MGMT + "Start host side save: ddr mode hashmap");
         saveData.hostEmbs = hostEmbs->GetHostEmbs();
         saveData.embHashMaps = hostHashMaps->GetHashMaps();
+        AddCacheManagerTraceLog(saveData.embHashMaps);
     } else {
         // HBM模式保存最大偏移（真正使用了多少vocab容量），特征到偏移的映射
         VLOG(GLOG_DEBUG) << (MGMT + "Start host side save: no ddr mode hashmap");
@@ -886,11 +916,16 @@ void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
 
     // 初始化host侧的emb
     auto& evictOffset = hostHashMaps->GetEvictPos(embName);
-    if (evictOffset.size() != 0) {
+    vector<size_t> evictOffset4Ddr;
+    auto devVocabSize = hostHashMaps->embHashMaps.at(embName).devVocabSize;
+    for (auto& offsetInHostHashMap : evictOffset) {
+        evictOffset4Ddr.emplace_back(offsetInHostHashMap - devVocabSize);
+    }
+    if (!evictOffset4Ddr.empty()) {
         VLOG(GLOG_DEBUG) << StringFormat(
-            MGMT + "ddr mode, delete emb: [%s]! evict size on host:%d", embName.c_str(), evictOffset.size()
+            MGMT + "ddr mode, delete emb: [%s]! evict size on host:%d", embName.c_str(), evictOffset4Ddr.size()
         );
-        hostEmbs->EvictInitEmb(embName, evictOffset);
+        hostEmbs->EvictInitEmb(embName, evictOffset4Ddr);
     } else {
         LOG(INFO) << StringFormat(MGMT + "ddr mode, evict size on host is empty");
     }

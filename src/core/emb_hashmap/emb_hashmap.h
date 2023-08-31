@@ -82,8 +82,9 @@ namespace MxRec {
 
         int32_t FindNewOffset(const emb_key_t& key, EmbHashMapInfo& embHashMap);
 
-        void RefreshFreqInfoWithSwap(const string& embName,
-                                     const std::vector<std::pair<emb_key_t, emb_key_t>>& oldSwap);
+        void RefreshFreqInfoWithSwap(const string& embName, EmbHashMapInfo& embHashMap);
+
+        void AddCacheManagerTraceLog(const string& embName, const EmbHashMapInfo& embHashMap) const;
 
         void AddKeyFreqInfo(const string& embTableName, const emb_key_t& key, RecordType type);
 
