@@ -344,8 +344,10 @@ void EmbHashMap::EvictDeleteEmb(const string& embName, const vector<emb_key_t>& 
             evictDDRKeys.emplace_back(key);
         }
     }
-    cacheManager->RefreshFreqInfoCommon(embName, evictHBMKeys, TransferType::HBM_2_EVICT);
-    cacheManager->RefreshFreqInfoCommon(embName, evictDDRKeys, TransferType::DDR_2_EVICT);
+    if (isSSDEnabled) {
+        cacheManager->RefreshFreqInfoCommon(embName, evictHBMKeys, TransferType::HBM_2_EVICT);
+        cacheManager->RefreshFreqInfoCommon(embName, evictDDRKeys, TransferType::DDR_2_EVICT);
+    }
 
     LOG(INFO) << StringFormat(
         "ddr EvictDeleteEmb, emb: [%s], hostEvictSize: %d, devEvictSize: %d ",

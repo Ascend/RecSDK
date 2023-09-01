@@ -35,9 +35,11 @@ def check_ssd_relate_param(host_vocabulary_size, ssd_vocabulary_size, ssd_data_p
         h_size = int(host_vocabulary_size)
         s_size = int(ssd_vocabulary_size)
     except ValueError:
-        raise ValueError("exist invalid value in host_vocabulary_size or ssd_vocabulary_size or both.")
+        raise ValueError("host_vocabulary_size and ssd_vocabulary_size should be integer")
     if h_size == 0 and s_size != 0:
-        raise ValueError("ssd_vocabulary_size value is invalid, it need host_vocabulary_size value not equals 0.")
+        raise ValueError("ssd_vocabulary_size value is invalid, it effected by host_vocabulary_size not zero")
+    if h_size != 0 and s_size < 0:
+        raise ValueError("ssd_vocabulary_size value is invalid, it need be greater than 0")
     invalid_ssd_data_path = []
     for tmp_path in ssd_data_path:
         if is_invalid_path(tmp_path):
