@@ -253,13 +253,10 @@ void CacheManager::RefreshRelateInfoWithDDR2SSD(const string& embTableName, EmbH
 
 /// key从DDR移入、移出、HBM淘汰时刷新频次信息；仅刷新频次信息
 /// \param embTableName emb表名
-/// \param originalKeys 操作的key集合
+/// \param keys 操作的key集合
 /// \param type TransferType
-void CacheManager::RefreshFreqInfoCommon(const string& embTableName, vector<emb_key_t>& originalKeys,
-                                         TransferType type)
+void CacheManager::RefreshFreqInfoCommon(const string& embTableName, vector<emb_key_t>& keys, TransferType type)
 {
-    vector<emb_key_t> keys;
-    HandleRepeatAndInvalidKey(originalKeys, keys);
     if (type == TransferType::DDR_2_HBM) {
         for (auto& key : keys) {
             // 频次数据记录到 excludeDDRKeyCountMap,并删除ddrKeyFreqMap中频次数据
@@ -302,17 +299,17 @@ bool CacheManager::IsKeyInSSD(const string& embTableName, emb_key_t key)
 
 /// 淘汰SSD中Emb信息
 /// \param embTableName emb表名
-/// \param originalKeys 淘汰key列表
-void CacheManager::EvictSSDEmbedding(const string& embTableName, vector<emb_key_t>& originalKeys)
+/// \param keys 淘汰key列表
+void CacheManager::EvictSSDEmbedding(const string& embTableName, vector<emb_key_t>& keys)
 {
-    vector<emb_key_t> keys;
-    HandleRepeatAndInvalidKey(originalKeys, keys);
+    if (keys.empty()) {
+        return;
+    }
     // 1 删除缓存中记录的key的次数 2 删除SSD中保存的Emb数据
     for (auto& key : keys) {
         excludeDDRKeyCountMap[embTableName].erase(key);
     }
-    vector<emb_key_t> currentKeys(keys.begin(), keys.end());
-    ssdEngine->DeleteEmbeddings(embTableName, currentKeys);
+    ssdEngine->DeleteEmbeddings(embTableName, keys);
 }
 
 /// 放入key，新增/更新(次数+1)次数
