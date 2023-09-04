@@ -45,10 +45,13 @@ def parse_hccl_json():
                 raise ValueError(f"hccl_json device_id wrong.")
 
             import mxrec_pybind
-            device_id = mxrec_pybind.get_logic_id(int(device.get("device_id")))
-            if device_id > MAX_DEVICE_ID:
+            res = mxrec_pybind.get_logic_id(int(device.get("device_id")))
+            if res < 0:
+                raise RuntimeError(
+                    f"get logic id from physic id fail, error code is {res}, please check if dsmi api is functional.")
+            if res > MAX_DEVICE_ID:
                 raise ValueError(f"get logic id from physic id fail, the device id is invalid.")
-            rank_to_device_dict[rank_id] = device_id
+            rank_to_device_dict[rank_id] = res
 
     return rank_to_device_dict
 
@@ -84,17 +87,15 @@ def set_hccl_info_without_json():
 
     for device_idx in sorted_device_list:
         import mxrec_pybind
+        res = mxrec_pybind.get_logic_id(int(device_idx))
+        if res < 0:
+            raise RuntimeError(
+                f"get logic id from physic id fail, error code is {res}, please check if dsmi api is functional.")
 
-        try:
-            device_id = mxrec_pybind.get_logic_id(int(device_idx))
-        except RuntimeError as exp:
-            raise RuntimeError(f"get logic id from physic id fail. Possible reasons: 1) running user permission "
-                               f"is not enough to call dsmi api 2) driver has been used by other process") from \
-                exp
-        if device_id > MAX_DEVICE_ID:
+        if res > MAX_DEVICE_ID:
             raise ValueError(f"get logic id from physic id fail.")
         index = sorted_device_list.index(device_idx)
-        rank_to_device_dict[index + 1] = device_id
+        rank_to_device_dict[index + 1] = res
     return rank_to_device_dict
 
 

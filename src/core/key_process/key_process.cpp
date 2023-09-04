@@ -468,7 +468,10 @@ void KeyProcess::PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tenso
     if (PerfConfig::gradientStrategy && channel == TRAIN_CHANNEL_ID) {
         keys_t uniqueKeys;
         vector<int32_t> restoreVecSec;
+
+        TimeCost globalUniqueSyncTC;
         GlobalUnique(lookupKeys, uniqueKeys, restoreVecSec);
+        VLOG(GLOG_DEBUG) << StringFormat("globalUniqueSyncTC(ms):%d", globalUniqueSyncTC.ElapsedMS());
         tensors->push_back(Vec2TensorI32(restoreVecSec));
         tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(uniqueKeys) : Vec2TensorI32(uniqueKeys));
     }
