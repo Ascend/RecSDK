@@ -153,6 +153,12 @@ class Saver(object):
             logging.debug(f"host data was saved.")
 
         for table_name, dump_data_dict in result.items():
+            table_instance = get_table_instance_by_name(table_name)
+            if table_instance.host_vocabulary_size > 0:
+                table_dir = os.path.join(root_dir, "HashTable", "DDR", table_name)
+            else:
+                table_dir = os.path.join(root_dir, "HashTable", "HBM", table_name)
+            tf.io.gfile.makedirs(table_dir)
             if is_asc_manager_initialized() and self.save_easy_mode:
                 host_data = get_host_data(table_name)
                 key = np.array(list(host_data.keys()))
