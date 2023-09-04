@@ -51,7 +51,8 @@ CkptTransData EmbHashCkpt::GetDataset(CkptDataType dataType, string embName)
     map<CkptDataType, function<void()>> dataTransMap { { CkptDataType::EMB_HASHMAP,
         [=] { SetEmbHashMapTrans(embName); } },
         { CkptDataType::DEV_OFFSET, [=] { SetDevOffsetTrans(embName); } },
-        { CkptDataType::EMB_CURR_STAT, [=] { SetEmbCurrStatTrans(embName); } } };
+        { CkptDataType::EMB_CURR_STAT, [=] { SetEmbCurrStatTrans(embName); } },
+        { CkptDataType::EVICT_POS, [=] { SetEvictPosTrans(embName); } } };
 
     CleanTransfer();
     dataTransMap.at(dataType)();
@@ -62,7 +63,8 @@ void EmbHashCkpt::SetDataset(CkptDataType dataType, string embName, CkptTransDat
 {
     map<CkptDataType, function<void()>> dataLoadMap { { CkptDataType::EMB_HASHMAP, [=] { SetEmbHashMap(embName); } },
         { CkptDataType::DEV_OFFSET, [=] { SetDevOffset(embName); } },
-        { CkptDataType::EMB_CURR_STAT, [=] { SetEmbCurrStat(embName); } } };
+        { CkptDataType::EMB_CURR_STAT, [=] { SetEmbCurrStat(embName); } },
+        { CkptDataType::EVICT_POS, [=] { SetEvictPos(embName); } } };
 
     CleanTransfer();
     transferData = move(loadedData);
@@ -124,6 +126,23 @@ void EmbHashCkpt::SetEmbCurrStatTrans(string embName)
     transArr.push_back(static_cast<int>(saveEmbHashMaps.at(embName).currentUpdatePos));
     transArr.push_back(static_cast<int>(saveEmbHashMaps.at(embName).hostVocabSize));
     transArr.push_back(static_cast<int>(saveEmbHashMaps.at(embName).devVocabSize));
+    transArr.push_back(static_cast<int>(saveEmbHashMaps.at(embName).maxOffset));
+}
+
+void EmbHashCkpt::SetEvictPosTrans(string embName)
+{
+    const auto& evictPos = saveEmbHashMaps.at(embName).evictPos;
+    auto& transArr = transferData.int64Arr;
+    auto& attribute = transferData.attribute;
+    auto evictPosSize = evictPos.size();
+
+    attribute.push_back(evictPosSize);
+    attribute.push_back(eightBytes);
+    transferData.datasetSize = evictPosSize * eightBytes;
+    transferData.attributeSize = attribute.size() * eightBytes;
+
+    transArr.reserve(evictPosSize);
+    transArr.insert(transArr.end(), evictPos.begin(), evictPos.end());
 }
 
 void EmbHashCkpt::SetEmbHashMap(string embName)
@@ -134,7 +153,6 @@ void EmbHashCkpt::SetEmbHashMap(string embName)
         if (i + embHashElmtNum > transArr.size()) {
             // this is an error, need to log this
         }
-
         hostHashMap[transArr.at(i)] = static_cast<size_t>(transArr.at(i + 1));
     }
 }
@@ -153,6 +171,18 @@ void EmbHashCkpt::SetDevOffset(string embName)
     dev2Key.insert(dev2Key.begin(), transArr.begin() + attribute.at(attrbDev2BatchIdx), transArr.end());
 }
 
+void EmbHashCkpt::SetEvictPos(string embName)
+{
+    const auto& transArr = transferData.int64Arr;
+    const auto& attribute = transferData.attribute;
+    auto& evictPos = loadEmbHashMaps[embName].evictPos;
+
+    evictPos.resize(attribute.at(attrEvictPosIdx));
+    fill(evictPos.begin(), evictPos.end(), -1);
+    evictPos.insert(evictPos.begin(), transArr.begin() + attribute.at(attrEvictPosIdx), transArr.end());
+}
+
+
 void EmbHashCkpt::SetEmbCurrStat(string embName)
 {
     auto& embCurrStat = loadEmbHashMaps[embName];
@@ -161,4 +191,5 @@ void EmbHashCkpt::SetEmbCurrStat(string embName)
     embCurrStat.currentUpdatePos = static_cast<size_t>(transArr.at(currUpdataPosIdx));
     embCurrStat.hostVocabSize = static_cast<size_t>(transArr.at(hostVocabIdx));
     embCurrStat.devVocabSize = static_cast<size_t>(transArr.at(devVocabIdx));
+    embCurrStat.maxOffset = static_cast<size_t>(transArr.at(maxOffsetIdx));
 }

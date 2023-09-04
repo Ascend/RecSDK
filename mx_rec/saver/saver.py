@@ -148,6 +148,10 @@ class Saver(object):
 
     def _save(self, sess, root_dir):
         result = sess.run(self.save_op_dict)
+        if is_asc_manager_initialized() and not self.save_easy_mode:
+            save_host_data(root_dir)
+            logging.debug(f"host data was saved.")
+
         for table_name, dump_data_dict in result.items():
             if is_asc_manager_initialized() and self.save_easy_mode:
                 host_data = get_host_data(table_name)
@@ -155,9 +159,7 @@ class Saver(object):
                 offset = list(host_data.values())
                 get_valid_dict_data(dump_data_dict, offset)
                 save_key_data(root_dir, table_name, key, self.rank_id)
-            if is_asc_manager_initialized() and not self.save_easy_mode:
-                save_host_data(root_dir)
-                logging.debug(f"host data was saved.")
+
             save_embedding_data(root_dir, table_name, dump_data_dict, self.rank_id)
             table_instance = get_table_instance_by_name(table_name)
 

@@ -211,9 +211,9 @@ namespace MxRec {
             }
         }
         // validate file size
-        if (datasetSize <= FILE_MIN_SIZE || datasetSize > FILE_MAX_SIZE) {
+        if (datasetSize > FILE_MAX_SIZE) {
             LOG(ERROR) << StringFormat("the reading file size is invalid, "
-                                       "not in range (%d,%d]", FILE_MIN_SIZE, FILE_MAX_SIZE);
+                                       "not in range [%d,%lld]", FILE_MIN_SIZE, FILE_MAX_SIZE);
             throw invalid_argument(StringFormat("file size invalid"));
         }
     }

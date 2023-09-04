@@ -78,7 +78,7 @@ namespace MxRec {
 
     // validate file
     constexpr long long FILE_MAX_SIZE = 1LL << 40;
-    constexpr int FILE_MIN_SIZE = 1;
+    constexpr int FILE_MIN_SIZE = 0;
 
     struct PerfConfig {
         static int keyProcessThreadNum;
@@ -102,6 +102,7 @@ namespace MxRec {
     const string COMBINE_HISTORY_NAME = "combine_table_history";
 
     using emb_key_t = int64_t;
+    using freq_num_t = int64_t;
     using emb_name_t = std::string;
     using keys_t = std::vector<emb_key_t>;
     using lookup_key_t = std::tuple<int, emb_name_t, keys_t>;             // batch_id quarry_lable keys_vector
@@ -540,13 +541,16 @@ namespace MxRec {
     using trans_serialize_t = uint8_t;
     using key_offset_map_t = std::map<int64_t, int64_t>;
     using all_key_offset_map_t = std::map<std::string, std::map<int64_t, int64_t>>;
+    using key_freq_mem_t = unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>>;
 
     enum class CkptFeatureType {
         HOST_EMB = 0,
         EMB_HASHMAP = 1,
         MAX_OFFSET = 2,
         KEY_OFFSET_MAP = 3,
-        FEAT_ADMIT_N_EVICT = 4
+        FEAT_ADMIT_N_EVICT = 4,
+        DDR_KEY_FREQ_MAP = 5,
+        EXCLUDE_DDR_KEY_FREQ_MAP = 6
     };
 
     struct CkptData {
@@ -556,6 +560,8 @@ namespace MxRec {
         key_offset_mem_t keyOffsetMap;
         table_2_thresh_mem_t table2Thresh;
         AdmitAndEvictData histRec;
+        key_freq_mem_t ddrKeyFreqMaps;
+        key_freq_mem_t excludeDDRKeyFreqMaps;
     };
 
     struct CkptTransData {
@@ -578,7 +584,10 @@ namespace MxRec {
         NDDR_FEATMAP = 6,
         TABLE_2_THRESH = 7,
         HIST_REC = 8,
-        ATTRIBUTE = 9
+        ATTRIBUTE = 9,
+        DDR_FREQ_MAP = 10,
+        EXCLUDE_FREQ_MAP = 11,
+        EVICT_POS = 12
     };
 } // end namespace MxRec
 

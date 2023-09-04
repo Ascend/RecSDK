@@ -31,7 +31,8 @@ namespace MxRec {
         const string dataFileType { ".data" };
         const string attribFileType { ".attribute" };
         const string dirSeparator { "/" };
-        const mode_t dirMode { 0400 };
+        const string ssdSymbol {"SSD"};
+        const mode_t dirMode { 0500 };
 
         const string currDir { "." };
         const string prevDir { ".." };
@@ -48,7 +49,9 @@ namespace MxRec {
             CkptDataType::EMB_HASHMAP,
             CkptDataType::DEV_OFFSET,
             CkptDataType::HIST_REC,
-            CkptDataType::NDDR_FEATMAP
+            CkptDataType::NDDR_FEATMAP,
+            CkptDataType::DDR_FREQ_MAP,
+            CkptDataType::EXCLUDE_FREQ_MAP
         };
         const set<CkptDataType> floatTransSet{
             CkptDataType::EMB_DATA
@@ -93,6 +96,7 @@ namespace MxRec {
         void LoadProcess(CkptData& ckptData);
         void GetUpperLayerLoadDir(const vector<string>& dirNames);
         vector<string> GetEmbedTableNames();
+        vector<string> GetTableLayerLoadDir();
         void LoadDataset(const vector<string>& embNames, const vector<CkptDataType>& saveDataTypes,
             const unique_ptr<CkptDataHandler>& dataHandler, CkptData& ckptData);
         void ReadStream(CkptTransData& transData, const string& dataDir, CkptDataType dataType, uint32_t dataElmtBytes);

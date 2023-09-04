@@ -15,6 +15,7 @@
 #include "ckpt_data_handler/nddr_offset_ckpt/nddr_offset_ckpt.h"
 #include "ckpt_data_handler/nddr_feat_map_ckpt/nddr_feat_map_ckpt.h"
 #include "ckpt_data_handler/feat_admit_n_evict_ckpt/feat_admit_n_evict_ckpt.h"
+#include "ckpt_data_handler/key_freq_map_ckpt/key_freq_map_ckpt.h"
 #include "utils/time_cost.h"
 #include "utils/common.h"
 
@@ -75,6 +76,9 @@ void Checkpoint::SetDataHandler(CkptData& ckptData)
         !ckptData.histRec.historyRecords.empty()) {
         dataHandlers.push_back(make_unique<FeatAdmitNEvictCkpt>());
     }
+    if (!ckptData.ddrKeyFreqMaps.empty() && !ckptData.excludeDDRKeyFreqMaps.empty()) {
+        dataHandlers.push_back(make_unique<KeyFreqMapCkpt>());
+    }
 }
 
 void Checkpoint::SetDataHandler(const vector<CkptFeatureType>& featureTypes)
@@ -84,7 +88,8 @@ void Checkpoint::SetDataHandler(const vector<CkptFeatureType>& featureTypes)
         { CkptFeatureType::EMB_HASHMAP, [&] { dataHandlers.push_back(make_unique<EmbHashCkpt>()); } },
         { CkptFeatureType::MAX_OFFSET, [&] { dataHandlers.push_back(make_unique<NddrOffsetCkpt>()); } },
         { CkptFeatureType::KEY_OFFSET_MAP, [&] { dataHandlers.push_back(make_unique<NddrFeatMapCkpt>()); } },
-        { CkptFeatureType::FEAT_ADMIT_N_EVICT, [&] { dataHandlers.push_back(make_unique<FeatAdmitNEvictCkpt>()); } } };
+        { CkptFeatureType::FEAT_ADMIT_N_EVICT, [&] { dataHandlers.push_back(make_unique<FeatAdmitNEvictCkpt>()); } },
+        { CkptFeatureType::DDR_KEY_FREQ_MAP, [&] { dataHandlers.push_back(make_unique<KeyFreqMapCkpt>()); } } };
 
     for (const auto& featureType : featureTypes) {
         setCkptMap.at(featureType)();
@@ -359,12 +364,13 @@ void Checkpoint::LoadProcess(CkptData& ckptData)
         vector<string> embNames {};
         vector<string> dirNames { dataHandler->GetDirNames() };
         vector<CkptDataType> saveDataTypes { dataHandler->GetDataTypes() };
-
         GetUpperLayerLoadDir(dirNames);
-        embNames = GetEmbedTableNames();
-
+        if (find(dirNames.begin(), dirNames.end(), ssdSymbol) != dirNames.end()) {
+            embNames = GetTableLayerLoadDir();
+        } else {
+            embNames = GetEmbedTableNames();
+        }
         LoadDataset(embNames, saveDataTypes, dataHandler, ckptData);
-
         dataHandler->GetProcessData(ckptData);
     }
 }
@@ -388,6 +394,25 @@ vector<string> Checkpoint::GetEmbedTableNames()
     }
 
     return loadTableNames;
+}
+
+vector<string> Checkpoint::GetTableLayerLoadDir()
+{
+    vector<string> loadTableDir;
+    auto dir { opendir(innerDirPath.c_str()) };
+    struct dirent* en;
+    if (dir != nullptr) {
+        while ((en = readdir(dir)) != nullptr) {
+            if (strcmp(en->d_name, currDir.c_str()) != 0 &&
+                strcmp(en->d_name, prevDir.c_str()) != 0) {
+                loadTableDir.emplace_back(en->d_name);
+            }
+        }
+        closedir(dir);
+    } else {
+        LOG(WARNING) << "when loading data in ssd, there are no table files.";
+    }
+    return loadTableDir;
 }
 
 void Checkpoint::LoadDataset(const vector<string>& embNames,
@@ -465,7 +490,6 @@ void Checkpoint::ReadStream(CkptTransData& transData,
 
     auto resizeSize { datasetSize / dataElmtBytes };
     SetTransDataSize(transData, resizeSize, dataType);
-
     if (readFile.is_open()) {
         size_t idx = 0;
         size_t readSize = 0;
