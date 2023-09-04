@@ -20,17 +20,17 @@ void EmbHashMap::Init(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
 #ifndef GTEST
     this->rankInfo = rankInfo;
     if (!ifLoad) {
-        EmbHashMapInfo embHashMap;
+        EmbHashMapInfo embHashMapInfo;
         LOG(INFO) << "init emb hash map from scratch";
         for (const auto& embInfo: embInfos) {
-            embHashMap.devOffset2Batch.resize(embInfo.devVocabSize);
-            embHashMap.devOffset2Key.resize(embInfo.devVocabSize);
-            embHashMap.hostVocabSize = embInfo.hostVocabSize;
-            embHashMap.devVocabSize = embInfo.devVocabSize;
-            embHashMap.currentUpdatePos = 0;
-            fill(embHashMap.devOffset2Batch.begin(), embHashMap.devOffset2Batch.end(), -1);
-            fill(embHashMap.devOffset2Key.begin(), embHashMap.devOffset2Key.end(), -1);
-            embHashMaps[embInfo.name] = embHashMap;
+            embHashMapInfo.devOffset2Batch.resize(embInfo.devVocabSize);
+            embHashMapInfo.devOffset2Key.resize(embInfo.devVocabSize);
+            embHashMapInfo.hostVocabSize = embInfo.hostVocabSize;
+            embHashMapInfo.devVocabSize = embInfo.devVocabSize;
+            embHashMapInfo.currentUpdatePos = 0;
+            fill(embHashMapInfo.devOffset2Batch.begin(), embHashMapInfo.devOffset2Batch.end(), -1);
+            fill(embHashMapInfo.devOffset2Key.begin(), embHashMapInfo.devOffset2Key.end(), -1);
+            embHashMaps[embInfo.name] = embHashMapInfo;
 
             if (VLOG_IS_ON(GLOG_TRACE)) {
                 VLOG(GLOG_TRACE) << StringFormat(
@@ -159,19 +159,6 @@ void EmbHashMap::FindAndUpdateOffset(const string& embName, vector<emb_key_t>& k
     }
 }
 
-void EmbHashMap::ChangeSwapInfo(EmbHashMapInfo& embHashMap, emb_key_t key, size_t hostOffset, size_t currentBatchId,
-                                int pos)
-{
-    embHashMap.devOffset2Batch[pos] = static_cast<int>(currentBatchId);
-    embHashMap.hostHashMap[key] = pos;
-    auto& oldKey = embHashMap.devOffset2Key[pos];
-    if (oldKey != -1) {
-        embHashMap.oldSwap.emplace_back(oldKey, key);
-        embHashMap.hostHashMap[oldKey] = hostOffset;
-    }
-    oldKey = key;
-}
-
 int32_t EmbHashMap::FindNewOffset(const emb_key_t& key, EmbHashMapInfo& embHashMap)
 {
     int32_t offset;
@@ -235,26 +222,6 @@ void EmbHashMap::FindAndUpdateBatchId(vector<emb_key_t>& keys, size_t currentBat
         }
     }
 }
-
-void EmbHashMap::FindPos(EmbHashMapInfo& embHashMap, int num, size_t keepBatchId)
-{
-    while (num != 0) {
-        if (embHashMap.devOffset2Batch[embHashMap.currentUpdatePos] < static_cast<int>(keepBatchId)) {
-            embHashMap.swapPos.emplace_back(embHashMap.currentUpdatePos);
-            num -= 1;
-        }
-        embHashMap.currentUpdatePos++;
-        embHashMap.freeSize--;
-        if (embHashMap.currentUpdatePos == embHashMap.devVocabSize) {
-            embHashMap.currentUpdatePos = 0;
-        }
-        if (embHashMap.currentUpdatePos == embHashMap.currentUpdatePosStart) {
-            LOG(ERROR) << "devVocabSize is too small";
-            throw runtime_error("devVocabSize is too small");
-        }
-    }
-}
-
 
 auto EmbHashMap::GetHashMaps() -> absl::flat_hash_map<string, EmbHashMapInfo>
 {

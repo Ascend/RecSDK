@@ -31,11 +31,6 @@ namespace MxRec {
         void FindAndUpdateOffset(const string& embName, vector<emb_key_t>& keys, size_t currentBatchId,
                                  size_t keepBatchId, int channelId);
 
-        void ChangeSwapInfo(EmbHashMapInfo& embHashMap, emb_key_t key, size_t hostOffset, size_t currentBatchId,
-                            int pos);
-
-        void FindPos(EmbHashMapInfo& embHashMap, int num, size_t keepBatchId);
-
         auto GetHashMaps() -> absl::flat_hash_map<string, EmbHashMapInfo>;
 
         void LoadHashMap(absl::flat_hash_map<string, EmbHashMapInfo>& loadData);
