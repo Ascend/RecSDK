@@ -57,7 +57,13 @@ class Saver(object):
     @performance("Save")
     def save(self, sess, save_path="model", global_step=None):
         """
-        Save sparse tables
+        Save sparse tables. For local save, both save_easy mode and normal mode is supported. For HDFS save,
+        only save_easy mode is supported.
+        For easy_save mode, checkpoint is saved in under format:
+        ./rank_id/HashTable/HBM/embed_table_name/key/xxx.data
+        ./rank_id/HashTable/HBM/embed_table_name/key/xxx.attribute
+        ./rank_id/HashTable/HBM/embed_table_name/embedding/xxx.data
+        ./rank_id/HashTable/HBM/embed_table_name/embedding/xxx.attribute
         :param sess: A Session to use to save the sparse table variables
         :param save_path: Only absolute path supported
         :param global_step: If provided the global step number is appended to save_path to create
@@ -85,13 +91,13 @@ class Saver(object):
 
         if tf.io.gfile.exists(saving_path):
             tf.io.gfile.rmtree(saving_path)
-            logging.debug(f"rank id {self.rank_id} | Saving_path '{saving_path}' has been deleted.")
+            logging.info(f"rank id {self.rank_id} | Saving_path '{saving_path}' has been deleted.")
         tf.io.gfile.makedirs(saving_path)
-        logging.debug(f"rank id {self.rank_id} | Saving_path '{saving_path}' has been made.")
+        logging.info(f"rank id {self.rank_id} | Saving_path '{saving_path}' has been made.")
 
         self._save(sess, saving_path)
         logging.info(f"sparse model was saved in dir '{saving_path}' .")
-        logging.debug(f"======== Saving finished for rank id {self.rank_id} ========")
+        logging.info(f"======== Saving finished for rank id {self.rank_id} ========")
 
     @performance("Restore")
     def restore(self, sess, reading_path):
@@ -109,6 +115,9 @@ class Saver(object):
 
     def _build_save(self):
         for var in self.var_list:
+            if os.getenv("TF_DEVICE", " ") == "NPU" and "merged" not in var.name:
+                continue
+
             table_instance = get_table_instance(var)
             table_name = table_instance.table_name
             with tf.compat.v1.variable_scope(table_name):
@@ -119,6 +128,8 @@ class Saver(object):
 
     def _build_restore(self):
         for var in self.var_list:
+            if os.getenv("TF_DEVICE", " ") == "NPU" and "merged" not in var.name:
+                continue
             table_instance = get_table_instance(var)
             sub_placeholder_dict = self.placeholder_dict[table_instance.table_name]
             with tf.compat.v1.variable_scope(table_instance.table_name):
@@ -207,10 +218,10 @@ class Saver(object):
 
         if is_asc_manager_initialized() and self.save_easy_mode:
             send_host_data(key_offset_dict)
-            logging.debug(f"host data was sent to the host pipeline.")
+            logging.info("host data was sent to the host pipeline.")
         if is_asc_manager_initialized() and not self.save_easy_mode:
             restore_host_data(reading_path)
-            logging.debug(f"host data was restored.")
+            logging.info("host data was restored.")
         sess.run(self.restore_fetch_list, feed_dict=restore_feed_dict)
 
 
