@@ -64,6 +64,7 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
 {
 #ifndef GTEST
     EASY_FUNCTION(profiler::colors::Pink)
+    TimeCost swapTimeCost;
     auto& embHashMap = embHashMaps.at(embName);
     embHashMap.devOffset2KeyOld.clear();
     embHashMap.oldSwap.clear();
@@ -85,7 +86,6 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     // 调用刷新频次数据方法
     RefreshFreqInfoWithSwap(embName, embHashMap);
 
-    swapId++;
     EASY_BLOCK("hostHashMaps->tdt")
 
     std::copy(embHashMap.lookUpVec.begin(), embHashMap.lookUpVec.end(), std::back_inserter(ddrParam.offsetsOut));
@@ -116,7 +116,6 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     if (VLOG_IS_ON(GLOG_TRACE)) {
         VLOG(GLOG_TRACE) << StringFormat("swapTensor, %s", VectorToString(embHashMap.swapPos).c_str());
     }
-
     // 清空本次记录的查询偏移和交换偏移
     ClearLookupAndSwapOffset(embHashMap);
     LOG(INFO) << StringFormat("current ddr emb:%s, usage:%d/[%d+%d]", embName.c_str(), embHashMap.maxOffset,
@@ -124,6 +123,13 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     ddrParam.tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { 1 }));
     auto swapLen = ddrParam.tmpDataOut.back().flat<int32>();
     swapLen(0) = swapSize;
+
+    if (g_statOn) {
+        LOG(INFO) << StringFormat(STAT_INFO "channel_id %d batch_id %d rank_id %d swap_key_size %d swap_time_cost %d",
+            channelId, swapId, rankInfo.rankId, swapSize, swapTimeCost.ElapsedMS());
+    }
+    
+    swapId++;
     EASY_END_BLOCK
 #endif
 }

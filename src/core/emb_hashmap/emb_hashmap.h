@@ -15,6 +15,7 @@
 #include "host_emb/host_emb.h"
 #include "ssd_cache/cache_manager.h"
 #include "utils/common.h"
+#include "utils/time_cost.h"
 
 namespace MxRec {
     using namespace std;
