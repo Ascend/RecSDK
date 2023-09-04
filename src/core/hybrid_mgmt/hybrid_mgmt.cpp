@@ -9,6 +9,7 @@
 #include "utils/time_cost.h"
 #include "checkpoint/checkpoint.h"
 
+
 using namespace MxRec;
 using namespace std;
 
@@ -217,6 +218,15 @@ bool HybridMgmt::Save(const string savePath)
         saveData.keyOffsetMap = preprocess->GetKeyOffsetMap();
     }
 
+    if (isSSDEnabled) {
+        for (auto& it : cacheManager->ddrKeyFreqMap) {
+            saveData.ddrKeyFreqMaps[it.first] = it.second.GetFreqTable();
+        }
+        saveData.excludeDDRKeyFreqMaps = cacheManager->excludeDDRKeyCountMap;
+        auto step = GetStepFromPath(savePath);
+        cacheManager->SaveSSDEngine(step);
+    }
+
     // 保存特征准入淘汰相关的数据
     auto& featAdmitNEvict = preprocess->GetFeatAdmitAndEvict();
     if (featAdmitNEvict.GetFunctionSwitch()) {
@@ -249,24 +259,11 @@ bool HybridMgmt::Load(const string& loadPath)
     CkptData loadData;
     Checkpoint loadCkpt;
     vector<CkptFeatureType> loadFeatures;
-    if (!mgmtRankInfo.noDDR) {
-        // DDR模式加载的类型为host的emb表以及hashmap
-        loadFeatures.push_back(CkptFeatureType::HOST_EMB);
-        loadFeatures.push_back(CkptFeatureType::EMB_HASHMAP);
-    } else {
-        // HBM模式加载的类型为最大偏移（真正使用了多少vocab容量），特征到偏移的映射
-        loadFeatures.push_back(CkptFeatureType::MAX_OFFSET);
-        loadFeatures.push_back(CkptFeatureType::KEY_OFFSET_MAP);
-    }
 
-    // 添加特征准入淘汰相关的数据类型的加载
     auto& featAdmitNEvict = preprocess->GetFeatAdmitAndEvict();
-    if (featAdmitNEvict.GetFunctionSwitch()) {
-        loadFeatures.push_back(CkptFeatureType::FEAT_ADMIT_N_EVICT);
-    }
+    SetFeatureTypeForLoad(loadFeatures, featAdmitNEvict);
 
     loadData.hostEmbs = hostEmbs->GetHostEmbs(); // 获取已经初始化好的host emb
-
     // 执行加载操作
     loadCkpt.LoadModel(loadPath, loadData, mgmtRankInfo, mgmtEmbInfo, loadFeatures);
 
@@ -294,6 +291,12 @@ bool HybridMgmt::Load(const string& loadPath)
         featAdmitNEvict.LoadHistoryRecords(loadData.histRec);
     }
 
+    if (isSSDEnabled) {
+        VLOG(GLOG_DEBUG) << (MGMT + "Start host side load: ssd key freq map");
+        auto step = GetStepFromPath(loadPath);
+        cacheManager->Load(loadData.ddrKeyFreqMaps, loadData.excludeDDRKeyFreqMaps, step);
+    }
+
     VLOG(GLOG_DEBUG) << (MGMT + "Finish host side load process");
 
     preprocess->LoadSaveUnlock();
@@ -304,6 +307,29 @@ bool HybridMgmt::Load(const string& loadPath)
     }
 #endif
     return true;
+}
+
+void HybridMgmt::SetFeatureTypeForLoad(vector<CkptFeatureType>& loadFeatures,
+                                       const FeatureAdmitAndEvict& featAdmitNEvict)
+{
+    if (!mgmtRankInfo.noDDR) {
+        // DDR模式加载的类型为host的emb表以及hashmap
+        loadFeatures.push_back(CkptFeatureType::HOST_EMB);
+        loadFeatures.push_back(CkptFeatureType::EMB_HASHMAP);
+    } else {
+        // HBM模式加载的类型为最大偏移（真正使用了多少vocab容量），特征到偏移的映射
+        loadFeatures.push_back(CkptFeatureType::MAX_OFFSET);
+        loadFeatures.push_back(CkptFeatureType::KEY_OFFSET_MAP);
+    }
+
+    // 添加特征准入淘汰相关的数据类型的加载
+    if (featAdmitNEvict.GetFunctionSwitch()) {
+        loadFeatures.push_back(CkptFeatureType::FEAT_ADMIT_N_EVICT);
+    }
+
+    if (isSSDEnabled) {
+        loadFeatures.push_back(CkptFeatureType::DDR_KEY_FREQ_MAP);
+    }
 }
 
 /// 获取key对应的offset，python侧调用
@@ -976,4 +1002,14 @@ void HybridMgmt::EvictSSDKeys(const string& embName, const vector<emb_key_t>& ke
         }
     }
     cacheManager->EvictSSDEmbedding(embName, ssdKeys);
+}
+
+int HybridMgmt::GetStepFromPath(const string& loadPath)
+{
+    regex pattern("sparse-model-\\d+-(\\d+)");
+    smatch match;
+    if (regex_search(loadPath, match, pattern)) {
+        return stoi(match[1]);
+    }
+    return 0;
 }

@@ -48,9 +48,13 @@ namespace MxRec {
             "max_offset",
             "key_offset_map",
             "table_2_threshold",
-            "history_record"
+            "history_record",
+            "attribute",
+            "ddr_key_freq_map",
+            "exclude_ddr_key_freq_map",
+            "evict_pos"
         };
-        const vector<uint32_t> dataElmtBytes { 4, 4, 8, 8, 4, 4, 8, 4, 8, 8 };
+        const vector<uint32_t> dataElmtBytes { 4, 4, 8, 8, 4, 4, 8, 4, 8, 8, 8, 8, 8};
 
         const uint32_t eightBytes { 8 };
         const uint32_t fourBytes { 4 };

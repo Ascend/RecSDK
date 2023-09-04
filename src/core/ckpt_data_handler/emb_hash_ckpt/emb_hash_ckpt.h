@@ -32,27 +32,32 @@ namespace MxRec {
     private:
         const vector<string> fileDirNames { "HashTable", "DDR" };
         const vector<CkptDataType> saveDataTypes { CkptDataType::EMB_HASHMAP, CkptDataType::DEV_OFFSET,
-            CkptDataType::EMB_CURR_STAT };
+            CkptDataType::EMB_CURR_STAT, CkptDataType::EVICT_POS };
 
         const int currUpdataPosIdx { 0 };
         const int hostVocabIdx { 1 };
         const int devVocabIdx { 2 };
+        const int maxOffsetIdx { 3 };
 
         const int attrbDev2BatchIdx { 0 };
         const int attrbDev2KeyIdx { 1 };
 
+        const int attrEvictPosIdx {0};
+
         const int embHashElmtNum { 2 };
-        const int embCurrStatNum { 3 };
+        const int embCurrStatNum { 4 };
         emb_hash_mem_t saveEmbHashMaps;
         emb_hash_mem_t loadEmbHashMaps;
 
         void SetEmbHashMapTrans(string embName);
         void SetDevOffsetTrans(string embName);
         void SetEmbCurrStatTrans(string embName);
+        void SetEvictPosTrans(string embName);
 
         void SetEmbHashMap(string embName);
         void SetDevOffset(string embName);
         void SetEmbCurrStat(string embName);
+        void SetEvictPos(string embName);
     };
 }
 

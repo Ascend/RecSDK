@@ -58,6 +58,9 @@ namespace MxRec {
 
         bool Load(const string& loadPath);
 
+        void SetFeatureTypeForLoad(vector<CkptFeatureType>& loadFeatures,
+                                               const FeatureAdmitAndEvict& featAdmitNEvict);
+
         key_offset_map_t SendHostMap(const string tableName);
 
         void ReceiveHostMap(all_key_offset_map_t keyOffsetMap);
@@ -121,6 +124,7 @@ namespace MxRec {
 
         void PrepareDDRData(const std::string& embTableName, EmbHashMapInfo& embHashMap,
                                    const vector<emb_key_t>& keys, int channelId);
+        int GetStepFromPath(const string& loadPath);
         void AddCacheManagerTraceLog(absl::flat_hash_map<basic_string<char>, EmbHashMapInfo>& embHashMaps);
 
     private:

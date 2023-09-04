@@ -161,7 +161,6 @@ protected:
     {
         for (int64_t i { 0 }; i < hostVocabSize; ++i) {
             testKeyOffsetMap[featMem] = i;
-
             featMem++;
         }
     }
@@ -172,6 +171,40 @@ protected:
         for (const auto& testEmbInfo : testEmbInfos) {
             SetKeyOffsetMap(testKeyOffsetMap);
             testKeyOffsetMaps[testEmbInfo.name] = std::move(testKeyOffsetMap);
+        }
+    }
+
+    void SetDDRKeyFreqMap(unordered_map<emb_key_t, freq_num_t>& testDDRKeyFreqMap)
+    {
+        for (int64_t i { 0 }; i < hostVocabSize; ++i) {
+            testDDRKeyFreqMap[featMem] = i;
+            featMem++;
+        }
+    }
+
+    void SetExcludeDDRKeyFreqMap(unordered_map<emb_key_t, freq_num_t>& testExcludeDDRKeyFreqMap)
+    {
+        for (int64_t i { 0 }; i < hostVocabSize; ++i) {
+            testExcludeDDRKeyFreqMap[featMem] = i;
+            featMem++;
+        }
+    }
+
+    void SetDDRKeyFreqMaps(key_freq_mem_t& testDDRKeyFreqMaps)
+    {
+        unordered_map<emb_key_t, freq_num_t> testDDRKeyFreqMap;
+        for (const auto& testEmbInfo : testEmbInfos) {
+            SetDDRKeyFreqMap(testDDRKeyFreqMap);
+            testDDRKeyFreqMaps[testEmbInfo.name] = std::move(testDDRKeyFreqMap);
+        }
+    }
+
+    void SetExcludeDDRKeyFreqMaps(key_freq_mem_t& testExcludeDDRKeyFreqMaps)
+    {
+        unordered_map<emb_key_t, freq_num_t> testExcludeDDRKeyFreqMap;
+        for (const auto& testEmbInfo : testEmbInfos) {
+            SetExcludeDDRKeyFreqMap(testExcludeDDRKeyFreqMap);
+            testExcludeDDRKeyFreqMaps[testEmbInfo.name] = std::move(testExcludeDDRKeyFreqMap);
         }
     }
 
@@ -490,3 +523,38 @@ TEST_F(CheckpointTest, FeatAdmitNEvict)
         }
     }
 }
+
+
+TEST_F(CheckpointTest, KeyFreqMaps)
+{
+    key_freq_mem_t testDDRKeyFreqMaps;
+    key_freq_mem_t validDDRKeyFreqMaps;
+    key_freq_mem_t testExcludeDDRKeyFreqMaps;
+    key_freq_mem_t validExcludeDDRKeyFreqMaps;
+
+    SetEmbInfo();
+    SetDDRKeyFreqMaps(testDDRKeyFreqMaps);
+    SetExcludeDDRKeyFreqMaps(testExcludeDDRKeyFreqMaps);
+    validDDRKeyFreqMaps = testDDRKeyFreqMaps;
+    validExcludeDDRKeyFreqMaps = testExcludeDDRKeyFreqMaps;
+
+    CkptData testSaveData;
+    CkptData validLoadData;
+    CkptData testLoadData;
+
+    testSaveData.ddrKeyFreqMaps = std::move(testDDRKeyFreqMaps);
+    testSaveData.excludeDDRKeyFreqMaps = std::move(testExcludeDDRKeyFreqMaps);
+    validLoadData.ddrKeyFreqMaps = std::move(validDDRKeyFreqMaps);
+
+    Checkpoint testCkpt;
+    testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
+    testCkpt.LoadModel(testPath, testLoadData, rankInfo, testEmbInfos, { CkptFeatureType::DDR_KEY_FREQ_MAP });
+    EXPECT_EQ(validLoadData.ddrKeyFreqMaps.size(), testLoadData.ddrKeyFreqMaps.size());
+
+    for (const auto& it : validLoadData.ddrKeyFreqMaps) {
+        EXPECT_EQ(1, testLoadData.ddrKeyFreqMaps.count(it.first));
+        const auto& ddrKeyFreqMap = testLoadData.ddrKeyFreqMaps.at(it.first);
+        EXPECT_EQ(it.second, ddrKeyFreqMap);
+    }
+}
+
