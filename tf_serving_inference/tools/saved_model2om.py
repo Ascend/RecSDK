@@ -19,7 +19,7 @@ from tensorflow.compat.v1 import graph_util
 from six import StringIO
  
 NodeInfo = namedtuple('NodeInfo', ['name', 'shape', 'type', 'full_name'])
-TMP_PATH = '/home/l00832016/M2_infer/tools/om_model/saved_model2om'
+TMP_PATH = '/home/l00832016/inference/tools/om_model/saved_model2om'
 TMP_PB_NAME = 'model.pb'
 TMP_OM_NAME = 'model'
  
