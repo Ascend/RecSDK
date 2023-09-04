@@ -744,7 +744,7 @@ class SparseEmbedding:
                 if hot_pos is not None:
                     hot, cold = tf.split(unique_grads, [tf.shape(hot_pos)[0],
                                                         tf.shape(unique_grads)[0] - tf.shape(hot_pos)[0]], axis=0)
-                    unique_grads = tf.tensor_scatter_nd_update(cold, tf.expand_dims(hot_pos, 1), hot)
+                    unique_grads = tf.tensor_scatter_nd_add(cold, tf.expand_dims(hot_pos, 1), hot)
                 local_grad = self._get_own_emb(unique_grads, bp_all2all_args, self.scalar_emb_size, use_static)
                 if self.all2all_gradients_op == All2allGradientsOp.SUM_GRADIENTS_AND_DIV_BY_RANKSIZE:
                     try:
