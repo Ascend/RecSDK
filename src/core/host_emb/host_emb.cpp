@@ -236,7 +236,8 @@ void HostEmb::EmbPartGenerator(const vector<InitializeInfo> &initializeInfos, ve
     for (auto initializeInfo: initializeInfos) {
         LOG(INFO) << StringFormat("Device GenerateEmbData ing. name %s", initializeInfo.name.c_str());
         for (size_t i = 0; i < offset.size(); i++) {
-            initializeInfo.initializer->GenerateData(embData.at(offset.at(i)).data(), static_cast<int>(embData[0].size()));
+            initializeInfo.initializer->GenerateData(embData.at(offset.at(i)).data(),
+            static_cast<int>(embData[0].size()));
         }
     }
 }
