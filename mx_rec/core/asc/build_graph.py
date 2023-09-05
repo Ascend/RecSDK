@@ -9,7 +9,7 @@ import tensorflow as tf
 import mxrec_pybind
 from mx_rec.util.initialize import get_use_static
 from mx_rec.util.tf_version_adapter import npu_ops
-from mx_rec.constants.constants import ApplyGradientsStrategy
+from mx_rec.constants.constants import ApplyGradientsStrategy, TRAIN_CHANNEL_ID
 
 
 def get_restore_vector(config):
@@ -138,19 +138,19 @@ def get_all2all_args(use_static: bool, config: dict) -> list:
     return all2all_args
 
 
-def get_preprocessed_tensor_for_asc(table, config):
+def get_swap_info(config: dict, swap_len: int, swap_pos: list, table: tf.Variable) -> list:
+    """
+    Get swap info if threshold is configured.
+    :param config: training job config
+    :param swap_len: swap length
+    :param swap_pos: swap position
+    :param table: the instance to do swap
+    :return: swap info
+    """
     use_static = get_use_static()
     max_lookup_vec_size = None
     if use_static:
         max_lookup_vec_size = config.get("send_count") * config.get("rank_size")
-
-    with tf.compat.v1.variable_scope("restore_vector"):
-        restore_vector, hot_pos = get_restore_vector(config)
-
-    with tf.compat.v1.variable_scope("id_offsets"):
-        id_offsets, swap_pos, swap_len = get_id_offsets(max_lookup_vec_size, config)
-
-    all2all_args = get_all2all_args(use_static, config)
 
     if config.get("skip_emb_transfer"):
         swap_in = [tf.no_op()]
@@ -179,6 +179,24 @@ def get_preprocessed_tensor_for_asc(table, config):
             h2d_emb_split = tf.split(h2d_emb, table_num, axis=1)
             swap_in = [tf.compat.v1.scatter_nd_update(table[i], nd_swap_pos, h2d_emb_split[i])
                        for i in range(len(table))]
+    return swap_in
+
+
+def get_preprocessed_tensor_for_asc(table, config):
+    use_static = get_use_static()
+    max_lookup_vec_size = None
+    if use_static:
+        max_lookup_vec_size = config.get("send_count") * config.get("rank_size")
+
+    with tf.compat.v1.variable_scope("restore_vector"):
+        restore_vector, hot_pos = get_restore_vector(config)
+
+    with tf.compat.v1.variable_scope("id_offsets"):
+        id_offsets, swap_pos, swap_len = get_id_offsets(max_lookup_vec_size, config)
+
+    all2all_args = get_all2all_args(use_static, config)
+
+    swap_in = get_swap_info(config, swap_len, swap_pos, table)
 
     result = {
         'restore_vector': restore_vector,
@@ -188,10 +206,16 @@ def get_preprocessed_tensor_for_asc(table, config):
         'all2all_args': all2all_args,
     }
 
-    if config.get("gradients_strategy") == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
-        with tf.compat.v1.variable_scope("restore_vector_second"):
-            restore_vector_second = get_restore_vector_second(max_lookup_vec_size, config)
-        with tf.compat.v1.variable_scope("unique_keys"):
-            unique_keys = get_unique_keys(max_lookup_vec_size, config)
-        result.update({'restore_vector_second': restore_vector_second, 'unique_keys': unique_keys})
+    if config.get("gradients_strategy") != ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
+        return result
+
+    if config.get("channel_id") != TRAIN_CHANNEL_ID:
+        return result
+
+    with tf.compat.v1.variable_scope("restore_vector_second"):
+        restore_vector_second = get_restore_vector_second(max_lookup_vec_size, config)
+
+    with tf.compat.v1.variable_scope("unique_keys"):
+        unique_keys = get_unique_keys(max_lookup_vec_size, config)
+    result.update({'restore_vector_second': restore_vector_second, 'unique_keys': unique_keys})
     return result
