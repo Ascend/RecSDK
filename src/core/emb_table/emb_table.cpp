@@ -100,8 +100,7 @@ void EmbTable::RandomInit(void* newBlock, const vector<InitializeInfo>& initiali
         "Device GenerateEmbData Start, seed:%d, initializer num: %d", seed, initializeInfos.size());
     vector<float> devEmb(blockSize);
     for (auto initializeInfo: initializeInfos) {
-        LOG(INFO) << StringFormat("Device GenerateEmbData ing. name %s", 
-            initializeInfo.name.c_str());
+        LOG(INFO) << StringFormat("Device GenerateEmbData ing. name %s", initializeInfo.name.c_str());
         for (int i = 0; i < BLOCK_EMB_COUNT; i++) {
             initializeInfo.initializer->GenerateData(&devEmb[i * embSize], embSize);
         }

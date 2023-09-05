@@ -49,11 +49,9 @@ void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, in
     embData.resize(vocabSize, vector<float>(embeddingSize));
 
     for (auto initializeInfo: initializeInfos) {
-        LOG(INFO) << StringFormat("Device GenerateEmbData ing. name %s", 
-            initializeInfo.name.c_str());
+        LOG(INFO) << StringFormat("Device GenerateEmbData ing. name %s", initializeInfo.name.c_str());
         for (int i = 0; i < vocabSize; i++) {
-            initializeInfo.initializer->GenerateData(embData.at(i).data(), 
-                embeddingSize);
+            initializeInfo.initializer->GenerateData(embData.at(i).data(), embeddingSize);
         }
     }
     LOG(INFO) << StringFormat(HOSTEMB + "GenerateEmbData End, seed:%d", seed);
@@ -236,11 +234,9 @@ void HostEmb::EmbPartGenerator(const vector<InitializeInfo> &initializeInfos, ve
                                const vector<size_t>& offset)
 {
     for (auto initializeInfo: initializeInfos) {
-        LOG(INFO) << StringFormat("Device GenerateEmbData ing. name %s", 
-            initializeInfo.name.c_str());
+        LOG(INFO) << StringFormat("Device GenerateEmbData ing. name %s", initializeInfo.name.c_str());
         for (size_t i = 0; i < offset.size(); i++) {
-            initializeInfo.initializer->GenerateData(embData.at(offset.at(i)).data(), 
-                static_cast<int>(embData[0].size()));
+            initializeInfo.initializer->GenerateData(embData.at(offset.at(i)).data(), static_cast<int>(embData[0].size()));
         }
     }
 }
