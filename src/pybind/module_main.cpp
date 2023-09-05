@@ -35,11 +35,10 @@ int GetUBHotSize(int devID)
     return static_cast<int>(static_cast<float>(MxRec::GetUBSize(devID)) / sizeof(float) * HOT_EMB_CACHE_PCT) ;
 }
 
-uint32_t GetLogicID(uint32_t phyid)
+int32_t GetLogicID(uint32_t phyid)
 {
-    int32_t ret = 0;
     uint32_t logicId;
-    ret = dsmi_get_logicid_from_phyid(phyid, &logicId);
+    int32_t ret = dsmi_get_logicid_from_phyid(phyid, &logicId);
     if (ret != 0) {
         return ret;
     }
