@@ -49,45 +49,11 @@ void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, in
     embData.resize(vocabSize, vector<float>(embeddingSize));
 
     for (auto initializeInfo: initializeInfos) {
-        Initializer* initializer;
-
-        switch (initializeInfo.initializerType) {
-            case InitializerType::CONSTANT: {
-                LOG(INFO) << StringFormat(
-                    HOSTEMB + "GenerateEmbData ing using Constant Initializer by value %f. name %s, "
-                    "start %d, len %d.", initializeInfo.constantInitializerInfo.constantValue,
-                    initializeInfo.name.c_str(), initializeInfo.start, initializeInfo.len);
-                initializer = &initializeInfo.constantInitializer;
-                break;
-            }
-            case InitializerType::TRUNCATED_NORMAL: {
-                LOG(INFO) << StringFormat(
-                    HOSTEMB + "GenerateEmbData ing using Truncated Normal Initializer by mean: %f stddev: %f. "
-                    "name %s, start %d, len %d.", initializeInfo.normalInitializerInfo.mean,
-                    initializeInfo.normalInitializerInfo.stddev, initializeInfo.name.c_str(),
-                    initializeInfo.start, initializeInfo.len);
-                initializer = &initializeInfo.truncatedNormalInitializer;
-                break;
-            }
-            case InitializerType::RANDOM_NORMAL: {
-                LOG(INFO) << StringFormat(
-                    HOSTEMB + "GenerateEmbData ing using Random Normal Initializer by mean: %f stddev: %f. "
-                    "name %s, start %d, len %d.", initializeInfo.normalInitializerInfo.mean,
-                    initializeInfo.normalInitializerInfo.stddev, initializeInfo.name.c_str(),
-                    initializeInfo.start, initializeInfo.len);
-                initializer = &initializeInfo.randomNormalInitializer;
-                break;
-            }
-            default: {
-                LOG(WARNING) << (
-                    HOSTEMB + "Invalid Initializer Type. Using default Constant Initializer with value 0.");
-                ConstantInitializer defaultInitializer(initializeInfo.start, initializeInfo.len, 0, 1);
-                initializer = &defaultInitializer;
-            }
-        }
-
+        LOG(INFO) << StringFormat("Device GenerateEmbData ing. name %s", 
+            initializeInfo.name.c_str());
         for (int i = 0; i < vocabSize; i++) {
-            initializer->GenerateData(embData.at(i).data(), embeddingSize);
+            initializeInfo.initializer->GenerateData(embData.at(i).data(), 
+                embeddingSize);
         }
     }
     LOG(INFO) << StringFormat(HOSTEMB + "GenerateEmbData End, seed:%d", seed);
@@ -270,38 +236,11 @@ void HostEmb::EmbPartGenerator(const vector<InitializeInfo> &initializeInfos, ve
                                const vector<size_t>& offset)
 {
     for (auto initializeInfo: initializeInfos) {
-        Initializer* initializer;
-
-        switch (initializeInfo.initializerType) {
-            case InitializerType::CONSTANT: {
-                LOG(INFO) << StringFormat(HOSTEMB + "GenerateEmbData ing using Constant Initializer by value %d.",
-                    initializeInfo.constantInitializerInfo.constantValue);
-                initializer = &initializeInfo.constantInitializer;
-                break;
-            }
-            case InitializerType::TRUNCATED_NORMAL: {
-                LOG(INFO) << StringFormat(
-                    HOSTEMB + "GenerateEmbData ing using Truncated Normal Initializer by mean: %f stddev: %f.",
-                    initializeInfo.normalInitializerInfo.mean, initializeInfo.normalInitializerInfo.stddev);
-                initializer = &initializeInfo.truncatedNormalInitializer;
-                break;
-            }
-            case InitializerType::RANDOM_NORMAL: {
-                LOG(INFO) << StringFormat(
-                    HOSTEMB + "GenerateEmbData ing using Random Normal Initializer by mean: %f stddev: %f.",
-                    initializeInfo.normalInitializerInfo.mean, initializeInfo.normalInitializerInfo.stddev);
-                initializer = &initializeInfo.randomNormalInitializer;
-                break;
-            }
-            default: {
-                LOG(ERROR) << (HOSTEMB + "Invalid Initializer Type. Using default Constant Initializer with value 0.");
-                ConstantInitializer defaultInitializer(initializeInfo.start, initializeInfo.len, 0, 1);
-                initializer = &defaultInitializer;
-            }
-        }
-
+        LOG(INFO) << StringFormat("Device GenerateEmbData ing. name %s", 
+            initializeInfo.name.c_str());
         for (size_t i = 0; i < offset.size(); i++) {
-            initializer->GenerateData(embData.at(offset.at(i)).data(), static_cast<int>(embData[0].size()));
+            initializeInfo.initializer->GenerateData(embData.at(offset.at(i)).data(), 
+                static_cast<int>(embData[0].size()));
         }
     }
 }
