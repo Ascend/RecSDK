@@ -12,7 +12,7 @@
 
 > **tf1**
 <br>
-tensorflow == 1.15.0 <br>
+tensorflow == 1.15.0 / 1.15.4<br>
 numpy == 1.21.6 <br>
 python == 3.7.5 <br>
 
@@ -32,7 +32,7 @@ python == 3.7.5 <br>
 **使用范例：**
 
 示例如下：<br>
-`python3 model_covert.py --input_path=./saved_model --output_path=./saved-model-out --rank_size=8 --estimator=1 --ddr=1`
+`python3 model_convert.py --input_path=./saved_model --output_path=./saved-model-out --rank_size=8 --estimator=1 --ddr=1`
 
 打屏日志输出 `convert model success.` 代表模型成功转换完成。
 

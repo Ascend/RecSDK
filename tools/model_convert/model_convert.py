@@ -48,6 +48,7 @@ class ModelConverter:
             os.makedirs(self._output_path)
         self._build_input_model_list(self._is_estimator)
         self._build_sparse_file_list()
+        self._check_mode()
         self._build_table_info_dict()
 
     def convert(self):
@@ -196,6 +197,16 @@ class ModelConverter:
                 emb_attributes = json.load(fin)
                 data_shape = emb_attributes.pop(DataAttr.SHAPE.value)
                 self.table_info_dict[table_name] = data_shape[1]
+
+    def _check_mode(self):
+        check_dir = os.path.join(self.sparse_file_list[0], "HashTable")
+        model_dirs = []
+        for _, dirs, _ in os.walk(check_dir):
+            model_dirs.append(dirs)
+        if not self._is_ddr and "DDR" in model_dirs[0]:
+            raise ValueError(f"wrong mode choose! you choose hbm mode, however ddr dir exists. ")
+        if self._is_ddr and "DDR" not in model_dirs[0]:
+            raise ValueError(f"wrong mode choose! you choose ddr mode, however ddr dir not exists. ")
 
 
 def get_attribute_and_data_file(table_path):
