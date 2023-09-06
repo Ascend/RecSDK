@@ -4,10 +4,12 @@
 
 import logging
 from collections import defaultdict
+from typing import Any
 
 import tensorflow as tf
 from tensorflow.python.data.ops.dataset_ops import DatasetV1Adapter
 from tensorflow.python.framework.ops import Operation
+from tensorflow.python.framework.errors_impl import InvalidArgumentError
 
 from mx_rec.core.asc.helper import get_asc_insert_func
 from mx_rec.core.asc.feature_spec import FeatureSpec
@@ -38,19 +40,57 @@ def get_preprocessing_map_func(graph_def, input_names, output_names, batch_tenso
                          "'pipeline_input_indexes' was given.")
 
     def map_func(*args):
-        def print_tensors(batch_id, tracker=None):
-            if tracker is None:
-                tracker = []
-            if isinstance(batch_id, dict):
-                for key, item in batch_id.items():
-                    print_tensors(item, tracker + [key])
-            if isinstance(batch_id, tf.Tensor):
-                logging.debug(f"######## tracker: {tracker}, tensor: {batch_id} ########")
+        def parse_batch(data_args: Any, data_batch: dict, key: str = None):
+            """
+            解析原始数据集中的batch，并将非dict格式的batch转为dict格式.
+            Args:
+                data_args: 待解析的batch
+                data_batch: 解析后的batch
+                key: batch中的key
 
-        for batch in args:
-            print_tensors(batch)
+            Returns: None
 
-        batch = args[0]
+            """
+
+            def parse_tensor(data_tensor: tf.Tensor, data_batch: dict, key: str = None):
+                """
+                将待解析batch中的tensor写入解析后的batch中，如果key存在则使用原key，不存在则生成batch中字典序最小的key.
+                Args:
+                    data_tensor: 待解析batch中的tensor
+                    data_batch: 解析后的batch
+                    key: batch中的key
+
+                Returns: None
+
+                """
+
+                if key is not None:
+                    data_batch[key] = data_tensor
+                    return
+
+                last_key = f"{sorted(data_batch)[-1]}_last_key"
+                data_batch[last_key] = data_tensor
+
+            # 开始解析old batch
+            if isinstance(data_args, dict):
+                for key, data_tensor in data_args.items():
+                    parse_batch(data_tensor, data_batch, key)
+                return
+            elif isinstance(data_args, (list, tuple)):
+                for data_arg in data_args:
+                    parse_batch(data_arg, data_batch, key)
+                return
+            elif isinstance(data_args, tf.Tensor):
+                # 将old batch中的tensor加入到dict中
+                parse_tensor(data_args, data_batch, key)
+                return
+            else:
+                raise ValueError("Encounter a invalid batch.")
+
+        logging.debug("In get_preprocessing_map_func, the old batch is: %s.", args)
+        batch = dict()
+        parse_batch(args, batch, key=None)
+        logging.debug("In get_preprocessing_map_func, the parse batch is: %s.", batch)
 
         input_tensors = []
         if batch_tensor_names is not None:
@@ -67,11 +107,12 @@ def get_preprocessing_map_func(graph_def, input_names, output_names, batch_tenso
                 tensor = graph.get_tensor_by_name("args_%d:0" % index)
                 input_tensors.append(tensor)
 
+        # 以tf.import_graph_def()作为read emb key的输入，保证数据读取到传入lookup的ids过程中的特征处理关系能够保留在子图中。
         output_list = tf.import_graph_def(graph_def, input_map=dict(zip(input_names, input_tensors)),
                                           return_elements=output_names)
 
-        output_batch = list(args)
-        output_batch.append(tuple(output_list))
+        output_batch = [batch, tuple(output_list)]
+        logging.debug("In get_preprocessing_map_func, the output batch is: %s.", output_batch)
         return tuple(output_batch)
 
     return map_func
@@ -233,7 +274,19 @@ def get_sub_graph(input_tensors, output_tensors):
     return sub_graph_def, input_name_list, output_name_list
 
 
-def update_input_tensor_with_new_batch(replacement_specs, new_get_next_op_name):
+def update_input_tensor_with_new_batch(replacement_specs: dict, new_get_next_op_name: str, new_batch: dict):
+    """
+    用新batch中的IteratorGetNext替换计算图中老batch的IteratorGetNext.
+
+    Args:
+        replacement_specs: 记录待替换算子的dict，key为老batch的IteratorGetNext，value为以老batch作为输入的算子
+        new_get_next_op_name: 新数据集的get_next算子名称
+        new_batch: 新数据集的batch
+
+    Returns: None
+
+    """
+
     graph = tf.compat.v1.get_default_graph()
     for old_tensor, item in replacement_specs.items():
         for idx, operator in item:
@@ -241,7 +294,12 @@ def update_input_tensor_with_new_batch(replacement_specs, new_get_next_op_name):
             output_index = old_tensor_name.split(":")[-1]
             new_tensor_name = f"{new_get_next_op_name}:{output_index}"
             new_tensor = graph.get_tensor_by_name(new_tensor_name)
-            operator._update_input(idx, new_tensor)
+            try:
+                operator._update_input(idx, new_tensor)
+            except InvalidArgumentError as err:
+                logging.info("The replacement specs keys (old batch) is: %s. \n\t\t"
+                             "The new batch is: %s.", replacement_specs.keys(), new_batch)
+                raise RuntimeError(f"Cannot update edge, old tensor: {old_tensor}, new tensor: {new_tensor}.") from err
 
 
 def get_dataset_tensor_count(dataset: DatasetV1Adapter) -> int:
@@ -414,7 +472,7 @@ def update_iterator_getnext(get_next_op: Operation, tgt_dataset: DatasetV1Adapte
     except IndexError as err:
         raise IndexError("Cannot find a tensor from given batch.") from err
     new_get_next_op_name = find_target_dataset_op(new_batch_tensor.op, "IteratorGetNext").name
-    update_input_tensor_with_new_batch(records.get("replacement_specs"), new_get_next_op_name)
+    update_input_tensor_with_new_batch(records.get("replacement_specs"), new_get_next_op_name, new_batch)
 
 
 @performance("graph_modifier")
