@@ -75,12 +75,13 @@ namespace MxRec {
             return;
         }
         // 先发送停止信号mgmt，先停止新lookup查询, 解除queue的限制防止卡住
-        isRunning = false;
 
+        isRunning = false;
         // 先发送停止信号给preprocess，用于停止查询中lookup卡住状态
         preprocess->isRunning = false;
         // 停止hdTransfer，用于停止mgmt的recv中卡住状态
         hdTransfer->Destroy();
+        hybridMgmtBlock->Destroy();
         for (auto& t : procThreads) {
             t->join();
         }
@@ -132,6 +133,7 @@ namespace MxRec {
         int trainBatchId = 0; // 0-199, 200-
         int getInfoBatchId; // 0-199, 200-
         int sendBatchId;
+        HybridMgmtBlock* hybridMgmtBlock;
         vector<EmbInfo> mgmtEmbInfo;
         RankInfo mgmtRankInfo;
         CacheManager* cacheManager;
@@ -145,10 +147,8 @@ namespace MxRec {
         bool isRunning;
         bool isLoad { false };
 
-        void TaskForTrain(TaskType type);
-        void TaskForEval(TaskType type);
-        bool TrainTask(TaskType type);
-        bool EvalTask(TaskType type);
+        void TrainTask(TaskType type);
+        void EvalTask(TaskType type);
 
         bool EndBatch(int batchId, int channelId) const;
 

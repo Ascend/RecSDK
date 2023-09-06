@@ -124,6 +124,9 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
     hdTransfer->Init(embInfos, rankInfo.deviceId);
 
+    hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
+    hybridMgmtBlock->SetRankInfo(rankInfo);
+    hybridMgmtBlock->StartNotifySignalMonitor();
     // 启动数据处理线程
     bool rc = InitKeyProcess(rankInfo, embInfos, thresholdValues, seed);
     if (!rc) {
@@ -473,13 +476,13 @@ void HybridMgmt::Start()
 
     if (!mgmtRankInfo.noDDR) {
         auto parseKeysTaskForTrain = [this]() {
-            TaskForTrain(TaskType::DDR);
+            TrainTask(TaskType::DDR);
             LOG(INFO) << StringFormat("parseKeysTaskForTrain done");
         };
         procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForTrain));
 
         auto parseKeysTaskForEval = [this]() {
-            TaskForEval(TaskType::DDR);
+            EvalTask(TaskType::DDR);
             LOG(INFO) << StringFormat("parseKeysTaskForEval done");
         };
         procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForEval));
@@ -492,13 +495,13 @@ void HybridMgmt::InsertThreadForHBM()
 {
 #ifndef GTEST
         auto parseKeysTaskForHBMTrain = [this]() {
-            TaskForTrain(TaskType::HBM);
+            TrainTask(TaskType::HBM);
             LOG(INFO) << "parseKeysTaskForHBMTrain done";
         };
         procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForHBMTrain));
 
         auto parseKeysTaskForHBMEval = [this]() {
-            TaskForEval(TaskType::HBM);
+            EvalTask(TaskType::HBM);
             LOG(INFO) << "parseKeysTaskForHBMEval done";
         };
         procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForHBMEval));
@@ -506,110 +509,71 @@ void HybridMgmt::InsertThreadForHBM()
 }
 
 #ifndef GTEST
-/// 启动训练数据处理线程
-/// \param type 存储模式
-void HybridMgmt::TaskForTrain(TaskType type)
+/// 启动hybrid处理任务
+/// \param type
+void HybridMgmt::TrainTask(TaskType type)
 {
-    bool isFirstIn = true;
-    while (isRunning) {
-        if (isFirstIn) {
-            LOG(INFO) << StringFormat(MGMT + "Start Train Task: %d", type);
-            isFirstIn = false;
-        }
-        if (mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] == -1 || mgmtRankInfo.maxStep[TRAIN_CHANNEL_ID] > 0) {
-            if (!TrainTask(type)) {
-                return;
-            }
-        }
-        this_thread::sleep_for(1ms);
-    }
-}
-
-/// 启动推理数据处理线程
-/// \param type 存储模式
-void HybridMgmt::TaskForEval(TaskType type)
-{
-    bool isFirstIn = true;
-    while (isRunning) {
-        if (isFirstIn) {
-            LOG(INFO) << StringFormat(MGMT + "Start Eval Task: %d", type);
-            isFirstIn = false;
-        }
-        if (mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] == -1 || mgmtRankInfo.maxStep[EVAL_CHANNEL_ID] > 0) {
-            if (!EvalTask(type)) {
-                return;
-            }
-        }
-        this_thread::sleep_for(1ms);
-    }
-}
-
-/// 训练数据处理：数据处理状态正常，处理的batch数小于用户预设值或者设为-1时，会循环处理；
-/// \param type 存储模式
-/// \return
-bool HybridMgmt::TrainTask(TaskType type)
-{
-    bool isContinue;
-    bool status;
+    int channelId = TRAIN_CHANNEL_ID;
+    int& theTrainBatchId = hybridMgmtBlock->hybridBatchId[channelId];
     do {
-        if (!isRunning) {
-            return false;
+        hybridMgmtBlock->CheckAndSetBlock(channelId);
+        if (hybridMgmtBlock->GetBlockStatus(channelId)) {
+            hybridMgmtBlock->DoBlock(channelId);
         }
+        if (!isRunning) {
+            return;
+        }
+        LOG(INFO) << StringFormat(HYBRID_BLOCKING +
+        "hybrid start task channel %d batch %d", channelId, theTrainBatchId);
 
         switch (type) {
             case TaskType::HBM:
-                status = ParseKeysHBM(TRAIN_CHANNEL_ID, trainBatchId);
-                isContinue = !EndBatch(trainBatchId, TRAIN_CHANNEL_ID);
-                LOG(INFO) << StringFormat(MGMT + "ParseKeysHBMBatchId = %d", trainBatchId);
+                ParseKeysHBM(TRAIN_CHANNEL_ID, theTrainBatchId);
+
+                LOG(INFO) << StringFormat(MGMT + "ParseKeysHBMBatchId = %d", theTrainBatchId);
                 break;
             case TaskType::DDR:
-                status =  ParseKeys(TRAIN_CHANNEL_ID, trainBatchId);
-                isContinue = !EndBatch(trainBatchId, TRAIN_CHANNEL_ID);
-                LOG(INFO) << StringFormat(MGMT + "parseKeysBatchId = %d", trainBatchId);
+                ParseKeys(TRAIN_CHANNEL_ID, theTrainBatchId);
+
+                LOG(INFO) << StringFormat(MGMT + "parseKeysBatchId = %d", theTrainBatchId);
                 break;
             default:
                 throw std::invalid_argument("Invalid TaskType Type.");
         }
-
-        if (!status) {
-            return false;
-        }
-    } while (isContinue);
-
-    return true;
+    } while (true);
 }
 
 /// 推理数据处理：数据处理状态正常，处理的batch数小于用户预设值或者设为-1时，会循环处理；
 /// \param type 存储模式
 /// \return
-bool HybridMgmt::EvalTask(TaskType type)
+void HybridMgmt::EvalTask(TaskType type)
 {
-    int evalBatchId = 0; // 0-99, 0-99
+    int channelId = EVAL_CHANNEL_ID;
+    int& evalBatchId = hybridMgmtBlock->hybridBatchId[channelId];
     do {
-        if (!isRunning) {
-            return false;
+        hybridMgmtBlock->CheckAndSetBlock(channelId);
+        if (hybridMgmtBlock->GetBlockStatus(channelId)) {
+            hybridMgmtBlock->DoBlock(channelId);
         }
-        bool status = false;
+        if (!isRunning) {
+            return;
+        }
+        LOG(INFO) << StringFormat(HYBRID_BLOCKING +
+        "hybrid start task channel %d batch %d", channelId, evalBatchId);
 
         switch (type) {
             case TaskType::HBM:
-                status = ParseKeysHBM(EVAL_CHANNEL_ID, evalBatchId);
+                ParseKeysHBM(EVAL_CHANNEL_ID, evalBatchId);
                 LOG(INFO) << StringFormat(MGMT + "HBM evalBatchId = %d", evalBatchId);
                 break;
             case TaskType::DDR:
-                status = ParseKeys(EVAL_CHANNEL_ID, evalBatchId);
+                ParseKeys(EVAL_CHANNEL_ID, evalBatchId);
                 LOG(INFO) << StringFormat(MGMT + "DDR evalBatchId = %d", evalBatchId);
                 break;
             default:
                 throw std::invalid_argument("Invalid TaskType Type.");
         }
-
-        if (!status) {
-            return false;
-        }
-    } while (!EndBatch(evalBatchId, EVAL_CHANNEL_ID));
-
-    return true;
+    } while (true);
 }
 
 /// HBM模式下，发送key process线程已处理好的各类型向量到指定通道中
@@ -714,9 +678,7 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
 
             // 通道数据已空
             if (!remainBatch) {
-                TimeCost embHdTrans1;
-                EmbHDTransWrap(channelId, batchId, start, iBatch);
-                VLOG(GLOG_DEBUG) << StringFormat("embHdTrans1TC TimeCost(ms):%d", embHdTrans1.ElapsedMS());
+                VLOG(GLOG_DEBUG) << StringFormat("last batch ending");
                 return false;
             }
         }
@@ -752,6 +714,7 @@ inline void HandlePrepareDDRDataRet(TransferRet prepareSSDRet)
 }
 
 #ifndef GTEST
+
 /// 构造训练所需的各种向量数据
 /// \param embName 表名
 /// \param batchId 已处理的batch数
@@ -771,7 +734,10 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
 
     // 获取查询向量
     auto lookupKeys = preprocess->GetLookupKeys(batchId, embName, channelId);
-    if (lookupKeys.empty()) { remainBatchOut = false; }
+    if (lookupKeys.empty()) {
+        remainBatchOut = false;
+        return false;
+    }
 
     // 获取各类向量，如果为空指针，退出当前函数
     auto infoVecs = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::RESTORE);

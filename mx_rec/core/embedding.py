@@ -26,6 +26,7 @@ from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is
     clear_channel, get_use_hot, get_device_id, ConfigInitializer, get_ascend_global_hashtable_collection, \
     get_host_pipeline_ops, get_use_dynamic_expansion, set_modify_graph, insert_removing_var_list, get_bool_gauge_set
 from mx_rec.validator.validator import ClassValidator, StringValidator
+from mx_rec.util.tf_version_adapter import npu_ops
 
 
 def check_ssd_relate_param(host_vocabulary_size, ssd_vocabulary_size, ssd_data_path):
@@ -156,6 +157,7 @@ def sparse_lookup(hashtable, ids, send_count, is_train, **kwargs):
     kwargs["is_train"] = is_train
     check_lookup_kwargs()
     scope_name = "{0}//{1}".format(hashtable.table_name, kwargs.get("name"))
+
     with tf.compat.v1.variable_scope(scope_name):
         if hashtable.mode != MxRecMode.ASC:
             raise EnvironmentError("Invalid MxRec Mode.")
@@ -641,6 +643,22 @@ class SparseEmbedding:
                 dest_shape = array_ops.concat([array_ops.shape(tensor_list[idx]), [self.scalar_emb_size]], 0)
             self.lookup_result[one_feature_spec.name][is_training] = array_ops.reshape(one_result, dest_shape)
 
+    def generate_lookup_id_notify_hybrid(self, channel_id: int):
+
+        """
+        Args:
+         channel_id: channel id 0 for train，1 for eval
+        Returns: npu_ops.outfeed_enqueue_op notify preprocess step
+        """
+        sparse_lookup_id = ConfigInitializer.get_instance().notify_hybrid_channel_sparse_id[channel_id]
+        notify_message = tf.constant([sparse_lookup_id], dtype=tf.int32)
+        ConfigInitializer.get_instance().notify_hybrid_channel_sparse_id[channel_id] += 1
+        channel_name = "d2h_notify_hybridmgmt_{}".format(channel_id)
+        logging.debug("%s was built for op outfeed sparse id : %s.", channel_name, sparse_lookup_id)
+        notify_hybridmgmt_op = npu_ops.outfeed_enqueue_op(
+            channel_name=channel_name, inputs=[notify_message])
+        return notify_hybridmgmt_op
+
     def lookup_for_asc_with_feature_spec_inner(self, feature_spec: FeatureSpec, send_count: int, **kwargs):
         """
         Args:
@@ -668,12 +686,15 @@ class SparseEmbedding:
         channel_id = get_training_mode_channel_id(is_training=is_training)
         logging.debug(f"get preprocessed tensor for asc for table {self.table_name} with skip emb transfer "
                       f"{self.skip_emb_transfer} is_training: {is_training}, channel_id: {channel_id} .")
-
+        # 通知c++侧此处开始执行sparse look up的逻辑，注意此处每一个tablename做一次
+        notify_hybridmgmt_op = self.generate_lookup_id_notify_hybrid(channel_id)
+        # 将notify_hybridmgmt_op加入到config中，在restore的get next 算子中做控制依赖
         config = dict(batch_size=feature_spec.batch_size, feat_cnt=feature_spec.feat_cnt, send_count=send_count,
                       rank_size=rank_size, channel_id=channel_id, table_name=self.table_name,
                       skip_emb_transfer=self.skip_emb_transfer, ext_emb_size=self.ext_emb_size,
                       emb_size=self.emb_size, use_hot=use_hot, device_id=device_id,
-                      use_dynamic_expansion=use_dynamic_expansion, gradients_strategy=self.apply_gradients_strategy)
+                      use_dynamic_expansion=use_dynamic_expansion, gradients_strategy=self.apply_gradients_strategy,
+                      notify_hybridmgmt_op=notify_hybridmgmt_op)
 
         if self.skip_emb_transfer:
             result = get_preprocessed_tensor_for_asc(self.variable, config)

@@ -34,21 +34,21 @@ def get_restore_vector(config):
         restore_size = config.get("batch_size") * config.get("feat_cnt")
     else:
         restore_size = None
-
-    with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
-        if use_hot and emb_size:
-            device_id = int(config.get("device_id"))
-            hot_size = int(mxrec_pybind.get_ub_hot_size(device_id) / emb_size)
-            restore_vector, hot_pos = npu_ops.gen_npu_ops.get_next(
-                output_types=[tf.int32, tf.int32],
-                output_shapes=[restore_size, [hot_size]],
-                channel_name=f'{config.get("table_name")}_restore_{config.get("channel_id")}'
-            )
-        else:
-            restore_vector = npu_ops.gen_npu_ops.get_next(
-                output_types=[tf.int32],
-                output_shapes=[restore_size],
-                channel_name=f'{config.get("table_name")}_restore_{config.get("channel_id")}')[0]
+    with tf.control_dependencies([config.get("notify_hybridmgmt_op")]):
+        with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
+            if use_hot and emb_size:
+                device_id = int(config.get("device_id"))
+                hot_size = int(mxrec_pybind.get_ub_hot_size(device_id) / emb_size)
+                restore_vector, hot_pos = npu_ops.gen_npu_ops.get_next(
+                    output_types=[tf.int32, tf.int32],
+                    output_shapes=[restore_size, [hot_size]],
+                    channel_name=f'{config.get("table_name")}_restore_{config.get("channel_id")}'
+                )
+            else:
+                restore_vector = npu_ops.gen_npu_ops.get_next(
+                    output_types=[tf.int32],
+                    output_shapes=[restore_size],
+                    channel_name=f'{config.get("table_name")}_restore_{config.get("channel_id")}')[0]
 
     return restore_vector, hot_pos
 

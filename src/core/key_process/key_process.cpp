@@ -1194,6 +1194,14 @@ keys_t KeyProcess::GetLookupKeys(int batch, const string& embName, int channel)
         if (!isRunning) {
             return {};
         }
+        // 判断此时的batch id是否已经过期，即通道已经刷新
+        HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
+        if (batch != hybridMgmtBlock->hybridBatchId[channel]) {
+            VLOG(GLOG_DEBUG) << StringFormat(
+                    KEY_PROCESS "Detected that the batch has expired at this time, exiting the loop! %s[%d]:%d",
+                    embName.c_str(), channel, batch);
+            return {};
+        }
         if (batch != 0 && channel != 0 && tc.ElapsedSec() > KEY_PROCESS_TIMEOUT) {
             LOG(WARNING) << StringFormat(
                 KEY_PROCESS "getting lookup keys timeout! %s[%d]:%d", embName.c_str(), channel, batch);
@@ -1239,6 +1247,14 @@ unique_ptr<vector<Tensor>> KeyProcess::GetInfoVec(int batch, const string& embNa
     // 循环尝试获取list中的数据；如果key process线程退出或者处理数据超时，返回空指针
     while (true) {
         if (!isRunning) {
+            return nullptr;
+        }
+        // 判断此时的batch id是否已经过期，即通道已经刷新
+        HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
+        if (batch != hybridMgmtBlock->hybridBatchId[channel]) {
+            VLOG(GLOG_DEBUG) << StringFormat(
+                    KEY_PROCESS "Detected that the batch has expired at this time, exiting the loop! %s[%d]:%d",
+                    embName.c_str(), channel, batch);
             return nullptr;
         }
         if (batch != 0 && channel != 0 && tc.ElapsedSec() > KEY_PROCESS_TIMEOUT) {
