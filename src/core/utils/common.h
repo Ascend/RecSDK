@@ -418,9 +418,7 @@ namespace MxRec {
         ConstantInitializerInfo constantInitializerInfo;
         NormalInitializerInfo normalInitializerInfo;
 
-        ConstantInitializer constantInitializer;
-        TruncatedNormalInitializer truncatedNormalInitializer;
-        RandomNormalInitializer randomNormalInitializer;
+        shared_ptr<Initializer> initializer;
     };
 
     template<class T>

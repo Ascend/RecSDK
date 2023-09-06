@@ -73,7 +73,7 @@ namespace MxRec {
     {
         if (name == "constant_initializer") {
             initializerType = InitializerType::CONSTANT;
-            constantInitializer = ConstantInitializer(start, len, constantInitializerInfo.constantValue,
+            initializer = make_shared<ConstantInitializer>(start, len, constantInitializerInfo.constantValue,
                                                       constantInitializerInfo.initK);
         } else {
             throw std::invalid_argument("Invalid Initializer Type.");
@@ -88,10 +88,10 @@ namespace MxRec {
 
         if (name == "truncated_normal_initializer") {
             initializerType = InitializerType::TRUNCATED_NORMAL;
-            truncatedNormalInitializer = TruncatedNormalInitializer(start, len, ret);
+            initializer = make_shared<TruncatedNormalInitializer>(start, len, ret);
         } else if (name == "random_normal_initializer") {
             initializerType = InitializerType::RANDOM_NORMAL;
-            randomNormalInitializer = RandomNormalInitializer(start, len, ret);
+            initializer = make_shared<RandomNormalInitializer>(start, len, ret);
         } else {
             throw std::invalid_argument("Invalid Initializer Type.");
         }

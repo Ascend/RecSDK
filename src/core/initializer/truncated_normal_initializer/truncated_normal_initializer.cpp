@@ -25,6 +25,9 @@ TruncatedNormalInitializer::TruncatedNormalInitializer(int start, int len, std::
 
 void TruncatedNormalInitializer::GenerateData(float* const emb, const int embSize)
 {
+    LOG(INFO) << StringFormat(
+        "Device GenerateEmbData ing using Truncated Normal Initializer by mean: %f stddev: %f. "
+        "start %d, len %d.", mean, stddev, start, len);
     if (len == 0) {
         return;
     }

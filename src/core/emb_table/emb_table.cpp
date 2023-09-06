@@ -100,42 +100,9 @@ void EmbTable::RandomInit(void* newBlock, const vector<InitializeInfo>& initiali
         "Device GenerateEmbData Start, seed:%d, initializer num: %d", seed, initializeInfos.size());
     vector<float> devEmb(blockSize);
     for (auto initializeInfo: initializeInfos) {
-        Initializer* initializer;
-        switch (initializeInfo.initializerType) {
-            case InitializerType::CONSTANT: {
-                LOG(INFO) << StringFormat(
-                    "Device GenerateEmbData ing using Constant Initializer by value %f. name %s, start %d, len %d.",
-                    initializeInfo.constantInitializerInfo.constantValue,
-                    initializeInfo.name.c_str(), initializeInfo.start, initializeInfo.len);
-                initializer = &initializeInfo.constantInitializer;
-                break;
-            }
-            case InitializerType::TRUNCATED_NORMAL: {
-                LOG(INFO) << StringFormat(
-                    "Device GenerateEmbData ing using Truncated Normal Initializer by mean: %f stddev: %f. "
-                    "name %s, start %d, len %d.", initializeInfo.normalInitializerInfo.mean,
-                    initializeInfo.normalInitializerInfo.stddev, initializeInfo.name.c_str(),
-                    initializeInfo.start, initializeInfo.len);
-                initializer = &initializeInfo.truncatedNormalInitializer;
-                break;
-            }
-            case InitializerType::RANDOM_NORMAL: {
-                LOG(INFO) << StringFormat(
-                    "Device GenerateEmbData ing using Random Normal Initializer by mean: %f stddev: %f. "
-                    "name %s, start %d, len %d.", initializeInfo.normalInitializerInfo.mean,
-                    initializeInfo.normalInitializerInfo.stddev, initializeInfo.name.c_str(),
-                    initializeInfo.start, initializeInfo.len);
-                initializer = &initializeInfo.randomNormalInitializer;
-                break;
-            }
-            default: {
-                LOG(WARNING) << "Device Invalid Initializer Type. Using default Constant Initializer with value 0.";
-                ConstantInitializer defaultInitializer(initializeInfo.start, initializeInfo.len, 0, 1);
-                initializer = &defaultInitializer;
-            }
-        }
+        LOG(INFO) << StringFormat("Device GenerateEmbData ing. name %s", initializeInfo.name.c_str());
         for (int i = 0; i < BLOCK_EMB_COUNT; i++) {
-            initializer->GenerateData(&devEmb[i * embSize], embSize);
+            initializeInfo.initializer->GenerateData(&devEmb[i * embSize], embSize);
         }
     }
     LOG(INFO) << StringFormat("Device GenerateEmbData End, seed:%d", seed);
