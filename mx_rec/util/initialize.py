@@ -54,6 +54,7 @@ class ConfigInitializer:
         self._merged_multi_lookup = dict()
         self._target_batch = dict()
         self._iterator_type = ""
+        self._sparse_dir = ""
 
         if self._use_mpi:
             logging.debug(f"Using mpi to launch task.")
@@ -111,6 +112,10 @@ class ConfigInitializer:
     @property
     def modify_graph(self):
         return self._modify_graph
+
+    @property
+    def sparse_dir(self):
+        return self._sparse_dir
 
     @property
     def feature_spec_dict(self):
@@ -362,6 +367,13 @@ class ConfigInitializer:
 
         self._modify_graph = is_modify_graph
 
+    @sparse_dir.setter
+    def sparse_dir(self, sparse_dir):
+        if not isinstance(sparse_dir, str):
+            raise TypeError(f"sparse_dir should be str.")
+
+        self._sparse_dir = sparse_dir
+
     @is_last_round.setter
     def is_last_round(self, last_round):
         if not isinstance(last_round, bool):
@@ -466,6 +478,14 @@ def get_modify_graph():
 
 def set_modify_graph(is_modify_graph):
     ConfigInitializer.get_instance().modify_graph = is_modify_graph
+
+
+def set_sparse_dir(sparse_dir):
+    ConfigInitializer.get_instance().sparse_dir = sparse_dir
+
+
+def get_sparse_dir():
+    return ConfigInitializer.get_instance().sparse_dir
 
 
 def is_mpi_in_use():

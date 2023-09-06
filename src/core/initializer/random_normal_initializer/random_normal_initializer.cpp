@@ -21,9 +21,6 @@ RandomNormalInitializer::RandomNormalInitializer(int start, int len, std::tuple<
 
 void RandomNormalInitializer::GenerateData(float* const emb, const int embSize)
 {
-    LOG(INFO) << StringFormat(
-        "Device GenerateEmbData ing using Random Normal Initializer by mean: %f stddev: %f. "
-        "start %d, len %d.", mean, stddev, start, len);
     if (len == 0) {
         return;
     }
