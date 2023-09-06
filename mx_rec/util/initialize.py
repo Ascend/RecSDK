@@ -76,6 +76,8 @@ class ConfigInitializer:
         if kwargs.get("bind_cpu", True):
             bind_cpu(self._rank_id, self._rank_size)
         self.enable_table_merge = True if os.getenv("TF_DEVICE") == "NPU" else False
+        # 两个通道的sparse look id，用于通讯的标识
+        self.notify_hybrid_channel_sparse_id = [0, 0]
 
     def __del__(self):
         self.terminate()
