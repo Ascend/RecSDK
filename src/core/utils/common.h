@@ -12,7 +12,6 @@
 #include <sys/stat.h>
 
 #include <cstring>
-#include <cassert>
 
 #include <vector>
 #include <random>
@@ -368,20 +367,6 @@ namespace MxRec {
     }
 
     void ValidateReadFile(const string& dataDir, size_t datasetSize);
-
-    inline void GenerateRandomValue(std::vector<float>& vecData,
-                                    std::default_random_engine& generator,
-                                    RandomInfo& randomInfo)
-    {
-        float min = ((!randomInfo.randomMin) ? -0.1f : randomInfo.randomMin);
-        float max = ((!randomInfo.randomMax) ? 0.1f : randomInfo.randomMax);
-        if (randomInfo.len == 0) {
-            return;
-        }
-        assert(static_cast<int>(vecData.size()) >= randomInfo.len + randomInfo.start);
-        std::uniform_real_distribution<float> distribution(min, max);
-        std::generate_n(vecData.begin() + randomInfo.start, randomInfo.len, [&]() { return distribution(generator); });
-    }
 
     enum class InitializerType {
         CONSTANT,
