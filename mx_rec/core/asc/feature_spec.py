@@ -11,6 +11,7 @@ import tensorflow as tf
 
 from mx_rec.util.atomic import AtomicInteger
 from mx_rec.util.initialize import insert_feature_spec, insert_training_mode_channel_id, get_use_static
+from mx_rec.util.normalization import fix_invalid_table_name
 from mx_rec.constants.constants import MAX_INT32
 
 feature_spec_global_id = AtomicInteger()
@@ -27,7 +28,7 @@ class FeatureSpec:
         spec_name = name + f"_{feature_spec_global_id}"
         self.name = spec_name
         self._index_key = kwargs.get("index_key") if kwargs.get("index_key") else name
-        self._table_name = kwargs.get("table_name") if kwargs.get("table_name") else name
+        self._table_name = fix_invalid_table_name(kwargs.get("table_name") if kwargs.get("table_name") else name)
         self._feat_cnt = kwargs.get("feat_count")
         self._access_threshold = kwargs.get("access_threshold")
         self._eviction_threshold = kwargs.get("eviction_threshold")
@@ -42,7 +43,6 @@ class FeatureSpec:
         self.initialized = False
         self._pipeline_mode = set()
 
-        self.fix_invalid_table_name()
         self.check_params()
 
     @property
@@ -132,10 +132,6 @@ class FeatureSpec:
 
         if self._is_timestamp is not None:
             check_bool(self._is_timestamp, "is_timestamp")
-
-    def fix_invalid_table_name(self):
-        if not re.match("^[0-9A-Za-z_]+$", self._table_name):
-            self._table_name = re.sub(r'\W+', '_', self._table_name)
 
     def set_feat_pos(self, is_training):
         if is_training:

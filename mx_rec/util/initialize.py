@@ -63,6 +63,8 @@ class ConfigInitializer:
             self._comm = MPI.COMM_WORLD
             self._rank_id = self._comm.Get_rank()
             self._rank_size = self._comm.Get_size()
+        else:
+            raise ValueError("only mpi is supported for launching task.")
 
         self._rank_to_device_dict = parse_hccl_json() if os.getenv("RANK_TABLE_FILE") else set_hccl_info_without_json()
         self.train_steps = kwargs.get("train_steps", -1)
