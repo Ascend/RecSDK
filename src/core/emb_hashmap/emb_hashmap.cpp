@@ -244,27 +244,17 @@ auto EmbHashMap::GetHashMaps() -> absl::flat_hash_map<string, EmbHashMapInfo>
     if (checkResult == 1) {
         // 回退一步
         for (auto& temp: embHashMapsOld) {
-            auto &embTableName = temp.first;
             auto &embHashMap = temp.second;
-            vector<emb_key_t> hbm2DdrKeys;
-            vector<emb_key_t> ddr2HbmKeys;
             for (auto &swapKeys: embHashMap.oldSwap) {
                 emb_key_t oldKey = swapKeys.first;
                 emb_key_t key = swapKeys.second;
                 int tempOffset = static_cast<int>(embHashMap.hostHashMap[key]);
                 embHashMap.hostHashMap[key] = embHashMap.hostHashMap[oldKey];
                 embHashMap.hostHashMap[oldKey] = static_cast<int>(tempOffset);
-                hbm2DdrKeys.emplace_back(key);
-                ddr2HbmKeys.emplace_back(oldKey);
             }
             embHashMap.maxOffset = embHashMap.maxOffsetOld;
             for (auto &Offset2Key: embHashMap.devOffset2KeyOld) {
                 embHashMap.devOffset2Key[Offset2Key.first] = Offset2Key.second;
-            }
-            if (isSSDEnabled) {
-                // 恢复CacheManager中频次数据
-                cacheManager->RefreshFreqInfoCommon(embTableName, hbm2DdrKeys, TransferType::HBM_2_DDR);
-                cacheManager->RefreshFreqInfoCommon(embTableName, ddr2HbmKeys, TransferType::DDR_2_HBM);
             }
         }
         return embHashMapsOld;
@@ -605,15 +595,15 @@ void EmbHashMap::AddCacheManagerTraceLog(const string& embTableName, const EmbHa
     std::string ddrKeysString = VectorToString(ddrKeys);
     std::string lfuKeysString = VectorToString(lfuKeys);
     if (ddrKeysString != lfuKeysString) {
-        LOG(ERROR) << "ERROR STRING not equal, ddrKeysString:" << ddrKeysString << ", lfuKeysString:" << lfuKeysString;
+        LOG(ERROR) << "swap HBM with DDR step error, key string not equal, ddrKeysString:" << ddrKeysString
+                   << ", lfuKeysString:" << lfuKeysString;
     } else {
-        LOG(INFO) << "After HBM swap with DDR, table:" << embTableName <<
+        LOG(INFO) << "swap HBM with DDR step OK, table:" << embTableName <<
                      ", ddrKeysString is equals with lfuKeysString, string length:" << lfuKeysString.length();
     }
 
-    LOG(INFO)
-        << "After HBM swap with DDR, table:" << embTableName << ", tableKeyInDdr:" << tableKeyInDdr <<
-           ", tableKeyInLfu:" << lfu.keyTable.size();
+    LOG(INFO) << "swap HBM with DDR step end, table:" << embTableName << ", tableKeyInDdr:" << tableKeyInDdr
+              << ", tableKeyInLfu:" << lfu.keyTable.size();
 }
 
 /// 记录key频次数据
