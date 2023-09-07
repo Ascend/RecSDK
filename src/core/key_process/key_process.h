@@ -32,7 +32,7 @@
 #include "emb_table/emb_table.h"
 
 #include "feature_admit_and_evict.h"
-
+#include "hybrid_mgmt/hybrid_mgmt_block.h"
 
 namespace MxRec {
     using namespace std;

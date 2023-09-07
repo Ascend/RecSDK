@@ -9,8 +9,10 @@
 #include <fstream>
 #include <iomanip>
 #include <mpi.h>
-#include "hd_transfer/hd_transfer.h"
+
 #include "checkpoint/checkpoint.h"
+#include "hd_transfer/hd_transfer.h"
+#include "hybrid_mgmt/hybrid_mgmt_block.h"
 #include "utils/common.h"
 
 using namespace MxRec;
@@ -225,30 +227,45 @@ void EmbHashMap::FindAndUpdateBatchId(vector<emb_key_t>& keys, size_t currentBat
 
 auto EmbHashMap::GetHashMaps() -> absl::flat_hash_map<string, EmbHashMapInfo>
 {
+    VLOG(GLOG_DEBUG) << (HYBRID_BLOCKING + " start GetHashMaps");
+    HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
     auto embHashMapsOld = embHashMaps;
-    for (auto& temp: embHashMapsOld) {
-        auto& embTableName = temp.first;
-        auto& embHashMap = temp.second;
-        vector<emb_key_t> hbm2DdrKeys;
-        vector<emb_key_t> ddr2HbmKeys;
-        for (auto& swapKeys: embHashMap.oldSwap) {
-            emb_key_t oldKey = swapKeys.first;
-            emb_key_t key = swapKeys.second;
-            int tempOffset = static_cast<int>(embHashMap.hostHashMap[key]);
-            embHashMap.hostHashMap[key] = embHashMap.hostHashMap[oldKey];
-            embHashMap.hostHashMap[oldKey] = static_cast<int>(tempOffset);
-            hbm2DdrKeys.emplace_back(key);
-            ddr2HbmKeys.emplace_back(oldKey);
+    int checkResult = hybridMgmtBlock->CheckSaveEmbdMapValid();
+    if (checkResult == 0) {
+        // 检查是否需要回退
+        return embHashMapsOld;
+    }
+    if (checkResult == 1) {
+        // 回退一步
+        for (auto& temp: embHashMapsOld) {
+            auto &embTableName = temp.first;
+            auto &embHashMap = temp.second;
+            vector<emb_key_t> hbm2DdrKeys;
+            vector<emb_key_t> ddr2HbmKeys;
+            for (auto &swapKeys: embHashMap.oldSwap) {
+                emb_key_t oldKey = swapKeys.first;
+                emb_key_t key = swapKeys.second;
+                int tempOffset = static_cast<int>(embHashMap.hostHashMap[key]);
+                embHashMap.hostHashMap[key] = embHashMap.hostHashMap[oldKey];
+                embHashMap.hostHashMap[oldKey] = static_cast<int>(tempOffset);
+                hbm2DdrKeys.emplace_back(key);
+                ddr2HbmKeys.emplace_back(oldKey);
+            }
+            embHashMap.maxOffset = embHashMap.maxOffsetOld;
+            for (auto &Offset2Key: embHashMap.devOffset2KeyOld) {
+                embHashMap.devOffset2Key[Offset2Key.first] = Offset2Key.second;
+            }
+            if (isSSDEnabled) {
+                // 恢复CacheManager中频次数据
+                cacheManager->RefreshFreqInfoCommon(embTableName, hbm2DdrKeys, TransferType::HBM_2_DDR);
+                cacheManager->RefreshFreqInfoCommon(embTableName, ddr2HbmKeys, TransferType::DDR_2_HBM);
+            }
         }
-        embHashMap.maxOffset = embHashMap.maxOffsetOld;
-        for (auto& Offset2Key: embHashMap.devOffset2KeyOld) {
-            embHashMap.devOffset2Key[Offset2Key.first] = Offset2Key.second;
-        }
-        if (isSSDEnabled) {
-            // 恢复CacheManager中频次数据
-            cacheManager->RefreshFreqInfoCommon(embTableName, hbm2DdrKeys, TransferType::HBM_2_DDR);
-            cacheManager->RefreshFreqInfoCommon(embTableName, ddr2HbmKeys, TransferType::DDR_2_HBM);
-        }
+        return embHashMapsOld;
+    }
+    // 此时需要回退2步，无法满足此条件，保存的东西错误，直接回退
+    if (not rankInfo.noDDR) {
+        throw HybridMgmtBlockingException("EmbHashMap::GetHashMaps() ");
     }
     return embHashMapsOld;
 }

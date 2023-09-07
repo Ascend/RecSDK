@@ -64,7 +64,8 @@ public:
     void Compute(OpKernelContextPtr context) override
     {
         LOG(INFO) << StringFormat("clear channel %d, context %d", channelId, context->step_id());
-        batchIdsInfo.at(channelId) = 0;
+        HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
+        hybridMgmtBlock->ResetAll(channelId);
     }
 
 private:
@@ -122,7 +123,7 @@ public:
         OP_REQUIRES_OK(context, context->GetAttr("channel_id", &channelId)); // 0 train or 1 inference
         OP_REQUIRES_OK(context, context->GetAttr("emb_name", &embNames));
         OP_REQUIRES_OK(context, context->GetAttr("timestamp", &isTimestamp));
-
+        hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
         // 特征准入&淘汰功能 相关校验
 
         // 配置了，也不能多配、配不相关的；同时支持“准入&淘汰”，则不能没有时间戳
@@ -141,7 +142,8 @@ public:
                 MAX_CHANNEL_NUM)));
             return;
         }
-        batchIdsInfo.at(channelId) = 0;
+        VLOG(INFO) << StringFormat(HYBRID_BLOCKING + " reset channel %d", channelId);
+        hybridMgmtBlock->ResetAll(channelId);
 
         threadNum = GetThreadNumEnv();
         auto keyProcess = Singleton<KeyProcess>::GetInstance();
@@ -158,7 +160,7 @@ public:
         EASY_FUNCTION();
         VLOG(GLOG_DEBUG) << "enter ReadEmbKeyV2Dynamic";
         TimeCost tc = TimeCost();
-        int batchId = batchIdsInfo.at(channelId)++;
+        int batchId = hybridMgmtBlock->readEmbedBatchId[channelId]++;
         if (channelId == 1) {
             if (maxStep != -1 && batchId >= maxStep) {
                 LOG(WARNING) << StringFormat("skip excess batch after %d/%d", batchId, maxStep);
@@ -296,6 +298,7 @@ public:
     int maxStep = 0;
     bool isTimestamp { false };
     int threadNum = 0;
+    HybridMgmtBlock* hybridMgmtBlock;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ReadEmbKeyV2Dynamic").Device(DEVICE_CPU), ReadEmbKeyV2Dynamic);
@@ -325,6 +328,7 @@ public:
         OP_REQUIRES_OK(context, context->GetAttr("timestamp", &isTimestamp));
         fieldNum = accumulate(splits.begin(), splits.end(), 0);
 
+        hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
         // 特征准入&淘汰功能 相关校验
 
         // 配置了，也不能多配、配不相关的；同时支持“准入&淘汰”，则不能没有时间戳
@@ -346,7 +350,9 @@ public:
                 "ReadEmbKeyV2 channelId invalid. It should be in range [0, MAX_CHANNEL_NUM:%d)", MAX_CHANNEL_NUM)));
             return;
         }
-        batchIdsInfo.at(channelId) = 0;
+        VLOG(INFO) << StringFormat(HYBRID_BLOCKING + " reset channel %d", channelId);
+        // 重置此数据通道中所有的步数
+        hybridMgmtBlock->ResetAll(channelId);
 
         threadNum = GetThreadNumEnv();
         auto keyProcess = Singleton<KeyProcess>::GetInstance();
@@ -364,7 +370,7 @@ public:
         EASY_FUNCTION();
         VLOG(GLOG_DEBUG) << "enter ReadEmbKeyV2";
         TimeCost tc = TimeCost();
-        int batchId = batchIdsInfo.at(channelId)++;
+        int batchId = hybridMgmtBlock->readEmbedBatchId[channelId]++;
         Tensor* output = nullptr;
         if (channelId == 1) {
             if (maxStep != -1 && batchId >= maxStep) {
@@ -499,6 +505,7 @@ public:
     int maxStep = 0;
     bool isTimestamp { false };
     int threadNum = KEY_PROCESS_THREAD;
+    HybridMgmtBlock* hybridMgmtBlock;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ReadEmbKeyV2").Device(DEVICE_CPU), ReadEmbKeyV2);
