@@ -23,9 +23,9 @@
 #include <fstream>
 #include <algorithm>
 #include "tensorflow/core/framework/tensor.h"
-#include "glog/logging.h"  // note: must set behind any tensorflow reference, otherwise will overwrite logging.h
 #include "absl/container/flat_hash_map.h"
 #include "securec.h"
+#include "utils/log.h"
 
 #include "initializer/initializer.h"
 #include "initializer/constant_initializer/constant_initializer.h"
@@ -297,8 +297,6 @@ namespace MxRec {
     };
 
     void SetLog(int rank);
-
-    void CustomGlogFormat(std::ostream &s, const google::LogMessageInfo &l, void*);
 
     bool GetEnv(const char *envName);
 

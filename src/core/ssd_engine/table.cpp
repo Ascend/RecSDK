@@ -23,7 +23,7 @@ Table::Table(const string &name, vector<string> &savePaths, uint64_t maxTableSiz
     if (!fs::exists(curTablePath) && !fs::create_directories(curTablePath)) {
         throw runtime_error("fail to create table directory");
     }
-    LOG(INFO) << StringFormat("create table:%s at path:%s", name.c_str(), curTablePath.c_str());
+    LOG_INFO("create table:{} at path:{}", name, curTablePath);
 }
 
 /// 加载表
@@ -55,7 +55,7 @@ Table::Table(const string &name, vector<string> &saveDirs, uint64_t maxTableSize
 
     // always use first path to save until it's full
     curTablePath = fs::absolute(savePaths.at(curSavePathIdx) + "/" + saveDirPrefix + g_rankId + "/" + name).string();
-    LOG(INFO) << StringFormat("load table:%s done. try store at path:%s", name.c_str(), curTablePath.c_str());
+    LOG_INFO("load table:{} done. try store at path:{}", name, curTablePath);
 }
 
 bool Table::IsKeyExist(emb_key_t key)
@@ -86,7 +86,7 @@ void Table::DeleteEmbeddings(vector<emb_key_t> &keys)
 
 void Table::Save(int step)
 {
-    LOG(INFO) << StringFormat("start save table:%s, at step:%d", name.c_str(), step);
+    LOG_INFO("start save table:{}, at step:{}", name, step);
     Compact(true);
 
     lock_guard<mutex> guard(rwLock);
@@ -121,7 +121,7 @@ void Table::Save(int step)
     }
 
     metaFile.close();
-    LOG(INFO) << StringFormat("end save table:%s, at step:%d", name.c_str(), step);
+    LOG_INFO("end save table:{}, at step:{}", name, step);
 }
 
 /// 根据元数据加载data文件
@@ -129,7 +129,7 @@ void Table::Save(int step)
 /// \param step 加载的步数
 void Table::LoadDataFileSet(const shared_ptr<fstream> &metaFile, int step)
 {
-    LOG(INFO) << StringFormat("table:%s, start load data file", name.c_str());
+    LOG_INFO("table:{}, start load data file", name);
     uint64_t fileCnt;
     metaFile->read(reinterpret_cast<char *>(&fileCnt), sizeof(fileCnt));
     uint64_t fileID;
@@ -182,7 +182,7 @@ void Table::Load(const string &metaFilePath, int step)
 
     shared_ptr<fstream> metaFile = make_shared<fstream>();
     metaFile->open(metaFilePath, ios::in | ios::binary);
-    LOG(INFO) << StringFormat("table:%s, load meta file from path:%s", name.c_str(), metaFilePath.c_str());
+    LOG_INFO("table:{}, load meta file from path:{}", name, metaFilePath);
     if (!metaFile->is_open()) {
         throw invalid_argument("fail to open meta");
     }
@@ -207,7 +207,7 @@ void Table::Load(const string &metaFilePath, int step)
     if (metaFile->fail()) {
         throw runtime_error("fail to load table");
     }
-    LOG(INFO) << StringFormat("table:%s, end load data file", name.c_str());
+    LOG_INFO("table:{}, end load data file", name);
 }
 
 void Table::InsertEmbeddingsInner(vector<emb_key_t> &keys, vector<vector<float>> &embeddings)
@@ -229,10 +229,8 @@ void Table::InsertEmbeddingsInner(vector<emb_key_t> &keys, vector<vector<float>>
                 throw runtime_error("all disk's space not enough");
             }
             curTablePath = savePaths[curSavePathIdx];
-            LOG(INFO) << StringFormat(
-                "current data path's free space less than %f, try next path:%s",
-                diskFreeSpaceThreshold, curTablePath.c_str()
-            );
+            LOG_INFO("current data path's free space less than {}, try next path:{}",
+                diskFreeSpaceThreshold, curTablePath);
         }
 
         curFile = make_shared<File>(curMaxFileID, curTablePath);

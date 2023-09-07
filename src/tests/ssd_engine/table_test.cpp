@@ -56,16 +56,18 @@ TEST(Table, WriteAndReadAndDeleteAndCompact)
         }
     }
 
-    LOG(INFO) << "n data:" << nData << " ,batch size:" << batchSize << " ,write cost(ms):" << writeCost.count()
-              << " ,QPS:" << float(nData) * 1000 / writeCost.count();
+    LOG_INFO("n data:{} ,batch size:{} ,write cost(ms): {} ,QPS:{}",
+        nData, batchSize, writeCost.count(), float(nData) * 1000 / writeCost.count());
 
     // read
     auto start = chrono::high_resolution_clock::now();
     auto ret = tb->FetchEmbeddings(allKeys);
     auto end = chrono::high_resolution_clock::now();
     auto readCost = chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    LOG(INFO) << "n data:" << nData << " ,batch size:" << batchSize << " ,read cost(ms):" << readCost.count()
-              << " ,QPS:" << float(nData) * 1000 / readCost.count();
+
+    LOG_INFO("n data:{} ,batch size:{} ,read cost(ms):{} ,QPS:{}",
+        nData, batchSize, readCost.count(), float(nData) * 1000 / readCost.count());
+
     ASSERT_EQ(allEmbs, ret);
 
     // check space

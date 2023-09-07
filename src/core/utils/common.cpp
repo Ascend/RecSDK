@@ -109,20 +109,10 @@ namespace MxRec {
             g_rankId = std::to_string(rank);
         }
         if (!g_isGlogInit) {
-            InitGoogleLogging("mxRec", &CustomGlogFormat);
+            Log::SetLevel(g_glogLevel);
+            Log::SetRank(rank);
             g_isGlogInit = true;
         }
-    }
-
-    void CustomGlogFormat(std::ostream &s, const google::LogMessageInfo &l, void*)
-    {
-        s << "["
-          << setw(GLOG_TIME_WIDTH_2) << l.time.hour() << ':'
-          << setw(GLOG_TIME_WIDTH_2) << l.time.min()  << ':'
-          << setw(GLOG_TIME_WIDTH_2) << l.time.sec() << "."
-          << setw(GLOG_TIME_WIDTH_6) << l.time.usec() << "]"
-          << " [" + g_rankId + "]"
-          << " [" <<  l.severity << "] ";
     }
 
     bool GetEnv(const char *envName)
@@ -133,13 +123,12 @@ namespace MxRec {
             try {
                 tmp = std::stoi(envString);
                 if (tmp == 0 || tmp == 1) {
-                    LOG(INFO) << StringFormat("Succeed to parse ${env:%s}: %d.", envName, tmp);
+                    LOG_INFO("Succeed to parse ${env:{}}: {}.", envName, tmp);
                 } else {
-                    LOG(ERROR) << StringFormat("Invalid ${env:%s}: %d, which should be an 0 or 1.", envName, tmp);
+                    LOG_ERROR("Invalid ${env:{}}: {}, which should be an 0 or 1.", envName, tmp);
                 }
             } catch (const std::invalid_argument &e) {
-                LOG(ERROR) <<
-                           StringFormat("Failed to parse ${env:%s}, which should be an integer.", envName);
+                LOG_ERROR("Failed to parse ${env:{}}, which should be an integer.", envName);
             }
         }
         return (tmp == 1) ? true : false;
@@ -153,11 +142,10 @@ namespace MxRec {
                                            { 0 }};
         ret = dsmi_get_chip_info(devID, &info);
         if (ret == 0) {
-            VLOG(GLOG_DEBUG) << StringFormat(
-                "dsmi_get_chip_info successful, ret = %d, chip_name = %s", ret,
-                reinterpret_cast<const char*>(info.chip_name)
-            );
-            return reinterpret_cast<const char*>(info.chip_name);
+            stringstream ss;
+            ss << info.chip_name;
+            LOG_DEBUG("dsmi_get_chip_info successful, ret = {}, chip_name = {}", ret, ss.str());
+            return ss.str();
         }
 
         throw std::runtime_error("dsmi_get_chip_info failed, ret = " + to_string(ret));
@@ -170,9 +158,9 @@ namespace MxRec {
         if (faaeMode != nullptr) {
             try {
                 isCombine = (std::stoi(faaeMode) == 1);
-                LOG(INFO) << StringFormat("If combine history table： %d", isCombine);
+                LOG_INFO("If combine history table: {}", isCombine);
             } catch (const std::invalid_argument& e) {
-                LOG(ERROR) << "The value of USE_COMBINE_FAAE is invalid!";
+                LOG_ERROR("The value of USE_COMBINE_FAAE is invalid!");
                 throw std::invalid_argument("Invalid env value USE_COMBINE_FAAE");
             }
         }
@@ -188,15 +176,14 @@ namespace MxRec {
                 threadNum = std::stoi(threadNumEnv);
             } catch (const std::invalid_argument& e) {
                 threadNum = KEY_PROCESS_THREAD;
-                LOG(INFO) << StringFormat("error value of threadNum, use default KEY_PROCESS_THREAD: %d",
-                                          threadNum);
+                LOG_INFO("error value of threadNum, use default KEY_PROCESS_THREAD: {}", threadNum);
             }
             if (threadNum > KEY_PROCESS_THREAD || threadNum < 0) {
                 throw runtime_error(StringFormat("%d is not valid", threadNum));
             }
         } else {
             threadNum = KEY_PROCESS_THREAD;
-            LOG(INFO) << StringFormat("use default KEY_PROCESS_THREAD: %d", threadNum);
+            LOG_INFO("use default KEY_PROCESS_THREAD: {}", threadNum);
         }
         return threadNum;
     }
@@ -207,14 +194,13 @@ namespace MxRec {
         struct stat fileInfo;
         if (lstat(dataDir.c_str(), &fileInfo) != -1) {
             if (S_ISLNK(fileInfo.st_mode)) {
-                LOG(ERROR) << StringFormat("soft link %s should not in the path parameter", dataDir.c_str());
+                LOG_ERROR("soft link {} should not in the path parameter", dataDir);
                 throw invalid_argument(StringFormat("soft link should not be the path parameter"));
             }
         }
         // validate file size
         if (datasetSize > FILE_MAX_SIZE) {
-            LOG(ERROR) << StringFormat("the reading file size is invalid, "
-                                       "not in range [%d,%lld]", FILE_MIN_SIZE, FILE_MAX_SIZE);
+            LOG_ERROR("the reading file size is invalid, not in range [{},{}]", FILE_MIN_SIZE, FILE_MAX_SIZE);
             throw invalid_argument(StringFormat("file size invalid"));
         }
     }
