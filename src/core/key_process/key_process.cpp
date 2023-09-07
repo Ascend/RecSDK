@@ -263,7 +263,6 @@ void KeyProcess::KeyProcessTaskWithFastUnique(int channel, int threadId)
     }
     GetUniqueConfig(uniqueConf);
 
-    TimeCost tc = TimeCost();
     try {
         while (true) {
             TimeCost getAndProcessTC;
@@ -273,8 +272,8 @@ void KeyProcess::KeyProcessTaskWithFastUnique(int channel, int threadId)
             if (batch == nullptr) {
                 break;
             }
-            auto getBatchTime = tc.ElapsedMS();
-            tc = TimeCost();
+            auto getBatchTime = getBatchDataTC.ElapsedMS();
+            TimeCost processDataTime = TimeCost();
 
             InitializeUnique(uniqueConf, preBatchSize, uniqueInitialize, batch, unique);
             if (!KeyProcessTaskHelperWithFastUnique(batch, unique, channel, threadId)) {
@@ -283,7 +282,7 @@ void KeyProcess::KeyProcessTaskWithFastUnique(int channel, int threadId)
             LOG(INFO) << StringFormat(
                 KEY_PROCESS "getAndProcessTC(ms):%d, key process with fast unique cost:%d,"
                             " get data time(ms):%d, batch name:%s, channel:%d, batchID:%d",
-                getAndProcessTC.ElapsedMS(), tc.ElapsedMS(), getBatchTime,
+                getAndProcessTC.ElapsedMS(), processDataTime.ElapsedMS(), getBatchTime,
                 batch->name.c_str(), batch->channel, batch->batchId
             );
             auto batchQueue = SingletonQueue<emb_batch_t>::getInstances(threadId + KEY_PROCESS_THREAD * batch->channel);
@@ -293,16 +292,16 @@ void KeyProcess::KeyProcessTaskWithFastUnique(int channel, int threadId)
     } catch (const EndRunError &e) {
         VLOG(GLOG_DEBUG) << StringFormat(KEY_PROCESS "abort run: %s", e.what());
     }
+
     LOG(INFO) << StringFormat(
-        KEY_PROCESS "KeyProcessTaskWithFastUnique exit. rank:%d thread:%d, channel:%d",
-        rankInfo.rankId, threadId, channel);
+            KEY_PROCESS "KeyProcessTaskWithFastUnique exit. rank:%d thread:%d, channel:%d",
+            rankInfo.rankId, threadId, channel);
 }
 
 
 void KeyProcess::KeyProcessTask(int channel, int threadId)
 {
     unique_ptr<emb_batch_t> batch;
-    TimeCost tc = TimeCost();
     try {
         while (true) {
             TimeCost getAndProcessTC;
@@ -312,8 +311,8 @@ void KeyProcess::KeyProcessTask(int channel, int threadId)
             if (batch == nullptr) {
                 break;
             }
-            auto getBatchTime = tc.ElapsedMS();
-            tc = TimeCost();
+            auto getBatchTime = getBatchDataTC.ElapsedMS();
+            TimeCost processDataTime = TimeCost();
 
             if (!KeyProcessTaskHelper(batch, channel, threadId)) {
                 break;
@@ -321,7 +320,7 @@ void KeyProcess::KeyProcessTask(int channel, int threadId)
             LOG(INFO) << StringFormat(
                 KEY_PROCESS "getAndProcessTC(ms):%d, key process cost:%d,"
                             " get data time(ms):%d, batch name:%s, channel:%d, batchID:%d",
-                getAndProcessTC.ElapsedMS(), tc.ElapsedMS(), getBatchTime,
+                getAndProcessTC.ElapsedMS(), processDataTime.ElapsedMS(), getBatchTime,
                 batch->name.c_str(), batch->channel, batch->batchId
             );
             auto batchQueue = SingletonQueue<emb_batch_t>::getInstances(threadId + KEY_PROCESS_THREAD * batch->channel);
@@ -330,6 +329,7 @@ void KeyProcess::KeyProcessTask(int channel, int threadId)
     } catch (const EndRunError &e) {
         VLOG(GLOG_DEBUG) << StringFormat(KEY_PROCESS "abort run: %s", e.what());
     }
+
     LOG(INFO) << StringFormat(
         KEY_PROCESS "KeyProcessTask exit. rank:%d thread:%d, channel:%d", rankInfo.rankId, threadId, channel);
 }
@@ -358,6 +358,7 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<emb_batch_t>& bat
     // tuple for keyRec restore hotPos scAll countRecv
     isWithFAAE = m_featureAdmitAndEvict.GetFunctionSwitch() &&
                   FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE;
+    TimeCost totalTimeCost = TimeCost();
     TimeCost fastUniqueTC;
     UniqueInfo uniqueInfo;
     ProcessBatchWithFastUnique(batch, unique, threadId, uniqueInfo);
@@ -399,6 +400,11 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<emb_batch_t>& bat
 
     TimeCost pushResultTC;
     PushResult(batch, move(tensors), uniqueInfo.all2AllInfo.keyRecv);
+    if (g_statOn) {
+        LOG(INFO) << StringFormat(STAT_INFO "channel_id %d batch_id %d rank_id %d "
+                                            "key_process_time_cost_with_fast_unique %d",
+            channel, batch->batchId, rankInfo.rankId, totalTimeCost.ElapsedMS());
+    }
     VLOG(GLOG_DEBUG) << StringFormat("pushResultTC(ms):%d", pushResultTC.ElapsedMS());
     return true;
 }
@@ -409,7 +415,7 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channe
     vector<int32_t> restore;
     vector<int32_t> hotPos;
     vector<vector<uint32_t>> keyCount;
-
+    TimeCost totalTimeCost = TimeCost();
     HashSplitHelper(batch, splitKeys, restore, hotPos, keyCount);
     auto [lookupKeys, scAll, ss] = ProcessSplitKeys(batch, threadId, splitKeys);
 
@@ -460,6 +466,11 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channe
 
     PushResult(batch, move(tensors), lookupKeys);
     VLOG(GLOG_DEBUG) << StringFormat("pushResultTC(ms):%d", pushResultTC.ElapsedMS());
+    if (g_statOn) {
+        LOG(INFO) << StringFormat(STAT_INFO "channel_id %d batch_id %d rank_id %d "
+                                            "key_process_time_cost %d",
+            channel, batch->batchId, rankInfo.rankId, totalTimeCost.ElapsedMS());
+    }
     return true;
 }
 
@@ -635,6 +646,13 @@ void KeyProcess::ProcessBatchWithFastUnique(const unique_ptr<emb_batch_t> &batch
         batch->batchId, batch->Size(), batch->channel, batch->name.c_str(),
         uniqueInfoOut.restore.size(), keySendInfo.keyCount.size()
     );
+
+    if (g_statOn) {
+        LOG(INFO) << StringFormat(
+            STAT_INFO "channel_id %d batch_id %d rank_id %d "
+                      "batch_key_num_with_fast_unique %d unique_key_num_with_fast_unique %d",
+            batch->channel, batch->batchId, rankInfo.rankId, batch->Size(), uniqueOut.uniqueIdCnt);
+    }
 }
 
 void KeyProcess::HandleHotAndSendCount(const unique_ptr<emb_batch_t> &batch, UniqueInfo& uniqueInfoOut,
@@ -816,6 +834,16 @@ auto KeyProcess::HashSplit(const unique_ptr<emb_batch_t>& batch) const -> tuple<
         }
         VLOG(GLOG_TRACE) << "dump splitKeys " << ssTrace.str();
     }
+
+    if (g_statOn) {
+        size_t UniqueKeyNum = 0;
+        for (int devId = 0; devId < rankInfo.rankSize; ++devId) {
+            UniqueKeyNum += splitKeys[devId].size();
+        }
+        LOG(INFO) << StringFormat(
+            STAT_INFO "channel_id %d batch_id %d rank_id %d batch_key_num %d unique_key_num %ld",
+            batch->channel, batch->batchId, rankInfo.rankId, batch->Size(), UniqueKeyNum);
+    }
     return { splitKeys, restore };
 }
 
@@ -868,6 +896,15 @@ auto KeyProcess::HashSplit_withFAAE(const unique_ptr<emb_batch_t>& batch) const
         VLOG(GLOG_TRACE) << "dump splitKeys " << ssTrace.str();
     }
 
+    if (g_statOn) {
+        size_t UniqueKeyNum = 0;
+        for (int devId = 0; devId < rankInfo.rankSize; ++devId) {
+            UniqueKeyNum += splitKeys[devId].size();
+        }
+        LOG(INFO) << StringFormat(
+            STAT_INFO "channel_id %d batch_id %d rank_id %d batch_key_num %d faae_unique_key_num %ld",
+            batch->channel, batch->batchId, rankInfo.rankId, batch->Size(), UniqueKeyNum);
+    }
     return { splitKeys, restore, keyCount };
 }
 
@@ -886,7 +923,6 @@ tuple<vector<keys_t>, vector<int32_t>, vector<int>>
     lock.unlock();
     vector<int> hotPos(hotEmbTotCount[batch->name]);
     vector<int> hotPosDev(hotEmbTotCount[batch->name]);
-
     int hotCount = 0;
     int hotOffset = hotEmbTotCount[batch->name];
     for (size_t i = 0; i < miniBs; i++) { // for mini batch
@@ -919,10 +955,19 @@ tuple<vector<keys_t>, vector<int32_t>, vector<int>>
         }
         uKey[key] = restore[i];
     }
+    
+    if (g_statOn) {
+        size_t UniqueKeyNum = 0;
+        for (int devId = 0; devId < rankInfo.rankSize; ++devId) {
+            UniqueKeyNum += splitKeys[devId].size();
+        }
+        LOG(INFO) << StringFormat(
+            STAT_INFO "channel_id %d batch_id %d rank_id %d batch_key_num %d hot_unique_key_num %ld",
+            batch->channel, batch->batchId, rankInfo.rankId, batch->Size(), UniqueKeyNum);
+    }
 
     UpdateHotMap(keyCountMap, hotEmbTotCount[batch->name], batch->batchId % hotEmbUpdateStep == 0, batch->name);
     AddCountStartToHotPos(splitKeys, hotPos, hotPosDev, batch);
-
     return { splitKeys, restore, hotPos };
 }
 

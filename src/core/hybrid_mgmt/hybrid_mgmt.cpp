@@ -112,6 +112,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     // 设置日志的级别，对日志格式进行配置
     SetLog(rankInfo.rankId);
     InitRankInfo(rankInfo, embInfos);
+    g_statOn = GetEnv("STAT_ON");
 
     LOG(INFO) << StringFormat(
         MGMT + "begin initialize, localRankSize:%d, localRankId:%d, rank:%d",

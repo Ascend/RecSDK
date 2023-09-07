@@ -12,7 +12,6 @@
 #include <sys/stat.h>
 
 #include <cstring>
-#include <cassert>
 
 #include <vector>
 #include <random>
@@ -65,11 +64,14 @@ namespace MxRec {
     constexpr int SSD_SIZE_INDEX = 2;
 
     // for GLOG
+    extern bool g_statOn;
     extern int g_glogLevel;
     extern string g_rankId;
     constexpr int GLOG_MAX_BUF_SIZE = 1024;
     constexpr int GLOG_TIME_WIDTH_2 = 2;
     constexpr int GLOG_TIME_WIDTH_6 = 6;
+    constexpr char GLOG_STAT_FLAG[] = "STAT_ON";
+
 
     // unique related config
     constexpr int UNIQUE_BUCKET = 6;
@@ -366,20 +368,6 @@ namespace MxRec {
 
     void ValidateReadFile(const string& dataDir, size_t datasetSize);
 
-    inline void GenerateRandomValue(std::vector<float>& vecData,
-                                    std::default_random_engine& generator,
-                                    RandomInfo& randomInfo)
-    {
-        float min = ((!randomInfo.randomMin) ? -0.1f : randomInfo.randomMin);
-        float max = ((!randomInfo.randomMax) ? 0.1f : randomInfo.randomMax);
-        if (randomInfo.len == 0) {
-            return;
-        }
-        assert(static_cast<int>(vecData.size()) >= randomInfo.len + randomInfo.start);
-        std::uniform_real_distribution<float> distribution(min, max);
-        std::generate_n(vecData.begin() + randomInfo.start, randomInfo.len, [&]() { return distribution(generator); });
-    }
-
     enum class InitializerType {
         CONSTANT,
         TRUNCATED_NORMAL,
@@ -590,6 +578,7 @@ namespace MxRec {
 } // end namespace MxRec
 
 #define KEY_PROCESS "\033[45m[KeyProcess]\033[0m "
+#define STAT_INFO "[StatInfo] "
 #ifdef GTEST
     #define GTEST_PRIVATE public
 #else

@@ -79,6 +79,7 @@ class ConfigInitializer:
         self.enable_table_merge = True if os.getenv("TF_DEVICE") == "NPU" else False
         # 两个通道的sparse look id，用于通讯的标识
         self.notify_hybrid_channel_sparse_id = [0, 0]
+        self.stat_on = set_stat_flag() if os.getenv("STAT_ON") else False
 
     def __del__(self):
         self.terminate()
@@ -260,6 +261,8 @@ class ConfigInitializer:
             self._table_name_to_feature_spec[name] = {True: [], False: []}
         self._name_to_var_dict[name] = key
         self._table_instance_dict[key] = instance
+        if self.stat_on:
+            logging.info(f"[StatInfo] current_table_num {len(self._table_instance_dict)}")
 
     def insert_bool_gauge(self, name):
         if not isinstance(name, str):
@@ -640,6 +643,10 @@ def export_table_instances():
     return ConfigInitializer.get_instance().table_instance_dict
 
 
+def export_table_num():
+    return len(ConfigInitializer.get_instance().table_instance_dict)
+
+
 def export_dangling_table():
     return ConfigInitializer.get_instance().dangling_table
 
@@ -687,6 +694,10 @@ def get_if_load():
 def get_use_static():
     return ConfigInitializer.get_instance().use_static
 
+
+def get_stat_on():
+    return ConfigInitializer.get_instance().stat_on
+    
 
 def get_use_hot():
     return ConfigInitializer.get_instance().use_hot
@@ -917,3 +928,12 @@ def bind_cpu(rank_id: int, rank_size: int = None):
     except IndexError:
         logging.error(f"failed to bind cpu for rank {rank_id}: {cpu_list}")
     logging.info(f"bind cpu for rank {rank_id}: {cpu_list}")
+
+
+def set_stat_flag():
+    if os.getenv("STAT_ON") == "1":
+        return True
+    elif os.getenv("STAT_ON") == "0":
+        return False
+    else:
+        raise ValueError(f"STAT_ON can only be 0 or 1.")

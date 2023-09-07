@@ -12,7 +12,7 @@ from mx_rec.constants.constants import MxRecMode
 from mx_rec.util.initialize import get_rank_id, get_device_id, get_rank_size, set_asc_manager, \
     is_asc_manager_initialized, get_train_steps, get_eval_steps, get_prefetch_batch_number, \
     export_table_instances, export_feature_spec, get_if_load, get_training_mode_channel_id, get_use_static, \
-    get_use_hot, get_use_dynamic_expansion, export_optimizer, export_dangling_table
+    get_use_hot, get_stat_on, get_use_dynamic_expansion, export_optimizer, export_dangling_table, export_table_num
 from mx_rec.core.asc.merge_table import find_dangling_table, should_skip
 
 
@@ -227,5 +227,9 @@ def start_asc_pipeline():
     if not table_info_list:
         logging.error("table_info_list is empty!")
         raise RuntimeError("table_info_list is empty!")
+    if get_stat_on():
+        logging.info(f"[StatInfo] current_table_num {export_table_num()}")  
     if not is_asc_manager_initialized() and table_info_list:
         initialize_emb_cache(table_info_list, threshold_list)
+
+

@@ -16,7 +16,6 @@ class SparseProcessor:
     single_instance = None
 
     def __init__(self, **kwargs):
-        self.sep = "/"
         self.export_name = "key-emb"
         self.device_dir_list = ["HashTable", "HBM"]
         self.host_dir_list = ["HashTable", "DDR"]
@@ -101,7 +100,8 @@ class SparseProcessor:
             emb_data = self.get_embedding(device_table_dir, host_table_dir, ddr)
             emb_data = emb_data[offset]
             transformed_data = dict(zip(key[:], emb_data[:]))
-            np.save(out_dir + self.sep + self.export_name + ".npy", transformed_data)
+            save_path = os.path.join(out_dir, self.export_name + ".npy")
+            np.save(save_path, transformed_data)
 
     def get_embedding(self, device_table_dir, host_table_dir, ddr):
         emb_dir = os.path.join(device_table_dir, self.device_emb_dir)
