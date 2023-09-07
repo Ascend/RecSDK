@@ -170,16 +170,18 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
 }
 
 // 比较hostHashMap和cacheManager的数据是否一致
-void HybridMgmt::AddCacheManagerTraceLog(absl::flat_hash_map<basic_string<char>, EmbHashMapInfo>& embHashMaps)
+void HybridMgmt::AddCacheManagerTraceLog(CkptData& saveData)
 {
-    if (!isSSDEnabled || !VLOG_IS_ON(GLOG_TRACE)) {
+    if (!VLOG_IS_ON(GLOG_TRACE)) {
         return;
     }
+    auto& embHashMaps = saveData.embHashMaps;
+    auto& ddrKeyFreqMap = saveData.ddrKeyFreqMaps;
     for (auto& it : embHashMaps) {
         string embTableName = it.first;
         auto& hostMap = it.second.hostHashMap;
         auto& devSize = it.second.devVocabSize;
-        auto& lfu = cacheManager->ddrKeyFreqMap[embTableName];
+        auto& lfu = ddrKeyFreqMap[embTableName];
         size_t tableKeyInDdr = 0;
         for (const auto& item : hostMap) {
             if (item.second < devSize) {
@@ -187,14 +189,61 @@ void HybridMgmt::AddCacheManagerTraceLog(absl::flat_hash_map<basic_string<char>,
             }
             ++tableKeyInDdr;
             auto cuKey = item.first;
-            auto lfuKeyCount = lfu.Get(cuKey);
-            if (lfuKeyCount == -1) {
-                LOG(ERROR) << "ERROR, SAVE Step, ddr key:" << cuKey << ", lfu count by key:" <<
-                              lfuKeyCount << ", hostHashMap offset:" << item.second;
+            if (lfu.find(cuKey) == lfu.end()) {
+                LOG(ERROR) << "save step error, ddr key:" << cuKey << ", not exist in lfu, hostHashMap offset:"
+                           << item.second;
             }
         }
-        LOG(INFO) << "SAVE Step, table:" << embTableName << ", tableKeyInDdr:" << tableKeyInDdr <<
-                     ", tableKeyInLfu:" << lfu.keyTable.size();
+        LOG(INFO) << "save step end, table:" << embTableName << ", tableKeyInDdr:" << tableKeyInDdr <<
+                     ", tableKeyInLfu:" << lfu.size();
+    }
+}
+
+/// 保存CacheManager时恢复数据(与恢复hostHashMap类似，仅恢复保存数据,不修改源数据)
+/// \param saveData 保存数据
+void HybridMgmt::RestoreFreq4Save(CkptData& saveData)
+{
+    // 仅在差异1步时执行恢复操作
+    int checkResult = hybridMgmtBlock->CheckSaveEmbdMapValid();
+    if (checkResult != 1) {
+        return;
+    }
+    auto& ddrKeyFreqMaps = saveData.ddrKeyFreqMaps;
+    auto& excludeDDRKeyFreqMaps = saveData.excludeDDRKeyFreqMaps;
+
+    for (const auto& it : saveData.embHashMaps) {
+        auto& embTableName = it.first;
+        auto& embHashMap = it.second;
+        vector<emb_key_t> hbm2DdrKeys;
+        vector<emb_key_t> ddr2HbmKeys;
+        LOG(INFO) << "restore freq info for save step, table:" << embTableName << ", embHashMap.oldSwap size:"
+                  << embHashMap.oldSwap.size();
+        LOG(INFO) << "before, ddr key table size:" << ddrKeyFreqMaps[embTableName].size()
+                  << ", exclude ddr key table size:" << excludeDDRKeyFreqMaps[embTableName].size();
+        for (const auto& swapKeys : embHashMap.oldSwap) {
+            hbm2DdrKeys.emplace_back(swapKeys.second);
+            ddr2HbmKeys.emplace_back(swapKeys.first);
+        }
+        int hbm2DdrKeysNotInExcludeMapCount = 0;
+        int ddr2HbmKeysNotInDDRMapCount = 0;
+        for (auto& key : hbm2DdrKeys) {
+            if (excludeDDRKeyFreqMaps[embTableName].find(key) == excludeDDRKeyFreqMaps[embTableName].end()) {
+                ++hbm2DdrKeysNotInExcludeMapCount;
+            }
+            ddrKeyFreqMaps[embTableName][key] = excludeDDRKeyFreqMaps[embTableName][key];
+            excludeDDRKeyFreqMaps[embTableName].erase(key);
+        }
+        for (auto& key : ddr2HbmKeys) {
+            if (ddrKeyFreqMaps[embTableName].find(key) == ddrKeyFreqMaps[embTableName].end()) {
+                ++ddr2HbmKeysNotInDDRMapCount;
+            }
+            excludeDDRKeyFreqMaps[embTableName][key] = ddrKeyFreqMaps[embTableName][key];
+            ddrKeyFreqMaps[embTableName].erase(key);
+        }
+        LOG(INFO) << "hbm2DdrKeysNotInExcludeMapCount:" << hbm2DdrKeysNotInExcludeMapCount
+                  << ", ddr2HbmKeysNotInDDRMapCount:" << ddr2HbmKeysNotInDDRMapCount;
+        LOG(INFO) << "after, ddr key table size:" << ddrKeyFreqMaps[embTableName].size()
+                  << ", exclude ddr key table size:" << excludeDDRKeyFreqMaps[embTableName].size();
     }
 }
 
@@ -214,7 +263,6 @@ bool HybridMgmt::Save(const string savePath)
         VLOG(GLOG_DEBUG) << (MGMT + "Start host side save: ddr mode hashmap");
         saveData.hostEmbs = hostEmbs->GetHostEmbs();
         saveData.embHashMaps = hostHashMaps->GetHashMaps();
-        AddCacheManagerTraceLog(saveData.embHashMaps);
     } else {
         // HBM模式保存最大偏移（真正使用了多少vocab容量），特征到偏移的映射
         VLOG(GLOG_DEBUG) << (MGMT + "Start host side save: no ddr mode hashmap");
@@ -227,6 +275,8 @@ bool HybridMgmt::Save(const string savePath)
             saveData.ddrKeyFreqMaps[it.first] = it.second.GetFreqTable();
         }
         saveData.excludeDDRKeyFreqMaps = cacheManager->excludeDDRKeyCountMap;
+        RestoreFreq4Save(saveData);
+        AddCacheManagerTraceLog(saveData);
         auto step = GetStepFromPath(savePath);
         cacheManager->SaveSSDEngine(step);
     }
@@ -787,7 +837,7 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
     VLOG(GLOG_DEBUG) << StringFormat(
         "getAndSendTensorsTC(ms):%d, channelId:%d", getAndSendTensorsTC.ElapsedMS(), channelId);
 
-    if (embHashMap.HasFree(lookupKeys.size())) { // check free > next one batch
+    if (!isSSDEnabled && embHashMap.HasFree(lookupKeys.size())) { // check free > next one batch
         LOG(WARNING) << StringFormat(MGMT + "embName %s[%d]%d,iBatch:%d freeSize not enough, %d",
                                      embName.c_str(), channelId, batchId, iBatch, lookupKeys.size());
         return false;
