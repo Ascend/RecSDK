@@ -8,15 +8,14 @@ import json
 
 import numpy as np
 
-from mx_rec.util.initialize import get_table_instance_by_name, export_table_name_set
+from mx_rec.util.initialize import get_table_instance_by_name, export_table_name_set, get_sparse_dir
 from mx_rec.validator.validator import FileValidator
 
 
 class SparseProcessor:
     single_instance = None
 
-    def __init__(self, model_dir, **kwargs):
-        self.sep = "/"
+    def __init__(self, **kwargs):
         self.export_name = "key-emb"
         self.device_dir_list = ["HashTable", "HBM"]
         self.host_dir_list = ["HashTable", "DDR"]
@@ -28,9 +27,6 @@ class SparseProcessor:
         self.attrib_suffix = ".attribute"
         self.json_attrib_dtype = "data_type"
         self.json_attrib_shape = "shape"
-        self.model_dir = model_dir
-        if not os.path.exists(model_dir):
-            raise FileExistsError(f"the model_dir supported {model_dir} does not exist.")
         self.table_list = kwargs.get("table_list")
         self.default_table_list = list(export_table_name_set())
 
@@ -41,8 +37,8 @@ class SparseProcessor:
             self.table_list = check_table_param(self.table_list, self.default_table_list)
 
     @staticmethod
-    def set_instance(model_dir, **kwargs):
-        SparseProcessor.single_instance = SparseProcessor(model_dir, **kwargs)
+    def set_instance(**kwargs):
+        SparseProcessor.single_instance = SparseProcessor(**kwargs)
 
     @staticmethod
     def _get_data(data_dir, dtype, data_shape):
@@ -87,26 +83,25 @@ class SparseProcessor:
 
     def export_sparse_data(self):
         logging.info("table list to be exported is %s", self.table_list)
-        sparse_dirs = self._get_sparse_dirs()
-        for sparse_dir in sparse_dirs:
-            ddr = False
-            sparse_dir = os.path.join(self.model_dir, sparse_dir)
-            dev_dir = set_upper_dir(sparse_dir, self.device_dir_list)
-            host_dir = set_upper_dir(sparse_dir, self.host_dir_list)
-            for table in self.table_list:
-                table_instance = get_table_instance_by_name(table)
-                device_table_dir = os.path.join(dev_dir, table)
-                host_table_dir = os.path.join(host_dir, table)
-                if table_instance.host_vocabulary_size != 0:
-                    ddr = True
-                    out_dir = host_table_dir
-                else:
-                    out_dir = device_table_dir
-                key, offset = self._get_hashmap(out_dir, ddr)
-                emb_data = self.get_embedding(device_table_dir, host_table_dir, ddr)
-                emb_data = emb_data[offset]
-                transformed_data = dict(zip(key[:], emb_data[:]))
-                np.save(out_dir + self.sep + self.export_name + ".npy", transformed_data)
+        sparse_dir = get_sparse_dir()
+        ddr = False
+        dev_dir = set_upper_dir(sparse_dir, self.device_dir_list)
+        host_dir = set_upper_dir(sparse_dir, self.host_dir_list)
+        for table in self.table_list:
+            table_instance = get_table_instance_by_name(table)
+            device_table_dir = os.path.join(dev_dir, table)
+            host_table_dir = os.path.join(host_dir, table)
+            if table_instance.host_vocabulary_size != 0:
+                ddr = True
+                out_dir = host_table_dir
+            else:
+                out_dir = device_table_dir
+            key, offset = self._get_hashmap(out_dir, ddr)
+            emb_data = self.get_embedding(device_table_dir, host_table_dir, ddr)
+            emb_data = emb_data[offset]
+            transformed_data = dict(zip(key[:], emb_data[:]))
+            save_path = os.path.join(out_dir, self.export_name + ".npy")
+            np.save(save_path, transformed_data)
 
     def get_embedding(self, device_table_dir, host_table_dir, ddr):
         emb_dir = os.path.join(device_table_dir, self.device_emb_dir)
@@ -151,14 +146,6 @@ class SparseProcessor:
         key = raw_hashmap[:, 0]
         return key, offset
 
-    def _get_sparse_dirs(self):
-        sub_dirs = []
-        for _, sub_dir, _ in os.walk(self.model_dir):
-            sub_dirs.append(sub_dir)
-        if not sub_dirs:
-            raise FileExistsError("There is no sparse folder in the model ")
-        return sub_dirs[0]
-
     def _get_file_names(self, directory):
         files = []
         data_file = None
@@ -177,9 +164,9 @@ class SparseProcessor:
         return data_file, attribute_file
 
 
-def export(model_dir, **kwargs):
+def export(**kwargs):
     empty_value = 0
-    SparseProcessor.set_instance(model_dir, **kwargs)
+    SparseProcessor.set_instance(**kwargs)
     if SparseProcessor.single_instance.table_list:
         return SparseProcessor.single_instance.export_sparse_data()
     else:

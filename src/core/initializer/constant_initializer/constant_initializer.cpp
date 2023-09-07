@@ -19,8 +19,6 @@ ConstantInitializer::ConstantInitializer(int start, int len, float value, float 
 
 void ConstantInitializer::GenerateData(float* const emb, const int embSize)
 {
-    LOG(INFO) << StringFormat("Device GenerateEmbData ing using Constant Initializer by value %f., start %d, len %d.",
-        value, start, len);
     if (len == 0) {
         return;
     }

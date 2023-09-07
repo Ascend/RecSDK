@@ -14,7 +14,7 @@ from tensorflow.python.util import compat
 from mx_rec.constants.constants import DataName, DataAttr, MIN_SIZE, MAX_FILE_SIZE
 from mx_rec.util.initialize import get_rank_id, get_rank_size, get_customized_ops, get_table_instance, \
     get_table_instance_by_name, is_asc_manager_initialized, save_host_data, restore_host_data, get_host_data, \
-    send_host_data, get_ascend_global_hashtable_collection
+    send_host_data, get_ascend_global_hashtable_collection, set_sparse_dir
 from mx_rec.util.perf import performance
 from mx_rec.validator.validator import DirectoryValidator, FileValidator
 
@@ -82,6 +82,8 @@ class Saver(object):
             ckpt_name = f"sparse-{base_name}"
 
         saving_path = os.path.join(directory, ckpt_name)
+        set_sparse_dir(saving_path)
+
         try:
             if save_path.find("://") == -1:
                 DirectoryValidator(saving_path).with_blacklist(exact_compare=False).check()
