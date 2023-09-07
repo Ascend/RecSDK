@@ -28,7 +28,7 @@ namespace MxRec {
     string g_rankId;
     int g_glogLevel;
     bool g_isGlogInit = false;
-
+    bool g_statOn = false;
 
     RankInfo::RankInfo(int rankId, int deviceId, int localRankSize, int option, int nBatch,
         const vector<int>& maxStep) : rankId(rankId), deviceId(deviceId), localRankSize(localRankSize), option(option),
@@ -144,6 +144,7 @@ namespace MxRec {
         }
         return (tmp == 1) ? true : false;
     }
+
     string GetChipName(int devID)
     {
         int ret = 0;

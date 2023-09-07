@@ -65,11 +65,14 @@ namespace MxRec {
     constexpr int SSD_SIZE_INDEX = 2;
 
     // for GLOG
+    extern bool g_statOn;
     extern int g_glogLevel;
     extern string g_rankId;
     constexpr int GLOG_MAX_BUF_SIZE = 1024;
     constexpr int GLOG_TIME_WIDTH_2 = 2;
     constexpr int GLOG_TIME_WIDTH_6 = 6;
+    constexpr char GLOG_STAT_FLAG[] = "STAT_ON";
+
 
     // unique related config
     constexpr int UNIQUE_BUCKET = 6;
@@ -590,6 +593,7 @@ namespace MxRec {
 } // end namespace MxRec
 
 #define KEY_PROCESS "\033[45m[KeyProcess]\033[0m "
+#define STAT_INFO "[StatInfo] "
 #ifdef GTEST
     #define GTEST_PRIVATE public
 #else
