@@ -123,9 +123,12 @@ def get_all2all_args(use_static: bool, config: dict) -> list:
     :param config: embedding config
     :return: all2all parametrs
     """
+
     all2all_args = None
-    with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
-        if not use_static:
+    if use_static:
+        return all2all_args
+    with tf.control_dependencies([config.get("notify_hybridmgmt_op")]):
+        with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
             with tf.compat.v1.variable_scope("all2all"):
                 logging.debug(
                     f'Channel {config.get("table_name")}_a2a_{config.get("channel_id")} was built for getnext')
