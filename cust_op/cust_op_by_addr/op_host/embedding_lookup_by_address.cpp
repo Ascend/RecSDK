@@ -24,18 +24,22 @@ namespace optiling
         const auto *attr0_value = attrs->GetAttrPointer<int64_t>(0);
         if (attr0_value == nullptr) {
             printf(" Lookup embbeding_type attr0_value nullptr\n");
+            return ge::GRAPH_FAILED;
         }
-        else {
-            int32_t embbeding_dim = *attr0_value;
+
+        int32_t embbeding_dim = *attr0_value;
+        if (embbeding_dim <= 0) {
+            printf("embbeding_dim must larger than 0\n");
+            return ge::GRAPH_FAILED;
         }
 
         const auto *attr1_value = attrs->GetAttrPointer<int64_t>(1);
         if (attr1_value == nullptr) {
             printf(" Lookup embbeding_type attr1_value nullptr\n");
+            return ge::GRAPH_FAILED;
         }
-        else {
-            int32_t embbeding_type = *attr1_value;
-        }
+
+        int32_t embbeding_type = *attr1_value;
 
         int32_t input_shape = context->GetInputTensor(0)->GetShapeSize();
 
@@ -62,10 +66,10 @@ namespace ge
         const auto *attr0_value = attrs->GetAttrPointer<int64_t>(0);
         if (attr0_value == nullptr) {
             printf(" Lookup embbeding_type attr0_value nullptr\n");
+            return GRAPH_FAILED;
         }
-        else {
-            int64_t update_dim = *attr0_value;
-        }
+
+        int64_t update_dim = *attr0_value;
 
         int64_t input_shape = context->GetInputTensor(0)->GetShapeSize();
         y_shape->SetDimNum(2);

@@ -49,17 +49,17 @@ public:
     int min_move_num = 32 / singleDataSize;
     // onceMoveNums表示每个数据维度需要移动的次数，(update_dim - 1 + min_move_num) / min_move_num表示除以min_move_num向下取整
     int onceMoveNums = min_move_num * ((int)(update_dim - 1 + min_move_num) / min_move_num);
-    int num_to_move = (int32_t)(update_dim - 1 + onceMoveNums) / onceMoveNums
+    int num_to_move = (int32_t)(update_dim - 1 + onceMoveNums) / onceMoveNums;
     // 每个地址需要占用sizeof(int64_t)个字节，singleDataSize表示每个数据的字节数，需要使用2倍的内存空间，因为每次移动都需要复制一份数据
-    int occupy_address_bytes_num = sizeof(int64_t) + singleDataSize * onceMoveNums * num_to_move * PingpongNum * 2
+    int occupyAddressBytesNum = sizeof(int64_t) + singleDataSize * onceMoveNums * num_to_move * PingpongNum * 2;
     // 计算一轮计算中最多计算多少个addr，最后的 /4 再*4 是为了与32对齐，因为sizeof(int64_t) = 8
-    int addr_max_num = ((int)((int)(ub_limit / occupy_address_bytes_num) / 4)) * 4;
+    int addrMaxNum = ((int)((int)(ub_limit / occupyAddressBytesNum) / 4)) * 4;
     int singlenum = (int)(addr_nums / block_total_nums);
     if (singlenum % 4)
     {
       singlenum -= singlenum % 4;
     }
-    roundSize = addr_max_num;
+    roundSize = addrMaxNum;
     Veclen = roundSize * singleDataSize * onceMoveNums;
     SingleCoreAddrLen = singlenum * sizeof(int64_t);
     cache = roundSize;
