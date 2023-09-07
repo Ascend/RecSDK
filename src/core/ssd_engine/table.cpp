@@ -19,7 +19,7 @@ Table::Table(const string &name, vector<string> &savePaths, uint64_t maxTableSiz
       maxTableSize(maxTableSize),
       compactThreshold(compactThreshold)
 {
-    curTablePath = fs::absolute(savePaths.at(curSavePathIdx) + "/" + g_rankId + "/" + name).string();
+    curTablePath = fs::absolute(savePaths.at(curSavePathIdx) + "/" + saveDirPrefix + g_rankId + "/" + name).string();
     if (!fs::exists(curTablePath) && !fs::create_directories(curTablePath)) {
         throw runtime_error("fail to create table directory");
     }
@@ -41,7 +41,7 @@ Table::Table(const string &name, vector<string> &saveDirs, uint64_t maxTableSize
     bool isMetaFileFound = false;
     for (const string &dirPath: saveDirs) {
         auto metaFilePath = fs::absolute(
-            dirPath + "/" + g_rankId + "/" + name + "/" + name + ".meta" + "." + to_string(step)).string();
+            dirPath + "/" + saveDirPrefix + g_rankId + "/" + name + "/" + name + ".meta." + to_string(step)).string();
         if (!fs::exists(metaFilePath)) {
             continue;
         }
@@ -54,7 +54,7 @@ Table::Table(const string &name, vector<string> &saveDirs, uint64_t maxTableSize
     }
 
     // always use first path to save until it's full
-    curTablePath = fs::absolute(savePaths.at(curSavePathIdx) + "/" + g_rankId + "/" + name).string();
+    curTablePath = fs::absolute(savePaths.at(curSavePathIdx) + "/" + saveDirPrefix + g_rankId + "/" + name).string();
     LOG(INFO) << StringFormat("load table:%s done. try store at path:%s", name.c_str(), curTablePath.c_str());
 }
 
@@ -144,7 +144,7 @@ void Table::LoadDataFileSet(const shared_ptr<fstream> &metaFile, int step)
         shared_ptr<File> tmp;
         for (const string &p: savePaths) {
             // try to find data file from each path
-            string dataPath = p + "/" + g_rankId + "/" + name;
+            string dataPath = p + "/" + saveDirPrefix + g_rankId + "/" + name;
             try {
                 tmp = make_shared<File>(fileID, dataPath, step);
                 fileSet.insert(tmp);

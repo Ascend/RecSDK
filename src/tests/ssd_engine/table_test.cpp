@@ -80,8 +80,10 @@ TEST(Table, WriteAndReadAndDeleteAndCompact)
 
     // full compact, old file will delete, valid data will move to new file
     tb->Compact(true);
-    string oldDataFilePath = g_rankId + "/" + tbName + "/" + "0.data.latest";
-    string oldMetaFilePath = g_rankId + "/" + tbName + "/" + "0.meta.latest";
+    string oldDataFilePath =
+        savePath.front() + "/ssd_sparse_model_rank_" + g_rankId + "/" + tbName + "/" + "0.data.latest";
+    string oldMetaFilePath =
+        savePath.front() + "/ssd_sparse_model_rank_" + g_rankId + "/" + tbName + "/" + "0.meta.latest";
     ASSERT_EQ(fs::exists(oldDataFilePath), false);
     ASSERT_EQ(fs::exists(oldMetaFilePath), false);
 

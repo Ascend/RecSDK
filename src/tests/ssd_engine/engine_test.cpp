@@ -19,7 +19,7 @@ TEST(SSDEngine, CreateAndWriteAndReadAndAutoCompactAndSave)
     g_rankId = to_string(rankId);
 
     string tbName = "test";
-    vector<string> savePath = {g_rankId};
+    vector<string> savePath = {"."};
     uint64_t maxTableSize = 100;
     double compactThreshold = 0.5;
     chrono::seconds compactPeriod = chrono::seconds(5);
@@ -67,22 +67,27 @@ TEST(SSDEngine, CreateAndWriteAndReadAndAutoCompactAndSave)
     delete eng;
 
     // after saving, full compact will perform, old file will be deleted
-    string oldDataFilePath = g_rankId + "/" + tbName + "/" + "0.data.latest";
-    string oldMetaFilePath = g_rankId + "/" + tbName + "/" + "0.meta.latest";
+    string oldDataFilePath =
+        savePath.front() + "ssd_sparse_model_rank_" + g_rankId + "/" + tbName + "/" + "0.data.latest";
+    string oldMetaFilePath =
+        savePath.front() + "ssd_sparse_model_rank_" + g_rankId + "/" + tbName + "/" + "0.meta.latest";
     ASSERT_EQ(fs::exists(oldDataFilePath), false);
     ASSERT_EQ(fs::exists(oldMetaFilePath), false);
 
     // check saved data existence
-    string newDataFilePath = savePath.front() + "/" + g_rankId + "/" + tbName + "/" + "1.data." + to_string(saveStep);
-    string newMetaFilePath = savePath.front() + "/" + g_rankId + "/" + tbName + "/" + "1.meta." + to_string(saveStep);
+    string newDataFilePath =
+        savePath.front() + "/ssd_sparse_model_rank_" + g_rankId + "/" + tbName + "/" + "1.data." + to_string(saveStep);
+    string newMetaFilePath =
+        savePath.front() + "/ssd_sparse_model_rank_" + g_rankId + "/" + tbName + "/" + "1.meta." + to_string(saveStep);
     string newTableMetaFilePath =
-        savePath.front() + "/" + g_rankId + "/" + tbName + "/" + tbName + ".meta." + to_string(saveStep);
+        savePath.front() + "/ssd_sparse_model_rank_" + g_rankId + "/" + tbName + "/" + tbName + ".meta." +
+        to_string(saveStep);
     ASSERT_EQ(fs::exists(newDataFilePath), true);
     ASSERT_EQ(fs::exists(newMetaFilePath), true);
     ASSERT_EQ(fs::exists(newTableMetaFilePath), true);
 
-    for (string p: savePath) {
-        fs::remove_all(p);
+    for (const string& p: savePath) {
+        fs::remove_all(p + "/ssd_sparse_model_rank_" + g_rankId);
     }
 }
 

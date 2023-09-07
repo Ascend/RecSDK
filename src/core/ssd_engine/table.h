@@ -63,6 +63,7 @@ namespace MxRec {
         shared_ptr<File> curFile = nullptr;
         uint64_t curMaxFileID = 0; // no concurrent writing, always atomic increase
         const uint32_t maxNameSize = 1024;
+        const string saveDirPrefix = "ssd_sparse_model_rank_";
 
         /* args for performance(not expose to user yet)
          * 2 read thread is optimal when:

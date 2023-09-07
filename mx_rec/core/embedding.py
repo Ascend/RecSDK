@@ -830,7 +830,7 @@ class SparseEmbedding:
         logging.debug(f"Slice host vocabulary_size for table {self.table_name} is"
                       f" {self.slice_host_vocabulary_size}.")
         logging.debug(f"SSD vocabulary size for table {self.table_name} is {self.ssd_vocabulary_size}.")
-        logging.debug("Slice ssd vocabulary_size for table {self.table_name} is"
+        logging.debug(f"Slice ssd vocabulary_size for table {self.table_name} is"
                       f" {self.slice_ssd_vocabulary_size}.")
 
     def _initialize_variables(self):
