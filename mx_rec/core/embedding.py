@@ -27,6 +27,7 @@ from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is
     get_host_pipeline_ops, get_use_dynamic_expansion, set_modify_graph, insert_removing_var_list, get_bool_gauge_set
 from mx_rec.validator.validator import ClassValidator, StringValidator
 from mx_rec.util.tf_version_adapter import npu_ops
+from mx_rec.util.normalization import fix_invalid_table_name
 
 
 def check_ssd_relate_param(host_vocabulary_size, ssd_vocabulary_size, ssd_data_path):
@@ -904,18 +905,3 @@ def check_create_table_params(key_dtype, dim, name, emb_initializer):
     emb_initializer_validator = ClassValidator(value=emb_initializer, classes=(InitializerV1, InitializerV2))
     emb_initializer_validator.check_isinstance()
     emb_initializer_validator.check()
-
-
-def fix_invalid_table_name(name):
-    """
-    校验table name字符串中是否含有特殊字符，如有，替换为下划线
-    :param name: table name
-    :return : the fixed table name
-    """
-    if re.match("^[0-9A-Za-z_]+$", name):
-        return name
-    fix_name = re.sub(r'\W+', '_', name)
-    logging.warning(f"The table name {name} contains invalid characters."
-                    f"The system automatically replaces invalid characters with underscores (_). "
-                    f"The table name was changed to {fix_name}")
-    return fix_name
