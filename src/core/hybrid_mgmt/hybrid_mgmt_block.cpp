@@ -138,7 +138,7 @@ void HybridMgmtBlock::ResetAll(int channelId)
     readEmbedBatchId[channelId] = 0;
     pythonBatchId[channelId] = 0;
     hybridBatchId[channelId] = 0;
-    isBlock[channelId] = true;
+    isBlock[channelId] = false;
     // eval train通道的sparse 同时进行重置，以防出现sparse id失效的问题
     uniqueSparseLookID[EVAL_CHANNEL_ID] = -1;
     uniqueSparseLookID[TRAIN_CHANNEL_ID] = -1;
