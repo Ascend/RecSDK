@@ -16,6 +16,11 @@ namespace optiling
         }
 
         size_t *currentWorkspace = context->GetWorkspaceSizes(1);
+        if (currentWorkspace == nullptr) {
+            printf("currentWorkspace nullptr\n");
+            return ge::GRAPH_FAILED;
+        }
+
         currentWorkspace[0] = sysWorkspaceSize + usrSize;
 
         int32_t block_total_nums = 48;

@@ -9,22 +9,23 @@ namespace optiling
     {
         TilingData2 tiling;
 
-        size_t usrSize = 256;
-        size_t sysWorkspaceSize = 16 * 1024 * 1024;
+        size_t usrSize = 256, sysWorkspaceSize = 16 * 1024 * 1024;
         if (context == nullptr) {
             printf("Update embbeding_type context nullptr\n");
             return ge::GRAPH_FAILED;
         }
 
         size_t *currentWorkspace = context->GetWorkspaceSizes(1);
+        if (currentWorkspace == nullptr) {
+            printf("currentWorkspace nullptr\n");
+            return ge::GRAPH_FAILED;
+        }
+
         currentWorkspace[0] = sysWorkspaceSize + usrSize;
 
         int32_t block_total_nums = 48;
         int32_t ub_limit = 175 * 1024;
-
-        int32_t update_dim;
-        int32_t embbeding_type;
-
+        int32_t update_dim, embbeding_type;
         int32_t input_shape = context->GetInputTensor(0)->GetShapeSize();
         if (input_shape <= 0) {
             printf("input_shape must larger than 0\n");
@@ -32,22 +33,27 @@ namespace optiling
         }
 
         int32_t input_dim = context->GetInputTensor(1)->GetShapeSize() / input_shape;
+        if (context->GetAttrs()->GetAttrPointer<int64_t>(0) == nullptr) {
+            printf("context GetAttrs GetAttrPointer nullptr\n");
+            return ge::GRAPH_FAILED;
+        }
+
         int32_t update_type = *(context->GetAttrs()->GetAttrPointer<int64_t>(0));
         ge::DataType input_datatype = context->GetInputTensor(1)->GetDataType();
-
-        switch (input_datatype) {
-            case ge::DT_FLOAT16:
-                embbeding_type = 2;
-                break;
-            case ge::DT_INT32:
-                embbeding_type = 0;
-                break;
-            default:
-                embbeding_type = 1;
-                break;
+        if (input_datatype == ge::DT_FLOAT16) {
+            embbeding_type = 2;
+        } else if (input_datatype == ge::DT_INT32) {
+            embbeding_type = 0;
+        } else {
+            embbeding_type = 1;
         }
 
         update_dim = input_dim;
+        if (update_dim <= 0) {
+            printf("update_dim must larger than 0\n");
+            return ge::GRAPH_FAILED;
+        }
+
         tiling.set_update_type(update_type);
         tiling.set_embbeding_type(embbeding_type);
         tiling.set_update_dim(update_dim);
