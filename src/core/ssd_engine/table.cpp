@@ -217,22 +217,7 @@ void Table::InsertEmbeddingsInner(vector<emb_key_t> &keys, vector<vector<float>>
     }
 
     if (curFile == nullptr || (curFile != nullptr && curFile->GetDataCnt() >= maxDataNumInFile)) {
-        // leave diskFreeSpaceThreshold % space for each disk
-        while (true) {
-            fs::space_info si = fs::space((curTablePath));
-            if ((double(si.free) / double(si.capacity)) > diskFreeSpaceThreshold) {
-                break;
-            }
-
-            curSavePathIdx += 1;
-            if (curSavePathIdx >= savePaths.size()) {
-                throw runtime_error("all disk's space not enough");
-            }
-            curTablePath = savePaths[curSavePathIdx];
-            LOG_INFO("current data path's free space less than {}, try next path:{}",
-                diskFreeSpaceThreshold, curTablePath);
-        }
-
+        SetValidPath();
         curFile = make_shared<File>(curMaxFileID, curTablePath);
         fileSet.insert(curFile);
         curMaxFileID++;
@@ -348,5 +333,23 @@ void Table::DeleteEmbeddingsInner(vector<emb_key_t> &keys)
             keyToFile.erase(k);
             totalKeyCnt -= 1;
         }
+    }
+}
+
+void Table::SetValidPath()
+{
+    while (true) {
+        fs::space_info si = fs::space((curTablePath));
+        if ((double(si.available) / double(si.capacity)) > diskAvailSpaceThreshold) {
+            break;
+        }
+
+        curSavePathIdx += 1;
+        if (curSavePathIdx >= savePaths.size()) {
+            throw runtime_error("all disk's space not enough");
+        }
+        curTablePath = savePaths[curSavePathIdx];
+        LOG_INFO("current data path's free space less than {}%, try next path:{}",
+             diskAvailSpaceThreshold * convertToPercentage, curTablePath);
     }
 }
