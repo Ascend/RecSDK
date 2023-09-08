@@ -50,7 +50,7 @@ namespace MxRec {
 
         void LoadDataFileSet(const shared_ptr<fstream>& metaFile, int step);
 
-        void SetValidPath();
+        void SetTablePathToDiskWithSpace();
 
         string name;  // init by constructor
         vector<string> savePaths;  // init by constructor, support Save and Load from multiple path

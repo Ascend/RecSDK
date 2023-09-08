@@ -19,16 +19,16 @@ TEST(File, CreateEmptyFile)
     MPI_Comm_rank(MPI_COMM_WORLD, &rankId);
     g_rankId = to_string(rankId);
 
-    string savePath = g_rankId;
+    string fileDir = g_rankId;
     bool isExceptionThrown = false;
     try {
-        auto f = make_shared<File>(0, savePath);
+        auto f = make_shared<File>(0, fileDir);
     } catch (runtime_error &e) {
         isExceptionThrown = true;
         LOG(ERROR) << e.what();
     }
     ASSERT_EQ(isExceptionThrown, false);
-    fs::remove_all(savePath);
+    fs::remove_all(fileDir);
 }
 
 TEST(File, LoadFromFile)
@@ -38,11 +38,9 @@ TEST(File, LoadFromFile)
     MPI_Comm_rank(MPI_COMM_WORLD, &rankId);
     g_rankId = to_string(rankId);
 
-    string savePath = g_rankId;
-    if (!fs::exists(fs::absolute(savePath))) {
-        if (!fs::create_directories(fs::absolute(savePath))) {
-            throw runtime_error("fail to create Save directory");
-        }
+    string fileDir = g_rankId;
+    if (!fs::exists(fs::absolute(fileDir)) && !fs::create_directories(fs::absolute(fileDir))) {
+        throw runtime_error("fail to create Save directory");
     }
 
     emb_key_t key = 0;
@@ -50,7 +48,7 @@ TEST(File, LoadFromFile)
     vector<float> val = {1.0};
 
     fstream localFileMeta;
-    localFileMeta.open(savePath + "/0.meta.0", ios::out | ios::trunc | ios::binary);
+    localFileMeta.open(fileDir + "/0.meta.0", ios::out | ios::trunc | ios::binary);
     localFileMeta.write(reinterpret_cast<char const *>(&key), sizeof(key));
     localFileMeta.write(reinterpret_cast<char const *>(&offset), sizeof(offset));
     localFileMeta.flush();
@@ -60,7 +58,7 @@ TEST(File, LoadFromFile)
     localFileMeta.close();
 
     fstream localFileData;
-    localFileData.open(savePath + "/0.data.0", ios::out | ios::trunc | ios::binary);
+    localFileData.open(fileDir + "/0.data.0", ios::out | ios::trunc | ios::binary);
     uint64_t embSize = val.size();
     localFileData.write(reinterpret_cast<char const *>(&embSize), sizeof(embSize));
     localFileData.write(reinterpret_cast<char const *>(val.data()), val.size() * sizeof(float));
@@ -72,14 +70,15 @@ TEST(File, LoadFromFile)
 
     // start test
     bool isExceptionThrown = false;
+    string loadDir = fileDir;  // for test convenience
     try {
-        auto f = make_shared<File>(0, savePath, 0);
+        auto f = make_shared<File>(0, fileDir, loadDir, 0);
     } catch (runtime_error &e) {
         LOG(ERROR) << e.what();
         isExceptionThrown = true;
     }
     ASSERT_EQ(isExceptionThrown, false);
-    fs::remove_all(savePath);
+    fs::remove_all(fileDir);
 }
 
 TEST(File, WriteAndRead)
@@ -117,17 +116,19 @@ TEST(File, SaveAndLoad)
     g_rankId = to_string(rankId);
 
     int saveStep = 0;
-    string savePath = g_rankId;
-    auto fTmp = make_shared<File>(0, savePath);
+    string fileDir = g_rankId;
+    auto fTmp = make_shared<File>(0, fileDir);
 
     vector<emb_key_t> key = {0};
     vector<vector<float>> expect = {{1.0, 1.1}};
     fTmp->InsertEmbeddings(key, expect);
-    fTmp->Save(saveStep);
+    string saveDir = fileDir;  // for test convenience
+    fTmp->Save(saveDir, saveStep);
 
-    auto fLoad = make_shared<File>(0, savePath, saveStep);
+    string loadDir = fileDir;  // for test convenience
+    auto fLoad = make_shared<File>(0, fileDir, loadDir, saveStep);
     auto actual = fLoad->FetchEmbeddings(key);
     ASSERT_EQ(expect, actual);
 
-    fs::remove_all(savePath);
+    fs::remove_all(fileDir);
 }
