@@ -283,7 +283,7 @@ TEST_F(CacheManagerTest, TransferDDREmbWithSSDByEmptyExternalSSDKey)
     // 训练场景，返回ssd空间不足
     auto ret3 = cacheManager.TransferDDREmbWithSSD(embTableName, embHashMapInfo, currentKeys2, TRAIN_CHANNEL_ID);
     ASSERT_EQ(ret3, TransferRet::SSD_SPACE_NOT_ENOUGH);
-    LOG(INFO) << "test TransferDDREmbWithSSDByEmptyExternalSSDKey end.";
+    LOG_INFO("test TransferDDREmbWithSSDByEmptyExternalSSDKey end.");
 }
 
 TEST_F(CacheManagerTest, TransferDDREmbWithSSDByEval)
@@ -302,7 +302,7 @@ TEST_F(CacheManagerTest, TransferDDREmbWithSSDByEval)
     vector<emb_key_t> currentKeys = {6, 4, 55, 65, 75};
     auto ret = cacheManager.TransferDDREmbWithSSD(embTableName, embHashMapInfo, currentKeys, EVAL_CHANNEL_ID);
     ASSERT_EQ(ret, TransferRet::TRANSFER_OK);
-    LOG(INFO) << "test eval+space enough+externalSSDKeysEmpty ok.";
+    LOG_INFO("test eval+space enough+externalSSDKeysEmpty ok.");
 
     // 评估+DDR剩余空间足够+externalSSDKeys非空
     vector<emb_key_t> currentKeys2 = {15, 25, 6, 4, 55, 65, 75, 85, 95, 105, 115};
@@ -320,7 +320,7 @@ TEST_F(CacheManagerTest, TransferDDREmbWithSSDByEval)
     ASSERT_FALSE(cacheManager.IsKeyInSSD(embTableName, 9));
     ASSERT_FALSE(cacheManager.IsKeyInSSD(embTableName, 8));
     ASSERT_FALSE(cacheManager.IsKeyInSSD(embTableName, 15));
-    LOG(INFO) << "test eval+space enough+externalSSDKeysNotEmpty ok.";
+    LOG_INFO("test eval+space enough+externalSSDKeysNotEmpty ok.");
 }
 
 TEST_F(CacheManagerTest, TransferDDREmbWithSSDByDDRSpaceNotEnough)
@@ -336,7 +336,7 @@ TEST_F(CacheManagerTest, TransferDDREmbWithSSDByDDRSpaceNotEnough)
     vector<emb_key_t> currentKeys = {6, 4, 101, 102, 103, 104, 105, 106, 107, 108};
     auto ret = cacheManager.TransferDDREmbWithSSD(embTableName2, embHashMapInfo, currentKeys, TRAIN_CHANNEL_ID);
     ASSERT_EQ(ret, TransferRet::DDR_SPACE_NOT_ENOUGH);
-    LOG(INFO) << "test train+ddr space enough+externalSSDKeysEmpty ok.";
+    LOG_INFO("test train+ddr space enough+externalSSDKeysEmpty ok.");
 }
 
 TEST_F(CacheManagerTest, EvictSSDEmbedding)
@@ -348,7 +348,7 @@ TEST_F(CacheManagerTest, EvictSSDEmbedding)
     ASSERT_FALSE(cacheManager.IsKeyInSSD(embTableName, key));
     const auto it = cacheManager.excludeDDRKeyCountMap[embTableName].find(key);
     ASSERT_EQ(it, cacheManager.excludeDDRKeyCountMap[embTableName].end());
-    LOG(INFO) << "test EvictSSDEmbedding end.";
+    LOG_INFO("test EvictSSDEmbedding end.");
 }
 
 TEST_F(CacheManagerTest, LoadTest)

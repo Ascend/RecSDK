@@ -41,7 +41,7 @@ static void CTRLog(int level, const char *msg)
 {
     switch (level) {
         case 0:
-            VLOG(GLOG_DEBUG) << StringFormat("%s", msg);
+            LOG_DEBUG(msg);
             break;
         default:
             break;
@@ -57,7 +57,7 @@ protected:
         ASSERT_EQ(claimed, MPI_THREAD_MULTIPLE);
         MPI_Comm_rank(MPI_COMM_WORLD, &worldRank);
         MPI_Comm_size(MPI_COMM_WORLD, &worldSize);
-        LOG(INFO) << StringFormat(KEY_PROCESS "wordRank: %d, worldSize: %d", worldRank, worldSize);
+        LOG_INFO(KEY_PROCESS "wordRank: {}, worldSize: {}", worldRank, worldSize);
         // 初始化rank信息
         rankInfo.rankId = worldRank;
         rankInfo.rankSize = worldSize;
@@ -91,10 +91,9 @@ protected:
                     batch->name = embInfos[i].name;
                     batch->batchId = batchId;
                     batch->channel = channel;
-                    VLOG(GLOG_DEBUG) << StringFormat(
-                        "[%d/%d]" KEY_PROCESS "PrepareBatch: batchQueueId: %d, %s[%d]%d, sampleSize:%d",
+                    LOG_DEBUG("[{}/{}]" KEY_PROCESS "PrepareBatch: batchQueueId: {}, {}[{}]{}, sampleSize:{}",
                         worldRank, worldSize,
-                        batchQueueId, batch->name.c_str(), batch->channel, batch->batchId, batch->sample.size()
+                        batchQueueId, batch->name, batch->channel, batch->batchId, batch->sample.size()
                     );
                     emb_batch_t temp;
                     temp.sample = batch->sample;
@@ -178,12 +177,12 @@ protected:
     {
         for (int i = 0; i < rankSize; ++i) {
             std::cout << "splitKeys dev" << i << std::endl;
-            REC_LOG(INFO) << StringFormat("%d", VectorToString(splitKeys[i]).c_str());
+            LOG_INFO(VectorToString(splitKeys[i]));
         }
         std::cout << "restore" << std::endl;
-        REC_LOG(INFO) << StringFormat("%d", VectorToString(restore).c_str());
+        LOG_INFO(VectorToString(restore));
         std::cout << "hotPos" << std::endl;
-        REC_LOG(INFO) << StringFormat("%d", VectorToString(hotPos).c_str());
+        LOG_INFO(VectorToString(hotPos));
     }
 
     void GetExpectRestore(keys_t& sample, vector<int>& blockOffset, vector<int>& restoreVec)
@@ -270,9 +269,7 @@ TEST_F(KeyProcessTest, HashSplit)
     vector<int> expectRestore = { 0, 0, 0, 0, 1, 1, 1, 1, 1, 2 };
     vector<vector<int>> expectSplitKeys = { { 4, 16 }, { 1, 21, 29 }, { 14, 2 }, { 23, 7 } };
     batch->sample = std::move(batchKeys);
-    if (VLOG_IS_ON(GLOG_DEBUG)) {
-        VLOG(GLOG_DEBUG) << StringFormat(KEY_PROCESS "batch sample: %s", VectorToString(batch->sample).c_str());
-    }
+    LOG_DEBUG(KEY_PROCESS "batch sample: {}", VectorToString(batch->sample));
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     process.rankInfo.rankSize = rankSize;
@@ -287,11 +284,7 @@ TEST_F(KeyProcessTest, HashSplit)
 TEST_F(KeyProcessTest, GetScAll)
 {
     vector<int> keyScLocal(worldSize, worldRank + 1); // 用worldRank+1初始化发送数据量
-    if (VLOG_IS_ON(GLOG_DEBUG)) {
-        VLOG(GLOG_DEBUG) << StringFormat(
-            KEY_PROCESS "rank %d keyScLocal: %s", worldRank, VectorToString(keyScLocal).c_str()
-        );
-    }
+    LOG_DEBUG(KEY_PROCESS "rank {} keyScLocal: {}", worldRank, VectorToString(keyScLocal));
     vector<int> expectScAll(worldSize * worldSize);
     for (unsigned int i = 0; i < expectScAll.size(); ++i) {
         expectScAll[i] = floor(i / worldSize) + 1;
@@ -307,11 +300,7 @@ TEST_F(KeyProcessTest, GetScAll)
 TEST_F(KeyProcessTest, GetScAllForUnique)
 {
     vector<int> keyScLocal(worldSize, worldRank + 1); // 用worldRank+1初始化发送数据量
-    if (VLOG_IS_ON(GLOG_DEBUG)) {
-        VLOG(GLOG_DEBUG) << StringFormat(
-            KEY_PROCESS "rank %d keyScLocal: %s", worldRank, VectorToString(keyScLocal).c_str()
-        );
-    }
+    LOG_DEBUG(KEY_PROCESS "rank {} keyScLocal: {}", worldRank, VectorToString(keyScLocal));
     vector<int> expectScAll(worldSize * worldSize);
     for (unsigned int i = 0; i < expectScAll.size(); ++i) {
         expectScAll[i] = floor(i / worldSize) + 1;
@@ -337,20 +326,20 @@ TEST_F(KeyProcessTest, BuildRestoreVec_4cpu)
                                              { 5, 0, 6, 2, 1, 3, 1, 7, 4, 8 },
                                              { 6, 3, 7, 4, 3, 0, 1, 2, 5, 8 } };
     batch->sample = std::move(allBatchKeys[worldRank]);
-    LOG(INFO) << StringFormat(
-        KEY_PROCESS "test BuildRestoreVec: rank %d, batchKeys %s",
-        worldRank, VectorToString(batch->sample).c_str()
-    );
+    LOG_INFO(KEY_PROCESS "test BuildRestoreVec: rank {}, batchKeys {}",
+        worldRank, VectorToString(batch->sample));
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     auto [splitKeys, restore] = process.HashSplit(batch);
-    if (VLOG_IS_ON(GLOG_DEBUG)) {
+
+    LOG_DEBUG("rank: {} splitKeys: {}", worldRank, [&] {
         vector<string> tmp;
         for (const auto& i : splitKeys) {
             tmp.emplace_back(VectorToString(i));
         }
-        VLOG(GLOG_DEBUG) << StringFormat("rank: %d splitKeys: %s", worldRank, VectorToString(tmp).c_str());
-    }
+        return VectorToString(tmp);
+    }());
+
     process.BuildRestoreVec(batch, allExpectSs[worldRank], restore);
     ASSERT_THAT(restore, ElementsAreArray(allExpectRestore[worldRank]));
 }
@@ -359,7 +348,7 @@ TEST_F(KeyProcessTest, ProcessKeySplit_rebuilt)
 {
     PrepareBatch();
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
-    LOG(INFO) << StringFormat("CPU Core Num: %d", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
+    LOG_INFO("CPU Core Num: %{}", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
 
     auto fn = [this](int channel, int id) {
         auto embName = embInfos[0].name;
@@ -369,11 +358,9 @@ TEST_F(KeyProcessTest, ProcessKeySplit_rebuilt)
         vector<int32_t> hotPos;
         unique_ptr<emb_batch_t> batch;
         batch = process.GetBatchData(channel, id); // get batch data from SingletonQueue<emb_batch_t>
-        LOG(INFO) << StringFormat("rankid :%d,batchid: %d", rankInfo.rankId, batch->batchId);
+        LOG_INFO("rankid :{},batchid: {}", rankInfo.rankId, batch->batchId);
         tie(splitKeys, restore, hotPos) = process.HotHashSplit(batch);
-        LOG(INFO) << StringFormat(
-            "rankid :%d,batchid: %d, hotPos %s", rankInfo.rankId, batch->batchId, VectorToString(hotPos).c_str()
-        );
+        LOG_INFO("rankid :{},batchid: {}, hotPos {}", rankInfo.rankId, batch->batchId, VectorToString(hotPos));
     }; // for clean code
     for (int channel = 0; channel < 1; ++channel) {
         for (int id = 0; id < 1; ++id) {
@@ -389,7 +376,7 @@ TEST_F(KeyProcessTest, BuildRestoreVec_rebuilt)
 {
     PrepareBatch();
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
-    LOG(INFO) << StringFormat("CPU Core Num: %d", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
+    LOG_INFO("CPU Core Num: {}", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
 
     auto fn = [this](int channel, int id) {
         auto embName = embInfos[0].name;
@@ -398,15 +385,13 @@ TEST_F(KeyProcessTest, BuildRestoreVec_rebuilt)
         vector<int32_t> hotPos;
         unique_ptr<emb_batch_t> batch;
         batch = process.GetBatchData(channel, id); // get batch data from SingletonQueue<emb_batch_t>
-        LOG(INFO) << StringFormat("rankid :%d,batchid: %d", rankInfo.rankId, batch->batchId);
+        LOG_INFO("rankid :{},batchid: {}", rankInfo.rankId, batch->batchId);
         tie(splitKeys, restore, hotPos) = process.HotHashSplit(batch);
         auto[lookupKeys, scAll, ss] = process.ProcessSplitKeys(batch, id, splitKeys);
         process.BuildRestoreVec(batch, ss, restore, hotPos.size());
-        REC_LOG(INFO) << StringFormat(
-            "rankid :%d,batchid: %d, lookupKeys: %s, scAll: %s, restore after build %s",
-            rankInfo.rankId, batch->batchId, VectorToString(lookupKeys).c_str(),
-            VectorToString(scAll).c_str(), VectorToString(restore).c_str()
-        );
+        LOG_INFO("rankid :{},batchid: {}, lookupKeys: {}, scAll: {}, restore after build {}",
+            rankInfo.rankId, batch->batchId, VectorToString(lookupKeys),
+            VectorToString(scAll), VectorToString(restore));
     }; // for clean code
     for (int channel = 0; channel < 1; ++channel) {
         for (int id = 0; id < KEY_PROCESS_THREAD; ++id) {
@@ -430,9 +415,8 @@ TEST_F(KeyProcessTest, Key2Offset)
         tmp.insert(pair<emb_name_t, string>(it->first, MapToString(it->second).c_str()));
     }
 
-    VLOG(GLOG_DEBUG) << StringFormat(
-        KEY_PROCESS "test Key2Offset: lookupKeys: %s, keyOffsetMap: %s",
-        VectorToString(lookupKeys).c_str(), MapToString(tmp).c_str());
+    LOG_DEBUG(KEY_PROCESS "test Key2Offset: lookupKeys: {}, keyOffsetMap: {}",
+        VectorToString(lookupKeys), MapToString(tmp));
     ASSERT_THAT(lookupKeys, ElementsAreArray(expectOffset));
 
     keys_t lookupKeys2 = { 5, 17, 29, 5, 25, 5, 21, 25 };
@@ -442,9 +426,8 @@ TEST_F(KeyProcessTest, Key2Offset)
     for (auto it = process.keyOffsetMap.begin(); it != process.keyOffsetMap.end(); ++it) {
         tmp.insert(pair<emb_name_t, string>(it->first, MapToString(it->second).c_str()));
     }
-    VLOG(GLOG_DEBUG) << StringFormat(
-        KEY_PROCESS "test Key2Offset: lookupKeys: %s, keyOffsetMap: %s", VectorToString(lookupKeys2).c_str(),
-        MapToString(tmp2).c_str());
+    LOG_DEBUG(KEY_PROCESS "test Key2Offset: lookupKeys: {}, keyOffsetMap: {}",
+        VectorToString(lookupKeys2), MapToString(tmp2).c_str());
     ASSERT_THAT(lookupKeys2, ElementsAreArray(expectOffset2));
 }
 
@@ -455,17 +438,15 @@ TEST_F(KeyProcessTest, Key2OffsetDynamicExpansion)
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     process.Key2OffsetDynamicExpansion("emb0", lookupKeys, EVAL_CHANNEL_ID);
-    if (VLOG_IS_ON(GLOG_DEBUG)) {
+
+    LOG_DEBUG(KEY_PROCESS "test Key2Offset: lookupKeys: {}, keyOffsetMap: {}", VectorToString(lookupKeys), [&] {
         map<emb_name_t, string> tmp;
         for (auto it = process.keyOffsetMap.begin(); it != process.keyOffsetMap.end(); ++it) {
             tmp.insert(pair<emb_name_t, string>(it->first, MapToString(it->second).c_str()));
         }
+        return MapToString(tmp);
+    }());
 
-        VLOG(GLOG_DEBUG) << StringFormat(
-            KEY_PROCESS "test Key2Offset: lookupKeys: %s, keyOffsetMap: %s",
-            VectorToString(lookupKeys).c_str(), MapToString(tmp).c_str()
-        );
-    }
     ASSERT_THAT(lookupKeys, ElementsAreArray(expectOffset));
 }
 
@@ -491,7 +472,7 @@ TEST_F(KeyProcessTest, ProcessPrefetchTask)
     ASSERT_EQ(process.Start(), 0);
     // 所有线程处理完（训练结束）后调用
     this_thread::sleep_for(5s);
-    LOG(INFO) << "wait 20s for thread running";
+    LOG_INFO("wait 20s for thread running");
     this_thread::sleep_for(20s);
     process.Destroy();
 }
@@ -528,7 +509,7 @@ TEST_F(KeyProcessTest, ProcessBatchWithFastUnique)
     PrepareBatch();
     
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
-    LOG(INFO) << StringFormat("CPU Core Num: %d", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
+    LOG_INFO("CPU Core Num: {}", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
 
     auto fn = [this](int channel, int id) {
         UniquePtr unique;
@@ -549,11 +530,9 @@ TEST_F(KeyProcessTest, ProcessBatchWithFastUnique)
         process.GetUniqueConfig(uniqueConf);
         process.InitializeUnique(uniqueConf, preBatchSize, uniqueInitialize, batch, unique);
 
-        LOG(INFO) << StringFormat("rankid :%d,batchid: %d", rankInfo.rankId, batch->batchId);
+        LOG_INFO("rankid :{},batchid: {}", rankInfo.rankId, batch->batchId);
         process.KeyProcessTaskHelperWithFastUnique(batch, unique, channel, id);
-        LOG(INFO) << StringFormat(
-            "rankid :%d,batchid: %d, hotPos %s", rankInfo.rankId, batch->batchId, VectorToString(hotPos).c_str()
-        );
+        LOG_INFO("rankid :{},batchid: {}, hotPos {}", rankInfo.rankId, batch->batchId, VectorToString(hotPos));
     }; // for clean code
     for (int channel = 0; channel < 1; ++channel) {
         for (int id = 0; id < 1; ++id) {

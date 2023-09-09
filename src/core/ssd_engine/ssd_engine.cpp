@@ -120,7 +120,7 @@ void SSDEngine::Start()
 /// 压缩监控方法，达到检查周期时调用表的压缩接口
 void SSDEngine::CompactMonitor()
 {
-    VLOG(GLOG_DEBUG) << "SSDEngine start CompactMonitor";
+    LOG_DEBUG("SSDEngine start CompactMonitor");
     auto start = chrono::high_resolution_clock::now();
     auto end = chrono::high_resolution_clock::now();
     chrono::microseconds loopDuration = 100ms;
@@ -128,17 +128,17 @@ void SSDEngine::CompactMonitor()
     while (isRunning) {
         duration = chrono::duration_cast<std::chrono::seconds>(end - start);
         if (duration >= compactPeriod) {
-            VLOG(GLOG_DEBUG) << "SSDEngine CompactMonitor start compact";
+            LOG_DEBUG("SSDEngine CompactMonitor start compact");
             for (const auto &item: tableMap) {
                 item.second->Compact(false);
             }
-            VLOG(GLOG_DEBUG) << "SSDEngine CompactMonitor end compact";
+            LOG_DEBUG("SSDEngine CompactMonitor end compact");
             start = chrono::high_resolution_clock::now();
         }
         this_thread::sleep_for(loopDuration);
         end = chrono::high_resolution_clock::now();
     }
-    VLOG(GLOG_DEBUG) << "SSDEngine end CompactMonitor";
+    LOG_DEBUG("SSDEngine end CompactMonitor");
 }
 
 vector<vector<float>> SSDEngine::FetchEmbeddings(const string &tableName, vector<emb_key_t> &keys)
@@ -164,7 +164,7 @@ void SSDEngine::Stop()
     tableMap.clear();
     compactThread = nullptr;
 
-    LOG(INFO) << "SSDEngine stop";
+    LOG_INFO("SSDEngine stop");
 }
 
 /// 设置文件压缩的周期

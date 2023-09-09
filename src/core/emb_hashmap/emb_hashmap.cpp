@@ -73,7 +73,7 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     auto keepBatch = swapId - iBatch; // 处理batch的次数，多个预取一起处理算一次
     bool findOffsetV2 = GetEnv("FIND_OFFSET_V2");
 
-    VLOG(GLOG_DEBUG) << StringFormat("FindOffset version:%d", findOffsetV2);
+    LOG_DEBUG("FindOffset version:{}", findOffsetV2);
 
     // 找到所有key的偏移；dev和host需要交换的位置
     if (findOffsetV2) {
@@ -81,7 +81,7 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     } else {
         FindOffset(embName, keys, swapId, keepBatch, channelId);
     }
-    VLOG(GLOG_DEBUG) << "FindOffset end";
+    LOG_DEBUG("FindOffset end");
 
     // 调用刷新频次数据方法
     RefreshFreqInfoWithSwap(embName, embHashMap);
@@ -98,9 +98,7 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     for (int i = 0; i < lookUpVecSize; i++) {
         lookupTensorData(i) = static_cast<int32_t>(embHashMap.lookUpVec[i]);
     }
-    if (VLOG_IS_ON(GLOG_TRACE)) {
-        VLOG(GLOG_TRACE) << StringFormat("lookupTensor, %s", VectorToString(embHashMap.lookUpVec).c_str());
-    }
+    LOG_TRACE("lookupTensor, {}", VectorToString(embHashMap.lookUpVec));
 
     // 构造交换向量tensor
     auto swapSize = static_cast<int>(embHashMap.swapPos.size());
@@ -111,21 +109,19 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
         swapTensorData(i) = static_cast<int>(embHashMap.swapPos[i]);
     }
     if (swapSize > 0) {
-        VLOG(GLOG_DEBUG) << StringFormat("swap num: %d", swapSize);
+        LOG_DEBUG("swap num: {}", swapSize);
     }
-    if (VLOG_IS_ON(GLOG_TRACE)) {
-        VLOG(GLOG_TRACE) << StringFormat("swapTensor, %s", VectorToString(embHashMap.swapPos).c_str());
-    }
+    LOG_TRACE("swapTensor, {}", VectorToString(embHashMap.swapPos));
     // 清空本次记录的查询偏移和交换偏移
     ClearLookupAndSwapOffset(embHashMap);
-    LOG(INFO) << StringFormat("current ddr emb:%s, usage:%d/[%d+%d]", embName.c_str(), embHashMap.maxOffset,
-                              embHashMap.devVocabSize, embHashMap.hostVocabSize);
+    LOG_INFO("current ddr emb:{}, usage:{}/[{}+{}]", embName, embHashMap.maxOffset,
+        embHashMap.devVocabSize, embHashMap.hostVocabSize);
     ddrParam.tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { 1 }));
     auto swapLen = ddrParam.tmpDataOut.back().flat<int32>();
     swapLen(0) = swapSize;
 
     if (g_statOn) {
-        LOG(INFO) << StringFormat(STAT_INFO "channel_id %d batch_id %d rank_id %d swap_key_size %d swap_time_cost %d",
+        LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} swap_key_size {} swap_time_cost {}",
             channelId, swapId, rankInfo.rankId, swapSize, swapTimeCost.ElapsedMS());
     }
     
@@ -176,15 +172,13 @@ int32_t EmbHashMap::FindNewOffset(const emb_key_t& key, EmbHashMapInfo& embHashM
     } else if (embHashMap.evictDevPos.size() != 0) { // 优先复用hbm表
         offset = static_cast<int32_t>(embHashMap.evictDevPos.back());
         embHashMap.hostHashMap[key] = offset;
-        VLOG(GLOG_TRACE) << StringFormat(
-            "ddr mode, dev evictPos is not null, key [%d] reuse offset [%d], evictSize [%d]",
+        LOG_TRACE("ddr mode, dev evictPos is not null, key [{}] reuse offset [{}], evictSize [{}]",
             key, offset, embHashMap.evictDevPos.size());
         embHashMap.evictDevPos.pop_back();
     } else if (embHashMap.evictPos.size() != 0) { // hbm不足，再复用ddr表
         offset = static_cast<int32_t>(embHashMap.evictPos.back());
         embHashMap.hostHashMap[key] = offset;
-        VLOG(GLOG_TRACE) << StringFormat(
-            "ddr mode, host evictPos is not null, key [%d] reuse offset [%d], evictSize [%d]",
+        LOG_TRACE("ddr mode, host evictPos is not null, key [{}] reuse offset [{}], evictSize [{}]",
             key, offset, embHashMap.evictPos.size());
         embHashMap.evictPos.pop_back();
     } else {
@@ -192,10 +186,10 @@ int32_t EmbHashMap::FindNewOffset(const emb_key_t& key, EmbHashMapInfo& embHashM
         offset = static_cast<int32_t>(embHashMap.maxOffset);
         embHashMap.maxOffset++;
         if (embHashMap.maxOffset == embHashMap.devVocabSize) {
-            LOG(INFO) << "start using host vocab!";
+            LOG_INFO("start using host vocab!");
         }
         if (embHashMap.maxOffset > embHashMap.hostVocabSize + embHashMap.devVocabSize) {
-            LOG(ERROR) << StringFormat("hostVocabSize too small! dev:%d host:%d", embHashMap.devVocabSize,
+            LOG_ERROR("hostVocabSize too small! dev:{} host:{}", embHashMap.devVocabSize,
                 embHashMap.hostVocabSize);
             throw runtime_error("hostVocabSize too small");
         }
@@ -233,7 +227,7 @@ void EmbHashMap::FindAndUpdateBatchId(vector<emb_key_t>& keys, size_t currentBat
 
 auto EmbHashMap::GetHashMaps() -> absl::flat_hash_map<string, EmbHashMapInfo>
 {
-    VLOG(GLOG_DEBUG) << (HYBRID_BLOCKING + " start GetHashMaps");
+    LOG_DEBUG(HYBRID_BLOCKING + " start GetHashMaps");
     HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
     auto embHashMapsOld = embHashMaps;
     int checkResult = hybridMgmtBlock->CheckSaveEmbdMapValid();
@@ -300,14 +294,14 @@ void EmbHashMap::EvictDeleteEmb(const string& embName, const vector<emb_key_t>& 
         size_t offset;
         auto key = keys[i];
         if (key == -1) {
-            LOG(WARNING) << "evict key equal -1!";
+            LOG_WARN("evict key equal -1!");
             continue;
         }
         const auto& iter = embHashMap.hostHashMap.find(key);
         if (iter != embHashMap.hostHashMap.end()) {
             offset = iter->second;
             embHashMap.hostHashMap.erase(iter);
-            VLOG(GLOG_TRACE) << StringFormat("evict embName %s , offset , %d", embName.c_str(), offset);
+            LOG_TRACE("evict embName %s, offset %d", embName, offset);
         } else {
             // 淘汰依据keyProcess中的history，hashmap映射关系创建于ParseKey；两者异步，造成淘汰的值在hashmap里可能未创建
             continue;
@@ -329,13 +323,9 @@ void EmbHashMap::EvictDeleteEmb(const string& embName, const vector<emb_key_t>& 
         cacheManager->RefreshFreqInfoCommon(embName, evictDDRKeys, TransferType::DDR_2_EVICT);
     }
 
-    LOG(INFO) << StringFormat(
-        "ddr EvictDeleteEmb, emb: [%s], hostEvictSize: %d, devEvictSize: %d ",
-        embName.c_str(), embHashMap.evictPos.size(), embHashMap.evictDevPos.size()
-    );
-    if (VLOG_IS_ON(GLOG_TRACE)) {
-        VLOG(GLOG_TRACE) << StringFormat("hostHashMap, %s", MapToString(embHashMaps[embName].hostHashMap).c_str());
-    }
+    LOG_INFO("ddr EvictDeleteEmb, emb: [{}], hostEvictSize: {}, devEvictSize: {}",
+        embName, embHashMap.evictPos.size(), embHashMap.evictDevPos.size());
+    LOG_TRACE("hostHashMap, {}", MapToString(embHashMaps[embName].hostHashMap));
 }
 
 /// 从embHashMaps获取key对应的位置，构造查询向量；更新devOffset2Batch；记录dev与host需要交换的偏移
@@ -378,11 +368,9 @@ void EmbHashMap::FindOffset(const string& embName, const vector<emb_key_t>& keys
         }
     }
     if (currentBatchId == 0) {
-        LOG(INFO) << StringFormat("max offset %d", embHashMap.maxOffset);
+        LOG_INFO("max offset {}", embHashMap.maxOffset);
     }
-    if (VLOG_IS_ON(GLOG_TRACE)) {
-        VLOG(GLOG_TRACE) << StringFormat("hostHashMap, %s", MapToString(embHashMaps[embName].hostHashMap).c_str());
-    }
+    LOG_TRACE("hostHashMap, {}", MapToString(embHashMaps[embName].hostHashMap));
 }
 
 
@@ -398,20 +386,17 @@ bool EmbHashMap::FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHashM
     const auto& iter = embHashMap.hostHashMap.find(key);
     if (iter != embHashMap.hostHashMap.end()) {
         offset = iter->second;
-        VLOG(GLOG_TRACE) << StringFormat("devVocabSize, %d , offset , %d", embHashMap.devVocabSize, offset);
+        LOG_TRACE("devVocabSize, {} , offset , {}", embHashMap.devVocabSize, offset);
     } else if (embHashMap.evictDevPos.size() != 0 && channelId == TRAIN_CHANNEL_ID) { // 优先复用hbm表
         offset = embHashMap.evictDevPos.back();
         embHashMap.hostHashMap[key] = offset;
-        VLOG(GLOG_TRACE) << StringFormat(
-            "ddr mode, dev evictPos is not null, key [%d] reuse offset [%d], evictSize [%d]",
-            key, offset, embHashMap.evictDevPos.size()
-        );
+        LOG_TRACE("ddr mode, dev evictPos is not null, key [{}] reuse offset [{}], evictSize [{}]",
+            key, offset, embHashMap.evictDevPos.size());
         embHashMap.evictDevPos.pop_back();
     } else if (embHashMap.evictPos.size() != 0 && channelId == TRAIN_CHANNEL_ID) { // hbm不足，再复用ddr表
         offset = embHashMap.evictPos.back();
         embHashMap.hostHashMap[key] = offset;
-        VLOG(GLOG_TRACE) << StringFormat(
-            "ddr mode, host evictPos is not null, key [%d] reuse offset [%d], evictSize [%d]",
+        LOG_TRACE("ddr mode, host evictPos is not null, key [{}] reuse offset [{}], evictSize [{}]",
             key, offset, embHashMap.evictPos.size());
         embHashMap.evictPos.pop_back();
     } else {
@@ -420,11 +405,10 @@ bool EmbHashMap::FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHashM
             offset = embHashMap.maxOffset;
             embHashMap.maxOffset++;
             if (embHashMap.maxOffset == embHashMap.devVocabSize) {
-                LOG(INFO) << ("start using host vocab!");
+                LOG_INFO("start using host vocab!");
             }
             if (embHashMap.maxOffset > embHashMap.hostVocabSize + embHashMap.devVocabSize) {
-                LOG(ERROR) << StringFormat(
-                    "hostVocabSize too small! dev:%d host:%d", embHashMap.devVocabSize, embHashMap.hostVocabSize);
+                LOG_ERROR("hostVocabSize too small! dev:{} host:{}", embHashMap.devVocabSize, embHashMap.hostVocabSize);
                 throw runtime_error("hostVocabSize too small");
             }
         } else {
@@ -452,7 +436,7 @@ void EmbHashMap::UpdateBatchId(const vector<emb_key_t>& keys, size_t currentBatc
         if (iter != embHashMap.hostHashMap.end()) {
             offset = iter->second;
 
-            VLOG(GLOG_TRACE) << StringFormat("key will be used, %d , offset , %d", key, offset);
+            LOG_TRACE("key will be used, {} , offset , {}", key, offset);
             if (offset < embHashMap.devVocabSize) {
                 embHashMap.devOffset2Batch[offset] = static_cast<int>(currentBatchId);
             }
@@ -489,7 +473,7 @@ int EmbHashMap::FindSwapPosV2(const string& embName, emb_key_t key, size_t hostO
             embHashMap.currentUpdatePos = 0;
         }
         if (embHashMap.currentUpdatePos == embHashMap.currentUpdatePosStart) {
-            LOG(ERROR) << "devVocabSize is too small";
+            LOG_ERROR("devVocabSize is too small");
             throw runtime_error("devVocabSize is too small");
         }
     }
@@ -534,7 +518,7 @@ bool EmbHashMap::FindSwapPosOld(const string& embName, emb_key_t key, size_t hos
 
         // 已经找完了整个HBM空间，没有找到可用位置，表示HBM空间不足以放下整个batch（预取batch数）的key，无法正常执行训练，固运行时错误退出
         if (embHashMap.currentUpdatePos == embHashMap.currentUpdatePosStart) {
-            LOG(ERROR) << "devVocabSize is too small";
+            LOG_ERROR("devVocabSize is too small");
             throw runtime_error("devVocabSize is too small");
         }
     }
@@ -551,7 +535,7 @@ void EmbHashMap::RefreshFreqInfoWithSwap(const string& embName, EmbHashMapInfo& 
     }
     // 换入换出key列表，元素为pair: pair<oldKey, key> oldKey为从HBM移出的key, key为从DDR移出的key
     auto& oldSwap = embHashMap.oldSwap;
-    VLOG(GLOG_DEBUG) << StringFormat("RefreshFreqInfoWithSwap:oldSwap Size:%lld", oldSwap.size());
+    LOG_DEBUG("RefreshFreqInfoWithSwap:oldSwap Size:{}", oldSwap.size());
     vector<emb_key_t> enterDDRKeys;
     vector<emb_key_t> leaveDDRKeys;
     for (auto keyPair : oldSwap) {
@@ -595,15 +579,15 @@ void EmbHashMap::AddCacheManagerTraceLog(const string& embTableName, const EmbHa
     std::string ddrKeysString = VectorToString(ddrKeys);
     std::string lfuKeysString = VectorToString(lfuKeys);
     if (ddrKeysString != lfuKeysString) {
-        LOG(ERROR) << "swap HBM with DDR step error, key string not equal, ddrKeysString:" << ddrKeysString
-                   << ", lfuKeysString:" << lfuKeysString;
+        LOG_ERROR("swap HBM with DDR step error, key string not equal, ddrKeysString:{}, lfuKeysString:{}",
+            ddrKeysString, lfuKeysString);
     } else {
-        LOG(INFO) << "swap HBM with DDR step OK, table:" << embTableName <<
-                     ", ddrKeysString is equals with lfuKeysString, string length:" << lfuKeysString.length();
+        LOG_INFO("swap HBM with DDR step OK, table:{}, ddrKeysString == lfuKeysString, string length:{}",
+            embTableName, lfuKeysString.length());
     }
 
-    LOG(INFO) << "swap HBM with DDR step end, table:" << embTableName << ", tableKeyInDdr:" << tableKeyInDdr
-              << ", tableKeyInLfu:" << lfu.keyTable.size();
+    LOG_INFO("swap HBM with DDR step end, table:{}, tableKeyInDdr:{}, tableKeyInLfu:{}",
+        embTableName, tableKeyInDdr, lfu.keyTable.size());
 }
 
 /// 记录key频次数据

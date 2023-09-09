@@ -179,12 +179,10 @@ void FeatureAdmitAndEvict::FeatureEvictHelper(const std::string& embName, std::v
     }
 
     if (evictKey.size() == 0) {
-        LOG(INFO) << StringFormat(
-            "table-name[%s]'s lastTime[%d], had no key to delete ...", embName.c_str(), currTime);
+        LOG_INFO("table-name[{}]'s lastTime[{}], had no key to delete ...", embName, currTime);
         return;
     }
-    LOG(INFO) << StringFormat(
-        "table-name[%s]'s lastTime[%d], had size[%d] keys to delete ...", embName.c_str(), currTime, evictKey.size());
+    LOG_INFO("table-name[{}]'s lastTime[{}], had size[{}] keys to delete ...", embName, currTime, evictKey.size());
 
     // 真正从 m_historyRecords 中淘汰
     absl::flat_hash_map<int64_t, FeatureItemInfo>& historyRecords = m_recordsData.historyRecords[embName];
@@ -200,9 +198,9 @@ void FeatureAdmitAndEvict::FeatureEvictHelper(const std::string& embName, std::v
 void FeatureAdmitAndEvict::SetFunctionSwitch(bool isEnableEvict)
 {
     if (isEnableEvict) {
-        LOG(INFO) << "feature admit-and-evict switch is opened ...";
+        LOG_INFO("feature admit-and-evict switch is opened ...");
     } else {
-        LOG(INFO) << "feature admit-and-evict switch is closed ...";
+        LOG_INFO("feature admit-and-evict switch is closed ...");
     }
     m_isEnableFunction = isEnableEvict;
 }
@@ -240,16 +238,15 @@ bool FeatureAdmitAndEvict::IsThresholdCfgOK(const std::vector<ThresholdValue>& t
     for (size_t i = 0; i < thresholds.size(); ++i) {
         auto it = std::find(embNames.begin(), embNames.end(), thresholds[i].tableName);
         if (it == embNames.end()) { // 配置不存在于当前跑的模型，也要报错
-            LOG(ERROR) << StringFormat(
-                "embName[%s] is not exist at current model ...", thresholds[i].tableName.c_str());
+            LOG_ERROR("embName[{}] is not exist at current model ...", thresholds[i].tableName);
             return false;
         } else {
             // 同时支持“准入&淘汰”，却没有传时间戳
             if (m_embStatus[*it] == SingleEmbTableStatus::SETS_ERROR) {
-                LOG(ERROR) << StringFormat("embName[%s] config error, please check ...", embNames[i].c_str());
+                LOG_ERROR("embName[{}] config error, please check ...", embNames[i]);
                 return false;
             } else if (m_embStatus[*it] == SingleEmbTableStatus::SETS_BOTH && !isTimestamp) {
-                LOG(ERROR) << StringFormat("embName[%s] admit and evict, but no timestamp", embNames[i].c_str());
+                LOG_ERROR("embName[{}] admit and evict, but no timestamp", embNames[i]);
                 return false;
             }
         }
@@ -286,32 +283,31 @@ void FeatureAdmitAndEvict::LoadHistoryRecords(AdmitAndEvictData& loadData)
 bool FeatureAdmitAndEvict::ParseThresholdCfg(const std::vector<ThresholdValue>& thresholdValues)
 {
     if (thresholdValues.empty()) {
-        LOG(ERROR) << "thresholdValues is empty ...";
+        LOG_ERROR("thresholdValues is empty ...");
         return false;
     }
 
     m_cfgThresholds = thresholdValues;
     for (const auto& value : thresholdValues) {
-        LOG(INFO) << StringFormat(
-            "embName[%s], count[%d], time[%d], coefficient[%d] ...",
-            value.tableName.c_str(), value.countThreshold, value.timeThreshold, value.faaeCoefficient);
+        LOG_INFO("embName[{}], count[{}], time[{}], coefficient[{}] ...",
+            value.tableName, value.countThreshold, value.timeThreshold, value.faaeCoefficient);
         auto it = m_table2Threshold.find(value.tableName);
         if (it != m_table2Threshold.end()) {
             // train和eval同时开启，会出现表重复配置
-            LOG(INFO) << StringFormat("[%s] is repeated configuration ...", value.tableName.c_str());
+            LOG_INFO("[{}] is repeated configuration ...", value.tableName);
             return true;
         }
         m_table2Threshold[value.tableName] = value;
 
         if (value.faaeCoefficient < 1) {
-            LOG(ERROR) << StringFormat("[%s] config error, coefficient smaller than 1 ...", value.tableName.c_str());
+            LOG_ERROR("[{}] config error, coefficient smaller than 1 ...", value.tableName);
         }
         if (value.countThreshold != -1 && value.timeThreshold != -1) {
             m_embStatus[value.tableName] = SingleEmbTableStatus::SETS_BOTH;
         } else if (value.countThreshold != -1 && value.timeThreshold == -1) {
             m_embStatus[value.tableName] = SingleEmbTableStatus::SETS_ONLY_ADMIT;
         } else {
-            LOG(ERROR) << StringFormat("[%s] config error, have evict but no admit ...", value.tableName.c_str());
+            LOG_ERROR("[{}] config error, have evict but no admit ...", value.tableName);
             m_embStatus[value.tableName] = SingleEmbTableStatus::SETS_ERROR;
             return false;
         }
