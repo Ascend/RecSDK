@@ -50,7 +50,7 @@ public:
     PingpongNum = 1;
     int min_move_num = 32 / singleDataSize;
     // onceMoveNums表示每个数据维度需要移动的次数，(update_dim - 1 + min_move_num) / min_move_num表示除以min_move_num向下取整
-    int onceMoveNums = min_move_num * ((int)(update_dim - 1 + min_move_num) / min_move_num);
+    onceMoveNums = min_move_num * ((int)(update_dim - 1 + min_move_num) / min_move_num);
     int num_to_move = (int32_t)(update_dim - 1 + onceMoveNums) / onceMoveNums;
     // 每个地址需要占用sizeof(int64_t)个字节，singleDataSize表示每个数据的字节数，需要使用2倍的内存空间，因为每次移动都需要复制一份数据
     int occupyAddressBytesNum = sizeof(int64_t) + singleDataSize * onceMoveNums * num_to_move * PingpongNum * 2;
