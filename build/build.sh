@@ -90,7 +90,7 @@ then
   gen_tar_file
   echo "-----Build gen tar finished-----"
 
-  clean
+  # clean
   echo "-----Done-----"
 fi
 
@@ -102,6 +102,6 @@ then
   gen_tar_file
   echo "-----Build gen tar finished-----"
 
-  clean
+  # clean
   echo "-----Done-----"
 fi
