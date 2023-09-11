@@ -673,13 +673,8 @@ class SparseEmbedding:
          channel_id: channel id 0 for train，1 for eval
         Returns: npu_ops.outfeed_enqueue_op notify preprocess step
         """
-        sparse_lookup_id = ConfigInitializer.get_instance().notify_hybrid_channel_sparse_id[channel_id]
-        notify_message = tf.constant([sparse_lookup_id], dtype=tf.int32)
-        ConfigInitializer.get_instance().notify_hybrid_channel_sparse_id[channel_id] += 1
         channel_name = "d2h_notify_hybridmgmt_{}".format(channel_id)
-        logging.debug("%s was built for op outfeed sparse id : %s.", channel_name, sparse_lookup_id)
-        notify_hybridmgmt_op = npu_ops.outfeed_enqueue_op(
-            channel_name=channel_name, inputs=[notify_message])
+        notify_hybridmgmt_op = tf.no_op(channel_name)
         return notify_hybridmgmt_op
 
     def lookup_for_asc_with_feature_spec_inner(self, feature_spec: FeatureSpec, send_count: int, **kwargs):
@@ -709,21 +704,23 @@ class SparseEmbedding:
         channel_id = get_training_mode_channel_id(is_training=is_training)
         logging.debug(f"get preprocessed tensor for asc for table {self.table_name} with skip emb transfer "
                       f"{self.skip_emb_transfer} is_training: {is_training}, channel_id: {channel_id} .")
-        # 通知c++侧此处开始执行sparse look up的逻辑，注意此处每一个tablename做一次
-        notify_hybridmgmt_op = self.generate_lookup_id_notify_hybrid(channel_id)
-        # 将notify_hybridmgmt_op加入到config中，在restore的get next 算子中做控制依赖
+
         config = dict(batch_size=feature_spec.batch_size, feat_cnt=feature_spec.feat_cnt, send_count=send_count,
                       rank_size=rank_size, channel_id=channel_id, table_name=self.table_name,
                       skip_emb_transfer=self.skip_emb_transfer, ext_emb_size=self.ext_emb_size,
                       emb_size=self.emb_size, use_hot=use_hot, device_id=device_id,
-                      use_dynamic_expansion=use_dynamic_expansion, gradients_strategy=self.apply_gradients_strategy,
-                      notify_hybridmgmt_op=notify_hybridmgmt_op)
+                      use_dynamic_expansion=use_dynamic_expansion, gradients_strategy=self.apply_gradients_strategy)
 
-        if self.skip_emb_transfer:
-            result = get_preprocessed_tensor_for_asc(self.variable, config)
-        else:
-            variable_list = [self.variable] + [slot_info.get("slot") for slot_info in self.optimizer_slot_info_list]
-            result = get_preprocessed_tensor_for_asc(variable_list, config)
+        # 用于打桩的op节点，它的name用于标识此次的sparse lookup是train还是eval
+        # 后续在session run的时候，通过图反向查找该子图中查找到此op
+        # 最后通过名称判断session run是调用的哪个通道，并通知c++侧进行计数和唤醒操作
+        notify_hybridmgmt_op = self.generate_lookup_id_notify_hybrid(channel_id)
+        with tf.control_dependencies([notify_hybridmgmt_op]):
+            if self.skip_emb_transfer:
+                result = get_preprocessed_tensor_for_asc(self.variable, config)
+            else:
+                variable_list = [self.variable] + [slot_info.get("slot") for slot_info in self.optimizer_slot_info_list]
+                result = get_preprocessed_tensor_for_asc(variable_list, config)
         restore_vector = result.get("restore_vector")
         restore_vector_second = result.get("restore_vector_second")
         hot_pos = result.get("hot_pos")

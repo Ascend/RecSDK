@@ -115,6 +115,8 @@ namespace MxRec {
 
         bool IsLoadDataMatches(emb_mem_t* loadHostEmbs, EmbInfo* setupHostEmbs, size_t& embTableCount);
 
+        void CallBySessionRun(int channelID, int steps);
+
     private:
         bool InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
                             const vector<ThresholdValue>& thresholdValues, int seed);
@@ -128,7 +130,6 @@ namespace MxRec {
         int GetStepFromPath(const string& loadPath);
         static void AddCacheManagerTraceLog(CkptData& saveData);
         void RestoreFreq4Save(CkptData& saveData);
-
     private:
         int currentBatchId;
         int trainBatchId = 0; // 0-199, 200-

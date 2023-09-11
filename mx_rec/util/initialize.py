@@ -515,6 +515,10 @@ def set_asc_manager(manager):
     ConfigInitializer.get_instance().set_asc_manager(manager)
 
 
+def get_asc_manager():
+    return ConfigInitializer.get_instance().get_asc_manager()
+
+
 def trigger_evict():
     if not is_asc_manager_initialized():
         raise RuntimeError("ASC manager does not exist.")

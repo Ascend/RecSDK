@@ -127,7 +127,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
 
     hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
     hybridMgmtBlock->SetRankInfo(rankInfo);
-    hybridMgmtBlock->StartNotifySignalMonitor();
+
     // 启动数据处理线程
     bool rc = InitKeyProcess(rankInfo, embInfos, thresholdValues, seed);
     if (!rc) {
@@ -1029,4 +1029,13 @@ int HybridMgmt::GetStepFromPath(const string& loadPath)
         return stoi(match[1]);
     }
     return 0;
+}
+
+/// 通过pyBind在python侧调用，通知hybridMgmt上层即将进行图的执行
+/// \param channelID 通道id
+/// \param steps 运行的步数，由于可能存在循环下沉，所以1个session run 对应N步
+void HybridMgmt::CallBySessionRun(int channelID, int steps)
+{
+    hybridMgmtBlock->CheckAndNotifyWake(channelID);
+    hybridMgmtBlock->CountPythonStep(channelID, steps);
 }

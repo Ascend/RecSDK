@@ -18,9 +18,10 @@ from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.training.optimizer import Optimizer
+from tensorflow.python.client.session import BaseSession
 
 from mx_rec.util.initialize import get_is_graph_modify_hook_running, get_modify_graph, insert_bool_gauge, \
-    get_bool_gauge_set, terminate_config_initializer, get_run_times, set_is_last_round
+    get_bool_gauge_set, terminate_config_initializer, get_run_times, set_is_last_round, get_asc_manager
 from mx_rec.util.tf_version_adapter import NPUCheckpointSaverHook
 from mx_rec.graph.merge_lookup import do_merge_lookup
 
@@ -38,8 +39,128 @@ def init_dataset(self, input_data):
     self._graph_attr = ops.get_default_graph()
 
 
+def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
+
+    """
+    Replace tensorflow's session run method with this method, this method will
+     notify  the hybridMgmt side to wake up and count each time sess run is called.
+
+    Args:
+      fetches: A single graph element, a list of graph elements, or a dictionary
+        whose values are graph elements or lists of graph elements (described
+        above).
+      feed_dict: A dictionary that maps graph elements to values (described
+        above).
+      options: A [`RunOptions`] protocol buffer
+      run_metadata: A [`RunMetadata`] protocol buffer
+
+    Returns:
+      Either a single value if `fetches` is a single graph element, or
+      a list of values if `fetches` is a list, or a dictionary with the
+      same keys as `fetches` if that is a dictionary (described above).
+      Order in which `fetches` operations are evaluated inside the call
+      is undefined.
+
+    Raises:
+      RuntimeError: If this `Session` is in an invalid state (e.g. has been
+        closed).
+      TypeError: If `fetches` or `feed_dict` keys are of an inappropriate type.
+      ValueError: If `fetches` or `feed_dict` keys are invalid or refer to a
+        `Tensor` that doesn't exist.
+    Returns:None
+    """
+
+    all_op = []
+
+    def get_all_tensor(tensor_or_tensorlist):
+        # 把所有的tensor和Operation取出来
+        if isinstance(tensor_or_tensorlist, (list, tuple)) :
+            for i in tensor_or_tensorlist:
+                get_all_tensor(i)
+        elif isinstance(tensor_or_tensorlist, dict):
+            for k in tensor_or_tensorlist.keys():
+                get_all_tensor(tensor_or_tensorlist.get(k))
+        elif isinstance(tensor_or_tensorlist, (tf.Tensor, tf.Operation)):
+            name = tensor_or_tensorlist.name
+            if ":" in name:
+                name = name[:name.find(":")]
+            all_op.append(name)
+
+    def get_channel_id_by_sub_graph(input_tensors, name2channel_cache):
+        # 通过fetches需要运行的节点来找到 spase look up中的打桩tensor
+        # 从而判断该session run运行的是train还是eval
+        name_list_str_key = "_".join(input_tensors)
+        if name_list_str_key in name2channel_cache.keys():
+            return name2channel_cache.get(name_list_str_key)
+        this_channel_id = -1
+        graph_def = self.graph_def
+        cut_graph_input = tf.compat.v1.graph_util.extract_sub_graph(graph_def, input_tensors)
+        node_list_input = cut_graph_input.node
+        for node in node_list_input:
+            if "d2h_notify_hybridmgmt_" in node.name:
+                this_channel_id = int(node.name[-1])
+                break
+        name2channel_cache[name_list_str_key] = this_channel_id
+        return this_channel_id
+
+    # patch的方式为session增加步数属性
+    step = self.get_mxrec_steps()
+    # 进行缓存，避免每次都进行图查询
+    if not step:
+        step = 1
+        for custom_optimizer in self.get_config().graph_options.rewrite_options.custom_optimizers:
+            if custom_optimizer.name == "NpuOptimizer":
+                step = custom_optimizer.parameter_map["iterations_per_loop"].i
+                break
+        self.steps = step
+
+    # patch的方式为图增加缓存属性
+    name2channel_cache = self.get_mxrec_name2channel_cache()
+
+    # 查找相应的channel_id
+    try:
+        get_all_tensor(fetches)
+        channel_id = get_channel_id_by_sub_graph(all_op, name2channel_cache)
+    except AssertionError:
+        channel_id = -1
+
+    if channel_id != -1:
+        get_asc_manager().send_message_to_hybrid(channel_id, self.steps)
+
+    #调用tensorflow原生的方法
+    return self.old_run_method(fetches, feed_dict, options, run_metadata)
+
+
 def patch_for_dataset():
     DatasetV2.__init__ = init_dataset
+
+
+def patch_for_session():
+
+    def get_mxrec_steps(self):
+        try:
+            # 不能在未调用非__init__函数之前调用非__init__中定义的实例化属性
+            return self.steps
+        except AttributeError:
+            self.steps = None
+            return self.steps
+
+    def get_mxrec_name2channel_cache(self):
+        try:
+            # 不能在未调用非__init__函数之前调用非__init__中定义的实例化属性
+            return self.name2channel_cache
+        except AttributeError:
+            self.name2channel_cache = {}
+            return self.name2channel_cache
+
+    def get_config(self):
+        return getattr(self, '_config')
+
+    BaseSession.old_run_method = BaseSession.run
+    BaseSession.run = run
+    BaseSession.get_mxrec_name2channel_cache = get_mxrec_name2channel_cache
+    BaseSession.get_mxrec_steps = get_mxrec_steps
+    BaseSession.get_config = get_config
 
 
 def chief_session_creator_init(self, scaffold=None, master='', config=None, checkpoint_dir=None,

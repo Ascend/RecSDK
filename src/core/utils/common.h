@@ -504,12 +504,18 @@ namespace MxRec {
         keys_t keyRecv;
         vector<int> scAll;
         vector<uint32_t> countRecv;
+        All2AllInfo() = default;
+        All2AllInfo(keys_t keyRecv, vector<int> scAll, vector<uint32_t> countRecv)
+            : keyRecv(keyRecv), scAll(scAll), countRecv(countRecv) {}
     };
 
     struct UniqueInfo {
         vector<int32_t> restore;
         vector<int32_t> hotPos;
         All2AllInfo all2AllInfo;
+        UniqueInfo() = default;
+        UniqueInfo(vector<int32_t> restore, vector<int32_t> hotPos, All2AllInfo all2AllInfo)
+            : restore(restore), hotPos(hotPos), all2AllInfo(all2AllInfo) {}
     };
 
     struct KeySendInfo {

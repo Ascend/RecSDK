@@ -345,6 +345,7 @@ void KeyProcess::HashSplitHelper(const unique_ptr <emb_batch_t>& batch, vector <
 bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<emb_batch_t>& batch, UniquePtr& unique,
                                                     int channel, int threadId)
 {
+    std::lock_guard<std::mutex> lock(loadSaveMut[channel][threadId]);
     // tuple for keyRec restore hotPos scAll countRecv
     isWithFAAE = m_featureAdmitAndEvict.GetFunctionSwitch() &&
                   FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE;
@@ -371,9 +372,8 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<emb_batch_t>& bat
         Key2Offset(batch->name, uniqueInfo.all2AllInfo.keyRecv, channel);
         LOG_DEBUG("key2OffsetTC(ms):{}", key2OffsetTC.ElapsedMS());
     }
-    if (!rankInfo.useStatic) { // Static all2all，need send count
-        SendA2A(uniqueInfo.all2AllInfo.scAll, batch->name, batch->channel, batch->batchId);
-    }
+    // Static all2all，need send count
+    if (!rankInfo.useStatic) { SendA2A(uniqueInfo.all2AllInfo.scAll, batch->name, batch->channel, batch->batchId); }
 
     auto tensors = make_unique<vector<Tensor>>();
     tensors->push_back(Vec2TensorI32(uniqueInfo.restore));
@@ -400,6 +400,7 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<emb_batch_t>& bat
 
 bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channel, int threadId)
 {
+    std::lock_guard<std::mutex> lock(loadSaveMut[channel][threadId]);
     vector<keys_t> splitKeys;
     vector<int32_t> restore;
     vector<int32_t> hotPos;
@@ -436,9 +437,8 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channe
         }
     }
 
-    if (!rankInfo.useStatic) { // Static all2all，need send count
-        SendA2A(scAll, batch->name, batch->channel, batch->batchId);
-    }
+    // Static all2all，need send count
+    if (!rankInfo.useStatic) { SendA2A(scAll, batch->name, batch->channel, batch->batchId); }
 
     TimeCost pushResultTC;
     auto tensors = make_unique<vector<Tensor>>();
