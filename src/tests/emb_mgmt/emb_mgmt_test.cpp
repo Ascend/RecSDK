@@ -58,9 +58,9 @@ protected:
     void UpdateEmb(vector<size_t> &missingKeysHostPos, int channelId, const string &embName,
         std::unique_ptr<HostEmb> &hostEmb, vector<Tensor> &d2h_emb)
     {
-        LOG(INFO) << (HD + "update emb start");
+        LOG_INFO(HD + "update emb start");
         if (d2h_emb.size() == 0) {
-            LOG(INFO) << StringFormat(HD + "emb is none channelId:%d", channelId);
+            LOG_INFO(HD + "emb is none channelId:{}", channelId);
             return;
         }
 
@@ -72,12 +72,10 @@ protected:
             tensorPtr = tensorPtr + hostEmb->GetEmb(embName).hostEmbInfo.extEmbeddingSize;
         }
         for (size_t i = 0; i < hostEmb->GetEmb(embName).embData.size(); ++i) {
-            REC_LOG(INFO) << StringFormat(
-                "hostEmb: embName %s, %d is: %s", embName.c_str(), i,
-                VectorToString(hostEmb->GetEmb(embName).embData[i]).c_str()
-            );
+            LOG_INFO("hostEmb: embName {}, {} is: {}", embName, i,
+                VectorToString(hostEmb->GetEmb(embName).embData[i]));
         }
-        LOG(INFO) << (HD + "update emb end");
+        LOG_INFO(HD + "update emb end");
         d2h_emb.clear();
     }
 
@@ -136,7 +134,7 @@ TEST_F(EmbMgmtTest, Initialize)
     vector<Tensor> tmpData;
     hostHashMaps->Process(embInfo.name, lookupKeys, currentBatchId, tmpData);
     auto missingKeys = hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos;
-    LOG(INFO) << StringFormat("missingKeys %d", missingKeys);
+    LOG_INFO("missingKeys {}", missingKeys);
     hostEmbs->EmbDataGenerator(initializeInfos, seed, missingKeys.size(), embeddingSize, tmpDatas);
     auto status = Float2TensorVec(tmpDatas, d2h_emb);
     ASSERT_EQ(status, true);
@@ -146,7 +144,7 @@ TEST_F(EmbMgmtTest, Initialize)
     lookupKeys = { 2, 3, 5, 6 };
     hostHashMaps->Process(embInfo.name, lookupKeys, currentBatchId, tmpData);
     missingKeys = hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos;
-    LOG(INFO) << StringFormat("missingKeys %d", missingKeys);
+    LOG_INFO("missingKeys {}", missingKeys);
     hostEmbs->EmbDataGenerator(initializeInfos, seed, missingKeys.size(), embeddingSize, tmpDatas);
     status = Float2TensorVec(tmpDatas, d2h_emb);
     ASSERT_EQ(status, true);
@@ -156,7 +154,7 @@ TEST_F(EmbMgmtTest, Initialize)
     lookupKeys = { 1, 7, 9, 10 };
     hostHashMaps->Process(embInfo.name, lookupKeys, currentBatchId, tmpData);
     missingKeys = hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos;
-    LOG(INFO) << StringFormat("missingKeys %d", missingKeys);
+    LOG_INFO("missingKeys {}", missingKeys);
     hostEmbs->EmbDataGenerator(initializeInfos, seed, missingKeys.size(), embeddingSize, tmpDatas);
     Float2TensorVec(tmpDatas, d2h_emb);
     status = Float2TensorVec(tmpDatas, d2h_emb);

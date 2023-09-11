@@ -23,12 +23,11 @@ void EmbTable::Init(const EmbInfo& embInfo, const RankInfo& rInfo, int seed)
 #ifndef GTEST
     this->rankInfo = rInfo;
     this->seed = seed;
-    LOG(INFO) << StringFormat(
-        "EmbTable init, deviceID %d, embSize %d running", rInfo.deviceId, embInfo.extEmbeddingSize);
+    LOG_INFO("EmbTable init, deviceID {}, embSize {} running", rInfo.deviceId, embInfo.extEmbeddingSize);
     // 计算embedding table需要分配的内存块数
     auto ret = aclrtSetDevice(static_cast<int32_t>(rInfo.deviceId));
     if (ret != ACL_ERROR_NONE) {
-        LOG(ERROR) << StringFormat("Set device failed, device_id:%d, ret=%d", rInfo.deviceId, ret);
+        LOG_ERROR("Set device failed, device_id:{}, ret={}", rInfo.deviceId, ret);
         throw AclError();
     }
     embSize = embInfo.extEmbeddingSize;
@@ -38,7 +37,7 @@ void EmbTable::Init(const EmbInfo& embInfo, const RankInfo& rInfo, int seed)
         void *newBlock = nullptr;
         aclError ret = aclrtMalloc(&newBlock, blockSize * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST);
         if (ret != ACL_SUCCESS) {
-            LOG(ERROR) << StringFormat("aclrtMalloc failed, ret=%d", ret);
+            LOG_ERROR("aclrtMalloc failed, ret={}", ret);
             throw AclError();
         }
         // 申请内存初始化
@@ -48,9 +47,7 @@ void EmbTable::Init(const EmbInfo& embInfo, const RankInfo& rInfo, int seed)
         SplitMemoryBlock(newBlock);
     }
     totalCapacity = static_cast<int>(memoryList.size());
-    LOG(INFO) << StringFormat(
-        "aclrtMalloc success, emb name:%s, total capacity:%d", embInfo.name.c_str(), totalCapacity
-    );
+    LOG_INFO("aclrtMalloc success, emb name:{}, total capacity:{}", embInfo.name, totalCapacity);
 #endif
 }
 
@@ -61,7 +58,7 @@ EmbTable::~EmbTable()
         // 释放内存块
         aclError ret = aclrtFree(block);
         if (ret != ACL_SUCCESS) {
-            LOG(ERROR) << StringFormat("aclrtFree failed, ret=%d", ret);
+            LOG_ERROR("aclrtFree failed, ret={}", ret);
         }
     }
 #endif
@@ -73,11 +70,11 @@ int64_t EmbTable::GetEmbAddress()
 #ifndef GTEST
     if (embeddingList.empty()) {
         PrintStatus();
-        VLOG(GLOG_DEBUG) << "GetEmbAddress, embedding_list size: empty! Add block!";
+        LOG_DEBUG("GetEmbAddress, embedding_list size: empty! Add block!");
         void *addBlock = nullptr;
         aclError ret = aclrtMalloc(&addBlock, blockSize * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST);
         if (ret != ACL_SUCCESS) {
-            LOG(ERROR) << StringFormat("aclrtMalloc failed, ret=%d", ret);
+            LOG_ERROR("aclrtMalloc failed, ret={}", ret);
             throw AclError();
         }
         RandomInit(addBlock, embInfo.initializeInfos, seed);
@@ -96,16 +93,15 @@ int64_t EmbTable::GetEmbAddress()
 void EmbTable::RandomInit(void* newBlock, const vector<InitializeInfo>& initializeInfos, int seed)
 {
 #ifndef GTEST
-    LOG(INFO) << StringFormat(
-        "Device GenerateEmbData Start, seed:%d, initializer num: %d", seed, initializeInfos.size());
+    LOG_INFO("Device GenerateEmbData Start, seed:{}, initializer num: {}", seed, initializeInfos.size());
     vector<float> devEmb(blockSize);
     for (auto initializeInfo: initializeInfos) {
-        LOG(INFO) << StringFormat("Device GenerateEmbData ing. name %s", initializeInfo.name.c_str());
+        LOG_INFO("Device GenerateEmbData ing. name {}", initializeInfo.name.c_str());
         for (int i = 0; i < BLOCK_EMB_COUNT; i++) {
             initializeInfo.initializer->GenerateData(&devEmb[i * embSize], embSize);
         }
     }
-    LOG(INFO) << StringFormat("Device GenerateEmbData End, seed:%d", seed);
+    LOG_INFO("Device GenerateEmbData End, seed:{}", seed);
     ExecuteAclMemcpy(newBlock, devEmb);
 #endif
 }
@@ -116,7 +112,7 @@ void EmbTable::ExecuteAclMemcpy(void* newBlock, vector<float> devEmb)
     aclError ret = aclrtMemcpy(
         newBlock, blockSize * sizeof(float), devEmb.data(), blockSize * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
     if (ret != ACL_SUCCESS) {
-        LOG(ERROR) << StringFormat("aclrtMemcpy failed, ret=%d", ret);
+        LOG_ERROR("aclrtMemcpy failed, ret={}", ret);
         throw AclError();
     }
 #endif
@@ -138,8 +134,7 @@ void EmbTable::SplitMemoryBlock(void *newBlock)
 
 void EmbTable::PrintStatus()
 {
-    // 输出embedding table的总容量
-    LOG(INFO) << StringFormat("Total capacity:%d", totalCapacity * blockSize);
-    // 输出embedding table的未使用的使用容量
-    LOG(INFO) << StringFormat("Unused capacity:%d", totalCapacity * blockSize - usedCapacity * embSize);
+    // 输出embedding table的总容量和未使用的使用容量
+    LOG_INFO("Total capacity:{}, Unused capacity:{}",
+        totalCapacity * blockSize, totalCapacity * blockSize - usedCapacity * embSize);
 }

@@ -25,7 +25,7 @@ public:
 protected:
     void SetUp()
     {
-        VLOG(GLOG_DEBUG) <<  StringFormat("%s", "start initialize") ;
+        LOG_DEBUG("start initialize") ;
     }
 };
 
@@ -77,7 +77,7 @@ TEST_F(HybridMgmtBlockTest, CheckValid)
         hybridMgmtBlock->CheckValid(1);
         ASSERT_EQ(-1, 0);
     } catch (HybridMgmtBlockingException e) {
-        VLOG(INFO) << StringFormat(HYBRID_BLOCKING + "sucess");
+        LOG_INFO(HYBRID_BLOCKING + "sucess");
         ASSERT_EQ(0, 0);
     }
     hybridMgmtBlock->pythonBatchId[0] = 0;

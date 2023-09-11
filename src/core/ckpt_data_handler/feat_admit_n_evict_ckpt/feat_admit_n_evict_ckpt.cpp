@@ -16,7 +16,7 @@ void FeatAdmitNEvictCkpt::SetProcessData(CkptData& processData)
     ClearData();
     if (processData.table2Thresh.empty() || processData.histRec.timestamps.empty() ||
         processData.histRec.historyRecords.empty()) {
-        LOG(ERROR) << "Missing Feature Admit and Evict data";
+        LOG_ERROR("Missing Feature Admit and Evict data");
         throw std::runtime_error("Missing Feature Admit and Evict data");
     }
     saveTable2Thresh = std::move(processData.table2Thresh);
@@ -137,15 +137,14 @@ void FeatAdmitNEvictCkpt::SetHistRec(string embName)
     timestamp = transArr.front();
 
     size_t featItemInfoTotalSize = attribute.front() * static_cast<size_t>(featItemInfoSaveNum);
-    VLOG(GLOG_DEBUG) << StringFormat("====Start SetHistRec, name: %s, featItemInfoTotalSize: %ld", embName.c_str(),
-                                     featItemInfoTotalSize);
+    LOG_DEBUG("====Start SetHistRec, name: {}, featItemInfoTotalSize: {}", embName, featItemInfoTotalSize);
 
     size_t process = 0;
     size_t printPerStep = ((featItemInfoTotalSize / 100) > 0 ? (featItemInfoTotalSize / 100) : 1);
     for (size_t i = featItemInfoOffset; i < featItemInfoTotalSize + featItemInfoOffset; i += featItemInfoSaveNum) {
         process = i % printPerStep;
         if (process == 1) {
-            VLOG(GLOG_DEBUG) << StringFormat("====in SetHistRec, process : %f",  i/featItemInfoTotalSize);
+            LOG_DEBUG("====in SetHistRec, process : %f",  i/featItemInfoTotalSize);
         }
         auto featureId = transArr[i + featureIdIdxOffset];
         auto count = transArr[i + countIdxOffset];
@@ -153,7 +152,7 @@ void FeatAdmitNEvictCkpt::SetHistRec(string embName)
 
         histRecs.emplace(featureId, FeatureItemInfo(static_cast<uint32_t>(count), lastTime));
     }
-    VLOG(GLOG_DEBUG) << StringFormat("====End SetHistRec, name: %s", embName.c_str());
+    LOG_DEBUG("====End SetHistRec, name: {}", embName);
 }
 
 int FeatAdmitNEvictCkpt::GetTable2ThreshSize()

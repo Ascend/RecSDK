@@ -26,8 +26,8 @@ protected:
     {
         // 设置测试用的EmbInfo
         embInfo.extEmbeddingSize = embTable.TEST_EMB_SIZE;
-        LOG(INFO) << StringFormat(
-            "EmbTable BLOCK_EMB_COUNT %d INIT_BLOCK_COUNT %d", embTable.BLOCK_EMB_COUNT, embTable.INIT_BLOCK_COUNT);
+        LOG_INFO("EmbTable BLOCK_EMB_COUNT {} INIT_BLOCK_COUNT {}",
+            embTable.BLOCK_EMB_COUNT, embTable.INIT_BLOCK_COUNT);
         rankInfo.rankId = 0;
         rankInfo.rankSize = 1;
         rankInfo.localRankSize = 1;
@@ -38,7 +38,7 @@ protected:
         rankInfo.deviceId = 0;
         // 初始化EmbeddingTable
 #ifndef GTEST
-        LOG(INFO) << StringFormat("rank %d running", rankInfo.deviceId);
+        LOG_INFO("rank {} running", rankInfo.deviceId);
         aclInit(nullptr);
 #endif
     }
@@ -58,15 +58,14 @@ TEST_F(EmbTableTest, Init)
 #ifndef GTEST
     // 测试初始化是否出现异常
     EXPECT_NO_THROW(embTable.Init(embInfo, rankInfo, 0));
-    LOG(INFO) << "embTable Init succeed!";
+    LOG_INFO("embTable Init succeed!");
     ASSERT_EQ(embTable.rankInfo.g_rankId, rankInfo.g_rankId);
     ASSERT_EQ(embTable.rankInfo.rankSize, rankInfo.rankSize);
     ASSERT_EQ(embTable.rankInfo.localRankSize, rankInfo.localRankSize);
     ASSERT_EQ(embTable.rankInfo.useStatic, rankInfo.useStatic);
     ASSERT_EQ(embTable.rankInfo.localRankId, rankInfo.localRankId);
     // 测试容量是否正常
-    LOG(INFO) << StringFormat(
-        "totalCapacity %d, INIT_BLOCK_COUNT %d", embTable.totalCapacity, embTable.INIT_BLOCK_COUNT);
+    LOG_INFO("totalCapacity {}, INIT_BLOCK_COUNT {}", embTable.totalCapacity, embTable.INIT_BLOCK_COUNT);
     EXPECT_EQ(embTable.totalCapacity, embTable.INIT_BLOCK_COUNT);
 #endif
 }

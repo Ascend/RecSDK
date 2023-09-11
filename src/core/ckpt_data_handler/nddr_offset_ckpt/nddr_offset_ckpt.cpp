@@ -52,7 +52,7 @@ CkptTransData NddrOffsetCkpt::GetDataset(CkptDataType dataType, string embName)
     transferData.attribute.push_back(1);
     transferData.attribute.push_back(fourBytes);
     transferData.attributeSize = transferData.attribute.size() * eightBytes;
-    LOG(INFO) << StringFormat("CkptDataType::EMB_INFO:%d, dataType:%d", CkptDataType::EMB_INFO, dataType);
+    LOG_INFO("CkptDataType::EMB_INFO:{}, dataType:{}", CkptDataType::EMB_INFO, dataType);
     return move(transferData);
 }
 
@@ -61,5 +61,5 @@ void NddrOffsetCkpt::SetDataset(CkptDataType dataType, string embName, CkptTrans
     CleanTransfer();
     transferData = move(loadedData);
     loadMaxOffset[embName] = transferData.int32Arr.front();
-    LOG(INFO) << StringFormat("CkptDataType::EMB_INFO:%d, dataType:%d", CkptDataType::EMB_INFO, dataType);
+    LOG_INFO("CkptDataType::EMB_INFO:{}, dataType:{}", CkptDataType::EMB_INFO, dataType);
 }

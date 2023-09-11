@@ -64,7 +64,7 @@ CkptTransData NddrFeatMapCkpt::GetDataset(CkptDataType dataType, string embName)
         transArr.push_back(it.first);
         transArr.push_back(it.second);
     }
-    LOG(INFO) << StringFormat("CkptDataType::EMB_INFO:%d, dataType:%d", CkptDataType::EMB_INFO, dataType);
+    LOG_INFO("CkptDataType::EMB_INFO:{}, dataType:{}", CkptDataType::EMB_INFO, dataType);
     return move(transferData);
 }
 
@@ -83,5 +83,5 @@ void NddrFeatMapCkpt::SetDataset(CkptDataType dataType, string embName, CkptTran
         int64_t key { transArr.at(i) };
         hostHashMap[key] = transArr.at(i + 1);
     }
-    LOG(INFO) << StringFormat("dataType:%d", dataType);
+    LOG_INFO("dataType:{}", dataType);
 }

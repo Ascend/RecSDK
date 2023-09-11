@@ -63,7 +63,7 @@ public:
 
     void Compute(OpKernelContextPtr context) override
     {
-        LOG(INFO) << StringFormat("clear channel %d, context %d", channelId, context->step_id());
+        LOG_INFO("clear channel {}, context {}", channelId, context->step_id());
         HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
         hybridMgmtBlock->ResetAll(channelId);
     }
@@ -119,7 +119,7 @@ class ReadEmbKeyV2Dynamic : public OpKernel {
 public:
     explicit ReadEmbKeyV2Dynamic(OpKernelConstructionPtr context) : OpKernel(context)
     {
-        VLOG(GLOG_DEBUG) << "ReadEmbKeyV2Dynamic init";
+        LOG_DEBUG("ReadEmbKeyV2Dynamic init");
         OP_REQUIRES_OK(context, context->GetAttr("channel_id", &channelId)); // 0 train or 1 inference
         OP_REQUIRES_OK(context, context->GetAttr("emb_name", &embNames));
         OP_REQUIRES_OK(context, context->GetAttr("timestamp", &isTimestamp));
@@ -142,7 +142,7 @@ public:
                 MAX_CHANNEL_NUM)));
             return;
         }
-        VLOG(INFO) << StringFormat(HYBRID_BLOCKING + " reset channel %d", channelId);
+        LOG_INFO(HYBRID_BLOCKING + " reset channel {}", channelId);
         hybridMgmtBlock->ResetAll(channelId);
 
         threadNum = GetThreadNumEnv();
@@ -158,12 +158,12 @@ public:
     void Compute(OpKernelContextPtr context) override
     {
         EASY_FUNCTION();
-        VLOG(GLOG_DEBUG) << "enter ReadEmbKeyV2Dynamic";
+        LOG_DEBUG("enter ReadEmbKeyV2Dynamic");
         TimeCost tc = TimeCost();
         int batchId = hybridMgmtBlock->readEmbedBatchId[channelId]++;
         if (channelId == 1) {
             if (maxStep != -1 && batchId >= maxStep) {
-                LOG(WARNING) << StringFormat("skip excess batch after %d/%d", batchId, maxStep);
+                LOG_WARN("skip excess batch after {}/{}", batchId, maxStep);
                 return;
             }
         }
@@ -195,11 +195,9 @@ public:
 
         TimeCost enqueueTC;
         EnqueueBatchData(std::vector<int>{batchId, batchQueueId}, timestamp, inputTensor, splits);
-        VLOG(GLOG_DEBUG) << StringFormat(
-            KEY_PROCESS "ReadEmbKeyV2Dynamic read batch cost(ms):%d, elapsed from last(ms):%d,"
-            " enqueueTC(ms):%d, batch[%d]:%d",
-            tc.ElapsedMS(), staticSw.ElapsedMS(), enqueueTC.ElapsedMS(), channelId, batchId
-        );
+        LOG_DEBUG(KEY_PROCESS "ReadEmbKeyV2Dynamic read batch cost(ms):{}, elapsed from last(ms):{},"
+            " enqueueTC(ms):{}, batch[{}]:{}",
+            tc.ElapsedMS(), staticSw.ElapsedMS(), enqueueTC.ElapsedMS(), channelId, batchId);
         staticSw = TimeCost();
     }
 
@@ -208,9 +206,7 @@ public:
         auto keyProcess = Singleton<KeyProcess>::GetInstance();
         for (size_t i = 0; i < embNames.size(); ++i) {
             if (!keyProcess->hasEmbName(embNames.at(i))) {
-                LOG(INFO) << StringFormat(
-                    "ReadEmbKeyV2Dynamic not found emb_name:%d %s", i, embNames.at(i).c_str()
-                );
+                LOG_INFO("ReadEmbKeyV2Dynamic not found emb_name:{} {}", i, embNames.at(i));
                 tableUsed.push_back(false);
             } else {
                 tableUsed.push_back(true);
@@ -260,18 +256,18 @@ public:
                                 size_t& dataSize)
     {
         if (dataSize - fieldNumTmp != 1) { // 说明没有传时间戳
-            LOG(ERROR) << StringFormat("dataSize[%d], fieldNum[%d] ...", dataSize, fieldNumTmp);
+            LOG_ERROR("dataSize[{}], fieldNum[{}] ...", dataSize, fieldNumTmp);
             return false;
         }
 
         // 前面8个字节、即占一个featureId位，是unix时间戳
         auto src = (const time_t*)inputTensor.tensor_data().data();
         std::copy(src, src + 1, &timestamp);
-        LOG(INFO) << StringFormat("current batchId[%d] timestamp[%d]", batchId, timestamp);
+        LOG_INFO("current batchId[{}] timestamp[{}]", batchId, timestamp);
         dataSize -= 1;
 
         if (timestamp <= 0) {
-            LOG(ERROR) << StringFormat("timestamp[%d] <= 0 ", timestamp);
+            LOG_ERROR("timestamp[{}] <= 0 ", timestamp);
             return false;
         }
 
@@ -321,7 +317,7 @@ class ReadEmbKeyV2 : public OpKernel {
 public:
     explicit ReadEmbKeyV2(OpKernelConstructionPtr context) : OpKernel(context)
     {
-        VLOG(GLOG_DEBUG) << "ReadEmbKeyV2 init";
+        LOG_DEBUG("ReadEmbKeyV2 init");
         OP_REQUIRES_OK(context, context->GetAttr("channel_id", &channelId)); // 0 train or 1 inference
         OP_REQUIRES_OK(context, context->GetAttr("emb_name", &embNames));
         OP_REQUIRES_OK(context, context->GetAttr("splits", &splits)); // 每个表的field Number
@@ -350,7 +346,7 @@ public:
                 "ReadEmbKeyV2 channelId invalid. It should be in range [0, MAX_CHANNEL_NUM:%d)", MAX_CHANNEL_NUM)));
             return;
         }
-        VLOG(INFO) << StringFormat(HYBRID_BLOCKING + " reset channel %d", channelId);
+        LOG_INFO(HYBRID_BLOCKING + " reset channel {}", channelId);
         // 重置此数据通道中所有的步数
         hybridMgmtBlock->ResetAll(channelId);
 
@@ -368,13 +364,13 @@ public:
     void Compute(OpKernelContextPtr context) override
     {
         EASY_FUNCTION();
-        VLOG(GLOG_DEBUG) << "enter ReadEmbKeyV2";
+        LOG_DEBUG("enter ReadEmbKeyV2");
         TimeCost tc = TimeCost();
         int batchId = hybridMgmtBlock->readEmbedBatchId[channelId]++;
         Tensor* output = nullptr;
         if (channelId == 1) {
             if (maxStep != -1 && batchId >= maxStep) {
-                LOG(WARNING) << StringFormat("skip excess batch after %d/%d", batchId, maxStep);
+                LOG_WARN(StringFormat("skip excess batch after {}/{}", batchId, maxStep));
                 OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape {}, &output));
                 auto out = output->flat<int32>();
                 out(0) = batchId;
@@ -404,9 +400,8 @@ public:
 
         TimeCost enqueueTC;
         EnqueueBatchData(batchId, batchQueueId, timestamp, inputTensor);
-        VLOG(GLOG_DEBUG) << StringFormat(
-            KEY_PROCESS "ReadEmbKeyV2Static read batch cost(ms):%d, elapsed from last(ms):%d,"
-            " enqueueTC(ms):%d, batch[%d]:%d",
+        LOG_DEBUG(KEY_PROCESS "ReadEmbKeyV2Static read batch cost(ms):{}, elapsed from last(ms):{},"
+            " enqueueTC(ms):{}, batch[{}]:{}",
             tc.ElapsedMS(), staticSw.ElapsedMS(), enqueueTC.ElapsedMS(), channelId, batchId);
         staticSw = TimeCost();
     }
@@ -416,7 +411,7 @@ public:
         auto keyProcess = Singleton<KeyProcess>::GetInstance();
         for (size_t i = 0; i < splits.size(); ++i) {
             if (!keyProcess->hasEmbName(embNames.at(i))) {
-                LOG(INFO) << StringFormat("ReadEmbKeyV2 not found emb_name:%d %s", i, embNames.at(i).c_str());
+                LOG_INFO("ReadEmbKeyV2 not found emb_name:{} {}", i, embNames.at(i));
                 tableUsed.push_back(false);
             } else {
                 tableUsed.push_back(true);
@@ -466,18 +461,18 @@ public:
                                 size_t& dataSize)
     {
         if (dataSize - fieldNumTmp != 1) { // 说明没有传时间戳
-            LOG(ERROR) << StringFormat("dataSize[%d], fieldNum[%d] ...", dataSize, fieldNumTmp);
+            LOG_ERROR("dataSize[{}], fieldNum[{}] ...", dataSize, fieldNumTmp);
             return false;
         }
 
         // 前面8个字节、即占一个featureId位，是unix时间戳
         auto src = (const time_t*)inputTensor.tensor_data().data();
         std::copy(src, src + 1, &timestamp);
-        LOG(INFO) << StringFormat("current batchId[%d] timestamp[%d]", batchId, timestamp);
+        LOG_INFO("current batchId[{}] timestamp[{}]", batchId, timestamp);
         dataSize -= 1;
 
         if (timestamp <= 0) {
-            LOG(ERROR) << StringFormat("timestamp[%d] <= 0 ", timestamp);
+            LOG_ERROR("timestamp[{}] <= 0 ", timestamp);
             return false;
         }
 
@@ -563,7 +558,7 @@ public:
         for (int i { 0 }; i < restoreLen; ++i) {
             r(i) = i % lookupLen;
         }
-        LOG(WARNING) << StringFormat("dummy read batch cost: %d,elapsed from last %d",
+        LOG_WARN("dummy read batch cost: {},elapsed from last {}",
             tc.ElapsedMS(), staticSw.ElapsedMS());
         tc = TimeCost();
     }
@@ -581,7 +576,7 @@ public:
 
     void Compute(OpKernelContextPtr context) override
     {
-        LOG(INFO) << StringFormat("context %d", context->step_id());
+        LOG_INFO("context {}", context->step_id());
         std::cout << " Cust opp not installed!!" << std::endl;
     }
 

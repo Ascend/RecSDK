@@ -150,7 +150,7 @@ TEST_F(CacheManagerTest, RefreshFreqInfo)
     cacheManager.RefreshFreqInfoCommon(embTableName, hbm2EvictKeys, TransferType::HBM_2_EVICT);
     const auto it = cacheManager.excludeDDRKeyCountMap[embTableName].find(160);
     ASSERT_EQ(it, cacheManager.excludeDDRKeyCountMap[embTableName].end());
-    LOG(INFO) << "test RefreshFreqInfo end.";
+    LOG_INFO("test RefreshFreqInfo end.");
 }
 
 TEST_F(CacheManagerTest, PutKey)
@@ -162,7 +162,7 @@ TEST_F(CacheManagerTest, PutKey)
     ASSERT_EQ(cacheManager.ddrKeyFreqMap[embTableName].minFreq, 1);
     ASSERT_EQ(cacheManager.ddrKeyFreqMap[embTableName].freqTable[1].size(), 1);
     ASSERT_EQ(cacheManager.ddrKeyFreqMap[embTableName].Get(15), 1);
-    LOG(INFO) << "test PutKey end.";
+    LOG_INFO("test PutKey end.");
 }
 
 TEST_F(CacheManagerTest, IsKeyInSSD)
@@ -172,7 +172,7 @@ TEST_F(CacheManagerTest, IsKeyInSSD)
     ASSERT_FALSE(cacheManager.IsKeyInSSD(embTableName, checkKeys[1]));
     ASSERT_TRUE(cacheManager.IsKeyInSSD(embTableName, checkKeys[2]));
     ASSERT_TRUE(cacheManager.IsKeyInSSD(embTableName, checkKeys[3]));
-    LOG(INFO) << "test IsKeyInSSD end.";
+    LOG_INFO("test IsKeyInSSD end.");
 }
 
 TEST_F(CacheManagerTest, TransferDDREmbWithSSDByEmptyExternalKey)
@@ -184,7 +184,7 @@ TEST_F(CacheManagerTest, TransferDDREmbWithSSDByEmptyExternalKey)
     embHashMapInfo.hostHashMap[75] = 116;
     auto ret = cacheManager.TransferDDREmbWithSSD(embTableName, embHashMapInfo, currentKeys, TRAIN_CHANNEL_ID);
     ASSERT_EQ(ret, TransferRet::TRANSFER_OK);
-    LOG(INFO) << "test TransferDDREmbWithSSDByEmptyExternalKey end.";
+    LOG_INFO("test TransferDDREmbWithSSDByEmptyExternalKey end.");
 }
 
 TEST_F(CacheManagerTest, TransferDDREmbWithSSDByAllProcess)
@@ -223,7 +223,7 @@ TEST_F(CacheManagerTest, TransferDDREmbWithSSDByAllProcess)
     ASSERT_FALSE(cacheManager.ssdEngine->IsKeyExist(embTableName, 8));
     ASSERT_TRUE(cacheManager.IsKeyInSSD(embTableName, 15));
 
-    LOG(INFO) << "check detail data before transfer ok.";
+    LOG_INFO("check detail data before transfer ok.");
 
     // externalKeys: SSD(15, 25) + newKey(55, 65, 75)
     // 训练场景，构造结果：offsetAvailableSize=20+100-118+evictPos.size()=3
@@ -256,7 +256,7 @@ TEST_F(CacheManagerTest, TransferDDREmbWithSSDByAllProcess)
     ASSERT_TRUE(cacheManager.IsKeyInSSD(embTableName, 9));
     ASSERT_TRUE(cacheManager.IsKeyInSSD(embTableName, 8));
     ASSERT_FALSE(cacheManager.IsKeyInSSD(embTableName, 15));
-    LOG(INFO) << "test TransferDDREmbWithSSDByAllProcess end.";
+    LOG_INFO("test TransferDDREmbWithSSDByAllProcess end.");
 }
 
 TEST_F(CacheManagerTest, TransferDDREmbWithSSDByEmptyExternalSSDKey)

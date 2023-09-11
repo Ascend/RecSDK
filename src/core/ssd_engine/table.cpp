@@ -302,7 +302,7 @@ void Table::Compact(bool fullCompact)
         return;
     }
 
-    VLOG(GLOG_DEBUG) << StringFormat("table:%s, start compact", name.c_str());
+    LOG_DEBUG("table:{}, start compact", name);
 
     vector<shared_ptr<File>> compactFileList;
     for (const auto &f: staleDataFileSet) {
@@ -329,7 +329,7 @@ void Table::Compact(bool fullCompact)
         vector<vector<float>> validEmbs = f->FetchEmbeddings(validKeys);
         InsertEmbeddingsInner(validKeys, validEmbs);
     }
-    VLOG(GLOG_DEBUG) << StringFormat("table:%s, end compact", name.c_str());
+    LOG_DEBUG("table:{}, end compact", name);
 }
 
 uint64_t Table::GetTableAvailableSpace()

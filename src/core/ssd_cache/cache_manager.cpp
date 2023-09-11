@@ -44,13 +44,10 @@ inline void GetExternalKeys(EmbHashMapInfo& embHashMap, vector<emb_key_t>& exter
 
 void AddDebugAndTraceLog(size_t batchKeySize, vector<emb_key_t>& externalKeys, vector<emb_key_t>& externalSSDKeys)
 {
-    VLOG(GLOG_DEBUG) << StringFormat("TransferDDREmbWithSSD: batchKeySize:%d, externalKeys size:%d,"
-                                     " externalSSDKeys size:%d",
-                                     batchKeySize, externalKeys.size(), externalSSDKeys.size());
-    if (VLOG_IS_ON(GLOG_TRACE)) {
-        VLOG(GLOG_TRACE) << "TransferDDREmbWithSSD: externalKeys:" << VectorToString(externalKeys).c_str()
-                         << ", externalSSDKeys:%s" << VectorToString(externalSSDKeys).c_str();
-    }
+    LOG_DEBUG("TransferDDREmbWithSSD: batchKeySize:{}, externalKeys size:{}, externalSSDKeys size:{}",
+        batchKeySize, externalKeys.size(), externalSSDKeys.size());
+    LOG_TRACE("TransferDDREmbWithSSD: externalKeys:{}, externalSSDKeys:{}",
+        VectorToString(externalKeys), VectorToString(externalSSDKeys));
 }
 
 /// 去重和过滤无效key
@@ -94,8 +91,8 @@ TransferRet CacheManager::TransferDDREmbWithSSD(const std::string& embTableName,
     if (channelId == TRAIN_CHANNEL_ID) {
         ddrAvailableSize += embHashMap.evictPos.size();
     }
-    VLOG(GLOG_DEBUG) << StringFormat("TransferDDREmbWithSSD, maxOffset:%d, evictPos size:%d, ddrAvailableSize:%d",
-                                     embHashMap.maxOffset, embHashMap.evictPos.size(), ddrAvailableSize);
+    LOG_DEBUG("TransferDDREmbWithSSD, maxOffset:{}, evictPos size:{}, ddrAvailableSize:{}",
+        embHashMap.maxOffset, embHashMap.evictPos.size(), ddrAvailableSize);
     CreateSSDTableIfNotExist(embTableName);
 
     // 调用ssdEngine查询当前批次key中保存在SSD中的key

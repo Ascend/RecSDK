@@ -133,3 +133,17 @@ TEST(Log, FewArgs)
     cout << output << endl;
     EXPECT_NE(output.find("hellow hellow"), string::npos);
 }
+
+TEST(Log, CkptType)
+{
+    MxRec::Log::SetLevel(Log::INFO);
+    testing::internal::CaptureStdout();
+    LOG_INFO("ckpt type={}", CkptDataType::EMB_DATA);
+    std::string output = testing::internal::GetCapturedStdout();
+    EXPECT_NE(output.find("ckpt type=1"), string::npos);
+
+    testing::internal::CaptureStdout();
+    LOG_INFO("ckpt type={}", CkptDataType::NDDR_OFFSET);
+    output = testing::internal::GetCapturedStdout();
+    EXPECT_NE(output.find("ckpt type=5"), string::npos);
+}
