@@ -71,17 +71,6 @@ namespace ge
 {
     static ge::graphStatus InferShape(gert::InferShapeContext *context)
     {
-        gert::Shape *y_shape = context->GetOutputShape(0);
-        int64_t input_shape = context->GetInputTensor(0)->GetShapeSize();
-        if (input_shape <= 0) {
-            printf("input_shape must larger than 0\n");
-            return GRAPH_FAILED;
-        }
-
-        int64_t input_dim = context->GetInputTensor(1)->GetShapeSize() / input_shape;
-        y_shape->SetDimNum(2);
-        y_shape->SetDim(0, input_shape);
-        y_shape->SetDim(1, input_dim);
         return GRAPH_SUCCESS;
     }
     static ge::graphStatus InferDataType(gert::InferDataTypeContext *context)

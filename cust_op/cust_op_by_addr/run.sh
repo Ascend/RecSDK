@@ -14,8 +14,8 @@ export PATH=$parent_dir:$PATH
 
 # 利用msopgen生成可编译文件
 rm -rf ./custom_op
-msopgen gen -i emb_custom.json -f tf -c ai_core-ascend910b -lan cpp -out ./custom_op -m 0 -op EmbeddingLookupByAddress
-msopgen gen -i emb_custom.json -f tf -c ai_core-ascend910b -lan cpp -out ./custom_op -m 1 -op EmbeddingUpdateByAddress
+msopgen gen -i emb_custom.json -f tf -c ai_core-ascend910b1 -lan cpp -out ./custom_op -m 0 -op EmbeddingLookupByAddress
+msopgen gen -i emb_custom.json -f tf -c ai_core-ascend910b1 -lan cpp -out ./custom_op -m 1 -op EmbeddingUpdateByAddress
 
 cp -rf op_kernel custom_op/
 cp -rf op_host custom_op/
