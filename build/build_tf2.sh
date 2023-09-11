@@ -118,7 +118,7 @@ gen_wheel_file()
   python3.7 setup.py bdist_wheel --plat-name=linux_$(arch)
   mkdir -p "$1"
   mv dist/mx_rec*.whl "$1"
-  remove "${ROOT_DIR}"/mx_rec/libasc
+  # remove "${ROOT_DIR}"/mx_rec/libasc
 }
 
 gen_tar_file()
