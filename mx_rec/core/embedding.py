@@ -24,7 +24,8 @@ from mx_rec.constants.constants import (ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SP
 from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is_asc_frozen, get_customized_ops, \
     insert_table_instance, get_training_mode_channel_id, get_use_static, get_name_to_var_dict, \
     clear_channel, get_use_hot, get_device_id, ConfigInitializer, get_ascend_global_hashtable_collection, \
-    get_host_pipeline_ops, get_use_dynamic_expansion, set_modify_graph, insert_removing_var_list, get_bool_gauge_set
+    get_host_pipeline_ops, get_use_dynamic_expansion, set_modify_graph, insert_removing_var_list, get_bool_gauge_set, \
+    get_table_instance_by_name
 from mx_rec.validator.validator import ClassValidator, StringValidator
 from mx_rec.util.tf_version_adapter import npu_ops
 from mx_rec.util.normalization import fix_invalid_table_name
@@ -316,6 +317,27 @@ class SparseEmbedding:
                                               rank=rank_id)
 
         return tf.reshape(src_emb, reshape_info)
+
+    @staticmethod
+    def get_emb_table_size(table_name: str) -> int:
+        """
+        For HBM or DDR mode, return the size of sparse embedding table
+        :param table_name: the name of sparse embedding table
+        :return: the size of the sparse embedding table
+        """
+        table_instance = get_table_instance_by_name(table_name)
+        host_vocabulary_size = table_instance.host_vocabulary_size()
+        device_vocabulary_size = table_instance.device_vocabulary_size
+        if not host_vocabulary_size and not get_use_dynamic_expansion():
+            embed_dim = table_instance.emb_size
+            size = embed_dim * device_vocabulary_size
+        elif not host_vocabulary_size and get_use_dynamic_expansion():
+            embed_dim = table_instance.ext_emb_size
+            size = embed_dim * device_vocabulary_size
+        else:
+            embed_dim = table_instance.ext_emb_size
+            size = (device_vocabulary_size + host_vocabulary_size) * embed_dim
+        return size
 
     def check_optimizer_instance(self):
         for optimizer_instance in self._optimizer_instance_list:
