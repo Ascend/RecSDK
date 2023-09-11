@@ -164,7 +164,8 @@ void GetHybridMgmt(pybind11::module_& m)
         .def("destroy", &MxRec::HybridMgmt::Destroy)
         .def("evict", &MxRec::HybridMgmt::Evict)
         .def("send", &MxRec::HybridMgmt::SendHostMap, py::arg("table_name") = "")
-        .def("receive", &MxRec::HybridMgmt::ReceiveHostMap, py::arg("key_offset_map"));
+        .def("receive", &MxRec::HybridMgmt::ReceiveHostMap, py::arg("key_offset_map"))
+        .def("send_message_to_hybrid", &MxRec::HybridMgmt::CallBySessionRun, py::arg("channel_id"), py::arg("steps")=1);
 }
 
 void GetThresholdValue(pybind11::module_& m)

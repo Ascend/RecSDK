@@ -32,6 +32,10 @@ void HybridMgmtBlock::CheckAndSetBlock(int channelId)
 /// \param channelId train 0 eval 1
 void HybridMgmtBlock::CheckAndNotifyWake(int channelId)
 {
+    VLOG(GLOG_DEBUG) << StringFormat(HYBRID_BLOCKING +
+    "start notify channelId %d pythonBatchId %d hybridBatchId %d",
+    channelId, pythonBatchId[lastRunChannelId], hybridBatchId[channelId]);
+
     CheckValid(channelId);
     if (pythonBatchId[channelId] >= hybridBatchId[channelId]) {
         isBlock[channelId] = false;
@@ -63,10 +67,10 @@ bool HybridMgmtBlock::WaitValid(int channelId)
     }
 }
 
-void HybridMgmtBlock::CountPythonStep(int channelId)
+void HybridMgmtBlock::CountPythonStep(int channelId, int steps)
 {
     // 相应的通知计数
-    pythonBatchId[channelId]++;
+    pythonBatchId[channelId] += steps;
 }
 
 /// 检查是否进行了通道切换，检查当前的step是否合理
@@ -139,9 +143,6 @@ void HybridMgmtBlock::ResetAll(int channelId)
     pythonBatchId[channelId] = 0;
     hybridBatchId[channelId] = 0;
     isBlock[channelId] = false;
-    // eval train通道的sparse 同时进行重置，以防出现sparse id失效的问题
-    uniqueSparseLookID[EVAL_CHANNEL_ID] = -1;
-    uniqueSparseLookID[TRAIN_CHANNEL_ID] = -1;
 }
 
 /// 检查当前的步数是否可以进行save
@@ -183,55 +184,6 @@ void HybridMgmtBlock::SetBlockStatus(int channelId, bool block)
     isBlock[channelId] = block;
 }
 
-/// python侧调用的npu.outfeed_enqueue_op 发送的消息。用来判断当前python执行的步数
-void HybridMgmtBlock::StartNotifySignalMonitor()
-{
-#ifndef GTEST
-    auto fn = [this](int channelId) {
-        while (isRunning) {
-            std::vector<tensorflow::Tensor> tensors;
-            tensorflow::Status status = tensorflow::RecvTensorByAcl(aclHandles[channelId], tensors);
-            if (!isRunning) {
-                break;
-            }
-            if (status != tensorflow::Status::OK()) {
-                LOG(ERROR) << StringFormat(HYBRID_BLOCKING +
-                "%s hd recv error '%s'", d2hChannelName[channelId].c_str(), status.error_message().c_str());
-                throw runtime_error("rev error");
-            }
-            VLOG(GLOG_DEBUG) << StringFormat(HYBRID_BLOCKING +
-            "send message to hybrid channelId %d pythonBatchId %d hybridBatchId %d",
-            channelId, pythonBatchId[channelId], hybridBatchId[channelId]);
-
-            int sparseLookupId = *tensors[0].flat<int32>().data();
-            VLOG(GLOG_DEBUG) << StringFormat(HYBRID_BLOCKING +
-            "send sparse_lookup_id channel %d sparse id %d unique id %d",
-            channelId, sparseLookupId, uniqueSparseLookID[channelId]);
-
-            if (uniqueSparseLookID[channelId] == -1) {
-                // 初始化，只有第一个sparse loop id能进行计数和唤
-                uniqueSparseLookID[channelId] = sparseLookupId;
-            }
-            // 只被计数一次
-            if (sparseLookupId == uniqueSparseLookID[channelId]) {
-                // 只有最先来的id才能进行唤醒和计数
-                CheckAndNotifyWake(channelId);
-                CountPythonStep(channelId);
-            }
-        }
-        LOG(INFO) << StringFormat(HYBRID_BLOCKING + "BLOCKING thread stop");
-    };
-    uint32_t localRankId = rankInfo.deviceId;
-    for (int channelId = 0; channelId < MAX_CHANNEL_NUM; ++channelId) {
-        d2hChannelName[channelId] = StringFormat(D2H_CHANNEL_NAME_PRE + "%d", channelId);
-        auto aclChannelHandle = tdtCreateChannel(localRankId, d2hChannelName[channelId].c_str(), PING_PONG_SIZE);
-        LOG(INFO) << StringFormat(HYBRID_BLOCKING + " %d %s", localRankId, d2hChannelName[channelId].c_str());
-        aclHandles[channelId] = aclChannelHandle;
-        procThreads.emplace_back(std::make_unique<std::thread>(fn, channelId));
-    }
-#endif
-}
-
 void  HybridMgmtBlock::Destroy()
 {
     if (!isRunning) {
@@ -239,13 +191,6 @@ void  HybridMgmtBlock::Destroy()
         return;
     }
     isRunning = false;
-#ifndef GTEST
-    for (int channelId = 0; channelId < MAX_CHANNEL_NUM; ++channelId) {
-        tensorflow::StopRecvTensorByAcl(&aclHandles[channelId], d2hChannelName[channelId]);
-        procThreads[channelId]->join();
-    }
-    LOG(INFO) << StringFormat(HYBRID_BLOCKING + "BLOCKING stop");
-#endif
 }
 
 

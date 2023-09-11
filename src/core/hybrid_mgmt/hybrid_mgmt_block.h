@@ -28,12 +28,10 @@ public:
     // readEmbed算子侧将要处理的batch id
     int readEmbedBatchId[2] = {0, 0};
     bool isRunning = true;
-    // 每个sparse lookup都会生成一个唯一的id，保证每次运行只有一个id在进行计数
-    int uniqueSparseLookID[2]{-1, -1};
 
     ~HybridMgmtBlock();
     void CheckAndNotifyWake(int channelId);
-    void CountPythonStep(int channelId);
+    void CountPythonStep(int channelId, int steps);
     void CheckAndSetBlock(int channelId);
     void CheckValid(int channelId);
     void DoBlock(int channelId);
@@ -43,7 +41,6 @@ public:
     void SetBlockStatus(int channelId, bool block);
     void SetRankInfo(RankInfo rankInfo);
     void SetStepInterval(int trainStep, int evalStep);
-    void StartNotifySignalMonitor();
     bool WaitValid(int channelId);
     void Destroy();
 private:
@@ -51,10 +48,7 @@ private:
     int stepsInterval[2] = {0, 0};
      // 控制通道阻塞的变量
     bool isBlock[2] = {true, true};
-    string d2hChannelName[2];
     RankInfo rankInfo;
-    acltdtChannelHandle* aclHandles[2];
-    std::vector<std::unique_ptr<std::thread>> procThreads {};
 };
 
 class HybridMgmtBlockingException : public std::exception {
@@ -62,7 +56,6 @@ public:
     explicit HybridMgmtBlockingException(const string scene)
     {
         HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
-        // int channelId, int preprocessBatchNumber, int currentBatchNumber
         int channelId = hybridMgmtBlock->lastRunChannelId;
         int preprocessBatchNumber = hybridMgmtBlock->hybridBatchId[channelId];
         int currentBatchNumber = hybridMgmtBlock->pythonBatchId[channelId];

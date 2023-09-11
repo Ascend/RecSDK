@@ -44,12 +44,12 @@ TEST_F(HybridMgmtBlockTest, CountAndNotifyWake)
     hybridMgmtBlock = std::make_unique<HybridMgmtBlock>();
     hybridMgmtBlock->SetStepInterval(1, 1);
     hybridMgmtBlock->CheckAndNotifyWake(0);
-    hybridMgmtBlock->CountPythonStep(0);
+    hybridMgmtBlock->CountPythonStep(0, 1);
     hybridMgmtBlock->pythonBatchId[0] = 1;
     hybridMgmtBlock->hybridBatchId[0] = 0;
     auto fn = [this](int channelId) {
         hybridMgmtBlock->CheckAndNotifyWake(channelId);
-        hybridMgmtBlock->CountPythonStep(0);
+        hybridMgmtBlock->CountPythonStep(0, 1);
         return 0;
     };
     procThreads.emplace_back(std::make_unique<std::thread>(fn, 0));

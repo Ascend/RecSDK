@@ -34,21 +34,21 @@ def get_restore_vector(config):
         restore_size = config.get("batch_size") * config.get("feat_cnt")
     else:
         restore_size = None
-    with tf.control_dependencies([config.get("notify_hybridmgmt_op")]):
-        with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
-            if use_hot and emb_size:
-                device_id = int(config.get("device_id"))
-                hot_size = int(mxrec_pybind.get_ub_hot_size(device_id) / emb_size)
-                restore_vector, hot_pos = npu_ops.gen_npu_ops.get_next(
-                    output_types=[tf.int32, tf.int32],
-                    output_shapes=[restore_size, [hot_size]],
-                    channel_name=f'{config.get("table_name")}_restore_{config.get("channel_id")}'
-                )
-            else:
-                restore_vector = npu_ops.gen_npu_ops.get_next(
-                    output_types=[tf.int32],
-                    output_shapes=[restore_size],
-                    channel_name=f'{config.get("table_name")}_restore_{config.get("channel_id")}')[0]
+
+    with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
+        if use_hot and emb_size:
+            device_id = int(config.get("device_id"))
+            hot_size = int(mxrec_pybind.get_ub_hot_size(device_id) / emb_size)
+            restore_vector, hot_pos = npu_ops.gen_npu_ops.get_next(
+                output_types=[tf.int32, tf.int32],
+                output_shapes=[restore_size, [hot_size]],
+                channel_name=f'{config.get("table_name")}_restore_{config.get("channel_id")}'
+            )
+        else:
+            restore_vector = npu_ops.gen_npu_ops.get_next(
+                output_types=[tf.int32],
+                output_shapes=[restore_size],
+                channel_name=f'{config.get("table_name")}_restore_{config.get("channel_id")}')[0]
 
     return restore_vector, hot_pos
 
@@ -123,20 +123,19 @@ def get_all2all_args(use_static: bool, config: dict) -> list:
     :param config: embedding config
     :return: all2all parametrs
     """
-
     all2all_args = None
     if use_static:
         return all2all_args
-    with tf.control_dependencies([config.get("notify_hybridmgmt_op")]):
-        with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
-            with tf.compat.v1.variable_scope("all2all"):
-                logging.debug(
-                    f'Channel {config.get("table_name")}_a2a_{config.get("channel_id")} was built for getnext')
-                all2all_args = npu_ops.gen_npu_ops.get_next(
-                    output_types=[tf.int64],
-                    output_shapes=[[config.get("rank_size"), config.get("rank_size")]],
-                    channel_name=f'{config.get("table_name")}_all2all_{config.get("channel_id")}',
-                    name="a2a_get_next")[0] * config.get("emb_size")
+
+    with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
+        with tf.compat.v1.variable_scope("all2all"):
+            logging.debug(
+                f'Channel {config.get("table_name")}_a2a_{config.get("channel_id")} was built for getnext')
+            all2all_args = npu_ops.gen_npu_ops.get_next(
+                output_types=[tf.int64],
+                output_shapes=[[config.get("rank_size"), config.get("rank_size")]],
+                channel_name=f'{config.get("table_name")}_all2all_{config.get("channel_id")}',
+                name="a2a_get_next")[0] * config.get("emb_size")
 
     return all2all_args
 
