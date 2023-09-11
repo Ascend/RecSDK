@@ -41,7 +41,8 @@ const char* Log::LevelToStr(int level)
         "WARN",
         "ERROR",
     };
-    return msg[level];
+    constexpr int LEVEL_OFFSET = 2;
+    return msg[level + LEVEL_OFFSET];
 }
 
 void Log::LogUnpack(queue<string>& fmt, stringstream &ss)
