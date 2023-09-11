@@ -28,11 +28,11 @@ constexpr size_t DELIM_LEN = 2;
 class Log {
 public:
 
-    static constexpr int TRACE = 0;
-    static constexpr int DEBUG = 1;
-    static constexpr int INFO = 2;
-    static constexpr int WARN = 3;
-    static constexpr int ERROR = 4;
+    static constexpr int TRACE = -2;
+    static constexpr int DEBUG = -1;
+    static constexpr int INFO = 0;
+    static constexpr int WARN = 1;
+    static constexpr int ERROR = 2;
 
     static void SetRank(int rank);
 
