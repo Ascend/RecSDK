@@ -28,7 +28,10 @@ class _EvictHook(tf.compat.v1.train.SessionRunHook):
         self._global_step_tensor = None
 
         self.check_evict_init_params()
-        logging.info(f"_EvictHook - > evict_time_interval: %d, evict_step_interval: %d", self._evict_time_interval,
+        if evict_step_interval is None:
+            logging.info(f"_EvictHook - > evict_time_interval: %d", self._evict_time_interval)
+        else:
+            logging.info(f"_EvictHook - > evict_time_interval: %d, evict_step_interval: %d", self._evict_time_interval,
                      self._evict_step_interval)
 
     def begin(self):
