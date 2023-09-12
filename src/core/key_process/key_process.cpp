@@ -286,7 +286,7 @@ void KeyProcess::KeyProcessTaskWithFastUnique(int channel, int threadId)
         }
         unique->UnInitialize();
     } catch (const EndRunError &e) {
-        LOG_ERROR(KEY_PROCESS "abort run: {}", e.what());
+        LOG_INFO(KEY_PROCESS "abort run: {}", e.what());
     }
     LOG_INFO(KEY_PROCESS "KeyProcessTaskWithFastUnique exit. rank:{} thread:{}, channel:{}",
         rankInfo.rankId, threadId, channel);
@@ -319,7 +319,7 @@ void KeyProcess::KeyProcessTask(int channel, int threadId)
             batchQueue->PutDirty(move(batch));
         }
     } catch (const EndRunError &e) {
-        LOG_ERROR(KEY_PROCESS "abort run: {}", e.what());
+        LOG_INFO(KEY_PROCESS "abort run: {}", e.what());
     }
     LOG_INFO(KEY_PROCESS "KeyProcessTask exit. rank:{} thread:{}, channel:{}", rankInfo.rankId, threadId, channel);
 }
