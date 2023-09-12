@@ -5,6 +5,7 @@
 import json
 import os
 import logging
+import threading
 from collections import defaultdict
 
 import numpy as np
@@ -17,6 +18,19 @@ from mx_rec.util.initialize import get_rank_id, get_rank_size, get_customized_op
     send_host_data, get_ascend_global_hashtable_collection, set_sparse_dir
 from mx_rec.util.perf import performance
 from mx_rec.validator.validator import DirectoryValidator, FileValidator
+
+
+# define save model thread
+class SaveModelThread(threading.Thread):
+    def __init__(self, sess, result, root_dir, table_name):
+        super().__init__()
+        self.result = result
+        self.root_dir = root_dir
+        self.table_name = table_name
+        self.sess = sess
+
+    def run(self):
+        Saver().save_table_name_data(self.sess, self.result, self.root_dir, self.table_name)
 
 
 class Saver(object):
@@ -34,7 +48,7 @@ class Saver(object):
         self.restore_fetch_list = []
         self.placeholder_dict = defaultdict(dict)
         # save_easy_mode : only save the embedding and key data of sparse tables
-        self.save_easy_mode = os.getenv("SAVE_EASY", 0)
+        self.save_easy_mode = int(os.getenv("SAVE_EASY", 0))
         self.build()
 
     def build(self):
@@ -108,12 +122,33 @@ class Saver(object):
         ckpt_name = f"sparse-{base_name}"
 
         reading_path = os.path.join(directory, ckpt_name)
+        set_sparse_dir(reading_path)
         if not tf.io.gfile.exists(reading_path):
             raise FileExistsError(f"Given dir {reading_path} does not exist, please double check.")
 
         self._restore(sess, reading_path)
         logging.info(f"sparse model was restored from dir '{reading_path}' .")
         logging.debug("======== Restoring finished ========")
+
+    @performance("save_table_name_data")
+    def save_table_name_data(self, sess, result, root_dir, table_name):
+        dump_data_dict = sess.run(result.get(table_name))
+
+        table_instance = get_table_instance_by_name(table_name)
+        self._make_table_name_dir(root_dir, table_instance, table_name)
+        # save key
+        if is_asc_manager_initialized() and self.save_easy_mode:
+            self._save_easy_mode_save_key_data(dump_data_dict, root_dir, table_name)
+        # save embedding
+        save_embedding_data(root_dir, table_name, dump_data_dict, self.rank_id)
+        if table_instance.use_feature_mapping:
+            save_feature_mapping_data(root_dir, table_name, dump_data_dict, self.rank_id)
+            save_offset_data(root_dir, table_name, dump_data_dict, self.rank_id)
+        if "optimizer" in dump_data_dict:
+            dump_optimizer_data_dict = dump_data_dict.get("optimizer")
+            for optimizer_name, dump_optimizer_data in dump_optimizer_data_dict.items():
+                save_optimizer_state_data(root_dir, table_name, optimizer_name, dump_optimizer_data,
+                                          self.rank_id)
 
     def _build_save(self):
         for var in self.var_list:
@@ -159,37 +194,38 @@ class Saver(object):
                 assign_op = state.assign(sub_optimizer_placeholder_dict.get(key_state))
                 self.restore_fetch_list.append(assign_op)
 
+    @performance("_save")
     def _save(self, sess, root_dir):
-        result = sess.run(self.save_op_dict)
+        result = self.save_op_dict
         if is_asc_manager_initialized() and not self.save_easy_mode:
             save_host_data(root_dir)
             logging.debug(f"host data was saved.")
 
-        for table_name, dump_data_dict in result.items():
-            table_instance = get_table_instance_by_name(table_name)
-            if table_instance.host_vocabulary_size > 0:
-                table_dir = os.path.join(root_dir, "HashTable", "DDR", table_name)
-            else:
-                table_dir = os.path.join(root_dir, "HashTable", "HBM", table_name)
-            tf.io.gfile.makedirs(table_dir)
-            if is_asc_manager_initialized() and self.save_easy_mode:
-                host_data = get_host_data(table_name)
-                key = np.array(list(host_data.keys()))
-                offset = list(host_data.values())
-                get_valid_dict_data(dump_data_dict, offset)
-                save_key_data(root_dir, table_name, key, self.rank_id)
+        threads = []
+        for table_name in result.keys():
+            thread = SaveModelThread(sess, result, root_dir, table_name)
+            threads.append(thread)
 
-            save_embedding_data(root_dir, table_name, dump_data_dict, self.rank_id)
-            table_instance = get_table_instance_by_name(table_name)
+        for thread in threads:
+            thread.start()
 
-            if table_instance.use_feature_mapping:
-                save_feature_mapping_data(root_dir, table_name, dump_data_dict, self.rank_id)
-                save_offset_data(root_dir, table_name, dump_data_dict, self.rank_id)
-            if "optimizer" in dump_data_dict:
-                dump_optimizer_data_dict = dump_data_dict.get("optimizer")
-                for optimizer_name, dump_optimizer_data in dump_optimizer_data_dict.items():
-                    save_optimizer_state_data(root_dir, table_name, optimizer_name, dump_optimizer_data,
-                                              self.rank_id)
+        for thread in threads:
+            thread.join()
+
+    @staticmethod
+    def _make_table_name_dir(root_dir, table_instance, table_name):
+        if table_instance.host_vocabulary_size > 0:
+            table_dir = os.path.join(root_dir, "HashTable", "DDR", table_name)
+        else:
+            table_dir = os.path.join(root_dir, "HashTable", "HBM", table_name)
+        tf.io.gfile.makedirs(table_dir)
+
+    def _save_easy_mode_save_key_data(self, dump_data_dict, root_dir, table_name):
+        host_data = get_host_data(table_name)
+        key = np.array(list(host_data.keys()))
+        offset = list(host_data.values())
+        get_valid_dict_data(dump_data_dict, offset)
+        save_key_data(root_dir, table_name, key, self.rank_id)
 
     def _restore(self, sess, reading_path):
         restore_feed_dict = defaultdict(dict)
@@ -283,6 +319,7 @@ def fill_placeholder(reading_path, placeholder_dict, feed_dict, suffix, name_des
         feed_dict[embedding_placeholder] = data
 
 
+@performance("save_embedding_data")
 def save_embedding_data(root_dir, table_name, dump_data_dict, suffix):
     target_path = generate_path(root_dir, "HashTable", "HBM", table_name, DataName.EMBEDDING.value)
     data_to_write = dump_data_dict.get(DataName.EMBEDDING.value)
@@ -362,8 +399,8 @@ def write_binary_data(writing_path, suffix, data, attributes=None):
 
     if target_data_dir.find("://") != -1:
         logging.debug(f"use hdfs path {target_data_dir} to save sparse data.")
-        with tf.io.gfile.GFile(target_data_dir, "w") as file:
-            data = json.dumps(data.flatten().tolist())
+        with tf.io.gfile.GFile(target_data_dir, "wb") as file:
+            data = data.tostring()
             file.write(data)
     else:
         logging.debug(f"use local file path {target_data_dir} to save sparse data.")
@@ -401,12 +438,12 @@ def read_binary_data(reading_path: str, suffix: int, data_name: str, table_name:
     if DataAttr.DATATYPE.value not in attributes:
         raise AttributeError(f"Lack of attribute {DataAttr.DATATYPE.value}.")
 
-    with tf.io.gfile.GFile(target_data_dir, "r") as file:
+    with tf.io.gfile.GFile(target_data_dir, "rb") as file:
         validate_read_file(target_data_dir)
         if target_data_dir.find("://") != -1:
             logging.debug("use hdfs path %s to restore sparse data.", target_data_dir)
             data_to_restore = file.read()
-            data_to_restore = np.array(json.loads(data_to_restore))
+            data_to_restore = np.fromstring(data_to_restore, dtype=attributes.pop(DataAttr.DATATYPE.value))
         else:
             logging.debug("use local file path %s to restore sparse data.", target_data_dir)
             data_to_restore = np.fromfile(target_data_dir, dtype=attributes.pop(DataAttr.DATATYPE.value))
