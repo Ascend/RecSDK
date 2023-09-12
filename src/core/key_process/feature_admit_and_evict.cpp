@@ -28,7 +28,7 @@ bool FeatureAdmitAndEvict::Init(const std::vector<ThresholdValue>& thresholdValu
 {
     if (!ParseThresholdCfg(thresholdValues)) {
         m_isEnableFunction = false;
-        LOG(ERROR) << "Config is error, feature admin-and-evict function is not available ...\n";
+        LOG_ERROR("Config is error, feature admin-and-evict function is not available ...");
         return false;
     }
     SetCombineSwitch();
@@ -41,7 +41,7 @@ FeatureAdmitReturnType FeatureAdmitAndEvict::FeatureAdmit(int channel,
     const std::unique_ptr<emb_batch_t>& batch, keys_t& splitKey, std::vector<uint32_t>& keyCount)
 {
     if (splitKey.size() != keyCount.size()) {
-        LOG(ERROR) << StringFormat("splitKey.size %d != keyCount.size %d", splitKey.size(), keyCount.size());
+        LOG_ERROR("splitKey.size {} != keyCount.size {}", splitKey.size(), keyCount.size());
         return FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR;
     }
 
@@ -60,9 +60,8 @@ FeatureAdmitReturnType FeatureAdmitAndEvict::FeatureAdmit(int channel,
         absl::flat_hash_map<int64_t, FeatureItemInfo> records(m_recordsInitSize);
         m_recordsData.historyRecords[tableName] = records;
     }
-    VLOG(GLOG_DEBUG) << StringFormat(
-        "FeatureAdmitAndEvict PrintSize, name:[%s], history key:[%d] ...", tableName.c_str(),
-        m_recordsData.historyRecords[tableName].size());
+    LOG_DEBUG("FeatureAdmitAndEvict PrintSize, name:[{}], history key:[{}] ...",
+        tableName.c_str(), m_recordsData.historyRecords[tableName].size());
 
     if (batch->timestamp > m_recordsData.timestamps[tableName]) {
         m_recordsData.timestamps[tableName] = batch->timestamp;
@@ -89,11 +88,8 @@ FeatureAdmitReturnType FeatureAdmitAndEvict::FeatureAdmit(int channel,
             key = -1;
         }
     }
-    if (VLOG_IS_ON(GLOG_TRACE)) {
-        VLOG(GLOG_TRACE) << StringFormat(
-            "FeatureAdmit, name:[%s], channel:[%d], after admit, splitKey:[%s] ...", tableName.c_str(), channel,
-            VectorToString(splitKey).c_str());
-    }
+    LOG_TRACE("FeatureAdmit, name:[{}], channel:[{}], after admit, splitKey:[{}] ...",
+        tableName, channel, VectorToString(splitKey));
 
     return FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_OK;
 }
@@ -144,11 +140,11 @@ void FeatureAdmitAndEvict::FeatureEvict(map<std::string, std::vector<emb_key_t>>
 {
     std::vector<std::string> tableNames = GetAllNeedEvictTableNames();
     if (tableNames.empty()) {
-        LOG(INFO) << "EmbNames is empty, no evict function ...";
+        LOG_INFO("EmbNames is empty, no evict function ...");
         return ;
     }
     if (!m_isEnableFunction) {
-        LOG(WARNING) << "m_isEnableFunction switch is false, no evict function ...";
+        LOG_WARN("m_isEnableFunction switch is false, no evict function ...");
         return ;
     }
     std::lock_guard<std::mutex> lock(m_syncMutexs);

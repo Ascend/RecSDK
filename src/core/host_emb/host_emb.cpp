@@ -28,7 +28,7 @@ void HostEmb::Initialize(const vector<EmbInfo>& embInfos, int seed)
         EmbDataGenerator(embInfo.initializeInfos, seed, static_cast<int>(embInfo.hostVocabSize),
                          embInfo.extEmbeddingSize, hostEmb.embData);
         hostEmbs[embInfo.name] = move(hostEmb);
-        LOG(INFO) << (HOSTEMB + "HostEmb Initialize End");
+        LOG_INFO(HOSTEMB + "HostEmb Initialize End");
     }
 }
 
@@ -42,19 +42,17 @@ void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, in
     int embeddingSize, vector<vector<float>> &embData)
 {
 #ifndef GTEST
-    LOG(INFO) << StringFormat(
-        HOSTEMB + "GenerateEmbData Start, seed:%d, initializer num: %d", seed, initializeInfos.size()
-    );
+    LOG_INFO(HOSTEMB + "GenerateEmbData Start, seed:{}, initializer num: {}", seed, initializeInfos.size());
     embData.clear();
     embData.resize(vocabSize, vector<float>(embeddingSize));
 
     for (auto initializeInfo: initializeInfos) {
-        LOG(INFO) << StringFormat("Device GenerateEmbData ing. name %s", initializeInfo.name.c_str());
+        LOG_INFO("Device GenerateEmbData ing. name {}", initializeInfo.name);
         for (int i = 0; i < vocabSize; i++) {
             initializeInfo.initializer->GenerateData(embData.at(i).data(), embeddingSize);
         }
     }
-    LOG(INFO) << StringFormat(HOSTEMB + "GenerateEmbData End, seed:%d", seed);
+    LOG_INFO(HOSTEMB + "GenerateEmbData End, seed:{}", seed);
 #endif
 }
 
@@ -65,26 +63,22 @@ void HostEmb::Join(int channelId)
     TimeCost tc = TimeCost();
     switch (channelId) {
         case TRAIN_CHANNEL_ID:
-            VLOG(GLOG_DEBUG) << StringFormat(
-                HOSTEMB + "start join, channelId:%d, procThreadsForTrain num:%d",
+            LOG_DEBUG(HOSTEMB + "start join, channelId:{}, procThreadsForTrain num:{}",
                 channelId, procThreadsForTrain.size());
             for (auto& t: procThreadsForTrain) {
                 t->join();
             }
             procThreadsForTrain.clear();
-            VLOG(GLOG_DEBUG) << StringFormat(
-                HOSTEMB + "end join, channelId:%d, cost:%dms", channelId, tc.ElapsedMS());
+            LOG_DEBUG(HOSTEMB + "end join, channelId:{}, cost:{}ms", channelId, tc.ElapsedMS());
             break;
         case EVAL_CHANNEL_ID:
-            VLOG(GLOG_DEBUG) << StringFormat(
-                HOSTEMB + "start join, channelId:%d, procThreadsForEval num:%d",
+            LOG_DEBUG(HOSTEMB + "start join, channelId:{}, procThreadsForEval num:{}",
                 channelId, procThreadsForEval.size());
             for (auto& t: procThreadsForEval) {
                 t->join();
             }
             procThreadsForEval.clear();
-            VLOG(GLOG_DEBUG) << StringFormat(
-                HOSTEMB + "end join, channelId:%d, cost:%dms", channelId, tc.ElapsedMS());
+            LOG_DEBUG(HOSTEMB + "end join, channelId:{}, cost:{}ms", channelId, tc.ElapsedMS());
             break;
         default:
             throw invalid_argument("channelId not in [TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID]");
@@ -99,15 +93,15 @@ void HostEmb::Join(int channelId)
 /// \param embName 表名
 void HostEmb::UpdateEmb(const vector<size_t>& missingKeysHostPos, int channelId, const string& embName)
 {
-    LOG(INFO) << StringFormat(HOSTEMB + "UpdateEmb, channelId:%d, embName:%s", channelId, embName.c_str());
+    LOG_INFO(HOSTEMB + "UpdateEmb, channelId:{}, embName:{}", channelId, embName);
     EASY_FUNCTION(profiler::colors::Purple);
     TimeCost tc = TimeCost();
     auto hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
     TransferChannel transferName = TransferChannel::D2H;
-    LOG(INFO) << StringFormat(HOSTEMB + "wait D2H embs, channelId:%d", channelId);
+    LOG_INFO(HOSTEMB + "wait D2H embs, channelId:{}", channelId);
     const auto tensors = hdTransfer->Recv(transferName, channelId, embName);
     if (tensors.empty()) {
-        LOG(WARNING) << (HOSTEMB + "recv empty data");
+        LOG_WARN(HOSTEMB + "recv empty data");
         return;
     }
     const Tensor& d2hEmb = tensors[0];
@@ -116,9 +110,8 @@ void HostEmb::UpdateEmb(const vector<size_t>& missingKeysHostPos, int channelId,
     auto embeddingSize = hostEmbs[embName].hostEmbInfo.extEmbeddingSize;
     auto& embData = hostEmbs[embName].embData;
 
-    VLOG(GLOG_DEBUG) << StringFormat(HOSTEMB + "embName:%s, UpdateEmb missingKeys len = %d, embeddingSize = %d, "
-                                     "embData.size = %d", embName.c_str(), missingKeysHostPos.size(), embeddingSize,
-                                     embData.size());
+    LOG_DEBUG(HOSTEMB + "embName:{}, UpdateEmb missingKeys len = {}, embeddingSize = {}, "
+        "embData.size = {}", embName, missingKeysHostPos.size(), embeddingSize, embData.size());
 
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) \
                          shared(missingKeysHostPos, tensorPtr, embData, embeddingSize)
@@ -129,7 +122,7 @@ void HostEmb::UpdateEmb(const vector<size_t>& missingKeysHostPos, int channelId,
             dst[j] = tensorPtr[j + embeddingSize * i];
         }
     }
-    LOG(INFO) << StringFormat(HOSTEMB + "update emb end cost: %dms", tc.ElapsedMS());
+    LOG_INFO(HOSTEMB + "update emb end cost: {}ms", tc.ElapsedMS());
     EASY_END_BLOCK
 }
 
@@ -139,16 +132,16 @@ void HostEmb::UpdateEmb(const vector<size_t>& missingKeysHostPos, int channelId,
 /// \param embName 表名
 void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelId, const string& embName)
 {
-    LOG(INFO) << StringFormat(HOSTEMB + "UpdateEmbV2, channelId:%d, embName:%s", channelId, embName.c_str());
+    LOG_INFO(HOSTEMB + "UpdateEmbV2, channelId:{}, embName:{}", channelId, embName);
     EASY_FUNCTION(profiler::colors::Purple)
     auto updateThread =
         [&, missingKeysHostPos, channelId, embName] {
             auto hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
             TransferChannel transferName = TransferChannel::D2H;
-            LOG(INFO) << StringFormat(HOSTEMB + "wait D2H embs, channelId:%d", channelId);
+            LOG_INFO(HOSTEMB + "wait D2H embs, channelId:{}", channelId);
             auto size = hdTransfer->RecvAcl(transferName, channelId, embName);
             if (size == 0) {
-                LOG(WARNING) << (HOSTEMB + "recv empty data");
+                LOG_WARN(HOSTEMB + "recv empty data");
                 return;
             }
             TimeCost tc = TimeCost();
@@ -164,10 +157,9 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
 
             size_t elementSize = acltdtGetDataSizeFromItem(aclData);
             size_t dimNum = acltdtGetDimNumFromItem(aclData);
-            VLOG(GLOG_DEBUG) << StringFormat(HOSTEMB + "embName:%s, UpdateEmb missingKeys len = %d, embeddingSize = %d,"
-                                             " embData.size = %d, RecvAcl = %d, elementSize = %d, dimNum = %d",
-                                             embName.c_str(), missingKeysHostPos.size(), embeddingSize, embData.size(),
-                                             size, elementSize, dimNum);
+            LOG_DEBUG(HOSTEMB + "embName:{}, UpdateEmb missingKeys len = {}, embeddingSize = {},"
+                " embData.size = {}, RecvAcl = {}, elementSize = {}, dimNum = {}",
+                embName, missingKeysHostPos.size(), embeddingSize, embData.size(), size, elementSize, dimNum);
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) shared(ptr, embData, embeddingSize)
             for (size_t j = 0; j < missingKeysHostPos.size(); j++) {
                 auto& dst = embData[missingKeysHostPos[j]];
@@ -176,7 +168,7 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
                     dst[k] = ptr[k + embeddingSize * j];
                 }
             }
-            LOG(INFO) << StringFormat(HOSTEMB + "update emb end cost: %dms", tc.ElapsedMS());
+            LOG_INFO(HOSTEMB + "update emb end cost: {}ms", tc.ElapsedMS());
     };
 
     switch (channelId) {
@@ -215,8 +207,7 @@ void HostEmb::GetH2DEmb(const vector<size_t>& missingKeysHostPos, const string& 
             tmpData(j + i * embeddingSize) = src[j];
         }
     }
-    LOG(INFO) << StringFormat(
-        "GetH2DEmb end, missingKeys count:%d cost:%dms", missingKeysHostPos.size(), tc.ElapsedMS());
+    LOG_INFO("GetH2DEmb end, missingKeys count:{} cost:{}ms", missingKeysHostPos.size(), tc.ElapsedMS());
 }
 
 /// 获取hostEmbs的指针
@@ -234,7 +225,7 @@ void HostEmb::EmbPartGenerator(const vector<InitializeInfo> &initializeInfos, ve
                                const vector<size_t>& offset)
 {
     for (auto initializeInfo: initializeInfos) {
-        LOG(INFO) << StringFormat("Device GenerateEmbData ing. name %s", initializeInfo.name.c_str());
+        LOG_INFO("Device GenerateEmbData ing. name {}", initializeInfo.name);
         for (size_t i = 0; i < offset.size(); i++) {
             initializeInfo.initializer->GenerateData(embData.at(offset.at(i)).data(),
                 static_cast<int>(embData[0].size()));
@@ -251,7 +242,6 @@ void HostEmb::EvictInitEmb(const string& embName, const vector<size_t>& offset)
 #ifndef GTEST
     auto& hostEmb = GetEmb(embName);
     EmbPartGenerator(hostEmb.hostEmbInfo.initializeInfos, hostEmb.embData, offset);
-    LOG(INFO) << StringFormat(
-        HOSTEMB + "ddr EvictInitEmb!host embName %s, init offsets size: %d", embName.c_str(), offset.size());
+    LOG_INFO(HOSTEMB + "ddr EvictInitEmb!host embName {}, init offsets size: {}", embName, offset.size());
 #endif
 }

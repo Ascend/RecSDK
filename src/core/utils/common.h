@@ -44,8 +44,6 @@
     #define EASY_PROFILER_DISABLE
 #endif
 
-#define REC_LOG(severity) if (g_glogLevel >= severity) LOG(severity)
-
 namespace MxRec {
 #define INFO_PTR shared_ptr
 #define MGMT_CPY_THREADS 4
@@ -579,6 +577,8 @@ namespace MxRec {
         EXCLUDE_FREQ_MAP = 11,
         EVICT_POS = 12
     };
+
+    ostream& operator<<(ostream& s, MxRec::CkptDataType type);
 } // end namespace MxRec
 
 #define KEY_PROCESS "\033[45m[KeyProcess]\033[0m "

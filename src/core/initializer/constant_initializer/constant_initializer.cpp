@@ -23,8 +23,7 @@ void ConstantInitializer::GenerateData(float* const emb, const int embSize)
         return;
     }
     if (embSize < (start + len)) {
-        LOG(WARNING) << StringFormat(
-            "InitializeInfo start %d  + len %d is larger than embedding size %d.", start, len, embSize);
+        LOG_WARN("InitializeInfo start {} + len {} is larger than embedding size {}.", start, len, embSize);
         return;
     }
     std::fill_n(emb + start, len, initParam * value);

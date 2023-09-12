@@ -29,8 +29,7 @@ void TruncatedNormalInitializer::GenerateData(float* const emb, const int embSiz
         return;
     }
     if (embSize < (start + len)) {
-        LOG(WARNING) << StringFormat(
-            "InitializeInfo start %d + len %d is larger than embedding size %d.", start, len, embSize);
+        LOG_WARN("InitializeInfo start {} + len {} is larger than embedding size {}.", start, len, embSize);
         return;
     }
     std::generate_n(emb + start, len, [&]() {

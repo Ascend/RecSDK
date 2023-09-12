@@ -7,6 +7,7 @@
 #include "hybrid_mgmt.h"
 
 #include "utils/time_cost.h"
+#include "utils/log.h"
 #include "checkpoint/checkpoint.h"
 
 
@@ -27,33 +28,31 @@ bool HybridMgmt::InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>&
     if (getenv("APPLY_GRADIENTS_STRATEGY") != nullptr) {
         bool strategy = (!strcmp(getenv("APPLY_GRADIENTS_STRATEGY"), SUM_SAME_ID));
         PerfConfig::gradientStrategy = strategy;
-        LOG(INFO) << StringFormat("config GRADIENTS_STRATEGY:%d", strategy);
+        LOG_INFO("config GRADIENTS_STRATEGY:{}", strategy);
     }
 
     // 设置当前进程用于数据处理的线程数，默认为6，取值1-10；取值不在范围内，则数据处理线程启动失败退出
     if (getenv("KEY_PROCESS_THREAD_NUM") != nullptr) {
         int num = std::atoi(getenv("KEY_PROCESS_THREAD_NUM"));
         if (num < 1 || num > MAX_KEY_PROCESS_THREAD) {
-            LOG(ERROR) << StringFormat(
-                "[HybridMgmt::InitKeyProcess] KEY_PROCESS_THREAD_NUM:%d, should in range [1, %d]",
+            LOG_ERROR("[HybridMgmt::InitKeyProcess] KEY_PROCESS_THREAD_NUM:{}, should in range [1, {}]",
                 num, MAX_KEY_PROCESS_THREAD);
             return false;
         }
         PerfConfig::keyProcessThreadNum = num;
-        LOG(INFO) << StringFormat("config KEY_PROCESS_THREAD_NUM:%d", num);
+        LOG_INFO("config KEY_PROCESS_THREAD_NUM:{}", num);
     }
 
     // 设置AccCTR去重线程数，默认为8，取值1-8；取值不在范围内，则数据处理线程启动失败退出
     if (getenv("MAX_UNIQUE_THREAD_NUM") != nullptr) {
         int num = std::atoi(getenv("MAX_UNIQUE_THREAD_NUM"));
         if (num < 1 || num > DEFAULT_MAX_UNIQUE_THREAD_NUM) {
-            LOG(ERROR) << StringFormat(
-                "[HybridMgmt::InitKeyProcess] MAX_UNIQUE_THREAD_NUM:%d, should in range [1, %d]",
+            LOG_ERROR("[HybridMgmt::InitKeyProcess] MAX_UNIQUE_THREAD_NUM:{}, should in range [1, {}]",
                 num, DEFAULT_MAX_UNIQUE_THREAD_NUM);
             return false;
         }
         PerfConfig::maxUniqueThreadNum = num;
-        LOG(INFO) << StringFormat("config MAX_UNIQUE_THREAD_NUM:%d", num);
+        LOG_INFO("config MAX_UNIQUE_THREAD_NUM:{}", num);
     }
 
     // 设置是否使用AccCTR库提供的去重、分桶功能，默认关闭
@@ -114,8 +113,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     InitRankInfo(rankInfo, embInfos);
     g_statOn = GetEnv("STAT_ON");
 
-    LOG(INFO) << StringFormat(
-        MGMT + "begin initialize, localRankSize:%d, localRankId:%d, rank:%d",
+    LOG_INFO(MGMT + "begin initialize, localRankSize:{}, localRankId:{}, rank:{}",
         rankInfo.localRankSize, rankInfo.localRankId, rankInfo.rankId);
 
     mgmtRankInfo = rankInfo;
@@ -158,12 +156,10 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     }
 
     for (const auto& info: embInfos) {
-        LOG(INFO) << StringFormat(
-            MGMT + "emb[%s] vocab size %d+%d sc:%d",
-            info.name.c_str(), info.devVocabSize, info.hostVocabSize, info.sendCount);
+        LOG_INFO(MGMT + "emb[{}] vocab size {}+{} sc:{}",
+            info.name, info.devVocabSize, info.hostVocabSize, info.sendCount);
     }
-    LOG(INFO) << StringFormat(
-        MGMT + "end initialize, noDDR:%d, maxStep:[%d, %d], rank:%d", rankInfo.noDDR,
+    LOG_INFO(MGMT + "end initialize, noDDR:{}, maxStep:[{}, {}], rank:{}", rankInfo.noDDR,
         rankInfo.maxStep.at(TRAIN_CHANNEL_ID), rankInfo.maxStep.at(EVAL_CHANNEL_ID), rankInfo.rankId);
 #endif
     return true;
@@ -172,7 +168,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
 // 比较hostHashMap和cacheManager的数据是否一致
 void HybridMgmt::AddCacheManagerTraceLog(CkptData& saveData)
 {
-    if (!VLOG_IS_ON(GLOG_TRACE)) {
+    if (Log::GetLevel() != Log::TRACE) {
         return;
     }
     auto& embHashMaps = saveData.embHashMaps;
@@ -190,12 +186,12 @@ void HybridMgmt::AddCacheManagerTraceLog(CkptData& saveData)
             ++tableKeyInDdr;
             auto cuKey = item.first;
             if (lfu.find(cuKey) == lfu.end()) {
-                LOG(ERROR) << "save step error, ddr key:" << cuKey << ", not exist in lfu, hostHashMap offset:"
-                           << item.second;
+                LOG_ERROR("save step error, ddr key:{}, not exist in lfu, hostHashMap offset:",
+                    cuKey, item.second);
             }
         }
-        LOG(INFO) << "save step end, table:" << embTableName << ", tableKeyInDdr:" << tableKeyInDdr <<
-                     ", tableKeyInLfu:" << lfu.size();
+        LOG_INFO("save step end, table:{}, tableKeyInDdr:{}, tableKeyInLfu:{}",
+            embTableName, tableKeyInDdr, lfu.size());
     }
 }
 
@@ -216,10 +212,10 @@ void HybridMgmt::RestoreFreq4Save(CkptData& saveData)
         auto& embHashMap = it.second;
         vector<emb_key_t> hbm2DdrKeys;
         vector<emb_key_t> ddr2HbmKeys;
-        LOG(INFO) << "restore freq info for save step, table:" << embTableName << ", embHashMap.oldSwap size:"
-                  << embHashMap.oldSwap.size();
-        LOG(INFO) << "before, ddr key table size:" << ddrKeyFreqMaps[embTableName].size()
-                  << ", exclude ddr key table size:" << excludeDDRKeyFreqMaps[embTableName].size();
+        LOG_INFO("restore freq info for save step, table:{}, embHashMap.oldSwap size:{}",
+            embTableName, embHashMap.oldSwap.size());
+        LOG_INFO("before, ddr key table size:{}, exclude ddr key table size:{}",
+            ddrKeyFreqMaps[embTableName].size(), excludeDDRKeyFreqMaps[embTableName].size());
         for (const auto& swapKeys : embHashMap.oldSwap) {
             hbm2DdrKeys.emplace_back(swapKeys.second);
             ddr2HbmKeys.emplace_back(swapKeys.first);
@@ -240,10 +236,10 @@ void HybridMgmt::RestoreFreq4Save(CkptData& saveData)
             excludeDDRKeyFreqMaps[embTableName][key] = ddrKeyFreqMaps[embTableName][key];
             ddrKeyFreqMaps[embTableName].erase(key);
         }
-        LOG(INFO) << "hbm2DdrKeysNotInExcludeMapCount:" << hbm2DdrKeysNotInExcludeMapCount
-                  << ", ddr2HbmKeysNotInDDRMapCount:" << ddr2HbmKeysNotInDDRMapCount;
-        LOG(INFO) << "after, ddr key table size:" << ddrKeyFreqMaps[embTableName].size()
-                  << ", exclude ddr key table size:" << excludeDDRKeyFreqMaps[embTableName].size();
+        LOG_INFO("hbm2DdrKeysNotInExcludeMapCount:{}, ddr2HbmKeysNotInDDRMapCount:{}",
+            hbm2DdrKeysNotInExcludeMapCount, ddr2HbmKeysNotInDDRMapCount);
+        LOG_INFO("after, ddr key table size:{}, exclude ddr key table size:{}",
+            ddrKeyFreqMaps[embTableName].size(), excludeDDRKeyFreqMaps[embTableName].size());
     }
 }
 
@@ -260,12 +256,12 @@ bool HybridMgmt::Save(const string savePath)
     Checkpoint saveCkpt;
     if (!mgmtRankInfo.noDDR) {
         // DDR模式保存host的emb表以及hashmap
-        VLOG(GLOG_DEBUG) << (MGMT + "Start host side save: ddr mode hashmap");
+        LOG_DEBUG(MGMT + "Start host side save: ddr mode hashmap");
         saveData.hostEmbs = hostEmbs->GetHostEmbs();
         saveData.embHashMaps = hostHashMaps->GetHashMaps();
     } else {
         // HBM模式保存最大偏移（真正使用了多少vocab容量），特征到偏移的映射
-        VLOG(GLOG_DEBUG) << (MGMT + "Start host side save: no ddr mode hashmap");
+        LOG_DEBUG(MGMT + "Start host side save: no ddr mode hashmap");
         saveData.maxOffset = preprocess->GetMaxOffset();
         saveData.keyOffsetMap = preprocess->GetKeyOffsetMap();
     }
@@ -284,7 +280,7 @@ bool HybridMgmt::Save(const string savePath)
     // 保存特征准入淘汰相关的数据
     auto& featAdmitNEvict = preprocess->GetFeatAdmitAndEvict();
     if (featAdmitNEvict.GetFunctionSwitch()) {
-        VLOG(GLOG_DEBUG) << (MGMT + "Start host side save: feature admit and evict");
+        LOG_DEBUG(MGMT + "Start host side save: feature admit and evict");
         saveData.table2Thresh = featAdmitNEvict.GetTableThresholds();
         saveData.histRec.timestamps = featAdmitNEvict.GetHistoryRecords().timestamps;
         saveData.histRec.historyRecords = featAdmitNEvict.GetHistoryRecords().historyRecords;
@@ -308,7 +304,7 @@ bool HybridMgmt::Load(const string& loadPath)
     // 数据处理线程上锁
     preprocess->LoadSaveLock();
 
-    VLOG(GLOG_DEBUG) << (MGMT + "Start host side load process");
+    LOG_DEBUG(MGMT + "Start host side load process");
 
     CkptData loadData;
     Checkpoint loadCkpt;
@@ -329,29 +325,29 @@ bool HybridMgmt::Load(const string& loadPath)
 
     if (!mgmtRankInfo.noDDR) {
         // DDR模式 将加载的hash map进行赋值
-        VLOG(GLOG_DEBUG) << (MGMT + "Start host side load: ddr mode hashmap");
+        LOG_DEBUG(MGMT + "Start host side load: ddr mode hashmap");
         hostHashMaps->LoadHashMap(loadData.embHashMaps);
     } else {
         // HBM模式 将加载的最大偏移（真正使用了多少vocab容量）、特征到偏移的映射，进行赋值
-        VLOG(GLOG_DEBUG) << (MGMT + "Start host side load: no ddr mode hashmap");
+        LOG_DEBUG(MGMT + "Start host side load: no ddr mode hashmap");
         preprocess->LoadMaxOffset(loadData.maxOffset);
         preprocess->LoadKeyOffsetMap(loadData.keyOffsetMap);
     }
 
     // 将加载的特征准入淘汰记录进行赋值
     if (featAdmitNEvict.GetFunctionSwitch()) {
-        VLOG(GLOG_DEBUG) << (MGMT + "Start host side load: feature admit and evict");
+        LOG_DEBUG(MGMT + "Start host side load: feature admit and evict");
         featAdmitNEvict.LoadTableThresholds(loadData.table2Thresh);
         featAdmitNEvict.LoadHistoryRecords(loadData.histRec);
     }
 
     if (isSSDEnabled) {
-        VLOG(GLOG_DEBUG) << (MGMT + "Start host side load: ssd key freq map");
+        LOG_DEBUG(MGMT + "Start host side load: ssd key freq map");
         auto step = GetStepFromPath(loadPath);
         cacheManager->Load(loadData.ddrKeyFreqMaps, loadData.excludeDDRKeyFreqMaps, step);
     }
 
-    VLOG(GLOG_DEBUG) << (MGMT + "Finish host side load process");
+    LOG_DEBUG(MGMT + "Finish host side load process");
 
     preprocess->LoadSaveUnlock();
 
@@ -397,9 +393,9 @@ key_offset_map_t HybridMgmt::SendHostMap(const string tableName)
     key_offset_map_t sendKeyOffsetMap;
 
     if (!mgmtRankInfo.noDDR) {
-        VLOG(GLOG_DEBUG) << (MGMT + "Start send sparse data: ddr mode hashmap");
+        LOG_DEBUG(MGMT + "Start send sparse data: ddr mode hashmap");
     } else {
-        VLOG(GLOG_DEBUG) << (MGMT + "Start send sparse data: no ddr mode hashmap");
+        LOG_DEBUG(MGMT + "Start send sparse data: no ddr mode hashmap");
         keyOffsetMap = preprocess->GetKeyOffsetMap();
     }
 
@@ -433,9 +429,9 @@ void HybridMgmt::ReceiveHostMap(all_key_offset_map_t ReceiveKeyOffsetMap)
         }
     }
     if (!mgmtRankInfo.noDDR) {
-        VLOG(GLOG_DEBUG) << (MGMT + "Start receive sparse data: ddr mode hashmap");
+        LOG_DEBUG(MGMT + "Start receive sparse data: ddr mode hashmap");
     } else {
-        VLOG(GLOG_DEBUG) << (MGMT + "Start receive sparse data: no ddr mode hashmap");
+        LOG_DEBUG(MGMT + "Start receive sparse data: no ddr mode hashmap");
         preprocess->LoadKeyOffsetMap(loadKeyOffsetMap);
         preprocess->LoadMaxOffset(loadMaxOffset);
     }
@@ -461,36 +457,30 @@ bool HybridMgmt::IsLoadDataMatches(emb_mem_t* loadHostEmbs, EmbInfo* setupHostEm
 
         const auto& loadEmbInfo { loadEmbTable->second.hostEmbInfo };
         if (setupHostEmbs->sendCount != loadEmbInfo.sendCount) {
-            LOG(ERROR) << StringFormat(
-                MGMT + "Load data sendCount %d for table %s does not match setup sendCount %d",
-                setupHostEmbs->sendCount, setupHostEmbs->name.c_str(), loadEmbInfo.sendCount);
+            LOG_ERROR(MGMT + "Load data sendCount {} for table {} does not match setup sendCount {}",
+                setupHostEmbs->sendCount, setupHostEmbs->name, loadEmbInfo.sendCount);
             loadDataMatches = false;
         }
         if (setupHostEmbs->extEmbeddingSize != loadEmbInfo.extEmbeddingSize) {
-            LOG(ERROR) << StringFormat(
-                MGMT + "Load data extEmbeddingSize %d for table %s does not match setup extEmbeddingSize %d",
-                setupHostEmbs->extEmbeddingSize, setupHostEmbs->name.c_str(), loadEmbInfo.extEmbeddingSize);
+            LOG_ERROR(MGMT + "Load data extEmbeddingSize {} for table {} does not match setup extEmbeddingSize {}",
+                setupHostEmbs->extEmbeddingSize, setupHostEmbs->name, loadEmbInfo.extEmbeddingSize);
             loadDataMatches = false;
         }
         if (setupHostEmbs->devVocabSize != loadEmbInfo.devVocabSize) {
-            LOG(ERROR) << StringFormat(
-                MGMT + "Load data devVocabSize %d for table %s does not match setup devVocabSize %d",
-                setupHostEmbs->devVocabSize, setupHostEmbs->name.c_str(), loadEmbInfo.devVocabSize);
+            LOG_ERROR(MGMT + "Load data devVocabSize {} for table {} does not match setup devVocabSize {}",
+                setupHostEmbs->devVocabSize, setupHostEmbs->name, loadEmbInfo.devVocabSize);
             loadDataMatches = false;
         }
         if (setupHostEmbs->hostVocabSize != loadEmbInfo.hostVocabSize) {
-            LOG(ERROR) << StringFormat(
-                MGMT + "Load data hostVocabSize %d for table %s does not match setup hostVocabSize %d",
-                setupHostEmbs->hostVocabSize, setupHostEmbs->name.c_str(), loadEmbInfo.hostVocabSize);
+            LOG_ERROR(MGMT + "Load data hostVocabSize {} for table {} does not match setup hostVocabSize {}",
+                setupHostEmbs->hostVocabSize, setupHostEmbs->name, loadEmbInfo.hostVocabSize);
             loadDataMatches = false;
         }
         if (!loadDataMatches) {
             return false;
         }
     } else {
-        LOG(ERROR) << StringFormat(
-            MGMT + "Load data does not contain table with table name: %s", setupHostEmbs->name.c_str()
-        );
+        LOG_ERROR(MGMT + "Load data does not contain table with table name: {}", setupHostEmbs->name);
         return false;
     }
     return true;
@@ -510,7 +500,7 @@ bool HybridMgmt::LoadMatchesDDRSetup(const CkptData& loadData)
     }
 
     if (embTableCount < loadHostEmbs->size()) {
-        LOG(ERROR) << StringFormat(MGMT + "Load data has %d tables more than setup table num %d",
+        LOG_ERROR(MGMT + "Load data has {} tables more than setup table num {}",
             loadHostEmbs->size(), embTableCount);
         return false;
     }
@@ -528,13 +518,13 @@ void HybridMgmt::Start()
     if (!mgmtRankInfo.noDDR) {
         auto parseKeysTaskForTrain = [this]() {
             TrainTask(TaskType::DDR);
-            LOG(INFO) << StringFormat("parseKeysTaskForTrain done");
+            LOG_INFO("parseKeysTaskForTrain done");
         };
         procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForTrain));
 
         auto parseKeysTaskForEval = [this]() {
             EvalTask(TaskType::DDR);
-            LOG(INFO) << StringFormat("parseKeysTaskForEval done");
+            LOG_INFO("parseKeysTaskForEval done");
         };
         procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForEval));
     }
@@ -547,13 +537,13 @@ void HybridMgmt::InsertThreadForHBM()
 #ifndef GTEST
         auto parseKeysTaskForHBMTrain = [this]() {
             TrainTask(TaskType::HBM);
-            LOG(INFO) << "parseKeysTaskForHBMTrain done";
+            LOG_INFO("parseKeysTaskForHBMTrain done");
         };
         procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForHBMTrain));
 
         auto parseKeysTaskForHBMEval = [this]() {
             EvalTask(TaskType::HBM);
-            LOG(INFO) << "parseKeysTaskForHBMEval done";
+            LOG_INFO("parseKeysTaskForHBMEval done");
         };
         procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForHBMEval));
 #endif
@@ -574,19 +564,16 @@ void HybridMgmt::TrainTask(TaskType type)
         if (!isRunning) {
             return;
         }
-        LOG(INFO) << StringFormat(HYBRID_BLOCKING +
-        "hybrid start task channel %d batch %d", channelId, theTrainBatchId);
+        LOG_INFO(HYBRID_BLOCKING + "hybrid start task channel {} batch {}", channelId, theTrainBatchId);
 
         switch (type) {
             case TaskType::HBM:
                 ParseKeysHBM(TRAIN_CHANNEL_ID, theTrainBatchId);
-
-                LOG(INFO) << StringFormat(MGMT + "ParseKeysHBMBatchId = %d", theTrainBatchId);
+                LOG_INFO(MGMT + "ParseKeysHBMBatchId = {}", theTrainBatchId);
                 break;
             case TaskType::DDR:
                 ParseKeys(TRAIN_CHANNEL_ID, theTrainBatchId);
-
-                LOG(INFO) << StringFormat(MGMT + "parseKeysBatchId = %d", theTrainBatchId);
+                LOG_INFO(MGMT + "parseKeysBatchId = {}", theTrainBatchId);
                 break;
             default:
                 throw std::invalid_argument("Invalid TaskType Type.");
@@ -609,17 +596,16 @@ void HybridMgmt::EvalTask(TaskType type)
         if (!isRunning) {
             return;
         }
-        LOG(INFO) << StringFormat(HYBRID_BLOCKING +
-        "hybrid start task channel %d batch %d", channelId, evalBatchId);
+        LOG_INFO(HYBRID_BLOCKING + "hybrid start task channel {} batch {}", channelId, evalBatchId);
 
         switch (type) {
             case TaskType::HBM:
                 ParseKeysHBM(EVAL_CHANNEL_ID, evalBatchId);
-                LOG(INFO) << StringFormat(MGMT + "HBM evalBatchId = %d", evalBatchId);
+                LOG_INFO(MGMT + "HBM evalBatchId = {}", evalBatchId);
                 break;
             case TaskType::DDR:
                 ParseKeys(EVAL_CHANNEL_ID, evalBatchId);
-                LOG(INFO) << StringFormat(MGMT + "DDR evalBatchId = %d", evalBatchId);
+                LOG_INFO(MGMT + "DDR evalBatchId = {}", evalBatchId);
                 break;
             default:
                 throw std::invalid_argument("Invalid TaskType Type.");
@@ -633,8 +619,7 @@ void HybridMgmt::EvalTask(TaskType type)
 /// \return
 bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
 {
-    LOG(INFO) << StringFormat(
-        MGMT + "start parse keys HBM, nBatch:%d , [%d]:%d", mgmtRankInfo.nBatch, channelId, batchId);
+    LOG_INFO(MGMT + "start parse keys HBM, nBatch:{} , [{}]:{}", mgmtRankInfo.nBatch, channelId, batchId);
 
     // 循环处理每个表的数据
     for (const auto& embInfo: mgmtEmbInfo) {
@@ -645,8 +630,7 @@ bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
         // 获取各类向量，如果为空指针，退出当前函数
         auto infoVecs = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::RESTORE);
         if (infoVecs == nullptr) {
-            LOG(INFO) << StringFormat(
-                MGMT + "ParseKeys infoVecs empty ! batchId:%d, channelId:%d", batchId, channelId);
+            LOG_INFO(MGMT + "ParseKeys infoVecs empty ! batchId:{}, channelId:{}", batchId, channelId);
             return false;
         }
 
@@ -655,43 +639,41 @@ bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
         if (!mgmtRankInfo.useStatic) {
             all2all = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::ALL2ALL);
         }
-        VLOG(GLOG_DEBUG) << StringFormat("getTensorsSyncTC(ms):%d", getTensorsSyncTC.ElapsedMS());
+        LOG_DEBUG("getTensorsSyncTC(ms):{}", getTensorsSyncTC.ElapsedMS());
 
         // 动态shape场景下，发送all2all向量（通信量矩阵）
         TimeCost sendTensorsSyncTC;
         if (!mgmtRankInfo.useStatic) {
             TimeCost sendAll2AllScSyncTC;
             hdTransfer->Send(TransferChannel::ALL2ALL, *all2all, channelId, embInfo.name);
-            VLOG(GLOG_DEBUG) << StringFormat("sendAll2AllScSyncTC(ms):%d", sendAll2AllScSyncTC.ElapsedMS());
+            LOG_DEBUG("sendAll2AllScSyncTC(ms):{}", sendAll2AllScSyncTC.ElapsedMS());
         }
 
         // 发送查询向量
         TimeCost sendLookupSyncTC;
         hdTransfer->Send(TransferChannel::LOOKUP, { infoVecs->back() }, channelId, embInfo.name);
         infoVecs->pop_back();
-        VLOG(GLOG_DEBUG) << StringFormat("sendLookupSyncTC(ms):%d", sendLookupSyncTC.ElapsedMS());
+        LOG_DEBUG("sendLookupSyncTC(ms):{}", sendLookupSyncTC.ElapsedMS());
 
         // 训练时，使用全局去重聚合梯度，发送全局去重的key和对应的恢复向量
         if (PerfConfig::gradientStrategy && channelId == TRAIN_CHANNEL_ID) {
             TimeCost sendUnikeysSyncTC;
             hdTransfer->Send(TransferChannel::UNIQKEYS, { infoVecs->back() }, channelId, embInfo.name);
             infoVecs->pop_back();
-            VLOG(GLOG_DEBUG) << StringFormat("sendUnikeysSyncTC(ms):%d", sendUnikeysSyncTC.ElapsedMS());
+            LOG_DEBUG("sendUnikeysSyncTC(ms):{}", sendUnikeysSyncTC.ElapsedMS());
 
             TimeCost sendRestoreVecSecSyncTC;
             hdTransfer->Send(TransferChannel::RESTORE_SECOND, { infoVecs->back() }, channelId, embInfo.name);
             infoVecs->pop_back();
-            VLOG(GLOG_DEBUG) << StringFormat("sendRestoreVecSecSyncTC(ms):%d", sendRestoreVecSecSyncTC.ElapsedMS());
+            LOG_DEBUG("sendRestoreVecSecSyncTC(ms):{}", sendRestoreVecSecSyncTC.ElapsedMS());
         }
 
         // 发送恢复向量
         TimeCost sendRestoreSyncTC;
         hdTransfer->Send(TransferChannel::RESTORE, *infoVecs, channelId, embInfo.name);
-        VLOG(GLOG_DEBUG) << StringFormat("sendRestoreSyncTC(ms):%d", sendRestoreSyncTC.ElapsedMS());
 
-        VLOG(GLOG_DEBUG) << StringFormat("sendTensorsSyncTC(ms):%d", sendTensorsSyncTC.ElapsedMS());
-
-        VLOG(GLOG_DEBUG) << StringFormat("ParseKeysTC HBM mode (ms):%d", ParseKeysTC.ElapsedMS());
+        LOG_DEBUG("sendRestoreSyncTC(ms):{}, sendTensorsSyncTC(ms):{}, ParseKeysTC HBM mode (ms):{}",
+            sendRestoreSyncTC.ElapsedMS(), sendTensorsSyncTC.ElapsedMS(), ParseKeysTC.ElapsedMS());
     }
     batchId++;
     return true;
@@ -714,8 +696,7 @@ bool HybridMgmt::EndBatch(int batchId, int channelId) const
 bool HybridMgmt::ParseKeys(int channelId, int& batchId)
 {
 #ifndef GTEST
-    LOG(INFO) << StringFormat(
-        MGMT + "DDR mode, start parse keys, nBatch:%d , [%d]:%d",
+    LOG_INFO(MGMT + "DDR mode, start parse keys, nBatch:{} , [{}]:{}",
         mgmtRankInfo.nBatch, channelId, batchId);
     TimeCost parseKeyTC;
     int start = batchId;
@@ -723,13 +704,13 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
     bool ifHashmapFree = true;
     bool remainBatch = true; // 是否从通道获取了数据
     while (true) {
-        LOG(INFO) << StringFormat(MGMT + "parse keys, [%d]:%d", channelId, batchId);
+        LOG_INFO(MGMT + "parse keys, [{}]:{}", channelId, batchId);
         for (const auto& embInfo : mgmtEmbInfo) {
             ifHashmapFree = ProcessEmbInfo(embInfo.name, batchId, channelId, iBatch, remainBatch);
 
             // 通道数据已空
             if (!remainBatch) {
-                VLOG(GLOG_DEBUG) << StringFormat("last batch ending");
+                LOG_DEBUG("last batch ending");
                 return false;
             }
         }
@@ -744,21 +725,21 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
     }
     TimeCost embHdTrans2TC;
     EmbHDTransWrap(channelId, batchId - 1, start, iBatch);
-    VLOG(GLOG_DEBUG) << StringFormat("embHdTrans2TC TimeCost(ms):%d", embHdTrans2TC.ElapsedMS());
-    VLOG(GLOG_DEBUG) << StringFormat("[%d]-%d, parseKeyTC TimeCost(ms):%d", channelId, batchId, parseKeyTC.ElapsedMS());
+    LOG_DEBUG("embHdTrans2TC TimeCost(ms):{}", embHdTrans2TC.ElapsedMS());
+    LOG_DEBUG("[{}]-{}, parseKeyTC TimeCost(ms):{}", channelId, batchId, parseKeyTC.ElapsedMS());
 #endif
     return true;
 }
 
 inline void HandlePrepareDDRDataRet(TransferRet prepareSSDRet)
 {
-    LOG(ERROR) << "Transfer embedding with DDR and SSD error.";
+    LOG_ERROR("Transfer embedding with DDR and SSD error.");
     if (prepareSSDRet == TransferRet::SSD_SPACE_NOT_ENOUGH) {
-        LOG(ERROR) << "PrepareDDRData: SSD available space is not enough.";
+        LOG_ERROR("PrepareDDRData: SSD available space is not enough.");
         throw runtime_error("ssdVocabSize too small");
     }
     if (prepareSSDRet == TransferRet::DDR_SPACE_NOT_ENOUGH) {
-        LOG(ERROR) << "PrepareDDRData: DDR available space is not enough.";
+        LOG_ERROR("PrepareDDRData: DDR available space is not enough.");
         throw runtime_error("ddrVocabSize too small");
     }
     throw runtime_error("Transfer embedding with DDR and SSD error.");
@@ -793,11 +774,11 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
     // 获取各类向量，如果为空指针，退出当前函数
     auto infoVecs = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::RESTORE);
     if (infoVecs == nullptr) { return false; }
-    VLOG(GLOG_DEBUG) << StringFormat("getTensorsTC(ms):%d", getTensorsTC.ElapsedMS());
+    LOG_DEBUG("getTensorsTC(ms):{}", getTensorsTC.ElapsedMS());
 
     TimeCost sendRestoreSyncTC;
     hdTransfer->Send(TransferChannel::RESTORE, *infoVecs, channelId, embName);
-    VLOG(GLOG_DEBUG) << StringFormat("sendRestoreSyncTC(ms):%d", sendRestoreSyncTC.ElapsedMS());
+    LOG_DEBUG("sendRestoreSyncTC(ms):{}", sendRestoreSyncTC.ElapsedMS());
 
     // 调用SSD cache缓存处理流程
     PrepareDDRData(embName, embHashMap, lookupKeys, channelId);
@@ -808,20 +789,21 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
     DDRParam ddrParam(tmpData, offsetsOut);
     TimeCost hostHashMapProcessTC;
     hostHashMaps->Process(embName, lookupKeys, iBatch, ddrParam, channelId);
-    VLOG(GLOG_DEBUG) << StringFormat("hostHashMapProcessTC(ms):%d", hostHashMapProcessTC.ElapsedMS());
+    LOG_DEBUG("hostHashMapProcessTC(ms):{}", hostHashMapProcessTC.ElapsedMS());
 
     if (PerfConfig::gradientStrategy && channelId == TRAIN_CHANNEL_ID && remainBatchOut) {
-        vector<int32_t> uniqueKeys, restoreVecSec;
+        vector<int32_t> uniqueKeys;
+        vector<int32_t> restoreVecSec;
         preprocess->GlobalUnique(offsetsOut, uniqueKeys, restoreVecSec);
 
         TimeCost sendUnikeysSyncTC;
         hdTransfer->Send(TransferChannel::UNIQKEYS, { mgmtRankInfo.useDynamicExpansion ? Vec2TensorI64(uniqueKeys) :
                                                                     Vec2TensorI32(uniqueKeys) }, channelId, embName);
-        VLOG(GLOG_DEBUG) << StringFormat("sendUnikeysSyncTC(ms):%d", sendUnikeysSyncTC.ElapsedMS());
 
         TimeCost sendRestoreVecSecSyncTC;
         hdTransfer->Send(TransferChannel::RESTORE_SECOND, { Vec2TensorI32(restoreVecSec) }, channelId, embName);
-        VLOG(GLOG_DEBUG) << StringFormat("sendRestoreVecSecSyncTC(ms):%d", sendRestoreVecSecSyncTC.ElapsedMS());
+        LOG_DEBUG("sendUnikeysSyncTC(ms):{}sendRestoreVecSecSyncTC(ms):{}",
+            sendUnikeysSyncTC.ElapsedMS(), sendRestoreVecSecSyncTC.ElapsedMS());
     }
 
     TimeCost sendTensorsTC;
@@ -832,14 +814,12 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId,
         auto all2all = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::ALL2ALL);
         hdTransfer->Send(TransferChannel::ALL2ALL, *all2all, channelId, embName);
     }
-    VLOG(GLOG_DEBUG) << StringFormat("sendTensorsTC(ms):%d", sendTensorsTC.ElapsedMS());
-
-    VLOG(GLOG_DEBUG) << StringFormat(
-        "getAndSendTensorsTC(ms):%d, channelId:%d", getAndSendTensorsTC.ElapsedMS(), channelId);
+    LOG_DEBUG("sendTensorsTC(ms):{} getAndSendTensorsTC(ms):{}, channelId:{}",
+        sendTensorsTC.ElapsedMS(), getAndSendTensorsTC.ElapsedMS(), channelId);
 
     if (!isSSDEnabled && embHashMap.HasFree(lookupKeys.size())) { // check free > next one batch
-        LOG(WARNING) << StringFormat(MGMT + "embName %s[%d]%d,iBatch:%d freeSize not enough, %d",
-                                     embName.c_str(), channelId, batchId, iBatch, lookupKeys.size());
+        LOG_WARN(MGMT + "embName {}[{}]{}, iBatch:{} freeSize not enough, {}",
+            embName, channelId, batchId, iBatch, lookupKeys.size());
         return false;
     }
     return true;
@@ -855,16 +835,16 @@ void HybridMgmt::EmbHDTransWrap(int channelId, const int& batchId, int start, in
     if (iBatch == 0) {
         return;
     }
-    LOG(INFO) << StringFormat(MGMT + "trans emb, batchId:[%d-%d], channelId:%d", start, batchId, channelId);
+    LOG_INFO(MGMT + "trans emb, batchId:[{}-{}], channelId:{}", start, batchId, channelId);
     TimeCost hostEmbsTC;
     hostEmbs->Join(channelId);
-    VLOG(GLOG_DEBUG) << StringFormat("hostEmbsTC(ms):%d", hostEmbsTC.ElapsedMS());
+    LOG_DEBUG("hostEmbsTC(ms):{}", hostEmbsTC.ElapsedMS());
 
     EmbHDTrans(channelId, batchId);
 
     for (int i = 0; i < iBatch - 1; ++i) {
         // need send empty
-        LOG(INFO) << StringFormat(MGMT + "trans emb dummy, batchId:%d, ", start + 1 + i);
+        LOG_INFO(MGMT + "trans emb dummy, batchId:{}, ", start + 1 + i);
         EmbHDTrans(channelId, batchId);
     }
 }
@@ -876,7 +856,7 @@ void HybridMgmt::EmbHDTrans(const int channelId, const int batchId)
 {
     EASY_FUNCTION(profiler::colors::Blue)
     EASY_VALUE("mgmtProcess", batchId)
-    VLOG(GLOG_DEBUG) << StringFormat(MGMT + "trans emb, batchId:%d, channelId:%d", batchId, channelId);
+    LOG_DEBUG(MGMT + "trans emb, batchId:{}, channelId:{}", batchId, channelId);
     TimeCost tr;
     TimeCost h2dTC;
     // 发送host需要换出的emb
@@ -886,7 +866,7 @@ void HybridMgmt::EmbHDTrans(const int channelId, const int batchId)
         hostEmbs->GetH2DEmb(missingKeys, embInfo.name, h2dEmb); // order!
         hdTransfer->Send(TransferChannel::H2D, h2dEmb, channelId, embInfo.name, batchId);
     }
-    VLOG(GLOG_DEBUG) << StringFormat("h2dTC(ms):%d", h2dTC.ElapsedMS());
+    LOG_DEBUG("h2dTC(ms):{}", h2dTC.ElapsedMS());
 
     TimeCost d2hTC;
     // 接收device换出的emb，并更新到host上
@@ -900,11 +880,8 @@ void HybridMgmt::EmbHDTrans(const int channelId, const int batchId)
         }
         hostHashMaps->ClearMissingKeys(embInfo.name);
     }
-    VLOG(GLOG_DEBUG) << StringFormat("d2hTC(ms):%d", d2hTC.ElapsedMS());
-
-    VLOG(GLOG_DEBUG) << StringFormat(
-        "EmbHDTrans TimeCost(ms):%d batchId: %d channelId:%d", tr.ElapsedMS(), batchId, channelId
-    );
+    LOG_DEBUG("D2HTC(ms):{} EmbHDTrans TimeCost(ms):{} batchId: {} channelId:{}",
+        d2hTC.ElapsedMS(), tr.ElapsedMS(), batchId, channelId);
 }
 #endif
 
@@ -918,14 +895,14 @@ bool HybridMgmt::Evict()
     if (featAdmitNEvict.GetFunctionSwitch()) {
         featAdmitNEvict.FeatureEvict(evictKeyMap);
     } else {
-        LOG(WARNING) << (MGMT + "Hook can not trigger evict, cause AdmitNEvict is not open");
+        LOG_WARN(MGMT + "Hook can not trigger evict, cause AdmitNEvict is not open");
         return false;
     }
-    VLOG(GLOG_DEBUG) << StringFormat(MGMT + "evict triggered by hook, evict TableNum %d ", evictKeyMap.size());
+    LOG_DEBUG(MGMT + "evict triggered by hook, evict TableNum {}", evictKeyMap.size());
 
     // 表为空，淘汰触发失败
     if (evictKeyMap.size() == 0) {
-        LOG(WARNING) << (MGMT + "evict triggered by hook before dataset in injected");
+        LOG_WARN(MGMT + "evict triggered by hook before dataset in injected");
         return false;
     }
 
@@ -949,9 +926,7 @@ bool HybridMgmt::Evict()
 void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
 {
 #ifndef GTEST
-    VLOG(GLOG_DEBUG) << StringFormat(
-        MGMT + "ddr mode, delete emb: [%s]! evict keySize:%d", embName.c_str(), keys.size()
-    );
+    LOG_DEBUG(MGMT + "ddr mode, delete emb: [{}]! evict keySize:{}", embName.c_str(), keys.size());
     // 删除映射关系
     if (keys.size() != 0) {
         hostHashMaps->EvictDeleteEmb(embName, keys);
@@ -965,19 +940,15 @@ void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
         evictOffset4Ddr.emplace_back(offsetInHostHashMap - devVocabSize);
     }
     if (!evictOffset4Ddr.empty()) {
-        VLOG(GLOG_DEBUG) << StringFormat(
-            MGMT + "ddr mode, delete emb: [%s]! evict size on host:%d", embName.c_str(), evictOffset4Ddr.size()
-        );
+        LOG_DEBUG(MGMT + "ddr mode, delete emb: [{}]! evict size on host:{}", embName, evictOffset4Ddr.size());
         hostEmbs->EvictInitEmb(embName, evictOffset4Ddr);
     } else {
-        LOG(INFO) << StringFormat(MGMT + "ddr mode, evict size on host is empty");
+        LOG_INFO(MGMT + "ddr mode, evict size on host is empty");
     }
 
     // 发送dev侧的淘汰pos，以便dev侧初始化emb
     auto evictDevOffset = hostHashMaps->embHashMaps.at(embName).evictDevPos;
-    VLOG(GLOG_DEBUG) << StringFormat(
-        MGMT + "ddr mode, init dev emb: [%s]! evict size on dev :%d", embName.c_str(), evictDevOffset.size()
-    );
+    LOG_DEBUG(MGMT + "ddr mode, init dev emb: [{}]! evict size on dev :{}", embName, evictDevOffset.size());
 
     vector<Tensor> tmpDataOut;
     Tensor tmpData = Vec2TensorI32(evictDevOffset);
@@ -998,13 +969,13 @@ inline void HybridMgmt::PrepareDDRData(const string& embTableName, EmbHashMapInf
     if (!isSSDEnabled) {
         return;
     }
-    VLOG(GLOG_DEBUG) << "PrepareDDRData start.";
+    LOG_DEBUG("PrepareDDRData start.");
     TimeCost prepareDDRDataTc;
     TransferRet ret = cacheManager->TransferDDREmbWithSSD(embTableName, embHashMap, keys, channelId);
     if (ret != TransferRet::TRANSFER_OK) {
         HandlePrepareDDRDataRet(ret);
     }
-    VLOG(GLOG_DEBUG) << StringFormat("PrepareDDRData end, TimeCost(ms):%d", prepareDDRDataTc.ElapsedMS());
+    LOG_DEBUG("PrepareDDRData end, TimeCost(ms):{}", prepareDDRDataTc.ElapsedMS());
 }
 
 void HybridMgmt::EvictSSDKeys(const string& embName, const vector<emb_key_t>& keys)

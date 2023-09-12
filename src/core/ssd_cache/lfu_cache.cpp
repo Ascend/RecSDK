@@ -105,7 +105,7 @@ void LFUCache::PutWithInit(emb_key_t key, freq_num_t freq)
 {
     if (keyTable.find(key) != keyTable.end()) {
         // 一般初始化时，key应该不存在已经被插入的情况；此处替换就的key频次信息
-        VLOG(GLOG_DEBUG) << StringFormat("key has exist when init process, key:%d", key);
+        LOG_DEBUG("key has exist when init process, key:{}", key);
         Pop(key);
     }
     freqTable[freq].emplace_front(key, freq);

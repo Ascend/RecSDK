@@ -33,9 +33,7 @@ void CkptDataHandler::CleanTransfer()
 void CkptDataHandler::SetDatasetForLoadEmb(CkptDataType dataType, string embName, CkptTransData& loadedData,
                                            CkptData& ckptData)
 {
-    LOG(ERROR) << StringFormat(
-        "Load host emb failed. dataType:%d, embName:%s, loadedData:%d, ckptData:%d",
-        dataType, embName.c_str(), loadedData.datasetSize, ckptData.embHashMaps.empty()
-    );
+    LOG_ERROR("Load host emb failed. dataType:{}, embName:{}, loadedData:{}, ckptData:{}",
+        dataType, embName, loadedData.datasetSize, ckptData.embHashMaps.empty());
     throw runtime_error("only EMB_INFO and EMB_DATA supported for load host emb");
 }

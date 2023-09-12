@@ -25,7 +25,7 @@ TEST(File, CreateEmptyFile)
         auto f = make_shared<File>(0, savePath);
     } catch (runtime_error &e) {
         isExceptionThrown = true;
-        LOG(ERROR) << e.what();
+        LOG_ERROR(e.what());
     }
     ASSERT_EQ(isExceptionThrown, false);
     fs::remove_all(savePath);
@@ -75,7 +75,7 @@ TEST(File, LoadFromFile)
     try {
         auto f = make_shared<File>(0, savePath, 0);
     } catch (runtime_error &e) {
-        LOG(ERROR) << e.what();
+        LOG_ERROR(e.what());
         isExceptionThrown = true;
     }
     ASSERT_EQ(isExceptionThrown, false);

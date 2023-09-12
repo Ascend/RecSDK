@@ -23,7 +23,7 @@ void EmbHashMap::Init(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
     this->rankInfo = rankInfo;
     if (!ifLoad) {
         EmbHashMapInfo embHashMapInfo;
-        LOG(INFO) << "init emb hash map from scratch";
+        LOG_INFO("init emb hash map from scratch");
         for (const auto& embInfo: embInfos) {
             embHashMapInfo.devOffset2Batch.resize(embInfo.devVocabSize);
             embHashMapInfo.devOffset2Key.resize(embInfo.devVocabSize);
@@ -34,14 +34,8 @@ void EmbHashMap::Init(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
             fill(embHashMapInfo.devOffset2Key.begin(), embHashMapInfo.devOffset2Key.end(), -1);
             embHashMaps[embInfo.name] = embHashMapInfo;
 
-            if (VLOG_IS_ON(GLOG_TRACE)) {
-                VLOG(GLOG_TRACE) << StringFormat(
-                    "devOffset2Key, %s", VectorToString(embHashMaps.at(embInfo.name).devOffset2Key).c_str()
-                );
-                VLOG(GLOG_TRACE) << StringFormat(
-                    "devOffset2Batch, %s", VectorToString(embHashMaps.at(embInfo.name).devOffset2Batch).c_str()
-                );
-            }
+            LOG_TRACE("devOffset2Key, {}", VectorToString(embHashMaps.at(embInfo.name).devOffset2Key));
+            LOG_TRACE("devOffset2Batch, {}", VectorToString(embHashMaps.at(embInfo.name).devOffset2Batch));
         }
     }
 #endif
@@ -301,7 +295,7 @@ void EmbHashMap::EvictDeleteEmb(const string& embName, const vector<emb_key_t>& 
         if (iter != embHashMap.hostHashMap.end()) {
             offset = iter->second;
             embHashMap.hostHashMap.erase(iter);
-            LOG_TRACE("evict embName %s, offset %d", embName, offset);
+            LOG_TRACE("evict embName {}, offset {}", embName, offset);
         } else {
             // 淘汰依据keyProcess中的history，hashmap映射关系创建于ParseKey；两者异步，造成淘汰的值在hashmap里可能未创建
             continue;
@@ -551,7 +545,7 @@ void EmbHashMap::RefreshFreqInfoWithSwap(const string& embName, EmbHashMapInfo& 
 /// 记录日志：HBM和DDR换入换出后，比较hostHashMap中DDR内key和表对应的lfuCache对象中的key内容
 void EmbHashMap::AddCacheManagerTraceLog(const string& embTableName, const EmbHashMapInfo& embHashMap) const
 {
-    if (!VLOG_IS_ON(GLOG_TRACE)) {
+    if (Log::GetLevel() != Log::TRACE) {
         return;
     }
     auto& hostMap = embHashMap.hostHashMap;

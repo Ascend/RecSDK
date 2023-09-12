@@ -541,10 +541,8 @@ unique_ptr<emb_batch_t> KeyProcess::GetBatchData(int channel, int commId)
         }
         if (tc.ElapsedSec() > GET_BATCH_TIMEOUT) {
             if (commId == 0) {
-                LOG(WARNING) << StringFormat(
-                    KEY_PROCESS "getting batch timeout! 1. check last 'read batch cost' print. channel[%d] commId[%d]",
-                    channel, commId
-                );
+                LOG_WARN(KEY_PROCESS "getting batch timeout! 1. check last 'read batch cost' print. "
+                    "channel[{}] commId[{}]", channel, commId);
             }
             this_thread::sleep_for(seconds(1));
             tc = TimeCost();
@@ -625,17 +623,14 @@ void KeyProcess::ProcessBatchWithFastUnique(const unique_ptr<emb_batch_t> &batch
 
     All2All(sc, id, batch->channel, keySendInfo, uniqueInfoOut.all2AllInfo);
 
-    VLOG(GLOG_DEBUG) << StringFormat(
-        KEY_PROCESS "ProcessBatchWithFastUnique get batchId:%d, batchSize:%d,"
-                    " channel:%d, name:%s, restore:%d, keyCount:%d",
-        batch->batchId, batch->Size(), batch->channel, batch->name.c_str(),
-        uniqueInfoOut.restore.size(), keySendInfo.keyCount.size()
-    );
+    LOG_DEBUG(KEY_PROCESS "ProcessBatchWithFastUnique get batchId:{}, batchSize:{},"
+        " channel:{}, name:{}, restore:{}, keyCount:{}",
+        batch->batchId, batch->Size(), batch->channel, batch->name,
+        uniqueInfoOut.restore.size(), keySendInfo.keyCount.size());
 
     if (g_statOn) {
-        LOG(INFO) << StringFormat(
-            STAT_INFO "channel_id %d batch_id %d rank_id %d "
-                      "batch_key_num_with_fast_unique %d unique_key_num_with_fast_unique %d",
+        LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} "
+            "batch_key_num_with_fast_unique {} unique_key_num_with_fast_unique {}",
             batch->channel, batch->batchId, rankInfo.rankId, batch->Size(), uniqueOut.uniqueIdCnt);
     }
 }
@@ -885,8 +880,7 @@ auto KeyProcess::HashSplit_withFAAE(const unique_ptr<emb_batch_t>& batch) const
         for (int devId = 0; devId < rankInfo.rankSize; ++devId) {
             UniqueKeyNum += splitKeys[devId].size();
         }
-        LOG(INFO) << StringFormat(
-            STAT_INFO "channel_id %d batch_id %d rank_id %d batch_key_num %d faae_unique_key_num %ld",
+        LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} batch_key_num {} faae_unique_key_num {}",
             batch->channel, batch->batchId, rankInfo.rankId, batch->Size(), UniqueKeyNum);
     }
     return { splitKeys, restore, keyCount };
@@ -945,8 +939,7 @@ tuple<vector<keys_t>, vector<int32_t>, vector<int>>
         for (int devId = 0; devId < rankInfo.rankSize; ++devId) {
             UniqueKeyNum += splitKeys[devId].size();
         }
-        LOG(INFO) << StringFormat(
-            STAT_INFO "channel_id %d batch_id %d rank_id %d batch_key_num %d hot_unique_key_num %ld",
+        LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} batch_key_num {} hot_unique_key_num {}",
             batch->channel, batch->batchId, rankInfo.rankId, batch->Size(), UniqueKeyNum);
     }
 
@@ -1102,7 +1095,7 @@ void KeyProcess::Key2Offset(const emb_name_t& embName, keys_t& splitKey, int cha
         }
     }
     if (maxOffsetTmp > embInfos[embName].devVocabSize) {
-        LOG(ERROR) << StringFormat("dev cache overflow %d>%d", maxOffsetTmp, embInfos[embName].devVocabSize);
+        LOG_ERROR("dev cache overflow {} > {}", maxOffsetTmp, embInfos[embName].devVocabSize);
         throw std::runtime_error("dev cache overflow!");
     }
     LOG_DEBUG("current hbm emb:{}, usage:{}/{} key2OffsetTC({} ms)",
@@ -1161,12 +1154,12 @@ void KeyProcess::BuildRestoreVec(const unique_ptr<emb_batch_t>& batch, const vec
         int devId = static_cast<int>(d) & (rankInfo.rankSize - 1);
         if (restoreVec[i] >= hotPosSize) {
             restoreVec[i] += blockOffset[devId];
-        } else if (VLOG_IS_ON(GLOG_DEBUG)) {
+        } else if (Log::GetLevel() >= Log::DEBUG) {
             hotNum += 1;
         }
     }
-    VLOG(GLOG_DEBUG) << StringFormat("hot num in all:%d/%d", hotNum, batch->Size());
-    VLOG(GLOG_DEBUG) << StringFormat("buildRestoreVecTC(ms):%d", buildRestoreVecTC.ElapsedMS());
+    LOG_DEBUG("hot num in all:{}/{} buildRestoreVecTC(ms):{}",
+        hotNum, batch->Size(), buildRestoreVecTC.ElapsedMS());
 }
 
 class EmptyList : public std::exception {

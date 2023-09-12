@@ -19,22 +19,22 @@ using namespace std;
 int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId)
 {
 #ifndef GTEST
-    LOG(INFO) << StringFormat(MGMT + "begin hd_transfer initialize, rank:%d", localRankId);
+    LOG_INFO(MGMT + "begin hd_transfer initialize, rank:{}", localRankId);
     // 使用AscendCL接口开发应用时，必须先调用aclInit接口，否则可能会导致后续系统内部资源初始化出错，进而导致其它业务异常。
     aclError retOk = aclInit(nullptr);
-    LOG(INFO) << StringFormat(MGMT + "end aclInit, rank:%d", localRankId);
+    LOG_INFO(MGMT + "end aclInit, rank:{}", localRankId);
     if (retOk != ACL_SUCCESS) {
-        LOG(ERROR) << StringFormat(MGMT + "aclInit fail, rank:%d, errno:%d", localRankId, retOk);
+        LOG_ERROR(MGMT + "aclInit fail, rank:{}, errno:{}", localRankId, retOk);
         return false;
     }
-    LOG(INFO) << StringFormat(MGMT + "start Set device, rank:%d", localRankId);
+    LOG_INFO(MGMT + "start Set device, rank:{}", localRankId);
     // 指定当前进程或线程中用于运算的Device，同时隐式创建默认Context
     auto ret = aclrtSetDevice(static_cast<int32_t>(localRankId));
     if (ret != ACL_ERROR_NONE) {
-        LOG(ERROR) << StringFormat("Set device failed, device_id:%d", localRankId);
+        LOG_ERROR("Set device failed, device_id:{}", localRankId);
         return false;
     }
-    LOG(INFO) << StringFormat(MGMT + "end Set device, rank:%d", localRankId);
+    LOG_INFO(MGMT + "end Set device, rank:{}", localRankId);
     for (const auto& embInfo: embInfos) {
         auto embName = embInfo.name;
         for (int i = 0; i < MAX_CHANNEL_NUM; ++i) {
@@ -51,18 +51,18 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId)
             int32_t tmp = std::stoi(envTimeout);
             if (tmp >= -1 && tmp <= INT32_MAX) {
                 this->timeout = tmp;
-                LOG(INFO) << StringFormat("Succeed to parse ${env:AclTimeout}: %d", tmp);
+                LOG_INFO("Succeed to parse ${env:AclTimeout}: {}", tmp);
             } else {
-                LOG(ERROR) << StringFormat("Failed to parse ${env:AclTimeout}: %d, expected in (0, INT32_MAX)", tmp);
+                LOG_ERROR("Failed to parse ${env:AclTimeout}: {}, expected in (0, INT32_MAX)", tmp);
             }
         } catch (const std::invalid_argument &e) {
-            LOG(ERROR) << StringFormat("Failed to parse ${env:AclTimeout}: %s, expected a integer, set to default: %d",
+            LOG_ERROR("Failed to parse ${env:AclTimeout}: {}, expected a integer, set to default: {}",
                 envTimeout, defaultAclTimeout);
         }
     }
-    VLOG(GLOG_DEBUG) << StringFormat("hd transfer timeout:%d", timeout);
+    LOG_DEBUG("hd transfer timeout:{}", timeout);
     running = true;
-    LOG(INFO) << "hd_transfer init";
+    LOG_INFO("hd_transfer init");
 #endif
     return true;
 }
@@ -72,11 +72,11 @@ void HDTransfer::Destroy()
 {
 #ifndef GTEST
     running = false;
-    LOG(INFO) << (HD + "destroy channel start");
+    LOG_INFO(HD + "destroy channel start");
     for (auto& c: transferChannels) {
-        LOG(INFO) << StringFormat(HD + "start destroy channel:%s", c.first.c_str());
+        LOG_INFO(HD + "start destroy channel:{}", c.first);
         tensorflow::StopRecvTensorByAcl(&c.second, c.first);
-        LOG(INFO) << StringFormat(HD + "destroy channel:%s", c.first.c_str());
+        LOG_INFO(HD + "destroy channel:{}", c.first);
     }
     for (auto& d: aclDatasets) {
         if (acltdtDestroyDataset(d.second) != ACL_ERROR_NONE) {
@@ -102,17 +102,17 @@ void HDTransfer::CreateChannel(const uint32_t localRankId, const string& embName
         try {
             channelSize = stoi(env);
         } catch (const std::invalid_argument& e) {
-            LOG(WARNING) << StringFormat("wrong HD_CHANNEL_SIZE env %s", e.what());
+            LOG_WARN("wrong HD_CHANNEL_SIZE env {}", e.what());
             channelSize = LARGE_CHANNEL_SIZE;
         } catch (const std::out_of_range& e) {
-            LOG(WARNING) << StringFormat("wrong HD_CHANNEL_SIZE env %s", e.what());
+            LOG_WARN("wrong HD_CHANNEL_SIZE env {}", e.what());
             channelSize = LARGE_CHANNEL_SIZE;
         }
         if (channelSize <= 0) {
             channelSize = LARGE_CHANNEL_SIZE;
         }
     }
-    LOG(INFO) << StringFormat("user config all2all restore lookup channel size:%d", channelSize);
+    LOG_INFO("user config all2all restore lookup channel size:{}", channelSize);
     for (int c = static_cast<int>(TransferChannel::D2H); c != static_cast<int>(TransferChannel::INVALID); c++) {
         auto channel = static_cast<TransferChannel>(c);
         string sendName = StringFormat(
@@ -129,9 +129,7 @@ void HDTransfer::CreateChannel(const uint32_t localRankId, const string& embName
         } else {
             transferChannels[sendName] = tdtCreateChannel(localRankId, sendName.c_str(), PING_PONG_SIZE);
         }
-        LOG(INFO) << StringFormat(
-            "create channel:%s %d", sendName.c_str(), static_cast<void*>(transferChannels[sendName])
-        );
+        LOG_INFO("create channel:{} {}", sendName, static_cast<void*>(transferChannels[sendName]));
     }
 #endif
 }
@@ -156,13 +154,11 @@ void HDTransfer::Send(TransferChannel channel, const vector<Tensor> &tensors, in
     }
     string sendName = StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channel).c_str(), channelId);
 
-    REC_LOG(INFO) << StringFormat(
-        HD + "hd transfer send %s, send count is %d, size list:%s",
-        sendName.c_str(), sizes.size(), VectorToString(sizes).c_str()
-    );
+    LOG_INFO(HD + "hd transfer send {}, send count is {}, size list:{}",
+        sendName, sizes.size(), VectorToString(sizes));
 
     if (sizes.size() == 0) {
-        LOG(WARNING) << "tensors num can not be zero";
+        LOG_WARN("tensors num can not be zero");
         return;
     }
     bool isNeedResend = false;
@@ -175,15 +171,11 @@ void HDTransfer::Send(TransferChannel channel, const vector<Tensor> &tensors, in
             return;
         }
         if (status != tensorflow::Status::OK()) {
-            LOG(ERROR) << StringFormat(
-                MGMT + "hd send %s error '%s'", sendName.c_str(), status.error_message().c_str()
-            );
+            LOG_ERROR(MGMT + "hd send {} error '{}'", sendName, status.error_message());
             throw runtime_error("hd send error");
         }
         if (batchId != -1 && resendTime != 0) {
-            LOG(WARNING) << StringFormat(
-                MGMT + "hd send %s batch: %d failed, retry: %d ", sendName.c_str(), batchId, resendTime
-            );
+            LOG_WARN(MGMT + "hd send {} batch: {} failed, retry: {} ", sendName, batchId, resendTime);
         }
         resendTime++;
     } while (isNeedResend);
@@ -201,14 +193,14 @@ vector<tensorflow::Tensor> HDTransfer::Recv(TransferChannel channel, int channel
 #ifndef GTEST
     std::vector<tensorflow::Tensor> tensors;
     string recvName = StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channel).c_str(), channelId);
-    VLOG(GLOG_DEBUG) << StringFormat("hd transfer try recv:%s", recvName.c_str());
+    LOG_DEBUG("hd transfer try recv:{}", recvName);
     TimeCost tc = TimeCost();
     tensorflow::Status status = tensorflow::RecvTensorByAcl(transferChannels[recvName], tensors);
     if (!running) {
         return {};
     }
     if (status != tensorflow::Status::OK()) {
-        LOG(ERROR) << StringFormat(MGMT + "%s hd recv error '%s'", recvName.c_str(), status.error_message().c_str());
+        LOG_ERROR(MGMT + "{} hd recv error '{}'", recvName, status.error_message());
         throw runtime_error("hd recv error");
     }
 
@@ -216,9 +208,7 @@ vector<tensorflow::Tensor> HDTransfer::Recv(TransferChannel channel, int channel
     for (auto& t: tensors) {
         sizes.push_back(t.NumElements());
     }
-    REC_LOG(INFO) << StringFormat(
-        "hd transfer recv:%s, size:%d cost:%dms", recvName.c_str(), VectorToString(sizes).c_str(), tc.ElapsedMS()
-    );
+    LOG_INFO("hd transfer recv:{}, size:{} cost:{}ms", recvName, VectorToString(sizes), tc.ElapsedMS());
     return tensors;
 #endif
 }
@@ -234,7 +224,7 @@ size_t HDTransfer::RecvAcl(TransferChannel channel, int channelId, const string&
 #ifndef GTEST
     std::vector<tensorflow::Tensor> tensors;
     string recvName = StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channel).c_str(), channelId);
-    VLOG(GLOG_DEBUG) << StringFormat("hd transfer try recv:%s", recvName.c_str());
+    LOG_DEBUG("hd transfer try recv:{}", recvName);
     TimeCost tc = TimeCost();
     if (aclDatasets[embName] == nullptr) {
         throw runtime_error(StringFormat("Failed recv:%s.", recvName.c_str()).c_str());
@@ -246,7 +236,7 @@ size_t HDTransfer::RecvAcl(TransferChannel channel, int channelId, const string&
     if (aclStatus != ACL_ERROR_NONE && aclStatus != ACL_ERROR_RT_QUEUE_EMPTY) {
         throw runtime_error(StringFormat("Failed receive data from acl channel, acl status:%d", aclStatus).c_str());
     }
-    LOG(INFO) << StringFormat("hd transfer recv:%s cost:%dms", recvName.c_str(), tc.ElapsedMS());
+    LOG_INFO("hd transfer recv:{} cost:{}ms", recvName, tc.ElapsedMS());
     return acltdtGetDatasetSize(aclDatasets[embName]);
 #endif
 }

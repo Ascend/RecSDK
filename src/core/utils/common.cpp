@@ -205,4 +205,10 @@ namespace MxRec {
         }
     }
 
+    ostream& operator<<(ostream& ss, MxRec::CkptDataType type)
+    {
+        ss << static_cast<int>(type);
+        return ss;
+    }
+
 } // end namespace MxRec
