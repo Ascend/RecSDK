@@ -79,13 +79,13 @@ parse_pipe_1_data_parser()
     LOG_INFO "Step-1.x ReadEmbKeyV2 Static"
   fi
 
-  grep 'read batch cost(ms)' $logfile | cut -d" " -f7| \
+  grep 'read batch cost(ms)' $logfile | cut -d" " -f9| \
     awk -F "[:,]" '{sum+=$2} END {printf "read batch cost: avg=%0.1f\n", sum/NR}'
 
-  grep 'enqueueTC(ms)' $logfile | grep -v 'timeout' | cut -d" " -f11 | \
+  grep 'enqueueTC(ms)' $logfile | grep -v 'timeout' | cut -d" " -f12 | \
     awk -F "[:,]" '{sum+=$2} END {printf "--|enqueueTC: avg=%0.1f\n", sum/NR}'
 
-  grep 'elapsed from last(ms)' $logfile | grep -v 'timeout' | cut -d" " -f10 | \
+  grep 'elapsed from last(ms)' $logfile | grep -v 'timeout' | cut -d" " -f12 | \
     awk -F "[:,]" '{print $2}' | \
     awk 'BEGIN {sum=0; count=0} {if($1<1000) {sum+=$NF; count++} } END \
     {printf "elapsed from last: avg=%0.1f\n", sum/count}'
@@ -95,7 +95,7 @@ parse_pipe_2_key_process()
 {
   LOG_NOTICE "Pipe-2: Data Preprocess"
 
-  grep 'getAndProcessTC(ms)' $logfile | cut -d" " -f5 | \
+  grep 'getAndProcessTC(ms)' $logfile | cut -d" " -f6 | \
     awk -F"[:,]" '{print $2}' | \
     awk 'BEGIN{count=0; total=0;} {if ($1<2000) {total+=$NF; count++;}} END \
       {printf "getAndProcessTC(filter>2000ms): avg=%0.3f\n", total/count}'
@@ -117,7 +117,7 @@ parse_pipe_2_key_process()
 
   LOG_INFO "Step-2.2 KeyProcess"
 
-  grep 'key process cost' $logfile | cut -d" " -f8 | cut -d ":" -f2 | cut -d"," -f1 | grep  '^[0-9]' | grep '[0-9]$' | \
+  grep 'key process cost' $logfile | cut -d" " -f9 | cut -d ":" -f2 | cut -d"," -f1 | grep  '^[0-9]' | grep '[0-9]$' | \
     awk 'BEGIN {sum=0; count=0;} {if($NF<2000) {sum+=$NF; count++;}} END \
     {printf "--|key process cost(filter>2000): avg=%0.1f\n", sum/count}'
 
@@ -184,6 +184,18 @@ parse_pipe_2_key_process()
       awk -F":" '{sum+=$NF} END {printf "----|key2OffsetTC: avg=%0.1f\n", sum/NR}'
   fi
 
+  $(grep 'featureAdmitAndEvictTC(ms)' $logfile > /dev/null 2>&1)
+  if [ $? == 0 ]; then
+    grep 'featureAdmitAndEvictTC(ms)' $logfile | \
+      awk -F":" '{sum+=$NF} END {printf "----|featureAdmitAndEvictTC: avg=%0.1f\n", sum/NR}'
+  fi
+
+  $(grep 'globalUniqueSyncTC(ms)' $logfile > /dev/null 2>&1)
+  if [ $? == 0 ]; then
+    grep 'globalUniqueSyncTC(ms)' $logfile | \
+      awk -F":"  '{sum+=$NF} END {printf "----|globalUniqueSyncTC, avg=%0.1f\n", sum/NR}'
+  fi
+
   $(grep 'pushResultTC(ms)' $logfile > /dev/null 2>&1)
   if [ $? == 0 ]; then
     grep 'pushResultTC(ms)' $logfile | \
@@ -235,7 +247,7 @@ parse_pipe_3_get_and_send_tensors_with_ddr()
   {printf "parseKeyTC(filter>1000ms): avg=%0.1f\n", sum/count}'
 
 
-  grep 'getAndSendTensorsTC' $logfile | \
+  grep 'getAndSendTensorsTC' $logfile | awk -F "[:,]" '{print $6}' | \
   awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<10000) {sum+=$NF; count++;}} END \
   {printf "--getAndSendTensorsTC(filter>1000ms): avg=%0.1f\n", sum/count}'
 
@@ -269,7 +281,7 @@ parse_pipe_3_get_and_send_tensors_with_ddr()
   awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<10000) {sum+=$NF; count++;}} END \
   {printf "----hostEmbsTC(filter>1000ms): avg=%0.1f\n", sum/count}'
 
-  grep 'EmbHDTrans' $logfile | \
+  grep 'EmbHDTrans' $logfile | awk -F "[:]" '{print $5}' | cut -d " " -f1 | \
   awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<10000) {sum+=$NF; count++;}} END \
   {printf "----EmbHDTrans(filter>1000ms): avg=%0.1f\n", sum/count}'
 
