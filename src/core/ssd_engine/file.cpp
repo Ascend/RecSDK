@@ -11,19 +11,17 @@ using namespace MxRec;
 
 /// 创建新文件实例，包含元数据文件、数据文件
 /// \param fileID 文件ID
-/// \param saveDir 保存文件夹的路径
-File::File(uint64_t fileID, string &saveDir) : fileID(fileID), saveDir(saveDir)
+/// \param fileDir 当前文件目录
+File::File(uint64_t fileID, string &fileDir) : fileID(fileID), fileDir(fileDir)
 {
     LOG_DEBUG("start init file, fileID:{}", fileID);
 
-    if (!fs::exists(fs::absolute(saveDir))) {
-        if (!fs::create_directories(fs::absolute(saveDir))) {
-            throw runtime_error("fail to create Save directory");
-        }
+    if (!fs::exists(fs::absolute(fileDir)) && (!fs::create_directories(fs::absolute(fileDir)))) {
+        throw runtime_error("fail to create Save directory");
     }
 
-    metaFilePath = fs::absolute(saveDir + "/" + to_string(fileID) + ".meta.latest");
-    dataFilePath = fs::absolute(saveDir + "/" + to_string(fileID) + ".data.latest");
+    metaFilePath = fs::absolute(fileDir + "/" + to_string(fileID) + ".meta.latest");
+    dataFilePath = fs::absolute(fileDir + "/" + to_string(fileID) + ".data.latest");
     localFileMeta.open(metaFilePath, ios::out | ios::trunc | ios::binary);
     if (!localFileMeta.is_open()) {
         throw runtime_error("fail to create meta file");
@@ -38,16 +36,17 @@ File::File(uint64_t fileID, string &saveDir) : fileID(fileID), saveDir(saveDir)
     LOG_DEBUG("end init file, fileID:{}", fileID);
 }
 
-/// 创建文件实例并加载，从保存路径中读取元数据文件、数据文件
+/// 创建文件实例并加载，从加载路径中读取元数据文件、数据文件，生成临时文件到当前文件目录下
 /// \param fileID 文件ID
-/// \param saveDir 保存文件夹的路径
+/// \param loadDir 加载文件的目录
+/// \param fileDir 当前文件目录
 /// \param step 加载的步数
-File::File(uint64_t fileID, string &saveDir, int step) : fileID(fileID), saveDir(saveDir)
+File::File(uint64_t fileID, string &fileDir, string &loadDir, int step) : fileID(fileID), fileDir(fileDir)
 {
     LOG_DEBUG("start init file with load, fileID:{}", fileID);
 
-    fs::path metaFileToLoad = fs::absolute(saveDir + "/" + to_string(fileID) + ".meta." + to_string(step));
-    fs::path dataFileToLoad = fs::absolute(saveDir + "/" + to_string(fileID) + ".data." + to_string(step));
+    fs::path metaFileToLoad = fs::absolute(loadDir + "/" + to_string(fileID) + ".meta." + to_string(step));
+    fs::path dataFileToLoad = fs::absolute(loadDir + "/" + to_string(fileID) + ".data." + to_string(step));
     if (!fs::exists(metaFileToLoad)) {
         throw invalid_argument("meta file not found while loading");
     }
@@ -58,8 +57,8 @@ File::File(uint64_t fileID, string &saveDir, int step) : fileID(fileID), saveDir
     ValidateReadFile(metaFileToLoad, fs::file_size(metaFileToLoad));
     ValidateReadFile(dataFileToLoad, fs::file_size(dataFileToLoad));
 
-    metaFilePath = fs::absolute(saveDir + "/" + to_string(fileID) + ".meta.latest");
-    dataFilePath = fs::absolute(saveDir + "/" + to_string(fileID) + ".data.latest");
+    metaFilePath = fs::absolute(fileDir + "/" + to_string(fileID) + ".meta.latest");
+    dataFilePath = fs::absolute(fileDir + "/" + to_string(fileID) + ".data.latest");
     fs::remove(metaFilePath);
     fs::remove(dataFilePath);
 
@@ -163,7 +162,7 @@ void File::DeleteEmbedding(emb_key_t key)
     staleDataCnt += 1;
 }
 
-void File::Save(int step)
+void File::Save(const string &saveDir, int step)
 {
     LOG_DEBUG("start save file at step:{}, fileID:{}", step, fileID);
 

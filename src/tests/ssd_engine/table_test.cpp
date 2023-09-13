@@ -89,7 +89,7 @@ TEST(Table, WriteAndReadAndDeleteAndCompact)
     ASSERT_EQ(fs::exists(oldDataFilePath), false);
     ASSERT_EQ(fs::exists(oldMetaFilePath), false);
 
-    for (string p: savePath) {
+    for (const string& p: savePath) {
         fs::remove_all(p);
     }
 }

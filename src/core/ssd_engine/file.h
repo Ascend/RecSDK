@@ -25,9 +25,9 @@ namespace MxRec {
         static const uint64_t offsetDataLen = sizeof(offset_t);
 
     public:
-        File(uint64_t fileID, string &saveDir);
+        File(uint64_t fileID, string &fileDir);
 
-        File(uint64_t fileID, string &saveDir, int step); // initialize with loading specific step data
+        File(uint64_t fileID, string &fileDir, string &loadDir, int step); // initialize with loading specific step data
 
         ~File();
 
@@ -39,7 +39,7 @@ namespace MxRec {
 
         void DeleteEmbedding(emb_key_t key);
 
-        void Save(int step);
+        void Save(const string &saveDir, int step);
 
         vector<emb_key_t> GetKeys();
 
@@ -51,7 +51,7 @@ namespace MxRec {
 
     private:
         uint64_t fileID;  // init by constructor
-        string saveDir;  // init by constructor
+        string fileDir;  // init by constructor
         fs::path dataFilePath = "";
         fs::path metaFilePath = "";
         fstream localFileData{};

@@ -50,6 +50,8 @@ namespace MxRec {
 
         void LoadDataFileSet(const shared_ptr<fstream>& metaFile, int step);
 
+        void SetTablePathToDiskWithSpace();
+
         string name;  // init by constructor
         vector<string> savePaths;  // init by constructor, support Save and Load from multiple path
         uint64_t maxTableSize;    // init by constructor, maximum key-value volume
@@ -64,6 +66,7 @@ namespace MxRec {
         uint64_t curMaxFileID = 0; // no concurrent writing, always atomic increase
         const uint32_t maxNameSize = 1024;
         const string saveDirPrefix = "ssd_sparse_model_rank_";
+        const int convertToPercentage = 100;
 
         /* args for performance(not expose to user yet)
          * 2 read thread is optimal when:
@@ -76,7 +79,7 @@ namespace MxRec {
         int readThreadNum = 2;
         uint32_t maxDataNumInFile = 10000;  // relax constrain for performance, need tuning
         double compactThreshold = 0.5;
-        double diskFreeSpaceThreshold = 0.05;  // in range [0, 1), leave diskFreeSpaceThreshold*100 % for disk space
+        double diskAvailSpaceThreshold = 0.05;  // in range [0, 1), leave diskAvailSpaceThreshold*100 % for disk space
     };
 }
 

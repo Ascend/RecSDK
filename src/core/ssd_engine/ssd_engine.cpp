@@ -115,6 +115,7 @@ void SSDEngine::Start()
     }
     isRunning = true;
     compactThread = make_shared<thread>([this] { CompactMonitor(); });
+    LOG_INFO("SSDEngine start");
 }
 
 /// 压缩监控方法，达到检查周期时调用表的压缩接口

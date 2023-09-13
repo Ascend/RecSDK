@@ -38,6 +38,12 @@ Table::Table(const string &name, vector<string> &saveDirs, uint64_t maxTableSize
       maxTableSize(maxTableSize),
       compactThreshold(compactThreshold)
 {
+    // always use first path to save until it's full
+    curTablePath = fs::absolute(savePaths.at(curSavePathIdx) + "/" + saveDirPrefix + g_rankId + "/" + name).string();
+    if (!fs::exists(curTablePath) && !fs::create_directories(curTablePath)) {
+        throw runtime_error("fail to create table directory");
+    }
+
     bool isMetaFileFound = false;
     for (const string &dirPath: saveDirs) {
         auto metaFilePath = fs::absolute(
@@ -50,11 +56,9 @@ Table::Table(const string &name, vector<string> &saveDirs, uint64_t maxTableSize
         break;
     }
     if (!isMetaFileFound) {
-        throw invalid_argument("table meta file not found");
+        throw invalid_argument(StringFormat("table:%s meta file not found", name.c_str()));
     }
 
-    // always use first path to save until it's full
-    curTablePath = fs::absolute(savePaths.at(curSavePathIdx) + "/" + saveDirPrefix + g_rankId + "/" + name).string();
     LOG_INFO("load table:{} done. try store at path:{}", name, curTablePath);
 }
 
@@ -112,7 +116,11 @@ void Table::Save(int step)
     for (const auto &f: fileSet) {
         uint64_t fid = f->GetFileID();
         metaFile.write(reinterpret_cast<char const *>(&fid), sizeof(fid));
-        f->Save(step);
+        SetTablePathToDiskWithSpace();
+        if (!fs::exists(curTablePath) && !fs::create_directories(curTablePath)) {
+            throw runtime_error("fail to create table directory");
+        }
+        f->Save(curTablePath, step);
     }
 
     metaFile.flush();
@@ -140,25 +148,27 @@ void Table::LoadDataFileSet(const shared_ptr<fstream> &metaFile, int step)
             curMaxFileID = fileID;
         }
 
-        bool isFileFound = false;
-        shared_ptr<File> tmp;
+        shared_ptr<File> loadedFile = nullptr;
         for (const string &p: savePaths) {
             // try to find data file from each path
-            string dataPath = p + "/" + saveDirPrefix + g_rankId + "/" + name;
+            string loadPath = p + "/" + saveDirPrefix + g_rankId + "/" + name;
+            SetTablePathToDiskWithSpace();
+            if (!fs::exists(curTablePath) && !fs::create_directories(curTablePath)) {
+                throw runtime_error("fail to create table directory");
+            }
             try {
-                tmp = make_shared<File>(fileID, dataPath, step);
-                fileSet.insert(tmp);
-                isFileFound = true;
+                loadedFile = make_shared<File>(fileID, curTablePath, loadPath, step);
+                fileSet.insert(loadedFile);
                 break;
             } catch (invalid_argument &e) {
                 // do nothing because file may in other path
             }
         }
-        if (!isFileFound) {
+        if (loadedFile == nullptr) {
             throw invalid_argument("data file not found");
         }
 
-        auto keys = tmp->GetKeys();
+        auto keys = loadedFile->GetKeys();
         totalKeyCnt += keys.size();
         if (totalKeyCnt > maxTableSize) {
             throw invalid_argument("table size too small, key quantity exceed while loading data");
@@ -169,7 +179,7 @@ void Table::LoadDataFileSet(const shared_ptr<fstream> &metaFile, int step)
                 throw invalid_argument(
                     "find duplicate key in files, compaction already done before saving, file may broken or modified");
             }
-            keyToFile[k] = tmp;
+            keyToFile[k] = loadedFile;
         }
     }
     curMaxFileID += 1;
@@ -217,22 +227,10 @@ void Table::InsertEmbeddingsInner(vector<emb_key_t> &keys, vector<vector<float>>
     }
 
     if (curFile == nullptr || (curFile != nullptr && curFile->GetDataCnt() >= maxDataNumInFile)) {
-        // leave diskFreeSpaceThreshold % space for each disk
-        while (true) {
-            fs::space_info si = fs::space((curTablePath));
-            if ((double(si.free) / double(si.capacity)) > diskFreeSpaceThreshold) {
-                break;
-            }
-
-            curSavePathIdx += 1;
-            if (curSavePathIdx >= savePaths.size()) {
-                throw runtime_error("all disk's space not enough");
-            }
-            curTablePath = savePaths[curSavePathIdx];
-            LOG_INFO("current data path's free space less than {}, try next path:{}",
-                diskFreeSpaceThreshold, curTablePath);
+        SetTablePathToDiskWithSpace();
+        if (!fs::exists(curTablePath) && !fs::create_directories(curTablePath)) {
+            throw runtime_error("fail to create table directory");
         }
-
         curFile = make_shared<File>(curMaxFileID, curTablePath);
         fileSet.insert(curFile);
         curMaxFileID++;
@@ -350,3 +348,27 @@ void Table::DeleteEmbeddingsInner(vector<emb_key_t> &keys)
         }
     }
 }
+
+void Table::SetTablePathToDiskWithSpace()
+{
+    constexpr int nMaxLoop = 1024;
+    int loopCnt = 0;
+    while (loopCnt < nMaxLoop) {
+        fs::space_info si = fs::space(savePaths.at(curSavePathIdx));
+        if ((double(si.available) / double(si.capacity)) > diskAvailSpaceThreshold) {
+            break;
+        }
+
+        curSavePathIdx += 1;
+        if (curSavePathIdx >= savePaths.size()) {
+            throw runtime_error("all disk's space not enough");
+        }
+        curTablePath = fs::absolute(
+            savePaths.at(curSavePathIdx) + "/" + saveDirPrefix + g_rankId + "/" + name).string();
+
+        LOG_INFO("current data path's available space less than {}%, try next path:{}",
+                 diskAvailSpaceThreshold * convertToPercentage, curTablePath);
+        loopCnt += 1;
+    }
+}
+
