@@ -25,7 +25,7 @@ from mx_rec.util.initialize import get_rank_id, get_rank_size, is_asc_frozen, ge
     get_host_pipeline_ops, get_use_dynamic_expansion, set_modify_graph, insert_removing_var_list, get_bool_gauge_set, \
     get_table_instance_by_name
 from mx_rec.validator.validator import ClassValidator, StringValidator, SSDFeatureValidator, \
-    para_checker_decorator, IntValidator, NumValidator, OptionValidator
+    para_checker_decorator, IntValidator, NumValidator, OptionValidator, OptionalIntValidator
 from mx_rec.util.tf_version_adapter import npu_ops
 from mx_rec.util.normalization import fix_invalid_table_name
 from mx_rec.util.global_env_conf import global_env
@@ -36,7 +36,7 @@ from mx_rec.util.log import logger
     ("key_dtype", OptionValidator, {"options": (tf.int64, tf.int32, tf.string)}),
     ("dim", ClassValidator, {"classes": (int, tf.TensorShape)}),
     ("dim", NumValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
-    ("name", StringValidator, {"max_len": 255}, ["check_string_length", "check_whitelist"]),
+    ("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length", "check_whitelist"]),
     ("emb_initializer", ClassValidator, {"classes": (InitializerV1, InitializerV2)}),
     ("optimizer_list", ClassValidator, {"classes": (list, type(None))}),
     (["ssd_vocabulary_size", "ssd_data_path", "host_vocabulary_size"], SSDFeatureValidator),
@@ -777,9 +777,10 @@ class SparseEmbedding:
     ("ids", ClassValidator, {"classes": (FeatureSpec, tf.Tensor)}),
     ("is_train", ClassValidator, {"classes": (bool, )}),
     ("send_count", ClassValidator, {"classes": (int, type(None))}),
+    ("send_count", OptionalIntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
     ("name", ClassValidator, {"classes": (str, type(None))}),
     ("modify_graph", ClassValidator, {"classes": (bool, type(None))}),
-    ("batch", ClassValidator, {"classes": (dict, type(None))}),
+    ("batch", ClassValidator, {"classes": (dict, list, tuple, type(None))}),
     ("access_and_evict_config", ClassValidator, {"classes": (dict, type(None))}),
 ])
 def sparse_lookup(hashtable: SparseEmbedding,

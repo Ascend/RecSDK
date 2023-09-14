@@ -9,8 +9,10 @@ import tensorflow as tf
 from mx_rec.util.initialize import get_host_pipeline_ops, get_training_mode_channel_id, get_use_static
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.merge_table import find_dangling_table, should_skip
-from mx_rec.validator.validator import para_checker_decorator, ValueCompareValidator
+from mx_rec.validator.validator import para_checker_decorator, ValueCompareValidator, ClassValidator, \
+    OptionalIntValidator
 from mx_rec.util.log import logger
+from mx_rec.constants.constants import MAX_INT32
 
 
 @para_checker_decorator(check_option_list=[
@@ -18,6 +20,13 @@ from mx_rec.util.log import logger
      ["check_at_least_one_not_equal_to_target"]),
     (["tgt_key_specs", "args_index_list"], ValueCompareValidator, {"target": None},
      ["check_at_least_one_equal_to_target"]),
+    ("tgt_key_specs", ClassValidator, {"classes": (FeatureSpec, type(None))}),
+    ("args_index_list", ClassValidator, {"classes": (list, type(None))}),
+    ("feature_numbers", ClassValidator, {"classes": (int, type(None))}),
+    ("feature_numbers", OptionalIntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
+    ("table_names", ClassValidator, {"classes": (list, type(None))}),
+    ("is_training", ClassValidator, {"classes": (bool, type(None))}),
+    ("dump_graph", ClassValidator, {"classes": (bool, type(None))}),
 ])
 def get_asc_insert_func(tgt_key_specs=None, args_index_list=None, feature_numbers=None,
                         table_names=None, **kwargs):

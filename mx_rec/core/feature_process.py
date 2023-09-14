@@ -16,9 +16,10 @@ class _EvictHook(tf.compat.v1.train.SessionRunHook):
     """Sets evict based on global step or time."""
     @para_checker_decorator(
         check_option_list=[
-            ("evict_enable", ClassValidator, {"classes": (bool,)}),
+            ("evict_enable", ClassValidator, {"classes": (bool, )}),
             ("evict_time_interval", IntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
             ("evict_step_interval", OptionalIntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
+            ("evict_step_interval", ClassValidator, {"classes": (int, type(None))}),
         ]
     )
     def __init__(self,

@@ -34,9 +34,9 @@ from mx_rec.validator.validator import para_checker_decorator, OptionalStringVal
     ("l2_regularization_strength", NumValidator, {"min_value": 0, "max_value": 1e4}, ["check_value"]),
     ("l2_shrinkage_regularization_strength", NumValidator, {"min_value": 0, "max_value": 1e4}, ["check_value"]),
     ("use_locking", ClassValidator, {"classes": (bool,)}),
-    ("name", StringValidator, {"max_len": 255}, ["check_string_length"]),
-    ("accum_name", OptionalStringValidator, {"max_len": 255}, ["check_string_length"]),
-    ("linear_name", OptionalStringValidator, {"max_len": 255}, ["check_string_length"])
+    ("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
+    ("accum_name", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
+    ("linear_name", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"])
 ])
 def create_hash_optimizer(learning_rate, use_locking=False, name="Ftrl", **kwargs):
     return CustomizedFtrl(learning_rate=learning_rate, use_locking=use_locking, name=name, **kwargs)

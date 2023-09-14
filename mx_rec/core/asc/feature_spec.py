@@ -25,13 +25,19 @@ class FeatureSpec:
     use_timestamp_eval = False
 
     @para_checker_decorator(check_option_list=[
-        ("name", StringValidator, {"max_len": 255}, ["check_string_length"]),
-        ("table_name", OptionalStringValidator, {"max_len": 255}, ["check_string_length"]),
-        ("index_key", OptionalStringValidator, {"max_len": 255}, ["check_string_length"]),
+        ("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
+        ("table_name", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
+        ("table_name", ClassValidator, {"classes": (str, type(None))}),
+        ("index_key", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
+        ("index_key", OptionalIntValidator, {"min_value": 0, "max_value": 255}, ["check_value"]),
+        ("index_key", ClassValidator, {"classes": (str, int, type(None))}),
         ("access_threshold", OptionalIntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
+        ("access_threshold", ClassValidator, {"classes": (int, type(None))}),
         ("eviction_threshold", OptionalIntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
+        ("eviction_threshold", ClassValidator, {"classes": (int, type(None))}),
         ("is_timestamp", ClassValidator, {"classes": (bool, type(None))}),
         ("batch_size", OptionalIntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
+        ("batch_size", ClassValidator, {"classes": (int, type(None))}),
         ("faae_coefficient", OptionalIntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"])
     ])
     def __init__(self, name: str,
