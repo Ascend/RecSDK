@@ -328,7 +328,6 @@ void KeyProcess::HashSplitHelper(const unique_ptr <emb_batch_t>& batch, vector <
 bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<emb_batch_t>& batch, UniquePtr& unique,
                                                     int channel, int threadId)
 {
-    std::lock_guard<std::mutex> lock(loadSaveMut[channel][threadId]);
     // tuple for keyRec restore hotPos scAll countRecv
     isWithFAAE = m_featureAdmitAndEvict.GetFunctionSwitch() &&
                   FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE;
@@ -347,7 +346,7 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<emb_batch_t>& bat
             rankInfo.rankId, threadId, channel);
         return false;
     }
-
+    std::lock_guard<std::mutex> lock(loadSaveMut[channel][threadId]);
     // without host, just device, all embedding vectors were stored in device
     // map key to offset directly by lookup keyOffsetMap (hashmap)
     if (rankInfo.noDDR) {
@@ -383,7 +382,6 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<emb_batch_t>& bat
 
 bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channel, int threadId)
 {
-    std::lock_guard<std::mutex> lock(loadSaveMut[channel][threadId]);
     vector<keys_t> splitKeys;
     vector<int32_t> restore;
     vector<int32_t> hotPos;
@@ -397,7 +395,7 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channe
         FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE) {
         countRecv = GetCountRecv(batch, threadId, keyCount, scAll, ss);
     }
-
+    std::lock_guard<std::mutex> lock(loadSaveMut[channel][threadId]);
     BuildRestoreVec(batch, ss, restore, static_cast<int>(hotPos.size()));
 
     // 特征准入&淘汰

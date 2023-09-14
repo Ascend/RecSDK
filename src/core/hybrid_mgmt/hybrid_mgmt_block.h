@@ -15,7 +15,7 @@
 #include "utils/singleton.h"
 using namespace MxRec;
 const std::string HYBRID_BLOCKING = "[HYBRID_BLOCKING] ";
-const std::string D2H_CHANNEL_NAME_PRE = "d2h_notify_hybridmgmt_";
+const int SAVE_STEP_INDEX = 2;
 const std::chrono::milliseconds SLEEP_MS = 20ms;
 class HybridMgmtBlock {
 public:
@@ -48,6 +48,8 @@ private:
     int stepsInterval[2] = {0, 0};
      // 控制通道阻塞的变量
     bool isBlock[2] = {true, true};
+    // 控制训练了多少步进行保存的步数
+    int saveInterval = 0;
     RankInfo rankInfo;
 };
 
@@ -65,7 +67,7 @@ public:
                            "currentBatchNumber is %d. please check your setting of train "
                            "steps and eval steps", scene.c_str(), channelId, preprocessBatchNumber,
                            currentBatchNumber);
-        LOG(ERROR) << str;
+        LOG_ERROR(str);
     }
 
 private:
