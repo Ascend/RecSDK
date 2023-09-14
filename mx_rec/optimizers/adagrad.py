@@ -23,7 +23,7 @@ from mx_rec.validator.validator import para_checker_decorator, StringValidator, 
     ("learning_rate", NumValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
     ("initial_accumulator_value", NumValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
     ("use_locking", ClassValidator, {"classes": (bool, )}),
-    ("name", StringValidator, {"max_len": 255}, ["check_string_length"])
+    ("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"])
 ])
 def create_hash_optimizer(learning_rate=0.001,
                           initial_accumulator_value=0.9,

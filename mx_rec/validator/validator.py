@@ -273,9 +273,9 @@ class OptionalStringValidator(StringValidator):
     """
 
     def __init__(self, name, value, max_len=None, min_len=0, element: Optional[str] = None, msg=""):
-        if value is None:
+        if not isinstance(value, str):
             super(OptionalStringValidator, self).__init__(name, "", None, None, None, msg)
-        else:
+        elif isinstance(value, str):
             super(OptionalStringValidator, self).__init__(name, value, max_len, min_len, element, msg)
 
 
@@ -368,7 +368,7 @@ class OptionalIntValidator(IntValidator):
 
     def __init__(self, name: str, value: int, min_value: int = None, max_value: int = None,
                  invalid_options: List = None, constrained_options: List = None, msg: str = ""):
-        if value is None:
+        if not isinstance(value, int):
             super(OptionalIntValidator, self).__init__(name, 0, None, None, None, None, msg)
         else:
             super(OptionalIntValidator, self).__init__(name, value, min_value, max_value,

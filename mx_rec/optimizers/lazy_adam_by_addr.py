@@ -23,7 +23,7 @@ from mx_rec.validator.validator import para_checker_decorator, StringValidator, 
     ("beta1", NumValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
     ("beta2", NumValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
     ("epsilon", NumValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
-    ("name", StringValidator, {"max_len": 255}, ["check_string_length"])
+    ("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"])
 ])
 def create_hash_optimizer_by_address(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8,
                                      name="LazyAdamByAddress"):

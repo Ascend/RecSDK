@@ -24,7 +24,7 @@ from mx_rec.validator.validator import para_checker_decorator, StringValidator, 
     ("learning_rate", NumValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
     ("mom", NumValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
     ("use_locking", ClassValidator, {"classes": (bool,)}),
-    ("name", StringValidator, {"max_len": 255}, ["check_string_length"]),
+    ("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
     ("enable_nesterov", ClassValidator, {"classes": (bool,)}),
 ])
 def create_hash_optimizer(learning_rate=0.001, mom=0.9, use_locking=False, name="momentum",

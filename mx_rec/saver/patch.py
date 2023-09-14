@@ -23,11 +23,14 @@ from tensorflow.python.util import compat
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
+import numpy as np
 
 from mx_rec.saver.saver import Saver as SparseSaver
 from mx_rec.util.initialize import get_ascend_global_hashtable_collection, export_removing_var_list
-from mx_rec.validator.validator import para_checker_decorator, ClassValidator
+from mx_rec.validator.validator import para_checker_decorator, ClassValidator, StringValidator, OptionalIntValidator, \
+    OptionalStringValidator
 from mx_rec.util.log import logger
+from mx_rec.constants.constants import MAX_INT32
 
 
 def get_sparse_vars(var_list):
@@ -172,10 +175,13 @@ def build(self):
 
 @para_checker_decorator(check_option_list=[
     ("sess", ClassValidator, {"classes": (tf.compat.v1.Session, tf.compat.v1.train.MonitoredSession)}),
-    ("save_path", ClassValidator, {"classes": (str, )}),
-    ("global_step", ClassValidator, {"classes": (int, type(None))}),
+    ("save_path", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
+    ("global_step", ClassValidator, {"classes": (int, np.int64, type(None))}),
+    ("global_step", OptionalIntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
     ("latest_filename", ClassValidator, {"classes": (str, type(None))}),
+    ("latest_filename", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
     ("meta_graph_suffix", ClassValidator, {"classes": (str, type(None))}),
+    ("meta_graph_suffix", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
     ("write_meta_graph", ClassValidator, {"classes": (bool, type(None))}),
     ("write_state", ClassValidator, {"classes": (bool, type(None))}),
     ("strip_default_attrs", ClassValidator, {"classes": (bool, type(None))}),
@@ -221,7 +227,7 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
 
 @para_checker_decorator(check_option_list=[
     ("sess", ClassValidator, {"classes": (tf.compat.v1.Session, tf.compat.v1.train.MonitoredSession)}),
-    ("save_path", ClassValidator, {"classes": (str, )})
+    ("save_path", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
 ])
 def restore(self, sess, save_path):
     if save_path is None:
