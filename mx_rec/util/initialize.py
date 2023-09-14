@@ -30,6 +30,7 @@ class ConfigInitializer:
         ("use_mpi", ClassValidator, {"classes": (bool, )}),
         ("train_steps", IntValidator, {"min_value": -1, "max_value": MAX_INT32}),
         ("eval_steps", IntValidator, {"min_value": -1, "max_value": MAX_INT32}),
+        ("save_steps", IntValidator, {"min_value": -1, "max_value": MAX_INT32}),
         (["train_steps", "eval_steps"], ValueCompareValidator, {"target": 0},
          ["check_at_least_one_not_equal_to_target"]),
         ("if_load", ClassValidator, {"classes": (bool, )}),

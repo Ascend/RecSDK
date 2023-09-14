@@ -200,8 +200,7 @@ def initialize_emb_cache(table_info_list, threshold_list):
         option = option | USE_DYNAMIC_EXPANSION
 
     # [train_steps, eval_steps, save_steps] pass step information to HybridMgmt for data process loop
-    rank_info = RankInfo(rank_id, device_id, rank_size, option,
-                         n_batch_to_prefetch, [train_steps, eval_steps, save_steps])
+    rank_info = RankInfo(rank_id, device_id, rank_size, option, [train_steps, eval_steps, save_steps])
 
     emb_cache = HybridMgmt()
 
