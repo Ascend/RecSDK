@@ -203,7 +203,7 @@ void FeatureAdmitAndEvict::SetFunctionSwitch(bool isEnableEvict)
 
 void FeatureAdmitAndEvict::SetCombineSwitch()
 {
-    m_isCombine = GetCombineSwitch();
+    m_isCombine = GlobalEnv::useCombineFaae;
 }
 
 bool FeatureAdmitAndEvict::GetFunctionSwitch() const

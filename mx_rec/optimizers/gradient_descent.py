@@ -6,21 +6,24 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
 from collections import defaultdict
 
 import tensorflow as tf
 
-from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import gradient_descent
 
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.util.variable import check_param_type
+from mx_rec.constants.constants import MAX_INT32
+from mx_rec.validator.validator import para_checker_decorator, StringValidator, ClassValidator, NumValidator
 
 
+@para_checker_decorator(check_option_list=[
+    ("learning_rate", NumValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
+    ("use_locking", ClassValidator, {"classes": (bool,)}),
+    ("name", StringValidator, {"max_len": 255}, ["check_string_length"])
+])
 def create_hash_optimizer(learning_rate, use_locking=False, name="GradientDescent"):
-
     return CustomizedGradientDescent(learning_rate=learning_rate, use_locking=use_locking, name=name)
 
 
@@ -32,8 +35,6 @@ class CustomizedGradientDescent(gradient_descent.GradientDescentOptimizer, Custo
         super(CustomizedGradientDescent, self)._get_name(name=name)
         super(CustomizedGradientDescent, self).__init__(learning_rate=learning_rate, use_locking=use_locking,
                                                         name=self.unique_name)
-
-        check_param_type("use_locking", use_locking, bool)
 
     def initialize_slots(self, var, table_instance):
         return []

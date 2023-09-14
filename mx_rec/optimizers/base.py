@@ -6,11 +6,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
 from collections import defaultdict
 
 from tensorflow.python.framework import ops
 from tensorflow.python.training.optimizer import _TensorProcessor
+
+from mx_rec.util.log import logger
 
 
 class CustomizedOptimizer:
@@ -51,4 +52,4 @@ def custom_update_op(self, opt, grad):
 
 def patch_for_optimizer():
     _TensorProcessor.update_op = custom_update_op
-    logging.debug("update_op in Class optimizer._TensorProcessor has been patched.")
+    logger.debug("update_op in Class optimizer._TensorProcessor has been patched.")

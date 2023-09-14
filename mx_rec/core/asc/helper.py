@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
-import logging
 from functools import reduce
 
 import tensorflow as tf
@@ -10,8 +9,16 @@ import tensorflow as tf
 from mx_rec.util.initialize import get_host_pipeline_ops, get_training_mode_channel_id, get_use_static
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.merge_table import find_dangling_table, should_skip
+from mx_rec.validator.validator import para_checker_decorator, ValueCompareValidator
+from mx_rec.util.log import logger
 
 
+@para_checker_decorator(check_option_list=[
+    (["tgt_key_specs", "args_index_list"], ValueCompareValidator, {"target": None},
+     ["check_at_least_one_not_equal_to_target"]),
+    (["tgt_key_specs", "args_index_list"], ValueCompareValidator, {"target": None},
+     ["check_at_least_one_equal_to_target"]),
+])
 def get_asc_insert_func(tgt_key_specs=None, args_index_list=None, feature_numbers=None,
                         table_names=None, **kwargs):
     '''
@@ -35,6 +42,10 @@ def create_asc_insert_func_with_specs(tgt_key_specs, **kwargs):
     return get_asc_insert_func_inner(tgt_key_specs=tgt_key_specs, **kwargs)
 
 
+@para_checker_decorator(check_option_list=[
+    (["args_index_list", "feature_counts", "table_names"], ValueCompareValidator, {"target": None},
+     ["check_all_not_equal_to_target"]),
+])
 def create_asc_insert_func_with_acg(args_index_list, feature_counts, table_names, **kwargs):
     '''
     自动改图模式 auto change graph
@@ -47,10 +58,6 @@ def create_asc_insert_func_with_acg(args_index_list, feature_counts, table_names
 
 def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_counts=None,
                               table_names=None, **kwargs):
-    both_none = tgt_key_specs is None and args_index_list is None
-    both_no_none = tgt_key_specs is not None and args_index_list is not None
-    if both_none or both_no_none:
-        raise ValueError("Args tgt_key_specs and args_index_list should and only can choice one to get insert tensors.")
 
     is_training = kwargs.get("is_training", True)
     dump_graph = kwargs.get("dump_graph", False)
@@ -71,7 +78,7 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
                 "splits": []
             }
             get_target_tensors_with_feature_specs(tgt_key_specs, data_src, is_training, read_emb_key_inputs_dict)
-            logging.debug(f"do_insert with spec for {read_emb_key_inputs_dict.get('table_names')}")
+            logger.debug("do_insert with spec for %s", read_emb_key_inputs_dict.get('table_names'))
             return do_insert(args,
                              insert_tensors=read_emb_key_inputs_dict.get("insert_tensors"),
                              splits=read_emb_key_inputs_dict.get("splits"),
@@ -84,18 +91,15 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
         insert_fn = insert_fn_for_feature_specs
 
     else:
-        if feature_counts is None or table_names is None:
-            raise ValueError("Please config 'args_index_list', 'feature_counts' and 'table_names' at the same time.")
-
         dangling_tables = find_dangling_table(table_names)
 
-        logging.info(f"In insert found dangling table(s): {dangling_tables} "
-                     f"which does not need to be provided to the EmbInfo.")
+        logger.info("In insert found dangling table(s): %s which does not need to be provided to the EmbInfo.",
+                    dangling_tables)
 
         def insert_fn_for_arg_indexes(*args):
             insert_tensors = get_target_tensors_with_args_indexes(args_index_list)
 
-            logging.debug(f"do_insert without spec for {table_names}")
+            logger.debug("do_insert without spec for %s", table_names)
             splits = []
             for insert_tensor in insert_tensors:
                 split = reduce(lambda x, y: x * y, insert_tensor.shape.as_list())
@@ -104,12 +108,12 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_
             new_insert_tensors, new_splits, new_table_names = [], [], []
             for idx, table_name in enumerate(table_names):
                 if table_name in dangling_tables:
-                    logging.info(f"do_insert skip table by graph : {table_name}")
+                    logger.info("do_insert skip table by graph : %s", table_name)
                     continue
 
                 skip = should_skip(table_name)
                 if skip:
-                    logging.info(f"do_insert skip table by keyword: {table_name}")
+                    logger.info("do_insert skip table by keyword: %s", table_name)
                     continue
 
                 new_insert_tensors.append(insert_tensors[idx])
@@ -144,7 +148,7 @@ def merge_feature_id_request(feature_id_list, split_list, table_name_list):
                            f"len(table_name_list): {len(table_name_list)}")
     feature_id_requests = zip(feature_id_list, split_list, table_name_list)
     feature_id_requests = sorted(feature_id_requests, key=lambda x: (x[2], x[0].name))
-    logging.debug(f" features to merge: {feature_id_requests}")
+    logger.debug("features to merge: %s", feature_id_requests)
 
     last_table_name = None
     last_split = 0
@@ -170,8 +174,8 @@ def merge_feature_id_request(feature_id_list, split_list, table_name_list):
         output_table_name_list.append(last_table_name)
         output_split_list.append(last_split)
         output_tensorshape_split_list.append(last_tensorshape_split)
-    logging.debug(f"merge request from {table_name_list} {split_list} "
-                  f" to {output_table_name_list} {output_split_list}")
+    logger.debug("merge request from %s %s to %s %s", table_name_list, split_list,
+                 output_table_name_list, output_split_list)
 
     list_set = {
         'output_feature_id_list': output_feature_id_list,
@@ -210,12 +214,12 @@ def send_feature_id_request_async(feature_id_list, split_list, table_name_list, 
         raise RuntimeError(f"The length of split list can not be 0.")
 
     if use_static:
-        logging.info(f"read_emb_key_v2(static), table_name_list: {table_name_list}, split_list: {split_list}")
+        logger.info("read_emb_key_v2(static), table_name_list: %s, split_list: %s", table_name_list, split_list)
         return host_pipeline_ops.read_emb_key_v2(concat_tensor, channel_id=channel_id, splits=split_list,
                                                  emb_name=table_name_list, timestamp=timestamp)
 
-    logging.info(f"read_emb_key_v2(dynamic), table_name_list: {table_name_list}, "
-                 f"tensorshape_split_list: {tensorshape_split_list}")
+    logger.info("read_emb_key_v2(dynamic), table_name_list: %s, tensorshape_split_list: %s",
+                table_name_list, tensorshape_split_list)
     return host_pipeline_ops.read_emb_key_v2_dynamic(concat_tensor, tensorshape_split_list,
                                                      channel_id=channel_id, emb_name=table_name_list,
                                                      timestamp=timestamp)
@@ -295,7 +299,7 @@ def get_target_tensors_with_args_indexes(args_index_list):
     for index in args_index_list:
         tensor = graph.get_tensor_by_name("args_%d:0" % index)
         if tensor.dtype != tf.int64:
-            logging.debug(f"Input tensor dtype is {tensor.dtype}, which will be transferred to tf.int64.")
+            logger.debug("Input tensor dtype is %s, which will be transferred to tf.int64.", tensor.dtype)
             tensor = tf.cast(tensor, tf.int64)
         insert_tensors.append(tf.reshape(tensor, [-1, ]))
 

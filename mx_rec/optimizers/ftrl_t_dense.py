@@ -6,22 +6,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
 from collections import defaultdict
 
 import tensorflow as tf
 
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.training import optimizer
-from tensorflow.python.training import slot_creator
 
-from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.util.initialize import get_table_instance, insert_removing_var_list
-from mx_rec.util.variable import check_and_get_config_via_var
+from mx_rec.util.initialize import insert_removing_var_list
 
 
 def create_ftrl_dense_optimizer(learning_rate, use_locking=False, name="Ftrl_t_dense", **kwargs):
@@ -51,7 +46,6 @@ class CustomizedFtrlTZ(optimizer.Optimizer):
         self._epsilon_tensor = None
         self._grad_factor_tensor = None
         super(CustomizedFtrlTZ, self).__init__(use_locking, name)
-        logging.debug("CustomizedFtrlTZ __init__ ok")
 
     def _prepare(self):
         self._learning_rate_tensor = ops.convert_to_tensor(

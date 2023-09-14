@@ -3,19 +3,17 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2023. All rights reserved.
 
 
-import os
+from typing import List, Tuple, Any, Callable, Dict, Optional, Union, Type
 import re
-from typing import Callable, Any
-from typing import List, Optional, Tuple
+
+import os
+import inspect
+import functools
 
 import tensorflow as tf
 
-from mx_rec.constants.constants import MIN_SIZE
-from mx_rec.constants.constants import MAX_SIZE
-from mx_rec.constants.constants import MAX_DEVICE_NUM
-from mx_rec.constants.constants import MAX_RANK_SIZE
-from mx_rec.constants.constants import MIN_DEVICE_NUM
-from mx_rec.constants.constants import MIN_RANK_SIZE
+from mx_rec.constants.constants import MIN_SIZE, MAX_SIZE, MAX_RANK_SIZE, MIN_RANK_SIZE
+from mx_rec.util.log import logger
 
 
 class Validator:
@@ -23,11 +21,11 @@ class Validator:
     A validator to check the input parameters
     """
 
-    def __init__(self, value, msg="value is invalid"):
+    def __init__(self, name: Union[List[str], str], value: Union[List[Any], Any], msg="value is invalid"):
         """
-        :param value: the value for validation
         :param msg: default error msg
         """
+        self.name = name
         self.value = value
         self.msg = msg
         self.checkers = []
@@ -40,7 +38,7 @@ class Validator:
         if self.is_valid_state is None:
             self.is_valid_state = True
         for checker, msg in self.checkers:
-            if not checker(self.value):
+            if not checker():
                 self.msg = msg
                 raise ValueError(self.msg)
         if self.is_valid_state:
@@ -52,8 +50,87 @@ class Validator:
             self.check()
         return self.is_valid_state
 
-    def get_value(self, default=None):
-        return self.value if self.is_valid() else default
+
+def para_checker_decorator(check_option_list: List[Tuple[Union[List[str], str],
+                                                         Type[Validator],
+                                                         Optional[Dict],
+                                                         Optional[List[str]]]]):
+    """
+    函数参数校验装饰器
+    :param check_option_list:
+    需要校验的参数及其相关校验器[“需要检验的参数或参数组合”, "使用的校验器", "校验器的参数", "校验器需要执行的方法（添加指定校验）"]
+    :return:
+    """
+
+    def para_checker(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            func_spec = inspect.getfullargspec(func)
+            # 将函数有默认值的参数加入kwargs
+            args_with_default = set()
+            if func_spec.defaults is not None:
+                arg_with_default_num = len(func_spec.defaults)
+                for arg, default in zip(func_spec.args[-arg_with_default_num:], func_spec.defaults):
+                    if arg in kwargs:
+                        continue
+                    args_with_default.add(arg)
+                    kwargs.update({arg: default})
+            logger.debug("[checker wrapper]func %s args: %s, kwargs: %s", func.__name__, args, kwargs)
+            # 执行每一个检查项
+            for option in check_option_list:
+                optional_check_list = None
+                validator_kwargs = {}
+
+                # 解包每个检查项的：待检查参数名，检查器，检查器参数，特定的检查方法
+                option_num = len(option)
+                if option_num == 2:
+                    para_list_to_be_check, validator = option
+                elif option_num == 3:
+                    para_list_to_be_check, validator, validator_kwargs = option
+                else:
+                    para_list_to_be_check, validator, validator_kwargs, optional_check_list = option
+
+                if not isinstance(para_list_to_be_check, list):
+                    para_list_to_be_check = [para_list_to_be_check]
+
+                # 确认当前检查项需要检查的参数是否在函数参数中
+                paras = []
+                for para_to_be_check in para_list_to_be_check:
+                    if para_to_be_check not in kwargs:
+                        logger.debug("[checker wrapper]invalid para '%s' to be checked, "
+                                     "not passed to the function '%s'", para_to_be_check, func.__name__)
+                        continue
+                    paras.append(kwargs.get(para_to_be_check))
+
+                # 如果检查的参数不在传参中，跳过该检查项
+                if not paras:
+                    continue
+
+                # 更新检查器的参数
+                validator_kwargs.update(
+                    {
+                        "name": para_list_to_be_check[0] if len(para_list_to_be_check) == 1 else para_list_to_be_check,
+                        "value": paras[0] if len(paras) == 1 else paras
+                    }
+                )
+
+                validator_instance = validator(**validator_kwargs)
+
+                # 添加检查器特定的检查方法
+                if optional_check_list and len(optional_check_list) != 0:
+                    for optional_check in optional_check_list:
+                        getattr(validator_instance, optional_check)()
+
+                # 执行检查
+                validator_instance.check()
+
+            for arg in args_with_default:
+                del kwargs[arg]
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return para_checker
 
 
 class ClassValidator(Validator):
@@ -61,14 +138,75 @@ class ClassValidator(Validator):
     Check class validator.
     """
 
-    def __init__(self, value, classes):
-        super().__init__(value)
+    def __init__(self, name, value, classes):
+        super(ClassValidator, self).__init__(name, value)
         self.classes = classes
+        self.register()
 
-    def check_isinstance(self):
+    def register(self):
         """Check arg isinstance of classes"""
-        self.register_checker(lambda path: isinstance(self.value, self.classes), f"Invalid parameter type, not "
-                                                                                 f"in {self.classes}")
+        self.register_checker(lambda: isinstance(self.value, self.classes),
+                              f"Invalid parameter type of para '{self.name}', "
+                              f"not in {self.classes}, but: '{type(self.value)}'")
+        return self
+
+
+class OptionValidator(Validator):
+    """
+    Check class validator.
+    """
+
+    def __init__(self, name, value, options):
+        super(OptionValidator, self).__init__(name, value)
+        self.options = options
+        self.register()
+
+    def register(self):
+        """Check arg isinstance of classes"""
+        self.register_checker(lambda: self.value in self.options,
+                              f"Invalid option of '{self.name}', "
+                              f"should be one of '{self.options}', but: '{self.value}'")
+        return self
+
+
+class ValueCompareValidator(Validator):
+    """
+    Check value validator. Whether value equals to target value.
+    """
+    def __init__(self, name: Union[List[str], str], value: Union[List[Any], Any], target: Any):
+        super(ValueCompareValidator, self).__init__(name, value)
+        self.name = name if isinstance(name, list) else [name]
+        self.value = value if isinstance(value, list) else [value]
+        self.target = target
+
+    def check_at_least_one_not_equal_to_target(self):
+        """
+        至少一个值不为目标值
+        Returns:
+
+        """
+        self.register_checker(lambda: not all([v == self.target for v in self.value]),
+                              f"at least one of '{','.join(self.name)}' should not be equal to {self.target}")
+        return self
+
+    def check_at_least_one_equal_to_target(self):
+        """
+        至少一个值为目标值
+        Returns:
+
+        """
+        self.register_checker(lambda: any([v == self.target for v in self.value]),
+                              f"at least one of '{','.join(self.name)}' should be equal to {self.target}")
+        return self
+
+    def check_all_not_equal_to_target(self):
+        """
+        所有值都不为目标值
+        Returns:
+
+        """
+        self.register_checker(lambda: all([v != self.target for v in self.value]),
+                              f" all of '{','.join(self.name)}' should not be equal to {self.target}")
         return self
 
 
@@ -77,28 +215,35 @@ class StringValidator(Validator):
     String type validator.
     """
 
-    def __init__(self, value, max_len=None, min_len=0):
-        super().__init__(value)
+    def __init__(self, name, value, max_len: Optional[int] = None, min_len: Optional[int] = 0,
+                 element: Optional[str] = None, msg=""):
+        super(StringValidator, self).__init__(name, value)
         self.max_len = max_len
         self.min_len = min_len
         self.whitelist = "^[0-9A-Za-z_]+$"
-        self.register_checker(lambda x: isinstance(x, str), "type is not str")
+        self.element = element
+        msg = msg if msg else f"type of '{name}' is not str, '{value}' is '{type(value)}'"
+        self.register_checker(lambda: isinstance(value, str), msg)
 
     def check_string_length(self):
         if self.min_len is not None:
-            self.register_checker(lambda x: len(x) >= self.min_len, f"length is less than {self.min_len}")
+            self.register_checker(lambda: len(self.value) >= self.min_len,
+                                  f"'{self.name}' length is less than {self.min_len}")
         if self.max_len is not None:
-            self.register_checker(lambda x: len(x) <= self.max_len, f"length is bigger than {self.max_len}")
+            self.register_checker(lambda: len(self.value) <= self.max_len,
+                                  f"'{self.name}' length is bigger than {self.max_len}")
         return self
 
-    def check_not_contain_black_element(self, element):
-        self.register_checker(lambda x: x is not None and element is not None and x.find(element) == -1)
+    def check_not_contain_black_element(self):
+        if self.value is not None and self.element is not None and self.element != "":
+            self.register_checker(lambda: self.value.find(self.element) == -1,
+                                  f"'{self.name}' contain black element '{self.element}'")
         return self
 
     def check_whitelist(self):
         """Perform whitelist verification on the input string"""
-        self.register_checker(lambda x: x is not None and re.match(self.whitelist, x) is not None,
-                              "The string is invalid, please check the input string. "
+        self.register_checker(lambda: self.value is not None and re.match(self.whitelist, self.value) is not None,
+                              f"The string '{self.name}' is invalid, please check the input string. "
                               "Note: It should be a string consisting of numbers, letters, and underscores.")
         return self
 
@@ -122,50 +267,145 @@ class StringValidator(Validator):
         return self
 
 
-class IntValidator(Validator):
+class OptionalStringValidator(StringValidator):
+    """
+    String type validator if value is not None
+    """
+
+    def __init__(self, name, value, max_len=None, min_len=0, element: Optional[str] = None, msg=""):
+        if value is None:
+            super(OptionalStringValidator, self).__init__(name, "", None, None, None, msg)
+        else:
+            super(OptionalStringValidator, self).__init__(name, value, max_len, min_len, element, msg)
+
+
+class SSDFeatureValidator(Validator):
+    """
+    Check SSD related parameters
+    """
+
+    def __init__(self, name, value):
+        super(SSDFeatureValidator, self).__init__(name, value)
+        self.register()
+
+    def register(self):
+        """Check ssd related parameters"""
+        s_size, ssd_data_path, h_size = self.value
+        self.register_checker(lambda: isinstance(s_size, int),
+                              f"'{self.name[0]}', not int, but '{type(s_size)}'")
+        self.register_checker(lambda: isinstance(h_size, int),
+                              f"'{self.name[2]}', not int, but '{type(h_size)}'")
+
+        if s_size != 0:
+            self.register_checker(lambda: not (h_size == 0 and s_size > 0),
+                                  f"'{self.name[2]}' should be greater than 0 when enabling ssd feature")
+
+            self.register_checker(lambda: not (h_size != 0 and s_size < 0),
+                                  f"'{self.name[0]}' should be greater than 0 when enabling ssd feature")
+
+            self.register_checker(lambda: isinstance(ssd_data_path, (list, tuple)) and len(ssd_data_path) != 0,
+                                  f"'{self.name[1]}' should be type of list and not empty")
+
+            self.register_checker(lambda: len([p for p in ssd_data_path if self._is_invalid_path(p)]) == 0,
+                                  f"'{self.name[1]}' contains invalid path")
+
+        return self
+
+    def _is_invalid_path(self, path: str):
+        return not os.path.exists(path) or not os.path.isdir(path) or os.path.islink(path) or ".." in path
+
+
+class NumValidator(Validator):
+    """
+    number validator float or int
+    """
+
+    def __init__(self, name: str, value: int, min_value: int = None, max_value: int = None,
+                 invalid_options: List = None, constrained_options: List = None, msg: str = ""):
+        if isinstance(value, tf.TensorShape) and value.ndims == 1:
+            value = value.as_list()[0]
+        super(NumValidator, self).__init__(name, value)
+
+        self.min_value = min_value
+        self.max_value = max_value
+        self.invalid_options = invalid_options
+        self.constrained_options = constrained_options
+        self.register_checker(lambda: isinstance(self.value, (int, float)),
+                              msg if msg else f"type of '{name}' is not int or float")
+
+    def check_value(self):
+        if self.min_value is not None:
+            self.register_checker(lambda: self.value >= self.min_value, f"'{self.name}' is less than {self.min_value}")
+        if self.max_value is not None:
+            self.register_checker(lambda: self.value <= self.max_value,
+                                  f"'{self.name}' is bigger than {self.max_value}")
+        if self.invalid_options is not None:
+            self.register_checker(lambda: self.value not in self.invalid_options,
+                                  f"'{self.name}' is invalid,  num in '{self.invalid_options}' is forbidden")
+
+        if self.constrained_options is not None:
+            self.register_checker(lambda: self.value in self.constrained_options,
+                                  f"'{self.name}' is invalid,  only num in '{self.constrained_options}' is allowed")
+
+        return self
+
+
+class IntValidator(NumValidator):
     """
     Int type validator
     """
 
-    def __init__(self, value: int, min_value: int = None, max_value: int = None):
-        super().__init__(value)
-        self.min_value = min_value
-        self.max_value = max_value
-        self.register_checker(lambda x: isinstance(x, int), "type is not int")
-
-    def check_value(self):
-        if self.min_value is not None:
-            self.register_checker(lambda x: x >= self.min_value, f"value is less than {self.min_value}")
-        if self.max_value is not None:
-            self.register_checker(lambda x: x <= self.max_value, f"value is bigger than {self.max_value}")
-        return self
+    def __init__(self, name: str, value: int, min_value: int = None, max_value: int = None,
+                 invalid_options: List = None, constrained_options: List = None, msg: str = ""):
+        super(IntValidator, self).__init__(name, value, min_value, max_value, invalid_options, constrained_options, msg)
+        self.register_checker(lambda: isinstance(self.value, int), msg if msg else f"type of '{name}' is not int")
 
 
-class RankSizeValidator(IntValidator):
+class OptionalIntValidator(IntValidator):
     """
-    Distributed training job size validator
+    Int type validator if value is not None
     """
 
-    def check_rank_size_valid(self):
-        super().__init__(self.value)
-        self.register_checker(lambda x: MIN_RANK_SIZE <= self.value <= MAX_RANK_SIZE,
-                              "Invalid rank size")
-        return self
+    def __init__(self, name: str, value: int, min_value: int = None, max_value: int = None,
+                 invalid_options: List = None, constrained_options: List = None, msg: str = ""):
+        if value is None:
+            super(OptionalIntValidator, self).__init__(name, 0, None, None, None, None, msg)
+        else:
+            super(OptionalIntValidator, self).__init__(name, value, min_value, max_value,
+                                                       invalid_options, constrained_options, msg)
 
-    def check_device_num_valid(self):
-        super().__init__(self.value)
-        self.register_checker(lambda x: MIN_DEVICE_NUM <= self.value <= MAX_DEVICE_NUM,
-                              "Invalid device num")
-        return self
+
+class Convert2intValidator(IntValidator):
+    """
+    check whether a variable can be converted to int or not.
+    """
+    def __init__(self, name: str, value: int, min_value: int = None, max_value: int = None,
+                 invalid_options: List = None, constrained_options: List = None, msg: str = ""):
+        convertable = True
+        int_value = None
+        try:
+            int_value = int(value)
+        except TypeError:
+            convertable = False
+        if convertable:
+            super(Convert2intValidator, self).__init__(name, int_value, min_value, max_value, invalid_options,
+                                                       constrained_options, msg)
+        else:
+            super(Convert2intValidator, self).__init__(name,
+                                                       value,
+                                                       min_value,
+                                                       max_value,
+                                                       invalid_options,
+                                                       constrained_options, f"'{name}' cannot be converted to int")
 
 
 class DirectoryValidator(StringValidator):
-    def __init__(self, value, max_len=None, min_len=1):
+    def __init__(self, name, value, max_len=None, min_len=1):
         """
         @param value: the path, should not be emtpy string, should not contain double dot(../)
         """
-        super().__init__(value, max_len, min_len)
-        self.register_checker(lambda x: isinstance(x, str), "type is not str")
+        super(DirectoryValidator, self).__init__(name, value, max_len, min_len)
+        self.register_checker(lambda: isinstance(value, str), "type is not str")
 
     @staticmethod
     def remove_prefix(string: Optional[str], prefix: Optional[str]) -> Tuple[bool, Optional[str]]:
@@ -210,25 +450,29 @@ class DirectoryValidator(StringValidator):
             return True
 
     def check_is_not_none(self):
-        self.register_checker(lambda path: self.value is not None and len(self.value) > 0,
+        self.register_checker(lambda: self.value is not None and len(self.value) > 0,
                               "Invalid directory parameter")
         return self
 
     def check_not_soft_link(self):
-        self.register_checker(lambda path: os.path.realpath(self.value) == os.path.normpath(self.value),
+        self.register_checker(lambda: os.path.realpath(self.value) == os.path.normpath(self.value),
                               "soft link or relative path should not be in the path parameter")
         return self
 
     def path_should_exist(self, is_file=True, msg=None):
-        self.register_checker(lambda path: os.path.exists(self.value),
+        self.register_checker(lambda: os.path.exists(self.value),
                               msg if msg else "path parameter does not exist")
         if is_file:
-            self.register_checker(lambda path: os.path.isfile(self.value),
+            self.register_checker(lambda: os.path.isfile(self.value),
                                   msg if msg else "path parameter is not a file")
         return self
 
+    def check_exists_if_not_empty(self):
+        if self.value:
+            self.register_checker(lambda: os.path.exists(os.path.realpath(self.value)), f"'{self.value}' not exists")
+
     def path_should_not_exist(self):
-        self.register_checker(lambda path: not os.path.exists(self.value), "path parameter does not exist")
+        self.register_checker(lambda: not os.path.exists(self.value), "path parameter does not exist")
         return self
 
     def with_blacklist(self, lst: List = None, exact_compare: bool = True, msg: str = None):
@@ -239,17 +483,17 @@ class DirectoryValidator(StringValidator):
         if msg is None:
             msg = "path should not in blacklist"
         if exact_compare:
-            self.register_checker(lambda path: path not in [os.path.realpath(each) for each in lst], msg)
+            self.register_checker(lambda: self.value not in [os.path.realpath(each) for each in lst], msg)
         else:
             self.register_checker(
-                lambda path: not any([DirectoryValidator.check_is_children_path(each, path) for each in lst]), msg
+                lambda: not any([DirectoryValidator.check_is_children_path(each, self.value) for each in lst]), msg
             )
         return self
 
     def should_not_contains_sensitive_words(self, words: List = None, msg=None):
         if words is None:
             words = ["Key", "password", "privatekey"]
-        self.register_checker(lambda path: DirectoryValidator.__check_with_sensitive_words(path, words), msg)
+        self.register_checker(lambda: DirectoryValidator.__check_with_sensitive_words(self.value, words), msg)
         return self
 
 
@@ -258,21 +502,21 @@ class FileValidator(StringValidator):
     Check if file is valid.
     """
 
-    def __init__(self, value):
+    def __init__(self, name, value):
         """
         @param value: the file path, should not be emtpy string, should not contain double dot(../)
         """
-        super().__init__(value)
-        self.register_checker(lambda x: isinstance(x, str), "parameter value's type is not str")
+        super(FileValidator, self).__init__(name, value)
+        self.register_checker(lambda: isinstance(self.value, str), "parameter value's type is not str")
 
     def check_file_size(self, max_size=MAX_SIZE, min_size=MIN_SIZE):
         file_stat = tf.io.gfile.stat(self.value)
-        self.register_checker(lambda path: min_size < file_stat.length <= max_size,
+        self.register_checker(lambda: min_size < file_stat.length <= max_size,
                               f"file size: {file_stat.length} is invalid, not in ({min_size}, {max_size}]")
         return self
 
     def check_not_soft_link(self):
-        self.register_checker(lambda path: not os.path.islink(self.value),
+        self.register_checker(lambda: not os.path.islink(self.value),
                               f"soft link or relative path: {self.value} should not be in the path parameter")
         return self
 
@@ -282,41 +526,6 @@ class FileValidator(StringValidator):
         stat_info = os.stat(self.value)
         file_uid = stat_info.st_uid
         file_gid = stat_info.st_gid
-        self.register_checker(
-            lambda path: process_uid == file_uid or process_gid == file_gid, "Invalid log file user or group.")
+        self.register_checker(lambda: process_uid == file_uid or process_gid == file_gid,
+                              "Invalid log file user or group.")
         return self
-
-
-class RankInfoValidator:
-    """
-    Check replace rank table system environment configuration.
-    """
-
-    @staticmethod
-    def check_visible_devices():
-        visible_devices = os.getenv("ASCEND_VISIBLE_DEVICES")
-        device_res = StringValidator(visible_devices).check()
-        if not device_res:
-            raise TypeError("env variable ascend_visible_devices is null, please config ASCEND_VISIBLE_DEVICES in "
-                            "docker container start.")
-
-        rank_size = os.getenv("CM_WORKER_SIZE")
-        rank_size_res = StringValidator(rank_size).check()
-        if not rank_size_res:
-            raise TypeError("env variable CM_WORKER_SIZE is null, please config CM_WORKER_SIZE. For example, "
-                            "CM_WORKER_SIZE=1")
-
-        try:
-            rank_size_value = int(rank_size)
-        except ValueError as err:
-            raise ValueError("Invalid rank size, rank size is a valid integer.") from err
-
-        res = RankSizeValidator(rank_size_value, 1, 16).check_rank_size_valid()
-        if not res and rank_size_value not in [1, 2, 4, 8, 16]:
-            raise ValueError("Invalid rank size, rank size must between 0 and 15 in recommendation training.")
-
-        chief_device = os.getenv("CM_CHIEF_DEVICE")
-        chief_device_res = StringValidator(chief_device).check()
-        if not chief_device_res:
-            raise TypeError("env variable CM_CHIEF_DEVICE is null, please config CM_CHIEF_DEVICE. For example, "
-                            "CM_CHIEF_DEVICE=0")

@@ -252,9 +252,9 @@ TEST_F(KeyProcessTest, Start)
 {
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
-    setenv("KEY_PROCESS_THREAD_NUM", "2", 1);
+    setenv("keyProcessThreadNum", "2", 1);
     ASSERT_EQ(process.Start(), 0);
-    setenv("KEY_PROCESS_THREAD_NUM", "abc", 1);
+    setenv("keyProcessThreadNum", "abc", 1);
     ASSERT_EQ(process.Start(), 0);
     CTRLog(0, "key process start successful");
     process.Destroy();
@@ -542,20 +542,4 @@ TEST_F(KeyProcessTest, ProcessBatchWithFastUnique)
     }
     this_thread::sleep_for(20s);
     process.Destroy();
-}
-
-TEST(KeyProcess, SetupHotEmbUpdateStep)
-{
-    KeyProcess kp;
-
-    kp.SetupHotEmbUpdateStep();
-    ASSERT_EQ(kp.hotEmbUpdateStep, HOT_EMB_UPDATE_STEP_DEFAULT);
-
-    putenv("HOT_EMB_UPDATE_STEP=1");
-    kp.SetupHotEmbUpdateStep();
-    ASSERT_EQ(kp.hotEmbUpdateStep, 1);
-
-    putenv("HOT_EMB_UPDATE_STEP=0");
-    kp.SetupHotEmbUpdateStep();
-    ASSERT_EQ(kp.hotEmbUpdateStep, HOT_EMB_UPDATE_STEP_DEFAULT);
 }

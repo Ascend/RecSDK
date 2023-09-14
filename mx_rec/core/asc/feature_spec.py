@@ -2,9 +2,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
-import logging
-import re
-from typing import Union
+from typing import Union, Optional
 from functools import reduce
 
 import tensorflow as tf
@@ -13,6 +11,9 @@ from mx_rec.util.atomic import AtomicInteger
 from mx_rec.util.initialize import insert_feature_spec, insert_training_mode_channel_id, get_use_static
 from mx_rec.util.normalization import fix_invalid_table_name
 from mx_rec.constants.constants import MAX_INT32
+from mx_rec.validator.validator import ClassValidator, StringValidator, para_checker_decorator, \
+    OptionalStringValidator, OptionalIntValidator
+from mx_rec.util.log import logger
 
 feature_spec_global_id = AtomicInteger()
 
@@ -23,27 +24,42 @@ class FeatureSpec:
     use_timestamp_train = False
     use_timestamp_eval = False
 
-    def __init__(self, name, **kwargs):
+    @para_checker_decorator(check_option_list=[
+        ("name", StringValidator, {"max_len": 255}, ["check_string_length"]),
+        ("table_name", OptionalStringValidator, {"max_len": 255}, ["check_string_length"]),
+        ("index_key", OptionalStringValidator, {"max_len": 255}, ["check_string_length"]),
+        ("access_threshold", OptionalIntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
+        ("eviction_threshold", OptionalIntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
+        ("is_timestamp", ClassValidator, {"classes": (bool, type(None))}),
+        ("batch_size", OptionalIntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
+        ("faae_coefficient", OptionalIntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"])
+    ])
+    def __init__(self, name: str, table_name: str,
+                 index_key: Optional[str] = None,
+                 access_threshold: Optional[int] = None,
+                 eviction_threshold: Optional[int] = None, is_timestamp: Optional[bool] = None,
+                 batch_size: Optional[int] = None, faae_coefficient: int = 1):
         feature_spec_global_id.increase()
         spec_name = name + f"_{feature_spec_global_id}"
         self.name = spec_name
-        self._index_key = kwargs.get("index_key") if kwargs.get("index_key") else name
-        self._table_name = fix_invalid_table_name(kwargs.get("table_name") if kwargs.get("table_name") else name)
-        self._feat_cnt = kwargs.get("feat_count")
-        self._access_threshold = kwargs.get("access_threshold")
-        self._eviction_threshold = kwargs.get("eviction_threshold")
-        self._faae_coefficient = kwargs.get("faae_coefficient", 1)
-        self._is_timestamp = kwargs.get("is_timestamp")
+        self._index_key = index_key if index_key else name
+        self._table_name = fix_invalid_table_name(table_name if table_name else name)
+        self._feat_cnt = None
+        self._access_threshold = access_threshold
+        self._eviction_threshold = eviction_threshold
+        self._faae_coefficient = faae_coefficient
+        self._is_timestamp = is_timestamp
         self.feat_pos_train = None
         self.feat_pos_eval = None
         self.dims = None
         self.rank = None
-        self.batch_size = kwargs.get("batch_size")
+        self.batch_size = batch_size
         self.split = None  # usually split == batch_size * feature_count
         self.initialized = False
         self._pipeline_mode = set()
 
-        self.check_params()
+        if self._access_threshold is None and self._eviction_threshold is not None:
+            raise ValueError(f"Access_threshold should be configured before eviction_threshold.")
 
     @property
     def is_timestamp(self):
@@ -90,49 +106,6 @@ class FeatureSpec:
     def use_timestamp(is_training):
         return FeatureSpec.use_timestamp_train if is_training else FeatureSpec.use_timestamp_eval
 
-    def check_params(self):
-        def check_str(arg, param_name):
-            if not isinstance(arg, str):
-                raise TypeError(f"{param_name} should be a string, whose value is {arg} with type '{type(arg)}' "
-                                f"in fact.")
-
-        def check_natural_number(arg, param_name):
-            if not isinstance(arg, int) or arg < 1:
-                raise TypeError(f"{param_name} should be a natural number, whose value is {arg} with type "
-                                f"'{type(arg)}' in fact.")
-
-        def check_bool(arg, param_name):
-            if not isinstance(arg, bool):
-                raise TypeError(f"{param_name} should be a bool, whose value is {arg} with type "
-                                f"'{type(arg)}' in fact.")
-
-        check_str(self.name, "name")
-        check_str(self._table_name, "table_name")
-
-        if self._feat_cnt is not None:
-            check_natural_number(self._feat_cnt, "feat_count")
-
-        if self._access_threshold is not None:
-            check_natural_number(self._access_threshold, "access_threshold")
-            if self._access_threshold > MAX_INT32:
-                raise ValueError(f"Access_threshold is too big that exceed int32.")
-
-        elif self._eviction_threshold is not None:
-            raise ValueError(f"Access_threshold should be configured before eviction_threshold.")
-
-        if self._eviction_threshold is not None:
-            check_natural_number(self._eviction_threshold, "eviction_threshold")
-            if self._eviction_threshold > MAX_INT32:
-                raise ValueError(f"Eviction_threshold is too big that exceed int32.")
-
-        if self._faae_coefficient is not None:
-            check_natural_number(self._faae_coefficient, "eviction_threshold")
-            if self._faae_coefficient > MAX_INT32:
-                raise ValueError(f"Eviction_threshold is too big that exceed int32.")
-
-        if self._is_timestamp is not None:
-            check_bool(self._is_timestamp, "is_timestamp")
-
     def set_feat_pos(self, is_training):
         if is_training:
             self.feat_pos_train = FeatureSpec.instance_count_train
@@ -146,7 +119,7 @@ class FeatureSpec:
             raise TypeError("Is training mode must be a boolean.")
 
         if mode and mode in self._pipeline_mode:
-            logging.info(f"FeatureSpec{self.name}. Is training mode [{mode}] has been set.")
+            logger.info("FeatureSpec%s. Is training mode [%s] has been set.", self.name, mode)
             return
 
         insert_training_mode_channel_id(is_training=mode)
@@ -166,8 +139,8 @@ class FeatureSpec:
                     raise ValueError(f"Given tensor rank cannot be smaller than 1, which is {self.rank} now.")
 
                 inferred_feat_cnt = 1 if self.rank == 1 else reduce(lambda x, y: x * y, self.dims[1:])
-                logging.debug(f"update feature_spec[{self.name}] feature_count "
-                              f"from {self._feat_cnt} to {inferred_feat_cnt} via {self.dims}")
+                logger.debug("update feature_spec[%s] feature_count to %s via %s", self.name, inferred_feat_cnt,
+                             self.dims)
                 self.batch_size = self.dims[0]
                 self._feat_cnt = inferred_feat_cnt
                 self.split = self.batch_size * self._feat_cnt
@@ -180,7 +153,7 @@ class FeatureSpec:
                 self._feat_cnt = 1
 
         else:
-            logging.debug(f"The initialized Feature Spec was set once again.")
+            logger.debug("The initialized Feature Spec was set once again.")
             if get_use_static():
                 if self.dims != tensor.shape.as_list():
                     raise ValueError(f"Given static Tensor shape mismatches with the last one, whose is_training mode "

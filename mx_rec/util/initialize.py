@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
-import logging
+
 import os
 from collections import defaultdict
+import dataclasses
+import json
 
 import psutil
 
 import mx_rec.constants.constants
-from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION, VALID_DEVICE_ID_LIST, LOCAL_RANK_SIZE, \
-    MAX_DEVICE_NUM_LOCAL_MACHINE, DEFAULT_DEVICE_NUM_LOCAL_MACHINE, HASHTABLE_COLLECTION_NAME_LENGTH, \
-    TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID, MIN_SIZE, MAX_CONFIG_SIZE
+from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION, HASHTABLE_COLLECTION_NAME_LENGTH, \
+    TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID, MIN_SIZE, MAX_CONFIG_SIZE, MAX_RANK_SIZE, MAX_INT32, TFDevice, Flag
 from mx_rec.util.communication.hccl_mgmt import parse_hccl_json, set_hccl_info_without_json
 from mx_rec.util.ops import import_host_pipeline_ops
-from mx_rec.validator.validator import StringValidator, FileValidator
+from mx_rec.validator.validator import StringValidator, FileValidator, para_checker_decorator, ClassValidator, \
+    IntValidator, ValueCompareValidator
 from mx_rec.util.atomic import AtomicInteger
+from mx_rec.util.global_env_conf import global_env
+from mx_rec.util.log import logger
 
 
 class ConfigInitializer:
@@ -22,7 +26,19 @@ class ConfigInitializer:
     customized_ops = None
     host_pipeline_ops = import_host_pipeline_ops()
 
-    def __init__(self, use_mpi, **kwargs):
+    @para_checker_decorator(check_option_list=[
+        ("use_mpi", ClassValidator, {"classes": (bool, )}),
+        ("train_steps", IntValidator, {"min_value": -1, "max_value": MAX_INT32}),
+        ("eval_steps", IntValidator, {"min_value": -1, "max_value": MAX_INT32}),
+        (["train_steps", "eval_steps"], ValueCompareValidator, {"target": 0},
+         ["check_at_least_one_not_equal_to_target"]),
+        ("if_load", ClassValidator, {"classes": (bool, )}),
+        ("use_dynamic", ClassValidator, {"classes": (bool, )}),
+        ("use_hot", ClassValidator, {"classes": (bool, )}),
+        ("use_dynamic_expansion", ClassValidator, {"classes": (bool, )}),
+        ("bind_cpu", ClassValidator, {"classes": (bool, )}),
+    ])
+    def __init__(self, use_mpi=True, **kwargs):
         self._use_mpi = use_mpi
         self._rank_id = kwargs.get("rank_id", 0)
         self._rank_size = kwargs.get("rank_size", 1)
@@ -57,7 +73,7 @@ class ConfigInitializer:
         self._sparse_dir = ""
 
         if self._use_mpi:
-            logging.debug(f"Using mpi to launch task.")
+            logger.debug(f"Using mpi to launch task.")
             from mpi4py import MPI
             self._mpi = MPI
             self._comm = MPI.COMM_WORLD
@@ -66,22 +82,23 @@ class ConfigInitializer:
         else:
             raise ValueError("only mpi is supported for launching task.")
 
-        self._rank_to_device_dict = parse_hccl_json() if os.getenv("RANK_TABLE_FILE") else set_hccl_info_without_json()
+        self._rank_to_device_dict, self._local_rank_size = parse_hccl_json() if global_env.rank_table_file else \
+            set_hccl_info_without_json(visible_devices=global_env.ascend_visible_devices,
+                                       rank_size=global_env.cm_worker_size,
+                                       chief_device=global_env.cm_chief_device)
         self.train_steps = kwargs.get("train_steps", -1)
         self.eval_steps = kwargs.get("eval_steps", -1)
-        self.check_parameters()
-        self._prefetch_batch_number = kwargs.get("prefetch_batch_number", 1)
         self.if_load = kwargs.get("if_load", False)
 
         self.use_static = not kwargs.get("use_dynamic", True)
         self.use_hot = kwargs.get("use_hot", True)
         self.use_dynamic_expansion = kwargs.get("use_dynamic_expansion", False)
         if kwargs.get("bind_cpu", True):
-            bind_cpu(self._rank_id, self._rank_size)
-        self.enable_table_merge = True if os.getenv("TF_DEVICE") == "NPU" else False
+            bind_cpu(self._rank_id, self._local_rank_size)
+        self.enable_table_merge = True if global_env.tf_device == TFDevice.NPU.value else False
         # 两个通道的sparse look id，用于通讯的标识
         self.notify_hybrid_channel_sparse_id = [0, 0]
-        self.stat_on = set_stat_flag() if os.getenv("STAT_ON") else False
+        self.stat_on = (global_env.stat_on == Flag.TRUE.value)
 
     def __del__(self):
         self.terminate()
@@ -89,6 +106,10 @@ class ConfigInitializer:
     @property
     def iterator_type(self):
         return self._iterator_type
+
+    @property
+    def local_rank_size(self):
+        return self._local_rank_size
 
     @property
     def merged_multi_lookup(self):
@@ -177,10 +198,6 @@ class ConfigInitializer:
         return self._eval_steps
 
     @property
-    def prefetch_batch_number(self):
-        return self._prefetch_batch_number
-
-    @property
     def if_load(self):
         return self._if_load
 
@@ -211,14 +228,14 @@ class ConfigInitializer:
         ConfigInitializer._single_instance = ConfigInitializer(use_mpi, **kwargs)
 
     def terminate(self):
-        logging.info("python process run into terminate")
+        logger.info("python process run into terminate")
         if self._is_terminated:
-            logging.warning("The initializer has already been released once, please do not release it again.")
+            logger.warning("The initializer has already been released once, please do not release it again.")
             return
 
         if self._asc_manager is not None:
             self.del_asc_manager()
-        logging.info("python process run terminate success")
+        logger.info("python process run terminate success")
 
         self._is_terminated = True
         ConfigInitializer._single_instance = None
@@ -257,14 +274,14 @@ class ConfigInitializer:
         if name in self._table_name_set:
             raise ValueError(f"Duplicated hashtable name '{name}' was used.")
 
-        logging.debug(f"Record one hash table, with name: {name}, key: {key}.")
+        logger.debug("Record one hash table, with name: %s, key: %s.", name, key)
         self._table_name_set.add(name)
         if name not in self._table_name_to_feature_spec:
             self._table_name_to_feature_spec[name] = {True: [], False: []}
         self._name_to_var_dict[name] = key
         self._table_instance_dict[key] = instance
         if self.stat_on:
-            logging.info(f"[StatInfo] current_table_num {len(self._table_instance_dict)}")
+            logger.info("[StatInfo] current_table_num %s", len(self._table_instance_dict))
 
     def insert_bool_gauge(self, name):
         if not isinstance(name, str):
@@ -288,25 +305,6 @@ class ConfigInitializer:
     def insert_optimizer(self, optimizer):
         self._optimizer_instance = optimizer
 
-    def check_parameters(self):
-        if not isinstance(self._use_mpi, bool):
-            raise ValueError(f"Arg use_mpi must be a boolean.")
-
-        if not isinstance(self.rank_id, int) or not isinstance(self.rank_size, int):
-            raise ValueError(f"Args rank_size and rank_id must be integers. {self.rank_id} {self.rank_size}")
-
-        if self.rank_id < 0:
-            raise ValueError(f"Arg rank_id must be larger than 0, which is {self.rank_id} now.")
-
-        if self.rank_size < 1:
-            raise ValueError(f"Arg rank_size must be larger than 1, which is {self.rank_size} now.")
-
-        if self.rank_id >= self.rank_size:
-            raise ValueError(f"Rank_id must be within the range from 0 to rank_size.")
-
-        if self._train_steps == 0 and self._eval_steps == 0:
-            raise ValueError(f"Train steps and eval steps could not both equal 0.")
-
     def freeze(self):
         self._is_frozen = True
 
@@ -329,7 +327,7 @@ class ConfigInitializer:
         self._asc_manager.destroy()
         self._asc_manager = None
         self.unfreeze()
-        logging.debug("ASC manager has been destroyed.")
+        logger.debug("ASC manager has been destroyed.")
 
     @iterator_type.setter
     def iterator_type(self, iterator_type):
@@ -347,11 +345,6 @@ class ConfigInitializer:
     def eval_steps(self, steps):
         check_step(steps)
         self._eval_steps = steps
-
-    @prefetch_batch_number.setter
-    def prefetch_batch_number(self, number):
-        check_step(number, 1)
-        self._prefetch_batch_number = number
 
     @if_load.setter
     def if_load(self, flag):
@@ -390,7 +383,8 @@ class ConfigInitializer:
 
     @ascend_global_hashtable_collection.setter
     def ascend_global_hashtable_collection(self, name):
-        string_validator = StringValidator(name, max_len=HASHTABLE_COLLECTION_NAME_LENGTH, min_len=1)
+        string_validator = StringValidator(name="hashtable_collection", value=name,
+                                           max_len=HASHTABLE_COLLECTION_NAME_LENGTH, min_len=1)
         if not string_validator.check_string_length().check_whitelist().is_valid():
             raise ValueError(string_validator.msg)
         self._ascend_global_hashtable_collection = name
@@ -426,6 +420,9 @@ class ConfigInitializer:
         self._initializer_dict = {}
 
 
+@para_checker_decorator(check_option_list=[
+    ("name", ClassValidator, {"classes": (str, type(None))})
+])
 def set_ascend_global_hashtable_collection(name=ASCEND_GLOBAL_HASHTABLE_COLLECTION):
     ConfigInitializer.get_instance().ascend_global_hashtable_collection = name
 
@@ -443,6 +440,8 @@ def check_step(param, min_value=-1):
 
 
 def init(use_mpi, **kwargs):
+    logger.info("The environment variables set for mxRec is: %s",
+                json.dumps(dataclasses.asdict(global_env), ensure_ascii=False))
     ConfigInitializer.set_instance(use_mpi, **kwargs)
     set_ascend_env()
 
@@ -495,10 +494,6 @@ def get_sparse_dir():
     return ConfigInitializer.get_instance().sparse_dir
 
 
-def is_mpi_in_use():
-    return ConfigInitializer.get_instance().use_mpi
-
-
 def get_rank_size():
     return ConfigInitializer.get_instance().rank_size
 
@@ -524,9 +519,9 @@ def trigger_evict():
         raise RuntimeError("ASC manager does not exist.")
 
     if ConfigInitializer.get_instance().get_asc_manager().evict():
-        logging.debug("Feature evict is triggered by ops.")
+        logger.debug("Feature evict is triggered by ops.")
         return True
-    logging.warning("Feature evict not success, skip this time!")
+    logger.warning("Feature evict not success, skip this time!")
     return False
 
 
@@ -534,7 +529,7 @@ def clear_channel(is_train_channel=False):
     if not isinstance(is_train_channel, bool):
         raise ValueError("Arg is_train_channel should be a boolean.")
     channel_id = get_training_mode_channel_id(is_train_channel)
-    logging.info(f"clear channel: {channel_id}")
+    logger.info("clear channel: %s", channel_id)
 
     return ConfigInitializer.get_instance().host_pipeline_ops.clear_channel(channel_id)
 
@@ -546,7 +541,7 @@ def is_asc_manager_initialized():
 def get_host_data(table_name):
     if not is_asc_manager_initialized():
         raise RuntimeError("ASC manager does not exist.")
-    logging.debug("start to get host data.")
+    logger.debug("start to get host data.")
     return ConfigInitializer.get_instance().get_asc_manager().send(table_name)
 
 
@@ -554,7 +549,7 @@ def send_host_data(key_offset_map):
     if not is_asc_manager_initialized():
         raise RuntimeError("ASC manager does not exist.")
     ConfigInitializer.get_instance().get_asc_manager().receive(key_offset_map)
-    logging.debug("Data has been send to the host pipeline.")
+    logger.debug("Data has been send to the host pipeline.")
 
 
 def save_host_data(root_dir):
@@ -562,7 +557,7 @@ def save_host_data(root_dir):
         raise RuntimeError("ASC manager does not exist.")
 
     ConfigInitializer.get_instance().get_asc_manager().save(root_dir)
-    logging.debug("Data from host pipeline has been saved.")
+    logger.debug("Data from host pipeline has been saved.")
 
 
 def restore_host_data(root_dir):
@@ -573,16 +568,16 @@ def restore_host_data(root_dir):
         terminate_config_initializer()
         raise TypeError("Asc load data does not match usr setups, \
         please re-consider if you want to restore from this dir")
-    logging.debug("Data from host pipeline has been restored.")
+    logger.debug("Data from host pipeline has been restored.")
 
 
 def destroy_asc_manager():
     initializer = ConfigInitializer.get_instance()
     if initializer.get_asc_manager() is not None:
-        logging.debug("start destroy asc manager...")
+        logger.debug("start destroy asc manager...")
         initializer.del_asc_manager()
     else:
-        logging.warning("ASC manager does not exist, please check your code.")
+        logger.warning("ASC manager does not exist, please check your code.")
 
 
 def is_asc_frozen():
@@ -615,14 +610,6 @@ def set_train_steps(steps: int):
 
 def set_eval_steps(steps: int):
     ConfigInitializer.get_instance().eval_steps = steps
-
-
-def get_prefetch_batch_number():
-    return ConfigInitializer.get_instance().prefetch_batch_number
-
-
-def set_prefetch_batch_number(number):
-    ConfigInitializer.get_instance().prefetch_batch_number = number
 
 
 def get_table_instance(key):
@@ -689,6 +676,9 @@ def export_feature_spec():
     return ConfigInitializer.get_instance().feature_spec_dict
 
 
+@para_checker_decorator(check_option_list=[
+    ("if_load", ClassValidator, {"classes": (bool, )})
+])
 def set_if_load(if_load):
     ConfigInitializer.get_instance().if_load = if_load
 
@@ -725,6 +715,9 @@ def get_name_to_var_dict():
     return ConfigInitializer.get_instance().name_to_var_dict
 
 
+@para_checker_decorator(check_option_list=[
+    ("is_training", ClassValidator, {"classes": (bool, )})
+])
 def get_initializer(is_training):
     return ConfigInitializer.get_instance().get_initializer(is_training)
 
@@ -787,6 +780,14 @@ def get_iterator_type() -> str:
     return ConfigInitializer.get_instance().iterator_type
 
 
+def get_local_rank_size() -> int:
+    """
+    获取当前worker参与任务的进程数
+    Returns:
+    """
+    return ConfigInitializer.get_instance().local_rank_size
+
+
 def set_iterator_type(iterator_type: str):
     """
     记录数据集的迭代器类型.
@@ -818,7 +819,7 @@ def set_ascend_env():
     os.environ["ASCEND_DEVICE_ID"] = device_id
     os.environ["DEVICE_INDEX"] = device_id
 
-    if os.getenv("RANK_TABLE_FILE"):
+    if global_env.rank_table_file:
         os.environ["RANK_SIZE"] = str(rank_size)
     os.environ["HCCL_CONNECT_TIMEOUT"] = "1200"
 
@@ -829,7 +830,7 @@ def set_ascend_env():
     os.environ["EXPERIMENTAL_DYNAMIC_PARTITION"] = "1"
     os.environ["ENABLE_FORCE_V2_CONTROL"] = "1"
 
-    logging.debug(f"Ascend env has been set.")
+    logger.debug(f"Ascend env has been set.")
 
 
 def get_available_cpu_num_and_range():
@@ -846,13 +847,13 @@ def get_available_cpu_num_and_range():
     for cpu in cpu_available:
         f_path = cpu_pkg_id_file.format(cpu)
         if not os.path.exists(f_path):
-            logging.warning(f"failed to get numa node of cpu: {cpu}")
+            logger.warning("failed to get numa node of cpu: %s", cpu)
             is_ok = False
             break
 
         with open(f_path, "r", encoding="utf-8") as f_in:
             # check whether file is valid
-            file_validator = FileValidator(f_path)
+            file_validator = FileValidator("cpu_topology_file", f_path)
             # 1.check whether f_path is soft link
             file_validator.check_not_soft_link()
             # 2.check file size
@@ -877,7 +878,7 @@ def get_available_cpu_num_and_range():
 
     valid_cpu_range_list = []
     if is_ok:
-        logging.info(f"available numa node num: {len(pkg_id2cpu_list)}")
+        logger.info("available numa node num: %s", len(pkg_id2cpu_list))
         for _, part_cpu_list in pkg_id2cpu_list.items():
             parse_range(part_cpu_list, valid_cpu_range_list)
     else:
@@ -885,31 +886,20 @@ def get_available_cpu_num_and_range():
     return len(cpu_available), valid_cpu_range_list
 
 
-def bind_cpu(rank_id: int, rank_size: int = None):
+def bind_cpu(rank_id: int, local_rank_size: int):
     """
     以均衡的方式为每个进程绑定CPU
     :param rank_id:当前进程的rank_id
-    :param rank_size: 进程数
+    :param local_rank_size: 当前worker进程数
     :return:
     """
     import math
-
-    try:
-        local_rank_size = int(os.getenv(LOCAL_RANK_SIZE)) if rank_size is None else rank_size
-    except (ValueError, TypeError):
-        logging.warning(f"no valid LOCAL_RANK_SIZE was set. {DEFAULT_DEVICE_NUM_LOCAL_MACHINE} is set as default value")
-        local_rank_size = DEFAULT_DEVICE_NUM_LOCAL_MACHINE
-
-    if not (1 <= local_rank_size <= MAX_DEVICE_NUM_LOCAL_MACHINE):
-        logging.warning(f"LOCAL_RANK_SIZE should be between 1 and {MAX_DEVICE_NUM_LOCAL_MACHINE}. "
-                        f"{DEFAULT_DEVICE_NUM_LOCAL_MACHINE} is set as default value")
-        local_rank_size = DEFAULT_DEVICE_NUM_LOCAL_MACHINE
 
     total_cpu, cpu_range_list = get_available_cpu_num_and_range()
     avg_count = math.ceil(total_cpu / local_rank_size)
     while True:
         if avg_count == 0:
-            logging.warning(f"not enough cpu to bind. cpu num: {total_cpu}, range: {cpu_range_list}")
+            logger.warning(f"not enough cpu to bind. cpu num: %s, range: %s", total_cpu, cpu_range_list)
             return
 
         max_split = 0
@@ -932,14 +922,5 @@ def bind_cpu(rank_id: int, rank_size: int = None):
     try:
         process.cpu_affinity(cpu_list)
     except IndexError:
-        logging.error(f"failed to bind cpu for rank {rank_id}: {cpu_list}")
-    logging.info(f"bind cpu for rank {rank_id}: {cpu_list}")
-
-
-def set_stat_flag():
-    if os.getenv("STAT_ON") == "1":
-        return True
-    elif os.getenv("STAT_ON") == "0":
-        return False
-    else:
-        raise ValueError(f"STAT_ON can only be 0 or 1.")
+        logger.error("failed to bind cpu for rank %s: %s", rank_id, cpu_list)
+    logger.info("bind cpu for rank %s: %s", rank_id, cpu_list)

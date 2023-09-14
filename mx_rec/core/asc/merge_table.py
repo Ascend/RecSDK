@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
-import logging
 from typing import Dict, List
 
 import tensorflow as tf
@@ -10,9 +9,10 @@ from tensorflow import Operation, Tensor
 
 from mx_rec.util.initialize import get_enable_table_merge, export_table_instances, insert_dangling_table, \
     get_bool_gauge_set
+from mx_rec.util.log import logger
 
 
-def affirm(reach_op:List[Operation]) -> bool:
+def affirm(reach_op: List[Operation]) -> bool:
     for node in reach_op:
         if node.type not in ("IdentityN", "Reshape", "Identity"):
             return False
@@ -81,7 +81,6 @@ def find_dangling_table(table_names: List[str]) -> List[str]:
                 table_lookup_op[table_name].append(the_op)
                 table_reachable_tensor[table_name].extend(the_op.outputs)
 
-
     def extend(op_list: List[Operation],
                tensor: Tensor,
                spread_tensors: List[Tensor]) -> None:
@@ -95,7 +94,6 @@ def find_dangling_table(table_names: List[str]) -> List[str]:
         for the_op in op_list:
             if tensor in the_op.inputs:
                 spread_tensors.extend(the_op.outputs)
-
 
     def bfs_lookup(next_to_visit: List[Tensor]) -> (set, bool):
         """find all the tensors which table lookup op can reach
@@ -118,9 +116,8 @@ def find_dangling_table(table_names: List[str]) -> List[str]:
             next_to_visit = spread_tensors
         return op_visited, False
 
-
     if not is_train_task():
-        logging.info(f"!!merge table only available in train task.")
+        logger.info("!!merge table only available in train task.")
         return []
     if not get_enable_table_merge():
         return []
@@ -138,12 +135,12 @@ def find_dangling_table(table_names: List[str]) -> List[str]:
         for table_name in table_names:
             find_table_op(table_name, the_op, table_lookup_op, table_reachable_tensor)
 
-    logging.debug("*********** find tables: %s ***********", table_lookup_op)
+    logger.debug("*********** find tables: %s ***********", table_lookup_op)
     dangling_table = []
 
     for table_name in table_names:
         if table_name not in table_lookup_op:
-            logging.debug("*********** created table %s but never look up***********", table_name)
+            logger.debug("*********** created table %s but never look up***********", table_name)
             dangling_table.append(table_name)
             insert_dangling_table(table_name)
 

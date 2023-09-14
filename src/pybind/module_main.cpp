@@ -77,15 +77,14 @@ PYBIND11_MODULE(mxrec_pybind, m)
 void GetRankInfo(pybind11::module_& m)
 {
     pybind11::class_<RankInfo>(m, "RankInfo")
-        .def(py::init<int, int, int, int, int, vector<int>>(), py::arg("rank_id"), py::arg("device_id"),
-             py::arg("local_rank_size"), py::arg("option"), py::arg("num_batch") = 1,
+        .def(py::init<int, int, int, int, vector<int>>(), py::arg("rank_id"), py::arg("device_id"),
+             py::arg("local_rank_size"), py::arg("option"),
              py::arg("max_step") = vector<int> { -1, -1 })
         .def_readwrite("rank_id", &RankInfo::rankId)
         .def_readwrite("device_id", &RankInfo::deviceId)
         .def_readwrite("rank_size", &RankInfo::rankSize)
         .def_readwrite("local_rank_size", &RankInfo::localRankSize)
         .def_readwrite("option", &RankInfo::option)
-        .def_readwrite("num_batch", &RankInfo::nBatch)
         .def_readwrite("max_step", &RankInfo::maxStep);
 }
 

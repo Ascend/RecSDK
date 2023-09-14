@@ -9,6 +9,7 @@
 #define MXREC_FEAT_ADMIT_N_EVICT_CKPT_H
 
 #include "ckpt_data_handler/ckpt_data_handler.h"
+#include "utils/config.h"
 
 namespace MxRec {
     using namespace std;

@@ -19,8 +19,8 @@ ASCEND_SPARSE_LOOKUP_ALL2ALL_MATRIX = "ASCEND_SPARSE_LOOKUP_ALL2ALL_MATRIX"
 ASCEND_SPARSE_LOOKUP_HOT_POS = "ASCEND_SPARSE_LOOKUP_HOT_POS"
 ASCEND_TIMESTAMP = "ASCEND_TIMESTAMP"
 CUSTOMIZED_OPS_LIB_PATH = "CUSTOMIZED_OPS_LIB_PATH"
-HOST_PIPELINE_OPS_LIB_PATH = "HOST_PIPELINE_OPS_LIB_PATH"
 ASCEND_SPARSE_LOOKUP_LOCAL_EMB = "ASCEND_SPARSE_LOOKUP_LOCAL_EMB"
+EMPTY_STR = ""
 
 # 自动改图模式下从计算图中寻找dataset的锚点名称
 ANCHOR_DATASET_NAME = "PrefetchDataset"
@@ -31,16 +31,33 @@ ASCEND_TABLE_NAME_MUST_CONTAIN = None
 # this number is a temp plan to solve a problem
 # to avoid op "scatter_nd_update" may get a None tensor for input
 AVOID_TENSOR_POS = 439999
-LOCAL_RANK_SIZE = "LOCAL_RANK_SIZE"  # 训练时，当前服务器使用的NPU卡数
-MAX_DEVICE_NUM_LOCAL_MACHINE = 16  # 单台服务器最大的卡数
-DEFAULT_DEVICE_NUM_LOCAL_MACHINE = 8  # 单台服务器默认的卡数
+
+# acl通道数据深度
+DEFAULT_HD_CHANNEL_SIZE = 40
+MAX_HD_CHANNEL_SIZE = 8192
+MIN_HD_CHANNEL_SIZE = 2
+
+# key process线程数
+DEFAULT_KP_THREAD_NUM = 6
+MIN_KP_THREAD_NUM = 1
+MAX_KP_THREAD_NUM = 32
+
+# Fast unique去重最大线程数
+DEFAULT_FAST_UNIQUE_THREAD_NUM = 8
+MIN_FAST_UNIQUE_THREAD_NUM = 1
+MAX_FAST_UNIQUE_THREAD_NUM = 8
+
+# Hot Embedding更新步数
+DEFAULT_HOT_EMB_UPDATE_STEP = 1000
+MIN_HOT_EMB_UPDATE_STEP = 1
+MAX_HOT_EMB_UPDATE_STEP = 1000
 
 MULTI_LOOKUP_TIMES = 128
 DEFAULT_EVICT_TIME_INTERVAL = 60 * 60 * 24
 TRAIN_CHANNEL_ID = 0
 EVAL_CHANNEL_ID = 1
 HASHTABLE_COLLECTION_NAME_LENGTH = 30
-MAX_HOST_VOCABULARY_SIZE = 10**10
+MAX_VOCABULARY_SIZE = 10**10
 
 # RANK INFO
 VALID_DEVICE_ID_LIST = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"]
@@ -78,6 +95,29 @@ class BaseEnum(Enum):
                        f"'{list(map(lambda c: c.value, cls))}'.")
 
 
+class EnvOption(Enum):
+    MXREC_LOG_LEVEL = "MXREC_LOG_LEVEL"
+    SAVE_EASY = "SAVE_EASY"
+    RANK_TABLE_FILE = "RANK_TABLE_FILE"
+    ASCEND_VISIBLE_DEVICES = "ASCEND_VISIBLE_DEVICES"
+    CM_CHIEF_DEVICE = "CM_CHIEF_DEVICE"
+    CM_WORKER_SIZE = "CM_WORKER_SIZE"
+    TF_DEVICE = "TF_DEVICE"
+    APPLY_GRADIENTS_STRATEGY = "APPLY_GRADIENTS_STRATEGY"
+    ACL_TIMEOUT = "AclTimeout"
+    HD_CHANNEL_SIZE = "HD_CHANNEL_SIZE"
+    FIND_OFFSET_V2 = "FIND_OFFSET_V2"
+    FIND_OFFSET_V3 = "FIND_OFFSET_V3"
+    KEY_PROCESS_THREAD_NUM = "KEY_PROCESS_THREAD_NUM"
+    MAX_UNIQUE_THREAD_NUM = "MAX_UNIQUE_THREAD_NUM"
+    FAST_UNIQUE = "FAST_UNIQUE"
+    UPDATEEMB_V2 = "UpdateEmb_V2"
+    HOT_EMB_UPDATE_STEP = "HOT_EMB_UPDATE_STEP"
+    GLOG_STDERRTHREAHOLD = "GLOG_stderrthreshold"
+    USE_COMBINE_FAAE = "USE_COMBINE_FAAE"
+    STAT_ON = "STAT_ON"
+
+
 class DataName(Enum):
     KEY = "key"
     EMBEDDING = "embedding"
@@ -108,10 +148,6 @@ class ASCAnchorAttr(Enum):
     GRADIENTS_STRATEGY = "gradients_strategy"
 
 
-class MxRecMode(BaseEnum):
-    ASC = "ASC"  # Ascend Sparse with Cpu-hashtable
-
-
 class OptimizerType(Enum):
     LAZY_ADAM = "LazyAdam"
     SGD = "SGD"
@@ -136,3 +172,30 @@ class All2allGradientsOp(BaseEnum):
 class ApplyGradientsStrategy(BaseEnum):
     DIRECT_APPLY = "direct_apply"
     SUM_SAME_ID_GRADIENTS_AND_APPLY = "sum_same_id_gradients_and_apply"
+
+
+class RecPyLogLevel(Enum):
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    ERROR = "ERROR"
+
+
+class RecCPPLogLevel(Enum):
+    TRACE = "-2"
+    DEBUG = "-1"
+    INFO = "0"
+    WARN = "1"
+    ERROR = "2"
+
+
+class TFDevice(Enum):
+    CPU = "CPU"
+    NPU = "NPU"
+    GPU = "GPU"
+
+
+class Flag(Enum):
+    TRUE = "1"
+    FALSE = "0"
+
+

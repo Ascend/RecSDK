@@ -21,18 +21,13 @@ using namespace std;
 using std::chrono::system_clock;
 
 namespace MxRec {
-    int PerfConfig::keyProcessThreadNum = DEFAULT_KEY_PROCESS_THREAD;
-    int PerfConfig::maxUniqueThreadNum = DEFAULT_MAX_UNIQUE_THREAD_NUM;
-    bool PerfConfig::fastUnique = false;
-    bool PerfConfig::gradientStrategy = false;
     string g_rankId;
     int g_glogLevel;
     bool g_isGlogInit = false;
     bool g_statOn = false;
 
-    RankInfo::RankInfo(int rankId, int deviceId, int localRankSize, int option, int nBatch,
-        const vector<int>& maxStep) : rankId(rankId), deviceId(deviceId), localRankSize(localRankSize), option(option),
-        nBatch(nBatch), maxStep(maxStep)
+    RankInfo::RankInfo(int rankId, int deviceId, int localRankSize, int option, const vector<int>& maxStep)
+        : rankId(rankId), deviceId(deviceId), localRankSize(localRankSize), option(option), maxStep(maxStep)
     {
         MPI_Comm_size(MPI_COMM_WORLD, &rankSize);
         if (localRankSize != 0) {
@@ -43,8 +38,8 @@ namespace MxRec {
         useDynamicExpansion = option bitand HybridOption::USE_DYNAMIC_EXPANSION;
     }
 
-    RankInfo::RankInfo(int localRankSize, int option, int nBatch, const vector<int>& maxStep)
-        : localRankSize(localRankSize), option(option), nBatch(nBatch), maxStep(maxStep)
+    RankInfo::RankInfo(int localRankSize, int option, const vector<int>& maxStep)
+        : localRankSize(localRankSize), option(option), maxStep(maxStep)
     {
         MPI_Comm_rank(MPI_COMM_WORLD, &rankId);
         MPI_Comm_size(MPI_COMM_WORLD, &rankSize);
@@ -99,12 +94,7 @@ namespace MxRec {
 
     void SetLog(int rank)
     {
-        auto logLevel = getenv("GLOG_stderrthreshold");
-        if (logLevel == nullptr) {
-            g_glogLevel = 0;  // default as INFO
-        } else {
-            g_glogLevel = atoi(logLevel);
-        }
+        g_glogLevel = GlobalEnv::glogStderrthreshold;
         if (g_rankId.empty()) {
             g_rankId = std::to_string(rank);
         }
@@ -151,41 +141,9 @@ namespace MxRec {
         throw std::runtime_error("dsmi_get_chip_info failed, ret = " + to_string(ret));
     }
 
-    bool GetCombineSwitch()
-    {
-        const char* faaeMode = std::getenv("USE_COMBINE_FAAE"); // 获取环境变量
-        bool isCombine = false;
-        if (faaeMode != nullptr) {
-            try {
-                isCombine = (std::stoi(faaeMode) == 1);
-                LOG_INFO("If combine history table: {}", isCombine);
-            } catch (const std::invalid_argument& e) {
-                LOG_ERROR("The value of USE_COMBINE_FAAE is invalid!");
-                throw std::invalid_argument("Invalid env value USE_COMBINE_FAAE");
-            }
-        }
-        return isCombine;
-    }
-
     int GetThreadNumEnv()
     {
-        int threadNum = 0;
-        const char* threadNumEnv = getenv("KEY_PROCESS_THREAD_NUM");
-        if (threadNumEnv != nullptr) {
-            try {
-                threadNum = std::stoi(threadNumEnv);
-            } catch (const std::invalid_argument& e) {
-                threadNum = KEY_PROCESS_THREAD;
-                LOG_INFO("error value of threadNum, use default KEY_PROCESS_THREAD: {}", threadNum);
-            }
-            if (threadNum > KEY_PROCESS_THREAD || threadNum < 0) {
-                throw runtime_error(StringFormat("%d is not valid", threadNum));
-            }
-        } else {
-            threadNum = KEY_PROCESS_THREAD;
-            LOG_INFO("use default KEY_PROCESS_THREAD: {}", threadNum);
-        }
-        return threadNum;
+        return GlobalEnv::keyProcessThreadNum;
     }
 
     void ValidateReadFile(const string& dataDir, size_t datasetSize)

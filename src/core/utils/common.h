@@ -26,6 +26,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "securec.h"
 #include "utils/log.h"
+#include "utils/config.h"
 
 #include "initializer/initializer.h"
 #include "initializer/constant_initializer/constant_initializer.h"
@@ -68,24 +69,16 @@ namespace MxRec {
     constexpr int GLOG_MAX_BUF_SIZE = 1024;
     constexpr int GLOG_TIME_WIDTH_2 = 2;
     constexpr int GLOG_TIME_WIDTH_6 = 6;
-    constexpr char GLOG_STAT_FLAG[] = "STAT_ON";
+    constexpr char GLOG_STAT_FLAG[] = "statOn";
 
 
     // unique related config
     constexpr int UNIQUE_BUCKET = 6;
     constexpr int MIN_UNIQUE_THREAD_NUM = 1;
-    constexpr int DEFAULT_MAX_UNIQUE_THREAD_NUM = 8;
 
     // validate file
     constexpr long long FILE_MAX_SIZE = 1LL << 40;
     constexpr int FILE_MIN_SIZE = 0;
-
-    struct PerfConfig {
-        static int keyProcessThreadNum;
-        static int maxUniqueThreadNum;
-        static bool fastUnique;
-        static bool gradientStrategy;
-    };
 
     constexpr int KEY_PROCESS_TIMEOUT = 120;
     constexpr int GET_BATCH_TIMEOUT = 300;
@@ -116,7 +109,6 @@ namespace MxRec {
     };
 
     string GetChipName(int devID);
-    bool GetCombineSwitch();
     int GetThreadNumEnv();
 
     namespace UBSize {
@@ -208,9 +200,8 @@ namespace MxRec {
     struct RankInfo {
         RankInfo() = default;
 
-        RankInfo(int rankId, int deviceId, int localRankSize, int option, int nBatch,
-                 const std::vector<int>& maxStep);
-        RankInfo(int localRankSize, int option, int nBatch, const std::vector<int>& maxStep);
+        RankInfo(int rankId, int deviceId, int localRankSize, int option, const std::vector<int>& maxStep);
+        RankInfo(int localRankSize, int option, const std::vector<int>& maxStep);
 
         int rankId {};
         int deviceId {};

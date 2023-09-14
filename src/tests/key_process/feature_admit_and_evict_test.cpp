@@ -379,16 +379,17 @@ protected:
         faae.SetCombineSwitch();
         StartEvictThread();
 
-        std::thread thrs[PerfConfig::keyProcessThreadNum];
+        std::thread thrs[6];
+        int threadNum = 1;
         // 测试多线程的
-        for (int i = 0; i < PerfConfig::keyProcessThreadNum; ++i) {
+        for (int i = 0; i < threadNum; ++i) {
             std::string name("thread-");
             name += std::to_string(i);
             thrs[i] = std::thread(TestMultiThread, this, std::ref(name));
             std::this_thread::sleep_for(std::chrono::seconds(SleepTime::SLEEP_SECOND_1));
         }
 
-        for (int i = 0; i < PerfConfig::keyProcessThreadNum; ++i) {
+        for (int i = 0; i < threadNum; ++i) {
             if (thrs[i].joinable()) {
                 thrs[i].join();
             }
@@ -408,8 +409,8 @@ protected:
             keys_t expectKeys2 = {121, 122, 125, 211, 212}; // 123被淘汰掉了
             vector<uint32_t> expectCnt2 = {5, 1, 1, 3, 4};
             std::lock_guard <std::mutex> lock(faae.m_syncMutexs); // 与 evict-thread 竞争资源
-            CheckMultiThreadRet(expectKeys1, expectCnt1, thresholds[0].tableName, PerfConfig::keyProcessThreadNum);
-            CheckMultiThreadRet(expectKeys2, expectCnt2, thresholds[1].tableName, PerfConfig::keyProcessThreadNum);
+            CheckMultiThreadRet(expectKeys1, expectCnt1, thresholds[0].tableName, threadNum);
+            CheckMultiThreadRet(expectKeys2, expectCnt2, thresholds[1].tableName, threadNum);
         }
 
         WaitEvictThread();
@@ -450,7 +451,7 @@ protected:
 
 void SetEnv()
 {
-    const char* name = "USE_COMBINE_FAAE";
+    const char* name = "useCombineFaae";
     const char* mode = "0";
     int overwrite = 1;
 

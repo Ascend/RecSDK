@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
-import logging
 from collections import defaultdict
 from typing import Any
 
@@ -25,6 +24,8 @@ from mx_rec.util.perf import performance
 from mx_rec.graph.utils import check_input_list, find_parent_op, check_cutting_points, record_ops_to_replace, \
     export_pb_graph, make_sorted_key_to_tensor_list
 from mx_rec.graph.merge_lookup import do_merge_lookup
+from mx_rec.validator.validator import para_checker_decorator, ClassValidator
+from mx_rec.util.log import logger
 
 
 def get_preprocessing_map_func(graph_def, input_names, output_names, batch_tensor_names=None,
@@ -87,10 +88,10 @@ def get_preprocessing_map_func(graph_def, input_names, output_names, batch_tenso
             else:
                 raise ValueError("Encounter a invalid batch.")
 
-        logging.debug("In get_preprocessing_map_func, the old batch is: %s.", args)
+        logger.debug("In get_preprocessing_map_func, the old batch is: %s.", args)
         batch = dict()
         parse_batch(args, batch, key=None)
-        logging.debug("In get_preprocessing_map_func, the parse batch is: %s.", batch)
+        logger.debug("In get_preprocessing_map_func, the parse batch is: %s.", batch)
 
         input_tensors = []
         if batch_tensor_names is not None:
@@ -112,7 +113,7 @@ def get_preprocessing_map_func(graph_def, input_names, output_names, batch_tenso
                                           return_elements=output_names)
 
         output_batch = [batch, tuple(output_list)]
-        logging.debug("In get_preprocessing_map_func, the output batch is: %s.", output_batch)
+        logger.debug("In get_preprocessing_map_func, the output batch is: %s.", output_batch)
         return tuple(output_batch)
 
     return map_func
@@ -143,7 +144,7 @@ def find_make_iterator_op(batch_tensor):
         for input_tensor in batch_tensor.op.inputs:
             if input_tensor.op.outputs and input_tensor.op.outputs[0] in list(
                     each_op.inputs) and each_op.type == "MakeIterator":
-                logging.debug(f"Op MakeIterator '{each_op.name}' was found.")
+                logger.debug("Op MakeIterator '%s' was found.", each_op.name)
                 return each_op
 
     raise ValueError(f"Op MakeIterator was not found.")
@@ -221,10 +222,10 @@ def get_passing_tensor_list(src_tensors, target_op):
             if passing_tensor not in passing_tensor_list:
                 passing_tensor_list.append(passing_tensor)
         if len(passing_tensors) != 0:
-            logging.info(f"passing_tensors: {passing_tensors}")
+            logger.info("passing_tensors: %s", passing_tensors)
             sub_src_tensors.append(tensor)
         else:
-            logging.info(f"Cannot find passing tensor for given tensor '{tensor}'.")
+            logger.info("Cannot find passing tensor for given tensor '%s'.", tensor)
 
     output_index_list = [int(tensor.name.split(":")[1]) for tensor in passing_tensor_list]
 
@@ -237,7 +238,7 @@ def find_target_instance_dataset(variant_tensor):
         if ins._variant_tensor == variant_tensor:
             if not isinstance(ins, DatasetV1Adapter):
                 ins = ins._input_dataset
-            logging.debug(f"Find target instance '{ins}', whose variant_tensor is '{variant_tensor}'.")
+            logger.debug("Find target instance '%s', whose variant_tensor is '%s'.", ins, variant_tensor)
             if not isinstance(ins.element_spec, dict) and not (
                     isinstance(ins.element_spec, (list, tuple)) and len(ins.element_spec) == 2 and isinstance(
                 ins.element_spec[0], dict)):
@@ -297,8 +298,8 @@ def update_input_tensor_with_new_batch(replacement_specs: dict, new_get_next_op_
             try:
                 operator._update_input(idx, new_tensor)
             except InvalidArgumentError as err:
-                logging.info("The replacement specs keys (old batch) is: %s. \n\t\t"
-                             "The new batch is: %s.", replacement_specs.keys(), new_batch)
+                logger.info("The replacement specs keys (old batch) is: %s. \n\t\t The new batch is: %s.",
+                            replacement_specs.keys(), new_batch)
                 raise RuntimeError(f"Cannot update edge, old tensor: {old_tensor}, new tensor: {new_tensor}.") from err
 
 
@@ -321,6 +322,9 @@ def get_dataset_tensor_count(dataset: DatasetV1Adapter) -> int:
     return len(src_sorted_keys)
 
 
+@para_checker_decorator(
+    check_option_list=[("dump_graph", ClassValidator, {"classes": (bool,)})]
+)
 def modify_graph_and_start_emb_cache(dump_graph=False):
     modify_graph_for_asc(dump_graph=dump_graph)
     start_asc_pipeline()
@@ -331,7 +335,7 @@ def generate_get_next_op_specs(cutting_point_list, dump_graph):
     for input_tensor in cutting_point_list:
         get_next_op = find_target_dataset_op(input_tensor.op, "IteratorGetNext")
         if get_next_op not in get_next_op_map:
-            logging.debug(f"find a new get_next_op named '{get_next_op.name}'")
+            logger.debug("find a new get_next_op named '%s'", get_next_op.name)
             replacement_specs = record_ops_to_replace(get_next_op)
             get_next_op_map[get_next_op]["replacement_specs"] = replacement_specs
             passing_tensor_list, batch_tensor_index_list, sub_cutting_point_list = \
@@ -368,11 +372,11 @@ def get_src_dataset(get_next_op: Operation, is_training: bool) -> DatasetV1Adapt
     try:
         target_op = get_dataset_op(get_next_op)
     except (ValueError, TypeError, RuntimeError) as err:
-        logging.warning("The dataset op was not found, the error is `%s`. Start to traverse the operations.", err)
+        logger.warning("The dataset op was not found, the error is `%s`. Start to traverse the operations.", err)
         graph = tf.compat.v1.get_default_graph()
         dataset_op_list = [op for op in graph.get_operations() if ANCHOR_DATASET_NAME in op.name]
-        logging.debug("In get_src_dataset function, current mode(train: True, eval: False): %s, dataset_op_list: %s.",
-                      is_training, dataset_op_list)
+        logger.debug("In get_src_dataset function, current mode(train: True, eval: False): %s, dataset_op_list: %s.",
+                     is_training, dataset_op_list)
 
         if len(dataset_op_list) == 1:
             target_op = dataset_op_list[0]
@@ -390,7 +394,7 @@ def get_src_dataset(get_next_op: Operation, is_training: bool) -> DatasetV1Adapt
 
     if not target_op.outputs:
         raise ValueError(f"The length of the outputs of target op `{target_op}` is 0.")
-    logging.debug("Find target op `%s`, and output is `%s`.", target_op.name, target_op.outputs)
+    logger.debug("Find target op `%s`, and output is `%s`.", target_op.name, target_op.outputs)
     src_dataset = find_target_instance_dataset(target_op.outputs[0])
     return src_dataset
 
@@ -456,7 +460,7 @@ def update_iterator_getnext(get_next_op: Operation, tgt_dataset: DatasetV1Adapte
         raise RuntimeError(f"Only iterators `MakeIterator` and `OneShotIterator` are supported in `graph modify` mode, "
                            f"but the current iterator is `{iterator_type}`.")
     set_iterator_type(iterator_type)
-    logging.info("The iterator type of dataset is `%s`.", iterator_type)
+    logger.info("The iterator type of dataset is `%s`.", iterator_type)
 
     if iterator_type == "MakeIterator":
         new_iterator = tgt_dataset.make_initializable_iterator()
@@ -480,13 +484,13 @@ def modify_graph_for_asc(dump_graph=False, prefetch=10):
     cutting_point_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ENTRANCE)
     check_cutting_points(cutting_point_list)
     if not cutting_point_list:
-        logging.warning("Nothing to revise.")
+        logger.warning("Nothing to revise.")
         return
 
     export_pb_graph("old_graph.pb", dump_graph)
     get_next_op_map = generate_get_next_op_specs(cutting_point_list, dump_graph)
-    logging.debug("In modify_graph_for_asc function, get_next_op_map.len: %d, get_next_op_map.key: %s.",
-                  len(get_next_op_map), get_next_op_map.keys())
+    logger.debug("In modify_graph_for_asc function, get_next_op_map.len: %d, get_next_op_map.key: %s.",
+                 len(get_next_op_map), get_next_op_map.keys())
 
     for get_next_op, records in get_next_op_map.items():
         is_training = records.get("is_training")
@@ -514,14 +518,14 @@ def modify_graph_for_asc(dump_graph=False, prefetch=10):
         if not is_training:
             do_merge_lookup(is_train=False)
             if 'evaluate' in get_bool_gauge_set():
-                logging.debug("In estimator mode, eval re-creates graph each time, so the flag needs to be cleared.")
+                logger.debug("In estimator mode, eval re-creates graph each time, so the flag needs to be cleared.")
                 insert_merged_multi_lookup(is_training, False)
         # In training mode, `do_merge_lookup` should have been executed in compute gradients phase.
         if is_training and not get_merged_multi_lookup(True):
             raise RuntimeError("In training mode, `do_merge_lookup` should have been executed in compute gradients "
                                "phase. Please check whether compute gradients is performed.")
 
-    logging.info("Graph has been revised.")
+    logger.info("Graph has been revised.")
     export_pb_graph("new_graph.pb", dump_graph)
 
 
@@ -547,6 +551,12 @@ def get_timestamp_index(get_next_op, is_training):
 
 
 class GraphModifierHook(tf.estimator.SessionRunHook):
+    @para_checker_decorator(
+        check_option_list=[
+            ("dump_graph", ClassValidator, {"classes": (bool,)}),
+            ("modify_graph", ClassValidator, {"classes": (bool,)})
+        ]
+    )
     def __init__(self, dump_graph=True, modify_graph=True):
         self._dump_graph = dump_graph
         self._modify_graph = modify_graph
@@ -562,7 +572,7 @@ class GraphModifierHook(tf.estimator.SessionRunHook):
         self._iterator_type = get_iterator_type()
         if self._modify_graph and self._iterator_type not in ("MakeIterator", "OneShotIterator"):
             raise ValueError("The value of iterator type should be like `MakeIterator` or `OneShotIterator`.")
-        logging.debug("In GraphModifierHook, iterator type is `%s`.", self._iterator_type)
+        logger.debug("In GraphModifierHook, iterator type is `%s`.", self._iterator_type)
 
     def after_create_session(self, session, coord):
         if self._modify_graph and self._iterator_type == "MakeIterator":
@@ -570,11 +580,11 @@ class GraphModifierHook(tf.estimator.SessionRunHook):
 
     def end(self, session):
         bool_gauge_set = get_bool_gauge_set()
-        logging.debug(f"GraphModifierHook, bool_gauge_set: {bool_gauge_set}")
+        logger.debug("GraphModifierHook, bool_gauge_set: %s", bool_gauge_set)
 
         # In eval or predict mode, the initializer can be directly terminated.
         if 'train' not in bool_gauge_set:
-            logging.debug(f"In evaluate or predict case, GraphModifierHook call 'terminate_config_initializer'...")
+            logger.debug("In evaluate or predict case, GraphModifierHook call 'terminate_config_initializer'...")
             terminate_config_initializer()
             return
 
@@ -582,5 +592,5 @@ class GraphModifierHook(tf.estimator.SessionRunHook):
             increase_run_times()
             # In 'train_and_evaluate' mode, the terminate function should be executed last.
             if get_is_last_round():
-                logging.debug(f"In train_and_evaluate case, GraphModifierHook call 'terminate_config_initializer'...")
+                logger.debug("In train_and_evaluate case, GraphModifierHook call 'terminate_config_initializer'...")
                 terminate_config_initializer()

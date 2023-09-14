@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
 
-import logging
 import os
 import json
 
@@ -10,6 +9,8 @@ import numpy as np
 
 from mx_rec.util.initialize import get_table_instance_by_name, export_table_name_set, get_sparse_dir
 from mx_rec.validator.validator import FileValidator
+from mx_rec.validator.validator import para_checker_decorator, ClassValidator
+from mx_rec.util.log import logger
 
 
 class SparseProcessor:
@@ -31,7 +32,7 @@ class SparseProcessor:
         self.default_table_list = list(export_table_name_set())
 
         if not self.table_list:
-            logging.debug("table list not be set, use default value : all table created ")
+            logger.debug("table list not be set, use default value : all table created ")
             self.table_list = self.default_table_list
         else:
             self.table_list = check_table_param(self.table_list, self.default_table_list)
@@ -44,7 +45,7 @@ class SparseProcessor:
     def _get_data(data_dir, dtype, data_shape):
         with open(data_dir, "rb") as file:
             # check whether data file is valid
-            file_validator = FileValidator(data_dir)
+            file_validator = FileValidator("data_dir", data_dir)
             # 1.check whether data_dir is soft link
             file_validator.check_not_soft_link()
             # 2.check data file size
@@ -64,7 +65,7 @@ class SparseProcessor:
             try:
                 with open(attribute_dir, "r") as fin:
                     # check whether attribute file is valid
-                    file_validator = FileValidator(attribute_dir)
+                    file_validator = FileValidator("attribute_dir", attribute_dir)
                     # 1.check whether attribute_dir is soft link
                     file_validator.check_not_soft_link()
                     # 2.check attribute file size
@@ -82,7 +83,7 @@ class SparseProcessor:
         return attributes
 
     def export_sparse_data(self):
-        logging.info("table list to be exported is %s", self.table_list)
+        logger.info("table list to be exported is %s", self.table_list)
         sparse_dir = get_sparse_dir()
         ddr = False
         dev_dir = set_upper_dir(sparse_dir, self.device_dir_list)
@@ -164,13 +165,16 @@ class SparseProcessor:
         return data_file, attribute_file
 
 
+@para_checker_decorator(check_option_list=[
+    ("table_list", ClassValidator, {"classes": (list, )})
+])
 def export(**kwargs):
     empty_value = 0
     SparseProcessor.set_instance(**kwargs)
     if SparseProcessor.single_instance.table_list:
         return SparseProcessor.single_instance.export_sparse_data()
     else:
-        logging.warning("no table can be exported ,please check if you have saved or created tables")
+        logger.warning("no table can be exported ,please check if you have saved or created tables")
         return empty_value
 
 
@@ -178,7 +182,7 @@ def check_table_param(table_list, default_table_list):
     out_list = []
     for table in table_list:
         if table not in default_table_list:
-            logging.warning(f"{table} not be created , please check your table name.")
+            logger.warning("%s not be created , please check your table name.", table)
         out_list.append(table)
     return out_list
 

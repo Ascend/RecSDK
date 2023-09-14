@@ -4,7 +4,6 @@
 
 import json
 import os
-import logging
 import threading
 from collections import defaultdict
 
@@ -12,12 +11,14 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.util import compat
 
-from mx_rec.constants.constants import DataName, DataAttr, MIN_SIZE, MAX_FILE_SIZE
+from mx_rec.constants.constants import DataName, DataAttr, MIN_SIZE, MAX_FILE_SIZE, Flag, TFDevice
 from mx_rec.util.initialize import get_rank_id, get_rank_size, get_customized_ops, get_table_instance, \
     get_table_instance_by_name, is_asc_manager_initialized, save_host_data, restore_host_data, get_host_data, \
-    send_host_data, get_ascend_global_hashtable_collection, set_sparse_dir
+    send_host_data, get_ascend_global_hashtable_collection, set_sparse_dir, get_local_rank_size
 from mx_rec.util.perf import performance
 from mx_rec.validator.validator import DirectoryValidator, FileValidator
+from mx_rec.util.global_env_conf import global_env
+from mx_rec.util.log import logger
 
 
 # define save model thread
@@ -41,20 +42,20 @@ class Saver(object):
         self._prefix_name = prefix_name
         self.var_list = var_list
         self.rank_id = get_rank_id()
-        self.local_rank_id = self.rank_id % 8
+        self.local_rank_size = get_local_rank_size()
+        self.local_rank_id = self.rank_id % self.local_rank_size
         self.rank_size = get_rank_size()
-        self.local_rank_size = min(self.rank_size, 8)
         self.save_op_dict = defaultdict(dict)
         self.restore_fetch_list = []
         self.placeholder_dict = defaultdict(dict)
         # save_easy_mode : only save the embedding and key data of sparse tables
-        self.save_easy_mode = int(os.getenv("SAVE_EASY", 0))
+        self.save_easy_mode = (global_env.save_easy == Flag.TRUE.value)
         self.build()
 
     def build(self):
         if self.var_list is None:
             self.var_list = []
-            logging.debug(f"optimizer collection name: {get_ascend_global_hashtable_collection()}")
+            logger.debug("optimizer collection name: %s", get_ascend_global_hashtable_collection())
             temp_var_list = tf.compat.v1.get_collection(get_ascend_global_hashtable_collection())
             for var in temp_var_list:
                 table_instance = get_table_instance(var)
@@ -66,7 +67,7 @@ class Saver(object):
         with tf.compat.v1.variable_scope("mx_rec_restore"):
             self._build_restore()
 
-        logging.debug("Save & Restore graph was built.")
+        logger.debug("Save & Restore graph was built.")
 
     @performance("Save")
     def save(self, sess, save_path="model", global_step=None):
@@ -84,7 +85,7 @@ class Saver(object):
          the checkpoint filenames. The optional argument can be a Tensor, a Tensor name or an integer.
         :return: None
         """
-        logging.debug(f"======== Start saving for rank id {self.rank_id} ========")
+        logger.debug("======== Start saving for rank id %s ========", self.rank_id)
         save_path = save_path if save_path else self._prefix_name
         directory, base_name = os.path.split(save_path)
 
@@ -100,24 +101,24 @@ class Saver(object):
 
         try:
             if save_path.find("://") == -1:
-                DirectoryValidator(saving_path).with_blacklist(exact_compare=False).check()
+                DirectoryValidator("saving_path", saving_path).with_blacklist(exact_compare=False).check()
         except ValueError as err:
             raise ValueError(f"The saving path {saving_path} cannot be a system directory "
                              f"or a subdirectory of the system directory.") from err
 
         if tf.io.gfile.exists(saving_path):
             tf.io.gfile.rmtree(saving_path)
-            logging.info(f"rank id {self.rank_id} | Saving_path '{saving_path}' has been deleted.")
+            logger.info("rank id %s | Saving_path '%s' has been deleted.", self.rank_id, saving_path)
         tf.io.gfile.makedirs(saving_path)
-        logging.info(f"rank id {self.rank_id} | Saving_path '{saving_path}' has been made.")
+        logger.info("rank id %s | Saving_path '%s' has been made.", self.rank_id, saving_path)
 
         self._save(sess, saving_path)
-        logging.info(f"sparse model was saved in dir '{saving_path}' .")
-        logging.info(f"======== Saving finished for rank id {self.rank_id} ========")
+        logger.info("sparse model was saved in dir '%s' .", saving_path)
+        logger.info("======== Saving finished for rank id %s ========", self.rank_id)
 
     @performance("Restore")
     def restore(self, sess, reading_path):
-        logging.debug("======== Start restoring ========")
+        logger.debug("======== Start restoring ========")
         directory, base_name = os.path.split(reading_path)
         ckpt_name = f"sparse-{base_name}"
 
@@ -127,8 +128,8 @@ class Saver(object):
             raise FileExistsError(f"Given dir {reading_path} does not exist, please double check.")
 
         self._restore(sess, reading_path)
-        logging.info(f"sparse model was restored from dir '{reading_path}' .")
-        logging.debug("======== Restoring finished ========")
+        logger.info("sparse model was restored from dir '%s' .", reading_path)
+        logger.debug("======== Restoring finished ========")
 
     @performance("save_table_name_data")
     def save_table_name_data(self, sess, result, root_dir, table_name):
@@ -165,7 +166,7 @@ class Saver(object):
 
     def _build_restore(self):
         for var in self.var_list:
-            if os.getenv("TF_DEVICE", " ") == "NPU" and "merged" not in var.name:
+            if global_env.tf_device == TFDevice.NPU.value and "merged" not in var.name:
                 continue
             table_instance = get_table_instance(var)
             sub_placeholder_dict = self.placeholder_dict[table_instance.table_name]
@@ -199,7 +200,7 @@ class Saver(object):
         result = self.save_op_dict
         if is_asc_manager_initialized() and not self.save_easy_mode:
             save_host_data(root_dir)
-            logging.debug(f"host data was saved.")
+            logger.debug(f"host data was saved.")
 
         threads = []
         for table_name in result.keys():
@@ -256,10 +257,10 @@ class Saver(object):
 
         if is_asc_manager_initialized() and self.save_easy_mode:
             send_host_data(key_offset_dict)
-            logging.info("host data was sent to the host pipeline.")
+            logger.info("host data was sent to the host pipeline.")
         if is_asc_manager_initialized() and not self.save_easy_mode:
             restore_host_data(reading_path)
-            logging.info("host data was restored.")
+            logger.info("host data was restored.")
         sess.run(self.restore_fetch_list, feed_dict=restore_feed_dict)
 
 
@@ -398,12 +399,12 @@ def write_binary_data(writing_path, suffix, data, attributes=None):
         raise FileExistsError(f"Target_attribute_dir {target_attribute_dir} exists before writing.")
 
     if target_data_dir.find("://") != -1:
-        logging.debug(f"use hdfs path {target_data_dir} to save sparse data.")
+        logger.debug("use hdfs path %s to save sparse data.", target_data_dir)
         with tf.io.gfile.GFile(target_data_dir, "wb") as file:
             data = data.tostring()
             file.write(data)
     else:
-        logging.debug(f"use local file path {target_data_dir} to save sparse data.")
+        logger.debug("use local file path %s to save sparse data.", target_data_dir)
         data.tofile(target_data_dir)
 
     if attributes is not None:
@@ -441,11 +442,11 @@ def read_binary_data(reading_path: str, suffix: int, data_name: str, table_name:
     with tf.io.gfile.GFile(target_data_dir, "rb") as file:
         validate_read_file(target_data_dir)
         if target_data_dir.find("://") != -1:
-            logging.debug("use hdfs path %s to restore sparse data.", target_data_dir)
+            logger.debug("use hdfs path %s to restore sparse data.", target_data_dir)
             data_to_restore = file.read()
             data_to_restore = np.fromstring(data_to_restore, dtype=attributes.pop(DataAttr.DATATYPE.value))
         else:
-            logging.debug("use local file path %s to restore sparse data.", target_data_dir)
+            logger.debug("use local file path %s to restore sparse data.", target_data_dir)
             data_to_restore = np.fromfile(target_data_dir, dtype=attributes.pop(DataAttr.DATATYPE.value))
 
     if DataAttr.SHAPE.value in attributes and data_name != DataName.KEY.value:
@@ -457,8 +458,8 @@ def read_binary_data(reading_path: str, suffix: int, data_name: str, table_name:
             data_to_restore = process_embedding_data(data_to_restore, current_data_shape, data_shape)
 
     data_dict = {data_name: data_to_restore}
-    logging.debug(f"Attribute: '{target_attribute_dir}' and data file: '{target_data_dir}' have been read.")
-    logging.debug(f"Reading shape is {data_to_restore.shape}.")
+    logger.debug("Attribute: '%s' and data file: '%s' have been read.", target_attribute_dir, target_data_dir)
+    logger.debug("Reading shape is %s.", data_to_restore.shape)
 
     return data_dict
 
@@ -468,7 +469,7 @@ def validate_read_file(read_file_path):
     Validate file before reading，including validating soft link, file size
     :param read_file_path: the file path to be validated
     """
-    file_validator = FileValidator(read_file_path)
+    file_validator = FileValidator("read_file_path", read_file_path)
     file_validator.check_file_size(MAX_FILE_SIZE, MIN_SIZE)
     # local file need to check soft link
     if read_file_path.find("://") == -1:

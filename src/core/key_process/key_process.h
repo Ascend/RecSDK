@@ -25,6 +25,7 @@
 #include "ock_ctr_common/include/error_code.h"
 
 #include "utils/common.h"
+#include "utils/config.h"
 #include "utils/time_cost.h"
 #include "utils/safe_queue.h"
 

@@ -6,7 +6,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
 from collections import defaultdict
 
 import tensorflow as tf
@@ -15,9 +14,17 @@ from tensorflow.python.training import adam
 
 from mx_rec.util.initialize import get_host_pipeline_ops, insert_optimizer
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.util.variable import check_param_type, check_param_range
+from mx_rec.constants.constants import MAX_INT32
+from mx_rec.validator.validator import para_checker_decorator, StringValidator, NumValidator
 
 
+@para_checker_decorator(check_option_list=[
+    ("learning_rate", NumValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
+    ("beta1", NumValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
+    ("beta2", NumValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
+    ("epsilon", NumValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
+    ("name", StringValidator, {"max_len": 255}, ["check_string_length"])
+])
 def create_hash_optimizer_by_address(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8,
                                      name="LazyAdamByAddress"):
     """
@@ -49,7 +56,6 @@ class CustomizedLazyAdamByAddress(adam.AdamOptimizer, CustomizedOptimizer):
                                                           name=self.unique_name)
 
         self._slot_num = 2
-        self._check_input_param()
 
     @property
     def slot_num(self):
@@ -60,18 +66,6 @@ class CustomizedLazyAdamByAddress(adam.AdamOptimizer, CustomizedOptimizer):
         initial_momentum_value = 0.0
         initial_velocity_value = 0.0
         return [initial_momentum_value, initial_velocity_value]
-
-    def _check_input_param(self):
-        check_param_type("beta1", self._beta1, (int, float))
-        check_param_range("beta1", self._beta1, 0, 1)
-
-        check_param_type("beta2", self._beta2, (int, float))
-        check_param_range("beta2", self._beta2, 0, 1)
-
-        check_param_type("epsilon", self._epsilon, (int, float))
-        check_param_range("epsilon", self._epsilon, 0, 1)
-
-        check_param_type("use_locking", self._use_locking, bool)
 
     def _create_slots(self, addr_list):
         first_addr = addr_list[0]
@@ -90,10 +84,10 @@ class CustomizedLazyAdamByAddress(adam.AdamOptimizer, CustomizedOptimizer):
         temp_b2 = math_ops.cast(self._beta2_t, var_type)
         temp_epsilon = math_ops.cast(self._epsilon_t, var_type)
         temp = {
-            'temp_lr' : temp_lr,
-            'temp_b1' : temp_b1,
-            'temp_b2' : temp_b2,
-            'temp_epsilon' : temp_epsilon,
+            'temp_lr': temp_lr,
+            'temp_b1': temp_b1,
+            'temp_b2': temp_b2,
+            'temp_epsilon': temp_epsilon,
         }
         return temp
 

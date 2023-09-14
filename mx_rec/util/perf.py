@@ -3,7 +3,8 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 import time
-import logging
+
+from mx_rec.util.log import logger
 
 
 def performance(method_name):
@@ -12,7 +13,7 @@ def performance(method_name):
             start = time.perf_counter()
             result = func(*args, **kwargs)
             span = time.perf_counter() - start
-            logging.debug(f"{method_name} method consume {span:.6f}s.")
+            logger.debug(f"%s method consume %s (s).", method_name, round(span, 6))
             return result
         return wrapper
     return decorator

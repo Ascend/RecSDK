@@ -14,6 +14,7 @@
 #include "acl/acl_tdt_queue.h"
 #include "acl_channel.h"
 #include "utils/common.h"
+#include "utils/config.h"
 
 #ifndef tdtCreateChannel
 #define tdtCreateChannel acltdtCreateChannelWithCapacity
@@ -25,7 +26,6 @@ namespace MxRec {
     const std::string HD = "\033[32m[HD]\033[0m ";
     const std::string HOSTEMB = "\033[32m[HostEmb]\033[0m ";
     const int PING_PONG_SIZE = 6;
-    const int LARGE_CHANNEL_SIZE = 40;
 
     enum class TransferChannel {
         D2H,
@@ -88,7 +88,6 @@ namespace MxRec {
         std::unordered_map<std::string, acltdtChannelHandle*> transferChannels;
 #endif
         bool running;
-        int32_t timeout{-1};
         void CreateChannel(const uint32_t localRankId, const string& embName, const int channelNum);
     };
 }

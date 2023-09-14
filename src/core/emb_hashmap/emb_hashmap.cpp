@@ -50,11 +50,9 @@ inline void ClearLookupAndSwapOffset(EmbHashMapInfo& embHashMap)
 /// DDR模型下处理特征的offset、swap信息等
 /// \param embName 表名
 /// \param keys 查询向量
-/// \param iBatch 预取数据处理计数
-/// \param tmpDataOut 临时向量
+/// \param DDRParam 临时向量
 /// \param channelId 通道索引（训练/推理）
-void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t iBatch,
-                         DDRParam& ddrParam, int channelId)
+void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, DDRParam& ddrParam, int channelId)
 {
 #ifndef GTEST
     EASY_FUNCTION(profiler::colors::Pink)
@@ -64,13 +62,12 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, size_t 
     embHashMap.oldSwap.clear();
     embHashMap.maxOffsetOld = embHashMap.maxOffset;
 
-    auto keepBatch = swapId - iBatch; // 处理batch的次数，多个预取一起处理算一次
-    bool findOffsetV2 = GetEnv("FIND_OFFSET_V2");
+    auto keepBatch = swapId; // 处理batch的次数，多个预取一起处理算一次
 
-    LOG_DEBUG("FindOffset version:{}", findOffsetV2);
+    LOG_DEBUG("FindOffset version:{}", GlobalEnv::findOffsetV2);
 
     // 找到所有key的偏移；dev和host需要交换的位置
-    if (findOffsetV2) {
+    if (GlobalEnv::findOffsetV2) {
         FindAndUpdateOffset(embName, keys, swapId, keepBatch, channelId);
     } else {
         FindOffset(embName, keys, swapId, keepBatch, channelId);
@@ -195,7 +192,6 @@ void EmbHashMap::FindAndUpdateBatchId(vector<emb_key_t>& keys, size_t currentBat
                                       EmbHashMapInfo& embHashMap) const
 {
     EASY_FUNCTION()
-    bool findOffsetV3 = GetEnv("FIND_OFFSET_V3");
     for (size_t i = 0; i < keySize; i++) {
         int offset;
         auto& key = keys[i];
@@ -204,7 +200,7 @@ void EmbHashMap::FindAndUpdateBatchId(vector<emb_key_t>& keys, size_t currentBat
         }
         const auto& iter = embHashMap.hostHashMap.find(key);
         if (iter != embHashMap.hostHashMap.end()) { // found
-            if (findOffsetV3) {
+            if (GlobalEnv::findOffsetV3) {
                 key = -1;
             }
             offset = static_cast<int>(iter->second);

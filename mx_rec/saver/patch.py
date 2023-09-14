@@ -4,7 +4,6 @@
 
 import os
 import time
-import logging
 
 import tensorflow as tf
 from tensorflow.core.protobuf import saver_pb2
@@ -27,6 +26,8 @@ from tensorflow.python.training.saving import saveable_object_util
 
 from mx_rec.saver.saver import Saver as SparseSaver
 from mx_rec.util.initialize import get_ascend_global_hashtable_collection, export_removing_var_list
+from mx_rec.validator.validator import para_checker_decorator, ClassValidator
+from mx_rec.util.log import logger
 
 
 def get_sparse_vars(var_list):
@@ -115,7 +116,7 @@ def get_model_checkpoint_path(self, checkpoint_file, sess):
         if self.sparse_saver:
             self.sparse_saver.save(sess, save_path=checkpoint_file)
 
-        logging.info("Save model into dir %s", checkpoint_file)
+        logger.info("Save model into dir %s", checkpoint_file)
     else:
         self._build_eager(checkpoint_file, build_save=True, build_restore=False)
         model_checkpoint_path = self.saver_def.save_tensor_name
@@ -169,6 +170,17 @@ def build(self):
     self._build(self._filename, build_save=True, build_restore=True)
 
 
+@para_checker_decorator(check_option_list=[
+    ("sess", ClassValidator, {"classes": (tf.compat.v1.Session, tf.compat.v1.train.MonitoredSession)}),
+    ("save_path", ClassValidator, {"classes": (str, )}),
+    ("global_step", ClassValidator, {"classes": (int, type(None))}),
+    ("latest_filename", ClassValidator, {"classes": (str, type(None))}),
+    ("meta_graph_suffix", ClassValidator, {"classes": (str, type(None))}),
+    ("write_meta_graph", ClassValidator, {"classes": (bool, type(None))}),
+    ("write_state", ClassValidator, {"classes": (bool, type(None))}),
+    ("strip_default_attrs", ClassValidator, {"classes": (bool, type(None))}),
+    ("save_debug_info", ClassValidator, {"classes": (bool, type(None))})
+])
 def save(self, sess, save_path, global_step=None, latest_filename=None, meta_graph_suffix="meta", write_meta_graph=True,
          write_state=True, strip_default_attrs=False, save_debug_info=False):
     # since tf 2.6.0, tf needs tensorflow_io to support hdfs path
@@ -207,6 +219,10 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
     return model_checkpoint_path
 
 
+@para_checker_decorator(check_option_list=[
+    ("sess", ClassValidator, {"classes": (tf.compat.v1.Session, tf.compat.v1.train.MonitoredSession)}),
+    ("save_path", ClassValidator, {"classes": (str, )})
+])
 def restore(self, sess, save_path):
     if save_path is None:
         raise ValueError("Can't load save_path when it is None.")
@@ -231,7 +247,7 @@ def restore(self, sess, save_path):
 
             sess.run(self.saver_def.restore_op_name,
                      {self.saver_def.filename_tensor_name: save_path})
-            logging.info("Restore from dir %s", save_path)
+            logger.info("Restore from dir %s", save_path)
         else:
             self._build_eager(save_path, build_save=False, build_restore=True)
 
@@ -382,6 +398,6 @@ def patch_for_saver():
     dense_saver.save = save
     dense_saver.restore = restore
     dense_saver.build = build
-    logging.debug("Class tf.train.Saver has been patched.")
+    logger.debug("Class tf.train.Saver has been patched.")
 
 
