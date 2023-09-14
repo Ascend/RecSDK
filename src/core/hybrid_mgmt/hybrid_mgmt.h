@@ -116,7 +116,9 @@ namespace MxRec {
 
         bool IsLoadDataMatches(emb_mem_t* loadHostEmbs, EmbInfo* setupHostEmbs, size_t& embTableCount);
 
-        void CallBySessionRun(int channelID, int steps);
+        void NotifyBySessionRun(int channelID);
+
+        void CountStepBySessionRun(int channelID, int steps);
 
     private:
         bool InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,

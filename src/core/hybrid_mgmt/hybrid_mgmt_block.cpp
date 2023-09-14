@@ -14,6 +14,14 @@
 /// \param channelId train 0 eval 1
 void HybridMgmtBlock::CheckAndSetBlock(int channelId)
 {
+    // 判断save时候的阻塞情况
+    // 当在进行训练通道，且save interval不为0和-1（不需要阻塞），且运行到了需要阻塞的步骤
+    if (channelId==TRAIN_CHANNEL_ID && saveInterval!=0
+        && saveInterval!=-1 && hybridBatchId[TRAIN_CHANNEL_ID]%saveInterval==0) {
+        LOG_DEBUG(HYBRID_BLOCKING + "blocking by save saveInterval {} pythonBatchId {} hybridBatchId {}",
+                  saveInterval, pythonBatchId[channelId], hybridBatchId[channelId]);
+        isBlock[TRAIN_CHANNEL_ID] = true;
+    }
     if (stepsInterval[channelId] == -1) {
         return;
     }
@@ -95,7 +103,7 @@ void HybridMgmtBlock::CheckValid(int channelId)
             lastRunChannelId,  pythonBatchId[lastRunChannelId], hybridBatchId[lastRunChannelId]);
     } else if (pythonBatchId[lastRunChannelId] < hybridBatchId[lastRunChannelId]) {
         // 在通道切换时，上一个通道处理的数据超出了python侧的调用
-        if (!WaitValid(lastRunChannelId)) {
+        if (!rankInfo.noDDR and !WaitValid(lastRunChannelId)) {
             throw HybridMgmtBlockingException("when channel switch");
         }
     } else {
@@ -193,8 +201,9 @@ void HybridMgmtBlock::Destroy()
 
 void HybridMgmtBlock::SetRankInfo(RankInfo rankInfo)
 {
-    this->stepsInterval[0] = rankInfo.maxStep[0];
-    this->stepsInterval[1] = rankInfo.maxStep[1];
+    this->stepsInterval[TRAIN_CHANNEL_ID] = rankInfo.maxStep[TRAIN_CHANNEL_ID];
+    this->stepsInterval[EVAL_CHANNEL_ID] = rankInfo.maxStep[EVAL_CHANNEL_ID];
+    this->saveInterval = rankInfo.maxStep[SAVE_STEP_INDEX];
     this->rankInfo = rankInfo;
 };
 

@@ -49,6 +49,7 @@ class ConfigInitializer:
         self._is_frozen = False
         self._train_steps = None
         self._eval_steps = None
+        self._save_steps = None
         self._if_load = None
         self._table_instance_dict = dict()
         self._dangling_table = []
@@ -88,6 +89,8 @@ class ConfigInitializer:
                                        chief_device=global_env.cm_chief_device)
         self.train_steps = kwargs.get("train_steps", -1)
         self.eval_steps = kwargs.get("eval_steps", -1)
+        self.save_steps = kwargs.get("save_steps", -1)
+
         self.if_load = kwargs.get("if_load", False)
 
         self.use_static = not kwargs.get("use_dynamic", True)
@@ -196,6 +199,10 @@ class ConfigInitializer:
     @property
     def eval_steps(self):
         return self._eval_steps
+
+    @property
+    def save_steps(self):
+        return self._save_steps
 
     @property
     def if_load(self):
@@ -345,6 +352,11 @@ class ConfigInitializer:
     def eval_steps(self, steps):
         check_step(steps)
         self._eval_steps = steps
+
+    @save_steps.setter
+    def save_steps(self, steps):
+        check_step(steps)
+        self._save_steps = steps
 
     @if_load.setter
     def if_load(self, flag):
@@ -604,12 +616,20 @@ def get_eval_steps():
     return ConfigInitializer.get_instance().eval_steps
 
 
+def get_save_steps():
+    return ConfigInitializer.get_instance().save_steps
+
+
 def set_train_steps(steps: int):
     ConfigInitializer.get_instance().train_steps = steps
 
 
 def set_eval_steps(steps: int):
     ConfigInitializer.get_instance().eval_steps = steps
+
+
+def set_save_steps(steps: int):
+    ConfigInitializer.get_instance().save_steps = steps
 
 
 def get_table_instance(key):

@@ -7,7 +7,7 @@ import tensorflow as tf
 from mxrec_pybind import InitializeInfo, ConstantInitializerInfo, NormalInitializerInfo
 
 from mx_rec.util.initialize import get_rank_id, get_device_id, get_rank_size, set_asc_manager, \
-    is_asc_manager_initialized, get_train_steps, get_eval_steps, \
+    is_asc_manager_initialized, get_train_steps, get_eval_steps, get_save_steps, \
     export_table_instances, export_feature_spec, get_if_load, get_use_static, \
     get_use_hot, get_stat_on, get_use_dynamic_expansion, export_optimizer, export_dangling_table, export_table_num
 from mx_rec.core.asc.merge_table import find_dangling_table, should_skip
@@ -188,6 +188,8 @@ def initialize_emb_cache(table_info_list, threshold_list):
     rank_size = get_rank_size()
     train_steps = get_train_steps()
     eval_steps = get_eval_steps()
+    save_steps = get_save_steps()
+
     if_load = get_if_load()
     option = 0
     if get_use_static():
@@ -197,8 +199,9 @@ def initialize_emb_cache(table_info_list, threshold_list):
     if get_use_dynamic_expansion():
         option = option | USE_DYNAMIC_EXPANSION
 
-    # [train_steps, eval_steps] pass step information to HybridMgmt for data process loop
-    rank_info = RankInfo(rank_id, device_id, rank_size, option, [train_steps, eval_steps])
+    # [train_steps, eval_steps, save_steps] pass step information to HybridMgmt for data process loop
+    rank_info = RankInfo(rank_id, device_id, rank_size, option,
+                         n_batch_to_prefetch, [train_steps, eval_steps, save_steps])
 
     emb_cache = HybridMgmt()
 

@@ -104,16 +104,7 @@ def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
         return this_channel_id
 
     # patch的方式为session增加步数属性
-    step = self.get_mxrec_steps()
-    # 进行缓存，避免每次都进行图查询
-    if not step:
-        step = 1
-        for custom_optimizer in self.get_config().graph_options.rewrite_options.custom_optimizers:
-            if custom_optimizer.name == "NpuOptimizer":
-                step = custom_optimizer.parameter_map["iterations_per_loop"].i
-                break
-        self.steps = step
-
+    steps = self.get_mxrec_steps()
     # patch的方式为图增加缓存属性
     name2channel_cache = self.get_mxrec_name2channel_cache()
 
@@ -125,10 +116,13 @@ def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
         channel_id = -1
 
     if channel_id != -1:
-        get_asc_manager().send_message_to_hybrid(channel_id, self.steps)
+        get_asc_manager().block_notify_wake(channel_id)
 
     #调用tensorflow原生的方法
-    return self.old_run_method(fetches, feed_dict, options, run_metadata)
+    result = self.old_run_method(fetches, feed_dict, options, run_metadata)
+    if channel_id != -1:
+        get_asc_manager().block_count_steps(channel_id, steps)
+    return result
 
 
 def patch_for_dataset():
@@ -142,7 +136,12 @@ def patch_for_session():
             # 不能在未调用非__init__函数之前调用非__init__中定义的实例化属性
             return self.steps
         except AttributeError:
-            self.steps = None
+            self.steps = 1
+            for custom_optimizer in self.get_config().graph_options.rewrite_options.custom_optimizers:
+                if custom_optimizer.name == "NpuOptimizer" \
+                        and custom_optimizer.parameter_map["iterations_per_loop"].i != 0:
+                    self.steps = custom_optimizer.parameter_map["iterations_per_loop"].i
+                    break
             return self.steps
 
     def get_mxrec_name2channel_cache(self):

@@ -954,11 +954,18 @@ int HybridMgmt::GetStepFromPath(const string& loadPath)
     return 0;
 }
 
+/// 通过pyBind在python侧调用，通知hybridMgmt上层即将进行图的执行，需要进行唤醒
+/// \param channelID 通道id
+/// \param steps 运行的步数，由于可能存在循环下沉，所以1个session run 对应N步
+void HybridMgmt::NotifyBySessionRun(int channelID)
+{
+    hybridMgmtBlock->CheckAndNotifyWake(channelID);
+}
+
 /// 通过pyBind在python侧调用，通知hybridMgmt上层即将进行图的执行
 /// \param channelID 通道id
 /// \param steps 运行的步数，由于可能存在循环下沉，所以1个session run 对应N步
-void HybridMgmt::CallBySessionRun(int channelID, int steps)
+void HybridMgmt::CountStepBySessionRun(int channelID, int steps)
 {
-    hybridMgmtBlock->CheckAndNotifyWake(channelID);
     hybridMgmtBlock->CountPythonStep(channelID, steps);
 }
