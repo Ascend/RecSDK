@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2023. All rights reserved.
 import re
-import logging
+
+from mx_rec.util.log import logger
 
 
 def fix_invalid_table_name(name):
@@ -18,7 +19,6 @@ def fix_invalid_table_name(name):
     if not fix_name:
         raise ValueError(f"The table name '{name}' doesn't contain valid character, "
                          f"according to the rule '{pattern}'")
-    logging.warning(f"The table name '%s' contains invalid characters. "
-                    f"The system automatically remove invalid characters. "
-                    f"The table name was changed to '%s'", name, fix_name)
+    logger.warning(f"The table name '%s' contains invalid characters. The system automatically "
+                   f"remove invalid characters. The table name was changed to '%s'", name, fix_name)
     return fix_name

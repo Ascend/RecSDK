@@ -6,10 +6,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
 from collections import defaultdict
 
-import tensorflow as tf
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import adagrad, training_ops
@@ -17,9 +15,16 @@ from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.initialize import get_table_instance, insert_removing_var_list
-from mx_rec.util.variable import check_param_type
+from mx_rec.constants.constants import MAX_INT32
+from mx_rec.validator.validator import para_checker_decorator, StringValidator, ClassValidator, NumValidator
 
 
+@para_checker_decorator(check_option_list=[
+    ("learning_rate", NumValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
+    ("initial_accumulator_value", NumValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
+    ("use_locking", ClassValidator, {"classes": (bool, )}),
+    ("name", StringValidator, {"max_len": 255}, ["check_string_length"])
+])
 def create_hash_optimizer(learning_rate=0.001,
                           initial_accumulator_value=0.9,
                           use_locking=False,
@@ -53,8 +58,6 @@ class CustomizedAdagrad(adagrad.AdagradOptimizer, CustomizedOptimizer):
                                                 use_locking=use_locking,
                                                 name=self.unique_name)
 
-        self._check_input_param()
-
     def initialize_slots(self, var, table_instance):
         # Create slots for the first and second moments.
         def creat_one_single_slot(var, op_name):
@@ -84,11 +87,6 @@ class CustomizedAdagrad(adagrad.AdagradOptimizer, CustomizedOptimizer):
         # return state value list of adagrad that needs to initialize in ASC DDR.
         initial_accumulator_value = 0.0
         return [initial_accumulator_value]
-
-    def _check_input_param(self):
-        check_param_type("learning_rate", self._learning_rate, (tf.Tensor, float))
-        check_param_type("initial_accumulator_value", self._initial_accumulator_value, (tf.Tensor, float))
-        check_param_type("use_locking", self._use_locking, bool)
 
     def _create_slots(self, var_list):
         for var in var_list:

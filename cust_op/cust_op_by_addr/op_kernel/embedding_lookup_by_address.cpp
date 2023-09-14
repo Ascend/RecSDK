@@ -31,7 +31,6 @@ public:
   __aicore__ inline void Init_param(GM_ADDR tiling)
   {
     GET_TILING_DATA(constData, tiling);
-    // TODO: user kernel impl
     // 数据的维度数
     int32_t update_dim = constData.update_dim;
     int32_t embbeding_type = constData.embbeding_type;
@@ -200,7 +199,6 @@ extern "C" __global__ __aicore__ void embedding_lookup_by_address(GM_ADDR addres
                                                                   GM_ADDR tiling)
 {
   GET_TILING_DATA(constData, tiling);
-  // // TODO: user kernel impl
 
   int32_t embbeding_type = constData.embbeding_type;
 

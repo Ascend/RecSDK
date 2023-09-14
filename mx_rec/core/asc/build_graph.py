@@ -2,18 +2,18 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
-import logging
-
 import tensorflow as tf
 
 import mxrec_pybind
 from mx_rec.util.initialize import get_use_static
 from mx_rec.util.tf_version_adapter import npu_ops
 from mx_rec.constants.constants import ApplyGradientsStrategy, TRAIN_CHANNEL_ID
+from mx_rec.util.global_env_conf import global_env
+from mx_rec.util.log import logger
 
 
 def get_restore_vector(config):
-    logging.debug(f'Channel {config.get("table_name")}_restore_{config.get("channel_id")} was built for getnext')
+    logger.debug('Channel %s_restore_%s was built for getnext', config.get("table_name"), config.get("channel_id"))
     if config.get("skip_emb_transfer"):
         if not isinstance(config.get("emb_size"), int) or config.get("emb_size") < 1:
             raise TypeError(f"emb_size must be a int")
@@ -54,7 +54,7 @@ def get_restore_vector(config):
 
 
 def get_id_offsets(max_lookup_vec_size, config):
-    logging.debug(f'Channel {config.get("table_name")}_lookup_{config.get("channel_id")} was built for getnext')
+    logger.debug('Channel %s_lookup_%s was built for getnext', config.get("table_name"), config.get("channel_id"))
     # 自动扩容当前只支持HBM模式，默认没有换入换出
     with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
         if config.get("use_dynamic_expansion"):
@@ -84,7 +84,8 @@ def get_restore_vector_second(max_lookup_vec_size: int, config: dict) -> tf.Tens
     :param config: embedding config
     :return: the restore vector calculated after the second all2all
     """
-    logging.debug(f'Channel {config.get("table_name")}_restore_second_{config.get("channel_id")} was built for getnext')
+    logger.debug('Channel %s_restore_second_%s was built for getnext',
+                 config.get("table_name"), config.get("channel_id"))
     with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
         restore_vector_second = npu_ops.gen_npu_ops.get_next(
             output_types=[tf.int32],
@@ -100,7 +101,7 @@ def get_unique_keys(max_lookup_vec_size: int, config: dict) -> tf.Tensor:
     :param config: embedding config
     :return: the global unique keys calculated after the second all2all
     """
-    logging.debug(f'Channel {config.get("table_name")}_uniquekeys_{config.get("channel_id")} was built for getnext')
+    logger.debug('Channel %s_uniquekeys_%s was built for getnext', config.get("table_name"), config.get("channel_id"))
     with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
         if config.get("use_dynamic_expansion"):
             unique_keys = npu_ops.gen_npu_ops.get_next(
@@ -129,8 +130,7 @@ def get_all2all_args(use_static: bool, config: dict) -> list:
 
     with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
         with tf.compat.v1.variable_scope("all2all"):
-            logging.debug(
-                f'Channel {config.get("table_name")}_a2a_{config.get("channel_id")} was built for getnext')
+            logger.debug('Channel %s_a2a_%s was built for getnext', config.get("table_name"), config.get("channel_id"))
             all2all_args = npu_ops.gen_npu_ops.get_next(
                 output_types=[tf.int64],
                 output_shapes=[[config.get("rank_size"), config.get("rank_size")]],
@@ -158,12 +158,12 @@ def get_swap_info(config: dict, swap_len: int, swap_pos: list, table: tf.Variabl
         swap_in = [tf.no_op()]
     else:
         with tf.compat.v1.variable_scope("h2d_emb"):
-            logging.debug(f'Channel {config.get("table_name")}_h2d_{config.get("channel_id")} was built for getnext')
+            logger.debug('Channel %s_h2d_%s was built for getnext', config.get("table_name"), config.get("channel_id"))
             h2d_emb = npu_ops.gen_npu_ops.get_next(
                 output_types=[tf.float32],
                 output_shapes=[[max_lookup_vec_size, config.get("ext_emb_size")]],
                 channel_name=f'{config.get("table_name")}_h2d_{config.get("channel_id")}')[0]
-        logging.debug(f"h2d_emb shape: {h2d_emb}")
+        logger.debug("h2d_emb shape: %s", h2d_emb)
         if not isinstance(table, list):
             raise RuntimeError("When enable emb_transfer, optimizer should have slots")
         if use_static:
@@ -171,8 +171,7 @@ def get_swap_info(config: dict, swap_len: int, swap_pos: list, table: tf.Variabl
             h2d_emb = h2d_emb[0:swap_len, :]
         swap_outs = [tf.gather(one_table, swap_pos) for one_table in table]
         swap_out = tf.concat(swap_outs, axis=1)
-        logging.debug(
-            f'Channel {config.get("table_name")}_d2h_{config.get("channel_id")} was built for op outfeed.')
+        logger.debug('Channel %s_d2h_%s was built for op outfeed.', config.get("table_name"), config.get("channel_id"))
         swap_out_op = npu_ops.outfeed_enqueue_op(
             channel_name=f'{config.get("table_name")}_d2h_{config.get("channel_id")}', inputs=[swap_out])
         with tf.control_dependencies([swap_out_op]):
@@ -208,7 +207,7 @@ def get_preprocessed_tensor_for_asc(table, config):
         'all2all_args': all2all_args,
     }
 
-    if config.get("gradients_strategy") != ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
+    if global_env.apply_gradients_strategy != ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY.value:
         return result
 
     if config.get("channel_id") != TRAIN_CHANNEL_ID:

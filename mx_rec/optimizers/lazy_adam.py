@@ -6,7 +6,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
 from collections import defaultdict
 
 import tensorflow as tf
@@ -20,9 +19,18 @@ from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.initialize import get_table_instance, insert_removing_var_list
-from mx_rec.util.variable import check_and_get_config_via_var, check_param_type, check_param_range
+from mx_rec.util.variable import check_and_get_config_via_var
+from mx_rec.constants.constants import MAX_INT32
+from mx_rec.validator.validator import para_checker_decorator, StringValidator, NumValidator
 
 
+@para_checker_decorator(check_option_list=[
+    ("learning_rate", NumValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
+    ("beta1", NumValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
+    ("beta2", NumValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
+    ("epsilon", NumValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
+    ("name", StringValidator, {"max_len": 255}, ["check_string_length"])
+])
 def create_hash_optimizer(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8, name="LazyAdam"):
     """
     Args:
@@ -45,17 +53,6 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
         super(CustomizedLazyAdam, self)._get_name(name=name)
         super(CustomizedLazyAdam, self).__init__(learning_rate=learning_rate, beta1=beta1, beta2=beta2,
                                                  epsilon=epsilon, use_locking=use_locking, name=self.unique_name)
-
-        check_param_type("beta1", beta1, (int, float))
-        check_param_range("beta1", beta1, 0, 1)
-
-        check_param_type("beta2", beta2, (int, float))
-        check_param_range("beta2", beta2, 0, 1)
-
-        check_param_type("epsilon", epsilon, (int, float))
-        check_param_range("epsilon", epsilon, 0, 1)
-
-        check_param_type("use_locking", use_locking, bool)
 
     def initialize_slots(self, var, table_instance):
         # Create slots for the first and second moments.
@@ -91,7 +88,6 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
         initial_velocity_value = 0.0
         return [initial_momentum_value, initial_velocity_value]
 
-
     def _apply_sparse_duplicate_indices(self, grad, var):
         #  _apply_sparse_duplicate_indices method include tf.unique and unsorted_segment_sum operations which may
         #  introduce dynamic shape problem, if encounter that, please de-annotation the method below.
@@ -110,10 +106,10 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
         temp_b2 = math_ops.cast(self._beta2_t, var_type)
         temp_epsilon = math_ops.cast(self._epsilon_t, var_type)
         temp = {
-            'temp_lr' : temp_lr,
-            'temp_b1' : temp_b1,
-            'temp_b2' : temp_b2,
-            'temp_epsilon' : temp_epsilon,
+            'temp_lr': temp_lr,
+            'temp_b1': temp_b1,
+            'temp_b2': temp_b2,
+            'temp_epsilon': temp_epsilon,
         }
         return temp
 

@@ -3,7 +3,6 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 import weakref
-import logging
 from typing import Any
 
 import tensorflow as tf
@@ -24,6 +23,7 @@ from mx_rec.util.initialize import get_is_graph_modify_hook_running, get_modify_
     get_bool_gauge_set, terminate_config_initializer, get_run_times, set_is_last_round, get_asc_manager
 from mx_rec.util.tf_version_adapter import NPUCheckpointSaverHook
 from mx_rec.graph.merge_lookup import do_merge_lookup
+from mx_rec.util.log import logger
 
 
 def init_dataset(self, input_data):
@@ -178,7 +178,7 @@ def chief_session_creator_init(self, scaffold=None, master='', config=None, chec
         checkpoint_filename_with_path: Full file name path to the checkpoint file.
     Returns:None
     """
-    logging.debug("Enter the mxrec init function of Class 'monitored_session.ChiefSessionCreator'.")
+    logger.debug("Enter the mxrec init function of Class 'monitored_session.ChiefSessionCreator'.")
     if get_modify_graph() and not get_is_graph_modify_hook_running():
         raise RuntimeError(
             f"When 'modify_graph' is True, 'GraphModifierHook' must be configured. Example: \n"
@@ -200,7 +200,7 @@ def patch_for_chief_session_creator():
     Returns:None
     """
     tf.compat.v1.train.ChiefSessionCreator.__init__ = chief_session_creator_init
-    logging.debug("__init__ in Class 'monitored_session.ChiefSessionCreator' has been patched.")
+    logger.debug("__init__ in Class 'monitored_session.ChiefSessionCreator' has been patched.")
 
 
 def get_cell(self: BoolGauge, *labels: Any) -> Any:
@@ -213,9 +213,9 @@ def get_cell(self: BoolGauge, *labels: Any) -> Any:
     Returns: Obtains the cell value set by the user.
     """
 
-    logging.debug("Enter patch 'BoolGauge.get_cell'.")
+    logger.debug("Enter patch 'BoolGauge.get_cell'.")
     if len(labels) > 0:
-        logging.debug("BoolGauge insert: %s.", labels[0])
+        logger.debug("BoolGauge insert: %s.", labels[0])
         insert_bool_gauge(labels[0])
     return BoolGaugeCell(super(BoolGauge, self).get_cell(*labels))
 
@@ -224,7 +224,7 @@ def patch_for_bool_gauge():
     """Patch for 'BoolGauge.get_cell'."""
 
     BoolGauge.get_cell = get_cell
-    logging.debug("Function 'get_cell' in Class 'BoolGauge' has been patched.")
+    logger.debug("Function 'get_cell' in Class 'BoolGauge' has been patched.")
 
 
 def end(self: NPUCheckpointSaverHook, session: tf.compat.v1.Session):
@@ -239,14 +239,14 @@ def end(self: NPUCheckpointSaverHook, session: tf.compat.v1.Session):
 
     """
 
-    logging.debug("Enter patch 'NPUCheckpointSaverHook.end'.")
-    logging.info("NPUCheckpointSaverHook end...")
+    logger.debug("Enter patch 'NPUCheckpointSaverHook.end'.")
+    logger.info("NPUCheckpointSaverHook end...")
     basic_session_run_hooks.CheckpointSaverHook.end(self, session)
 
     if 'train_and_evaluate' in get_bool_gauge_set() and get_run_times() == 1:
         set_is_last_round(True)
         return
-    logging.debug("NPUCheckpointSaverHook call 'terminate_config_initializer'...")
+    logger.debug("NPUCheckpointSaverHook call 'terminate_config_initializer'...")
     terminate_config_initializer()
 
 
@@ -254,7 +254,7 @@ def patch_for_end():
     """Patch for 'NPUCheckpointSaverHook.end'."""
 
     NPUCheckpointSaverHook.end = end
-    logging.debug("Function 'end' in Class 'NPUCheckpointSaverHook' has been patched.")
+    logger.debug("Function 'end' in Class 'NPUCheckpointSaverHook' has been patched.")
 
 
 def assert_eval_spec(eval_spec: EvalSpec):
@@ -268,20 +268,20 @@ def assert_eval_spec(eval_spec: EvalSpec):
 
     """
 
-    logging.debug("Enter patch 'tensorflow_estimator.python.estimator.training._assert_eval_spec'.")
+    logger.debug("Enter patch 'tensorflow_estimator.python.estimator.training._assert_eval_spec'.")
     if not isinstance(eval_spec, EvalSpec):
         raise TypeError('`eval_spec` must have type `tf.estimator.EvalSpec`. Got: {}'.format(type(eval_spec)))
 
     if 'train_and_evaluate' not in get_bool_gauge_set():
         insert_bool_gauge('train_and_evaluate')
-        logging.debug("assert_eval_spec: add 'train_and_evaluate' to BoolGaugeCell.")
+        logger.debug("assert_eval_spec: add 'train_and_evaluate' to BoolGaugeCell.")
 
 
 def patch_for_assert_eval_spec():
     """Patch for 'tensorflow_estimator.python.estimator.training._assert_eval_spec'."""
 
     tensorflow_estimator_lib.python.estimator.training._assert_eval_spec = assert_eval_spec
-    logging.debug("Function '_assert_eval_spec' in 'tensorflow_estimator.python.estimator.training' has been patched.")
+    logger.debug("Function '_assert_eval_spec' in 'tensorflow_estimator.python.estimator.training' has been patched.")
 
 
 def scale_loss(self: Optimizer, loss_value: tf.Tensor) -> tf.Tensor:
@@ -297,7 +297,7 @@ def scale_loss(self: Optimizer, loss_value: tf.Tensor) -> tf.Tensor:
 
     """
 
-    logging.debug("Enter patch 'Optimizer._scale_loss'.")
+    logger.debug("Enter patch 'Optimizer._scale_loss'.")
     # In train mode, merge lookup must be completed during compute gradients.
     # Ensure that the backward of graph is constructed and the gradient calculation is correct.
     do_merge_lookup(is_train=True)
@@ -317,4 +317,4 @@ def patch_for_scale_loss():
     """Patch for 'Optimizer._scale_loss'."""
 
     Optimizer._scale_loss = scale_loss
-    logging.debug("Function '_scale_loss' in Class 'Optimizer' has been patched.")
+    logger.debug("Function '_scale_loss' in Class 'Optimizer' has been patched.")

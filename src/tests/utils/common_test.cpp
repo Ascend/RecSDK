@@ -16,17 +16,6 @@ using namespace std;
 using namespace MxRec;
 using namespace testing;
 
-TEST(common, SetLog)
-{
-    int rankId = 0;
-    SetLog(rankId);
-    ASSERT_EQ(g_glogLevel, 0);
-
-    putenv("GLOG_stderrthreshold=1");
-    SetLog(rankId);
-    ASSERT_EQ(g_glogLevel, 1);
-}
-
 TEST(common, InitializeInfo)
 {
     NormalInitializerInfo nInfoTruncatedNormal;

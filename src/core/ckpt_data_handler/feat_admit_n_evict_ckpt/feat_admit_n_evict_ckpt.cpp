@@ -95,7 +95,7 @@ void FeatAdmitNEvictCkpt::SetTable2ThreshTrans(string embName)
 // save
 void FeatAdmitNEvictCkpt::SetHistRecTrans(string embName)
 {
-    if (GetCombineSwitch()) {
+    if (GlobalEnv::useCombineFaae) {
         embName = COMBINE_HISTORY_NAME;
     }
     auto histRecSize = GetHistRecSize(embName);
@@ -126,7 +126,7 @@ void FeatAdmitNEvictCkpt::SetTable2Thresh(string embName)
 // load
 void FeatAdmitNEvictCkpt::SetHistRec(string embName)
 {
-    if (GetCombineSwitch()) {
+    if (GlobalEnv::useCombineFaae) {
         embName = COMBINE_HISTORY_NAME;
     }
     const auto& transArr = transferData.int64Arr;

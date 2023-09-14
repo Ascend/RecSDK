@@ -6,7 +6,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
 from collections import defaultdict
 
 import tensorflow as tf
@@ -21,11 +20,25 @@ from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.initialize import get_table_instance, insert_removing_var_list
-from mx_rec.util.variable import check_and_get_config_via_var, check_param_type, check_param_range
+from mx_rec.util.variable import check_and_get_config_via_var
+from mx_rec.constants.constants import MAX_INT32
+from mx_rec.validator.validator import para_checker_decorator, OptionalStringValidator, ClassValidator, NumValidator, \
+    StringValidator
 
 
+@para_checker_decorator(check_option_list=[
+    ("learning_rate", NumValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
+    ("initial_accumulator_value", NumValidator, {"min_value": 0, "max_value": 1e4}, ["check_value"]),
+    ("learning_rate_power", NumValidator, {"min_value": -MAX_INT32, "max_value": 0}, ["check_value"]),
+    ("l1_regularization_strength", NumValidator, {"min_value": 0, "max_value": 1e4}, ["check_value"]),
+    ("l2_regularization_strength", NumValidator, {"min_value": 0, "max_value": 1e4}, ["check_value"]),
+    ("l2_shrinkage_regularization_strength", NumValidator, {"min_value": 0, "max_value": 1e4}, ["check_value"]),
+    ("use_locking", ClassValidator, {"classes": (bool,)}),
+    ("name", StringValidator, {"max_len": 255}, ["check_string_length"]),
+    ("accum_name", OptionalStringValidator, {"max_len": 255}, ["check_string_length"]),
+    ("linear_name", OptionalStringValidator, {"max_len": 255}, ["check_string_length"])
+])
 def create_hash_optimizer(learning_rate, use_locking=False, name="Ftrl", **kwargs):
-
     return CustomizedFtrl(learning_rate=learning_rate, use_locking=use_locking, name=name, **kwargs)
 
 
@@ -47,25 +60,6 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
             linear_name=kwargs.get("linear_name", None),
             l2_shrinkage_regularization_strength=kwargs.get("l2_shrinkage_regularization_strength", 0.0)
         )
-
-        param_name_list = ["initial_accumulator_value", "l1_regularization_strength",
-                            "l2_regularization_strength", "l2_shrinkage_regularization_strength"]
-
-        def _check_param_type_range(param_name_list):
-            for name in param_name_list:
-                if kwargs.get(name, None):
-                    check_param_type(name, kwargs.get(name), (int, float))
-                    check_param_range(name, kwargs.get(name), 0, 1e4)
-
-        if kwargs.get("accum_name", None):
-            check_param_type("accum_name", kwargs.get("accum_name"), str)
-
-        if kwargs.get("linear_name", None):
-            check_param_type("linear_name", kwargs.get("linear_name"), str)
-
-        check_param_type("use_locking", use_locking, bool)
-
-        _check_param_type_range(param_name_list)
 
     def initialize_slots(self, var, table_instance):
         val = constant_op.constant(

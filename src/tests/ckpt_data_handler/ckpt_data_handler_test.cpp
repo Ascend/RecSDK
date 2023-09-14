@@ -42,7 +42,7 @@ protected:
     int64_t int64Min { static_cast<int64_t>(UINT32_MAX) };
 
     int maxChannelNum { MAX_CHANNEL_NUM };
-    int keyProcessThread { PerfConfig::keyProcessThreadNum };
+    int keyProcessThread { 6 };
 
     vector<EmbInfo> testEmbInfos;
     valid_int_t validEmbInfo;
@@ -183,8 +183,9 @@ protected:
             EXPECT_EQ(args.validTrens2ThreshArr.at(embName), testSaveData.int32Arr); // need other test method
             EXPECT_EQ(args.validTrens2ThreshAttrib.at(embName), testSaveData.attribute);
             testSaveData = args.testCkpt.GetDataset(CkptDataType::HIST_REC, embName);
+            bool isCombine = false;
 
-            if (!GetCombineSwitch()) {
+            if (!isCombine) {
                 EXPECT_EQ(1, args.validData.histRec.timestamps.count(embName));
                 EXPECT_EQ(1, args.validData.histRec.historyRecords.count(embName));
                 EXPECT_EQ(args.validHistRecAttrib.at(embName), testSaveData.attribute);
@@ -202,8 +203,9 @@ protected:
             testLoadData.int32Arr = args.validTrens2ThreshArr.at(embName);
             testLoadData.attribute = args.validTrens2ThreshAttrib.at(embName);
             args.testCkpt.SetDataset(CkptDataType::TABLE_2_THRESH, embName, testLoadData);
+            bool isCombine = false;
 
-            if (!GetCombineSwitch()) {
+            if (!isCombine) {
                 testLoadData.int64Arr = args.validHistRecArr.at(embName);
                 testLoadData.attribute = args.validHistRecAttrib.at(embName);
             } else {
@@ -258,8 +260,9 @@ TEST_F(CkptDataHandlerTest, FeatAdmitNEvict)
     SetEmbInfo();
     SetTable2Threshold(testTrens2Thresh, validTrens2ThreshArr, validTrens2ThreshAttrib);
     validTrens2Thresh = testTrens2Thresh;
+    bool isCombine = false;
 
-    if (GetCombineSwitch()) {
+    if (isCombine) {
         SetHistRecCombine(testHistRec, validHistRecArr, validHistRecAttrib);
     } else {
         SetHistRec(testHistRec, validHistRecArr, validHistRecAttrib);

@@ -29,7 +29,7 @@ protected:
     int64_t int64Min { static_cast<int64_t>(UINT32_MAX) };
 
     int maxChannelNum = MAX_CHANNEL_NUM;
-    int keyProcessThread = PerfConfig::keyProcessThreadNum;
+    int keyProcessThread = 1;
 
     int embInfoNum { 10 };
 
@@ -469,8 +469,9 @@ TEST_F(CheckpointTest, FeatAdmitNEvict)
     SetEmbInfo();
     SetTable2Threshold(testTrens2Thresh);
     validTrens2Thresh = testTrens2Thresh;
+    bool isCombine = false;
 
-    if (GetCombineSwitch()) {
+    if (isCombine) {
         SetHistRecCombine(testHistRec);
     } else {
         SetHistRec(testHistRec);

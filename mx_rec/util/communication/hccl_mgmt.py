@@ -5,18 +5,19 @@
 import json
 import os
 
-from mx_rec.constants.constants import VALID_DEVICE_ID_LIST, MIN_SIZE, MAX_CONFIG_SIZE, MAX_DEVICE_ID
-from mx_rec.validator.validator import RankInfoValidator, FileValidator
+from mx_rec.constants.constants import VALID_DEVICE_ID_LIST, MIN_SIZE, MAX_CONFIG_SIZE, MAX_DEVICE_ID, \
+    MIN_RANK_SIZE, MAX_RANK_SIZE
+from mx_rec.validator.validator import FileValidator, para_checker_decorator, StringValidator, \
+    Convert2intValidator
+from mx_rec.util.global_env_conf import global_env
 
 
 def parse_hccl_json():
-    rank_table_path = os.path.realpath(os.getenv("RANK_TABLE_FILE"))
-    if not os.path.exists(rank_table_path):
-        raise FileExistsError(f"Target_hccl_json_dir {rank_table_path} does not exist when reading.")
+    rank_table_path = os.path.realpath(global_env.rank_table_file)
 
     with open(rank_table_path, "r", encoding="utf-8") as file:
         # check whether json file is valid
-        file_validator = FileValidator(rank_table_path)
+        file_validator = FileValidator("RANK_TABLE_FILE", rank_table_path)
         # 1.check whether rank_table_path is soft link
         file_validator.check_not_soft_link()
         # 2.check json file size
@@ -32,11 +33,13 @@ def parse_hccl_json():
             raise AttributeError(f"Lack of attribute device.")
 
     rank_to_device_dict = dict()
+    local_rank_size = -1
     for server_list in table_hccl.get("server_list"):
         devices = server_list.get("device")
         if devices is None:
             raise ValueError("device is empty")
 
+        local_rank_size = len(devices)
         for device in devices:
             if "rank_id" not in device or not device.get("rank_id").isdigit():
                 raise ValueError(f"hccl_json rank_id wrong.")
@@ -53,31 +56,40 @@ def parse_hccl_json():
                 raise ValueError(f"get logic id from physic id fail, the device id is invalid.")
             rank_to_device_dict[rank_id] = res
 
-    return rank_to_device_dict
+    return rank_to_device_dict, local_rank_size
 
 
-def set_hccl_info_without_json():
+@para_checker_decorator(check_option_list=[
+    ("visible_devices", StringValidator, {"msg": "please config ASCEND_VISIBLE_DEVICES in docker container start"}),
+    ("rank_size", StringValidator, {"msg": "please config CM_WORKER_SIZE in docker container start"}),
+    ("chief_device", StringValidator, {"msg": "please config CM_CHIEF_DEVICE in docker container start"}),
+    ("rank_size", Convert2intValidator, {"min_value": MIN_RANK_SIZE, "max_value": MAX_RANK_SIZE,
+                                         "constrained_options": [1, 2, 4, 8, 16]}, ["check_value"]),
+    ("chief_device", Convert2intValidator, {"min_value": 0, "max_value": 15}, ["check_value"]),
+])
+def set_hccl_info_without_json(visible_devices: str, rank_size: str, chief_device: str):
     """
     Used for no rank table file configured training situation.
     Now, only less than or equal 8p training job is supported.
-    :return: None
+    :param visible_devices: 昇腾处理器可见的设备，来指定程序只使用其中的部分设备。
+    :param rank_size: 参与集群训练的device数量。
+    :param chief_device: 主节点device id。
+    :return:
     """
-    RankInfoValidator().check_visible_devices()
-    ascend_visible_devices = os.getenv("ASCEND_VISIBLE_DEVICES")
-    device_list = get_device_list(ascend_visible_devices)
+    device_list = get_device_list(visible_devices)
+    chief_device = int(chief_device)
+    rank_size = int(rank_size)
 
-    chief_device = os.getenv("CM_CHIEF_DEVICE")
-    rank_size = os.getenv("CM_WORKER_SIZE")
     sorted_device_list = sorted(device_list)
-    if int(rank_size) != len(sorted_device_list):
-        raise ValueError(f"Rank size {rank_size} is different from device num {len(sorted_device_list)}.")
-    rank_to_device_dict = dict()
+    local_rank_size = len(sorted_device_list)
+
+    if rank_size < local_rank_size:
+        raise ValueError(f"Rank size {rank_size} is less than devices: {local_rank_size}.")
+
+    rank_to_device_dict = {0: chief_device}
+
     try:
-        rank_to_device_dict[0] = int(chief_device)
-    except ValueError as err:
-        raise ValueError("CM_WORKER_SIZE or CM_CHIEF_DEVICE uncorrected configured.") from err
-    try:
-        sorted_device_list.pop(int(chief_device) % len(sorted_device_list))
+        sorted_device_list.pop(chief_device % local_rank_size)
     except IndexError as err:
         raise IndexError(
             f"Config CM_CHIEF_DEVICE {chief_device} not in training container device list {sorted_device_list}.") \
@@ -96,7 +108,7 @@ def set_hccl_info_without_json():
             raise ValueError(f"get logic id from physic id fail.")
         index = sorted_device_list.index(device_idx)
         rank_to_device_dict[index + 1] = res
-    return rank_to_device_dict
+    return rank_to_device_dict, local_rank_size
 
 
 def get_device_list(ascend_visible_devices):

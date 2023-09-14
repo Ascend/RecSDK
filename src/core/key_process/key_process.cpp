@@ -29,24 +29,7 @@ inline vector<T> Count2Start(const vector<T>& count)
 
 void KeyProcess::SetupHotEmbUpdateStep()
 {
-    const auto maxUpdateStep = 1000;
-    this->hotEmbUpdateStep = HOT_EMB_UPDATE_STEP_DEFAULT;
-    const char *envUpdateStep = getenv("HOT_EMB_UPDATE_STEP");
-    if (envUpdateStep != nullptr) {
-        try {
-            int tmp = std::stoi(envUpdateStep);
-            if (tmp >= 1 && tmp <= maxUpdateStep) {
-                this->hotEmbUpdateStep = tmp;
-                LOG_INFO("Succeed to parse ${env:HOT_EMB_UPDATE_STEP}: {}.", this->hotEmbUpdateStep);
-            } else {
-                LOG_ERROR("${env:HOT_EMB_UPDATE_STEP}: {} should be in [1, 1000], set default: {}.",
-                    tmp, HOT_EMB_UPDATE_STEP_DEFAULT);
-            }
-        } catch (const std::invalid_argument &e) {
-            LOG_ERROR("Failed to parse ${env:HOT_EMB_UPDATE_STEP}: {}, set default: {}.",
-                envUpdateStep, HOT_EMB_UPDATE_STEP_DEFAULT);
-        }
-    }
+    this->hotEmbUpdateStep = GlobalEnv::hotEmbUpdateStep;
 }
 
 bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
@@ -91,7 +74,7 @@ bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos
         LOG_WARN(KEY_PROCESS "Feature admit-and-evict function is unavailable ...");
     }
 
-    if (PerfConfig::fastUnique) {
+    if (GlobalEnv::fastUnique) {
         Factory::Create(factory);
     }
 
@@ -116,7 +99,7 @@ int KeyProcess::Start()
             return;
         }
 #endif
-        if (PerfConfig::fastUnique) {
+        if (GlobalEnv::fastUnique) {
             KeyProcessTaskWithFastUnique(channel, threadId);
         } else {
             KeyProcessTask(channel, threadId);
@@ -219,7 +202,7 @@ void KeyProcess::GetUniqueConfig(UniqueConf& uniqueConf)
     uniqueConf.useIdCount = true;
     uniqueConf.outputType = OutputType::ENHANCED;
     uniqueConf.minThreadNum = MIN_UNIQUE_THREAD_NUM;
-    uniqueConf.maxThreadNum = PerfConfig::maxUniqueThreadNum;
+    uniqueConf.maxThreadNum = GlobalEnv::maxUniqueThreadNum;
 }
 
 void KeyProcess::InitializeUnique(UniqueConf& uniqueConf, size_t& preBatchSize, bool& uniqueInitialize,
@@ -464,7 +447,8 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<emb_batch_t>& batch, int channe
 
 void KeyProcess::PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, keys_t& lookupKeys, int channel)
 {
-    if (PerfConfig::gradientStrategy && channel == TRAIN_CHANNEL_ID) {
+    if (GlobalEnv::applyGradientsStrategy == ApplyGradientsStrategyOptions::SUM_SAME_ID_GRADIENTS_AND_APPLY &&
+        channel == TRAIN_CHANNEL_ID) {
         keys_t uniqueKeys;
         vector<int32_t> restoreVecSec;
 

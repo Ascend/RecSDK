@@ -5,17 +5,22 @@
 import os
 import logging
 
+from mx_rec.constants.constants import RecPyLogLevel, EnvOption
 
-def get_log_level():
-    env_log_level = os.getenv("MXREC_LOG_LEVEL")
-    if env_log_level is None:
-        env_log_level = "INFO"
 
-    log_level = logging.getLevelName(env_log_level)
-    if not isinstance(log_level, int):
-        raise EnvironmentError("A wrong log level string was given.")
+def get_logger(log_level: str):
+    options = [i.value for i in list(RecPyLogLevel)]
+    if log_level not in options:
+        raise ValueError(f"log level set for mxRec is not valid, only {options} are allowed, but got {log_level}")
 
-    log_format = "%(asctime)s\t%(levelname)s\t%(message)s"
-    date_format = "%m/%d/%Y %H:%M:%S %p"
+    rec_logger = logging.getLogger("MxRec")
+    formatter = logging.Formatter(fmt="[MxRec][%(asctime)s] [%(levelname)s] %(message)s",
+                                  datefmt="%m/%d/%Y %H:%M:%S %p")
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+    rec_logger.addHandler(stream_handler)
+    rec_logger.setLevel(log_level)
+    return rec_logger
 
-    logging.basicConfig(level=log_level, format=log_format, datefmt=date_format)
+
+logger = get_logger(log_level=os.getenv(EnvOption.MXREC_LOG_LEVEL.value, RecPyLogLevel.INFO.value))

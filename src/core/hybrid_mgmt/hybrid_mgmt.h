@@ -19,6 +19,7 @@
 #include "absl/container/flat_hash_map.h"
 
 #include "utils/common.h"
+#include "utils/config.h"
 #include "utils/singleton.h"
 
 #include "host_emb/host_emb.h"
@@ -105,7 +106,7 @@ namespace MxRec {
 
         bool ParseKeysHBM(int channelId, int& batchId);
 
-        bool ProcessEmbInfo(const std::string& embName, int batchId, int channelId, int iBatch, bool& remainBatchOut);
+        bool ProcessEmbInfo(const std::string& embName, int batchId, int channelId, bool& remainBatchOut);
 
         void EmbHDTrans(const int channelId, const int batchId);
 
@@ -154,7 +155,7 @@ namespace MxRec {
 
         bool EndBatch(int batchId, int channelId) const;
 
-        void EmbHDTransWrap(int channelId, const int& batchId, int start, int iBatch);
+        void EmbHDTransWrap(int channelId, const int& batchId, int start);
 
         bool LoadMatchesDDRSetup(const CkptData& loadData);
     };

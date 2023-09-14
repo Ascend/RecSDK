@@ -43,26 +43,8 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId)
         // 创建acltdtDataset类型的数据，对等一个Vector<tensor>。同步接口。
         aclDatasets[embInfo.name] = acltdtCreateDataset();
     }
-    const int defaultAclTimeout = -1;
-    this->timeout = defaultAclTimeout;
-    const char *envTimeout = getenv("AclTimeout");
-    if (envTimeout != nullptr) {
-        try {
-            int32_t tmp = std::stoi(envTimeout);
-            if (tmp >= -1 && tmp <= INT32_MAX) {
-                this->timeout = tmp;
-                LOG_INFO("Succeed to parse ${env:AclTimeout}: {}", tmp);
-            } else {
-                LOG_ERROR("Failed to parse ${env:AclTimeout}: {}, expected in (0, INT32_MAX)", tmp);
-            }
-        } catch (const std::invalid_argument &e) {
-            LOG_ERROR("Failed to parse ${env:AclTimeout}: {}, expected a integer, set to default: {}",
-                envTimeout, defaultAclTimeout);
-        }
-    }
-    LOG_DEBUG("hd transfer timeout:{}", timeout);
     running = true;
-    LOG_INFO("hd_transfer init");
+    LOG(INFO) << "hd_transfer init";
 #endif
     return true;
 }
@@ -94,24 +76,7 @@ void HDTransfer::Destroy()
 void HDTransfer::CreateChannel(const uint32_t localRankId, const string& embName, const int channelNum)
 {
 #ifndef GTEST
-    int channelSize;
-    const char* env = getenv("HD_CHANNEL_SIZE");
-    if (env == nullptr) {
-        channelSize = LARGE_CHANNEL_SIZE;
-    } else {
-        try {
-            channelSize = stoi(env);
-        } catch (const std::invalid_argument& e) {
-            LOG_WARN("wrong HD_CHANNEL_SIZE env {}", e.what());
-            channelSize = LARGE_CHANNEL_SIZE;
-        } catch (const std::out_of_range& e) {
-            LOG_WARN("wrong HD_CHANNEL_SIZE env {}", e.what());
-            channelSize = LARGE_CHANNEL_SIZE;
-        }
-        if (channelSize <= 0) {
-            channelSize = LARGE_CHANNEL_SIZE;
-        }
-    }
+    int channelSize = GlobalEnv::hdChannelSize;
     LOG_INFO("user config all2all restore lookup channel size:{}", channelSize);
     for (int c = static_cast<int>(TransferChannel::D2H); c != static_cast<int>(TransferChannel::INVALID); c++) {
         auto channel = static_cast<TransferChannel>(c);
@@ -155,7 +120,7 @@ void HDTransfer::Send(TransferChannel channel, const vector<Tensor> &tensors, in
     string sendName = StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channel).c_str(), channelId);
 
     LOG_INFO(HD + "hd transfer send {}, send count is {}, size list:{}",
-        sendName, sizes.size(), VectorToString(sizes));
+             sendName, sizes.size(), VectorToString(sizes));
 
     if (sizes.size() == 0) {
         LOG_WARN("tensors num can not be zero");
@@ -229,7 +194,7 @@ size_t HDTransfer::RecvAcl(TransferChannel channel, int channelId, const string&
     if (aclDatasets[embName] == nullptr) {
         throw runtime_error(StringFormat("Failed recv:%s.", recvName.c_str()).c_str());
     }
-    auto aclStatus = acltdtReceiveTensor(transferChannels[recvName], aclDatasets[embName], timeout /*-1 no timeout */);
+    auto aclStatus = acltdtReceiveTensor(transferChannels[recvName], aclDatasets[embName], GlobalEnv::aclTimeout);
     if (!running) {
         return 0;
     }

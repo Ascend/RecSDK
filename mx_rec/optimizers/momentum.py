@@ -6,10 +6,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
 from collections import defaultdict
 
-import tensorflow as tf
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import training_ops
 from tensorflow.python.training import momentum
@@ -17,17 +15,26 @@ from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.initialize import get_table_instance, insert_removing_var_list
-from mx_rec.util.variable import check_and_get_config_via_var, check_param_type, check_param_range
+from mx_rec.util.variable import check_and_get_config_via_var
+from mx_rec.constants.constants import MAX_INT32
+from mx_rec.validator.validator import para_checker_decorator, StringValidator, NumValidator, ClassValidator
 
 
-def create_hash_optimizer(learning_rate_input=0.001, mom=0.9, enable_locking=False, optimizer_name="momentum",
+@para_checker_decorator(check_option_list=[
+    ("learning_rate", NumValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
+    ("mom", NumValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
+    ("use_locking", ClassValidator, {"classes": (bool,)}),
+    ("name", StringValidator, {"max_len": 255}, ["check_string_length"]),
+    ("enable_nesterov", ClassValidator, {"classes": (bool,)}),
+])
+def create_hash_optimizer(learning_rate=0.001, mom=0.9, use_locking=False, name="momentum",
                           enable_nesterov=False):
     """
     Create an instance of hash optimizer
-    :param learning_rate_input: A `Tensor` or a floating point value.  The learning rate.
+    :param learning_rate: A `Tensor` or a floating point value.  The learning rate.
     :param mom: A `Tensor` or a floating point value.  The momentum.
-    :param enable_locking: If `True` use locks for update operations.
-    :param optimizer_name: Optional name prefix for the operations created when applying gradients.
+    :param use_locking: If `True` use locks for update operations.
+    :param name: Optional name prefix for the operations created when applying gradients.
     Defaults to "Momentum".
     :param enable_nesterov: If `True` use Nesterov Momentum. See (Sutskever et al., 2013). This implementation always
     computes gradients at the value of the variable(s) passed to the optimizer. Using Nesterov Momentum makes the
@@ -37,10 +44,10 @@ def create_hash_optimizer(learning_rate_input=0.001, mom=0.9, enable_locking=Fal
      the change in the average gradient.
     :return: momentum hash optimizer instance
     """
-    return CustomizedMomentum(learning_rate=learning_rate_input,
+    return CustomizedMomentum(learning_rate=learning_rate,
                               momentum_var=mom,
-                              use_locking=enable_locking,
-                              name=optimizer_name,
+                              use_locking=use_locking,
+                              name=name,
                               use_nesterov=enable_nesterov)
 
 
@@ -60,8 +67,6 @@ class CustomizedMomentum(momentum.MomentumOptimizer, CustomizedOptimizer):
                                                  use_locking=use_locking,
                                                  name=self.unique_name,
                                                  use_nesterov=use_nesterov)
-
-        self._check_input_param()
 
     def initialize_slots(self, var, table_instance):
         # Create slots for the first and second moments.
@@ -92,14 +97,6 @@ class CustomizedMomentum(momentum.MomentumOptimizer, CustomizedOptimizer):
         # return state value list of momentum that needs to initialize in ASC DDR.
         initial_momentum_value = 0.0
         return [initial_momentum_value]
-
-    def _check_input_param(self):
-        check_param_type("learning_rate", self._learning_rate, (tf.Tensor, float))
-        check_param_type("momentum", self._momentum, (tf.Tensor, float))
-        check_param_type("use_locking", self._use_locking, bool)
-        check_param_type("use_nesterov", self._use_nesterov, bool)
-
-        check_param_range("momentum", self._momentum, 0.0, 1.0)
 
     def _create_slots(self, var_list):
         m_state_name = self._name + "/" + "momentum"

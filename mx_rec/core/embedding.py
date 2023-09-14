@@ -2,12 +2,10 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
-import logging
 import math
 import os
-import re
 from collections import defaultdict
-from typing import Optional
+from typing import Optional, Union
 
 import tensorflow as tf
 from tensorflow.python.framework import ops
@@ -18,161 +16,83 @@ from tensorflow.python.ops.init_ops_v2 import Initializer as InitializerV2
 from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
 from mx_rec.core.asc.feature_spec import FeatureSpec, get_feature_spec, set_temporary_feature_spec_attribute
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.constants.constants import (ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_ID_OFFSET,\
-    ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS, MxRecMode, ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, MULTI_LOOKUP_TIMES,\
-    ASCEND_TABLE_NAME_MUST_CONTAIN, MAX_INT32, All2allGradientsOp, ApplyGradientsStrategy, MAX_HOST_VOCABULARY_SIZE)
-from mx_rec.util.initialize import get_rank_id, get_rank_size, is_mpi_in_use, is_asc_frozen, get_customized_ops, \
+from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_ID_OFFSET, \
+    ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS, ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, MULTI_LOOKUP_TIMES, \
+    ASCEND_TABLE_NAME_MUST_CONTAIN, MAX_INT32, All2allGradientsOp, ApplyGradientsStrategy, MAX_VOCABULARY_SIZE
+from mx_rec.util.initialize import get_rank_id, get_rank_size, is_asc_frozen, get_customized_ops, \
     insert_table_instance, get_training_mode_channel_id, get_use_static, get_name_to_var_dict, \
     clear_channel, get_use_hot, get_device_id, ConfigInitializer, get_ascend_global_hashtable_collection, \
     get_host_pipeline_ops, get_use_dynamic_expansion, set_modify_graph, insert_removing_var_list, get_bool_gauge_set, \
     get_table_instance_by_name
-from mx_rec.validator.validator import ClassValidator, StringValidator
+from mx_rec.validator.validator import ClassValidator, StringValidator, SSDFeatureValidator, \
+    para_checker_decorator, IntValidator, NumValidator, OptionValidator
 from mx_rec.util.tf_version_adapter import npu_ops
 from mx_rec.util.normalization import fix_invalid_table_name
+from mx_rec.util.global_env_conf import global_env
+from mx_rec.util.log import logger
 
 
-def check_ssd_relate_param(host_vocabulary_size, ssd_vocabulary_size, ssd_data_path):
-    h_size = 0
-    s_size = 0
-    try:
-        h_size = int(host_vocabulary_size)
-        s_size = int(ssd_vocabulary_size)
-    except ValueError:
-        raise ValueError("host_vocabulary_size and ssd_vocabulary_size should be integer")
-    if h_size == 0 and s_size != 0:
-        raise ValueError("ssd_vocabulary_size value is invalid, it effected by host_vocabulary_size not zero")
-    if h_size != 0 and s_size < 0:
-        raise ValueError("ssd_vocabulary_size value is invalid, it need be greater than 0")
-    invalid_ssd_data_path = []
-    for tmp_path in ssd_data_path:
-        if is_invalid_path(tmp_path):
-            invalid_ssd_data_path.append(tmp_path)
-    if invalid_ssd_data_path:
-        raise ValueError("ssd_data_path value is invalid, detail:{}, the path need exist and is real path"
-                         .format(", ".join(invalid_ssd_data_path)))
-
-
-def is_invalid_path(tmp_path):
-    return not os.path.exists(tmp_path) or not os.path.isdir(tmp_path) or os.path.islink(tmp_path) or ".." in tmp_path
-
-
-def create_table(**kwargs):
+@para_checker_decorator(check_option_list=[
+    ("key_dtype", OptionValidator, {"options": (tf.int64, tf.int32, tf.string)}),
+    ("dim", ClassValidator, {"classes": (int, tf.TensorShape)}),
+    ("dim", NumValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
+    ("name", StringValidator, {"max_len": 255}, ["check_string_length", "check_whitelist"]),
+    ("emb_initializer", ClassValidator, {"classes": (InitializerV1, InitializerV2)}),
+    ("optimizer_list", ClassValidator, {"classes": (list, type(None))}),
+    (["ssd_vocabulary_size", "ssd_data_path", "host_vocabulary_size"], SSDFeatureValidator),
+    ("device_vocabulary_size", IntValidator, {"min_value": 1, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
+    ("host_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
+    ("ssd_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
+    ("ssd_data_path", ClassValidator, {"classes": (list, tuple)}),
+    ("is_save", ClassValidator, {"classes": (bool, )}),
+    ("init_param", NumValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
+    ("all2all_gradients_op", OptionValidator, {"options": [i.value for i in list(All2allGradientsOp)]}),
+    ("value_dtype", OptionValidator, {"options": [tf.float32]}),
+    ("shard_num", NumValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
+    ("fusion_optimizer_var", ClassValidator, {"classes": (bool, )}),
+    ("hashtable_threshold", NumValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"])
+])
+def create_table(key_dtype, dim, name, emb_initializer,
+                 optimizer_list=Optional[list],
+                 device_vocabulary_size=1,
+                 host_vocabulary_size=0,
+                 ssd_vocabulary_size=0,
+                 ssd_data_path=(os.getcwd(), ),
+                 is_save=True,
+                 init_param=1.,
+                 all2all_gradients_op=All2allGradientsOp.SUM_GRADIENTS.value,
+                 value_dtype=tf.float32,
+                 shard_num=1,
+                 fusion_optimizer_var=True,
+                 hashtable_threshold=0):
     """
     Args:
         key_dtype: data type for feature id
         dim: embedding vector size
         name: hash table name
         emb_initializer: the initializer for embedding values
+        optimizer_list: specify the optimizers to use for current hash table
         device_vocabulary_size: embedding vector numbers on device
         host_vocabulary_size: embedding vector numbers on ddr
         ssd_vocabulary_size: embedding vector numbers on ssd
-        ssd_data_path: ssd embedding data save and load path
-        relation from feature to variable offset will be built
-        optimizer_list: specify the optimizers to use for current hash table
-        mode: specify which mode to run for current sparse table
-        value_dtype: the type of the value tensors.
-        shard_num: embedding partition number
-        fusion_optimizer_var: fusion optimizer variable with embedding
-        hashtable_threshold: choose to implement based on hash table or linear layer
+        ssd_data_path: ssd embedding data save and load path relation from feature to variable offset will be built
         is_save: switch whether to store sparse table data.
         init_param: embedding init param-coefficient
         all2all_gradients_op: sum_grads (default) or sum_gradients_and_div_by_ranksize.
-        apply_gradients_strategy: direct_apply (default) or sum_same_id_gradients_and_apply.
-
+        value_dtype: the type of the value tensors. only tf.float32 if supported for now.
+        shard_num: embedding partition number
+        fusion_optimizer_var: fusion optimizer variable with embedding
+        hashtable_threshold: choose to implement based on hash table or linear layer
     """
-    key_dtype = kwargs.get("key_dtype")
-    dim = kwargs.get("dim")
-    name = kwargs.get("name")
-    emb_initializer = kwargs.get("emb_initializer")
-    device_vocabulary_size = kwargs.get("device_vocabulary_size", 1)
-    host_vocabulary_size = kwargs.get("host_vocabulary_size", 0)
-    ssd_vocabulary_size = kwargs.get("ssd_vocabulary_size", 0)
-    ssd_data_path = kwargs.get("ssd_data_path", [os.getcwd()])
-    optimizer_list = kwargs.get("optimizer_list")
-    mode = kwargs.get("mode", MxRecMode.ASC)
-    value_dtype = kwargs.get("value_dtype", tf.float32)
-    shard_num = kwargs.get("shard_num", 1)
-    fusion_optimizer_var = kwargs.get("fusion_optimizer_var", True)
-    hashtable_threshold = kwargs.get("hashtable_threshold", 0)
-    is_save = kwargs.get("is_save", True)
-    init_param = kwargs.get("init_param", 1.0)
-    all2all_gradients_op = kwargs.get("all2all_gradients_op", All2allGradientsOp.SUM_GRADIENTS)
-    apply_gradients_strategy = kwargs.get("apply_gradients_strategy", ApplyGradientsStrategy.DIRECT_APPLY)
-
     name = fix_invalid_table_name(name)
-    check_create_table_params(key_dtype, dim, name, emb_initializer)
-    check_ssd_relate_param(host_vocabulary_size, ssd_vocabulary_size, ssd_data_path)
 
     config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
                   device_vocabulary_size=device_vocabulary_size, host_vocabulary_size=host_vocabulary_size,
                   ssd_vocabulary_size=ssd_vocabulary_size, ssd_data_path=ssd_data_path,
-                  optimizer_list=optimizer_list, mode=mode, value_dtype=value_dtype, shard_num=shard_num,
-                  fusion_optimizer_var=fusion_optimizer_var, hashtable_threshold=hashtable_threshold,
-                  init_param=init_param, is_save=is_save, all2all_gradients_op=all2all_gradients_op,
-                  apply_gradients_strategy=apply_gradients_strategy)
+                  optimizer_list=optimizer_list, init_param=init_param, is_save=is_save,
+                  all2all_gradients_op=all2all_gradients_op)
     embedding = SparseEmbedding(config)
     return embedding
-
-
-def sparse_lookup(hashtable, ids, send_count, is_train, **kwargs):
-    """
-    Args:
-        hashtable: SparseEmbedding instance to be looked up
-        ids: Tensor to lookup from hashtable
-        send_count: used to config all2all communication parameters
-        is_train: indicates whether the mode is train.
-        kwargs:
-            dim: not in use
-            is_train: not in use
-            name: will be used to build scope_name together with hashtable name
-            modify_graph: if True, the original graph will be modified before building a Session instance
-
-    Returns: Tensor for lookup result
-
-    """
-
-    def check_lookup_kwargs():
-        kwargs["name"] = kwargs.get("name", hashtable.get_default_lookup_name())
-        if not isinstance(kwargs.get("name"), str):
-            raise TypeError("Given name must be a string.")
-
-        kwargs["modify_graph"] = kwargs.get("modify_graph", False)
-        if not isinstance(kwargs.get("modify_graph"), bool):
-            raise TypeError("Given modify_graph must be a boolean.")
-
-        if not isinstance(kwargs.get("is_train"), bool):
-            raise TypeError("Given is_train must be a boolean.")
-
-        if send_count is not None and not isinstance(send_count, int):
-            raise TypeError("Given send_count must be an int.")
-
-    def check_table_legality_for_feature_spec(table, feature_spec):
-        # check whether the name of the table exists with FeatureSpec.
-        if table.table_name != feature_spec.table_name:
-            raise ValueError(f"The table name '{feature_spec.table_name}' specified by FeatureSpec is inconsistent with"
-                             f" the SparseEmbedding table name '{table.table_name}'.")
-
-    def check_modify_graph():
-        if not kwargs.get("modify_graph"):
-            raise ValueError(f"modify_graph must be turn-on when lookup by ids(Tensor, not FeatureSpec).")
-
-    kwargs["is_train"] = is_train
-    check_lookup_kwargs()
-    scope_name = "{0}//{1}".format(hashtable.table_name, kwargs.get("name"))
-
-    with tf.compat.v1.variable_scope(scope_name):
-        if hashtable.mode != MxRecMode.ASC:
-            raise EnvironmentError("Invalid MxRec Mode.")
-        if not isinstance(ids, (FeatureSpec, tf.Tensor)):
-            raise ValueError(f"Invalid ids type, it should be: `FeatureSpec` or `tf.Tensor`, but get `{type(ids)}`.")
-
-        if isinstance(ids, FeatureSpec):
-            check_table_legality_for_feature_spec(hashtable, ids)
-            return hashtable.lookup_for_asc_with_feature_spec(ids, send_count, **kwargs)
-
-        check_modify_graph()
-        set_modify_graph(True)
-        return hashtable.lookup_for_asc(ids, send_count, **kwargs)
 
 
 class SparseEmbedding:
@@ -189,14 +109,11 @@ class SparseEmbedding:
         self.device_vocabulary_size = config.get("device_vocabulary_size")
         self.host_vocabulary_size = config.get("host_vocabulary_size")
         self.ssd_vocabulary_size = config.get("ssd_vocabulary_size")
-        self.ssd_data_path = config.get("ssd_data_path")
-        if self.host_vocabulary_size > MAX_HOST_VOCABULARY_SIZE:
-            raise ValueError(f"host_vocabulary_size is larger than {MAX_HOST_VOCABULARY_SIZE}.")
+        self.ssd_data_path = list(config.get("ssd_data_path"))
         self.table_name = config.get("table_name")
         self.key_dtype = config.get("key_dtype")
         self._optimizer_instance_list = config.get("optimizer_list")
         self.emb_initializer = config.get("emb_initializer")
-        self._mode = config.get("mode")
         self.is_save = config.get("is_save")
         self.optimizer_slot_info_list = []
         self._slot_num = dict()
@@ -220,11 +137,10 @@ class SparseEmbedding:
         self.modify_graph = False
         self.init_param = config.get("init_param")
         self.all2all_gradients_op = All2allGradientsOp.mapping(config.get("all2all_gradients_op"))
-        self.apply_gradients_strategy = ApplyGradientsStrategy.mapping(config.get("apply_gradients_strategy"))
 
         self.set_slice_vocab_size()
         self.set_emb_size()
-        if self._mode == MxRecMode.ASC and is_asc_frozen() and self.table_name in get_name_to_var_dict():
+        if is_asc_frozen() and self.table_name in get_name_to_var_dict():
             self.variable = tf.compat.v1.get_variable(self.table_name,
                                                       shape=(self.slice_device_vocabulary_size, self.emb_size))
             if not self.skip_emb_transfer:
@@ -242,10 +158,6 @@ class SparseEmbedding:
     @property
     def scalar_emb_size(self):
         return self.emb_size
-
-    @property
-    def mode(self):
-        return self._mode
 
     @property
     def send_count(self):
@@ -354,24 +266,16 @@ class SparseEmbedding:
                 raise ValueError(f"args optimizer list must be a list or an instance of CustomizedOptimizer.")
 
     def check_and_format_init_params(self):
-        if not isinstance(self.embedding_size, tf.TensorShape):
-            raise TypeError("Parameter 'embedding_size' must be a tf.TensorShape instance.")
-
         if self.embedding_size.ndims != 1:
             raise ValueError("Parameter 'embedding_size' can only be one dim shape.")
 
-        if self.mode == MxRecMode.ASC and is_asc_frozen():
+        if is_asc_frozen():
             raise EnvironmentError(f"Emb cache management has been established, you cannot build new ASC hash table.")
-
-        if self.mode != MxRecMode.ASC and self.host_vocabulary_size > 0:
-            raise ValueError(f"Only ASC mode can use host_vocabulary_size > 0.")
-
-        if self.mode == MxRecMode.ASC and not is_mpi_in_use():
-            raise EnvironmentError(f"Hash table with ASC mode must use mpi to start task.")
 
         if not self.skip_emb_transfer and not self._optimizer_instance_list:
             raise ValueError("ASC with DDR mode should config optimizers before instantiating sparse table, "
                              "but nothing was configured.")
+
         if not self.skip_emb_transfer and self.use_dynamic_expansion:
             raise ValueError("DDR mode do not support embedding dynamic_expansion for now.")
 
@@ -388,7 +292,7 @@ class SparseEmbedding:
     def get_default_lookup_name(self):
         self._default_name_count += 1
         default_name = "sparse_lookup_%d" % self._default_name_count
-        logging.debug(f"getting one default lookup name {default_name}")
+        logger.debug("getting one default lookup name %s", default_name)
         return default_name
 
     def set_using_feature_mapping(self):
@@ -402,12 +306,10 @@ class SparseEmbedding:
         if self.use_dynamic_expansion and len(self._optimizer_instance_list) != 0:
             self.ext_coefficient += self._slot_num.get(self.table_name)
         self.ext_emb_size = self.emb_size * self.ext_coefficient
-        logging.debug(f"init table, ext_emb_size is set to be {self.ext_emb_size}")
+        logger.debug("init table, ext_emb_size is set to be %s", self.ext_emb_size)
 
     def set_slice_vocab_size(self):
         rank_size = get_rank_size()
-        if rank_size == 0:
-            raise ZeroDivisionError("Rank size cannot be zero.")
         if self.use_dynamic_expansion:
             self.slice_device_vocabulary_size = 1  # 动态扩容模式下，保留device侧variable，大小设置为 1
             self.slice_host_vocabulary_size = 0
@@ -421,11 +323,6 @@ class SparseEmbedding:
         SparseEmbedding.anchor_tensor_specs[anchor_ids][ASCAnchorAttr.IS_TRAINING] = kwargs.get("is_train")
         SparseEmbedding.anchor_tensor_specs[anchor_ids][ASCAnchorAttr.FEATURE_SPEC] = feature_spec
 
-    def check_mode(self, method_mode):
-        if self.mode != method_mode:
-            raise RuntimeError(f"Current sparse table was config in {self.mode.value} mode, but sparse lookup method "
-                               f"for {method_mode} was in use.")
-
     def check_multi_lookup_times(self):
         lookup_times = len(self.lookup_name_list) if self.modify_graph else len(self.lookup_result)
         if not self.modify_graph and get_training_mode_channel_id(True) is not None and \
@@ -437,7 +334,7 @@ class SparseEmbedding:
                                f"({self.table_name}) is {MULTI_LOOKUP_TIMES}, and current times is {lookup_times}.")
 
     def check_and_format_lookup_params(self, feature, send_count, is_training):
-        logging.debug(f"sparse lookup for table {self.table_name} with is_training {is_training}")
+        logger.debug("sparse lookup for table %s with is_training %s", self.table_name, is_training)
 
         def check_params():
             if not isinstance(is_training, bool):
@@ -451,7 +348,7 @@ class SparseEmbedding:
                                      f"feature with func sparse_lookup at first.")
 
             elif isinstance(feature, tf.Tensor):
-                logging.debug("Input feature is a Tensor.")
+                logger.debug("Input feature is a Tensor.")
 
             else:
                 raise TypeError(f"Given feature must be a FeatureSpec or tf.Tensor.")
@@ -465,8 +362,8 @@ class SparseEmbedding:
             if get_use_static():
                 if isinstance(send_count, int) and send_count > 0:
                     if self._send_count and self._send_count != send_count:
-                        logging.warning(f"A new send count {send_count} will be used to replace the old one"
-                                        f"({self._send_count}).")
+                        logger.warning("A new send count %s will be used to replace the old one (%s).",
+                                       send_count, self._send_count)
 
                     self._send_count = send_count
                 else:
@@ -479,7 +376,7 @@ class SparseEmbedding:
                              f"{self.slice_device_vocabulary_size} and slice_host_vocabulary_size was "
                              f"{self.slice_host_vocabulary_size} ")
 
-        is_check_mode = self.mode == MxRecMode.ASC and not self.skip_emb_transfer and not self.use_dynamic_expansion
+        is_check_mode = not self.skip_emb_transfer and not self.use_dynamic_expansion
         if is_check_mode and self.slice_device_vocabulary_size < self.send_count * get_rank_size():
             raise ValueError(f"Given device_vocabulary_size was too small for table '{self.table_name}', in which "
                              f"slice_device_vocabulary_size was {self.slice_device_vocabulary_size} and "
@@ -513,9 +410,7 @@ class SparseEmbedding:
         Returns: Tensor for lookup result
 
         """
-        logging.debug(f"Enter ASC Branch.")
-        # check params
-        self.check_mode(MxRecMode.ASC)
+        logger.debug(f"Enter ASC Branch.")
         is_training = kwargs.get("is_train")
         self.check_and_format_lookup_params(ids, send_count, is_training)
         if is_asc_frozen() and is_training:
@@ -552,7 +447,7 @@ class SparseEmbedding:
         mock_lookup_result = self.lookup_for_asc_with_feature_spec_inner(feature_spec, send_count, **kwargs)
         mock_lookup_result = tf.identity(mock_lookup_result, name=ASCAnchorAttr.MOCK_LOOKUP_RESULT.value)
         SparseEmbedding.anchor_tensor_specs[anchor_ids][ASCAnchorAttr.MOCK_LOOKUP_RESULT] = mock_lookup_result
-        logging.debug("Return the stub tensor `%s` of the `%s` table.", mock_lookup_result, self.table_name)
+        logger.debug("Return the stub tensor `%s` of the `%s` table.", mock_lookup_result, self.table_name)
         return mock_lookup_result
 
     def lookup_for_asc_with_feature_spec(self, feature_spec: FeatureSpec, send_count: int, **kwargs):
@@ -613,7 +508,7 @@ class SparseEmbedding:
             # Ensure that tensors in the same table are sorted according to the lookup sequence (modify graph mode) or
             # the sequence in which feature specs are created (feature spec mode).
             same_table_feature_spec = sorted(same_table_feature_spec, key=lambda x: x.name)
-            mock_feature_spec = FeatureSpec(f"mock_feature_spec_{table_name}", feat_count=1, table_name=table_name)
+            mock_feature_spec = FeatureSpec(f"mock_feature_spec_{table_name}", table_name=table_name)
 
             if get_use_static():
                 tensor_list = []
@@ -628,7 +523,7 @@ class SparseEmbedding:
             kwargs["multi_lookup"] = True
             total_send_count = self.same_table_send_count if self.modify_graph else send_count * same_table_spec_count
             lookup_result = self.lookup_for_asc_with_feature_spec_inner(mock_feature_spec, total_send_count, **kwargs)
-            logging.debug(f"lookup table {table_name} via {tensor_split_list}")
+            logger.debug("lookup table %s via %s", table_name, tensor_split_list)
             self.split_lookup_result(same_table_feature_spec, tensor_split_list, tensor_list, lookup_result,
                                      is_training)
 
@@ -691,8 +586,7 @@ class SparseEmbedding:
         Returns: Tensor for lookup result
 
         """
-        logging.debug(f"Enter ASC Branch, looking up with FeatureSpec.")
-        self.check_mode(MxRecMode.ASC)
+        logger.debug(f"Enter ASC Branch, looking up with FeatureSpec.")
         is_training = kwargs.get("is_train")
         self.check_and_format_lookup_params(feature_spec, send_count, is_training)
         rank_size = get_rank_size()
@@ -702,14 +596,13 @@ class SparseEmbedding:
 
         # check training mode order and ensure channel id
         channel_id = get_training_mode_channel_id(is_training=is_training)
-        logging.debug(f"get preprocessed tensor for asc for table {self.table_name} with skip emb transfer "
-                      f"{self.skip_emb_transfer} is_training: {is_training}, channel_id: {channel_id} .")
-
+        logger.debug("get preprocessed tensor for asc for table %s with skip emb transfer %s is_training: %s, "
+                     "channel_id: %s .", self.table_name, self.skip_emb_transfer, is_training, channel_id)
         config = dict(batch_size=feature_spec.batch_size, feat_cnt=feature_spec.feat_cnt, send_count=send_count,
                       rank_size=rank_size, channel_id=channel_id, table_name=self.table_name,
                       skip_emb_transfer=self.skip_emb_transfer, ext_emb_size=self.ext_emb_size,
                       emb_size=self.emb_size, use_hot=use_hot, device_id=device_id,
-                      use_dynamic_expansion=use_dynamic_expansion, gradients_strategy=self.apply_gradients_strategy)
+                      use_dynamic_expansion=use_dynamic_expansion)
 
         # 用于打桩的op节点，它的name用于标识此次的sparse lookup是train还是eval
         # 后续在session run的时候，通过图反向查找该子图中查找到此op
@@ -738,7 +631,7 @@ class SparseEmbedding:
 
         @tf.custom_gradient
         def sparse_forward(table):
-            logging.debug(f"fp rank size: {rank_size}")
+            logger.debug("fp rank size: %s", rank_size)
             if not use_dynamic_expansion:
                 id_offsets_abs = tf.abs(id_offsets)
                 local_embeddings = tf.gather(table, id_offsets_abs, axis=0, name="gather_for_id_offsets")
@@ -776,7 +669,7 @@ class SparseEmbedding:
                     lookup_result = array_ops.reshape(embeddings, dest_shape)
 
             def grad(lookup_diff):
-                logging.debug("Into lookup grad function, feature spec name: %s.", feature_spec.name)
+                logger.debug("Into lookup grad function, feature spec name: %s.", feature_spec.name)
                 embedding_diff = tf.reshape(lookup_diff, [-1, self.scalar_emb_size])
                 unique_grads = tf.compat.v1.unsorted_segment_sum(embedding_diff,
                                                                  restore_vector,
@@ -794,14 +687,16 @@ class SparseEmbedding:
                         raise ZeroDivisionError("Rank size cannot be zero.") from exp
 
                 if use_dynamic_expansion:
-                    if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
+                    if global_env.apply_gradients_strategy == \
+                            ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY.value:
                         update_grad = tf.compat.v1.unsorted_segment_sum(local_grad,
                                                                         restore_vector_second,
                                                                         array_ops.shape(unique_keys)[0])
                     else:
                         update_grad = local_grad
                 else:
-                    if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
+                    if global_env.apply_gradients_strategy == \
+                            ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY.value:
                         unique_local_grad = tf.compat.v1.unsorted_segment_sum(local_grad,
                                                                               restore_vector_second,
                                                                               array_ops.shape(unique_keys)[0])
@@ -829,13 +724,13 @@ class SparseEmbedding:
 
             def add_to_collection():
                 tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
-                if self.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY:
+                if global_env.apply_gradients_strategy == ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY.value:
                     tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS, unique_keys)
                 else:
                     tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, id_offsets)
 
-                logging.debug(f"feature spec mode, table_name: {self.table_name}, "
-                              f"ASCEND_TABLE_NAME_MUST_CONTAIN: {ASCEND_TABLE_NAME_MUST_CONTAIN}")
+                logger.debug("feature spec mode, table_name: %s, ASCEND_TABLE_NAME_MUST_CONTAIN: %s",
+                             self.table_name, ASCEND_TABLE_NAME_MUST_CONTAIN)
             if is_training and is_table_name_valid:
                 add_to_collection()
 
@@ -843,15 +738,14 @@ class SparseEmbedding:
 
     def _record(self):
         insert_table_instance(self.table_name, self.variable, self)
-        logging.debug(f"Device vocabulary_size for table {self.table_name} is {self.device_vocabulary_size}.")
-        logging.debug(f"Slice_device_vocabulary_size for table {self.table_name} is"
-                      f" {self.slice_device_vocabulary_size}.")
-        logging.debug(f"Host vocabulary size for table {self.table_name} is {self.host_vocabulary_size}.")
-        logging.debug(f"Slice host vocabulary_size for table {self.table_name} is"
-                      f" {self.slice_host_vocabulary_size}.")
-        logging.debug(f"SSD vocabulary size for table {self.table_name} is {self.ssd_vocabulary_size}.")
-        logging.debug(f"Slice ssd vocabulary_size for table {self.table_name} is"
-                      f" {self.slice_ssd_vocabulary_size}.")
+        logger.debug("Device vocabulary_size for table %s is %s.", self.table_name, self.device_vocabulary_size)
+        logger.debug("Slice_device_vocabulary_size for table %s is %s.",
+                     self.table_name, self.slice_device_vocabulary_size)
+        logger.debug(f"Host vocabulary size for table %s is %s.", self.table_name, self.host_vocabulary_size)
+        logger.debug(f"Slice host vocabulary_size for table %s is %s.",
+                     self.table_name, self.slice_host_vocabulary_size)
+        logger.debug(f"SSD vocabulary size for table %s is %s.", self.table_name, self.ssd_vocabulary_size)
+        logger.debug(f"Slice ssd vocabulary_size for table %s is %s.", self.table_name, self.slice_ssd_vocabulary_size)
 
     def _initialize_variables(self):
         initialized_tensor = \
@@ -865,9 +759,10 @@ class SparseEmbedding:
         if self.use_dynamic_expansion:
             for sparse_optimizer_instance in self._optimizer_instance_list:
                 self._slot_num[self.table_name] = sparse_optimizer_instance.slot_num
-                logging.info(f"init emb, table name: {self.table_name}, slot_num: {sparse_optimizer_instance.slot_num}")
+                logger.info("init emb, table name: %s, slot_num: %s",
+                            self.table_name, sparse_optimizer_instance.slot_num)
 
-        if self.mode == MxRecMode.ASC and not self.skip_emb_transfer:
+        if not self.skip_emb_transfer:
             # build optimizer states
             for sparse_optimizer_instance in self._optimizer_instance_list:
                 slot_info_list = sparse_optimizer_instance.initialize_slots(self.variable, self)
@@ -875,6 +770,62 @@ class SparseEmbedding:
 
             for slot_info in self.optimizer_slot_info_list:
                 self.set_optimizer_slot(slot_info)
+
+
+@para_checker_decorator(check_option_list=[
+    ("hashtable", ClassValidator, {"classes": (SparseEmbedding, )}),
+    ("ids", ClassValidator, {"classes": (FeatureSpec, tf.Tensor)}),
+    ("is_train", ClassValidator, {"classes": (bool, )}),
+    ("send_count", ClassValidator, {"classes": (int, type(None))}),
+    ("name", ClassValidator, {"classes": (str, type(None))}),
+    ("modify_graph", ClassValidator, {"classes": (bool, type(None))}),
+    ("batch", ClassValidator, {"classes": (dict, type(None))}),
+    ("access_and_evict_config", ClassValidator, {"classes": (dict, type(None))}),
+])
+def sparse_lookup(hashtable: SparseEmbedding,
+                  ids: Union[FeatureSpec, tf.Tensor],
+                  send_count: Optional[int] = None,
+                  is_train: bool = True,
+                  name: Optional[str] = None,
+                  modify_graph: bool = False,
+                  batch: Optional[dict] = None,
+                  access_and_evict_config: Optional[dict] = None,
+                  **kwargs):
+    """
+    Args:
+        hashtable: SparseEmbedding instance to be looked up
+        ids: Tensor to lookup from hashtable
+        send_count: used to config all2all communication parameters
+        is_train: indicates whether the mode is train.
+        name: identity for lookup ops, it will be used to build scope_name together with hashtable name
+        modify_graph: if True, the original graph will be modified before building a Session instance
+        batch: the value returned by the get_next() method of TF Dataset
+        access_and_evict_config: the configuration for the feature of feature filtering and eviction
+
+    Returns: Tensor for lookup result
+
+    """
+    kwargs["is_train"] = is_train
+    kwargs["name"] = name if name is not None else hashtable.get_default_lookup_name()
+    kwargs["modify_graph"] = modify_graph
+    kwargs["batch"] = batch
+    kwargs["access_and_evict_config"] = access_and_evict_config
+    scope_name = "{0}//{1}".format(hashtable.table_name, kwargs.get("name"))
+
+    with tf.compat.v1.variable_scope(scope_name):
+        if isinstance(ids, FeatureSpec):
+            # check whether the name of the table exists with FeatureSpec.
+            if hashtable.table_name != ids.table_name:
+                raise ValueError(f"The table name '{ids.table_name}' specified by FeatureSpec is inconsistent with"
+                                 f" the SparseEmbedding table name '{hashtable.table_name}'.")
+
+            return hashtable.lookup_for_asc_with_feature_spec(ids, send_count, **kwargs)
+
+        if not modify_graph:
+            raise ValueError("'ids' is type of tf.Tensor, 'modify_graph' should be set to True")
+
+        set_modify_graph(modify_graph)
+        return hashtable.lookup_for_asc(ids, send_count, **kwargs)
 
 
 def set_zero_for_non_valid_key(id_offsets: Optional[tf.Tensor], embeddings: Optional[tf.Tensor],
@@ -897,30 +848,3 @@ def set_zero_for_non_valid_key(id_offsets: Optional[tf.Tensor], embeddings: Opti
     id_offsets_expand = tf.compat.v1.expand_dims(id_offsets >= 0, axis=-1)
     embeddings = tf.where(id_offsets_expand, embeddings, tf.zeros_like(embeddings))
     return embeddings
-
-
-def check_create_table_params(key_dtype, dim, name, emb_initializer):
-    """
-    校验create_table接口必选参数：key_dtype, dim, name, emb_initializer和optimizer_list（已有校验）
-    :param key_dtype: data type for feature id, tf.int64 or tf.int32 or tf.string
-    :param dim: embedding vector size, dim's type: int or tf.TensorShape
-    :param name: hash table name, name's type: str
-    :param emb_initializer: the initializer for embedding values
-    :return:
-    """
-    # check key_dtype
-    if key_dtype not in [tf.int64, tf.int32, tf.string]:
-        raise ValueError(f"key_dtype: {key_dtype} not in [tf.int64, tf.int32, tf.string]")
-    # check dim
-    dim_validator = ClassValidator(value=dim, classes=(int, tf.TensorShape))
-    dim_validator.check_isinstance()
-    dim_validator.check()
-    # check name
-    name_validator = StringValidator(value=name, max_len=255)
-    name_validator.check_string_length()
-    name_validator.check_whitelist()
-    name_validator.check()
-    # check emb_initializer
-    emb_initializer_validator = ClassValidator(value=emb_initializer, classes=(InitializerV1, InitializerV2))
-    emb_initializer_validator.check_isinstance()
-    emb_initializer_validator.check()
