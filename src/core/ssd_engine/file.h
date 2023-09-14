@@ -57,6 +57,9 @@ namespace MxRec {
         fstream localFileData{};
         fstream localFileMeta{};
 
+        // for safety validation
+        const uint64_t maxEmbSize = 8192 * 10;  // x10 for optimizer state data
+
         uint64_t dataCnt = 0;
         uint64_t staleDataCnt = 0;
         unordered_map<emb_key_t, offset_t> keyToOffset{}; // offset_t >> maxDataNumInFile * embDataSize

@@ -140,10 +140,16 @@ void Table::LoadDataFileSet(const shared_ptr<fstream> &metaFile, int step)
     LOG_INFO("table:{}, start load data file", name);
     uint64_t fileCnt;
     metaFile->read(reinterpret_cast<char *>(&fileCnt), sizeof(fileCnt));
+    if (metaFile->fail()) {
+        throw invalid_argument("fail to read nFile, meta file broken");
+    }
     uint64_t fileID;
     uint64_t fidSize = sizeof(fileID);
     for (uint64_t i = 0; i < fileCnt; ++i) {
         metaFile->read(reinterpret_cast<char *>(&fileID), fidSize);
+        if (metaFile->fail()) {
+            throw invalid_argument("fail to read fileID, meta file broken");
+        }
         if (fileID > curMaxFileID) {
             curMaxFileID = fileID;
         }
@@ -200,10 +206,17 @@ void Table::Load(const string &metaFilePath, int step)
     // Load table name and validate
     uint32_t nameSize;
     metaFile->read(reinterpret_cast<char *>(&nameSize), sizeof(nameSize));
+    if (metaFile->fail()) {
+        throw invalid_argument("fail to read table name size");
+    }
     if (nameSize > maxNameSize) {
         throw invalid_argument("table name too large, file may broken");
     }
-    char *tmpArr = new char[nameSize + 1];
+    char tmpArr[nameSize + 1];
+    auto ec = memset_s(tmpArr, nameSize + 1, '\0', nameSize + 1);
+    if (ec != EOK) {
+        throw runtime_error("fail to init table name array");
+    }
     metaFile->read(tmpArr, static_cast<long>(nameSize));
     tmpArr[nameSize] = '\0';
     string tbNameInFile = tmpArr;
