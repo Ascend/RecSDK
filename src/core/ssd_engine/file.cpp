@@ -116,13 +116,15 @@ void File::InsertEmbeddings(vector<emb_key_t> &keys, vector<vector<float>> &embe
         keyToOffset[keys[i]] = lastWriteOffset;
 
         uint64_t embSize = embeddings[i].size();
+        if (embSize > maxEmbSize) {
+            throw invalid_argument("embedding size too large");
+        }
         localFileData.write(reinterpret_cast<char const *>(&embSize), sizeof(embSize));
-        localFileData.write(reinterpret_cast<char const *>(embeddings[i].data()),
-                            embeddings[i].size() * sizeof(float));
+        localFileData.write(reinterpret_cast<char const *>(embeddings[i].data()), embSize * sizeof(float));
 
         auto pos = localFileData.tellp();
         if (pos == -1) {
-            throw runtime_error("can't get file position pointer");
+            throw runtime_error("can't get file position pointer, write data failed");
         }
         lastWriteOffset = offset_t(pos);
     }
@@ -139,11 +141,17 @@ vector<vector<float>> File::FetchEmbeddings(vector<emb_key_t> &keys)
         }
         localFileData.seekg(it->second); // for fstream, this moves the file position pointer (both put and get)
         if (localFileData.fail()) {
-            throw runtime_error("can't move file position pointer");
+            throw runtime_error("can't move file position pointer, read data failed");
         }
 
         uint64_t embSize;
         localFileData.read(reinterpret_cast<char *>(&embSize), sizeof(embSize));
+        if (localFileData.fail()) {
+            throw invalid_argument("read embedding size failed, file may broken");
+        }
+        if (embSize > maxEmbSize) {
+            throw invalid_argument("embedding size too large, file may broken");
+        }
 
         vector<float> tmp;
         tmp.resize(embSize);
