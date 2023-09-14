@@ -53,7 +53,7 @@ from mx_rec.util.log import logger
     ("hashtable_threshold", NumValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"])
 ])
 def create_table(key_dtype, dim, name, emb_initializer,
-                 optimizer_list=Optional[list],
+                 optimizer_list: Optional[list] = None,
                  device_vocabulary_size=1,
                  host_vocabulary_size=0,
                  ssd_vocabulary_size=0,
