@@ -34,7 +34,8 @@ class FeatureSpec:
         ("batch_size", OptionalIntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
         ("faae_coefficient", OptionalIntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"])
     ])
-    def __init__(self, name: str, table_name: str,
+    def __init__(self, name: str,
+                 table_name: Optional[str] = None,
                  index_key: Optional[str] = None,
                  access_threshold: Optional[int] = None,
                  eviction_threshold: Optional[int] = None, is_timestamp: Optional[bool] = None,
@@ -92,6 +93,10 @@ class FeatureSpec:
     @property
     def pipeline_mode(self):
         return self._pipeline_mode
+
+    @feat_cnt.setter
+    def feat_cnt(self, feat_cnt: int):
+        self._feat_cnt = feat_cnt
 
     @staticmethod
     def include_timestamp(is_training):
@@ -197,6 +202,7 @@ def set_temporary_feature_spec_attribute(mock_feature_spec: FeatureSpec, total_f
 
     """
     mock_feature_spec.batch_size = total_feature_count
+    mock_feature_spec.feat_cnt = 1
     mock_feature_spec.dims = [total_feature_count, 1]
     mock_feature_spec.initialized = True
     mock_feature_spec.pipeline_mode.add(True)
