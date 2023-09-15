@@ -100,7 +100,6 @@ namespace MxRec {
     using keys_t = std::vector<emb_key_t>;
     using lookup_key_t = std::tuple<int, emb_name_t, keys_t>;             // batch_id quarry_lable keys_vector
     using tensor_info_t = std::tuple<int, emb_name_t, std::list<std::unique_ptr<std::vector<Tensor>>>::iterator>;
-    using EndRunError = std::runtime_error;
 
     namespace HybridOption {
         const int USE_STATIC = 0x001;
