@@ -41,7 +41,7 @@ void HybridMgmtBlock::CheckAndSetBlock(int channelId)
 void HybridMgmtBlock::CheckAndNotifyWake(int channelId)
 {
     LOG_DEBUG(HYBRID_BLOCKING + "start notify channelId {} pythonBatchId {} hybridBatchId {}",
-        channelId, pythonBatchId[lastRunChannelId], hybridBatchId[channelId]);
+        channelId, pythonBatchId[channelId], hybridBatchId[channelId]);
 
     CheckValid(channelId);
     if (pythonBatchId[channelId] >= hybridBatchId[channelId]) {

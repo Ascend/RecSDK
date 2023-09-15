@@ -604,16 +604,12 @@ class SparseEmbedding:
                       emb_size=self.emb_size, use_hot=use_hot, device_id=device_id,
                       use_dynamic_expansion=use_dynamic_expansion)
 
-        # 用于打桩的op节点，它的name用于标识此次的sparse lookup是train还是eval
-        # 后续在session run的时候，通过图反向查找该子图中查找到此op
-        # 最后通过名称判断session run是调用的哪个通道，并通知c++侧进行计数和唤醒操作
-        notify_hybridmgmt_op = self.generate_lookup_id_notify_hybrid(channel_id)
-        with tf.control_dependencies([notify_hybridmgmt_op]):
-            if self.skip_emb_transfer:
-                result = get_preprocessed_tensor_for_asc(self.variable, config)
-            else:
-                variable_list = [self.variable] + [slot_info.get("slot") for slot_info in self.optimizer_slot_info_list]
-                result = get_preprocessed_tensor_for_asc(variable_list, config)
+
+        if self.skip_emb_transfer:
+            result = get_preprocessed_tensor_for_asc(self.variable, config)
+        else:
+            variable_list = [self.variable] + [slot_info.get("slot") for slot_info in self.optimizer_slot_info_list]
+            result = get_preprocessed_tensor_for_asc(variable_list, config)
         restore_vector = result.get("restore_vector")
         restore_vector_second = result.get("restore_vector_second")
         hot_pos = result.get("hot_pos")
@@ -650,7 +646,13 @@ class SparseEmbedding:
                 unique_embeddings_shape = unique_embeddings.shape.as_list()
             else:
                 unique_embeddings_shape = tf.shape(unique_embeddings)
-            embeddings = tf.gather(unique_embeddings, restore_vector, axis=0, name="gather_for_restore_vector")
+
+            # 用于打桩的op节点，它的name用于标识此次的sparse lookup是train还是eval
+            # 后续在session run的时候，通过图反向查找该子图中查找到此op
+            # 最后通过名称判断session run是调用的哪个通道，并通知c++侧进行计数和唤醒操作
+            notify_hybridmgmt_op = self.generate_lookup_id_notify_hybrid(channel_id)
+            with tf.control_dependencies([notify_hybridmgmt_op]):
+                embeddings = tf.gather(unique_embeddings, restore_vector, axis=0, name="gather_for_restore_vector")
 
             if use_static:
                 lookup_result = tf.reshape(embeddings, feature_spec.dims + [self.scalar_emb_size])
