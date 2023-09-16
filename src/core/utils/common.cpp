@@ -105,25 +105,6 @@ namespace MxRec {
         }
     }
 
-    bool GetEnv(const char *envName)
-    {
-        const char* envString = getenv(envName);
-        int tmp = 0;
-        if (envString != nullptr) {
-            try {
-                tmp = std::stoi(envString);
-                if (tmp == 0 || tmp == 1) {
-                    LOG_INFO("Succeed to parse ${env:{}}: {}.", envName, tmp);
-                } else {
-                    LOG_ERROR("Invalid ${env:{}}: {}, which should be an 0 or 1.", envName, tmp);
-                }
-            } catch (const std::invalid_argument &e) {
-                LOG_ERROR("Failed to parse ${env:{}}, which should be an integer.", envName);
-            }
-        }
-        return (tmp == 1) ? true : false;
-    }
-
     string GetChipName(int devID)
     {
         int ret = 0;

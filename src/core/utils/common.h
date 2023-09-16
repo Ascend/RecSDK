@@ -286,8 +286,6 @@ namespace MxRec {
 
     void SetLog(int rank);
 
-    bool GetEnv(const char *envName);
-
     template<typename ... Args>
     string StringFormat(const string& format, Args ... args)
     {
