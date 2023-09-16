@@ -109,8 +109,8 @@ def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     name2channel_cache = self.get_mxrec_name2channel_cache()
 
     # 查找相应的channel_id
+    get_all_tensor(fetches)
     try:
-        get_all_tensor(fetches)
         channel_id = get_channel_id_by_sub_graph(all_op, name2channel_cache)
     except AssertionError:
         channel_id = -1
@@ -118,7 +118,7 @@ def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     if channel_id != -1:
         get_asc_manager().block_notify_wake(channel_id)
 
-    #调用tensorflow原生的方法
+    # 调用tensorflow原生的方法
     result = self.old_run_method(fetches, feed_dict, options, run_metadata)
     if channel_id != -1:
         get_asc_manager().block_count_steps(channel_id, steps)
