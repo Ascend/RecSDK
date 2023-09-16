@@ -27,6 +27,19 @@ inline vector<T> Count2Start(const vector<T>& count)
     return start;
 }
 
+class EndRunExit : public std::exception {
+public:
+    explicit EndRunExit(const char* message) : errorMessage(message) {}
+
+    const char* what() const noexcept override
+    {
+        return errorMessage;
+    }
+
+private:
+    const char* errorMessage;
+};
+
 void KeyProcess::SetupHotEmbUpdateStep()
 {
     this->hotEmbUpdateStep = GlobalEnv::hotEmbUpdateStep;
@@ -268,7 +281,7 @@ void KeyProcess::KeyProcessTaskWithFastUnique(int channel, int threadId)
             batchQueue->PutDirty(move(batch));
         }
         unique->UnInitialize();
-    } catch (const EndRunError &e) {
+    } catch (const EndRunExit &e) {
         LOG_INFO(KEY_PROCESS "abort run: {}", e.what());
     }
     LOG_INFO(KEY_PROCESS "KeyProcessTaskWithFastUnique exit. rank:{} thread:{}, channel:{}",
@@ -301,7 +314,7 @@ void KeyProcess::KeyProcessTask(int channel, int threadId)
             auto batchQueue = SingletonQueue<emb_batch_t>::getInstances(threadId + KEY_PROCESS_THREAD * batch->channel);
             batchQueue->PutDirty(move(batch));
         }
-    } catch (const EndRunError &e) {
+    } catch (const EndRunExit &e) {
         LOG_INFO(KEY_PROCESS "abort run: {}", e.what());
     }
     LOG_INFO(KEY_PROCESS "KeyProcessTask exit. rank:{} thread:{}, channel:{}", rankInfo.rankId, threadId, channel);
@@ -533,7 +546,7 @@ unique_ptr<emb_batch_t> KeyProcess::GetBatchData(int channel, int commId)
             // 通信终止信号，同步退出，防止线程卡住
             int exitFlag = isRunning;
             MPI_Allreduce(&exitFlag, &exitFlag, 1, MPI_INT, MPI_SUM, comm[channel][commId]);
-            throw EndRunError("GetBatchData end run.");
+            throw EndRunExit("GetBatchData end run.");
         }
     }
     EASY_END_BLOCK
@@ -1011,7 +1024,7 @@ vector<int> KeyProcess::GetScAll(const vector<int>& keyScLocal, int commId, int 
     int exitFlag = isRunning;
     MPI_Allreduce(&exitFlag, &exitFlag, 1, MPI_INT, MPI_SUM, comm[channel][commId]);
     if (exitFlag < rankInfo.rankSize) {
-        throw EndRunError("GetScAll end run.");
+        throw EndRunExit("GetScAll end run.");
     }
     EASY_END_BLOCK;
     LOG_DEBUG(KEY_PROCESS "barrier time:{}", tc.ElapsedMS());
@@ -1032,7 +1045,7 @@ void KeyProcess::GetScAllForUnique(const vector<int>& keyScLocal, int commId, in
     int exitFlag = isRunning;
     MPI_Allreduce(&exitFlag, &exitFlag, 1, MPI_INT, MPI_SUM, comm[channel][commId]);
     if (exitFlag < rankInfo.rankSize) {
-        throw EndRunError("GetScAll end run.");
+        throw EndRunExit("GetScAll end run.");
     }
     EASY_END_BLOCK;
     LOG_DEBUG(KEY_PROCESS "barrier time:{}", tc.ElapsedMS());
