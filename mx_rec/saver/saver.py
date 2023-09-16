@@ -52,6 +52,14 @@ class Saver(object):
         self.save_easy_mode = (global_env.save_easy == Flag.TRUE.value)
         self.build()
 
+    @staticmethod
+    def _make_table_name_dir(root_dir, table_instance, table_name):
+        if table_instance.host_vocabulary_size > 0:
+            table_dir = os.path.join(root_dir, "HashTable", "DDR", table_name)
+        else:
+            table_dir = os.path.join(root_dir, "HashTable", "HBM", table_name)
+        tf.io.gfile.makedirs(table_dir)
+
     def build(self):
         if self.var_list is None:
             self.var_list = []
@@ -212,14 +220,6 @@ class Saver(object):
 
         for thread in threads:
             thread.join()
-
-    @staticmethod
-    def _make_table_name_dir(root_dir, table_instance, table_name):
-        if table_instance.host_vocabulary_size > 0:
-            table_dir = os.path.join(root_dir, "HashTable", "DDR", table_name)
-        else:
-            table_dir = os.path.join(root_dir, "HashTable", "HBM", table_name)
-        tf.io.gfile.makedirs(table_dir)
 
     def _save_easy_mode_save_key_data(self, dump_data_dict, root_dir, table_name):
         host_data = get_host_data(table_name)

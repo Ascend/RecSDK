@@ -11,7 +11,7 @@ import psutil
 
 import mx_rec.constants.constants
 from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION, HASHTABLE_COLLECTION_NAME_LENGTH, \
-    TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID, MIN_SIZE, MAX_CONFIG_SIZE, MAX_RANK_SIZE, MAX_INT32, TFDevice, Flag
+    TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID, MIN_SIZE, MAX_CONFIG_SIZE, MAX_INT32, TFDevice, Flag
 from mx_rec.util.communication.hccl_mgmt import parse_hccl_json, set_hccl_info_without_json
 from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.validator.validator import StringValidator, FileValidator, para_checker_decorator, ClassValidator, \
@@ -27,17 +27,17 @@ class ConfigInitializer:
     host_pipeline_ops = import_host_pipeline_ops()
 
     @para_checker_decorator(check_option_list=[
-        ("use_mpi", ClassValidator, {"classes": (bool, )}),
+        ("use_mpi", ClassValidator, {"classes": (bool,)}),
         ("train_steps", IntValidator, {"min_value": -1, "max_value": MAX_INT32}),
         ("eval_steps", IntValidator, {"min_value": -1, "max_value": MAX_INT32}),
         ("save_steps", IntValidator, {"min_value": -1, "max_value": MAX_INT32}),
         (["train_steps", "eval_steps"], ValueCompareValidator, {"target": 0},
          ["check_at_least_one_not_equal_to_target"]),
-        ("if_load", ClassValidator, {"classes": (bool, )}),
-        ("use_dynamic", ClassValidator, {"classes": (bool, )}),
-        ("use_hot", ClassValidator, {"classes": (bool, )}),
-        ("use_dynamic_expansion", ClassValidator, {"classes": (bool, )}),
-        ("bind_cpu", ClassValidator, {"classes": (bool, )}),
+        ("if_load", ClassValidator, {"classes": (bool,)}),
+        ("use_dynamic", ClassValidator, {"classes": (bool,)}),
+        ("use_hot", ClassValidator, {"classes": (bool,)}),
+        ("use_dynamic_expansion", ClassValidator, {"classes": (bool,)}),
+        ("bind_cpu", ClassValidator, {"classes": (bool,)}),
     ])
     def __init__(self, use_mpi=True, **kwargs):
         self._use_mpi = use_mpi
@@ -84,10 +84,14 @@ class ConfigInitializer:
         else:
             raise ValueError("only mpi is supported for launching task.")
 
-        self._rank_to_device_dict, self._local_rank_size = parse_hccl_json() if global_env.rank_table_file else \
-            set_hccl_info_without_json(visible_devices=global_env.ascend_visible_devices,
-                                       rank_size=global_env.cm_worker_size,
-                                       chief_device=global_env.cm_chief_device)
+        if global_env.rank_table_file:
+            self._rank_to_device_dict, self._local_rank_size = parse_hccl_json()
+        else:
+            self._rank_to_device_dict, self._local_rank_size = set_hccl_info_without_json(
+                visible_devices=global_env.ascend_visible_devices,
+                rank_size=global_env.cm_worker_size,
+                chief_device=global_env.cm_chief_device)
+
         self.train_steps = kwargs.get("train_steps", -1)
         self.eval_steps = kwargs.get("eval_steps", -1)
         self.save_steps = kwargs.get("save_steps", -1)
@@ -698,7 +702,7 @@ def export_feature_spec():
 
 
 @para_checker_decorator(check_option_list=[
-    ("if_load", ClassValidator, {"classes": (bool, )})
+    ("if_load", ClassValidator, {"classes": (bool,)})
 ])
 def set_if_load(if_load):
     ConfigInitializer.get_instance().if_load = if_load
@@ -714,7 +718,7 @@ def get_use_static():
 
 def get_stat_on():
     return ConfigInitializer.get_instance().stat_on
-    
+
 
 def get_use_hot():
     return ConfigInitializer.get_instance().use_hot
@@ -737,7 +741,7 @@ def get_name_to_var_dict():
 
 
 @para_checker_decorator(check_option_list=[
-    ("is_training", ClassValidator, {"classes": (bool, )})
+    ("is_training", ClassValidator, {"classes": (bool,)})
 ])
 def get_initializer(is_training):
     return ConfigInitializer.get_instance().get_initializer(is_training)

@@ -172,6 +172,18 @@ class SparseEmbedding:
         return self._optimizer_instance_list
 
     @staticmethod
+    def generate_lookup_id_notify_hybrid(channel_id: int):
+
+        """
+        Args:
+         channel_id: channel id 0 for train，1 for eval
+        Returns: npu_ops.outfeed_enqueue_op notify preprocess step
+        """
+        channel_name = "d2h_notify_hybridmgmt_{}".format(channel_id)
+        notify_hybridmgmt_op = tf.no_op(channel_name)
+        return notify_hybridmgmt_op
+
+    @staticmethod
     def get_anchor_attribute(anchor, attr):
         if not isinstance(anchor, tf.Tensor):
             raise ValueError("Anchor must be a Tensor.")
@@ -193,6 +205,27 @@ class SparseEmbedding:
         named_slot_key = slot_info.get("named_slot_key")
 
         optimizer.insert_slot(slot, named_slot_key, slot_name)
+
+    @staticmethod
+    def get_emb_table_size(table_name: str) -> int:
+        """
+        For HBM or DDR mode, return the size of sparse embedding table
+        :param table_name: the name of sparse embedding table
+        :return: the size of the sparse embedding table
+        """
+        table_instance = get_table_instance_by_name(table_name)
+        host_vocabulary_size = table_instance.host_vocabulary_size()
+        device_vocabulary_size = table_instance.device_vocabulary_size
+        if not host_vocabulary_size and not get_use_dynamic_expansion():
+            embed_dim = table_instance.emb_size
+            size = embed_dim * device_vocabulary_size
+        elif not host_vocabulary_size and get_use_dynamic_expansion():
+            embed_dim = table_instance.ext_emb_size
+            size = embed_dim * device_vocabulary_size
+        else:
+            embed_dim = table_instance.ext_emb_size
+            size = (device_vocabulary_size + host_vocabulary_size) * embed_dim
+        return size
 
     @staticmethod
     def _get_own_emb(emb, all2all_args, emb_size, use_static):
@@ -229,27 +262,6 @@ class SparseEmbedding:
                                               rank=rank_id)
 
         return tf.reshape(src_emb, reshape_info)
-
-    @staticmethod
-    def get_emb_table_size(table_name: str) -> int:
-        """
-        For HBM or DDR mode, return the size of sparse embedding table
-        :param table_name: the name of sparse embedding table
-        :return: the size of the sparse embedding table
-        """
-        table_instance = get_table_instance_by_name(table_name)
-        host_vocabulary_size = table_instance.host_vocabulary_size()
-        device_vocabulary_size = table_instance.device_vocabulary_size
-        if not host_vocabulary_size and not get_use_dynamic_expansion():
-            embed_dim = table_instance.emb_size
-            size = embed_dim * device_vocabulary_size
-        elif not host_vocabulary_size and get_use_dynamic_expansion():
-            embed_dim = table_instance.ext_emb_size
-            size = embed_dim * device_vocabulary_size
-        else:
-            embed_dim = table_instance.ext_emb_size
-            size = (device_vocabulary_size + host_vocabulary_size) * embed_dim
-        return size
 
     def check_optimizer_instance(self):
         for optimizer_instance in self._optimizer_instance_list:
@@ -560,17 +572,6 @@ class SparseEmbedding:
             else:
                 dest_shape = array_ops.concat([array_ops.shape(tensor_list[idx]), [self.scalar_emb_size]], 0)
             self.lookup_result[one_feature_spec.name][is_training] = array_ops.reshape(one_result, dest_shape)
-
-    def generate_lookup_id_notify_hybrid(self, channel_id: int):
-
-        """
-        Args:
-         channel_id: channel id 0 for train，1 for eval
-        Returns: npu_ops.outfeed_enqueue_op notify preprocess step
-        """
-        channel_name = "d2h_notify_hybridmgmt_{}".format(channel_id)
-        notify_hybridmgmt_op = tf.no_op(channel_name)
-        return notify_hybridmgmt_op
 
     def lookup_for_asc_with_feature_spec_inner(self, feature_spec: FeatureSpec, send_count: int, **kwargs):
         """
