@@ -949,7 +949,19 @@ int HybridMgmt::GetStepFromPath(const string& loadPath)
     regex pattern("sparse-model-\\d+-(\\d+)");
     smatch match;
     if (regex_search(loadPath, match, pattern)) {
-        return stoi(match[1]);
+        int res = 0;
+        unsigned int minSize = 2;
+        if (match.size() < minSize) {
+            return res;
+        }
+        try {
+            res = stoi(match[1]);
+        } catch (const std::invalid_argument& e) {
+            LOG_ERROR(e.what());
+        } catch (const std::out_of_range& e) {
+            LOG_ERROR(e.what());
+        }
+        return res;
     }
     return 0;
 }
