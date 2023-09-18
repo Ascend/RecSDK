@@ -45,6 +45,7 @@ inline void ClearLookupAndSwapOffset(EmbHashMapInfo& embHashMap)
 {
     embHashMap.swapPos.clear();
     embHashMap.lookUpVec.clear();
+    embHashMap.ddr2HbmKeys.clear();
 }
 
 /// DDR模型下处理特征的offset、swap信息等
@@ -343,18 +344,16 @@ void EmbHashMap::FindOffset(const string& embName, const vector<emb_key_t>& keys
             embHashMap.lookUpVec.emplace_back(INVALID_KEY_VALUE);
             continue;
         }
-
+        AddKeyFreqInfo(embName, key, RecordType::NOT_DDR);
         if (offset < embHashMap.devVocabSize) {
             // 偏移小于等于HBM容量：直接放入查询向量；更新偏移之前关联的key和当前关联的key
             embHashMap.lookUpVec.emplace_back(offset);
             embHashMap.devOffset2KeyOld.emplace_back(offset, static_cast<int>(embHashMap.devOffset2Key[offset]));
             embHashMap.devOffset2Key[offset] = key;
-            AddKeyFreqInfo(embName, key, RecordType::NOT_DDR);
         } else {
             // 偏移大于HBM容量：记录在host emb上的偏移；找到需要交换的HBM偏移
             embHashMap.missingKeysHostPos.emplace_back(offset - embHashMap.devVocabSize);
             FindSwapPosOld(embName, key, offset, currentBatchId, keepBatchId);
-            AddKeyFreqInfo(embName, key, RecordType::DDR);
         }
     }
     if (currentBatchId == 0) {
@@ -377,6 +376,9 @@ bool EmbHashMap::FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHashM
     if (iter != embHashMap.hostHashMap.end()) {
         offset = iter->second;
         LOG_TRACE("devVocabSize, {} , offset , {}", embHashMap.devVocabSize, offset);
+        if (isSSDEnabled && offset >= embHashMap.devVocabSize) {
+            embHashMap.ddr2HbmKeys.emplace_back(key);
+        }
     } else if (embHashMap.evictDevPos.size() != 0 && channelId == TRAIN_CHANNEL_ID) { // 优先复用hbm表
         offset = embHashMap.evictDevPos.back();
         embHashMap.hostHashMap[key] = offset;
@@ -493,7 +495,7 @@ bool EmbHashMap::FindSwapPosOld(const string& embName, emb_key_t key, size_t hos
             embHashMap.devOffset2KeyOld.emplace_back(embHashMap.currentUpdatePos,
                                                      embHashMap.devOffset2Key[embHashMap.currentUpdatePos]);
             auto& oldKey = embHashMap.devOffset2Key[embHashMap.currentUpdatePos];
-            embHashMap.oldSwap.emplace_back(oldKey, key); // 记录交换的两个key
+            embHashMap.oldSwap.emplace_back(oldKey, key); // 记录交换的两个key oldKey:HBM->DDR key:DDR->HBM
             embHashMap.hostHashMap[oldKey] = hostOffset; // 更新被替换的key的偏移
             oldKey = key;
             notFind = false;
@@ -506,8 +508,8 @@ bool EmbHashMap::FindSwapPosOld(const string& embName, emb_key_t key, size_t hos
             embHashMap.currentUpdatePos = 0;
         }
 
-        // 已经找完了整个HBM空间，没有找到可用位置，表示HBM空间不足以放下整个batch（预取batch数）的key，无法正常执行训练，固运行时错误退出
-        if (embHashMap.currentUpdatePos == embHashMap.currentUpdatePosStart) {
+        // 已经找完整个HBM空间，且没找到可用位置，表示HBM空间不足以放下整个batch（预取batch数）的key，无法正常执行训练，故运行时错误退出
+        if (embHashMap.currentUpdatePos == embHashMap.currentUpdatePosStart && notFind) {
             LOG_ERROR("devVocabSize is too small");
             throw runtime_error("devVocabSize is too small");
         }
@@ -527,13 +529,11 @@ void EmbHashMap::RefreshFreqInfoWithSwap(const string& embName, EmbHashMapInfo& 
     auto& oldSwap = embHashMap.oldSwap;
     LOG_DEBUG("RefreshFreqInfoWithSwap:oldSwap Size:{}", oldSwap.size());
     vector<emb_key_t> enterDDRKeys;
-    vector<emb_key_t> leaveDDRKeys;
     for (auto keyPair : oldSwap) {
         enterDDRKeys.emplace_back(keyPair.first);
-        leaveDDRKeys.emplace_back(keyPair.second);
     }
     cacheManager->RefreshFreqInfoCommon(embName, enterDDRKeys, TransferType::HBM_2_DDR);
-    cacheManager->RefreshFreqInfoCommon(embName, leaveDDRKeys, TransferType::DDR_2_HBM);
+    cacheManager->RefreshFreqInfoCommon(embName, embHashMap.ddr2HbmKeys, TransferType::DDR_2_HBM);
 
     AddCacheManagerTraceLog(embName, embHashMap);
 }

@@ -255,7 +255,9 @@ void CacheManager::RefreshFreqInfoCommon(const string& embTableName, vector<emb_
     if (type == TransferType::DDR_2_HBM) {
         for (auto& key : keys) {
             // 频次数据记录到 excludeDDRKeyCountMap,并删除ddrKeyFreqMap中频次数据
-            excludeDDRKeyCountMap[embTableName][key] = ddrKeyFreqMap[embTableName].Get(key);
+            // 进入findOffset时记录的key次数 + ddr内key次数
+            auto tmpCount = excludeDDRKeyCountMap[embTableName][key];
+            excludeDDRKeyCountMap[embTableName][key] = ddrKeyFreqMap[embTableName].Get(key) + tmpCount;
             ddrKeyFreqMap[embTableName].Pop(key);
         }
     } else if (type == TransferType::HBM_2_DDR) {
