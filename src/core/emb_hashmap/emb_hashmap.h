@@ -77,14 +77,15 @@ namespace MxRec {
 
         int32_t FindNewOffset(const emb_key_t& key, EmbHashMapInfo& embHashMap);
 
-        void RefreshFreqInfoWithSwap(const string& embName, EmbHashMapInfo& embHashMap);
-
         void AddCacheManagerTraceLog(const string& embName, const EmbHashMapInfo& embHashMap) const;
 
         void AddKeyFreqInfo(const string& embTableName, const emb_key_t& key, RecordType type);
 
         RankInfo rankInfo;
         int swapId { 0 };
+
+    GTEST_PRIVATE:
+        void RefreshFreqInfoWithSwap(const string& embName, EmbHashMapInfo& embHashMap);
     };
 }
 

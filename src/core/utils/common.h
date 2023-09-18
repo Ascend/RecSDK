@@ -480,7 +480,11 @@ namespace MxRec {
         std::vector<size_t> evictDevPosChange;
         std::vector<std::pair<int, emb_key_t>> devOffset2KeyOld;
         std::vector<std::pair<emb_key_t, emb_key_t>> oldSwap; // (old on dev, old on host)
-
+        /*
+         * HBM与DDR换入换出时,已存在于DDR且要转移到HBM的key(不包含新key); 用于SSD模式
+         * (区别于oldSwap: pair.second为已存在于DDR key + 换入换出前映射到DDR的新key)
+         */
+        std::vector<emb_key_t> ddr2HbmKeys;
         void SetStartCount();
 
         bool HasFree(size_t i);
