@@ -23,45 +23,45 @@ VALUE_READ_INTERVAL = 2
 LOOP_SLEEP_TIME = 0.003
 
 # run mode to be selected
-HBM_DICT_NORMAL = {"key_process_time_cost": "key_process_time_cost",
+HBM_NORMAL = {"key_process_time_cost": "key_process_time_cost",
                    "batch_key_num": "batch_key_num",
                    "unique_key_num": "unique_key_num"}
-HBM_DICT_FAAE = {"key_process_time_cost": "key_process_time_cost",
+HBM_FAAE = {"key_process_time_cost": "key_process_time_cost",
                  "batch_key_num": "batch_key_num",
                  "unique_key_num": "faae_unique_key_num"}
-HBM_DICT_HOT = {"key_process_time_cost": "key_process_time_cost",
+HBM_HOT = {"key_process_time_cost": "key_process_time_cost",
                 "batch_key_num": "batch_key_num",
                 "unique_key_num": "hot_unique_key_num"}
-HBM_DICT_FAST = {"key_process_time_cost": "key_process_time_cost_with_fast_unique",
+HBM_FAST = {"key_process_time_cost": "key_process_time_cost_with_fast_unique",
                  "batch_key_num": "batch_key_num_with_fast_unique",
                  "unique_key_num": "unique_key_num_with_fast_unique"}
 
-DDR_DICT_NORMAL = {"key_process_time_cost": "key_process_time_cost",
+DDR_NORMAL = {"key_process_time_cost": "key_process_time_cost",
                    "batch_key_num": "batch_key_num",
                    "unique_key_num": "unique_key_num",
                    "swap_key_size": "swap_key_size",
                    "swap_time_cost": "swap_time_cost"}
-DDR_DICT_FAAE = {"key_process_time_cost": "key_process_time_cost",
+DDR_FAAE = {"key_process_time_cost": "key_process_time_cost",
                  "batch_key_num": "batch_key_num",
                  "unique_key_num": "faae_unique_key_num",
                  "swap_key_size": "swap_key_size",
                  "swap_time_cost": "swap_time_cost"}
-DDR_DICT_HOT = {"key_process_time_cost": "key_process_time_cost",
+DDR_HOT = {"key_process_time_cost": "key_process_time_cost",
                 "batch_key_num": "batch_key_num",
                 "unique_key_num": "hot_unique_key_num",
                 "swap_key_size": "swap_key_size",
                 "swap_time_cost": "swap_time_cost"}
-DDR_DICT_FAST = {"key_process_time_cost": "key_process_time_cost_with_fast_unique",
+DDR_FAST = {"key_process_time_cost": "key_process_time_cost_with_fast_unique",
                  "batch_key_num": "batch_key_num_with_fast_unique",
                  "unique_key_num": "unique_key_num_with_fast_unique",
                  "swap_key_size": "swap_key_size",
                  "swap_time_cost": "swap_time_cost"}
 
-DDR_LIST = [DDR_DICT_NORMAL, DDR_DICT_FAAE, DDR_DICT_HOT, DDR_DICT_FAST]
+DDR_LIST = [DDR_NORMAL, DDR_FAAE, DDR_HOT, DDR_FAST]
 
 # ======================  Please modify here according to readme before using ======================
 TARGET_REC_LOG_PATH = "/home/example.log"
-RUN_MODE = DDR_DICT_FAST
+RUN_MODE = DDR_FAST
 RANK_SIZE = 8
 DISPLAY_MODE = "save_log"  # can be "save_log" or "print_screen"
 DISPLAY_INTERVAL = 1
