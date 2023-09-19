@@ -16,6 +16,8 @@ EVAL_LOG_PATH = f"{CURRENT_PATH}/eval_{FORMATTED_TIME}.log"
 STAT_PREFIX = "[StatInfo]"
 DISPLAY_MODE_PRINT_SCREEN = "print_screen"
 DISPLAY_MODE_SAVE_LOG = "save_log"
+TABLE_NUM_LINE_PREFIX = "current_table_num"
+CHANNEL_LINE_PREFIX = "channel_id"
 VALUE_READ_START = 6
 VALUE_READ_INTERVAL = 2
 LOOP_SLEEP_TIME = 0.003
@@ -99,10 +101,10 @@ def check_line_content(line):
     index = line.find("[StatInfo]")
     if line and index != -1:
         stat_data = line[index + len(STAT_PREFIX):].split()
-        if stat_data[0] == "channel_id":
+        if stat_data[0] == CHANNEL_LINE_PREFIX:
             tar_dict = create_data(stat_data)
             update_data(stat_data, tar_dict)
-        elif stat_data[0] == "CURRENT_TABLE_NUM":
+        elif stat_data[0] == TABLE_NUM_LINE_PREFIX:
             global CURRENT_TABLE_NUM
             CURRENT_TABLE_NUM = int(stat_data[1])
     else:
@@ -212,11 +214,11 @@ def construct_ddr_message(display_dict: dict, target_dict: dict, batch_key_num: 
         total_swap_speed = total_swap_size / total_swap_time
 
     ddr_message = f"Current Swap Key Num:{swap_key_size}  " \
-                  f"Current Swap Speed:{round(swap_speed, 3)}\n" \
-                  f"Current HBM Rate:{round(((batch_key_num - swap_key_size) / batch_key_num), 3)}\n" \
-                  f"ToTal Swap Key Num:{total_swap_size} " \
-                  f"Average Swap Speed:{round(total_swap_speed, 3)}\n" \
-                  f"Average HBM Rate:{round(((total_batch_key_num - total_swap_size) / total_batch_key_num), 3)}\n"
+                  f"\nCurrent Swap Speed:{round(swap_speed, 3)}" \
+                  f"\nCurrent HBM Rate:{round(((batch_key_num - swap_key_size) / batch_key_num), 3)}" \
+                  f"\nToTal Swap Key Num:{total_swap_size} " \
+                  f"\nAverage Swap Speed:{round(total_swap_speed, 3)}" \
+                  f"\nAverage HBM Rate:{round(((total_batch_key_num - total_swap_size) / total_batch_key_num), 3)}\n"
     return ddr_message
 
 
@@ -249,14 +251,22 @@ def display_data(display_dict: dict, channel: int, step: int, rank_id: int):
     target_dict["total_key_process_time_cost"] += key_process_time_cost
     total_key_process_time_cost = target_dict["total_key_process_time_cost"]
 
+    key_process_speed = 0
+    if key_process_time_cost != 0:
+        key_process_speed = batch_key_num / key_process_time_cost
+
+    total_key_process_speed = 0
+    if total_key_process_time_cost != 0:
+        total_key_process_speed = total_batch_key_num / total_key_process_time_cost
+
     message = f"[STATINFO]Channel:{channel} Current Step:{step} RankId:{rank_id} " \
-              f"CurrentTableNum:{CURRENT_TABLE_NUM}\n" \
-              f"Current Batch Key Num:{batch_key_num} Current Unique Key Num:{unique_key_num}\n" \
-              f"Deduplication Key Rate:{round((1 - unique_key_num / batch_key_num), 3)}\n" \
-              f"Current Key Process Speed:{round((batch_key_num / key_process_time_cost), 3)} / ms\n" \
-              f"ToTal Batch Key Num:{total_batch_key_num} ToTal Unique Key Num:{total_unique_key_num}\n" \
-              f"Deduplication Key Rate: {round((1 - total_unique_key_num / total_batch_key_num), 3)}\n" \
-              f"Average Key Process Speed:{round((total_batch_key_num / total_key_process_time_cost), 3)} / ms\n"
+              f"\nCurrentTableNum:{CURRENT_TABLE_NUM}" \
+              f"\nCurrent Batch Key Num:{batch_key_num} Current Unique Key Num:{unique_key_num}" \
+              f"\nCurrent Deduplication Key Rate:{round((1 - unique_key_num / batch_key_num), 3)}" \
+              f"\nCurrent Key Process Speed:{round(key_process_speed, 3)} / ms" \
+              f"\nToTal Batch Key Num:{total_batch_key_num} ToTal Unique Key Num:{total_unique_key_num}" \
+              f"\nAverage Deduplication Key Rate: {round((1 - total_unique_key_num / total_batch_key_num), 3)}" \
+              f"\nAverage Key Process Speed:{round(total_key_process_speed, 3)} / ms\n"
 
     if RUN_MODE in DDR_LIST:
         ddr_message = construct_ddr_message(display_dict, target_dict, batch_key_num, total_batch_key_num)
