@@ -67,7 +67,7 @@ namespace MxRec {
 
         bool GetFunctionSwitch() const;
         void PreProcessKeys(const std::vector<int64_t>& splitKey, std::vector<uint32_t>& keyCount,
-            absl::flat_hash_map<int64_t, uint32_t>& mergeKeys);
+            absl::flat_hash_map<int64_t, uint32_t>& mergeKeys) const;
 
         // 判断配置是否正确的接口
         static bool IsThresholdCfgOK(const std::vector<ThresholdValue>& thresholds,
@@ -88,7 +88,7 @@ namespace MxRec {
         // 解析m_table2Threshold
         bool ParseThresholdCfg(const std::vector<ThresholdValue>& thresholdValues);
         std::vector<std::string> GetAllNeedEvictTableNames();
-        FeatureAdmitType FeatureAdmitHelper(const int channel, const std::string& tableName,
+        FeatureAdmitType FeatureAdmitHelper(const int channel, const std::string& tableNameOrigin,
                                             const int64_t featureId, const uint32_t featureCnt);
         void FeatureEvictHelper(const std::string& embName, std::vector<emb_key_t>& evictKey);
         void ResetAllRecords();

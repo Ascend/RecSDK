@@ -15,6 +15,7 @@
 #include "utils/common.h"
 #include "key_process/key_process.h"
 #include "ock_ctr_common/include/unique.h"
+#include "ock_ctr_common/include/error_code.h"
 
 using namespace std;
 using namespace MxRec;

@@ -273,17 +273,17 @@ vector<emb_key_t> File::GetKeys()
     return ret;
 }
 
-uint64_t File::GetDataCnt()
+uint64_t File::GetDataCnt() const
 {
     return dataCnt;
 }
 
-uint64_t File::GetFileID()
+uint64_t File::GetFileID() const
 {
     return fileID;
 }
 
-uint64_t File::GetStaleDataCnt()
+uint64_t File::GetStaleDataCnt() const
 {
     return staleDataCnt;
 }

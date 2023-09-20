@@ -51,9 +51,9 @@ vector<string> FeatAdmitNEvictCkpt::GetEmbNames()
 
 CkptTransData FeatAdmitNEvictCkpt::GetDataset(CkptDataType dataType, string embName)
 {
-    map<CkptDataType, function<void()>> dataTransMap { { CkptDataType::TABLE_2_THRESH,
-        [=] { SetTable2ThreshTrans(embName); } },
-        { CkptDataType::HIST_REC, [=] { SetHistRecTrans(embName); } } };
+    map<CkptDataType, function<void()>> dataTransMap{
+        {CkptDataType::TABLE_2_THRESH, [this, embName] { SetTable2ThreshTrans(embName); }},
+        {CkptDataType::HIST_REC,       [this, embName] { SetHistRecTrans(embName); }}};
 
     CleanTransfer();
     dataTransMap.at(dataType)();
@@ -62,9 +62,9 @@ CkptTransData FeatAdmitNEvictCkpt::GetDataset(CkptDataType dataType, string embN
 
 void FeatAdmitNEvictCkpt::SetDataset(CkptDataType dataType, string embName, CkptTransData& loadedData)
 {
-    map<CkptDataType, function<void()>> dataLoadMap { { CkptDataType::TABLE_2_THRESH,
-        [=] { SetTable2Thresh(embName); } },
-        { CkptDataType::HIST_REC, [=] { SetHistRec(embName); } } };
+    map<CkptDataType, function<void()>> dataLoadMap{
+        {CkptDataType::TABLE_2_THRESH, [this, embName] { SetTable2Thresh(embName); }},
+        {CkptDataType::HIST_REC,       [this, embName] { SetHistRec(embName); }}};
 
     CleanTransfer();
     transferData = move(loadedData);
@@ -144,7 +144,7 @@ void FeatAdmitNEvictCkpt::SetHistRec(string embName)
     for (size_t i = featItemInfoOffset; i < featItemInfoTotalSize + featItemInfoOffset; i += featItemInfoSaveNum) {
         process = i % printPerStep;
         if (process == 1) {
-            LOG_DEBUG("====in SetHistRec, process : %f",  i/featItemInfoTotalSize);
+            LOG_DEBUG("====in SetHistRec, process : %f", i / featItemInfoTotalSize);
         }
         auto featureId = transArr[i + featureIdIdxOffset];
         auto count = transArr[i + countIdxOffset];

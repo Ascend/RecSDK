@@ -11,7 +11,7 @@ bool SSDEngine::IsTableExist(const string &tableName)
     if (!isRunning) {
         throw invalid_argument("SSDEngine not running");
     }
-    auto it = tableMap.find(tableName);
+    auto it = as_const(tableMap).find(tableName);
     return !(it == tableMap.end());
 }
 
@@ -20,7 +20,7 @@ bool SSDEngine::IsKeyExist(const string &tableName, emb_key_t key)
     if (!isRunning) {
         throw invalid_argument("SSDEngine not running");
     }
-    auto it = tableMap.find(tableName);
+    auto it = as_const(tableMap).find(tableName);
     if (it == tableMap.end()) {
         throw invalid_argument("table not found");
     }
@@ -35,7 +35,7 @@ void SSDEngine::CreateTable(const string &tableName, vector<string> savePaths, u
     if (savePaths.empty()) {
         throw invalid_argument("SSDEngine input savePaths is empty");
     }
-    auto it = tableMap.find(tableName);
+    auto it = as_const(tableMap).find(tableName);
     if (it != tableMap.end()) {
         throw invalid_argument("table already exist");
     }
@@ -47,7 +47,7 @@ void SSDEngine::InsertEmbeddings(const string &tableName, vector<emb_key_t> &key
     if (!isRunning) {
         throw invalid_argument("SSDEngine not running");
     }
-    auto it = tableMap.find(tableName);
+    auto it = as_const(tableMap).find(tableName);
     if (it == tableMap.end()) {
         throw invalid_argument("table not found");
     }
@@ -64,7 +64,7 @@ void SSDEngine::DeleteEmbeddings(const string &tableName, vector<emb_key_t> &key
     if (!isRunning) {
         throw invalid_argument("SSDEngine not running");
     }
-    auto it = tableMap.find(tableName);
+    auto it = as_const(tableMap).find(tableName);
     if (it == tableMap.end()) {
         throw invalid_argument("table not found");
     }
@@ -77,7 +77,7 @@ int64_t SSDEngine::GetTableAvailableSpace(const string &tableName)
     if (!isRunning) {
         throw invalid_argument("SSDEngine not running");
     }
-    auto it = tableMap.find(tableName);
+    auto it = as_const(tableMap).find(tableName);
     if (it == tableMap.end()) {
         throw invalid_argument("table not found");
     }
@@ -90,7 +90,7 @@ void SSDEngine::Save(int step)
     if (!isRunning) {
         throw invalid_argument("SSDEngine not running");
     }
-    for (auto item: tableMap) {
+    for (auto item: as_const(tableMap)) {
         item.second->Save(step);
     }
 }
@@ -100,7 +100,7 @@ void SSDEngine::Load(const string &tableName, vector<string> savePaths, uint64_t
     if (!isRunning) {
         throw invalid_argument("SSDEngine not running");
     }
-    auto it = tableMap.find(tableName);
+    auto it = as_const(tableMap).find(tableName);
     if (it != tableMap.end()) {
         throw invalid_argument("table already exist");
     }
@@ -130,7 +130,7 @@ void SSDEngine::CompactMonitor()
         duration = chrono::duration_cast<std::chrono::seconds>(end - start);
         if (duration >= compactPeriod) {
             LOG_DEBUG("SSDEngine CompactMonitor start compact");
-            for (const auto &item: tableMap) {
+            for (const auto &item: as_const(tableMap)) {
                 item.second->Compact(false);
             }
             LOG_DEBUG("SSDEngine CompactMonitor end compact");
@@ -147,7 +147,7 @@ vector<vector<float>> SSDEngine::FetchEmbeddings(const string &tableName, vector
     if (!isRunning) {
         throw invalid_argument("SSDEngine not running");
     }
-    auto it = tableMap.find(tableName);
+    auto it = as_const(tableMap).find(tableName);
     if (it == tableMap.end()) {
         throw invalid_argument("table not found");
     }

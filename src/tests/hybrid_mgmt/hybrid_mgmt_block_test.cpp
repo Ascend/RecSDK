@@ -111,7 +111,7 @@ TEST_F(HybridMgmtBlockTest, ResetAll)
     ASSERT_EQ(hybridMgmtBlock->hybridBatchId[0], 0);
 }
 
-TEST_F(HybridMgmtBlockTest, CheckSaveEmbdMapValid)
+TEST_F(HybridMgmtBlockTest, CheckSaveEmbMapValid)
 {
     hybridMgmtBlock = std::make_unique<HybridMgmtBlock>();
     hybridMgmtBlock->SetStepInterval(1, 1);
@@ -119,18 +119,18 @@ TEST_F(HybridMgmtBlockTest, CheckSaveEmbdMapValid)
 
     hybridMgmtBlock->pythonBatchId[0] = 0;
     hybridMgmtBlock->hybridBatchId[0] = 0;
-    hybridMgmtBlock->CheckSaveEmbdMapValid();
-    int status0 = hybridMgmtBlock->CheckSaveEmbdMapValid();
+    hybridMgmtBlock->CheckSaveEmbMapValid();
+    int status0 = hybridMgmtBlock->CheckSaveEmbMapValid();
 
     hybridMgmtBlock->pythonBatchId[0] = 0;
     hybridMgmtBlock->hybridBatchId[0] = 1;
-    hybridMgmtBlock->CheckSaveEmbdMapValid();
-    int status1 = hybridMgmtBlock->CheckSaveEmbdMapValid();
+    hybridMgmtBlock->CheckSaveEmbMapValid();
+    int status1 = hybridMgmtBlock->CheckSaveEmbMapValid();
 
     int step2 = 2;
     hybridMgmtBlock->pythonBatchId[0] = 0;
     hybridMgmtBlock->hybridBatchId[0] = step2;
-    int status2 = hybridMgmtBlock->CheckSaveEmbdMapValid();
+    int status2 = hybridMgmtBlock->CheckSaveEmbMapValid();
     ASSERT_EQ(status0, 0);
     ASSERT_EQ(status1, 1);
     ASSERT_EQ(status2, -1);

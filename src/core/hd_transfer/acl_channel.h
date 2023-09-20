@@ -19,14 +19,14 @@ namespace tensorflow {
     Status RecvTensorByAcl(acltdtChannelHandle *acl_handle, std::vector<Tensor> &tensors);
 #else
 
-    Status RecvTensorByAcl(const acltdtChannelHandle* acl_handle, std::vector<Tensor>& tensors);
+    Status RecvTensorByAcl(const acltdtChannelHandle* aclHandle, std::vector<Tensor>& tensors);
 
-    Status StopRecvTensorByAcl(acltdtChannelHandle **handle, const std::string &channel_name);
+    Status StopRecvTensorByAcl(acltdtChannelHandle **handle, const std::string &channelName);
 
 #endif
 
-    Status SendTensorsByAcl(const acltdtChannelHandle* acl_handle, acltdtTensorType acl_type,
-                            const std::vector<Tensor>& tensors, bool& is_need_resend);
+    Status SendTensorsByAcl(const acltdtChannelHandle* aclHandle, acltdtTensorType aclType,
+                            const std::vector<Tensor>& tensors, bool& isNeedResend);
 
 }  // namespace tensorflow
 

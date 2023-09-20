@@ -11,10 +11,10 @@
 
 using namespace MxRec;
 
-TruncatedNormalInitializer::TruncatedNormalInitializer(int start, int len, std::tuple<float, float, int, float> ret)
-    : start(start), len(len)
+TruncatedNormalInitializer::TruncatedNormalInitializer(int start, int len, NormalInitializerInfo& initInfo)
+    : start(start), len(len), mean(initInfo.mean), stddev(initInfo.stddev), seed(initInfo.seed)
 {
-    std::tie(mean, stddev, seed, initParam) = ret;
+    initParam = initInfo.initK;
 
     generator = std::default_random_engine(seed);
     distribution = std::normal_distribution<float>(mean, stddev);
@@ -32,7 +32,7 @@ void TruncatedNormalInitializer::GenerateData(float* const emb, const int embSiz
         LOG_WARN("InitializeInfo start {} + len {} is larger than embedding size {}.", start, len, embSize);
         return;
     }
-    std::generate_n(emb + start, len, [&]() {
+    std::generate_n(emb + start, len, [this]() {
         float tmp = initParam * distribution(generator);
         while (tmp < minBound || tmp > maxBound) {
             tmp = initParam * distribution(generator);

@@ -43,11 +43,11 @@ namespace MxRec {
 
         vector<emb_key_t> GetKeys();
 
-        uint64_t GetDataCnt();
+        uint64_t GetDataCnt() const;
 
-        uint64_t GetFileID();
+        uint64_t GetFileID() const;
 
-        uint64_t GetStaleDataCnt();
+        uint64_t GetStaleDataCnt() const;
 
     private:
         uint64_t fileID;  // init by constructor

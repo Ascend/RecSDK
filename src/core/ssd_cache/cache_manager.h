@@ -55,7 +55,7 @@ namespace MxRec {
 
         // 转换DDR和SSD数据
         TransferRet TransferDDREmbWithSSD(const std::string& embTableName, EmbHashMapInfo& embHashMap,
-                                          const vector<emb_key_t>& keys, int channelId);
+                                          const vector<emb_key_t>& originalKeys, int channelId);
 
         /* HBM与DDR换入换出时刷新频次信息 */
         void RefreshFreqInfoCommon(const string& embTableName, vector<emb_key_t>& keys,
@@ -81,11 +81,11 @@ namespace MxRec {
 
         void GetDDREmbInfo(vector<emb_key_t>& keys,
                            const std::string& embTableName, EmbHashMapInfo& embHashMap,
-                           vector<size_t>& ddrTransferPos, vector<vector<float>>& ddrEmbData);
+                           vector<size_t>& ddrTransferPos, vector<vector<float>>& ddrEmbData) const;
 
         void UpdateDDREmbInfo(const std::string& embTableName,
                               vector<size_t>& ddrTransferPos,
-                              vector<vector<float>>& ssdEmbData);
+                              vector<vector<float>>& ssdEmbData) const;
 
         void RefreshRelateInfoWithDDR2SSD(const std::string& embTableName, EmbHashMapInfo& embHashMap,
                                           vector<emb_key_t>& ddrSwapOutKeys, vector<freq_num_t>& ddrSwapOutCounts);
@@ -111,6 +111,14 @@ namespace MxRec {
 
         static void HandleDDRTransferPos(vector<size_t>& ddrTransferPos, vector<emb_key_t>& externalSSDKeys,
                                   EmbHashMapInfo& embHashMap);
+
+        inline void GetExternalKeys(EmbHashMapInfo& embHashMap, vector<emb_key_t>& externalKeys,
+                                    vector<emb_key_t>& internalKeys, const vector<emb_key_t>& keys);
+
+        void AddDebugAndTraceLog(size_t batchKeySize, vector<emb_key_t>& externalKeys,
+                                 vector<emb_key_t>& externalSSDKeys);
+
+        void HandleRepeatAndInvalidKey(const vector<emb_key_t>& originalKeys, vector<emb_key_t>& keys);
 
         unordered_map<std::string, EmbBaseInfo> embBaseInfos;
 

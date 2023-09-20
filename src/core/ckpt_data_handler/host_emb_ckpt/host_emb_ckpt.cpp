@@ -49,8 +49,9 @@ vector<string> HostEmbCkpt::GetEmbNames()
 // save info and data
 CkptTransData HostEmbCkpt::GetDataset(CkptDataType dataType, string embName)
 {
-    map<CkptDataType, function<void()>> dataTransMap { { CkptDataType::EMB_INFO, [=] { SetEmbInfoTrans(embName); } },
-        { CkptDataType::EMB_DATA, [=] { SetEmbDataTrans(embName); } } };
+    map<CkptDataType, function<void()>> dataTransMap{
+        {CkptDataType::EMB_INFO, [this, embName] { SetEmbInfoTrans(embName); }},
+        {CkptDataType::EMB_DATA, [this, embName] { SetEmbDataTrans(embName); }}};
 
     CleanTransfer();
     dataTransMap.at(dataType)();
@@ -61,16 +62,15 @@ void HostEmbCkpt::SetDataset(CkptDataType dataType, string embName, CkptTransDat
 {
     LOG_INFO("Parameter dataType:{}, embName:{}, loadedData:{}",
         dataType, embName, loadedData.datasetSize);
-    return;
 }
 
 // load info and data
 void HostEmbCkpt::SetDatasetForLoadEmb(CkptDataType dataType, string embName, CkptTransData& loadedData,
                                        CkptData& ckptData)
 {
-    map<CkptDataType, function<void()>> dataLoadMap {
-        { CkptDataType::EMB_INFO, [&] { SetEmbInfo(embName, ckptData); } },
-        { CkptDataType::EMB_DATA, [&] { SetEmbData(embName, ckptData); } } };
+    map<CkptDataType, function<void()>> dataLoadMap{
+        {CkptDataType::EMB_INFO, [this, embName, &ckptData] { SetEmbInfo(embName, ckptData); }},
+        {CkptDataType::EMB_DATA, [this, embName, &ckptData] { SetEmbData(embName, ckptData); }}};
 
     CleanTransfer();
     transferData = move(loadedData);
@@ -116,10 +116,9 @@ void HostEmbCkpt::SetEmbInfo(string embName, CkptData& ckptData)
 }
 
 // load Emb data
-void HostEmbCkpt::SetEmbData(string embName, CkptData& ckptData)
+void HostEmbCkpt::SetEmbData(string embName, CkptData& ckptData) const
 {
     LOG_INFO("Parameter embName:{}, ckptData:{}", embName, ckptData.embHashMaps.empty());
-    return;
 }
 
 int HostEmbCkpt::GetEmbInfoSize()

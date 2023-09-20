@@ -54,8 +54,8 @@ vector<string> KeyFreqMapCkpt::GetEmbNames()
 CkptTransData KeyFreqMapCkpt::GetDataset(CkptDataType dataType, string embName)
 {
     map<CkptDataType, function<void()>> dataTransMap {
-        { CkptDataType::DDR_FREQ_MAP, [=] { SetDDRFreqMapTrans(embName); } },
-        { CkptDataType::EXCLUDE_FREQ_MAP, [=] { SetExcludeDDRFreqMapTrans(embName); } } };
+        {CkptDataType::DDR_FREQ_MAP,     [this, embName] { SetDDRFreqMapTrans(embName); }},
+        {CkptDataType::EXCLUDE_FREQ_MAP, [this, embName] { SetExcludeDDRFreqMapTrans(embName); }}};
 
     CleanTransfer();
     dataTransMap.at(dataType)();
@@ -65,8 +65,8 @@ CkptTransData KeyFreqMapCkpt::GetDataset(CkptDataType dataType, string embName)
 void KeyFreqMapCkpt::SetDataset(CkptDataType dataType, string embName, CkptTransData& loadedData)
 {
     map<CkptDataType, function<void()>> dataLoadMap {
-        { CkptDataType::DDR_FREQ_MAP, [=] { SetDDRFreqMaps(embName); } },
-        { CkptDataType::EXCLUDE_FREQ_MAP, [=] { SetExcludeDDRFreqMaps(embName); } } };
+        {CkptDataType::DDR_FREQ_MAP,     [this, embName] { SetDDRFreqMaps(embName); }},
+        {CkptDataType::EXCLUDE_FREQ_MAP, [this, embName] { SetExcludeDDRFreqMaps(embName); }}};
 
     CleanTransfer();
     transferData = move(loadedData);

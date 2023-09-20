@@ -11,10 +11,10 @@
 
 using namespace MxRec;
 
-RandomNormalInitializer::RandomNormalInitializer(int start, int len, std::tuple<float, float, int, float> ret)
-    : start(start), len(len)
+RandomNormalInitializer::RandomNormalInitializer(int start, int len, NormalInitializerInfo& initInfo)
+    : start(start), len(len), mean(initInfo.mean), stddev(initInfo.stddev), seed(initInfo.seed)
 {
-    std::tie(mean, stddev, seed, initParam) = ret;
+    initParam = initInfo.initK;
     generator = std::default_random_engine(seed);
     distribution = std::normal_distribution<float>(mean, stddev);
 }
@@ -28,5 +28,5 @@ void RandomNormalInitializer::GenerateData(float* const emb, const int embSize)
         LOG_WARN("InitializeInfo start {} + len {} is larger than embedding size {}.", start, len, embSize);
         return;
     }
-    std::generate_n(emb + start, len, [&]() { return initParam * distribution(generator); });
+    std::generate_n(emb + start, len, [this]() { return initParam * distribution(generator); });
 }

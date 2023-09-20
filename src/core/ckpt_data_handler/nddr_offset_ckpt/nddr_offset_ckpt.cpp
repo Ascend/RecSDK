@@ -38,7 +38,7 @@ vector<string> NddrOffsetCkpt::GetDirNames()
 vector<string> NddrOffsetCkpt::GetEmbNames()
 {
     vector<string> embNames;
-    for (const auto& item : saveMaxOffset) {
+    for (const auto& item : as_const(saveMaxOffset)) {
         embNames.push_back(item.first);
     }
     return embNames;

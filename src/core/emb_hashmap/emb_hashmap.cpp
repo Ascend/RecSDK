@@ -17,9 +17,9 @@
 
 using namespace MxRec;
 
-void EmbHashMap::Init(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos, bool ifLoad)
+void EmbHashMap::Init(const RankInfo& ri, const vector<EmbInfo>& embInfos, bool ifLoad)
 {
-    this->rankInfo = rankInfo;
+    this->rankInfo = ri;
     if (!ifLoad) {
         EmbHashMapInfo embHashMapInfo;
         LOG_INFO("init emb hash map from scratch");
@@ -39,7 +39,7 @@ void EmbHashMap::Init(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
     }
 }
 
-inline void ClearLookupAndSwapOffset(EmbHashMapInfo& embHashMap)
+void EmbHashMap::ClearLookupAndSwapOffset(EmbHashMapInfo& embHashMap) const
 {
     embHashMap.swapPos.clear();
     embHashMap.lookUpVec.clear();
@@ -153,7 +153,7 @@ void EmbHashMap::FindAndUpdateOffset(const string& embName, vector<emb_key_t>& k
     }
 }
 
-int32_t EmbHashMap::FindNewOffset(const emb_key_t& key, EmbHashMapInfo& embHashMap)
+int32_t EmbHashMap::FindNewOffset(const emb_key_t& key, EmbHashMapInfo& embHashMap) const
 {
     int32_t offset;
     const auto& iter = embHashMap.hostHashMap.find(key);
@@ -219,7 +219,7 @@ auto EmbHashMap::GetHashMaps() -> absl::flat_hash_map<string, EmbHashMapInfo>
     LOG_DEBUG(HYBRID_BLOCKING + " start GetHashMaps");
     HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
     auto embHashMapsOld = embHashMaps;
-    int checkResult = hybridMgmtBlock->CheckSaveEmbdMapValid();
+    int checkResult = hybridMgmtBlock->CheckSaveEmbMapValid();
     if (checkResult == 0) {
         // 检查是否需要回退
         return embHashMapsOld;
@@ -236,8 +236,8 @@ auto EmbHashMap::GetHashMaps() -> absl::flat_hash_map<string, EmbHashMapInfo>
                 embHashMap.hostHashMap[oldKey] = static_cast<int>(tempOffset);
             }
             embHashMap.maxOffset = embHashMap.maxOffsetOld;
-            for (auto &Offset2Key: embHashMap.devOffset2KeyOld) {
-                embHashMap.devOffset2Key[Offset2Key.first] = Offset2Key.second;
+            for (auto &offset2Key: embHashMap.devOffset2KeyOld) {
+                embHashMap.devOffset2Key[offset2Key.first] = offset2Key.second;
             }
         }
         return embHashMapsOld;
@@ -264,7 +264,7 @@ void EmbHashMapInfo::SetStartCount()
 /// 判断HBM是否有剩余空间
 /// \param i 查询向量的大小
 /// \return
-bool EmbHashMapInfo::HasFree(size_t i)
+bool EmbHashMapInfo::HasFree(size_t i) const
 {
     return freeSize < i;
 }
@@ -404,7 +404,7 @@ void EmbHashMap::FindOffset(const string& embName, const vector<emb_key_t>& keys
 /// \param channelId 通道索引（训练/推理）
 /// \param offset 未初始化变量，用于记录
 /// \return
-bool EmbHashMap::FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHashMap, int channelId, size_t& offset)
+bool EmbHashMap::FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHashMap, int channelId, size_t& offset) const
 
 {
     const auto& iter = embHashMap.hostHashMap.find(key);
@@ -519,7 +519,7 @@ bool EmbHashMap::FindSwapPosOld(const string& embName, emb_key_t key, size_t hos
 /// HBM-DDR换入换出时刷新频次信息
 /// \param embName emb表名
 /// \param embHashMap emb hash map
-void EmbHashMap::RefreshFreqInfoWithSwap(const string& embName, EmbHashMapInfo& embHashMap)
+void EmbHashMap::RefreshFreqInfoWithSwap(const string& embName, EmbHashMapInfo& embHashMap) const
 {
     if (!isSSDEnabled) {
         return;
@@ -583,7 +583,7 @@ void EmbHashMap::AddCacheManagerTraceLog(const string& embTableName, const EmbHa
 /// \param embTableName emb表名
 /// \param key key
 /// \param type 记录类型枚举
-void EmbHashMap::AddKeyFreqInfo(const string& embTableName, const emb_key_t& key, RecordType type)
+void EmbHashMap::AddKeyFreqInfo(const string& embTableName, const emb_key_t& key, RecordType type) const
 {
     if (!isSSDEnabled) {
         return;

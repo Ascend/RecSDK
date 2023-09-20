@@ -10,14 +10,16 @@
 #include "utils/common.h"
 #include "hybrid_mgmt_block.h"
 
+using namespace MxRec;
+
 /// 检查当前hybrid是否运行到了应该阻塞的位置
 /// \param channelId train 0 eval 1
 void HybridMgmtBlock::CheckAndSetBlock(int channelId)
 {
     // 判断save时候的阻塞情况
     // 当在进行训练通道，且save interval不为0和-1（不需要阻塞），且运行到了需要阻塞的步骤
-    if (channelId==TRAIN_CHANNEL_ID && saveInterval!=0
-        && saveInterval!=-1 && hybridBatchId[TRAIN_CHANNEL_ID]%saveInterval==0) {
+    if (channelId == TRAIN_CHANNEL_ID && saveInterval != 0 &&
+        saveInterval != -1 && hybridBatchId[TRAIN_CHANNEL_ID] % saveInterval == 0) {
         LOG_DEBUG(HYBRID_BLOCKING + "blocking by save saveInterval {} pythonBatchId {} hybridBatchId {}",
                   saveInterval, pythonBatchId[channelId], hybridBatchId[channelId]);
         isBlock[TRAIN_CHANNEL_ID] = true;
@@ -41,7 +43,7 @@ void HybridMgmtBlock::CheckAndSetBlock(int channelId)
 void HybridMgmtBlock::CheckAndNotifyWake(int channelId)
 {
     LOG_DEBUG(HYBRID_BLOCKING + "start notify channelId {} pythonBatchId {} hybridBatchId {}",
-        channelId, pythonBatchId[channelId], hybridBatchId[channelId]);
+              channelId, pythonBatchId[channelId], hybridBatchId[channelId]);
 
     CheckValid(channelId);
     if (pythonBatchId[channelId] >= hybridBatchId[channelId]) {
@@ -115,7 +117,6 @@ void HybridMgmtBlock::CheckValid(int channelId)
             lastRunChannelId, hybridBatchId[lastRunChannelId]);
     }
     lastRunChannelId = channelId;
-    return;
 }
 
 /// 进行阻塞操作
@@ -134,7 +135,6 @@ void HybridMgmtBlock::DoBlock(int channelId)
     }
     LOG_DEBUG(HYBRID_BLOCKING + "HybridMgmt is starting to wake up channelId {} hybridBatchId {}",
         channelId, hybridBatchId[channelId]);
-    return;
 }
 
 /// 重置所有的步数，主要用于图重构的情况，readembedkey算子重建
@@ -152,7 +152,7 @@ void HybridMgmtBlock::ResetAll(int channelId)
 
 /// 检查当前的步数是否可以进行save
 /// \return 0 is legal, 1 需要回退一步, -1 表示错误
-int HybridMgmtBlock::CheckSaveEmbdMapValid()
+int HybridMgmtBlock::CheckSaveEmbMapValid()
 {
     // 检查数据通道此时的HashMap是否被提前处理了
     if (pythonBatchId[lastRunChannelId] >= hybridBatchId[lastRunChannelId]) {
@@ -198,13 +198,12 @@ void HybridMgmtBlock::Destroy()
     isRunning = false;
 }
 
-
-void HybridMgmtBlock::SetRankInfo(RankInfo rankInfo)
+void HybridMgmtBlock::SetRankInfo(RankInfo ri)
 {
-    this->stepsInterval[TRAIN_CHANNEL_ID] = rankInfo.maxStep[TRAIN_CHANNEL_ID];
-    this->stepsInterval[EVAL_CHANNEL_ID] = rankInfo.maxStep[EVAL_CHANNEL_ID];
-    this->saveInterval = rankInfo.maxStep[SAVE_STEP_INDEX];
-    this->rankInfo = rankInfo;
+    this->stepsInterval[TRAIN_CHANNEL_ID] = ri.maxStep[TRAIN_CHANNEL_ID];
+    this->stepsInterval[EVAL_CHANNEL_ID] = ri.maxStep[EVAL_CHANNEL_ID];
+    this->saveInterval = ri.maxStep[SAVE_STEP_INDEX];
+    this->rankInfo = ri;
 };
 
 void HybridMgmtBlock::SetStepInterval(int trainStep, int evalStep)

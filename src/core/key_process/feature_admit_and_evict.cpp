@@ -212,7 +212,7 @@ bool FeatureAdmitAndEvict::GetFunctionSwitch() const
 }
 
 void FeatureAdmitAndEvict::PreProcessKeys(const std::vector<int64_t>& splitKey, std::vector<uint32_t>& keyCount,
-    absl::flat_hash_map<int64_t, uint32_t>& mergeKeys)
+    absl::flat_hash_map<int64_t, uint32_t>& mergeKeys) const
 {
     for (size_t i = 0; i < splitKey.size(); ++i) {
         if (splitKey[i] == -1) {

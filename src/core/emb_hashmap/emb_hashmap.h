@@ -24,7 +24,7 @@ namespace MxRec {
     public:
         EmbHashMap() = default;
 
-        void Init(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos, bool ifLoad = false);
+        void Init(const RankInfo& ri, const vector<EmbInfo>& embInfos, bool ifLoad = false);
 
         void Process(const string& embName, std::vector<emb_key_t>& keys, DDRParam& ddrParam, int channelId);
 
@@ -52,7 +52,7 @@ namespace MxRec {
         void FindOffset(const string& embName, const vector<emb_key_t>& keys,
                         size_t currentBatchId, size_t keepBatchId, int channelId);
 
-        bool FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHashMap, int channelId, size_t& offset);
+        bool FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHashMap, int channelId, size_t& offset) const;
 
         void UpdateBatchId(const vector<emb_key_t>& keys, size_t currentBatchId, size_t keySize,
                            EmbHashMapInfo& embHashMap) const;
@@ -75,17 +75,19 @@ namespace MxRec {
         void FindAndUpdateBatchId(vector<emb_key_t>& keys, size_t currentBatchId, size_t keySize,
                                   EmbHashMapInfo& embHashMap) const;
 
-        int32_t FindNewOffset(const emb_key_t& key, EmbHashMapInfo& embHashMap);
+        int32_t FindNewOffset(const emb_key_t& key, EmbHashMapInfo& embHashMap) const;
 
-        void AddCacheManagerTraceLog(const string& embName, const EmbHashMapInfo& embHashMap) const;
+        void AddCacheManagerTraceLog(const string& embTableName, const EmbHashMapInfo& embHashMap) const;
 
-        void AddKeyFreqInfo(const string& embTableName, const emb_key_t& key, RecordType type);
+        void AddKeyFreqInfo(const string& embTableName, const emb_key_t& key, RecordType type) const;
+
+        void ClearLookupAndSwapOffset(EmbHashMapInfo& embHashMap) const;
 
         RankInfo rankInfo;
         int swapId { 0 };
 
     GTEST_PRIVATE:
-        void RefreshFreqInfoWithSwap(const string& embName, EmbHashMapInfo& embHashMap);
+        void RefreshFreqInfoWithSwap(const string& embName, EmbHashMapInfo& embHashMap) const;
     };
 }
 

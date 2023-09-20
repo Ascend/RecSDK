@@ -35,7 +35,7 @@ bool HybridMgmt::InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>&
 /// Openmpi通信域进程数设置、计算所有表host特征数量总数、设置训练模式（HBM/DDR）
 /// \param rankInfo
 /// \param embInfos
-void HybridMgmt::InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfos)
+void HybridMgmt::InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfos) const
 {
 #ifndef GTEST
     MPI_Comm_size(MPI_COMM_WORLD, &rankInfo.rankSize);
@@ -171,10 +171,10 @@ void HybridMgmt::AddCacheManagerTraceLog(CkptData& saveData)
 
 /// 保存CacheManager时恢复数据(与恢复hostHashMap类似，仅恢复保存数据,不修改源数据)
 /// \param saveData 保存数据
-void HybridMgmt::RestoreFreq4Save(CkptData& saveData)
+void HybridMgmt::RestoreFreq4Save(CkptData& saveData) const
 {
     // 仅在差异1步时执行恢复操作
-    int checkResult = hybridMgmtBlock->CheckSaveEmbdMapValid();
+    int checkResult = hybridMgmtBlock->CheckSaveEmbMapValid();
     if (checkResult != 1) {
         return;
     }
@@ -373,7 +373,7 @@ key_offset_map_t HybridMgmt::SendHostMap(const string tableName)
         keyOffsetMap = preprocess->GetKeyOffsetMap();
     }
 
-    if ((!keyOffsetMap.empty()) && keyOffsetMap.count(tableName)) {
+    if ((!keyOffsetMap.empty()) && keyOffsetMap.count(tableName) > 0) {
         for (const auto& it : keyOffsetMap.at(tableName)) {
             sendKeyOffsetMap[it.first] = it.second;
         }
@@ -393,13 +393,13 @@ void HybridMgmt::ReceiveHostMap(all_key_offset_map_t ReceiveKeyOffsetMap)
     key_offset_mem_t loadKeyOffsetMap;
     offset_mem_t loadMaxOffset;
     if (!ReceiveKeyOffsetMap.empty()) {
-        for (const auto& KeyOffsetMap : ReceiveKeyOffsetMap) {
-            auto& SingleHashMap = loadKeyOffsetMap[KeyOffsetMap.first];
-            auto& MaxOffset = loadMaxOffset[KeyOffsetMap.first];
-            for (const auto& it : KeyOffsetMap.second) {
-                SingleHashMap[it.first] = it.second;
+        for (const auto& keyOffsetMap : as_const(ReceiveKeyOffsetMap)) {
+            auto& singleHashMap = loadKeyOffsetMap[keyOffsetMap.first];
+            auto& maxOffset = loadMaxOffset[keyOffsetMap.first];
+            for (const auto& it : keyOffsetMap.second) {
+                singleHashMap[it.first] = it.second;
             }
-            MaxOffset = KeyOffsetMap.second.size();
+            maxOffset = keyOffsetMap.second.size();
         }
     }
     if (!mgmtRankInfo.noDDR) {
@@ -422,39 +422,39 @@ void HybridMgmt::ReceiveHostMap(all_key_offset_map_t ReceiveKeyOffsetMap)
 /// \param setupHostEmbs
 /// \param embTableCount
 /// \return
-bool HybridMgmt::IsLoadDataMatches(emb_mem_t* loadHostEmbs, EmbInfo* setupHostEmbs, size_t& embTableCount)
+bool HybridMgmt::IsLoadDataMatches(emb_mem_t& loadHostEmbs, EmbInfo& setupHostEmbs, size_t& embTableCount) const
 {
     bool loadDataMatches = { true };
-    const auto& loadEmbTable { loadHostEmbs->find(setupHostEmbs->name) };
-    if (loadEmbTable != loadHostEmbs->end()) {
+    const auto& loadEmbTable { loadHostEmbs.find(setupHostEmbs.name) };
+    if (loadEmbTable != loadHostEmbs.end()) {
         embTableCount++;
 
         const auto& loadEmbInfo { loadEmbTable->second.hostEmbInfo };
-        if (setupHostEmbs->sendCount != loadEmbInfo.sendCount) {
+        if (setupHostEmbs.sendCount != loadEmbInfo.sendCount) {
             LOG_ERROR(MGMT + "Load data sendCount {} for table {} does not match setup sendCount {}",
-                      setupHostEmbs->sendCount, setupHostEmbs->name, loadEmbInfo.sendCount);
+                      setupHostEmbs.sendCount, setupHostEmbs.name, loadEmbInfo.sendCount);
             loadDataMatches = false;
         }
-        if (setupHostEmbs->extEmbeddingSize != loadEmbInfo.extEmbeddingSize) {
+        if (setupHostEmbs.extEmbeddingSize != loadEmbInfo.extEmbeddingSize) {
             LOG_ERROR(MGMT + "Load data extEmbeddingSize {} for table {} does not match setup extEmbeddingSize {}",
-                      setupHostEmbs->extEmbeddingSize, setupHostEmbs->name, loadEmbInfo.extEmbeddingSize);
+                      setupHostEmbs.extEmbeddingSize, setupHostEmbs.name, loadEmbInfo.extEmbeddingSize);
             loadDataMatches = false;
         }
-        if (setupHostEmbs->devVocabSize != loadEmbInfo.devVocabSize) {
+        if (setupHostEmbs.devVocabSize != loadEmbInfo.devVocabSize) {
             LOG_ERROR(MGMT + "Load data devVocabSize {} for table {} does not match setup devVocabSize {}",
-                      setupHostEmbs->devVocabSize, setupHostEmbs->name, loadEmbInfo.devVocabSize);
+                      setupHostEmbs.devVocabSize, setupHostEmbs.name, loadEmbInfo.devVocabSize);
             loadDataMatches = false;
         }
-        if (setupHostEmbs->hostVocabSize != loadEmbInfo.hostVocabSize) {
+        if (setupHostEmbs.hostVocabSize != loadEmbInfo.hostVocabSize) {
             LOG_ERROR(MGMT + "Load data hostVocabSize {} for table {} does not match setup hostVocabSize {}",
-                      setupHostEmbs->hostVocabSize, setupHostEmbs->name, loadEmbInfo.hostVocabSize);
+                      setupHostEmbs.hostVocabSize, setupHostEmbs.name, loadEmbInfo.hostVocabSize);
             loadDataMatches = false;
         }
         if (!loadDataMatches) {
             return false;
         }
     } else {
-        LOG_ERROR(MGMT + "Load data does not contain table with table name: {}", setupHostEmbs->name);
+        LOG_ERROR(MGMT + "Load data does not contain table with table name: {}", setupHostEmbs.name);
         return false;
     }
     return true;
@@ -468,7 +468,7 @@ bool HybridMgmt::LoadMatchesDDRSetup(const CkptData& loadData)
     size_t embTableCount { 0 };
     auto loadHostEmbs { loadData.hostEmbs };
     for (EmbInfo setupHostEmbs : mgmtEmbInfo) {
-        if (!IsLoadDataMatches(loadHostEmbs, &setupHostEmbs, embTableCount)) {
+        if (!IsLoadDataMatches(*loadHostEmbs, setupHostEmbs, embTableCount)) {
             return false;
         }
     }
@@ -597,7 +597,7 @@ bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
 
     // 循环处理每个表的数据
     for (const auto& embInfo: mgmtEmbInfo) {
-        TimeCost ParseKeysTC;
+        TimeCost parseKeysTc;
         // get
         TimeCost getTensorsSyncTC;
 
@@ -646,8 +646,8 @@ bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
         // 发送恢复向量
         TimeCost sendRestoreSyncTC;
         hdTransfer->Send(TransferChannel::RESTORE, *infoVecs, channelId, embInfo.name);
-        LOG_DEBUG("sendRestoreSyncTC(ms):{}, sendTensorsSyncTC(ms):{}, ParseKeysTC HBM mode (ms):{}",
-                  sendRestoreSyncTC.ElapsedMS(), sendTensorsSyncTC.ElapsedMS(), ParseKeysTC.ElapsedMS());
+        LOG_DEBUG("sendRestoreSyncTC(ms):{}, sendTensorsSyncTC(ms):{}, parseKeysTc HBM mode (ms):{}",
+                  sendRestoreSyncTC.ElapsedMS(), sendTensorsSyncTC.ElapsedMS(), parseKeysTc.ElapsedMS());
     }
     batchId++;
     return true;
@@ -697,7 +697,7 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
     return true;
 }
 
-inline void HandlePrepareDDRDataRet(TransferRet prepareSSDRet)
+void HybridMgmt::HandlePrepareDDRDataRet(TransferRet prepareSSDRet) const
 {
     LOG_ERROR("Transfer embedding with DDR and SSD error.");
     if (prepareSSDRet == TransferRet::SSD_SPACE_NOT_ENOUGH) {
@@ -757,7 +757,8 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId, int cha
 
     if (GlobalEnv::applyGradientsStrategy == ApplyGradientsStrategyOptions::SUM_SAME_ID_GRADIENTS_AND_APPLY &&
         channelId == TRAIN_CHANNEL_ID && remainBatchOut) {
-        vector<int32_t> uniqueKeys, restoreVecSec;
+        vector<int32_t> uniqueKeys;
+        vector<int32_t> restoreVecSec;
         preprocess->GlobalUnique(offsetsOut, uniqueKeys, restoreVecSec);
 
         TimeCost sendUnikeysSyncTC;
@@ -772,7 +773,7 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId, int cha
 
     TimeCost sendTensorsTC;
     hdTransfer->Send(TransferChannel::LOOKUP, { ddrParam.tmpDataOut.front() }, channelId, embName);
-    ddrParam.tmpDataOut.erase(ddrParam.tmpDataOut.begin());
+    ddrParam.tmpDataOut.erase(ddrParam.tmpDataOut.cbegin());
     hdTransfer->Send(TransferChannel::SWAP, ddrParam.tmpDataOut, channelId, embName);
     if (!mgmtRankInfo.useStatic) {
         auto all2all = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::ALL2ALL);
@@ -853,17 +854,17 @@ bool HybridMgmt::Evict()
     LOG_DEBUG(MGMT + "evict triggered by hook, evict TableNum {}", evictKeyMap.size());
 
     // 表为空，淘汰触发失败
-    if (evictKeyMap.size() == 0) {
+    if (evictKeyMap.empty()) {
         LOG_WARN(MGMT + "evict triggered by hook before dataset in injected");
         return false;
     }
 
     if (mgmtRankInfo.noDDR) {
-        for (auto evict : evictKeyMap) {
+        for (const auto& evict : as_const(evictKeyMap)) {
             preprocess->EvictKeys(evict.first, evict.second);
         }
     } else {
-        for (auto evict : evictKeyMap) {
+        for (const auto& evict : as_const(evictKeyMap)) {
             EvictKeys(evict.first, evict.second);
             EvictSSDKeys(evict.first, evict.second);
         }
@@ -916,7 +917,7 @@ void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
 }
 
 inline void HybridMgmt::PrepareDDRData(const string& embTableName, EmbHashMapInfo& embHashMap,
-                                       const vector<emb_key_t>& keys, int channelId)
+                                       const vector<emb_key_t>& keys, int channelId) const
 {
     if (!isSSDEnabled) {
         return;
@@ -930,7 +931,7 @@ inline void HybridMgmt::PrepareDDRData(const string& embTableName, EmbHashMapInf
     LOG_DEBUG("PrepareDDRData end, TimeCost(ms):{}", prepareDDRDataTc.ElapsedMS());
 }
 
-void HybridMgmt::EvictSSDKeys(const string& embName, const vector<emb_key_t>& keys)
+void HybridMgmt::EvictSSDKeys(const string& embName, const vector<emb_key_t>& keys) const
 {
     if (!isSSDEnabled) {
         return;
@@ -944,7 +945,7 @@ void HybridMgmt::EvictSSDKeys(const string& embName, const vector<emb_key_t>& ke
     cacheManager->EvictSSDEmbedding(embName, ssdKeys);
 }
 
-int HybridMgmt::GetStepFromPath(const string& loadPath)
+int HybridMgmt::GetStepFromPath(const string& loadPath) const
 {
     regex pattern("sparse-model-\\d+-(\\d+)");
     smatch match;
@@ -969,7 +970,7 @@ int HybridMgmt::GetStepFromPath(const string& loadPath)
 /// 通过pyBind在python侧调用，通知hybridMgmt上层即将进行图的执行，需要进行唤醒
 /// \param channelID 通道id
 /// \param steps 运行的步数，由于可能存在循环下沉，所以1个session run 对应N步
-void HybridMgmt::NotifyBySessionRun(int channelID)
+void HybridMgmt::NotifyBySessionRun(int channelID) const
 {
     hybridMgmtBlock->CheckAndNotifyWake(channelID);
 }
@@ -977,7 +978,7 @@ void HybridMgmt::NotifyBySessionRun(int channelID)
 /// 通过pyBind在python侧调用，通知hybridMgmt上层即将进行图的执行
 /// \param channelID 通道id
 /// \param steps 运行的步数，由于可能存在循环下沉，所以1个session run 对应N步
-void HybridMgmt::CountStepBySessionRun(int channelID, int steps)
+void HybridMgmt::CountStepBySessionRun(int channelID, int steps) const
 {
     hybridMgmtBlock->CountPythonStep(channelID, steps);
 }

@@ -22,8 +22,8 @@ namespace MxRec {
         Checkpoint() = default;
         ~Checkpoint() {};
 
-        void SaveModel(string savePath, CkptData& ckptData, RankInfo& mgmtRankInfo, const vector<EmbInfo>& EmbInfo);
-        void LoadModel(string loadPath, CkptData& ckptData, RankInfo& mgmtRankInfo, const vector<EmbInfo>& EmbInfo,
+        void SaveModel(string savePath, CkptData& ckptData, RankInfo& mgmtRankInfo, const vector<EmbInfo>& embInfo);
+        void LoadModel(string loadPath, CkptData& ckptData, RankInfo& mgmtRankInfo, const vector<EmbInfo>& embInfo,
                        const vector<CkptFeatureType>& featureTypes);
 
     private:
@@ -77,7 +77,7 @@ namespace MxRec {
         void MakeUpperLayerSaveDir(const vector<string>& dirNames);
         void MakeDataLayerSaveDir(const vector<string>& embNames, const vector<CkptDataType>& saveDataTypes,
             const unique_ptr<CkptDataHandler>& dataHandler);
-        void MakeSaveDir(const string& dirName);
+        void MakeSaveDir(const string& dirName) const;
         void SaveDataset(const vector<string>& embNames, const vector<CkptDataType>& saveDataTypes,
             const unique_ptr<CkptDataHandler>& dataHandler);
         void WriteStream(CkptTransData& transData, const string& dataDir, size_t dataSize, CkptDataType dataType);
@@ -87,11 +87,11 @@ namespace MxRec {
         void ReadEmbedding(CkptTransData& transData, const string& dataDir, const string& embName);
 
         struct EmbSizeInfo {
-            int embSize;
-            int extEmbSize;  // embSize + (optimizer's slot) * embSize
+            int embSize = 0;
+            int extEmbSize = 0;  // embSize + (optimizer's slot) * embSize
         };
         EmbSizeInfo GetEmbeddingSize(const string& embName);
-        bool CheckEmbNames(const string& embNames);
+        bool CheckEmbNames(const string& embName);
 
         void LoadProcess(CkptData& ckptData);
         void GetUpperLayerLoadDir(const vector<string>& dirNames);
@@ -101,7 +101,7 @@ namespace MxRec {
             const unique_ptr<CkptDataHandler>& dataHandler, CkptData& ckptData);
         void ReadStream(CkptTransData& transData, const string& dataDir, CkptDataType dataType, uint32_t dataElmtBytes);
         void ReadStreamForEmbData(CkptTransData& transData, const string& dataDir, uint32_t dataElmtBytes,
-                                  CkptData& ckptData, string embName);
+                                  CkptData& ckptData, string embName) const;
         void SetTransDataSize(CkptTransData& transData, size_t datasetSize, CkptDataType dataType);
         void ReadDataset(CkptTransData& transData, ifstream& readFile, size_t readSize, CkptDataType dataType,
             size_t idx);
