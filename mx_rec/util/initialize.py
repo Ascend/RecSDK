@@ -15,7 +15,7 @@ from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION, HASHT
 from mx_rec.util.communication.hccl_mgmt import parse_hccl_json, set_hccl_info_without_json
 from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.validator.validator import StringValidator, FileValidator, para_checker_decorator, ClassValidator, \
-    IntValidator, ValueCompareValidator
+    IntValidator, ValueCompareValidator, OptionalStringValidator
 from mx_rec.util.atomic import AtomicInteger
 from mx_rec.util.global_env_conf import global_env
 from mx_rec.util.log import logger
@@ -438,7 +438,8 @@ class ConfigInitializer:
 
 
 @para_checker_decorator(check_option_list=[
-    ("name", ClassValidator, {"classes": (str, type(None))})
+    ("name", ClassValidator, {"classes": (str, type(None))}),
+    ("name", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
 ])
 def set_ascend_global_hashtable_collection(name=ASCEND_GLOBAL_HASHTABLE_COLLECTION):
     ConfigInitializer.get_instance().ascend_global_hashtable_collection = name
