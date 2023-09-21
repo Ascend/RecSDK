@@ -764,7 +764,7 @@ auto KeyProcess::HashSplit(const unique_ptr<emb_batch_t>& batch) const -> tuple<
     EASY_BLOCK("split push back")
     for (size_t i = 0; i < miniBs; i++) {
         const emb_key_t& key = batchData[i];
-        int devId = key % static_cast<emb_key_t>(rankInfo.rankSize);
+        emb_key_t devId = abs(key % static_cast<emb_key_t>(rankInfo.rankSize));
         auto result = uKey.find(key);
         if (result == uKey.end()) {
             splitKeys[devId].push_back(key);
@@ -803,7 +803,7 @@ auto KeyProcess::HashSplitWithFAAE(const unique_ptr<emb_batch_t>& batch) const
     EASY_BLOCK("split push back")
     for (size_t i = 0; i < miniBs; i++) {
         const emb_key_t& key = batchData[i];
-        int devId = key % static_cast<emb_key_t>(rankInfo.rankSize);
+        emb_key_t devId = abs(key % static_cast<emb_key_t>(rankInfo.rankSize));
         auto result = uKey.find(key);
         if (result == uKey.end()) {
             splitKeys[devId].push_back(key);
@@ -861,7 +861,7 @@ tuple<vector<keys_t>, vector<int32_t>, vector<int>>
         if (batch->batchId % hotEmbUpdateStep == 0) {
             keyCountMap[key]++;
         }
-        int devId = key % static_cast<emb_key_t>(rankInfo.rankSize);   // 数据所在的设备devID = key % dev总数 support -1
+        emb_key_t devId = abs(key % static_cast<emb_key_t>(rankInfo.rankSize));
         auto result = uKey.find(key);
         if (result != uKey.end()) { // // already in splitKeys
             restore[i] = result->second;
@@ -1104,7 +1104,7 @@ void KeyProcess::BuildRestoreVec(const unique_ptr<emb_batch_t>& batch, const vec
     int hotNum = 0;
     for (size_t i = 0; i < batch->Size(); ++i) {
         const emb_key_t key = batch->sample[i];
-        int devId = key % static_cast<emb_key_t>(rankInfo.rankSize);
+        emb_key_t devId = abs(key % static_cast<emb_key_t>(rankInfo.rankSize));
         if (restoreVec[i] >= hotPosSize) {
             restoreVec[i] += blockOffset[devId];
         } else if (Log::GetLevel() >= Log::DEBUG) {
