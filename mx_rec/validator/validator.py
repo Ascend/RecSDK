@@ -65,6 +65,18 @@ def para_checker_decorator(check_option_list: List[Tuple[Union[List[str], str],
     def para_checker(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
+            signature = inspect.signature(func)
+            # 获取实际传入的参数，包括默认值参数
+            bound_args = signature.bind(*args, **kwargs)
+            bound_args.apply_defaults()
+            actual_args = dict(bound_args.arguments)
+
+            temp_kwargs = dict()
+            if "kwargs" in actual_args:
+                temp_kwargs = actual_args["kwargs"]
+                del actual_args["kwargs"]
+            actual_args.update(temp_kwargs)
+
             func_spec = inspect.getfullargspec(func)
             # 将函数有默认值的参数加入kwargs
             args_with_default = set()
@@ -75,7 +87,7 @@ def para_checker_decorator(check_option_list: List[Tuple[Union[List[str], str],
                         continue
                     args_with_default.add(arg)
                     kwargs.update({arg: default})
-            logger.debug("[checker wrapper]func %s args: %s, kwargs: %s", func.__name__, args, kwargs)
+            logger.debug("[checker wrapper]func %s kwargs: %s", func.__name__, actual_args)
             # 执行每一个检查项
             for option in check_option_list:
                 optional_check_list = None
@@ -96,11 +108,11 @@ def para_checker_decorator(check_option_list: List[Tuple[Union[List[str], str],
                 # 确认当前检查项需要检查的参数是否在函数参数中
                 paras = []
                 for para_to_be_check in para_list_to_be_check:
-                    if para_to_be_check not in kwargs:
+                    if para_to_be_check not in actual_args:
                         logger.debug("[checker wrapper]invalid para '%s' to be checked, "
                                      "not passed to the function '%s'", para_to_be_check, func.__name__)
                         continue
-                    paras.append(kwargs.get(para_to_be_check))
+                    paras.append(actual_args.get(para_to_be_check))
 
                 # 如果检查的参数不在传参中，跳过该检查项
                 if not paras:
