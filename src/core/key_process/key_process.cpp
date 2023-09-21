@@ -9,6 +9,7 @@
 
 #include "checkpoint/checkpoint.h"
 #include "hd_transfer/hd_transfer.h"
+#include "ock_ctr_common/include/error_code.h"
 
 using namespace std;
 using namespace chrono;
@@ -16,29 +17,6 @@ using namespace MxRec;
 using namespace ock::ctr;
 
 static shared_mutex g_smut;
-
-template<class T>
-inline vector<T> Count2Start(const vector<T>& count)
-{
-    vector<T> start = { 0 };
-    for (size_t i = 0; i < count.size() - 1; ++i) {
-        start.push_back(count[i] + start.back());
-    }
-    return start;
-}
-
-class EndRunExit : public std::exception {
-public:
-    explicit EndRunExit(const char* message) : errorMessage(message) {}
-
-    const char* what() const noexcept override
-    {
-        return errorMessage;
-    }
-
-private:
-    const char* errorMessage;
-};
 
 void KeyProcess::SetupHotEmbUpdateStep()
 {
@@ -221,7 +199,7 @@ void KeyProcess::GetUniqueConfig(UniqueConf& uniqueConf)
 void KeyProcess::InitializeUnique(UniqueConf& uniqueConf, size_t& preBatchSize, bool& uniqueInitialize,
                                   const unique_ptr <emb_batch_t>& batch, UniquePtr& unique)
 {
-    uniqueConf.desiredSize = (uint32_t)batch->Size();
+    uniqueConf.desiredSize = static_cast<uint32_t>(batch->Size());
     if (preBatchSize != batch->Size()) {
         uniqueInitialize = false;
         preBatchSize = batch->Size();
@@ -324,10 +302,10 @@ void KeyProcess::HashSplitHelper(const unique_ptr <emb_batch_t>& batch, vector <
                                  vector <int32_t>& restore, vector <int32_t>& hotPos,
                                  vector <vector<uint32_t>>& keyCount)
 {
-    TimeCost UniqueTC;
+    TimeCost uniqueTc;
     if (m_featureAdmitAndEvict.GetFunctionSwitch() &&
         FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE) {
-        tie(splitKeys, restore, keyCount) = HashSplit_withFAAE(batch); // 按存储dev id切分并去重
+        tie(splitKeys, restore, keyCount) = HashSplitWithFAAE(batch); // 按存储dev id切分并去重
     } else {
         if (rankInfo.useHot) {
             tie(splitKeys, restore, hotPos) = HotHashSplit(batch);   // 按存储dev id切分并去重
@@ -335,7 +313,7 @@ void KeyProcess::HashSplitHelper(const unique_ptr <emb_batch_t>& batch, vector <
             tie(splitKeys, restore) = HashSplit(batch);   // 按存储dev id切分并去重
         }
     }
-    LOG_DEBUG("UniqueTC(ms):{}", UniqueTC.ElapsedMS());
+    LOG_DEBUG("uniqueTc(ms):{}", uniqueTc.ElapsedMS());
 }
 
 bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<emb_batch_t>& batch, UniquePtr& unique,
@@ -352,9 +330,9 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<emb_batch_t>& bat
 
     // 特征准入&淘汰
     if (isWithFAAE &&
-        (m_featureAdmitAndEvict.FeatureAdmit(channel, batch, uniqueInfo.all2AllInfo.keyRecv,
-                                             uniqueInfo.all2AllInfo.countRecv)
-                                             == FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR)) {
+        (m_featureAdmitAndEvict.FeatureAdmit(
+            channel, batch, uniqueInfo.all2AllInfo.keyRecv, uniqueInfo.all2AllInfo.countRecv) ==
+            FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR)) {
         LOG_ERROR(KEY_PROCESS "rank:{} thread:{}, channel:{}, Feature-admit-and-evict error ...",
             rankInfo.rankId, threadId, channel);
         return false;
@@ -482,7 +460,7 @@ vector<uint32_t> KeyProcess::GetCountRecv(const unique_ptr<emb_batch_t>& batch, 
     }
     vector<uint32_t> countSend;
     for (auto& cnt: keyCount) {
-        countSend.insert(countSend.end(), cnt.begin(), cnt.end());
+        countSend.insert(countSend.cend(), cnt.cbegin(), cnt.cend());
     }
     vector<int> sc;
     for (int i = 0; i < rankInfo.rankSize; ++i) {
@@ -590,12 +568,12 @@ void KeyProcess::ProcessBatchWithFastUnique(const unique_ptr<emb_batch_t> &batch
     keySendInfo.keyCount.resize(size);
 
     UniqueIn uniqueIn;
-    uniqueIn.inputIdCnt = (uint32_t)batch->Size();
+    uniqueIn.inputIdCnt = static_cast<uint32_t>(batch->Size());
     uniqueIn.inputId = reinterpret_cast<void *>(batch->sample.data());
 
     EnhancedUniqueOut uniqueOut;
     uniqueOut.uniqueId = reinterpret_cast<void *>(keySendInfo.keySend.data());
-    uniqueOut.index = (uint32_t*)uniqueInfoOut.restore.data();
+    uniqueOut.index = reinterpret_cast<uint32_t*>(uniqueInfoOut.restore.data());
     if (rankInfo.useStatic) {
         uniqueOut.idCnt = idCount.data();
         uniqueOut.idCntFill = keySendInfo.keyCount.data();
@@ -642,9 +620,9 @@ void KeyProcess::HandleHotAndSendCount(const unique_ptr<emb_batch_t> &batch, Uni
         uniqueInfoOut.hotPos.resize(hotEmbTotCount[batch->name]);
         hotOffset = hotEmbTotCount[batch->name];
 
-        TimeCost ComputeHotTc;
+        TimeCost computeHotTc;
         ComputeHotPos(batch, hotMap, uniqueInfoOut.hotPos, uniqueInfoOut.restore, hotOffset);
-        LOG_DEBUG("ComputeHot TimeCost(ms):{}", ComputeHotTc.ElapsedMS());
+        LOG_DEBUG("ComputeHot TimeCost(ms):{}", computeHotTc.ElapsedMS());
         UpdateHotMapForUnique(keySendInfo.keySend, keySendInfo.keyCount,
                               hotOffset, batch->batchId % hotEmbUpdateStep == 0, batch->name);
     }
@@ -660,7 +638,7 @@ void KeyProcess::HandleHotAndSendCount(const unique_ptr<emb_batch_t> &batch, Uni
 }
 
 void KeyProcess::ComputeHotPos(const unique_ptr<emb_batch_t> &batch, absl::flat_hash_map<emb_key_t, int> &hotMap,
-                               vector<int> &hotPos, vector<int32_t> &restore, const int hotOffset)
+                               vector<int> &hotPos, vector<int32_t> &restore, const int hotOffset) const
 {
     auto* inputData = batch->sample.data();
     size_t miniBs = batch->Size();
@@ -737,7 +715,7 @@ auto KeyProcess::ProcessSplitKeys(const unique_ptr<emb_batch_t>& batch, int id,
     vector<int> sc; // send count
     for (const auto& i: splitKeys) {
         sc.push_back(static_cast<int>(i.size()));
-        keySend.insert(keySend.end(), i.begin(), i.end());
+        keySend.insert(keySend.cend(), i.cbegin(), i.cend());
     }
     keys_t keyRecv;
 
@@ -786,7 +764,7 @@ auto KeyProcess::HashSplit(const unique_ptr<emb_batch_t>& batch) const -> tuple<
     EASY_BLOCK("split push back")
     for (size_t i = 0; i < miniBs; i++) {
         const emb_key_t& key = batchData[i];
-        int devId = static_cast<int>(key) & (rankInfo.rankSize - 1); // 数据所在的设备devID = key % dev总数 support -1
+        int devId = key % static_cast<emb_key_t>(rankInfo.rankSize);
         auto result = uKey.find(key);
         if (result == uKey.end()) {
             splitKeys[devId].push_back(key);
@@ -798,30 +776,20 @@ auto KeyProcess::HashSplit(const unique_ptr<emb_batch_t>& batch) const -> tuple<
     }
     EASY_END_BLOCK
 
-    LOG_TRACE("dump splitKeys {}", [&] {
-        stringstream ssTrace;
-        for (int devId = 0; devId < rankInfo.rankSize; ++devId) {
-            ssTrace << '|' << devId << ":";
-            for (auto x: splitKeys[devId]) {
-                ssTrace << x << ',';
-            }
-            ssTrace << '|';
-        }
-        return ssTrace.str();
-    }());
+    LOG_TRACE("dump splitKeys {}", DumpSplitKeys(splitKeys));
 
     if (g_statOn) {
-        size_t UniqueKeyNum = 0;
+        size_t uniqueKeyNum = 0;
         for (int devId = 0; devId < rankInfo.rankSize; ++devId) {
-            UniqueKeyNum += splitKeys[devId].size();
+            uniqueKeyNum += splitKeys[devId].size();
         }
         LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} batch_key_num {} unique_key_num {}",
-            batch->channel, batch->batchId, rankInfo.rankId, batch->Size(), UniqueKeyNum);
+            batch->channel, batch->batchId, rankInfo.rankId, batch->Size(), uniqueKeyNum);
     }
     return { splitKeys, restore };
 }
 
-auto KeyProcess::HashSplit_withFAAE(const unique_ptr<emb_batch_t>& batch) const
+auto KeyProcess::HashSplitWithFAAE(const unique_ptr<emb_batch_t>& batch) const
     -> tuple<vector<keys_t>, vector<int32_t>, vector<vector<uint32_t>>>
 {
     EASY_FUNCTION(profiler::colors::Gold)
@@ -835,7 +803,7 @@ auto KeyProcess::HashSplit_withFAAE(const unique_ptr<emb_batch_t>& batch) const
     EASY_BLOCK("split push back")
     for (size_t i = 0; i < miniBs; i++) {
         const emb_key_t& key = batchData[i];
-        int devId = static_cast<int>(key) & (rankInfo.rankSize - 1); // 数据所在的设备devID = key % dev总数 support -1
+        int devId = key % static_cast<emb_key_t>(rankInfo.rankSize);
         auto result = uKey.find(key);
         if (result == uKey.end()) {
             splitKeys[devId].push_back(key);
@@ -858,25 +826,15 @@ auto KeyProcess::HashSplit_withFAAE(const unique_ptr<emb_batch_t>& batch) const
     }
 
     EASY_END_BLOCK
-    LOG_TRACE("dump splitKeys {}", [&] {
-        stringstream ssTrace;
-        for (int devId = 0; devId < rankInfo.rankSize; ++devId) {
-            ssTrace << '|' << devId << ":";
-            for (auto x : splitKeys[devId]) {
-                ssTrace << x << ',';
-            }
-            ssTrace << '|';
-        }
-        return ssTrace.str();
-    }());
+    LOG_TRACE("dump splitKeys {}", DumpSplitKeys(splitKeys));
 
     if (g_statOn) {
-        size_t UniqueKeyNum = 0;
+        size_t uniqueKeyNum = 0;
         for (int devId = 0; devId < rankInfo.rankSize; ++devId) {
-            UniqueKeyNum += splitKeys[devId].size();
+            uniqueKeyNum += splitKeys[devId].size();
         }
         LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} batch_key_num {} faae_unique_key_num {}",
-            batch->channel, batch->batchId, rankInfo.rankId, batch->Size(), UniqueKeyNum);
+            batch->channel, batch->batchId, rankInfo.rankId, batch->Size(), uniqueKeyNum);
     }
     return { splitKeys, restore, keyCount };
 }
@@ -903,7 +861,7 @@ tuple<vector<keys_t>, vector<int32_t>, vector<int>>
         if (batch->batchId % hotEmbUpdateStep == 0) {
             keyCountMap[key]++;
         }
-        int devId = static_cast<int>(key) & (rankInfo.rankSize - 1);   // 数据所在的设备devID = key % dev总数 support -1
+        int devId = key % static_cast<emb_key_t>(rankInfo.rankSize);   // 数据所在的设备devID = key % dev总数 support -1
         auto result = uKey.find(key);
         if (result != uKey.end()) { // // already in splitKeys
             restore[i] = result->second;
@@ -930,12 +888,12 @@ tuple<vector<keys_t>, vector<int32_t>, vector<int>>
     }
     
     if (g_statOn) {
-        size_t UniqueKeyNum = 0;
+        size_t uniqueKeyNum = 0;
         for (int devId = 0; devId < rankInfo.rankSize; ++devId) {
-            UniqueKeyNum += splitKeys[devId].size();
+            uniqueKeyNum += splitKeys[devId].size();
         }
         LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} batch_key_num {} hot_unique_key_num {}",
-            batch->channel, batch->batchId, rankInfo.rankId, batch->Size(), UniqueKeyNum);
+            batch->channel, batch->batchId, rankInfo.rankId, batch->Size(), uniqueKeyNum);
     }
 
     UpdateHotMap(keyCountMap, hotEmbTotCount[batch->name], batch->batchId % hotEmbUpdateStep == 0, batch->name);
@@ -1145,8 +1103,8 @@ void KeyProcess::BuildRestoreVec(const unique_ptr<emb_batch_t>& batch, const vec
     EASY_FUNCTION()
     int hotNum = 0;
     for (size_t i = 0; i < batch->Size(); ++i) {
-        const emb_key_t d = batch->sample[i];
-        int devId = static_cast<int>(d) & (rankInfo.rankSize - 1);
+        const emb_key_t key = batch->sample[i];
+        int devId = key % static_cast<emb_key_t>(rankInfo.rankSize);
         if (restoreVec[i] >= hotPosSize) {
             restoreVec[i] += blockOffset[devId];
         } else if (Log::GetLevel() >= Log::DEBUG) {
@@ -1156,12 +1114,6 @@ void KeyProcess::BuildRestoreVec(const unique_ptr<emb_batch_t>& batch, const vec
     LOG_DEBUG("hot num in all:{}/{} buildRestoreVecTC(ms):{}",
         hotNum, batch->Size(), buildRestoreVecTC.ElapsedMS());
 }
-
-class EmptyList : public std::exception {
-};
-
-class WrongListTop : public std::exception {
-};
 
 template<class T>
 T KeyProcess::GetInfo(info_list_t<T>& list, int batch, const string& embName, int channel)
@@ -1368,4 +1320,17 @@ void KeyProcess::EvictInitDeviceEmb(const string& embName, vector<size_t> offset
     trans->Send(TransferChannel::EVICT, tmpDataOut, TRAIN_CHANNEL_ID, embName);
 
     LOG_INFO(KEY_PROCESS "hbm EvictInitDeviceEmb: [{}]! send offsetSize:{}", embName, offset.size());
+}
+
+string KeyProcess::DumpSplitKeys(vector<vector<emb_key_t>> &splitKeys) const
+{
+    stringstream ssTrace;
+    for (int devId = 0; devId < rankInfo.rankSize; ++devId) {
+        ssTrace << '|' << devId << ":";
+        for (auto key: splitKeys[devId]) {
+            ssTrace << key << ',';
+        }
+        ssTrace << '|';
+    }
+    return ssTrace.str();
 }

@@ -22,7 +22,6 @@
 #include <absl/container/flat_hash_map.h>
 
 #include "ock_ctr_common/include/factory.h"
-#include "ock_ctr_common/include/error_code.h"
 
 #include "utils/common.h"
 #include "utils/config.h"
@@ -41,7 +40,7 @@ namespace MxRec {
 
     template<class T>
     struct Cmp {
-        bool operator()(const T& a, const T& b)
+        bool operator()(const T& a, const T& b) const
         {
             return get<int>(a) > get<int>(b); // batch id order
         }
@@ -57,6 +56,25 @@ namespace MxRec {
         RESTORE,
         ALL2ALL,
         INVALID
+    };
+
+    class EndRunExit : public std::exception {
+    public:
+        explicit EndRunExit(const char* message) : errorMessage(message) {}
+
+        const char* what() const noexcept override
+        {
+            return errorMessage;
+        }
+
+    private:
+        const char* errorMessage;
+    };
+
+    class EmptyList : public std::exception {
+    };
+
+    class WrongListTop : public std::exception {
     };
 
     class KeyProcess {
@@ -126,9 +144,9 @@ namespace MxRec {
 
         bool isRunning { false };
 
-        inline bool hasEmbName(const string &emb_name)
+        inline bool HasEmbName(const string& embName)
         {
-            return embInfos.find(emb_name) != embInfos.end();
+            return embInfos.find(embName) != embInfos.end();
         };
     GTEST_PRIVATE:
         template<class T>
@@ -187,7 +205,7 @@ namespace MxRec {
 
         auto HotHashSplit(const unique_ptr<emb_batch_t>& batch) -> tuple<vector<keys_t>, vector<int32_t>, vector<int>>;
 
-        auto HashSplit_withFAAE(const unique_ptr<emb_batch_t>& batch) const
+        auto HashSplitWithFAAE(const unique_ptr<emb_batch_t>& batch) const
         -> tuple<vector<keys_t>, vector<int32_t>, vector<vector<uint32_t>>>;
 
         vector<int> GetScAll(const vector<int>& keyScLocal, int commId, int channel) const;
@@ -200,7 +218,7 @@ namespace MxRec {
 
         unique_ptr<emb_batch_t> GetBatchData(int channel, int commId);
 
-        void BuildRestoreVec(const unique_ptr<emb_batch_t>& batch, const vector<int>& rs,
+        void BuildRestoreVec(const unique_ptr<emb_batch_t>& batch, const vector<int>& blockOffset,
                              vector<int>& restoreVec, int hotPosSize = 0) const;
 
         void SendA2A(const vector<int>& a2aInfo, const string& embName, int channel, int batch);
@@ -220,13 +238,13 @@ namespace MxRec {
 
         void PushResult(unique_ptr<emb_batch_t>& batch, unique_ptr<vector<Tensor>> tensors, keys_t& lookupKeys);
 
-        void PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, keys_t& lookupKeys, int chanel);
+        void PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, keys_t& lookupKeys, int channel);
 
         void AddCountStartToHotPos(vector<keys_t>& splitKeys, vector<int>& hotPos, const vector<int>& hotPosDev,
                                    const unique_ptr<emb_batch_t>& batch);
 
         void ComputeHotPos(const unique_ptr<emb_batch_t> &batch, absl::flat_hash_map<emb_key_t, int> &hotMap,
-                           vector<int> &hotPos, vector<int32_t> &restore, const int hotOffset);
+                           vector<int> &hotPos, vector<int32_t> &restore, const int hotOffset) const;
 
         vector<uint32_t> GetCountRecv(const unique_ptr<emb_batch_t>& batch, int id,
                                       vector<vector<uint32_t>>& keyCount, vector<int> scAll, vector<int> ss);
@@ -234,6 +252,18 @@ namespace MxRec {
         void HashSplitHelper(const unique_ptr <emb_batch_t>& batch, vector <keys_t>& splitKeys,
                              vector <int32_t>& restore, vector <int32_t>& hotPos,
                              vector <vector<uint32_t>>& keyCount);
+
+        template<class T>
+        inline vector<T> Count2Start(const vector<T>& count)
+        {
+            vector<T> start = { 0 };
+            for (size_t i = 0; i < count.size() - 1; ++i) {
+                start.push_back(count[i] + start.back());
+            }
+            return start;
+        }
+
+        string DumpSplitKeys(vector<vector<emb_key_t>>& splitKeys) const;
     };
 } // end namespace MxRec
 #endif // MX_REC_KEY_PROCESS_H

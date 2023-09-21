@@ -39,7 +39,7 @@ void HostEmb::Initialize(const vector<EmbInfo>& embInfos, int seed)
 /// \param embeddingSize emb维度
 /// \param embData emb数据
 void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, int seed, int vocabSize,
-    int embeddingSize, vector<vector<float>> &embData)
+    int embeddingSize, vector<vector<float>> &embData) const
 {
 #ifndef GTEST
     LOG_INFO(HOSTEMB + "GenerateEmbData Start, seed:{}, initializer num: {}", seed, initializeInfos.size());
@@ -135,7 +135,7 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
     LOG_INFO(HOSTEMB + "UpdateEmbV2, channelId:{}, embName:{}", channelId, embName);
     EASY_FUNCTION(profiler::colors::Purple)
     auto updateThread =
-        [&, missingKeysHostPos, channelId, embName] {
+        [this, missingKeysHostPos, channelId, embName] {
             auto hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
             TransferChannel transferName = TransferChannel::D2H;
             LOG_INFO(HOSTEMB + "wait D2H embs, channelId:{}", channelId);
@@ -222,7 +222,7 @@ auto HostEmb::GetHostEmbs() -> absl::flat_hash_map<string, HostEmbTable>*
 /// \param embData emb数据
 /// \param offset 偏移列表
 void HostEmb::EmbPartGenerator(const vector<InitializeInfo> &initializeInfos, vector<vector<float>> &embData,
-                               const vector<size_t>& offset)
+                               const vector<size_t>& offset) const
 {
     for (auto initializeInfo: initializeInfos) {
         LOG_INFO("Device GenerateEmbData ing. name {}", initializeInfo.name);

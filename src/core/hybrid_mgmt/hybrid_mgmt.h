@@ -27,6 +27,7 @@
 #include "hd_transfer/hd_transfer.h"
 #include "key_process/key_process.h"
 #include "ssd_cache/cache_manager.h"
+#include "hybrid_mgmt_block.h"
 
 namespace MxRec {
     using namespace std;
@@ -114,25 +115,29 @@ namespace MxRec {
 
         void EvictKeys(const string& embName, const vector<emb_key_t>& keys);
 
-        bool IsLoadDataMatches(emb_mem_t* loadHostEmbs, EmbInfo* setupHostEmbs, size_t& embTableCount);
+        bool IsLoadDataMatches(emb_mem_t& loadHostEmbs, EmbInfo& setupHostEmbs, size_t& embTableCount) const;
 
-        void NotifyBySessionRun(int channelID);
+        void NotifyBySessionRun(int channelID) const;
 
-        void CountStepBySessionRun(int channelID, int steps);
+        void CountStepBySessionRun(int channelID, int steps) const;
 
     private:
         bool InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
                             const vector<ThresholdValue>& thresholdValues, int seed);
 
-        void InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfos);
+        void InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfos) const;
 
-        void EvictSSDKeys(const string& embName, const vector<emb_key_t>& keys);
+        void EvictSSDKeys(const string& embName, const vector<emb_key_t>& keys) const;
 
         void PrepareDDRData(const std::string& embTableName, EmbHashMapInfo& embHashMap,
-                                   const vector<emb_key_t>& keys, int channelId);
-        int GetStepFromPath(const string& loadPath);
+                            const vector<emb_key_t> &keys, int channelId) const;
+
+        int GetStepFromPath(const string& loadPath) const;
+
         static void AddCacheManagerTraceLog(CkptData& saveData);
-        void RestoreFreq4Save(CkptData& saveData);
+
+        void RestoreFreq4Save(CkptData& saveData) const;
+
     private:
         int currentBatchId;
         int trainBatchId = 0; // 0-199, 200-
@@ -153,6 +158,7 @@ namespace MxRec {
         bool isLoad { false };
 
         void TrainTask(TaskType type);
+
         void EvalTask(TaskType type);
 
         bool EndBatch(int batchId, int channelId) const;
@@ -160,6 +166,8 @@ namespace MxRec {
         void EmbHDTransWrap(int channelId, const int& batchId, int start);
 
         bool LoadMatchesDDRSetup(const CkptData& loadData);
+
+        void HandlePrepareDDRDataRet(TransferRet prepareSSDRet) const;
     };
 }
 #endif // MX_REC_EMB_MGMT_H

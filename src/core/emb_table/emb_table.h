@@ -12,9 +12,8 @@
 #include <list>
 #include <stdexcept>
 #include <bits/stdc++.h>
+
 #include "utils/common.h"
-#include <acl/acl_rt.h>
-#include <acl/acl.h>
 
 namespace MxRec {
 
@@ -32,7 +31,7 @@ namespace MxRec {
         int64_t GetEmbAddress();
 
         // 打印emb表使用情况
-        void PrintStatus();
+        void PrintStatus() const;
 
         EmbTable(const EmbTable&) = delete;
 
@@ -42,7 +41,7 @@ namespace MxRec {
 
         EmbTable& operator=(EmbTable&&) = delete;
 
-        void ExecuteAclMemcpy(void* newBlock, vector<float> devEmb);
+        void ExecuteAclMemcpy(void* newBlock, vector<float> devEmb) const;
 
     GTEST_PRIVATE:
         constexpr static int BLOCK_EMB_COUNT = 100000;
@@ -55,14 +54,12 @@ namespace MxRec {
         int totalCapacity = 1;
         int usedCapacity = 0;
         int seed = 0;
-        float mean = 0;
-        float stddev = 1;
         // embedding地址的列表
         list<float*> embeddingList;
         // 内存块列表
         vector<void*> memoryList;
 
-        void RandomInit(void* newBlock, const vector<InitializeInfo> &initializeInfos, int seed);
+        void RandomInit(void* newBlock, const vector<InitializeInfo> &initializeInfos);
 
         // embSize由embInfo得出
         void SplitMemoryBlock(void* newBlock);

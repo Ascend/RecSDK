@@ -51,7 +51,7 @@ namespace MxRec {
         void SetEmbDataTrans(string embName);
 
         void SetEmbInfo(string embName, CkptData& ckptData);
-        void SetEmbData(string embName, CkptData& ckptData);
+        void SetEmbData(string embName, CkptData& ckptData) const;
 
         int GetEmbInfoSize();
         size_t GetEmbDataSize(string embName);

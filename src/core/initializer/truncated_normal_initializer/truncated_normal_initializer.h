@@ -20,7 +20,7 @@ namespace MxRec {
     class TruncatedNormalInitializer : public Initializer {
     public:
         TruncatedNormalInitializer() = default;
-        TruncatedNormalInitializer(int start, int len, std::tuple<float, float, int, float>);
+        TruncatedNormalInitializer(int start, int len, NormalInitializerInfo& initInfo);
 
         ~TruncatedNormalInitializer() override {};
 

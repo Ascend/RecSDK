@@ -54,9 +54,9 @@ namespace MxRec {
         std::vector<unique_ptr<std::thread>> procThreadsForEval;
 
         void EmbDataGenerator(const vector<InitializeInfo>& initializeInfos, int seed, int vocabSize, int embeddingSize,
-                                       vector<vector<float>>& embData);
+                              vector<vector<float>>& embData) const;
         void EmbPartGenerator(const vector<InitializeInfo> &initializeInfos, vector<vector<float>> &embData,
-                              const vector<size_t>& offset);
+                              const vector<size_t>& offset) const;
     };
 }
 

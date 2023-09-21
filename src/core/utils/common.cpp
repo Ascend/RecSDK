@@ -54,44 +54,6 @@ namespace MxRec {
         : start(start), len(len), constantVal(constantVal), randomMin(randomMin), randomMax(randomMax)
     {}
 
-    ConstantInitializerInfo::ConstantInitializerInfo(float constantValue, float initK)
-        : constantValue(constantValue), initK(initK)
-    {}
-
-    NormalInitializerInfo::NormalInitializerInfo(float mean, float stddev, int seed, float initK)
-        : mean(mean), stddev(stddev), seed(seed), initK(initK)
-    {}
-
-    InitializeInfo::InitializeInfo(std::string& name, int start, int len,
-        ConstantInitializerInfo constantInitializerInfo)
-        : name(name), start(start), len(len), constantInitializerInfo(constantInitializerInfo)
-    {
-        if (name == "constant_initializer") {
-            initializerType = InitializerType::CONSTANT;
-            initializer = make_shared<ConstantInitializer>(start, len, constantInitializerInfo.constantValue,
-                                                      constantInitializerInfo.initK);
-        } else {
-            throw std::invalid_argument("Invalid Initializer Type.");
-        }
-    }
-
-    InitializeInfo::InitializeInfo(std::string& name, int start, int len, NormalInitializerInfo normalInitializerInfo)
-        : name(name), start(start), len(len), normalInitializerInfo(normalInitializerInfo)
-    {
-        std::tuple<float, float, int, float> ret(normalInitializerInfo.mean, normalInitializerInfo.stddev,
-                                                 normalInitializerInfo.seed, normalInitializerInfo.initK);
-
-        if (name == "truncated_normal_initializer") {
-            initializerType = InitializerType::TRUNCATED_NORMAL;
-            initializer = make_shared<TruncatedNormalInitializer>(start, len, ret);
-        } else if (name == "random_normal_initializer") {
-            initializerType = InitializerType::RANDOM_NORMAL;
-            initializer = make_shared<RandomNormalInitializer>(start, len, ret);
-        } else {
-            throw std::invalid_argument("Invalid Initializer Type.");
-        }
-    }
-
     void SetLog(int rank)
     {
         g_glogLevel = GlobalEnv::glogStderrthreshold;

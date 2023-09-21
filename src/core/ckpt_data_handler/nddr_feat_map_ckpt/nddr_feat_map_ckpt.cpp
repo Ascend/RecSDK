@@ -37,7 +37,7 @@ vector<string> NddrFeatMapCkpt::GetDirNames()
 vector<string> NddrFeatMapCkpt::GetEmbNames()
 {
     vector<string> embNames;
-    for (const auto& item : saveKeyOffsetMap) {
+    for (const auto& item : as_const(saveKeyOffsetMap)) {
         embNames.push_back(item.first);
     }
     return embNames;

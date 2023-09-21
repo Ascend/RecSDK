@@ -18,11 +18,11 @@ using namespace std;
 using namespace MxRec;
 using namespace tensorflow;
 
-void EmbTable::Init(const EmbInfo& embInfo, const RankInfo& rInfo, int seed)
+void EmbTable::Init(const EmbInfo& embInfo, const RankInfo& rInfo, int initSeed)
 {
 #ifndef GTEST
     this->rankInfo = rInfo;
-    this->seed = seed;
+    this->seed = initSeed;
     LOG_INFO("EmbTable init, deviceID {}, embSize {} running", rInfo.deviceId, embInfo.extEmbeddingSize);
     // 计算embedding table需要分配的内存块数
     auto ret = aclrtSetDevice(static_cast<int32_t>(rInfo.deviceId));
@@ -35,13 +35,13 @@ void EmbTable::Init(const EmbInfo& embInfo, const RankInfo& rInfo, int seed)
     for (int i = 0; i < INIT_BLOCK_COUNT; ++i) {
         // 申请新的内存块
         void *newBlock = nullptr;
-        aclError ret = aclrtMalloc(&newBlock, blockSize * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST);
-        if (ret != ACL_SUCCESS) {
-            LOG_ERROR("aclrtMalloc failed, ret={}", ret);
+        aclError ec = aclrtMalloc(&newBlock, blockSize * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST);
+        if (ec != ACL_SUCCESS) {
+            LOG_ERROR("aclrtMalloc failed, ret={}", ec);
             throw AclError();
         }
         // 申请内存初始化
-        RandomInit(newBlock, embInfo.initializeInfos, seed);
+        RandomInit(newBlock, embInfo.initializeInfos);
         // 将新的内存块加入内存链表
         memoryList.push_back(newBlock);
         SplitMemoryBlock(newBlock);
@@ -77,7 +77,7 @@ int64_t EmbTable::GetEmbAddress()
             LOG_ERROR("aclrtMalloc failed, ret={}", ret);
             throw AclError();
         }
-        RandomInit(addBlock, embInfo.initializeInfos, seed);
+        RandomInit(addBlock, embInfo.initializeInfos);
         // 将新的内存块加入内存list
         memoryList.push_back(addBlock);
         SplitMemoryBlock(addBlock);
@@ -90,7 +90,7 @@ int64_t EmbTable::GetEmbAddress()
 #endif
 }
 
-void EmbTable::RandomInit(void* newBlock, const vector<InitializeInfo>& initializeInfos, int seed)
+void EmbTable::RandomInit(void* newBlock, const vector<InitializeInfo>& initializeInfos)
 {
 #ifndef GTEST
     LOG_INFO("Device GenerateEmbData Start, seed:{}, initializer num: {}", seed, initializeInfos.size());
@@ -106,7 +106,7 @@ void EmbTable::RandomInit(void* newBlock, const vector<InitializeInfo>& initiali
 #endif
 }
 
-void EmbTable::ExecuteAclMemcpy(void* newBlock, vector<float> devEmb)
+void EmbTable::ExecuteAclMemcpy(void* newBlock, vector<float> devEmb) const
 {
 #ifndef GTEST
     aclError ret = aclrtMemcpy(
@@ -132,7 +132,7 @@ void EmbTable::SplitMemoryBlock(void *newBlock)
 #endif
 }
 
-void EmbTable::PrintStatus()
+void EmbTable::PrintStatus() const
 {
     // 输出embedding table的总容量和未使用的使用容量
     LOG_INFO("Total capacity:{}, Unused capacity:{}",

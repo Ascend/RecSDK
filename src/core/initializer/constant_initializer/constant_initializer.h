@@ -8,11 +8,9 @@
 #ifndef MX_REC_CONSTANT_INITIALIZER_H
 #define MX_REC_CONSTANT_INITIALIZER_H
 
-#include <vector>
 #include "initializer/initializer.h"
 
 namespace MxRec {
-    using std::vector;
 
     class ConstantInitializer : public Initializer {
     public:

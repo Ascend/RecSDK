@@ -205,7 +205,7 @@ public:
     {
         auto keyProcess = Singleton<KeyProcess>::GetInstance();
         for (size_t i = 0; i < embNames.size(); ++i) {
-            if (!keyProcess->hasEmbName(embNames.at(i))) {
+            if (!keyProcess->HasEmbName(embNames.at(i))) {
                 LOG_INFO("ReadEmbKeyV2Dynamic not found emb_name:{} {}", i, embNames.at(i));
                 tableUsed.push_back(false);
             } else {
@@ -410,7 +410,7 @@ public:
     {
         auto keyProcess = Singleton<KeyProcess>::GetInstance();
         for (size_t i = 0; i < splits.size(); ++i) {
-            if (!keyProcess->hasEmbName(embNames.at(i))) {
+            if (!keyProcess->HasEmbName(embNames.at(i))) {
                 LOG_INFO("ReadEmbKeyV2 not found emb_name:{} {}", i, embNames.at(i));
                 tableUsed.push_back(false);
             } else {

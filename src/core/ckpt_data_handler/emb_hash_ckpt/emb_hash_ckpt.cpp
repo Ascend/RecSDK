@@ -48,11 +48,11 @@ vector<string> EmbHashCkpt::GetEmbNames()
 
 CkptTransData EmbHashCkpt::GetDataset(CkptDataType dataType, string embName)
 {
-    map<CkptDataType, function<void()>> dataTransMap { { CkptDataType::EMB_HASHMAP,
-        [=] { SetEmbHashMapTrans(embName); } },
-        { CkptDataType::DEV_OFFSET, [=] { SetDevOffsetTrans(embName); } },
-        { CkptDataType::EMB_CURR_STAT, [=] { SetEmbCurrStatTrans(embName); } },
-        { CkptDataType::EVICT_POS, [=] { SetEvictPosTrans(embName); } } };
+    map<CkptDataType, function<void()>> dataTransMap {
+        {CkptDataType::EMB_HASHMAP,   [this, embName] { SetEmbHashMapTrans(embName); }},
+        {CkptDataType::DEV_OFFSET,    [this, embName] { SetDevOffsetTrans(embName); }},
+        {CkptDataType::EMB_CURR_STAT, [this, embName] { SetEmbCurrStatTrans(embName); }},
+        {CkptDataType::EVICT_POS,     [this, embName] { SetEvictPosTrans(embName); }}};
 
     CleanTransfer();
     dataTransMap.at(dataType)();
@@ -61,10 +61,11 @@ CkptTransData EmbHashCkpt::GetDataset(CkptDataType dataType, string embName)
 
 void EmbHashCkpt::SetDataset(CkptDataType dataType, string embName, CkptTransData& loadedData)
 {
-    map<CkptDataType, function<void()>> dataLoadMap { { CkptDataType::EMB_HASHMAP, [=] { SetEmbHashMap(embName); } },
-        { CkptDataType::DEV_OFFSET, [=] { SetDevOffset(embName); } },
-        { CkptDataType::EMB_CURR_STAT, [=] { SetEmbCurrStat(embName); } },
-        { CkptDataType::EVICT_POS, [=] { SetEvictPos(embName); } } };
+    map<CkptDataType, function<void()>> dataLoadMap {
+        {CkptDataType::EMB_HASHMAP,   [this, embName] { SetEmbHashMap(embName); }},
+        {CkptDataType::DEV_OFFSET,    [this, embName] { SetDevOffset(embName); }},
+        {CkptDataType::EMB_CURR_STAT, [this, embName] { SetEmbCurrStat(embName); }},
+        {CkptDataType::EVICT_POS,     [this, embName] { SetEvictPos(embName); }}};
 
     CleanTransfer();
     transferData = move(loadedData);
@@ -107,8 +108,8 @@ void EmbHashCkpt::SetDevOffsetTrans(string embName)
     transferData.attributeSize = attribute.size() * eightBytes;
 
     transArr.reserve(embDevOffsetSize);
-    transArr.insert(transArr.end(), devOffset2Batch.begin(), devOffset2Batch.end());
-    transArr.insert(transArr.end(), devOffset2Key.begin(), devOffset2Key.end());
+    transArr.insert(transArr.cend(), devOffset2Batch.cbegin(), devOffset2Batch.cend());
+    transArr.insert(transArr.cend(), devOffset2Key.cbegin(), devOffset2Key.cend());
 }
 
 void EmbHashCkpt::SetEmbCurrStatTrans(string embName)
@@ -142,7 +143,7 @@ void EmbHashCkpt::SetEvictPosTrans(string embName)
     transferData.attributeSize = attribute.size() * eightBytes;
 
     transArr.reserve(evictPosSize);
-    transArr.insert(transArr.end(), evictPos.begin(), evictPos.end());
+    transArr.insert(transArr.cend(), evictPos.cbegin(), evictPos.cend());
 }
 
 void EmbHashCkpt::SetEmbHashMap(string embName)
@@ -168,7 +169,7 @@ void EmbHashCkpt::SetDevOffset(string embName)
     dev2Key.reserve(attribute.at(attrbDev2KeyIdx));
 
     fill(dev2Batch.begin(), dev2Batch.end(), -1);
-    dev2Key.insert(dev2Key.begin(), transArr.begin() + attribute.at(attrbDev2BatchIdx), transArr.end());
+    dev2Key.insert(dev2Key.cbegin(), transArr.cbegin() + attribute.at(attrbDev2BatchIdx), transArr.cend());
 }
 
 void EmbHashCkpt::SetEvictPos(string embName)
@@ -179,7 +180,7 @@ void EmbHashCkpt::SetEvictPos(string embName)
 
     evictPos.resize(attribute.at(attrEvictPosIdx));
     fill(evictPos.begin(), evictPos.end(), -1);
-    evictPos.insert(evictPos.begin(), transArr.begin() + attribute.at(attrEvictPosIdx), transArr.end());
+    evictPos.insert(evictPos.cbegin(), transArr.cbegin() + attribute.at(attrEvictPosIdx), transArr.cend());
 }
 
 

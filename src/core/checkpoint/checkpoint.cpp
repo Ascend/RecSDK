@@ -24,13 +24,13 @@
 using namespace std;
 using namespace MxRec;
 
-void Checkpoint::SaveModel(string savePath, CkptData& ckptData, RankInfo& mgmtRankInfo, const vector<EmbInfo>& EmbInfo)
+void Checkpoint::SaveModel(string savePath, CkptData& ckptData, RankInfo& mgmtRankInfo, const vector<EmbInfo>& embInfo)
 {
     processPath = savePath;
     rankId = mgmtRankInfo.rankId;
     deviceId = mgmtRankInfo.deviceId;
     useDynamicExpansion = mgmtRankInfo.useDynamicExpansion;
-    mgmtEmbInfo = EmbInfo;
+    mgmtEmbInfo = embInfo;
 
     LOG_INFO("Start host side saving data.");
     LOG_DEBUG("==Start to create save data handler.");
@@ -40,14 +40,14 @@ void Checkpoint::SaveModel(string savePath, CkptData& ckptData, RankInfo& mgmtRa
     LOG_INFO("Finish host side saving data.");
 }
 
-void Checkpoint::LoadModel(string loadPath, CkptData& ckptData, RankInfo& mgmtRankInfo, const vector<EmbInfo>& EmbInfo,
+void Checkpoint::LoadModel(string loadPath, CkptData& ckptData, RankInfo& mgmtRankInfo, const vector<EmbInfo>& embInfo,
                            const vector<CkptFeatureType>& featureTypes)
 {
     processPath = loadPath;
     rankId = mgmtRankInfo.rankId;
     deviceId = mgmtRankInfo.deviceId;
     useDynamicExpansion = mgmtRankInfo.useDynamicExpansion;
-    mgmtEmbInfo = EmbInfo;
+    mgmtEmbInfo = embInfo;
 
     LOG_INFO("Start host side loading data.");
     LOG_DEBUG("==Start to create load data handler.");
@@ -83,13 +83,14 @@ void Checkpoint::SetDataHandler(CkptData& ckptData)
 
 void Checkpoint::SetDataHandler(const vector<CkptFeatureType>& featureTypes)
 {
-    map<CkptFeatureType, function<void()>> setCkptMap { { CkptFeatureType::HOST_EMB,
-        [&] { dataHandlers.push_back(make_unique<HostEmbCkpt>()); } },
-        { CkptFeatureType::EMB_HASHMAP, [&] { dataHandlers.push_back(make_unique<EmbHashCkpt>()); } },
-        { CkptFeatureType::MAX_OFFSET, [&] { dataHandlers.push_back(make_unique<NddrOffsetCkpt>()); } },
-        { CkptFeatureType::KEY_OFFSET_MAP, [&] { dataHandlers.push_back(make_unique<NddrFeatMapCkpt>()); } },
-        { CkptFeatureType::FEAT_ADMIT_N_EVICT, [&] { dataHandlers.push_back(make_unique<FeatAdmitNEvictCkpt>()); } },
-        { CkptFeatureType::DDR_KEY_FREQ_MAP, [&] { dataHandlers.push_back(make_unique<KeyFreqMapCkpt>()); } } };
+    map<CkptFeatureType, function<void()>> setCkptMap{
+        {CkptFeatureType::HOST_EMB,           [this] { dataHandlers.push_back(make_unique<HostEmbCkpt>()); }},
+        {CkptFeatureType::EMB_HASHMAP,        [this] { dataHandlers.push_back(make_unique<EmbHashCkpt>()); }},
+        {CkptFeatureType::MAX_OFFSET,         [this] { dataHandlers.push_back(make_unique<NddrOffsetCkpt>()); }},
+        {CkptFeatureType::KEY_OFFSET_MAP,     [this] { dataHandlers.push_back(make_unique<NddrFeatMapCkpt>()); }},
+        {CkptFeatureType::FEAT_ADMIT_N_EVICT, [this] { dataHandlers.push_back(make_unique<FeatAdmitNEvictCkpt>()); }},
+        {CkptFeatureType::DDR_KEY_FREQ_MAP,   [this] { dataHandlers.push_back(make_unique<KeyFreqMapCkpt>()); }}
+    };
 
     for (const auto& featureType : featureTypes) {
         setCkptMap.at(featureType)();
@@ -139,7 +140,7 @@ void Checkpoint::MakeDataLayerSaveDir(const vector<string>& embNames,
     }
 }
 
-void Checkpoint::MakeSaveDir(const string& dirName)
+void Checkpoint::MakeSaveDir(const string& dirName) const
 {
     if (access(dirName.c_str(), F_OK) == -1) {
         if (mkdir(dirName.c_str(), dirMode) == -1) {
@@ -164,7 +165,7 @@ Checkpoint::EmbSizeInfo Checkpoint::GetEmbeddingSize(const string& embName)
 bool Checkpoint::CheckEmbNames(const string& embName)
 {
     for (const auto &embInfo: mgmtEmbInfo) {
-        if (embInfo.name == embName && embInfo.isSave == true)  {
+        if (embInfo.name == embName && embInfo.isSave)  {
             return true;
         }
     }
@@ -233,7 +234,7 @@ void Checkpoint::WriteEmbedding(const CkptTransData& transData, const string& da
             throw runtime_error(Log::Format("aclrtMemcpy failed, ret={}", ret).c_str());
         }
 
-        writeFile.write((const char *) (row.data()), embeddingSize * sizeof(float));
+        writeFile.write(reinterpret_cast<const char *>(row.data()), embeddingSize * sizeof(float));
     }
 #endif
     writeFile.close();
@@ -260,8 +261,8 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir, 
         throw runtime_error(StringFormat("Set device failed, device_id:%d", deviceId).c_str());
     }
 
-    auto &AttributeArr = transData.attribute;
-    auto embHashMapSize = AttributeArr.at(0);
+    auto &attributeArr = transData.attribute;
+    auto embHashMapSize = attributeArr.at(0);
     if (embHashMapSize <= 0) {
         throw runtime_error(StringFormat("Invalid EmbHashMapSize:%d, must be greater than 0", embHashMapSize).c_str());
     }
@@ -286,16 +287,16 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir, 
     if (keyAddrElem < 0) {
         throw runtime_error(StringFormat("keyAddrElem: %d is less than 0", keyAddrElem).c_str());
     }
-    for (size_t i{0}, j{0}; i < transArr.size(); i += keyAddrElem, ++j) {
+    for (size_t i = 0, j = 0; i < transArr.size(); i += keyAddrElem, ++j) {
         vector<float> row(embeddingSize);
-        readFile.read((char *) (row.data()), embeddingSize * sizeof(float));
+        readFile.read(reinterpret_cast<char *> (row.data()), embeddingSize * sizeof(float));
 
-        aclError ret = aclrtMemcpy(floatPtr + j * embeddingSize, embeddingSize * sizeof(float),
-                                   row.data(), embeddingSize * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
-        if (ret != ACL_SUCCESS) {
-            LOG_ERROR("aclrtMemcpy failed, ret={}", ret);
+        aclError ec = aclrtMemcpy(floatPtr + j * embeddingSize, embeddingSize * sizeof(float),
+                                  row.data(), embeddingSize * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
+        if (ec != ACL_SUCCESS) {
+            LOG_ERROR("aclrtMemcpy failed, ret={}", ec);
             readFile.close();
-            throw runtime_error(StringFormat("aclrtMemcpy failed, ret=%d", ret).c_str());
+            throw runtime_error(StringFormat("aclrtMemcpy failed, ret=%d", ec).c_str());
         }
         int64_t address = reinterpret_cast<int64_t>(floatPtr + j * embeddingSize);
         transArr.at(i + 1) = address;
@@ -330,7 +331,7 @@ void Checkpoint::WriteStream(CkptTransData& transData, const string& dataDir, si
                 writeSize = dataCol;
             }
             if (floatTransSet.find(dataType) != floatTransSet.end()) {
-                writeFile.write((const char*)(transData.floatArr[i]) + idx, writeSize);
+                writeFile.write(reinterpret_cast<const char*>(transData.floatArr[i]) + idx, writeSize);
             } else {
                 WriteDataset(transData, writeFile, writeSize, dataType, idx);
             }
@@ -350,11 +351,11 @@ void Checkpoint::WriteDataset(CkptTransData& transData,
                               size_t idx)
 {
     if (int32TransSet.find(dataType) != int32TransSet.end()) {
-        writeFile.write((const char*)(transData.int32Arr.data()) + idx, writeSize);
+        writeFile.write(reinterpret_cast<const char*>(transData.int32Arr.data()) + idx, writeSize);
     } else if (int64TransSet.find(dataType) != int64TransSet.end()) {
-        writeFile.write((const char*)(transData.int64Arr.data()) + idx, writeSize);
+        writeFile.write(reinterpret_cast<const char*>(transData.int64Arr.data()) + idx, writeSize);
     } else if (dataType == CkptDataType::ATTRIBUTE) {
-        writeFile.write((const char*)(transData.attribute.data()) + idx, writeSize);
+        writeFile.write(reinterpret_cast<const char*>(transData.attribute.data()) + idx, writeSize);
     }
 }
 
@@ -388,7 +389,7 @@ vector<string> Checkpoint::GetEmbedTableNames()
 {
     vector<string> loadTableNames;
     for (const auto& embInfo : mgmtEmbInfo) {
-        if (embInfo.isSave == true) {
+        if (embInfo.isSave) {
             loadTableNames.push_back(embInfo.name);
         }
     }
@@ -512,7 +513,7 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
                                       const string& dataDir,
                                       uint32_t dataElmtBytes,
                                       CkptData& ckptData,
-                                      string embName)
+                                      string embName) const
 {
     if (dataElmtBytes == 0) {
         LOG_ERROR("dataElmtBytes is 0, don't handle [/ %] operation");
@@ -558,7 +559,7 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
             } else {
                 readSize = dataCol;
             }
-            readFile.read((char*)(dst[i].data()) + idx, readSize);
+            readFile.read(reinterpret_cast<char*>(dst[i].data()) + idx, readSize);
             dataCol -= readSize;
             idx += readSize;
         }
@@ -586,12 +587,12 @@ void Checkpoint::ReadDataset(CkptTransData& transData,
                              size_t idx)
 {
     if (int32TransSet.find(dataType) != int32TransSet.end()) {
-        readFile.read((char*)(transData.int32Arr.data()) + idx, readSize);
+        readFile.read(reinterpret_cast<char*>(transData.int32Arr.data()) + idx, readSize);
     } else if (int64TransSet.find(dataType) != int64TransSet.end()) {
-        readFile.read((char*)(transData.int64Arr.data()) + idx, readSize);
+        readFile.read(reinterpret_cast<char*>(transData.int64Arr.data()) + idx, readSize);
     } else if (floatTransSet.find(dataType) != floatTransSet.end()) {
-        readFile.read((char*)(transData.floatArr.data()) + idx, readSize);
+        readFile.read(reinterpret_cast<char*>(transData.floatArr.data()) + idx, readSize);
     } else if (dataType == CkptDataType::ATTRIBUTE) {
-        readFile.read((char*)(transData.attribute.data()) + idx, readSize);
+        readFile.read(reinterpret_cast<char*>(transData.attribute.data()) + idx, readSize);
     }
 }

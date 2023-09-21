@@ -15,23 +15,8 @@
 
 using namespace MxRec;
 
-inline TransferRet TransferSuccess()
-{
-    return TransferRet::TRANSFER_OK;
-}
-
-inline TransferRet TransferError()
-{
-    return TransferRet::TRANSFER_ERROR;
-}
-
-inline TransferRet TransferSpaceWarning()
-{
-    return TransferRet::SSD_SPACE_NOT_ENOUGH;
-}
-
-inline void GetExternalKeys(EmbHashMapInfo& embHashMap, vector<emb_key_t>& externalKeys,
-                            vector<emb_key_t>& internalKeys, const vector<emb_key_t>& keys)
+inline void CacheManager::GetExternalKeys(EmbHashMapInfo &embHashMap, vector<emb_key_t> &externalKeys,
+                                          vector<emb_key_t> &internalKeys, const vector<emb_key_t> &keys)
 {
     for (const emb_key_t key : keys) {
         if (embHashMap.hostHashMap.find(key) == embHashMap.hostHashMap.end()) {
@@ -42,7 +27,8 @@ inline void GetExternalKeys(EmbHashMapInfo& embHashMap, vector<emb_key_t>& exter
     }
 }
 
-void AddDebugAndTraceLog(size_t batchKeySize, vector<emb_key_t>& externalKeys, vector<emb_key_t>& externalSSDKeys)
+void CacheManager::AddDebugAndTraceLog(size_t batchKeySize, vector<emb_key_t> &externalKeys,
+                                       vector<emb_key_t> &externalSSDKeys)
 {
     LOG_DEBUG("TransferDDREmbWithSSD: batchKeySize:{}, externalKeys size:{}, externalSSDKeys size:{}",
         batchKeySize, externalKeys.size(), externalSSDKeys.size());
@@ -53,7 +39,7 @@ void AddDebugAndTraceLog(size_t batchKeySize, vector<emb_key_t>& externalKeys, v
 /// 去重和过滤无效key
 /// \param originalKeys 原有keys
 /// \param keys 处理后的keys
-void HandleRepeatAndInvalidKey(const vector<emb_key_t>& originalKeys, vector<emb_key_t>& keys)
+void CacheManager::HandleRepeatAndInvalidKey(const vector<emb_key_t>& originalKeys, vector<emb_key_t>& keys)
 {
     // 去重并保持原key的顺序 结果可测试
     unordered_set<emb_key_t> keySet;
@@ -83,7 +69,7 @@ TransferRet CacheManager::TransferDDREmbWithSSD(const std::string& embTableName,
     vector<emb_key_t> externalKeys;
     vector<emb_key_t> internalKeys;
     GetExternalKeys(embHashMap, externalKeys, internalKeys, keys);
-    if (externalKeys.empty()) { return TransferSuccess(); }
+    if (externalKeys.empty()) { return TransferRet::TRANSFER_OK; }
 
     // 判断剩余内存空间是否足够; 可用内存空间计算：HBM+DDR-已占用; 若是训练，再加DDR已淘汰;
     // SSD仅与DDR交互，不考虑HBM淘汰位置；由于maxOffset比实际使用大1，所以虽然从0开始也不用再减1
@@ -103,7 +89,7 @@ TransferRet CacheManager::TransferDDREmbWithSSD(const std::string& embTableName,
     bool ddrSpaceEnoughOrEval = channelId != TRAIN_CHANNEL_ID || isDDRSpaceEnough;
     if (ddrSpaceEnoughOrEval && externalSSDKeys.empty()) {
         // 部分场景后续不用处理，在此处返回
-        return TransferSuccess();
+        return TransferRet::TRANSFER_OK;
     }
 
     AddDebugAndTraceLog(keys.size(), externalKeys, externalSSDKeys);
@@ -139,7 +125,7 @@ TransferRet CacheManager::TransferDDREmbWithSSD(const std::string& embTableName,
         if (int64_t(needSSDSize) > ssdAvailableSize) {
             LOG_ERROR("TransferDDREmbWithSSD: ssd available space is not enough to transfer DDR emb data. "
                       "needSSDSize:{}, ssdAvailableSize:{}", needSSDSize, ssdAvailableSize);
-            return TransferSpaceWarning();
+            return TransferRet::SSD_SPACE_NOT_ENOUGH;
         }
     }
 
@@ -193,7 +179,7 @@ void CacheManager::RefreshRelateInfoWithSSD2DDR(const std::string& embTableName,
 }
 
 void CacheManager::GetDDREmbInfo(vector<emb_key_t>& keys, const std::string& embTableName, EmbHashMapInfo& embHashMap,
-                                 vector<size_t>& ddrTransferPos, vector<vector<float>>& ddrEmbData)
+                                 vector<size_t>& ddrTransferPos, vector<vector<float>>& ddrEmbData) const
 {
     // 根据offset 获取对应Emb数据
     for (auto& key : keys) {
@@ -219,7 +205,7 @@ void CacheManager::GetDDREmbInfo(vector<emb_key_t>& keys, const std::string& emb
 /// \param ssdEmbData SSD对应的emb数据
 void CacheManager::UpdateDDREmbInfo(const std::string& embTableName,
                                     vector<size_t>& ddrTransferPos,
-                                    vector<vector<float>>& ssdEmbData)
+                                    vector<vector<float>>& ssdEmbData) const
 {
     auto& emb = hostEmbs->GetEmb(embTableName);
     auto& embData = emb.embData;
@@ -417,20 +403,20 @@ TransferRet CacheManager::TransferSSDEmb2DDR(const string& embTableName, EmbHash
                                              vector<vector<float>>& ssdEmbData)
 {
     if (externalSSDKeys.empty()) {
-        return TransferSuccess();
+        return TransferRet::TRANSFER_OK;
     }
     TimeCost ssd2DdrTc;
     LOG_DEBUG("TransferDDREmbWithSSD: get SSD embeddings and save to DDR, size:{}", externalSSDKeys.size());
     if (ddrTransferPos.size() != externalSSDKeys.size() || externalSSDKeys.size() != ssdEmbData.size()) {
         LOG_ERROR("TransferDDREmbWithSSD, vector length is not equal, ddrTransferPos len:{}, externalSSDKeys len:{}, "
             "ssdEmbData len:{}", ddrTransferPos.size(), externalSSDKeys.size(), ssdEmbData.size());
-        return TransferError();
+        return TransferRet::TRANSFER_ERROR;
     }
     // 将SSD emb存储到DDR中 刷新频次信息
     UpdateDDREmbInfo(embTableName, ddrTransferPos, ssdEmbData);
     RefreshRelateInfoWithSSD2DDR(embTableName, embHashMap, externalSSDKeys, ddrTransferPos);
     LOG_DEBUG("TransferDDREmbWithSSD: ssd2DdrTc TimeCost(ms):{}", ssd2DdrTc.ElapsedMS());
-    return TransferSuccess();
+    return TransferRet::TRANSFER_OK;
 }
 
 void CacheManager::CreateSSDTableIfNotExist(const std::string& embTableName)

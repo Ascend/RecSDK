@@ -8,19 +8,66 @@
 #ifndef MX_REC_INITIALIZER_H
 #define MX_REC_INITIALIZER_H
 
-#include <vector>
+#include <string>
+#include <memory>
+
 namespace MxRec {
-    using std::vector;
+    using namespace std;
 
     class Initializer {
     public:
         Initializer() = default;
         virtual ~Initializer() {};
 
-        virtual void GenerateData(float* emb, int embSize)= 0;
+        virtual void GenerateData(float *emb, int embSize) = 0;
         int start;
         int len;
         float initParam = 1.0;
+    };
+
+    enum class InitializerType {
+        INVALID,
+        CONSTANT,
+        TRUNCATED_NORMAL,
+        RANDOM_NORMAL
+    };
+
+    struct ConstantInitializerInfo {
+        ConstantInitializerInfo() = default;
+
+        explicit ConstantInitializerInfo(float constantValue, float initK);
+
+        float constantValue;
+        float initK = 1.0;
+    };
+
+    struct NormalInitializerInfo {
+        NormalInitializerInfo() = default;
+
+        NormalInitializerInfo(float mean, float stddev, int seed, float initK);
+
+        float mean;
+        float stddev;
+        int seed;
+        float initK = 1.0;
+    };
+
+    struct InitializeInfo {
+        InitializeInfo() = default;
+
+        InitializeInfo(string &name, int start, int len, ConstantInitializerInfo constantInitializerInfo);
+
+        InitializeInfo(string &name, int start, int len, NormalInitializerInfo normalInitializerInfo);
+
+        string name;
+        int start;
+        int len;
+        InitializerType initializerType = InitializerType::INVALID;
+
+        ConstantInitializerInfo constantInitializerInfo;
+        NormalInitializerInfo normalInitializerInfo;
+
+        std::shared_ptr<Initializer> initializer;
     };
 }
 

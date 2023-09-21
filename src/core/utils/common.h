@@ -352,47 +352,6 @@ namespace MxRec {
 
     void ValidateReadFile(const string& dataDir, size_t datasetSize);
 
-    enum class InitializerType {
-        CONSTANT,
-        TRUNCATED_NORMAL,
-        RANDOM_NORMAL
-    };
-
-    struct ConstantInitializerInfo {
-        ConstantInitializerInfo() = default;
-        explicit ConstantInitializerInfo(float constantValue, float initK);
-
-        float constantValue;
-        float initK = 1.0;
-    };
-
-    struct NormalInitializerInfo {
-        NormalInitializerInfo() = default;
-        NormalInitializerInfo(float mean, float stddev, int seed, float initK);
-
-        float mean;
-        float stddev;
-        int seed;
-        float initK = 1.0;
-    };
-
-    struct InitializeInfo {
-        InitializeInfo() = default;
-
-        InitializeInfo(std::string& name, int start, int len, ConstantInitializerInfo constantInitializerInfo);
-        InitializeInfo(std::string& name, int start, int len, NormalInitializerInfo normalInitializerInfo);
-
-        std::string name;
-        int start;
-        int len;
-        InitializerType initializerType;
-
-        ConstantInitializerInfo constantInitializerInfo;
-        NormalInitializerInfo normalInitializerInfo;
-
-        shared_ptr<Initializer> initializer;
-    };
-
     template<class T>
     inline Tensor Vec2TensorI32(const std::vector<T>& data)
     {
@@ -487,7 +446,7 @@ namespace MxRec {
         std::vector<emb_key_t> ddr2HbmKeys;
         void SetStartCount();
 
-        bool HasFree(size_t i);
+        bool HasFree(size_t i) const;
     };
 
     struct All2AllInfo {
