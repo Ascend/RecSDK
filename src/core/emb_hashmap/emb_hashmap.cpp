@@ -19,7 +19,6 @@ using namespace MxRec;
 
 void EmbHashMap::Init(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos, bool ifLoad)
 {
-#ifndef GTEST
     this->rankInfo = rankInfo;
     if (!ifLoad) {
         EmbHashMapInfo embHashMapInfo;
@@ -38,7 +37,6 @@ void EmbHashMap::Init(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
             LOG_TRACE("devOffset2Batch, {}", VectorToString(embHashMaps.at(embInfo.name).devOffset2Batch));
         }
     }
-#endif
 }
 
 inline void ClearLookupAndSwapOffset(EmbHashMapInfo& embHashMap)
@@ -319,6 +317,43 @@ void EmbHashMap::EvictDeleteEmb(const string& embName, const vector<emb_key_t>& 
     LOG_TRACE("hostHashMap, {}", MapToString(embHashMaps[embName].hostHashMap));
 }
 
+/*
+ * 利用devOffset2Batch上key最近使用的batchId，来选择需要淘汰的key，记录淘汰位置和device侧所需的keys
+ */
+int EmbHashMap::FindSwapPosV2(const string& embName, emb_key_t key, size_t hostOffset, size_t currentBatchId,
+                              size_t keepBatchId)
+{
+    bool notFind = true;
+    auto& embHashMap = embHashMaps.at(embName);
+    int newDevOffset;
+    while (notFind) {
+        if (embHashMap.devOffset2Batch[embHashMap.currentUpdatePos] < static_cast<int>(keepBatchId)) {
+            embHashMap.devOffset2Batch[embHashMap.currentUpdatePos] = static_cast<int>(currentBatchId);
+            embHashMap.swapPos.emplace_back(embHashMap.currentUpdatePos);
+            newDevOffset = static_cast<int>(embHashMap.currentUpdatePos);
+            embHashMap.hostHashMap[key] = embHashMap.currentUpdatePos;
+            embHashMap.devOffset2KeyOld.emplace_back(embHashMap.currentUpdatePos,
+                                                     embHashMap.devOffset2Key[embHashMap.currentUpdatePos]);
+            auto& oldKey = embHashMap.devOffset2Key[embHashMap.currentUpdatePos];
+            embHashMap.oldSwap.emplace_back(oldKey, key);
+            embHashMap.hostHashMap[oldKey] = hostOffset;
+            oldKey = key;
+            notFind = false;
+        }
+        embHashMap.currentUpdatePos++;
+        embHashMap.freeSize--;
+        if (embHashMap.currentUpdatePos == embHashMap.devVocabSize) {
+            embHashMap.currentUpdatePos = 0;
+        }
+        if (embHashMap.currentUpdatePos == embHashMap.currentUpdatePosStart) {
+            LOG_ERROR("devVocabSize is too small");
+            throw runtime_error("devVocabSize is too small");
+        }
+    }
+    return newDevOffset;
+}
+#endif
+
 /// 从embHashMaps获取key对应的位置，构造查询向量；更新devOffset2Batch；记录dev与host需要交换的偏移
 /// \param embName 表名
 /// \param keys 查询向量
@@ -434,42 +469,6 @@ void EmbHashMap::UpdateBatchId(const vector<emb_key_t>& keys, size_t currentBatc
             }
         }
     }
-}
-
-/*
- * 利用devOffset2Batch上key最近使用的batchId，来选择需要淘汰的key，记录淘汰位置和device侧所需的keys
- */
-int EmbHashMap::FindSwapPosV2(const string& embName, emb_key_t key, size_t hostOffset, size_t currentBatchId,
-                              size_t keepBatchId)
-{
-    bool notFind = true;
-    auto& embHashMap = embHashMaps.at(embName);
-    int newDevOffset;
-    while (notFind) {
-        if (embHashMap.devOffset2Batch[embHashMap.currentUpdatePos] < static_cast<int>(keepBatchId)) {
-            embHashMap.devOffset2Batch[embHashMap.currentUpdatePos] = static_cast<int>(currentBatchId);
-            embHashMap.swapPos.emplace_back(embHashMap.currentUpdatePos);
-            newDevOffset = static_cast<int>(embHashMap.currentUpdatePos);
-            embHashMap.hostHashMap[key] = embHashMap.currentUpdatePos;
-            embHashMap.devOffset2KeyOld.emplace_back(embHashMap.currentUpdatePos,
-                                                     embHashMap.devOffset2Key[embHashMap.currentUpdatePos]);
-            auto& oldKey = embHashMap.devOffset2Key[embHashMap.currentUpdatePos];
-            embHashMap.oldSwap.emplace_back(oldKey, key);
-            embHashMap.hostHashMap[oldKey] = hostOffset;
-            oldKey = key;
-            notFind = false;
-        }
-        embHashMap.currentUpdatePos++;
-        embHashMap.freeSize--;
-        if (embHashMap.currentUpdatePos == embHashMap.devVocabSize) {
-            embHashMap.currentUpdatePos = 0;
-        }
-        if (embHashMap.currentUpdatePos == embHashMap.currentUpdatePosStart) {
-            LOG_ERROR("devVocabSize is too small");
-            throw runtime_error("devVocabSize is too small");
-        }
-    }
-    return newDevOffset;
 }
 
 /// 利用devOffset2Batch上key最近使用的batchId，来选择需要淘汰的key，记录淘汰位置和device侧所需的keys
@@ -591,5 +590,3 @@ void EmbHashMap::AddKeyFreqInfo(const string& embTableName, const emb_key_t& key
     }
     cacheManager->PutKey(embTableName, key, type);
 }
-
-#endif
