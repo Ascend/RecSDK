@@ -336,6 +336,9 @@ class NumValidator(Validator):
                  invalid_options: List = None, constrained_options: List = None, msg: str = ""):
         if isinstance(value, tf.TensorShape) and value.ndims == 1:
             value = value.as_list()[0]
+        if isinstance(value, tf.Tensor):
+            sess = tf.Session() if tf.__version__.startswith("1.") else tf.compat.v1.Session()
+            value = sess.run(value).item()
         super(NumValidator, self).__init__(name, value)
 
         self.min_value = min_value
