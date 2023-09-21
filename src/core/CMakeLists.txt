@@ -48,7 +48,6 @@ target_link_libraries(ASC PUBLIC
         -l:_tf_adapter.so
         OpenMP::OpenMP_CXX ${MPI_CXX_LIBRARIES}
         ${PYTHON_LIBRARY}
-        glog::glog
 )
 find_package(easy_profiler PATHS ${EASY_PROFILER_PATH} NO_DEFAULT_PATH)
 if (easy_profiler_FOUND)
