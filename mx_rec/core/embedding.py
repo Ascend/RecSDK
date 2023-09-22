@@ -50,7 +50,7 @@ from mx_rec.util.log import logger
     ("value_dtype", OptionValidator, {"options": [tf.float32]}),
     ("shard_num", NumValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
     ("fusion_optimizer_var", ClassValidator, {"classes": (bool, )}),
-    ("hashtable_threshold", NumValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"])
+    ("hashtable_threshold", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"])
 ])
 def create_table(key_dtype, dim, name, emb_initializer,
                  optimizer_list: Optional[list] = None,
