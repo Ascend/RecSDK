@@ -36,16 +36,16 @@ enum SleepTime : uint32_t {
 
 using HashMapInfo = absl::flat_hash_map<int64_t, FeatureItemInfo>;
 struct InputArgs {
-    keys_t keys;
+    KeysT keys;
     vector<uint32_t> cnt;
-    keys_t expectKeys;
+    KeysT expectKeys;
     HashMapInfo lastHistory;
     HashMapInfo expectHistory;
 };
 
 class FeatureAdmitAndEvictTest : public testing::Test {
 protected:
-    HashMapInfo GetHistoryRecords(keys_t& keys, vector<uint32_t>& cnt, time_t ts, std::string embName,
+    HashMapInfo GetHistoryRecords(KeysT& keys, vector<uint32_t>& cnt, time_t ts, std::string embName,
         HashMapInfo& oldInfos)
     {
         HashMapInfo newInfos;
@@ -113,7 +113,7 @@ protected:
 
         return true;
     }
-    bool IsAllTheSameVector(keys_t& keys1, keys_t& keys2)
+    bool IsAllTheSameVector(KeysT& keys1, KeysT& keys2)
     {
         printf("\nrun ret: keys1 ===> \n\t");
         for (auto &k1 : keys1) {
@@ -142,8 +142,8 @@ protected:
     void FeatureAdmitCommon(FeatureAdmitAndEvict& faae, int channel, string embName, InputArgs& args)
     {
         time_t ts = time(nullptr);
-        keys_t tmpKeys = args.keys;
-        std::unique_ptr<emb_batch_t> batch = make_unique<emb_batch_t>();
+        KeysT tmpKeys = args.keys;
+        std::unique_ptr<EmbBatchT> batch = make_unique<EmbBatchT>();
         batch->name = embName;
         batch->timestamp = ts;
         printf("\n");
@@ -165,8 +165,8 @@ protected:
     void FeatureAdmitCommonMultiThr(FeatureAdmitAndEvict& faae, int channel, string embName, InputArgs& args)
     {
         time_t ts = time(nullptr);
-        keys_t tmpKeys = args.keys;
-        std::unique_ptr<emb_batch_t> batch = make_unique<emb_batch_t>();
+        KeysT tmpKeys = args.keys;
+        std::unique_ptr<EmbBatchT> batch = make_unique<EmbBatchT>();
         batch->name = embName;
         batch->timestamp = ts;
         printf("\n");
@@ -273,7 +273,7 @@ protected:
         keys1 = {11, 11, 33, 44, 11, 55, 88, 55}
         cnt1 =   1   2   1   3   1   1   4   1
         */
-        keys_t expectRet1 = {11, 11, -1, 44, 11, 55, 88, 55};
+        KeysT expectRet1 = {11, 11, -1, 44, 11, 55, 88, 55};
         InputArgs args1 = {keys1, cnt1, expectRet1, initHistory, {}}; // 每个表的第一次记录，要用initHistory追加
         FeatureAdmitCommon(faae, 0, thresholds[0].tableName, args1);
         std::this_thread::sleep_for(std::chrono::seconds(SleepTime::SLEEP_SECOND_1));
@@ -283,7 +283,7 @@ protected:
         keys2 = {11, 12, 33, 21, 11, 12}
         cnt2 =   1   2   1   1   2   3
         */
-        keys_t expectRet2 = {11, 12, 33, -1, 11, 12};
+        KeysT expectRet2 = {11, 12, 33, -1, 11, 12};
         InputArgs args2 = {keys2, cnt2, expectRet2, args1.expectHistory, {}};
         FeatureAdmitCommon(faae, 0, thresholds[0].tableName, args2);
         std::this_thread::sleep_for(std::chrono::seconds(SleepTime::SLEEP_SECOND_2));
@@ -293,7 +293,7 @@ protected:
         keys3 = {123, 121, 121, 212, 211}
         cnt3 =   1    2    1    1    2
         */
-        keys_t expectRet3 = {-1, 121, 121, -1, -1};
+        KeysT expectRet3 = {-1, 121, 121, -1, -1};
         InputArgs args3 = {keys3, cnt3, expectRet3, initHistory, {}};
         FeatureAdmitCommon(faae, 0, thresholds[1].tableName, args3);
         std::this_thread::sleep_for(std::chrono::seconds(SleepTime::SLEEP_SECOND_6));
@@ -303,7 +303,7 @@ protected:
         keys4 = {11, 11, 33, 44, 55, 88, 55}
         cnt4 =   1   2   3   2   1   2   1
         */
-        keys_t expectRet4 = {11, 11, 33, 44, 55, 88, 55};
+        KeysT expectRet4 = {11, 11, 33, 44, 55, 88, 55};
         InputArgs args4 = {keys4, cnt4, expectRet4, args2.expectHistory, {}};
         FeatureAdmitCommon(faae, 0, thresholds[0].tableName, args4);
         std::this_thread::sleep_for(std::chrono::seconds(SleepTime::SLEEP_SECOND_2));
@@ -313,7 +313,7 @@ protected:
         keys5 = {125, 121, 122, 212, 211}
         cnt5 =   1    2    1    3    1
         */
-        keys_t expectRet5 = {-1, 121, -1, 212, 211};
+        KeysT expectRet5 = {-1, 121, -1, 212, 211};
         InputArgs args5 = {keys5, cnt5, expectRet5, args3.expectHistory, {}};
         FeatureAdmitCommon(faae, 0, thresholds[1].tableName, args5);
 
@@ -328,10 +328,10 @@ protected:
         faae.ParseThresholdCfg(thresholds);
 
         // 测试点：tmpCnt.size() != tmpKeys.size()
-        keys_t tmpKeys = {11, 11, 33, 44, 11, 55, 88, 55};
+        KeysT tmpKeys = {11, 11, 33, 44, 11, 55, 88, 55};
         vector<uint32_t> tmpCnt = {1, 2, 1, 3, 1, 1, 4};
 
-        std::unique_ptr<emb_batch_t> batch = make_unique<emb_batch_t>();
+        std::unique_ptr<EmbBatchT> batch = make_unique<EmbBatchT>();
         batch->name = thresholds[0].tableName;
         batch->timestamp = time(nullptr);
 
@@ -351,7 +351,7 @@ protected:
     {}
 
     // 校验多线程跑的结果
-    void CheckMultiThreadRet(keys_t& expectKeys, std::vector<uint32_t>& expectCnt, const std::string& embName,
+    void CheckMultiThreadRet(KeysT& expectKeys, std::vector<uint32_t>& expectCnt, const std::string& embName,
                              int threadCnt)
     {
         // 校验历史记录表信息
@@ -404,9 +404,9 @@ protected:
             tableBBB数据将会是 {121, 122, 123, 125, 211, 212};
                                5    1    1    1    3    4
             */
-            keys_t expectKeys1 = {11, 33, 44, 55, 88};      // 12,21被淘汰掉了
+            KeysT expectKeys1 = {11, 33, 44, 55, 88};      // 12,21被淘汰掉了
             vector<uint32_t> expectCnt1 = {10, 5, 5, 4, 6};
-            keys_t expectKeys2 = {121, 122, 125, 211, 212}; // 123被淘汰掉了
+            KeysT expectKeys2 = {121, 122, 125, 211, 212}; // 123被淘汰掉了
             vector<uint32_t> expectCnt2 = {5, 1, 1, 3, 4};
             std::lock_guard <std::mutex> lock(faae.m_syncMutexs); // 与 evict-thread 竞争资源
             CheckMultiThreadRet(expectKeys1, expectCnt1, thresholds[0].tableName, threadNum);
@@ -423,7 +423,7 @@ protected:
         faae.ResetAllRecords();
         faae.ParseThresholdCfg(thresholds);
 
-        std::unique_ptr<emb_batch_t> batch = make_unique<emb_batch_t>();
+        std::unique_ptr<EmbBatchT> batch = make_unique<EmbBatchT>();
         // 测试点：tableDDD表没有配置阈值，则不支持
         batch->name = std::string("tableDDD");
         batch->timestamp = time(nullptr);
@@ -436,15 +436,15 @@ protected:
     HashMapInfo initHistory;
     FeatureAdmitAndEvict faae;
     std::thread evictThr;
-    keys_t keys1 = {11, 11, 33, 44, 11, 55, 88, 55};
+    KeysT keys1 = {11, 11, 33, 44, 11, 55, 88, 55};
     vector<uint32_t> cnt1 = {1, 2, 1, 3, 1, 1, 4, 1};
-    keys_t keys2 = {11, 12, 33, 21, 11, 12};
+    KeysT keys2 = {11, 12, 33, 21, 11, 12};
     vector<uint32_t> cnt2 = {1, 2, 1, 1, 2, 3};
-    keys_t keys3 = {123, 121, 121, 212, 211};
+    KeysT keys3 = {123, 121, 121, 212, 211};
     vector<uint32_t> cnt3 = {1, 2, 1, 1, 2};
-    keys_t keys4 = {11, 11, 33, 44, 55, 88, 55};
+    KeysT keys4 = {11, 11, 33, 44, 55, 88, 55};
     vector<uint32_t> cnt4 = {1, 2, 3, 2, 1, 2, 1};
-    keys_t keys5 = {125, 121, 122, 212, 211};
+    KeysT keys5 = {125, 121, 122, 212, 211};
     vector<uint32_t> cnt5 = {1, 2, 1, 3, 1};
     std::vector<ThresholdValue> thresholds = {{"tableAAA", 2, 5, 1}, {"tableBBB", 3, 7, 1}, {"tableCCC", 5, 9, 1}};
 };

@@ -46,8 +46,8 @@ namespace MxRec {
         const int countIdxOffset { 1 };
         const int lastTimeIdxOffset { 2 };
 
-        table_2_thresh_mem_t saveTable2Thresh;
-        table_2_thresh_mem_t loadTable2Thresh;
+        Table2ThreshMemT saveTable2Thresh;
+        Table2ThreshMemT loadTable2Thresh;
 
         AdmitAndEvictData saveHistRec;
         AdmitAndEvictData loadHistRec;

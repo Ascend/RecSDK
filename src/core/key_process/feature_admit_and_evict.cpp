@@ -38,7 +38,7 @@ bool FeatureAdmitAndEvict::Init(const std::vector<ThresholdValue>& thresholdValu
 
 // 以下为类的公共接口
 FeatureAdmitReturnType FeatureAdmitAndEvict::FeatureAdmit(int channel,
-    const std::unique_ptr<emb_batch_t>& batch, keys_t& splitKey, std::vector<uint32_t>& keyCount)
+    const std::unique_ptr<EmbBatchT>& batch, KeysT& splitKey, std::vector<uint32_t>& keyCount)
 {
     if (splitKey.size() != keyCount.size()) {
         LOG_ERROR("splitKey.size {} != keyCount.size {}", splitKey.size(), keyCount.size());
@@ -251,7 +251,7 @@ bool FeatureAdmitAndEvict::IsThresholdCfgOK(const std::vector<ThresholdValue>& t
     return true;
 }
 
-auto FeatureAdmitAndEvict::GetTableThresholds() -> table_2_thresh_mem_t
+auto FeatureAdmitAndEvict::GetTableThresholds() -> Table2ThreshMemT
 {
     std::lock_guard<std::mutex> lock(m_syncMutexs);
     return m_table2Threshold;
@@ -263,7 +263,7 @@ auto FeatureAdmitAndEvict::GetHistoryRecords() -> AdmitAndEvictData&
     return m_recordsData;
 }
 
-void FeatureAdmitAndEvict::LoadTableThresholds(table_2_thresh_mem_t& loadData)
+void FeatureAdmitAndEvict::LoadTableThresholds(Table2ThreshMemT& loadData)
 {
     std::lock_guard<std::mutex> lock(m_syncMutexs);
     m_table2Threshold = std::move(loadData);

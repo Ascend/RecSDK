@@ -13,6 +13,11 @@
 using namespace std;
 
 namespace MxRec {
+    namespace ApplyGradientsStrategyOptions {
+        const std::string DIRECT_APPLY = "direct_apply";
+        const std::string SUM_SAME_ID_GRADIENTS_AND_APPLY = "sum_same_id_gradients_and_apply";
+    };
+
     // 设置环境变量默认值
     string GlobalEnv::applyGradientsStrategy = ApplyGradientsStrategyOptions::DIRECT_APPLY;
     int GlobalEnv::aclTimeout = -1; // 默认阻塞方式，一直等待直到数据接收完成。

@@ -44,8 +44,8 @@ namespace MxRec {
         const int attribEmbDataInnerIdx { 1 };
 
         const int embSveElmtNum { 4 };
-        emb_mem_t* saveHostEmbs;
-        emb_mem_t* loadHostEmbs;
+        EmbMemT* saveHostEmbs;
+        EmbMemT* loadHostEmbs;
 
         void SetEmbInfoTrans(string embName);
         void SetEmbDataTrans(string embName);

@@ -79,7 +79,7 @@ protected:
         }
     }
 
-    void SetTable2Threshold(table_2_thresh_mem_t& testTable2Threshold,
+    void SetTable2Threshold(Table2ThreshMemT& testTable2Threshold,
                            valid_int_t& validArr,
                            valid_attrib_t& validAttrib)
     {
@@ -247,8 +247,8 @@ protected:
 
 TEST_F(CkptDataHandlerTest, FeatAdmitNEvict)
 {
-    table_2_thresh_mem_t testTrens2Thresh;
-    table_2_thresh_mem_t validTrens2Thresh;
+    Table2ThreshMemT testTrens2Thresh;
+    Table2ThreshMemT validTrens2Thresh;
     AdmitAndEvictData testHistRec;
     AdmitAndEvictData validHistRec;
 

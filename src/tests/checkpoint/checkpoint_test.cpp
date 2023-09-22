@@ -85,7 +85,7 @@ protected:
         }
     }
 
-    void SetHostEmbs(std::shared_ptr<emb_mem_t> testHostEmbs)
+    void SetHostEmbs(std::shared_ptr<EmbMemT> testHostEmbs)
     {
         vector<vector<float>> testEmbData;
         for (const auto& testEmbInfo : testEmbInfos) {
@@ -95,7 +95,7 @@ protected:
         }
     }
 
-    void SetHostEmptyEmbs(std::shared_ptr<emb_mem_t> loadHostEmbs)
+    void SetHostEmptyEmbs(std::shared_ptr<EmbMemT> loadHostEmbs)
     {
         vector<vector<float>> testEmbData;
         for (const auto& testEmbInfo : testEmbInfos) {
@@ -128,7 +128,7 @@ protected:
         fill(testDev2B.begin(), testDev2B.end(), -1);
     }
 
-    void SetEmbHashMaps(emb_hash_mem_t& testEmbHashMaps)
+    void SetEmbHashMaps(EmbHashMemT& testEmbHashMaps)
     {
         EmbHashMapInfo embHashInfo;
         absl::flat_hash_map<emb_key_t, size_t> testHash;
@@ -150,7 +150,7 @@ protected:
         }
     }
 
-    void SetMaxOffset(offset_mem_t& testMaxOffset)
+    void SetMaxOffset(OffsetMemT& testMaxOffset)
     {
         for (const auto& testEmbInfo : testEmbInfos) {
             testMaxOffset[testEmbInfo.name] = offsetMem;
@@ -165,7 +165,7 @@ protected:
         }
     }
 
-    void SetKeyOffsetMaps(key_offset_mem_t& testKeyOffsetMaps)
+    void SetKeyOffsetMaps(KeyOffsetMemT& testKeyOffsetMaps)
     {
         absl::flat_hash_map<emb_key_t, int64_t> testKeyOffsetMap;
         for (const auto& testEmbInfo : testEmbInfos) {
@@ -190,7 +190,7 @@ protected:
         }
     }
 
-    void SetDDRKeyFreqMaps(key_freq_mem_t& testDDRKeyFreqMaps)
+    void SetDDRKeyFreqMaps(KeyFreqMemT& testDDRKeyFreqMaps)
     {
         unordered_map<emb_key_t, freq_num_t> testDDRKeyFreqMap;
         for (const auto& testEmbInfo : testEmbInfos) {
@@ -199,7 +199,7 @@ protected:
         }
     }
 
-    void SetExcludeDDRKeyFreqMaps(key_freq_mem_t& testExcludeDDRKeyFreqMaps)
+    void SetExcludeDDRKeyFreqMaps(KeyFreqMemT& testExcludeDDRKeyFreqMaps)
     {
         unordered_map<emb_key_t, freq_num_t> testExcludeDDRKeyFreqMap;
         for (const auto& testEmbInfo : testEmbInfos) {
@@ -208,7 +208,7 @@ protected:
         }
     }
 
-    void SetTable2Threshold(table_2_thresh_mem_t& testTable2Threshold)
+    void SetTable2Threshold(Table2ThreshMemT& testTable2Threshold)
     {
         for (const auto& testEmbInfo : testEmbInfos) {
             ThresholdValue val;
@@ -276,12 +276,12 @@ protected:
 
 TEST_F(CheckpointTest, HostEmbs)
 {
-    std::shared_ptr<emb_mem_t> testHostEmbs = std::make_shared<emb_mem_t>();
+    std::shared_ptr<EmbMemT> testHostEmbs = std::make_shared<EmbMemT>();
     SetEmbInfo();
     SetHostEmbs(testHostEmbs);
-    shared_ptr<emb_mem_t> validHostEmbs = std::make_shared<emb_mem_t>();
+    shared_ptr<EmbMemT> validHostEmbs = std::make_shared<EmbMemT>();
     SetHostEmbs(validHostEmbs);
-    shared_ptr<emb_mem_t> loadHostEmbs = std::make_shared<emb_mem_t>();
+    shared_ptr<EmbMemT> loadHostEmbs = std::make_shared<EmbMemT>();
     SetHostEmptyEmbs(loadHostEmbs);
 
     CkptData testSaveData;
@@ -313,8 +313,8 @@ TEST_F(CheckpointTest, HostEmbs)
 
 TEST_F(CheckpointTest, EmbHashMaps)
 {
-    emb_hash_mem_t testEmbHashMaps;
-    emb_hash_mem_t validEmbHashMaps;
+    EmbHashMemT testEmbHashMaps;
+    EmbHashMemT validEmbHashMaps;
 
     SetEmbInfo();
     SetEmbHashMaps(testEmbHashMaps);
@@ -355,8 +355,8 @@ TEST_F(CheckpointTest, EmbHashMaps)
 
 TEST_F(CheckpointTest, MaxOffset)
 {
-    offset_mem_t testMaxOffset;
-    offset_mem_t validMaxOffset;
+    OffsetMemT testMaxOffset;
+    OffsetMemT validMaxOffset;
 
     SetEmbInfo();
     SetMaxOffset(testMaxOffset);
@@ -385,8 +385,8 @@ TEST_F(CheckpointTest, MaxOffset)
 
 TEST_F(CheckpointTest, KeyOffsetMaps)
 {
-    key_offset_mem_t testKeyOffsetMaps;
-    key_offset_mem_t validKeyOffsetMaps;
+    KeyOffsetMemT testKeyOffsetMaps;
+    KeyOffsetMemT validKeyOffsetMaps;
 
     SetEmbInfo();
     SetKeyOffsetMaps(testKeyOffsetMaps);
@@ -413,10 +413,10 @@ TEST_F(CheckpointTest, KeyOffsetMaps)
 
 TEST_F(CheckpointTest, AllMgmt)
 {
-    offset_mem_t testMaxOffset;
-    offset_mem_t validMaxOffset;
-    key_offset_mem_t testKeyOffsetMaps;
-    key_offset_mem_t validKeyOffsetMaps;
+    OffsetMemT testMaxOffset;
+    OffsetMemT validMaxOffset;
+    KeyOffsetMemT testKeyOffsetMaps;
+    KeyOffsetMemT validKeyOffsetMaps;
 
     SetEmbInfo();
     SetMaxOffset(testMaxOffset);
@@ -461,8 +461,8 @@ TEST_F(CheckpointTest, AllMgmt)
 
 TEST_F(CheckpointTest, FeatAdmitNEvict)
 {
-    table_2_thresh_mem_t testTrens2Thresh;
-    table_2_thresh_mem_t validTrens2Thresh;
+    Table2ThreshMemT testTrens2Thresh;
+    Table2ThreshMemT validTrens2Thresh;
     AdmitAndEvictData testHistRec;
     AdmitAndEvictData validHistRec;
 
@@ -528,10 +528,10 @@ TEST_F(CheckpointTest, FeatAdmitNEvict)
 
 TEST_F(CheckpointTest, KeyFreqMaps)
 {
-    key_freq_mem_t testDDRKeyFreqMaps;
-    key_freq_mem_t validDDRKeyFreqMaps;
-    key_freq_mem_t testExcludeDDRKeyFreqMaps;
-    key_freq_mem_t validExcludeDDRKeyFreqMaps;
+    KeyFreqMemT testDDRKeyFreqMaps;
+    KeyFreqMemT validDDRKeyFreqMaps;
+    KeyFreqMemT testExcludeDDRKeyFreqMaps;
+    KeyFreqMemT validExcludeDDRKeyFreqMaps;
 
     SetEmbInfo();
     SetDDRKeyFreqMaps(testDDRKeyFreqMaps);

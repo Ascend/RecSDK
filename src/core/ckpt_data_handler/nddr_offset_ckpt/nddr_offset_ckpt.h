@@ -33,8 +33,8 @@ namespace MxRec {
         const vector<string> fileDirNames { "HashTable", "HBM" };
         const vector<CkptDataType> saveDataTypes { CkptDataType::NDDR_OFFSET };
 
-        offset_mem_t saveMaxOffset;
-        offset_mem_t loadMaxOffset;
+        OffsetMemT saveMaxOffset;
+        OffsetMemT loadMaxOffset;
     };
 }
 
