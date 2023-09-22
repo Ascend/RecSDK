@@ -29,8 +29,8 @@ namespace MxRec {
     };
 
     namespace ApplyGradientsStrategyOptions {
-        const std::string DIRECT_APPLY = "direct_apply";
-        const std::string SUM_SAME_ID_GRADIENTS_AND_APPLY = "sum_same_id_gradients_and_apply";
+        extern const std::string DIRECT_APPLY;
+        extern const std::string SUM_SAME_ID_GRADIENTS_AND_APPLY;
     };
 
     struct GlobalEnv {

@@ -11,27 +11,27 @@
 
 namespace MxRec {
 
-int MxRec::Log::_level = MxRec::Log::INFO;
-int MxRec::Log::_rank = 0;
+int MxRec::Log::level = MxRec::Log::info;
+int MxRec::Log::rank = 0;
 
 void Log::SetRank(int rank)
 {
-    Log::_rank = rank;
+    Log::rank = rank;
 }
 
 void Log::SetLevel(int level)
 {
-    Log::_level = level;
+    Log::level = level;
 }
 
 int Log::GetLevel()
 {
-    return Log::_level;
+    return Log::level;
 }
 
 const char* Log::LevelToStr(int level)
 {
-    if (level < TRACE || level > ERROR) {
+    if (level < trace || level > error) {
         return "INVALID LEVEL";
     }
     static const char* msg[] = {
@@ -41,11 +41,11 @@ const char* Log::LevelToStr(int level)
         "WARN",
         "ERROR",
     };
-    constexpr int LEVEL_OFFSET = 2;
-    return msg[level + LEVEL_OFFSET];
+    constexpr int levelOffset = 2;
+    return msg[level + levelOffset];
 }
 
-void Log::LogUnpack(queue<string>& fmt, stringstream &ss)
+void Log::LogUnpack(std::queue<std::string>& fmt, std::stringstream &ss)
 {
     while (!fmt.empty()) {
         ss << fmt.front();

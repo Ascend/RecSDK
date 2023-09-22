@@ -52,13 +52,13 @@ namespace MxRec {
 
         // 以下为类的公共接口
         // 特征准入接口
-        FeatureAdmitReturnType FeatureAdmit(int channel, const std::unique_ptr<emb_batch_t>& batch,
-            keys_t& splitKey, std::vector<uint32_t>& keyCount);
+        FeatureAdmitReturnType FeatureAdmit(int channel, const std::unique_ptr<EmbBatchT>& batch,
+            KeysT& splitKey, std::vector<uint32_t>& keyCount);
 
         // 特征淘汰接口
         void FeatureEvict(map<std::string, std::vector<emb_key_t>>& evictKeyMap);
         void ExecuteFeatureAdmit(
-            const string& tableName, int channel, keys_t& splitKey, absl::flat_hash_map<int64_t, uint32_t>& mergeKeys);
+            const string& tableName, int channel, KeysT& splitKey, absl::flat_hash_map<int64_t, uint32_t>& mergeKeys);
 
         // 特征淘汰的使能接口
         void SetFunctionSwitch(bool isEnableEvict);
@@ -74,10 +74,10 @@ namespace MxRec {
             const std::vector<std::string>& embNames, bool isTimestamp);
 
         // 与模型保存加载交互的接口
-        auto GetTableThresholds() -> table_2_thresh_mem_t;
+        auto GetTableThresholds() -> Table2ThreshMemT;
         auto GetHistoryRecords() -> AdmitAndEvictData&;
 
-        void LoadTableThresholds(table_2_thresh_mem_t& loadData);
+        void LoadTableThresholds(Table2ThreshMemT& loadData);
         void LoadHistoryRecords(AdmitAndEvictData& loadData);
 
         static std::vector<ThresholdValue> m_cfgThresholds;                        // 用于判断阈值配置的有效性

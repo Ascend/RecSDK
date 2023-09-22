@@ -35,8 +35,8 @@ namespace MxRec {
 
         const int embHashElmtNum { 2 };
 
-        key_offset_mem_t saveKeyOffsetMap;
-        key_offset_mem_t loadKeyOffsetMap;
+        KeyOffsetMemT saveKeyOffsetMap;
+        KeyOffsetMemT loadKeyOffsetMap;
     };
 }
 

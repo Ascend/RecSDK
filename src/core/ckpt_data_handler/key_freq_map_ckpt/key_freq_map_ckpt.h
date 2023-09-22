@@ -35,10 +35,10 @@ namespace MxRec {
 
         const int freqMapElmtNum { 2 }; // Number of element types in the keyFreqMap during saving
 
-        key_freq_mem_t saveDDRKeyFreqMaps;
-        key_freq_mem_t loadDDRKeyFreqMaps;
-        key_freq_mem_t saveExcludeDDRKeyFreqMaps;
-        key_freq_mem_t loadExcludeDDRKeyFreqMaps;
+        KeyFreqMemT saveDDRKeyFreqMaps;
+        KeyFreqMemT loadDDRKeyFreqMaps;
+        KeyFreqMemT saveExcludeDDRKeyFreqMaps;
+        KeyFreqMemT loadExcludeDDRKeyFreqMaps;
 
         void SetDDRFreqMapTrans(string embName);
         void SetExcludeDDRFreqMapTrans(string embName);

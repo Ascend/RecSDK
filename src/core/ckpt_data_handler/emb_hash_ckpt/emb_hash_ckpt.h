@@ -46,8 +46,8 @@ namespace MxRec {
 
         const int embHashElmtNum { 2 };
         const int embCurrStatNum { 4 };
-        emb_hash_mem_t saveEmbHashMaps;
-        emb_hash_mem_t loadEmbHashMaps;
+        EmbHashMemT saveEmbHashMaps;
+        EmbHashMemT loadEmbHashMaps;
 
         void SetEmbHashMapTrans(string embName);
         void SetDevOffsetTrans(string embName);

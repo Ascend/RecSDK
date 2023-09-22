@@ -142,7 +142,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
 // 比较hostHashMap和cacheManager的数据是否一致
 void HybridMgmt::AddCacheManagerTraceLog(CkptData& saveData)
 {
-    if (Log::GetLevel() != Log::TRACE) {
+    if (Log::GetLevel() != Log::trace) {
         return;
     }
     auto& embHashMaps = saveData.embHashMaps;
@@ -359,12 +359,12 @@ void HybridMgmt::SetFeatureTypeForLoad(vector<CkptFeatureType>& loadFeatures,
 /// 获取key对应的offset，python侧调用
 /// \param tableName 表名
 /// \return
-key_offset_map_t HybridMgmt::SendHostMap(const string tableName)
+KeyOffsetMapT HybridMgmt::SendHostMap(const string tableName)
 {
 #ifndef GTEST
     preprocess->LoadSaveLock();
-    key_offset_mem_t keyOffsetMap;
-    key_offset_map_t sendKeyOffsetMap;
+    KeyOffsetMemT keyOffsetMap;
+    KeyOffsetMapT sendKeyOffsetMap;
 
     if (!mgmtRankInfo.noDDR) {
         LOG_DEBUG(MGMT + "Start send sparse data: ddr mode hashmap");
@@ -386,12 +386,12 @@ key_offset_map_t HybridMgmt::SendHostMap(const string tableName)
 
 /// 加载key对应的offset，python侧调用；启动数据处理线程
 /// \param ReceiveKeyOffsetMap
-void HybridMgmt::ReceiveHostMap(all_key_offset_map_t receiveKeyOffsetMap)
+void HybridMgmt::ReceiveHostMap(AllKeyOffsetMapT receiveKeyOffsetMap)
 {
 #ifndef GTEST
     preprocess->LoadSaveLock();
-    key_offset_mem_t loadKeyOffsetMap;
-    offset_mem_t loadMaxOffset;
+    KeyOffsetMemT loadKeyOffsetMap;
+    OffsetMemT loadMaxOffset;
     if (!receiveKeyOffsetMap.empty()) {
         for (const auto& keyOffsetMap : as_const(receiveKeyOffsetMap)) {
             auto& singleHashMap = loadKeyOffsetMap[keyOffsetMap.first];
@@ -422,7 +422,9 @@ void HybridMgmt::ReceiveHostMap(all_key_offset_map_t receiveKeyOffsetMap)
 /// \param setupHostEmbs
 /// \param embTableCount
 /// \return
-bool HybridMgmt::IsLoadDataMatches(emb_mem_t& loadHostEmbs, EmbInfo& setupHostEmbs, size_t& embTableCount) const
+bool HybridMgmt::IsLoadDataMatches(const EmbMemT& loadHostEmbs,
+                                   const EmbInfo& setupHostEmbs,
+                                   size_t& embTableCount) const
 {
     bool loadDataMatches = { true };
     const auto& loadEmbTable { loadHostEmbs.find(setupHostEmbs.name) };

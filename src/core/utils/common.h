@@ -96,10 +96,10 @@ namespace MxRec {
 
     using emb_key_t = int64_t;
     using freq_num_t = int64_t;
-    using emb_name_t = std::string;
-    using keys_t = std::vector<emb_key_t>;
-    using lookup_key_t = std::tuple<int, emb_name_t, keys_t>;             // batch_id quarry_lable keys_vector
-    using tensor_info_t = std::tuple<int, emb_name_t, std::list<std::unique_ptr<std::vector<Tensor>>>::iterator>;
+    using EmbNameT= std::string;
+    using KeysT = std::vector<emb_key_t>;
+    using LookupKeyT = std::tuple<int, EmbNameT, KeysT>;             // batch_id quarry_lable keys_vector
+    using TensorInfoT = std::tuple<int, EmbNameT, std::list<std::unique_ptr<std::vector<Tensor>>>::iterator>;
 
     namespace HybridOption {
         const int USE_STATIC = 0x001;
@@ -128,15 +128,15 @@ namespace MxRec {
 
     inline int GetUBSize(int devID)
     {
-        std::map<string, int> ChipUbSizeList = {{"910A", UBSize::ASCEND910_A},
+        std::map<string, int> chipUbSizeList = {{"910A", UBSize::ASCEND910_A},
                                                 {"910B", UBSize::ASCEND910_B},
                                                 {"920A", UBSize::ASCEND920_A},
                                                 {"910B1", UBSize::ASCEND910_B1},
                                                 {"910B2", UBSize::ASCEND910_B2},
                                                 {"910B3", UBSize::ASCEND910_B3},
                                                 {"910B4", UBSize::ASCEND910_B4}};
-        auto it = ChipUbSizeList.find(GetChipName(devID));
-        if (it != ChipUbSizeList.end()) {
+        const auto it = chipUbSizeList.find(GetChipName(devID));
+        if (it != chipUbSizeList.end()) {
             return it->second;
         }
 
@@ -153,8 +153,8 @@ namespace MxRec {
         std::string UnParse() const
         {
             std::string s;
-            constexpr size_t MAX_DISP_LEN = 20;
-            int maxLen = static_cast<int>(std::min(sample.size(), MAX_DISP_LEN));
+            constexpr size_t maxDispLen = 20;
+            int maxLen = static_cast<int>(std::min(sample.size(), maxDispLen));
             for (int i = 0; i < maxLen; i++) {
                 s += std::to_string(sample[i]) + " ";
             }
@@ -183,8 +183,8 @@ namespace MxRec {
         const void *tensor;
     };
 
-    using emb_batch_t = Batch<int64_t>;
-    using batch_task_t = BatchTask;
+    using EmbBatchT = Batch<int64_t>;
+    using BatchTaskT = BatchTask;
 
     struct DDRParam {
         vector<Tensor> tmpDataOut;
@@ -254,7 +254,7 @@ namespace MxRec {
 
     struct ThresholdValue {
         ThresholdValue() = default;
-        ThresholdValue(emb_name_t name, int countThre, int timeThre, int faaeCoef)
+        ThresholdValue(EmbNameT name, int countThre, int timeThre, int faaeCoef)
         {
             tableName = name;
             countThreshold = countThre;
@@ -262,7 +262,7 @@ namespace MxRec {
             faaeCoefficient = faaeCoef;
         }
 
-        emb_name_t tableName { "" }; // embName
+        EmbNameT tableName { "" }; // embName
         int countThreshold { -1 }; // 只配置count，即“只有准入、而没有淘汰”功能，对应SingleHostEmbTableStatus::SETS_ONLY_ADMIT状态
         int timeThreshold { -1 };  // 只配置time，配置错误；即准入是淘汰的前提，对应SingleHostEmbTableStatus::SETS_BOTH状态
         int faaeCoefficient { 1 }; // 配置后,该表在准入时，count计数会乘以该系数
@@ -292,7 +292,7 @@ namespace MxRec {
         auto size = static_cast<size_t>(GLOG_MAX_BUF_SIZE);
         unique_ptr<char[]> buf(new char[size]);
         memset_s(buf.get(), size, 0, size);
-        int nChar =  snprintf_s(buf.get(), size, size-1, format.c_str(), args ...);
+        int nChar =  snprintf_s(buf.get(), size, size - 1, format.c_str(), args ...);
         if (nChar == -1) {
             throw invalid_argument("StringFormat failed");
         }
@@ -386,11 +386,13 @@ namespace MxRec {
                 std::vector<InitializeInfo> initializeInfos,
                 std::vector<std::string> ssdDataPath)
             : name(name), sendCount(sendCount), embeddingSize(embeddingSize), extEmbeddingSize(extEmbeddingSize),
-              isSave(isSave), initializeInfos(initializeInfos), ssdDataPath(std::move(ssdDataPath))
+              isSave(isSave),
+              devVocabSize(vocabsize[0]),
+              hostVocabSize(vocabsize[1]),
+              ssdVocabSize(vocabsize[SSD_SIZE_INDEX]),
+              initializeInfos(initializeInfos),
+              ssdDataPath(std::move(ssdDataPath))
         {
-            devVocabSize = vocabsize[0];
-            hostVocabSize = vocabsize[1];
-            ssdVocabSize = vocabsize[SSD_SIZE_INDEX];
         }
 
         std::string name;
@@ -450,11 +452,11 @@ namespace MxRec {
     };
 
     struct All2AllInfo {
-        keys_t keyRecv;
+        KeysT keyRecv;
         vector<int> scAll;
         vector<uint32_t> countRecv;
         All2AllInfo() = default;
-        All2AllInfo(keys_t keyRecv, vector<int> scAll, vector<uint32_t> countRecv)
+        All2AllInfo(KeysT keyRecv, vector<int> scAll, vector<uint32_t> countRecv)
             : keyRecv(keyRecv), scAll(scAll), countRecv(countRecv) {}
     };
 
@@ -468,19 +470,19 @@ namespace MxRec {
     };
 
     struct KeySendInfo {
-        keys_t keySend;
+        KeysT keySend;
         vector<int32_t> keyCount;
     };
 
-    using emb_mem_t = absl::flat_hash_map<std::string, HostEmbTable>;
-    using emb_hash_mem_t = absl::flat_hash_map<std::string, EmbHashMapInfo>;
-    using offset_mem_t = std::map<emb_name_t, size_t>;
-    using key_offset_mem_t = std::map<emb_name_t, absl::flat_hash_map<emb_key_t, int64_t>>;
-    using table_2_thresh_mem_t = absl::flat_hash_map<std::string, ThresholdValue>;
+    using EmbMemT = absl::flat_hash_map<std::string, HostEmbTable>;
+    using EmbHashMemT = absl::flat_hash_map<std::string, EmbHashMapInfo>;
+    using OffsetMemT = std::map<EmbNameT, size_t>;
+    using KeyOffsetMemT = std::map<EmbNameT, absl::flat_hash_map<emb_key_t, int64_t>>;
+    using Table2ThreshMemT = absl::flat_hash_map<std::string, ThresholdValue>;
     using trans_serialize_t = uint8_t;
-    using key_offset_map_t = std::map<int64_t, int64_t>;
-    using all_key_offset_map_t = std::map<std::string, std::map<int64_t, int64_t>>;
-    using key_freq_mem_t = unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>>;
+    using KeyOffsetMapT = std::map<int64_t, int64_t>;
+    using AllKeyOffsetMapT = std::map<std::string, std::map<int64_t, int64_t>>;
+    using KeyFreqMemT = unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>>;
 
     enum class CkptFeatureType {
         HOST_EMB = 0,
@@ -493,14 +495,14 @@ namespace MxRec {
     };
 
     struct CkptData {
-        emb_mem_t* hostEmbs = nullptr;
-        emb_hash_mem_t embHashMaps;
-        offset_mem_t maxOffset;
-        key_offset_mem_t keyOffsetMap;
-        table_2_thresh_mem_t table2Thresh;
+        EmbMemT* hostEmbs = nullptr;
+        EmbHashMemT embHashMaps;
+        OffsetMemT maxOffset;
+        KeyOffsetMemT keyOffsetMap;
+        Table2ThreshMemT table2Thresh;
         AdmitAndEvictData histRec;
-        key_freq_mem_t ddrKeyFreqMaps;
-        key_freq_mem_t excludeDDRKeyFreqMaps;
+        KeyFreqMemT ddrKeyFreqMaps;
+        KeyFreqMemT excludeDDRKeyFreqMaps;
     };
 
     struct CkptTransData {
@@ -529,7 +531,7 @@ namespace MxRec {
         EVICT_POS = 12
     };
 
-    ostream& operator<<(ostream& s, MxRec::CkptDataType type);
+    ostream& operator<<(ostream& ss, MxRec::CkptDataType type);
 } // end namespace MxRec
 
 #define KEY_PROCESS "\033[45m[KeyProcess]\033[0m "

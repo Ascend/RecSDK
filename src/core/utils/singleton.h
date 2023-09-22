@@ -17,37 +17,38 @@
  * T must be destructed
  * @tparam T
  */
-template<typename T>
-class Singleton {
-public:
-    Singleton() = delete;
+namespace MxRec {
+    template<typename T>
+    class Singleton {
+    public:
+        Singleton() = delete;
 
-    Singleton(const Singleton& singleton) = delete;
+        Singleton(const Singleton &singleton) = delete;
 
-    Singleton& operator=(const Singleton& singleton) = delete;
+        Singleton &operator=(const Singleton &singleton) = delete;
 
-    static T* GetInstance()
-    {
-        try {
-            static T instance;
-            return &instance;
-        } catch (std::exception& e) {
-            std::cerr << " create singleton error" << std::endl;
-            return nullptr;
+        static T *GetInstance()
+        {
+            try {
+                static T instance;
+                return &instance;
+            } catch (std::exception &e) {
+                std::cerr << " create singleton error" << std::endl;
+                return nullptr;
+            }
         }
-    }
 
-    template<typename... P>
-    static T* GetInstance(P&& ... args)
-    {
-        try {
-            static T instance(std::forward<P>(args)...);
-            return &instance;
-        } catch (std::exception& e) {
-            std::cerr << " create singleton error" << std::endl;
-            return nullptr;
+        template<typename... P>
+        static T *GetInstance(P &&... args)
+        {
+            try {
+                static T instance(std::forward<P>(args)...);
+                return &instance;
+            } catch (std::exception &e) {
+                std::cerr << " create singleton error" << std::endl;
+                return nullptr;
+            }
         }
-    }
-};
-
+    };
+}
 #endif

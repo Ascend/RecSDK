@@ -63,9 +63,9 @@ namespace MxRec {
         void SetFeatureTypeForLoad(vector<CkptFeatureType>& loadFeatures,
                                                const FeatureAdmitAndEvict& featAdmitNEvict);
 
-        key_offset_map_t SendHostMap(const string tableName);
+        KeyOffsetMapT SendHostMap(const string tableName);
 
-        void ReceiveHostMap(all_key_offset_map_t receiveKeyOffsetMap);
+        void ReceiveHostMap(AllKeyOffsetMapT receiveKeyOffsetMap);
 
         void Start();
 
@@ -115,7 +115,7 @@ namespace MxRec {
 
         void EvictKeys(const string& embName, const vector<emb_key_t>& keys);
 
-        bool IsLoadDataMatches(emb_mem_t& loadHostEmbs, EmbInfo& setupHostEmbs, size_t& embTableCount) const;
+        bool IsLoadDataMatches(const EmbMemT& loadHostEmbs, const EmbInfo& setupHostEmbs, size_t& embTableCount) const;
 
         void NotifyBySessionRun(int channelID) const;
 

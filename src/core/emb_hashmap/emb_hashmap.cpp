@@ -249,7 +249,7 @@ auto EmbHashMap::GetHashMaps() -> absl::flat_hash_map<string, EmbHashMapInfo>
     return embHashMapsOld;
 }
 
-void EmbHashMap::LoadHashMap(emb_hash_mem_t& loadData)
+void EmbHashMap::LoadHashMap(EmbHashMemT& loadData)
 {
     embHashMaps = std::move(loadData);
 }
@@ -540,7 +540,7 @@ void EmbHashMap::RefreshFreqInfoWithSwap(const string& embName, EmbHashMapInfo& 
 /// 记录日志：HBM和DDR换入换出后，比较hostHashMap中DDR内key和表对应的lfuCache对象中的key内容
 void EmbHashMap::AddCacheManagerTraceLog(const string& embTableName, const EmbHashMapInfo& embHashMap) const
 {
-    if (Log::GetLevel() != Log::TRACE) {
+    if (Log::GetLevel() != Log::trace) {
         return;
     }
     auto& hostMap = embHashMap.hostHashMap;

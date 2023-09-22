@@ -72,14 +72,14 @@ protected:
         splits = fieldNums;
     }
 
-    vector<vector<emb_batch_t>> PrepareBatch()
+    vector<vector<EmbBatchT>> PrepareBatch()
     {
-        vector<vector<emb_batch_t>> result(KEY_PROCESS_THREAD * MAX_CHANNEL_NUM);
+        vector<vector<EmbBatchT>> result(KEY_PROCESS_THREAD * MAX_CHANNEL_NUM);
         // 向共享队列中写入本进程所有线程要处理的 KEY_PROCESS_THREAD * BATCH_NUM_EACH_THREAD 个batch数据
         for (size_t threadId = 0; threadId < KEY_PROCESS_THREAD; ++threadId) {
             int batchQueueId = threadId + KEY_PROCESS_THREAD * channel;
             unsigned int seed = batchQueueId * 10;
-            auto queue = SingletonQueue<emb_batch_t>::getInstances(batchQueueId);
+            auto queue = SingletonQueue<EmbBatchT>::GetInstances(batchQueueId);
 
             for (size_t batchNum = 0; batchNum < BATCH_NUM_EACH_THREAD; ++batchNum) {
                 size_t batchId =
@@ -96,7 +96,7 @@ protected:
                         worldRank, worldSize,
                         batchQueueId, batch->name, batch->channel, batch->batchId, batch->sample.size()
                     );
-                    emb_batch_t temp;
+                    EmbBatchT temp;
                     temp.sample = batch->sample;
                     temp.name = batch->name;
                     temp.batchId = batch->batchId;
@@ -153,9 +153,9 @@ protected:
         return true;
     }
 
-    auto GetSplitAndRestore(keys_t& sample) -> tuple<vector<keys_t>, vector<int32_t>>
+    auto GetSplitAndRestore(KeysT& sample) -> tuple<vector<KeysT>, vector<int32_t>>
     {
-        vector<keys_t> expectSplitKeys(worldSize);
+        vector<KeysT> expectSplitKeys(worldSize);
         vector<int> expectRestore(sample.size());
         absl::flat_hash_map<emb_key_t, int> uKey;
         for (unsigned int i = 0; i < sample.size(); ++i) {
@@ -172,7 +172,7 @@ protected:
         return { expectSplitKeys, expectRestore };
     }
 
-    void PrintHotHashSplit(const vector<keys_t>& splitKeys,
+    void PrintHotHashSplit(const vector<KeysT>& splitKeys,
                            const vector<int32_t>& restore,
                            const vector<int32_t>& hotPos, int rankSize)
     {
@@ -186,7 +186,7 @@ protected:
         LOG_INFO(VectorToString(hotPos));
     }
 
-    void GetExpectRestore(keys_t& sample, vector<int>& blockOffset, vector<int>& restoreVec)
+    void GetExpectRestore(KeysT& sample, vector<int>& blockOffset, vector<int>& restoreVec)
     {
         for (unsigned int i = 0; i < sample.size(); ++i) {
             int devId = sample[i] % worldSize;
@@ -221,8 +221,8 @@ protected:
     vector<int64_t> src;
     vector<RankInfo> allRankInfo;
     vector<EmbInfo> embInfos;
-    unique_ptr<emb_batch_t> batchData;
-    vector<keys_t> splitKeys;
+    unique_ptr<EmbBatchT> batchData;
+    vector<KeysT> splitKeys;
     vector<int32_t> restore;
     KeyProcess process;
 
@@ -264,9 +264,9 @@ TEST_F(KeyProcessTest, Start)
 TEST_F(KeyProcessTest, HashSplit)
 {
     int rankSize = 4;
-    auto queue = SingletonQueue<emb_batch_t>::getInstances(0);
+    auto queue = SingletonQueue<EmbBatchT>::GetInstances(0);
     auto batch = queue->GetOne();
-    keys_t batchKeys = { 1, 4, 23, 14, 16, 7, 2, 21, 21, 29 };
+    KeysT batchKeys = { 1, 4, 23, 14, 16, 7, 2, 21, 21, 29 };
     vector<int> expectRestore = { 0, 0, 0, 0, 1, 1, 1, 1, 1, 2 };
     vector<vector<int>> expectSplitKeys = { { 4, 16 }, { 1, 21, 29 }, { 14, 2 }, { 23, 7 } };
     batch->sample = std::move(batchKeys);
@@ -315,9 +315,9 @@ TEST_F(KeyProcessTest, GetScAllForUnique)
 
 TEST_F(KeyProcessTest, BuildRestoreVec_4cpu)
 {
-    auto queue = SingletonQueue<emb_batch_t>::getInstances(0);
+    auto queue = SingletonQueue<EmbBatchT>::GetInstances(0);
     auto batch = queue->GetOne();
-    vector<keys_t> allBatchKeys = { { 1, 4, 23, 14, 16, 7, 2, 21, 21, 29 },
+    vector<KeysT> allBatchKeys = { { 1, 4, 23, 14, 16, 7, 2, 21, 21, 29 },
                                     { 5, 17, 26, 9, 27, 22, 27, 28, 15, 3 },
                                     { 10, 4, 22, 17, 24, 13, 24, 26, 29, 11 },
                                     { 14, 21, 18, 25, 21, 4, 20, 24, 13, 19 } };
@@ -354,11 +354,11 @@ TEST_F(KeyProcessTest, ProcessKeySplit_rebuilt)
     auto fn = [this](int channel, int id) {
         auto embName = embInfos[0].name;
         process.hotEmbTotCount[embName] = 10;
-        vector<keys_t> splitKeys;
+        vector<KeysT> splitKeys;
         vector<int32_t> restore;
         vector<int32_t> hotPos;
-        unique_ptr<emb_batch_t> batch;
-        batch = process.GetBatchData(channel, id); // get batch data from SingletonQueue<emb_batch_t>
+        unique_ptr<EmbBatchT> batch;
+        batch = process.GetBatchData(channel, id); // get batch data from SingletonQueue<EmbBatchT>
         LOG_INFO("rankid :{},batchid: {}", rankInfo.rankId, batch->batchId);
         tie(splitKeys, restore, hotPos) = process.HotHashSplit(batch);
         LOG_INFO("rankid :{},batchid: {}, hotPos {}", rankInfo.rankId, batch->batchId, VectorToString(hotPos));
@@ -381,11 +381,11 @@ TEST_F(KeyProcessTest, BuildRestoreVec_rebuilt)
 
     auto fn = [this](int channel, int id) {
         auto embName = embInfos[0].name;
-        vector<keys_t> splitKeys;
+        vector<KeysT> splitKeys;
         vector<int32_t> restore;
         vector<int32_t> hotPos;
-        unique_ptr<emb_batch_t> batch;
-        batch = process.GetBatchData(channel, id); // get batch data from SingletonQueue<emb_batch_t>
+        unique_ptr<EmbBatchT> batch;
+        batch = process.GetBatchData(channel, id); // get batch data from SingletonQueue<EmbBatchT>
         LOG_INFO("rankid :{},batchid: {}", rankInfo.rankId, batch->batchId);
         tie(splitKeys, restore, hotPos) = process.HotHashSplit(batch);
         auto[lookupKeys, scAll, ss] = process.ProcessSplitKeys(batch, id, splitKeys);
@@ -406,26 +406,26 @@ TEST_F(KeyProcessTest, BuildRestoreVec_rebuilt)
 
 TEST_F(KeyProcessTest, Key2Offset)
 {
-    keys_t lookupKeys = { 4, 16, 28, 4, 24, 4, 20, 24 };
-    keys_t expectOffset = { 0, 1, 2, 0, 3, 0, 4, 3 };
+    KeysT lookupKeys = { 4, 16, 28, 4, 24, 4, 20, 24 };
+    KeysT expectOffset = { 0, 1, 2, 0, 3, 0, 4, 3 };
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     process.Key2Offset("emb0", lookupKeys, TRAIN_CHANNEL_ID);
-    map<emb_name_t, string> tmp;
+    map<EmbNameT, string> tmp;
     for (auto it = process.keyOffsetMap.begin(); it != process.keyOffsetMap.end(); ++it) {
-        tmp.insert(pair<emb_name_t, string>(it->first, MapToString(it->second).c_str()));
+        tmp.insert(pair<EmbNameT, string>(it->first, MapToString(it->second).c_str()));
     }
 
     LOG_DEBUG(KEY_PROCESS "test Key2Offset: lookupKeys: {}, keyOffsetMap: {}",
         VectorToString(lookupKeys), MapToString(tmp));
     ASSERT_THAT(lookupKeys, ElementsAreArray(expectOffset));
 
-    keys_t lookupKeys2 = { 5, 17, 29, 5, 25, 5, 21, 25 };
-    keys_t expectOffset2 = { -1, -1, -1, -1, -1, -1, -1, -1 };
+    KeysT lookupKeys2 = { 5, 17, 29, 5, 25, 5, 21, 25 };
+    KeysT expectOffset2 = { -1, -1, -1, -1, -1, -1, -1, -1 };
     process.Key2Offset("emb0", lookupKeys2, EVAL_CHANNEL_ID);
-    map<emb_name_t, string> tmp2;
+    map<EmbNameT, string> tmp2;
     for (auto it = process.keyOffsetMap.begin(); it != process.keyOffsetMap.end(); ++it) {
-        tmp.insert(pair<emb_name_t, string>(it->first, MapToString(it->second).c_str()));
+        tmp.insert(pair<EmbNameT, string>(it->first, MapToString(it->second).c_str()));
     }
     LOG_DEBUG(KEY_PROCESS "test Key2Offset: lookupKeys: {}, keyOffsetMap: {}",
         VectorToString(lookupKeys2), MapToString(tmp2).c_str());
@@ -434,16 +434,16 @@ TEST_F(KeyProcessTest, Key2Offset)
 
 TEST_F(KeyProcessTest, Key2OffsetDynamicExpansion)
 {
-    keys_t lookupKeys = { 4, 16, 28, -1, 24, -1, 20, 24 };
-    keys_t expectOffset = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    KeysT lookupKeys = { 4, 16, 28, -1, 24, -1, 20, 24 };
+    KeysT expectOffset = { 0, 0, 0, 0, 0, 0, 0, 0 };
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     process.Key2OffsetDynamicExpansion("emb0", lookupKeys, EVAL_CHANNEL_ID);
 
     LOG_DEBUG(KEY_PROCESS "test Key2Offset: lookupKeys: {}, keyOffsetMap: {}", VectorToString(lookupKeys), [&] {
-        map<emb_name_t, string> tmp;
+        map<EmbNameT, string> tmp;
         for (auto it = process.keyOffsetMap.begin(); it != process.keyOffsetMap.end(); ++it) {
-            tmp.insert(pair<emb_name_t, string>(it->first, MapToString(it->second).c_str()));
+            tmp.insert(pair<EmbNameT, string>(it->first, MapToString(it->second).c_str()));
         }
         return MapToString(tmp);
     }());
@@ -485,7 +485,7 @@ TEST_F(KeyProcessTest, InitializeUnique)
     ASSERT_EQ(factory->CreateUnique(unique), 0);
 
     PrepareBatch();
-    unique_ptr<emb_batch_t> batch;
+    unique_ptr<EmbBatchT> batch;
     batch = process.GetBatchData(0, 0);
     UniqueConf uniqueConf;
     process.rankInfo.rankSize = worldSize;
@@ -498,7 +498,7 @@ TEST_F(KeyProcessTest, InitializeUnique)
 TEST_F(KeyProcessTest, GetKeySize)
 {
     PrepareBatch();
-    unique_ptr<emb_batch_t> batch;
+    unique_ptr<EmbBatchT> batch;
     batch = process.GetBatchData(0, 0);
     process.rankInfo.rankSize = worldSize;
     process.rankInfo.useStatic = true;
@@ -517,12 +517,12 @@ TEST_F(KeyProcessTest, ProcessBatchWithFastUnique)
         
         auto embName = embInfos[0].name;
         process.hotEmbTotCount[embName] = 10;
-        vector<keys_t> splitKeys;
+        vector<KeysT> splitKeys;
         vector<int32_t> restore;
         vector<int32_t> hotPos;
-        unique_ptr<emb_batch_t> batch;
+        unique_ptr<EmbBatchT> batch;
         UniqueInfo uniqueInfo;
-        batch = process.GetBatchData(channel, id); // get batch data from SingletonQueue<emb_batch_t>
+        batch = process.GetBatchData(channel, id); // get batch data from SingletonQueue<EmbBatchT>
 
         ASSERT_EQ(factory->CreateUnique(unique), ock::ctr::H_OK);
         UniqueConf uniqueConf;

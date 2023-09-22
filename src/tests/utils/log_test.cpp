@@ -21,7 +21,7 @@ TEST(Log, Format)
 
 TEST(Log, LogLevel)
 {
-    MxRec::Log::SetLevel(Log::DEBUG);
+    MxRec::Log::SetLevel(Log::debug);
     testing::internal::CaptureStdout();
     LOG_DEBUG("debug log {}", "hellow");
     LOG_INFO("info log {}", "hellow");
@@ -33,7 +33,7 @@ TEST(Log, LogLevel)
     EXPECT_NE(output.find("warn log hellow"), string::npos);
     EXPECT_NE(output.find("error log hellow"), string::npos);
 
-    MxRec::Log::SetLevel(Log::INFO);
+    MxRec::Log::SetLevel(Log::info);
     testing::internal::CaptureStdout();
     LOG_DEBUG("debug log {}", "hellow");
     LOG_INFO("info log {}", "hellow");
@@ -45,7 +45,7 @@ TEST(Log, LogLevel)
     EXPECT_NE(output.find("warn log hellow"), string::npos);
     EXPECT_NE(output.find("error log hellow"), string::npos);
 
-    MxRec::Log::SetLevel(Log::WARN);
+    MxRec::Log::SetLevel(Log::warn);
     testing::internal::CaptureStdout();
     LOG_DEBUG("debug log {}", "hellow");
     LOG_INFO("info log {}", "hellow");
@@ -57,7 +57,7 @@ TEST(Log, LogLevel)
     EXPECT_NE(output.find("warn log hellow"), string::npos);
     EXPECT_NE(output.find("error log hellow"), string::npos);
 
-    MxRec::Log::SetLevel(Log::ERROR);
+    MxRec::Log::SetLevel(Log::error);
     testing::internal::CaptureStdout();
     LOG_DEBUG("debug log {}", "hellow");
     LOG_INFO("info log {}", "hellow");
@@ -72,7 +72,7 @@ TEST(Log, LogLevel)
 
 TEST(Log, LayzEvalution)
 {
-    MxRec::Log::SetLevel(Log::WARN);
+    MxRec::Log::SetLevel(Log::warn);
     testing::internal::CaptureStdout();
     int flag1 = 0;
     int flag2 = 0;
@@ -97,7 +97,7 @@ TEST(Log, LayzEvalution)
 
 TEST(Log, Basic)
 {
-    MxRec::Log::SetLevel(Log::INFO);
+    MxRec::Log::SetLevel(Log::info);
     testing::internal::CaptureStdout();
     LOG_INFO("basictest");
     std::string output = testing::internal::GetCapturedStdout();
@@ -106,7 +106,7 @@ TEST(Log, Basic)
 
 TEST(Log, TooManyArgs1)
 {
-    MxRec::Log::SetLevel(Log::INFO);
+    MxRec::Log::SetLevel(Log::info);
     testing::internal::CaptureStdout();
     LOG_INFO("{} {} {}", 0.1f, 'h', 'e', "llow");
     std::string output = testing::internal::GetCapturedStdout();
@@ -116,7 +116,7 @@ TEST(Log, TooManyArgs1)
 
 TEST(Log, TooManyArgs2)
 {
-    MxRec::Log::SetLevel(Log::INFO);
+    MxRec::Log::SetLevel(Log::info);
     testing::internal::CaptureStdout();
     LOG_INFO("{}", "h", "h", "h", "h", "h", "h", "h");
     std::string output = testing::internal::GetCapturedStdout();
@@ -126,7 +126,7 @@ TEST(Log, TooManyArgs2)
 
 TEST(Log, FewArgs)
 {
-    MxRec::Log::SetLevel(Log::INFO);
+    MxRec::Log::SetLevel(Log::info);
     testing::internal::CaptureStdout();
     LOG_INFO("{} {} {} {} {} {}", "hellow", "hellow");
     std::string output = testing::internal::GetCapturedStdout();
@@ -136,7 +136,7 @@ TEST(Log, FewArgs)
 
 TEST(Log, CkptType)
 {
-    MxRec::Log::SetLevel(Log::INFO);
+    MxRec::Log::SetLevel(Log::info);
     testing::internal::CaptureStdout();
     LOG_INFO("ckpt type={}", CkptDataType::EMB_DATA);
     std::string output = testing::internal::GetCapturedStdout();

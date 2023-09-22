@@ -87,7 +87,7 @@ TEST(EmbHashMap, TestFindOffset)
     auto& ddrKeyMap = cacheManager.ddrKeyFreqMap[embTableName];
 
     auto logLevelTemp = Log::GetLevel();
-    Log::SetLevel(Log::TRACE);
+    Log::SetLevel(Log::trace);
     vector<emb_key_t> keys4 = {21, 21, 21, 21}; // 新key重复值, 且需要换入换出
     hostHashMaps.FindOffset(embTableName, keys4, currentBatchId++, keepBatchId++, channelId);
     RefreshSwapFreqInfoAndPrint(hostHashMaps, embTableName, opTimes++);
