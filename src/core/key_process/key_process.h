@@ -254,7 +254,7 @@ namespace MxRec {
                              vector <vector<uint32_t>>& keyCount);
 
         template<class T>
-        inline vector<T> Count2Start(const vector<T>& count)
+        inline vector<T> Count2Start(const vector<T>& count) const
         {
             vector<T> start = { 0 };
             for (size_t i = 0; i < count.size() - 1; ++i) {

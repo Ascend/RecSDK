@@ -23,7 +23,7 @@ namespace MxRec {
     public:
         EmbTable() = default;
 
-        void Init(const EmbInfo& embInfo, const RankInfo& rInfo, int seed = 0);
+        void Init(const EmbInfo& eInfo, const RankInfo& rInfo, int initSeed = 0);
 
         ~EmbTable();
 
@@ -59,7 +59,7 @@ namespace MxRec {
         // 内存块列表
         vector<void*> memoryList;
 
-        void RandomInit(void* newBlock, const vector<InitializeInfo> &initializeInfos);
+        void RandomInit(void* newBlock);
 
         // embSize由embInfo得出
         void SplitMemoryBlock(void* newBlock);

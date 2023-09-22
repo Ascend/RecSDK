@@ -65,7 +65,7 @@ namespace MxRec {
 
         key_offset_map_t SendHostMap(const string tableName);
 
-        void ReceiveHostMap(all_key_offset_map_t keyOffsetMap);
+        void ReceiveHostMap(all_key_offset_map_t receiveKeyOffsetMap);
 
         void Start();
 

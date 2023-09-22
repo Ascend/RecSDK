@@ -386,14 +386,14 @@ key_offset_map_t HybridMgmt::SendHostMap(const string tableName)
 
 /// 加载key对应的offset，python侧调用；启动数据处理线程
 /// \param ReceiveKeyOffsetMap
-void HybridMgmt::ReceiveHostMap(all_key_offset_map_t ReceiveKeyOffsetMap)
+void HybridMgmt::ReceiveHostMap(all_key_offset_map_t receiveKeyOffsetMap)
 {
 #ifndef GTEST
     preprocess->LoadSaveLock();
     key_offset_mem_t loadKeyOffsetMap;
     offset_mem_t loadMaxOffset;
-    if (!ReceiveKeyOffsetMap.empty()) {
-        for (const auto& keyOffsetMap : as_const(ReceiveKeyOffsetMap)) {
+    if (!receiveKeyOffsetMap.empty()) {
+        for (const auto& keyOffsetMap : as_const(receiveKeyOffsetMap)) {
             auto& singleHashMap = loadKeyOffsetMap[keyOffsetMap.first];
             auto& maxOffset = loadMaxOffset[keyOffsetMap.first];
             for (const auto& it : keyOffsetMap.second) {

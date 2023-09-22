@@ -16,7 +16,7 @@
 using namespace MxRec;
 
 inline void CacheManager::GetExternalKeys(EmbHashMapInfo &embHashMap, vector<emb_key_t> &externalKeys,
-                                          vector<emb_key_t> &internalKeys, const vector<emb_key_t> &keys)
+                                          vector<emb_key_t> &internalKeys, const vector<emb_key_t> &keys) const
 {
     for (const emb_key_t key : keys) {
         if (embHashMap.hostHashMap.find(key) == embHashMap.hostHashMap.end()) {
@@ -28,7 +28,7 @@ inline void CacheManager::GetExternalKeys(EmbHashMapInfo &embHashMap, vector<emb
 }
 
 void CacheManager::AddDebugAndTraceLog(size_t batchKeySize, vector<emb_key_t> &externalKeys,
-                                       vector<emb_key_t> &externalSSDKeys)
+                                       vector<emb_key_t> &externalSSDKeys) const
 {
     LOG_DEBUG("TransferDDREmbWithSSD: batchKeySize:{}, externalKeys size:{}, externalSSDKeys size:{}",
         batchKeySize, externalKeys.size(), externalSSDKeys.size());
@@ -39,7 +39,7 @@ void CacheManager::AddDebugAndTraceLog(size_t batchKeySize, vector<emb_key_t> &e
 /// 去重和过滤无效key
 /// \param originalKeys 原有keys
 /// \param keys 处理后的keys
-void CacheManager::HandleRepeatAndInvalidKey(const vector<emb_key_t>& originalKeys, vector<emb_key_t>& keys)
+void CacheManager::HandleRepeatAndInvalidKey(const vector<emb_key_t>& originalKeys, vector<emb_key_t>& keys) const
 {
     // 去重并保持原key的顺序 结果可测试
     unordered_set<emb_key_t> keySet;

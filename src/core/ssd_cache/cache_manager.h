@@ -113,12 +113,12 @@ namespace MxRec {
                                   EmbHashMapInfo& embHashMap);
 
         inline void GetExternalKeys(EmbHashMapInfo& embHashMap, vector<emb_key_t>& externalKeys,
-                                    vector<emb_key_t>& internalKeys, const vector<emb_key_t>& keys);
+                                    vector<emb_key_t>& internalKeys, const vector<emb_key_t>& keys) const;
 
         void AddDebugAndTraceLog(size_t batchKeySize, vector<emb_key_t>& externalKeys,
-                                 vector<emb_key_t>& externalSSDKeys);
+                                 vector<emb_key_t>& externalSSDKeys) const;
 
-        void HandleRepeatAndInvalidKey(const vector<emb_key_t>& originalKeys, vector<emb_key_t>& keys);
+        void HandleRepeatAndInvalidKey(const vector<emb_key_t>& originalKeys, vector<emb_key_t>& keys) const;
 
         unordered_map<std::string, EmbBaseInfo> embBaseInfos;
 

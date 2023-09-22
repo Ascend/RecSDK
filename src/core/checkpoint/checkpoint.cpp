@@ -289,7 +289,7 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir, 
     }
     for (size_t i = 0, j = 0; i < transArr.size(); i += keyAddrElem, ++j) {
         vector<float> row(embeddingSize);
-        readFile.read(reinterpret_cast<char *> (row.data()), embeddingSize * sizeof(float));
+        readFile.read(reinterpret_cast<char *>(row.data()), embeddingSize * sizeof(float));
 
         aclError ec = aclrtMemcpy(floatPtr + j * embeddingSize, embeddingSize * sizeof(float),
                                   row.data(), embeddingSize * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
