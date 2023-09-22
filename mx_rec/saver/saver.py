@@ -50,6 +50,7 @@ class Saver(object):
         self.placeholder_dict = defaultdict(dict)
         # save_easy_mode : only save the embedding and key data of sparse tables
         self.save_easy_mode = (global_env.save_easy == Flag.TRUE.value)
+        self._last_checkponts = []
         self.build()
 
     @staticmethod
@@ -121,6 +122,13 @@ class Saver(object):
         logger.info("rank id %s | Saving_path '%s' has been made.", self.rank_id, saving_path)
 
         self._save(sess, saving_path)
+        if self.max_to_keep:
+            self._last_checkponts.append(saving_path)
+            if len(self._last_checkponts) > self.max_to_keep:
+                logger.info("checkpoints num %d > max_to_keep %d delete %s",
+                            len(self._last_checkponts), self.max_to_keep,
+                            self._last_checkponts[0])
+                tf.io.gfile.rmtree(self._last_checkponts.pop(0))
         logger.info("sparse model was saved in dir '%s' .", saving_path)
         logger.info("======== Saving finished for rank id %s ========", self.rank_id)
 
