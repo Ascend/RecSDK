@@ -5,8 +5,8 @@
 * Date: 2022/11/15
 */
 
-#ifndef ACL_CHANNEL_H_
-#define ACL_CHANNEL_H_
+#ifndef ACL_CHANNEL_H
+#define ACL_CHANNEL_H
 
 #include <vector>
 #include <string>
@@ -30,5 +30,5 @@ namespace tensorflow {
 
 }  // namespace tensorflow
 
-#endif  // ACL_CHANNEL_H_
+#endif  // ACL_CHANNEL_H
 

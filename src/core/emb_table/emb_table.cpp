@@ -18,11 +18,12 @@ using namespace std;
 using namespace MxRec;
 using namespace tensorflow;
 
-void EmbTable::Init(const EmbInfo& embInfo, const RankInfo& rInfo, int initSeed)
+void EmbTable::Init(const EmbInfo& eInfo, const RankInfo& rInfo, int initSeed)
 {
 #ifndef GTEST
     this->rankInfo = rInfo;
     this->seed = initSeed;
+    this->embInfo = eInfo;
     LOG_INFO("EmbTable init, deviceID {}, embSize {} running", rInfo.deviceId, embInfo.extEmbeddingSize);
     // 计算embedding table需要分配的内存块数
     auto ret = aclrtSetDevice(static_cast<int32_t>(rInfo.deviceId));
@@ -41,7 +42,7 @@ void EmbTable::Init(const EmbInfo& embInfo, const RankInfo& rInfo, int initSeed)
             throw AclError();
         }
         // 申请内存初始化
-        RandomInit(newBlock, embInfo.initializeInfos);
+        RandomInit(newBlock);
         // 将新的内存块加入内存链表
         memoryList.push_back(newBlock);
         SplitMemoryBlock(newBlock);
@@ -77,7 +78,7 @@ int64_t EmbTable::GetEmbAddress()
             LOG_ERROR("aclrtMalloc failed, ret={}", ret);
             throw AclError();
         }
-        RandomInit(addBlock, embInfo.initializeInfos);
+        RandomInit(addBlock);
         // 将新的内存块加入内存list
         memoryList.push_back(addBlock);
         SplitMemoryBlock(addBlock);
@@ -90,12 +91,12 @@ int64_t EmbTable::GetEmbAddress()
 #endif
 }
 
-void EmbTable::RandomInit(void* newBlock, const vector<InitializeInfo>& initializeInfos)
+void EmbTable::RandomInit(void* newBlock)
 {
 #ifndef GTEST
-    LOG_INFO("Device GenerateEmbData Start, seed:{}, initializer num: {}", seed, initializeInfos.size());
+    LOG_INFO("Device GenerateEmbData Start, seed:{}, initializer num: {}", seed, embInfo.initializeInfos.size());
     vector<float> devEmb(blockSize);
-    for (auto initializeInfo: initializeInfos) {
+    for (const auto& initializeInfo: as_const(embInfo.initializeInfos)) {
         LOG_INFO("Device GenerateEmbData ing. name {}", initializeInfo.name.c_str());
         for (int i = 0; i < BLOCK_EMB_COUNT; i++) {
             initializeInfo.initializer->GenerateData(&devEmb[i * embSize], embSize);

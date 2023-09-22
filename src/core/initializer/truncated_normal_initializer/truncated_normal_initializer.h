@@ -8,9 +8,7 @@
 #ifndef MX_REC_TRUNCATED_NORMAL_INITIALIZER_H
 #define MX_REC_TRUNCATED_NORMAL_INITIALIZER_H
 
-#include <vector>
 #include <random>
-#include <tuple>
 
 #include "initializer/initializer.h"
 
@@ -36,8 +34,8 @@ namespace MxRec {
 
         std::default_random_engine generator;
         std::normal_distribution<float> distribution;
-        float minBound;
-        float maxBound;
+        float minBound = 0;
+        float maxBound = 0;
     };
 }
 

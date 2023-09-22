@@ -8,9 +8,7 @@
 #ifndef MX_REC_RANDOM_NORMAL_INITIALIZER_H
 #define MX_REC_RANDOM_NORMAL_INITIALIZER_H
 
-#include <vector>
 #include <random>
-#include <tuple>
 
 #include "initializer/initializer.h"
 
