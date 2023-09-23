@@ -19,7 +19,8 @@ Table::Table(const string &name, vector<string> &savePaths, uint64_t maxTableSiz
       maxTableSize(maxTableSize),
       compactThreshold(compactThreshold)
 {
-    curTablePath = fs::absolute(savePaths.at(curSavePathIdx) + "/" + saveDirPrefix + g_rankId + "/" + name).string();
+    curTablePath = fs::absolute(savePaths.at(curSavePathIdx) + "/" +
+        saveDirPrefix + GlogConfig::gRankId + "/" + name).string();
     if (!fs::exists(curTablePath) && !fs::create_directories(curTablePath)) {
         throw runtime_error("fail to create table directory");
     }
@@ -39,7 +40,8 @@ Table::Table(const string &name, vector<string> &saveDirs, uint64_t maxTableSize
       compactThreshold(compactThreshold)
 {
     // always use first path to save until it's full
-    curTablePath = fs::absolute(savePaths.at(curSavePathIdx) + "/" + saveDirPrefix + g_rankId + "/" + name).string();
+    curTablePath = fs::absolute(savePaths.at(curSavePathIdx) + "/" +
+        saveDirPrefix + GlogConfig::gRankId + "/" + name).string();
     if (!fs::exists(curTablePath) && !fs::create_directories(curTablePath)) {
         throw runtime_error("fail to create table directory");
     }
@@ -47,7 +49,8 @@ Table::Table(const string &name, vector<string> &saveDirs, uint64_t maxTableSize
     bool isMetaFileFound = false;
     for (const string &dirPath: saveDirs) {
         auto metaFilePath = fs::absolute(
-            dirPath + "/" + saveDirPrefix + g_rankId + "/" + name + "/" + name + ".meta." + to_string(step)).string();
+            dirPath + "/" + saveDirPrefix + GlogConfig::gRankId + "/" +
+            name + "/" + name + ".meta." + to_string(step)).string();
         if (!fs::exists(metaFilePath)) {
             continue;
         }
@@ -157,7 +160,7 @@ void Table::LoadDataFileSet(const shared_ptr<fstream> &metaFile, int step)
         shared_ptr<File> loadedFile = nullptr;
         for (const string &p: savePaths) {
             // try to find data file from each path
-            string loadPath = p + "/" + saveDirPrefix + g_rankId + "/" + name;
+            string loadPath = p + "/" + saveDirPrefix + GlogConfig::gRankId + "/" + name;
             SetTablePathToDiskWithSpace();
             if (!fs::exists(curTablePath) && !fs::create_directories(curTablePath)) {
                 throw runtime_error("fail to create table directory");
@@ -377,7 +380,7 @@ void Table::SetTablePathToDiskWithSpace()
             throw runtime_error("all disk's space not enough");
         }
         curTablePath = fs::absolute(
-            savePaths.at(curSavePathIdx) + "/" + saveDirPrefix + g_rankId + "/" + name).string();
+            savePaths.at(curSavePathIdx) + "/" + saveDirPrefix + GlogConfig::gRankId + "/" + name).string();
 
         LOG_INFO("current data path's available space less than {}%, try next path:{}",
                  diskAvailSpaceThreshold * convertToPercentage, curTablePath);

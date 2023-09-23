@@ -71,7 +71,7 @@ protected:
         // 设置全局rankId，ssdEngine保存时会使用
         int workRankId;
         MPI_Comm_rank(MPI_COMM_WORLD, &workRankId);
-        g_rankId = to_string(workRankId);
+        GlogConfig::gRankId = to_string(workRankId);
 
         cacheManager.ddrKeyFreqMap[embTableName] = cache;
         cacheManager.ddrKeyFreqMap[embTableName].PutKeys(input_keys);

@@ -7,31 +7,31 @@
  */
 
 
-#include "utils/log.h"
+#include "utils/logger.h"
 
 namespace MxRec {
 
-int MxRec::Log::level = MxRec::Log::info;
-int MxRec::Log::rank = 0;
+int MxRec::Logger::level = MxRec::Logger::info;
+int MxRec::Logger::rank = 0;
 
-void Log::SetRank(int rank)
+void Logger::SetRank(int logRank)
 {
-    Log::rank = rank;
+    Logger::rank = logRank;
 }
 
-void Log::SetLevel(int level)
+void Logger::SetLevel(int logLevel)
 {
-    Log::level = level;
+    Logger::level = logLevel;
 }
 
-int Log::GetLevel()
+int Logger::GetLevel()
 {
-    return Log::level;
+    return Logger::level;
 }
 
-const char* Log::LevelToStr(int level)
+const char* Logger::LevelToStr(int logLevel)
 {
-    if (level < trace || level > error) {
+    if (logLevel < trace || logLevel > error) {
         return "INVALID LEVEL";
     }
     static const char* msg[] = {
@@ -45,7 +45,7 @@ const char* Log::LevelToStr(int level)
     return msg[level + levelOffset];
 }
 
-void Log::LogUnpack(std::queue<std::string>& fmt, std::stringstream &ss)
+void Logger::LogUnpack(std::queue<std::string>& fmt, std::stringstream &ss)
 {
     while (!fmt.empty()) {
         ss << fmt.front();

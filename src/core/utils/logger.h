@@ -6,8 +6,8 @@
  * History: NA
  */
 
-#ifndef  MXREC_LOG_H
-#define  MXREC_LOG_H
+#ifndef  MXREC_LOGGER_H
+#define  MXREC_LOGGER_H
 
 #include <cstdio>
 #include <ctime>
@@ -24,7 +24,7 @@ namespace MxRec {
 constexpr int YEAR_BASE = 1900;
 constexpr size_t DELIM_LEN = 2;
 
-class Log {
+class Logger {
 public:
 
     static constexpr int trace = -2;
@@ -33,9 +33,9 @@ public:
     static constexpr int warn = 1;
     static constexpr int error = 2;
 
-    static void SetRank(int rank);
+    static void SetRank(int logRank);
 
-    static void SetLevel(int level);
+    static void SetLevel(int logLevel);
 
     static int GetLevel();
 
@@ -57,12 +57,12 @@ public:
     static std::string Format(const char* fmt, Args &&...args)
     {
         std::stringstream ss;
-        Log::Format(ss, fmt, args...);
+        Logger::Format(ss, fmt, args...);
         return ss.str();
     }
 
     template<typename... Args>
-    static void log(const char* file, int line, int level, const char* fmt, Args &&...args)
+    static void Log(const char* file, int line, int level, const char* fmt, Args &&...args)
     {
         std::stringstream ss;
         struct tm t;
@@ -71,21 +71,21 @@ public:
         localtime_r(&tv.tv_sec, &t);
         ss << "[MxRec][" << YEAR_BASE + t.tm_year << "/" << t.tm_mon << "/" << t.tm_mday<< " "
            << t.tm_hour << ":" << t.tm_min << ":" << t.tm_sec << "." << tv.tv_usec << "] ["
-           << Log::rank << "] ["<< Log::LevelToStr(level) << "] ["
+           << Logger::rank << "] ["<< Logger::LevelToStr(level) << "] ["
            << (strrchr(file, '/') ? strrchr(file, '/') + 1 : file) << ":" << line << "] ";
-        Log::Format(ss, fmt, args...);
+        Logger::Format(ss, fmt, args...);
         ss << std::endl;
         std::cout << ss.str();
     }
 
     template<typename... Args>
-    static void log(const char* file, int line, int level, const std::string& fmt, Args &&...args)
+    static void Log(const char* file, int line, int level, const std::string& fmt, Args &&...args)
     {
-        Log::log(file, line, level, fmt.c_str(), args...);
+        Logger::Log(file, line, level, fmt.c_str(), args...);
     }
 
 private:
-    static const char* LevelToStr(int level);
+    static const char* LevelToStr(int logLevel);
 
     static void LogUnpack(std::queue<std::string>& fmt, std::stringstream &ss);
 
@@ -103,22 +103,21 @@ private:
     static int rank;
 };
 
+#define LOG_TRACE(args...) if (MxRec::Logger::GetLevel() <= MxRec::Logger::trace) \
+MxRec::Logger::Log(__FILE__, __LINE__, MxRec::Logger::trace, args)
 
-#define LOG_TRACE(args...) if (MxRec::Log::GetLevel() <= MxRec::Log::trace) \
-MxRec::Log::log(__FILE__, __LINE__, MxRec::Log::trace, args)
+#define LOG_DEBUG(args...) if (MxRec::Logger::GetLevel() <= MxRec::Logger::debug) \
+MxRec::Logger::Log(__FILE__, __LINE__, MxRec::Logger::debug, args)
 
-#define LOG_DEBUG(args...) if (MxRec::Log::GetLevel() <= MxRec::Log::debug) \
-MxRec::Log::log(__FILE__, __LINE__, MxRec::Log::debug, args)
+#define LOG_INFO(args...) if (MxRec::Logger::GetLevel() <= MxRec::Logger::info) \
+MxRec::Logger::Log(__FILE__, __LINE__, MxRec::Logger::info, args)
 
-#define LOG_INFO(args...) if (MxRec::Log::GetLevel() <= MxRec::Log::info) \
-MxRec::Log::log(__FILE__, __LINE__, MxRec::Log::info, args)
+#define LOG_WARN(args...) if (MxRec::Logger::GetLevel() <= MxRec::Logger::warn) \
+MxRec::Logger::Log(__FILE__, __LINE__, MxRec::Logger::warn, args)
 
-#define LOG_WARN(args...) if (MxRec::Log::GetLevel() <= MxRec::Log::warn) \
-MxRec::Log::log(__FILE__, __LINE__, MxRec::Log::warn, args)
-
-#define LOG_ERROR(args...) if (MxRec::Log::GetLevel() <= MxRec::Log::error) \
-MxRec::Log::log(__FILE__, __LINE__, MxRec::Log::error, args)
+#define LOG_ERROR(args...) if (MxRec::Logger::GetLevel() <= MxRec::Logger::error) \
+MxRec::Logger::Log(__FILE__, __LINE__, MxRec::Logger::error, args)
 
 }
 
-#endif  // MXREC_LOG_H
+#endif  // MXREC_LOGGER_H

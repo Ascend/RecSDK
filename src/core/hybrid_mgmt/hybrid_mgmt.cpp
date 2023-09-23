@@ -7,7 +7,7 @@
 #include "hybrid_mgmt.h"
 
 #include "utils/time_cost.h"
-#include "utils/log.h"
+#include "utils/logger.h"
 #include "checkpoint/checkpoint.h"
 
 
@@ -85,7 +85,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     }
 
     InitRankInfo(rankInfo, embInfos);
-    g_statOn = GlobalEnv::statOn;
+    GlogConfig::gStatOn = GlobalEnv::statOn;
 
     LOG_INFO(MGMT + "begin initialize, localRankSize:{}, localRankId:{}, rank:{}",
              rankInfo.localRankSize, rankInfo.localRankId, rankInfo.rankId);
@@ -142,7 +142,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
 // 比较hostHashMap和cacheManager的数据是否一致
 void HybridMgmt::AddCacheManagerTraceLog(CkptData& saveData)
 {
-    if (Log::GetLevel() != Log::trace) {
+    if (Logger::GetLevel() != Logger::trace) {
         return;
     }
     auto& embHashMaps = saveData.embHashMaps;

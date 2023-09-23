@@ -86,8 +86,8 @@ TEST(EmbHashMap, TestFindOffset)
     auto& excludeKeyMap = cacheManager.excludeDDRKeyCountMap[embTableName];
     auto& ddrKeyMap = cacheManager.ddrKeyFreqMap[embTableName];
 
-    auto logLevelTemp = Log::GetLevel();
-    Log::SetLevel(Log::trace);
+    auto logLevelTemp = Logger::GetLevel();
+    Logger::SetLevel(Logger::trace);
     vector<emb_key_t> keys4 = {21, 21, 21, 21}; // 新key重复值, 且需要换入换出
     hostHashMaps.FindOffset(embTableName, keys4, currentBatchId++, keepBatchId++, channelId);
     RefreshSwapFreqInfoAndPrint(hostHashMaps, embTableName, opTimes++);
@@ -106,6 +106,6 @@ TEST(EmbHashMap, TestFindOffset)
     ASSERT_EQ(excludeKeyMap[INT_42], INT_2);
     ASSERT_EQ(ddrKeyMap.Get(INT_21), NEGATIVE_INT_1);
     ASSERT_EQ(ddrKeyMap.Get(1), NEGATIVE_INT_1);
-    Log::SetLevel(logLevelTemp); // 恢复日志级别
+    Logger::SetLevel(logLevelTemp); // 恢复日志级别
     LOG_INFO("test TestFindOffset end.");
 }

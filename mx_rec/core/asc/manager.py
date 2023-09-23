@@ -27,7 +27,7 @@ def check_dangling_table():
 
 
 def generate_table_info_list():
-    from mxrec_pybind import EmbInfo
+    from mxrec_pybind import EmbInfo, EmbInfoParams
     from mx_rec.constants.constants import ASCEND_TABLE_NAME_MUST_CONTAIN
     # table_name is corresponding to channel_name which is in used in operator gen_npu_ops.get_next
     table_info_list = []
@@ -61,8 +61,9 @@ def generate_table_info_list():
                          table_instance.slice_device_vocabulary_size)
             logger.debug("table_instance.slice_host_vocabulary_size: %s", table_instance.slice_host_vocabulary_size)
             logger.debug("table_instance.slice_ssd_vocabulary_size: %s", table_instance.slice_ssd_vocabulary_size)
-            table_info = EmbInfo(table_instance.table_name, table_instance.send_count, table_instance.scalar_emb_size,
-                                 table_instance.ext_emb_size, table_instance.is_save,
+            params = EmbInfoParams(table_instance.table_name, table_instance.send_count, table_instance.scalar_emb_size,
+                                   table_instance.ext_emb_size, table_instance.is_save)
+            table_info = EmbInfo(params,
                                  [table_instance.slice_device_vocabulary_size,
                                   table_instance.slice_host_vocabulary_size, table_instance.slice_ssd_vocabulary_size],
                                  [matched_emb_initializer(table_instance)] +

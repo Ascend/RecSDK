@@ -25,7 +25,7 @@
 #include "tensorflow/core/framework/tensor.h"
 #include "absl/container/flat_hash_map.h"
 #include "securec.h"
-#include "utils/log.h"
+#include "utils/logger.h"
 #include "utils/config.h"
 
 #include "initializer/initializer.h"
@@ -63,14 +63,16 @@ namespace MxRec {
     constexpr int SSD_SIZE_INDEX = 2;
 
     // for GLOG
-    extern bool g_statOn;
-    extern int g_glogLevel;
-    extern string g_rankId;
+    struct GlogConfig {
+        static bool gStatOn;
+        static int gGlogLevel;
+        static string gRankId;
+    };
+
     constexpr int GLOG_MAX_BUF_SIZE = 1024;
     constexpr int GLOG_TIME_WIDTH_2 = 2;
     constexpr int GLOG_TIME_WIDTH_6 = 6;
     constexpr char GLOG_STAT_FLAG[] = "statOn";
-
 
     // unique related config
     constexpr int UNIQUE_BUCKET = 6;
@@ -102,9 +104,9 @@ namespace MxRec {
     using TensorInfoT = std::tuple<int, EmbNameT, std::list<std::unique_ptr<std::vector<Tensor>>>::iterator>;
 
     namespace HybridOption {
-        const int USE_STATIC = 0x001;
-        const int USE_HOT = 0x001 << 1;
-        const int USE_DYNAMIC_EXPANSION = 0x001 << 2;
+        const unsigned int USE_STATIC = 0x001;
+        const unsigned int USE_HOT = 0x001 << 1;
+        const unsigned int USE_DYNAMIC_EXPANSION = 0x001 << 2;
     };
 
     string GetChipName(int devID);
@@ -135,7 +137,7 @@ namespace MxRec {
                                                 {"910B2", UBSize::ASCEND910_B2},
                                                 {"910B3", UBSize::ASCEND910_B3},
                                                 {"910B4", UBSize::ASCEND910_B4}};
-        const auto it = chipUbSizeList.find(GetChipName(devID));
+        std::map<string, int>::const_iterator it = chipUbSizeList.find(GetChipName(devID));
         if (it != chipUbSizeList.end()) {
             return it->second;
         }
@@ -374,19 +376,40 @@ namespace MxRec {
         return tmpTensor;
     }
 
-    struct EmbInfo {
-        EmbInfo() = default;
+    struct EmbInfoParams {
+        EmbInfoParams() = default;
 
-        EmbInfo(const std::string& name,
+        EmbInfoParams(const std::string& name,
                 int sendCount,
                 int embeddingSize,
                 int extEmbeddingSize,
-                bool isSave,
+                bool isSave)
+            : name(name),
+              sendCount(sendCount),
+              embeddingSize(embeddingSize),
+              extEmbeddingSize(extEmbeddingSize),
+              isSave(isSave)
+        {
+        }
+        std::string name;
+        int sendCount;
+        int embeddingSize;
+        int extEmbeddingSize;
+        bool isSave;
+    };
+
+    struct EmbInfo {
+        EmbInfo() = default;
+
+        EmbInfo(const EmbInfoParams& embInfoParams,
                 std::vector<size_t> vocabsize,
                 std::vector<InitializeInfo> initializeInfos,
                 std::vector<std::string> ssdDataPath)
-            : name(name), sendCount(sendCount), embeddingSize(embeddingSize), extEmbeddingSize(extEmbeddingSize),
-              isSave(isSave),
+            : name(embInfoParams.name),
+              sendCount(embInfoParams.sendCount),
+              embeddingSize(embInfoParams.embeddingSize),
+              extEmbeddingSize(embInfoParams.extEmbeddingSize),
+              isSave(embInfoParams.isSave),
               devVocabSize(vocabsize[0]),
               hostVocabSize(vocabsize[1]),
               ssdVocabSize(vocabsize[SSD_SIZE_INDEX]),

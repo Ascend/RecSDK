@@ -21,10 +21,10 @@ using namespace std;
 using std::chrono::system_clock;
 
 namespace MxRec {
-    string g_rankId;
-    int g_glogLevel;
     bool g_isGlogInit = false;
-    bool g_statOn = false;
+    bool GlogConfig::gStatOn = false;
+    int GlogConfig::gGlogLevel;
+    string GlogConfig::gRankId;
 
     RankInfo::RankInfo(int rankId, int deviceId, int localRankSize, int option, const vector<int>& maxStep)
         : rankId(rankId), deviceId(deviceId), localRankSize(localRankSize), option(option), maxStep(maxStep)
@@ -33,9 +33,9 @@ namespace MxRec {
         if (localRankSize != 0) {
             localRankId = rankId % localRankSize;
         }
-        useStatic = option bitand HybridOption::USE_STATIC;
-        useHot = option bitand HybridOption::USE_HOT;
-        useDynamicExpansion = option bitand HybridOption::USE_DYNAMIC_EXPANSION;
+        useStatic = static_cast<unsigned int>(option) bitand HybridOption::USE_STATIC;
+        useHot = static_cast<unsigned int>(option) bitand HybridOption::USE_HOT;
+        useDynamicExpansion = static_cast<unsigned int>(option) bitand HybridOption::USE_DYNAMIC_EXPANSION;
     }
 
     RankInfo::RankInfo(int localRankSize, int option, const vector<int>& maxStep)
@@ -46,8 +46,8 @@ namespace MxRec {
         if (localRankSize != 0) {
             localRankId = rankId % localRankSize;
         }
-        useStatic = option & HybridOption::USE_STATIC;
-        useHot = option & HybridOption::USE_HOT;
+        useStatic = static_cast<unsigned int>(option) & HybridOption::USE_STATIC;
+        useHot = static_cast<unsigned int>(option) & HybridOption::USE_HOT;
     }
 
     RandomInfo::RandomInfo(int start, int len, float constantVal, float randomMin, float randomMax)
@@ -56,13 +56,13 @@ namespace MxRec {
 
     void SetLog(int rank)
     {
-        g_glogLevel = GlobalEnv::glogStderrthreshold;
-        if (g_rankId.empty()) {
-            g_rankId = std::to_string(rank);
+        GlogConfig::gGlogLevel = GlobalEnv::glogStderrthreshold;
+        if (GlogConfig::gRankId.empty()) {
+            GlogConfig::gRankId = std::to_string(rank);
         }
         if (!g_isGlogInit) {
-            Log::SetLevel(g_glogLevel);
-            Log::SetRank(rank);
+            Logger::SetLevel(GlogConfig::gGlogLevel);
+            Logger::SetRank(rank);
             g_isGlogInit = true;
         }
     }

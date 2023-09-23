@@ -16,10 +16,10 @@ TEST(Table, WriteAndReadAndDeleteAndCompact)
 {
     int rankId;
     MPI_Comm_rank(MPI_COMM_WORLD, &rankId);
-    g_rankId = to_string(rankId);
+    GlogConfig::gRankId = to_string(rankId);
 
     string tbName = "test";
-    vector<string> savePath = {g_rankId};
+    vector<string> savePath = {GlogConfig::gRankId};
     uint64_t maxTableSize = 1000000;
     uint64_t embDim = 240;
     double compactThreshold = 0.5;
@@ -83,9 +83,9 @@ TEST(Table, WriteAndReadAndDeleteAndCompact)
     // full compact, old file will delete, valid data will move to new file
     tb->Compact(true);
     string oldDataFilePath =
-        savePath.front() + "/ssd_sparse_model_rank_" + g_rankId + "/" + tbName + "/" + "0.data.latest";
+        savePath.front() + "/ssd_sparse_model_rank_" + GlogConfig::gRankId + "/" + tbName + "/" + "0.data.latest";
     string oldMetaFilePath =
-        savePath.front() + "/ssd_sparse_model_rank_" + g_rankId + "/" + tbName + "/" + "0.meta.latest";
+        savePath.front() + "/ssd_sparse_model_rank_" + GlogConfig::gRankId + "/" + tbName + "/" + "0.meta.latest";
     ASSERT_EQ(fs::exists(oldDataFilePath), false);
     ASSERT_EQ(fs::exists(oldMetaFilePath), false);
 
@@ -98,10 +98,10 @@ TEST(Table, SaveAndLoad)
 {
     int rankId;
     MPI_Comm_rank(MPI_COMM_WORLD, &rankId);
-    g_rankId = to_string(rankId);
+    GlogConfig::gRankId = to_string(rankId);
 
     string tbName = "test";
-    vector<string> savePath = {g_rankId};
+    vector<string> savePath = {GlogConfig::gRankId};
     uint64_t maxTableSize = 100;
     double compactThreshold = 0.5;
     int saveStep = 0;

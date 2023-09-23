@@ -110,7 +110,7 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, DDRPara
     auto swapLen = ddrParam.tmpDataOut.back().flat<int32>();
     swapLen(0) = swapSize;
 
-    if (g_statOn) {
+    if (GlogConfig::gStatOn) {
         LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} swap_key_size {} swap_time_cost {}",
             channelId, swapId, rankInfo.rankId, swapSize, swapTimeCost.ElapsedMS());
     }
@@ -540,7 +540,7 @@ void EmbHashMap::RefreshFreqInfoWithSwap(const string& embName, EmbHashMapInfo& 
 /// 记录日志：HBM和DDR换入换出后，比较hostHashMap中DDR内key和表对应的lfuCache对象中的key内容
 void EmbHashMap::AddCacheManagerTraceLog(const string& embTableName, const EmbHashMapInfo& embHashMap) const
 {
-    if (Log::GetLevel() != Log::trace) {
+    if (Logger::GetLevel() != Logger::trace) {
         return;
     }
     auto& hostMap = embHashMap.hostHashMap;
