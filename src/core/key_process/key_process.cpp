@@ -215,7 +215,7 @@ void KeyProcess::InitializeUnique(UniqueConf& uniqueConf, size_t& preBatchSize, 
 
         auto ret = unique->Initialize(uniqueConf);
         if (ret != ock::ctr::H_OK) {
-            throw runtime_error(Log::Format("fast unique init failed, code:{}", ret));
+            throw runtime_error(Logger::Format("fast unique init failed, code:{}", ret));
         }
         uniqueInitialize = true;
     }
@@ -231,7 +231,7 @@ void KeyProcess::KeyProcessTaskWithFastUnique(int channel, int threadId)
 
     auto ret = factory->CreateUnique(unique);
     if (ret != ock::ctr::H_OK) {
-        throw runtime_error(Log::Format("create fast unique failed, error code:{}", ret));
+        throw runtime_error(Logger::Format("create fast unique failed, error code:{}", ret));
     }
     GetUniqueConfig(uniqueConf);
 
@@ -363,7 +363,7 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch
 
     TimeCost pushResultTC;
     PushResult(batch, move(tensors), uniqueInfo.all2AllInfo.keyRecv);
-    if (g_statOn) {
+    if (GlogConfig::gStatOn) {
         LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} key_process_time_cost_with_fast_unique {}",
             channel, batch->batchId, rankInfo.rankId, totalTimeCost.ElapsedMS());
     }
@@ -427,7 +427,7 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
 
     PushResult(batch, move(tensors), lookupKeys);
     LOG_DEBUG("pushResultTC(ms):{}", pushResultTC.ElapsedMS());
-    if (g_statOn) {
+    if (GlogConfig::gStatOn) {
         LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} key_process_time_cost {}",
             channel, batch->batchId, rankInfo.rankId, totalTimeCost.ElapsedMS());
     }
@@ -601,7 +601,7 @@ void KeyProcess::ProcessBatchWithFastUnique(const unique_ptr<EmbBatchT> &batch, 
         batch->batchId, batch->Size(), batch->channel, batch->name,
         uniqueInfoOut.restore.size(), keySendInfo.keyCount.size());
 
-    if (g_statOn) {
+    if (GlogConfig::gStatOn) {
         LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} "
             "batch_key_num_with_fast_unique {} unique_key_num_with_fast_unique {}",
             batch->channel, batch->batchId, rankInfo.rankId, batch->Size(), uniqueOut.uniqueIdCnt);
@@ -778,7 +778,7 @@ auto KeyProcess::HashSplit(const unique_ptr<EmbBatchT>& batch) const -> tuple<ve
 
     LOG_TRACE("dump splitKeys {}", DumpSplitKeys(splitKeys));
 
-    if (g_statOn) {
+    if (GlogConfig::gStatOn) {
         size_t uniqueKeyNum = 0;
         for (int devId = 0; devId < rankInfo.rankSize; ++devId) {
             uniqueKeyNum += splitKeys[devId].size();
@@ -828,7 +828,7 @@ auto KeyProcess::HashSplitWithFAAE(const unique_ptr<EmbBatchT>& batch) const
     EASY_END_BLOCK
     LOG_TRACE("dump splitKeys {}", DumpSplitKeys(splitKeys));
 
-    if (g_statOn) {
+    if (GlogConfig::gStatOn) {
         size_t uniqueKeyNum = 0;
         for (int devId = 0; devId < rankInfo.rankSize; ++devId) {
             uniqueKeyNum += splitKeys[devId].size();
@@ -887,7 +887,7 @@ tuple<vector<KeysT>, vector<int32_t>, vector<int>>
         uKey[key] = restore[i];
     }
     
-    if (g_statOn) {
+    if (GlogConfig::gStatOn) {
         size_t uniqueKeyNum = 0;
         for (int devId = 0; devId < rankInfo.rankSize; ++devId) {
             uniqueKeyNum += splitKeys[devId].size();
@@ -1107,7 +1107,7 @@ void KeyProcess::BuildRestoreVec(const unique_ptr<EmbBatchT>& batch, const vecto
         emb_key_t devId = abs(key % static_cast<emb_key_t>(rankInfo.rankSize));
         if (restoreVec[i] >= hotPosSize) {
             restoreVec[i] += blockOffset[devId];
-        } else if (Log::GetLevel() >= Log::debug) {
+        } else if (Logger::GetLevel() >= Logger::debug) {
             hotNum += 1;
         }
     }
@@ -1301,7 +1301,7 @@ void KeyProcess::EvictInitDeviceEmb(const string& embName, vector<size_t> offset
         LOG_ERROR("{} overflow! init evict dev, evictOffset size {} bigger than dev vocabSize {}",
             embName, offset.size(), embInfos[embName].devVocabSize);
         throw runtime_error(
-            Log::Format("{} overflow! init evict dev, evictOffset size {} bigger than dev vocabSize {}",
+            Logger::Format("{} overflow! init evict dev, evictOffset size {} bigger than dev vocabSize {}",
                 embName, offset.size(), embInfos[embName].devVocabSize
             ).c_str());
     }

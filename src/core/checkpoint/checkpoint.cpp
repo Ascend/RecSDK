@@ -217,7 +217,7 @@ void Checkpoint::WriteEmbedding(const CkptTransData& transData, const string& da
     auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
     if (res != ACL_ERROR_NONE) {
         LOG_ERROR("Set device failed, device_id:{}", deviceId);
-        throw runtime_error(Log::Format("Set device failed, device_id:{}", deviceId).c_str());
+        throw runtime_error(Logger::Format("Set device failed, device_id:{}", deviceId).c_str());
     }
 
     auto &transArr = transData.int64Arr;
@@ -231,7 +231,7 @@ void Checkpoint::WriteEmbedding(const CkptTransData& transData, const string& da
                                    ACL_MEMCPY_DEVICE_TO_HOST);
         if (ret != ACL_SUCCESS) {
             LOG_ERROR("aclrtMemcpy failed, ret={}", ret);
-            throw runtime_error(Log::Format("aclrtMemcpy failed, ret={}", ret).c_str());
+            throw runtime_error(Logger::Format("aclrtMemcpy failed, ret={}", ret).c_str());
         }
 
         writeFile.write(reinterpret_cast<const char *>(row.data()), embeddingSize * sizeof(float));
@@ -480,7 +480,7 @@ void Checkpoint::ReadStream(CkptTransData& transData,
         ValidateReadFile(dataDir, datasetSize);
     } catch (const std::invalid_argument& e) {
         readFile.close();
-        throw runtime_error(Log::Format("Invalid read file path: {}", e.what()));
+        throw runtime_error(Logger::Format("Invalid read file path: {}", e.what()));
     }
 
     if (datasetSize % dataElmtBytes > 0) {

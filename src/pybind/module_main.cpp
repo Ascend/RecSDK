@@ -15,6 +15,8 @@ using namespace MxRec;
 namespace {
     void GetRankInfo(py::module_& m);
 
+    void GetEmbInfoParams(py::module_& m);
+
     void GetEmbInfo(py::module_& m);
 
     void GetRandomInfo(py::module_& m);
@@ -58,6 +60,8 @@ namespace {
 
         GetRankInfo(m);
 
+        GetEmbInfoParams(m);
+
         GetEmbInfo(m);
 
         GetRandomInfo(m);
@@ -87,13 +91,30 @@ namespace {
                 .def_readwrite("max_step", &RankInfo::maxStep);
     }
 
+    void GetEmbInfoParams(pybind11::module_& m)
+    {
+        pybind11::class_<EmbInfoParams>(m, "EmbInfoParams")
+                .def(pybind11::init<const std::string&, int, int, int, bool>(),
+                     py::arg("name"),
+                     py::arg("send_count"),
+                     py::arg("embedding_size"),
+                     py::arg("ext_embedding_size"),
+                     py::arg("is_save"))
+                .def_readwrite("name", &EmbInfoParams::name)
+                .def_readwrite("send_count", &EmbInfoParams::sendCount)
+                .def_readwrite("embedding_size", &EmbInfoParams::embeddingSize)
+                .def_readwrite("ext_embedding_size", &EmbInfoParams::extEmbeddingSize)
+                .def_readwrite("is_save", &EmbInfoParams::isSave);
+    }
+
     void GetEmbInfo(pybind11::module_& m)
     {
         pybind11::class_<EmbInfo>(m, "EmbInfo")
-                .def(pybind11::init<const std::string&, int, int, int, bool, std::vector<size_t>,
+                .def(pybind11::init<const EmbInfoParams&, std::vector<size_t>,
                      std::vector<InitializeInfo>&, std::vector<std::string>&>(),
-                     py::arg("name"), py::arg("send_count"), py::arg("embedding_size"), py::arg("ext_embedding_size"),
-                     py::arg("is_save"),  py::arg("vocab_size"), py::arg("initialize_infos"),
+                     py::arg("embInfoParams"),
+                     py::arg("vocab_size"),
+                     py::arg("initialize_infos"),
                      py::arg("ssd_data_path"))
                 .def_readwrite("name", &EmbInfo::name)
                 .def_readwrite("send_count", &EmbInfo::sendCount)

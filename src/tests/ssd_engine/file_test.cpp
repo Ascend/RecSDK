@@ -17,9 +17,9 @@ TEST(File, CreateEmptyFile)
 {
     int rankId;
     MPI_Comm_rank(MPI_COMM_WORLD, &rankId);
-    g_rankId = to_string(rankId);
+    GlogConfig::gRankId = to_string(rankId);
 
-    string fileDir = g_rankId;
+    string fileDir = GlogConfig::gRankId;
     bool isExceptionThrown = false;
     try {
         auto f = make_shared<File>(0, fileDir);
@@ -36,9 +36,9 @@ TEST(File, LoadFromFile)
     // prepare
     int rankId;
     MPI_Comm_rank(MPI_COMM_WORLD, &rankId);
-    g_rankId = to_string(rankId);
+    GlogConfig::gRankId = to_string(rankId);
 
-    string fileDir = g_rankId;
+    string fileDir = GlogConfig::gRankId;
     if (!fs::exists(fs::absolute(fileDir)) && !fs::create_directories(fs::absolute(fileDir))) {
         throw runtime_error("fail to create Save directory");
     }
@@ -85,9 +85,9 @@ TEST(File, WriteAndRead)
 {
     int rankId;
     MPI_Comm_rank(MPI_COMM_WORLD, &rankId);
-    g_rankId = to_string(rankId);
+    GlogConfig::gRankId = to_string(rankId);
 
-    string savePath = g_rankId;
+    string savePath = GlogConfig::gRankId;
     auto f = make_shared<File>(0, savePath);
 
     vector<emb_key_t> keys;
@@ -113,10 +113,10 @@ TEST(File, SaveAndLoad)
 {
     int rankId;
     MPI_Comm_rank(MPI_COMM_WORLD, &rankId);
-    g_rankId = to_string(rankId);
+    GlogConfig::gRankId = to_string(rankId);
 
     int saveStep = 0;
-    string fileDir = g_rankId;
+    string fileDir = GlogConfig::gRankId;
     auto fTmp = make_shared<File>(0, fileDir);
 
     vector<emb_key_t> key = {0};

@@ -16,7 +16,7 @@ TEST(SSDEngine, CreateAndWriteAndReadAndAutoCompactAndSave)
 {
     int rankId;
     MPI_Comm_rank(MPI_COMM_WORLD, &rankId);
-    g_rankId = to_string(rankId);
+    GlogConfig::gRankId = to_string(rankId);
 
     string tbName = "test";
     vector<string> savePath = {"."};
@@ -68,26 +68,29 @@ TEST(SSDEngine, CreateAndWriteAndReadAndAutoCompactAndSave)
 
     // after saving, full compact will perform, old file will be deleted
     string oldDataFilePath =
-        savePath.front() + "ssd_sparse_model_rank_" + g_rankId + "/" + tbName + "/" + "0.data.latest";
+        savePath.front() + "ssd_sparse_model_rank_" + GlogConfig::gRankId + "/" + tbName + "/" + "0.data.latest";
     string oldMetaFilePath =
-        savePath.front() + "ssd_sparse_model_rank_" + g_rankId + "/" + tbName + "/" + "0.meta.latest";
+        savePath.front() + "ssd_sparse_model_rank_" + GlogConfig::gRankId + "/" + tbName + "/" + "0.meta.latest";
     ASSERT_EQ(fs::exists(oldDataFilePath), false);
     ASSERT_EQ(fs::exists(oldMetaFilePath), false);
 
     // check saved data existence
     string newDataFilePath =
-        savePath.front() + "/ssd_sparse_model_rank_" + g_rankId + "/" + tbName + "/" + "1.data." + to_string(saveStep);
+        savePath.front() + "/ssd_sparse_model_rank_" + GlogConfig::gRankId + "/" +
+        tbName + "/" + "1.data." + to_string(saveStep);
     string newMetaFilePath =
-        savePath.front() + "/ssd_sparse_model_rank_" + g_rankId + "/" + tbName + "/" + "1.meta." + to_string(saveStep);
+        savePath.front() + "/ssd_sparse_model_rank_" + GlogConfig::gRankId + "/" +
+        tbName + "/" + "1.meta." + to_string(saveStep);
     string newTableMetaFilePath =
-        savePath.front() + "/ssd_sparse_model_rank_" + g_rankId + "/" + tbName + "/" + tbName + ".meta." +
+        savePath.front() + "/ssd_sparse_model_rank_" + GlogConfig::gRankId + "/" +
+        tbName + "/" + tbName + ".meta." +
         to_string(saveStep);
     ASSERT_EQ(fs::exists(newDataFilePath), true);
     ASSERT_EQ(fs::exists(newMetaFilePath), true);
     ASSERT_EQ(fs::exists(newTableMetaFilePath), true);
 
     for (const string& p: savePath) {
-        fs::remove_all(p + "/ssd_sparse_model_rank_" + g_rankId);
+        fs::remove_all(p + "/ssd_sparse_model_rank_" + GlogConfig::gRankId);
     }
 }
 
@@ -95,10 +98,10 @@ TEST(SSDEngine, LoadAndRead)
 {
     int rankId;
     MPI_Comm_rank(MPI_COMM_WORLD, &rankId);
-    g_rankId = to_string(rankId);
+    GlogConfig::gRankId = to_string(rankId);
 
     string tbName = "test";
-    vector<string> savePath = {g_rankId};
+    vector<string> savePath = {GlogConfig::gRankId};
     uint64_t maxTableSize = 100;
     int saveStep = 0;
 

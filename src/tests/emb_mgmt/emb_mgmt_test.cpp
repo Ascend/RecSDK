@@ -113,14 +113,15 @@ protected:
 TEST_F(EmbMgmtTest, Initialize)
 {
     vector<size_t> vocabsize = { devVocabSize, hostVocabSize };
-    embInfo = EmbInfo(name, sendCount, embeddingSize, extEmbeddingSize, isSave, vocabsize, initializeInfos);
+    aoto param = EmbInfoParams(name, sendCount, embeddingSize, extEmbeddingSize, isSave)
+    embInfo = EmbInfo(param, vocabsize, initializeInfos);
     embInfos.emplace_back(embInfo);
     vector<ThresholdValue> thresholdValues = {};
 
     auto hybridMgmt = Singleton<HybridMgmt>::GetInstance();
     cout << "setup..." << endl;
 
-    allRank = RankInfo(g_rankId, deviceId, localRankSize, useStatic, nBatch, maxStep);
+    allRank = RankInfo(GlogConfig::gRankId, deviceId, localRankSize, useStatic, nBatch, maxStep);
     hybridMgmt->Initialize(allRank, embInfos, seed, thresholdValues, false);
     auto hostEmbs = make_unique<HostEmb>();
     hostEmbs->Initialize(embInfos, seed);
@@ -172,14 +173,15 @@ TEST_F(EmbMgmtTest, Initialize_HBM)
     devVocabSize = HBM_DEVICE_SIZE;
     hostVocabSize = HBM_HOST_SIZE;
     vector<size_t> vocabsize = { devVocabSize, hostVocabSize };
-    embInfo = EmbInfo(name, sendCount, embeddingSize, extEmbeddingSize, isSave, vocabsize, initializeInfos);
+    aoto param = EmbInfoParams(name, sendCount, embeddingSize, extEmbeddingSize, isSave)
+    embInfo = EmbInfo(params, vocabsize, initializeInfos);
     embInfos.emplace_back(embInfo);
     vector<ThresholdValue> thresholdValues;
     thresholdValues.emplace_back(name, 1, 1, 1);
 
     auto hybridMgmt = Singleton<HybridMgmt>::GetInstance();
     cout << "setup..." << endl;
-    allRank = RankInfo(g_rankId, deviceId, localRankSize, useStatic, nBatch, maxStep);
+    allRank = RankInfo(GlogConfig::gRankId, deviceId, localRankSize, useStatic, nBatch, maxStep);
     hybridMgmt->Initialize(allRank, embInfos, seed, thresholdValues, false);
 
     hybridMgmt->Destroy();
@@ -192,14 +194,15 @@ TEST_F(EmbMgmtTest, Evict)
     size_t devVocabSize = DDR_DEVICE_SIZE;
     size_t hostVocabSize = DDR_HOST_SIZE;
     vector<size_t> vocabsize = { devVocabSize, hostVocabSize };
-    embInfo = EmbInfo(name, sendCount, embeddingSize, extEmbeddingSize, isSave, vocabsize, initializeInfos);
+    aoto param = EmbInfoParams(name, sendCount, embeddingSize, extEmbeddingSize, isSave)
+    embInfo = EmbInfo(params, vocabsize, initializeInfos);
     embInfos.emplace_back(embInfo);
     vector<ThresholdValue> thresholdValues;
     thresholdValues.emplace_back(name, 1, 1, 1);
 
     auto hybridMgmt = Singleton<HybridMgmt>::GetInstance();
     cout << "setup..." << endl;
-    allRank = RankInfo(g_rankId, deviceId, localRankSize, true, nBatch, maxStep);
+    allRank = RankInfo(GlogConfig::gRankId, deviceId, localRankSize, true, nBatch, maxStep);
     hybridMgmt->Initialize(allRank, embInfos, seed, thresholdValues, false);
 
     // evict test, ddr
@@ -215,14 +218,15 @@ TEST_F(EmbMgmtTest, Evict_HBM)
     devVocabSize = HBM_DEVICE_SIZE;
     hostVocabSize = HBM_HOST_SIZE;
     vector<size_t> vocabsize = { devVocabSize, hostVocabSize };
-    embInfo = EmbInfo(name, sendCount, embeddingSize, extEmbeddingSize, isSave, vocabsize, initializeInfos);
+    aoto param = EmbInfoParams(name, sendCount, embeddingSize, extEmbeddingSize, isSave)
+    embInfo = EmbInfo(params, vocabsize, initializeInfos);
     embInfos.emplace_back(embInfo);
     vector<ThresholdValue> thresholdValues;
     thresholdValues.emplace_back(name, 1, 1, 1);
 
     auto hybridMgmt = Singleton<HybridMgmt>::GetInstance();
     cout << "setup..." << endl;
-    allRank = RankInfo(g_rankId, deviceId, localRankSize, true, nBatch, maxStep);
+    allRank = RankInfo(GlogConfig::gRankId, deviceId, localRankSize, true, nBatch, maxStep);
     hybridMgmt->Initialize(allRank, embInfos, seed, thresholdValues, false);
 
     // evict test, hbm
