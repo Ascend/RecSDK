@@ -862,15 +862,27 @@ bool HybridMgmt::Evict()
     }
 
     if (mgmtRankInfo.noDDR) {
-        for (const auto& evict : as_const(evictKeyMap)) {
-            preprocess->EvictKeys(evict.first, evict.second);
+        if (GlobalEnv::useCombineFaae) {
+            preprocess->EvictKeysCombine(evictKeyMap[COMBINE_HISTORY_NAME]);
+        } else {
+            for (const auto& evict : as_const(evictKeyMap)) {
+                preprocess->EvictKeys(evict.first, evict.second);
+            }
         }
     } else {
-        for (const auto& evict : as_const(evictKeyMap)) {
-            EvictKeys(evict.first, evict.second);
-            EvictSSDKeys(evict.first, evict.second);
+        if (GlobalEnv::useCombineFaae) {
+            for (auto& map : hostHashMaps->embHashMaps) {
+                EvictKeys(map.first, evictKeyMap[COMBINE_HISTORY_NAME]);
+                EvictSSDKeys(map.first, evictKeyMap[COMBINE_HISTORY_NAME]);
+            }
+        } else {
+            for (const auto& evict : as_const(evictKeyMap)) {
+                EvictKeys(evict.first, evict.second);
+                EvictSSDKeys(evict.first, evict.second);
+            }
         }
     }
+    evictKeyMap.clear();
     return true;
 #endif
 }

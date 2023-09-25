@@ -108,6 +108,8 @@ namespace MxRec {
 
         void EvictKeys(const string& embName, const vector<emb_key_t>& keys);
 
+        void EvictKeysCombine(const vector<emb_key_t>& keys);
+
         void SetupHotEmbUpdateStep();
 
         template <typename T>
