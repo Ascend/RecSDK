@@ -130,14 +130,14 @@ namespace MxRec {
 
     inline int GetUBSize(int devID)
     {
-        std::map<string, int> chipUbSizeList = {{"910A", UBSize::ASCEND910_A},
-                                                {"910B", UBSize::ASCEND910_B},
-                                                {"920A", UBSize::ASCEND920_A},
-                                                {"910B1", UBSize::ASCEND910_B1},
-                                                {"910B2", UBSize::ASCEND910_B2},
-                                                {"910B3", UBSize::ASCEND910_B3},
-                                                {"910B4", UBSize::ASCEND910_B4}};
-        std::map<string, int>::const_iterator it = chipUbSizeList.find(GetChipName(devID));
+        const std::map<string, int> chipUbSizeList = {{"910A", UBSize::ASCEND910_A},
+            {"910B", UBSize::ASCEND910_B},
+            {"920A", UBSize::ASCEND920_A},
+            {"910B1", UBSize::ASCEND910_B1},
+            {"910B2", UBSize::ASCEND910_B2},
+            {"910B3", UBSize::ASCEND910_B3},
+            {"910B4", UBSize::ASCEND910_B4}};
+        auto it = chipUbSizeList.find(GetChipName(devID));
         if (it != chipUbSizeList.end()) {
             return it->second;
         }
