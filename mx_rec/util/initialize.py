@@ -11,7 +11,8 @@ import psutil
 
 import mx_rec.constants.constants
 from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION, HASHTABLE_COLLECTION_NAME_LENGTH, \
-    TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID, MIN_SIZE, MAX_CONFIG_SIZE, MAX_INT32, TFDevice, Flag
+    TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID, MIN_SIZE, MAX_CONFIG_SIZE, MAX_INT32, TFDevice, Flag, \
+    GET_CONFIG_INSTANCE_ERR_MSG
 from mx_rec.util.communication.hccl_mgmt import parse_hccl_json, set_hccl_info_without_json
 from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.validator.validator import StringValidator, FileValidator, para_checker_decorator, ClassValidator, \
@@ -228,7 +229,7 @@ class ConfigInitializer:
     @staticmethod
     def get_instance():
         if ConfigInitializer._single_instance is None:
-            raise EnvironmentError("Please init the environment for mx_rec at first.")
+            raise EnvironmentError(GET_CONFIG_INSTANCE_ERR_MSG)
 
         return ConfigInitializer._single_instance
 
@@ -734,7 +735,12 @@ def get_use_dynamic_expansion():
 
 
 def terminate_config_initializer():
-    ConfigInitializer.get_instance().terminate()
+    try:
+        ConfigInitializer.get_instance().terminate()
+    except EnvironmentError as err:
+        if GET_CONFIG_INSTANCE_ERR_MSG not in str(err):
+            raise err
+        logger.warning(GET_CONFIG_INSTANCE_ERR_MSG)
 
 
 def get_name_to_var_dict():
