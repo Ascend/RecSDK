@@ -206,10 +206,6 @@ class Saver(object):
     @performance("_save")
     def _save(self, sess, root_dir):
         result = self.save_op_dict
-        if is_asc_manager_initialized() and not self.save_easy_mode:
-            save_host_data(root_dir)
-            logger.debug(f"host data was saved.")
-
         threads = []
         for table_name in result.keys():
             thread = SaveModelThread(sess, result, root_dir, table_name)
@@ -220,6 +216,10 @@ class Saver(object):
 
         for thread in threads:
             thread.join()
+
+        if is_asc_manager_initialized() and not self.save_easy_mode:
+            save_host_data(root_dir)
+            logger.debug(f"host data was saved.")
 
     def _save_easy_mode_save_key_data(self, dump_data_dict, root_dir, table_name):
         host_data = get_host_data(table_name)
