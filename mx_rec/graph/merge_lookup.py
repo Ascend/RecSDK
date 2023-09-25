@@ -51,7 +51,7 @@ def do_merge_lookup(is_train: bool = True):
             continue
 
         table_instance = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.TABLE_INSTANCE)
-        if not get_use_static() and len(table_instance.lookup_name_list) > 1:
+        if not get_use_static() and len(table_instance.lookup_name_dict.get(is_train)) > 1:
             feature_spec = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.FEATURE_SPEC)
             feature_spec_name_ids_dict[feature_spec.name] = cutting_point
         if sub_cutting_points_dict.get(is_training) is None:
@@ -66,7 +66,7 @@ def do_merge_lookup(is_train: bool = True):
     for cutting_point in sub_cutting_point_list:
         table_instance = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.TABLE_INSTANCE)
         feature_spec = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.FEATURE_SPEC)
-        if len(table_instance.lookup_name_list) == 1:
+        if len(table_instance.lookup_name_dict.get(is_train)) == 1:
             logger.debug("The origin lookup result of %s for %s does not need to be replaced.",
                          feature_spec.name, table_instance.table_name)
             continue
