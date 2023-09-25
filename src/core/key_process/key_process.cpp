@@ -1267,6 +1267,21 @@ void KeyProcess::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
     EvictInitDeviceEmb(embName, evictPosMap.at(embName));
 }
 
+void KeyProcess::EvictKeysCombine(const vector<emb_key_t>& keys) // hbm
+{
+    LOG_INFO(KEY_PROCESS "hbm combine funEvictCall, keySize:{}", keys.size());
+    // 删除映射关系
+    if (keys.size() != 0) {
+        for (auto& map : keyOffsetMap) {
+            EvictDeleteDeviceEmb(map.first, keys);
+        }
+    }
+    for (auto map : evictPosMap) {
+        // 初始化 dev
+        EvictInitDeviceEmb(map.first, map.second);
+    }
+}
+
 void KeyProcess::EvictDeleteDeviceEmb(const string& embName, const vector<emb_key_t>& keys)
 {
     EASY_FUNCTION(profiler::colors::Blue600)
