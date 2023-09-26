@@ -485,6 +485,8 @@ class SparseEmbedding:
             raise RuntimeError("When the 'feature spec' mode and 'dynamic shape' are used, the 'batch' is required.")
         table_name = feature_spec.table_name
         same_table_feature_spec = ConfigInitializer.get_instance().table_name_to_feature_spec[table_name][is_training]
+        logger.debug("The feature spec of the same table is %s, table name is %s.",
+                     [fs.name for fs in same_table_feature_spec], self.table_name)
         same_table_spec_count = len(same_table_feature_spec)
         if same_table_spec_count == 0:
             raise RuntimeError(f"spec_name {spec_name} not in table {table_name}.")
@@ -535,9 +537,11 @@ class SparseEmbedding:
             kwargs["multi_lookup"] = True
             total_send_count = self.same_table_send_count if self.modify_graph else send_count * same_table_spec_count
             lookup_result = self.lookup_for_asc_with_feature_spec_inner(mock_feature_spec, total_send_count, **kwargs)
-            logger.debug("lookup table %s via %s", table_name, tensor_split_list)
+            logger.debug("multi lookup table %s via %s.", table_name, tensor_split_list)
             self.split_lookup_result(same_table_feature_spec, tensor_split_list, tensor_list, lookup_result,
                                      is_training)
+            # 当一表多查完成后，将此表对应的feature specs列表清空，便于estimator模式下多轮eval时不会累加上轮eval的feature specs
+            ConfigInitializer.get_instance().clear_same_table_feature_spec(self.table_name, is_training)
 
         if not self.modify_graph:
             self.check_multi_lookup_times(is_training)

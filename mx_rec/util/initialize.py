@@ -253,6 +253,14 @@ class ConfigInitializer:
         self._is_terminated = True
         ConfigInitializer._single_instance = None
 
+    def clear_same_table_feature_spec(self, table_name, is_training):
+        if self.table_name_to_feature_spec.get(table_name) is None or \
+                self.table_name_to_feature_spec.get(table_name).get(is_training) is None:
+            raise KeyError("The table name `%s` does not exist in table_name_to_feature_spec, "
+                           "please check whether the insert_feature_spec(...) is invoked.", table_name)
+        self.table_name_to_feature_spec.get(table_name)[is_training] = []
+        logger.debug("The feature spec of the table name `%s` has been cleared.", table_name)
+
     def insert_feature_spec(self, feature, is_training):
         self._feature_spec_dict[feature.name] = feature
         if feature.table_name not in self._table_name_to_feature_spec:
