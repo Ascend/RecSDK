@@ -16,6 +16,11 @@ using namespace MxRec;
 /// \param channelId train 0 eval 1
 void HybridMgmtBlock::CheckAndSetBlock(int channelId)
 {
+    // 当hybrid为0时，只有两种情况，程序启动时和Reset的时候，这两种情况都不应该阻塞
+    if (hybridBatchId[channelId] == 0) {
+        return;
+    }
+
     // 判断save时候的阻塞情况
     // 当在进行训练通道，且save interval不为0和-1（不需要阻塞），且运行到了需要阻塞的步骤
     if (channelId == TRAIN_CHANNEL_ID && saveInterval != 0 &&
@@ -127,7 +132,7 @@ void HybridMgmtBlock::DoBlock(int channelId)
     LOG_DEBUG(HYBRID_BLOCKING + "HybridMgmt starts blocking channelId {} hybridBatchId {}",
         channelId, hybridBatchId[channelId]);
 
-    while (isBlock[channelId]) {
+    while (isBlock[channelId] and !rankInfo.noDDR) {
         std::this_thread::sleep_for(SLEEP_MS);
         if (!isRunning) {
             return;
