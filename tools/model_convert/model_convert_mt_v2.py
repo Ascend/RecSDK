@@ -75,7 +75,7 @@ class ModelConverter:
             transformed_data = dict(zip(result_key[:], result_embedding[:]))
             save_path = os.path.join(self._output_path, table_name + "_key_embedding" + ".npy")
             save_dir = os.path.dirname(save_path)
-            os.makedis(save_dir, exist_ok=True)
+            os.makedirs(save_dir, exist_ok=True)
             np.save(save_path, transformed_data)
 
     def _get_key_and_offset(self, sparse_file_path, table_name):
