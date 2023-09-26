@@ -133,7 +133,7 @@ class SparseEmbedding:
         self.lookup_info = set()
         self.lookup_result = dict()
         self.use_dynamic_expansion = get_use_dynamic_expansion()
-        self.lookup_name_list = []
+        self.lookup_name_dict = {True: [], False: []}
         self.modify_graph = False
         self.init_param = config.get("init_param")
         self.all2all_gradients_op = All2allGradientsOp.mapping(config.get("all2all_gradients_op"))
@@ -335,8 +335,8 @@ class SparseEmbedding:
         SparseEmbedding.anchor_tensor_specs[anchor_ids][ASCAnchorAttr.IS_TRAINING] = kwargs.get("is_train")
         SparseEmbedding.anchor_tensor_specs[anchor_ids][ASCAnchorAttr.FEATURE_SPEC] = feature_spec
 
-    def check_multi_lookup_times(self):
-        lookup_times = len(self.lookup_name_list) if self.modify_graph else len(self.lookup_result)
+    def check_multi_lookup_times(self, is_training):
+        lookup_times = len(self.lookup_name_dict.get(is_training)) if self.modify_graph else len(self.lookup_result)
         if not self.modify_graph and get_training_mode_channel_id(True) is not None and \
                 get_training_mode_channel_id(False) is not None:
             lookup_times = int(lookup_times / 2)
@@ -447,11 +447,11 @@ class SparseEmbedding:
 
         # record multi lookup info
         ids_lookup_name = feature_spec.name + "_lookup_ids"
-        # set in train mode, train and eval mode, eval mode
-        if is_training or eval_mode:
-            self.lookup_name_list.append(ids_lookup_name)
+        if self.lookup_name_dict.get(is_training) is None:
+            self.lookup_name_dict[is_training] = []
+        self.lookup_name_dict.get(is_training).append(ids_lookup_name)
         self.modify_graph = kwargs.get("modify_graph", True)
-        self.check_multi_lookup_times()
+        self.check_multi_lookup_times(is_training)
 
         # return the stub tensor of the lookup result
         if not get_use_static():
@@ -540,7 +540,7 @@ class SparseEmbedding:
                                      is_training)
 
         if not self.modify_graph:
-            self.check_multi_lookup_times()
+            self.check_multi_lookup_times(is_training)
         return self.lookup_result.get(spec_name).get(is_training)
 
     def split_lookup_result(self, same_table_feature_spec: list, tensor_split_list: list, tensor_list: list,
