@@ -48,7 +48,7 @@ from mx_rec.util.log import logger
     ("init_param", NumValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
     ("all2all_gradients_op", OptionValidator, {"options": [i.value for i in list(All2allGradientsOp)]}),
     ("value_dtype", OptionValidator, {"options": [tf.float32]}),
-    ("shard_num", NumValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
+    ("shard_num", IntValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
     ("fusion_optimizer_var", ClassValidator, {"classes": (bool, )}),
     ("hashtable_threshold", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"])
 ])
