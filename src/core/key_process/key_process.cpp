@@ -473,8 +473,11 @@ vector<uint32_t> KeyProcess::GetCountRecv(const unique_ptr<EmbBatchT>& batch, in
     auto rs = Count2Start(rc); // receive displays/offset 接受数据的起始偏移量
     vector<uint32_t> countRecv;
     countRecv.resize(rs.back() + rc.back());
-    MPI_Alltoallv(countSend.data(), sc.data(), ss.data(), MPI_UINT32_T, countRecv.data(),
-                  rc.data(), rs.data(), MPI_UINT32_T, comm[batch->channel][id]);
+    auto retCode = MPI_Alltoallv(countSend.data(), sc.data(), ss.data(), MPI_UINT32_T, countRecv.data(),
+                                 rc.data(), rs.data(), MPI_UINT32_T, comm[batch->channel][id]);
+    if (retCode != MPI_SUCCESS) {
+        LOG_ERROR("rank {}, MPI_Alltoallv failed:{}", rankInfo.rankId, retCode);
+    }
     LOG_DEBUG("getCountRecvTC(ms)(with-all2all):{}", getCountRecvTC.ElapsedMS());
     return countRecv;
 }
@@ -523,7 +526,10 @@ unique_ptr<EmbBatchT> KeyProcess::GetBatchData(int channel, int commId)
         if (!isRunning) {
             // 通信终止信号，同步退出，防止线程卡住
             int exitFlag = isRunning;
-            MPI_Allreduce(&exitFlag, &exitFlag, 1, MPI_INT, MPI_SUM, comm[channel][commId]);
+            auto retCode = MPI_Allreduce(&exitFlag, &exitFlag, 1, MPI_INT, MPI_SUM, comm[channel][commId]);
+            if (retCode != MPI_SUCCESS) {
+                LOG_ERROR("rank {}, MPI_Allreduce failed:{}", rankInfo.rankId, retCode);
+            }
             throw EndRunExit("GetBatchData end run.");
         }
     }
@@ -678,13 +684,18 @@ void KeyProcess::All2All(vector<int>& sc, int id, int channel, KeySendInfo& keyS
     auto rs = Count2Start(rc); // receive displays/offset 接受数据的起始偏移量
     all2AllInfoOut.keyRecv.resize(rs.back() + rc.back());
     EASY_BLOCK("all2all")
-    MPI_Alltoallv(keySendInfo.keySend.data(), sc.data(), ss.data(), MPI_INT64_T, all2AllInfoOut.keyRecv.data(),
-                  rc.data(), rs.data(), MPI_INT64_T, comm[channel][id]);
-
+    auto retCode = MPI_Alltoallv(keySendInfo.keySend.data(), sc.data(), ss.data(), MPI_INT64_T,
+                                 all2AllInfoOut.keyRecv.data(), rc.data(), rs.data(), MPI_INT64_T, comm[channel][id]);
+    if (retCode != MPI_SUCCESS) {
+        LOG_ERROR("rank {}, MPI_Alltoallv failed:{}", rankInfo.rankId, retCode);
+    }
     all2AllInfoOut.countRecv.resize(rs.back() + rc.back());
     if (isWithFAAE) {
-        MPI_Alltoallv(keySendInfo.keyCount.data(), sc.data(), ss.data(), MPI_UINT32_T, all2AllInfoOut.countRecv.data(),
-                      rc.data(), rs.data(), MPI_UINT32_T, comm[channel][id]);
+        retCode = MPI_Alltoallv(keySendInfo.keyCount.data(), sc.data(), ss.data(), MPI_UINT32_T,
+                                all2AllInfoOut.countRecv.data(), rc.data(), rs.data(), MPI_UINT32_T, comm[channel][id]);
+        if (retCode != MPI_SUCCESS) {
+            LOG_ERROR("rank {}, MPI_Alltoallv failed:{}", rankInfo.rankId, retCode);
+        }
     }
     LOG_DEBUG("all2allTC TimeCost(ms):{}", all2allTC.ElapsedMS());
     EASY_END_BLOCK
@@ -736,8 +747,11 @@ auto KeyProcess::ProcessSplitKeys(const unique_ptr<EmbBatchT>& batch, int id,
     EASY_BLOCK("all2all")
 
     TimeCost uniqueAll2AllTC;
-    MPI_Alltoallv(keySend.data(), sc.data(), ss.data(), MPI_INT64_T,
+    auto retCode = MPI_Alltoallv(keySend.data(), sc.data(), ss.data(), MPI_INT64_T,
         keyRecv.data(), rc.data(), rs.data(), MPI_INT64_T, comm[batch->channel][id]);
+    if (retCode != MPI_SUCCESS) {
+        LOG_ERROR("rank {}, MPI_Allgather failed:{}", rankInfo.rankId, retCode);
+    }
     LOG_DEBUG("uniqueAll2AllTC(ms):{}", uniqueAll2AllTC.ElapsedMS());
 
     EASY_END_BLOCK
@@ -980,15 +994,21 @@ vector<int> KeyProcess::GetScAll(const vector<int>& keyScLocal, int commId, int 
     // 通信终止信号，同步退出，防止线程卡住
     TimeCost tc = TimeCost();
     int exitFlag = isRunning;
-    MPI_Allreduce(&exitFlag, &exitFlag, 1, MPI_INT, MPI_SUM, comm[channel][commId]);
+    auto retCode = MPI_Allreduce(&exitFlag, &exitFlag, 1, MPI_INT, MPI_SUM, comm[channel][commId]);
+    if (retCode != MPI_SUCCESS) {
+        LOG_ERROR("rank {} commId {}, MPI_Allreduce failed:{}", rankInfo.rankId, commId, retCode);
+    }
     if (exitFlag < rankInfo.rankSize) {
         throw EndRunExit("GetScAll end run.");
     }
     EASY_END_BLOCK;
     LOG_DEBUG(KEY_PROCESS "barrier time:{}", tc.ElapsedMS());
     // allgather keyScLocal(key all2all keyScLocal = device all2all rc)
-    MPI_Allgather(keyScLocal.data(), rankInfo.rankSize, MPI_INT,
-                  scAll.data(), rankInfo.rankSize, MPI_INT, comm[channel][commId]);
+    retCode = MPI_Allgather(keyScLocal.data(), rankInfo.rankSize, MPI_INT,
+                            scAll.data(), rankInfo.rankSize, MPI_INT, comm[channel][commId]);
+    if (retCode != MPI_SUCCESS) {
+        LOG_ERROR("rank {} commId {}, MPI_Allgather failed:{}", rankInfo.rankId, commId, retCode);
+    }
     LOG_DEBUG("rank {} key scAll matrix:\n{}", rankInfo.rankId, VectorToString(scAll));
     return scAll;
 }
@@ -1001,15 +1021,21 @@ void KeyProcess::GetScAllForUnique(const vector<int>& keyScLocal, int commId, in
     // 通信终止信号，同步退出，防止线程卡住
     TimeCost tc = TimeCost();
     int exitFlag = isRunning;
-    MPI_Allreduce(&exitFlag, &exitFlag, 1, MPI_INT, MPI_SUM, comm[channel][commId]);
+    auto retCode = MPI_Allreduce(&exitFlag, &exitFlag, 1, MPI_INT, MPI_SUM, comm[channel][commId]);
+    if (retCode != MPI_SUCCESS) {
+        LOG_ERROR("rank {}, MPI_Allreduce failed:{}", rankInfo.rankId, retCode);
+    }
     if (exitFlag < rankInfo.rankSize) {
         throw EndRunExit("GetScAll end run.");
     }
     EASY_END_BLOCK;
     LOG_DEBUG(KEY_PROCESS "barrier time:{}", tc.ElapsedMS());
     // allgather keyScLocal(key all2all keyScLocal = device all2all rc)
-    MPI_Allgather(keyScLocal.data(), rankInfo.rankSize, MPI_INT,
-                  scAllOut.data(), rankInfo.rankSize, MPI_INT, comm[channel][commId]);
+    retCode = MPI_Allgather(keyScLocal.data(), rankInfo.rankSize, MPI_INT,
+                            scAllOut.data(), rankInfo.rankSize, MPI_INT, comm[channel][commId]);
+    if (retCode != MPI_SUCCESS) {
+        LOG_ERROR("rank {}, MPI_Allgather failed:{}", rankInfo.rankId, retCode);
+    }
     LOG_DEBUG("rank {} key scAllOut matrix:\n{}", rankInfo.rankId, VectorToString(scAllOut));
 }
 
