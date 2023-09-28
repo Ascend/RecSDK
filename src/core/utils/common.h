@@ -10,15 +10,11 @@
 #define COMMON_H
 
 #include <sys/stat.h>
-
 #include <cstring>
-
 #include <vector>
 #include <random>
 #include <chrono>
-#include <mutex>
 #include <map>
-#include <queue>
 #include <sstream>
 #include <fstream>
 #include <algorithm>
@@ -81,6 +77,7 @@ namespace MxRec {
     // validate file
     constexpr long long FILE_MAX_SIZE = 1LL << 40;
     constexpr int FILE_MIN_SIZE = 0;
+    constexpr size_t BUFFER_SIZE{1024 * 1024 * 64};
 
     constexpr int KEY_PROCESS_TIMEOUT = 120;
     constexpr int GET_BATCH_TIMEOUT = 300;

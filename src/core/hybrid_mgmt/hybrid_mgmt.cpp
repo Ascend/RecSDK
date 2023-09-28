@@ -761,7 +761,7 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId, int cha
         channelId == TRAIN_CHANNEL_ID && remainBatchOut) {
         vector<int32_t> uniqueKeys;
         vector<int32_t> restoreVecSec;
-        preprocess->GlobalUnique(offsetsOut, uniqueKeys, restoreVecSec);
+        preprocess->GlobalUnique(ddrParam.offsetsOut, uniqueKeys, restoreVecSec);
 
         TimeCost sendUnikeysSyncTC;
         hdTransfer->Send(TransferChannel::UNIQKEYS, { mgmtRankInfo.useDynamicExpansion ? Vec2TensorI64(uniqueKeys) :
