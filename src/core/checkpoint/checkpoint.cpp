@@ -9,6 +9,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 
 #include "ckpt_data_handler//emb_hash_ckpt/emb_hash_ckpt.h"
 #include "ckpt_data_handler/host_emb_ckpt/host_emb_ckpt.h"
@@ -307,14 +308,17 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir, 
 
 void Checkpoint::WriteStream(CkptTransData& transData, const string& dataDir, size_t dataSize, CkptDataType dataType)
 {
-    ofstream writeFile;
-    writeFile.open(dataDir.c_str(), std::ios::out | std::ios::trunc | std::ios::binary);
-
-    if (!writeFile.is_open()) {
-        LOG_DEBUG("unable to open save file: {}", dataDir);
-        writeFile.close();
+    int fd = open(dataDir.c_str(), O_RDWR | O_CREAT | O_TRUNC, (mode_t)0600);
+    if (fd == -1) {
+        LOG_ERROR("Error opening file for writing");
         return;
     }
+
+    buffer.reserve(BUFFER_SIZE);
+
+    BufferQueue queue;
+
+    std::thread writer(&Checkpoint::WriterFn, this, std::ref(queue), fd);
 
     int loops = 1;
     if (dataType == CkptDataType::EMB_DATA) {
@@ -331,9 +335,9 @@ void Checkpoint::WriteStream(CkptTransData& transData, const string& dataDir, si
                 writeSize = dataCol;
             }
             if (floatTransSet.find(dataType) != floatTransSet.end()) {
-                writeFile.write(reinterpret_cast<const char*>(transData.floatArr[i]) + idx, writeSize);
+                FillToBuffer(queue, reinterpret_cast<const char*>(transData.floatArr[i]) + idx, writeSize);
             } else {
-                WriteDataset(transData, writeFile, writeSize, dataType, idx);
+                WriteDataset(transData, fd, writeSize, dataType, idx);
             }
 
             dataCol -= writeSize;
@@ -341,21 +345,71 @@ void Checkpoint::WriteStream(CkptTransData& transData, const string& dataDir, si
         }
     }
 
-    writeFile.close();
+    // After all data has been processed, check if there is any data left in the buffer
+    if (!buffer.empty()) {
+        queue.push(std::move(buffer));
+        buffer.clear();
+    }
+
+    queue.push(std::vector<char>());
+
+    writer.join();
+
+    close(fd);
+}
+
+void Checkpoint::WriterFn(BufferQueue& queue, int fd)
+{
+    while (true) {
+        auto buffer = queue.pop();
+        if (buffer.size() == 0) {
+            break;
+        }
+        ssize_t result = write(fd, buffer.data(), buffer.size());
+        if (result != buffer.size()) {
+            LOG_ERROR("Error writing to file");
+        }
+        buffer.clear();
+    }
 }
 
 void Checkpoint::WriteDataset(CkptTransData& transData,
-                              ofstream& writeFile,
+                              int fd,
                               size_t writeSize,
                               CkptDataType dataType,
                               size_t idx)
 {
+    ssize_t result;
     if (int32TransSet.find(dataType) != int32TransSet.end()) {
-        writeFile.write(reinterpret_cast<const char*>(transData.int32Arr.data()) + idx, writeSize);
+        result = write(fd, (const char*)(transData.int32Arr.data()) + idx, writeSize);
     } else if (int64TransSet.find(dataType) != int64TransSet.end()) {
-        writeFile.write(reinterpret_cast<const char*>(transData.int64Arr.data()) + idx, writeSize);
+        result = write(fd, (const char*)(transData.int64Arr.data()) + idx, writeSize);
     } else if (dataType == CkptDataType::ATTRIBUTE) {
-        writeFile.write(reinterpret_cast<const char*>(transData.attribute.data()) + idx, writeSize);
+        result = write(fd, (const char*)(transData.attribute.data()) + idx, writeSize);
+    }
+
+    if (result != writeSize) {
+        LOG_ERROR("Error writing to file, please check the disk buffer or temporary folder space or file permissions!");
+        return;
+    }
+}
+
+void Checkpoint::FillToBuffer(BufferQueue& queue, const char* data, size_t dataSize)
+{
+    size_t dataIdx = 0;
+    while (dataIdx < dataSize) {
+        size_t remainingSpace = BUFFER_SIZE - buffer.size();
+        if (dataSize - dataIdx <= remainingSpace) {
+            buffer.insert(buffer.end(), data + dataIdx, data + dataSize);
+            return;
+        } else {
+            buffer.insert(buffer.end(), data + dataIdx, data + dataIdx + remainingSpace);
+            queue.push(std::move(buffer));
+            if (BUFFER_SIZE > buffer.capacity()) {
+                buffer.reserve(BUFFER_SIZE);
+            }
+            dataIdx += remainingSpace;
+        }
     }
 }
 

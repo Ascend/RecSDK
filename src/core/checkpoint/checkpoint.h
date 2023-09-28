@@ -11,8 +11,9 @@
 #include <dirent.h>
 #include <acl/acl_rt.h>
 #include <acl/acl.h>
-
+#include "utils/common.h"
 #include "ckpt_data_handler/ckpt_data_handler.h"
+#include "buffer_queue.h"
 
 namespace MxRec {
     using namespace std;
@@ -27,6 +28,7 @@ namespace MxRec {
                        const vector<CkptFeatureType>& featureTypes);
 
     private:
+        std::vector<char> buffer;
         const string datasetName { "slice_" };
         const string dataFileType { ".data" };
         const string attribFileType { ".attribute" };
@@ -81,8 +83,15 @@ namespace MxRec {
         void SaveDataset(const vector<string>& embNames, const vector<CkptDataType>& saveDataTypes,
             const unique_ptr<CkptDataHandler>& dataHandler);
         void WriteStream(CkptTransData& transData, const string& dataDir, size_t dataSize, CkptDataType dataType);
-        void WriteDataset(CkptTransData& transData, ofstream& writeFile, size_t writeSize, CkptDataType dataType,
-            size_t idx);
+        void FillToBuffer(BufferQueue& queue, const char* data, size_t dataSize);
+        void WriteDataset(CkptTransData& transData,
+                                      int fd,
+                                      size_t writeSize,
+                                      CkptDataType dataType,
+                                      size_t idx);
+
+        void WriterFn(BufferQueue& queue, int fd);
+
         void WriteEmbedding(const CkptTransData& transData, const string& dataDir, const int& embeddingSize);
         void ReadEmbedding(CkptTransData& transData, const string& dataDir, const string& embName);
 
