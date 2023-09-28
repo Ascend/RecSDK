@@ -132,7 +132,7 @@ void HybridMgmtBlock::DoBlock(int channelId)
     LOG_DEBUG(HYBRID_BLOCKING + "HybridMgmt starts blocking channelId {} hybridBatchId {}",
         channelId, hybridBatchId[channelId]);
 
-    while (isBlock[channelId] and !rankInfo.noDDR) {
+    while (isBlock[channelId]) {
         std::this_thread::sleep_for(SLEEP_MS);
         if (!isRunning) {
             return;
