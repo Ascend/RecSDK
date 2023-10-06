@@ -42,7 +42,7 @@ const char* Logger::LevelToStr(int logLevel)
         "ERROR",
     };
     constexpr int levelOffset = 2;
-    return msg[level + levelOffset];
+    return msg[logLevel + levelOffset];
 }
 
 void Logger::LogUnpack(std::queue<std::string>& fmt, std::stringstream &ss)
