@@ -111,7 +111,7 @@ private:
     for (int i = 0; i < sizes; i++)
     {
 
-      dataLocal = isFull ? inQueue.AllocTensor<T>() : dataLocal;
+      dataLocal = inQueue.AllocTensor<T>();
       int64_t address = srcAddrLocal.GetValue(i);
 
       if (address != 0)
@@ -128,18 +128,9 @@ private:
         }
 
       }
-
-      nums++;
-      isFull = ( i  == tmp_cache || i == sizes - 1);
-      if (isFull)
-      {
         inQueue.EnQue(dataLocal);
-        Compute(nums);
-        CopyOut(out_index, turns, nums);
-        nums = 0;
-        out_index = i + 1;
-        tmp_cache += cache;
-      }
+        Compute(1);
+        CopyOut(i, turns, 1);
     }
   }
 
