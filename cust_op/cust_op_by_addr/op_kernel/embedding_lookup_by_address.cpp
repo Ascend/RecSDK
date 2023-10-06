@@ -130,7 +130,7 @@ private:
       }
         inQueue.EnQue(dataLocal);
         Compute(1);
-        CopyOut(out_index, turns, 1);
+        CopyOut(i, turns, 1);
     }
   }
 
