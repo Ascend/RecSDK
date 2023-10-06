@@ -69,7 +69,7 @@ public:
         struct timeval tv;
         gettimeofday(&tv, nullptr);
         localtime_r(&tv.tv_sec, &t);
-        ss << "[MxRec][" << YEAR_BASE + t.tm_year << "/" << t.tm_mon << "/" << t.tm_mday<< " "
+        ss << "[MxRec][" << YEAR_BASE + t.tm_year << "/" << 1 + t.tm_mon << "/" << t.tm_mday<< " "
            << t.tm_hour << ":" << t.tm_min << ":" << t.tm_sec << "." << tv.tv_usec << "] ["
            << Logger::rank << "] ["<< Logger::LevelToStr(level) << "] ["
            << (strrchr(file, '/') ? strrchr(file, '/') + 1 : file) << ":" << line << "] ";
