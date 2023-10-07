@@ -19,6 +19,7 @@ from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.training.optimizer import Optimizer
 from tensorflow.python.client.session import BaseSession
 
+from mx_rec.constants import constants
 from mx_rec.util.initialize import get_is_graph_modify_hook_running, get_modify_graph, insert_bool_gauge, \
     get_bool_gauge_set, terminate_config_initializer, get_run_times, set_is_last_round, get_asc_manager
 from mx_rec.util.tf_version_adapter import NPUCheckpointSaverHook
@@ -103,8 +104,6 @@ def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
         name2channel_cache[name_list_str_key] = this_channel_id
         return this_channel_id
 
-    # patch的方式为session增加步数属性
-    steps = self.get_mxrec_steps()
     # patch的方式为图增加缓存属性
     name2channel_cache = self.get_mxrec_name2channel_cache()
 
@@ -117,6 +116,13 @@ def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
 
     if channel_id != -1:
         get_asc_manager().block_notify_wake(channel_id)
+
+    if channel_id == constants.EVAL_CHANNEL_ID:
+        # eval的时候不进行循环下沉
+        steps = 1
+    else:
+        # patch的方式为session增加步数属性
+        steps = self.get_mxrec_steps()
 
     # 调用tensorflow原生的方法
     result = self.old_run_method(fetches, feed_dict, options, run_metadata)
