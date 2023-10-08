@@ -1298,11 +1298,11 @@ void KeyProcess::EvictKeysCombine(const vector<emb_key_t>& keys) // hbm
     LOG_INFO(KEY_PROCESS "hbm combine funEvictCall, keySize:{}", keys.size());
     // 删除映射关系
     if (keys.size() != 0) {
-        for (auto& map : keyOffsetMap) {
+        for (const auto& map : keyOffsetMap) {
             EvictDeleteDeviceEmb(map.first, keys);
         }
     }
-    for (auto map : evictPosMap) {
+    for (const auto map : evictPosMap) {
         // 初始化 dev
         EvictInitDeviceEmb(map.first, map.second);
     }
