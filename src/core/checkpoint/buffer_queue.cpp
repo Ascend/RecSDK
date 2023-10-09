@@ -11,20 +11,19 @@
 using namespace MxRec;
 using namespace std;
 
-void BufferQueue::push(std::vector<char>&& buffer)
+void BufferQueue::Push(std::vector<char> &&buffer)
 {
     std::unique_lock<std::mutex> lock(mtx);
     bufferQueue.push(std::move(buffer));
     cv.notify_one();
 }
 
-std::vector<char> BufferQueue::pop()
+void BufferQueue::Pop(std::vector<char>& buffer)
 {
     std::unique_lock<std::mutex> lock(mtx);
     cv.wait(lock, [this] {
         return !bufferQueue.empty();
     });
-    auto buffer = std::move(bufferQueue.front());
+    buffer = std::move(bufferQueue.front());
     bufferQueue.pop();
-    return buffer;
 }

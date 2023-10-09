@@ -29,6 +29,7 @@ namespace MxRec {
 
     private:
         std::vector<char> buffer;
+        std::vector<char> writeBuffer;
         const string datasetName { "slice_" };
         const string dataFileType { ".data" };
         const string attribFileType { ".attribute" };
