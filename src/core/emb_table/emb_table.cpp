@@ -61,6 +61,7 @@ EmbTable::~EmbTable()
         if (ret != ACL_SUCCESS) {
             LOG_ERROR("aclrtFree failed, ret={}", ret);
         }
+        block = nullptr;
     }
 #endif
 }

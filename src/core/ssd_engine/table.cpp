@@ -4,7 +4,6 @@
 
 
 #include "table.h"
-#include "utils/common.h"
 
 using namespace MxRec;
 
@@ -271,7 +270,10 @@ vector<vector<float>> Table::FetchEmbeddingsInner(vector<emb_key_t> &keys)
     size_t dLen = keys.size();
     unordered_map<shared_ptr<File>, shared_ptr<pair<vector<emb_key_t>, vector<size_t>>>> miniBatch;
     for (size_t i = 0; i < dLen; ++i) {
-        auto it = keyToFile.find(keys[i]);
+        auto it = as_const(keyToFile).find(keys[i]);
+        if (it == keyToFile.end()) {
+            throw invalid_argument(StringFormat("failed to find the key, {key=%d} not exist!", keys[i]));
+        }
         if (miniBatch[it->second] == nullptr) {
             miniBatch[it->second] = make_shared<pair<vector<emb_key_t>, vector<size_t>>>();
         }
