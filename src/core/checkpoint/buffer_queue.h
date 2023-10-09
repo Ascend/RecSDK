@@ -12,14 +12,13 @@
 #include <vector>
 #include <condition_variable>
 #include <mutex>
-#include <map>
 #include <queue>
 
 namespace MxRec {
     class BufferQueue {
     public:
-        void push(std::vector<char>&& buffer);
-        std::vector<char> pop();
+        void Push(std::vector<char> &&buffer);
+        void Pop(std::vector<char>& buffer);
     private:
         std::queue<std::vector<char>> bufferQueue;
         std::mutex mtx;

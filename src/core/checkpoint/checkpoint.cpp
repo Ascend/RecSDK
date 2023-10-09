@@ -308,7 +308,7 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir, 
 
 void Checkpoint::WriteStream(CkptTransData& transData, const string& dataDir, size_t dataSize, CkptDataType dataType)
 {
-    int fd = open(dataDir.c_str(), O_RDWR | O_CREAT | O_TRUNC, (mode_t)0600);
+    int fd = open(dataDir.c_str(), O_RDWR | O_CREAT | O_TRUNC, static_cast<mode_t>(0600));
     if (fd == -1) {
         LOG_ERROR("Error opening file for writing");
         return;
@@ -347,11 +347,11 @@ void Checkpoint::WriteStream(CkptTransData& transData, const string& dataDir, si
 
     // After all data has been processed, check if there is any data left in the buffer
     if (!buffer.empty()) {
-        queue.push(std::move(buffer));
+        queue.Push(std::move(buffer));
         buffer.clear();
     }
 
-    queue.push(std::vector<char>());
+    queue.Push(std::vector<char>());
 
     writer.join();
 
@@ -361,15 +361,15 @@ void Checkpoint::WriteStream(CkptTransData& transData, const string& dataDir, si
 void Checkpoint::WriterFn(BufferQueue& queue, int fd)
 {
     while (true) {
-        auto buffer = queue.pop();
-        if (buffer.size() == 0) {
+        queue.Pop(writeBuffer);
+        if (writeBuffer.size() == 0) {
             break;
         }
-        ssize_t result = write(fd, buffer.data(), buffer.size());
-        if (result != buffer.size()) {
+        ssize_t result = write(fd, writeBuffer.data(), writeBuffer.size());
+        if (result != writeBuffer.size()) {
             LOG_ERROR("Error writing to file");
         }
-        buffer.clear();
+        writeBuffer.clear();
     }
 }
 
@@ -379,13 +379,13 @@ void Checkpoint::WriteDataset(CkptTransData& transData,
                               CkptDataType dataType,
                               size_t idx)
 {
-    ssize_t result;
+    ssize_t result = 0;
     if (int32TransSet.find(dataType) != int32TransSet.end()) {
-        result = write(fd, (const char*)(transData.int32Arr.data()) + idx, writeSize);
+        result = write(fd, reinterpret_cast<const char*>(transData.int32Arr.data()) + idx, writeSize);
     } else if (int64TransSet.find(dataType) != int64TransSet.end()) {
-        result = write(fd, (const char*)(transData.int64Arr.data()) + idx, writeSize);
+        result = write(fd, reinterpret_cast<const char*>(transData.int64Arr.data()) + idx, writeSize);
     } else if (dataType == CkptDataType::ATTRIBUTE) {
-        result = write(fd, (const char*)(transData.attribute.data()) + idx, writeSize);
+        result = write(fd, reinterpret_cast<const char*>(transData.attribute.data()) + idx, writeSize);
     }
 
     if (result != writeSize) {
@@ -400,12 +400,12 @@ void Checkpoint::FillToBuffer(BufferQueue& queue, const char* data, size_t dataS
     while (dataIdx < dataSize) {
         size_t remainingSpace = BUFFER_SIZE - buffer.size();
         if (dataSize - dataIdx <= remainingSpace) {
-            buffer.insert(buffer.end(), data + dataIdx, data + dataSize);
+            buffer.insert(buffer.cend(), data + dataIdx, data + dataSize);
             return;
         } else {
-            buffer.insert(buffer.end(), data + dataIdx, data + dataIdx + remainingSpace);
-            queue.push(std::move(buffer));
-            if (BUFFER_SIZE > buffer.capacity()) {
+            buffer.insert(buffer.cend(), data + dataIdx, data + dataIdx + remainingSpace);
+            queue.Push(std::move(buffer));
+            if (buffer.capacity() < BUFFER_SIZE) {
                 buffer.reserve(BUFFER_SIZE);
             }
             dataIdx += remainingSpace;
