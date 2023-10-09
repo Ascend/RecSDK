@@ -4,20 +4,30 @@
 
 namespace optiling
 {
+
+    template <typename T>
+    static ge::graphStatus CheckNullPointer(T *pointer, const char *errorMessage)
+    {
+        if (pointer == nullptr) {
+            printf("%s nullptr\n", errorMessage);
+            return ge::GRAPH_FAILED;
+        }
+
+        return ge::GRAPH_SUCCESS;
+    }
+
     static ge::graphStatus TilingFunc(gert::TilingContext *context)
     {
         TilingData1 tiling;
 
         size_t usrSize = 256;
         size_t sysWorkspaceSize = 16 * 1024 * 1024;
-        if (context == nullptr) {
-            printf("Tiling context nullptr\n");
+        if (CheckNullPointer(context, "Tiling context") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
 
         size_t *currentWorkspace = context->GetWorkspaceSizes(1);
-        if (currentWorkspace == nullptr) {
-            printf("currentWorkspace nullptr\n");
+        if (CheckNullPointer(currentWorkspace, "currentWorkspace") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
 
@@ -27,8 +37,7 @@ namespace optiling
         int32_t ub_limit = 175 * 1024;
         auto *attrs = context->GetAttrs();
         const auto *attr0_value = attrs->GetAttrPointer<int64_t>(0);
-        if (attr0_value == nullptr) {
-            printf(" Lookup embbeding_type attr0_value nullptr\n");
+        if (CheckNullPointer(attr0_value, " Lookup embbeding_type attr0_value") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
 
@@ -39,14 +48,18 @@ namespace optiling
         }
 
         const auto *attr1_value = attrs->GetAttrPointer<int64_t>(1);
-        if (attr1_value == nullptr) {
-            printf(" Lookup embbeding_type attr1_value nullptr\n");
+        if (CheckNullPointer(attr1_value, "Lookup embbeding_type attr1_value") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
 
         int32_t embbeding_type = *attr1_value;
 
-        int32_t input_shape = context->GetInputTensor(0)->GetShapeSize();
+        auto inputTensor = context->GetInputTensor(0);
+        if (CheckNullPointer(inputTensor, "inputTensor") != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+
+        int32_t input_shape = inputTensor->GetShapeSize();
 
         tiling.set_embbeding_type(embbeding_type);
         tiling.set_update_dim(embbeding_dim);
@@ -67,10 +80,17 @@ namespace ge
     {
 
         gert::Shape *y_shape = context->GetOutputShape(0);
+        if (optiling::CheckNullPointer(y_shape, "y_shape") != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+
         auto *attrs = context->GetAttrs();
+        if (optiling::CheckNullPointer(attrs, "attrs") != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+
         const auto *attr0_value = attrs->GetAttrPointer<int64_t>(0);
-        if (attr0_value == nullptr) {
-            printf(" Lookup embbeding_type attr0_value nullptr\n");
+        if (optiling::CheckNullPointer(attr0_value, "Lookup embbeding_type attr0_value") != ge::GRAPH_SUCCESS) {
             return GRAPH_FAILED;
         }
 
@@ -86,15 +106,21 @@ namespace ge
     {
 
         int64_t embbeding_type;
+        if (optiling::CheckNullPointer(context, "context") != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+
         auto *attrs = context->GetAttrs();
+        if (optiling::CheckNullPointer(attrs, "attrs") != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+
         const auto *attr1_value = attrs->GetAttrPointer<int64_t>(1);
-        if (attr1_value == nullptr) {
-            printf(" Lookup embbeding_type nullptr\n");
+        if (optiling::CheckNullPointer(attr1_value, "Lookup embbeding_type") != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
         }
-        else
-        {
-            embbeding_type = *attr1_value;
-        }
+
+        embbeding_type = *attr1_value;
         if (embbeding_type == 0)
         {
             context->SetOutputDataType(0, ge::DataType(DT_INT32));
