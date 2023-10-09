@@ -5,41 +5,67 @@
 namespace optiling
 {
 
+    template<typename T>
+    static ge::graphStatus CheckPointer(T *pointer, const char *errorMessage)
+    {
+        if (pointer == nullptr) {
+            printf("%s nullptr\n", errorMessage);
+            return ge::GRAPH_FAILED;
+        }
+
+        return ge::GRAPH_SUCCESS;
+    }
+
+    static ge::graphStatus CheckPositiveInt(int32_t value, const char *errorMessage)
+    {
+        if (value <= 0) {
+            printf("%s must larger than 0\n", errorMessage);
+            return ge::GRAPH_FAILED;
+        }
+
+        return ge::GRAPH_SUCCESS;
+    }
+
     static ge::graphStatus TilingFunc(gert::TilingContext *context)
     {
         TilingData2 tiling;
 
         size_t usrSize = 256, sysWorkspaceSize = 16 * 1024 * 1024;
-        if (context == nullptr) {
-            printf("Update embbeding_type context nullptr\n");
+        if (CheckPointer(context, "Update embbeding_type context") != ge::GRAPH_SUCCESS)
             return ge::GRAPH_FAILED;
-        }
 
         size_t *currentWorkspace = context->GetWorkspaceSizes(1);
-        if (currentWorkspace == nullptr) {
-            printf("currentWorkspace nullptr\n");
+        if (CheckPointer(currentWorkspace, "currentWorkspace") != ge::GRAPH_SUCCESS)
             return ge::GRAPH_FAILED;
-        }
 
         currentWorkspace[0] = sysWorkspaceSize + usrSize;
 
         int32_t block_total_nums = 48;
         int32_t ub_limit = 175 * 1024;
         int32_t update_dim, embbeding_type;
-        int32_t input_shape = context->GetInputTensor(0)->GetShapeSize();
-        if (input_shape <= 0) {
-            printf("input_shape must larger than 0\n");
+        auto inputTensor = context->GetInputTensor(0);
+        if (CheckPointer(inputTensor, "GetInputTensor inputTensor") != ge::GRAPH_SUCCESS)
             return ge::GRAPH_FAILED;
-        }
 
-        int32_t input_dim = context->GetInputTensor(1)->GetShapeSize() / input_shape;
-        if (context->GetAttrs()->GetAttrPointer<int64_t>(0) == nullptr) {
-            printf("context GetAttrs GetAttrPointer nullptr\n");
+        int32_t input_shape = inputTensor->GetShapeSize();
+        if (CheckPositiveInt(input_shape, "input_shape") != ge::GRAPH_SUCCESS)
             return ge::GRAPH_FAILED;
-        }
 
-        int32_t update_type = *(context->GetAttrs()->GetAttrPointer<int64_t>(0));
-        ge::DataType input_datatype = context->GetInputTensor(1)->GetDataType();
+        auto inputTensor1 = context->GetInputTensor(1);
+        if (CheckPointer(inputTensor1, "GetInputTensor inputTensor1") != ge::GRAPH_SUCCESS)
+            return ge::GRAPH_FAILED;
+
+        int32_t input_dim = inputTensor1->GetShapeSize() / input_shape;
+        auto attrs = context->GetAttrs();
+        if (CheckPointer(attrs, "GetAttrs attrs") != ge::GRAPH_SUCCESS)
+            return ge::GRAPH_FAILED;
+
+        auto attrPointer = attrs->GetAttrPointer<int64_t>(0);
+        if (CheckPointer(attrPointer, "attrPointer") != ge::GRAPH_SUCCESS)
+            return ge::GRAPH_FAILED;
+
+        int32_t update_type = *(attrPointer);
+        ge::DataType input_datatype = inputTensor1->GetDataType();
         if (input_datatype == ge::DT_FLOAT16) {
             embbeding_type = 2;
         } else if (input_datatype == ge::DT_INT32) {
@@ -49,10 +75,8 @@ namespace optiling
         }
 
         update_dim = input_dim;
-        if (update_dim <= 0) {
-            printf("update_dim must larger than 0\n");
+        if (CheckPositiveInt(update_dim, "update_dim") != ge::GRAPH_SUCCESS)
             return ge::GRAPH_FAILED;
-        }
 
         tiling.set_update_type(update_type);
         tiling.set_embbeding_type(embbeding_type);
