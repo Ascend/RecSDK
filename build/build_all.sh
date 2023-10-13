@@ -13,13 +13,12 @@ ROOT_DIR=$(dirname "${SCRIPT_DIR}")
 cd "$SCRIPT_DIR"
 if [ "$(uname -m)" = "aarch64" ]
 then
-  virtualenv -p "$(which python3.7)" tf2_env
   source tf2_env/bin/activate
   tf265="tensorflow-2.6.5-cp37-cp37m-manylinux2014_aarch64.whl"
   [ ! -f "${tf265}" ] && artget pull "mindx_img_tools 1.0.0" -ru software -rp "${tf265}" -ap ./
   tf2_path=$(dirname "$(dirname "$(which python3)")")/lib/python3.7/site-packages/tensorflow
   deactivate tf2_env
-  virtualenv -p "$(which python3.7)" tf1_env
+
   source tf1_env/bin/activate
   tf115="tensorflow-1.15.0-cp37-cp37m-manylinux2014_aarch64.whl"
   [ ! -f "${tf115}" ] && artget pull "mindx_img_tools 1.0.0" -ru software -rp "${tf115}" -ap ./
@@ -34,7 +33,7 @@ then
   [ ! -f "${tf265}" ] && artget pull "mindx_img_tools 1.0.0" -ru software -rp "${tf265}" -ap ./
   tf2_path=$(dirname "$(dirname "$(which python3)")")/lib/python3.7/site-packages/tensorflow
   deactivate tf2_env
-  virtualenv -p "$(which python3.7)" tf1_env
+
   source tf1_env/bin/activate
   tf115="tensorflow-1.15.0-cp37-cp37m-manylinux2010_x86_64.whl"
   [ ! -f "${tf115}" ] && artget pull "mindx_img_tools 1.0.0" -ru software -rp "${tf115}" -ap ./
