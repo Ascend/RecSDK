@@ -14,7 +14,6 @@ cd "$SCRIPT_DIR"
 
 if [ "$(uname -m)" = "x86_64" ]
 then
-  virtualenv -p "$(which python3.7)" tf1_env
   source /opt/buildtools/tf1_env/bin/activate
   tf1_path=$(dirname "$(dirname "$(which python3)")")/lib/python3.7/site-packages/tensorflow_core
   deactivate tf1_env
@@ -86,7 +85,7 @@ compile_so_file()
 {
   cd "${src_path}"
   chmod u+x build.sh
-  ./build.sh "$1" "${ROOT_DIR}"
+  ./build.sh "$1" "${ROOT_DIR}" "NO"
   cd ..
 }
 
@@ -144,8 +143,6 @@ then
   compile_acc_ctr_so_file
 
   echo "-----Build Start tf1 -----"
-  virtualenv -p "$(which python3.7)" tf1_env
-  echo "--tf1 env ${env}---"
   source /opt/buildtools/tf1_env/bin/activate
   compile_so_file "${tf1_path}"
   collect_so_file
