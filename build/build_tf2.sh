@@ -85,7 +85,7 @@ compile_so_file()
 {
   cd "${src_path}"
   chmod u+x build.sh
-  ./build.sh "$1" "${ROOT_DIR}"
+  ./build.sh "$1" "${ROOT_DIR}" "NO"
   cd ..
 }
 
