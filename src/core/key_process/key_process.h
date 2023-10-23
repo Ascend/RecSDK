@@ -158,10 +158,10 @@ namespace MxRec {
 
         RankInfo rankInfo;
         map<EmbNameT, EmbInfo> embInfos;
-        MPI_Comm comm[MAX_CHANNEL_NUM][KEY_PROCESS_THREAD];
+        MPI_Comm comm[MAX_CHANNEL_NUM][MAX_KEY_PROCESS_THREAD];
         std::mutex mut {};
         vector<std::unique_ptr<std::thread>> procThreads {};
-        std::mutex loadSaveMut[MAX_CHANNEL_NUM][KEY_PROCESS_THREAD] {};
+        std::mutex loadSaveMut[MAX_CHANNEL_NUM][MAX_KEY_PROCESS_THREAD] {};
         info_list_t<LookupKeyT> lookupKeysList;
         list<unique_ptr<vector<Tensor>>> storage;
         info_list_t<TensorInfoT> infoList;
