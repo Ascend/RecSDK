@@ -11,6 +11,7 @@
 #include <memory>
 #include <string>
 #include <stdexcept>
+#include <experimental/filesystem>
 
 #include <mpi.h>
 
@@ -21,6 +22,8 @@ using namespace std;
 using std::chrono::system_clock;
 
 namespace MxRec {
+    namespace fs = std::experimental::filesystem;
+
     bool g_isGlogInit = false;
     bool GlogConfig::gStatOn = false;
     int GlogConfig::gGlogLevel;
@@ -103,6 +106,11 @@ namespace MxRec {
         if (datasetSize > FILE_MAX_SIZE) {
             LOG_ERROR("the reading file size is invalid, not in range [{},{}]", FILE_MIN_SIZE, FILE_MAX_SIZE);
             throw invalid_argument(StringFormat("file size invalid"));
+        }
+        // validate file privilege
+        fs::perms permissions = fs::status(dataDir).permissions();
+        if ((permissions & fs::perms::owner_read) == fs::perms::none) {
+            throw invalid_argument(StringFormat("no read permission for file:%s", dataDir.c_str()));
         }
     }
 

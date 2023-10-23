@@ -20,6 +20,7 @@ File::File(uint64_t fileID, string &fileDir) : fileID(fileID), fileDir(fileDir)
         throw runtime_error("fail to create Save directory");
     }
 
+    // latest file is temporary, unnecessary to check file existence and privilege
     metaFilePath = fs::absolute(fileDir + "/" + to_string(fileID) + ".meta.latest");
     dataFilePath = fs::absolute(fileDir + "/" + to_string(fileID) + ".data.latest");
     localFileMeta.open(metaFilePath, ios::out | ios::trunc | ios::binary);
@@ -57,6 +58,7 @@ File::File(uint64_t fileID, string &fileDir, string &loadDir, int step) : fileID
     ValidateReadFile(metaFileToLoad, fs::file_size(metaFileToLoad));
     ValidateReadFile(dataFileToLoad, fs::file_size(dataFileToLoad));
 
+    // latest file is temporary, unnecessary to check file existence and privilege
     metaFilePath = fs::absolute(fileDir + "/" + to_string(fileID) + ".meta.latest");
     dataFilePath = fs::absolute(fileDir + "/" + to_string(fileID) + ".data.latest");
     fs::remove(metaFilePath);
