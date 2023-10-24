@@ -121,9 +121,11 @@ namespace MxRec {
 
             for (size_t i = 0; i < lookupKeys.size(); ++i) {
                 int64_t key = lookupKeys[i];
-                if (rankInfo.useStatic && key == -1) {
+                if (rankInfo.useStatic && (
+                        (!rankInfo.useDynamicExpansion && key == -1) || (rankInfo.useDynamicExpansion && key == 0))) {
                     continue;
                 }
+
                 auto result = umap.find(key);
                 if (result == umap.end()) {
                     uniqueKeys.push_back(lookupKeys[i]);

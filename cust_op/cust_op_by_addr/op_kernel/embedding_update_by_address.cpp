@@ -106,7 +106,7 @@ private:
     if (dim == onceMoveNums)
     {
       dataLocal = inQueue.AllocTensor<T>();
-      DataCopy(dataLocal, srcDataBufferGm[turns * roundSize], sizes * onceMoveNums);
+      DataCopy(dataLocal, srcDataBufferGm[turns * roundSize * dim], sizes * onceMoveNums);
       inQueue.EnQue(dataLocal);
       Compute(sizes);
       LocalTensor<T> dstLocal = outQueue.DeQue<T>();
@@ -134,7 +134,7 @@ private:
       for (int i = 0; i < sizes; i++)
       {
         dataLocal = inQueue.AllocTensor<T>();
-        DataCopy(dataLocal, srcDataBufferGm[i * dim + turns * roundSize], onceMoveNums);
+        DataCopy(dataLocal, srcDataBufferGm[i * dim + turns * roundSize * dim], onceMoveNums);
         inQueue.EnQue<T>(dataLocal);
         Compute(1);
         address = srcAddrLocal.GetValue(i);
