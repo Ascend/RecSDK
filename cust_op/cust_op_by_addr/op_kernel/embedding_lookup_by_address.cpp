@@ -14,7 +14,7 @@ public:
     NeedComputeAddrLen = SingleCoreAddrLen;
     if (block_idx == block_num - 1)
     {
-      NeedComputeAddrLen = addr_nums * sizeof(int64_t) - SingleCoreAddrLen * (block_num - 1);
+      NeedComputeAddrLen = addrNums * sizeof(int64_t) - SingleCoreAddrLen * (block_num - 1);
     }
     round = NeedComputeAddrLen / (roundSize * sizeof(int64_t));
     // pipe alloc memory to queue, the unit is Bytes
@@ -32,12 +32,12 @@ public:
   {
     GET_TILING_DATA(constData, tiling);
     // 数据的维度数
-    int32_t update_dim = constData.update_dim;
-    int32_t embbeding_type = constData.embbeding_type;
-    int32_t block_total_nums = block_num;
-    int32_t ub_limit = constData.ub_limit;
-    addr_nums = constData.addr_nums;
-    if (embbeding_type == 2)
+    int32_t updateDim = constData.update_dim;
+    int32_t embeddingType = constData.embbeding_type;
+    int32_t blockTotalNums = block_num;
+    int32_t ubLimit = constData.ub_limit;
+    addrNums = constData.addr_nums;
+    if (embeddingType == 2)
     {
       singleDataSize = 2;
     }
@@ -47,24 +47,24 @@ public:
     }
     // 缓冲区数量
     PingpongNum = 1;
-    int min_move_num = 32 / singleDataSize;
-    // onceMoveNums表示每个数据维度需要移动的次数，(update_dim - 1 + min_move_num) / min_move_num表示除以min_move_num向下取整
-    onceMoveNums = min_move_num * ((int)(update_dim - 1 + min_move_num) / min_move_num);
-    int num_to_move = (int32_t)(update_dim - 1 + onceMoveNums) / onceMoveNums;
+    int minMoveNum = 32 / singleDataSize;
+    // onceMoveNums表示每个数据维度需要移动的次数，(update_dim - 1 + minMoveNum) / minMoveNum表示除以minMoveNum向下取整
+    onceMoveNums = minMoveNum * ((int)(updateDim - 1 + minMoveNum) / minMoveNum);
+    int numToMove = (int32_t)(updateDim - 1 + onceMoveNums) / onceMoveNums;
     // 每个地址需要占用sizeof(int64_t)个字节，singleDataSize表示每个数据的字节数，需要使用2倍的内存空间，因为每次移动都需要复制一份数据
-    int occupyAddressBytesNum = sizeof(int64_t) + singleDataSize * onceMoveNums * num_to_move * PingpongNum * 2;
+    int occupyAddressBytesNum = sizeof(int64_t) + singleDataSize * onceMoveNums * numToMove * PingpongNum * 2;
     // 计算一轮计算中最多计算多少个addr，最后的 /4 再*4 是为了与32对齐，因为sizeof(int64_t) = 8
-    int addrMaxNum = ((int)((int)(ub_limit / occupyAddressBytesNum) / 4)) * 4;
-    int singlenum = (int)(addr_nums / block_total_nums);
-    if (singlenum % 4)
+    int addrMaxNum = ((int)((int)(ubLimit / occupyAddressBytesNum) / 4)) * 4;
+    int singleNum = (int)(addrNums / blockTotalNums);
+    if (singleNum % 4)
     {
-      singlenum -= singlenum % 4;
+      singleNum -= singleNum % 4;
     }
     roundSize = addrMaxNum;
     Veclen = roundSize * singleDataSize * onceMoveNums;
-    SingleCoreAddrLen = singlenum * sizeof(int64_t);
+    SingleCoreAddrLen = singleNum * sizeof(int64_t);
     cache = roundSize;
-    dim = update_dim;
+    dim = updateDim;
   }
 
   __aicore__ inline void Process()
@@ -81,18 +81,18 @@ public:
       }
     }
 
-    int unprocess = (NeedComputeAddrLen / sizeof(int64_t)) % roundSize;
-    if (unprocess)
+    int unProcess = (NeedComputeAddrLen / sizeof(int64_t)) % roundSize;
+    if (unProcess)
     {
       // 处理 addresslist 不对齐32b
-      int unprocess_once_copyaddr = unprocess;
-      if (unprocess_once_copyaddr % 4 != 0)
+      int unProcessOnceCopyAddr = unProcess;
+      if (unProcessOnceCopyAddr % 4 != 0)
       {
-        unprocess_once_copyaddr += (4 - unprocess % 4);
+          unProcessOnceCopyAddr += (4 - unProcess % 4);
       }
 
-      DataCopy(srcAddrLocal, srcAddrGlobal[round * roundSize], unprocess_once_copyaddr);
-      MoveProcess(srcAddrLocal, round, unprocess);
+      DataCopy(srcAddrLocal, srcAddrGlobal[round * roundSize], unProcessOnceCopyAddr);
+      MoveProcess(srcAddrLocal, round, unProcess);
     }
   }
 
@@ -101,17 +101,17 @@ private:
   {
     set_flag(PIPE_MTE2, PIPE_S, 0);
     wait_flag(PIPE_MTE2, PIPE_S, 0);
-    LocalTensor<T> dataLocal;
-    bool isFull = true;
+    LocalTensor<T> dataLocal = inQueue.AllocTensor<T>();
+    bool isFull = false;
     int nums = 0;
-    int out_index = 0;
+    int outIndex = 0;
     int times = onceMoveNums / 8;
-    int tmp_cache = cache - 1;
+    int tmpCache = cache - 1;
 
     for (int i = 0; i < sizes; i++)
     {
 
-      dataLocal = inQueue.AllocTensor<T>();
+      dataLocal = isFull ? inQueue.AllocTensor<T>() : dataLocal;
       int64_t address = srcAddrLocal.GetValue(i);
 
       if (address != 0)
@@ -128,9 +128,18 @@ private:
         }
 
       }
-        inQueue.EnQue(dataLocal);
-        Compute(1);
-        CopyOut(i, turns, 1);
+
+      nums++;
+      isFull = (i == tmpCache || i == sizes - 1);
+      if (isFull)
+      {
+          inQueue.EnQue(dataLocal);
+          Compute(nums);
+          CopyOut(outIndex, turns, nums);
+          nums = 0;
+          outIndex = i + 1;
+          tmpCache += cache;
+      }
     }
   }
 
@@ -140,10 +149,10 @@ private:
     LocalTensor<T> srcLocal = inQueue.DeQue<T>();
     LocalTensor<T> dstLocal = outQueue.AllocTensor<T>();
 
-    DataCopyParams copyparams;
-    copyparams.blockCount = 1;
-    copyparams.blockLen = onceMoveNums * sizeof(T) * nums / 32;
-    DataCopy(dstLocal, srcLocal, copyparams);
+    DataCopyParams copyParams;
+    copyParams.blockCount = 1;
+    copyParams.blockLen = onceMoveNums * sizeof(T) * nums / 32;
+    DataCopy(dstLocal, srcLocal, copyParams);
 
     outQueue.EnQue<T>(dstLocal);
     inQueue.FreeTensor(srcLocal);
@@ -174,7 +183,7 @@ private:
 
 public:
   int32_t roundSize, round, SingleCoreAddrLen, NeedComputeAddrLen, cache, Veclen, dim, PingpongNum;
-  int32_t addr_nums;
+  int32_t addrNums;
   int32_t onceMoveNums, singleDataSize, update_type;
 
 private:
@@ -191,9 +200,9 @@ extern "C" __global__ __aicore__ void embedding_lookup_by_address(GM_ADDR addres
 {
   GET_TILING_DATA(constData, tiling);
 
-  int32_t embbeding_type = constData.embbeding_type;
+  int32_t embeddingType = constData.embbeding_type;
 
-  switch (embbeding_type)
+  switch (embeddingType)
   {
   case 0:
   {
