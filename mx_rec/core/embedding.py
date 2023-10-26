@@ -137,6 +137,7 @@ class SparseEmbedding:
         self.modify_graph = False
         self.init_param = config.get("init_param")
         self.all2all_gradients_op = All2allGradientsOp.mapping(config.get("all2all_gradients_op"))
+        self.is_grad = False
 
         self.set_slice_vocab_size()
         self.set_emb_size()
@@ -334,6 +335,7 @@ class SparseEmbedding:
         SparseEmbedding.anchor_tensor_specs[anchor_ids][ASCAnchorAttr.TABLE_INSTANCE] = self
         SparseEmbedding.anchor_tensor_specs[anchor_ids][ASCAnchorAttr.IS_TRAINING] = kwargs.get("is_train")
         SparseEmbedding.anchor_tensor_specs[anchor_ids][ASCAnchorAttr.FEATURE_SPEC] = feature_spec
+        SparseEmbedding.anchor_tensor_specs[anchor_ids][ASCAnchorAttr.IS_GRAD] = kwargs.get("is_grad")
 
     def check_multi_lookup_times(self, is_training):
         lookup_times = len(self.lookup_name_dict.get(is_training)) if self.modify_graph else len(self.lookup_result)
@@ -458,6 +460,8 @@ class SparseEmbedding:
             kwargs["ids"] = ids
         mock_lookup_result = self.lookup_for_asc_with_feature_spec_inner(feature_spec, send_count, **kwargs)
         mock_lookup_result = tf.identity(mock_lookup_result, name=ASCAnchorAttr.MOCK_LOOKUP_RESULT.value)
+        if not kwargs.get("is_grad"):
+            mock_lookup_result = tf.stop_gradient(mock_lookup_result, name="mock_stop_grad_lookup_res")
         SparseEmbedding.anchor_tensor_specs[anchor_ids][ASCAnchorAttr.MOCK_LOOKUP_RESULT] = mock_lookup_result
         logger.debug("Return the stub tensor `%s` of the `%s` table.", mock_lookup_result, self.table_name)
         return mock_lookup_result
@@ -479,6 +483,8 @@ class SparseEmbedding:
         spec_name = feature_spec.name
         is_training = kwargs.get("is_train")
         if spec_name in self.lookup_result and is_training in self.lookup_result.get(spec_name):
+            if not kwargs.get("is_grad"):
+                return tf.stop_gradient(self.lookup_result.get(spec_name).get(is_training), name="stop_grad_lookup_res")
             return self.lookup_result.get(spec_name).get(is_training)
 
         if not get_use_static() and not self.modify_graph and kwargs.get("batch") is None:
@@ -545,6 +551,8 @@ class SparseEmbedding:
 
         if not self.modify_graph:
             self.check_multi_lookup_times(is_training)
+        if not kwargs.get("is_grad"):
+            return tf.stop_gradient(self.lookup_result.get(spec_name).get(is_training), name="stop_grad_lookup_res")
         return self.lookup_result.get(spec_name).get(is_training)
 
     def split_lookup_result(self, same_table_feature_spec: list, tensor_split_list: list, tensor_list: list,
@@ -608,7 +616,6 @@ class SparseEmbedding:
                       skip_emb_transfer=self.skip_emb_transfer, ext_emb_size=self.ext_emb_size,
                       emb_size=self.emb_size, use_hot=use_hot, device_id=device_id,
                       use_dynamic_expansion=use_dynamic_expansion)
-
 
         if self.skip_emb_transfer:
             result = get_preprocessed_tensor_for_asc(self.variable, config)
@@ -738,6 +745,7 @@ class SparseEmbedding:
 
                 logger.debug("feature spec mode, table_name: %s, ASCEND_TABLE_NAME_MUST_CONTAIN: %s",
                              self.table_name, ASCEND_TABLE_NAME_MUST_CONTAIN)
+
             if is_training and is_table_name_valid:
                 add_to_collection()
 
@@ -789,6 +797,7 @@ class SparseEmbedding:
     ("modify_graph", ClassValidator, {"classes": (bool, type(None))}),
     ("batch", ClassValidator, {"classes": (dict, list, tuple, type(None))}),
     ("access_and_evict_config", ClassValidator, {"classes": (dict, type(None))}),
+    ("is_grad", ClassValidator, {"classes": (bool, )}),
 ])
 def sparse_lookup(hashtable: SparseEmbedding,
                   ids: Union[FeatureSpec, tf.Tensor],
@@ -798,6 +807,7 @@ def sparse_lookup(hashtable: SparseEmbedding,
                   modify_graph: bool = False,
                   batch: Optional[dict] = None,
                   access_and_evict_config: Optional[dict] = None,
+                  is_grad: bool = True,
                   **kwargs):
     """
     Args:
@@ -809,16 +819,22 @@ def sparse_lookup(hashtable: SparseEmbedding,
         modify_graph: if True, the original graph will be modified before building a Session instance
         batch: the value returned by the get_next() method of TF Dataset
         access_and_evict_config: the configuration for the feature of feature filtering and eviction
+        is_grad: indicate whether this lookup requires update gradients
 
     Returns: Tensor for lookup result
 
     """
+    kwargs["is_grad"] = is_grad
+    # 一表多查时，只要有一次查询需要grad，那么这张表也需要grad；否则整张表都不需要gard，同时在全局unique情况下，C++也不需要send数据
+    hashtable.is_grad |= is_grad
     kwargs["is_train"] = is_train
     kwargs["name"] = name if name is not None else hashtable.get_default_lookup_name()
     kwargs["modify_graph"] = modify_graph
     kwargs["batch"] = batch
     kwargs["access_and_evict_config"] = access_and_evict_config
     scope_name = "{0}//{1}".format(hashtable.table_name, kwargs.get("name"))
+    logger.info("Lookup: The table name is %s, and the value of `is_grad` in this lookup (lookup name is %s) is %s.",
+                hashtable.table_name, name, is_grad)
 
     with tf.compat.v1.variable_scope(scope_name):
         if isinstance(ids, FeatureSpec):

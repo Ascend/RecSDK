@@ -381,12 +381,14 @@ namespace MxRec {
                 int sendCount,
                 int embeddingSize,
                 int extEmbeddingSize,
-                bool isSave)
+                bool isSave,
+                bool isGrad)
             : name(name),
               sendCount(sendCount),
               embeddingSize(embeddingSize),
               extEmbeddingSize(extEmbeddingSize),
-              isSave(isSave)
+              isSave(isSave),
+              isGrad(isGrad)
         {
         }
         std::string name;
@@ -394,6 +396,7 @@ namespace MxRec {
         int embeddingSize;
         int extEmbeddingSize;
         bool isSave;
+        bool isGrad;
     };
 
     struct EmbInfo {
@@ -408,6 +411,7 @@ namespace MxRec {
               embeddingSize(embInfoParams.embeddingSize),
               extEmbeddingSize(embInfoParams.extEmbeddingSize),
               isSave(embInfoParams.isSave),
+              isGrad(embInfoParams.isGrad),
               devVocabSize(vocabsize[0]),
               hostVocabSize(vocabsize[1]),
               ssdVocabSize(vocabsize[SSD_SIZE_INDEX]),
@@ -421,6 +425,7 @@ namespace MxRec {
         int embeddingSize;
         int extEmbeddingSize;
         bool isSave;
+        bool isGrad;
         size_t devVocabSize;
         size_t hostVocabSize;
         size_t ssdVocabSize;
