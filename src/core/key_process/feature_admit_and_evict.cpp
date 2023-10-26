@@ -106,8 +106,13 @@ FeatureAdmitType FeatureAdmitAndEvict::FeatureAdmitHelper(const int channel, con
 
     absl::flat_hash_map<int64_t, FeatureItemInfo>& historyRecordInfos = m_recordsData.historyRecords[tableName];
     auto innerIt = historyRecordInfos.find(featureId);
-
-    if (channel == TRAIN_CHANNEL_ID) {
+    uint32_t countThreshold = static_cast<uint32_t>(m_table2Threshold[tableNameOrigin].countThreshold);
+    // countThreshold = 0或者eval，只查询count，不做累加，若是新key，则count使用初始值0
+    if (channel == EVAL_CHANNEL_ID || countThreshold == 0) {
+        if (innerIt != historyRecordInfos.end()) {
+            currKeyCount = historyRecordInfos[featureId].count;
+        }
+    } else if (channel == TRAIN_CHANNEL_ID) { // train 且 countThreshold > 0
         if (innerIt == historyRecordInfos.end()) {
             // 维护 m_historyRecords
             FeatureItemInfo info(featureCnt, m_recordsData.timestamps[tableName]);
@@ -121,14 +126,10 @@ FeatureAdmitType FeatureAdmitAndEvict::FeatureAdmitHelper(const int channel, con
             info.lastTime = m_recordsData.timestamps[tableName];
             currKeyCount = info.count;
         }
-    } else if (channel == EVAL_CHANNEL_ID) { // eval
-        if (innerIt != historyRecordInfos.end()) {
-            currKeyCount = historyRecordInfos[featureId].count;
-        }
     }
 
     // 准入条件判断
-    if (currKeyCount >= static_cast<uint32_t>(m_table2Threshold[tableNameOrigin].countThreshold)) {
+    if (currKeyCount >= countThreshold) {
         return FeatureAdmitType::FEATURE_ADMIT_OK;
     }
 
@@ -248,6 +249,37 @@ bool FeatureAdmitAndEvict::IsThresholdCfgOK(const std::vector<ThresholdValue>& t
         }
     }
 
+    return true;
+}
+
+bool FeatureAdmitAndEvict::SetTableThresholds(int threshold, string embName)
+{
+    std::lock_guard<std::mutex> lock(m_syncMutexs);
+    if (!embName.empty()) {
+        return SetTableThreshold(threshold, embName);
+    }
+
+    bool result = true;
+    for (const auto& m : m_table2Threshold) {
+        if (!SetTableThreshold(threshold, m.second.tableName)) {
+            result = false;
+        }
+    }
+    return result;
+}
+
+bool FeatureAdmitAndEvict::SetTableThreshold(int threshold, string embName)
+{
+    auto it = m_table2Threshold.find(embName);
+    if (it == m_table2Threshold.end()) {
+        LOG_WARN("SetTableThreshold failed, cause embName [{}] is not in m_table2Threshold...", embName);
+        return false;
+    }
+    LOG_INFO("SetTableThreshold success, embName[{}], count before [{}], count after [{}], time[{}], "
+             "coefficient[{}] ...", embName, m_table2Threshold[embName].countThreshold, threshold,
+             m_table2Threshold[embName].timeThreshold, m_table2Threshold[embName].faaeCoefficient);
+
+    m_table2Threshold[embName].countThreshold = threshold;
     return true;
 }
 
