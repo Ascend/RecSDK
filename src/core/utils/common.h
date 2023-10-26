@@ -57,7 +57,7 @@ namespace MxRec {
     constexpr char SUM_SAME_ID[] = "sum_same_id_gradients_and_apply";
     constexpr int MAX_VOCABULARY_SIZE = 1e9;
     constexpr int SSD_SIZE_INDEX = 2;
-
+    constexpr int MAX_FILE_NUM = 1000;
     // for GLOG
     struct GlogConfig {
         static bool gStatOn;

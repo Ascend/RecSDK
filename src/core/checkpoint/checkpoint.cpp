@@ -218,6 +218,7 @@ void Checkpoint::WriteEmbedding(const CkptTransData& transData, const string& da
     auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
     if (res != ACL_ERROR_NONE) {
         LOG_ERROR("Set device failed, device_id:{}", deviceId);
+        writeFile.close();
         throw runtime_error(Logger::Format("Set device failed, device_id:{}", deviceId).c_str());
     }
 
@@ -232,6 +233,7 @@ void Checkpoint::WriteEmbedding(const CkptTransData& transData, const string& da
                                    ACL_MEMCPY_DEVICE_TO_HOST);
         if (ret != ACL_SUCCESS) {
             LOG_ERROR("aclrtMemcpy failed, ret={}", ret);
+            writeFile.close();
             throw runtime_error(Logger::Format("aclrtMemcpy failed, ret={}", ret).c_str());
         }
 
@@ -265,6 +267,7 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir, 
     auto &attributeArr = transData.attribute;
     auto embHashMapSize = attributeArr.at(0);
     if (embHashMapSize <= 0) {
+        readFile.close();
         throw runtime_error(StringFormat("Invalid EmbHashMapSize:%d, must be greater than 0", embHashMapSize).c_str());
     }
     auto embeddingSize = static_cast<int>(datasetSize / sizeof(float) / embHashMapSize);
@@ -282,10 +285,12 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir, 
     auto &transArr = transData.int64Arr;
     EmbSizeInfo embSizeInfo = GetEmbeddingSize(embName);
     if (embSizeInfo.embSize == 0) {
+        readFile.close();
         throw runtime_error(StringFormat("embsize is 0").c_str());
     }
     auto keyAddrElem = embSizeInfo.extEmbSize / embSizeInfo.embSize - 1;
     if (keyAddrElem < 0) {
+        readFile.close();
         throw runtime_error(StringFormat("keyAddrElem: %d is less than 0", keyAddrElem).c_str());
     }
     for (size_t i = 0, j = 0; i < transArr.size(); i += keyAddrElem, ++j) {
@@ -457,11 +462,17 @@ vector<string> Checkpoint::GetTableLayerLoadDir()
     auto dir { opendir(innerDirPath.c_str()) };
     struct dirent* en;
     if (dir != nullptr) {
+        int fileNum = 0;
         while ((en = readdir(dir)) != nullptr) {
-            if (strcmp(en->d_name, currDir.c_str()) != 0 &&
-                strcmp(en->d_name, prevDir.c_str()) != 0) {
+            if (fileNum > MAX_FILE_NUM) {
+                closedir(dir);
+                throw std::runtime_error("The number of files has exceeded the limit " + std::to_string(MAX_FILE_NUM));
+            }
+            if (strncmp(en->d_name, currDir.c_str(), strlen(currDir.c_str())) != 0 &&
+                strncmp(en->d_name, prevDir.c_str(), strlen(prevDir.c_str())) != 0) {
                 loadTableDir.emplace_back(en->d_name);
             }
+            fileNum++;
         }
         closedir(dir);
     } else {
