@@ -22,14 +22,11 @@ from mx_rec.constants.constants import MAX_INT32
      ["check_at_least_one_equal_to_target"]),
     ("tgt_key_specs", ClassValidator, {"classes": (FeatureSpec, list, tuple, type(None))}),
     ("args_index_list", ClassValidator, {"classes": (list, type(None))}),
-    ("feature_numbers", ClassValidator, {"classes": (int, list, type(None))}),
-    ("feature_numbers", OptionalIntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
     ("table_names", ClassValidator, {"classes": (list, type(None))}),
     ("is_training", ClassValidator, {"classes": (bool, type(None))}),
     ("dump_graph", ClassValidator, {"classes": (bool, type(None))}),
 ])
-def get_asc_insert_func(tgt_key_specs=None, args_index_list=None, feature_numbers=None,
-                        table_names=None, **kwargs):
+def get_asc_insert_func(tgt_key_specs=None, args_index_list=None, table_names=None, **kwargs):
     '''
     desperated.
     use create_asc_insert_func_with_specs or create_asc_insert_func_with_agc
@@ -38,7 +35,6 @@ def get_asc_insert_func(tgt_key_specs=None, args_index_list=None, feature_number
         return create_asc_insert_func_with_specs(tgt_key_specs=tgt_key_specs, **kwargs)
     if args_index_list is not None:
         return create_asc_insert_func_with_acg(args_index_list=args_index_list,
-                                               feature_counts=feature_numbers,
                                                table_names=table_names,
                                                **kwargs)
     raise RuntimeError("call get_asc_insert_func in-correctly.")
@@ -52,21 +48,19 @@ def create_asc_insert_func_with_specs(tgt_key_specs, **kwargs):
 
 
 @para_checker_decorator(check_option_list=[
-    (["args_index_list", "feature_counts", "table_names"], ValueCompareValidator, {"target": None},
+    (["args_index_list", "table_names"], ValueCompareValidator, {"target": None},
      ["check_all_not_equal_to_target"]),
 ])
-def create_asc_insert_func_with_acg(args_index_list, feature_counts, table_names, **kwargs):
+def create_asc_insert_func_with_acg(args_index_list, table_names, **kwargs):
     '''
     自动改图模式 auto change graph
     '''
     return get_asc_insert_func_inner(args_index_list=args_index_list,
-                                     feature_counts=feature_counts,
                                      table_names=table_names,
                                      **kwargs)
 
 
-def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, feature_counts=None,
-                              table_names=None, **kwargs):
+def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, table_names=None, **kwargs):
 
     is_training = kwargs.get("is_training", True)
     dump_graph = kwargs.get("dump_graph", False)
