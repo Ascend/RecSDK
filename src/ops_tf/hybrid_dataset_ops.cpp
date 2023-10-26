@@ -43,6 +43,7 @@ namespace MxRec {
     public:
         explicit ClearChannel(OpKernelConstructionPtr context) : OpKernel(context)
         {
+            LOG_INFO("clear channel init");
             OP_REQUIRES_OK(context, context->GetAttr("channel_id", &channelId));
 
             if (channelId < 0 || channelId >= MAX_CHANNEL_NUM) {
@@ -69,6 +70,74 @@ namespace MxRec {
 
     private:
         int channelId {};
+    };
+
+    class SetThreshold : public OpKernel {
+    public:
+        explicit SetThreshold(OpKernelConstructionPtr context) : OpKernel(context)
+        {
+            LOG_INFO("SetThreshold init");
+            OP_REQUIRES_OK(context, context->GetAttr("emb_name", &embName));
+            OP_REQUIRES_OK(context, context->GetAttr("ids_name", &idsName)); // sparse_lookup查询
+        }
+
+        ~SetThreshold() = default;
+
+        void Compute(OpKernelContextPtr context) override
+        {
+            LOG_DEBUG("enter SetThreshold");
+            int threshold = 1;
+            const Tensor& inputTensor = context->input(TensorIndex::TENSOR_INDEX_0);
+
+            int available = ParseThresholdAndCheck(inputTensor, threshold);
+            if (available == 0) {
+                context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ",
+                                                   StringFormat("threshold[%d] error", threshold)));
+                return;
+            }
+
+            // 开了准入才能调用修改阈值算子
+            if (!FeatureAdmitAndEvict::m_cfgThresholds.empty()) {
+                auto keyProcess = Singleton<KeyProcess>::GetInstance();
+                if (!keyProcess->isRunning) {
+                    context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ", "KeyProcess not running."));
+                    return;
+                }
+
+                if (!keyProcess->GetFeatAdmitAndEvict().SetTableThresholds(threshold, embName)) {
+                    context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ", "threshold set error ...")
+                    );
+                    return;
+                }
+            } else {
+                LOG_WARN("SetThreshold failed, because feature admit-and-evict switch is closed");
+            }
+
+            Tensor* output = nullptr;
+            OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape {}, &output));
+            auto out = output->flat<int32>();
+            out(0) = available;
+        }
+
+        int ParseThresholdAndCheck(const Tensor& inputTensor, int& threshold) const
+        {
+            // 前面8个字节、即占一个featureId位，是unix时间戳
+            auto src = reinterpret_cast<const int*>(inputTensor.tensor_data().data());
+            std::copy(src, src + 1, &threshold);
+
+            if (threshold <= 0) {
+                LOG_ERROR("set threshold[{}] <= 0 ", threshold);
+                return 0;
+            }
+            LOG_INFO("ParseThresholdAndCheck, emb_name:[{}], ids_name: [{}], threshold: [{}]",
+                     embName, idsName, threshold);
+
+            return 1;
+        }
+
+    private:
+        string embName {};
+        string idsName {};
     };
 
     class ReturnTimestamp : public OpKernel {
@@ -525,6 +594,17 @@ namespace MxRec {
 REGISTER_OP("ClearChannel").Attr("channel_id : int");
 REGISTER_KERNEL_BUILDER(Name("ClearChannel").Device(DEVICE_CPU), MxRec::ClearChannel);
 
+// ##################### SetThreshold #######################
+REGISTER_OP("SetThreshold")
+.Input("input: int32")
+.Attr("emb_name: string = ''")
+.Attr("ids_name: string = ''")
+.Output("output: int32")
+.SetShapeFn([](InferenceContextPtr c) {
+c->set_output(TensorIndex::TENSOR_INDEX_0, c->Scalar());
+return Status::OK();
+});
+REGISTER_KERNEL_BUILDER(Name("SetThreshold").Device(DEVICE_CPU), MxRec::SetThreshold);
 
 // ##################### ReturnTimestamp #######################
 REGISTER_OP("ReturnTimestamp")

@@ -73,6 +73,8 @@ namespace MxRec {
         static bool IsThresholdCfgOK(const std::vector<ThresholdValue>& thresholds,
             const std::vector<std::string>& embNames, bool isTimestamp);
 
+        bool SetTableThresholds(int threshold, string embName);
+        bool SetTableThreshold(int threshold, string embName);
         // 与模型保存加载交互的接口
         auto GetTableThresholds() -> Table2ThreshMemT;
         auto GetHistoryRecords() -> AdmitAndEvictData&;
