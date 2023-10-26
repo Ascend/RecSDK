@@ -39,6 +39,8 @@ namespace MxRec {
 
         void Compact(bool fullCompact);
 
+        uint64_t GetTableUsage();
+
     private:
         void Load(const string& metaFilePath, int step);
 

@@ -390,3 +390,9 @@ void Table::SetTablePathToDiskWithSpace()
     }
 }
 
+uint64_t Table::GetTableUsage()
+{
+    lock_guard<mutex> guard(rwLock);
+    return totalKeyCnt;
+}
+
