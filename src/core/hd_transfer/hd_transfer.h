@@ -79,7 +79,7 @@ namespace MxRec {
 
         vector<Tensor> Recv(TransferChannel channel, int channelId, const string& embName);
 
-        size_t RecvAcl(TransferChannel channel, int channelId, const string& embName);
+        void RecvD2H(int channelId, const string& embName, float*& resultPtr);
 
         void Destroy();
 

@@ -8,6 +8,7 @@
 #include <fstream>
 #include "utils/common.h"
 #include "utils/time_cost.h"
+#include "acl_transfer.h"
 
 using namespace MxRec;
 using namespace std;
@@ -57,7 +58,7 @@ void HDTransfer::Destroy()
     LOG_INFO(HD + "destroy channel start");
     for (auto& c: transferChannels) {
         LOG_INFO(HD + "start destroy channel:{}", c.first);
-        tensorflow::StopRecvTensorByAcl(&c.second, c.first);
+        acltdtDestroyChannel(c.second);
         LOG_INFO(HD + "destroy channel:{}", c.first);
     }
     for (auto& d: aclDatasets) {
@@ -183,25 +184,22 @@ vector<tensorflow::Tensor> HDTransfer::Recv(TransferChannel channel, int channel
 /// \param channelId 通道索引（训练/推理）
 /// \param embName 表名
 /// \return
-size_t HDTransfer::RecvAcl(TransferChannel channel, int channelId, const string& embName)
+void HDTransfer::RecvD2H(int channelId, const string& embName, float*& resultPtr)
 {
     EASY_FUNCTION()
 #ifndef GTEST
     std::vector<tensorflow::Tensor> tensors;
-    string recvName = StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channel).c_str(), channelId);
+    TransferChannel channleName = TransferChannel::D2H;
+    string recvName = StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channleName).c_str(), channelId);
     LOG_DEBUG("hd transfer try recv:{}", recvName);
     TimeCost tc = TimeCost();
-    if (aclDatasets[embName] == nullptr) {
-        throw runtime_error(StringFormat("Failed recv:%s.", recvName.c_str()).c_str());
-    }
-    auto aclStatus = acltdtReceiveTensor(transferChannels[recvName], aclDatasets[embName], GlobalEnv::aclTimeout);
-    if (!running) {
-        return 0;
-    }
-    if (aclStatus != ACL_ERROR_NONE && aclStatus != ACL_ERROR_RT_QUEUE_EMPTY) {
+    auto aclStatus = RecvByAcl(transferChannels[recvName], aclDatasets[embName], resultPtr);
+    if (aclStatus != AclTransferStatus::OK) {
         throw runtime_error(StringFormat("Failed receive data from acl channel, acl status:%d", aclStatus).c_str());
     }
+    if (!running) {
+        return;
+    }
     LOG_INFO("hd transfer recv:{} cost:{}ms", recvName, tc.ElapsedMS());
-    return acltdtGetDatasetSize(aclDatasets[embName]);
 #endif
 }

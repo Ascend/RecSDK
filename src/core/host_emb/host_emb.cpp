@@ -136,25 +136,19 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
     EASY_FUNCTION(profiler::colors::Purple)
     auto updateThread =
         [this, missingKeysHostPos, channelId, embName] {
-            LOG_INFO(HOSTEMB + "UpdateEmbV2, channelId:{}, embName:{}", channelId, embName);
-            EASY_FUNCTION(profiler::colors::Purple);
-            TimeCost tc = TimeCost();
             auto hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
-            TransferChannel transferName = TransferChannel::D2H;
             LOG_INFO(HOSTEMB + "wait D2H embs, channelId:{}", channelId);
-            const auto tensors = hdTransfer->Recv(transferName, channelId, embName);
-            if (tensors.empty()) {
-                LOG_WARN(HOSTEMB + "recv empty data");
+            float* ptr = nullptr;
+            hdTransfer->RecvD2H(channelId, embName, ptr);
+            if (!ptr) {
                 return;
             }
-            const Tensor& d2hEmb = tensors[0];
-            EASY_BLOCK("Update")
-            const float* ptr = d2hEmb.flat<float>().data();
-            auto embeddingSize = hostEmbs[embName].hostEmbInfo.extEmbeddingSize;
-            auto& embData = hostEmbs[embName].embData;
 
-            LOG_DEBUG(HOSTEMB + "embName:{}, UpdateEmb missingKeys len = {}, embeddingSize = {}, embData.size = {}",
-                      embName, missingKeysHostPos.size(), embeddingSize, embData.size());
+            TimeCost tc = TimeCost();
+            EASY_BLOCK("Update")
+            auto& embData = hostEmbs[embName].embData;
+            LOG_DEBUG(HOSTEMB + "embName:{}, UpdateEmb missingKeys len = {}, embeddingSize = {},"
+                                " embData.size = {}, RecvAcl = {}, elementSize = {}, dimNum = {}",
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) shared(ptr, embData, embeddingSize)
             for (size_t j = 0; j < missingKeysHostPos.size(); j++) {
                 auto& dst = embData[missingKeysHostPos[j]];
