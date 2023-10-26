@@ -635,12 +635,17 @@ bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
         if (GlobalEnv::applyGradientsStrategy == ApplyGradientsStrategyOptions::SUM_SAME_ID_GRADIENTS_AND_APPLY &&
             channelId == TRAIN_CHANNEL_ID) {
             TimeCost sendUnikeysSyncTC;
-            hdTransfer->Send(TransferChannel::UNIQKEYS, { infoVecs->back() }, channelId, embInfo.name);
+            LOG_DEBUG("global unique, table name: {}, is grad: {}", embInfo.name, embInfo.isGrad);
+            if (embInfo.isGrad) {
+                hdTransfer->Send(TransferChannel::UNIQKEYS, { infoVecs->back() }, channelId, embInfo.name);
+            }
             infoVecs->pop_back();
             LOG_DEBUG("sendUnikeysSyncTC(ms):{}", sendUnikeysSyncTC.ElapsedMS());
 
             TimeCost sendRestoreVecSecSyncTC;
-            hdTransfer->Send(TransferChannel::RESTORE_SECOND, { infoVecs->back() }, channelId, embInfo.name);
+            if (embInfo.isGrad) {
+                hdTransfer->Send(TransferChannel::RESTORE_SECOND, { infoVecs->back() }, channelId, embInfo.name);
+            }
             infoVecs->pop_back();
             LOG_DEBUG("sendRestoreVecSecSyncTC(ms):{}", sendRestoreVecSecSyncTC.ElapsedMS());
         }
