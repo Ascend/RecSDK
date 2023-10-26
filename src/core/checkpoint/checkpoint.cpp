@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <omp.h>
 
 #include "ckpt_data_handler//emb_hash_ckpt/emb_hash_ckpt.h"
 #include "ckpt_data_handler/host_emb_ckpt/host_emb_ckpt.h"
@@ -19,7 +20,6 @@
 #include "ckpt_data_handler/key_freq_map_ckpt/key_freq_map_ckpt.h"
 #include "utils/time_cost.h"
 #include "utils/common.h"
-
 #include "checkpoint.h"
 
 using namespace std;
@@ -574,6 +574,62 @@ void Checkpoint::ReadStream(CkptTransData& transData,
     readFile.close();
 }
 
+void Checkpoint::ValidateFile(int fd, const string& dataDir, size_t datasetSize) const
+{
+    try {
+        ValidateReadFile(dataDir, datasetSize);
+    } catch (const std::invalid_argument& e) {
+        close(fd);
+        throw runtime_error(StringFormat("Invalid read file path: %s", e.what()));
+    }
+}
+
+void Checkpoint::HandleMappedData(char* mappedData, size_t mapRowNum, size_t onceReadByteSize,
+                                  vector<vector<float>>& dst, size_t cnt) const
+{
+#pragma omp parallel for
+    for (size_t j = 0; j < mapRowNum; ++j) {
+        size_t idx = 0;
+        size_t readSize = 0;
+        size_t dataCol = onceReadByteSize;
+        while (dataCol != 0) {
+            if (dataCol > oneTimeReadWriteLen) {
+                readSize = oneTimeReadWriteLen;
+            } else {
+                readSize = dataCol;
+            }
+
+            errno_t err = memcpy_s(dst[cnt + j].data() + idx, readSize,
+                                   mappedData + j * onceReadByteSize + idx, readSize);
+            if (err != 0) {
+                throw std::runtime_error("Error execution memcpy_s: " + std::to_string(err));
+            }
+            dataCol -= readSize;
+            idx += readSize;
+        }
+    }
+}
+
+void Checkpoint::CalculateMapSize(off_t fileSize, size_t& mapByteSize, size_t& mapRowNum, size_t onceReadByteSize) const
+{
+    // 每次映射的字节数
+    mapByteSize = MAP_BYTE_SIZE;
+    // 确保mapByteSize是onceReadByteSize和pageSize的整数倍，确保每次映射的offset是页大小的整数倍
+    size_t pageSize = sysconf(_SC_PAGESIZE);
+    if (pageSize == -1) {
+        throw std::runtime_error("Failed to get page size: " + std::string(strerror(errno)));
+    }
+    size_t lcmVal = std::lcm(onceReadByteSize, pageSize);
+    mapByteSize = (mapByteSize / lcmVal) * lcmVal;
+
+    // 如果文件大小小于每次映射的字节数，则一次性映射，映射大小不是页大小整数倍的时候，mmap会自动向上取整，额外的字节会初始化成零
+    if (fileSize <= mapByteSize) {
+        mapByteSize = fileSize;
+    }
+
+    mapRowNum = mapByteSize / onceReadByteSize;
+}
+
 void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
                                       const string& dataDir,
                                       uint32_t dataElmtBytes,
@@ -588,48 +644,60 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
     if (embDataOuterSize <= 0 || embDataOuterSize > MAX_VOCABULARY_SIZE) {
         throw runtime_error(StringFormat("Invalid embDataOuterSize :%d", embDataOuterSize).c_str());
     }
-    std::ifstream readFile;
-    readFile.open(dataDir.c_str(), std::ios::in | std::ios::binary | std::ios::ate);
-    size_t datasetSize = static_cast<size_t>(readFile.tellg());
-    readFile.seekg(0, std::ios::beg);
-    try {
-        ValidateReadFile(dataDir, datasetSize);
-    } catch (const std::invalid_argument& e) {
-        readFile.close();
-        throw runtime_error(StringFormat("Invalid read file path: %s", e.what()));
+
+    int fd = open(dataDir.c_str(), O_RDONLY);
+    if (fd == -1) {
+        throw runtime_error(StringFormat("Failed to open file: %s", dataDir).c_str());
     }
+
+    off_t fileSize = lseek(fd, 0, SEEK_END);
+
+    size_t datasetSize = fileSize;
+    ValidateFile(fd, dataDir, datasetSize);
 
     if (datasetSize % embDataOuterSize > 0 || datasetSize % dataElmtBytes > 0) {
         LOG_ERROR("data is missing or incomplete in load file: {}", dataDir);
-        readFile.close();
+        close(fd);
         throw runtime_error("unable to load EMB_DATA cause wrong-format saved emb data");
     }
+
     auto loadHostEmbs = ckptData.hostEmbs;
     auto& dst = (*loadHostEmbs)[embName].embData;
     dst.reserve(embDataOuterSize);
+
     auto onceReadByteSize { datasetSize / embDataOuterSize };
 
-    if (!readFile.is_open()) {
-        LOG_DEBUG("unable to open load file: {}", dataDir);
-        readFile.close();
-        return;
-    }
-    for (size_t i = 0; i < embDataOuterSize; ++i) {
-        size_t idx = 0;
-        size_t readSize = 0;
-        size_t dataCol = onceReadByteSize;
-        while (dataCol != 0) {
-            if (dataCol > oneTimeReadWriteLen) {
-                readSize = oneTimeReadWriteLen;
-            } else {
-                readSize = dataCol;
-            }
-            readFile.read(reinterpret_cast<char*>(dst[i].data()) + idx, readSize);
-            dataCol -= readSize;
-            idx += readSize;
+    size_t mapByteSize;
+    size_t mapRowNum;
+    CalculateMapSize(fileSize, mapByteSize, mapRowNum, onceReadByteSize);
+
+    off_t offset = 0;
+    size_t remainBytes = fileSize;
+
+    for (size_t i = 0; i < embDataOuterSize; i += mapRowNum) {
+        // 如果剩余字节数小于每次映射的字节数，则更新每次映射的字节数和行数
+        if (remainBytes < mapByteSize) {
+            mapByteSize = remainBytes;
+            mapRowNum = mapByteSize / onceReadByteSize;
         }
+
+        void* tempMappedData = mmap(NULL, mapByteSize, PROT_READ, MAP_PRIVATE, fd, offset);
+        if (tempMappedData == MAP_FAILED) {
+            close(fd);
+            throw std::runtime_error("Failed to map file: " + dataDir + ", errno: " + std::to_string(errno));
+        }
+        char* mappedData = static_cast<char*>(tempMappedData);
+
+        // 处理映射的数据
+        HandleMappedData(mappedData, mapRowNum, onceReadByteSize, dst, i);
+
+        munmap(mappedData, mapByteSize);
+
+        offset += mapByteSize;
+        remainBytes -= mapByteSize;
     }
-    readFile.close();
+
+    close(fd);
 }
 
 void Checkpoint::SetTransDataSize(CkptTransData& transData, size_t datasetSize, CkptDataType dataType)
