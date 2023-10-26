@@ -78,6 +78,7 @@ namespace MxRec {
     constexpr long long FILE_MAX_SIZE = 1LL << 40;
     constexpr int FILE_MIN_SIZE = 0;
     constexpr size_t BUFFER_SIZE{1024 * 1024 * 64};
+    constexpr size_t MAP_BYTE_SIZE{static_cast<size_t>(10) * 1024 * 1024 * 1024};
 
     constexpr int KEY_PROCESS_TIMEOUT = 120;
     constexpr int GET_BATCH_TIMEOUT = 300;

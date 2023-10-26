@@ -110,6 +110,11 @@ namespace MxRec {
         void LoadDataset(const vector<string>& embNames, const vector<CkptDataType>& saveDataTypes,
             const unique_ptr<CkptDataHandler>& dataHandler, CkptData& ckptData);
         void ReadStream(CkptTransData& transData, const string& dataDir, CkptDataType dataType, uint32_t dataElmtBytes);
+        void ValidateFile(int fd, const string& dataDir, size_t datasetSize) const;
+        void HandleMappedData(char* mappedData, size_t mapRowNum, size_t onceReadByteSize,
+                                          vector<vector<float>>& dst, size_t cnt) const;
+        void CalculateMapSize(off_t fileSize, size_t& mapByteSize, size_t& mapRowNum, size_t onceReadByteSize) const;
+
         void ReadStreamForEmbData(CkptTransData& transData, const string& dataDir, uint32_t dataElmtBytes,
                                   CkptData& ckptData, string embName) const;
         void SetTransDataSize(CkptTransData& transData, size_t datasetSize, CkptDataType dataType);
