@@ -364,6 +364,32 @@ class NumValidator(Validator):
 
         return self
 
+    def check_value_for_open_interval(self):
+        if self.min_value is not None:
+            self.register_checker(lambda: self.value > self.min_value,
+                                  f"'{self.name}' is less than or equal {self.min_value}")
+        if self.max_value is not None:
+            self.register_checker(lambda: self.value < self.max_value,
+                                  f"'{self.name}' is bigger than or equal {self.max_value}")
+        return self
+
+    def check_value_for_left_open_interval(self):
+        if self.min_value is not None:
+            self.register_checker(lambda: self.value > self.min_value,
+                                  f"'{self.name}' is less than or equal {self.min_value}")
+        if self.max_value is not None:
+            self.register_checker(lambda: self.value <= self.max_value,
+                                  f"'{self.name}' is bigger than {self.max_value}")
+        return self
+
+    def check_value_for_right_open_interval(self):
+        if self.min_value is not None:
+            self.register_checker(lambda: self.value >= self.min_value, f"'{self.name}' is less than {self.min_value}")
+        if self.max_value is not None:
+            self.register_checker(lambda: self.value < self.max_value,
+                                  f"'{self.name}' is bigger than or equal {self.max_value}")
+        return self
+
 
 class IntValidator(NumValidator):
     """
