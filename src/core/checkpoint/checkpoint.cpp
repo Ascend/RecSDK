@@ -271,6 +271,11 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir, 
         throw runtime_error(StringFormat("Invalid EmbHashMapSize:%d, must be greater than 0", embHashMapSize).c_str());
     }
     auto embeddingSize = static_cast<int>(datasetSize / sizeof(float) / embHashMapSize);
+    EmbSizeInfo embSizeInfo = GetEmbeddingSize(embName);
+    if (embeddingSize != embSizeInfo.extEmbSize) {
+        readFile.close();
+        throw runtime_error(StringFormat("Invalid embedding size to be read, may read file has been changed").c_str());
+    }
 
     aclError ret;
     void *newBlock = nullptr;
@@ -283,16 +288,6 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir, 
 
     float *floatPtr = static_cast<float *>(newBlock);
     auto &transArr = transData.int64Arr;
-    EmbSizeInfo embSizeInfo = GetEmbeddingSize(embName);
-    if (embSizeInfo.embSize == 0) {
-        readFile.close();
-        throw runtime_error(StringFormat("embsize is 0").c_str());
-    }
-    auto keyAddrElem = embSizeInfo.extEmbSize / embSizeInfo.embSize - 1;
-    if (keyAddrElem < 0) {
-        readFile.close();
-        throw runtime_error(StringFormat("keyAddrElem: %d is less than 0", keyAddrElem).c_str());
-    }
     for (size_t i = 0, j = 0; i < transArr.size(); i += keyAddrElem, ++j) {
         vector<float> row(embeddingSize);
         readFile.read(reinterpret_cast<char *>(row.data()), embeddingSize * sizeof(float));
