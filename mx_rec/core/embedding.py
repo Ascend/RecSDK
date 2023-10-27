@@ -23,7 +23,7 @@ from mx_rec.util.initialize import get_rank_id, get_rank_size, is_asc_frozen, ge
     insert_table_instance, get_training_mode_channel_id, get_use_static, get_name_to_var_dict, \
     clear_channel, get_use_hot, get_device_id, ConfigInitializer, get_ascend_global_hashtable_collection, \
     get_host_pipeline_ops, get_use_dynamic_expansion, set_modify_graph, insert_removing_var_list, get_bool_gauge_set, \
-    get_table_instance_by_name
+    get_table_instance_by_name, get_asc_manager
 from mx_rec.validator.validator import ClassValidator, StringValidator, SSDFeatureValidator, \
     para_checker_decorator, IntValidator, NumValidator, OptionValidator, OptionalIntValidator, OptionalStringValidator
 from mx_rec.util.tf_version_adapter import npu_ops
@@ -208,27 +208,6 @@ class SparseEmbedding:
         optimizer.insert_slot(slot, named_slot_key, slot_name)
 
     @staticmethod
-    def get_emb_table_size(table_name: str) -> int:
-        """
-        For HBM or DDR mode, return the size of sparse embedding table
-        :param table_name: the name of sparse embedding table
-        :return: the size of the sparse embedding table
-        """
-        table_instance = get_table_instance_by_name(table_name)
-        host_vocabulary_size = table_instance.host_vocabulary_size()
-        device_vocabulary_size = table_instance.device_vocabulary_size
-        if not host_vocabulary_size and not get_use_dynamic_expansion():
-            embed_dim = table_instance.emb_size
-            size = embed_dim * device_vocabulary_size
-        elif not host_vocabulary_size and get_use_dynamic_expansion():
-            embed_dim = table_instance.ext_emb_size
-            size = embed_dim * device_vocabulary_size
-        else:
-            embed_dim = table_instance.ext_emb_size
-            size = (device_vocabulary_size + host_vocabulary_size) * embed_dim
-        return size
-
-    @staticmethod
     def _get_own_emb(emb, all2all_args, emb_size, use_static):
         """
         obtain embedding of source data
@@ -263,6 +242,25 @@ class SparseEmbedding:
                                               rank=rank_id)
 
         return tf.reshape(src_emb, reshape_info)
+
+    def size(self) -> int:
+        """
+        For HBM or DDR or SSD mode, return the size of sparse table
+        """
+        return get_asc_manager().get_table_size(self.table_name)
+
+    def capacity(self) -> int:
+        """
+        For HBM or DDR or SSD mode, return the capacity of sparse table
+        """
+        if get_use_dynamic_expansion():
+            return get_asc_manager().get_table_capacity(self.table_name)
+
+        if not self.host_vocabulary_size and not self.ssd_vocabulary_size:
+            return self.device_vocabulary_size
+        if not self.ssd_vocabulary_size:
+            return self.device_vocabulary_size + self.host_vocabulary_size
+        return self.device_vocabulary_size + self.host_vocabulary_size + self.ssd_vocabulary_size
 
     def check_optimizer_instance(self):
         for optimizer_instance in self._optimizer_instance_list:

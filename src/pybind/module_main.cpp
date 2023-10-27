@@ -190,7 +190,9 @@ namespace {
                 .def("receive", &MxRec::HybridMgmt::ReceiveHostMap, py::arg("key_offset_map"))
                 .def("block_notify_wake", &MxRec::HybridMgmt::NotifyBySessionRun, py::arg("channel_id"))
                 .def("block_count_steps", &MxRec::HybridMgmt::CountStepBySessionRun,
-                     py::arg("channel_id"), py::arg("steps")=1);
+                     py::arg("channel_id"), py::arg("steps")=1)
+                .def("get_table_size", &MxRec::HybridMgmt::GetTableSize, py::arg("table_name"))
+                .def("get_table_capacity", &MxRec::HybridMgmt::GetTableCapacity, py::arg("table_name"));
     }
 
     void GetThresholdValue(pybind11::module_& m)

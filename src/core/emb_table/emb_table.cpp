@@ -14,6 +14,7 @@
 #include "initializer/initializer.h"
 #include "emb_table/emb_table.h"
 
+
 using namespace std;
 using namespace MxRec;
 using namespace tensorflow;
@@ -47,7 +48,7 @@ void EmbTable::Init(const EmbInfo& eInfo, const RankInfo& rInfo, int initSeed)
         memoryList.push_back(newBlock);
         SplitMemoryBlock(newBlock);
     }
-    totalCapacity = static_cast<int>(memoryList.size());
+    totalCapacity = static_cast<int>(memoryList.size()) * BLOCK_EMB_COUNT;
     LOG_INFO("aclrtMalloc success, emb name:{}, total capacity:{}", embInfo.name, totalCapacity);
 #endif
 }
@@ -83,7 +84,7 @@ int64_t EmbTable::GetEmbAddress()
         // 将新的内存块加入内存list
         memoryList.push_back(addBlock);
         SplitMemoryBlock(addBlock);
-        totalCapacity++;
+        totalCapacity += BLOCK_EMB_COUNT;
     }
     float *embAddr = embeddingList.front();
     embeddingList.pop_front();
@@ -138,5 +139,19 @@ void EmbTable::PrintStatus() const
 {
     // 输出embedding table的总容量和未使用的使用容量
     LOG_INFO("Total capacity:{}, Unused capacity:{}",
-        totalCapacity * blockSize, totalCapacity * blockSize - usedCapacity * embSize);
+        totalCapacity * embSize, totalCapacity * embSize - usedCapacity * embSize);
+}
+
+int64_t EmbTable::GetTableSize() const
+{
+#ifndef GTEST
+    return static_cast<int64_t>(usedCapacity);
+#endif
+}
+
+int64_t EmbTable::GetTableCapacity() const
+{
+#ifndef GTEST
+    return static_cast<int64_t>(totalCapacity);
+#endif
 }

@@ -1375,3 +1375,29 @@ string KeyProcess::DumpSplitKeys(vector<vector<emb_key_t>> &splitKeys) const
     }
     return ssTrace.str();
 }
+
+int64_t KeyProcess::GetExpansionTableSize(const string& embName)
+{
+#ifndef GTEST
+    const auto& iter = embeddingTableMap.find(embName);
+    if (iter == embeddingTableMap.end()) {
+        LOG_ERROR(KEY_PROCESS "GetExpansionEmbSize, wrong embName:{} ", embName);
+        return -1;
+    }
+    std::lock_guard<std::mutex> lk(mut); // lock for PROCESS_THREAD
+    return embeddingTableMap[embName].GetTableSize();
+#endif
+}
+
+int64_t KeyProcess::GetExpansionTableCapacity(const string& embName)
+{
+#ifndef GTEST
+    const auto& iter = embeddingTableMap.find(embName);
+    if (iter == embeddingTableMap.end()) {
+        LOG_ERROR(KEY_PROCESS "GetExpansionEmbSize, wrong embName:{} ", embName);
+        return -1;
+    }
+    std::lock_guard<std::mutex> lk(mut); // lock for PROCESS_THREAD
+    return embeddingTableMap[embName].GetTableCapacity();
+#endif
+}

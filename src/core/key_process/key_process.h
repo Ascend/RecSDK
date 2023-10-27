@@ -112,6 +112,10 @@ namespace MxRec {
 
         void SetupHotEmbUpdateStep();
 
+        int64_t GetExpansionTableSize(const string& embName);
+
+        int64_t GetExpansionTableCapacity(const string& embName);
+
         template <typename T>
         void GlobalUnique(T& lookupKeys, T& uniqueKeys, vector<int32_t>& restoreVecSec)
         {
