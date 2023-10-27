@@ -121,6 +121,10 @@ namespace MxRec {
 
         void CountStepBySessionRun(int channelID, int steps) const;
 
+        int64_t GetTableSize(const string& embName) const;
+
+        int64_t GetTableCapacity(const string& embName) const;
+
     private:
         bool InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
                             const vector<ThresholdValue>& thresholdValues, int seed);

@@ -33,6 +33,10 @@ namespace MxRec {
         // 打印emb表使用情况
         void PrintStatus() const;
 
+        int64_t GetTableSize() const;
+
+        int64_t GetTableCapacity() const;
+
         EmbTable(const EmbTable&) = delete;
 
         EmbTable(EmbTable&&) = delete;
