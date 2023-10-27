@@ -184,22 +184,25 @@ vector<tensorflow::Tensor> HDTransfer::Recv(TransferChannel channel, int channel
 /// \param channelId 通道索引（训练/推理）
 /// \param embName 表名
 /// \return
-void HDTransfer::RecvD2H(int channelId, const string& embName, float*& resultPtr)
+size_t HDTransfer::RecvAcl(TransferChannel channel, int channelId, const string& embName)
 {
     EASY_FUNCTION()
 #ifndef GTEST
     std::vector<tensorflow::Tensor> tensors;
-    TransferChannel channleName = TransferChannel::D2H;
-    string recvName = StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channleName).c_str(), channelId);
+    string recvName = StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channel).c_str(), channelId);
     LOG_DEBUG("hd transfer try recv:{}", recvName);
     TimeCost tc = TimeCost();
-    auto aclStatus = RecvByAcl(transferChannels[recvName], aclDatasets[embName], resultPtr);
-    if (aclStatus != AclTransferStatus::OK) {
+    if (aclDatasets[embName] == nullptr) {
+        throw runtime_error(StringFormat("Failed recv:%s.", recvName.c_str()).c_str());
+    }
+    auto aclStatus = acltdtReceiveTensor(transferChannels[recvName], aclDatasets[embName], GlobalEnv::aclTimeout);
+    if (!running) {
+        return 0;
+    }
+    if (aclStatus != ACL_ERROR_NONE && aclStatus != ACL_ERROR_RT_QUEUE_EMPTY) {
         throw runtime_error(StringFormat("Failed receive data from acl channel, acl status:%d", aclStatus).c_str());
     }
-    if (!running) {
-        return;
-    }
     LOG_INFO("hd transfer recv:{} cost:{}ms", recvName, tc.ElapsedMS());
+    return acltdtGetDatasetSize(aclDatasets[embName]);
 #endif
 }

@@ -137,18 +137,29 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
     auto updateThread =
         [this, missingKeysHostPos, channelId, embName] {
             auto hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
+            TransferChannel transferName = TransferChannel::D2H;
             LOG_INFO(HOSTEMB + "wait D2H embs, channelId:{}", channelId);
-            float* ptr = nullptr;
-            hdTransfer->RecvD2H(channelId, embName, ptr);
-            if (!ptr) {
+            auto size = hdTransfer->RecvAcl(transferName, channelId, embName);
+            if (size == 0) {
+                LOG_WARN(HOSTEMB + "recv empty data");
                 return;
             }
-
             TimeCost tc = TimeCost();
+
             EASY_BLOCK("Update")
             auto& embData = hostEmbs[embName].embData;
+            auto embeddingSize = hostEmbs[embName].hostEmbInfo.extEmbeddingSize;
+            auto aclData = acltdtGetDataItem(hdTransfer->aclDatasets[embName], 0);
+            if (aclData == nullptr) {
+                throw runtime_error("Acl get tensor data from dataset failed.");
+            }
+            float* ptr = reinterpret_cast<float *>(acltdtGetDataAddrFromItem(aclData));
+
+            size_t elementSize = acltdtGetDataSizeFromItem(aclData);
+            size_t dimNum = acltdtGetDimNumFromItem(aclData);
             LOG_DEBUG(HOSTEMB + "embName:{}, UpdateEmb missingKeys len = {}, embeddingSize = {},"
                                 " embData.size = {}, RecvAcl = {}, elementSize = {}, dimNum = {}",
+                      embName, missingKeysHostPos.size(), embeddingSize, embData.size(), size, elementSize, dimNum);
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) shared(ptr, embData, embeddingSize)
             for (size_t j = 0; j < missingKeysHostPos.size(); j++) {
                 auto& dst = embData[missingKeysHostPos[j]];
