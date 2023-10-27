@@ -72,6 +72,8 @@ namespace MxRec {
         // 每张表中非DDR内key的出现次数
         unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>> excludeDDRKeyCountMap;
 
+        int64_t GetTableEmbeddingSize(const string& tableName);
+
     private:
         struct EmbBaseInfo {
             uint64_t maxTableSize;
