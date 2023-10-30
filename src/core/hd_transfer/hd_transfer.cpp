@@ -8,7 +8,6 @@
 #include <fstream>
 #include "utils/common.h"
 #include "utils/time_cost.h"
-#include "acl_transfer.h"
 
 using namespace MxRec;
 using namespace std;
