@@ -295,10 +295,7 @@ vector<vector<float>> Table::FetchEmbeddingsInner(vector<emb_key_t> &keys)
 #pragma omp parallel for num_threads(readThreadNum) default(none) shared(ret, queryLen, queryList)
     for (size_t i = 0; i < queryLen; ++i) {
         tuple item = queryList[i];
-        shared_ptr<File> f;
-        vector<long> batchKeys;
-        vector<size_t> batchIdx;
-        tie(f, batchKeys, batchIdx) = item;
+        auto [f, batchKeys, batchIdx] = item;
         vector<vector<float>> batchRet = f->FetchEmbeddings(batchKeys);
         size_t batchLen = batchRet.size();
         for (size_t j = 0; j < batchLen; ++j) {
@@ -388,5 +385,11 @@ void Table::SetTablePathToDiskWithSpace()
                  diskAvailSpaceThreshold * convertToPercentage, curTablePath);
         loopCnt += 1;
     }
+}
+
+uint64_t Table::GetTableUsage()
+{
+    lock_guard<mutex> guard(rwLock);
+    return totalKeyCnt;
 }
 

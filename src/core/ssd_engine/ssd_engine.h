@@ -43,6 +43,8 @@ namespace MxRec {
 
         void SetCompactThreshold(double threshold);
 
+        int64_t GetTableEmbeddingSize(const string& tableName);
+
     private:
         bool isRunning = false;
 

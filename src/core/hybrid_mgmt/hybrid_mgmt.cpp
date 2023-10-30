@@ -635,12 +635,17 @@ bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
         if (GlobalEnv::applyGradientsStrategy == ApplyGradientsStrategyOptions::SUM_SAME_ID_GRADIENTS_AND_APPLY &&
             channelId == TRAIN_CHANNEL_ID) {
             TimeCost sendUnikeysSyncTC;
-            hdTransfer->Send(TransferChannel::UNIQKEYS, { infoVecs->back() }, channelId, embInfo.name);
+            LOG_DEBUG("global unique, table name: {}, is grad: {}", embInfo.name, embInfo.isGrad);
+            if (embInfo.isGrad) {
+                hdTransfer->Send(TransferChannel::UNIQKEYS, { infoVecs->back() }, channelId, embInfo.name);
+            }
             infoVecs->pop_back();
             LOG_DEBUG("sendUnikeysSyncTC(ms):{}", sendUnikeysSyncTC.ElapsedMS());
 
             TimeCost sendRestoreVecSecSyncTC;
-            hdTransfer->Send(TransferChannel::RESTORE_SECOND, { infoVecs->back() }, channelId, embInfo.name);
+            if (embInfo.isGrad) {
+                hdTransfer->Send(TransferChannel::RESTORE_SECOND, { infoVecs->back() }, channelId, embInfo.name);
+            }
             infoVecs->pop_back();
             LOG_DEBUG("sendRestoreVecSecSyncTC(ms):{}", sendRestoreVecSecSyncTC.ElapsedMS());
         }
@@ -893,7 +898,7 @@ bool HybridMgmt::Evict()
 void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
 {
 #ifndef GTEST
-    LOG_DEBUG(MGMT + "ddr mode, delete emb: [{}]! evict keySize:{}", embName.c_str(), keys.size());
+    LOG_DEBUG(MGMT + "ddr mode, delete emb: [{}]! evict keySize:{}", embName, keys.size());
     // 删除映射关系
     if (keys.size() != 0) {
         hostHashMaps->EvictDeleteEmb(embName, keys);
@@ -995,4 +1000,60 @@ void HybridMgmt::NotifyBySessionRun(int channelID) const
 void HybridMgmt::CountStepBySessionRun(int channelID, int steps) const
 {
     hybridMgmtBlock->CountPythonStep(channelID, steps);
+}
+
+/// 获取table表使用大小
+/// \param embName 表名
+/// \return 表使用大小
+int64_t HybridMgmt::GetTableSize(const string& embName) const
+{
+#ifndef GTEST
+    if (mgmtRankInfo.useDynamicExpansion) {
+        int64_t size = preprocess->GetExpansionTableSize(embName);
+        LOG_INFO(MGMT + "dynamic expansion mode, get emb:[{}] size:{}", embName, size);
+        return size;
+    }
+    if (mgmtRankInfo.noDDR) {
+        auto maxOffset = preprocess->GetMaxOffset();
+        const auto& iter = maxOffset.find(embName);
+        if (iter == maxOffset.end()) {
+            LOG_ERROR(MGMT + "get maxOffset, wrong embName:{} ", embName);
+            return -1;
+        }
+        int64_t size = static_cast<int64_t>(maxOffset[embName]);
+        LOG_INFO(MGMT + "HBM mode, get emb:[{}] size:{}", embName, size);
+        return size;
+    }
+    int64_t ssdSize = 0;
+    if (mgmtRankInfo.isSSDEnabled) {
+        ssdSize= cacheManager->GetTableEmbeddingSize(embName);
+    }
+
+    const auto& iter = hostHashMaps->embHashMaps.find(embName);
+    if (iter == hostHashMaps->embHashMaps.end()) {
+        LOG_ERROR(MGMT + "get maxOffset, wrong embName:{} ", embName);
+        return -1;
+    }
+    auto maxOffset = hostHashMaps->embHashMaps.at(embName).maxOffset;
+    int64_t size = static_cast<int64_t>(maxOffset) + ssdSize;
+
+    LOG_INFO(MGMT + "DDR/SSD mode, get emb:[{}] size:{}", embName, size);
+    return size;
+#endif
+}
+
+/// 获取table表容量大小
+/// \param embName 表名
+/// \return 表容量大小
+int64_t HybridMgmt::GetTableCapacity(const string& embName) const
+{
+#ifndef GTEST
+    if (mgmtRankInfo.useDynamicExpansion) {
+        int64_t capacity = preprocess->GetExpansionTableCapacity(embName);
+        LOG_INFO(MGMT + "dynamic expansion mode, get emb:[{}] capacity:{}", embName, capacity);
+        return capacity;
+    }
+    LOG_WARN(MGMT + "no dynamic expansion mode, get emb:[{}] capacity failed", embName);
+    return -1;
+#endif
 }

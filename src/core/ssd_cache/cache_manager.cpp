@@ -492,3 +492,12 @@ void CacheManager::SaveSSDEngine(int step)
     ssdEngine->Save(step);
 #endif
 }
+
+int64_t CacheManager::GetTableEmbeddingSize(const string& tableName)
+{
+    if (ssdEngine == nullptr) {
+        throw runtime_error("SSDEngine not init");
+    }
+    return ssdEngine->GetTableEmbeddingSize(tableName);
+}
+

@@ -66,7 +66,7 @@ TEST_F(EmbTableTest, Init)
     ASSERT_EQ(embTable.rankInfo.localRankId, rankInfo.localRankId);
     // 测试容量是否正常
     LOG_INFO("totalCapacity {}, INIT_BLOCK_COUNT {}", embTable.totalCapacity, embTable.INIT_BLOCK_COUNT);
-    EXPECT_EQ(embTable.totalCapacity, embTable.INIT_BLOCK_COUNT);
+    EXPECT_EQ(embTable.totalCapacity, embTable.INIT_BLOCK_COUNT * embTable.BLOCK_EMB_COUNT);
 #endif
 }
 

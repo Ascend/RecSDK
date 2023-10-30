@@ -9,7 +9,7 @@ using namespace std;
 bool SSDEngine::IsTableExist(const string &tableName)
 {
     if (!isRunning) {
-        throw invalid_argument("SSDEngine not running");
+        throw runtime_error("SSDEngine not running");
     }
     auto it = as_const(tableMap).find(tableName);
     return !(it == tableMap.end());
@@ -18,7 +18,7 @@ bool SSDEngine::IsTableExist(const string &tableName)
 bool SSDEngine::IsKeyExist(const string &tableName, emb_key_t key)
 {
     if (!isRunning) {
-        throw invalid_argument("SSDEngine not running");
+        throw runtime_error("SSDEngine not running");
     }
     auto it = as_const(tableMap).find(tableName);
     if (it == tableMap.end()) {
@@ -30,7 +30,7 @@ bool SSDEngine::IsKeyExist(const string &tableName, emb_key_t key)
 void SSDEngine::CreateTable(const string &tableName, vector<string> savePaths, uint64_t maxTableSize)
 {
     if (!isRunning) {
-        throw invalid_argument("SSDEngine not running");
+        throw runtime_error("SSDEngine not running");
     }
     if (savePaths.empty()) {
         throw invalid_argument("SSDEngine input savePaths is empty");
@@ -45,7 +45,7 @@ void SSDEngine::CreateTable(const string &tableName, vector<string> savePaths, u
 void SSDEngine::InsertEmbeddings(const string &tableName, vector<emb_key_t> &keys, vector<vector<float>> &embeddings)
 {
     if (!isRunning) {
-        throw invalid_argument("SSDEngine not running");
+        throw runtime_error("SSDEngine not running");
     }
     auto it = as_const(tableMap).find(tableName);
     if (it == tableMap.end()) {
@@ -62,7 +62,7 @@ void SSDEngine::InsertEmbeddings(const string &tableName, vector<emb_key_t> &key
 void SSDEngine::DeleteEmbeddings(const string &tableName, vector<emb_key_t> &keys)
 {
     if (!isRunning) {
-        throw invalid_argument("SSDEngine not running");
+        throw runtime_error("SSDEngine not running");
     }
     auto it = as_const(tableMap).find(tableName);
     if (it == tableMap.end()) {
@@ -75,7 +75,7 @@ void SSDEngine::DeleteEmbeddings(const string &tableName, vector<emb_key_t> &key
 int64_t SSDEngine::GetTableAvailableSpace(const string &tableName)
 {
     if (!isRunning) {
-        throw invalid_argument("SSDEngine not running");
+        throw runtime_error("SSDEngine not running");
     }
     auto it = as_const(tableMap).find(tableName);
     if (it == tableMap.end()) {
@@ -88,7 +88,7 @@ int64_t SSDEngine::GetTableAvailableSpace(const string &tableName)
 void SSDEngine::Save(int step)
 {
     if (!isRunning) {
-        throw invalid_argument("SSDEngine not running");
+        throw runtime_error("SSDEngine not running");
     }
     for (auto item: as_const(tableMap)) {
         item.second->Save(step);
@@ -98,7 +98,7 @@ void SSDEngine::Save(int step)
 void SSDEngine::Load(const string &tableName, vector<string> savePaths, uint64_t maxTableSize, int step)
 {
     if (!isRunning) {
-        throw invalid_argument("SSDEngine not running");
+        throw runtime_error("SSDEngine not running");
     }
     auto it = as_const(tableMap).find(tableName);
     if (it != tableMap.end()) {
@@ -145,7 +145,7 @@ void SSDEngine::CompactMonitor()
 vector<vector<float>> SSDEngine::FetchEmbeddings(const string &tableName, vector<emb_key_t> &keys)
 {
     if (!isRunning) {
-        throw invalid_argument("SSDEngine not running");
+        throw runtime_error("SSDEngine not running");
     }
     auto it = as_const(tableMap).find(tableName);
     if (it == tableMap.end()) {
@@ -158,7 +158,7 @@ vector<vector<float>> SSDEngine::FetchEmbeddings(const string &tableName, vector
 void SSDEngine::Stop()
 {
     if (!isRunning) {
-        throw invalid_argument("SSDEngine not running");
+        throw runtime_error("SSDEngine not running");
     }
     isRunning = false;
     compactThread->join();
@@ -184,4 +184,16 @@ void SSDEngine::SetCompactThreshold(double threshold)
         return;
     }
     throw invalid_argument("compact threshold should in range [0, 1]");
+}
+
+int64_t SSDEngine::GetTableEmbeddingSize(const string &tableName)
+{
+    if (!isRunning) {
+        throw runtime_error("SSDEngine not running");
+    }
+    auto it = as_const(tableMap).find(tableName);
+    if (it == tableMap.end()) {
+        return -1;
+    }
+    return static_cast<int64_t>(it->second->GetTableUsage());
 }

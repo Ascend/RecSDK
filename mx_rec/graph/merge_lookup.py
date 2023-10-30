@@ -63,16 +63,18 @@ def do_merge_lookup(is_train: bool = True):
     if not sub_cutting_point_list:
         raise RuntimeError(f"The current mode(train: True, eval: False) is {is_train}, and the sparse table does not "
                            f"have anchor ids.")
+
     for cutting_point in sub_cutting_point_list:
         table_instance = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.TABLE_INSTANCE)
         feature_spec = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.FEATURE_SPEC)
+        is_grad = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.IS_GRAD)
         if len(table_instance.lookup_name_dict.get(is_train)) == 1:
             logger.debug("The origin lookup result of %s for %s does not need to be replaced.",
                          feature_spec.name, table_instance.table_name)
             continue
 
         send_count = table_instance.send_count
-        kwargs = dict(is_train=is_train, ids=cutting_point, multi_lookup=True)
+        kwargs = dict(is_train=is_train, ids=cutting_point, multi_lookup=True, is_grad=is_grad)
         if not get_use_static():
             kwargs["feature_spec_name_ids_dict"] = feature_spec_name_ids_dict
         lookup_result = table_instance.lookup_for_asc_with_feature_spec(feature_spec, send_count, **kwargs)

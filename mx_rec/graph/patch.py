@@ -21,7 +21,8 @@ from tensorflow.python.client.session import BaseSession
 
 from mx_rec.constants import constants
 from mx_rec.util.initialize import get_is_graph_modify_hook_running, get_modify_graph, insert_bool_gauge, \
-    get_bool_gauge_set, terminate_config_initializer, get_run_times, set_is_last_round, get_asc_manager
+    get_bool_gauge_set, terminate_config_initializer, get_run_times, set_is_last_round, get_asc_manager, \
+    export_table_instances
 from mx_rec.util.tf_version_adapter import NPUCheckpointSaverHook
 from mx_rec.graph.merge_lookup import do_merge_lookup
 from mx_rec.util.log import logger
@@ -306,6 +307,15 @@ def scale_loss(self: Optimizer, loss_value: tf.Tensor) -> tf.Tensor:
     # In train mode, merge lookup must be completed during compute gradients.
     # Ensure that the backward of graph is constructed and the gradient calculation is correct.
     do_merge_lookup(is_train=True)
+
+    # 在训练情况下，至少要有一个variable参与反向，否则报错
+    is_grad = False
+    table_var_list = []
+    for _, table_instance in export_table_instances().items():
+        is_grad |= table_instance.is_grad
+        table_var_list.append(table_instance.variable)
+    if not is_grad:
+        raise RuntimeError("No gradients provided for any variable: %s." % (table_var_list,))
 
     # origin code
     ops.get_default_graph()._is_loss_scaled_by_optimizer = False

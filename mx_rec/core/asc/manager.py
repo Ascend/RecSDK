@@ -61,8 +61,10 @@ def generate_table_info_list():
                          table_instance.slice_device_vocabulary_size)
             logger.debug("table_instance.slice_host_vocabulary_size: %s", table_instance.slice_host_vocabulary_size)
             logger.debug("table_instance.slice_ssd_vocabulary_size: %s", table_instance.slice_ssd_vocabulary_size)
+            logger.debug("EmbInfoParams: The table name is %s, and the value of `is_grad` in this table is %s.",
+                         table_instance.table_name, table_instance.is_grad)
             params = EmbInfoParams(table_instance.table_name, table_instance.send_count, table_instance.scalar_emb_size,
-                                   table_instance.ext_emb_size, table_instance.is_save)
+                                   table_instance.ext_emb_size, table_instance.is_save, table_instance.is_grad)
             table_info = EmbInfo(params,
                                  [table_instance.slice_device_vocabulary_size,
                                   table_instance.slice_host_vocabulary_size, table_instance.slice_ssd_vocabulary_size],

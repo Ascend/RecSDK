@@ -493,6 +493,7 @@ TEST_F(KeyProcessTest, InitializeUnique)
     bool uniqueInitialize = false;
     size_t preBatchSize = 0;
     process.InitializeUnique(uniqueConf, preBatchSize, uniqueInitialize, batch, unique);
+    unique->UnInitialize();
 }
 
 TEST_F(KeyProcessTest, GetKeySize)

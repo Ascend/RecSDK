@@ -94,17 +94,19 @@ namespace {
     void GetEmbInfoParams(pybind11::module_& m)
     {
         pybind11::class_<EmbInfoParams>(m, "EmbInfoParams")
-                .def(pybind11::init<const std::string&, int, int, int, bool>(),
+                .def(pybind11::init<const std::string&, int, int, int, bool, bool>(),
                      py::arg("name"),
                      py::arg("send_count"),
                      py::arg("embedding_size"),
                      py::arg("ext_embedding_size"),
-                     py::arg("is_save"))
+                     py::arg("is_save"),
+                     py::arg("is_grad"))
                 .def_readwrite("name", &EmbInfoParams::name)
                 .def_readwrite("send_count", &EmbInfoParams::sendCount)
                 .def_readwrite("embedding_size", &EmbInfoParams::embeddingSize)
                 .def_readwrite("ext_embedding_size", &EmbInfoParams::extEmbeddingSize)
-                .def_readwrite("is_save", &EmbInfoParams::isSave);
+                .def_readwrite("is_save", &EmbInfoParams::isSave)
+                .def_readwrite("is_grad", &EmbInfoParams::isGrad);
     }
 
     void GetEmbInfo(pybind11::module_& m)
@@ -121,6 +123,7 @@ namespace {
                 .def_readwrite("embedding_size", &EmbInfo::embeddingSize)
                 .def_readwrite("ext_embedding_size", &EmbInfo::extEmbeddingSize)
                 .def_readwrite("is_save", &EmbInfo::isSave)
+                .def_readwrite("is_grad", &EmbInfo::isGrad)
                 .def_readwrite("dev_vocab_size", &EmbInfo::devVocabSize)
                 .def_readwrite("host_vocab_size", &EmbInfo::hostVocabSize)
                 .def_readwrite("initialize_infos", &EmbInfo::initializeInfos)
@@ -187,7 +190,9 @@ namespace {
                 .def("receive", &MxRec::HybridMgmt::ReceiveHostMap, py::arg("key_offset_map"))
                 .def("block_notify_wake", &MxRec::HybridMgmt::NotifyBySessionRun, py::arg("channel_id"))
                 .def("block_count_steps", &MxRec::HybridMgmt::CountStepBySessionRun,
-                     py::arg("channel_id"), py::arg("steps")=1);
+                     py::arg("channel_id"), py::arg("steps")=1)
+                .def("get_table_size", &MxRec::HybridMgmt::GetTableSize, py::arg("table_name"))
+                .def("get_table_capacity", &MxRec::HybridMgmt::GetTableCapacity, py::arg("table_name"));
     }
 
     void GetThresholdValue(pybind11::module_& m)

@@ -150,6 +150,7 @@ class ASCAnchorAttr(Enum):
     RESTORE_VECTOR_SECOND = "restore_vector_second"
     UNIQUE_KEYS = "unique_keys"
     GRADIENTS_STRATEGY = "gradients_strategy"
+    IS_GRAD = "is_grad"
 
 
 class OptimizerType(Enum):

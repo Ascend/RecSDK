@@ -131,3 +131,39 @@ TEST(Table, SaveAndLoad)
         fs::remove_all(p);
     }
 }
+
+TEST(Table, GetTableUsage)
+{
+    int rankId;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rankId);
+    GlogConfig::gRankId = to_string(rankId);
+
+    string tbName = "test";
+    vector<string> savePath = {GlogConfig::gRankId};
+    uint64_t maxTableSize = 100;
+    double compactThreshold = 0.5;
+    int saveStep = 0;
+
+    // create
+    auto tbSave = make_shared<Table>(tbName, savePath, maxTableSize, compactThreshold);
+
+    // write
+    uint64_t expectKeyCnt = 2;
+    vector<emb_key_t> keys = {1, 2};
+    vector<vector<float>> embs = {{0.1}, {0.2}};
+    tbSave->InsertEmbeddings(keys, embs);
+
+    // check before saving
+    uint64_t keyCntSave = tbSave->GetTableUsage();
+    ASSERT_EQ(keyCntSave, expectKeyCnt);
+
+    // check after saving
+    tbSave->Save(saveStep);
+    uint64_t keyCntSave2 = tbSave->GetTableUsage();
+    ASSERT_EQ(keyCntSave2, expectKeyCnt);
+
+    // check after load
+    auto tbLoad = make_shared<Table>(tbName, savePath, maxTableSize, compactThreshold, saveStep);
+    uint64_t keyCntLoad = tbLoad->GetTableUsage();
+    ASSERT_EQ(keyCntLoad, expectKeyCnt);
+}

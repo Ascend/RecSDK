@@ -160,7 +160,7 @@ void KeyProcess::Destroy()
 void KeyProcess::LoadSaveLock()
 {
     for (int channelId { 0 }; channelId < MAX_CHANNEL_NUM; ++channelId) {
-        for (int threadId { 0 }; threadId < KEY_PROCESS_THREAD; ++threadId) {
+        for (int threadId { 0 }; threadId < MAX_KEY_PROCESS_THREAD; ++threadId) {
             loadSaveMut[channelId][threadId].lock();
         }
     }
@@ -170,7 +170,7 @@ void KeyProcess::LoadSaveLock()
 void KeyProcess::LoadSaveUnlock()
 {
     for (int channelId { 0 }; channelId < MAX_CHANNEL_NUM; ++channelId) {
-        for (int threadId { 0 }; threadId < KEY_PROCESS_THREAD; ++threadId) {
+        for (int threadId { 0 }; threadId < MAX_KEY_PROCESS_THREAD; ++threadId) {
             loadSaveMut[channelId][threadId].unlock();
         }
     }
@@ -255,7 +255,8 @@ void KeyProcess::KeyProcessTaskWithFastUnique(int channel, int threadId)
                 " get data time(ms):{}, batch name:{}, channel:{}, batchID:{}",
                 getAndProcessTC.ElapsedMS(), processDataTime.ElapsedMS(), getBatchTime,
                 batch->name, batch->channel, batch->batchId);
-            auto batchQueue = SingletonQueue<EmbBatchT>::GetInstances(threadId + KEY_PROCESS_THREAD * batch->channel);
+            int queueIndex = threadId + (MAX_KEY_PROCESS_THREAD * batch->channel);
+            auto batchQueue = SingletonQueue<EmbBatchT>::GetInstances(queueIndex);
             batchQueue->PutDirty(move(batch));
         }
         unique->UnInitialize();
@@ -289,7 +290,8 @@ void KeyProcess::KeyProcessTask(int channel, int threadId)
                 " get data time(ms):{}, batch name:{}, channel:{}, batchID:{}",
                 getAndProcessTC.ElapsedMS(), processDataTime.ElapsedMS(), getBatchTime,
                 batch->name, batch->channel, batch->batchId);
-            auto batchQueue = SingletonQueue<EmbBatchT>::GetInstances(threadId + KEY_PROCESS_THREAD * batch->channel);
+            int queueIndex = threadId + (MAX_KEY_PROCESS_THREAD * batch->channel);
+            auto batchQueue = SingletonQueue<EmbBatchT>::GetInstances(queueIndex);
             batchQueue->PutDirty(move(batch));
         }
     } catch (const EndRunExit &e) {
@@ -504,7 +506,8 @@ unique_ptr<EmbBatchT> KeyProcess::GetBatchData(int channel, int commId)
     unique_ptr<EmbBatchT> batch = nullptr;
 
     // train data, queue id = thread id [0, KEY_PROCESS_THREAD-1]
-    auto batchQueue = SingletonQueue<EmbBatchT>::GetInstances(commId + KEY_PROCESS_THREAD * channel);
+    int queueIndex = commId + (MAX_KEY_PROCESS_THREAD * channel);
+    auto batchQueue = SingletonQueue<EmbBatchT>::GetInstances(queueIndex);
     EASY_BLOCK("get samples")
     EASY_VALUE("run on CPU", sched_getcpu())
     TimeCost tc = TimeCost();
@@ -1374,4 +1377,30 @@ string KeyProcess::DumpSplitKeys(vector<vector<emb_key_t>> &splitKeys) const
         ssTrace << '|';
     }
     return ssTrace.str();
+}
+
+int64_t KeyProcess::GetExpansionTableSize(const string& embName)
+{
+#ifndef GTEST
+    const auto& iter = embeddingTableMap.find(embName);
+    if (iter == embeddingTableMap.end()) {
+        LOG_ERROR(KEY_PROCESS "GetExpansionEmbSize, wrong embName:{} ", embName);
+        return -1;
+    }
+    std::lock_guard<std::mutex> lk(mut); // lock for PROCESS_THREAD
+    return embeddingTableMap[embName].GetTableSize();
+#endif
+}
+
+int64_t KeyProcess::GetExpansionTableCapacity(const string& embName)
+{
+#ifndef GTEST
+    const auto& iter = embeddingTableMap.find(embName);
+    if (iter == embeddingTableMap.end()) {
+        LOG_ERROR(KEY_PROCESS "GetExpansionEmbSize, wrong embName:{} ", embName);
+        return -1;
+    }
+    std::lock_guard<std::mutex> lk(mut); // lock for PROCESS_THREAD
+    return embeddingTableMap[embName].GetTableCapacity();
+#endif
 }

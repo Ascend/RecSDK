@@ -228,7 +228,7 @@ namespace MxRec {
 
             // [batchId % KEY_PROCESS_THREAD] which thread process this batch
             // [KEY_PROCESS_THREAD * 0 or 1] train or inference
-            int batchQueueId = batchId % threadNum + KEY_PROCESS_THREAD * channelId;
+            int batchQueueId = (batchId % threadNum) + (MAX_KEY_PROCESS_THREAD * channelId);
             Tensor* output = nullptr;
             OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape {}, &output));
             auto out = output->flat<int32>();
@@ -418,7 +418,7 @@ namespace MxRec {
 
             // [batchId % KEY_PROCESS_THREAD] which thread process this batch
             // [KEY_PROCESS_THREAD * 0 or 1] train or inference
-            int batchQueueId = batchId % threadNum + KEY_PROCESS_THREAD * channelId;
+            int batchQueueId = (batchId % threadNum) + (MAX_KEY_PROCESS_THREAD * channelId);
 
             OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape {}, &output));
             auto out = output->flat<int32>();
