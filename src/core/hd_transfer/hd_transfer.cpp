@@ -57,7 +57,7 @@ void HDTransfer::Destroy()
     LOG_INFO(HD + "destroy channel start");
     for (auto& c: transferChannels) {
         LOG_INFO(HD + "start destroy channel:{}", c.first);
-        tensorflow::StopRecvTensorByAcl(&c.second, c.first);
+        acltdtDestroyChannel(c.second);
         LOG_INFO(HD + "destroy channel:{}", c.first);
     }
     for (auto& d: aclDatasets) {
