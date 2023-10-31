@@ -446,7 +446,8 @@ protected:
     vector<uint32_t> cnt4 = {1, 2, 3, 2, 1, 2, 1};
     KeysT keys5 = {125, 121, 122, 212, 211};
     vector<uint32_t> cnt5 = {1, 2, 1, 3, 1};
-    std::vector<ThresholdValue> thresholds = {{"tableAAA", 2, 5, 1}, {"tableBBB", 3, 7, 1}, {"tableCCC", 5, 9, 1}};
+    std::vector<ThresholdValue> thresholds = {{"tableAAA", 2, 5, 1, true}, {"tableBBB", 3, 7, 1, true},
+                                              {"tableCCC", 5, 9, 1, true}};
 };
 
 void SetEnv()

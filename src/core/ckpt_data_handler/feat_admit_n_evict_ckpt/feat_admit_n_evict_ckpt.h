@@ -35,10 +35,11 @@ namespace MxRec {
         const vector<CkptDataType> saveDataTypes { CkptDataType::TABLE_2_THRESH, CkptDataType::HIST_REC };
 
         const int featItemInfoSaveNum { 3 };
-        const int threshValSaveNum { 2 };
+        const int threshValSaveNum { 3 };
 
         const int countThresholdIdx { 0 };
         const int timeThresholdIdx { 1 };
+        const int isSumThresholdIdx { 2 };
 
         const int featItemInfoOffset { 1 };
 

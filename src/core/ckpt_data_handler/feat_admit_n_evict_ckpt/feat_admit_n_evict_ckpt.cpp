@@ -90,6 +90,8 @@ void FeatAdmitNEvictCkpt::SetTable2ThreshTrans(string embName)
     transArr.reserve(table2ThreshSize);
     transArr.push_back(table2Thresh.countThreshold);
     transArr.push_back(table2Thresh.timeThreshold);
+    int32_t isSum = table2Thresh.isEnableSum ? 1 : 0;
+    transArr.push_back(isSum);
 }
 
 // save
@@ -121,6 +123,7 @@ void FeatAdmitNEvictCkpt::SetTable2Thresh(string embName)
     tens2Thresh.tableName = embName;
     tens2Thresh.countThreshold = transArr[countThresholdIdx];
     tens2Thresh.timeThreshold = transArr[timeThresholdIdx];
+    tens2Thresh.isEnableSum = (transArr[isSumThresholdIdx] == 1);
 }
 
 // load

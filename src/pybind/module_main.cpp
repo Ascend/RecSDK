@@ -198,11 +198,12 @@ namespace {
     void GetThresholdValue(pybind11::module_& m)
     {
         pybind11::class_<ThresholdValue>(m, "ThresholdValue")
-                .def(pybind11::init<string, int, int, int>())
+                .def(pybind11::init<string, int, int, int, bool>())
                 .def_readwrite("table_name", &ThresholdValue::tableName)
                 .def_readwrite("count_threshold", &ThresholdValue::countThreshold)
                 .def_readwrite("time_threshold", &ThresholdValue::timeThreshold)
-                .def_readwrite("faae_coefficient", &ThresholdValue::faaeCoefficient);
+                .def_readwrite("faae_coefficient", &ThresholdValue::faaeCoefficient)
+                .def_readwrite("is_enable_sum", &ThresholdValue::isEnableSum);
     }
 
 }

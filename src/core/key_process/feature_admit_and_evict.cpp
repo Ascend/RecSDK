@@ -106,13 +106,13 @@ FeatureAdmitType FeatureAdmitAndEvict::FeatureAdmitHelper(const int channel, con
 
     absl::flat_hash_map<int64_t, FeatureItemInfo>& historyRecordInfos = m_recordsData.historyRecords[tableName];
     auto innerIt = historyRecordInfos.find(featureId);
-    uint32_t countThreshold = static_cast<uint32_t>(m_table2Threshold[tableNameOrigin].countThreshold);
-    // countThreshold = 0或者eval，只查询count，不做累加，若是新key，则count使用初始值0
-    if (channel == EVAL_CHANNEL_ID || countThreshold == 0) {
+
+    // isEnableSum = false或者eval，只查询count，不做累加，若是新key，则count使用初始值0
+    if (channel == EVAL_CHANNEL_ID || m_table2Threshold[tableNameOrigin].isEnableSum == false) {
         if (innerIt != historyRecordInfos.end()) {
             currKeyCount = historyRecordInfos[featureId].count;
         }
-    } else if (channel == TRAIN_CHANNEL_ID) { // train 且 countThreshold > 0
+    } else if (channel == TRAIN_CHANNEL_ID) { // train 且 isEnableSum = true
         if (innerIt == historyRecordInfos.end()) {
             // 维护 m_historyRecords
             FeatureItemInfo info(featureCnt, m_recordsData.timestamps[tableName]);
@@ -127,9 +127,8 @@ FeatureAdmitType FeatureAdmitAndEvict::FeatureAdmitHelper(const int channel, con
             currKeyCount = info.count;
         }
     }
-
     // 准入条件判断
-    if (currKeyCount >= countThreshold) {
+    if (currKeyCount >= static_cast<uint32_t>(m_table2Threshold[tableNameOrigin].countThreshold)) {
         return FeatureAdmitType::FEATURE_ADMIT_OK;
     }
 
@@ -274,6 +273,11 @@ bool FeatureAdmitAndEvict::SetTableThreshold(int threshold, string embName)
     if (it == m_table2Threshold.end()) {
         LOG_WARN("SetTableThreshold failed, cause embName [{}] is not in m_table2Threshold...", embName);
         return false;
+    }
+    if (threshold == 0) {
+        LOG_INFO("SetTableThreshold success, embName[{}], isEnableSum = false ...", embName);
+        m_table2Threshold[embName].isEnableSum = false;
+        return true;
     }
     LOG_INFO("SetTableThreshold success, embName[{}], count before [{}], count after [{}], time[{}], "
              "coefficient[{}] ...", embName, m_table2Threshold[embName].countThreshold, threshold,

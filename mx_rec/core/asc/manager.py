@@ -170,14 +170,16 @@ def generate_threshold_list():
             threshold = ThresholdValue(feature_spec.table_name,
                                        feature_spec.access_threshold,
                                        feature_spec.eviction_threshold,
-                                       coef)
+                                       coef,
+                                       True)
             threshold_list.append(threshold)
             continue
         if feature_spec.access_threshold:
             threshold = ThresholdValue(feature_spec.table_name,
                                        feature_spec.access_threshold,
                                        -1,
-                                       coef)
+                                       coef,
+                                       True)
             threshold_list.append(threshold)
 
     return threshold_list
