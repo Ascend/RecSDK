@@ -110,10 +110,13 @@ class Saver(object):
 
         try:
             if save_path.find("://") == -1:
-                DirectoryValidator("saving_path", saving_path).with_blacklist(exact_compare=False).check()
+                directory_validator = DirectoryValidator("saving_path", saving_path)
+                directory_validator.check_not_soft_link()
+                directory_validator.with_blacklist(exact_compare=False)
+                directory_validator.check()
         except ValueError as err:
             raise ValueError(f"The saving path {saving_path} cannot be a system directory "
-                             f"or a subdirectory of the system directory.") from err
+                             f"and cannot be soft link.") from err
 
         if tf.io.gfile.exists(saving_path):
             tf.io.gfile.rmtree(saving_path)
