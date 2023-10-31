@@ -216,6 +216,7 @@ protected:
             val.countThreshold = offsetMem;
             val.timeThreshold = offsetMem;
             val.faaeCoefficient = 1;
+            val.isEnableSum = true;
 
             offsetMem++;
 

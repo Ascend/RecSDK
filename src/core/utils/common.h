@@ -254,18 +254,20 @@ namespace MxRec {
 
     struct ThresholdValue {
         ThresholdValue() = default;
-        ThresholdValue(EmbNameT name, int countThre, int timeThre, int faaeCoef)
+        ThresholdValue(EmbNameT name, int countThre, int timeThre, int faaeCoef, bool isSum)
         {
             tableName = name;
             countThreshold = countThre;
             timeThreshold = timeThre;
             faaeCoefficient = faaeCoef;
+            isEnableSum = isSum;
         }
 
         EmbNameT tableName { "" }; // embName
         int countThreshold { -1 }; // 只配置count，即“只有准入、而没有淘汰”功能，对应SingleHostEmbTableStatus::SETS_ONLY_ADMIT状态
         int timeThreshold { -1 };  // 只配置time，配置错误；即准入是淘汰的前提，对应SingleHostEmbTableStatus::SETS_BOTH状态
         int faaeCoefficient { 1 }; // 配置后,该表在准入时，count计数会乘以该系数
+        bool isEnableSum {true};   // 配置false,该表在准入时，count计数不会累加
     };
 
     struct FeatureItemInfo {

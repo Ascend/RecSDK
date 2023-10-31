@@ -85,21 +85,23 @@ protected:
     {
         int countThreshold { 20 };
         int timeThreshold { 100 };
+        int isSum {1};
 
         for (const auto& testEmbInfo : testEmbInfos) {
             ThresholdValue val;
             val.tableName = testEmbInfo.name;
             val.countThreshold = countThreshold;
             val.timeThreshold = timeThreshold;
+            val.isEnableSum = true;
 
-            vector<int> valid { countThreshold, timeThreshold };
+            vector<int> valid { countThreshold, timeThreshold, isSum};
 
             countThreshold++;
             timeThreshold++;
 
             testTable2Threshold[testEmbInfo.name] = move(val);
             validArr[testEmbInfo.name] = move(valid);
-            validAttrib[testEmbInfo.name].push_back(2); // 2 is element num in  one vector
+            validAttrib[testEmbInfo.name].push_back(3); // 3 is element num in  one vector
             validAttrib[testEmbInfo.name].push_back(int32Bytes);
         }
     }

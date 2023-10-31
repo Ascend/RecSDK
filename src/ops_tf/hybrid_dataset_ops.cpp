@@ -125,8 +125,8 @@ namespace MxRec {
             auto src = reinterpret_cast<const int*>(inputTensor.tensor_data().data());
             std::copy(src, src + 1, &threshold);
 
-            if (threshold <= 0) {
-                LOG_ERROR("set threshold[{}] <= 0 ", threshold);
+            if (threshold < 0) {
+                LOG_ERROR("set threshold[{}] < 0 ", threshold);
                 return 0;
             }
             LOG_INFO("ParseThresholdAndCheck, emb_name:[{}], ids_name: [{}], threshold: [{}]",

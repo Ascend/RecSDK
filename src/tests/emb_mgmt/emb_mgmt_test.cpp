@@ -177,7 +177,7 @@ TEST_F(EmbMgmtTest, Initialize_HBM)
     embInfo = EmbInfo(params, vocabsize, initializeInfos);
     embInfos.emplace_back(embInfo);
     vector<ThresholdValue> thresholdValues;
-    thresholdValues.emplace_back(name, 1, 1, 1);
+    thresholdValues.emplace_back(name, 1, 1, 1, true);
 
     auto hybridMgmt = Singleton<HybridMgmt>::GetInstance();
     cout << "setup..." << endl;
@@ -198,7 +198,7 @@ TEST_F(EmbMgmtTest, Evict)
     embInfo = EmbInfo(params, vocabsize, initializeInfos);
     embInfos.emplace_back(embInfo);
     vector<ThresholdValue> thresholdValues;
-    thresholdValues.emplace_back(name, 1, 1, 1);
+    thresholdValues.emplace_back(name, 1, 1, 1, true);
 
     auto hybridMgmt = Singleton<HybridMgmt>::GetInstance();
     cout << "setup..." << endl;
@@ -222,7 +222,7 @@ TEST_F(EmbMgmtTest, Evict_HBM)
     embInfo = EmbInfo(params, vocabsize, initializeInfos);
     embInfos.emplace_back(embInfo);
     vector<ThresholdValue> thresholdValues;
-    thresholdValues.emplace_back(name, 1, 1, 1);
+    thresholdValues.emplace_back(name, 1, 1, 1, true);
 
     auto hybridMgmt = Singleton<HybridMgmt>::GetInstance();
     cout << "setup..." << endl;
