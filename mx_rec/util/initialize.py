@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
+import atexit
 import os
 from collections import defaultdict
 import dataclasses
@@ -106,9 +107,6 @@ class ConfigInitializer:
         # 两个通道的sparse look id，用于通讯的标识
         self.notify_hybrid_channel_sparse_id = [0, 0]
         self.stat_on = (global_env.stat_on == Flag.TRUE.value)
-
-    def __del__(self):
-        self.terminate()
 
     @property
     def iterator_type(self):
@@ -471,6 +469,7 @@ def init(use_mpi, **kwargs):
                 json.dumps(dataclasses.asdict(global_env), ensure_ascii=False))
     ConfigInitializer.set_instance(use_mpi, **kwargs)
     set_ascend_env()
+    atexit.register(terminate_config_initializer)
 
 
 def get_is_graph_modify_hook_running():
@@ -479,22 +478,6 @@ def get_is_graph_modify_hook_running():
 
 def set_is_graph_modify_hook_running(is_running):
     ConfigInitializer.get_instance().is_graph_modify_hook_running = is_running
-
-
-def get_run_times():
-    return ConfigInitializer.get_instance().run_times
-
-
-def increase_run_times():
-    ConfigInitializer.get_instance().run_times.increase()
-
-
-def get_is_last_round():
-    return ConfigInitializer.get_instance().is_last_round
-
-
-def set_is_last_round(last_round):
-    ConfigInitializer.get_instance().is_last_round = last_round
 
 
 def get_bool_gauge_set():
@@ -592,7 +575,6 @@ def restore_host_data(root_dir):
         raise RuntimeError("ASC manager does not exist.")
 
     if not ConfigInitializer.get_instance().get_asc_manager().load(root_dir):
-        terminate_config_initializer()
         raise TypeError("Asc load data does not match usr setups, \
         please re-consider if you want to restore from this dir")
     logger.debug("Data from host pipeline has been restored.")

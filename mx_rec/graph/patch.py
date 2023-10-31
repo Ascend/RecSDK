@@ -21,8 +21,7 @@ from tensorflow.python.client.session import BaseSession
 
 from mx_rec.constants import constants
 from mx_rec.util.initialize import get_is_graph_modify_hook_running, get_modify_graph, insert_bool_gauge, \
-    get_bool_gauge_set, terminate_config_initializer, get_run_times, set_is_last_round, get_asc_manager, \
-    export_table_instances
+    get_bool_gauge_set, terminate_config_initializer, get_asc_manager, export_table_instances
 from mx_rec.util.tf_version_adapter import NPUCheckpointSaverHook
 from mx_rec.graph.merge_lookup import do_merge_lookup
 from mx_rec.util.log import logger
@@ -244,36 +243,6 @@ def patch_for_bool_gauge():
 
     BoolGauge.get_cell = get_cell
     logger.debug("Function 'get_cell' in Class 'BoolGauge' has been patched.")
-
-
-def end(self: NPUCheckpointSaverHook, session: tf.compat.v1.Session):
-    """
-    Call at the end of session hook.
-
-    Args:
-        self: An `NPUCheckpointSaverHook` instance.
-        session: A TensorFlow Session that will be soon closed.
-
-    Returns: None
-
-    """
-
-    logger.debug("Enter patch 'NPUCheckpointSaverHook.end'.")
-    logger.info("NPUCheckpointSaverHook end...")
-    basic_session_run_hooks.CheckpointSaverHook.end(self, session)
-
-    if 'train_and_evaluate' in get_bool_gauge_set() and get_run_times() == 1:
-        set_is_last_round(True)
-        return
-    logger.debug("NPUCheckpointSaverHook call 'terminate_config_initializer'...")
-    terminate_config_initializer()
-
-
-def patch_for_end():
-    """Patch for 'NPUCheckpointSaverHook.end'."""
-
-    NPUCheckpointSaverHook.end = end
-    logger.debug("Function 'end' in Class 'NPUCheckpointSaverHook' has been patched.")
 
 
 def assert_eval_spec(eval_spec: EvalSpec):
