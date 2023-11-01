@@ -496,8 +496,8 @@ class DirectoryValidator(StringValidator):
         return self
 
     def check_not_soft_link(self):
-        self.register_checker(lambda: os.path.realpath(self.value) == os.path.normpath(self.value),
-                              "soft link or relative path should not be in the path parameter")
+        self.register_checker(lambda: not os.path.islink(self.value),
+                              f"soft link or relative path: {self.value} should not be in the path parameter")
         return self
 
     def path_should_exist(self, is_file=True, msg=None):
