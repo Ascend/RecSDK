@@ -646,6 +646,10 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
     }
 
     off_t fileSize = lseek(fd, 0, SEEK_END);
+    if (fileSize == 0) {
+        close(fd);
+        throw runtime_error(StringFormat("emb data file's size is 0").c_str());
+    }
 
     size_t datasetSize = fileSize;
     ValidateFile(fd, dataDir, datasetSize);

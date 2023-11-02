@@ -535,6 +535,7 @@ TEST_F(KeyProcessTest, ProcessBatchWithFastUnique)
         LOG_INFO("rankid :{},batchid: {}", rankInfo.rankId, batch->batchId);
         process.KeyProcessTaskHelperWithFastUnique(batch, unique, channel, id);
         LOG_INFO("rankid :{},batchid: {}, hotPos {}", rankInfo.rankId, batch->batchId, VectorToString(hotPos));
+        unique->UnInitialize();
     }; // for clean code
     for (int channel = 0; channel < 1; ++channel) {
         for (int id = 0; id < 1; ++id) {
