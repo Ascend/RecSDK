@@ -106,6 +106,7 @@ void Table::Save(int step)
     if (!metaFile.is_open()) {
         throw runtime_error("fail to create table meta file");
     }
+    fs::permissions(metaFilePath, fs::perms::owner_read | fs::perms::owner_write);
 
     // dump table name
     uint32_t nameSize = static_cast<uint32_t>(name.size());
