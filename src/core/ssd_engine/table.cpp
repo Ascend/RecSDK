@@ -170,6 +170,7 @@ void Table::LoadDataFileSet(const shared_ptr<fstream> &metaFile, int step)
                 break;
             } catch (invalid_argument &e) {
                 // do nothing because file may in other path
+                LOG_INFO("insert exception, do nothing because file may in other path");
             }
         }
         if (loadedFile == nullptr) {
