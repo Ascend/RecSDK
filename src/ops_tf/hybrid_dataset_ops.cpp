@@ -202,6 +202,10 @@ namespace MxRec {
             LOG_DEBUG("enter ReadEmbKeyV2Dynamic");
             TimeCost tc = TimeCost();
             int batchId = hybridMgmtBlock->readEmbedBatchId[channelId]++;
+            Tensor* output = nullptr;
+            OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape {}, &output));
+            auto out = output->flat<int32>();
+            out(0) = batchId;
             if (channelId == 1) {
                 if (maxStep != -1 && batchId >= maxStep) {
                     LOG_WARN("skip excess batch after {}/{}", batchId, maxStep);
@@ -229,10 +233,6 @@ namespace MxRec {
             // [batchId % KEY_PROCESS_THREAD] which thread process this batch
             // [KEY_PROCESS_THREAD * 0 or 1] train or inference
             int batchQueueId = (batchId % threadNum) + (MAX_KEY_PROCESS_THREAD * channelId);
-            Tensor* output = nullptr;
-            OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape {}, &output));
-            auto out = output->flat<int32>();
-            out(0) = batchId;
 
             TimeCost enqueueTC;
             EnqueueBatchData(std::vector<int>{batchId, batchQueueId}, timestamp, inputTensor, splits);
@@ -394,12 +394,12 @@ namespace MxRec {
             TimeCost tc = TimeCost();
             int batchId = hybridMgmtBlock->readEmbedBatchId[channelId]++;
             Tensor* output = nullptr;
+            OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape {}, &output));
+            auto out = output->flat<int32>();
+            out(0) = batchId;
             if (channelId == 1) {
                 if (maxStep != -1 && batchId >= maxStep) {
                     LOG_WARN(StringFormat("skip excess batch after {}/{}", batchId, maxStep));
-                    OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape {}, &output));
-                    auto out = output->flat<int32>();
-                    out(0) = batchId;
                     return;
                 }
             }
@@ -419,10 +419,6 @@ namespace MxRec {
             // [batchId % KEY_PROCESS_THREAD] which thread process this batch
             // [KEY_PROCESS_THREAD * 0 or 1] train or inference
             int batchQueueId = (batchId % threadNum) + (MAX_KEY_PROCESS_THREAD * channelId);
-
-            OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape {}, &output));
-            auto out = output->flat<int32>();
-            out(0) = batchId;
 
             TimeCost enqueueTC;
             EnqueueBatchData(batchId, batchQueueId, timestamp, inputTensor);
