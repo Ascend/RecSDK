@@ -13,9 +13,8 @@ from mx_rec.util.global_env_conf import global_env
 
 
 def parse_hccl_json():
-    rank_table_path = os.path.realpath(global_env.rank_table_file)
-
-    with open(rank_table_path, "r", encoding="utf-8") as file:
+    rank_table_path = global_env.rank_table_file
+    with open(rank_table_path, "r", encoding="utf-8"):
         # check whether json file is valid
         file_validator = FileValidator("RANK_TABLE_FILE", rank_table_path)
         # 1.check whether rank_table_path is soft link
@@ -24,6 +23,8 @@ def parse_hccl_json():
         file_validator.check_file_size(MAX_CONFIG_SIZE, MIN_SIZE)
         file_validator.check()
 
+    rank_table_path = os.path.realpath(global_env.rank_table_file)
+    with open(rank_table_path, "r", encoding="utf-8") as file:
         table_hccl = json.load(file)
         if "server_list" not in table_hccl:
             raise AttributeError(f"Lack of attribute server_list.")
