@@ -12,6 +12,7 @@ from mx_rec.core.asc.merge_table import find_dangling_table, should_skip
 from mx_rec.validator.validator import para_checker_decorator, ValueCompareValidator, ClassValidator, \
     OptionalIntValidator
 from mx_rec.util.log import logger
+from mx_rec.util.normalization import fix_invalid_table_name
 from mx_rec.constants.constants import MAX_INT32
 
 
@@ -31,11 +32,20 @@ def get_asc_insert_func(tgt_key_specs=None, args_index_list=None, table_names=No
     desperated.
     use create_asc_insert_func_with_specs or create_asc_insert_func_with_agc
     '''
+    # condition 1: only tgt_key_specs
     if tgt_key_specs is not None:
+        if args_index_list is not None or table_names is not None:
+            raise RuntimeError("call get_asc_insert_func in-correctly, when tgt_key_specs is not None, "
+                               "please set args_index_list and table_names None.")
         return create_asc_insert_func_with_specs(tgt_key_specs=tgt_key_specs, **kwargs)
+    # condition 2: only args_index_list and table_names
     if args_index_list is not None:
+        if table_names is None:
+            raise RuntimeError("call get_asc_insert_func in-correctly, when args_index_list is not None, "
+                               "please set tgt_key_specs None and set table_names correctly.")
+        fixed_table_names = [fix_invalid_table_name(table_name) for table_name in table_names]
         return create_asc_insert_func_with_acg(args_index_list=args_index_list,
-                                               table_names=table_names,
+                                               table_names=fixed_table_names,
                                                **kwargs)
     raise RuntimeError("call get_asc_insert_func in-correctly.")
 
