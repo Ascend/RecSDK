@@ -136,7 +136,9 @@ void FeatAdmitNEvictCkpt::SetHistRec(string embName)
     const auto& attribute = transferData.attribute;
     auto& timestamp = loadHistRec.timestamps[embName];
     auto& histRecs = loadHistRec.historyRecords[embName];
-
+    if (transArr.empty() || attribute.empty()) {
+        throw std::runtime_error("transArr or attribute is empty");
+    }
     timestamp = transArr.front();
 
     size_t featItemInfoTotalSize = attribute.front() * static_cast<size_t>(featItemInfoSaveNum);
