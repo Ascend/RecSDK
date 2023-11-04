@@ -213,6 +213,7 @@ void Checkpoint::WriteEmbedding(const CkptTransData& transData, const string& da
 {
     ofstream writeFile;
     writeFile.open(dataDir.c_str(), std::ios::out | std::ios::trunc | std::ios::binary);
+    fs::permissions(dataDir.c_str(), fs::perms::owner_read | fs::perms::owner_write);
 
 #ifndef GTEST
     auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
