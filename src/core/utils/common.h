@@ -293,6 +293,7 @@ namespace MxRec {
     {
         auto size = static_cast<size_t>(GLOG_MAX_BUF_SIZE);
         unique_ptr<char[]> buf(new char[size]);
+        auto buf = std::make_unique<char[]>(size);
         memset_s(buf.get(), size, 0, size);
         int nChar =  snprintf_s(buf.get(), size, size - 1, format.c_str(), args ...);
         if (nChar == -1) {

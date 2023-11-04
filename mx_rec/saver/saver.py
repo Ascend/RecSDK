@@ -170,6 +170,24 @@ class Saver(object):
                 save_optimizer_state_data(root_dir, table_name, optimizer_name, dump_optimizer_data,
                                           self.rank_id)
 
+    @performance("_save")
+    def _save(self, sess, root_dir):
+        result = self.save_op_dict
+        threads = []
+        for table_name in result.keys():
+            thread = SaveModelThread(sess, result, root_dir, table_name)
+            threads.append(thread)
+
+        for thread in threads:
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        if is_asc_manager_initialized() and not self.save_easy_mode:
+            save_host_data(root_dir)
+            logger.debug(f"host data was saved.")
+
     def _build_save(self):
         for var in self.var_list:
             if os.getenv("TF_DEVICE", " ") == "NPU" and "merged" not in var.name:
@@ -213,24 +231,6 @@ class Saver(object):
             for key_state, state in optimizer_state_dict.items():
                 assign_op = state.assign(sub_optimizer_placeholder_dict.get(key_state))
                 self.restore_fetch_list.append(assign_op)
-
-    @performance("_save")
-    def _save(self, sess, root_dir):
-        result = self.save_op_dict
-        threads = []
-        for table_name in result.keys():
-            thread = SaveModelThread(sess, result, root_dir, table_name)
-            threads.append(thread)
-
-        for thread in threads:
-            thread.start()
-
-        for thread in threads:
-            thread.join()
-
-        if is_asc_manager_initialized() and not self.save_easy_mode:
-            save_host_data(root_dir)
-            logger.debug(f"host data was saved.")
 
     def _save_easy_mode_save_key_data(self, dump_data_dict, root_dir, table_name):
         host_data = get_host_data(table_name)

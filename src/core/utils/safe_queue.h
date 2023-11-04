@@ -19,7 +19,7 @@
 namespace MxRec {
     template<class T>
     class SafeQueue {
-        static constexpr uint64_t defaultCap = 10;
+        static constexpr uint64_t DEFAULT_CAP = 10;
 
     public:
         SafeQueue() = default;
@@ -118,7 +118,7 @@ namespace MxRec {
 
     private:
         mutable std::mutex mut;
-        uint64_t capacity = defaultCap;
+        uint64_t capacity = DEFAULT_CAP;
         std::atomic <uint64_t> creatNum{};
         std::list <std::unique_ptr<T>> dataQueue;
         std::list <std::unique_ptr<T>> emptyQueue;

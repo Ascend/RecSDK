@@ -59,7 +59,7 @@ namespace MxRec {
             }
         }
 
-        ~ClearChannel() = default;
+        ~ClearChannel() override = default;
 
         void Compute(OpKernelContextPtr context) override
         {
@@ -81,7 +81,7 @@ namespace MxRec {
             OP_REQUIRES_OK(context, context->GetAttr("ids_name", &idsName)); // sparse_lookup查询
         }
 
-        ~SetThreshold() = default;
+        ~SetThreshold() override = default;
 
         void Compute(OpKernelContextPtr context) override
         {
@@ -145,7 +145,7 @@ namespace MxRec {
         explicit ReturnTimestamp(OpKernelConstructionPtr context) : OpKernel(context)
         {}
 
-        ~ReturnTimestamp() = default;
+        ~ReturnTimestamp() override = default;
 
         void Compute(OpKernelContextPtr context) override
         {
@@ -194,7 +194,7 @@ namespace MxRec {
             }
             maxStep = keyProcess->GetMaxStep(channelId);
         }
-        ~ReadEmbKeyV2Dynamic() = default;
+        ~ReadEmbKeyV2Dynamic() override = default;
 
         void Compute(OpKernelContextPtr context) override
         {
@@ -385,7 +385,7 @@ namespace MxRec {
             maxStep = keyProcess->GetMaxStep(channelId);
         }
 
-        ~ReadEmbKeyV2() = default;
+        ~ReadEmbKeyV2() override = default;
 
         void Compute(OpKernelContextPtr context) override
         {
@@ -587,7 +587,7 @@ namespace MxRec {
             std::cout << " Cust opp not installed!!" << std::endl;
         }
 
-        ~CustOps() = default;
+        ~CustOps() override = default;
     };
 
 }

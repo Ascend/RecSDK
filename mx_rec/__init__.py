@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
-__all__ = ["constants", "core", "graph", "util",
-           "version", "__version__"]
+__all__ = ["constants", "core", "graph", "util", "version", "__version__"]
 
 from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION
 from mx_rec.util.tf_version_adapter import npu_ops, hccl_ops, NPUCheckpointSaverHook
