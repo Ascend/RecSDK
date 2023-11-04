@@ -28,7 +28,7 @@ import numpy as np
 from mx_rec.saver.saver import Saver as SparseSaver
 from mx_rec.util.initialize import get_ascend_global_hashtable_collection, export_removing_var_list
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, StringValidator, OptionalIntValidator, \
-    OptionalStringValidator
+    OptionalStringValidator, DirectoryValidator
 from mx_rec.util.log import logger
 from mx_rec.constants.constants import MAX_INT32
 
@@ -235,6 +235,12 @@ def restore(self, sess, save_path):
     # since tf 2.6.0, tf needs tensorflow_io to support hdfs path
     if tf.__version__.startswith("2") and save_path.find("://") != -1:
         import tensorflow_io as tfio
+
+    if save_path.find("://") == -1:
+        directory_validator = DirectoryValidator("reading_path", save_path)
+        directory_validator.check_not_soft_link()
+        directory_validator.with_blacklist(exact_compare=False)
+        directory_validator.check()
 
     checkpoint_prefix = compat.as_text(save_path)
     if self._is_empty:
