@@ -73,6 +73,11 @@ namespace MxRec {
 
     void Destroy()
     {
+        if (!isInitialized) {
+            LOG_ERROR("HybridMgmt not initialized. Call Initialize first.");
+            return;
+        }
+
         if (!isRunning) {
             return;
         }
@@ -160,6 +165,7 @@ namespace MxRec {
         bool isSSDEnabled { false };
         bool isRunning;
         bool isLoad { false };
+        bool isInitialized { false };
 
         void TrainTask(TaskType type);
 

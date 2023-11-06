@@ -136,6 +136,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     LOG_INFO(MGMT + "end initialize, noDDR:{}, maxStep:[{}, {}], rank:{}", rankInfo.noDDR,
              rankInfo.maxStep.at(TRAIN_CHANNEL_ID), rankInfo.maxStep.at(EVAL_CHANNEL_ID), rankInfo.rankId);
 #endif
+    isInitialized = true;
     return true;
 }
 
@@ -223,6 +224,11 @@ void HybridMgmt::RestoreFreq4Save(CkptData& saveData) const
 bool HybridMgmt::Save(const string savePath)
 {
 #ifndef GTEST
+    if (!isInitialized) {
+        LOG_ERROR("HybridMgmt not initialized. Call Initialize first.");
+        return false;
+    }
+
     // 数据处理线程上锁
     preprocess->LoadSaveLock();
 
@@ -275,6 +281,11 @@ bool HybridMgmt::Save(const string savePath)
 bool HybridMgmt::Load(const string& loadPath)
 {
 #ifndef GTEST
+    if (!isInitialized) {
+        LOG_ERROR("HybridMgmt not initialized. Call Initialize first.");
+        return false;
+    }
+
     // 数据处理线程上锁
     preprocess->LoadSaveLock();
 
@@ -362,6 +373,10 @@ void HybridMgmt::SetFeatureTypeForLoad(vector<CkptFeatureType>& loadFeatures,
 KeyOffsetMapT HybridMgmt::SendHostMap(const string tableName)
 {
 #ifndef GTEST
+    if (!isInitialized) {
+        throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
+    }
+
     preprocess->LoadSaveLock();
     KeyOffsetMemT keyOffsetMap;
     KeyOffsetMapT sendKeyOffsetMap;
@@ -389,6 +404,10 @@ KeyOffsetMapT HybridMgmt::SendHostMap(const string tableName)
 void HybridMgmt::ReceiveHostMap(AllKeyOffsetMapT receiveKeyOffsetMap)
 {
 #ifndef GTEST
+    if (!isInitialized) {
+        throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
+    }
+
     preprocess->LoadSaveLock();
     KeyOffsetMemT loadKeyOffsetMap;
     OffsetMemT loadMaxOffset;
@@ -850,6 +869,11 @@ void HybridMgmt::EmbHDTrans(const int channelId, const int batchId)
 bool HybridMgmt::Evict()
 {
 #ifndef GTEST
+    if (!isInitialized) {
+        LOG_ERROR("HybridMgmt not initialized. Call Initialize first.");
+        return false;
+    }
+
     // 配置了淘汰选项，则触发
     auto& featAdmitNEvict = preprocess->GetFeatAdmitAndEvict();
     if (featAdmitNEvict.GetFunctionSwitch()) {
@@ -991,6 +1015,10 @@ int HybridMgmt::GetStepFromPath(const string& loadPath) const
 /// \param steps 运行的步数，由于可能存在循环下沉，所以1个session run 对应N步
 void HybridMgmt::NotifyBySessionRun(int channelID) const
 {
+    if (!isInitialized) {
+        throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
+    }
+
     hybridMgmtBlock->CheckAndNotifyWake(channelID);
 }
 
@@ -999,6 +1027,10 @@ void HybridMgmt::NotifyBySessionRun(int channelID) const
 /// \param steps 运行的步数，由于可能存在循环下沉，所以1个session run 对应N步
 void HybridMgmt::CountStepBySessionRun(int channelID, int steps) const
 {
+    if (!isInitialized) {
+        throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
+    }
+
     hybridMgmtBlock->CountPythonStep(channelID, steps);
 }
 
@@ -1008,6 +1040,11 @@ void HybridMgmt::CountStepBySessionRun(int channelID, int steps) const
 int64_t HybridMgmt::GetTableSize(const string& embName) const
 {
 #ifndef GTEST
+    if (!isInitialized) {
+        LOG_ERROR("HybridMgmt not initialized. Call Initialize first.");
+        return -1;
+    }
+
     if (mgmtRankInfo.useDynamicExpansion) {
         int64_t size = preprocess->GetExpansionTableSize(embName);
         LOG_INFO(MGMT + "dynamic expansion mode, get emb:[{}] size:{}", embName, size);
@@ -1048,6 +1085,11 @@ int64_t HybridMgmt::GetTableSize(const string& embName) const
 int64_t HybridMgmt::GetTableCapacity(const string& embName) const
 {
 #ifndef GTEST
+    if (!isInitialized) {
+        LOG_ERROR("HybridMgmt not initialized. Call Initialize first.");
+        return -1;
+    }
+
     if (mgmtRankInfo.useDynamicExpansion) {
         int64_t capacity = preprocess->GetExpansionTableCapacity(embName);
         LOG_INFO(MGMT + "dynamic expansion mode, get emb:[{}] capacity:{}", embName, capacity);
