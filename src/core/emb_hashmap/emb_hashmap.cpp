@@ -7,11 +7,8 @@
 
 #include "emb_hashmap.h"
 #include <fstream>
-#include <iomanip>
 #include <mpi.h>
 
-#include "checkpoint/checkpoint.h"
-#include "hd_transfer/hd_transfer.h"
 #include "hybrid_mgmt/hybrid_mgmt_block.h"
 #include "utils/common.h"
 
@@ -56,21 +53,19 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, DDRPara
 #ifndef GTEST
     EASY_FUNCTION(profiler::colors::Pink)
     TimeCost swapTimeCost;
-    auto& embHashMap = embHashMaps.at(embName);
+    auto it = embHashMaps.find(embName);
+    if (it == embHashMaps.end()) {
+        throw runtime_error("table not exist in embHashMaps");
+    }
+    auto &embHashMap = it->second;
     embHashMap.devOffset2KeyOld.clear();
     embHashMap.oldSwap.clear();
     embHashMap.maxOffsetOld = embHashMap.maxOffset;
 
     auto keepBatch = swapId; // 处理batch的次数，多个预取一起处理算一次
 
-    LOG_DEBUG("FindOffset version:{}", GlobalEnv::findOffsetV2);
-
     // 找到所有key的偏移；dev和host需要交换的位置
-    if (GlobalEnv::findOffsetV2) {
-        FindAndUpdateOffset(embName, keys, swapId, keepBatch, channelId);
-    } else {
-        FindOffset(embName, keys, swapId, keepBatch, channelId);
-    }
+    FindOffset(embName, keys, swapId, keepBatch, channelId);
     LOG_DEBUG("FindOffset end");
 
     // 调用刷新频次数据方法
@@ -118,100 +113,6 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, DDRPara
     swapId++;
     EASY_END_BLOCK
 #endif
-}
-
-/*
- * 从embHashMaps获取key对应的位置，并更新devOffset2Batch
- */
-#ifndef GTEST
-void EmbHashMap::FindAndUpdateOffset(const string& embName, vector<emb_key_t>& keys,
-                                     size_t currentBatchId, size_t keepBatchId, int channelId)
-{
-    EASY_FUNCTION()
-    size_t keySize = keys.size();
-    auto& embHashMap = embHashMaps.at(embName);
-    FindAndUpdateBatchId(keys, currentBatchId, keySize, embHashMap);
-    const int devVocabSize = static_cast<int>(embHashMap.devVocabSize);
-    for (size_t i = 0; i < keySize; i++) {
-        auto key = keys[i];
-        if (key == -1) {
-            continue;
-        }
-        auto& offset = embHashMap.lookUpVec[i];
-        if (offset == INVALID_KEY_VALUE && channelId == TRAIN_CHANNEL_ID) {
-            offset = FindNewOffset(key, embHashMap);
-            if (offset < devVocabSize) {
-                embHashMap.devOffset2KeyOld.emplace_back(offset, embHashMap.devOffset2Key[offset]);
-                embHashMap.devOffset2Key[offset] = key;
-                embHashMap.devOffset2Batch[offset] = static_cast<int>(currentBatchId);
-            }
-        }
-        if (offset >= devVocabSize) {
-            embHashMap.missingKeysHostPos.emplace_back(offset - embHashMap.devVocabSize);
-            offset = FindSwapPosV2(embName, key, offset, currentBatchId, keepBatchId);
-        }
-    }
-}
-
-int32_t EmbHashMap::FindNewOffset(const emb_key_t& key, EmbHashMapInfo& embHashMap) const
-{
-    int32_t offset;
-    const auto& iter = embHashMap.hostHashMap.find(key);
-    if (iter != embHashMap.hostHashMap.end()) { // 由于未全局去重，需要再次查询确保是新key
-        offset = static_cast<int32_t>(iter->second);
-    } else if (embHashMap.evictDevPos.size() != 0) { // 优先复用hbm表
-        offset = static_cast<int32_t>(embHashMap.evictDevPos.back());
-        embHashMap.hostHashMap[key] = offset;
-        LOG_TRACE("ddr mode, dev evictPos is not null, key [{}] reuse offset [{}], evictSize [{}]",
-            key, offset, embHashMap.evictDevPos.size());
-        embHashMap.evictDevPos.pop_back();
-    } else if (embHashMap.evictPos.size() != 0) { // hbm不足，再复用ddr表
-        offset = static_cast<int32_t>(embHashMap.evictPos.back());
-        embHashMap.hostHashMap[key] = offset;
-        LOG_TRACE("ddr mode, host evictPos is not null, key [{}] reuse offset [{}], evictSize [{}]",
-            key, offset, embHashMap.evictPos.size());
-        embHashMap.evictPos.pop_back();
-    } else {
-        embHashMap.hostHashMap[key] = embHashMap.maxOffset;
-        offset = static_cast<int32_t>(embHashMap.maxOffset);
-        embHashMap.maxOffset++;
-        if (embHashMap.maxOffset == embHashMap.devVocabSize) {
-            LOG_INFO("start using host vocab!");
-        }
-        if (embHashMap.maxOffset > embHashMap.hostVocabSize + embHashMap.devVocabSize) {
-            LOG_ERROR("hostVocabSize too small! dev:{} host:{}", embHashMap.devVocabSize,
-                embHashMap.hostVocabSize);
-            throw runtime_error("hostVocabSize too small");
-        }
-    }
-    return offset;
-}
-
-void EmbHashMap::FindAndUpdateBatchId(vector<emb_key_t>& keys, size_t currentBatchId, size_t keySize,
-                                      EmbHashMapInfo& embHashMap) const
-{
-    EASY_FUNCTION()
-    for (size_t i = 0; i < keySize; i++) {
-        int offset;
-        auto& key = keys[i];
-        if (key == -1) {
-            continue;
-        }
-        const auto& iter = embHashMap.hostHashMap.find(key);
-        if (iter != embHashMap.hostHashMap.end()) { // found
-            if (GlobalEnv::findOffsetV3) {
-                key = -1;
-            }
-            offset = static_cast<int>(iter->second);
-            embHashMap.lookUpVec.emplace_back(offset); // convert to offset(current)
-
-            if (offset < static_cast<int>(embHashMap.devVocabSize)) {
-                embHashMap.devOffset2Batch[offset] = static_cast<int>(currentBatchId);
-            }
-        } else {
-            embHashMap.lookUpVec.emplace_back(INVALID_KEY_VALUE);
-        }
-    }
 }
 
 auto EmbHashMap::GetHashMaps() -> absl::flat_hash_map<string, EmbHashMapInfo>
@@ -317,42 +218,6 @@ void EmbHashMap::EvictDeleteEmb(const string& embName, const vector<emb_key_t>& 
     LOG_TRACE("hostHashMap, {}", MapToString(embHashMaps[embName].hostHashMap));
 }
 
-/*
- * 利用devOffset2Batch上key最近使用的batchId，来选择需要淘汰的key，记录淘汰位置和device侧所需的keys
- */
-int EmbHashMap::FindSwapPosV2(const string& embName, emb_key_t key, size_t hostOffset, size_t currentBatchId,
-                              size_t keepBatchId)
-{
-    bool notFind = true;
-    auto& embHashMap = embHashMaps.at(embName);
-    int newDevOffset;
-    while (notFind) {
-        if (embHashMap.devOffset2Batch[embHashMap.currentUpdatePos] < static_cast<int>(keepBatchId)) {
-            embHashMap.devOffset2Batch[embHashMap.currentUpdatePos] = static_cast<int>(currentBatchId);
-            embHashMap.swapPos.emplace_back(embHashMap.currentUpdatePos);
-            newDevOffset = static_cast<int>(embHashMap.currentUpdatePos);
-            embHashMap.hostHashMap[key] = embHashMap.currentUpdatePos;
-            embHashMap.devOffset2KeyOld.emplace_back(embHashMap.currentUpdatePos,
-                                                     embHashMap.devOffset2Key[embHashMap.currentUpdatePos]);
-            auto& oldKey = embHashMap.devOffset2Key[embHashMap.currentUpdatePos];
-            embHashMap.oldSwap.emplace_back(oldKey, key);
-            embHashMap.hostHashMap[oldKey] = hostOffset;
-            oldKey = key;
-            notFind = false;
-        }
-        embHashMap.currentUpdatePos++;
-        embHashMap.freeSize--;
-        if (embHashMap.currentUpdatePos == embHashMap.devVocabSize) {
-            embHashMap.currentUpdatePos = 0;
-        }
-        if (embHashMap.currentUpdatePos == embHashMap.currentUpdatePosStart) {
-            LOG_ERROR("devVocabSize is too small");
-            throw runtime_error("devVocabSize is too small");
-        }
-    }
-    return newDevOffset;
-}
-#endif
 
 /// 从embHashMaps获取key对应的位置，构造查询向量；更新devOffset2Batch；记录dev与host需要交换的偏移
 /// \param embName 表名
@@ -365,7 +230,11 @@ void EmbHashMap::FindOffset(const string& embName, const vector<emb_key_t>& keys
 {
     EASY_FUNCTION()
     size_t keySize = keys.size();
-    auto& embHashMap = embHashMaps.at(embName);
+    auto it = embHashMaps.find(embName);
+    if (it == embHashMaps.end()) {
+        throw runtime_error("table not exist in embHashMaps");
+    }
+    auto &embHashMap = it->second;
     UpdateBatchId(keys, currentBatchId, keySize, embHashMap);
     for (size_t i = 0; i < keySize; i++) {
         auto key = keys[i];
@@ -465,6 +334,7 @@ void EmbHashMap::UpdateBatchId(const vector<emb_key_t>& keys, size_t currentBatc
 
             LOG_TRACE("key will be used, {} , offset , {}", key, offset);
             if (offset < embHashMap.devVocabSize) {
+                // devOffset2Batch size equal to devVocabSize, unnecessary to check index boundary
                 embHashMap.devOffset2Batch[offset] = static_cast<int>(currentBatchId);
             }
         }
@@ -482,9 +352,17 @@ bool EmbHashMap::FindSwapPosOld(const string& embName, emb_key_t key, size_t hos
                                 size_t keepBatchId)
 {
     bool notFind = true;
-    auto& embHashMap = embHashMaps.at(embName);
+    auto it = embHashMaps.find(embName);
+    if (it == embHashMaps.end()) {
+        throw runtime_error("table not exist in embHashMaps");
+    }
+    auto &embHashMap = it->second;
     while (notFind) {
         // 找到本次预取之前的偏移（保证所有预取batch的key都在HBM中）
+        if (embHashMap.currentUpdatePos >= embHashMap.devOffset2Batch.size()) {
+            throw runtime_error("currentUpdatePos out of range");
+        }
+
         if (embHashMap.devOffset2Batch[embHashMap.currentUpdatePos] < static_cast<int>(keepBatchId)) {
             embHashMap.devOffset2Batch[embHashMap.currentUpdatePos] = static_cast<int>(currentBatchId);
             embHashMap.swapPos.emplace_back(embHashMap.currentUpdatePos); // 记录需要被换出的HBM偏移
@@ -545,7 +423,11 @@ void EmbHashMap::AddCacheManagerTraceLog(const string& embTableName, const EmbHa
     }
     auto& hostMap = embHashMap.hostHashMap;
     auto& devSize = embHashMap.devVocabSize;
-    auto& lfu = cacheManager->ddrKeyFreqMap[embTableName];
+    auto iter = cacheManager->ddrKeyFreqMap.find(embTableName);
+    if (iter == cacheManager->ddrKeyFreqMap.end()) {
+        throw runtime_error("table not in ddrKeyFreqMap");
+    }
+    auto &lfu = iter->second;
     const auto& lfuTab = lfu.GetFreqTable();
     if (lfuTab.empty()) {
         return;
