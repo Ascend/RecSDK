@@ -15,6 +15,11 @@
 namespace MxRec {
     using namespace std;
 
+    constexpr float TRUNCATED_NORMAL_STDDEV_MAX = 100;
+    constexpr float TRUNCATED_NORMAL_STDDEV_MIN = -100;
+    constexpr float TRUNCATED_NORMAL_MEAN_MAX = 1e9;
+    constexpr float TRUNCATED_NORMAL_MEAN_MIN = -1e9;
+
     class TruncatedNormalInitializer : public Initializer {
     public:
         TruncatedNormalInitializer() = default;

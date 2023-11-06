@@ -53,10 +53,10 @@ namespace MxRec {
         constexpr static int TEST_EMB_SIZE = 12;
         EmbInfo embInfo;
         RankInfo rankInfo;
-        int blockSize = 1;
+        size_t blockSize = 1;
         int embSize = 1;
-        int totalCapacity = 1;
-        int usedCapacity = 0;
+        size_t totalCapacity = 1;
+        size_t usedCapacity = 0;
         int seed = 0;
         // embedding地址的列表
         list<float*> embeddingList;
