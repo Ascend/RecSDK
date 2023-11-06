@@ -119,8 +119,14 @@ void Table::Save(int step)
     for (const auto &f: fileSet) {
         uint64_t fid = f->GetFileID();
         metaFile.write(reinterpret_cast<char const *>(&fid), sizeof(fid));
-        SetTablePathToDiskWithSpace();
+        try {
+            SetTablePathToDiskWithSpace();
+        } catch (runtime_error &e) {
+            metaFile.close();
+            throw runtime_error(StringFormat("set table path to disk with space error:{}", e.what()));
+        }
         if (!fs::exists(curTablePath) && !fs::create_directories(curTablePath)) {
+            metaFile.close();
             throw runtime_error("fail to create table directory");
         }
         f->Save(curTablePath, step);
@@ -128,6 +134,7 @@ void Table::Save(int step)
 
     metaFile.flush();
     if (metaFile.fail()) {
+        metaFile.close();
         throw runtime_error("fail to Save table meta file");
     }
 
@@ -211,25 +218,34 @@ void Table::Load(const string &metaFilePath, int step)
     uint32_t nameSize;
     metaFile->read(reinterpret_cast<char *>(&nameSize), sizeof(nameSize));
     if (metaFile->fail()) {
+        metaFile->close();
         throw invalid_argument("fail to read table name size");
     }
     if (nameSize > maxNameSize) {
+        metaFile->close();
         throw invalid_argument("table name too large, file may broken");
     }
     char tmpArr[nameSize + 1];
     auto ec = memset_s(tmpArr, nameSize + 1, '\0', nameSize + 1);
     if (ec != EOK) {
+        metaFile->close();
         throw runtime_error("fail to init table name array");
     }
     metaFile->read(tmpArr, static_cast<long>(nameSize));
     tmpArr[nameSize] = '\0';
     string tbNameInFile = tmpArr;
     if (name != tbNameInFile) {
+        metaFile->close();
         throw invalid_argument("table name not match");
     }
 
     // construct file set
-    LoadDataFileSet(metaFile, step);
+    try {
+        LoadDataFileSet(metaFile, step);
+    } catch (exception &e) {
+        metaFile->close();
+        throw runtime_error(StringFormat("load data file set error:{}", e.what()));
+    }
     metaFile->close();
     if (metaFile->fail()) {
         throw runtime_error("fail to load table");

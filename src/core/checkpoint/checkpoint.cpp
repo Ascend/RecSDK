@@ -689,8 +689,13 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
         char* mappedData = static_cast<char*>(tempMappedData);
 
         // 处理映射的数据
-        HandleMappedData(mappedData, mapRowNum, onceReadByteSize, dst, i);
-
+        try {
+            HandleMappedData(mappedData, mapRowNum, onceReadByteSize, dst, i);
+        } catch (const std::runtime_error& e) {
+            close(fd);
+            munmap(mappedData, mapByteSize);
+            throw runtime_error(StringFormat("handle mapped data error: %s", e.what()));
+        }
         munmap(mappedData, mapByteSize);
 
         offset += mapByteSize;
