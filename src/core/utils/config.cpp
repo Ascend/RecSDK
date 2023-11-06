@@ -22,8 +22,6 @@ namespace MxRec {
     string GlobalEnv::applyGradientsStrategy = ApplyGradientsStrategyOptions::DIRECT_APPLY;
     int GlobalEnv::aclTimeout = -1; // 默认阻塞方式，一直等待直到数据接收完成。
     int GlobalEnv::hdChannelSize = 40; // 默认通道深度40
-    bool GlobalEnv::findOffsetV2 = false;
-    bool GlobalEnv::findOffsetV3 = false;
     int GlobalEnv::keyProcessThreadNum = 6; // 默认6个线程
     int GlobalEnv::maxUniqueThreadNum = 8; // 默认最大8个线程
     bool GlobalEnv::fastUnique = false;
@@ -52,18 +50,6 @@ namespace MxRec {
         const char *envHDChannelSize = getenv(RecEnvNames::HD_CHANNEL_SIZE);
         if (envHDChannelSize != nullptr) {
             GlobalEnv::hdChannelSize = std::stoi(envHDChannelSize);
-        }
-
-        // 设置偏移查找策略V2
-        const char *envFindOffsetV2 = getenv(RecEnvNames::FIND_OFFSET_V2);
-        if (envFindOffsetV2 != nullptr) {
-            GlobalEnv::findOffsetV2 = (std::stoi(envFindOffsetV2) == 1);
-        }
-
-        // 设置偏移查找策略V3
-        const char *envFindOffsetV3 = getenv(RecEnvNames::FIND_OFFSET_V3);
-        if (envFindOffsetV3 != nullptr) {
-            GlobalEnv::findOffsetV3 = (std::stoi(envFindOffsetV3) == 1);
         }
 
         // 设置数据处理线程数
@@ -122,8 +108,6 @@ namespace MxRec {
                   RecEnvNames::APPLY_GRADIENTS_STRATEGY, GlobalEnv::applyGradientsStrategy,
                   RecEnvNames::ACL_TIMEOUT, GlobalEnv::aclTimeout,
                   RecEnvNames::HD_CHANNEL_SIZE, GlobalEnv::hdChannelSize,
-                  RecEnvNames::FIND_OFFSET_V2, GlobalEnv::findOffsetV2,
-                  RecEnvNames::FIND_OFFSET_V3, GlobalEnv::findOffsetV3,
                   RecEnvNames::KEY_PROCESS_THREAD_NUM, GlobalEnv::keyProcessThreadNum,
                   RecEnvNames::MAX_UNIQUE_THREAD_NUM, GlobalEnv::maxUniqueThreadNum,
                   RecEnvNames::FAST_UNIQUE, GlobalEnv::fastUnique,
