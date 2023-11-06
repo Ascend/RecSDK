@@ -66,7 +66,10 @@ bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos
     }
 
     if (GlobalEnv::fastUnique) {
-        Factory::Create(factory);
+        int result = Factory::Create(factory);
+        if (result != 0) {
+            throw runtime_error(Logger::Format("create fast factory failed, error code:{}", result));
+        }
     }
 
     LOG_INFO(KEY_PROCESS "scInfo:{}, localRankSize:{}, rankSize:{}, useStatic:{}, useHot:{}",

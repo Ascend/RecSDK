@@ -25,7 +25,12 @@ def parse_hccl_json():
 
     rank_table_path = os.path.realpath(global_env.rank_table_file)
     with open(rank_table_path, "r", encoding="utf-8") as file:
-        table_hccl = json.load(file)
+        try:
+            table_hccl = json.load(file)
+        except FileNotFoundError as e:
+            raise ValueError("rank table file not found") from e
+        except json.JSONDecodeError as e:
+            raise ValueError("rank table file is unable to parse as json") from e
         if "server_list" not in table_hccl:
             raise AttributeError(f"Lack of attribute server_list.")
         if not table_hccl.get("server_list"):
