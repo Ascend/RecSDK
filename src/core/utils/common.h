@@ -162,12 +162,10 @@ namespace MxRec {
         }
 
         std::vector<T> sample;
-        void *tensorAddr = nullptr;
         std::string name;
         size_t batchSize;
         int batchId;
         int channel = 0;
-        bool isInt64; // true int64 false int32
         time_t timestamp { -1 };
     };
 
@@ -179,7 +177,6 @@ namespace MxRec {
         int batchId;
         int channelId;
         time_t timestamp { -1 };
-        bool flag; // true int64 false int32
         const void *tensor;
     };
 
