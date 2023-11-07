@@ -166,7 +166,7 @@ class SparseProcessor:
 
 
 @para_checker_decorator(check_option_list=[
-    ("table_list", ClassValidator, {"classes": (list, )})
+    ("table_list", ClassValidator, {"classes": (list, type(None))})
 ])
 def export(**kwargs):
     empty_value = 0
