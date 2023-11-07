@@ -12,7 +12,7 @@ public:
     NeedComputeAddrLen = SingleCoreAddrLen;
     if (block_idx == block_num - 1)
     {
-      NeedComputeAddrLen = addr_nums * sizeof(int64_t) - SingleCoreAddrLen * (block_num - 1);
+      NeedComputeAddrLen = addrNums * sizeof(int64_t) - SingleCoreAddrLen * (block_num - 1);
     }
     round = NeedComputeAddrLen / (roundSize * sizeof(int64_t));
 
@@ -29,40 +29,26 @@ public:
   {
     GET_TILING_DATA(constData, tiling);
     // 数据的维度数
-    int32_t update_dim = constData.update_dim;
-    int32_t embbeding_type = constData.embbeding_type;
+    dim = constData.update_dim;
     int32_t block_total_nums = block_num;
-    int32_t ub_limit = constData.ub_limit;
-    update_type = constData.update_type;
-    addr_nums = constData.addr_nums;
-    if (embbeding_type == 2)
-    {
-      singleDataSize = 2;
-    }
-    else
-    {
-      singleDataSize = 4;
-    }
+    updateType = constData.update_type;
+    addrNums = constData.addr_nums;
+
     // 缓冲区数量
-    PingpongNum = 1;
-    int min_move_num = 32 / singleDataSize;
-    // onceMoveNums表示每个数据维度需要移动的次数，(update_dim - 1 + min_move_num) / min_move_num表示除以min_move_num向下取整
-    onceMoveNums = min_move_num * ((int)(update_dim - 1 + min_move_num) / min_move_num);
-    int num_to_move = (int32_t)(update_dim - 1 + onceMoveNums) / onceMoveNums;
-    // 每个地址需要占用sizeof(int64_t)个字节，singleDataSize表示每个数据的字节数，需要使用2倍的内存空间，因为每次移动都需要复制一份数据
-    int occupyAddressBytesNum = sizeof(int64_t) + singleDataSize * onceMoveNums * num_to_move * PingpongNum * 2;
-    // 计算一轮计算中最多计算多少个addr，最后的 /4 再*4 是为了与32对齐，因为sizeof(int64_t) = 8
-    int addrMaxNum = ((int)((int)(ub_limit / occupyAddressBytesNum) / 4)) * 4;
-    int singlenum = (int)(addr_nums / block_total_nums);
+    PingpongNum = constData.ping_pong_num;
+    singleDataSize = constData.single_data_size;
+    onceMoveNums = constData.once_move_nums;
+    roundSize = constData.addr_max_num;
+
+    int singlenum = (int)(addrNums / block_total_nums);
     if (singlenum % 4)
     {
       singlenum -= singlenum % 4;
     }
-    roundSize = addrMaxNum;
+
     Veclen = roundSize * singleDataSize * onceMoveNums;
     SingleCoreAddrLen = singlenum * sizeof(int64_t);
     cache = roundSize;
-    dim = update_dim;
   }
 
   __aicore__ inline void Process()
@@ -83,13 +69,13 @@ public:
 
     if (unprocess)
     {
-      int unprocess_once_copyaddr = unprocess;
-      if (unprocess_once_copyaddr % 4 != 0)
+      int unprocessOnceCopyaddr = unprocess;
+      if (unprocessOnceCopyaddr % 4 != 0)
       {
-        unprocess_once_copyaddr += (4 - unprocess % 4);
+          unprocessOnceCopyaddr += (4 - unprocess % 4);
       }
 
-      DataCopy(srcAddrLocal, srcAddrGlobal[round * roundSize], unprocess_once_copyaddr);
+      DataCopy(srcAddrLocal, srcAddrGlobal[round * roundSize], unprocessOnceCopyaddr);
       MoveProcess(srcAddrLocal, round, unprocess);
     }
   }
@@ -110,7 +96,7 @@ private:
       inQueue.EnQue(dataLocal);
       Compute(sizes);
       LocalTensor<T> dstLocal = outQueue.DeQue<T>();
-      if (update_type == 0)
+      if (updateType == 0)
       {
         SetAtomicAdd<T>();
       }
@@ -123,7 +109,7 @@ private:
           DataCopy(dstDataGm, dstLocal[i*onceMoveNums], onceMoveNums);
         }
       }
-      if (update_type == 0)
+      if (updateType == 0)
       {
         SetAtomicNone();
       }
@@ -166,7 +152,7 @@ private:
     {
       dstDataGm.SetGlobalBuffer((__gm__ T *)(address));
 
-      if (update_type == 0)
+      if (updateType == 0)
       {
         SetAtomicAdd<T>();
       }
@@ -187,7 +173,7 @@ private:
       DataCopy(dstDataGm, dstLocal, onceMoveNums);
 #endif
     }
-    if (update_type == 0)
+    if (updateType == 0)
     {
       SetAtomicNone();
     }
@@ -195,8 +181,8 @@ private:
   }
 
 public:
-  int32_t roundSize, round, SingleCoreAddrLen, NeedComputeAddrLen, addr_nums, cache, Veclen, dim, PingpongNum;
-  int32_t onceMoveNums, singleDataSize, update_type;
+  int32_t roundSize, round, SingleCoreAddrLen, NeedComputeAddrLen, addrNums, cache, Veclen, dim, PingpongNum;
+  int32_t onceMoveNums, singleDataSize, updateType;
 
 private:
   TPipe pipe;
@@ -212,9 +198,9 @@ extern "C" __global__ __aicore__ void embedding_update_by_address(GM_ADDR addres
 {
   GET_TILING_DATA(constData, tiling);
 
-  int32_t embbeding_type = constData.embbeding_type;
+  int32_t embbedingType = constData.embbeding_type;
 
-  switch (embbeding_type)
+  switch (embbedingType)
   {
   case 0:
   {

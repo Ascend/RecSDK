@@ -33,40 +33,67 @@ namespace optiling
 
         currentWorkspace[0] = sysWorkspaceSize + usrSize;
 
-        int32_t block_total_nums = 48;
-        int32_t ub_limit = 175 * 1024;
+        int32_t blockTotalNums = 48;
+        int32_t ubLimit = 175 * 1024;
         auto *attrs = context->GetAttrs();
-        const auto *attr0_value = attrs->GetAttrPointer<int64_t>(0);
-        if (CheckNullPointer(attr0_value, " Lookup embbeding_type attr0_value") != ge::GRAPH_SUCCESS) {
+        if (CheckNullPointer(attrs, "GetAttrs attrs") != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+        const auto *attr0Value = attrs->GetAttrPointer<int64_t>(0);
+        if (CheckNullPointer(attr0Value, " Lookup embbedingType attr0Value") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
 
-        int32_t embbeding_dim = *attr0_value;
-        if (embbeding_dim <= 0) {
-            printf("embbeding_dim must larger than 0\n");
+        int32_t embbedingDim = *attr0Value;
+        if (embbedingDim <= 0) {
+            printf("embbedingDim must larger than 0\n");
             return ge::GRAPH_FAILED;
         }
 
-        const auto *attr1_value = attrs->GetAttrPointer<int64_t>(1);
-        if (CheckNullPointer(attr1_value, "Lookup embbeding_type attr1_value") != ge::GRAPH_SUCCESS) {
+        const auto *attr1Value = attrs->GetAttrPointer<int64_t>(1);
+        if (CheckNullPointer(attr1Value, "Lookup embbedingType attr1Value") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
 
-        int32_t embbeding_type = *attr1_value;
+        int32_t embbedingType = *attr1Value;
 
         auto inputTensor = context->GetInputTensor(0);
         if (CheckNullPointer(inputTensor, "inputTensor") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
 
-        int32_t input_shape = inputTensor->GetShapeSize();
+        int32_t inputShape = inputTensor->GetShapeSize();
+        int32_t singleDataSize = 4;
+        if (embbedingType == 2) {
+            singleDataSize = 2;
+        }
+        int32_t minMoveNum = 32 / singleDataSize;
 
-        tiling.set_embbeding_type(embbeding_type);
-        tiling.set_update_dim(embbeding_dim);
-        tiling.set_addr_nums(input_shape);
-        tiling.set_ub_limit(ub_limit);
+        // onceMoveNums，(embbedingDim - 1 + minMoveNum) / min_move_num表示除以min_move_num向下取整
+        int32_t onceMoveNums = minMoveNum * ((embbedingDim - 1 + minMoveNum) / minMoveNum);
 
-        context->SetBlockDim(block_total_nums);
+        int32_t numToMove = (embbedingDim - 1 + onceMoveNums) / onceMoveNums;
+        // 每个地址需要占用sizeof(int64_t)个字节，singleDataSize表示每个数据的字节数，需要使用2倍的内存空间，因为每次移动都需要复制一份数据
+        int32_t pingPongNum = 1;
+        int32_t occupyAddressBytesNum =
+                sizeof(int64_t) + singleDataSize * onceMoveNums * numToMove * pingPongNum * 2;
+        // 计算一轮计算中最多计算多少个addr，最后的 /4 再*4 是为了与32对齐，因为sizeof(int64_t) = 8
+        int32_t addrMaxNum = (((ubLimit / occupyAddressBytesNum) / 4)) * 4;
+        if (addrMaxNum <= 0) {
+            return ge::GRAPH_FAILED;
+        }
+
+        tiling.set_embbeding_type(embbedingType);
+        tiling.set_update_dim(embbedingDim);
+        tiling.set_addr_nums(inputShape);
+        tiling.set_ub_limit(ubLimit);
+
+        tiling.set_addr_max_num(addrMaxNum);
+        tiling.set_ping_pong_num(pingPongNum);
+        tiling.set_single_data_size(singleDataSize);
+        tiling.set_once_move_nums(onceMoveNums);
+
+        context->SetBlockDim(blockTotalNums);
         tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
         context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
@@ -79,8 +106,8 @@ namespace ge
     static ge::graphStatus InferShape1(gert::InferShapeContext *context)
     {
 
-        gert::Shape *y_shape = context->GetOutputShape(0);
-        if (optiling::CheckNullPointer(y_shape, "y_shape") != ge::GRAPH_SUCCESS) {
+        gert::Shape *yShape = context->GetOutputShape(0);
+        if (optiling::CheckNullPointer(yShape, "yShape") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
 
@@ -89,23 +116,23 @@ namespace ge
             return ge::GRAPH_FAILED;
         }
 
-        const auto *attr0_value = attrs->GetAttrPointer<int64_t>(0);
-        if (optiling::CheckNullPointer(attr0_value, "Lookup embbeding_type attr0_value") != ge::GRAPH_SUCCESS) {
+        const auto *attr0Value = attrs->GetAttrPointer<int64_t>(0);
+        if (optiling::CheckNullPointer(attr0Value, "Lookup embbedingType attr0Value") != ge::GRAPH_SUCCESS) {
             return GRAPH_FAILED;
         }
 
-        int64_t update_dim = *attr0_value;
+        int64_t updateDim = *attr0Value;
 
-        int64_t input_shape = context->GetInputTensor(0)->GetShapeSize();
-        y_shape->SetDimNum(2);
-        y_shape->SetDim(0, input_shape);
-        y_shape->SetDim(1, update_dim);
+        int64_t inputShape = context->GetInputTensor(0)->GetShapeSize();
+        yShape->SetDimNum(2);
+        yShape->SetDim(0, inputShape);
+        yShape->SetDim(1, updateDim);
         return GRAPH_SUCCESS;
     }
     static ge::graphStatus InferDataType1(gert::InferDataTypeContext *context)
     {
 
-        int64_t embbeding_type;
+        int64_t embbedingType;
         if (optiling::CheckNullPointer(context, "context") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -115,21 +142,21 @@ namespace ge
             return ge::GRAPH_FAILED;
         }
 
-        const auto *attr1_value = attrs->GetAttrPointer<int64_t>(1);
-        if (optiling::CheckNullPointer(attr1_value, "Lookup embbeding_type") != ge::GRAPH_SUCCESS) {
+        const auto *attr1Value = attrs->GetAttrPointer<int64_t>(1);
+        if (optiling::CheckNullPointer(attr1Value, "Lookup embbedingType") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
 
-        embbeding_type = *attr1_value;
-        if (embbeding_type == 0)
+        embbedingType = *attr1Value;
+        if (embbedingType == 0)
         {
             context->SetOutputDataType(0, ge::DataType(DT_INT32));
         }
-        else if (embbeding_type == 1)
+        else if (embbedingType == 1)
         {
             context->SetOutputDataType(0, ge::DataType(DT_FLOAT));
         }
-        else if (embbeding_type == 2)
+        else if (embbedingType == 2)
         {
 
             context->SetOutputDataType(0, ge::DataType(DT_FLOAT16));
