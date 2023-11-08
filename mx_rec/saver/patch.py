@@ -25,7 +25,7 @@ from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
 import numpy as np
 
-from mx_rec.saver.saver import Saver as SparseSaver
+from mx_rec.saver.saver import Saver as SparseSaver, check_file_system_is_valid
 from mx_rec.util.initialize import get_ascend_global_hashtable_collection, export_removing_var_list
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, StringValidator, OptionalIntValidator, \
     OptionalStringValidator, DirectoryValidator
@@ -189,9 +189,8 @@ def build(self):
 ])
 def save(self, sess, save_path, global_step=None, latest_filename=None, meta_graph_suffix="meta", write_meta_graph=True,
          write_state=True, strip_default_attrs=False, save_debug_info=False):
-    # since tf 2.6.0, tf needs tensorflow_io to support hdfs path
-    if tf.__version__.startswith("2") and save_path.find("://") != -1:
-        import tensorflow_io as tfio
+    if not check_file_system_is_valid(save_path):
+        raise ValueError(f"the path to save belong to invalid file system, only local file system supported. ")
 
     if not self._is_built and not context.executing_eagerly():
         raise RuntimeError("`build()` should be called before save if defer_build==True")
@@ -232,9 +231,8 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
 def restore(self, sess, save_path):
     if save_path is None:
         raise ValueError("Can't load save_path when it is None.")
-    # since tf 2.6.0, tf needs tensorflow_io to support hdfs path
-    if tf.__version__.startswith("2") and save_path.find("://") != -1:
-        import tensorflow_io as tfio
+    if not check_file_system_is_valid(save_path):
+        raise ValueError(f"the path to restore belong to invalid file system, only local file system supported. ")
 
     if save_path.find("://") == -1:
         directory_validator = DirectoryValidator("reading_path", save_path)
