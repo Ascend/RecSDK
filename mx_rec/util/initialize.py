@@ -41,8 +41,6 @@ class ConfigInitializer:
     ])
     def __init__(self, use_mpi=True, **kwargs):
         self._use_mpi = use_mpi
-        self._rank_id = kwargs.get("rank_id", 0)
-        self._rank_size = kwargs.get("rank_size", 1)
         self._ascend_global_hashtable_collection = ASCEND_GLOBAL_HASHTABLE_COLLECTION
         self._comm = None
         self._asc_manager = None
@@ -415,10 +413,6 @@ class ConfigInitializer:
 
     @ascend_global_hashtable_collection.setter
     def ascend_global_hashtable_collection(self, name):
-        string_validator = StringValidator(name="hashtable_collection", value=name,
-                                           max_len=HASHTABLE_COLLECTION_NAME_LENGTH, min_len=1)
-        if not string_validator.check_string_length().check_whitelist().is_valid():
-            raise ValueError(string_validator.msg)
         self._ascend_global_hashtable_collection = name
 
     def get_initializer(self, is_training):
@@ -454,7 +448,7 @@ class ConfigInitializer:
 
 @para_checker_decorator(check_option_list=[
     ("name", ClassValidator, {"classes": (str, type(None))}),
-    ("name", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
+    ("name", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length", "check_whitelist"]),
 ])
 def set_ascend_global_hashtable_collection(name=ASCEND_GLOBAL_HASHTABLE_COLLECTION):
     ConfigInitializer.get_instance().ascend_global_hashtable_collection = name
@@ -957,6 +951,11 @@ def bind_cpu(rank_id: int, local_rank_size: int):
     import math
 
     total_cpu, cpu_range_list = get_available_cpu_num_and_range()
+
+    if local_rank_size <= 0:
+        logger.error(f"local rank size 's value less than or equal 0.")
+        return
+
     avg_count = math.ceil(total_cpu / local_rank_size)
     while True:
         if avg_count == 0:
