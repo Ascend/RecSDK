@@ -839,7 +839,9 @@ void HybridMgmt::EmbHDTransWrap(int channelId, const int& batchId, int start)
     TimeCost hostEmbsTC;
     hostEmbs->Join(channelId);
     LOG_DEBUG("hostEmbsTC(ms):{}", hostEmbsTC.ElapsedMS());
-
+    if (!isRunning) {
+        return;
+    }
     EmbHDTrans(channelId, batchId);
 }
 
