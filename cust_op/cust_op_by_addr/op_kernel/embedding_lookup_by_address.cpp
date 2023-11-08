@@ -1,4 +1,3 @@
-
 #include "kernel_operator.h"
 using namespace AscendC;
 template <typename T>
@@ -32,39 +31,24 @@ public:
   {
     GET_TILING_DATA(constData, tiling);
     // 数据的维度数
-    int32_t updateDim = constData.update_dim;
-    int32_t embeddingType = constData.embbeding_type;
+    dim = constData.update_dim;
     int32_t blockTotalNums = block_num;
-    int32_t ubLimit = constData.ub_limit;
     addrNums = constData.addr_nums;
-    if (embeddingType == 2)
-    {
-      singleDataSize = 2;
-    }
-    else
-    {
-      singleDataSize = 4;
-    }
     // 缓冲区数量
-    PingpongNum = 1;
-    int minMoveNum = 32 / singleDataSize;
-    // onceMoveNums表示每个数据维度需要移动的次数，(update_dim - 1 + minMoveNum) / minMoveNum表示除以minMoveNum向下取整
-    onceMoveNums = minMoveNum * ((int)(updateDim - 1 + minMoveNum) / minMoveNum);
-    int numToMove = (int32_t)(updateDim - 1 + onceMoveNums) / onceMoveNums;
-    // 每个地址需要占用sizeof(int64_t)个字节，singleDataSize表示每个数据的字节数，需要使用2倍的内存空间，因为每次移动都需要复制一份数据
-    int occupyAddressBytesNum = sizeof(int64_t) + singleDataSize * onceMoveNums * numToMove * PingpongNum * 2;
-    // 计算一轮计算中最多计算多少个addr，最后的 /4 再*4 是为了与32对齐，因为sizeof(int64_t) = 8
-    int addrMaxNum = ((int)((int)(ubLimit / occupyAddressBytesNum) / 4)) * 4;
+    PingpongNum = constData.ping_pong_num;
+    singleDataSize = constData.single_data_size;
+    onceMoveNums = constData.once_move_nums;
+    roundSize = constData.addr_max_num;
+
     int singleNum = (int)(addrNums / blockTotalNums);
     if (singleNum % 4)
     {
       singleNum -= singleNum % 4;
     }
-    roundSize = addrMaxNum;
+
     Veclen = roundSize * singleDataSize * onceMoveNums;
     SingleCoreAddrLen = singleNum * sizeof(int64_t);
     cache = roundSize;
-    dim = updateDim;
   }
 
   __aicore__ inline void Process()
@@ -184,7 +168,7 @@ private:
 public:
   int32_t roundSize, round, SingleCoreAddrLen, NeedComputeAddrLen, cache, Veclen, dim, PingpongNum;
   int32_t addrNums;
-  int32_t onceMoveNums, singleDataSize, update_type;
+  int32_t onceMoveNums, singleDataSize, updateType;
 
 private:
   TPipe pipe;
