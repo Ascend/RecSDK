@@ -88,8 +88,7 @@ class Saver(object):
     @performance("Save")
     def save(self, sess, save_path="model", global_step=None):
         """
-        Save sparse tables. For local save, both save_easy mode and normal mode is supported. For HDFS save,
-        only save_easy mode is supported.
+        Save sparse tables. For local save, both save_easy mode and normal mode is supported.
         For easy_save mode, checkpoint is saved in under format:
         ./rank_id/HashTable/HBM/embed_table_name/key/xxx.data
         ./rank_id/HashTable/HBM/embed_table_name/key/xxx.attribute
