@@ -47,11 +47,6 @@ namespace MxRec {
             OP_REQUIRES_OK(context, context->GetAttr("channel_id", &channelId));
 
             if (channelId < 0 || channelId >= MAX_CHANNEL_NUM) {
-                throw runtime_error(StringFormat(
-                    "channelId is invalid, It should be in range [0, %d)", MAX_CHANNEL_NUM));
-            }
-
-            if (channelId < 0 || channelId >= MAX_CHANNEL_NUM) {
                 context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ", StringFormat(
                     "ClearChannel channelId invalid. It should be in range [0, MAX_CHANNEL_NUM:%d)",
                     MAX_CHANNEL_NUM)));
@@ -525,52 +520,6 @@ namespace MxRec {
         HybridMgmtBlock* hybridMgmtBlock;
     };
 
-    class ReadEmbKeyDatasetDummy : public OpKernel {
-    public:
-        explicit ReadEmbKeyDatasetDummy(OpKernelConstructionPtr context) : OpKernel(context)
-        {
-            OP_REQUIRES_OK(context, context->GetAttr("max_lookup_len", &lookupLen));
-        }
-
-        ~ReadEmbKeyDatasetDummy() override = default;
-
-        void Compute(OpKernelContextPtr context) override
-        {
-            EASY_FUNCTION();
-            TimeCost tc = TimeCost();
-            const Tensor& inputTensor = context->input(TensorIndex::TENSOR_INDEX_0);
-            auto input = inputTensor.flat<int64>();
-            const int restoreLen = static_cast<int>(input.size());
-
-            // write lookup & restore vec
-            Tensor* lookupVec = nullptr;
-            Tensor* restoreVecTensor = nullptr;
-
-            OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape { lookupLen }, &lookupVec));
-            OP_REQUIRES_OK(context, context->allocate_output(1, TensorShape { restoreLen }, &restoreVecTensor));
-            auto l = lookupVec->flat<int32>();
-            auto r = restoreVecTensor->flat<int32>();
-
-            // check whether lookupLen is zero
-            if (lookupLen == 0) {
-                throw runtime_error("lookupLen is 0, it causes the denominator to be 0 during division");
-            }
-
-            // dummy data
-            for (int i { 0 }; i < lookupLen; ++i) {
-                l(i) = i;
-            }
-            for (int i { 0 }; i < restoreLen; ++i) {
-                r(i) = i % lookupLen;
-            }
-            LOG_WARN("dummy read batch cost: {},elapsed from last {}",
-                     tc.ElapsedMS(), g_staticSw.ElapsedMS());
-            tc = TimeCost();
-        }
-
-        int lookupLen {};
-    };
-
     class CustOps : public OpKernel {
     public:
         explicit CustOps(OpKernelConstructionPtr context) : OpKernel(context)
@@ -643,24 +592,6 @@ return Status::OK();
 });
 
 REGISTER_KERNEL_BUILDER(Name("ReadEmbKeyV2").Device(DEVICE_CPU), MxRec::ReadEmbKeyV2);
-
-// ##################### ReadEmbKeyDatasetDummy #######################
-REGISTER_OP("ReadEmbKeyDatasetDummy")
-.Input("sample: T")
-.Output("lookup_vec: int32")
-.Output("restore_vec: int32")
-.Attr("T: {int64}")
-.Attr("max_lookup_len: int")
-.SetShapeFn([](InferenceContextPtr c) {
-int temp;
-TF_RETURN_IF_ERROR(c->GetAttr("max_lookup_len", &temp));
-c->set_output(TensorIndex::TENSOR_INDEX_0, c->Vector(temp));
-c->set_output(TensorIndex::TENSOR_INDEX_1, c->input(TensorIndex::TENSOR_INDEX_0));
-return Status::OK();
-});
-
-REGISTER_KERNEL_BUILDER(Name("ReadEmbKeyDatasetDummy").Device(DEVICE_CPU), MxRec::ReadEmbKeyDatasetDummy);
-
 
 REGISTER_OP("EmbeddingLookupByAddress")
 .Input("address: int64")
