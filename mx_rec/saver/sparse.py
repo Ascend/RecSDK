@@ -16,7 +16,7 @@ from mx_rec.util.log import logger
 class SparseProcessor:
     single_instance = None
 
-    def __init__(self, **kwargs):
+    def __init__(self, table_list):
         self.export_name = "key-emb"
         self.device_dir_list = ["HashTable", "HBM"]
         self.host_dir_list = ["HashTable", "DDR"]
@@ -28,7 +28,7 @@ class SparseProcessor:
         self.attrib_suffix = ".attribute"
         self.json_attrib_dtype = "data_type"
         self.json_attrib_shape = "shape"
-        self.table_list = kwargs.get("table_list")
+        self.table_list = table_list
         self.default_table_list = list(export_table_name_set())
 
         if not self.table_list:
@@ -38,8 +38,8 @@ class SparseProcessor:
             self.table_list = check_table_param(self.table_list, self.default_table_list)
 
     @staticmethod
-    def set_instance(**kwargs):
-        SparseProcessor.single_instance = SparseProcessor(**kwargs)
+    def set_instance(table_list):
+        SparseProcessor.single_instance = SparseProcessor(table_list)
 
     @staticmethod
     def _get_data(data_dir, dtype, data_shape):
@@ -166,11 +166,11 @@ class SparseProcessor:
 
 
 @para_checker_decorator(check_option_list=[
-    ("table_list", ClassValidator, {"classes": (list, )})
+    ("table_list", ClassValidator, {"classes": (list, type(None))})
 ])
-def export(**kwargs):
+def export(table_list=None):
     empty_value = 0
-    SparseProcessor.set_instance(**kwargs)
+    SparseProcessor.set_instance(table_list)
     if SparseProcessor.single_instance.table_list:
         return SparseProcessor.single_instance.export_sparse_data()
     else:

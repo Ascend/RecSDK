@@ -55,7 +55,7 @@ namespace MxRec {
     constexpr int DEFAULT_KEY_PROCESS_THREAD = 6;
     constexpr int KEY_PROCESS_THREAD = 6;
     constexpr char SUM_SAME_ID[] = "sum_same_id_gradients_and_apply";
-    constexpr int MAX_VOCABULARY_SIZE = 1e9;
+    constexpr size_t MAX_VOCABULARY_SIZE = 1e10;
     constexpr int SSD_SIZE_INDEX = 2;
     constexpr int MAX_FILE_NUM = 1000;
     // for GLOG
