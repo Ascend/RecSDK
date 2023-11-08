@@ -175,13 +175,13 @@ def build(self):
 
 @para_checker_decorator(check_option_list=[
     ("sess", ClassValidator, {"classes": (tf.compat.v1.Session, tf.compat.v1.train.MonitoredSession)}),
-    ("save_path", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
+    ("save_path", StringValidator, {"min_len": 1, "max_len": 150}, ["check_string_length"]),
     ("global_step", ClassValidator, {"classes": (int, np.int64, type(None))}),
     ("global_step", OptionalIntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
     ("latest_filename", ClassValidator, {"classes": (str, type(None))}),
-    ("latest_filename", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
+    ("latest_filename", OptionalStringValidator, {"min_len": 1, "max_len": 50}, ["check_string_length"]),
     ("meta_graph_suffix", ClassValidator, {"classes": (str, type(None))}),
-    ("meta_graph_suffix", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
+    ("meta_graph_suffix", OptionalStringValidator, {"min_len": 1, "max_len": 50}, ["check_string_length"]),
     ("write_meta_graph", ClassValidator, {"classes": (bool, type(None))}),
     ("write_state", ClassValidator, {"classes": (bool, type(None))}),
     ("strip_default_attrs", ClassValidator, {"classes": (bool, type(None))}),
@@ -227,7 +227,7 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
 
 @para_checker_decorator(check_option_list=[
     ("sess", ClassValidator, {"classes": (tf.compat.v1.Session, tf.compat.v1.train.MonitoredSession)}),
-    ("save_path", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
+    ("save_path", StringValidator, {"min_len": 1, "max_len": 150}, ["check_string_length"]),
 ])
 def restore(self, sess, save_path):
     if save_path is None:
