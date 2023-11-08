@@ -24,6 +24,8 @@ from mx_rec.constants.constants import MAX_INT32
     ("tgt_key_specs", ClassValidator, {"classes": (FeatureSpec, list, tuple, type(None))}),
     ("args_index_list", ClassValidator, {"classes": (list, type(None))}),
     ("table_names", ClassValidator, {"classes": (list, type(None))}),
+    ("is_training", ClassValidator, {"classes": (bool, type(None))}),
+    ("dump_graph", ClassValidator, {"classes": (bool, type(None))}),
 ])
 def get_asc_insert_func(tgt_key_specs=None, args_index_list=None, table_names=None, **kwargs):
     '''
