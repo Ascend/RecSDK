@@ -45,11 +45,13 @@ def init_dataset(self, input_data):
 
 
 @para_checker_decorator(check_option_list=[
-    ("fetches", ClassValidator, {"classes": (str, tf.Operation, tf.Tensor, tf.sparse.SparseTensor, list, tuple, dict)}),
-    ("feed_dict", ClassValidator, {"classes": (tf.Tensor, tf.sparse.SparseTensor, list, tuple, dict, type(None))}),
+    ("fetches", ClassValidator, {"classes": (str, tf.Operation, tf.Variable, tf.Tensor,
+                                             tf.sparse.SparseTensor, list, tuple, dict)}),
+    ("feed_dict", ClassValidator, {"classes": (tf.Variable, tf.Tensor, tf.sparse.SparseTensor,
+                                               list, tuple, dict, type(None))}),
     ("options", ClassValidator, {"classes": (tf.compat.v1.RunOptions, type(None))}),
     ("run_metadata", ClassValidator, {"classes": (tf.compat.v1.RunMetadata, type(None))}),
-])
+], output_log=False)
 def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
 
     """
