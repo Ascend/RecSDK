@@ -21,7 +21,6 @@ namespace tensorflow {
 
     Status RecvTensorByAcl(const acltdtChannelHandle* aclHandle, std::vector<Tensor>& tensors);
 
-    Status StopRecvTensorByAcl(acltdtChannelHandle **handle, const std::string &channelName);
 
 #endif
 
