@@ -16,8 +16,17 @@ File::File(uint64_t fileID, string &fileDir) : fileID(fileID), fileDir(fileDir)
 {
     LOG_DEBUG("start init file, fileID:{}", fileID);
 
-    if (!fs::exists(fs::absolute(fileDir)) && (!fs::create_directories(fs::absolute(fileDir)))) {
-        throw runtime_error("fail to create Save directory");
+    if (!fs::exists(fs::absolute(fileDir))) {
+        if (!fs::create_directories(fs::absolute(fileDir))) {
+            throw runtime_error("fail to create Save directory");
+        }
+        try {
+            fs::permissions(fileDir, fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec);
+        } catch (runtime_error &e) {
+            LOG_ERROR("fail to change permission of {}", fileDir.c_str());
+            fs::remove_all(fileDir);
+            throw;
+        }
     }
 
     // latest file is temporary, unnecessary to check file existence and privilege
@@ -27,12 +36,24 @@ File::File(uint64_t fileID, string &fileDir) : fileID(fileID), fileDir(fileDir)
     if (!localFileMeta.is_open()) {
         throw runtime_error("fail to create meta file");
     }
-    fs::permissions(metaFilePath, fs::perms::owner_read | fs::perms::owner_write);
+    try {
+        fs::permissions(metaFilePath, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
+    } catch (runtime_error &e) {
+        LOG_ERROR("fail to change permission of {}", metaFilePath.c_str());
+        fs::remove_all(metaFilePath);
+        throw;
+    }
     localFileData.open(dataFilePath, ios::out | ios::in | ios::trunc | ios::binary);
     if (!localFileData.is_open()) {
         throw runtime_error("fail to create data file");
     }
-    fs::permissions(dataFilePath, fs::perms::owner_read | fs::perms::owner_write);
+    try {
+        fs::permissions(dataFilePath, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
+    } catch (runtime_error &e) {
+        LOG_ERROR("fail to change permission of {}", dataFilePath.c_str());
+        fs::remove_all(dataFilePath);
+        throw;
+    }
 
     LOG_DEBUG("end init file, fileID:{}", fileID);
 }
@@ -75,12 +96,24 @@ File::File(uint64_t fileID, string &fileDir, string &loadDir, int step) : fileID
     if (!localFileMeta.is_open()) {
         throw runtime_error("fail to Load latest meta file");
     }
-    fs::permissions(metaFilePath, fs::perms::owner_read | fs::perms::owner_write);
+    try {
+        fs::permissions(metaFilePath, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
+    } catch (runtime_error &e) {
+        LOG_ERROR("fail to change permission of {}", metaFilePath.c_str());
+        fs::remove_all(metaFilePath);
+        throw;
+    }
     localFileData.open(dataFilePath, ios::out | ios::in | ios::binary);
     if (!localFileData.is_open()) {
         throw runtime_error("fail to Load latest data file");
     }
-    fs::permissions(dataFilePath, fs::perms::owner_read | fs::perms::owner_write);
+    try {
+        fs::permissions(dataFilePath, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
+    } catch (runtime_error &e) {
+        LOG_ERROR("fail to change permission of {}", dataFilePath.c_str());
+        fs::remove_all(dataFilePath);
+        throw;
+    }
     Load();
 
     LOG_DEBUG("end init file with load, fileID:{}", fileID);

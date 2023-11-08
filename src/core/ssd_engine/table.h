@@ -42,6 +42,8 @@ namespace MxRec {
         uint64_t GetTableUsage();
 
     private:
+        static void CreateTableDir(const string& path);
+
         void Load(const string& metaFilePath, int step);
 
         void InsertEmbeddingsInner(vector<emb_key_t> &keys, vector<vector<float>> &embeddings);
