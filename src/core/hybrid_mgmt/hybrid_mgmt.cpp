@@ -488,6 +488,10 @@ bool HybridMgmt::LoadMatchesDDRSetup(const CkptData& loadData)
 {
     size_t embTableCount { 0 };
     auto loadHostEmbs { loadData.hostEmbs };
+    if (loadHostEmbs == nullptr) {
+        LOG_ERROR(MGMT + "Host Embedding of load checkpoint data is nullptr!");
+        return false;
+    }
     for (EmbInfo setupHostEmbs : mgmtEmbInfo) {
         if (!IsLoadDataMatches(*loadHostEmbs, setupHostEmbs, embTableCount)) {
             return false;
@@ -630,15 +634,16 @@ bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
         }
 
         // 动态shape场景下，获取all2all向量（通信量矩阵）
+        TimeCost sendTensorsSyncTC;
         unique_ptr<vector<Tensor>> all2all = nullptr;
         if (!mgmtRankInfo.useStatic) {
             all2all = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::ALL2ALL);
-        }
-        LOG_DEBUG("getTensorsSyncTC(ms):{}", getTensorsSyncTC.ElapsedMS());
-
-        // 动态shape场景下，发送all2all向量（通信量矩阵）
-        TimeCost sendTensorsSyncTC;
-        if (!mgmtRankInfo.useStatic) {
+            LOG_DEBUG("getTensorsSyncTC(ms):{}", getTensorsSyncTC.ElapsedMS());
+            if (all2all == nullptr) {
+                LOG_ERROR("Information vector is nullptr!");
+                return false;
+            }
+            sendTensorsSyncTC = TimeCost();
             TimeCost sendAll2AllScSyncTC;
             hdTransfer->Send(TransferChannel::ALL2ALL, *all2all, channelId, embInfo.name);
             LOG_DEBUG("sendAll2AllScSyncTC(ms):{}", sendAll2AllScSyncTC.ElapsedMS());
@@ -749,6 +754,11 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId, int cha
 {
     TimeCost getAndSendTensorsTC;
     TimeCost getTensorsTC;
+
+    if (hostHashMaps->embHashMaps.find(embName) == hostHashMaps->embHashMaps.end()) {
+        LOG_ERROR("Failed to get embedding hash map with given name: {}", embName);
+        return false;
+    }
     auto& embHashMap = hostHashMaps->embHashMaps.at(embName);
 
     // 计数初始化
@@ -803,6 +813,10 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId, int cha
     hdTransfer->Send(TransferChannel::SWAP, ddrParam.tmpDataOut, channelId, embName);
     if (!mgmtRankInfo.useStatic) {
         auto all2all = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::ALL2ALL);
+        if (all2all == nullptr) {
+            LOG_ERROR("Information vector is nullptr!");
+            return false;
+        }
         hdTransfer->Send(TransferChannel::ALL2ALL, *all2all, channelId, embName);
     }
     LOG_DEBUG("sendTensorsTC(ms):{} getAndSendTensorsTC(ms):{}, channelId:{}",
@@ -931,6 +945,10 @@ void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
     // 初始化host侧的emb
     auto& evictOffset = hostHashMaps->GetEvictPos(embName);
     vector<size_t> evictOffset4Ddr;
+    if (hostHashMaps->embHashMaps.find(embName) == hostHashMaps->embHashMaps.end()) {
+        LOG_ERROR("Failed to get embedding hash map with given name: {}", embName);
+        return;
+    }
     auto devVocabSize = hostHashMaps->embHashMaps.at(embName).devVocabSize;
     for (auto& offsetInHostHashMap : evictOffset) {
         evictOffset4Ddr.emplace_back(offsetInHostHashMap - devVocabSize);
