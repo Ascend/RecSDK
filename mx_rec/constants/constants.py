@@ -36,6 +36,9 @@ ASCEND_TABLE_NAME_MUST_CONTAIN = None
 # to avoid op "scatter_nd_update" may get a None tensor for input
 AVOID_TENSOR_POS = 439999
 
+# while循环最大深度
+MAX_WHILE_SIZE = 800
+
 # acl通道数据深度
 DEFAULT_HD_CHANNEL_SIZE = 40
 MAX_HD_CHANNEL_SIZE = 8192

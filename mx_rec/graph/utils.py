@@ -6,9 +6,11 @@ from collections import defaultdict
 import os
 
 import tensorflow as tf
+from tensorflow.python.framework.errors_impl import InvalidArgumentError
 
 from mx_rec.constants.constants import ASCAnchorAttr, DUMP_MIDIFY_GRAPH_FILE_MODE
 from mx_rec.core.embedding import SparseEmbedding
+from mx_rec.util.log import logger
 
 
 def check_input_list(objs, obj_type):
@@ -59,9 +61,15 @@ def replace_anchor(replacement_specs: defaultdict, new_tensor_list: list):
         raise ValueError(f"Given replacement_specs and new_tensor_list must have the same length. "
                          f"replacement_specs: {replacement_specs}, new_tensor_list: {new_tensor_list}")
 
-    for tensor_idx, (_, items) in enumerate(replacement_specs.items()):
+    for tensor_idx, (old_tensor, items) in enumerate(replacement_specs.items()):
         for input_idx, operator in items:
-            operator._update_input(input_idx, new_tensor_list[tensor_idx])
+            try:
+                operator._update_input(input_idx, new_tensor_list[tensor_idx])
+            except InvalidArgumentError as err:
+                logger.info("The replacement specs keys (old batch) is: %s. \n\t\t The new_tensor_list is: %s.",
+                            replacement_specs.keys(), new_tensor_list)
+                raise RuntimeError(f"Cannot update edge, old tensor: {old_tensor}, "
+                                   f"new tensor: {new_tensor_list[tensor_idx]}.") from err
 
 
 def export_pb_graph(file_name, dump_graph, graph_def=None, export_path="./export_graph", as_text=False):
