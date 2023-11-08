@@ -18,11 +18,10 @@ Table::Table(const string &name, vector<string> &savePaths, uint64_t maxTableSiz
       maxTableSize(maxTableSize),
       compactThreshold(compactThreshold)
 {
-    curTablePath = fs::absolute(savePaths.at(curSavePathIdx) + "/" +
-        saveDirPrefix + GlogConfig::gRankId + "/" + name).string();
-    if (!fs::exists(curTablePath) && !fs::create_directories(curTablePath)) {
-        throw runtime_error("fail to create table directory");
-    }
+    auto rankPath = fs::absolute(savePaths.at(curSavePathIdx) + "/" + saveDirPrefix + GlogConfig::gRankId);
+    CreateTableDir(rankPath);
+    curTablePath = fs::absolute(rankPath.string() + "/" + name).string();
+    CreateTableDir(curTablePath);
     LOG_INFO("create table:{} at path:{}", name, curTablePath);
 }
 
@@ -39,11 +38,10 @@ Table::Table(const string &name, vector<string> &saveDirs, uint64_t maxTableSize
       compactThreshold(compactThreshold)
 {
     // always use first path to save until it's full
-    curTablePath = fs::absolute(savePaths.at(curSavePathIdx) + "/" +
-        saveDirPrefix + GlogConfig::gRankId + "/" + name).string();
-    if (!fs::exists(curTablePath) && !fs::create_directories(curTablePath)) {
-        throw runtime_error("fail to create table directory");
-    }
+    auto rankPath = fs::absolute(savePaths.at(curSavePathIdx) + "/" + saveDirPrefix + GlogConfig::gRankId);
+    CreateTableDir(rankPath);
+    curTablePath = fs::absolute(rankPath.string() + "/" + name).string();
+    CreateTableDir(curTablePath);
 
     bool isMetaFileFound = false;
     for (const string &dirPath: saveDirs) {
@@ -106,7 +104,13 @@ void Table::Save(int step)
     if (!metaFile.is_open()) {
         throw runtime_error("fail to create table meta file");
     }
-    fs::permissions(metaFilePath, fs::perms::owner_read | fs::perms::owner_write);
+    try {
+        fs::permissions(metaFilePath, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
+    } catch (runtime_error &e) {
+        LOG_ERROR("fail to change permission of {}", metaFilePath.c_str());
+        fs::remove_all(metaFilePath);
+        throw;
+    }
 
     // dump table name
     uint32_t nameSize = static_cast<uint32_t>(name.size());
@@ -125,9 +129,11 @@ void Table::Save(int step)
             metaFile.close();
             throw runtime_error(StringFormat("set table path to disk with space error:{}", e.what()));
         }
-        if (!fs::exists(curTablePath) && !fs::create_directories(curTablePath)) {
+        try {
+            CreateTableDir(curTablePath);
+        } catch (runtime_error &e) {
             metaFile.close();
-            throw runtime_error("fail to create table directory");
+            throw;
         }
         f->Save(curTablePath, step);
     }
@@ -169,20 +175,18 @@ void Table::LoadDataFileSet(const shared_ptr<fstream> &metaFile, int step)
             // try to find data file from each path
             string loadPath = p + "/" + saveDirPrefix + GlogConfig::gRankId + "/" + name;
             SetTablePathToDiskWithSpace();
-            if (!fs::exists(curTablePath) && !fs::create_directories(curTablePath)) {
-                throw runtime_error("fail to create table directory");
-            }
+            CreateTableDir(curTablePath);
             try {
                 loadedFile = make_shared<File>(fileID, curTablePath, loadPath, step);
                 fileSet.insert(loadedFile);
                 break;
             } catch (invalid_argument &e) {
                 // do nothing because file may in other path
-                LOG_INFO("insert exception, do nothing because file may in other path");
+                LOG_DEBUG("data file not found, id:{}, try other path", fileID);
             }
         }
         if (loadedFile == nullptr) {
-            throw invalid_argument("data file not found");
+            throw invalid_argument(StringFormat("data file not found, id:%d", fileID));
         }
 
         auto keys = loadedFile->GetKeys();
@@ -261,9 +265,7 @@ void Table::InsertEmbeddingsInner(vector<emb_key_t> &keys, vector<vector<float>>
 
     if (curFile == nullptr || (curFile != nullptr && curFile->GetDataCnt() >= maxDataNumInFile)) {
         SetTablePathToDiskWithSpace();
-        if (!fs::exists(curTablePath) && !fs::create_directories(curTablePath)) {
-            throw runtime_error("fail to create table directory");
-        }
+        CreateTableDir(curTablePath);
         curFile = make_shared<File>(curMaxFileID, curTablePath);
         fileSet.insert(curFile);
         curMaxFileID++;
@@ -409,5 +411,23 @@ uint64_t Table::GetTableUsage()
 {
     lock_guard<mutex> guard(rwLock);
     return totalKeyCnt;
+}
+
+void Table::CreateTableDir(const string &path)
+{
+    if (fs::exists(path)) {
+        return;
+    }
+    if (!fs::create_directories(path)) {
+        throw runtime_error(StringFormat("fail to create table directory:%s", path.c_str()));
+    }
+    try {
+        fs::permissions(path, fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec);
+    } catch (runtime_error &e) {
+        LOG_ERROR("fail to change permission of {}", path.c_str());
+        fs::remove_all(path);
+        throw;
+    }
+    LOG_DEBUG("create table dir:{}", path);
 }
 
