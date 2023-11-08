@@ -6,7 +6,6 @@ import os
 from collections import defaultdict
 import dataclasses
 import json
-
 import psutil
 
 import mx_rec.constants.constants
@@ -82,6 +81,7 @@ class ConfigInitializer:
             self._comm = MPI.COMM_WORLD
             self._rank_id = self._comm.Get_rank()
             self._rank_size = self._comm.Get_size()
+            self.check_mpi_params()
         else:
             raise ValueError("only mpi is supported for launching task.")
 
@@ -239,6 +239,12 @@ class ConfigInitializer:
             raise EnvironmentError("ConfigInitializer has been initialized once, twice initialization was forbidden.")
 
         ConfigInitializer._single_instance = ConfigInitializer(use_mpi, **kwargs)
+
+    def check_mpi_params(self):
+        if self._rank_size < 1:
+            raise ValueError("The length of the mpi rank_size is less than 1.")
+        if self._rank_id < 0:
+            raise ValueError("The length of the mpi rank_id is less than 0.")
 
     def terminate(self):
         logger.info("python process run into terminate")
@@ -766,7 +772,19 @@ def set_initializer(is_training, initializer):
     ConfigInitializer.get_instance().set_initializer(is_training, initializer)
 
 
+@para_checker_decorator(check_option_list=[
+    ("name", ClassValidator, {"classes": (str, list)}),
+    ("name", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"])
+])
 def set_ascend_table_name_must_contain(name="merged"):
+    """
+    设置表名中必须包含的关键字
+    Args:
+        name: 表名中必须包含的关键字
+
+    Returns: None
+
+    """
     mx_rec.constants.constants.ASCEND_TABLE_NAME_MUST_CONTAIN = name
 
 
@@ -802,6 +820,9 @@ def set_target_batch(is_training: bool, batch: dict):
     ConfigInitializer.get_instance().set_target_batch(is_training, batch)
 
 
+@para_checker_decorator(check_option_list=[
+    ("is_training", ClassValidator, {"classes": (bool, )})
+])
 def get_target_batch(is_training: bool) -> dict:
     """
     返回自动改图模式下生成新数据集中batch的记录.

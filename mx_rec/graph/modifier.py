@@ -15,7 +15,7 @@ from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import SparseEmbedding
 from mx_rec.constants.constants import ASCEND_CUTTING_POINT_INITIALIZER, ASCEND_SPARSE_LOOKUP_ENTRANCE, \
-    ASCAnchorAttr, ASCEND_TIMESTAMP, ANCHOR_DATASET_NAME
+    ASCAnchorAttr, ASCEND_TIMESTAMP, ANCHOR_DATASET_NAME, MAX_WHILE_SIZE
 from mx_rec.util.initialize import get_feature_spec, insert_feature_spec, set_initializer, \
     terminate_config_initializer, set_is_graph_modify_hook_running, get_bool_gauge_set, increase_run_times, \
     get_is_last_round, insert_merged_multi_lookup, get_merged_multi_lookup, set_target_batch, get_iterator_type, \
@@ -155,7 +155,12 @@ def find_target_dataset_op(base_ops, op_type):
     base_ops = check_input_list(base_ops, tf.Operation)
     parent_ops = base_ops
 
+    while_num = 0
     while True:
+        while_num += 1
+        if while_num > MAX_WHILE_SIZE:
+            raise RuntimeError(f"In find_target_dataset_op function, the maximum cycle depth is greater "
+                               f"than {MAX_WHILE_SIZE}.")
         for parent_op in parent_ops:
             if parent_op.type == op_type:
                 return parent_op
@@ -204,7 +209,12 @@ def get_passing_tensor_list(src_tensors, target_op):
     def get_passing_tensors(src_tensor):
         passing_tensors = []
         tensor_list = [src_tensor]
+        while_num = 0
         while tensor_list:
+            while_num += 1
+            if while_num > MAX_WHILE_SIZE:
+                raise RuntimeError(f"In get_passing_tensors function, the maximum cycle depth is greater "
+                                   f"than {MAX_WHILE_SIZE}.")
             last_tensor = tensor_list.pop()
             if last_tensor.op is target_op:
                 passing_tensors.append(last_tensor)
@@ -557,7 +567,7 @@ class GraphModifierHook(tf.estimator.SessionRunHook):
             ("modify_graph", ClassValidator, {"classes": (bool,)})
         ]
     )
-    def __init__(self, dump_graph=True, modify_graph=True):
+    def __init__(self, dump_graph=False, modify_graph=True):
         self._dump_graph = dump_graph
         self._modify_graph = modify_graph
         self._iterator_type = ""

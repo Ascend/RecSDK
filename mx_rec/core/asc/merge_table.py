@@ -7,6 +7,7 @@ from typing import Dict, List
 import tensorflow as tf
 from tensorflow import Operation, Tensor
 
+from mx_rec.constants.constants import MAX_WHILE_SIZE
 from mx_rec.util.initialize import get_enable_table_merge, export_table_instances, insert_dangling_table, \
     get_bool_gauge_set
 from mx_rec.util.log import logger
@@ -103,7 +104,11 @@ def find_dangling_table(table_names: List[str]) -> List[str]:
         """
         tensors_visited = set()
         op_visited = set()
+        while_num = 0
         while next_to_visit:
+            while_num += 1
+            if while_num > MAX_WHILE_SIZE:
+                raise RuntimeError(f"In bfs_lookup function, the maximum cycle depth is greater than {MAX_WHILE_SIZE}.")
             spread_tensors = []
             for tensor in next_to_visit:
                 if tensor in tensors_visited:
