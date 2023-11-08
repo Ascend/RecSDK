@@ -35,10 +35,17 @@ inline void CompareHandleRet(vector<emb_key_t>& leastFreqKeys, vector<freq_num_t
     }
 }
 
+void PutKeys(LFUCache& lfu, vector<emb_key_t>& embKeys)
+{
+    for (auto& key : embKeys) {
+        lfu.Put(key);
+    }
+}
+
 TEST(LFUCache, TestGetFreqTable)
 {
     LFUCache cache;
-    cache.PutKeys(INPUT_KEYS);
+    PutKeys(cache, INPUT_KEYS);
     auto ret = cache.GetFreqTable();
     ASSERT_EQ(ret[9], 1);
     ASSERT_EQ(ret[6], 2);
@@ -48,7 +55,7 @@ TEST(LFUCache, TestGetFreqTable)
 TEST(LFUCache, PopTest)
 {
     LFUCache cache;
-    cache.PutKeys(INPUT_KEYS);
+    PutKeys(cache, INPUT_KEYS);
     cache.Pop(8);
     cache.Pop(9);
     ASSERT_EQ(cache.minFreq, 2);
@@ -79,7 +86,7 @@ TEST(LFUCache, PutInitTest)
 TEST(LFUCache, LFUDeleteTotalFreqListTest)
 {
     LFUCache cache;
-    cache.PutKeys(INPUT_KEYS);
+    PutKeys(cache, INPUT_KEYS);
     vector<emb_key_t> retainedKeys = {4, 6, 8, 9};
     vector<emb_key_t> leastFreqKeys;
     vector<freq_num_t> leastFreq;
@@ -92,7 +99,7 @@ TEST(LFUCache, LFUDeleteTotalFreqListTest)
 TEST(LFUCache, BaseCacheTest)
 {
     LFUCache cache;
-    cache.PutKeys(INPUT_KEYS);
+    PutKeys(cache, INPUT_KEYS);
     vector<emb_key_t> retainedKeys = {8, 4, 6, 2};
     vector<emb_key_t> leastFreqKeys;
     vector<freq_num_t> leastFreq;

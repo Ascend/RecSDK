@@ -91,13 +91,6 @@ void LFUCache::Put(emb_key_t key)
     keyTable[key] = freqTable[freq + 1].begin();
 }
 
-void LFUCache::PutKeys(vector<emb_key_t>& keys)
-{
-    for (auto key : keys) {
-        Put(key);
-    }
-}
-
 /// 直接放入指定次数；用于初始化场景
 /// \param key key
 /// \param freq 频次

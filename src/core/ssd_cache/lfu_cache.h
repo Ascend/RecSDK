@@ -41,8 +41,6 @@ namespace MxRec {
 
         void Put(emb_key_t key);
 
-        void PutKeys(vector<emb_key_t>& keys);
-
         bool Pop(emb_key_t key);
 
         void PutWithInit(emb_key_t key, freq_num_t freq);

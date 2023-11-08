@@ -64,6 +64,13 @@ void InitDDREmbData(absl::flat_hash_map<string, HostEmbTable>& loadData, string&
     loadData[embTableName] = hEmbTable;
 }
 
+void PutKeyInfo(LFUCache& lfu, vector<emb_key_t>& embKeys)
+{
+    for (auto& key : embKeys) {
+        lfu.Put(key);
+    }
+}
+
 class CacheManagerTest : public testing::Test {
 protected:
     void SetUp()
@@ -74,10 +81,10 @@ protected:
         GlogConfig::gRankId = to_string(workRankId);
 
         cacheManager.ddrKeyFreqMap[embTableName] = cache;
-        cacheManager.ddrKeyFreqMap[embTableName].PutKeys(input_keys);
+        PutKeyInfo(cacheManager.ddrKeyFreqMap[embTableName], input_keys);
         LFUCache cache2;
         cacheManager.ddrKeyFreqMap[embTableName2] = cache2;
-        cacheManager.ddrKeyFreqMap[embTableName2].PutKeys(input_keys);
+        PutKeyInfo(cacheManager.ddrKeyFreqMap[embTableName2], input_keys);
         unordered_map<emb_key_t, freq_num_t> excludeDDRKeyFreq;
         excludeDDRKeyFreq[27] = 10;
         excludeDDRKeyFreq[30] = 10;

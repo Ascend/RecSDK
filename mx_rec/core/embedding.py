@@ -45,7 +45,7 @@ from mx_rec.util.log import logger
     ("ssd_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
     ("ssd_data_path", ClassValidator, {"classes": (list, tuple)}),
     ("is_save", ClassValidator, {"classes": (bool, )}),
-    ("init_param", NumValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
+    ("init_param", NumValidator, {"min_value": -10, "max_value": 10}, ["check_value"]),
     ("all2all_gradients_op", OptionValidator, {"options": [i.value for i in list(All2allGradientsOp)]}),
     ("value_dtype", OptionValidator, {"options": [tf.float32]}),
     ("shard_num", IntValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
