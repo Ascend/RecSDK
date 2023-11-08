@@ -54,9 +54,10 @@ class Validator:
 def para_checker_decorator(check_option_list: List[Tuple[Union[List[str], str],
                                                          Type[Validator],
                                                          Optional[Dict],
-                                                         Optional[List[str]]]]):
+                                                         Optional[List[str]]]], output_log=True):
     """
     函数参数校验装饰器
+    :param output_log: 是否打印日志
     :param check_option_list:
     需要校验的参数及其相关校验器[“需要检验的参数或参数组合”, "使用的校验器", "校验器的参数", "校验器需要执行的方法（添加指定校验）"]
     :return:
@@ -87,7 +88,8 @@ def para_checker_decorator(check_option_list: List[Tuple[Union[List[str], str],
                         continue
                     args_with_default.add(arg)
                     kwargs.update({arg: default})
-            logger.debug("[checker wrapper]func %s kwargs: %s", func.__name__, actual_args)
+            if output_log:
+                logger.debug("[checker wrapper]func %s kwargs: %s", func.__name__, actual_args)
             # 执行每一个检查项
             for option in check_option_list:
                 optional_check_list = None
