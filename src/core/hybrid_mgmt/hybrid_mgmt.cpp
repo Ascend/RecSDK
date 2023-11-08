@@ -225,8 +225,7 @@ bool HybridMgmt::Save(const string savePath)
 {
 #ifndef GTEST
     if (!isInitialized) {
-        LOG_ERROR("HybridMgmt not initialized. Call Initialize first.");
-        return false;
+        throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
     }
 
     // 数据处理线程上锁
@@ -282,8 +281,7 @@ bool HybridMgmt::Load(const string& loadPath)
 {
 #ifndef GTEST
     if (!isInitialized) {
-        LOG_ERROR("HybridMgmt not initialized. Call Initialize first.");
-        return false;
+        throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
     }
 
     // 数据处理线程上锁
@@ -886,8 +884,7 @@ bool HybridMgmt::Evict()
 {
 #ifndef GTEST
     if (!isInitialized) {
-        LOG_ERROR("HybridMgmt not initialized. Call Initialize first.");
-        return false;
+        throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
     }
 
     // 配置了淘汰选项，则触发
@@ -1061,8 +1058,7 @@ int64_t HybridMgmt::GetTableSize(const string& embName) const
 {
 #ifndef GTEST
     if (!isInitialized) {
-        LOG_ERROR("HybridMgmt not initialized. Call Initialize first.");
-        return -1;
+        throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
     }
 
     if (mgmtRankInfo.useDynamicExpansion) {
@@ -1106,8 +1102,7 @@ int64_t HybridMgmt::GetTableCapacity(const string& embName) const
 {
 #ifndef GTEST
     if (!isInitialized) {
-        LOG_ERROR("HybridMgmt not initialized. Call Initialize first.");
-        return -1;
+        throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
     }
 
     if (mgmtRankInfo.useDynamicExpansion) {
