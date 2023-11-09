@@ -523,9 +523,9 @@ class SparseEmbedding:
                     same_table_tensor_list.append(tensor)
                 return same_table_tensor_list
 
-            # Ensure that tensors in the same table are sorted according to the lookup sequence (modify graph mode) or
-            # the sequence in which feature specs are created (feature spec mode).
-            same_table_feature_spec = sorted(same_table_feature_spec, key=lambda x: x.name)
+            # 改图模式下FeatureSpec是按照lookup顺序创建的，无需对ids进行排序；fs模式下手动创建FeatureSpec，不一定有序
+            if not self.modify_graph:
+                same_table_feature_spec = sorted(same_table_feature_spec, key=lambda x: x.name)
             mock_feature_spec = FeatureSpec(f"mock_feature_spec_{table_name}", table_name=table_name)
 
             if get_use_static():

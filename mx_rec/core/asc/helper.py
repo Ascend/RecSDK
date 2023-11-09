@@ -6,7 +6,7 @@ from functools import reduce
 
 import tensorflow as tf
 
-from mx_rec.util.initialize import get_host_pipeline_ops, get_training_mode_channel_id, get_use_static
+from mx_rec.util.initialize import get_host_pipeline_ops, get_training_mode_channel_id, get_use_static, get_modify_graph
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.merge_table import find_dangling_table, should_skip
 from mx_rec.validator.validator import para_checker_decorator, ValueCompareValidator, ClassValidator, \
@@ -160,7 +160,10 @@ def merge_feature_id_request(feature_id_list, split_list, table_name_list):
                            f"len(split_list): {len(split_list)}"
                            f"len(table_name_list): {len(table_name_list)}")
     feature_id_requests = zip(feature_id_list, split_list, table_name_list)
-    feature_id_requests = sorted(feature_id_requests, key=lambda x: (x[2], x[0].name))
+    if get_modify_graph():
+        feature_id_requests = sorted(feature_id_requests, key=lambda x: (x[2]))
+    else:
+        feature_id_requests = sorted(feature_id_requests, key=lambda x: (x[2], x[0].name))
     logger.debug("features to merge: %s", feature_id_requests)
 
     last_table_name = None
