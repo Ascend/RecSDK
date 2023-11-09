@@ -49,3 +49,10 @@ cd ..
 
 bash build.sh
 
+# 安装编译成功的算子包
+bash ./build_out/custom_opp_centos*.run
+
+cd ..
+
+rm -rf ./custom_op
+ 
