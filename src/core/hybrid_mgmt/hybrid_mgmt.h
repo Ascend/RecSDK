@@ -74,8 +74,7 @@ namespace MxRec {
     void Destroy()
     {
         if (!isInitialized) {
-            LOG_ERROR("HybridMgmt not initialized. Call Initialize first.");
-            return;
+            throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
         }
 
         if (!isRunning) {
