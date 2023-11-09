@@ -17,8 +17,8 @@ from mx_rec.core.embedding import SparseEmbedding
 from mx_rec.constants.constants import ASCEND_CUTTING_POINT_INITIALIZER, ASCEND_SPARSE_LOOKUP_ENTRANCE, \
     ASCAnchorAttr, ASCEND_TIMESTAMP, ANCHOR_DATASET_NAME, MAX_WHILE_SIZE
 from mx_rec.util.initialize import get_feature_spec, insert_feature_spec, set_initializer, \
-    terminate_config_initializer, set_is_graph_modify_hook_running, get_bool_gauge_set, increase_run_times, \
-    get_is_last_round, insert_merged_multi_lookup, get_merged_multi_lookup, set_target_batch, get_iterator_type, \
+    terminate_config_initializer, set_is_graph_modify_hook_running, get_bool_gauge_set, \
+    insert_merged_multi_lookup, get_merged_multi_lookup, set_target_batch, get_iterator_type, \
     set_iterator_type
 from mx_rec.util.perf import performance
 from mx_rec.graph.utils import check_input_list, find_parent_op, check_cutting_points, record_ops_to_replace, \
@@ -588,19 +588,3 @@ class GraphModifierHook(tf.estimator.SessionRunHook):
         if self._modify_graph and self._iterator_type == "MakeIterator":
             session.run(tf.compat.v1.get_collection(ASCEND_CUTTING_POINT_INITIALIZER))
 
-    def end(self, session):
-        bool_gauge_set = get_bool_gauge_set()
-        logger.debug("GraphModifierHook, bool_gauge_set: %s", bool_gauge_set)
-
-        # In eval or predict mode, the initializer can be directly terminated.
-        if 'train' not in bool_gauge_set:
-            logger.debug("In evaluate or predict case, GraphModifierHook call 'terminate_config_initializer'...")
-            terminate_config_initializer()
-            return
-
-        if 'train_and_evaluate' in bool_gauge_set:
-            increase_run_times()
-            # In 'train_and_evaluate' mode, the terminate function should be executed last.
-            if get_is_last_round():
-                logger.debug("In train_and_evaluate case, GraphModifierHook call 'terminate_config_initializer'...")
-                terminate_config_initializer()
