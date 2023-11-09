@@ -124,6 +124,7 @@ namespace MxRec {
         const int ASCEND910_PRO_A = 262144;
         const int ASCEND910_B = 262144;
         const int ASCEND910_A = 262144;
+        const int ASCEND910_B2C = 196608;
     };
 
     inline int GetUBSize(int devID)
@@ -134,7 +135,8 @@ namespace MxRec {
             {"910B1", UBSize::ASCEND910_B1},
             {"910B2", UBSize::ASCEND910_B2},
             {"910B3", UBSize::ASCEND910_B3},
-            {"910B4", UBSize::ASCEND910_B4}};
+            {"910B4", UBSize::ASCEND910_B4},
+            {"910B2C", UBSize::ASCEND910_B2C}};
         auto it = chipUbSizeList.find(GetChipName(devID));
         if (it != chipUbSizeList.end()) {
             return it->second;
