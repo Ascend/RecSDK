@@ -213,7 +213,7 @@ void Checkpoint::WriteEmbedding(const CkptTransData& transData, const string& da
 {
     ofstream writeFile;
     writeFile.open(dataDir.c_str(), std::ios::out | std::ios::trunc | std::ios::binary);
-    fs::permissions(dataDir.c_str(), fs::perms::owner_read | fs::perms::owner_write);
+    fs::permissions(dataDir.c_str(), fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
 
 #ifndef GTEST
     auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
@@ -330,7 +330,7 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir, 
 
 void Checkpoint::WriteStream(CkptTransData& transData, const string& dataDir, size_t dataSize, CkptDataType dataType)
 {
-    int fd = open(dataDir.c_str(), O_RDWR | O_CREAT | O_TRUNC, static_cast<mode_t>(0600));
+    int fd = open(dataDir.c_str(), O_RDWR | O_CREAT | O_TRUNC, static_cast<mode_t>(0640));
     if (fd == -1) {
         LOG_ERROR("Error opening file for writing");
         return;
