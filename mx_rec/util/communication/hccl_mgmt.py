@@ -10,6 +10,7 @@ from mx_rec.constants.constants import VALID_DEVICE_ID_LIST, MIN_SIZE, MAX_CONFI
 from mx_rec.validator.validator import FileValidator, para_checker_decorator, StringValidator, \
     Convert2intValidator
 from mx_rec.util.global_env_conf import global_env
+from mx_rec.util.log import logger
 
 
 def parse_hccl_json():
@@ -89,19 +90,17 @@ def set_hccl_info_without_json(visible_devices: str, rank_size: str, chief_devic
     sorted_device_list = sorted(device_list)
     local_rank_size = len(sorted_device_list)
 
-    if rank_size < local_rank_size:
-        raise ValueError(f"Rank size {rank_size} is less than devices: {local_rank_size}.")
+    if rank_size > local_rank_size:
+        raise ValueError(f"Rank size {rank_size} is larger than local available devices: {local_rank_size}.")
 
-    rank_to_device_dict = {0: chief_device}
+    if chief_device not in sorted_device_list:
+        raise ValueError(f"The environment variable CM_CHIEF_DEVICE {chief_device} is not in the local device list. ")
 
-    try:
-        sorted_device_list.pop(chief_device % local_rank_size)
-    except IndexError as err:
-        raise IndexError(
-            f"Config CM_CHIEF_DEVICE {chief_device} not in training container device list {sorted_device_list}.") \
-            from err
-    except ZeroDivisionError as err:
-        raise ZeroDivisionError("sorted_device_list length can not equal to 0.") from err
+
+    rank_to_device_dict = {}
+    chief_index = sorted_device_list.index(chief_device)
+    sorted_device_list = sorted_device_list[chief_index:] + sorted_device_list[0: chief_index]
+    sorted_device_list = sorted_device_list[:rank_size]
 
     for device_idx in sorted_device_list:
         import mxrec_pybind
@@ -113,7 +112,7 @@ def set_hccl_info_without_json(visible_devices: str, rank_size: str, chief_devic
         if res > MAX_DEVICE_ID:
             raise ValueError(f"get logic id from physic id fail.")
         index = sorted_device_list.index(device_idx)
-        rank_to_device_dict[index + 1] = res
+        rank_to_device_dict[index] = res
     return rank_to_device_dict, local_rank_size
 
 
@@ -137,4 +136,6 @@ def get_device_list(ascend_visible_devices):
         raise IndexError(
             f"Index of ascend_visible_devices {ascend_visible_devices.strip().split('-')[-1]} is out of range") \
             from error
+    if not device_list:
+        raise ValueError("No device is available in the environment.")
     return device_list
