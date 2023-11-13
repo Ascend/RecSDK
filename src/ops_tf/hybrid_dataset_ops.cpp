@@ -69,7 +69,7 @@ namespace MxRec {
 
     class SetThreshold : public OpKernel {
     public:
-        explicit SetThreshold(OpKernelConstructionPtr context) : OpKernel(context)
+        explicit SetThreshold(OpKernelConstruction& context) : OpKernel(context)
         {
             LOG_INFO("SetThreshold init");
             OP_REQUIRES_OK(context, context->GetAttr("emb_name", &embName));
@@ -117,7 +117,7 @@ namespace MxRec {
         int ParseThresholdAndCheck(const Tensor& inputTensor, int& threshold) const
         {
             // 前面8个字节、即占一个featureId位，是unix时间戳
-            auto src = reinterpret_cast<const int*>(inputTensor.tensor_data().data());
+            const int* src = static_cast<const int*>(inputTensor.tensor_data().data());
             std::copy(src, src + 1, &threshold);
 
             if (threshold < 0) {
@@ -540,7 +540,7 @@ REGISTER_OP("ClearChannel").Attr("channel_id : int");
 REGISTER_KERNEL_BUILDER(Name("ClearChannel").Device(DEVICE_CPU), MxRec::ClearChannel);
 
 // ##################### SetThreshold #######################
-REGISTER_OP("SetThreshold")
+REGISTER_OP("SetThreshold") noexcept
 .Input("input: int32")
 .Attr("emb_name: string = ''")
 .Attr("ids_name: string = ''")
@@ -549,7 +549,9 @@ REGISTER_OP("SetThreshold")
 c->set_output(TensorIndex::TENSOR_INDEX_0, c->Scalar());
 return Status::OK();
 });
-REGISTER_KERNEL_BUILDER(Name("SetThreshold").Device(DEVICE_CPU), MxRec::SetThreshold);
+namespace MxRec {
+    REGISTER_KERNEL_BUILDER(Name("SetThreshold").Device(DEVICE_CPU), SetThreshold)  noexcept;
+}
 
 // ##################### ReturnTimestamp #######################
 REGISTER_OP("ReturnTimestamp")

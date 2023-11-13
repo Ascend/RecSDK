@@ -9,7 +9,6 @@
 #define ACL_CHANNEL_H
 
 #include <vector>
-#include <string>
 #include "acl/acl_tdt.h"
 #include "tensorflow/core/framework/tensor.h"
 

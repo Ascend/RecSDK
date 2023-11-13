@@ -135,7 +135,10 @@ protected:
     {
         default_random_engine generator;
         uniform_int_distribution<int> distribution(randMin, randMax);
-        int embSizeMin = 5, embSizeMax = 8, base = 2, vocabSize = 100;
+        int embSizeMin = 5;
+        int embSizeMax = 8;
+        int base = 2;
+        int vocabSize = 100;
         uniform_int_distribution<int> embSizeDistribution(embSizeMin, embSizeMax);
         stringstream ss;
         for (unsigned int i = 0; i < embNums; ++i) {

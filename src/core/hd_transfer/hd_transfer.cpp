@@ -57,7 +57,7 @@ void HDTransfer::Destroy()
     LOG_INFO(HD + "destroy channel start");
     for (auto& c: transferChannels) {
         LOG_INFO(HD + "start destroy channel:{}", c.first);
-        if (acltdtStopChannel(c.second)!=ACL_ERROR_NONE || acltdtDestroyChannel(c.second)!=ACL_ERROR_NONE) {
+        if (acltdtStopChannel(c.second) != ACL_ERROR_NONE || acltdtDestroyChannel(c.second) != ACL_ERROR_NONE) {
             throw runtime_error("Acl destroy channel failed.");
         }
         LOG_INFO(HD + "destroy channel:{}", c.first);
