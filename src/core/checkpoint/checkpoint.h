@@ -35,7 +35,7 @@ namespace MxRec {
         const string attribFileType { ".attribute" };
         const string dirSeparator { "/" };
         const string ssdSymbol {"SSD"};
-        const mode_t dirMode { 0500 };
+        const mode_t dirMode { 0750 };
 
         const string currDir { "." };
         const string prevDir { ".." };
