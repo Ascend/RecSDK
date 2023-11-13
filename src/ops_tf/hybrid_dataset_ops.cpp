@@ -54,7 +54,7 @@ namespace MxRec {
             }
         }
 
-        ~ClearChannel() = default;
+        ~ClearChannel() override = default;
 
         void Compute(OpKernelContextPtr context) override
         {
