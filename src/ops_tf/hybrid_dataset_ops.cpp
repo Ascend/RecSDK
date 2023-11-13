@@ -550,7 +550,7 @@ c->set_output(TensorIndex::TENSOR_INDEX_0, c->Scalar());
 return Status::OK();
 });
 namespace MxRec {
-    REGISTER_KERNEL_BUILDER(Name("SetThreshold").Device(DEVICE_CPU), SetThreshold)  noexcept;
+    REGISTER_KERNEL_BUILDER(Name("SetThreshold").Device(tensorflow::DEVICE_CPU), SetThreshold);
 }
 
 // ##################### ReturnTimestamp #######################

@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
-__all__ = ["create_hash_optimizer", "create_ftrl_dense_optimizer", "create_hash_optimizer_by_addr", "create_hash_optimizer_by_address"]
+__all__ = ["create_hash_optimizer", "create_ftrl_dense_optimizer", "create_hash_optimizer_by_addr",
+           "create_hash_optimizer_by_address"]
 
 from mx_rec.optimizers.adagrad import create_hash_optimizer
 from mx_rec.optimizers.ftrl import create_hash_optimizer
