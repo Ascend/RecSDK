@@ -108,7 +108,7 @@ FeatureAdmitType FeatureAdmitAndEvict::FeatureAdmitHelper(const int channel, con
     auto innerIt = historyRecordInfos.find(featureId);
 
     // isEnableSum = false或者eval，只查询count，不做累加，若是新key，则count使用初始值0
-    if (channel == EVAL_CHANNEL_ID || m_table2Threshold[tableNameOrigin].isEnableSum == false) {
+    if (channel == EVAL_CHANNEL_ID || !m_table2Threshold[tableNameOrigin].isEnableSum) {
         if (innerIt != historyRecordInfos.end()) {
             currKeyCount = historyRecordInfos[featureId].count;
         }

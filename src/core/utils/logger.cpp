@@ -11,7 +11,7 @@
 
 namespace MxRec {
 
-int MxRec::Logger::level = MxRec::Logger::info;
+int MxRec::Logger::level = MxRec::Logger::INFO;
 int MxRec::Logger::rank = 0;
 
 void Logger::SetRank(int logRank)
@@ -31,7 +31,7 @@ int Logger::GetLevel()
 
 const char* Logger::LevelToStr(int logLevel)
 {
-    if (logLevel < trace || logLevel > error) {
+    if (logLevel < TRACE || logLevel > ERROR) {
         return "INVALID LEVEL";
     }
     static const char* msg[] = {
