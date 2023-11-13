@@ -76,7 +76,7 @@ namespace MxRec {
             OP_REQUIRES_OK(context, context->GetAttr("ids_name", &idsName)); // sparse_lookup查询
         }
 
-        ~SetThreshold() = default;
+        ~SetThreshold() override = default;
 
         void Compute(OpKernelContextPtr context) override
         {
