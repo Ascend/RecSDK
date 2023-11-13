@@ -22,18 +22,3 @@ def check_and_get_config_via_var(variable, optimizer_type: str):
                                f" init method of SparseEmbedding.")
 
     return table_instance
-
-
-def check_param_range(name, value, min_border, max_border):
-    if value > max_border or value < min_border:
-        raise ValueError(f"Please offer a {name} between [{min_border}, {max_border}].")
-
-    return
-
-
-def check_param_type(name, value, legal_type):
-    if not isinstance(value, legal_type):
-        raise TypeError(f"Please offer a {name} within types: {legal_type}.")
-
-    return
-

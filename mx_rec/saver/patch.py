@@ -25,10 +25,10 @@ from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
 import numpy as np
 
-from mx_rec.saver.saver import Saver as SparseSaver
+from mx_rec.saver.saver import Saver as SparseSaver, check_file_system_is_valid
 from mx_rec.util.initialize import get_ascend_global_hashtable_collection, export_removing_var_list
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, StringValidator, OptionalIntValidator, \
-    OptionalStringValidator
+    OptionalStringValidator, DirectoryValidator
 from mx_rec.util.log import logger
 from mx_rec.constants.constants import MAX_INT32
 
@@ -175,13 +175,13 @@ def build(self):
 
 @para_checker_decorator(check_option_list=[
     ("sess", ClassValidator, {"classes": (tf.compat.v1.Session, tf.compat.v1.train.MonitoredSession)}),
-    ("save_path", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
+    ("save_path", StringValidator, {"min_len": 1, "max_len": 150}, ["check_string_length"]),
     ("global_step", ClassValidator, {"classes": (int, np.int64, type(None))}),
     ("global_step", OptionalIntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
     ("latest_filename", ClassValidator, {"classes": (str, type(None))}),
-    ("latest_filename", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
+    ("latest_filename", OptionalStringValidator, {"min_len": 1, "max_len": 50}, ["check_string_length"]),
     ("meta_graph_suffix", ClassValidator, {"classes": (str, type(None))}),
-    ("meta_graph_suffix", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
+    ("meta_graph_suffix", OptionalStringValidator, {"min_len": 1, "max_len": 50}, ["check_string_length"]),
     ("write_meta_graph", ClassValidator, {"classes": (bool, type(None))}),
     ("write_state", ClassValidator, {"classes": (bool, type(None))}),
     ("strip_default_attrs", ClassValidator, {"classes": (bool, type(None))}),
@@ -189,9 +189,8 @@ def build(self):
 ])
 def save(self, sess, save_path, global_step=None, latest_filename=None, meta_graph_suffix="meta", write_meta_graph=True,
          write_state=True, strip_default_attrs=False, save_debug_info=False):
-    # since tf 2.6.0, tf needs tensorflow_io to support hdfs path
-    if tf.__version__.startswith("2") and save_path.find("://") != -1:
-        import tensorflow_io as tfio
+    if not check_file_system_is_valid(save_path):
+        raise ValueError(f"the path to save belong to invalid file system, only local file system supported. ")
 
     if not self._is_built and not context.executing_eagerly():
         raise RuntimeError("`build()` should be called before save if defer_build==True")
@@ -227,14 +226,19 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
 
 @para_checker_decorator(check_option_list=[
     ("sess", ClassValidator, {"classes": (tf.compat.v1.Session, tf.compat.v1.train.MonitoredSession)}),
-    ("save_path", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
+    ("save_path", StringValidator, {"min_len": 1, "max_len": 150}, ["check_string_length"]),
 ])
 def restore(self, sess, save_path):
     if save_path is None:
         raise ValueError("Can't load save_path when it is None.")
-    # since tf 2.6.0, tf needs tensorflow_io to support hdfs path
-    if tf.__version__.startswith("2") and save_path.find("://") != -1:
-        import tensorflow_io as tfio
+    if not check_file_system_is_valid(save_path):
+        raise ValueError(f"the path to restore belong to invalid file system, only local file system supported. ")
+
+    if save_path.find("://") == -1:
+        directory_validator = DirectoryValidator("reading_path", save_path)
+        directory_validator.check_not_soft_link()
+        directory_validator.with_blacklist(exact_compare=False)
+        directory_validator.check()
 
     checkpoint_prefix = compat.as_text(save_path)
     if self._is_empty:

@@ -8,7 +8,7 @@ from mx_rec.constants.constants import EnvOption, RecPyLogLevel, Flag, EMPTY_STR
     DEFAULT_HD_CHANNEL_SIZE, DEFAULT_KP_THREAD_NUM, DEFAULT_FAST_UNIQUE_THREAD_NUM, RecCPPLogLevel, MAX_INT32, \
     MIN_HD_CHANNEL_SIZE, MAX_HD_CHANNEL_SIZE, MIN_KP_THREAD_NUM, MAX_KP_THREAD_NUM, \
     MIN_FAST_UNIQUE_THREAD_NUM, MAX_FAST_UNIQUE_THREAD_NUM, DEFAULT_HOT_EMB_UPDATE_STEP, MIN_HOT_EMB_UPDATE_STEP, \
-    MAX_HOT_EMB_UPDATE_STEP
+    MAX_HOT_EMB_UPDATE_STEP, TFDevice
 from mx_rec.validator.validator import para_checker_decorator, OptionValidator, DirectoryValidator, Convert2intValidator
 
 
@@ -24,8 +24,6 @@ class RecEnv:
     apply_gradients_strategy: str
     acl_timeout: str
     hd_channel_size: str
-    find_offset_v2: str
-    find_offset_v3: str
     key_process_thread_num: str
     max_unique_thread_num: str
     fast_unique: str
@@ -48,13 +46,11 @@ def get_global_env_conf() -> RecEnv:
         ascend_visible_devices=os.getenv(EnvOption.ASCEND_VISIBLE_DEVICES.value),
         cm_chief_device=os.getenv(EnvOption.CM_CHIEF_DEVICE.value),
         cm_worker_size=os.getenv(EnvOption.CM_WORKER_SIZE.value),
-        tf_device=os.getenv(EnvOption.TF_DEVICE.value),
+        tf_device=os.getenv(EnvOption.TF_DEVICE.value, TFDevice.NPU.value),
         apply_gradients_strategy=os.getenv(EnvOption.APPLY_GRADIENTS_STRATEGY.value,
                                            ApplyGradientsStrategy.DIRECT_APPLY.value),
         acl_timeout=os.getenv(EnvOption.ACL_TIMEOUT.value, "-1"),
         hd_channel_size=os.getenv(EnvOption.HD_CHANNEL_SIZE.value, DEFAULT_HD_CHANNEL_SIZE),
-        find_offset_v2=os.getenv(EnvOption.FIND_OFFSET_V2.value, Flag.FALSE.value),
-        find_offset_v3=os.getenv(EnvOption.FIND_OFFSET_V3.value, Flag.FALSE.value),
         key_process_thread_num=os.getenv(EnvOption.KEY_PROCESS_THREAD_NUM.value, DEFAULT_KP_THREAD_NUM),
         max_unique_thread_num=os.getenv(EnvOption.MAX_UNIQUE_THREAD_NUM.value, DEFAULT_FAST_UNIQUE_THREAD_NUM),
         fast_unique=os.getenv(EnvOption.FAST_UNIQUE.value, Flag.FALSE.value),
@@ -76,8 +72,6 @@ def get_global_env_conf() -> RecEnv:
     ("acl_timeout", Convert2intValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
     ("hd_channel_size", Convert2intValidator,
      {"min_value": MIN_HD_CHANNEL_SIZE, "max_value": MAX_HD_CHANNEL_SIZE}, ["check_value"]),
-    ("find_offset_v2", OptionValidator, {"options": [i.value for i in list(Flag)]}),
-    ("find_offset_v3", OptionValidator, {"options": [i.value for i in list(Flag)]}),
     ("key_process_thread_num", Convert2intValidator,
      {"min_value": MIN_KP_THREAD_NUM, "max_value": MAX_KP_THREAD_NUM}, ["check_value"]),
     ("max_unique_thread_num", Convert2intValidator,

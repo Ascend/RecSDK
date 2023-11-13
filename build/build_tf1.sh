@@ -53,10 +53,12 @@ remove "${SCRIPT_DIR}/lib"
 get_version
 export VERSION
 echo "MindX SDK mxrec: ${VERSION}" >> ./version.info
+chmod 640 ./version.info
 
 pkg_dir=mindxsdk-mxrec
 remove "${pkg_dir}"
 mkdir "${pkg_dir}"
+chmod 750 "$pkg_dir"
 mv version.info "${pkg_dir}"
 
 opensource_path="${ROOT_DIR}"/../opensource/opensource

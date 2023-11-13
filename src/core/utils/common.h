@@ -55,7 +55,7 @@ namespace MxRec {
     constexpr int DEFAULT_KEY_PROCESS_THREAD = 6;
     constexpr int KEY_PROCESS_THREAD = 6;
     constexpr char SUM_SAME_ID[] = "sum_same_id_gradients_and_apply";
-    constexpr int MAX_VOCABULARY_SIZE = 1e9;
+    constexpr size_t MAX_VOCABULARY_SIZE = 1e10;
     constexpr int SSD_SIZE_INDEX = 2;
     constexpr int MAX_FILE_NUM = 1000;
     // for GLOG
@@ -124,6 +124,7 @@ namespace MxRec {
         const int ASCEND910_PRO_A = 262144;
         const int ASCEND910_B = 262144;
         const int ASCEND910_A = 262144;
+        const int ASCEND910_B2C = 196608;
     };
 
     inline int GetUBSize(int devID)
@@ -134,7 +135,8 @@ namespace MxRec {
             {"910B1", UBSize::ASCEND910_B1},
             {"910B2", UBSize::ASCEND910_B2},
             {"910B3", UBSize::ASCEND910_B3},
-            {"910B4", UBSize::ASCEND910_B4}};
+            {"910B4", UBSize::ASCEND910_B4},
+            {"910B2C", UBSize::ASCEND910_B2C}};
         auto it = chipUbSizeList.find(GetChipName(devID));
         if (it != chipUbSizeList.end()) {
             return it->second;
@@ -162,12 +164,10 @@ namespace MxRec {
         }
 
         std::vector<T> sample;
-        void *tensorAddr = nullptr;
         std::string name;
         size_t batchSize;
         int batchId;
         int channel = 0;
-        bool isInt64; // true int64 false int32
         time_t timestamp { -1 };
     };
 
@@ -179,7 +179,6 @@ namespace MxRec {
         int batchId;
         int channelId;
         time_t timestamp { -1 };
-        bool flag; // true int64 false int32
         const void *tensor;
     };
 

@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
+import atexit
 import os
 from collections import defaultdict
 import dataclasses
 import json
-
 import psutil
 
 import mx_rec.constants.constants
@@ -42,8 +42,6 @@ class ConfigInitializer:
     ])
     def __init__(self, use_mpi=True, **kwargs):
         self._use_mpi = use_mpi
-        self._rank_id = kwargs.get("rank_id", 0)
-        self._rank_size = kwargs.get("rank_size", 1)
         self._ascend_global_hashtable_collection = ASCEND_GLOBAL_HASHTABLE_COLLECTION
         self._comm = None
         self._asc_manager = None
@@ -82,6 +80,7 @@ class ConfigInitializer:
             self._comm = MPI.COMM_WORLD
             self._rank_id = self._comm.Get_rank()
             self._rank_size = self._comm.Get_size()
+            self.check_mpi_params()
         else:
             raise ValueError("only mpi is supported for launching task.")
 
@@ -108,9 +107,6 @@ class ConfigInitializer:
         # 两个通道的sparse look id，用于通讯的标识
         self.notify_hybrid_channel_sparse_id = [0, 0]
         self.stat_on = (global_env.stat_on == Flag.TRUE.value)
-
-    def __del__(self):
-        self.terminate()
 
     @property
     def iterator_type(self):
@@ -239,6 +235,12 @@ class ConfigInitializer:
             raise EnvironmentError("ConfigInitializer has been initialized once, twice initialization was forbidden.")
 
         ConfigInitializer._single_instance = ConfigInitializer(use_mpi, **kwargs)
+
+    def check_mpi_params(self):
+        if self._rank_size < 1:
+            raise ValueError("The length of the mpi rank_size is less than 1.")
+        if self._rank_id < 0:
+            raise ValueError("The length of the mpi rank_id is less than 0.")
 
     def terminate(self):
         logger.info("python process run into terminate")
@@ -409,10 +411,6 @@ class ConfigInitializer:
 
     @ascend_global_hashtable_collection.setter
     def ascend_global_hashtable_collection(self, name):
-        string_validator = StringValidator(name="hashtable_collection", value=name,
-                                           max_len=HASHTABLE_COLLECTION_NAME_LENGTH, min_len=1)
-        if not string_validator.check_string_length().check_whitelist().is_valid():
-            raise ValueError(string_validator.msg)
         self._ascend_global_hashtable_collection = name
 
     def get_initializer(self, is_training):
@@ -448,7 +446,7 @@ class ConfigInitializer:
 
 @para_checker_decorator(check_option_list=[
     ("name", ClassValidator, {"classes": (str, type(None))}),
-    ("name", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
+    ("name", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length", "check_whitelist"]),
 ])
 def set_ascend_global_hashtable_collection(name=ASCEND_GLOBAL_HASHTABLE_COLLECTION):
     ConfigInitializer.get_instance().ascend_global_hashtable_collection = name
@@ -471,6 +469,7 @@ def init(use_mpi, **kwargs):
                 json.dumps(dataclasses.asdict(global_env), ensure_ascii=False))
     ConfigInitializer.set_instance(use_mpi, **kwargs)
     set_ascend_env()
+    atexit.register(terminate_config_initializer)
 
 
 def get_is_graph_modify_hook_running():
@@ -479,22 +478,6 @@ def get_is_graph_modify_hook_running():
 
 def set_is_graph_modify_hook_running(is_running):
     ConfigInitializer.get_instance().is_graph_modify_hook_running = is_running
-
-
-def get_run_times():
-    return ConfigInitializer.get_instance().run_times
-
-
-def increase_run_times():
-    ConfigInitializer.get_instance().run_times.increase()
-
-
-def get_is_last_round():
-    return ConfigInitializer.get_instance().is_last_round
-
-
-def set_is_last_round(last_round):
-    ConfigInitializer.get_instance().is_last_round = last_round
 
 
 def get_bool_gauge_set():
@@ -592,7 +575,6 @@ def restore_host_data(root_dir):
         raise RuntimeError("ASC manager does not exist.")
 
     if not ConfigInitializer.get_instance().get_asc_manager().load(root_dir):
-        terminate_config_initializer()
         raise TypeError("Asc load data does not match usr setups, \
         please re-consider if you want to restore from this dir")
     logger.debug("Data from host pipeline has been restored.")
@@ -766,7 +748,19 @@ def set_initializer(is_training, initializer):
     ConfigInitializer.get_instance().set_initializer(is_training, initializer)
 
 
+@para_checker_decorator(check_option_list=[
+    ("name", ClassValidator, {"classes": (str, list)}),
+    ("name", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"])
+])
 def set_ascend_table_name_must_contain(name="merged"):
+    """
+    设置表名中必须包含的关键字
+    Args:
+        name: 表名中必须包含的关键字
+
+    Returns: None
+
+    """
     mx_rec.constants.constants.ASCEND_TABLE_NAME_MUST_CONTAIN = name
 
 
@@ -802,6 +796,9 @@ def set_target_batch(is_training: bool, batch: dict):
     ConfigInitializer.get_instance().set_target_batch(is_training, batch)
 
 
+@para_checker_decorator(check_option_list=[
+    ("is_training", ClassValidator, {"classes": (bool, )})
+])
 def get_target_batch(is_training: bool) -> dict:
     """
     返回自动改图模式下生成新数据集中batch的记录.
@@ -936,6 +933,11 @@ def bind_cpu(rank_id: int, local_rank_size: int):
     import math
 
     total_cpu, cpu_range_list = get_available_cpu_num_and_range()
+
+    if local_rank_size <= 0:
+        logger.error(f"local rank size 's value less than or equal 0.")
+        return
+
     avg_count = math.ceil(total_cpu / local_rank_size)
     while True:
         if avg_count == 0:

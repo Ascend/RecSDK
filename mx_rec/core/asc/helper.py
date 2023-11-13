@@ -6,7 +6,7 @@ from functools import reduce
 
 import tensorflow as tf
 
-from mx_rec.util.initialize import get_host_pipeline_ops, get_training_mode_channel_id, get_use_static
+from mx_rec.util.initialize import get_host_pipeline_ops, get_training_mode_channel_id, get_use_static, get_modify_graph
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.merge_table import find_dangling_table, should_skip
 from mx_rec.validator.validator import para_checker_decorator, ValueCompareValidator, ClassValidator, \
@@ -160,7 +160,10 @@ def merge_feature_id_request(feature_id_list, split_list, table_name_list):
                            f"len(split_list): {len(split_list)}"
                            f"len(table_name_list): {len(table_name_list)}")
     feature_id_requests = zip(feature_id_list, split_list, table_name_list)
-    feature_id_requests = sorted(feature_id_requests, key=lambda x: (x[2], x[0].name))
+    if get_modify_graph():
+        feature_id_requests = sorted(feature_id_requests, key=lambda x: (x[2]))
+    else:
+        feature_id_requests = sorted(feature_id_requests, key=lambda x: (x[2], x[0].name))
     logger.debug("features to merge: %s", feature_id_requests)
 
     last_table_name = None
@@ -265,6 +268,8 @@ def do_insert(args, insert_tensors, splits, table_names, input_dict):
 
 def export_read_emb_key_v2_op(args, pipeline_op):
     origin_batch = list(args)
+    if len(origin_batch) < 1:
+        raise ValueError("The length of args is less than 1.")
     if isinstance(origin_batch[0], dict):
         output_batch = origin_batch[0]
         valid_key = get_valid_op_key(output_batch)
@@ -401,95 +406,3 @@ def is_feature_spec_list(specs):
             return False
 
     return True
-
-
-def get_asc_read_raw_func(cfg_list):
-    batch = {}
-    int_name_order = []
-    int_len_list = []
-    float_name_order = []
-    float_len_list = []
-    line_per_sample_list = []
-    host_pipeline_ops = get_host_pipeline_ops()
-    for cfg in cfg_list:
-        if cfg.data_type == "int64":
-            int_name_order.append(cfg.feature_name)
-            int_len_list.append(cfg.feature_len)
-            line_per_sample_list.append(cfg.line_per_sample)
-
-        if cfg.data_type == "float":
-            float_name_order.append(cfg.feature_name)
-            float_len_list.append(cfg.feature_len)
-            line_per_sample_list.append(cfg.line_per_sample)
-    if len(set(line_per_sample_list)) != 1:
-        raise ValueError(f"Please check that each line_per_sample value should be equal.")
-    line_per_sample = line_per_sample_list[0]
-
-    def read_raw_fn(data_src):
-        raw_int_sample, raw_float_sample = host_pipeline_ops.read_raw(
-            sample=data_src,
-            int_len=sum(int_len_list) * line_per_sample,
-            float_len=sum(float_len_list) * line_per_sample,
-            feat_order=int_name_order + float_name_order
-        )
-
-        int_split_res = tf.split(raw_int_sample, [i * line_per_sample_list[0] for i in int_len_list])
-
-        float_split_res = tf.split(raw_float_sample, [i * line_per_sample_list[0] for i in float_len_list])
-
-
-        for name_id, name in enumerate(int_name_order):
-            batch[name] = int_split_res[name_id]
-
-        for name_id, name in enumerate(float_name_order):
-            batch[name] = float_split_res[name_id]
-        return batch
-
-    return read_raw_fn
-
-
-class ParseConfig:
-
-    def __init__(self, **kwargs):
-        self.input_keys = set(kwargs.keys())
-        self._feature_name = kwargs.get("feature_name")
-        self._feature_len = int(kwargs.get("feature_len"))
-        self._data_type = kwargs.get("data_type")
-        self._line_per_sample = int(kwargs.get("line_per_sample"))
-        self.check_params()
-
-    @property
-    def feature_name(self):
-        return self._feature_name
-
-    @property
-    def feature_len(self):
-        return self._feature_len
-
-    @property
-    def data_type(self):
-        return self._data_type
-
-    @property
-    def line_per_sample(self):
-        return self._line_per_sample
-
-    def check_params(self):
-        supported_keys = {"feature_name", "feature_len", "line_per_sample", "data_type"}
-        if self.input_keys != supported_keys:
-            raise KeyError("Please offer an expected keyword argument")
-
-        if not isinstance(self._feature_name, str):
-            raise TypeError(f"Please offer a feature_name with string type.")
-
-        if not isinstance(self._data_type, str):
-            raise TypeError(f"Please offer a data_type with string type.")
-
-        if self._data_type not in ("int64", "float"):
-            raise TypeError(f"Please offer a data_type with int64 or float type")
-
-        if self._feature_len <= 0:
-            raise ValueError(f"Please offer a feature_len greater than zero.")
-
-        if self._line_per_sample <= 0:
-            raise ValueError(f"Please offer a line_per_sample greater than zero.")

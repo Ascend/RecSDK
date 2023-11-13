@@ -21,11 +21,13 @@ from tensorflow.python.client.session import BaseSession
 
 from mx_rec.constants import constants
 from mx_rec.util.initialize import get_is_graph_modify_hook_running, get_modify_graph, insert_bool_gauge, \
-    get_bool_gauge_set, terminate_config_initializer, get_run_times, set_is_last_round, get_asc_manager, \
-    export_table_instances
+    get_bool_gauge_set, terminate_config_initializer, get_asc_manager, export_table_instances
 from mx_rec.util.tf_version_adapter import NPUCheckpointSaverHook
 from mx_rec.graph.merge_lookup import do_merge_lookup
 from mx_rec.util.log import logger
+from mx_rec.validator.validator import para_checker_decorator, ClassValidator
+
+MAX_DEEP_RECUR = 500
 
 
 def init_dataset(self, input_data):
@@ -41,6 +43,14 @@ def init_dataset(self, input_data):
     self._graph_attr = ops.get_default_graph()
 
 
+@para_checker_decorator(check_option_list=[
+    ("fetches", ClassValidator, {"classes": (str, tf.Operation, tf.Variable, tf.Tensor,
+                                             tf.sparse.SparseTensor, list, tuple, dict)}),
+    ("feed_dict", ClassValidator, {"classes": (tf.Variable, tf.Tensor, tf.sparse.SparseTensor,
+                                               list, tuple, dict, type(None))}),
+    ("options", ClassValidator, {"classes": (tf.compat.v1.RunOptions, type(None))}),
+    ("run_metadata", ClassValidator, {"classes": (tf.compat.v1.RunMetadata, type(None))}),
+], output_log=False)
 def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
 
     """
@@ -74,15 +84,17 @@ def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
 
     all_op = []
 
-    def get_all_tensor(tensor_or_tensorlist):
+    def get_all_tensor(tensor_or_tensorlist, deep=0):
+        if deep >= MAX_DEEP_RECUR:
+            raise RuntimeError("Maximum recursion depth reached, fetches is too long to parse")
         # 把所有的tensor和Operation取出来
-        if isinstance(tensor_or_tensorlist, (list, tuple)) :
+        if isinstance(tensor_or_tensorlist, (list, tuple)):
             for i in tensor_or_tensorlist:
-                get_all_tensor(i)
+                get_all_tensor(i, deep+1)
         elif isinstance(tensor_or_tensorlist, dict):
             for k in tensor_or_tensorlist.keys():
-                get_all_tensor(tensor_or_tensorlist.get(k))
-        elif isinstance(tensor_or_tensorlist, (tf.Tensor, tf.Operation)):
+                get_all_tensor(tensor_or_tensorlist.get(k), deep+1)
+        elif isinstance(tensor_or_tensorlist, (tf.Tensor, tf.Operation, tf.sparse.SparseTensor)):
             name = tensor_or_tensorlist.name
             if ":" in name:
                 name = name[:name.find(":")]
@@ -109,13 +121,13 @@ def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     name2channel_cache = self.get_mxrec_name2channel_cache()
 
     # 查找相应的channel_id
-    get_all_tensor(fetches)
+    get_all_tensor(fetches, deep=0)
     try:
         channel_id = get_channel_id_by_sub_graph(all_op, name2channel_cache)
     except AssertionError:
         channel_id = -1
 
-    if channel_id != -1:
+    if channel_id != -1 and get_asc_manager():
         get_asc_manager().block_notify_wake(channel_id)
 
     if channel_id == constants.EVAL_CHANNEL_ID:
@@ -127,7 +139,7 @@ def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
 
     # 调用tensorflow原生的方法
     result = self.old_run_method(fetches, feed_dict, options, run_metadata)
-    if channel_id != -1:
+    if channel_id != -1 and get_asc_manager():
         get_asc_manager().block_count_steps(channel_id, steps)
     return result
 
@@ -141,15 +153,15 @@ def patch_for_session():
     def get_mxrec_steps(self):
         try:
             # 不能在未调用非__init__函数之前调用非__init__中定义的实例化属性
-            return self.steps
+            return self.mxrec_steps
         except AttributeError:
-            self.steps = 1
+            self.mxrec_steps = 1
             for custom_optimizer in self.get_config().graph_options.rewrite_options.custom_optimizers:
                 if custom_optimizer.name == "NpuOptimizer" \
                         and custom_optimizer.parameter_map["iterations_per_loop"].i != 0:
-                    self.steps = custom_optimizer.parameter_map["iterations_per_loop"].i
+                    self.mxrec_steps = custom_optimizer.parameter_map["iterations_per_loop"].i
                     break
-            return self.steps
+            return self.mxrec_steps
 
     def get_mxrec_name2channel_cache(self):
         try:
@@ -231,36 +243,6 @@ def patch_for_bool_gauge():
 
     BoolGauge.get_cell = get_cell
     logger.debug("Function 'get_cell' in Class 'BoolGauge' has been patched.")
-
-
-def end(self: NPUCheckpointSaverHook, session: tf.compat.v1.Session):
-    """
-    Call at the end of session hook.
-
-    Args:
-        self: An `NPUCheckpointSaverHook` instance.
-        session: A TensorFlow Session that will be soon closed.
-
-    Returns: None
-
-    """
-
-    logger.debug("Enter patch 'NPUCheckpointSaverHook.end'.")
-    logger.info("NPUCheckpointSaverHook end...")
-    basic_session_run_hooks.CheckpointSaverHook.end(self, session)
-
-    if 'train_and_evaluate' in get_bool_gauge_set() and get_run_times() == 1:
-        set_is_last_round(True)
-        return
-    logger.debug("NPUCheckpointSaverHook call 'terminate_config_initializer'...")
-    terminate_config_initializer()
-
-
-def patch_for_end():
-    """Patch for 'NPUCheckpointSaverHook.end'."""
-
-    NPUCheckpointSaverHook.end = end
-    logger.debug("Function 'end' in Class 'NPUCheckpointSaverHook' has been patched.")
 
 
 def assert_eval_spec(eval_spec: EvalSpec):

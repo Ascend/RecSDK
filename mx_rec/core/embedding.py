@@ -45,7 +45,7 @@ from mx_rec.util.log import logger
     ("ssd_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
     ("ssd_data_path", ClassValidator, {"classes": (list, tuple)}),
     ("is_save", ClassValidator, {"classes": (bool, )}),
-    ("init_param", NumValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
+    ("init_param", NumValidator, {"min_value": -10, "max_value": 10}, ["check_value"]),
     ("all2all_gradients_op", OptionValidator, {"options": [i.value for i in list(All2allGradientsOp)]}),
     ("value_dtype", OptionValidator, {"options": [tf.float32]}),
     ("shard_num", IntValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
@@ -455,7 +455,7 @@ class SparseEmbedding:
 
         # return the stub tensor of the lookup result
         if not get_use_static():
-            kwargs["ids"] = ids
+            kwargs["lookup_ids"] = ids
         mock_lookup_result = self.lookup_for_asc_with_feature_spec_inner(feature_spec, send_count, **kwargs)
         mock_lookup_result = tf.identity(mock_lookup_result, name=ASCAnchorAttr.MOCK_LOOKUP_RESULT.value)
         if not kwargs.get("is_grad"):
@@ -523,9 +523,9 @@ class SparseEmbedding:
                     same_table_tensor_list.append(tensor)
                 return same_table_tensor_list
 
-            # Ensure that tensors in the same table are sorted according to the lookup sequence (modify graph mode) or
-            # the sequence in which feature specs are created (feature spec mode).
-            same_table_feature_spec = sorted(same_table_feature_spec, key=lambda x: x.name)
+            # 改图模式下FeatureSpec是按照lookup顺序创建的，无需对ids进行排序；fs模式下手动创建FeatureSpec，不一定有序
+            if not self.modify_graph:
+                same_table_feature_spec = sorted(same_table_feature_spec, key=lambda x: x.name)
             mock_feature_spec = FeatureSpec(f"mock_feature_spec_{table_name}", table_name=table_name)
 
             if get_use_static():
@@ -673,7 +673,7 @@ class SparseEmbedding:
                     feature_spec_tensor = None
                     if not self.modify_graph:
                         feature_spec_tensor = kwargs.get("batch").get(feature_spec.index_key)
-                    modify_graph_tensor = kwargs.get("ids")
+                    modify_graph_tensor = kwargs.get("lookup_ids")
                     tensor = feature_spec_tensor if not self.modify_graph else modify_graph_tensor
                     if tensor is None:
                         raise KeyError(f"key or ids does not exist in batch, now modify graph is {self.modify_graph}.")
@@ -794,7 +794,7 @@ class SparseEmbedding:
     ("name", ClassValidator, {"classes": (str, type(None))}),
     ("name", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
     ("modify_graph", ClassValidator, {"classes": (bool, type(None))}),
-    ("batch", ClassValidator, {"classes": (dict, list, tuple, type(None))}),
+    ("batch", ClassValidator, {"classes": (dict, type(None))}),
     ("access_and_evict_config", ClassValidator, {"classes": (dict, type(None))}),
     ("is_grad", ClassValidator, {"classes": (bool, )}),
 ])
@@ -831,6 +831,11 @@ def sparse_lookup(hashtable: SparseEmbedding,
     kwargs["modify_graph"] = modify_graph
     kwargs["batch"] = batch
     kwargs["access_and_evict_config"] = access_and_evict_config
+    # 参数由内部创建，不使用外部入参，覆盖外部入参
+    kwargs["feature_spec_name_ids_dict"] = None
+    kwargs["multi_lookup"] = False
+    kwargs["lookup_ids"] = None
+
     scope_name = "{0}//{1}".format(hashtable.table_name, kwargs.get("name"))
     logger.info("Lookup: The table name is %s, and the value of `is_grad` in this lookup (lookup name is %s) is %s.",
                 hashtable.table_name, name, is_grad)

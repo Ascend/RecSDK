@@ -28,6 +28,9 @@ if [ ! -f "CMakePresets.json" ]; then
   exit 1
 fi
 
+# 禁止生成CRC校验和
+sed -i 's/--nomd5/--nomd5 --nocrc/g' ./cmake/makeself.cmake
+
 # 修改cann安装路径
 sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
 
@@ -46,3 +49,9 @@ cd ..
 
 bash build.sh
 
+# 安装编译成功的算子包
+bash ./build_out/custom_opp*.run
+
+cd ..
+
+rm -rf ./custom_op

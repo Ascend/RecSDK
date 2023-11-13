@@ -19,7 +19,7 @@
 namespace MxRec {
     template<class T>
     class SafeQueue {
-        static constexpr uint64_t DEFAULT_CAP = 10;
+        static constexpr uint64_t defaultCap = 10;
 
     public:
         SafeQueue() = default;
@@ -54,22 +54,6 @@ namespace MxRec {
             }
         }
 
-        std::unique_ptr <T> WaitAndGetOne()
-        {
-            {
-                std::lock_guard <std::mutex> lk(mut);
-                if (creatNum < capacity) {
-                    creatNum++;
-                    return std::make_unique<T>();
-                }
-            }
-            std::unique_lock <std::mutex> locker(mut);
-            dirtyCond.wait(locker, [this] { return !emptyQueue.empty(); });
-            auto t = move(emptyQueue.back());
-            emptyQueue.pop_back();
-            return move(t);
-        }
-
         void PutDirty(std::unique_ptr <T> &&t)
         {
             std::lock_guard <std::mutex> lk(mut);
@@ -84,15 +68,6 @@ namespace MxRec {
             dataCond.notify_one();
         }
 
-        std::unique_ptr <T> WaitAndPop()
-        {
-            std::unique_lock <std::mutex> lk(mut);
-            dataCond.wait(lk, [this] { return !dataQueue.empty(); });
-            std::unique_ptr <T> res = std::move(dataQueue.front());
-            dataQueue.pop_front();
-            return move(res);
-        }
-
         std::unique_ptr <T> TryPop()
         {
             std::lock_guard <std::mutex> lk(mut);
@@ -104,12 +79,6 @@ namespace MxRec {
             return move(res);
         }
 
-        bool Empty() const
-        {
-            std::lock_guard <std::mutex> lk(mut);
-            return dataQueue.empty();
-        }
-
         size_t Size() const
         {
             std::lock_guard <std::mutex> lk(mut);
@@ -118,8 +87,7 @@ namespace MxRec {
 
     private:
         mutable std::mutex mut;
-        uint64_t capacity = DEFAULT_CAP;
-        std::atomic <uint64_t> creatNum{};
+        uint64_t capacity = defaultCap;
         std::list <std::unique_ptr<T>> dataQueue;
         std::list <std::unique_ptr<T>> emptyQueue;
         std::condition_variable dataCond;

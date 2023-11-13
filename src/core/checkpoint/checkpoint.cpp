@@ -213,6 +213,7 @@ void Checkpoint::WriteEmbedding(const CkptTransData& transData, const string& da
 {
     ofstream writeFile;
     writeFile.open(dataDir.c_str(), std::ios::out | std::ios::trunc | std::ios::binary);
+    fs::permissions(dataDir.c_str(), fs::perms::owner_read | fs::perms::owner_write);
 
 #ifndef GTEST
     auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
@@ -228,16 +229,27 @@ void Checkpoint::WriteEmbedding(const CkptTransData& transData, const string& da
         int64_t address = transArr.at(i + 1);
         float *floatPtr = reinterpret_cast<float *>(address);
 
-        aclError ret = aclrtMemcpy(row.data(), embeddingSize * sizeof(float),
-                                   floatPtr, embeddingSize * sizeof(float),
-                                   ACL_MEMCPY_DEVICE_TO_HOST);
+        aclError ret;
+        try {
+            ret = aclrtMemcpy(row.data(), embeddingSize * sizeof(float),
+                              floatPtr, embeddingSize * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
+        } catch (std::exception& e) {
+            writeFile.close();
+            throw runtime_error(StringFormat("error happen when acl memory copy from device to host: %s", e.what()));
+        }
+
         if (ret != ACL_SUCCESS) {
             LOG_ERROR("aclrtMemcpy failed, ret={}", ret);
             writeFile.close();
             throw runtime_error(Logger::Format("aclrtMemcpy failed, ret={}", ret).c_str());
         }
 
-        writeFile.write(reinterpret_cast<const char *>(row.data()), embeddingSize * sizeof(float));
+        try {
+            writeFile.write(reinterpret_cast<const char *>(row.data()), embeddingSize * sizeof(float));
+        } catch (std::exception& e) {
+            writeFile.close();
+            throw runtime_error(StringFormat("error happen when write embedding to file: %s", e.what()));
+        }
     }
 #endif
     writeFile.close();
@@ -290,10 +302,20 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir, 
     auto &transArr = transData.int64Arr;
     for (size_t i = 0, j = 0; i < transArr.size(); i += keyAddrElem, ++j) {
         vector<float> row(embeddingSize);
-        readFile.read(reinterpret_cast<char *>(row.data()), embeddingSize * sizeof(float));
-
-        aclError ec = aclrtMemcpy(floatPtr + j * embeddingSize, embeddingSize * sizeof(float),
-                                  row.data(), embeddingSize * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
+        try {
+            readFile.read(reinterpret_cast<char *>(row.data()), embeddingSize * sizeof(float));
+        } catch (std::exception& e) {
+            readFile.close();
+            throw runtime_error(StringFormat("error happen when reading embedding from file: %s", e.what()));
+        }
+        aclError ec;
+        try {
+            ec = aclrtMemcpy(floatPtr + j * embeddingSize, embeddingSize * sizeof(float),
+                             row.data(), embeddingSize * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
+        } catch (std::exception& e) {
+            readFile.close();
+            throw runtime_error(StringFormat("error happen when acl memory copy from host to device: %s", e.what()));
+        }
         if (ec != ACL_SUCCESS) {
             LOG_ERROR("aclrtMemcpy failed, ret={}", ec);
             readFile.close();
@@ -368,6 +390,8 @@ void Checkpoint::WriterFn(BufferQueue& queue, int fd)
         ssize_t result = write(fd, writeBuffer.data(), writeBuffer.size());
         if (result != writeBuffer.size()) {
             LOG_ERROR("Error writing to file");
+            close(fd);
+            throw runtime_error(StringFormat("error happen when writing file. "));
         }
         writeBuffer.clear();
     }
@@ -389,8 +413,9 @@ void Checkpoint::WriteDataset(CkptTransData& transData,
     }
 
     if (result != writeSize) {
+        close(fd);
         LOG_ERROR("Error writing to file, please check the disk buffer or temporary folder space or file permissions!");
-        return;
+        throw runtime_error(StringFormat("error happen when write file. "));
     }
 }
 
@@ -558,7 +583,12 @@ void Checkpoint::ReadStream(CkptTransData& transData,
             } else {
                 readSize = datasetSize;
             }
-            ReadDataset(transData, readFile, readSize, dataType, idx);
+            try {
+                ReadDataset(transData, readFile, readSize, dataType, idx);
+            } catch (std::exception& e) {
+                readFile.close();
+                throw runtime_error(StringFormat("error happen when reading data from file: %s", e.what()));
+            }
             datasetSize -= readSize;
             idx += readSize;
         }
@@ -688,8 +718,13 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
         char* mappedData = static_cast<char*>(tempMappedData);
 
         // 处理映射的数据
-        HandleMappedData(mappedData, mapRowNum, onceReadByteSize, dst, i);
-
+        try {
+            HandleMappedData(mappedData, mapRowNum, onceReadByteSize, dst, i);
+        } catch (const std::runtime_error& e) {
+            close(fd);
+            munmap(mappedData, mapByteSize);
+            throw runtime_error(StringFormat("handle mapped data error: %s", e.what()));
+        }
         munmap(mappedData, mapByteSize);
 
         offset += mapByteSize;

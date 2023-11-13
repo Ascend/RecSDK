@@ -11,12 +11,13 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.util import compat
 
-from mx_rec.constants.constants import DataName, DataAttr, MIN_SIZE, MAX_FILE_SIZE, Flag, TFDevice
+from mx_rec.constants.constants import DataName, DataAttr, MIN_SIZE, MAX_FILE_SIZE, Flag, TFDevice, MAX_INT32
 from mx_rec.util.initialize import get_rank_id, get_rank_size, get_customized_ops, get_table_instance, \
     get_table_instance_by_name, is_asc_manager_initialized, save_host_data, restore_host_data, get_host_data, \
     send_host_data, get_ascend_global_hashtable_collection, set_sparse_dir, get_local_rank_size
 from mx_rec.util.perf import performance
-from mx_rec.validator.validator import DirectoryValidator, FileValidator
+from mx_rec.validator.validator import DirectoryValidator, FileValidator, para_checker_decorator, ClassValidator, \
+    IntValidator, OptionalStringValidator
 from mx_rec.util.global_env_conf import global_env
 from mx_rec.util.log import logger
 
@@ -37,6 +38,12 @@ class SaveModelThread(threading.Thread):
 class Saver(object):
     customized_ops = get_customized_ops()
 
+    @para_checker_decorator(check_option_list=[
+        ("var_list", ClassValidator, {"classes": (list, type(None))}),
+        ("max_to_keep", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
+        ("prefix_name", ClassValidator, {"classes": (str, type(None))}),
+        ("prefix_name", OptionalStringValidator, {"min_len": 1, "max_len": 50}, ["check_string_length"]),
+    ])
     def __init__(self, var_list=None, max_to_keep=3, prefix_name="checkpoint"):
         self.max_to_keep = max_to_keep
         self._prefix_name = prefix_name
@@ -81,8 +88,7 @@ class Saver(object):
     @performance("Save")
     def save(self, sess, save_path="model", global_step=None):
         """
-        Save sparse tables. For local save, both save_easy mode and normal mode is supported. For HDFS save,
-        only save_easy mode is supported.
+        Save sparse tables. For local save, both save_easy mode and normal mode is supported.
         For easy_save mode, checkpoint is saved in under format:
         ./rank_id/HashTable/HBM/embed_table_name/key/xxx.data
         ./rank_id/HashTable/HBM/embed_table_name/key/xxx.attribute
@@ -95,6 +101,10 @@ class Saver(object):
         :return: None
         """
         logger.debug("======== Start saving for rank id %s ========", self.rank_id)
+        if not check_file_system_is_valid(save_path):
+            raise ValueError(f"the path to save sparse embedding table data belong to invalid file system, "
+                             f"only local file system supported. ")
+
         save_path = save_path if save_path else self._prefix_name
         directory, base_name = os.path.split(save_path)
 
@@ -109,11 +119,10 @@ class Saver(object):
         set_sparse_dir(saving_path)
 
         try:
-            if save_path.find("://") == -1:
-                directory_validator = DirectoryValidator("saving_path", saving_path)
-                directory_validator.check_not_soft_link()
-                directory_validator.with_blacklist(exact_compare=False)
-                directory_validator.check()
+            directory_validator = DirectoryValidator("saving_path", saving_path)
+            directory_validator.check_not_soft_link()
+            directory_validator.with_blacklist(exact_compare=False)
+            directory_validator.check()
         except ValueError as err:
             raise ValueError(f"The saving path {saving_path} cannot be a system directory "
                              f"and cannot be soft link.") from err
@@ -138,6 +147,10 @@ class Saver(object):
     @performance("Restore")
     def restore(self, sess, reading_path):
         logger.debug("======== Start restoring ========")
+        if not check_file_system_is_valid(reading_path):
+            raise ValueError(f"the path to save sparse embedding table data belong to invalid file system, "
+                             f"only local file system supported. ")
+
         directory, base_name = os.path.split(reading_path)
         ckpt_name = f"sparse-{base_name}"
 
@@ -409,14 +422,7 @@ def write_binary_data(writing_path, suffix, data, attributes=None):
     if tf.io.gfile.exists(target_attribute_dir):
         raise FileExistsError(f"Target_attribute_dir {target_attribute_dir} exists before writing.")
 
-    if target_data_dir.find("://") != -1:
-        logger.debug("use hdfs path %s to save sparse data.", target_data_dir)
-        with tf.io.gfile.GFile(target_data_dir, "wb") as file:
-            data = data.tostring()
-            file.write(data)
-    else:
-        logger.debug("use local file path %s to save sparse data.", target_data_dir)
-        data.tofile(target_data_dir)
+    data.tofile(target_data_dir)
 
     if attributes is not None:
         if not isinstance(attributes, dict):
@@ -452,13 +458,7 @@ def read_binary_data(reading_path: str, suffix: int, data_name: str, table_name:
 
     with tf.io.gfile.GFile(target_data_dir, "rb") as file:
         validate_read_file(target_data_dir)
-        if target_data_dir.find("://") != -1:
-            logger.debug("use hdfs path %s to restore sparse data.", target_data_dir)
-            data_to_restore = file.read()
-            data_to_restore = np.fromstring(data_to_restore, dtype=attributes.pop(DataAttr.DATATYPE.value))
-        else:
-            logger.debug("use local file path %s to restore sparse data.", target_data_dir)
-            data_to_restore = np.fromfile(target_data_dir, dtype=attributes.pop(DataAttr.DATATYPE.value))
+        data_to_restore = np.fromfile(target_data_dir, dtype=attributes.pop(DataAttr.DATATYPE.value))
 
     if DataAttr.SHAPE.value in attributes and data_name != DataName.KEY.value:
         data_shape = attributes.pop(DataAttr.SHAPE.value)
@@ -482,9 +482,8 @@ def validate_read_file(read_file_path):
     """
     file_validator = FileValidator("read_file_path", read_file_path)
     file_validator.check_file_size(MAX_FILE_SIZE, MIN_SIZE)
-    # local file need to check soft link
-    if read_file_path.find("://") == -1:
-        file_validator.check_not_soft_link()
+    file_validator.check_user_group()
+    file_validator.check_not_soft_link()
     file_validator.check()
 
 
@@ -512,3 +511,9 @@ def process_embedding_data(data_to_restore: np.ndarray, current_data_shape: list
                         f"saved vocabulary size {vocab_size},which would loss the mapping between keys and embeddings ")
 
     return data_to_restore
+
+
+def check_file_system_is_valid(file_path):
+    if file_path.find("://") == -1:
+        return True
+    return False

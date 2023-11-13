@@ -74,7 +74,7 @@ def do_merge_lookup(is_train: bool = True):
             continue
 
         send_count = table_instance.send_count
-        kwargs = dict(is_train=is_train, ids=cutting_point, multi_lookup=True, is_grad=is_grad)
+        kwargs = dict(is_train=is_train, lookup_ids=cutting_point, multi_lookup=True, is_grad=is_grad)
         if not get_use_static():
             kwargs["feature_spec_name_ids_dict"] = feature_spec_name_ids_dict
         lookup_result = table_instance.lookup_for_asc_with_feature_spec(feature_spec, send_count, **kwargs)

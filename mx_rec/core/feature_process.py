@@ -12,7 +12,7 @@ from mx_rec.validator.validator import para_checker_decorator, ClassValidator, I
 from mx_rec.util.log import logger
 
 
-class _EvictHook(tf.compat.v1.train.SessionRunHook):
+class EvictHook(tf.compat.v1.train.SessionRunHook):
     """Sets evict based on global step or time."""
     @para_checker_decorator(
         check_option_list=[
