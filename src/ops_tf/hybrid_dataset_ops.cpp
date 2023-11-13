@@ -117,7 +117,7 @@ namespace MxRec {
         int ParseThresholdAndCheck(const Tensor& inputTensor, int& threshold) const
         {
             // 前面8个字节、即占一个featureId位，是unix时间戳
-            const int* src = static_cast<const int*>(inputTensor.tensor_data().data());
+            auto src = reinterpret_cast<const int*>(inputTensor.tensor_data().data());
             std::copy(src, src + 1, &threshold);
 
             if (threshold < 0) {
