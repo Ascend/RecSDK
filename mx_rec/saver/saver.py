@@ -38,14 +38,6 @@ class SaveModelThread(threading.Thread):
 class Saver(object):
     customized_ops = get_customized_ops()
 
-    @staticmethod
-    def _make_table_name_dir(root_dir, table_instance, table_name):
-        if table_instance.host_vocabulary_size > 0:
-            table_dir = os.path.join(root_dir, "HashTable", "DDR", table_name)
-        else:
-            table_dir = os.path.join(root_dir, "HashTable", "HBM", table_name)
-        tf.io.gfile.makedirs(table_dir)
-
     @para_checker_decorator(check_option_list=[
         ("var_list", ClassValidator, {"classes": (list, type(None))}),
         ("max_to_keep", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
@@ -67,6 +59,14 @@ class Saver(object):
         self.save_easy_mode = (global_env.save_easy == Flag.TRUE.value)
         self._last_checkponts = []
         self.build()
+
+    @staticmethod
+    def _make_table_name_dir(root_dir, table_instance, table_name):
+        if table_instance.host_vocabulary_size > 0:
+            table_dir = os.path.join(root_dir, "HashTable", "DDR", table_name)
+        else:
+            table_dir = os.path.join(root_dir, "HashTable", "HBM", table_name)
+        tf.io.gfile.makedirs(table_dir)
 
     def build(self):
         if self.var_list is None:

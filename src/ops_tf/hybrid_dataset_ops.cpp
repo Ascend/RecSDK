@@ -69,7 +69,7 @@ namespace MxRec {
 
     class SetThreshold : public OpKernel {
     public:
-        explicit SetThreshold(OpKernelConstruction* context) : OpKernel(context)
+        explicit SetThreshold(OpKernelConstruction& context) : OpKernel(context)
         {
             LOG_INFO("SetThreshold init");
             OP_REQUIRES_OK(context, context->GetAttr("emb_name", &embName));
@@ -536,96 +536,98 @@ namespace MxRec {
     };
 
 }
-REGISTER_OP("ClearChannel").Attr("channel_id : int");
-REGISTER_KERNEL_BUILDER(Name("ClearChannel").Device(DEVICE_CPU), MxRec::ClearChannel);
+namespace tensorflow {
+    REGISTER_OP("ClearChannel").Attr("channel_id : int");
+    REGISTER_KERNEL_BUILDER(Name("ClearChannel").Device(DEVICE_CPU), MxRec::ClearChannel);
 
-// ##################### SetThreshold #######################
-REGISTER_OP("SetThreshold")
-.Input("input: int32")
-.Attr("emb_name: string = ''")
-.Attr("ids_name: string = ''")
-.Output("output: int32")
-.SetShapeFn([](InferenceContextPtr c) {
-c->set_output(TensorIndex::TENSOR_INDEX_0, c->Scalar());
-return Status::OK();
-});
-REGISTER_KERNEL_BUILDER(Name("SetThreshold").Device(tensorflow::DEVICE_CPU), SetThreshold);
+    // ##################### SetThreshold #######################
+    REGISTER_OP("SetThreshold")
+    .Input("input: int32")
+    .Attr("emb_name: string = ''")
+    .Attr("ids_name: string = ''")
+    .Output("output: int32")
+    .SetShapeFn([](InferenceContextPtr c) {
+    c->set_output(TensorIndex::TENSOR_INDEX_0, c->Scalar());
+    return Status::OK();
+    });
+    REGISTER_KERNEL_BUILDER(Name("SetThreshold").Device(DEVICE_CPU), MxRec::SetThreshold);
 
-// ##################### ReturnTimestamp #######################
-REGISTER_OP("ReturnTimestamp")
-.Input("input: int64")
-.Output("output: int64")
-.SetShapeFn([](InferenceContextPtr c) {
-c->set_output(TensorIndex::TENSOR_INDEX_0, c->Scalar());
-return Status::OK();
-});
-REGISTER_KERNEL_BUILDER(Name("ReturnTimestamp").Device(DEVICE_CPU), MxRec::ReturnTimestamp);
+    // ##################### ReturnTimestamp #######################
+    REGISTER_OP("ReturnTimestamp")
+    .Input("input: int64")
+    .Output("output: int64")
+    .SetShapeFn([](InferenceContextPtr c) {
+    c->set_output(TensorIndex::TENSOR_INDEX_0, c->Scalar());
+    return Status::OK();
+    });
+    REGISTER_KERNEL_BUILDER(Name("ReturnTimestamp").Device(DEVICE_CPU), MxRec::ReturnTimestamp);
 
-// ##################### ReadEmbKeyV2Dynamic #######################
-REGISTER_OP("ReadEmbKeyV2Dynamic")
-.Input("sample: T")
-.Input("splits: int32")
-.Output("output: int32")
-.Attr("T: {int64, int32}")
-.Attr("channel_id: int")
-.Attr("emb_name: list(string)")     // for which table to lookup
-.Attr("timestamp: bool")            // use for feature evict, (unix timestamp)
-.SetShapeFn([](InferenceContextPtr c) {
-c->set_output(TensorIndex::TENSOR_INDEX_0, c->Scalar());
-return Status::OK();
-});
+    // ##################### ReadEmbKeyV2Dynamic #######################
+    REGISTER_OP("ReadEmbKeyV2Dynamic")
+    .Input("sample: T")
+    .Input("splits: int32")
+    .Output("output: int32")
+    .Attr("T: {int64, int32}")
+    .Attr("channel_id: int")
+    .Attr("emb_name: list(string)")     // for which table to lookup
+    .Attr("timestamp: bool")            // use for feature evict, (unix timestamp)
+    .SetShapeFn([](InferenceContextPtr c) {
+    c->set_output(TensorIndex::TENSOR_INDEX_0, c->Scalar());
+    return Status::OK();
+    });
 
-REGISTER_KERNEL_BUILDER(Name("ReadEmbKeyV2Dynamic").Device(DEVICE_CPU), MxRec::ReadEmbKeyV2Dynamic);
+    REGISTER_KERNEL_BUILDER(Name("ReadEmbKeyV2Dynamic").Device(DEVICE_CPU), MxRec::ReadEmbKeyV2Dynamic);
 
-// ##################### ReadEmbKeyV2 #######################
-REGISTER_OP("ReadEmbKeyV2")
-.Input("sample: T")
-.Output("output: int32")
-.Attr("T: {int64, int32}")
-.Attr("channel_id: int")
-.Attr("splits: list(int)")
-.Attr("emb_name: list(string)")     // for which table to lookup
-.Attr("timestamp: bool")            // use for feature evict, (unix timestamp)
-.SetShapeFn([](InferenceContextPtr c) {
-c->set_output(TensorIndex::TENSOR_INDEX_0, c->Scalar());
-return Status::OK();
-});
+    // ##################### ReadEmbKeyV2 #######################
+    REGISTER_OP("ReadEmbKeyV2")
+    .Input("sample: T")
+    .Output("output: int32")
+    .Attr("T: {int64, int32}")
+    .Attr("channel_id: int")
+    .Attr("splits: list(int)")
+    .Attr("emb_name: list(string)")     // for which table to lookup
+    .Attr("timestamp: bool")            // use for feature evict, (unix timestamp)
+    .SetShapeFn([](InferenceContextPtr c) {
+    c->set_output(TensorIndex::TENSOR_INDEX_0, c->Scalar());
+    return Status::OK();
+    });
 
-REGISTER_KERNEL_BUILDER(Name("ReadEmbKeyV2").Device(DEVICE_CPU), MxRec::ReadEmbKeyV2);
+    REGISTER_KERNEL_BUILDER(Name("ReadEmbKeyV2").Device(DEVICE_CPU), MxRec::ReadEmbKeyV2);
 
-REGISTER_OP("EmbeddingLookupByAddress")
-.Input("address: int64")
-.Attr("embedding_dim: int")
-.Attr("embedding_type: int")
-.Output("y: float")
-.SetIsStateful()
-.SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
-ShapeHandle addrShape;
-TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &addrShape));
-int embSize;
-TF_RETURN_IF_ERROR(c->GetAttr("embedding_dim", &embSize));
-tensorflow::shape_inference::DimensionHandle rows = c->Dim(addrShape, 0);
-c->set_output(TENSOR_INDEX_0, c->Matrix(rows, embSize));
-return Status::OK();
-});
+    REGISTER_OP("EmbeddingLookupByAddress")
+    .Input("address: int64")
+    .Attr("embedding_dim: int")
+    .Attr("embedding_type: int")
+    .Output("y: float")
+    .SetIsStateful()
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+    ShapeHandle addrShape;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &addrShape));
+    int embSize;
+    TF_RETURN_IF_ERROR(c->GetAttr("embedding_dim", &embSize));
+    tensorflow::shape_inference::DimensionHandle rows = c->Dim(addrShape, 0);
+    c->set_output(TENSOR_INDEX_0, c->Matrix(rows, embSize));
+    return Status::OK();
+    });
 
-REGISTER_KERNEL_BUILDER(Name("EmbeddingLookupByAddress").Device(DEVICE_CPU), MxRec::CustOps);
+    REGISTER_KERNEL_BUILDER(Name("EmbeddingLookupByAddress").Device(DEVICE_CPU), MxRec::CustOps);
 
-REGISTER_OP("EmbeddingUpdateByAddress")
-.Input("address: int64")
-.Input("embedding: float")
-.Attr("update_type: int")
-.Output("y: float")
-.SetIsStateful()
-.SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
-ShapeHandle addrShape;
-TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &addrShape));
-ShapeHandle embeddingShape;
-TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &embeddingShape));
-tensorflow::shape_inference::DimensionHandle rows = c->Dim(addrShape, 0);
-tensorflow::shape_inference::DimensionHandle cols = c->Dim(embeddingShape, 1);
-c->set_output(TENSOR_INDEX_0, c->Matrix(rows, cols));
-return Status::OK();
-});
+    REGISTER_OP("EmbeddingUpdateByAddress")
+    .Input("address: int64")
+    .Input("embedding: float")
+    .Attr("update_type: int")
+    .Output("y: float")
+    .SetIsStateful()
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+    ShapeHandle addrShape;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &addrShape));
+    ShapeHandle embeddingShape;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &embeddingShape));
+    tensorflow::shape_inference::DimensionHandle rows = c->Dim(addrShape, 0);
+    tensorflow::shape_inference::DimensionHandle cols = c->Dim(embeddingShape, 1);
+    c->set_output(TENSOR_INDEX_0, c->Matrix(rows, cols));
+    return Status::OK();
+    });
 
-REGISTER_KERNEL_BUILDER(Name("EmbeddingUpdateByAddress").Device(DEVICE_CPU), MxRec::CustOps);
+    REGISTER_KERNEL_BUILDER(Name("EmbeddingUpdateByAddress").Device(DEVICE_CPU), MxRec::CustOps);
+}
