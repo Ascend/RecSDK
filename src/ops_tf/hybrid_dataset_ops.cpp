@@ -69,7 +69,7 @@ namespace MxRec {
 
     class SetThreshold : public OpKernel {
     public:
-        explicit SetThreshold(OpKernelConstruction& context) : OpKernel(context)
+        explicit SetThreshold(OpKernelConstructionPtr context) : OpKernel(context)
         {
             LOG_INFO("SetThreshold init");
             OP_REQUIRES_OK(context, context->GetAttr("emb_name", &embName));
