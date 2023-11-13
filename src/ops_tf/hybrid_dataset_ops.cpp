@@ -540,7 +540,7 @@ REGISTER_OP("ClearChannel").Attr("channel_id : int");
 REGISTER_KERNEL_BUILDER(Name("ClearChannel").Device(DEVICE_CPU), MxRec::ClearChannel);
 
 // ##################### SetThreshold #######################
-REGISTER_OP("SetThreshold") noexcept
+REGISTER_OP("SetThreshold")
 .Input("input: int32")
 .Attr("emb_name: string = ''")
 .Attr("ids_name: string = ''")
