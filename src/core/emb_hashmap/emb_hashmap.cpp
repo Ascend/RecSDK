@@ -418,7 +418,7 @@ void EmbHashMap::RefreshFreqInfoWithSwap(const string& embName, EmbHashMapInfo& 
 /// 记录日志：HBM和DDR换入换出后，比较hostHashMap中DDR内key和表对应的lfuCache对象中的key内容
 void EmbHashMap::AddCacheManagerTraceLog(const string& embTableName, const EmbHashMapInfo& embHashMap) const
 {
-    if (Logger::GetLevel() != Logger::trace) {
+    if (Logger::GetLevel() != Logger::TRACE) {
         return;
     }
     auto& hostMap = embHashMap.hostHashMap;

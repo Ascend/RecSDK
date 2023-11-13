@@ -151,8 +151,7 @@ class OptimizerType(Enum):
         raise ValueError(f"Invalid mode value, please choose one from {list(map(lambda c: c.value, OptimizerType))}")
 
 
-OPTIMIZER_STATE_META = {OptimizerType.LAZY_ADAM: ["momentum", "velocity"],
-                        OptimizerType.SGD: []}
+OPTIMIZER_STATE_META = {OptimizerType.LAZY_ADAM: ["momentum", "velocity"], OptimizerType.SGD: []}
 
 
 class All2allGradientsOp(BaseEnum):

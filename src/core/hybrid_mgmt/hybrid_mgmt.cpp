@@ -143,7 +143,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
 // 比较hostHashMap和cacheManager的数据是否一致
 void HybridMgmt::AddCacheManagerTraceLog(CkptData& saveData)
 {
-    if (Logger::GetLevel() != Logger::trace) {
+    if (Logger::GetLevel() != Logger::TRACE) {
         return;
     }
     auto& embHashMaps = saveData.embHashMaps;
@@ -1079,7 +1079,7 @@ int64_t HybridMgmt::GetTableSize(const string& embName) const
     }
     int64_t ssdSize = 0;
     if (mgmtRankInfo.isSSDEnabled) {
-        ssdSize= cacheManager->GetTableEmbeddingSize(embName);
+        ssdSize = cacheManager->GetTableEmbeddingSize(embName);
     }
 
     const auto& iter = hostHashMaps->embHashMaps.find(embName);

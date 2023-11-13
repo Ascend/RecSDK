@@ -54,7 +54,7 @@ namespace MxRec {
             }
         }
 
-        ~ClearChannel() = default;
+        ~ClearChannel() override = default;
 
         void Compute(OpKernelContextPtr context) override
         {
@@ -69,14 +69,14 @@ namespace MxRec {
 
     class SetThreshold : public OpKernel {
     public:
-        explicit SetThreshold(OpKernelConstructionPtr context) : OpKernel(context)
+        explicit SetThreshold(OpKernelConstruction* context) : OpKernel(context)
         {
             LOG_INFO("SetThreshold init");
             OP_REQUIRES_OK(context, context->GetAttr("emb_name", &embName));
             OP_REQUIRES_OK(context, context->GetAttr("ids_name", &idsName)); // sparse_lookup查询
         }
 
-        ~SetThreshold() = default;
+        ~SetThreshold() override = default;
 
         void Compute(OpKernelContextPtr context) override
         {
@@ -140,7 +140,7 @@ namespace MxRec {
         explicit ReturnTimestamp(OpKernelConstructionPtr context) : OpKernel(context)
         {}
 
-        ~ReturnTimestamp() = default;
+        ~ReturnTimestamp() override = default;
 
         void Compute(OpKernelContextPtr context) override
         {
@@ -189,7 +189,7 @@ namespace MxRec {
             }
             maxStep = keyProcess->GetMaxStep(channelId);
         }
-        ~ReadEmbKeyV2Dynamic() = default;
+        ~ReadEmbKeyV2Dynamic() override = default;
 
         void Compute(OpKernelContextPtr context) override
         {
@@ -380,7 +380,7 @@ namespace MxRec {
             maxStep = keyProcess->GetMaxStep(channelId);
         }
 
-        ~ReadEmbKeyV2() = default;
+        ~ReadEmbKeyV2() override = default;
 
         void Compute(OpKernelContextPtr context) override
         {
@@ -532,7 +532,7 @@ namespace MxRec {
             std::cout << " Cust opp not installed!!" << std::endl;
         }
 
-        ~CustOps() = default;
+        ~CustOps() override = default;
     };
 
 }
@@ -549,7 +549,7 @@ REGISTER_OP("SetThreshold")
 c->set_output(TensorIndex::TENSOR_INDEX_0, c->Scalar());
 return Status::OK();
 });
-REGISTER_KERNEL_BUILDER(Name("SetThreshold").Device(DEVICE_CPU), MxRec::SetThreshold);
+REGISTER_KERNEL_BUILDER(Name("SetThreshold").Device(tensorflow::DEVICE_CPU), SetThreshold);
 
 // ##################### ReturnTimestamp #######################
 REGISTER_OP("ReturnTimestamp")

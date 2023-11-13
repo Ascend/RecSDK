@@ -1139,7 +1139,7 @@ void KeyProcess::BuildRestoreVec(const unique_ptr<EmbBatchT>& batch, const vecto
         emb_key_t devId = abs(key % static_cast<emb_key_t>(rankInfo.rankSize));
         if (restoreVec[i] >= hotPosSize) {
             restoreVec[i] += blockOffset[devId];
-        } else if (Logger::GetLevel() >= Logger::debug) {
+        } else if (Logger::GetLevel() >= Logger::DEBUG) {
             hotNum += 1;
         }
     }

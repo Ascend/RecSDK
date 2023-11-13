@@ -27,11 +27,11 @@ constexpr size_t DELIM_LEN = 2;
 class Logger {
 public:
 
-    static constexpr int trace = -2;
-    static constexpr int debug = -1;
-    static constexpr int info = 0;
-    static constexpr int warn = 1;
-    static constexpr int error = 2;
+    static constexpr int TRACE = -2;
+    static constexpr int DEBUG = -1;
+    static constexpr int INFO = 0;
+    static constexpr int WARN = 1;
+    static constexpr int ERROR = 2;
 
     static void SetRank(int logRank);
 
@@ -103,20 +103,20 @@ private:
     static int rank;
 };
 
-#define LOG_TRACE(args...) if (MxRec::Logger::GetLevel() <= MxRec::Logger::trace) \
-MxRec::Logger::Log(__FILE__, __LINE__, MxRec::Logger::trace, args)
+#define LOG_TRACE(args...) if (MxRec::Logger::GetLevel() <= MxRec::Logger::TRACE) \
+MxRec::Logger::Log(__FILE__, __LINE__, MxRec::Logger::TRACE, args)
 
-#define LOG_DEBUG(args...) if (MxRec::Logger::GetLevel() <= MxRec::Logger::debug) \
-MxRec::Logger::Log(__FILE__, __LINE__, MxRec::Logger::debug, args)
+#define LOG_DEBUG(args...) if (MxRec::Logger::GetLevel() <= MxRec::Logger::DEBUG) \
+MxRec::Logger::Log(__FILE__, __LINE__, MxRec::Logger::DEBUG, args)
 
-#define LOG_INFO(args...) if (MxRec::Logger::GetLevel() <= MxRec::Logger::info) \
-MxRec::Logger::Log(__FILE__, __LINE__, MxRec::Logger::info, args)
+#define LOG_INFO(args...) if (MxRec::Logger::GetLevel() <= MxRec::Logger::INFO) \
+MxRec::Logger::Log(__FILE__, __LINE__, MxRec::Logger::INFO, args)
 
-#define LOG_WARN(args...) if (MxRec::Logger::GetLevel() <= MxRec::Logger::warn) \
-MxRec::Logger::Log(__FILE__, __LINE__, MxRec::Logger::warn, args)
+#define LOG_WARN(args...) if (MxRec::Logger::GetLevel() <= MxRec::Logger::WARN) \
+MxRec::Logger::Log(__FILE__, __LINE__, MxRec::Logger::WARN, args)
 
-#define LOG_ERROR(args...) if (MxRec::Logger::GetLevel() <= MxRec::Logger::error) \
-MxRec::Logger::Log(__FILE__, __LINE__, MxRec::Logger::error, args)
+#define LOG_ERROR(args...) if (MxRec::Logger::GetLevel() <= MxRec::Logger::ERROR) \
+MxRec::Logger::Log(__FILE__, __LINE__, MxRec::Logger::ERROR, args)
 
 }
 
