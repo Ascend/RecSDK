@@ -260,7 +260,6 @@ void KeyProcess::KeyProcessTaskWithFastUnique(int channel, int threadId)
             auto getBatchTime = getBatchDataTC.ElapsedMS();
             TimeCost processDataTime = TimeCost();
 
-            RecordKeyCountMap(batch);
             InitializeUnique(uniqueConf, preBatchSize, uniqueInitialize, batch, unique);
             if (!KeyProcessTaskHelperWithFastUnique(batch, unique, channel, threadId)) {
                 break;
@@ -296,8 +295,6 @@ void KeyProcess::KeyProcessTask(int channel, int threadId)
             }
             auto getBatchTime = getBatchDataTC.ElapsedMS();
             TimeCost processDataTime = TimeCost();
-
-            RecordKeyCountMap(batch);
 
             if (!KeyProcessTaskHelper(batch, channel, threadId)) {
                 break;
@@ -358,6 +355,7 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch
     std::lock_guard<std::mutex> lock(loadSaveMut[channel][threadId]);
     // without host, just device, all embedding vectors were stored in device
     // map key to offset directly by lookup keyOffsetMap (hashmap)
+    RecordKeyCountMap(batch);
     if (rankInfo.noDDR) {
         TimeCost key2OffsetTC;
         Key2Offset(batch->name, uniqueInfo.all2AllInfo.keyRecv, channel);
@@ -405,6 +403,7 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
         countRecv = GetCountRecv(batch, threadId, keyCount, scAll, ss);
     }
     std::lock_guard<std::mutex> lock(loadSaveMut[channel][threadId]);
+    RecordKeyCountMap(batch);
     BuildRestoreVec(batch, ss, restore, static_cast<int>(hotPos.size()));
 
     // 特征准入&淘汰
@@ -1423,6 +1422,7 @@ int64_t KeyProcess::GetExpansionTableCapacity(const string& embName)
 
 void KeyProcess::RecordKeyCountMap(const unique_ptr<EmbBatchT>& batch)
 {
+    std::lock_guard<std::mutex> lk(mut);
     size_t miniBs = batch->Size();
     auto* batchData = batch->sample.data();
     auto& singleKeyCountMap = keyCountMap[batch->name];

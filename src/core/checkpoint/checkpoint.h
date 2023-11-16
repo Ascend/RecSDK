@@ -54,7 +54,8 @@ namespace MxRec {
             CkptDataType::HIST_REC,
             CkptDataType::NDDR_FEATMAP,
             CkptDataType::DDR_FREQ_MAP,
-            CkptDataType::EXCLUDE_FREQ_MAP
+            CkptDataType::EXCLUDE_FREQ_MAP,
+            CkptDataType::KEY_COUNT_MAP
         };
         const set<CkptDataType> floatTransSet{
             CkptDataType::EMB_DATA

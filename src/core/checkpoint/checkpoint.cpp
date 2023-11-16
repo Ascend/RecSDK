@@ -107,14 +107,11 @@ void Checkpoint::SaveProcess(CkptData& ckptData)
 {
     for (const auto& dataHandler : dataHandlers) {
         dataHandler->SetProcessData(ckptData);
-
         vector<string> embNames { dataHandler->GetEmbNames() };
         vector<string> dirNames { dataHandler->GetDirNames() };
         vector<CkptDataType> saveDataTypes { dataHandler->GetDataTypes() };
-
         MakeUpperLayerSaveDir(dirNames);
         MakeDataLayerSaveDir(embNames, saveDataTypes, dataHandler);
-
         SaveDataset(embNames, saveDataTypes, dataHandler);
     }
 }
@@ -186,7 +183,6 @@ void Checkpoint::SaveDataset(const vector<string>& embNames,
         if (!CheckEmbNames(embName)) {
             continue;
         }
-
         auto dataDir{innerDirPath + dirSeparator + embName};
         for (const auto& saveDataType: saveDataTypes) {
             auto datasetPath { dataDir + dirSeparator + dataHandler->GetDataDirName(saveDataType) };

@@ -52,9 +52,10 @@ namespace MxRec {
             "attribute",
             "ddr_key_freq_map",
             "exclude_ddr_key_freq_map",
-            "evict_pos"
+            "evict_pos",
+            "key_count_map"
         };
-        const vector<uint32_t> dataElmtBytes { 4, 4, 8, 8, 4, 4, 8, 4, 8, 8, 8, 8, 8};
+        const vector<uint32_t> dataElmtBytes { 4, 4, 8, 8, 4, 4, 8, 4, 8, 8, 8, 8, 8, 8};
 
         const uint32_t eightBytes { 8 };
         const uint32_t fourBytes { 4 };
