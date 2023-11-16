@@ -233,6 +233,7 @@ bool HybridMgmt::Save(const string savePath)
 
     CkptData saveData;
     Checkpoint saveCkpt;
+    saveData.keyCountMap = preprocess->GetKeyCountMap();
     if (!mgmtRankInfo.noDDR) {
         // DDR模式保存host的emb表以及hashmap
         LOG_DEBUG(MGMT + "Start host side save: ddr mode hashmap");
@@ -306,6 +307,7 @@ bool HybridMgmt::Load(const string& loadPath)
         return false;
     }
 
+    preprocess->LoadKeyCountMap(loadData.keyCountMap);
     if (!mgmtRankInfo.noDDR) {
         // DDR模式 将加载的hash map进行赋值
         LOG_DEBUG(MGMT + "Start host side load: ddr mode hashmap");
@@ -345,6 +347,7 @@ bool HybridMgmt::Load(const string& loadPath)
 void HybridMgmt::SetFeatureTypeForLoad(vector<CkptFeatureType>& loadFeatures,
                                        const FeatureAdmitAndEvict& featAdmitNEvict)
 {
+    loadFeatures.push_back(CkptFeatureType::KEY_COUNT_MAP);
     if (!mgmtRankInfo.noDDR) {
         // DDR模式加载的类型为host的emb表以及hashmap
         loadFeatures.push_back(CkptFeatureType::HOST_EMB);

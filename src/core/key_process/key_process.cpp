@@ -130,6 +130,11 @@ auto KeyProcess::GetKeyOffsetMap() -> KeyOffsetMemT
     return keyOffsetMap;
 }
 
+auto KeyProcess::GetKeyCountMap() -> KeyCountMemT
+{
+    return keyCountMap;
+}
+
 auto KeyProcess::GetFeatAdmitAndEvict() -> FeatureAdmitAndEvict&
 {
     return m_featureAdmitAndEvict;
@@ -145,6 +150,11 @@ void KeyProcess::LoadMaxOffset(OffsetMemT& loadData)
 void KeyProcess::LoadKeyOffsetMap(KeyOffsetMemT& loadData)
 {
     keyOffsetMap = std::move(loadData);
+}
+
+void KeyProcess::LoadKeyCountMap(KeyCountMemT& loadData)
+{
+    keyCountMap = std::move(loadData);
 }
 
 // 只在python侧当训练结束时调用，如果出现死锁直接结束程序即可,测试时让进程等待足够长的时间再调用
@@ -250,6 +260,7 @@ void KeyProcess::KeyProcessTaskWithFastUnique(int channel, int threadId)
             auto getBatchTime = getBatchDataTC.ElapsedMS();
             TimeCost processDataTime = TimeCost();
 
+            RecordKeyCountMap(batch);
             InitializeUnique(uniqueConf, preBatchSize, uniqueInitialize, batch, unique);
             if (!KeyProcessTaskHelperWithFastUnique(batch, unique, channel, threadId)) {
                 break;
@@ -285,6 +296,8 @@ void KeyProcess::KeyProcessTask(int channel, int threadId)
             }
             auto getBatchTime = getBatchDataTC.ElapsedMS();
             TimeCost processDataTime = TimeCost();
+
+            RecordKeyCountMap(batch);
 
             if (!KeyProcessTaskHelper(batch, channel, threadId)) {
                 break;
@@ -1406,4 +1419,18 @@ int64_t KeyProcess::GetExpansionTableCapacity(const string& embName)
     std::lock_guard<std::mutex> lk(mut); // lock for PROCESS_THREAD
     return embeddingTableMap[embName].GetTableCapacity();
 #endif
+}
+
+void KeyProcess::RecordKeyCountMap(const unique_ptr<EmbBatchT>& batch)
+{
+    size_t miniBs = batch->Size();
+    auto* batchData = batch->sample.data();
+    auto& singleKeyCountMap = keyCountMap[batch->name];
+    for (size_t i = 0; i < miniBs; i++) {
+        const emb_key_t& key = batchData[i];
+        if (singleKeyCountMap.find(key) == singleKeyCountMap.end()) {
+            singleKeyCountMap[key] = 1;
+        }
+        singleKeyCountMap[key]++;
+    }
 }

@@ -18,6 +18,7 @@
 #include "ckpt_data_handler/nddr_feat_map_ckpt/nddr_feat_map_ckpt.h"
 #include "ckpt_data_handler/feat_admit_n_evict_ckpt/feat_admit_n_evict_ckpt.h"
 #include "ckpt_data_handler/key_freq_map_ckpt/key_freq_map_ckpt.h"
+#include "ckpt_data_handler/key_count_map_ckpt/key_count_map_ckpt.h"
 #include "utils/time_cost.h"
 #include "utils/common.h"
 #include "checkpoint.h"
@@ -61,6 +62,9 @@ void Checkpoint::LoadModel(string loadPath, CkptData& ckptData, RankInfo& mgmtRa
 void Checkpoint::SetDataHandler(CkptData& ckptData)
 {
     dataHandlers.clear();
+    if (!ckptData.keyCountMap.empty()) {
+        dataHandlers.push_back(make_unique<KeyCountMapCkpt>());
+    }
     if (ckptData.hostEmbs != nullptr) {
         dataHandlers.push_back(make_unique<HostEmbCkpt>());
     }
@@ -90,7 +94,8 @@ void Checkpoint::SetDataHandler(const vector<CkptFeatureType>& featureTypes)
         {CkptFeatureType::MAX_OFFSET,         [this] { dataHandlers.push_back(make_unique<NddrOffsetCkpt>()); }},
         {CkptFeatureType::KEY_OFFSET_MAP,     [this] { dataHandlers.push_back(make_unique<NddrFeatMapCkpt>()); }},
         {CkptFeatureType::FEAT_ADMIT_N_EVICT, [this] { dataHandlers.push_back(make_unique<FeatAdmitNEvictCkpt>()); }},
-        {CkptFeatureType::DDR_KEY_FREQ_MAP,   [this] { dataHandlers.push_back(make_unique<KeyFreqMapCkpt>()); }}
+        {CkptFeatureType::DDR_KEY_FREQ_MAP,   [this] { dataHandlers.push_back(make_unique<KeyFreqMapCkpt>()); }},
+        {CkptFeatureType::KEY_COUNT_MAP,      [this] { dataHandlers.push_back(make_unique<KeyCountMapCkpt>()); }}
     };
 
     for (const auto& featureType : featureTypes) {

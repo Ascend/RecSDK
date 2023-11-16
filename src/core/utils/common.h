@@ -505,6 +505,7 @@ namespace MxRec {
     using EmbHashMemT = absl::flat_hash_map<std::string, EmbHashMapInfo>;
     using OffsetMemT = std::map<EmbNameT, size_t>;
     using KeyOffsetMemT = std::map<EmbNameT, absl::flat_hash_map<emb_key_t, int64_t>>;
+    using KeyCountMemT = std::map<EmbNameT, absl::flat_hash_map<emb_key_t, size_t>>;
     using Table2ThreshMemT = absl::flat_hash_map<std::string, ThresholdValue>;
     using trans_serialize_t = uint8_t;
     using KeyOffsetMapT = std::map<int64_t, int64_t>;
@@ -518,7 +519,8 @@ namespace MxRec {
         KEY_OFFSET_MAP = 3,
         FEAT_ADMIT_N_EVICT = 4,
         DDR_KEY_FREQ_MAP = 5,
-        EXCLUDE_DDR_KEY_FREQ_MAP = 6
+        EXCLUDE_DDR_KEY_FREQ_MAP = 6,
+        KEY_COUNT_MAP = 7
     };
 
     struct CkptData {
@@ -526,6 +528,7 @@ namespace MxRec {
         EmbHashMemT embHashMaps;
         OffsetMemT maxOffset;
         KeyOffsetMemT keyOffsetMap;
+        KeyCountMemT keyCountMap;
         Table2ThreshMemT table2Thresh;
         AdmitAndEvictData histRec;
         KeyFreqMemT ddrKeyFreqMaps;
@@ -555,7 +558,8 @@ namespace MxRec {
         ATTRIBUTE = 9,
         DDR_FREQ_MAP = 10,
         EXCLUDE_FREQ_MAP = 11,
-        EVICT_POS = 12
+        EVICT_POS = 12,
+        KEY_COUNT_MAP = 13
     };
 
     ostream& operator<<(ostream& ss, MxRec::CkptDataType type);

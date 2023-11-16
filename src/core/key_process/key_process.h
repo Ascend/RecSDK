@@ -94,11 +94,15 @@ namespace MxRec {
 
         auto GetKeyOffsetMap() -> KeyOffsetMemT;
 
+        auto GetKeyCountMap() -> KeyCountMemT;
+
         auto GetFeatAdmitAndEvict() -> FeatureAdmitAndEvict&;
 
         void LoadMaxOffset(OffsetMemT& loadData);
 
         void LoadKeyOffsetMap(KeyOffsetMemT& loadData);
+
+        void LoadKeyCountMap(KeyCountMemT& loadData);
 
         void Destroy();
 
@@ -115,6 +119,8 @@ namespace MxRec {
         int64_t GetExpansionTableSize(const string& embName);
 
         int64_t GetExpansionTableCapacity(const string& embName);
+
+        void RecordKeyCountMap(const unique_ptr<EmbBatchT>& batch);
 
         template <typename T>
         void GlobalUnique(T& lookupKeys, T& uniqueKeys, vector<int32_t>& restoreVecSec)
@@ -172,6 +178,7 @@ namespace MxRec {
         info_list_t<TensorInfoT> all2AllList;
         map<EmbNameT, size_t> maxOffset {};
         map<EmbNameT, absl::flat_hash_map<emb_key_t, int64_t>> keyOffsetMap {};
+        map<EmbNameT, absl::flat_hash_map<emb_key_t, size_t>> keyCountMap {};
         FeatureAdmitAndEvict m_featureAdmitAndEvict {};
         map<EmbNameT, std::vector<size_t>> evictPosMap {};
         map<EmbNameT, absl::flat_hash_map<emb_key_t, int>> hotKey {};
