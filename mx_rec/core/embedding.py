@@ -641,8 +641,11 @@ class SparseEmbedding:
             if not use_dynamic_expansion:
                 id_offsets_abs = tf.abs(id_offsets)
                 local_embeddings = tf.gather(table, id_offsets_abs, axis=0, name="gather_for_id_offsets")
-                local_embeddings = set_zero_for_non_valid_key(id_offsets, local_embeddings,
-                                                              feature_spec.access_threshold)
+                local_embeddings = set_specific_value_for_non_valid_key(id_offsets,
+                                                                        local_embeddings,
+                                                                        feature_spec.access_threshold,
+                                                                        kwargs.get("serving_default_value"),
+                                                                        is_training=is_training)
             else:
                 local_embeddings = tf.identity(table, name="identity_local_emb")
 
@@ -797,6 +800,7 @@ class SparseEmbedding:
     ("batch", ClassValidator, {"classes": (dict, type(None))}),
     ("access_and_evict_config", ClassValidator, {"classes": (dict, type(None))}),
     ("is_grad", ClassValidator, {"classes": (bool, )}),
+    ("serving_default_value", ClassValidator, {"classes": (tf.Tensor, type(None))})
 ])
 def sparse_lookup(hashtable: SparseEmbedding,
                   ids: Union[FeatureSpec, tf.Tensor],
@@ -807,6 +811,7 @@ def sparse_lookup(hashtable: SparseEmbedding,
                   batch: Optional[dict] = None,
                   access_and_evict_config: Optional[dict] = None,
                   is_grad: bool = True,
+                  serving_default_value: Optional[tf.Tensor] = None,
                   **kwargs):
     """
     Args:
@@ -819,7 +824,10 @@ def sparse_lookup(hashtable: SparseEmbedding,
         batch: the value returned by the get_next() method of TF Dataset
         access_and_evict_config: the configuration for the feature of feature filtering and eviction
         is_grad: indicate whether this lookup requires update gradients
-
+        serving_default_value: The hashtable misses the id, that is, the id that is lower than the threshold during
+            training, and the newly appeared id during prediction, and the lookup return value, which can ensure that
+            the return value of the new id is consistent during training and prediction. The default is None, and the
+            return value of the hashtable corresponding to the missing id is based on the initializer of hashtable.
     Returns: Tensor for lookup result
 
     """
@@ -835,7 +843,7 @@ def sparse_lookup(hashtable: SparseEmbedding,
     kwargs["feature_spec_name_ids_dict"] = None
     kwargs["multi_lookup"] = False
     kwargs["lookup_ids"] = None
-
+    kwargs["serving_default_value"] = serving_default_value
     scope_name = "{0}//{1}".format(hashtable.table_name, kwargs.get("name"))
     logger.info("Lookup: The table name is %s, and the value of `is_grad` in this lookup (lookup name is %s) is %s.",
                 hashtable.table_name, name, is_grad)
@@ -856,23 +864,42 @@ def sparse_lookup(hashtable: SparseEmbedding,
         return hashtable.lookup_for_asc(ids, send_count, **kwargs)
 
 
-def set_zero_for_non_valid_key(id_offsets: Optional[tf.Tensor], embeddings: Optional[tf.Tensor],
-                               access_threshold: bool):
+def set_specific_value_for_non_valid_key(id_offsets: Optional[tf.Tensor],
+                                         embeddings: Optional[tf.Tensor],
+                                         access_threshold: Optional[int],
+                                         serving_default_value: Optional[tf.Tensor] = None,
+                                         is_training: bool = True):
     """
-    将key为-1的特征对应的emb置为0
+    将key为-1(无效值)的特征对应的emb置为0或者指定值
     :param id_offsets: 特征索引
     :param embeddings: 稀疏表
     :param access_threshold: 准入阈值
+    :param serving_default_value: 参考create_table接口描述
+    :param is_training: 当前流程是训练还是推理
     :return:
     """
-    if access_threshold is None or access_threshold <= 0:
+    # 在训练时，仅当开启准入功能才会出现无效值；推理时，是否开启准入都可能存在无效值
+    if is_training and (access_threshold is None or access_threshold < 0):
         return embeddings
+
+    if serving_default_value is None:
+        # 未设置时，默认无效值的emb为全0
+        default_value = tf.zeros_like(embeddings)
+    else:
+        try:
+            default_value = tf.broadcast_to(serving_default_value, tf.shape(embeddings))
+        except ValueError as e:
+            logger.error("failed to broadcast serving_default_value to target embedding , please check its shape.")
+            raise e
+        except Exception as e:
+            logger.error("failed to process serving_default_value.")
+            raise e
 
     if tf.__version__.startswith("1"):
         id_offsets_expand = tf.math.greater_equal(id_offsets, 0)
-        embeddings = tf.where(id_offsets_expand, embeddings, tf.zeros_like(embeddings))
+        embeddings = tf.where(id_offsets_expand, embeddings, default_value)
         return embeddings
 
     id_offsets_expand = tf.compat.v1.expand_dims(id_offsets >= 0, axis=-1)
-    embeddings = tf.where(id_offsets_expand, embeddings, tf.zeros_like(embeddings))
+    embeddings = tf.where(id_offsets_expand, embeddings, default_value)
     return embeddings
