@@ -21,6 +21,7 @@
 #include "utils/common.h"
 #include "utils/safe_queue.h"
 #include "utils/singleton.h"
+#include "utils/time_cost.h"
 
 namespace MxRec {
     enum class FeatureAdmitType {

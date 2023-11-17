@@ -21,6 +21,7 @@
 #include "utils/common.h"
 #include "utils/config.h"
 #include "utils/singleton.h"
+#include "utils/logger.h"
 
 #include "host_emb/host_emb.h"
 #include "emb_hashmap/emb_hashmap.h"
@@ -73,6 +74,7 @@ namespace MxRec {
 
     void Destroy()
     {
+        LOG_DEBUG(MGMT + "start Destroy hybrid_mgmt module");
         if (!isInitialized) {
             throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
         }
@@ -81,12 +83,16 @@ namespace MxRec {
             return;
         }
         // 先发送停止信号mgmt，先停止新lookup查询, 解除queue的限制防止卡住
-
         isRunning = false;
-        // 先发送停止信号给preprocess，用于停止查询中lookup卡住状态
-        preprocess->isRunning = false;
-        // 停止hdTransfer，用于停止mgmt的recv中卡住状态
-        hdTransfer->Destroy();
+        if (preprocess != nullptr) {
+            // 获取锁 避免KeyProcess中手动发送结束信息时通道关闭
+            std::unique_lock<std::mutex> lockGuard(preprocess->destroyMutex);
+            // 先发送停止信号给preprocess，用于停止查询中lookup卡住状态
+            preprocess->isRunning = false;
+            // 停止hdTransfer，用于停止mgmt的recv中卡住状态
+            hdTransfer->Destroy();
+            LOG_DEBUG(MGMT + "destroy hdTransfer end.");
+        }
         hybridMgmtBlock->Destroy();
         for (auto& t : procThreads) {
             t->join();
@@ -104,7 +110,9 @@ namespace MxRec {
         if (preprocess != nullptr) {
             preprocess->Destroy();
             preprocess = nullptr;
+            LOG_DEBUG(MGMT + "invoke KeyProcess destroy end.");
         }
+        LOG_DEBUG(MGMT + "Destroy hybrid_mgmt module end.");
     };
 
         bool ParseKeys(int channelId, int& batchId);
@@ -138,7 +146,7 @@ namespace MxRec {
         void EvictSSDKeys(const string& embName, const vector<emb_key_t>& keys) const;
 
         void PrepareDDRData(const std::string& embTableName, EmbHashMapInfo& embHashMap,
-                            const vector<emb_key_t> &keys, int channelId) const;
+                            const vector<emb_key_t> &keys, int channelId, int batchId) const;
 
         int GetStepFromPath(const string& loadPath) const;
 
@@ -177,6 +185,11 @@ namespace MxRec {
         bool LoadMatchesDDRSetup(const CkptData& loadData);
 
         void HandlePrepareDDRDataRet(TransferRet prepareSSDRet) const;
+
+        void SendUniqKeysAndRestoreVecHBM(int channelId, int& batchId, const EmbInfo &embInfo,
+                                          const unique_ptr<vector<Tensor>> &infoVecs);
+
+        void SendUniqKeysAndRestoreVecDDR(const string &embName, int &batchId, int &channelId, DDRParam &ddrParam);
     };
 }
 #endif // MX_REC_EMB_MGMT_H

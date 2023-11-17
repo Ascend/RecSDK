@@ -14,6 +14,7 @@
 
 #include "utils/common.h"
 #include "key_process/key_process.h"
+#include "hd_transfer/hd_transfer.h"
 #include "ock_ctr_common/include/unique.h"
 #include "ock_ctr_common/include/error_code.h"
 
@@ -72,6 +73,7 @@ protected:
         splits = fieldNums;
     }
 
+    // 使用该方法构造的数据需要使用掉，否则会影响其他用例
     vector<vector<EmbBatchT>> PrepareBatch()
     {
         vector<vector<EmbBatchT>> result(KEY_PROCESS_THREAD * MAX_CHANNEL_NUM);
@@ -281,7 +283,6 @@ TEST_F(KeyProcessTest, HashSplit)
     ASSERT_THAT(restore, ElementsAreArray(expectRestore));
 }
 
-#ifndef GTEST
 TEST_F(KeyProcessTest, GetScAll)
 {
     vector<int> keyScLocal(worldSize, worldRank + 1); // 用worldRank+1初始化发送数据量
@@ -292,16 +293,18 @@ TEST_F(KeyProcessTest, GetScAll)
     }
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
-    vector<int> scAll;
-    process.GetScAll(keyScLocal, 0, 0, scAll);
+    // 仅用于集合通信获取sendCount信息，构造EmbBatchT对象即可，通道传0，不用构造batch数据
+    EmbBatchT tempBatch;
+    tempBatch.channel = 0;
+    unique_ptr<EmbBatchT> batch = std::make_unique<EmbBatchT>(tempBatch);
+    vector<int> scAll = process.GetScAll(keyScLocal, 0, batch);
     ASSERT_THAT(scAll, ElementsAreArray(expectScAll));
 }
-#endif
 
 TEST_F(KeyProcessTest, GetScAllForUnique)
 {
     vector<int> keyScLocal(worldSize, worldRank + 1); // 用worldRank+1初始化发送数据量
-    LOG_DEBUG(KEY_PROCESS "rank {} keyScLocal: {}", worldRank, VectorToString(keyScLocal));
+    LOG_INFO(KEY_PROCESS "rank {} keyScLocal: {}", worldRank, VectorToString(keyScLocal));
     vector<int> expectScAll(worldSize * worldSize);
     for (unsigned int i = 0; i < expectScAll.size(); ++i) {
         expectScAll[i] = floor(i / worldSize) + 1;
@@ -309,7 +312,12 @@ TEST_F(KeyProcessTest, GetScAllForUnique)
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     vector<int> scAll;
-    process.GetScAllForUnique(keyScLocal, 0, 0, scAll);
+    // 仅用于集合通信获取sendCount信息，构造EmbBatchT对象即可，通道传0，不用构造batch数据
+    EmbBatchT tempBatch;
+    tempBatch.channel = 0;
+    unique_ptr<EmbBatchT> batch = std::make_unique<EmbBatchT>(tempBatch);
+    process.GetScAllForUnique(keyScLocal, 0, batch, scAll);
+    LOG_INFO("scAll:{}", VectorToString(scAll));
     ASSERT_THAT(scAll, ElementsAreArray(expectScAll));
 }
 

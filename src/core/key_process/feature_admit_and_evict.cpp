@@ -44,7 +44,7 @@ FeatureAdmitReturnType FeatureAdmitAndEvict::FeatureAdmit(int channel,
         LOG_ERROR("splitKey.size {} != keyCount.size {}", splitKey.size(), keyCount.size());
         return FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR;
     }
-
+    TimeCost featureAdmitAndEvictTC;
     std::string tableName = batch->name;
     if (m_isCombine) {
         tableName = COMBINE_HISTORY_NAME;
@@ -90,7 +90,7 @@ FeatureAdmitReturnType FeatureAdmitAndEvict::FeatureAdmit(int channel,
     }
     LOG_TRACE("FeatureAdmit, name:[{}], channel:[{}], after admit, splitKey:[{}] ...",
         tableName, channel, VectorToString(splitKey));
-
+    LOG_DEBUG("featureAdmitAndEvictTC(ms):{}", featureAdmitAndEvictTC.ElapsedMS());
     return FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_OK;
 }
 

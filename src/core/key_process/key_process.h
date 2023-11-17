@@ -151,7 +151,7 @@ namespace MxRec {
         }
 
         bool isRunning { false };
-
+        std::mutex destroyMutex;
         inline bool HasEmbName(const string& embName)
         {
             return embInfos.find(embName) != embInfos.end();
@@ -177,7 +177,6 @@ namespace MxRec {
         map<EmbNameT, absl::flat_hash_map<emb_key_t, int>> hotKey {};
         map<EmbNameT, int> hotEmbTotCount;
         map<EmbNameT, EmbTable> embeddingTableMap {};
-
         FactoryPtr factory {};
         int hotEmbUpdateStep = HOT_EMB_UPDATE_STEP_DEFAULT;
         bool isWithFAAE;
@@ -206,7 +205,7 @@ namespace MxRec {
 
         size_t GetKeySize(const unique_ptr<EmbBatchT> &batch);
 
-        void All2All(vector<int>& sc, int id, int channel, KeySendInfo& keySendInfo,
+        void All2All(vector<int>& sc, int id, const unique_ptr<EmbBatchT> &batch, KeySendInfo& keySendInfo,
                      All2AllInfo& all2AllInfoOut);
 
         auto HashSplit(const unique_ptr<EmbBatchT>& batch) const -> tuple<vector<KeysT>, vector<int32_t>>;
@@ -216,9 +215,10 @@ namespace MxRec {
         auto HashSplitWithFAAE(const unique_ptr<EmbBatchT>& batch) const
         -> tuple<vector<KeysT>, vector<int32_t>, vector<vector<uint32_t>>>;
 
-        vector<int> GetScAll(const vector<int>& keyScLocal, int commId, int channel) const;
+        vector<int> GetScAll(const vector<int>& keyScLocal, int commId, const unique_ptr<EmbBatchT>& batch);
 
-        void GetScAllForUnique(const vector<int>& keyScLocal, int commId, int channel, vector<int> &scAllOut) const;
+        void GetScAllForUnique(const vector<int>& keyScLocal, int commId, const unique_ptr<EmbBatchT> &batch,
+                               vector<int> &scAllOut);
 
         void Key2Offset(const EmbNameT& embName, KeysT& splitKey, int channel);
 
@@ -272,6 +272,10 @@ namespace MxRec {
         }
 
         string DumpSplitKeys(vector<vector<emb_key_t>>& splitKeys) const;
+
+        void SendEosInfo(int commId, const unique_ptr<EmbBatchT>& batch);
+
+        void HandleRankExitScene(int commId, const unique_ptr<EmbBatchT> &batch, int receiveFlag);
     };
 } // end namespace MxRec
 #endif // MX_REC_KEY_PROCESS_H
