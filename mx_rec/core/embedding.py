@@ -848,6 +848,10 @@ def sparse_lookup(hashtable: SparseEmbedding,
     logger.info("Lookup: The table name is %s, and the value of `is_grad` in this lookup (lookup name is %s) is %s.",
                 hashtable.table_name, name, is_grad)
 
+    # 对于向上找没有IteratorGetNext的孤儿ids需要标记，以便于后续ACGPushOpsToDataset工作
+    if isinstance(ids, tf.Tensor):
+        ids = _tag_orphan_ids(ids)
+
     with tf.compat.v1.variable_scope(scope_name):
         if isinstance(ids, FeatureSpec):
             # check whether the name of the table exists with FeatureSpec.
@@ -903,3 +907,17 @@ def set_specific_value_for_non_valid_key(id_offsets: Optional[tf.Tensor],
     id_offsets_expand = tf.compat.v1.expand_dims(id_offsets >= 0, axis=-1)
     embeddings = tf.where(id_offsets_expand, embeddings, default_value)
     return embeddings
+
+
+def _tag_orphan_ids(ids: tf.Tensor) -> tf.Tensor:
+    """
+    将孤儿ids使用identity操作创建ACG_PUSH_NODE前缀命名的标记节点，以便在PushOps时能找到。
+    """
+    graph_def = tf.compat.v1.get_default_graph().as_graph_def()
+    subgraph = tf.compat.v1.graph_util.extract_sub_graph(graph_def, [ids.op.name])
+    for node in subgraph.node:
+        if node.name == 'IteratorGetNext':
+            return ids
+    new_ids = tf.identity(ids, name=f"ACG_PUSH_NODE_{ids.op.name}")
+    logger.info('Tag orphan op node: %s with %s.', ids, new_ids)
+    return new_ids
