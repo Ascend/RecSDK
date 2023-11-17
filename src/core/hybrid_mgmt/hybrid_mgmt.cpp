@@ -377,7 +377,6 @@ OffsetT HybridMgmt::SendHostMap(const string tableName)
     OffsetT OffsetMap;
     // 先校验这个map是不是空的
     if ((!offsetMapToSend.empty()) && offsetMapToSend.count(tableName) > 0) {
-        LOG_ERROR("send offset map : first key offset {}", offsetMapToSend[tableName][0]);
         for (auto& it : offsetMapToSend.at(tableName)) {
             OffsetMap.push_back(it);
         }

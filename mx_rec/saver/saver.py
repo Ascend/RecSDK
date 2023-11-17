@@ -192,7 +192,7 @@ class Saver(object):
             logger.debug(f"host data was saved.")
 
         if get_use_dynamic_expansion():
-            logger.error(f"use dynamic expansion.")
+            # Data related to dynamic expansion needs to be saved only on the host side.
             return
 
         result = self.save_op_dict
@@ -264,6 +264,7 @@ class Saver(object):
             logger.info("host data was restored.")
 
         if get_use_dynamic_expansion:
+            # Data related to dynamic expansion needs to be restored only on the host side.
             return
 
         restore_feed_dict = defaultdict(dict)

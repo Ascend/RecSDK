@@ -359,7 +359,7 @@ void Checkpoint::LoadDataset(const vector<string>& embNames,
             if ((saveDataType == CkptDataType::NDDR_FEATMAP) && useDynamicExpansion)  {
                 auto embedPath { dataDir + dirSeparator + "embedding" };
                 auto embedDatasetDir { embedPath + dirSeparator + datasetName + to_string(rankId) + dataFileType };
-                LOG_DEBUG("====Start loading embedding data from: {}", datasetDir);
+                LOG_DEBUG("====Start loading embedding data from: {}", embedPath);
                 ReadEmbedding(transData, embedDatasetDir, embName);
             }
 
@@ -430,7 +430,6 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
     }
 
     auto embDataOuterSize = transData.attribute.at(attribEmbDataOuterIdx);
-
     if (embDataOuterSize <= 0 || embDataOuterSize > MAX_VOCABULARY_SIZE) {
         throw runtime_error(StringFormat("Invalid embDataOuterSize :%d", embDataOuterSize).c_str());
     }

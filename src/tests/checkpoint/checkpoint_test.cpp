@@ -355,36 +355,6 @@ TEST_F(CheckpointTest, EmbHashMaps)
     }
 }
 
-TEST_F(CheckpointTest, MaxOffset)
-{
-    OffsetMemT testMaxOffset;
-    OffsetMemT validMaxOffset;
-
-    SetEmbInfo();
-    SetMaxOffset(testMaxOffset);
-    validMaxOffset = testMaxOffset;
-
-    CkptData testSaveData;
-    CkptData validLoadData;
-    CkptData testLoadData;
-
-    testSaveData.maxOffset = std::move(testMaxOffset);
-    validLoadData.maxOffset = std::move(validMaxOffset);
-
-    Checkpoint testCkpt;
-    testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
-    testCkpt.LoadModel(testPath, testLoadData, rankInfo, testEmbInfos, { CkptFeatureType::MAX_OFFSET });
-
-    EXPECT_EQ(validLoadData.maxOffset.size(), testLoadData.maxOffset.size());
-    for (const auto& it : validLoadData.maxOffset) {
-        EXPECT_EQ(1, testLoadData.maxOffset.count(it.first));
-
-        const auto& maxOffset = testLoadData.maxOffset.at(it.first);
-
-        EXPECT_EQ(it.second, maxOffset);
-    }
-}
-
 TEST_F(CheckpointTest, KeyOffsetMaps)
 {
     KeyOffsetMemT testKeyOffsetMaps;
@@ -449,9 +419,7 @@ TEST_F(CheckpointTest, AllMgmt)
     EXPECT_EQ(validLoadData.maxOffset.size(), testLoadData.maxOffset.size());
     for (const auto& it : validLoadData.maxOffset) {
         EXPECT_EQ(1, testLoadData.maxOffset.count(it.first));
-
         const auto& maxOffset = testLoadData.maxOffset.at(it.first);
-
         EXPECT_EQ(it.second, maxOffset);
     }
 
@@ -463,7 +431,6 @@ TEST_F(CheckpointTest, AllMgmt)
         for (const auto& key: keyOffsetMap) {
             EXPECT_EQ(validKeyOffsetMap.count(key.first), 1);
         }
-
     }
 }
 

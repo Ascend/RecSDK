@@ -13,7 +13,6 @@
 #include <acl/acl.h>
 #include "utils/common.h"
 #include "ckpt_data_handler/ckpt_data_handler.h"
-#include "file_system/buffer_queue.h"
 #include "file_system/file_system_handler.h"
 
 namespace MxRec {
