@@ -14,7 +14,7 @@
 #include <thread>
 #include <fcntl.h>
 
-#include "file_system/buffer_queue.h"
+#include "checkpoint/buffer_queue.h"
 #include "utils/common.h"
 
 using namespace std;
@@ -381,7 +381,7 @@ void LocalFileSystem::CalculateMapSize(off_t fileSize, size_t& mapByteSize,
     // 每次映射的字节数
     mapByteSize = MAP_BYTE_SIZE;
     // 确保mapByteSize是onceReadByteSize和pageSize的整数倍，确保每次映射的offset是页大小的整数倍
-    size_t pageSize = sysconf(_SC_PAGESIZE);
+    long pageSize = sysconf(_SC_PAGESIZE);
     if (pageSize == -1) {
         throw std::runtime_error("Failed to get page size: " + std::string(strerror(errno)));
     }
