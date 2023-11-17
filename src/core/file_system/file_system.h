@@ -8,7 +8,7 @@
 #ifndef MX_REC_FILE_SYSTEM_H
 #define MX_REC_FILE_SYSTEM_H
 
-#include "buffer_queue.h"
+#include "checkpoint/buffer_queue.h"
 
 namespace MxRec {
     using namespace std;

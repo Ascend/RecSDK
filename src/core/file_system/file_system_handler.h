@@ -16,7 +16,7 @@ namespace MxRec {
 
     class FileSystemHandler {
     public:
-        unique_ptr<FileSystem> Create(const string& filePath);
+        inline unique_ptr<FileSystem> Create(const string &dataDir);
     private:
         const vector<string> hdfsPrefixes = {"hdfs://", "viewfs://"};
     };

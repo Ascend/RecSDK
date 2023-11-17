@@ -10,13 +10,13 @@
 using namespace std;
 using namespace MxRec;
 
-unique_ptr<FileSystem> FileSystemHandler::Create(const string& filePath)
+inline unique_ptr<FileSystem> FileSystemHandler::Create(const string &dataDir)
 {
-    if (filePath.empty()) {
+    if (dataDir.empty()) {
         throw runtime_error("dataDir is Null. The pointer of the file system cannot be created.");
     }
     for (const auto &prefix: hdfsPrefixes) {
-        if (filePath.substr(0, prefix.length()) == prefix) {
+        if (dataDir.substr(0, prefix.length()) == prefix) {
             return make_unique<HdfsFileSystem>();
         }
     }
