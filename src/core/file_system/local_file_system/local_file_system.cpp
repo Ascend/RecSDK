@@ -14,7 +14,6 @@
 #include <thread>
 #include <fcntl.h>
 
-#include "checkpoint/buffer_queue.h"
 #include "utils/common.h"
 
 using namespace std;

@@ -150,6 +150,10 @@ void Checkpoint::MakeDataLayerSaveDir(const vector<string>& embNames,
 
 void Checkpoint::MakeSaveDir(const string& dirName) const
 {
+    if (fileSystemPtr == nullptr) {
+        LOG_WARN("please init file system pointer before using. ");
+        throw runtime_error("Nullptr. file system pointer is not initialized. ");
+    }
     fileSystemPtr->CreateDir(dirName);
 }
 
@@ -199,7 +203,7 @@ void Checkpoint::SaveDataset(const vector<string>& embNames,
                 auto embedDatasetDir { embedPath + dirSeparator + datasetName + to_string(rankId) + dataFileType };
                 auto embeddingSizeInfo = GetEmbeddingSize(embName);
                 MakeSaveDir(embedPath);
-                LOG_DEBUG("====Start saving embedding data to: {}", datasetDir);
+                LOG_DEBUG("====Start saving embedding data to: {}", embedPath);
                 WriteEmbedding(transData, embedDatasetDir, embeddingSizeInfo.extEmbSize);
             }
 
@@ -214,16 +218,24 @@ void Checkpoint::SaveDataset(const vector<string>& embNames,
 void Checkpoint::WriteEmbedding(const CkptTransData& transData, const string& dataDir, const int& embeddingSize)
 {
     auto &transArr = transData.addressArr;
+    if (fileSystemPtr == nullptr) {
+        LOG_WARN("please init file system pointer before using. ");
+        throw runtime_error("Nullptr. file system pointer is not initialized. ");
+    }
     fileSystemPtr->WriteEmbedding(dataDir, embeddingSize, transArr, deviceId);
 }
 
 void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir, const string& embName)
 {
+    if (fileSystemPtr == nullptr) {
+        LOG_WARN("please init file system pointer before using. ");
+        throw runtime_error("Nullptr. file system pointer is not initialized. ");
+    }
+
     auto datasetSize = fileSystemPtr->GetFileSize(dataDir);
     auto &attributeArr = transData.attribute;
     auto embHashMapSize = attributeArr.at(0);
     if (embHashMapSize <= 0) {
-
         throw runtime_error(StringFormat("Invalid EmbHashMapSize:%d, must be greater than 0", embHashMapSize).c_str());
     }
 
@@ -233,26 +245,36 @@ void Checkpoint::ReadEmbedding(CkptTransData& transData, const string& dataDir, 
     EmbSizeInfo embSizeInfo = GetEmbeddingSize(embName);
     if (embeddingSize != embSizeInfo.extEmbSize) {
         throw runtime_error(StringFormat("Invalid  embedding size to be read, may read file has been changed").c_str());
-
     }
 
     fileSystemPtr->ReadEmbedding(dataDir, embeddingSize, transArr, deviceId);
-
 }
 
 void Checkpoint::WriteStream(CkptTransData& transData, const string& dataDir, size_t dataSize, CkptDataType dataType)
 {
-    LOG_ERROR("lff debug write stream {} dataset_size {}", dataType, dataSize);
-    if (floatTransSet.find(dataType) != floatTransSet.end()) {
-        fileSystemPtr->Write(dataDir, transData.floatArr, dataSize);
-    } else if (int32TransSet.find(dataType) != int32TransSet.end()) {
-        fileSystemPtr->Write(dataDir, reinterpret_cast<const char*>(transData.int32Arr.data()), dataSize);
-    } else if (int64TransSet.find(dataType) != int64TransSet.end()) {
-        fileSystemPtr->Write(dataDir, reinterpret_cast<const char*>(transData.int64Arr.data()), dataSize);
-    } else if (dataType == CkptDataType::ATTRIBUTE) {
-        fileSystemPtr->Write(dataDir, reinterpret_cast<const char*>(transData.attribute.data()), dataSize);
+    if (fileSystemPtr == nullptr) {
+        LOG_WARN("please init file system pointer before using. ");
+        throw runtime_error("Nullptr. file system pointer is not initialized. ");
     }
-    LOG_ERROR("lff debug write stream {} dataset_dir {} over!", dataType, dataDir);
+
+    ssize_t writeBytesNum;
+    if (floatTransSet.find(dataType) != floatTransSet.end()) {
+        writeBytesNum = fileSystemPtr->Write(dataDir, transData.floatArr, dataSize);
+    } else if (int32TransSet.find(dataType) != int32TransSet.end()) {
+        writeBytesNum = fileSystemPtr->Write(dataDir,
+                                             reinterpret_cast<const char*>(transData.int32Arr.data()), dataSize);
+    } else if (int64TransSet.find(dataType) != int64TransSet.end()) {
+        writeBytesNum = fileSystemPtr->Write(dataDir,
+                                             reinterpret_cast<const char*>(transData.int64Arr.data()), dataSize);
+    } else if (dataType == CkptDataType::ATTRIBUTE) {
+        writeBytesNum = fileSystemPtr->Write(dataDir,
+                                             reinterpret_cast<const char*>(transData.attribute.data()), dataSize);
+    }
+
+    if (writeBytesNum == -1) {
+        LOG_ERROR("error happened when writing data to file.");
+        throw runtime_error("error happened when writing data to file.");
+    }
 }
 
 
@@ -297,6 +319,10 @@ vector<string> Checkpoint::GetEmbedTableNames()
 vector<string> Checkpoint::GetTableLayerLoadDir()
 {
     vector<string> loadTableDir;
+    if (fileSystemPtr == nullptr) {
+        LOG_WARN("please init file system pointer before using. ");
+        throw runtime_error("Nullptr. file system pointer is not initialized. ");
+    }
     loadTableDir = fileSystemPtr->ListDir(innerDirPath);
     return loadTableDir;
 }
@@ -356,6 +382,12 @@ void Checkpoint::ReadStream(CkptTransData& transData,
         LOG_WARN("dataElmtBytes is 0, don't handle [/ %] operation");
         return ;
     }
+
+    if (fileSystemPtr == nullptr) {
+        LOG_WARN("please init file system pointer before using. ");
+        throw runtime_error("Nullptr. file system pointer is not initialized. ");
+    }
+
     size_t datasetSize = fileSystemPtr->GetFileSize(dataDir);
     auto resizeSize { datasetSize / dataElmtBytes };
     SetTransDataSize(transData, resizeSize, dataType);
@@ -363,31 +395,23 @@ void Checkpoint::ReadStream(CkptTransData& transData,
     if (datasetSize % dataElmtBytes > 0) {
         LOG_DEBUG("data is missing or incomplete in load file: {}", dataDir);
     }
-    LOG_ERROR("lff debug start to enter read type:{}, size:{}", dataType, datasetSize);
 
-
+    ssize_t readBytesNum;
     if (int32TransSet.find(dataType) != int32TransSet.end()) {
-        fileSystemPtr->Read(dataDir, reinterpret_cast<char*>(transData.int32Arr.data()), datasetSize);
+        readBytesNum = fileSystemPtr->Read(dataDir, reinterpret_cast<char*>(transData.int32Arr.data()), datasetSize);
     } else if (int64TransSet.find(dataType) != int64TransSet.end()) {
-        fileSystemPtr->Read(dataDir, reinterpret_cast<char*>(transData.int64Arr.data()), datasetSize);
+        readBytesNum = fileSystemPtr->Read(dataDir, reinterpret_cast<char*>(transData.int64Arr.data()), datasetSize);
     } else if (floatTransSet.find(dataType) != floatTransSet.end()) {
-        fileSystemPtr->Read(dataDir, reinterpret_cast<char*>(transData.floatArr.data()), datasetSize);
+        readBytesNum = fileSystemPtr->Read(dataDir, reinterpret_cast<char*>(transData.floatArr.data()), datasetSize);
     } else if (dataType == CkptDataType::ATTRIBUTE) {
-        fileSystemPtr->Read(dataDir, reinterpret_cast<char *>(transData.attribute.data()), datasetSize);
+        readBytesNum = fileSystemPtr->Read(dataDir, reinterpret_cast<char *>(transData.attribute.data()), datasetSize);
     }
 
-}
-
-void Checkpoint::ValidateFile(int fd, const string& dataDir, size_t datasetSize) const
-{
-    try {
-        ValidateReadFile(dataDir, datasetSize);
-    } catch (const std::invalid_argument& e) {
-        close(fd);
-        throw runtime_error(StringFormat("Invalid read file path: %s", e.what()));
+    if (readBytesNum == -1) {
+        LOG_ERROR("error happened when reading data from file.");
+        throw runtime_error("error happened when reading data from file.");
     }
 }
-
 
 void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
                                       const string& dataDir,
@@ -399,17 +423,21 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
         LOG_ERROR("dataElmtBytes is 0, don't handle [/ %] operation");
         return ;
     }
+
+    if (fileSystemPtr == nullptr) {
+        LOG_WARN("please init file system pointer before using. ");
+        throw runtime_error("Nullptr. file system pointer is not initialized. ");
+    }
+
     auto embDataOuterSize = transData.attribute.at(attribEmbDataOuterIdx);
-    LOG_ERROR("1102debug read emb data :{}", embDataOuterSize);
+
     if (embDataOuterSize <= 0 || embDataOuterSize > MAX_VOCABULARY_SIZE) {
         throw runtime_error(StringFormat("Invalid embDataOuterSize :%d", embDataOuterSize).c_str());
     }
 
     size_t datasetSize = fileSystemPtr->GetFileSize(dataDir);
-
     if (datasetSize % embDataOuterSize > 0 || datasetSize % dataElmtBytes > 0) {
         LOG_ERROR("data is missing or incomplete in load file: {}", dataDir);
-
         throw runtime_error("unable to load EMB_DATA cause wrong-format saved emb data");
     }
 
@@ -417,8 +445,12 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
     auto& dst = (*loadHostEmbs)[embName].embData;
     dst.reserve(embDataOuterSize);
 
+    ssize_t readBytesNum;
     fileSystemPtr->Read(dataDir, dst, datasetSize);
-
+    if (readBytesNum == -1) {
+        LOG_ERROR("error happened when reading data from file.");
+        throw runtime_error("error happened when reading data from file.");
+    }
 }
 
 void Checkpoint::SetTransDataSize(CkptTransData& transData, size_t datasetSize, CkptDataType dataType)
@@ -431,22 +463,5 @@ void Checkpoint::SetTransDataSize(CkptTransData& transData, size_t datasetSize, 
         transData.floatArr.resize(datasetSize);
     } else if (dataType == CkptDataType::ATTRIBUTE) {
         transData.attribute.resize(datasetSize);
-    }
-}
-
-void Checkpoint::ReadDataset(CkptTransData& transData,
-                             ifstream& readFile,
-                             size_t readSize,
-                             CkptDataType dataType,
-                             size_t idx)
-{
-    if (int32TransSet.find(dataType) != int32TransSet.end()) {
-        readFile.read(reinterpret_cast<char*>(transData.int32Arr.data()) + idx, readSize);
-    } else if (int64TransSet.find(dataType) != int64TransSet.end()) {
-        readFile.read(reinterpret_cast<char*>(transData.int64Arr.data()) + idx, readSize);
-    } else if (floatTransSet.find(dataType) != floatTransSet.end()) {
-        readFile.read(reinterpret_cast<char*>(transData.floatArr.data()) + idx, readSize);
-    } else if (dataType == CkptDataType::ATTRIBUTE) {
-        readFile.read(reinterpret_cast<char*>(transData.attribute.data()) + idx, readSize);
     }
 }

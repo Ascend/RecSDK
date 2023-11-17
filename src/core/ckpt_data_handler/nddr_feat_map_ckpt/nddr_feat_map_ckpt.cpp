@@ -66,11 +66,10 @@ CkptTransData NddrFeatMapCkpt::GetDataset(CkptDataType dataType, string embName)
 
     transArr.reserve(embHashMapSize);
     (*offsetMapPtr)[embName].clear();
-    LOG_ERROR("build offset map : first key offset {}", saveKeyOffsetMap[embName][0]);
     for (const auto& it : saveKeyOffsetMap.at(embName)) {
         transArr.push_back(it.first);
-        transArr.push_back(it.second);
         (*offsetMapPtr)[embName].push_back(it.second);
+        addressArr.push_back(it.second);
     }
     LOG_INFO("CkptDataType::EMB_INFO:{}, dataType:{}", CkptDataType::NDDR_FEATMAP, dataType);
     return move(transferData);
@@ -93,7 +92,7 @@ void NddrFeatMapCkpt::SetDataset(CkptDataType dataType, string embName, CkptTran
         if (addressArr.size() == 0) {
             // no dynamic expansion
             hostHashMap[key] = offset;
-        } else{
+        } else {
             //  dynamic expansion
             hostHashMap[key] = addressArr.at(i);
         }

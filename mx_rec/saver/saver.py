@@ -15,7 +15,8 @@ from mx_rec.constants.constants import DataName, DataAttr, MIN_SIZE, MAX_FILE_SI
     MAX_INT32, HDFS_FILE_PREFIX
 from mx_rec.util.initialize import get_rank_id, get_rank_size, get_customized_ops, get_table_instance, \
     get_table_instance_by_name, is_asc_manager_initialized, save_host_data, restore_host_data, get_host_data, \
-    send_host_data, get_ascend_global_hashtable_collection, set_sparse_dir, get_local_rank_size, get_use_dynamic_expansion
+    send_host_data, get_ascend_global_hashtable_collection, set_sparse_dir, get_local_rank_size, \
+    get_use_dynamic_expansion
 from mx_rec.util.perf import performance
 from mx_rec.validator.validator import DirectoryValidator, FileValidator, para_checker_decorator, ClassValidator, \
     IntValidator, OptionalStringValidator
@@ -210,7 +211,7 @@ class Saver(object):
         host_data = get_host_data(table_name)
         offset = list(host_data)
 
-        get_valid_dict_data(dump_data_dict, offset)
+        get_valid_dict_data_from_host_offset(dump_data_dict, offset)
 
     def _build_save(self):
         for var in self.var_list:
@@ -301,7 +302,7 @@ class NameDescriptor:
         self.optimizer_name = optimizer_name
 
 
-def get_valid_dict_data(dump_data_dict: dict, offset: list):
+def get_valid_dict_data_from_host_offset(dump_data_dict: dict, offset: list):
     """
     Extract embedding and optimizer data from the dict based on offset.
     :param dump_data_dict: sparse data dict to be saved
@@ -502,8 +503,9 @@ def check_file_system_is_valid(file_path):
         return True
     return False
 
+
 def check_file_system_is_hdfs(file_path):
     for prefix in HDFS_FILE_PREFIX:
-        if file_path.startwith(prefix):
+        if file_path.startswith(prefix):
             return True
     return False

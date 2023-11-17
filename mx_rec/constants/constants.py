@@ -72,6 +72,7 @@ MAX_DEVICE_ID = 15
 # HDFS file system's file prefix
 HDFS_FILE_PREFIX = ["viewfs://", "hdfs://"]
 
+
 class BaseEnum(Enum):
     @classmethod
     def mapping(cls, key):

@@ -317,6 +317,7 @@ bool HybridMgmt::Load(const string& loadPath)
         // HBM模式 将加载的最大偏移（真正使用了多少vocab容量）、特征到偏移的映射，进行赋值
         LOG_DEBUG(MGMT + "Start host side load: no ddr mode hashmap");
         preprocess->LoadKeyOffsetMap(loadData.keyOffsetMap);
+        preprocess->LoadMaxOffset(loadData.maxOffset);
     }
 
     // 将加载的特征准入淘汰记录进行赋值
@@ -376,7 +377,6 @@ OffsetT HybridMgmt::SendHostMap(const string tableName)
     OffsetT OffsetMap;
     // 先校验这个map是不是空的
     if ((!offsetMapToSend.empty()) && offsetMapToSend.count(tableName) > 0) {
-        LOG_ERROR("send offset map : table name =={} offset count {}", tableName.c_str(), offsetMapToSend.count(tableName));
         LOG_ERROR("send offset map : first key offset {}", offsetMapToSend[tableName][0]);
         for (auto& it : offsetMapToSend.at(tableName)) {
             OffsetMap.push_back(it);
