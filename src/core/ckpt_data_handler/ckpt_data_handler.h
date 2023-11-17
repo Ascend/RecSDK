@@ -46,7 +46,7 @@ namespace MxRec {
             "dev_offset_2_Batch_n_Key",
             "embedding_current_status",
             "max_offset",
-            "key_offset_map",
+            "key",
             "table_2_threshold",
             "history_record",
             "attribute",

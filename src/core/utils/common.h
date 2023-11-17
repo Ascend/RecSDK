@@ -508,7 +508,8 @@ namespace MxRec {
     using KeyCountMemT = std::map<EmbNameT, absl::flat_hash_map<emb_key_t, size_t>>;
     using Table2ThreshMemT = absl::flat_hash_map<std::string, ThresholdValue>;
     using trans_serialize_t = uint8_t;
-    using KeyOffsetMapT = std::map<int64_t, int64_t>;
+    using OffsetMapT = std::map<EmbNameT, std::vector<int64_t>>;
+    using OffsetT = std::vector<int64_t>;
     using AllKeyOffsetMapT = std::map<std::string, std::map<int64_t, int64_t>>;
     using KeyFreqMemT = unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>>;
 
@@ -528,6 +529,8 @@ namespace MxRec {
         EmbHashMemT embHashMaps;
         OffsetMemT maxOffset;
         KeyOffsetMemT keyOffsetMap;
+        OffsetMapT offsetMap;
+        OffsetMapT* offsetMapPtr = &offsetMap;
         KeyCountMemT keyCountMap;
         Table2ThreshMemT table2Thresh;
         AdmitAndEvictData histRec;
@@ -537,6 +540,7 @@ namespace MxRec {
 
     struct CkptTransData {
         std::vector<int64_t> int64Arr;
+        std::vector<int64_t> addressArr;
         std::vector<float*> floatArr;
         std::vector<int32_t> int32Arr;
         std::vector<trans_serialize_t> transDataset; // may all use this to transfer data

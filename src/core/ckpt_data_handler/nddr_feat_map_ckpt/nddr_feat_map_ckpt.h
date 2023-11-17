@@ -33,10 +33,13 @@ namespace MxRec {
         const vector<string> fileDirNames { "HashTable", "HBM" };
         const vector<CkptDataType> saveDataTypes { CkptDataType::NDDR_FEATMAP };
 
-        const int embHashElmtNum { 2 };
+        const int embHashElmtNum { 1 };
 
         KeyOffsetMemT saveKeyOffsetMap;
         KeyOffsetMemT loadKeyOffsetMap;
+
+        OffsetMemT loadMaxOffset;
+        OffsetMapT* offsetMapPtr;
     };
 }
 

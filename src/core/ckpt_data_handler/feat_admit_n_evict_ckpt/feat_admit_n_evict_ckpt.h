@@ -31,7 +31,7 @@ namespace MxRec {
         void SetDataset(CkptDataType dataType, string embName, CkptTransData& loadedData) override;
 
     private:
-        const vector<string> fileDirNames { "HashTable", "DDR" };
+        const vector<string> fileDirNames { "HashTable", "FEAT_INFO" };
         const vector<CkptDataType> saveDataTypes { CkptDataType::TABLE_2_THRESH, CkptDataType::HIST_REC };
 
         const int featItemInfoSaveNum { 3 };
