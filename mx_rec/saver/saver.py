@@ -104,8 +104,8 @@ class Saver(object):
         """
         logger.debug("======== Start saving for rank id %s ========", self.rank_id)
         if not check_file_system_is_valid(save_path):
-            raise ValueError(f"the path to save sparse embedding table data belong to invalid file system, "
-                             f"only local file system and hdfs file system supported. ")
+            raise ValueError("the path to save sparse embedding table data belong to invalid file system, "
+                             "only local file system and hdfs file system supported. ")
 
         save_path = save_path if save_path else self._prefix_name
         directory, base_name = os.path.split(save_path)
@@ -151,8 +151,8 @@ class Saver(object):
     def restore(self, sess, reading_path):
         logger.debug("======== Start restoring ========")
         if not check_file_system_is_valid(reading_path):
-            raise ValueError(f"the path to save sparse embedding table data belong to invalid file system, "
-                             f"only local file system and hdfs file system supported. ")
+            raise ValueError("the path to save sparse embedding table data belong to invalid file system, "
+                             "only local file system and hdfs file system supported. ")
 
         directory, base_name = os.path.split(reading_path)
         ckpt_name = f"sparse-{base_name}"
