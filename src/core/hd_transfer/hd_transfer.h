@@ -83,10 +83,10 @@ namespace MxRec {
 
         void Destroy();
 
+        std::unordered_map<std::string, acltdtChannelHandle*> GetTransChannel();
+
     private:
-#ifndef GTEST
         std::unordered_map<std::string, acltdtChannelHandle*> transferChannels;
-#endif
         bool running;
         void CreateChannel(const uint32_t localRankId, const string& embName, const int channelNum);
     };

@@ -207,3 +207,8 @@ size_t HDTransfer::RecvAcl(TransferChannel channel, int channelId, const string&
     return acltdtGetDatasetSize(aclDatasets[embName]);
 #endif
 }
+
+std::unordered_map<std::string, acltdtChannelHandle*> HDTransfer::GetTransChannel()
+{
+    return transferChannels;
+}

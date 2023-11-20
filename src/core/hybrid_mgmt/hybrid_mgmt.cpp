@@ -246,6 +246,7 @@ bool HybridMgmt::Save(const string savePath)
     }
 
     if (isSSDEnabled) {
+        LOG_DEBUG(MGMT + "Start host side save: ssd mode hashmap");
         for (auto& it : cacheManager->ddrKeyFreqMap) {
             saveData.ddrKeyFreqMaps[it.first] = it.second.GetFreqTable();
         }
@@ -616,60 +617,48 @@ void HybridMgmt::EvalTask(TaskType type)
 /// \return
 bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
 {
-    LOG_INFO(MGMT + "start parse keys HBM, nBatch:{} , [{}]:{}", mgmtRankInfo.nBatch, channelId, batchId);
+    LOG_INFO(MGMT + "nBatch:{} channelId:{} batchId:{}, ParseKeys with HBM mode start.",
+             mgmtRankInfo.nBatch, channelId, batchId);
 
     // 循环处理每个表的数据
     for (const auto& embInfo: mgmtEmbInfo) {
         TimeCost parseKeysTc;
-        // get
-        TimeCost getTensorsSyncTC;
-
         // 获取各类向量，如果为空指针，退出当前函数
         auto infoVecs = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::RESTORE);
         if (infoVecs == nullptr) {
-            LOG_INFO(MGMT + "ParseKeys infoVecs empty ! batchId:{}, channelId:{}", batchId, channelId);
+            LOG_INFO(MGMT + "channelId:{} batchId:{}, ParseKeys infoVecs empty !", channelId, batchId);
             return false;
         }
-
+        LOG_DEBUG("channelId:{} batchId:{}, ParseKeysHBM GetInfoVec end.", channelId, batchId);
         // 动态shape场景下，获取all2all向量（通信量矩阵）
         TimeCost sendTensorsSyncTC;
         unique_ptr<vector<Tensor>> all2all = nullptr;
         if (!mgmtRankInfo.useStatic) {
+            TimeCost getTensorsSyncTC;
             all2all = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::ALL2ALL);
-            LOG_DEBUG("getTensorsSyncTC(ms):{}", getTensorsSyncTC.ElapsedMS());
+            LOG_DEBUG("channelId:{} batchId:{}, getTensorsSyncTC(ms):{}",
+                      channelId, batchId, getTensorsSyncTC.ElapsedMS());
             if (all2all == nullptr) {
                 LOG_ERROR("Information vector is nullptr!");
                 return false;
             }
-            sendTensorsSyncTC = TimeCost();
+            sendTensorsSyncTC = TimeCost(); // 重新初始化，不计算getTensors耗时
             TimeCost sendAll2AllScSyncTC;
             hdTransfer->Send(TransferChannel::ALL2ALL, *all2all, channelId, embInfo.name);
-            LOG_DEBUG("sendAll2AllScSyncTC(ms):{}", sendAll2AllScSyncTC.ElapsedMS());
+            LOG_DEBUG("channelId:{} batchId:{}, sendAll2AllScSyncTC(ms):{}",
+                      channelId, batchId, sendAll2AllScSyncTC.ElapsedMS());
         }
 
         // 发送查询向量
         TimeCost sendLookupSyncTC;
         hdTransfer->Send(TransferChannel::LOOKUP, { infoVecs->back() }, channelId, embInfo.name);
         infoVecs->pop_back();
-        LOG_DEBUG("sendLookupSyncTC(ms):{}", sendLookupSyncTC.ElapsedMS());
+        LOG_DEBUG("channelId:{} batchId:{}, sendLookupSyncTC(ms):{}", channelId, batchId, sendLookupSyncTC.ElapsedMS());
 
         // 训练时，使用全局去重聚合梯度，发送全局去重的key和对应的恢复向量
         if (GlobalEnv::applyGradientsStrategy == ApplyGradientsStrategyOptions::SUM_SAME_ID_GRADIENTS_AND_APPLY &&
             channelId == TRAIN_CHANNEL_ID) {
-            TimeCost sendUnikeysSyncTC;
-            LOG_DEBUG("global unique, table name: {}, is grad: {}", embInfo.name, embInfo.isGrad);
-            if (embInfo.isGrad) {
-                hdTransfer->Send(TransferChannel::UNIQKEYS, { infoVecs->back() }, channelId, embInfo.name);
-            }
-            infoVecs->pop_back();
-            LOG_DEBUG("sendUnikeysSyncTC(ms):{}", sendUnikeysSyncTC.ElapsedMS());
-
-            TimeCost sendRestoreVecSecSyncTC;
-            if (embInfo.isGrad) {
-                hdTransfer->Send(TransferChannel::RESTORE_SECOND, { infoVecs->back() }, channelId, embInfo.name);
-            }
-            infoVecs->pop_back();
-            LOG_DEBUG("sendRestoreVecSecSyncTC(ms):{}", sendRestoreVecSecSyncTC.ElapsedMS());
+            SendUniqKeysAndRestoreVecHBM(channelId, batchId, embInfo, infoVecs);
         }
 
         // 发送恢复向量
@@ -677,10 +666,35 @@ bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
         hdTransfer->Send(TransferChannel::RESTORE, *infoVecs, channelId, embInfo.name);
         LOG_DEBUG("sendRestoreSyncTC(ms):{}, sendTensorsSyncTC(ms):{}, parseKeysTc HBM mode (ms):{}",
                   sendRestoreSyncTC.ElapsedMS(), sendTensorsSyncTC.ElapsedMS(), parseKeysTc.ElapsedMS());
+        LOG_INFO(MGMT + "channelId:{} batchId:{}, embName:{}, ParseKeys with HBM mode end.",
+                 channelId, batchId, embInfo.name);
     }
     batchId++;
     return true;
 }
+
+void HybridMgmt::SendUniqKeysAndRestoreVecHBM(int channelId, int &batchId, const EmbInfo &embInfo,
+                                              const unique_ptr<vector<Tensor>> &infoVecs)
+{
+    TimeCost sendUniqueKeysSyncTC;
+    LOG_DEBUG("channelId:{} batchId:{}, global unique, table name: {}, is grad: {}",
+              channelId, batchId, embInfo.name, embInfo.isGrad);
+    if (embInfo.isGrad) {
+        hdTransfer->Send(TransferChannel::UNIQKEYS, {infoVecs->back()}, channelId, embInfo.name);
+    }
+    infoVecs->pop_back();
+    LOG_DEBUG("channelId:{} batchId:{}, sendUniqueKeysSyncTC(ms):{}",
+              channelId, batchId, sendUniqueKeysSyncTC.ElapsedMS());
+
+    TimeCost sendUniqueRestoreVecSyncTC;
+    if (embInfo.isGrad) {
+        hdTransfer->Send(TransferChannel::RESTORE_SECOND, {infoVecs->back()}, channelId, embInfo.name);
+    }
+    infoVecs->pop_back();
+    LOG_DEBUG("channelId:{} batchId:{}, sendUniqueRestoreVecSyncTC(ms):{}",
+              channelId, batchId, sendUniqueRestoreVecSyncTC.ElapsedMS());
+}
+
 #endif
 
 /// 当前处理的batch是否是最后一个batch
@@ -699,12 +713,11 @@ bool HybridMgmt::EndBatch(int batchId, int channelId) const
 bool HybridMgmt::ParseKeys(int channelId, int& batchId)
 {
 #ifndef GTEST
-    LOG_INFO(MGMT + "DDR mode, start parse keys, [{}]:{}", channelId, batchId);
+    LOG_INFO(MGMT + "channelId:{} batchId:{}, DDR mode, ParseKeys start.", channelId, batchId);
     TimeCost parseKeyTC;
     int start = batchId;
     bool remainBatch = true; // 是否从通道获取了数据
 
-    LOG_INFO(MGMT + "parse keys, [{}]:{}", channelId, batchId);
     for (const auto& embInfo : mgmtEmbInfo) {
         ProcessEmbInfo(embInfo.name, batchId, channelId, remainBatch);
         // 通道数据已空
@@ -718,10 +731,9 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
     if (!isRunning) {
         return false;
     }
-    TimeCost embHdTrans2TC;
     EmbHDTransWrap(channelId, batchId - 1, start);
-    LOG_DEBUG("embHdTrans2TC TimeCost(ms):{}", embHdTrans2TC.ElapsedMS());
-    LOG_DEBUG("[{}]-{}, parseKeyTC TimeCost(ms):{}", channelId, batchId, parseKeyTC.ElapsedMS());
+    LOG_DEBUG(MGMT + "channelId:{} batchId:{}, ParseKeys end, parseKeyTC(ms):{}",
+              channelId, batchId, parseKeyTC.ElapsedMS());
 #endif
     return true;
 }
@@ -766,20 +778,24 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId, int cha
     auto lookupKeys = preprocess->GetLookupKeys(batchId, embName, channelId);
     if (lookupKeys.empty()) {
         remainBatchOut = false;
+        LOG_ERROR("channelId:{} batchId:{}, embName:{}, GetLookupKeys result is empty.",
+                  channelId, batchId, embName);
         return false;
     }
-
+    LOG_DEBUG("channelId:{} batchId:{}, embName:{}, GetLookupKeys end.", channelId, batchId, embName);
     // 获取各类向量，如果为空指针，退出当前函数
     auto infoVecs = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::RESTORE);
     if (infoVecs == nullptr) { return false; }
-    LOG_DEBUG("getTensorsTC(ms):{}", getTensorsTC.ElapsedMS());
+    LOG_DEBUG("channelId:{} batchId:{}, GetInfoVec end, getTensorsTC(ms):{}",
+              channelId, batchId, getTensorsTC.ElapsedMS());
 
     TimeCost sendRestoreSyncTC;
     hdTransfer->Send(TransferChannel::RESTORE, *infoVecs, channelId, embName);
-    LOG_DEBUG("sendRestoreSyncTC(ms):{}", sendRestoreSyncTC.ElapsedMS());
+    LOG_DEBUG("channelId:{} batchId:{}, send restore end, sendRestoreSyncTC(ms):{}",
+              channelId, batchId, sendRestoreSyncTC.ElapsedMS());
 
     // 调用SSD cache缓存处理流程
-    PrepareDDRData(embName, embHashMap, lookupKeys, channelId);
+    PrepareDDRData(embName, embHashMap, lookupKeys, channelId, batchId);
 
     // 计算查询向量；记录需要被换出的HBM偏移
     vector<Tensor> tmpData;
@@ -787,22 +803,12 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId, int cha
     DDRParam ddrParam(tmpData, offsetsOut);
     TimeCost hostHashMapProcessTC;
     hostHashMaps->Process(embName, lookupKeys, ddrParam, channelId);
-    LOG_DEBUG("hostHashMapProcessTC(ms):{}", hostHashMapProcessTC.ElapsedMS());
+    LOG_DEBUG("channelId:{} batchId:{}, hostHashMapProcessTC(ms):{}",
+              channelId, batchId, hostHashMapProcessTC.ElapsedMS());
 
     if (GlobalEnv::applyGradientsStrategy == ApplyGradientsStrategyOptions::SUM_SAME_ID_GRADIENTS_AND_APPLY &&
         channelId == TRAIN_CHANNEL_ID && remainBatchOut) {
-        vector<int32_t> uniqueKeys;
-        vector<int32_t> restoreVecSec;
-        preprocess->GlobalUnique(ddrParam.offsetsOut, uniqueKeys, restoreVecSec);
-
-        TimeCost sendUnikeysSyncTC;
-        hdTransfer->Send(TransferChannel::UNIQKEYS, { mgmtRankInfo.useDynamicExpansion ? Vec2TensorI64(uniqueKeys) :
-                                                      Vec2TensorI32(uniqueKeys) }, channelId, embName);
-
-        TimeCost sendRestoreVecSecSyncTC;
-        hdTransfer->Send(TransferChannel::RESTORE_SECOND, { Vec2TensorI32(restoreVecSec) }, channelId, embName);
-        LOG_DEBUG("sendUnikeysSyncTC(ms):{}sendRestoreVecSecSyncTC(ms):{}",
-                  sendUnikeysSyncTC.ElapsedMS(), sendRestoreVecSecSyncTC.ElapsedMS());
+        SendUniqKeysAndRestoreVecDDR(embName, batchId, channelId, ddrParam);
     }
 
     TimeCost sendTensorsTC;
@@ -817,14 +823,34 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId, int cha
         }
         hdTransfer->Send(TransferChannel::ALL2ALL, *all2all, channelId, embName);
     }
-    LOG_DEBUG("sendTensorsTC(ms):{} getAndSendTensorsTC(ms):{}, channelId:{}",
-              sendTensorsTC.ElapsedMS(), getAndSendTensorsTC.ElapsedMS(), channelId);
+    LOG_DEBUG("channelId:{} batchId:{}, ProcessEmbInfo end, sendTensorsTC(ms):{}, getAndSendTensorsTC(ms):{}",
+              channelId, batchId, sendTensorsTC.ElapsedMS(), getAndSendTensorsTC.ElapsedMS());
 
     if (!isSSDEnabled && embHashMap.HasFree(lookupKeys.size())) { // check free > next one batch
-        LOG_WARN(MGMT + "embName {}[{}]{}, freeSize not enough, {}", embName, channelId, batchId, lookupKeys.size());
+        LOG_WARN(MGMT + "channelId:{} batchId:{}, embName:{}, freeSize not enough:{}",
+                 channelId, batchId, embName, lookupKeys.size());
         return false;
     }
     return true;
+}
+
+void HybridMgmt::SendUniqKeysAndRestoreVecDDR(const string &embName, int &batchId, int &channelId, DDRParam &ddrParam)
+{
+    LOG_DEBUG("channelId:{} batchId:{}, embName:{}, SendUniqKeysAndRestoreVecDDR start.", channelId, batchId, embName);
+    vector<int32_t> uniqueKeys;
+    vector<int32_t> restoreVecSec;
+    preprocess->GlobalUnique(ddrParam.offsetsOut, uniqueKeys, restoreVecSec);
+
+    TimeCost sendUniqueKeysSyncTC;
+    hdTransfer->Send(TransferChannel::UNIQKEYS, {mgmtRankInfo.useDynamicExpansion ? Vec2TensorI64(uniqueKeys) :
+                                                 Vec2TensorI32(uniqueKeys) }, channelId, embName);
+    LOG_DEBUG("channelId:{} batchId:{}, sendUniqueKeysSyncTC(ms):{}",
+              channelId, batchId, sendUniqueKeysSyncTC.ElapsedMS());
+
+    TimeCost sendRestoreVecSecSyncTC;
+    hdTransfer->Send(TransferChannel::RESTORE_SECOND, {Vec2TensorI32(restoreVecSec) }, channelId, embName);
+    LOG_DEBUG("channelId:{} batchId:{}, sendRestoreVecSecSyncTC(ms):{}",
+              channelId, batchId, sendRestoreVecSecSyncTC.ElapsedMS());
 }
 
 /// 发送H2D和接收D2H向量
@@ -833,14 +859,18 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId, int cha
 /// \param start
 void HybridMgmt::EmbHDTransWrap(int channelId, const int& batchId, int start)
 {
-    LOG_INFO(MGMT + "trans emb, batchId:[{}-{}], channelId:{}", start, batchId, channelId);
+    LOG_INFO(MGMT + "start:{} channelId:{} batchId:{}, EmbHDTransWrap start.", start, channelId, batchId);
+    TimeCost embHDTransWrapTC;
     TimeCost hostEmbsTC;
     hostEmbs->Join(channelId);
-    LOG_DEBUG("hostEmbsTC(ms):{}", hostEmbsTC.ElapsedMS());
+    LOG_DEBUG("channelId:{} batchId:{}, hostEmbs Join end, hostEmbsTC(ms):{}",
+              channelId, batchId, hostEmbsTC.ElapsedMS());
     if (!isRunning) {
         return;
     }
     EmbHDTrans(channelId, batchId);
+    LOG_DEBUG("channelId:{} batchId:{}, EmbHDTransWrap end, embHDTransWrapTC(ms):{}",
+              channelId, batchId, embHDTransWrapTC.ElapsedMS());
 }
 
 /// 发送H2D和接收D2H向量，并更新host emb
@@ -850,8 +880,7 @@ void HybridMgmt::EmbHDTrans(const int channelId, const int batchId)
 {
     EASY_FUNCTION(profiler::colors::Blue)
     EASY_VALUE("mgmtProcess", batchId)
-    LOG_DEBUG(MGMT + "trans emb, batchId:{}, channelId:{}", batchId, channelId);
-    TimeCost tr;
+    LOG_DEBUG(MGMT + "channelId:{} batchId:{}, EmbHDTrans start.", channelId, batchId);
     TimeCost h2dTC;
     // 发送host需要换出的emb
     for (const auto& embInfo: mgmtEmbInfo) {
@@ -860,7 +889,7 @@ void HybridMgmt::EmbHDTrans(const int channelId, const int batchId)
         hostEmbs->GetH2DEmb(missingKeys, embInfo.name, h2dEmb); // order!
         hdTransfer->Send(TransferChannel::H2D, h2dEmb, channelId, embInfo.name, batchId);
     }
-    LOG_DEBUG("h2dTC(ms):{}", h2dTC.ElapsedMS());
+    LOG_DEBUG("channelId:{} batchId:{}, EmbHDTrans h2d end, h2dTC(ms):{}", channelId, batchId, h2dTC.ElapsedMS());
 
     TimeCost d2hTC;
     // 接收device换出的emb，并更新到host上
@@ -873,8 +902,7 @@ void HybridMgmt::EmbHDTrans(const int channelId, const int batchId)
         }
         hostHashMaps->ClearMissingKeys(embInfo.name);
     }
-    LOG_DEBUG("D2HTC(ms):{} EmbHDTrans TimeCost(ms):{} batchId: {} channelId:{}",
-              d2hTC.ElapsedMS(), tr.ElapsedMS(), batchId, channelId);
+    LOG_DEBUG("channelId:{} batchId:{}, EmbHDTrans d2h end, d2hTC(ms):{}", channelId, batchId, d2hTC.ElapsedMS());
 }
 #endif
 
@@ -977,18 +1005,19 @@ void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
 }
 
 inline void HybridMgmt::PrepareDDRData(const string& embTableName, EmbHashMapInfo& embHashMap,
-                                       const vector<emb_key_t>& keys, int channelId) const
+                                       const vector<emb_key_t>& keys, int channelId, int batchId) const
 {
     if (!isSSDEnabled) {
         return;
     }
-    LOG_DEBUG("PrepareDDRData start.");
+    LOG_DEBUG("channelId:{} batchId:{}, embTableName:{}, PrepareDDRData start.", channelId, batchId, embTableName);
     TimeCost prepareDDRDataTc;
     TransferRet ret = cacheManager->TransferDDREmbWithSSD(embTableName, embHashMap, keys, channelId);
     if (ret != TransferRet::TRANSFER_OK) {
         HandlePrepareDDRDataRet(ret);
     }
-    LOG_DEBUG("PrepareDDRData end, TimeCost(ms):{}", prepareDDRDataTc.ElapsedMS());
+    LOG_DEBUG("channelId:{} batchId:{}, embTableName:{}, PrepareDDRData end, prepareDDRDataTc(ms):{}",
+              channelId, batchId, embTableName, prepareDDRDataTc.ElapsedMS());
 }
 
 void HybridMgmt::EvictSSDKeys(const string& embName, const vector<emb_key_t>& keys) const
