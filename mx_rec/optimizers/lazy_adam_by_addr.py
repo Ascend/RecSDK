@@ -15,14 +15,14 @@ from tensorflow.python.training import adam
 from mx_rec.util.initialize import get_host_pipeline_ops, insert_optimizer
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.constants.constants import MAX_INT32
-from mx_rec.validator.validator import para_checker_decorator, StringValidator, NumValidator
+from mx_rec.validator.validator import para_checker_decorator, StringValidator, FloatValidator
 
 
 @para_checker_decorator(check_option_list=[
-    ("learning_rate", NumValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
-    ("beta1", NumValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
-    ("beta2", NumValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
-    ("epsilon", NumValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
+    ("learning_rate", FloatValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
+    ("beta1", FloatValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
+    ("beta2", FloatValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
+    ("epsilon", FloatValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
     ("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"])
 ])
 def create_hash_optimizer_by_address(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8,
