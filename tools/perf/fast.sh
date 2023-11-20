@@ -79,13 +79,13 @@ parse_pipe_1_data_parser()
     LOG_INFO "Step-1.x ReadEmbKeyV2 Static"
   fi
 
-  grep 'read batch cost(ms)' $logfile | cut -d" " -f9| \
+  grep 'read batch cost(ms)' $logfile | cut -d" " -f10| \
     awk -F "[:,]" '{sum+=$2} END {printf "read batch cost: avg=%0.1f\n", sum/NR}'
 
-  grep 'enqueueTC(ms)' $logfile | grep -v 'timeout' | cut -d" " -f12 | \
+  grep 'enqueueTC(ms)' $logfile | grep -v 'timeout' | cut -d" " -f14 | \
     awk -F "[:,]" '{sum+=$2} END {printf "--|enqueueTC: avg=%0.1f\n", sum/NR}'
 
-  grep 'elapsed from last(ms)' $logfile | grep -v 'timeout' | cut -d" " -f12 | \
+  grep 'elapsed from last(ms)' $logfile | grep -v 'timeout' | cut -d" " -f13 | \
     awk -F "[:,]" '{print $2}' | \
     awk 'BEGIN {sum=0; count=0} {if($1<1000) {sum+=$NF; count++} } END \
     {printf "elapsed from last: avg=%0.1f\n", sum/count}'
@@ -95,7 +95,7 @@ parse_pipe_2_key_process()
 {
   LOG_NOTICE "Pipe-2: Data Preprocess"
 
-  grep 'getAndProcessTC(ms)' $logfile | cut -d" " -f6 | \
+  grep 'getAndProcessTC(ms)' $logfile | cut -d" " -f7 | \
     awk -F"[:,]" '{print $2}' | \
     awk 'BEGIN{count=0; total=0;} {if ($1<2000) {total+=$NF; count++;}} END \
       {printf "getAndProcessTC(filter>2000ms): avg=%0.3f\n", total/count}'
@@ -117,7 +117,7 @@ parse_pipe_2_key_process()
 
   LOG_INFO "Step-2.2 KeyProcess"
 
-  grep 'key process cost' $logfile | cut -d" " -f9 | cut -d ":" -f2 | cut -d"," -f1 | grep  '^[0-9]' | grep '[0-9]$' | \
+  grep 'key process cost' $logfile | cut -d" " -f10 | cut -d ":" -f2 | cut -d"," -f1 | grep  '^[0-9]' | grep '[0-9]$' | \
     awk 'BEGIN {sum=0; count=0;} {if($NF<2000) {sum+=$NF; count++;}} END \
     {printf "--|key process cost(filter>2000): avg=%0.1f\n", sum/count}'
 
@@ -130,27 +130,27 @@ parse_pipe_2_key_process()
 
   $(grep 'FastUniqueCompute(ms)' $logfile > /dev/null 2>&1)
   if [ $? == 0 ]; then
-    grep 'FastUniqueCompute(ms)' $logfile | cut -d' ' -f4 | \
+    grep 'FastUniqueCompute(ms)' $logfile | cut -d' ' -f6 | \
       awk -F"[:,]" '{sum+=$2} END {printf "------|FastUniqueCompute: avg=%0.1f\n", sum/NR}'
   fi
 
   $(grep 'GetScAll TimeCost(ms)' $logfile > /dev/null 2>&1)
   if [ $? == 0 ]; then
     grep 'GetScAll TimeCost(ms)' $logfile | \
-      awk -F":" '{sum+=$NF} END {printf "------|GetScAll: avg=%0.1f\n", sum/NR}'
+      awk -F":" '{sum+=$NF} END {printf "------|FastUniqueGetScAll: avg=%0.1f\n", sum/NR}'
   fi
 
   $(grep 'all2allTC TimeCost(ms)' $logfile > /dev/null 2>&1)
   if [ $? == 0 ]; then
     grep 'all2allTC TimeCost(ms)' $logfile | \
-      awk -F":" '{sum+=$NF} END {printf "------|all2allTC: avg=%0.1f\n", sum/NR}'
+      awk -F":" '{sum+=$NF} END {printf "------|FastUnique_all2allTC: avg=%0.1f\n", sum/NR}'
   fi
   # fast-unique related end
 
-  $(grep 'UniqueTC(ms)' $logfile > /dev/null 2>&1)
+  $(grep 'uniqueTc(ms)' $logfile > /dev/null 2>&1)
   if [ $? == 0 ]; then
-    grep 'UniqueTC(ms)' $logfile | \
-      awk -F":" '{sum+=$NF} END {printf "----|UniqueTC: avg=%0.1f\n", sum/NR}'
+    grep 'uniqueTc(ms)' $logfile | \
+      awk -F":" '{sum+=$NF} END {printf "----|UniqueInRankTC: avg=%0.1f\n", sum/NR}'
   fi
 
   $(grep 'processSplitKeysTC(ms)' $logfile > /dev/null 2>&1)
@@ -208,10 +208,10 @@ parse_pipe_3_get_tensors_async_no_ddr()
 {
   LOG_NOTICE "Pipe-3: Get Tensors async (no DDR)"
 
-  $(grep 'getAllTensorTC(ms)' $logfile > /dev/null 2>&1)
+  $(grep 'getTensorsSyncTC(ms)' $logfile > /dev/null 2>&1)
   if [ $? == 0 ]; then
-      grep 'getAllTensorTC(ms)' $logfile | \
-        awk -F":"  '{sum+=$NF} END {print "getAllTensorTC, avg=", sum/NR}'
+      grep 'getTensorsSyncTC(ms)' $logfile | \
+        awk -F":"  '{sum+=$NF} END {print "getTensorsSyncTC, avg=", sum/NR}'
   fi
 }
 
@@ -219,21 +219,21 @@ parse_pipe_4_send_tensors_async_no_ddr()
 {
   LOG_NOTICE "Pipe-4: H2D Send Tensors async (no DDR)"
 
-  $(grep 'sendTensorsTC(ms)' $logfile > /dev/null 2>&1)
+  $(grep 'sendAll2AllScSyncTC(ms)' $logfile > /dev/null 2>&1)
   if [ $? == 0 ]; then
-    grep 'sendTensorsTC(ms)' $logfile | \
-      awk -F":"  '{sum+=$NF} END {print "sendTensorsTC, avg=", sum/NR}'
+    grep 'sendAll2AllScSyncTC(ms)' $logfile | \
+      awk -F":"  '{sum+=$NF} END {print "sendAll2AllScSyncTC, avg=", sum/NR}'
   fi
 
-  $(grep 'sendLookupTC(ms)' $logfile > /dev/null 2>&1)
+  $(grep 'sendLookupSyncTC(ms)' $logfile > /dev/null 2>&1)
   if [ $? == 0 ]; then
-      grep 'sendLookupTC(ms)' $logfile | \
-          awk -F":"  '{sum+=$NF} END {print "--|sendLookupTC, avg=", sum/NR}'
+      grep 'sendLookupSyncTC(ms)' $logfile | \
+          awk -F":"  '{sum+=$NF} END {print "--|sendLookupSyncTC, avg=", sum/NR}'
   fi
 
-  $(grep 'sendRestoreTC(ms)' $logfile > /dev/null 2>&1)
+  $(grep 'sendRestoreSyncTC(ms)' $logfile > /dev/null 2>&1)
   if [ $? == 0 ]; then
-    grep 'sendRestoreTC(ms)' $logfile | \
+    grep 'sendRestoreSyncTC(ms)' $logfile | \
       awk -F":"  '{sum+=$NF} END {print "--|sendRestoreTC, avg=", sum/NR}'
   fi
 }
@@ -242,55 +242,74 @@ parse_pipe_3_get_and_send_tensors_with_ddr()
 {
   LOG_NOTICE "Pipe-3: Get and Send Tensors (with DDR)"
 
-  grep 'parseKeyTC' $logfile | \
-  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<10000) {sum+=$NF; count++;}} END \
-  {printf "parseKeyTC(filter>1000ms): avg=%0.1f\n", sum/count}'
+  grep 'parseKeyTC(ms)' $logfile | \
+  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF>1000) {sum+=$NF; count++;}} END \
+  {printf "parseKeyTC TimeCost(ms)(filter>1000ms): avg=%0.1f\n", sum/count}'
 
-
-  grep 'getAndSendTensorsTC' $logfile | awk -F "[:,]" '{print $6}' | \
-  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<10000) {sum+=$NF; count++;}} END \
+  grep 'getAndSendTensorsTC' $logfile | cut -d" " -f11 | \
+  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF>1000) {sum+=$NF; count++;}} END \
   {printf "--getAndSendTensorsTC(filter>1000ms): avg=%0.1f\n", sum/count}'
 
   grep 'getTensorsTC' $logfile | \
-  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<10000) {sum+=$NF; count++;}} END \
+  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF>1000) {sum+=$NF; count++;}} END \
   {printf "----getTensorsTC(filter>1000ms): avg=%0.1f\n", sum/count}'
+
+  $(grep 'sendRestoreSyncTC(ms)' $logfile > /dev/null 2>&1)
+  if [ $? == 0 ]; then
+      grep 'sendRestoreSyncTC(ms)' $logfile | \
+            awk -F":"  '{sum+=$NF} END {print "----|sendRestoreTC, avg=", sum/NR}'
+  fi
+
+  $(grep 'prepareDDRDataTc(ms)' $logfile > /dev/null 2>&1)
+  if [ $? == 0 ]; then
+      grep 'prepareDDRDataTc(ms)' $logfile | \
+            awk -F":"  '{sum+=$NF} END {print "----|prepareDDRDataTc, avg=", sum/NR}'
+  fi
 
   $(grep 'hostHashMapProcessTC(ms)' $logfile > /dev/null 2>&1)
   if [ $? == 0 ]; then
       grep 'hostHashMapProcessTC(ms)' $logfile | \
-            awk -F":"  '{sum+=$NF} END {print "----hostHashMapProcessTC, avg=", sum/NR}'
+            awk -F":"  '{sum+=$NF} END {print "----|hostHashMapProcessTC, avg=", sum/NR}'
+  fi
+
+  $(grep 'sendUniqueKeysSyncTC(ms)' $logfile > /dev/null 2>&1)
+  if [ $? == 0 ]; then
+      grep 'sendUniqueKeysSyncTC(ms)' $logfile | \
+            awk -F":" 'BEGIN {sum=0; count=0;} {if($NF>200) {sum+=$NF; count++;}} END \
+            {printf "----|sendUniqueKeysSyncTC(filter>200ms): avg=%0.1f\n", sum/count}'
+  fi
+
+  $(grep 'sendRestoreVecSecSyncTC(ms)' $logfile > /dev/null 2>&1)
+  if [ $? == 0 ]; then
+      grep 'sendRestoreVecSecSyncTC(ms)' $logfile | \
+            awk -F":" 'BEGIN {sum=0; count=0;} {if($NF>200) {sum+=$NF; count++;}} END \
+            {printf "----|sendRestoreVecSecSyncTC(filter>200ms): avg=%0.1f\n", sum/count}'
   fi
 
   $(grep 'sendTensorsTC(ms)' $logfile > /dev/null 2>&1)
   if [ $? == 0 ]; then
-      grep 'sendTensorsTC(ms)' $logfile | \
-            awk -F":"  '{sum+=$NF} END {print "----sendTensorsTC, avg=", sum/NR}'
+      grep 'sendTensorsTC(ms)' $logfile | cut -d" " -f9 | cut -d ":" -f2 | cut -d"," -f1 | \
+            awk '{sum+=$NF} END {printf "----|sendTensorsTC, avg=%0.3f\n", sum/NR}'
   fi
 
-  $(grep 'embHdTrans1TC(ms)' $logfile > /dev/null 2>&1)
+  $(grep 'embHDTransWrapTC(ms)' $logfile > /dev/null 2>&1)
   if [ $? == 0 ]; then
-      grep 'embHdTrans1TC(ms)' $logfile | \
-            awk -F":"  '{sum+=$NF} END {print "--embHdTrans1TC, avg=", sum/NR}'
+      grep 'embHDTransWrapTC' $logfile | \
+      awk -F":" 'BEGIN {sum=0; count=0;} {if($NF>1000) {sum+=$NF; count++;}} END \
+      {printf "--embHDTransWrapTC(filter>1000ms): avg=%0.1f\n", sum/count}'
   fi
-
-  grep 'embHdTrans2TC' $logfile | \
-  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<10000) {sum+=$NF; count++;}} END \
-  {printf "--embHdTrans2TC(filter>1000ms): avg=%0.1f\n", sum/count}'
 
   grep 'hostEmbsTC' $logfile | \
-  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<10000) {sum+=$NF; count++;}} END \
-  {printf "----hostEmbsTC(filter>1000ms): avg=%0.1f\n", sum/count}'
-
-  grep 'EmbHDTrans' $logfile | awk -F "[:]" '{print $5}' | cut -d " " -f1 | \
-  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<10000) {sum+=$NF; count++;}} END \
-  {printf "----EmbHDTrans(filter>1000ms): avg=%0.1f\n", sum/count}'
+  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF>1000) {sum+=$NF; count++;}} END \
+  {printf "----hostEmbsTC(filter>1000ms): "; if(count==0) print "no match result!\n"; \
+   else printf "avg=%0.1f\n", sum/count}'
 
   grep 'h2dTC' $logfile | \
-  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<10000) {sum+=$NF; count++;}} END \
+  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF>1000) {sum+=$NF; count++;}} END \
   {printf "------h2dTC(filter>1000ms): avg=%0.1f\n", sum/count}'
 
   grep 'd2hTC' $logfile | \
-  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<10000) {sum+=$NF; count++;}} END \
+  awk -F":" 'BEGIN {sum=0; count=0;} {if($NF>1000) {sum+=$NF; count++;}} END \
   {printf "------d2hTC(filter>1000ms): avg=%0.1f\n", sum/count}'
 }
 
@@ -298,33 +317,47 @@ parse_pipe_3_get_and_send_tensors_sync_without_ddr()
 {
   LOG_NOTICE "Pipe-3: Get and Send Tensors sync (no DDR)"
 
-  $(grep 'ParseKeysTC HBM mode (ms)' $logfile > /dev/null 2>&1)
+  $(grep 'parseKeysTc HBM mode (ms)' $logfile > /dev/null 2>&1)
   if [ $? == 0 ]; then
-      grep 'ParseKeysTC HBM mode (ms)' $logfile | \
-        awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<2000) {sum+=$NF; count++;}} END \
-        {printf "ParseKeysTC(filter>2000ms): avg=%0.1f\n", sum/count}'
+      grep 'parseKeysTc HBM mode (ms)' $logfile | \
+        awk -F":" 'BEGIN {sum=0; count=0;} {if($NF>2000) {sum+=$NF; count++;}} END \
+        {printf "parseKeysTc(filter>2000ms): avg=%0.1f\n", sum/count}'
   fi
 
   grep 'getTensorsSyncTC(ms)' $logfile | \
-      awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<1000) {sum+=$NF; count++;}} END \
+      awk -F":" 'BEGIN {sum=0; count=0;} {if($NF>1000) {sum+=$NF; count++;}} END \
       {printf "--|getTensorsSyncTC(filter>1000ms): avg=%0.1f\n", sum/count}'
 
-  grep 'sendTensorsSyncTC(ms)' $logfile | \
-      awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<1000) {sum+=$NF; count++;}} END \
+  grep 'sendTensorsSyncTC(ms)' $logfile | cut -d" " -f7 | cut -d ":" -f2 | cut -d"," -f1 | \
+      awk -F":" 'BEGIN {sum=0; count=0;} {if($NF>1000) {sum+=$NF; count++;}} END \
       {printf "--|sendTensorsSyncTC(filter>1000ms): avg=%0.1f\n", sum/count}'
 
   $(grep 'sendAll2AllScSyncTC(ms)' $logfile > /dev/null 2>&1)
   if [ $? == 0 ]; then
     grep 'sendAll2AllScSyncTC(ms)' $logfile | \
-          awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<200) {sum+=$NF; count++;}} END \
+          awk -F":" 'BEGIN {sum=0; count=0;} {if($NF>200) {sum+=$NF; count++;}} END \
           {printf "----|sendAll2AllScSyncTC(filter>200ms): avg=%0.1f\n", sum/count}'
   fi
 
   grep 'sendLookupSyncTC(ms)' $logfile | \
-        awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<200) {sum+=$NF; count++;}} END \
+        awk -F":" 'BEGIN {sum=0; count=0;} {if($NF>200) {sum+=$NF; count++;}} END \
         {printf "----|sendLookupSyncTC(filter>200ms): avg=%0.1f\n", sum/count}'
 
-  grep 'sendRestoreSyncTC(ms)' $logfile | \
+  $(grep 'sendUniqueKeysSyncTC(ms)' $logfile > /dev/null 2>&1)
+  if [ $? == 0 ]; then
+      grep 'sendUniqueKeysSyncTC(ms)' $logfile | \
+            awk -F":" 'BEGIN {sum=0; count=0;} {if($NF>200) {sum+=$NF; count++;}} END \
+            {printf "----|sendUniqueKeysSyncTC(filter>200ms): avg=%0.1f\n", sum/count}'
+  fi
+
+  $(grep 'sendUniqueRestoreVecSyncTC(ms)' $logfile > /dev/null 2>&1)
+  if [ $? == 0 ]; then
+      grep 'sendUniqueRestoreVecSyncTC(ms)' $logfile | \
+            awk -F":" 'BEGIN {sum=0; count=0;} {if($NF>200) {sum+=$NF; count++;}} END \
+            {printf "----|sendUniqueRestoreVecSyncTC(filter>200ms): avg=%0.1f\n", sum/count}'
+  fi
+
+  grep 'sendRestoreSyncTC(ms)' $logfile | cut -d" " -f6 | cut -d ":" -f2 | cut -d"," -f1 | \
           awk -F":" 'BEGIN {sum=0; count=0;} {if($NF<200) {sum+=$NF; count++;}} END \
           {printf "----|sendRestoreSyncTC(filter>200ms): avg=%0.1f\n", sum/count}'
 }
@@ -345,7 +378,7 @@ main()
   if [ $? -eq 0 ]; then
       parse_pipe_3_get_and_send_tensors_with_ddr
   else
-    $(grep 'ParseKeysTC HBM mode (ms)' $logfile > /dev/null 2>&1)
+    $(grep 'parseKeysTc HBM mode (ms)' $logfile > /dev/null 2>&1)
     if [ $? -eq 0 ]; then
       parse_pipe_3_get_and_send_tensors_sync_without_ddr
     else
