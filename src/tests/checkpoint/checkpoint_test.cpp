@@ -36,6 +36,7 @@ protected:
     float floatMem { MEM_INIT_VALUE };
     int64_t featMem { static_cast<int64_t>(UINT32_MAX) };
     int32_t offsetMem { 0 };
+    int32_t maxOffsetMem { 16 };
 
     string name { "table" };
     int sendCount { 8 };
@@ -153,7 +154,7 @@ protected:
     void SetMaxOffset(OffsetMemT& testMaxOffset)
     {
         for (const auto& testEmbInfo : testEmbInfos) {
-            testMaxOffset[testEmbInfo.name] = offsetMem;
+            testMaxOffset[testEmbInfo.name] = maxOffsetMem;
         }
     }
 
@@ -354,36 +355,6 @@ TEST_F(CheckpointTest, EmbHashMaps)
     }
 }
 
-TEST_F(CheckpointTest, MaxOffset)
-{
-    OffsetMemT testMaxOffset;
-    OffsetMemT validMaxOffset;
-
-    SetEmbInfo();
-    SetMaxOffset(testMaxOffset);
-    validMaxOffset = testMaxOffset;
-
-    CkptData testSaveData;
-    CkptData validLoadData;
-    CkptData testLoadData;
-
-    testSaveData.maxOffset = std::move(testMaxOffset);
-    validLoadData.maxOffset = std::move(validMaxOffset);
-
-    Checkpoint testCkpt;
-    testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
-    testCkpt.LoadModel(testPath, testLoadData, rankInfo, testEmbInfos, { CkptFeatureType::MAX_OFFSET });
-
-    EXPECT_EQ(validLoadData.maxOffset.size(), testLoadData.maxOffset.size());
-    for (const auto& it : validLoadData.maxOffset) {
-        EXPECT_EQ(1, testLoadData.maxOffset.count(it.first));
-
-        const auto& maxOffset = testLoadData.maxOffset.at(it.first);
-
-        EXPECT_EQ(it.second, maxOffset);
-    }
-}
-
 TEST_F(CheckpointTest, KeyOffsetMaps)
 {
     KeyOffsetMemT testKeyOffsetMaps;
@@ -407,8 +378,11 @@ TEST_F(CheckpointTest, KeyOffsetMaps)
     EXPECT_EQ(validLoadData.keyOffsetMap.size(), testLoadData.keyOffsetMap.size());
     for (const auto& it : validLoadData.keyOffsetMap) {
         EXPECT_EQ(1, testLoadData.keyOffsetMap.count(it.first));
-        const auto& maxOffset = testLoadData.keyOffsetMap.at(it.first);
-        EXPECT_EQ(it.second, maxOffset);
+        const auto& keyOffsetMap = testLoadData.keyOffsetMap.at(it.first);
+        const auto& validKeyOffsetMap = validLoadData.keyOffsetMap.at(it.first);
+        for (const auto& key: keyOffsetMap) {
+            EXPECT_EQ(validKeyOffsetMap.count(key.first), 1);
+        }
     }
 }
 
@@ -440,23 +414,23 @@ TEST_F(CheckpointTest, AllMgmt)
         testLoadData,
         rankInfo,
         testEmbInfos,
-        { CkptFeatureType::MAX_OFFSET, CkptFeatureType::KEY_OFFSET_MAP });
+        {CkptFeatureType::KEY_OFFSET_MAP });
 
     EXPECT_EQ(validLoadData.maxOffset.size(), testLoadData.maxOffset.size());
     for (const auto& it : validLoadData.maxOffset) {
         EXPECT_EQ(1, testLoadData.maxOffset.count(it.first));
-
         const auto& maxOffset = testLoadData.maxOffset.at(it.first);
-
         EXPECT_EQ(it.second, maxOffset);
     }
 
     EXPECT_EQ(validLoadData.keyOffsetMap.size(), testLoadData.keyOffsetMap.size());
     for (const auto& it : validLoadData.keyOffsetMap) {
         EXPECT_EQ(1, testLoadData.keyOffsetMap.count(it.first));
-
-        const auto& maxOffset = testLoadData.keyOffsetMap.at(it.first);
-        EXPECT_EQ(it.second, maxOffset);
+        const auto& keyOffsetMap = testLoadData.keyOffsetMap.at(it.first);
+        const auto& validKeyOffsetMap = validLoadData.keyOffsetMap.at(it.first);
+        for (const auto& key: keyOffsetMap) {
+            EXPECT_EQ(validKeyOffsetMap.count(key.first), 1);
+        }
     }
 }
 

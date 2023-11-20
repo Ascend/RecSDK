@@ -11,10 +11,12 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.util import compat
 
-from mx_rec.constants.constants import DataName, DataAttr, MIN_SIZE, MAX_FILE_SIZE, Flag, TFDevice, MAX_INT32
+from mx_rec.constants.constants import DataName, DataAttr, MIN_SIZE, MAX_FILE_SIZE, Flag, TFDevice, \
+    MAX_INT32, HDFS_FILE_PREFIX
 from mx_rec.util.initialize import get_rank_id, get_rank_size, get_customized_ops, get_table_instance, \
     get_table_instance_by_name, is_asc_manager_initialized, save_host_data, restore_host_data, get_host_data, \
-    send_host_data, get_ascend_global_hashtable_collection, set_sparse_dir, get_local_rank_size
+    send_host_data, get_ascend_global_hashtable_collection, set_sparse_dir, get_local_rank_size, \
+    get_use_dynamic_expansion
 from mx_rec.util.perf import performance
 from mx_rec.validator.validator import DirectoryValidator, FileValidator, para_checker_decorator, ClassValidator, \
     IntValidator, OptionalStringValidator
@@ -102,8 +104,8 @@ class Saver(object):
         """
         logger.debug("======== Start saving for rank id %s ========", self.rank_id)
         if not check_file_system_is_valid(save_path):
-            raise ValueError(f"the path to save sparse embedding table data belong to invalid file system, "
-                             f"only local file system supported. ")
+            raise ValueError("the path to save sparse embedding table data belong to invalid file system, "
+                             "only local file system and hdfs file system supported. ")
 
         save_path = save_path if save_path else self._prefix_name
         directory, base_name = os.path.split(save_path)
@@ -119,10 +121,11 @@ class Saver(object):
         set_sparse_dir(saving_path)
 
         try:
-            directory_validator = DirectoryValidator("saving_path", saving_path)
-            directory_validator.check_not_soft_link()
-            directory_validator.with_blacklist(exact_compare=False)
-            directory_validator.check()
+            if not check_file_system_is_hdfs(saving_path):
+                directory_validator = DirectoryValidator("saving_path", saving_path)
+                directory_validator.check_not_soft_link()
+                directory_validator.with_blacklist(exact_compare=False)
+                directory_validator.check()
         except ValueError as err:
             raise ValueError(f"The saving path {saving_path} cannot be a system directory "
                              f"and cannot be soft link.") from err
@@ -148,8 +151,8 @@ class Saver(object):
     def restore(self, sess, reading_path):
         logger.debug("======== Start restoring ========")
         if not check_file_system_is_valid(reading_path):
-            raise ValueError(f"the path to save sparse embedding table data belong to invalid file system, "
-                             f"only local file system supported. ")
+            raise ValueError("the path to save sparse embedding table data belong to invalid file system, "
+                             "only local file system and hdfs file system supported. ")
 
         directory, base_name = os.path.split(reading_path)
         ckpt_name = f"sparse-{base_name}"
@@ -165,26 +168,33 @@ class Saver(object):
 
     @performance("save_table_name_data")
     def save_table_name_data(self, sess, result, root_dir, table_name):
-        dump_data_dict = sess.run(result.get(table_name))
-
         table_instance = get_table_instance_by_name(table_name)
         self._make_table_name_dir(root_dir, table_instance, table_name)
-        # save key
-        if is_asc_manager_initialized() and self.save_easy_mode:
-            self._save_easy_mode_save_key_data(dump_data_dict, root_dir, table_name)
+
+        dump_data_dict = sess.run(result.get(table_name))
+        # when HBM mode is on, need to get host offset data, to process dump data dict for saving valid embedding.
+        if is_asc_manager_initialized() and table_instance.host_vocabulary_size == 0:
+            self._get_valid_dict_data(dump_data_dict, table_name)
+
         # save embedding
         save_embedding_data(root_dir, table_name, dump_data_dict, self.rank_id)
-        if table_instance.use_feature_mapping:
-            save_feature_mapping_data(root_dir, table_name, dump_data_dict, self.rank_id)
-            save_offset_data(root_dir, table_name, dump_data_dict, self.rank_id)
+
+        # save optimizer data
         if "optimizer" in dump_data_dict:
             dump_optimizer_data_dict = dump_data_dict.get("optimizer")
             for optimizer_name, dump_optimizer_data in dump_optimizer_data_dict.items():
-                save_optimizer_state_data(root_dir, table_name, optimizer_name, dump_optimizer_data,
-                                          self.rank_id)
+                save_optimizer_state_data(root_dir, table_name, optimizer_name, dump_optimizer_data, self.rank_id)
 
     @performance("_save")
     def _save(self, sess, root_dir):
+        if is_asc_manager_initialized():
+            save_host_data(root_dir)
+            logger.debug(f"host data was saved.")
+
+        if get_use_dynamic_expansion():
+            # Data related to dynamic expansion needs to be saved only on the host side.
+            return
+
         result = self.save_op_dict
         threads = []
         for table_name in result.keys():
@@ -197,9 +207,11 @@ class Saver(object):
         for thread in threads:
             thread.join()
 
-        if is_asc_manager_initialized() and not self.save_easy_mode:
-            save_host_data(root_dir)
-            logger.debug(f"host data was saved.")
+    def _get_valid_dict_data(self, dump_data_dict, table_name):
+        host_data = get_host_data(table_name)
+        offset = list(host_data)
+
+        get_valid_dict_data_from_host_offset(dump_data_dict, offset)
 
     def _build_save(self):
         for var in self.var_list:
@@ -245,21 +257,22 @@ class Saver(object):
                 assign_op = state.assign(sub_optimizer_placeholder_dict.get(key_state))
                 self.restore_fetch_list.append(assign_op)
 
-    def _save_easy_mode_save_key_data(self, dump_data_dict, root_dir, table_name):
-        host_data = get_host_data(table_name)
-        key = np.array(list(host_data.keys()))
-        offset = list(host_data.values())
-        get_valid_dict_data(dump_data_dict, offset)
-        save_key_data(root_dir, table_name, key, self.rank_id)
 
     def _restore(self, sess, reading_path):
+        if is_asc_manager_initialized():
+            restore_host_data(reading_path)
+            logger.info("host data was restored.")
+
+        if get_use_dynamic_expansion:
+            # Data related to dynamic expansion needs to be restored only on the host side.
+            return
+
         restore_feed_dict = defaultdict(dict)
-        key_offset_dict = defaultdict(dict)
+
         for table_name, sub_placeholder_dict in self.placeholder_dict.items():
             fill_placeholder(reading_path, sub_placeholder_dict, restore_feed_dict, self.rank_id,
                              NameDescriptor(table_name, DataName.EMBEDDING.value))
-            if self.save_easy_mode:
-                fill_key_offset_dict(reading_path, self.rank_id, table_name, key_offset_dict)
+
             table_instance = get_table_instance_by_name(table_name)
 
             if table_instance.use_feature_mapping:
@@ -279,13 +292,8 @@ class Saver(object):
                                          name_descriptor=NameDescriptor(table_name, state_key,
                                                                         optimizer_name=optimizer_name))
 
-        if is_asc_manager_initialized() and self.save_easy_mode:
-            send_host_data(key_offset_dict)
-            logger.info("host data was sent to the host pipeline.")
-        if is_asc_manager_initialized() and not self.save_easy_mode:
-            restore_host_data(reading_path)
-            logger.info("host data was restored.")
         sess.run(self.restore_fetch_list, feed_dict=restore_feed_dict)
+
 
 
 class NameDescriptor:
@@ -295,7 +303,7 @@ class NameDescriptor:
         self.optimizer_name = optimizer_name
 
 
-def get_valid_dict_data(dump_data_dict: dict, offset: list):
+def get_valid_dict_data_from_host_offset(dump_data_dict: dict, offset: list):
     """
     Extract embedding and optimizer data from the dict based on offset.
     :param dump_data_dict: sparse data dict to be saved
@@ -311,23 +319,6 @@ def get_valid_dict_data(dump_data_dict: dict, offset: list):
                 dump_optimizer_data[state_key] = state
             dump_optimizer_data_dict[optimizer_name] = dump_optimizer_data
         dump_data_dict["optimizer"] = dump_optimizer_data_dict
-
-
-def fill_key_offset_dict(reading_path: str, rank_id: int, table_name: str, key_offset_dict: dict):
-    """
-    Filling data in the key-offset dictionary , which is sent to the host pipeline.
-    :param reading_path: the path restoring the model
-    :param rank_id: rank id
-    :param table_name: the sparse table name
-    :param key_offset_dict: key-offset dictionary saving mapping relationship
-    """
-    target_path = generate_path(reading_path, "HashTable", "HBM", table_name,
-                                DataName.KEY.value)
-    key = read_binary_data(target_path, rank_id, DataName.KEY.value, table_name)
-    key = key.get(DataName.KEY.value)
-    offsets = list(range(key.shape[0]))
-    key_offset_map = dict(zip(key, offsets))
-    key_offset_dict[table_name] = key_offset_map
 
 
 def fill_placeholder(reading_path, placeholder_dict, feed_dict, suffix, name_descriptor):
@@ -349,21 +340,6 @@ def save_embedding_data(root_dir, table_name, dump_data_dict, suffix):
     target_path = generate_path(root_dir, "HashTable", "HBM", table_name, DataName.EMBEDDING.value)
     data_to_write = dump_data_dict.get(DataName.EMBEDDING.value)
 
-    attribute = dict()
-    attribute[DataAttr.DATATYPE.value] = data_to_write.dtype.name
-    attribute[DataAttr.SHAPE.value] = data_to_write.shape
-    write_binary_data(target_path, suffix, data_to_write, attributes=attribute)
-
-
-def save_key_data(root_dir: str, table_name: str, data_to_write: np.ndarray, suffix: int):
-    """
-    Save the keys of the sparse table
-    :param root_dir: the root path saving the model
-    :param table_name: the sparse table name
-    :param data_to_write: the key array to be written
-    :param suffix: suffix of sparse data
-    """
-    target_path = generate_path(root_dir, "HashTable", "HBM", table_name, DataName.KEY.value)
     attribute = dict()
     attribute[DataAttr.DATATYPE.value] = data_to_write.dtype.name
     attribute[DataAttr.SHAPE.value] = data_to_write.shape
@@ -422,7 +398,12 @@ def write_binary_data(writing_path, suffix, data, attributes=None):
     if tf.io.gfile.exists(target_attribute_dir):
         raise FileExistsError(f"Target_attribute_dir {target_attribute_dir} exists before writing.")
 
-    data.tofile(target_data_dir)
+    if check_file_system_is_hdfs(target_data_dir):
+        with tf.io.gfile.GFile(target_data_dir, "wb") as file:
+            data = data.tostring()
+            file.write(data)
+    else:
+        data.tofile(target_data_dir)
 
     if attributes is not None:
         if not isinstance(attributes, dict):
@@ -458,7 +439,11 @@ def read_binary_data(reading_path: str, suffix: int, data_name: str, table_name:
 
     with tf.io.gfile.GFile(target_data_dir, "rb") as file:
         validate_read_file(target_data_dir)
-        data_to_restore = np.fromfile(target_data_dir, dtype=attributes.pop(DataAttr.DATATYPE.value))
+        if check_file_system_is_hdfs(target_data_dir):
+            data_to_restore = file.read()
+            data_to_restore = np.fromstring(data_to_restore, dtype=attributes.pop(DataAttr.DATATYPE.value))
+        else:
+            data_to_restore = np.fromfile(target_data_dir, dtype=attributes.pop(DataAttr.DATATYPE.value))
 
     if DataAttr.SHAPE.value in attributes and data_name != DataName.KEY.value:
         data_shape = attributes.pop(DataAttr.SHAPE.value)
@@ -483,7 +468,8 @@ def validate_read_file(read_file_path):
     file_validator = FileValidator("read_file_path", read_file_path)
     file_validator.check_file_size(MAX_FILE_SIZE, MIN_SIZE)
     file_validator.check_user_group()
-    file_validator.check_not_soft_link()
+    if not check_file_system_is_hdfs(read_file_path):
+        file_validator.check_not_soft_link()
     file_validator.check()
 
 
@@ -514,6 +500,13 @@ def process_embedding_data(data_to_restore: np.ndarray, current_data_shape: list
 
 
 def check_file_system_is_valid(file_path):
-    if file_path.find("://") == -1:
+    if file_path.find("://") == -1 or check_file_system_is_hdfs(file_path):
         return True
+    return False
+
+
+def check_file_system_is_hdfs(file_path):
+    for prefix in HDFS_FILE_PREFIX:
+        if file_path.startswith(prefix):
+            return True
     return False

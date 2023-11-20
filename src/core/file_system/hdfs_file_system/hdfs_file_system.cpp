@@ -270,6 +270,8 @@ ssize_t HdfsFileSystem::Read(const string& filePath, vector<vector<float>>& file
 void HdfsFileSystem::ReadEmbedding(const string& filePath, const int& embeddingSize,
                                    vector<int64_t>& addressArr, int deviceId)
 {
+    size_t datasetSize = GetFileSize(filePath);
+    auto embHashMapSize = static_cast<int>(datasetSize / sizeof(float) / embeddingSize);
     hdfsFS fs = ConnectHdfs();
 
     hdfsFile file = hdfs->OpenFile(fs, filePath.c_str(), O_RDONLY, 0, 0, 0);
@@ -277,8 +279,6 @@ void HdfsFileSystem::ReadEmbedding(const string& filePath, const int& embeddingS
         hdfs->Disconnect(fs);
         throw runtime_error("open hdfs file failed.");
     }
-
-    size_t datasetSize = GetFileSize(filePath);
 
 #ifndef GTEST
     auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
@@ -298,15 +298,9 @@ void HdfsFileSystem::ReadEmbedding(const string& filePath, const int& embeddingS
     }
 
     float *floatPtr = static_cast<float *>(newBlock);
-
-    for (size_t i = 0, j = 0; i < addressArr.size(); i += keyAddrElem, ++j) {
+    for (size_t i = 0, j = 0; i < embHashMapSize; i += keyAddrElem, ++j) {
         vector<float> row(embeddingSize);
-        auto bytesRead = hdfs->Read(fs, file, row.data(), embeddingSize * sizeof(float));
-        if (bytesRead != embeddingSize * sizeof(float)) {
-            hdfs->CloseFile(fs, file);
-            hdfs->Disconnect(fs);
-            throw runtime_error("Error read hdfs file.");
-        }
+        hdfs->Read(fs, file, row.data(), embeddingSize * sizeof(float));
 
         aclError ec = aclrtMemcpy(floatPtr + j * embeddingSize, embeddingSize * sizeof(float),
                                   row.data(), embeddingSize * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
@@ -316,11 +310,11 @@ void HdfsFileSystem::ReadEmbedding(const string& filePath, const int& embeddingS
             throw runtime_error(StringFormat("aclrtMemcpy failed, ret=%d", ec).c_str());
         }
         int64_t address = reinterpret_cast<int64_t>(floatPtr + j * embeddingSize);
-        addressArr.at(i) = address;
+        addressArr.push_back(address);
     }
+#endif
     hdfs->CloseFile(fs, file);
     hdfs->Disconnect(fs);
-#endif
 }
 
 hdfsFS HdfsFileSystem::ConnectHdfs()

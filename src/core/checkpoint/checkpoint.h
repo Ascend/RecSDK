@@ -13,7 +13,7 @@
 #include <acl/acl.h>
 #include "utils/common.h"
 #include "ckpt_data_handler/ckpt_data_handler.h"
-#include "buffer_queue.h"
+#include "file_system/file_system_handler.h"
 
 namespace MxRec {
     using namespace std;
@@ -37,9 +37,6 @@ namespace MxRec {
         const string ssdSymbol {"SSD"};
         const mode_t dirMode { 0750 };
 
-        const string currDir { "." };
-        const string prevDir { ".." };
-
         const size_t oneTimeReadWriteLen { 32768 }; // 4096 * 8
 
         const set<CkptDataType> int32TransSet {
@@ -54,7 +51,9 @@ namespace MxRec {
             CkptDataType::HIST_REC,
             CkptDataType::NDDR_FEATMAP,
             CkptDataType::DDR_FREQ_MAP,
-            CkptDataType::EXCLUDE_FREQ_MAP
+            CkptDataType::EXCLUDE_FREQ_MAP,
+            CkptDataType::KEY_COUNT_MAP,
+            CkptDataType::EVICT_POS
         };
         const set<CkptDataType> floatTransSet{
             CkptDataType::EMB_DATA
@@ -68,6 +67,8 @@ namespace MxRec {
         int deviceId;
         bool useDynamicExpansion {false};
         vector<EmbInfo> mgmtEmbInfo;
+
+        unique_ptr<FileSystem> fileSystemPtr;
 
         const int embHashNum { 2 };
         const int attribEmbDataOuterIdx { 0 };
@@ -85,14 +86,6 @@ namespace MxRec {
         void SaveDataset(const vector<string>& embNames, const vector<CkptDataType>& saveDataTypes,
             const unique_ptr<CkptDataHandler>& dataHandler);
         void WriteStream(CkptTransData& transData, const string& dataDir, size_t dataSize, CkptDataType dataType);
-        void FillToBuffer(BufferQueue& queue, const char* data, size_t dataSize);
-        void WriteDataset(CkptTransData& transData,
-                                      int fd,
-                                      size_t writeSize,
-                                      CkptDataType dataType,
-                                      size_t idx);
-
-        void WriterFn(BufferQueue& queue, int fd);
 
         void WriteEmbedding(const CkptTransData& transData, const string& dataDir, const int& embeddingSize);
         void ReadEmbedding(CkptTransData& transData, const string& dataDir, const string& embName);
@@ -111,16 +104,10 @@ namespace MxRec {
         void LoadDataset(const vector<string>& embNames, const vector<CkptDataType>& saveDataTypes,
             const unique_ptr<CkptDataHandler>& dataHandler, CkptData& ckptData);
         void ReadStream(CkptTransData& transData, const string& dataDir, CkptDataType dataType, uint32_t dataElmtBytes);
-        void ValidateFile(int fd, const string& dataDir, size_t datasetSize) const;
-        void HandleMappedData(char* mappedData, size_t mapRowNum, size_t onceReadByteSize,
-                                          vector<vector<float>>& dst, size_t cnt) const;
-        void CalculateMapSize(off_t fileSize, size_t& mapByteSize, size_t& mapRowNum, size_t onceReadByteSize) const;
 
         void ReadStreamForEmbData(CkptTransData& transData, const string& dataDir, uint32_t dataElmtBytes,
                                   CkptData& ckptData, string embName) const;
         void SetTransDataSize(CkptTransData& transData, size_t datasetSize, CkptDataType dataType);
-        void ReadDataset(CkptTransData& transData, ifstream& readFile, size_t readSize, CkptDataType dataType,
-            size_t idx);
     };
 }
 

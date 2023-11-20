@@ -64,7 +64,7 @@ namespace MxRec {
         void SetFeatureTypeForLoad(vector<CkptFeatureType>& loadFeatures,
                                                const FeatureAdmitAndEvict& featAdmitNEvict);
 
-        KeyOffsetMapT SendHostMap(const string tableName);
+        OffsetT SendHostMap(const string tableName);
 
         void ReceiveHostMap(AllKeyOffsetMapT receiveKeyOffsetMap);
 
@@ -169,6 +169,7 @@ namespace MxRec {
         map<std::string, std::vector<emb_key_t>> evictKeyMap {};
         KeyProcess *preprocess;
         HDTransfer *hdTransfer;
+        OffsetMapT offsetMapToSend;
         bool isSSDEnabled { false };
         bool isRunning;
         bool isLoad { false };

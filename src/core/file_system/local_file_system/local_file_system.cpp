@@ -14,7 +14,6 @@
 #include <thread>
 #include <fcntl.h>
 
-#include "checkpoint/buffer_queue.h"
 #include "utils/common.h"
 
 using namespace std;
@@ -40,13 +39,13 @@ vector<string> LocalFileSystem::ListDir(const string& dirName)
         return dirs;
     }
 
-    for (en = readdir(dir); dir != nullptr; en = readdir(dir)) {
+    for (en = readdir(dir); en != nullptr ; en = readdir(dir)) {
         if (strncmp(en->d_name, currDir.c_str(), strlen(currDir.c_str())) != 0 &&
             strncmp(en->d_name, prevDir.c_str(), strlen(prevDir.c_str())) != 0) {
             dirs.emplace_back(en->d_name);
         }
-        closedir(dir);
     }
+    closedir(dir);
     return dirs;
 }
 

@@ -130,6 +130,11 @@ auto KeyProcess::GetKeyOffsetMap() -> KeyOffsetMemT
     return keyOffsetMap;
 }
 
+auto KeyProcess::GetKeyCountMap() -> KeyCountMemT
+{
+    return keyCountMap;
+}
+
 auto KeyProcess::GetFeatAdmitAndEvict() -> FeatureAdmitAndEvict&
 {
     return m_featureAdmitAndEvict;
@@ -145,6 +150,11 @@ void KeyProcess::LoadMaxOffset(OffsetMemT& loadData)
 void KeyProcess::LoadKeyOffsetMap(KeyOffsetMemT& loadData)
 {
     keyOffsetMap = std::move(loadData);
+}
+
+void KeyProcess::LoadKeyCountMap(KeyCountMemT& loadData)
+{
+    keyCountMap = std::move(loadData);
 }
 
 // 只在python侧当训练结束时调用，如果出现死锁直接结束程序即可,测试时让进程等待足够长的时间再调用
@@ -345,6 +355,7 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch
     std::lock_guard<std::mutex> lock(loadSaveMut[channel][threadId]);
     // without host, just device, all embedding vectors were stored in device
     // map key to offset directly by lookup keyOffsetMap (hashmap)
+    RecordKeyCountMap(batch);
     if (rankInfo.noDDR) {
         TimeCost key2OffsetTC;
         Key2Offset(batch->name, uniqueInfo.all2AllInfo.keyRecv, channel);
@@ -392,6 +403,7 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
         countRecv = GetCountRecv(batch, threadId, keyCount, scAll, ss);
     }
     std::lock_guard<std::mutex> lock(loadSaveMut[channel][threadId]);
+    RecordKeyCountMap(batch);
     BuildRestoreVec(batch, ss, restore, static_cast<int>(hotPos.size()));
 
     // 特征准入&淘汰
@@ -1473,4 +1485,19 @@ int64_t KeyProcess::GetExpansionTableCapacity(const string& embName)
     std::lock_guard<std::mutex> lk(mut); // lock for PROCESS_THREAD
     return embeddingTableMap[embName].GetTableCapacity();
 #endif
+}
+
+void KeyProcess::RecordKeyCountMap(const unique_ptr<EmbBatchT>& batch)
+{
+    std::lock_guard<std::mutex> lk(mut);
+    size_t miniBs = batch->Size();
+    auto* batchData = batch->sample.data();
+    auto& singleKeyCountMap = keyCountMap[batch->name];
+    for (size_t i = 0; i < miniBs; i++) {
+        const emb_key_t& key = batchData[i];
+        if (singleKeyCountMap.find(key) == singleKeyCountMap.end()) {
+            singleKeyCountMap[key] = 1;
+        }
+        singleKeyCountMap[key]++;
+    }
 }

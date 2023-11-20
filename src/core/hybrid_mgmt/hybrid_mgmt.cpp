@@ -8,6 +8,7 @@
 
 #include "utils/time_cost.h"
 #include "utils/logger.h"
+#include "utils/common.h"
 #include "checkpoint/checkpoint.h"
 
 
@@ -233,6 +234,7 @@ bool HybridMgmt::Save(const string savePath)
 
     CkptData saveData;
     Checkpoint saveCkpt;
+    saveData.keyCountMap = preprocess->GetKeyCountMap();
     if (!mgmtRankInfo.noDDR) {
         // DDR模式保存host的emb表以及hashmap
         LOG_DEBUG(MGMT + "Start host side save: ddr mode hashmap");
@@ -268,7 +270,7 @@ bool HybridMgmt::Save(const string savePath)
 
     // 执行保存操作
     saveCkpt.SaveModel(savePath, saveData, mgmtRankInfo, mgmtEmbInfo);
-
+    offsetMapToSend = std::move(saveData.offsetMap);
     // 数据处理线程释放锁
     preprocess->LoadSaveUnlock();
 #endif
@@ -307,6 +309,7 @@ bool HybridMgmt::Load(const string& loadPath)
         return false;
     }
 
+    preprocess->LoadKeyCountMap(loadData.keyCountMap);
     if (!mgmtRankInfo.noDDR) {
         // DDR模式 将加载的hash map进行赋值
         LOG_DEBUG(MGMT + "Start host side load: ddr mode hashmap");
@@ -314,8 +317,8 @@ bool HybridMgmt::Load(const string& loadPath)
     } else {
         // HBM模式 将加载的最大偏移（真正使用了多少vocab容量）、特征到偏移的映射，进行赋值
         LOG_DEBUG(MGMT + "Start host side load: no ddr mode hashmap");
-        preprocess->LoadMaxOffset(loadData.maxOffset);
         preprocess->LoadKeyOffsetMap(loadData.keyOffsetMap);
+        preprocess->LoadMaxOffset(loadData.maxOffset);
     }
 
     // 将加载的特征准入淘汰记录进行赋值
@@ -346,13 +349,13 @@ bool HybridMgmt::Load(const string& loadPath)
 void HybridMgmt::SetFeatureTypeForLoad(vector<CkptFeatureType>& loadFeatures,
                                        const FeatureAdmitAndEvict& featAdmitNEvict)
 {
+    loadFeatures.push_back(CkptFeatureType::KEY_COUNT_MAP);
     if (!mgmtRankInfo.noDDR) {
         // DDR模式加载的类型为host的emb表以及hashmap
         loadFeatures.push_back(CkptFeatureType::HOST_EMB);
         loadFeatures.push_back(CkptFeatureType::EMB_HASHMAP);
     } else {
         // HBM模式加载的类型为最大偏移（真正使用了多少vocab容量），特征到偏移的映射
-        loadFeatures.push_back(CkptFeatureType::MAX_OFFSET);
         loadFeatures.push_back(CkptFeatureType::KEY_OFFSET_MAP);
     }
 
@@ -369,32 +372,17 @@ void HybridMgmt::SetFeatureTypeForLoad(vector<CkptFeatureType>& loadFeatures,
 /// 获取key对应的offset，python侧调用
 /// \param tableName 表名
 /// \return
-KeyOffsetMapT HybridMgmt::SendHostMap(const string tableName)
+OffsetT HybridMgmt::SendHostMap(const string tableName)
 {
 #ifndef GTEST
-    if (!isInitialized) {
-        throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
-    }
-
-    preprocess->LoadSaveLock();
-    KeyOffsetMemT keyOffsetMap;
-    KeyOffsetMapT sendKeyOffsetMap;
-
-    if (!mgmtRankInfo.noDDR) {
-        LOG_DEBUG(MGMT + "Start send sparse data: ddr mode hashmap");
-    } else {
-        LOG_DEBUG(MGMT + "Start send sparse data: no ddr mode hashmap");
-        keyOffsetMap = preprocess->GetKeyOffsetMap();
-    }
-
-    if ((!keyOffsetMap.empty()) && keyOffsetMap.count(tableName) > 0) {
-        for (const auto& it : keyOffsetMap.at(tableName)) {
-            sendKeyOffsetMap[it.first] = it.second;
+    OffsetT OffsetMap;
+    // 先校验这个map是不是空的
+    if ((!offsetMapToSend.empty()) && offsetMapToSend.count(tableName) > 0) {
+        for (auto& it : offsetMapToSend.at(tableName)) {
+            OffsetMap.push_back(it);
         }
     }
-
-    preprocess->LoadSaveUnlock();
-    return sendKeyOffsetMap;
+    return OffsetMap;
 #endif
 }
 

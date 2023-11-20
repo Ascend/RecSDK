@@ -12,12 +12,12 @@ using namespace MxRec;
 
 uint32_t CkptDataHandler::GetDataElmtBytes(CkptDataType dataType)
 {
-    return dataElmtBytes.at(static_cast<int>(dataType));
+    return dataTypeInfoMap.at(dataType).second;
 }
 
 string CkptDataHandler::GetDataDirName(CkptDataType dataType)
 {
-    return dataDirNames.at(static_cast<int>(dataType));
+    return dataTypeInfoMap.at(dataType).first;
 }
 
 void CkptDataHandler::CleanTransfer()

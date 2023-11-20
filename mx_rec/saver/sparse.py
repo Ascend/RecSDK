@@ -22,7 +22,7 @@ class SparseProcessor:
         self.host_dir_list = ["HashTable", "DDR"]
         self.device_emb_dir = "embedding"
         self.host_emb_dir = "embedding_data"
-        self.device_hashmap_dir = "key_offset_map"
+        self.device_hashmap_dir = "key"
         self.host_hashmap_dir = "embedding_hashmap"
         self.data_suffix = ".data"
         self.attrib_suffix = ".attribute"
@@ -93,13 +93,14 @@ class SparseProcessor:
             device_table_dir = os.path.join(dev_dir, table)
             host_table_dir = os.path.join(host_dir, table)
             if table_instance.host_vocabulary_size != 0:
-                ddr = True
                 out_dir = host_table_dir
+                key, offset = self._get_hashmap(host_table_dir, True)
+                emb_data = self.get_embedding(device_table_dir, host_table_dir, True)
+                emb_data = emb_data[offset]
             else:
                 out_dir = device_table_dir
-            key, offset = self._get_hashmap(out_dir, ddr)
-            emb_data = self.get_embedding(device_table_dir, host_table_dir, ddr)
-            emb_data = emb_data[offset]
+                key, _ = self._get_hashmap(device_table_dir, False)
+                emb_data = self.get_embedding(device_table_dir, host_table_dir, False)
             transformed_data = dict(zip(key[:], emb_data[:]))
             save_path = os.path.join(out_dir, self.export_name + ".npy")
             np.save(save_path, transformed_data)
@@ -143,7 +144,9 @@ class SparseProcessor:
             raise ValueError(f"the attribute data from file {attribute_file} is invalid")
         data_shape = shape_data[:2]
         raw_hashmap = self._get_data(data_file, np.uint64, data_shape)
-        offset = raw_hashmap[:, -1]
+        offset = []
+        if ddr:
+            offset = raw_hashmap[:, -1]
         key = raw_hashmap[:, 0]
         return key, offset
 
