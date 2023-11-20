@@ -69,6 +69,7 @@ def get_global_env_conf() -> RecEnv:
     ("mxrec_log_level", OptionValidator, {"options": [i.value for i in list(RecPyLogLevel)]}),
     ("save_easy", OptionValidator, {"options": [i.value for i in list(Flag)]}),
     ("rank_table_file", DirectoryValidator, {}, ["check_exists_if_not_empty"]),
+    ("tf_device", OptionValidator, {"options": [i.value for i in list(TFDevice)]}),
     ("apply_gradients_strategy", OptionValidator, {"options": [i.value for i in list(ApplyGradientsStrategy)]}),
     ("acl_timeout", Convert2intValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
     ("hd_channel_size", Convert2intValidator,

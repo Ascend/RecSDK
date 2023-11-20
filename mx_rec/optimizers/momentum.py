@@ -17,12 +17,12 @@ from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.initialize import get_table_instance, insert_removing_var_list
 from mx_rec.util.variable import check_and_get_config_via_var
 from mx_rec.constants.constants import MAX_INT32
-from mx_rec.validator.validator import para_checker_decorator, StringValidator, NumValidator, ClassValidator
+from mx_rec.validator.validator import para_checker_decorator, StringValidator, FloatValidator, ClassValidator
 
 
 @para_checker_decorator(check_option_list=[
-    ("learning_rate", NumValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
-    ("mom", NumValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
+    ("learning_rate", FloatValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
+    ("mom", FloatValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
     ("use_locking", ClassValidator, {"classes": (bool,)}),
     ("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
     ("enable_nesterov", ClassValidator, {"classes": (bool,)}),

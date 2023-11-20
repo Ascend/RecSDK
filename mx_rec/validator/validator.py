@@ -334,8 +334,9 @@ class NumValidator(Validator):
     number validator float or int
     """
 
-    def __init__(self, name: str, value: int, min_value: int = None, max_value: int = None,
-                 invalid_options: List = None, constrained_options: List = None, msg: str = ""):
+    def __init__(self, name: str, value: Union[int, float], min_value: Union[int, float] = None,
+                 max_value: Union[int, float] = None, invalid_options: List = None,
+                 constrained_options: List = None, msg: str = ""):
         if isinstance(value, tf.TensorShape) and value.ndims == 1:
             value = value.as_list()[0]
         if isinstance(value, tf.Tensor):
@@ -347,8 +348,6 @@ class NumValidator(Validator):
         self.max_value = max_value
         self.invalid_options = invalid_options
         self.constrained_options = constrained_options
-        self.register_checker(lambda: isinstance(self.value, (int, float)),
-                              msg if msg else f"type of '{name}' is not int or float")
 
     def check_value(self):
         if self.min_value is not None:
@@ -391,6 +390,18 @@ class NumValidator(Validator):
             self.register_checker(lambda: self.value < self.max_value,
                                   f"'{self.name}' is bigger than or equal {self.max_value}")
         return self
+
+
+class FloatValidator(NumValidator):
+    """
+    float type data validator
+    """
+
+    def __init__(self, name: str, value: float, min_value: float = None, max_value: float = None,
+                 invalid_options: List = None, constrained_options: List = None, msg: str = ""):
+        super(FloatValidator, self).__init__(name, value, min_value, max_value, invalid_options, constrained_options,
+                                             msg)
+        self.register_checker(lambda: isinstance(self.value, float), msg if msg else f"type of '{name}' is not float")
 
 
 class IntValidator(NumValidator):

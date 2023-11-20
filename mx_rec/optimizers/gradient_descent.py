@@ -15,11 +15,11 @@ from tensorflow.python.training import gradient_descent
 
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.constants.constants import MAX_INT32
-from mx_rec.validator.validator import para_checker_decorator, StringValidator, ClassValidator, NumValidator
+from mx_rec.validator.validator import para_checker_decorator, StringValidator, ClassValidator, FloatValidator
 
 
 @para_checker_decorator(check_option_list=[
-    ("learning_rate", NumValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
+    ("learning_rate", FloatValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
     ("use_locking", ClassValidator, {"classes": (bool,)}),
     ("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"])
 ])

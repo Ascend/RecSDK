@@ -25,7 +25,8 @@ from mx_rec.util.initialize import get_rank_id, get_rank_size, is_asc_frozen, ge
     get_host_pipeline_ops, get_use_dynamic_expansion, set_modify_graph, insert_removing_var_list, get_bool_gauge_set, \
     get_table_instance_by_name, get_asc_manager
 from mx_rec.validator.validator import ClassValidator, StringValidator, SSDFeatureValidator, \
-    para_checker_decorator, IntValidator, NumValidator, OptionValidator, OptionalIntValidator, OptionalStringValidator
+    para_checker_decorator, IntValidator, NumValidator, OptionValidator, OptionalIntValidator, \
+    OptionalStringValidator, FloatValidator
 from mx_rec.util.tf_version_adapter import npu_ops
 from mx_rec.util.normalization import fix_invalid_table_name
 from mx_rec.util.global_env_conf import global_env
@@ -45,7 +46,7 @@ from mx_rec.util.log import logger
     ("ssd_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
     ("ssd_data_path", ClassValidator, {"classes": (list, tuple)}),
     ("is_save", ClassValidator, {"classes": (bool, )}),
-    ("init_param", NumValidator, {"min_value": -10, "max_value": 10}, ["check_value"]),
+    ("init_param", FloatValidator, {"min_value": -10, "max_value": 10}, ["check_value"]),
     ("all2all_gradients_op", OptionValidator, {"options": [i.value for i in list(All2allGradientsOp)]}),
     ("value_dtype", OptionValidator, {"options": [tf.float32]}),
     ("shard_num", IntValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
