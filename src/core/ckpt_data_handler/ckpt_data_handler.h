@@ -39,26 +39,27 @@ namespace MxRec {
                 CkptDataType dataType, string embName, CkptTransData& loadedData, CkptData& ckptData);
 
     protected:
-        const vector<string> dataDirNames {
-            "embedding_info",
-            "embedding_data",
-            "embedding_hashmap",
-            "dev_offset_2_Batch_n_Key",
-            "embedding_current_status",
-            "max_offset",
-            "key",
-            "table_2_threshold",
-            "history_record",
-            "attribute",
-            "ddr_key_freq_map",
-            "exclude_ddr_key_freq_map",
-            "evict_pos",
-            "key_count_map"
+         // The dataTypeInfoMap stores the directory name and number of bytes of storage elements
+         // corresponding to each data type.
+        const map<CkptDataType, pair<string, uint32_t>> dataTypeInfoMap {
+                {CkptDataType::EMB_INFO,  make_pair("embedding_info", 4) },
+                {CkptDataType::EMB_DATA, make_pair("embedding_data", 4) },
+                {CkptDataType::EMB_HASHMAP, make_pair("embedding_hashmap", 8) },
+                {CkptDataType::DEV_OFFSET, make_pair("dev_offset_2_Batch_n_Key", 8) },
+                {CkptDataType::EMB_CURR_STAT, make_pair("embedding_current_status", 4)},
+                {CkptDataType::NDDR_OFFSET, make_pair("max_offset", 4)},
+                {CkptDataType::NDDR_FEATMAP, make_pair("key", 8)},
+                {CkptDataType::TABLE_2_THRESH, make_pair("table_2_threshold", 4)},
+                {CkptDataType::HIST_REC, make_pair("history_record", 8)},
+                {CkptDataType::ATTRIBUTE, make_pair("attribute", 8)},
+                {CkptDataType::DDR_FREQ_MAP, make_pair("ddr_key_freq_map", 8)},
+                {CkptDataType::EXCLUDE_FREQ_MAP, make_pair("exclude_ddr_key_freq_map", 8)},
+                {CkptDataType::EVICT_POS, make_pair("evict_pos", 8)},
+                {CkptDataType::KEY_COUNT_MAP, make_pair("key_count_map", 8)}
         };
-        const vector<uint32_t> dataElmtBytes { 4, 4, 8, 8, 4, 4, 8, 4, 8, 8, 8, 8, 8, 8};
 
-        const uint32_t eightBytes { 8 };
-        const uint32_t fourBytes { 4 };
+        const uint32_t eightBytes = 8;
+        const uint32_t fourBytes = 4;
 
         CkptTransData transferData;
 
