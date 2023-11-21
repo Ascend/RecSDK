@@ -109,6 +109,7 @@ class EnvOption(Enum):
     GLOG_STDERRTHREAHOLD = "GLOG_stderrthreshold"
     USE_COMBINE_FAAE = "USE_COMBINE_FAAE"
     STAT_ON = "STAT_ON"
+    RECORD_KEY_COUNT = "RECORD_KEY_COUNT"
 
 
 class DataName(Enum):
