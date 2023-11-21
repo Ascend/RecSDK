@@ -15,6 +15,7 @@ cd "$SCRIPT_DIR"
 if [ "$(uname -m)" = "x86_64" ]
 then
   source /opt/buildtools/tf1_env/bin/activate
+  pip3 install setuptools==65.6.3
   tf1_path=$(dirname "$(dirname "$(which python3)")")/lib/python3.7/site-packages/tensorflow_core
   deactivate tf1_env
 fi
