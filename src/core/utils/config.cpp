@@ -30,6 +30,7 @@ namespace MxRec {
     int GlobalEnv::glogStderrthreshold = 0;  // 默认info级别
     bool GlobalEnv::useCombineFaae = false;
     bool GlobalEnv::statOn = false;
+    bool GlobalEnv::recordKeyCount = false; // 默认不打开记录key count的开关
 
     /// 配置环境变量，Python侧已经做了变量值校验，CPP侧直接使用即可；bool类型，1代表true，0代表false
     void ConfigGlobalEnv()
@@ -99,6 +100,12 @@ namespace MxRec {
         if (envStat != nullptr) {
             GlobalEnv::statOn = (std::stoi(envStat) == 1);
         }
+
+        // 设置打开记录开关，记录batch中key与出现的count的数目
+        const char *envRecordKeyCount = getenv(RecEnvNames::RECORD_KEY_COUNT);
+        if (envRecordKeyCount != nullptr) {
+            GlobalEnv::recordKeyCount = (std::stoi(envRecordKeyCount) == 1);
+        }
     }
 
     void LogGlobalEnv()
@@ -115,6 +122,7 @@ namespace MxRec {
                   RecEnvNames::HOT_EMB_UPDATE_STEP, GlobalEnv::hotEmbUpdateStep,
                   RecEnvNames::GLOG_STDERR_THRESHOLD, GlobalEnv::glogStderrthreshold,
                   RecEnvNames::USE_COMBINE_FAAE, GlobalEnv::useCombineFaae,
-                  RecEnvNames::STAT_ON, GlobalEnv::statOn);
+                  RecEnvNames::STAT_ON, GlobalEnv::statOn,
+                  RecEnvNames::RECORD_KEY_COUNT, GlobalEnv::recordKeyCount);
     }
 }

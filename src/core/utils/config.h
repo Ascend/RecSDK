@@ -24,6 +24,7 @@ namespace MxRec {
         const char *const GLOG_STDERR_THRESHOLD = "GLOG_stderrthreshold";
         const char *const USE_COMBINE_FAAE = "USE_COMBINE_FAAE";
         const char *const STAT_ON = "STAT_ON";
+        const char *const RECORD_KEY_COUNT = "RECORD_KEY_COUNT";
     };
 
     namespace ApplyGradientsStrategyOptions {
@@ -43,6 +44,7 @@ namespace MxRec {
         static int glogStderrthreshold;
         static bool useCombineFaae;
         static bool statOn;
+        static bool recordKeyCount;
     };
 
     void ConfigGlobalEnv();

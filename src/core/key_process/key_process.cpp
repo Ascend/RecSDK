@@ -355,6 +355,7 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch
     std::lock_guard<std::mutex> lock(loadSaveMut[channel][threadId]);
     // without host, just device, all embedding vectors were stored in device
     // map key to offset directly by lookup keyOffsetMap (hashmap)
+
     RecordKeyCountMap(batch);
     if (rankInfo.noDDR) {
         TimeCost key2OffsetTC;
@@ -1489,6 +1490,9 @@ int64_t KeyProcess::GetExpansionTableCapacity(const string& embName)
 
 void KeyProcess::RecordKeyCountMap(const unique_ptr<EmbBatchT>& batch)
 {
+    if (!GlobalEnv::recordKeyCount) {
+        return;
+    }
     std::lock_guard<std::mutex> lk(mut);
     size_t miniBs = batch->Size();
     auto* batchData = batch->sample.data();
