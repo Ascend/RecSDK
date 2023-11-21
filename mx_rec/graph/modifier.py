@@ -3,12 +3,15 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 from collections import defaultdict
-from typing import Any
+from typing import Any, List, Dict, DefaultDict, Tuple, Union
+from collections.abc import Callable
 
 import tensorflow as tf
+from tensorflow import Tensor
 from tensorflow.python.data.ops.dataset_ops import DatasetV1Adapter
 from tensorflow.python.framework.ops import Operation
 from tensorflow.python.framework.errors_impl import InvalidArgumentError
+from tensorflow.core.framework.graph_pb2 import GraphDef
 
 from mx_rec.core.asc.helper import get_asc_insert_func
 from mx_rec.core.asc.feature_spec import FeatureSpec
@@ -22,14 +25,19 @@ from mx_rec.util.initialize import get_feature_spec, insert_feature_spec, set_in
     set_iterator_type
 from mx_rec.util.perf import performance
 from mx_rec.graph.utils import check_input_list, find_parent_op, check_cutting_points, record_ops_to_replace, \
-    export_pb_graph, make_sorted_key_to_tensor_list
+    export_pb_graph, make_sorted_key_to_tensor_list, ReplacementSpec, AnchorRecord
 from mx_rec.graph.merge_lookup import do_merge_lookup
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator
 from mx_rec.util.log import logger
 
 
-def get_preprocessing_map_func(graph_def, input_names, output_names, batch_tensor_names=None,
-                               pipeline_input_indexes=None):
+def get_preprocessing_map_func(
+    graph_def: GraphDef,
+    input_names: List[str],
+    output_names: List[str], 
+    batch_tensor_names: List[str] = None,
+    pipeline_input_indexes: List[int] = None
+) -> Callable:
     input_names = check_input_list(input_names, str)
     output_names = check_input_list(output_names, str)
     batch_tensor_names = check_input_list(batch_tensor_names, str)
@@ -53,7 +61,7 @@ def get_preprocessing_map_func(graph_def, input_names, output_names, batch_tenso
 
             """
 
-            def parse_tensor(data_tensor: tf.Tensor, data_batch: dict, key: str = None):
+            def parse_tensor(data_tensor: Tensor, data_batch: dict, key: str = None):
                 """
                 将待解析batch中的tensor写入解析后的batch中，如果key存在则使用原key，不存在则生成batch中字典序最小的key.
                 Args:
@@ -81,7 +89,7 @@ def get_preprocessing_map_func(graph_def, input_names, output_names, batch_tenso
                 for data_arg in data_args:
                     parse_batch(data_arg, data_batch, key)
                 return
-            elif isinstance(data_args, tf.Tensor):
+            elif isinstance(data_args, Tensor):
                 # 将old batch中的tensor加入到dict中
                 parse_tensor(data_args, data_batch, key)
                 return
@@ -119,7 +127,13 @@ def get_preprocessing_map_func(graph_def, input_names, output_names, batch_tenso
     return map_func
 
 
-def get_input_index_list(cutting_point_list, replacement_specs, mapping_name_list, base_count, timestamp_index=None):
+def get_input_index_list(
+    cutting_point_list: List[Tensor],
+    replacement_specs: ReplacementSpec,
+    mapping_name_list: List[str],
+    base_count: int,
+    timestamp_index: int = None
+) -> List[int]:
     input_index_list = []
     for cutting_point in cutting_point_list:
         if cutting_point in replacement_specs:
@@ -137,7 +151,7 @@ def get_input_index_list(cutting_point_list, replacement_specs, mapping_name_lis
     return input_index_list
 
 
-def find_make_iterator_op(batch_tensor):
+def find_make_iterator_op(batch_tensor: Tensor) -> Operation:
     graph = tf.compat.v1.get_default_graph()
     operations = graph.get_operations()
     for each_op in operations:
@@ -151,7 +165,7 @@ def find_make_iterator_op(batch_tensor):
 
 
 @performance("find_target_dataset_op")
-def find_target_dataset_op(base_ops, op_type):
+def find_target_dataset_op(base_ops: Operation, op_type: str) -> Operation:
     base_ops = check_input_list(base_ops, tf.Operation)
     parent_ops = base_ops
 
@@ -205,7 +219,10 @@ def get_dataset_op(get_next_op: Operation) -> Operation:
     return target_op
 
 
-def get_passing_tensor_list(src_tensors, target_op):
+def get_passing_tensor_list(
+    src_tensors: List[Tensor],
+    target_op: Operation
+) -> Tuple[List[Tensor], List[int], List[Tensor]]:
     def get_passing_tensors(src_tensor):
         passing_tensors = []
         tensor_list = [src_tensor]
@@ -223,7 +240,7 @@ def get_passing_tensor_list(src_tensors, target_op):
 
         return passing_tensors
 
-    src_tensors = check_input_list(src_tensors, tf.Tensor)
+    src_tensors = check_input_list(src_tensors, Tensor)
     passing_tensor_list = []
     sub_src_tensors = []
     for tensor in src_tensors:
@@ -242,7 +259,7 @@ def get_passing_tensor_list(src_tensors, target_op):
     return passing_tensor_list, output_index_list, sub_src_tensors
 
 
-def find_target_instance_dataset(variant_tensor):
+def find_target_instance_dataset(variant_tensor: Tensor) -> DatasetV1Adapter:
     dataset_instance_list = tf.compat.v1.get_collection("dataset_group")
     for ins in dataset_instance_list:
         if ins._variant_tensor == variant_tensor:
@@ -259,7 +276,10 @@ def find_target_instance_dataset(variant_tensor):
     raise LookupError(f"Can not find target instance, whose variant_tensor is '{variant_tensor}' respectively.")
 
 
-def get_sub_graph(input_tensors, output_tensors):
+def get_sub_graph(
+    input_tensors: List[Tensor],
+    output_tensors: List[Tensor]
+) -> Tuple[GraphDef, List[str], List[str]]:
     input_tensors = check_input_list(input_tensors, tf.Tensor)
     output_tensors = check_input_list(output_tensors, tf.Tensor)
     input_op_name_list = [tensor.op.name for tensor in input_tensors]
@@ -285,7 +305,9 @@ def get_sub_graph(input_tensors, output_tensors):
     return sub_graph_def, input_name_list, output_name_list
 
 
-def update_input_tensor_with_new_batch(replacement_specs: dict, new_get_next_op_name: str, new_batch: dict):
+def update_input_tensor_with_new_batch(replacement_specs: ReplacementSpec,
+                                       new_get_next_op_name: str,
+                                       new_batch: Dict[str, Tensor]):
     """
     用新batch中的IteratorGetNext替换计算图中老batch的IteratorGetNext.
 
@@ -335,12 +357,15 @@ def get_dataset_tensor_count(dataset: DatasetV1Adapter) -> int:
 @para_checker_decorator(
     check_option_list=[("dump_graph", ClassValidator, {"classes": (bool,)})]
 )
-def modify_graph_and_start_emb_cache(dump_graph=False):
+def modify_graph_and_start_emb_cache(dump_graph: bool = False):
     modify_graph_for_asc(dump_graph=dump_graph)
     start_asc_pipeline()
 
 
-def generate_get_next_op_specs(cutting_point_list, dump_graph):
+def generate_get_next_op_specs(
+    cutting_point_list: List[Tensor],
+    dump_graph: bool = False
+) -> Dict[Tensor, ReplacementSpec]:
     get_next_op_map = defaultdict(dict)
     for input_tensor in cutting_point_list:
         get_next_op = find_target_dataset_op(input_tensor.op, "IteratorGetNext")
@@ -409,8 +434,13 @@ def get_src_dataset(get_next_op: Operation, is_training: bool) -> DatasetV1Adapt
     return src_dataset
 
 
-def get_tgt_dataset(src_dataset: DatasetV1Adapter, sub_cutting_point_list: list, records: dict,
-                    dump_graph: bool = False, prefetch: int = 10) -> DatasetV1Adapter:
+def get_tgt_dataset(
+    src_dataset: DatasetV1Adapter,
+    sub_cutting_point_list: List[Tensor],
+    records: AnchorRecord,
+    dump_graph: bool = False,
+    prefetch: int = 10
+) -> DatasetV1Adapter:
     """
     根据原始数据集生成新的数据集实例.
 
@@ -445,7 +475,10 @@ def get_tgt_dataset(src_dataset: DatasetV1Adapter, sub_cutting_point_list: list,
     return tgt_dataset
 
 
-def update_iterator_getnext(get_next_op: Operation, tgt_dataset: DatasetV1Adapter, is_training: bool, records: dict):
+def update_iterator_getnext(get_next_op: Operation,
+                            tgt_dataset: DatasetV1Adapter,
+                            is_training: bool,
+                            records: AnchorRecord):
     """
     用新数据集中的`IteratorGetNext`算子替换计算图中原始数据集的`IteratorGetNext`算子，即用新数据集的batch替换原始数据集的batch.
 
@@ -458,7 +491,6 @@ def update_iterator_getnext(get_next_op: Operation, tgt_dataset: DatasetV1Adapte
     Returns: None
 
     """
-
     if not get_next_op.outputs:
         raise RuntimeError("There is no tensor in the dataset. Please check the dataset and data processing.")
     iterator_type = ""
@@ -490,7 +522,7 @@ def update_iterator_getnext(get_next_op: Operation, tgt_dataset: DatasetV1Adapte
 
 
 @performance("graph_modifier")
-def modify_graph_for_asc(dump_graph=False, prefetch=10):
+def modify_graph_for_asc(dump_graph: bool = False, prefetch: int = 10):
     cutting_point_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ENTRANCE)
     check_cutting_points(cutting_point_list)
     if not cutting_point_list:
@@ -539,7 +571,7 @@ def modify_graph_for_asc(dump_graph=False, prefetch=10):
     export_pb_graph("new_graph.pb", dump_graph)
 
 
-def get_timestamp_index(get_next_op, is_training):
+def get_timestamp_index(get_next_op: Operation, is_training: bool) -> int:
     timestamp_tensor_list = tf.compat.v1.get_collection(ASCEND_TIMESTAMP)
     timestamp_index = None
     for timestamp in timestamp_tensor_list:
