@@ -15,7 +15,7 @@ from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import SparseEmbedding
 from mx_rec.constants.constants import ASCEND_CUTTING_POINT_INITIALIZER, ASCEND_SPARSE_LOOKUP_ENTRANCE, \
-    ASCAnchorAttr, ASCEND_TIMESTAMP, ANCHOR_DATASET_NAME, MAX_WHILE_SIZE
+    ASCAnchorAttr, ASCEND_TIMESTAMP, ANCHOR_DATASET_NAME, MAX_WHILE_SIZE, NPU_GET_NEXT
 from mx_rec.util.initialize import get_feature_spec, insert_feature_spec, set_initializer, \
     terminate_config_initializer, set_is_graph_modify_hook_running, get_bool_gauge_set, \
     insert_merged_multi_lookup, get_merged_multi_lookup, set_target_batch, get_iterator_type, \
@@ -478,7 +478,7 @@ def update_iterator_getnext(get_next_op: Operation, tgt_dataset: DatasetV1Adapte
         set_initializer(is_training, new_iterator.initializer)
     else:
         new_iterator = tgt_dataset.make_one_shot_iterator()
-    new_batch = new_iterator.get_next()
+    new_batch = new_iterator.get_next(NPU_GET_NEXT)
     set_target_batch(is_training, new_batch)
 
     try:

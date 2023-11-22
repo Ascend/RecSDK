@@ -72,6 +72,10 @@ MAX_DEVICE_ID = 15
 # HDFS file system's file prefix
 HDFS_FILE_PREFIX = ["viewfs://", "hdfs://"]
 
+# get next名称
+ITERATOR_GET_NEXT = "IteratorGetNext"
+NPU_GET_NEXT = "npuGetNext"
+
 
 class BaseEnum(Enum):
     @classmethod
@@ -110,6 +114,7 @@ class EnvOption(Enum):
     USE_COMBINE_FAAE = "USE_COMBINE_FAAE"
     STAT_ON = "STAT_ON"
     RECORD_KEY_COUNT = "RECORD_KEY_COUNT"
+    ADD_CONTROL_EDGE = "ADD_CONTROL_EDGE"
 
 
 class DataName(Enum):
@@ -186,6 +191,7 @@ class TFDevice(Enum):
     CPU = "CPU"
     NPU = "NPU"
     GPU = "GPU"
+    NONE = "NONE"
 
 
 class Flag(Enum):
