@@ -75,10 +75,13 @@ class ModelConverter:
             else:
                 hash_table = tf.contrib.lookup.MutableHashTable(key_dtype=tf.int64, value_dtype=tf.float32,
                                                                 default_value=initialize_value, name=table_name)
-                
+
             for rank in range(self._rank_size):
                 offset, key = self._get_key_and_offset(self.sparse_file_list[rank], table_name)
-                emb_data = self._get_embedding_array(self.sparse_file_list[rank], table_name)[list(offset)]
+                if self._is_ddr:
+                    emb_data = self._get_embedding_array(self.sparse_file_list[rank], table_name)[list(offset)]
+                else:
+                    emb_data = self._get_embedding_array(self.sparse_file_list[rank], table_name)
                 insert_op = hash_table.insert(tf.convert_to_tensor(key), tf.convert_to_tensor(emb_data))
                 insert_op_list.append(insert_op)
             print("build save table:", table_name)
@@ -98,7 +101,7 @@ class ModelConverter:
         if self._is_ddr:
             upper_dir = generate_upper_dir(sparse_file_path, ddr_prefix_list, table_name, "embedding_hashmap")
         else:
-            upper_dir = generate_upper_dir(sparse_file_path, hbm_prefix_list, table_name, "key_offset_map")
+            upper_dir = generate_upper_dir(sparse_file_path, hbm_prefix_list, table_name, "key")
         attribute_data_dir, target_data_dir = get_attribute_and_data_file(upper_dir)
 
         with open(attribute_data_dir, "r") as fin:
@@ -110,10 +113,12 @@ class ModelConverter:
             validate_read_file(target_data_dir)
             key_offset_data = np.fromfile(target_data_dir, dtype=np.int64)
         key_offset_data = key_offset_data.reshape(data_shape)
-        offset = key_offset_data[:, 1]
+        offset = []
+        if self._is_ddr:
+            offset = key_offset_data[:, 1]
         key = key_offset_data[:, 0]
         return offset, key
-        
+
     def _get_embedding_array(self, sparse_file_path, table_name):
         upper_dir = generate_upper_dir(sparse_file_path, hbm_prefix_list, table_name, "embedding")
         attribute_data_dir, target_data_dir = get_attribute_and_data_file(upper_dir)
@@ -139,16 +144,18 @@ class ModelConverter:
             ddr_emb_data = ddr_emb_data.reshape(data_shape)
             emb_data = np.concatenate((emb_data, ddr_emb_data[:, :self.table_info_dict[table_name]]), axis=0)
         return emb_data
-    
+
     def _build_sparse_file_list(self):
         if self._is_estimator:
             latest_ckpt = self._get_latest_ckpt_name()
-            sparse_file_name = sparse_file_prefix + latest_ckpt 
+            sparse_file_name = sparse_file_prefix + latest_ckpt
             for rank in range(self._rank_size):
                 sparse_file_path = os.path.join(self._input_model_path_list[rank], sparse_file_name)
                 self.sparse_file_list.append(sparse_file_path)
         else:
-            pattern = re.compile(r"sparse-.+")
+            latest_ckpt = self._get_latest_ckpt_name()
+            latest_step = latest_ckpt.split("-")[-1]
+            pattern = re.compile(r"^sparse-.*{}$".format(latest_step))
             for folder_name in os.listdir(self._input_path):
                 if os.path.isdir(os.path.join(self._input_path, folder_name)) and pattern.match(folder_name):
                     sparse_file_path = os.path.join(self._input_path, folder_name)
@@ -156,7 +163,7 @@ class ModelConverter:
             if len(self.sparse_file_list) != self._rank_size:
                 raise AssertionError(
                     f"the sparse file num should be {self._rank_size} rather than {len(self.sparse_file_list)}")
-    
+
     def _build_input_model_list(self, is_estimator):
         if is_estimator:
             for i in range(self._rank_size):
@@ -177,7 +184,7 @@ class ModelConverter:
             latest_ckpt = latest_ckpt.split(":")[1].strip(' ').replace('"','')
             latest_ckpt = latest_ckpt.split("/")[-1]
         return latest_ckpt
-    
+
     def _build_table_info_dict(self):
         tmp_file_list = []
         table_upper_file = os.path.join(self.sparse_file_list[0], "HashTable", "HBM")
@@ -212,7 +219,7 @@ class ModelConverter:
 def get_attribute_and_data_file(table_path):
     if not os.path.exists(table_path):
         raise FileNotFoundError(f"the input table path {table_path} does not exists.")
-    
+
     attribute_file_list = []
     data_file_list = []
     for file_name in os.listdir(table_path):
@@ -258,7 +265,7 @@ def validate_read_file(read_path):
     file_stat = tf.io.gfile.stat(read_path)
     if not min_file_size < file_stat.length <= max_file_size:
         raise ValueError(f"file size: {file_stat.length} is invalid, not in ({min_file_size}, {max_file_size}]")
-    
+
 
 if __name__ == "__main__":
     args = parser.parse_args()
