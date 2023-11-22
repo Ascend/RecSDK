@@ -349,7 +349,9 @@ bool HybridMgmt::Load(const string& loadPath)
 void HybridMgmt::SetFeatureTypeForLoad(vector<CkptFeatureType>& loadFeatures,
                                        const FeatureAdmitAndEvict& featAdmitNEvict)
 {
-    loadFeatures.push_back(CkptFeatureType::KEY_COUNT_MAP);
+    if (GlobalEnv::recordKeyCount) {
+        loadFeatures.push_back(CkptFeatureType::KEY_COUNT_MAP);
+    }
     if (!mgmtRankInfo.noDDR) {
         // DDR模式加载的类型为host的emb表以及hashmap
         loadFeatures.push_back(CkptFeatureType::HOST_EMB);
