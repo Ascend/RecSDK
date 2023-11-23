@@ -219,6 +219,8 @@ namespace MxRec {
 
         auto HotHashSplit(const unique_ptr<EmbBatchT>& batch) -> tuple<vector<KeysT>, vector<int32_t>, vector<int>>;
 
+        void PaddingAlltoallVC(vector<KeysT>& splitKeys);
+
         auto HashSplitWithFAAE(const unique_ptr<EmbBatchT>& batch) const
         -> tuple<vector<KeysT>, vector<int32_t>, vector<vector<uint32_t>>>;
 

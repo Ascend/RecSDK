@@ -830,10 +830,10 @@ auto KeyProcess::HashSplit(const unique_ptr<EmbBatchT>& batch) const -> tuple<ve
     return { splitKeys, restore };
 }
 
-void PaddingAlltoallVC(vector<KeysT>& splitKeys)
+void KeyProcess::PaddingAlltoallVC(vector<KeysT>& splitKeys)
 {
-    for (auto& keys : splitKeys){
-        if (keys.size() % ALLTOALLVC_ALIGN == 0){
+    for (auto& keys : splitKeys) {
+        if (keys.size() % ALLTOALLVC_ALIGN == 0) {
             continue;
         }
         padding_size = ALLTOALLVC_ALIGN - (key.size() % ALLTOALLVC_ALIGN);
