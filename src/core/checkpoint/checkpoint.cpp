@@ -197,20 +197,23 @@ void Checkpoint::SaveDataset(const vector<string>& embNames,
             LOG_DEBUG("====Start getting data from handler to: {}", datasetDir);
             auto transData { dataHandler->GetDataset(saveDataType, embName) };
 
-            // save embedding when dynamic expansion is open
-            if ((saveDataType == CkptDataType::NDDR_FEATMAP) && useDynamicExpansion) {
-                auto embedPath { dataDir + dirSeparator + "embedding" };
-                auto embedDatasetDir { embedPath + dirSeparator + datasetName + to_string(rankId) + dataFileType };
-                auto embeddingSizeInfo = GetEmbeddingSize(embName);
-                MakeSaveDir(embedPath);
-                LOG_DEBUG("====Start saving embedding data to: {}", embedPath);
-                WriteEmbedding(transData, embedDatasetDir, embeddingSizeInfo.extEmbSize);
-            }
-
             LOG_DEBUG("====Start saving data to: {}", datasetDir);
             WriteStream(transData, datasetDir, transData.datasetSize, saveDataType);
             LOG_DEBUG("====Start saving data to: {}", attributeDir);
             WriteStream(transData, attributeDir, transData.attributeSize, CkptDataType::ATTRIBUTE);
+
+            // save embedding when dynamic expansion is open
+            if ((saveDataType == CkptDataType::NDDR_FEATMAP) && useDynamicExpansion) {
+                auto embedPath { dataDir + dirSeparator + "embedding" };
+                auto embedDatasetDir { embedPath + dirSeparator + datasetName + to_string(rankId) + dataFileType };
+                auto embedAttributeDir { embedPath + dirSeparator + datasetName + to_string(rankId) + attribFileType};
+                auto embeddingSizeInfo = GetEmbeddingSize(embName);
+                transData.attribute = {transData.int64Arr.size(), static_cast<size_t>(embeddingSizeInfo.extEmbSize), fourBytes};
+                MakeSaveDir(embedPath);
+                LOG_DEBUG("====Start saving embedding data to: {}", embedPath);
+                WriteEmbedding(transData, embedDatasetDir, embeddingSizeInfo.extEmbSize);
+                WriteStream(transData, embedAttributeDir, transData.attributeSize, CkptDataType::ATTRIBUTE);
+            }
         }
     }
 }
