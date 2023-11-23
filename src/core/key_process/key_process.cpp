@@ -836,7 +836,7 @@ void KeyProcess::PaddingAlltoallVC(vector<KeysT>& splitKeys)
         if (keys.size() % ALLTOALLVC_ALIGN == 0) {
             continue;
         }
-        int padding_size = ALLTOALLVC_ALIGN - (key.size() % ALLTOALLVC_ALIGN);
+        int padding_size = ALLTOALLVC_ALIGN - (keys.size() % ALLTOALLVC_ALIGN);
         std::fill_n(keys.back(), padding_size, INVALID_KEY_VALUE);
     }
 }
