@@ -204,11 +204,12 @@ void Checkpoint::SaveDataset(const vector<string>& embNames,
 
             // save embedding when dynamic expansion is open
             if ((saveDataType == CkptDataType::NDDR_FEATMAP) && useDynamicExpansion) {
-                auto embedPath { dataDir + dirSeparator + "embedding" };
-                auto embedDatasetDir { embedPath + dirSeparator + datasetName + to_string(rankId) + dataFileType };
-                auto embedAttributeDir { embedPath + dirSeparator + datasetName + to_string(rankId) + attribFileType};
+                string embedPath = dataDir + dirSeparator + "embedding";
+                string embedDatasetDir = embedPath + dirSeparator + datasetName + to_string(rankId) + dataFileType;
+                string embedAttributeDir = embedPath + dirSeparator + datasetName + to_string(rankId) + attribFileType;
                 auto embeddingSizeInfo = GetEmbeddingSize(embName);
-                transData.attribute = {transData.int64Arr.size(), static_cast<size_t>(embeddingSizeInfo.extEmbSize), fourBytes};
+                transData.attribute = {transData.int64Arr.size(),
+                                       static_cast<size_t>(embeddingSizeInfo.extEmbSize), fourBytes};
                 MakeSaveDir(embedPath);
                 LOG_DEBUG("====Start saving embedding data to: {}", embedPath);
                 WriteEmbedding(transData, embedDatasetDir, embeddingSizeInfo.extEmbSize);

@@ -95,17 +95,19 @@ class SparseProcessor:
             if table_instance.host_vocabulary_size != 0:
                 out_dir = host_table_dir
                 key, offset = self._get_hashmap(host_table_dir, True)
-                emb_data = self.get_embedding(device_table_dir, host_table_dir, True)
+                emb_data = self.get_embedding(device_table_dir, host_table_dir, True,
+                                              table_instance.use_dynamic_expansion)
                 emb_data = emb_data[offset]
             else:
                 out_dir = device_table_dir
                 key, _ = self._get_hashmap(device_table_dir, False)
-                emb_data = self.get_embedding(device_table_dir, host_table_dir, False)
+                emb_data = self.get_embedding(device_table_dir, host_table_dir, False,
+                                              table_instance.use_dynamic_expansion)
             transformed_data = dict(zip(key[:], emb_data[:]))
             save_path = os.path.join(out_dir, self.export_name + ".npy")
             np.save(save_path, transformed_data)
 
-    def get_embedding(self, device_table_dir, host_table_dir, ddr):
+    def get_embedding(self, device_table_dir, host_table_dir, ddr, use_dynamic_expansion):
         emb_dir = os.path.join(device_table_dir, self.device_emb_dir)
         data_file, attribute_file = self._get_file_names(emb_dir)
         if not os.path.exists(data_file):
@@ -113,17 +115,20 @@ class SparseProcessor:
         if not os.path.exists(attribute_file):
             raise FileExistsError(f"attribute file {attribute_file} does not exist when reading.")
 
-        temp = self._get_shape_form_attrib(attribute_file, is_json=True)
-        data_shape = temp.pop(self.json_attrib_shape)
-        data_dtype = temp.pop(self.json_attrib_dtype)
-        emb_data = self._get_data(data_file, data_dtype, data_shape)
+        if use_dynamic_expansion:
+            device_attribute = self._get_shape_form_attrib(attribute_file, is_json=False)
+            data_shape = [device_attribute[0], device_attribute[1]]
+        else:
+            device_attribute = self._get_shape_form_attrib(attribute_file, is_json=True)
+            data_shape = device_attribute.pop(self.json_attrib_shape)
+        emb_data = self._get_data(data_file, np.float32, data_shape)
 
         if ddr:
             emb_dir = os.path.join(host_table_dir, self.host_emb_dir)
             data_file, attribute_file = self._get_file_names(emb_dir)
             host_attribute = self._get_shape_form_attrib(attribute_file, is_json=False)
             host_data_shape = [host_attribute[0], host_attribute[1]]
-            host_data = self._get_data(data_file, data_dtype, host_data_shape)
+            host_data = self._get_data(data_file, np.float32, host_data_shape)
             host_data = host_data[:, :data_shape[1]]
             emb_data = np.append(emb_data, host_data, axis=0)
         return emb_data
