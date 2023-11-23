@@ -34,6 +34,7 @@ class RecEnv:
     use_combine_faae: str
     stat_on: str
     record_key_count: str
+    add_control_edge: str
 
 
 def get_global_env_conf() -> RecEnv:
@@ -48,7 +49,7 @@ def get_global_env_conf() -> RecEnv:
         ascend_visible_devices=os.getenv(EnvOption.ASCEND_VISIBLE_DEVICES.value),
         cm_chief_device=os.getenv(EnvOption.CM_CHIEF_DEVICE.value),
         cm_worker_size=os.getenv(EnvOption.CM_WORKER_SIZE.value),
-        tf_device=os.getenv(EnvOption.TF_DEVICE.value, TFDevice.NPU.value),
+        tf_device=os.getenv(EnvOption.TF_DEVICE.value, TFDevice.NONE.value),
         apply_gradients_strategy=os.getenv(EnvOption.APPLY_GRADIENTS_STRATEGY.value,
                                            ApplyGradientsStrategy.DIRECT_APPLY.value),
         acl_timeout=os.getenv(EnvOption.ACL_TIMEOUT.value, "-1"),
@@ -61,7 +62,8 @@ def get_global_env_conf() -> RecEnv:
         glog_stderrthreahold=os.getenv(EnvOption.GLOG_STDERRTHREAHOLD.value, RecCPPLogLevel.INFO.value),
         use_combine_faae=os.getenv(EnvOption.USE_COMBINE_FAAE.value, Flag.FALSE.value),
         stat_on=os.getenv(EnvOption.STAT_ON.value, Flag.FALSE.value),
-        record_key_count=os.getenv(EnvOption.RECORD_KEY_COUNT.value, Flag.FALSE.value)
+        record_key_count=os.getenv(EnvOption.RECORD_KEY_COUNT.value, Flag.FALSE.value),
+        add_control_edge=os.getenv(EnvOption.ADD_CONTROL_EDGE.value, Flag.TRUE.value)
     )
 
     return rec_env
@@ -87,7 +89,8 @@ def get_global_env_conf() -> RecEnv:
     ("glog_stderrthreahold", OptionValidator, {"options": [i.value for i in list(RecCPPLogLevel)]}),
     ("use_combine_faae", OptionValidator, {"options": [i.value for i in list(Flag)]}),
     ("stat_on", OptionValidator, {"options": [i.value for i in list(Flag)]}),
-    ("record_key_count", OptionValidator, {"options": [i.value for i in list(Flag)]})
+    ("record_key_count", OptionValidator, {"options": [i.value for i in list(Flag)]}),
+    ("add_control_edge", OptionValidator, {"options": [i.value for i in list(Flag)]})
 ])
 def check_env(**kwargs):
     pass
