@@ -36,7 +36,7 @@ from mx_rec.util.log import logger
 @para_checker_decorator(check_option_list=[
     ("key_dtype", OptionValidator, {"options": (tf.int64, tf.int32, tf.string)}),
     ("dim", ClassValidator, {"classes": (int, tf.TensorShape)}),
-    ("dim", NumValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
+    ("dim", NumValidator, {"min_value": 1, "max_value": 512}, ["check_value"]),
     ("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length", "check_whitelist"]),
     ("emb_initializer", ClassValidator, {"classes": (InitializerV1, InitializerV2)}),
     ("optimizer_list", ClassValidator, {"classes": (list, type(None))}),

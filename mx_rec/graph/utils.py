@@ -2,10 +2,14 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
-from collections import defaultdict
 import os
+from collections import defaultdict
+from typing import Any, List, Dict, DefaultDict, Tuple, Union
 
 import tensorflow as tf
+from tensorflow import Tensor
+from tensorflow import Operation
+from tensorflow.core.framework.graph_pb2 import GraphDef
 from tensorflow.python.framework.errors_impl import InvalidArgumentError
 
 from mx_rec.constants.constants import ASCAnchorAttr, DUMP_MIDIFY_GRAPH_FILE_MODE
@@ -13,7 +17,11 @@ from mx_rec.core.embedding import SparseEmbedding
 from mx_rec.util.log import logger
 
 
-def check_input_list(objs, obj_type):
+ReplacementSpec = DefaultDict[Tensor, List[Tuple[int, Operation]]]
+AnchorRecord = Dict[str, Union[ReplacementSpec, GraphDef, bool, List[Tensor], List[int], List[str]]]
+
+
+def check_input_list(objs: Union[object, List[object]], obj_type: type) -> Union[object, List[object]]:
     if isinstance(objs, obj_type):
         objs = [objs]
 
@@ -25,7 +33,7 @@ def check_input_list(objs, obj_type):
     return objs
 
 
-def find_parent_op(operator):
+def find_parent_op(operator: Operation) -> List[Operation]:
     parent_ops = []
     for input_tensor in operator.inputs:
         parent_op = input_tensor.op
@@ -34,7 +42,7 @@ def find_parent_op(operator):
     return parent_ops
 
 
-def check_cutting_points(cutting_point_list):
+def check_cutting_points(cutting_point_list: List[Tensor]):
     for tensor in cutting_point_list:
         if not isinstance(tensor, tf.Tensor):
             raise TypeError(f"Collection ASCEND_CUTTING_POINT can only contain Tensors, but '{tensor}' was found.")
@@ -43,7 +51,7 @@ def check_cutting_points(cutting_point_list):
             raise ValueError(f"Cutting point can only be the output of an Operator 'Identity'.")
 
 
-def record_ops_to_replace(src_op):
+def record_ops_to_replace(src_op: Operation) -> ReplacementSpec:
     replacement_specs = defaultdict(list)
     output_list = src_op.outputs
     op_list = tf.compat.v1.get_default_graph().get_operations()
@@ -56,7 +64,7 @@ def record_ops_to_replace(src_op):
     return replacement_specs
 
 
-def replace_anchor(replacement_specs: defaultdict, new_tensor_list: list):
+def replace_anchor(replacement_specs: ReplacementSpec, new_tensor_list: List[Tensor]):
     if len(replacement_specs) != len(new_tensor_list):
         raise ValueError(f"Given replacement_specs and new_tensor_list must have the same length. "
                          f"replacement_specs: {replacement_specs}, new_tensor_list: {new_tensor_list}")
@@ -72,7 +80,11 @@ def replace_anchor(replacement_specs: defaultdict, new_tensor_list: list):
                                    f"new tensor: {new_tensor_list[tensor_idx]}.") from err
 
 
-def export_pb_graph(file_name, dump_graph, graph_def=None, export_path="./export_graph", as_text=False):
+def export_pb_graph(file_name: str,
+                    dump_graph: bool = False,
+                    graph_def: GraphDef = None,
+                    export_path: str = "./export_graph",
+                    as_text: bool = False):
     """
     Save tensorflow graph before and after modifier graph
     :param file_name: FileName of the graph
@@ -90,7 +102,11 @@ def export_pb_graph(file_name, dump_graph, graph_def=None, export_path="./export
         tf.io.write_graph(graph_def, export_path, file_name, as_text)
 
 
-def make_sorted_key_to_tensor_list(element_spec, sorted_keys, prefix=""):
+def make_sorted_key_to_tensor_list(
+    element_spec: List[Dict[str, Tensor]],
+    sorted_keys: List[str],
+    prefix: str = ""
+) -> List[str]:
     if isinstance(element_spec, tf.TensorSpec):
         sorted_keys.append(prefix)
         return sorted_keys
@@ -115,7 +131,7 @@ def make_sorted_key_to_tensor_list(element_spec, sorted_keys, prefix=""):
     raise TypeError(f"Given element_spec, whose type is {type(element_spec)}, is invalid.")
 
 
-def replace_anchor_vec(cutting_point: tf.Tensor, attribute: ASCAnchorAttr, anchor: tf.Tensor):
+def replace_anchor_vec(cutting_point: Tensor, attribute: ASCAnchorAttr, anchor: Tensor):
     """
     根据打桩节点的名字找到以此为输入的op，并将该op的输入替换为入参anchor.
 

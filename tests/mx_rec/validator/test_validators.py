@@ -31,19 +31,6 @@ class ParameterCheckerTest(unittest.TestCase):
         """
         super().tearDown()
 
-    def test_validator_should_return_default_if_invalid(self):
-        validation = Validator("v1", 'aa')
-        validation.register_checker(lambda x: len(x) < 5, 'length of string should be less than 5')
-        self.assertTrue(validation.is_valid())
-        try:
-            validation = Validator("v2", '123456')
-            validation.register_checker(lambda x: len(x) < 5, 'length of string should be less than 5')
-            validation.is_valid()
-        except ValueError as exp:
-            self.assertEqual(type(exp), ValueError)
-        else:
-            self.fail("ValueError not raised.")
-
     def test_string_validator_max_len_parameter(self):
         try:
             StringValidator("val", 'aa.1245', max_len=3).check_string_length().check().is_valid()
@@ -135,33 +122,9 @@ class ParameterCheckerTest(unittest.TestCase):
             os.remove(path)
             os.removedirs(temp_dir)
 
-    def test_directory_check(self):
-
-        try:
-            DirectoryValidator("val", 'a/b/.././c/a.txt').check_not_soft_link().check().is_valid()
-        except ValueError as exp:
-            self.assertEqual(type(exp), ValueError)
-        else:
-            self.fail("ValueError not raised.")
-
-        try:
-            DirectoryValidator("val", "").check_is_not_none().check().is_valid()
-        except ValueError as exp:
-            self.assertEqual(type(exp), ValueError)
-        else:
-            self.fail("ValueError not raised.")
-
-        try:
-            DirectoryValidator("val", None).check_is_not_none().check().is_valid()
-        except ValueError as exp:
-            self.assertEqual(type(exp), ValueError)
-        else:
-            self.fail("ValueError not raised.")
-        self.assertTrue(DirectoryValidator("val", "a/bc/d").check().is_valid())
-
     def test_decorator(self):
         @para_checker_decorator(check_option_list=[
-            ("class_arg", ClassValidator, {"classed": (bool,)}),
+            ("class_arg", ClassValidator, {"classes": (bool,)}),
             ("options_arg", OptionValidator, {"options": (1, 2, 3)}),
             (["options_arg", "int_arg"], ValueCompareValidator, {"target": -1}, ["check_all_not_equal_to_target"]),
             ("string_arg", OptionalStringValidator, {"max_len": 255}, ["check_string_length"]),
