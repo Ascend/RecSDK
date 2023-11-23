@@ -18,7 +18,8 @@ from mx_rec.core.asc.feature_spec import FeatureSpec, get_feature_spec, set_temp
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_ID_OFFSET, \
     ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS, ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, MULTI_LOOKUP_TIMES, \
-    ASCEND_TABLE_NAME_MUST_CONTAIN, MAX_INT32, All2allGradientsOp, ApplyGradientsStrategy, MAX_VOCABULARY_SIZE
+    ASCEND_TABLE_NAME_MUST_CONTAIN, MAX_INT32, All2allGradientsOp, ApplyGradientsStrategy, MAX_VOCABULARY_SIZE, \
+    MAX_DEVICE_VOCABULARY_SIZE
 from mx_rec.util.initialize import get_rank_id, get_rank_size, is_asc_frozen, get_customized_ops, \
     insert_table_instance, get_training_mode_channel_id, get_use_static, get_name_to_var_dict, \
     clear_channel, get_use_hot, get_device_id, ConfigInitializer, get_ascend_global_hashtable_collection, \
@@ -36,12 +37,13 @@ from mx_rec.util.log import logger
 @para_checker_decorator(check_option_list=[
     ("key_dtype", OptionValidator, {"options": (tf.int64, tf.int32, tf.string)}),
     ("dim", ClassValidator, {"classes": (int, tf.TensorShape)}),
-    ("dim", NumValidator, {"min_value": 1, "max_value": 512}, ["check_value"]),
+    ("dim", NumValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
     ("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length", "check_whitelist"]),
     ("emb_initializer", ClassValidator, {"classes": (InitializerV1, InitializerV2)}),
     ("optimizer_list", ClassValidator, {"classes": (list, type(None))}),
     (["ssd_vocabulary_size", "ssd_data_path", "host_vocabulary_size"], SSDFeatureValidator),
-    ("device_vocabulary_size", IntValidator, {"min_value": 1, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
+    ("device_vocabulary_size", IntValidator, {"min_value": 1, "max_value": MAX_DEVICE_VOCABULARY_SIZE},
+     ["check_value"]),
     ("host_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
     ("ssd_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
     ("ssd_data_path", ClassValidator, {"classes": (list, tuple)}),
@@ -383,7 +385,7 @@ class SparseEmbedding:
                     raise ValueError("Send count must be a integer which is larger than 0.")
 
         check_params()
-        if self.slice_host_vocabulary_size + self.slice_device_vocabulary_size > MAX_INT32:
+        if self.slice_host_vocabulary_size + self.slice_device_vocabulary_size > MAX_VOCABULARY_SIZE:
             raise ValueError(f"Given device_vocabulary_size and host_vocabulary_size was too big for table "
                              f"'{self.table_name}', in which slice_device_vocabulary_size was "
                              f"{self.slice_device_vocabulary_size} and slice_host_vocabulary_size was "
