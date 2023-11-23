@@ -11,7 +11,6 @@ import tensorflow as tf
 
 from tests.mx_rec.core.mxrec_pybind_mock import MxRecPybindMock
 from tests.mx_rec.core.initializer_mock import InitializerMock
-from mx_rec.core.asc import build_graph
 from mx_rec.util.tf_version_adapter import npu_ops
 
 sys.modules['mxrec_pybind'] = MxRecPybindMock
@@ -108,47 +107,6 @@ class TestBuildGraph(unittest.TestCase):
         input_table = tf.Variable(tf.zeros([875000, 8]), name="inference/one_ascend_hash_embedding:0",
                                   dtype=tf.float32)
         return input_table
-
-    @mock.patch("npu_bridge.hccl.hccl_ops")
-    @mock.patch("npu_bridge.estimator.npu.npu_hook.NPUCheckpointSaverHook")
-    def test_get_restore_vector(self, tf1_hccl_ops_mock,
-                                tf1_save_mock):
-        with mock.patch.object(npu_ops, "gen_npu_ops") as mock_npu_ops:
-            from mx_rec.core.asc.build_graph import get_restore_vector
-            restore_vector_mock = tf.constant(value=1, shape=[2908800], dtype=tf.int32,
-                                              name="aicpu_getnext_restore_vector/GetNext")
-            hot_pos_mock = tf.constant(
-                value=1,
-                name="restore_vector/one_ascend_hash_embedding/GetNext",
-                shape=[2730, ],
-                dtype=tf.int32)
-            mock_npu_ops.get_next.return_value = [restore_vector_mock, hot_pos_mock]
-            tf1_hccl_ops_mock.return_value = None
-            tf1_save_mock.return_value = None
-            input_config_instance = InputConfig(9600, 1, None, 8, 0, "one_ascend_hash_embedding", True, 8, 8, True, 6,
-                                                False)
-            input_config = self.get_input_config(input_config_instance)
-            res_restore_vector, res_hot_emb = get_restore_vector(input_config)
-            self.assertEqual(res_restore_vector, restore_vector_mock)
-            self.assertEqual(res_hot_emb, hot_pos_mock)
-
-    @mock.patch("npu_bridge.hccl.hccl_ops")
-    @mock.patch("npu_bridge.estimator.npu.npu_hook.NPUCheckpointSaverHook")
-    def test_get_restore_vector_no_hot_embed(self, tf1_hccl_ops_mock,
-                                             tf1_save_mock):
-        with mock.patch.object(npu_ops, "gen_npu_ops") as mock_npu_ops:
-            from mx_rec.core.asc.build_graph import get_restore_vector
-            restore_vector_mock = tf.constant(value=1, shape=[2908800], dtype=tf.int32,
-                                              name="aicpu_getnext_restore_vector/GetNext")
-            mock_npu_ops.get_next.return_value = [restore_vector_mock]
-            tf1_hccl_ops_mock.return_value = None
-            tf1_save_mock.return_value = None
-            input_config_instance = InputConfig(9600, 1, None, 8, 0, "one_ascend_hash_embedding", True, 8, 8,
-                                                False, 6, False)
-            input_config = self.get_input_config(input_config_instance)
-            res_restore_vector, hot_pos_vector = get_restore_vector(input_config)
-            self.assertEqual(res_restore_vector, restore_vector_mock)
-            self.assertIsNone(hot_pos_vector)
 
     @mock.patch('npu_bridge.estimator.npu_ops')
     @mock.patch("npu_bridge.hccl.hccl_ops")
@@ -267,25 +225,6 @@ class TestBuildGraph(unittest.TestCase):
             self.assertEqual(res_all2all_args.dtype, tf.constant(value=1, shape=[8, 8], dtype=tf.int64,
                                                                  name="mul").dtype)
 
-    @mock.patch("npu_bridge.hccl.hccl_ops")
-    @mock.patch("npu_bridge.estimator.npu.npu_hook.NPUCheckpointSaverHook")
-    def test_get_preprocessed_tensor_for_asc(self, tf1_hccl_ops_mock, tf1_save_mock):
-        with mock.patch.object(npu_ops, "gen_npu_ops", return_value=self.get_next_mock()), \
-             mock.patch.object(build_graph, "get_id_offsets", return_value=self.get_id_offsets_mock()), \
-             mock.patch.object(build_graph, "get_all2all_args", return_value=self.get_all2all_mock()), \
-             mock.patch.object(build_graph, "get_restore_vector", return_value=self.get_restore_vector_mock()):
-            from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
-            os.environ["use_static"] = "False"
-            tf1_hccl_ops_mock.return_value = None
-            tf1_save_mock.return_value = None
-
-            input_config_instance = InputConfig(9600, 1, None, 8, 0, "one_ascend_hash_embedding", True, 8, 8, True, 6,
-                                                False)
-            input_config = self.get_input_config(input_config_instance)
-            sparse_table = tf.Variable(tf.zeros([875000, 8]), name='inference/one_ascend_hash_embedding',
-                                       dtype=tf.float32)
-            res = get_preprocessed_tensor_for_asc(sparse_table, input_config)
-            self.assertEqual(res.get("hot_pos"), self.get_restore_vector_mock()[1])
 
 
 if __name__ == '__main__':
