@@ -830,7 +830,7 @@ auto KeyProcess::HashSplit(const unique_ptr<EmbBatchT>& batch) const -> tuple<ve
     return { splitKeys, restore };
 }
 
-void KeyProcess::PaddingAlltoallVC(vector<KeysT>& splitKeys)
+void KeyProcess::PaddingAlltoallVC(vector<KeysT>& splitKeys) const
 {
     for (auto& keys : splitKeys) {
         if (keys.size() % ALLTOALLVC_ALIGN == 0) {
@@ -839,6 +839,7 @@ void KeyProcess::PaddingAlltoallVC(vector<KeysT>& splitKeys)
         int padding_size = ALLTOALLVC_ALIGN - (keys.size() % ALLTOALLVC_ALIGN);
         std::fill_n(keys.back(), padding_size, INVALID_KEY_VALUE);
     }
+    return;
 }
 
 auto KeyProcess::HashSplitWithFAAE(const unique_ptr<EmbBatchT>& batch) const
