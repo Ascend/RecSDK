@@ -52,6 +52,7 @@ TRAIN_CHANNEL_ID = 0
 EVAL_CHANNEL_ID = 1
 HASHTABLE_COLLECTION_NAME_LENGTH = 30
 MAX_VOCABULARY_SIZE = 10**10
+MAX_DEVICE_VOCABULARY_SIZE = 256 * (10 ** 5)
 
 # RANK INFO
 VALID_DEVICE_ID_LIST = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"]
@@ -71,6 +72,10 @@ MAX_DEVICE_ID = 15
 
 # HDFS file system's file prefix
 HDFS_FILE_PREFIX = ["viewfs://", "hdfs://"]
+
+# get next名称
+ITERATOR_GET_NEXT = "IteratorGetNext"
+NPU_GET_NEXT = "npuGetNext"
 
 
 class BaseEnum(Enum):
@@ -110,6 +115,7 @@ class EnvOption(Enum):
     USE_COMBINE_FAAE = "USE_COMBINE_FAAE"
     STAT_ON = "STAT_ON"
     RECORD_KEY_COUNT = "RECORD_KEY_COUNT"
+    ADD_CONTROL_EDGE = "ADD_CONTROL_EDGE"
 
 
 class DataName(Enum):
@@ -186,6 +192,7 @@ class TFDevice(Enum):
     CPU = "CPU"
     NPU = "NPU"
     GPU = "GPU"
+    NONE = "NONE"
 
 
 class Flag(Enum):
