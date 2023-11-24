@@ -85,6 +85,7 @@ namespace MxRec {
 
     constexpr size_t DEFAULT_RANDOM_SEED = 10086;
     constexpr int INVALID_KEY_VALUE = -1;
+    constexpr int ALLTOALLVC_ALIGN = 128;
     constexpr int PROFILING_START_BATCH_ID = 100;
     constexpr int PROFILING_END_BATCH_ID = 200;
     constexpr int MGMT_THREAD_BIND = 48;
