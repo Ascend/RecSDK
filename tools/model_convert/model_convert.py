@@ -13,6 +13,7 @@ parser.add_argument('--output_path', type=str, required=True, help='output path 
 parser.add_argument('--rank_size', type=int, choices=range(1,17), default=8, required=False)
 parser.add_argument('--estimator', type=int, choices=[0,1], default=0, required=False)
 parser.add_argument('--ddr', type=int, choices=[0, 1], default=0, required=False)
+parser.add_argument("--dynamic_expansion", type=int, choices=[0, 1], default=0, required=False)
 
 slice_prefix = "slice_"
 sparse_file_prefix = "sparse-"
@@ -30,12 +31,13 @@ class DataAttr(Enum):
 
 
 class ModelConverter:
-    def __init__(self, input_model_path, output_model_path, rank_size, estimator, ddr):
+    def __init__(self, input_model_path, output_model_path, rank_size, estimator, ddr, dynamic_expansion):
         self._input_path = input_model_path
         self._output_path = output_model_path
         self._rank_size = rank_size
         self._is_estimator = bool(estimator)
         self._is_ddr = bool(ddr)
+        self._use_dynamic_expansion = bool(dynamic_expansion)
         self._load_ckpt_path = None
         self._input_model_path_list = []
         self._table_list = []
@@ -124,11 +126,16 @@ class ModelConverter:
         attribute_data_dir, target_data_dir = get_attribute_and_data_file(upper_dir)
         with open(attribute_data_dir, "r") as fin:
             validate_read_file(attribute_data_dir)
-            emb_attributes = json.load(fin)
+            if self._use_dynamic_expansion:
+                attributes = np.fromfile(attribute_data_dir, dtype=np.uint64)
+                data_shape = attributes[:2]
+            else:
+                emb_attributes = json.load(fin)
+                data_shape = emb_attributes.pop(DataAttr.SHAPE.value)
         with open(target_data_dir, "r") as fin:
             validate_read_file(target_data_dir)
-            emb_data = np.fromfile(target_data_dir, dtype=emb_attributes.pop(DataAttr.DARATYPE.value))
-        data_shape = emb_attributes.pop(DataAttr.SHAPE.value)
+            emb_data = np.fromfile(target_data_dir, dtype=np.float32)
+
         emb_data = emb_data.reshape(data_shape)
 
         if self._is_ddr:
@@ -201,8 +208,12 @@ class ModelConverter:
             attribute_file = get_attribute_and_data_file(table_path)[0]
             with open(attribute_file, "r") as fin:
                 validate_read_file(attribute_file)
-                emb_attributes = json.load(fin)
-                data_shape = emb_attributes.pop(DataAttr.SHAPE.value)
+                if self._use_dynamic_expansion:
+                    attributes = np.fromfile(attribute_file, dtype=np.uint64)
+                    data_shape = attributes[:2]
+                else:
+                    emb_attributes = json.load(fin)
+                    data_shape = emb_attributes.pop(DataAttr.SHAPE.value)
                 self.table_info_dict[table_name] = data_shape[1]
 
     def _check_mode(self):
@@ -271,6 +282,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     convert_instance = ModelConverter(input_model_path=args.input_path, output_model_path=args.output_path,
                                       rank_size=args.rank_size,
-                                      estimator=args.estimator, ddr=args.ddr)
+                                      estimator=args.estimator, ddr=args.ddr, dynamic_expansion=args.dynamic_expansion)
     convert_instance.convert()
     print("convert model success.")
