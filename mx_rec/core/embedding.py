@@ -18,8 +18,7 @@ from mx_rec.core.asc.feature_spec import FeatureSpec, get_feature_spec, set_temp
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCEND_SPARSE_LOOKUP_ID_OFFSET, \
     ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS, ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, MULTI_LOOKUP_TIMES, \
-    ASCEND_TABLE_NAME_MUST_CONTAIN, MAX_INT32, All2allGradientsOp, ApplyGradientsStrategy, MAX_VOCABULARY_SIZE, \
-    MAX_DEVICE_VOCABULARY_SIZE
+    ASCEND_TABLE_NAME_MUST_CONTAIN, MAX_INT32, All2allGradientsOp, ApplyGradientsStrategy, MAX_VOCABULARY_SIZE
 from mx_rec.util.initialize import get_rank_id, get_rank_size, is_asc_frozen, get_customized_ops, \
     insert_table_instance, get_training_mode_channel_id, get_use_static, get_name_to_var_dict, \
     clear_channel, get_use_hot, get_device_id, ConfigInitializer, get_ascend_global_hashtable_collection, \
@@ -42,7 +41,7 @@ from mx_rec.util.log import logger
     ("emb_initializer", ClassValidator, {"classes": (InitializerV1, InitializerV2)}),
     ("optimizer_list", ClassValidator, {"classes": (list, type(None))}),
     (["ssd_vocabulary_size", "ssd_data_path", "host_vocabulary_size"], SSDFeatureValidator),
-    ("device_vocabulary_size", IntValidator, {"min_value": 1, "max_value": MAX_DEVICE_VOCABULARY_SIZE},
+    ("device_vocabulary_size", IntValidator, {"min_value": 1, "max_value": MAX_VOCABULARY_SIZE},
      ["check_value"]),
     ("host_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
     ("ssd_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
