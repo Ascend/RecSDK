@@ -75,6 +75,8 @@ namespace MxRec {
         const int attribEmbDataInnerIdx { 1 };
         const int keyAddrElem { 2 };
 
+        const uint32_t fourBytes = 4;
+
         void SetDataHandler(CkptData& ckptData);
         void SetDataHandler(const vector<CkptFeatureType>& featureTypes);
 
