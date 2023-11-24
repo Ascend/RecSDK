@@ -60,7 +60,7 @@ class SparseProcessor:
         return data
 
     @staticmethod
-    def _get_shape_form_attrib(attribute_dir, is_json):
+    def _get_shape_from_attrib(attribute_dir, is_json):
         if is_json:
             try:
                 with open(attribute_dir, "r") as fin:
@@ -116,17 +116,17 @@ class SparseProcessor:
             raise FileExistsError(f"attribute file {attribute_file} does not exist when reading.")
 
         if use_dynamic_expansion:
-            device_attribute = self._get_shape_form_attrib(attribute_file, is_json=False)
+            device_attribute = self._get_shape_from_attrib(attribute_file, is_json=False)
             data_shape = [device_attribute[0], device_attribute[1]]
         else:
-            device_attribute = self._get_shape_form_attrib(attribute_file, is_json=True)
+            device_attribute = self._get_shape_from_attrib(attribute_file, is_json=True)
             data_shape = device_attribute.pop(self.json_attrib_shape)
         emb_data = self._get_data(data_file, np.float32, data_shape)
 
         if ddr:
             emb_dir = os.path.join(host_table_dir, self.host_emb_dir)
             data_file, attribute_file = self._get_file_names(emb_dir)
-            host_attribute = self._get_shape_form_attrib(attribute_file, is_json=False)
+            host_attribute = self._get_shape_from_attrib(attribute_file, is_json=False)
             host_data_shape = [host_attribute[0], host_attribute[1]]
             host_data = self._get_data(data_file, np.float32, host_data_shape)
             host_data = host_data[:, :data_shape[1]]
@@ -144,7 +144,7 @@ class SparseProcessor:
         if not os.path.exists(attribute_file):
             raise FileExistsError(f"hashmap attribute file {attribute_file} does not exist when reading.")
 
-        shape_data = self._get_shape_form_attrib(attribute_file, is_json=False)
+        shape_data = self._get_shape_from_attrib(attribute_file, is_json=False)
         if len(shape_data) < 2:
             raise ValueError(f"the attribute data from file {attribute_file} is invalid")
         data_shape = shape_data[:2]
