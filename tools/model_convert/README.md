@@ -69,6 +69,8 @@ python == 3.7.5 <br>
     https://www.tensorflow.org/guide/estimator?hl=zh-cn
 
 `ddr`:   类型：`int`。是否采用mxrec的ddr模式。默认值为0。0代表使用HBM模式，1代表使用DDR模式。 <br>
+
+`dynamic_expansion`:   类型：`int`。是否采用动态扩容模式进行训练。默认值为0。0代表不使用动态扩容，1代表使用动态扩容。 <br>
 mxrec的ddr模式使用请参考《mxrec用户指南》。
 
 <br>
