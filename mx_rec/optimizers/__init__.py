@@ -9,8 +9,6 @@ __all__ = [
 
 from mx_rec.optimizers.adagrad import create_hash_optimizer
 from mx_rec.optimizers.ftrl import create_hash_optimizer
-from mx_rec.optimizers.ftrl_t import create_hash_optimizer
-from mx_rec.optimizers.ftrl_t_dense import create_ftrl_dense_optimizer
 from mx_rec.optimizers.gradient_descent import create_hash_optimizer
 from mx_rec.optimizers.gradient_descent_by_addr import create_hash_optimizer_by_addr
 from mx_rec.optimizers.lazy_adam import create_hash_optimizer
