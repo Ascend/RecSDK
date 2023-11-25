@@ -215,7 +215,7 @@ class Saver(object):
 
     def _build_save(self):
         for var in self.var_list:
-            if os.getenv("TF_DEVICE", " ") == "NPU" and "merged" not in var.name:
+            if global_env.tf_device == TFDevice.NPU.value and "merged" not in var.name:
                 continue
 
             table_instance = get_table_instance(var)
@@ -263,7 +263,7 @@ class Saver(object):
             restore_host_data(reading_path)
             logger.info("host data was restored.")
 
-        if get_use_dynamic_expansion:
+        if get_use_dynamic_expansion():
             # Data related to dynamic expansion needs to be restored only on the host side.
             return
 
