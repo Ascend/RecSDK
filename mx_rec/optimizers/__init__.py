@@ -3,7 +3,7 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 __all__ = [
-    "create_hash_optimizer", "create_ftrl_dense_optimizer", "create_hash_optimizer_by_addr",
+    "create_hash_optimizer", "create_hash_optimizer_by_addr",
     "create_hash_optimizer_by_address"
 ]
 
