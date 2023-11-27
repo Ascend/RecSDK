@@ -29,7 +29,7 @@ mkdir -p result
 
 function run_test_cases() {
     echo "Get testcases final result."
-    pytest --cov="${CUR_PATH}"/../mx_rec --cov-report=html --cov-report=xml --junit-xml=./final.xml --html=./final.html --self-contained-html --durations=5 -vv
+    pytest --cov="${CUR_PATH}"/../mx_rec --cov-report=html --cov-report=xml --junit-xml=./final.xml --html=./final.html --self-contained-html --durations=5 -vv --cov-branch
     coverage xml -i --omit="build/*,cust_op/*,src/*"
     cp coverage.xml final.xml final.html ./result
     cp -r htmlcov ./result
