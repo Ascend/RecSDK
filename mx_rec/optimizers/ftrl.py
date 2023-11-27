@@ -130,7 +130,11 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
         linear = self.get_slot(var, "linear")
         lr = math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype)
         l1 = math_ops.cast(self._l1_regularization_strength_tensor, var.dtype.base_dtype)
-        l2 = math_ops.cast(self._adjusted_l2_regularization_strength_tensor, var.dtype.base_dtype)
+
+        if tf.__version__.startswith("1"):
+            l2 = math_ops.cast(self._l2_regularization_strength_tensor, var.dtype.base_dtype)
+        else:
+            l2 = math_ops.cast(self._adjusted_l2_regularization_strength_tensor, var.dtype.base_dtype)
         lr_power = math_ops.cast(self._learning_rate_power_tensor, var.dtype.base_dtype)
 
         abs_indices = tf.math.maximum(indices, 0)
@@ -167,7 +171,10 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
         linear = self.get_slot(var, "linear")
         lr = math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype)
         l1 = math_ops.cast(self._l1_regularization_strength_tensor, var.dtype.base_dtype)
-        l2 = math_ops.cast(self._adjusted_l2_regularization_strength_tensor, var.dtype.base_dtype)
+        if tf.__version__.startswith("1"):
+            l2 = math_ops.cast(self._l2_regularization_strength_tensor, var.dtype.base_dtype)
+        else:
+            l2 = math_ops.cast(self._adjusted_l2_regularization_strength_tensor, var.dtype.base_dtype)
         lr_power = math_ops.cast(self._learning_rate_power_tensor, var.dtype.base_dtype)
         l2_shrinkage = math_ops.cast(self._l2_shrinkage_regularization_strength_tensor, var.dtype.base_dtype)
 
