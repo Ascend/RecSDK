@@ -4,6 +4,14 @@
 
 namespace optiling
 {
+    constexpr int32_t BLOCK_DIM = 48;  // 910b一张卡48个vector核
+    constexpr int32_t SIZE_OF_HALF = 2;
+    constexpr int32_t SIZE_OF_FLOAT_OR_INT = 4;
+    constexpr int32_t MIN_BLOCK_SIZE = 32; // ub空间的数据都要按照32对齐
+    constexpr int32_t UB_LIMIT = 175 * 1024;
+    constexpr int32_t USR_SIZE = 256;
+    constexpr int32_t SYS_WORKSPACE_SIZE = 16 * 1024 * 1024;
+    constexpr int32_t PING_PONG_NUM = 1;
 
     template <typename T>
     static ge::graphStatus CheckNullPointer(T *pointer, const char *errorMessage)
@@ -18,23 +26,16 @@ namespace optiling
 
     static ge::graphStatus TilingFunc(gert::TilingContext *context)
     {
-        TilingData1 tiling;
-
-        size_t usrSize = 256;
-        size_t sysWorkspaceSize = 16 * 1024 * 1024;
         if (CheckNullPointer(context, "Tiling context") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
 
-        size_t *currentWorkspace = context->GetWorkspaceSizes(1);
+        size_t *currentWorkspace = context->GetWorkspaceSizes(1); // 设备侧Global Memory上的一块内存
         if (CheckNullPointer(currentWorkspace, "currentWorkspace") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
+        currentWorkspace[0] = SYS_WORKSPACE_SIZE + USR_SIZE;
 
-        currentWorkspace[0] = sysWorkspaceSize + usrSize;
-
-        int32_t blockTotalNums = 48;
-        int32_t ubLimit = 175 * 1024;
         auto *attrs = context->GetAttrs();
         if (CheckNullPointer(attrs, "GetAttrs attrs") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
@@ -43,10 +44,9 @@ namespace optiling
         if (CheckNullPointer(attr0Value, " Lookup embbedingType attr0Value") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
-
-        int32_t embbedingDim = *attr0Value;
-        if (embbedingDim <= 0) {
-            printf("embbedingDim must larger than 0\n");
+        int32_t embeddingDim = *attr0Value;
+        if (embeddingDim <= 0) {
+            printf("embeddingDim must larger than 0\n");
             return ge::GRAPH_FAILED;
         }
 
@@ -54,8 +54,10 @@ namespace optiling
         if (CheckNullPointer(attr1Value, "Lookup embbedingType attr1Value") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
-
-        int32_t embbedingType = *attr1Value;
+        int32_t embeddingType = *attr1Value; // 0:int32; 1:float; 2:half
+        if (embeddingType > 2 || embeddingType < 0) {
+            return ge::GRAPH_FAILED;
+        }
 
         auto inputTensor = context->GetInputTensor(0);
         if (CheckNullPointer(inputTensor, "inputTensor") != ge::GRAPH_SUCCESS) {
@@ -63,40 +65,37 @@ namespace optiling
         }
 
         int32_t inputShape = inputTensor->GetShapeSize();
-        int32_t singleDataSize = 4;
-        if (embbedingType == 2) {
-            singleDataSize = 2;
+
+        int32_t typeSize = SIZE_OF_FLOAT_OR_INT;
+        if (embeddingType == 2) {
+            typeSize = SIZE_OF_HALF;
         }
-        int32_t minMoveNum = 32 / singleDataSize;
-
-        // onceMoveNums，(embbedingDim - 1 + minMoveNum) / min_move_num表示除以min_move_num向下取整
-        int32_t onceMoveNums = minMoveNum * ((embbedingDim - 1 + minMoveNum) / minMoveNum);
-
-        int32_t numToMove = (embbedingDim - 1 + onceMoveNums) / onceMoveNums;
-        // 每个地址需要占用sizeof(int64_t)个字节，singleDataSize表示每个数据的字节数，需要使用2倍的内存空间，因为每次移动都需要复制一份数据
-        int32_t pingPongNum = 1;
+        // shape需要对齐到的最小单位, MIN_BLOCK_SIZE=32
+        int32_t alignNum = MIN_BLOCK_SIZE / typeSize;
+        // embeddingDimAligned，表示需要向上对齐到最小单位
+        int32_t embeddingDimAligned = ((embeddingDim - 1 + alignNum) / alignNum) * alignNum;
+        // 每个地址需要占用sizeof(int64_t)个字节，typeSize表示每个数据的字节数，需要使用2倍的内存空间，因为每次移动都需要复制一份数据
         int32_t occupyAddressBytesNum =
-                sizeof(int64_t) + singleDataSize * onceMoveNums * numToMove * pingPongNum * 2;
-        // 计算一轮计算中最多计算多少个addr，最后的 /4 再*4 是为了与32对齐，因为sizeof(int64_t) = 8
-        int32_t addrMaxNum = (((ubLimit / occupyAddressBytesNum) / 4)) * 4;
-        if (addrMaxNum <= 0) {
+                sizeof(int64_t) + typeSize * embeddingDimAligned * PING_PONG_NUM * 2;
+        // 一轮计算中最多计算多少个addr，由于地址也要搬到ub，所以需要对齐32,
+        int32_t addrPerLoop = (UB_LIMIT / occupyAddressBytesNum) & (~3); //  & (~3)，保证地址数是4的倍数
+        if (addrPerLoop <= 0) {
             return ge::GRAPH_FAILED;
         }
-
-        tiling.set_embbeding_type(embbedingType);
-        tiling.set_update_dim(embbedingDim);
+        TilingData1 tiling;
+        tiling.set_ping_pong_num(PING_PONG_NUM);
         tiling.set_addr_nums(inputShape);
-        tiling.set_ub_limit(ubLimit);
+        tiling.set_embedding_type(embeddingType);
+        tiling.set_embedding_dim(embeddingDim);
 
-        tiling.set_addr_max_num(addrMaxNum);
-        tiling.set_ping_pong_num(pingPongNum);
-        tiling.set_single_data_size(singleDataSize);
-        tiling.set_once_move_nums(onceMoveNums);
+        tiling.set_addr_per_loop(addrPerLoop);
+        tiling.set_type_size(typeSize);
+        tiling.set_emb_dim_aligned(embeddingDimAligned);
 
-        context->SetBlockDim(blockTotalNums);
+        // 和tiling set 区别开， BlockDim就是BlockNum，可以理解为卡的核数
+        context->SetBlockDim(BLOCK_DIM);
         tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
         context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
-
         return ge::GRAPH_SUCCESS;
     }
 }

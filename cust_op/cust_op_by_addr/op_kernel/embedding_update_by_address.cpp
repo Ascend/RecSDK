@@ -1,5 +1,9 @@
 #include "kernel_operator.h"
 using namespace AscendC;
+
+constexpr int32_t SIZE_OF_HALF = 2;
+constexpr int32_t SIZE_OF_FLOAT_OR_INT = 4;
+
 template <typename T>
 class KernelEimtable_update
 {
@@ -9,104 +13,95 @@ public:
   }
   __aicore__ inline void Init(GM_ADDR address, GM_ADDR embedding, GM_ADDR y)
   {
-    NeedComputeAddrLen = SingleCoreAddrLen;
+    needComputeAddrLen = singleCoreAddrLen;
     if (block_idx == block_num - 1)
     {
-      NeedComputeAddrLen = addrNums * sizeof(int64_t) - SingleCoreAddrLen * (block_num - 1);
+      needComputeAddrLen = addrNums * sizeof(int64_t) - singleCoreAddrLen * (block_num - 1);
     }
-    round = NeedComputeAddrLen / (roundSize * sizeof(int64_t));
+    loopCount = needComputeAddrLen / (addrNumPerLoop * sizeof(int64_t));
 
-    pipe.InitBuffer(tbuf, roundSize * sizeof(int64_t));
-    pipe.InitBuffer(inQueue, PingpongNum, Veclen);
-    pipe.InitBuffer(outQueue, PingpongNum, Veclen);
+    pipe.InitBuffer(tbuf, addrNumPerLoop * sizeof(int64_t));
+    pipe.InitBuffer(inQueue, pingpongNum, veclen);
+    pipe.InitBuffer(outQueue, pingpongNum, veclen);
+
     // get start index for current core, core parallel block_indx block_dim
-    srcAddrGlobal.SetGlobalBuffer((__gm__ int64_t *)(address + block_idx * SingleCoreAddrLen));
-    srcDataBufferGm.SetGlobalBuffer((__gm__ T *)(embedding + block_idx * SingleCoreAddrLen / sizeof(int64_t) * sizeof(T) * dim));
+    srcAddrGlobal.SetGlobalBuffer((__gm__ int64_t *)(address + block_idx * singleCoreAddrLen));
+    srcDataBufferGm.SetGlobalBuffer((__gm__ T *)(embedding + block_idx * singleCoreAddrLen / sizeof(int64_t) * sizeof(T) * dim));
     outDataGm.SetGlobalBuffer((__gm__ T *)(y));
   }
 
   __aicore__ inline void Init_param(GM_ADDR tiling)
   {
     GET_TILING_DATA(constData, tiling);
-    // 数据的维度数
+
+    pingpongNum = constData.ping_pong_num;
     dim = constData.update_dim;
-    int32_t block_total_nums = block_num;
     updateType = constData.update_type;
     addrNums = constData.addr_nums;
+    typeSize = constData.type_size;
+    inputDimAligned = constData.input_dim_aligned;
+    addrNumPerLoop = constData.addr_per_loop;
 
-    // 缓冲区数量
-    PingpongNum = constData.ping_pong_num;
-    singleDataSize = constData.single_data_size;
-    onceMoveNums = constData.once_move_nums;
-    roundSize = constData.addr_max_num;
+    int singleCoreAddrNum = (int)(addrNums / block_num);
+    singleCoreAddrNum = singleCoreAddrNum & (~3); // & (~3) 代表取4的倍数向下取整，处理的地址占8字节，对齐32B的话，数量需要是4倍数
+    ASSERT(singleCoreAddrNum != 0 && "single num can not be zero!");
 
-    int singlenum = (int)(addrNums / block_total_nums);
-    if (singlenum % 4)
-    {
-      singlenum -= singlenum % 4;
-    }
-
-    Veclen = roundSize * singleDataSize * onceMoveNums;
-    SingleCoreAddrLen = singlenum * sizeof(int64_t);
-    cache = roundSize;
+    veclen = addrNumPerLoop * typeSize * inputDimAligned;
+    singleCoreAddrLen = singleCoreAddrNum * sizeof(int64_t);
+    cache = constData.addr_per_loop;
   }
 
   __aicore__ inline void Process()
   {
 
-    LocalTensor<int64_t> srcAddrLocal = tbuf.Get<int64_t>(roundSize);
+    LocalTensor<int64_t> srcAddrLocal = tbuf.Get<int64_t>(addrNumPerLoop);
 
-    int unprocess = (NeedComputeAddrLen / sizeof(int64_t)) % roundSize;
-
-    if (round > 0)
+    if (loopCount > 0)
     {
-      for (int32_t i = 0; i < round; i++)
+      for (int32_t i = 0; i < loopCount; i++)
       {
-        DataCopy(srcAddrLocal, srcAddrGlobal[i * roundSize], roundSize);
-        MoveProcess(srcAddrLocal, i, roundSize);
+        DataCopy(srcAddrLocal, srcAddrGlobal[i * addrNumPerLoop], addrNumPerLoop);
+        MoveProcess(srcAddrLocal, i, addrNumPerLoop);
       }
     }
 
-    if (unprocess)
+    int unProcess = (needComputeAddrLen / sizeof(int64_t)) % addrNumPerLoop;
+    if (unProcess)
     {
-      int unprocessOnceCopyaddr = unprocess;
-      if (unprocessOnceCopyaddr % 4 != 0)
-      {
-          unprocessOnceCopyaddr += (4 - unprocess % 4);
-      }
-
-      DataCopy(srcAddrLocal, srcAddrGlobal[round * roundSize], unprocessOnceCopyaddr);
-      MoveProcess(srcAddrLocal, round, unprocess);
+      int unProcessAligned = (unProcess + 3) & (~3); // 处理 addressList 不对齐32b的情况
+      DataCopy(srcAddrLocal, srcAddrGlobal[loopCount * addrNumPerLoop], unProcessAligned);
+      MoveProcess(srcAddrLocal, loopCount, unProcess);
     }
   }
 
 private:
-  __aicore__ inline void MoveProcess(const LocalTensor<int64_t> srcAddrLocal, const int turns, int sizes)
+  __aicore__ inline void MoveProcess(const LocalTensor<int64_t> srcAddrLocal, const int turns, int addrNum)
   {
     set_flag(PIPE_MTE2, PIPE_S, 0);
     wait_flag(PIPE_MTE2, PIPE_S, 0);
     LocalTensor<T> dataLocal;
-    int out_index = 0;
-    int offset = 0;
+
     int64_t address = 0;
-    if (dim == onceMoveNums)
+    if (dim == inputDimAligned) // copyIn 和 compute一次，copyOut多次
     {
       dataLocal = inQueue.AllocTensor<T>();
-      DataCopy(dataLocal, srcDataBufferGm[turns * roundSize * dim], sizes * onceMoveNums);
+      DataCopy(dataLocal, srcDataBufferGm[turns * addrNumPerLoop * dim], addrNum * inputDimAligned);
       inQueue.EnQue(dataLocal);
-      Compute(sizes);
+
+      Compute(addrNum); // 只有copyOut的管道支持拷贝到gm上
+
       LocalTensor<T> dstLocal = outQueue.DeQue<T>();
       if (updateType == 0)
       {
         SetAtomicAdd<T>();
       }
-      for (int i = 0; i < sizes; i++)
+      for (int i = 0; i < addrNum; i++)
       {
         address = srcAddrLocal.GetValue(i);
         if (address != 0)
         {
           dstDataGm.SetGlobalBuffer((__gm__ T*)(address));
-          DataCopy(dstDataGm, dstLocal[i*onceMoveNums], onceMoveNums);
+          DataCopy(dstDataGm, dstLocal[i * inputDimAligned], inputDimAligned);
         }
       }
       if (updateType == 0)
@@ -117,10 +112,10 @@ private:
     }
     else
     {
-      for (int i = 0; i < sizes; i++)
+      for (int i = 0; i < addrNum; i++)
       {
         dataLocal = inQueue.AllocTensor<T>();
-        DataCopy(dataLocal, srcDataBufferGm[i * dim + turns * roundSize * dim], onceMoveNums);
+        DataCopy(dataLocal, srcDataBufferGm[i * dim + turns * addrNumPerLoop * dim], inputDimAligned);
         inQueue.EnQue<T>(dataLocal);
         Compute(1);
         address = srcAddrLocal.GetValue(i);
@@ -136,7 +131,7 @@ private:
     LocalTensor<T> dstLocal = outQueue.AllocTensor<T>();
     DataCopyParams copyparams;
     copyparams.blockCount = 1;
-    copyparams.blockLen = onceMoveNums * sizeof(T) * nums / 32;
+    copyparams.blockLen = (inputDimAligned * sizeof(T) * nums) >> 5; // >> 5， 除以32，ub空间对齐
     DataCopy(dstLocal, srcLocal, copyparams);
     outQueue.EnQue<T>(dstLocal);
     inQueue.FreeTensor(srcLocal);
@@ -145,8 +140,6 @@ private:
   __aicore__ inline void CopyOut(const int64_t address, const int64_t turns, const int64_t index)
   {
     LocalTensor<T> dstLocal = outQueue.DeQue<T>();
-
-    int offset = block_idx * dim * SingleCoreAddrLen / sizeof(int64_t) + (turns * roundSize * dim) + dim * index;
 
     if (address != 0)
     {
@@ -158,19 +151,19 @@ private:
       }
 
 #if defined(__DAV_C220_VEC__)
-      if (singleDataSize == 4)
+      if (typeSize == SIZE_OF_FLOAT_OR_INT)
       {
 
         copy_ubuf_to_gm_align_b32((__gm__ T *)dstDataGm.GetPhyAddr(), (__ubuf__ T *)dstLocal.GetPhyAddr(), 0,
                                   1, dim * sizeof(T), 0, 0, 0, 0);
       }
-      else if (singleDataSize == 2)
+      else if (typeSize == SIZE_OF_HALF)
       {
         copy_ubuf_to_gm_align_b16((__gm__ T *)dstDataGm.GetPhyAddr(), (__ubuf__ T *)dstLocal.GetPhyAddr(), 0,
                                   1, dim * sizeof(T), 0, 0, 0, 0);
       }
 #else
-      DataCopy(dstDataGm, dstLocal, onceMoveNums);
+      DataCopy(dstDataGm, dstLocal, inputDimAligned);
 #endif
     }
     if (updateType == 0)
@@ -181,8 +174,8 @@ private:
   }
 
 public:
-  int32_t roundSize, round, SingleCoreAddrLen, NeedComputeAddrLen, addrNums, cache, Veclen, dim, PingpongNum;
-  int32_t onceMoveNums, singleDataSize, updateType;
+  int32_t addrNumPerLoop, loopCount, singleCoreAddrLen, needComputeAddrLen, addrNums, cache, veclen, dim, pingpongNum;
+  int32_t inputDimAligned, typeSize, updateType;
 
 private:
   TPipe pipe;
@@ -198,9 +191,9 @@ extern "C" __global__ __aicore__ void embedding_update_by_address(GM_ADDR addres
 {
   GET_TILING_DATA(constData, tiling);
 
-  int32_t embbedingType = constData.embbeding_type;
+  int32_t embeddingType = constData.embedding_type;
 
-  switch (embbedingType)
+  switch (embeddingType)
   {
   case 0:
   {
