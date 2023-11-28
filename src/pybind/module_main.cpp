@@ -192,7 +192,8 @@ namespace {
                 .def("block_count_steps", &MxRec::HybridMgmt::CountStepBySessionRun,
                      py::arg("channel_id"), py::arg("steps")=1)
                 .def("get_table_size", &MxRec::HybridMgmt::GetTableSize, py::arg("table_name"))
-                .def("get_table_capacity", &MxRec::HybridMgmt::GetTableCapacity, py::arg("table_name"));
+                .def("get_table_capacity", &MxRec::HybridMgmt::GetTableCapacity, py::arg("table_name"))
+                .def("set_mpi_send_abnormal_status", &MxRec::HybridMgmt::SetMpiSendAbnormalStatus);
     }
 
     void GetThresholdValue(pybind11::module_& m)

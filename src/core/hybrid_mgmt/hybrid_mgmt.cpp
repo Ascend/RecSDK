@@ -1133,3 +1133,16 @@ int64_t HybridMgmt::GetTableCapacity(const string& embName) const
     return -1;
 #endif
 }
+
+void HybridMgmt::SetMpiSendAbnormalStatus()
+{
+    int sendValue = MPI_ABNORMAL_SEND_VALUE;
+    int channel = hybridMgmtBlock->lastRunChannelId;
+    if (channel < 0 || channel >= MAX_CHANNEL_NUM) {
+        LOG_WARN("channel is abnormal:{} when set mpi all reduce", channel);
+        return;
+    }
+    LOG_INFO(MGMT + "set mpi all reduce value:{}, channelId:{}", sendValue, channel);
+    preprocess->mpiAllReduceSend[channel] = sendValue;
+    preprocess->isNeedExit[channel] = true;
+}

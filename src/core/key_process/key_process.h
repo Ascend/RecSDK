@@ -58,6 +58,9 @@ namespace MxRec {
         INVALID
     };
 
+    constexpr int MPI_ABNORMAL_SEND_VALUE = 0; // MPI异常通信时发送0
+    constexpr int MPI_NORMAL_SEND_VALUE = 1; // MPI正常通信时发送1
+
     class EndRunExit : public std::exception {
     public:
         explicit EndRunExit(const char* message) : errorMessage(message) {}
@@ -69,6 +72,20 @@ namespace MxRec {
 
     private:
         const char* errorMessage;
+    };
+
+    // 结束运行并阻塞异常
+    class EndRunBlock : public std::exception {
+    public:
+        explicit EndRunBlock(const char *message) : errorMessage(message) {}
+
+        const char *what() const noexcept override
+        {
+            return errorMessage;
+        }
+
+    private:
+        const char *errorMessage;
     };
 
     class EmptyList : public std::exception {
@@ -157,6 +174,10 @@ namespace MxRec {
         }
 
         bool isRunning { false };
+        // 是否需要退出当前通道对应预处理线程，区分channel；已发送eos信息时需退出
+        bool isNeedExit[2] = {false, false};
+        // MPI all reduce通信时发送数据
+        int mpiAllReduceSend[2] = {MPI_NORMAL_SEND_VALUE, MPI_NORMAL_SEND_VALUE};
         std::mutex destroyMutex;
         inline bool HasEmbName(const string& embName)
         {

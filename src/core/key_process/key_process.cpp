@@ -160,6 +160,8 @@ void KeyProcess::LoadKeyCountMap(KeyCountMemT& loadData)
 // 只在python侧当训练结束时调用，如果出现死锁直接结束程序即可,测试时让进程等待足够长的时间再调用
 void KeyProcess::Destroy()
 {
+    mpiAllReduceSend[0] = MPI_ABNORMAL_SEND_VALUE;
+    mpiAllReduceSend[1] = MPI_ABNORMAL_SEND_VALUE;
     isRunning = false;
     LOG_INFO(KEY_PROCESS "rankId:{} KeyProcess begin destroy.", rankInfo.rankId);
     for (auto& i: procThreads) {
@@ -247,7 +249,6 @@ void KeyProcess::KeyProcessTaskWithFastUnique(int channel, int threadId)
         throw runtime_error(Logger::Format("create fast unique failed, error code:{}", ret));
     }
     GetUniqueConfig(uniqueConf);
-
     try {
         while (true) {
             TimeCost getAndProcessTC;
@@ -265,9 +266,9 @@ void KeyProcess::KeyProcessTaskWithFastUnique(int channel, int threadId)
                 break;
             }
             LOG_INFO(KEY_PROCESS "getAndProcessTC(ms):{}, key process with fast unique cost:{},"
-                " get data time(ms):{}, batch name:{}, channel:{}, batchID:{}",
-                getAndProcessTC.ElapsedMS(), processDataTime.ElapsedMS(), getBatchTime,
-                batch->name, batch->channel, batch->batchId);
+                                 " get data time(ms):{}, batch name:{}, channelId:{}, threadId:{}, batchId:{}",
+                     getAndProcessTC.ElapsedMS(), processDataTime.ElapsedMS(), getBatchTime,
+                     batch->name, batch->channel, threadId, batch->batchId);
             int queueIndex = threadId + (MAX_KEY_PROCESS_THREAD * batch->channel);
             auto batchQueue = SingletonQueue<EmbBatchT>::GetInstances(queueIndex);
             batchQueue->PutDirty(move(batch));
@@ -276,8 +277,8 @@ void KeyProcess::KeyProcessTaskWithFastUnique(int channel, int threadId)
     } catch (const EndRunExit &e) {
         LOG_INFO(KEY_PROCESS "abort run: {}", e.what());
     }
-    LOG_INFO(KEY_PROCESS "KeyProcessTaskWithFastUnique exit. rank:{} thread:{}, channel:{}",
-        rankInfo.rankId, threadId, channel);
+    LOG_INFO(KEY_PROCESS "KeyProcessTaskWithFastUnique exit. rank:{} channelId:{}, threadId:{}",
+        rankInfo.rankId, channel, threadId);
 }
 
 
@@ -300,9 +301,9 @@ void KeyProcess::KeyProcessTask(int channel, int threadId)
                 break;
             }
             LOG_INFO(KEY_PROCESS "getAndProcessTC(ms):{}, key process cost:{},"
-                " get data time(ms):{}, batch name:{}, channel:{}, batchID:{}",
-                getAndProcessTC.ElapsedMS(), processDataTime.ElapsedMS(), getBatchTime,
-                batch->name, batch->channel, batch->batchId);
+                                 " get data time(ms):{}, batch name:{}, channelId:{}, threadId:{}, batchId:{}",
+                     getAndProcessTC.ElapsedMS(), processDataTime.ElapsedMS(), getBatchTime,
+                     batch->name, batch->channel, threadId, batch->batchId);
             int queueIndex = threadId + (MAX_KEY_PROCESS_THREAD * batch->channel);
             auto batchQueue = SingletonQueue<EmbBatchT>::GetInstances(queueIndex);
             batchQueue->PutDirty(move(batch));
@@ -310,7 +311,7 @@ void KeyProcess::KeyProcessTask(int channel, int threadId)
     } catch (const EndRunExit &e) {
         LOG_INFO(KEY_PROCESS "abort run: {}", e.what());
     }
-    LOG_INFO(KEY_PROCESS "KeyProcessTask exit. rank:{} thread:{}, channel:{}", rankInfo.rankId, threadId, channel);
+    LOG_INFO(KEY_PROCESS "KeyProcessTask exit. rank:{} channelId:{}, threadId:{}", rankInfo.rankId, channel, threadId);
 }
 
 void KeyProcess::HashSplitHelper(const unique_ptr <EmbBatchT>& batch, vector <KeysT>& splitKeys,
@@ -531,9 +532,8 @@ unique_ptr<EmbBatchT> KeyProcess::GetBatchData(int channel, int commId)
         batch = batchQueue->TryPop();
         if (batch != nullptr) {
             break;
-        } else {
-            this_thread::sleep_for(100us);
         }
+        this_thread::sleep_for(100us);
         if (tc.ElapsedSec() > GET_BATCH_TIMEOUT) {
             if (commId == 0) {
                 LOG_WARN(KEY_PROCESS "getting batch timeout! 1. check last 'read batch cost' print. "
@@ -542,17 +542,20 @@ unique_ptr<EmbBatchT> KeyProcess::GetBatchData(int channel, int commId)
             this_thread::sleep_for(seconds(1));
             tc = TimeCost();
         }
-        if (!isRunning) {
-            LOG_WARN("channelId:{} threadId:{}, isRunning is false when GetBatchData", channel, commId);
+
+        if (!isRunning || isNeedExit[channel]) {
+            LOG_WARN("channelId:{} threadId:{}, enter GetBatchData abnormal scene, isRunning:{}, isNeedExit:{}",
+                     channel, commId, isRunning, isNeedExit[channel]);
             // 通信终止信号，同步退出，防止线程卡住
-            int exitFlag = isRunning;
-            auto retCode = MPI_Allreduce(&exitFlag, &exitFlag, 1, MPI_INT, MPI_SUM, comm[channel][commId]);
+            int receiveFlag = 0;
+            int sendValue = 0; // 此处直接发送0，不使用mpiAllReduceSend值，防止多线程数据可见性问题
+            auto retCode = MPI_Allreduce(&sendValue, &receiveFlag, 1, MPI_INT, MPI_SUM, comm[channel][commId]);
             if (retCode != MPI_SUCCESS) {
                 LOG_ERROR("rank {}, MPI_Allreduce failed:{}", rankInfo.rankId, retCode);
             }
             LOG_DEBUG("channelId:{} threadId:{}, GetBatchData Allreduce end, receiveFlag:{}",
-                      channel, commId, exitFlag);
-            throw EndRunExit("GetBatchData end run.");
+                      channel, commId, receiveFlag);
+            throw EndRunExit("GetBatchData end run, thread will exit.");
         }
     }
     EASY_END_BLOCK
@@ -942,7 +945,7 @@ tuple<vector<KeysT>, vector<int32_t>, vector<int>>
         }
         uKey[key] = restore[i];
     }
-    
+
     if (GlogConfig::gStatOn) {
         size_t uniqueKeyNum = 0;
         for (int devId = 0; devId < rankInfo.rankSize; ++devId) {
@@ -1037,9 +1040,9 @@ vector<int> KeyProcess::GetScAll(const vector<int>& keyScLocal, int commId, cons
 
     // 通信终止信号，同步退出，防止线程卡住
     TimeCost tc = TimeCost();
-    int exitFlag = isRunning;
-    int receiveFlag = exitFlag;
-    auto retCode = MPI_Allreduce(&exitFlag, &receiveFlag, 1, MPI_INT, MPI_SUM, comm[batch->channel][commId]);
+    int receiveFlag = 0;
+    auto retCode = MPI_Allreduce(&mpiAllReduceSend[batch->channel], &receiveFlag, 1, MPI_INT, MPI_SUM,
+                                 comm[batch->channel][commId]);
     if (retCode != MPI_SUCCESS) {
         LOG_ERROR("rank {} commId {}, MPI_Allreduce failed:{}", rankInfo.rankId, commId, retCode);
     }
@@ -1069,14 +1072,14 @@ void KeyProcess::HandleRankExitScene(int commId, const unique_ptr<EmbBatchT> &ba
     }
     if (receiveFlag < rankInfo.rankSize) {
         unique_lock<mutex> lockGuard(destroyMutex);
-        if (!isRunning) {
-            LOG_INFO("channelId:{} threadId:{} batchId:{}, isRunning is false after lock destroyMutex.",
+        if (isNeedExit[batch->channel]) {
+            LOG_INFO("channelId:{} threadId:{} batchId:{}, has send acl eos info, thread will exit.",
                      batch->channel, commId, batch->batchId);
-            throw EndRunExit("GetScAll end run, isRunning is false after lock destroyMutex.");
+            throw EndRunExit("has send acl eos info, thread will exit.");
         }
         SendEosInfo(commId, batch);
-        isRunning = false;
-        throw EndRunExit("has SendEosInfo, GetScAll end run.");
+        isNeedExit[batch->channel] = true;
+        throw EndRunExit("has SendEosInfo, GetScAll end, thread will exit.");
     }
 }
 
@@ -1118,16 +1121,17 @@ void KeyProcess::GetScAllForUnique(const vector<int>& keyScLocal, int commId, co
     EASY_BLOCK("barrier");
     // 通信终止信号，同步退出，防止线程卡住
     TimeCost tc = TimeCost();
-    int exitFlag = isRunning;
-    auto retCode = MPI_Allreduce(&exitFlag, &exitFlag, 1, MPI_INT, MPI_SUM, comm[channel][commId]);
+    int receiveFlag = 0;
+    auto retCode = MPI_Allreduce(&mpiAllReduceSend[channel], &receiveFlag, 1, MPI_INT, MPI_SUM,
+                                 comm[channel][commId]);
     if (retCode != MPI_SUCCESS) {
         LOG_ERROR("rank {}, MPI_Allreduce failed:{}", rankInfo.rankId, retCode);
     }
     LOG_DEBUG(KEY_PROCESS "channelId:{} threadId:{} batchId:{}, GetScAllForUnique MPI AllReduce end, "
                          "receiveFlag:{}, barrier time:{}",
-              channel, commId, batch->batchId, exitFlag, tc.ElapsedMS());
+              channel, commId, batch->batchId, receiveFlag, tc.ElapsedMS());
     // 处理其他rank线程退出的情况
-    HandleRankExitScene(commId, batch, exitFlag);
+    HandleRankExitScene(commId, batch, receiveFlag);
 
     EASY_END_BLOCK;
     // allgather keyScLocal(key all2all keyScLocal = device all2all rc)
