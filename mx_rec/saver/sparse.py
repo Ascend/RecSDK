@@ -45,24 +45,32 @@ class SparseProcessor:
 
     @staticmethod
     def _get_data(data_dir, dtype, data_shape):
-        with tf.io.gfile.GFile(data_dir, "rb") as file:
-            validate_read_file(data_dir)
-            data = file.read()
-            data = np.fromstring(data, dtype=dtype)
-
-        data = data.reshape(data_shape)
+        try:
+            with tf.io.gfile.GFile(data_dir, "rb") as file:
+                validate_read_file(data_dir)
+                data = file.read()
+                data = np.fromstring(data, dtype=dtype)
+            data = data.reshape(data_shape)
+        except Exception as err:
+            raise RuntimeError(f"error happened when get data from data file {data_dir}, "
+                               f"the error is `{err}`.") from err
         return data
 
     @staticmethod
     def _get_shape_from_attrib(attribute_dir, is_json):
-        if is_json:
-            with tf.io.gfile.GFile(attribute_dir, "r") as file:
-                validate_read_file(attribute_dir)
-                attributes = json.load(file)
-        else:
-            with tf.io.gfile.GFile(attribute_dir, "rb") as file:
-                attributes = file.read()
-                attributes = np.fromstring(attributes, dtype=np.uint64)
+        try:
+            if is_json:
+                with tf.io.gfile.GFile(attribute_dir, "r") as file:
+                    validate_read_file(attribute_dir)
+                    attributes = json.load(file)
+            else:
+                with tf.io.gfile.GFile(attribute_dir, "rb") as file:
+                    validate_read_file(attribute_dir)
+                    attributes = file.read()
+                    attributes = np.fromstring(attributes, dtype=np.uint64)
+        except Exception as err:
+            raise RuntimeError(f"error happened when get shape from attribute file {attribute_dir}, "
+                               f"the error is `{err}`.") from err
         return attributes
 
     def export_sparse_data(self):
@@ -94,10 +102,6 @@ class SparseProcessor:
     def get_embedding(self, device_table_dir, host_table_dir, ddr, use_dynamic_expansion):
         emb_dir = os.path.join(device_table_dir, self.device_emb_dir)
         data_file, attribute_file = self._get_file_names(emb_dir)
-        if not tf.io.gfile.exists(data_file):
-            raise FileExistsError(f"embedding data file {data_file} does not exist when reading.")
-        if not tf.io.gfile.exists(attribute_file):
-            raise FileExistsError(f"attribute file {attribute_file} does not exist when reading.")
 
         if use_dynamic_expansion:
             device_attribute = self._get_shape_from_attrib(attribute_file, is_json=False)
@@ -123,10 +127,6 @@ class SparseProcessor:
         else:
             hashmap_dir = os.path.join(table_dir, self.host_hashmap_dir)
         data_file, attribute_file = self._get_file_names(hashmap_dir)
-        if not tf.io.gfile.exists(data_file):
-            raise FileExistsError(f"hashmap data file {data_file} does not exist when reading.")
-        if not tf.io.gfile.exists(attribute_file):
-            raise FileExistsError(f"hashmap attribute file {attribute_file} does not exist when reading.")
 
         shape_data = self._get_shape_from_attrib(attribute_file, is_json=False)
         if len(shape_data) < 2:
@@ -144,14 +144,23 @@ class SparseProcessor:
         attribute_file = None
         files = tf.io.gfile.listdir(directory)
         if not files:
-            raise FileExistsError(f"There is no files under the {directory} ")
+            raise FileExistsError(f"There is no files under the {directory}.")
         for file in files:
             if file.find(self.data_suffix) != -1:
                 data_file = file
             elif file.find(self.attrib_suffix) != -1:
                 attribute_file = file
+        if not data_file:
+            raise FileNotFoundError(f"There is no data file under the {directory}.")
+        if not attribute_file:
+            raise FileNotFoundError(f"There is no attribute file under the {directory}.")
+
         data_file = os.path.join(directory, data_file)
         attribute_file = os.path.join(directory, attribute_file)
+        if not tf.io.gfile.exists(data_file):
+            raise FileExistsError(f"embedding data file {data_file} does not exist when reading.")
+        if not tf.io.gfile.exists(attribute_file):
+            raise FileExistsError(f"attribute file {attribute_file} does not exist when reading.")
         return data_file, attribute_file
 
 
