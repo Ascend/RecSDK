@@ -22,7 +22,7 @@ from mx_rec.constants.constants import ASCEND_CUTTING_POINT_INITIALIZER, ASCEND_
 from mx_rec.util.initialize import get_feature_spec, insert_feature_spec, set_initializer, \
     terminate_config_initializer, set_is_graph_modify_hook_running, get_bool_gauge_set, \
     insert_merged_multi_lookup, get_merged_multi_lookup, set_target_batch, get_iterator_type, \
-    set_iterator_type
+    set_iterator_type, get_asc_manager
 from mx_rec.util.perf import performance
 from mx_rec.graph.utils import check_input_list, find_parent_op, check_cutting_points, record_ops_to_replace, \
     export_pb_graph, make_sorted_key_to_tensor_list, ReplacementSpec, AnchorRecord
@@ -620,3 +620,5 @@ class GraphModifierHook(tf.estimator.SessionRunHook):
         if self._modify_graph and self._iterator_type == "MakeIterator":
             session.run(tf.compat.v1.get_collection(ASCEND_CUTTING_POINT_INITIALIZER))
 
+    def end(self, session):
+        get_asc_manager().set_mpi_send_abnormal_status()

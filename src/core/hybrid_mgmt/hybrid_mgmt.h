@@ -39,6 +39,8 @@ namespace MxRec {
         DDR
     };
 
+    constexpr int MGMT_THREAD_ID = -1;
+
     class HybridMgmt {
     public:
         HybridMgmt() = default;
@@ -137,6 +139,7 @@ namespace MxRec {
 
         int64_t GetTableCapacity(const string& embName) const;
 
+        void SetMpiSendAbnormalStatus();
     private:
         bool InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
                             const vector<ThresholdValue>& thresholdValues, int seed);
@@ -153,7 +156,6 @@ namespace MxRec {
         static void AddCacheManagerTraceLog(CkptData& saveData);
 
         void RestoreFreq4Save(CkptData& saveData) const;
-
     private:
         int currentBatchId;
         int trainBatchId = 0; // 0-199, 200-
