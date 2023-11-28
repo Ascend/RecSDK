@@ -63,7 +63,7 @@ def get_global_env_conf() -> RecEnv:
         use_combine_faae=os.getenv(EnvOption.USE_COMBINE_FAAE.value, Flag.FALSE.value),
         stat_on=os.getenv(EnvOption.STAT_ON.value, Flag.FALSE.value),
         record_key_count=os.getenv(EnvOption.RECORD_KEY_COUNT.value, Flag.FALSE.value),
-        add_control_edge=os.getenv(EnvOption.ADD_CONTROL_EDGE.value, Flag.TRUE.value)
+        add_control_edge=os.getenv(EnvOption.ADD_CONTROL_EDGE.value, Flag.FALSE.value)
     )
 
     return rec_env
