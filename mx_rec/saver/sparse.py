@@ -6,11 +6,13 @@ import os
 import json
 
 import numpy as np
+import tensorflow as tf
 
 from mx_rec.util.initialize import get_table_instance_by_name, export_table_name_set, get_sparse_dir
 from mx_rec.validator.validator import FileValidator
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator
 from mx_rec.util.log import logger
+from mx_rec.saver.saver import validate_read_file
 
 
 class SparseProcessor:
@@ -43,43 +45,24 @@ class SparseProcessor:
 
     @staticmethod
     def _get_data(data_dir, dtype, data_shape):
-        with open(data_dir, "rb") as file:
-            # check whether data file is valid
-            file_validator = FileValidator("data_dir", data_dir)
-            # 1.check whether data_dir is soft link
-            file_validator.check_not_soft_link()
-            # 2.check data file size
-            file_validator.check_file_size()
-            file_validator.check()
+        with tf.io.gfile.GFile(data_dir, "rb") as file:
+            validate_read_file(data_dir)
+            data = file.read()
+            data = np.fromstring(data, dtype=dtype)
 
-        try:
-            data = np.fromfile(data_dir, dtype=dtype)
-        except FileNotFoundError as err:
-            raise FileNotFoundError(f"data dir not found.") from err
         data = data.reshape(data_shape)
         return data
 
     @staticmethod
     def _get_shape_from_attrib(attribute_dir, is_json):
         if is_json:
-            try:
-                with open(attribute_dir, "r") as fin:
-                    # check whether attribute file is valid
-                    file_validator = FileValidator("attribute_dir", attribute_dir)
-                    # 1.check whether attribute_dir is soft link
-                    file_validator.check_not_soft_link()
-                    # 2.check attribute file size
-                    file_validator.check_file_size()
-                    file_validator.check()
-                    attributes = json.load(fin)
-            except FileNotFoundError as err:
-                raise FileNotFoundError("attribute dir not found.") from err
+            with tf.io.gfile.GFile(attribute_dir, "r") as file:
+                validate_read_file(attribute_dir)
+                attributes = json.load(file)
         else:
-            try:
-                attributes = np.fromfile(attribute_dir, np.uint64)
-            except FileNotFoundError as err:
-                raise FileNotFoundError("attribute dir not found.") from err
-
+            with tf.io.gfile.GFile(attribute_dir, "rb") as file:
+                attributes = file.read()
+                attributes = np.fromstring(attributes, dtype=np.uint64)
         return attributes
 
     def export_sparse_data(self):
@@ -105,14 +88,15 @@ class SparseProcessor:
                                               table_instance.use_dynamic_expansion)
             transformed_data = dict(zip(key[:], emb_data[:]))
             save_path = os.path.join(out_dir, self.export_name + ".npy")
-            np.save(save_path, transformed_data)
+            with tf.io.gfile.GFile(save_path, "wb") as file:
+                np.save(file, transformed_data)
 
     def get_embedding(self, device_table_dir, host_table_dir, ddr, use_dynamic_expansion):
         emb_dir = os.path.join(device_table_dir, self.device_emb_dir)
         data_file, attribute_file = self._get_file_names(emb_dir)
-        if not os.path.exists(data_file):
+        if not tf.io.gfile.exists(data_file):
             raise FileExistsError(f"embedding data file {data_file} does not exist when reading.")
-        if not os.path.exists(attribute_file):
+        if not tf.io.gfile.exists(attribute_file):
             raise FileExistsError(f"attribute file {attribute_file} does not exist when reading.")
 
         if use_dynamic_expansion:
@@ -139,9 +123,9 @@ class SparseProcessor:
         else:
             hashmap_dir = os.path.join(table_dir, self.host_hashmap_dir)
         data_file, attribute_file = self._get_file_names(hashmap_dir)
-        if not os.path.exists(data_file):
+        if not tf.io.gfile.exists(data_file):
             raise FileExistsError(f"hashmap data file {data_file} does not exist when reading.")
-        if not os.path.exists(attribute_file):
+        if not tf.io.gfile.exists(attribute_file):
             raise FileExistsError(f"hashmap attribute file {attribute_file} does not exist when reading.")
 
         shape_data = self._get_shape_from_attrib(attribute_file, is_json=False)
@@ -156,14 +140,12 @@ class SparseProcessor:
         return key, offset
 
     def _get_file_names(self, directory):
-        files = []
         data_file = None
         attribute_file = None
-        for _, _, file in os.walk(directory):
-            files.append(file)
+        files = tf.io.gfile.listdir(directory)
         if not files:
             raise FileExistsError(f"There is no files under the {directory} ")
-        for file in files[0]:
+        for file in files:
             if file.find(self.data_suffix) != -1:
                 data_file = file
             elif file.find(self.attrib_suffix) != -1:
