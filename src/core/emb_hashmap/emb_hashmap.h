@@ -28,9 +28,6 @@ namespace MxRec {
 
         void Process(const string& embName, std::vector<emb_key_t>& keys, DDRParam& ddrParam, int channelId);
 
-        void FindAndUpdateOffset(const string& embName, vector<emb_key_t>& keys, size_t currentBatchId,
-                                 size_t keepBatchId, int channelId);
-
         auto GetHashMaps() -> absl::flat_hash_map<string, EmbHashMapInfo>;
 
         void LoadHashMap(absl::flat_hash_map<string, EmbHashMapInfo>& loadData);

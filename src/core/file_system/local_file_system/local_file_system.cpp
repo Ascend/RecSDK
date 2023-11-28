@@ -35,7 +35,6 @@ vector<string> LocalFileSystem::ListDir(const string& dirName)
     struct dirent* en;
     if (dir == nullptr) {
         LOG_WARN("Open directory {} failed while trying to traverse the directory.", dirName);
-        closedir(dir);
         return dirs;
     }
 

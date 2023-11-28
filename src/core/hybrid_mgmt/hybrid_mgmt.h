@@ -70,7 +70,8 @@ namespace MxRec {
 
         void Start();
 
-        void InsertThreadForHBM();
+        void StartThreadForHBM();
+        void StartThreadForDDR();
 
     void Destroy()
     {
