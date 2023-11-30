@@ -123,7 +123,8 @@ namespace MxRec {
             return hdfsFreeFileInfo(hdfsFileInfo, numEntries);
         }
 
-        hdfsFile OpenFile(hdfsFS fs, const char* path, int flags, int bufferSize, short replication, tSize blocksize)
+        hdfsFile OpenFile(hdfsFS fs, const char* path, int flags, int bufferSize, short replication,
+                          tSize blocksize) const
         {
             if (hdfsOpenFile == nullptr) {
                 throw runtime_error("Failed to obtain the pointer of the function hdfsOpenFile from the libhdfs.");
@@ -131,7 +132,7 @@ namespace MxRec {
             return hdfsOpenFile(fs, path, flags, bufferSize, replication, blocksize);
         }
 
-        int CloseFile(hdfsFS fs, hdfsFile file)
+        int CloseFile(hdfsFS fs, hdfsFile file) const
         {
             if (hdfsCloseFile == nullptr) {
                 throw runtime_error("Failed to obtain the pointer of the function hdfsCloseFile from the libhdfs.");
