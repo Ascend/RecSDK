@@ -27,7 +27,7 @@ namespace MxRec {
         size_t GetFileSize(const string& filePath) override;
 
         ssize_t Write(const string& filePath, const char* fileContent, size_t dataSize) override;
-        ssize_t Write(const string& filePath, vector<float*> fileVector, size_t dataSize) override;
+        ssize_t Write(const string& filePath, vector<float*> fileContent, size_t dataSize) override;
         void WriteEmbedding(const string& filePath, const int& embeddingSize,
                             const vector<int64_t>& addressArr, int deviceId) override;
 
