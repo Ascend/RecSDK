@@ -377,14 +377,14 @@ void HybridMgmt::SetFeatureTypeForLoad(vector<CkptFeatureType>& loadFeatures,
 OffsetT HybridMgmt::SendHostMap(const string tableName)
 {
 #ifndef GTEST
-    OffsetT OffsetMap;
+    OffsetT offsetMap;
     // 先校验这个map是不是空的
     if ((!offsetMapToSend.empty()) && offsetMapToSend.count(tableName) > 0) {
         for (auto& it : offsetMapToSend.at(tableName)) {
-            OffsetMap.push_back(it);
+            offsetMap.push_back(it);
         }
     }
-    return OffsetMap;
+    return offsetMap;
 #endif
 }
 
@@ -664,7 +664,7 @@ bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
 }
 
 void HybridMgmt::SendUniqKeysAndRestoreVecHBM(int channelId, int &batchId, const EmbInfo &embInfo,
-                                              const unique_ptr<vector<Tensor>> &infoVecs)
+                                              const unique_ptr<vector<Tensor>> &infoVecs) const
 {
     TimeCost sendUniqueKeysSyncTC;
     LOG_DEBUG("channelId:{} batchId:{}, global unique, table name: {}, is grad: {}",

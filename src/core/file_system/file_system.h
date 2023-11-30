@@ -42,4 +42,4 @@ namespace MxRec {
     };
 }
 
-#endif //MX_REC_FILE_SYSTEM_H
+#endif // MX_REC_FILE_SYSTEM_H
