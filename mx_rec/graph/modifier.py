@@ -18,11 +18,12 @@ from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import SparseEmbedding
 from mx_rec.constants.constants import ASCEND_CUTTING_POINT_INITIALIZER, ASCEND_SPARSE_LOOKUP_ENTRANCE, \
-    ASCAnchorAttr, ASCEND_TIMESTAMP, ANCHOR_DATASET_NAME, MAX_WHILE_SIZE, NPU_GET_NEXT
+    ASCAnchorAttr, ASCEND_TIMESTAMP, ANCHOR_DATASET_NAME, MAX_WHILE_SIZE, LIBREC_EOS_OPS_SO
 from mx_rec.util.initialize import get_feature_spec, insert_feature_spec, set_initializer, \
-    terminate_config_initializer, set_is_graph_modify_hook_running, get_bool_gauge_set, \
+    get_training_mode_channel_id, set_is_graph_modify_hook_running, get_bool_gauge_set, \
     insert_merged_multi_lookup, get_merged_multi_lookup, set_target_batch, get_iterator_type, \
     set_iterator_type
+from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.util.perf import performance
 from mx_rec.graph.utils import check_input_list, find_parent_op, check_cutting_points, record_ops_to_replace, \
     export_pb_graph, make_sorted_key_to_tensor_list, ReplacementSpec, AnchorRecord
@@ -455,6 +456,11 @@ def get_tgt_dataset(
 
     """
 
+    librec = import_host_pipeline_ops(LIBREC_EOS_OPS_SO)
+    channel_id = get_training_mode_channel_id(records.get("is_training"))
+    # 在数据读取完时，通过EosDataset向acl数据通道发送end_of_sequence
+    src_dataset = src_dataset.eos_map(librec, channel_id)
+
     tgt_dataset = src_dataset.map(get_preprocessing_map_func(records.get("sub_graph_def"),
                                                              records.get("input_name_list"),
                                                              records.get("output_name_list"),
@@ -510,7 +516,7 @@ def update_iterator_getnext(get_next_op: Operation,
         set_initializer(is_training, new_iterator.initializer)
     else:
         new_iterator = tgt_dataset.make_one_shot_iterator()
-    new_batch = new_iterator.get_next(NPU_GET_NEXT)
+    new_batch = new_iterator.get_next()
     set_target_batch(is_training, new_batch)
 
     try:
@@ -619,4 +625,3 @@ class GraphModifierHook(tf.estimator.SessionRunHook):
     def after_create_session(self, session, coord):
         if self._modify_graph and self._iterator_type == "MakeIterator":
             session.run(tf.compat.v1.get_collection(ASCEND_CUTTING_POINT_INITIALIZER))
-

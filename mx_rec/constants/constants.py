@@ -72,9 +72,9 @@ MAX_DEVICE_ID = 15
 # HDFS file system's file prefix
 HDFS_FILE_PREFIX = ["viewfs://", "hdfs://"]
 
-# get next名称
-ITERATOR_GET_NEXT = "IteratorGetNext"
-NPU_GET_NEXT = "npuGetNext"
+# so包名称
+LIBASC_OPS_SO = "libasc_ops.so"
+LIBREC_EOS_OPS_SO = "librec_eos_ops.so"
 
 
 class BaseEnum(Enum):
@@ -114,7 +114,6 @@ class EnvOption(Enum):
     USE_COMBINE_FAAE = "USE_COMBINE_FAAE"
     STAT_ON = "STAT_ON"
     RECORD_KEY_COUNT = "RECORD_KEY_COUNT"
-    ADD_CONTROL_EDGE = "ADD_CONTROL_EDGE"
 
 
 class DataName(Enum):

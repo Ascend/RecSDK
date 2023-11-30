@@ -9,11 +9,8 @@ from mxrec_pybind import InitializeInfo, ConstantInitializerInfo, NormalInitiali
 from mx_rec.util.initialize import get_rank_id, get_device_id, get_rank_size, set_asc_manager, \
     is_asc_manager_initialized, get_train_steps, get_eval_steps, get_save_steps, \
     export_table_instances, export_feature_spec, get_if_load, get_use_static, \
-    get_use_hot, get_stat_on, get_use_dynamic_expansion, export_optimizer, export_dangling_table, export_table_num, \
-    get_modify_graph
-from mx_rec.constants.constants import ITERATOR_GET_NEXT, NPU_GET_NEXT, TFDevice, EnvOption, Flag
+    get_use_hot, get_stat_on, get_use_dynamic_expansion, export_optimizer, export_dangling_table, export_table_num
 from mx_rec.core.asc.merge_table import find_dangling_table, should_skip
-from mx_rec.util.global_env_conf import global_env
 from mx_rec.util.log import logger
 
 
@@ -228,29 +225,7 @@ def initialize_emb_cache(table_info_list, threshold_list):
     logger.debug("threshold_values are %s.", threshold_list)
 
 
-def add_control_edge():
-    iterator_get_next_op = None
-    get_next_name = ITERATOR_GET_NEXT
-    if get_modify_graph():
-        get_next_name = NPU_GET_NEXT
-    for op in tf.compat.v1.get_default_graph().get_operations():
-        if get_next_name == op.name and ITERATOR_GET_NEXT == op.type:
-            iterator_get_next_op = op
-            break
-    logger.info("iterator_get_next_op: %s", iterator_get_next_op)
-    if not iterator_get_next_op:
-        return
-    for op in tf.compat.v1.get_default_graph().get_operations():
-        if "GetNext" == op.type:
-            if global_env.tf_device == TFDevice.NPU.value and "merged" not in op.name:
-                continue
-            op._add_control_input(iterator_get_next_op)
-            logger.info("_add_control_input: %s", op)
-
-
 def start_asc_pipeline():
-    if global_env.add_control_edge == Flag.TRUE.value:
-        add_control_edge()
     table_info_list = generate_table_info_list()
     threshold_list = generate_threshold_list()
 
