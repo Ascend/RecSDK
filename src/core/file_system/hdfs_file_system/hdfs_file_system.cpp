@@ -221,7 +221,7 @@ ssize_t HdfsFileSystem::Read(const string& filePath, char* fileContent, size_t d
     return static_cast<ssize_t>(readBytesNum);
 }
 
-ssize_t HdfsFileSystem::Read(const string& filePath, vector<vector<float>>& fileVector, size_t datasetSize)
+ssize_t HdfsFileSystem::Read(const string& filePath, vector<vector<float>>& fileContent, size_t datasetSize)
 {
     hdfsFS fs = ConnectHdfs();
 
@@ -231,7 +231,7 @@ ssize_t HdfsFileSystem::Read(const string& filePath, vector<vector<float>>& file
         throw runtime_error("open hdfs file failed.");
     }
 
-    size_t embDataOuterSize = fileVector.capacity();
+    size_t embDataOuterSize = fileContent.capacity();
     auto onceReadByteSize { datasetSize / embDataOuterSize };
     tSize readBytesNum = 0;
 
@@ -245,7 +245,7 @@ ssize_t HdfsFileSystem::Read(const string& filePath, vector<vector<float>>& file
             } else {
                 readSize = dataCol;
             }
-            tSize res = hdfs->Read(fs, file, reinterpret_cast<char *>(fileVector[i].data()) + idx, readSize);
+            tSize res = hdfs->Read(fs, file, reinterpret_cast<char *>(fileContent[i].data()) + idx, readSize);
             if (res == -1) {
                 hdfs->CloseFile(fs, file);
                 hdfs->Disconnect(fs);

@@ -250,7 +250,7 @@ namespace MxRec {
 
         void EvictInitDeviceEmb(const string& embName, vector<size_t> offset);
 
-        void UpdateHotMap(absl::flat_hash_map<emb_key_t, int>& keyCountMap, uint32_t count, bool refresh,
+        void UpdateHotMap(absl::flat_hash_map<emb_key_t, int>& keyCountMapByEmbName, uint32_t count, bool refresh,
                           const string& embName);
 
         void UpdateHotMapForUnique(const KeysT &keySend, const vector<int32_t> &keyCount,

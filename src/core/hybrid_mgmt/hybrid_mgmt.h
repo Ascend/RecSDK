@@ -187,7 +187,7 @@ namespace MxRec {
         void HandlePrepareDDRDataRet(TransferRet prepareSSDRet) const;
 
         void SendUniqKeysAndRestoreVecHBM(int channelId, int& batchId, const EmbInfo &embInfo,
-                                          const unique_ptr<vector<Tensor>> &infoVecs);
+                                          const unique_ptr<vector<Tensor>> &infoVecs) const;
 
         void SendUniqKeysAndRestoreVecDDR(const string &embName, int &batchId, int &channelId, DDRParam &ddrParam);
     };

@@ -827,8 +827,8 @@ void KeyProcess::PaddingAlltoallVC(vector<KeysT>& splitKeys) const
         if (keys.size() % ALLTOALLVC_ALIGN == 0) {
             continue;
         }
-        int padding_size = ALLTOALLVC_ALIGN - (keys.size() % ALLTOALLVC_ALIGN);
-        std::fill_n(std::back_inserter(keys), padding_size, INVALID_KEY_VALUE);
+        int paddingSize = ALLTOALLVC_ALIGN - (keys.size() % ALLTOALLVC_ALIGN);
+        std::fill_n(std::back_inserter(keys), paddingSize, INVALID_KEY_VALUE);
     }
     return;
 }
@@ -895,7 +895,7 @@ tuple<vector<KeysT>, vector<int32_t>, vector<int>>
     vector<KeysT> splitKeys(rankInfo.rankSize);
     vector<int32_t> restore(batch->Size());
     absl::flat_hash_map<emb_key_t, int> uKey;   // 用于去重查询
-    absl::flat_hash_map<emb_key_t, int> keyCountMap;
+    absl::flat_hash_map<emb_key_t, int> keyCountMapByEmbName;
     std::shared_lock<std::shared_mutex> lock(g_smut);
     auto hotMap = hotKey[batch->name];
     lock.unlock();
@@ -906,7 +906,7 @@ tuple<vector<KeysT>, vector<int32_t>, vector<int>>
     for (size_t i = 0; i < miniBs; i++) { // for mini batch
         const emb_key_t& key = batchData[i];
         if (batch->batchId % hotEmbUpdateStep == 0) {
-            keyCountMap[key]++;
+            keyCountMapByEmbName[key]++;
         }
         emb_key_t devId = abs(key % static_cast<emb_key_t>(rankInfo.rankSize));
         auto result = uKey.find(key);
@@ -943,7 +943,8 @@ tuple<vector<KeysT>, vector<int32_t>, vector<int>>
             batch->channel, batch->batchId, rankInfo.rankId, batch->Size(), uniqueKeyNum);
     }
 
-    UpdateHotMap(keyCountMap, hotEmbTotCount[batch->name], batch->batchId % hotEmbUpdateStep == 0, batch->name);
+    UpdateHotMap(keyCountMapByEmbName, hotEmbTotCount[batch->name], batch->batchId % hotEmbUpdateStep == 0,
+                 batch->name);
     AddCountStartToHotPos(splitKeys, hotPos, hotPosDev, batch);
     return { splitKeys, restore, hotPos };
 }
@@ -992,13 +993,13 @@ void KeyProcess::UpdateHotMapForUnique(const KeysT &keySend, const vector<int32_
     }
 }
 
-void KeyProcess::UpdateHotMap(absl::flat_hash_map<emb_key_t, int>& keyCountMap, uint32_t count, bool refresh,
+void KeyProcess::UpdateHotMap(absl::flat_hash_map<emb_key_t, int>& keyCountMapByEmbName, uint32_t count, bool refresh,
                               const string& embName)
 {
     auto& hotMap = hotKey[embName];
     if (refresh) {
         priority_queue<pair<int, emb_key_t>> pq; // top k key
-        for (auto& p: keyCountMap) {
+        for (auto& p: keyCountMapByEmbName) {
             pq.push(pair<int, emb_key_t>(-p.second, p.first));
             if (pq.size() > count) {
                 pq.pop();

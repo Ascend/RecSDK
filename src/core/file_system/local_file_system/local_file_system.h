@@ -13,10 +13,11 @@
 
 namespace MxRec {
     using namespace std;
-
+    const int DIR_RIGHT_MODE = 0750;
+    const int FILE_RIGHT_MODE = 0640;
     class LocalFileSystem : public FileSystem {
     public:
-        LocalFileSystem() : dirMode(0750), fileMode(0640), currDir("."), prevDir("..") {}
+        LocalFileSystem() : dirMode(DIR_RIGHT_MODE), fileMode(FILE_RIGHT_MODE), currDir("."), prevDir("..") {}
         ~LocalFileSystem() override {}
 
         void CreateDir(const string& dirName) override;
@@ -29,7 +30,7 @@ namespace MxRec {
                             const vector<int64_t>& addressArr, int deviceId) override;
 
         ssize_t Read(const string& filePath, char* fileContent, size_t datasetSize) override;
-        ssize_t Read(const string& filePath, vector<vector<float>>& fileVector, size_t datasetSize) override;
+        ssize_t Read(const string& filePath, vector<vector<float>>& fileContent, size_t datasetSize) override;
         void ReadEmbedding(const string& filePath, const int& embeddingSize,
                            vector<int64_t>& addressArr, int deviceId) override;
 
