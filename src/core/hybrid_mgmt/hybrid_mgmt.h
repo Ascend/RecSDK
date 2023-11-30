@@ -39,8 +39,6 @@ namespace MxRec {
         DDR
     };
 
-    constexpr int MGMT_THREAD_ID = -1;
-
     class HybridMgmt {
     public:
         HybridMgmt() = default;
@@ -139,7 +137,6 @@ namespace MxRec {
 
         int64_t GetTableCapacity(const string& embName) const;
 
-        void SetMpiSendAbnormalStatus();
     private:
         bool InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
                             const vector<ThresholdValue>& thresholdValues, int seed);

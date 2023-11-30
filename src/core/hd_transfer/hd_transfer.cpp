@@ -146,6 +146,7 @@ void HDTransfer::Send(TransferChannel channel, const vector<Tensor> &tensors, in
         }
         resendTime++;
     } while (isNeedResend);
+    usedChannelsNames[channelId].insert(TransferChannel2Str(channel));
 #endif
 }
 
@@ -211,4 +212,9 @@ size_t HDTransfer::RecvAcl(TransferChannel channel, int channelId, const string&
 std::unordered_map<std::string, acltdtChannelHandle*> HDTransfer::GetTransChannel()
 {
     return transferChannels;
+}
+
+std::unordered_map<int, std::set<std::string>> HDTransfer::GetUsedTransChannel()
+{
+    return usedChannelsNames;
 }

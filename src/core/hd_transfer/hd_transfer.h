@@ -84,9 +84,11 @@ namespace MxRec {
         void Destroy();
 
         std::unordered_map<std::string, acltdtChannelHandle*> GetTransChannel();
+        unordered_map<int, set<std::string>> GetUsedTransChannel();
 
     private:
         std::unordered_map<std::string, acltdtChannelHandle*> transferChannels;
+        std::unordered_map<int, std::set<std::string>> usedChannelsNames; // key是通道0、1
         bool running;
         void CreateChannel(const uint32_t localRankId, const string& embName, const int channelNum);
     };
