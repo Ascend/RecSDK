@@ -515,7 +515,7 @@ void KeyProcess::PushResult(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tens
  * 从共享队列SingletonQueue<EmbBatchT>中读取batch数据并返回。batch数据由 ReadEmbKeyV2 写入。
  * commID为线程标识[0, KEY_PROCESS_THREAD-1]，不同线程、训练或推理数据用不同的共享队列通信
  */
-unique_ptr<EmbBatchT> KeyProcess::GetBatchData(int channel, int commId)
+unique_ptr<EmbBatchT> KeyProcess::GetBatchData(int channel, int commId) const
 {
     EASY_FUNCTION()
     unique_ptr<EmbBatchT> batch = nullptr;
@@ -1224,7 +1224,7 @@ void KeyProcess::SendEos(int batchId, int channel)
 
     vector<Tensor> tensors;
     bool isNeedResend = true;
-    for (const auto& emb:embInfos) { // 一个表触发以后，其余表都发送eos，最后外层接收null退出此次循环
+    for (const auto& emb: as_const(embInfos)) { // 一个表触发以后，其余表都发送eos，最后外层接收null退出此次循环
         LOG_INFO("channelId:{} batchId:{}, the embName:{} related channel SendEos start.", channel, batchId, emb.first);
         if (!isRunning) {
             throw EndRunExit("SendEos end run, isRunning is false after lock destroyMutex.");

@@ -31,8 +31,8 @@ using namespace MxRec;
 namespace tensorflow {
 namespace data {
 
-MPI_Comm comm;
-MPI_Group worldGroup;
+MPI_Comm g_comm;
+MPI_Group g_worldGroup;
 
 constexpr const char *const EosDatasetOp::kDatasetType;
 constexpr const char *const EosDatasetOp::kInputDataset;
@@ -52,8 +52,8 @@ public:
         auto os_input = input->output_shapes();
         output_shapes_ = os_input;
         keyProcess = Singleton<KeyProcess>::GetInstance();
-        MPI_Comm_group(MPI_COMM_WORLD, &worldGroup);
-        MPI_Comm_create(MPI_COMM_WORLD, worldGroup, &comm);
+        MPI_Comm_group(MPI_COMM_WORLD, &g_worldGroup);
+        MPI_Comm_create(MPI_COMM_WORLD, g_worldGroup, &g_comm);
     }
 
     ~Dataset() override
@@ -144,7 +144,7 @@ private:
             // 正常数据流程
             if (!*end_of_sequence) {
                 LOG_TRACE("GetNext, step in MPI_Allreduce, exitFlag:[{}]", exitFlag);
-                MPI_Allreduce(&exitFlag, &exitFlag, 1, MPI_INT, MPI_SUM, comm);
+                MPI_Allreduce(&exitFlag, &exitFlag, 1, MPI_INT, MPI_SUM, g_comm);
                 LOG_TRACE("GetNext, step out MPI_Allreduce, exitFlag:[{}]", exitFlag);
                 // 数据不均衡场景, 别的卡eos
                 if (exitFlag != 0) {
@@ -161,7 +161,7 @@ private:
             *end_of_sequence = true;
             input_impl_.reset();
             LOG_TRACE("GetNext eos, step in MPI_Allreduce, exitFlag:[{}]", exitFlag);
-            MPI_Allreduce(&exitFlag, &exitFlag, 1, MPI_INT, MPI_SUM, comm);
+            MPI_Allreduce(&exitFlag, &exitFlag, 1, MPI_INT, MPI_SUM, g_comm);
             LOG_TRACE("GetNext eos, step out MPI_Allreduce, exitFlag:[{}]", exitFlag);
 
             LOG_INFO("GetNext eos, channelID:[{}]", dataset()->channelId_);
