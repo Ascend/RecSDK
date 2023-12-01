@@ -238,7 +238,7 @@ namespace MxRec {
 
         void Key2OffsetDynamicExpansion(const EmbNameT& embName, KeysT& splitKey, int channel);
 
-        unique_ptr<EmbBatchT> GetBatchData(int channel, int commId);
+        unique_ptr<EmbBatchT> GetBatchData(int channel, int commId) const;
 
         void BuildRestoreVec(const unique_ptr<EmbBatchT>& batch, const vector<int>& blockOffset,
                              vector<int>& restoreVec, int hotPosSize = 0) const;

@@ -16,7 +16,6 @@
 #define TF_VERSION_TF2
 #endif
 
-using namespace std;
 namespace tensorflow {
 namespace data {
     // 这个类的 MakeDataset() 方法告诉 TensorFlow 怎样根据一个操作的输入和属性生成一个数据集的对象。
