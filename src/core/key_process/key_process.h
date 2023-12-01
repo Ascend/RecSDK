@@ -9,30 +9,21 @@
 #define MX_REC_KEY_PROCESS_H
 
 #include <vector>
-#include <deque>
-#include <queue>
 #include <map>
 #include <memory>
 #include <string>
 #include <thread>
-#include <iostream>
 #include <shared_mutex>
 
 #include <mpi.h>
 #include <absl/container/flat_hash_map.h>
-
 #include "ock_ctr_common/include/factory.h"
 
 #include "utils/common.h"
-#include "utils/config.h"
-#include "utils/time_cost.h"
-#include "utils/safe_queue.h"
-
-#include "host_emb/host_emb.h"
 #include "emb_table/emb_table.h"
-
 #include "feature_admit_and_evict.h"
 #include "hybrid_mgmt/hybrid_mgmt_block.h"
+#include "utils/singleton.h"
 
 namespace MxRec {
     using namespace std;
@@ -90,15 +81,13 @@ namespace MxRec {
 
         int GetMaxStep(int channelId) const;
 
-        int Start();
+        OffsetMemT GetMaxOffset();
 
-        auto GetMaxOffset() -> OffsetMemT;
+        KeyOffsetMemT GetKeyOffsetMap();
 
-        auto GetKeyOffsetMap() -> KeyOffsetMemT;
+        KeyCountMemT GetKeyCountMap();
 
-        auto GetKeyCountMap() -> KeyCountMemT;
-
-        auto GetFeatAdmitAndEvict() -> FeatureAdmitAndEvict&;
+        FeatureAdmitAndEvict& GetFeatAdmitAndEvict();
 
         void LoadMaxOffset(OffsetMemT& loadData);
 
@@ -175,6 +164,9 @@ namespace MxRec {
             return embInfos.find(embName) != embInfos.end();
         };
     GTEST_PRIVATE:
+
+        int Start();
+
         template<class T>
         T GetInfo(info_list_t<T>& list, int batch, const string& embName, int channel);
 
@@ -199,7 +191,7 @@ namespace MxRec {
         ock::ctr::FactoryPtr factory {};
         int hotEmbUpdateStep = HOT_EMB_UPDATE_STEP_DEFAULT;
         bool isWithFAAE;
-        vector<bool> isNeedSendEos { false, false }; // 分别代表通道0、1的eos状态
+        bool isNeedSendEos[2] = { 0, 0 }; // 分别代表通道0、1的eos状态
 
         void InitHotEmbTotCount(const EmbInfo& info, const RankInfo& rInfo);
 
@@ -297,5 +289,8 @@ namespace MxRec {
 
         string DumpSplitKeys(vector<vector<emb_key_t>>& splitKeys) const;
     };
+
+#define KEY_PROCESS_INSTANCE Singleton<KeyProcess>::GetInstance()
 } // end namespace MxRec
+
 #endif // MX_REC_KEY_PROCESS_H

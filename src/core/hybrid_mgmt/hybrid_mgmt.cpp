@@ -10,28 +10,12 @@
 #include "utils/logger.h"
 #include "utils/common.h"
 #include "checkpoint/checkpoint.h"
+#include "key_process/key_process.h"
+#include "key_process/feature_admit_and_evict.h"
 
 
 using namespace MxRec;
 using namespace std;
-
-/// 启动数据处理线程
-/// \param rankInfo 当前rank基本配置信息
-/// \param embInfos 表信息list
-/// \param thresholdValues 准入淘汰相关配置
-/// \param seed 随机种子
-/// \return bool类型 启动成功/失败
-bool HybridMgmt::InitKeyProcess(const RankInfo& rankInfo, const vector<EmbInfo>& embInfos,
-                                const vector<ThresholdValue>& thresholdValues, int seed)
-{
-#ifndef GTEST
-    // 初始化数据处理类，配置相关信息，启动处理线程
-    preprocess = Singleton<KeyProcess>::GetInstance();
-    preprocess->Initialize(rankInfo, embInfos, thresholdValues, seed);
-    preprocess->Start();
-#endif
-    return true;
-}
 
 /// Openmpi通信域进程数设置、计算所有表host特征数量总数、设置训练模式（HBM/DDR）
 /// \param rankInfo
@@ -102,10 +86,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     hybridMgmtBlock->SetRankInfo(rankInfo);
 
     // 启动数据处理线程
-    bool rc = InitKeyProcess(rankInfo, embInfos, thresholdValues, seed);
-    if (!rc) {
-        return false;
-    }
+    KEY_PROCESS_INSTANCE->Initialize(rankInfo, embInfos, thresholdValues, seed);
 
     isRunning = true;
 
@@ -230,11 +211,11 @@ bool HybridMgmt::Save(const string savePath)
     }
 
     // 数据处理线程上锁
-    preprocess->LoadSaveLock();
+    KEY_PROCESS_INSTANCE->LoadSaveLock();
 
     CkptData saveData;
     Checkpoint saveCkpt;
-    saveData.keyCountMap = preprocess->GetKeyCountMap();
+    saveData.keyCountMap = KEY_PROCESS_INSTANCE->GetKeyCountMap();
     if (!mgmtRankInfo.noDDR) {
         // DDR模式保存host的emb表以及hashmap
         LOG_DEBUG(MGMT + "Start host side save: ddr mode hashmap");
@@ -243,8 +224,8 @@ bool HybridMgmt::Save(const string savePath)
     } else {
         // HBM模式保存最大偏移（真正使用了多少vocab容量），特征到偏移的映射
         LOG_DEBUG(MGMT + "Start host side save: no ddr mode hashmap");
-        saveData.maxOffset = preprocess->GetMaxOffset();
-        saveData.keyOffsetMap = preprocess->GetKeyOffsetMap();
+        saveData.maxOffset = KEY_PROCESS_INSTANCE->GetMaxOffset();
+        saveData.keyOffsetMap = KEY_PROCESS_INSTANCE->GetKeyOffsetMap();
     }
 
     if (isSSDEnabled) {
@@ -260,7 +241,7 @@ bool HybridMgmt::Save(const string savePath)
     }
 
     // 保存特征准入淘汰相关的数据
-    auto& featAdmitNEvict = preprocess->GetFeatAdmitAndEvict();
+    FeatureAdmitAndEvict& featAdmitNEvict = KEY_PROCESS_INSTANCE->GetFeatAdmitAndEvict();
     if (featAdmitNEvict.GetFunctionSwitch()) {
         LOG_DEBUG(MGMT + "Start host side save: feature admit and evict");
         saveData.table2Thresh = featAdmitNEvict.GetTableThresholds();
@@ -272,7 +253,7 @@ bool HybridMgmt::Save(const string savePath)
     saveCkpt.SaveModel(savePath, saveData, mgmtRankInfo, mgmtEmbInfo);
     offsetMapToSend = std::move(saveData.offsetMap);
     // 数据处理线程释放锁
-    preprocess->LoadSaveUnlock();
+    KEY_PROCESS_INSTANCE->LoadSaveUnlock();
 #endif
     return true;
 }
@@ -288,16 +269,14 @@ bool HybridMgmt::Load(const string& loadPath)
     }
 
     // 数据处理线程上锁
-    preprocess->LoadSaveLock();
+    KEY_PROCESS_INSTANCE->LoadSaveLock();
 
     LOG_DEBUG(MGMT + "Start host side load process");
 
     CkptData loadData;
     Checkpoint loadCkpt;
     vector<CkptFeatureType> loadFeatures;
-
-    auto& featAdmitNEvict = preprocess->GetFeatAdmitAndEvict();
-    SetFeatureTypeForLoad(loadFeatures, featAdmitNEvict);
+    SetFeatureTypeForLoad(loadFeatures);
 
     loadData.hostEmbs = hostEmbs->GetHostEmbs(); // 获取已经初始化好的host emb
     // 执行加载操作
@@ -305,11 +284,11 @@ bool HybridMgmt::Load(const string& loadPath)
 
     // 检查DDR模式保存的模型和当前训练配置是否一致，不一致则退出
     if (!mgmtRankInfo.noDDR && !LoadMatchesDDRSetup(loadData)) {
-        preprocess->LoadSaveUnlock();
+        KEY_PROCESS_INSTANCE->LoadSaveUnlock();
         return false;
     }
 
-    preprocess->LoadKeyCountMap(loadData.keyCountMap);
+    KEY_PROCESS_INSTANCE->LoadKeyCountMap(loadData.keyCountMap);
     if (!mgmtRankInfo.noDDR) {
         // DDR模式 将加载的hash map进行赋值
         LOG_DEBUG(MGMT + "Start host side load: ddr mode hashmap");
@@ -317,11 +296,12 @@ bool HybridMgmt::Load(const string& loadPath)
     } else {
         // HBM模式 将加载的最大偏移（真正使用了多少vocab容量）、特征到偏移的映射，进行赋值
         LOG_DEBUG(MGMT + "Start host side load: no ddr mode hashmap");
-        preprocess->LoadKeyOffsetMap(loadData.keyOffsetMap);
-        preprocess->LoadMaxOffset(loadData.maxOffset);
+        KEY_PROCESS_INSTANCE->LoadKeyOffsetMap(loadData.keyOffsetMap);
+        KEY_PROCESS_INSTANCE->LoadMaxOffset(loadData.maxOffset);
     }
 
     // 将加载的特征准入淘汰记录进行赋值
+    FeatureAdmitAndEvict& featAdmitNEvict = KEY_PROCESS_INSTANCE->GetFeatAdmitAndEvict();
     if (featAdmitNEvict.GetFunctionSwitch()) {
         LOG_DEBUG(MGMT + "Start host side load: feature admit and evict");
         featAdmitNEvict.LoadTableThresholds(loadData.table2Thresh);
@@ -336,7 +316,7 @@ bool HybridMgmt::Load(const string& loadPath)
 
     LOG_DEBUG(MGMT + "Finish host side load process");
 
-    preprocess->LoadSaveUnlock();
+    KEY_PROCESS_INSTANCE->LoadSaveUnlock();
 
     // 执行训练
     if (isLoad) {
@@ -346,8 +326,7 @@ bool HybridMgmt::Load(const string& loadPath)
     return true;
 }
 
-void HybridMgmt::SetFeatureTypeForLoad(vector<CkptFeatureType>& loadFeatures,
-                                       const FeatureAdmitAndEvict& featAdmitNEvict)
+void HybridMgmt::SetFeatureTypeForLoad(vector<CkptFeatureType>& loadFeatures)
 {
     if (GlobalEnv::recordKeyCount) {
         loadFeatures.push_back(CkptFeatureType::KEY_COUNT_MAP);
@@ -362,6 +341,7 @@ void HybridMgmt::SetFeatureTypeForLoad(vector<CkptFeatureType>& loadFeatures,
     }
 
     // 添加特征准入淘汰相关的数据类型的加载
+    FeatureAdmitAndEvict& featAdmitNEvict = KEY_PROCESS_INSTANCE->GetFeatAdmitAndEvict();
     if (featAdmitNEvict.GetFunctionSwitch()) {
         loadFeatures.push_back(CkptFeatureType::FEAT_ADMIT_N_EVICT);
     }
@@ -397,7 +377,7 @@ void HybridMgmt::ReceiveHostMap(AllKeyOffsetMapT receiveKeyOffsetMap)
         throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
     }
 
-    preprocess->LoadSaveLock();
+    KEY_PROCESS_INSTANCE->LoadSaveLock();
     KeyOffsetMemT loadKeyOffsetMap;
     OffsetMemT loadMaxOffset;
     if (!receiveKeyOffsetMap.empty()) {
@@ -414,11 +394,11 @@ void HybridMgmt::ReceiveHostMap(AllKeyOffsetMapT receiveKeyOffsetMap)
         LOG_DEBUG(MGMT + "Start receive sparse data: ddr mode hashmap");
     } else {
         LOG_DEBUG(MGMT + "Start receive sparse data: no ddr mode hashmap");
-        preprocess->LoadKeyOffsetMap(loadKeyOffsetMap);
-        preprocess->LoadMaxOffset(loadMaxOffset);
+        KEY_PROCESS_INSTANCE->LoadKeyOffsetMap(loadKeyOffsetMap);
+        KEY_PROCESS_INSTANCE->LoadMaxOffset(loadMaxOffset);
     }
 
-    preprocess->LoadSaveUnlock();
+    KEY_PROCESS_INSTANCE->LoadSaveUnlock();
     if (isLoad) {
         Start();
     }
@@ -542,6 +522,44 @@ void HybridMgmt::StartThreadForDDR()
 #endif
 }
 
+void HybridMgmt::Destroy()
+{
+    LOG_DEBUG(MGMT + "start Destroy hybrid_mgmt module");
+    if (!isInitialized) {
+        throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
+    }
+
+    if (!isRunning) {
+        return;
+    }
+    // 先发送停止信号mgmt，先停止新lookup查询, 解除queue的限制防止卡住
+    isRunning = false;
+    // 获取锁 避免KeyProcess中手动发送结束信息时通道关闭
+    std::unique_lock<std::mutex> lockGuard(KEY_PROCESS_INSTANCE->destroyMutex);
+    // 先发送停止信号给KEY_PROCESS_INSTANCE，用于停止查询中lookup卡住状态
+    KEY_PROCESS_INSTANCE->isRunning = false;
+    // 停止hdTransfer，用于停止mgmt的recv中卡住状态
+    hdTransfer->Destroy();
+    LOG_DEBUG(MGMT + "destroy hdTransfer end.");
+
+    hybridMgmtBlock->Destroy();
+    for (auto& t : procThreads) {
+        t->join();
+    }
+    if (cacheManager != nullptr) {
+        cacheManager = nullptr;
+    }
+    if (hostEmbs != nullptr) {
+        hostEmbs->Join(TRAIN_CHANNEL_ID);
+        hostEmbs->Join(EVAL_CHANNEL_ID);
+        hostEmbs = nullptr;
+    }
+    procThreads.clear();
+    // 停止预处理
+    KEY_PROCESS_INSTANCE->Destroy();
+    LOG_DEBUG(MGMT + "Destroy hybrid_mgmt module end.");
+};
+
 #ifndef GTEST
 /// 启动hybrid处理任务
 /// \param type
@@ -619,7 +637,7 @@ bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
     for (const auto& embInfo: mgmtEmbInfo) {
         TimeCost parseKeysTc;
         // 获取各类向量，如果为空指针，退出当前函数
-        auto infoVecs = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::RESTORE);
+        auto infoVecs = KEY_PROCESS_INSTANCE->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::RESTORE);
         if (infoVecs == nullptr) {
             LOG_INFO(MGMT + "channelId:{} batchId:{}, ParseKeys infoVecs empty !", channelId, batchId);
             return false;
@@ -630,7 +648,7 @@ bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
         unique_ptr<vector<Tensor>> all2all = nullptr;
         if (!mgmtRankInfo.useStatic) {
             TimeCost getTensorsSyncTC;
-            all2all = preprocess->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::ALL2ALL);
+            all2all = KEY_PROCESS_INSTANCE->GetInfoVec(batchId, embInfo.name, channelId, ProcessedInfo::ALL2ALL);
             LOG_DEBUG("channelId:{} batchId:{}, getTensorsSyncTC(ms):{}",
                       channelId, batchId, getTensorsSyncTC.ElapsedMS());
             if (all2all == nullptr) {
@@ -770,7 +788,7 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId, int cha
     embHashMap.SetStartCount();
 
     // 获取查询向量
-    auto lookupKeys = preprocess->GetLookupKeys(batchId, embName, channelId);
+    auto lookupKeys = KEY_PROCESS_INSTANCE->GetLookupKeys(batchId, embName, channelId);
     if (lookupKeys.empty()) {
         remainBatchOut = false;
         LOG_ERROR("channelId:{} batchId:{}, embName:{}, GetLookupKeys result is empty.",
@@ -779,8 +797,12 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId, int cha
     }
     LOG_DEBUG("channelId:{} batchId:{}, embName:{}, GetLookupKeys end.", channelId, batchId, embName);
     // 获取各类向量，如果为空指针，退出当前函数
-    auto infoVecs = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::RESTORE);
-    if (infoVecs == nullptr) { return false; }
+    unique_ptr<vector<Tensor>> infoVecs = KEY_PROCESS_INSTANCE->GetInfoVec(batchId, embName, channelId,
+                                                                           ProcessedInfo::RESTORE);
+    if (infoVecs == nullptr) {
+        LOG_ERROR("Information vector is nullptr!");
+        return false;
+    }
     LOG_DEBUG("channelId:{} batchId:{}, GetInfoVec end, getTensorsTC(ms):{}",
               channelId, batchId, getTensorsTC.ElapsedMS());
 
@@ -811,7 +833,8 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId, int cha
     ddrParam.tmpDataOut.erase(ddrParam.tmpDataOut.cbegin());
     hdTransfer->Send(TransferChannel::SWAP, ddrParam.tmpDataOut, channelId, embName);
     if (!mgmtRankInfo.useStatic) {
-        auto all2all = preprocess->GetInfoVec(batchId, embName, channelId, ProcessedInfo::ALL2ALL);
+        unique_ptr<vector<Tensor>> all2all = KEY_PROCESS_INSTANCE->GetInfoVec(batchId, embName,
+                                                                              channelId, ProcessedInfo::ALL2ALL);
         if (all2all == nullptr) {
             LOG_ERROR("Information vector is nullptr!");
             return false;
@@ -834,7 +857,7 @@ void HybridMgmt::SendUniqKeysAndRestoreVecDDR(const string &embName, int &batchI
     LOG_DEBUG("channelId:{} batchId:{}, embName:{}, SendUniqKeysAndRestoreVecDDR start.", channelId, batchId, embName);
     vector<int32_t> uniqueKeys;
     vector<int32_t> restoreVecSec;
-    preprocess->GlobalUnique(ddrParam.offsetsOut, uniqueKeys, restoreVecSec);
+    KEY_PROCESS_INSTANCE->GlobalUnique(ddrParam.offsetsOut, uniqueKeys, restoreVecSec);
 
     TimeCost sendUniqueKeysSyncTC;
     hdTransfer->Send(TransferChannel::UNIQKEYS, {mgmtRankInfo.useDynamicExpansion ? Vec2TensorI64(uniqueKeys) :
@@ -911,7 +934,7 @@ bool HybridMgmt::Evict()
     }
 
     // 配置了淘汰选项，则触发
-    auto& featAdmitNEvict = preprocess->GetFeatAdmitAndEvict();
+    FeatureAdmitAndEvict& featAdmitNEvict = KEY_PROCESS_INSTANCE->GetFeatAdmitAndEvict();
     if (featAdmitNEvict.GetFunctionSwitch()) {
         featAdmitNEvict.FeatureEvict(evictKeyMap);
     } else {
@@ -928,10 +951,10 @@ bool HybridMgmt::Evict()
 
     if (mgmtRankInfo.noDDR) {
         if (GlobalEnv::useCombineFaae) {
-            preprocess->EvictKeysCombine(evictKeyMap[COMBINE_HISTORY_NAME]);
+            KEY_PROCESS_INSTANCE->EvictKeysCombine(evictKeyMap[COMBINE_HISTORY_NAME]);
         } else {
             for (const auto& evict : as_const(evictKeyMap)) {
-                preprocess->EvictKeys(evict.first, evict.second);
+                KEY_PROCESS_INSTANCE->EvictKeys(evict.first, evict.second);
             }
         }
     } else {
@@ -1086,12 +1109,12 @@ int64_t HybridMgmt::GetTableSize(const string& embName) const
     }
 
     if (mgmtRankInfo.useDynamicExpansion) {
-        int64_t size = preprocess->GetExpansionTableSize(embName);
+        int64_t size = KEY_PROCESS_INSTANCE->GetExpansionTableSize(embName);
         LOG_INFO(MGMT + "dynamic expansion mode, get emb:[{}] size:{}", embName, size);
         return size;
     }
     if (mgmtRankInfo.noDDR) {
-        auto maxOffset = preprocess->GetMaxOffset();
+        auto maxOffset = KEY_PROCESS_INSTANCE->GetMaxOffset();
         const auto& iter = maxOffset.find(embName);
         if (iter == maxOffset.end()) {
             LOG_ERROR(MGMT + "get maxOffset, wrong embName:{} ", embName);
@@ -1130,7 +1153,7 @@ int64_t HybridMgmt::GetTableCapacity(const string& embName) const
     }
 
     if (mgmtRankInfo.useDynamicExpansion) {
-        int64_t capacity = preprocess->GetExpansionTableCapacity(embName);
+        int64_t capacity = KEY_PROCESS_INSTANCE->GetExpansionTableCapacity(embName);
         LOG_INFO(MGMT + "dynamic expansion mode, get emb:[{}] capacity:{}", embName, capacity);
         return capacity;
     }
