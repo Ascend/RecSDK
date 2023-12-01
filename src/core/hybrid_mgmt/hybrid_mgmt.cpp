@@ -500,27 +500,15 @@ void HybridMgmt::Start()
 {
 #ifndef GTEST
     if (mgmtRankInfo.noDDR) {
-        InsertThreadForHBM();
-    }
-
-    if (!mgmtRankInfo.noDDR) {
-        auto parseKeysTaskForTrain = [this]() {
-            TrainTask(TaskType::DDR);
-            LOG_INFO("parseKeysTaskForTrain done");
-        };
-        procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForTrain));
-
-        auto parseKeysTaskForEval = [this]() {
-            EvalTask(TaskType::DDR);
-            LOG_INFO("parseKeysTaskForEval done");
-        };
-        procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForEval));
+        StartThreadForHBM();
+    } else {
+        StartThreadForDDR();
     }
 #endif
 }
 
 /// 启动HBM模式数据处理线程
-void HybridMgmt::InsertThreadForHBM()
+void HybridMgmt::StartThreadForHBM()
 {
 #ifndef GTEST
         auto parseKeysTaskForHBMTrain = [this]() {
@@ -534,6 +522,23 @@ void HybridMgmt::InsertThreadForHBM()
             LOG_INFO("parseKeysTaskForHBMEval done");
         };
         procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForHBMEval));
+#endif
+}
+
+void HybridMgmt::StartThreadForDDR()
+{
+#ifndef GTEST
+    auto parseKeysTaskForTrain = [this]() {
+        TrainTask(TaskType::DDR);
+        LOG_INFO("parseKeysTaskForTrain done");
+    };
+    procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForTrain));
+
+    auto parseKeysTaskForEval = [this]() {
+        EvalTask(TaskType::DDR);
+        LOG_INFO("parseKeysTaskForEval done");
+    };
+    procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForEval));
 #endif
 }
 

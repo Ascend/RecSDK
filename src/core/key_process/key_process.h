@@ -36,7 +36,6 @@
 
 namespace MxRec {
     using namespace std;
-    using namespace ock::ctr;
 
     template<class T>
     struct Cmp {
@@ -189,7 +188,7 @@ namespace MxRec {
         map<EmbNameT, absl::flat_hash_map<emb_key_t, int>> hotKey {};
         map<EmbNameT, int> hotEmbTotCount;
         map<EmbNameT, EmbTable> embeddingTableMap {};
-        FactoryPtr factory {};
+        ock::ctr::FactoryPtr factory {};
         int hotEmbUpdateStep = HOT_EMB_UPDATE_STEP_DEFAULT;
         bool isWithFAAE;
         vector<bool> isNeedSendEos { false, false }; // 分别代表通道0、1的eos状态
@@ -202,18 +201,18 @@ namespace MxRec {
 
         bool KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel, int threadId);
 
-        bool KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT> &batch, UniquePtr& unique,
+        bool KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT> &batch, ock::ctr::UniquePtr& unique,
                                             int channel, int threadId);
 
-        auto ProcessSplitKeys(const unique_ptr<EmbBatchT>& batch, int id,
-                              vector<KeysT>& splitKeys) -> tuple<KeysT, vector<int>, vector<int>>;
+        tuple<KeysT, vector<int>, vector<int>> ProcessSplitKeys(const unique_ptr<EmbBatchT>& batch,
+                int id, vector<KeysT>& splitKeys);
 
-        void GetUniqueConfig(UniqueConf& uniqueConf);
+        void GetUniqueConfig(ock::ctr::UniqueConf& uniqueConf);
 
-        void InitializeUnique(UniqueConf& uniqueConf, size_t& preBatchSize, bool& uniqueInitialize,
-                                  const unique_ptr <EmbBatchT>& batch, UniquePtr& unique);
+        void InitializeUnique(ock::ctr::UniqueConf& uniqueConf, size_t& preBatchSize, bool& uniqueInitialize,
+                                  const unique_ptr <EmbBatchT>& batch, ock::ctr::UniquePtr& unique);
 
-        void ProcessBatchWithFastUnique(const unique_ptr<EmbBatchT> &batch, UniquePtr& unique,
+        void ProcessBatchWithFastUnique(const unique_ptr<EmbBatchT> &batch, ock::ctr::UniquePtr& unique,
                                            int id, UniqueInfo& uniqueInfoOut);
 
         size_t GetKeySize(const unique_ptr<EmbBatchT> &batch);
@@ -227,8 +226,8 @@ namespace MxRec {
 
         void PaddingAlltoallVC(vector<KeysT>& splitKeys) const;
 
-        auto HashSplitWithFAAE(const unique_ptr<EmbBatchT>& batch) const
-        -> tuple<vector<KeysT>, vector<int32_t>, vector<vector<uint32_t>>>;
+        tuple<vector<KeysT>, vector<int32_t>, vector<vector<uint32_t>>>
+        HashSplitWithFAAE(const unique_ptr<EmbBatchT>& batch) const;
 
         vector<int> GetScAll(const vector<int>& keyScLocal, int commId, const unique_ptr<EmbBatchT>& batch);
 

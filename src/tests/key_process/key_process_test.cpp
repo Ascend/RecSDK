@@ -23,7 +23,7 @@ using namespace MxRec;
 using namespace testing;
 
 static constexpr size_t BATCH_NUM_EACH_THREAD = 3;
-FactoryPtr factory;
+ock::ctr::FactoryPtr factory;
 
 class SimpleThreadPool {
 public:
@@ -251,7 +251,7 @@ TEST_F(KeyProcessTest, Initialize)
         ASSERT_NE(process.embInfos.find(info.name), process.embInfos.end());
     }
 
-    Factory::Create(factory);
+    ock::ctr::Factory::Create(factory);
 }
 
 TEST_F(KeyProcessTest, Start)
@@ -464,7 +464,7 @@ TEST_F(KeyProcessTest, Key2OffsetDynamicExpansion)
 
 TEST_F(KeyProcessTest, GetUniqueConfig)
 {
-    UniqueConf uniqueConf;
+    ock::ctr::UniqueConf uniqueConf;
     process.rankInfo.rankSize = worldSize;
     process.rankInfo.useStatic = true;
     process.GetUniqueConfig(uniqueConf);
@@ -491,14 +491,14 @@ TEST_F(KeyProcessTest, ProcessPrefetchTask)
 
 TEST_F(KeyProcessTest, InitializeUnique)
 {
-    ASSERT_EQ(Factory::Create(factory), -1);
-    UniquePtr unique;
+    ASSERT_EQ(ock::ctr::Factory::Create(factory), -1);
+    ock::ctr::UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
 
     PrepareBatch();
     unique_ptr<EmbBatchT> batch;
     batch = process.GetBatchData(0, 0);
-    UniqueConf uniqueConf;
+    ock::ctr::UniqueConf uniqueConf;
     process.rankInfo.rankSize = worldSize;
     process.rankInfo.useStatic = true;
     bool uniqueInitialize = false;
@@ -520,13 +520,13 @@ TEST_F(KeyProcessTest, GetKeySize)
 TEST_F(KeyProcessTest, ProcessBatchWithFastUnique)
 {
     PrepareBatch();
-    
+
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     LOG_INFO("CPU Core Num: {}", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
 
     auto fn = [this](int channel, int id) {
-        UniquePtr unique;
-        
+        ock::ctr::UniquePtr unique;
+
         auto embName = embInfos[0].name;
         process.hotEmbTotCount[embName] = 10;
         vector<KeysT> splitKeys;
@@ -537,7 +537,7 @@ TEST_F(KeyProcessTest, ProcessBatchWithFastUnique)
         batch = process.GetBatchData(channel, id); // get batch data from SingletonQueue<EmbBatchT>
 
         ASSERT_EQ(factory->CreateUnique(unique), ock::ctr::H_OK);
-        UniqueConf uniqueConf;
+        ock::ctr::UniqueConf uniqueConf;
         size_t preBatchSize = 0;
         bool uniqueInitialize = false;
         process.GetUniqueConfig(uniqueConf);
