@@ -1235,16 +1235,6 @@ void KeyProcess::SendEos(int batchId, int channel)
             throw EndRunExit("SendEos end run, isRunning is false after lock destroyMutex.");
         }
 
-        string randomSendName = StringFormat("%s_%s_%d", emb.first.c_str(), (*usedChannelNames.begin()).c_str(),
-                                             channel);
-
-        size_t channel_size; // 避免eos在keyProcess还未处理完数据时插队到通道前面
-        do {
-            acltdtQueryChannelSize(transChannels[randomSendName], &channel_size);
-            LOG_TRACE("Before SendEos, channelName:{}, unsolved channel_size {}", randomSendName, channel_size);
-            this_thread::sleep_for(1ms);
-        } while (channel_size != 0);
-
         for (const string& transName : usedChannelNames) {
             string sendName = StringFormat("%s_%s_%d", emb.first.c_str(), transName.c_str(), channel);
             SendTensorsByAcl(transChannels[sendName], ACL_TENSOR_DATA_END_OF_SEQUENCE, tensors, isNeedResend);
@@ -1306,11 +1296,15 @@ unique_ptr<vector<Tensor>> KeyProcess::GetInfoVec(int batch, const string& embNa
             return uTensor;
         } catch (EmptyList&) {
             unique_lock<mutex> lockGuard(destroyMutex);
-            if (isNeedSendEos[channel]) {
+            // readEmbKey真实的次数是readEmbedBatchId减1
+            int readEmbKeyBatchId = hybridMgmtBlock->readEmbedBatchId[channel] - 1;
+            // 避免eos在keyProcess还未处理完数据时插队到通道前面
+            if (isNeedSendEos[channel] && readEmbKeyBatchId < batch) {
                 SendEos(batch, channel);
                 return nullptr;
             }
-            LOG_TRACE("getting info failed {}[{}]:{}", embName, channel, batch);
+            LOG_TRACE("getting info failed {}[{}], list is empty, and mgmt batch id: {}, readEmbKey batch id: {}.",
+                embName, channel, batch, readEmbKeyBatchId);
             this_thread::sleep_for(1ms);
         } catch (WrongListTop&) {
             LOG_TRACE("getting info failed {}[{}]:{} wrong top", embName, channel, batch);
