@@ -34,6 +34,9 @@ namespace data {
 MPI_Comm g_comm;
 MPI_Group g_worldGroup;
 
+const int TIME_OUT_TIMES = 80000;
+const int SLEEP_TIME = 1000;
+
 constexpr const char *const EosDatasetOp::kDatasetType;
 constexpr const char *const EosDatasetOp::kInputDataset;
 constexpr const char *const EosDatasetOp::kChannelId;
@@ -143,11 +146,25 @@ private:
 
             // 正常数据流程
             if (!*end_of_sequence) {
+                MPI_Request request = MPI_REQUEST_NULL;
+                MPI_Status status;
+
                 LOG_TRACE("GetNext, step in MPI_Allreduce, exitFlag:[{}]", exitFlag);
-                MPI_Allreduce(&exitFlag, &exitFlag, 1, MPI_INT, MPI_SUM, g_comm);
+                MPI_Iallreduce(&exitFlag, &exitFlag, 1, MPI_INT, MPI_SUM, g_comm, &request);
                 LOG_TRACE("GetNext, step out MPI_Allreduce, exitFlag:[{}]", exitFlag);
-                // 数据不均衡场景, 别的卡eos
-                if (exitFlag != 0) {
+
+                int j = 0;
+                for (j = 0; j < TIME_OUT_TIMES; ++j) {
+                    int flag = 0;
+                    MPI_Test(&request, &flag, &status);
+                    if (flag) {
+                        MPI_Wait(&request, &status);
+                        break;
+                    }
+                    usleep(SLEEP_TIME);
+                }
+
+                if (j >= TIME_OUT_TIMES) {
                     i_ = 1;
                     *end_of_sequence = true;
                     LOG_INFO("GetNext, some rank eos, channelID:[{}]", dataset()->channelId_);
@@ -155,6 +172,7 @@ private:
                 }
                 return Status::OK();
             }
+
             // 数据eos场景
             i_ = 1;
             exitFlag = 1;
