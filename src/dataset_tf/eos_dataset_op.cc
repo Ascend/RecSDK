@@ -8,8 +8,6 @@
 
 #include "eos_dataset_op.h"
 
-#include <mpi.h>
-
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
@@ -31,12 +29,6 @@ using namespace MxRec;
 namespace tensorflow {
 namespace data {
 
-MPI_Comm g_comm;
-MPI_Group g_worldGroup;
-
-const int TIME_OUT_TIMES = 80000;
-const int SLEEP_TIME = 1000;
-
 constexpr const char *const EosDatasetOp::kDatasetType;
 constexpr const char *const EosDatasetOp::kInputDataset;
 constexpr const char *const EosDatasetOp::kChannelId;
@@ -55,8 +47,6 @@ public:
         auto os_input = input->output_shapes();
         output_shapes_ = os_input;
         keyProcess = Singleton<KeyProcess>::GetInstance();
-        MPI_Comm_group(MPI_COMM_WORLD, &g_worldGroup);
-        MPI_Comm_create(MPI_COMM_WORLD, g_worldGroup, &g_comm);
     }
 
     ~Dataset() override
@@ -146,30 +136,6 @@ private:
 
             // 正常数据流程
             if (!*end_of_sequence) {
-                MPI_Request request = MPI_REQUEST_NULL;
-                MPI_Status status;
-
-                LOG_TRACE("GetNext, step in MPI_Allreduce, exitFlag:[{}]", exitFlag);
-                MPI_Iallreduce(&exitFlag, &exitFlag, 1, MPI_INT, MPI_SUM, g_comm, &request);
-                LOG_TRACE("GetNext, step out MPI_Allreduce, exitFlag:[{}]", exitFlag);
-
-                int j = 0;
-                for (j = 0; j < TIME_OUT_TIMES; ++j) {
-                    int flag = 0;
-                    MPI_Test(&request, &flag, &status);
-                    if (flag) {
-                        MPI_Wait(&request, &status);
-                        break;
-                    }
-                    usleep(SLEEP_TIME);
-                }
-
-                if (j >= TIME_OUT_TIMES) {
-                    i_ = 1;
-                    *end_of_sequence = true;
-                    LOG_INFO("GetNext, some rank eos, channelID:[{}]", dataset()->channelId_);
-                    dataset()->keyProcess->SetEos(1, dataset()->channelId_);
-                }
                 return Status::OK();
             }
 
@@ -178,10 +144,6 @@ private:
             exitFlag = 1;
             *end_of_sequence = true;
             input_impl_.reset();
-            LOG_TRACE("GetNext eos, step in MPI_Allreduce, exitFlag:[{}]", exitFlag);
-            MPI_Allreduce(&exitFlag, &exitFlag, 1, MPI_INT, MPI_SUM, g_comm);
-            LOG_TRACE("GetNext eos, step out MPI_Allreduce, exitFlag:[{}]", exitFlag);
-
             LOG_INFO("GetNext eos, channelID:[{}]", dataset()->channelId_);
             dataset()->keyProcess->SetEos(1, dataset()->channelId_);
 
