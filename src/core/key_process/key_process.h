@@ -70,6 +70,9 @@ namespace MxRec {
         const char* errorMessage;
     };
 
+    constexpr int MPI_ABNORMAL_SEND_VALUE = 0; // MPI异常通信时发送0
+    constexpr int MPI_NORMAL_SEND_VALUE = 1; // MPI正常通信时发送1
+
     class EmptyList : public std::exception {
     };
 
@@ -160,6 +163,11 @@ namespace MxRec {
         void SendEos(int batchId, int channel);
 
         bool isRunning { false };
+
+        // 是否需要退出当前通道对应预处理线程，区分channel；已发送eos信息时需退出
+        bool isNeedExit[2] = {false, false};
+        // MPI all reduce通信时发送数据
+        int mpiAllReduceSend[2] = {MPI_NORMAL_SEND_VALUE, MPI_NORMAL_SEND_VALUE};
 
         std::mutex destroyMutex;
         inline bool HasEmbName(const string& embName)
@@ -274,6 +282,8 @@ namespace MxRec {
         void HashSplitHelper(const unique_ptr <EmbBatchT>& batch, vector <KeysT>& splitKeys,
                              vector <int32_t>& restore, vector <int32_t>& hotPos,
                              vector <vector<uint32_t>>& keyCount);
+
+        void HandleRankExitScene(int commId, const unique_ptr<EmbBatchT> &batch, int receiveFlag);
 
         template<class T>
         inline vector<T> Count2Start(const vector<T>& count) const
