@@ -14,7 +14,7 @@ from tensorflow.python.training import adagrad, training_ops
 from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.util.initialize import get_table_instance, insert_removing_var_list
+from mx_rec.util.initialize import get_table_instance, insert_removing_var_list, get_use_dynamic_expansion
 from mx_rec.constants.constants import MAX_INT32
 from mx_rec.validator.validator import para_checker_decorator, StringValidator, ClassValidator, FloatValidator
 
@@ -37,6 +37,10 @@ def create_hash_optimizer(learning_rate=0.001,
     :param name: Optional name prefix for the operations created when applying gradients.  Defaults to "Adagrad".
     :return: adagrad hash optimizer instance
     """
+
+    if get_use_dynamic_expansion():
+        raise ValueError("dynamic expansion mode is not compatible with the optimizer, please config dynamic "
+                         "expansion mode and optimizer correctly")
     return CustomizedAdagrad(learning_rate=learning_rate,
                              initial_accumulator_value=initial_accumulator_value,
                              use_locking=use_locking,

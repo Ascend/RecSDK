@@ -18,7 +18,7 @@ from tensorflow.python.training import adam
 from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.util.initialize import get_table_instance, insert_removing_var_list
+from mx_rec.util.initialize import get_table_instance, insert_removing_var_list, get_use_dynamic_expansion
 from mx_rec.util.variable import check_and_get_config_via_var
 from mx_rec.constants.constants import MAX_INT32
 from mx_rec.validator.validator import para_checker_decorator, StringValidator, FloatValidator
@@ -42,6 +42,9 @@ def create_hash_optimizer(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1
 
     Returns: a customized optimizer instance
     """
+    if get_use_dynamic_expansion():
+        raise ValueError("dynamic expansion mode is not compatible with the optimizer, please config dynamic "
+                         "expansion mode and optimizer correctly")
     return CustomizedLazyAdam(learning_rate=learning_rate, beta1=beta1, beta2=beta2, epsilon=epsilon, name=name)
 
 

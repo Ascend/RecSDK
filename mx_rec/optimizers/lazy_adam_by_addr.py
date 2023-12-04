@@ -12,7 +12,7 @@ import tensorflow as tf
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import adam
 
-from mx_rec.util.initialize import get_host_pipeline_ops, insert_optimizer
+from mx_rec.util.initialize import get_host_pipeline_ops, insert_optimizer, get_use_dynamic_expansion
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.constants.constants import MAX_INT32
 from mx_rec.validator.validator import para_checker_decorator, StringValidator, FloatValidator
@@ -37,6 +37,10 @@ def create_hash_optimizer_by_address(learning_rate=0.001, beta1=0.9, beta2=0.999
 
     Returns: a customized optimizer instance
     """
+
+    if not get_use_dynamic_expansion():
+        raise ValueError("dynamic expansion mode is not compatible with the optimizer, please config dynamic "
+                         "expansion mode and optimizer correctly")
 
     optimizer_by_addr = CustomizedLazyAdamByAddress(learning_rate=learning_rate, beta1=beta1, beta2=beta2,
                                                     epsilon=epsilon, name=name)
