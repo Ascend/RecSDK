@@ -1061,9 +1061,6 @@ vector<int> KeyProcess::GetScAll(const vector<int>& keyScLocal, int commId, cons
 
 void KeyProcess::HandleRankExitScene(int commId, const unique_ptr<EmbBatchT> &batch, int receiveFlag)
 {
-    if (!isRunning) {
-        throw EndRunExit("GetScAll end run, isRunning is false.");
-    }
     if (receiveFlag < rankInfo.rankSize) {
         unique_lock<mutex> lockGuard(destroyMutex);
         if (isNeedExit[batch->channel]) {
