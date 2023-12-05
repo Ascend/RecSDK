@@ -7,6 +7,11 @@
 
 #include "key_process.h"
 
+#include <iostream>
+#include "utils/safe_queue.h"
+#include "utils/time_cost.h"
+#include "utils/config.h"
+#include "host_emb/host_emb.h"
 #include "checkpoint/checkpoint.h"
 #include "hd_transfer/hd_transfer.h"
 #include "ock_ctr_common/include/error_code.h"
@@ -73,6 +78,9 @@ bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos
 
     LOG_INFO(KEY_PROCESS "scInfo:{}, localRankSize:{}, rankSize:{}, useStatic:{}, useHot:{}",
         MapToString(scInfo), rInfo.localRankSize, rInfo.rankSize, rInfo.useStatic, rInfo.useHot);
+#ifndef GTEST
+    Start();
+#endif
     return true;
 }
 

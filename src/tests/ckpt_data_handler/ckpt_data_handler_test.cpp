@@ -11,7 +11,9 @@
 #include "ckpt_data_handler/emb_hash_ckpt/emb_hash_ckpt.h"
 #include "ckpt_data_handler/nddr_offset_ckpt/nddr_offset_ckpt.h"
 #include "ckpt_data_handler/nddr_feat_map_ckpt/nddr_feat_map_ckpt.h"
-#include "ckpt_data_handler//feat_admit_n_evict_ckpt/feat_admit_n_evict_ckpt.h"
+#include "ckpt_data_handler/feat_admit_n_evict_ckpt/feat_admit_n_evict_ckpt.h"
+#include "ckpt_data_handler/key_count_map_ckpt/key_count_map_ckpt.h"
+#include "utils/common.h"
 
 using namespace std;
 using namespace MxRec;
@@ -294,4 +296,22 @@ TEST_F(CkptDataHandlerTest, FeatAdmitNEvict)
 
     // 测试load
     TestForLoad(args);
+}
+
+TEST_F(CkptDataHandlerTest, KeyCountMapCkpt)
+{
+    CkptData data;
+    KeyCountMapCkpt ckpt;
+    CkptTransData tranData;
+    const int testCount = 10;
+    const int exceptCount = 5;
+    for (int i = 0; i < testCount; ++i) {
+        tranData.int64Arr.push_back(i);
+    }
+
+    ckpt.SetProcessData(data);
+    ckpt.SetDataset(CkptDataType::KEY_COUNT_MAP, std::string("test"), tranData);
+    ckpt.GetProcessData(data);
+    absl::flat_hash_map<emb_key_t, size_t> &testmap = data.keyCountMap["test"];
+    EXPECT_EQ(testmap.size(), exceptCount);
 }

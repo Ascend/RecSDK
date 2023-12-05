@@ -109,7 +109,7 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, DDRPara
         LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} swap_key_size {} swap_time_cost {}",
             channelId, swapId, rankInfo.rankId, swapSize, swapTimeCost.ElapsedMS());
     }
-    
+
     swapId++;
     EASY_END_BLOCK
 #endif

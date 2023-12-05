@@ -46,16 +46,10 @@ namespace MxRec {
 
         absl::flat_hash_map<string, EmbHashMapInfo> embHashMaps;
 
-        void FindOffset(const string& embName, const vector<emb_key_t>& keys,
-                        size_t currentBatchId, size_t keepBatchId, int channelId);
-
         bool FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHashMap, int channelId, size_t& offset) const;
 
         void UpdateBatchId(const vector<emb_key_t>& keys, size_t currentBatchId, size_t keySize,
                            EmbHashMapInfo& embHashMap) const;
-
-        int FindSwapPosV2(const string& embName, emb_key_t key, size_t hostOffset, size_t currentBatchId,
-                          size_t keepBatchId);
 
         bool FindSwapPosOld(const string& embName, emb_key_t key, size_t hostOffset, size_t currentBatchId,
                             size_t keepBatchId);
@@ -68,11 +62,10 @@ namespace MxRec {
         bool isSSDEnabled { false };
         CacheManager* cacheManager;
 
-    private:
-        void FindAndUpdateBatchId(vector<emb_key_t>& keys, size_t currentBatchId, size_t keySize,
-                                  EmbHashMapInfo& embHashMap) const;
+    GTEST_PRIVATE:
 
-        int32_t FindNewOffset(const emb_key_t& key, EmbHashMapInfo& embHashMap) const;
+        void FindOffset(const string& embName, const vector<emb_key_t>& keys,
+                        size_t currentBatchId, size_t keepBatchId, int channelId);
 
         void AddCacheManagerTraceLog(const string& embTableName, const EmbHashMapInfo& embHashMap) const;
 
@@ -80,11 +73,10 @@ namespace MxRec {
 
         void ClearLookupAndSwapOffset(EmbHashMapInfo& embHashMap) const;
 
+        void RefreshFreqInfoWithSwap(const string& embName, EmbHashMapInfo& embHashMap) const;
+
         RankInfo rankInfo;
         int swapId { 0 };
-
-    GTEST_PRIVATE:
-        void RefreshFreqInfoWithSwap(const string& embName, EmbHashMapInfo& embHashMap) const;
     };
 }
 
