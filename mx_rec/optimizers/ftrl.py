@@ -19,7 +19,7 @@ from tensorflow.python.training import ftrl
 from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.util.initialize import get_table_instance, insert_removing_var_list
+from mx_rec.util.initialize import get_table_instance, insert_removing_var_list, get_use_dynamic_expansion
 from mx_rec.util.variable import check_and_get_config_via_var
 from mx_rec.constants.constants import MAX_INT32
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, NumValidator, StringValidator, \
@@ -39,6 +39,9 @@ from mx_rec.validator.validator import para_checker_decorator, ClassValidator, N
     ("linear_name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"])
 ])
 def create_hash_optimizer(learning_rate, use_locking=False, name="Ftrl", **kwargs):
+    if get_use_dynamic_expansion():
+        raise ValueError("dynamic expansion mode is not compatible with the optimizer, please config dynamic "
+                         "expansion mode and optimizer correctly")
     return CustomizedFtrl(learning_rate=learning_rate, use_locking=use_locking, name=name, **kwargs)
 
 
