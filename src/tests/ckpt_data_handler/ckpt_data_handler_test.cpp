@@ -315,3 +315,15 @@ TEST_F(CkptDataHandlerTest, KeyCountMapCkpt)
     absl::flat_hash_map<emb_key_t, size_t> &testmap = data.keyCountMap["test"];
     EXPECT_EQ(testmap.size(), exceptCount);
 }
+
+TEST_F(CkptDataHandlerTest, SetDatasetForLoadEmb)
+{
+    KeyCountMapCkpt ckpt;
+    CkptTransData tranData;
+    CkptData data;
+    try {
+        ckpt.SetDatasetForLoadEmb(CkptDataType::KEY_COUNT_MAP, std::string("test"), tranData, data);
+    } catch (runtime_error& e) {
+        LOG_INFO(KEY_PROCESS "success");
+    }
+}

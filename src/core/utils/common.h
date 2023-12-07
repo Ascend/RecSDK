@@ -82,6 +82,7 @@ namespace MxRec {
 
     constexpr int KEY_PROCESS_TIMEOUT = 120;
     constexpr int GET_BATCH_TIMEOUT = 300;
+    constexpr int EOS_TIMEOUT = 60;
 
     constexpr size_t DEFAULT_RANDOM_SEED = 10086;
     constexpr int INVALID_KEY_VALUE = -1;

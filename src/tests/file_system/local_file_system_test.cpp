@@ -28,3 +28,15 @@ TEST(LocalFileSystem, WriteAndReadFile)
     ASSERT_EQ(writeData.size() * sizeof(int64_t), res);
 }
 
+TEST(LocalFileSystem, WriteEmbedding)
+{
+    string filePath = "./write.data";
+    float p[5] = {1.1, 2.2, 3.3, 4.4, 5.5};
+    vector<float*> writeData = {p, p+1, p+2, p+3, p+4};
+
+    auto fileSystemHandler = make_unique<FileSystemHandler>();
+    auto fileSystemPtr = fileSystemHandler->Create(filePath);
+    ssize_t res = fileSystemPtr->Write(filePath, writeData, sizeof(float));
+
+    ASSERT_EQ(writeData.size() * sizeof(float), res);
+}

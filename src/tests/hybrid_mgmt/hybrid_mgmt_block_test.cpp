@@ -27,6 +27,7 @@ protected:
     {
         LOG_DEBUG("start initialize") ;
     }
+    int loop = 10;
 };
 
 TEST_F(HybridMgmtBlockTest, CheckAndDoBlock)
@@ -134,4 +135,17 @@ TEST_F(HybridMgmtBlockTest, CheckSaveEmbMapValid)
     ASSERT_EQ(status0, 0);
     ASSERT_EQ(status1, 1);
     ASSERT_EQ(status2, -1);
+}
+
+TEST_F(HybridMgmtBlockTest, CountPythonStep)
+{
+    hybridMgmtBlock = std::make_unique<HybridMgmtBlock>();
+
+    hybridMgmtBlock->pythonBatchId[0] = 1;
+    hybridMgmtBlock->loop[0] = 1;
+
+    hybridMgmtBlock->CountPythonStep(0, loop);
+
+    ASSERT_EQ(hybridMgmtBlock->pythonBatchId[0], loop + 1);
+    ASSERT_EQ(hybridMgmtBlock->loop[0], loop);
 }

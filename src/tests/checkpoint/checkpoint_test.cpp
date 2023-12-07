@@ -183,6 +183,14 @@ protected:
         }
     }
 
+    void SetKeyCountMap(absl::flat_hash_map<emb_key_t, size_t>& testKeyCountMap)
+    {
+        for (int64_t i { 0 }; i < hostVocabSize; ++i) {
+            testKeyCountMap[featMem] = i;
+            featMem++;
+        }
+    }
+
     void SetExcludeDDRKeyFreqMap(unordered_map<emb_key_t, freq_num_t>& testExcludeDDRKeyFreqMap)
     {
         for (int64_t i { 0 }; i < hostVocabSize; ++i) {
@@ -197,6 +205,15 @@ protected:
         for (const auto& testEmbInfo : testEmbInfos) {
             SetDDRKeyFreqMap(testDDRKeyFreqMap);
             testDDRKeyFreqMaps[testEmbInfo.name] = std::move(testDDRKeyFreqMap);
+        }
+    }
+
+    void SetKeyCountMaps(KeyCountMemT & testKeyCountMaps)
+    {
+        absl::flat_hash_map<emb_key_t, size_t> testKeyCountMap;
+        for (const auto& testEmbInfo : testEmbInfos) {
+            SetKeyCountMap(testKeyCountMap);
+            testKeyCountMaps[testEmbInfo.name] = std::move(testKeyCountMap);
         }
     }
 
@@ -534,3 +551,25 @@ TEST_F(CheckpointTest, KeyFreqMaps)
     }
 }
 
+TEST_F(CheckpointTest, KeyCountMapCkpt)
+{
+    KeyCountMemT testKeyCountMaps;
+    KeyCountMemT validKeyCountMaps;
+
+    SetEmbInfo();
+    SetKeyCountMaps(testKeyCountMaps);
+
+    validKeyCountMaps = testKeyCountMaps;
+
+    CkptData testSaveData;
+    CkptData validLoadData;
+    CkptData testLoadData;
+
+    testSaveData.keyCountMap = std::move(testKeyCountMaps);
+    validLoadData.keyCountMap = std::move(validKeyCountMaps);
+
+    Checkpoint testCkpt;
+    testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
+    testCkpt.LoadModel(testPath, testLoadData, rankInfo, testEmbInfos, { CkptFeatureType::KEY_COUNT_MAP });
+    EXPECT_EQ(validLoadData.keyCountMap.size(), testLoadData.keyCountMap.size());
+}
