@@ -30,6 +30,9 @@ namespace MxRec {
         int pythonBatchId[2] = {0, 0};
         // readEmbed算子侧将要处理的batch id
         int readEmbedBatchId[2] = {0, 0};
+
+        int loop[2] = {1, 1};
+
         bool isRunning = true;
 
         ~HybridMgmtBlock();

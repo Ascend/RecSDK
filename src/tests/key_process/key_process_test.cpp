@@ -304,6 +304,27 @@ TEST_F(KeyProcessTest, GetScAll)
     ASSERT_THAT(scAll, ElementsAreArray(expectScAll));
 }
 
+TEST_F(KeyProcessTest, HandleRankExitScene)
+{
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
+    ASSERT_EQ(process.isRunning, true);
+    // 仅用于集合通信获取sendCount信息，构造EmbBatchT对象即可，通道传0，不用构造batch数据
+    EmbBatchT tempBatch;
+    tempBatch.channel = 0;
+    unique_ptr<EmbBatchT> batch = std::make_unique<EmbBatchT>(tempBatch);
+
+    std::unique_ptr<HybridMgmtBlock> hybridMgmtBlock = std::make_unique<HybridMgmtBlock>();
+    hybridMgmtBlock->pythonBatchId[0] = 1;
+    hybridMgmtBlock->hybridBatchId[0] = 1;
+    hybridMgmtBlock->loop[0] = 1;
+
+    try {
+        process.HandleRankExitScene(0, batch, 0);
+    } catch (EndRunExit e) {
+        LOG_INFO(KEY_PROCESS "success");
+    }
+}
+
 TEST_F(KeyProcessTest, GetScAllForUnique)
 {
     vector<int> keyScLocal(worldSize, worldRank + 1); // 用worldRank+1初始化发送数据量

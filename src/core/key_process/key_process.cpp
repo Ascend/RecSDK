@@ -1076,6 +1076,22 @@ void KeyProcess::HandleRankExitScene(int commId, const unique_ptr<EmbBatchT> &ba
                      batch->channel, commId, batch->batchId);
             throw EndRunExit("has send acl eos info, thread will exit.");
         }
+        LOG_INFO("channelId:{} batchId:{}, GetScAll HandleRankExitScene eos.", batch->channel, batch->batchId);
+
+        int timeout = 0;
+        HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
+        bool isExit = hybridMgmtBlock->pythonBatchId[batch->channel] <
+                (hybridMgmtBlock->hybridBatchId[batch->channel] - hybridMgmtBlock->loop[batch->channel] + 1);
+        while (isExit && timeout < EOS_TIMEOUT) {
+            LOG_DEBUG("wait until hybridBatchId equal pythonBatchId before SendEos, channelId:{}, pyBatchId:{}, "
+                      "mgmtBatchId:{}", batch->channel, hybridMgmtBlock->pythonBatchId[batch->channel],
+                      hybridMgmtBlock->hybridBatchId[batch->channel]);
+            this_thread::sleep_for(seconds(1));
+            isExit = hybridMgmtBlock->pythonBatchId[batch->channel] <
+                     (hybridMgmtBlock->hybridBatchId[batch->channel] - hybridMgmtBlock->loop[batch->channel] + 1);
+            timeout ++;
+        }
+
         SendEos(batch->batchId, batch->channel);
         isNeedExit[batch->channel] = true;
         throw EndRunExit("has SendEosInfo, GetScAll end, thread will exit.");
@@ -1267,11 +1283,13 @@ KeysT KeyProcess::GetLookupKeys(int batch, const string& embName, int channel)
             auto ret = GetInfo(lookupKeysList, batch, embName, channel);
             return get<KeysT>(ret);
         } catch (EmptyList&) {
-            unique_lock<mutex> lockGuard(destroyMutex);
+            unique_lock<mutex> lockEosGuard(eosMutex);
             // readEmbKey真实的次数是readEmbedBatchId减1
             int readEmbKeyBatchId = hybridMgmtBlock->readEmbedBatchId[channel] - 1;
             // 避免eos在keyProcess还未处理完数据时插队到通道前面
             if (isNeedSendEos[channel] && readEmbKeyBatchId < batch) {
+                LOG_INFO("channelId:{} batchId:{}, GetLookupKeys eos.", channel, batch);
+                unique_lock<mutex> lockDestroyGuard(destroyMutex);
                 SendEos(batch, channel);
                 return {};
             }
@@ -1368,16 +1386,16 @@ unique_ptr<vector<Tensor>> KeyProcess::GetInfoVec(int batch, const string& embNa
             storage.erase(it);
             return uTensor;
         } catch (EmptyList&) {
-            unique_lock<mutex> lockGuard(destroyMutex);
-            // readEmbKey真实的次数是readEmbedBatchId减1
-            int readEmbKeyBatchId = hybridMgmtBlock->readEmbedBatchId[channel] - 1;
-            // 避免eos在keyProcess还未处理完数据时插队到通道前面
-            if (isNeedSendEos[channel] && readEmbKeyBatchId < batch) {
+            unique_lock<mutex> lockEosGuard(eosMutex);
+            // 避免eos在keyProcess还未处理完数据时插队到通道前面, readEmbKey真实的次数是readEmbedBatchId减1
+            if (isNeedSendEos[channel] && (hybridMgmtBlock->readEmbedBatchId[channel] - 1) < batch) {
+                LOG_INFO("channelId:{} batchId:{}, GetInfoVec eos.", channel, batch);
+                unique_lock<mutex> lockDestroyGuard(destroyMutex);
                 SendEos(batch, channel);
                 return nullptr;
             }
             LOG_TRACE("getting info failed {}[{}], list is empty, and mgmt batchId: {}, readEmbKey batchId: {}.",
-                embName, channel, batch, readEmbKeyBatchId);
+                embName, channel, batch, (hybridMgmtBlock->readEmbedBatchId[channel] - 1));
             this_thread::sleep_for(1ms);
         } catch (WrongListTop&) {
             LOG_TRACE("getting info failed {}[{}]:{} wrong top", embName, channel, batch);
@@ -1552,7 +1570,7 @@ void KeyProcess::RecordKeyCountMap(const unique_ptr<EmbBatchT>& batch)
 
 void KeyProcess::SetEos(int status, int channelId)
 {
-    unique_lock<mutex> lockGuard(destroyMutex);
+    unique_lock<mutex> lockGuard(eosMutex);
     LOG_INFO("isNeedSendEos status is changed, before status:[{}], input status:{}, channel:[{}], ",
              isNeedSendEos[channelId], status, channelId);
     isNeedSendEos[channelId] = (status == 1);

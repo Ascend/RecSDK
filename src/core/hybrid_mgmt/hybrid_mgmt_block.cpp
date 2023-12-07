@@ -84,6 +84,7 @@ void HybridMgmtBlock::CountPythonStep(int channelId, int steps)
 {
     // 相应的通知计数
     pythonBatchId[channelId] += steps;
+    loop[channelId] = steps;
 }
 
 /// 检查是否进行了通道切换，检查当前的step是否合理

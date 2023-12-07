@@ -159,6 +159,7 @@ namespace MxRec {
         int mpiAllReduceSend[2] = {MPI_NORMAL_SEND_VALUE, MPI_NORMAL_SEND_VALUE};
 
         std::mutex destroyMutex;
+        std::mutex eosMutex;
         inline bool HasEmbName(const string& embName)
         {
             return embInfos.find(embName) != embInfos.end();
