@@ -1071,10 +1071,10 @@ void KeyProcess::HandleRankExitScene(int commId, const unique_ptr<EmbBatchT> &ba
 {
     if (receiveFlag < rankInfo.rankSize) {
         unique_lock<mutex> lockGuard(destroyMutex);
-        if (isNeedExit[batch->channel]) {
-            LOG_INFO("channelId:{} threadId:{} batchId:{}, has send acl eos info, thread will exit.",
+        if (isNeedExit[batch->channel] || !isRunning) {
+            LOG_INFO("channelId:{} threadId:{} batchId:{}, no need send acl eos, thread will exit.",
                      batch->channel, commId, batch->batchId);
-            throw EndRunExit("has send acl eos info, thread will exit.");
+            throw EndRunExit("no need send acl eos, thread will exit.");
         }
         LOG_INFO("channelId:{} batchId:{}, GetScAll HandleRankExitScene eos.", batch->channel, batch->batchId);
 
@@ -1093,7 +1093,6 @@ void KeyProcess::HandleRankExitScene(int commId, const unique_ptr<EmbBatchT> &ba
         }
 
         SendEos(batch->batchId, batch->channel);
-        isNeedExit[batch->channel] = true;
         throw EndRunExit("has SendEosInfo, GetScAll end, thread will exit.");
     }
 }
