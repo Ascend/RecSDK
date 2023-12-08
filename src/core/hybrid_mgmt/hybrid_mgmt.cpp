@@ -534,13 +534,16 @@ void HybridMgmt::Destroy()
     }
     // 先发送停止信号mgmt，先停止新lookup查询, 解除queue的限制防止卡住
     isRunning = false;
-    // 获取锁 避免KeyProcess中手动发送结束信息时通道关闭
-    std::unique_lock<std::mutex> lockGuard(KEY_PROCESS_INSTANCE->destroyMutex);
-    // 先发送停止信号给KEY_PROCESS_INSTANCE，用于停止查询中lookup卡住状态
-    KEY_PROCESS_INSTANCE->isRunning = false;
-    // 停止hdTransfer，用于停止mgmt的recv中卡住状态
-    hdTransfer->Destroy();
-    LOG_DEBUG(MGMT + "destroy hdTransfer end.");
+
+    {
+        // 获取锁 避免KeyProcess中手动发送结束信息时通道关闭
+        std::unique_lock<std::mutex> lockGuard(KEY_PROCESS_INSTANCE->destroyMutex);
+        // 先发送停止信号给KEY_PROCESS_INSTANCE，用于停止查询中lookup卡住状态
+        KEY_PROCESS_INSTANCE->isRunning = false;
+        // 停止hdTransfer，用于停止mgmt的recv中卡住状态
+        hdTransfer->Destroy();
+        LOG_DEBUG(MGMT + "destroy hdTransfer end.");
+    }
 
     hybridMgmtBlock->Destroy();
     for (auto& t : procThreads) {
