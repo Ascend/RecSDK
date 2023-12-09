@@ -1089,7 +1089,7 @@ void KeyProcess::HandleRankExitScene(int commId, const unique_ptr<EmbBatchT> &ba
             this_thread::sleep_for(seconds(1));
             isExit = hybridMgmtBlock->pythonBatchId[batch->channel] <
                      (hybridMgmtBlock->hybridBatchId[batch->channel] - hybridMgmtBlock->loop[batch->channel] + 1);
-            timeout ++;
+            timeout++;
         }
 
         SendEos(batch->batchId, batch->channel);
