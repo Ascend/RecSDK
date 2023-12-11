@@ -65,8 +65,6 @@ class Saver(object):
         self.save_op_dict = defaultdict(dict)
         self.restore_fetch_list = []
         self.placeholder_dict = defaultdict(dict)
-        # save_easy_mode : only save the embedding and key data of sparse tables
-        self.save_easy_mode = (global_env.save_easy == Flag.TRUE.value)
         self._last_checkponts = []
         self.build()
 
@@ -90,8 +88,7 @@ class Saver(object):
     @performance("Save")
     def save(self, sess, save_path="model", global_step=None):
         """
-        Save sparse tables. For local save, both save_easy mode and normal mode is supported.
-        For easy_save mode, checkpoint is saved in under format:
+        Save sparse tables. checkpoint is saved in under format:
         ./rank_id/HashTable/HBM/embed_table_name/key/xxx.data
         ./rank_id/HashTable/HBM/embed_table_name/key/xxx.attribute
         ./rank_id/HashTable/HBM/embed_table_name/embedding/xxx.data
