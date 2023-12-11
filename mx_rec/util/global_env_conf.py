@@ -16,7 +16,6 @@ from mx_rec.validator.validator import para_checker_decorator, OptionValidator, 
 @dataclass
 class RecEnv:
     mxrec_log_level: str
-    save_easy: str
     rank_table_file: str
     ascend_visible_devices: str
     cm_chief_device: str
@@ -43,7 +42,6 @@ def get_global_env_conf() -> RecEnv:
     """
     rec_env = RecEnv(
         mxrec_log_level=os.getenv(EnvOption.MXREC_LOG_LEVEL.value, RecPyLogLevel.INFO.value),
-        save_easy=os.getenv(EnvOption.SAVE_EASY.value, Flag.FALSE.value),
         rank_table_file=os.getenv(EnvOption.RANK_TABLE_FILE.value, EMPTY_STR),
         ascend_visible_devices=os.getenv(EnvOption.ASCEND_VISIBLE_DEVICES.value),
         cm_chief_device=os.getenv(EnvOption.CM_CHIEF_DEVICE.value),
@@ -69,7 +67,6 @@ def get_global_env_conf() -> RecEnv:
 
 @para_checker_decorator(check_option_list=[
     ("mxrec_log_level", OptionValidator, {"options": [i.value for i in list(RecPyLogLevel)]}),
-    ("save_easy", OptionValidator, {"options": [i.value for i in list(Flag)]}),
     ("rank_table_file", DirectoryValidator, {}, ["check_exists_if_not_empty"]),
     ("tf_device", OptionValidator, {"options": [i.value for i in list(TFDevice)]}),
     ("apply_gradients_strategy", OptionValidator, {"options": [i.value for i in list(ApplyGradientsStrategy)]}),
