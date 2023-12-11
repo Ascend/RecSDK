@@ -1,6 +1,6 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2021-2022. All rights reserved.
- * Description: common module
+ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ * Description: log test
  * Author: MindX SDK
  * Create: 2023
  * History: NA
