@@ -9,7 +9,7 @@
 #include <gtest/gtest.h>
 
 #include "emb_hashmap/emb_hashmap.h"
-
+#include "hybrid_mgmt/hybrid_mgmt_block.h"
 #include "ssd_cache/cache_manager.h"
 #include "utils/common.h"
 
@@ -108,4 +108,68 @@ TEST(EmbHashMap, TestFindOffset)
     ASSERT_EQ(ddrKeyMap.Get(1), NEGATIVE_INT_1);
     Logger::SetLevel(logLevelTemp); // 恢复日志级别
     LOG_INFO("test TestFindOffset end.");
+}
+
+TEST(EmbHashMap, TESTGetHashMaps)
+{
+    string embTableName = "table1";
+    EmbHashMap hostHashMaps;
+    RankInfo rankInfo;
+    auto embInfo = GetEmbInfoList();
+    hostHashMaps.Init(rankInfo, embInfo, false);
+    CacheManager cacheManager;
+    cacheManager.Init(nullptr, embInfo);
+    hostHashMaps.isSSDEnabled = true;
+    hostHashMaps.cacheManager = &cacheManager;
+    int channelId = 0;
+    size_t currentBatchId = 0;
+    size_t keepBatchId = 0;
+    int opTimes = 0;
+
+    vector<emb_key_t> keys = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+    hostHashMaps.FindOffset(embTableName, keys, currentBatchId++, keepBatchId++, channelId);
+    RefreshSwapFreqInfoAndPrint(hostHashMaps, embTableName, opTimes++);
+    auto testEmbHashMap = hostHashMaps.GetHashMaps().at(embTableName);
+    hostHashMaps.embHashMaps.at(embTableName).maxOffsetOld = testEmbHashMap.maxOffset;
+    // 增加10个key, offset长度变为10
+    ASSERT_EQ(testEmbHashMap.maxOffset, 10);
+
+    keys = {11, 12, 13, 14, 15, 16, 17, 18, 19, 20};
+    hostHashMaps.FindOffset(embTableName, keys, currentBatchId++, keepBatchId++, channelId);
+    RefreshSwapFreqInfoAndPrint(hostHashMaps, embTableName, opTimes++);
+    testEmbHashMap = hostHashMaps.GetHashMaps().at(embTableName);
+    // 再增加10个key，offset变为20
+    ASSERT_EQ(testEmbHashMap.maxOffset, 20);
+
+    HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
+    hybridMgmtBlock->lastRunChannelId = channelId;
+    hybridMgmtBlock->hybridBatchId[0] = 1;
+    testEmbHashMap = hostHashMaps.GetHashMaps().at(embTableName);
+    // 回退一步，offset变回10
+    ASSERT_EQ(testEmbHashMap.maxOffset, 10);
+
+    hybridMgmtBlock->hybridBatchId[0] = 2;
+    // 回退2步，抛出异常
+    ASSERT_THROW(hostHashMaps.GetHashMaps(), HybridMgmtBlockingException);
+    hybridMgmtBlock->hybridBatchId[0] = 0;
+
+    keys = {10, 11};
+    hostHashMaps.EvictDeleteEmb(embTableName, keys);
+    testEmbHashMap = hostHashMaps.GetHashMaps().at(embTableName);
+    // 淘汰1个hbm key和1个ddr key，表中无法查找到该key
+    ASSERT_EQ(testEmbHashMap.hostHashMap.find(10), testEmbHashMap.hostHashMap.end());
+    ASSERT_EQ(testEmbHashMap.hostHashMap.find(11), testEmbHashMap.hostHashMap.end());
+    ASSERT_EQ(cacheManager.excludeDDRKeyCountMap[embTableName][11], 0);
+    ASSERT_EQ(cacheManager.ddrKeyFreqMap[embTableName].Get(10), -1);
+
+    keys = {1, 2};
+    hostHashMaps.FindOffset(embTableName, keys, currentBatchId++, keepBatchId++, channelId);
+    RefreshSwapFreqInfoAndPrint(hostHashMaps, embTableName, opTimes++);
+    testEmbHashMap = hostHashMaps.GetHashMaps().at(embTableName);
+    // 从ddr中换回2个key到hbm，交换变量长度为2
+    ASSERT_EQ(testEmbHashMap.ddr2HbmKeys.size(), 2);
+    hostHashMaps.ClearLookupAndSwapOffset(hostHashMaps.embHashMaps.at(embTableName));
+    testEmbHashMap = hostHashMaps.GetHashMaps().at(embTableName);
+    // 清理后，交换变量长度为0
+    ASSERT_EQ(testEmbHashMap.ddr2HbmKeys.size(), 0);
 }
