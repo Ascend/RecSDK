@@ -42,14 +42,18 @@ class FeatureSpec:
     ])
     def __init__(self, name: str,
                  table_name: Optional[str] = None,
-                 index_key: Optional[str] = None,
+                 index_key: Union[None, int, str] = None,
                  access_threshold: Optional[int] = None,
                  eviction_threshold: Optional[int] = None, is_timestamp: Optional[bool] = None,
-                 batch_size: Optional[int] = None, faae_coefficient: int = 1):
+                 batch_size: Optional[int] = None, faae_coefficient: Optional[int] = 1):
         feature_spec_global_id.increase()
         spec_name = name + f"_{feature_spec_global_id}"
         self.name = spec_name
-        self._index_key = index_key if index_key else name
+        # 防止当index_key=0时，判断条件被误判为False
+        if isinstance(index_key, int):
+            self._index_key = index_key
+        else:
+            self._index_key = index_key if index_key else name
         self._table_name = fix_invalid_table_name(table_name if table_name else name)
         self._feat_cnt = None
         self._access_threshold = access_threshold
