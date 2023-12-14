@@ -9,11 +9,9 @@ import tensorflow as tf
 from mx_rec.util.initialize import get_host_pipeline_ops, get_training_mode_channel_id, get_use_static, get_modify_graph
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.merge_table import find_dangling_table, should_skip
-from mx_rec.validator.validator import para_checker_decorator, ValueCompareValidator, ClassValidator, \
-    OptionalIntValidator
+from mx_rec.validator.validator import para_checker_decorator, ValueCompareValidator, ClassValidator
 from mx_rec.util.log import logger
 from mx_rec.util.normalization import fix_invalid_table_name
-from mx_rec.constants.constants import MAX_INT32
 
 
 @para_checker_decorator(check_option_list=[
@@ -71,7 +69,6 @@ def create_asc_insert_func_with_acg(args_index_list, table_names, **kwargs):
 
 
 def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, table_names=None, **kwargs):
-
     is_training = kwargs.get("is_training", True)
     dump_graph = kwargs.get("dump_graph", False)
 
@@ -79,7 +76,7 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, table_na
         if not isinstance(tgt_key_specs, (list, tuple)):
             tgt_key_specs = [tgt_key_specs]
 
-        def insert_fn_for_feature_specs(*args):
+        def insert_fn_for_feature_specs(*args):  # pragma: no cover
             data_src = args
             if len(args) == 1:
                 data_src = args[0]
@@ -109,7 +106,7 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, table_na
         logger.info("In insert found dangling table(s): %s which does not need to be provided to the EmbInfo.",
                     dangling_tables)
 
-        def insert_fn_for_arg_indexes(*args):
+        def insert_fn_for_arg_indexes(*args):  # pragma: no cover
             insert_tensors = get_target_tensors_with_args_indexes(args_index_list)
 
             logger.debug("do_insert without spec for %s", table_names)
@@ -193,18 +190,18 @@ def merge_feature_id_request(feature_id_list, split_list, table_name_list):
     logger.debug("merge request from %s %s to %s %s", table_name_list, split_list,
                  output_table_name_list, output_split_list)
 
-    list_set = {
+    output_dict = {
         'output_feature_id_list': output_feature_id_list,
         'output_split_list': output_split_list,
         'output_table_name_list': output_table_name_list,
         'output_tensorshape_split_list': output_tensorshape_split_list,
     }
-    return list_set
+    return output_dict
 
 
 def send_feature_id_request_async(feature_id_list, split_list, table_name_list, input_dict):
-    is_training = input_dict["is_training"]
-    timestamp = input_dict["timestamp"]
+    is_training = input_dict.get("is_training")
+    timestamp = input_dict.get("timestamp")
     host_pipeline_ops = get_host_pipeline_ops()
     use_static = get_use_static()
     timestamp_feature_id = []
@@ -213,11 +210,11 @@ def send_feature_id_request_async(feature_id_list, split_list, table_name_list, 
         timestamp_feature_id = feature_id_list[:1]
         feature_id_list = feature_id_list[1:]
 
-    list_set = merge_feature_id_request(feature_id_list, split_list, table_name_list)
-    feature_id_list = list_set.get("output_feature_id_list")
-    split_list = list_set.get("output_split_list")
-    table_name_list = list_set.get("output_table_name_list")
-    tensorshape_split_list = list_set.get("output_tensorshape_split_list")
+    merged_dict = merge_feature_id_request(feature_id_list, split_list, table_name_list)
+    feature_id_list = merged_dict.get("output_feature_id_list")
+    split_list = merged_dict.get("output_split_list")
+    table_name_list = merged_dict.get("output_table_name_list")
+    tensorshape_split_list = merged_dict.get("output_tensorshape_split_list")
 
     # check training mode order and ensure channel id
     channel_id = get_training_mode_channel_id(is_training=is_training)
@@ -242,11 +239,11 @@ def send_feature_id_request_async(feature_id_list, split_list, table_name_list, 
 
 
 def do_insert(args, insert_tensors, splits, table_names, input_dict):
-    is_training = input_dict["is_training"]
-    dump_graph = input_dict["dump_graph"]
-    timestamp = input_dict["timestamp"]
-    feature_spec_names = input_dict["feature_spec_names"]
-    auto_change_graph = input_dict["auto_change_graph"]
+    is_training = input_dict.get("is_training")
+    dump_graph = input_dict.get("dump_graph")
+    timestamp = input_dict.get("timestamp")
+    feature_spec_names = input_dict.get("feature_spec_names")
+    auto_change_graph = input_dict.get("auto_change_graph")
 
     pipeline_op = \
         send_feature_id_request_async(feature_id_list=insert_tensors,
@@ -272,7 +269,10 @@ def export_read_emb_key_v2_op(args, pipeline_op):
         raise ValueError("The length of args is less than 1.")
     if isinstance(origin_batch[0], dict):
         output_batch = origin_batch[0]
-        valid_key = get_valid_op_key(output_batch)
+        # 找到output_batch中字典序最大的key
+        sorted_keys = sorted(output_batch)
+        valid_key = f"{sorted_keys[-1]}_read_emb_key"
+        # 将readEmbKey算子的输出插入到batch中，当dataset每次getnext时，就会执行readEmbKey算子获取输出
         output_batch[valid_key] = pipeline_op
 
     elif len(origin_batch) == 1 and isinstance(origin_batch[0], tf.Tensor):
@@ -301,17 +301,7 @@ def export_read_emb_key_v2_op(args, pipeline_op):
     return output_batch
 
 
-def get_valid_op_key(batch_dict: dict) -> str:
-    if not isinstance(batch_dict, dict):
-        raise TypeError(f"batch_dict must be a dict")
-
-    sorted_keys = sorted(batch_dict)
-    valid_key = f"{sorted_keys[-1]}_read_emb_key"
-
-    return valid_key
-
-
-def get_target_tensors_with_args_indexes(args_index_list):
+def get_target_tensors_with_args_indexes(args_index_list):  # pragma: no cover
     insert_tensors = []
     graph = tf.compat.v1.get_default_graph()
     for index in args_index_list:
