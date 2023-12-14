@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
+from typing import Optional
+
 import tensorflow as tf
 
 import mxrec_pybind
@@ -15,16 +17,16 @@ from mx_rec.util.log import logger
 def get_restore_vector(config):
     logger.debug('Channel %s_restore_%s was built for getnext', config.get("table_name"), config.get("channel_id"))
     if config.get("skip_emb_transfer"):
-        if not isinstance(config.get("emb_size"), int) or config.get("emb_size") < 1:
-            raise TypeError(f"emb_size must be a int")
+        if not isinstance(config.get("emb_size"), int):
+            raise TypeError("emb_size must be a int")
         if config.get("emb_size") < 1:
-            raise ValueError(f"emb_size is less than 1")
+            raise ValueError("emb_size is less than 1")
         emb_size = config.get("emb_size")
     else:
-        if not isinstance(config.get("ext_emb_size"), int) or config.get("ext_emb_size") < 1:
-            raise TypeError(f"ext_emb_size must be a int")
+        if not isinstance(config.get("ext_emb_size"), int):
+            raise TypeError("ext_emb_size must be a int")
         if config.get("ext_emb_size") < 1:
-            raise ValueError(f"ext_emb_size is less than 1")
+            raise ValueError("ext_emb_size is less than 1")
         emb_size = config.get("ext_emb_size")
 
     use_hot = config.get("use_hot")
@@ -117,7 +119,7 @@ def get_unique_keys(max_lookup_vec_size: int, config: dict) -> tf.Tensor:
         return unique_keys
 
 
-def get_all2all_args(use_static: bool, config: dict) -> list:
+def get_all2all_args(use_static: bool, config: dict) -> Optional[list]:
     """
     Get all2all parameters for dynamic condition
     :param use_static: dynamic or static

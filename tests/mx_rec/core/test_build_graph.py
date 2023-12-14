@@ -1,230 +1,491 @@
 #!/usr/bin/env python3
 # coding: UTF-8
 # Copyright (c) Huawei Technologies Co., Ltd. 2022. All rights reserved.
-import os
-import sys
+
 import unittest
-from dataclasses import dataclass
 from unittest import mock
 
 import tensorflow as tf
 
-from tests.mx_rec.core.mxrec_pybind_mock import MxRecPybindMock
-from tests.mx_rec.core.initializer_mock import InitializerMock
-from mx_rec.util.tf_version_adapter import npu_ops
-
-sys.modules['mxrec_pybind'] = MxRecPybindMock
-sys.modules['mx_rec.util.initialize'] = InitializerMock
-
-os.environ[
-    "HOST_PIPELINE_OPS_LIB_PATH"] = f"{os.getenv('so_path')}/libasc/libasc_ops.so"
+from mx_rec.util.global_env_conf import global_env
 
 
-@dataclass
-class InputConfig:
-    batch_size: int
-    feat_cnt: int
-    send_count: int
-    rank_size: int
-    channel_id: int
-    table_name: str
-    skip_emb_transfer: bool
-    ext_emb_size: int
-    emb_size: int
-    use_hot: bool
-    device_id: int
-    use_dynamic_expansion: bool
-
-
-class TestBuildGraph(unittest.TestCase):
+class TestGetRestoreVectorFunc(unittest.TestCase):
     """
-    Test Suite for Exception Checkpoint.
+    Test for 'mx_rec.core.asc.build_graph.get_restore_vector'.
     """
 
     def setUp(self):
-        """
-        准备步骤
-        :return:无
-        """
-        super().setUp()
+        # 默认动态扩容、hot emb、HBM
+        self.config = dict(table_name="test_table", channel_id=0, skip_emb_transfer=True, emb_size=8, ext_emb_size=8,
+                           feat_cnt=8, batch_size=32, rank_size=8, send_count=1, device_id=0,
+                           use_hot=True, use_dynamic_expansion=True)
 
     def tearDown(self):
+        # 恢复config
+        self.config = dict(table_name="test_table", channel_id=0, skip_emb_transfer=True, emb_size=8, ext_emb_size=8,
+                           feat_cnt=8, batch_size=32, rank_size=8, send_count=1, device_id=0,
+                           use_hot=True, use_dynamic_expansion=True)
+
+    def test_get_restore_vector_case1(self):
         """
-        销毁步骤
-        :return: 无
+        case1: HBM，emb_size不为int，抛出异常
+
         """
-        super().tearDown()
 
-    @staticmethod
-    def get_next_mock():
-        return tf.constant(value=1, name="inference/asecnd_lookup_one_big_embedding/all2all/mul", shape=[8, 8],
-                           dtype=tf.int64)
-
-    @staticmethod
-    def get_id_offsets_mock():
-        return tf.constant(value=1, shape=[270412, 8], dtype=tf.float32, name="inference/gather_for_id_offsets"), [], 0
-
-    @staticmethod
-    def get_all2all_mock():
-        return tf.constant(value=1, shape=[8, ], dtype=tf.int64, name="mul")
-
-    @staticmethod
-    def get_restore_vector_mock():
-        return [tf.constant(value=1, shape=[2908800], dtype=tf.int32, name="aicpu_getnext_restore_vector/GetNext"),
-                None]
-
-    @staticmethod
-    def get_input_config(input_config_init: InputConfig):
-        batch_size = input_config_init.batch_size
-        feat_cnt = input_config_init.feat_cnt
-        send_count = input_config_init.send_count
-        rank_size = input_config_init.rank_size
-        channel_id = input_config_init.channel_id
-        table_name = input_config_init.table_name
-        skip_emb_transfer = input_config_init.skip_emb_transfer
-        ext_emb_size = input_config_init.ext_emb_size
-        emb_size = input_config_init.emb_size
-        use_hot = input_config_init.use_hot
-        device_id = input_config_init.device_id
-        use_dynamic_expansion = input_config_init.use_dynamic_expansion
-
-        input_config = {'batch_size': batch_size,
-                        'feat_cnt': feat_cnt,
-                        'send_count': send_count,
-                        'rank_size': rank_size,
-                        'channel_id': channel_id,
-                        'table_name': table_name,
-                        'skip_emb_transfer': skip_emb_transfer,
-                        'ext_emb_size': ext_emb_size,
-                        'emb_size': emb_size,
-                        'use_hot': use_hot,
-                        'device_id': device_id,
-                        'use_dynamic_expansion': use_dynamic_expansion}
-        return input_config
-
-    @staticmethod
-    def get_input_table():
-        input_table = tf.Variable(tf.zeros([875000, 8]), name="inference/one_ascend_hash_embedding:0",
-                                  dtype=tf.float32)
-        return input_table
-
-    @mock.patch('npu_bridge.estimator.npu_ops')
-    @mock.patch("npu_bridge.hccl.hccl_ops")
-    @mock.patch("npu_bridge.estimator.npu.npu_hook.NPUCheckpointSaverHook")
-    def test_get_restore_vector_use_hot(self, tf1_npu_ops_mock, tf1_hccl_ops_mock,
-                                        tf1_save_mock):
         from mx_rec.core.asc.build_graph import get_restore_vector
-        tf1_npu_ops_mock.return_value = None
-        tf1_hccl_ops_mock.return_value = None
-        tf1_save_mock.return_value = None
-        input_config_instance = InputConfig(9600, 1, None, 8, 0, "one_ascend_hash_embedding", True, 8, "8", True, 6,
-                                            False)
-        input_config = self.get_input_config(input_config_instance)
-        try:
-            get_restore_vector(input_config)
-        except TypeError as exp:
-            self.assertEqual(type(exp), TypeError)
-        else:
-            self.fail("TypeError not raised.")
 
-    @mock.patch("npu_bridge.hccl.hccl_ops")
-    @mock.patch('npu_bridge.estimator.npu_ops')
-    @mock.patch("npu_bridge.estimator.npu.npu_hook.NPUCheckpointSaverHook")
-    def test_get_restore_vector_emb_size_value_error(self, tf1_hccl_ops_mock, tf1_npu_ops_mock,
-                                                     tf1_save_mock):
+        self.config["emb_size"] = "xxx"
+        with self.assertRaises(TypeError):
+            get_restore_vector(self.config)
+
+    def test_get_restore_vector_case2(self):
+        """
+        case2: HBM，emb_size小于1，抛出异常
+        """
+
         from mx_rec.core.asc.build_graph import get_restore_vector
-        tf1_save_mock.return_value = None
-        tf1_npu_ops_mock.return_value = None
-        tf1_hccl_ops_mock.return_value = None
-        input_config_instance = InputConfig(9600, 1, None, 8, 0, "one_ascend_hash_embedding", True, 8, -1, True, 6,
-                                            False)
-        input_config = self.get_input_config(input_config_instance)
-        try:
-            get_restore_vector(input_config)
-        except TypeError as exp:
-            self.assertEqual(type(exp), TypeError)
-        else:
-            self.fail("ValueError not raised.")
 
-    @mock.patch('npu_bridge.estimator.npu_ops')
-    @mock.patch("npu_bridge.hccl.hccl_ops")
-    @mock.patch("npu_bridge.estimator.npu.npu_hook.NPUCheckpointSaverHook")
-    def test_get_restore_vector_ext_emb_size_type_error(self, tf1_npu_ops_mock, tf1_hccl_ops_mock,
-                                                        tf1_save_mock):
+        self.config["emb_size"] = 0
+        with self.assertRaises(ValueError):
+            get_restore_vector(self.config)
+
+    def test_get_restore_vector_case3(self):
+        """
+        case3: 非HBM，ext_emb_size不为int，抛出异常
+        """
+
         from mx_rec.core.asc.build_graph import get_restore_vector
-        tf1_npu_ops_mock.return_value = None
-        tf1_hccl_ops_mock.return_value = None
-        tf1_save_mock.return_value = None
-        input_config_instance = InputConfig(9600, 1, None, 8, 0, "one_ascend_hash_embedding", False, "8", 8, True, 6,
-                                            False)
-        input_config = self.get_input_config(input_config_instance)
-        try:
-            get_restore_vector(input_config)
-        except TypeError as exp:
-            self.assertEqual(type(exp), TypeError)
-        else:
-            self.fail("TypeError not raised.")
 
-    @mock.patch('npu_bridge.estimator.npu_ops')
-    @mock.patch("npu_bridge.hccl.hccl_ops")
-    @mock.patch("npu_bridge.estimator.npu.npu_hook.NPUCheckpointSaverHook")
-    def test_get_restore_vector_ext_emb_size_value_error(self, tf1_npu_ops_mock, tf1_hccl_ops_mock,
-                                                         tf1_save_mock):
+        self.config["skip_emb_transfer"] = False
+        self.config["ext_emb_size"] = "xxx"
+        with self.assertRaises(TypeError):
+            get_restore_vector(self.config)
+
+    def test_get_restore_vector_case4(self):
+        """
+        case4: 非HBM，ext_emb_size小于1，抛出异常
+        """
+
         from mx_rec.core.asc.build_graph import get_restore_vector
-        tf1_npu_ops_mock.return_value = None
-        tf1_hccl_ops_mock.return_value = None
-        tf1_save_mock.return_value = None
-        input_config_instance = InputConfig(9600, 1, None, 8, 0, "one_ascend_hash_embedding", False, -1, 8, True, 6,
-                                            False)
-        input_config = self.get_input_config(input_config_instance)
-        try:
-            get_restore_vector(input_config)
-        except TypeError as exp:
-            self.assertEqual(type(exp), TypeError)
-        else:
-            self.fail("ValueError not raised.")
 
-    @mock.patch("npu_bridge.hccl.hccl_ops")
-    @mock.patch("npu_bridge.estimator.npu.npu_hook.NPUCheckpointSaverHook")
-    def test_get_id_offsets(self, tf1_hccl_ops_mock,
-                            tf1_save_mock):
-        with mock.patch.object(npu_ops, "gen_npu_ops") as mock_npu_ops:
-            from mx_rec.core.asc.build_graph import get_id_offsets
-            id_offset_mock = tf.constant(value=1, shape=[270412, 8], dtype=tf.float32,
-                                         name="inference/gather_for_id_offsets")
-            mock_npu_ops.get_next.return_value = [id_offset_mock]
-            tf1_hccl_ops_mock.return_value = None
-            tf1_save_mock.return_value = None
-            input_config_instance = InputConfig(9600, 1, None, 8, 0, "one_ascend_hash_embedding", True, 8, 8, True, 6,
-                                                False)
-            input_config = self.get_input_config(input_config_instance)
-            max_lookup_vec_size = None
-            res_id_offsets = get_id_offsets(max_lookup_vec_size, input_config)
-            self.assertEqual(res_id_offsets[0], id_offset_mock)
+        self.config["skip_emb_transfer"] = False
+        self.config["ext_emb_size"] = 0
+        with self.assertRaises(ValueError):
+            get_restore_vector(self.config)
 
-    @mock.patch("npu_bridge.hccl.hccl_ops")
-    @mock.patch("npu_bridge.estimator.npu.npu_hook.NPUCheckpointSaverHook")
-    def test_get_all2all_args(self, tf1_hccl_ops_mock,
-                              tf1_save_mock):
-        with mock.patch.object(npu_ops, "gen_npu_ops") as mock_npu_ops:
-            from mx_rec.core.asc.build_graph import get_all2all_args
-            all2all_mock = tf.constant(
-                value=1,
-                name='mul',
-                shape=[8, 8], dtype=tf.int64)
-            mock_npu_ops.get_next.return_value = all2all_mock
-            tf1_hccl_ops_mock.return_value = None
-            tf1_save_mock.return_value = None
-            input_config_instance = InputConfig(9600, 1, None, 8, 0, "one_ascend_hash_embedding", True, 8, 8, True, 6,
-                                                False)
-            input_config = self.get_input_config(input_config_instance)
-            use_static = False
-            res_all2all_args = get_all2all_args(use_static, input_config)
-            self.assertEqual(res_all2all_args.shape, tf.constant(value=1, shape=[8, ], dtype=tf.int64,
-                                                                 name="mul").shape)
-            self.assertEqual(res_all2all_args.dtype, tf.constant(value=1, shape=[8, 8], dtype=tf.int64,
-                                                                 name="mul").dtype)
+    @mock.patch.multiple("mx_rec.core.asc.build_graph",
+                         get_use_static=mock.MagicMock(return_value=True))
+    @mock.patch("mx_rec.core.asc.build_graph.mxrec_pybind.get_ub_hot_size")
+    @mock.patch("mx_rec.core.asc.build_graph.npu_ops.gen_npu_ops.get_next")
+    def test_get_restore_vector_case5(self, mock_get_next, mock_get_ub_hot_size):
+        """
+        case5: HBM，静态shape，hot emb
+        """
 
+        from mx_rec.core.asc.build_graph import get_restore_vector
+
+        with tf.Graph().as_default():
+            mock_get_next.return_value = [0, 1]
+            mock_get_ub_hot_size.return_value = 8
+            restore_vector, hot_pos = get_restore_vector(self.config)
+            self.assertEqual(restore_vector, 0)
+            self.assertEqual(hot_pos, 1)
+
+    @mock.patch.multiple("mx_rec.core.asc.build_graph",
+                         get_use_static=mock.MagicMock(return_value=True))
+    @mock.patch("mx_rec.core.asc.build_graph.mxrec_pybind.get_ub_hot_size")
+    @mock.patch("mx_rec.core.asc.build_graph.npu_ops.gen_npu_ops.get_next")
+    def test_get_restore_vector_case6(self, mock_get_next, mock_get_ub_hot_size):
+        """
+        case6: HBM，动态shape，hot emb
+        """
+
+        from mx_rec.core.asc.build_graph import get_restore_vector
+
+        with tf.Graph().as_default():
+            mock_get_next.return_value = [0, 1]
+            mock_get_ub_hot_size.return_value = 8
+            restore_vector, hot_pos = get_restore_vector(self.config)
+            self.assertEqual(restore_vector, 0)
+            self.assertEqual(hot_pos, 1)
+
+    @mock.patch.multiple("mx_rec.core.asc.build_graph",
+                         get_use_static=mock.MagicMock(return_value=True))
+    @mock.patch("mx_rec.core.asc.build_graph.npu_ops.gen_npu_ops.get_next")
+    def test_get_restore_vector_case7(self, mock_get_next):
+        """
+        case7: HBM，静态shape
+        """
+
+        from mx_rec.core.asc.build_graph import get_restore_vector
+
+        with tf.Graph().as_default():
+            mock_get_next.return_value = [0]
+            self.config["use_hot"] = False
+            restore_vector, hot_pos = get_restore_vector(self.config)
+            self.assertEqual(restore_vector, 0)
+            self.assertIsNone(hot_pos)
+
+    @mock.patch.multiple("mx_rec.core.asc.build_graph",
+                         get_use_static=mock.MagicMock(return_value=False))
+    @mock.patch("mx_rec.core.asc.build_graph.npu_ops.gen_npu_ops.get_next")
+    def test_get_restore_vector_case8(self, mock_get_next):
+        """
+        case8: HBM，动态shape
+        """
+
+        from mx_rec.core.asc.build_graph import get_restore_vector
+
+        with tf.Graph().as_default():
+            mock_get_next.return_value = [0]
+            self.config["use_hot"] = False
+            restore_vector, hot_pos = get_restore_vector(self.config)
+            self.assertEqual(restore_vector, 0)
+            self.assertIsNone(hot_pos)
+
+    @mock.patch.multiple("mx_rec.core.asc.build_graph",
+                         get_use_static=mock.MagicMock(return_value=False))
+    @mock.patch("mx_rec.core.asc.build_graph.npu_ops.gen_npu_ops.get_next")
+    def test_get_restore_vector_case9(self, mock_get_next):
+        """
+        case9: 非HBM，动态shape
+        """
+
+        from mx_rec.core.asc.build_graph import get_restore_vector
+
+        with tf.Graph().as_default():
+            mock_get_next.return_value = [0]
+            self.config["skip_emb_transfer"] = False
+            self.config["use_hot"] = False
+            restore_vector, hot_pos = get_restore_vector(self.config)
+            self.assertEqual(restore_vector, 0)
+            self.assertIsNone(hot_pos)
+
+
+class TestGetIdOffsetsFunc(unittest.TestCase):
+    """
+    Test for 'mx_rec.core.asc.build_graph.get_id_offsets'.
+    """
+
+    def setUp(self):
+        # 默认动态扩容、hot emb、HBM
+        self.config = dict(table_name="test_table", channel_id=0, skip_emb_transfer=True, emb_size=8, ext_emb_size=8,
+                           feat_cnt=8, batch_size=32, rank_size=8, send_count=1, device_id=0,
+                           use_hot=True, use_dynamic_expansion=True)
+        self.max_lookup_vec_size = self.config.get("send_count") * self.config.get("rank_size")
+
+    def tearDown(self):
+        # 恢复config
+        self.config = dict(table_name="test_table", channel_id=0, skip_emb_transfer=True, emb_size=8, ext_emb_size=8,
+                           feat_cnt=8, batch_size=32, rank_size=8, send_count=1, device_id=0,
+                           use_hot=True, use_dynamic_expansion=True)
+
+    @mock.patch("mx_rec.core.asc.build_graph.npu_ops.gen_npu_ops.get_next")
+    def test_get_id_offsets_case1(self, mock_get_next):
+        """
+        case1: 动态扩容
+        """
+
+        from mx_rec.core.asc.build_graph import get_id_offsets
+
+        with tf.Graph().as_default():
+            mock_get_next.return_value = [0]
+            id_offsets, swap_pos, swap_len = get_id_offsets(self.max_lookup_vec_size, self.config)
+            self.assertEqual(id_offsets, 0)
+            self.assertListEqual(swap_pos, [])
+            self.assertEqual(swap_len, 0)
+
+    @mock.patch("mx_rec.core.asc.build_graph.npu_ops.gen_npu_ops.get_next")
+    def test_get_id_offsets_case2(self, mock_get_next):
+        """
+        case2: 非动态扩容，HBM
+        """
+
+        from mx_rec.core.asc.build_graph import get_id_offsets
+
+        with tf.Graph().as_default():
+            self.config["use_dynamic_expansion"] = False
+            mock_get_next.return_value = [0]
+            id_offsets, swap_pos, swap_len = get_id_offsets(self.max_lookup_vec_size, self.config)
+            self.assertEqual(id_offsets, 0)
+            self.assertListEqual(swap_pos, [])
+            self.assertEqual(swap_len, 0)
+
+
+class TestGetRestoreVectorSecondFunc(unittest.TestCase):
+    """
+    Test for 'mx_rec.core.asc.build_graph.get_restore_vector_second'.
+    """
+
+    def setUp(self):
+        # 默认动态扩容、hot emb、HBM
+        self.config = dict(table_name="test_table", channel_id=0, skip_emb_transfer=True, emb_size=8, ext_emb_size=8,
+                           feat_cnt=8, batch_size=32, rank_size=8, send_count=1, device_id=0,
+                           use_hot=True, use_dynamic_expansion=True)
+        self.max_lookup_vec_size = self.config.get("send_count") * self.config.get("rank_size")
+
+    def tearDown(self):
+        # 恢复config
+        self.config = dict(table_name="test_table", channel_id=0, skip_emb_transfer=True, emb_size=8, ext_emb_size=8,
+                           feat_cnt=8, batch_size=32, rank_size=8, send_count=1, device_id=0,
+                           use_hot=True, use_dynamic_expansion=True)
+
+    @mock.patch("mx_rec.core.asc.build_graph.npu_ops.gen_npu_ops.get_next")
+    def test_get_restore_vector_second(self, mock_get_next):
+        """
+        case: test get_restore_vector_second
+        """
+
+        from mx_rec.core.asc.build_graph import get_restore_vector_second
+
+        with tf.Graph().as_default():
+            mock_get_next.return_value = [0]
+            restore_vector_second = get_restore_vector_second(self.max_lookup_vec_size, self.config)
+            self.assertEqual(restore_vector_second, 0)
+
+
+class TestGetUniqueKeysFunc(unittest.TestCase):
+    """
+    Test for 'mx_rec.core.asc.build_graph.get_unique_keys'.
+    """
+
+    def setUp(self):
+        # 默认动态扩容、hot emb、HBM
+        self.config = dict(table_name="test_table", channel_id=0, skip_emb_transfer=True, emb_size=8, ext_emb_size=8,
+                           feat_cnt=8, batch_size=32, rank_size=8, send_count=1, device_id=0,
+                           use_hot=True, use_dynamic_expansion=True)
+        self.max_lookup_vec_size = self.config.get("send_count") * self.config.get("rank_size")
+
+    def tearDown(self):
+        # 恢复config
+        self.config = dict(table_name="test_table", channel_id=0, skip_emb_transfer=True, emb_size=8, ext_emb_size=8,
+                           feat_cnt=8, batch_size=32, rank_size=8, send_count=1, device_id=0,
+                           use_hot=True, use_dynamic_expansion=True)
+
+    @mock.patch("mx_rec.core.asc.build_graph.npu_ops.gen_npu_ops.get_next")
+    def test_get_unique_keys_case1(self, mock_get_next):
+        """
+        case1: 动态扩容
+        """
+
+        from mx_rec.core.asc.build_graph import get_unique_keys
+
+        with tf.Graph().as_default():
+            mock_get_next.return_value = [0]
+            unique_keys = get_unique_keys(self.max_lookup_vec_size, self.config)
+            self.assertEqual(unique_keys, 0)
+
+    @mock.patch("mx_rec.core.asc.build_graph.npu_ops.gen_npu_ops.get_next")
+    def test_get_unique_keys_case2(self, mock_get_next):
+        """
+        case2: 非动态扩容
+        """
+
+        from mx_rec.core.asc.build_graph import get_unique_keys
+
+        with tf.Graph().as_default():
+            self.config["use_dynamic_expansion"] = False
+            mock_get_next.return_value = [1]
+            unique_keys = get_unique_keys(self.max_lookup_vec_size, self.config)
+            self.assertEqual(unique_keys, 1)
+
+
+class TestGetAll2allArgsFunc(unittest.TestCase):
+    """
+    Test for 'mx_rec.core.asc.build_graph.get_all2all_args'.
+    """
+
+    def setUp(self):
+        # 默认动态扩容、hot emb、HBM
+        self.config = dict(table_name="test_table", channel_id=0, skip_emb_transfer=True, emb_size=8, ext_emb_size=8,
+                           feat_cnt=8, batch_size=32, rank_size=8, send_count=1, device_id=0,
+                           use_hot=True, use_dynamic_expansion=True)
+
+    def tearDown(self):
+        # 恢复config
+        self.config = dict(table_name="test_table", channel_id=0, skip_emb_transfer=True, emb_size=8, ext_emb_size=8,
+                           feat_cnt=8, batch_size=32, rank_size=8, send_count=1, device_id=0,
+                           use_hot=True, use_dynamic_expansion=True)
+
+    def test_get_all2all_args_case1(self):
+        """
+        case1: 静态shape
+        """
+
+        from mx_rec.core.asc.build_graph import get_all2all_args
+
+        with tf.Graph().as_default():
+            all2all_args = get_all2all_args(True, self.config)
+            self.assertIsNone(all2all_args)
+
+    @mock.patch("mx_rec.core.asc.build_graph.npu_ops.gen_npu_ops.get_next")
+    def test_get_all2all_args_case2(self, mock_get_next):
+        """
+        case2: 动态shape
+        """
+
+        from mx_rec.core.asc.build_graph import get_all2all_args
+
+        with tf.Graph().as_default():
+            mock_get_next.return_value = [0]
+            all2all_args = get_all2all_args(False, self.config)
+            self.assertEqual(all2all_args, 0)
+
+
+class TestGetSwapInfoFunc(unittest.TestCase):
+    """
+    Test for 'mx_rec.core.asc.build_graph.get_swap_info'.
+    """
+
+    def setUp(self):
+        # 默认动态扩容、hot emb、HBM
+        self.config = dict(table_name="test_table", channel_id=0, skip_emb_transfer=True, emb_size=8, ext_emb_size=8,
+                           feat_cnt=8, batch_size=32, rank_size=8, send_count=1, device_id=0,
+                           use_hot=True, use_dynamic_expansion=True)
+
+    def tearDown(self):
+        # 恢复config
+        self.config = dict(table_name="test_table", channel_id=0, skip_emb_transfer=True, emb_size=8, ext_emb_size=8,
+                           feat_cnt=8, batch_size=32, rank_size=8, send_count=1, device_id=0,
+                           use_hot=True, use_dynamic_expansion=True)
+
+    @mock.patch.multiple("mx_rec.core.asc.build_graph",
+                         get_use_static=mock.MagicMock(return_value=True))
+    def test_get_swap_info_case1(self):
+        """
+        case1: 静态shape，HBM
+        """
+
+        from mx_rec.core.asc.build_graph import get_swap_info
+
+        with tf.Graph().as_default():
+            swap_in = get_swap_info(self.config, None, None, None)
+            self.assertIsInstance(swap_in[0], type(tf.no_op()))
+
+    @mock.patch.multiple("mx_rec.core.asc.build_graph",
+                         get_use_static=mock.MagicMock(return_value=True))
+    @mock.patch("mx_rec.core.asc.build_graph.npu_ops.gen_npu_ops.get_next")
+    def test_get_swap_info_case2(self, mock_get_next):
+        """
+        case2: 静态shape，非HBM，table传入非list，抛出异常
+        """
+
+        from mx_rec.core.asc.build_graph import get_swap_info
+
+        with tf.Graph().as_default():
+            mock_get_next.return_value = tf.ones(shape=[8, 8], dtype=tf.float32)
+            swap_pos = tf.constant([8, 9], dtype=tf.int32)
+            swap_len = tf.constant(2, dtype=tf.int32)
+            table = tf.compat.v1.get_variable("test_table", shape=[10, 8], initializer=tf.ones_initializer())
+            self.config["skip_emb_transfer"] = False
+            with self.assertRaises(RuntimeError):
+                get_swap_info(self.config, swap_len, swap_pos, table)
+
+
+class TestGetPreProcessedTensorForAscFunc(unittest.TestCase):
+    """
+    Test for 'mx_rec.core.asc.build_graph.get_preprocessed_tensor_for_asc'.
+    """
+
+    def setUp(self):
+        # 默认动态扩容、hot emb、HBM
+        self.config = dict(table_name="test_table", channel_id=0, skip_emb_transfer=True, emb_size=8, ext_emb_size=8,
+                           feat_cnt=8, batch_size=32, rank_size=8, send_count=1, device_id=0,
+                           use_hot=True, use_dynamic_expansion=True)
+
+    def tearDown(self):
+        # 恢复config
+        self.config = dict(table_name="test_table", channel_id=0, skip_emb_transfer=True, emb_size=8, ext_emb_size=8,
+                           feat_cnt=8, batch_size=32, rank_size=8, send_count=1, device_id=0,
+                           use_hot=True, use_dynamic_expansion=True)
+        global_env.apply_gradients_strategy = "direct_apply"
+
+    @mock.patch.multiple("mx_rec.core.asc.build_graph",
+                         get_use_static=mock.MagicMock(return_value=True),
+                         get_restore_vector=mock.MagicMock(return_value=[0, 0]),
+                         get_id_offsets=mock.MagicMock(return_value=[0, 0, 0]),
+                         get_all2all_args=mock.MagicMock(return_value=0),
+                         get_swap_info=mock.MagicMock(return_value=0),
+                         get_restore_vector_second=mock.MagicMock(return_value=0),
+                         get_unique_keys=mock.MagicMock(return_value=0))
+    def test_get_preprocessed_tensor_for_asc_case1(self):
+        """
+        case1: 静态shape，全局unique
+        """
+
+        from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
+
+        global_env.apply_gradients_strategy = "sum_same_id_gradients_and_apply"
+        with tf.Graph().as_default():
+            result = get_preprocessed_tensor_for_asc(None, self.config)
+            self.assertIsNotNone(result.get("restore_vector"))
+            self.assertIsNotNone(result.get("restore_vector_second"))
+            self.assertIsNotNone(result.get("unique_keys"))
+
+    @mock.patch.multiple("mx_rec.core.asc.build_graph",
+                         get_use_static=mock.MagicMock(return_value=False),
+                         get_restore_vector=mock.MagicMock(return_value=[0, 0]),
+                         get_id_offsets=mock.MagicMock(return_value=[0, 0, 0]),
+                         get_all2all_args=mock.MagicMock(return_value=0),
+                         get_swap_info=mock.MagicMock(return_value=0),
+                         get_restore_vector_second=mock.MagicMock(return_value=0),
+                         get_unique_keys=mock.MagicMock(return_value=0))
+    def test_get_preprocessed_tensor_for_asc_case2(self):
+        """
+        case2: 动态shape，全局unique
+        """
+
+        from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
+
+        global_env.apply_gradients_strategy = "sum_same_id_gradients_and_apply"
+        with tf.Graph().as_default():
+            result = get_preprocessed_tensor_for_asc(None, self.config)
+            self.assertIsNotNone(result.get("restore_vector"))
+            self.assertIsNotNone(result.get("restore_vector_second"))
+            self.assertIsNotNone(result.get("unique_keys"))
+
+    @mock.patch.multiple("mx_rec.core.asc.build_graph",
+                         get_use_static=mock.MagicMock(return_value=False),
+                         get_restore_vector=mock.MagicMock(return_value=[0, 0]),
+                         get_id_offsets=mock.MagicMock(return_value=[0, 0, 0]),
+                         get_all2all_args=mock.MagicMock(return_value=0),
+                         get_swap_info=mock.MagicMock(return_value=0),
+                         get_restore_vector_second=mock.MagicMock(return_value=0),
+                         get_unique_keys=mock.MagicMock(return_value=0))
+    def test_get_preprocessed_tensor_for_asc_case3(self):
+        """
+        case3: 动态shape，全局unique，channel_id=1
+        """
+
+        from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
+
+        global_env.apply_gradients_strategy = "sum_same_id_gradients_and_apply"
+        with tf.Graph().as_default():
+            self.config["channel_id"] = 1
+            result = get_preprocessed_tensor_for_asc(None, self.config)
+            self.assertIsNotNone(result.get("restore_vector"))
+            self.assertIsNone(result.get("restore_vector_second"))
+
+    @mock.patch.multiple("mx_rec.core.asc.build_graph",
+                         get_use_static=mock.MagicMock(return_value=False),
+                         get_restore_vector=mock.MagicMock(return_value=[0, 0]),
+                         get_id_offsets=mock.MagicMock(return_value=[0, 0, 0]),
+                         get_all2all_args=mock.MagicMock(return_value=0),
+                         get_swap_info=mock.MagicMock(return_value=0),
+                         get_restore_vector_second=mock.MagicMock(return_value=0),
+                         get_unique_keys=mock.MagicMock(return_value=0))
+    def test_get_preprocessed_tensor_for_asc_case4(self):
+        """
+        case4: 动态shape
+        """
+
+        from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
+
+        with tf.Graph().as_default():
+            result = get_preprocessed_tensor_for_asc(None, self.config)
+            self.assertIsNotNone(result.get("restore_vector"))
+            self.assertIsNone(result.get("restore_vector_second"))
 
 
 if __name__ == '__main__':
