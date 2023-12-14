@@ -3,6 +3,9 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 import tensorflow as tf
+from tensorflow_core.python.training import slot_creator
+
+from mx_rec.optimizers.lazy_adam import CustomizedLazyAdam
 
 
 class MockSparseEmbedding:
@@ -58,16 +61,59 @@ class MockHcclOps:
         self.all_to_all_v_c = _mock_all_to_all_v_c
 
 
-class MockOptimizer:
+class MockOptimizer(CustomizedLazyAdam):
     """
     用于mock optimizer
     """
 
     def __init__(self):
-        def _mock_insert_slot(slot, named_slot_key, slot_name):
-            return "mock_insert_slot"
+        super(MockOptimizer, self)._get_name(name="MockLazyAdam")
+        super(MockOptimizer, self).__init__(learning_rate=0.001, beta1=0.9, beta2=0.999,
+                                            epsilon=1e-8, use_locking=False, name="MockLazyAdam")
+        self.slot_num = 2
 
-        self.insert_slot = _mock_insert_slot
+    def initialize_slots(self, var, table_instance):
+        # Create slots for the first and second moments.
+        def creat_one_single_slot(var, op_name):
+            new_slot_variable = slot_creator.create_zeros_slot(var, op_name)
+            return new_slot_variable
+
+        momentum = creat_one_single_slot(var, self._name + "/" + "momentum")
+        velocity = creat_one_single_slot(var, self._name + "/" + "velocity")
+        named_slot_key = (var.op.graph, var.op.name)
+
+        table_instance.set_optimizer(self._name, {"momentum": momentum, "velocity": velocity})
+        return [{"slot": momentum, "named_slot_key": named_slot_key, "slot_name": "m", "optimizer": self},
+                {"slot": velocity, "named_slot_key": named_slot_key, "slot_name": "v", "optimizer": self}]
+
+    def insert_slot(self, slot, named_slots_key, slot_name):
+        pass
+
+    def get_slot_init_values(self):
+        initial_momentum_value = 0.0
+        initial_velocity_value = 0.0
+        return [initial_momentum_value, initial_velocity_value]
+
+    def update_op(self, optimizer, g):
+        return super().update_op(optimizer, g)
+
+    def _apply_spare_duplicate_indices(self, grad, var):
+        return self._apply_sparse(grad, var)
+
+    def _apply_sparse(self, grad, var):
+        return super()._apply_sparse(grad, var)
+
+    def _resource_apply_sparse(self, grad, handle, indices):
+        return super()._resource_apply_sparse(grad, handle, indices)
+
+    def _apply_dense(self, grad, var):
+        return super()._apply_dense(grad, var)
+
+    def _apply_sparse_duplicate_indices(self, grad, var):
+        return self._apply_sparse(grad, var)
+
+    def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
+        return self._resource_apply_sparse(grad, handle, indices)
 
 
 class MockAscManager:
@@ -84,3 +130,15 @@ class MockAscManager:
 
         self.get_table_size = _mock_get_table_size
         self.get_table_capacity = _mock_get_table_capacity
+
+
+class MockHybridMgmt:
+    """
+    用于mock HybridMgmt()
+    """
+
+    def __init__(self, is_initialized=True):
+        def _mock_initialize(rank_info=0, emb_info=1, if_load=False, threshold_values=3):
+            return is_initialized
+
+        self.initialize = _mock_initialize

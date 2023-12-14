@@ -24,11 +24,11 @@ from mx_rec.util.initialize import get_rank_id, get_rank_size, is_asc_frozen, ge
     insert_table_instance, get_training_mode_channel_id, get_use_static, get_name_to_var_dict, \
     clear_channel, get_use_hot, get_device_id, ConfigInitializer, get_ascend_global_hashtable_collection, \
     get_host_pipeline_ops, get_use_dynamic_expansion, set_modify_graph, insert_removing_var_list, get_bool_gauge_set, \
-    get_table_instance_by_name, get_asc_manager
+    get_asc_manager, get_table_name_to_feature_spec, clear_same_table_feature_spec
 from mx_rec.validator.validator import ClassValidator, StringValidator, SSDFeatureValidator, \
     para_checker_decorator, IntValidator, NumValidator, OptionValidator, OptionalIntValidator, \
     OptionalStringValidator, FloatValidator
-from mx_rec.util.tf_version_adapter import npu_ops
+from mx_rec.util.tf_version_adapter import hccl_ops
 from mx_rec.util.normalization import fix_invalid_table_name
 from mx_rec.util.global_env_conf import global_env
 from mx_rec.util.log import logger
@@ -122,7 +122,6 @@ class SparseEmbedding:
         self._slot_num = dict()
         self._send_count = 0
         self.same_table_send_count = 0
-        self._use_feature_mapping = False
         self.skip_emb_transfer = True if self.host_vocabulary_size <= 0 else False
         self._default_name_count = -1
         self.emb_size = None
@@ -156,10 +155,6 @@ class SparseEmbedding:
             tf.compat.v1.add_to_collection(get_ascend_global_hashtable_collection(), self.variable)
 
     @property
-    def use_feature_mapping(self):
-        return self._use_feature_mapping
-
-    @property
     def scalar_emb_size(self):
         return self.emb_size
 
@@ -181,7 +176,7 @@ class SparseEmbedding:
         """
         Args:
          channel_id: channel id 0 for train，1 for eval
-        Returns: npu_ops.outfeed_enqueue_op notify preprocess step
+        Returns: tf.no_op notify preprocess step
         """
         channel_name = "d2h_notify_hybridmgmt_{}".format(channel_id)
         notify_hybridmgmt_op = tf.no_op(channel_name)
@@ -190,14 +185,14 @@ class SparseEmbedding:
     @staticmethod
     def get_anchor_attribute(anchor, attr):
         if not isinstance(anchor, tf.Tensor):
-            raise ValueError("Anchor must be a Tensor.")
+            raise TypeError("Anchor must be a Tensor.")
 
         if attr not in ASCAnchorAttr:
             raise ValueError("Given attr must be limited in Enum 'ASCAnchorAttr'.")
 
         specs = SparseEmbedding.anchor_tensor_specs.get(anchor)
         if specs is None:
-            raise ValueError(f"Given anchor '{anchor}' was not registered.")
+            raise KeyError(f"Given anchor '{anchor}' was not registered.")
 
         return specs.get(attr)
 
@@ -220,7 +215,7 @@ class SparseEmbedding:
         :param use_static: enable static shape training or not
         :return: local embedding after all2all
         """
-        from mx_rec.util.tf_version_adapter import hccl_ops
+
         rank_size = get_rank_size()
         rank_id = get_rank_id()
 
@@ -308,9 +303,6 @@ class SparseEmbedding:
         default_name = "sparse_lookup_%d" % self._default_name_count
         logger.debug("getting one default lookup name %s", default_name)
         return default_name
-
-    def set_using_feature_mapping(self):
-        self._use_feature_mapping = True
 
     def set_emb_size(self):
         self.emb_size = self.embedding_size.as_list()[0]
@@ -491,7 +483,7 @@ class SparseEmbedding:
         if not get_use_static() and not self.modify_graph and kwargs.get("batch") is None:
             raise RuntimeError("When the 'feature spec' mode and 'dynamic shape' are used, the 'batch' is required.")
         table_name = feature_spec.table_name
-        same_table_feature_spec = ConfigInitializer.get_instance().table_name_to_feature_spec[table_name][is_training]
+        same_table_feature_spec = get_table_name_to_feature_spec(table_name, is_training)
         logger.debug("The feature spec of the same table is %s, table name is %s.",
                      [fs.name for fs in same_table_feature_spec], self.table_name)
         same_table_spec_count = len(same_table_feature_spec)
@@ -548,7 +540,7 @@ class SparseEmbedding:
             self.split_lookup_result(same_table_feature_spec, tensor_split_list, tensor_list, lookup_result,
                                      is_training)
             # 当一表多查完成后，将此表对应的feature specs列表清空，便于estimator模式下多轮eval时不会累加上轮eval的feature specs
-            ConfigInitializer.get_instance().clear_same_table_feature_spec(self.table_name, is_training)
+            clear_same_table_feature_spec(self.table_name, is_training)
 
         if not self.modify_graph:
             self.check_multi_lookup_times(is_training)
@@ -686,7 +678,7 @@ class SparseEmbedding:
                     dest_shape = array_ops.concat([array_ops.shape(tensor), [self.scalar_emb_size]], 0)
                     lookup_result = array_ops.reshape(embeddings, dest_shape)
 
-            def grad(lookup_diff):
+            def grad(lookup_diff):  # pragma: no cover
                 logger.debug("Into lookup grad function, feature spec name: %s.", feature_spec.name)
                 embedding_diff = tf.reshape(lookup_diff, [-1, self.scalar_emb_size])
                 unique_grads = tf.compat.v1.unsorted_segment_sum(embedding_diff,
