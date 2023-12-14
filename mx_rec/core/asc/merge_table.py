@@ -7,7 +7,7 @@ from typing import Dict, List
 import tensorflow as tf
 from tensorflow import Operation, Tensor
 
-from mx_rec.constants.constants import MAX_WHILE_SIZE
+from mx_rec.constants.constants import MAX_WHILE_SIZE, ASCEND_TABLE_NAME_MUST_CONTAIN
 from mx_rec.util.initialize import get_enable_table_merge, export_table_instances, insert_dangling_table, \
     get_bool_gauge_set
 from mx_rec.util.log import logger
@@ -63,7 +63,7 @@ def find_dangling_table(table_names: List[str]) -> List[str]:
     def find_table_op(table_name: str,
                       the_op: Operation,
                       table_lookup_op: Dict[str, List[Operation]],
-                      table_reachable_tensor: Dict[str, List[Tensor]]) -> None:
+                      table_reachable_tensor: Dict[str, List[Tensor]]) -> None:  # pragma: no cover
         """ find all the table lookup op.
         :param table_name: tables' names
         :param the_op: the op to be
@@ -84,7 +84,7 @@ def find_dangling_table(table_names: List[str]) -> List[str]:
 
     def extend(op_list: List[Operation],
                tensor: Tensor,
-               spread_tensors: List[Tensor]) -> None:
+               spread_tensors: List[Tensor]) -> None:  # pragma: no cover
         """extend the tensors which table lookup op can reach
 
         :param op_list: all op in the graph
@@ -96,7 +96,7 @@ def find_dangling_table(table_names: List[str]) -> List[str]:
             if tensor in the_op.inputs:
                 spread_tensors.extend(the_op.outputs)
 
-    def bfs_lookup(next_to_visit: List[Tensor]) -> (set, bool):
+    def bfs_lookup(next_to_visit: List[Tensor]) -> (set, bool):  # pragma: no cover
         """find all the tensors which table lookup op can reach
 
         :param next_to_visit: the tensor list to be visited by bfs
@@ -158,7 +158,6 @@ def find_dangling_table(table_names: List[str]) -> List[str]:
 
 
 def should_skip(table_name) -> bool:
-    from mx_rec.constants.constants import ASCEND_TABLE_NAME_MUST_CONTAIN
     if ASCEND_TABLE_NAME_MUST_CONTAIN is not None \
             and isinstance(ASCEND_TABLE_NAME_MUST_CONTAIN, str) \
             and ASCEND_TABLE_NAME_MUST_CONTAIN not in table_name:
