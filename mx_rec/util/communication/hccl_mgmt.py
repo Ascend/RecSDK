@@ -5,12 +5,11 @@
 import json
 import os
 
-from mx_rec.constants.constants import VALID_DEVICE_ID_LIST, MIN_SIZE, MAX_CONFIG_SIZE, MAX_DEVICE_ID, \
-    MIN_RANK_SIZE, MAX_RANK_SIZE
-from mx_rec.validator.validator import FileValidator, para_checker_decorator, StringValidator, \
-    Convert2intValidator
+from mxrec_pybind import get_logic_id
+from mx_rec.constants.constants import MAX_CONFIG_SIZE, MAX_DEVICE_ID, MAX_RANK_SIZE, MIN_RANK_SIZE, MIN_SIZE, \
+    VALID_DEVICE_ID_LIST
 from mx_rec.util.global_env_conf import global_env
-from mx_rec.util.log import logger
+from mx_rec.validator.validator import Convert2intValidator, FileValidator, para_checker_decorator, StringValidator
 
 
 def parse_hccl_json():
@@ -54,8 +53,7 @@ def parse_hccl_json():
             if "device_id" not in device or not device.get("device_id").isdigit():
                 raise ValueError(f"hccl_json device_id wrong.")
 
-            import mxrec_pybind
-            res = mxrec_pybind.get_logic_id(int(device.get("device_id")))
+            res = get_logic_id(int(device.get("device_id")))
             if res < 0:
                 raise RuntimeError(
                     f"get logic id from physic id fail, error code is {res}, please check if dsmi api is functional.")
@@ -103,8 +101,7 @@ def set_hccl_info_without_json(visible_devices: str, rank_size: str, chief_devic
     sorted_device_list = sorted_device_list[:rank_size]
 
     for device_idx in sorted_device_list:
-        import mxrec_pybind
-        res = mxrec_pybind.get_logic_id(int(device_idx))
+        res = get_logic_id(int(device_idx))
         if res < 0:
             raise RuntimeError(
                 f"get logic id from physic id fail, error code is {res}, please check if dsmi api is functional.")

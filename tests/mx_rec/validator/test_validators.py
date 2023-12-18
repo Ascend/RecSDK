@@ -6,9 +6,9 @@ import sys
 import tempfile
 import unittest
 
-from mx_rec.validator.validator import Validator, StringValidator, DirectoryValidator, para_checker_decorator, \
-    ClassValidator, OptionValidator, ValueCompareValidator, OptionalStringValidator, \
-    OptionalIntValidator, NumValidator, IntValidator, Convert2intValidator
+from mx_rec.validator.validator import ClassValidator, Convert2intValidator, DirectoryValidator, IntValidator, \
+    NumValidator, OptionalIntValidator, OptionalStringValidator, OptionValidator, para_checker_decorator, \
+    StringValidator, ValueCompareValidator, FloatValidator, SSDFeatureValidator
 
 sys.modules['mxrec_pybind'] = __import__('os')
 
@@ -141,6 +141,59 @@ class ParameterCheckerTest(unittest.TestCase):
         except ValueError:
             result = False
         self.assertTrue(result)
+
+    def test_ssd_feature_validator_when_size_0(self):
+        @para_checker_decorator(check_option_list=[
+            ("name", OptionalStringValidator, {"min_len": 1, "max_len": 255},
+             ["check_string_length", "check_whitelist"]),
+            (["ssd_vocabulary_size", "ssd_data_path", "host_vocabulary_size"], SSDFeatureValidator)])
+        def demo_func(name, host_vocabulary_size=0,
+                      ssd_vocabulary_size=0,
+                      ssd_data_path="./"):
+            return True
+
+        try:
+            result = demo_func(name="host", host_vocabulary_size=0,
+                               ssd_vocabulary_size=0,
+                               ssd_data_path="./")
+        except ValueError:
+            result = False
+        self.assertTrue(result)
+
+    def test_ssd_feature_validator_when_size_not_0(self):
+        @para_checker_decorator(check_option_list=[
+            ("name", OptionalStringValidator, {"min_len": 1, "max_len": 255},
+             ["check_string_length", "check_whitelist"]),
+            (["ssd_vocabulary_size", "ssd_data_path", "host_vocabulary_size"], SSDFeatureValidator)])
+        def demo_func(name, host_vocabulary_size=0,
+                      ssd_vocabulary_size=0,
+                      ssd_data_path="./"):
+            return True
+
+        try:
+            result = demo_func(name="host", host_vocabulary_size=0,
+                               ssd_vocabulary_size=1,
+                               ssd_data_path="./")
+        except ValueError:
+            result = False
+        self.assertFalse(result)
+
+    def test_check_value_for_open_interval(self):
+        @para_checker_decorator(check_option_list=[
+            ("beta1", FloatValidator, {"min_value": 0, "max_value": 1},
+             ["check_value_for_open_interval", "check_value_for_right_open_interval",
+              "check_value_for_left_open_interval"])])
+        def demo_func(beta1):
+            return True
+
+        try:
+            result = demo_func(beta1=0.5)
+        except ValueError:
+            result = False
+        self.assertTrue(result)
+
+    def test_is_valid(self):
+        self.assertTrue(StringValidator("val", 'aa.1245', max_len=30).is_valid())
 
 
 if __name__ == '__main__':
