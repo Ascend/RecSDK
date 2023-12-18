@@ -26,15 +26,16 @@ from mx_rec.util.log import logger
 
 # define save model thread
 class SaveModelThread(threading.Thread):
-    def __init__(self, sess, result, root_dir, table_name):
+    def __init__(self, saver, sess, result, root_dir, table_name):
         super().__init__()
         self.result = result
         self.root_dir = root_dir
         self.table_name = table_name
         self.sess = sess
+        self.saver = saver
 
     def run(self):
-        Saver().save_table_name_data(self.sess, self.result, self.root_dir, self.table_name)
+        self.saver.save_table_name_data(self.sess, self.result, self.root_dir, self.table_name)
 
 
 class Saver(object):
@@ -61,7 +62,6 @@ class Saver(object):
         self.rank_id = get_rank_id()
         self.local_rank_size = get_local_rank_size()
         self.local_rank_id = self.rank_id % self.local_rank_size
-        self.rank_size = get_rank_size()
         self.save_op_dict = defaultdict(dict)
         self.restore_fetch_list = []
         self.placeholder_dict = defaultdict(dict)
@@ -195,7 +195,7 @@ class Saver(object):
         result = self.save_op_dict
         threads = []
         for table_name in result.keys():
-            thread = SaveModelThread(sess, result, root_dir, table_name)
+            thread = SaveModelThread(self, sess, result, root_dir, table_name)
             threads.append(thread)
 
         for thread in threads:
@@ -214,7 +214,6 @@ class Saver(object):
         for var in self.var_list:
             if global_env.tf_device == TFDevice.NPU.value and "merged" not in var.name:
                 continue
-
             table_instance = get_table_instance(var)
             table_name = table_instance.table_name
             with tf.compat.v1.variable_scope(table_name):

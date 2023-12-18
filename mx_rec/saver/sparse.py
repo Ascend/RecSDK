@@ -180,9 +180,11 @@ def export(table_list=None):
 def check_table_param(table_list, default_table_list):
     out_list = []
     for table in table_list:
-        if table not in default_table_list:
+        if table in default_table_list:
+            out_list.append(table)
+        else:
             logger.warning("%s not be created , please check your table name.", table)
-        out_list.append(table)
+
     return out_list
 
 
