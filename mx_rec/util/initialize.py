@@ -835,6 +835,31 @@ def set_iterator_type(iterator_type: str):
     ConfigInitializer.get_instance().iterator_type = iterator_type
 
 
+def get_table_name_to_feature_spec(table_name: str, is_training: bool):
+    """
+    获取同一张表的所有FeatureSpec
+    Args:
+        table_name: 表名
+        is_training: 是否为训练模式
+    Returns: FeatureSpec列表
+    """
+
+    same_table_feature_spec_dict = ConfigInitializer.get_instance().table_name_to_feature_spec.get(table_name)
+    return same_table_feature_spec_dict.get(is_training)
+
+
+def clear_same_table_feature_spec(table_name: str, is_training: bool):
+    """
+    将表对应的feature specs列表清空
+    Args:
+        table_name: 表名
+        is_training: 是否为训练模式
+    Returns: None
+    """
+
+    ConfigInitializer.get_instance().clear_same_table_feature_spec(table_name, is_training)
+
+
 def set_ascend_env():
     """
     配置昇腾相关的参数和环境变量，生成hccl配置
