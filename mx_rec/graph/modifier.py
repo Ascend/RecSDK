@@ -49,7 +49,7 @@ def get_preprocessing_map_func(
         raise ValueError("It is legal when and only when one of the parameters 'batch_tensor_names' and "
                          "'pipeline_input_indexes' was given.")
 
-    def map_func(*args):
+    def map_func(*args): # pragma: no cover
         def parse_batch(data_args: Any, data_batch: dict, key: str = None):
             """
             解析原始数据集中的batch，并将非dict格式的batch转为dict格式.
