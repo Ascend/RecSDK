@@ -6,6 +6,7 @@ import time
 
 import tensorflow as tf
 
+from mx_rec.util.tf_version_adapter import npu_ops
 from mx_rec.constants.constants import DEFAULT_EVICT_TIME_INTERVAL, TRAIN_CHANNEL_ID, MAX_INT32
 from mx_rec.util.initialize import trigger_evict, get_table_instance_by_name, export_feature_spec
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, IntValidator, OptionalIntValidator
@@ -51,7 +52,6 @@ class EvictHook(tf.compat.v1.train.SessionRunHook):
             with tf.compat.v1.variable_scope(scope_name):
                 logger.debug('Channel %s_evict_%d was built for op getnext', instance.table_name, TRAIN_CHANNEL_ID)
 
-                from mx_rec.util.tf_version_adapter import npu_ops
                 evict_pos, evict_len = npu_ops.gen_npu_ops.get_next(
                     output_types=[tf.int32, tf.int32],
                     output_shapes=[[None], []],

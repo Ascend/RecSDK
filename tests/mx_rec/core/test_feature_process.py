@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+
+import time
+import unittest
+from unittest import mock
+
+import tensorflow as tf
+
+from mx_rec.core.feature_process import EvictHook
+from mx_rec.core.asc.feature_spec import FeatureSpec
+from tests.mx_rec.core.mock_class import MockSparseEmbedding
+
+
+class TestEvictHookClass(unittest.TestCase):
+    """
+    Test for 'mx_rec.core.feature_process.EvictHook'.
+    """
+
+    def test_init_case1(self):
+        """
+        case1: evict_step_interval为None
+        """
+        self.assertIsInstance(EvictHook(), EvictHook)
+
+    def test_init_case2(self):
+        """
+        case2: evict_step_interval不为None
+        """
+        self.assertIsInstance(EvictHook(evict_step_interval=5), EvictHook)
+
+
+@mock.patch.multiple(
+    "mx_rec.graph.patch",
+    get_modify_graph=mock.Mock(return_value=True),
+    get_is_graph_modify_hook_running=mock.Mock(return_value=True),
+)
+@mock.patch.multiple(
+    "tensorflow.compat.v1.train.Saver",
+    __init__=mock.Mock(return_value=None),
+    build=mock.Mock(),
+)
+class TestAfterRunFuncOfEvictHookClass(TestEvictHookClass):
+    """
+    Test for 'mx_rec.core.feature_process.EvictHook.after_run'.
+    """
+
+    def setUp(self):
+        self.ori_var_assert = [[1., 1., 1., 1., 1.], [1., 1., 1., 1., 1.]]
+        self.evict_var_assert = [[0., 0., 0., 0., 0.], [0., 0., 0., 0., 0.]]
+
+    @mock.patch.multiple("mx_rec.core.feature_process",
+                         trigger_evict=mock.MagicMock(return_value=True))
+    @mock.patch("mx_rec.core.feature_process.npu_ops.gen_npu_ops.get_next")
+    @mock.patch("mx_rec.core.feature_process.get_table_instance_by_name")
+    @mock.patch("mx_rec.core.feature_process.export_feature_spec")
+    def test_after_run_case1(self, mock_export_feature_spec, mock_get_table_instance_by_name, mock_get_next):
+        """
+        case1: evict_enable为True，python和C++侧正常触发淘汰
+        """
+
+        with tf.Graph().as_default():
+            test_table = MockSparseEmbedding()
+            mock_get_next.return_value = [tf.constant([8, 9], dtype=tf.int32), tf.constant(2, dtype=tf.int32)]
+            mock_get_table_instance_by_name.return_value = test_table
+            mock_export_feature_spec.return_value = dict(
+                test_spec=FeatureSpec("test_spec", table_name="test_table", access_threshold=5, eviction_threshold=10))
+
+            evict_hook = EvictHook(evict_enable=True, evict_time_interval=1)
+            with tf.compat.v1.train.MonitoredSession(hooks=[evict_hook]) as sess:
+                sess.graph._unsafe_unfinalize()
+                sess.run(tf.compat.v1.global_variables_initializer())
+
+                # sleep 1s 等待淘汰时间evict_time_interval
+                time.sleep(1)
+
+                # 获取原variable，淘汰会发生在此session run之后
+                ori_variable = sess.run(test_table.variable)
+                # ori_variable的9、10行值都为1
+                self.assertListEqual(ori_variable[8:].tolist(), self.ori_var_assert)
+
+                # 获取淘汰后variable
+                evict_variable = sess.run(test_table.variable)
+                # evict_variable的9、10行触发淘汰后都为0，其余行数的值不变
+                self.assertListEqual(evict_variable[8:].tolist(), self.evict_var_assert)
+                self.assertListEqual(evict_variable[:2].tolist(), self.ori_var_assert)
+
+    @mock.patch.multiple("mx_rec.core.feature_process",
+                         trigger_evict=mock.MagicMock(return_value=False))
+    @mock.patch("mx_rec.core.feature_process.npu_ops.gen_npu_ops.get_next")
+    @mock.patch("mx_rec.core.feature_process.get_table_instance_by_name")
+    @mock.patch("mx_rec.core.feature_process.export_feature_spec")
+    def test_after_run_case2(self, mock_export_feature_spec, mock_get_table_instance_by_name, mock_get_next):
+        """
+        case2: evict_enable为True，C++侧异常
+        """
+
+        with tf.Graph().as_default():
+            test_table = MockSparseEmbedding()
+            mock_get_next.return_value = [tf.constant([8, 9], dtype=tf.int32), tf.constant(2, dtype=tf.int32)]
+            mock_get_table_instance_by_name.return_value = test_table
+            mock_export_feature_spec.return_value = dict(
+                test_spec=FeatureSpec("test_spec", table_name="test_table", access_threshold=5, eviction_threshold=10))
+
+            evict_hook = EvictHook(evict_enable=True, evict_time_interval=1)
+            with tf.compat.v1.train.MonitoredSession(hooks=[evict_hook]) as sess:
+                sess.graph._unsafe_unfinalize()
+                sess.run(tf.compat.v1.global_variables_initializer())
+
+                # sleep 1s 等待淘汰时间evict_time_interval
+                time.sleep(1)
+
+                # 获取原variable，淘汰会发生在此session run之后
+                ori_variable = sess.run(test_table.variable)
+                # ori_variable的9、10行值都为1
+                self.assertListEqual(ori_variable[8:].tolist(), self.ori_var_assert)
+
+                # 获取淘汰后variable
+                evict_variable = sess.run(test_table.variable)
+                # 此时C++侧异常，不执行淘汰，因此evict_variable后两行还是1
+                self.assertListEqual(evict_variable[8:].tolist(), self.ori_var_assert)
+
+    @mock.patch.multiple("mx_rec.core.feature_process",
+                         trigger_evict=mock.MagicMock(return_value=True))
+    @mock.patch("mx_rec.core.feature_process.npu_ops.gen_npu_ops.get_next")
+    @mock.patch("mx_rec.core.feature_process.get_table_instance_by_name")
+    @mock.patch("mx_rec.core.feature_process.export_feature_spec")
+    def test_after_run_case3(self, mock_export_feature_spec, mock_get_table_instance_by_name, mock_get_next):
+        """
+        case3: evict_enable为False
+        """
+
+        with tf.Graph().as_default():
+            test_table = MockSparseEmbedding()
+            mock_get_next.return_value = [tf.constant([8, 9], dtype=tf.int32), tf.constant(2, dtype=tf.int32)]
+            mock_get_table_instance_by_name.return_value = test_table
+            mock_export_feature_spec.return_value = dict(
+                test_spec=FeatureSpec("test_spec", table_name="test_table", access_threshold=5, eviction_threshold=10))
+
+            evict_hook = EvictHook(evict_enable=False, evict_time_interval=1)
+            with tf.compat.v1.train.MonitoredSession(hooks=[evict_hook]) as sess:
+                sess.graph._unsafe_unfinalize()
+                sess.run(tf.compat.v1.global_variables_initializer())
+
+                # sleep 1s 等待淘汰时间evict_time_interval
+                time.sleep(1)
+
+                # 获取原variable，淘汰会发生在此session run之后
+                ori_variable = sess.run(test_table.variable)
+                # ori_variable的9、10行值都为1
+                self.assertListEqual(ori_variable[8:].tolist(), self.ori_var_assert)
+
+                # 获取淘汰后variable
+                evict_variable = sess.run(test_table.variable)
+                # 此时evict_enable为False，不执行淘汰，因此evict_variable后两行还是1
+                self.assertListEqual(evict_variable[8:].tolist(), self.ori_var_assert)
+
+
+if __name__ == '__main__':
+    unittest.main()

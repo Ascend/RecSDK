@@ -4,7 +4,8 @@
 
 import tensorflow as tf
 
-from mxrec_pybind import InitializeInfo, ConstantInitializerInfo, NormalInitializerInfo
+from mxrec_pybind import InitializeInfo, ConstantInitializerInfo, NormalInitializerInfo, EmbInfo, EmbInfoParams, \
+    ThresholdValue, HybridMgmt, RankInfo, USE_STATIC, USE_HOT, USE_DYNAMIC_EXPANSION
 
 from mx_rec.util.initialize import get_rank_id, get_device_id, get_rank_size, set_asc_manager, \
     is_asc_manager_initialized, get_train_steps, get_eval_steps, get_save_steps, \
@@ -27,8 +28,6 @@ def check_dangling_table():
 
 
 def generate_table_info_list():
-    from mxrec_pybind import EmbInfo, EmbInfoParams
-    from mx_rec.constants.constants import ASCEND_TABLE_NAME_MUST_CONTAIN
     # table_name is corresponding to channel_name which is in used in operator gen_npu_ops.get_next
     table_info_list = []
 
@@ -162,7 +161,6 @@ def matched_opt_slot_initializers(table_instance):
 
 
 def generate_threshold_list():
-    from mxrec_pybind import ThresholdValue
     threshold_list = []
 
     for _, feature_spec in export_feature_spec().items():
@@ -187,8 +185,6 @@ def generate_threshold_list():
 
 
 def initialize_emb_cache(table_info_list, threshold_list):
-    from mxrec_pybind import HybridMgmt, RankInfo, USE_STATIC, USE_HOT, USE_DYNAMIC_EXPANSION
-
     rank_id = get_rank_id()
     device_id = get_device_id()
     rank_size = get_rank_size()
