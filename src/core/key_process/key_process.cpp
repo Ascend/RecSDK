@@ -78,9 +78,7 @@ bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos
 
     LOG_INFO(KEY_PROCESS "scInfo:{}, localRankSize:{}, rankSize:{}, useStatic:{}, useHot:{}",
         MapToString(scInfo), rInfo.localRankSize, rInfo.rankSize, rInfo.useStatic, rInfo.useHot);
-#ifndef GTEST
     Start();
-#endif
     return true;
 }
 
@@ -1307,9 +1305,8 @@ KeysT KeyProcess::GetLookupKeys(int batch, const string& embName, int channel)
 /// \param channel 通道索引（训练/推理）
 void KeyProcess::SendEos(int batchId, int channel)
 {
-#ifndef GTEST
     LOG_INFO("channelId:{} batchId:{}, SendEos start.", channel, batchId);
-
+#ifndef GTEST
     auto trans = Singleton<HDTransfer>::GetInstance();
     unordered_map<std::string, acltdtChannelHandle*> transChannels = trans->GetTransChannel();
     std::set<std::string> usedChannelNames = trans->GetUsedTransChannel()[channel];
@@ -1329,12 +1326,11 @@ void KeyProcess::SendEos(int batchId, int channel)
         }
         LOG_INFO("channelId:{} batchId:{}, the embName:{} related channel SendEos end.", channel, batchId, emb.first);
     }
-
+#endif
     LOG_INFO("channelId:{} batchId:{}, SendEos end.", channel, batchId);
     isNeedSendEos[channel] = false;
     mpiAllReduceSend[channel] = 0;
     isNeedExit[channel] = true;
-#endif
 }
 
 /// HBM模式下，从list中获取指定类型的tensor向量
@@ -1493,7 +1489,7 @@ void KeyProcess::EvictInitDeviceEmb(const string& embName, vector<size_t> offset
                 embName, offset.size(), embInfos[embName].devVocabSize
             ).c_str());
     }
-
+#ifndef GTEST
     vector<Tensor> tmpDataOut;
     Tensor tmpData = Vec2TensorI32(offset);
     tmpDataOut.emplace_back(tmpData);
@@ -1506,7 +1502,7 @@ void KeyProcess::EvictInitDeviceEmb(const string& embName, vector<size_t> offset
     // evict key发送给dev侧，dev侧初始化emb
     auto trans = Singleton<HDTransfer>::GetInstance();
     trans->Send(TransferChannel::EVICT, tmpDataOut, TRAIN_CHANNEL_ID, embName);
-
+#endif
     LOG_INFO(KEY_PROCESS "hbm EvictInitDeviceEmb: [{}]! send offsetSize:{}", embName, offset.size());
 }
 
@@ -1525,7 +1521,6 @@ string KeyProcess::DumpSplitKeys(vector<vector<emb_key_t>> &splitKeys) const
 
 int64_t KeyProcess::GetExpansionTableSize(const string& embName)
 {
-#ifndef GTEST
     const auto& iter = embeddingTableMap.find(embName);
     if (iter == embeddingTableMap.end()) {
         LOG_ERROR(KEY_PROCESS "GetExpansionEmbSize, wrong embName:{} ", embName);
@@ -1533,12 +1528,10 @@ int64_t KeyProcess::GetExpansionTableSize(const string& embName)
     }
     std::lock_guard<std::mutex> lk(mut); // lock for PROCESS_THREAD
     return iter->second.GetTableSize();
-#endif
 }
 
 int64_t KeyProcess::GetExpansionTableCapacity(const string& embName)
 {
-#ifndef GTEST
     const auto& iter = embeddingTableMap.find(embName);
     if (iter == embeddingTableMap.end()) {
         LOG_ERROR(KEY_PROCESS "GetExpansionEmbSize, wrong embName:{} ", embName);
@@ -1546,7 +1539,6 @@ int64_t KeyProcess::GetExpansionTableCapacity(const string& embName)
     }
     std::lock_guard<std::mutex> lk(mut); // lock for PROCESS_THREAD
     return iter->second.GetTableCapacity();
-#endif
 }
 
 void KeyProcess::RecordKeyCountMap(const unique_ptr<EmbBatchT>& batch)

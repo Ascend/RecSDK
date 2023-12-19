@@ -144,14 +144,10 @@ void EmbTable::PrintStatus() const
 
 int64_t EmbTable::GetTableSize() const
 {
-#ifndef GTEST
     return static_cast<int64_t>(usedCapacity);
-#endif
 }
 
 int64_t EmbTable::GetTableCapacity() const
 {
-#ifndef GTEST
     return static_cast<int64_t>(totalCapacity);
-#endif
 }

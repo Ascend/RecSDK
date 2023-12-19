@@ -5,6 +5,13 @@ find_package(GTest REQUIRED)
 include_directories(${GTEST_INCLUDE_DIRS})
 add_definitions(-DGTEST)
 
+set(EMOCK_INCLUDE_DIRS /usr/local/include/emock)
+include_directories(${EMOCK_INCLUDE_DIRS})
+find_library(EMOCK_LIBRARY emock)
+if(NOT EMOCK_LIBRARY)
+    set(EMOCK_LIBRARY /usr/local/lib/libemock.a)
+endif()
+message("EMOCK_LIBRARY: " ${EMOCK_LIBRARY})
 # src
 file(GLOB_RECURSE MXREC_SRC ${PROJECT_SOURCE_DIR}/core/*.cpp)
 message("MXREC_SRC: " ${MXREC_SRC})
@@ -62,4 +69,4 @@ target_link_libraries(test_main PUBLIC
         MPI::MPI_CXX)
 
 target_link_libraries(test_main PUBLIC ascendcl msprofiler ge_executor gert runtime ge_common register graph ascend_protobuf
-        profapi opt_feature error_manager exe_graph acl_tdt_channel acl_tdt_queue securec drvdsmi_host)
+        profapi opt_feature error_manager exe_graph acl_tdt_channel acl_tdt_queue securec drvdsmi_host ${EMOCK_LIBRARY})
