@@ -283,18 +283,6 @@ class NameDescriptor:
         self.optimizer_name = optimizer_name
 
 
-def fill_placeholder_for_optimizer(optimizer_state_placeholder_dict_group, reading_path, restore_feed_dict, suffix,
-                                   table_name):
-    for optimizer_name, optimizer_state_placeholder_dict in optimizer_state_placeholder_dict_group.items():
-        for state_key in optimizer_state_placeholder_dict:
-            fill_placeholder(reading_path=reading_path,
-                             placeholder_dict=optimizer_state_placeholder_dict,
-                             feed_dict=restore_feed_dict,
-                             suffix=suffix,
-                             name_descriptor=NameDescriptor(table_name, state_key,
-                                                            optimizer_name=optimizer_name))
-
-
 def get_valid_dict_data_from_host_offset(dump_data_dict: dict, offset: list):
     """
     Extract embedding and optimizer data from the dict based on offset.
@@ -311,6 +299,17 @@ def get_valid_dict_data_from_host_offset(dump_data_dict: dict, offset: list):
                 dump_optimizer_data[state_key] = state
             dump_optimizer_data_dict[optimizer_name] = dump_optimizer_data
         dump_data_dict["optimizer"] = dump_optimizer_data_dict
+
+
+def fill_placeholder_for_optimizer(optimizer_state_placeholder_dict_group, reading_path, restore_feed_dict, suffix,
+                                   table_name):
+    for optimizer_name, optimizer_state_placeholder_dict in optimizer_state_placeholder_dict_group.items():
+        for state_key in optimizer_state_placeholder_dict:
+            fill_placeholder(reading_path=reading_path,
+                             placeholder_dict=optimizer_state_placeholder_dict,
+                             feed_dict=restore_feed_dict,
+                             suffix=suffix,
+                             name_descriptor=NameDescriptor(table_name, state_key, optimizer_name=optimizer_name))
 
 
 def fill_placeholder(reading_path, placeholder_dict, feed_dict, suffix, name_descriptor):
