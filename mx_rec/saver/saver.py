@@ -253,7 +253,6 @@ class Saver(object):
                 assign_op = state.assign(sub_optimizer_placeholder_dict.get(key_state))
                 self.restore_fetch_list.append(assign_op)
 
-
     def _restore(self, sess, reading_path):
         if is_asc_manager_initialized():
             restore_host_data(reading_path)
@@ -269,27 +268,12 @@ class Saver(object):
             fill_placeholder(reading_path, sub_placeholder_dict, restore_feed_dict, self.rank_id,
                              NameDescriptor(table_name, DataName.EMBEDDING.value))
 
-            table_instance = get_table_instance_by_name(table_name)
-
-            if table_instance.use_feature_mapping:
-                fill_placeholder(reading_path, sub_placeholder_dict, restore_feed_dict, self.rank_id,
-                                 NameDescriptor(table_name, DataName.FEATURE_MAPPING.value))
-                fill_placeholder(reading_path, sub_placeholder_dict, restore_feed_dict, self.rank_id,
-                                 NameDescriptor(table_name, DataName.OFFSET.value))
-
             if "optimizer" in sub_placeholder_dict:
                 optimizer_state_placeholder_dict_group = sub_placeholder_dict.get("optimizer")
-                for optimizer_name, optimizer_state_placeholder_dict in optimizer_state_placeholder_dict_group.items():
-                    for state_key in optimizer_state_placeholder_dict:
-                        fill_placeholder(reading_path=reading_path,
-                                         placeholder_dict=optimizer_state_placeholder_dict,
-                                         feed_dict=restore_feed_dict,
-                                         suffix=self.rank_id,
-                                         name_descriptor=NameDescriptor(table_name, state_key,
-                                                                        optimizer_name=optimizer_name))
+                fill_placeholder_for_optimizer(optimizer_state_placeholder_dict_group, reading_path,
+                                               restore_feed_dict, self.rank_id, table_name)
 
         sess.run(self.restore_fetch_list, feed_dict=restore_feed_dict)
-
 
 
 class NameDescriptor:
@@ -297,6 +281,18 @@ class NameDescriptor:
         self.table_name = table_name
         self.data_name = data_name
         self.optimizer_name = optimizer_name
+
+
+def fill_placeholder_for_optimizer(optimizer_state_placeholder_dict_group, reading_path, restore_feed_dict, suffix,
+                                   table_name):
+    for optimizer_name, optimizer_state_placeholder_dict in optimizer_state_placeholder_dict_group.items():
+        for state_key in optimizer_state_placeholder_dict:
+            fill_placeholder(reading_path=reading_path,
+                             placeholder_dict=optimizer_state_placeholder_dict,
+                             feed_dict=restore_feed_dict,
+                             suffix=suffix,
+                             name_descriptor=NameDescriptor(table_name, state_key,
+                                                            optimizer_name=optimizer_name))
 
 
 def get_valid_dict_data_from_host_offset(dump_data_dict: dict, offset: list):
