@@ -245,7 +245,7 @@ def _push_subgraph_to_dataset(graph: tf.Graph, subgraph_to_push: Set[tf.Operatio
     get_next_node = graph.get_operation_by_name("IteratorGetNext")
     src_dataset = _get_src_dataset(graph, get_next_node)
 
-    def acg_func(*x):
+    def acg_func(*x): # pragma: no cover
         old_x = x
         logger.debug("Got old batch layout: %s", x)
 
