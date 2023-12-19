@@ -17,7 +17,6 @@ class SparseEmbeddingMock:
         self.slice_device_vocabulary_size = 10
         self.scalar_emb_size = 4
         self.host_vocabulary_size = host_vocab_size
-        self.use_feature_mapping = None
         self.optimizer = dict()
         self.use_dynamic_expansion = False
 
