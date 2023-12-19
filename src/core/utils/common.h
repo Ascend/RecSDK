@@ -79,8 +79,11 @@ namespace MxRec {
     constexpr int FILE_MIN_SIZE = 0;
     constexpr size_t BUFFER_SIZE{1024 * 1024 * 64};
     constexpr size_t MAP_BYTE_SIZE{static_cast<size_t>(10) * 1024 * 1024 * 1024};
-
+#ifdef GTEST
+    constexpr int KEY_PROCESS_TIMEOUT = 3;
+#else
     constexpr int KEY_PROCESS_TIMEOUT = 120;
+#endif
     constexpr int GET_BATCH_TIMEOUT = 300;
     constexpr int EOS_TIMEOUT = 60;
 
