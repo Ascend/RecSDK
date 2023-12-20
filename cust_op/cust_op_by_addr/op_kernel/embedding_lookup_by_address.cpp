@@ -25,7 +25,7 @@ public:
     pipe.InitBuffer(tbuf, addrNumPerLoop * sizeof(int64_t));
 
     pipe.InitBuffer(inQueue, pingpongNum, veclen);
-    pipe.InitBuffer(outQueue, pingpongNum, veclen); //
+    pipe.InitBuffer(outQueue, pingpongNum, veclen);
 
     // get start index for current core, core parallel block_indx block_dim，即使是最后一个核也应该多初始化一些，并对齐4的倍数
     srcAddrGlobal.SetGlobalBuffer((__gm__ int64_t *)(address + block_idx * singleCoreAddrLen), needComputeAddrLen);
@@ -169,7 +169,7 @@ private:
   TBuf<QuePosition::LCM> tbuf;
   TQue<QuePosition::VECIN, 1> inQueue;
   TQue<QuePosition::VECOUT, 1> outQueue;
-  GlobalTensor<T> srcDataBufferGm, dstDataGm, outDataGm;
+  GlobalTensor<T> srcDataBufferGm, dstDataGm;
   GlobalTensor<int64_t> srcAddrGlobal;
 };
 

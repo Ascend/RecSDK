@@ -74,7 +74,7 @@ namespace optiling
         int32_t alignNum = MIN_BLOCK_SIZE / typeSize;
         // embeddingDimAligned，表示需要向上对齐到最小单位
         int32_t embeddingDimAligned = ((embeddingDim - 1 + alignNum) / alignNum) * alignNum;
-        // 每个地址需要占用sizeof(int64_t)个字节，typeSize表示每个数据的字节数，需要使用2倍的内存空间，因为每次移动都需要复制一份数据
+        // LocalTensor空间，tbuf存储int64的地址+inQueue+outQueue两倍的emb，因为每次移动都需要复制一份数据
         int32_t occupyAddressBytesNum =
                 sizeof(int64_t) + typeSize * embeddingDimAligned * PING_PONG_NUM * 2;
         // 一轮计算中最多计算多少个addr，由于地址也要搬到ub，所以需要对齐32,
