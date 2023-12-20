@@ -41,7 +41,6 @@ void HostEmb::Initialize(const vector<EmbInfo>& embInfos, int seed)
 void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, int seed, int vocabSize,
     int embeddingSize, vector<vector<float>> &embData) const
 {
-#ifndef GTEST
     LOG_INFO(HOSTEMB + "GenerateEmbData Start, seed:{}, initializer num: {}", seed, initializeInfos.size());
     embData.clear();
     embData.resize(vocabSize, vector<float>(embeddingSize));
@@ -53,7 +52,6 @@ void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, in
         }
     }
     LOG_INFO(HOSTEMB + "GenerateEmbData End, seed:{}", seed);
-#endif
 }
 
 /// 停止用于异步更新D2H emb的线程
@@ -85,7 +83,6 @@ void HostEmb::Join(int channelId)
     }
 }
 
-#ifndef GTEST
 /// 从hdTransfer获取device侧返回的emb信息，并在host侧表的对应位置插入。
 /// missingKeysHostPos为host侧需要发送的emb的位置，也就是淘汰的emb的插入位置
 /// \param missingKeysHostPos 当前batch在host上需要换出的偏移
@@ -154,7 +151,6 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
                 throw runtime_error("Acl get tensor data from dataset failed.");
             }
             float* ptr = reinterpret_cast<float *>(acltdtGetDataAddrFromItem(aclData));
-
             size_t elementSize = acltdtGetDataSizeFromItem(aclData);
             size_t dimNum = acltdtGetDimNumFromItem(aclData);
             LOG_DEBUG(HOSTEMB + "embName:{}, UpdateEmb missingKeys len = {}, embeddingSize = {},"
@@ -232,16 +228,13 @@ void HostEmb::EmbPartGenerator(const vector<InitializeInfo> &initializeInfos, ve
         }
     }
 }
-#endif
 
 /// 利用initializer初始化emb淘汰的位置
 /// \param embName 表名
 /// \param offset 淘汰的偏移列表
 void HostEmb::EvictInitEmb(const string& embName, const vector<size_t>& offset)
 {
-#ifndef GTEST
     auto& hostEmb = GetEmb(embName);
     EmbPartGenerator(hostEmb.hostEmbInfo.initializeInfos, hostEmb.embData, offset);
     LOG_INFO(HOSTEMB + "ddr EvictInitEmb!host embName {}, init offsets size: {}", embName, offset.size());
-#endif
 }
