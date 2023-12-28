@@ -1076,18 +1076,26 @@ void KeyProcess::HandleRankExitScene(int commId, const unique_ptr<EmbBatchT> &ba
         }
         LOG_INFO("channelId:{} batchId:{}, GetScAll HandleRankExitScene eos.", batch->channel, batch->batchId);
 
-        int timeout = 0;
+        int timeCount  = 0;
+        int timeout = 120; // 120s还在等待，就发送eos
         HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
-        bool isExit = hybridMgmtBlock->pythonBatchId[batch->channel] <
-                (hybridMgmtBlock->hybridBatchId[batch->channel] - hybridMgmtBlock->loop[batch->channel] + 1);
-        while (isExit && timeout < EOS_TIMEOUT) {
+        bool isWait = hybridMgmtBlock->pythonBatchId[batch->channel] <
+                      (hybridMgmtBlock->hybridBatchId[batch->channel] - hybridMgmtBlock->loop[batch->channel] + 1);
+
+        if (!isWait) { // double check
+            this_thread::sleep_for(seconds(EOS_TIMEOUT));
+            isWait = hybridMgmtBlock->pythonBatchId[batch->channel] <
+                     (hybridMgmtBlock->hybridBatchId[batch->channel] - hybridMgmtBlock->loop[batch->channel] + 1);
+        }
+
+        while (isWait && timeout < EOS_TIMEOUT) {
             LOG_DEBUG("wait until hybridBatchId equal pythonBatchId before SendEos, channelId:{}, pyBatchId:{}, "
                       "mgmtBatchId:{}", batch->channel, hybridMgmtBlock->pythonBatchId[batch->channel],
                       hybridMgmtBlock->hybridBatchId[batch->channel]);
-            this_thread::sleep_for(seconds(1));
-            isExit = hybridMgmtBlock->pythonBatchId[batch->channel] <
+            this_thread::sleep_for(seconds(EOS_TIMEOUT));
+            isWait = hybridMgmtBlock->pythonBatchId[batch->channel] <
                      (hybridMgmtBlock->hybridBatchId[batch->channel] - hybridMgmtBlock->loop[batch->channel] + 1);
-            timeout++;
+            timeCount++;
         }
 
         SendEos(batch->batchId, batch->channel);

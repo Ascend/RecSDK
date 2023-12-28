@@ -685,6 +685,10 @@ bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
         LOG_INFO(MGMT + "channelId:{} batchId:{}, embName:{}, ParseKeys with HBM mode end.",
                  channelId, batchId, embInfo.name);
     }
+    if (KEY_PROCESS_INSTANCE->isNeedExit[channelId]) {
+        LOG_WARN(MGMT + "can not send data after eos, channelId:{} batchId:{}!", channelId, batchId);
+        return false;
+    }
     batchId++;
     return true;
 }
@@ -750,6 +754,11 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId)
     EmbHDTransWrap(channelId, batchId - 1, start);
     LOG_DEBUG(MGMT + "channelId:{} batchId:{}, ParseKeys end, parseKeyTC(ms):{}",
               channelId, batchId, parseKeyTC.ElapsedMS());
+
+    if (KEY_PROCESS_INSTANCE->isNeedExit[channelId]) {
+        LOG_WARN(MGMT + "can not send data after eos, channelId:{} batchId:{}!", channelId, batchId--);
+        return false;
+    }
 #endif
     return true;
 }
