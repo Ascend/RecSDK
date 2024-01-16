@@ -1,12 +1,21 @@
 #!/bin/bash
-# Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
-# Description: build script.
-# Author: MindX SDK
-# Create: 2023
-# History: NA
+# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 
 ##################################################################
-#   build_tf1_with_opensource.sh 用于美团客户编译MxRec和动态扩容算子
+#   build_tf1_with_opensource.sh 编译MxRec和动态扩容算子
 # 编译环境：Python3.7.5 GCC 7.3.0 CMake 3.20.6
 # 代码主要分为四部分：
 # 1、准备编译MxRec所需依赖：pybind11(v2.10.3) securec
