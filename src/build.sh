@@ -34,8 +34,8 @@ cmake -DCMAKE_BUILD_TYPE=Release \
     -DPYTHON_PATH="$python_path" \
     -DEASY_PROFILER_PATH=/ \
     -DASCEND_PATH="$ascend_path" \
-    -DABSEIL_PATH="$python_path"/lib/python3.7/site-packages/tensorflow_core/ \
-    -DSECUREC_PATH="$2"/platform/securec \
+    -DABSEIL_PATH="$1" \
+    -DSECUREC_PATH="$2"/../opensource/securec \
     -DCMAKE_INSTALL_PREFIX="$2"/output \
     -DBUILD_CUST="$3" ..
 make -j

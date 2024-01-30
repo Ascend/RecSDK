@@ -16,6 +16,15 @@
 
 set -e
 
+TF_VERSION=$1
+if [ "${TF_VERSION}" == "tf1" ]; then
+    TF_DIR=tensorflow_core
+elif [ "${TF_VERSION}" == "tf2" ];then
+    TF_DIR=tensorflow
+else
+    echo "TF_VERSION should be tf1 or tf2"
+fi
+
 # add mpirun env
 export OMPI_ALLOW_RUN_AS_ROOT=1
 export OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
@@ -25,22 +34,78 @@ source /opt/rh/devtoolset-7/enable
 
 CUR_DIR=$(dirname "$(readlink -f "$0")")
 ROOT_DIR=$(dirname "${CUR_DIR}")
-acc_ctr_path="${ROOT_DIR}"/src/platform/AccCTR
-cp -rf "${ROOT_DIR}"/platform/securec/* "${acc_ctr_path}"/3rdparty/huawei_secure_c
+opensource_path="${ROOT_DIR}"/../opensource
+acc_ctr_path="${ROOT_DIR}"/src/AccCTR
 export LD_LIBRARY_PATH="${acc_ctr_path}"/output/ock_ctr_common/lib:$LD_LIBRARY_PATH
 
-compile_securec()
-{
-    if [[ ! -d "${ROOT_DIR}"/platform/securec ]]; then
+function prepare_googletest(){
+  cd ${opensource_path}
+  if [ ! -d googletest-release-1.8.1 ]; then
+    unzip googletest-release-1.8.1.zip
+  fi
+  cd googletest-release-1.8.1
+  if [ ! -d build ]; then
+    mkdir build
+  fi
+  cd build
+  rm -f CMakeCache.txt
+  cmake -DBUILD_SHARED_LIBS=ON ..
+  make -j8
+  make install
+}
+
+function prepare_emock(){
+  cd ${opensource_path}
+  if [ ! -d emock-0.9.0 ]; then
+    unzip emock-0.9.0.zip
+  fi
+  cd emock-0.9.0
+  if [ ! -d build ]; then
+    mkdir build
+  fi
+  cd build
+  rm -f CMakeCache.txt
+  cmake ..
+  make -j8
+  make install
+}
+
+function prepare_securec(){
+  cd "${opensource_path}"
+  if [ ! -d securec ]; then
+    unzip huaweicloud-sdk-c-obs-3.23.9.zip
+    mv huaweicloud-sdk-c-obs-3.23.9/platform/huaweisecurec securec
+    rm -rf huaweicloud-sdk-c-obs-3.23.9
+    rm -rf securec/lib/*
+  fi
+}
+
+function compile_securec(){
+  cd ${opensource_path}
+    if [[ ! -d "${opensource_path}/securec" ]]; then
         echo "securec is not exist"
         exit 1
     fi
 
-    if [[ ! -f "${ROOT_DIR}"/platform/securec/lib/libsecurec.so ]]; then
-        cd "${ROOT_DIR}"/platform/securec/src
-        make -j
+    if [[ ! -f "${opensource_path}/securec/lib/libsecurec.so" ]]; then
+        cd "${opensource_path}/securec/src"
+        make -j4
     fi
 }
+
+function prepare_pybind(){
+  cd "${opensource_path}"
+  if [ ! -d pybind11 ]; then
+    unzip pybind11-2.10.3.zip
+    mv pybind11-2.10.3 pybind11
+  fi
+}
+
+prepare_pybind
+echo "opensource path:${opensource_path}"
+prepare_googletest
+prepare_emock
+prepare_securec
 compile_securec
 
 compile_acc_ctr_so_file()
@@ -63,14 +128,16 @@ find ./ -name "*.sh" -exec chmod +x {} \;
 mkdir build
 cd build
 
+python_path="$(dirname "$(dirname "$(which python3.7)")")"
+
 cmake -DCMAKE_BUILD_TYPE=Debug \
-    -DTF_PATH="$(dirname "$(dirname "$(which python3.7)")")"/lib/python3.7/site-packages/tensorflow_core \
+    -DTF_PATH="${python_path}"/lib/python3.7/site-packages/"${TF_DIR}" \
     -DOMPI_PATH=/usr/local/openmpi/ \
-    -DPYTHON_PATH="$(dirname "$(dirname "$(which python3.7)")")" \
+    -DPYTHON_PATH="${python_path}" \
     -DEASY_PROFILER_PATH=/opt/buildtools/ \
     -DASCEND_PATH=/usr/local/Ascend/ascend-toolkit/latest \
-    -DABSEIL_PATH="$python_path"/lib/python3.7/site-packages/tensorflow_core/ \
-    -DSECUREC_PATH="${ROOT_DIR}"/platform/securec \
+    -DABSEIL_PATH="${python_path}"/lib/python3.7/site-packages/"${TF_DIR}" \
+    -DSECUREC_PATH="${ROOT_DIR}"/../opensource/securec \
     -DBUILD_TESTS=on -DCOVERAGE=on "$(dirname "${PWD}")"
 
 make -j

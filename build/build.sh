@@ -14,8 +14,6 @@
 # limitations under the License.
 # ==============================================================================
 
-export GLOG_CUSTOM_PREFIX_SUPPORT=1
-
 set -e
 warn() { echo >&2 -e "\033[1;31m[WARN ][Depend  ] $1\033[1;37m" ; }
 ARCH="$(uname -m)"
@@ -32,7 +30,7 @@ get_version() {
       VERSION=${VERSION%.*}
     fi
   else
-    VERSION="5.0.rc3"
+    VERSION="5.0.0"
   fi
 }
 
@@ -65,8 +63,6 @@ release_tar=Ascend-"${pkg_dir}"_"${VERSION}"_linux-"${ARCH}".tar.gz
 gen_tar_file()
 {
   cd "${src_path}"
-  mv  "${ROOT_DIR}"/tf1_whl ../build/"${pkg_dir}"
-  mv  "${ROOT_DIR}"/tf2_whl ../build/"${pkg_dir}"
   cp -r  "${src_path}"/../cust_op ../build/"${pkg_dir}"
   # change dirs and files 's permission
   chmod 550 ../build/"${pkg_dir}"/tf1_whl
@@ -106,8 +102,14 @@ clean()
 if [ "$(uname -m)" = "x86_64" ]
 then
   echo "-----Build gen tar -----"
-  bash ${ROOT_DIR}/build/build_tf1.sh
-  bash ${ROOT_DIR}/build/build_tf2.sh
+  source /opt/buildtools/tf1_env/bin/activate
+  pip3 install setuptools==65.6.3
+  bash ${ROOT_DIR}/build/build_tf1_with_opensource.sh
+  deactivate tf1_env
+  source /opt/buildtools/tf2_env/bin/activate
+  pip3 install setuptools==65.6.3
+  bash ${ROOT_DIR}/build/build_tf2_with_opensource.sh
+  deactivate tf2_env
   gen_tar_file
   echo "-----Build gen tar finished-----"
 
@@ -118,8 +120,14 @@ fi
 if [ "$(uname -m)" = "aarch64" ]
 then
   echo "-----Build gen tar -----"
-  bash ${ROOT_DIR}/build/build_tf1.sh
-  bash ${ROOT_DIR}/build/build_tf2.sh
+  source /opt/buildtools/tf1_env/bin/activate
+  pip3 install setuptools==65.6.3
+  bash ${ROOT_DIR}/build/build_tf1_with_opensource.sh
+  deactivate tf1_env
+  source /opt/buildtools/tf2_env/bin/activate
+  pip3 install setuptools==65.6.3
+  bash ${ROOT_DIR}/build/build_tf2_with_opensource.sh
+  deactivate tf2_env
   gen_tar_file
   echo "-----Build gen tar finished-----"
 
