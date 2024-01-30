@@ -21,7 +21,8 @@ CUR_PATH=$(cd "$(dirname "$0")" || { warn "Failed to check path/to/run_python_dt
 TOP_PATH="${CUR_PATH}"/../
 
 # build mxRec and get output directory
-bash "$TOP_PATH"/build/build_tf1.sh
+pip3 install setuptools==65.6.3
+bash "$TOP_PATH"/build/build_tf1_with_opensource.sh
 
 # create libasc directory and copy so files into it
 cd "$TOP_PATH"/mx_rec

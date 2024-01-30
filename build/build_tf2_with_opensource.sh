@@ -15,12 +15,12 @@
 # ==============================================================================
 
 ##################################################################
-#   build_tf1_with_opensource.sh 编译MxRec和动态扩容算子
+#   build_tf2_with_opensource.sh 编译MxRec和动态扩容算子
 # 编译环境：Python3.7.5 GCC 7.3.0 CMake 3.20.6
 # 代码主要分为四部分：
 # 1、准备编译MxRec所需依赖：pybind11(v2.10.3) securec
 # 2、编译securec、AccCTR以及MxRec
-# 3、生成MxRec Wheel包，生成的whl包在当前目录下的mindxsdk-mxrec/tf1_whl
+# 3、生成MxRec Wheel包，生成的whl包在当前目录下的mindxsdk-mxrec/tf2_whl
 # 4、编译动态扩容算子
 ##################################################################
 
@@ -59,8 +59,8 @@ echo "opensource path:${opensource_path}"
 prepare_pybind
 prepare_securec
 
-# 配置tf1路径
-tf1_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/tensorflow_core
+# 配置tf2路径
+tf2_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/tensorflow
 
 project_output_path="${MxRec_DIR}"/output/
 VERSION_FILE="${MxRec_DIR}"/../mindxsdk/build/conf/config.yaml
@@ -153,11 +153,11 @@ compile_securec
 echo "----------------          compile     AccCTR            ----------------"
 compile_acc_ctr_so_file
 echo "----------------          compile MxRec so files        ----------------"
-compile_so_file "${tf1_path}"
+compile_so_file "${tf2_path}"
 echo "---------------- collect so files and mv them to libasc ----------------"
 collect_so_file
 echo "----------------      generate MxRec wheel package      ----------------"
-gen_wheel_file  "$SCRIPT_DIR"/"${pkg_dir}"/tf1_whl
+gen_wheel_file  "$SCRIPT_DIR"/"${pkg_dir}"/tf2_whl
 echo "----------------        compile MxRec success!!!!       ----------------"
 
 # start to compile cust op
