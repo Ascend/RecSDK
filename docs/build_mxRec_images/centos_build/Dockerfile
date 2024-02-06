@@ -14,12 +14,13 @@ RUN yum makecache && \
     yum -y install devtoolset-7 && \
     yum -y install devtoolset-7-gcc-c++ && \
     yum -y install epel-release && \
-    yum -y install wget zlib-devel bzip2 bzip2-devel openssl-devel ncurses-devel openssh-clients sqlite-devel openmpi-devel \
+    yum -y install wget zlib-devel bzip2 bzip2-devel openssl-devel ncurses-devel openssh-clients openssh-server sqlite-devel openmpi-devel \
     readline-devel tk-devel gdbm-devel db4-devel libpcap-devel xz-devel libffi-devel hdf5-devel patch pciutils lcov vim dos2unix gcc-c++ \
     autoconf automake libtool git && \
     yum clean all && \
     rm -rf /var/cache/yum && \
     echo "source /opt/rh/devtoolset-7/enable" >> /etc/profile
+# 注：openssh-server为双机训练样例需要，仅单机训练时可去掉
 
 # 2.安装gcc-7.3.0
 RUN source /etc/profile && \
