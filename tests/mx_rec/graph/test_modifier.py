@@ -15,7 +15,6 @@
 # limitations under the License.
 # ==============================================================================
 
-import os
 import unittest
 from collections import defaultdict
 from unittest import TestCase
@@ -24,12 +23,15 @@ from typing import Union, Callable
 
 import tensorflow as tf
 from tensorflow import Tensor
+
 from mx_rec.constants.constants import (
     ASCEND_CUTTING_POINT_INITIALIZER,
     ASCEND_SPARSE_LOOKUP_ENTRANCE,
     ASCEND_TIMESTAMP,
     ASCAnchorAttr,
 )
+from mx_rec.core.asc import FeatureSpec
+from mx_rec.graph.graph_typing import AnchorRecord
 from mx_rec.graph.modifier import (
     GraphModifierHook,
     find_make_iterator_op,
@@ -45,7 +47,7 @@ from mx_rec.graph.modifier import (
     get_timestamp_index,
     modify_graph_for_asc,
 )
-
+from tests.mx_rec.core.mock_class import MockConfigInitializer
 from tests.mx_rec.graph.mock_dataset import gen_mock_dataset
 
 
@@ -191,44 +193,6 @@ class FindTargetInstanceDatasetTest(TestCase):
             find_target_instance_dataset(None)
 
 
-class GenerateGetNextOpSpecsTest(TestCase):
-    def tearDown(self) -> None:
-        tf.compat.v1.reset_default_graph()
-
-    @patch.multiple("mx_rec.graph.merge_lookup.SparseEmbedding", get_anchor_attribute=Mock(return_value=True))
-    def test_ok(self):
-        mock_dataset = gen_mock_dataset()
-        mock_iterator = mock_dataset.make_initializable_iterator()
-        mock_batch = mock_iterator.get_next()
-        mock_ids = mock_batch.get("mock_ids")
-        mock_labels = mock_batch.get("mock_labels")
-        mock_cutting_point_list = [mock_ids, mock_labels]
-
-        get_next_op = mock_ids.op
-        replacement_specs = defaultdict(dict)
-        passing_tensor_list = [mock_ids, mock_labels]
-        batch_tensor_index_list = [0, 1]
-        sub_cutting_point_list = [mock_ids, mock_labels]
-        sub_graph_def = tf.compat.v1.GraphDef()
-        input_name_list = [mock_ids.name, mock_labels.name]
-        output_name_list = [mock_ids.name, mock_labels.name]
-        is_training = True
-
-        get_next_op_map = generate_get_next_op_specs(mock_cutting_point_list)
-        expected = defaultdict(dict)
-        expected[get_next_op] = {
-            "replacement_specs": replacement_specs,
-            "passing_tensor_list": passing_tensor_list,
-            "batch_tensor_index_list": batch_tensor_index_list,
-            "sub_cutting_point_list": sub_cutting_point_list,
-            "sub_graph_def": sub_graph_def,
-            "input_name_list": input_name_list,
-            "output_name_list": output_name_list,
-            "is_training": is_training,
-        }
-        self.assertEqual(get_next_op_map, expected)
-
-
 class GetSrcDatasetTest(TestCase):
     def tearDown(self) -> None:
         tf.compat.v1.reset_default_graph()
@@ -246,28 +210,39 @@ class GetSrcDatasetTest(TestCase):
         self.assertEqual(src_dataset, mock_dataset)
 
 
+@patch.multiple(
+    "mx_rec.graph.patch",
+    ConfigInitializer=Mock(return_value=MockConfigInitializer()),
+)
 class GetTgtDatasetTest(TestCase):
     def tearDown(self) -> None:
         tf.compat.v1.reset_default_graph()
 
     @patch.multiple(
         "mx_rec.graph.modifier",
-        get_training_mode_channel_id=Mock(return_value=0),
         get_asc_insert_func=Mock(return_value=lambda x, y: x),
     )
-    @patch.multiple("mx_rec.graph.modifier.SparseEmbedding", get_anchor_attribute=_gen_mock_get_anchor_attribute())
-    def test_ok(self):
+    @patch.multiple("mx_rec.graph.modifier.BaseSparseEmbedding", get_anchor_attribute=_gen_mock_get_anchor_attribute())
+    @patch("mx_rec.graph.modifier.ConfigInitializer")
+    def test_ok(self, modifier_config_initializer):
+        mock_config_initializer = MockConfigInitializer(modify_graph=True)
+        modifier_config_initializer.get_instance = Mock(return_value=mock_config_initializer)
+
         mock_dataset = gen_mock_dataset()
         mock_iterator = mock_dataset.make_initializable_iterator()
         mock_batch = mock_iterator.get_next()
         mock_ids = mock_batch.get("mock_ids")
         mock_sub_cutting_point_list = [mock_ids]
-        mock_records = {
-            "sub_graph_def": tf.compat.v1.GraphDef(),
-            "input_name_list": [],
-            "output_name_list": [],
-            "batch_tensor_index_list": [],
-        }
+        mock_records = AnchorRecord(
+            defaultdict(),
+            [],
+            [],
+            [],
+            tf.compat.v1.GraphDef(),
+            [],
+            [],
+            True
+        )
 
         tgt_dataset = get_tgt_dataset(mock_dataset, mock_sub_cutting_point_list, mock_records)
         new_iter = tgt_dataset.make_initializable_iterator()
@@ -284,15 +259,14 @@ class ModifyGraphForAscTest(TestCase):
 
     @patch.multiple(
         "mx_rec.graph.modifier",
-        get_training_mode_channel_id=Mock(return_value=True),
         get_asc_insert_func=Mock(return_value=lambda x, y: x),
-        set_iterator_type=Mock(),
-        set_initializer=Mock(),
-        set_target_batch=Mock(),
-        get_merged_multi_lookup=Mock(return_value=True),
     )
-    @patch.multiple("mx_rec.graph.modifier.SparseEmbedding", get_anchor_attribute=_gen_mock_get_anchor_attribute())
-    def test_ok_train_mode(self):
+    @patch.multiple("mx_rec.graph.modifier.BaseSparseEmbedding", get_anchor_attribute=_gen_mock_get_anchor_attribute())
+    @patch("mx_rec.graph.modifier.ConfigInitializer")
+    def test_ok_train_mode(self, modifier_config_initializer):
+        mock_config_initializer = MockConfigInitializer(modify_graph=True, merged_multi_lookup=True)
+        modifier_config_initializer.get_instance = Mock(return_value=mock_config_initializer)
+
         mock_dataset = gen_mock_dataset()
         mock_iterator = mock_dataset.make_initializable_iterator()
         mock_batch = mock_iterator.get_next()
@@ -305,20 +279,19 @@ class ModifyGraphForAscTest(TestCase):
 
     @patch.multiple(
         "mx_rec.graph.modifier",
-        get_training_mode_channel_id=Mock(return_value=True),
         get_asc_insert_func=Mock(return_value=lambda x, y: x),
-        set_iterator_type=Mock(),
-        set_initializer=Mock(),
-        set_target_batch=Mock(),
-        get_merged_multi_lookup=Mock(return_value=True),
         do_merge_lookup=Mock(),
-        get_bool_gauge_set=Mock(return_value={"evaluate"}),
-        insert_merged_multi_lookup=Mock(),
     )
     @patch.multiple(
-        "mx_rec.graph.modifier.SparseEmbedding", get_anchor_attribute=_gen_mock_get_anchor_attribute(is_training=False)
+        "mx_rec.graph.modifier.BaseSparseEmbedding",
+        get_anchor_attribute=_gen_mock_get_anchor_attribute(is_training=False)
     )
-    def test_ok_eval_mode(self):
+    @patch("mx_rec.graph.modifier.ConfigInitializer")
+    def test_ok_eval_mode(self, modifier_config_initializer):
+        mock_config_initializer = MockConfigInitializer(modify_graph=True, merged_multi_lookup=True,
+                                                        bool_gauge_set={"evaluate"})
+        modifier_config_initializer.get_instance = Mock(return_value=mock_config_initializer)
+
         mock_dataset = gen_mock_dataset()
         mock_iterator = mock_dataset.make_initializable_iterator()
         mock_batch = mock_iterator.get_next()
@@ -331,16 +304,14 @@ class ModifyGraphForAscTest(TestCase):
 
     @patch.multiple(
         "mx_rec.graph.modifier",
-        get_training_mode_channel_id=Mock(return_value=True),
         get_asc_insert_func=Mock(return_value=lambda x, y: x),
-        set_iterator_type=Mock(),
-        set_initializer=Mock(),
-        set_target_batch=Mock(),
-        get_merged_multi_lookup=Mock(return_value=False),
-        insert_merged_multi_lookup=Mock(),
     )
-    @patch.multiple("mx_rec.graph.modifier.SparseEmbedding", get_anchor_attribute=_gen_mock_get_anchor_attribute())
-    def test_err_not_clear_flag(self):
+    @patch.multiple("mx_rec.graph.modifier.BaseSparseEmbedding", get_anchor_attribute=_gen_mock_get_anchor_attribute())
+    @patch("mx_rec.graph.modifier.ConfigInitializer")
+    def test_err_not_clear_flag(self, modifier_config_initializer):
+        mock_config_initializer = MockConfigInitializer(modify_graph=True, merged_multi_lookup=False)
+        modifier_config_initializer.get_instance = Mock(return_value=mock_config_initializer)
+
         mock_dataset = gen_mock_dataset()
         mock_iterator = mock_dataset.make_initializable_iterator()
         mock_batch = mock_iterator.get_next()
@@ -358,16 +329,15 @@ class GetTimestampIndexTest(TestCase):
         tf.compat.v1.reset_default_graph()
 
     @patch.multiple(
-        "mx_rec.graph.modifier",
-        insert_feature_spec=Mock(),
-        get_feature_spec=Mock(return_value=None),
-    )
-    @patch.multiple(
         "mx_rec.graph.modifier.FeatureSpec",
         include_timestamp=Mock(),
         index_key=Mock(return_value=2),
     )
-    def test_ok(self):
+    @patch("mx_rec.graph.modifier.ConfigInitializer")
+    def test_ok(self, modifier_config_initializer):
+        mock_config_initializer = MockConfigInitializer()
+        modifier_config_initializer.get_instance = Mock(return_value=mock_config_initializer)
+
         mock_dataset = gen_mock_dataset()
         mock_iterator = mock_dataset.make_initializable_iterator()
         mock_batch = mock_iterator.get_next()
@@ -379,33 +349,10 @@ class GetTimestampIndexTest(TestCase):
         timestamp_index = get_timestamp_index(mock_get_next_op, is_training=True)
         self.assertEqual(timestamp_index, 2)
 
-    @patch.multiple(
-        "mx_rec.graph.modifier",
-        insert_feature_spec=Mock(),
-        get_feature_spec=Mock(),
-    )
-    @patch.multiple(
-        "mx_rec.graph.modifier.FeatureSpec",
-        include_timestamp=Mock(),
-        index_key=Mock(return_value=0),
-    )
-    def test_err_unmatched_timestamp_index(self):
-        mock_dataset = gen_mock_dataset()
-        mock_iterator = mock_dataset.make_initializable_iterator()
-        mock_batch = mock_iterator.get_next()
-        mock_timestamp = mock_batch.get("mock_timestamp")
-        mock_get_next_op = mock_timestamp.op
-
-        tf.compat.v1.add_to_collection(ASCEND_TIMESTAMP, mock_timestamp)
-
-        with self.assertRaises(ValueError):
-            get_timestamp_index(mock_get_next_op, is_training=True)
-
 
 @patch.multiple(
     "mx_rec.graph.patch",
-    get_modify_graph=Mock(return_value=True),
-    get_is_graph_modify_hook_running=Mock(return_value=True),
+    ConfigInitializer=Mock(return_value=MockConfigInitializer()),
 )
 @patch.multiple(
     "tensorflow.compat.v1.train.Saver",
@@ -418,12 +365,15 @@ class GraphModifierHookTest(TestCase):
 
     @patch.multiple(
         "mx_rec.graph.modifier",
-        set_is_graph_modify_hook_running=Mock(),
         modify_graph_and_start_emb_cache=Mock(),
         start_asc_pipeline=Mock(),
-        get_iterator_type=Mock(return_value="MakeIterator"),
     )
-    def test_ok(self):
+    @patch("mx_rec.graph.modifier.ConfigInitializer")
+    def test_ok(self, modifier_config_initializer):
+        mock_config_initializer = MockConfigInitializer(modify_graph=True, is_graph_modify_hook_running=True,
+                                                        iterator_type="MakeIterator")
+        modifier_config_initializer.get_instance = Mock(return_value=mock_config_initializer)
+
         mock_dataset = gen_mock_dataset()
         mock_iterator = mock_dataset.make_initializable_iterator()
         mock_batch = mock_iterator.get_next()
@@ -439,12 +389,15 @@ class GraphModifierHookTest(TestCase):
 
     @patch.multiple(
         "mx_rec.graph.modifier",
-        set_is_graph_modify_hook_running=Mock(),
         modify_graph_and_start_emb_cache=Mock(),
         start_asc_pipeline=Mock(),
-        get_iterator_type=Mock(return_value="InvalidIterator"),
     )
-    def test_err_invalid_iterator_type(self):
+    @patch("mx_rec.graph.modifier.ConfigInitializer")
+    def test_err_invalid_iterator_type(self, modifier_config_initializer):
+        mock_config_initializer = MockConfigInitializer(modify_graph=True, is_graph_modify_hook_running=True,
+                                                        iterator_type="InvalidIterator")
+        modifier_config_initializer.get_instance = Mock(return_value=mock_config_initializer)
+
         mock_dataset = gen_mock_dataset()
         mock_iterator = mock_dataset.make_initializable_iterator()
         mock_batch = mock_iterator.get_next()

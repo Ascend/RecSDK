@@ -31,7 +31,7 @@ from tensorflow.python.training import adam
 from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.util.initialize import get_table_instance, insert_removing_var_list, get_use_dynamic_expansion
+from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.variable import check_and_get_config_via_var
 from mx_rec.constants.constants import MAX_INT32
 from mx_rec.validator.validator import para_checker_decorator, StringValidator, FloatValidator
@@ -55,7 +55,7 @@ def create_hash_optimizer(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1
 
     Returns: a customized optimizer instance
     """
-    if get_use_dynamic_expansion():
+    if ConfigInitializer.get_instance().use_dynamic_expansion:
         raise ValueError("dynamic expansion mode is not compatible with the optimizer, please config dynamic "
                          "expansion mode and optimizer correctly")
     return CustomizedLazyAdam(learning_rate=learning_rate, beta1=beta1, beta2=beta2, epsilon=epsilon, name=name)
@@ -66,6 +66,7 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
 
     def __init__(self, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8, use_locking=False, name="LazyAdam"):
         self.optimizer_type = "LazyAdam"
+        self.config_instance = ConfigInitializer.get_instance()
         super(CustomizedLazyAdam, self)._get_name(name=name)
         super(CustomizedLazyAdam, self).__init__(learning_rate=learning_rate, beta1=beta1, beta2=beta2,
                                                  epsilon=epsilon, use_locking=use_locking, name=self.unique_name)
@@ -79,10 +80,10 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
 
         momentum = creat_one_single_slot(var, self._name + "/" + "momentum")
         velocity = creat_one_single_slot(var, self._name + "/" + "velocity")
-        insert_removing_var_list(momentum.name)
-        insert_removing_var_list(velocity.name)
+        self.config_instance.sparse_embed_config.insert_removing_var_list(momentum.name)
+        self.config_instance.sparse_embed_config.insert_removing_var_list(velocity.name)
         named_slot_key = (var.op.graph, var.op.name)
-        table_instance = get_table_instance(var)
+        table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
         if self._name in table_instance.optimizer:
             raise EnvironmentError(f"Sparse optimizer named {self._name} has exists.")
 
@@ -192,8 +193,8 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
             momentum = self._zeros_slot(each_var, "m", m_state_name)
             velocity = self._zeros_slot(each_var, "v", v_state_name)
             # make sure sparse optimizer statements will not be saved and restored within tf checkpoint.
-            insert_removing_var_list(momentum.name)
-            insert_removing_var_list(velocity.name)
+            self.config_instance.sparse_embed_config.insert_removing_var_list(momentum.name)
+            self.config_instance.sparse_embed_config.insert_removing_var_list(velocity.name)
 
             if self._name not in table_instance.optimizer:
                 table_instance.set_optimizer(self._name, {"momentum": momentum, "velocity": velocity})

@@ -71,6 +71,7 @@ TEST(EmbHashMap, TestFindOffset)
     string embTableName = "table1";
     EmbHashMap hostHashMaps;
     RankInfo rankInfo;
+    rankInfo.isDDR = true;
     auto embInfo = GetEmbInfoList();
     hostHashMaps.Init(rankInfo, embInfo, false);
     CacheManager cacheManager;
@@ -123,6 +124,7 @@ TEST(EmbHashMap, TESTGetHashMaps)
     string embTableName = "table1";
     EmbHashMap hostHashMaps;
     RankInfo rankInfo;
+    rankInfo.isDDR = true;
     auto embInfo = GetEmbInfoList();
     hostHashMaps.Init(rankInfo, embInfo, false);
     CacheManager cacheManager;

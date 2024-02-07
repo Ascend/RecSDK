@@ -22,6 +22,7 @@ from functools import reduce
 import tensorflow as tf
 
 from mx_rec.core.asc.feature_spec import FeatureSpec
+from tests.mx_rec.core.mock_class import MockConfigInitializer
 
 
 class TestFeatureSpecClass(unittest.TestCase):
@@ -154,6 +155,10 @@ class TestSetFeatPosFuncOfFeatureSpecClass(TestFeatureSpecClass):
         self.assertEqual(case2_feature_spec.instance_count_train, set_times)
 
 
+@mock.patch.multiple(
+    "mx_rec.core.asc.feature_spec",
+    ConfigInitializer=mock.Mock(return_value=MockConfigInitializer()),
+)
 class TestInsertPipelineModeFuncOfFeatureSpecClass(TestFeatureSpecClass):
     """
     Test for 'mx_rec.core.asc.feature_spec.FeatureSpec.insert_pipeline_mode'.
@@ -163,8 +168,6 @@ class TestInsertPipelineModeFuncOfFeatureSpecClass(TestFeatureSpecClass):
         # 每个测试方法执行前，将FeatureSpec的静态成员设为默认值
         super().setUp()
 
-    @mock.patch.multiple("mx_rec.core.asc.feature_spec",
-                         insert_training_mode_channel_id=mock.MagicMock(return_value=None))
     def test_insert_pipeline_mode_case1(self):
         """
         case1: mode为非bool类型，抛出异常
@@ -175,8 +178,6 @@ class TestInsertPipelineModeFuncOfFeatureSpecClass(TestFeatureSpecClass):
         with self.assertRaises(TypeError):
             case1_feature_spec.insert_pipeline_mode(mode)
 
-    @mock.patch.multiple("mx_rec.core.asc.feature_spec",
-                         insert_training_mode_channel_id=mock.MagicMock(return_value=None))
     def test_insert_pipeline_mode_case2(self):
         """
         case2: mode为False
@@ -187,8 +188,6 @@ class TestInsertPipelineModeFuncOfFeatureSpecClass(TestFeatureSpecClass):
         case2_feature_spec.insert_pipeline_mode(mode)
         self.assertSetEqual(case2_feature_spec.pipeline_mode, {False})
 
-    @mock.patch.multiple("mx_rec.core.asc.feature_spec",
-                         insert_training_mode_channel_id=mock.MagicMock(return_value=None))
     def test_insert_pipeline_mode_case3(self):
         """
         case3: mode为True
@@ -199,8 +198,6 @@ class TestInsertPipelineModeFuncOfFeatureSpecClass(TestFeatureSpecClass):
         case3_feature_spec.insert_pipeline_mode(mode)
         self.assertSetEqual(case3_feature_spec.pipeline_mode, {True})
 
-    @mock.patch.multiple("mx_rec.core.asc.feature_spec",
-                         insert_training_mode_channel_id=mock.MagicMock(return_value=None))
     def test_insert_pipeline_mode_case4(self):
         """
         case4: mode为True，在已经设置过一次True的情况下，设置第二次后无报错
@@ -213,6 +210,10 @@ class TestInsertPipelineModeFuncOfFeatureSpecClass(TestFeatureSpecClass):
         self.assertSetEqual(case4_feature_spec.pipeline_mode, {True})
 
 
+@mock.patch.multiple(
+    "mx_rec.graph.patch",
+    ConfigInitializer=mock.Mock(return_value=MockConfigInitializer()),
+)
 class TestSetFeatAttributeFuncOfFeatureSpecClass(TestFeatureSpecClass):
     """
     Test for 'mx_rec.core.asc.feature_spec.FeatureSpec.set_feat_attribute'.
@@ -223,40 +224,43 @@ class TestSetFeatAttributeFuncOfFeatureSpecClass(TestFeatureSpecClass):
         # 每个测试方法执行前，将FeatureSpec的静态成员设为默认值
         super().setUp()
 
-    @mock.patch.multiple("mx_rec.core.asc.feature_spec",
-                         insert_training_mode_channel_id=mock.MagicMock(return_value=None),
-                         get_use_static=mock.MagicMock(return_value=True),
-                         insert_feature_spec=mock.MagicMock(return_value=None))
-    def test_set_feat_attribute_case1(self):
+    @mock.patch("mx_rec.core.asc.feature_spec.ConfigInitializer")
+    def test_set_feat_attribute_case1(self, feature_spec_config_initializer):
         """
         case1: 未初始化initialized成员，静态shape，tensor的rank为0，抛出异常
         """
+
+        mock_config_initializer = MockConfigInitializer(use_static=True)
+        feature_spec_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
         case1_tensor = tf.ones([], tf.int32)
         case1_feature_spec = FeatureSpec("case1")
         with self.assertRaises(ValueError):
             case1_feature_spec.set_feat_attribute(case1_tensor, self.is_training)
 
-    @mock.patch.multiple("mx_rec.core.asc.feature_spec",
-                         insert_training_mode_channel_id=mock.MagicMock(return_value=None),
-                         get_use_static=mock.MagicMock(return_value=True),
-                         insert_feature_spec=mock.MagicMock(return_value=None))
-    def test_set_feat_attribute_case2(self):
+    @mock.patch("mx_rec.core.asc.feature_spec.ConfigInitializer")
+    def test_set_feat_attribute_case2(self, feature_spec_config_initializer):
         """
         case2: 未初始化initialized成员，静态shape，tensor的rank等于1
         """
+
+        mock_config_initializer = MockConfigInitializer(use_static=True)
+        feature_spec_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
         case2_tensor = tf.ones([32], tf.int32)
         case2_feature_spec = FeatureSpec("case2")
         case2_feature_spec.set_feat_attribute(case2_tensor, self.is_training)
         self.assertEqual(case2_feature_spec.feat_cnt, 1)
 
-    @mock.patch.multiple("mx_rec.core.asc.feature_spec",
-                         insert_training_mode_channel_id=mock.MagicMock(return_value=None),
-                         get_use_static=mock.MagicMock(return_value=True),
-                         insert_feature_spec=mock.MagicMock(return_value=None))
-    def test_set_feat_attribute_case3(self):
+    @mock.patch("mx_rec.core.asc.feature_spec.ConfigInitializer")
+    def test_set_feat_attribute_case3(self, feature_spec_config_initializer):
         """
         case3: 未初始化initialized成员，静态shape，tensor的rank大于1
         """
+
+        mock_config_initializer = MockConfigInitializer(use_static=True)
+        feature_spec_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
         test_tensor_shape = [32, 16, 2]
         test_tensor = tf.ones(test_tensor_shape, tf.int32)
         case3_feature_spec = FeatureSpec("case3")
@@ -264,19 +268,19 @@ class TestSetFeatAttributeFuncOfFeatureSpecClass(TestFeatureSpecClass):
         reduce_shape = reduce(lambda x, y: x * y, test_tensor_shape[1:])
         self.assertTrue(case3_feature_spec.initialized)
         self.assertListEqual(case3_feature_spec.dims, test_tensor_shape)
-        self.assertEqual(case3_feature_spec.rank, len(test_tensor_shape))
+        self.assertEqual(case3_feature_spec.tensor_rank, len(test_tensor_shape))
         self.assertEqual(case3_feature_spec.batch_size, test_tensor_shape[0])
         self.assertEqual(case3_feature_spec.feat_cnt, reduce_shape)
         self.assertEqual(case3_feature_spec.split, test_tensor_shape[0] * reduce_shape)
 
-    @mock.patch.multiple("mx_rec.core.asc.feature_spec",
-                         insert_training_mode_channel_id=mock.MagicMock(return_value=None),
-                         get_use_static=mock.MagicMock(return_value=False),
-                         insert_feature_spec=mock.MagicMock(return_value=None))
-    def test_set_feat_attribute_case4(self):
+    @mock.patch("mx_rec.core.asc.feature_spec.ConfigInitializer")
+    def test_set_feat_attribute_case4(self, feature_spec_config_initializer):
         """
         case4: 未初始化initialized成员，动态shape，tensor的rank大于1
         """
+        mock_config_initializer = MockConfigInitializer(use_static=False)
+        feature_spec_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
         test_tensor_shape = [32, 3]
         test_tensor = tf.ones(test_tensor_shape, tf.int32)
         case4_feature_spec = FeatureSpec("case4")
@@ -285,19 +289,19 @@ class TestSetFeatAttributeFuncOfFeatureSpecClass(TestFeatureSpecClass):
         with tf.Session() as sess:
             self.assertTrue(case4_feature_spec.initialized)
             self.assertEqual(sess.run(case4_feature_spec.dims), reduce_shape)
-            self.assertEqual(case4_feature_spec.rank, 1)
+            self.assertEqual(case4_feature_spec.tensor_rank, 1)
             self.assertEqual(sess.run(case4_feature_spec.split), reduce_shape)
             self.assertEqual(sess.run(case4_feature_spec.batch_size), reduce_shape)
             self.assertEqual(case4_feature_spec.feat_cnt, 1)
 
-    @mock.patch.multiple("mx_rec.core.asc.feature_spec",
-                         insert_training_mode_channel_id=mock.MagicMock(return_value=None),
-                         get_use_static=mock.MagicMock(return_value=True),
-                         insert_feature_spec=mock.MagicMock(return_value=None))
-    def test_set_feat_attribute_case5(self):
+    @mock.patch("mx_rec.core.asc.feature_spec.ConfigInitializer")
+    def test_set_feat_attribute_case5(self, feature_spec_config_initializer):
         """
         case5: 静态shape，tensor的rank大于1，再次用不同tensor初始化initialized成员，抛出异常
         """
+        mock_config_initializer = MockConfigInitializer(use_static=True)
+        feature_spec_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
         case5_feature_spec = FeatureSpec("case5")
         case5_feature_spec.set_feat_attribute(tf.ones([32, 3], tf.int32), self.is_training)
         # 再次初始化

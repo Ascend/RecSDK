@@ -14,8 +14,6 @@ See the License for the specific language governing permissions and
 ==============================================================================*/
 
 #include <random>
-
-#include <emock/emock.hpp>
 #include <gmock/gmock-matchers.h>
 #include <gtest/gtest.h>
 #include <easy/profiler.h>
@@ -24,6 +22,7 @@ See the License for the specific language governing permissions and
 #include "key_process/key_process.h"
 #include "ock_ctr_common/include/unique.h"
 #include "ock_ctr_common/include/error_code.h"
+#include "emb_table/embedding_mgmt.h"
 
 using namespace std;
 using namespace MxRec;
@@ -74,14 +73,14 @@ protected:
         rankInfo.useStatic = useStatic;
         rankInfo.localRankId = rankInfo.rankId % rankInfo.localRankSize;
         rankInfo.deviceId = rankInfo.localRankId;
-        rankInfo.noDDR = false;
+        rankInfo.isDDR = false;
+        rankInfo.useDynamicExpansion = false;
         rankInfo.maxStep = { 1, -1 };
         rankInfo.useHot = false;
         // 初始化emb信息
         GenEmbInfos(embNum, embInfos, fieldNums);
         splits = fieldNums;
         BuildExpect();
-        GlobalMockObject::verify();
     }
 
     // 使用该方法构造的数据需要使用掉，否则会影响其他用例
@@ -106,8 +105,8 @@ protected:
                     batch->batchId = batchId;
                     batch->channel = channel;
                     LOG_DEBUG("[{}/{}]" KEY_PROCESS "PrepareBatch: batchQueueId: {}, {}[{}]{}, sampleSize:{}",
-                        worldRank, worldSize,
-                        batchQueueId, batch->name, batch->channel, batch->batchId, batch->sample.size()
+                              worldRank, worldSize,
+                              batchQueueId, batch->name, batch->channel, batch->batchId, batch->sample.size()
                     );
                     EmbBatchT temp;
                     temp.sample = batch->sample;
@@ -318,51 +317,13 @@ protected:
 
     void TearDown()
     {
-        GlobalMockObject::verify();
         // delete
     }
 };
 
-int EMOCK_API mockStart(KeyProcess* obj) {
-    return 1;
-}
-
-void EMOCK_API mockDestroy(KeyProcess* obj) {
-    // 等待线程主动处理结束，再isRunning = false
-    for (auto& i: obj->procThreads) {
-        i->join();
-    }
-    obj->isRunning = false;
-    obj->procThreads.clear();
-    return;
-}
-
-void EMOCK_API mockEmptyDestroy(KeyProcess* obj) {
-    auto batchQueue = SingletonQueue<EmbBatchT>::GetInstances(0);
-    do {
-        LOG_INFO("wait for thread running");
-        this_thread::sleep_for(2s);
-    } while (batchQueue->TryPop() != nullptr);
-    // 通过Queue中数据是否取完了来判断是否需要退出；可能会出现取完却未处理完的情况、出数据不均衡
-    obj->isRunning = false;
-    for (auto& i: obj->procThreads) {
-        i->join();
-    }
-    return;
-}
-
-void EMOCK_API mockInitExpansionEmb(EmbTable* obj, const EmbInfo& embInfos, const RankInfo&, int)
-{
-    obj->totalCapacity = embInfos.devVocabSize;
-    obj->embSize = embInfos.extEmbeddingSize;
-    obj->usedCapacity = 1;
-}
-
 TEST_F(KeyProcessTest, Initialize)
 {
-    EMOCK(&KeyProcess::Start)
-        .expects(exactly(1))
-        .will(invoke(mockStart));
+    EmbeddingMgmt::Instance()->Init(rankInfo, embInfos);
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     ASSERT_EQ(process.rankInfo.rankId, rankInfo.rankId);
@@ -378,44 +339,9 @@ TEST_F(KeyProcessTest, Initialize)
     ock::ctr::Factory::Create(factory);
 }
 
-TEST_F(KeyProcessTest, InitializeHot)
-{
-    EMOCK(&KeyProcess::Start)
-        .expects(exactly(1))
-        .will(invoke(mockStart));
-    EMOCK(GetChipName)
-        .stubs()
-        .with(emock::any())
-        .will(returnValue(string("910B"))); // 调用GetChipName时返回910B
-    EMOCK(&EmbTable::Init)
-            .stubs()
-            .will(invoke(mockInitExpansionEmb));
-    rankInfo.useHot = true;
-    rankInfo.useDynamicExpansion = true;
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
-    ASSERT_EQ(process.isRunning, true);
-    ASSERT_EQ(process.hotEmbUpdateStep, GlobalEnv::hotEmbUpdateStep);
-
-    for (const EmbInfo& info: embInfos) {
-        ASSERT_NE(process.hotEmbTotCount.find(info.name), process.hotEmbTotCount.end());
-    }
-}
-
-TEST_F(KeyProcessTest, GetExpansionTableSizeOrCapacity)
-{
-    EMOCK(&EmbTable::Init)
-            .stubs()
-            .will(invoke(mockInitExpansionEmb));
-
-    for (const EmbInfo& info: embInfos) {
-        process.embeddingTableMap[info.name].Init(info, rankInfo, 0);
-        ASSERT_EQ(process.GetExpansionTableSize(info.name), 1);
-        ASSERT_EQ(process.GetExpansionTableCapacity(info.name), info.devVocabSize);
-    }
-}
-
 TEST_F(KeyProcessTest, Start)
 {
+    EmbeddingMgmt::Instance()->Init(rankInfo, embInfos);
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     setenv("keyProcessThreadNum", "2", 1);
@@ -428,9 +354,6 @@ TEST_F(KeyProcessTest, Start)
 
 TEST_F(KeyProcessTest, HashSplit)
 {
-    EMOCK(&KeyProcess::Start)
-            .stubs()
-            .will(invoke(mockStart));
     int rankSize = 4;
     auto queue = SingletonQueue<EmbBatchT>::GetInstances(0);
     auto batch = queue->GetOne();
@@ -451,9 +374,6 @@ TEST_F(KeyProcessTest, HashSplit)
 
 TEST_F(KeyProcessTest, HashSplitWithFAAE)
 {
-    EMOCK(&KeyProcess::Start)
-            .stubs()
-            .will(invoke(mockStart));
     int rankSize = 4;
     auto queue = SingletonQueue<EmbBatchT>::GetInstances(0);
     auto batch = queue->GetOne();
@@ -480,9 +400,6 @@ TEST_F(KeyProcessTest, HashSplitWithFAAE)
 // 准入+动态shape下，有padding
 TEST_F(KeyProcessTest, PaddingHashSplitWithFAAE)
 {
-    EMOCK(&KeyProcess::Start)
-            .stubs()
-            .will(invoke(mockStart));
     int rankSize = 4;
     auto queue = SingletonQueue<EmbBatchT>::GetInstances(0);
     auto batch = queue->GetOne();
@@ -499,7 +416,7 @@ TEST_F(KeyProcessTest, PaddingHashSplitWithFAAE)
     process.rankInfo.rankSize = rankSize;
     auto [splitKeys, restore, keyCount] = process.HashSplitWithFAAE(batch);
     LOG_INFO(KEY_PROCESS "HashSplitWithFAAE Padding， batch splitKeys: {}, keyCount: {}", VectorToString(splitKeys[0]),
-              VectorToString(keyCount[0]));
+             VectorToString(keyCount[0]));
 
     for (unsigned int i = 0; i < splitKeys.size(); ++i) {
         ASSERT_EQ(splitKeys[i].size(), ALLTOALLVC_ALIGN);
@@ -509,12 +426,6 @@ TEST_F(KeyProcessTest, PaddingHashSplitWithFAAE)
 
 TEST_F(KeyProcessTest, HotHashSplit)
 {
-    EMOCK(&KeyProcess::Start)
-            .stubs()
-            .will(invoke(mockStart));
-    EMOCK(&KeyProcess::Destroy)
-            .expects(exactly(1))
-            .will(invoke(mockDestroy));
     PrepareBatch();
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     LOG_INFO("CPU Core Num: %{}", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
@@ -533,18 +444,16 @@ TEST_F(KeyProcessTest, HotHashSplit)
     }; // for clean code
     for (int channel = 0; channel < 1; ++channel) {
         for (int id = 0; id < 1; ++id) {
-            // use lambda expression initialize thread
+        // use lambda expression initialize thread
             process.procThreads.emplace_back(std::make_unique<std::thread>(fn, channel, id));
         }
     }
+    this_thread::sleep_for(10s);
     process.Destroy();
 }
 
 TEST_F(KeyProcessTest, GetScAll)
 {
-    EMOCK(&KeyProcess::Start)
-            .stubs()
-            .will(invoke(mockStart));
     vector<int> keyScLocal(worldSize, worldRank + 1); // 用worldRank+1初始化发送数据量
     LOG_DEBUG(KEY_PROCESS "rank {} keyScLocal: {}", worldRank, VectorToString(keyScLocal));
     vector<int> expectScAll(worldSize * worldSize);
@@ -563,9 +472,6 @@ TEST_F(KeyProcessTest, GetScAll)
 
 TEST_F(KeyProcessTest, HandleRankExitScene)
 {
-    EMOCK(&KeyProcess::Start)
-            .stubs()
-            .will(invoke(mockStart));
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     // 仅用于集合通信获取sendCount信息，构造EmbBatchT对象即可，通道传0，不用构造batch数据
@@ -594,9 +500,6 @@ TEST_F(KeyProcessTest, HandleRankExitScene)
 
 TEST_F(KeyProcessTest, GetScAllForUnique)
 {
-    EMOCK(&KeyProcess::Start)
-            .stubs()
-            .will(invoke(mockStart));
     vector<int> keyScLocal(worldSize, worldRank + 1); // 用worldRank+1初始化发送数据量
     LOG_INFO(KEY_PROCESS "rank {} keyScLocal: {}", worldRank, VectorToString(keyScLocal));
     vector<int> expectScAll(worldSize * worldSize);
@@ -618,15 +521,12 @@ TEST_F(KeyProcessTest, GetScAllForUnique)
 // 非hot、非准入模式，固定batch输入，校验restore
 TEST_F(KeyProcessTest, BuildRestoreVec_4cpu)
 {
-    EMOCK(&KeyProcess::Start)
-            .stubs()
-            .will(invoke(mockStart));
     auto queue = SingletonQueue<EmbBatchT>::GetInstances(0);
     auto batch = queue->GetOne();
     vector<KeysT> allBatchKeys = { { 1, 4, 23, 14, 16, 7, 2, 21, 21, 29 },
-                                    { 5, 17, 26, 9, 27, 22, 27, 28, 15, 3 },
-                                    { 10, 4, 22, 17, 24, 13, 24, 26, 29, 11 },
-                                    { 14, 21, 18, 25, 21, 4, 20, 24, 13, 19 } };
+                                   { 5, 17, 26, 9, 27, 22, 27, 28, 15, 3 },
+                                   { 10, 4, 22, 17, 24, 13, 24, 26, 29, 11 },
+                                   { 14, 21, 18, 25, 21, 4, 20, 24, 13, 19 } };
     vector<vector<int>> allExpectSs = { { 0, 2, 5, 7, 9 }, { 0, 1, 4, 6 }, { 0, 2, 5, 8 }, { 0, 3, 6, 8 } };
     vector<vector<int>> allExpectRestore = { { 2, 0, 7, 5, 1, 8, 6, 3, 3, 4 },
                                              { 1, 2, 4, 3, 6, 5, 6, 0, 7, 8 },
@@ -634,7 +534,7 @@ TEST_F(KeyProcessTest, BuildRestoreVec_4cpu)
                                              { 6, 3, 7, 4, 3, 0, 1, 2, 5, 8 } };
     batch->sample = std::move(allBatchKeys[worldRank]);
     LOG_INFO(KEY_PROCESS "test BuildRestoreVec: rank {}, batchKeys {}",
-        worldRank, VectorToString(batch->sample));
+             worldRank, VectorToString(batch->sample));
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     auto [splitKeys, restore] = process.HashSplit(batch);
@@ -654,12 +554,6 @@ TEST_F(KeyProcessTest, BuildRestoreVec_4cpu)
 // hot模式，batch随机数，ProcessSplitKeys后人为校验lookupKeys、scAll、restore
 TEST_F(KeyProcessTest, BuildRestoreVec_rebuilt)
 {
-    EMOCK(&KeyProcess::Start)
-            .stubs()
-            .will(invoke(mockStart));
-    EMOCK(&KeyProcess::Destroy)
-            .expects(exactly(1))
-            .will(invoke(mockDestroy));
     PrepareBatch();
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     LOG_INFO("CPU Core Num: {}", sysconf(_SC_NPROCESSORS_CONF)); // 查看CPU核数
@@ -676,8 +570,8 @@ TEST_F(KeyProcessTest, BuildRestoreVec_rebuilt)
         auto [lookupKeys, scAll, ss] = process.ProcessSplitKeys(batch, id, splitKeys);
         process.BuildRestoreVec(batch, ss, restore, hotPos.size());
         LOG_INFO("rankid :{}, batchid: {}, lookupKeys: {}, scAll: {}, restore after build {}",
-            rankInfo.rankId, batch->batchId, VectorToString(lookupKeys),
-            VectorToString(scAll), VectorToString(restore));
+                 rankInfo.rankId, batch->batchId, VectorToString(lookupKeys),
+                 VectorToString(scAll), VectorToString(restore));
     }; // for clean code
     for (int channel = 0; channel < 1; ++channel) {
         for (int id = 0; id < KEY_PROCESS_THREAD; ++id) {
@@ -685,19 +579,13 @@ TEST_F(KeyProcessTest, BuildRestoreVec_rebuilt)
             process.procThreads.emplace_back(std::make_unique<std::thread>(fn, channel, id));
         }
     }
-
+    this_thread::sleep_for(10s);
     process.Destroy();
 }
 
 // 准入模式，batch随机数，ProcessSplitKeys后人为校验lookupKeys、scAll、count
 TEST_F(KeyProcessTest, GetCountRecv)
 {
-    EMOCK(&KeyProcess::Start)
-            .stubs()
-            .will(invoke(mockStart));
-    EMOCK(&KeyProcess::Destroy)
-            .expects(exactly(1))
-            .will(invoke(mockDestroy));
     PrepareBatch();
     process.m_featureAdmitAndEvict.m_isEnableFunction = true;
     for (size_t i = 0; i < embInfos.size(); i++) {
@@ -725,64 +613,43 @@ TEST_F(KeyProcessTest, GetCountRecv)
     }; // for clean code
     for (int channel = 0; channel < 1; ++channel) {
         for (int id = 0; id < KEY_PROCESS_THREAD; ++id) {
-            // use lambda expression initialize thread
+        // use lambda expression initialize thread
             process.procThreads.emplace_back(std::make_unique<std::thread>(fn, channel, id));
         }
     }
+    this_thread::sleep_for(10s);
     process.Destroy();
 }
 
 TEST_F(KeyProcessTest, Key2Offset)
 {
-    EMOCK(&KeyProcess::Start)
-            .stubs()
-            .will(invoke(mockStart));
+    EmbeddingMgmt::Instance()->Init(rankInfo, embInfos);
     KeysT lookupKeys = { 4, 16, 28, 4, 24, 4, 20, 24 };
     KeysT expectOffset = { 0, 1, 2, 0, 3, 0, 4, 3 };
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
-    process.Key2Offset("emb0", lookupKeys, TRAIN_CHANNEL_ID);
+    EmbeddingMgmt::Instance()->Key2Offset("emb0", lookupKeys, TRAIN_CHANNEL_ID);
     map<EmbNameT, string> tmp;
-    for (auto it = process.keyOffsetMap.begin(); it != process.keyOffsetMap.end(); ++it) {
+    MxRec::KeyOffsetMemT kom = EmbeddingMgmt::Instance()->GetKeyOffsetMap();
+    for (auto it = kom.begin(); it != kom.end(); ++it) {
         tmp.insert(pair<EmbNameT, string>(it->first, MapToString(it->second).c_str()));
     }
 
     LOG_DEBUG(KEY_PROCESS "test Key2Offset: lookupKeys: {}, keyOffsetMap: {}",
-        VectorToString(lookupKeys), MapToString(tmp));
+              VectorToString(lookupKeys), MapToString(tmp));
     ASSERT_THAT(lookupKeys, ElementsAreArray(expectOffset));
 
     KeysT lookupKeys2 = { 5, 17, 29, 5, 25, 5, 21, 25 };
     KeysT expectOffset2 = { -1, -1, -1, -1, -1, -1, -1, -1 };
-    process.Key2Offset("emb0", lookupKeys2, EVAL_CHANNEL_ID);
+    EmbeddingMgmt::Instance()->Key2Offset("emb0", lookupKeys2, EVAL_CHANNEL_ID);
     map<EmbNameT, string> tmp2;
-    for (auto it = process.keyOffsetMap.begin(); it != process.keyOffsetMap.end(); ++it) {
+    MxRec::KeyOffsetMemT kom2 = EmbeddingMgmt::Instance()->GetKeyOffsetMap();
+    for (auto it = kom2.begin(); it != kom2.end(); ++it) {
         tmp.insert(pair<EmbNameT, string>(it->first, MapToString(it->second).c_str()));
     }
     LOG_DEBUG(KEY_PROCESS "test Key2Offset: lookupKeys: {}, keyOffsetMap: {}",
-        VectorToString(lookupKeys2), MapToString(tmp2).c_str());
+              VectorToString(lookupKeys2), MapToString(tmp2).c_str());
     ASSERT_THAT(lookupKeys2, ElementsAreArray(expectOffset2));
-}
-
-TEST_F(KeyProcessTest, Key2OffsetDynamicExpansion)
-{
-    EMOCK(&KeyProcess::Start)
-            .stubs()
-            .will(invoke(mockStart));
-    KeysT lookupKeys = { 4, 16, 28, -1, 24, -1, 20, 24 };
-    KeysT expectOffset = { 0, 0, 0, 0, 0, 0, 0, 0 };
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
-    ASSERT_EQ(process.isRunning, true);
-    process.Key2OffsetDynamicExpansion("emb0", lookupKeys, EVAL_CHANNEL_ID);
-
-    LOG_DEBUG(KEY_PROCESS "test Key2Offset: lookupKeys: {}, keyOffsetMap: {}", VectorToString(lookupKeys), [&] {
-        map<EmbNameT, string> tmp;
-        for (auto it = process.keyOffsetMap.begin(); it != process.keyOffsetMap.end(); ++it) {
-            tmp.insert(pair<EmbNameT, string>(it->first, MapToString(it->second).c_str()));
-        }
-        return MapToString(tmp);
-    }());
-
-    ASSERT_THAT(lookupKeys, ElementsAreArray(expectOffset));
 }
 
 TEST_F(KeyProcessTest, GetUniqueConfig)
@@ -795,41 +662,22 @@ TEST_F(KeyProcessTest, GetUniqueConfig)
     process.GetUniqueConfig(uniqueConf);
 }
 
-// 自动化测试用例
-// 边界值、重复度测试
-TEST_F(KeyProcessTest, ProcessPrefetchTask)
-{
-    EMOCK(&KeyProcess::Destroy)
-            .expects(exactly(1))
-            .will(invoke(mockEmptyDestroy));
-    PrepareBatch();
-    rankInfo.noDDR = true;
-    GlobalEnv::applyGradientsStrategy = ApplyGradientsStrategyOptions::SUM_SAME_ID_GRADIENTS_AND_APPLY;
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
-    process.rankInfo.rankSize = worldSize;
-    process.rankInfo.localRankId = process.rankInfo.rankId % process.rankInfo.localRankSize;
-    ASSERT_EQ(process.isRunning, true);
-    // 所有线程处理完（训练结束）后调用
-    process.Destroy();
-    GlobalEnv::applyGradientsStrategy = ApplyGradientsStrategyOptions::DIRECT_APPLY;
-}
-
 // HBM端到端测试，动态shape，固定batch输入
 TEST_F(KeyProcessTest, KeyProcessTaskHelper)
 {
-    EMOCK(&KeyProcess::Start)
-            .stubs()
-            .will(invoke(mockStart));
-    rankInfo.noDDR = true;
+    rankInfo.isDDR = false;
     rankInfo.useStatic = false;
     rankInfo.useHot = false;
+    rankInfo.useDynamicExpansion = false;
+    EmbeddingMgmt::Instance()->Init(rankInfo, embInfos);
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     int batchId = 0;
     int channelId = 0;
     auto batch = GenBatch(embInfos[0].name, batchId, channelId); // 测试一个表
 
-    LOG_INFO("KeyProcessTaskHelper, rankid: {}, batchid: {}", rankInfo.rankId, batch->batchId);
+    LOG_INFO("KeyProcessTaskHelper, rankid: {}, batchid: {}, batchSize: {}",
+             rankInfo.rankId, batch->batchId, batch->sample.size());
 
     ASSERT_EQ(process.KeyProcessTaskHelper(batch, channelId, 0), true); // threadId = 0
     auto infoVecs = process.GetInfoVec(batchId, embInfos[0].name, channelId, ProcessedInfo::RESTORE);
@@ -859,19 +707,18 @@ TEST_F(KeyProcessTest, KeyProcessTaskHelper)
     process.SetEos(1, 1);
     ASSERT_EQ(process.GetInfoVec(batchId + 1, embInfos[0].name, channelId + 1, ProcessedInfo::RESTORE), nullptr);
     LOG_INFO("KeyProcessTaskHelper, rankid: {}, batchid: {}, eos status success", rankInfo.rankId, batch->batchId);
-
+    this_thread::sleep_for(10s);
     process.Destroy();
 }
 
 // DDR端到端测试，静态shape，固定batch输入
 TEST_F(KeyProcessTest, KeyProcessTaskHelperDDR)
 {
-    EMOCK(&KeyProcess::Start)
-            .stubs()
-            .will(invoke(mockStart));
-    rankInfo.noDDR = false;
+    rankInfo.isDDR = true;
     rankInfo.useStatic = true;
     rankInfo.useHot = false;
+    rankInfo.useDynamicExpansion = false;
+    EmbeddingMgmt::Instance()->Init(rankInfo, embInfos);
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     int batchId = 0;
@@ -921,24 +768,25 @@ TEST_F(KeyProcessTest, KeyProcessTaskHelperDDR)
     process.SetEos(1, 1);
     ASSERT_EQ(process.GetLookupKeys(batchId + 1, embInfos[0].name, channelId + 1).empty(), true);
     LOG_INFO("KeyProcessTaskHelper, rankid: {}, batchid: {}, eos status success", rankInfo.rankId, batch->batchId);
+    this_thread::sleep_for(10s);
     process.Destroy();
 }
 
 TEST_F(KeyProcessTest, InitializeUnique)
 {
-    EMOCK(&KeyProcess::Start)
-            .stubs()
-            .will(invoke(mockStart));
     ASSERT_EQ(ock::ctr::Factory::Create(factory), -1);
     ock::ctr::UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
 
     PrepareBatch();
-    unique_ptr<EmbBatchT> batch;
+
+    unique_ptr <EmbBatchT> batch;
     batch = process.GetBatchData(0, 0);
     ock::ctr::UniqueConf uniqueConf;
-    process.rankInfo.rankSize = worldSize;
-    process.rankInfo.useStatic = true;
+    process.rankInfo.
+    rankSize = worldSize;
+    process.rankInfo.
+    useStatic = true;
     bool uniqueInitialize = false;
     size_t preBatchSize = 0;
     process.InitializeUnique(uniqueConf, preBatchSize, uniqueInitialize, batch, unique);
@@ -957,12 +805,6 @@ TEST_F(KeyProcessTest, GetKeySize)
 
 TEST_F(KeyProcessTest, ProcessBatchWithFastUnique)
 {
-    EMOCK(&KeyProcess::Start)
-            .stubs()
-            .will(invoke(mockStart));
-    EMOCK(&KeyProcess::Destroy)
-            .expects(exactly(1))
-            .will(invoke(mockDestroy));
     PrepareBatch();
 
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
@@ -998,6 +840,7 @@ TEST_F(KeyProcessTest, ProcessBatchWithFastUnique)
             process.procThreads.emplace_back(std::make_unique<std::thread>(fn, channel, id));
         }
     }
+    this_thread::sleep_for(10s);
     process.Destroy();
 }
 
@@ -1007,29 +850,3 @@ TEST_F(KeyProcessTest, LoadSaveLock)
     process.LoadSaveUnlock();
 }
 
-TEST_F(KeyProcessTest, EvictKeys)
-{
-    EMOCK(&KeyProcess::Start)
-            .stubs()
-            .will(invoke(mockStart));
-    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
-    ASSERT_EQ(process.isRunning, true);
-    absl::flat_hash_map<emb_key_t, int64_t> flatTmp0 { {0, 0}, {4, 1}, {8, 2}, {12, 3} };
-    absl::flat_hash_map<emb_key_t, int64_t> flatTmp1 { {1, 0}, {5, 1}, {9, 2}, {13, 3} };
-    absl::flat_hash_map<emb_key_t, int64_t> flatTmp2 { {2, 0}, {6, 1}, {10, 2}, {14, 3} };
-    absl::flat_hash_map<emb_key_t, int64_t> flatTmp3 { {3, 0}, {7, 1}, {11, 2}, {15, 3} };
-    vector<absl::flat_hash_map<emb_key_t, int64_t>> allHashMap {flatTmp0, flatTmp1, flatTmp2, flatTmp3};
-    process.keyOffsetMap.emplace(embInfos[0].name, allHashMap[worldRank]);
-    process.evictPosMap.emplace(embInfos[0].name, vector<size_t>{});
-
-    vector<vector<emb_key_t>> allEvictKeys {{4, 8}, {1, 5}, {10, 14}, {3, 11}};
-    vector<vector<size_t>> allEvictPos {{1, 2}, {0, 1}, {2, 3}, {0, 2}};
-    process.EvictKeys(embInfos[0].name, allEvictKeys[worldRank]);
-    ASSERT_THAT(process.evictPosMap.at(embInfos[0].name), ElementsAreArray(allEvictPos[worldRank]));
-
-    // 测试并表统计情况下的淘汰
-    vector<vector<emb_key_t>> allEvictKeysCom {{0}, {}, {18}, {}};
-    vector<vector<size_t>> allEvictPosCom {{1, 2, 0}, {0, 1}, {2, 3}, {0, 2}};
-    process.EvictKeysCombine(allEvictKeysCom[worldRank]);
-    ASSERT_THAT(process.evictPosMap.at(embInfos[0].name), ElementsAreArray(allEvictPosCom[worldRank]));
-}

@@ -18,11 +18,11 @@
 import json
 import os
 
-from mxrec_pybind import get_logic_id
-from mx_rec.constants.constants import MAX_CONFIG_SIZE, MAX_DEVICE_ID, MAX_RANK_SIZE, MIN_RANK_SIZE, MIN_SIZE, \
-    VALID_DEVICE_ID_LIST
+from mx_rec.constants.constants import VALID_DEVICE_ID_LIST, MIN_SIZE, MAX_CONFIG_SIZE, MAX_DEVICE_ID, \
+    MIN_RANK_SIZE, MAX_RANK_SIZE
+from mx_rec.validator.validator import FileValidator, para_checker_decorator, StringValidator, \
+    Convert2intValidator
 from mx_rec.util.global_env_conf import global_env
-from mx_rec.validator.validator import Convert2intValidator, FileValidator, para_checker_decorator, StringValidator
 
 
 def parse_hccl_json():
@@ -52,13 +52,11 @@ def parse_hccl_json():
             raise AttributeError(f"Lack of attribute device.")
 
     rank_to_device_dict = dict()
-    local_rank_size = -1
     for server_list in table_hccl.get("server_list"):
         devices = server_list.get("device")
         if devices is None:
             raise ValueError("device is empty")
 
-        local_rank_size = len(devices)
         for device in devices:
             if "rank_id" not in device or not device.get("rank_id").isdigit():
                 raise ValueError(f"hccl_json rank_id wrong.")
@@ -66,7 +64,8 @@ def parse_hccl_json():
             if "device_id" not in device or not device.get("device_id").isdigit():
                 raise ValueError(f"hccl_json device_id wrong.")
 
-            res = get_logic_id(int(device.get("device_id")))
+            import mxrec_pybind
+            res = mxrec_pybind.get_logic_id(int(device.get("device_id")))
             if res < 0:
                 raise RuntimeError(
                     f"get logic id from physic id fail, error code is {res}, please check if dsmi api is functional.")
@@ -74,26 +73,18 @@ def parse_hccl_json():
                 raise ValueError(f"get logic id from physic id fail, the device id is invalid.")
             rank_to_device_dict[rank_id] = res
 
-    return rank_to_device_dict, local_rank_size
+    return rank_to_device_dict
 
 
-@para_checker_decorator(check_option_list=[
-    ("visible_devices", StringValidator, {"msg": "please config ASCEND_VISIBLE_DEVICES in docker container start"}),
-    ("rank_size", StringValidator, {"msg": "please config CM_WORKER_SIZE in docker container start"}),
-    ("chief_device", StringValidator, {"msg": "please config CM_CHIEF_DEVICE in docker container start"}),
-    ("rank_size", Convert2intValidator, {"min_value": MIN_RANK_SIZE, "max_value": MAX_RANK_SIZE,
-                                         "constrained_options": [1, 2, 4, 8, 16]}, ["check_value"]),
-    ("chief_device", Convert2intValidator, {"min_value": 0, "max_value": 15}, ["check_value"]),
-])
-def set_hccl_info_without_json(visible_devices: str, rank_size: str, chief_device: str):
+def set_hccl_info_without_json():
     """
     Used for no rank table file configured training situation.
     Now, only less than or equal 8p training job is supported.
-    :param visible_devices: 昇腾处理器可见的设备，来指定程序只使用其中的部分设备。
-    :param rank_size: 参与集群训练的device数量。
-    :param chief_device: 主节点device id。
     :return:
     """
+    visible_devices = global_env.ascend_visible_devices
+    rank_size = global_env.cm_worker_size
+    chief_device = global_env.cm_chief_device
     device_list = get_device_list(visible_devices)
     chief_device = int(chief_device)
     rank_size = int(rank_size)
@@ -107,14 +98,14 @@ def set_hccl_info_without_json(visible_devices: str, rank_size: str, chief_devic
     if chief_device not in sorted_device_list:
         raise ValueError(f"The environment variable CM_CHIEF_DEVICE {chief_device} is not in the local device list. ")
 
-
     rank_to_device_dict = {}
     chief_index = sorted_device_list.index(chief_device)
     sorted_device_list = sorted_device_list[chief_index:] + sorted_device_list[0: chief_index]
     sorted_device_list = sorted_device_list[:rank_size]
 
     for device_idx in sorted_device_list:
-        res = get_logic_id(int(device_idx))
+        import mxrec_pybind
+        res = mxrec_pybind.get_logic_id(int(device_idx))
         if res < 0:
             raise RuntimeError(
                 f"get logic id from physic id fail, error code is {res}, please check if dsmi api is functional.")
@@ -123,7 +114,7 @@ def set_hccl_info_without_json(visible_devices: str, rank_size: str, chief_devic
             raise ValueError(f"get logic id from physic id fail.")
         index = sorted_device_list.index(device_idx)
         rank_to_device_dict[index] = res
-    return rank_to_device_dict, local_rank_size
+    return rank_to_device_dict
 
 
 def get_device_list(ascend_visible_devices):

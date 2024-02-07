@@ -23,7 +23,7 @@ import tensorflow as tf
 
 from mx_rec.core.feature_process import EvictHook
 from mx_rec.core.asc.feature_spec import FeatureSpec
-from tests.mx_rec.core.mock_class import MockSparseEmbedding
+from tests.mx_rec.core.mock_class import MockSparseEmbedding, MockConfigInitializer
 
 
 class TestEvictHookClass(unittest.TestCase):
@@ -46,8 +46,7 @@ class TestEvictHookClass(unittest.TestCase):
 
 @mock.patch.multiple(
     "mx_rec.graph.patch",
-    get_modify_graph=mock.Mock(return_value=True),
-    get_is_graph_modify_hook_running=mock.Mock(return_value=True),
+    ConfigInitializer=mock.Mock(return_value=MockConfigInitializer()),
 )
 @mock.patch.multiple(
     "tensorflow.compat.v1.train.Saver",
@@ -63,22 +62,23 @@ class TestAfterRunFuncOfEvictHookClass(TestEvictHookClass):
         self.ori_var_assert = [[1., 1., 1., 1., 1.], [1., 1., 1., 1., 1.]]
         self.evict_var_assert = [[0., 0., 0., 0., 0.], [0., 0., 0., 0., 0.]]
 
-    @mock.patch.multiple("mx_rec.core.feature_process",
-                         trigger_evict=mock.MagicMock(return_value=True))
     @mock.patch("mx_rec.core.feature_process.npu_ops.gen_npu_ops.get_next")
-    @mock.patch("mx_rec.core.feature_process.get_table_instance_by_name")
-    @mock.patch("mx_rec.core.feature_process.export_feature_spec")
-    def test_after_run_case1(self, mock_export_feature_spec, mock_get_table_instance_by_name, mock_get_next):
+    @mock.patch("mx_rec.util.config_utils.embedding_utils.SparseEmbedConfig.get_table_instance_by_name")
+    @mock.patch("mx_rec.core.feature_process.ConfigInitializer")
+    def test_after_run_case1(self, feature_process_config_initializer, mock_get_table_instance_by_name, mock_get_next):
         """
         case1: evict_enable为True，python和C++侧正常触发淘汰
         """
 
         with tf.Graph().as_default():
+            mock_config_initializer = MockConfigInitializer(use_dynamic_expansion=False)
+            feature_process_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+            mock_config_initializer.get_instance().feature_spec_config.insert_feature_spec(
+                FeatureSpec("test_spec", table_name="test_table", access_threshold=5, eviction_threshold=10), True)
+
             test_table = MockSparseEmbedding()
             mock_get_next.return_value = [tf.constant([8, 9], dtype=tf.int32), tf.constant(2, dtype=tf.int32)]
             mock_get_table_instance_by_name.return_value = test_table
-            mock_export_feature_spec.return_value = dict(
-                test_spec=FeatureSpec("test_spec", table_name="test_table", access_threshold=5, eviction_threshold=10))
 
             evict_hook = EvictHook(evict_enable=True, evict_time_interval=1)
             with tf.compat.v1.train.MonitoredSession(hooks=[evict_hook]) as sess:
@@ -99,22 +99,23 @@ class TestAfterRunFuncOfEvictHookClass(TestEvictHookClass):
                 self.assertListEqual(evict_variable[8:].tolist(), self.evict_var_assert)
                 self.assertListEqual(evict_variable[:2].tolist(), self.ori_var_assert)
 
-    @mock.patch.multiple("mx_rec.core.feature_process",
-                         trigger_evict=mock.MagicMock(return_value=False))
     @mock.patch("mx_rec.core.feature_process.npu_ops.gen_npu_ops.get_next")
-    @mock.patch("mx_rec.core.feature_process.get_table_instance_by_name")
-    @mock.patch("mx_rec.core.feature_process.export_feature_spec")
-    def test_after_run_case2(self, mock_export_feature_spec, mock_get_table_instance_by_name, mock_get_next):
+    @mock.patch("mx_rec.util.config_utils.embedding_utils.SparseEmbedConfig.get_table_instance_by_name")
+    @mock.patch("mx_rec.core.feature_process.ConfigInitializer")
+    def test_after_run_case2(self, feature_process_config_initializer, mock_get_table_instance_by_name, mock_get_next):
         """
         case2: evict_enable为True，C++侧异常
         """
 
         with tf.Graph().as_default():
+            mock_config_initializer = MockConfigInitializer(use_dynamic_expansion=False, trigger_evict=False)
+            feature_process_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+            mock_config_initializer.get_instance().feature_spec_config.insert_feature_spec(
+                FeatureSpec("test_spec", table_name="test_table", access_threshold=5, eviction_threshold=10), True)
+
             test_table = MockSparseEmbedding()
             mock_get_next.return_value = [tf.constant([8, 9], dtype=tf.int32), tf.constant(2, dtype=tf.int32)]
             mock_get_table_instance_by_name.return_value = test_table
-            mock_export_feature_spec.return_value = dict(
-                test_spec=FeatureSpec("test_spec", table_name="test_table", access_threshold=5, eviction_threshold=10))
 
             evict_hook = EvictHook(evict_enable=True, evict_time_interval=1)
             with tf.compat.v1.train.MonitoredSession(hooks=[evict_hook]) as sess:
@@ -134,22 +135,23 @@ class TestAfterRunFuncOfEvictHookClass(TestEvictHookClass):
                 # 此时C++侧异常，不执行淘汰，因此evict_variable后两行还是1
                 self.assertListEqual(evict_variable[8:].tolist(), self.ori_var_assert)
 
-    @mock.patch.multiple("mx_rec.core.feature_process",
-                         trigger_evict=mock.MagicMock(return_value=True))
     @mock.patch("mx_rec.core.feature_process.npu_ops.gen_npu_ops.get_next")
-    @mock.patch("mx_rec.core.feature_process.get_table_instance_by_name")
-    @mock.patch("mx_rec.core.feature_process.export_feature_spec")
-    def test_after_run_case3(self, mock_export_feature_spec, mock_get_table_instance_by_name, mock_get_next):
+    @mock.patch("mx_rec.util.config_utils.embedding_utils.SparseEmbedConfig.get_table_instance_by_name")
+    @mock.patch("mx_rec.core.feature_process.ConfigInitializer")
+    def test_after_run_case3(self, feature_process_config_initializer, mock_get_table_instance_by_name, mock_get_next):
         """
         case3: evict_enable为False
         """
 
         with tf.Graph().as_default():
+            mock_config_initializer = MockConfigInitializer(use_dynamic_expansion=False)
+            feature_process_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+            mock_config_initializer.get_instance().feature_spec_config.insert_feature_spec(
+                FeatureSpec("test_spec", table_name="test_table", access_threshold=5, eviction_threshold=10), True)
+
             test_table = MockSparseEmbedding()
             mock_get_next.return_value = [tf.constant([8, 9], dtype=tf.int32), tf.constant(2, dtype=tf.int32)]
             mock_get_table_instance_by_name.return_value = test_table
-            mock_export_feature_spec.return_value = dict(
-                test_spec=FeatureSpec("test_spec", table_name="test_table", access_threshold=5, eviction_threshold=10))
 
             evict_hook = EvictHook(evict_enable=False, evict_time_interval=1)
             with tf.compat.v1.train.MonitoredSession(hooks=[evict_hook]) as sess:

@@ -43,7 +43,7 @@ from tensorflow.python.training.saving import saveable_object_util
 import numpy as np
 
 from mx_rec.saver.saver import Saver as SparseSaver, check_file_system_is_valid
-from mx_rec.util.initialize import get_ascend_global_hashtable_collection, export_removing_var_list
+from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, StringValidator, OptionalIntValidator, \
     OptionalStringValidator, DirectoryValidator
 from mx_rec.util.log import logger
@@ -56,12 +56,14 @@ def get_sparse_vars(var_list):
     if var_list is not None:
         if not isinstance(var_list, (list, tuple)):
             raise TypeError("A non-None var_list must be a list or tuple.")
-        ascend_variables = tf.compat.v1.get_collection(get_ascend_global_hashtable_collection())
+        ascend_variables = tf.compat.v1.get_collection(
+            ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection)
         for var in var_list:
             if var in ascend_variables:
                 sparse_var_list.append(var)
     else:
-        sparse_var_list = tf.compat.v1.get_collection(get_ascend_global_hashtable_collection())
+        sparse_var_list = tf.compat.v1.get_collection(
+            ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection)
     return sparse_var_list
 
 
@@ -80,7 +82,6 @@ def saver_init(self, var_list=None, reshape=False, sharded=False, max_to_keep=5,
                name=None, restore_sequentially=False, saver_def=None, builder=None, defer_build=False,
                allow_empty=False, write_version=saver_pb2.SaverDef.V2, pad_step_number=False, save_relative_paths=False,
                filename=None, fid_version=0):
-
     self._var_list = var_list
     self._last_checkpoints = []
     self._checkpoints_to_be_deleted = []
@@ -372,7 +373,7 @@ def saver_from_object_based_checkpoint(checkpoint_path, var_list=None, builder=N
 def build_var_list():
     save_var_list = []
     tmp_list = variables._all_saveable_objects()
-    removing_var_list = export_removing_var_list()
+    removing_var_list = ConfigInitializer.get_instance().sparse_embed_config.removing_var_list
     for var in tmp_list:
         if var.name not in removing_var_list:
             save_var_list.append(var)
@@ -426,5 +427,3 @@ def patch_for_saver():
     dense_saver.restore = restore
     dense_saver.build = build
     logger.debug("Class tf.train.Saver has been patched.")
-
-

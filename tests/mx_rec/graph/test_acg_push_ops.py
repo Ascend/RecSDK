@@ -18,7 +18,6 @@
 from unittest import TestCase
 from unittest.mock import patch, Mock
 
-import numpy as np
 import tensorflow as tf
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.data.ops.dataset_ops import DatasetV1
@@ -48,14 +47,13 @@ from mx_rec.graph.acg_push_ops import (
     _replace_get_next_op,
     _patched_get_src_dataset,
 )
-
+from tests.mx_rec.core.mock_class import MockConfigInitializer
 from tests.mx_rec.graph.mock_dataset import gen_mock_dataset
 
 
 @patch.multiple(
     "mx_rec.graph.patch",
-    get_modify_graph=Mock(return_value=True),
-    get_is_graph_modify_hook_running=Mock(return_value=True),
+    ConfigInitializer=Mock(return_value=MockConfigInitializer(modify_graph=True, is_graph_modify_hook_running=True)),
 )
 @patch.multiple(
     "tensorflow.compat.v1.train.Saver",
@@ -169,7 +167,7 @@ class GetDatasetOpTest(TestCase):
 
         tgt_dataset_op = _get_dataset_op(mock_graph, mock_get_next_op)
         self.assertEqual(tgt_dataset_op, expected)
-    
+
     def test_err_invalid_get_next_op_type(self):
         mock_get_next_op = tf.zeros(shape=(3,)).op
         mock_graph = tf.compat.v1.get_default_graph()
@@ -353,6 +351,10 @@ class GetMappingForSubgraphTest(TestCase):
         self.assertEqual(len(mock_tensor_mapping), 2)
 
 
+@patch.multiple(
+    "mx_rec.graph.patch",
+    ConfigInitializer=Mock(return_value=MockConfigInitializer(modify_graph=True, is_graph_modify_hook_running=True)),
+)
 class FrozenVariableNodeToFuncConstNodeDefTest(TestCase):
     def tearDown(self) -> None:
         tf.compat.v1.reset_default_graph()

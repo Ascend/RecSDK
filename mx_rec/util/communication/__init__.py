@@ -15,4 +15,4 @@
 # limitations under the License.
 # ==============================================================================
 
-__all__ = ["hccl_mgmt"]
+__all__ = ["hccl_mgmt", "hccl_ops"]

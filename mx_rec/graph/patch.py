@@ -37,8 +37,7 @@ from tensorflow.python.training.optimizer import Optimizer
 from tensorflow.python.client.session import BaseSession
 
 from mx_rec.constants import constants
-from mx_rec.util.initialize import get_is_graph_modify_hook_running, get_modify_graph, insert_bool_gauge, \
-    get_bool_gauge_set, terminate_config_initializer, get_asc_manager, export_table_instances
+from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.tf_version_adapter import NPUCheckpointSaverHook
 from mx_rec.graph.merge_lookup import do_merge_lookup
 from mx_rec.util.log import logger
@@ -69,7 +68,6 @@ def init_dataset(self, input_data):
     ("run_metadata", ClassValidator, {"classes": (tf.compat.v1.RunMetadata, type(None))}),
 ], output_log=False)
 def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
-
     """
     Replace tensorflow's session run method with this method, this method will
      notify  the hybridMgmt side to wake up and count each time sess run is called.
@@ -144,8 +142,9 @@ def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     except AssertionError:
         channel_id = -1
 
-    if channel_id != -1 and get_asc_manager():
-        get_asc_manager().block_notify_wake(channel_id)
+    asc_manager = ConfigInitializer.get_instance().hybrid_manager_config.asc_manager
+    if channel_id != -1 and asc_manager:
+        asc_manager.block_notify_wake(channel_id)
 
     if channel_id == constants.EVAL_CHANNEL_ID:
         # eval的时候不进行循环下沉
@@ -156,8 +155,8 @@ def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
 
     # 调用tensorflow原生的方法
     result = self.old_run_method(fetches, feed_dict, options, run_metadata)
-    if channel_id != -1 and get_asc_manager():
-        get_asc_manager().block_count_steps(channel_id, steps)
+    if channel_id != -1 and asc_manager:
+        asc_manager.block_count_steps(channel_id, steps)
     return result
 
 
@@ -214,7 +213,8 @@ def chief_session_creator_init(self, scaffold=None, master='', config=None, chec
     Returns:None
     """
     logger.debug("Enter the mxrec init function of Class 'monitored_session.ChiefSessionCreator'.")
-    if get_modify_graph() and not get_is_graph_modify_hook_running():
+    if ConfigInitializer.get_instance().modify_graph and \
+            not ConfigInitializer.get_instance().train_params_config.is_graph_modify_hook_running:
         raise RuntimeError(
             f"When 'modify_graph' is True, 'GraphModifierHook' must be configured. Example: \n"
             f"\t from mx_rec.graph.modifier import GraphModifierHook \n"
@@ -251,7 +251,7 @@ def get_cell(self: BoolGauge, *labels: Any) -> Any:
     logger.debug("Enter patch 'BoolGauge.get_cell'.")
     if len(labels) > 0:
         logger.debug("BoolGauge insert: %s.", labels[0])
-        insert_bool_gauge(labels[0])
+        ConfigInitializer.get_instance().train_params_config.insert_bool_gauge(labels[0])
     return BoolGaugeCell(super(BoolGauge, self).get_cell(*labels))
 
 
@@ -277,8 +277,8 @@ def assert_eval_spec(eval_spec: EvalSpec):
     if not isinstance(eval_spec, EvalSpec):
         raise TypeError('`eval_spec` must have type `tf.estimator.EvalSpec`. Got: {}'.format(type(eval_spec)))
 
-    if 'train_and_evaluate' not in get_bool_gauge_set():
-        insert_bool_gauge('train_and_evaluate')
+    if 'train_and_evaluate' not in ConfigInitializer.get_instance().train_params_config.bool_gauge_set:
+        ConfigInitializer.get_instance().train_params_config.insert_bool_gauge('train_and_evaluate')
         logger.debug("assert_eval_spec: add 'train_and_evaluate' to BoolGaugeCell.")
 
 
@@ -310,7 +310,7 @@ def scale_loss(self: Optimizer, loss_value: tf.Tensor) -> tf.Tensor:
     # 在训练情况下，至少要有一个variable参与反向，否则报错
     is_grad = False
     table_var_list = []
-    for _, table_instance in export_table_instances().items():
+    for _, table_instance in ConfigInitializer.get_instance().sparse_embed_config.table_instance_dict.items():
         is_grad |= table_instance.is_grad
         table_var_list.append(table_instance.variable)
     if not is_grad:

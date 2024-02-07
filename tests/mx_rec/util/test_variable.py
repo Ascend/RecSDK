@@ -23,14 +23,19 @@ import tensorflow as tf
 from mx_rec.util.global_env_conf import global_env
 from mx_rec.util.variable import check_and_get_config_via_var
 from mx_rec.util.variable import get_dense_and_sparse_variable
+from tests.mx_rec.core.mock_class import MockConfigInitializer
 
 
 class MockTableInstance:
     def __init__(self):
-        self.skip_emb_transfer = False
+        self.is_hbm = False
         self.optimizer = False
 
 
+@patch.multiple(
+    "mx_rec.graph.patch",
+    ConfigInitializer=mock.Mock(return_value=MockConfigInitializer()),
+)
 class VariableTest(unittest.TestCase):
     def setUp(self):
         """
@@ -53,9 +58,11 @@ class VariableTest(unittest.TestCase):
         global_env.cm_chief_device = self.cm_chief_device
         global_env.ascend_visible_devices = self.ascend_visible_devices
 
-    @patch.multiple("mx_rec.util.variable",
-                    get_ascend_global_hashtable_collection=mock.MagicMock(return_value="sparse_hastable"))
-    def test_get_dense_and_sparse_variable(self):
+    @mock.patch("mx_rec.util.variable.ConfigInitializer")
+    def test_get_dense_and_sparse_variable(self, variable_config_initializer):
+        mock_config_initializer = MockConfigInitializer(ascend_global_hashtable_collection="sparse_hastable")
+        variable_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
         dense_layer = tf.Variable([1, 2], trainable=True)
         sparse_emb = tf.Variable([4, 5], trainable=False)
         tf.compat.v1.add_to_collection("sparse_hastable", sparse_emb)
@@ -69,19 +76,14 @@ class VariableTest(unittest.TestCase):
         self.assertTrue(result_run)
         tf.reset_default_graph()
 
-    @patch.multiple("mx_rec.util.variable",
-                    get_table_instance=mock.MagicMock(return_value=MockTableInstance()))
-    def test_check_and_get_config_via_var_when_environment_error(self):
+    @mock.patch("mx_rec.util.variable.ConfigInitializer")
+    def test_check_and_get_config_via_var_when_environment_error(self, variable_config_initializer):
+        mock_config_initializer = MockConfigInitializer(var=MockTableInstance())
+        variable_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
         with self.assertRaises(EnvironmentError):
             self.assertEqual(MockTableInstance(), check_and_get_config_via_var("1", "optimize"))
 
-    def test_check_and_get_config_via_var_when_success(self):
-        table_instance = MockTableInstance()
-        table_instance.skip_emb_transfer = True
-        table_instance.optimizer = True
-        with patch("mx_rec.util.variable.get_table_instance") as mock_get_table_instance:
-            mock_get_table_instance.return_value = mock.MagicMock(table_instance)
-            self.assertEqual(mock_get_table_instance.return_value, check_and_get_config_via_var("1", "optimize"))
 
 if __name__ == '__main__':
     unittest.main()

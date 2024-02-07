@@ -18,9 +18,9 @@
 import tensorflow as tf
 
 from mx_rec.constants.constants import ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_ENTRANCE
-from mx_rec.core.embedding import SparseEmbedding
 from mx_rec.graph.utils import check_cutting_points, replace_anchor_vec
-from mx_rec.util.initialize import get_modify_graph, get_merged_multi_lookup, insert_merged_multi_lookup, get_use_static
+from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
+from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.log import logger
 
 
@@ -39,10 +39,10 @@ def do_merge_lookup(is_train: bool = True):
 
     """
 
-    if not get_modify_graph():
+    if not ConfigInitializer.get_instance().modify_graph:
         logger.debug("The `do_merge_multi_lookup` function is called only for `modify graph` mode.")
         return
-    if get_merged_multi_lookup(is_train):
+    if ConfigInitializer.get_instance().train_params_config.get_merged_multi_lookup(is_train):
         logger.debug("The merge multi lookup has been executed once and does not need to be executed again.")
         return
     logger.info("start to merge multi lookup, mode(train: True, eval: False): %s.", is_train)
@@ -57,15 +57,15 @@ def do_merge_lookup(is_train: bool = True):
     sub_cutting_points_dict = dict()
     feature_spec_name_ids_dict = dict()
     for cutting_point in cutting_point_list:
-        is_training = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.IS_TRAINING)
+        is_training = BaseSparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.IS_TRAINING)
         if is_training != is_train:
             logger.debug("Skip! The current mode(train: True, eval: False) is %s, but the mode of %s is %s.",
                          is_train, cutting_point, is_training)
             continue
 
-        table_instance = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.TABLE_INSTANCE)
-        if not get_use_static() and len(table_instance.lookup_name_dict.get(is_train)) > 1:
-            feature_spec = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.FEATURE_SPEC)
+        table_instance = BaseSparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.TABLE_INSTANCE)
+        if not ConfigInitializer.get_instance().use_static and table_instance.multi_lookup_times.get(is_train) > 1:
+            feature_spec = BaseSparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.FEATURE_SPEC)
             feature_spec_name_ids_dict[feature_spec.name] = cutting_point
         if sub_cutting_points_dict.get(is_training) is None:
             sub_cutting_points_dict[is_training] = []
@@ -78,22 +78,22 @@ def do_merge_lookup(is_train: bool = True):
                            f"have anchor ids.")
 
     for cutting_point in sub_cutting_point_list:
-        table_instance = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.TABLE_INSTANCE)
-        feature_spec = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.FEATURE_SPEC)
-        is_grad = SparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.IS_GRAD)
-        if len(table_instance.lookup_name_dict.get(is_train)) == 1:
+        table_instance = BaseSparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.TABLE_INSTANCE)
+        feature_spec = BaseSparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.FEATURE_SPEC)
+        is_grad = BaseSparseEmbedding.get_anchor_attribute(cutting_point, ASCAnchorAttr.IS_GRAD)
+        if table_instance.multi_lookup_times.get(is_train) == 1:
             logger.debug("The origin lookup result of %s for %s does not need to be replaced.",
                          feature_spec.name, table_instance.table_name)
             continue
 
         send_count = table_instance.send_count
         kwargs = dict(is_train=is_train, lookup_ids=cutting_point, multi_lookup=True, is_grad=is_grad)
-        if not get_use_static():
+        if not ConfigInitializer.get_instance().use_static:
             kwargs["feature_spec_name_ids_dict"] = feature_spec_name_ids_dict
-        lookup_result = table_instance.lookup_for_asc_with_feature_spec(feature_spec, send_count, **kwargs)
+        lookup_result = table_instance.lookup_for_feat_spec(feature_spec, send_count, **kwargs)
         replace_anchor_vec(cutting_point, ASCAnchorAttr.MOCK_LOOKUP_RESULT, lookup_result)
         logger.debug("The mock lookup result of %s for %s was replaced.", feature_spec.name, table_instance.table_name)
 
     # records whether the current mode has been merged or restored lookup
-    insert_merged_multi_lookup(is_train, True)
+    ConfigInitializer.get_instance().train_params_config.insert_merged_multi_lookup(is_train, True)
     logger.info("finish to merge multi lookup, mode(train: True, eval: False): %s.", is_train)

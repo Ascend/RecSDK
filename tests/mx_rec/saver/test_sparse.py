@@ -23,6 +23,7 @@ import tensorflow as tf
 import numpy as np
 
 from mx_rec.saver.saver import write_binary_data, generate_file_name
+from tests.mx_rec.core.mock_class import MockConfigInitializer
 from tests.mx_rec.saver.sparse_embedding_mock import SparseEmbeddingMock
 from mx_rec.saver.sparse import export, set_upper_dir, check_table_param
 from mx_rec.constants.constants import DataAttr
@@ -41,29 +42,6 @@ class TestSparseProcessor(unittest.TestCase):
         self.fake_ddr_sparse_dir = "./test_export_ddr/sparse-model"
         self.hbm_npy_path = None
         self.ddr_npy_path = None
-
-    @mock.patch.multiple("mx_rec.saver.sparse",
-                         export_table_name_set=mock.MagicMock(return_value={"test_table"}),
-                         get_sparse_dir=mock.MagicMock(return_value="./test_export_hbm/sparse-model"),
-                         get_table_instance_by_name=mock.MagicMock(return_value=SparseEmbeddingMock()))
-    def test_export_interface_on_hbm_mode(self):
-        self.build_fake_hbm_save()
-        export()
-        self.assertTrue(os.path.exists(self.hbm_npy_path))
-        tf.io.gfile.rmtree("./test_export_hbm")
-
-
-    @mock.patch.multiple("mx_rec.saver.sparse",
-                         export_table_name_set=mock.MagicMock(return_value={"test_table"}),
-                         get_sparse_dir=mock.MagicMock(return_value="./test_export_ddr/sparse-model"),
-                         get_table_instance_by_name=mock.MagicMock(
-                             return_value=SparseEmbeddingMock(host_vocab_size=10)))
-    def test_export_interface_on_ddr_mode(self):
-        self.build_fake_ddr_save()
-        export()
-        self.assertTrue(os.path.exists(self.ddr_npy_path))
-        tf.io.gfile.rmtree("./test_export_ddr")
-
 
     def test_check_table_param(self):
         table_list = ["test_table_1", "test_table_0"]

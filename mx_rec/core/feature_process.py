@@ -21,9 +21,9 @@ import tensorflow as tf
 
 from mx_rec.util.tf_version_adapter import npu_ops
 from mx_rec.constants.constants import DEFAULT_EVICT_TIME_INTERVAL, TRAIN_CHANNEL_ID, MAX_INT32
-from mx_rec.util.initialize import trigger_evict, get_table_instance_by_name, export_feature_spec
-from mx_rec.validator.validator import para_checker_decorator, ClassValidator, IntValidator, OptionalIntValidator
+from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.log import logger
+from mx_rec.validator.validator import para_checker_decorator, ClassValidator, IntValidator, OptionalIntValidator
 
 
 class EvictHook(tf.compat.v1.train.SessionRunHook):
@@ -96,15 +96,16 @@ class EvictHook(tf.compat.v1.train.SessionRunHook):
         if cur_time - self._start_time > self._evict_time_interval or \
                 (self._evict_step_interval is not None and self._global_step % self._evict_step_interval == 0):
             logger.info("_EvictHook - > evict switch on!!! after_run step: %d", self._global_step)
-            if not trigger_evict():
+            if not ConfigInitializer.get_instance().hybrid_manager_config.trigger_evict():
                 return
             self._start_time = cur_time
             for name in self._hash_table_instance.keys():
                 run_context.session.run(self._evict_op.get(name))
 
     def check_name_and_get_hashtable(self):
-        for _, feature_spec in export_feature_spec().items():
+        for _, feature_spec in ConfigInitializer.get_instance().feature_spec_config.feature_spec_dict.items():
             if feature_spec.eviction_threshold:
                 logger.debug("_EvictHook - > check and get instance: table_names %s", feature_spec.table_name)
-                self._hash_table_instance[feature_spec.table_name] = get_table_instance_by_name(feature_spec.table_name)
-
+                self._hash_table_instance[feature_spec.table_name] = \
+                    ConfigInitializer.get_instance().sparse_embed_cofnig.get_table_instance_by_name(
+                        feature_spec.table_name)

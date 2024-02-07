@@ -20,50 +20,39 @@ from typing import Optional
 import tensorflow as tf
 
 import mxrec_pybind
-from mx_rec.util.initialize import get_use_static
+from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.tf_version_adapter import npu_ops
-from mx_rec.constants.constants import ApplyGradientsStrategy, TRAIN_CHANNEL_ID
-from mx_rec.util.global_env_conf import global_env
+from mx_rec.constants.constants import TRAIN_CHANNEL_ID
 from mx_rec.util.log import logger
 
 
 def get_restore_vector(config):
     logger.debug('Channel %s_restore_%s was built for getnext', config.get("table_name"), config.get("channel_id"))
-    if config.get("skip_emb_transfer"):
-        if not isinstance(config.get("emb_size"), int):
-            raise TypeError("emb_size must be a int")
+    if config.get("is_hbm"):
+        if not isinstance(config.get("emb_size"), int) or config.get("emb_size") < 1:
+            raise TypeError(f"emb_size must be a int")
         if config.get("emb_size") < 1:
-            raise ValueError("emb_size is less than 1")
+            raise ValueError(f"emb_size is less than 1")
         emb_size = config.get("emb_size")
     else:
-        if not isinstance(config.get("ext_emb_size"), int):
+        if not isinstance(config.get("ext_emb_size"), int) or config.get("ext_emb_size") < 1:
             raise TypeError("ext_emb_size must be a int")
         if config.get("ext_emb_size") < 1:
             raise ValueError("ext_emb_size is less than 1")
         emb_size = config.get("ext_emb_size")
 
-    use_hot = config.get("use_hot")
-    hot_pos = None
-
-    if get_use_static():
+    if ConfigInitializer.get_instance().use_static:
         restore_size = config.get("batch_size") * config.get("feat_cnt")
     else:
         restore_size = None
 
     with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
-        if use_hot and emb_size:
-            device_id = int(config.get("device_id"))
-            hot_size = int(mxrec_pybind.get_ub_hot_size(device_id) / emb_size)
-            restore_vector, hot_pos = npu_ops.gen_npu_ops.get_next(
-                output_types=[tf.int32, tf.int32],
-                output_shapes=[restore_size, [hot_size]],
-                channel_name=f'{config.get("table_name")}_restore_{config.get("channel_id")}'
-            )
-        else:
-            restore_vector = npu_ops.gen_npu_ops.get_next(
-                output_types=[tf.int32],
-                output_shapes=[restore_size],
-                channel_name=f'{config.get("table_name")}_restore_{config.get("channel_id")}')[0]
+        device_id = int(config.get("device_id"))
+        hot_size = int(mxrec_pybind.get_ub_hot_size(device_id) / emb_size)
+        restore_vector, hot_pos = npu_ops.gen_npu_ops.get_next(
+            output_types=[tf.int32, tf.int32],
+            output_shapes=[restore_size, [hot_size]],
+            channel_name=f'{config.get("table_name")}_restore_{config.get("channel_id")}')
 
     return restore_vector, hot_pos
 
@@ -83,7 +72,7 @@ def get_id_offsets(max_lookup_vec_size, config):
             output_types=[tf.int32],
             output_shapes=[[max_lookup_vec_size]],
             channel_name=f'{config.get("table_name")}_lookup_{config.get("channel_id")}')
-        if config.get("skip_emb_transfer"):
+        if config.get("is_hbm"):
             return id_offsets, [], 0
         swap_pos, swap_len = npu_ops.gen_npu_ops.get_next(
             output_types=[tf.int32, tf.int32],
@@ -164,12 +153,12 @@ def get_swap_info(config: dict, swap_len: int, swap_pos: list, table: tf.Variabl
     :param table: the instance to do swap
     :return: swap info
     """
-    use_static = get_use_static()
+    use_static = ConfigInitializer.get_instance().use_static
     max_lookup_vec_size = None
     if use_static:
         max_lookup_vec_size = config.get("send_count") * config.get("rank_size")
 
-    if config.get("skip_emb_transfer"):
+    if config.get("is_hbm"):
         swap_in = [tf.no_op()]
     else:
         with tf.compat.v1.variable_scope("h2d_emb"):
@@ -199,7 +188,7 @@ def get_swap_info(config: dict, swap_len: int, swap_pos: list, table: tf.Variabl
 
 
 def get_preprocessed_tensor_for_asc(table, config):
-    use_static = get_use_static()
+    use_static = ConfigInitializer.get_instance().use_static
     max_lookup_vec_size = None
     if use_static:
         max_lookup_vec_size = config.get("send_count") * config.get("rank_size")
@@ -221,9 +210,6 @@ def get_preprocessed_tensor_for_asc(table, config):
         'swap_in': swap_in,
         'all2all_args': all2all_args,
     }
-
-    if global_env.apply_gradients_strategy != ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY.value:
-        return result
 
     if config.get("channel_id") != TRAIN_CHANNEL_ID:
         return result

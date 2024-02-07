@@ -25,7 +25,7 @@ from unittest import TestCase
 import tensorflow as tf
 from tensorflow import Tensor, TensorSpec
 from mx_rec.constants.constants import ASCAnchorAttr
-from mx_rec.core.embedding import SparseEmbedding
+from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
 from mx_rec.graph.utils import (
     check_input_list,
     find_parent_op,
@@ -160,7 +160,7 @@ class ReplaceAnchorVecTest(TestCase):
 
         anchor_vec = tf.identity(mock_cutting_point, name="anchor_vec")
         anchor_vec_output = tf.identity(anchor_vec, name="anchor_vec_output")
-        SparseEmbedding.anchor_tensor_specs[mock_cutting_point][mock_attribute] = anchor_vec
+        BaseSparseEmbedding.anchor_tensor_specs[mock_cutting_point][mock_attribute] = anchor_vec
 
         replace_anchor_vec(mock_cutting_point, mock_attribute, mock_anchor)
         self.assertEqual(anchor_vec_output.op.inputs[0], mock_anchor)

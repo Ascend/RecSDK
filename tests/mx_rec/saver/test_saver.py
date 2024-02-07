@@ -23,11 +23,16 @@ import tensorflow as tf
 
 from mx_rec.saver.saver import Saver
 from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION
+from tests.mx_rec.core.mock_class import MockConfigInitializer
 from tests.mx_rec.saver.sparse_embedding_mock import SparseEmbeddingMock
 
 table_instance = SparseEmbeddingMock()
 
 
+@mock.patch.multiple(
+    "mx_rec.graph.patch",
+    ConfigInitializer=mock.Mock(return_value=MockConfigInitializer()),
+)
 class TestSaver(unittest.TestCase):
     """
     Test the function of saving and loading sparse tables.
@@ -35,11 +40,16 @@ class TestSaver(unittest.TestCase):
 
     @mock.patch.multiple("mx_rec.saver.saver",
                          get_rank_id=mock.MagicMock(return_value=0),
-                         get_local_rank_size=mock.MagicMock(return_value=1),
-                         get_ascend_global_hashtable_collection=mock.MagicMock(
-                             return_value=ASCEND_GLOBAL_HASHTABLE_COLLECTION),
-                         get_table_instance=mock.MagicMock(return_value=table_instance))
-    def setUp(self):
+                         get_local_rank_size=mock.MagicMock(return_value=1))
+    @mock.patch("mx_rec.saver.saver.ConfigInitializer")
+    def test_save_and_load_is_consistent(self, saver_config_initializer):
+        mock_config_initializer = \
+            MockConfigInitializer(var=table_instance, asc_manager=True,
+                                  use_dynamic_expansion=False,
+                                  host_data=[0, 1, 4, 6, 8],
+                                  ascend_global_hashtable_collection=ASCEND_GLOBAL_HASHTABLE_COLLECTION)
+        saver_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
         self.table_name = "test_table"
         self.optim_m_name = "test_table/LazyAdam/m"
         self.optim_v_name = "test_table/LazyAdam/v"
@@ -48,15 +58,6 @@ class TestSaver(unittest.TestCase):
         with self.graph.as_default():
             self.saver = Saver()
 
-    @mock.patch.multiple("mx_rec.saver.saver",
-                         set_sparse_dir=mock.MagicMock(),
-                         is_asc_manager_initialized=mock.MagicMock(return_value=True),
-                         save_host_data=mock.MagicMock(),
-                         get_use_dynamic_expansion=mock.MagicMock(return_value=False),
-                         get_table_instance_by_name=mock.MagicMock(return_value=table_instance),
-                         get_host_data=mock.MagicMock(return_value=[0, 1, 4, 6, 8]),
-                         restore_host_data=mock.MagicMock())
-    def test_save_and_load_is_consistent(self):
         with tf.compat.v1.Session(graph=self.graph) as sess:
             embedding_directory = "./sparse-model/HashTable/HBM/test_table/embedding"
             data_file = os.path.join(embedding_directory, "slice_0.data")
@@ -72,6 +73,7 @@ class TestSaver(unittest.TestCase):
             self.saver.restore(sess, "./model")
             load_embedding = sess.run(self.var)[:5, :]
             self.assertEqual(load_embedding.all(), origin_embedding.all())
+            tf.io.gfile.rmtree("./sparse-model")
 
     def build_graph(self):
         self.graph = tf.compat.v1.Graph()

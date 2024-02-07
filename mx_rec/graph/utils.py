@@ -17,21 +17,17 @@
 
 import os
 from collections import defaultdict
-from typing import Any, List, Dict, DefaultDict, Tuple, Union
+from typing import List, Dict, Union
 
 import tensorflow as tf
-from tensorflow import Tensor
-from tensorflow import Operation
+from tensorflow import Operation, Tensor
 from tensorflow.core.framework.graph_pb2 import GraphDef
 from tensorflow.python.framework.errors_impl import InvalidArgumentError
 
 from mx_rec.constants.constants import ASCAnchorAttr, DUMP_MIDIFY_GRAPH_FILE_MODE
-from mx_rec.core.embedding import SparseEmbedding
+from mx_rec.core.embedding import BaseSparseEmbedding
+from mx_rec.graph.graph_typing import ReplacementSpec
 from mx_rec.util.log import logger
-
-
-ReplacementSpec = DefaultDict[Tensor, List[Tuple[int, Operation]]]
-AnchorRecord = Dict[str, Union[ReplacementSpec, GraphDef, bool, List[Tensor], List[int], List[str]]]
 
 
 def check_input_list(objs: Union[object, List[object]], obj_type: type) -> Union[object, List[object]]:
@@ -158,7 +154,7 @@ def replace_anchor_vec(cutting_point: Tensor, attribute: ASCAnchorAttr, anchor: 
     """
 
     # get stub node
-    anchor_vec = SparseEmbedding.get_anchor_attribute(cutting_point, attribute)
+    anchor_vec = BaseSparseEmbedding.get_anchor_attribute(cutting_point, attribute)
     if anchor_vec is None:
         raise RuntimeError(f"Node `{attribute.value}` does not exist. Check whether the sparse lookup interface "
                            f"is correctly invoked.")
@@ -166,3 +162,17 @@ def replace_anchor_vec(cutting_point: Tensor, attribute: ASCAnchorAttr, anchor: 
     replacement_specs_for_anchor_vec = record_ops_to_replace(anchor_vec.op)
     # replace anchor_vec with anchor
     replace_anchor(replacement_specs_for_anchor_vec, [anchor])
+
+
+def tag_orphan_ids(ids: tf.Tensor) -> tf.Tensor:
+    """
+    将孤儿ids使用identity操作创建ACG_PUSH_NODE前缀命名的标记节点，以便在PushOps时能找到。
+    """
+    graph_def = tf.compat.v1.get_default_graph().as_graph_def()
+    subgraph = tf.compat.v1.graph_util.extract_sub_graph(graph_def, [ids.op.name])
+    for node in subgraph.node:
+        if node.op == 'IteratorGetNext':
+            return ids
+    new_ids = tf.identity(ids, name=f"ACG_PUSH_NODE_{ids.op.name}")
+    logger.info('Tag orphan op node: %s with %s.', ids, new_ids)
+    return new_ids

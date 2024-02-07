@@ -18,7 +18,7 @@ import os
 import dataclasses
 from dataclasses import dataclass
 
-from mx_rec.constants.constants import EnvOption, RecPyLogLevel, Flag, EMPTY_STR, ApplyGradientsStrategy, \
+from mx_rec.constants.constants import EnvOption, RecPyLogLevel, Flag, EMPTY_STR, \
     DEFAULT_HD_CHANNEL_SIZE, DEFAULT_KP_THREAD_NUM, DEFAULT_FAST_UNIQUE_THREAD_NUM, RecCPPLogLevel, MAX_INT32, \
     MIN_HD_CHANNEL_SIZE, MAX_HD_CHANNEL_SIZE, MIN_KP_THREAD_NUM, MAX_KP_THREAD_NUM, \
     MIN_FAST_UNIQUE_THREAD_NUM, MAX_FAST_UNIQUE_THREAD_NUM, DEFAULT_HOT_EMB_UPDATE_STEP, MIN_HOT_EMB_UPDATE_STEP, \
@@ -34,7 +34,6 @@ class RecEnv:
     cm_chief_device: str
     cm_worker_size: str
     tf_device: str
-    apply_gradients_strategy: str
     acl_timeout: str
     hd_channel_size: str
     key_process_thread_num: str
@@ -46,6 +45,9 @@ class RecEnv:
     use_combine_faae: str
     stat_on: str
     record_key_count: str
+    rank_id_env: str
+    rank_size_env: str
+    local_rank_size_env: str
 
 
 def get_global_env_conf() -> RecEnv:
@@ -60,8 +62,6 @@ def get_global_env_conf() -> RecEnv:
         cm_chief_device=os.getenv(EnvOption.CM_CHIEF_DEVICE.value),
         cm_worker_size=os.getenv(EnvOption.CM_WORKER_SIZE.value),
         tf_device=os.getenv(EnvOption.TF_DEVICE.value, TFDevice.NONE.value),
-        apply_gradients_strategy=os.getenv(EnvOption.APPLY_GRADIENTS_STRATEGY.value,
-                                           ApplyGradientsStrategy.DIRECT_APPLY.value),
         acl_timeout=os.getenv(EnvOption.ACL_TIMEOUT.value, "-1"),
         hd_channel_size=os.getenv(EnvOption.HD_CHANNEL_SIZE.value, DEFAULT_HD_CHANNEL_SIZE),
         key_process_thread_num=os.getenv(EnvOption.KEY_PROCESS_THREAD_NUM.value, DEFAULT_KP_THREAD_NUM),
@@ -72,7 +72,10 @@ def get_global_env_conf() -> RecEnv:
         glog_stderrthreahold=os.getenv(EnvOption.GLOG_STDERRTHREAHOLD.value, RecCPPLogLevel.INFO.value),
         use_combine_faae=os.getenv(EnvOption.USE_COMBINE_FAAE.value, Flag.FALSE.value),
         stat_on=os.getenv(EnvOption.STAT_ON.value, Flag.FALSE.value),
-        record_key_count=os.getenv(EnvOption.RECORD_KEY_COUNT.value, Flag.FALSE.value)
+        record_key_count=os.getenv(EnvOption.RECORD_KEY_COUNT.value, Flag.FALSE.value),
+        rank_id_env=os.getenv(EnvOption.OMPI_COMM_WORLD_RANK.value),
+        rank_size_env=os.getenv(EnvOption.OMPI_COMM_WORLD_LOCAL_SIZE.value),
+        local_rank_size_env=os.getenv(EnvOption.OMPI_COMM_WORLD_LOCAL_SIZE.value),
     )
 
     return rec_env
@@ -82,7 +85,6 @@ def get_global_env_conf() -> RecEnv:
     ("mxrec_log_level", OptionValidator, {"options": [i.value for i in list(RecPyLogLevel)]}),
     ("rank_table_file", DirectoryValidator, {}, ["check_exists_if_not_empty"]),
     ("tf_device", OptionValidator, {"options": [i.value for i in list(TFDevice)]}),
-    ("apply_gradients_strategy", OptionValidator, {"options": [i.value for i in list(ApplyGradientsStrategy)]}),
     ("acl_timeout", Convert2intValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
     ("hd_channel_size", Convert2intValidator,
      {"min_value": MIN_HD_CHANNEL_SIZE, "max_value": MAX_HD_CHANNEL_SIZE}, ["check_value"]),

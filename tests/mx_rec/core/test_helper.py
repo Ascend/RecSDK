@@ -25,7 +25,7 @@ import tensorflow as tf
 
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from tests.mx_rec.core.generator_dataset import generate_dataset, Config
-from tests.mx_rec.core.mock_class import MockHostPipeLineOps
+from tests.mx_rec.core.mock_class import MockHostPipeLineOps, MockConfigInitializer
 
 
 class TestGetAscInsertFunc(unittest.TestCase):
@@ -96,6 +96,10 @@ class TestGetAscInsertFunc(unittest.TestCase):
         self.assertTrue(callable(get_asc_insert_func(args_index_list=[], table_names=["xxx"])))
 
 
+@mock.patch.multiple(
+    "mx_rec.graph.patch",
+    ConfigInitializer=mock.Mock(return_value=MockConfigInitializer()),
+)
 class TestGetAscInsertFuncInnerFunc(unittest.TestCase):
     """
     Test for 'mx_rec.core.asc.helper.get_asc_insert_func_inner'.
@@ -206,7 +210,8 @@ class TestDoInsertFunc(unittest.TestCase):
         insert_tensor = []
         splits = []
         table_names = []
-        input_dict = dict(dump_graph=True)
+        input_dict = dict(is_training=True, dump_graph=True, timestamp=None, feature_spec_names=[],
+                          auto_change_graph=True)
 
         out_batch = do_insert(args, insert_tensor, splits, table_names, input_dict)
         self.assertIsInstance(out_batch, dict)
@@ -217,12 +222,11 @@ class TestSendFeatureIdRequestAsyncFunc(unittest.TestCase):
     Test for 'mx_rec.core.asc.helper.send_feature_id_request_async'.
     """
 
-    @mock.patch.multiple("mx_rec.core.asc.helper",
-                         get_use_static=mock.MagicMock(return_value=True),
-                         get_training_mode_channel_id=mock.MagicMock(return_value=0))
+    @mock.patch("mx_rec.core.asc.helper.ConfigInitializer")
     @mock.patch("mx_rec.core.asc.helper.merge_feature_id_request")
-    @mock.patch("mx_rec.core.asc.helper.get_host_pipeline_ops")
-    def test_send_feature_id_request_async_case1(self, mock_get_host_pipeline_ops, mock_merge_feature_id_request):
+    @mock.patch("mx_rec.core.asc.helper.import_host_pipeline_ops")
+    def test_send_feature_id_request_async_case1(self, mock_get_host_pipeline_ops, mock_merge_feature_id_request,
+                                                 helper_config_initializer):
         """
         case1: 静态shape
         """
@@ -230,6 +234,9 @@ class TestSendFeatureIdRequestAsyncFunc(unittest.TestCase):
         from mx_rec.core.asc.helper import send_feature_id_request_async
 
         with tf.Graph().as_default():
+            mock_config_initializer = MockConfigInitializer(use_static=True)
+            helper_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
             mock_get_host_pipeline_ops.return_value = MockHostPipeLineOps()
             feature_id_list = [tf.constant([2, ], dtype=tf.int64), tf.constant([3, ], dtype=tf.int64)]
             mock_merge_feature_id_request.return_value = dict(output_feature_id_list=[feature_id_list[1]],
@@ -241,12 +248,11 @@ class TestSendFeatureIdRequestAsyncFunc(unittest.TestCase):
             mock_res = send_feature_id_request_async(feature_id_list, split_list, table_name_list, input_dict)
             self.assertEqual(mock_res, 0)
 
-    @mock.patch.multiple("mx_rec.core.asc.helper",
-                         get_use_static=mock.MagicMock(return_value=False),
-                         get_training_mode_channel_id=mock.MagicMock(return_value=0))
+    @mock.patch("mx_rec.core.asc.helper.ConfigInitializer")
     @mock.patch("mx_rec.core.asc.helper.merge_feature_id_request")
-    @mock.patch("mx_rec.core.asc.helper.get_host_pipeline_ops")
-    def test_send_feature_id_request_async_case2(self, mock_get_host_pipeline_ops, mock_merge_feature_id_request):
+    @mock.patch("mx_rec.core.asc.helper.import_host_pipeline_ops")
+    def test_send_feature_id_request_async_case2(self, mock_get_host_pipeline_ops, mock_merge_feature_id_request,
+                                                 helper_config_initializer):
         """
         case2: 动态shape
         """
@@ -254,6 +260,9 @@ class TestSendFeatureIdRequestAsyncFunc(unittest.TestCase):
         from mx_rec.core.asc.helper import send_feature_id_request_async
 
         with tf.Graph().as_default():
+            mock_config_initializer = MockConfigInitializer(use_static=False)
+            helper_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
             mock_get_host_pipeline_ops.return_value = MockHostPipeLineOps()
             feature_id_list = [tf.constant([2, ], dtype=tf.int64), tf.constant([3, ], dtype=tf.int64)]
             mock_merge_feature_id_request.return_value = dict(output_feature_id_list=[feature_id_list[1]],
@@ -265,12 +274,11 @@ class TestSendFeatureIdRequestAsyncFunc(unittest.TestCase):
             mock_res = send_feature_id_request_async(feature_id_list, split_list, table_name_list, input_dict)
             self.assertEqual(mock_res, 1)
 
-    @mock.patch.multiple("mx_rec.core.asc.helper",
-                         get_use_static=mock.MagicMock(return_value=False),
-                         get_training_mode_channel_id=mock.MagicMock(return_value=0))
+    @mock.patch("mx_rec.core.asc.helper.ConfigInitializer")
     @mock.patch("mx_rec.core.asc.helper.merge_feature_id_request")
-    @mock.patch("mx_rec.core.asc.helper.get_host_pipeline_ops")
-    def test_send_feature_id_request_async_case3(self, mock_get_host_pipeline_ops, mock_merge_feature_id_request):
+    @mock.patch("mx_rec.core.asc.helper.import_host_pipeline_ops")
+    def test_send_feature_id_request_async_case3(self, mock_get_host_pipeline_ops, mock_merge_feature_id_request,
+                                                 helper_config_initializer):
         """
         case3: split_list或tensorshape_split_list为空，抛出异常
         """
@@ -278,6 +286,9 @@ class TestSendFeatureIdRequestAsyncFunc(unittest.TestCase):
         from mx_rec.core.asc.helper import send_feature_id_request_async
 
         with tf.Graph().as_default():
+            mock_config_initializer = MockConfigInitializer(use_static=False)
+            helper_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
             mock_get_host_pipeline_ops.return_value = MockHostPipeLineOps()
             feature_id_list = [tf.constant([2, ], dtype=tf.int64), tf.constant([3, ], dtype=tf.int64)]
             mock_merge_feature_id_request.return_value = dict(output_feature_id_list=[feature_id_list[1]],
@@ -290,6 +301,10 @@ class TestSendFeatureIdRequestAsyncFunc(unittest.TestCase):
                 send_feature_id_request_async(feature_id_list, split_list, table_name_list, input_dict)
 
 
+@mock.patch.multiple(
+    "mx_rec.graph.patch",
+    ConfigInitializer=mock.Mock(return_value=MockConfigInitializer()),
+)
 class TestMergeFeatureIdRequestFunc(unittest.TestCase):
     """
     Test for 'mx_rec.core.asc.helper.merge_feature_id_request'.
@@ -309,9 +324,8 @@ class TestMergeFeatureIdRequestFunc(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             merge_feature_id_request(feature_id_list, split_list, table_name_list)
 
-    @mock.patch.multiple("mx_rec.core.asc.helper",
-                         get_modify_graph=mock.MagicMock(return_value=False))
-    def test_merge_feature_id_request_case2(self):
+    @mock.patch("mx_rec.core.asc.helper.ConfigInitializer")
+    def test_merge_feature_id_request_case2(self, helper_config_initializer):
         """
         case2: 非自动改图
         """
@@ -319,6 +333,9 @@ class TestMergeFeatureIdRequestFunc(unittest.TestCase):
         from mx_rec.core.asc.helper import merge_feature_id_request
 
         with tf.Graph().as_default():
+            mock_config_initializer = MockConfigInitializer(modify_graph=False)
+            helper_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
             feature_id_list = [
                 tf.constant([2, ], dtype=tf.int64),
                 tf.constant([3, ], dtype=tf.int64),
@@ -367,9 +384,8 @@ class TestMergeFeatureIdRequestFunc(unittest.TestCase):
                     self.assertEqual(sess.run(real_output_tensorshape_split),
                                      sess.run(except_output_tensorshape_split))
 
-    @mock.patch.multiple("mx_rec.core.asc.helper",
-                         get_modify_graph=mock.MagicMock(return_value=True))
-    def test_merge_feature_id_request_case3(self):
+    @mock.patch("mx_rec.core.asc.helper.ConfigInitializer")
+    def test_merge_feature_id_request_case3(self, helper_config_initializer):
         """
         case3: 自动改图
         """
@@ -377,6 +393,9 @@ class TestMergeFeatureIdRequestFunc(unittest.TestCase):
         from mx_rec.core.asc.helper import merge_feature_id_request
 
         with tf.Graph().as_default():
+            mock_config_initializer = MockConfigInitializer(modify_graph=True)
+            helper_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
             feature_id_list = [
                 tf.constant([2, ], dtype=tf.int64),
                 tf.constant([3, ], dtype=tf.int64),
@@ -414,6 +433,10 @@ class TestMergeFeatureIdRequestFunc(unittest.TestCase):
                                      sess.run(except_output_tensorshape_split))
 
 
+@mock.patch.multiple(
+    "mx_rec.graph.patch",
+    ConfigInitializer=mock.Mock(return_value=MockConfigInitializer()),
+)
 class TestExportReadEmbKeyV2OpFunc(unittest.TestCase):
     """
     Test for 'mx_rec.core.asc.helper.export_read_emb_key_v2_op'.
@@ -539,6 +562,10 @@ class TestExportReadEmbKeyV2OpFunc(unittest.TestCase):
                 self.assertEqual(sess.run(output_batch[-1][0]), 0)
 
 
+@mock.patch.multiple(
+    "mx_rec.graph.patch",
+    ConfigInitializer=mock.Mock(return_value=MockConfigInitializer()),
+)
 class TestGetTargetTensorsWithArgsIndexesFunc(unittest.TestCase):
     """
     Test for 'mx_rec.core.asc.helper.get_target_tensors_with_args_indexes'.
@@ -581,6 +608,10 @@ class TestGetTargetTensorsWithArgsIndexesFunc(unittest.TestCase):
                 self.assertEqual(sess.run(tf.shape(batch.get("new_label_0"))), batch_size)
 
 
+@mock.patch.multiple(
+    "mx_rec.graph.patch",
+    ConfigInitializer=mock.Mock(return_value=MockConfigInitializer()),
+)
 class TestGetTargetTensorsWithFeatureSpecFunc(unittest.TestCase):
     """
     Test for 'mx_rec.core.asc.helper.get_target_tensors_with_feature_specs'.

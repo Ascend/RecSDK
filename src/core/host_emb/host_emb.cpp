@@ -49,6 +49,7 @@ void HostEmb::Initialize(const vector<EmbInfo>& embInfos, int seed)
 void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, int seed, int vocabSize,
     int embeddingSize, vector<vector<float>> &embData) const
 {
+#ifndef GTEST
     LOG_INFO(HOSTEMB + "GenerateEmbData Start, seed:{}, initializer num: {}", seed, initializeInfos.size());
     embData.clear();
     embData.resize(vocabSize, vector<float>(embeddingSize));
@@ -60,6 +61,7 @@ void HostEmb::EmbDataGenerator(const vector<InitializeInfo> &initializeInfos, in
         }
     }
     LOG_INFO(HOSTEMB + "GenerateEmbData End, seed:{}", seed);
+#endif
 }
 
 /// 停止用于异步更新D2H emb的线程
@@ -91,6 +93,7 @@ void HostEmb::Join(int channelId)
     }
 }
 
+#ifndef GTEST
 /// 从hdTransfer获取device侧返回的emb信息，并在host侧表的对应位置插入。
 /// missingKeysHostPos为host侧需要发送的emb的位置，也就是淘汰的emb的插入位置
 /// \param missingKeysHostPos 当前batch在host上需要换出的偏移
@@ -116,7 +119,7 @@ void HostEmb::UpdateEmb(const vector<size_t>& missingKeysHostPos, int channelId,
     auto& embData = hostEmbs[embName].embData;
 
     LOG_DEBUG(HOSTEMB + "embName:{}, UpdateEmb missingKeys len = {}, embeddingSize = {}, "
-        "embData.size = {}", embName, missingKeysHostPos.size(), embeddingSize, embData.size());
+        "embData.size = {} {}", embName, missingKeysHostPos.size(), embeddingSize, embData.size(), tensorPtr);
 
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) \
                          shared(missingKeysHostPos, tensorPtr, embData, embeddingSize)
@@ -158,7 +161,10 @@ void HostEmb::UpdateEmbV2(const vector<size_t>& missingKeysHostPos, int channelI
             if (aclData == nullptr) {
                 throw runtime_error("Acl get tensor data from dataset failed.");
             }
-            float* ptr = reinterpret_cast<float *>(acltdtGetDataAddrFromItem(aclData));
+            float* ptr = static_cast<float *>(acltdtGetDataAddrFromItem(aclData));
+            if (ptr == nullptr || missingKeysHostPos.size() == 0) {
+                return;
+            }
             size_t elementSize = acltdtGetDataSizeFromItem(aclData);
             size_t dimNum = acltdtGetDimNumFromItem(aclData);
             LOG_DEBUG(HOSTEMB + "embName:{}, UpdateEmb missingKeys len = {}, embeddingSize = {},"
@@ -204,7 +210,7 @@ void HostEmb::GetH2DEmb(const vector<size_t>& missingKeysHostPos, const string& 
     auto& tmpTensor = h2dEmbOut.back();
     auto tmpData = tmpTensor.flat<float>();
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) shared(missingKeysHostPos, emb, tmpData)
-    for (size_t i = 0; i < missingKeysHostPos.size(); i++) {
+    for (size_t i = 0; i < missingKeysHostPos.size(); ++i) {
         const auto& src = emb.embData[missingKeysHostPos[i]];
 #pragma omp simd
         for (int j = 0; j < embeddingSize; j++) {
@@ -230,19 +236,43 @@ void HostEmb::EmbPartGenerator(const vector<InitializeInfo> &initializeInfos, ve
 {
     for (auto initializeInfo: initializeInfos) {
         LOG_INFO("Device GenerateEmbData ing. name {}", initializeInfo.name);
-        for (size_t i = 0; i < offset.size(); i++) {
+        for (size_t i = 0; i < offset.size(); ++i) {
             initializeInfo.initializer->GenerateData(embData.at(offset.at(i)).data(),
                 static_cast<int>(embData[0].size()));
         }
     }
 }
 
+void HostEmb::EmbPartGenerator(const vector<InitializeInfo> &initializeInfos, vector<vector<float>> &embData,
+                               const vector<int64_t>& offset) const
+{
+    for (auto initializeInfo: initializeInfos) {
+        LOG_INFO("Device GenerateEmbData ing. name {}", initializeInfo.name);
+        for (size_t i = 0; i < offset.size(); ++i) {
+            initializeInfo.initializer->GenerateData(embData.at(offset.at(i)).data(),
+                                                     static_cast<int>(embData[0].size()));
+        }
+    }
+}
+#endif
+
 /// 利用initializer初始化emb淘汰的位置
 /// \param embName 表名
 /// \param offset 淘汰的偏移列表
 void HostEmb::EvictInitEmb(const string& embName, const vector<size_t>& offset)
 {
+#ifndef GTEST
     auto& hostEmb = GetEmb(embName);
     EmbPartGenerator(hostEmb.hostEmbInfo.initializeInfos, hostEmb.embData, offset);
     LOG_INFO(HOSTEMB + "ddr EvictInitEmb!host embName {}, init offsets size: {}", embName, offset.size());
+#endif
+}
+
+void HostEmb::EvictInitEmb(const string& embName, const vector<int64_t>& offset)
+{
+#ifndef GTEST
+    auto& hostEmb = GetEmb(embName);
+    EmbPartGenerator(hostEmb.hostEmbInfo.initializeInfos, hostEmb.embData, offset);
+    LOG_INFO(HOSTEMB + "ddr EvictInitEmb!host embName {}, init offsets size: {}", embName, offset.size());
+#endif
 }

@@ -31,3 +31,8 @@ if tf.__version__.startswith("1"):
     from npu_bridge.estimator.npu.npu_hook import NPUCheckpointSaverHook
 else:
     from npu_device.compat.v1.estimator.npu.npu_hook import NPUCheckpointSaverHook
+
+if tf.__version__.startswith("1"):
+    from npu_bridge.estimator.npu.npu_loss_scale_optimizer import NPULossScaleOptimizer
+else:
+    from npu_device.train.optimizer.npu_loss_scale_optimizer import NpuLossScaleOptimizer as NPULossScaleOptimizer
