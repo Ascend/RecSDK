@@ -25,9 +25,10 @@ import tensorflow as tf
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import adam
 
-from mx_rec.util.initialize import get_host_pipeline_ops, insert_optimizer, get_use_dynamic_expansion
+from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.constants.constants import MAX_INT32
+from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.validator.validator import para_checker_decorator, StringValidator, FloatValidator
 
 
@@ -50,14 +51,13 @@ def create_hash_optimizer_by_address(learning_rate=0.001, beta1=0.9, beta2=0.999
 
     Returns: a customized optimizer instance
     """
-
-    if not get_use_dynamic_expansion():
+    if not ConfigInitializer.get_instance().use_dynamic_expansion:
         raise ValueError("dynamic expansion mode is not compatible with the optimizer, please config dynamic "
                          "expansion mode and optimizer correctly")
 
     optimizer_by_addr = CustomizedLazyAdamByAddress(learning_rate=learning_rate, beta1=beta1, beta2=beta2,
                                                     epsilon=epsilon, name=name)
-    insert_optimizer(optimizer_by_addr)
+    ConfigInitializer.get_instance().optimizer_config.optimizer_instance = optimizer_by_addr
     return optimizer_by_addr
 
 
@@ -124,7 +124,7 @@ class CustomizedLazyAdamByAddress(adam.AdamOptimizer, CustomizedOptimizer):
         temp_epsilon = temp.get("temp_epsilon")
         learning_rate = tf.divide(temp_lr * math_ops.sqrt(1 - power_b2), (1 - power_b1))
 
-        host_pipeline_ops = get_host_pipeline_ops()
+        host_pipeline_ops = import_host_pipeline_ops()
         dim = grad.shape.as_list()[-1]
         combined_tensor = \
             host_pipeline_ops.embedding_lookup_by_address(addr, embedding_dim=3 * dim, embedding_type=1)

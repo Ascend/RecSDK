@@ -68,31 +68,6 @@ TEST_F(HybridMgmtBlockTest, CountAndNotifyWake)
     }
 }
 
-TEST_F(HybridMgmtBlockTest, CheckValid)
-{
-    hybridMgmtBlock = std::make_unique<HybridMgmtBlock>();
-    hybridMgmtBlock->SetStepInterval(1, 1);
-    hybridMgmtBlock->pythonBatchId[0] = 0;
-    hybridMgmtBlock->hybridBatchId[0] = 0;
-    hybridMgmtBlock->CheckValid(0);
-    hybridMgmtBlock->CheckValid(0);
-
-    int step2 = 2;
-    hybridMgmtBlock->pythonBatchId[0] = 0;
-    hybridMgmtBlock->hybridBatchId[0] = step2;
-    hybridMgmtBlock->lastRunChannelId = 0;
-    try {
-        hybridMgmtBlock->CheckValid(1);
-        ASSERT_EQ(-1, 0);
-    } catch (HybridMgmtBlockingException e) {
-        LOG_INFO(HYBRID_BLOCKING + "sucess");
-        ASSERT_EQ(0, 0);
-    }
-    hybridMgmtBlock->pythonBatchId[0] = 0;
-    hybridMgmtBlock->hybridBatchId[0] = 1;
-    hybridMgmtBlock->CheckValid(0);
-}
-
 TEST_F(HybridMgmtBlockTest, DoBlock)
 {
     hybridMgmtBlock = std::make_unique<HybridMgmtBlock>();

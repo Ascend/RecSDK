@@ -41,7 +41,7 @@ protected:
         rankInfo.localRankSize = 1;
         rankInfo.useStatic = true;
         rankInfo.localRankId = 0;
-        rankInfo.noDDR = false;
+        rankInfo.isDDR = true;
         rankInfo.maxStep = { 1, -1 };
         rankInfo.deviceId = 0;
         // 初始化EmbeddingTable

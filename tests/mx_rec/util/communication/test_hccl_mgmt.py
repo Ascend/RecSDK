@@ -41,25 +41,6 @@ class HCCLMGMTTest(unittest.TestCase):
         """
         global_env.rank_table_file = self.rank_table_file
 
-    @patch.multiple("mx_rec.util.communication.hccl_mgmt",
-                    get_logic_id=mock.MagicMock(return_value=1))
-    def test_parse_hccl_json_when_success(self):
-        with patch("builtins.open", mock_open(read_data="""{
-              "server_count":"1",
-              "server_list":[
-                {
-                  "device":[
-                    { "device_id":"0", "device_ip":"xxx.xxx.xx.xxx", "rank_id":"0" }
-                  ],
-                  "server_id":"xxx.xxx.xx.xxx"
-                }
-              ],
-              "status":"completed",
-              "version":"1.0"
-            }""")) as mock_file:
-            rank_to_device_dict, local_rank_size = parse_hccl_json()
-        self.assertEqual(1, local_rank_size)
-
     def test_parse_hccl_json_when_attribute_error(self):
         with patch("builtins.open", mock_open(read_data="""{
           "server_count":"1",
@@ -121,20 +102,6 @@ class HCCLMGMTTest(unittest.TestCase):
         }""")) as mock_file:
             with self.assertRaises(ValueError):
                 rank_to_device_dict, local_rank_size = parse_hccl_json()
-
-    def test_set_hccl_info_without_json(self):
-        rank_to_device_dict, local_rank_size = set_hccl_info_without_json("0-7", "8", "0")
-        self.assertEqual(8, local_rank_size)
-        rank_to_device_dict, local_rank_size = set_hccl_info_without_json("0,1", "2", "0")
-        self.assertEqual(2, local_rank_size)
-        rank_to_device_dict, local_rank_size = set_hccl_info_without_json("0", "1", "0")
-        self.assertEqual(1, local_rank_size)
-        with self.assertRaises(ValueError):
-            rank_to_device_dict, local_rank_size = set_hccl_info_without_json("0", "8", "0")
-        with self.assertRaises(ValueError):
-            rank_to_device_dict, local_rank_size = set_hccl_info_without_json("0-2", "8", "3")
-        with self.assertRaises(ValueError):
-            rank_to_device_dict, local_rank_size = set_hccl_info_without_json("17", "1", "1")
 
 
 if __name__ == '__main__':

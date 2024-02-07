@@ -50,6 +50,8 @@ namespace MxRec {
 
         void EvictInitEmb(const string& embName, const vector<size_t>& offset);
 
+        void EvictInitEmb(const string& embName, const vector<int64_t>& offset);
+
         HostEmbTable& GetEmb(const string& embName)
         {
             return hostEmbs.at(embName);
@@ -65,6 +67,9 @@ namespace MxRec {
                               vector<vector<float>>& embData) const;
         void EmbPartGenerator(const vector<InitializeInfo> &initializeInfos, vector<vector<float>> &embData,
                               const vector<size_t>& offset) const;
+
+        void EmbPartGenerator(const vector<InitializeInfo> &initializeInfos, vector<vector<float>> &embData,
+                              const vector<int64_t>& offset) const;
     };
 }
 

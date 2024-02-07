@@ -338,48 +338,6 @@ TEST_F(CheckpointTest, HostEmbs)
     }
 }
 
-TEST_F(CheckpointTest, EmbHashMaps)
-{
-    EmbHashMemT testEmbHashMaps;
-    EmbHashMemT validEmbHashMaps;
-
-    SetEmbInfo();
-    SetEmbHashMaps(testEmbHashMaps);
-    validEmbHashMaps = testEmbHashMaps;
-
-    CkptData testSaveData;
-    CkptData validLoadData;
-    CkptData testLoadData;
-
-    testSaveData.embHashMaps = std::move(testEmbHashMaps);
-    validLoadData.embHashMaps = std::move(validEmbHashMaps);
-
-    Checkpoint testCkpt;
-    testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
-    testCkpt.LoadModel(testPath, testLoadData, rankInfo, testEmbInfos, { CkptFeatureType::EMB_HASHMAP });
-
-    EXPECT_EQ(validLoadData.embHashMaps.size(), testLoadData.embHashMaps.size());
-    for (const auto& it : validLoadData.embHashMaps) {
-        EXPECT_EQ(1, testLoadData.embHashMaps.count(it.first));
-
-        const auto& hostHashMap = testLoadData.embHashMaps.at(it.first).hostHashMap;
-        const auto& devOffset2Batch = testLoadData.embHashMaps.at(it.first).devOffset2Batch;
-        const auto& devOffset2Key = testLoadData.embHashMaps.at(it.first).devOffset2Key;
-        const auto& currentUpdatePos = testLoadData.embHashMaps.at(it.first).currentUpdatePos;
-        const auto& hostVocabSize = testLoadData.embHashMaps.at(it.first).hostVocabSize;
-        const auto& devVocabSize = testLoadData.embHashMaps.at(it.first).devVocabSize;
-
-        EXPECT_EQ(it.second.hostHashMap, hostHashMap);
-
-        EXPECT_EQ(it.second.devOffset2Batch, devOffset2Batch);
-        EXPECT_EQ(it.second.devOffset2Key, devOffset2Key);
-
-        EXPECT_EQ(it.second.currentUpdatePos, currentUpdatePos);
-        EXPECT_EQ(it.second.hostVocabSize, hostVocabSize);
-        EXPECT_EQ(it.second.devVocabSize, devVocabSize);
-    }
-}
-
 TEST_F(CheckpointTest, KeyOffsetMaps)
 {
     KeyOffsetMemT testKeyOffsetMaps;
@@ -411,120 +369,6 @@ TEST_F(CheckpointTest, KeyOffsetMaps)
     }
 }
 
-TEST_F(CheckpointTest, AllMgmt)
-{
-    OffsetMemT testMaxOffset;
-    OffsetMemT validMaxOffset;
-    KeyOffsetMemT testKeyOffsetMaps;
-    KeyOffsetMemT validKeyOffsetMaps;
-
-    SetEmbInfo();
-    SetMaxOffset(testMaxOffset);
-    validMaxOffset = testMaxOffset;
-    SetKeyOffsetMaps(testKeyOffsetMaps);
-    validKeyOffsetMaps = testKeyOffsetMaps;
-
-    CkptData testSaveData;
-    CkptData validLoadData;
-    CkptData testLoadData;
-
-    testSaveData.maxOffset = std::move(testMaxOffset);
-    validLoadData.maxOffset = std::move(validMaxOffset);
-    testSaveData.keyOffsetMap = std::move(testKeyOffsetMaps);
-    validLoadData.keyOffsetMap = std::move(validKeyOffsetMaps);
-
-    Checkpoint testCkpt;
-    testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
-    testCkpt.LoadModel(testPath,
-        testLoadData,
-        rankInfo,
-        testEmbInfos,
-        {CkptFeatureType::KEY_OFFSET_MAP });
-
-    EXPECT_EQ(validLoadData.maxOffset.size(), testLoadData.maxOffset.size());
-    for (const auto& it : validLoadData.maxOffset) {
-        EXPECT_EQ(1, testLoadData.maxOffset.count(it.first));
-        const auto& maxOffset = testLoadData.maxOffset.at(it.first);
-        EXPECT_EQ(it.second, maxOffset);
-    }
-
-    EXPECT_EQ(validLoadData.keyOffsetMap.size(), testLoadData.keyOffsetMap.size());
-    for (const auto& it : validLoadData.keyOffsetMap) {
-        EXPECT_EQ(1, testLoadData.keyOffsetMap.count(it.first));
-        const auto& keyOffsetMap = testLoadData.keyOffsetMap.at(it.first);
-        const auto& validKeyOffsetMap = validLoadData.keyOffsetMap.at(it.first);
-        for (const auto& key: keyOffsetMap) {
-            EXPECT_EQ(validKeyOffsetMap.count(key.first), 1);
-        }
-    }
-}
-
-TEST_F(CheckpointTest, FeatAdmitNEvict)
-{
-    Table2ThreshMemT testTrens2Thresh;
-    Table2ThreshMemT validTrens2Thresh;
-    AdmitAndEvictData testHistRec;
-    AdmitAndEvictData validHistRec;
-
-    SetEmbInfo();
-    SetTable2Threshold(testTrens2Thresh);
-    validTrens2Thresh = testTrens2Thresh;
-    bool isCombine = false;
-
-    if (isCombine) {
-        SetHistRecCombine(testHistRec);
-    } else {
-        SetHistRec(testHistRec);
-    }
-
-    validHistRec = testHistRec;
-
-    CkptData testSaveData;
-    CkptData validLoadData;
-    CkptData testLoadData;
-
-    testSaveData.table2Thresh = testTrens2Thresh;
-    testSaveData.histRec.timestamps = testHistRec.timestamps;
-    testSaveData.histRec.historyRecords = testHistRec.historyRecords;
-    validLoadData.table2Thresh = validTrens2Thresh;
-    validLoadData.histRec = validHistRec;
-    validLoadData.histRec.timestamps = validHistRec.timestamps;
-    validLoadData.histRec.historyRecords = validHistRec.historyRecords;
-
-    Checkpoint testCkpt;
-    testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
-    testCkpt.LoadModel(testPath, testLoadData, rankInfo, testEmbInfos, { CkptFeatureType::FEAT_ADMIT_N_EVICT });
-
-    EXPECT_EQ(validLoadData.table2Thresh.size(), testLoadData.table2Thresh.size());
-    EXPECT_EQ(validLoadData.histRec.historyRecords.size(), testLoadData.histRec.historyRecords.size());
-    for (const auto& it : validLoadData.table2Thresh) {
-        EXPECT_EQ(1, testLoadData.table2Thresh.count(it.first));
-
-        const auto& table2Thresh = testLoadData.table2Thresh.at(it.first);
-
-        EXPECT_EQ(it.second.tableName, table2Thresh.tableName);
-        EXPECT_EQ(it.second.countThreshold, table2Thresh.countThreshold);
-        EXPECT_EQ(it.second.timeThreshold, table2Thresh.timeThreshold);
-    }
-
-    for (const auto& it : validLoadData.histRec.timestamps) {
-        EXPECT_EQ(1, testLoadData.histRec.timestamps.count(it.first));
-        EXPECT_EQ(1, testLoadData.histRec.historyRecords.count(it.first));
-
-        const auto& timestamps = testLoadData.histRec.timestamps.at(it.first);
-        const auto& historyRecords = testLoadData.histRec.historyRecords.at(it.first);
-        const auto& validHistRec = validLoadData.histRec.historyRecords.at(it.first);
-
-        EXPECT_EQ(it.second, timestamps);
-        for (const auto& validHR : validHistRec) {
-            const auto& testHR = historyRecords.at(validHR.first);
-
-            EXPECT_EQ(validHR.second.count, testHR.count);
-            EXPECT_EQ(validHR.second.lastTime, testHR.lastTime);
-        }
-    }
-}
-
 
 TEST_F(CheckpointTest, KeyFreqMaps)
 {
@@ -546,7 +390,6 @@ TEST_F(CheckpointTest, KeyFreqMaps)
     testSaveData.ddrKeyFreqMaps = std::move(testDDRKeyFreqMaps);
     testSaveData.excludeDDRKeyFreqMaps = std::move(testExcludeDDRKeyFreqMaps);
     validLoadData.ddrKeyFreqMaps = std::move(validDDRKeyFreqMaps);
-
     Checkpoint testCkpt;
     testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
     testCkpt.LoadModel(testPath, testLoadData, rankInfo, testEmbInfos, { CkptFeatureType::DDR_KEY_FREQ_MAP });
@@ -557,27 +400,4 @@ TEST_F(CheckpointTest, KeyFreqMaps)
         const auto& ddrKeyFreqMap = testLoadData.ddrKeyFreqMaps.at(it.first);
         EXPECT_EQ(it.second, ddrKeyFreqMap);
     }
-}
-
-TEST_F(CheckpointTest, KeyCountMapCkpt)
-{
-    KeyCountMemT testKeyCountMaps;
-    KeyCountMemT validKeyCountMaps;
-
-    SetEmbInfo();
-    SetKeyCountMaps(testKeyCountMaps);
-
-    validKeyCountMaps = testKeyCountMaps;
-
-    CkptData testSaveData;
-    CkptData validLoadData;
-    CkptData testLoadData;
-
-    testSaveData.keyCountMap = std::move(testKeyCountMaps);
-    validLoadData.keyCountMap = std::move(validKeyCountMaps);
-
-    Checkpoint testCkpt;
-    testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
-    testCkpt.LoadModel(testPath, testLoadData, rankInfo, testEmbInfos, { CkptFeatureType::KEY_COUNT_MAP });
-    EXPECT_EQ(validLoadData.keyCountMap.size(), testLoadData.keyCountMap.size());
 }

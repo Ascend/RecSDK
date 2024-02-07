@@ -29,9 +29,22 @@ using namespace MxRec;
 
 void LocalFileSystem::CreateDir(const string& dirName)
 {
-    if (access(dirName.c_str(), F_OK) == -1) {
-        if (mkdir(dirName.c_str(), dirMode) == -1) {
-            LOG_DEBUG("Unable to create directory: {}", dirName);
+    constexpr int maxDepth = 100;
+    int guard = 0;
+    stringstream input(dirName);   // 读取str到字符串流中
+    stringstream ss;
+    string tmp;
+    // 按'/'分割，自动创建多级目录
+    while (getline(input, tmp, '/')) {
+        guard++;
+        if (guard > maxDepth) {
+            throw runtime_error(StringFormat("create directory {} exceed max depth", dirName));
+        }
+        ss << tmp << '/';
+        int ret = mkdir(ss.str().c_str(), dirMode);
+        if (ret != 0 && errno != EEXIST) {
+            LOG_ERROR("Unable to create directory: {} ret:{} error info: {}", dirName, ret, strerror(errno));
+            throw runtime_error(StringFormat("create directory {} failed: {}", dirName, strerror(errno)));
         }
     }
 }
@@ -229,9 +242,23 @@ ssize_t LocalFileSystem::Read(const string& filePath, char* fileContent, size_t 
 
 ssize_t LocalFileSystem::Read(const string& filePath, vector<vector<float>>& fileContent, size_t datasetSize)
 {
-    size_t embDataOuterSize = fileContent.capacity();
-    auto onceReadByteSize { datasetSize / embDataOuterSize };
+    int fd = open(filePath.c_str(), O_RDONLY);
+    if (fd < 0) {
+        throw runtime_error(StringFormat("Failed to open read file: %s", filePath.c_str()));
+    }
+    if (datasetSize == 0) {
+        struct stat statbuf;
+        fstat(fd, &statbuf);
+        datasetSize = statbuf.st_size;
+    }
 
+    size_t embDataOuterSize = fileContent.size();
+    if (embDataOuterSize == 0 || datasetSize == 0) {
+        close(fd);
+        throw runtime_error(StringFormat("output buffer or file size is empty"));
+    }
+    // datasetSize为文件大小， 文件大小除以fileContent的size，即为每条embedding的size
+    size_t onceReadByteSize = datasetSize / embDataOuterSize;
     size_t mapByteSize;
     size_t mapRowNum;
     CalculateMapSize(datasetSize, mapByteSize, mapRowNum, onceReadByteSize);
@@ -239,12 +266,6 @@ ssize_t LocalFileSystem::Read(const string& filePath, vector<vector<float>>& fil
     off_t offset = 0;
     size_t remainBytes = datasetSize;
     ssize_t readBytesNum = 0;
-
-    int fd = open(filePath.c_str(), O_RDONLY);
-    if (fd == -1) {
-        throw runtime_error(StringFormat("Failed to open read file: %s", filePath.c_str()));
-    }
-
     for (size_t i = 0; i < embDataOuterSize; i += mapRowNum) {
         // 如果剩余字节数小于每次映射的字节数，则更新每次映射的字节数和行数
         if (remainBytes < mapByteSize) {
@@ -258,7 +279,6 @@ ssize_t LocalFileSystem::Read(const string& filePath, vector<vector<float>>& fil
             return -1;
         }
         readBytesNum += mapByteSize;
-
         char* mappedData = static_cast<char*>(tempMappedData);
 
         // 处理映射的数据

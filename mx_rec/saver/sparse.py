@@ -21,8 +21,7 @@ import json
 import numpy as np
 import tensorflow as tf
 
-from mx_rec.util.initialize import get_table_instance_by_name, export_table_name_set, get_sparse_dir
-from mx_rec.validator.validator import FileValidator
+from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator
 from mx_rec.util.log import logger
 from mx_rec.saver.saver import validate_read_file
@@ -44,7 +43,7 @@ class SparseProcessor:
         self.json_attrib_dtype = "data_type"
         self.json_attrib_shape = "shape"
         self.table_list = table_list
-        self.default_table_list = list(export_table_name_set())
+        self.default_table_list = list(ConfigInitializer.get_instance().sparse_embed_config.table_name_set)
 
         if not self.table_list:
             logger.debug("table list not be set, use default value : all table created ")
@@ -88,25 +87,25 @@ class SparseProcessor:
 
     def export_sparse_data(self):
         logger.info("table list to be exported is %s", self.table_list)
-        sparse_dir = get_sparse_dir()
+        sparse_dir = ConfigInitializer.get_instance().train_params_config.sparse_dir
         ddr = False
         dev_dir = set_upper_dir(sparse_dir, self.device_dir_list)
         host_dir = set_upper_dir(sparse_dir, self.host_dir_list)
         for table in self.table_list:
-            table_instance = get_table_instance_by_name(table)
+            table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance_by_name(table)
             device_table_dir = os.path.join(dev_dir, table)
             host_table_dir = os.path.join(host_dir, table)
-            if table_instance.host_vocabulary_size != 0:
+            if not table_instance.is_hbm:
                 out_dir = host_table_dir
                 key, offset = self._get_hashmap(host_table_dir, True)
                 emb_data = self.get_embedding(device_table_dir, host_table_dir, True,
-                                              table_instance.use_dynamic_expansion)
+                                              ConfigInitializer.get_instance().use_dynamic_expansion)
                 emb_data = emb_data[offset]
             else:
                 out_dir = device_table_dir
                 key, _ = self._get_hashmap(device_table_dir, False)
                 emb_data = self.get_embedding(device_table_dir, host_table_dir, False,
-                                              table_instance.use_dynamic_expansion)
+                                              ConfigInitializer.get_instance().use_dynamic_expansion)
             transformed_data = dict(zip(key[:], emb_data[:]))
             save_path = os.path.join(out_dir, self.export_name + ".npy")
             with tf.io.gfile.GFile(save_path, "wb") as file:

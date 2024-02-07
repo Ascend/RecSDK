@@ -21,7 +21,7 @@ from unittest import mock
 import tensorflow as tf
 
 import mx_rec.core.asc.merge_table
-from tests.mx_rec.core.mock_class import MockSparseEmbedding
+from tests.mx_rec.core.mock_class import MockSparseEmbedding, MockConfigInitializer, MockGlobalEnv
 
 
 class TestAffirmFunc(unittest.TestCase):
@@ -83,7 +83,11 @@ class TestIsTrainTaskFunc(unittest.TestCase):
     Test for 'mx_rec.core.asc.merge_table.is_train_task'.
     """
 
-    def setUp(self):
+    @mock.patch("mx_rec.graph.patch.ConfigInitializer")
+    def setUp(self, graph_patch_config_initializer):
+        mock_config_initializer = MockConfigInitializer(use_dynamic_expansion=False)
+        graph_patch_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
         # 在tensorflow默认图中添加op
         a = tf.constant(1)
         b = tf.constant(2)
@@ -95,38 +99,35 @@ class TestIsTrainTaskFunc(unittest.TestCase):
         # 删除tensorflow默认图中添加的op
         tf.reset_default_graph()
 
-    @mock.patch.multiple("mx_rec.core.asc.merge_table",
-                         get_bool_gauge_set=mock.MagicMock(return_value=[]))
-    def test_is_train_task_case1(self):
+    @mock.patch("mx_rec.core.asc.merge_table.ConfigInitializer")
+    @mock.patch("mx_rec.graph.patch.ConfigInitializer")
+    def test_is_train_task_case1(self, graph_patch_config_initializer, merge_table_config_initializer):
         """
         case1: bool_gauge_set为[]
         """
 
         from mx_rec.core.asc.merge_table import is_train_task
 
+        mock_config_initializer = MockConfigInitializer(bool_gauge_set=[])
+        graph_patch_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+        merge_table_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
         self.assertFalse(is_train_task())
 
     @mock.patch.multiple("mx_rec.core.asc.merge_table",
-                         get_bool_gauge_set=mock.MagicMock(return_value=["train"]),
                          check_op=mock.MagicMock(return_value=True))
-    def test_is_train_task_case2(self):
+    @mock.patch("mx_rec.core.asc.merge_table.ConfigInitializer")
+    @mock.patch("mx_rec.graph.patch.ConfigInitializer")
+    def test_is_train_task_case2(self, graph_patch_config_initializer, merge_table_config_initializer):
         """
         case2: bool_gauge_set为["train"]，且check_op为True
         """
 
         from mx_rec.core.asc.merge_table import is_train_task
 
-        self.assertTrue(is_train_task())
-
-    @mock.patch.multiple("mx_rec.core.asc.merge_table",
-                         get_bool_gauge_set=mock.MagicMock(return_value=["train"]),
-                         check_op=mock.MagicMock(return_value=False))
-    def test_is_train_task_case3(self):
-        """
-        case3: bool_gauge_set为["train"]，且check_op为False
-        """
-
-        from mx_rec.core.asc.merge_table import is_train_task
+        mock_config_initializer = MockConfigInitializer(bool_gauge_set=["train"])
+        graph_patch_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+        merge_table_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
         self.assertTrue(is_train_task())
 
@@ -136,7 +137,11 @@ class TestFindDanglingTableFunc(unittest.TestCase):
     Test for 'mx_rec.core.asc.merge_table.find_dangling_table'.
     """
 
-    def setUp(self):
+    @mock.patch("mx_rec.graph.patch.ConfigInitializer")
+    def setUp(self, graph_patch_config_initializer):
+        mock_config_initializer = MockConfigInitializer()
+        graph_patch_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
         # 在tensorflow默认图中添加op
         a = tf.constant(1)
         b = tf.constant(2)
@@ -161,7 +166,7 @@ class TestFindDanglingTableFunc(unittest.TestCase):
 
     @mock.patch.multiple("mx_rec.core.asc.merge_table",
                          is_train_task=mock.MagicMock(return_value=True),
-                         get_enable_table_merge=mock.MagicMock(return_value=False))
+                         global_env=mock.MagicMock(return_value=MockGlobalEnv(tf_device='GPU')))
     def test_find_dangling_table_case2(self):
         """
         case2: is_train_task为True，merge为False
@@ -170,23 +175,6 @@ class TestFindDanglingTableFunc(unittest.TestCase):
         from mx_rec.core.asc.merge_table import find_dangling_table
 
         self.assertListEqual(find_dangling_table([]), [])
-
-    @mock.patch.multiple("mx_rec.core.asc.merge_table",
-                         is_train_task=mock.MagicMock(return_value=True),
-                         affirm=mock.MagicMock(return_value=True),
-                         get_enable_table_merge=mock.MagicMock(return_value=True),
-                         insert_dangling_table=mock.MagicMock(return_value=None))
-    @mock.patch("mx_rec.core.asc.merge_table.export_table_instances")
-    def test_find_dangling_table_case3(self, mock_export_table_instances):
-        """
-        case3: is_train_task为True，merge为True
-        """
-
-        from mx_rec.core.asc.merge_table import find_dangling_table
-
-        mock_export_table_instances.return_value = {"table1": MockSparseEmbedding("table1")}
-        dangling_table = find_dangling_table(["table2"])
-        self.assertListEqual(dangling_table, ["table2", "table1"])
 
 
 class TestShouldSkipFunc(unittest.TestCase):

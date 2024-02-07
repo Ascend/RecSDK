@@ -21,26 +21,7 @@ from unittest import mock
 import tensorflow as tf
 
 from mx_rec.core.asc.feature_spec import FeatureSpec
-from tests.mx_rec.core.mock_class import MockSparseEmbedding, MockOptimizer, MockHybridMgmt
-
-
-class TestCheckDanglingTableFunc(unittest.TestCase):
-    """
-    Test for 'mx_rec.core.asc.manager.check_dangling_table'.
-    """
-
-    @mock.patch.multiple("mx_rec.core.asc.manager",
-                         export_dangling_table=mock.MagicMock(return_value=[]),
-                         export_table_instances=mock.MagicMock(return_value={}),
-                         find_dangling_table=mock.MagicMock(return_value=["test_table"]))
-    def test_check_dangling_table(self):
-        """
-        case: test check_dangling_table
-        """
-
-        from mx_rec.core.asc.manager import check_dangling_table
-
-        self.assertListEqual(check_dangling_table(), ["test_table"])
+from tests.mx_rec.core.mock_class import MockSparseEmbedding, MockOptimizer, MockHybridMgmt, MockConfigInitializer
 
 
 class TestGenerateTableInfoListFunc(unittest.TestCase):
@@ -48,8 +29,8 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
     Test for 'mx_rec.core.asc.manager.generate_table_info_list'.
     """
 
-    @mock.patch("mx_rec.core.asc.manager.export_table_instances")
-    def test_generate_table_info_list_case1(self, mock_export_table_instances):
+    @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
+    def test_generate_table_info_list_case1(self, merge_table_config_initializer):
         """
         case1: 一张表开DDR，一张表没开DDR，抛出异常
         """
@@ -57,11 +38,14 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
         from mx_rec.core.asc.manager import generate_table_info_list
 
         with tf.Graph().as_default():
+            mock_config_initializer = MockConfigInitializer()
+            merge_table_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
             test_table1 = MockSparseEmbedding("test_table1")
-            test_table1.host_vocabulary_size = 1
+            test_table1.is_hbm = False
             test_table2 = MockSparseEmbedding("test_table2")
-            test_table2.host_vocabulary_size = 0
-            mock_export_table_instances.return_value = {
+            test_table2.is_hbm = True
+            mock_config_initializer.get_instance().sparse_embed_config.table_instance_dict = {
                 "test_table1": test_table1,
                 "test_table2": test_table2
             }
@@ -70,11 +54,10 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
                 generate_table_info_list()
 
     @mock.patch.multiple("mx_rec.core.asc.manager",
-                         export_optimizer=mock.MagicMock(return_value=None),
                          should_skip=mock.MagicMock(return_value=True),
                          check_dangling_table=mock.MagicMock(return_value=["test_table"]))
-    @mock.patch("mx_rec.core.asc.manager.export_table_instances")
-    def test_generate_table_info_list_case2(self, mock_export_table_instances):
+    @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
+    def test_generate_table_info_list_case2(self, merge_table_config_initializer):
         """
         case2: test_table是dangling_table，skip为True
         """
@@ -82,19 +65,21 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
         from mx_rec.core.asc.manager import generate_table_info_list
 
         with tf.Graph().as_default():
+            mock_config_initializer = MockConfigInitializer()
+            merge_table_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
             test_table = MockSparseEmbedding("test_table")
             test_table.host_vocabulary_size = 1
-            mock_export_table_instances.return_value = dict(test_table=test_table)
+            mock_config_initializer.get_instance().sparse_embed_config.table_instance_dict = dict(test_table=test_table)
 
             table_info_list = generate_table_info_list()
             self.assertListEqual(table_info_list, [])
 
     @mock.patch.multiple("mx_rec.core.asc.manager",
-                         export_optimizer=mock.MagicMock(return_value=None),
                          should_skip=mock.MagicMock(return_value=True),
                          check_dangling_table=mock.MagicMock(return_value=[]))
-    @mock.patch("mx_rec.core.asc.manager.export_table_instances")
-    def test_generate_table_info_list_case3(self, mock_export_table_instances):
+    @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
+    def test_generate_table_info_list_case2(self, merge_table_config_initializer):
         """
         case3: test_table不是dangling_table，skip为True
         """
@@ -102,24 +87,25 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
         from mx_rec.core.asc.manager import generate_table_info_list
 
         with tf.Graph().as_default():
+            mock_config_initializer = MockConfigInitializer()
+            merge_table_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
             test_table = MockSparseEmbedding("test_table")
             test_table.host_vocabulary_size = 1
-            mock_export_table_instances.return_value = dict(test_table=test_table)
+            mock_config_initializer.get_instance().sparse_embed_config.table_instance_dict = dict(test_table=test_table)
 
             table_info_list = generate_table_info_list()
             self.assertListEqual(table_info_list, [])
 
     @mock.patch.multiple("mx_rec.core.asc.manager",
-                         export_optimizer=mock.MagicMock(return_value=None),
                          EmbInfoParams=mock.MagicMock(return_value=None),
                          EmbInfo=mock.MagicMock(return_value="test_table_info"),
                          matched_emb_initializer=mock.MagicMock(return_value=[]),
                          matched_opt_slot_initializers=mock.MagicMock(return_value=[]),
                          should_skip=mock.MagicMock(return_value=False),
-                         get_use_static=mock.MagicMock(return_value=True),
                          check_dangling_table=mock.MagicMock(return_value=[]))
-    @mock.patch("mx_rec.core.asc.manager.export_table_instances")
-    def test_generate_table_info_list_case3(self, mock_export_table_instances):
+    @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
+    def test_generate_table_info_list_case3(self, merge_table_config_initializer):
         """
         case4: 静态shape，test_table不是dangling_table，skip为False
         """
@@ -127,6 +113,9 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
         from mx_rec.core.asc.manager import generate_table_info_list
 
         with tf.Graph().as_default():
+            mock_config_initializer = MockConfigInitializer(use_static=True)
+            merge_table_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
             test_table = MockSparseEmbedding("test_table")
             test_table.host_vocabulary_size = 8
             test_table.send_count = 1
@@ -135,10 +124,10 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
             test_table.slice_ssd_vocabulary_size = 0
             test_table.is_grad = True
             test_table.is_save = True
-            test_table.scalar_emb_size = 8
+            test_table.emb_size = 8
             test_table.ext_emb_size = 8
             test_table.ssd_data_path = ""
-            mock_export_table_instances.return_value = dict(test_table=test_table)
+            mock_config_initializer.get_instance().sparse_embed_config.table_instance_dict = dict(test_table=test_table)
 
             table_info_list = generate_table_info_list()
             self.assertListEqual(table_info_list, ["test_table_info"])
@@ -162,7 +151,7 @@ class TestMatchedConstantInitializerFunc(unittest.TestCase):
         with tf.Graph().as_default():
             table_info = MockSparseEmbedding("test_table")
             table_info.init_param = 1.
-            table_info.scalar_emb_size = 8
+            table_info.emb_size = 8
             table_info.emb_initializer.value = 0
 
             self.assertListEqual(matched_constant_initializer(table_info), [])
@@ -186,7 +175,7 @@ class TestMatchedRandomNormalInitializerFunc(unittest.TestCase):
         with tf.Graph().as_default():
             table_info = MockSparseEmbedding("test_table")
             table_info.init_param = 1.
-            table_info.scalar_emb_size = 8
+            table_info.emb_size = 8
             table_info.emb_initializer.seed = None
             table_info.emb_initializer.mean = 1
             table_info.emb_initializer.stddev = 1
@@ -206,7 +195,7 @@ class TestMatchedRandomNormalInitializerFunc(unittest.TestCase):
         with tf.Graph().as_default():
             table_info = MockSparseEmbedding("test_table")
             table_info.init_param = 1.
-            table_info.scalar_emb_size = 8
+            table_info.emb_size = 8
             table_info.emb_initializer.seed = 1
             table_info.emb_initializer.mean = 1
             table_info.emb_initializer.stddev = 1
@@ -232,7 +221,7 @@ class TestMatchedTruncatedNormalInitializerFunc(unittest.TestCase):
         with tf.Graph().as_default():
             table_info = MockSparseEmbedding("test_table")
             table_info.init_param = 1.
-            table_info.scalar_emb_size = 8
+            table_info.emb_size = 8
             table_info.emb_initializer.seed = None
             table_info.emb_initializer.mean = 1
             table_info.emb_initializer.stddev = 1
@@ -252,7 +241,7 @@ class TestMatchedTruncatedNormalInitializerFunc(unittest.TestCase):
         with tf.Graph().as_default():
             table_info = MockSparseEmbedding("test_table")
             table_info.init_param = 1.
-            table_info.scalar_emb_size = 8
+            table_info.emb_size = 8
             table_info.emb_initializer.seed = 1
             table_info.emb_initializer.mean = 1
             table_info.emb_initializer.stddev = 1
@@ -276,7 +265,7 @@ class TestMatchedEmbInitializerFunc(unittest.TestCase):
 
         with tf.Graph().as_default():
             table_info = MockSparseEmbedding("test_table")
-            table_info.scalar_emb_size = 8
+            table_info.emb_size = 8
             table_info.emb_initializer = tf.constant_initializer()
 
             self.assertEqual(matched_emb_initializer(table_info), 1)
@@ -292,7 +281,7 @@ class TestMatchedEmbInitializerFunc(unittest.TestCase):
 
         with tf.Graph().as_default():
             table_info = MockSparseEmbedding("test_table")
-            table_info.scalar_emb_size = 8
+            table_info.emb_size = 8
             table_info.emb_initializer = tf.random_normal_initializer()
 
             self.assertEqual(matched_emb_initializer(table_info), 2)
@@ -308,7 +297,7 @@ class TestMatchedEmbInitializerFunc(unittest.TestCase):
 
         with tf.Graph().as_default():
             table_info = MockSparseEmbedding("test_table")
-            table_info.scalar_emb_size = 8
+            table_info.emb_size = 8
             table_info.emb_initializer = tf.truncated_normal_initializer()
 
             self.assertEqual(matched_emb_initializer(table_info), 3)
@@ -330,7 +319,7 @@ class TestMatchedOptSlotInitializersFunc(unittest.TestCase):
 
         with tf.Graph().as_default():
             table_instance = MockSparseEmbedding("test_table")
-            table_instance.scalar_emb_size = 8
+            table_instance.emb_size = 8
             table_instance.ext_emb_size = 8
             table_instance.optimizer_instance_list = [MockOptimizer()]
 
@@ -345,8 +334,8 @@ class TestGenerateThresholdListFunc(unittest.TestCase):
 
     @mock.patch.multiple("mx_rec.core.asc.manager",
                          ThresholdValue=mock.MagicMock(return_value=0))
-    @mock.patch("mx_rec.core.asc.manager.export_feature_spec")
-    def test_generate_threshold_list(self, mock_export_feature_spec):
+    @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
+    def test_generate_threshold_list(self, manager_config_initializer):
         """
         case: 有淘汰、准入
         """
@@ -354,14 +343,15 @@ class TestGenerateThresholdListFunc(unittest.TestCase):
         from mx_rec.core.asc.manager import generate_threshold_list
 
         with tf.Graph().as_default():
+            mock_config_initializer = MockConfigInitializer()
+            manager_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
             test_feature_spec1 = FeatureSpec("test_feature_spec1",
                                              access_threshold=5, eviction_threshold=10, faae_coefficient=None)
             test_feature_spec2 = FeatureSpec("test_feature_spec2",
                                              access_threshold=5, faae_coefficient=None)
-            mock_export_feature_spec.return_value = {
-                "test_feature_spec1": test_feature_spec1,
-                "test_feature_spec2": test_feature_spec2
-            }
+            mock_config_initializer.get_instance().feature_spec_config.insert_feature_spec(test_feature_spec1, True)
+            mock_config_initializer.get_instance().feature_spec_config.insert_feature_spec(test_feature_spec2, True)
 
             self.assertListEqual(generate_threshold_list(), [0, 0])
 
@@ -375,24 +365,21 @@ class TestInitializeEmbCacheFunc(unittest.TestCase):
                          get_rank_id=mock.MagicMock(return_value=0),
                          get_device_id=mock.MagicMock(return_value=0),
                          get_rank_size=mock.MagicMock(return_value=0),
-                         get_train_steps=mock.MagicMock(return_value=0),
-                         get_eval_steps=mock.MagicMock(return_value=0),
-                         get_save_steps=mock.MagicMock(return_value=0),
-                         get_if_load=mock.MagicMock(return_value=False),
-                         get_use_static=mock.MagicMock(return_value=True),
-                         get_use_hot=mock.MagicMock(return_value=True),
-                         get_use_dynamic_expansion=mock.MagicMock(return_value=True),
                          USE_STATIC=mock.MagicMock(return_value=0),
                          USE_HOT=mock.MagicMock(return_value=1),
                          USE_DYNAMIC_EXPANSION=mock.MagicMock(return_value=2),
                          RankInfo=mock.MagicMock(return_value="mock_info"),
                          HybridMgmt=mock.MagicMock(return_value=MockHybridMgmt(is_initialized=False)))
-    def test_initialize_emb_cache_case1(self):
+    @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
+    def test_initialize_emb_cache_case1(self, manager_config_initializer):
         """
         case1: 初始化失败
         """
 
         from mx_rec.core.asc.manager import initialize_emb_cache
+
+        mock_config_initializer = MockConfigInitializer(use_static=True, use_dynamic_expansion=True)
+        manager_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
         with self.assertRaises(RuntimeError):
             initialize_emb_cache([], [])
@@ -401,25 +388,21 @@ class TestInitializeEmbCacheFunc(unittest.TestCase):
                          get_rank_id=mock.MagicMock(return_value=0),
                          get_device_id=mock.MagicMock(return_value=0),
                          get_rank_size=mock.MagicMock(return_value=0),
-                         get_train_steps=mock.MagicMock(return_value=0),
-                         get_eval_steps=mock.MagicMock(return_value=0),
-                         get_save_steps=mock.MagicMock(return_value=0),
-                         get_if_load=mock.MagicMock(return_value=False),
-                         get_use_static=mock.MagicMock(return_value=True),
-                         get_use_hot=mock.MagicMock(return_value=True),
-                         get_use_dynamic_expansion=mock.MagicMock(return_value=True),
                          USE_STATIC=mock.MagicMock(return_value=0),
                          USE_HOT=mock.MagicMock(return_value=1),
                          USE_DYNAMIC_EXPANSION=mock.MagicMock(return_value=2),
-                         RankInfo=mock.MagicMock(return_value="mock_info"),
-                         set_asc_manager=mock.MagicMock(return_value=None))
+                         RankInfo=mock.MagicMock(return_value="mock_info"))
+    @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
     @mock.patch("mx_rec.core.asc.manager.HybridMgmt")
-    def test_initialize_emb_cache_case2(self, mock_hybrid_mgmt):
+    def test_initialize_emb_cache_case2(self, mock_hybrid_mgmt, manager_config_initializer):
         """
         case2: 初始化成功
         """
 
         from mx_rec.core.asc.manager import initialize_emb_cache
+
+        mock_config_initializer = MockConfigInitializer(use_static=True, use_dynamic_expansion=True)
+        manager_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
         mock_mgmt = MockHybridMgmt(is_initialized=True)
         mock_hybrid_mgmt.return_value = mock_mgmt
@@ -448,16 +431,17 @@ class TestStartAscPipeLineFunc(unittest.TestCase):
     @mock.patch.multiple("mx_rec.core.asc.manager",
                          generate_table_info_list=mock.MagicMock(return_value=["test_table"]),
                          generate_threshold_list=mock.MagicMock(return_value=[]),
-                         get_stat_on=mock.MagicMock(return_value=True),
-                         is_asc_manager_initialized=mock.MagicMock(return_value=False),
-                         export_table_num=mock.MagicMock(return_value=None),
                          initialize_emb_cache=mock.MagicMock(return_value=None))
-    def test_start_asc_pipeline_case2(self):
+    @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
+    def test_start_asc_pipeline_case2(self, manager_config_initializer):
         """
         case2: table_info_list为["test_table"]，stat_on为True
         """
 
         from mx_rec.core.asc.manager import start_asc_pipeline
+
+        mock_config_initializer = MockConfigInitializer()
+        manager_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
         # 该函数无返回值，且内部调用的函数已经被mock了，无异常、无返回值
         start_asc_pipeline()

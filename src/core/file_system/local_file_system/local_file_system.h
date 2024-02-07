@@ -38,7 +38,8 @@ namespace MxRec {
                             const vector<int64_t>& addressArr, int deviceId) override;
 
         ssize_t Read(const string& filePath, char* fileContent, size_t datasetSize) override;
-        ssize_t Read(const string& filePath, vector<vector<float>>& fileContent, size_t datasetSize) override;
+
+        ssize_t Read(const string& filePath, vector<vector<float>>& fileContent, size_t datasetSize = 0) override;
         void ReadEmbedding(const string& filePath, const int& embeddingSize,
                            vector<int64_t>& addressArr, int deviceId) override;
 

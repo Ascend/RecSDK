@@ -20,9 +20,9 @@ from typing import Dict, List
 import tensorflow as tf
 from tensorflow import Operation, Tensor
 
-from mx_rec.constants.constants import MAX_WHILE_SIZE, ASCEND_TABLE_NAME_MUST_CONTAIN
-from mx_rec.util.initialize import get_enable_table_merge, export_table_instances, insert_dangling_table, \
-    get_bool_gauge_set
+from mx_rec.constants.constants import MAX_WHILE_SIZE, TFDevice, ASCEND_TABLE_NAME_MUST_CONTAIN
+from mx_rec.util.global_env_conf import global_env
+from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.log import logger
 
 
@@ -52,7 +52,7 @@ def check_op(table_reachable_op: Operation) -> bool:
 
 
 def is_train_task():
-    bool_gauge_set = get_bool_gauge_set()
+    bool_gauge_set = ConfigInitializer.get_instance().train_params_config.bool_gauge_set
     if not bool_gauge_set:
         op_list = tf.compat.v1.get_default_graph().get_operations()
         for t_op in op_list:
@@ -76,7 +76,7 @@ def find_dangling_table(table_names: List[str]) -> List[str]:
     def find_table_op(table_name: str,
                       the_op: Operation,
                       table_lookup_op: Dict[str, List[Operation]],
-                      table_reachable_tensor: Dict[str, List[Tensor]]) -> None:  # pragma: no cover
+                      table_reachable_tensor: Dict[str, List[Tensor]]) -> None:
         """ find all the table lookup op.
         :param table_name: tables' names
         :param the_op: the op to be
@@ -97,7 +97,7 @@ def find_dangling_table(table_names: List[str]) -> List[str]:
 
     def extend(op_list: List[Operation],
                tensor: Tensor,
-               spread_tensors: List[Tensor]) -> None:  # pragma: no cover
+               spread_tensors: List[Tensor]) -> None:
         """extend the tensors which table lookup op can reach
 
         :param op_list: all op in the graph
@@ -109,7 +109,7 @@ def find_dangling_table(table_names: List[str]) -> List[str]:
             if tensor in the_op.inputs:
                 spread_tensors.extend(the_op.outputs)
 
-    def bfs_lookup(next_to_visit: List[Tensor]) -> (set, bool):  # pragma: no cover
+    def bfs_lookup(next_to_visit: List[Tensor]) -> (set, bool):
         """find all the tensors which table lookup op can reach
 
         :param next_to_visit: the tensor list to be visited by bfs
@@ -137,7 +137,9 @@ def find_dangling_table(table_names: List[str]) -> List[str]:
     if not is_train_task():
         logger.info("!!merge table only available in train task.")
         return []
-    if not get_enable_table_merge():
+
+    enable_table_merge = True if global_env.tf_device == TFDevice.NPU.value else False
+    if not enable_table_merge:
         return []
 
     op_list = tf.compat.v1.get_default_graph().get_operations()
@@ -145,7 +147,7 @@ def find_dangling_table(table_names: List[str]) -> List[str]:
     table_lookup_op = {}
     table_reachable_tensor = {}
 
-    for _, table_instance in export_table_instances().items():
+    for _, table_instance in ConfigInitializer.get_instance().sparse_embed_config.table_instance_dict.items():
         if table_instance.table_name not in table_names:
             table_names.append(table_instance.table_name)
 
@@ -160,13 +162,13 @@ def find_dangling_table(table_names: List[str]) -> List[str]:
         if table_name not in table_lookup_op:
             logger.debug("*********** created table %s but never look up***********", table_name)
             dangling_table.append(table_name)
-            insert_dangling_table(table_name)
+            ConfigInitializer.get_instance().sparse_embed_config.insert_dangling_table(table_name)
 
     for table_name, table_op in table_reachable_tensor.items():
         reach_op, found = bfs_lookup(table_op)
         if not found and affirm(reach_op):
             dangling_table.append(table_name)
-            insert_dangling_table(table_name)
+            ConfigInitializer.get_instance().sparse_embed_config.insert_dangling_table(table_name)
     return dangling_table
 
 
@@ -184,3 +186,17 @@ def should_skip(table_name) -> bool:
                 break
         return skip
     return False
+
+
+def check_dangling_table():
+    """
+    If the dangling_table list is empty(maybe feature_spec mode), try to find again
+    :return: list of dangling_table
+    """
+    config_instance = ConfigInitializer.get_instance()
+    dangling_table = config_instance.sparse_embed_config.dangling_table
+    if not dangling_table:
+        dangling_table = find_dangling_table([table_instance.table_name
+                                              for _, table_instance in
+                                              config_instance.sparse_embed_config.table_instance_dict.items()])
+    return dangling_table

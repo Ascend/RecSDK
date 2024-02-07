@@ -15,6 +15,6 @@
 # limitations under the License.
 # ==============================================================================
 
-__all__ = ["ASCEND_TIMESTAMP", "ApplyGradientsStrategy"]
+__all__ = ["ASCEND_TIMESTAMP"]
 
-from mx_rec.constants.constants import ASCEND_TIMESTAMP, ApplyGradientsStrategy
+from mx_rec.constants.constants import ASCEND_TIMESTAMP

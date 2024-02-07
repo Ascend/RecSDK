@@ -15,8 +15,6 @@
 # limitations under the License.
 # ==============================================================================
 
-import os
-
 
 class SparseEmbeddingMock:
     """
@@ -28,6 +26,8 @@ class SparseEmbeddingMock:
         self.table_name = "test_table"
         self.slice_device_vocabulary_size = 10
         self.scalar_emb_size = 4
+        self.emb_size = 4
+        self.is_hbm = host_vocab_size == 0
         self.host_vocabulary_size = host_vocab_size
         self.optimizer = dict()
         self.use_dynamic_expansion = False

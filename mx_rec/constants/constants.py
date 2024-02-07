@@ -115,7 +115,6 @@ class EnvOption(Enum):
     CM_CHIEF_DEVICE = "CM_CHIEF_DEVICE"
     CM_WORKER_SIZE = "CM_WORKER_SIZE"
     TF_DEVICE = "TF_DEVICE"
-    APPLY_GRADIENTS_STRATEGY = "APPLY_GRADIENTS_STRATEGY"
     ACL_TIMEOUT = "AclTimeout"
     HD_CHANNEL_SIZE = "HD_CHANNEL_SIZE"
     KEY_PROCESS_THREAD_NUM = "KEY_PROCESS_THREAD_NUM"
@@ -127,6 +126,11 @@ class EnvOption(Enum):
     USE_COMBINE_FAAE = "USE_COMBINE_FAAE"
     STAT_ON = "STAT_ON"
     RECORD_KEY_COUNT = "RECORD_KEY_COUNT"
+
+    # MPI env
+    OMPI_COMM_WORLD_SIZE = "OMPI_COMM_WORLD_SIZE"
+    OMPI_COMM_WORLD_LOCAL_SIZE = "OMPI_COMM_WORLD_LOCAL_SIZE"
+    OMPI_COMM_WORLD_RANK = "OMPI_COMM_WORLD_RANK"
 
 
 class DataName(Enum):
@@ -180,11 +184,6 @@ class All2allGradientsOp(BaseEnum):
     SUM_GRADIENTS_AND_DIV_BY_RANKSIZE = "sum_gradients_and_div_by_ranksize"
 
 
-class ApplyGradientsStrategy(BaseEnum):
-    DIRECT_APPLY = "direct_apply"
-    SUM_SAME_ID_GRADIENTS_AND_APPLY = "sum_same_id_gradients_and_apply"
-
-
 class RecPyLogLevel(Enum):
     DEBUG = "DEBUG"
     INFO = "INFO"
@@ -210,4 +209,15 @@ class Flag(Enum):
     TRUE = "1"
     FALSE = "0"
 
+
+class AnchorDatasetOp(Enum):
+    MODEL_DATASET = "ModelDataset"
+    OPTIMIZE_DATASET = "OptimizeDataset"
+    PREFETCH_DATASET = "PrefetchDataset"
+
+
+class AnchorIteratorOp(Enum):
+    ITERATOR_GET_NEXT = "IteratorGetNext"
+    MAKE_ITERATOR = "MakeIterator"
+    ONE_SHOT_ITERATOR = "OneShotIterator"
 

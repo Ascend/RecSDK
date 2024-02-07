@@ -20,7 +20,7 @@ See the License for the specific language governing permissions and
 #include "utils/time_cost.h"
 #include "utils/config.h"
 #include "host_emb/host_emb.h"
-#include "checkpoint/checkpoint.h"
+#include "emb_table/embedding_mgmt.h"
 #include "hd_transfer/hd_transfer.h"
 #include "ock_ctr_common/include/error_code.h"
 
@@ -86,7 +86,9 @@ bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos
 
     LOG_INFO(KEY_PROCESS "scInfo:{}, localRankSize:{}, rankSize:{}, useStatic:{}, useHot:{}",
         MapToString(scInfo), rInfo.localRankSize, rInfo.rankSize, rInfo.useStatic, rInfo.useHot);
+#ifndef GTEST
     Start();
+#endif
     return true;
 }
 
@@ -135,7 +137,7 @@ void KeyProcess::InitHotEmbTotCount(const EmbInfo& info, const RankInfo& rInfo)
 
 OffsetMemT KeyProcess::GetMaxOffset()
 {
-    return maxOffset;
+    return EmbeddingMgmt::Instance()->GetMaxOffset();
 }
 
 KeyOffsetMemT KeyProcess::GetKeyOffsetMap()
@@ -155,14 +157,14 @@ FeatureAdmitAndEvict& KeyProcess::GetFeatAdmitAndEvict()
 
 void KeyProcess::LoadMaxOffset(OffsetMemT& loadData)
 {
-    maxOffset = std::move(loadData);
+    EmbeddingMgmt::Instance()->LoadMaxOffset(loadData);
 }
 
 /// 加载每张表key到offset的映射
 /// \param loadData
 void KeyProcess::LoadKeyOffsetMap(KeyOffsetMemT& loadData)
 {
-    keyOffsetMap = std::move(loadData);
+    EmbeddingMgmt::Instance()->LoadKeyOffsetMap(loadData);
 }
 
 void KeyProcess::LoadKeyCountMap(KeyCountMemT& loadData)
@@ -370,9 +372,9 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch
     // map key to offset directly by lookup keyOffsetMap (hashmap)
 
     RecordKeyCountMap(batch);
-    if (rankInfo.noDDR) {
+    if (!rankInfo.isDDR) {
         TimeCost key2OffsetTC;
-        Key2Offset(batch->name, uniqueInfo.all2AllInfo.keyRecv, channel);
+        EmbeddingMgmt::Instance()->Key2Offset(batch->name, uniqueInfo.all2AllInfo.keyRecv, channel);
         LOG_DEBUG("key2OffsetTC(ms):{}", key2OffsetTC.ElapsedMS());
     }
     // Static all2all，need send count
@@ -385,7 +387,7 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch
         tensors->push_back(Vec2TensorI32(uniqueInfo.hotPos));
     }
 
-    if (rankInfo.noDDR) {
+    if (!rankInfo.isDDR) {
         PushGlobalUniqueTensors(move(tensors), uniqueInfo.all2AllInfo.keyRecv, channel);
         tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(uniqueInfo.all2AllInfo.keyRecv) :
                                                             Vec2TensorI32(uniqueInfo.all2AllInfo.keyRecv));
@@ -432,12 +434,8 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
 
     // without host, just device, all embedding vectors were stored in device
     // map key to offset directly by lookup keyOffsetMap (hashmap)
-    if (rankInfo.noDDR) {
-        if (rankInfo.useDynamicExpansion) {
-            Key2OffsetDynamicExpansion(batch->name, lookupKeys, channel);
-        } else {
-            Key2Offset(batch->name, lookupKeys, channel);
-        }
+    if (!rankInfo.isDDR) {
+        EmbeddingMgmt::Instance()->Key2Offset(batch->name, lookupKeys, channel);
     }
 
     // Static all2all，need send count
@@ -451,7 +449,7 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
         tensors->push_back(Vec2TensorI32(hotPos));
     }
 
-    if (rankInfo.noDDR) {
+    if (!rankInfo.isDDR) {
         PushGlobalUniqueTensors(tensors, lookupKeys, channel);
         tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(lookupKeys) : Vec2TensorI32(lookupKeys));
     }
@@ -519,7 +517,7 @@ void KeyProcess::PushResult(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tens
     std::unique_lock<std::mutex> lockGuard(mut);
     storage.push_front(move(tensors));
     infoList[batch->name][batch->channel].push(make_tuple(batch->batchId, batch->name, storage.begin()));
-    if (!rankInfo.noDDR) {
+    if (rankInfo.isDDR) {
         lookupKeysList[batch->name][batch->channel].push(make_tuple(batch->batchId, batch->name, move(lookupKeys)));
     }
     lockGuard.unlock();
@@ -1321,8 +1319,9 @@ KeysT KeyProcess::GetLookupKeys(int batch, const string& embName, int channel)
 /// \param channel 通道索引（训练/推理）
 void KeyProcess::SendEos(int batchId, int channel)
 {
-    LOG_INFO("channelId:{} batchId:{}, SendEos start.", channel, batchId);
 #ifndef GTEST
+    LOG_INFO("channelId:{} batchId:{}, SendEos start.", channel, batchId);
+
     auto trans = Singleton<HDTransfer>::GetInstance();
     unordered_map<std::string, acltdtChannelHandle*> transChannels = trans->GetTransChannel();
     std::set<std::string> usedChannelNames = trans->GetUsedTransChannel()[channel];
@@ -1342,11 +1341,12 @@ void KeyProcess::SendEos(int batchId, int channel)
         }
         LOG_INFO("channelId:{} batchId:{}, the embName:{} related channel SendEos end.", channel, batchId, emb.first);
     }
-#endif
+
     LOG_INFO("channelId:{} batchId:{}, SendEos end.", channel, batchId);
     isNeedSendEos[channel] = false;
     mpiAllReduceSend[channel] = 0;
     isNeedExit[channel] = true;
+#endif
 }
 
 /// HBM模式下，从list中获取指定类型的tensor向量
@@ -1442,29 +1442,13 @@ int KeyProcess::GetMaxStep(int channelId) const
 void KeyProcess::EvictKeys(const string& embName, const vector<emb_key_t>& keys) // hbm
 {
     LOG_INFO(KEY_PROCESS "hbm funEvictCall: [{}]! keySize:{}", embName, keys.size());
-
-    // 删除映射关系
-    if (keys.size() != 0) {
-        EvictDeleteDeviceEmb(embName, keys);
-    }
-
-    // 初始化 dev
-    EvictInitDeviceEmb(embName, evictPosMap.at(embName));
+    EmbeddingMgmt::Instance()->EvictKeys(embName, keys);
 }
 
 void KeyProcess::EvictKeysCombine(const vector<emb_key_t>& keys) // hbm
 {
     LOG_INFO(KEY_PROCESS "hbm combine funEvictCall, keySize:{}", keys.size());
-    // 删除映射关系
-    if (keys.size() != 0) {
-        for (const auto& map : keyOffsetMap) {
-            EvictDeleteDeviceEmb(map.first, keys);
-        }
-    }
-    for (const auto map : evictPosMap) {
-        // 初始化 dev
-        EvictInitDeviceEmb(map.first, map.second);
-    }
+    EmbeddingMgmt::Instance()->EvictKeysCombine(keys);
 }
 
 void KeyProcess::EvictDeleteDeviceEmb(const string& embName, const vector<emb_key_t>& keys)
@@ -1505,7 +1489,7 @@ void KeyProcess::EvictInitDeviceEmb(const string& embName, vector<size_t> offset
                 embName, offset.size(), embInfos[embName].devVocabSize
             ).c_str());
     }
-#ifndef GTEST
+
     vector<Tensor> tmpDataOut;
     Tensor tmpData = Vec2TensorI32(offset);
     tmpDataOut.emplace_back(tmpData);
@@ -1518,7 +1502,7 @@ void KeyProcess::EvictInitDeviceEmb(const string& embName, vector<size_t> offset
     // evict key发送给dev侧，dev侧初始化emb
     auto trans = Singleton<HDTransfer>::GetInstance();
     trans->Send(TransferChannel::EVICT, tmpDataOut, TRAIN_CHANNEL_ID, embName);
-#endif
+
     LOG_INFO(KEY_PROCESS "hbm EvictInitDeviceEmb: [{}]! send offsetSize:{}", embName, offset.size());
 }
 
@@ -1537,24 +1521,12 @@ string KeyProcess::DumpSplitKeys(vector<vector<emb_key_t>> &splitKeys) const
 
 int64_t KeyProcess::GetExpansionTableSize(const string& embName)
 {
-    const auto& iter = embeddingTableMap.find(embName);
-    if (iter == embeddingTableMap.end()) {
-        LOG_ERROR(KEY_PROCESS "GetExpansionEmbSize, wrong embName:{} ", embName);
-        return -1;
-    }
-    std::lock_guard<std::mutex> lk(mut); // lock for PROCESS_THREAD
-    return iter->second.GetTableSize();
+    return EmbeddingMgmt::Instance()->GetSize(embName);
 }
 
 int64_t KeyProcess::GetExpansionTableCapacity(const string& embName)
 {
-    const auto& iter = embeddingTableMap.find(embName);
-    if (iter == embeddingTableMap.end()) {
-        LOG_ERROR(KEY_PROCESS "GetExpansionEmbSize, wrong embName:{} ", embName);
-        return -1;
-    }
-    std::lock_guard<std::mutex> lk(mut); // lock for PROCESS_THREAD
-    return iter->second.GetTableCapacity();
+    return EmbeddingMgmt::Instance()->GetCapacity(embName);
 }
 
 void KeyProcess::RecordKeyCountMap(const unique_ptr<EmbBatchT>& batch)

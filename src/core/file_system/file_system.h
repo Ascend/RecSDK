@@ -36,7 +36,14 @@ namespace MxRec {
                                     const vector<int64_t>& addressArr, int deviceId) = 0;
 
         virtual ssize_t Read(const string& filePath, char* fileContent, size_t datasetSize) = 0;
-        virtual ssize_t Read(const string& filePath, vector<vector<float>>& fileContent, size_t datasetSize) = 0;
+
+        /**
+         * datasetSize为文件大小,文件大小除以fileContent的size，即为每条embedding的size
+         * param[in] 文件路径
+         * param[out] fileContent 文件内容将读取到这个矩阵中
+         * param[in] datasetSize 文件大小
+         */
+        virtual ssize_t Read(const string& filePath, vector<vector<float>>& fileContent, size_t datasetSize = 0) = 0;
         virtual void ReadEmbedding(const string& filePath, const int& embeddingSize,
                                    vector<int64_t>& addressArr, int deviceId) = 0;
 

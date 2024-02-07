@@ -40,16 +40,6 @@ namespace MxRec {
 
         void LoadHashMap(absl::flat_hash_map<string, EmbHashMapInfo>& loadData);
 
-        const std::vector<size_t>& GetMissingKeys(const string& embName)
-        {
-            return embHashMaps.at(embName).missingKeysHostPos;
-        }
-
-        void ClearMissingKeys(const string& embName)
-        {
-            embHashMaps.at(embName).missingKeysHostPos.clear();
-        }
-
         void EvictDeleteEmb(const string& embName, const vector<emb_key_t>& keys);
 
         absl::flat_hash_map<string, EmbHashMapInfo> embHashMaps;

@@ -119,7 +119,7 @@ void HybridMgmtBlock::CheckValid(int channelId)
             lastRunChannelId,  pythonBatchId[lastRunChannelId], hybridBatchId[lastRunChannelId]);
     } else if (pythonBatchId[lastRunChannelId] < hybridBatchId[lastRunChannelId]) {
         // 在通道切换时，上一个通道处理的数据超出了python侧的调用
-        if (!rankInfo.noDDR and !WaitValid(lastRunChannelId)) {
+        if (rankInfo.isDDR and !WaitValid(lastRunChannelId)) {
             throw HybridMgmtBlockingException("when channel switch");
         }
     } else {

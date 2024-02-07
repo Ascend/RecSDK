@@ -26,10 +26,9 @@ from tensorflow.python.util import compat
 
 from mx_rec.constants.constants import DataName, DataAttr, MIN_SIZE, MAX_FILE_SIZE, Flag, TFDevice, \
     MAX_INT32, HDFS_FILE_PREFIX
-from mx_rec.util.initialize import get_rank_id, get_rank_size, get_customized_ops, get_table_instance, \
-    get_table_instance_by_name, is_asc_manager_initialized, save_host_data, restore_host_data, get_host_data, \
-    send_host_data, get_ascend_global_hashtable_collection, set_sparse_dir, get_local_rank_size, \
-    get_use_dynamic_expansion
+from mx_rec.util.communication.hccl_ops import get_rank_id, get_rank_size, get_local_rank_size
+from mx_rec.util.initialize import ConfigInitializer
+
 from mx_rec.util.perf import performance
 from mx_rec.validator.validator import DirectoryValidator, FileValidator, para_checker_decorator, ClassValidator, \
     IntValidator, OptionalStringValidator
@@ -52,11 +51,9 @@ class SaveModelThread(threading.Thread):
 
 
 class Saver(object):
-    customized_ops = get_customized_ops()
-
     @staticmethod
     def _make_table_name_dir(root_dir, table_instance, table_name):
-        if table_instance.host_vocabulary_size > 0:
+        if not table_instance.is_hbm:
             table_dir = os.path.join(root_dir, "HashTable", "DDR", table_name)
         else:
             table_dir = os.path.join(root_dir, "HashTable", "HBM", table_name)
@@ -79,15 +76,18 @@ class Saver(object):
         self.restore_fetch_list = []
         self.placeholder_dict = defaultdict(dict)
         self._last_checkponts = []
+        self.config_instance = ConfigInitializer.get_instance()
         self.build()
 
     def build(self):
         if self.var_list is None:
             self.var_list = []
-            logger.debug("optimizer collection name: %s", get_ascend_global_hashtable_collection())
-            temp_var_list = tf.compat.v1.get_collection(get_ascend_global_hashtable_collection())
+            logger.debug("optimizer collection name: %s",
+                         self.config_instance.train_params_config.ascend_global_hashtable_collection)
+            temp_var_list = tf.compat.v1.get_collection(
+                self.config_instance.train_params_config.ascend_global_hashtable_collection)
             for var in temp_var_list:
-                table_instance = get_table_instance(var)
+                table_instance = self.config_instance.sparse_embed_config.get_table_instance(var)
                 if table_instance.is_save:
                     self.var_list.append(var)
 
@@ -128,7 +128,7 @@ class Saver(object):
             ckpt_name = f"sparse-{base_name}"
 
         saving_path = os.path.join(directory, ckpt_name)
-        set_sparse_dir(saving_path)
+        self.config_instance.train_params_config.sparse_dir = saving_path
 
         try:
             if not check_file_system_is_hdfs(saving_path):
@@ -168,7 +168,7 @@ class Saver(object):
         ckpt_name = f"sparse-{base_name}"
 
         reading_path = os.path.join(directory, ckpt_name)
-        set_sparse_dir(reading_path)
+        self.config_instance.train_params_config.sparse_dir = reading_path
         if not tf.io.gfile.exists(reading_path):
             raise FileExistsError(f"Given dir {reading_path} does not exist, please double check.")
 
@@ -178,12 +178,12 @@ class Saver(object):
 
     @performance("save_table_name_data")
     def save_table_name_data(self, sess, result, root_dir, table_name):
-        table_instance = get_table_instance_by_name(table_name)
+        table_instance = self.config_instance.sparse_embed_config.get_table_instance_by_name(table_name)
         self._make_table_name_dir(root_dir, table_instance, table_name)
 
         dump_data_dict = sess.run(result.get(table_name))
         # when HBM mode is on, need to get host offset data, to process dump data dict for saving valid embedding.
-        if is_asc_manager_initialized() and table_instance.host_vocabulary_size == 0:
+        if self.config_instance.hybrid_manager_config.asc_manager and table_instance.is_hbm:
             self._get_valid_dict_data(dump_data_dict, table_name)
 
         # save embedding
@@ -197,11 +197,11 @@ class Saver(object):
 
     @performance("_save")
     def _save(self, sess, root_dir):
-        if is_asc_manager_initialized():
-            save_host_data(root_dir)
+        if self.config_instance.hybrid_manager_config.asc_manager:
+            self.config_instance.hybrid_manager_config.save_host_data(root_dir)
             logger.debug(f"host data was saved.")
 
-        if get_use_dynamic_expansion():
+        if self.config_instance.use_dynamic_expansion:
             # Data related to dynamic expansion needs to be saved only on the host side.
             return
 
@@ -218,7 +218,7 @@ class Saver(object):
             thread.join()
 
     def _get_valid_dict_data(self, dump_data_dict, table_name):
-        host_data = get_host_data(table_name)
+        host_data = self.config_instance.hybrid_manager_config.get_host_data(table_name)
         offset = list(host_data)
 
         get_valid_dict_data_from_host_offset(dump_data_dict, offset)
@@ -227,7 +227,8 @@ class Saver(object):
         for var in self.var_list:
             if global_env.tf_device == TFDevice.NPU.value and "merged" not in var.name:
                 continue
-            table_instance = get_table_instance(var)
+
+            table_instance = self.config_instance.sparse_embed_config.get_table_instance(var)
             table_name = table_instance.table_name
             with tf.compat.v1.variable_scope(table_name):
                 sub_dict = self.save_op_dict[table_name]
@@ -239,12 +240,12 @@ class Saver(object):
         for var in self.var_list:
             if global_env.tf_device == TFDevice.NPU.value and "merged" not in var.name:
                 continue
-            table_instance = get_table_instance(var)
+            table_instance = self.config_instance.sparse_embed_config.get_table_instance(var)
             sub_placeholder_dict = self.placeholder_dict[table_instance.table_name]
             with tf.compat.v1.variable_scope(table_instance.table_name):
                 sub_placeholder_dict[DataName.EMBEDDING.value] = variable = \
                     tf.compat.v1.placeholder(dtype=tf.float32, shape=[table_instance.slice_device_vocabulary_size,
-                                                                      table_instance.scalar_emb_size],
+                                                                      table_instance.emb_size],
                                              name=DataName.EMBEDDING.value)
                 assign_op = var.assign(variable)
                 self.restore_fetch_list.append(assign_op)
@@ -259,7 +260,7 @@ class Saver(object):
             optimizer_placeholder_dict[optimizer_name] = sub_optimizer_placeholder_dict = \
                 dict([(state_key, tf.compat.v1.placeholder(dtype=tf.float32,
                                                            shape=[table_instance.slice_device_vocabulary_size,
-                                                                  table_instance.scalar_emb_size],
+                                                                  table_instance.emb_size],
                                                            name=state_key))
                       for state_key, state in optimizer_state_dict.items()])
             for key_state, state in optimizer_state_dict.items():
@@ -267,11 +268,11 @@ class Saver(object):
                 self.restore_fetch_list.append(assign_op)
 
     def _restore(self, sess, reading_path):
-        if is_asc_manager_initialized():
-            restore_host_data(reading_path)
+        if self.config_instance.hybrid_manager_config.asc_manager:
+            self.config_instance.hybrid_manager_config.restore_host_data(reading_path)
             logger.info("host data was restored.")
 
-        if get_use_dynamic_expansion():
+        if self.config_instance.use_dynamic_expansion:
             # Data related to dynamic expansion needs to be restored only on the host side.
             return
 
@@ -283,8 +284,8 @@ class Saver(object):
 
             if "optimizer" in sub_placeholder_dict:
                 optimizer_state_placeholder_dict_group = sub_placeholder_dict.get("optimizer")
-                fill_placeholder_for_optimizer(optimizer_state_placeholder_dict_group, reading_path,
-                                               restore_feed_dict, self.rank_id, table_name)
+                _fill_placeholder_for_optimizer(optimizer_state_placeholder_dict_group, reading_path,
+                                                restore_feed_dict, self.rank_id, table_name)
 
         sess.run(self.restore_fetch_list, feed_dict=restore_feed_dict)
 
@@ -312,17 +313,6 @@ def get_valid_dict_data_from_host_offset(dump_data_dict: dict, offset: list):
                 dump_optimizer_data[state_key] = state
             dump_optimizer_data_dict[optimizer_name] = dump_optimizer_data
         dump_data_dict["optimizer"] = dump_optimizer_data_dict
-
-
-def fill_placeholder_for_optimizer(optimizer_state_placeholder_dict_group, reading_path, restore_feed_dict, suffix,
-                                   table_name):
-    for optimizer_name, optimizer_state_placeholder_dict in optimizer_state_placeholder_dict_group.items():
-        for state_key in optimizer_state_placeholder_dict:
-            fill_placeholder(reading_path=reading_path,
-                             placeholder_dict=optimizer_state_placeholder_dict,
-                             feed_dict=restore_feed_dict,
-                             suffix=suffix,
-                             name_descriptor=NameDescriptor(table_name, state_key, optimizer_name=optimizer_name))
 
 
 def fill_placeholder(reading_path, placeholder_dict, feed_dict, suffix, name_descriptor):
@@ -452,8 +442,8 @@ def read_binary_data(reading_path: str, suffix: int, data_name: str, table_name:
     if DataAttr.SHAPE.value in attributes and data_name != DataName.KEY.value:
         data_shape = attributes.pop(DataAttr.SHAPE.value)
         data_to_restore = data_to_restore.reshape(data_shape)
-        table_instance = get_table_instance_by_name(table_name)
-        current_data_shape = [table_instance.slice_device_vocabulary_size, table_instance.scalar_emb_size]
+        table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance_by_name(table_name)
+        current_data_shape = [table_instance.slice_device_vocabulary_size, table_instance.emb_size]
         if data_shape != current_data_shape:
             data_to_restore = process_embedding_data(data_to_restore, current_data_shape, data_shape)
 
@@ -498,7 +488,8 @@ def process_embedding_data(data_to_restore: np.ndarray, current_data_shape: list
 
     elif restore_vocab_size < vocab_size:
         raise Exception(f"restore vocabulary size {restore_vocab_size} cannot be less than "
-                        f"saved vocabulary size {vocab_size},which would loss the mapping between keys and embeddings ")
+                        f"saved vocabulary size {vocab_size},"
+                        f"which would lose the mapping between keys and embeddings ")
 
     return data_to_restore
 
@@ -514,3 +505,26 @@ def check_file_system_is_hdfs(file_path):
         if file_path.startswith(prefix):
             return True
     return False
+
+
+def _fill_placeholder_for_optimizer(optimizer_state_placeholder_dict_group: dict, reading_path: str,
+                                    restore_feed_dict: dict, suffix: int, table_name: str):
+    """
+    给优化器填充加载的数据.
+
+    Args:
+        optimizer_state_placeholder_dict_group: 待填充优化器的字典
+        reading_path: 读取路径
+        restore_feed_dict: session run的feed dict
+        suffix: rank id
+        table_name: 表名
+
+    Returns: None
+    """
+    for optimizer_name, optimizer_state_placeholder_dict in optimizer_state_placeholder_dict_group.items():
+        for state_key in optimizer_state_placeholder_dict:
+            fill_placeholder(reading_path=reading_path,
+                             placeholder_dict=optimizer_state_placeholder_dict,
+                             feed_dict=restore_feed_dict,
+                             suffix=suffix,
+                             name_descriptor=NameDescriptor(table_name, state_key, optimizer_name=optimizer_name))

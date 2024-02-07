@@ -14,11 +14,137 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+from dataclasses import dataclass
 
 import tensorflow as tf
 from tensorflow_core.python.training import slot_creator
 
+from mx_rec import ASCEND_GLOBAL_HASHTABLE_COLLECTION
 from mx_rec.optimizers.lazy_adam import CustomizedLazyAdam
+from mx_rec.util.config_utils.embedding_utils import SparseEmbedConfig
+from mx_rec.util.config_utils.feature_spec_utils import FeatureSpecConfig
+from mx_rec.util.config_utils.optimizer_utils import OptimizerConfig
+
+
+class MockHybridManagerConfig:
+
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+        self.freeze = kwargs.get("freeze", False)
+        self.asc_manager = kwargs.get("asc_manager", None)
+
+    def trigger_evict(self):
+        return self.kwargs.get("trigger_evict", True)
+
+    def set_asc_manager(self, cache):
+        pass
+
+    def save_host_data(self, root_dir):
+        pass
+
+    def get_host_data(self, table_name):
+        return self.kwargs.get("host_data", [])
+
+    def restore_host_data(self, path):
+        pass
+
+
+class MockSparseEmbedConfig:
+
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+        self.table_instance_dict = kwargs.get("table_instance_dict", {})
+        self.dangling_table = kwargs.get("dangling_table", [])
+        self.table_name_set = kwargs.get("table_name_set", set())
+
+    @staticmethod
+    def insert_dangling_table(table_name):
+        pass
+
+    @staticmethod
+    def insert_removing_var_list(var_name):
+        pass
+
+    @staticmethod
+    def insert_table_instance(name, key, instance):
+        pass
+
+    def get_table_instance(self, var):
+        return self.kwargs.get("var", None)
+
+    def get_table_instance_by_name(self, name):
+        return self.kwargs.get("var", None)
+
+
+class MockTrainParamsConfig:
+
+    def __init__(self, **kwargs):
+        def _get_training_mode_channel_id(is_training):
+            _dict = {True: 0, False: 1}
+            return _dict.get(is_training)
+
+        def _insert_training_mode_channel_id(is_training):
+            pass
+
+        def _get_merged_multi_lookup(is_training):
+            return kwargs.get('merged_multi_lookup', False)
+
+        def _insert_merged_multi_lookup(is_training, flag):
+            pass
+
+        def _set_initializer(is_training, initializer):
+            pass
+
+        def _set_target_batch(is_training, batch):
+            pass
+
+        self.ascend_global_hashtable_collection = kwargs.get("ascend_global_hashtable_collection",
+                                                             ASCEND_GLOBAL_HASHTABLE_COLLECTION)
+        self.is_graph_modify_hook_running = kwargs.get("is_graph_modify_hook_running", True)
+        self.bool_gauge_set = kwargs.get("bool_gauge_set", [])
+        self.iterator_type = kwargs.get("iterator_type", "")
+        self.sparse_dir = kwargs.get("sparse_dir", "")
+
+        self.get_training_mode_channel_id = _get_training_mode_channel_id
+        self.insert_training_mode_channel_id = _insert_training_mode_channel_id
+        self.get_merged_multi_lookup = _get_merged_multi_lookup
+        self.insert_merged_multi_lookup = _insert_merged_multi_lookup
+        self.set_initializer = _set_initializer
+        self.set_target_batch = _set_target_batch
+
+
+class MockConfigInitializer:
+    """
+    原始ConfigInitializer的mock
+    """
+
+    def __init__(self, **kwargs):
+        self.use_dynamic_expansion = kwargs.get("use_dynamic_expansion", False)
+        self.use_static = kwargs.get("use_static", False)
+        self.use_hot = kwargs.get("use_static", True)
+        self.modify_graph = kwargs.get("modify_graph", True)
+        self.train_steps = kwargs.get("get_train_steps", -1)
+        self.eval_steps = kwargs.get("eval_steps", -1)
+        self.save_steps = kwargs.get("save_steps", -1)
+        self.if_load = kwargs.get("if_load", False)
+        self.iterator_type = kwargs.get("iterator_type", "MakeIterator")
+        self.sparse_dir = kwargs.get("sparse_dir", "")
+
+        self.hybrid_manager_config = MockHybridManagerConfig(**kwargs)
+        self.sparse_embed_config = MockSparseEmbedConfig(**kwargs)
+        self.train_params_config = MockTrainParamsConfig(**kwargs)
+        self.optimizer_config = OptimizerConfig()
+        self.feature_spec_config = FeatureSpecConfig()
+        self.sparse_embed_cofnig = SparseEmbedConfig()
+
+    def get_instance(self):
+        return self
+
+
+class MockGlobalEnv:
+
+    def __init__(self, **kwargs):
+        self.tf_device = kwargs.get("tf_device", 'NPU')
 
 
 class MockSparseEmbedding:
@@ -28,6 +154,7 @@ class MockSparseEmbedding:
 
     def __init__(self, table_name="test_table", slice_device_vocabulary_size=10, embedding_size=5, init_param=1.,
                  emb_initializer=tf.zeros_initializer()):
+        self.is_hbm = True
         self.table_name = table_name
         self.slice_device_vocabulary_size = slice_device_vocabulary_size
         self.embedding_size = tf.TensorShape([embedding_size])
@@ -74,15 +201,12 @@ class MockHcclOps:
         self.all_to_all_v_c = _mock_all_to_all_v_c
 
 
-class MockOptimizer(CustomizedLazyAdam):
+class MockOptimizer:
     """
     用于mock optimizer
     """
 
     def __init__(self):
-        super(MockOptimizer, self)._get_name(name="MockLazyAdam")
-        super(MockOptimizer, self).__init__(learning_rate=0.001, beta1=0.9, beta2=0.999,
-                                            epsilon=1e-8, use_locking=False, name="MockLazyAdam")
         self.slot_num = 2
 
     def initialize_slots(self, var, table_instance):
@@ -108,19 +232,19 @@ class MockOptimizer(CustomizedLazyAdam):
         return [initial_momentum_value, initial_velocity_value]
 
     def update_op(self, optimizer, g):
-        return super().update_op(optimizer, g)
+        pass
 
     def _apply_spare_duplicate_indices(self, grad, var):
         return self._apply_sparse(grad, var)
 
     def _apply_sparse(self, grad, var):
-        return super()._apply_sparse(grad, var)
+        pass
 
     def _resource_apply_sparse(self, grad, handle, indices):
-        return super()._resource_apply_sparse(grad, handle, indices)
+        pass
 
     def _apply_dense(self, grad, var):
-        return super()._apply_dense(grad, var)
+        pass
 
     def _apply_sparse_duplicate_indices(self, grad, var):
         return self._apply_sparse(grad, var)

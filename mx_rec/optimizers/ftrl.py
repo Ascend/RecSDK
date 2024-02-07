@@ -32,7 +32,7 @@ from tensorflow.python.training import ftrl
 from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.util.initialize import get_table_instance, insert_removing_var_list, get_use_dynamic_expansion
+from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.variable import check_and_get_config_via_var
 from mx_rec.constants.constants import MAX_INT32
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, NumValidator, StringValidator, \
@@ -52,7 +52,7 @@ from mx_rec.validator.validator import para_checker_decorator, ClassValidator, N
     ("linear_name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"])
 ])
 def create_hash_optimizer(learning_rate, use_locking=False, name="Ftrl", **kwargs):
-    if get_use_dynamic_expansion():
+    if ConfigInitializer.get_instance().use_dynamic_expansion:
         raise ValueError("dynamic expansion mode is not compatible with the optimizer, please config dynamic "
                          "expansion mode and optimizer correctly")
     return CustomizedFtrl(learning_rate=learning_rate, use_locking=use_locking, name=name, **kwargs)
@@ -83,10 +83,10 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
 
         accum = slot_creator.create_slot(var, val, self._name + "/" + "accum")
         linear = slot_creator.create_zeros_slot(var, self._name + "/" + "linear")
-        insert_removing_var_list(accum.name)
-        insert_removing_var_list(linear.name)
+        ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(accum.name)
+        ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(linear.name)
         named_slot_key = (var.op.graph, var.op.name)
-        table_instance = get_table_instance(var)
+        table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
         if self._name in table_instance.optimizer:
             raise EnvironmentError(f"Sparse optimizer named {self._name} has exists.")
 
@@ -246,8 +246,8 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
                 accum = self._get_or_make_slot(each_var, val, "accum", accum_state_name)
                 linear = self._zeros_slot(each_var, "linear", linear_state_name)
                 # make sure sparse optimizer statements will not be saved and restored within tf checkpoint.
-                insert_removing_var_list(accum.name)
-                insert_removing_var_list(linear.name)
+                ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(accum.name)
+                ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(linear.name)
 
                 if self._name not in table_instance.optimizer:
                     table_instance.set_optimizer(self._name, {"accum": accum, "linear": linear})

@@ -25,8 +25,9 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.training import gradient_descent
 
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.util.initialize import get_host_pipeline_ops, insert_optimizer, get_use_dynamic_expansion
+from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.constants.constants import MAX_INT32
+from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.validator.validator import para_checker_decorator, StringValidator, ClassValidator, FloatValidator
 
 
@@ -37,14 +38,14 @@ from mx_rec.validator.validator import para_checker_decorator, StringValidator, 
     ("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"])
 ])
 def create_hash_optimizer_by_addr(learning_rate, weight_decay=0.0001, use_locking=False, name="GradientDescentByAddr"):
-    if not get_use_dynamic_expansion():
+    if not ConfigInitializer.get_instance().use_dynamic_expansion:
         raise ValueError("dynamic expansion mode is not compatible with the optimizer, please config dynamic "
                          "expansion mode and optimizer correctly")
     optimizer_by_addr = CustomizedGradientDescentByAddr(learning_rate=learning_rate,
                                                         weight_decay=weight_decay,
                                                         use_locking=use_locking,
                                                         name=name)
-    insert_optimizer(optimizer_by_addr)
+    ConfigInitializer.get_instance().optimizer_config.optimizer_instance = optimizer_by_addr
     return optimizer_by_addr
 
 
@@ -71,7 +72,7 @@ class CustomizedGradientDescentByAddr(gradient_descent.GradientDescentOptimizer,
         return []
 
     def _apply_sparse(self, grad, addr):
-        host_pipeline_ops = get_host_pipeline_ops()
+        host_pipeline_ops = import_host_pipeline_ops()
         dim = grad.shape.as_list()[-1]
         if self.weight_decay is None:
             nd_value = grad * math_ops.cast(self._learning_rate_tensor, grad.dtype.base_dtype)
@@ -86,6 +87,3 @@ class CustomizedGradientDescentByAddr(gradient_descent.GradientDescentOptimizer,
 
     def _apply_dense(self, grad, var):
         raise NotImplementedError("You are using a wrong type of variable.")
-
-
-

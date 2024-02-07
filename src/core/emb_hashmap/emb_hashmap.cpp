@@ -19,6 +19,7 @@ See the License for the specific language governing permissions and
 
 #include "hybrid_mgmt/hybrid_mgmt_block.h"
 #include "utils/common.h"
+#include "emb_table/embedding_mgmt.h"
 
 using namespace MxRec;
 
@@ -61,54 +62,45 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, DDRPara
 #ifndef GTEST
     EASY_FUNCTION(profiler::colors::Pink)
     TimeCost swapTimeCost;
-    auto it = embHashMaps.find(embName);
-    if (it == embHashMaps.end()) {
-        throw runtime_error("table not exist in embHashMaps");
-    }
-    auto &embHashMap = it->second;
-    embHashMap.devOffset2KeyOld.clear();
-    embHashMap.oldSwap.clear();
-    embHashMap.maxOffsetOld = embHashMap.maxOffset;
+    std::shared_ptr<EmbeddingTable> table = EmbeddingMgmt::Instance()->GetTable(embName);
 
-    auto keepBatch = swapId; // 处理batch的次数，多个预取一起处理算一次
-
-    // 找到所有key的偏移；dev和host需要交换的位置
-    FindOffset(embName, keys, swapId, keepBatch, channelId);
-    LOG_DEBUG("FindOffset end");
-
-    // 调用刷新频次数据方法
-    RefreshFreqInfoWithSwap(embName, embHashMap);
+    int32_t keepBatch = swapId; // 处理batch的次数，多个预取一起处理算一次
+    vector<size_t> swapPos;
+    vector<int32_t> lookUpVec = table->FindOffset(keys, swapId, channelId, swapPos);
 
     EASY_BLOCK("hostHashMaps->tdt")
 
-    std::copy(embHashMap.lookUpVec.begin(), embHashMap.lookUpVec.end(), std::back_inserter(ddrParam.offsetsOut));
+    std::copy(lookUpVec.begin(), lookUpVec.end(), std::back_inserter(ddrParam.offsetsOut));
 
     // 构造查询向量tensor
-    auto lookUpVecSize = static_cast<int>(embHashMap.lookUpVec.size());
+    int lookUpVecSize = static_cast<int>(lookUpVec.size());
     ddrParam.tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { lookUpVecSize }));
 
     auto lookupTensorData = ddrParam.tmpDataOut.back().flat<int32>();
     for (int i = 0; i < lookUpVecSize; i++) {
-        lookupTensorData(i) = static_cast<int32_t>(embHashMap.lookUpVec[i]);
+        lookupTensorData(i) = static_cast<int32_t>(lookUpVec[i]);
     }
-    LOG_TRACE("lookupTensor, {}", VectorToString(embHashMap.lookUpVec));
+    LOG_TRACE("lookupTensor, {}", VectorToString(lookUpVec));
 
     // 构造交换向量tensor
-    auto swapSize = static_cast<int>(embHashMap.swapPos.size());
+    int swapSize = static_cast<int>(swapPos.size());
     ddrParam.tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { swapSize }));
 
     auto swapTensorData = ddrParam.tmpDataOut.back().flat<int32>();
     for (int i = 0; i < swapSize; i++) {
-        swapTensorData(i) = static_cast<int>(embHashMap.swapPos[i]);
+        swapTensorData(i) = static_cast<int>(swapPos[i]);
     }
     if (swapSize > 0) {
         LOG_DEBUG("swap num: {}", swapSize);
     }
-    LOG_TRACE("swapTensor, {}", VectorToString(embHashMap.swapPos));
+
+    LOG_TRACE("swapTensor, {}", VectorToString(swapPos));
     // 清空本次记录的查询偏移和交换偏移
-    ClearLookupAndSwapOffset(embHashMap);
-    LOG_INFO("current ddr emb:{}, usage:{}/[{}+{}]", embName, embHashMap.maxOffset,
-        embHashMap.devVocabSize, embHashMap.hostVocabSize);
+    table->ClearLookupAndSwapOffset();
+
+    LOG_INFO("current ddr emb:{}, usage:{}/[{}+{}]", embName, table->GetMaxOffset(),
+             table->GetDevVocabSize(), table->GetHostVocabSize());
+
     ddrParam.tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { 1 }));
     auto swapLen = ddrParam.tmpDataOut.back().flat<int32>();
     swapLen(0) = swapSize;
@@ -122,6 +114,7 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, DDRPara
     EASY_END_BLOCK
 #endif
 }
+
 
 auto EmbHashMap::GetHashMaps() -> absl::flat_hash_map<string, EmbHashMapInfo>
 {
@@ -152,7 +145,7 @@ auto EmbHashMap::GetHashMaps() -> absl::flat_hash_map<string, EmbHashMapInfo>
         return embHashMapsOld;
     }
     // 此时需要回退2步，无法满足此条件，保存的东西错误，直接回退
-    if (not rankInfo.noDDR) {
+    if (rankInfo.isDDR) {
         throw HybridMgmtBlockingException("EmbHashMap::GetHashMaps() ");
     }
     return embHashMapsOld;

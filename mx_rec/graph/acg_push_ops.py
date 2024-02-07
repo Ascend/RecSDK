@@ -15,17 +15,11 @@
 # limitations under the License.
 # ==============================================================================
 
-import os
-import weakref
-from dataclasses import dataclass
-from typing import Dict, Tuple, FrozenSet, List, Set
+from typing import Dict, Tuple, List, Set
 
 import tensorflow as tf
-from tensorflow.python.framework import ops
-from tensorflow.python.data.ops.dataset_ops import _VariantTracker
 from tensorflow.python.data.ops.dataset_ops import DatasetV1Adapter
 from tensorflow.python.framework.ops import Operation
-from tensorflow.python.data.ops.dataset_ops import DatasetV2
 from tensorflow.python.util import nest as tf_nest
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import attr_value_pb2
@@ -34,7 +28,8 @@ from tensorflow.python.framework import tensor_util
 from mx_rec.graph import modifier
 from mx_rec.util.log import logger
 from mx_rec.graph.utils import export_pb_graph
-from mx_rec.constants.constants import ASCEND_TIMESTAMP, ANCHOR_DATASET_NAME, MAX_WHILE_SIZE
+from mx_rec.graph.graph_typing import SubgraphInfo
+from mx_rec.constants.constants import ASCEND_TIMESTAMP, ANCHOR_DATASET_NAME, MAX_WHILE_SIZE, AnchorIteratorOp
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator
 
 tf.compat.v1.disable_eager_execution()
@@ -44,7 +39,7 @@ _ACG_NEW_ITERATOR = "ACG_NEW_ITERATOR"
 _ACG_NEW_INITIALIZER = "ACG_NEW_INITIALIZER"
 
 _OP_TYPE_TO_PUSH = frozenset(["StringSplit", "StringToNumber"])
-_OP_TYPE_TO_IGNORE = frozenset(["IteratorGetNext"])
+_OP_TYPE_TO_IGNORE = frozenset([AnchorIteratorOp.ITERATOR_GET_NEXT])
 _OP_TYPE_CONTAIN_STRING_TO_IGNORE = frozenset(["Dataset", "Summary"])
 _OP_NAME_CONTAIN_STRING_TO_IGNORE = frozenset(["save", "report_", "loss"])
 _OP_NAME_CONTAIN_STRING_TO_PUSH = frozenset(["ACG_PUSH_NODE"])
@@ -53,13 +48,6 @@ _TENSOR_TYPE_TO_IGNORE = frozenset([tf.variant, tf.resource])
 
 _VARIABLE_TYPES = frozenset(["Variable", "VariableV2", "VarHandleOp"])
 _IGNORE_REPLACE_NODE = frozenset(["Assign", "SaveV2"])
-
-
-@dataclass
-class SubgraphInfo:
-    subgraph_in: Dict[tf.Operation, Set[tf.Operation]]
-    subgraph_out: Dict[tf.Operation, Set[tf.Operation]]
-    subgraph_to_push: Set[tf.Operation]
 
 
 class ACGPushOpsToDatasetHook(tf.estimator.SessionRunHook):
@@ -132,7 +120,9 @@ def _find_ops_to_be_pushed(graph: tf.Graph, dump_graph: bool = False):
         return
 
     logger.info("Found operations should be pushed: %s.", nodes_to_push)
-    subgraph_nodes = _find_subgraph_nodes(graph, nodes_to_push, tgt_op_type="IteratorGetNext", exclude_tgt_op=True)
+    subgraph_nodes = _find_subgraph_nodes(
+        graph, nodes_to_push, tgt_op_type=AnchorIteratorOp.ITERATOR_GET_NEXT.value, exclude_tgt_op=True
+    )
     _push_subgraph_to_dataset(graph, subgraph_nodes, dump_graph)
     export_pb_graph("after_push_graph.pbtxt", dump_graph, graph_def=graph.as_graph_def())
 
@@ -199,7 +189,7 @@ def _find_op_from_base_op(base_ops: tf.Operation, target_op_type: str) -> tf.Ope
 
 
 def _get_dataset_op(graph: tf.Graph, get_next_op: Operation) -> Operation:
-    if get_next_op.type != "IteratorGetNext":
+    if get_next_op.type != AnchorIteratorOp.ITERATOR_GET_NEXT.value:
         raise TypeError("Op '{get_next_op}' must be one instance of IteratorGetNext.")
     # looking for the MakeIterator operator which corresponds to given batch_tensor
     base_op = modifier.find_make_iterator_op(get_next_op.outputs[0])
@@ -255,7 +245,7 @@ def _push_subgraph_to_dataset(graph: tf.Graph, subgraph_to_push: Set[tf.Operatio
     logger.info("Got input tensor of extracted subgraph: %s", subgraph_in)
     logger.info("Got output tensor of extracted subgraph: %s", subgraph_out)
 
-    get_next_node = graph.get_operation_by_name("IteratorGetNext")
+    get_next_node = graph.get_operation_by_name(AnchorIteratorOp.ITERATOR_GET_NEXT.value)
     src_dataset = _get_src_dataset(graph, get_next_node)
 
     def acg_func(*x): # pragma: no cover
@@ -392,11 +382,11 @@ def _clone_subgraph_into_funcgraph(
 def _get_mapping_for_subgraph_in(
     from_node: tf.Operation, to_nodes: Set[tf.Operation], x: List[tf.Tensor], tensor_mapping
 ):
-    if from_node.type != "IteratorGetNext":
+    if from_node.type != AnchorIteratorOp.ITERATOR_GET_NEXT.value:
         raise RuntimeError(f"Expect IteratorGetNext for input tensor of subgraph, but got {from_node}")
     for node in to_nodes:
         for each_tensor in node.inputs:
-            if each_tensor.op.type != "IteratorGetNext":
+            if each_tensor.op.type != AnchorIteratorOp.ITERATOR_GET_NEXT.value:
                 continue
             old_tensor_name = each_tensor.name
             x_index = int(old_tensor_name.split(":")[-1])
@@ -493,7 +483,7 @@ def _topo_subgraph(subgraph: Set[tf.Operation]) -> List[tf.Operation]:
         output_set.add(curr_node)
         for tensor in curr_inputs:
             node = tensor.op
-            if node.type != "IteratorGetNext" and node not in output_set:
+            if node.type != AnchorIteratorOp.ITERATOR_GET_NEXT.value and node not in output_set:
                 topo_subgraph_dfs(node, output_list, output_set)
         output_list.append(curr_node)
 
@@ -518,13 +508,13 @@ def _update_iterator_getnext(
         iterator_type = get_next_op.inputs[0].op.type
     if iterator_type == "IteratorV2":
         iterator_type = modifier.find_make_iterator_op(get_next_op.outputs[0]).type
-    if iterator_type not in ("MakeIterator", "OneShotIterator"):
+    if iterator_type not in (AnchorIteratorOp.MAKE_ITERATOR.value, AnchorIteratorOp.ONE_SHOT_ITERATOR.value):
         raise RuntimeError(
             f"Only iterators `MakeIterator` and `OneShotIterator` are supported in `graph modify` mode, "
             f"but the current iterator is `{iterator_type}`."
         )
     logger.info("The iterator type of dataset is %s.", iterator_type)
-    if iterator_type == "MakeIterator":
+    if iterator_type == AnchorIteratorOp.MAKE_ITERATOR.value:
         new_iterator = tgt_dataset.make_initializable_iterator()
         logger.info("Got new_iterator: %s, new_iterator.initializer: %s.", new_iterator, new_iterator.initializer)
         graph.add_to_collection(_ACG_NEW_INITIALIZER, new_iterator.initializer)
@@ -550,7 +540,7 @@ def _update_iterator_getnext(
                 )
     except IndexError as err:
         raise IndexError("Cannot find a tensor from given batch.") from err
-    new_get_next_op = _find_op_from_base_op(new_batch_tensor.op, "IteratorGetNext")
+    new_get_next_op = _find_op_from_base_op(new_batch_tensor.op, AnchorIteratorOp.ITERATOR_GET_NEXT.value)
     logger.info("Got new_get_next_op: %s.", new_get_next_op)
     _replace_get_next_op(graph, get_next_op, new_get_next_op, subgraph_out, subgraph_to_push)
 

@@ -21,7 +21,7 @@ from functools import reduce
 import tensorflow as tf
 
 from mx_rec.util.atomic import AtomicInteger
-from mx_rec.util.initialize import insert_feature_spec, insert_training_mode_channel_id, get_use_static
+from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.normalization import fix_invalid_table_name
 from mx_rec.constants.constants import MAX_INT32
 from mx_rec.validator.validator import ClassValidator, StringValidator, para_checker_decorator, \
@@ -76,7 +76,7 @@ class FeatureSpec:
         self.feat_pos_train = None
         self.feat_pos_eval = None
         self.dims = None
-        self.rank = None
+        self.tensor_rank = None
         self.batch_size = batch_size
         self.split = None  # usually split == batch_size * feature_count
         self.initialized = False
@@ -150,7 +150,7 @@ class FeatureSpec:
             logger.info("FeatureSpec%s. Is training mode [%s] has been set.", self.name, mode)
             return
 
-        insert_training_mode_channel_id(is_training=mode)
+        ConfigInitializer.get_instance().train_params_config.insert_training_mode_channel_id(is_training=mode)
 
         self._pipeline_mode.add(mode)
 
@@ -160,13 +160,13 @@ class FeatureSpec:
         if not self.initialized:
             self.initialized = True
 
-            if get_use_static():
+            if ConfigInitializer.get_instance().use_static:
                 self.dims = tensor.shape.as_list()
-                self.rank = tensor.shape.rank
-                if self.rank < 1:
-                    raise ValueError(f"Given tensor rank cannot be smaller than 1, which is {self.rank} now.")
+                self.tensor_rank = tensor.shape.rank
+                if self.tensor_rank < 1:
+                    raise ValueError(f"Given tensor rank cannot be smaller than 1, which is {self.tensor_rank} now.")
 
-                inferred_feat_cnt = 1 if self.rank == 1 else reduce(lambda x, y: x * y, self.dims[1:])
+                inferred_feat_cnt = 1 if self.tensor_rank == 1 else reduce(lambda x, y: x * y, self.dims[1:])
                 logger.debug("update feature_spec[%s] feature_count to %s via %s", self.name, inferred_feat_cnt,
                              self.dims)
                 self.batch_size = self.dims[0]
@@ -175,14 +175,14 @@ class FeatureSpec:
             else:
                 tensor = tf.reshape(tensor, [-1])
                 self.dims = tf.shape(tensor)
-                self.rank = 1
+                self.tensor_rank = 1
                 self.split = tf.math.reduce_prod(tf.shape(tensor))
                 self.batch_size = self.split
                 self._feat_cnt = 1
 
         else:
             logger.debug("The initialized Feature Spec was set once again.")
-            if get_use_static():
+            if ConfigInitializer.get_instance().use_static:
                 if self.dims != tensor.shape.as_list():
                     raise ValueError(f"Given static Tensor shape mismatches with the last one, whose is_training mode "
                                      f"is not {is_training}. ")
@@ -191,7 +191,7 @@ class FeatureSpec:
                     raise ValueError(f"Given dynamic Tensor shape mismatches with the last one, whose is_training mode "
                                      f"is not {is_training}. ")
 
-        insert_feature_spec(self, is_training)
+        ConfigInitializer.get_instance().feature_spec_config.insert_feature_spec(self, is_training)
         result = {
             'tensor': tensor,
             'table_name': self.table_name,

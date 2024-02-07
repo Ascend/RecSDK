@@ -27,7 +27,7 @@ from tensorflow.python.training import adagrad, training_ops
 from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.util.initialize import get_table_instance, insert_removing_var_list, get_use_dynamic_expansion
+from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.constants.constants import MAX_INT32
 from mx_rec.validator.validator import para_checker_decorator, StringValidator, ClassValidator, FloatValidator
 
@@ -50,8 +50,7 @@ def create_hash_optimizer(learning_rate=0.001,
     :param name: Optional name prefix for the operations created when applying gradients.  Defaults to "Adagrad".
     :return: adagrad hash optimizer instance
     """
-
-    if get_use_dynamic_expansion():
+    if ConfigInitializer.get_instance().use_dynamic_expansion:
         raise ValueError("dynamic expansion mode is not compatible with the optimizer, please config dynamic "
                          "expansion mode and optimizer correctly")
     return CustomizedAdagrad(learning_rate=learning_rate,
@@ -83,11 +82,11 @@ class CustomizedAdagrad(adagrad.AdagradOptimizer, CustomizedOptimizer):
             return new_slot_variable
 
         accumulator = creat_one_single_slot(var, self._name + "/" + "accumulator")
-        insert_removing_var_list(accumulator.name)
+        ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(accumulator.name)
         named_slot_key = (var.op.graph, var.op.name)
-        table_instance = get_table_instance(var)
+        table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
         if self._name in table_instance.optimizer:
-            raise EnvironmentError(f"Sparse optimizer named {self._name} has exists.")
+            raise EnvironmentError(f"Sparse optimizer named {self._name} already exists.")
 
         table_instance.set_optimizer(self._name, {"accumulator": accumulator})
         return [{"slot": accumulator, "named_slot_key": named_slot_key, "slot_name": "acc", "optimizer": self}]

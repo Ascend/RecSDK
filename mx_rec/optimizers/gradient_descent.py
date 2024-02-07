@@ -28,7 +28,7 @@ from tensorflow.python.training import gradient_descent
 
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.constants.constants import MAX_INT32
-from mx_rec.util.initialize import get_use_dynamic_expansion
+from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import para_checker_decorator, StringValidator, ClassValidator, FloatValidator
 
 
@@ -38,7 +38,7 @@ from mx_rec.validator.validator import para_checker_decorator, StringValidator, 
     ("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"])
 ])
 def create_hash_optimizer(learning_rate, use_locking=False, name="GradientDescent"):
-    if get_use_dynamic_expansion():
+    if ConfigInitializer.get_instance().use_dynamic_expansion:
         raise ValueError("dynamic expansion mode is not compatible with the optimizer, please config dynamic "
                          "expansion mode and optimizer correctly")
     return CustomizedGradientDescent(learning_rate=learning_rate, use_locking=use_locking, name=name)
