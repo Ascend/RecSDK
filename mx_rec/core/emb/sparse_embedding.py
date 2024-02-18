@@ -82,18 +82,30 @@ class HBMSparseEmbedding(SparseEmbedding):
     """
 
     def __init__(self, config: dict):
+        self.emb_optimizer = EmbOptimizer(config.get("optimizer_list"))
+        self.emb_optimizer.check_optimizer_instance_list()
+
         super(HBMSparseEmbedding, self).__init__(config)
+
+    @property
+    def optimizer(self):
+        return self.emb_optimizer.optimizer
+
+    @property
+    def optimizer_instance_list(self):
+        return self.emb_optimizer.optimizer_instance_list
 
     def capacity(self) -> int:
         return self._device_vocabulary_size
 
     def set_optimizer(self, key: str, state_dict: dict):
-        pass
+        self.emb_optimizer.set_optimizer(key, state_dict, self._table_name)
 
     def _build_optimizer_states(self):
         pass
 
     def _set_ext_emb_size(self):
+        self._ext_coefficient += len(self.emb_optimizer.optimizer_slot_info_list)
         self._ext_emb_size = self._emb_size * self._ext_coefficient
         logger.debug("Init table, ext_emb_size is set to be %s.", self._ext_emb_size)
 

@@ -166,6 +166,10 @@ def sparse_lookup(hashtable: BaseSparseEmbedding,
     logger.info("Lookup: The table name is %s, and the value of `is_grad` in this lookup (lookup name is %s) is %s.",
                 hashtable.table_name, name, is_grad)
 
+    # 校验一表多查次数
+    hashtable.increase_multi_lookup_times(is_train)
+    check_emb_multi_lookup_times(hashtable.multi_lookup_times.get(is_train), hashtable.table_name)
+
     # 对于向上找没有IteratorGetNext的孤儿ids需要标记，以便于后续ACGPushOpsToDataset工作
     if isinstance(ids, tf.Tensor):
         ids = tag_orphan_ids(ids)
