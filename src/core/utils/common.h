@@ -223,7 +223,7 @@ namespace MxRec {
         bool useHot {};
         uint32_t option {};
         int nBatch {};
-        bool isDDR { true };
+        bool isDDR { false };
         bool isSSDEnabled { false };
         bool useDynamicExpansion {false};
         std::vector<int> maxStep;
