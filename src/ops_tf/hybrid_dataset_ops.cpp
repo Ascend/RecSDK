@@ -49,7 +49,7 @@ namespace MxRec {
     public:
         explicit ClearChannel(OpKernelConstructionPtr context) : OpKernel(context)
         {
-            LOG_INFO("clear channel init");
+            LOG_DEBUG("clear channel init");
             OP_REQUIRES_OK(context, context->GetAttr("channel_id", &channelId));
 
             if (channelId < 0 || channelId >= MAX_CHANNEL_NUM) {
@@ -64,7 +64,7 @@ namespace MxRec {
 
         void Compute(OpKernelContextPtr context) override
         {
-            LOG_INFO("clear channel {}, context {}", channelId, context->step_id());
+            LOG_DEBUG("clear channel {}, context {}", channelId, context->step_id());
             HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
             hybridMgmtBlock->ResetAll(channelId);
         }
@@ -77,7 +77,7 @@ namespace MxRec {
     public:
         explicit SetThreshold(OpKernelConstructionPtr context) : OpKernel(context)
         {
-            LOG_INFO("SetThreshold init");
+            LOG_DEBUG("SetThreshold init");
             OP_REQUIRES_OK(context, context->GetAttr("emb_name", &embName));
             OP_REQUIRES_OK(context, context->GetAttr("ids_name", &idsName)); // sparse_lookup查询
         }
@@ -111,7 +111,7 @@ namespace MxRec {
                     return;
                 }
             } else {
-                LOG_WARN("SetThreshold failed, because feature admit-and-evict switch is closed");
+                LOG_DEBUG("SetThreshold failed, because feature admit-and-evict switch is closed");
             }
 
             Tensor* output = nullptr;
@@ -130,8 +130,8 @@ namespace MxRec {
                 LOG_ERROR("set threshold[{}] < 0 ", threshold);
                 return 0;
             }
-            LOG_INFO("ParseThresholdAndCheck, emb_name:[{}], ids_name: [{}], threshold: [{}]",
-                     embName, idsName, threshold);
+            LOG_DEBUG("ParseThresholdAndCheck, emb_name:[{}], ids_name: [{}], threshold: [{}]",
+                      embName, idsName, threshold);
 
             return 1;
         }
@@ -184,7 +184,7 @@ namespace MxRec {
                     MAX_CHANNEL_NUM)));
                 return;
             }
-            LOG_INFO(HYBRID_BLOCKING + " reset channel {}", channelId);
+            LOG_DEBUG(HYBRID_BLOCKING + " reset channel {}", channelId);
             hybridMgmtBlock->ResetAll(channelId);
 
             threadNum = GetThreadNumEnv();
@@ -209,7 +209,7 @@ namespace MxRec {
             out(0) = batchId;
             if (channelId == 1) {
                 if (maxStep != -1 && batchId >= maxStep) {
-                    LOG_WARN("skip excess batch after {}/{}", batchId, maxStep);
+                    LOG_DEBUG("skip excess batch after {}/{}", batchId, maxStep);
                     return;
                 }
             }
@@ -248,7 +248,7 @@ namespace MxRec {
             auto keyProcess = Singleton<KeyProcess>::GetInstance();
             for (size_t i = 0; i < embNames.size(); ++i) {
                 if (!keyProcess->HasEmbName(embNames.at(i))) {
-                    LOG_INFO("ReadEmbKeyV2Dynamic not found emb_name:{} {}", i, embNames.at(i));
+                    LOG_DEBUG("ReadEmbKeyV2Dynamic not found emb_name:{} {}", i, embNames.at(i));
                     tableUsed.push_back(false);
                 } else {
                     tableUsed.push_back(true);
@@ -305,7 +305,7 @@ namespace MxRec {
             // 前面8个字节、即占一个featureId位，是unix时间戳
             auto src = reinterpret_cast<const time_t*>(inputTensor.tensor_data().data());
             std::copy(src, src + 1, &timestamp);
-            LOG_INFO("current batchId[{}] timestamp[{}]", batchId, timestamp);
+            LOG_DEBUG("current batchId[{}] timestamp[{}]", batchId, timestamp);
             dataSize -= 1;
 
             if (timestamp <= 0) {
@@ -373,7 +373,7 @@ namespace MxRec {
                     MAX_CHANNEL_NUM)));
                 return;
             }
-            LOG_INFO(HYBRID_BLOCKING + " reset channel {}", channelId);
+            LOG_DEBUG(HYBRID_BLOCKING + " reset channel {}", channelId);
             // 重置此数据通道中所有的步数
             hybridMgmtBlock->ResetAll(channelId);
 
@@ -400,7 +400,7 @@ namespace MxRec {
             out(0) = batchId;
             if (channelId == 1) {
                 if (maxStep != -1 && batchId >= maxStep) {
-                    LOG_WARN(StringFormat("skip excess batch after {}/{}", batchId, maxStep));
+                    LOG_DEBUG(StringFormat("skip excess batch after {}/{}", batchId, maxStep));
                     return;
                 }
             }
@@ -434,7 +434,7 @@ namespace MxRec {
             auto keyProcess = Singleton<KeyProcess>::GetInstance();
             for (size_t i = 0; i < splits.size(); ++i) {
                 if (!keyProcess->HasEmbName(embNames.at(i))) {
-                    LOG_INFO("ReadEmbKeyV2 not found emb_name:{} {}", i, embNames.at(i));
+                    LOG_DEBUG("ReadEmbKeyV2 not found emb_name:{} {}", i, embNames.at(i));
                     tableUsed.push_back(false);
                 } else {
                     tableUsed.push_back(true);
@@ -491,7 +491,7 @@ namespace MxRec {
             // 前面8个字节、即占一个featureId位，是unix时间戳
             auto src = reinterpret_cast<const time_t*>(inputTensor.tensor_data().data());
             std::copy(src, src + 1, &timestamp);
-            LOG_INFO("current batchId[{}] timestamp[{}]", batchId, timestamp);
+            LOG_DEBUG("current batchId[{}] timestamp[{}]", batchId, timestamp);
             dataSize -= 1;
 
             if (timestamp <= 0) {
@@ -534,7 +534,7 @@ namespace MxRec {
 
         void Compute(OpKernelContextPtr context) override
         {
-            LOG_INFO("context {}", context->step_id());
+            LOG_DEBUG("context {}", context->step_id());
             std::cout << " Cust opp not installed!!" << std::endl;
         }
 
