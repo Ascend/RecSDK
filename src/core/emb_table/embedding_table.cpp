@@ -18,13 +18,13 @@ EmbeddingTable::EmbeddingTable()
 }
 
 EmbeddingTable::EmbeddingTable(const EmbInfo& info, const RankInfo& rankInfo, int inSeed)
-    : name_(info.name), hostVocabSize_(info.hostVocabSize), devVocabSize_(info.devVocabSize),
-      freeSize_(0), maxOffset_(0), isDynamic_(rankInfo.useDynamicExpansion),
+    : name(info.name), hostVocabSize(info.hostVocabSize), devVocabSize(info.devVocabSize),
+      freeSize_(0), maxOffset(0), isDynamic_(rankInfo.useDynamicExpansion),
       embSize_(info.embeddingSize), extEmbSize_(info.extEmbeddingSize),
       embInfo_(info), seed_(inSeed), rankId_(rankInfo.rankId)
 {
     LOG_TRACE("table {} isDynamic = {} embeddingSize {} extSize {}",
-              name_, isDynamic_, embSize_, extEmbSize_);
+              name, isDynamic_, embSize_, extEmbSize_);
 }
 
 EmbeddingTable::~EmbeddingTable()
@@ -51,17 +51,17 @@ std::vector<int32_t> EmbeddingTable::FindOffset(const vector<emb_key_t>& keys,
 
 size_t EmbeddingTable::GetMaxOffset()
 {
-    return maxOffset_;
+    return maxOffset;
 }
 
 int64_t EmbeddingTable::capacity() const
 {
-    return static_cast<int64_t>(devVocabSize_);
+    return static_cast<int64_t>(devVocabSize);
 }
 
 size_t EmbeddingTable::size() const
 {
-    return maxOffset_;
+    return maxOffset;
 }
 
 void EmbeddingTable::EvictKeys(const std::vector<emb_key_t>& keys)
@@ -74,55 +74,55 @@ void EmbeddingTable::EvictKeys(const std::vector<emb_key_t>& keys)
             LOG_WARN("evict key is INVALID_KEY_VALUE!");
             continue;
         }
-        const auto& iter = keyOffsetMap_.find(key);
-        if (iter == keyOffsetMap_.end()) { // not found
+        const auto& iter = keyOffsetMap.find(key);
+        if (iter == keyOffsetMap.end()) { // not found
             continue;
         }
-        keyOffsetMap_.erase(iter);
-        evictPos_.emplace_back(iter->second);
-        LOG_TRACE("evict embName:{}, offset:{}", name_, iter->second);
+        keyOffsetMap.erase(iter);
+        evictDevPos.emplace_back(iter->second);
+        LOG_TRACE("evict embName:{}, offset:{}", name, iter->second);
     }
-    LOG_INFO("EvictKeys: table [{}] evict size on dev:{}", name_, evictPos_.size());
+    LOG_INFO("EvictKeys: table [{}] evict size on dev:{}", name, evictDevPos.size());
 }
 
 const std::vector<int64_t>& EmbeddingTable::GetEvictedKeys()
 {
-    return evictPos_;
+    return evictDevPos;
 }
 
 const std::vector<int64_t>& EmbeddingTable::GetHostEvictedKeys()
 {
-    return evictHostPos_;
+    return evictHostPos;
 }
 
 void EmbeddingTable::EvictInitDeviceEmb()
 {
-    if (evictPos_.size() > devVocabSize_) {
+    if (evictDevPos.size() > devVocabSize) {
         LOG_ERROR("{} overflow! init evict dev, evictOffset size {} bigger than dev vocabSize {}",
-            name_, evictPos_.size(), devVocabSize_);
+            name, evictDevPos.size(), devVocabSize);
         throw runtime_error(
             Logger::Format("{} overflow! init evict dev, evictOffset size {} bigger than dev vocabSize {}",
-                name_, evictPos_.size(), devVocabSize_).c_str());
+                name, evictDevPos.size(), devVocabSize).c_str());
     }
 
     vector<Tensor> tmpDataOut;
-    Tensor tmpData = Vec2TensorI32(evictPos_);
+    Tensor tmpData = Vec2TensorI32(evictDevPos);
     tmpDataOut.emplace_back(tmpData);
     tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { 1 }));
 
     auto evictLen = tmpDataOut.back().flat<int32>();
-    evictLen(0) = static_cast<int>(evictPos_.size());
+    evictLen(0) = static_cast<int>(evictDevPos.size());
 
     // evict key发送给dev侧，dev侧初始化emb
     auto trans = Singleton<HDTransfer>::GetInstance();
-    trans->Send(TransferChannel::EVICT, tmpDataOut, TRAIN_CHANNEL_ID, name_);
+    trans->Send(TransferChannel::EVICT, tmpDataOut, TRAIN_CHANNEL_ID, name);
 
-    LOG_INFO(KEY_PROCESS "hbm EvictInitDeviceEmb: [{}]! send offsetSize:{}", name_, evictPos_.size());
+    LOG_INFO(KEY_PROCESS "hbm EvictInitDeviceEmb: [{}]! send offsetSize:{}", name, evictDevPos.size());
 }
 
 absl::flat_hash_map<emb_key_t, int64_t> EmbeddingTable::GetKeyOffsetMap()
 {
-    return keyOffsetMap_;
+    return keyOffsetMap;
 }
 
 void EmbeddingTable::ClearMissingKeys()
@@ -145,12 +145,12 @@ void EmbeddingTable::ClearLookupAndSwapOffset()
 
 size_t EmbeddingTable::GetDevVocabSize()
 {
-    return devVocabSize_;
+    return devVocabSize;
 }
 
 size_t EmbeddingTable::GetHostVocabSize()
 {
-    return hostVocabSize_;
+    return hostVocabSize;
 }
 
 int EmbeddingTable::Load(const string& filePath)
@@ -168,4 +168,31 @@ void EmbeddingTable::MakeDir(const string& dirName)
     auto fileSystemHandler = make_unique<FileSystemHandler>();
     unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(dirName);
     fileSystemPtr->CreateDir(dirName);
+}
+
+void EmbeddingTable::SetCacheManager(CacheManager *cm)
+{
+}
+
+void EmbeddingTable::EnableSSD()
+{
+    isSSDEnabled_ = true;
+}
+
+void EmbeddingTable::RefreshFreqInfoWithSwap()
+{
+}
+
+TableInfo EmbeddingTable::GetTableInfo()
+{
+    TableInfo ti = {
+        .name=name,
+        .hostVocabSize=hostVocabSize,
+        .devVocabSize=devVocabSize,
+        .maxOffset=maxOffset,
+        .keyOffsetMap=keyOffsetMap,
+        .evictDevPos=evictDevPos,
+        .evictHostPos=evictHostPos,
+    };
+    return ti;
 }

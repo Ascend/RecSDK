@@ -150,3 +150,17 @@ int EmbeddingMgmt::Save(const string& filePath)
         tablePair.second->Save(filePath);
     }
 }
+
+void EmbeddingMgmt::SetCacheManagerForEmbTable(CacheManager* cacheManager)
+{
+    for (auto& table: embeddings) {
+        table.second->SetCacheManager(cacheManager);
+    }
+}
+
+void EmbeddingMgmt::EnableSSD()
+{
+    for (auto& table: embeddings) {
+        table.second->EnableSSD();
+    }
+}

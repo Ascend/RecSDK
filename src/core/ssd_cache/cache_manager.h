@@ -29,6 +29,17 @@ See the License for the specific language governing permissions and
 #include "utils/common.h"
 
 namespace MxRec {
+
+    struct TableInfo {
+        std::string name;
+        size_t hostVocabSize;
+        size_t devVocabSize;
+        size_t& maxOffset;
+        absl::flat_hash_map<emb_key_t, int64_t>& keyOffsetMap;
+        std::vector<int64_t>& evictDevPos;     // 记录HBM内被淘汰的key
+        std::vector<int64_t>& evictHostPos; // 记录Host内淘汰列表
+    };
+
     enum class TransferRet {
         TRANSFER_OK = 0, // 转移成功或无需处理
         TRANSFER_ERROR,
@@ -62,7 +73,7 @@ namespace MxRec {
         void SaveSSDEngine(int step);
 
         // 转换DDR和SSD数据
-        TransferRet TransferDDREmbWithSSD(const std::string& embTableName, EmbHashMapInfo& embHashMap,
+        TransferRet TransferDDREmbWithSSD(TableInfo& table,
                                           const vector<emb_key_t>& originalKeys, int channelId);
 
         /* HBM与DDR换入换出时刷新频次信息 */
@@ -90,27 +101,27 @@ namespace MxRec {
         };
 
         void GetDDREmbInfo(vector<emb_key_t>& keys,
-                           const std::string& embTableName, EmbHashMapInfo& embHashMap,
+                           TableInfo& table,
                            vector<size_t>& ddrTransferPos, vector<vector<float>>& ddrEmbData) const;
 
         void UpdateDDREmbInfo(const std::string& embTableName,
                               vector<size_t>& ddrTransferPos,
                               vector<vector<float>>& ssdEmbData) const;
 
-        void RefreshRelateInfoWithDDR2SSD(const std::string& embTableName, EmbHashMapInfo& embHashMap,
+        void RefreshRelateInfoWithDDR2SSD(TableInfo& table,
                                           vector<emb_key_t>& ddrSwapOutKeys, vector<freq_num_t>& ddrSwapOutCounts);
 
-        void RefreshRelateInfoWithSSD2DDR(const std::string& embTableName, EmbHashMapInfo& embHashMap,
+        void RefreshRelateInfoWithSSD2DDR(TableInfo& table,
                                           vector<emb_key_t>& externalSSDKeys, vector<size_t>& ddrTransferPos);
 
         void GetSSDKeys(const std::string& embTableName, vector<emb_key_t>& externalKeys,
                         vector<emb_key_t>& externalSSDKeys);
 
-        TransferRet TransferDDREmb2SSD(const std::string& embTableName, EmbHashMapInfo& embHashMap,
+        TransferRet TransferDDREmb2SSD(TableInfo& table,
                                        int64_t ddrSwapOutSize, const vector<emb_key_t>& keys,
                                        vector<size_t>& ddrTransferPos);
 
-        TransferRet TransferSSDEmb2DDR(const std::string& embTableName, EmbHashMapInfo& embHashMap,
+        TransferRet TransferSSDEmb2DDR(TableInfo& table,
                                        vector<emb_key_t>& externalSSDKeys, vector<size_t>& ddrTransferPos,
                                        vector<vector<float>>& ssdEmbData);
 
@@ -120,9 +131,10 @@ namespace MxRec {
                                   vector<freq_num_t>& ddrSwapOutCounts);
 
         static void HandleDDRTransferPos(vector<size_t>& ddrTransferPos, vector<emb_key_t>& externalSSDKeys,
-                                  EmbHashMapInfo& embHashMap);
+                                         TableInfo& table);
 
-        inline void GetExternalKeys(EmbHashMapInfo& embHashMap, vector<emb_key_t>& externalKeys,
+        inline void GetExternalKeys(const absl::flat_hash_map<emb_key_t, int64_t> &keyOffsetMap,
+                                    vector<emb_key_t>& externalKeys,
                                     vector<emb_key_t>& internalKeys, const vector<emb_key_t>& keys) const;
 
         void AddDebugAndTraceLog(size_t batchKeySize, vector<emb_key_t>& externalKeys,

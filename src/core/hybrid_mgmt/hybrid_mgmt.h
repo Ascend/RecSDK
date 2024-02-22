@@ -30,6 +30,7 @@ See the License for the specific language governing permissions and
 #include "hd_transfer/hd_transfer.h"
 #include "ssd_cache/cache_manager.h"
 #include "hybrid_mgmt_block.h"
+#include "emb_table/embedding_table.h"
 
 namespace MxRec {
     using namespace std;
@@ -104,7 +105,7 @@ namespace MxRec {
 
         void EvictSSDKeys(const string& embName, const vector<emb_key_t>& keys) const;
 
-        void PrepareDDRData(const std::string& embTableName, EmbHashMapInfo& embHashMap,
+        void PrepareDDRData(std::shared_ptr<EmbeddingTable> table,
                             const vector<emb_key_t> &keys, int channelId, int batchId) const;
 
         int GetStepFromPath(const string& loadPath) const;

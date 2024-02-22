@@ -116,6 +116,9 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
         cacheManager->Init(hostEmbs, mgmtEmbInfo);
         hostHashMaps->isSSDEnabled = this->isSSDEnabled;
         hostHashMaps->cacheManager = this->cacheManager;
+        // 启用SSD时，EmbeddingDDR依赖cacheManager
+        EmbeddingMgmt::Instance()->EnableSSD();
+        EmbeddingMgmt::Instance()->SetCacheManagerForEmbTable(this->cacheManager);
     }
     isLoad = ifLoad;
     if (!isLoad) {
@@ -836,7 +839,7 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId, int cha
               channelId, batchId, sendRestoreSyncTC.ElapsedMS());
 
     // 调用SSD cache缓存处理流程
-    PrepareDDRData(embName, embHashMap, lookupKeys, channelId, batchId);
+    PrepareDDRData(table, lookupKeys, channelId, batchId);
 
     // 计算查询向量；记录需要被换出的HBM偏移
     vector<Tensor> tmpData;
@@ -1032,20 +1035,21 @@ void HybridMgmt::EvictKeys(const string& embName, const vector<emb_key_t>& keys)
     hdTransfer->Send(TransferChannel::EVICT, tmpDataOut, TRAIN_CHANNEL_ID, embName);
 }
 
-inline void HybridMgmt::PrepareDDRData(const string& embTableName, EmbHashMapInfo& embHashMap,
+inline void HybridMgmt::PrepareDDRData(std::shared_ptr<EmbeddingTable> table,
                                        const vector<emb_key_t>& keys, int channelId, int batchId) const
 {
     if (!isSSDEnabled) {
         return;
     }
-    LOG_DEBUG("channelId:{} batchId:{}, embTableName:{}, PrepareDDRData start.", channelId, batchId, embTableName);
+    LOG_DEBUG("channelId:{} batchId:{}, embTableName:{}, PrepareDDRData start.", channelId, batchId, table->name);
     TimeCost prepareDDRDataTc;
-    TransferRet ret = cacheManager->TransferDDREmbWithSSD(embTableName, embHashMap, keys, channelId);
+    TableInfo ti = table->GetTableInfo();
+    TransferRet ret = cacheManager->TransferDDREmbWithSSD(ti, keys, channelId);
     if (ret != TransferRet::TRANSFER_OK) {
         HandlePrepareDDRDataRet(ret);
     }
     LOG_DEBUG("channelId:{} batchId:{}, embTableName:{}, PrepareDDRData end, prepareDDRDataTc(ms):{}",
-              channelId, batchId, embTableName, prepareDDRDataTc.ElapsedMS());
+              channelId, batchId, table->name, prepareDDRDataTc.ElapsedMS());
 }
 
 void HybridMgmt::EvictSSDKeys(const string& embName, const vector<emb_key_t>& keys) const

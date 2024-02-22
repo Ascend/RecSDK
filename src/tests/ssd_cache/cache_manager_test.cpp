@@ -22,6 +22,7 @@ See the License for the specific language governing permissions and
 #include "ssd_cache/lfu_cache.h"
 #include "ssd_cache/cache_manager.h"
 #include "utils/common.h"
+#include "emb_table/embedding_ddr.h"
 
 using namespace std;
 using namespace MxRec;
@@ -192,12 +193,16 @@ TEST_F(CacheManagerTest, IsKeyInSSD)
 
 TEST_F(CacheManagerTest, TransferDDREmbWithSSDByEmptyExternalKey)
 {
-    EmbHashMapInfo embHashMapInfo;
+    EmbeddingDDR table;
+
     vector<emb_key_t> currentKeys = {55, 65, 75};
-    embHashMapInfo.hostHashMap[55] = 119;
-    embHashMapInfo.hostHashMap[65] = 118;
-    embHashMapInfo.hostHashMap[75] = 116;
-    auto ret = cacheManager.TransferDDREmbWithSSD(embTableName, embHashMapInfo, currentKeys, TRAIN_CHANNEL_ID);
+    table.keyOffsetMap[55] = 119;
+    table.keyOffsetMap[65] = 118;
+    table.keyOffsetMap[75] = 116;
+
+    TableInfo ti = table.GetTableInfo();
+
+    auto ret = cacheManager.TransferDDREmbWithSSD(ti, currentKeys, TRAIN_CHANNEL_ID);
     ASSERT_EQ(ret, TransferRet::TRANSFER_OK);
     LOG_INFO("test TransferDDREmbWithSSDByEmptyExternalKey end.");
 }
@@ -207,21 +212,24 @@ TEST_F(CacheManagerTest, TransferDDREmbWithSSDByAllProcess)
     vector<emb_key_t> ssdKeys = {15, 25};
     vector<vector<float>> ssdKeyEmbInfo = {{1.5f}, {2.5f}};
 
-    // init EmbHashMapInfo
-    EmbHashMapInfo embHashMapInfo;
-    embHashMapInfo.devVocabSize = 20;
-    embHashMapInfo.hostVocabSize = 100;
-    embHashMapInfo.maxOffset = 118; // 剩余2个可用空间(DDR剩余, 相对位置:98 99)
-    embHashMapInfo.evictPos.emplace_back(110); // 淘汰列表
+    // init EmbeddingDDR
+    EmbeddingDDR table;
+    table.name = embTableName;
+    table.devVocabSize = 20;
+    table.hostVocabSize = 100;
+    table.maxOffset = 118;
+    table.evictHostPos.emplace_back(110); // 淘汰列表
+
+    TableInfo ti = table.GetTableInfo();
 
     // 构造已经存储早DDR中key和offset对应关系; DDR的offset在映射表中范围是 20~119
-    embHashMapInfo.hostHashMap[9] = 117; // DDR中相对位置: 97
-    embHashMapInfo.hostHashMap[8] = 116; // DDR中相对位置: 96
-    embHashMapInfo.hostHashMap[6] = 114; // DDR中相对位置: 94
-    embHashMapInfo.hostHashMap[4] = 112; // DDR中相对位置: 92
-    embHashMapInfo.hostHashMap[3] = 111; // DDR中相对位置: 91
-    embHashMapInfo.hostHashMap[2] = 21; // DDR中相对位置: 1
-    embHashMapInfo.hostHashMap[1] = 20; // DDR中相对位置: 0
+    table.keyOffsetMap[9] = 117; // DDR中相对位置: 97
+    table.keyOffsetMap[8] = 116; // DDR中相对位置: 96
+    table.keyOffsetMap[6] = 114; // DDR中相对位置: 94
+    table.keyOffsetMap[4] = 112; // DDR中相对位置: 92
+    table.keyOffsetMap[3] = 111; // DDR中相对位置: 91
+    table.keyOffsetMap[2] = 21; // DDR中相对位置: 1
+    table.keyOffsetMap[1] = 20; // DDR中相对位置: 0
 
     // 检查构造数据正确性
     auto& embMap = cacheManager.hostEmbs->hostEmbs;
@@ -238,33 +246,31 @@ TEST_F(CacheManagerTest, TransferDDREmbWithSSDByAllProcess)
     ASSERT_FALSE(cacheManager.ssdEngine->IsKeyExist(embTableName, 8));
     ASSERT_TRUE(cacheManager.IsKeyInSSD(embTableName, 15));
 
-    LOG_INFO("check detail data before transfer ok.");
-
     // externalKeys: SSD(15, 25) + newKey(55, 65, 75)
     // 训练场景，构造结果：offsetAvailableSize=20+100-118+evictPos.size()=3
     // cacheManager中的频次数据(低-高): 9 8 6 4 3 2 1
     // 构造空间超出SSD可用上限
     vector<emb_key_t> exceedKeys = {15, 25, 6, 4, 55, 65, 75, 85, 95, 105, 115};
-    auto spaceError1 = cacheManager.TransferDDREmbWithSSD(embTableName, embHashMapInfo, exceedKeys, TRAIN_CHANNEL_ID);
+    auto spaceError1 = cacheManager.TransferDDREmbWithSSD(ti, exceedKeys, TRAIN_CHANNEL_ID);
     ASSERT_EQ(spaceError1, TransferRet::SSD_SPACE_NOT_ENOUGH);
 
     // 构造训练+超SSD可用+当前批次中不包含报错在SSD的key
     vector<emb_key_t> keys2 = {6, 4, 55, 65, 75, 85, 95, 105, 115, 125, 135};
-    auto spaceError2 = cacheManager.TransferDDREmbWithSSD(embTableName, embHashMapInfo, exceedKeys, TRAIN_CHANNEL_ID);
+    auto spaceError2 = cacheManager.TransferDDREmbWithSSD(ti, exceedKeys, TRAIN_CHANNEL_ID);
     ASSERT_EQ(spaceError2, TransferRet::SSD_SPACE_NOT_ENOUGH);
 
     // 构造当前批次key 存储位置: SSD(15, 25) DDR(6, 4) newKey(55, 65, 75)
     vector<emb_key_t> currentKeys = {15, 25, 6, 4, 55, 65, 75};
     // 需要从ddr转移4个key到ssd, 低频数据中6 4在当前批次key中,不会被转移,构造的数据转移key:9, 8, 3, 2
-    auto ret = cacheManager.TransferDDREmbWithSSD(embTableName, embHashMapInfo, currentKeys, TRAIN_CHANNEL_ID);
+    auto ret = cacheManager.TransferDDREmbWithSSD(ti, currentKeys, TRAIN_CHANNEL_ID);
 
     // 检查处理后数据正确性
     ASSERT_EQ(ret, TransferRet::TRANSFER_OK);
     ASSERT_TRUE(fabs(hostData[94][0] - 6.0f) < EPSILON); // DDR内未移动的数据
     ASSERT_TRUE(fabs(hostData[96][0] - 25.0f) < EPSILON); // SSD转移到DDR的数据
     ASSERT_TRUE(fabs(hostData[97][0] - 15.0f) < EPSILON); // SSD转移到DDR的数据
-    ASSERT_EQ(embHashMapInfo.evictPos.size(), 1);
-    ASSERT_EQ(embHashMapInfo.evictPos.back(), 110);
+    ASSERT_EQ(table.evictHostPos.size(), 1);
+    ASSERT_EQ(table.evictHostPos.back(), 110);
 
     // 原DDR中最小频次key(9,8)次数(1)被转移到SSD,SSD转移到DDR的key(15,25)次数(3,5), DDR内频次索引应变为2
     ASSERT_EQ(cacheManager.ddrKeyFreqMap[embTableName].minFreq, 2);
@@ -277,26 +283,30 @@ TEST_F(CacheManagerTest, TransferDDREmbWithSSDByAllProcess)
 TEST_F(CacheManagerTest, TransferDDREmbWithSSDByEmptyExternalSSDKey)
 {
     // 训练+评估：构造DDR剩余空间足够，externalSSDKeys为空
-    EmbHashMapInfo embHashMapInfo;
-    embHashMapInfo.devVocabSize = 20;
-    embHashMapInfo.hostVocabSize = 100;
-    embHashMapInfo.hostHashMap[6] = 114; // DDR中相对位置: 94
-    embHashMapInfo.hostHashMap[4] = 112; // DDR中相对位置: 92
+    EmbeddingDDR table;
+    table.name = embTableName;
+    table.devVocabSize = 20;
+    table.hostVocabSize = 100;
+    table.keyOffsetMap[6] = 114; // DDR中相对位置: 94
+    table.keyOffsetMap[4] = 112; // DDR中相对位置: 92
     // 剩余3个可用空间(DDR剩余2个, 相对位置:98 99； DDR淘汰列表1个)
-    embHashMapInfo.maxOffset = 118;
-    embHashMapInfo.evictPos.emplace_back(110);
+    table.maxOffset = 118;
+    table.evictHostPos.emplace_back(110);
+
+    TableInfo ti = table.GetTableInfo();
+
     vector<emb_key_t> currentKeys = {6, 4, 55, 65, 75};
-    auto ret = cacheManager.TransferDDREmbWithSSD(embTableName, embHashMapInfo, currentKeys, TRAIN_CHANNEL_ID);
+    auto ret = cacheManager.TransferDDREmbWithSSD(ti, currentKeys, TRAIN_CHANNEL_ID);
     ASSERT_EQ(ret, TransferRet::TRANSFER_OK);
-    auto retByEval = cacheManager.TransferDDREmbWithSSD(embTableName, embHashMapInfo, currentKeys, EVAL_CHANNEL_ID);
+    auto retByEval = cacheManager.TransferDDREmbWithSSD(ti, currentKeys, EVAL_CHANNEL_ID);
     ASSERT_EQ(retByEval, TransferRet::TRANSFER_OK);
 
     // 评估场景， DDR剩余空间不足， externalSSDKeys为空
     vector<emb_key_t> currentKeys2 = {6, 4, 55, 65, 75, 85, 95, 105, 115};
-    auto ret2 = cacheManager.TransferDDREmbWithSSD(embTableName, embHashMapInfo, currentKeys2, EVAL_CHANNEL_ID);
+    auto ret2 = cacheManager.TransferDDREmbWithSSD(ti, currentKeys2, EVAL_CHANNEL_ID);
     ASSERT_EQ(ret2, TransferRet::TRANSFER_OK);
     // 训练场景，返回ssd空间不足
-    auto ret3 = cacheManager.TransferDDREmbWithSSD(embTableName, embHashMapInfo, currentKeys2, TRAIN_CHANNEL_ID);
+    auto ret3 = cacheManager.TransferDDREmbWithSSD(ti, currentKeys2, TRAIN_CHANNEL_ID);
     ASSERT_EQ(ret3, TransferRet::SSD_SPACE_NOT_ENOUGH);
     LOG_INFO("test TransferDDREmbWithSSDByEmptyExternalSSDKey end.");
 }
@@ -304,24 +314,28 @@ TEST_F(CacheManagerTest, TransferDDREmbWithSSDByEmptyExternalSSDKey)
 TEST_F(CacheManagerTest, TransferDDREmbWithSSDByEval)
 {
     // 评估+DDR剩余空间足够+externalSSDKeys为空
-    EmbHashMapInfo embHashMapInfo;
-    embHashMapInfo.devVocabSize = 20;
-    embHashMapInfo.hostVocabSize = 100;
-    embHashMapInfo.hostHashMap[9] = 117; // DDR中相对位置: 97
-    embHashMapInfo.hostHashMap[8] = 116; // DDR中相对位置: 96
-    embHashMapInfo.hostHashMap[6] = 114; // DDR中相对位置: 94
-    embHashMapInfo.hostHashMap[4] = 112; // DDR中相对位置: 92
+    EmbeddingDDR table;
+    table.name = embTableName;
+    table.devVocabSize = 20;
+    table.hostVocabSize = 100;
+    table.keyOffsetMap[9] = 117; // DDR中相对位置: 97
+    table.keyOffsetMap[8] = 116; // DDR中相对位置: 96
+    table.keyOffsetMap[6] = 114; // DDR中相对位置: 94
+    table.keyOffsetMap[4] = 112; // DDR中相对位置: 92
     // 剩余3个可用空间(DDR剩余2个, 相对位置:98 99； DDR淘汰列表1个)
-    embHashMapInfo.maxOffset = 118;
-    embHashMapInfo.evictPos.emplace_back(110); // 淘汰列表
+    table.maxOffset = 118;
+    table.evictHostPos.emplace_back(110); // 淘汰列表
+
+    TableInfo ti = table.GetTableInfo();
+
     vector<emb_key_t> currentKeys = {6, 4, 55, 65, 75};
-    auto ret = cacheManager.TransferDDREmbWithSSD(embTableName, embHashMapInfo, currentKeys, EVAL_CHANNEL_ID);
+    auto ret = cacheManager.TransferDDREmbWithSSD(ti, currentKeys, EVAL_CHANNEL_ID);
     ASSERT_EQ(ret, TransferRet::TRANSFER_OK);
     LOG_INFO("test eval+space enough+externalSSDKeysEmpty ok.");
 
     // 评估+DDR剩余空间足够+externalSSDKeys非空
     vector<emb_key_t> currentKeys2 = {15, 25, 6, 4, 55, 65, 75, 85, 95, 105, 115};
-    auto ret2 = cacheManager.TransferDDREmbWithSSD(embTableName, embHashMapInfo, currentKeys2, EVAL_CHANNEL_ID);
+    auto ret2 = cacheManager.TransferDDREmbWithSSD(ti, currentKeys2, EVAL_CHANNEL_ID);
     ASSERT_EQ(ret2, TransferRet::TRANSFER_OK);
     // 检查处理后数据正确性
     const auto& it = cacheManager.hostEmbs->hostEmbs.find(embTableName);
@@ -329,7 +343,7 @@ TEST_F(CacheManagerTest, TransferDDREmbWithSSDByEval)
     ASSERT_TRUE(fabs(hostData[94][0] - 6.0f) < EPSILON); // DDR内未移动的数据
     ASSERT_TRUE(fabs(hostData[98][0] - 25.0f) < EPSILON); // SSD转移到DDR的数据
     ASSERT_TRUE(fabs(hostData[90][0] - 15.0f) < EPSILON); // SSD转移到DDR的数据
-    ASSERT_EQ(embHashMapInfo.evictPos.size(), 0);
+    ASSERT_EQ(table.evictHostPos.size(), 0);
     // 原DDR中最小频次key(9,8)次数(1)被转移到SSD,SSD转移到DDR的key(15,25)次数(3,5), DDR内频次索引应变为2
     ASSERT_EQ(cacheManager.ddrKeyFreqMap[embTableName].minFreq, 1);
     ASSERT_FALSE(cacheManager.IsKeyInSSD(embTableName, 9));
@@ -341,15 +355,19 @@ TEST_F(CacheManagerTest, TransferDDREmbWithSSDByEval)
 TEST_F(CacheManagerTest, TransferDDREmbWithSSDByDDRSpaceNotEnough)
 {
     // 构造DDR所有空间不满足存放当前批次数据
-    EmbHashMapInfo embHashMapInfo;
-    embHashMapInfo.devVocabSize = 20;
-    embHashMapInfo.hostVocabSize = 10;
-    embHashMapInfo.maxOffset = 30;
-    embHashMapInfo.hostHashMap[6] = 9;
-    embHashMapInfo.hostHashMap[4] = 8;
+    EmbeddingDDR table;
+    table.name = embTableName2;
+    table.devVocabSize = 20;
+    table.hostVocabSize = 10;
+    table.maxOffset = 30;
+    table.keyOffsetMap[6] = 9;
+    table.keyOffsetMap[4] = 8;
+
+    TableInfo ti = table.GetTableInfo();
+
     // keys size:10, ddr keys:2 externalKeys:8 externalSSDKeys:0
     vector<emb_key_t> currentKeys = {6, 4, 101, 102, 103, 104, 105, 106, 107, 108};
-    auto ret = cacheManager.TransferDDREmbWithSSD(embTableName2, embHashMapInfo, currentKeys, TRAIN_CHANNEL_ID);
+    auto ret = cacheManager.TransferDDREmbWithSSD(ti, currentKeys, TRAIN_CHANNEL_ID);
     ASSERT_EQ(ret, TransferRet::DDR_SPACE_NOT_ENOUGH);
     LOG_INFO("test train+ddr space enough+externalSSDKeysEmpty ok.");
 }

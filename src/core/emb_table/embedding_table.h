@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "utils/common.h"
+#include "ssd_cache/cache_manager.h"
 
 namespace MxRec {
 
@@ -84,21 +85,30 @@ public:
 
     static void MakeDir(const string& dirName);
 
+    virtual void SetCacheManager(CacheManager* cacheManager);
+
+    void EnableSSD();
+
+    virtual void RefreshFreqInfoWithSwap();
+
+    virtual TableInfo GetTableInfo();
+
+    std::string name;
+    size_t hostVocabSize;
+    size_t devVocabSize;
+    size_t maxOffset;
+    absl::flat_hash_map<emb_key_t, int64_t> keyOffsetMap;
+    std::vector<int64_t> evictDevPos;     // 记录HBM内被淘汰的key
+    std::vector<int64_t> evictHostPos; // 记录Host内淘汰列表
+
 #ifdef NDEBUG
 protected:
 #endif
 
     EmbeddingTable& operator=(const EmbeddingTable& table) = delete;
 
-    std::string name_;
-    size_t hostVocabSize_;
-    size_t devVocabSize_;
     size_t freeSize_;
-    size_t maxOffset_;
     bool isDynamic_;
-    absl::flat_hash_map<emb_key_t, int64_t> keyOffsetMap_;
-    std::vector<int64_t> evictPos_;     // 记录HBM内被淘汰的key
-    std::vector<int64_t> evictHostPos_; // 记录Host内淘汰列表
     std::mutex mut_;
     std::vector<InitializeInfo> initializeInfos_;
     EmbInfo embInfo_;
@@ -109,6 +119,8 @@ protected:
     size_t rankId_;
 
     std::vector<size_t> missingKeysHostPos_; // 用于记录当前batch在host上需要换出的偏移
+    CacheManager* cacheManager_;
+    bool isSSDEnabled_ = false;
 };
 
 }

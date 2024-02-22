@@ -9,8 +9,8 @@
 #include "utils/logger.h"
 #include "utils/singleton.h"
 #include "host_emb/host_emb.h"
-#include "hd_transfer/hd_transfer.h"
 #include "file_system/file_system_handler.h"
+#include "ssd_cache/cache_manager.h"
 
 using namespace MxRec;
 
@@ -32,10 +32,10 @@ EmbeddingDDR::EmbeddingDDR()
 EmbeddingDDR::EmbeddingDDR(const EmbInfo& info, const RankInfo& rankInfo, int inSeed)
     : EmbeddingTable(info, rankInfo, inSeed)
 {
-    LOG_INFO("Init DDR table [{}] devVocabSize = {} hostVocabSize = {}", name_, devVocabSize_, hostVocabSize_);
+    LOG_INFO("Init DDR table [{}] devVocabSize = {} hostVocabSize = {}", name, devVocabSize, hostVocabSize);
     currentUpdatePos = 0;
-    devOffset2Key.resize(devVocabSize_);
-    devOffset2Batch.resize(devVocabSize_);
+    devOffset2Key.resize(devVocabSize);
+    devOffset2Batch.resize(devVocabSize);
     std::fill(devOffset2Batch.begin(), devOffset2Batch.end(), -1);
     std::fill(devOffset2Key.begin(), devOffset2Key.end(), -1);
 }
@@ -59,7 +59,7 @@ std::vector<int32_t> EmbeddingDDR::FindOffset(const vector<emb_key_t>& keys,
 {
     devOffset2KeyOld.clear();
     oldSwap.clear();
-    maxOffsetOld = maxOffset_;
+    maxOffsetOld = maxOffset;
 
     UpdateBatchId(keys, batchId);
     std::vector<int32_t> lookUpVec;
@@ -74,33 +74,34 @@ std::vector<int32_t> EmbeddingDDR::FindOffset(const vector<emb_key_t>& keys,
             lookUpVec.emplace_back(INVALID_KEY_VALUE);
             continue;
         }
-        if (offset < devVocabSize_) {
+        AddKeyFreqInfo(key, RecordType::NOT_DDR);
+        if (offset < devVocabSize) {
             // 偏移小于等于HBM容量：直接放入查询向量；更新偏移之前关联的key和当前关联的key
             lookUpVec.push_back(offset);
             devOffset2KeyOld.emplace_back(offset, static_cast<int>(devOffset2Key[offset]));
             devOffset2Key[offset] = key;
         } else {
             // 偏移大于HBM容量：记录在host emb上的偏移；找到需要交换的HBM偏移
-            missingKeysHostPos_.emplace_back(offset - devVocabSize_);
+            missingKeysHostPos_.emplace_back(offset - devVocabSize);
             offset = FindSwapPosOld(key, offset, batchId, swapPos);
             lookUpVec.emplace_back(offset);
         }
     }
     if (batchId == 0) {
-        LOG_INFO("max offset {}", maxOffset_);
+        LOG_INFO("max offset {}", maxOffset);
     }
-    LOG_TRACE("keyOffsetMap_, {}", MapToString(keyOffsetMap_));
+    LOG_TRACE("keyOffsetMap, {}", MapToString(keyOffsetMap));
     return lookUpVec;
 }
 
 emb_key_t EmbeddingDDR::FindOffsetHelper(const emb_key_t& key, int channelId)
 {
-    const auto& iter = keyOffsetMap_.find(key);
+    const auto& iter = keyOffsetMap.find(key);
     emb_key_t offset = INVALID_KEY_VALUE;
-    if (iter != keyOffsetMap_.end()) {
+    if (iter != keyOffsetMap.end()) {
         offset = iter->second;
-        LOG_TRACE("devVocabSize, {} , offset , {}", devVocabSize_, offset);
-        if (offset >= devVocabSize_) {
+        LOG_TRACE("devVocabSize, {} , offset , {}", devVocabSize, offset);
+        if (offset >= devVocabSize) {
             ddr2HbmKeys.emplace_back(key);
         }
         return offset;
@@ -108,33 +109,33 @@ emb_key_t EmbeddingDDR::FindOffsetHelper(const emb_key_t& key, int channelId)
     if (channelId != TRAIN_CHANNEL_ID) {
         return offset;
     }
-    if (evictPos_.size() != 0) { // 优先复用hbm表
-        offset = evictPos_.back();
-        keyOffsetMap_[key] = offset;
-        LOG_TRACE("ddr mode, dev evictPos is not null, key [{}] reuse offset [{}], evictSize [{}]",
-            key, offset, evictPos_.size());
-        evictPos_.pop_back();
+    if (evictDevPos.size() != 0) { // 优先复用hbm表
+        offset = evictDevPos.back();
+        keyOffsetMap[key] = offset;
+        LOG_TRACE("ddr mode, dev evictDevPos is not null, key [{}] reuse offset [{}], evictSize [{}]",
+            key, offset, evictDevPos.size());
+        evictDevPos.pop_back();
         LOG_ERROR("dev evicted offset = {}", offset);
         return offset;
     }
 
-    if (evictHostPos_.size() != 0) { // hbm不足，再复用host/ddr表
-        offset = evictHostPos_.back();
-        keyOffsetMap_[key] = offset;
+    if (evictHostPos.size() != 0) { // hbm不足，再复用host/ddr表
+        offset = evictHostPos.back();
+        keyOffsetMap[key] = offset;
         LOG_TRACE("ddr mode, host evictPos is not null, key [{}] reuse offset [{}], evictSize [{}]",
-            key, offset, evictHostPos_.size());
-        evictHostPos_.pop_back();
-        LOG_ERROR("host evicted offset = {}", offset);
+            key, offset, evictHostPos.size());
+        evictHostPos.pop_back();
+        LOG_TRACE("host evicted offset = {}", offset);
         return offset;
     }
-    keyOffsetMap_[key] = maxOffset_;
-    offset = maxOffset_;
-    maxOffset_++;
-    if (maxOffset_ == devVocabSize_) {
+    keyOffsetMap[key] = maxOffset;
+    offset = maxOffset;
+    maxOffset++;
+    if (maxOffset == devVocabSize) {
         LOG_INFO("start using host vocab!");
     }
-    if (maxOffset_ > (hostVocabSize_ + devVocabSize_)) {
-        LOG_ERROR("hostVocabSize too small! dev:{} host:{}", devVocabSize_, hostVocabSize_);
+    if (maxOffset > (hostVocabSize + devVocabSize)) {
+        LOG_ERROR("hostVocabSize too small! dev:{} host:{}", devVocabSize, hostVocabSize);
         throw runtime_error("hostVocabSize too small");
     }
     return offset;
@@ -148,12 +149,12 @@ void EmbeddingDDR::UpdateBatchId(const vector<emb_key_t>& keys, size_t currentBa
         if (key == -1) {
             continue;
         }
-        const auto& iter = keyOffsetMap_.find(key);
-        if (iter != keyOffsetMap_.end()) {
+        const auto& iter = keyOffsetMap.find(key);
+        if (iter != keyOffsetMap.end()) {
             offset = iter->second;
 
             LOG_TRACE("key will be used, {} , offset , {}", key, offset);
-            if (offset < devVocabSize_) {
+            if (offset < devVocabSize) {
                 // devOffset2Batch size equal to devVocabSize, unnecessary to check index boundary
                 devOffset2Batch[offset] = static_cast<int>(currentBatchId);
             }
@@ -184,12 +185,12 @@ emb_key_t EmbeddingDDR::FindSwapPosOld(emb_key_t key, size_t hostOffset, size_t 
             devOffset2Batch[currentUpdatePos] = static_cast<int>(batchId);
             swapPos.emplace_back(currentUpdatePos); // 记录需要被换出的HBM偏移
             offset = currentUpdatePos;
-            keyOffsetMap_[key] = currentUpdatePos;  // 更新key对应的HBM偏移
+            keyOffsetMap[key] = currentUpdatePos;  // 更新key对应的HBM偏移
             // 记录HBM偏移之前的key
             devOffset2KeyOld.emplace_back(currentUpdatePos, devOffset2Key[currentUpdatePos]);
             auto& oldKey = devOffset2Key[currentUpdatePos];
             oldSwap.emplace_back(oldKey, key); // 记录交换的两个key oldKey:HBM->DDR key:DDR->HBM
-            keyOffsetMap_[oldKey] = hostOffset; // 更新被替换的key的偏移
+            keyOffsetMap[oldKey] = hostOffset; // 更新被替换的key的偏移
             oldKey = key;
             notFind = false;
         }
@@ -197,7 +198,7 @@ emb_key_t EmbeddingDDR::FindSwapPosOld(emb_key_t key, size_t hostOffset, size_t 
         freeSize_--;        // HBM可用空间-1
 
         // 遍历完一遍整个HBM表后，从头开始遍历
-        if (currentUpdatePos == devVocabSize_) {
+        if (currentUpdatePos == devVocabSize) {
             currentUpdatePos = 0;
         }
 
@@ -230,32 +231,36 @@ void EmbeddingDDR::EvictDeleteEmb(const vector<emb_key_t>& keys)
             LOG_WARN("evict key equal -1!");
             continue;
         }
-        const auto& iter = keyOffsetMap_.find(key);
-        if (iter == keyOffsetMap_.end()) {
+        const auto& iter = keyOffsetMap.find(key);
+        if (iter == keyOffsetMap.end()) {
             // 淘汰依据keyProcess中的history，hashmap映射关系创建于ParseKey；两者异步，造成淘汰的值在hashmap里可能未创建
             continue;
         }
         offset = iter->second;
-        keyOffsetMap_.erase(iter);
-        LOG_TRACE("evict embName {}, offset {}", name_, offset);
+        keyOffsetMap.erase(iter);
+        LOG_TRACE("evict embName {}, offset {}", name, offset);
 
-        if (offset < devVocabSize_) {
+        if (offset < devVocabSize) {
             // offset 在device中
             devOffset2Batch[offset] = -1;
             devOffset2KeyOld.emplace_back(offset, devOffset2Key[offset]);
             devOffset2Key[offset] = -1;
-            evictPos_.emplace_back(offset);
+            evictDevPos.emplace_back(offset);
             evictHBMKeys.emplace_back(key);
         } else {
             // offset 在Host
-            evictHostPos_.emplace_back(offset);
+            evictHostPos.emplace_back(offset);
             evictDDRKeys.emplace_back(key); // 删除映射表、初始化host表、发送dev淘汰位置
         }
     }
+    if (isSSDEnabled_) {
+        cacheManager_->RefreshFreqInfoCommon(name, evictHBMKeys, TransferType::HBM_2_EVICT);
+        cacheManager_->RefreshFreqInfoCommon(name, evictDDRKeys, TransferType::DDR_2_EVICT);
+    }
 
     LOG_INFO("ddr EvictDeleteEmb, emb: [{}], hostEvictSize: {}, devEvictSize: {}",
-        name_, evictPos_.size(), evictHostPos_.size());
-    LOG_TRACE("keyOffsetMap_, {}", MapToString(keyOffsetMap_));
+        name, evictHostPos.size(), evictDevPos.size());
+    LOG_TRACE("keyOffsetMap, {}", MapToString(keyOffsetMap));
 }
 
 /// DDR模式下的淘汰：删除映射表、初始化host表、发送dev淘汰位置
@@ -270,22 +275,22 @@ void EmbeddingDDR::EvictKeys(const vector<emb_key_t>& keys)
             LOG_WARN("evict key equal -1!");
             continue;
         }
-        const auto& iter = keyOffsetMap_.find(key);
-        if (iter == keyOffsetMap_.end()) {
+        const auto& iter = keyOffsetMap.find(key);
+        if (iter == keyOffsetMap.end()) {
             continue;
         }
         // 淘汰依据keyProcess中的history，hashmap映射关系创建于ParseKey；两者异步，造成淘汰的值在hashmap里可能未创建
         offset = iter->second;
-        keyOffsetMap_.erase(iter);
-        LOG_TRACE("evict embName {}, offset {}", name_, offset);
+        keyOffsetMap.erase(iter);
+        LOG_TRACE("evict embName {}, offset {}", name, offset);
 
-        if (offset < devVocabSize_) {
+        if (offset < devVocabSize) {
             devOffset2Batch[offset] = INVALID_KEY_VALUE;
             devOffset2KeyOld.emplace_back(offset, devOffset2Key[offset]);
             devOffset2Key[offset] = INVALID_KEY_VALUE;
-            evictPos_.emplace_back(offset);
+            evictDevPos.emplace_back(offset);
         } else {
-            evictHostPos_.emplace_back(offset);
+            evictHostPos.emplace_back(offset);
         }
     }
 }
@@ -298,7 +303,7 @@ void EmbeddingDDR::ClearLookupAndSwapOffset()
 void EmbeddingDDR::SetStartCount()
 {
     currentUpdatePosStart = currentUpdatePos;
-    freeSize_ = devVocabSize_;
+    freeSize_ = devVocabSize;
 }
 
 int EmbeddingDDR::Load(const string& savePath)
@@ -324,7 +329,7 @@ int EmbeddingDDR::Save(const string& savePath)
 int EmbeddingDDR::LoadHashMap(const string& savePath)
 {
     stringstream ss;
-    ss << savePath << "/HashTable/DDR/" << name_ <<"/embedding_hashmap/slice_" << rankId_ << ".data";
+    ss << savePath << "/HashTable/DDR/" << name <<"/embedding_hashmap/slice_" << rankId_ << ".data";
 
     unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
     unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
@@ -348,7 +353,7 @@ int EmbeddingDDR::LoadHashMap(const string& savePath)
     }
     fileSystemPtr->Read(ss.str(), reinterpret_cast<char*>(buf), fileSize);
     for (int i = 0; i < fileSize / sizeof(int64_t); i = i + 2) { // key, offset进行pair对存储
-        keyOffsetMap_[buf[i]] = buf[i + 1];
+        keyOffsetMap[buf[i]] = buf[i + 1];
     }
     free(static_cast<void*>(buf));
     return 0;
@@ -357,7 +362,7 @@ int EmbeddingDDR::LoadHashMap(const string& savePath)
 int EmbeddingDDR::LoadDevOffset(const string& savePath)
 {
     stringstream ss;
-    ss << savePath << "/HashTable/DDR/" << name_ <<"/dev_offset_2_Batch_n_Key/slice_" << rankId_ << ".data";
+    ss << savePath << "/HashTable/DDR/" << name <<"/dev_offset_2_Batch_n_Key/slice_" << rankId_ << ".data";
 
     unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
     unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
@@ -381,7 +386,7 @@ int EmbeddingDDR::LoadDevOffset(const string& savePath)
 int EmbeddingDDR::LoadCurrStat(const string& savePath)
 {
     stringstream ss;
-    ss << savePath << "/HashTable/DDR/" << name_ <<"/embedding_current_status/slice_" << rankId_ << ".data";
+    ss << savePath << "/HashTable/DDR/" << name <<"/embedding_current_status/slice_" << rankId_ << ".data";
 
     unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
     unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
@@ -389,16 +394,16 @@ int EmbeddingDDR::LoadCurrStat(const string& savePath)
     size_t raw[ELEMENT_NUM] = {0};
     fileSystemPtr->Read(ss.str(), reinterpret_cast<char*>(raw), sizeof(raw));
     currentUpdatePos = raw[CURRENT_UPDATE_IDX];
-    hostVocabSize_ = raw[HOST_VOCAB_SIZE_IDX];
-    devVocabSize_ = raw[MAX_OFFSET_IDX];
-    maxOffset_ = raw[MAX_OFFSET_IDX];
+    hostVocabSize = raw[HOST_VOCAB_SIZE_IDX];
+    devVocabSize = raw[MAX_OFFSET_IDX];
+    maxOffset = raw[MAX_OFFSET_IDX];
     return 0;
 }
 
 int EmbeddingDDR::LoadEvictPos(const string& savePath)
 {
     stringstream ss;
-    ss << savePath << "/HashTable/DDR/" << name_ <<"/evict_pos/slice_" << rankId_ << ".data";
+    ss << savePath << "/HashTable/DDR/" << name <<"/evict_pos/slice_" << rankId_ << ".data";
 
     unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
     unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
@@ -414,16 +419,16 @@ int EmbeddingDDR::LoadEvictPos(const string& savePath)
         LOG_ERROR("File {} size = {} is too big", ss.str(), fileSize);
         return -1;
     }
-    evictPos_.resize(fileSize / sizeof(int64_t));
+    evictDevPos.resize(fileSize / sizeof(int64_t));
 
-    fileSystemPtr->Read(ss.str(), reinterpret_cast<char*>(evictPos_.data()), fileSize);
+    fileSystemPtr->Read(ss.str(), reinterpret_cast<char*>(evictDevPos.data()), fileSize);
     return 0;
 }
 
 int EmbeddingDDR::LoadEmbInfo(const string& savePath)
 {
     stringstream ss;
-    ss << savePath << "/HashTable/DDR/" << name_ <<"/embedding_info/slice_" << rankId_ << ".data";
+    ss << savePath << "/HashTable/DDR/" << name <<"/embedding_info/slice_" << rankId_ << ".data";
 
     unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
     unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
@@ -431,21 +436,21 @@ int EmbeddingDDR::LoadEmbInfo(const string& savePath)
     size_t raw[EMB_INFO_ELEMENT_NUM] = {0};
     fileSystemPtr->Read(ss.str(), reinterpret_cast<char*>(raw), sizeof(raw));
     extEmbSize_ = raw[EMB_INFO_EXT_SIZE_IDX];
-    devVocabSize_ = raw[EMB_INFO_DEV_VOCAB_SIZE_IDX];
-    hostVocabSize_ = raw[EMB_INFO_HOST_VOCAB_SIZE_IDX];
+    devVocabSize = raw[EMB_INFO_DEV_VOCAB_SIZE_IDX];
+    hostVocabSize = raw[EMB_INFO_HOST_VOCAB_SIZE_IDX];
     return 0;
 }
 
 int EmbeddingDDR::LoadEmbData(const string& savePath)
 {
     stringstream ss;
-    ss << savePath << "/HashTable/DDR/" << name_ <<"/embedding_data/slice_" << rankId_ << ".data";
+    ss << savePath << "/HashTable/DDR/" << name <<"/embedding_data/slice_" << rankId_ << ".data";
 
     unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
     unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
 
     HostEmb* hostEmbs = Singleton<MxRec::HostEmb>::GetInstance();
-    HostEmbTable& table = hostEmbs->GetEmb(name_);
+    HostEmbTable& table = hostEmbs->GetEmb(name);
     if (table.embData.empty()) {
         LOG_ERROR("hostEmb data is empty");
         return -1;
@@ -457,7 +462,7 @@ int EmbeddingDDR::LoadEmbData(const string& savePath)
 int EmbeddingDDR::SaveHashMap(const string& savePath)
 {
     stringstream ss;
-    ss << savePath << "/HashTable/DDR/" << name_ <<"/embedding_hashmap/";
+    ss << savePath << "/HashTable/DDR/" << name <<"/embedding_hashmap/";
     MakeDir(ss.str());
     ss << "slice_" << rankId_ << ".data";
 
@@ -465,7 +470,7 @@ int EmbeddingDDR::SaveHashMap(const string& savePath)
     unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
 
     vector<int64_t> raw;
-    for (const auto& it : keyOffsetMap_) {
+    for (const auto& it : keyOffsetMap) {
         raw.push_back(it.first);
         raw.push_back(static_cast<int64_t>(it.second));
     }
@@ -477,7 +482,7 @@ int EmbeddingDDR::SaveHashMap(const string& savePath)
 int EmbeddingDDR::SaveDevOffset(const string& savePath)
 {
     stringstream ss;
-    ss << savePath << "/HashTable/DDR/" << name_ <<"/dev_offset_2_Batch_n_Key/";
+    ss << savePath << "/HashTable/DDR/" << name <<"/dev_offset_2_Batch_n_Key/";
     MakeDir(ss.str());
     ss << "slice_" << rankId_ << ".data";
 
@@ -492,7 +497,7 @@ int EmbeddingDDR::SaveDevOffset(const string& savePath)
 int EmbeddingDDR::SaveCurrStat(const string& savePath)
 {
     stringstream ss;
-    ss << savePath << "/HashTable/DDR/"<< name_ <<"/embedding_current_status/";
+    ss << savePath << "/HashTable/DDR/"<< name <<"/embedding_current_status/";
     MakeDir(ss.str());
     ss << "slice_" << rankId_ << ".data";
 
@@ -501,9 +506,9 @@ int EmbeddingDDR::SaveCurrStat(const string& savePath)
 
     size_t raw[ELEMENT_NUM] = {0};
     raw[CURRENT_UPDATE_IDX] = currentUpdatePos;
-    raw[HOST_VOCAB_SIZE_IDX] = hostVocabSize_;
-    raw[DEV_VOCAB_SIZE_IDX] = devVocabSize_;
-    raw[MAX_OFFSET_IDX] = maxOffset_;
+    raw[HOST_VOCAB_SIZE_IDX] = hostVocabSize;
+    raw[DEV_VOCAB_SIZE_IDX] = devVocabSize;
+    raw[MAX_OFFSET_IDX] = maxOffset;
     fileSystemPtr->Write(ss.str(), reinterpret_cast<const char*>(raw), sizeof(raw));
     return 0;
 }
@@ -511,22 +516,22 @@ int EmbeddingDDR::SaveCurrStat(const string& savePath)
 int EmbeddingDDR::SaveEvictPos(const string& savePath)
 {
     stringstream ss;
-    ss << savePath << "/HashTable/DDR/" << name_ << "/evict_pos/";
+    ss << savePath << "/HashTable/DDR/" << name << "/evict_pos/";
     MakeDir(ss.str());
     ss << "slice_" << rankId_ << ".data";
 
     unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
     unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
 
-    fileSystemPtr->Write(ss.str(), reinterpret_cast<const char*>(evictPos_.data()),
-                         static_cast<size_t>(evictPos_.size() * sizeof(int64_t)));
+    fileSystemPtr->Write(ss.str(), reinterpret_cast<const char*>(evictDevPos.data()),
+                         static_cast<size_t>(evictDevPos.size() * sizeof(int64_t)));
     return 0;
 }
 
 int EmbeddingDDR::SaveEmbInfo(const string& savePath)
 {
     stringstream ss;
-    ss << savePath << "/HashTable/DDR/"<< name_ <<"/embedding_info/";
+    ss << savePath << "/HashTable/DDR/"<< name <<"/embedding_info/";
     MakeDir(ss.str());
     ss << "slice_" << rankId_ << ".data";
 
@@ -535,8 +540,8 @@ int EmbeddingDDR::SaveEmbInfo(const string& savePath)
 
     size_t raw[EMB_INFO_ELEMENT_NUM] = {};
     raw[EMB_INFO_EXT_SIZE_IDX] = extEmbSize_;
-    raw[EMB_INFO_DEV_VOCAB_SIZE_IDX] = devVocabSize_;
-    raw[EMB_INFO_HOST_VOCAB_SIZE_IDX] = hostVocabSize_;
+    raw[EMB_INFO_DEV_VOCAB_SIZE_IDX] = devVocabSize;
+    raw[EMB_INFO_HOST_VOCAB_SIZE_IDX] = hostVocabSize;
     fileSystemPtr->Write(ss.str(), reinterpret_cast<const char*>(raw), sizeof(raw));
     return 0;
 }
@@ -544,7 +549,7 @@ int EmbeddingDDR::SaveEmbInfo(const string& savePath)
 int EmbeddingDDR::SaveEmbData(const string& savePath)
 {
     stringstream ss;
-    ss << savePath << "/HashTable/DDR/"<< name_ <<"/embedding_data/";
+    ss << savePath << "/HashTable/DDR/"<< name <<"/embedding_data/";
     MakeDir(ss.str());
     ss << "slice_" << rankId_ << ".data";
 
@@ -552,7 +557,7 @@ int EmbeddingDDR::SaveEmbData(const string& savePath)
     unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
 
     HostEmb* hostEmbs = Singleton<MxRec::HostEmb>::GetInstance();
-    HostEmbTable& table = hostEmbs->GetEmb(name_);
+    HostEmbTable& table = hostEmbs->GetEmb(name);
     if (table.embData.empty()) {
         LOG_ERROR("host embedding data is empty");
         return 0;
@@ -564,4 +569,94 @@ int EmbeddingDDR::SaveEmbData(const string& savePath)
     size_t dataSize = table.embData[0].size();
     fileSystemPtr->Write(ss.str(), content, dataSize * sizeof(float));
     return 0;
+}
+
+void EmbeddingDDR::SetCacheManager(CacheManager *cm)
+{
+    cacheManager_ = cm;
+}
+
+void EmbeddingDDR::AddKeyFreqInfo(const emb_key_t& key, RecordType type)
+{
+    if (!isSSDEnabled_) {
+        return;
+    }
+    cacheManager_->PutKey(name, key, type);
+}
+
+void EmbeddingDDR::RefreshFreqInfoWithSwap()
+{
+    if (!isSSDEnabled_) {
+        return;
+    }
+    // 换入换出key列表，元素为pair: pair<oldKey, key> oldKey为从HBM移出的key, key为从DDR移出的key
+    LOG_DEBUG("RefreshFreqInfoWithSwap:oldSwap Size:{}", oldSwap.size());
+    vector<emb_key_t> enterDDRKeys;
+    for (auto keyPair : oldSwap) {
+        enterDDRKeys.emplace_back(keyPair.first);
+    }
+    cacheManager_->RefreshFreqInfoCommon(name, enterDDRKeys, TransferType::HBM_2_DDR);
+    cacheManager_->RefreshFreqInfoCommon(name, ddr2HbmKeys, TransferType::DDR_2_HBM);
+
+    AddCacheManagerTraceLog();
+}
+
+/// 记录日志：HBM和DDR换入换出后，比较hostHashMap中DDR内key和表对应的lfuCache对象中的key内容
+void EmbeddingDDR::AddCacheManagerTraceLog() const
+{
+    if (Logger::GetLevel() != Logger::TRACE) {
+        return;
+    }
+    auto& hostMap = keyOffsetMap;
+    auto& devSize = devVocabSize;
+    auto iter = cacheManager_->ddrKeyFreqMap.find(name);
+    if (iter == cacheManager_->ddrKeyFreqMap.end()) {
+        throw runtime_error("table not in ddrKeyFreqMap");
+    }
+    auto &lfu = iter->second;
+    const auto& lfuTab = lfu.GetFreqTable();
+    if (lfuTab.empty()) {
+        return;
+    }
+    size_t tableKeyInDdr = 0;
+    vector<emb_key_t> ddrKeys; // 获取hostHashMap中保存在DDR的key
+    for (const auto& item : hostMap) {
+        if (item.second < devSize) {
+            continue;
+        }
+        ddrKeys.emplace_back(item.first);
+        ++tableKeyInDdr;
+    }
+    vector<emb_key_t> lfuKeys;
+    for (const auto& it : lfuTab) {
+        lfuKeys.emplace_back(it.first);
+    }
+    std::sort(ddrKeys.begin(), ddrKeys.end());
+    std::sort(lfuKeys.begin(), lfuKeys.end());
+    std::string ddrKeysString = VectorToString(ddrKeys);
+    std::string lfuKeysString = VectorToString(lfuKeys);
+    if (ddrKeysString != lfuKeysString) {
+        LOG_ERROR("swap HBM with DDR step error, key string not equal, ddrKeysString:{}, lfuKeysString:{}",
+                  ddrKeysString, lfuKeysString);
+    } else {
+        LOG_INFO("swap HBM with DDR step OK, table:{}, ddrKeysString == lfuKeysString, string length:{}",
+                 name, lfuKeysString.length());
+    }
+
+    LOG_INFO("swap HBM with DDR step end, table:{}, tableKeyInDdr:{}, tableKeyInLfu:{}",
+             name, tableKeyInDdr, lfu.keyTable.size());
+}
+
+TableInfo EmbeddingDDR::GetTableInfo()
+{
+    TableInfo ti = {
+        .name=name,
+        .hostVocabSize=hostVocabSize,
+        .devVocabSize=devVocabSize,
+        .maxOffset=maxOffset,
+        .keyOffsetMap=keyOffsetMap,
+        .evictDevPos=evictDevPos,
+        .evictHostPos=evictHostPos,
+    };
+    return ti;
 }

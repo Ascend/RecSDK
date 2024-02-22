@@ -51,22 +51,22 @@ void EmbeddingDynamic::Key2Offset(std::vector<emb_key_t>& keys, int channel)
             key = INVALID_DYNAMIC_EXPANSION_ADDR;
             continue;
         }
-        const auto& iter = keyOffsetMap_.find(key);
-        if (iter != keyOffsetMap_.end()) {
+        const auto& iter = keyOffsetMap.find(key);
+        if (iter != keyOffsetMap.end()) {
             key = iter->second;
             continue;
         }
         // 新值
         if (channel == TRAIN_CHANNEL_ID) {
             int64_t addr = GetEmptyEmbeddingAddress();
-            keyOffsetMap_[key] = addr;
+            keyOffsetMap[key] = addr;
             key = addr;
-            maxOffset_++;
+            maxOffset++;
             continue;
         }
         key = INVALID_DYNAMIC_EXPANSION_ADDR;
     }
-    LOG_DEBUG("current expansion emb:{}, usage:{}/{})", name_, maxOffset_, devVocabSize_);
+    LOG_DEBUG("current expansion emb:{}, usage:{}/{})", name, maxOffset, devVocabSize);
 }
 
 int64_t EmbeddingDynamic::capacity() const

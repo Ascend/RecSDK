@@ -81,16 +81,16 @@ TEST_F(EmbeddingDDRTest, SaveLoadBasic)
 
     // 使用时间构造测试数据
     ddr1->extEmbSize_ = time(nullptr);
-    ddr1->devVocabSize_ = time(nullptr);
-    ddr1->hostVocabSize_ = time(nullptr);
+    ddr1->devVocabSize = time(nullptr);
+    ddr1->hostVocabSize = time(nullptr);
     ddr1->currentUpdatePos = time(nullptr);
-    ddr1->maxOffset_ = time(nullptr);
+    ddr1->maxOffset = time(nullptr);
 
     vector<emb_key_t> devOffset2KeyTestData;
     for (int i = 0; i < 10; ++i) {
         devOffset2KeyTestData.push_back(static_cast<emb_key_t>(i));
-        ddr1->keyOffsetMap_[i] = i;
-        ddr1->evictPos_.push_back(i);
+        ddr1->keyOffsetMap[i] = i;
+        ddr1->evictDevPos.push_back(i);
     }
 
     ddr1->devOffset2Key = devOffset2KeyTestData;
@@ -99,11 +99,11 @@ TEST_F(EmbeddingDDRTest, SaveLoadBasic)
     ddr2->Load("test_dir");
 
     for (int i = 0; i < 10; ++i) {
-        EXPECT_EQ(ddr1->evictPos_[i], ddr2->evictPos_[i]);
+        EXPECT_EQ(ddr1->evictDevPos[i], ddr2->evictDevPos[i]);
     }
 
     EXPECT_EQ(ddr1->extEmbSize_, ddr2->extEmbSize_);
-    EXPECT_EQ(ddr1->devVocabSize_, ddr2->devVocabSize_);
+    EXPECT_EQ(ddr1->devVocabSize, ddr2->devVocabSize);
 }
 
 /**
@@ -173,7 +173,7 @@ TEST_F(EmbeddingDDRTest, evict)
     }
     table->FindOffset(testKeys, 0, TRAIN_CHANNEL_ID, testSwap);
     table->EvictKeys(testKeys);
-    EXPECT_EQ(table->evictPos_.size(), 100);
+    EXPECT_EQ(table->evictDevPos.size(), 100);
     EXPECT_EQ(testKeys.size(), 100);
     EXPECT_EQ(testSwap.size(), 0);
 }
