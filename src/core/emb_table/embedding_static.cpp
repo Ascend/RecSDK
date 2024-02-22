@@ -30,17 +30,17 @@ void EmbeddingStatic::Key2Offset(std::vector<emb_key_t>& keys, int channel)
         if (key == INVALID_KEY_VALUE) {
             continue;
         }
-        const auto& iter = keyOffsetMap_.find(key);
-        if (iter != keyOffsetMap_.end()) {
+        const auto& iter = keyOffsetMap.find(key);
+        if (iter != keyOffsetMap.end()) {
             key = iter->second;
             continue;
         }
-        if (evictPos_.size() != 0 && channel == TRAIN_CHANNEL_ID) {
+        if (evictDevPos.size() != 0 && channel == TRAIN_CHANNEL_ID) {
             // 新值, emb有pos可复用
-            size_t offset = evictPos_.back();
-            keyOffsetMap_[key] = offset;
+            size_t offset = evictDevPos.back();
+            keyOffsetMap[key] = offset;
             key = offset;
-            evictPos_.pop_back();
+            evictDevPos.pop_back();
             continue;
         }
         // 新值
@@ -48,16 +48,16 @@ void EmbeddingStatic::Key2Offset(std::vector<emb_key_t>& keys, int channel)
             key = INVALID_KEY_VALUE;
             continue;
         }
-        keyOffsetMap_[key] = maxOffset_;
-        key = maxOffset_++;
+        keyOffsetMap[key] = maxOffset;
+        key = maxOffset++;
     }
-    if (maxOffset_ > devVocabSize_) {
-        LOG_ERROR("dev cache overflow {} > {}", maxOffset_, devVocabSize_);
+    if (maxOffset > devVocabSize) {
+        LOG_ERROR("dev cache overflow {} > {}", maxOffset, devVocabSize);
         throw std::runtime_error("dev cache overflow!");
     }
 }
 
 int64_t EmbeddingStatic::capacity() const
 {
-    return this->devVocabSize_;
+    return this->devVocabSize;
 }

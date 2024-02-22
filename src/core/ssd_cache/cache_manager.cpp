@@ -24,11 +24,12 @@ See the License for the specific language governing permissions and
 
 using namespace MxRec;
 
-inline void CacheManager::GetExternalKeys(EmbHashMapInfo &embHashMap, vector<emb_key_t> &externalKeys,
-                                          vector<emb_key_t> &internalKeys, const vector<emb_key_t> &keys) const
+inline void CacheManager::GetExternalKeys(const absl::flat_hash_map<emb_key_t, int64_t> &keyOffsetMap,
+                                          vector<emb_key_t> &externalKeys, vector<emb_key_t> &internalKeys,
+                                          const vector<emb_key_t> &keys) const
 {
     for (const emb_key_t key : keys) {
-        if (embHashMap.hostHashMap.find(key) == embHashMap.hostHashMap.end()) {
+        if (keyOffsetMap.find(key) == keyOffsetMap.end()) {
             externalKeys.emplace_back(key);
         } else {
             internalKeys.emplace_back(key);
@@ -69,7 +70,7 @@ void CacheManager::HandleRepeatAndInvalidKey(const vector<emb_key_t>& originalKe
 /// \param originalKeys 当前批次key
 /// \param channelId 通道id
 /// \return 转移结果枚举
-TransferRet CacheManager::TransferDDREmbWithSSD(const std::string& embTableName, EmbHashMapInfo& embHashMap,
+TransferRet CacheManager::TransferDDREmbWithSSD(TableInfo& table,
                                                 const vector<emb_key_t>& originalKeys, int channelId)
 {
     vector<emb_key_t> keys; // 去重和删除无效key
@@ -77,22 +78,22 @@ TransferRet CacheManager::TransferDDREmbWithSSD(const std::string& embTableName,
     // 区分HBM+DDR内key，和HBM+DDR外的key(新key或保存在SSD中的key)
     vector<emb_key_t> externalKeys;
     vector<emb_key_t> internalKeys;
-    GetExternalKeys(embHashMap, externalKeys, internalKeys, keys);
+    GetExternalKeys(table.keyOffsetMap, externalKeys, internalKeys, keys);
     if (externalKeys.empty()) { return TransferRet::TRANSFER_OK; }
 
     // 判断剩余内存空间是否足够; 可用内存空间计算：HBM+DDR-已占用; 若是训练，再加DDR已淘汰;
     // SSD仅与DDR交互，不考虑HBM淘汰位置；由于maxOffset比实际使用大1，所以虽然从0开始也不用再减1
-    size_t ddrAvailableSize = embHashMap.devVocabSize + embHashMap.hostVocabSize - embHashMap.maxOffset;
+    size_t ddrAvailableSize = table.devVocabSize + table.hostVocabSize - table.maxOffset;
     if (channelId == TRAIN_CHANNEL_ID) {
-        ddrAvailableSize += embHashMap.evictPos.size();
+        ddrAvailableSize += table.evictHostPos.size();
     }
-    LOG_DEBUG("TransferDDREmbWithSSD, maxOffset:{}, evictPos size:{}, ddrAvailableSize:{}",
-        embHashMap.maxOffset, embHashMap.evictPos.size(), ddrAvailableSize);
-    CreateSSDTableIfNotExist(embTableName);
+    LOG_DEBUG("TransferDDREmbWithSSD, maxOffset:{}, evictHostPos size:{}, ddrAvailableSize:{}",
+        table.maxOffset, table.evictHostPos.size(), ddrAvailableSize);
+    CreateSSDTableIfNotExist(table.name);
 
     // 调用ssdEngine查询当前批次key中保存在SSD中的key
     vector<emb_key_t> externalSSDKeys;
-    GetSSDKeys(embTableName, externalKeys, externalSSDKeys);
+    GetSSDKeys(table.name, externalKeys, externalSSDKeys);
     // 后续判断maxOffset是否超出范围时，maxOffset=devVocabSize+hostVocabSize时可用,此处包含等于
     bool isDDRSpaceEnough = ddrAvailableSize >= externalKeys.size();
     bool ddrSpaceEnoughOrEval = channelId != TRAIN_CHANNEL_ID || isDDRSpaceEnough;
@@ -130,7 +131,7 @@ TransferRet CacheManager::TransferDDREmbWithSSD(const std::string& embTableName,
     // 训练场景检查SSD剩余空间 评估不考虑新key
     if (channelId == TRAIN_CHANNEL_ID) {
         size_t needSSDSize = externalKeys.size() - externalSSDKeys.size() - ddrAvailableSize;
-        const int64_t ssdAvailableSize = ssdEngine->GetTableAvailableSpace(embTableName);
+        const int64_t ssdAvailableSize = ssdEngine->GetTableAvailableSpace(table.name);
         if (int64_t(needSSDSize) > ssdAvailableSize) {
             LOG_ERROR("TransferDDREmbWithSSD: ssd available space is not enough to transfer DDR emb data. "
                       "needSSDSize:{}, ssdAvailableSize:{}", needSSDSize, ssdAvailableSize);
@@ -141,8 +142,8 @@ TransferRet CacheManager::TransferDDREmbWithSSD(const std::string& embTableName,
     // 从SSD获取emb数据并从SSD删除; 避免DDR->SSD时空间不够
     vector<vector<float>> ssdEmbData;
     if (!externalSSDKeys.empty()) {
-        ssdEmbData = ssdEngine->FetchEmbeddings(embTableName, externalSSDKeys);
-        ssdEngine->DeleteEmbeddings(embTableName, externalSSDKeys);
+        ssdEmbData = ssdEngine->FetchEmbeddings(table.name, externalSSDKeys);
+        ssdEngine->DeleteEmbeddings(table.name, externalSSDKeys);
     }
 
     // 从ddr转移到ssd的key个数
@@ -155,18 +156,18 @@ TransferRet CacheManager::TransferDDREmbWithSSD(const std::string& embTableName,
      */
     // 记录要从DDR转移到SSD的key对应的offset(相对值，需减去devVocabSize)
     vector<size_t> ddrTransferPos;
-    TransferRet ddr2SsdRet = TransferDDREmb2SSD(embTableName, embHashMap, ddrSwapOutSize, internalKeys, ddrTransferPos);
+    TransferRet ddr2SsdRet = TransferDDREmb2SSD(table, ddrSwapOutSize, internalKeys, ddrTransferPos);
     if (ddr2SsdRet == TransferRet::DDR_SPACE_NOT_ENOUGH) {
-        ssdEngine->InsertEmbeddings(embTableName, externalSSDKeys, ssdEmbData);
+        ssdEngine->InsertEmbeddings(table.name, externalSSDKeys, ssdEmbData);
         return ddr2SsdRet;
     }
 
-    HandleDDRTransferPos(ddrTransferPos, externalSSDKeys, embHashMap);
+    HandleDDRTransferPos(ddrTransferPos, externalSSDKeys, table);
 
     /*
      * 转移SSD中保存的当前批次key的emb数据到DDR
      */
-    return TransferSSDEmb2DDR(embTableName, embHashMap, externalSSDKeys, ddrTransferPos, ssdEmbData);
+    return TransferSSDEmb2DDR(table, externalSSDKeys, ddrTransferPos, ssdEmbData);
 }
 
 /// SSD数据转移到DDR中后刷新映射和频次信息
@@ -174,32 +175,32 @@ TransferRet CacheManager::TransferDDREmbWithSSD(const std::string& embTableName,
 /// \param embHashMap emb hash表
 /// \param externalSSDKeys 存储在SSD中的key列表
 /// \param ddrTransferPos
-void CacheManager::RefreshRelateInfoWithSSD2DDR(const std::string& embTableName, EmbHashMapInfo& embHashMap,
+void CacheManager::RefreshRelateInfoWithSSD2DDR(TableInfo& table,
                                                 vector<emb_key_t>& externalSSDKeys, vector<size_t>& ddrTransferPos)
 {
     for (size_t i = 0; i < externalSSDKeys.size(); ++i) {
         // 映射关系 ddrTransferPos是在ddrEmbHash中的位置，记录映射时需加上devVocabSize
         auto& key = externalSSDKeys[i];
-        embHashMap.hostHashMap[key] = ddrTransferPos[i] + embHashMap.devVocabSize;
+        table.keyOffsetMap[key] = ddrTransferPos[i] + table.devVocabSize;
         // 频次
-        ddrKeyFreqMap[embTableName].PutWithInit(key, excludeDDRKeyCountMap[embTableName][key]);
-        excludeDDRKeyCountMap[embTableName].erase(key);
+        ddrKeyFreqMap[table.name].PutWithInit(key, excludeDDRKeyCountMap[table.name][key]);
+        excludeDDRKeyCountMap[table.name].erase(key);
     }
 }
 
-void CacheManager::GetDDREmbInfo(vector<emb_key_t>& keys, const std::string& embTableName, EmbHashMapInfo& embHashMap,
+void CacheManager::GetDDREmbInfo(vector<emb_key_t>& keys, TableInfo& table,
                                  vector<size_t>& ddrTransferPos, vector<vector<float>>& ddrEmbData) const
 {
     // 根据offset 获取对应Emb数据
     for (auto& key : keys) {
-        ddrTransferPos.emplace_back(embHashMap.hostHashMap[key] - embHashMap.devVocabSize);
+        ddrTransferPos.emplace_back(table.keyOffsetMap[key] - table.devVocabSize);
     }
 
     LOG_TRACE("DDR keys:{}", VectorToString(keys));
     LOG_TRACE("DDR key positions:{}", VectorToString(ddrTransferPos));
 
     ddrEmbData.resize(keys.size());
-    const auto& emb = hostEmbs->GetEmb(embTableName);
+    const auto& emb = hostEmbs->GetEmb(table.name);
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) shared(ddrTransferPos, emb, ddrEmbData)
     for (size_t i = 0; i < ddrTransferPos.size(); ++i) {
         auto& missingKeyPo = ddrTransferPos[i];
@@ -229,14 +230,14 @@ void CacheManager::UpdateDDREmbInfo(const std::string& embTableName,
 /// \param embHashMap emb map
 /// \param ddrSwapOutKeys 从DDR中转移到SSD中key列表
 /// \param ddrSwapOutCounts 从DDR中转移到SSD中key频次数据
-void CacheManager::RefreshRelateInfoWithDDR2SSD(const string& embTableName, EmbHashMapInfo& embHashMap,
+void CacheManager::RefreshRelateInfoWithDDR2SSD(TableInfo& table,
                                                 vector<emb_key_t>& ddrSwapOutKeys,
                                                 vector<freq_num_t>& ddrSwapOutCounts)
 {
-    auto& excludeFreqMap = excludeDDRKeyCountMap[embTableName];
+    auto& excludeFreqMap = excludeDDRKeyCountMap[table.name];
     for (size_t i = 0; i < ddrSwapOutKeys.size(); ++i) {
         auto& key = ddrSwapOutKeys[i];
-        embHashMap.hostHashMap.erase(key);
+        table.keyOffsetMap.erase(key);
         excludeFreqMap[key] = ddrSwapOutCounts[i];
     }
 }
@@ -325,7 +326,7 @@ void CacheManager::PutKey(const string& embTableName, const emb_key_t& key, Reco
 /// \param externalSSDKeys SSD->DDR的key列表
 /// \param embHashMap emb hash表
 void CacheManager::HandleDDRTransferPos(vector<size_t>& ddrTransferPos, vector<emb_key_t>& externalSSDKeys,
-                                        EmbHashMapInfo& embHashMap)
+                                        TableInfo& table)
 {
     if (ddrTransferPos.size() == externalSSDKeys.size()) {
         return;
@@ -336,21 +337,21 @@ void CacheManager::HandleDDRTransferPos(vector<size_t>& ddrTransferPos, vector<e
     // ddrTransferPos中是DDR内偏移位置，存入evictPos时，需加上devVocabSize;取出时需减去
     if (ddrTransferPos.size() > externalSSDKeys.size()) {
         while (ddrTransferPos.size() > externalSSDKeys.size()) {
-            embHashMap.evictPos.emplace_back(ddrTransferPos.back() + embHashMap.devVocabSize);
+            table.evictHostPos.emplace_back(ddrTransferPos.back() + table.devVocabSize);
             ddrTransferPos.pop_back();
         }
         return;
     }
     // 补齐offset
-    while (ddrTransferPos.size() < externalSSDKeys.size() && !embHashMap.evictPos.empty()) {
-        ddrTransferPos.emplace_back(embHashMap.evictPos.back() - embHashMap.devVocabSize);
-        embHashMap.evictPos.pop_back();
+    while (ddrTransferPos.size() < externalSSDKeys.size() && !table.evictHostPos.empty()) {
+        ddrTransferPos.emplace_back(table.evictHostPos.back() - table.devVocabSize);
+        table.evictHostPos.pop_back();
     }
-    auto allSize = embHashMap.devVocabSize + embHashMap.hostVocabSize;
+    auto allSize = table.devVocabSize + table.hostVocabSize;
     // 还不够继续使用maxOffset
-    while (ddrTransferPos.size() < externalSSDKeys.size() && embHashMap.maxOffset < allSize) {
-        auto nextPos = embHashMap.maxOffset++;
-        ddrTransferPos.emplace_back(nextPos - embHashMap.devVocabSize);
+    while (ddrTransferPos.size() < externalSSDKeys.size() && table.maxOffset < allSize) {
+        auto nextPos = table.maxOffset++;
+        ddrTransferPos.emplace_back(nextPos - table.devVocabSize);
     }
     LOG_DEBUG("HandleDDRTransferPos: handle end, pos len:{}, keys len:{}",
         ddrTransferPos.size(), externalSSDKeys.size());
@@ -366,7 +367,7 @@ void CacheManager::GetSSDKeys(const std::string& embTableName, vector<emb_key_t>
     }
 }
 
-TransferRet CacheManager::TransferDDREmb2SSD(const string& embTableName, EmbHashMapInfo& embHashMap,
+TransferRet CacheManager::TransferDDREmb2SSD(TableInfo& table,
                                              int64_t ddrSwapOutSize,
                                              const vector<emb_key_t>& keys, vector<size_t>& ddrTransferPos)
 {
@@ -380,34 +381,33 @@ TransferRet CacheManager::TransferDDREmb2SSD(const string& embTableName, EmbHash
     // 获取DDR中指定数量的最低频次key，并获取相应emb数据，执行DDR换出到SSD
     vector<emb_key_t> ddrSwapOutKeys;
     vector<freq_num_t> ddrSwapOutCounts;
-    ddrKeyFreqMap[embTableName].GetAndDeleteLeastFreqKeyInfo(ddrSwapOutSize, keys, ddrSwapOutKeys,
-                                                             ddrSwapOutCounts);
+    ddrKeyFreqMap[table.name].GetAndDeleteLeastFreqKeyInfo(ddrSwapOutSize, keys, ddrSwapOutKeys, ddrSwapOutCounts);
     if (static_cast<int64_t>(ddrSwapOutKeys.size()) != ddrSwapOutSize) {
-        auto keyTableSize = ddrKeyFreqMap[embTableName].keyTable.size();
+        auto keyTableSize = ddrKeyFreqMap[table.name].keyTable.size();
         // 获取的最低频次key数量和预期不一致，DDR空间不足，不能放置当前批次数据
         LOG_ERROR("TransferDDREmbWithSSD, vector length is not equal, ddrSwapOutKeys size:{}, "
                   "ddrSwapOutSize:{}, ddr lfu keyTable size:{}",
                   ddrSwapOutKeys.size(), ddrSwapOutSize, keyTableSize);
-        RestoreLeastFreqInfo(embTableName, ddrSwapOutKeys, ddrSwapOutCounts);
+        RestoreLeastFreqInfo(table.name, ddrSwapOutKeys, ddrSwapOutCounts);
         return TransferRet::DDR_SPACE_NOT_ENOUGH;
     }
     LOG_DEBUG("TransferDDREmbWithSSD: get DDR embeddings and save to SSD, size:{}", ddrSwapOutKeys.size());
     // 获取DDR中emb数据
     vector<vector<float>> ddrEmbData;
-    GetDDREmbInfo(ddrSwapOutKeys, embTableName, embHashMap, ddrTransferPos, ddrEmbData);
+    GetDDREmbInfo(ddrSwapOutKeys, table, ddrTransferPos, ddrEmbData);
     // 调用SSDEngine接口，将DDR Emb数据保存到SSD
-    ssdEngine->InsertEmbeddings(embTableName, ddrSwapOutKeys, ddrEmbData);
+    ssdEngine->InsertEmbeddings(table.name, ddrSwapOutKeys, ddrEmbData);
 
     // 初始化DDR内被转移出去的位置
-    hostEmbs->EvictInitEmb(embTableName, ddrTransferPos);
+    hostEmbs->EvictInitEmb(table.name, ddrTransferPos);
 
     // 更新记录的DDR中key频次信息
-    RefreshRelateInfoWithDDR2SSD(embTableName, embHashMap, ddrSwapOutKeys, ddrSwapOutCounts);
+    RefreshRelateInfoWithDDR2SSD(table, ddrSwapOutKeys, ddrSwapOutCounts);
     LOG_DEBUG("TransferDDREmbWithSSD: ddr2SsdTc TimeCost(ms):{}", ddr2SsdTc.ElapsedMS());
     return TransferRet::TRANSFER_OK;
 }
 
-TransferRet CacheManager::TransferSSDEmb2DDR(const string& embTableName, EmbHashMapInfo& embHashMap,
+TransferRet CacheManager::TransferSSDEmb2DDR(TableInfo& table,
                                              vector<emb_key_t>& externalSSDKeys, vector<size_t>& ddrTransferPos,
                                              vector<vector<float>>& ssdEmbData)
 {
@@ -422,8 +422,8 @@ TransferRet CacheManager::TransferSSDEmb2DDR(const string& embTableName, EmbHash
         return TransferRet::TRANSFER_ERROR;
     }
     // 将SSD emb存储到DDR中 刷新频次信息
-    UpdateDDREmbInfo(embTableName, ddrTransferPos, ssdEmbData);
-    RefreshRelateInfoWithSSD2DDR(embTableName, embHashMap, externalSSDKeys, ddrTransferPos);
+    UpdateDDREmbInfo(table.name, ddrTransferPos, ssdEmbData);
+    RefreshRelateInfoWithSSD2DDR(table, externalSSDKeys, ddrTransferPos);
     LOG_DEBUG("TransferDDREmbWithSSD: ssd2DdrTc TimeCost(ms):{}", ssd2DdrTc.ElapsedMS());
     return TransferRet::TRANSFER_OK;
 }

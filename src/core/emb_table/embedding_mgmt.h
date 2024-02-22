@@ -90,6 +90,10 @@ public:
      */
     int Save(const string& filePath);
 
+    void SetCacheManagerForEmbTable(CacheManager* cacheManager);
+
+    void EnableSSD();
+
 private:
 
     EmbeddingMgmt();

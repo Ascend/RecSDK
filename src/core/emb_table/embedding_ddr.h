@@ -48,6 +48,16 @@ public:
 
     int Save(const string& savePath);
 
+    void RefreshFreqInfoWithSwap();
+
+    void AddKeyFreqInfo(const emb_key_t& key, RecordType type);
+
+    void SetCacheManager(CacheManager *cm);
+
+    void AddCacheManagerTraceLog() const;
+
+    TableInfo GetTableInfo();
+
 GTEST_PRIVATE:
 
     int LoadHashMap(const string& savePath);
@@ -79,12 +89,11 @@ GTEST_PRIVATE:
      * (区别于oldSwap: pair.second为已存在于DDR key + 换入换出前映射到DDR的新key)
      */
     std::vector<emb_key_t> ddr2HbmKeys;
-    bool isSSDEnabled;
     std::vector<int> devOffset2Batch; // has -1
 
     /**
      * 记录HBM上查找空位的当前位置
-     * 值域为[0, devVocabSize_]
+     * 值域为[0, devVocabSize]
     **/
     size_t currentUpdatePos;
     size_t currentUpdatePosStart; // 记录HBM上查找空位的起始位置

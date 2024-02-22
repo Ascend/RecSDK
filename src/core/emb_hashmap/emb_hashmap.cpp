@@ -68,6 +68,8 @@ void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, DDRPara
     vector<size_t> swapPos;
     vector<int32_t> lookUpVec = table->FindOffset(keys, swapId, channelId, swapPos);
 
+    table->RefreshFreqInfoWithSwap();
+
     EASY_BLOCK("hostHashMaps->tdt")
 
     std::copy(lookUpVec.begin(), lookUpVec.end(), std::back_inserter(ddrParam.offsetsOut));
