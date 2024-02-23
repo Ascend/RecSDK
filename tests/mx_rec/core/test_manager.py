@@ -30,7 +30,7 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
     """
 
     @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
-    def test_generate_table_info_list_case1(self, merge_table_config_initializer):
+    def test_generate_table_info_list_case1(self, manager_config_initializer):
         """
         case1: 一张表开DDR，一张表没开DDR，抛出异常
         """
@@ -39,7 +39,7 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
 
         with tf.Graph().as_default():
             mock_config_initializer = MockConfigInitializer()
-            merge_table_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+            manager_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
             test_table1 = MockSparseEmbedding("test_table1")
             test_table1.is_hbm = False
@@ -57,7 +57,7 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
                          should_skip=mock.MagicMock(return_value=True),
                          check_dangling_table=mock.MagicMock(return_value=["test_table"]))
     @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
-    def test_generate_table_info_list_case2(self, merge_table_config_initializer):
+    def test_generate_table_info_list_case2(self, manager_config_initializer):
         """
         case2: test_table是dangling_table，skip为True
         """
@@ -66,11 +66,15 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
 
         with tf.Graph().as_default():
             mock_config_initializer = MockConfigInitializer()
-            merge_table_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+            manager_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
             test_table = MockSparseEmbedding("test_table")
             test_table.host_vocabulary_size = 1
             mock_config_initializer.get_instance().sparse_embed_config.table_instance_dict = dict(test_table=test_table)
+
+            mock_opt = MockOptimizer()
+            manager_config_initializer.get_instance().optimizer_config.optimizer_instance = mock_opt
+            test_table.optimizer_instance_list = [mock_opt]
 
             table_info_list = generate_table_info_list()
             self.assertListEqual(table_info_list, [])
@@ -79,7 +83,7 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
                          should_skip=mock.MagicMock(return_value=True),
                          check_dangling_table=mock.MagicMock(return_value=[]))
     @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
-    def test_generate_table_info_list_case2(self, merge_table_config_initializer):
+    def test_generate_table_info_list_case3(self, manager_config_initializer):
         """
         case3: test_table不是dangling_table，skip为True
         """
@@ -88,11 +92,15 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
 
         with tf.Graph().as_default():
             mock_config_initializer = MockConfigInitializer()
-            merge_table_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+            manager_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
             test_table = MockSparseEmbedding("test_table")
             test_table.host_vocabulary_size = 1
             mock_config_initializer.get_instance().sparse_embed_config.table_instance_dict = dict(test_table=test_table)
+
+            mock_opt = MockOptimizer()
+            manager_config_initializer.get_instance().optimizer_config.optimizer_instance = mock_opt
+            test_table.optimizer_instance_list = [mock_opt]
 
             table_info_list = generate_table_info_list()
             self.assertListEqual(table_info_list, [])
@@ -105,7 +113,7 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
                          should_skip=mock.MagicMock(return_value=False),
                          check_dangling_table=mock.MagicMock(return_value=[]))
     @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
-    def test_generate_table_info_list_case3(self, merge_table_config_initializer):
+    def test_generate_table_info_list_case4(self, manager_config_initializer):
         """
         case4: 静态shape，test_table不是dangling_table，skip为False
         """
@@ -114,7 +122,7 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
 
         with tf.Graph().as_default():
             mock_config_initializer = MockConfigInitializer(use_static=True)
-            merge_table_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+            manager_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
             test_table = MockSparseEmbedding("test_table")
             test_table.host_vocabulary_size = 8
@@ -128,6 +136,10 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
             test_table.ext_emb_size = 8
             test_table.ssd_data_path = ""
             mock_config_initializer.get_instance().sparse_embed_config.table_instance_dict = dict(test_table=test_table)
+
+            mock_opt = MockOptimizer()
+            manager_config_initializer.get_instance().optimizer_config.optimizer_instance = mock_opt
+            test_table.optimizer_instance_list = [mock_opt]
 
             table_info_list = generate_table_info_list()
             self.assertListEqual(table_info_list, ["test_table_info"])
@@ -310,7 +322,8 @@ class TestMatchedOptSlotInitializersFunc(unittest.TestCase):
 
     @mock.patch.multiple("mx_rec.core.asc.manager",
                          InitializeInfo=mock.MagicMock(return_value="slot_initializer"))
-    def test_matched_opt_slot_initializers(self):
+    @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
+    def test_matched_opt_slot_initializers(self, manager_config_initializer):
         """
         case: test matched_opt_slot_initializers
         """
@@ -318,10 +331,14 @@ class TestMatchedOptSlotInitializersFunc(unittest.TestCase):
         from mx_rec.core.asc.manager import matched_opt_slot_initializers
 
         with tf.Graph().as_default():
+            mock_config_initializer = MockConfigInitializer()
+            manager_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
             table_instance = MockSparseEmbedding("test_table")
             table_instance.emb_size = 8
-            table_instance.ext_emb_size = 8
-            table_instance.optimizer_instance_list = [MockOptimizer()]
+            table_instance.ext_emb_size = 24
+            mock_opt = MockOptimizer()
+            manager_config_initializer.get_instance().optimizer_config.optimizer_instance = mock_opt
+            table_instance.optimizer_instance_list = [mock_opt]
 
             slot_initializers = matched_opt_slot_initializers(table_instance)
             self.assertListEqual(slot_initializers, ["slot_initializer", "slot_initializer"])

@@ -23,8 +23,7 @@ EmbeddingTable::EmbeddingTable(const EmbInfo& info, const RankInfo& rankInfo, in
       embSize_(info.embeddingSize), extEmbSize_(info.extEmbeddingSize),
       embInfo_(info), seed_(inSeed), rankId_(rankInfo.rankId)
 {
-    LOG_TRACE("table {} isDynamic = {} embeddingSize {} extSize {}",
-              name, isDynamic_, embSize_, extEmbSize_);
+    LOG_INFO("table {} isDynamic = {} embeddingSize {} extSize {}", name, isDynamic_, embSize_, extEmbSize_);
 }
 
 EmbeddingTable::~EmbeddingTable()
