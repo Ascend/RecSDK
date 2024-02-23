@@ -234,7 +234,8 @@ bool HybridMgmt::Save(const string savePath)
     if (mgmtRankInfo.isDDR) {
         // DDR模式保存host的emb表以及hashmap
         LOG_DEBUG(MGMT + "Start host side save: ddr mode hashmap");
-        EmbeddingMgmt::Instance()->Save(savePath);
+        saveData.hostEmbs = hostEmbs->GetHostEmbs();
+        saveData.embHashMaps = hostHashMaps->GetHashMaps();
     } else {
         // HBM模式保存最大偏移（真正使用了多少vocab容量），特征到偏移的映射
         LOG_DEBUG(MGMT + "Start host side save: no ddr mode hashmap");
