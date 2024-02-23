@@ -87,8 +87,8 @@ class CustomizedAdagrad(adagrad.AdagradOptimizer, CustomizedOptimizer):
         accumulator = creat_one_single_slot(var, self._name + "/" + "accumulator")
         ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(accumulator.name)
         named_slot_key = (var.op.graph, var.op.name)
-        table_instance = self.config_instance.sparse_embed_config.get_table_instance(var)
-        ConfigInitializer.get_instance().optimizer_config.set_optimize_for_table(table_instance.table_name, self._name,
+        table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
+        ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name, self._name,
                                                                         {"accumulator": accumulator})
         return [{"slot": accumulator, "named_slot_key": named_slot_key, "slot_name": "acc", "optimizer": self}]
 

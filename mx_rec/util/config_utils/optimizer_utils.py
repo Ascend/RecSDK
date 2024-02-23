@@ -22,7 +22,7 @@ class OptimizerConfig:
     def optimizer_instance(self, optimizer):
         self._optimizer_instance = optimizer
 
-    def set_optimize_for_table(self, table_name, optimizer_name, optimizer_dict):
+    def set_optimizer_for_table(self, table_name, optimizer_name, optimizer_dict):
         if table_name in self._table_optimizer_dict:
             raise EnvironmentError(f"sparse embedding table {table_name} has set optimizers.")
         self._table_optimizer_dict[table_name] = {optimizer_name: optimizer_dict}

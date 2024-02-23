@@ -95,7 +95,7 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
         ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(linear.name)
         named_slot_key = (var.op.graph, var.op.name)
         table_instance = self.config_instance.sparse_embed_config.get_table_instance(var)
-        ConfigInitializer.get_instance().optimizer_config.set_optimize_for_table(table_instance.table_name, self._name,
+        ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name, self._name,
                                                                         {"accum": accum, "linear": linear})
         return [{"slot": accum, "named_slot_key": named_slot_key, "slot_name": "accum", "optimizer": self},
                 {"slot": linear, "named_slot_key": named_slot_key, "slot_name": "linear", "optimizer": self}]
@@ -254,8 +254,8 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
                 # make sure sparse optimizer statements will not be saved and restored within tf checkpoint.
                 ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(accum.name)
                 ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(linear.name)
-                table_instance = self.config_instance.sparse_embed_config.get_table_instance(each_var)
-                ConfigInitializer.get_instance().optimizer_config.set_optimize_for_table(table_instance.table_name,
+                table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(each_var)
+                ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name,
                                                                                          self._name,
                                                                                          {"accum": accum,
                                                                                           "linear": linear})

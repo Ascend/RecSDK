@@ -255,7 +255,7 @@ class Saver(object):
                 if optimizer:
                     self._build_optimizer_restore(sub_placeholder_dict, table_instance, optimizer)
 
-    def _build_optimizer_restore(self, sub_placeholder_dict, optimizer):
+    def _build_optimizer_restore(self, sub_placeholder_dict, table_instance, optimizer):
         sub_placeholder_dict["optimizer"] = optimizer_placeholder_dict = dict()
         for optimizer_name, optimizer_state_dict in optimizer.items():
             optimizer_placeholder_dict[optimizer_name] = sub_optimizer_placeholder_dict = \
