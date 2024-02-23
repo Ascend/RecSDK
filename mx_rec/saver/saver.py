@@ -233,8 +233,9 @@ class Saver(object):
             with tf.compat.v1.variable_scope(table_name):
                 sub_dict = self.save_op_dict[table_name]
                 sub_dict[DataName.EMBEDDING.value] = var
-                if table_instance.optimizer:
-                    sub_dict["optimizer"] = table_instance.optimizer
+                optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(table_name)
+                if optimizer:
+                    sub_dict["optimizer"] = optimizer
 
     def _build_restore(self):
         for var in self.var_list:
@@ -249,14 +250,14 @@ class Saver(object):
                                              name=DataName.EMBEDDING.value)
                 assign_op = var.assign(variable)
                 self.restore_fetch_list.append(assign_op)
+                optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(
+                    table_instance.table_name)
+                if optimizer:
+                    self._build_optimizer_restore(sub_placeholder_dict, table_instance, optimizer)
 
-                if table_instance.optimizer:
-                    self._build_optimizer_restore(sub_placeholder_dict, table_instance)
-
-    def _build_optimizer_restore(self, sub_placeholder_dict, table_instance):
+    def _build_optimizer_restore(self, sub_placeholder_dict, optimizer):
         sub_placeholder_dict["optimizer"] = optimizer_placeholder_dict = dict()
-        optimizer_states = table_instance.optimizer
-        for optimizer_name, optimizer_state_dict in optimizer_states.items():
+        for optimizer_name, optimizer_state_dict in optimizer.items():
             optimizer_placeholder_dict[optimizer_name] = sub_optimizer_placeholder_dict = \
                 dict([(state_key, tf.compat.v1.placeholder(dtype=tf.float32,
                                                            shape=[table_instance.slice_device_vocabulary_size,

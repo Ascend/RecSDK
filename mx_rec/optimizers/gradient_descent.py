@@ -41,7 +41,9 @@ def create_hash_optimizer(learning_rate, use_locking=False, name="GradientDescen
     if ConfigInitializer.get_instance().use_dynamic_expansion:
         raise ValueError("dynamic expansion mode is not compatible with the optimizer, please config dynamic "
                          "expansion mode and optimizer correctly")
-    return CustomizedGradientDescent(learning_rate=learning_rate, use_locking=use_locking, name=name)
+    optimizer = CustomizedGradientDescent(learning_rate=learning_rate, use_locking=use_locking, name=name)
+    ConfigInitializer.get_instance().optimizer_config.optimizer_instance = optimizer
+    return optimizer
 
 
 class CustomizedGradientDescent(gradient_descent.GradientDescentOptimizer, CustomizedOptimizer):
@@ -49,6 +51,7 @@ class CustomizedGradientDescent(gradient_descent.GradientDescentOptimizer, Custo
 
     def __init__(self, learning_rate, use_locking=False, name="GradientDescent"):
         self.optimizer_type = "gradient_descent"
+        self.optim_param_list = []
         super(CustomizedGradientDescent, self)._get_name(name=name)
         super(CustomizedGradientDescent, self).__init__(learning_rate=learning_rate, use_locking=use_locking,
                                                         name=self.unique_name)

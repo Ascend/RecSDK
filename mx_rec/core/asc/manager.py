@@ -43,7 +43,7 @@ def generate_table_info_list():
 
     for _, table_instance in ConfigInitializer.get_instance().sparse_embed_config.table_instance_dict.items():
         # When dynamic expansion mode, ext_emb_size is set by optimizer
-        if optimizer is not None:
+        if ConfigInitializer.get_instance().use_dynamic_expansion:
             table_instance.ext_emb_size = table_instance.emb_size * (1 + optimizer.slot_num)
             logger.debug("ext_emb_size is reset to be %s for EmbInfo", table_instance.ext_emb_size)
         skip = should_skip(table_instance.table_name)
