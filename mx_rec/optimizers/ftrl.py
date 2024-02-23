@@ -65,6 +65,7 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
 
     def __init__(self, learning_rate, use_locking=False, name="Ftrl", **kwargs):
         self.optimizer_type = "ftrl"
+        self.optim_param_list = ["accum", "linear"]
         super(CustomizedFtrl, self)._get_name(name=name)
         super(CustomizedFtrl, self).__init__(
             learning_rate=learning_rate,
@@ -93,11 +94,9 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
         ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(accum.name)
         ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(linear.name)
         named_slot_key = (var.op.graph, var.op.name)
-        table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
-        if self._name in table_instance.optimizer:
-            raise EnvironmentError(f"Sparse optimizer named {self._name} has exists.")
-
-        table_instance.set_optimizer(self._name, {"accum": accum, "linear": linear})
+        table_instance = self.config_instance.sparse_embed_config.get_table_instance(var)
+        ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name, self._name,
+                                                                        {"accum": accum, "linear": linear})
         return [{"slot": accum, "named_slot_key": named_slot_key, "slot_name": "accum", "optimizer": self},
                 {"slot": linear, "named_slot_key": named_slot_key, "slot_name": "linear", "optimizer": self}]
 
@@ -255,6 +254,8 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
                 # make sure sparse optimizer statements will not be saved and restored within tf checkpoint.
                 ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(accum.name)
                 ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(linear.name)
-
-                if self._name not in table_instance.optimizer:
-                    table_instance.set_optimizer(self._name, {"accum": accum, "linear": linear})
+                table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(each_var)
+                ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name,
+                                                                                         self._name,
+                                                                                         {"accum": accum,
+                                                                                          "linear": linear})

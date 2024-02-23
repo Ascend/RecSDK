@@ -53,10 +53,12 @@ def create_hash_optimizer(learning_rate=0.001,
     if ConfigInitializer.get_instance().use_dynamic_expansion:
         raise ValueError("dynamic expansion mode is not compatible with the optimizer, please config dynamic "
                          "expansion mode and optimizer correctly")
-    return CustomizedAdagrad(learning_rate=learning_rate,
-                             initial_accumulator_value=initial_accumulator_value,
-                             use_locking=use_locking,
-                             name=name)
+    optimizer = CustomizedAdagrad(learning_rate=learning_rate,
+                                  initial_accumulator_value=initial_accumulator_value,
+                                  use_locking=use_locking,
+                                  name=name)
+    ConfigInitializer.get_instance().optimizer_config.optimizer_instance = optimizer
+    return optimizer
 
 
 class CustomizedAdagrad(adagrad.AdagradOptimizer, CustomizedOptimizer):
@@ -68,6 +70,7 @@ class CustomizedAdagrad(adagrad.AdagradOptimizer, CustomizedOptimizer):
                  use_locking=False,
                  name="Adagrad"):
         self.optimizer_type = "Adagrad"
+        self.optim_param_list = ["accumulator"]
         super(CustomizedAdagrad, self)._get_name(name=name)
         super(CustomizedAdagrad, self).__init__(learning_rate=learning_rate,
                                                 initial_accumulator_value=initial_accumulator_value,
@@ -85,10 +88,8 @@ class CustomizedAdagrad(adagrad.AdagradOptimizer, CustomizedOptimizer):
         ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(accumulator.name)
         named_slot_key = (var.op.graph, var.op.name)
         table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
-        if self._name in table_instance.optimizer:
-            raise EnvironmentError(f"Sparse optimizer named {self._name} already exists.")
-
-        table_instance.set_optimizer(self._name, {"accumulator": accumulator})
+        ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name, self._name,
+                                                                        {"accumulator": accumulator})
         return [{"slot": accumulator, "named_slot_key": named_slot_key, "slot_name": "acc", "optimizer": self}]
 
     def insert_slot(self, slot, named_slots_key, slot_name):

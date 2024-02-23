@@ -51,6 +51,7 @@ class CustomizedGradientDescent(gradient_descent.GradientDescentOptimizer, Custo
 
     def __init__(self, learning_rate, use_locking=False, name="GradientDescent"):
         self.optimizer_type = "gradient_descent"
+        self.optim_param_list = []
         super(CustomizedGradientDescent, self)._get_name(name=name)
         super(CustomizedGradientDescent, self).__init__(learning_rate=learning_rate, use_locking=use_locking,
                                                         name=self.unique_name)

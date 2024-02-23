@@ -68,6 +68,7 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
 
     def __init__(self, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8, use_locking=False, name="LazyAdam"):
         self.optimizer_type = "LazyAdam"
+        self.optim_param_list = ["momentum", "velocity"]
         self.config_instance = ConfigInitializer.get_instance()
         super(CustomizedLazyAdam, self)._get_name(name=name)
         super(CustomizedLazyAdam, self).__init__(learning_rate=learning_rate, beta1=beta1, beta2=beta2,
@@ -90,11 +91,10 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
         self.config_instance.sparse_embed_config.insert_removing_var_list(momentum.name)
         self.config_instance.sparse_embed_config.insert_removing_var_list(velocity.name)
         named_slot_key = (var.op.graph, var.op.name)
-        table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
-        if self._name in table_instance.optimizer:
-            raise EnvironmentError(f"Sparse optimizer named {self._name} has exists.")
-
-        table_instance.set_optimizer(self._name, {"momentum": momentum, "velocity": velocity})
+        table_instance = self.config_instance.sparse_embed_config.get_table_instance(var)
+        ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name, self._name,
+                                                                        {"momentum": momentum,
+                                                                         "velocity": velocity})
         return [{"slot": momentum, "named_slot_key": named_slot_key, "slot_name": "m", "optimizer": self},
                 {"slot": velocity, "named_slot_key": named_slot_key, "slot_name": "v", "optimizer": self}]
 
@@ -203,5 +203,7 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
             self.config_instance.sparse_embed_config.insert_removing_var_list(momentum.name)
             self.config_instance.sparse_embed_config.insert_removing_var_list(velocity.name)
 
-            if self._name not in table_instance.optimizer:
-                table_instance.set_optimizer(self._name, {"momentum": momentum, "velocity": velocity})
+            table_instance = self.config_instance.sparse_embed_config.get_table_instance(each_var)
+            ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name,
+                                                                                     self._name, {"momentum": momentum,
+                                                                                                  "velocity": velocity})
