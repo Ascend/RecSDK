@@ -38,6 +38,8 @@ def generate_table_info_list():
                          f"of each table `{table_instance_dict.keys()}` is `{is_hbm_list}`.")
 
     optimizer = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
+    if optimizer is None:
+        raise ValueError("Optimizer should be set in optimizer_config.")
     # generate table info
     dangling_table = check_dangling_table()
 
@@ -46,6 +48,7 @@ def generate_table_info_list():
         if ConfigInitializer.get_instance().use_dynamic_expansion:
             table_instance.ext_emb_size = table_instance.emb_size * (1 + optimizer.slot_num)
             logger.debug("ext_emb_size is reset to be %s for EmbInfo", table_instance.ext_emb_size)
+
         skip = should_skip(table_instance.table_name)
         if table_instance.table_name in dangling_table or skip:
             logger.info("skip table %s: %s which does not need to be provided to the EmbInfo.",
@@ -143,19 +146,21 @@ def matched_emb_initializer(tabel_info):
 def matched_opt_slot_initializers(table_instance):
     start_index = table_instance.emb_size
     slot_initializers = []
-    logger.debug("matched_opt_slot_initializers, scalar emb size:%s,  optimizer_instance_list size:%s",
-                 table_instance.ext_emb_size, len(table_instance.optimizer_instance_list))
-    for optimizer in table_instance.optimizer_instance_list:
-        for slot_init_value in optimizer.get_slot_init_values():
-            slot_initializer = InitializeInfo(name="constant_initializer",
-                                              start=start_index,
-                                              len=table_instance.emb_size,
-                                              constant_initializer_info=ConstantInitializerInfo(
-                                                  constant_val=slot_init_value
-                                              ))
-            slot_initializers.append(slot_initializer)
-            start_index += table_instance.emb_size
 
+    optimizer = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
+    for slot_init_value in optimizer.get_slot_init_values():
+        slot_initializer = InitializeInfo(name="constant_initializer",
+                                          start=start_index,
+                                          len=table_instance.emb_size,
+                                          constant_initializer_info=ConstantInitializerInfo(
+                                              constant_val=slot_init_value
+                                          ))
+        slot_initializers.append(slot_initializer)
+        start_index += table_instance.emb_size
+
+    logger.debug("matched_opt_slot_initializers, ext emb size:%s, optimizer_instance_list size:%s, "
+                 "slot_initializers size:%s", table_instance.ext_emb_size, len(table_instance.optimizer_instance_list),
+                 len(slot_initializers))
     return slot_initializers
 
 

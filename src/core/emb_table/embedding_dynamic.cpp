@@ -87,14 +87,14 @@ int64_t EmbeddingDynamic::GetEmptyEmbeddingAddress()
 void EmbeddingDynamic::MallocEmbeddingBlock(int embNum)
 {
     void *block = nullptr;
-    aclError ec = aclrtMalloc(&block, embNum * embSize_ * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST);
+    aclError ec = aclrtMalloc(&block, embNum * extEmbSize_ * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST);
     if (ec != 0) {
         throw std::bad_alloc();
     }
     RandomInit(block, embNum);
     memoryList_.push_back(block);
     for (int i = 0; i < embNum; i++) {
-        float *embAddr = static_cast<float*>(block) + (i * embSize_);
+        float *embAddr = static_cast<float*>(block) + (i * extEmbSize_);
         embeddingList_.push_back(embAddr);
     }
     capacity_ += embNum;
@@ -103,16 +103,16 @@ void EmbeddingDynamic::MallocEmbeddingBlock(int embNum)
 void EmbeddingDynamic::RandomInit(void* addr, size_t embNum)
 {
     LOG_INFO("Device GenerateEmbData Start, seed:{}, initializer num: {}", seed_, embInfo_.initializeInfos.size());
-    vector<float> hostmem(embNum * embSize_);
+    vector<float> hostmem(embNum * extEmbSize_);
     for (const auto& initializeInfo: as_const(embInfo_.initializeInfos)) {
         for (size_t i = 0; i < embNum; ++i) {
-            initializeInfo.initializer->GenerateData(&hostmem[i * embSize_], embSize_);
+            initializeInfo.initializer->GenerateData(&hostmem[i * extEmbSize_], extEmbSize_);
         }
     }
     LOG_INFO("Device GenerateEmbData End, seed:{}", seed_);
 
-    aclError ret = aclrtMemcpy(addr, embNum * embSize_ * sizeof(float),
-                               hostmem.data(), embNum * embSize_ * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
+    aclError ret = aclrtMemcpy(addr, embNum * extEmbSize_ * sizeof(float),
+                               hostmem.data(), embNum * extEmbSize_ * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
     if (ret != ACL_SUCCESS) {
         LOG_ERROR("aclrtMemcpy failed, ret={}", ret);
     }

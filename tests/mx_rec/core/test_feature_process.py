@@ -63,22 +63,20 @@ class TestAfterRunFuncOfEvictHookClass(TestEvictHookClass):
         self.evict_var_assert = [[0., 0., 0., 0., 0.], [0., 0., 0., 0., 0.]]
 
     @mock.patch("mx_rec.core.feature_process.npu_ops.gen_npu_ops.get_next")
-    @mock.patch("mx_rec.util.config_utils.embedding_utils.SparseEmbedConfig.get_table_instance_by_name")
     @mock.patch("mx_rec.core.feature_process.ConfigInitializer")
-    def test_after_run_case1(self, feature_process_config_initializer, mock_get_table_instance_by_name, mock_get_next):
+    def test_after_run_case1(self, feature_process_config_initializer, mock_get_next):
         """
         case1: evict_enable为True，python和C++侧正常触发淘汰
         """
 
         with tf.Graph().as_default():
-            mock_config_initializer = MockConfigInitializer(use_dynamic_expansion=False)
+            test_table = MockSparseEmbedding()
+            mock_config_initializer = MockConfigInitializer(use_dynamic_expansion=False, var=test_table)
             feature_process_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
             mock_config_initializer.get_instance().feature_spec_config.insert_feature_spec(
                 FeatureSpec("test_spec", table_name="test_table", access_threshold=5, eviction_threshold=10), True)
 
-            test_table = MockSparseEmbedding()
             mock_get_next.return_value = [tf.constant([8, 9], dtype=tf.int32), tf.constant(2, dtype=tf.int32)]
-            mock_get_table_instance_by_name.return_value = test_table
 
             evict_hook = EvictHook(evict_enable=True, evict_time_interval=1)
             with tf.compat.v1.train.MonitoredSession(hooks=[evict_hook]) as sess:
@@ -100,22 +98,21 @@ class TestAfterRunFuncOfEvictHookClass(TestEvictHookClass):
                 self.assertListEqual(evict_variable[:2].tolist(), self.ori_var_assert)
 
     @mock.patch("mx_rec.core.feature_process.npu_ops.gen_npu_ops.get_next")
-    @mock.patch("mx_rec.util.config_utils.embedding_utils.SparseEmbedConfig.get_table_instance_by_name")
     @mock.patch("mx_rec.core.feature_process.ConfigInitializer")
-    def test_after_run_case2(self, feature_process_config_initializer, mock_get_table_instance_by_name, mock_get_next):
+    def test_after_run_case2(self, feature_process_config_initializer, mock_get_next):
         """
         case2: evict_enable为True，C++侧异常
         """
 
         with tf.Graph().as_default():
-            mock_config_initializer = MockConfigInitializer(use_dynamic_expansion=False, trigger_evict=False)
+            test_table = MockSparseEmbedding()
+            mock_config_initializer = MockConfigInitializer(use_dynamic_expansion=False, trigger_evict=False,
+                                                            var=test_table)
             feature_process_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
             mock_config_initializer.get_instance().feature_spec_config.insert_feature_spec(
                 FeatureSpec("test_spec", table_name="test_table", access_threshold=5, eviction_threshold=10), True)
 
-            test_table = MockSparseEmbedding()
             mock_get_next.return_value = [tf.constant([8, 9], dtype=tf.int32), tf.constant(2, dtype=tf.int32)]
-            mock_get_table_instance_by_name.return_value = test_table
 
             evict_hook = EvictHook(evict_enable=True, evict_time_interval=1)
             with tf.compat.v1.train.MonitoredSession(hooks=[evict_hook]) as sess:
@@ -136,22 +133,20 @@ class TestAfterRunFuncOfEvictHookClass(TestEvictHookClass):
                 self.assertListEqual(evict_variable[8:].tolist(), self.ori_var_assert)
 
     @mock.patch("mx_rec.core.feature_process.npu_ops.gen_npu_ops.get_next")
-    @mock.patch("mx_rec.util.config_utils.embedding_utils.SparseEmbedConfig.get_table_instance_by_name")
     @mock.patch("mx_rec.core.feature_process.ConfigInitializer")
-    def test_after_run_case3(self, feature_process_config_initializer, mock_get_table_instance_by_name, mock_get_next):
+    def test_after_run_case3(self, feature_process_config_initializer, mock_get_next):
         """
         case3: evict_enable为False
         """
 
         with tf.Graph().as_default():
-            mock_config_initializer = MockConfigInitializer(use_dynamic_expansion=False)
+            test_table = MockSparseEmbedding()
+            mock_config_initializer = MockConfigInitializer(use_dynamic_expansion=False, var=test_table)
             feature_process_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
             mock_config_initializer.get_instance().feature_spec_config.insert_feature_spec(
                 FeatureSpec("test_spec", table_name="test_table", access_threshold=5, eviction_threshold=10), True)
 
-            test_table = MockSparseEmbedding()
             mock_get_next.return_value = [tf.constant([8, 9], dtype=tf.int32), tf.constant(2, dtype=tf.int32)]
-            mock_get_table_instance_by_name.return_value = test_table
 
             evict_hook = EvictHook(evict_enable=False, evict_time_interval=1)
             with tf.compat.v1.train.MonitoredSession(hooks=[evict_hook]) as sess:

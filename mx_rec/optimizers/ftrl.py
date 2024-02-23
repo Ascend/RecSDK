@@ -79,6 +79,11 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
             linear_name=kwargs.get("linear_name", None),
             l2_shrinkage_regularization_strength=kwargs.get("l2_shrinkage_regularization_strength", 0.0)
         )
+        self._slot_num = 2
+
+    @property
+    def slot_num(self):
+        return self._slot_num
 
     def initialize_slots(self, var, table_instance):
         val = constant_op.constant(

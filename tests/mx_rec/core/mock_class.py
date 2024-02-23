@@ -135,7 +135,6 @@ class MockConfigInitializer:
         self.train_params_config = MockTrainParamsConfig(**kwargs)
         self.optimizer_config = OptimizerConfig()
         self.feature_spec_config = FeatureSpecConfig()
-        self.sparse_embed_cofnig = SparseEmbedConfig()
 
     def get_instance(self):
         return self
