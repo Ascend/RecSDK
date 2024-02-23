@@ -55,7 +55,9 @@ def create_hash_optimizer(learning_rate, use_locking=False, name="Ftrl", **kwarg
     if ConfigInitializer.get_instance().use_dynamic_expansion:
         raise ValueError("dynamic expansion mode is not compatible with the optimizer, please config dynamic "
                          "expansion mode and optimizer correctly")
-    return CustomizedFtrl(learning_rate=learning_rate, use_locking=use_locking, name=name, **kwargs)
+    optimizer = CustomizedFtrl(learning_rate=learning_rate, use_locking=use_locking, name=name, **kwargs)
+    ConfigInitializer.get_instance().optimizer_config.optimizer_instance = optimizer
+    return optimizer
 
 
 class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
@@ -76,6 +78,11 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
             linear_name=kwargs.get("linear_name", None),
             l2_shrinkage_regularization_strength=kwargs.get("l2_shrinkage_regularization_strength", 0.0)
         )
+        self._slot_num = 2
+
+    @property
+    def slot_num(self):
+        return self._slot_num
 
     def initialize_slots(self, var, table_instance):
         val = constant_op.constant(

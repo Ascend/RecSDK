@@ -58,7 +58,9 @@ def create_hash_optimizer(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1
     if ConfigInitializer.get_instance().use_dynamic_expansion:
         raise ValueError("dynamic expansion mode is not compatible with the optimizer, please config dynamic "
                          "expansion mode and optimizer correctly")
-    return CustomizedLazyAdam(learning_rate=learning_rate, beta1=beta1, beta2=beta2, epsilon=epsilon, name=name)
+    optimizer = CustomizedLazyAdam(learning_rate=learning_rate, beta1=beta1, beta2=beta2, epsilon=epsilon, name=name)
+    ConfigInitializer.get_instance().optimizer_config.optimizer_instance = optimizer
+    return optimizer
 
 
 class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
@@ -70,6 +72,11 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
         super(CustomizedLazyAdam, self)._get_name(name=name)
         super(CustomizedLazyAdam, self).__init__(learning_rate=learning_rate, beta1=beta1, beta2=beta2,
                                                  epsilon=epsilon, use_locking=use_locking, name=self.unique_name)
+        self._slot_num = 2
+
+    @property
+    def slot_num(self):
+        return self._slot_num
 
     def initialize_slots(self, var, table_instance):
         # Create slots for the first and second moments.
