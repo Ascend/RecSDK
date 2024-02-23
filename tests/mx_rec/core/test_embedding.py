@@ -24,7 +24,7 @@ from mx_rec.core.asc import FeatureSpec
 from mx_rec.core.asc.feature_spec import set_temporary_feature_spec_attribute
 from mx_rec.core.emb.dynamic_sparse_embedding import HBMDynamicSparseEmbedding
 from mx_rec.core.emb.sparse_embedding import HBMSparseEmbedding, ExternalStorageSparseEmbedding
-from mx_rec.optimizers.gradient_descent import create_hash_optimizer, CustomizedGradientDescent
+from mx_rec.optimizers.gradient_descent import create_hash_optimizer
 from tests.mx_rec.core.mock_class import MockConfigInitializer
 
 
@@ -84,15 +84,11 @@ class TestCreateTableFunc(unittest.TestCase):
             base_sparse_embedding_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
             emb_validator_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
-            # prepare optimizer list
-            optimizer_list = [CustomizedGradientDescent(learning_rate=0.001, use_locking=False, name="GradientDescent")]
-
             # test
             test_table = create_table(key_dtype=tf.int64,
                                       dim=8,
                                       name='test_table',
-                                      emb_initializer=tf.compat.v1.truncated_normal_initializer(),
-                                      optimizer_list=optimizer_list)
+                                      emb_initializer=tf.compat.v1.truncated_normal_initializer())
             self.assertIsInstance(test_table, HBMSparseEmbedding)
 
     @mock.patch.multiple("mx_rec.core.emb.base_sparse_embedding",
@@ -163,9 +159,6 @@ class TestSparseLookupFunc(unittest.TestCase):
             emb_validator_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
             sparse_embedding_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
-            # prepare optimizer list
-            optimizer_list = [CustomizedGradientDescent(learning_rate=0.001, use_locking=False, name="GradientDescent")]
-
             case1_feat = FeatureSpec("case1_feat", table_name="test_table")
             set_temporary_feature_spec_attribute(case1_feat, 1)
             case1_feat.dims = [8, 8]
@@ -186,8 +179,7 @@ class TestSparseLookupFunc(unittest.TestCase):
                                       dim=8,
                                       name='test_table',
                                       emb_initializer=tf.compat.v1.truncated_normal_initializer(),
-                                      device_vocabulary_size=100 * 8,
-                                      optimizer_list=optimizer_list)
+                                      device_vocabulary_size=100 * 8)
             self.assertIsInstance(test_table, HBMSparseEmbedding)
 
             res = sparse_lookup(test_table, case1_feat, batch=batch)
@@ -224,9 +216,6 @@ class TestSparseLookupFunc(unittest.TestCase):
             sparse_embedding_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
             feature_spec_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
-            # prepare optimizer list
-            optimizer_list = [CustomizedGradientDescent(learning_rate=0.001, use_locking=False, name="GradientDescent")]
-
             case2_feat = tf.ones(shape=[8, 8], dtype=tf.int64)
             mock_get_preprocessed_tensor_for_asc.return_value = {
                 "restore_vector": tf.ones(shape=[8, 8], dtype=tf.int64),
@@ -243,8 +232,7 @@ class TestSparseLookupFunc(unittest.TestCase):
                                       dim=8,
                                       name='test_table',
                                       emb_initializer=tf.compat.v1.truncated_normal_initializer(),
-                                      device_vocabulary_size=100 * 8,
-                                      optimizer_list=optimizer_list)
+                                      device_vocabulary_size=100 * 8)
             self.assertIsInstance(test_table, HBMSparseEmbedding)
 
             res = sparse_lookup(test_table, case2_feat, modify_graph=True)
