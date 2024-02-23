@@ -32,7 +32,6 @@ from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.initialize import ConfigInitializer
-from mx_rec.util.variable import check_and_get_config_via_var
 from mx_rec.constants.constants import MAX_INT32
 from mx_rec.validator.validator import para_checker_decorator, StringValidator, FloatValidator
 
@@ -195,8 +194,6 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
         m_state_name = self._name + "/" + "momentum"
         v_state_name = self._name + "/" + "velocity"
         for each_var in var_list:
-            table_instance = check_and_get_config_via_var(each_var, self.optimizer_type)
-
             momentum = self._zeros_slot(each_var, "m", m_state_name)
             velocity = self._zeros_slot(each_var, "v", v_state_name)
             # make sure sparse optimizer statements will not be saved and restored within tf checkpoint.

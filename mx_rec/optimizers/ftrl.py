@@ -33,7 +33,6 @@ from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.initialize import ConfigInitializer
-from mx_rec.util.variable import check_and_get_config_via_var
 from mx_rec.constants.constants import MAX_INT32
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, NumValidator, StringValidator, \
     FloatValidator
@@ -94,7 +93,7 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
         ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(accum.name)
         ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(linear.name)
         named_slot_key = (var.op.graph, var.op.name)
-        table_instance = self.config_instance.sparse_embed_config.get_table_instance(var)
+        table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
         ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name, self._name,
                                                                         {"accum": accum, "linear": linear})
         return [{"slot": accum, "named_slot_key": named_slot_key, "slot_name": "accum", "optimizer": self},
@@ -246,9 +245,6 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
             with ops.colocate_with(each_var):
                 val = constant_op.constant(
                     self._initial_accumulator_value, dtype=each_var.dtype, shape=each_var.get_shape())
-
-                table_instance = check_and_get_config_via_var(each_var, self.optimizer_type)
-
                 accum = self._get_or_make_slot(each_var, val, "accum", accum_state_name)
                 linear = self._zeros_slot(each_var, "linear", linear_state_name)
                 # make sure sparse optimizer statements will not be saved and restored within tf checkpoint.
