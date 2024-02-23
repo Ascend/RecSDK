@@ -107,5 +107,5 @@ class EvictHook(tf.compat.v1.train.SessionRunHook):
             if feature_spec.eviction_threshold:
                 logger.debug("_EvictHook - > check and get instance: table_names %s", feature_spec.table_name)
                 self._hash_table_instance[feature_spec.table_name] = \
-                    ConfigInitializer.get_instance().sparse_embed_cofnig.get_table_instance_by_name(
+                    ConfigInitializer.get_instance().sparse_embed_config.get_table_instance_by_name(
                         feature_spec.table_name)
