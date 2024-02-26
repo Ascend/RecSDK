@@ -38,14 +38,12 @@ def generate_table_info_list():
                          f"of each table `{table_instance_dict.keys()}` is `{is_hbm_list}`.")
 
     optimizer = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
-    if optimizer is None:
-        raise ValueError("Optimizer should be set in optimizer_config.")
     # generate table info
     dangling_table = check_dangling_table()
 
     for _, table_instance in ConfigInitializer.get_instance().sparse_embed_config.table_instance_dict.items():
         # When dynamic expansion mode, ext_emb_size is set by optimizer
-        if ConfigInitializer.get_instance().use_dynamic_expansion:
+        if ConfigInitializer.get_instance().use_dynamic_expansion and optimizer:
             table_instance.ext_emb_size = table_instance.emb_size * (1 + optimizer.slot_num)
             logger.debug("ext_emb_size is reset to be %s for EmbInfo", table_instance.ext_emb_size)
 
@@ -148,6 +146,8 @@ def matched_opt_slot_initializers(table_instance):
     slot_initializers = []
 
     optimizer = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
+    if not optimizer:
+        return slot_initializers
     for slot_init_value in optimizer.get_slot_init_values():
         slot_initializer = InitializeInfo(name="constant_initializer",
                                           start=start_index,
