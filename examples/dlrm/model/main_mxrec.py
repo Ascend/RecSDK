@@ -14,11 +14,13 @@
 # limitations under the License.
 # ==============================================================================
 
+import os
 import time
 import warnings
 import random
 from glob import glob
 
+import tensorflow as tf
 from sklearn.metrics import roc_auc_score
 import numpy as np
 
@@ -27,9 +29,9 @@ from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.core.feature_process import EvictHook
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache, GraphModifierHook
-from mx_rec.constants.constants import ASCEND_TIMESTAMP, ApplyGradientsStrategy
-from mx_rec.util.initialize import get_rank_size, init, clear_channel, get_rank_id, set_if_load, \
-    terminate_config_initializer, get_host_pipeline_ops, get_initializer, get_target_batch
+from mx_rec.constants.constants import ASCEND_TIMESTAMP
+from mx_rec.util.initialize import ConfigInitializer, init, terminate_config_initializer
+from mx_rec.util.ops import import_host_pipeline_ops
 import mx_rec.util as mxrec_util
 from mx_rec.util.variable import get_dense_and_sparse_variable
 from mx_rec.util.log import logger
@@ -46,8 +48,7 @@ random.seed(shuffle_seed)
 
 
 def add_timestamp_func(batch):
-    host_pipeline_ops = get_host_pipeline_ops()
-    timestamp = host_pipeline_ops.return_timestamp(tf.cast(batch['label'], dtype=tf.int64))
+    timestamp = import_host_pipeline_ops().return_timestamp(tf.cast(batch['label'], dtype=tf.int64))
     # tf.constant(np.random.randint(1,1688109060,1)), tf.int64))
     batch["timestamp"] = timestamp
     return batch
@@ -139,11 +140,11 @@ def evaluate():
     print("read_test dataset")
     if not MODIFY_GRAPH_FLAG:
         eval_label = eval_model.get("label")
-        sess.run([eval_iterator.initializer, clear_channel(False)])
+        sess.run([eval_iterator.initializer])
     else:
         # 在sess run模式下，若还是使用原来batch中的label去sess run，则会出现getnext超时报错，需要使用新数据集中的batch
-        eval_label = get_target_batch(False).get("label")
-        sess.run([get_initializer(False), clear_channel(False)])
+        eval_label = ConfigInitializer.get_instance().train_params_config.get_target_batch(False).get("label")
+        sess.run([ConfigInitializer.get_instance().train_params_config.get_initializer(False)])
     log_loss_list = []
     pred_list = []
     label_list = []
@@ -174,9 +175,9 @@ def evaluate():
 def evaluate_fix(step):
     print("read_test dataset evaluate_fix")
     if not MODIFY_GRAPH_FLAG:
-        sess.run([eval_iterator.initializer, clear_channel(False)])
+        sess.run([eval_iterator.initializer])
     else:
-        sess.run([get_initializer(False), clear_channel(False)])
+        sess.run([ConfigInitializer.get_instance().train_params_config.get_initializer(False)])
     log_loss_list = []
     pred_list = []
     label_list = []
@@ -268,14 +269,14 @@ if __name__ == "__main__":
 
     use_dynamic = bool(int(os.getenv("USE_DYNAMIC", 0)))
     logger.info(f"USE_DYNAMIC:{use_dynamic}")
-    init(use_mpi, rank_id=rank_id, rank_size=rank_size, train_steps=train_steps, eval_steps=eval_steps,
+    init(train_steps=train_steps, eval_steps=eval_steps,
          use_dynamic=use_dynamic, use_dynamic_expansion=use_dynamic_expansion)
     IF_LOAD = False
-    rank_id = mxrec_util.initialize.get_rank_id()
+    rank_id = mxrec_util.communication.hccl_ops.get_rank_id()
     filelist = glob(f"./saved-model/sparse-model-{rank_id}-0")
     if filelist:
         IF_LOAD = True
-    set_if_load(IF_LOAD)
+    ConfigInitializer.get_instance().if_load = IF_LOAD
 
     cfg = Config()
     feature_spec_list_train = None
@@ -300,8 +301,8 @@ if __name__ == "__main__":
     sparse_optimizer_list = [sparse_optimizer for dense_optimizer, sparse_optimizer in optimizer_list]
 
     # note: variance_scaling_initializer only support HBM mode
-    emb_initializer = tf.compat.v1.truncated_normal_initializer(stddev=0.05, seed=sparse_hashtable_seed)\
-        if cfg.cache_mode != "HBM" or use_dynamic_expansion else\
+    emb_initializer = tf.compat.v1.truncated_normal_initializer(stddev=0.05, seed=sparse_hashtable_seed) \
+        if cfg.cache_mode != "HBM" or use_dynamic_expansion else \
         tf.compat.v1.variance_scaling_initializer(mode="fan_avg", distribution='normal', seed=sparse_hashtable_seed)
     sparse_hashtable = create_table(
         key_dtype=cfg.key_type,
@@ -322,7 +323,7 @@ if __name__ == "__main__":
 
     dense_variables, sparse_variables = get_dense_and_sparse_variable()
 
-    rank_size = mxrec_util.initialize.get_rank_size()
+    rank_size = mxrec_util.communication.hccl_ops.get_rank_size()
     train_ops = []
     # multi task training
     for loss, (dense_optimizer, sparse_optimizer) in zip([train_model["loss"]], optimizer_list):
@@ -338,14 +339,9 @@ if __name__ == "__main__":
         train_ops.append(dense_optimizer.apply_gradients(avg_grads))
 
         if use_dynamic_expansion:
-            from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_ID_OFFSET, \
-                ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS
+            from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS
 
-            if (ApplyGradientsStrategy.mapping(os.getenv("APPLY_GRADIENTS_STRATEGY")) ==
-                    ApplyGradientsStrategy.SUM_SAME_ID_GRADIENTS_AND_APPLY):
-                train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS)
-            else:
-                train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET)
+            train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS)
             train_emb_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)
             # do sparse optimization by addr
             sparse_grads = sparse_optimizer.compute_gradients(loss, train_emb_list)  # local_embedding
@@ -388,14 +384,14 @@ if __name__ == "__main__":
         if not MODIFY_GRAPH_FLAG:
             sess.run(train_iterator.initializer)
         else:
-            sess.run(get_initializer(True))
+            sess.run(ConfigInitializer.get_instance().train_params_config.get_initializer(True))
     else:
         sess = tf.compat.v1.Session(config=sess_config(dump_data=False))
         sess.run(tf.compat.v1.global_variables_initializer())
         if not MODIFY_GRAPH_FLAG:
             sess.run(train_iterator.initializer)
         else:
-            sess.run(get_initializer(True))
+            sess.run(ConfigInitializer.get_instance().train_params_config.get_initializer(True))
 
     epoch = 0
     cost_sum = 0
