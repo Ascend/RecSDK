@@ -25,13 +25,16 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.training import gradient_descent
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.log import logger
+from mx_rec.util.initialize import ConfigInitializer
 
 
 def create_hash_optimizer(learning_rate, weight_decay=0.0001, use_locking=False, name="GradientDescent"):
-    return CustomizedGradientDescentWithWeighDecay(learning_rate=learning_rate,
-                                                   weight_decay=weight_decay,
-                                                   use_locking=use_locking,
-                                                   name=name)
+    optimizer = CustomizedGradientDescentWithWeighDecay(learning_rate=learning_rate,
+                                                        weight_decay=weight_decay,
+                                                        use_locking=use_locking,
+                                                        name=name)
+    ConfigInitializer.get_instance().optimizer_config.optimizer_instance = optimizer
+    return optimizer
 
 
 class CustomizedGradientDescentWithWeighDecay(gradient_descent.GradientDescentOptimizer, CustomizedOptimizer):
@@ -64,8 +67,8 @@ class CustomizedGradientDescentWithWeighDecay(gradient_descent.GradientDescentOp
         if self.weight_decay is None:
             nd_value = grad.values * math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype)
         else:
-            nd_value = (grad.values + math_ops.cast(self.weight_decay, var.dtype.base_dtype) * tf.gather(var, grad.indices)) * math_ops.cast(
-                self._learning_rate_tensor, var.dtype.base_dtype)
+            nd_value = (grad.values + math_ops.cast(self.weight_decay, var.dtype.base_dtype) *
+                        tf.gather(var, grad.indices)) * math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype)
         var_update_op = tf.scatter_nd_add(var, nd_indices, -nd_value, use_locking=self._use_locking)
         return var_update_op
 

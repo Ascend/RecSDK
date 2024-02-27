@@ -16,8 +16,9 @@
 
 import numpy as np
 
-from mx_rec.util.initialize import get_rank_id
+from mx_rec.util.communication.hccl_ops import get_rank_id
 from mx_rec.util.log import logger
+
 
 def get_data_generator(config, batch_number):
     rank_id = get_rank_id()
@@ -39,7 +40,7 @@ def get_data_generator(config, batch_number):
             i += 1
 
         logger.debug(f"================ end of data generator for {config.task_name} task | rank id {rank_id} "
-                      f"================")
+                     f"================")
 
     return data_generator
 

@@ -22,21 +22,24 @@ import warnings
 from glob import glob
 
 import tensorflow as tf
-from config import Config
-from dataset import generate_dataset
-from optimizer import create_dense_and_sparse_optimizer
-from model import MyModel
-from run_mode import RunMode, UseMode
 
+from mx_rec.constants.constants import ASCEND_TIMESTAMP
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.helper import get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
-from mx_rec.constants.constants import ASCEND_TIMESTAMP
-from mx_rec.util.initialize import get_rank_id, init, terminate_config_initializer, set_if_load, get_rank_size
-from mx_rec.util.variable import get_dense_and_sparse_variable
+from mx_rec.util.communication.hccl_ops import get_rank_id, get_rank_size
+from mx_rec.util.initialize import ConfigInitializer
+from mx_rec.util.initialize import init, terminate_config_initializer
 from mx_rec.util.log import logger
+from mx_rec.util.variable import get_dense_and_sparse_variable
+
+from config import Config
+from dataset import generate_dataset
+from model import MyModel
+from optimizer import create_dense_and_sparse_optimizer
+from run_mode import RunMode, UseMode
 
 tf.compat.v1.disable_eager_execution()
 
@@ -201,6 +204,12 @@ if __name__ == "__main__":
     except ValueError as err:
         raise ValueError(f"please correctly config MULTI_LOOKUP_TIMES only int is supported.") from err
 
+    IF_LOAD = False
+    rank_id = get_rank_id()
+
+    file_list = glob(f"./saved-model/sparse-model-{rank_id}-*")
+    if file_list:
+        IF_LOAD = True
     # nbatch function needs to be used together with the prefetch and host_vocabulary_size != 0
     init(use_mpi=use_mpi,
          train_steps=TRAIN_STEPS,
@@ -208,13 +217,9 @@ if __name__ == "__main__":
          save_steps=SAVING_INTERVAL,
          use_dynamic=use_dynamic,
          use_hot=use_hot,
-         use_dynamic_expansion=use_dynamic_expansion)
-    IF_LOAD = False
-    rank_id = get_rank_id()
-    file_list = glob(f"./saved-model/sparse-model-{rank_id}-*")
-    if file_list:
-        IF_LOAD = True
-    set_if_load(IF_LOAD)
+         use_dynamic_expansion=use_dynamic_expansion,
+         bind_cpu=True,
+         if_load=IF_LOAD)
 
     cfg = Config()
     # multi lookup config, batch size: 32 * 128 = 4096

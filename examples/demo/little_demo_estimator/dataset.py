@@ -18,7 +18,8 @@
 import tensorflow as tf
 
 from random_data_generator import get_data_generator, get_large_scale_data_generator
-from mx_rec.util.initialize import get_rank_size, get_rank_id, get_host_pipeline_ops
+from mx_rec.util.communication.hccl_ops import get_rank_size, get_rank_id
+from mx_rec.util.ops import import_host_pipeline_ops
 
 
 def generate_dataset(cfg, use_timestamp=False, batch_number=100):
@@ -46,7 +47,7 @@ def generate_dataset(cfg, use_timestamp=False, batch_number=100):
 
 
 def add_timestamp_func(batch):
-    host_pipeline_ops = get_host_pipeline_ops()
+    host_pipeline_ops = import_host_pipeline_ops()
     timestamp = host_pipeline_ops.return_timestamp(tf.cast(batch['label_0'], tf.int64))
     batch["timestamp"] = timestamp
     return batch

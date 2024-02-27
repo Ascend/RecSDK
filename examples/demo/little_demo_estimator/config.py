@@ -18,7 +18,7 @@
 import math
 
 import tensorflow as tf
-from mx_rec.util.initialize import get_rank_size
+from mx_rec.util.communication.hccl_ops import get_rank_size
 
 
 class Config:
