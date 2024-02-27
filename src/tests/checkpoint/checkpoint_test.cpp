@@ -146,7 +146,9 @@ protected:
         for (const auto& testEmbInfo : testEmbInfos) {
             SetHashMapInfo(testHash, testDev2B, testDev2K);
 
-            embHashInfo.hostHashMap = std::move(testHash);
+            for (auto ko: testHash) {
+                embHashInfo.hostHashMap[ko.first] = static_cast<int64_t>(ko.second);
+            }
 
             embHashInfo.devOffset2Batch = move(testDev2B);
             embHashInfo.devOffset2Key = move(testDev2K);

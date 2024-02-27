@@ -80,6 +80,8 @@ public:
      */
     int Load(const string& name, const string& filePath);
 
+    int Load(const string& filePath);
+
     /**
      * 保存单个表
      */
@@ -94,6 +96,7 @@ public:
 
     void EnableSSD();
 
+    EmbHashMemT GetEmbHashMaps();
 private:
 
     EmbeddingMgmt();

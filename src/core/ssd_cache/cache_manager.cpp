@@ -87,8 +87,8 @@ TransferRet CacheManager::TransferDDREmbWithSSD(TableInfo& table,
     if (channelId == TRAIN_CHANNEL_ID) {
         ddrAvailableSize += table.evictHostPos.size();
     }
-    LOG_DEBUG("TransferDDREmbWithSSD, maxOffset:{}, evictHostPos size:{}, ddrAvailableSize:{}",
-        table.maxOffset, table.evictHostPos.size(), ddrAvailableSize);
+    LOG_DEBUG("TransferDDREmbWithSSD, table:{}, maxOffset:{}, evictHostPos size:{}, ddrAvailableSize:{}",
+        table.name, table.maxOffset, table.evictHostPos.size(), ddrAvailableSize);
     CreateSSDTableIfNotExist(table.name);
 
     // 调用ssdEngine查询当前批次key中保存在SSD中的key
@@ -193,7 +193,8 @@ void CacheManager::GetDDREmbInfo(vector<emb_key_t>& keys, TableInfo& table,
 {
     // 根据offset 获取对应Emb数据
     for (auto& key : keys) {
-        ddrTransferPos.emplace_back(table.keyOffsetMap[key] - table.devVocabSize);
+        auto koCast = static_cast<size_t>(table.keyOffsetMap[key]);
+        ddrTransferPos.emplace_back(koCast - table.devVocabSize);
     }
 
     LOG_TRACE("DDR keys:{}", VectorToString(keys));
@@ -337,7 +338,8 @@ void CacheManager::HandleDDRTransferPos(vector<size_t>& ddrTransferPos, vector<e
     // ddrTransferPos中是DDR内偏移位置，存入evictPos时，需加上devVocabSize;取出时需减去
     if (ddrTransferPos.size() > externalSSDKeys.size()) {
         while (ddrTransferPos.size() > externalSSDKeys.size()) {
-            table.evictHostPos.emplace_back(ddrTransferPos.back() + table.devVocabSize);
+            auto evictHostPos = ddrTransferPos.back() + table.devVocabSize;
+            table.evictHostPos.emplace_back(static_cast<int64_t>(evictHostPos));
             ddrTransferPos.pop_back();
         }
         return;
