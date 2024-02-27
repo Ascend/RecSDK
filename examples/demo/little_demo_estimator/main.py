@@ -19,7 +19,9 @@ import argparse
 import os
 
 import tensorflow as tf
-from mx_rec.util.initialize import init, get_rank_id, terminate_config_initializer
+
+from mx_rec.util.initialize import init, terminate_config_initializer
+from mx_rec.util.communication.hccl_ops import get_rank_id
 from mx_rec.core.asc.helper import FeatureSpec
 from mx_rec.graph.modifier import GraphModifierHook
 from mx_rec.graph.acg_push_ops import ACGPushOpsToDatasetHook
@@ -60,7 +62,7 @@ def main(params, cfg):
         hooks_list = [GraphModifierHook(modify_graph=params.modify_graph)]
     else:
         hooks_list = [ACGPushOpsToDatasetHook(dump_graph=True), GraphModifierHook(modify_graph=params.modify_graph)]
-    
+
     if params.use_timestamp:
         config_for_user_table = dict(access_threshold=cfg.access_threshold, eviction_threshold=cfg.eviction_threshold)
         config_for_item_table = dict(access_threshold=cfg.access_threshold, eviction_threshold=cfg.eviction_threshold)
@@ -138,19 +140,19 @@ def create_feature_spec_list(use_timestamp=False):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--run_mode', type=str, default='train_and_evaluate')   # 运行模式，在run.sh中进行配置
+    parser.add_argument('--run_mode', type=str, default='train_and_evaluate')  # 运行模式，在run.sh中进行配置
     parser.add_argument('--model_ckpt_dir', type=str, default='')
     parser.add_argument('--learning_rate', type=float, default=0.0008)
-    parser.add_argument('--use_timestamp', type=bool, default=False)        # 是否开启特征准入与淘汰
-    parser.add_argument('--modify_graph', type=bool, default=False)         # 是否开启自动改图
-    parser.add_argument('--use_multi_lookup', type=bool, default=True)      # 是否一表多查
-    parser.add_argument('--multi_lookup_times', type=int, default=2)        # 一表多查次数
-    parser.add_argument('--max_steps', type=int, default=200)               # train的最大步数
-    parser.add_argument('--train_steps', type=int, default=100)             # 训练train_steps步后进行eval
-    parser.add_argument('--eval_steps', type=int, default=10)               # 每次eval的步数
+    parser.add_argument('--use_timestamp', type=bool, default=False)  # 是否开启特征准入与淘汰
+    parser.add_argument('--modify_graph', type=bool, default=False)  # 是否开启自动改图
+    parser.add_argument('--use_multi_lookup', type=bool, default=True)  # 是否一表多查
+    parser.add_argument('--multi_lookup_times', type=int, default=2)  # 一表多查次数
+    parser.add_argument('--max_steps', type=int, default=200)  # train的最大步数
+    parser.add_argument('--train_steps', type=int, default=100)  # 训练train_steps步后进行eval
+    parser.add_argument('--eval_steps', type=int, default=10)  # 每次eval的步数
     # 每隔step保存一次模型, 若在train_and_evaluate模式, 还会进行eval, 注: 若设为None, NPURunConfig内部会设默认值100
     parser.add_argument('--save_checkpoints_steps', type=int, default=200)
-    parser.add_argument('--use_one_shot', type=bool, default=False)         # 是否使用one shot iterator
+    parser.add_argument('--use_one_shot', type=bool, default=False)  # 是否使用one shot iterator
 
     args, unknowns = parser.parse_known_args()
     # get init configuration

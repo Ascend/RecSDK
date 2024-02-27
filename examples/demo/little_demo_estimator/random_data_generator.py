@@ -17,7 +17,7 @@
 
 import numpy as np
 
-from mx_rec.util.initialize import get_rank_id
+from mx_rec.util.communication.hccl_ops import get_rank_id
 from mx_rec.util.log import logger
 
 

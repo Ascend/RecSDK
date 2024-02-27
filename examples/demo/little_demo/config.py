@@ -15,11 +15,11 @@
 # ==============================================================================
 
 import math
-import tensorflow as tf
 
+import tensorflow as tf
 from tensorflow.core.protobuf.rewriter_config_pb2 import RewriterConfig
 
-from mx_rec.util.initialize import get_rank_size
+from mx_rec.util.communication.hccl_ops import get_rank_size
 
 
 class Config:
