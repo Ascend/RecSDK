@@ -453,7 +453,7 @@ namespace MxRec {
     };
 
     struct EmbHashMapInfo {
-        absl::flat_hash_map<emb_key_t, size_t> hostHashMap; // key在HBM中的偏移
+        absl::flat_hash_map<emb_key_t, int64_t> hostHashMap; // key在HBM中的偏移
         std::vector<int> devOffset2Batch; // has -1
         std::vector<emb_key_t> devOffset2Key;
         size_t currentUpdatePos;

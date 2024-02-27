@@ -134,9 +134,12 @@ std::shared_ptr<EmbeddingTable> EmbeddingMgmt::GetTable(const string& name)
     return std::dynamic_pointer_cast<EmbeddingTable>(it->second);
 }
 
-int EmbeddingMgmt::Load(const string& name, const string& filePath)
+int EmbeddingMgmt::Load(const string& filePath)
 {
-    return embeddings[name]->Load(filePath);
+    for (auto& tablePair: embeddings) {
+        tablePair.second->Load(filePath);
+    }
+    return 0;
 }
 
 int EmbeddingMgmt::Save(const string& name, const string& filePath)
@@ -163,4 +166,16 @@ void EmbeddingMgmt::EnableSSD()
     for (auto& table: embeddings) {
         table.second->EnableSSD();
     }
+}
+
+EmbHashMemT EmbeddingMgmt::GetEmbHashMaps()
+{
+    EmbHashMemT EmbHashMaps;
+    for (auto& tablePair: embeddings) {
+        EmbHashMaps[tablePair.first].hostHashMap = tablePair.second ->GetKeyOffsetMap();
+        EmbHashMaps[tablePair.first].devVocabSize = tablePair.second ->GetDevVocabSize();
+        EmbHashMaps[tablePair.first].hostVocabSize = tablePair.second ->GetHostVocabSize();
+        EmbHashMaps[tablePair.first].maxOffset = tablePair.second ->GetMaxOffset();
+    }
+    return EmbHashMaps;
 }

@@ -234,8 +234,7 @@ bool HybridMgmt::Save(const string savePath)
     if (mgmtRankInfo.isDDR) {
         // DDR模式保存host的emb表以及hashmap
         LOG_DEBUG(MGMT + "Start host side save: ddr mode hashmap");
-        saveData.hostEmbs = hostEmbs->GetHostEmbs();
-        saveData.embHashMaps = hostHashMaps->GetHashMaps();
+        EmbeddingMgmt::Instance()->Save(savePath);
     } else {
         // HBM模式保存最大偏移（真正使用了多少vocab容量），特征到偏移的映射
         LOG_DEBUG(MGMT + "Start host side save: no ddr mode hashmap");
@@ -293,6 +292,8 @@ bool HybridMgmt::Load(const string& loadPath)
     vector<CkptFeatureType> loadFeatures;
     SetFeatureTypeForLoad(loadFeatures);
 
+    EmbeddingMgmt::Instance()->Load(loadPath);
+
     loadData.hostEmbs = hostEmbs->GetHostEmbs(); // 获取已经初始化好的host emb
     // 执行加载操作
     loadCkpt.LoadModel(loadPath, loadData, mgmtRankInfo, mgmtEmbInfo, loadFeatures);
@@ -307,7 +308,8 @@ bool HybridMgmt::Load(const string& loadPath)
     if (mgmtRankInfo.isDDR) {
         // DDR模式 将加载的hash map进行赋值
         LOG_DEBUG(MGMT + "Start host side load: ddr mode hashmap");
-        hostHashMaps->LoadHashMap(loadData.embHashMaps);
+        auto EmbHashMaps = EmbeddingMgmt::Instance()->GetEmbHashMaps();
+        hostHashMaps->LoadHashMap(EmbHashMaps);
     } else {
         // HBM模式 将加载的最大偏移（真正使用了多少vocab容量）、特征到偏移的映射，进行赋值
         LOG_DEBUG(MGMT + "Start host side load: no ddr mode hashmap");
@@ -348,8 +350,7 @@ void HybridMgmt::SetFeatureTypeForLoad(vector<CkptFeatureType>& loadFeatures)
     }
     if (mgmtRankInfo.isDDR) {
         // DDR模式加载的类型为host的emb表以及hashmap
-        loadFeatures.push_back(CkptFeatureType::HOST_EMB);
-        loadFeatures.push_back(CkptFeatureType::EMB_HASHMAP);
+        LOG_DEBUG(MGMT + "set feature ddr");
     } else {
         // HBM模式加载的类型为最大偏移（真正使用了多少vocab容量），特征到偏移的映射
         loadFeatures.push_back(CkptFeatureType::KEY_OFFSET_MAP);
