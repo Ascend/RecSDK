@@ -1,0 +1,477 @@
+/* Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+        limitations under the License.
+==============================================================================*/
+
+#include "emb_hashmap.h"
+#include <fstream>
+#include <mpi.h>
+
+#include "hybrid_mgmt/hybrid_mgmt_block.h"
+#include "utils/common.h"
+#include "emb_table/embedding_mgmt.h"
+
+using namespace MxRec;
+
+void EmbHashMap::Init(const RankInfo& ri, const vector<EmbInfo>& embInfos, bool ifLoad)
+{
+    this->rankInfo = ri;
+    if (!ifLoad) {
+        EmbHashMapInfo embHashMapInfo;
+        LOG_INFO("init emb hash map from scratch");
+        for (const auto& embInfo: embInfos) {
+            embHashMapInfo.devOffset2Batch.resize(embInfo.devVocabSize);
+            embHashMapInfo.devOffset2Key.resize(embInfo.devVocabSize);
+            embHashMapInfo.hostVocabSize = embInfo.hostVocabSize;
+            embHashMapInfo.devVocabSize = embInfo.devVocabSize;
+            embHashMapInfo.currentUpdatePos = 0;
+            fill(embHashMapInfo.devOffset2Batch.begin(), embHashMapInfo.devOffset2Batch.end(), -1);
+            fill(embHashMapInfo.devOffset2Key.begin(), embHashMapInfo.devOffset2Key.end(), -1);
+            embHashMaps[embInfo.name] = embHashMapInfo;
+
+            LOG_TRACE("devOffset2Key, {}", VectorToString(embHashMaps.at(embInfo.name).devOffset2Key));
+            LOG_TRACE("devOffset2Batch, {}", VectorToString(embHashMaps.at(embInfo.name).devOffset2Batch));
+        }
+    }
+}
+
+void EmbHashMap::ClearLookupAndSwapOffset(EmbHashMapInfo& embHashMap) const
+{
+    embHashMap.swapPos.clear();
+    embHashMap.lookUpVec.clear();
+    embHashMap.ddr2HbmKeys.clear();
+}
+
+/// DDR模型下处理特征的offset、swap信息等
+/// \param embName 表名
+/// \param keys 查询向量
+/// \param DDRParam 临时向量
+/// \param channelId 通道索引（训练/推理）
+void EmbHashMap::Process(const string& embName, vector<emb_key_t>& keys, DDRParam& ddrParam, int channelId)
+{
+#ifndef GTEST
+    EASY_FUNCTION(profiler::colors::Pink)
+    TimeCost swapTimeCost;
+    std::shared_ptr<EmbeddingTable> table = EmbeddingMgmt::Instance()->GetTable(embName);
+
+    int32_t keepBatch = swapId; // 处理batch的次数，多个预取一起处理算一次
+    vector<size_t> swapPos;
+    vector<int32_t> lookUpVec = table->FindOffset(keys, swapId, channelId, swapPos);
+
+    table->RefreshFreqInfoWithSwap();
+
+    EASY_BLOCK("hostHashMaps->tdt")
+
+    std::copy(lookUpVec.begin(), lookUpVec.end(), std::back_inserter(ddrParam.offsetsOut));
+
+    // 构造查询向量tensor
+    int lookUpVecSize = static_cast<int>(lookUpVec.size());
+    ddrParam.tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { lookUpVecSize }));
+
+    auto lookupTensorData = ddrParam.tmpDataOut.back().flat<int32>();
+    for (int i = 0; i < lookUpVecSize; i++) {
+        lookupTensorData(i) = static_cast<int32_t>(lookUpVec[i]);
+    }
+    LOG_TRACE("lookupTensor, {}", VectorToString(lookUpVec));
+
+    // 构造交换向量tensor
+    int swapSize = static_cast<int>(swapPos.size());
+    ddrParam.tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { swapSize }));
+
+    auto swapTensorData = ddrParam.tmpDataOut.back().flat<int32>();
+    for (int i = 0; i < swapSize; i++) {
+        swapTensorData(i) = static_cast<int>(swapPos[i]);
+    }
+    if (swapSize > 0) {
+        LOG_DEBUG("swap num: {}", swapSize);
+    }
+
+    LOG_TRACE("swapTensor, {}", VectorToString(swapPos));
+    // 清空本次记录的查询偏移和交换偏移
+    table->ClearLookupAndSwapOffset();
+
+    LOG_INFO("current ddr emb:{}, usage:{}/[{}+{}]", embName, table->GetMaxOffset(),
+             table->GetDevVocabSize(), table->GetHostVocabSize());
+
+    ddrParam.tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { 1 }));
+    auto swapLen = ddrParam.tmpDataOut.back().flat<int32>();
+    swapLen(0) = swapSize;
+
+    if (GlogConfig::gStatOn) {
+        LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} swap_key_size {} swap_time_cost {}",
+            channelId, swapId, rankInfo.rankId, swapSize, swapTimeCost.ElapsedMS());
+    }
+
+    swapId++;
+    EASY_END_BLOCK
+#endif
+}
+
+
+auto EmbHashMap::GetHashMaps() -> absl::flat_hash_map<string, EmbHashMapInfo>
+{
+    LOG_DEBUG(HYBRID_BLOCKING + " start GetHashMaps");
+    HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
+    auto embHashMapsOld = embHashMaps;
+    int checkResult = hybridMgmtBlock->CheckSaveEmbMapValid();
+    if (checkResult == 0) {
+        // 检查是否需要回退
+        return embHashMapsOld;
+    }
+    if (checkResult == 1) {
+        // 回退一步
+        for (auto& temp: embHashMapsOld) {
+            auto &embHashMap = temp.second;
+            for (auto &swapKeys: embHashMap.oldSwap) {
+                emb_key_t oldKey = swapKeys.first;
+                emb_key_t key = swapKeys.second;
+                int tempOffset = static_cast<int>(embHashMap.hostHashMap[key]);
+                embHashMap.hostHashMap[key] = embHashMap.hostHashMap[oldKey];
+                embHashMap.hostHashMap[oldKey] = static_cast<int>(tempOffset);
+            }
+            embHashMap.maxOffset = embHashMap.maxOffsetOld;
+            for (auto &offset2Key: embHashMap.devOffset2KeyOld) {
+                embHashMap.devOffset2Key[offset2Key.first] = offset2Key.second;
+            }
+        }
+        return embHashMapsOld;
+    }
+    // 此时需要回退2步，无法满足此条件，保存的东西错误，直接回退
+    if (rankInfo.isDDR) {
+        throw HybridMgmtBlockingException("EmbHashMap::GetHashMaps() ");
+    }
+    return embHashMapsOld;
+}
+
+void EmbHashMap::LoadHashMap(EmbHashMemT& loadData)
+{
+    embHashMaps = std::move(loadData);
+}
+
+/// 对HBM剩余空间和更新位置进行初始化
+void EmbHashMapInfo::SetStartCount()
+{
+    currentUpdatePosStart = currentUpdatePos;
+    freeSize = devVocabSize;
+}
+
+/// 判断HBM是否有剩余空间
+/// \param i 查询向量的大小
+/// \return
+bool EmbHashMapInfo::HasFree(size_t i) const
+{
+    return freeSize < i;
+}
+
+/*
+* 删除淘汰key的映射关系，并将其offset更新到evictPos，待后续复用
+*/
+void EmbHashMap::EvictDeleteEmb(const string& embName, const vector<emb_key_t>& keys)
+{
+    EASY_FUNCTION()
+    size_t keySize = keys.size();
+    auto& embHashMap = embHashMaps.at(embName);
+    vector<emb_key_t> evictHBMKeys;
+    vector<emb_key_t> evictDDRKeys;
+    for (size_t i = 0; i < keySize; i++) {
+        size_t offset;
+        auto key = keys[i];
+        if (key == -1) {
+            LOG_WARN("evict key equal -1!");
+            continue;
+        }
+        const auto& iter = embHashMap.hostHashMap.find(key);
+        if (iter != embHashMap.hostHashMap.end()) {
+            offset = iter->second;
+            embHashMap.hostHashMap.erase(iter);
+            LOG_TRACE("evict embName {}, offset {}", embName, offset);
+        } else {
+            // 淘汰依据keyProcess中的history，hashmap映射关系创建于ParseKey；两者异步，造成淘汰的值在hashmap里可能未创建
+            continue;
+        }
+
+        if (offset < embHashMap.devVocabSize) {
+            embHashMap.devOffset2Batch[offset] = -1;
+            embHashMap.devOffset2KeyOld.emplace_back(offset, embHashMap.devOffset2Key[offset]);
+            embHashMap.devOffset2Key[offset] = -1;
+            embHashMap.evictDevPos.emplace_back(offset);
+            evictHBMKeys.emplace_back(key);
+        } else {
+            embHashMap.evictPos.emplace_back(offset);
+            evictDDRKeys.emplace_back(key);
+        }
+    }
+    if (isSSDEnabled) {
+        cacheManager->RefreshFreqInfoCommon(embName, evictHBMKeys, TransferType::HBM_2_EVICT);
+        cacheManager->RefreshFreqInfoCommon(embName, evictDDRKeys, TransferType::DDR_2_EVICT);
+    }
+
+    LOG_INFO("ddr EvictDeleteEmb, emb: [{}], hostEvictSize: {}, devEvictSize: {}",
+        embName, embHashMap.evictPos.size(), embHashMap.evictDevPos.size());
+    LOG_TRACE("hostHashMap, {}", MapToString(embHashMaps[embName].hostHashMap));
+}
+
+
+/// 从embHashMaps获取key对应的位置，构造查询向量；更新devOffset2Batch；记录dev与host需要交换的偏移
+/// \param embName 表名
+/// \param keys 查询向量
+/// \param currentBatchId 已处理的batch数
+/// \param keepBatchId 处理batch的次数，多个预取一起处理算一次
+/// \param channelId 通道索引（训练/推理）
+void EmbHashMap::FindOffset(const string& embName, const vector<emb_key_t>& keys,
+                            size_t currentBatchId, size_t keepBatchId, int channelId)
+{
+    EASY_FUNCTION()
+    size_t keySize = keys.size();
+    auto it = embHashMaps.find(embName);
+    if (it == embHashMaps.end()) {
+        throw runtime_error("table not exist in embHashMaps");
+    }
+    auto &embHashMap = it->second;
+    UpdateBatchId(keys, currentBatchId, keySize, embHashMap);
+    for (size_t i = 0; i < keySize; i++) {
+        auto key = keys[i];
+        if (key == -1) {
+            embHashMap.lookUpVec.emplace_back(INVALID_KEY_VALUE);
+            continue;
+        }
+        size_t offset;
+        auto isOffsetValid = FindOffsetHelper(key, embHashMap, channelId, offset);
+        if (!isOffsetValid) {
+            embHashMap.lookUpVec.emplace_back(INVALID_KEY_VALUE);
+            continue;
+        }
+        AddKeyFreqInfo(embName, key, RecordType::NOT_DDR);
+        if (offset < embHashMap.devVocabSize) {
+            // 偏移小于等于HBM容量：直接放入查询向量；更新偏移之前关联的key和当前关联的key
+            embHashMap.lookUpVec.emplace_back(offset);
+            embHashMap.devOffset2KeyOld.emplace_back(offset, static_cast<int>(embHashMap.devOffset2Key[offset]));
+            embHashMap.devOffset2Key[offset] = key;
+        } else {
+            // 偏移大于HBM容量：记录在host emb上的偏移；找到需要交换的HBM偏移
+            embHashMap.missingKeysHostPos.emplace_back(offset - embHashMap.devVocabSize);
+            FindSwapPosOld(embName, key, offset, currentBatchId, keepBatchId);
+        }
+    }
+    if (currentBatchId == 0) {
+        LOG_INFO("max offset {}", embHashMap.maxOffset);
+    }
+    LOG_TRACE("hostHashMap, {}", MapToString(embHashMaps[embName].hostHashMap));
+}
+
+
+/// 查找key对应的偏移；1. 已在hash map中，直接返回对应的offset；2. 开启淘汰的情况下，复用淘汰的位置；3. 没有则新分配
+/// \param key 输入特征
+/// \param embHashMap hash map实例
+/// \param channelId 通道索引（训练/推理）
+/// \param offset 未初始化变量，用于记录
+/// \return
+bool EmbHashMap::FindOffsetHelper(const emb_key_t& key, EmbHashMapInfo& embHashMap, int channelId, size_t& offset) const
+
+{
+    const auto& iter = embHashMap.hostHashMap.find(key);
+    if (iter != embHashMap.hostHashMap.end()) {
+        offset = iter->second;
+        LOG_TRACE("devVocabSize, {} , offset , {}", embHashMap.devVocabSize, offset);
+        if (isSSDEnabled && offset >= embHashMap.devVocabSize) {
+            embHashMap.ddr2HbmKeys.emplace_back(key);
+        }
+    } else if (embHashMap.evictDevPos.size() != 0 && channelId == TRAIN_CHANNEL_ID) { // 优先复用hbm表
+        offset = embHashMap.evictDevPos.back();
+        embHashMap.hostHashMap[key] = offset;
+        LOG_TRACE("ddr mode, dev evictPos is not null, key [{}] reuse offset [{}], evictSize [{}]",
+            key, offset, embHashMap.evictDevPos.size());
+        embHashMap.evictDevPos.pop_back();
+    } else if (embHashMap.evictPos.size() != 0 && channelId == TRAIN_CHANNEL_ID) { // hbm不足，再复用ddr表
+        offset = embHashMap.evictPos.back();
+        embHashMap.hostHashMap[key] = offset;
+        LOG_TRACE("ddr mode, host evictPos is not null, key [{}] reuse offset [{}], evictSize [{}]",
+            key, offset, embHashMap.evictPos.size());
+        embHashMap.evictPos.pop_back();
+    } else {
+        if (channelId == TRAIN_CHANNEL_ID) {
+            embHashMap.hostHashMap[key] = embHashMap.maxOffset;
+            offset = embHashMap.maxOffset;
+            embHashMap.maxOffset++;
+            if (embHashMap.maxOffset == embHashMap.devVocabSize) {
+                LOG_INFO("start using host vocab!");
+            }
+            if (embHashMap.maxOffset > embHashMap.hostVocabSize + embHashMap.devVocabSize) {
+                LOG_ERROR("hostVocabSize too small! dev:{} host:{}", embHashMap.devVocabSize, embHashMap.hostVocabSize);
+                throw runtime_error("hostVocabSize too small");
+            }
+        } else {
+            return false;
+        }
+    }
+    return true;
+}
+
+/// 更新HBM中的key相应offset最近出现的batch步数，用于跟踪哪些offset是最近在使用的
+/// \param keys 查询向量
+/// \param currentBatchId 已处理的batch数
+/// \param keySize 查询向量长度
+/// \param embHashMap hash map实例
+void EmbHashMap::UpdateBatchId(const vector<emb_key_t>& keys, size_t currentBatchId, size_t keySize,
+                               EmbHashMapInfo& embHashMap) const
+{
+    for (size_t i = 0; i < keySize; i++) {
+        size_t offset;
+        auto key = keys[i];
+        if (key == -1) {
+            continue;
+        }
+        const auto& iter = embHashMap.hostHashMap.find(key);
+        if (iter != embHashMap.hostHashMap.end()) {
+            offset = iter->second;
+
+            LOG_TRACE("key will be used, {} , offset , {}", key, offset);
+            if (offset < embHashMap.devVocabSize) {
+                // devOffset2Batch size equal to devVocabSize, unnecessary to check index boundary
+                embHashMap.devOffset2Batch[offset] = static_cast<int>(currentBatchId);
+            }
+        }
+    }
+}
+
+/// 利用devOffset2Batch上key最近使用的batchId，来选择需要淘汰的key，记录淘汰位置和device侧所需的keys
+/// \param embName 表名
+/// \param key 输入特征
+/// \param hostOffset 全局偏移
+/// \param currentBatchId 已处理的batch数
+/// \param keepBatchId 处理batch的次数，多个预取一起处理算一次
+/// \return 是否找到需要交换的位置
+bool EmbHashMap::FindSwapPosOld(const string& embName, emb_key_t key, size_t hostOffset, size_t currentBatchId,
+                                size_t keepBatchId)
+{
+    bool notFind = true;
+    auto it = embHashMaps.find(embName);
+    if (it == embHashMaps.end()) {
+        throw runtime_error("table not exist in embHashMaps");
+    }
+    auto &embHashMap = it->second;
+    while (notFind) {
+        // 找到本次预取之前的偏移（保证所有预取batch的key都在HBM中）
+        if (embHashMap.currentUpdatePos >= embHashMap.devOffset2Batch.size()) {
+            throw runtime_error("currentUpdatePos out of range");
+        }
+
+        if (embHashMap.devOffset2Batch[embHashMap.currentUpdatePos] < static_cast<int>(keepBatchId)) {
+            embHashMap.devOffset2Batch[embHashMap.currentUpdatePos] = static_cast<int>(currentBatchId);
+            embHashMap.swapPos.emplace_back(embHashMap.currentUpdatePos); // 记录需要被换出的HBM偏移
+            embHashMap.lookUpVec.emplace_back(embHashMap.currentUpdatePos); // 交换的位置就是该key查询的偏移
+            embHashMap.hostHashMap[key] = embHashMap.currentUpdatePos;  // 更新key对应的HBM偏移
+            // 记录HBM偏移之前的key
+            embHashMap.devOffset2KeyOld.emplace_back(embHashMap.currentUpdatePos,
+                                                     embHashMap.devOffset2Key[embHashMap.currentUpdatePos]);
+            auto& oldKey = embHashMap.devOffset2Key[embHashMap.currentUpdatePos];
+            embHashMap.oldSwap.emplace_back(oldKey, key); // 记录交换的两个key oldKey:HBM->DDR key:DDR->HBM
+            embHashMap.hostHashMap[oldKey] = hostOffset; // 更新被替换的key的偏移
+            oldKey = key;
+            notFind = false;
+        }
+        embHashMap.currentUpdatePos++; // 查找位置+1
+        embHashMap.freeSize--; // HBM可用空间-1
+
+        // 遍历完一遍整个HBM表后，从头开始遍历
+        if (embHashMap.currentUpdatePos == embHashMap.devVocabSize) {
+            embHashMap.currentUpdatePos = 0;
+        }
+
+        // 已经找完整个HBM空间，且没找到可用位置，表示HBM空间不足以放下整个batch（预取batch数）的key，无法正常执行训练，故运行时错误退出
+        if (embHashMap.currentUpdatePos == embHashMap.currentUpdatePosStart && notFind) {
+            LOG_ERROR("devVocabSize is too small");
+            throw runtime_error("devVocabSize is too small");
+        }
+    }
+    return true;
+}
+
+/// HBM-DDR换入换出时刷新频次信息
+/// \param embName emb表名
+/// \param embHashMap emb hash map
+void EmbHashMap::RefreshFreqInfoWithSwap(const string& embName, EmbHashMapInfo& embHashMap) const
+{
+    if (!isSSDEnabled) {
+        return;
+    }
+    // 换入换出key列表，元素为pair: pair<oldKey, key> oldKey为从HBM移出的key, key为从DDR移出的key
+    auto& oldSwap = embHashMap.oldSwap;
+    LOG_DEBUG("RefreshFreqInfoWithSwap:oldSwap Size:{}", oldSwap.size());
+    vector<emb_key_t> enterDDRKeys;
+    for (auto keyPair : oldSwap) {
+        enterDDRKeys.emplace_back(keyPair.first);
+    }
+    cacheManager->RefreshFreqInfoCommon(embName, enterDDRKeys, TransferType::HBM_2_DDR);
+    cacheManager->RefreshFreqInfoCommon(embName, embHashMap.ddr2HbmKeys, TransferType::DDR_2_HBM);
+
+    AddCacheManagerTraceLog(embName, embHashMap);
+}
+
+/// 记录日志：HBM和DDR换入换出后，比较hostHashMap中DDR内key和表对应的lfuCache对象中的key内容
+void EmbHashMap::AddCacheManagerTraceLog(const string& embTableName, const EmbHashMapInfo& embHashMap) const
+{
+    if (Logger::GetLevel() != Logger::TRACE) {
+        return;
+    }
+    auto& hostMap = embHashMap.hostHashMap;
+    auto& devSize = embHashMap.devVocabSize;
+    auto iter = cacheManager->ddrKeyFreqMap.find(embTableName);
+    if (iter == cacheManager->ddrKeyFreqMap.end()) {
+        throw runtime_error("table not in ddrKeyFreqMap");
+    }
+    auto &lfu = iter->second;
+    const auto& lfuTab = lfu.GetFreqTable();
+    if (lfuTab.empty()) {
+        return;
+    }
+    size_t tableKeyInDdr = 0;
+    vector<emb_key_t> ddrKeys; // 获取hostHashMap中保存在DDR的key
+    for (const auto& item : hostMap) {
+        if (item.second < devSize) {
+            continue;
+        }
+        ddrKeys.emplace_back(item.first);
+        ++tableKeyInDdr;
+    }
+    vector<emb_key_t> lfuKeys;
+    for (const auto& it : lfuTab) {
+        lfuKeys.emplace_back(it.first);
+    }
+    std::sort(ddrKeys.begin(), ddrKeys.end());
+    std::sort(lfuKeys.begin(), lfuKeys.end());
+    std::string ddrKeysString = VectorToString(ddrKeys);
+    std::string lfuKeysString = VectorToString(lfuKeys);
+    if (ddrKeysString != lfuKeysString) {
+        LOG_ERROR("swap HBM with DDR step error, key string not equal, ddrKeysString:{}, lfuKeysString:{}",
+            ddrKeysString, lfuKeysString);
+    } else {
+        LOG_INFO("swap HBM with DDR step OK, table:{}, ddrKeysString == lfuKeysString, string length:{}",
+            embTableName, lfuKeysString.length());
+    }
+
+    LOG_INFO("swap HBM with DDR step end, table:{}, tableKeyInDdr:{}, tableKeyInLfu:{}",
+        embTableName, tableKeyInDdr, lfu.keyTable.size());
+}
+
+/// 记录key频次数据
+/// \param embTableName emb表名
+/// \param key key
+/// \param type 记录类型枚举
+void EmbHashMap::AddKeyFreqInfo(const string& embTableName, const emb_key_t& key, RecordType type) const
+{
+    if (!isSSDEnabled) {
+        return;
+    }
+    cacheManager->PutKey(embTableName, key, type);
+}
