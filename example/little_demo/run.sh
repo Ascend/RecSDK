@@ -113,7 +113,7 @@ fi
 
 apply_gradient_strategy="sum_same_id_gradients_and_apply"
 export APPLY_GRADIENTS_STRATEGY=${apply_gradient_strategy}
-hccl_json_8p="/home/z30029085/model_with_mt_cpu_only/device_topo/hccl_json_123_1p.json"
+hccl_json_8p="/home/xxxxxxxxx/model_with_mt_cpu_only/device_topo/hccl_json_123_1p.json"
 # 使用ranktable方案
 function rankTableSolution() {
   echo "The ranktable solution"
