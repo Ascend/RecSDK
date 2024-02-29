@@ -73,8 +73,8 @@ securec是华为开源的安全函数库。下载后：
 
 为了构建多个版本的whl包，编译脚本在python虚拟环境完成对应tensorflow版本的安装。用户可以根据实际情况调整编译脚本，指定tensorflow的安装路径。编译方法：
 - build/build.sh：执行脚本完成tf1和tf2版本whl包的构建和打包。执行脚本前，请参考build/build_tf1.sh、build/build_tf2.sh创建对应的虚拟环境，在虚拟环境中完成对应tensorflow版本的安装，并修改对应的激活命令。
-- build/build_tf1.sh：执行脚本完成tf1版本whl包的构建，构建成功后，whl包在tf1_whl子目录下。执行脚本前，创建tf1虚拟环境，在虚拟环境中完成tensorflow 1.15.0版本的安装，并修改对应的激活命令。
-- build/build_tf2.sh：执行脚本完成tf2版本whl包的构建，构建成功后，whl包在tf2_whl子目录下。执行脚本前，创建tf2虚拟环境，在虚拟环境中完成tensorflow 2.6.5版本的安装，并修改对应的激活命令。
+- build/build_tf1_with_opensource.sh：执行脚本完成tf1版本whl包的构建，构建成功后，whl包在tf1_whl子目录下。执行脚本前，创建tf1虚拟环境，在虚拟环境中完成tensorflow 1.15.0版本的安装，并修改对应的激活命令。
+- build/build_tf2_with_opensource.sh：执行脚本完成tf2版本whl包的构建，构建成功后，whl包在tf2_whl子目录下。执行脚本前，创建tf2虚拟环境，在虚拟环境中完成tensorflow 2.6.5版本的安装，并修改对应的激活命令。
 
 如需使用动态扩容功能，进入“./cust_op/cust_op_by_addr”目录中。参考以下命令编译并安装动态扩容算子包。
 ```shell
