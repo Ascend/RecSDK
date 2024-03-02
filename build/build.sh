@@ -63,7 +63,8 @@ release_tar=Ascend-"${pkg_dir}"_"${VERSION}"_linux-"${ARCH}".tar.gz
 gen_tar_file()
 {
   cd "${src_path}"
-  cp -r  "${src_path}"/../cust_op ../build/"${pkg_dir}"
+  cp -r "${src_path}"/../cust_op ../build/"${pkg_dir}"
+  cp -r "${src_path}"/../examples  ../build/"${pkg_dir}"
   # change dirs and files 's permission
   chmod 550 ../build/"${pkg_dir}"/tf1_whl
   chmod 550 ../build/"${pkg_dir}"/tf1_whl/mx_rec*.whl
