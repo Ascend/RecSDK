@@ -20,6 +20,11 @@ set -e
 CUR_PATH=$(cd "$(dirname "$0")" || { warn "Failed to check path/to/run_python_dt.sh" ; exit ; } ; pwd)
 TOP_PATH="${CUR_PATH}"/../
 
+ARCH="$(uname -m)"
+if [ $ARCH == "aarch64" ]; then
+  export LD_PRELOAD=/usr/local/gcc7.3.0/lib64/libgomp.so.1
+fi
+
 # build mxRec and get output directory
 pip3 install setuptools==65.6.3
 bash "$TOP_PATH"/build/build_tf1_with_opensource.sh
