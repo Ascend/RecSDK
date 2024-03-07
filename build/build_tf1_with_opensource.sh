@@ -60,7 +60,9 @@ prepare_pybind
 prepare_securec
 
 # 配置tf1路径
+source /opt/buildtools/tf1_env/bin/activate
 tf1_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/tensorflow_core
+deactivate tf1_env
 
 project_output_path="${MxRec_DIR}"/output/
 VERSION_FILE="${MxRec_DIR}"/../mindxsdk/build/conf/config.yaml
