@@ -103,14 +103,8 @@ clean()
 if [ "$(uname -m)" = "x86_64" ]
 then
   echo "-----Build gen tar -----"
-  source /opt/buildtools/tf1_env/bin/activate
-  pip3 install setuptools==65.6.3
   bash ${ROOT_DIR}/build/build_tf1_with_opensource.sh
-  deactivate tf1_env
-  source /opt/buildtools/tf2_env/bin/activate
-  pip3 install setuptools==65.6.3
   bash ${ROOT_DIR}/build/build_tf2_with_opensource.sh
-  deactivate tf2_env
   gen_tar_file
   echo "-----Build gen tar finished-----"
 
@@ -121,14 +115,8 @@ fi
 if [ "$(uname -m)" = "aarch64" ]
 then
   echo "-----Build gen tar -----"
-  source /opt/buildtools/tf1_env/bin/activate
-  pip3 install setuptools==65.6.3
   bash ${ROOT_DIR}/build/build_tf1_with_opensource.sh
-  deactivate tf1_env
-  source /opt/buildtools/tf2_env/bin/activate
-  pip3 install setuptools==65.6.3
   bash ${ROOT_DIR}/build/build_tf2_with_opensource.sh
-  deactivate tf2_env
   gen_tar_file
   echo "-----Build gen tar finished-----"
 
