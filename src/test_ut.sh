@@ -140,7 +140,7 @@ cmake -DCMAKE_BUILD_TYPE=Debug \
     -DSECUREC_PATH="${ROOT_DIR}"/../opensource/securec \
     -DBUILD_TESTS=on -DCOVERAGE=on "$(dirname "${PWD}")"
 
-make -j
+make -j8
 make install
 
 # Run Test
