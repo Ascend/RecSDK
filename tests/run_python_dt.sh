@@ -26,7 +26,6 @@ if [ $ARCH == "aarch64" ]; then
 fi
 
 # build mxRec and get output directory
-pip3 install setuptools==65.6.3
 bash "$TOP_PATH"/build/build_tf1_with_opensource.sh
 
 # create libasc directory and copy so files into it
