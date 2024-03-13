@@ -38,5 +38,5 @@ cmake -DCMAKE_BUILD_TYPE=Release \
     -DSECUREC_PATH="$2"/../opensource/securec \
     -DCMAKE_INSTALL_PREFIX="$2"/output \
     -DBUILD_CUST="$3" ..
-make -j
+make -j8
 make install
