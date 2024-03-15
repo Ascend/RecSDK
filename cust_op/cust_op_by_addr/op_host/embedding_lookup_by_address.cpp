@@ -119,6 +119,10 @@ namespace ge
     static ge::graphStatus InferShape1(gert::InferShapeContext *context)
     {
 
+        if (optiling::CheckNullPointer(context, "context") != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+
         gert::Shape *yShape = context->GetOutputShape(0);
         if (optiling::CheckNullPointer(yShape, "yShape") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;

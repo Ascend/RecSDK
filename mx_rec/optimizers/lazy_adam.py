@@ -32,16 +32,15 @@ from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.initialize import ConfigInitializer
-from mx_rec.constants.constants import MAX_INT32
 from mx_rec.validator.validator import para_checker_decorator, StringValidator, FloatValidator
 
 
 @para_checker_decorator(check_option_list=[
-    ("learning_rate", FloatValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
-    ("beta1", FloatValidator, {"min_value": 0, "max_value": 1}, ["check_value_for_open_interval"]),
-    ("beta2", FloatValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
-    ("epsilon", FloatValidator, {"min_value": 0, "max_value": 1}, ["check_value_for_left_open_interval"]),
-    ("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"])
+    ("learning_rate", FloatValidator, {"min_value": 0.0, "max_value": 10.0}, ["check_value"]),
+    ("beta1", FloatValidator, {"min_value": 0.0, "max_value": 1.0}, ["check_value_for_open_interval"]),
+    ("beta2", FloatValidator, {"min_value": 0.0, "max_value": 1.0}, ["check_value"]),
+    ("epsilon", FloatValidator, {"min_value": 0.0, "max_value": 1.0}, ["check_value_for_left_open_interval"]),
+    ("name", StringValidator, {"min_len": 1, "max_len": 200}, ["check_string_length"])
 ])
 def create_hash_optimizer(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8, name="LazyAdam"):
     """
@@ -91,9 +90,10 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
         self.config_instance.sparse_embed_config.insert_removing_var_list(velocity.name)
         named_slot_key = (var.op.graph, var.op.name)
         table_instance = self.config_instance.sparse_embed_config.get_table_instance(var)
-        ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name, self._name,
-                                                                        {"momentum": momentum,
-                                                                         "velocity": velocity})
+        ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name,
+                                                                                  self.optimizer_type,
+                                                                                  {"momentum": momentum,
+                                                                                   "velocity": velocity})
         return [{"slot": momentum, "named_slot_key": named_slot_key, "slot_name": "m", "optimizer": self},
                 {"slot": velocity, "named_slot_key": named_slot_key, "slot_name": "v", "optimizer": self}]
 
@@ -202,5 +202,6 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
 
             table_instance = self.config_instance.sparse_embed_config.get_table_instance(each_var)
             ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name,
-                                                                                     self._name, {"momentum": momentum,
-                                                                                                  "velocity": velocity})
+                                                                                      self.optimizer_type,
+                                                                                      {"momentum": momentum,
+                                                                                       "velocity": velocity})

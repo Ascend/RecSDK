@@ -26,16 +26,15 @@ from tensorflow.python.training import gradient_descent
 
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.initialize import ConfigInitializer
-from mx_rec.constants.constants import MAX_INT32
 from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.validator.validator import para_checker_decorator, StringValidator, ClassValidator, FloatValidator
 
 
 @para_checker_decorator(check_option_list=[
-    ("learning_rate", FloatValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
-    ("weight_decay", FloatValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
+    ("learning_rate", FloatValidator, {"min_value": 0.0, "max_value": 10.0}, ["check_value"]),
+    ("weight_decay", FloatValidator, {"min_value": 0.0, "max_value": 1.0}, ["check_value"]),
     ("use_locking", ClassValidator, {"classes": (bool,)}),
-    ("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"])
+    ("name", StringValidator, {"min_len": 1, "max_len": 200}, ["check_string_length"])
 ])
 def create_hash_optimizer_by_addr(learning_rate, weight_decay=0.0001, use_locking=False, name="GradientDescentByAddr"):
     if not ConfigInitializer.get_instance().use_dynamic_expansion:
@@ -53,7 +52,7 @@ class CustomizedGradientDescentByAddr(gradient_descent.GradientDescentOptimizer,
     name_counter = defaultdict(int)
 
     def __init__(self, learning_rate, weight_decay, use_locking=False, name="GradientDescentByAddr"):
-        self.optimizer_type = "gradient_descent_by_addr"
+        self.optimizer_type = "gradient_descent"
         self.weight_decay = weight_decay
         self.optim_param_list = []
         super(CustomizedGradientDescentByAddr, self)._get_name(name=name)

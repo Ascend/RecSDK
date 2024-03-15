@@ -229,7 +229,8 @@ ssize_t HdfsFileSystem::Read(const string& filePath, char* fileContent, size_t d
     return static_cast<ssize_t>(readBytesNum);
 }
 
-ssize_t HdfsFileSystem::Read(const string& filePath, vector<vector<float>>& fileContent, size_t datasetSize)
+ssize_t HdfsFileSystem::Read(const string& filePath, vector<vector<float>>& fileContent, int64_t contentOffset,
+                             vector<int64_t> offsetArr, const size_t& embeddingSize)
 {
     hdfsFS fs = ConnectHdfs();
 
@@ -239,31 +240,18 @@ ssize_t HdfsFileSystem::Read(const string& filePath, vector<vector<float>>& file
         throw runtime_error("open hdfs file failed.");
     }
 
-    size_t embDataOuterSize = fileContent.capacity();
-    auto onceReadByteSize { datasetSize / embDataOuterSize };
-    tSize readBytesNum = 0;
+    ssize_t readBytesNum = 0;
+    size_t embeddingCount = 0;
+    for (const auto& offset: offsetArr) {
+        hdfs->Seek(fs, file, offset * embeddingSize * sizeof(float));
 
-    for (size_t i = 0; i < embDataOuterSize; ++i) {
-        size_t idx = 0;
-        size_t readSize = 0;
-        size_t dataCol = onceReadByteSize;
-        while (dataCol != 0) {
-            if (dataCol > oneTimeReadWriteLen) {
-                readSize = oneTimeReadWriteLen;
-            } else {
-                readSize = dataCol;
-            }
-            tSize res = hdfs->Read(fs, file, reinterpret_cast<char *>(fileContent[i].data()) + idx, readSize);
-            if (res == -1) {
-                hdfs->CloseFile(fs, file);
-                hdfs->Disconnect(fs);
-                return static_cast<ssize_t>(res);
-            }
-            dataCol -= readSize;
-            idx += readSize;
-            readBytesNum += res;
-        }
+        tSize res = hdfs->Read(fs, file, fileContent[embeddingCount].data() + contentOffset * embeddingSize,
+                               embeddingSize * sizeof(float));
+
+        embeddingCount++;
+        readBytesNum += embeddingSize * sizeof(float);
     }
+
     hdfs->CloseFile(fs, file);
     hdfs->Disconnect(fs);
     return static_cast<ssize_t>(readBytesNum);
@@ -271,15 +259,14 @@ ssize_t HdfsFileSystem::Read(const string& filePath, vector<vector<float>>& file
 
 /// 用于动态扩容模式下，从hdfs文件中读embedding
 /// \param filePath 文件路径
-/// \param embeddingSize embedding的长度
+/// \param embedSizeInfo embedding的长度
 /// \param addressArr 存放embedding的地址vector
 /// \param deviceId 运行的卡的id
 /// \return
-void HdfsFileSystem::ReadEmbedding(const string& filePath, const int& embeddingSize,
-                                   vector<int64_t>& addressArr, int deviceId)
+void HdfsFileSystem::ReadEmbedding(const string& filePath, EmbeddingSizeInfo& embedSizeInfo, int64_t firstAddress,
+                                   int deviceId, vector<int64_t> offsetArr)
 {
-    size_t datasetSize = GetFileSize(filePath);
-    auto embHashMapSize = static_cast<int>(datasetSize / sizeof(float) / embeddingSize);
+#ifndef GTEST
     hdfsFS fs = ConnectHdfs();
 
     hdfsFile file = hdfs->OpenFile(fs, filePath.c_str(), O_RDONLY, 0, 0, 0);
@@ -288,41 +275,31 @@ void HdfsFileSystem::ReadEmbedding(const string& filePath, const int& embeddingS
         throw runtime_error("open hdfs file failed.");
     }
 
-#ifndef GTEST
     auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
     if (res != ACL_ERROR_NONE) {
-        hdfs->CloseFile(fs, file);
-        hdfs->Disconnect(fs);
         throw runtime_error(StringFormat("Set device failed, device_id:%d", deviceId).c_str());
     }
 
-    aclError ret;
-    void *newBlock = nullptr;
-    ret = aclrtMalloc(&newBlock, static_cast<int>(datasetSize), ACL_MEM_MALLOC_HUGE_FIRST);
-    if (ret != ACL_SUCCESS) {
-        hdfs->CloseFile(fs, file);
-        hdfs->Disconnect(fs);
-        throw runtime_error(StringFormat("aclrtMemcpy failed, ret=%d", ret).c_str());
-    }
-
-    float *floatPtr = static_cast<float *>(newBlock);
-    for (size_t i = 0, j = 0; i < embHashMapSize; i += keyAddrElem, ++j) {
-        vector<float> row(embeddingSize);
-        hdfs->Read(fs, file, row.data(), embeddingSize * sizeof(float));
-
-        aclError ec = aclrtMemcpy(floatPtr + j * embeddingSize, embeddingSize * sizeof(float),
-                                  row.data(), embeddingSize * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
-        if (ec != ACL_SUCCESS) {
+    float* floatPtr = reinterpret_cast<float*>(firstAddress);
+    auto i = 0;
+    for (const auto& offset: offsetArr) {
+        vector<float> row(embedSizeInfo.embeddingSize);
+        hdfs->Seek(fs, file, offset * embedSizeInfo.embeddingSize * sizeof(float));
+        tSize res = hdfs->Read(fs, file, row.data(), embedSizeInfo.embeddingSize * sizeof(float));
+        try {
+            aclrtMemcpy(floatPtr + i * embedSizeInfo.extendEmbSize, embedSizeInfo.embeddingSize * sizeof(float),
+                        row.data(), embedSizeInfo.embeddingSize * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
+        } catch (std::exception& e) {
             hdfs->CloseFile(fs, file);
             hdfs->Disconnect(fs);
-            throw runtime_error(StringFormat("aclrtMemcpy failed, ret=%d", ec).c_str());
+            throw runtime_error(StringFormat("error happen when acl memory copy from host to device: %s", e.what()));
         }
-        int64_t address = reinterpret_cast<int64_t>(floatPtr + j * embeddingSize);
-        addressArr.push_back(address);
+        i++;
     }
-#endif
+
     hdfs->CloseFile(fs, file);
     hdfs->Disconnect(fs);
+#endif
 }
 
 hdfsFS HdfsFileSystem::ConnectHdfs()

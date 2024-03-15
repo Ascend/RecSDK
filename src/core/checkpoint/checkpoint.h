@@ -73,6 +73,7 @@ namespace MxRec {
 
         int rankId;
         int deviceId;
+        int rankSize;
         bool useDynamicExpansion {false};
         vector<EmbInfo> mgmtEmbInfo;
 
@@ -89,16 +90,13 @@ namespace MxRec {
         void SetDataHandler(const vector<CkptFeatureType>& featureTypes);
 
         void SaveProcess(CkptData& ckptData);
-        void MakeUpperLayerSaveDir(const vector<string>& dirNames);
+        void MakeUpperLayerSaveDir();
         void MakeDataLayerSaveDir(const vector<string>& embNames, const vector<CkptDataType>& saveDataTypes,
             const unique_ptr<CkptDataHandler>& dataHandler);
         void MakeSaveDir(const string& dirName) const;
         void SaveDataset(const vector<string>& embNames, const vector<CkptDataType>& saveDataTypes,
             const unique_ptr<CkptDataHandler>& dataHandler);
         void WriteStream(CkptTransData& transData, const string& dataDir, size_t dataSize, CkptDataType dataType);
-
-        void WriteEmbedding(const CkptTransData& transData, const string& dataDir, const int& embeddingSize);
-        void ReadEmbedding(CkptTransData& transData, const string& dataDir, const string& embName);
 
         struct EmbSizeInfo {
             int embSize = 0;
@@ -108,7 +106,6 @@ namespace MxRec {
         bool CheckEmbNames(const string& embName);
 
         void LoadProcess(CkptData& ckptData);
-        void GetUpperLayerLoadDir(const vector<string>& dirNames);
         vector<string> GetEmbedTableNames();
         vector<string> GetTableLayerLoadDir();
         void LoadDataset(const vector<string>& embNames, const vector<CkptDataType>& saveDataTypes,

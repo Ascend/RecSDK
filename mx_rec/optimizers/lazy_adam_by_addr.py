@@ -27,17 +27,16 @@ from tensorflow.python.training import adam
 
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.constants.constants import MAX_INT32
 from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.validator.validator import para_checker_decorator, StringValidator, FloatValidator
 
 
 @para_checker_decorator(check_option_list=[
-    ("learning_rate", FloatValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
-    ("beta1", FloatValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
-    ("beta2", FloatValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
-    ("epsilon", FloatValidator, {"min_value": 0, "max_value": 1}, ["check_value"]),
-    ("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"])
+    ("learning_rate", FloatValidator, {"min_value": 0.0, "max_value": 10.0}, ["check_value"]),
+    ("beta1", FloatValidator, {"min_value": 0.0, "max_value": 1.0}, ["check_value_for_open_interval"]),
+    ("beta2", FloatValidator, {"min_value": 0.0, "max_value": 1.0}, ["check_value"]),
+    ("epsilon", FloatValidator, {"min_value": 0.0, "max_value": 1.0}, ["check_value_for_left_open_interval"]),
+    ("name", StringValidator, {"min_len": 1, "max_len": 200}, ["check_string_length"])
 ])
 def create_hash_optimizer_by_address(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8,
                                      name="LazyAdamByAddress"):
@@ -66,7 +65,7 @@ class CustomizedLazyAdamByAddress(adam.AdamOptimizer, CustomizedOptimizer):
 
     def __init__(self, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8, use_locking=False,
                  name="LazyAdamByAddress"):
-        self.optimizer_type = "LazyAdamByAddress"
+        self.optimizer_type = "LazyAdam"
         self.optim_param_list = ["momentum", "velocity"]
         super(CustomizedLazyAdamByAddress, self)._get_name(name=name)
         super(CustomizedLazyAdamByAddress, self).__init__(learning_rate=learning_rate, beta1=beta1, beta2=beta2,

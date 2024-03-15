@@ -63,11 +63,6 @@ export ASCEND_GLOBAL_LOG_LEVEL=3
 #export USE_FAAE=1
 export ENABLE_FORCE_V2_CONTROL=1
 
-#apply_gradient_strategy="direct_apply"
-apply_gradient_strategy="sum_same_id_gradients_and_apply"
-export APPLY_GRADIENTS_STRATEGY=${apply_gradient_strategy}
-#export USE_MULTI_LOOKUP=1
-
 export PROFILING_OPTIONS='{"output":"/home/yz/profiling",
                            "training_trace":"on",
                            "task_trace":"on",

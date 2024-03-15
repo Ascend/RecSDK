@@ -155,6 +155,10 @@ void HDTransfer::Send(TransferChannel channel, const vector<Tensor> &tensors, in
         }
         resendTime++;
     } while (isNeedResend);
+
+    if (channel == TransferChannel::EVICT) {
+        return;
+    }
     usedChannelsNames[channelId].insert(TransferChannel2Str(channel));
 #endif
 }
@@ -226,4 +230,40 @@ std::unordered_map<std::string, acltdtChannelHandle*> HDTransfer::GetTransChanne
 std::unordered_map<int, std::set<std::string>> HDTransfer::GetUsedTransChannel()
 {
     return usedChannelsNames;
+}
+
+void HDTransfer::ClearTransChannel(int channelId)
+{
+    LOG_INFO("[CLEAR] Start to clear channel: {}", channelId);
+    
+    acltdtDataset* trashDataset = acltdtCreateDataset();
+    std::unordered_map<std::string, acltdtChannelHandle*> transChannels = this->GetTransChannel();
+
+    for (auto it = transChannels.begin(); it != transChannels.end(); it++) {
+        std::string channelName = it->first;
+        auto channelHandle = it->second;
+
+        int table_channel = channelName.back() - '0';
+        if (table_channel != channelId) {
+            continue;
+        }
+     
+        size_t initSize = 0;
+        acltdtQueryChannelSize(channelHandle, &initSize);
+        if (initSize == 0) {
+            continue;
+        }
+
+        size_t currSize = initSize;
+        do {
+            auto status = acltdtReceiveTensor(channelHandle, trashDataset, -1);
+            if (status != ACL_SUCCESS) {
+                LOG_INFO("[CLEAR] Failed to recv eos from channel: {}, error: {}.", channelName, status);
+            }
+            acltdtQueryChannelSize(channelHandle, &currSize);
+        } while (currSize > 0);
+        LOG_INFO("[CLEAR] ChannelName: {}, ChannelSize: {} -> {}", channelName, initSize, currSize);
+    }
+
+    acltdtDestroyDataset(trashDataset);
 }

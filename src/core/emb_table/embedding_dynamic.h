@@ -1,9 +1,17 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
- * Description: embeddingtable with dynamic expansion
- * Author: MindX SDK
- * Date: 2023/12/11
- */
+/* Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+        limitations under the License.
+==============================================================================*/
 
 #ifndef MX_REC_EMBEDDING_DYNAMIC_H
 #define MX_REC_EMBEDDING_DYNAMIC_H
@@ -27,6 +35,10 @@ public:
 
     virtual int64_t capacity() const;
 
+    void Load(const string& savePath);
+
+    void Save(const string& savePath);
+
 private:
     constexpr static int BLOCK_EMB_NUM = 100000; // 每次扩容分配10w条
 
@@ -36,10 +48,34 @@ private:
 
     void MallocEmbeddingBlock(int embNum);
 
+    int SaveKey(const string& savePath);
+
+    void SaveEmbAndOptim(const string& savePath);
+
+    void SetOptimizerInfo(OptimizerInfo& optimizerInfo);
+
+    int LoadKey(const string& savePath);
+
+    void LoadEmbAndOptim(const string& savePath);
+
+    void SaveEmbData(const string& savePath);
+
+    void SaveOptimData(const string& savePath);
+
     // embedding地址的列表
     list<float*> embeddingList_;
     // 内存块列表
     vector<void*> memoryList_;
+
+    vector<int64_t> deviceKey;
+    vector<int64_t> embAddress;
+    vector<int64_t> optimAddress;
+
+    std::string optimName;
+    std::vector<std::string> optimParams;
+    std::map<std::string, vector<int64_t>> optimAddressMap;
+
+    int64_t firstAddress;
 };
 }
 

@@ -40,11 +40,13 @@ namespace optiling
 
     static ge::graphStatus CheckPositiveInt(int32_t value, const char *errorMessage)
     {
-        if (value <= 0) {
-            printf("%s must larger than 0\n", errorMessage);
+        if (value < 0) {
+            printf("%s can not be smaller than 0\n", errorMessage);
             return ge::GRAPH_FAILED;
         }
-
+        if (value == 0) {
+            printf("%s is 0, warning!!! check whether input is valid\n", errorMessage);
+        }
         return ge::GRAPH_SUCCESS;
     }
 
@@ -75,7 +77,8 @@ namespace optiling
             return ge::GRAPH_FAILED;
         }
 
-        int32_t inputDim = inputTensor1->GetShapeSize() / inputShape;
+        const int32_t inputShapeTmp = (inputShape > 0) ? inputShape : 1;
+        int32_t inputDim = inputTensor1->GetShapeSize() / inputShapeTmp;
         if (CheckPositiveInt(inputDim, "inputDim") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -144,6 +147,10 @@ namespace ge
     }
     static ge::graphStatus InferDataType(gert::InferDataTypeContext *context)
     {
+        if (optiling::CheckPointer(context, "context") != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+
         context->SetOutputDataType(0, ge::DataType(DT_FLOAT));
         return GRAPH_SUCCESS;
     }

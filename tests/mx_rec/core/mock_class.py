@@ -66,7 +66,7 @@ class MockSparseEmbedConfig:
         pass
 
     @staticmethod
-    def insert_table_instance(name, key, instance):
+    def insert_table_instance(name, key, instance, eval_flag):
         pass
 
     def get_table_instance(self, var):
@@ -123,6 +123,7 @@ class MockConfigInitializer:
         self.use_static = kwargs.get("use_static", False)
         self.use_hot = kwargs.get("use_static", True)
         self.modify_graph = kwargs.get("modify_graph", True)
+        self.max_steps = kwargs.get("max_steps", -1)
         self.train_steps = kwargs.get("get_train_steps", -1)
         self.eval_steps = kwargs.get("eval_steps", -1)
         self.save_steps = kwargs.get("save_steps", -1)

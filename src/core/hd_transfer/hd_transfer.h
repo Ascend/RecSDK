@@ -92,7 +92,10 @@ namespace MxRec {
         void Destroy();
 
         std::unordered_map<std::string, acltdtChannelHandle*> GetTransChannel();
+
         unordered_map<int, set<std::string>> GetUsedTransChannel();
+
+        void ClearTransChannel(int channelId);
 
     private:
         std::unordered_map<std::string, acltdtChannelHandle*> transferChannels;

@@ -52,8 +52,12 @@ namespace MxRec {
     const int FEATURE_EVICT_TIME_INTERVAL = 3600 * 24;
     const int FEATURE_MIN_TIME_INTERVAL = 10;
 
+
     class FeatureAdmitAndEvict {
     public:
+        FeatureAdmitAndEvict(const FeatureAdmitAndEvict&) = delete;
+        FeatureAdmitAndEvict& operator=(const FeatureAdmitAndEvict&) = delete;
+
         explicit FeatureAdmitAndEvict(int recordsInitSize = DEFAULT_RECORDS_INIT_SIZE);
         ~FeatureAdmitAndEvict();
 

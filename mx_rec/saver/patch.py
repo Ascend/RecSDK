@@ -47,7 +47,7 @@ from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, StringValidator, OptionalIntValidator, \
     OptionalStringValidator, DirectoryValidator
 from mx_rec.util.log import logger
-from mx_rec.constants.constants import MAX_INT32
+from mx_rec.constants.constants import MAX_INT32, INVALID_CHARS
 
 
 def get_sparse_vars(var_list):
@@ -104,6 +104,13 @@ def saver_init(self, var_list=None, reshape=False, sharded=False, max_to_keep=5,
     # mt customed parameter
     self._fid_version = fid_version
 
+    # mxRec Patch
+    # create sparse saver only when sparse_var_list is not None
+    self.sparse_saver = None
+    sparse_var_list = get_sparse_vars(var_list)
+    if sparse_var_list:
+        self.sparse_saver = SparseSaver(var_list=sparse_var_list, max_to_keep=max_to_keep, prefix_name=filename)
+
     if self.saver_def:
         self._check_saver_def()
         self._write_version = self.saver_def.version
@@ -114,11 +121,6 @@ def saver_init(self, var_list=None, reshape=False, sharded=False, max_to_keep=5,
     elif not defer_build:
         self.build()
     self._object_restllore_saver = None
-    # mxRec Patch
-    # create sparse saver only when var_list is not None
-    self.sparse_saver = None
-    if get_sparse_vars(var_list):
-        self.sparse_saver = SparseSaver(var_list=var_list, max_to_keep=max_to_keep, prefix_name=filename)
 
 
 def save_check(latest_filename, sess):
@@ -132,12 +134,7 @@ def get_model_checkpoint_path(self, checkpoint_file, sess):
     if not context.executing_eagerly():
         model_checkpoint_path = sess.run(self.saver_def.save_tensor_name,
                                          {self.saver_def.filename_tensor_name: checkpoint_file})
-        # mxRec Patch
-        # save sparse model, only run when self.sparse_saver is not None
-        if self.sparse_saver:
-            self.sparse_saver.save(sess, save_path=checkpoint_file)
-
-        logger.info("Save model into dir %s", checkpoint_file)
+        logger.info("Save dense model into dir %s", checkpoint_file)
     else:
         self._build_eager(checkpoint_file, build_save=True, build_restore=False)
         model_checkpoint_path = self.saver_def.save_tensor_name
@@ -191,6 +188,13 @@ def build(self):
     self._build(self._filename, build_save=True, build_restore=True)
 
 
+def check_characters_is_valid(characters: str) -> bool:
+    if any(c in INVALID_CHARS for c in characters):
+        return False
+
+    return True
+
+
 @para_checker_decorator(check_option_list=[
     ("sess", ClassValidator, {"classes": (tf.compat.v1.Session, tf.compat.v1.train.MonitoredSession)}),
     ("save_path", StringValidator, {"min_len": 1, "max_len": 150}, ["check_string_length"]),
@@ -207,13 +211,19 @@ def build(self):
 ])
 def save(self, sess, save_path, global_step=None, latest_filename=None, meta_graph_suffix="meta", write_meta_graph=True,
          write_state=True, strip_default_attrs=False, save_debug_info=False):
+    if not check_characters_is_valid(save_path):
+        raise ValueError("save_path contains invalid characters such as newline, formfeed,"
+                         " carriage return, backspace, tab, vertical tab, and delete.")
+
     if not check_file_system_is_valid(save_path):
-        raise ValueError(f"the path to save belong to invalid file system, only local file system supported. ")
+        raise ValueError("the path to save belong to invalid file system, only local file system supported. ")
 
     if not self._is_built and not context.executing_eagerly():
         raise RuntimeError("`build()` should be called before save if defer_build==True")
+
     if latest_filename is None:
         latest_filename = "checkpoint"
+
     if self._write_version != saver_pb2.SaverDef.V2:
         tf_logging.warning("TensorFlow's V1 checkpoint format has been deprecated.")
 
@@ -232,13 +242,25 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
     if self._is_empty:
         return model_checkpoint_path
 
-    model_checkpoint_path = compat.as_str(get_model_checkpoint_path(self, checkpoint_file, sess))
-    if write_state:
-        update_checkpoint_state(self, model_checkpoint_path, save_path_parent, latest_filename, meta_graph_suffix,
-                                save_path)
-    if write_meta_graph:
-        write_meta_graph_task(self, checkpoint_file=checkpoint_file, meta_graph_suffix=meta_graph_suffix, sess=sess,
-                              strip_default_attrs=strip_default_attrs, save_debug_info=save_debug_info)
+    # mxRec Patch
+    # save sparse model, only run when self.sparse_saver is not None
+    if not context.executing_eagerly() and self.sparse_saver:
+        self.sparse_saver.save(sess, save_path=checkpoint_file)
+        logger.info("Save sparse model into dir %s", checkpoint_file)
+
+    from mpi4py import MPI
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    comm.Barrier()
+    if rank == 0:
+        model_checkpoint_path = compat.as_str(get_model_checkpoint_path(self, checkpoint_file, sess))
+        if write_state:
+            update_checkpoint_state(self, model_checkpoint_path, save_path_parent, latest_filename, meta_graph_suffix,
+                                    save_path)
+        if write_meta_graph:
+            write_meta_graph_task(self, checkpoint_file=checkpoint_file, meta_graph_suffix=meta_graph_suffix, sess=sess,
+                                  strip_default_attrs=strip_default_attrs, save_debug_info=save_debug_info)
+    comm.Barrier()
     return model_checkpoint_path
 
 
@@ -249,6 +271,11 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
 def restore(self, sess, save_path):
     if save_path is None:
         raise ValueError("Can't load save_path when it is None.")
+
+    if not check_characters_is_valid(save_path):
+        raise ValueError("save_path contains invalid characters such as newline, "
+                         "formfeed, carriage return, backspace, tab, vertical tab, and delete.")
+
     if not check_file_system_is_valid(save_path):
         raise ValueError(f"the path to restore belong to invalid file system, only local file system supported. ")
 

@@ -15,7 +15,11 @@ See the License for the specific language governing permissions and
 
 #include <thread>
 
+#include "key_process/key_process.h"
 #include "utils/common.h"
+#include "utils/logger.h"
+#include "utils/singleton.h"
+#include "utils/time_cost.h"
 #include "hybrid_mgmt_block.h"
 
 using namespace MxRec;
@@ -162,6 +166,9 @@ void HybridMgmtBlock::ResetAll(int channelId)
     pythonBatchId[channelId] = 0;
     hybridBatchId[channelId] = 0;
     isBlock[channelId] = false;
+
+    LOG_DEBUG("Start to reset isNeedSendEos");
+    Singleton<KeyProcess>::GetInstance()->SetEos(0, channelId);
 }
 
 /// 检查当前的步数是否可以进行save
@@ -214,9 +221,9 @@ void HybridMgmtBlock::Destroy()
 
 void HybridMgmtBlock::SetRankInfo(RankInfo ri)
 {
-    this->stepsInterval[TRAIN_CHANNEL_ID] = ri.maxStep[TRAIN_CHANNEL_ID];
-    this->stepsInterval[EVAL_CHANNEL_ID] = ri.maxStep[EVAL_CHANNEL_ID];
-    this->saveInterval = ri.maxStep[SAVE_STEP_INDEX];
+    this->stepsInterval[TRAIN_CHANNEL_ID] = ri.ctrlSteps[TRAIN_CHANNEL_ID];
+    this->stepsInterval[EVAL_CHANNEL_ID] = ri.ctrlSteps[EVAL_CHANNEL_ID];
+    this->saveInterval = ri.ctrlSteps[SAVE_STEP_INDEX];
     this->rankInfo = ri;
 };
 

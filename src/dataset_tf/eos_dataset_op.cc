@@ -15,12 +15,11 @@ See the License for the specific language governing permissions and
 
 #include "eos_dataset_op.h"
 
+#include <cstdint>
+#include <mpi.h>
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
-#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/mutex.h"
 #if defined(TF_VERSION_TF2)
@@ -29,6 +28,9 @@ See the License for the specific language governing permissions and
 
 #include "key_process/key_process.h"
 #include "utils/logger.h"
+#include "utils/common.h"
+#include "utils/singleton.h"
+#include "utils/time_cost.h"
 
 using namespace std;
 using namespace MxRec;
@@ -36,28 +38,71 @@ using namespace MxRec;
 namespace tensorflow {
 namespace data {
 
+MPI_Group g_group;
+MPI_Comm g_comm[2];
+
+int g_rankId;
+int g_rankSize;
+int g_datasetId[2] = {0, 0};
+
 constexpr const char *const EosDatasetOp::kDatasetType;
 constexpr const char *const EosDatasetOp::kInputDataset;
 constexpr const char *const EosDatasetOp::kChannelId;
+constexpr const char *const EosDatasetOp::kMaxTrainSteps;
+constexpr const char *const EosDatasetOp::kMaxEvalSteps;
 constexpr const char *const EosDatasetOp::kOutputTypes;
 constexpr const char *const EosDatasetOp::kOutputShapes;
+
+int CheckCommFinished(MPI_Request& req, int channelId)
+{
+    TimeCost tc;
+
+    while (true) {
+        int flag;
+        MPI_Test(&req, &flag, MPI_STATUS_IGNORE);
+        if (flag > 0) {
+            return 0;
+        }
+
+        if (tc.ElapsedSec() >= EOS_TIMEOUT) {
+            tc = TimeCost();
+            LOG_DEBUG("Channel: {} all_reduce execute timeout, invoked by rank: {}", channelId, g_rankId);
+        }
+    }
+}
 
 // 表示数据集的不可变性定义，这个类的 MakeIterator() 方法告诉 TensorFlow 怎样在数据集上生成迭代器对象。
 class EosDatasetOp::Dataset : public DatasetBase {
 public:
-    explicit Dataset(OpKernelContext *ctx, const DatasetBase *input, int32_t channelId)
+    explicit Dataset(OpKernelContext *ctx, const DatasetBase *input, int32_t channelId, int32_t maxTrainSteps,
+        int32_t maxEvalSteps)
         : DatasetBase(DatasetContext(ctx)),
-        input_(input),
-        channelId_(channelId)
+          input_(input),
+          channelId_(channelId),
+          maxTrainSteps_(maxTrainSteps),
+          maxEvalSteps_(maxEvalSteps),
+          id_(g_datasetId[channelId])
     {
         input_->Ref();
         auto os_input = input->output_shapes();
         output_shapes_ = os_input;
-        keyProcess = Singleton<KeyProcess>::GetInstance();
+
+        MPI_Comm_group(MPI_COMM_WORLD, &g_group);
+        MPI_Comm_create(MPI_COMM_WORLD, g_group, &g_comm[channelId]);
+        MPI_Comm_rank(g_comm[channelId], &g_rankId);
+        MPI_Comm_size(g_comm[channelId], &g_rankSize);
+
+        LOG_DEBUG("EosDataset: {} was born for channel: {}, maxTrainSteps: {}, maxEvalSteps: {}.",
+            g_datasetId[channelId], channelId, maxTrainSteps, maxEvalSteps);
+        g_datasetId[channelId] += 1;
     }
+
+    Dataset(const Dataset&) = delete;
+    Dataset& operator=(const Dataset&) = delete;
 
     ~Dataset() override
     {
+        LOG_DEBUG("EosDataset: {} for channel: {} has been destroied!", id_, channelId_);
         input_->Unref();
     }
 
@@ -108,7 +153,12 @@ protected:
         TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph));
         Node *channel_id_x = nullptr;
         TF_RETURN_IF_ERROR(b->AddScalar(channelId_, &channel_id_x));
-        TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph, channel_id_x}, output));
+        Node *max_train_steps_x = nullptr;
+        TF_RETURN_IF_ERROR(b->AddScalar(maxTrainSteps_, &max_train_steps_x));
+        Node *max_eval_steps_x = nullptr;
+        TF_RETURN_IF_ERROR(b->AddScalar(maxEvalSteps_, &max_eval_steps_x));
+        TF_RETURN_IF_ERROR(
+            b->AddDataset(this, { input_graph, channel_id_x, max_train_steps_x, max_eval_steps_x }, output));
         return Status::OK();
     }
 
@@ -116,7 +166,7 @@ private:
     // 表示特定数据集上的迭代器的可变性，这个类的 GetNextInternal() 方法告诉 TensorFlow 怎样获取迭代器的下一个元素。
     class Iterator : public DatasetIterator<Dataset> {
     public:
-        explicit Iterator(const Params &params) : DatasetIterator<Dataset>(params), i_(0) {}
+        explicit Iterator(const Params &params) : DatasetIterator<Dataset>(params), i_(0), iter_times_(0) {}
 #if defined(TF_VERSION_TF2)
         Status Initialize(IteratorContext* ctx) override
         {
@@ -128,34 +178,59 @@ private:
             return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
         }
 #endif
-        Status GetNextInternal(IteratorContext* ctx,
-                               std::vector<Tensor>* out_tensors,
-                               bool* end_of_sequence) override
+        Status GetNextInternal(IteratorContext *ctx, std::vector<Tensor> *out_tensors, bool *end_of_sequence) override
         {
             mutex_lock l(mu_);
-            int exitFlag = 0;
             if (!input_impl_) {
                 *end_of_sequence = true;
                 return Status::OK();
             }
-
             TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
 
-            // 正常数据流程
-            if (!*end_of_sequence) {
+            auto keyProcess = Singleton<KeyProcess>::GetInstance();
+            auto datasetId = dataset()->id_;
+            auto channelId = dataset()->channelId_;
+            if (channelId == 0 && iter_times_ == dataset()->maxTrainSteps_) {
+                *end_of_sequence = true;
+            }
+            if (channelId == 1 && iter_times_ == dataset()->maxEvalSteps_) {
+                *end_of_sequence = true;
+            }
+
+            int getNextStatus = GET_NEXT_CONTINUE;
+            if (*end_of_sequence) {
+                getNextStatus = GET_NEXT_TERMINATE;
+
+                MPI_Request req;
+                MPI_Iallreduce(MPI_IN_PLACE, &getNextStatus, 1, MPI_INT, MPI_SUM, g_comm[channelId], &req);
+                CheckCommFinished(req, channelId);
+
+                keyProcess->SetEos(1, dataset()->channelId_);
+                LOG_DEBUG("[ACTIVE] GetNext eos was triggered actively, channel: {}, iter: {}", dataset()->channelId_,
+                    iter_times_);
+
+                input_impl_.reset();
                 return Status::OK();
             }
 
-            // 数据eos场景
-            i_ = 1;
-            exitFlag = 1;
-            *end_of_sequence = true;
-            input_impl_.reset();
-            LOG_INFO("GetNext eos, channelID:[{}]", dataset()->channelId_);
-            dataset()->keyProcess->SetEos(1, dataset()->channelId_);
+            MPI_Request req;
+            MPI_Iallreduce(MPI_IN_PLACE, &getNextStatus, 1, MPI_INT, MPI_SUM, g_comm[channelId], &req);
+            CheckCommFinished(req, channelId);
 
+            if (getNextStatus < g_rankSize) {
+                *end_of_sequence = true;
+                keyProcess->SetEos(1, dataset()->channelId_);
+                LOG_DEBUG("[PASSIVE] GetNext eos was triggered passively, channel: {}, iter: {}, sum: {}",
+                    dataset()->channelId_, iter_times_, getNextStatus);
+
+                input_impl_.reset();
+                return Status::OK();
+            }
+
+            iter_times_ += 1;
             return Status::OK();
         }
+
     protected:
         std::shared_ptr<model::Node> CreateNode(
                 IteratorContext* ctx, model::Node::Args args) const override
@@ -184,14 +259,21 @@ private:
         }
 
     private:
+        static constexpr int GET_NEXT_CONTINUE = 1;
+        static constexpr int GET_NEXT_TERMINATE = 0;
+    
         tensorflow::mutex mu_;
         int64 i_ GUARDED_BY(mu_);
+        int64 iter_times_ GUARDED_BY(mu_);
         std::unique_ptr <IteratorBase> input_impl_ GUARDED_BY(mu_);
     };
+
     const DatasetBase *input_;
     int32_t channelId_;
-    KeyProcess* keyProcess;
+    int32_t maxTrainSteps_;
+    int32_t maxEvalSteps_;
     std::vector <PartialTensorShape> output_shapes_;
+    int id_;
 };
 
 EosDatasetOp::EosDatasetOp(OpKernelConstruction *ctx) : UnaryDatasetOpKernel(ctx) {}
@@ -200,12 +282,18 @@ void EosDatasetOp::MakeDataset(OpKernelContext *ctx, DatasetBase *input, Dataset
 {
     int32_t channel;
     OP_REQUIRES_OK(ctx, ParseScalarArgument<int32_t>(ctx, kChannelId, &channel));
-    *output = new Dataset(ctx, input, channel);
+    int32_t maxTrainSteps;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int32_t>(ctx, kMaxTrainSteps, &maxTrainSteps));
+    int32_t maxEvalSteps;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int32_t>(ctx, kMaxEvalSteps, &maxEvalSteps));
+    *output = new Dataset(ctx, input, channel, maxTrainSteps, maxEvalSteps);
 }
 
 REGISTER_OP("EosDataset")
 .Input("input_dataset: variant")
 .Input("channel_id: int32")
+.Input("max_train_steps: int32")
+.Input("max_eval_steps: int32")
 .Output("handle: variant")
 .Attr("output_types: list(type) >= 1")
 .Attr("output_shapes: list(shape) >= 1")

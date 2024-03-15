@@ -91,10 +91,6 @@ if [ $USE_MODE = "train" ] || [ $USE_MODE = "train_and_evaluate" ];then
   rm -rf ./_rank*
 fi
 
-################# 配置梯度策略 ######################
-apply_gradient_strategy="sum_same_id_gradients_and_apply"
-# apply_gradient_strategy="direct_apply"
-export APPLY_GRADIENTS_STRATEGY=${apply_gradient_strategy}
 ################# 参数配置 ######################
 export USE_DYNAMIC=1            # 0：静态shape；1：动态shape
 export USE_HOT=1                # 0：关闭hot emb；1: 开启hot emb
