@@ -17,14 +17,13 @@
 import tensorflow as tf
 from delay_loss_scale import DenseLossScaleOptimizer, SparseLossScaleOptimizer
 from gradient_descent_w import create_hash_optimizer
-from mx_rec.util.initialize import get_use_dynamic_expansion
+from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.optimizers.gradient_descent_by_addr import create_hash_optimizer_by_addr
 
 
 def get_dense_and_sparse_optimizer(cfg):
     dense_optimizer = tf.train.GradientDescentOptimizer(learning_rate=cfg.learning_rate[0])
-    use_dynamic_expansion = get_use_dynamic_expansion()
-    sparse_optimizer = None
+    use_dynamic_expansion = ConfigInitializer.get_instance().use_dynamic_expansion
     if use_dynamic_expansion:
         sparse_optimizer = create_hash_optimizer_by_addr(learning_rate=cfg.learning_rate[1], weight_decay=0.0001)
     else:

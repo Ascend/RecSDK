@@ -90,6 +90,12 @@ HDFS_FILE_PREFIX = ["viewfs://", "hdfs://"]
 LIBASC_OPS_SO = "libasc_ops.so"
 LIBREC_EOS_OPS_SO = "librec_eos_ops.so"
 
+INVALID_CHARS = frozenset({
+    "\n", "\f", "\r", "\b", "\t", "\v",
+    "\u000D", "\u000A", "\u000C", "\u000B", "\u0009",
+    "\u0008", "\u007F"
+})
+
 
 class BaseEnum(Enum):
     @classmethod

@@ -34,19 +34,20 @@ from tensorflow.python.training import slot_creator
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.constants.constants import MAX_INT32
-from mx_rec.validator.validator import para_checker_decorator, ClassValidator, NumValidator, StringValidator, \
+from mx_rec.validator.validator import para_checker_decorator, ClassValidator, StringValidator, \
     FloatValidator
 
 
 @para_checker_decorator(check_option_list=[
-    ("learning_rate", FloatValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
-    ("initial_accumulator_value", FloatValidator, {"min_value": 0, "max_value": 1e4}, ["check_value"]),
-    ("learning_rate_power", FloatValidator, {"min_value": -MAX_INT32, "max_value": 0}, ["check_value"]),
-    ("l1_regularization_strength", FloatValidator, {"min_value": 0, "max_value": 1e4}, ["check_value"]),
-    ("l2_regularization_strength", FloatValidator, {"min_value": 0, "max_value": 1e4}, ["check_value"]),
-    ("l2_shrinkage_regularization_strength", FloatValidator, {"min_value": 0, "max_value": 1e4}, ["check_value"]),
+    ("learning_rate", FloatValidator, {"min_value": 0.0, "max_value": 10.0}, ["check_value"]),
+    ("initial_accumulator_value", FloatValidator, {"min_value": 0.0, "max_value": 1.0},
+     ["check_value_for_left_open_interval"]),
+    ("learning_rate_power", FloatValidator, {"min_value": -MAX_INT32 * 1.0, "max_value": 0.0}, ["check_value"]),
+    ("l1_regularization_strength", FloatValidator, {"min_value": 0.0, "max_value": 1e4}, ["check_value"]),
+    ("l2_regularization_strength", FloatValidator, {"min_value": 0.0, "max_value": 1e4}, ["check_value"]),
+    ("l2_shrinkage_regularization_strength", FloatValidator, {"min_value": 0.0, "max_value": 1e4}, ["check_value"]),
     ("use_locking", ClassValidator, {"classes": (bool,)}),
-    ("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
+    ("name", StringValidator, {"min_len": 1, "max_len": 200}, ["check_string_length"]),
     ("accum_name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
     ("linear_name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"])
 ])
@@ -94,8 +95,9 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
         ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(linear.name)
         named_slot_key = (var.op.graph, var.op.name)
         table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
-        ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name, self._name,
-                                                                        {"accum": accum, "linear": linear})
+        ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name,
+                                                                                  self.optimizer_type,
+                                                                                  {"accum": accum, "linear": linear})
         return [{"slot": accum, "named_slot_key": named_slot_key, "slot_name": "accum", "optimizer": self},
                 {"slot": linear, "named_slot_key": named_slot_key, "slot_name": "linear", "optimizer": self}]
 
@@ -252,6 +254,6 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
                 ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(linear.name)
                 table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(each_var)
                 ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name,
-                                                                                         self._name,
+                                                                                         self.optimizer_type,
                                                                                          {"accum": accum,
                                                                                           "linear": linear})

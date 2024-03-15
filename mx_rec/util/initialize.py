@@ -37,11 +37,11 @@ class ConfigInitializer:
     _single_instance = None
 
     @para_checker_decorator(check_option_list=[
-        ("use_mpi", ClassValidator, {"classes": (bool,)}),
+        ("max_steps", IntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
         ("train_steps", IntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
         ("eval_steps", IntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
         ("save_steps", IntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
-        (["train_steps", "eval_steps"], ValueCompareValidator, {"target": 0},
+        (["max_steps", "train_steps", "eval_steps"], ValueCompareValidator, {"target": 0},
          ["check_at_least_one_not_equal_to_target"]),
         ("if_load", ClassValidator, {"classes": (bool,)}),
         ("use_dynamic", ClassValidator, {"classes": (bool,)}),
@@ -52,6 +52,7 @@ class ConfigInitializer:
     def __init__(self, **kwargs):
         self._modify_graph = False
 
+        self._max_steps = kwargs.get("max_steps", -1)
         self._train_steps = kwargs.get("train_steps", -1)
         self._eval_steps = kwargs.get("eval_steps", -1)
         self._save_steps = kwargs.get("save_steps", -1)
@@ -76,6 +77,14 @@ class ConfigInitializer:
     @modify_graph.setter
     def modify_graph(self, modify_graph):
         self._modify_graph = modify_graph
+
+    @property
+    def max_steps(self):
+        return self._max_steps
+
+    @max_steps.setter
+    def max_steps(self, step: int):
+        self._max_steps = step
 
     @property
     def train_steps(self):
@@ -147,12 +156,10 @@ class ConfigInitializer:
 
     @eval_steps.setter
     def eval_steps(self, steps):
-        check_step(steps)
         self._eval_steps = steps
 
     @save_steps.setter
     def save_steps(self, steps):
-        check_step(steps)
         self._save_steps = steps
 
     @if_load.setter

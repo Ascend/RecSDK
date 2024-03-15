@@ -38,10 +38,10 @@ namespace MxRec {
                             const vector<int64_t>& addressArr, int deviceId) override;
 
         ssize_t Read(const string& filePath, char* fileContent, size_t datasetSize) override;
-
-        ssize_t Read(const string& filePath, vector<vector<float>>& fileContent, size_t datasetSize = 0) override;
-        void ReadEmbedding(const string& filePath, const int& embeddingSize,
-                           vector<int64_t>& addressArr, int deviceId) override;
+        ssize_t Read(const string& filePath, vector<vector<float>>& fileContent, int64_t contentOffset,
+                     vector<int64_t> offsetArr, const size_t& embeddingSize) override;
+        void ReadEmbedding(const string& filePath, EmbeddingSizeInfo& embedSizeInfo, int64_t addressArr, int deviceId,
+                           vector <int64_t> offsetArr) override;
 
         void WriterFn(BufferQueue& queue, int fd, ssize_t& writerBytesNum);
         void FillToBuffer(BufferQueue& queue, const char* data, size_t dataSize);

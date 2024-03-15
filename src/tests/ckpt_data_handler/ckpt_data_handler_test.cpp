@@ -15,10 +15,6 @@ See the License for the specific language governing permissions and
 
 #include <gtest/gtest.h>
 
-#include "ckpt_data_handler/host_emb_ckpt/host_emb_ckpt.h"
-#include "ckpt_data_handler/emb_hash_ckpt/emb_hash_ckpt.h"
-#include "ckpt_data_handler/nddr_offset_ckpt/nddr_offset_ckpt.h"
-#include "ckpt_data_handler/nddr_feat_map_ckpt/nddr_feat_map_ckpt.h"
 #include "ckpt_data_handler/feat_admit_n_evict_ckpt/feat_admit_n_evict_ckpt.h"
 #include "ckpt_data_handler/key_count_map_ckpt/key_count_map_ckpt.h"
 #include "utils/common.h"

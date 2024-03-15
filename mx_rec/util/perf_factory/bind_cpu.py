@@ -97,7 +97,7 @@ def bind_cpu_task():
         candidate_list.extend(candidate_range)
 
     rank_id = get_rank_id()
-    cpu_list = candidate_list[rank_id]
+    cpu_list = candidate_list[rank_id % local_rank_size]  # 取模适配多机
 
     process = psutil.Process()
     try:
@@ -110,7 +110,7 @@ def bind_cpu_task():
 def bind_cpu(func):
     def wrapper(*args, **kwargs):
         func(*args, **kwargs)
-        if kwargs.get("bind_cpu"):
+        if kwargs.get("bind_cpu", True):
             bind_cpu_task()
 
     return wrapper

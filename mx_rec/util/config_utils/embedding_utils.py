@@ -60,7 +60,9 @@ class SparseEmbedConfig:
         if var_name not in self._removing_var_list:
             self._removing_var_list.append(var_name)
 
-    def insert_table_instance(self, name: str, key: Variable, instance: object) -> None:
+    def insert_table_instance(self, name: str, key: Variable, instance: object, eval_flag: bool) -> None:
+        if eval_flag:
+            name = name + ".eval_flag"
         if key in self._table_instance_dict:
             raise KeyError(f"Given key {key} has been used.")
 

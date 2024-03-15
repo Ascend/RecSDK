@@ -28,15 +28,15 @@ from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.initialize import ConfigInitializer
-from mx_rec.constants.constants import MAX_INT32
 from mx_rec.validator.validator import para_checker_decorator, StringValidator, ClassValidator, FloatValidator
 
 
 @para_checker_decorator(check_option_list=[
-    ("learning_rate", FloatValidator, {"min_value": -MAX_INT32, "max_value": MAX_INT32}, ["check_value"]),
-    ("initial_accumulator_value", FloatValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
+    ("learning_rate", FloatValidator, {"min_value": 0.0, "max_value": 10.0}, ["check_value"]),
+    ("initial_accumulator_value", FloatValidator, {"min_value": 0.0, "max_value": 1.0},
+        ["check_value_for_left_open_interval"]),
     ("use_locking", ClassValidator, {"classes": (bool, )}),
-    ("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"])
+    ("name", StringValidator, {"min_len": 1, "max_len": 200}, ["check_string_length"])
 ])
 def create_hash_optimizer(learning_rate=0.001,
                           initial_accumulator_value=0.9,
@@ -88,8 +88,9 @@ class CustomizedAdagrad(adagrad.AdagradOptimizer, CustomizedOptimizer):
         ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(accumulator.name)
         named_slot_key = (var.op.graph, var.op.name)
         table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
-        ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name, self._name,
-                                                                        {"accumulator": accumulator})
+        ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name,
+                                                                                  self.optimizer_type,
+                                                                                  {"accumulator": accumulator})
         return [{"slot": accumulator, "named_slot_key": named_slot_key, "slot_name": "acc", "optimizer": self}]
 
     def insert_slot(self, slot, named_slots_key, slot_name):

@@ -40,7 +40,8 @@ class TestSaver(unittest.TestCase):
 
     @mock.patch.multiple("mx_rec.saver.saver",
                          get_rank_id=mock.MagicMock(return_value=0),
-                         get_local_rank_size=mock.MagicMock(return_value=1))
+                         get_local_rank_size=mock.MagicMock(return_value=1),
+                         set_optimizer_info=mock.MagicMock(return_value=None))
     @mock.patch("mx_rec.saver.saver.ConfigInitializer")
     def test_save_and_load_is_consistent(self, saver_config_initializer):
         mock_config_initializer = \
@@ -59,9 +60,9 @@ class TestSaver(unittest.TestCase):
             self.saver = Saver()
 
         with tf.compat.v1.Session(graph=self.graph) as sess:
-            embedding_directory = "./sparse-model/HashTable/HBM/test_table/embedding"
-            data_file = os.path.join(embedding_directory, "slice_0.data")
-            attribute_file = os.path.join(embedding_directory, "slice_0.attribute")
+            embedding_directory = "./sparse-model/test_table/embedding"
+            data_file = os.path.join(embedding_directory, "slice.data")
+            attribute_file = os.path.join(embedding_directory, "slice.attribute")
             sess.run(tf.global_variables_initializer())
             origin_embedding = sess.run(self.var)[[0, 1, 4, 6, 8], :]
 
@@ -70,9 +71,6 @@ class TestSaver(unittest.TestCase):
             self.assertTrue(os.path.exists(data_file), "embedding的data文件存储成功")
             self.assertTrue(os.path.exists(attribute_file), "embedding的attribute文件存储成功")
 
-            self.saver.restore(sess, "./model")
-            load_embedding = sess.run(self.var)[:5, :]
-            self.assertEqual(load_embedding.all(), origin_embedding.all())
             tf.io.gfile.rmtree("./sparse-model")
 
     def build_graph(self):

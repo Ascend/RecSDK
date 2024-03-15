@@ -26,7 +26,7 @@ namespace MxRec {
     };
 
     // 设置环境变量默认值
-    string GlobalEnv::applyGradientsStrategy = ApplyGradientsStrategyOptions::DIRECT_APPLY;
+    string GlobalEnv::applyGradientsStrategy = ApplyGradientsStrategyOptions::SUM_SAME_ID_GRADIENTS_AND_APPLY;
     int GlobalEnv::aclTimeout = -1; // 默认阻塞方式，一直等待直到数据接收完成。
     int GlobalEnv::hdChannelSize = 40; // 默认通道深度40
     int GlobalEnv::keyProcessThreadNum = 6; // 默认6个线程

@@ -6,7 +6,8 @@ COPY . ./
 
 RUN chmod 777 /tmp
 
-# please configure 根据实际情况选择安装需要的依赖，如果一些依赖不需要可以将对应代码去掉或注释
+# 根据实际情况选择安装需要的依赖，如果一些依赖不需要可以将对应代码去掉或注释；同时，确保下载的依赖的包名与如下代码中的包名一致，
+# 否则在安装对应的依赖时可能出现找不到文件的错误。
 
 # 1.安装编译环境
 RUN yum makecache && \
@@ -48,12 +49,12 @@ RUN source /etc/profile && gcc -v && tar -zxf cmake-3.20.6.tar.gz && \
 
 
 # 4.安装ucx
-RUN source /etc/profile && gcc -v && unzip ucx-master.zip && \
+RUN source /etc/profile && gcc -v && unzip master.zip && \
     cd ucx-master && \
     ./autogen.sh && \
     ./contrib/configure-release --prefix=/usr/local/ucx && \
     make && make install && cd .. && \
-    rm -rf ucx-master*
+    rm -rf ucx-master* master.zip
 
 # 5.安装openmpi，需要配置ucx
 RUN source /etc/profile && gcc -v && tar -zxvf openmpi-4.1.5.tar.gz && \

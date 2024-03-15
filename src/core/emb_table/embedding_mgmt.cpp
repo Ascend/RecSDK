@@ -1,9 +1,17 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
- * Description: EmbeddingMgmt管理类
- * Author: MindX SDK
- * Date: 2023/12/11
- */
+/* Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+        limitations under the License.
+==============================================================================*/
 
 #include "emb_table/embedding_mgmt.h"
 #include "emb_table/embedding_static.h"
@@ -134,24 +142,58 @@ std::shared_ptr<EmbeddingTable> EmbeddingMgmt::GetTable(const string& name)
     return std::dynamic_pointer_cast<EmbeddingTable>(it->second);
 }
 
-int EmbeddingMgmt::Load(const string& filePath)
+void EmbeddingMgmt::Load(const string& filePath)
 {
     for (auto& tablePair: embeddings) {
         tablePair.second->Load(filePath);
     }
-    return 0;
 }
 
-int EmbeddingMgmt::Save(const string& name, const string& filePath)
+void EmbeddingMgmt::Save(const string& name, const string& filePath)
 {
     return embeddings[name]->Save(filePath);
 }
 
-int EmbeddingMgmt::Save(const string& filePath)
+void EmbeddingMgmt::Save(const string& filePath)
 {
     for (auto& tablePair: embeddings) {
         tablePair.second->Save(filePath);
     }
+}
+
+OffsetMapT EmbeddingMgmt::GetDeviceOffsets()
+{
+    OffsetMapT AllDeviceOffsets;
+    for (auto& tablePair: embeddings) {
+        AllDeviceOffsets[tablePair.first] = tablePair.second ->GetDeviceOffset();
+    }
+    return AllDeviceOffsets;
+}
+
+void EmbeddingMgmt::SetOptimizerInfo(const string& name, OptimizerInfo& optimizerInfo)
+{
+    embeddings[name]->SetOptimizerInfo(optimizerInfo);
+}
+
+EmbHashMemT EmbeddingMgmt::GetEmbHashMaps()
+{
+    EmbHashMemT EmbHashMaps;
+    for (auto& tablePair: embeddings) {
+        EmbHashMaps[tablePair.first].hostHashMap = tablePair.second ->GetKeyOffsetMap();
+        EmbHashMaps[tablePair.first].devVocabSize = tablePair.second ->GetDevVocabSize();
+        EmbHashMaps[tablePair.first].hostVocabSize = tablePair.second ->GetHostVocabSize();
+        EmbHashMaps[tablePair.first].maxOffset = tablePair.second ->GetMaxOffset();
+    }
+    return EmbHashMaps;
+}
+
+OffsetMapT EmbeddingMgmt::GetLoadOffsets()
+{
+    OffsetMapT AllLoadOffsets;
+    for (auto& tablePair: embeddings) {
+        AllLoadOffsets[tablePair.first] = tablePair.second ->GetLoadOffset();
+    }
+    return AllLoadOffsets;
 }
 
 void EmbeddingMgmt::SetCacheManagerForEmbTable(CacheManager* cacheManager)
@@ -166,16 +208,4 @@ void EmbeddingMgmt::EnableSSD()
     for (auto& table: embeddings) {
         table.second->EnableSSD();
     }
-}
-
-EmbHashMemT EmbeddingMgmt::GetEmbHashMaps()
-{
-    EmbHashMemT EmbHashMaps;
-    for (auto& tablePair: embeddings) {
-        EmbHashMaps[tablePair.first].hostHashMap = tablePair.second ->GetKeyOffsetMap();
-        EmbHashMaps[tablePair.first].devVocabSize = tablePair.second ->GetDevVocabSize();
-        EmbHashMaps[tablePair.first].hostVocabSize = tablePair.second ->GetHostVocabSize();
-        EmbHashMaps[tablePair.first].maxOffset = tablePair.second ->GetMaxOffset();
-    }
-    return EmbHashMaps;
 }

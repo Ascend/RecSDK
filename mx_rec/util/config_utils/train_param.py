@@ -6,6 +6,7 @@ from typing import Optional
 from tensorflow.python.framework.ops import Operation
 
 from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION, TRAIN_CHANNEL_ID, EVAL_CHANNEL_ID
+from mx_rec.validator.validator import para_checker_decorator, StringValidator
 
 
 class TrainParamsConfig:
@@ -62,6 +63,9 @@ class TrainParamsConfig:
         self._is_last_round = last_round
 
     @ascend_global_hashtable_collection.setter
+    @para_checker_decorator(check_option_list=[
+        ("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"])
+    ])
     def ascend_global_hashtable_collection(self, name):
         self._ascend_global_hashtable_collection = name
 

@@ -20,8 +20,9 @@ import unittest
 from unittest import mock
 from unittest.mock import mock_open, patch
 
+from mx_rec.constants.constants import MAX_RANK_SIZE
 from mx_rec.util.communication.hccl_mgmt import parse_hccl_json
-from mx_rec.util.communication.hccl_mgmt import set_hccl_info_without_json
+from mx_rec.util.communication.hccl_mgmt import get_device_list
 from mx_rec.util.global_env_conf import global_env
 
 
@@ -102,6 +103,16 @@ class HCCLMGMTTest(unittest.TestCase):
         }""")) as mock_file:
             with self.assertRaises(ValueError):
                 rank_to_device_dict, local_rank_size = parse_hccl_json()
+
+    def test_get_device_list(self):
+        device_list = get_device_list("0-7")
+        self.assertEqual([0, 1, 2, 3, 4, 5, 6, 7], device_list)
+        device_list = get_device_list("0-3, 8-11")
+        self.assertEqual([0, 1, 2, 3, 8, 9, 10, 11], device_list)
+        with self.assertRaises(ValueError):
+            device_list = get_device_list("7-5, 9, 10")
+        with self.assertRaises(ValueError):
+            device_list = get_device_list("17")
 
 
 if __name__ == '__main__':

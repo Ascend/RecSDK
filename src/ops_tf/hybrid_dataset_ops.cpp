@@ -186,6 +186,7 @@ namespace MxRec {
             }
             LOG_DEBUG(HYBRID_BLOCKING + " reset channel {}", channelId);
             hybridMgmtBlock->ResetAll(channelId);
+            Singleton<HDTransfer>::GetInstance()->ClearTransChannel(channelId);
 
             threadNum = GetThreadNumEnv();
             auto keyProcess = Singleton<KeyProcess>::GetInstance();
@@ -202,7 +203,7 @@ namespace MxRec {
             EASY_FUNCTION();
             LOG_DEBUG("enter ReadEmbKeyV2Dynamic");
             TimeCost tc = TimeCost();
-            int batchId = hybridMgmtBlock->readEmbedBatchId[channelId]++;
+            int batchId = hybridMgmtBlock->readEmbedBatchId[channelId];
             Tensor* output = nullptr;
             OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape {}, &output));
             auto out = output->flat<int32>();
@@ -213,6 +214,7 @@ namespace MxRec {
                     return;
                 }
             }
+            hybridMgmtBlock->readEmbedBatchId[channelId] += 1;
             const Tensor& inputTensor = context->input(TensorIndex::TENSOR_INDEX_0);
             const auto& splits = context->input(TENSOR_INDEX_1).flat<int32>();
             int fieldNum = 0;
@@ -376,6 +378,7 @@ namespace MxRec {
             LOG_DEBUG(HYBRID_BLOCKING + " reset channel {}", channelId);
             // 重置此数据通道中所有的步数
             hybridMgmtBlock->ResetAll(channelId);
+            Singleton<HDTransfer>::GetInstance()->ClearTransChannel(channelId);
 
             threadNum = GetThreadNumEnv();
             auto keyProcess = Singleton<KeyProcess>::GetInstance();
@@ -393,7 +396,7 @@ namespace MxRec {
             EASY_FUNCTION();
             LOG_DEBUG("enter ReadEmbKeyV2");
             TimeCost tc = TimeCost();
-            int batchId = hybridMgmtBlock->readEmbedBatchId[channelId]++;
+            int batchId = hybridMgmtBlock->readEmbedBatchId[channelId];
             Tensor* output = nullptr;
             OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape {}, &output));
             auto out = output->flat<int32>();
@@ -404,6 +407,7 @@ namespace MxRec {
                     return;
                 }
             }
+            hybridMgmtBlock->readEmbedBatchId[channelId] += 1;
             const Tensor& inputTensor = context->input(TensorIndex::TENSOR_INDEX_0);
             size_t dataSize = inputTensor.NumElements();
 

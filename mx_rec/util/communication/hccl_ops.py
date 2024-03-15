@@ -37,7 +37,8 @@ def get_device_id() -> Optional[int]:
         rank_to_device_dict = parse_hccl_json()
     else:
         rank_to_device_dict = set_hccl_info_without_json()
-    device_id = rank_to_device_dict.get(get_rank_id())
+    # 对local_rank_size取模适配多机场景
+    device_id = rank_to_device_dict.get(get_rank_id() % get_local_rank_size())
     if device_id is None:
         raise RuntimeError("Environment variable DEVICE_ID has not been exported, please init mpi/hccl first")
     try:
@@ -54,7 +55,7 @@ def get_rank_size() -> Optional[int]:
     Note: this method should be used after mpi init
     :return: int, the rank size of the group
     """
-    rank_size = os.getenv(EnvOption.OMPI_COMM_WORLD_LOCAL_SIZE.value)
+    rank_size = os.getenv(EnvOption.OMPI_COMM_WORLD_SIZE.value)
     if rank_size is None:
         raise RuntimeError("Environment variable RANK_SIZE has not been exported, please init mpi/hccl first")
     try:
