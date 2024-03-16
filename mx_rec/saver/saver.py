@@ -310,6 +310,8 @@ class Saver(object):
                                                            name=state_key))
                       for state_key, state in optimizer_state_dict.items()])
             for key_state, state in optimizer_state_dict.items():
+                if sub_optimizer_placeholder_dict.get(key_state).graph is not state.graph:
+                    continue
                 assign_op = state.assign(sub_optimizer_placeholder_dict.get(key_state))
                 self.restore_fetch_list.append(assign_op)
 
