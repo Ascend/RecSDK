@@ -603,7 +603,7 @@ def merge_multi_files(upper_dir: str):
 
     Returns: None
     """
-    data_files = [file for file in os.listdir(upper_dir) if file.endswith(".data")]
+    data_files = [file for file in tf.io.gfile.listdir(upper_dir) if file.startswith("slice_")]
     data_files = sorted(data_files, key=os.path.basename)
     outfile_path = os.path.join(upper_dir, "slice.data")
     with tf.io.gfile.GFile(outfile_path, "wb") as outfile:
