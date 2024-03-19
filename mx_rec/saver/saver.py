@@ -14,11 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-import json
 import os
 import threading
 from collections import defaultdict
+from typing import Dict, List
 
 import numpy as np
 import tensorflow as tf
@@ -28,12 +27,12 @@ from mx_rec.constants.constants import DataName, DataAttr, MIN_SIZE, MAX_FILE_SI
     MAX_INT32, HDFS_FILE_PREFIX
 from mx_rec.util.communication.hccl_ops import get_rank_id, get_rank_size, get_local_rank_size
 from mx_rec.util.initialize import ConfigInitializer
-
 from mx_rec.util.perf import performance
 from mx_rec.validator.validator import DirectoryValidator, FileValidator, para_checker_decorator, ClassValidator, \
     IntValidator, OptionalStringValidator
 from mx_rec.util.global_env_conf import global_env
 from mx_rec.util.log import logger
+from mx_rec.optimizers.base import CustomizedOptimizer
 
 
 # define save model thread
@@ -57,7 +56,10 @@ class Saver(object):
             table_dir = os.path.join(root_dir, "HashTable", "DDR", table_name)
         else:
             table_dir = os.path.join(root_dir, "HashTable", "HBM", table_name)
-        tf.io.gfile.makedirs(table_dir)
+        try:
+            tf.io.gfile.makedirs(table_dir)
+        except Exception as err:
+            raise RuntimeError(f"make dir {table_dir} for saving sparse table failed!") from err
 
     @para_checker_decorator(check_option_list=[
         ("var_list", ClassValidator, {"classes": (list, type(None))}),
@@ -140,11 +142,12 @@ class Saver(object):
             raise ValueError(f"The saving path {saving_path} cannot be a system directory "
                              f"and cannot be soft link.") from err
 
-        if tf.io.gfile.exists(saving_path):
-            tf.io.gfile.rmtree(saving_path)
-            logger.info("rank id %s | Saving_path '%s' has been deleted.", self.rank_id, saving_path)
-        tf.io.gfile.makedirs(saving_path)
-        logger.info("rank id %s | Saving_path '%s' has been made.", self.rank_id, saving_path)
+        if not tf.io.gfile.exists(saving_path):
+            try:
+                tf.io.gfile.makedirs(saving_path)
+            except Exception as err:
+                raise RuntimeError(f"make dir {saving_path} for saving sparse table failed!") from err
+            logger.info("Saving_path '%s' has been made.", saving_path)
 
         self._save(sess, saving_path)
         if self.max_to_keep:
@@ -153,7 +156,21 @@ class Saver(object):
                 logger.info("checkpoints num %d > max_to_keep %d delete %s",
                             len(self._last_checkponts), self.max_to_keep,
                             self._last_checkponts[0])
-                tf.io.gfile.rmtree(self._last_checkponts.pop(0))
+                try:
+                    tf.io.gfile.rmtree(self._last_checkponts.pop(0))
+                except tf.errors.NotFoundError as e:
+                    logger.warning("oldest checkpoint file is not exist, maybe it has been deleted.")
+
+        from mpi4py import MPI
+        comm = MPI.COMM_WORLD
+        rank = comm.Get_rank()
+        comm.Barrier()
+        if rank == 0:
+            table_list = self.save_op_dict.keys()
+            for table_name in table_list:
+                self.merge_sparse_file(saving_path, table_name)
+        comm.Barrier()
+
         logger.info("sparse model was saved in dir '%s' .", saving_path)
         logger.info("======== Saving finished for rank id %s ========", self.rank_id)
 
@@ -178,13 +195,8 @@ class Saver(object):
 
     @performance("save_table_name_data")
     def save_table_name_data(self, sess, result, root_dir, table_name):
-        table_instance = self.config_instance.sparse_embed_config.get_table_instance_by_name(table_name)
-        self._make_table_name_dir(root_dir, table_instance, table_name)
-
         dump_data_dict = sess.run(result.get(table_name))
-        # when HBM mode is on, need to get host offset data, to process dump data dict for saving valid embedding.
-        if self.config_instance.hybrid_manager_config.asc_manager and table_instance.is_hbm:
-            self._get_valid_dict_data(dump_data_dict, table_name)
+        self._get_valid_dict_data(dump_data_dict, table_name)
 
         # save embedding
         save_embedding_data(root_dir, table_name, dump_data_dict, self.rank_id)
@@ -195,8 +207,41 @@ class Saver(object):
             for optimizer_name, dump_optimizer_data in dump_optimizer_data_dict.items():
                 save_optimizer_state_data(root_dir, table_name, optimizer_name, dump_optimizer_data, self.rank_id)
 
+    def merge_sparse_file(self, root_dir: str, table_name: str):
+        """
+        将多卡保存下来的多个二进制文件合成一个
+
+        Args:
+            root_dir: 合并路径
+            table_name: 被合并的表名
+
+        Returns: None
+        """
+        table_dir = os.path.join(root_dir, table_name)
+        table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance_by_name(table_name)
+        merge_type_list = get_merge_type_list(table_dir)
+
+        for data_type in merge_type_list:
+            upper_dir = os.path.join(table_dir, data_type)
+            merge_multi_files(upper_dir)
+            outfile_path = os.path.join(upper_dir, "slice.data")
+            file_size = tf.io.gfile.stat(outfile_path).length
+            if data_type == "key":
+                attribute = np.array([file_size / 8, 8])
+            else:
+                attribute = np.array([file_size / 4 / table_instance.emb_size, table_instance.emb_size, 4])
+
+            attribute = attribute.astype(np.int64)
+            attribute_dir = os.path.join(upper_dir, "slice.attribute")
+            attribute.tofile(attribute_dir)
+
     @performance("_save")
     def _save(self, sess, root_dir):
+        for table_name in self.save_op_dict:
+            optimizer_instance = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
+            if optimizer_instance:
+                set_optimizer_info(optimizer_instance, table_name)
+
         if self.config_instance.hybrid_manager_config.asc_manager:
             self.config_instance.hybrid_manager_config.save_host_data(root_dir)
             logger.debug(f"host data was saved.")
@@ -265,10 +310,17 @@ class Saver(object):
                                                            name=state_key))
                       for state_key, state in optimizer_state_dict.items()])
             for key_state, state in optimizer_state_dict.items():
+                if sub_optimizer_placeholder_dict.get(key_state).graph is not state.graph:
+                    continue
                 assign_op = state.assign(sub_optimizer_placeholder_dict.get(key_state))
                 self.restore_fetch_list.append(assign_op)
 
     def _restore(self, sess, reading_path):
+        for table_name in self.placeholder_dict:
+            optimizer_instance = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
+            if optimizer_instance:
+                set_optimizer_info(optimizer_instance, table_name)
+
         if self.config_instance.hybrid_manager_config.asc_manager:
             self.config_instance.hybrid_manager_config.restore_host_data(reading_path)
             logger.info("host data was restored.")
@@ -280,13 +332,14 @@ class Saver(object):
         restore_feed_dict = defaultdict(dict)
 
         for table_name, sub_placeholder_dict in self.placeholder_dict.items():
-            fill_placeholder(reading_path, sub_placeholder_dict, restore_feed_dict, self.rank_id,
-                             NameDescriptor(table_name, DataName.EMBEDDING.value))
+            load_offset = self.config_instance.hybrid_manager_config.get_load_offset(table_name)
+            fill_placeholder(reading_path, sub_placeholder_dict, restore_feed_dict,
+                             NameDescriptor(table_name, DataName.EMBEDDING.value), load_offset)
 
             if "optimizer" in sub_placeholder_dict:
                 optimizer_state_placeholder_dict_group = sub_placeholder_dict.get("optimizer")
                 _fill_placeholder_for_optimizer(optimizer_state_placeholder_dict_group, reading_path,
-                                                restore_feed_dict, self.rank_id, table_name)
+                                                restore_feed_dict, table_name, load_offset)
 
         sess.run(self.restore_fetch_list, feed_dict=restore_feed_dict)
 
@@ -316,14 +369,16 @@ def get_valid_dict_data_from_host_offset(dump_data_dict: dict, offset: list):
         dump_data_dict["optimizer"] = dump_optimizer_data_dict
 
 
-def fill_placeholder(reading_path, placeholder_dict, feed_dict, suffix, name_descriptor):
+def fill_placeholder(reading_path: str, placeholder_dict: Dict[str, tf.Tensor],
+                     feed_dict: Dict[str, Dict[str, tf.Tensor]],
+                     name_descriptor: NameDescriptor, load_offset: List[int]):
     if name_descriptor.optimizer_name:
-        target_path = generate_path(reading_path, "Optimizer", name_descriptor.optimizer_name, "HBM",
-                                    name_descriptor.table_name, name_descriptor.data_name)
+        target_path = generate_path(reading_path, name_descriptor.table_name,
+                                    name_descriptor.optimizer_name + "_" + name_descriptor.data_name)
     else:
-        target_path = generate_path(reading_path, "HashTable", "HBM", name_descriptor.table_name,
-                                    name_descriptor.data_name)
-    restore_data_dict = read_binary_data(target_path, suffix, name_descriptor.data_name, name_descriptor.table_name)
+        target_path = generate_path(reading_path, name_descriptor.table_name, name_descriptor.data_name)
+    restore_data_dict = read_binary_data(target_path, name_descriptor.data_name, name_descriptor.table_name,
+                                         load_offset)
 
     for key, data in restore_data_dict.items():
         embedding_placeholder = placeholder_dict.get(key)
@@ -332,7 +387,7 @@ def fill_placeholder(reading_path, placeholder_dict, feed_dict, suffix, name_des
 
 @performance("save_embedding_data")
 def save_embedding_data(root_dir, table_name, dump_data_dict, suffix):
-    target_path = generate_path(root_dir, "HashTable", "HBM", table_name, DataName.EMBEDDING.value)
+    target_path = generate_path(root_dir, table_name, DataName.EMBEDDING.value)
     data_to_write = dump_data_dict.get(DataName.EMBEDDING.value)
 
     attribute = dict()
@@ -366,7 +421,7 @@ def save_offset_data(root_dir, table_name, dump_data_dict, suffix):
 
 def save_optimizer_state_data(root_dir, table_name, optimizer_name, dump_optimizer_data, suffix):
     for state_key, state in dump_optimizer_data.items():
-        target_path = generate_path(root_dir, "Optimizer", optimizer_name, "HBM", table_name, state_key)
+        target_path = generate_path(root_dir, table_name, optimizer_name + "_" + state_key)
         data_to_write = state
 
         attribute = dict()
@@ -384,31 +439,23 @@ def generate_file_name(suffix):
 
 
 def write_binary_data(writing_path, suffix, data, attributes=None):
-    tf.io.gfile.makedirs(writing_path)
+    try:
+        tf.io.gfile.makedirs(writing_path)
+    except Exception as err:
+        raise RuntimeError(f"make dir {writing_path} for writing data failed!") from err
     data_file, attribute_file = generate_file_name(suffix)
     target_data_dir = os.path.join(writing_path, data_file)
-    target_attribute_dir = os.path.join(writing_path, attribute_file)
-    if tf.io.gfile.exists(target_data_dir):
-        raise FileExistsError(f"Target_data_dir {target_data_dir} exists before writing.")
-    if tf.io.gfile.exists(target_attribute_dir):
-        raise FileExistsError(f"Target_attribute_dir {target_attribute_dir} exists before writing.")
 
-    if check_file_system_is_hdfs(target_data_dir):
-        with tf.io.gfile.GFile(target_data_dir, "wb") as file:
+    with tf.io.gfile.GFile(target_data_dir, "ab") as file:
+        if check_file_system_is_hdfs(target_data_dir):
             data = data.tostring()
             file.write(data)
-    else:
-        data.tofile(target_data_dir)
-
-    if attributes is not None:
-        if not isinstance(attributes, dict):
-            raise TypeError(f"Parameter 'attributes' must be one dict instance, instead of {type(attributes)}")
-
-        with tf.io.gfile.GFile(target_attribute_dir, "w") as file:
-            file.write(json.dumps(attributes))
+        else:
+            data.astype(np.float32)
+            data.tofile(target_data_dir)
 
 
-def read_binary_data(reading_path: str, suffix: int, data_name: str, table_name: str) -> dict:
+def read_binary_data(reading_path: str, data_name: str, table_name: str, load_offset) -> dict:
     """
     Read sparse origin data from binary file
     :param reading_path: sparse data path
@@ -417,7 +464,7 @@ def read_binary_data(reading_path: str, suffix: int, data_name: str, table_name:
     :param table_name: the sparse table name
     :return: the sparse data dict
     """
-    data_file, attribute_file = generate_file_name(suffix)
+    data_file, attribute_file = "slice.data", "slice.attribute"
     target_data_dir = os.path.join(reading_path, data_file)
     target_attribute_dir = os.path.join(reading_path, attribute_file)
     if not tf.io.gfile.exists(target_data_dir):
@@ -425,28 +472,30 @@ def read_binary_data(reading_path: str, suffix: int, data_name: str, table_name:
     if not tf.io.gfile.exists(target_attribute_dir):
         raise FileExistsError(f"Target_attribute_dir {target_attribute_dir} does not exist when reading.")
 
-    with tf.io.gfile.GFile(target_attribute_dir, "r") as fin:
+    with tf.io.gfile.GFile(target_attribute_dir, "rb") as fin:
         validate_read_file(target_attribute_dir)
-        attributes = json.load(fin)
-
-    if DataAttr.DATATYPE.value not in attributes:
-        raise AttributeError(f"Lack of attribute {DataAttr.DATATYPE.value}.")
+        attributes = np.fromfile(target_attribute_dir, dtype=np.int64)
 
     with tf.io.gfile.GFile(target_data_dir, "rb") as file:
         validate_read_file(target_data_dir)
         if check_file_system_is_hdfs(target_data_dir):
             data_to_restore = file.read()
-            data_to_restore = np.fromstring(data_to_restore, dtype=attributes.pop(DataAttr.DATATYPE.value))
+            data_to_restore = np.fromstring(data_to_restore, dtype=np.float32)
         else:
-            data_to_restore = np.fromfile(target_data_dir, dtype=attributes.pop(DataAttr.DATATYPE.value))
+            data_to_restore = np.fromfile(target_data_dir, dtype=np.float32)
+    try:
+        embedding_size = list(attributes)[1]
+    except Exception as err:
+        raise RuntimeError(f"get embedding size from attribute file {target_attribute_dir} failed.") from err
 
-    if DataAttr.SHAPE.value in attributes and data_name != DataName.KEY.value:
-        data_shape = attributes.pop(DataAttr.SHAPE.value)
-        data_to_restore = data_to_restore.reshape(data_shape)
-        table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance_by_name(table_name)
-        current_data_shape = [table_instance.slice_device_vocabulary_size, table_instance.emb_size]
-        if data_shape != current_data_shape:
-            data_to_restore = process_embedding_data(data_to_restore, current_data_shape, data_shape)
+    data_to_restore = data_to_restore.reshape(-1, embedding_size)
+    if load_offset:
+        data_to_restore = data_to_restore[load_offset, :]
+    data_shape = list(data_to_restore.shape)
+    table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance_by_name(table_name)
+    current_data_shape = [table_instance.slice_device_vocabulary_size, table_instance.emb_size]
+    if data_shape != current_data_shape:
+        data_to_restore = process_embedding_data(data_to_restore, current_data_shape, data_shape)
 
     data_dict = {data_name: data_to_restore}
     logger.debug("Attribute: '%s' and data file: '%s' have been read.", target_attribute_dir, target_data_dir)
@@ -488,9 +537,7 @@ def process_embedding_data(data_to_restore: np.ndarray, current_data_shape: list
         data_to_restore = np.concatenate((data_to_restore, pad_matrix), axis=0)
 
     elif restore_vocab_size < vocab_size:
-        raise Exception(f"restore vocabulary size {restore_vocab_size} cannot be less than "
-                        f"saved vocabulary size {vocab_size},"
-                        f"which would lose the mapping between keys and embeddings ")
+        data_to_restore = data_to_restore[:restore_vocab_size, :]
 
     return data_to_restore
 
@@ -509,7 +556,7 @@ def check_file_system_is_hdfs(file_path):
 
 
 def _fill_placeholder_for_optimizer(optimizer_state_placeholder_dict_group: dict, reading_path: str,
-                                    restore_feed_dict: dict, suffix: int, table_name: str):
+                                    restore_feed_dict: dict, table_name: str, load_offset: list):
     """
     给优化器填充加载的数据.
 
@@ -527,5 +574,56 @@ def _fill_placeholder_for_optimizer(optimizer_state_placeholder_dict_group: dict
             fill_placeholder(reading_path=reading_path,
                              placeholder_dict=optimizer_state_placeholder_dict,
                              feed_dict=restore_feed_dict,
-                             suffix=suffix,
-                             name_descriptor=NameDescriptor(table_name, state_key, optimizer_name=optimizer_name))
+                             name_descriptor=NameDescriptor(table_name, state_key, optimizer_name=optimizer_name),
+                             load_offset=load_offset)
+
+
+def get_merge_type_list(table_dir: str):
+    """
+    获取表路径下需要合入的数据类型list
+
+    Args:
+        table_dir: 稀疏表存储路径
+
+    Returns: None
+    """
+    merge_type_list = []
+    for item in tf.io.gfile.listdir(table_dir):
+        if tf.io.gfile.isdir(os.path.join(table_dir, item)):
+            merge_type_list.append(item)
+    return merge_type_list
+
+
+def merge_multi_files(upper_dir: str):
+    """
+    合并多个二进制文件
+
+    Args:
+        upper_dir: 合并路径
+
+    Returns: None
+    """
+    data_files = [file for file in tf.io.gfile.listdir(upper_dir) if file.startswith("slice_")]
+    data_files = sorted(data_files, key=os.path.basename)
+    outfile_path = os.path.join(upper_dir, "slice.data")
+    with tf.io.gfile.GFile(outfile_path, "wb") as outfile:
+        for file in data_files:
+            file_dir = os.path.join(upper_dir, file)
+            with tf.io.gfile.GFile(file_dir, "rb") as file:
+                outfile.write(file.read())
+            tf.io.gfile.remove(file_dir)
+
+
+def set_optimizer_info(optimizer: CustomizedOptimizer, table_name: str):
+    """
+    往host侧传递稀疏表的优化器名称信息
+
+    Args:
+        optimizer_dict: 优化器字典
+        table_name: 表名
+
+    Returns: None
+    """
+    from mxrec_pybind import OptimizerInfo
+    optim_info = OptimizerInfo(optimizer.optimizer_type, optimizer.optim_param_list)
+    ConfigInitializer.get_instance().hybrid_manager_config.set_optim_info(table_name, optim_info)

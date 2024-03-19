@@ -56,7 +56,7 @@ void UnsetEnvironmentVariables()
 
 TEST(GlobalEnv, DefaultValues)
 {
-    ASSERT_EQ(GlobalEnv::applyGradientsStrategy, ApplyGradientsStrategyOptions::DIRECT_APPLY);
+    ASSERT_EQ(GlobalEnv::applyGradientsStrategy, ApplyGradientsStrategyOptions::SUM_SAME_ID_GRADIENTS_AND_APPLY);
     ASSERT_EQ(GlobalEnv::aclTimeout, -1);
     ASSERT_EQ(GlobalEnv::hdChannelSize, 40);
     ASSERT_EQ(GlobalEnv::keyProcessThreadNum, 6);

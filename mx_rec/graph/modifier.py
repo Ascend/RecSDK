@@ -477,7 +477,9 @@ def get_tgt_dataset(
     channel_id = ConfigInitializer.get_instance().train_params_config.get_training_mode_channel_id(
         record.is_training)
     # 在数据读取完时，通过EosDataset向acl数据通道发送end_of_sequence
-    src_dataset = src_dataset.eos_map(librec, channel_id)
+    max_train_steps = ConfigInitializer.get_instance().max_steps
+    max_eval_steps = ConfigInitializer.get_instance().eval_steps
+    src_dataset = src_dataset.eos_map(librec, channel_id, max_train_steps, max_eval_steps)
 
     tgt_dataset = src_dataset.map(get_preprocessing_map_func(record.sub_graph_def,
                                                              record.input_names,

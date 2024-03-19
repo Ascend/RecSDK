@@ -65,6 +65,8 @@ namespace MxRec {
 
         OffsetT SendHostMap(const string tableName);
 
+        OffsetT SendLoadMap(const string tableName);
+
         void ReceiveHostMap(AllKeyOffsetMapT receiveKeyOffsetMap);
 
         void Start();
@@ -92,6 +94,8 @@ namespace MxRec {
         int64_t GetTableSize(const string& embName) const;
 
         int64_t GetTableCapacity(const string& embName) const;
+
+        void SetOptimizerInfo(const string& embName, OptimizerInfo optimInfo) const;
 
     GTEST_PRIVATE:
 
@@ -128,6 +132,7 @@ namespace MxRec {
         map<std::string, std::vector<emb_key_t>> evictKeyMap {};
         HDTransfer *hdTransfer;
         OffsetMapT offsetMapToSend;
+        OffsetMapT loadOffsetToSend;
         bool isSSDEnabled { false };
         bool isRunning;
         bool isLoad { false };

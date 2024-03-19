@@ -41,6 +41,9 @@ namespace MxRec {
 
         File(uint64_t fileID, string &fileDir, string &loadDir, int step); // initialize with loading specific step data
 
+        File(const File&) = delete;
+        File& operator=(const File&) = delete;
+
         ~File();
 
         bool IsKeyExist(emb_key_t key);

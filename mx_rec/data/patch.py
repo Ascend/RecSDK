@@ -26,7 +26,7 @@ def patch_for_dataset_eos_map():
     Returns: None
     """
 
-    def eos_map_fn(self, librec, channel_id):
-        return DatasetV1Adapter(EosDataset(self, librec, channel_id))
+    def eos_map_fn(self, librec, channel_id, max_train_steps=-1, max_eval_steps=-1):
+        return DatasetV1Adapter(EosDataset(self, librec, channel_id, max_train_steps, max_eval_steps))
 
     DatasetV2.eos_map = eos_map_fn

@@ -1,11 +1,20 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
- * Description: EmbeddingDDR DDR 模式embedding表实现
- * Author: MindX SDK
- * Date: 2023/12/11
- */
+/* Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+        limitations under the License.
+==============================================================================*/
 
 #include "emb_table/embedding_ddr.h"
+#include <utility>
 #include "utils/logger.h"
 #include "utils/singleton.h"
 #include "host_emb/host_emb.h"
@@ -306,30 +315,25 @@ void EmbeddingDDR::SetStartCount()
     freeSize_ = devVocabSize;
 }
 
-int EmbeddingDDR::Load(const string& savePath)
+void EmbeddingDDR::Load(const string& savePath)
 {
-    LoadHashMap(savePath);
-    LoadDevOffset(savePath);
-    LoadCurrStat(savePath);
-    LoadEvictPos(savePath);
-    LoadEmbInfo(savePath);
-    LoadEmbData(savePath);
+    int res = LoadHashMap(savePath);
+    if (res == -1) {
+        throw std::runtime_error("load key failed!");
+    }
+    LoadEmbAndOptim(savePath);
 }
 
-int EmbeddingDDR::Save(const string& savePath)
+void EmbeddingDDR::Save(const string& savePath)
 {
-    SaveHashMap(savePath);
-    SaveDevOffset(savePath);
-    SaveCurrStat(savePath);
-    SaveEvictPos(savePath);
-    SaveEmbInfo(savePath);
-    SaveEmbData(savePath);
+    SaveKey(savePath);
+    SaveEmbAndOptim(savePath);
 }
 
 int EmbeddingDDR::LoadHashMap(const string& savePath)
 {
     stringstream ss;
-    ss << savePath << "/HashTable/DDR/" << name <<"/embedding_hashmap/slice_" << rankId_ << ".data";
+    ss << savePath << "/" << name << "/key/slice.data";
 
     unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
     unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
@@ -352,225 +356,168 @@ int EmbeddingDDR::LoadHashMap(const string& savePath)
         return -1;
     }
     fileSystemPtr->Read(ss.str(), reinterpret_cast<char*>(buf), fileSize);
-    for (int i = 0; i < fileSize / sizeof(int64_t); i = i + 2) { // key, offset进行pair对存储
-        keyOffsetMap[buf[i]] = buf[i + 1];
+
+    size_t loadKeySize = fileSize / sizeof(int64_t);
+
+    // 先拿到所有属于自己的key
+
+    loadOffset.clear();
+    hostLoadOffset.clear();
+    int keyCount = 0;
+    int deviceCount = 0;
+    for (int i = 0; i < loadKeySize; i = i + 1) {
+        if (buf[i] % rankSize_ != rankId_) {
+            continue;
+        }
+        if (keyCount > devVocabSize + hostVocabSize) {
+            LOG_ERROR("load key size exceeds the sum of device vocab size and host vocab size: {}", strerror(errno));
+            return -1;
+        } else if (keyCount < hostVocabSize) {
+            keyOffsetMap[buf[i]] = keyCount + devVocabSize;
+            hostLoadOffset.push_back(i);
+        } else {
+            keyOffsetMap[buf[i]] = deviceCount;
+            loadOffset.push_back(i);
+            deviceCount++;
+        }
+        keyCount++;
     }
+
     free(static_cast<void*>(buf));
     return 0;
 }
 
-int EmbeddingDDR::LoadDevOffset(const string& savePath)
+void EmbeddingDDR::LoadEmbAndOptim(const string& savePath)
 {
     stringstream ss;
-    ss << savePath << "/HashTable/DDR/" << name <<"/dev_offset_2_Batch_n_Key/slice_" << rankId_ << ".data";
-
-    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-    size_t fileSize = 0;
-    try {
-        fileSize = fileSystemPtr->GetFileSize(ss.str());
-    } catch (exception& e) {
-        LOG_ERROR("open file {} failed:{}", ss.str(), strerror(errno));
-        return -1;
-    }
-    if (fileSize >= FILE_MAX_SIZE) {
-        LOG_ERROR("file {} size = {} is too big", ss.str(), fileSize);
-        return -1;
-    }
-
-    devOffset2Key.resize(fileSize / sizeof(emb_key_t));
-    fileSystemPtr->Read(ss.str(), reinterpret_cast<char*>(devOffset2Key.data()), fileSize);
-    return 0;
-}
-
-int EmbeddingDDR::LoadCurrStat(const string& savePath)
-{
-    stringstream ss;
-    ss << savePath << "/HashTable/DDR/" << name <<"/embedding_current_status/slice_" << rankId_ << ".data";
+    ss << savePath << "/" << name;
 
     unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
     unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
 
-    size_t raw[ELEMENT_NUM] = {0};
-    fileSystemPtr->Read(ss.str(), reinterpret_cast<char*>(raw), sizeof(raw));
-    currentUpdatePos = raw[CURRENT_UPDATE_IDX];
-    hostVocabSize = raw[HOST_VOCAB_SIZE_IDX];
-    devVocabSize = raw[MAX_OFFSET_IDX];
-    maxOffset = raw[MAX_OFFSET_IDX];
-    return 0;
-}
-
-int EmbeddingDDR::LoadEvictPos(const string& savePath)
-{
-    stringstream ss;
-    ss << savePath << "/HashTable/DDR/" << name <<"/evict_pos/slice_" << rankId_ << ".data";
-
-    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-
-    size_t fileSize = 0;
-    try {
-        fileSize = fileSystemPtr->GetFileSize(ss.str());
-    } catch (exception& e) {
-        LOG_ERROR("open file {} failed:{}", ss.str(), strerror(errno));
-        return -1;
-    }
-    if (fileSize >= FILE_MAX_SIZE) {
-        LOG_ERROR("File {} size = {} is too big", ss.str(), fileSize);
-        return -1;
-    }
-    evictDevPos.resize(fileSize / sizeof(int64_t));
-
-    fileSystemPtr->Read(ss.str(), reinterpret_cast<char*>(evictDevPos.data()), fileSize);
-    return 0;
-}
-
-int EmbeddingDDR::LoadEmbInfo(const string& savePath)
-{
-    stringstream ss;
-    ss << savePath << "/HashTable/DDR/" << name <<"/embedding_info/slice_" << rankId_ << ".data";
-
-    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-
-    size_t raw[EMB_INFO_ELEMENT_NUM] = {0};
-    fileSystemPtr->Read(ss.str(), reinterpret_cast<char*>(raw), sizeof(raw));
-    extEmbSize_ = raw[EMB_INFO_EXT_SIZE_IDX];
-    devVocabSize = raw[EMB_INFO_DEV_VOCAB_SIZE_IDX];
-    hostVocabSize = raw[EMB_INFO_HOST_VOCAB_SIZE_IDX];
-    return 0;
-}
-
-int EmbeddingDDR::LoadEmbData(const string& savePath)
-{
-    stringstream ss;
-    ss << savePath << "/HashTable/DDR/" << name <<"/embedding_data/slice_" << rankId_ << ".data";
-
-    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-
-    HostEmb* hostEmbs = Singleton<MxRec::HostEmb>::GetInstance();
-    HostEmbTable& table = hostEmbs->GetEmb(name);
+    HostEmb *hostEmbs = Singleton<MxRec::HostEmb>::GetInstance();
+    HostEmbTable &table = hostEmbs->GetEmb(name);
     if (table.embData.empty()) {
         LOG_ERROR("hostEmb data is empty");
+        return;
+    }
+
+    // 读embedding
+    stringstream embedStream;
+    embedStream << ss.str() << "/" << "embedding/slice.data";
+    ssize_t res = fileSystemPtr->Read(embedStream.str(), table.embData, 0, hostLoadOffset, embSize_);
+
+    // 读optim
+    int64_t optimIndex = 1;
+    for (const auto &param: optimParams) {
+        stringstream paramStream;
+        paramStream << ss.str() << "/" << optimName + "_" + param << "/slice.data";
+        ssize_t res = fileSystemPtr->Read(paramStream.str(), table.embData, optimIndex, hostLoadOffset, embSize_);
+        optimIndex ++;
+    }
+}
+
+
+int EmbeddingDDR::SaveKey(const string& savePath)
+{
+    stringstream ss;
+    ss << savePath << "/" << name << "/key/";
+    MakeDir(ss.str());
+    ss << "slice_" << rankId_ << ".data";
+
+    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
+    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
+
+    hostKey.clear();
+    hostOffset.clear();
+    deviceKey.clear();
+    deviceOffset.clear();
+
+    for (const auto& it: keyOffsetMap) {
+        if (it.second >= devVocabSize) {
+            hostKey.push_back(it.first);
+            hostOffset.push_back(it.second);
+        } else {
+            deviceKey.push_back(it.first);
+            deviceOffset.push_back(it.second);
+        }
+    }
+
+    hostKey.insert(hostKey.end(), deviceKey.begin(), deviceKey.end());
+    ssize_t res = fileSystemPtr->Write(ss.str(), reinterpret_cast<const char *>(hostKey.data()),
+                                       static_cast<size_t>(hostKey.size() * sizeof(int64_t)));
+    if (res == -1) {
         return -1;
     }
-    fileSystemPtr->Read(ss.str(), table.embData);
     return 0;
 }
 
-int EmbeddingDDR::SaveHashMap(const string& savePath)
+void EmbeddingDDR::SaveEmbData(const string& savePath)
 {
     stringstream ss;
-    ss << savePath << "/HashTable/DDR/" << name <<"/embedding_hashmap/";
+    ss << savePath << "/" << name << "/embedding/";
     MakeDir(ss.str());
     ss << "slice_" << rankId_ << ".data";
 
     unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
     unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
+    vector<size_t> attribute;
+    fileSystemPtr->Write(ss.str(), embContent, embSize_ * sizeof(float));
+}
 
-    vector<int64_t> raw;
-    for (const auto& it : keyOffsetMap) {
-        raw.push_back(it.first);
-        raw.push_back(static_cast<int64_t>(it.second));
+void EmbeddingDDR::SaveOptimData(const string& savePath)
+{
+    for (const auto &content: optimContentMap) {
+        stringstream ss;
+        ss << savePath << "/" << name << "/" << optimName + "_" + content.first << "/";
+        MakeDir(ss.str());
+        ss << "slice_" << rankId_ << ".data";
+
+        unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
+        unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
+        vector<size_t> attribute;
+        fileSystemPtr->Write(ss.str(), content.second, embSize_ * sizeof(float));
     }
-    fileSystemPtr->Write(ss.str(), reinterpret_cast<const char*>(raw.data()),
-                         static_cast<size_t>(raw.size() * sizeof(int64_t)));
-    return 0;
 }
 
-int EmbeddingDDR::SaveDevOffset(const string& savePath)
+void EmbeddingDDR::SaveEmbAndOptim(const string& savePath)
 {
-    stringstream ss;
-    ss << savePath << "/HashTable/DDR/" << name <<"/dev_offset_2_Batch_n_Key/";
-    MakeDir(ss.str());
-    ss << "slice_" << rankId_ << ".data";
-
-    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-
-    fileSystemPtr->Write(ss.str(), reinterpret_cast<const char*>(devOffset2Key.data()),
-                         static_cast<size_t>(devOffset2Key.size() * sizeof(emb_key_t)));
-    return 0;
-}
-
-int EmbeddingDDR::SaveCurrStat(const string& savePath)
-{
-    stringstream ss;
-    ss << savePath << "/HashTable/DDR/"<< name <<"/embedding_current_status/";
-    MakeDir(ss.str());
-    ss << "slice_" << rankId_ << ".data";
-
-    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-
-    size_t raw[ELEMENT_NUM] = {0};
-    raw[CURRENT_UPDATE_IDX] = currentUpdatePos;
-    raw[HOST_VOCAB_SIZE_IDX] = hostVocabSize;
-    raw[DEV_VOCAB_SIZE_IDX] = devVocabSize;
-    raw[MAX_OFFSET_IDX] = maxOffset;
-    fileSystemPtr->Write(ss.str(), reinterpret_cast<const char*>(raw), sizeof(raw));
-    return 0;
-}
-
-int EmbeddingDDR::SaveEvictPos(const string& savePath)
-{
-    stringstream ss;
-    ss << savePath << "/HashTable/DDR/" << name << "/evict_pos/";
-    MakeDir(ss.str());
-    ss << "slice_" << rankId_ << ".data";
-
-    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-
-    fileSystemPtr->Write(ss.str(), reinterpret_cast<const char*>(evictDevPos.data()),
-                         static_cast<size_t>(evictDevPos.size() * sizeof(int64_t)));
-    return 0;
-}
-
-int EmbeddingDDR::SaveEmbInfo(const string& savePath)
-{
-    stringstream ss;
-    ss << savePath << "/HashTable/DDR/"<< name <<"/embedding_info/";
-    MakeDir(ss.str());
-    ss << "slice_" << rankId_ << ".data";
-
-    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-
-    size_t raw[EMB_INFO_ELEMENT_NUM] = {};
-    raw[EMB_INFO_EXT_SIZE_IDX] = extEmbSize_;
-    raw[EMB_INFO_DEV_VOCAB_SIZE_IDX] = devVocabSize;
-    raw[EMB_INFO_HOST_VOCAB_SIZE_IDX] = hostVocabSize;
-    fileSystemPtr->Write(ss.str(), reinterpret_cast<const char*>(raw), sizeof(raw));
-    return 0;
-}
-
-int EmbeddingDDR::SaveEmbData(const string& savePath)
-{
-    stringstream ss;
-    ss << savePath << "/HashTable/DDR/"<< name <<"/embedding_data/";
-    MakeDir(ss.str());
-    ss << "slice_" << rankId_ << ".data";
-
-    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-
-    HostEmb* hostEmbs = Singleton<MxRec::HostEmb>::GetInstance();
-    HostEmbTable& table = hostEmbs->GetEmb(name);
+    HostEmb *hostEmbs = Singleton<MxRec::HostEmb>::GetInstance();
+    HostEmbTable &table = hostEmbs->GetEmb(name);
     if (table.embData.empty()) {
         LOG_ERROR("host embedding data is empty");
-        return 0;
     }
-    vector<float*> content;
-    for (vector<float>& emb : table.embData) {
-        content.push_back(emb.data());
+    embContent.clear();
+    for (const string &param: optimParams) {
+        optimContentMap[param].clear();
     }
-    size_t dataSize = table.embData[0].size();
-    fileSystemPtr->Write(ss.str(), content, dataSize * sizeof(float));
-    return 0;
+    for (int64_t &offset: hostOffset) {
+        embContent.push_back(table.embData[offset - devVocabSize].data());
+        int optim_param_count = 1;
+        for (const string &param: optimParams) {
+            optimContentMap[param].push_back(table.embData[offset - devVocabSize].data() +
+                                                sizeof(float) * embSize_ * optim_param_count);
+            optim_param_count++;
+        }
+    }
+    SaveEmbData(savePath);
+    SaveOptimData(savePath);
 }
 
+
+vector<int64_t> EmbeddingDDR::GetDeviceOffset()
+{
+    return deviceOffset;
+}
+
+void EmbeddingDDR::SetOptimizerInfo(OptimizerInfo& optimizerInfo)
+{
+    optimName = optimizerInfo.optimName;
+    optimParams = optimizerInfo.optimParams;
+    for (const string &param: optimParams) {
+        optimContentMap[param] = vector<float*>{};
+    }
+}
 void EmbeddingDDR::SetCacheManager(CacheManager *cm)
 {
     cacheManager_ = cm;

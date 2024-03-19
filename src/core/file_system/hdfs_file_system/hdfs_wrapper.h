@@ -58,29 +58,15 @@ namespace MxRec {
     public:
         HdfsWrapper()
         {
-            // 动态加载hdfs库
-            libhdfs = dlopen("libhdfs.so", RTLD_LAZY);
-            if (!libhdfs) {
-                LOG_ERROR("Init hdfs wrapper failed when loading libhdfs.so in environment.");
-                throw runtime_error("Init hdfs wrapper failed when loading libhdfs.so in environment. ");
-            }
-
-            // 获取hdfs库中的函数指针
-            hdfsConnect = reinterpret_cast<HdfsConnectFunc>(dlsym(libhdfs, "hdfsConnect"));
-            hdfsDisconnect = reinterpret_cast<HdfsDisconnectFunc>(dlsym(libhdfs, "hdfsDisconnect"));
-            hdfsCreateDirectory = reinterpret_cast<HdfsCreateDirectoryFunc>(dlsym(libhdfs, "hdfsCreateDirectory"));
-            hdfsListDirectory = reinterpret_cast<HdfsListDirectoryFunc>(dlsym(libhdfs, "hdfsListDirectory"));
-            hdfsFreeFileInfo = reinterpret_cast<HdfsFreeFileInfoFunc>(dlsym(libhdfs, "hdfsFreeFileInfo"));
-            hdfsGetPathInfo = reinterpret_cast<HdfsGetPathInfoFunc>(dlsym(libhdfs, "hdfsGetPathInfo"));
-            hdfsOpenFile = reinterpret_cast<HdfsOpenFileFunc>(dlsym(libhdfs, "hdfsOpenFile"));
-            hdfsCloseFile = reinterpret_cast<HdfsCloseFileFunc>(dlsym(libhdfs, "hdfsCloseFile"));
-            hdfsRead = reinterpret_cast<HdfsReadFunc>(dlsym(libhdfs, "hdfsRead"));
-            hdfsWrite = reinterpret_cast<HdfsWriteFunc>(dlsym(libhdfs, "hdfsWrite"));
+            LoadHdfsLib();
         }
+
+        HdfsWrapper(const HdfsWrapper&) = delete;
+        HdfsWrapper& operator=(const HdfsWrapper&) = delete;
 
         ~HdfsWrapper()
         {
-            dlclose(libhdfs);
+            CloseHdfsLib();
         }
 
         hdfsFS Connect(const char* host, tPort port) const
@@ -164,8 +150,16 @@ namespace MxRec {
             return hdfsWrite(fs, file, buffer, length);
         }
 
-    private:
-        void* libhdfs;
+        int Seek(hdfsFS fs, hdfsFile file, tOffset desiredPos) const
+        {
+            if (hdfsSeek == nullptr) {
+                throw runtime_error("Failed to obtain the pointer of the function hdfsSeek from the libhdfs.");
+            }
+            return hdfsSeek(fs, file, desiredPos);
+        }
+
+    GTEST_PRIVATE:
+        void *libhdfs;
 
         using HdfsConnectFunc = hdfsFS (*)(const char*, tPort);
         using HdfsDisconnectFunc = int (*)(hdfsFS);
@@ -177,6 +171,7 @@ namespace MxRec {
         using HdfsCloseFileFunc = int (*)(hdfsFS, hdfsFile);
         using HdfsReadFunc = tSize (*)(hdfsFS, hdfsFile, void*, tSize);
         using HdfsWriteFunc = tSize (*)(hdfsFS, hdfsFile, const void*, tSize);
+        using HdfsSeekFunc = int (*)(hdfsFS, hdfsFile, tOffset);
 
         HdfsConnectFunc hdfsConnect;
         HdfsDisconnectFunc hdfsDisconnect;
@@ -188,6 +183,45 @@ namespace MxRec {
         HdfsCloseFileFunc hdfsCloseFile;
         HdfsReadFunc hdfsRead;
         HdfsWriteFunc hdfsWrite;
+        HdfsSeekFunc hdfsSeek;
+
+        void LoadHdfsLib()
+        {
+            // 动态加载hdfs库
+            libhdfs = dlopen("libhdfs.so", RTLD_LAZY);
+            if (!libhdfs) {
+                LOG_ERROR("Init hdfs wrapper failed when loading libhdfs.so in environment.");
+                throw runtime_error("Init hdfs wrapper failed when loading libhdfs.so in environment. ");
+            }
+
+            void* funcAddr = dlsym(libhdfs, "hdfsConnect");
+            Dl_info libInfo;
+            if (dladdr(funcAddr, &libInfo) == 0) {
+                throw runtime_error("Init hdfs wrapper failed when getting the path of libhdfs.so. ");
+            }
+            if (!CheckFilePermission(libInfo.dli_fname)) {
+                LOG_ERROR("libhdfs.so is invalid.");
+                throw runtime_error("Init hdfs wrapper failed because libhdfs.so is invalid. ");
+            }
+
+            // 获取hdfs库中的函数指针
+            hdfsConnect = reinterpret_cast<HdfsConnectFunc>(dlsym(libhdfs, "hdfsConnect"));
+            hdfsDisconnect = reinterpret_cast<HdfsDisconnectFunc>(dlsym(libhdfs, "hdfsDisconnect"));
+            hdfsCreateDirectory = reinterpret_cast<HdfsCreateDirectoryFunc>(dlsym(libhdfs, "hdfsCreateDirectory"));
+            hdfsListDirectory = reinterpret_cast<HdfsListDirectoryFunc>(dlsym(libhdfs, "hdfsListDirectory"));
+            hdfsFreeFileInfo = reinterpret_cast<HdfsFreeFileInfoFunc>(dlsym(libhdfs, "hdfsFreeFileInfo"));
+            hdfsGetPathInfo = reinterpret_cast<HdfsGetPathInfoFunc>(dlsym(libhdfs, "hdfsGetPathInfo"));
+            hdfsOpenFile = reinterpret_cast<HdfsOpenFileFunc>(dlsym(libhdfs, "hdfsOpenFile"));
+            hdfsCloseFile = reinterpret_cast<HdfsCloseFileFunc>(dlsym(libhdfs, "hdfsCloseFile"));
+            hdfsRead = reinterpret_cast<HdfsReadFunc>(dlsym(libhdfs, "hdfsRead"));
+            hdfsWrite = reinterpret_cast<HdfsWriteFunc>(dlsym(libhdfs, "hdfsWrite"));
+            hdfsSeek = reinterpret_cast<HdfsSeekFunc>(dlsym(libhdfs, "hdfsSeek"));
+        }
+
+        void CloseHdfsLib()
+        {
+            dlclose(libhdfs);
+        }
     };
 }
 

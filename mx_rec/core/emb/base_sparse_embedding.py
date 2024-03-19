@@ -66,8 +66,14 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
 
         if ConfigInitializer.get_instance().hybrid_manager_config.freeze and \
                 self._table_name in ConfigInitializer.get_instance().sparse_embed_config.name_to_var_dict:
-            self._variable = tf.compat.v1.get_variable(self._table_name,
+            self._variable = tf.compat.v1.get_variable(self._table_name, trainable=False,
                                                        shape=(self._slice_device_vocabulary_size, self._emb_size))
+            if not ConfigInitializer.get_instance().use_dynamic_expansion:
+                self.__record(eval_flag=True)
+                tf.compat.v1.add_to_collection(
+                    ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection,
+                    self._variable)
+
         else:
             check_emb_init_params(self._is_hbm, self._embedding_size)
             self.__initialize_variables()
@@ -363,6 +369,8 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
             lookup_result = self._lookup_forward(feature_spec, send_count, **kwargs)
             if spec_name not in self._lookup_result:
                 self._lookup_result[spec_name] = {}
+            if not kwargs.get("is_grad"):
+                lookup_result = tf.stop_gradient(lookup_result, name="stop_grad_lookup_result")
             self._lookup_result[spec_name][is_training] = lookup_result
             return lookup_result
 
@@ -475,9 +483,9 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         self.__record()
         self._build_optimizer_states()
 
-    def __record(self):
+    def __record(self, eval_flag=False):
         ConfigInitializer.get_instance().sparse_embed_config.insert_table_instance(
-            self._table_name, self._variable, self)
+            self._table_name, self._variable, self, eval_flag)
         logger.debug("Device vocabulary_size for table %s is %s.", self._table_name, self._device_vocabulary_size)
         logger.debug("Slice_device_vocabulary_size for table %s is %s.",
                      self._table_name, self._slice_device_vocabulary_size)

@@ -1,9 +1,17 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
- * Description: EmbeddingMgmt管理类
- * Author: MindX SDK
- * Date: 2023/12/11
- */
+/* Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+        limitations under the License.
+==============================================================================*/
 
 #ifndef MX_REC_EMBEDDING_MGMT_H
 #define MX_REC_EMBEDDING_MGMT_H
@@ -76,27 +84,41 @@ public:
     std::shared_ptr<EmbeddingTable> GetTable(const string& name);
 
     /**
-     * 加载
+     * 加载所有表
      */
-    int Load(const string& name, const string& filePath);
-
-    int Load(const string& filePath);
+    void Load(const string& filePath);
 
     /**
      * 保存单个表
      */
-    int Save(const string& name, const string& filePath);
+    void Save(const string& name, const string& filePath);
 
     /**
      * 保存所有表
      */
-    int Save(const string& filePath);
+    void Save(const string& filePath);
+
+    /**
+    * 获取所有表对应的DeviceOffsets，该偏移用于python侧保存embedding时抽取key对应的embedding
+    */
+    OffsetMapT GetDeviceOffsets();
+
+    /**
+    * 获取所有表对应的LoadOffsets，该偏移用于python侧加载embedding文件对应的行偏移，仅加载本卡key所对应的embedding
+    */
+    OffsetMapT GetLoadOffsets();
+
+    EmbHashMemT GetEmbHashMaps();
+
+    /**
+    * 设置某张表的优化器信息
+    */
+    void SetOptimizerInfo(const string& name, OptimizerInfo& optimizerInfo);
 
     void SetCacheManagerForEmbTable(CacheManager* cacheManager);
 
     void EnableSSD();
 
-    EmbHashMemT GetEmbHashMaps();
 private:
 
     EmbeddingMgmt();

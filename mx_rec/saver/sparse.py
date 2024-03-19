@@ -88,68 +88,28 @@ class SparseProcessor:
     def export_sparse_data(self):
         logger.info("table list to be exported is %s", self.table_list)
         sparse_dir = ConfigInitializer.get_instance().train_params_config.sparse_dir
-        ddr = False
-        dev_dir = set_upper_dir(sparse_dir, self.device_dir_list)
-        host_dir = set_upper_dir(sparse_dir, self.host_dir_list)
         for table in self.table_list:
-            table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance_by_name(table)
-            device_table_dir = os.path.join(dev_dir, table)
-            host_table_dir = os.path.join(host_dir, table)
-            if not table_instance.is_hbm:
-                out_dir = host_table_dir
-                key, offset = self._get_hashmap(host_table_dir, True)
-                emb_data = self.get_embedding(device_table_dir, host_table_dir, True,
-                                              ConfigInitializer.get_instance().use_dynamic_expansion)
-                emb_data = emb_data[offset]
-            else:
-                out_dir = device_table_dir
-                key, _ = self._get_hashmap(device_table_dir, False)
-                emb_data = self.get_embedding(device_table_dir, host_table_dir, False,
-                                              ConfigInitializer.get_instance().use_dynamic_expansion)
+            table_dir = os.path.join(sparse_dir, table)
+            key = self._get_key(table_dir)
+            emb_data = self.get_embedding(table_dir)
             transformed_data = dict(zip(key[:], emb_data[:]))
-            save_path = os.path.join(out_dir, self.export_name + ".npy")
+            save_path = os.path.join(table_dir, self.export_name + ".npy")
             with tf.io.gfile.GFile(save_path, "wb") as file:
                 np.save(file, transformed_data)
 
-    def get_embedding(self, device_table_dir, host_table_dir, ddr, use_dynamic_expansion):
-        emb_dir = os.path.join(device_table_dir, self.device_emb_dir)
+    def get_embedding(self, table_dir):
+        emb_dir = os.path.join(table_dir, self.device_emb_dir)
         data_file, attribute_file = self._get_file_names(emb_dir)
-
-        if use_dynamic_expansion:
-            device_attribute = self._get_shape_from_attrib(attribute_file, is_json=False)
-            data_shape = [device_attribute[0], device_attribute[1]]
-        else:
-            device_attribute = self._get_shape_from_attrib(attribute_file, is_json=True)
-            data_shape = device_attribute.pop(self.json_attrib_shape)
+        device_attribute = self._get_shape_from_attrib(attribute_file, is_json=False)
+        data_shape = [device_attribute[0], device_attribute[1]]
         emb_data = self._get_data(data_file, np.float32, data_shape)
-
-        if ddr:
-            emb_dir = os.path.join(host_table_dir, self.host_emb_dir)
-            data_file, attribute_file = self._get_file_names(emb_dir)
-            host_attribute = self._get_shape_from_attrib(attribute_file, is_json=False)
-            host_data_shape = [host_attribute[0], host_attribute[1]]
-            host_data = self._get_data(data_file, np.float32, host_data_shape)
-            host_data = host_data[:, :data_shape[1]]
-            emb_data = np.append(emb_data, host_data, axis=0)
         return emb_data
 
-    def _get_hashmap(self, table_dir, ddr):
-        if not ddr:
-            hashmap_dir = os.path.join(table_dir, self.device_hashmap_dir)
-        else:
-            hashmap_dir = os.path.join(table_dir, self.host_hashmap_dir)
-        data_file, attribute_file = self._get_file_names(hashmap_dir)
-
-        shape_data = self._get_shape_from_attrib(attribute_file, is_json=False)
-        if len(shape_data) < 2:
-            raise ValueError(f"the attribute data from file {attribute_file} is invalid")
-        data_shape = shape_data[:2]
-        raw_hashmap = self._get_data(data_file, np.uint64, data_shape)
-        offset = []
-        if ddr:
-            offset = raw_hashmap[:, -1]
-        key = raw_hashmap[:, 0]
-        return key, offset
+    def _get_key(self, table_dir):
+        key_dir = os.path.join(table_dir, self.device_hashmap_dir)
+        data_file, attribute_file = self._get_file_names(key_dir)
+        raw_key = self._get_data(data_file, np.uint64, -1)
+        return raw_key
 
     def _get_file_names(self, directory):
         data_file = None

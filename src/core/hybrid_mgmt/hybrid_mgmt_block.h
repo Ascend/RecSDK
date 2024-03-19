@@ -30,6 +30,7 @@ namespace MxRec {
 
     class HybridMgmtBlock {
     public:
+        HybridMgmtBlock() = default;
         // 上一次运行的通道ID
         int lastRunChannelId = -1;
         // hybrid将要处理的batch id
@@ -42,6 +43,10 @@ namespace MxRec {
         int loop[2] = {1, 1};
 
         bool isRunning = true;
+
+        HybridMgmtBlock(const HybridMgmtBlock&) = delete;
+
+        HybridMgmtBlock& operator=(const HybridMgmtBlock&) = delete;
 
         ~HybridMgmtBlock();
 

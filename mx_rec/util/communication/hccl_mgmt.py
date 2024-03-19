@@ -17,6 +17,7 @@
 
 import json
 import os
+import re
 
 from mx_rec.constants.constants import VALID_DEVICE_ID_LIST, MIN_SIZE, MAX_CONFIG_SIZE, MAX_DEVICE_ID, \
     MIN_RANK_SIZE, MAX_RANK_SIZE
@@ -76,11 +77,10 @@ def parse_hccl_json():
     return rank_to_device_dict
 
 
-def set_hccl_info_without_json():
+def set_hccl_info_without_json() -> dict:
     """
     Used for no rank table file configured training situation.
-    Now, only less than or equal 8p training job is supported.
-    :return:
+    :return: device_id and logic_id mapping.
     """
     visible_devices = global_env.ascend_visible_devices
     rank_size = global_env.cm_worker_size
@@ -90,10 +90,6 @@ def set_hccl_info_without_json():
     rank_size = int(rank_size)
 
     sorted_device_list = sorted(device_list)
-    local_rank_size = len(sorted_device_list)
-
-    if rank_size > local_rank_size:
-        raise ValueError(f"Rank size {rank_size} is larger than local available devices: {local_rank_size}.")
 
     if chief_device not in sorted_device_list:
         raise ValueError(f"The environment variable CM_CHIEF_DEVICE {chief_device} is not in the local device list. ")
@@ -111,7 +107,8 @@ def set_hccl_info_without_json():
                 f"get logic id from physic id fail, error code is {res}, please check if dsmi api is functional.")
 
         if res > MAX_DEVICE_ID:
-            raise ValueError(f"get logic id from physic id fail.")
+            raise ValueError(f"get logic id from physic id fail. res: {res}, chief_device: {chief_device}, "
+                             f"device_idx: {device_idx}")
         index = sorted_device_list.index(device_idx)
         rank_to_device_dict[index] = res
     return rank_to_device_dict
@@ -120,23 +117,21 @@ def set_hccl_info_without_json():
 def get_device_list(ascend_visible_devices):
     device_list = []
     try:
-        if "-" in ascend_visible_devices:
-            split_devices = ascend_visible_devices.strip().split("-")
-            if split_devices:
-                rank_start = int(split_devices[0])
-                device_list = list(range(rank_start, int(ascend_visible_devices.strip().split("-")[-1]) + 1))
-        elif "," in ascend_visible_devices:
-            device_list = list(map(int, ascend_visible_devices.strip().split(",")))
-        elif ascend_visible_devices in VALID_DEVICE_ID_LIST:
-            device_list = [int(ascend_visible_devices.strip())]
-        else:
+        nums = re.findall(r'\d+', ascend_visible_devices)
+        # eg1:4-11, 则nums=['4', '11']   eg2:0-3,8-11  则nums['0', '3', '8', '11']
+        if not all(int(i) <= MAX_DEVICE_ID for i in nums):
             raise ValueError("invalid env variable ascend_visible_devices.")
+        ranges = re.findall(r'\d+-\d+', ascend_visible_devices)
+        # eg1:4-11, 则ranges=['4-11']    eg2:0-3,8-11  则ranges['0-3', '8-11']
+        for r in ranges:
+            start, end = map(int, r.split('-'))  # '4-11', 则start 4, end 11.   ['0-3', '8-11']
+            if start >= end:
+                raise ValueError("invalid env variable ascend_visible_devices.")
+            nums.extend(range(start, end + 1))
+        device_list = sorted(list(set(map(int, nums))))
     except ValueError as error:
         raise ValueError("Invalid env variable ascend_visible_devices, no valid device id is configured.") from error
-    except IndexError as error:
-        raise IndexError(
-            f"Index of ascend_visible_devices {ascend_visible_devices.strip().split('-')[-1]} is out of range") \
-            from error
+
     if not device_list:
         raise ValueError("No device is available in the environment.")
     return device_list

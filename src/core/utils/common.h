@@ -92,7 +92,7 @@ namespace MxRec {
     constexpr int KEY_PROCESS_TIMEOUT = 120;
 #endif
     constexpr int GET_BATCH_TIMEOUT = 300;
-    constexpr int EOS_TIMEOUT = 5;
+    constexpr int EOS_TIMEOUT = 30;
 
     constexpr size_t DEFAULT_RANDOM_SEED = 10086;
     // constexpr int INVALID_KEY_VALUE = -1;
@@ -211,7 +211,7 @@ namespace MxRec {
     struct RankInfo {
         RankInfo() = default;
 
-        RankInfo(int rankId, int deviceId, int localRankSize, int option, const std::vector<int>& maxStep);
+        RankInfo(int rankId, int deviceId, int localRankSize, int option, const std::vector<int>& ctrlSteps);
         RankInfo(int localRankSize, int option, const std::vector<int>& maxStep);
 
         int rankId {};
@@ -226,7 +226,7 @@ namespace MxRec {
         bool isDDR { false };
         bool isSSDEnabled { false };
         bool useDynamicExpansion {false};
-        std::vector<int> maxStep;
+        std::vector<int> ctrlSteps; // 包含三个步数: train_steps, eval_steps, save_steps
     };
 
     enum TensorIndex : uint32_t {
@@ -262,6 +262,30 @@ namespace MxRec {
         float constantVal;
         float randomMin;
         float randomMax;
+    };
+
+    struct EmbeddingSizeInfo {
+        EmbeddingSizeInfo() = default;
+        EmbeddingSizeInfo(size_t embSize, size_t extendSize)
+        {
+            embeddingSize = embSize;
+            extendEmbSize = extendSize;
+        }
+
+        size_t embeddingSize;
+        size_t extendEmbSize;
+    };
+
+    struct OptimizerInfo {
+        OptimizerInfo() = default;
+        OptimizerInfo(std::string name, vector<std::string> params)
+        {
+            optimName = name;
+            optimParams = std::move(params);
+        }
+
+        std::string optimName;
+        vector<std::string> optimParams;
     };
 
     struct ThresholdValue {
@@ -580,6 +604,7 @@ namespace MxRec {
     };
 
     ostream& operator<<(ostream& ss, MxRec::CkptDataType type);
+    bool CheckFilePermission(const string& filePath);
 } // end namespace MxRec
 
 #define KEY_PROCESS "\033[45m[KeyProcess]\033[0m "
