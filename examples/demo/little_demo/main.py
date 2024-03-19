@@ -78,7 +78,7 @@ def model_forward(input_list, batch, is_train, modify_graph, config_dict=None):
         embedding = sparse_lookup(hash_table, feature, send_count, is_train=is_train,
                                   access_and_evict_config=access_and_evict_config, is_grad=is_grad,
                                   name=hash_table.table_name + "_lookup", modify_graph=modify_graph, batch=batch,
-                                  serving_default_value = tf.ones(shape=(dim), dtype=tf.float32) * 2)
+                                  serving_default_value=tf.ones(shape=(dim), dtype=tf.float32) * 2)
 
         reduced_embedding = tf.reduce_sum(embedding, axis=1, keepdims=False)
         embedding_list.append(reduced_embedding)
@@ -174,7 +174,8 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore")
 
     use_mode = UseMode.mapping(os.getenv("USE_MODE"))
-    clear_saved_model()
+    # 最大数据集生成数量
+    MAX_DATASET_GENERATE = 200
     # 最大训练的步数
     MAX_TRAIN_STEPS = 200
     # 训练多少步切换为评估
@@ -186,7 +187,6 @@ if __name__ == "__main__":
 
     # get init configuration
     try:
-        use_mpi = bool(int(os.getenv("USE_MPI", 1)))
         use_dynamic = bool(int(os.getenv("USE_DYNAMIC", 0)))
         use_hot = bool(int(os.getenv("USE_HOT", 0)))
         use_dynamic_expansion = bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0)))
@@ -207,18 +207,17 @@ if __name__ == "__main__":
     IF_LOAD = False
     rank_id = get_rank_id()
 
-    file_list = glob(f"./saved-model/sparse-model-{rank_id}-*")
+    file_list = glob(f"./saved-model/sparse-model-*")
     if file_list:
         IF_LOAD = True
+
     # nbatch function needs to be used together with the prefetch and host_vocabulary_size != 0
-    init(use_mpi=use_mpi,
-         train_steps=TRAIN_STEPS,
+    init(train_steps=TRAIN_STEPS,
          eval_steps=EVAL_STEPS,
          save_steps=SAVING_INTERVAL,
          use_dynamic=use_dynamic,
          use_hot=use_hot,
          use_dynamic_expansion=use_dynamic_expansion,
-         bind_cpu=True,
          if_load=IF_LOAD)
 
     cfg = Config()
@@ -246,12 +245,13 @@ if __name__ == "__main__":
     # 如需验证DDR模式，请按照key数量、batch unique数量合理设置device与host表大小。
     # 验证DDR的配置参考：建议跑dynamic避免调参。数据集key总量大于device表，小于device+host；一个batch的unique key数量小于device表。
     # 验证SSD的配置参考：建议跑dynamic避免调参。数据集key总量大于device+host；一个batch的unique key数量小于device表。
-    hbm_test_cfg = {"device_vocabulary_size": cfg.user_vocab_size * 10 * get_rank_size(), "host_vocabulary_size": 0}
-    ddr_test_cfg = {"device_vocabulary_size": int(cfg.user_vocab_size * 0.5 * get_rank_size()),
-                    "host_vocabulary_size": cfg.user_vocab_size * 10 * get_rank_size()}
+    hbm_test_cfg = {"device_vocabulary_size": cfg.user_vocab_size, "host_vocabulary_size": 0}
+    ddr_test_cfg = {"device_vocabulary_size": int(cfg.user_vocab_size * 0.2),
+                    "host_vocabulary_size": int(cfg.user_vocab_size * 0.8)}
     ssd_test_cfg = {
-        "device_vocabulary_size": 60000 * get_rank_size(), "host_vocabulary_size": 60000 * get_rank_size(),
-        "ssd_vocabulary_size": 10000000, "ssd_data_path": _SSD_SAVE_PATH
+        "device_vocabulary_size": int(cfg.user_vocab_size * 0.1),
+        "host_vocabulary_size": int(cfg.user_vocab_size * 0.1),
+        "ssd_vocabulary_size": int(cfg.user_vocab_size * 0.8), "ssd_data_path": _SSD_SAVE_PATH
     }
     cache_mode_dict = {CacheModeEnum.HBM.value: hbm_test_cfg, CacheModeEnum.DDR.value: ddr_test_cfg,
                        CacheModeEnum.SSD.value: ssd_test_cfg}
@@ -286,11 +286,11 @@ if __name__ == "__main__":
         train_iterator, train_model, train_batch = build_graph(table_list, is_train=True,
                                                                feature_spec_list=train_feature_spec_list,
                                                                config_dict=ACCESS_AND_EVICT,
-                                                               batch_number=MAX_TRAIN_STEPS * get_rank_size())
+                                                               batch_number=MAX_DATASET_GENERATE * get_rank_size())
     eval_iterator, eval_model, eval_batch = build_graph(table_list, is_train=False,
                                                         feature_spec_list=eval_feature_spec_list,
                                                         config_dict=ACCESS_AND_EVICT,
-                                                        batch_number=EVAL_STEPS * get_rank_size())
+                                                        batch_number=MAX_DATASET_GENERATE * get_rank_size())
     dense_variables, sparse_variables = get_dense_and_sparse_variable()
 
     params = {"train_batch": train_batch, "eval_batch": eval_batch, "use_one_shot": USE_ONE_SHOT}
@@ -308,7 +308,7 @@ if __name__ == "__main__":
         modify_graph_and_start_emb_cache(dump_graph=True)
 
     if use_mode == UseMode.TRAIN:
-        run_mode.train(TRAIN_STEPS, SAVING_INTERVAL)
+        run_mode.train(TRAIN_STEPS, SAVING_INTERVAL, if_load=IF_LOAD)
     elif use_mode == UseMode.PREDICT:
         run_mode.predict()
 

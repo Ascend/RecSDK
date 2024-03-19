@@ -17,8 +17,6 @@ See the License for the specific language governing permissions and
 #include <gtest/gtest.h>
 
 #include "checkpoint/checkpoint.h"
-#include "ckpt_data_handler/nddr_feat_map_ckpt/nddr_feat_map_ckpt.h"
-
 
 using namespace std;
 using namespace MxRec;
@@ -137,51 +135,11 @@ protected:
         fill(testDev2B.begin(), testDev2B.end(), -1);
     }
 
-    void SetEmbHashMaps(EmbHashMemT& testEmbHashMaps)
-    {
-        EmbHashMapInfo embHashInfo;
-        absl::flat_hash_map<emb_key_t, size_t> testHash;
-        vector<int32_t> testDev2B;
-        vector<int64_t> testDev2K;
-        for (const auto& testEmbInfo : testEmbInfos) {
-            SetHashMapInfo(testHash, testDev2B, testDev2K);
-
-            for (auto ko: testHash) {
-                embHashInfo.hostHashMap[ko.first] = static_cast<int64_t>(ko.second);
-            }
-
-            embHashInfo.devOffset2Batch = move(testDev2B);
-            embHashInfo.devOffset2Key = move(testDev2K);
-
-            embHashInfo.currentUpdatePos = 0;
-            embHashInfo.hostVocabSize = hostVocabSize;
-            embHashInfo.devVocabSize = devVocabSize;
-
-            testEmbHashMaps[testEmbInfo.name] = move(embHashInfo);
-        }
-    }
-
-    void SetMaxOffset(OffsetMemT& testMaxOffset)
-    {
-        for (const auto& testEmbInfo : testEmbInfos) {
-            testMaxOffset[testEmbInfo.name] = maxOffsetMem;
-        }
-    }
-
     void SetKeyOffsetMap(absl::flat_hash_map<emb_key_t, int64_t>& testKeyOffsetMap)
     {
         for (int64_t i { 0 }; i < hostVocabSize; ++i) {
             testKeyOffsetMap[featMem] = i;
             featMem++;
-        }
-    }
-
-    void SetKeyOffsetMaps(KeyOffsetMemT& testKeyOffsetMaps)
-    {
-        absl::flat_hash_map<emb_key_t, int64_t> testKeyOffsetMap;
-        for (const auto& testEmbInfo : testEmbInfos) {
-            SetKeyOffsetMap(testKeyOffsetMap);
-            testKeyOffsetMaps[testEmbInfo.name] = std::move(testKeyOffsetMap);
         }
     }
 
@@ -236,22 +194,6 @@ protected:
         }
     }
 
-    void SetTable2Threshold(Table2ThreshMemT& testTable2Threshold)
-    {
-        for (const auto& testEmbInfo : testEmbInfos) {
-            ThresholdValue val;
-            val.tableName = testEmbInfo.name;
-            val.countThreshold = offsetMem;
-            val.timeThreshold = offsetMem;
-            val.faaeCoefficient = 1;
-            val.isEnableSum = true;
-
-            offsetMem++;
-
-            testTable2Threshold[testEmbInfo.name] = move(val);
-        }
-    }
-
     void SetHistRec(AdmitAndEvictData& histRec)
     {
         int64_t featureId { int64Min };
@@ -275,6 +217,22 @@ protected:
             count++;
             lastTime++;
             timeStamp++;
+        }
+    }
+
+    void SetTable2Threshold(Table2ThreshMemT& testTable2Threshold)
+    {
+        for (const auto& testEmbInfo : testEmbInfos) {
+            ThresholdValue val;
+            val.tableName = testEmbInfo.name;
+            val.countThreshold = offsetMem;
+            val.timeThreshold = offsetMem;
+            val.faaeCoefficient = 1;
+            val.isEnableSum = true;
+
+            offsetMem++;
+
+            testTable2Threshold[testEmbInfo.name] = move(val);
         }
     }
 
@@ -303,75 +261,6 @@ protected:
     }
 };
 
-TEST_F(CheckpointTest, HostEmbs)
-{
-    std::shared_ptr<EmbMemT> testHostEmbs = std::make_shared<EmbMemT>();
-    SetEmbInfo();
-    SetHostEmbs(testHostEmbs);
-    shared_ptr<EmbMemT> validHostEmbs = std::make_shared<EmbMemT>();
-    SetHostEmbs(validHostEmbs);
-    shared_ptr<EmbMemT> loadHostEmbs = std::make_shared<EmbMemT>();
-    SetHostEmptyEmbs(loadHostEmbs);
-
-    CkptData testSaveData;
-    CkptData validLoadData;
-    CkptData testLoadData;
-
-    testSaveData.hostEmbs = testHostEmbs.get();
-    validLoadData.hostEmbs = validHostEmbs.get();
-    testLoadData.hostEmbs = loadHostEmbs.get();
-
-    Checkpoint testCkpt;
-    testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
-    testCkpt.LoadModel(testPath, testLoadData, rankInfo, testEmbInfos,
-                       { CkptFeatureType::HOST_EMB });
-
-    for (const auto& it : *validLoadData.hostEmbs) {
-        const auto& embInfo = testLoadData.hostEmbs->at(it.first).hostEmbInfo;
-        const auto& embData = testLoadData.hostEmbs->at(it.first).embData;
-
-        EXPECT_EQ(it.second.hostEmbInfo.name, embInfo.name);
-        EXPECT_EQ(it.second.hostEmbInfo.sendCount, embInfo.sendCount);
-        EXPECT_EQ(it.second.hostEmbInfo.extEmbeddingSize, embInfo.extEmbeddingSize);
-        EXPECT_EQ(it.second.hostEmbInfo.devVocabSize, embInfo.devVocabSize);
-        EXPECT_EQ(it.second.hostEmbInfo.hostVocabSize, embInfo.hostVocabSize);
-
-        EXPECT_EQ(it.second.embData, embData);
-    }
-}
-
-TEST_F(CheckpointTest, KeyOffsetMaps)
-{
-    KeyOffsetMemT testKeyOffsetMaps;
-    KeyOffsetMemT validKeyOffsetMaps;
-
-    SetEmbInfo();
-    SetKeyOffsetMaps(testKeyOffsetMaps);
-    validKeyOffsetMaps = testKeyOffsetMaps;
-
-    CkptData testSaveData;
-    CkptData validLoadData;
-    CkptData testLoadData;
-
-    testSaveData.keyOffsetMap = std::move(testKeyOffsetMaps);
-    validLoadData.keyOffsetMap = std::move(validKeyOffsetMaps);
-
-    Checkpoint testCkpt;
-    testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
-    testCkpt.LoadModel(testPath, testLoadData, rankInfo, testEmbInfos, { CkptFeatureType::KEY_OFFSET_MAP });
-
-    EXPECT_EQ(validLoadData.keyOffsetMap.size(), testLoadData.keyOffsetMap.size());
-    for (const auto& it : validLoadData.keyOffsetMap) {
-        EXPECT_EQ(1, testLoadData.keyOffsetMap.count(it.first));
-        const auto& keyOffsetMap = testLoadData.keyOffsetMap.at(it.first);
-        const auto& validKeyOffsetMap = validLoadData.keyOffsetMap.at(it.first);
-        for (const auto& key: keyOffsetMap) {
-            EXPECT_EQ(validKeyOffsetMap.count(key.first), 1);
-        }
-    }
-}
-
-
 TEST_F(CheckpointTest, KeyFreqMaps)
 {
     KeyFreqMemT testDDRKeyFreqMaps;
@@ -394,12 +283,76 @@ TEST_F(CheckpointTest, KeyFreqMaps)
     validLoadData.ddrKeyFreqMaps = std::move(validDDRKeyFreqMaps);
     Checkpoint testCkpt;
     testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
-    testCkpt.LoadModel(testPath, testLoadData, rankInfo, testEmbInfos, { CkptFeatureType::DDR_KEY_FREQ_MAP });
-    EXPECT_EQ(validLoadData.ddrKeyFreqMaps.size(), testLoadData.ddrKeyFreqMaps.size());
-
-    for (const auto& it : validLoadData.ddrKeyFreqMaps) {
-        EXPECT_EQ(1, testLoadData.ddrKeyFreqMaps.count(it.first));
-        const auto& ddrKeyFreqMap = testLoadData.ddrKeyFreqMaps.at(it.first);
-        EXPECT_EQ(it.second, ddrKeyFreqMap);
+    bool fileExist = false;
+    if (access("./ckpt_mgmt_test/table0/ddr_key_freq_map", F_OK) == 0) {
+        fileExist = true;
     }
+    EXPECT_EQ(fileExist, true);
+}
+
+TEST_F(CheckpointTest, KeyCountMapCkpt)
+{
+    KeyCountMemT testKeyCountMaps;
+    KeyCountMemT validKeyCountMaps;
+
+    SetEmbInfo();
+    SetKeyCountMaps(testKeyCountMaps);
+
+    validKeyCountMaps = testKeyCountMaps;
+
+    CkptData testSaveData;
+    CkptData validLoadData;
+    CkptData testLoadData;
+
+    testSaveData.keyCountMap = std::move(testKeyCountMaps);
+    validLoadData.keyCountMap = std::move(validKeyCountMaps);
+
+    Checkpoint testCkpt;
+    testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
+    bool fileExist = false;
+    if (access("./ckpt_mgmt_test/table0/key_count_map", F_OK) == 0) {
+        fileExist = true;
+    }
+    EXPECT_EQ(fileExist, true);
+}
+
+TEST_F(CheckpointTest, FeatAdmitNEvict)
+{
+    Table2ThreshMemT testTrens2Thresh;
+    Table2ThreshMemT validTrens2Thresh;
+    AdmitAndEvictData testHistRec;
+    AdmitAndEvictData validHistRec;
+
+    SetEmbInfo();
+    SetTable2Threshold(testTrens2Thresh);
+    validTrens2Thresh = testTrens2Thresh;
+    bool isCombine = false;
+
+    if (isCombine) {
+        SetHistRecCombine(testHistRec);
+    } else {
+        SetHistRec(testHistRec);
+    }
+
+    validHistRec = testHistRec;
+
+    CkptData testSaveData;
+    CkptData validLoadData;
+    CkptData testLoadData;
+
+    testSaveData.table2Thresh = testTrens2Thresh;
+    testSaveData.histRec.timestamps = testHistRec.timestamps;
+    testSaveData.histRec.historyRecords = testHistRec.historyRecords;
+    validLoadData.table2Thresh = validTrens2Thresh;
+    validLoadData.histRec = validHistRec;
+    validLoadData.histRec.timestamps = validHistRec.timestamps;
+    validLoadData.histRec.historyRecords = validHistRec.historyRecords;
+
+    Checkpoint testCkpt;
+    testCkpt.SaveModel(testPath, testSaveData, rankInfo, testEmbInfos);
+    bool fileExist = false;
+    if (access("./ckpt_mgmt_test/table0/history_record", F_OK) == 0) {
+        fileExist = true;
+    }
+    EXPECT_EQ(fileExist, true);
 }

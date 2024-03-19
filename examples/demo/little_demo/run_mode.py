@@ -109,7 +109,7 @@ class RunMode:
                 grads_and_vars = [(grad, variable) for grad, variable in zip(sparse_grads, sparse_variables)]
                 self.train_ops.append(sparse_optimizer.apply_gradients(grads_and_vars))
 
-    def train(self, train_interval: int, saving_interval: int):
+    def train(self, train_interval: int, saving_interval: int, if_load=False):
         self.set_train_ops()
         # In train mode, graph modify needs to be performed after compute gradients
         if self.is_modify_graph:
@@ -123,9 +123,17 @@ class RunMode:
         else:
             logger.debug(f"use one shot iterator and modify graph is `{self.is_modify_graph}`.")
 
-        self.session.run(tf.compat.v1.global_variables_initializer())
         self.saver = tf.compat.v1.train.Saver()
-        for i in range(1, self.max_train_steps + 1):
+        start_step = 1
+
+        if if_load:
+            latest_step = get_load_step()
+            start_step = latest_step + 1
+            self.saver.restore(self.session, f"./saved-model/model-{latest_step}")
+        else:
+            self.session.run(tf.compat.v1.global_variables_initializer())
+
+        for i in range(start_step, start_step + self.max_train_steps):
             logger.info("################    training at step %d    ################", i)
             try:
                 self.session.run([self.train_ops, self.train_model.loss_list])
@@ -141,7 +149,7 @@ class RunMode:
                     self.evaluate()
 
                 if i % saving_interval == 0:
-                    self.saver.save(self.session, f"./saved-model/model-{self.rank_id}", global_step=i)
+                    self.saver.save(self.session, f"./saved-model/model", global_step=i)
 
                 if self.is_faae and i == train_interval // 2:
                     logger.info("###############    set_threshold at step:%d   ################", i)
@@ -149,7 +157,7 @@ class RunMode:
 
         # save last step without duplication
         if i % saving_interval != 0:
-            self.saver.save(self.session, f"./saved-model/model-{self.rank_id}", global_step=i)
+            self.saver.save(self.session, f"./saved-model/model", global_step=i)
 
         logger.info("################    training end    ################")
 
@@ -164,12 +172,12 @@ class RunMode:
         import glob
         import re
 
-        model_file = glob.glob(f"./saved-model/sparse-model-{self.rank_id}-*")
+        model_file = glob.glob(f"./saved-model/sparse-model-*")
         if len(model_file) == 0:
             raise ValueError("model file not exit")
 
         # get the latest model
-        pattern = f".*sparse-model-{self.rank_id}-([0-9]+).*"
+        pattern = f".*sparse-model-([0-9]+).*"
         latest_step = -1
         for file_path in model_file:
             match = re.match(pattern, file_path)
@@ -182,7 +190,7 @@ class RunMode:
             raise RuntimeError("latest model not found")
 
         self.saver = tf.compat.v1.train.Saver()
-        self.saver.restore(self.session, f"./saved-model/model-{self.rank_id}-{latest_step}")
+        self.saver.restore(self.session, f"./saved-model/model-{latest_step}")
         self._infer()
         logger.info(f"###############    predict end    ################")
 
@@ -192,3 +200,25 @@ class RunMode:
                                                                     emb_name=self.table_list[0].table_name,
                                                                     ids_name=self.table_list[0].table_name + "_lookup")
         self.session.run([set_threshold_op])
+
+
+def get_load_step():
+    import glob
+    import re
+
+    model_file = glob.glob(f"./saved-model/sparse-model-*")
+    if len(model_file) == 0:
+        raise ValueError("model file not exit")
+
+    # get the latest model
+    pattern = f".*sparse-model-([0-9]+).*"
+    latest_step = -1
+    for file_path in model_file:
+        match = re.match(pattern, file_path)
+        if match and match.groups():
+            step = int(match.groups()[0])
+            if step > latest_step:
+                latest_step = step
+    if latest_step == -1:
+        raise RuntimeError("latest model not found")
+    return latest_step

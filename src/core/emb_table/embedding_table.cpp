@@ -1,9 +1,17 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
- * Description: emb table
- * Author: MindX SDK
- * Date: 2023/12/11
- */
+/* Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+        limitations under the License.
+==============================================================================*/
 
 #include "emb_table/embedding_table.h"
 #include "utils/logger.h"
@@ -21,7 +29,7 @@ EmbeddingTable::EmbeddingTable(const EmbInfo& info, const RankInfo& rankInfo, in
     : name(info.name), hostVocabSize(info.hostVocabSize), devVocabSize(info.devVocabSize),
       freeSize_(0), maxOffset(0), isDynamic_(rankInfo.useDynamicExpansion),
       embSize_(info.embeddingSize), extEmbSize_(info.extEmbeddingSize),
-      embInfo_(info), seed_(inSeed), rankId_(rankInfo.rankId)
+      embInfo_(info), seed_(inSeed), rankId_(rankInfo.rankId), rankSize_(rankInfo.rankSize)
 {
     LOG_INFO("table {} isDynamic = {} embeddingSize {} extSize {}", name, isDynamic_, embSize_, extEmbSize_);
 }
@@ -152,14 +160,17 @@ size_t EmbeddingTable::GetHostVocabSize()
     return hostVocabSize;
 }
 
-int EmbeddingTable::Load(const string& filePath)
+vector<int64_t> EmbeddingTable::GetLoadOffset()
 {
-    return 0;
+    return loadOffset;
 }
 
-int EmbeddingTable::Save(const string& filePath)
+void EmbeddingTable::Load(const string& filePath)
 {
-    return 0;
+}
+
+void EmbeddingTable::Save(const string& filePath)
+{
 }
 
 void EmbeddingTable::MakeDir(const string& dirName)
@@ -194,4 +205,13 @@ TableInfo EmbeddingTable::GetTableInfo()
         .evictHostPos=evictHostPos,
     };
     return ti;
+}
+
+vector<int64_t> EmbeddingTable::GetDeviceOffset()
+{
+    return vector<int64_t>{};
+}
+
+void EmbeddingTable::SetOptimizerInfo(OptimizerInfo& optimizerInfo)
+{
 }

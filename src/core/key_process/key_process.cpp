@@ -15,8 +15,13 @@ See the License for the specific language governing permissions and
 
 #include "key_process.h"
 
+#include <cstddef>
 #include <iostream>
+#include <mpi.h>
+#include "utils/common.h"
+#include "utils/logger.h"
 #include "utils/safe_queue.h"
+#include "utils/singleton.h"
 #include "utils/time_cost.h"
 #include "utils/config.h"
 #include "host_emb/host_emb.h"
@@ -157,14 +162,14 @@ FeatureAdmitAndEvict& KeyProcess::GetFeatAdmitAndEvict()
 
 void KeyProcess::LoadMaxOffset(OffsetMemT& loadData)
 {
-    EmbeddingMgmt::Instance()->LoadMaxOffset(loadData);
+    maxOffset = std::move(loadData);
 }
 
 /// 加载每张表key到offset的映射
 /// \param loadData
 void KeyProcess::LoadKeyOffsetMap(KeyOffsetMemT& loadData)
 {
-    EmbeddingMgmt::Instance()->LoadKeyOffsetMap(loadData);
+    keyOffsetMap = std::move(loadData);
 }
 
 void KeyProcess::LoadKeyCountMap(KeyCountMemT& loadData)
@@ -289,7 +294,7 @@ void KeyProcess::KeyProcessTaskWithFastUnique(int channel, int threadId)
         }
         unique->UnInitialize();
     } catch (const EndRunExit &e) {
-        LOG_INFO(KEY_PROCESS "abort run: {}", e.what());
+        LOG_INFO(KEY_PROCESS "channel: {}, thread: {}, abort run: {}", channel, threadId, e.what());
     }
     LOG_INFO(KEY_PROCESS "KeyProcessTaskWithFastUnique exit. rank:{} channelId:{}, threadId:{}",
         rankInfo.rankId, channel, threadId);
@@ -323,7 +328,7 @@ void KeyProcess::KeyProcessTask(int channel, int threadId)
             batchQueue->PutDirty(move(batch));
         }
     } catch (const EndRunExit &e) {
-        LOG_INFO(KEY_PROCESS "abort run: {}", e.what());
+        LOG_INFO(KEY_PROCESS "channel: {}, thread: {}, abort run: {}", channel, threadId, e.what());
     }
     LOG_INFO(KEY_PROCESS "KeyProcessTask exit. rank:{} channelId:{}, threadId:{}", rankInfo.rankId, channel, threadId);
 }
@@ -552,19 +557,10 @@ unique_ptr<EmbBatchT> KeyProcess::GetBatchData(int channel, int commId) const
             this_thread::sleep_for(seconds(1));
             tc = TimeCost();
         }
-        if (!isRunning || isNeedExit[channel]) {
-            LOG_WARN("channelId:{} threadId:{}, enter GetBatchData abnormal scene, isRunning:{}, isNeedExit:{}",
-                     channel, commId, isRunning, isNeedExit[channel]);
-            // 通信终止信号，同步退出，防止线程卡住
-            int receiveFlag = 0;
-            int sendValue = 0; // 此处直接发送0，不使用mpiAllReduceSend值，防止多线程数据可见性问题
-            auto retCode = MPI_Allreduce(&sendValue, &receiveFlag, 1, MPI_INT, MPI_SUM, comm[channel][commId]);
-            if (retCode != MPI_SUCCESS) {
-                LOG_ERROR("rank {}, MPI_Allreduce failed:{}", rankInfo.rankId, retCode);
-            }
-            LOG_DEBUG("channelId:{} threadId:{}, GetBatchData Allreduce end, receiveFlag:{}",
-                      channel, commId, receiveFlag);
-            throw EndRunExit("GetBatchData end run, thread will exit.");
+
+        if (!isRunning) {
+            LOG_WARN("channelId:{} threadId:{}, isRunning is false when GetBatchData", channel, commId);
+            throw EndRunExit("GetBatchData end run.");
         }
     }
     EASY_END_BLOCK
@@ -1043,25 +1039,10 @@ vector<int> KeyProcess::GetScAll(const vector<int>& keyScLocal, int commId, cons
     scAll.resize(rankInfo.rankSize * rankInfo.rankSize);
     LOG_DEBUG("channelId:{} threadId:{} batchId:{}, GetScAll start.", batch->channel, commId, batch->batchId);
 
-    // 通信终止信号，同步退出，防止线程卡住
-    TimeCost tc = TimeCost();
-    int receiveFlag = 0;
-    auto retCode = MPI_Allreduce(&mpiAllReduceSend[batch->channel], &receiveFlag, 1, MPI_INT, MPI_SUM,
-                                 comm[batch->channel][commId]);
-    if (retCode != MPI_SUCCESS) {
-        LOG_ERROR("rank {} commId {}, MPI_Allreduce failed:{}", rankInfo.rankId, commId, retCode);
-    }
-    LOG_DEBUG(KEY_PROCESS "channelId:{} threadId:{} batchId:{}, GetScAll MPI_Allreduce end, receiveFlag:{}"
-                          " barrier time:{}",
-              batch->channel, commId, batch->batchId, receiveFlag, tc.ElapsedMS());
-
-    // 处理其他rank线程退出的情况
-    HandleRankExitScene(commId, batch, receiveFlag);
-
-    EASY_END_BLOCK;
     // allgather keyScLocal(key all2all keyScLocal = device all2all rc)
-    retCode = MPI_Allgather(keyScLocal.data(), rankInfo.rankSize, MPI_INT, scAll.data(), rankInfo.rankSize, MPI_INT,
-                            comm[batch->channel][commId]);
+    auto retCode = MPI_Allgather(keyScLocal.data(), rankInfo.rankSize, MPI_INT,
+                                 scAll.data(), rankInfo.rankSize, MPI_INT,
+                                 comm[batch->channel][commId]);
     if (retCode != MPI_SUCCESS) {
         LOG_ERROR("rank {} commId {}, MPI_Allgather failed:{}", rankInfo.rankId, commId, retCode);
     }
@@ -1070,46 +1051,6 @@ vector<int> KeyProcess::GetScAll(const vector<int>& keyScLocal, int commId, cons
     return scAll;
 }
 
-
-void KeyProcess::HandleRankExitScene(int commId, const unique_ptr<EmbBatchT> &batch, int receiveFlag)
-{
-    if (receiveFlag < rankInfo.rankSize) {
-        unique_lock<mutex> lockGuard(destroyMutex);
-        if (isNeedExit[batch->channel] || !isRunning) {
-            LOG_INFO("channelId:{} threadId:{} batchId:{}, no need send acl eos, thread will exit.",
-                     batch->channel, commId, batch->batchId);
-            throw EndRunExit("no need send acl eos, thread will exit.");
-        }
-        LOG_INFO("channelId:{} batchId:{}, GetScAll HandleRankExitScene eos.", batch->channel, batch->batchId);
-
-        int timeCount  = 0;
-        int timeout = 120; // 120s还在等待，就发送eos
-        HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
-        bool isWait = hybridMgmtBlock->pythonBatchId[batch->channel] <
-                      (hybridMgmtBlock->hybridBatchId[batch->channel] - hybridMgmtBlock->loop[batch->channel] + 1);
-
-        if (!isWait) { // double check
-            this_thread::sleep_for(seconds(EOS_TIMEOUT));
-            isWait = hybridMgmtBlock->pythonBatchId[batch->channel] <
-                     (hybridMgmtBlock->hybridBatchId[batch->channel] - hybridMgmtBlock->loop[batch->channel] + 1);
-        }
-
-        while (isWait && timeout < EOS_TIMEOUT) {
-            LOG_DEBUG("wait until hybridBatchId equal pythonBatchId before SendEos, channelId:{}, pyBatchId:{}, "
-                      "mgmtBatchId:{}", batch->channel, hybridMgmtBlock->pythonBatchId[batch->channel],
-                      hybridMgmtBlock->hybridBatchId[batch->channel]);
-            this_thread::sleep_for(seconds(EOS_TIMEOUT));
-            isWait = hybridMgmtBlock->pythonBatchId[batch->channel] <
-                     (hybridMgmtBlock->hybridBatchId[batch->channel] - hybridMgmtBlock->loop[batch->channel] + 1);
-            timeCount++;
-        }
-
-        SendEos(batch->batchId, batch->channel);
-        throw EndRunExit("has SendEosInfo, GetScAll end, thread will exit.");
-    }
-}
-
-
 void KeyProcess::GetScAllForUnique(const vector<int>& keyScLocal, int commId, const unique_ptr<EmbBatchT> &batch,
                                    vector<int> &scAllOut)
 {
@@ -1117,24 +1058,10 @@ void KeyProcess::GetScAllForUnique(const vector<int>& keyScLocal, int commId, co
     int channel = batch->channel;
     scAllOut.resize(rankInfo.rankSize * rankInfo.rankSize);
 
-    // 通信终止信号，同步退出，防止线程卡住
-    TimeCost tc = TimeCost();
-    int receiveFlag = 0;
-    auto retCode = MPI_Allreduce(&mpiAllReduceSend[channel], &receiveFlag, 1, MPI_INT, MPI_SUM,
-                                 comm[channel][commId]);
-    if (retCode != MPI_SUCCESS) {
-        LOG_ERROR("rank {}, MPI_Allreduce failed:{}", rankInfo.rankId, retCode);
-    }
-    LOG_DEBUG(KEY_PROCESS "channelId:{} threadId:{} batchId:{}, GetScAllForUnique MPI AllReduce end, "
-                         "receiveFlag:{}, barrier time:{}",
-              channel, commId, batch->batchId, receiveFlag, tc.ElapsedMS());
-    // 处理其他rank线程退出的情况
-    HandleRankExitScene(commId, batch, receiveFlag);
-
-    EASY_END_BLOCK;
     // allgather keyScLocal(key all2all keyScLocal = device all2all rc)
-    retCode = MPI_Allgather(keyScLocal.data(), rankInfo.rankSize, MPI_INT,
-                            scAllOut.data(), rankInfo.rankSize, MPI_INT, comm[channel][commId]);
+    auto retCode = MPI_Allgather(keyScLocal.data(), rankInfo.rankSize, MPI_INT,
+                                 scAllOut.data(), rankInfo.rankSize, MPI_INT,
+                                 comm[channel][commId]);
     if (retCode != MPI_SUCCESS) {
         LOG_ERROR("rank {}, MPI_Allgather failed:{}", rankInfo.rankId, retCode);
     }
@@ -1328,24 +1255,27 @@ void KeyProcess::SendEos(int batchId, int channel)
 
     vector<Tensor> tensors;
     bool isNeedResend = true;
+
     for (const auto& emb: as_const(embInfos)) { // 一个表触发以后，其余表都发送eos，最后外层接收null退出此次循环
         LOG_INFO("channelId:{} batchId:{}, the embName:{} related channel SendEos start.", channel, batchId, emb.first);
         if (!isRunning) {
             throw EndRunExit("SendEos end run, isRunning is false after lock destroyMutex.");
         }
-
         for (const string& transName : usedChannelNames) {
             string sendName = StringFormat("%s_%s_%d", emb.first.c_str(), transName.c_str(), channel);
+            size_t channelSize = 0;
+            
+            acltdtQueryChannelSize(transChannels[sendName], &channelSize);
+            LOG_INFO("[EOS] Before send eos, {} contains {}.", sendName, channelSize);
             SendTensorsByAcl(transChannels[sendName], ACL_TENSOR_DATA_END_OF_SEQUENCE, tensors, isNeedResend);
-            LOG_DEBUG("SendTensorsByAcl eos channelName:{}, batchId:{}", sendName, batchId);
+            acltdtQueryChannelSize(transChannels[sendName], &channelSize);
+            LOG_INFO("[EOS] After send eos, {} contains {}.", sendName, channelSize);
         }
         LOG_INFO("channelId:{} batchId:{}, the embName:{} related channel SendEos end.", channel, batchId, emb.first);
     }
 
     LOG_INFO("channelId:{} batchId:{}, SendEos end.", channel, batchId);
     isNeedSendEos[channel] = false;
-    mpiAllReduceSend[channel] = 0;
-    isNeedExit[channel] = true;
 #endif
 }
 
@@ -1436,7 +1366,7 @@ void KeyProcess::SendA2A(const vector<int>& a2aInfo, const string& embName, int 
 
 int KeyProcess::GetMaxStep(int channelId) const
 {
-    return rankInfo.maxStep.at(channelId);
+    return rankInfo.ctrlSteps.at(channelId);
 }
 
 void KeyProcess::EvictKeys(const string& embName, const vector<emb_key_t>& keys) // hbm

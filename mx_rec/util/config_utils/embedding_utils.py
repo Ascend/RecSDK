@@ -60,10 +60,12 @@ class SparseEmbedConfig:
         if var_name not in self._removing_var_list:
             self._removing_var_list.append(var_name)
 
-    def insert_table_instance(self, name: str, key: Variable, instance: object) -> None:
+    def insert_table_instance(self, name: str, key: Variable, instance: object, eval_flag: bool) -> None:
         if key in self._table_instance_dict:
             raise KeyError(f"Given key {key} has been used.")
-
+        if eval_flag:
+            self._table_instance_dict[key] = instance
+            return
         if name in self._table_name_set:
             raise ValueError(f"Duplicated hashtable name '{name}' was used.")
 

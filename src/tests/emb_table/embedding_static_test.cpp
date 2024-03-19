@@ -147,3 +147,18 @@ TEST_F(EmbeddingStaticTest, Key2OffsetEvict)
     std::vector<int64_t> evicted_keys = table->GetEvictedKeys();
     EXPECT_EQ(evicted_keys.size(), tableNum - testNum);
 }
+
+/**
+ * 测试key数据的保存和加载
+ */
+TEST_F(EmbeddingStaticTest, SaveKeyData)
+{
+    vector<EmbInfo> embInfos = {embInfo_};
+    shared_ptr<EmbeddingStatic> hbm = std::make_shared<EmbeddingStatic>(embInfo_, rankInfo_, 0);
+    hbm->Save("test_dir");
+    bool fileExist = false;
+    if (access("./test_dir/test1/key", F_OK) == 0) {
+        fileExist = true;
+    }
+    EXPECT_EQ(fileExist, true);
+}

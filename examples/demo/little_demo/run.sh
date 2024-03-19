@@ -90,11 +90,6 @@ export ASCEND_GLOBAL_LOG_LEVEL=3 # “设置日志级别”章节0:debug, 1:info
 export MXREC_MODE="ASC"
 export USE_MPI=1
 
-# 配置梯度策略
-apply_gradient_strategy="sum_same_id_gradients_and_apply"
-#apply_gradient_strategy="direct_apply"
-export APPLY_GRADIENTS_STRATEGY=${apply_gradient_strategy}
-
 ################# 参数配置 ######################
 export USE_DYNAMIC=1            # 0：静态shape；1：动态shape
 export USE_HOT=0                # 0：关闭hot emb；1: 开启hot emb

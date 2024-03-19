@@ -62,6 +62,8 @@ namespace MxRec {
     class CacheManager {
     public:
         CacheManager() = default;
+        CacheManager(const CacheManager&) = delete;
+        CacheManager& operator=(const CacheManager&) = delete;
 
         ~CacheManager();
 

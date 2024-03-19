@@ -38,13 +38,13 @@ void LocalFileSystem::CreateDir(const string& dirName)
     while (getline(input, tmp, '/')) {
         guard++;
         if (guard > maxDepth) {
-            throw runtime_error(StringFormat("create directory {} exceed max depth", dirName));
+            throw runtime_error(StringFormat("create directory {} exceed max depth", dirName.c_str()));
         }
         ss << tmp << '/';
         int ret = mkdir(ss.str().c_str(), dirMode);
         if (ret != 0 && errno != EEXIST) {
             LOG_ERROR("Unable to create directory: {} ret:{} error info: {}", dirName, ret, strerror(errno));
-            throw runtime_error(StringFormat("create directory {} failed: {}", dirName, strerror(errno)));
+            throw runtime_error(StringFormat("create directory {} failed: {}", dirName.c_str(), strerror(errno)));
         }
     }
 }
@@ -240,128 +240,66 @@ ssize_t LocalFileSystem::Read(const string& filePath, char* fileContent, size_t 
     return readBytesNum;
 }
 
-ssize_t LocalFileSystem::Read(const string& filePath, vector<vector<float>>& fileContent, size_t datasetSize)
+ssize_t LocalFileSystem::Read(const string& filePath, vector<vector<float>>& fileContent, int64_t contentOffset,
+                              vector<int64_t> offsetArr, const size_t& embeddingSize)
 {
-    int fd = open(filePath.c_str(), O_RDONLY);
-    if (fd < 0) {
+    FILE *fp = fopen(filePath.c_str(), "rb");
+    if (fp == nullptr) {
         throw runtime_error(StringFormat("Failed to open read file: %s", filePath.c_str()));
     }
-    if (datasetSize == 0) {
-        struct stat statbuf;
-        fstat(fd, &statbuf);
-        datasetSize = statbuf.st_size;
-    }
 
-    size_t embDataOuterSize = fileContent.size();
-    if (embDataOuterSize == 0 || datasetSize == 0) {
-        close(fd);
-        throw runtime_error(StringFormat("output buffer or file size is empty"));
-    }
-    // datasetSize为文件大小， 文件大小除以fileContent的size，即为每条embedding的size
-    size_t onceReadByteSize = datasetSize / embDataOuterSize;
-    size_t mapByteSize;
-    size_t mapRowNum;
-    CalculateMapSize(datasetSize, mapByteSize, mapRowNum, onceReadByteSize);
-
-    off_t offset = 0;
-    size_t remainBytes = datasetSize;
     ssize_t readBytesNum = 0;
-    for (size_t i = 0; i < embDataOuterSize; i += mapRowNum) {
-        // 如果剩余字节数小于每次映射的字节数，则更新每次映射的字节数和行数
-        if (remainBytes < mapByteSize) {
-            mapByteSize = remainBytes;
-            mapRowNum = mapByteSize / onceReadByteSize;
-        }
-
-        void* tempMappedData = mmap(nullptr, mapByteSize, PROT_READ, MAP_PRIVATE, fd, offset);
-        if (tempMappedData == MAP_FAILED) {
-            close(fd);
-            return -1;
-        }
-        readBytesNum += mapByteSize;
-        char* mappedData = static_cast<char*>(tempMappedData);
-
-        // 处理映射的数据
-        try {
-            HandleMappedData(mappedData, mapRowNum, onceReadByteSize, fileContent, i);
-        } catch (const std::runtime_error& e) {
-            close(fd);
-            munmap(mappedData, mapByteSize);
-            throw runtime_error(StringFormat("handle mapped data error: %s", e.what()));
-        }
-        munmap(mappedData, mapByteSize);
-
-        offset += mapByteSize;
-        remainBytes -= mapByteSize;
+    size_t embeddingCount = 0;
+    for (const auto& offset: offsetArr) {
+        fseek(fp, offset * embeddingSize * sizeof(float), SEEK_SET);
+        auto res = fread(fileContent[embeddingCount].data()+ contentOffset *embeddingSize, sizeof(float), embeddingSize,
+                         fp);
+        embeddingCount++;
+        readBytesNum += embeddingSize * sizeof(float);
     }
-    close(fd);
+
+    fclose(fp);
     return readBytesNum;
 }
 
+
 /// 用于动态扩容模式下，从本地文件中读取embedding
 /// \param filePath 文件路径
-/// \param embeddingSize embedding的长度
+/// \param embedSizeInfo embedding的长度
 /// \param addressArr 存放embedding的地址vector
 /// \param deviceId 运行的卡的id
 /// \return
-void LocalFileSystem::ReadEmbedding(const string& filePath, const int& embeddingSize,
-                                    vector<int64_t>& addressArr, int deviceId)
+void LocalFileSystem::ReadEmbedding(const string& filePath, EmbeddingSizeInfo& embedSizeInfo, int64_t firstAddress,
+                                    int deviceId, vector<int64_t> offsetArr)
 {
-    std::ifstream readFile;
-    readFile.open(filePath.c_str(), std::ios::in | std::ios::binary | std::ios::ate);
-    if (!readFile.is_open()) {
-        throw runtime_error(StringFormat("open file %s to read failed.", filePath.c_str()));
-    }
-
-    size_t datasetSize = static_cast<size_t>(readFile.tellg());
-    auto embHashMapSize = static_cast<int>(datasetSize / sizeof(float) / embeddingSize);
-    readFile.seekg(0, std::ios::beg);
-
-    try {
-        ValidateReadFile(filePath, datasetSize);
-    } catch (const std::invalid_argument& e) {
-        readFile.close();
-        throw runtime_error(StringFormat("Invalid read file path: %s", e.what()));
-    }
-
 #ifndef GTEST
+    FILE *fp = fopen(filePath.c_str(), "rb");
+    if (fp == nullptr) {
+        throw runtime_error(StringFormat("Failed to open read file: %s", filePath.c_str()));
+    }
     auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
     if (res != ACL_ERROR_NONE) {
-        readFile.close();
         throw runtime_error(StringFormat("Set device failed, device_id:%d", deviceId).c_str());
     }
 
-    void *newBlock = nullptr;
-    aclError ret = aclrtMalloc(&newBlock, static_cast<int>(datasetSize), ACL_MEM_MALLOC_HUGE_FIRST);
-    if (ret != ACL_SUCCESS) {
-        readFile.close();
-        throw runtime_error(StringFormat("aclrtMemcpy failed, ret=%d", ret).c_str());
-    }
-
-    float *floatPtr = static_cast<float *>(newBlock);
-    addressArr.reserve(embHashMapSize);
-
-    for (size_t i = 0, j = 0; i < embHashMapSize; i += keyAddrElem, ++j) {
-        vector<float> row(embeddingSize);
-        readFile.read(reinterpret_cast<char *>(row.data()), embeddingSize * sizeof(float));
-        aclError ec;
+    float* floatPtr = reinterpret_cast<float*>(firstAddress);
+    auto i = 0;
+    for (const auto& offset: offsetArr) {
+        vector<float> row(embedSizeInfo.embeddingSize);
+        fseek(fp, offset * embedSizeInfo.embeddingSize * sizeof(float), SEEK_SET);
+        auto res = fread(row.data(), sizeof(float), embedSizeInfo.embeddingSize, fp);
         try {
-            ec = aclrtMemcpy(floatPtr + j * embeddingSize, embeddingSize * sizeof(float),
-                             row.data(), embeddingSize * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
+            auto ec = aclrtMemcpy(floatPtr + i * embedSizeInfo.extendEmbSize,
+                                  embedSizeInfo.embeddingSize * sizeof(float),
+                                  row.data(), embedSizeInfo.embeddingSize * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
         } catch (std::exception& e) {
-            readFile.close();
+            fclose(fp);
             throw runtime_error(StringFormat("error happen when acl memory copy from host to device: %s", e.what()));
         }
-
-        if (ec != ACL_SUCCESS) {
-            readFile.close();
-            throw runtime_error(StringFormat("aclrtMemcpy failed, ret=%d", ec).c_str());
-        }
-        int64_t address = reinterpret_cast<int64_t>(floatPtr + j * embeddingSize);
-        addressArr.push_back(address);
+        i++;
     }
+    fclose(fp);
 #endif
-    readFile.close();
 }
 
 void LocalFileSystem::WriterFn(BufferQueue& queue, int fd, ssize_t& writerBytesNum)
@@ -397,54 +335,6 @@ void LocalFileSystem::FillToBuffer(BufferQueue& queue, const char* data, size_t 
                 buffer.reserve(BUFFER_SIZE);
             }
             dataIdx += remainingSpace;
-        }
-    }
-}
-
-void LocalFileSystem::CalculateMapSize(off_t fileSize, size_t& mapByteSize,
-                                       size_t& mapRowNum, size_t onceReadByteSize) const
-{
-    // 每次映射的字节数
-    mapByteSize = MAP_BYTE_SIZE;
-    // 确保mapByteSize是onceReadByteSize和pageSize的整数倍，确保每次映射的offset是页大小的整数倍
-    long pageSize = sysconf(_SC_PAGESIZE);
-    if (pageSize == -1) {
-        throw std::runtime_error("Failed to get page size: " + std::string(strerror(errno)));
-    }
-    size_t lcmVal = std::lcm(onceReadByteSize, pageSize);
-    mapByteSize = (mapByteSize / lcmVal) * lcmVal;
-
-    // 如果文件大小小于每次映射的字节数，则一次性映射，映射大小不是页大小整数倍的时候，mmap会自动向上取整，额外的字节会初始化成零
-    if (fileSize <= mapByteSize) {
-        mapByteSize = fileSize;
-    }
-
-    mapRowNum = mapByteSize / onceReadByteSize;
-}
-
-
-void LocalFileSystem::HandleMappedData(char* mappedData, size_t mapRowNum, size_t onceReadByteSize,
-                                       vector<vector<float>>& dst, size_t cnt) const
-{
-#pragma omp parallel for
-    for (size_t j = 0; j < mapRowNum; ++j) {
-        size_t idx = 0;
-        size_t readSize = 0;
-        size_t dataCol = onceReadByteSize;
-        while (dataCol != 0) {
-            if (dataCol > oneTimeReadWriteLen) {
-                readSize = oneTimeReadWriteLen;
-            } else {
-                readSize = dataCol;
-            }
-
-            errno_t err = memcpy_s(dst[cnt + j].data() + idx, readSize,
-                                   mappedData + j * onceReadByteSize + idx, readSize);
-            if (err != 0) {
-                throw std::runtime_error("Error execution memcpy_s: " + std::to_string(err));
-            }
-            dataCol -= readSize;
-            idx += readSize;
         }
     }
 }

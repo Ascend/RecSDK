@@ -42,7 +42,7 @@ protected:
         rankInfo.useStatic = true;
         rankInfo.localRankId = 0;
         rankInfo.isDDR = true;
-        rankInfo.maxStep = { 1, -1 };
+        rankInfo.ctrlSteps = { 1, -1 };
         rankInfo.deviceId = 0;
         // 初始化EmbeddingTable
 #ifndef GTEST

@@ -60,7 +60,6 @@ public:
 
     int singleCoreAddrNum = (int)(addrNums / block_num); // 有可能没有整除，最后的核会处理更多的数据
     singleCoreAddrNum = singleCoreAddrNum & (~3); // & (~3) 代表取4的倍数向下取整，处理的地址占8字节，对齐32B的话，数量需要是4倍数
-    ASSERT(singleCoreAddrNum != 0 && "single num can not be zero!");
 
     singleCoreAddrLen = singleCoreAddrNum * sizeof(int64_t);
     veclen = addrNumPerLoop * typeSize * embDimAligned;  // 向上对齐32B

@@ -31,6 +31,8 @@ namespace data {
         static constexpr const char *const kDatasetType = "Eos";
         static constexpr const char *const kInputDataset = "input_dataset";
         static constexpr const char *const kChannelId = "channel_id";
+        static constexpr const char *const kMaxTrainSteps = "max_train_steps";
+        static constexpr const char *const kMaxEvalSteps = "max_eval_steps";
         static constexpr const char *const kOutputTypes = "output_types";
         static constexpr const char *const kOutputShapes = "output_shapes";
 
