@@ -143,7 +143,7 @@ else
       echo "ip: $ip available."
       echo "The ranktable solution is removed."
       export CM_CHIEF_IP=$ip  # 主节点ip
-      export CM_CHIEF_PORT=6000  # 主节点监听端口
+      export CM_CHIEF_PORT=60001  # 主节点监听端口
       export CM_CHIEF_DEVICE=0  # 主节点device id
       export CM_WORKER_IP=$ip  # 当前节点ip
       export CM_WORKER_SIZE=$num_process  # 参与集群训练的device数量
