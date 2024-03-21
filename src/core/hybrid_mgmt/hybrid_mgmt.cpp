@@ -818,8 +818,7 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId, int cha
     auto lookupKeys = KEY_PROCESS_INSTANCE->GetLookupKeys(batchId, embName, channelId);
     if (lookupKeys.empty()) {
         remainBatchOut = false;
-        LOG_ERROR("channelId:{} batchId:{}, embName:{}, GetLookupKeys result is empty.",
-                  channelId, batchId, embName);
+        LOG_WARN("channelId:{} batchId:{}, embName:{}, GetLookupKeys result is empty.", channelId, batchId, embName);
         return false;
     }
     LOG_DEBUG("channelId:{} batchId:{}, embName:{}, GetLookupKeys end.", channelId, batchId, embName);
