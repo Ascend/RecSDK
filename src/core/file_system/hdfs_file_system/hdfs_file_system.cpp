@@ -160,12 +160,6 @@ void HdfsFileSystem::WriteEmbedding(const string& filePath, const int& embedding
     }
 
 #ifndef GTEST
-    auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
-    if (res != ACL_ERROR_NONE) {
-        hdfs->CloseFile(fs, file);
-        hdfs->Disconnect(fs);
-        throw runtime_error(StringFormat("Set device failed, device_id:%d", deviceId).c_str());
-    }
 
     for (size_t i = 0; i < addressArr.size(); i += embHashNum) {
         vector<float> row(embeddingSize);
@@ -273,11 +267,6 @@ void HdfsFileSystem::ReadEmbedding(const string& filePath, EmbeddingSizeInfo& em
     if (!file) {
         hdfs->Disconnect(fs);
         throw runtime_error("open hdfs file failed.");
-    }
-
-    auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
-    if (res != ACL_ERROR_NONE) {
-        throw runtime_error(StringFormat("Set device failed, device_id:%d", deviceId).c_str());
     }
 
     float* floatPtr = reinterpret_cast<float*>(firstAddress);
