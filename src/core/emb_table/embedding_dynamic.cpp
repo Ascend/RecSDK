@@ -285,11 +285,6 @@ int EmbeddingDynamic::LoadKey(const string& savePath)
         }
     }
 
-    auto res = aclrtSetDevice(static_cast<int32_t>(rankId_));
-    if (res != ACL_ERROR_NONE) {
-        throw runtime_error(StringFormat("Set device failed, device_id:%d", rankId_).c_str());
-    }
-
     auto datasetSize = deviceKey.size() * extEmbSize_ * sizeof(float);
     void *newBlock = nullptr;
     aclError ret = aclrtMalloc(&newBlock, static_cast<int>(datasetSize), ACL_MEM_MALLOC_HUGE_FIRST);

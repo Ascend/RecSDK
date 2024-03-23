@@ -390,7 +390,7 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         set_temporary_feature_spec_attribute(mock_feature_spec, total_feature_count)
 
         kwargs["multi_lookup"] = True
-        total_send_count = send_count * same_table_spec_count
+        total_send_count = self._same_table_send_count if self._modify_graph else send_count * same_table_spec_count
         lookup_result = self._lookup_forward(mock_feature_spec, total_send_count, **kwargs)
         logger.debug("multi lookup table %s via %s.", table_name, tensor_split_list)
         self.__split_lookup_result(same_table_feature_spec, tensor_split_list, tensor_list, lookup_result, is_training)
