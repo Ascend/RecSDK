@@ -156,6 +156,8 @@ int EmbeddingStatic::LoadKey(const string &savePath)
         return -1;
     }
 
+    maxOffset = keyOffsetMap.size();
+
     free(static_cast<void*>(buf));
     return 0;
 }

@@ -209,3 +209,19 @@ void EmbeddingMgmt::EnableSSD()
         table.second->EnableSSD();
     }
 }
+
+void EmbeddingMgmt::LockSave()
+{
+    for (auto& table: embeddings) {
+        table.second->mutSave_.lock();
+    }
+    LOG_DEBUG("LockSave");
+}
+
+void EmbeddingMgmt::UnLockSave()
+{
+    for (auto& table: embeddings) {
+        table.second->mutSave_.unlock();
+    }
+    LOG_DEBUG("UnLockSave");
+}

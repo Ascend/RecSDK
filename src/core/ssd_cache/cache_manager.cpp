@@ -281,6 +281,8 @@ void CacheManager::Init(HostEmb* hostEmbPtr, vector<EmbInfo>& mgmtEmbInfo)
     for (auto& emb : mgmtEmbInfo) {
         EmbBaseInfo baseInfo {emb.ssdVocabSize, emb.ssdDataPath, false};
         embBaseInfos.emplace(emb.name, baseInfo);
+        ddrKeyFreqMap[emb.name];
+        excludeDDRKeyCountMap[emb.name];
     }
     ssdEngine->Start();
     LOG_INFO("CacheManager Init method end.");
@@ -379,7 +381,8 @@ TransferRet CacheManager::TransferDDREmb2SSD(TableInfo& table,
     }
 
     TimeCost ddr2SsdTc;
-    LOG_DEBUG("TransferDDREmbWithSSD: get ddr least freq keys, ddrSwapOutSize:{}", ddrSwapOutSize);
+    LOG_DEBUG("TransferDDREmbWithSSD: get ddr least freq keys, table:{}, ddrSwapOutSize:{}",
+              table.name, ddrSwapOutSize);
     // 获取DDR中指定数量的最低频次key，并获取相应emb数据，执行DDR换出到SSD
     vector<emb_key_t> ddrSwapOutKeys;
     vector<freq_num_t> ddrSwapOutCounts;
@@ -387,13 +390,14 @@ TransferRet CacheManager::TransferDDREmb2SSD(TableInfo& table,
     if (static_cast<int64_t>(ddrSwapOutKeys.size()) != ddrSwapOutSize) {
         auto keyTableSize = ddrKeyFreqMap[table.name].keyTable.size();
         // 获取的最低频次key数量和预期不一致，DDR空间不足，不能放置当前批次数据
-        LOG_ERROR("TransferDDREmbWithSSD, vector length is not equal, ddrSwapOutKeys size:{}, "
+        LOG_ERROR("TransferDDREmbWithSSD, table:{}, vector length is not equal, ddrSwapOutKeys size:{}, "
                   "ddrSwapOutSize:{}, ddr lfu keyTable size:{}",
-                  ddrSwapOutKeys.size(), ddrSwapOutSize, keyTableSize);
+                  table.name, ddrSwapOutKeys.size(), ddrSwapOutSize, keyTableSize);
         RestoreLeastFreqInfo(table.name, ddrSwapOutKeys, ddrSwapOutCounts);
         return TransferRet::DDR_SPACE_NOT_ENOUGH;
     }
-    LOG_DEBUG("TransferDDREmbWithSSD: get DDR embeddings and save to SSD, size:{}", ddrSwapOutKeys.size());
+    LOG_DEBUG("TransferDDREmbWithSSD: get DDR embeddings and save to SSD, table:{}, size:{}",
+              table.name, ddrSwapOutKeys.size());
     // 获取DDR中emb数据
     vector<vector<float>> ddrEmbData;
     GetDDREmbInfo(ddrSwapOutKeys, table, ddrTransferPos, ddrEmbData);
@@ -405,7 +409,7 @@ TransferRet CacheManager::TransferDDREmb2SSD(TableInfo& table,
 
     // 更新记录的DDR中key频次信息
     RefreshRelateInfoWithDDR2SSD(table, ddrSwapOutKeys, ddrSwapOutCounts);
-    LOG_DEBUG("TransferDDREmbWithSSD: ddr2SsdTc TimeCost(ms):{}", ddr2SsdTc.ElapsedMS());
+    LOG_DEBUG("TransferDDREmbWithSSD: table:{}, ddr2SsdTc TimeCost(ms):{}", table.name, ddr2SsdTc.ElapsedMS());
     return TransferRet::TRANSFER_OK;
 }
 
@@ -470,13 +474,19 @@ CacheManager::~CacheManager()
 /// \param step 加载SSDEngine传入步数
 void CacheManager::Load(unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>>& ddrFreqInitMap,
                         unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>>& excludeDdrFreqInitMap,
-                        int step)
+                        int step, int rankSize, int rankId)
 {
+    if (rankSize <= 0) {
+        throw runtime_error("rank size must > 0");
+    }
     // 加载CacheManager数据
     for (auto& it : ddrFreqInitMap) {
         auto& embTableName = it.first;
         auto& freqMap = it.second;
         for (auto& freqIt : freqMap) {
+            if (freqIt.first % rankSize != rankId) {
+                continue;
+            }
             ddrKeyFreqMap[embTableName].PutWithInit(freqIt.first, freqIt.second);
         }
     }
@@ -484,6 +494,9 @@ void CacheManager::Load(unordered_map<std::string, unordered_map<emb_key_t, freq
         auto& embTableName = it.first;
         auto& freqMap = it.second;
         for (auto& freqIt : freqMap) {
+            if (freqIt.first % rankSize != rankId) {
+                continue;
+            }
             excludeDDRKeyCountMap[embTableName].emplace(freqIt.first, freqIt.second);
         }
     }

@@ -83,7 +83,7 @@ size_t LocalFileSystem::GetFileSize(const string& filePath)
 
 ssize_t LocalFileSystem::Write(const string& filePath, const char* fileContent, size_t dataSize)
 {
-    int fd = open(filePath.c_str(), O_RDWR | O_CREAT | O_TRUNC, fileMode);
+    int fd = open(filePath.c_str(), O_RDWR | O_CREAT | O_APPEND, fileMode);
     if (fd == -1) {
         throw runtime_error(StringFormat("open file %s to write failed.", filePath.c_str()));
     }
