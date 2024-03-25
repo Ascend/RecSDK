@@ -19,10 +19,22 @@ rm -rf /root/ascend/log/*
 rm -rf ./kernel*
 rm -rf ./export_graph/*
 
-export USE_MODE="train" # 支持[train, predict]
+# 支持[train, load_and_train, predict]
+export USE_MODE="train"
+if [ $USE_MODE = "train" ]; then
+  echo "train mode: saved-model will be deleted"
+  rm -rf ./saved-model
+fi
 
 # cache mode support: HBM, DDR, SSD
 export CACHE_MODE="HBM"
+if [ $CACHE_MODE = "SSD" ] && [ $USE_MODE = "train" ]; then
+  echo "SSD train mode not allow file exist in directory when training a model from stratch in case overwrite,
+        deleting directory ssd_data then create for this use case"
+  rm -rf ssd_data
+  mkdir ssd_data
+fi
+
 
 # 获取输入参数：py、ip
 if [ $# -ge 1 ]; then

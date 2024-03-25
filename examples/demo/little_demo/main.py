@@ -29,8 +29,7 @@ from mx_rec.core.asc.helper import get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
-from mx_rec.util.communication.hccl_ops import get_rank_id, get_rank_size
-from mx_rec.util.initialize import ConfigInitializer
+from mx_rec.util.communication.hccl_ops import get_rank_size
 from mx_rec.util.initialize import init, terminate_config_initializer
 from mx_rec.util.log import logger
 from mx_rec.util.variable import get_dense_and_sparse_variable
@@ -43,7 +42,7 @@ from run_mode import RunMode, UseMode
 
 tf.compat.v1.disable_eager_execution()
 
-_SSD_SAVE_PATH = ["ssd_data"]
+_SSD_SAVE_PATH = ["ssd_data"]  # user should make sure directory exist and clean before training
 
 
 class CacheModeEnum(enum.Enum):
@@ -204,13 +203,16 @@ if __name__ == "__main__":
     except ValueError as err:
         raise ValueError(f"please correctly config MULTI_LOOKUP_TIMES only int is supported.") from err
 
-    IF_LOAD = False
-    rank_id = get_rank_id()
-
-    file_list = glob(f"./saved-model/sparse-model-*")
-    if file_list:
-        IF_LOAD = True
-
+    if_load = False
+    save_path = "./saved-model"
+    model_file = []
+    if use_mode in [UseMode.PREDICT, UseMode.LOAD_AND_TRAIN]:
+        load_path_pattern = os.path.join(save_path, "sparse-model-*")
+        model_file = glob(load_path_pattern)
+        if len(model_file) == 0:
+            raise ValueError(f"get USE_MODE:{use_mode}, but no model file exist at:{load_path_pattern}")
+        if_load = True
+    
     # nbatch function needs to be used together with the prefetch and host_vocabulary_size != 0
     init(train_steps=TRAIN_STEPS,
          eval_steps=EVAL_STEPS,
@@ -218,7 +220,7 @@ if __name__ == "__main__":
          use_dynamic=use_dynamic,
          use_hot=use_hot,
          use_dynamic_expansion=use_dynamic_expansion,
-         if_load=IF_LOAD)
+         if_load=if_load)
 
     cfg = Config()
     # multi lookup config, batch size: 32 * 128 = 4096
@@ -282,7 +284,7 @@ if __name__ == "__main__":
     train_model = None
     train_batch = None
     table_list = [user_hashtable, item_hashtable]
-    if use_mode == UseMode.TRAIN:
+    if use_mode in [UseMode.TRAIN, UseMode.LOAD_AND_TRAIN]:
         train_iterator, train_model, train_batch = build_graph(table_list, is_train=True,
                                                                feature_spec_list=train_feature_spec_list,
                                                                config_dict=ACCESS_AND_EVICT,
@@ -303,14 +305,14 @@ if __name__ == "__main__":
     if not MODIFY_GRAPH_FLAG:
         start_asc_pipeline()
     # start modify graph
-    if MODIFY_GRAPH_FLAG and use_mode != UseMode.TRAIN:
+    if MODIFY_GRAPH_FLAG and use_mode not in [UseMode.TRAIN, UseMode.LOAD_AND_TRAIN]:
         logger.info("start to modifying graph")
         modify_graph_and_start_emb_cache(dump_graph=True)
 
-    if use_mode == UseMode.TRAIN:
-        run_mode.train(TRAIN_STEPS, SAVING_INTERVAL, if_load=IF_LOAD)
+    if use_mode in [UseMode.TRAIN, UseMode.LOAD_AND_TRAIN]:
+        run_mode.train(TRAIN_STEPS, SAVING_INTERVAL, if_load, model_file)
     elif use_mode == UseMode.PREDICT:
-        run_mode.predict()
+        run_mode.predict(model_file)
 
     terminate_config_initializer()
     logger.info("Demo done!")

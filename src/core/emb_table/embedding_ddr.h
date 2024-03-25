@@ -70,6 +70,8 @@ public:
 
     TableInfo GetTableInfo();
 
+    void RefreshFreqInfoAfterLoad();
+
 GTEST_PRIVATE:
 
     int LoadHashMap(const string& savePath);

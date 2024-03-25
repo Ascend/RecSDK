@@ -119,6 +119,9 @@ public:
 
     void EnableSSD();
 
+    void LockSave();
+
+    void UnLockSave();
 private:
 
     EmbeddingMgmt();

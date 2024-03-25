@@ -301,6 +301,7 @@ int EmbeddingDynamic::LoadKey(const string& savePath)
         address = address + extEmbSize_*sizeof(float);
     }
 
+    maxOffset = keyOffsetMap.size();
     free(static_cast<void*>(buf));
     return 0;
 }

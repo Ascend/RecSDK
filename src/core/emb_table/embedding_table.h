@@ -114,6 +114,7 @@ public:
     absl::flat_hash_map<emb_key_t, int64_t> keyOffsetMap;
     std::vector<int64_t> evictDevPos;     // 记录HBM内被淘汰的key
     std::vector<int64_t> evictHostPos; // 记录Host内淘汰列表
+    std::mutex mutSave_;  // 用于保存时锁住KeyOffsetMap
 
 #ifdef NDEBUG
 protected:

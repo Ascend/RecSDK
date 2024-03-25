@@ -16,6 +16,7 @@
 # ==============================================================================
 
 import os
+from typing import List
 
 import tensorflow as tf
 from config import sess_config
@@ -33,6 +34,7 @@ from mx_rec.util.communication.hccl_ops import get_rank_id, get_rank_size
 class UseMode(BaseEnum):
     TRAIN = "train"
     PREDICT = "predict"
+    LOAD_AND_TRAIN = "load_and_train"
 
 
 class RunMode:
@@ -109,7 +111,7 @@ class RunMode:
                 grads_and_vars = [(grad, variable) for grad, variable in zip(sparse_grads, sparse_variables)]
                 self.train_ops.append(sparse_optimizer.apply_gradients(grads_and_vars))
 
-    def train(self, train_interval: int, saving_interval: int, if_load=False):
+    def train(self, train_interval: int, saving_interval: int, if_load: bool, model_file: List[str]):
         self.set_train_ops()
         # In train mode, graph modify needs to be performed after compute gradients
         if self.is_modify_graph:
@@ -127,7 +129,7 @@ class RunMode:
         start_step = 1
 
         if if_load:
-            latest_step = get_load_step()
+            latest_step = get_load_step(model_file)
             start_step = latest_step + 1
             self.saver.restore(self.session, f"./saved-model/model-{latest_step}")
         else:
@@ -167,28 +169,11 @@ class RunMode:
         logger.info("###############    evaluate end, epoch::%d   ################", self.epoch)
         self.epoch += 1
 
-    def predict(self):
+    def predict(self, model_file: List[str]):
         logger.info(f"###############    start predict    ################")
-        import glob
-        import re
-
-        model_file = glob.glob(f"./saved-model/sparse-model-*")
-        if len(model_file) == 0:
-            raise ValueError("model file not exit")
 
         # get the latest model
-        pattern = f".*sparse-model-([0-9]+).*"
-        latest_step = -1
-        for file_path in model_file:
-            match = re.match(pattern, file_path)
-            if match and match.groups():
-                step = int(match.groups()[0])
-
-                if step > latest_step:
-                    latest_step = step
-        if latest_step == -1:
-            raise RuntimeError("latest model not found")
-
+        latest_step = get_load_step(model_file)
         self.saver = tf.compat.v1.train.Saver()
         self.saver.restore(self.session, f"./saved-model/model-{latest_step}")
         self._infer()
@@ -202,19 +187,14 @@ class RunMode:
         self.session.run([set_threshold_op])
 
 
-def get_load_step():
-    import glob
+def get_load_step(model_file: List[str]):
     import re
-
-    model_file = glob.glob(f"./saved-model/sparse-model-*")
-    if len(model_file) == 0:
-        raise ValueError("model file not exit")
 
     # get the latest model
     pattern = f".*sparse-model-([0-9]+).*"
     latest_step = -1
     for file_path in model_file:
-        match = re.match(pattern, file_path)
+        match = re.search(pattern, file_path)
         if match and match.groups():
             step = int(match.groups()[0])
             if step > latest_step:
