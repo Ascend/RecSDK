@@ -58,27 +58,61 @@ bash run.sh
 - CMake 3.20.6
 
 开源依赖：
-- pybind11 v2.10.3
-- securec
-- openmpi 4.1.1: 请参考软件文档在编译环境完成安装
+- [pybind11 v2.10.3](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
+- [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
+- [openmpi 4.1.5](https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.gz): 请参考软件文档在编译环境完成安装
 - tensorflow 1.15/2.6.5：根据实际需求选择对应版本
 
-pybind11的压缩包放在与MxRec代码同级的opensource/opensource目录下，如果没有opensource目录，则需要在MxRec同级的目录下手动创建opensource/opensource目录。然后将pybind11的压缩包放在opensource/opensource目录下。解压压缩包，并且将解压之后的压缩包改名为pybind11。
-
-securec是华为开源的安全函数库。下载后：
-1. 将platform下的eSDK_LogAPI_V2.1.10文件夹删除
-2. 将platform下的huaweisecurec改名为securec
-3. 在securec文件夹下，有src、lib和include三个文件夹，删除lib文件夹下的所有文件
-4. 将platform文件夹放到MxRec代码目录下
+将pybind11和securec的压缩包放在与MxRec代码同级的opensource目录下，并且将其分别更名为pybind11-2.10.3.zip、huaweicloud-sdk-c-obs-3.23.9.zip。如果没有opensource目录，则需要在MxRec同级的目录下手动创建opensource目录，然后将pybind11和securec的压缩包放在opensource目录下。
 
 为了构建多个版本的whl包，编译脚本在python虚拟环境完成对应tensorflow版本的安装。用户可以根据实际情况调整编译脚本，指定tensorflow的安装路径。编译方法：
-- build/build.sh：执行脚本完成tf1和tf2版本whl包的构建和打包。执行脚本前，请参考build/build_tf1.sh、build/build_tf2.sh创建对应的虚拟环境，在虚拟环境中完成对应tensorflow版本的安装，并修改对应的激活命令。
-- build/build_tf1_with_opensource.sh：执行脚本完成tf1版本whl包的构建，构建成功后，whl包在tf1_whl子目录下。执行脚本前，创建tf1虚拟环境，在虚拟环境中完成tensorflow 1.15.0版本的安装，并修改对应的激活命令。
-- build/build_tf2_with_opensource.sh：执行脚本完成tf2版本whl包的构建，构建成功后，whl包在tf2_whl子目录下。执行脚本前，创建tf2虚拟环境，在虚拟环境中完成tensorflow 2.6.5版本的安装，并修改对应的激活命令。
+- build/build.sh：执行脚本完成tf1和tf2版本whl包的构建和打包。执行脚本前，请参考build/build_tf1_with_opensource.sh、build/build_tf2_with_opensource.sh创建对应的虚拟环境，在虚拟环境中完成对应tensorflow版本的安装，并修改对应的激活命令。
+- build/build_tf1_with_opensource.sh：执行脚本完成tf1版本whl包的构建，构建成功后，whl包在/build/mindxsdk-mxrec/tf1_whl子目录下。执行脚本前，创建tf1虚拟环境，在虚拟环境中完成tensorflow 1.15.0版本的安装，并修改对应的激活命令。
+- build/build_tf2_with_opensource.sh：执行脚本完成tf2版本whl包的构建，构建成功后，whl包在/build/mindxsdk-mxrec/tf2_whl子目录下。执行脚本前，创建tf2虚拟环境，在虚拟环境中完成tensorflow 2.6.5版本的安装，并修改对应的激活命令。
 
 如需使用动态扩容功能，进入“./cust_op/cust_op_by_addr”目录中。参考以下命令编译并安装动态扩容算子包。
 ```shell
 bash run.sh
+```
+
+## 测试用例
+
+### Python侧测试用例
+
+运行Python测试用例所需依赖：
+
+- pytest 7.1.1
+- pytest-cov 4.1.0
+- pytest-html
+
+如需使用python测试用例，需要先安装上述依赖以及能够在tf1环境下进行源码编译，然后进入tests目录中。参考以下命令执行python侧测试用例：
+```shell
+bash run_python_dt.sh
+```
+
+### C++侧测试用例
+
+运行C++侧测试用例所需依赖：
+
+- [googletest 1.8.1](https://github.com/google/googletest/archive/refs/tags/release-1.8.1.zip)
+- [emock 0.9.0](https://github.com/ez8-co/emock/archive/refs/tags/v0.9.0.zip)
+- [pybind11 v2.10.3](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
+- [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
+
+将googletest、emock、pybind11和securec的压缩包放在与MxRec代码同级的opensource目录下，并且将其分别更名为googletest-release-1.8.1.zip、
+emock-0.9.0.zip、pybind11-2.10.3.zip、 huaweicloud-sdk-c-obs-3.23.9.zip。如果没有opensource目录，则需要在MxRec同级的目录下手动创建opensource目录，
+然后将前述几个压缩包放在opensource目录下。
+
+如需使用C++测试用例，需要按照上述描述准备需要的依赖，准备好之后，进入src目录中。参考以下命令执行C++测试用例：
+
+tf1环境下使用如下命令：
+```shell
+bash test_ut.sh tf1
+```
+
+tf2环境下使用如下命令：
+```shell
+bash test_ut.sh tf2
 ```
 
 ## 使用指导
