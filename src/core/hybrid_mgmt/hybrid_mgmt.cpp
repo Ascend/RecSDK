@@ -663,6 +663,7 @@ void HybridMgmt::EvalTask(TaskType type)
 /// \param channelId 通道索引（训练/推理）
 /// \param batchId 已处理的batch数
 /// \return
+// lqklqk
 bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
 {
     LOG_INFO(MGMT + "nBatch:{} channelId:{} batchId:{}, ParseKeys with HBM mode start.",
