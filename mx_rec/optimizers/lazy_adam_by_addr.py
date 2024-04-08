@@ -119,10 +119,12 @@ class CustomizedLazyAdamByAddress(adam.AdamOptimizer, CustomizedOptimizer):
             addr)
 
     def _apply_sparse_shared(self, grad, addr):
+        unique_local_grad, unique_addr = self.sum_same_id_gradients(grad=grad, var=addr, is_expansion=True)
+
         power_b1, power_b2 = self._get_beta_accumulators()
-        power_b1 = math_ops.cast(power_b1, grad.dtype.base_dtype)
-        power_b2 = math_ops.cast(power_b2, grad.dtype.base_dtype)
-        temp = self._cast_to_base_type(grad)
+        power_b1 = math_ops.cast(power_b1, unique_local_grad.dtype.base_dtype)
+        power_b2 = math_ops.cast(power_b2, unique_local_grad.dtype.base_dtype)
+        temp = self._cast_to_base_type(unique_local_grad)
         temp_lr = temp.get("temp_lr")
         temp_b1 = temp.get("temp_b1")
         temp_b2 = temp.get("temp_b2")
@@ -130,23 +132,23 @@ class CustomizedLazyAdamByAddress(adam.AdamOptimizer, CustomizedOptimizer):
         learning_rate = tf.divide(temp_lr * math_ops.sqrt(1 - power_b2), (1 - power_b1))
 
         host_pipeline_ops = import_host_pipeline_ops()
-        dim = grad.shape.as_list()[-1]
+        dim = unique_local_grad.shape.as_list()[-1]
         combined_tensor = \
-            host_pipeline_ops.embedding_lookup_by_address(addr, embedding_dim=3 * dim, embedding_type=1)
+            host_pipeline_ops.embedding_lookup_by_address(unique_addr, embedding_dim=3 * dim, embedding_type=1)
 
         split_length = [dim] + [dim] + [dim]
         split_tensors = tf.split(combined_tensor, split_length, axis=1)
 
         old_m_slice = split_tensors[1]
-        m_t_slice = temp_b1 * old_m_slice + (1 - temp_b1) * grad
+        m_t_slice = temp_b1 * old_m_slice + (1 - temp_b1) * unique_local_grad
 
         old_v_slice = split_tensors[2]
-        v_t_slice = temp_b2 * old_v_slice + (1 - temp_b2) * math_ops.square(grad)
+        v_t_slice = temp_b2 * old_v_slice + (1 - temp_b2) * math_ops.square(unique_local_grad)
 
         denominator_slice = math_ops.sqrt(v_t_slice) + temp_epsilon
         update_list = [tf.divide(-learning_rate * m_t_slice, denominator_slice)] + [m_t_slice - old_m_slice] + \
                       [v_t_slice - old_v_slice]
         update_tensor = tf.concat(update_list, axis=1)
-        var_update_op = host_pipeline_ops.embedding_update_by_address(addr, update_tensor, update_type=0)
+        var_update_op = host_pipeline_ops.embedding_update_by_address(unique_addr, update_tensor, update_type=0)
 
         return var_update_op
