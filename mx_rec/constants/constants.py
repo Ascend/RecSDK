@@ -166,7 +166,6 @@ class ASCAnchorAttr(Enum):
     MOCK_LOOKUP_RESULT = "mock_lookup_result"
     RESTORE_VECTOR_SECOND = "restore_vector_second"
     UNIQUE_KEYS = "unique_keys"
-    GRADIENTS_STRATEGY = "gradients_strategy"
     IS_GRAD = "is_grad"
 
 
