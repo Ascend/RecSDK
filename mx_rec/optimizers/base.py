@@ -21,9 +21,13 @@ from __future__ import print_function
 
 from collections import defaultdict
 
+import tensorflow as tf
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.training.optimizer import _TensorProcessor
 
+from mx_rec.util.tf_version_adapter import npu_ops
+from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.log import logger
 
 
@@ -53,6 +57,63 @@ class CustomizedOptimizer:
             count = CustomizedOptimizer.name_counter[name]
         self.unique_name = name + "_" + str(count)
         self.base_name = name
+
+    def get_restore_vector_second(table_name) -> tf.Tensor:
+        """
+        Get restore vector which is calculated after the second all2all
+        :param table_name: embedding table_name
+        :return: the restore vector calculated after the second all2all
+        """
+        channel_id = 0
+        logger.debug('Channel %s_restore_second_%s was built for getnext',
+                     table_name, channel_id)
+        with tf.compat.v1.variable_scope(table_name, reuse=tf.compat.v1.AUTO_REUSE):
+            restore_vector_second = npu_ops.gen_npu_ops.get_next(
+                output_types=[tf.int32],
+                output_shapes=[[None]],
+                channel_name=f'{table_name}_restore_second_{channel_id}')[0]
+        return restore_vector_second
+
+    def get_unique_keys(table_name, is_expansion) -> tf.Tensor:
+        """
+        Get the global unique keys which is calculated after the second all2all
+        :param table_name: embedding table_name
+        :param is_expansion: use dynamic expansion
+        :return: the global unique keys calculated after the second all2all
+        """
+        channel_id = 0
+        logger.debug('Channel %s_uniquekeys_%s was built for getnext', table_name, channel_id)
+        with tf.compat.v1.variable_scope(table_name, reuse=tf.compat.v1.AUTO_REUSE):
+            if is_expansion:
+                unique_keys = npu_ops.gen_npu_ops.get_next(
+                    output_types=[tf.int64],
+                    output_shapes=[[None]],
+                    channel_name=f'{table_name}_uniquekeys_{channel_id}')[0]
+                return unique_keys
+
+            unique_keys = npu_ops.gen_npu_ops.get_next(
+                output_types=[tf.int32],
+                output_shapes=[[None]],
+                channel_name=f'{table_name}_uniquekeys_{channel_id}')[0]
+            return unique_keys
+
+    def sum_same_id_gradients(self, grad, var, is_expansion):
+        table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
+        table_name = table_instance.table_name
+        with tf.compat.v1.variable_scope("restore_vector_second"):
+            restore_vector_second = self.get_restore_vector_second(table_name)
+
+        with tf.compat.v1.variable_scope("unique_keys"):
+            unique_keys = self.get_unique_keys(table_name, is_expansion)
+
+        unique_local_grad = tf.compat.v1.unsorted_segment_sum(grad,
+                                                              restore_vector_second,
+                                                              array_ops.shape(unique_keys)[0])
+        if is_expansion:
+            unique_local_grad = ops.IndexedSlices(values=unique_local_grad,
+                                                  indices=unique_keys,
+                                                  dense_shape=tf.shape(var))
+        return unique_local_grad, unique_keys
 
 
 def custom_update_op(self, opt, grad):
