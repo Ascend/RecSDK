@@ -20,9 +20,9 @@ import shutil
 import subprocess
 
 # clean pkg_dir existed
-pkg_dir = "./build/mindxsdk-mxrec"
-if os.path.exists(pkg_dir):
-    shutil.rmtree(pkg_dir)
+PKG_DIR = "./build/mindxsdk-mxrec"
+if os.path.exists(PKG_DIR):
+    shutil.rmtree(PKG_DIR)
 
 # build tf1's wheel file
 res = subprocess.run(["python3.7", "setup_tf1.py", "bdist_wheel"], shell=False)

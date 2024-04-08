@@ -17,10 +17,12 @@
 
 import os
 import stat
+import subprocess
 from setuptools import setup, find_packages
 import pkg_resources
 from setuptools.extern.packaging import version as packaging_version
-import subprocess
+
+script_path = os.getcwd()
 
 
 # Patch Version class to preserve original version string
@@ -33,9 +35,13 @@ class NoNormalizeVersion(packaging_version.Version):
         return self._orig_version
 
 
+def safe_version(v):
+    return v
+
+
 packaging_version.Version = NoNormalizeVersion
 # Patch safe_version() to prevent version normalization
-pkg_resources.safe_version = lambda v: v
+pkg_resources.safe_version = safe_version
 
 try:
     with open("README.md") as file:
@@ -62,7 +68,8 @@ with os.fdopen(os.open(INIT_FILE, FLAG, MODE), 'w') as out:
     out.writelines(lines)
 
 # compile so files
-res = subprocess.run(["bash", f"./build/build_tf2.sh"], shell=False)
+tf2_script = os.path.join(script_path, "./build/build_tf2.sh")
+res = subprocess.run(["bash", tf2_script], shell=False)
 if res.returncode:
     raise RuntimeError("compile so files failed!")
 
@@ -83,6 +90,7 @@ setup(
     python_requires='>=3.7.5'
 )
 
-res = subprocess.run(["bash", f"./build/gen_tf2_tar_pkg.sh"], shell=False)
+move_whl_script = os.path.join(script_path, "./build/move_whl_file_2_pkg_dir.sh")
+res = subprocess.run(["bash", move_whl_script, "tf2"], shell=False)
 if res.returncode:
-    raise RuntimeError(f"gen tf2 tar pkg failed!")
+    raise RuntimeError(f"move tf2 whl file to pkg dir failed!")
