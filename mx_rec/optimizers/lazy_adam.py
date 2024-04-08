@@ -72,10 +72,15 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
         super(CustomizedLazyAdam, self).__init__(learning_rate=learning_rate, beta1=beta1, beta2=beta2,
                                                  epsilon=epsilon, use_locking=use_locking, name=self.unique_name)
         self._slot_num = 2
+        self._derivative = 2
 
     @property
     def slot_num(self):
         return self._slot_num
+
+    @property
+    def derivative(self):
+        return self._derivative
 
     def initialize_slots(self, var, table_instance):
         # Create slots for the first and second moments.
