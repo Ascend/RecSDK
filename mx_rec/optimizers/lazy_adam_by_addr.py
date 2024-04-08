@@ -73,10 +73,15 @@ class CustomizedLazyAdamByAddress(adam.AdamOptimizer, CustomizedOptimizer):
                                                           name=self.unique_name)
 
         self._slot_num = 2
+        self._derivative = 2
 
     @property
     def slot_num(self):
         return self._slot_num
+
+    @property
+    def derivative(self):
+        return self._derivative
 
     def get_slot_init_values(self):
         # return state value list of adam that needs to initialize in ASC DDR.
