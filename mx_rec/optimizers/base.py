@@ -113,10 +113,6 @@ class CustomizedOptimizer:
         unique_local_grad = tf.compat.v1.unsorted_segment_sum(grad,
                                                               restore_vector_second,
                                                               array_ops.shape(unique_keys)[0])
-        if not is_expansion:
-            unique_local_grad = ops.IndexedSlices(values=unique_local_grad,
-                                                  indices=unique_keys,
-                                                  dense_shape=tf.shape(var))
         return unique_local_grad, unique_keys
 
 
