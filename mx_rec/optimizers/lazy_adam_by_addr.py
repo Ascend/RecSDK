@@ -122,9 +122,9 @@ class CustomizedLazyAdamByAddress(adam.AdamOptimizer, CustomizedOptimizer):
         unique_local_grad, unique_addr = self.sum_same_id_gradients(grad=grad, var=addr, is_expansion=True)
 
         power_b1, power_b2 = self._get_beta_accumulators()
-        power_b1 = math_ops.cast(power_b1, unique_local_grad.dtype.base_dtype)
-        power_b2 = math_ops.cast(power_b2, unique_local_grad.dtype.base_dtype)
-        temp = self._cast_to_base_type(unique_local_grad)
+        power_b1 = math_ops.cast(power_b1, grad.dtype.base_dtype)
+        power_b2 = math_ops.cast(power_b2, grad.dtype.base_dtype)
+        temp = self._cast_to_base_type(grad)
         temp_lr = temp.get("temp_lr")
         temp_b1 = temp.get("temp_b1")
         temp_b2 = temp.get("temp_b2")
