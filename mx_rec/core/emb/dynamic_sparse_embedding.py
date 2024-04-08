@@ -70,7 +70,6 @@ class DynamicSparseEmbedding(BaseSparseEmbedding):
 
         tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
         tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, result.get("id_offsets"))
-        # tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS, result.get("unique_keys"))
         return sparse_forward_fn(local_embeddings)
 
 
