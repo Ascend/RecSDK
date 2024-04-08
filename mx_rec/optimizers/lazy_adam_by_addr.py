@@ -119,6 +119,8 @@ class CustomizedLazyAdamByAddress(adam.AdamOptimizer, CustomizedOptimizer):
             addr)
 
     def _apply_sparse_shared(self, grad, addr):
+        unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad, var=addr, is_expansion=True)
+
         power_b1, power_b2 = self._get_beta_accumulators()
         power_b1 = math_ops.cast(power_b1, grad.dtype.base_dtype)
         power_b2 = math_ops.cast(power_b2, grad.dtype.base_dtype)

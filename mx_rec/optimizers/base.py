@@ -58,7 +58,7 @@ class CustomizedOptimizer:
         self.unique_name = name + "_" + str(count)
         self.base_name = name
 
-    def get_restore_vector_second(table_name) -> tf.Tensor:
+    def get_restore_vector_second(self, table_name: str) -> tf.Tensor:
         """
         Get restore vector which is calculated after the second all2all
         :param table_name: embedding table_name
@@ -74,7 +74,7 @@ class CustomizedOptimizer:
                 channel_name=f'{table_name}_restore_second_{channel_id}')[0]
         return restore_vector_second
 
-    def get_unique_keys(table_name, is_expansion) -> tf.Tensor:
+    def get_unique_keys(self, table_name: str, is_expansion: bool) -> tf.Tensor:
         """
         Get the global unique keys which is calculated after the second all2all
         :param table_name: embedding table_name
