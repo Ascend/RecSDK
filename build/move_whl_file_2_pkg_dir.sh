@@ -20,14 +20,15 @@ ARCH="$(uname -m)"
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 MxRec_DIR=$(dirname "${SCRIPT_DIR}")
 pkg_dir=mindxsdk-mxrec
+tf_version=$1
 
-function move_whl_pkg() {
-    mkdir -p "$SCRIPT_DIR"/"${pkg_dir}"/tf1_whl
-    mv ${MxRec_DIR}/dist/mx_rec*.whl "$SCRIPT_DIR"/"${pkg_dir}"/tf1_whl
-    cd "$SCRIPT_DIR"/"${pkg_dir}"/tf1_whl
+function move_whl_file_2_pkg_dir() {
+    mkdir -p "$SCRIPT_DIR"/"${pkg_dir}"/"${tf_version}"_whl
+    mv ${MxRec_DIR}/dist/mx_rec*.whl "$SCRIPT_DIR"/"${pkg_dir}"/"${tf_version}"_whl
+    cd "$SCRIPT_DIR"/"${pkg_dir}"/"${tf_version}"_whl
     whl_file=$(ls .)
     mv "$whl_file" "${whl_file/any/linux_${ARCH}}"
     cd -
 }
 
-move_whl_pkg
+move_whl_file_2_pkg_dir
