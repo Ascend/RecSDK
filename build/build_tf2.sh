@@ -15,7 +15,7 @@
 # ==============================================================================
 
 ##################################################################
-#   build_tf2_with_opensource.sh 编译MxRec和动态扩容算子
+#   build_tf2.sh 编译MxRec和动态扩容算子
 # 编译环境：Python3.7.5 GCC 7.3.0 CMake 3.20.6
 # 代码主要分为四部分：
 # 1、准备编译MxRec所需依赖：pybind11(v2.10.3) securec
@@ -63,33 +63,6 @@ prepare_securec
 source /opt/buildtools/tf2_env/bin/activate
 tf2_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/tensorflow
 deactivate tf2_env
-
-project_output_path="${MxRec_DIR}"/output/
-VERSION_FILE="${MxRec_DIR}"/../mindxsdk/build/conf/config.yaml
-
-function get_version() {
-  if [ -f "$VERSION_FILE" ]; then
-    VERSION=$(sed '/.*mindxsdk:/!d;s/.*: //' "$VERSION_FILE")
-    if [[ "$VERSION" == *.[b/B]* ]] && [[ "$VERSION" != *.[RC/rc]* ]]; then
-      VERSION=${VERSION%.*}
-    fi
-  else
-    VERSION="5.0.0"
-  fi
-}
-
-rm -rf  "${project_output_path}"
-rm -rf  "${SCRIPT_DIR}/lib"
-
-# 获取MxRec版本信息
-get_version
-export VERSION
-echo "MindX SDK MxRec: ${VERSION}" >> ./version.info
-
-pkg_dir=mindxsdk-mxrec
-rm -rf "${pkg_dir}"
-mkdir "${pkg_dir}"
-mv version.info "${pkg_dir}"
 
 # 配置MxRec C++代码路径和AccCTR路径
 src_path="${MxRec_DIR}"/src
@@ -142,11 +115,6 @@ function gen_wheel_file()
   touch "${src_path}"/libasc/__init__.py
   rm -rf "${MxRec_DIR}"/mx_rec/libasc
   mv "${src_path}"/libasc "${MxRec_DIR}"/mx_rec
-  python3.7 setup.py bdist_wheel --plat-name=linux_$(arch)
-  mkdir -p "$1"
-  echo "moving whl file $1"
-  mv dist/mx_rec*.whl "$1"
-  rm -rf "${MxRec_DIR}"/mx_rec/libasc
 }
 
 # start to build MxRec
@@ -158,13 +126,5 @@ echo "----------------          compile MxRec so files        ----------------"
 compile_so_file "${tf2_path}"
 echo "---------------- collect so files and mv them to libasc ----------------"
 collect_so_file
-echo "----------------      generate MxRec wheel package      ----------------"
-gen_wheel_file  "$SCRIPT_DIR"/"${pkg_dir}"/tf2_whl
+gen_wheel_file
 echo "----------------        compile MxRec success!!!!       ----------------"
-
-# start to compile cust op
-echo "----------------        start to compile cust op        ----------------"
-cd "${MxRec_DIR}"/cust_op/cust_op_by_addr
-chmod u+x run.sh
-./run.sh
-echo "----------------      compile cust op success!!!!       ----------------"
