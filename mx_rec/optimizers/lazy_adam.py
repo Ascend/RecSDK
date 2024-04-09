@@ -149,15 +149,14 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
             self._resource_scatter_nd_add)
 
     def _apply_sparse(self, grad, var):
+        unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad.values, var=var, is_expansion=False)
         return self._apply_sparse_shared(
-            grad.values,
+            unique_local_grad,
             var,
-            grad.indices,
+            unique_keys,
             lambda x, i, v: tf.compat.v1.scatter_nd_add(x, i, v))
 
     def _apply_sparse_shared(self, grad, var, indices, scatter_nd_add):
-        unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad, var=var, is_expansion=False)
-
         power_b1, power_b2 = self._get_beta_accumulators()
         power_b1 = math_ops.cast(power_b1, var.dtype.base_dtype)
         power_b2 = math_ops.cast(power_b2, var.dtype.base_dtype)
@@ -168,17 +167,17 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
         temp_epsilon = temp.get("temp_epsilon")
         learning_rate = tf.divide(temp_lr * math_ops.sqrt(1 - power_b2), (1 - power_b1))
 
-        abs_indices = tf.math.maximum(unique_keys, 0)
-        nd_indices = tf.expand_dims(unique_keys, 1)
+        abs_indices = tf.math.maximum(indices, 0)
+        nd_indices = tf.expand_dims(indices, 1)
 
         momentum = self.get_slot(var, "m")
         old_m_slice = tf.gather(momentum, abs_indices)
-        m_t_slice = temp_b1 * old_m_slice + (1 - temp_b1) * unique_local_grad
+        m_t_slice = temp_b1 * old_m_slice + (1 - temp_b1) * grad
         m_update_op = scatter_nd_add(momentum, nd_indices, m_t_slice - old_m_slice)
 
         velocity = self.get_slot(var, "v")
         old_v_slice = tf.gather(velocity, abs_indices)
-        v_t_slice = temp_b2 * old_v_slice + (1 - temp_b2) * math_ops.square(unique_local_grad)
+        v_t_slice = temp_b2 * old_v_slice + (1 - temp_b2) * math_ops.square(grad)
         v_update_op = scatter_nd_add(velocity, nd_indices, v_t_slice - old_v_slice)
 
         denominator_slice = math_ops.sqrt(v_t_slice) + temp_epsilon

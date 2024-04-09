@@ -58,7 +58,7 @@ class CustomizedOptimizer:
         self.unique_name = name + "_" + str(count)
         self.base_name = name
 
-    def get_restore_vector_second(self, table_name: str) -> tf.Tensor:
+    def _get_restore_vector_second(self, table_name: str) -> tf.Tensor:
         """
         Get restore vector which is calculated after the second all2all
         :param table_name: embedding table_name
@@ -74,7 +74,7 @@ class CustomizedOptimizer:
                 channel_name=f'{table_name}_restore_second_{channel_id}')[0]
         return restore_vector_second
 
-    def get_unique_keys(self, table_name: str, is_expansion: bool) -> tf.Tensor:
+    def _get_unique_keys(self, table_name: str, is_expansion: bool) -> tf.Tensor:
         """
         Get the global unique keys which is calculated after the second all2all
         :param table_name: embedding table_name
@@ -99,16 +99,16 @@ class CustomizedOptimizer:
 
     def sum_same_id_gradients(self, grad, var, is_expansion):
         if isinstance(var, ops.Tensor):
-            # 扩容模式从scope获取表名
-            table_name = var.op.name.split('/')[0]
+            # 扩容模式从scope获取表名,偏移是-2
+            table_name = var.op.name.split('/')[-2]
         else:
             table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
             table_name = table_instance.table_name
         with tf.compat.v1.variable_scope("restore_vector_second"):
-            restore_vector_second = self.get_restore_vector_second(table_name)
+            restore_vector_second = self._get_restore_vector_second(table_name)
 
         with tf.compat.v1.variable_scope("unique_keys"):
-            unique_keys = self.get_unique_keys(table_name, is_expansion)
+            unique_keys = self._get_unique_keys(table_name, is_expansion)
 
         unique_local_grad = tf.compat.v1.unsorted_segment_sum(grad,
                                                               restore_vector_second,
