@@ -16,8 +16,22 @@
 # ==============================================================================
 
 import os
+import glob
+import stat
 import shutil
 import subprocess
+
+# get the absolute path of the Python 3.7 program
+res = subprocess.run(["/usr/bin/which", "python3.7"], stdout=subprocess.PIPE, text=True, shell=False)
+if res.returncode:
+    raise RuntimeError("get the absolute path of the Python 3.7 program failed!")
+python37_path = res.stdout.strip()
+
+# add execution permission to the file with the .sh suffix
+scripts = glob.glob(os.path.join(os.getcwd(), "build/*.sh"))
+for script in scripts:
+    if os.path.isfile(script):
+        os.chmod(script, os.stat(script).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 # clean pkg_dir existed
 PKG_DIR = "./build/mindxsdk-mxrec"
@@ -25,16 +39,16 @@ if os.path.exists(PKG_DIR):
     shutil.rmtree(PKG_DIR)
 
 # build tf1's wheel file
-res = subprocess.run(["python3.7", "setup_tf1.py", "bdist_wheel"], shell=False)
+res = subprocess.run([python37_path, "setup_tf1.py", "bdist_wheel"], shell=False)
 if res.returncode:
     raise RuntimeError(f"build tf1's wheel file failed!")
 
 # build tf2's wheel file
-res = subprocess.run(["python3.7", "setup_tf2.py", "bdist_wheel"], shell=False)
+res = subprocess.run([python37_path, "setup_tf2.py", "bdist_wheel"], shell=False)
 if res.returncode:
     raise RuntimeError(f"build tf2's wheel file failed!")
 
 # copy cust_op, examples files, etc. Then gen mxrec's tar pkg
-res = subprocess.run(["bash", "./build/gen_mxrec_tar_pkg.sh"], shell=False)
+res = subprocess.run(["./build/gen_mxrec_tar_pkg.sh"], shell=False)
 if res.returncode:
     raise RuntimeError(f"gen mxrec's tar pkg failed!")

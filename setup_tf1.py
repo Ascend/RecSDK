@@ -69,7 +69,7 @@ with os.fdopen(os.open(INIT_FILE, FLAG, MODE), 'w') as out:
 
 # compile so files
 tf1_script = os.path.join(script_path, "./build/build_tf1.sh")
-res = subprocess.run(["bash", tf1_script], shell=False)
+res = subprocess.run([tf1_script], shell=False)
 if res.returncode:
     raise RuntimeError("compile so files failed!")
 
@@ -91,6 +91,6 @@ setup(
 )
 
 move_whl_script = os.path.join(script_path, "./build/move_whl_file_2_pkg_dir.sh")
-res = subprocess.run(["bash", move_whl_script, "tf1"], shell=False)
+res = subprocess.run([move_whl_script, "tf1"], shell=False)
 if res.returncode:
     raise RuntimeError(f"move tf1 whl file to pkg dir failed!")
