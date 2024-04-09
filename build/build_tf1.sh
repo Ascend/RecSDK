@@ -15,13 +15,11 @@
 # ==============================================================================
 
 ##################################################################
-#   build_tf1.sh 编译MxRec和动态扩容算子
+#   build_tf1.sh 编译MxRec
 # 编译环境：Python3.7.5 GCC 7.3.0 CMake 3.20.6
-# 代码主要分为四部分：
+# 代码主要分为两部分：
 # 1、准备编译MxRec所需依赖：pybind11(v2.10.3) securec
 # 2、编译securec、AccCTR以及MxRec
-# 3、生成MxRec Wheel包，生成的whl包在当前目录下的mindxsdk-mxrec/tf1_whl
-# 4、编译动态扩容算子
 ##################################################################
 
 set -e
@@ -107,10 +105,6 @@ function collect_so_file()
   cp ${acc_ctr_path}/output/ock_ctr_common/lib/* libasc
   cp -df "${MxRec_DIR}"/output/*.so* libasc
   cp "${opensource_path}"/securec/lib/libsecurec.so libasc
-}
-
-function gen_wheel_file()
-{
   cd "${MxRec_DIR}"
   touch "${src_path}"/libasc/__init__.py
   rm -rf "${MxRec_DIR}"/mx_rec/libasc
@@ -126,5 +120,4 @@ echo "----------------          compile MxRec so files        ----------------"
 compile_so_file "${tf1_path}"
 echo "---------------- collect so files and mv them to libasc ----------------"
 collect_so_file
-gen_wheel_file
 echo "----------------        compile MxRec success!!!!       ----------------"
