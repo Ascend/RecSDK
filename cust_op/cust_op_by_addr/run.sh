@@ -1,9 +1,19 @@
 #!/bin/bash
-# Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
-# Description: Build for cust_op by address
-# Author: MindX SDK
-# Create: 2023
-# History: NA
+# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 set -e
 source /etc/profile
 
@@ -14,8 +24,8 @@ export PATH=$parent_dir:$PATH
 
 # 利用msopgen生成可编译文件
 rm -rf ./custom_op
-msopgen gen -i emb_custom.json -f tf -c ai_core-ascend910b -lan cpp -out ./custom_op -m 0 -op EmbeddingLookupByAddress
-msopgen gen -i emb_custom.json -f tf -c ai_core-ascend910b -lan cpp -out ./custom_op -m 1 -op EmbeddingUpdateByAddress
+msopgen gen -i emb_custom.json -f tf -c ai_core-ascend910b1 -lan cpp -out ./custom_op -m 0 -op EmbeddingLookupByAddress
+msopgen gen -i emb_custom.json -f tf -c ai_core-ascend910b1 -lan cpp -out ./custom_op -m 1 -op EmbeddingUpdateByAddress
 
 cp -rf op_kernel custom_op/
 cp -rf op_host custom_op/
@@ -27,6 +37,9 @@ if [ ! -f "CMakePresets.json" ]; then
   echo "当前目录下不存在cmake.json文件"
   exit 1
 fi
+
+# 禁止生成CRC校验和
+sed -i 's/--nomd5/--nomd5 --nocrc/g' ./cmake/makeself.cmake
 
 # 修改cann安装路径
 sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
@@ -46,3 +59,9 @@ cd ..
 
 bash build.sh
 
+# 安装编译成功的算子包
+bash ./build_out/custom_opp*.run
+
+cd ..
+
+rm -rf ./custom_op

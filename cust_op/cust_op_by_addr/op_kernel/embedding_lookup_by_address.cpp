@@ -1,6 +1,25 @@
+/* Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+        limitations under the License.
+==============================================================================*/
 
 #include "kernel_operator.h"
 using namespace AscendC;
+
+constexpr int32_t SIZE_OF_HALF = 2;
+constexpr int32_t SIZE_OF_FLOAT_OR_INT = 4;
+constexpr int32_t PADDING_ZERO_NUM_PER_TIME = 8;
+
 template <typename T>
 class KernelEimtable
 {
@@ -10,130 +29,108 @@ public:
   }
   __aicore__ inline void Init(GM_ADDR address, GM_ADDR y)
   {
-
-    NeedComputeAddrLen = SingleCoreAddrLen;
-    if (block_idx == block_num - 1)
+    needComputeAddrLen = singleCoreAddrLen;
+    if (block_idx == block_num - 1) // 最后一个core,需要多计算的addr长度
     {
-      NeedComputeAddrLen = addr_nums * sizeof(int64_t) - SingleCoreAddrLen * (block_num - 1);
+      needComputeAddrLen = addrNums * sizeof(int64_t) - singleCoreAddrLen * (block_num - 1);
     }
-    round = NeedComputeAddrLen / (roundSize * sizeof(int64_t));
+    loopCount = needComputeAddrLen / (addrNumPerLoop * sizeof(int64_t)); // 可能为0
+
     // pipe alloc memory to queue, the unit is Bytes
-    pipe.InitBuffer(tbuf, roundSize * sizeof(int64_t));
+    pipe.InitBuffer(tbuf, addrNumPerLoop * sizeof(int64_t));
 
-    pipe.InitBuffer(inQueue, PingpongNum, Veclen);
-    pipe.InitBuffer(outQueue, PingpongNum, Veclen); //
+    pipe.InitBuffer(inQueue, pingpongNum, veclen);
+    pipe.InitBuffer(outQueue, pingpongNum, veclen);
 
-    // get start index for current core, core parallel block_indx block_dim
-    srcAddrGlobal.SetGlobalBuffer((__gm__ int64_t *)(address + block_idx * SingleCoreAddrLen));
+    // get start index for current core, core parallel block_indx block_dim，即使是最后一个核也应该多初始化一些，并对齐4的倍数
+    srcAddrGlobal.SetGlobalBuffer((__gm__ int64_t *)(address + block_idx * singleCoreAddrLen), needComputeAddrLen);
     dstDataGm.SetGlobalBuffer((__gm__ T *)(y));
   }
 
   __aicore__ inline void Init_param(GM_ADDR tiling)
   {
     GET_TILING_DATA(constData, tiling);
-    // TODO: user kernel impl
-    int32_t update_dim = constData.update_dim;
-    int32_t embbeding_type = constData.embbeding_type;
-    int32_t block_total_nums = block_num;
-    int32_t ub_limit = constData.ub_limit;
-    addr_nums = constData.addr_nums;
-    if (embbeding_type == 2)
-    {
-      single_data_size = 2;
-    }
-    else
-    {
-      single_data_size = 4;
-    }
-    PingpongNum = 1;
-    int min_move_num = 32 / single_data_size;
-    once_move_nums = min_move_num * ((int)(update_dim - 1 + min_move_num) / min_move_num);
 
-    int addr_max_num = ((int)((int)(ub_limit / (sizeof(int64_t) + single_data_size * (once_move_nums * ((int32_t)(update_dim - 1 + once_move_nums) / once_move_nums)) * PingpongNum * 2)) / 4)) * 4;
-    int singlenum = (int)(addr_nums / block_total_nums);
-    if (singlenum % 4)
-    {
-      singlenum -= singlenum % 4;
-    }
-    roundSize = addr_max_num; // addr_max_num;
-    Veclen = roundSize * single_data_size * once_move_nums;
-    SingleCoreAddrLen = singlenum * sizeof(int64_t);
-    cache = roundSize;
-    dim = update_dim;
+    pingpongNum = constData.ping_pong_num;
+    addrNums = constData.addr_nums;
+    dim = constData.embedding_dim;
+    addrNumPerLoop = constData.addr_per_loop;
+    typeSize = constData.type_size;
+    embDimAligned = constData.emb_dim_aligned;
+
+    int singleCoreAddrNum = (int)(addrNums / block_num); // 有可能没有整除，最后的核会处理更多的数据
+    singleCoreAddrNum = singleCoreAddrNum & (~3); // & (~3) 代表取4的倍数向下取整，处理的地址占8字节，对齐32B的话，数量需要是4倍数
+
+    singleCoreAddrLen = singleCoreAddrNum * sizeof(int64_t);
+    veclen = addrNumPerLoop * typeSize * embDimAligned;  // 向上对齐32B
+    cache = constData.addr_per_loop;
   }
 
   __aicore__ inline void Process()
   {
 
-    LocalTensor<int64_t> srcAddrLocal = tbuf.Get<int64_t>(roundSize);
+    LocalTensor<int64_t> srcAddrLocal = tbuf.Get<int64_t>(addrNumPerLoop);
 
-    if (round > 0)
+    if (loopCount > 0)
     {
-      for (int32_t i = 0; i < round; i++)
+      for (int32_t i = 0; i < loopCount; i++)
       {
-        DataCopy(srcAddrLocal, srcAddrGlobal[i * roundSize], roundSize);
-        MoveProcess(srcAddrLocal, i, roundSize);
+        DataCopy(srcAddrLocal, srcAddrGlobal[i * addrNumPerLoop], addrNumPerLoop);
+        MoveProcess(srcAddrLocal, i, addrNumPerLoop);
       }
     }
-
-    int unprocess = (NeedComputeAddrLen / sizeof(int64_t)) % roundSize;
-    if (unprocess)
+    // 处理最后一张卡剩下的addr
+    int unProcess = (needComputeAddrLen / sizeof(int64_t)) % addrNumPerLoop;
+    if (unProcess)
     {
-      // 处理 addresslist 不对齐32b
-      int unprocess_once_copyaddr = unprocess;
-      if (unprocess_once_copyaddr % 4 != 0)
-      {
-        unprocess_once_copyaddr += (4 - unprocess % 4);
-      }
-
-      DataCopy(srcAddrLocal, srcAddrGlobal[round * roundSize], unprocess_once_copyaddr);
-      MoveProcess(srcAddrLocal, round, unprocess);
+      int unProcessAligned = (unProcess + 3) & (~3); // 处理 addressList 不对齐32b的情况
+      // 地址列表访问越界，对齐考虑无问题，会自动多申请一部分，兼容
+      DataCopy(srcAddrLocal, srcAddrGlobal[loopCount * addrNumPerLoop], unProcessAligned);
+      MoveProcess(srcAddrLocal, loopCount, unProcess);
     }
   }
 
 private:
-  __aicore__ inline void MoveProcess(const LocalTensor<int64_t> srcAddrLocal, const int turns, int sizes)
+  __aicore__ inline void MoveProcess(const LocalTensor<int64_t> srcAddrLocal, const int turns, int addrNum)
   {
     set_flag(PIPE_MTE2, PIPE_S, 0);
     wait_flag(PIPE_MTE2, PIPE_S, 0);
-    LocalTensor<T> dataLocal;
-    bool isFull = true;
+    LocalTensor<T> dataLocal = inQueue.AllocTensor<T>(); // Queue的大小可以容下一个循环的所有emb
+    bool isFull = false;
     int nums = 0;
-    int out_index = 0;
-    int times = once_move_nums / 8;
-    int tmp_cache = cache - 1;
+    int outIndex = 0;
+    int times = embDimAligned >> 3; // >>3位运算：除以8。 embDimAligned一定是8的倍数，若地址无效时，每次填充8个0
+    int tmpCache = cache - 1; // 设计初是一次cache执行多次copyin、一次compute和一次copyout，现状是一次loop就只对应一次cache
 
-    for (int i = 0; i < sizes; i++)
+    for (int i = 0; i < addrNum; i++)
     {
-
+      // 多次copyIn， 对应一次compute和copyOut，由cache决定
       dataLocal = isFull ? inQueue.AllocTensor<T>() : dataLocal;
       int64_t address = srcAddrLocal.GetValue(i);
 
       if (address != 0)
       {
-        srcDataBufferGm.SetGlobalBuffer((__gm__ T *)(address));
-        DataCopy(dataLocal[once_move_nums * nums], srcDataBufferGm, once_move_nums);
+        srcDataBufferGm.SetGlobalBuffer((__gm__ T *)(address), embDimAligned);
+        DataCopy(dataLocal[embDimAligned * nums], srcDataBufferGm, embDimAligned);
       }
       else
       {
-
         for (int j = 0; j < times; j++)
         {
-          Duplicate(dataLocal[once_move_nums * nums + j * 8], (T)0, 8);
+          Duplicate(dataLocal[embDimAligned * nums + j * PADDING_ZERO_NUM_PER_TIME], (T)0, PADDING_ZERO_NUM_PER_TIME);
         }
-
       }
 
       nums++;
-      isFull = ( i  == tmp_cache || i == sizes - 1);
+      isFull = (i == tmpCache || i == addrNum - 1); // cache满了，或者最后一个地址
       if (isFull)
       {
-        inQueue.EnQue(dataLocal);
-        Compute(nums);
-        CopyOut(out_index, turns, nums);
-        nums = 0;
-        out_index = i + 1;
-        tmp_cache += cache;
+          inQueue.EnQue(dataLocal);
+          Compute(nums);
+          CopyOut(outIndex, turns, nums);
+          nums = 0;
+          outIndex = i + 1;
+          tmpCache += cache;
       }
     }
   }
@@ -144,10 +141,10 @@ private:
     LocalTensor<T> srcLocal = inQueue.DeQue<T>();
     LocalTensor<T> dstLocal = outQueue.AllocTensor<T>();
 
-    DataCopyParams copyparams;
-    copyparams.blockCount = 1;
-    copyparams.blockLen = once_move_nums * sizeof(T) * nums / 32;
-    DataCopy(dstLocal, srcLocal, copyparams);
+    DataCopyParams copyParams;
+    copyParams.blockCount = 1;
+    copyParams.blockLen = (embDimAligned * sizeof(T) * nums) >> 5; // >> 5， 除以32，ub空间对齐
+    DataCopy(dstLocal, srcLocal, copyParams);
 
     outQueue.EnQue<T>(dstLocal);
     inQueue.FreeTensor(srcLocal);
@@ -157,36 +154,36 @@ private:
   {
     LocalTensor<T> dstLocal = outQueue.DeQue<T>();
 
-    int offset = block_idx * dim * SingleCoreAddrLen / sizeof(int64_t) + (turns * roundSize * dim) + dim * index;
+    int offset = block_idx * dim * singleCoreAddrLen / sizeof(int64_t) + (turns * addrNumPerLoop * dim) + dim * index;
 #if defined(__DAV_C220_VEC__)
-    if (single_data_size == 4)
+    if (typeSize == SIZE_OF_FLOAT_OR_INT)
     {
       copy_ubuf_to_gm_align_b32((__gm__ T *)dstDataGm[offset].GetPhyAddr(), (__ubuf__ T *)dstLocal.GetPhyAddr(), 0,
                                 nums, dim * sizeof(T), 0, 0, 0, 0);
     }
-    else if (single_data_size == 2)
+    else if (typeSize == SIZE_OF_HALF)
     {
       copy_ubuf_to_gm_align_b16((__gm__ T *)dstDataGm[offset].GetPhyAddr(), (__ubuf__ T *)dstLocal.GetPhyAddr(), 0,
                                 nums, dim * sizeof(T), 0, 0, 0, 0);
     }
 #else
 
-    DataCopy(dstDataGm[offset], dstLocal, once_move_nums * nums);
+    DataCopy(dstDataGm[offset], dstLocal, embDimAligned * nums);
 #endif
     outQueue.FreeTensor(dstLocal);
   }
 
 public:
-  int32_t roundSize, round, SingleCoreAddrLen, NeedComputeAddrLen, cache, Veclen, dim, PingpongNum;
-  int32_t addr_nums;
-  int32_t once_move_nums, single_data_size, update_type;
+  int32_t addrNumPerLoop, loopCount, singleCoreAddrLen, needComputeAddrLen, veclen, dim, pingpongNum, cache;
+  int32_t addrNums;
+  int32_t embDimAligned, typeSize, updateType;
 
 private:
   TPipe pipe;
   TBuf<QuePosition::LCM> tbuf;
   TQue<QuePosition::VECIN, 1> inQueue;
   TQue<QuePosition::VECOUT, 1> outQueue;
-  GlobalTensor<T> srcDataBufferGm, dstDataGm, outDataGm;
+  GlobalTensor<T> srcDataBufferGm, dstDataGm;
   GlobalTensor<int64_t> srcAddrGlobal;
 };
 
@@ -194,23 +191,14 @@ extern "C" __global__ __aicore__ void embedding_lookup_by_address(GM_ADDR addres
                                                                   GM_ADDR tiling)
 {
   GET_TILING_DATA(constData, tiling);
-  // // TODO: user kernel impl
 
-  int32_t embbeding_type = constData.embbeding_type;
+  int32_t embeddingType = constData.embedding_type;
 
-  switch (embbeding_type)
+  switch (embeddingType)
   {
   case 0:
   {
     KernelEimtable<int32_t> op;
-    op.Init_param(tiling);
-    op.Init(address, y);
-    op.Process();
-  }
-  break;
-  case 1:
-  {
-    KernelEimtable<float> op;
     op.Init_param(tiling);
     op.Init(address, y);
     op.Process();

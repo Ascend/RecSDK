@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+from collections import defaultdict
+
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.training import adagrad, training_ops
+from tensorflow.python.training import slot_creator
+
+from mx_rec.optimizers.base import CustomizedOptimizer
+from mx_rec.util.initialize import ConfigInitializer
+from mx_rec.validator.validator import para_checker_decorator, StringValidator, ClassValidator, FloatValidator
+
+
+@para_checker_decorator(check_option_list=[
+    ("learning_rate", FloatValidator, {"min_value": 0.0, "max_value": 10.0}, ["check_value"]),
+    ("initial_accumulator_value", FloatValidator, {"min_value": 0.0, "max_value": 1.0},
+        ["check_value_for_left_open_interval"]),
+    ("use_locking", ClassValidator, {"classes": (bool, )}),
+    ("name", StringValidator, {"min_len": 1, "max_len": 200}, ["check_string_length"])
+])
+def create_hash_optimizer(learning_rate=0.001,
+                          initial_accumulator_value=0.9,
+                          use_locking=False,
+                          name="Adagrad"):
+    """
+    Create an instance of adagrad hash optimizer
+    :param learning_rate: A `Tensor` or a floating point value.  The learning rate.
+    :param initial_accumulator_value:  A floating point value. Starting value for the accumulators, must be positive.
+    :param use_locking: If `True` use locks for update operations.
+    :param name: Optional name prefix for the operations created when applying gradients.  Defaults to "Adagrad".
+    :return: adagrad hash optimizer instance
+    """
+    if ConfigInitializer.get_instance().use_dynamic_expansion:
+        raise ValueError("dynamic expansion mode is not compatible with the optimizer, please config dynamic "
+                         "expansion mode and optimizer correctly")
+    optimizer = CustomizedAdagrad(learning_rate=learning_rate,
+                                  initial_accumulator_value=initial_accumulator_value,
+                                  use_locking=use_locking,
+                                  name=name)
+    ConfigInitializer.get_instance().optimizer_config.optimizer_instance = optimizer
+    return optimizer
+
+
+class CustomizedAdagrad(adagrad.AdagradOptimizer, CustomizedOptimizer):
+    name_counter = defaultdict(int)
+
+    def __init__(self,
+                 learning_rate,
+                 initial_accumulator_value,
+                 use_locking=False,
+                 name="Adagrad"):
+        self.optimizer_type = "Adagrad"
+        self.optim_param_list = ["accumulator"]
+        super(CustomizedAdagrad, self)._get_name(name=name)
+        super(CustomizedAdagrad, self).__init__(learning_rate=learning_rate,
+                                                initial_accumulator_value=initial_accumulator_value,
+                                                use_locking=use_locking,
+                                                name=self.unique_name)
+
+    def initialize_slots(self, var, table_instance):
+        # Create slots for the first and second moments.
+        def creat_one_single_slot(var, op_name):
+            new_slot_variable = slot_creator.create_zeros_slot(var, op_name)
+            # make sure sparse optimizer statements will not be saved and restored within tf checkpoint.
+            return new_slot_variable
+
+        accumulator = creat_one_single_slot(var, self._name + "/" + "accumulator")
+        ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(accumulator.name)
+        named_slot_key = (var.op.graph, var.op.name)
+        table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
+        ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name,
+                                                                                  self.optimizer_type,
+                                                                                  {"accumulator": accumulator})
+        return [{"slot": accumulator, "named_slot_key": named_slot_key, "slot_name": "acc", "optimizer": self}]
+
+    def insert_slot(self, slot, named_slots_key, slot_name):
+        named_slots = self._slot_dict(slot_name)
+        if named_slots_key in named_slots:
+            raise EnvironmentError(f"named_slots_key should be global unique, but it has been in use now, "
+                                   f"please double check.")
+
+        named_slots[named_slots_key] = slot
+
+    def get_slot_init_values(self):
+        # return state value list of adagrad that needs to initialize in ASC DDR.
+        initial_accumulator_value = 0.0
+        return [initial_accumulator_value]
+
+    def _create_slots(self, var_list):
+        for var in var_list:
+            dtype = var.dtype.base_dtype
+            if var.get_shape().is_fully_defined():
+                init = init_ops.constant_initializer(self._initial_accumulator_value,
+                                                     dtype=dtype)
+            else:
+                init = self._init_constant_op(var, dtype)
+
+            acc_state_name = self._name + "/" + "accumulator"
+            self._get_or_make_slot_with_initializer(var, init, var.get_shape(), dtype,
+                                                    "acc", acc_state_name)
+
+    def _apply_sparse(self, grad, var):
+        acc = self.get_slot(var, "acc")
+        return training_ops.sparse_apply_adagrad(
+            var, acc, math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+            grad.values,
+            grad.indices,
+            use_locking=self._use_locking)
+
+    def _resource_apply_sparse(self, grad, var, indices):
+        acc = self.get_slot(var, "acc")
+        return training_ops.resource_sparse_apply_adagrad(
+            var.handle, acc.handle, math_ops.cast(self._learning_rate_tensor, grad.dtype),
+            grad, indices, use_locking=self._use_locking)
