@@ -24,6 +24,7 @@ import tensorflow as tf
 from sklearn.metrics import roc_auc_score
 import numpy as np
 
+from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS
 from mx_rec.core.asc.helper import FeatureSpec, get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import create_table, sparse_lookup
@@ -323,15 +324,20 @@ if __name__ == "__main__":
                                is_train=False, modify_graph=MODIFY_GRAPH_FLAG)
 
     dense_variables, sparse_variables = get_dense_and_sparse_variable()
-
+    trainable_varibles = []
+    trainable_varibles.extend(dense_variables)
+    if use_dynamic_expansion:
+        trainable_varibles.append(tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)[0])
+    else:
+        trainable_varibles.extend(sparse_variables)
     rank_size = mxrec_util.communication.hccl_ops.get_rank_size()
     train_ops = []
     # multi task training
     for loss, (dense_optimizer, sparse_optimizer) in zip([train_model["loss"]], optimizer_list):
         # do dense optimization
-        grads = dense_optimizer.compute_gradients(loss, var_list=dense_variables)
+        grads = dense_optimizer.compute_gradients(loss, var_list=trainable_varibles)
         avg_grads = []
-        for grad, var in grads:
+        for grad, var in grads[:-1]:
             if rank_size > 1:
                 grad = hccl_ops.allreduce(grad, "sum") if grad is not None else None
             if grad is not None:
@@ -340,17 +346,14 @@ if __name__ == "__main__":
         train_ops.append(dense_optimizer.apply_gradients(avg_grads))
 
         if use_dynamic_expansion:
-            from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS
-
             train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS)
-            train_emb_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)
             # do sparse optimization by addr
-            sparse_grads = sparse_optimizer.compute_gradients(loss, train_emb_list)  # local_embedding
+            sparse_grads = list(grads[-1])  # local_embedding
             grads_and_vars = [(grad, address) for grad, address in zip(sparse_grads, train_address_list)]
             train_ops.append(sparse_optimizer.apply_gradients(grads_and_vars))
         else:
             # do sparse optimization
-            sparse_grads = sparse_optimizer.compute_gradients(loss, sparse_variables)
+            sparse_grads = list(grads[-1])
             print("sparse_grads_tensor:", sparse_grads)
             grads_and_vars = [(grad, variable) for grad, variable in zip(sparse_grads, sparse_variables)]
             train_ops.append(sparse_optimizer.apply_gradients(grads_and_vars))
