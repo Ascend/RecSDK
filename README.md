@@ -14,7 +14,7 @@ mxRec作为面向互联网市场搜索推荐广告的应用使能SDK产品，对
 
 ## 安装方式
 
-安装前，请参考《CANN 软件安装指南CANN 软件安装指南》安装CANN开发套件软件包和TensorFlow适配昇腾插件。
+安装前，请参考《CANN 软件安装指南》安装CANN开发套件软件包和TensorFlow适配昇腾插件。
 
 CANN软件提供进程级环境变量设置脚本，供用户在进程中引用，以自动完成环境变量设置。用户进程结束后自动失效。可在程序启动的Shell脚本中使用如下命令设置CANN的相关环境变量，也可通过命令行执行如下命令（以root用户默认安装路径“/usr/local/Ascend”为例）：
 ```shell
@@ -63,7 +63,7 @@ bash run.sh
 - openmpi 4.1.1: 请参考软件文档在编译环境完成安装
 - tensorflow 1.15/2.6.5：根据实际需求选择对应版本
 
-pybind11的压缩包放在与MxRec代码同级的opensource/opensource目录下，如果没有opensource目录，则需要在MxRec同级的目录下手动创建opensource/opensource目录。然后将pybind11的压缩包放在opensource/opensource目录下。解压压缩包，并且将解压之后的压缩包改名为pybind11。
+pybind11的压缩包放在与mxRec代码同级的opensource/opensource目录下，如果没有opensource目录，则需要在mxRec同级的目录下手动创建opensource/opensource目录。然后将pybind11的压缩包放在opensource/opensource目录下。解压压缩包，并且将解压之后的压缩包改名为pybind11。
 
 securec是华为开源的安全函数库。下载后：
 1. 将platform下的eSDK_LogAPI_V2.1.10文件夹删除
@@ -83,11 +83,11 @@ bash run.sh
 
 ## 使用指导
 
-mxRec所支持的使用环境、功能特性、API接口与使用样例请参考昇腾开源社区MindX SDK产品文档。
+mxRec所支持的使用环境、功能特性、API接口与使用样例请参考mxRec用户指南。
 
 ## 参考设计
 
-mxrec框架基础镜像，基于TensorFlow 1.15.0、tensorflow2.6.5制作的基础镜像，安装mxrec后即可开始训练，以及样例使用介绍。
+mxRec框架基础镜像，基于TensorFlow 1.15.0、tensorflow2.6.5制作的基础镜像，安装mxRec后即可开始训练，以及样例使用介绍。
 
 1. https://ascendhub.huawei.com/#/detail/mxrec-tf1
 
