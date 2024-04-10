@@ -66,9 +66,11 @@ bash run.sh
 将pybind11和securec的压缩包放在与MxRec代码同级的opensource目录下，并且将其分别更名为pybind11-2.10.3.zip、huaweicloud-sdk-c-obs-3.23.9.zip。如果没有opensource目录，则需要在MxRec同级的目录下手动创建opensource目录，然后将pybind11和securec的压缩包放在opensource目录下。
 
 为了构建多个版本的whl包，编译脚本在python虚拟环境完成对应tensorflow版本的安装。用户可以根据实际情况调整编译脚本，指定tensorflow的安装路径。编译方法：
-- build/build.sh：执行脚本完成tf1和tf2版本whl包的构建和打包。执行脚本前，请参考build/build_tf1_with_opensource.sh、build/build_tf2_with_opensource.sh创建对应的虚拟环境，在虚拟环境中完成对应tensorflow版本的安装，并修改对应的激活命令。
-- build/build_tf1_with_opensource.sh：执行脚本完成tf1版本whl包的构建，构建成功后，whl包在/build/mindxsdk-mxrec/tf1_whl子目录下。执行脚本前，创建tf1虚拟环境，在虚拟环境中完成tensorflow 1.15.0版本的安装，并修改对应的激活命令。
-- build/build_tf2_with_opensource.sh：执行脚本完成tf2版本whl包的构建，构建成功后，whl包在/build/mindxsdk-mxrec/tf2_whl子目录下。执行脚本前，创建tf2虚拟环境，在虚拟环境中完成tensorflow 2.6.5版本的安装，并修改对应的激活命令。
+
+进入mxrec代码目录：
+- setup.py：执行脚本setup.py，比如：**python3.7 setup.py**完成tf1和tf2版本whl包的构建和打包，构建成功后，whl包在/build/mindxsdk-mxrec/目录下，其中tf1_whl和tf2_whl目录下存在对应的whl包。执行脚本前，请参考build/build_tf1.sh、build/build_tf2.sh创建对应的虚拟环境，在虚拟环境中完成对应tensorflow版本的安装，并修改对应的激活命令。
+- setup_tf1.py：执行脚本setup_tf1.py，比如：**python3.7 setup_tf1.py bdist_wheel**完成tf1版本whl包的构建，构建成功后，whl包在/build/mindxsdk-mxrec/tf1_whl子目录下。执行脚本前，请参考build/build_tf1.sh创建tf1虚拟环境，在虚拟环境中完成tensorflow 1.15.0版本的安装，并修改对应的激活命令。
+- setup_tf2.py：执行脚本setup_tf2.py，比如：**python3.7 setup_tf2.py bdist_wheel**完成tf2版本whl包的构建，构建成功后，whl包在/build/mindxsdk-mxrec/tf2_whl子目录下。执行脚本前，请参考build/build_tf2.sh创建tf2虚拟环境，在虚拟环境中完成tensorflow 2.6.5版本的安装，并修改对应的激活命令。
 
 如需使用动态扩容功能，进入“./cust_op/cust_op_by_addr”目录中。参考以下命令编译并安装动态扩容算子包。
 ```shell

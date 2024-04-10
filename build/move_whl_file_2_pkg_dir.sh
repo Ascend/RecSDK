@@ -24,6 +24,7 @@ tf_version=$1
 
 function move_whl_file_2_pkg_dir() {
     mkdir -p "$SCRIPT_DIR"/"${pkg_dir}"/"${tf_version}"_whl
+    rm -rf "$SCRIPT_DIR"/"${pkg_dir}"/"${tf_version}"_whl/*
     mv ${MxRec_DIR}/dist/mx_rec*.whl "$SCRIPT_DIR"/"${pkg_dir}"/"${tf_version}"_whl
     cd "$SCRIPT_DIR"/"${pkg_dir}"/"${tf_version}"_whl
     whl_file=$(ls .)
