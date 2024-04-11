@@ -645,17 +645,15 @@ void KeyProcess::HandleHotAndSendCount(const unique_ptr<EmbBatchT> &batch, Uniqu
     absl::flat_hash_map<emb_key_t, int> hotMap = hotKey[batch->name];
     lock.unlock();
 
-    if (rankInfo.useHot) {
-        int hotOffset = 0;
-        uniqueInfoOut.hotPos.resize(hotEmbTotCount[batch->name]);
-        hotOffset = hotEmbTotCount[batch->name];
+    int hotOffset = 0;
+    uniqueInfoOut.hotPos.resize(hotEmbTotCount[batch->name]);
+    hotOffset = hotEmbTotCount[batch->name];
 
-        TimeCost computeHotTc;
-        ComputeHotPos(batch, hotMap, uniqueInfoOut.hotPos, uniqueInfoOut.restore, hotOffset);
-        LOG_DEBUG("ComputeHot TimeCost(ms):{}", computeHotTc.ElapsedMS());
-        UpdateHotMapForUnique(keySendInfo.keySend, keySendInfo.keyCount,
-                              hotOffset, batch->batchId % hotEmbUpdateStep == 0, batch->name);
-    }
+    TimeCost computeHotTc;
+    ComputeHotPos(batch, hotMap, uniqueInfoOut.hotPos, uniqueInfoOut.restore, hotOffset);
+    LOG_DEBUG("ComputeHot TimeCost(ms):{}", computeHotTc.ElapsedMS());
+    UpdateHotMapForUnique(keySendInfo.keySend, keySendInfo.keyCount,
+                            hotOffset, batch->batchId % hotEmbUpdateStep == 0, batch->name);
 
     if (rankInfo.useStatic) {
         sc.resize(rankInfo.rankSize, embInfos[batch->name].sendCount);
