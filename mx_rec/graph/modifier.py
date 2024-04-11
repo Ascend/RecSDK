@@ -174,7 +174,7 @@ def find_make_iterator_op(batch_tensor: Tensor) -> Operation:
                 logger.debug("Op MakeIterator '%s' was found.", each_op.name)
                 return each_op
 
-    raise ValueError(f"Op MakeIterator was not found.")
+    raise ValueError(f"op MakeIterator was not found.")
 
 
 @performance("find_target_dataset_op")
@@ -198,7 +198,7 @@ def find_target_dataset_op(base_ops: Operation, op_type: str) -> Operation:
             parent_ops.extend(find_parent_op(base_op))
 
         if not parent_ops:
-            raise ValueError(f"Op {op_type} was not found.")
+            raise ValueError(f"op {op_type} was not found.")
 
 
 def get_dataset_op(get_next_op: Operation) -> Operation:
@@ -214,7 +214,7 @@ def get_dataset_op(get_next_op: Operation) -> Operation:
     """
 
     if get_next_op.type != AnchorIteratorOp.ITERATOR_GET_NEXT.value:
-        raise TypeError("Op '{get_next_op}' must be one instance of IteratorGetNext.")
+        raise TypeError(f"op '{get_next_op}' must be one instance of IteratorGetNext.")
 
     # looking for the MakeIterator operator which corresponds to given batch_tensor
     base_op = find_make_iterator_op(get_next_op.outputs[0])
@@ -223,9 +223,9 @@ def get_dataset_op(get_next_op: Operation) -> Operation:
         optimize_dataset_op = find_target_dataset_op(base_op, AnchorDatasetOp.MODEL_DATASET.value)
         target_op = find_parent_op(optimize_dataset_op)
         if not target_op:
-            raise RuntimeError(f"The parent op for 'ModelDataset' op was not found.")
+            raise RuntimeError("the parent op for 'ModelDataset' op was not found.")
         if target_op[0].type != AnchorDatasetOp.OPTIMIZE_DATASET.value:
-            raise TypeError(f"Op OptimizeDataset was not found.")
+            raise TypeError("op OptimizeDataset was not found.")
         target_op = target_op[0]
     else:
         # 'OptimizeDataset' is not available in TensorFlow2.X
@@ -283,7 +283,7 @@ def find_target_instance_dataset(variant_tensor: Tensor) -> DatasetV1Adapter:
             if not isinstance(ins.element_spec, dict) and not (
                     isinstance(ins.element_spec, (list, tuple)) and len(ins.element_spec) == 2 and isinstance(
                 ins.element_spec[0], dict)):
-                raise NotImplementedError("The found dataset does not return a valid layout.")
+                raise NotImplementedError("the found dataset does not return a valid layout.")
 
             return ins
 
@@ -517,7 +517,7 @@ def update_iterator_getnext(get_next_op: Operation,
 
     """
     if not get_next_op.outputs:
-        raise RuntimeError("There is no tensor in the dataset. Please check the dataset and data processing.")
+        raise RuntimeError("there is no tensor in the dataset. Please check the dataset and data processing.")
     iterator_type = ""
     if get_next_op.outputs[0].op.inputs:
         iterator_type = get_next_op.outputs[0].op.inputs[0].op.type
@@ -640,7 +640,7 @@ class GraphModifierHook(tf.estimator.SessionRunHook):
         self._iterator_type = ConfigInitializer.get_instance().train_params_config.iterator_type
         if self._modify_graph and self._iterator_type not in (AnchorIteratorOp.MAKE_ITERATOR.value,
                                                               AnchorIteratorOp.ONE_SHOT_ITERATOR.value):
-            raise ValueError("The value of iterator type should be like `MakeIterator` or `OneShotIterator`.")
+            raise ValueError("the value of iterator type should be like `MakeIterator` or `OneShotIterator`.")
         logger.debug("In GraphModifierHook, iterator type is `%s`.", self._iterator_type)
 
     def after_create_session(self, session, coord):

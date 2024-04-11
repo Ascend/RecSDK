@@ -129,7 +129,7 @@ def model_forward(feature_list, hash_table_list, batch, is_train, modify_graph):
     elif len(embedding_list) > 1:
         emb = tf.reduce_sum(embedding_list, axis=0, keepdims=False)
     else:
-        raise ValueError("The length of embedding_list must be greater than or equal to 1.")
+        raise ValueError("the length of embedding_list must be greater than or equal to 1.")
     my_model = MyModel()
     model_output = my_model.build_model(embedding=emb,
                                         dense_feature=batch["dense_feature"],
@@ -266,8 +266,8 @@ if __name__ == "__main__":
         MODIFY_GRAPH_FLAG = bool(int(os.getenv("USE_MODIFY_GRAPH", 0)))
         use_faae = bool(int(os.getenv("USE_FAAE", 0)))
     except ValueError as err:
-        raise ValueError(f"please correctly config USE_DYNAMIC_EXPANSION or USE_MULTI_LOOKUP or USE_FAAE "
-                         f"or USE_MODIFY_GRAPH only 0 or 1 is supported.") from err
+        raise ValueError("please correctly config USE_DYNAMIC_EXPANSION or USE_MULTI_LOOKUP or USE_FAAE "
+                         "or USE_MODIFY_GRAPH only 0 or 1 is supported.") from err
 
     use_dynamic = bool(int(os.getenv("USE_DYNAMIC", 0)))
     logger.info(f"USE_DYNAMIC:{use_dynamic}")

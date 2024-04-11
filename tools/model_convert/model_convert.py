@@ -222,9 +222,9 @@ class ModelConverter:
         for _, dirs, _ in os.walk(check_dir):
             model_dirs.append(dirs)
         if not self._is_ddr and "DDR" in model_dirs[0]:
-            raise ValueError(f"wrong mode choose! you choose hbm mode, however ddr dir exists. ")
+            raise ValueError("wrong mode choose! you choose hbm mode, however ddr dir exists. ")
         if self._is_ddr and "DDR" not in model_dirs[0]:
-            raise ValueError(f"wrong mode choose! you choose ddr mode, however ddr dir not exists. ")
+            raise ValueError("wrong mode choose! you choose ddr mode, however ddr dir not exists. ")
 
 
 def get_attribute_and_data_file(table_path):

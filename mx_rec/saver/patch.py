@@ -289,7 +289,7 @@ def restore(self, sess, save_path):
     if self._is_empty:
         return
     if not checkpoint_management.checkpoint_exists_internal(checkpoint_prefix):
-        raise ValueError("The passed save_path is not a valid checkpoint: " +
+        raise ValueError("the passed save_path is not a valid checkpoint: " +
                          checkpoint_prefix)
 
     tf_logging.info("Restoring parameters from %s", checkpoint_prefix)
