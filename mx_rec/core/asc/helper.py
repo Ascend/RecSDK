@@ -281,7 +281,7 @@ def do_insert(args, insert_tensors, splits, table_names, input_dict):
 def export_read_emb_key_v2_op(args, pipeline_op):
     origin_batch = list(args)
     if len(origin_batch) < 1:
-        raise ValueError("The length of args is less than 1.")
+        raise ValueError("the length of args is less than 1.")
     if isinstance(origin_batch[0], dict):
         output_batch = origin_batch[0]
         valid_key = get_valid_op_key(output_batch)

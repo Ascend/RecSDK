@@ -75,7 +75,7 @@ class RunMode:
             try:
                 self.session.run(self.eval_model.loss_list)
             except tf.errors.OutOfRangeError:
-                logger.info(f"Encounter the end of Sequence for eval.")
+                logger.info("Encounter the end of Sequence for eval.")
                 break
 
     def set_train_ops(self):
@@ -140,7 +140,7 @@ class RunMode:
             try:
                 self.session.run([self.train_ops, self.train_model.loss_list])
             except tf.errors.OutOfRangeError:
-                logger.info(f"Encounter the end of Sequence for training.")
+                logger.info("Encounter the end of Sequence for training.")
                 break
             else:
                 for t in self.table_list:
@@ -170,14 +170,14 @@ class RunMode:
         self.epoch += 1
 
     def predict(self, model_file: List[str]):
-        logger.info(f"###############    start predict    ################")
+        logger.info("###############    start predict    ################")
 
         # get the latest model
         latest_step = get_load_step(model_file)
         self.saver = tf.compat.v1.train.Saver()
         self.saver.restore(self.session, f"./saved-model/model-{latest_step}")
         self._infer()
-        logger.info(f"###############    predict end    ################")
+        logger.info("###############    predict end    ################")
 
     def change_threshold(self):
         thres_tensor = tf.constant(60, dtype=tf.int32)
