@@ -116,7 +116,6 @@ namespace MxRec {
 
     namespace HybridOption {
         const unsigned int USE_STATIC = 0x001;
-        const unsigned int USE_HOT = 0x001 << 1;
         const unsigned int USE_DYNAMIC_EXPANSION = 0x001 << 2;
     };
 
@@ -220,7 +219,6 @@ namespace MxRec {
         int localRankId {};
         int localRankSize {};
         bool useStatic { false };
-        bool useHot {};
         uint32_t option {};
         int nBatch {};
         bool isDDR { false };
