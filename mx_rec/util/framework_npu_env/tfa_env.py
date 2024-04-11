@@ -13,14 +13,12 @@ def set_ascend_env():
     配置昇腾相关的参数和环境变量
     """
     logger.debug("Ascend env set start.")
-    os.environ["RANK_ID"] = str(get_rank_id())
 
     device_id = str(get_device_id())
-    os.environ["DEVICE_ID"] = device_id
     os.environ["ASCEND_DEVICE_ID"] = device_id
-    os.environ["DEVICE_INDEX"] = device_id
 
     if global_env.rank_table_file:
+        os.environ["RANK_ID"] = str(get_rank_id())
         rank_size = get_rank_size()
         os.environ["RANK_SIZE"] = str(rank_size)
 
