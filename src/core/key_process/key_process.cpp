@@ -45,17 +45,15 @@ bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos
                             int seed)
 {
     this->rankInfo = rInfo;
-    if (rankInfo.useHot) {
-        SetupHotEmbUpdateStep();
-    }
+    
+    SetupHotEmbUpdateStep();
+    
 
     map<EmbNameT, int> scInfo;
     for (const auto& info: eInfos) {
         embInfos[info.name] = info;
         scInfo[info.name] = info.sendCount;
-        if (rankInfo.useHot) {
-            InitHotEmbTotCount(info, rInfo);
-        }
+        InitHotEmbTotCount(info, rInfo);
         if (rankInfo.useDynamicExpansion) {
             // 动态扩容
             embeddingTableMap[info.name].Init(info, rInfo, seed);
@@ -89,8 +87,8 @@ bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos
         }
     }
 
-    LOG_INFO(KEY_PROCESS "scInfo:{}, localRankSize:{}, rankSize:{}, useStatic:{}, useHot:{}",
-        MapToString(scInfo), rInfo.localRankSize, rInfo.rankSize, rInfo.useStatic, rInfo.useHot);
+    LOG_INFO(KEY_PROCESS "scInfo:{}, localRankSize:{}, rankSize:{}, useStatic:{}",
+        MapToString(scInfo), rInfo.localRankSize, rInfo.rankSize, rInfo.useStatic);
 #ifndef GTEST
     Start();
 #endif
@@ -342,11 +340,7 @@ void KeyProcess::HashSplitHelper(const unique_ptr <EmbBatchT>& batch, vector <Ke
         FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE) {
         tie(splitKeys, restore, keyCount) = HashSplitWithFAAE(batch); // 按存储dev id切分并去重
     } else {
-        if (rankInfo.useHot) {
-            tie(splitKeys, restore, hotPos) = HotHashSplit(batch);   // 按存储dev id切分并去重
-        } else {
-            tie(splitKeys, restore) = HashSplit(batch);   // 按存储dev id切分并去重
-        }
+        tie(splitKeys, restore, hotPos) = HotHashSplit(batch);   // 按存储dev id切分并去重
     }
     LOG_DEBUG("uniqueTc(ms):{}", uniqueTc.ElapsedMS());
 }
@@ -387,10 +381,10 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch
 
     auto tensors = make_unique<vector<Tensor>>();
     tensors->push_back(Vec2TensorI32(uniqueInfo.restore));
-    if (rankInfo.useHot) {
-        uniqueInfo.hotPos.resize(hotEmbTotCount[batch->name], -1);
-        tensors->push_back(Vec2TensorI32(uniqueInfo.hotPos));
-    }
+
+    uniqueInfo.hotPos.resize(hotEmbTotCount[batch->name], -1);
+    tensors->push_back(Vec2TensorI32(uniqueInfo.hotPos));
+    
 
     if (!rankInfo.isDDR) {
         PushGlobalUniqueTensors(move(tensors), uniqueInfo.all2AllInfo.keyRecv, channel);
@@ -449,10 +443,10 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
     TimeCost pushResultTC;
     auto tensors = make_unique<vector<Tensor>>();
     tensors->push_back(Vec2TensorI32(restore));
-    if (rankInfo.useHot) {
-        hotPos.resize(hotEmbTotCount[batch->name], 0);
-        tensors->push_back(Vec2TensorI32(hotPos));
-    }
+
+    hotPos.resize(hotEmbTotCount[batch->name], 0);
+    tensors->push_back(Vec2TensorI32(hotPos));
+    
 
     if (!rankInfo.isDDR) {
         PushGlobalUniqueTensors(tensors, lookupKeys, channel);

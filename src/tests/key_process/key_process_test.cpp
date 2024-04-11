@@ -76,7 +76,6 @@ protected:
         rankInfo.isDDR = false;
         rankInfo.useDynamicExpansion = false;
         rankInfo.ctrlSteps = { 1, -1 };
-        rankInfo.useHot = false;
         // 初始化emb信息
         GenEmbInfos(embNum, embInfos, fieldNums);
         splits = fieldNums;
@@ -639,7 +638,6 @@ TEST_F(KeyProcessTest, KeyProcessTaskHelper)
 {
     rankInfo.isDDR = false;
     rankInfo.useStatic = false;
-    rankInfo.useHot = false;
     rankInfo.useDynamicExpansion = false;
     EmbeddingMgmt::Instance()->Init(rankInfo, embInfos);
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
@@ -688,7 +686,6 @@ TEST_F(KeyProcessTest, KeyProcessTaskHelperDDR)
 {
     rankInfo.isDDR = true;
     rankInfo.useStatic = true;
-    rankInfo.useHot = false;
     rankInfo.useDynamicExpansion = false;
     EmbeddingMgmt::Instance()->Init(rankInfo, embInfos);
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
