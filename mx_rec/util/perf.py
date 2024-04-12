@@ -26,7 +26,7 @@ def performance(method_name):
             start = time.perf_counter()
             result = func(*args, **kwargs)
             span = time.perf_counter() - start
-            logger.debug(f"%s method consume %s (s).", method_name, round(span, 6))
+            logger.debug("%s method consume %s (s).", method_name, round(span, 6))
             return result
         return wrapper
     return decorator

@@ -57,11 +57,23 @@ namespace {
         return logicId;
     }
 
+    uint32_t GetDeviceCount()
+    {
+        uint32_t count;
+        aclError ec = aclrtGetDeviceCount(&count);
+        if (ec != 0) {
+            throw runtime_error("failed to get device count. ");
+        }
+        return count;
+    }
+
     PYBIND11_MODULE(mxrec_pybind, m)
     {
         m.def("get_ub_hot_size", &GetUBHotSize, py::arg("device_id"));
 
         m.def("get_logic_id", &GetLogicID, py::arg("physic_id"));
+
+        m.def("get_device_count", &GetDeviceCount);
 
         m.attr("USE_STATIC") = py::int_(HybridOption::USE_STATIC);
 

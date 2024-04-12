@@ -39,19 +39,19 @@ def get_model_fn(create_fs_params, cfg, access_and_evict_config_dict=None):
 
         loss_dict = {}
         if mode == tf.estimator.ModeKeys.TRAIN:
-            logger.info(f"use estimator train mode")
+            logger.info("Use estimator train mode")
             loss_dict['loss'] = [['train_loss', loss]]
             return tf.estimator.EstimatorSpec(mode=mode,
                                               loss=loss,
                                               train_op=get_train_op(params, loss_dict.get('loss')))
 
         if mode == tf.estimator.ModeKeys.EVAL:
-            logger.info("use estimator eval mode")
+            logger.info("Use estimator eval mode")
             return tf.estimator.EstimatorSpec(mode=mode,
                                               loss=loss)
 
         if mode == tf.estimator.ModeKeys.PREDICT:
-            logger.info("use estimator predict mode")
+            logger.info("Use estimator predict mode")
             loss_dict['task_1'] = prediction[0]
 
             loss_dict['task_2'] = prediction[1]
