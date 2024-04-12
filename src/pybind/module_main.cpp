@@ -81,6 +81,8 @@ namespace {
 
         m.attr("USE_DYNAMIC_EXPANSION") = py::int_(HybridOption::USE_DYNAMIC_EXPANSION);
 
+        m.attr("USE_SUM_SAME_ID_GRADIENTS") = py::int_(HybridOption::USE_SUM_SAME_ID_GRADIENTS);
+
         GetRankInfo(m);
 
         GetEmbInfoParams(m);

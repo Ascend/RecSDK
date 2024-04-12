@@ -385,6 +385,7 @@ class TestInitializeEmbCacheFunc(unittest.TestCase):
                          USE_STATIC=mock.MagicMock(return_value=0),
                          USE_HOT=mock.MagicMock(return_value=1),
                          USE_DYNAMIC_EXPANSION=mock.MagicMock(return_value=2),
+                         USE_SUM_SAME_ID_GRADIENTS=mock.MagicMock(return_value=4),
                          RankInfo=mock.MagicMock(return_value="mock_info"),
                          HybridMgmt=mock.MagicMock(return_value=MockHybridMgmt(is_initialized=False)))
     @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
@@ -398,6 +399,9 @@ class TestInitializeEmbCacheFunc(unittest.TestCase):
         mock_config_initializer = MockConfigInitializer(use_static=True, use_dynamic_expansion=True)
         manager_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
+        mock_opt = MockOptimizer()
+        manager_config_initializer.get_instance().optimizer_config.optimizer_instance = mock_opt
+
         with self.assertRaises(RuntimeError):
             initialize_emb_cache([], [])
 
@@ -408,6 +412,7 @@ class TestInitializeEmbCacheFunc(unittest.TestCase):
                          USE_STATIC=mock.MagicMock(return_value=0),
                          USE_HOT=mock.MagicMock(return_value=1),
                          USE_DYNAMIC_EXPANSION=mock.MagicMock(return_value=2),
+                         USE_SUM_SAME_ID_GRADIENTS=mock.MagicMock(return_value=4),
                          RankInfo=mock.MagicMock(return_value="mock_info"))
     @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
     @mock.patch("mx_rec.core.asc.manager.HybridMgmt")
@@ -420,6 +425,9 @@ class TestInitializeEmbCacheFunc(unittest.TestCase):
 
         mock_config_initializer = MockConfigInitializer(use_static=True, use_dynamic_expansion=True)
         manager_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
+        mock_opt = MockOptimizer()
+        manager_config_initializer.get_instance().optimizer_config.optimizer_instance = mock_opt
 
         mock_mgmt = MockHybridMgmt(is_initialized=True)
         mock_hybrid_mgmt.return_value = mock_mgmt
