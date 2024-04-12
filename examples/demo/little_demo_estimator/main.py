@@ -166,14 +166,14 @@ if __name__ == '__main__':
         args.use_one_shot = bool(int(os.getenv("USE_ONE_SHOT", 0)))
         args.enable_push_ops_test = bool(int(os.getenv("ENABLE_PUSH_OPS_TEST", 0)))
     except ValueError as err:
-        raise ValueError(f"please correctly config USE_MPI or USE_DYNAMIC or USE_HOT or USE_DYNAMIC_EXPANSION or "
-                         f"USE_MULTI_LOOKUP or USE_MODIFY_GRAPH or USE_TIMESTAMP or USE_ONE_SHOT "
-                         f"only 0 or 1 is supported.") from err
+        raise ValueError("please correctly config USE_MPI or USE_DYNAMIC or USE_HOT or USE_DYNAMIC_EXPANSION or "
+                         "USE_MULTI_LOOKUP or USE_MODIFY_GRAPH or USE_TIMESTAMP or USE_ONE_SHOT "
+                         "only 0 or 1 is supported.") from err
 
     try:
         MULTI_LOOKUP_TIMES = int(os.getenv("MULTI_LOOKUP_TIMES", 2))
     except ValueError as err:
-        raise ValueError(f"please correctly config MULTI_LOOKUP_TIMES only int is supported.") from err
+        raise ValueError("please correctly config MULTI_LOOKUP_TIMES only int is supported.") from err
 
     if args.run_mode == 'train':
         args.train_steps = -1

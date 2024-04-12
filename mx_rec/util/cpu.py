@@ -26,7 +26,7 @@ class PcieInfo(ctypes.Structure):
     ]
 
 
-def get_card_and_deivce(logic_id):
+def get_card_and_device(logic_id):
     """
     通过芯片逻辑id获取芯片的卡id和device id
     一张卡可能有多个芯片，对应多个device_id，但每个芯片的逻辑ID
@@ -52,7 +52,7 @@ def get_pcie_id(card_id, device_id):
     dev = ctypes.c_int(device_id)
     ret = g_dcmi.dcmi_get_device_pcie_info_v2(card, dev, ctypes.pointer(info))
     if ret != 0:
-        raise OSError("cant get pcie info of device {card_id}:{deivce_id}")
+        raise OSError(f"cant get pcie info of device {card_id}:{device_id}")
     pcie_id = f'{info.domain:04X}:{info.bdf_busid:02x}:'
     pcie_id += f'{info.bdf_deviceid:02x}.{info.bdf_funcid}'
     return pcie_id
@@ -87,7 +87,7 @@ def bind_cpu_by_device_logic_id(logic_id):
             logger.error(e)
             return False
     try:
-        card_id, device_id = get_card_and_deivce(logic_id)
+        card_id, device_id = get_card_and_device(logic_id)
         pcie_id = get_pcie_id(card_id, device_id)
         numa = get_numa_by_pcie(pcie_id)
         cpu_list = get_cpu_list_by_numa(numa)

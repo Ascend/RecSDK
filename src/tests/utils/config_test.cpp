@@ -24,7 +24,6 @@ using namespace MxRec;
 
 void SetEnvironmentVariables()
 {
-    setenv(RecEnvNames::APPLY_GRADIENTS_STRATEGY, "sum_same_id_gradients_and_apply", 1);
     setenv(RecEnvNames::ACL_TIMEOUT, "100", 1);
     setenv(RecEnvNames::HD_CHANNEL_SIZE, "50", 1);
     setenv(RecEnvNames::KEY_PROCESS_THREAD_NUM, "8", 1);
@@ -40,7 +39,6 @@ void SetEnvironmentVariables()
 
 void UnsetEnvironmentVariables()
 {
-    unsetenv(RecEnvNames::APPLY_GRADIENTS_STRATEGY);
     unsetenv(RecEnvNames::ACL_TIMEOUT);
     unsetenv(RecEnvNames::HD_CHANNEL_SIZE);
     unsetenv(RecEnvNames::KEY_PROCESS_THREAD_NUM);
@@ -56,7 +54,6 @@ void UnsetEnvironmentVariables()
 
 TEST(GlobalEnv, DefaultValues)
 {
-    ASSERT_EQ(GlobalEnv::applyGradientsStrategy, ApplyGradientsStrategyOptions::SUM_SAME_ID_GRADIENTS_AND_APPLY);
     ASSERT_EQ(GlobalEnv::aclTimeout, -1);
     ASSERT_EQ(GlobalEnv::hdChannelSize, 40);
     ASSERT_EQ(GlobalEnv::keyProcessThreadNum, 6);
@@ -77,7 +74,6 @@ TEST(GlobalEnv, ConfigGlobalEnv)
     ConfigGlobalEnv();
 
     // 验证环境变量是否已经被正确配置
-    ASSERT_EQ(GlobalEnv::applyGradientsStrategy, "sum_same_id_gradients_and_apply");
     ASSERT_EQ(GlobalEnv::aclTimeout, 100);
     ASSERT_EQ(GlobalEnv::hdChannelSize, 50);
     ASSERT_EQ(GlobalEnv::keyProcessThreadNum, 8);
