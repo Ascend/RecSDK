@@ -33,6 +33,6 @@ def fix_invalid_table_name(name):
     if not fix_name:
         raise ValueError(f"The table name '{name}' doesn't contain valid character, "
                          f"according to the rule '{pattern}'")
-    logger.warning(f"The table name '%s' contains invalid characters. The system automatically "
-                   f"remove invalid characters. The table name was changed to '%s'", name, fix_name)
+    logger.warning("The table name '%s' contains invalid characters. The system automatically "
+                   "remove invalid characters. The table name was changed to '%s'", name, fix_name)
     return fix_name

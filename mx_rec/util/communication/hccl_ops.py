@@ -29,9 +29,9 @@ def get_rank_id() -> Optional[int]:
 
 def get_device_id() -> Optional[int]:
     """
-     Get the device id of the calling process
+     Get the device logic id of the calling process
      Note: this method should be used after mpi init
-    :return: int or None, the device id of the calling process
+    :return: int or None, the device logic id of the calling process
     """
     if global_env.rank_table_file:
         rank_to_device_dict = parse_hccl_json()
