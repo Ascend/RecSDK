@@ -80,10 +80,15 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
             l2_shrinkage_regularization_strength=kwargs.get("l2_shrinkage_regularization_strength", 0.0)
         )
         self._slot_num = 2
+        self._derivative = 2
 
     @property
     def slot_num(self):
         return self._slot_num
+
+    @property
+    def derivative(self):
+        return self._derivative
 
     def initialize_slots(self, var, table_instance):
         val = constant_op.constant(
@@ -135,17 +140,19 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
                 self._resource_scatter_nd_update)
 
     def _apply_sparse(self, grad, var):
+        unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad.values, var=var, is_expansion=False)
+
         if self._l2_shrinkage_regularization_strength <= 0.0:
             return self._apply_sparse_shared(
-                grad.values,
+                unique_local_grad,
                 var,
-                grad.indices,
+                unique_keys,
                 lambda x, i, v: tf.compat.v1.scatter_nd_update(x, i, v))
         else:
             return self._apply_sparse_shared_v2(
-                grad.values,
+                unique_local_grad,
                 var,
-                grad.indices,
+                unique_keys,
                 lambda x, i, v: tf.compat.v1.scatter_nd_update(x, i, v))
 
     def _apply_sparse_shared(self, grad, var, indices, scatter_nd_update):

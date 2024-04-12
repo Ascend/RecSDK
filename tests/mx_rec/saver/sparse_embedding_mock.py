@@ -34,6 +34,6 @@ class SparseEmbeddingMock:
 
     def set_optimizer(self, key, state_dict):
         if key in self.optimizer:
-            raise ValueError(f"Optimizer {key} has been set for hash table {self.table_name}")
+            raise ValueError(f"optimizer {key} has been set for hash table {self.table_name}")
 
         self.optimizer[key] = state_dict

@@ -75,7 +75,7 @@ class RunMode:
             try:
                 self.session.run(self.eval_model.loss_list)
             except tf.errors.OutOfRangeError:
-                logger.info(f"Encounter the end of Sequence for eval.")
+                logger.info("Encounter the end of Sequence for eval.")
                 break
 
     def set_train_ops(self):
@@ -95,11 +95,11 @@ class RunMode:
             self.train_ops.append(dense_optimizer.apply_gradients(avg_grads))
 
             if bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0))):
-                from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS
+                from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_ID_OFFSET
 
                 train_emb_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)
 
-                train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS)
+                train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET)
 
                 # do sparse optimization by addr
                 local_grads = tf.gradients(loss, train_emb_list)  # local_embedding
@@ -140,7 +140,7 @@ class RunMode:
             try:
                 self.session.run([self.train_ops, self.train_model.loss_list])
             except tf.errors.OutOfRangeError:
-                logger.info(f"Encounter the end of Sequence for training.")
+                logger.info("Encounter the end of Sequence for training.")
                 break
             else:
                 for t in self.table_list:
@@ -170,14 +170,14 @@ class RunMode:
         self.epoch += 1
 
     def predict(self, model_file: List[str]):
-        logger.info(f"###############    start predict    ################")
+        logger.info("###############    start predict    ################")
 
         # get the latest model
         latest_step = get_load_step(model_file)
         self.saver = tf.compat.v1.train.Saver()
         self.saver.restore(self.session, f"./saved-model/model-{latest_step}")
         self._infer()
-        logger.info(f"###############    predict end    ################")
+        logger.info("###############    predict end    ################")
 
     def change_threshold(self):
         thres_tensor = tf.constant(60, dtype=tf.int32)

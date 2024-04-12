@@ -50,7 +50,7 @@ def do_merge_lookup(is_train: bool = True):
     # get anchor ids
     cutting_point_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ENTRANCE)
     if not cutting_point_list:
-        raise RuntimeError("The sparse table does not have sparse lookup.")
+        raise RuntimeError("the sparse table does not have sparse lookup.")
     check_cutting_points(cutting_point_list)
 
     # get lookup info
