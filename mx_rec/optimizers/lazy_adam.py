@@ -72,10 +72,15 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
         super(CustomizedLazyAdam, self).__init__(learning_rate=learning_rate, beta1=beta1, beta2=beta2,
                                                  epsilon=epsilon, use_locking=use_locking, name=self.unique_name)
         self._slot_num = 2
+        self._derivative = 2
 
     @property
     def slot_num(self):
         return self._slot_num
+
+    @property
+    def derivative(self):
+        return self._derivative
 
     def initialize_slots(self, var, table_instance):
         # Create slots for the first and second moments.
@@ -144,10 +149,11 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
             self._resource_scatter_nd_add)
 
     def _apply_sparse(self, grad, var):
+        unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad.values, var=var, is_expansion=False)
         return self._apply_sparse_shared(
-            grad.values,
+            unique_local_grad,
             var,
-            grad.indices,
+            unique_keys,
             lambda x, i, v: tf.compat.v1.scatter_nd_add(x, i, v))
 
     def _apply_sparse_shared(self, grad, var, indices, scatter_nd_add):
