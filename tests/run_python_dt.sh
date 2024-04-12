@@ -26,7 +26,7 @@ if [ $ARCH == "aarch64" ]; then
 fi
 
 # build mxRec and get output directory
-bash "$TOP_PATH"/build/build_tf1_with_opensource.sh
+bash "$TOP_PATH"/build/build_tf1.sh
 
 # create libasc directory and copy so files into it
 cd "$TOP_PATH"/mx_rec
