@@ -22,6 +22,7 @@ import tensorflow as tf
 import mxrec_pybind
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.tf_version_adapter import npu_ops
+from mx_rec.constants.constants import TRAIN_CHANNEL_ID
 from mx_rec.util.log import logger
 
 
@@ -78,6 +79,46 @@ def get_id_offsets(max_lookup_vec_size, config):
             output_shapes=[[max_lookup_vec_size], []],
             channel_name=f'{config.get("table_name")}_swap_{config.get("channel_id")}')
     return id_offsets, swap_pos, swap_len
+
+
+def get_restore_vector_second(max_lookup_vec_size: int, config: dict) -> tf.Tensor:
+    """
+    Get restore vector which is calculated after the second all2all
+    :param max_lookup_vec_size: the size of restore_vector_second
+    :param config: embedding config
+    :return: the restore vector calculated after the second all2all
+    """
+    logger.debug('Channel %s_restore_second_%s was built for getnext',
+                 config.get("table_name"), config.get("channel_id"))
+    with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
+        restore_vector_second = npu_ops.gen_npu_ops.get_next(
+            output_types=[tf.int32],
+            output_shapes=[[max_lookup_vec_size]],
+            channel_name=f'{config.get("table_name")}_restore_second_{config.get("channel_id")}')[0]
+    return restore_vector_second
+
+
+def get_unique_keys(max_lookup_vec_size: int, config: dict) -> tf.Tensor:
+    """
+    Get the global unique keys which is calculated after the second all2all
+    :param max_lookup_vec_size: the size of global unique keys
+    :param config: embedding config
+    :return: the global unique keys calculated after the second all2all
+    """
+    logger.debug('Channel %s_uniquekeys_%s was built for getnext', config.get("table_name"), config.get("channel_id"))
+    with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
+        if config.get("use_dynamic_expansion"):
+            unique_keys = npu_ops.gen_npu_ops.get_next(
+                output_types=[tf.int64],
+                output_shapes=[[max_lookup_vec_size]],
+                channel_name=f'{config.get("table_name")}_uniquekeys_{config.get("channel_id")}')[0]
+            return unique_keys
+
+        unique_keys = npu_ops.gen_npu_ops.get_next(
+            output_types=[tf.int32],
+            output_shapes=[[max_lookup_vec_size]],
+            channel_name=f'{config.get("table_name")}_uniquekeys_{config.get("channel_id")}')[0]
+        return unique_keys
 
 
 def get_all2all_args(use_static: bool, config: dict) -> Optional[list]:
@@ -169,5 +210,15 @@ def get_preprocessed_tensor_for_asc(table, config):
         'swap_in': swap_in,
         'all2all_args': all2all_args,
     }
+
+    if config.get("channel_id") != TRAIN_CHANNEL_ID:
+        return result
+
+    with tf.compat.v1.variable_scope("restore_vector_second"):
+        restore_vector_second = get_restore_vector_second(max_lookup_vec_size, config)
+
+    with tf.compat.v1.variable_scope("unique_keys"):
+        unique_keys = get_unique_keys(max_lookup_vec_size, config)
+    result.update({'restore_vector_second': restore_vector_second, 'unique_keys': unique_keys})
 
     return result

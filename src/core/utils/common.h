@@ -115,10 +115,9 @@ namespace MxRec {
     using TensorInfoT = std::tuple<int, EmbNameT, std::list<std::unique_ptr<std::vector<Tensor>>>::iterator>;
 
     namespace HybridOption {
-        const unsigned int USE_STATIC = 0x0001;
-        const unsigned int USE_HOT = 0x0001 << 1;
-        const unsigned int USE_DYNAMIC_EXPANSION = 0x0001 << 2;
-        const unsigned int USE_SUM_SAME_ID_GRADIENTS = 0x0001 << 3;
+        const unsigned int USE_STATIC = 0x001;
+        const unsigned int USE_HOT = 0x001 << 1;
+        const unsigned int USE_DYNAMIC_EXPANSION = 0x001 << 2;
     };
 
     string GetChipName(int devID);
@@ -227,7 +226,6 @@ namespace MxRec {
         bool isDDR { false };
         bool isSSDEnabled { false };
         bool useDynamicExpansion {false};
-        bool useSumSameIdGradients {true};
         std::vector<int> ctrlSteps; // 包含三个步数: train_steps, eval_steps, save_steps
     };
 

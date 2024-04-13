@@ -156,6 +156,84 @@ class TestGetIdOffsetsFunc(unittest.TestCase):
             self.assertEqual(swap_len, 0)
 
 
+class TestGetRestoreVectorSecondFunc(unittest.TestCase):
+    """
+    Test for 'mx_rec.core.asc.build_graph.get_restore_vector_second'.
+    """
+
+    def setUp(self):
+        # 默认动态扩容、hot emb、HBM
+        self.config = dict(table_name="test_table", channel_id=0, is_hbm=True, emb_size=8, ext_emb_size=8,
+                           feat_cnt=8, batch_size=32, rank_size=8, send_count=1, device_id=0,
+                           use_hot=True, use_dynamic_expansion=True)
+        self.max_lookup_vec_size = self.config.get("send_count") * self.config.get("rank_size")
+
+    def tearDown(self):
+        # 恢复config
+        self.config = dict(table_name="test_table", channel_id=0, is_hbm=True, emb_size=8, ext_emb_size=8,
+                           feat_cnt=8, batch_size=32, rank_size=8, send_count=1, device_id=0,
+                           use_hot=True, use_dynamic_expansion=True)
+
+    @mock.patch("mx_rec.core.asc.build_graph.npu_ops.gen_npu_ops.get_next")
+    def test_get_restore_vector_second(self, mock_get_next):
+        """
+        case: test get_restore_vector_second
+        """
+
+        from mx_rec.core.asc.build_graph import get_restore_vector_second
+
+        with tf.Graph().as_default():
+            mock_get_next.return_value = [0]
+            restore_vector_second = get_restore_vector_second(self.max_lookup_vec_size, self.config)
+            self.assertEqual(restore_vector_second, 0)
+
+
+class TestGetUniqueKeysFunc(unittest.TestCase):
+    """
+    Test for 'mx_rec.core.asc.build_graph.get_unique_keys'.
+    """
+
+    def setUp(self):
+        # 默认动态扩容、hot emb、HBM
+        self.config = dict(table_name="test_table", channel_id=0, is_hbm=True, emb_size=8, ext_emb_size=8,
+                           feat_cnt=8, batch_size=32, rank_size=8, send_count=1, device_id=0,
+                           use_hot=True, use_dynamic_expansion=True)
+        self.max_lookup_vec_size = self.config.get("send_count") * self.config.get("rank_size")
+
+    def tearDown(self):
+        # 恢复config
+        self.config = dict(table_name="test_table", channel_id=0, is_hbm=True, emb_size=8, ext_emb_size=8,
+                           feat_cnt=8, batch_size=32, rank_size=8, send_count=1, device_id=0,
+                           use_hot=True, use_dynamic_expansion=True)
+
+    @mock.patch("mx_rec.core.asc.build_graph.npu_ops.gen_npu_ops.get_next")
+    def test_get_unique_keys_case1(self, mock_get_next):
+        """
+        case1: 动态扩容
+        """
+
+        from mx_rec.core.asc.build_graph import get_unique_keys
+
+        with tf.Graph().as_default():
+            mock_get_next.return_value = [0]
+            unique_keys = get_unique_keys(self.max_lookup_vec_size, self.config)
+            self.assertEqual(unique_keys, 0)
+
+    @mock.patch("mx_rec.core.asc.build_graph.npu_ops.gen_npu_ops.get_next")
+    def test_get_unique_keys_case2(self, mock_get_next):
+        """
+        case2: 非动态扩容
+        """
+
+        from mx_rec.core.asc.build_graph import get_unique_keys
+
+        with tf.Graph().as_default():
+            self.config["use_dynamic_expansion"] = False
+            mock_get_next.return_value = [1]
+            unique_keys = get_unique_keys(self.max_lookup_vec_size, self.config)
+            self.assertEqual(unique_keys, 1)
+
+
 class TestGetAll2allArgsFunc(unittest.TestCase):
     """
     Test for 'mx_rec.core.asc.build_graph.get_all2all_args'.
@@ -268,12 +346,15 @@ class TestGetPreProcessedTensorForAscFunc(unittest.TestCase):
         self.config = dict(table_name="test_table", channel_id=0, is_hbm=True, emb_size=8, ext_emb_size=8,
                            feat_cnt=8, batch_size=32, rank_size=8, send_count=1, device_id=0,
                            use_hot=True, use_dynamic_expansion=True)
+        global_env.apply_gradients_strategy = "direct_apply"
 
     @mock.patch.multiple("mx_rec.core.asc.build_graph",
                          get_restore_vector=mock.MagicMock(return_value=[0, 0]),
                          get_id_offsets=mock.MagicMock(return_value=[0, 0, 0]),
                          get_all2all_args=mock.MagicMock(return_value=0),
-                         get_swap_info=mock.MagicMock(return_value=0))
+                         get_swap_info=mock.MagicMock(return_value=0),
+                         get_restore_vector_second=mock.MagicMock(return_value=0),
+                         get_unique_keys=mock.MagicMock(return_value=0))
     @mock.patch("mx_rec.core.asc.build_graph.ConfigInitializer")
     def test_get_preprocessed_tensor_for_asc_case1(self, build_graph_config_initializer):
         """
@@ -282,18 +363,23 @@ class TestGetPreProcessedTensorForAscFunc(unittest.TestCase):
 
         from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
 
+        global_env.apply_gradients_strategy = "sum_same_id_gradients_and_apply"
         with tf.Graph().as_default():
             mock_config_initializer = MockConfigInitializer(use_static=True)
             build_graph_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
             result = get_preprocessed_tensor_for_asc(None, self.config)
             self.assertIsNotNone(result.get("restore_vector"))
+            self.assertIsNotNone(result.get("restore_vector_second"))
+            self.assertIsNotNone(result.get("unique_keys"))
 
     @mock.patch.multiple("mx_rec.core.asc.build_graph",
                          get_restore_vector=mock.MagicMock(return_value=[0, 0]),
                          get_id_offsets=mock.MagicMock(return_value=[0, 0, 0]),
                          get_all2all_args=mock.MagicMock(return_value=0),
-                         get_swap_info=mock.MagicMock(return_value=0))
+                         get_swap_info=mock.MagicMock(return_value=0),
+                         get_restore_vector_second=mock.MagicMock(return_value=0),
+                         get_unique_keys=mock.MagicMock(return_value=0))
     @mock.patch("mx_rec.core.asc.build_graph.ConfigInitializer")
     def test_get_preprocessed_tensor_for_asc_case2(self, build_graph_config_initializer):
         """
@@ -302,18 +388,23 @@ class TestGetPreProcessedTensorForAscFunc(unittest.TestCase):
 
         from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
 
+        global_env.apply_gradients_strategy = "sum_same_id_gradients_and_apply"
         with tf.Graph().as_default():
             mock_config_initializer = MockConfigInitializer()
             build_graph_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
             result = get_preprocessed_tensor_for_asc(None, self.config)
             self.assertIsNotNone(result.get("restore_vector"))
+            self.assertIsNotNone(result.get("restore_vector_second"))
+            self.assertIsNotNone(result.get("unique_keys"))
 
     @mock.patch.multiple("mx_rec.core.asc.build_graph",
                          get_restore_vector=mock.MagicMock(return_value=[0, 0]),
                          get_id_offsets=mock.MagicMock(return_value=[0, 0, 0]),
                          get_all2all_args=mock.MagicMock(return_value=0),
-                         get_swap_info=mock.MagicMock(return_value=0))
+                         get_swap_info=mock.MagicMock(return_value=0),
+                         get_restore_vector_second=mock.MagicMock(return_value=0),
+                         get_unique_keys=mock.MagicMock(return_value=0))
     @mock.patch("mx_rec.core.asc.build_graph.ConfigInitializer")
     def test_get_preprocessed_tensor_for_asc_case3(self, build_graph_config_initializer):
         """
@@ -322,6 +413,7 @@ class TestGetPreProcessedTensorForAscFunc(unittest.TestCase):
 
         from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
 
+        global_env.apply_gradients_strategy = "sum_same_id_gradients_and_apply"
         with tf.Graph().as_default():
             mock_config_initializer = MockConfigInitializer()
             build_graph_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
@@ -329,6 +421,7 @@ class TestGetPreProcessedTensorForAscFunc(unittest.TestCase):
             self.config["channel_id"] = 1
             result = get_preprocessed_tensor_for_asc(None, self.config)
             self.assertIsNotNone(result.get("restore_vector"))
+            self.assertIsNone(result.get("restore_vector_second"))
 
 
 if __name__ == '__main__':
