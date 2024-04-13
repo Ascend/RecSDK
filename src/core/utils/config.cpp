@@ -20,7 +20,13 @@ See the License for the specific language governing permissions and
 using namespace std;
 
 namespace MxRec {
+    namespace ApplyGradientsStrategyOptions {
+        const std::string DIRECT_APPLY = "direct_apply";
+        const std::string SUM_SAME_ID_GRADIENTS_AND_APPLY = "sum_same_id_gradients_and_apply";
+    };
+
     // 设置环境变量默认值
+    string GlobalEnv::applyGradientsStrategy = ApplyGradientsStrategyOptions::SUM_SAME_ID_GRADIENTS_AND_APPLY;
     int GlobalEnv::aclTimeout = -1; // 默认阻塞方式，一直等待直到数据接收完成。
     int GlobalEnv::hdChannelSize = 40; // 默认通道深度40
     int GlobalEnv::keyProcessThreadNum = 6; // 默认6个线程
@@ -36,6 +42,12 @@ namespace MxRec {
     /// 配置环境变量，Python侧已经做了变量值校验，CPP侧直接使用即可；bool类型，1代表true，0代表false
     void ConfigGlobalEnv()
     {
+        // 设置梯度策略
+        const char *envStrategy = getenv(RecEnvNames::APPLY_GRADIENTS_STRATEGY);
+        if (envStrategy != nullptr) {
+            GlobalEnv::applyGradientsStrategy = envStrategy;
+        }
+
         // 设置ACL超时时间
         const char *envAclTimeout = getenv(RecEnvNames::ACL_TIMEOUT);
         if (envAclTimeout != nullptr) {
@@ -105,8 +117,9 @@ namespace MxRec {
 
     void LogGlobalEnv()
     {
-        LOG_DEBUG("Environment variables are: [{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}], "
+        LOG_DEBUG("Environment variables are: [{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}], "
                   "[{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}]",
+                  RecEnvNames::APPLY_GRADIENTS_STRATEGY, GlobalEnv::applyGradientsStrategy,
                   RecEnvNames::ACL_TIMEOUT, GlobalEnv::aclTimeout,
                   RecEnvNames::HD_CHANNEL_SIZE, GlobalEnv::hdChannelSize,
                   RecEnvNames::KEY_PROCESS_THREAD_NUM, GlobalEnv::keyProcessThreadNum,
