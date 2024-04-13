@@ -704,7 +704,8 @@ bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
         LOG_DEBUG("channelId:{} batchId:{}, sendLookupSyncTC(ms):{}", channelId, batchId, sendLookupSyncTC.ElapsedMS());
 
         // 训练时，使用全局去重聚合梯度，发送全局去重的key和对应的恢复向量
-        if (mgmtRankInfo.useSumSameIdGradients && channelId == TRAIN_CHANNEL_ID) {
+        if (GlobalEnv::applyGradientsStrategy == ApplyGradientsStrategyOptions::SUM_SAME_ID_GRADIENTS_AND_APPLY &&
+            channelId == TRAIN_CHANNEL_ID) {
             SendUniqKeysAndRestoreVecHBM(channelId, batchId, embInfo, infoVecs);
         }
 
@@ -863,7 +864,8 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId, int cha
     LOG_DEBUG("channelId:{} batchId:{}, hostHashMapProcessTC(ms):{}",
               channelId, batchId, hostHashMapProcessTC.ElapsedMS());
 
-    if (mgmtRankInfo.useSumSameIdGradients && channelId == TRAIN_CHANNEL_ID && remainBatchOut) {
+    if (GlobalEnv::applyGradientsStrategy == ApplyGradientsStrategyOptions::SUM_SAME_ID_GRADIENTS_AND_APPLY &&
+        channelId == TRAIN_CHANNEL_ID && remainBatchOut) {
         SendUniqKeysAndRestoreVecDDR(embName, batchId, channelId, ddrParam);
     }
 

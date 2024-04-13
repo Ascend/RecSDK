@@ -95,11 +95,11 @@ class RunMode:
             self.train_ops.append(dense_optimizer.apply_gradients(avg_grads))
 
             if bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0))):
-                from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_ID_OFFSET
+                from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS
 
                 train_emb_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)
 
-                train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET)
+                train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS)
 
                 # do sparse optimization by addr
                 local_grads = tf.gradients(loss, train_emb_list)  # local_embedding
