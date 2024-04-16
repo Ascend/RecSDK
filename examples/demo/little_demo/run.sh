@@ -104,7 +104,6 @@ export USE_MPI=1
 
 ################# 参数配置 ######################
 export USE_DYNAMIC=1            # 0：静态shape；1：动态shape
-export USE_HOT=0                # 0：关闭hot emb；1: 开启hot emb
 export USE_DYNAMIC_EXPANSION=0  # 0：关闭动态扩容；1: 开启动态扩容
 export USE_MULTI_LOOKUP=1       # 0：一表一查；1：一表多查
 export MULTI_LOOKUP_TIMES=2     # 一表多查次数：默认2，上限127（因为一表已经有一查）；仅当export USE_MULTI_LOOKUP=1时生效
