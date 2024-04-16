@@ -23,6 +23,7 @@ See the License for the specific language governing permissions and
 #include "ock_ctr_common/include/unique.h"
 #include "ock_ctr_common/include/error_code.h"
 #include "emb_table/embedding_mgmt.h"
+#include "emock/emock.hpp"
 
 using namespace std;
 using namespace MxRec;
@@ -60,6 +61,9 @@ class KeyProcessTest : public testing::Test {
 protected:
     void SetUp()
     {
+        int defaultUBSize = 196608;
+        EMOCK(GetUBSize).stubs().with(any()).will(returnValue(defaultUBSize));
+
         int claimed;
         MPI_Query_thread(&claimed);
         ASSERT_EQ(claimed, MPI_THREAD_MULTIPLE);
@@ -660,7 +664,7 @@ TEST_F(KeyProcessTest, KeyProcessTaskHelper)
     infoVecs->pop_back();
     int64_t hotPosition = process.hotEmbTotCount[batch->name];
     vector<int64_t> expectRestore(allExpectRestore[worldRank].size());
-    for(int i=0; i<expectRestore.size(); i++) {
+    for(int i = 0; i < expectRestore.size(); i++) {
         expectRestore[i] = allExpectRestore[worldRank][i] + hotPosition;
     }
     ASSERT_EQ(CheckFlatTensor(*infoVecs, expectRestore), true);
