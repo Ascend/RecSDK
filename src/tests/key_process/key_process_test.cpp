@@ -663,7 +663,7 @@ TEST_F(KeyProcessTest, KeyProcessTaskHelper)
     for(int i=0; i<expectRestore.size();i++) {
         expectRestore[i] = allExpectRestore[wordRank][i] + hotPosition;
     }
-    ASSERT_EQ(CheckFlatTensor(*infoVecs, allExpectRestore[worldRank]), true);
+    ASSERT_EQ(CheckFlatTensor(*infoVecs, expectRestore), true);
     LOG_INFO("KeyProcessTaskHelper, rankid: {}, batchid: {}, normal status success", rankInfo.rankId, batch->batchId);
     // 测试batchId错误
     HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
