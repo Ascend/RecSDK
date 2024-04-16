@@ -650,7 +650,7 @@ void KeyProcess::HandleHotAndSendCount(const unique_ptr<EmbBatchT> &batch, Uniqu
     ComputeHotPos(batch, hotMap, uniqueInfoOut.hotPos, uniqueInfoOut.restore, hotOffset);
     LOG_DEBUG("ComputeHot TimeCost(ms):{}", computeHotTc.ElapsedMS());
     UpdateHotMapForUnique(keySendInfo.keySend, keySendInfo.keyCount,
-                            hotOffset, batch->batchId % hotEmbUpdateStep == 0, batch->name);
+                          hotOffset, batch->batchId % hotEmbUpdateStep == 0, batch->name);
 
     if (rankInfo.useStatic) {
         sc.resize(rankInfo.rankSize, embInfos[batch->name].sendCount);

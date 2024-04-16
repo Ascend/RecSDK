@@ -148,7 +148,11 @@ namespace MxRec {
             {"910B2", UBSize::ASCEND910_B2},
             {"910B3", UBSize::ASCEND910_B3},
             {"910B4", UBSize::ASCEND910_B4},
-            {"910B2C", UBSize::ASCEND910_B2C}};
+            {"910B2C", UBSize::ASCEND910_B2C},
+            {"910C1", UBSize::ASCEND910_C1},
+            {"910C2", UBSize::ASCEND910_C1},
+            {"910C3", UBSize::ASCEND910_C3}
+            };
         auto it = chipUbSizeList.find(GetChipName(devID));
         if (it != chipUbSizeList.end()) {
             return it->second;
