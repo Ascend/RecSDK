@@ -658,6 +658,11 @@ TEST_F(KeyProcessTest, KeyProcessTaskHelper)
     ASSERT_EQ(CheckMatrixTensor(*all2all, allExpectAll2all), true);
     ASSERT_EQ(CheckFlatTensor({infoVecs->back()}, allExpectOffset[worldRank]), true);
     infoVecs->pop_back();
+    int64_t hotPosition = process.hotEmbTotCount[batch->name];
+    vector<int64_t> expectRestore(allExpectRestore[worldRank].size());
+    for(int i=0; i<expectRestore.size();i++) {
+        expectRestore[i] = allExpectRestore[wordRank][i] + hotPosition;
+    }
     ASSERT_EQ(CheckFlatTensor(*infoVecs, allExpectRestore[worldRank]), true);
     LOG_INFO("KeyProcessTaskHelper, rankid: {}, batchid: {}, normal status success", rankInfo.rankId, batch->batchId);
     // 测试batchId错误
@@ -711,9 +716,10 @@ TEST_F(KeyProcessTest, KeyProcessTaskHelperDDR)
     auto tmpTensor = (*infoVecs).at(0);
     auto tmpData = tmpTensor.flat<int32>();
 
+    int64_t hotPosition = process.hotEmbTotCount[batch->name];
     vector<int> actualGetRestore(col);
     for (int j = 0; j < col; j++) {
-        actualGetRestore[j] = tmpData(j);
+        actualGetRestore[j] = tmpData(j)-hotPosition;
     }
     LOG_INFO("KeyProcessTaskHelperDDR, rankid: {}, batchid: {}, Restore: {}",
              rankInfo.rankId, batch->batchId, VectorToString(actualGetRestore));
