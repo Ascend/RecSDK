@@ -48,7 +48,6 @@ bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos
     
     SetupHotEmbUpdateStep();
     
-
     map<EmbNameT, int> scInfo;
     for (const auto& info: eInfos) {
         embInfos[info.name] = info;
@@ -385,7 +384,6 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch
     uniqueInfo.hotPos.resize(hotEmbTotCount[batch->name], -1);
     tensors->push_back(Vec2TensorI32(uniqueInfo.hotPos));
     
-
     if (!rankInfo.isDDR) {
         PushGlobalUniqueTensors(move(tensors), uniqueInfo.all2AllInfo.keyRecv, channel);
         tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(uniqueInfo.all2AllInfo.keyRecv) :
@@ -447,7 +445,6 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
     hotPos.resize(hotEmbTotCount[batch->name], 0);
     tensors->push_back(Vec2TensorI32(hotPos));
     
-
     if (!rankInfo.isDDR) {
         PushGlobalUniqueTensors(tensors, lookupKeys, channel);
         tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(lookupKeys) : Vec2TensorI32(lookupKeys));
