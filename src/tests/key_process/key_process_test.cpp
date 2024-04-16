@@ -321,6 +321,7 @@ protected:
     void TearDown()
     {
         // delete
+        GlobalMockObject::reset();
     }
 };
 
@@ -664,7 +665,7 @@ TEST_F(KeyProcessTest, KeyProcessTaskHelper)
     infoVecs->pop_back();
     int64_t hotPosition = process.hotEmbTotCount[batch->name];
     vector<int64_t> expectRestore(allExpectRestore[worldRank].size());
-    for(int i = 0; i < expectRestore.size(); i++) {
+    for (int i = 0; i < expectRestore.size(); i++) {
         expectRestore[i] = allExpectRestore[worldRank][i] + hotPosition;
     }
     ASSERT_EQ(CheckFlatTensor(*infoVecs, expectRestore), true);
