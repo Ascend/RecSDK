@@ -201,7 +201,7 @@ def initialize_emb_cache(table_info_list, threshold_list):
     if ConfigInitializer.get_instance().use_static:
         option = option | USE_STATIC
     # use hot always True
-    option = option | USE_STATIC << 1
+    # option = option | USE_STATIC << 1
     if ConfigInitializer.get_instance().use_dynamic_expansion:
         option = option | USE_DYNAMIC_EXPANSION
 
