@@ -220,4 +220,5 @@ def get_preprocessed_tensor_for_asc(table, config):
     with tf.compat.v1.variable_scope("unique_keys"):
         unique_keys = get_unique_keys(max_lookup_vec_size, config)
     result.update({'restore_vector_second': restore_vector_second, 'unique_keys': unique_keys})
+
     return result
