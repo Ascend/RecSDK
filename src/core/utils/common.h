@@ -116,8 +116,7 @@ namespace MxRec {
 
     namespace HybridOption {
         const unsigned int USE_STATIC = 0x001;
-        const unsigned int USE_HOT = 0x001 << 1;
-        const unsigned int USE_DYNAMIC_EXPANSION = 0x001 << 2;
+        const unsigned int USE_DYNAMIC_EXPANSION = 0x001 << 1;
     };
 
     string GetChipName(int devID);
@@ -149,7 +148,11 @@ namespace MxRec {
             {"910B2", UBSize::ASCEND910_B2},
             {"910B3", UBSize::ASCEND910_B3},
             {"910B4", UBSize::ASCEND910_B4},
-            {"910B2C", UBSize::ASCEND910_B2C}};
+            {"910B2C", UBSize::ASCEND910_B2C},
+            {"910C1", UBSize::ASCEND910_C1},
+            {"910C2", UBSize::ASCEND910_C1},
+            {"910C3", UBSize::ASCEND910_C3}
+        };
         auto it = chipUbSizeList.find(GetChipName(devID));
         if (it != chipUbSizeList.end()) {
             return it->second;
@@ -220,7 +223,6 @@ namespace MxRec {
         int localRankId {};
         int localRankSize {};
         bool useStatic { false };
-        bool useHot {};
         uint32_t option {};
         int nBatch {};
         bool isDDR { false };
