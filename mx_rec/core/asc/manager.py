@@ -18,7 +18,7 @@
 import tensorflow as tf
 
 from mxrec_pybind import InitializeInfo, ConstantInitializerInfo, NormalInitializerInfo, EmbInfo, EmbInfoParams, \
-    ThresholdValue, HybridMgmt, RankInfo, USE_STATIC, USE_HOT, USE_DYNAMIC_EXPANSION
+    ThresholdValue, HybridMgmt, RankInfo, USE_STATIC, USE_DYNAMIC_EXPANSION
 
 from mx_rec.util.communication.hccl_ops import get_rank_id, get_device_id, get_rank_size
 from mx_rec.util.initialize import ConfigInitializer
@@ -200,8 +200,6 @@ def initialize_emb_cache(table_info_list, threshold_list):
     option = 0
     if ConfigInitializer.get_instance().use_static:
         option = option | USE_STATIC
-    # use hot always True
-    option = option | USE_STATIC << 1
     if ConfigInitializer.get_instance().use_dynamic_expansion:
         option = option | USE_DYNAMIC_EXPANSION
 
