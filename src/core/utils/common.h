@@ -116,8 +116,7 @@ namespace MxRec {
 
     namespace HybridOption {
         const unsigned int USE_STATIC = 0x001;
-        const unsigned int USE_DYNAMIC_EXPANSION = 0x001 << 1
-        ;
+        const unsigned int USE_DYNAMIC_EXPANSION = 0x001 << 1;
     };
 
     string GetChipName(int devID);
