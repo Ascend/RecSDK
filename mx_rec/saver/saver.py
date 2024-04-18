@@ -67,7 +67,7 @@ class Saver(object):
         ("prefix_name", ClassValidator, {"classes": (str, type(None))}),
         ("prefix_name", OptionalStringValidator, {"min_len": 1, "max_len": 50}, ["check_string_length"]),
     ])
-    def __init__(self, var_list=None, max_to_keep=3, prefix_name="checkpoint"):
+    def __init__(self, var_list=None, max_to_keep=3, prefix_name="checkpoint", warm_start_tables = None):
         self.max_to_keep = max_to_keep
         self._prefix_name = prefix_name
         self.var_list = var_list
@@ -75,11 +75,12 @@ class Saver(object):
         self.local_rank_size = get_local_rank_size()
         self.local_rank_id = self.rank_id % self.local_rank_size
         self.save_op_dict = defaultdict(dict)
-        self.restore_fetch_list = []
+        self.restore_fetch_dict = defaultdict()
         self.placeholder_dict = defaultdict(dict)
         self._last_checkponts = []
         self.config_instance = ConfigInitializer.get_instance()
         self.build()
+        self.warm_start_tables = warm_start_tables
 
     def build(self):
         if self.var_list is None:
@@ -175,7 +176,7 @@ class Saver(object):
         logger.info("======== Saving finished for rank id %s ========", self.rank_id)
 
     @performance("Restore")
-    def restore(self, sess, reading_path):
+    def restore(self, sess, reading_path, warm_start_tables=None):
         logger.debug("======== Start restoring ========")
         if not check_file_system_is_valid(reading_path):
             raise ValueError("the path to save sparse embedding table data belong to invalid file system, "
@@ -185,11 +186,10 @@ class Saver(object):
         ckpt_name = f"sparse-{base_name}"
 
         reading_path = os.path.join(directory, ckpt_name)
-        self.config_instance.train_params_config.sparse_dir = reading_path
         if not tf.io.gfile.exists(reading_path):
             raise FileExistsError(f"Given dir {reading_path} does not exist, please double check.")
 
-        self._restore(sess, reading_path)
+        self._restore(sess, reading_path, warm_start_tables)
         logger.info("sparse model was restored from dir '%s' .", reading_path)
         logger.debug("======== Restoring finished ========")
 
@@ -283,6 +283,7 @@ class Saver(object):
                     sub_dict["optimizer"] = optimizer
 
     def _build_restore(self):
+        # 这里build_restore的地方不变
         for var in self.var_list:
             if global_env.tf_device == TFDevice.NPU.value and "merged" not in var.name:
                 continue
@@ -294,7 +295,7 @@ class Saver(object):
                                                                       table_instance.emb_size],
                                              name=DataName.EMBEDDING.value)
                 assign_op = var.assign(variable)
-                self.restore_fetch_list.append(assign_op)
+                self.restore_fetch_dict[table_instance.table_name]= [assign_op]
                 optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(
                     table_instance.table_name)
                 if optimizer:
@@ -313,10 +314,30 @@ class Saver(object):
                 if sub_optimizer_placeholder_dict.get(key_state).graph is not state.graph:
                     continue
                 assign_op = state.assign(sub_optimizer_placeholder_dict.get(key_state))
-                self.restore_fetch_list.append(assign_op)
+                self.restore_fetch_dict[table_instance.table_name].append(assign_op)
 
-    def _restore(self, sess, reading_path):
-        for table_name in self.placeholder_dict:
+    def get_warm_start_dict(self, table_list):
+        placeholder_dict = defaultdict(dict)
+        restore_fetch_list = []
+        for table_name, v in self.placeholder_dict.items():
+            if table_name in table_list:
+                placeholder_dict[table_name] = v
+                restore_fetch_list.append(self.restore_fetch_dict.get(table_name))
+
+        if not restore_fetch_list:
+            logger.warning("no tables can be warm start restored.")
+        return placeholder_dict, restore_fetch_list
+
+    def _restore(self, sess, reading_path , warm_start_tables=None):
+        # todo:这里增加新的参数，table_list
+        # 根据table_list去改造
+        if warm_start_tables:
+            placeholder_dict, restore_fetch_list = self.get_warm_start_dict(warm_start_tables)
+        else:
+            placeholder_dict, restore_fetch_list = self.placeholder_dict, self.restore_fetch_dict
+
+
+        for table_name in placeholder_dict:
             optimizer_instance = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
             if optimizer_instance:
                 set_optimizer_info(optimizer_instance, table_name)
@@ -331,7 +352,7 @@ class Saver(object):
 
         restore_feed_dict = defaultdict(dict)
 
-        for table_name, sub_placeholder_dict in self.placeholder_dict.items():
+        for table_name, sub_placeholder_dict in placeholder_dict.items():
             load_offset = self.config_instance.hybrid_manager_config.get_load_offset(table_name)
             fill_placeholder(reading_path, sub_placeholder_dict, restore_feed_dict,
                              NameDescriptor(table_name, DataName.EMBEDDING.value), load_offset)
@@ -341,7 +362,7 @@ class Saver(object):
                 _fill_placeholder_for_optimizer(optimizer_state_placeholder_dict_group, reading_path,
                                                 restore_feed_dict, table_name, load_offset)
 
-        sess.run(self.restore_fetch_list, feed_dict=restore_feed_dict)
+        sess.run(restore_fetch_list, feed_dict=restore_feed_dict)
 
 
 class NameDescriptor:
