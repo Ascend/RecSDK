@@ -23,6 +23,7 @@ See the License for the specific language governing permissions and
 #include "ock_ctr_common/include/unique.h"
 #include "ock_ctr_common/include/error_code.h"
 #include "emb_table/embedding_mgmt.h"
+#include "emock/emock.hpp"
 
 using namespace std;
 using namespace MxRec;
@@ -60,6 +61,9 @@ class KeyProcessTest : public testing::Test {
 protected:
     void SetUp()
     {
+        int defaultUBSize = 196608;
+        EMOCK(GetUBSize).stubs().with(any()).will(returnValue(defaultUBSize));
+
         int claimed;
         MPI_Query_thread(&claimed);
         ASSERT_EQ(claimed, MPI_THREAD_MULTIPLE);
@@ -76,7 +80,6 @@ protected:
         rankInfo.isDDR = false;
         rankInfo.useDynamicExpansion = false;
         rankInfo.ctrlSteps = { 1, -1 };
-        rankInfo.useHot = false;
         // 初始化emb信息
         GenEmbInfos(embNum, embInfos, fieldNums);
         splits = fieldNums;
@@ -318,6 +321,7 @@ protected:
     void TearDown()
     {
         // delete
+        GlobalMockObject::reset();
     }
 };
 
@@ -639,7 +643,6 @@ TEST_F(KeyProcessTest, KeyProcessTaskHelper)
 {
     rankInfo.isDDR = false;
     rankInfo.useStatic = false;
-    rankInfo.useHot = false;
     rankInfo.useDynamicExpansion = false;
     EmbeddingMgmt::Instance()->Init(rankInfo, embInfos);
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
@@ -660,7 +663,12 @@ TEST_F(KeyProcessTest, KeyProcessTaskHelper)
     ASSERT_EQ(CheckMatrixTensor(*all2all, allExpectAll2all), true);
     ASSERT_EQ(CheckFlatTensor({infoVecs->back()}, allExpectOffset[worldRank]), true);
     infoVecs->pop_back();
-    ASSERT_EQ(CheckFlatTensor(*infoVecs, allExpectRestore[worldRank]), true);
+    int64_t hotPosition = process.hotEmbTotCount[batch->name];
+    vector<int64_t> expectRestore(allExpectRestore[worldRank].size());
+    for (int i = 0; i < expectRestore.size(); i++) {
+        expectRestore[i] = allExpectRestore[worldRank][i] + hotPosition;
+    }
+    ASSERT_EQ(CheckFlatTensor(*infoVecs, expectRestore), true);
     LOG_INFO("KeyProcessTaskHelper, rankid: {}, batchid: {}, normal status success", rankInfo.rankId, batch->batchId);
     // 测试batchId错误
     HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
@@ -688,7 +696,6 @@ TEST_F(KeyProcessTest, KeyProcessTaskHelperDDR)
 {
     rankInfo.isDDR = true;
     rankInfo.useStatic = true;
-    rankInfo.useHot = false;
     rankInfo.useDynamicExpansion = false;
     EmbeddingMgmt::Instance()->Init(rankInfo, embInfos);
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
@@ -714,9 +721,10 @@ TEST_F(KeyProcessTest, KeyProcessTaskHelperDDR)
     auto tmpTensor = (*infoVecs).at(0);
     auto tmpData = tmpTensor.flat<int32>();
 
+    int64_t hotPosition = process.hotEmbTotCount[batch->name];
     vector<int> actualGetRestore(col);
     for (int j = 0; j < col; j++) {
-        actualGetRestore[j] = tmpData(j);
+        actualGetRestore[j] = tmpData(j)-hotPosition;
     }
     LOG_INFO("KeyProcessTaskHelperDDR, rankid: {}, batchid: {}, Restore: {}",
              rankInfo.rankId, batch->batchId, VectorToString(actualGetRestore));
