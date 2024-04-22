@@ -81,8 +81,7 @@ public:
     bool Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
                     const vector<ThresholdValue>& thresholdValues = {}, int seed = 0);
 
-    unique_ptr<vector<Tensor>> GetInfoVec(int batch, const string& embName, int channel,
-                                          ProcessedInfo type);
+    unique_ptr<vector<Tensor>> GetInfoVec(int batch, const string& embName, int channel, ProcessedInfo type);
 
     KeysT GetLookupKeys(int batch, const string& embName, int channel);
 
@@ -129,8 +128,8 @@ public:
 
         for (size_t i = 0; i < lookupKeys.size(); ++i) {
             int64_t key = lookupKeys[i];
-            if (rankInfo.useStatic && ((!rankInfo.useDynamicExpansion && key == -1) ||
-                                       (rankInfo.useDynamicExpansion && key == 0))) {
+            if (rankInfo.useStatic
+                && ((!rankInfo.useDynamicExpansion && key == -1) || (rankInfo.useDynamicExpansion && key == 0))) {
                 continue;
             }
 
@@ -205,42 +204,38 @@ public:
 
     bool KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel, int threadId);
 
-    bool KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch,
-                                            ock::ctr::UniquePtr& unique, int channel, int threadId);
+    bool KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch, ock::ctr::UniquePtr& unique, int channel,
+                                            int threadId);
 
-    tuple<KeysT, vector<int>, vector<int>> ProcessSplitKeys(const unique_ptr<EmbBatchT>& batch,
-                                                            int id, vector<KeysT>& splitKeys);
+    tuple<KeysT, vector<int>, vector<int>> ProcessSplitKeys(const unique_ptr<EmbBatchT>& batch, int id,
+                                                            vector<KeysT>& splitKeys);
 
     void GetUniqueConfig(ock::ctr::UniqueConf& uniqueConf);
 
-    void InitializeUnique(ock::ctr::UniqueConf& uniqueConf, size_t& preBatchSize,
-                          bool& uniqueInitialize, const unique_ptr<EmbBatchT>& batch,
-                          ock::ctr::UniquePtr& unique);
+    void InitializeUnique(ock::ctr::UniqueConf& uniqueConf, size_t& preBatchSize, bool& uniqueInitialize,
+                          const unique_ptr<EmbBatchT>& batch, ock::ctr::UniquePtr& unique);
 
-    void ProcessBatchWithFastUnique(const unique_ptr<EmbBatchT>& batch, ock::ctr::UniquePtr& unique,
-                                    int id, UniqueInfo& uniqueInfoOut);
+    void ProcessBatchWithFastUnique(const unique_ptr<EmbBatchT>& batch, ock::ctr::UniquePtr& unique, int id,
+                                    UniqueInfo& uniqueInfoOut);
 
     size_t GetKeySize(const unique_ptr<EmbBatchT>& batch);
 
-    void All2All(vector<int>& sc, int id, const unique_ptr<EmbBatchT>& batch,
-                 KeySendInfo& keySendInfo, All2AllInfo& all2AllInfoOut);
+    void All2All(vector<int>& sc, int id, const unique_ptr<EmbBatchT>& batch, KeySendInfo& keySendInfo,
+                 All2AllInfo& all2AllInfoOut);
 
-    auto HashSplit(const unique_ptr<EmbBatchT>& batch) const
-        -> tuple<vector<KeysT>, vector<int32_t>>;
+    auto HashSplit(const unique_ptr<EmbBatchT>& batch) const -> tuple<vector<KeysT>, vector<int32_t>>;
 
-    auto HotHashSplit(const unique_ptr<EmbBatchT>& batch)
-        -> tuple<vector<KeysT>, vector<int32_t>, vector<int>>;
+    auto HotHashSplit(const unique_ptr<EmbBatchT>& batch) -> tuple<vector<KeysT>, vector<int32_t>, vector<int>>;
 
     void PaddingAlltoallVC(vector<KeysT>& splitKeys) const;
 
     tuple<vector<KeysT>, vector<int32_t>, vector<vector<uint32_t>>> HashSplitWithFAAE(
         const unique_ptr<EmbBatchT>& batch) const;
 
-    vector<int> GetScAll(const vector<int>& keyScLocal, int commId,
-                         const unique_ptr<EmbBatchT>& batch);
+    vector<int> GetScAll(const vector<int>& keyScLocal, int commId, const unique_ptr<EmbBatchT>& batch);
 
-    void GetScAllForUnique(const vector<int>& keyScLocal, int commId,
-                           const unique_ptr<EmbBatchT>& batch, vector<int>& scAllOut);
+    void GetScAllForUnique(const vector<int>& keyScLocal, int commId, const unique_ptr<EmbBatchT>& batch,
+                           vector<int>& scAllOut);
 
     void Key2Offset(const EmbNameT& embName, KeysT& splitKey, int channel);
 
@@ -248,8 +243,8 @@ public:
 
     unique_ptr<EmbBatchT> GetBatchData(int channel, int commId) const;
 
-    void BuildRestoreVec(const unique_ptr<EmbBatchT>& batch, const vector<int>& blockOffset,
-                         vector<int>& restoreVec, int hotPosSize = 0) const;
+    void BuildRestoreVec(const unique_ptr<EmbBatchT>& batch, const vector<int>& blockOffset, vector<int>& restoreVec,
+                         int hotPosSize = 0) const;
 
     void SendA2A(const vector<int>& a2aInfo, const string& embName, int channel, int batch);
 
@@ -257,35 +252,30 @@ public:
 
     void EvictInitDeviceEmb(const string& embName, vector<size_t> offset);
 
-    void UpdateHotMap(absl::flat_hash_map<emb_key_t, int>& keyCountMapByEmbName, uint32_t count,
-                      bool refresh, const string& embName);
+    void UpdateHotMap(absl::flat_hash_map<emb_key_t, int>& keyCountMapByEmbName, uint32_t count, bool refresh,
+                      const string& embName);
 
-    void UpdateHotMapForUnique(const KeysT& keySend, const vector<int32_t>& keyCount,
-                               uint32_t count, bool refresh, const string& embName);
+    void UpdateHotMapForUnique(const KeysT& keySend, const vector<int32_t>& keyCount, uint32_t count, bool refresh,
+                               const string& embName);
 
-    void HandleHotAndSendCount(const unique_ptr<EmbBatchT>& batch, UniqueInfo& uniqueInfoOut,
-                               KeySendInfo& keySendInfo, vector<int>& sc, vector<int>& splitSize);
+    void HandleHotAndSendCount(const unique_ptr<EmbBatchT>& batch, UniqueInfo& uniqueInfoOut, KeySendInfo& keySendInfo,
+                               vector<int>& sc, vector<int>& splitSize);
 
-    void PushResult(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors,
-                    KeysT& lookupKeys);
+    void PushResult(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors, KeysT& lookupKeys);
 
-    void PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys,
-                                 int channel);
+    void PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys, int channel);
 
-    void AddCountStartToHotPos(vector<KeysT>& splitKeys, vector<int>& hotPos,
-                               const vector<int>& hotPosDev, const unique_ptr<EmbBatchT>& batch);
+    void AddCountStartToHotPos(vector<KeysT>& splitKeys, vector<int>& hotPos, const vector<int>& hotPosDev,
+                               const unique_ptr<EmbBatchT>& batch);
 
-    void ComputeHotPos(const unique_ptr<EmbBatchT>& batch,
-                       absl::flat_hash_map<emb_key_t, int>& hotMap, vector<int>& hotPos,
-                       vector<int32_t>& restore, const int hotOffset) const;
+    void ComputeHotPos(const unique_ptr<EmbBatchT>& batch, absl::flat_hash_map<emb_key_t, int>& hotMap,
+                       vector<int>& hotPos, vector<int32_t>& restore, const int hotOffset) const;
 
-    vector<uint32_t> GetCountRecv(const unique_ptr<EmbBatchT>& batch, int id,
-                                  vector<vector<uint32_t>>& keyCount, vector<int> scAll,
-                                  vector<int> ss);
+    vector<uint32_t> GetCountRecv(const unique_ptr<EmbBatchT>& batch, int id, vector<vector<uint32_t>>& keyCount,
+                                  vector<int> scAll, vector<int> ss);
 
-    void HashSplitHelper(const unique_ptr<EmbBatchT>& batch, vector<KeysT>& splitKeys,
-                         vector<int32_t>& restore, vector<int32_t>& hotPos,
-                         vector<vector<uint32_t>>& keyCount);
+    void HashSplitHelper(const unique_ptr<EmbBatchT>& batch, vector<KeysT>& splitKeys, vector<int32_t>& restore,
+                         vector<int32_t>& hotPos, vector<vector<uint32_t>>& keyCount);
 
     template <class T>
     inline vector<T> Count2Start(const vector<T>& count) const
