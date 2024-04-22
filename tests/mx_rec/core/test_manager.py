@@ -383,7 +383,6 @@ class TestInitializeEmbCacheFunc(unittest.TestCase):
                          get_device_id=mock.MagicMock(return_value=0),
                          get_rank_size=mock.MagicMock(return_value=0),
                          USE_STATIC=mock.MagicMock(return_value=0),
-                         USE_HOT=mock.MagicMock(return_value=1),
                          USE_DYNAMIC_EXPANSION=mock.MagicMock(return_value=2),
                          USE_SUM_SAME_ID_GRADIENTS=mock.MagicMock(return_value=4),
                          RankInfo=mock.MagicMock(return_value="mock_info"),
@@ -410,7 +409,6 @@ class TestInitializeEmbCacheFunc(unittest.TestCase):
                          get_device_id=mock.MagicMock(return_value=0),
                          get_rank_size=mock.MagicMock(return_value=0),
                          USE_STATIC=mock.MagicMock(return_value=0),
-                         USE_HOT=mock.MagicMock(return_value=1),
                          USE_DYNAMIC_EXPANSION=mock.MagicMock(return_value=2),
                          USE_SUM_SAME_ID_GRADIENTS=mock.MagicMock(return_value=4),
                          RankInfo=mock.MagicMock(return_value="mock_info"))
