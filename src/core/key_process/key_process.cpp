@@ -134,8 +134,8 @@ void KeyProcess::InitHotEmbTotCount(const EmbInfo& info, const RankInfo& rInfo)
     if (rankInfo.useDynamicExpansion) {
         embeddingSize = info.embeddingSize;
     }
-    hotEmbTotCount[info.name] = static_cast<int>(static_cast<float>(GetUBSize(rInfo.deviceId) / sizeof(float))
-                                                 * HOT_EMB_CACHE_PCT / static_cast<float>(embeddingSize));
+    hotEmbTotCount[info.name] = static_cast<int>(static_cast<float>(GetUBSize(rInfo.deviceId) / sizeof(float)) *
+                                                 HOT_EMB_CACHE_PCT / static_cast<float>(embeddingSize));
 }
 
 OffsetMemT KeyProcess::GetMaxOffset()
@@ -334,8 +334,8 @@ void KeyProcess::HashSplitHelper(const unique_ptr<EmbBatchT>& batch, vector<Keys
                                  vector<int32_t>& hotPos, vector<vector<uint32_t>>& keyCount)
 {
     TimeCost uniqueTc;
-    if (m_featureAdmitAndEvict.GetFunctionSwitch()
-        && FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE) {
+    if (m_featureAdmitAndEvict.GetFunctionSwitch() &&
+        FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE) {
         tie(splitKeys, restore, keyCount) = HashSplitWithFAAE(batch);  // 按存储dev id切分并去重
     } else {
         tie(splitKeys, restore, hotPos) = HotHashSplit(batch);  // 按存储dev id切分并去重
@@ -347,8 +347,8 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch
                                                     int channel, int threadId)
 {
     // tuple for keyRec restore hotPos scAll countRecv
-    isWithFAAE = m_featureAdmitAndEvict.GetFunctionSwitch()
-                 && FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE;
+    isWithFAAE = m_featureAdmitAndEvict.GetFunctionSwitch() &&
+                 FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE;
     TimeCost totalTimeCost = TimeCost();
     TimeCost fastUniqueTC;
     UniqueInfo uniqueInfo;
@@ -356,10 +356,9 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch
     LOG_DEBUG("ProcessBatchWithFastUnique(ms):{}", fastUniqueTC.ElapsedMS());
 
     // 特征准入&淘汰
-    if (isWithFAAE
-        && (m_featureAdmitAndEvict.FeatureAdmit(channel, batch, uniqueInfo.all2AllInfo.keyRecv,
-                                                uniqueInfo.all2AllInfo.countRecv)
-            == FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR)) {
+    const auto errStatus = FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR;
+    if (isWithFAAE && (m_featureAdmitAndEvict.FeatureAdmit(channel, batch, uniqueInfo.all2AllInfo.keyRecv,
+                                                           uniqueInfo.all2AllInfo.countRecv) == errStatus)) {
         LOG_ERROR(KEY_PROCESS "rank:{} thread:{}, channel:{}, Feature-admit-and-evict error ...", rankInfo.rankId,
                   threadId, channel);
         return false;
@@ -412,8 +411,8 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
     auto [lookupKeys, scAll, ss] = ProcessSplitKeys(batch, threadId, splitKeys);
 
     vector<uint32_t> countRecv;
-    if (m_featureAdmitAndEvict.GetFunctionSwitch()
-        && FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE) {
+    if (m_featureAdmitAndEvict.GetFunctionSwitch() &&
+        FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE) {
         countRecv = GetCountRecv(batch, threadId, keyCount, scAll, ss);
     }
     std::lock_guard<std::mutex> lock(loadSaveMut[channel][threadId]);
@@ -421,10 +420,10 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
     BuildRestoreVec(batch, ss, restore, static_cast<int>(hotPos.size()));
 
     // 特征准入&淘汰
-    if (m_featureAdmitAndEvict.GetFunctionSwitch()
-        && FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE
-        && (m_featureAdmitAndEvict.FeatureAdmit(channel, batch, lookupKeys, countRecv)
-            == FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR)) {
+    if (m_featureAdmitAndEvict.GetFunctionSwitch() &&
+        FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE &&
+        (m_featureAdmitAndEvict.FeatureAdmit(channel, batch, lookupKeys, countRecv) ==
+         FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR)) {
         LOG_ERROR(KEY_PROCESS "rank:{} thread:{}, channel:{}, Feature-admit-and-evict error ...", rankInfo.rankId,
                   threadId, channel);
         return false;
@@ -464,8 +463,8 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
 
 void KeyProcess::PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys, int channel)
 {
-    if (GlobalEnv::applyGradientsStrategy == ApplyGradientsStrategyOptions::SUM_SAME_ID_GRADIENTS_AND_APPLY
-        && channel == TRAIN_CHANNEL_ID) {
+    if (GlobalEnv::applyGradientsStrategy == ApplyGradientsStrategyOptions::SUM_SAME_ID_GRADIENTS_AND_APPLY &&
+        channel == TRAIN_CHANNEL_ID) {
         KeysT uniqueKeys;
         vector<int32_t> restoreVecSec;
 
