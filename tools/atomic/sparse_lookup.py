@@ -28,7 +28,6 @@ from sparse_ops.config import set_ascend_env
 
 USE_PIPELINE_TEST = False
 USE_STATIC = False
-USE_HOT = False
 USE_EXPANSION = False
 
 from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_ID_OFFSET
@@ -171,7 +170,7 @@ if __name__ == '__main__':
     host_vocab_size = 0
 
     init(True, rank_id=rank_id, rank_size=local_rank_size, train_interval=100, eval_steps=-1,
-         prefetch_batch_number=1, use_dynamic=0, use_hot=1, use_dynamic_expansion=0)
+         prefetch_batch_number=1, use_dynamic=0, use_dynamic_expansion=0)
 
     tf.disable_eager_execution()
     ######################################

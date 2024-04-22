@@ -119,7 +119,7 @@ bash test_ut.sh tf2
 
 ## 使用指导
 
-mxRec所支持的使用环境、功能特性、API接口与使用样例请参考mxRec用户指南。
+mxRec所支持的使用环境、功能特性、API接口与使用样例请参考[mxRec用户指南](https://www.hiascend.com/document/detail/zh/mind-sdk/60rc1/mxRec/mxrecug/mxrecug_0001.html)。
 
 ## 参考设计
 
