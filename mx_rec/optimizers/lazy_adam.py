@@ -119,10 +119,16 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
     def _apply_sparse_duplicate_indices(self, grad, var):
         #  _apply_sparse_duplicate_indices method include tf.unique and unsorted_segment_sum operations which may
         #  introduce dynamic shape problem, if encounter that, please de-annotation the method below.
-        return self._apply_sparse(grad, var)
+        unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad.values, var=var, is_expansion=False)
+        gradient_no_duplicate_indices = ops.IndexedSlices(
+            indices=unique_keys,
+            values=unique_local_grad,
+            dense_shape=grad.dense_shape)
+        return self._apply_sparse(gradient_no_duplicate_indices, var)
 
     def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
-        return self._resource_apply_sparse(grad, handle, indices)
+        unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad, var=handle, is_expansion=False)
+        return self._resource_apply_sparse(unique_local_grad, handle, unique_keys)
 
     def _apply_dense(self, grad, var):
         raise NotImplementedError("You are using a wrong type of variable.")
@@ -149,11 +155,10 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
             self._resource_scatter_nd_add)
 
     def _apply_sparse(self, grad, var):
-        unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad.values, var=var, is_expansion=False)
         return self._apply_sparse_shared(
-            unique_local_grad,
+            grad.values,
             var,
-            unique_keys,
+            grad.indices,
             lambda x, i, v: tf.compat.v1.scatter_nd_add(x, i, v))
 
     def _apply_sparse_shared(self, grad, var, indices, scatter_nd_add):

@@ -120,10 +120,18 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
         return [self._initial_accumulator_value, initial_linear_value]
 
     def _apply_sparse_duplicate_indices(self, grad, var):
-        return self._apply_sparse(grad, var)
+        #  _apply_sparse_duplicate_indices method include tf.unique and unsorted_segment_sum operations which may
+        #  introduce dynamic shape problem, if encounter that, please de-annotation the method below.
+        unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad.values, var=var, is_expansion=False)
+        gradient_no_duplicate_indices = ops.IndexedSlices(
+            indices=unique_keys,
+            values=unique_local_grad,
+            dense_shape=grad.dense_shape)
+        return self._apply_sparse(gradient_no_duplicate_indices, var)
 
     def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
-        return self._resource_apply_sparse(grad, handle, indices)
+        unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad, var=handle, is_expansion=False)
+        return self._resource_apply_sparse(unique_local_grad, handle, unique_keys)
 
     def _resource_apply_sparse(self, grad, handle, indices):
         if self._l2_shrinkage_regularization_strength <= 0.0:
@@ -140,19 +148,17 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
                 self._resource_scatter_nd_update)
 
     def _apply_sparse(self, grad, var):
-        unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad.values, var=var, is_expansion=False)
-
         if self._l2_shrinkage_regularization_strength <= 0.0:
             return self._apply_sparse_shared(
-                unique_local_grad,
+                grad.values,
                 var,
-                unique_keys,
+                grad.indices,
                 lambda x, i, v: tf.compat.v1.scatter_nd_update(x, i, v))
         else:
             return self._apply_sparse_shared_v2(
-                unique_local_grad,
+                grad.values,
                 var,
-                unique_keys,
+                grad.indices,
                 lambda x, i, v: tf.compat.v1.scatter_nd_update(x, i, v))
 
     def _apply_sparse_shared(self, grad, var, indices, scatter_nd_update):
