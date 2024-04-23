@@ -33,8 +33,9 @@ if tf.__version__.startswith("1"):
 else:
     from npu_device.compat.v1.npu_init import NPUEstimator
 
+
 class WarmStartController:
-    _instance = None  # 类属性，用于存储唯一的实例
+    _instance = None
 
     def __new__(cls):
         if cls._instance is None:
@@ -47,7 +48,6 @@ class WarmStartController:
         logging.info("start to build WarmStartController.")
 
     def add_element(self, path: str, table_list: List[str]):
-        """添加 path， table list"""
         if path not in self._warm_start_dict:
             self._warm_start_dict[path] = table_list
         else:
@@ -57,7 +57,6 @@ class WarmStartController:
         self.table_name_to_prev_table_name[table] = prev_table
 
     def get_elements(self):
-        """返回dict中的所有元素"""
         return self._warm_start_dict
 
 
@@ -83,26 +82,25 @@ def patch_for_func_warm_start(func):
             vars_to_warm_start_list = args[1]
             var_name_to_prev_var_name_list = args[3]
             for i in range(len(ckpt_to_initialize_from)):
-                f = func(ckpt_to_initialize_from[i], vars_to_warm_start_list[i], var_name_to_prev_var_name_list[i],
-                         args[3:], **kwargs)
+                f = func(ckpt_to_initialize_from[i], vars_to_warm_start_list[i], args[2],
+                         var_name_to_prev_var_name_list[i], **kwargs)
             return f
         else:
             return func(*args, **kwargs)
     return wrapper
 
+
 def patch_for_estimator_train(func):
-    def warpper(*args, **kwargs):
+    def wrapper(*args, **kwargs):
         hooks = kwargs.get('hooks', [])
         if WarmStartController().get_elements():
             hooks.append(SparseRestoreHook())
         return func(*args, *kwargs)
-    return warpper
+    return wrapper
 
 
 def warm_settings_filter(warm_start_from):
-    # condition 1: 原始入参为settings
     if isinstance(warm_start_from, estimator_lib.WarmStartSettings):
-        # mx_rec 定制 warm start的写法, 定制写法的策略应该和原始warm start的过滤策略不一样
         if isinstance(warm_start_from.ckpt_to_initialize_from, (list, tuple)):
             out_setting_list = []
             logger.info("According to warm_start_settings, warm start will load from more than one checkpoint path.")
@@ -111,21 +109,16 @@ def warm_settings_filter(warm_start_from):
                 filter_setting = _warm_settings_filter(setting)
                 if filter_setting:
                     out_setting_list.append(filter_setting)
-            # 这里out setting list 必须要revcover成warm_start_settings再返回
             if out_setting_list:
                 warm_start_from = recover_warm_settings(out_setting_list)
                 return warm_start_from
-        # 原始写法
         elif isinstance(warm_start_from.ckpt_to_initialize_from, (six.string_types, six.binary_type)):
             logger.info("According to warm_start_settings, warm start will load from only one checkpoint path.")
             filter_setting = _warm_settings_filter(warm_start_from)
             if filter_setting:
                 return filter_setting
         return None
-    # condition 2: 原始入参为str
     elif isinstance(warm_start_from, (six.string_types, six.binary_type)):
-        # 这里还有一种类型是：str 这种类型相对比较简单，传递就好。但是在这里要调用以下controller来指定一下sparse的地址和表名，
-        # 这里可以单独写函数
         table_name_list = get_table_name_set_by_ckpt_path(warm_start_from)
         WarmStartController().add_element(warm_start_from, table_name_list)
         return warm_start_from
@@ -148,9 +141,7 @@ def recover_warm_settings(setting_list):
         var_name_to_prev_var_name=var_name_to_prev_var_name_list)
 
 
-# 处理定制的warm settings, 将warm_start_from进行校验
 def _build_warm_settings_list(warm_start_from):
-    # 这里可以修改一下传参，用参数解包来做，更加简洁高效
     ckpt_to_initialize_from = warm_start_from.ckpt_to_initialize_from
     vars_to_warm_start = warm_start_from.vars_to_warm_start
     var_name_to_prev_var_name = warm_start_from.var_name_to_prev_var_name
@@ -176,26 +167,16 @@ def _build_warm_settings_list(warm_start_from):
 
 
 def _warm_settings_filter(warm_start_setting):
-    # 将settings里面的稀疏摘出来
-    # 要考虑名字有对应的场景
     vars_to_warm_start = warm_start_setting.vars_to_warm_start
     var_name_to_prev_var_name = warm_start_setting.var_name_to_prev_var_name
     vars_to_warm_start_res = []
-    # table_name_set从路径里面去获取
     table_name_list = get_table_name_set_by_ckpt_path(warm_start_setting.ckpt_to_initialize_from)
-    # 稀疏支持以下格式： 1.str(支持表名) ； 2. list[str];
     if isinstance(vars_to_warm_start, str):
-        # condition 1: vars_to_warm_start : str(正则表达式、表名)
-        # 表名
         matching_tables = [table for table in table_name_list if re.match(vars_to_warm_start, table)]
-        # 如果匹配到了，那么这个warm_start_settings对于dense部分就是无效的
-        # add WarmStartController(path:table_name)
         if matching_tables:
-            #add controller to set sparse
-            WarmStartController().add_element(vars_to_warm_start.ckpt_to_initialize_from, matching_tables)
+            WarmStartController().add_element(warm_start_setting.ckpt_to_initialize_from, matching_tables)
             if vars_to_warm_start != ".*":
                 return None
-            # path: embedding_table_name
         return warm_start_setting
     elif all(isinstance(v, str) for v in vars_to_warm_start):
         sparse_vars = []
@@ -203,7 +184,7 @@ def _warm_settings_filter(warm_start_setting):
             matching_tables = [table for table in table_name_list if re.match(v, table)]
             if matching_tables:
                 sparse_vars.append(v)
-                WarmStartController().add_element(vars_to_warm_start.ckpt_to_initialize_from, matching_tables)
+                WarmStartController().add_element(warm_start_setting.ckpt_to_initialize_from, matching_tables)
         vars_to_warm_start_res = [v for v in vars_to_warm_start if v not in sparse_vars]
         if not vars_to_warm_start_res:
             warm_start_setting = None
@@ -219,14 +200,13 @@ def get_table_name_set_by_ckpt_path(warm_start_path: str) -> List[str]:
     Get the list of sparse table names saved under the path 'warm_start_path'.
     '''
     table_name_list = []
-    if tf.io.gfile.idsir(warm_start_path):
+    if tf.io.gfile.isdir(warm_start_path):
         restore_path = get_latest_ckpt(warm_start_path)
     else:
         restore_path = warm_start_path
     directory, base_name = os.path.split(restore_path)
     ckpt_name = f"sparse-{base_name}"
     sparse_path = os.path.join(directory, ckpt_name)
-    # 如果这个sparse_path不存在的话，可能是gpu路径，不能直接报错，只需要返回一个空的table_name_set就可以了
     if not tf.io.gfile.isdir(sparse_path):
         logger.info(f"under the warm start path {warm_start_path}, sparse directory {sparse_path} not exists.")
     else:
@@ -248,22 +228,19 @@ def get_latest_ckpt(warm_start_path) -> str:
     return path
 
 
-
-
-
 class SparseRestoreHook(tf.estimator.SessionRunHook):
     def __init__(self):
         logging.info("In warm start mode, SparseRestoreHook has been initialized.")
-        pass
+        self._is_warm_start = False
 
     def begin(self):
         self._saver = Saver()
         logging.info("In warm start mode, begin SparseRestoreHook.")
 
     def after_create_session(self, session, coord):
-        #这里mxrec需要适配新的restore接口,这里的策略是调用多次restore接口
-        self._warm_start_dict = WarmStartController().get_elements()
-        for path, restore_tables in self._warm_start_dict.items():
-            restore_path = get_latest_ckpt(path)
-            self._saver.restore(session, restore_path, restore_tables)
-
+        if not self._is_warm_start:
+            self._warm_start_dict = WarmStartController().get_elements()
+            for path, restore_tables in self._warm_start_dict.items():
+                restore_path = get_latest_ckpt(path)
+                self._saver.restore(session, restore_path, restore_tables)
+            self._is_warm_start = False
