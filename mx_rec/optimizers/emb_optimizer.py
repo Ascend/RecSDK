@@ -57,7 +57,7 @@ class EmbOptimizer:
         Returns: None
         """
         if key in self._optimizer:
-            raise ValueError(f"Optimizer {key} has been set for hash table {table_name}.")
+            raise ValueError(f"optimizer {key} has been set for hash table {table_name}.")
         self._optimizer[key] = state_dict
 
     def check_optimizer_instance_list(self):
@@ -73,4 +73,4 @@ class EmbOptimizer:
                 optimizer_instance = getattr(optimizer_instance, '_opt')
 
             if not isinstance(optimizer_instance, CustomizedOptimizer):
-                raise TypeError("The optimizer instance must be an instance of CustomizedOptimizer.")
+                raise TypeError("the optimizer instance must be an instance of CustomizedOptimizer.")

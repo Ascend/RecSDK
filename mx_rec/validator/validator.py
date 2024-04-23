@@ -437,7 +437,14 @@ class IntValidator(NumValidator):
     def __init__(self, name: str, value: int, min_value: int = None, max_value: int = None,
                  invalid_options: List = None, constrained_options: List = None, msg: str = ""):
         super(IntValidator, self).__init__(name, value, min_value, max_value, invalid_options, constrained_options, msg)
-        self.register_checker(lambda: isinstance(self.value, int), msg if msg else f"type of '{name}' is not int")
+
+        def check_type():
+            if isinstance(self.value, bool):
+                # bool is subclass of int
+                return False
+            return isinstance(self.value, int)
+
+        self.register_checker(check_type, msg if msg else f"type of '{name}' is not int")
 
 
 class OptionalIntValidator(IntValidator):

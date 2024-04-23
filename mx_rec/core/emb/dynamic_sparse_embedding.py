@@ -9,7 +9,7 @@ import tensorflow as tf
 from tensorflow.python.ops import array_ops
 
 from mx_rec.constants.constants import ASCEND_TABLE_NAME_MUST_CONTAIN, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, \
-    ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS
+     ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
 from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding

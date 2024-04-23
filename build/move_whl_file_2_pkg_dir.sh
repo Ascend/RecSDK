@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+#!/bin/bash
 # Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,18 +14,22 @@
 # limitations under the License.
 # ==============================================================================
 
-import time
+set -e
+warn() { echo >&2 -e "\033[1;31m[WARN ][Depend  ] $1\033[1;37m" ; }
+ARCH="$(uname -m)"
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+MxRec_DIR=$(dirname "${SCRIPT_DIR}")
+pkg_dir=mindxsdk-mxrec
+tf_version=$1
 
-from mx_rec.util.log import logger
+function move_whl_file_2_pkg_dir() {
+    mkdir -p "$SCRIPT_DIR"/"${pkg_dir}"/"${tf_version}"_whl
+    rm -rf "$SCRIPT_DIR"/"${pkg_dir}"/"${tf_version}"_whl/*
+    mv ${MxRec_DIR}/dist/mx_rec*.whl "$SCRIPT_DIR"/"${pkg_dir}"/"${tf_version}"_whl
+    cd "$SCRIPT_DIR"/"${pkg_dir}"/"${tf_version}"_whl
+    whl_file=$(ls .)
+    mv "$whl_file" "${whl_file/any/linux_${ARCH}}"
+    cd -
+}
 
-
-def performance(method_name):
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            start = time.perf_counter()
-            result = func(*args, **kwargs)
-            span = time.perf_counter() - start
-            logger.debug("%s method consume %s (s).", method_name, round(span, 6))
-            return result
-        return wrapper
-    return decorator
+move_whl_file_2_pkg_dir

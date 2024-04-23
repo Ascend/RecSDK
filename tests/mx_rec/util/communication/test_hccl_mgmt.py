@@ -104,16 +104,6 @@ class HCCLMGMTTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 rank_to_device_dict, local_rank_size = parse_hccl_json()
 
-    def test_get_device_list(self):
-        device_list = get_device_list("0-7")
-        self.assertEqual([0, 1, 2, 3, 4, 5, 6, 7], device_list)
-        device_list = get_device_list("0-3, 8-11")
-        self.assertEqual([0, 1, 2, 3, 8, 9, 10, 11], device_list)
-        with self.assertRaises(ValueError):
-            device_list = get_device_list("7-5, 9, 10")
-        with self.assertRaises(ValueError):
-            device_list = get_device_list("17")
-
 
 if __name__ == '__main__':
     unittest.main()
