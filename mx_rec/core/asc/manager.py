@@ -204,7 +204,7 @@ def initialize_emb_cache(table_info_list, threshold_list):
         option = option | USE_DYNAMIC_EXPANSION
 
     optimizer = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
-    if optimizer.derivative == 2:
+    if optimizer and optimizer.derivative == 2:
         option = option | USE_SUM_SAME_ID_GRADIENTS
 
     # [train_steps, eval_steps, save_steps] pass step information to HybridMgmt for data process loop
