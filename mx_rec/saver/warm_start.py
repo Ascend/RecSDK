@@ -80,21 +80,19 @@ def patch_for_func_warm_start(func):
     def wrapper(*args, **kwargs):
         ckpt_to_initialize_from = args[0]
         if isinstance(ckpt_to_initialize_from, (list, tuple)):
-            vars_to_warm_start_list = kwargs.get('vars_to_warm_start')
-            var_name_to_prev_var_name_list = kwargs.get('var_name_to_prev_var_name')
-            results = []
+            vars_to_warm_start_list = args[1]
+            var_name_to_prev_var_name_list = args[3]
             for i in range(len(ckpt_to_initialize_from)):
-                results.append(
-                    func(ckpt_to_initialize_from[i], vars_to_warm_start_list[i], var_name_to_prev_var_name_list[i],
-                         args[3:], **kwargs))
-            return results
+                f = func(ckpt_to_initialize_from[i], vars_to_warm_start_list[i], var_name_to_prev_var_name_list[i],
+                         args[3:], **kwargs)
+            return f
         else:
             return func(*args, **kwargs)
     return wrapper
 
 def patch_for_estimator_train(func):
     def warpper(*args, **kwargs):
-        hooks = kwargs.get('hook', [])
+        hooks = kwargs.get('hooks', [])
         if WarmStartController().get_elements():
             hooks.append(SparseRestoreHook())
         return func(*args, *kwargs)
@@ -193,11 +191,10 @@ def _warm_settings_filter(warm_start_setting):
         # 如果匹配到了，那么这个warm_start_settings对于dense部分就是无效的
         # add WarmStartController(path:table_name)
         if matching_tables:
-            warm_start_setting = None
             #add controller to set sparse
             WarmStartController().add_element(vars_to_warm_start.ckpt_to_initialize_from, matching_tables)
-        if vars_to_warm_start != ".*":
-            return None
+            if vars_to_warm_start != ".*":
+                return None
             # path: embedding_table_name
         return warm_start_setting
     elif all(isinstance(v, str) for v in vars_to_warm_start):
