@@ -45,7 +45,6 @@ namespace MxRec {
             localRankId = rankId % localRankSize;
         }
         useStatic = static_cast<unsigned int>(option) bitand HybridOption::USE_STATIC;
-        useHot = static_cast<unsigned int>(option) bitand HybridOption::USE_HOT;
         useDynamicExpansion = static_cast<unsigned int>(option) bitand HybridOption::USE_DYNAMIC_EXPANSION;
     }
 
@@ -58,7 +57,6 @@ namespace MxRec {
             localRankId = rankId % localRankSize;
         }
         useStatic = static_cast<unsigned int>(option) & HybridOption::USE_STATIC;
-        useHot = static_cast<unsigned int>(option) & HybridOption::USE_HOT;
     }
 
     RandomInfo::RandomInfo(int start, int len, float constantVal, float randomMin, float randomMax)

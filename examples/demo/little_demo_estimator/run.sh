@@ -83,7 +83,6 @@ export TF_CPP_MIN_LOG_LEVEL=3 # tensorflow日志级别,3对应FATAL
 # 设置应用类日志的全局日志级别及各模块日志级别，具体请参考昇腾官网CANN文档
 export ASCEND_GLOBAL_LOG_LEVEL=3 # “设置日志级别”章节0:debug, 1:info, 2:warning, 3:error, 4:NULL
 export MXREC_MODE="ASC"
-export USE_MPI=1
 export USE_MODE="train_and_evaluate" # 支持[train, predict, train_and_evaluate]
 
 if [ $USE_MODE = "train" ] || [ $USE_MODE = "train_and_evaluate" ];then
@@ -93,7 +92,6 @@ fi
 
 ################# 参数配置 ######################
 export USE_DYNAMIC=1            # 0：静态shape；1：动态shape
-export USE_HOT=1                # 0：关闭hot emb；1: 开启hot emb
 export USE_DYNAMIC_EXPANSION=0  # 0：关闭动态扩容；1: 开启动态扩容
 export USE_MULTI_LOOKUP=1       # 0：一表一查；1：一表多查
 export MULTI_LOOKUP_TIMES=2     # 一表多查次数：默认2，上限127（因为一表已经有一查）；仅当export USE_MULTI_LOOKUP=1时生效

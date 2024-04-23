@@ -159,7 +159,6 @@ if __name__ == '__main__':
     # get init configuration
     try:
         use_dynamic = bool(int(os.getenv("USE_DYNAMIC", 0)))
-        use_hot = bool(int(os.getenv("USE_HOT", 0)))
         use_dynamic_expansion = bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0)))
         use_multi_lookup = bool(int(os.getenv("USE_MULTI_LOOKUP", 1)))
         MODIFY_GRAPH_FLAG = bool(int(os.getenv("USE_MODIFY_GRAPH", 0)))
@@ -167,14 +166,14 @@ if __name__ == '__main__':
         args.use_one_shot = bool(int(os.getenv("USE_ONE_SHOT", 0)))
         args.enable_push_ops_test = bool(int(os.getenv("ENABLE_PUSH_OPS_TEST", 0)))
     except ValueError as err:
-        raise ValueError(f"please correctly config USE_MPI or USE_DYNAMIC or USE_HOT or USE_DYNAMIC_EXPANSION or "
-                         f"USE_MULTI_LOOKUP or USE_MODIFY_GRAPH or USE_TIMESTAMP or USE_ONE_SHOT "
-                         f"only 0 or 1 is supported.") from err
+        raise ValueError("please correctly config USE_MPI or USE_DYNAMIC or USE_DYNAMIC_EXPANSION or "
+                         "USE_MULTI_LOOKUP or USE_MODIFY_GRAPH or USE_TIMESTAMP or USE_ONE_SHOT "
+                         "only 0 or 1 is supported.") from err
 
     try:
         MULTI_LOOKUP_TIMES = int(os.getenv("MULTI_LOOKUP_TIMES", 2))
     except ValueError as err:
-        raise ValueError(f"please correctly config MULTI_LOOKUP_TIMES only int is supported.") from err
+        raise ValueError("please correctly config MULTI_LOOKUP_TIMES only int is supported.") from err
 
     if args.run_mode == 'train':
         args.train_steps = -1
@@ -188,7 +187,6 @@ if __name__ == '__main__':
     init(train_steps=args.train_steps,
          eval_steps=args.eval_steps,
          use_dynamic=use_dynamic,
-         use_hot=use_hot,
          use_dynamic_expansion=use_dynamic_expansion)
 
     args.model_dir = f"{args.model_ckpt_dir}_rank"
