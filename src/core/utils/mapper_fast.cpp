@@ -2,7 +2,7 @@
 // Created by z00576261 on 2024/4/15.
 //
 
-#include "MapperFast.h"
+#include "mapper_fast.h"
 #include <cmath>
 #include <cstring>
 #include <pthread.h>
