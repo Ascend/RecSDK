@@ -79,6 +79,16 @@ class CustomizedOptimizer:
     def __init__(self):
         self.unique_name = ""
         self.base_name = ""
+        self._slot_num = 0  # 优化器对应slot的个数
+        self._derivative = 1  # 优化器阶数，如果不做全局去重可以数学等价，则为1阶，其余2阶
+
+    @property
+    def slot_num(self):
+        return self._slot_num
+
+    @property
+    def derivative(self):
+        return self._derivative
 
     @staticmethod
     def sum_same_id_gradients(grad, var, is_expansion):
