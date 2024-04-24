@@ -82,14 +82,6 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
         self._slot_num = 2
         self._derivative = 2
 
-    @property
-    def slot_num(self):
-        return self._slot_num
-
-    @property
-    def derivative(self):
-        return self._derivative
-
     def initialize_slots(self, var, table_instance):
         val = constant_op.constant(
             self._initial_accumulator_value, dtype=var.dtype, shape=var.get_shape())

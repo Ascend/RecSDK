@@ -80,14 +80,6 @@ class CustomizedAdagrad(adagrad.AdagradOptimizer, CustomizedOptimizer):
         self._slot_num = 1
         self._derivative = 2
 
-    @property
-    def slot_num(self):
-        return self._slot_num
-
-    @property
-    def derivative(self):
-        return self._derivative
-
     def initialize_slots(self, var, table_instance):
         # Create slots for the first and second moments.
         def creat_one_single_slot(var, op_name):
