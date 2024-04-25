@@ -1162,14 +1162,14 @@ TEST_F(UniqueTest, DoUniqueShardMultipleTimes)
         unordered_set<int> uniqueIdSet;
         map<int64_t, int> expectedIdCntMap;
 
-        for (size_t i = 0; i < uniqueIn.inputIdCnt; i++) {
-            restoreIds[i] = uniqueId[index[i]];
-            expectedIdCntMap[inputId[i]]++;
-            if (uniqueIdSet.find(inputId[i]) != uniqueIdSet.end()) {
+        for (size_t j = 0; j < uniqueIn.inputIdCnt; j++) {
+            restoreIds[j] = uniqueId[index[j]];
+            expectedIdCntMap[inputId[j]]++;
+            if (uniqueIdSet.find(inputId[j]) != uniqueIdSet.end()) {
                 continue;
             } else {
-                uniqueIdSet.insert(inputId[i]);
-                expectedUniqueIdCnt[inputId[i] % conf.shardingNum]++;
+                uniqueIdSet.insert(inputId[j]);
+                expectedUniqueIdCnt[inputId[j] % conf.shardingNum]++;
             }
         }
 
@@ -1177,13 +1177,14 @@ TEST_F(UniqueTest, DoUniqueShardMultipleTimes)
 
         int uniqueSum = 0;
 
-        for (int i = 0; i < conf.shardingNum; i++) {
-            uniqueSum += uniqueIdCntInBucket[i];
+        for (int j = 0; j < conf.shardingNum; j++) {
+            uniqueSum += uniqueIdCntInBucket[j];
         }
 
         vector<int> expectedIdCnt(uniqueSum);
-        for (int i = 0; i < uniqueSum; i++) {
-            expectedIdCnt[i] = expectedIdCntMap[uniqueId[i]];
+
+        for (int j = 0; j < uniqueSum; j++) {
+            expectedIdCnt[j] = expectedIdCntMap[uniqueId[j]];
         }
         expectedIdCnt.resize(uniqueIn.inputIdCnt);
 

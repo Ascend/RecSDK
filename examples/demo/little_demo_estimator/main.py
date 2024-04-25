@@ -37,7 +37,7 @@ from utils import FeatureSpecIns
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
 
 
-def main(params, cfg):
+def main(params, config):
     mg_session_config = tf.compat.v1.ConfigProto(allow_soft_placement=True, log_device_placement=False)
     run_config = NPURunConfig(
         model_dir=params.model_dir,
@@ -64,27 +64,29 @@ def main(params, cfg):
         hooks_list = [ACGPushOpsToDatasetHook(dump_graph=True), GraphModifierHook(modify_graph=params.modify_graph)]
 
     if params.use_timestamp:
-        config_for_user_table = dict(access_threshold=cfg.access_threshold, eviction_threshold=cfg.eviction_threshold)
-        config_for_item_table = dict(access_threshold=cfg.access_threshold, eviction_threshold=cfg.eviction_threshold)
+        config_for_user_table = dict(access_threshold=config.access_threshold,
+                                     eviction_threshold=config.eviction_threshold)
+        config_for_item_table = dict(access_threshold=config.access_threshold,
+                                     eviction_threshold=config.eviction_threshold)
         access_and_evict = dict(user_table=config_for_user_table, item_table=config_for_item_table)
 
         evict_hook = EvictHook(evict_enable=True, evict_time_interval=10)
         hooks_list.append(evict_hook)
-    create_fs_params = dict(cfg=cfg, use_timestamp=params.use_timestamp,
+    create_fs_params = dict(cfg=config, use_timestamp=params.use_timestamp,
                             use_multi_lookup=use_multi_lookup, multi_lookup_times=MULTI_LOOKUP_TIMES)
     est = NPUEstimator(
-        model_fn=get_model_fn(create_fs_params, cfg, access_and_evict),
+        model_fn=get_model_fn(create_fs_params, config, access_and_evict),
         params=params,
         model_dir=params.model_dir,
         config=run_config
     )
 
     if params.run_mode == 'train':
-        est.train(input_fn=lambda: input_fn(params, create_fs_params, cfg), max_steps=params.max_steps,
+        est.train(input_fn=lambda: input_fn(params, create_fs_params, config), max_steps=params.max_steps,
                   hooks=npu_hooks_append(hooks_list))
 
     elif params.run_mode == 'train_and_evaluate':
-        train_spec = tf.estimator.TrainSpec(input_fn=lambda: input_fn(params, create_fs_params, cfg,
+        train_spec = tf.estimator.TrainSpec(input_fn=lambda: input_fn(params, create_fs_params, config,
                                                                       use_one_shot=args.use_one_shot),
                                             max_steps=params.max_steps, hooks=npu_hooks_append(hooks_list))
         # 在开启evict时，eval时不支持淘汰，所以无需加入evict hook
@@ -95,14 +97,14 @@ def main(params, cfg):
             eval_hook_list = [ACGPushOpsToDatasetHook(dump_graph=True),
                               GraphModifierHook(modify_graph=params.modify_graph)]
 
-        eval_spec = tf.estimator.EvalSpec(input_fn=lambda: input_fn(params, create_fs_params, cfg, is_eval=True,
+        eval_spec = tf.estimator.EvalSpec(input_fn=lambda: input_fn(params, create_fs_params, config, is_eval=True,
                                                                     use_one_shot=args.use_one_shot),
                                           steps=params.eval_steps, hooks=npu_hooks_append(eval_hook_list),
                                           throttle_secs=0)
         tf.estimator.train_and_evaluate(est, train_spec=train_spec, eval_spec=eval_spec)
 
     elif params.run_mode == 'predict':
-        results = est.predict(input_fn=lambda: input_fn(params, create_fs_params, cfg),
+        results = est.predict(input_fn=lambda: input_fn(params, create_fs_params, config),
                               hooks=npu_hooks_append(hooks_list=hooks_list), yield_single_examples=False)
         output_pred1 = []
         output_pred2 = []

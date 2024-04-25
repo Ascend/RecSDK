@@ -53,8 +53,8 @@ def add_timestamp_func(batch):
     return batch
 
 
-def make_batch_and_iterator(cfg, feature_spec_list, is_training, dump_graph, use_faae=False):
-    if cfg.USE_PIPELINE_TEST:
+def make_batch_and_iterator(config, feature_spec_list, is_training, dump_graph, is_use_faae=False):
+    if config.USE_PIPELINE_TEST:
         num_parallel = 1
     else:
         num_parallel = 8
@@ -62,9 +62,9 @@ def make_batch_and_iterator(cfg, feature_spec_list, is_training, dump_graph, use
     def extract_fn(data_record):
         features = {
             # Extract features using the keys set during creation
-            'label': tf.compat.v1.FixedLenFeature(shape=(cfg.line_per_sample,), dtype=tf.int64),
-            'sparse_feature': tf.compat.v1.FixedLenFeature(shape=(26 * cfg.line_per_sample,), dtype=tf.int64),
-            'dense_feature': tf.compat.v1.FixedLenFeature(shape=(13 * cfg.line_per_sample,), dtype=tf.float32),
+            'label': tf.compat.v1.FixedLenFeature(shape=(config.line_per_sample,), dtype=tf.int64),
+            'sparse_feature': tf.compat.v1.FixedLenFeature(shape=(26 * config.line_per_sample,), dtype=tf.int64),
+            'dense_feature': tf.compat.v1.FixedLenFeature(shape=(13 * config.line_per_sample,), dtype=tf.float32),
         }
         sample = tf.compat.v1.parse_single_example(data_record, features)
         return sample
@@ -77,24 +77,24 @@ def make_batch_and_iterator(cfg, feature_spec_list, is_training, dump_graph, use
         return batch
 
     if is_training:
-        files_list = glob(os.path.join(cfg.data_path, cfg.train_file_pattern) + '/*.tfrecord')
+        files_list = glob(os.path.join(config.data_path, config.train_file_pattern) + '/*.tfrecord')
     else:
-        files_list = glob(os.path.join(cfg.data_path, cfg.test_file_pattern) + '/*.tfrecord')
+        files_list = glob(os.path.join(config.data_path, config.test_file_pattern) + '/*.tfrecord')
     dataset = tf.data.TFRecordDataset(files_list, num_parallel_reads=num_parallel)
-    batch_size = cfg.batch_size // cfg.line_per_sample
+    batch_size = config.batch_size // config.line_per_sample
 
-    dataset = dataset.shard(cfg.rank_size, cfg.rank_id)
+    dataset = dataset.shard(config.rank_size, config.rank_id)
     if is_training:
         dataset = dataset.shuffle(batch_size * 1000, seed=SHUFFLE_SEED)
     if is_training:
-        dataset = dataset.repeat(cfg.train_epoch)
+        dataset = dataset.repeat(config.train_epoch)
     else:
-        dataset = dataset.repeat(cfg.test_epoch)
+        dataset = dataset.repeat(config.test_epoch)
 
     dataset = dataset.map(extract_fn, num_parallel_calls=num_parallel).batch(batch_size,
                                                                              drop_remainder=True)
     dataset = dataset.map(reshape_fn, num_parallel_calls=num_parallel)
-    if use_faae:
+    if is_use_faae:
         dataset = dataset.map(add_timestamp_func)
 
     if not MODIFY_GRAPH_FLAG:
