@@ -72,10 +72,7 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
         super(CustomizedLazyAdam, self).__init__(learning_rate=learning_rate, beta1=beta1, beta2=beta2,
                                                  epsilon=epsilon, use_locking=use_locking, name=self.unique_name)
         self._slot_num = 2
-
-    @property
-    def slot_num(self):
-        return self._slot_num
+        self._derivative = 2
 
     def initialize_slots(self, var, table_instance):
         # Create slots for the first and second moments.
@@ -114,10 +111,16 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
     def _apply_sparse_duplicate_indices(self, grad, var):
         #  _apply_sparse_duplicate_indices method include tf.unique and unsorted_segment_sum operations which may
         #  introduce dynamic shape problem, if encounter that, please de-annotation the method below.
-        return self._apply_sparse(grad, var)
+        unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad.values, var=var, is_expansion=False)
+        gradient_no_duplicate_indices = ops.IndexedSlices(
+            indices=unique_keys,
+            values=unique_local_grad,
+            dense_shape=grad.dense_shape)
+        return self._apply_sparse(gradient_no_duplicate_indices, var)
 
     def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
-        return self._resource_apply_sparse(grad, handle, indices)
+        unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad, var=handle, is_expansion=False)
+        return self._resource_apply_sparse(unique_local_grad, handle, unique_keys)
 
     def _apply_dense(self, grad, var):
         raise NotImplementedError("You are using a wrong type of variable.")

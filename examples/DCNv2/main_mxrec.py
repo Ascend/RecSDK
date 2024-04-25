@@ -336,9 +336,9 @@ if __name__ == "__main__":
         train_ops.append(dense_optimizer.apply_gradients(avg_grads))
 
         if use_dynamic_expansion:
-            from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS
+            from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_ID_OFFSET
 
-            train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS)
+            train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET)
             train_emb_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)
             # do sparse optimization by addr
             sparse_grads = sparse_optimizer.compute_gradients(loss, train_emb_list)  # local_embedding

@@ -117,6 +117,7 @@ namespace MxRec {
     namespace HybridOption {
         const unsigned int USE_STATIC = 0x001;
         const unsigned int USE_DYNAMIC_EXPANSION = 0x001 << 1;
+        const unsigned int USE_SUM_SAME_ID_GRADIENTS = 0x001 << 2;
     };
 
     string GetChipName(int devID);
@@ -228,6 +229,7 @@ namespace MxRec {
         bool isDDR { false };
         bool isSSDEnabled { false };
         bool useDynamicExpansion {false};
+        bool useSumSameIdGradients {true};
         std::vector<int> ctrlSteps; // 包含三个步数: train_steps, eval_steps, save_steps
     };
 

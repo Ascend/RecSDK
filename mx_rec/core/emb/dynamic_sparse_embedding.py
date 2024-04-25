@@ -6,10 +6,9 @@ import abc
 from typing import Optional, Union, Callable
 
 import tensorflow as tf
-from tensorflow.python.ops import array_ops
 
 from mx_rec.constants.constants import ASCEND_TABLE_NAME_MUST_CONTAIN, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, \
-     ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS
+     ASCEND_SPARSE_LOOKUP_ID_OFFSET
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
 from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
@@ -51,9 +50,7 @@ class DynamicSparseEmbedding(BaseSparseEmbedding):
 
     def _get_update_grad(self, local_grad: tf.Tensor, result: dict,
                          table: Union[tf.compat.v1.Variable, tf.Tensor]) -> Union[tf.IndexedSlices, tf.Tensor]:
-        return tf.compat.v1.unsorted_segment_sum(local_grad,
-                                                 result.get("restore_vector_second"),
-                                                 array_ops.shape(result.get("unique_keys"))[0])
+        return local_grad
 
     def _get_local_embeddings(self, table: Union[tf.compat.v1.Variable, tf.Tensor], result: dict,
                               feature_spec: FeatureSpec, **kwargs) -> tf.Tensor:
@@ -72,7 +69,7 @@ class DynamicSparseEmbedding(BaseSparseEmbedding):
             return sparse_forward_fn(local_embeddings)
 
         tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
-        tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS, result.get("unique_keys"))
+        tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, result.get("id_offsets"))
         return sparse_forward_fn(local_embeddings)
 
 

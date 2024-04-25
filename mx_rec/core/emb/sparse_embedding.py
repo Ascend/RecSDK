@@ -53,11 +53,8 @@ class SparseEmbedding(BaseSparseEmbedding):
 
     def _get_update_grad(self, local_grad: tf.Tensor, result: dict,
                          table: Union[tf.compat.v1.Variable, tf.Tensor]) -> Union[tf.IndexedSlices, tf.Tensor]:
-        unique_local_grad = tf.compat.v1.unsorted_segment_sum(local_grad,
-                                                              result.get("restore_vector_second"),
-                                                              array_ops.shape(result.get("unique_keys"))[0])
-        return ops.IndexedSlices(values=unique_local_grad,
-                                 indices=result.get("unique_keys"),
+        return ops.IndexedSlices(values=local_grad,
+                                 indices=result.get("id_offsets"),
                                  dense_shape=tf.shape(table))
 
     def _get_local_embeddings(self, table: Union[tf.compat.v1.Variable, tf.Tensor], result: dict,
