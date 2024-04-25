@@ -57,8 +57,8 @@ def add_timestamp_func(batch):
     return batch
 
 
-def make_batch_and_iterator(cfg, feature_spec_list, is_training, dump_graph, use_faae=False):
-    if cfg.USE_PIPELINE_TEST:
+def make_batch_and_iterator(config, feature_spec_list, is_training, dump_graph, is_use_faae=False):
+    if config.USE_PIPELINE_TEST:
         num_parallel = 1
     else:
         num_parallel = 8
@@ -66,9 +66,9 @@ def make_batch_and_iterator(cfg, feature_spec_list, is_training, dump_graph, use
     def extract_fn(data_record):
         features = {
             # Extract features using the keys set during creation
-            'label': tf.compat.v1.FixedLenFeature(shape=(cfg.line_per_sample,), dtype=tf.int64),
-            'sparse_feature': tf.compat.v1.FixedLenFeature(shape=(26 * cfg.line_per_sample,), dtype=tf.int64),
-            'dense_feature': tf.compat.v1.FixedLenFeature(shape=(13 * cfg.line_per_sample,), dtype=tf.float32),
+            'label': tf.compat.v1.FixedLenFeature(shape=(config.line_per_sample,), dtype=tf.int64),
+            'sparse_feature': tf.compat.v1.FixedLenFeature(shape=(26 * config.line_per_sample,), dtype=tf.int64),
+            'dense_feature': tf.compat.v1.FixedLenFeature(shape=(13 * config.line_per_sample,), dtype=tf.float32),
         }
         sample = tf.compat.v1.parse_single_example(data_record, features)
         return sample
@@ -81,24 +81,23 @@ def make_batch_and_iterator(cfg, feature_spec_list, is_training, dump_graph, use
         return batch
 
     if is_training:
-        files_list = glob(os.path.join(cfg.data_path, cfg.train_file_pattern) + '/*.tfrecord')
+        files_list = glob(os.path.join(config.data_path, config.train_file_pattern) + '/*.tfrecord')
     else:
-        files_list = glob(os.path.join(cfg.data_path, cfg.test_file_pattern) + '/*.tfrecord')
+        files_list = glob(os.path.join(config.data_path, config.test_file_pattern) + '/*.tfrecord')
     dataset = tf.data.TFRecordDataset(files_list, num_parallel_reads=num_parallel)
-    batch_size = cfg.batch_size // cfg.line_per_sample
+    batch_size = config.batch_size // config.line_per_sample
 
-    dataset = dataset.shard(cfg.rank_size, cfg.rank_id)
+    dataset = dataset.shard(config.rank_size, config.rank_id)
     if is_training:
         dataset = dataset.shuffle(batch_size * 1000, seed=shuffle_seed)
     if is_training:
-        dataset = dataset.repeat(cfg.train_epoch)
+        dataset = dataset.repeat(config.train_epoch)
     else:
-        dataset = dataset.repeat(cfg.test_epoch)
-    # dataset = dataset.repeat(cfg.num_epochs)
+        dataset = dataset.repeat(config.test_epoch)
     dataset = dataset.map(extract_fn, num_parallel_calls=num_parallel).batch(batch_size,
                                                                              drop_remainder=True)
     dataset = dataset.map(reshape_fn, num_parallel_calls=num_parallel)
-    if use_faae:
+    if is_use_faae:
         dataset = dataset.map(add_timestamp_func)
 
     if not MODIFY_GRAPH_FLAG:
@@ -161,11 +160,11 @@ def evaluate():
             eval_start = time.time()
             eval_loss, pred, label = sess.run([eval_model["loss"], eval_model["pred"], eval_label])
             eval_cost = time.time() - eval_start
-            qps = (1 / eval_cost) * rank_size * cfg.batch_size
+            qps_eval = (1 / eval_cost) * rank_size * cfg.batch_size
             log_loss_list += list(eval_loss.reshape(-1))
             pred_list += list(pred.reshape(-1))
             label_list += list(label.reshape(-1))
-            print(f"eval current_steps: {eval_current_steps}, qps: {qps}")
+            print(f"eval current_steps: {eval_current_steps}, qps: {qps_eval}")
             if eval_current_steps == eval_steps:
                 finished = True
         except tf.errors.OutOfRangeError:
@@ -217,7 +216,6 @@ def evaluate_fix(step):
     os.mknod(f"flag_{rank_id}.txt")
     while True:
         file_exists_list = [os.path.exists(f"flag_{i}.txt") for i in range(rank_size)]
-        # print(file_exists_list)
         if sum(file_exists_list) == rank_size:
             print("All saved!!!!!!!!!!")
             break
@@ -424,7 +422,6 @@ if __name__ == "__main__":
         cost_time = end_time - start_time
         qps = (1 / cost_time) * rank_size * cfg.batch_size * iteration_per_loop
         cost_sum += cost_time
-        # qps_sum += qps
         logger.info(f"step: {i * iteration_per_loop}; training loss: {loss}")
         logger.info(f"step: {i * iteration_per_loop}; grad: {grad}")
         logger.info(f"step: {i * iteration_per_loop}; lr: {lr}")
