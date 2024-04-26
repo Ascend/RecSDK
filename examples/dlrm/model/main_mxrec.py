@@ -289,9 +289,9 @@ if __name__ == "__main__":
         feature_spec_list_eval = create_feature_spec_list(use_timestamp=False)
 
     train_batch, train_iterator = make_batch_and_iterator(cfg, feature_spec_list_train, is_training=True,
-                                                          dump_graph=True, use_faae=use_faae)
+                                                          dump_graph=True, is_use_faae=use_faae)
     eval_batch, eval_iterator = make_batch_and_iterator(cfg, feature_spec_list_eval, is_training=False,
-                                                        dump_graph=False, use_faae=use_faae)
+                                                        dump_graph=False, is_use_faae=use_faae)
     logger.info(f"train_batch: {train_batch}")
 
     if use_faae:
