@@ -26,15 +26,18 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.training.optimizer import _TensorProcessor
 
+from mx_rec.constants.constants import ASCAnchorAttr
 from mx_rec.util.tf_version_adapter import npu_ops
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.log import logger
+from mx_rec.util.communication.hccl_ops import get_rank_size
 
 
-def get_restore_vector_second(table_name: str) -> tf.Tensor:
+def get_restore_vector_second(table_name: str, max_lookup_vec_size: int) -> tf.Tensor:
     """
     Get restore vector which is calculated after the second all2all
     :param table_name: embedding table_name
+    :param max_lookup_vec_size: static shape
     :return: the restore vector calculated after the second all2all
     """
     channel_id = 0
@@ -43,15 +46,16 @@ def get_restore_vector_second(table_name: str) -> tf.Tensor:
     with tf.compat.v1.variable_scope(table_name, reuse=tf.compat.v1.AUTO_REUSE):
         restore_vector_second = npu_ops.gen_npu_ops.get_next(
             output_types=[tf.int32],
-            output_shapes=[[None]],
+            output_shapes=[[max_lookup_vec_size]],
             channel_name=f'{table_name}_restore_second_{channel_id}')[0]
     return restore_vector_second
 
 
-def get_unique_keys(table_name: str, is_expansion: bool) -> tf.Tensor:
+def get_unique_keys(table_name: str, max_lookup_vec_size: int, is_expansion: bool) -> tf.Tensor:
     """
     Get the global unique keys which is calculated after the second all2all
     :param table_name: embedding table_name
+    :param max_lookup_vec_size: static shape
     :param is_expansion: use dynamic expansion
     :return: the global unique keys calculated after the second all2all
     """
@@ -61,13 +65,13 @@ def get_unique_keys(table_name: str, is_expansion: bool) -> tf.Tensor:
         if is_expansion:
             unique_keys = npu_ops.gen_npu_ops.get_next(
                 output_types=[tf.int64],
-                output_shapes=[[None]],
+                output_shapes=[[max_lookup_vec_size]],
                 channel_name=f'{table_name}_uniquekeys_{channel_id}')[0]
             return unique_keys
 
         unique_keys = npu_ops.gen_npu_ops.get_next(
             output_types=[tf.int32],
-            output_shapes=[[None]],
+            output_shapes=[[max_lookup_vec_size]],
             channel_name=f'{table_name}_uniquekeys_{channel_id}')[0]
         return unique_keys
 
@@ -95,14 +99,23 @@ class CustomizedOptimizer:
         if isinstance(var, ops.Tensor):
             # 扩容模式从scope获取表名,偏移是-2
             table_name = var.op.name.split('/')[-2]
+            table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance_by_name(table_name)
         else:
             table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
             table_name = table_instance.table_name
-        with tf.compat.v1.variable_scope("restore_vector_second"):
-            restore_vector_second = get_restore_vector_second(table_name)
 
-        with tf.compat.v1.variable_scope("unique_keys"):
-            unique_keys = get_unique_keys(table_name, is_expansion)
+        max_lookup_vec_size = None
+        use_static = ConfigInitializer.get_instance().use_static
+        if use_static:
+            send_count = table_instance.send_count
+            rank_size = get_rank_size()
+            max_lookup_vec_size = send_count * rank_size if send_count > 0 else None
+
+        with tf.compat.v1.variable_scope(str(ASCAnchorAttr.RESTORE_VECTOR_SECOND)):
+            restore_vector_second = get_restore_vector_second(table_name, max_lookup_vec_size)
+
+        with tf.compat.v1.variable_scope(str(ASCAnchorAttr.UNIQUE_KEYS)):
+            unique_keys = get_unique_keys(table_name, max_lookup_vec_size, is_expansion)
 
         unique_local_grad = tf.compat.v1.unsorted_segment_sum(grad,
                                                               restore_vector_second,
