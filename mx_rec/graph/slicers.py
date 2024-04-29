@@ -70,6 +70,13 @@ class NoGradSubgraphSlicer(metaclass=abc.ABCMeta):
         pass
 
     def _slice_ops(self, sliceable_ops: Set[Operation], is_training: bool) -> None:
+        """Slice the minimum dependency graph of given operation set.
+
+        Args:
+            sliceable_ops (Set[Operation]): The operation set that can be sliced.
+            is_training (bool): Whether the slicing is for training graph or not.
+        """
+
         sliced_ops = self._find_min_dep_ops(sliceable_ops)
         in_op_to_edge_ops, out_op_to_edge_ops = self._find_subgraph_in_and_out(sliced_ops)
 
@@ -89,6 +96,18 @@ class NoGradSubgraphSlicer(metaclass=abc.ABCMeta):
         in_op_to_edge_ops: Dict[Operation, Set[Operation]],
         out_op_to_edge_ops: Dict[Operation, Set[Operation]],
     ) -> DatasetV1Adapter:
+        """Make a new dataset which clones the sliced subgraph by mapfunc.
+
+        Args:
+            old_dataset: The old dataset that needs to be mapped.
+            sliced_ops: The operation set that has been sliced.
+            in_op_to_edge_ops: The input relationship of sliced subgraph.
+            out_op_to_edge_ops: The output relationship of sliced subgraph.
+
+        Returns:
+            DatasetV1Adapter: The new dataset that has cloned the sliced subgraph.
+        """
+
         def slice_map_func(*batch):  # pragma: no cover
             logger.debug("The layout of old batch: %s.", batch)
 
@@ -116,6 +135,16 @@ class NoGradSubgraphSlicer(metaclass=abc.ABCMeta):
         self,
         sub_graph_ops: Set[Operation],
     ) -> Tuple[Dict[Operation, Set[Operation]], Dict[Operation, Set[Operation]]]:
+        """Find the input and output relationship of sliced subgraph.
+
+        Args:
+            sub_graph_ops: The operation set that has been sliced.
+
+        Returns:
+            in_op_to_edge_ops: The input relationship of sliced subgraph.
+            out_op_to_edge_ops: The output relationship of sliced subgraph.
+        """
+
         in_op_to_edge_ops = dict()
         out_op_to_edge_ops = dict()
 
@@ -128,6 +157,15 @@ class NoGradSubgraphSlicer(metaclass=abc.ABCMeta):
         return in_op_to_edge_ops, out_op_to_edge_ops
 
     def _find_old_get_next(self, sliceable_ops: Set[Operation]) -> Operation:
+        """Find the old 'IteratorGetNext' operation.
+
+        Args:
+            sliceable_ops: The operation set that can be sliced.
+
+        Returns:
+            old_get_next: The old 'IteratorGetNext' operation.
+        """
+
         old_get_next = self._upward_bfs_op(sliceable_ops, AnchorIteratorOp.ITERATOR_GET_NEXT.value)
 
         tf.compat.v1.add_to_collection(DeprecatedOp.DEPRECATED_ITERATOR_GET_NEXT, old_get_next)
@@ -136,6 +174,22 @@ class NoGradSubgraphSlicer(metaclass=abc.ABCMeta):
         return old_get_next
 
     def _find_old_dataset(self, get_next: Operation, is_training: bool) -> DatasetV1Adapter:
+        """Find the old dataset that needs to be mapped.
+
+        Due to the different iterator types, the search method is different.
+        1. If the iterator type is 'MakeIterator', this func will exec upward bfs search through get_next.
+        2. If the iterator type is 'OneShotIterator', this func will fetch all operation in 'self._full_graph', then
+        filter out the 'PrefetchDataset' operation. This diff is caused by the isolation of 'OneShotIterator' and the
+        'PrefetchDataset'.
+
+        Args:
+            get_next: The old 'IteratorGetNext' operation.
+            is_training: Whether the slicing is for training graph or not.
+
+        Returns:
+            old_dataset: The old dataset that needs to be mapped.
+        """
+
         tgt_trans_dataset = None
         try:
             tgt_trans_dataset = self._find_trans_dataset(get_next)
@@ -173,6 +227,15 @@ class NoGradSubgraphSlicer(metaclass=abc.ABCMeta):
         return old_dataset
 
     def _find_trans_dataset(self, get_next: Operation) -> Operation:
+        """Find the transformation dataset through 'get_next'.
+
+        Args:
+            get_next: The old 'IteratorGetNext' operation.
+
+        Returns:
+            trans_dataset: The target transformation dataset.
+        """
+
         if get_next.type != AnchorIteratorOp.ITERATOR_GET_NEXT.value:
             raise TypeError(f"operation '{get_next}' must be one instance of 'IteratorGetNext'.")
 
