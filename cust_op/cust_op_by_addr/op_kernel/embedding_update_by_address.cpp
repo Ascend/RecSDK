@@ -16,13 +16,11 @@ See the License for the specific language governing permissions and
 #include "kernel_operator.h"
 using namespace AscendC;
 
+namespace KernelOps {
 constexpr int32_t SIZE_OF_HALF = 2;
 constexpr int32_t SIZE_OF_FLOAT_OR_INT = 4;
 
 template <typename T>
-
-namespace AscendKernel {
-
 class KernelEimtable_update
 {
 public:
@@ -201,7 +199,7 @@ extern "C" __global__ __aicore__ void embedding_update_by_address(GM_ADDR addres
   {
   case 0:
   {
-    AscendKernel::KernelEimtable_update<int32_t> op;
+    KernelOps::KernelEimtable_update<int32_t> op;
     op.Init_param(tiling);
     op.Init(address, embedding, y);
     op.Process();
@@ -209,7 +207,7 @@ extern "C" __global__ __aicore__ void embedding_update_by_address(GM_ADDR addres
   break;
   case 2:
   {
-    AscendKernel::KernelEimtable_update<half> op;
+    KernelOps::KernelEimtable_update<half> op;
     op.Init_param(tiling);
     op.Init(address, embedding, y);
     op.Process();
@@ -217,7 +215,7 @@ extern "C" __global__ __aicore__ void embedding_update_by_address(GM_ADDR addres
   break;
   default:
   {
-    AscendKernel::KernelEimtable_update<float> op;
+    KernelOps::KernelEimtable_update<float> op;
     op.Init_param(tiling);
     op.Init(address, embedding, y);
     op.Process();
