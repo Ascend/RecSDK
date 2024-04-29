@@ -73,7 +73,7 @@ namespace optiling
             return ge::GRAPH_FAILED;
         }
 
-        int64_t inputShape = static_cast<int64_t>(inputTensor->GetShapeSize());
+        int32_t inputShape = static_cast<int32_t>(inputTensor->GetShapeSize());
         if (CheckPositiveInt(inputShape, "inputShape") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -84,7 +84,7 @@ namespace optiling
         }
 
         const int32_t inputShapeTmp = (inputShape > 0) ? inputShape : 1;
-        int64_t inputDim = static_cast<int64_t>(inputTensor1->GetShapeSize() / inputShapeTmp);
+        int32_t inputDim = static_cast<int32_t>(inputTensor1->GetShapeSize()) / inputShapeTmp;
         if (CheckPositiveInt(inputDim, "inputDim") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -122,8 +122,9 @@ namespace optiling
         int32_t occupyAddressBytesNum =
                 sizeof(int64_t) + typeSize * inputDimAligned * PING_PONG_NUM * 2;
         // 一轮计算中最多计算多少个addr，由于地址也要搬到ub，所以需要对齐32
-        int32_t addrPerLoop = static_cast<int32_t>((UB_LIMIT /
-                occupyAddressBytesNum) & (~3U)); // & (~3U)，保证地址数是4的倍数
+        int32_t addrPerLoop = static_cast<int32_t>(
+                UB_LIMIT / static_cast<uint32_t>(occupyAddressBytesNum) & (~3U)); // & (~3U)，保证地址数是4的倍数
+
         if (CheckPositiveInt(addrPerLoop, "addrPerLoop") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -132,8 +133,8 @@ namespace optiling
 
         tiling.set_update_type(updateType);
         tiling.set_embedding_type(embeddingType);
-        tiling.set_update_dim(inputDim);
-        tiling.set_addr_nums(inputShape);
+        tiling.set_update_dim(static_cast<int32_t>(inputDim));
+        tiling.set_addr_nums(static_cast<int32_t>(inputShape));
         tiling.set_addr_per_loop(addrPerLoop);
         tiling.set_type_size(typeSize);
         tiling.set_input_dim_aligned(inputDimAligned);
