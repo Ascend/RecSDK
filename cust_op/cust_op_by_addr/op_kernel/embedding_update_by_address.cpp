@@ -20,6 +20,9 @@ constexpr int32_t SIZE_OF_HALF = 2;
 constexpr int32_t SIZE_OF_FLOAT_OR_INT = 4;
 
 template <typename T>
+
+namespace AscendKernel {
+
 class KernelEimtable_update
 {
 public:
@@ -185,6 +188,7 @@ private:
   GlobalTensor<T> srcDataBufferGm, dstDataGm, outDataGm;
   GlobalTensor<int64_t> srcAddrGlobal;
 };
+}
 
 extern "C" __global__ __aicore__ void embedding_update_by_address(GM_ADDR address, GM_ADDR embedding, GM_ADDR y,
                                                                   GM_ADDR usrWorkspace, GM_ADDR tiling)
@@ -197,7 +201,7 @@ extern "C" __global__ __aicore__ void embedding_update_by_address(GM_ADDR addres
   {
   case 0:
   {
-    KernelEimtable_update<int32_t> op;
+    AscendKernel::KernelEimtable_update<int32_t> op;
     op.Init_param(tiling);
     op.Init(address, embedding, y);
     op.Process();
@@ -205,7 +209,7 @@ extern "C" __global__ __aicore__ void embedding_update_by_address(GM_ADDR addres
   break;
   case 2:
   {
-    KernelEimtable_update<half> op;
+    AscendKernel::KernelEimtable_update<half> op;
     op.Init_param(tiling);
     op.Init(address, embedding, y);
     op.Process();
@@ -213,7 +217,7 @@ extern "C" __global__ __aicore__ void embedding_update_by_address(GM_ADDR addres
   break;
   default:
   {
-    KernelEimtable_update<float> op;
+    AscendKernel::KernelEimtable_update<float> op;
     op.Init_param(tiling);
     op.Init(address, embedding, y);
     op.Process();

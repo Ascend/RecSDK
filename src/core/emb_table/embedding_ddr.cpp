@@ -24,17 +24,6 @@ See the License for the specific language governing permissions and
 
 using namespace MxRec;
 
-constexpr int ELEMENT_NUM = 4;
-constexpr int CURRENT_UPDATE_IDX = 0;
-constexpr int HOST_VOCAB_SIZE_IDX = 1;
-constexpr int DEV_VOCAB_SIZE_IDX = 2;
-constexpr int MAX_OFFSET_IDX = 3;
-
-constexpr int EMB_INFO_ELEMENT_NUM = 3;
-constexpr int EMB_INFO_EXT_SIZE_IDX = 0;
-constexpr int EMB_INFO_DEV_VOCAB_SIZE_IDX = 1;
-constexpr int EMB_INFO_HOST_VOCAB_SIZE_IDX = 2;
-
 EmbeddingDDR::EmbeddingDDR()
 {
 }

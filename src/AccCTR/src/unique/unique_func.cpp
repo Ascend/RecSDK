@@ -119,8 +119,9 @@ void Dedup::NewParameter()
         // Time to check the proper size of sharded tables for performance
         // sake.
         uint64_t shardedTableSize = 0;
-        if (std::numeric_limits<uint64_t>::max() / static_cast<uint64_t>(n) / static_cast<uint64_t>(groupCount_)
-        < newBucketCountPowerOf2) {
+        if (std::numeric_limits<uint64_t>::max() / static_cast<uint64_t>(n) /
+        static_cast<uint64_t>(groupCount_) <
+        newBucketCountPowerOf2) {
             shardedTableSize = static_cast<uint64_t>(std::numeric_limits<int>::max());
         } else {
             shardedTableSize = newBucketCountPowerOf2 * n * static_cast<uint64_t>(groupCount_);
