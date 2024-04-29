@@ -31,9 +31,9 @@ from mx_rec.constants.constants import (
     ASCAnchorAttr,
 )
 from mx_rec.core.asc import FeatureSpec
-from mx_rec.graph.graph_typing import AnchorRecord
 from mx_rec.graph.modifier import (
     GraphModifierHook,
+    AnchorRecord,
     find_make_iterator_op,
     find_target_dataset_op,
     find_target_instance_dataset,
