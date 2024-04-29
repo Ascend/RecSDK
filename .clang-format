@@ -1,13 +1,39 @@
+# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+---
+# 详细配置说明 https://clang.llvm.org/docs/ClangFormatStyleOptions.html
+---
 Language: Cpp
 BasedOnStyle: Google
+# public等标识符不缩进
 AccessModifierOffset: -4
+# 限制行宽120字符
 ColumnLimit: 120
+# 4空格缩进
 IndentWidth: 4
+# 不使用tab
 UseTab: Never
+# 二元运算符换行时对齐
 AlignOperands: Align
+# 参数换行时对齐
 AlignAfterOpenBracket: Align
+# 行末注释对齐
 AlignTrailingComments: true
 DerivePointerAlignment: false
+# 引用和指针左对齐
 PointerAlignment: Left
 AllowAllParametersOfDeclarationOnNextLine: false
 AllowAllArgumentsOnNextLine: false
@@ -18,8 +44,10 @@ AllowShortFunctionsOnASingleLine: Empty
 AllowShortIfStatementsOnASingleLine: false
 AllowShortLoopsOnASingleLine: false
 AllowShortLambdasOnASingleLine: Inline
+# Break after return type automatically
 AlwaysBreakAfterDefinitionReturnType: None
 AlwaysBreakBeforeMultilineStrings: false
+# 允许参数部分换行
 BinPackArguments: true
 BinPackParameters: true
 BreakBeforeBraces: Custom
@@ -27,6 +55,7 @@ BraceWrapping:
   AfterClass: false
   AfterControlStatement: false
   AfterEnum: false
+  # 只有函数括号另起一行
   AfterFunction: true
   AfterNamespace: false
   AfterStruct: false
@@ -35,16 +64,22 @@ BraceWrapping:
   BeforeCatch: false
   BeforeElse: false
   IndentBraces: false
+# 二元运算符换行时 运算符在第一行末尾
 BreakBeforeBinaryOperators: None
+# 三元运算符换行时 运算符在下一行
 BreakBeforeTernaryOperators: true
+# 构造函数初始化列表冒号在换行后 逗号在换行前
 BreakConstructorInitializers: BeforeColon
 BreakStringLiterals: true
 CompactNamespaces: false
+# 初始化要么一行 要么每个一行
 PackConstructorInitializers: CurrentLine
 ConstructorInitializerIndentWidth: 4
 ContinuationIndentWidth: 4
+# 使用cpp11统一初始化风格
 Cpp11BracedListStyle: true
 DisableFormat: false
 FixNamespaceComments: true
+# 返回值类型声明后换行时不缩进
 IndentWrappedFunctionNames: false
 Standard: Latest
