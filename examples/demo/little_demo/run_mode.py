@@ -44,7 +44,9 @@ class RunMode:
             eval_model, train_iterator, eval_iterator, max_train_steps: int, infer_steps: int, params: dict):
         self.is_modify_graph = is_modify_graph
         self.is_faae = is_faae
-        self.session = tf.compat.v1.Session(config=sess_config(dump_data=False))
+        self.use_deterministic = params.get("use_deterministic")
+        self.session = tf.compat.v1.Session(
+            config=sess_config(dump_data=False, use_deterministic=self.use_deterministic))
         self.train_model = train_model
         self.train_iterator = train_iterator
         self.eval_model = eval_model
@@ -138,7 +140,9 @@ class RunMode:
         for i in range(start_step, start_step + self.max_train_steps):
             logger.info("################    training at step %d    ################", i)
             try:
-                self.session.run([self.train_ops, self.train_model.loss_list])
+                _, loss = self.session.run([self.train_ops, self.train_model.loss_list])
+                if self.use_deterministic:
+                    logger.info(f"train_loss: {loss[0]}")
             except tf.errors.OutOfRangeError:
                 logger.info("Encounter the end of Sequence for training.")
                 break
