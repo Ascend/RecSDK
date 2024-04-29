@@ -1019,8 +1019,8 @@ void KeyProcess::UpdateHotMap(absl::flat_hash_map<emb_key_t, int>& keyCountMapBy
 }
 
 /*
- * 将本地（rank）batch要发送的key数据量进行Allgather通信，获取所有（不同rank相同thread
- * id的）线程间的通信量矩阵 scAll返回：所有线程间的通信量矩阵（按行平铺的一维向量）
+ * 将本地（rank）batch要发送的key数据量进行Allgather通信，获取所有（不同rank相同thread id的）线程间的通信量矩阵
+ * scAll返回：所有线程间的通信量矩阵（按行平铺的一维向量）
  */
 vector<int> KeyProcess::GetScAll(const vector<int>& keyScLocal, int commId, const unique_ptr<EmbBatchT>& batch)
 {
