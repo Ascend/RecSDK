@@ -26,8 +26,8 @@ from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
 from mx_rec.core.emb.emb_factory import HBMDynamicSparseEmbeddingFactory, HBMSparseEmbeddingFactory, \
     ExternalStorageSparseEmbeddingFactory
-from mx_rec.graph.utils import tag_orphan_ids
 from mx_rec.constants.constants import MAX_INT32, All2allGradientsOp, MAX_VOCABULARY_SIZE, MAX_DEVICE_VOCABULARY_SIZE
+from mx_rec.graph.utils import mark_orphan_lookup_key
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import ClassValidator, StringValidator, SSDFeatureValidator, \
     para_checker_decorator, IntValidator, NumValidator, OptionValidator, OptionalIntValidator, \
@@ -172,7 +172,7 @@ def sparse_lookup(hashtable: BaseSparseEmbedding,
 
     # 对于向上找没有IteratorGetNext的孤儿ids需要标记，以便于后续ACGPushOpsToDataset工作
     if isinstance(ids, tf.Tensor):
-        ids = tag_orphan_ids(ids)
+        ids = mark_orphan_lookup_key(ids)
 
     with tf.compat.v1.variable_scope("{0}//{1}".format(hashtable.table_name, kwargs.get("name"))):
         if isinstance(ids, FeatureSpec):

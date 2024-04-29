@@ -212,16 +212,3 @@ class TFDevice(Enum):
 class Flag(Enum):
     TRUE = "1"
     FALSE = "0"
-
-
-class AnchorDatasetOp(Enum):
-    MODEL_DATASET = "ModelDataset"
-    OPTIMIZE_DATASET = "OptimizeDataset"
-    PREFETCH_DATASET = "PrefetchDataset"
-
-
-class AnchorIteratorOp(Enum):
-    ITERATOR_GET_NEXT = "IteratorGetNext"
-    MAKE_ITERATOR = "MakeIterator"
-    ONE_SHOT_ITERATOR = "OneShotIterator"
-
