@@ -207,6 +207,7 @@ class MockOptimizer:
 
     def __init__(self):
         self.slot_num = 2
+        self.derivative = 2
 
     def initialize_slots(self, var, table_instance):
         # Create slots for the first and second moments.

@@ -16,13 +16,19 @@ See the License for the specific language governing permissions and
 #include "embedding_update_by_address_tiling.h"
 #include "register/op_def_registry.h"
 
+namespace {
+    constexpr int32_t EMBEDDING_TYPE_FLOAT16 = 2;
+    constexpr int32_t EMBEDDING_TYPE_INT32 = 0;
+    constexpr int32_t EMBEDDING_TYPE_FLOAT32 = 1;
+}
+
 namespace optiling
 {
     constexpr int32_t BLOCK_DIM = 48;  // 910b一张卡48个vector核
     constexpr int32_t SIZE_OF_HALF = 2;
     constexpr int32_t SIZE_OF_FLOAT_OR_INT = 4;
     constexpr int32_t MIN_BLOCK_SIZE = 32; // ub空间的数据都要按照32对齐
-    constexpr int32_t UB_LIMIT = 175 * 1024;
+    constexpr uint32_t UB_LIMIT = 175 * 1024;
     constexpr int32_t USR_SIZE = 256;
     constexpr int32_t SYS_WORKSPACE_SIZE = 16 * 1024 * 1024;
     constexpr int32_t PING_PONG_NUM = 1;
@@ -67,7 +73,7 @@ namespace optiling
             return ge::GRAPH_FAILED;
         }
 
-        int32_t inputShape = inputTensor->GetShapeSize();
+        int64_t inputShape = static_cast<int64_t>(inputTensor->GetShapeSize());
         if (CheckPositiveInt(inputShape, "inputShape") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -78,7 +84,7 @@ namespace optiling
         }
 
         const int32_t inputShapeTmp = (inputShape > 0) ? inputShape : 1;
-        int32_t inputDim = inputTensor1->GetShapeSize() / inputShapeTmp;
+        int64_t inputDim = static_cast<int64_t>(inputTensor1->GetShapeSize() / inputShapeTmp);
         if (CheckPositiveInt(inputDim, "inputDim") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -97,15 +103,15 @@ namespace optiling
         ge::DataType inputDatatype = inputTensor1->GetDataType();
         int32_t embeddingType;
         if (inputDatatype == ge::DT_FLOAT16) {
-            embeddingType = 2;
+            embeddingType = EMBEDDING_TYPE_FLOAT16;
         } else if (inputDatatype == ge::DT_INT32) {
-            embeddingType = 0;
+            embeddingType = EMBEDDING_TYPE_INT32;
         } else {
-            embeddingType = 1;
+            embeddingType = EMBEDDING_TYPE_FLOAT32;
         }
 
         int32_t typeSize = SIZE_OF_FLOAT_OR_INT;
-        if (embeddingType == 2) {
+        if (embeddingType == EMBEDDING_TYPE_FLOAT16) {
             typeSize = SIZE_OF_HALF;
         }
         int32_t alignNum = MIN_BLOCK_SIZE / typeSize;
@@ -116,7 +122,8 @@ namespace optiling
         int32_t occupyAddressBytesNum =
                 sizeof(int64_t) + typeSize * inputDimAligned * PING_PONG_NUM * 2;
         // 一轮计算中最多计算多少个addr，由于地址也要搬到ub，所以需要对齐32
-        int32_t addrPerLoop = (UB_LIMIT / occupyAddressBytesNum) & (~3); // & (~3)，保证地址数是4的倍数
+        int32_t addrPerLoop = static_cast<int32_t>((UB_LIMIT /
+                occupyAddressBytesNum) & (~3U)); // & (~3U)，保证地址数是4的倍数
         if (CheckPositiveInt(addrPerLoop, "addrPerLoop") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }

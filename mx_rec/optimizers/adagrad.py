@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from collections import defaultdict
 
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import adagrad, training_ops
@@ -76,6 +77,8 @@ class CustomizedAdagrad(adagrad.AdagradOptimizer, CustomizedOptimizer):
                                                 initial_accumulator_value=initial_accumulator_value,
                                                 use_locking=use_locking,
                                                 name=self.unique_name)
+        self._slot_num = 1
+        self._derivative = 2
 
     def initialize_slots(self, var, table_instance):
         # Create slots for the first and second moments.
@@ -118,6 +121,20 @@ class CustomizedAdagrad(adagrad.AdagradOptimizer, CustomizedOptimizer):
             acc_state_name = self._name + "/" + "accumulator"
             self._get_or_make_slot_with_initializer(var, init, var.get_shape(), dtype,
                                                     "acc", acc_state_name)
+
+    def _apply_sparse_duplicate_indices(self, grad, var):
+        #  _apply_sparse_duplicate_indices method include tf.unique and unsorted_segment_sum operations which may
+        #  introduce dynamic shape problem, if encounter that, please de-annotation the method below.
+        unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad.values, var=var, is_expansion=False)
+        gradient_no_duplicate_indices = ops.IndexedSlices(
+            indices=unique_keys,
+            values=unique_local_grad,
+            dense_shape=grad.dense_shape)
+        return self._apply_sparse(gradient_no_duplicate_indices, var)
+
+    def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
+        unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad, var=handle, is_expansion=False)
+        return self._resource_apply_sparse(unique_local_grad, handle, unique_keys)
 
     def _apply_sparse(self, grad, var):
         acc = self.get_slot(var, "acc")
