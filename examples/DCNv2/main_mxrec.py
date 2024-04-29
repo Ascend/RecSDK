@@ -154,7 +154,7 @@ def evaluate():
         try:
             eval_current_steps += 1
             eval_start = time.time()
-            eval_loss, pred, label = sess.run([eval_model["loss"], eval_model["pred"], eval_label])
+            eval_loss, pred, label = sess.run([eval_model.get("loss"), eval_model.get("pred"), eval_label])
             eval_cost = time.time() - eval_start
             eval_qps = (1 / eval_cost) * rank_size * cfg.batch_size
             log_loss_list += list(eval_loss.reshape(-1))
@@ -185,7 +185,7 @@ def evaluate_fix(step):
     while not finished:
         try:
             eval_current_steps += 1
-            eval_loss, pred, label = sess.run([eval_model["loss"], eval_model["pred"], eval_model["label"]])
+            eval_loss, pred, label = sess.run([eval_model.get("loss"), eval_model.get("pred"), eval_model.get("label")])
             log_loss_list += list(eval_loss.reshape(-1))
             pred_list += list(pred.reshape(-1))
             label_list += list(label.reshape(-1))
@@ -322,7 +322,7 @@ if __name__ == "__main__":
     rank_size = mxrec_util.communication.hccl_ops.get_rank_size()
     train_ops = []
     # multi task training
-    for loss, (dense_optimizer, sparse_optimizer) in zip([train_model["loss"]], optimizer_list):
+    for loss, (dense_optimizer, sparse_optimizer) in zip([train_model.get("loss")], optimizer_list):
         # do dense optimization
         grads = dense_optimizer.compute_gradients(loss, var_list=dense_variables)
         avg_grads = []
@@ -404,7 +404,7 @@ if __name__ == "__main__":
         start_time = time.time()
 
         try:
-            grad, loss = sess.run([train_ops, train_model["loss"]])
+            grad, loss = sess.run([train_ops, train_model.get("loss")])
             lr = sess.run(cfg.learning_rate)
             global_step = sess.run(cfg.global_step)
         except tf.errors.OutOfRangeError:

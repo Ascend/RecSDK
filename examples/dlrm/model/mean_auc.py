@@ -15,8 +15,8 @@
 # ==============================================================================
 
 import os
-import numpy as np
 from glob import glob
+import numpy as np
 
 
 def split_auc(log_input):
@@ -26,7 +26,7 @@ def split_auc(log_input):
             if 'Test' in line:
                 all_auc.append(float(line.split(';')[0].split(':')[-1].strip()))
     all_auc_len = len(all_auc)
-    all_auc_arr = np.array(all_auc)[:all_auc_len - all_auc_len%8]
+    all_auc_arr = np.array(all_auc)[:all_auc_len - all_auc_len % 8]
     test_auc = np.mean(all_auc_arr.reshape(-1, 8), axis=-1)
     return test_auc
 

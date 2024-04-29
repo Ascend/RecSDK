@@ -31,7 +31,7 @@ public:
     needComputeAddrLen = singleCoreAddrLen;
     if (block_idx == block_num - 1)
     {
-      needComputeAddrLen = addrNums * sizeof(int64_t) - singleCoreAddrLen * (block_num - 1);
+        needComputeAddrLen = addrNums * sizeof(int64_t) - singleCoreAddrLen * (block_num - 1);
     }
     loopCount = needComputeAddrLen / (addrNumPerLoop * sizeof(int64_t));
 
@@ -41,7 +41,8 @@ public:
 
     // get start index for current core, core parallel block_indx block_dim
     srcAddrGlobal.SetGlobalBuffer((__gm__ int64_t *)(address + block_idx * singleCoreAddrLen));
-    srcDataBufferGm.SetGlobalBuffer((__gm__ T *)(embedding + block_idx * singleCoreAddrLen / sizeof(int64_t) * sizeof(T) * dim));
+    srcDataBufferGm.SetGlobalBuffer((__gm__ T *)(embedding + block_idx * singleCoreAddrLen
+    / sizeof(int64_t) * sizeof(T) * dim));
     outDataGm.SetGlobalBuffer((__gm__ T *)(y));
   }
 
@@ -72,120 +73,105 @@ public:
 
     if (loopCount > 0)
     {
-      for (int32_t i = 0; i < loopCount; i++)
-      {
-        DataCopy(srcAddrLocal, srcAddrGlobal[i * addrNumPerLoop], addrNumPerLoop);
-        MoveProcess(srcAddrLocal, i, addrNumPerLoop);
-      }
+        for (int32_t i = 0; i < loopCount; i++) {
+            DataCopy(srcAddrLocal, srcAddrGlobal[i * addrNumPerLoop], addrNumPerLoop);
+            MoveProcess(srcAddrLocal, i, addrNumPerLoop);
+        }
     }
 
     int unProcess = (needComputeAddrLen / sizeof(int64_t)) % addrNumPerLoop;
     if (unProcess)
     {
-      int unProcessAligned = (unProcess + 3) & (~3); // 处理 addressList 不对齐32b的情况
-      DataCopy(srcAddrLocal, srcAddrGlobal[loopCount * addrNumPerLoop], unProcessAligned);
-      MoveProcess(srcAddrLocal, loopCount, unProcess);
+        int unProcessAligned = (static_cast<unsigned int>(unProcess) + 3) & (~3U); // 处理 addressList 不对齐32b的情况
+        DataCopy(srcAddrLocal, srcAddrGlobal[loopCount * addrNumPerLoop], unProcessAligned);
+        MoveProcess(srcAddrLocal, loopCount, unProcess);
     }
   }
 
 private:
-  __aicore__ inline void MoveProcess(const LocalTensor<int64_t> srcAddrLocal, const int turns, int addrNum)
-  {
-    set_flag(PIPE_MTE2, PIPE_S, 0);
-    wait_flag(PIPE_MTE2, PIPE_S, 0);
-    LocalTensor<T> dataLocal;
-
-    int64_t address = 0;
-    if (dim == inputDimAligned) // copyIn 和 compute一次，copyOut多次
+    __aicore__ inline void MoveProcess(const LocalTensor<int64_t> srcAddrLocal, const int turns, int addrNum)
     {
-      dataLocal = inQueue.AllocTensor<T>();
-      DataCopy(dataLocal, srcDataBufferGm[turns * addrNumPerLoop * dim], addrNum * inputDimAligned);
-      inQueue.EnQue(dataLocal);
+        set_flag(PIPE_MTE2, PIPE_S, 0);
+        wait_flag(PIPE_MTE2, PIPE_S, 0);
+        LocalTensor<T> dataLocal;
 
-      Compute(addrNum); // 只有copyOut的管道支持拷贝到gm上
-
-      LocalTensor<T> dstLocal = outQueue.DeQue<T>();
-      if (updateType == 0)
-      {
-        SetAtomicAdd<T>();
-      }
-      for (int i = 0; i < addrNum; i++)
-      {
-        address = srcAddrLocal.GetValue(i);
-        if (address != 0)
+        int64_t address = 0;
+        if (dim == inputDimAligned) // copyIn 和 compute一次，copyOut多次
         {
-          dstDataGm.SetGlobalBuffer((__gm__ T*)(address));
-          DataCopy(dstDataGm, dstLocal[i * inputDimAligned], inputDimAligned);
+            dataLocal = inQueue.AllocTensor<T>();
+            DataCopy(dataLocal, srcDataBufferGm[turns * addrNumPerLoop * dim], addrNum * inputDimAligned);
+            inQueue.EnQue(dataLocal);
+
+            Compute(addrNum); // 只有copyOut的管道支持拷贝到gm上
+
+            LocalTensor<T> dstLocal = outQueue.DeQue<T>();
+            if (updateType == 0) {
+                SetAtomicAdd<T>();
+            }
+            for (int i = 0; i < addrNum; i++) {
+                address = srcAddrLocal.GetValue(i);
+                if (address != 0) {
+                    dstDataGm.SetGlobalBuffer((__gm__ T*)(address));
+                    DataCopy(dstDataGm, dstLocal[i * inputDimAligned], inputDimAligned);
+                }
+            }
+            if (updateType == 0) {
+                SetAtomicNone();
+            }
+            outQueue.FreeTensor(dstLocal);
+        } else {
+            for (int i = 0; i < addrNum; i++) {
+                dataLocal = inQueue.AllocTensor<T>();
+                DataCopy(dataLocal, srcDataBufferGm[i * dim + turns * addrNumPerLoop * dim], inputDimAligned);
+                inQueue.EnQue<T>(dataLocal);
+                Compute(1);
+                address = srcAddrLocal.GetValue(i);
+                CopyOut(address, turns, i);
+            }
         }
-      }
-      if (updateType == 0)
-      {
-        SetAtomicNone();
-      }
-      outQueue.FreeTensor(dstLocal);
     }
-    else
+
+    __aicore__ inline void Compute(const int nums)
     {
-      for (int i = 0; i < addrNum; i++)
-      {
-        dataLocal = inQueue.AllocTensor<T>();
-        DataCopy(dataLocal, srcDataBufferGm[i * dim + turns * addrNumPerLoop * dim], inputDimAligned);
-        inQueue.EnQue<T>(dataLocal);
-        Compute(1);
-        address = srcAddrLocal.GetValue(i);
-        CopyOut(address, turns, i);
-      }
+        // deque input tensors from VECIN queue
+        LocalTensor<T> srcLocal = inQueue.DeQue<T>();
+        LocalTensor<T> dstLocal = outQueue.AllocTensor<T>();
+        DataCopyParams copyparams;
+        copyparams.blockCount = 1;
+        copyparams.blockLen = (inputDimAligned * sizeof(T) * nums) >> 5; // >> 5， 除以32，ub空间对齐
+        DataCopy(dstLocal, srcLocal, copyparams);
+        outQueue.EnQue<T>(dstLocal);
+        inQueue.FreeTensor(srcLocal);
     }
-  }
 
-  __aicore__ inline void Compute(const int nums)
-  {
-    // deque input tensors from VECIN queue
-    LocalTensor<T> srcLocal = inQueue.DeQue<T>();
-    LocalTensor<T> dstLocal = outQueue.AllocTensor<T>();
-    DataCopyParams copyparams;
-    copyparams.blockCount = 1;
-    copyparams.blockLen = (inputDimAligned * sizeof(T) * nums) >> 5; // >> 5， 除以32，ub空间对齐
-    DataCopy(dstLocal, srcLocal, copyparams);
-    outQueue.EnQue<T>(dstLocal);
-    inQueue.FreeTensor(srcLocal);
-  }
-
-  __aicore__ inline void CopyOut(const int64_t address, const int64_t turns, const int64_t index)
-  {
-    LocalTensor<T> dstLocal = outQueue.DeQue<T>();
-
-    if (address != 0)
+    __aicore__ inline void CopyOut(const int64_t address, const int64_t turns, const int64_t index)
     {
-      dstDataGm.SetGlobalBuffer((__gm__ T *)(address));
+        LocalTensor<T> dstLocal = outQueue.DeQue<T>();
 
-      if (updateType == 0)
-      {
-        SetAtomicAdd<T>();
-      }
+        if (address != 0) {
+            dstDataGm.SetGlobalBuffer((__gm__ T *)(address));
+
+            if (updateType == 0) {
+                SetAtomicAdd<T>();
+            }
 
 #if defined(__DAV_C220_VEC__)
-      if (typeSize == SIZE_OF_FLOAT_OR_INT)
-      {
-
-        copy_ubuf_to_gm_align_b32((__gm__ T *)dstDataGm.GetPhyAddr(), (__ubuf__ T *)dstLocal.GetPhyAddr(), 0,
-                                  1, dim * sizeof(T), 0, 0, 0, 0);
-      }
-      else if (typeSize == SIZE_OF_HALF)
-      {
-        copy_ubuf_to_gm_align_b16((__gm__ T *)dstDataGm.GetPhyAddr(), (__ubuf__ T *)dstLocal.GetPhyAddr(), 0,
-                                  1, dim * sizeof(T), 0, 0, 0, 0);
-      }
+            if (typeSize == SIZE_OF_FLOAT_OR_INT) {
+                copy_ubuf_to_gm_align_b32((__gm__ T *)dstDataGm.GetPhyAddr(), (__ubuf__ T *)dstLocal.GetPhyAddr(), 0,
+                                          1, dim * sizeof(T), 0, 0, 0, 0);
+            } else if (typeSize == SIZE_OF_HALF) {
+                copy_ubuf_to_gm_align_b16((__gm__ T *)dstDataGm.GetPhyAddr(), (__ubuf__ T *)dstLocal.GetPhyAddr(), 0,
+                                          1, dim * sizeof(T), 0, 0, 0, 0);
+            }
 #else
-      DataCopy(dstDataGm, dstLocal, inputDimAligned);
+            DataCopy(dstDataGm, dstLocal, inputDimAligned);
 #endif
+        }
+        if (updateType == 0) {
+            SetAtomicNone();
+        }
+        outQueue.FreeTensor(dstLocal);
     }
-    if (updateType == 0)
-    {
-      SetAtomicNone();
-    }
-    outQueue.FreeTensor(dstLocal);
-  }
 
 public:
   int32_t addrNumPerLoop, loopCount, singleCoreAddrLen, needComputeAddrLen, addrNums, cache, veclen, dim, pingpongNum;

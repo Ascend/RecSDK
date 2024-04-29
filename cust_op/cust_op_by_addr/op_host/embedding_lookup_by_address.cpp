@@ -16,6 +16,12 @@ See the License for the specific language governing permissions and
 #include "embedding_lookup_by_address_tiling.h"
 #include "register/op_def_registry.h"
 
+namespace {
+    constexpr int32_t EMBEDDING_TYPE_FLOAT16 = 2;
+    constexpr int32_t EMBEDDING_TYPE_INT32 = 0;
+    constexpr int32_t EMBEDDING_TYPE_FLOAT32 = 1;
+}
+
 namespace optiling
 {
     constexpr int32_t BLOCK_DIM = 48;  // 910b一张卡48个vector核
@@ -81,7 +87,7 @@ namespace optiling
         int32_t inputShape = inputTensor->GetShapeSize();
 
         int32_t typeSize = SIZE_OF_FLOAT_OR_INT;
-        if (embeddingType == 2) {
+        if (embeddingType == EMBEDDING_TYPE_FLOAT16) {
             typeSize = SIZE_OF_HALF;
         }
         // shape需要对齐到的最小单位, MIN_BLOCK_SIZE=32
@@ -92,7 +98,8 @@ namespace optiling
         int32_t occupyAddressBytesNum =
                 sizeof(int64_t) + typeSize * embeddingDimAligned * PING_PONG_NUM * 2;
         // 一轮计算中最多计算多少个addr，由于地址也要搬到ub，所以需要对齐32,
-        int32_t addrPerLoop = (UB_LIMIT / occupyAddressBytesNum) & (~3); //  & (~3)，保证地址数是4的倍数
+        int32_t addrPerLoop = static_cast<int32_t>((UB_LIMIT /
+                static_cast<uint32_t>(occupyAddressBytesNum)) & (~3u)); //  & (~3u)，保证地址数是4的倍数
         if (addrPerLoop <= 0) {
             return ge::GRAPH_FAILED;
         }
@@ -116,6 +123,7 @@ namespace optiling
 
 namespace ge
 {
+    constexpr int OUTPUT_DIMENSION = 2;
     static ge::graphStatus InferShape1(gert::InferShapeContext *context)
     {
 
@@ -140,8 +148,12 @@ namespace ge
 
         int64_t updateDim = *attr0Value;
 
-        int64_t inputShape = context->GetInputTensor(0)->GetShapeSize();
-        yShape->SetDimNum(2);
+        auto *inputTensor2 = context->GetInputTensor(0);
+        if (optiling::CheckNullPointer(inputTensor2, "inputTensor2") != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+        int64_t inputShape = inputTensor2->GetShapeSize();
+        yShape->SetDimNum(OUTPUT_DIMENSION);
         yShape->SetDim(0, inputShape);
         yShape->SetDim(1, updateDim);
         return GRAPH_SUCCESS;
@@ -165,15 +177,15 @@ namespace ge
         }
 
         embbedingType = *attr1Value;
-        if (embbedingType == 0)
+        if (embbedingType == EMBEDDING_TYPE_INT32)
         {
             context->SetOutputDataType(0, ge::DataType(DT_INT32));
         }
-        else if (embbedingType == 1)
+        else if (embbedingType == EMBEDDING_TYPE_FLOAT32)
         {
             context->SetOutputDataType(0, ge::DataType(DT_FLOAT));
         }
-        else if (embbedingType == 2)
+        else if (embbedingType == EMBEDDING_TYPE_FLOAT16)
         {
 
             context->SetOutputDataType(0, ge::DataType(DT_FLOAT16));
