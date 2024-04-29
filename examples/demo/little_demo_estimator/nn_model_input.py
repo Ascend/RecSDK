@@ -17,10 +17,10 @@
 
 import tensorflow as tf
 from mx_rec.constants.constants import ASCEND_TIMESTAMP
+from mx_rec.util.log import logger
 
 from nn_model_build import LittleModel
 from nn_optim import get_train_op
-from mx_rec.util.log import logger
 
 
 def get_model_fn(create_fs_params, cfg, access_and_evict_config_dict=None):

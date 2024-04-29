@@ -80,10 +80,7 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
             l2_shrinkage_regularization_strength=kwargs.get("l2_shrinkage_regularization_strength", 0.0)
         )
         self._slot_num = 2
-
-    @property
-    def slot_num(self):
-        return self._slot_num
+        self._derivative = 2
 
     def initialize_slots(self, var, table_instance):
         val = constant_op.constant(
@@ -115,10 +112,18 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
         return [self._initial_accumulator_value, initial_linear_value]
 
     def _apply_sparse_duplicate_indices(self, grad, var):
-        return self._apply_sparse(grad, var)
+        #  _apply_sparse_duplicate_indices method include tf.unique and unsorted_segment_sum operations which may
+        #  introduce dynamic shape problem, if encounter that, please de-annotation the method below.
+        unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad.values, var=var, is_expansion=False)
+        gradient_no_duplicate_indices = ops.IndexedSlices(
+            indices=unique_keys,
+            values=unique_local_grad,
+            dense_shape=grad.dense_shape)
+        return self._apply_sparse(gradient_no_duplicate_indices, var)
 
     def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
-        return self._resource_apply_sparse(grad, handle, indices)
+        unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad, var=handle, is_expansion=False)
+        return self._resource_apply_sparse(unique_local_grad, handle, unique_keys)
 
     def _resource_apply_sparse(self, grad, handle, indices):
         if self._l2_shrinkage_regularization_strength <= 0.0:
