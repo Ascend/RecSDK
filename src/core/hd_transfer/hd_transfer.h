@@ -24,8 +24,8 @@ See the License for the specific language governing permissions and
 #include "utils/common.h"
 #include "utils/config.h"
 
-#ifndef tdtCreateChannel
-#define tdtCreateChannel acltdtCreateChannelWithCapacity
+#ifndef TDT_CREATE_CHANNEL
+#define TDT_CREATE_CHANNEL acltdtCreateChannelWithCapacity
 #endif
 
 namespace MxRec {

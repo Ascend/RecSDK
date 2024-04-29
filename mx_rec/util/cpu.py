@@ -3,7 +3,6 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 import ctypes
-from ctypes import *
 import psutil
 
 from mx_rec.util.log import logger
