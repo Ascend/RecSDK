@@ -21,7 +21,8 @@ See the License for the specific language governing permissions and
 #include "common.h"
 
 namespace AclnnLazyAdam {
-    bool ReadFile(const std::string &filePath, size_t fileSize, void *buffer, size_t bufferSize) {
+    bool ReadFile(const std::string &filePath, size_t fileSize, void *buffer, size_t bufferSize)
+    {
         struct stat sBuf;
         int fileStatus = stat(filePath.data(), &sBuf);
         if (fileStatus == -1) {
@@ -59,7 +60,8 @@ namespace AclnnLazyAdam {
         return true;
     }
 
-    bool WriteFile(const std::string &filePath, const void *buffer, size_t size) {
+    bool WriteFile(const std::string &filePath, const void *buffer, size_t size)
+    {
         if (buffer == nullptr) {
             ERROR_LOG("Write file failed. buffer is nullptr");
             return false;
