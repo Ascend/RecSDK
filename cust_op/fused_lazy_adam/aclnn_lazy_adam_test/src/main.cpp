@@ -25,24 +25,28 @@ See the License for the specific language governing permissions and
 #include "common.h"
 #include "op_runner.h"
 
+using namespace AclnnLazyAdam;
+
 bool g_isDevice = false;
 int g_deviceId = 0;
-constexpr int DIM0 = 2000000;  // inputM inputV inputVar 的行数
-constexpr int DIM1 = 564096;  // indices长度
-constexpr int DIM2 = 32;  // inputM inputV inputVar gradient等每行的数据个数
-constexpr int INPUT_M_INDEX = 2;
-constexpr int INPUT_V_INDEX = 3;
-constexpr int INPUT_VAR_INDEX = 4;
-constexpr int LEARNING_RATE_INDEX = 5;
-constexpr int OUTPUT_M_INDEX = 0;
-constexpr int OUTPUT_V_INDEX = 1;
-constexpr int OUTPUT_VAR_INDEX = 2;
-constexpr float LEARNING_RATE = 0.001;
-constexpr float BETA1 = 0.9;
-constexpr float BETA2 = 0.999;
-constexpr float EPSILON = 1e-7;
-const char* READ_ERROR_INFO = "read input file error, please check whether file exist and access rights is correct";
-const char* WRITE_ERROR_INFO = "write output file error, please check access rights is correct";
+namespace {
+    constexpr int DIM0 = 2000000;  // inputM inputV inputVar 的行数
+    constexpr int DIM1 = 564096;  // indices长度
+    constexpr int DIM2 = 32;  // inputM inputV inputVar gradient等每行的数据个数
+    constexpr int INPUT_M_INDEX = 2;
+    constexpr int INPUT_V_INDEX = 3;
+    constexpr int INPUT_VAR_INDEX = 4;
+    constexpr int LEARNING_RATE_INDEX = 5;
+    constexpr int OUTPUT_M_INDEX = 0;
+    constexpr int OUTPUT_V_INDEX = 1;
+    constexpr int OUTPUT_VAR_INDEX = 2;
+    constexpr float LEARNING_RATE = 0.001;
+    constexpr float BETA1 = 0.9;
+    constexpr float BETA2 = 0.999;
+    constexpr float EPSILON = 1e-7;
+    const char* READ_ERROR_INFO = "read input file error, please check whether file exist and access rights is correct";
+    const char* WRITE_ERROR_INFO = "write output file error, please check access rights is correct";
+}
 
 OperatorDesc CreateOpDesc()
 {
@@ -202,7 +206,6 @@ bool RunOp()
         ERROR_LOG("Process output data failed");
         return false;
     }
-
     INFO_LOG("Run op success");
     return true;
 }
@@ -219,8 +222,6 @@ int main(int argc, char** argv)
         DestroyResource();
         return FAILED;
     }
-
     DestroyResource();
-
     return SUCCESS;
 }

@@ -24,6 +24,7 @@ See the License for the specific language governing permissions and
 
 #include "acl/acl.h"
 
+namespace AclnnLazyAdam {
 #define SUCCESS 0
 #define FAILED 1
 
@@ -31,21 +32,21 @@ See the License for the specific language governing permissions and
 #define WARN_LOG(fmt, args...) fprintf(stdout, "[WARN]  " fmt "\n", ##args)
 #define ERROR_LOG(fmt, args...) fprintf(stderr, "[ERROR]  " fmt "\n", ##args)
 
-/**
- * @brief Read data from file
- * @param [in] filePath: file path
- * @param [out] fileSize: file size
- * @return read result
- */
-bool ReadFile(const std::string &filePath, size_t fileSize, void *buffer, size_t bufferSize);
+    /**
+     * @brief Read data from file
+     * @param [in] filePath: file path
+     * @param [out] fileSize: file size
+     * @return read result
+     */
+    bool ReadFile(const std::string &filePath, size_t fileSize, void *buffer, size_t bufferSize);
 
-/**
- * @brief Write data to file
- * @param [in] filePath: file path
- * @param [in] buffer: data to write to file
- * @param [in] size: size to write
- * @return write result
- */
-bool WriteFile(const std::string &filePath, const void *buffer, size_t size);
-
+    /**
+     * @brief Write data to file
+     * @param [in] filePath: file path
+     * @param [in] buffer: data to write to file
+     * @param [in] size: size to write
+     * @return write result
+     */
+    bool WriteFile(const std::string &filePath, const void *buffer, size_t size);
+}
 #endif // COMMON_H

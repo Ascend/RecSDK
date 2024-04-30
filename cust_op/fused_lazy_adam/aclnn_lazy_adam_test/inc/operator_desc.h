@@ -21,46 +21,47 @@ See the License for the specific language governing permissions and
 
 #include "acl/acl.h"
 
-/**
- * Op description
- */
-struct OperatorDesc {
+namespace AclnnLazyAdam {
     /**
-     * Constructor
+     * Op description
      */
-    explicit OperatorDesc();
+    struct OperatorDesc {
+        /**
+         * Constructor
+         */
+        explicit OperatorDesc();
 
-    /**
-     * Destructor
-     */
-    virtual ~OperatorDesc();
+        /**
+         * Destructor
+         */
+        virtual ~OperatorDesc();
 
-    /**
-     * Add an input tensor description
-     * @param [in] dataType: data type
-     * @param [in] numDims: number of dims
-     * @param [in] dims: dims
-     * @param [in] format: format
-     * @return OperatorDesc
-     */
-    OperatorDesc &AddInputTensorDesc(aclDataType dataType, int numDims, const int64_t *dims, aclFormat format);
+        /**
+         * Add an input tensor description
+         * @param [in] dataType: data type
+         * @param [in] numDims: number of dims
+         * @param [in] dims: dims
+         * @param [in] format: format
+         * @return OperatorDesc
+         */
+        OperatorDesc &AddInputTensorDesc(aclDataType dataType, int numDims, const int64_t *dims, aclFormat format);
 
-    /**
-     * Add an output tensor description
-     * @param [in] dataType: data type
-     * @param [in] numDims: number of dims
-     * @param [in] dims: dims
-     * @param [in] format: format
-     * @return OperatorDesc
-     */
-    OperatorDesc &AddOutputTensorDesc(aclDataType dataType, int numDims, const int64_t *dims, aclFormat format);
+        /**
+         * Add an output tensor description
+         * @param [in] dataType: data type
+         * @param [in] numDims: number of dims
+         * @param [in] dims: dims
+         * @param [in] format: format
+         * @return OperatorDesc
+         */
+        OperatorDesc &AddOutputTensorDesc(aclDataType dataType, int numDims, const int64_t *dims, aclFormat format);
 
-    std::string opType;
-    std::vector<aclTensorDesc *> inputDesc;
-    std::vector<aclTensorDesc *> outputDesc;
-    double beta1;
-    double beta2;
-    double epsilon;
-};
-
+        std::string opType;
+        std::vector<aclTensorDesc *> inputDesc;
+        std::vector<aclTensorDesc *> outputDesc;
+        double beta1;
+        double beta2;
+        double epsilon;
+    };
+}
 #endif // OPERATOR_DESC_H
