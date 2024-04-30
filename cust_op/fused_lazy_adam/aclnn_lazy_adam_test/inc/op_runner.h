@@ -116,7 +116,8 @@ namespace AclnnLazyAdam {
          * @return host address of the input
          */
         template<typename T>
-        T *GetInputBuffer(size_t index) {
+        T *GetInputBuffer(size_t index)
+        {
             if (index >= numInputs_) {
                 ERROR_LOG("index out of range. index = %zu, numInputs = %zu", index, numInputs_);
                 return nullptr;
@@ -131,7 +132,8 @@ namespace AclnnLazyAdam {
          * @return host address of the output
          */
         template<typename T>
-        const T *GetOutputBuffer(size_t index) {
+        const T *GetOutputBuffer(size_t index)
+        {
             if (index >= numOutputs_) {
                 ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
                 return nullptr;
