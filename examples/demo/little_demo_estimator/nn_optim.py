@@ -55,7 +55,7 @@ def get_train_op_list(losses, learning_rate):
     dense_variables, sparse_variables = get_dense_and_sparse_variable()
     trainable_variables = [dense_variables]
 
-    for i, (name, loss) in enumerate(losses):
+    for _, (name, loss) in enumerate(losses):
         with tf.control_dependencies(update_ops):
             # do dense grad
             grads = dense_optimizer.compute_gradients(loss, var_list=trainable_variables)
