@@ -29,7 +29,7 @@ def get_model_fn(create_fs_params, cfg, access_and_evict_config_dict=None):
             if params.use_timestamp:
                 model = LittleModel(params, cfg, mode, features, create_fs_params,
                                     access_and_evict_config_dict=access_and_evict_config_dict)
-                tf.add_to_collection(ASCEND_TIMESTAMP, features["timestamp"])
+                tf.compat.v1.add_to_collection(ASCEND_TIMESTAMP, features["timestamp"])
             else:
                 model = LittleModel(params, cfg, mode, features, create_fs_params)
         else:

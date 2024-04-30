@@ -19,16 +19,14 @@ import argparse
 import os
 
 import tensorflow as tf
-
 from mx_rec.util.initialize import init, terminate_config_initializer
-from mx_rec.util.communication.hccl_ops import get_rank_id
 from mx_rec.core.asc.helper import FeatureSpec
 from mx_rec.graph.modifier import GraphModifierHook
-from mx_rec.graph.acg_push_ops import ACGPushOpsToDatasetHook
+from mx_rec.graph.hooks import OrphanLookupKeySlicerHook, LookupSubgraphSlicerHook
 from mx_rec.core.feature_process import EvictHook
 from mx_rec.util.log import logger
 
-from tf_adapter import NPURunConfig, NPUEstimator, npu_hooks_append, DumpConfig
+from tf_adapter import NPURunConfig, NPUEstimator, npu_hooks_append
 from nn_reader import input_fn
 from nn_model_input import get_model_fn
 from config import Config
@@ -58,10 +56,12 @@ def main(params, config):
     # access_threshold unit counts; eviction_threshold unit seconds
     access_and_evict = None
 
-    if not params.enable_push_ops_test:
+    if not params.enable_slicer_test:
         hooks_list = [GraphModifierHook(modify_graph=params.modify_graph)]
     else:
-        hooks_list = [ACGPushOpsToDatasetHook(dump_graph=True), GraphModifierHook(modify_graph=params.modify_graph)]
+        orphan_slicer_hook = OrphanLookupKeySlicerHook()
+        lookup_slicer_hook = LookupSubgraphSlicerHook(op_types=["StringToNumber"])
+        hooks_list = [orphan_slicer_hook, lookup_slicer_hook, GraphModifierHook(modify_graph=params.modify_graph)]
 
     if params.use_timestamp:
         config_for_user_table = dict(access_threshold=config.access_threshold,
@@ -89,12 +89,14 @@ def main(params, config):
         train_spec = tf.estimator.TrainSpec(input_fn=lambda: input_fn(params, create_fs_params, config,
                                                                       use_one_shot=args.use_one_shot),
                                             max_steps=params.max_steps, hooks=npu_hooks_append(hooks_list))
-        # 在开启evict时，eval时不支持淘汰，所以无需加入evict hook
 
-        if not params.enable_push_ops_test:
+        if not params.enable_slicer_test:
+            # 在开启evict时，eval时不支持淘汰，所以无需加入evict hook
             eval_hook_list = [GraphModifierHook(modify_graph=params.modify_graph)]
         else:
-            eval_hook_list = [ACGPushOpsToDatasetHook(dump_graph=True),
+            orphan_slicer_hook = OrphanLookupKeySlicerHook()
+            lookup_slicer_hook = LookupSubgraphSlicerHook(op_types=["StringToNumber"])
+            eval_hook_list = [orphan_slicer_hook, lookup_slicer_hook,
                               GraphModifierHook(modify_graph=params.modify_graph)]
 
         eval_spec = tf.estimator.EvalSpec(input_fn=lambda: input_fn(params, create_fs_params, config, is_eval=True,
@@ -165,7 +167,7 @@ if __name__ == '__main__':
         MODIFY_GRAPH_FLAG = bool(int(os.getenv("USE_MODIFY_GRAPH", 0)))
         USE_TIMESTAMP = bool(int(os.getenv("USE_TIMESTAMP", 0)))
         args.use_one_shot = bool(int(os.getenv("USE_ONE_SHOT", 0)))
-        args.enable_push_ops_test = bool(int(os.getenv("ENABLE_PUSH_OPS_TEST", 0)))
+        args.enable_slicer_test = bool(int(os.getenv("ENABLE_SLICER_TEST", 0)))
     except ValueError as err:
         raise ValueError("please correctly config USE_MPI or USE_DYNAMIC or USE_DYNAMIC_EXPANSION or "
                          "USE_MULTI_LOOKUP or USE_MODIFY_GRAPH or USE_TIMESTAMP or USE_ONE_SHOT "

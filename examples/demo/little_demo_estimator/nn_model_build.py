@@ -155,7 +155,7 @@ class LittleModel:
                                       optimizer_list=sparse_optimizer_list)
 
         if self.params.modify_graph:
-            if not self.params.enable_push_ops_test:
+            if not self.params.enable_slicer_test:
                 input_list = [[self.features["user_ids"], self.features["item_ids"]],
                               [user_hashtable, item_hashtable],
                               [self.cfg.user_send_cnt, self.cfg.item_send_cnt],

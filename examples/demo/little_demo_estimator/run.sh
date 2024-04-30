@@ -104,8 +104,7 @@ export KEY_PROCESS_THREAD_NUM=6 #default 6, max 10
 export FAST_UNIQUE=0   #if use fast unique
 export MGMT_HBM_TASK_MODE=0 #if async h2d (get and send tensors)
 ################## 测试配置项 #####################
-# NOTE: 仅在测试constant、string相关op作为稀疏表输入时启用，当前版本只支持TF1。
-export ENABLE_PUSH_OPS_TEST=0
+export ENABLE_SLICER_TEST=0
 
 # 帮助信息，不需要修改
 if [[ $1 == --help || $1 == -h ]];then
