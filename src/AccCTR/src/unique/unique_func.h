@@ -526,7 +526,7 @@ private:
         uint32_t *finishPtr = beginPtr + uniqueIn.inputIdCnt;
         uint32_t *partBeginPtr = beginPtr;
         auto alignedAddress = CacheLineAlign(reinterpret_cast<uintptr_t>(partBeginPtr + partSize));
-        auto *partEndPtr = reinterpret_cast<uint32_t *>(alignedAddress);
+        auto *partEndPtr = reinterpret_cast<uint32_t *>(static_cast<uintptr_t>(alignedAddress));
         std::vector<std::function<void()>> tasks;
         auto val = TypeTrans<T>(uniqueIn.inputId);
         while (partBeginPtr < finishPtr) {
