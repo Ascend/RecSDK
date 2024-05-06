@@ -16,8 +16,6 @@ See the License for the specific language governing permissions and
 #ifndef MXREC_CONFIG_H
 #define MXREC_CONFIG_H
 
-#include <string>
-
 namespace MxRec {
     namespace RecEnvNames {
         const char *const ACL_TIMEOUT = "AclTimeout";

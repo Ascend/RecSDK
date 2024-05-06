@@ -16,6 +16,8 @@ See the License for the specific language governing permissions and
 #include "kernel_operator.h"
 using namespace AscendC;
 
+namespace AscendC {
+
 constexpr int32_t SIZE_OF_HALF = 2;
 constexpr int32_t SIZE_OF_FLOAT_OR_INT = 4;
 constexpr int32_t PADDING_ZERO_NUM_PER_TIME = 8;
@@ -180,6 +182,7 @@ private:
   GlobalTensor<T> srcDataBufferGm, dstDataGm;
   GlobalTensor<int64_t> srcAddrGlobal;
 };
+}
 
 extern "C" __global__ __aicore__ void embedding_lookup_by_address(GM_ADDR address, GM_ADDR y, GM_ADDR usrWorkspace,
                                                                   GM_ADDR tiling)
@@ -192,7 +195,7 @@ extern "C" __global__ __aicore__ void embedding_lookup_by_address(GM_ADDR addres
   {
   case 0:
   {
-    KernelEimtable<int32_t> op;
+    AscendC::KernelEimtable<int32_t> op;
     op.Init_param(tiling);
     op.Init(address, y);
     op.Process();
@@ -200,7 +203,7 @@ extern "C" __global__ __aicore__ void embedding_lookup_by_address(GM_ADDR addres
   break;
   case 2:
   {
-    KernelEimtable<half> op;
+    AscendC::KernelEimtable<half> op;
     op.Init_param(tiling);
     op.Init(address, y);
     op.Process();
@@ -208,7 +211,7 @@ extern "C" __global__ __aicore__ void embedding_lookup_by_address(GM_ADDR addres
   break;
   default:
   {
-    KernelEimtable<float> op;
+    AscendC::KernelEimtable<float> op;
     op.Init_param(tiling);
     op.Init(address, y);
     op.Process();
