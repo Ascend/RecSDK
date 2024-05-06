@@ -41,8 +41,10 @@ sed -i 's/--nomd5/--nomd5 --nocrc/g' ./cmake/makeself.cmake
 
 # 修改cann安装路径
 sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
-# 修改vendor_name 防止覆盖之前vendor_name为customize的算子
-sed -i 's:"customize":"customize_lazy_adam":g' CMakePresets.json
+# 修改vendor_name 防止覆盖之前vendor_name为customize的算子;
+# vendor_name需要和aclnn中的CMakeLists.txt中的CUST_PKG_PATH值同步，不同步aclnn会调用失败;
+# vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误，部署工具bug;
+sed -i 's:"customize":"mxrec_fused_lazy_adam":g' CMakePresets.json
 
 bash build.sh
 
