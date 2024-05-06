@@ -17,21 +17,17 @@ See the License for the specific language governing permissions and
 
 using namespace AscendC;
 
-template<typename T>
+template <typename T>
 class LazyAdam {
 public:
-    __aicore__ inline LazyAdam()
-    {}
+    __aicore__ inline LazyAdam() {}
 
     // 初始化函数，完成内存初始化相关操作
-    __aicore__ inline void Init(GM_ADDR gradient, GM_ADDR indices,
-                                GM_ADDR inputM, GM_ADDR inputV, GM_ADDR inputVar, GM_ADDR lr,
-                                GM_ADDR inputMRef, GM_ADDR inputVRef, GM_ADDR inputVarRef,
-                                float beta1, float beta2, float epsilon,
-                                int32_t dim0, int32_t dim1, int32_t dim2,
-                                int32_t row, int32_t indicesAllocSize, int32_t otherAllocSize,
-                                int32_t batch, int32_t loopCount, int32_t rowLeft,
-                                int32_t loopCountTail, int32_t rowLeftTail, int32_t coreNum)
+    __aicore__ inline void Init(GM_ADDR gradient, GM_ADDR indices, GM_ADDR inputM, GM_ADDR inputV, GM_ADDR inputVar,
+                                GM_ADDR lr, GM_ADDR inputMRef, GM_ADDR inputVRef, GM_ADDR inputVarRef, float beta1,
+                                float beta2, float epsilon, int32_t dim0, int32_t dim1, int32_t dim2, int32_t row,
+                                int32_t indicesAllocSize, int32_t otherAllocSize, int32_t batch, int32_t loopCount,
+                                int32_t rowLeft, int32_t loopCountTail, int32_t rowLeftTail, int32_t coreNum)
     {
         ASSERT(GetBlockNum() != 0 && "block dim can not be zero!");
         // 属性赋值
@@ -53,15 +49,15 @@ public:
         int32_t shape = this->dim0 * this->dim2;
         int32_t shapeIndices = this->dim1 * 1;
         int32_t shapeGradient = this->dim1 * this->dim2;
-        this->gmGradient.SetGlobalBuffer((__gm__ T *)gradient + this->batch * this->dim2 * get_block_idx(),
+        this->gmGradient.SetGlobalBuffer((__gm__ T*)gradient + this->batch * this->dim2 * get_block_idx(),
                                          shapeGradient);
-        this->gmIndices.SetGlobalBuffer((__gm__ int32_t *)indices + this->batch * get_block_idx(), shapeIndices);
+        this->gmIndices.SetGlobalBuffer((__gm__ int32_t*)indices + this->batch * get_block_idx(), shapeIndices);
 
-        this->gmInputM.SetGlobalBuffer((__gm__ T *)inputM, shape);
-        this->gmInputV.SetGlobalBuffer((__gm__ T *)inputV, shape);
-        this->gmInputVar.SetGlobalBuffer((__gm__ T *)inputVar, shape);
+        this->gmInputM.SetGlobalBuffer((__gm__ T*)inputM, shape);
+        this->gmInputV.SetGlobalBuffer((__gm__ T*)inputV, shape);
+        this->gmInputVar.SetGlobalBuffer((__gm__ T*)inputVar, shape);
 
-        this->gmLearningRate.SetGlobalBuffer((__gm__ T *)lr, sizeof(float));
+        this->gmLearningRate.SetGlobalBuffer((__gm__ T*)lr, sizeof(float));
         this->lr = this->gmLearningRate.GetValue(0);
 
         // 将输出地址指向输入地址
@@ -119,19 +115,19 @@ private:
     // 搬入函数，完成CopyIn阶段的处理，被核心Process函数调用
     __aicore__ inline void CopyIn(int32_t progress, int32_t row)
     {
-        LocalTensor <T> localGradient = this->inQueGradient.template AllocTensor<T>();
+        LocalTensor<T> localGradient = this->inQueGradient.template AllocTensor<T>();
         uint32_t gradientDataLen = row * this->dim2 * sizeof(T);
         // 连续传输数据块个数；len:连续传输数据块长度，Byte，非对齐搬运；0, 0, 0:源/目标数据块间隔，保留字段
         DataCopyExtParams gradientParams{1, gradientDataLen, 0, 0, 0};
         // 搬运填充参数
-        DataCopyPadExtParams <T> gradientPadParams{true, 0, 2, 0};
+        DataCopyPadExtParams<T> gradientPadParams{true, 0, 2, 0};
         DataCopyPad(localGradient, this->gmGradient[progress * this->row * this->dim2], gradientParams,
                     gradientPadParams);
 
-        LocalTensor <int32_t> localIndices = this->inQueIndices.template AllocTensor<int32_t>();
+        LocalTensor<int32_t> localIndices = this->inQueIndices.template AllocTensor<int32_t>();
         uint32_t indicesDataLen = row * sizeof(int32_t);
         DataCopyExtParams indicesParams{1, indicesDataLen, 0, 0, 0};
-        DataCopyPadExtParams <int32_t> indicesPadParams{true, 0, 2, 0};
+        DataCopyPadExtParams<int32_t> indicesPadParams{true, 0, 2, 0};
         DataCopyPad(localIndices, this->gmIndices[progress * this->row], indicesParams, indicesPadParams);
 
         this->inQueGradient.EnQue(localGradient);
@@ -141,13 +137,13 @@ private:
     // 计算函数，完成Compute阶段的处理，被核心Process函数调用
     __aicore__ inline void Compute(int32_t progress, int32_t row)
     {
-        LocalTensor <T> localGradient = this->inQueGradient.template DeQue<T>();
-        LocalTensor <int32_t> localIndices = this->inQueIndices.template DeQue<int32_t>();
+        LocalTensor<T> localGradient = this->inQueGradient.template DeQue<T>();
+        LocalTensor<int32_t> localIndices = this->inQueIndices.template DeQue<int32_t>();
         Muls(localIndices, localIndices, this->dim2, row);
         // 根据 indices 从 inputM 中切分出来 m_slice
-        LocalTensor <T> localMSlice = this->queMSlice.template AllocTensor<T>();
-        LocalTensor <T> localVSlice = this->queVSlice.template AllocTensor<T>();
-        LocalTensor <T> localVarSlice = this->queVarSlice.template AllocTensor<T>();
+        LocalTensor<T> localMSlice = this->queMSlice.template AllocTensor<T>();
+        LocalTensor<T> localVSlice = this->queVSlice.template AllocTensor<T>();
+        LocalTensor<T> localVarSlice = this->queVarSlice.template AllocTensor<T>();
 
         pipe_barrier(PIPE_ALL);
 
@@ -212,34 +208,30 @@ private:
 private:
     float lr, beta1, beta2, epsilon;
     int32_t dim0, dim1, dim2, row, batch, loopCount, rowLeft, loopCountTail, rowLeftTail, coreNum;
-    LocalTensor <T> updateM, updateV, updateVar, temp;
-    LocalTensor <int32_t> localIndices;
-    GlobalTensor <T> gmGradient, gmInputM, gmInputV, gmInputVar;
-    GlobalTensor <int32_t> gmIndices;
-    GlobalTensor <T> gmLearningRate;
+    LocalTensor<T> updateM, updateV, updateVar, temp;
+    LocalTensor<int32_t> localIndices;
+    GlobalTensor<T> gmGradient, gmInputM, gmInputV, gmInputVar;
+    GlobalTensor<int32_t> gmIndices;
+    GlobalTensor<T> gmLearningRate;
     TPipe pipe;
     TQue<QuePosition::VECIN, 1> inQueGradient, inQueIndices;
     TQue<QuePosition::VECIN, 1> queMSlice, queVSlice, queVarSlice;
-    TBuf <TPosition::VECCALC> calcBufM;
-    TBuf <TPosition::VECCALC> calcBufV;
-    TBuf <TPosition::VECCALC> calcBufVar;
-    TBuf <TPosition::VECCALC> calcBuf;
+    TBuf<TPosition::VECCALC> calcBufM;
+    TBuf<TPosition::VECCALC> calcBufV;
+    TBuf<TPosition::VECCALC> calcBufVar;
+    TBuf<TPosition::VECCALC> calcBuf;
 };
 
-extern "C" __global__ __aicore__ void lazy_adam(GM_ADDR gradient, GM_ADDR indices,
-               GM_ADDR inputM, GM_ADDR inputV, GM_ADDR inputVar, GM_ADDR lr,
-               GM_ADDR inputMRef, GM_ADDR inputVRef, GM_ADDR inputVarRef,
-               GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void lazy_adam(GM_ADDR gradient, GM_ADDR indices, GM_ADDR inputM, GM_ADDR inputV,
+                                                GM_ADDR inputVar, GM_ADDR lr, GM_ADDR inputMRef, GM_ADDR inputVRef,
+                                                GM_ADDR inputVarRef, GM_ADDR workspace, GM_ADDR tiling)
 {
     GET_TILING_DATA(tiling_data, tiling);
     LazyAdam<float> op32;
-    op32.Init(gradient, indices,
-              inputM, inputV, inputVar, lr,
-              inputMRef, inputVRef, inputVarRef,
-              tiling_data.beta1, tiling_data.beta2, tiling_data.epsilon,
-              tiling_data.dim0, tiling_data.dim1, tiling_data.dim2,
-              tiling_data.row, tiling_data.indicesAllocSize, tiling_data.otherAllocSize,
-              tiling_data.batch, tiling_data.loopCount, tiling_data.rowLeft,
-              tiling_data.loopCountTail, tiling_data.rowLeftTail, tiling_data.coreNum);
+    op32.Init(gradient, indices, inputM, inputV, inputVar, lr, inputMRef, inputVRef, inputVarRef, tiling_data.beta1,
+              tiling_data.beta2, tiling_data.epsilon, tiling_data.dim0, tiling_data.dim1, tiling_data.dim2,
+              tiling_data.row, tiling_data.indicesAllocSize, tiling_data.otherAllocSize, tiling_data.batch,
+              tiling_data.loopCount, tiling_data.rowLeft, tiling_data.loopCountTail, tiling_data.rowLeftTail,
+              tiling_data.coreNum);
     op32.Process();
 }
