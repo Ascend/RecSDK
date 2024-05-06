@@ -214,9 +214,7 @@ namespace ops {
             this->Attr("beta1").Float();
             this->Attr("beta2").Float();
             this->Attr("epsilon").Float();
-            this->SetInferShape(ge::LazyAdamInferShape)
-                    .SetInferDataType(ge::LazyAdamInferDataType);
-
+            this->SetInferShape(ge::LazyAdamInferShape).SetInferDataType(ge::LazyAdamInferDataType);
             this->AICore().SetTiling(optiling::LazyAdamTilingFunc);
             this->AICore().AddConfig("ascend910b");
         }

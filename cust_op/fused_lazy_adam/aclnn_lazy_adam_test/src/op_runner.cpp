@@ -58,6 +58,35 @@ namespace AclnnLazyAdam {
         }
     }
 
+    bool OpRunner::InitOutputInfo()
+    {
+        // 手动修改输出数据实现，仅申请host上的输出数据空间，析构出需同时适配
+        numOutputs_ = OUTPUT_SIZE;
+        for (size_t i = 0; i < numOutputs_; ++i) {
+            int inputTensorIndex = i + INPUT_TENSOR_OFFSET;
+            auto size = GetInputSize(inputTensorIndex);
+
+            void *hostOutput = nullptr;
+            if (g_isDevice) {
+                if (aclrtMalloc(&hostOutput, size, ACL_MEM_MALLOC_NORMAL_ONLY) != ACL_SUCCESS) {
+                    ERROR_LOG("Malloc device memory for output[%zu] failed", i);
+                    return false;
+                }
+            } else {
+                if (aclrtMallocHost(&hostOutput, size) != ACL_SUCCESS) {
+                    ERROR_LOG("Malloc device memory for output[%zu] failed", i);
+                    return false;
+                }
+            }
+            if (hostOutput == nullptr) {
+                ERROR_LOG("Malloc host memory for output[%zu] failed", i);
+                return false;
+            }
+            hostOutputs_.emplace_back(hostOutput);
+        }
+        return true;
+    }
+
     bool OpRunner::Init()
     {
         for (size_t i = 0; i < numInputs_; ++i) {
@@ -98,31 +127,7 @@ namespace AclnnLazyAdam {
             inputTensor_.emplace_back(inputTensor);
         }
 
-        // 手动修改输出数据实现，仅申请host上的输出数据空间，析构出需同时适配
-        numOutputs_ = OUTPUT_SIZE;
-        for (size_t i = 0; i < numOutputs_; ++i) {
-            int inputTensorIndex = i + INPUT_TENSOR_OFFSET;
-            auto size = GetInputSize(inputTensorIndex);
-
-            void *hostOutput = nullptr;
-            if (g_isDevice) {
-                if (aclrtMalloc(&hostOutput, size, ACL_MEM_MALLOC_NORMAL_ONLY) != ACL_SUCCESS) {
-                    ERROR_LOG("Malloc device memory for output[%zu] failed", i);
-                    return false;
-                }
-            } else {
-                if (aclrtMallocHost(&hostOutput, size) != ACL_SUCCESS) {
-                    ERROR_LOG("Malloc device memory for output[%zu] failed", i);
-                    return false;
-                }
-            }
-            if (hostOutput == nullptr) {
-                ERROR_LOG("Malloc host memory for output[%zu] failed", i);
-                return false;
-            }
-            hostOutputs_.emplace_back(hostOutput);
-        }
-        return true;
+        return InitOutputInfo();
     }
 
     const size_t OpRunner::NumInputs()
