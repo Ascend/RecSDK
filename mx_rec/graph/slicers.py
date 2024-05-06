@@ -69,6 +69,226 @@ class NoGradSubgraphSlicer(metaclass=abc.ABCMeta):
     def slice(self) -> None:
         pass
 
+    @staticmethod
+    def _find_min_dep_ops(
+        tgt_ops: Set[Operation],
+    ) -> Set[Operation]:
+        logger.debug("Search from base nodes: %s.", tgt_ops)
+        base_ops = tgt_ops.copy()
+        visited_ops = base_ops
+
+        loop_cnt = 0
+        while base_ops:
+            loop_cnt += 1
+            if loop_cnt > MAX_WHILE_SIZE:
+                raise RuntimeError(f"maximum loop times exceed limit: {MAX_WHILE_SIZE}.")
+
+            parent_ops = set()
+            for base_node in base_ops:
+                if len(base_node.control_inputs) != 0:
+                    raise ValueError("control dependencies are not supported.")
+
+                parent_ops.update(
+                    tensor_in.op
+                    for tensor_in in base_node.inputs
+                    if tensor_in.op.type != AnchorIteratorOp.ITERATOR_GET_NEXT.value
+                )
+
+            new_ops = parent_ops - visited_ops
+            base_ops = parent_ops
+            visited_ops.update(new_ops)
+
+        logger.debug("Found minimum dependency graph nodes: %s.", visited_ops)
+        return visited_ops
+
+    @staticmethod
+    def _validate_op(op: Operation) -> bool:
+        op_type = op.type
+        op_name = op.name
+        op_inputs = op.inputs
+        op_outputs = op.outputs
+
+        for s in NoGradSubgraphSlicer._INVALID_STR_IN_OP_TYPE:
+            if s in op_type:
+                logger.warning("Invalid operation type: %s which contains str: %s.", op_type, s)
+                return False
+        for s in NoGradSubgraphSlicer._INVALID_STR_IN_OP_NAME:
+            if s in op_name:
+                logger.warning("Invalid operation name: %s which contains str: %s.", op_name, s)
+                return False
+        for t in op_inputs:
+            if t.dtype in NoGradSubgraphSlicer._INVALID_TENSOR_DTYPE:
+                logger.warning("Invalid operation input tensor of operation: %s whose type is %s.", t, t.dtype)
+                return False
+        for t in op_outputs:
+            if t.dtype in NoGradSubgraphSlicer._INVALID_TENSOR_DTYPE:
+                logger.warning("Invalid operation output tensor of operation: %s whose type is %s.", t, t.dtype)
+                return False
+
+        return True
+
+    @staticmethod
+    def _update_subgraph_in(
+        base_ops: Operation,
+        input_to_edge_ops: Dict[Operation, Set[Operation]],
+        sub_graph_ops: Set[Operation],
+    ) -> None:
+        for input_tensor in base_ops.inputs:
+            input_node = input_tensor.op
+            if input_node not in sub_graph_ops:
+                res = input_to_edge_ops.get(input_node, set())
+                res.add(base_ops)
+                input_to_edge_ops[input_node] = res
+
+    @staticmethod
+    def _update_subgraph_out(
+        base_ops: Operation,
+        out_op_to_edge_ops: Dict[Operation, Set[Operation]],
+        sub_graph_ops: Set[Operation],
+    ) -> None:
+        for output_tensor in base_ops.outputs:
+            for output_consumer in output_tensor.consumers():
+                if output_consumer not in sub_graph_ops:
+                    res = out_op_to_edge_ops.get(output_consumer, set())
+                    res.add(base_ops)
+                    out_op_to_edge_ops[output_consumer] = res
+
+    @staticmethod
+    def _upward_bfs_op(base_ops: Union[Operation, Set[Operation], List[Operation]], tgt_op_type: str) -> Operation:
+        if not isinstance(base_ops, (set, list)):
+            base_ops = [base_ops]
+
+        parent_ops = base_ops
+        while True:
+            for parent_op in parent_ops:
+                if parent_op.type == tgt_op_type:
+                    return parent_op
+            base_ops = parent_ops
+            parent_ops = []
+            for base_op in base_ops:
+                parent_ops.extend(utils.find_parent_op(base_op))
+            if not parent_ops:
+                raise ValueError(f"target operation '{tgt_op_type}'' was not found.")
+
+    @staticmethod
+    def _topo_sort_sliced_ops(sliced_ops: Set[Operation]) -> List[Operation]:
+        topo_subgraph_list = []
+        topo_subgraph_set = set()
+        start_nodes = set()
+        [start_nodes.add(x) for x in sliced_ops]
+        logger.info("Got topo_subgraph start nodes: %s", start_nodes)
+
+        def topo_sort_helper(curr_op, output_list, output_set):
+            if not isinstance(curr_op, Operation):
+                raise RuntimeError(f"topo_subgraph_dfs input should be node(aka. tf.Operator). {curr_op}")
+            curr_inputs = curr_op.inputs
+            logger.debug("Got topo_dfs: %s <- %s", curr_op.name, [x.name for x in curr_inputs])
+            current_control_inputs = curr_op.control_inputs
+            if len(current_control_inputs) > 0:
+                raise RuntimeError(
+                    f"control input are not supported: {curr_op.name}, control_inputs: {current_control_inputs}"
+                )
+            if curr_op in output_set:
+                return
+            output_set.add(curr_op)
+            for tensor in curr_inputs:
+                node = tensor.op
+                if node.type != AnchorIteratorOp.ITERATOR_GET_NEXT.value and node not in output_set:
+                    topo_sort_helper(node, output_list, output_set)
+            output_list.append(curr_op)
+
+        [topo_sort_helper(x, topo_subgraph_list, topo_subgraph_set) for x in start_nodes]
+        if len(topo_subgraph_list) != len(topo_subgraph_set):
+            raise RuntimeError(f"got duplicated topo node: {sorted(topo_subgraph_list, key=lambda x: x.name)}.")
+        logger.info("Got topo_subgraph: %s", topo_subgraph_list)
+        return topo_subgraph_list
+
+    @staticmethod
+    def _get_mapping_for_subgraph_in(
+        from_op: Operation,
+        to_ops: Set[Operation],
+        tensor_mapping: Union[Dict[Tensor, Tensor], Dict[SparseTensor, SparseTensor]],
+    ) -> None:
+        if from_op.type != AnchorIteratorOp.ITERATOR_GET_NEXT.value:
+            raise RuntimeError(f"expect IteratorGetNext for input tensor of subgraph, but got {from_op}")
+        for node in to_ops:
+            for each_tensor in node.inputs:
+                if each_tensor.op.type != AnchorIteratorOp.ITERATOR_GET_NEXT.value:
+                    continue
+                old_tensor_name = each_tensor.name
+                x_index = int(old_tensor_name.split(":")[-1])
+                g = tf.compat.v1.get_default_graph()
+                arg_tensor = g.get_tensor_by_name("args_%d:0" % x_index)
+                tensor_mapping[each_tensor] = arg_tensor
+
+    @staticmethod
+    def _get_mapping_for_subgraph(
+        old_op: Operation,
+        node_mapping: Dict[Operation, Operation],
+        tensor_mapping: Dict[Tensor, Tensor],
+    ) -> None:
+        logger.debug("old operation name: %s\nold operation inputs: %s\n", old_op.name, [x for x in old_op.inputs])
+
+        for each_tensor in old_op.inputs:
+            if each_tensor not in tensor_mapping:
+                raise RuntimeError(
+                    f"each_tensor(input) {each_tensor} need by {old_op.name} not in tensor_mapping.{tensor_mapping}"
+                )
+        new_inputs = NoGradSubgraphSlicer._get_mapped_tensor(tensor_mapping, old_op.inputs)
+
+        node_def = old_op.node_def
+        node_def.name = "{}/{}".format(NoGradSubgraphSlicer._SLICED_OP_NAME_PREFIX, node_def.name)
+        new_node = tf.Operation(node_def=node_def, g=tf.compat.v1.get_default_graph(), inputs=new_inputs)
+
+        node_mapping[old_op] = new_node
+        for old_out_tensor, new_out_tensor in zip(old_op.outputs, new_node.outputs):
+            tensor_mapping[old_out_tensor] = new_out_tensor
+
+    @staticmethod
+    def _get_mapped_tensor(tensor2tensor: Dict[Tensor, Tensor], keys: List[Tensor]) -> List[Tensor]:
+        tensors = []
+        for k in keys:
+            if k not in tensor2tensor:
+                raise KeyError(f"failed to find key tensor: {k} from tensor map: {tensor2tensor}.")
+            tensors.append(tensor2tensor[k])
+        return tensors
+
+    @staticmethod
+    def _sort_sliced_graph_outputs(subgraph_out: Dict[Operation, Set[Operation]]) -> List[Tensor]:
+        extra_outputs = []
+        sorted_outputs = sorted(subgraph_out.items(), key=lambda x: x[0].name)
+        for outside_op, edge_ops in sorted_outputs:
+            outside_op_inputs = set(outside_op.inputs)
+            for edge_op in edge_ops:
+                NoGradSubgraphSlicer._add_sorted_additional_tensors(extra_outputs, outside_op_inputs, edge_op)
+        return extra_outputs
+
+    @staticmethod
+    def _add_sorted_additional_tensors(extra_outputs, outside_op_inputs, edge_op) -> None:
+        for each_tensor in sorted(edge_op.outputs, key=lambda x: x.name):
+            if each_tensor not in outside_op_inputs:
+                continue
+            if each_tensor in extra_outputs:
+                continue
+            extra_outputs.append(each_tensor)
+
+    @staticmethod
+    def _get_tensor_consumers(tensor: Tensor) -> List[Operation]:
+        if not isinstance(tensor, NoGradSubgraphSlicer._VALID_TENSOR_CLASS):
+            raise RuntimeError(f"expected 'tf.Tensor' or 'tf.SparseTensor', but got: {tensor}")
+
+        graph = tensor.graph
+        consumers = []
+        consumer_names = [op.name for op in tensor.consumers()]
+
+        with graph._lock:
+            for name in consumer_names:
+                if name not in graph._nodes_by_name:  # ignore deleted node
+                    continue
+                consumers.append(graph._nodes_by_name[name])
+
+        return consumers
+
     def _slice_ops(self, sliceable_ops: Set[Operation], is_training: bool) -> None:
         """Slice the minimum dependency graph of given operation set.
 
@@ -473,226 +693,6 @@ class NoGradSubgraphSlicer(metaclass=abc.ABCMeta):
                     consumer.name,
                     new_tensor,
                 )
-
-    @staticmethod
-    def _find_min_dep_ops(
-        tgt_ops: Set[Operation],
-    ) -> Set[Operation]:
-        logger.debug("Search from base nodes: %s.", tgt_ops)
-        base_ops = tgt_ops.copy()
-        visited_ops = base_ops
-
-        loop_cnt = 0
-        while base_ops:
-            loop_cnt += 1
-            if loop_cnt > MAX_WHILE_SIZE:
-                raise RuntimeError(f"maximum loop times exceed limit: {MAX_WHILE_SIZE}.")
-
-            parent_ops = set()
-            for base_node in base_ops:
-                if len(base_node.control_inputs) != 0:
-                    raise ValueError("control dependencies are not supported.")
-
-                parent_ops.update(
-                    tensor_in.op
-                    for tensor_in in base_node.inputs
-                    if tensor_in.op.type != AnchorIteratorOp.ITERATOR_GET_NEXT.value
-                )
-
-            new_ops = parent_ops - visited_ops
-            base_ops = parent_ops
-            visited_ops.update(new_ops)
-
-        logger.debug("Found minimum dependency graph nodes: %s.", visited_ops)
-        return visited_ops
-
-    @staticmethod
-    def _validate_op(op: Operation) -> bool:
-        op_type = op.type
-        op_name = op.name
-        op_inputs = op.inputs
-        op_outputs = op.outputs
-
-        for s in NoGradSubgraphSlicer._INVALID_STR_IN_OP_TYPE:
-            if s in op_type:
-                logger.warning("Invalid operation type: %s which contains str: %s.", op_type, s)
-                return False
-        for s in NoGradSubgraphSlicer._INVALID_STR_IN_OP_NAME:
-            if s in op_name:
-                logger.warning("Invalid operation name: %s which contains str: %s.", op_name, s)
-                return False
-        for t in op_inputs:
-            if t.dtype in NoGradSubgraphSlicer._INVALID_TENSOR_DTYPE:
-                logger.warning("Invalid operation input tensor of operation: %s whose type is %s.", t, t.dtype)
-                return False
-        for t in op_outputs:
-            if t.dtype in NoGradSubgraphSlicer._INVALID_TENSOR_DTYPE:
-                logger.warning("Invalid operation output tensor of operation: %s whose type is %s.", t, t.dtype)
-                return False
-
-        return True
-
-    @staticmethod
-    def _update_subgraph_in(
-        base_ops: Operation,
-        input_to_edge_ops: Dict[Operation, Set[Operation]],
-        sub_graph_ops: Set[Operation],
-    ) -> None:
-        for input_tensor in base_ops.inputs:
-            input_node = input_tensor.op
-            if input_node not in sub_graph_ops:
-                res = input_to_edge_ops.get(input_node, set())
-                res.add(base_ops)
-                input_to_edge_ops[input_node] = res
-
-    @staticmethod
-    def _update_subgraph_out(
-        base_ops: Operation,
-        out_op_to_edge_ops: Dict[Operation, Set[Operation]],
-        sub_graph_ops: Set[Operation],
-    ) -> None:
-        for output_tensor in base_ops.outputs:
-            for output_consumer in output_tensor.consumers():
-                if output_consumer not in sub_graph_ops:
-                    res = out_op_to_edge_ops.get(output_consumer, set())
-                    res.add(base_ops)
-                    out_op_to_edge_ops[output_consumer] = res
-
-    @staticmethod
-    def _upward_bfs_op(base_ops: Union[Operation, Set[Operation], List[Operation]], tgt_op_type: str) -> Operation:
-        if not isinstance(base_ops, (set, list)):
-            base_ops = [base_ops]
-
-        parent_ops = base_ops
-        while True:
-            for parent_op in parent_ops:
-                if parent_op.type == tgt_op_type:
-                    return parent_op
-            base_ops = parent_ops
-            parent_ops = []
-            for base_op in base_ops:
-                parent_ops.extend(utils.find_parent_op(base_op))
-            if not parent_ops:
-                raise ValueError(f"target operation '{tgt_op_type}'' was not found.")
-
-    @staticmethod
-    def _topo_sort_sliced_ops(sliced_ops: Set[Operation]) -> List[Operation]:
-        topo_subgraph_list = []
-        topo_subgraph_set = set()
-        start_nodes = set()
-        [start_nodes.add(x) for x in sliced_ops]
-        logger.info("Got topo_subgraph start nodes: %s", start_nodes)
-
-        def topo_sort_helper(curr_op, output_list, output_set):
-            if not isinstance(curr_op, Operation):
-                raise RuntimeError(f"topo_subgraph_dfs input should be node(aka. tf.Operator). {curr_op}")
-            curr_inputs = curr_op.inputs
-            logger.debug("Got topo_dfs: %s <- %s", curr_op.name, [x.name for x in curr_inputs])
-            current_control_inputs = curr_op.control_inputs
-            if len(current_control_inputs) > 0:
-                raise RuntimeError(
-                    f"control input are not supported: {curr_op.name}, control_inputs: {current_control_inputs}"
-                )
-            if curr_op in output_set:
-                return
-            output_set.add(curr_op)
-            for tensor in curr_inputs:
-                node = tensor.op
-                if node.type != AnchorIteratorOp.ITERATOR_GET_NEXT.value and node not in output_set:
-                    topo_sort_helper(node, output_list, output_set)
-            output_list.append(curr_op)
-
-        [topo_sort_helper(x, topo_subgraph_list, topo_subgraph_set) for x in start_nodes]
-        if len(topo_subgraph_list) != len(topo_subgraph_set):
-            raise RuntimeError(f"got duplicated topo node: {sorted(topo_subgraph_list, key=lambda x: x.name)}.")
-        logger.info("Got topo_subgraph: %s", topo_subgraph_list)
-        return topo_subgraph_list
-
-    @staticmethod
-    def _get_mapping_for_subgraph_in(
-        from_op: Operation,
-        to_ops: Set[Operation],
-        tensor_mapping: Union[Dict[Tensor, Tensor], Dict[SparseTensor, SparseTensor]],
-    ) -> None:
-        if from_op.type != AnchorIteratorOp.ITERATOR_GET_NEXT.value:
-            raise RuntimeError(f"expect IteratorGetNext for input tensor of subgraph, but got {from_op}")
-        for node in to_ops:
-            for each_tensor in node.inputs:
-                if each_tensor.op.type != AnchorIteratorOp.ITERATOR_GET_NEXT.value:
-                    continue
-                old_tensor_name = each_tensor.name
-                x_index = int(old_tensor_name.split(":")[-1])
-                g = tf.compat.v1.get_default_graph()
-                arg_tensor = g.get_tensor_by_name("args_%d:0" % x_index)
-                tensor_mapping[each_tensor] = arg_tensor
-
-    @staticmethod
-    def _get_mapping_for_subgraph(
-        old_op: Operation,
-        node_mapping: Dict[Operation, Operation],
-        tensor_mapping: Dict[Tensor, Tensor],
-    ) -> None:
-        logger.debug("old operation name: %s\nold operation inputs: %s\n", old_op.name, [x for x in old_op.inputs])
-
-        for each_tensor in old_op.inputs:
-            if each_tensor not in tensor_mapping:
-                raise RuntimeError(
-                    f"each_tensor(input) {each_tensor} need by {old_op.name} not in tensor_mapping.{tensor_mapping}"
-                )
-        new_inputs = NoGradSubgraphSlicer._get_mapped_tensor(tensor_mapping, old_op.inputs)
-
-        node_def = old_op.node_def
-        node_def.name = "{}/{}".format(NoGradSubgraphSlicer._SLICED_OP_NAME_PREFIX, node_def.name)
-        new_node = tf.Operation(node_def=node_def, g=tf.compat.v1.get_default_graph(), inputs=new_inputs)
-
-        node_mapping[old_op] = new_node
-        for old_out_tensor, new_out_tensor in zip(old_op.outputs, new_node.outputs):
-            tensor_mapping[old_out_tensor] = new_out_tensor
-
-    @staticmethod
-    def _get_mapped_tensor(tensor2tensor: Dict[Tensor, Tensor], keys: List[Tensor]) -> List[Tensor]:
-        tensors = []
-        for k in keys:
-            if k not in tensor2tensor:
-                raise KeyError(f"failed to find key tensor: {k} from tensor map: {tensor2tensor}.")
-            tensors.append(tensor2tensor[k])
-        return tensors
-
-    @staticmethod
-    def _sort_sliced_graph_outputs(subgraph_out: Dict[Operation, Set[Operation]]) -> List[Tensor]:
-        extra_outputs = []
-        sorted_outputs = sorted(subgraph_out.items(), key=lambda x: x[0].name)
-        for outside_op, edge_ops in sorted_outputs:
-            outside_op_inputs = set(outside_op.inputs)
-            for edge_op in edge_ops:
-                NoGradSubgraphSlicer._add_sorted_additional_tensors(extra_outputs, outside_op_inputs, edge_op)
-        return extra_outputs
-
-    @staticmethod
-    def _add_sorted_additional_tensors(extra_outputs, outside_op_inputs, edge_op) -> None:
-        for each_tensor in sorted(edge_op.outputs, key=lambda x: x.name):
-            if each_tensor not in outside_op_inputs:
-                continue
-            if each_tensor in extra_outputs:
-                continue
-            extra_outputs.append(each_tensor)
-
-    @staticmethod
-    def _get_tensor_consumers(tensor: Tensor) -> List[Operation]:
-        if not isinstance(tensor, NoGradSubgraphSlicer._VALID_TENSOR_CLASS):
-            raise RuntimeError(f"expected 'tf.Tensor' or 'tf.SparseTensor', but got: {tensor}")
-
-        graph = tensor.graph
-        consumers = []
-        consumer_names = [op.name for op in tensor.consumers()]
-
-        with graph._lock:
-            for name in consumer_names:
-                if name not in graph._nodes_by_name:  # ignore deleted node
-                    continue
-                consumers.append(graph._nodes_by_name[name])
-
-        return consumers
 
 
 @para_checker_decorator(
