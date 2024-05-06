@@ -345,7 +345,11 @@ int EmbeddingDDR::LoadHashMap(const string& savePath)
         LOG_ERROR("malloc failed: {}", strerror(errno));
         return -1;
     }
-    fileSystemPtr->Read(ss.str(), reinterpret_cast<char*>(buf), fileSize);
+    ssize_t result = fileSystemPtr->Read(ss.str(), reinterpret_cast<char*>(buf), fileSize);
+    if (result == -1) {
+        free(static_cast<void*>(buf));
+        return -1;
+    }
 
     size_t loadKeySize = fileSize / sizeof(int64_t);
 

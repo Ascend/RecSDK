@@ -28,7 +28,7 @@ namespace optiling
     constexpr int32_t SIZE_OF_HALF = 2;
     constexpr int32_t SIZE_OF_FLOAT_OR_INT = 4;
     constexpr int32_t MIN_BLOCK_SIZE = 32; // ub空间的数据都要按照32对齐
-    constexpr int32_t UB_LIMIT = 175 * 1024;
+    constexpr uint32_t UB_LIMIT = 175 * 1024;
     constexpr int32_t USR_SIZE = 256;
     constexpr int32_t SYS_WORKSPACE_SIZE = 16 * 1024 * 1024;
     constexpr int32_t PING_PONG_NUM = 1;
