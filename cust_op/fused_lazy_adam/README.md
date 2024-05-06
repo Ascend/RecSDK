@@ -1,6 +1,7 @@
 # LazyAdam优化器融合算子及样例说明
 
 ## LazyAdam融合算子文件结构
+
 ```shell
 ├── aclnn_lazy_adam_test  # 单算子测试用例
 ├── lazy_adam.json    # 算子原型配置
@@ -11,33 +12,36 @@
 ```
 
 ## Ascend C参考设计
-更多详情可以参考CANN官方的Ascend C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0001.html)。
 
+更多详情可以参考CANN官方的Ascend
+C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0001.html)。
 
 ## lazy_adam优化器同名融合算子lazy_adam
 
 1. 算子分析
 
 a) 算子的主要功能是实现lazy_adam优化器反向更新时m、v、variable三项数据的计算和更新；  
-b) 算子参数说明：  
+b) 算子参数说明：
+
 * gradient: lazy_adam优化器计算时使用的梯度；
 * indices: 参与计算/更新的数据索引；
 * inputM: lazy_adam优化器一阶矩估计；计算结果原地更新；
 * inputV: lazy_adam优化器二阶矩估计；计算结果原地更新；
 * inputVar: embedding表对应的variable数据；计算结果原地更新；
-c) 算子约束说明：
+  c) 算子约束说明：
 * 支持的型号：Atlas A2系列产品;
-* 支持的输入数据类型：float32；  
-* embedding表的dim值需要时8的倍数；
+* 支持的输入数据类型：float32；
+* embedding表的dim值需要是8的倍数；
 
 2. Host侧算子实现
 
 Host侧算子实现在目录 fused_lazy_adam/op_host下，其中包括：lazy_adam.cpp和
 lazy_adam_tiling.h。
 
-a) Tiling实现 
+a) Tiling实现
 
-namespace optiling域中的LazyAdamTilingFunc函数，主要实现从context中获取外部入参信息（输入参数指针、shape信息），及校验有效性；  
+namespace
+optiling域中的LazyAdamTilingFunc函数，主要实现从context中获取外部入参信息（输入参数指针、shape信息），及校验有效性；  
 并计算kernel侧需要的数据切分相关参数，包括row、loopCount、batch等（详情见tiling文件注释），设置BlockDim，最后通过TilingData传递属性信息。
 
 b) Shape推导
@@ -67,6 +71,7 @@ d) Process方法，进行数据搬入和计算，并且计算完成后将计算�
 单算子调用分为两种方式：单算子API执行和模型执行。mxRec提供单算子API执行供参考。
 
 单算子测试用例在目录fused_lazy_adam/aclnn_lazy_adam_test下，其中：
+
 * inc是头文件目录
 * scripts存放生成数据和验证数据的python脚本
 * input是存放算子入参的bin文件
@@ -74,23 +79,32 @@ d) Process方法，进行数据搬入和计算，并且计算完成后将计算�
 * src是存放公共函数common、构造算子输入输出描述类oprator_desc、单算子调用主体流程实现op_runner文件和入口main文件
 
 执行单算子测试：
+
 ```shell
 bash run.sh
 ```
 
 ### 前置条件
 
-1. 参考[基于msopgen工具创建算子工程](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0023.html)完成算子工程的创建，
-参考[kernel侧算子实现](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0024.html)完成kernel侧实现的相关准备，
-参考[host侧算子实现](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0026.html)完成host侧实现相关准备。
-2. 参考[算子编译部署](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0031.html)完成算子的编译部署，编译部署时需要开启算子的二进制编译功能：修改算子工程中的编译配置项文件CMakePresets.json，将
+1.
+参考[基于msopgen工具创建算子工程](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0023.html)
+完成算子工程的创建，
+参考[kernel侧算子实现](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0024.html)
+完成kernel侧实现的相关准备，
+参考[host侧算子实现](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0026.html)
+完成host侧实现相关准备。
+2.
+参考[算子编译部署](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0031.html)
+完成算子的编译部署，编译部署时需要开启算子的二进制编译功能：修改算子工程中的编译配置项文件CMakePresets.json，将
 ENABLE_BINARY_PACKAGE设置为True。编译部署时可将算子的二进制部署到当前环境，便于后续算子的调用。
 3. 检查API执行需要的头文件和库文件是否自动生成，针对mxRec，检查cust_op/fused_lazy_adam/lazy_adam/build_out/autogen目录下，是否有
-aclnn_lazy_adam.cpp和aclnn_lazy_adam.h等。
+   aclnn_lazy_adam.cpp和aclnn_lazy_adam.h等。
 
-注意：对于cust_op/fused_lazy_adam/run.sh脚本，安装算子后会删除构建目录。运行单算子测试时，需要屏蔽掉删除rm rf ./lazy_adam这一步，以确保前置条件3。
+注意：对于cust_op/fused_lazy_adam/run.sh脚本，安装算子后会删除构建目录。运行单算子测试时，需要屏蔽掉删除rm rf
+./lazy_adam这一步，以确保前置条件3。
 
 ### 融合算子 lazy_adam
+
 针对lazy_adam算子，入口src/main.cpp中：
 
 1. InitResource函数：初始化AscendCL并运行管理资源申请，不用修改
@@ -100,6 +114,7 @@ a) 创建算子输入输出描述CreateOpDesc，OperatorDesc对象定义(inc/ope
 op_runner中使用；
 
 b) 创建OpRunner的对象，并依次执行：
+
 * opRunner.Init()：申请内存存放执行算子的输入输出数据
 * SetInputData()：加载数据输入bin文件并传输给OpRunner的Buffer供后续算子执行使用
 * opRunner.RunOp()：算子执行，主要流程为：入参数据拷贝，创建Stream，执行Stream，输出数据拷贝，释放Stream资源
@@ -108,14 +123,17 @@ b) 创建OpRunner的对象，并依次执行：
 3. DestroyResource函数：释放内存，不用修改
 
 ### 运行脚本
+
 run.sh脚本依次执行：
-1. 清除遗留生成文件和日志文件 
-2. 生成输入数据和真值数据 
-3. 编译acl可执行文件 
-4. 运行可执行文件 
+
+1. 清除遗留生成文件和日志文件
+2. 生成输入数据和真值数据
+3. 编译acl可执行文件
+4. 运行可执行文件
 5. 比较真值文件
 
 ### scripts脚本
+
 * gen_data.py：生成lazy_adam算子的输入数据和用于精度校验的golden数据，可自行修改测试相关dim参数。
 * verify_result.py：将算子的输出和脚本生成的golden数据进行精度比对，并输出比较结果。比对规则为：允许误差精度loss：1e-4
 
