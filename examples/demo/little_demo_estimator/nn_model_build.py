@@ -155,7 +155,7 @@ class LittleModel:
                                       optimizer_list=sparse_optimizer_list)
 
         if self.params.modify_graph:
-            if not self.params.enable_push_ops_test:
+            if not self.params.enable_slicer_test:
                 input_list = [[self.features["user_ids"], self.features["item_ids"]],
                               [user_hashtable, item_hashtable],
                               [self.cfg.user_send_cnt, self.cfg.item_send_cnt],
@@ -207,15 +207,16 @@ class LittleModel:
         return embedding_list
 
 
-def _make_ids_with_const_ops(input: Tensor) -> Tensor:
-    const_ids = tf.constant(1, shape=input.shape, dtype=input.dtype)
+def _make_ids_with_const_ops(input_tensor: Tensor) -> Tensor:
+    const_ids = tf.constant(1, shape=input_tensor.shape, dtype=input_tensor.dtype)
     const_ids = tf.compat.v1.add(const_ids, 1)
     const_ids = tf.compat.v1.subtract(const_ids, 1)
 
     return const_ids
 
-def _make_ids_with_str_ops(input: Tensor) -> Tensor:
-    str_ids = tf.compat.v1.strings.as_string(input)
+
+def _make_ids_with_str_ops(input_tensor: Tensor) -> Tensor:
+    str_ids = tf.compat.v1.strings.as_string(input_tensor)
     str_ids = tf.compat.v1.strings.to_number(str_ids)
-    
+
     return str_ids

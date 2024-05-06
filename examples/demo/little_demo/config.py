@@ -95,7 +95,7 @@ class Config:
         self.learning_rate = 0.01
 
 
-def sess_config(dump_data=False, dump_path="./dump_output", dump_steps="0|1|2"):
+def sess_config(dump_data=False, dump_path="./dump_output", dump_steps="0|1|2", use_deterministic=0):
     session_config = tf.compat.v1.ConfigProto(allow_soft_placement=False,
                                               log_device_placement=False)
 
@@ -108,7 +108,11 @@ def sess_config(dump_data=False, dump_path="./dump_output", dump_steps="0|1|2"):
     custom_op.parameter_map["HCCL_algorithm"].s = tf.compat.as_bytes("level0:pairwise;level1:pairwise")
     custom_op.parameter_map["enable_data_pre_proc"].b = True
     custom_op.parameter_map["iterations_per_loop"].i = 1
-    custom_op.parameter_map["precision_mode"].s = tf.compat.as_bytes("allow_mix_precision")
+    if use_deterministic:
+        custom_op.parameter_map["precision_mode"].s = tf.compat.as_bytes("must_keep_origin_dtype")
+        custom_op.parameter_map["deterministic"].i = 1
+    else:
+        custom_op.parameter_map["precision_mode"].s = tf.compat.as_bytes("allow_mix_precision")
     custom_op.parameter_map["hcom_parallel"].b = False
     custom_op.parameter_map["op_precision_mode"].s = tf.compat.as_bytes("op_impl_mode.ini")
     custom_op.parameter_map["op_execute_timeout"].i = 2000

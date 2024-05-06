@@ -18,7 +18,7 @@
 import tensorflow as tf
 
 from mxrec_pybind import InitializeInfo, ConstantInitializerInfo, NormalInitializerInfo, EmbInfo, EmbInfoParams, \
-    ThresholdValue, HybridMgmt, RankInfo, USE_STATIC, USE_HOT, USE_DYNAMIC_EXPANSION
+    ThresholdValue, HybridMgmt, RankInfo, USE_STATIC, USE_DYNAMIC_EXPANSION, USE_SUM_SAME_ID_GRADIENTS
 
 from mx_rec.util.communication.hccl_ops import get_rank_id, get_device_id, get_rank_size
 from mx_rec.util.initialize import ConfigInitializer
@@ -200,10 +200,12 @@ def initialize_emb_cache(table_info_list, threshold_list):
     option = 0
     if ConfigInitializer.get_instance().use_static:
         option = option | USE_STATIC
-    # use hot always True
-    option = option | USE_STATIC << 1
     if ConfigInitializer.get_instance().use_dynamic_expansion:
         option = option | USE_DYNAMIC_EXPANSION
+
+    optimizer = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
+    if optimizer and optimizer.derivative == 2:
+        option = option | USE_SUM_SAME_ID_GRADIENTS
 
     # [train_steps, eval_steps, save_steps] pass step information to HybridMgmt for data process loop
     rank_info = RankInfo(rank_id, device_id, rank_size, option, [train_steps, eval_steps, save_steps])

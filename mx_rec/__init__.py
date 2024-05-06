@@ -15,6 +15,7 @@
 # limitations under the License.
 # ==============================================================================
 
+__version__ = "5.0.RC2"
 __all__ = ["version", "__version__"]
 
 from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION
@@ -34,7 +35,6 @@ patch_for_assert_eval_spec()
 patch_for_bool_gauge()
 patch_for_optimizer()
 patch_for_session()
-__version__ = "5.0.RC2"
 
 
 def version():
