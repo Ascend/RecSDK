@@ -19,23 +19,23 @@ See the License for the specific language governing permissions and
 
 namespace optiling {
 BEGIN_TILING_DATA_DEF(LazyAdamTilingData)
-    TILING_DATA_FIELD_DEF(float, beta1);
-    TILING_DATA_FIELD_DEF(float, beta2);
-    TILING_DATA_FIELD_DEF(float, epsilon);
-    TILING_DATA_FIELD_DEF(int32_t, dim0);
-    TILING_DATA_FIELD_DEF(int32_t, dim1);
-    TILING_DATA_FIELD_DEF(int32_t, dim2);
-    TILING_DATA_FIELD_DEF(int32_t, row);
-    TILING_DATA_FIELD_DEF(int32_t, indicesAllocSize);
-    TILING_DATA_FIELD_DEF(int32_t, otherAllocSize);
-    TILING_DATA_FIELD_DEF(int32_t, batch);
-    TILING_DATA_FIELD_DEF(int32_t, loopCount);
-    TILING_DATA_FIELD_DEF(int32_t, rowLeft);
-    TILING_DATA_FIELD_DEF(int32_t, loopCountTail);
-    TILING_DATA_FIELD_DEF(int32_t, rowLeftTail);
-    TILING_DATA_FIELD_DEF(int32_t, coreNum);
+TILING_DATA_FIELD_DEF(float, beta1);
+TILING_DATA_FIELD_DEF(float, beta2);
+TILING_DATA_FIELD_DEF(float, epsilon);
+TILING_DATA_FIELD_DEF(int32_t, dim0);
+TILING_DATA_FIELD_DEF(int32_t, dim1);
+TILING_DATA_FIELD_DEF(int32_t, dim2);
+TILING_DATA_FIELD_DEF(int32_t, row);
+TILING_DATA_FIELD_DEF(int32_t, indicesAllocSize);
+TILING_DATA_FIELD_DEF(int32_t, otherAllocSize);
+TILING_DATA_FIELD_DEF(int32_t, batch);
+TILING_DATA_FIELD_DEF(int32_t, loopCount);
+TILING_DATA_FIELD_DEF(int32_t, rowLeft);
+TILING_DATA_FIELD_DEF(int32_t, loopCountTail);
+TILING_DATA_FIELD_DEF(int32_t, rowLeftTail);
+TILING_DATA_FIELD_DEF(int32_t, coreNum);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(LazyAdam, LazyAdamTilingData)
-}
-#endif // LAZY_ADAM_TILING_H
+}  // namespace optiling
+#endif  // LAZY_ADAM_TILING_H
