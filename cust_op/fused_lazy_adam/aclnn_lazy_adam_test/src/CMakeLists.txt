@@ -19,9 +19,9 @@ if (NOT DEFINED ENV{DDK_PATH})
     message(STATUS "set default INC_PATH: ${INC_PATH}")
 else ()
     message(STATUS "env INC_PATH: ${INC_PATH}")
-endif()
+endif ()
 
-set(CUST_PKG_PATH "${INC_PATH}/opp/vendors/customize_lazy_adam/op_api")
+set(CUST_PKG_PATH "${INC_PATH}/opp/vendors/mxrec_fused_lazy_adam/op_api")
 
 set(LIB_PATH $ENV{NPU_HOST_LIB})
 
@@ -32,23 +32,23 @@ if (NOT DEFINED ENV{NPU_HOST_LIB})
     message(STATUS "set default LIB_PATH: ${LIB_PATH}")
 else ()
     message(STATUS "env LIB_PATH: ${LIB_PATH}")
-endif()
+endif ()
 
 set(AUTO_GEN_PATH "../../lazy_adam/build_out/autogen")
 # Header path
 include_directories(
-    ${INC_PATH}/runtime/include
-    ${INC_PATH}/atc/include
-    ../inc
-    ${CUST_PKG_PATH}/include
-    ${AUTO_GEN_PATH}
+        ${INC_PATH}/runtime/include
+        ${INC_PATH}/atc/include
+        ../inc
+        ${CUST_PKG_PATH}/include
+        ${AUTO_GEN_PATH}
 )
 
 # add host lib path
 link_directories(
-    ${LIB_PATH}
-    ${LIB_PATH1}
-    ${CUST_PKG_PATH}/lib
+        ${LIB_PATH}
+        ${LIB_PATH1}
+        ${CUST_PKG_PATH}/lib
 )
 
 add_executable(execute_op
@@ -57,11 +57,11 @@ add_executable(execute_op
 )
 
 target_link_libraries(execute_op
-    ascendcl
-    cust_opapi
-    acl_op_compiler
-    nnopbase
-    stdc++
+        ascendcl
+        cust_opapi
+        acl_op_compiler
+        nnopbase
+        stdc++
 )
 
 install(TARGETS execute_op DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
