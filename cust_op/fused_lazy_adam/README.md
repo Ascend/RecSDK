@@ -16,6 +16,16 @@
 更多详情可以参考CANN官方的Ascend
 C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0001.html)。
 
+## lazy_adam融合算子使用
+
+1. 进入当前目录，执行指令进行编译和部署lazy_adam融合算子
+
+```
+bash run.sh
+```
+
+2. 模型py脚本中导入mxRec中的lazy_adam优化器。lazy_adam优化器使用知道参考mxRec用户指南。
+
 ## lazy_adam优化器同名融合算子lazy_adam
 
 1. 算子分析
@@ -87,16 +97,20 @@ bash run.sh
 ### 前置条件
 
 1.
+
 参考[基于msopgen工具创建算子工程](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0023.html)
 完成算子工程的创建，
 参考[kernel侧算子实现](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0024.html)
 完成kernel侧实现的相关准备，
 参考[host侧算子实现](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0026.html)
 完成host侧实现相关准备。
+
 2.
+
 参考[算子编译部署](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0031.html)
 完成算子的编译部署，编译部署时需要开启算子的二进制编译功能：修改算子工程中的编译配置项文件CMakePresets.json，将
 ENABLE_BINARY_PACKAGE设置为True。编译部署时可将算子的二进制部署到当前环境，便于后续算子的调用。
+
 3. 检查API执行需要的头文件和库文件是否自动生成，针对mxRec，检查cust_op/fused_lazy_adam/lazy_adam/build_out/autogen目录下，是否有
    aclnn_lazy_adam.cpp和aclnn_lazy_adam.h等。
 
