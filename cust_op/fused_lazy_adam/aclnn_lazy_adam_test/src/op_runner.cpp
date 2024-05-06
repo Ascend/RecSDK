@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-#include <cassert>
 #include <limits>
+#include <stdexcept>
 
 #include "acl/acl_op_compiler.h"
 #include "aclnn_lazy_adam.h"
@@ -31,12 +31,14 @@ namespace AclnnLazyAdam {
     constexpr int OUTPUT_SIZE = 3;
     constexpr int INPUT_TENSOR_OFFSET = 2;
 
-    OpRunner::OpRunner(OperatorDesc *opDesc) : opDesc_(opDesc) {
+    OpRunner::OpRunner(OperatorDesc* opDesc) : opDesc_(opDesc)
+    {
         numInputs_ = opDesc->inputDesc.size();
         numOutputs_ = opDesc->outputDesc.size();
     }
 
-    OpRunner::~OpRunner() {
+    OpRunner::~OpRunner()
+    {
         for (size_t i = 0; i < numInputs_; ++i) {
             (void) aclDestroyTensor(inputTensor_[i]);
             (void) aclDestroyDataBuffer(inputBuffers_[i]);
@@ -56,7 +58,8 @@ namespace AclnnLazyAdam {
         }
     }
 
-    bool OpRunner::Init() {
+    bool OpRunner::Init()
+    {
         for (size_t i = 0; i < numInputs_; ++i) {
             auto size = GetInputSize(i);
             void *devMem = nullptr;
@@ -122,15 +125,18 @@ namespace AclnnLazyAdam {
         return true;
     }
 
-    const size_t OpRunner::NumInputs() {
+    const size_t OpRunner::NumInputs()
+    {
         return numInputs_;
     }
 
-    const size_t OpRunner::NumOutputs() {
+    const size_t OpRunner::NumOutputs()
+    {
         return numOutputs_;
     }
 
-    const size_t OpRunner::GetInputSize(size_t index) const {
+    const size_t OpRunner::GetInputSize(size_t index) const
+    {
         if (index >= numInputs_) {
             ERROR_LOG("index out of range. index = %zu, numInputs = %zu", index, numInputs_);
             return 0;
@@ -138,7 +144,8 @@ namespace AclnnLazyAdam {
         return aclGetTensorDescSize(opDesc_->inputDesc[index]);
     }
 
-    const size_t OpRunner::GetInputNumDims(size_t index) const {
+    const size_t OpRunner::GetInputNumDims(size_t index) const
+    {
         if (index >= numInputs_) {
             ERROR_LOG("index out of range. index = %zu, numInputs = %zu", index, numInputs_);
             return 0;
@@ -146,7 +153,8 @@ namespace AclnnLazyAdam {
         return aclGetTensorDescNumDims(opDesc_->inputDesc[index]);
     }
 
-    aclDataType OpRunner::GetInputDataType(size_t index) const {
+    aclDataType OpRunner::GetInputDataType(size_t index) const
+    {
         if (index >= numInputs_) {
             ERROR_LOG("index out of range. index = %zu, numInputs = %zu", index, numInputs_);
             return ACL_DT_UNDEFINED;
@@ -154,7 +162,8 @@ namespace AclnnLazyAdam {
         return aclGetTensorDescType(opDesc_->inputDesc[index]);
     }
 
-    aclFormat OpRunner::GetInputFormat(size_t index) const {
+    aclFormat OpRunner::GetInputFormat(size_t index) const
+    {
         if (index >= numInputs_) {
             ERROR_LOG("index out of range. index = %zu, numInputs = %zu", index, numInputs_);
             return ACL_FORMAT_UNDEFINED;
@@ -162,7 +171,8 @@ namespace AclnnLazyAdam {
         return aclGetTensorDescFormat(opDesc_->inputDesc[index]);
     }
 
-    std::vector <int64_t> OpRunner::GetInputShape(size_t index) const {
+    std::vector <int64_t> OpRunner::GetInputShape(size_t index) const
+    {
         std::vector <int64_t> ret;
         if (index >= numInputs_) {
             ERROR_LOG("index out of range. index = %zu, numInputs = %zu", index, numInputs_);
@@ -182,7 +192,8 @@ namespace AclnnLazyAdam {
         return ret;
     }
 
-    size_t OpRunner::GetOutputSize(size_t index) const {
+    size_t OpRunner::GetOutputSize(size_t index) const
+    {
         if (index >= numOutputs_) {
             ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
             return 0;
@@ -190,7 +201,8 @@ namespace AclnnLazyAdam {
         return aclGetTensorDescSize(opDesc_->outputDesc[index]);
     }
 
-    const size_t OpRunner::GetOutputNumDims(size_t index) const {
+    const size_t OpRunner::GetOutputNumDims(size_t index) const
+    {
         if (index >= numOutputs_) {
             ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
             return 0;
@@ -198,7 +210,8 @@ namespace AclnnLazyAdam {
         return aclGetTensorDescNumDims(opDesc_->outputDesc[index]);
     }
 
-    aclDataType OpRunner::GetOutputDataType(size_t index) const {
+    aclDataType OpRunner::GetOutputDataType(size_t index) const
+    {
         if (index >= numOutputs_) {
             ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
             return ACL_DT_UNDEFINED;
@@ -207,7 +220,8 @@ namespace AclnnLazyAdam {
     }
 
 
-    aclFormat OpRunner::GetOutputFormat(size_t index) const {
+    aclFormat OpRunner::GetOutputFormat(size_t index) const
+    {
         if (index >= numOutputs_) {
             ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
             return ACL_FORMAT_UNDEFINED;
@@ -216,7 +230,8 @@ namespace AclnnLazyAdam {
         return aclGetTensorDescFormat(opDesc_->outputDesc[index]);
     }
 
-    std::vector <int64_t> OpRunner::GetOutputShape(size_t index) const {
+    std::vector <int64_t> OpRunner::GetOutputShape(size_t index) const
+    {
         std::vector <int64_t> ret;
         if (index >= numOutputs_) {
             ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
@@ -236,7 +251,8 @@ namespace AclnnLazyAdam {
         return ret;
     }
 
-    size_t OpRunner::GetInputElementCount(size_t index) const {
+    size_t OpRunner::GetInputElementCount(size_t index) const
+    {
         if (index >= opDesc_->inputDesc.size()) {
             ERROR_LOG("index out of range. index = %zu, numInputs = %zu", index, numInputs_);
             return 0;
@@ -245,7 +261,8 @@ namespace AclnnLazyAdam {
         return aclGetTensorDescElementCount(opDesc_->inputDesc[index]);
     }
 
-    size_t OpRunner::GetOutputElementCount(size_t index) const {
+    size_t OpRunner::GetOutputElementCount(size_t index) const
+    {
         if (index >= opDesc_->outputDesc.size()) {
             ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
             return 0;
@@ -253,7 +270,8 @@ namespace AclnnLazyAdam {
         return aclGetTensorDescElementCount(opDesc_->outputDesc[index]);
     }
 
-    bool OpRunner::RunOp() {
+    bool OpRunner::RunOp()
+    {
         for (size_t i = 0; i < numInputs_; ++i) {
             auto size = GetInputSize(i);
             aclrtMemcpyKind kind = ACL_MEMCPY_HOST_TO_DEVICE;
@@ -332,8 +350,11 @@ namespace AclnnLazyAdam {
 
 
     template<typename T>
-    void DoPrintData(const T *data, size_t count, size_t elementsPerRow) {
-        assert(elementsPerRow != 0);
+    void DoPrintData(const T *data, size_t count, size_t elementsPerRow)
+    {
+        if (elementsPerRow == 0) {
+            throw std::runtime_error("value must not be zero.");
+        }
         for (size_t i = 0; i < count; ++i) {
             std::cout << std::setw(PRINT_OUT_WIDTH) << data[i];
             if (i % elementsPerRow == elementsPerRow - 1) {
@@ -342,8 +363,11 @@ namespace AclnnLazyAdam {
         }
     }
 
-    void DoPrintFp16Data(const aclFloat16 *data, size_t count, size_t elementsPerRow) {
-        assert(elementsPerRow != 0);
+    void DoPrintFp16Data(const aclFloat16 *data, size_t count, size_t elementsPerRow)
+    {
+        if (elementsPerRow == 0) {
+            throw std::runtime_error("value must not be zero.");
+        }
         for (size_t i = 0; i < count; ++i) {
             std::cout << std::setw(PRINT_OUT_WIDTH) << std::setprecision(PRINT_OUT_PRECISION)
                       << aclFloat16ToFloat(data[i]);
@@ -353,7 +377,8 @@ namespace AclnnLazyAdam {
         }
     }
 
-    void PrintData(const void *data, size_t count, aclDataType dataType, size_t elementsPerRow) {
+    void PrintData(const void *data, size_t count, aclDataType dataType, size_t elementsPerRow)
+    {
         if (data == nullptr) {
             ERROR_LOG("Print data failed. data is nullptr");
             return;
@@ -401,7 +426,8 @@ namespace AclnnLazyAdam {
         }
     }
 
-    void OpRunner::PrintInput(size_t index, size_t numElementsPerRow) {
+    void OpRunner::PrintInput(size_t index, size_t numElementsPerRow)
+    {
         if (index >= numInputs_) {
             ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numInputs_);
             return;
@@ -411,7 +437,8 @@ namespace AclnnLazyAdam {
         PrintData(hostInputs_[index], GetInputElementCount(index), aclGetTensorDescType(desc), numElementsPerRow);
     }
 
-    void OpRunner::PrintOutput(size_t index, size_t numElementsPerRow) {
+    void OpRunner::PrintOutput(size_t index, size_t numElementsPerRow)
+    {
         if (index >= numOutputs_) {
             ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
             return;

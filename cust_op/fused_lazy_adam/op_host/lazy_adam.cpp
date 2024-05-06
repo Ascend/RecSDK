@@ -64,6 +64,9 @@ namespace optiling {
 
         auto platformInfo = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
         uint32_t coreNum = platformInfo.GetCoreNum();
+        if (coreNum == 0) {
+            return ge::GRAPH_FAILED;
+        }
         uint64_t ub;
         platformInfo.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ub);
         ub = ub - RESERVE_UB_SIZE;

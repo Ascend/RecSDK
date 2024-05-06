@@ -15,23 +15,27 @@ See the License for the specific language governing permissions and
 
 #include "common.h"
 #include "operator_desc.h"
+
 namespace AclnnLazyAdam {
     using namespace std;
 
-    OperatorDesc::OperatorDesc() {}
+    OperatorDesc::OperatorDesc()
+    {}
 
-    OperatorDesc::~OperatorDesc() {
-        for (auto *desc: inputDesc) {
+    OperatorDesc::~OperatorDesc()
+    {
+        for (auto* desc: inputDesc) {
             aclDestroyTensorDesc(desc);
         }
-        for (auto *desc: outputDesc) {
+        for (auto* desc: outputDesc) {
             aclDestroyTensorDesc(desc);
         }
     }
 
-    OperatorDesc &OperatorDesc::AddInputTensorDesc(aclDataType dataType, int numDims, const int64_t *dims,
-                                                   aclFormat format) {
-        aclTensorDesc *desc = aclCreateTensorDesc(dataType, numDims, dims, format);
+    OperatorDesc& OperatorDesc::AddInputTensorDesc(aclDataType dataType, int numDims, const int64_t* dims,
+                                                   aclFormat format)
+    {
+        aclTensorDesc* desc = aclCreateTensorDesc(dataType, numDims, dims, format);
         if (desc == nullptr) {
             ERROR_LOG("create tensor failed");
             return *this;
@@ -40,9 +44,10 @@ namespace AclnnLazyAdam {
         return *this;
     }
 
-    OperatorDesc &OperatorDesc::AddOutputTensorDesc(aclDataType dataType, int numDims,
-                                                    const int64_t *dims, aclFormat format) {
-        aclTensorDesc *desc = aclCreateTensorDesc(dataType, numDims, dims, format);
+    OperatorDesc& OperatorDesc::AddOutputTensorDesc(aclDataType dataType, int numDims,
+                                                    const int64_t* dims, aclFormat format)
+    {
+        aclTensorDesc* desc = aclCreateTensorDesc(dataType, numDims, dims, format);
         if (desc == nullptr) {
             ERROR_LOG("create tensor failed");
             return *this;
