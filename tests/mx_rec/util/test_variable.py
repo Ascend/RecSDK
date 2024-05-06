@@ -44,10 +44,8 @@ class VariableTest(unittest.TestCase):
         """
         self.cm_worker_size = global_env.cm_worker_size
         self.cm_chief_device = global_env.cm_chief_device
-        self.ascend_visible_devices = global_env.ascend_visible_devices
         global_env.cm_worker_size = "8"
         global_env.cm_chief_device = "0"
-        global_env.ascend_visible_devices = "0-7"
 
     def tearDown(self):
         """
@@ -56,7 +54,6 @@ class VariableTest(unittest.TestCase):
         """
         global_env.cm_worker_size = self.cm_worker_size
         global_env.cm_chief_device = self.cm_chief_device
-        global_env.ascend_visible_devices = self.ascend_visible_devices
 
     @mock.patch("mx_rec.util.variable.ConfigInitializer")
     def test_get_dense_and_sparse_variable(self, variable_config_initializer):

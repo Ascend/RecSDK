@@ -75,8 +75,6 @@ RANK_ID_START=0
 
 export MXREC_MODE="ASC"
 echo "MXREC_MODE is $MXREC_MODE"
-export USE_MPI=1
-echo "USE_MPI is $USE_MPI"
 export py=main_mxrec.py
 echo "py is $py"
 
@@ -94,7 +92,6 @@ if [ -n "$ip" ]; then
     echo "CM_CHIEF_DEVICE=$CM_CHIEF_DEVICE"
     echo "CM_WORKER_IP=$CM_WORKER_IP"
     echo "CM_WORKER_SIZE=$CM_WORKER_SIZE"
-    echo "ASCEND_VISIBLE_DEVICES=$ASCEND_VISIBLE_DEVICES"
 else
     # ranktable
     echo "Current is ranktable solution, hccl json file:${hccl_cfg_json}"
@@ -103,30 +100,9 @@ else
     export RANK_TABLE_FILE=${hccl_cfg_json}
 fi
 
-if [ $USE_MPI -eq 0 ]; then
-  echo "use for loop to start tasks"
-  for((RANK_ID=$RANK_ID_START;RANK_ID<$((RANK_SIZE+RANK_ID_START));RANK_ID++));
-  do
-      #设置环境变量，不需要修改
-      echo "Device ID: $RANK_ID"
-      export RANK_ID=$RANK_ID
-      export ASCEND_DEVICE_ID=$RANK_ID
-      ASCEND_DEVICE_ID=$RANK_ID
-    if [   -d $cur_path/output/${ASCEND_DEVICE_ID} ];then
-       rm -rf $cur_path/output/${ASCEND_DEVICE_ID}
-       mkdir -p $cur_path/output/${ASCEND_DEVICE_ID}
-    else
-       mkdir -p $cur_path/output/${ASCEND_DEVICE_ID}
-    fi
-      nohup python3 ${py} > $cur_path/output/$ASCEND_DEVICE_ID/test_$ASCEND_DEVICE_ID.log 2>&1 &
-  done
-else
-  echo "use horovod to start tasks"
-  # GLOG_stderrthreshold -2:TRACE -1:DEBUG 0:INFO 1:WARN 2.ERROR, 默认为INFO
-  mpi_args='-x BIND_INFO="0:12 12:48 60:48" -x GLOG_stderrthreshold=2 -x GLOG_logtostderr=true -bind-to none -x NCCL_SOCKET_IFNAME=docker0 -mca btl_tcp_if_exclude docker0'
+echo "use horovod to start tasks"
+# GLOG_stderrthreshold -2:TRACE -1:DEBUG 0:INFO 1:WARN 2.ERROR, 默认为INFO
+mpi_args='-x BIND_INFO="0:12 12:48 60:48" -x GLOG_stderrthreshold=2 -x GLOG_logtostderr=true -bind-to none -x NCCL_SOCKET_IFNAME=docker0 -mca btl_tcp_if_exclude docker0'
 
-  horovodrun --network-interface ${interface} -np ${num_process} --mpi-args "${mpi_args}" --mpi -H localhost:${local_rank_size} \
-    python3.7 ${py} 2>&1 | tee temp_${CACHE_MODE}_${num_process}p_$(date +%Y%m%d_%H%M%S).log
-fi
-
-
+horovodrun --network-interface ${interface} -np ${num_process} --mpi-args "${mpi_args}" --mpi -H localhost:${local_rank_size} \
+python3.7 ${py} 2>&1 | tee temp_${CACHE_MODE}_${num_process}p_$(date +%Y%m%d_%H%M%S).log

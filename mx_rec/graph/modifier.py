@@ -15,9 +15,10 @@
 # limitations under the License.
 # ==============================================================================
 
+import dataclasses
 from collections import defaultdict
 from collections.abc import Callable
-from typing import Any, List, Dict, Tuple
+from typing import Any, List, Dict, Tuple, DefaultDict
 
 import tensorflow as tf
 from tensorflow import Operation, Tensor
@@ -26,21 +27,33 @@ from tensorflow.python.data.ops.dataset_ops import DatasetV1Adapter
 from tensorflow.python.framework.errors_impl import InvalidArgumentError
 
 from mx_rec.constants.constants import ASCEND_CUTTING_POINT_INITIALIZER, ASCEND_SPARSE_LOOKUP_ENTRANCE, \
-    ASCAnchorAttr, ASCEND_TIMESTAMP, MAX_WHILE_SIZE, LIBREC_EOS_OPS_SO, AnchorDatasetOp, \
-    AnchorIteratorOp
+    ASCAnchorAttr, ASCEND_TIMESTAMP, MAX_WHILE_SIZE, LIBREC_EOS_OPS_SO
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.helper import get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
 from mx_rec.graph.merge_lookup import do_merge_lookup
-from mx_rec.graph.utils import check_input_list, find_parent_op, check_cutting_points, record_ops_to_replace, \
-    export_pb_graph, make_sorted_key_to_tensor_list
-from mx_rec.graph.graph_typing import AnchorRecord, ReplacementSpec
+from mx_rec.graph.utils import check_input_list, find_parent_op, check_cutting_points, \
+record_ops_to_replace, export_pb_graph, make_sorted_key_to_tensor_list
+from mx_rec.graph.constants import DeprecatedOp, AnchorDatasetOp, AnchorIteratorOp
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.log import logger
 from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.util.perf import performance
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator
+
+
+@dataclasses.dataclass
+class AnchorRecord:
+    replacement_spec: DefaultDict[Tensor, List[Tuple[int, Operation]]]
+    passing_tensors: List[Tensor]
+    batch_tensor_indexs: List[int]
+    sub_cutting_points: List[Tensor]
+    sub_graph_def: GraphDef
+    input_names: List[str]
+    output_names: List[str]
+    is_training: bool
+    input_indexs: List[int] = None
 
 
 def get_preprocessing_map_func(
@@ -142,7 +155,7 @@ def parse_batch(data_args: Any, data_batch: dict, key: str = None):
 
 def get_input_index_list(
         cutting_point_list: List[Tensor],
-        replacement_specs: ReplacementSpec,
+        replacement_specs: DefaultDict[Tensor, List[Tuple[int, Operation]]],
         mapping_name_list: List[str],
         base_count: int,
         timestamp_index: int = None
@@ -319,7 +332,7 @@ def get_sub_graph(
     return sub_graph_def, input_name_list, output_name_list
 
 
-def update_input_tensor_with_new_batch(replacement_specs: ReplacementSpec,
+def update_input_tensor_with_new_batch(replacement_specs: DefaultDict[Tensor, List[Tuple[int, Operation]]],
                                        new_get_next_op_name: str,
                                        new_batch: Dict[str, Tensor]):
     """
@@ -428,6 +441,14 @@ def get_src_dataset(get_next_op: Operation, is_training: bool) -> DatasetV1Adapt
         logger.warning("The dataset op was not found, the error is `%s`. Start to traverse the operations.", err)
         graph = tf.compat.v1.get_default_graph()
         dataset_op_list = [op for op in graph.get_operations() if AnchorDatasetOp.PREFETCH_DATASET.value in op.name]
+
+        # WARN: Couple with NoGradSubGraphSlicer::_find_old_dataset.
+        dataset_op_list = list(
+            filter(lambda op: op not in tf.compat.v1.get_collection(DeprecatedOp.DEPRECATED_PREFETCH_DATASET),
+            dataset_op_list)
+        )
+        dataset_op_list = sorted(dataset_op_list, key=lambda op: op.name)
+
         logger.debug("In get_src_dataset function, current mode(train: True, eval: False): %s, dataset_op_list: %s.",
                      is_training, dataset_op_list)
 
@@ -440,7 +461,7 @@ def get_src_dataset(get_next_op: Operation, is_training: bool) -> DatasetV1Adapt
             prefetch_dataset_op_list = sorted(dataset_op_list, key=lambda op: op.name)
             target_op = prefetch_dataset_op_list[1]
         else:
-            raise RuntimeError(f"`{AnchorDatasetOp.PREFETCH_DATASET.value}` not found, got dataset_op_list: "
+            raise RuntimeError(f"'{AnchorDatasetOp.PREFETCH_DATASET.value}' not found, got transformation datasets: "
                                f"{dataset_op_list}.") from err
     except Exception as err:
         raise RuntimeError(f"The dataset was not found, the error is `{err}`.") from err

@@ -37,6 +37,7 @@ namespace MxRec {
         float mean;
         float stddev;
         int seed;
+        float initParam;
 
         std::default_random_engine generator;
         std::normal_distribution<float> distribution;
