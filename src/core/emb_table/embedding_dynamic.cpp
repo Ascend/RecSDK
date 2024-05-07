@@ -153,12 +153,13 @@ void EmbeddingDynamic::SaveKey(const string& savePath)
     size_t writeSize = static_cast<size_t>(deviceKey.size() * sizeof(int64_t));
     ssize_t res = fileSystemPtr->Write(ss.str(), reinterpret_cast<const char *>(deviceKey.data()), writeSize);
     if (res == -1) {
-        throw runtime_error("Error: Save keys failed. An error occurred while writing file: {}.", ss.str());
+        throw runtime_error(
+                StringFormat("Error: Save keys failed. An error occurred while writing file: {}.", ss.str()));
     }
     if (res != writeSize) {
-        throw runtime_error(
+        throw runtime_error(StringFormat(
                 "Error: Save keys failed. Expected to write {} bytes, but actually write {} bytes to file {}.",
-                writeSize, res, ss.str());
+                writeSize, res, ss.str()));
     }
 }
 
@@ -255,22 +256,24 @@ int EmbeddingDynamic::LoadKey(const string& savePath)
 
     size_t fileSize = fileSystemPtr->GetFileSize(ss.str());
     if (fileSize >= FILE_MAX_SIZE) {
-        throw runtime_error("Error: Load keys failed. file {} size {}  is too big.", ss.str(), fileSize);
+        throw runtime_error(StringFormat("Error: Load keys failed. file {} size {}  is too big.", ss.str(), fileSize));
     }
 
     int64_t* buf = static_cast<int64_t*>(malloc(fileSize));
     if (buf == nullptr) {
-        throw runtime_error("Error: Load keys failed. failed to allocate {} bytes using malloc.", fileSize);
+        throw runtime_error(
+                StringFormat("Error: Load keys failed. failed to allocate {} bytes using malloc.", fileSize));
     }
 
     ssize_t res = fileSystemPtr->Read(ss.str(), reinterpret_cast<char*>(buf), fileSize);
     if (res == -1) {
-        throw runtime_error("Error: Load keys failed. An error occurred while reading file: {}.", ss.str());
+        throw runtime_error(
+                StringFormat("Error: Load keys failed. An error occurred while reading file: {}.", ss.str()));
     }
     if (res != fileSize) {
-        throw runtime_error(
-                "Error: Load keys failed. Expected to read {} bytes, but actually read {} bytes to file {}.",
-                fileSize, res, ss.str());
+        throw runtime_error(StringFormat(
+                "Error: Load keys failed. Expected to read {} bytes, but actually read {} bytes to file {}.", fileSize,
+                res, ss.str()));
     }
 
     size_t loadKeySize = fileSize / sizeof(int64_t);
@@ -288,7 +291,8 @@ int EmbeddingDynamic::LoadKey(const string& savePath)
     void *newBlock = nullptr;
     aclError ret = aclrtMalloc(&newBlock, static_cast<int>(datasetSize), ACL_MEM_MALLOC_HUGE_FIRST);
     if (ret != ACL_SUCCESS) {
-        throw runtime_error("Error: in dynamic expansion mode,  aclrtMalloc failed, malloc size: {}.", datasetSize);
+        throw runtime_error(
+                StringFormat("Error: in dynamic expansion mode,  aclrtMalloc failed, malloc size: {}.", datasetSize));
     }
     // 此处的 newBlock -> first address;
     // 对key_offset map 进行一个恢复操作

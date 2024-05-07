@@ -145,7 +145,7 @@ namespace MxRec {
             tSize readBytes = 0;
 
             while (unReadLength != 0 && reTryCount < RETRY_COUNT) {
-                tSize offset = buffer + (length - unReadLength) / sizeof(char);
+                tSize offset = (length - unReadLength) / sizeof(char);
                 tSize res = hdfsRead(fs, file, buffer + offset, unReadLength);
                 if (res == -1) {
                     return res;
@@ -167,7 +167,7 @@ namespace MxRec {
             tSize readBytes = 0;
 
             while (unReadLength != 0 && reTryCount < RETRY_COUNT) {
-                tSize offset = buffer + (length - unReadLength) / sizeof(float);
+                tSize offset = (length - unReadLength) / sizeof(float);
                 tSize res = hdfsRead(fs, file, buffer + offset, unReadLength);
                 if (res == -1) {
                     return res;
@@ -188,7 +188,7 @@ namespace MxRec {
             tSize writeBytes = 0;
 
             while (unWriteLength != 0 && reTryCount < RETRY_COUNT) {
-                tSize offset = buffer + (length - unWriteLength) / sizeof(char);
+                tSize offset = (length - unWriteLength) / sizeof(char);
                 tSize res = hdfsWrite(fs, file, buffer + offset, unWriteLength);
                 if (res == -1) {
                     return res;
@@ -209,7 +209,7 @@ namespace MxRec {
             tSize writeBytes = 0;
 
             while (unWriteLength != 0 && reTryCount < RETRY_COUNT) {
-                tSize offset = buffer + (length - unWriteLength) / sizeof(float);
+                tSize offset = (length - unWriteLength) / sizeof(float);
                 tSize res = hdfsWrite(fs, file, buffer + offset, unWriteLength);
                 if (res == -1) {
                     return res;
