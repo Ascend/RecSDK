@@ -81,7 +81,7 @@ ssize_t HdfsFileSystem::Write(const string& filePath, const char* fileContent, s
     }
 
     tSize writeBytesNum = 0;
-    tSize res = hdfs->Write(fs, file, fileContent, dataSize, sizeof(char));
+    tSize res = hdfs->Write(fs, file, fileContent, dataSize);
     if (res == -1) {
         hdfs->CloseFile(fs, file);
         hdfs->Disconnect(fs);
@@ -107,7 +107,7 @@ ssize_t HdfsFileSystem::Write(const string& filePath, vector<float*> fileContent
     tSize writeBytesNum = 0;
     size_t loops = fileContent.size();
     for (size_t i = 0; i < loops; i++) {
-        tSize res = hdfs->Write(fs, file, fileContent[i], dataSize, sizeof(float));
+        tSize res = hdfs->Write(fs, file, fileContent[i], dataSize);
         if (res == -1) {
             hdfs->CloseFile(fs, file);
             hdfs->Disconnect(fs);
@@ -152,7 +152,7 @@ void HdfsFileSystem::WriteEmbedding(const string& filePath, const int& embedding
             throw runtime_error("Error: Execute aclrtmemcpy from device to host failed.");
         }
 
-        tSize res = hdfs->Write(fs, file, row.data(), embeddingSize * sizeof(float), sizeof(float));
+        tSize res = hdfs->Write(fs, file, row.data(), embeddingSize * sizeof(float));
         if (res == -1) {
             hdfs->CloseFile(fs, file);
             hdfs->Disconnect(fs);
