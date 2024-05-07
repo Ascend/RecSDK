@@ -24,7 +24,7 @@ C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/deta
 bash run.sh
 ```
 
-2. 模型脚本中创建lazy_adam优化器并指定使用融合算子。代码示例：
+2. 模型脚本中创建lazy_adam优化器并指定使用融合算子实现。代码示例：
 
 ```python
 from mx_rec.optimizers.lazy_adam import create_hash_optimizer
@@ -34,7 +34,7 @@ from mx_rec.optimizers.lazy_adam import create_hash_optimizer
 sparse_optimizer = create_hash_optimizer(learning_rate=0.001, use_fusion_optim=True)
 ```
 
-## lazy_adam优化器同名融合算子lazy_adam
+## LazyAdam融合算子
 
 1. 算子分析
 
@@ -119,15 +119,17 @@ bash run.sh
 完成算子的编译部署，编译部署时需要开启算子的二进制编译功能：修改算子工程中的编译配置项文件CMakePresets.json，将
 ENABLE_BINARY_PACKAGE设置为True。编译部署时可将算子的二进制部署到当前环境，便于后续算子的调用。
 
-3. 检查API执行需要的头文件和库文件是否自动生成，针对mxRec，检查cust_op/fused_lazy_adam/lazy_adam/build_out/autogen目录下，是否有
-   aclnn_lazy_adam.cpp和aclnn_lazy_adam.h等。
+3.
+
+检查API执行需要的头文件和库文件是否自动生成，针对融合算子，检查cust_op/fused_lazy_adam/lazy_adam/build_out/autogen目录下，是否有
+aclnn_lazy_adam.cpp和aclnn_lazy_adam.h等。
 
 注意：对于cust_op/fused_lazy_adam/run.sh脚本，安装算子后会删除构建目录。运行单算子测试时，需要屏蔽掉删除rm rf
 ./lazy_adam这一步，以确保前置条件3。
 
-### 融合算子 lazy_adam
+### LazyAdam融合算子de AclNN调用实现
 
-针对lazy_adam算子，入口src/main.cpp中：
+针对LazyAdam融合算子，入口src/main.cpp中：
 
 1. InitResource函数：初始化AscendCL并运行管理资源申请，不用修改
 2. RunLookupOp运行算子：
@@ -156,14 +158,14 @@ run.sh脚本依次执行：
 
 ### scripts脚本
 
-* gen_data.py：生成lazy_adam算子的输入数据和用于精度校验的golden数据，可自行修改测试相关dim参数。
-* verify_result.py：将算子的输出和脚本生成的golden数据进行精度比对，并输出比较结果。比对规则为：允许误差精度loss：1e-4
+* gen_data.py：生成LazyAdam融合算子的输入数据和用于精度校验的golden数据，可自行修改测试相关dim参数。
+* verify_result.py：将算子的输出和脚本生成的golden数据进行精度比对，并输出比较结果。比对规则为：允许误差精度loss：1e-6
 
 a) 绝对误差
 b) 相对误差
 c) 误差相对个数
 
 同时满足绝对误差不全小于loss，相对误差不全小于loss，且绝对误差和相对误差大于loss的个数都超过总数的1/loss，也就是
-1/10000（双万分之一），即认为算子精度不达标。其余情况均认为算子达标。
+1/1000000（百万分之一），即认为算子精度不达标。其余情况均认为算子达标。
 
 用户可自行修改允许精度误差范围loss。
