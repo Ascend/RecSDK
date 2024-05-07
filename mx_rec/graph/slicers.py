@@ -61,14 +61,6 @@ class NoGradSubgraphSlicer(metaclass=abc.ABCMeta):
             os.makedirs(info_dir)
         self._info_dir = info_dir
 
-    @abc.abstractmethod
-    def summarize(self) -> None:
-        pass
-
-    @abc.abstractmethod
-    def slice(self) -> None:
-        pass
-
     @staticmethod
     def _find_min_dep_ops(
         tgt_ops: Set[Operation],
@@ -288,6 +280,14 @@ class NoGradSubgraphSlicer(metaclass=abc.ABCMeta):
                 consumers.append(graph._nodes_by_name[name])
 
         return consumers
+
+    @abc.abstractmethod
+    def summarize(self) -> None:
+        pass
+
+    @abc.abstractmethod
+    def slice(self) -> None:
+        pass
 
     def _slice_ops(self, sliceable_ops: Set[Operation], is_training: bool) -> None:
         """Slice the minimum dependency graph of given operation set.
