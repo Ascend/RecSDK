@@ -101,9 +101,9 @@ void HDTransfer::CreateChannel(const uint32_t localRankId, const string& embName
             TransferChannel2Str(channel) == "uniquekeys" ||
             TransferChannel2Str(channel) == "evict"  /* for noDDR */
                 ) {
-            transferChannels[sendName] = tdtCreateChannel(localRankId, sendName.c_str(), channelSize);
+            transferChannels[sendName] = TDT_CREATE_CHANNEL(localRankId, sendName.c_str(), channelSize);
         } else {
-            transferChannels[sendName] = tdtCreateChannel(localRankId, sendName.c_str(), PING_PONG_SIZE);
+            transferChannels[sendName] = TDT_CREATE_CHANNEL(localRankId, sendName.c_str(), PING_PONG_SIZE);
         }
         LOG_INFO("create channel:{} {}", sendName, static_cast<void*>(transferChannels[sendName]));
     }

@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 import time
 import warnings
 import random
@@ -155,7 +154,7 @@ def evaluate():
         try:
             eval_current_steps += 1
             eval_start = time.time()
-            eval_loss, pred, label = sess.run([eval_model["loss"], eval_model["pred"], eval_label])
+            eval_loss, pred, label = sess.run([eval_model.get("loss"), eval_model.get("pred"), eval_label])
             eval_cost = time.time() - eval_start
             eval_qps = (1 / eval_cost) * rank_size * cfg.batch_size
             log_loss_list += list(eval_loss.reshape(-1))
@@ -186,7 +185,7 @@ def evaluate_fix(step):
     while not finished:
         try:
             eval_current_steps += 1
-            eval_loss, pred, label = sess.run([eval_model["loss"], eval_model["pred"], eval_model["label"]])
+            eval_loss, pred, label = sess.run([eval_model.get("loss"), eval_model.get("pred"), eval_model.get("label")])
             log_loss_list += list(eval_loss.reshape(-1))
             pred_list += list(pred.reshape(-1))
             label_list += list(label.reshape(-1))
@@ -286,9 +285,9 @@ if __name__ == "__main__":
         feature_spec_list_eval = create_feature_spec_list(use_timestamp=False)
 
     train_batch, train_iterator = make_batch_and_iterator(cfg, feature_spec_list_train, is_training=True,
-                                                          dump_graph=True, use_faae=use_faae)
+                                                          dump_graph=True, is_use_faae=use_faae)
     eval_batch, eval_iterator = make_batch_and_iterator(cfg, feature_spec_list_eval, is_training=False,
-                                                        dump_graph=False, use_faae=use_faae)
+                                                        dump_graph=False, is_use_faae=use_faae)
     logger.info(f"train_batch: {train_batch}")
 
     if use_faae:
@@ -323,7 +322,7 @@ if __name__ == "__main__":
     rank_size = mxrec_util.communication.hccl_ops.get_rank_size()
     train_ops = []
     # multi task training
-    for loss, (dense_optimizer, sparse_optimizer) in zip([train_model["loss"]], optimizer_list):
+    for loss, (dense_optimizer, sparse_optimizer) in zip([train_model.get("loss")], optimizer_list):
         # do dense optimization
         grads = dense_optimizer.compute_gradients(loss, var_list=dense_variables)
         avg_grads = []
@@ -336,9 +335,9 @@ if __name__ == "__main__":
         train_ops.append(dense_optimizer.apply_gradients(avg_grads))
 
         if use_dynamic_expansion:
-            from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS
+            from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_ID_OFFSET
 
-            train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS)
+            train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET)
             train_emb_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)
             # do sparse optimization by addr
             sparse_grads = sparse_optimizer.compute_gradients(loss, train_emb_list)  # local_embedding
@@ -405,7 +404,7 @@ if __name__ == "__main__":
         start_time = time.time()
 
         try:
-            grad, loss = sess.run([train_ops, train_model["loss"]])
+            grad, loss = sess.run([train_ops, train_model.get("loss")])
             lr = sess.run(cfg.learning_rate)
             global_step = sess.run(cfg.global_step)
         except tf.errors.OutOfRangeError:

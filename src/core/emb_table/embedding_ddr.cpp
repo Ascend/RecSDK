@@ -24,17 +24,6 @@ See the License for the specific language governing permissions and
 
 using namespace MxRec;
 
-constexpr int ELEMENT_NUM = 4;
-constexpr int CURRENT_UPDATE_IDX = 0;
-constexpr int HOST_VOCAB_SIZE_IDX = 1;
-constexpr int DEV_VOCAB_SIZE_IDX = 2;
-constexpr int MAX_OFFSET_IDX = 3;
-
-constexpr int EMB_INFO_ELEMENT_NUM = 3;
-constexpr int EMB_INFO_EXT_SIZE_IDX = 0;
-constexpr int EMB_INFO_DEV_VOCAB_SIZE_IDX = 1;
-constexpr int EMB_INFO_HOST_VOCAB_SIZE_IDX = 2;
-
 EmbeddingDDR::EmbeddingDDR()
 {
 }
@@ -345,9 +334,11 @@ void EmbeddingDDR::LoadKey(const string& savePath) {
 
     ssize_t res = fileSystemPtr->Read(ss.str(), reinterpret_cast<char *>(buf), fileSize);
     if (res == -1) {
+        free(static_cast<void*>(buf));
         throw runtime_error("Error: Load keys failed. An error occurred while reading file: {}.", ss.str());
     }
     if (res != fileSize) {
+        free(static_cast<void*>(buf));
         throw runtime_error(
                 "Error: Load keys failed. Expected to read {} bytes, but actually read {} bytes to file {}.",
                 fileSize, res, ss.str());
@@ -364,6 +355,7 @@ void EmbeddingDDR::LoadKey(const string& savePath) {
             continue;
         }
         if (keyCount > devVocabSize + hostVocabSize) {
+            free(static_cast<void*>(buf));
             throw runtime_error(
                     "Error: Load keys failed. Load key size :{} exceeds the sum of device vocab size and host vocab size: {}.",
                     keyCount, devVocabSize + hostVocabSize);

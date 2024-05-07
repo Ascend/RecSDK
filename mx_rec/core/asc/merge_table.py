@@ -196,7 +196,9 @@ def check_dangling_table():
     config_instance = ConfigInitializer.get_instance()
     dangling_table = config_instance.sparse_embed_config.dangling_table
     if not dangling_table:
-        dangling_table = find_dangling_table([table_instance.table_name
-                                              for _, table_instance in
-                                              config_instance.sparse_embed_config.table_instance_dict.items()])
+        table_names = []
+        for _, table_instance in config_instance.sparse_embed_config.table_instance_dict.items():
+            table_names.append(table_instance.table_name)
+        dangling_table = find_dangling_table(table_names)
+
     return dangling_table

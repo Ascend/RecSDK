@@ -151,6 +151,7 @@ void EmbeddingStatic::LoadKey(const string &savePath)
     }
 
     if (loadOffset.size() > devVocabSize) {
+        free(static_cast<void*>(buf));
         throw runtime_error("Error: Load keys failed. Load key size :{} exceeds device vocab size: {}.",
                             loadOffset.size(), devVocabSize);
     }

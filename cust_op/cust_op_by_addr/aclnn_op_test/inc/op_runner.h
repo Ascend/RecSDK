@@ -140,16 +140,16 @@ public:
      /**
       * @brief Print readable input by index
       * @param [in] index: input index
-      * @param [in] elementsPerRow: number of elements per row
+      * @param [in] numElementsPerRow: number of elements per row
       */
-    void PrintInput(size_t index, size_t elementsPerRow = 16);
+    void PrintInput(size_t index, size_t numElementsPerRow = 16);
 
     /**
       * @brief Print readable output by index
       * @param [in] index: output index
-      * @param [in] elementsPerRow: number of elements per row
+      * @param [in] numElementsPerRow: number of elements per row
       */
-    void PrintOutput(size_t index, size_t elementsPerRow = 16);
+    void PrintOutput(size_t index, size_t numElementsPerRow = 16);
 
     /**
      * @brief Compile static op
