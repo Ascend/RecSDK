@@ -32,7 +32,8 @@ from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.initialize import ConfigInitializer
-from mx_rec.validator.validator import para_checker_decorator, StringValidator, FloatValidator
+from mx_rec.util.ops import import_host_pipeline_ops
+from mx_rec.validator.validator import para_checker_decorator, StringValidator, FloatValidator, ClassValidator
 
 
 @para_checker_decorator(check_option_list=[
@@ -40,9 +41,11 @@ from mx_rec.validator.validator import para_checker_decorator, StringValidator, 
     ("beta1", FloatValidator, {"min_value": 0.0, "max_value": 1.0}, ["check_value_for_open_interval"]),
     ("beta2", FloatValidator, {"min_value": 0.0, "max_value": 1.0}, ["check_value"]),
     ("epsilon", FloatValidator, {"min_value": 0.0, "max_value": 1.0}, ["check_value_for_left_open_interval"]),
-    ("name", StringValidator, {"min_len": 1, "max_len": 200}, ["check_string_length"])
+    ("name", StringValidator, {"min_len": 1, "max_len": 200}, ["check_string_length"]),
+    ("use_fusion_optim", ClassValidator, {"classes": (bool, type(None))}),
 ])
-def create_hash_optimizer(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8, name="LazyAdam"):
+def create_hash_optimizer(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8, name="LazyAdam",
+                          use_fusion_optim=False):
     """
     Args:
         learning_rate: learning rate
@@ -50,13 +53,14 @@ def create_hash_optimizer(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1
         beta2:
         epsilon:
         name:
-
+        use_fusion_optim: if use fused optimizer
     Returns: a customized optimizer instance
     """
     if ConfigInitializer.get_instance().use_dynamic_expansion:
         raise ValueError("dynamic expansion mode is not compatible with the optimizer, please config dynamic "
                          "expansion mode and optimizer correctly")
-    optimizer = CustomizedLazyAdam(learning_rate=learning_rate, beta1=beta1, beta2=beta2, epsilon=epsilon, name=name)
+    optimizer = CustomizedLazyAdam(learning_rate=learning_rate, beta1=beta1, beta2=beta2, epsilon=epsilon, name=name,
+                                   use_fusion_optim=use_fusion_optim)
     ConfigInitializer.get_instance().optimizer_config.optimizer_instance = optimizer
     return optimizer
 
@@ -64,10 +68,16 @@ def create_hash_optimizer(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1
 class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
     name_counter = defaultdict(int)
 
-    def __init__(self, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8, use_locking=False, name="LazyAdam"):
+    def __init__(self, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8, use_locking=False, name="LazyAdam",
+                 use_fusion_optim=False):
         self.optimizer_type = "LazyAdam"
         self.optim_param_list = ["momentum", "velocity"]
         self.config_instance = ConfigInitializer.get_instance()
+        self.use_fusion_optim = use_fusion_optim
+        if self.use_fusion_optim:
+            self._custom_initial_beta1 = beta1
+            self._custom_initial_beta2 = beta2
+            self._custom_initial_epsilon = epsilon
         super(CustomizedLazyAdam, self)._get_name(name=name)
         super(CustomizedLazyAdam, self).__init__(learning_rate=learning_rate, beta1=beta1, beta2=beta2,
                                                  epsilon=epsilon, use_locking=use_locking, name=self.unique_name)
@@ -163,6 +173,16 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
         temp_b2 = temp.get("temp_b2")
         temp_epsilon = temp.get("temp_epsilon")
         learning_rate = tf.divide(temp_lr * math_ops.sqrt(1 - power_b2), (1 - power_b1))
+
+        if self.use_fusion_optim:
+            nd_indices = tf.expand_dims(indices, 1)
+            slot_m = self.get_slot(var, "m")
+            slot_v = self.get_slot(var, "v")
+            output_m, output_v, output_var =\
+                import_host_pipeline_ops().lazy_adam(grad, nd_indices, slot_m, slot_v, var, learning_rate,
+                                                     self._custom_initial_beta1, self._custom_initial_beta2,
+                                                     self._custom_initial_epsilon)
+            return control_flow_ops.group(output_m, output_v, output_var)
 
         abs_indices = tf.math.maximum(indices, 0)
         nd_indices = tf.expand_dims(indices, 1)

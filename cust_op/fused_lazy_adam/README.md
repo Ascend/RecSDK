@@ -18,13 +18,21 @@ C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/deta
 
 ## lazy_adam融合算子使用
 
-1. 进入当前目录，执行指令进行编译和部署lazy_adam融合算子
+1. 上次fused_lazy_adam文件夹到目标环境，并进入当前目录，执行指令进行编译和部署lazy_adam融合算子
 
-```
+```shell
 bash run.sh
 ```
 
-2. 模型py脚本中导入mxRec中的lazy_adam优化器。lazy_adam优化器使用知道参考mxRec用户指南。
+2. 模型脚本中創建lazy_adam优化器并指定使用融合算子。创建使用融合算子的lazy_adam优化器示例：
+
+```python
+from mx_rec.optimizers.lazy_adam import create_hash_optimizer
+
+# 创建lazy_adam优化器时增加"use_fusion_optim=True"参数，表示使用融合算子实现。use_fusion_optim参数默认值为False。
+# lazy_adam优化器详细使用指导请参考mxRec用户指南
+sparse_optimizer = create_hash_optimizer(learning_rate=0.001, use_fusion_optim=True)
+```
 
 ## lazy_adam优化器同名融合算子lazy_adam
 
