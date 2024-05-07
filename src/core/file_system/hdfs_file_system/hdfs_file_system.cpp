@@ -267,7 +267,7 @@ void HdfsFileSystem::ReadEmbedding(const string& filePath, EmbeddingSizeInfo& em
         if (res != embedSizeInfo.embeddingSize * sizeof(float)) {
             hdfs->CloseFile(fs, file);
             hdfs->Disconnect(fs);
-            throw runtime_error(StringFormat(
+            throw runtime_error(
                     StringFormat("Error: Expected to read {} bytes, but actually read {} bytes from file {}.",
                                  embedSizeInfo.embeddingSize * sizeof(float), res, filePath.c_str()));
         }
