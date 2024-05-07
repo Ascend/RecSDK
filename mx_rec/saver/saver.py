@@ -233,7 +233,9 @@ class Saver(object):
 
             attribute = attribute.astype(np.int64)
             attribute_dir = os.path.join(upper_dir, "slice.attribute")
-            attribute.tofile(attribute_dir)
+            with tf.io.gfile.GFile(attribute_dir, "wb") as file:
+                attribute = attribute.tostring()
+                file.write(attribute)
 
     @performance("_save")
     def _save(self, sess, root_dir):
@@ -445,8 +447,9 @@ def write_binary_data(writing_path, suffix, data, attributes=None):
         raise RuntimeError(f"make dir {writing_path} for writing data failed!") from err
     data_file, attribute_file = generate_file_name(suffix)
     target_data_dir = os.path.join(writing_path, data_file)
-
-    with tf.io.gfile.GFile(target_data_dir, "ab") as file:
+    # append mode of hdfs system supports not well when the file not exists.
+    file_mode = "wb" if not tf.io.gfile.exists(target_data_dir) else "ab"
+    with tf.io.gfile.GFile(target_data_dir, file_mode) as file:
         data = data.tostring()
         file.write(data)
 
@@ -470,7 +473,8 @@ def read_binary_data(reading_path: str, data_name: str, table_name: str, load_of
 
     with tf.io.gfile.GFile(target_attribute_dir, "rb") as fin:
         validate_read_file(target_attribute_dir)
-        attributes = np.fromfile(target_attribute_dir, dtype=np.int64)
+        attributes = fin.read()
+        attributes = np.fromstring(attributes, dtype=np.int64)
 
     with tf.io.gfile.GFile(target_data_dir, "rb") as file:
         validate_read_file(target_data_dir)

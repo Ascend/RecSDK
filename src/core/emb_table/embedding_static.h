@@ -42,9 +42,9 @@ public:
     vector<int64_t> GetDeviceOffset();
 
 GTEST_PRIVATE:
-    int SaveKey(const string& savePath);
+    void SaveKey(const string& savePath);
 
-    int LoadKey(const string& savePath);
+    void LoadKey(const string& savePath);
 
     vector<int64_t> deviceKey;
     vector<int64_t> deviceOffset;
