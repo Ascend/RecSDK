@@ -142,7 +142,8 @@ namespace MxRec {
             return WrapperHdfsRead(fs, file, buffer, length, typeSize);
         }
 
-        tSize WrapperHdfsRead(hdfsFS fs, hdfsFile file, void *buffer, tSize length, tSize typeSize) {
+        tSize WrapperHdfsRead(hdfsFS fs, hdfsFile file, void *buffer, tSize length, tSize typeSize) const
+        {
             tSize reTryCount = 0;
             tSize unReadLength = length;
             tSize readBytes = 0;
@@ -165,6 +166,24 @@ namespace MxRec {
                 throw runtime_error("Failed to obtain the pointer of the function hdfsWrite from the libhdfs.");
             }
             return WrapperHdfsWrite(fs, file, buffer, length, typeSize);
+        }
+
+        tSize WrapperHdfsWrite(hdfsFS fs, hdfsFile file, const void *buffer, tSize length, tSize typeSize) const
+        {
+            tSize reTryCount = 0;
+            tSize unWriteLength = length;
+            tSize writeBytes = 0;
+
+            while (unWriteLength != 0 && reTryCount < RETRY_COUNT) {
+                tSize offset = buffer + (length - unWriteLength) / typeSize;
+                tSize res = hdfsWrite(fs, file, buffer + offset, unWriteLength);
+                if (res == -1) {
+                    return res;
+                }
+                unWriteLength -= res;
+                writeBytes += res;
+            }
+            return writeBytes;
         }
 
         int Seek(hdfsFS fs, hdfsFile file, tOffset desiredPos) const
