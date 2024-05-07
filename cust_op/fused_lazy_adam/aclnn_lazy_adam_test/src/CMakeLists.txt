@@ -52,9 +52,9 @@ link_directories(
 )
 
 add_executable(execute_op
+        main.cpp
         operator_desc.cpp
         op_runner.cpp
-        main.cpp
         common.cpp
 )
 
