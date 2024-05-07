@@ -74,7 +74,6 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
 
             mock_opt = MockOptimizer()
             manager_config_initializer.get_instance().optimizer_config.optimizer_instance = mock_opt
-            test_table.optimizer_instance_list = [mock_opt]
 
             table_info_list = generate_table_info_list()
             self.assertListEqual(table_info_list, [])
@@ -100,7 +99,6 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
 
             mock_opt = MockOptimizer()
             manager_config_initializer.get_instance().optimizer_config.optimizer_instance = mock_opt
-            test_table.optimizer_instance_list = [mock_opt]
 
             table_info_list = generate_table_info_list()
             self.assertListEqual(table_info_list, [])
@@ -139,7 +137,6 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
 
             mock_opt = MockOptimizer()
             manager_config_initializer.get_instance().optimizer_config.optimizer_instance = mock_opt
-            test_table.optimizer_instance_list = [mock_opt]
 
             table_info_list = generate_table_info_list()
             self.assertListEqual(table_info_list, ["test_table_info"])
@@ -338,7 +335,6 @@ class TestMatchedOptSlotInitializersFunc(unittest.TestCase):
             table_instance.ext_emb_size = 24
             mock_opt = MockOptimizer()
             manager_config_initializer.get_instance().optimizer_config.optimizer_instance = mock_opt
-            table_instance.optimizer_instance_list = [mock_opt]
 
             slot_initializers = matched_opt_slot_initializers(table_instance)
             self.assertListEqual(slot_initializers, ["slot_initializer", "slot_initializer"])

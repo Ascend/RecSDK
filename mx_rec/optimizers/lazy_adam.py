@@ -28,7 +28,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import adam
-from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.initialize import ConfigInitializer
@@ -83,34 +82,6 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
                                                  epsilon=epsilon, use_locking=use_locking, name=self.unique_name)
         self._slot_num = 2
         self._derivative = 2
-
-    def initialize_slots(self, var, table_instance):
-        # Create slots for the first and second moments.
-        def creat_one_single_slot(var, op_name):
-            new_slot_variable = slot_creator.create_zeros_slot(var, op_name)
-            # make sure sparse optimizer statements will not be saved and restored within tf checkpoint.
-            return new_slot_variable
-
-        momentum = creat_one_single_slot(var, self._name + "/" + "momentum")
-        velocity = creat_one_single_slot(var, self._name + "/" + "velocity")
-        self.config_instance.sparse_embed_config.insert_removing_var_list(momentum.name)
-        self.config_instance.sparse_embed_config.insert_removing_var_list(velocity.name)
-        named_slot_key = (var.op.graph, var.op.name)
-        table_instance = self.config_instance.sparse_embed_config.get_table_instance(var)
-        ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name,
-                                                                                  self.optimizer_type,
-                                                                                  {"momentum": momentum,
-                                                                                   "velocity": velocity})
-        return [{"slot": momentum, "named_slot_key": named_slot_key, "slot_name": "m", "optimizer": self},
-                {"slot": velocity, "named_slot_key": named_slot_key, "slot_name": "v", "optimizer": self}]
-
-    def insert_slot(self, slot, named_slots_key, slot_name):
-        named_slots = self._slot_dict(slot_name)
-        if named_slots_key in named_slots:
-            raise EnvironmentError(f"named_slots_key should be global unique, but it has been in use now, "
-                                   f"please double check.")
-
-        named_slots[named_slots_key] = slot
 
     def get_slot_init_values(self):
         # return state value list of adam that needs to initialize in ASC DDR.

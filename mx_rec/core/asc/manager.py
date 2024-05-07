@@ -37,16 +37,10 @@ def generate_table_info_list():
         raise ValueError(f"The DDR mode of all tables must be used or not used at the same time. However, is_hbm "
                          f"of each table `{table_instance_dict.keys()}` is `{is_hbm_list}`.")
 
-    optimizer = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
     # generate table info
     dangling_table = check_dangling_table()
 
     for _, table_instance in ConfigInitializer.get_instance().sparse_embed_config.table_instance_dict.items():
-        # When dynamic expansion mode, ext_emb_size is set by optimizer
-        if ConfigInitializer.get_instance().use_dynamic_expansion and optimizer:
-            table_instance.ext_emb_size = table_instance.emb_size * (1 + optimizer.slot_num)
-            logger.debug("ext_emb_size is reset to be %s for EmbInfo", table_instance.ext_emb_size)
-
         skip = should_skip(table_instance.table_name)
         if table_instance.table_name in dangling_table or skip:
             logger.info("skip table %s: %s which does not need to be provided to the EmbInfo.",
@@ -158,9 +152,8 @@ def matched_opt_slot_initializers(table_instance):
         slot_initializers.append(slot_initializer)
         start_index += table_instance.emb_size
 
-    logger.debug("matched_opt_slot_initializers, ext emb size:%s, optimizer_instance_list size:%s, "
-                 "slot_initializers size:%s", table_instance.ext_emb_size, len(table_instance.optimizer_instance_list),
-                 len(slot_initializers))
+    logger.debug("matched_opt_slot_initializers, ext emb size:%s, slot_initializers size:%s",
+                 table_instance.ext_emb_size, len(slot_initializers))
     return slot_initializers
 
 

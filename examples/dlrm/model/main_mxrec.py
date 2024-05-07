@@ -298,7 +298,6 @@ if __name__ == "__main__":
         cfg.dev_vocab_size = cfg.dev_vocab_size // 2
 
     optimizer_list = [get_dense_and_sparse_optimizer(cfg)]
-    sparse_optimizer_list = [sparse_optimizer for dense_optimizer, sparse_optimizer in optimizer_list]
 
     # note: variance_scaling_initializer only support HBM mode
     emb_initializer = tf.compat.v1.truncated_normal_initializer(stddev=0.05, seed=sparse_hashtable_seed) \
@@ -309,7 +308,6 @@ if __name__ == "__main__":
         dim=tf.TensorShape([cfg.emb_dim]),
         name="sparse_embeddings",
         emb_initializer=emb_initializer,
-        optimizer_list=[sparse_optimizer_list[0]._optimizer],
         **cfg.get_emb_table_cfg()
     )
     if use_faae:

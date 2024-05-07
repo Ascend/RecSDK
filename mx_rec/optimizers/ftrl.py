@@ -29,7 +29,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.training import ftrl
-from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.initialize import ConfigInitializer
@@ -81,30 +80,6 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
         )
         self._slot_num = 2
         self._derivative = 2
-
-    def initialize_slots(self, var, table_instance):
-        val = constant_op.constant(
-            self._initial_accumulator_value, dtype=var.dtype, shape=var.get_shape())
-
-        accum = slot_creator.create_slot(var, val, self._name + "/" + "accum")
-        linear = slot_creator.create_zeros_slot(var, self._name + "/" + "linear")
-        ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(accum.name)
-        ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(linear.name)
-        named_slot_key = (var.op.graph, var.op.name)
-        table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
-        ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name,
-                                                                                  self.optimizer_type,
-                                                                                  {"accum": accum, "linear": linear})
-        return [{"slot": accum, "named_slot_key": named_slot_key, "slot_name": "accum", "optimizer": self},
-                {"slot": linear, "named_slot_key": named_slot_key, "slot_name": "linear", "optimizer": self}]
-
-    def insert_slot(self, slot, named_slots_key, slot_name):
-        named_slots = self._slot_dict(slot_name)
-        if named_slots_key in named_slots:
-            raise EnvironmentError(f"named_slots_key should be global unique, but it has been in use now, "
-                                   f"please double check.")
-
-        named_slots[named_slots_key] = slot
 
     def get_slot_init_values(self):
         # return state value list of ftrl that needs to initialize in ASC DDR.

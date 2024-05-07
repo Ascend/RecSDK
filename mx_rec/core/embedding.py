@@ -43,7 +43,6 @@ from mx_rec.util.log import logger
     ("dim", NumValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
     ("name", StringValidator, {"min_len": 1, "max_len": 100}, ["check_string_length", "check_whitelist"]),
     ("emb_initializer", ClassValidator, {"classes": (InitializerV1, InitializerV2)}),
-    ("optimizer_list", ClassValidator, {"classes": (list, type(None))}),
     (["ssd_vocabulary_size", "ssd_data_path", "host_vocabulary_size"], SSDFeatureValidator),
     ("device_vocabulary_size", IntValidator, {"min_value": 1, "max_value": MAX_DEVICE_VOCABULARY_SIZE},
      ["check_value"]),
@@ -59,7 +58,6 @@ from mx_rec.util.log import logger
     ("hashtable_threshold", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"])
 ])
 def create_table(key_dtype, dim, name, emb_initializer,
-                 optimizer_list: Optional[list] = None,
                  device_vocabulary_size=1,
                  host_vocabulary_size=0,
                  ssd_vocabulary_size=0,
@@ -77,7 +75,6 @@ def create_table(key_dtype, dim, name, emb_initializer,
         dim: embedding vector size
         name: hash table name
         emb_initializer: the initializer for embedding values
-        optimizer_list: specify the optimizers to use for current hash table
         device_vocabulary_size: embedding vector numbers on device
         host_vocabulary_size: embedding vector numbers on ddr
         ssd_vocabulary_size: embedding vector numbers on ssd
@@ -95,8 +92,7 @@ def create_table(key_dtype, dim, name, emb_initializer,
     config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
                   device_vocabulary_size=device_vocabulary_size, host_vocabulary_size=host_vocabulary_size,
                   ssd_vocabulary_size=ssd_vocabulary_size, ssd_data_path=ssd_data_path,
-                  optimizer_list=optimizer_list, init_param=init_param, is_save=is_save,
-                  all2all_gradients_op=all2all_gradients_op)
+                  init_param=init_param, is_save=is_save, all2all_gradients_op=all2all_gradients_op)
     # 动态扩容
     if ConfigInitializer.get_instance().use_dynamic_expansion:
         return HBMDynamicSparseEmbeddingFactory().create_embedding(config)
