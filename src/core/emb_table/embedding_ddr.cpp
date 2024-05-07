@@ -324,24 +324,26 @@ void EmbeddingDDR::LoadKey(const string& savePath) {
 
     size_t fileSize = fileSystemPtr->GetFileSize(ss.str());
     if (fileSize >= FILE_MAX_SIZE) {
-        throw runtime_error("Error: Load keys failed. file {} size {}  is too big.", ss.str(), fileSize);
+        throw runtime_error(StringFormat("Error: Load keys failed. file {} size {}  is too big.", ss.str(), fileSize));
     }
 
     int64_t* buf = static_cast<int64_t*>(malloc(fileSize));
     if (buf == nullptr) {
-        throw runtime_error("Error: Load keys failed. failed to allocate {} bytes using malloc.", fileSize);
+        throw runtime_error(
+                StringFormat("Error: Load keys failed. failed to allocate {} bytes using malloc.", fileSize));
     }
 
     ssize_t res = fileSystemPtr->Read(ss.str(), reinterpret_cast<char *>(buf), fileSize);
     if (res == -1) {
         free(static_cast<void*>(buf));
-        throw runtime_error("Error: Load keys failed. An error occurred while reading file: {}.", ss.str());
+        throw runtime_error(
+                StringFormat("Error: Load keys failed. An error occurred while reading file: {}.", ss.str()));
     }
     if (res != fileSize) {
         free(static_cast<void*>(buf));
-        throw runtime_error(
-                "Error: Load keys failed. Expected to read {} bytes, but actually read {} bytes to file {}.",
-                fileSize, res, ss.str());
+        throw runtime_error(StringFormat(
+                "Error: Load keys failed. Expected to read {} bytes, but actually read {} bytes to file {}.", fileSize,
+                res, ss.str()));
     }
 
     size_t loadKeySize = fileSize / sizeof(int64_t);
@@ -356,9 +358,9 @@ void EmbeddingDDR::LoadKey(const string& savePath) {
         }
         if (keyCount > devVocabSize + hostVocabSize) {
             free(static_cast<void*>(buf));
-            throw runtime_error(
+            throw runtime_error(StringFormat(
                     "Error: Load keys failed. Load key size :{} exceeds the sum of device vocab size and host vocab size: {}.",
-                    keyCount, devVocabSize + hostVocabSize);
+                    keyCount, devVocabSize + hostVocabSize));
         } else if (keyCount < devVocabSize) {
             loadOffset.push_back(i);
             devOffset2Key[keyCount] = buf[i];
@@ -394,13 +396,13 @@ void EmbeddingDDR::LoadEmbAndOptim(const string& savePath)
     size_t readSize = hostLoadOffset.size() * embSize_ * sizeof(float);
     ssize_t res = fileSystemPtr->Read(embedStream.str(), table.embData, 0, hostLoadOffset, embSize_);
     if (res == -1) {
-        throw runtime_error("Error: Load embeddings failed. An error occurred while reading file: {}.",
-                            embedStream.str());
+        throw runtime_error(StringFormat("Error: Load embeddings failed. An error occurred while reading file: {}.",
+                                         embedStream.str()));
     }
     if (res != readSize) {
-        throw runtime_error(
+        throw runtime_error(StringFormat(
                 "Error: Load embeddings failed. Expected to read {} bytes, but actually read {} bytes to file {}.",
-                readSize, res, embedStream.str());
+                readSize, res, embedStream.str()));
     }
 
     // 读optim
@@ -411,13 +413,13 @@ void EmbeddingDDR::LoadEmbAndOptim(const string& savePath)
 
         ssize_t res = fileSystemPtr->Read(paramStream.str(), table.embData, optimIndex, hostLoadOffset, embSize_);
         if (res == -1) {
-            throw runtime_error("Error: Load optimizers failed. An error occurred while reading file: {}.",
-                                paramStream.str());
+            throw runtime_error(StringFormat("Error: Load optimizers failed. An error occurred while reading file: {}.",
+                                             paramStream.str()));
         }
         if (res != readSize) {
-            throw runtime_error(
+            throw runtime_error(StringFormat(
                     "Error: Load embeddings failed. Expected to read {} bytes, but actually read {} bytes to file {}.",
-                    readSize, res, paramStream.str());
+                    readSize, res, paramStream.str()));
         }
         optimIndex++;
     }
@@ -452,12 +454,13 @@ void EmbeddingDDR::SaveKey(const string& savePath) {
     size_t writeSize = static_cast<size_t>(hostKey.size() * sizeof(int64_t));
     ssize_t res = fileSystemPtr->Write(ss.str(), reinterpret_cast<const char *>(hostKey.data()), writeSize);
     if (res == -1) {
-        throw runtime_error("Error: Save keys failed. An error occurred while writing file: {}.", ss.str());
+        throw runtime_error(
+                StringFormat("Error: Save keys failed. An error occurred while writing file: {}.", ss.str()));
     }
     if (res != writeSize) {
-        throw runtime_error(
+        throw runtime_error(StringFormat(
                 "Error: Save keys failed. Expected to write {} bytes, but actually write {} bytes to file {}.",
-                writeSize, res, ss.str());
+                writeSize, res, ss.str()));
     }
 }
 
@@ -474,12 +477,13 @@ void EmbeddingDDR::SaveEmbData(const string& savePath)
     size_t writeSize = embSize_ * sizeof(float) * embContent.size();
     ssize_t res = fileSystemPtr->Write(ss.str(), embContent, embSize_ * sizeof(float));
     if (res == -1) {
-        throw runtime_error("Error: Save embeddings failed. An error occurred while writing file: {}.", ss.str());
+        throw runtime_error(
+                StringFormat("Error: Save embeddings failed. An error occurred while writing file: {}.", ss.str()));
     }
     if (res != writeSize) {
-        throw runtime_error(
+        throw runtime_error(StringFormat(
                 "Error: Save embeddings failed. Expected to write {} bytes, but actually write {} bytes to file {}.",
-                writeSize, res, ss.str());
+                writeSize, res, ss.str()));
     }
 }
 
@@ -498,12 +502,13 @@ void EmbeddingDDR::SaveOptimData(const string& savePath)
         ssize_t res = fileSystemPtr->Write(ss.str(), content.second, embSize_ * sizeof(float));
 
         if (res == -1) {
-            throw runtime_error("Error: Save optimizers failed. An error occurred while writing file: {}.", ss.str());
+            throw runtime_error(
+                    StringFormat("Error: Save optimizers failed. An error occurred while writing file: {}.", ss.str()));
         }
         if (res != writeSize) {
-            throw runtime_error(
+            throw runtime_error(StringFormat(
                     "Error: Save optimizers failed. Expected to write {} bytes, but actually write {} bytes to file {}.",
-                    writeSize, res, ss.str());
+                    writeSize, res, ss.str()));
         }
     }
 }
