@@ -60,7 +60,7 @@ size_t HdfsFileSystem::GetFileSize(const string& filePath)
     hdfsFileInfo* fileInfo = hdfs->GetPathInfo(fs, filePath.c_str());
     hdfs->Disconnect(fs);
     if (fileInfo == nullptr) {
-        throw runtime_error("Error: Unable to get hdfs file info : {}.", filePath.c_str());
+        throw runtime_error(StringFormat("Error: Unable to get hdfs file info : {}.", filePath.c_str()));
     }
     auto fileSize = static_cast<size_t>(fileInfo->mSize);
     return fileSize;
@@ -77,7 +77,7 @@ ssize_t HdfsFileSystem::Write(const string& filePath, const char* fileContent, s
     hdfsFile file = hdfs->OpenFile(fs, filePath.c_str(), flag, 0, 0, 0);
     if (!file) {
         hdfs->Disconnect(fs);
-        throw runtime_error("Error: Unable to open hdfs file : {}.", filePath.c_str());
+        throw runtime_error(StringFormat("Error: Unable to open hdfs file : {}.", filePath.c_str()));
     }
 
     tSize writeBytesNum = 0;
@@ -101,7 +101,7 @@ ssize_t HdfsFileSystem::Write(const string& filePath, vector<float*> fileContent
     hdfsFile file = hdfs->OpenFile(fs, filePath.c_str(), O_WRONLY | O_CREAT, 0, 0, 0);
     if (!file) {
         hdfs->Disconnect(fs);
-        throw runtime_error("Error: Unable to open hdfs file : {}.", filePath.c_str());
+        throw runtime_error(StringFormat("Error: Unable to open hdfs file : {}.", filePath.c_str()));
     }
 
     tSize writeBytesNum = 0;
@@ -134,7 +134,7 @@ void HdfsFileSystem::WriteEmbedding(const string& filePath, const int& embedding
     hdfsFile file = hdfs->OpenFile(fs, filePath.c_str(), O_WRONLY | O_CREAT, 0, 0, 0);
     if (!file) {
         hdfs->Disconnect(fs);
-        throw runtime_error("Error: Unable to open hdfs file : {}.", filePath.c_str());
+        throw runtime_error(StringFormat("Error: Unable to open hdfs file : {}.", filePath.c_str()));
     }
 
 #ifndef GTEST
@@ -156,14 +156,15 @@ void HdfsFileSystem::WriteEmbedding(const string& filePath, const int& embedding
         if (res == -1) {
             hdfs->CloseFile(fs, file);
             hdfs->Disconnect(fs);
-            throw runtime_error("Error: An error occurred while writing file: {}.", filePath.c_str());
+            throw runtime_error(StringFormat("Error: An error occurred while writing file: {}.", filePath.c_str()));
         }
 
         if (res != embeddingSize * sizeof(float)) {
             hdfs->CloseFile(fs, file);
             hdfs->Disconnect(fs);
-            throw runtime_error("Error: Expected to write {} bytes, but actually write {} bytes to file {}.",
-                                embeddingSize * sizeof(float), res, filePath.c_str());
+            throw runtime_error(
+                    StringFormat("Error: Expected to write {} bytes, but actually write {} bytes to file {}.",
+                                 embeddingSize * sizeof(float), res, filePath.c_str()));
         }
     }
 #endif
@@ -178,7 +179,7 @@ ssize_t HdfsFileSystem::Read(const string& filePath, char* fileContent, size_t d
     hdfsFile file = hdfs->OpenFile(fs, filePath.c_str(), O_RDONLY, 0, 0, 0);
     if (!file) {
         hdfs->Disconnect(fs);
-        throw runtime_error("Error: Unable to open hdfs file : {}.", filePath.c_str());
+        throw runtime_error(StringFormat("Error: Unable to open hdfs file : {}.", filePath.c_str()));
     }
 
     tSize readBytesNum = 0;
@@ -203,7 +204,7 @@ ssize_t HdfsFileSystem::Read(const string& filePath, vector<vector<float>>& file
     hdfsFile file = hdfs->OpenFile(fs, filePath.c_str(), O_RDONLY, 0, 0, 0);
     if (!file) {
         hdfs->Disconnect(fs);
-        throw runtime_error("Error: Unable to open hdfs file : {}.", filePath.c_str());
+        throw runtime_error(StringFormat("Error: Unable to open hdfs file : {}.", filePath.c_str()));
     }
 
     ssize_t readBytesNum = 0;
@@ -242,7 +243,7 @@ void HdfsFileSystem::ReadEmbedding(const string& filePath, EmbeddingSizeInfo& em
     hdfsFile file = hdfs->OpenFile(fs, filePath.c_str(), O_RDONLY, 0, 0, 0);
     if (!file) {
         hdfs->Disconnect(fs);
-        throw runtime_error("Error: Unable to open hdfs file : {}.", filePath.c_str());
+        throw runtime_error(StringFormat("Error: Unable to open hdfs file : {}.", filePath.c_str()));
     }
 
     float* floatPtr = reinterpret_cast<float*>(firstAddress);
@@ -253,21 +254,22 @@ void HdfsFileSystem::ReadEmbedding(const string& filePath, EmbeddingSizeInfo& em
         if (seekRes == -1) {
             hdfs->CloseFile(fs, file);
             hdfs->Disconnect(fs);
-            throw runtime_error("Error: hdfsSeek failed with error. file offset: {}",
-                                offset * embedSizeInfo.embeddingSize * sizeof(float));
+            throw runtime_error(StringFormat("Error: hdfsSeek failed with error. file offset: {}",
+                                             offset * embedSizeInfo.embeddingSize * sizeof(float)));
         }
 
         tSize res = hdfs->Read(fs, file, row.data(), embedSizeInfo.embeddingSize * sizeof(float));
         if (res == -1) {
             hdfs->CloseFile(fs, file);
             hdfs->Disconnect(fs);
-            throw runtime_error("Error: An error occurred while reading file: {}.", filePath.c_str());
+            throw runtime_error(StringFormat("Error: An error occurred while reading file: {}.", filePath.c_str()));
         }
-        if (res != embeddingSize * sizeof(float)) {
+        if (res != embedSizeInfo.embeddingSize * sizeof(float)) {
             hdfs->CloseFile(fs, file);
             hdfs->Disconnect(fs);
-            throw runtime_error("Error: Expected to read {} bytes, but actually read {} bytes from file {}.",
-                                embeddingSize * sizeof(float), res, filePath.c_str());
+            throw runtime_error(StringFormat(
+                    StringFormat("Error: Expected to read {} bytes, but actually read {} bytes from file {}.",
+                                 embedSizeInfo.embeddingSize * sizeof(float), res, filePath.c_str()));
         }
 
         aclError ret = aclrtMemcpy(floatPtr + i * embedSizeInfo.extendEmbSize,
