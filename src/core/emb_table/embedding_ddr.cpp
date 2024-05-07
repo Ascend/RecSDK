@@ -450,7 +450,6 @@ void EmbeddingDDR::SaveKey(const string& savePath) {
         }
     }
 
-    hostKey.insert(hostKey.end(), deviceKey.begin(), deviceKey.end());
     size_t writeSize = static_cast<size_t>(hostKey.size() * sizeof(int64_t));
     ssize_t res = fileSystemPtr->Write(ss.str(), reinterpret_cast<const char *>(hostKey.data()), writeSize);
     if (res == -1) {
@@ -462,6 +461,20 @@ void EmbeddingDDR::SaveKey(const string& savePath) {
                 "Error: Save keys failed. Expected to write {} bytes, but actually write {} bytes to file {}.",
                 writeSize, res, ss.str()));
     }
+
+    writeSize = static_cast<size_t>(deviceKey.size() * sizeof(int64_t));
+    res = fileSystemPtr->Write(ss.str(), reinterpret_cast<const char *>(deviceKey.data()), writeSize);
+    if (res == -1) {
+        throw runtime_error(
+                StringFormat("Error: Save keys failed. An error occurred while writing file: {}.", ss.str()));
+    }
+    if (res != writeSize) {
+        throw runtime_error(StringFormat(
+                "Error: Save keys failed. Expected to write {} bytes, but actually write {} bytes to file {}.",
+                writeSize, res, ss.str()));
+    }
+
+
 }
 
 void EmbeddingDDR::SaveEmbData(const string& savePath)
