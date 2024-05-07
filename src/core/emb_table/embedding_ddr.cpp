@@ -363,6 +363,7 @@ int EmbeddingDDR::LoadHashMap(const string& savePath)
         }
         if (keyCount > devVocabSize + hostVocabSize) {
             LOG_ERROR("load key size exceeds the sum of device vocab size and host vocab size: {}", strerror(errno));
+            free(static_cast<void*>(buf));
             return -1;
         } else if (keyCount < devVocabSize) {
             loadOffset.push_back(i);
