@@ -42,7 +42,7 @@ from mx_rec.validator.validator import para_checker_decorator, StringValidator, 
     ("beta2", FloatValidator, {"min_value": 0.0, "max_value": 1.0}, ["check_value"]),
     ("epsilon", FloatValidator, {"min_value": 0.0, "max_value": 1.0}, ["check_value_for_left_open_interval"]),
     ("name", StringValidator, {"min_len": 1, "max_len": 200}, ["check_string_length"]),
-    ("use_fusion_optim", ClassValidator, {"classes": (bool, type(None))}),
+    ("use_fusion_optim", ClassValidator, {"classes": (bool,)}),
 ])
 def create_hash_optimizer(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8, name="LazyAdam",
                           use_fusion_optim=False):
@@ -178,7 +178,7 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
             nd_indices = tf.expand_dims(indices, 1)
             slot_m = self.get_slot(var, "m")
             slot_v = self.get_slot(var, "v")
-            output_m, output_v, output_var =\
+            output_m, output_v, output_var = \
                 import_host_pipeline_ops().lazy_adam(grad, nd_indices, slot_m, slot_v, var, learning_rate,
                                                      self._custom_initial_beta1, self._custom_initial_beta2,
                                                      self._custom_initial_epsilon)
