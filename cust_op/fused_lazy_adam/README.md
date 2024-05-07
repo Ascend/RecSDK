@@ -16,12 +16,18 @@
 更多详情可以参考CANN官方的Ascend
 C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0001.html)。
 
-## lazy_adam融合算子使用
+## LazyAdam融合算子使用
 
 1. 上传fused_lazy_adam文件夹到目标环境，并进入当前目录，执行指令对lazy_adam融合算子进行编译和部署
 
 ```shell
 bash run.sh
+```
+
+注：需先环境中设置CANN相关环境变量，再执行算子编译和安装指令。使用默认路径安装CANN时设置环境变量指令如下：
+
+```shell
+source /usr/local/Ascend/ascend-toolkit/set_env.sh
 ```
 
 2. 模型脚本中创建lazy_adam优化器并指定使用融合算子实现。代码示例：
@@ -34,7 +40,7 @@ from mx_rec.optimizers.lazy_adam import create_hash_optimizer
 sparse_optimizer = create_hash_optimizer(learning_rate=0.001, use_fusion_optim=True)
 ```
 
-## LazyAdam融合算子
+## LazyAdam融合算子介绍
 
 1. 算子分析
 
