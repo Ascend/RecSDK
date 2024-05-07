@@ -120,8 +120,7 @@ class TestCreateTableFunc(unittest.TestCase):
                                       dim=8,
                                       name='test_table',
                                       emb_initializer=tf.compat.v1.truncated_normal_initializer(),
-                                      host_vocabulary_size=8,
-                                      optimizer_list=[create_hash_optimizer(learning_rate=0.01)])
+                                      host_vocabulary_size=8)
             self.assertIsInstance(test_table, ExternalStorageSparseEmbedding)
 
 
@@ -134,12 +133,11 @@ class TestSparseLookupFunc(unittest.TestCase):
                          get_rank_size=mock.MagicMock(return_value=8),
                          get_rank_id=mock.MagicMock(return_value=0),
                          get_device_id=mock.MagicMock(return_value=0))
-    @mock.patch("mx_rec.core.emb.sparse_embedding.get_preprocessed_tensor_for_asc")
+    @mock.patch("mx_rec.core.emb.base_sparse_embedding.get_preprocessed_tensor_for_asc")
     @mock.patch("mx_rec.core.embedding.ConfigInitializer")
     @mock.patch("mx_rec.core.emb.base_sparse_embedding.ConfigInitializer")
     @mock.patch("mx_rec.validator.emb_validator.ConfigInitializer")
-    @mock.patch("mx_rec.core.emb.sparse_embedding.ConfigInitializer")
-    def test_sparse_lookup_case1(self, embedding_config_initializer, base_sparse_embedding_config_initializer,
+    def test_sparse_lookup_case1(self, base_sparse_embedding_config_initializer,
                                  emb_validator_config_initializer, sparse_embedding_config_initializer,
                                  mock_get_preprocessed_tensor_for_asc):
         """
@@ -154,7 +152,6 @@ class TestSparseLookupFunc(unittest.TestCase):
             # mock
             mock_config_initializer = MockConfigInitializer(use_dynamic_expansion=False)
 
-            embedding_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
             base_sparse_embedding_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
             emb_validator_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
             sparse_embedding_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
@@ -166,12 +163,9 @@ class TestSparseLookupFunc(unittest.TestCase):
             batch = {"case1_feat": tf.ones(shape=[8, 8], dtype=tf.int64)}
             mock_get_preprocessed_tensor_for_asc.return_value = {
                 "restore_vector": tf.ones(shape=[8, 8], dtype=tf.int64),
-                "restore_vector_second": tf.ones(shape=[8, ], dtype=tf.int64),
-                "unique_keys": tf.ones(shape=[8, ], dtype=tf.int64),
                 "hot_pos": tf.ones(shape=[8, ], dtype=tf.int64),
                 "id_offsets": tf.ones(shape=[8, ], dtype=tf.int64),
-                "all2all_args": tf.ones(shape=[8, 8], dtype=tf.int64),
-                "swap_in": [tf.no_op()]
+                "all2all_args": tf.ones(shape=[8, 8], dtype=tf.int64)
             }
 
             # test
@@ -190,12 +184,11 @@ class TestSparseLookupFunc(unittest.TestCase):
                          get_rank_id=mock.MagicMock(return_value=0),
                          get_device_id=mock.MagicMock(return_value=0))
     @mock.patch("mx_rec.core.asc.feature_spec.ConfigInitializer")
-    @mock.patch("mx_rec.core.emb.sparse_embedding.get_preprocessed_tensor_for_asc")
+    @mock.patch("mx_rec.core.emb.base_sparse_embedding.get_preprocessed_tensor_for_asc")
     @mock.patch("mx_rec.core.embedding.ConfigInitializer")
     @mock.patch("mx_rec.core.emb.base_sparse_embedding.ConfigInitializer")
     @mock.patch("mx_rec.validator.emb_validator.ConfigInitializer")
-    @mock.patch("mx_rec.core.emb.sparse_embedding.ConfigInitializer")
-    def test_sparse_lookup_case2(self, embedding_config_initializer, base_sparse_embedding_config_initializer,
+    def test_sparse_lookup_case2(self, base_sparse_embedding_config_initializer,
                                  emb_validator_config_initializer, sparse_embedding_config_initializer,
                                  mock_get_preprocessed_tensor_for_asc, feature_spec_config_initializer):
         """
@@ -210,7 +203,6 @@ class TestSparseLookupFunc(unittest.TestCase):
             # mock
             mock_config_initializer = MockConfigInitializer(use_dynamic_expansion=False)
 
-            embedding_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
             base_sparse_embedding_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
             emb_validator_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
             sparse_embedding_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
@@ -219,12 +211,9 @@ class TestSparseLookupFunc(unittest.TestCase):
             case2_feat = tf.ones(shape=[8, 8], dtype=tf.int64)
             mock_get_preprocessed_tensor_for_asc.return_value = {
                 "restore_vector": tf.ones(shape=[8, 8], dtype=tf.int64),
-                "restore_vector_second": tf.ones(shape=[8, ], dtype=tf.int64),
-                "unique_keys": tf.ones(shape=[8, ], dtype=tf.int64),
                 "hot_pos": tf.ones(shape=[8, ], dtype=tf.int64),
                 "id_offsets": tf.ones(shape=[8, ], dtype=tf.int64),
-                "all2all_args": tf.ones(shape=[8, 8], dtype=tf.int64),
-                "swap_in": [tf.no_op()]
+                "all2all_args": tf.ones(shape=[8, 8], dtype=tf.int64)
             }
 
             # test

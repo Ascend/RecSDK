@@ -23,11 +23,13 @@ import tensorflow as tf
 from tensorflow import Operation, Tensor
 from tensorflow.core.framework.graph_pb2 import GraphDef
 from tensorflow.python.framework.errors_impl import InvalidArgumentError
+from tensorflow.python.ops import control_flow_ops
 
 from mx_rec.graph.slicers import OrphanLookupKeySlicer
 from mx_rec.graph.constants import AnchorIteratorOp
 from mx_rec.constants.constants import ASCAnchorAttr, DUMP_MIDIFY_GRAPH_FILE_MODE
 from mx_rec.core.embedding import BaseSparseEmbedding
+from mx_rec.core.asc.swap_args import SwapArgs, SwapDataType
 from mx_rec.util.log import logger
 
 
@@ -85,6 +87,32 @@ def replace_anchor(replacement_specs: DefaultDict[Tensor, List[Tuple[int, Operat
                 operator._update_input(input_idx, new_tensor_list[tensor_idx])
             except InvalidArgumentError as err:
                 logger.info("The replacement specs keys (old batch) is: %s. \n\t\t The new_tensor_list is: %s.",
+                            replacement_specs.keys(), new_tensor_list)
+                raise RuntimeError(f"Cannot update edge, old tensor: {old_tensor}, "
+                                   f"new tensor: {new_tensor_list[tensor_idx]}.") from err
+
+
+def record_control_to_replace(src_op: Operation) -> DefaultDict[Tensor, List[Tuple[int, Operation]]]:
+    replacement_specs = defaultdict(list)
+    op_list = tf.compat.v1.get_default_graph().get_operations()
+    for operator in op_list:
+        if src_op in operator.control_inputs:
+            input_index = operator.control_inputs.index(src_op)
+            replacement_specs[src_op].append((input_index, operator))
+
+    return replacement_specs
+
+
+def replace_control_anchor(replacement_specs: DefaultDict[Tensor, List[Tuple[int, Operation]]],
+                           new_tensor_list: List[Tensor]):
+
+    for tensor_idx, (old_tensor, items) in enumerate(replacement_specs.items()):
+        for _, operator in items:
+            try:
+                control_op = control_flow_ops.group(new_tensor_list)
+                operator._add_control_input(control_op)
+            except InvalidArgumentError as err:
+                logger.info("The replacement control specs keys (old batch) is: %s. \n\t\t The new_tensor_list is: %s.",
                             replacement_specs.keys(), new_tensor_list)
                 raise RuntimeError(f"Cannot update edge, old tensor: {old_tensor}, "
                                    f"new tensor: {new_tensor_list[tensor_idx]}.") from err
@@ -163,6 +191,27 @@ def replace_anchor_vec(cutting_point: Tensor, attribute: ASCAnchorAttr, anchor: 
     replacement_specs_for_anchor_vec = record_ops_to_replace(anchor_vec.op)
     # replace anchor_vec with anchor
     replace_anchor(replacement_specs_for_anchor_vec, [anchor])
+
+
+def replace_anchor_control(place_holder_control: tf.Operation, real_anchor: Tensor):
+    """
+    将place_holder_control替换为入参real_anchor.
+
+    Args:
+        place_holder_control: control op
+        real_anchor: 用来替换打桩节点的tensor
+
+    Returns: None
+
+    """
+
+    if place_holder_control is None:
+        raise RuntimeError(f"Node place_holder_control does not exist. Check whether the sparse lookup interface "
+                           f"is correctly invoked.")
+    # find the op with stub node as the input
+    replacement_specs_for_anchor_vec = record_control_to_replace(place_holder_control)
+    # replace anchor_vec with anchor
+    replace_control_anchor(replacement_specs_for_anchor_vec, real_anchor)
 
 
 def mark_orphan_lookup_key(lookup_key: Tensor) -> Tensor:

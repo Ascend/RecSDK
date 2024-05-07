@@ -203,7 +203,6 @@ if __name__ == '__main__':
                                     emb_initializer=tf.variance_scaling_initializer(mode="fan_avg",
                                                                                     distribution='normal', seed=0),
                                     device_vocabulary_size=dev_vocab_size * local_rank_size,
-                                    optimizer_list=sparse_optimizer_list,
                                     mode=MxRecMode.mapping("ASC"))
 
     sparse_variables = tf.compat.v1.get_collection(get_ascend_global_hashtable_collection())

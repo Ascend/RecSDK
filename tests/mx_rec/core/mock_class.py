@@ -20,8 +20,6 @@ import tensorflow as tf
 from tensorflow_core.python.training import slot_creator
 
 from mx_rec import ASCEND_GLOBAL_HASHTABLE_COLLECTION
-from mx_rec.optimizers.lazy_adam import CustomizedLazyAdam
-from mx_rec.util.config_utils.embedding_utils import SparseEmbedConfig
 from mx_rec.util.config_utils.feature_spec_utils import FeatureSpecConfig
 from mx_rec.util.config_utils.optimizer_utils import OptimizerConfig
 
@@ -208,23 +206,6 @@ class MockOptimizer:
     def __init__(self):
         self.slot_num = 2
         self.derivative = 2
-
-    def initialize_slots(self, var, table_instance):
-        # Create slots for the first and second moments.
-        def creat_one_single_slot(var, op_name):
-            new_slot_variable = slot_creator.create_zeros_slot(var, op_name)
-            return new_slot_variable
-
-        momentum = creat_one_single_slot(var, self._name + "/" + "momentum")
-        velocity = creat_one_single_slot(var, self._name + "/" + "velocity")
-        named_slot_key = (var.op.graph, var.op.name)
-
-        table_instance.set_optimizer(self._name, {"momentum": momentum, "velocity": velocity})
-        return [{"slot": momentum, "named_slot_key": named_slot_key, "slot_name": "m", "optimizer": self},
-                {"slot": velocity, "named_slot_key": named_slot_key, "slot_name": "v", "optimizer": self}]
-
-    def insert_slot(self, slot, named_slots_key, slot_name):
-        pass
 
     def get_slot_init_values(self):
         initial_momentum_value = 0.0

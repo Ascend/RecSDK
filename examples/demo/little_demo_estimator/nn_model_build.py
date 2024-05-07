@@ -21,7 +21,6 @@ from mx_rec.util.tf_version_adapter import npu_ops
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.constants.constants import ASCEND_TIMESTAMP
 
-from nn_optim import get_dense_and_sparse_optimizer
 from utils import FeatureSpecIns
 
 
@@ -137,22 +136,18 @@ class LittleModel:
         return logit_list
 
     def _get_embedding_list(self):
-        optimizer_list = [get_dense_and_sparse_optimizer(self.cfg)]
-        sparse_optimizer_list = [sparse_optimizer for dense_optimizer, sparse_optimizer in optimizer_list]
         user_hashtable = create_table(key_dtype=tf.int64,
                                       dim=tf.TensorShape([self.cfg.user_hashtable_dim]),
                                       name='user_table',
                                       emb_initializer=tf.compat.v1.truncated_normal_initializer(),
                                       device_vocabulary_size=self.cfg.user_vocab_size * 10,
-                                      host_vocabulary_size=self.cfg.user_vocab_size * 0,
-                                      optimizer_list=sparse_optimizer_list)
+                                      host_vocabulary_size=self.cfg.user_vocab_size * 0)
         item_hashtable = create_table(key_dtype=tf.int64,
                                       dim=tf.TensorShape([self.cfg.item_hashtable_dim]),
                                       name='item_table',
                                       emb_initializer=tf.compat.v1.truncated_normal_initializer(),
                                       device_vocabulary_size=self.cfg.item_vocab_size * 10,
-                                      host_vocabulary_size=self.cfg.item_vocab_size * 0,
-                                      optimizer_list=sparse_optimizer_list)
+                                      host_vocabulary_size=self.cfg.item_vocab_size * 0)
 
         if self.params.modify_graph:
             if not self.params.enable_slicer_test:

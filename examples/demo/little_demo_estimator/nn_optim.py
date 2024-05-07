@@ -28,18 +28,6 @@ from mx_rec.optimizers.gradient_descent_by_addr import create_hash_optimizer_by_
 from mx_rec.util.log import logger
 
 
-def get_dense_and_sparse_optimizer(cfg):
-    dense_optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=cfg.learning_rate)
-    if ConfigInitializer.get_instance().use_dynamic_expansion:
-        sparse_optimizer = create_hash_optimizer_by_addr(learning_rate=cfg.learning_rate)
-        logger.info("optimizer create_hash_optimizer_by_addr")
-    else:
-        sparse_optimizer = create_hash_optimizer(learning_rate=cfg.learning_rate)
-        logger.info("optimizer create_hash_optimizer")
-
-    return dense_optimizer, sparse_optimizer
-
-
 def get_train_op_list(losses, learning_rate):
     train_ops_list = []
     update_ops = tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.UPDATE_OPS)
