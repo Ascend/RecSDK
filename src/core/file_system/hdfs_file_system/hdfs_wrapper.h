@@ -134,22 +134,18 @@ namespace MxRec {
             return hdfsCloseFile(fs, file);
         }
 
-        tSize Read(hdfsFS fs, hdfsFile file, void* buffer, tSize length, tSize typeSize) const
+        tSize Read(hdfsFS fs, hdfsFile file, char* buffer, tSize length) const
         {
             if (hdfsRead == nullptr) {
                 throw runtime_error("Failed to obtain the pointer of the function hdfsRead from the libhdfs.");
             }
-            return WrapperHdfsRead(fs, file, buffer, length, typeSize);
-        }
 
-        tSize WrapperHdfsRead(hdfsFS fs, hdfsFile file, void *buffer, tSize length, tSize typeSize) const
-        {
             tSize reTryCount = 0;
             tSize unReadLength = length;
             tSize readBytes = 0;
 
             while (unReadLength != 0 && reTryCount < RETRY_COUNT) {
-                tSize offset = buffer + (length - unReadLength) / typeSize;
+                tSize offset = buffer + (length - unReadLength) / sizeof(char);
                 tSize res = hdfsRead(fs, file, buffer + offset, unReadLength);
                 if (res == -1) {
                     return res;
@@ -160,22 +156,60 @@ namespace MxRec {
             return readBytes;
         }
 
-        tSize Write(hdfsFS fs, hdfsFile file, const void* buffer, tSize length, tSize typeSize) const
+        tSize Read(hdfsFS fs, hdfsFile file, float* buffer, tSize length) const
+        {
+            if (hdfsRead == nullptr) {
+                throw runtime_error("Failed to obtain the pointer of the function hdfsRead from the libhdfs.");
+            }
+
+            tSize reTryCount = 0;
+            tSize unReadLength = length;
+            tSize readBytes = 0;
+
+            while (unReadLength != 0 && reTryCount < RETRY_COUNT) {
+                tSize offset = buffer + (length - unReadLength) / sizeof(float);
+                tSize res = hdfsRead(fs, file, buffer + offset, unReadLength);
+                if (res == -1) {
+                    return res;
+                }
+                unReadLength -= res;
+                readBytes += res;
+            }
+            return readBytes;
+        }
+
+        tSize Write(hdfsFS fs, hdfsFile file, const char* buffer, tSize length, tSize typeSize) const
         {
             if (hdfsWrite == nullptr) {
                 throw runtime_error("Failed to obtain the pointer of the function hdfsWrite from the libhdfs.");
             }
-            return WrapperHdfsWrite(fs, file, buffer, length, typeSize);
-        }
-
-        tSize WrapperHdfsWrite(hdfsFS fs, hdfsFile file, const void *buffer, tSize length, tSize typeSize) const
-        {
             tSize reTryCount = 0;
             tSize unWriteLength = length;
             tSize writeBytes = 0;
 
             while (unWriteLength != 0 && reTryCount < RETRY_COUNT) {
-                tSize offset = buffer + (length - unWriteLength) / typeSize;
+                tSize offset = buffer + (length - unWriteLength) / sizeof(char);
+                tSize res = hdfsWrite(fs, file, buffer + offset, unWriteLength);
+                if (res == -1) {
+                    return res;
+                }
+                unWriteLength -= res;
+                writeBytes += res;
+            }
+            return writeBytes;
+        }
+
+        tSize Write(hdfsFS fs, hdfsFile file, const float* buffer, tSize length, tSize typeSize) const
+        {
+            if (hdfsWrite == nullptr) {
+                throw runtime_error("Failed to obtain the pointer of the function hdfsWrite from the libhdfs.");
+            }
+            tSize reTryCount = 0;
+            tSize unWriteLength = length;
+            tSize writeBytes = 0;
+
+            while (unWriteLength != 0 && reTryCount < RETRY_COUNT) {
+                tSize offset = buffer + (length - unWriteLength) / sizeof(float);
                 tSize res = hdfsWrite(fs, file, buffer + offset, unWriteLength);
                 if (res == -1) {
                     return res;
