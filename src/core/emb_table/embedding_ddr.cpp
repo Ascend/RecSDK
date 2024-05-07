@@ -316,47 +316,42 @@ void EmbeddingDDR::SetStartCount()
     freeSize_ = devVocabSize;
 }
 
-void EmbeddingDDR::Load(const string& savePath)
-{
-    int res = LoadHashMap(savePath);
-    if (res == -1) {
-        throw std::runtime_error("load key failed!");
-    }
+void EmbeddingDDR::Load(const string& savePath) {
+    LoadKey(savePath);
     LoadEmbAndOptim(savePath);
 }
 
-void EmbeddingDDR::Save(const string& savePath)
-{
+void EmbeddingDDR::Save(const string& savePath) {
     SaveKey(savePath);
     SaveEmbAndOptim(savePath);
 }
 
-int EmbeddingDDR::LoadHashMap(const string& savePath)
-{
+void EmbeddingDDR::LoadKey(const string& savePath) {
     stringstream ss;
     ss << savePath << "/" << name << "/key/slice.data";
 
     unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
     unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
 
-    size_t fileSize = 0;
-    try {
-        fileSize = fileSystemPtr->GetFileSize(ss.str());
-    } catch (exception& e) {
-        LOG_ERROR("open file {} failed:{}", ss.str(), strerror(errno));
-        return -1;
-    }
+    size_t fileSize = fileSystemPtr->GetFileSize(ss.str());
     if (fileSize >= FILE_MAX_SIZE) {
-        LOG_ERROR("file {} size = {} is too big", ss.str(), fileSize);
-        return -1;
+        throw runtime_error("Error: Load keys failed. file {} size {}  is too big.", ss.str(), fileSize);
     }
 
     int64_t* buf = static_cast<int64_t*>(malloc(fileSize));
     if (buf == nullptr) {
-        LOG_ERROR("malloc failed: {}", strerror(errno));
-        return -1;
+        throw runtime_error("Error: Load keys failed. failed to allocate {} bytes using malloc.", fileSize);
     }
-    fileSystemPtr->Read(ss.str(), reinterpret_cast<char*>(buf), fileSize);
+
+    ssize_t res = fileSystemPtr->Read(ss.str(), reinterpret_cast<char *>(buf), fileSize);
+    if (res == -1) {
+        throw runtime_error("Error: Load keys failed. An error occurred while reading file: {}.", ss.str());
+    }
+    if (res != fileSize) {
+        throw runtime_error(
+                "Error: Load keys failed. Expected to read {} bytes, but actually read {} bytes to file {}.",
+                fileSize, res, ss.str());
+    }
 
     size_t loadKeySize = fileSize / sizeof(int64_t);
 
@@ -369,8 +364,9 @@ int EmbeddingDDR::LoadHashMap(const string& savePath)
             continue;
         }
         if (keyCount > devVocabSize + hostVocabSize) {
-            LOG_ERROR("load key size exceeds the sum of device vocab size and host vocab size: {}", strerror(errno));
-            return -1;
+            throw runtime_error(
+                    "Error: Load keys failed. Load key size :{} exceeds the sum of device vocab size and host vocab size: {}.",
+                    keyCount, devVocabSize + hostVocabSize);
         } else if (keyCount < devVocabSize) {
             loadOffset.push_back(i);
             devOffset2Key[keyCount] = buf[i];
@@ -381,9 +377,7 @@ int EmbeddingDDR::LoadHashMap(const string& savePath)
         keyCount++;
     }
     maxOffset = keyOffsetMap.size();
-
     free(static_cast<void*>(buf));
-    return 0;
 }
 
 void EmbeddingDDR::LoadEmbAndOptim(const string& savePath)
@@ -404,21 +398,41 @@ void EmbeddingDDR::LoadEmbAndOptim(const string& savePath)
     // 读embedding
     stringstream embedStream;
     embedStream << ss.str() << "/" << "embedding/slice.data";
+
+    size_t readSize = hostLoadOffset.size() * embSize_ * sizeof(float);
     ssize_t res = fileSystemPtr->Read(embedStream.str(), table.embData, 0, hostLoadOffset, embSize_);
+    if (res == -1) {
+        throw runtime_error("Error: Load embeddings failed. An error occurred while reading file: {}.",
+                            embedStream.str());
+    }
+    if (res != readSize) {
+        throw runtime_error(
+                "Error: Load embeddings failed. Expected to read {} bytes, but actually read {} bytes to file {}.",
+                readSize, res, embedStream.str());
+    }
 
     // 读optim
     int64_t optimIndex = 1;
     for (const auto &param: optimParams) {
         stringstream paramStream;
         paramStream << ss.str() << "/" << optimName + "_" + param << "/slice.data";
+
         ssize_t res = fileSystemPtr->Read(paramStream.str(), table.embData, optimIndex, hostLoadOffset, embSize_);
-        optimIndex ++;
+        if (res == -1) {
+            throw runtime_error("Error: Load optimizers failed. An error occurred while reading file: {}.",
+                                paramStream.str());
+        }
+        if (res != readSize) {
+            throw runtime_error(
+                    "Error: Load embeddings failed. Expected to read {} bytes, but actually read {} bytes to file {}.",
+                    readSize, res, paramStream.str());
+        }
+        optimIndex++;
     }
 }
 
 
-int EmbeddingDDR::SaveKey(const string& savePath)
-{
+void EmbeddingDDR::SaveKey(const string& savePath) {
     stringstream ss;
     ss << savePath << "/" << name << "/key/";
     MakeDir(ss.str());
@@ -442,19 +456,17 @@ int EmbeddingDDR::SaveKey(const string& savePath)
         }
     }
 
-    ssize_t res = fileSystemPtr->Write(ss.str(), reinterpret_cast<const char *>(hostKey.data()),
-                                       static_cast<size_t>(hostKey.size() * sizeof(int64_t)));
+    hostKey.insert(hostKey.end(), deviceKey.begin(), deviceKey.end());
+    size_t writeSize = static_cast<size_t>(hostKey.size() * sizeof(int64_t));
+    ssize_t res = fileSystemPtr->Write(ss.str(), reinterpret_cast<const char *>(hostKey.data()), writeSize);
     if (res == -1) {
-        return -1;
+        throw runtime_error("Error: Save keys failed. An error occurred while writing file: {}.", ss.str());
     }
-    ssize_t res2 = fileSystemPtr->Write(
-        ss.str(), reinterpret_cast<const char *>(deviceKey.data()),
-        static_cast<size_t>(deviceKey.size() * sizeof(int64_t))
-    );
-    if (res2 == -1) {
-        return -1;
+    if (res != writeSize) {
+        throw runtime_error(
+                "Error: Save keys failed. Expected to write {} bytes, but actually write {} bytes to file {}.",
+                writeSize, res, ss.str());
     }
-    return 0;
 }
 
 void EmbeddingDDR::SaveEmbData(const string& savePath)
@@ -466,8 +478,17 @@ void EmbeddingDDR::SaveEmbData(const string& savePath)
 
     unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
     unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-    vector<size_t> attribute;
-    fileSystemPtr->Write(ss.str(), embContent, embSize_ * sizeof(float));
+
+    size_t writeSize = embSize_ * sizeof(float) * embContent.size();
+    ssize_t res = fileSystemPtr->Write(ss.str(), embContent, embSize_ * sizeof(float));
+    if (res == -1) {
+        throw runtime_error("Error: Save embeddings failed. An error occurred while writing file: {}.", ss.str());
+    }
+    if (res != writeSize) {
+        throw runtime_error(
+                "Error: Save embeddings failed. Expected to write {} bytes, but actually write {} bytes to file {}.",
+                writeSize, res, ss.str());
+    }
 }
 
 void EmbeddingDDR::SaveOptimData(const string& savePath)
@@ -480,8 +501,18 @@ void EmbeddingDDR::SaveOptimData(const string& savePath)
 
         unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
         unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-        vector<size_t> attribute;
-        fileSystemPtr->Write(ss.str(), content.second, embSize_ * sizeof(float));
+
+        size_t writeSize = embSize_ * sizeof(float) * content.second.size();
+        ssize_t res = fileSystemPtr->Write(ss.str(), content.second, embSize_ * sizeof(float));
+
+        if (res == -1) {
+            throw runtime_error("Error: Save optimizers failed. An error occurred while writing file: {}.", ss.str());
+        }
+        if (res != writeSize) {
+            throw runtime_error(
+                    "Error: Save optimizers failed. Expected to write {} bytes, but actually write {} bytes to file {}.",
+                    writeSize, res, ss.str());
+        }
     }
 }
 
@@ -501,7 +532,7 @@ void EmbeddingDDR::SaveEmbAndOptim(const string& savePath)
         int optim_param_count = 1;
         for (const string &param: optimParams) {
             optimContentMap[param].push_back(table.embData[offset - devVocabSize].data() +
-                                                sizeof(float) * embSize_ * optim_param_count);
+                                             sizeof(float) * embSize_ * optim_param_count);
             optim_param_count++;
         }
     }
@@ -523,6 +554,7 @@ void EmbeddingDDR::SetOptimizerInfo(OptimizerInfo& optimizerInfo)
         optimContentMap[param] = vector<float*>{};
     }
 }
+
 void EmbeddingDDR::SetCacheManager(CacheManager *cm)
 {
     cacheManager_ = cm;
