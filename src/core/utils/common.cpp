@@ -46,6 +46,7 @@ namespace MxRec {
         }
         useStatic = static_cast<unsigned int>(option) bitand HybridOption::USE_STATIC;
         useDynamicExpansion = static_cast<unsigned int>(option) bitand HybridOption::USE_DYNAMIC_EXPANSION;
+        useSumSameIdGradients = static_cast<unsigned int>(option) bitand HybridOption::USE_SUM_SAME_ID_GRADIENTS;
     }
 
     RankInfo::RankInfo(int localRankSize, int option, const vector<int>& maxStep)

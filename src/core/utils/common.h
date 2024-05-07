@@ -120,6 +120,7 @@ namespace MxRec {
     namespace HybridOption {
         const unsigned int USE_STATIC = 0x001;
         const unsigned int USE_DYNAMIC_EXPANSION = 0x001 << 1;
+        const unsigned int USE_SUM_SAME_ID_GRADIENTS = 0x001 << 2;
     };
 
     string GetChipName(int devID);
@@ -231,6 +232,7 @@ namespace MxRec {
         bool isDDR { false };
         bool isSSDEnabled { false };
         bool useDynamicExpansion {false};
+        bool useSumSameIdGradients {true};
         std::vector<int> ctrlSteps; // 包含三个步数: train_steps, eval_steps, save_steps
     };
 
@@ -270,15 +272,11 @@ namespace MxRec {
     };
 
     struct EmbeddingSizeInfo {
+        size_t embeddingSize = 0;
+        size_t extendEmbSize = 0;
         EmbeddingSizeInfo() = default;
         EmbeddingSizeInfo(size_t embSize, size_t extendSize)
-        {
-            embeddingSize = embSize;
-            extendEmbSize = extendSize;
-        }
-
-        size_t embeddingSize;
-        size_t extendEmbSize;
+            : embeddingSize(embSize), extendEmbSize(extendSize) {}
     };
 
     struct OptimizerInfo {
@@ -418,6 +416,12 @@ namespace MxRec {
     }
 
     struct EmbInfoParams {
+        std::string name;
+        int sendCount;
+        int embeddingSize;
+        int extEmbeddingSize;
+        bool isSave;
+        bool isGrad;
         EmbInfoParams() = default;
 
         EmbInfoParams(const std::string& name,
@@ -434,12 +438,6 @@ namespace MxRec {
               isGrad(isGrad)
         {
         }
-        std::string name;
-        int sendCount;
-        int embeddingSize;
-        int extEmbeddingSize;
-        bool isSave;
-        bool isGrad;
     };
 
     struct EmbInfo {

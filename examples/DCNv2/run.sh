@@ -92,7 +92,6 @@ if [ -n "$ip" ]; then
     echo "CM_CHIEF_DEVICE=$CM_CHIEF_DEVICE"
     echo "CM_WORKER_IP=$CM_WORKER_IP"
     echo "CM_WORKER_SIZE=$CM_WORKER_SIZE"
-    echo "ASCEND_VISIBLE_DEVICES=$ASCEND_VISIBLE_DEVICES"
 else
     # ranktable
     echo "Current is ranktable solution, hccl json file:${hccl_cfg_json}"

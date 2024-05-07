@@ -19,12 +19,12 @@ import collections
 import logging
 import argparse
 from multiprocessing import Process
-import numpy as np
+import sys
 import time
+import numpy as np
 from tqdm import tqdm
 from glob import glob
 from collections import Counter, OrderedDict
-import sys
 
 import tensorflow as tf
 
@@ -91,7 +91,7 @@ class CriteoStatsDict():
 
     @staticmethod
     def save_dict(output_file_path, hist_map, prefix=""):
-        with open(os.path.join(output_file_path, "{}hist_map.pkl".format(prefix)), "wb") as file_wrt:
+        with os.fdopen(os.path.join(output_file_path, "{}hist_map.pkl".format(prefix)), "wb") as file_wrt:
             pickle.dump(hist_map, file_wrt)
 
     def load_dict(self, dict_path, prefix=""):
@@ -188,7 +188,7 @@ def get_unique_id_multiprocess(proc_num, proc_id, data_file_path, output_file_pa
                 if capped_value not in cat_sets:
                     cat_sets[k][capped_value] = cat_global_id_nums[k]
                     cat_global_id_nums[k] += 1
-    with open(os.path.join(output_file_path, "unique_id.pkl"), "wb") as file_wrt:
+    with os.fdopen(os.path.join(output_file_path, "unique_id.pkl"), "wb") as file_wrt:
         pickle.dump(cat_sets, file_wrt)
     print('statsdata time cost: {:.2f}s'.format(time.time() - start_time))
 
@@ -247,7 +247,7 @@ def convert_input2tfrd_multiprocess(proc_num, proc_id, in_file_path, output_file
     with open(in_file_path, encoding="utf-8") as file_in:
         errorline_list = []
 
-        for i, line in tqdm(enumerate(file_in)):
+        for _ in tqdm(file_in):
             line_num += 1
     print(f'line_num: {line_num}')
     start_line = proc_id * ((line_num + proc_num) // proc_num)
@@ -370,9 +370,9 @@ if __name__ == "__main__":
         sub_process_num = process_num // len(train_data_files)
         data_file = train_data_files[process_id // sub_process_num]
         output_path = f'{save_tfrecord_path}/{process_id:04}_'
-        p = Process(target=convert_input2tfrd_multiprocess, args=(sub_process_num, process_id%sub_process_num, data_file, output_path,
-                                                     criteo_stats, spe_num,
-                                                     5000000))
+        p = Process(target=convert_input2tfrd_multiprocess, args=(sub_process_num, process_id % sub_process_num,
+                                                                  data_file, output_path, criteo_stats, spe_num,
+                                                                  5000000))
         processs.append(p)
     for p in processs:
         p.start()
@@ -394,10 +394,9 @@ if __name__ == "__main__":
         sub_process_num = process_num // len(test_data_files)
         data_file = test_data_files[process_id // sub_process_num]
         output_path = f'{save_tfrecord_path}/{process_id:04}_'
-        p = Process(target=convert_input2tfrd_multiprocess, args=(sub_process_num, process_id%sub_process_num, data_file, output_path,
-                                                     criteo_stats, spe_num,
-                                                     5000000))
-
+        p = Process(target=convert_input2tfrd_multiprocess, args=(sub_process_num, process_id % sub_process_num,
+                                                                  data_file, output_path, criteo_stats, spe_num,
+                                                                  5000000))
         processs.append(p)
     for p in processs:
         p.start()

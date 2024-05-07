@@ -16,11 +16,8 @@ See the License for the specific language governing permissions and
 #ifndef MXREC_CONFIG_H
 #define MXREC_CONFIG_H
 
-#include <string>
-
 namespace MxRec {
     namespace RecEnvNames {
-        const char *const APPLY_GRADIENTS_STRATEGY = "APPLY_GRADIENTS_STRATEGY";
         const char *const ACL_TIMEOUT = "AclTimeout";
         const char *const HD_CHANNEL_SIZE = "HD_CHANNEL_SIZE";
         const char *const KEY_PROCESS_THREAD_NUM = "KEY_PROCESS_THREAD_NUM";
@@ -34,13 +31,7 @@ namespace MxRec {
         const char *const RECORD_KEY_COUNT = "RECORD_KEY_COUNT";
     };
 
-    namespace ApplyGradientsStrategyOptions {
-        extern const std::string DIRECT_APPLY;
-        extern const std::string SUM_SAME_ID_GRADIENTS_AND_APPLY;
-    };
-
     struct GlobalEnv {
-        static std::string applyGradientsStrategy;
         static int aclTimeout;
         static int hdChannelSize;
         static int keyProcessThreadNum;
