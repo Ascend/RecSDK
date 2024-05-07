@@ -127,15 +127,15 @@ ENABLE_BINARY_PACKAGE设置为True。编译部署时可将算子的二进制部�
 
 3.
 
-检查API执行需要的头文件和库文件是否自动生成，针对融合算子，检查cust_op/fused_lazy_adam/lazy_adam/build_out/autogen目录下，是否有
+检查API执行需要的头文件和库文件是否自动生成，检查cust_op/fused_lazy_adam/lazy_adam/build_out/autogen目录下，是否有
 aclnn_lazy_adam.cpp和aclnn_lazy_adam.h等。
 
 注意：对于cust_op/fused_lazy_adam/run.sh脚本，安装算子后会删除构建目录。运行单算子测试时，需要屏蔽掉删除rm rf
 ./lazy_adam这一步，以确保前置条件3。
 
-### LazyAdam融合算子de AclNN调用实现
+### LazyAdam融合算子的AclNN调用实现
 
-针对LazyAdam融合算子，入口src/main.cpp中：
+调用入口在src/main.cpp中：
 
 1. InitResource函数：初始化AscendCL并运行管理资源申请，不用修改
 2. RunLookupOp运行算子：
