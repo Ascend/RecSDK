@@ -178,7 +178,7 @@ namespace MxRec {
             return readBytes;
         }
 
-        tSize Write(hdfsFS fs, hdfsFile file, const char* buffer, tSize length, tSize typeSize) const
+        tSize Write(hdfsFS fs, hdfsFile file, const char* buffer, tSize length) const
         {
             if (hdfsWrite == nullptr) {
                 throw runtime_error("Failed to obtain the pointer of the function hdfsWrite from the libhdfs.");
@@ -199,7 +199,7 @@ namespace MxRec {
             return writeBytes;
         }
 
-        tSize Write(hdfsFS fs, hdfsFile file, const float* buffer, tSize length, tSize typeSize) const
+        tSize Write(hdfsFS fs, hdfsFile file, const float* buffer, tSize length) const
         {
             if (hdfsWrite == nullptr) {
                 throw runtime_error("Failed to obtain the pointer of the function hdfsWrite from the libhdfs.");

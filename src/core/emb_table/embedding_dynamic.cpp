@@ -246,7 +246,7 @@ void EmbeddingDynamic::LoadEmbAndOptim(const string& savePath)
     }
 }
 
-int EmbeddingDynamic::LoadKey(const string& savePath)
+void EmbeddingDynamic::LoadKey(const string& savePath)
 {
     stringstream ss;
     ss << savePath << "/" << name << "/key/slice.data";

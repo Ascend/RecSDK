@@ -76,7 +76,7 @@ void EmbeddingStatic::Save(const string& savePath)
     SaveKey(savePath);
 }
 
-int EmbeddingStatic::SaveKey(const string& savePath)
+void EmbeddingStatic::SaveKey(const string& savePath)
 {
     stringstream ss;
     ss << savePath << "/" << name << "/key/";
