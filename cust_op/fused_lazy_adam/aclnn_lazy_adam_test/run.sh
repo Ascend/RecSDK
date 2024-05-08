@@ -59,9 +59,9 @@ export NPU_HOST_LIB=$ASCEND_HOME_DIR/${arch}-linux/lib64
 
 function main {
     # 1. 清除遗留生成文件和日志文件
-    rm -rf $HOME/ascend/log/*
-    rm ./input/*.bin
-    rm ./output/*.bin
+    rm -rf $HOME/ascend/log/* > /dev/null 2>&1
+    rm ./input/*.bin > /dev/null 2>&1
+    rm ./output/*.bin > /dev/null 2>&1
 
     # 2. 生成输入数据和真值数据
     cd $CURRENT_DIR
@@ -76,7 +76,7 @@ function main {
     cd $CURRENT_DIR; rm -rf build; mkdir -p build; cd build
     cmake ../src
     if [ $? -ne 0 ]; then
-        echo "ERROR: cmake failed!"
+        echo "ERROR: cmake f ailed!"
         return 1
     fi
     echo "INFO: cmake success!"
