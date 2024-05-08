@@ -24,7 +24,7 @@ C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/deta
 bash run.sh
 ```
 
-注：需先环境中设置CANN相关环境变量，再执行算子编译和安装指令。使用默认路径安装CANN时设置环境变量指令如下：
+注：需先在环境中设置CANN相关环境变量，再执行算子编译和安装指令。使用默认路径安装CANN时设置环境变量指令如下：
 
 ```shell
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
