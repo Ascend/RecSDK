@@ -210,14 +210,13 @@ void Checkpoint::WriteStream(CkptTransData& transData, const string& dataDir, si
     }
 
     if (writeBytesNum == -1) {
-        throw runtime_error(
-                StringFormat("Error: Save data failed. data type: {} .An error occurred while writing file: {}.",
-                             dataType, dataDir));
+        throw runtime_error(StringFormat("Error: Save data failed. data type: {}. "
+                                         "An error occurred while writing file: {}.", dataType, dataDir));
     }
     if (writeBytesNum != dataSize) {
-        throw runtime_error(StringFormat(
-                "Error: Save data failed. data type: {} .Expected to write {} bytes, but actually write {} bytes to file {}.",
-                dataType, dataSize, writeBytesNum, dataDir));
+        throw runtime_error(StringFormat("Error: Save data failed. data type: {} ."
+                                         "Expected to write {} bytes, but actually write {} bytes to file {}.",
+                                         dataType, dataSize, writeBytesNum, dataDir));
     }
 }
 
@@ -336,14 +335,13 @@ void Checkpoint::ReadStream(CkptTransData& transData,
     }
 
     if (readBytesNum == -1) {
-        throw runtime_error(
-                StringFormat("Error: Load data failed. data type: {} .An error occurred while reading file: {}.",
-                             dataType, dataDir));
+        throw runtime_error(StringFormat("Error: Load data failed. data type: {} ."
+                                         "An error occurred while reading file: {}.", dataType, dataDir));
     }
     if (readBytesNum != datasetSize) {
-        throw runtime_error(StringFormat(
-                "Error: Load data failed. data type: {} .Expected to read {} bytes, but actually read {} bytes to file {}.",
-                dataType, datasetSize, readBytesNum, dataDir));
+        throw runtime_error(StringFormat("Error: Load data failed. data type: {} ."
+                                         "Expected to read {} bytes, but actually read {} bytes to file {}.",
+                                         dataType, datasetSize, readBytesNum, dataDir));
     }
 }
 
