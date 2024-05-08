@@ -129,12 +129,8 @@ int KeyProcess::Start()
 
 void KeyProcess::InitHotEmbTotCount(const EmbInfo& info, const RankInfo& rInfo)
 {
-    int embeddingSize = info.extEmbeddingSize;
-    if (rankInfo.useDynamicExpansion) {
-        embeddingSize = info.embeddingSize;
-    }
     hotEmbTotCount[info.name] = static_cast<int>(static_cast<float>(GetUBSize(rInfo.deviceId) / sizeof(float)) *
-                                                 HOT_EMB_CACHE_PCT / static_cast<float>(embeddingSize));
+                                                 HOT_EMB_CACHE_PCT / static_cast<float>(info.embeddingSize));
 }
 
 OffsetMemT KeyProcess::GetMaxOffset()
