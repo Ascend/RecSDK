@@ -54,6 +54,7 @@ b) 算子参数说明：
 * inputVar: embedding表对应的variable数据；计算结果原地更新；
   c) 算子约束说明：
 * 支持的型号：Atlas A2系列产品;
+* 支持的CANN版本：8.0.RC1及之后版本；
 * 支持的输入数据类型：float32；
 * embedding表的dim值需要是8的倍数；
 
