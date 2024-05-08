@@ -76,7 +76,7 @@ function main {
     cd $CURRENT_DIR; rm -rf build; mkdir -p build; cd build
     cmake ../src
     if [ $? -ne 0 ]; then
-        echo "ERROR: cmake f ailed!"
+        echo "ERROR: cmake failed!"
         return 1
     fi
     echo "INFO: cmake success!"
