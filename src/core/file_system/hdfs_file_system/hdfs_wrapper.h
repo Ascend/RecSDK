@@ -152,6 +152,7 @@ namespace MxRec {
                 }
                 unReadLength -= res;
                 readBytes += res;
+                reTryCount++;
             }
             return readBytes;
         }
@@ -174,6 +175,7 @@ namespace MxRec {
                 }
                 unReadLength -= res;
                 readBytes += res;
+                reTryCount++;
             }
             return readBytes;
         }
@@ -195,6 +197,7 @@ namespace MxRec {
                 }
                 unWriteLength -= res;
                 writeBytes += res;
+                reTryCount++;
             }
             return writeBytes;
         }
@@ -216,6 +219,7 @@ namespace MxRec {
                 }
                 unWriteLength -= res;
                 writeBytes += res;
+                reTryCount++;
             }
             return writeBytes;
         }

@@ -162,9 +162,9 @@ void HdfsFileSystem::WriteEmbedding(const string& filePath, const int& embedding
         if (res != embeddingSize * sizeof(float)) {
             hdfs->CloseFile(fs, file);
             hdfs->Disconnect(fs);
-            throw runtime_error(
-                    StringFormat("Error: Expected to write {} bytes, but actually write {} bytes to file {}.",
-                                 embeddingSize * sizeof(float), res, filePath.c_str()));
+            throw runtime_error(StringFormat("Error: Expected to write {} bytes, "
+                                             "but actually write {} bytes to file {}.",
+                                             embeddingSize * sizeof(float), res, filePath.c_str()));
         }
     }
 #endif
@@ -267,9 +267,9 @@ void HdfsFileSystem::ReadEmbedding(const string& filePath, EmbeddingSizeInfo& em
         if (res != embedSizeInfo.embeddingSize * sizeof(float)) {
             hdfs->CloseFile(fs, file);
             hdfs->Disconnect(fs);
-            throw runtime_error(
-                    StringFormat("Error: Expected to read {} bytes, but actually read {} bytes from file {}.",
-                                 embedSizeInfo.embeddingSize * sizeof(float), res, filePath.c_str()));
+            throw runtime_error(StringFormat("Error: Expected to read {} bytes, "
+                                             "but actually read {} bytes from file {}.",
+                                             embedSizeInfo.embeddingSize * sizeof(float), res, filePath.c_str()));
         }
 
         aclError ret = aclrtMemcpy(floatPtr + i * embedSizeInfo.extendEmbSize,
