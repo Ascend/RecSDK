@@ -39,15 +39,17 @@ def get_restore_vector(config):
             raise TypeError("ext_emb_size must be a int")
         if config.get("ext_emb_size") < 1:
             raise ValueError("ext_emb_size is less than 1")
-        emb_size = None
+        emb_size = config.get("emb_size")
 
     if ConfigInitializer.get_instance().use_static:
         restore_size = config.get("batch_size") * config.get("feat_cnt")
+        device_id = int(config.get("device_id"))
+        hot_size = int(mxrec_pybind.get_ub_hot_size(device_id) / emb_size)
     else:
         restore_size = None
+        hot_size = None
 
     with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
-        hot_size = None
         restore_vector, hot_pos = npu_ops.gen_npu_ops.get_next(
             output_types=[tf.int32, tf.int32],
             output_shapes=[restore_size, [hot_size]],
