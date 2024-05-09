@@ -130,7 +130,7 @@ RUN pip3.7 install -U pip && \
     pip3.7 install h5py==3.1.0 && \
     rm -rf /root/.cache/pip
 
-# 安装mpi4py时使用该环境变了，安装完成后取消
+# 安装mpi4py时使用该环境变，安装完成后取消
 RUN unset CC
 
 # 10.设置驱动路径环境变量
