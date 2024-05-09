@@ -130,7 +130,7 @@ RUN pip3.7 install -U pip && \
     pip3.7 install h5py==3.1.0 && \
     rm -rf /root/.cache/pip
 
-# 安装mpi4py时使用该环境变，安装完成后取消
+# 安装mpi4py时使用该环境变量，安装完成后取消
 RUN unset CC
 
 # 10.设置驱动路径环境变量
@@ -139,6 +139,8 @@ ENV LD_LIBRARY_PATH=$ASCEND_BASE/driver/lib64:$ASCEND_BASE/driver/lib64/common:$
 
 # 11.CANN相关参数
 ARG TOOLKIT_PKG=Ascend-cann-toolkit*.run
+
+
 ARG TOOLKIT_PATH=$ASCEND_BASE/ascend-toolkit/latest
 
 # 12.TF相关
