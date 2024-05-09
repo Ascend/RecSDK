@@ -263,20 +263,6 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         """
         self._multi_lookup_times[is_training] = self._multi_lookup_times.get(is_training) + 1
 
-    def _set_ext_emb_size(self):
-        # 初始设置_ext_emb_size等于_emb_size，改图阶段会根据优化器的不同而exchange该值
-        self._ext_emb_size = self._emb_size * self._ext_coefficient
-        logger.debug("Init table, ext_emb_size is set to be %s.", self._ext_emb_size)
-
-    def _get_preprocessed_tensor(self, feature_spec: FeatureSpec, channel_id: int, send_count: Optional[int]) -> dict:
-        config = dict(batch_size=feature_spec.batch_size, feat_cnt=feature_spec.feat_cnt, send_count=send_count,
-                      rank_size=self._rank_size, channel_id=channel_id, table_name=self._table_name,
-                      is_hbm=self._is_hbm, ext_emb_size=self._ext_emb_size, emb_size=self._emb_size,
-                      use_dynamic_expansion=ConfigInitializer.get_instance().use_dynamic_expansion,
-                      device_id=self._device_id)
-
-        return get_preprocessed_tensor_for_asc(self._variable, config)
-
     def lookup(self, ids: tf.Tensor, send_count: Optional[int], **kwargs) -> tf.Tensor:
         """
         稀疏表的lookup，自动改图模式.
@@ -388,6 +374,19 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         if not kwargs.get("is_grad"):
             return tf.stop_gradient(self._lookup_result.get(spec_name).get(is_training), name="stop_grad_lookup_res")
         return self._lookup_result.get(spec_name).get(is_training)
+
+    def _set_ext_emb_size(self):
+        # 初始设置_ext_emb_size等于_emb_size，改图阶段会根据优化器的不同而exchange该值
+        self._ext_emb_size = self._emb_size * self._ext_coefficient
+        logger.debug("Init table, ext_emb_size is set to be %s.", self._ext_emb_size)
+
+    def _get_preprocessed_tensor(self, feature_spec: FeatureSpec, channel_id: int, send_count: Optional[int]) -> dict:
+        config = dict(batch_size=feature_spec.batch_size, feat_cnt=feature_spec.feat_cnt, send_count=send_count,
+                      rank_size=self._rank_size, channel_id=channel_id, table_name=self._table_name,
+                      is_hbm=self._is_hbm, ext_emb_size=self._ext_emb_size, emb_size=self._emb_size,
+                      use_dynamic_expansion=ConfigInitializer.get_instance().use_dynamic_expansion)
+
+        return get_preprocessed_tensor_for_asc(self._variable, config)
 
     def _lookup_forward(self, feature_spec: FeatureSpec, send_count: Optional[int], **kwargs) -> tf.Tensor:
         is_training = kwargs.get("is_train")
