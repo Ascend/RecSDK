@@ -73,13 +73,10 @@ int64_t EmbeddingStatic::capacity() const
 
 void EmbeddingStatic::Save(const string& savePath)
 {
-    int res = SaveKey(savePath);
-    if (res == -1) {
-        throw std::runtime_error("save embedding table failed!");
-    }
+    SaveKey(savePath);
 }
 
-int EmbeddingStatic::SaveKey(const string& savePath)
+void EmbeddingStatic::SaveKey(const string& savePath)
 {
     stringstream ss;
     ss << savePath << "/" << name << "/key/";
@@ -97,23 +94,24 @@ int EmbeddingStatic::SaveKey(const string& savePath)
         deviceOffset.push_back(it.second);
     }
 
-    ssize_t res = fileSystemPtr->Write(ss.str(), reinterpret_cast<const char *>(deviceKey.data()),
-                                       static_cast<size_t>(deviceKey.size() * sizeof(int64_t)));
+    size_t writeSize = static_cast<size_t>(deviceKey.size() * sizeof(int64_t));
+    ssize_t res = fileSystemPtr->Write(ss.str(), reinterpret_cast<const char *>(deviceKey.data()), writeSize);
     if (res == -1) {
-        return -1;
+        throw runtime_error(StringFormat("Error: Save keys failed. "
+                                         "An error occurred while writing file: {}.", ss.str()));
     }
-    return 0;
+    if (res != writeSize) {
+        throw runtime_error(StringFormat("Error: Save keys failed. Expected to write {} bytes, "
+                                         "but actually write {} bytes to file {}.", writeSize, res, ss.str()));
+    }
 }
 
 void EmbeddingStatic::Load(const string& savePath)
 {
-    int res = LoadKey(savePath);
-    if (res == -1) {
-        throw std::runtime_error("load embedding table failed!");
-    }
+    LoadKey(savePath);
 }
 
-int EmbeddingStatic::LoadKey(const string &savePath)
+void EmbeddingStatic::LoadKey(const string& savePath)
 {
     stringstream ss;
     ss << savePath << "/" << name << "/key/slice.data";
@@ -121,24 +119,26 @@ int EmbeddingStatic::LoadKey(const string &savePath)
     unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
     unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
 
-    size_t fileSize = 0;
-    try {
-        fileSize = fileSystemPtr->GetFileSize(ss.str());
-    } catch (exception &e) {
-        LOG_ERROR("open file {} failed:{}", ss.str(), strerror(errno));
-        return -1;
-    }
+    size_t fileSize = fileSystemPtr->GetFileSize(ss.str());
     if (fileSize >= FILE_MAX_SIZE) {
-        LOG_ERROR("file {} size = {} is too big", ss.str(), fileSize);
-        return -1;
+        throw runtime_error(StringFormat("Error: Load keys failed. file {} size {}  is too big.", ss.str(), fileSize));
     }
 
-    int64_t* buf = static_cast<int64_t *>(malloc(fileSize));
+    int64_t* buf = static_cast<int64_t*>(malloc(fileSize));
     if (buf == nullptr) {
-        LOG_ERROR("malloc failed: {}", strerror(errno));
-        return -1;
+        throw runtime_error(StringFormat("Error: Load keys failed. "
+                                         "failed to allocate {} bytes using malloc.", fileSize));
     }
-    fileSystemPtr->Read(ss.str(), reinterpret_cast<char *>(buf), fileSize);
+
+    ssize_t res = fileSystemPtr->Read(ss.str(), reinterpret_cast<char *>(buf), fileSize);
+    if (res == -1) {
+        throw runtime_error(StringFormat("Error: Load keys failed. "
+                                         "An error occurred while reading file: {}.", ss.str()));
+    }
+    if (res != fileSize) {
+        throw runtime_error(StringFormat("Error: Load keys failed. Expected to read {} bytes, "
+                                         "but actually read {} bytes to file {}.", fileSize, res, ss.str()));
+    }
 
     size_t loadKeySize = fileSize / sizeof(int64_t);
     loadOffset.clear();
@@ -152,15 +152,14 @@ int EmbeddingStatic::LoadKey(const string &savePath)
     }
 
     if (loadOffset.size() > devVocabSize) {
-        LOG_ERROR("load key size exceeds device vocab size: {}", strerror(errno));
         free(static_cast<void*>(buf));
-        return -1;
+        throw runtime_error(StringFormat("Error: Load keys failed. Load key size :{} exceeds device vocab size: {}.",
+                                         loadOffset.size(), devVocabSize));
     }
 
     maxOffset = keyOffsetMap.size();
 
     free(static_cast<void*>(buf));
-    return 0;
 }
 
 vector<int64_t> EmbeddingStatic::GetDeviceOffset()

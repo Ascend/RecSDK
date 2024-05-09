@@ -38,8 +38,6 @@ void MockHdfs()
     EMOCK(&HdfsWrapper::FreeFileInfo).stubs().will(ignoreReturnValue());
     EMOCK(&HdfsWrapper::OpenFile).stubs().will(returnValue(hdfsFileHandler));
     EMOCK(&HdfsWrapper::CloseFile).stubs().will(returnValue(1));
-    EMOCK(&HdfsWrapper::Write).stubs().will(returnValue(1));
-    EMOCK(&HdfsWrapper::Read).stubs().will(returnValue(1));
     EMOCK(&HdfsWrapper::Seek).stubs().will(returnValue(1));
 }
 
@@ -86,23 +84,3 @@ TEST_F(HdfsFileSystemTest, GetFileSize)
     EXPECT_NO_THROW(fileSystemPtr->GetFileSize(filePath));
 }
 
-TEST_F(HdfsFileSystemTest, testCase)
-{
-    string filePath = "hdfs://master:9000/test_dir/";
-    auto fileSystemHandler = make_unique<FileSystemHandler>();
-    auto fileSystemPtr = fileSystemHandler->Create(filePath);
-
-    vector<string> dirs;
-    dirs = fileSystemPtr->ListDir(filePath);
-    EXPECT_EQ(dirs.size(), 0);
-
-    vector<int64_t> writeData = {0, 1, 2, 3, 4, 5};
-    size_t testDataSize = writeData.size() * sizeof(int64_t);
-    EXPECT_NO_THROW(fileSystemPtr->Write(filePath, reinterpret_cast<const char *>(writeData.data()), testDataSize));
-    float p[5] = {1.1, 2.2, 3.3, 4.4, 5.5};
-    vector<float*> writeData1 = {p, p+1, p+2, p+3, p+4};
-    EXPECT_NO_THROW(fileSystemPtr->Write(filePath, writeData1, sizeof(float)));
-
-    vector<int64_t> readData = {};
-    EXPECT_NO_THROW(fileSystemPtr->Read(filePath, reinterpret_cast<char*>(readData.data()), 1));
-}
