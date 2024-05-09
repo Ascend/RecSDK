@@ -139,8 +139,6 @@ ENV LD_LIBRARY_PATH=$ASCEND_BASE/driver/lib64:$ASCEND_BASE/driver/lib64/common:$
 
 # 11.CANN相关参数
 ARG TOOLKIT_PKG=Ascend-cann-toolkit*.run
-
-
 ARG TOOLKIT_PATH=$ASCEND_BASE/ascend-toolkit/latest
 
 # 12.TF相关
