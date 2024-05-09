@@ -644,7 +644,7 @@ def get_variable_and_slot_list(each_var, slot_num, table_name, channel_id):
     # predict不需要传优化器，但是如果客户创建了优化器，ddr模式加载的是维度ext_size的emb用作换入换出，所以需要给slot零值占位
     if optimizer is None and channel_id == 1:
         slot_place_holder = tf.zeros_like(each_var)
-        for i in range(slot_num):
+        for _ in range(slot_num):
             variable_and_slot_list.append(slot_place_holder)
     else:
         # opt name to slot dict
