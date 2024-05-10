@@ -97,9 +97,8 @@ class CustomizedOptimizer:
     @staticmethod
     def sum_same_id_gradients(grad, var, is_expansion):
         if isinstance(var, ops.Tensor):
-            # 扩容模式从scope获取表名,偏移是-2
-            table_name = var.op.name.split('/')[-2]
-            table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance_by_name(table_name)
+            table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance_by_tensor(var)
+            table_name = table_instance.table_name
         else:
             table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
             table_name = table_instance.table_name

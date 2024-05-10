@@ -388,7 +388,7 @@ def change_ext_emb_size_by_opt(optimizer):
         # When dynamic expansion mode, ext_emb_size is set by optimizer
         if ConfigInitializer.get_instance().use_dynamic_expansion or not table_instance.is_hbm:
             table_instance.ext_emb_size = table_instance.emb_size * (1 + optimizer.slot_num)
-            logger.debug("ext_emb_size is reset to be %s for EmbInfo", table_instance.ext_emb_size)
+            logger.info("ext_emb_size is reset to be %s in change_ext_emb_size_by_opt", table_instance.ext_emb_size)
 
 
 @para_checker_decorator(
