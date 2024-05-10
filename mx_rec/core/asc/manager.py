@@ -37,10 +37,16 @@ def generate_table_info_list():
         raise ValueError(f"The DDR mode of all tables must be used or not used at the same time. However, is_hbm "
                          f"of each table `{table_instance_dict.keys()}` is `{is_hbm_list}`.")
 
+    # 通过create_hash_optimizer创建optimizer_instance
+    optimizer_instance = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
     # generate table info
     dangling_table = check_dangling_table()
 
     for _, table_instance in ConfigInitializer.get_instance().sparse_embed_config.table_instance_dict.items():
+        # FS模式扩容场景
+        if ConfigInitializer.get_instance().use_dynamic_expansion and optimizer_instance:
+            table_instance.ext_emb_size = table_instance.emb_size * (1 + optimizer_instance.slot_num)
+            logger.info("ext_emb_size is reset to be %s in generate_table_info_list.", table_instance.ext_emb_size)
         skip = should_skip(table_instance.table_name)
         if table_instance.table_name in dangling_table or skip:
             logger.info("skip table %s: %s which does not need to be provided to the EmbInfo.",
