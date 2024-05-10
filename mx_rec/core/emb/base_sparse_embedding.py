@@ -384,7 +384,8 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         config = dict(batch_size=feature_spec.batch_size, feat_cnt=feature_spec.feat_cnt, send_count=send_count,
                       rank_size=self._rank_size, channel_id=channel_id, table_name=self._table_name,
                       is_hbm=self._is_hbm, ext_emb_size=self._ext_emb_size, emb_size=self._emb_size,
-                      use_dynamic_expansion=ConfigInitializer.get_instance().use_dynamic_expansion)
+                      use_dynamic_expansion=ConfigInitializer.get_instance().use_dynamic_expansion,
+                      device_id=self._device_id)
 
         return get_preprocessed_tensor_for_asc(self._variable, config)
 
