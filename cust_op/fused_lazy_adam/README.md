@@ -52,7 +52,13 @@ b) 算子参数说明：
 * inputM: lazy_adam优化器一阶矩估计；计算结果原地更新；
 * inputV: lazy_adam优化器二阶矩估计；计算结果原地更新；
 * inputVar: embedding表对应的variable数据；计算结果原地更新；
-  c) 算子约束说明：
+* lr: 学习率；
+* beta1: 一阶矩估计的指数衰减率；
+* beta2: 二阶矩估计的指数衰减率；
+* epsilon: 极小值；
+
+c) 算子约束说明：
+
 * 支持的型号：Atlas A2系列产品;
 * 支持的CANN版本：8.0.RC1及之后版本；
 * 支持的输入数据类型：float32；
