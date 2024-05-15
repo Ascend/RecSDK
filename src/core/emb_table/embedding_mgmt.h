@@ -83,6 +83,11 @@ public:
 
     std::shared_ptr<EmbeddingTable> GetTable(const string& name);
 
+     /**
+     * 加载单个表
+     */
+    void Load(const string& name, const string& filePath);
+
     /**
      * 加载所有表
      */

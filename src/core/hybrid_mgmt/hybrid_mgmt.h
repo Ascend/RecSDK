@@ -61,7 +61,7 @@ namespace MxRec {
 
         bool Save(const string savePath);
 
-        bool Load(const string& loadPath);
+        bool Load(const string& loadPath, vector<string> warmStartTables);
 
         OffsetT SendHostMap(const string tableName);
 
