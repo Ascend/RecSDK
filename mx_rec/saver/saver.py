@@ -343,7 +343,7 @@ class Saver(object):
                 set_optimizer_info(optimizer_instance, table_name)
 
         if self.config_instance.hybrid_manager_config.asc_manager:
-            self.config_instance.hybrid_manager_config.restore_host_data(reading_path)
+            self.config_instance.hybrid_manager_config.restore_host_data(reading_path, warm_start_tables)
             logger.info("host data was restored.")
 
         if self.config_instance.use_dynamic_expansion:

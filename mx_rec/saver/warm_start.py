@@ -95,7 +95,7 @@ def patch_for_estimator_train(func):
         hooks = kwargs.get('hooks', [])
         if WarmStartController().get_elements():
             hooks.append(SparseRestoreHook())
-        return func(*args, *kwargs)
+        return func(*args, **kwargs)
     return wrapper
 
 
@@ -243,4 +243,4 @@ class SparseRestoreHook(tf.estimator.SessionRunHook):
             for path, restore_tables in self._warm_start_dict.items():
                 restore_path = get_latest_ckpt(path)
                 self._saver.restore(session, restore_path, restore_tables)
-            self._is_warm_start = False
+            self._is_warm_start = True

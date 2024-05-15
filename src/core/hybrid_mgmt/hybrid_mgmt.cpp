@@ -279,7 +279,7 @@ bool HybridMgmt::Save(const string savePath)
 /// 加载模型
 /// \param loadPath
 /// \return
-bool HybridMgmt::Load(const string& loadPath)
+bool HybridMgmt::Load(const string& loadPath, vector<string> warmStartTables)
 {
 #ifndef GTEST
     if (!isInitialized) {
@@ -296,7 +296,14 @@ bool HybridMgmt::Load(const string& loadPath)
     vector<CkptFeatureType> loadFeatures;
     SetFeatureTypeForLoad(loadFeatures);
 
-    EmbeddingMgmt::Instance()->Load(loadPath);
+    if(warmStartTables.size() == 0) {
+        EmbeddingMgmt::Instance()->Load(loadPath);
+    } else {
+        for (auto& tableName: warmStartTables) {
+            EmbeddingMgmt::Instance()->Load(tableName, loadPath);
+        }
+    }
+
     loadOffsetToSend = EmbeddingMgmt::Instance()->GetLoadOffsets();
 
     // 执行加载操作
