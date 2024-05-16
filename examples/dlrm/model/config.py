@@ -89,10 +89,10 @@ class LearningRateScheduler:
 
 class Config:
     def __init__(self, ):
-        self.rank_id = int(os.getenv("RANK_ID")) if os.getenv("RANK_ID") else None
-        tmp = os.getenv("RANK_SIZE")
+        self.rank_id = int(os.getenv("OMPI_COMM_WORLD_RANK")) if os.getenv("OMPI_COMM_WORLD_RANK") else None
+        tmp = os.getenv("TRAIN_RANK_SIZE")
         if tmp is None:
-            raise ValueError("please export RANK_SIZE")
+            raise ValueError("please export TRAIN_RANK_SIZE")
         self.rank_size = int(tmp)
 
         self.data_path = os.getenv("DLRM_CRITEO_DATA_PATH")
