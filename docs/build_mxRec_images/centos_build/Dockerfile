@@ -114,6 +114,7 @@ RUN pip3.7 install -U pip && \
     pip3.7 install cffi==1.12.3 && \
     pip3.7 install pyyaml && \
     pip3.7 install pathlib2 && \
+    pip3.7 install pandas && \
     pip3.7 install grpcio && \
     pip3.7 install grpcio-tools && \
     pip3.7 install protobuf==3.20.0 && \
