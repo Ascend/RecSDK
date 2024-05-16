@@ -296,6 +296,8 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
 
         # set modify graph
         self._modify_graph = kwargs.get("modify_graph", True)
+        if not self._modify_graph and not self._is_hbm:
+            raise RuntimeError("when the 'ddr or ssd' mode are used, the 'modify graph' is required")
 
         # return the stub tensor of the lookup result
         if not self._use_static:
@@ -328,7 +330,9 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
             return lookup_result
 
         if not self._use_static and not self._modify_graph and kwargs.get("batch") is None:
-            raise RuntimeError("When the 'feature spec' mode and 'dynamic shape' are used, the 'batch' is required.")
+            raise RuntimeError("when the 'feature spec' mode and 'dynamic shape' are used, the 'batch' is required")
+        if not self._modify_graph and not self._is_hbm:
+            raise RuntimeError("when the 'ddr or ssd' mode are used, the 'modify graph' is required")
         table_name = feature_spec.table_name
         same_table_feature_spec = \
             ConfigInitializer.get_instance().feature_spec_config.table_name_to_feature_spec[table_name][is_training]
