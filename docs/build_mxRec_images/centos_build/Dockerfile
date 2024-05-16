@@ -114,6 +114,7 @@ RUN pip3.7 install -U pip && \
     pip3.7 install cffi==1.12.3 && \
     pip3.7 install pyyaml && \
     pip3.7 install pathlib2 && \
+    pip3.7 install pandas && \
     pip3.7 install grpcio && \
     pip3.7 install grpcio-tools && \
     pip3.7 install protobuf==3.20.0 && \
@@ -129,6 +130,9 @@ RUN pip3.7 install -U pip && \
     pip3.7 install Cython && \
     pip3.7 install h5py==3.1.0 && \
     rm -rf /root/.cache/pip
+
+# 安装mpi4py时使用该环境变量，安装完成后取消
+RUN unset CC
 
 # 10.设置驱动路径环境变量
 ARG ASCEND_BASE=/usr/local/Ascend
