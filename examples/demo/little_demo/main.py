@@ -176,6 +176,7 @@ def _clear_saved_model() -> None:
         _del_related_dir(sub_path)
         try:
             os.mkdir(sub_path)
+            logger.info(f"mkdir dir:{sub_path}")
         except OSError:
             logger.warning("ssd path has exist")  # 多进程并行，忽略异常
 
