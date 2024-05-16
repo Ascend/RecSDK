@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import numpy as np
+
 import os
 import random
 import shutil
@@ -21,6 +21,8 @@ import time
 import warnings
 from glob import glob
 from sklearn.metrics import roc_auc_score
+
+import numpy as np
 
 from npu_bridge.npu_init import *
 
