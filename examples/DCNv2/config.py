@@ -18,7 +18,6 @@ import os
 
 import tensorflow as tf
 from tensorflow.core.protobuf.rewriter_config_pb2 import RewriterConfig
-from npu_bridge.estimator.npu.npu_config import NPURunConfig
 
 
 class LearningRateScheduler:
@@ -202,29 +201,3 @@ def sess_config(dump_data=False, dump_path="./dump_output", dump_steps="0|1|2"):
     session_config.graph_options.rewrite_options.memory_optimization = RewriterConfig.OFF
 
     return session_config
-
-
-def get_npu_run_config():
-    session_config = tf.ConfigProto(allow_soft_placement=False,
-                                    log_device_placement=False)
-
-    session_config.gpu_options.allow_growth = True
-    custom_op = session_config.graph_options.rewrite_options.custom_optimizers.add()
-    custom_op.name = "NpuOptimizer"
-    session_config.graph_options.rewrite_options.remapping = RewriterConfig.OFF
-    session_config.graph_options.rewrite_options.memory_optimization = RewriterConfig.OFF
-
-    run_config = NPURunConfig(
-        save_summary_steps=1000,
-        save_checkpoints_steps=100,
-        keep_checkpoint_max=5,
-        session_config=session_config,
-        log_step_count_steps=20,
-        precision_mode='allow_mix_precision',
-        enable_data_pre_proc=True,
-        iterations_per_loop=1,
-        jit_compile=False,
-        op_compiler_cache_mode="enable",
-        HCCL_algorithm="level0:fullmesh;level1:fullmesh"  # 可选配置：level0:pairwise;level1:pairwise
-    )
-    return run_config
