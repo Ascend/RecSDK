@@ -15,9 +15,6 @@
 # ==============================================================================
 
 kill -9 `ps -ef | grep python | grep -v grep | awk '{print $2}'` > /dev/null 2>&1
-rm -rf /root/ascend/log/*
-rm -rf ./kernel*
-rm -rf ./export_graph/*
 
 # 获取输入参数：py、ip
 if [ $# -ge 1 ]; then
