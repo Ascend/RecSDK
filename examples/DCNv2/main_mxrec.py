@@ -27,7 +27,7 @@ import numpy as np
 from npu_bridge.npu_init import *
 
 from model import MyModel
-from dlrm.model.config import sess_config, Config
+from config import sess_config, Config
 from optimizer import get_dense_and_sparse_optimizer
 from mx_rec.core.asc.helper import FeatureSpec, get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
