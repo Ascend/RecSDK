@@ -14,24 +14,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import logging
-
-import six
-import re
 import os
+import logging
+import re
 from typing import List
+import six
 
 import tensorflow as tf
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.training import warm_starting_util
-
-from mx_rec.util.log import logger
-from mx_rec.saver.saver import Saver
-
 if tf.__version__.startswith("1"):
     from npu_bridge.npu_init import NPUEstimator
 else:
     from npu_device.compat.v1.npu_init import NPUEstimator
+
+from mx_rec.util.log import logger
+from mx_rec.saver.saver import Saver
 
 
 class WarmStartController:
@@ -81,7 +79,8 @@ def patch_for_func_warm_start(func):
         if isinstance(ckpt_to_initialize_from, (list, tuple)):
             vars_to_warm_start_list = args[1]
             var_name_to_prev_var_name_list = args[3]
-            for i in range(len(ckpt_to_initialize_from)):
+            warm_start_num = len(ckpt_to_initialize_from)
+            for i in range(warm_start_num):
                 f = func(ckpt_to_initialize_from[i], vars_to_warm_start_list[i], args[2],
                          var_name_to_prev_var_name_list[i], **kwargs)
             return f
@@ -117,13 +116,10 @@ def warm_settings_filter(warm_start_from):
             filter_setting = _warm_settings_filter(warm_start_from)
             if filter_setting:
                 return filter_setting
-        return None
     elif isinstance(warm_start_from, (six.string_types, six.binary_type)):
         table_name_list = get_table_name_set_by_ckpt_path(warm_start_from)
         WarmStartController().add_element(warm_start_from, table_name_list)
         return warm_start_from
-    else:
-        pass
 
 
 def recover_warm_settings(setting_list):
@@ -176,7 +172,7 @@ def _warm_settings_filter(warm_start_setting):
         if matching_tables:
             WarmStartController().add_element(warm_start_setting.ckpt_to_initialize_from, matching_tables)
             if vars_to_warm_start != ".*":
-                return None
+                return
         return warm_start_setting
     elif all(isinstance(v, str) for v in vars_to_warm_start):
         sparse_vars = []
@@ -232,6 +228,8 @@ class SparseRestoreHook(tf.estimator.SessionRunHook):
     def __init__(self):
         logging.info("In warm start mode, SparseRestoreHook has been initialized.")
         self._is_warm_start = False
+        self._saver = None
+        self._warm_start_dict = {}
 
     def begin(self):
         self._saver = Saver()

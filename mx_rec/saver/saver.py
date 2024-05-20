@@ -67,7 +67,7 @@ class Saver(object):
         ("prefix_name", ClassValidator, {"classes": (str, type(None))}),
         ("prefix_name", OptionalStringValidator, {"min_len": 1, "max_len": 50}, ["check_string_length"]),
     ])
-    def __init__(self, var_list=None, max_to_keep=3, prefix_name="checkpoint", warm_start_tables = None):
+    def __init__(self, var_list=None, max_to_keep=3, prefix_name="checkpoint", warm_start_tables=None):
         self.max_to_keep = max_to_keep
         self._prefix_name = prefix_name
         self.var_list = var_list
@@ -297,7 +297,7 @@ class Saver(object):
                                                                       table_instance.emb_size],
                                              name=DataName.EMBEDDING.value)
                 assign_op = var.assign(variable)
-                self.restore_fetch_dict[table_instance.table_name]= [assign_op]
+                self.restore_fetch_dict[table_instance.table_name] = [assign_op]
                 optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(
                     table_instance.table_name)
                 if optimizer:
@@ -330,8 +330,7 @@ class Saver(object):
             logger.warning("no tables can be warm start restored.")
         return placeholder_dict, restore_fetch_list
 
-    def _restore(self, sess, reading_path , warm_start_tables=None):
-        # todo:这里增加新的参数，table_list
+    def _restore(self, sess, reading_path, warm_start_tables=None):
         # 根据table_list去改造
         if warm_start_tables:
             placeholder_dict, restore_fetch_list = self.get_warm_start_dict(warm_start_tables)
