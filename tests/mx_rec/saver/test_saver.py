@@ -23,6 +23,7 @@ import tensorflow as tf
 
 from mx_rec.saver.saver import Saver
 from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION
+from mx_rec.util.initialize import ConfigInitializer
 from tests.mx_rec.core.mock_class import MockConfigInitializer
 from tests.mx_rec.saver.sparse_embedding_mock import SparseEmbeddingMock
 
@@ -40,8 +41,7 @@ class TestSaver(unittest.TestCase):
 
     @mock.patch.multiple("mx_rec.saver.saver",
                          get_rank_id=mock.MagicMock(return_value=0),
-                         get_local_rank_size=mock.MagicMock(return_value=1),
-                         set_optimizer_info=mock.MagicMock(return_value=None))
+                         get_local_rank_size=mock.MagicMock(return_value=1))
     @mock.patch("mx_rec.saver.saver.ConfigInitializer")
     def test_save_and_load_is_consistent(self, saver_config_initializer):
         mock_config_initializer = \
@@ -86,7 +86,6 @@ class TestSaver(unittest.TestCase):
             optim_v_tensor = emb_initializer(self.shape)
             self.optimizer_v = tf.compat.v1.get_variable(self.optim_v_name, trainable=False, initializer=optim_v_tensor)
 
-            table_instance.set_optimizer("LazyAdam", {"momentum": self.optimizer_m, "velocity": self.optimizer_v})
             tf.compat.v1.add_to_collection(ASCEND_GLOBAL_HASHTABLE_COLLECTION, self.var)
         return self.graph
 

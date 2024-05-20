@@ -22,7 +22,7 @@ from mx_rec.constants.constants import EnvOption, RecPyLogLevel, Flag, EMPTY_STR
     DEFAULT_HD_CHANNEL_SIZE, DEFAULT_KP_THREAD_NUM, DEFAULT_FAST_UNIQUE_THREAD_NUM, RecCPPLogLevel, MAX_INT32, \
     MIN_HD_CHANNEL_SIZE, MAX_HD_CHANNEL_SIZE, MIN_KP_THREAD_NUM, MAX_KP_THREAD_NUM, \
     MIN_FAST_UNIQUE_THREAD_NUM, MAX_FAST_UNIQUE_THREAD_NUM, DEFAULT_HOT_EMB_UPDATE_STEP, MIN_HOT_EMB_UPDATE_STEP, \
-    MAX_HOT_EMB_UPDATE_STEP, TFDevice
+    MAX_HOT_EMB_UPDATE_STEP, TFDevice, MAX_CM_WORKER_SIZE, MIN_CM_WORKER_SIZE, DEFAULT_CM_WORKER_SIZE
 from mx_rec.validator.validator import para_checker_decorator, OptionValidator, DirectoryValidator, Convert2intValidator
 
 
@@ -30,7 +30,6 @@ from mx_rec.validator.validator import para_checker_decorator, OptionValidator, 
 class RecEnv:
     mxrec_log_level: str
     rank_table_file: str
-    ascend_visible_devices: str
     cm_chief_device: str
     cm_worker_size: str
     tf_device: str
@@ -45,9 +44,6 @@ class RecEnv:
     use_combine_faae: str
     stat_on: str
     record_key_count: str
-    rank_id_env: str
-    rank_size_env: str
-    local_rank_size_env: str
 
 
 def get_global_env_conf() -> RecEnv:
@@ -58,9 +54,8 @@ def get_global_env_conf() -> RecEnv:
     rec_env = RecEnv(
         mxrec_log_level=os.getenv(EnvOption.MXREC_LOG_LEVEL.value, RecPyLogLevel.INFO.value),
         rank_table_file=os.getenv(EnvOption.RANK_TABLE_FILE.value, EMPTY_STR),
-        ascend_visible_devices=os.getenv(EnvOption.ASCEND_VISIBLE_DEVICES.value),
         cm_chief_device=os.getenv(EnvOption.CM_CHIEF_DEVICE.value),
-        cm_worker_size=os.getenv(EnvOption.CM_WORKER_SIZE.value),
+        cm_worker_size=os.getenv(EnvOption.CM_WORKER_SIZE.value, DEFAULT_CM_WORKER_SIZE),
         tf_device=os.getenv(EnvOption.TF_DEVICE.value, TFDevice.NONE.value),
         acl_timeout=os.getenv(EnvOption.ACL_TIMEOUT.value, "-1"),
         hd_channel_size=os.getenv(EnvOption.HD_CHANNEL_SIZE.value, DEFAULT_HD_CHANNEL_SIZE),
@@ -72,10 +67,7 @@ def get_global_env_conf() -> RecEnv:
         glog_stderrthreahold=os.getenv(EnvOption.GLOG_STDERRTHREAHOLD.value, RecCPPLogLevel.INFO.value),
         use_combine_faae=os.getenv(EnvOption.USE_COMBINE_FAAE.value, Flag.FALSE.value),
         stat_on=os.getenv(EnvOption.STAT_ON.value, Flag.FALSE.value),
-        record_key_count=os.getenv(EnvOption.RECORD_KEY_COUNT.value, Flag.FALSE.value),
-        rank_id_env=os.getenv(EnvOption.OMPI_COMM_WORLD_RANK.value),
-        rank_size_env=os.getenv(EnvOption.OMPI_COMM_WORLD_LOCAL_SIZE.value),
-        local_rank_size_env=os.getenv(EnvOption.OMPI_COMM_WORLD_LOCAL_SIZE.value),
+        record_key_count=os.getenv(EnvOption.RECORD_KEY_COUNT.value, Flag.FALSE.value)
     )
 
     return rec_env
@@ -84,6 +76,8 @@ def get_global_env_conf() -> RecEnv:
 @para_checker_decorator(check_option_list=[
     ("mxrec_log_level", OptionValidator, {"options": [i.value for i in list(RecPyLogLevel)]}),
     ("rank_table_file", DirectoryValidator, {}, ["check_exists_if_not_empty"]),
+    ("cm_worker_size", Convert2intValidator, {"min_value": MIN_CM_WORKER_SIZE, "max_value": MAX_CM_WORKER_SIZE},
+     ["check_value"]),
     ("tf_device", OptionValidator, {"options": [i.value for i in list(TFDevice)]}),
     ("acl_timeout", Convert2intValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
     ("hd_channel_size", Convert2intValidator,

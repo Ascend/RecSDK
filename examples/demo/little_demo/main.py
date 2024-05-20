@@ -21,6 +21,7 @@ import shutil
 import warnings
 from glob import glob
 
+import numpy as np
 import tensorflow as tf
 
 from mx_rec.constants.constants import ASCEND_TIMESTAMP
@@ -192,15 +193,20 @@ if __name__ == "__main__":
         MODIFY_GRAPH_FLAG = bool(int(os.getenv("USE_MODIFY_GRAPH", 0)))
         USE_TIMESTAMP = bool(int(os.getenv("USE_TIMESTAMP", 0)))
         USE_ONE_SHOT = bool(int(os.getenv("USE_ONE_SHOT", 0)))
+        USE_DETERMINISTIC = bool(int(os.getenv("USE_DETERMINISTIC", 0)))
     except ValueError as err:
         raise ValueError("please correctly config USE_MPI or USE_DYNAMIC or USE_DYNAMIC_EXPANSION or "
-                         "USE_MULTI_LOOKUP or USE_MODIFY_GRAPH or USE_TIMESTAMP or USE_ONE_SHOT "
+                         "USE_MULTI_LOOKUP or USE_MODIFY_GRAPH or USE_TIMESTAMP or USE_ONE_SHOT or USE_DETERMINISTIC"
                          "only 0 or 1 is supported.") from err
 
     try:
         MULTI_LOOKUP_TIMES = int(os.getenv("MULTI_LOOKUP_TIMES", 2))
     except ValueError as err:
         raise ValueError("please correctly config MULTI_LOOKUP_TIMES only int is supported.") from err
+
+    if USE_DETERMINISTIC:
+        np.random.seed(128)
+        tf.random.set_random_seed(128)
 
     if_load = False
     save_path = "./saved-model"
@@ -240,7 +246,6 @@ if __name__ == "__main__":
         eval_feature_spec_list = create_feature_spec_list(use_timestamp=USE_TIMESTAMP)
 
     optimizer_list = [create_dense_and_sparse_optimizer(cfg)]
-    sparse_optimizer_list = [sparse_optimizer for dense_optimizer, sparse_optimizer in optimizer_list]
 
     # 如需验证DDR模式，请按照key数量、batch unique数量合理设置device与host表大小。
     # 验证DDR的配置参考：建议跑dynamic避免调参。数据集key总量大于device表，小于device+host；一个batch的unique key数量小于device表。
@@ -261,20 +266,19 @@ if __name__ == "__main__":
         raise ValueError(f"cache mode must in {list(cache_mode_dict.keys())}, get:{cache_mode}")
     if cache_mode in ["DDR", "SSD"] and not use_dynamic:
         logger.warning("when cache_mode in [DDR, SSD], suggest use_dynamic=true to avoid tuning size parameter")
-
+    emb_initializer = tf.compat.v1.constant_initializer(0) if USE_DETERMINISTIC \
+                      else tf.compat.v1.truncated_normal_initializer()
     user_hashtable = create_table(key_dtype=tf.int64,
                                   dim=tf.TensorShape([cfg.user_hashtable_dim]),
                                   name='user_table',
-                                  emb_initializer=tf.compat.v1.truncated_normal_initializer(),
-                                  optimizer_list=sparse_optimizer_list,
+                                  emb_initializer=emb_initializer,
                                   all2all_gradients_op="sum_gradients_and_div_by_ranksize",
                                   **cache_mode_dict[cache_mode])
 
     item_hashtable = create_table(key_dtype=tf.int64,
                                   dim=tf.TensorShape([cfg.item_hashtable_dim]),
                                   name='item_table',
-                                  emb_initializer=tf.compat.v1.truncated_normal_initializer(),
-                                  optimizer_list=sparse_optimizer_list,
+                                  emb_initializer=emb_initializer,
                                   **cache_mode_dict[cache_mode])
 
     # 在predict的场景下，train model不需要被执行
@@ -293,7 +297,8 @@ if __name__ == "__main__":
                                                         batch_number=MAX_DATASET_GENERATE * get_rank_size())
     dense_variables, sparse_variables = get_dense_and_sparse_variable()
 
-    params = {"train_batch": train_batch, "eval_batch": eval_batch, "use_one_shot": USE_ONE_SHOT}
+    params = {"train_batch": train_batch, "eval_batch": eval_batch, "use_one_shot": USE_ONE_SHOT,
+              "use_deterministic": USE_DETERMINISTIC}
     run_mode = RunMode(
         MODIFY_GRAPH_FLAG, USE_TIMESTAMP, table_list, optimizer_list, train_model, eval_model, train_iterator,
         eval_iterator, MAX_TRAIN_STEPS, EVAL_STEPS, params

@@ -56,6 +56,10 @@ function gen_tar_file()
   chmod 640 *.json
   chmod 550 op_host op_kernel op_host/* op_kernel/*
   cd -
+  cd ./build/"${pkg_dir}"/cust_op/
+  chmod 550 -R fused_lazy_adam
+  chmod 640 fused_lazy_adam/*.json
+  cd -
   cd ./build
   tar -zvcf "${release_tar}" "${pkg_dir}" || {
       warn "compression failed, packages might be broken"

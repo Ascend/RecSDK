@@ -55,13 +55,7 @@ class CustomizedGradientDescent(gradient_descent.GradientDescentOptimizer, Custo
         super(CustomizedGradientDescent, self).__init__(learning_rate=learning_rate, use_locking=use_locking,
                                                         name=self.unique_name)
         self._slot_num = 0
-
-    @property
-    def slot_num(self):
-        return self._slot_num
-
-    def initialize_slots(self, var, table_instance):
-        return []
+        self._derivative = 1
 
     def get_slot_init_values(self):
         return []

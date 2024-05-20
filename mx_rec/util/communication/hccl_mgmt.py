@@ -82,11 +82,11 @@ def set_hccl_info_without_json() -> Dict[int, int]:
     Used for no rank table file configured training situation.
     :return: rank_id to logic_id mapping dictionary.
     """
-    rank_size = global_env.cm_worker_size
-    chief_device = global_env.cm_chief_device
+    env_rank_size = global_env.cm_worker_size
+    env_chief_device = global_env.cm_chief_device
     device_list = get_device_list()
-    chief_device = int(chief_device)
-    rank_size = int(rank_size)
+    chief_device = int(env_chief_device)
+    rank_size = int(env_rank_size)
 
     if chief_device not in device_list:
         raise ValueError(f"The environment variable CM_CHIEF_DEVICE {chief_device} is not in the local device list. ")
