@@ -41,7 +41,6 @@ from mx_rec.util.variable import get_dense_and_sparse_variable
 from mx_rec.util.log import logger
 from npu_bridge.npu_init import *
 
-
 npu_plugin.set_device_sat_mode(0)
 
 dense_hashtable_seed = 128
@@ -253,7 +252,7 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore")
 
     rank_id = int(os.getenv("RANK_ID")) if os.getenv("RANK_ID") else None
-    rank_size = int(os.getenv("RANK_SIZE")) if os.getenv("RANK_SIZE") else None
+    rank_size = int(os.getenv("TRAIN_RANK_SIZE")) if os.getenv("TRAIN_RANK_SIZE") else None
     interval = int(os.getenv("INTERVAL")) if os.getenv("INTERVAL") else None
     train_steps = 10000
     eval_steps = 1360

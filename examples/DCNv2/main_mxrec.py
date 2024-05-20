@@ -13,17 +13,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
+import os
+import random
+import shutil
 import time
 import warnings
-import random
 from glob import glob
-
 from sklearn.metrics import roc_auc_score
+
 import numpy as np
+
 from npu_bridge.npu_init import *
 
 from model import MyModel
-from dlrm.model.config import sess_config, Config
+from config import sess_config, Config
 from optimizer import get_dense_and_sparse_optimizer
 from mx_rec.core.asc.helper import FeatureSpec, get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
@@ -244,12 +248,25 @@ def create_feature_spec_list(use_timestamp=False):
     return feature_spec_list
 
 
+def _del_related_dir(del_path: str) -> None:
+    if not os.path.isabs(del_path):
+        del_path = os.path.join(os.getcwd(), del_path)
+    dirs = glob(del_path)
+    for sub_dir in dirs:
+        shutil.rmtree(sub_dir, ignore_errors=True)
+        logger.info(f"delete dir:{sub_dir}")
+
+
+def _clear_saved_model() -> None:
+    _del_related_dir("/root/ascend/log/*")
+
+
 if __name__ == "__main__":
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     warnings.filterwarnings("ignore")
+    _clear_saved_model()
 
-    rank_id = int(os.getenv("RANK_ID")) if os.getenv("RANK_ID") else None
-    rank_size = int(os.getenv("RANK_SIZE")) if os.getenv("RANK_SIZE") else None
+    rank_size = int(os.getenv("TRAIN_RANK_SIZE")) if os.getenv("TRAIN_RANK_SIZE") else None
     interval = int(os.getenv("INTERVAL")) if os.getenv("INTERVAL") else None
     train_steps = 10000
     eval_steps = 1360

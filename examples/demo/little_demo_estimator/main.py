@@ -17,6 +17,8 @@
 
 import argparse
 import os
+import shutil
+from glob import glob
 
 import tensorflow as tf
 from mx_rec.util.initialize import init, terminate_config_initializer
@@ -142,6 +144,27 @@ def create_feature_spec_list(use_timestamp=False):
     return feature_spec_list
 
 
+def _del_related_dir(del_path: str) -> None:
+    if not os.path.isabs(del_path):
+        del_path = os.path.join(os.getcwd(), del_path)
+    dirs = glob(del_path)
+    for sub_dir in dirs:
+        shutil.rmtree(sub_dir, ignore_errors=True)
+        logger.info(f"delete dir:{sub_dir}")
+
+
+def _clear_saved_model() -> None:
+    _del_related_dir("/root/ascend/log/*")
+    _del_related_dir("kernel*")
+    _del_related_dir("export_graph")
+
+    mode = args.run_mode
+    if not mode.startswith("train"):
+        return
+    logger.info("current mode contains train, will delete previous saved model data if exist.")
+    _del_related_dir("_rank*")
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--run_mode', type=str, default='train_and_evaluate')  # 运行模式，在run.sh中进行配置
@@ -185,6 +208,7 @@ if __name__ == '__main__':
         args.eval_steps = -1
     elif args.run_mode == 'train_and_evaluate':
         args.save_checkpoints_steps = args.train_steps
+    _clear_saved_model()
 
     # set init
     init(train_steps=args.train_steps,
