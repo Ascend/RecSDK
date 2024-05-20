@@ -14,6 +14,8 @@
 # limitations under the License.
 # ==============================================================================
 
+set -e
+
 source /etc/profile
 
 # 查找msopgen的路径，加入到环境变量PATH中

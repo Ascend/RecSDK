@@ -59,9 +59,9 @@ export NPU_HOST_LIB=$ASCEND_HOME_DIR/${arch}-linux/lib64
 
 function main {
     # 1. 清除遗留生成文件和日志文件
-    rm -rf $HOME/ascend/log/*
-    rm ./input/*.bin
-    rm ./output/*.bin
+    rm -rf $HOME/ascend/log/* > /dev/null 2>&1
+    rm ./input/*.bin > /dev/null 2>&1
+    rm ./output/*.bin > /dev/null 2>&1
 
     # 2. 生成输入数据和真值数据
     cd $CURRENT_DIR
