@@ -14,24 +14,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import logging
-
-import six
-import re
 import os
+import logging
+import re
 from typing import List
+import six
 
 import tensorflow as tf
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.training import warm_starting_util
-
-from mx_rec.util.log import logger
-from mx_rec.saver.saver import Saver
-
 if tf.__version__.startswith("1"):
     from npu_bridge.npu_init import NPUEstimator
 else:
     from npu_device.compat.v1.npu_init import NPUEstimator
+
+from mx_rec.util.log import logger
+from mx_rec.saver.saver import Saver
 
 
 class WarmStartController:
@@ -81,7 +79,8 @@ def patch_for_func_warm_start(func):
         if isinstance(ckpt_to_initialize_from, (list, tuple)):
             vars_to_warm_start_list = args[1]
             var_name_to_prev_var_name_list = args[3]
-            for i in range(len(ckpt_to_initialize_from)):
+            warm_start_num = len(ckpt_to_initialize_from)
+            for i in range(warm_start_num):
                 f = func(ckpt_to_initialize_from[i], vars_to_warm_start_list[i], args[2],
                          var_name_to_prev_var_name_list[i], **kwargs)
             return f
@@ -100,6 +99,7 @@ def patch_for_estimator_train(func):
 
 
 def warm_settings_filter(warm_start_from):
+    warm_start_from_res = None
     if isinstance(warm_start_from, estimator_lib.WarmStartSettings):
         if isinstance(warm_start_from.ckpt_to_initialize_from, (list, tuple)):
             out_setting_list = []
@@ -110,20 +110,19 @@ def warm_settings_filter(warm_start_from):
                 if filter_setting:
                     out_setting_list.append(filter_setting)
             if out_setting_list:
-                warm_start_from = recover_warm_settings(out_setting_list)
-                return warm_start_from
+                warm_start_from_res = recover_warm_settings(out_setting_list)
         elif isinstance(warm_start_from.ckpt_to_initialize_from, (six.string_types, six.binary_type)):
             logger.info("According to warm_start_settings, warm start will load from only one checkpoint path.")
             filter_setting = _warm_settings_filter(warm_start_from)
             if filter_setting:
-                return filter_setting
-        return None
+                warm_start_from_res = filter_setting
     elif isinstance(warm_start_from, (six.string_types, six.binary_type)):
         table_name_list = get_table_name_set_by_ckpt_path(warm_start_from)
         WarmStartController().add_element(warm_start_from, table_name_list)
-        return warm_start_from
+        warm_start_from_res = warm_start_from
     else:
-        pass
+        raise ValueError("Invalid parameter: warm_start_from. ")
+    return warm_start_from_res
 
 
 def recover_warm_settings(setting_list):
@@ -176,7 +175,7 @@ def _warm_settings_filter(warm_start_setting):
         if matching_tables:
             WarmStartController().add_element(warm_start_setting.ckpt_to_initialize_from, matching_tables)
             if vars_to_warm_start != ".*":
-                return None
+                return
         return warm_start_setting
     elif all(isinstance(v, str) for v in vars_to_warm_start):
         sparse_vars = []
@@ -215,7 +214,7 @@ def get_table_name_set_by_ckpt_path(warm_start_path: str) -> List[str]:
     return table_name_list
 
 
-def get_latest_ckpt(warm_start_path) -> str:
+def get_latest_ckpt(warm_start_path: str) -> str:
     ckpt_path = os.path.join(warm_start_path, "checkpoint")
     if not tf.io.gfile.exists(ckpt_path):
         raise FileNotFoundError(f"Checkpoint file is missing under the warm start model path {warm_start_path}")
@@ -223,7 +222,6 @@ def get_latest_ckpt(warm_start_path) -> str:
         latest_ckpt = f.readline().rstrip()
         latest_ckpt = latest_ckpt.split(":")[1].strip(' ').replace('"', '')
         latest_ckpt = latest_ckpt.split("/")[-1]
-
     path = os.path.join(warm_start_path, latest_ckpt)
     return path
 
@@ -232,6 +230,8 @@ class SparseRestoreHook(tf.estimator.SessionRunHook):
     def __init__(self):
         logging.info("In warm start mode, SparseRestoreHook has been initialized.")
         self._is_warm_start = False
+        self._saver = None
+        self._warm_start_dict = {}
 
     def begin(self):
         self._saver = Saver()
