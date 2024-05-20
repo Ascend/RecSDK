@@ -296,7 +296,7 @@ bool HybridMgmt::Load(const string& loadPath, vector<string> warmStartTables)
     vector<CkptFeatureType> loadFeatures;
     SetFeatureTypeForLoad(loadFeatures);
 
-    if(warmStartTables.size() == 0) {
+    if (warmStartTables.size() == 0) {
         EmbeddingMgmt::Instance()->Load(loadPath);
     } else {
         for (auto& tableName: warmStartTables) {
