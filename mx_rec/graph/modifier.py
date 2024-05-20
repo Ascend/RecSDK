@@ -15,9 +15,10 @@
 # limitations under the License.
 # ==============================================================================
 
+import dataclasses
 from collections import defaultdict
 from collections.abc import Callable
-from typing import Any, List, Dict, Tuple
+from typing import Any, List, Dict, Tuple, DefaultDict
 
 import tensorflow as tf
 from tensorflow import Operation, Tensor
@@ -26,21 +27,35 @@ from tensorflow.python.data.ops.dataset_ops import DatasetV1Adapter
 from tensorflow.python.framework.errors_impl import InvalidArgumentError
 
 from mx_rec.constants.constants import ASCEND_CUTTING_POINT_INITIALIZER, ASCEND_SPARSE_LOOKUP_ENTRANCE, \
-    ASCAnchorAttr, ASCEND_TIMESTAMP, MAX_WHILE_SIZE, LIBREC_EOS_OPS_SO, AnchorDatasetOp, \
-    AnchorIteratorOp
+    ASCAnchorAttr, ASCEND_TIMESTAMP, MAX_WHILE_SIZE, LIBREC_EOS_OPS_SO
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.helper import get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
+from mx_rec.core.asc.swap_args import SwapArgs
 from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
 from mx_rec.graph.merge_lookup import do_merge_lookup
 from mx_rec.graph.utils import check_input_list, find_parent_op, check_cutting_points, record_ops_to_replace, \
-    export_pb_graph, make_sorted_key_to_tensor_list
-from mx_rec.graph.graph_typing import AnchorRecord, ReplacementSpec
+    export_pb_graph, make_sorted_key_to_tensor_list, replace_anchor_control
+from mx_rec.graph.constants import DeprecatedOp, AnchorDatasetOp, AnchorIteratorOp
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.log import logger
 from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.util.perf import performance
+from mx_rec.util.tf_version_adapter import hccl_ops, npu_ops
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator
+
+
+@dataclasses.dataclass
+class AnchorRecord:
+    replacement_spec: DefaultDict[Tensor, List[Tuple[int, Operation]]]
+    passing_tensors: List[Tensor]
+    batch_tensor_indexs: List[int]
+    sub_cutting_points: List[Tensor]
+    sub_graph_def: GraphDef
+    input_names: List[str]
+    output_names: List[str]
+    is_training: bool
+    input_indexs: List[int] = None
 
 
 def get_preprocessing_map_func(
@@ -142,7 +157,7 @@ def parse_batch(data_args: Any, data_batch: dict, key: str = None):
 
 def get_input_index_list(
         cutting_point_list: List[Tensor],
-        replacement_specs: ReplacementSpec,
+        replacement_specs: DefaultDict[Tensor, List[Tuple[int, Operation]]],
         mapping_name_list: List[str],
         base_count: int,
         timestamp_index: int = None
@@ -319,7 +334,7 @@ def get_sub_graph(
     return sub_graph_def, input_name_list, output_name_list
 
 
-def update_input_tensor_with_new_batch(replacement_specs: ReplacementSpec,
+def update_input_tensor_with_new_batch(replacement_specs: DefaultDict[Tensor, List[Tuple[int, Operation]]],
                                        new_get_next_op_name: str,
                                        new_batch: Dict[str, Tensor]):
     """
@@ -366,6 +381,14 @@ def get_dataset_tensor_count(dataset: DatasetV1Adapter) -> int:
     src_sorted_keys = make_sorted_key_to_tensor_list(src_element_spec, [])
 
     return len(src_sorted_keys)
+
+
+def change_ext_emb_size_by_opt(optimizer):
+    for _, table_instance in ConfigInitializer.get_instance().sparse_embed_config.table_instance_dict.items():
+        # When dynamic expansion mode, ext_emb_size is set by optimizer
+        if ConfigInitializer.get_instance().use_dynamic_expansion or not table_instance.is_hbm:
+            table_instance.ext_emb_size = table_instance.emb_size * (1 + optimizer.slot_num)
+            logger.info("ext_emb_size is reset to be %s in change_ext_emb_size_by_opt", table_instance.ext_emb_size)
 
 
 @para_checker_decorator(
@@ -428,6 +451,14 @@ def get_src_dataset(get_next_op: Operation, is_training: bool) -> DatasetV1Adapt
         logger.warning("The dataset op was not found, the error is `%s`. Start to traverse the operations.", err)
         graph = tf.compat.v1.get_default_graph()
         dataset_op_list = [op for op in graph.get_operations() if AnchorDatasetOp.PREFETCH_DATASET.value in op.name]
+
+        # WARN: Couple with NoGradSubGraphSlicer::_find_old_dataset.
+        dataset_op_list = list(
+            filter(lambda op: op not in tf.compat.v1.get_collection(DeprecatedOp.DEPRECATED_PREFETCH_DATASET),
+            dataset_op_list)
+        )
+        dataset_op_list = sorted(dataset_op_list, key=lambda op: op.name)
+
         logger.debug("In get_src_dataset function, current mode(train: True, eval: False): %s, dataset_op_list: %s.",
                      is_training, dataset_op_list)
 
@@ -436,11 +467,14 @@ def get_src_dataset(get_next_op: Operation, is_training: bool) -> DatasetV1Adapt
         elif is_training and len(dataset_op_list) == 2:
             prefetch_dataset_op_list = sorted(dataset_op_list, key=lambda op: op.name)
             target_op = prefetch_dataset_op_list[0]
+        elif not is_training and len(dataset_op_list) == 2:
+            prefetch_dataset_op_list = sorted(dataset_op_list, key=lambda op: op.name)
+            target_op = prefetch_dataset_op_list[1]
         elif not is_training and len(dataset_op_list) == 3:
             prefetch_dataset_op_list = sorted(dataset_op_list, key=lambda op: op.name)
             target_op = prefetch_dataset_op_list[1]
         else:
-            raise RuntimeError(f"`{AnchorDatasetOp.PREFETCH_DATASET.value}` not found, got dataset_op_list: "
+            raise RuntimeError(f"'{AnchorDatasetOp.PREFETCH_DATASET.value}' not found, got transformation datasets: "
                                f"{dataset_op_list}.") from err
     except Exception as err:
         raise RuntimeError(f"The dataset was not found, the error is `{err}`.") from err
@@ -546,6 +580,118 @@ def update_iterator_getnext(get_next_op: Operation,
     update_input_tensor_with_new_batch(record.replacement_spec, new_get_next_op_name, new_batch)
 
 
+def get_swap_info(table_instance: BaseSparseEmbedding, variable_and_slot_list: list, swap_len: int, swap_pos: list,
+                  channel_id: int) -> list:
+    """
+    Get swap info if threshold is configured.
+    :param table_instance: BaseSparseEmbedding
+    :param variable_and_slot_list: [var + slots]
+    :param swap_len: swap length
+    :param swap_pos: swap position
+    :param channel_id: train or predict
+    :return: swap info
+    """
+    use_static = ConfigInitializer.get_instance().use_static
+    max_lookup_vec_size = None
+    if use_static:
+        max_lookup_vec_size = table_instance.send_count * table_instance.rank_size
+
+    if table_instance.is_hbm:
+        swap_in = [tf.no_op()]
+    else:
+        with tf.compat.v1.variable_scope("h2d_emb"):
+            logger.debug('Channel %s_h2d_%s was built for getnext', table_instance.table_name, channel_id)
+            h2d_emb = npu_ops.gen_npu_ops.get_next(
+                output_types=[tf.float32],
+                output_shapes=[[max_lookup_vec_size, table_instance.ext_emb_size]],
+                channel_name=f'{table_instance.table_name}_h2d_{channel_id}')[0]
+        logger.debug("h2d_emb shape: %s", h2d_emb)
+        if not isinstance(variable_and_slot_list, list):
+            raise RuntimeError("When enable emb_transfer, optimizer should have slots")
+        if use_static:
+            swap_pos = swap_pos[0:swap_len]
+            h2d_emb = h2d_emb[0:swap_len, :]
+        swap_outs = [tf.gather(one_table, swap_pos) for one_table in variable_and_slot_list]
+        swap_out = tf.concat(swap_outs, axis=1)
+        logger.debug('Channel %s_d2h_%s was built for op outfeed.', table_instance.table_name, channel_id)
+        swap_out_op = npu_ops.outfeed_enqueue_op(
+            channel_name=f'{table_instance.table_name}_d2h_{channel_id}', inputs=[swap_out])
+        with tf.control_dependencies([swap_out_op]):
+            nd_swap_pos = tf.expand_dims(swap_pos, 1)
+            table_num = len(variable_and_slot_list)
+            h2d_emb_split = tf.split(h2d_emb, table_num, axis=1)
+            optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(
+                table_instance.table_name)
+            if optimizer is None and channel_id == 1:
+                swap_in = [tf.compat.v1.scatter_nd_update(variable_and_slot_list[0], nd_swap_pos, h2d_emb_split[0])]
+            else:
+                swap_in = [tf.compat.v1.scatter_nd_update(variable_and_slot_list[i], nd_swap_pos, h2d_emb_split[i])
+                           for i in range(len(variable_and_slot_list))]
+    return swap_in
+
+
+def get_variable_and_slot_list(each_var, slot_num, table_name, channel_id):
+    variable_and_slot_list = [each_var]
+    if slot_num == 0:
+        return variable_and_slot_list
+
+    # 通过apply_gradients创建optimizer
+    optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(table_name)
+    if optimizer is None and channel_id == 0:
+        raise RuntimeError("In training mode, table_instance should have been set_optimizer_for_table "
+                           "before modify_graph, please check whether apply_gradients is performed")
+
+    # predict不需要传优化器，但是如果客户创建了优化器，ddr模式加载的是维度ext_size的emb用作换入换出，所以需要给slot零值占位
+    if optimizer is None and channel_id == 1:
+        slot_place_holder = tf.zeros_like(each_var)
+        for _ in range(slot_num):
+            variable_and_slot_list.append(slot_place_holder)
+    else:
+        # opt name to slot dict
+        for slot_dict in optimizer.values():
+            for slot_val in slot_dict.values():
+                variable_and_slot_list.append(slot_val)
+
+    return variable_and_slot_list
+
+
+def modify_graph_for_ddr(get_next_op_map):
+    # 通过create_hash_optimizer创建optimizer_instance
+    optimizer_instance = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
+    # predict
+    if optimizer_instance is None:
+        slot_num = 0
+    else:
+        # ddr和扩容需要在获取优化器后重置ext
+        change_ext_emb_size_by_opt(optimizer_instance)
+        slot_num = optimizer_instance.slot_num
+
+    for _, record in get_next_op_map.items():
+        is_training = record.is_training
+        channel_id = 0 if is_training else 1
+
+        swap_args = SwapArgs()
+        sparse_variables = tf.compat.v1.get_collection(
+            ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection)
+
+        for each_var in sparse_variables:
+            table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(each_var)
+            if table_instance.is_hbm:
+                continue
+            swap_args_dict = swap_args.swap_config_dict[table_instance.table_name][channel_id]
+            swap_pos = swap_args_dict['swap_pos']
+            swap_len = swap_args_dict['swap_len']
+            variable_and_slot_list = get_variable_and_slot_list(each_var, slot_num, table_instance.table_name,
+                                                                channel_id)
+
+            swap_op = get_swap_info(table_instance, variable_and_slot_list, swap_len, swap_pos, channel_id)
+            swap_control_dict = swap_args.swap_control_dict[table_instance.table_name][channel_id]
+            if "control_ops" not in swap_control_dict:
+                raise ValueError("Missing Required key in modify_graph_for_asc: control_ops")
+            control_ops = swap_control_dict['control_ops']
+            replace_anchor_control(control_ops, swap_op)
+
+
 @performance("graph_modifier")
 def modify_graph_for_asc(dump_graph: bool = False, prefetch: int = 10):
     cutting_point_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ENTRANCE)
@@ -591,6 +737,8 @@ def modify_graph_for_asc(dump_graph: bool = False, prefetch: int = 10):
         if is_training and not ConfigInitializer.get_instance().train_params_config.get_merged_multi_lookup(True):
             raise RuntimeError("In training mode, `do_merge_lookup` should have been executed in compute gradients "
                                "phase. Please check whether compute gradients is performed.")
+    # ddr
+    modify_graph_for_ddr(get_next_op_map)
 
     logger.info("Graph has been revised.")
     export_pb_graph("new_graph.pb", dump_graph)

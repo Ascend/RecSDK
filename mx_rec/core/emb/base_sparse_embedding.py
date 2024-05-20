@@ -10,7 +10,9 @@ import tensorflow as tf
 from tensorflow.python.ops import array_ops
 
 from mx_rec.constants.constants import All2allGradientsOp, ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCAnchorAttr
+from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
 from mx_rec.core.asc.feature_spec import set_temporary_feature_spec_attribute, get_feature_spec, FeatureSpec
+from mx_rec.core.asc.swap_args import SwapArgs, SwapDataType
 from mx_rec.util.communication.hccl_ops import get_rank_size, get_rank_id, get_device_id
 from mx_rec.util.tf_version_adapter import hccl_ops
 from mx_rec.util.initialize import ConfigInitializer
@@ -82,14 +84,6 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         self._set_ext_emb_size()
 
     @property
-    def optimizer_instance_list(self):
-        return []
-
-    @property
-    def optimizer(self):
-        return dict()
-
-    @property
     def embedding_size(self):
         return self._embedding_size
 
@@ -116,6 +110,10 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
     @property
     def send_count(self):
         return self._send_count
+
+    @property
+    def rank_size(self):
+        return self._rank_size
 
     @property
     def slice_device_vocabulary_size(self):
@@ -201,33 +199,9 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         """
         pass
 
-    @abc.abstractmethod
-    def set_optimizer(self, key: str, state_dict: dict):
-        """
-        设置optimizer state.
-
-        Args:
-            key: 优化器名字
-            state_dict: optimizer state
-
-        Returns: None
-        """
-        pass
 
     @abc.abstractmethod
     def _set_slice_vocab_size(self):
-        pass
-
-    @abc.abstractmethod
-    def _set_ext_emb_size(self):
-        pass
-
-    @abc.abstractmethod
-    def _build_optimizer_states(self):
-        pass
-
-    @abc.abstractmethod
-    def _get_preprocessed_tensor(self, feature_spec: FeatureSpec, is_training: bool, send_count: Optional[int]) -> dict:
         pass
 
     @abc.abstractmethod
@@ -322,6 +296,8 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
 
         # set modify graph
         self._modify_graph = kwargs.get("modify_graph", True)
+        if not self._modify_graph and not self._is_hbm:
+            raise RuntimeError("when the 'ddr or ssd' mode are used, the 'modify graph' is required")
 
         # return the stub tensor of the lookup result
         if not self._use_static:
@@ -354,7 +330,9 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
             return lookup_result
 
         if not self._use_static and not self._modify_graph and kwargs.get("batch") is None:
-            raise RuntimeError("When the 'feature spec' mode and 'dynamic shape' are used, the 'batch' is required.")
+            raise RuntimeError("when the 'feature spec' mode and 'dynamic shape' are used, the 'batch' is required")
+        if not self._modify_graph and not self._is_hbm:
+            raise RuntimeError("when the 'ddr or ssd' mode are used, the 'modify graph' is required")
         table_name = feature_spec.table_name
         same_table_feature_spec = \
             ConfigInitializer.get_instance().feature_spec_config.table_name_to_feature_spec[table_name][is_training]
@@ -401,6 +379,20 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
             return tf.stop_gradient(self._lookup_result.get(spec_name).get(is_training), name="stop_grad_lookup_res")
         return self._lookup_result.get(spec_name).get(is_training)
 
+    def _set_ext_emb_size(self):
+        # 初始设置_ext_emb_size等于_emb_size，改图阶段会根据优化器的不同而exchange该值
+        self._ext_emb_size = self._emb_size * self._ext_coefficient
+        logger.debug("Init table, ext_emb_size is set to be %s.", self._ext_emb_size)
+
+    def _get_preprocessed_tensor(self, feature_spec: FeatureSpec, channel_id: int, send_count: Optional[int]) -> dict:
+        config = dict(batch_size=feature_spec.batch_size, feat_cnt=feature_spec.feat_cnt, send_count=send_count,
+                      rank_size=self._rank_size, channel_id=channel_id, table_name=self._table_name,
+                      is_hbm=self._is_hbm, ext_emb_size=self._ext_emb_size, emb_size=self._emb_size,
+                      use_dynamic_expansion=ConfigInitializer.get_instance().use_dynamic_expansion,
+                      device_id=self._device_id)
+
+        return get_preprocessed_tensor_for_asc(self._variable, config)
+
     def _lookup_forward(self, feature_spec: FeatureSpec, send_count: Optional[int], **kwargs) -> tf.Tensor:
         is_training = kwargs.get("is_train")
         hashtable_params = dict(slice_device_vocabulary_size=self._slice_device_vocabulary_size,
@@ -409,7 +401,8 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         check_emb_lookup_params(hashtable_params, feature_spec, send_count, is_training)
         if ConfigInitializer.get_instance().use_static:
             self._send_count = send_count
-        result = self._get_preprocessed_tensor(feature_spec, is_training, send_count)
+        channel_id = ConfigInitializer.get_instance().train_params_config.get_training_mode_channel_id(is_training)
+        result = self._get_preprocessed_tensor(feature_spec, channel_id, send_count)
 
         @tf.custom_gradient
         def sparse_forward(table):
@@ -469,7 +462,11 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
 
             return array_ops.reshape(embeddings, dest_shape), grad
 
-        with tf.control_dependencies(result.get("swap_in")):
+        ddr_control_ops = tf.no_op(name="place_holder_swap_op")
+        swap_args = SwapArgs()
+        swap_args.set_data(SwapDataType.CONTROL.value, var_name=self._table_name, var_channel=channel_id,
+                           control_ops=ddr_control_ops)
+        with tf.control_dependencies([ddr_control_ops]):
             return self._get_sparse_forward_result(sparse_forward, self._variable, result, is_training)
 
     def __initialize_variables(self):
@@ -481,7 +478,6 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(self._variable.name)
 
         self.__record()
-        self._build_optimizer_states()
 
     def __record(self, eval_flag=False):
         ConfigInitializer.get_instance().sparse_embed_config.insert_table_instance(

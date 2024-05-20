@@ -233,7 +233,9 @@ class Saver(object):
 
             attribute = attribute.astype(np.int64)
             attribute_dir = os.path.join(upper_dir, "slice.attribute")
-            attribute.tofile(attribute_dir)
+            with tf.io.gfile.GFile(attribute_dir, "wb") as file:
+                attribute = attribute.tostring()
+                file.write(attribute)
 
     @performance("_save")
     def _save(self, sess, root_dir):
@@ -414,7 +416,7 @@ def save_embedding_data(root_dir, table_name, dump_data_dict, suffix):
     attribute = dict()
     attribute[DataAttr.DATATYPE.value] = data_to_write.dtype.name
     attribute[DataAttr.SHAPE.value] = data_to_write.shape
-    write_binary_data(target_path, suffix, data_to_write, attributes=attribute)
+    write_binary_data(target_path, suffix, data_to_write)
 
 
 def save_feature_mapping_data(root_dir, table_name, dump_data_dict, suffix):
@@ -426,7 +428,7 @@ def save_feature_mapping_data(root_dir, table_name, dump_data_dict, suffix):
     attribute = dict()
     attribute[DataAttr.DATATYPE.value] = data_to_write.dtype.name
     attribute[DataName.THRESHOLD.value] = int(dump_data_dict.get(DataName.THRESHOLD.value))
-    write_binary_data(target_path, suffix, data_to_write, attributes=attribute)
+    write_binary_data(target_path, suffix, data_to_write)
 
 
 def save_offset_data(root_dir, table_name, dump_data_dict, suffix):
@@ -437,7 +439,7 @@ def save_offset_data(root_dir, table_name, dump_data_dict, suffix):
 
     attribute = dict()
     attribute[DataAttr.DATATYPE.value] = data_to_write.dtype.name
-    write_binary_data(target_path, suffix, data_to_write, attributes=attribute)
+    write_binary_data(target_path, suffix, data_to_write)
 
 
 def save_optimizer_state_data(root_dir, table_name, optimizer_name, dump_optimizer_data, suffix):
@@ -448,7 +450,7 @@ def save_optimizer_state_data(root_dir, table_name, optimizer_name, dump_optimiz
         attribute = dict()
         attribute[DataAttr.DATATYPE.value] = data_to_write.dtype.name
         attribute[DataAttr.SHAPE.value] = data_to_write.shape
-        write_binary_data(target_path, suffix, data_to_write, attributes=attribute)
+        write_binary_data(target_path, suffix, data_to_write)
 
 
 def generate_path(*args):
@@ -459,15 +461,16 @@ def generate_file_name(suffix):
     return "slice_%d.data" % suffix, "slice_%d.attribute" % suffix
 
 
-def write_binary_data(writing_path, suffix, data, attributes=None):
+def write_binary_data(writing_path: str, suffix: int, data: np.ndarray):
     try:
         tf.io.gfile.makedirs(writing_path)
     except Exception as err:
         raise RuntimeError(f"make dir {writing_path} for writing data failed!") from err
     data_file, attribute_file = generate_file_name(suffix)
     target_data_dir = os.path.join(writing_path, data_file)
-
-    with tf.io.gfile.GFile(target_data_dir, "ab") as file:
+    # append mode of hdfs system supports not well when the file not exists.
+    file_mode = "wb" if not tf.io.gfile.exists(target_data_dir) else "ab"
+    with tf.io.gfile.GFile(target_data_dir, file_mode) as file:
         data = data.tostring()
         file.write(data)
 
@@ -491,7 +494,11 @@ def read_binary_data(reading_path: str, data_name: str, table_name: str, load_of
 
     with tf.io.gfile.GFile(target_attribute_dir, "rb") as fin:
         validate_read_file(target_attribute_dir)
-        attributes = np.fromfile(target_attribute_dir, dtype=np.int64)
+        attributes = fin.read()
+        try:
+            attributes = np.fromstring(attributes, dtype=np.int64)
+        except ValueError as err:
+            raise RuntimeError(f"get attributes from file {target_attribute_dir} failed.") from err
 
     with tf.io.gfile.GFile(target_data_dir, "rb") as file:
         validate_read_file(target_data_dir)

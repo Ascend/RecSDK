@@ -129,12 +129,8 @@ int KeyProcess::Start()
 
 void KeyProcess::InitHotEmbTotCount(const EmbInfo& info, const RankInfo& rInfo)
 {
-    int embeddingSize = info.extEmbeddingSize;
-    if (rankInfo.useDynamicExpansion) {
-        embeddingSize = info.embeddingSize;
-    }
     hotEmbTotCount[info.name] = static_cast<int>(static_cast<float>(GetUBSize(rInfo.deviceId) / sizeof(float)) *
-                                                 HOT_EMB_CACHE_PCT / static_cast<float>(embeddingSize));
+                                                 HOT_EMB_CACHE_PCT / static_cast<float>(info.embeddingSize));
 }
 
 OffsetMemT KeyProcess::GetMaxOffset()
@@ -461,8 +457,9 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
 
 void KeyProcess::PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys, int channel)
 {
-    if (GlobalEnv::applyGradientsStrategy == ApplyGradientsStrategyOptions::SUM_SAME_ID_GRADIENTS_AND_APPLY &&
-        channel == TRAIN_CHANNEL_ID) {
+    LOG_INFO(KEY_PROCESS "rank:{}, channel:{}, useSumSameIdGradients:{} ...",
+             rankInfo.rankId, channel, rankInfo.useSumSameIdGradients);
+    if (rankInfo.useSumSameIdGradients && channel == TRAIN_CHANNEL_ID) {
         KeysT uniqueKeys;
         vector<int32_t> restoreVecSec;
 

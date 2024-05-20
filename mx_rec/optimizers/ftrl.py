@@ -29,7 +29,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.training import ftrl
-from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.initialize import ConfigInitializer
@@ -80,34 +79,7 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
             l2_shrinkage_regularization_strength=kwargs.get("l2_shrinkage_regularization_strength", 0.0)
         )
         self._slot_num = 2
-
-    @property
-    def slot_num(self):
-        return self._slot_num
-
-    def initialize_slots(self, var, table_instance):
-        val = constant_op.constant(
-            self._initial_accumulator_value, dtype=var.dtype, shape=var.get_shape())
-
-        accum = slot_creator.create_slot(var, val, self._name + "/" + "accum")
-        linear = slot_creator.create_zeros_slot(var, self._name + "/" + "linear")
-        ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(accum.name)
-        ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(linear.name)
-        named_slot_key = (var.op.graph, var.op.name)
-        table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
-        ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name,
-                                                                                  self.optimizer_type,
-                                                                                  {"accum": accum, "linear": linear})
-        return [{"slot": accum, "named_slot_key": named_slot_key, "slot_name": "accum", "optimizer": self},
-                {"slot": linear, "named_slot_key": named_slot_key, "slot_name": "linear", "optimizer": self}]
-
-    def insert_slot(self, slot, named_slots_key, slot_name):
-        named_slots = self._slot_dict(slot_name)
-        if named_slots_key in named_slots:
-            raise EnvironmentError(f"named_slots_key should be global unique, but it has been in use now, "
-                                   f"please double check.")
-
-        named_slots[named_slots_key] = slot
+        self._derivative = 2
 
     def get_slot_init_values(self):
         # return state value list of ftrl that needs to initialize in ASC DDR.
@@ -115,10 +87,18 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
         return [self._initial_accumulator_value, initial_linear_value]
 
     def _apply_sparse_duplicate_indices(self, grad, var):
-        return self._apply_sparse(grad, var)
+        #  _apply_sparse_duplicate_indices method include tf.unique and unsorted_segment_sum operations which may
+        #  introduce dynamic shape problem, if encounter that, please de-annotation the method below.
+        unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad.values, var=var, is_expansion=False)
+        gradient_no_duplicate_indices = ops.IndexedSlices(
+            indices=unique_keys,
+            values=unique_local_grad,
+            dense_shape=grad.dense_shape)
+        return self._apply_sparse(gradient_no_duplicate_indices, var)
 
     def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
-        return self._resource_apply_sparse(grad, handle, indices)
+        unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad, var=handle, is_expansion=False)
+        return self._resource_apply_sparse(unique_local_grad, handle, unique_keys)
 
     def _resource_apply_sparse(self, grad, handle, indices):
         if self._l2_shrinkage_regularization_strength <= 0.0:

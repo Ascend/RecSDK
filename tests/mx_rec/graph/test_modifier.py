@@ -18,7 +18,7 @@
 import unittest
 from collections import defaultdict
 from unittest import TestCase
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, MagicMock
 from typing import Union, Callable
 
 import tensorflow as tf
@@ -31,9 +31,9 @@ from mx_rec.constants.constants import (
     ASCAnchorAttr,
 )
 from mx_rec.core.asc import FeatureSpec
-from mx_rec.graph.graph_typing import AnchorRecord
 from mx_rec.graph.modifier import (
     GraphModifierHook,
+    AnchorRecord,
     find_make_iterator_op,
     find_target_dataset_op,
     find_target_instance_dataset,
@@ -47,7 +47,7 @@ from mx_rec.graph.modifier import (
     get_timestamp_index,
     modify_graph_for_asc,
 )
-from tests.mx_rec.core.mock_class import MockConfigInitializer
+from tests.mx_rec.core.mock_class import MockConfigInitializer, MockSparseEmbedding, MockOptimizer
 from tests.mx_rec.graph.mock_dataset import gen_mock_dataset
 
 
@@ -257,6 +257,9 @@ class ModifyGraphForAscTest(TestCase):
         get_asc_insert_func=Mock(return_value=lambda x, y: x),
     )
     @patch.multiple("mx_rec.graph.modifier.BaseSparseEmbedding", get_anchor_attribute=_gen_mock_get_anchor_attribute())
+    @patch.multiple("mx_rec.core.asc.manager",
+                         should_skip=MagicMock(return_value=True),
+                         check_dangling_table=MagicMock(return_value=["test_table"]))
     @patch("mx_rec.graph.modifier.ConfigInitializer")
     def test_ok_train_mode(self, modifier_config_initializer):
         mock_config_initializer = MockConfigInitializer(modify_graph=True, merged_multi_lookup=True)
@@ -267,6 +270,13 @@ class ModifyGraphForAscTest(TestCase):
         mock_batch = mock_iterator.get_next()
         mock_ids = mock_batch.get("mock_ids")
         mock_cutting_point = tf.identity(mock_ids)
+
+        test_table = MockSparseEmbedding("test_table")
+        test_table.is_hbm = True
+        mock_config_initializer.get_instance().sparse_embed_config.table_instance_dict = dict(test_table=test_table)
+
+        mock_opt = MockOptimizer()
+        modifier_config_initializer.get_instance().optimizer_config.optimizer_instance = mock_opt
 
         tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_ENTRANCE, mock_cutting_point)
 
@@ -292,6 +302,13 @@ class ModifyGraphForAscTest(TestCase):
         mock_batch = mock_iterator.get_next()
         mock_ids = mock_batch.get("mock_ids")
         mock_cutting_point = tf.identity(mock_ids)
+
+        test_table = MockSparseEmbedding("test_table")
+        test_table.is_hbm = True
+        mock_config_initializer.get_instance().sparse_embed_config.table_instance_dict = dict(test_table=test_table)
+
+        mock_opt = MockOptimizer()
+        modifier_config_initializer.get_instance().optimizer_config.optimizer_instance = mock_opt
 
         tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_ENTRANCE, mock_cutting_point)
 

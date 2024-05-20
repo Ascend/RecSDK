@@ -17,16 +17,19 @@
 
 import os
 from collections import defaultdict
-from typing import List, Dict, Union
+from typing import List, Dict, Union, DefaultDict, Tuple
 
 import tensorflow as tf
 from tensorflow import Operation, Tensor
 from tensorflow.core.framework.graph_pb2 import GraphDef
 from tensorflow.python.framework.errors_impl import InvalidArgumentError
+from tensorflow.python.ops import control_flow_ops
 
+from mx_rec.graph.slicers import OrphanLookupKeySlicer
+from mx_rec.graph.constants import AnchorIteratorOp
 from mx_rec.constants.constants import ASCAnchorAttr, DUMP_MIDIFY_GRAPH_FILE_MODE
 from mx_rec.core.embedding import BaseSparseEmbedding
-from mx_rec.graph.graph_typing import ReplacementSpec
+from mx_rec.core.asc.swap_args import SwapArgs, SwapDataType
 from mx_rec.util.log import logger
 
 
@@ -46,21 +49,21 @@ def find_parent_op(operator: Operation) -> List[Operation]:
     parent_ops = []
     for input_tensor in operator.inputs:
         parent_op = input_tensor.op
-        if isinstance(parent_op, tf.Operation):
+        if isinstance(parent_op, Operation):
             parent_ops.append(parent_op)
     return parent_ops
 
 
 def check_cutting_points(cutting_point_list: List[Tensor]):
     for tensor in cutting_point_list:
-        if not isinstance(tensor, tf.Tensor):
+        if not isinstance(tensor, Tensor):
             raise TypeError(f"Collection ASCEND_CUTTING_POINT can only contain Tensors, but '{tensor}' was found.")
 
         if tensor.op.type != "Identity":
             raise ValueError(f"Cutting point can only be the output of an Operator 'Identity'.")
 
 
-def record_ops_to_replace(src_op: Operation) -> ReplacementSpec:
+def record_ops_to_replace(src_op: Operation) -> DefaultDict[Tensor, List[Tuple[int, Operation]]]:
     replacement_specs = defaultdict(list)
     output_list = src_op.outputs
     op_list = tf.compat.v1.get_default_graph().get_operations()
@@ -73,7 +76,7 @@ def record_ops_to_replace(src_op: Operation) -> ReplacementSpec:
     return replacement_specs
 
 
-def replace_anchor(replacement_specs: ReplacementSpec, new_tensor_list: List[Tensor]):
+def replace_anchor(replacement_specs: DefaultDict[Tensor, List[Tuple[int, Operation]]], new_tensor_list: List[Tensor]):
     if len(replacement_specs) != len(new_tensor_list):
         raise ValueError(f"Given replacement_specs and new_tensor_list must have the same length. "
                          f"replacement_specs: {replacement_specs}, new_tensor_list: {new_tensor_list}")
@@ -89,11 +92,37 @@ def replace_anchor(replacement_specs: ReplacementSpec, new_tensor_list: List[Ten
                                    f"new tensor: {new_tensor_list[tensor_idx]}.") from err
 
 
+def record_control_to_replace(src_op: Operation) -> DefaultDict[Tensor, List[Tuple[int, Operation]]]:
+    replacement_specs = defaultdict(list)
+    op_list = tf.compat.v1.get_default_graph().get_operations()
+    for operator in op_list:
+        if src_op in operator.control_inputs:
+            input_index = operator.control_inputs.index(src_op)
+            replacement_specs[src_op].append((input_index, operator))
+
+    return replacement_specs
+
+
+def replace_control_anchor(replacement_specs: DefaultDict[Tensor, List[Tuple[int, Operation]]],
+                           new_tensor_list: List[Tensor]):
+
+    for tensor_idx, (old_tensor, items) in enumerate(replacement_specs.items()):
+        for _, operator in items:
+            try:
+                control_op = control_flow_ops.group(new_tensor_list)
+                operator._add_control_input(control_op)
+            except InvalidArgumentError as err:
+                logger.info("The replacement control specs keys (old batch) is: %s. \n\t\t The new_tensor_list is: %s.",
+                            replacement_specs.keys(), new_tensor_list)
+                raise RuntimeError(f"Cannot update edge, old tensor: {old_tensor}, "
+                                   f"new tensor: {new_tensor_list[tensor_idx]}.") from err
+
+
 def export_pb_graph(file_name: str,
                     dump_graph: bool = False,
                     graph_def: GraphDef = None,
                     export_path: str = "./export_graph",
-                    as_text: bool = False):
+                    as_text: bool = True):
     """
     Save tensorflow graph before and after modifier graph
     :param file_name: FileName of the graph
@@ -164,15 +193,37 @@ def replace_anchor_vec(cutting_point: Tensor, attribute: ASCAnchorAttr, anchor: 
     replace_anchor(replacement_specs_for_anchor_vec, [anchor])
 
 
-def tag_orphan_ids(ids: tf.Tensor) -> tf.Tensor:
+def replace_anchor_control(place_holder_control: tf.Operation, real_anchor: Tensor):
     """
-    将孤儿ids使用identity操作创建ACG_PUSH_NODE前缀命名的标记节点，以便在PushOps时能找到。
+    将place_holder_control替换为入参real_anchor.
+
+    Args:
+        place_holder_control: control op
+        real_anchor: 用来替换打桩节点的tensor
+
+    Returns: None
+
     """
+
+    if place_holder_control is None:
+        raise RuntimeError(f"Node place_holder_control does not exist. Check whether the sparse lookup interface "
+                           f"is correctly invoked.")
+    # find the op with stub node as the input
+    replacement_specs_for_anchor_vec = record_control_to_replace(place_holder_control)
+    # replace anchor_vec with anchor
+    replace_control_anchor(replacement_specs_for_anchor_vec, real_anchor)
+
+
+def mark_orphan_lookup_key(lookup_key: Tensor) -> Tensor:
     graph_def = tf.compat.v1.get_default_graph().as_graph_def()
-    subgraph = tf.compat.v1.graph_util.extract_sub_graph(graph_def, [ids.op.name])
+    subgraph = tf.compat.v1.graph_util.extract_sub_graph(graph_def, [lookup_key.op.name])
+
     for node in subgraph.node:
-        if node.op == 'IteratorGetNext':
-            return ids
-    new_ids = tf.identity(ids, name=f"ACG_PUSH_NODE_{ids.op.name}")
-    logger.info('Tag orphan op node: %s with %s.', ids, new_ids)
-    return new_ids
+        if node.op == AnchorIteratorOp.ITERATOR_GET_NEXT.value:
+            return lookup_key
+
+    name_prefix = OrphanLookupKeySlicer.SLICEABLE_ORPHAN_LOOKUP_KEY_PREFIX
+    marked_lookup_key = tf.identity(lookup_key, name="{}/{}".format(name_prefix, lookup_key.op.name))
+
+    logger.info('Mark orphan lookup key %s as %s.', lookup_key, marked_lookup_key)
+    return marked_lookup_key
