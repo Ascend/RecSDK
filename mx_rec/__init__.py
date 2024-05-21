@@ -25,6 +25,7 @@ from mx_rec.graph.patch import patch_for_dataset, patch_for_chief_session_creato
     patch_for_assert_eval_spec, patch_for_scale_loss, patch_for_session
 from mx_rec.data.patch import patch_for_dataset_eos_map
 from mx_rec.optimizers.base import patch_for_optimizer
+from mx_rec.saver.warm_start import patch_for_warm_start
 
 patch_for_saver()
 patch_for_dataset()
@@ -35,6 +36,7 @@ patch_for_assert_eval_spec()
 patch_for_bool_gauge()
 patch_for_optimizer()
 patch_for_session()
+patch_for_warm_start()
 
 
 def version():
