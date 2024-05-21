@@ -37,7 +37,6 @@ patch_for_bool_gauge()
 patch_for_optimizer()
 patch_for_session()
 patch_for_warm_start()
-__version__ = "5.0.RC2"
 
 
 def version():
