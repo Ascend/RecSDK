@@ -125,7 +125,10 @@ def warm_settings_filter(warm_start_from):
     return warm_start_from_res
 
 
-def recover_warm_settings(setting_list):
+def recover_warm_settings(setting_list: List[tf.estimator.WarmStartSettings]) -> tf.estimator.WarmStartSettings:
+    """
+    Recover WarmStartSettings from a list of custom-defined WarmStartSettings.
+    """
     ckpt_to_initialize_from_list = []
     vars_to_warm_start_list = []
     var_name_to_prev_var_name_list = []
@@ -140,7 +143,10 @@ def recover_warm_settings(setting_list):
         var_name_to_prev_var_name=var_name_to_prev_var_name_list)
 
 
-def _build_warm_settings_list(warm_start_from):
+def _build_warm_settings_list(warm_start_from: tf.estimator.WarmStartSettings) -> List[tf.estimator.WarmStartSettings]:
+    """
+    Converts custom-defined WarmStartSettings into a list of TensorFlow-native WarmStartSettings.
+    """
     ckpt_to_initialize_from = warm_start_from.ckpt_to_initialize_from
     vars_to_warm_start = warm_start_from.vars_to_warm_start
     var_name_to_prev_var_name = warm_start_from.var_name_to_prev_var_name
@@ -165,7 +171,10 @@ def _build_warm_settings_list(warm_start_from):
     return warm_start_settings_list
 
 
-def _warm_settings_filter(warm_start_setting):
+def _warm_settings_filter(warm_start_setting: tf.estimator.WarmStartSettings) -> tf.estimator.WarmStartSettings:
+    """
+    Filter the vars_to_warm_start parameter to remove sparse table parameters.
+    """
     vars_to_warm_start = warm_start_setting.vars_to_warm_start
     var_name_to_prev_var_name = warm_start_setting.var_name_to_prev_var_name
     vars_to_warm_start_res = []
@@ -175,8 +184,8 @@ def _warm_settings_filter(warm_start_setting):
         matching_tables = [table for table in table_name_list if re.match(vars_to_warm_start, table)]
         if matching_tables:
             WarmStartController().add_element(warm_start_setting.ckpt_to_initialize_from, matching_tables)
-            if vars_to_warm_start != ".*":
-                return warm_start_setting_res
+        if vars_to_warm_start != ".*":
+            return warm_start_setting_res
         warm_start_setting_res = warm_start_setting
     elif all(isinstance(v, str) for v in vars_to_warm_start):
         sparse_vars = []
