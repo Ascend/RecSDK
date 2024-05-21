@@ -169,14 +169,15 @@ def _warm_settings_filter(warm_start_setting):
     vars_to_warm_start = warm_start_setting.vars_to_warm_start
     var_name_to_prev_var_name = warm_start_setting.var_name_to_prev_var_name
     vars_to_warm_start_res = []
+    warm_start_setting_res = None
     table_name_list = get_table_name_set_by_ckpt_path(warm_start_setting.ckpt_to_initialize_from)
     if isinstance(vars_to_warm_start, str):
         matching_tables = [table for table in table_name_list if re.match(vars_to_warm_start, table)]
         if matching_tables:
             WarmStartController().add_element(warm_start_setting.ckpt_to_initialize_from, matching_tables)
             if vars_to_warm_start != ".*":
-                return
-        return warm_start_setting
+                return warm_start_setting_res
+        warm_start_setting_res = warm_start_setting
     elif all(isinstance(v, str) for v in vars_to_warm_start):
         sparse_vars = []
         for v in vars_to_warm_start:
@@ -189,9 +190,10 @@ def _warm_settings_filter(warm_start_setting):
             warm_start_setting = None
         else:
             warm_start_setting.vars_to_warm_start = vars_to_warm_start_res
-        return warm_start_setting
+        warm_start_setting_res = warm_start_setting
     else:
         raise ValueError("vars_to_warm_start must be list or str!")
+    return warm_start_setting_res
 
 
 def get_table_name_set_by_ckpt_path(warm_start_path: str) -> List[str]:

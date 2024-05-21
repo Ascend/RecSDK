@@ -285,7 +285,6 @@ class Saver(object):
                     sub_dict["optimizer"] = optimizer
 
     def _build_restore(self):
-        # 这里build_restore的地方不变
         for var in self.var_list:
             if global_env.tf_device == TFDevice.NPU.value and "merged" not in var.name:
                 continue
