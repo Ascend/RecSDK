@@ -24,14 +24,15 @@ import tensorflow as tf
 from tensorflow import Operation, Tensor, SparseTensor, Graph, variant, resource
 from tensorflow.python.data.ops.dataset_ops import DatasetV1Adapter
 
-from mx_rec.graph import utils, modifier
+from mx_rec.graph import utils
 from mx_rec.util.log import logger
 from mx_rec.validator.validator import ClassValidator, para_checker_decorator
 from mx_rec.constants.constants import (
+    ASCAnchorAttr,
     ASCEND_TIMESTAMP,
     MAX_WHILE_SIZE,
-    ASCAnchorAttr,
     ASCEND_SPARSE_LOOKUP_ENTRANCE,
+    ORPHAN_LOOKUP_KEY_PREFIX
 )
 from mx_rec.graph.constants import DeprecatedOp, AnchorDatasetOp, AnchorIteratorOp
 from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
@@ -145,22 +146,6 @@ class NoGradSubgraphSlicer(metaclass=abc.ABCMeta):
                     res.add(base_ops)
                     out_op_to_edge_ops[output_consumer] = res
 
-    @staticmethod
-    def _upward_bfs_op(base_ops: Union[Operation, Set[Operation], List[Operation]], tgt_op_type: str) -> Operation:
-        if not isinstance(base_ops, (set, list)):
-            base_ops = [base_ops]
-
-        parent_ops = base_ops
-        while True:
-            for parent_op in parent_ops:
-                if parent_op.type == tgt_op_type:
-                    return parent_op
-            base_ops = parent_ops
-            parent_ops = []
-            for base_op in base_ops:
-                parent_ops.extend(utils.find_parent_op(base_op))
-            if not parent_ops:
-                raise ValueError(f"target operation '{tgt_op_type}'' was not found.")
 
     @staticmethod
     def _topo_sort_sliced_ops(sliced_ops: Set[Operation]) -> List[Operation]:
@@ -386,9 +371,9 @@ class NoGradSubgraphSlicer(metaclass=abc.ABCMeta):
             old_get_next: The old 'IteratorGetNext' operation.
         """
 
-        old_get_next = self._upward_bfs_op(sliceable_ops, AnchorIteratorOp.ITERATOR_GET_NEXT.value)
+        old_get_next = utils.upward_bfs_op(sliceable_ops, AnchorIteratorOp.ITERATOR_GET_NEXT.value)
 
-        tf.compat.v1.add_to_collection(DeprecatedOp.DEPRECATED_ITERATOR_GET_NEXT, old_get_next)
+        self._full_graph.add_to_collection(DeprecatedOp.DEPRECATED_ITERATOR_GET_NEXT, old_get_next)
         logger.info("Old 'IteratorGetNext' operation has been deprecated now.")
 
         return old_get_next
@@ -412,7 +397,7 @@ class NoGradSubgraphSlicer(metaclass=abc.ABCMeta):
 
         tgt_trans_dataset = None
         try:
-            tgt_trans_dataset = self._find_trans_dataset(get_next)
+            tgt_trans_dataset = utils.find_trans_dataset(self._full_graph, get_next)
         except (ValueError, TypeError, RuntimeError) as err:
             trans_datasets = [
                 op for op in self._full_graph.get_operations() if AnchorDatasetOp.PREFETCH_DATASET.value in op.name
@@ -442,38 +427,9 @@ class NoGradSubgraphSlicer(metaclass=abc.ABCMeta):
 
         # WARN: Couple with modifier module, global collection used for filtering deprecated prefetch dataset.
         self._full_graph.add_to_collection(DeprecatedOp.DEPRECATED_PREFETCH_DATASET, tgt_trans_dataset)
-        old_dataset = modifier.find_target_instance_dataset(tgt_trans_dataset.outputs[0])
+        old_dataset = utils.find_target_instance_dataset(self._full_graph, tgt_trans_dataset.outputs[0])
 
         return old_dataset
-
-    def _find_trans_dataset(self, get_next: Operation) -> Operation:
-        """Find the transformation dataset through 'get_next'.
-
-        Args:
-            get_next: The old 'IteratorGetNext' operation.
-
-        Returns:
-            trans_dataset: The target transformation dataset.
-        """
-
-        if get_next.type != AnchorIteratorOp.ITERATOR_GET_NEXT.value:
-            raise TypeError(f"operation '{get_next}' must be one instance of 'IteratorGetNext'.")
-
-        make_iter = modifier.find_make_iterator_op(get_next.outputs[0])
-
-        trans_dataset = None
-        if tf.__version__.startswith("1"):
-            optimize_dataset_op = self._upward_bfs_op(make_iter, AnchorDatasetOp.MODEL_DATASET.value)
-            trans_dataset = utils.find_parent_op(optimize_dataset_op)
-            if not trans_dataset:
-                raise RuntimeError("parent operation of 'ModelDataset' was not found.")
-            if trans_dataset[0].type != AnchorDatasetOp.OPTIMIZE_DATASET.value:
-                raise TypeError(f"operation 'OptimizeDataset' was not found.")
-            trans_dataset = trans_dataset[0]
-        else:
-            trans_dataset = self._upward_bfs_op(make_iter, AnchorDatasetOp.PREFETCH_DATASET.value)
-
-        return trans_dataset
 
     def _clone_subgraph_into_funcgraph(
         self,
@@ -546,7 +502,7 @@ class NoGradSubgraphSlicer(metaclass=abc.ABCMeta):
         if old_get_next.inputs:
             iter_type = old_get_next.inputs[0].op.type
         if iter_type == AnchorIteratorOp.ITERATOR_V2.value:
-            iter_type = modifier.find_make_iterator_op(old_get_next.outputs[0]).type
+            iter_type = utils.find_make_iterator_op(self._full_graph, old_get_next.outputs[0]).type
         if iter_type not in (AnchorIteratorOp.MAKE_ITERATOR.value, AnchorIteratorOp.ONE_SHOT_ITERATOR.value):
             raise RuntimeError(
                 f"only iterators `MakeIterator` and `OneShotIterator` are supported in `graph modify` mode, "
@@ -585,7 +541,7 @@ class NoGradSubgraphSlicer(metaclass=abc.ABCMeta):
         except IndexError as err:
             raise IndexError("cannot find a tensor from given batch.") from err
 
-        new_get_next = self._upward_bfs_op(new_batch_tensor.op, AnchorIteratorOp.ITERATOR_GET_NEXT.value)
+        new_get_next = utils.upward_bfs_op(new_batch_tensor.op, AnchorIteratorOp.ITERATOR_GET_NEXT.value)
 
         logger.info("Got old_new_get_next: %s.", new_get_next)
         return new_get_next
@@ -824,8 +780,6 @@ class LookupSubgraphSlicer(NoGradSubgraphSlicer):
     ]
 )
 class OrphanLookupKeySlicer(NoGradSubgraphSlicer):
-    SLICEABLE_ORPHAN_LOOKUP_KEY_PREFIX = "orphan"
-
     def __init__(self, full_graph: Graph = None, info_dir: str = "orphan_slicing") -> None:
         """Initialize OrphanLookupKeySlicer.
         Args:
@@ -887,7 +841,7 @@ class OrphanLookupKeySlicer(NoGradSubgraphSlicer):
         ]
         alive_get_nexts = list(
             filter(
-                lambda op: op not in tf.compat.v1.get_collection(DeprecatedOp.DEPRECATED_ITERATOR_GET_NEXT),
+                lambda op: op not in self._full_graph.get_collection(DeprecatedOp.DEPRECATED_ITERATOR_GET_NEXT),
                 all_get_nexts,
             )
         )
@@ -928,7 +882,7 @@ class OrphanLookupKeySlicer(NoGradSubgraphSlicer):
             for op in min_dep_ops:
                 if not self._validate_op(op):
                     continue
-                if OrphanLookupKeySlicer.SLICEABLE_ORPHAN_LOOKUP_KEY_PREFIX not in op.name:
+                if ORPHAN_LOOKUP_KEY_PREFIX not in op.name:
                     continue
                 sliceable_ops.add(op)
 
