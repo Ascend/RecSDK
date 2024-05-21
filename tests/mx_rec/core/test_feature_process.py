@@ -78,13 +78,13 @@ class TestAfterRunFuncOfEvictHookClass(TestEvictHookClass):
 
             mock_get_next.return_value = [tf.constant([8, 9], dtype=tf.int32), tf.constant(2, dtype=tf.int32)]
 
-            evict_hook = EvictHook(evict_enable=True, evict_time_interval=1)
+            evict_hook = EvictHook(evict_enable=True, evict_time_interval=10)
             with tf.compat.v1.train.MonitoredSession(hooks=[evict_hook]) as sess:
                 sess.graph._unsafe_unfinalize()
                 sess.run(tf.compat.v1.global_variables_initializer())
 
                 # sleep 1s 等待淘汰时间evict_time_interval
-                time.sleep(1)
+                time.sleep(10)
 
                 # 获取原variable，淘汰会发生在此session run之后
                 ori_variable = sess.run(test_table.variable)

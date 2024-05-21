@@ -142,6 +142,12 @@ std::shared_ptr<EmbeddingTable> EmbeddingMgmt::GetTable(const string& name)
     return std::dynamic_pointer_cast<EmbeddingTable>(it->second);
 }
 
+void EmbeddingMgmt::Load(const string& name, const string& filePath)
+{
+    return embeddings[name]->Load(filePath);
+}
+
+
 void EmbeddingMgmt::Load(const string& filePath)
 {
     for (auto& tablePair: embeddings) {

@@ -83,11 +83,12 @@ class HybridManagerConfig:
         self.asc_manager.save(root_dir)
         logger.debug("Data from host pipeline has been saved.")
 
-    def restore_host_data(self, root_dir: Optional[str]) -> None:
+    def restore_host_data(self, root_dir: Optional[str], warm_start_tables=None) -> None:
         if self.asc_manager is None:
             raise RuntimeError("ASC manager does not exist.")
-
-        if not self.asc_manager.load(root_dir):
+        if not warm_start_tables:
+            warm_start_tables = []
+        if not self.asc_manager.load(root_dir, warm_start_tables):
             raise TypeError("Asc load data does not match usr setups, \
             please re-consider if you want to restore from this dir")
         logger.debug("Data from host pipeline has been restored.")
