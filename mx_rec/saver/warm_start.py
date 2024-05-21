@@ -186,11 +186,11 @@ def _warm_settings_filter(warm_start_setting):
                 sparse_vars.append(v)
                 WarmStartController().add_element(warm_start_setting.ckpt_to_initialize_from, matching_tables)
         vars_to_warm_start_res = [v for v in vars_to_warm_start if v not in sparse_vars]
-        if not vars_to_warm_start_res:
-            warm_start_setting = None
-        else:
-            warm_start_setting.vars_to_warm_start = vars_to_warm_start_res
-        warm_start_setting_res = warm_start_setting
+        if vars_to_warm_start_res:
+            warm_start_setting_res = estimator_lib.WarmStartSettings(
+                ckpt_to_initialize_from=warm_start_setting.ckpt_to_initialize_from,
+                vars_to_warm_start=vars_to_warm_start_res,
+                var_name_to_prev_var_name=warm_start_setting.var_name_to_prev_var_name)
     else:
         raise ValueError("vars_to_warm_start must be list or str!")
     return warm_start_setting_res
