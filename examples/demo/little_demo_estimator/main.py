@@ -72,6 +72,7 @@ def main(params, config):
                                      eviction_threshold=config.eviction_threshold)
         access_and_evict = dict(user_table=config_for_user_table, item_table=config_for_item_table)
 
+
         evict_hook = EvictHook(evict_enable=True, evict_time_interval=10)
         hooks_list.append(evict_hook)
     create_fs_params = dict(cfg=config, use_timestamp=params.use_timestamp,

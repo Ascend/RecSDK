@@ -29,8 +29,8 @@ EMPTY_STR = ""
 # 获取ConfigInitializer对象实例失败提示信息
 GET_CONFIG_INSTANCE_ERR_MSG = "Please init the environment for mx_rec at first."
 
-# 自动改图模式下从计算图中寻找dataset的锚点名称
-ANCHOR_DATASET_NAME = "PrefetchDataset"
+# Used for slicer finding the orphan lookup key.
+ORPHAN_LOOKUP_KEY_PREFIX = "orphan"
 
 # the name of the embedding table merged by third party
 ASCEND_TABLE_NAME_MUST_CONTAIN = None
