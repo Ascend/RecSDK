@@ -8,7 +8,7 @@ from typing import Optional, Union, Callable
 import tensorflow as tf
 
 from mx_rec.constants.constants import ASCEND_TABLE_NAME_MUST_CONTAIN, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, \
-     ASCEND_SPARSE_LOOKUP_ID_OFFSET
+     ASCEND_SPARSE_LOOKUP_ID_OFFSET, ASCAnchorAttr
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
 from mx_rec.util.initialize import ConfigInitializer
@@ -42,7 +42,7 @@ class DynamicSparseEmbedding(BaseSparseEmbedding):
     def _get_sparse_forward_result(self, sparse_forward_fn: Callable, table: Union[tf.compat.v1.Variable, tf.Tensor],
                                    result: dict, is_training: bool) -> tf.Tensor:
         local_embeddings = import_host_pipeline_ops().embedding_lookup_by_address(
-            result.get("id_offsets"), embedding_dim=self._emb_size, embedding_type=1)
+            result.get(str(ASCAnchorAttr.ID_OFFSETS.value)), embedding_dim=self._emb_size, embedding_type=1)
 
         add_collection_condition = is_training and (
                 ASCEND_TABLE_NAME_MUST_CONTAIN is None or ASCEND_TABLE_NAME_MUST_CONTAIN in self._table_name)
@@ -52,9 +52,9 @@ class DynamicSparseEmbedding(BaseSparseEmbedding):
             return sparse_forward_fn(local_embeddings)
         # 创建扩容查询tensor和table_instance的映射关系，以便优化器中使用
         ConfigInitializer.get_instance().sparse_embed_config.insert_table_instance_to_tensor_dict(
-            result.get("id_offsets"), self)
+            result.get(str(ASCAnchorAttr.ID_OFFSETS.value)), self)
         tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB, local_embeddings)
-        tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, result.get("id_offsets"))
+        tf.compat.v1.add_to_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET, result.get(str(ASCAnchorAttr.ID_OFFSETS.value)))
         return sparse_forward_fn(local_embeddings)
 
 
