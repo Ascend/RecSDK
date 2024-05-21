@@ -28,17 +28,15 @@ from mx_rec.validator.validator import ClassValidator, para_checker_decorator
 @para_checker_decorator(
     check_option_list=[
         ("op_types", ClassValidator, {"classes": (list)}),
-        ("full_graph", ClassValidator, {"classes": (Graph, type(None))}),
     ]
 )
 class LookupSubgraphSlicerHook(tf.estimator.SessionRunHook):
-    def __init__(self, op_types: List[Operation], full_graph: Graph = None) -> None:
+    def __init__(self, op_types: List[Operation]) -> None:
         super().__init__()
         self._op_types = op_types
-        self._full_graph = full_graph
 
     def begin(self) -> None:
-        slicer = LookupSubgraphSlicer(self._op_types, self._full_graph)
+        slicer = LookupSubgraphSlicer(self._op_types)
 
         logger.info("Starts to summarize sliceable specific operations in lookup subgraph!")
         slicer.summarize()
@@ -47,14 +45,12 @@ class LookupSubgraphSlicerHook(tf.estimator.SessionRunHook):
         slicer.slice()
 
 
-@para_checker_decorator(check_option_list=[("full_graph", ClassValidator, {"classes": (Graph, type(None))})])
 class OrphanLookupKeySlicerHook(tf.estimator.SessionRunHook):
-    def __init__(self, full_graph: Graph = None) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self._full_graph = full_graph
 
     def begin(self) -> None:
-        slicer = OrphanLookupKeySlicer(self._full_graph)
+        slicer = OrphanLookupKeySlicer()
 
         logger.info("Starts to summarize sliceable orphan lookup keys!")
         slicer.summarize()

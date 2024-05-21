@@ -16,13 +16,11 @@
 # ==============================================================================
 
 __all__ = [
-    "modify_graph_and_start_emb_cache",
     "GraphModifierHook",
-    "run",
     "LookupSubgraphSlicerHook",
     "OrphanLookupKeySlicerHook",
+    "modify_graph_and_start_emb_cache",
 ]
 
 from mx_rec.graph.modifier import GraphModifierHook, modify_graph_and_start_emb_cache
-from mx_rec.graph.patch import run
 from mx_rec.graph.hooks import LookupSubgraphSlicerHook, OrphanLookupKeySlicerHook
