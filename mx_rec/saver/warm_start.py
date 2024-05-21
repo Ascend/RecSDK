@@ -23,10 +23,6 @@ import six
 import tensorflow as tf
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.training import warm_starting_util
-if tf.__version__.startswith("1"):
-    from npu_bridge.npu_init import NPUEstimator
-else:
-    from npu_device.compat.v1.npu_init import NPUEstimator
 
 from mx_rec.util.log import logger
 from mx_rec.saver.saver import Saver
@@ -61,7 +57,7 @@ class WarmStartController:
 def patch_for_warm_start():
     estimator_lib.Estimator.__init__ = patch_estimator_init(estimator_lib.Estimator.__init__)
     warm_starting_util.warm_start = patch_for_func_warm_start(warm_starting_util.warm_start)
-    NPUEstimator.train = patch_for_estimator_train(NPUEstimator.train)
+    estimator_lib.Estimator.train = patch_for_estimator_train(estimator_lib.Estimator.train)
 
 
 def patch_estimator_init(func):
