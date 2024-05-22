@@ -279,7 +279,7 @@ bool HybridMgmt::Save(const string savePath)
 /// 加载模型
 /// \param loadPath
 /// \return
-bool HybridMgmt::Load(const string& loadPath)
+bool HybridMgmt::Load(const string& loadPath, vector<string> warmStartTables)
 {
 #ifndef GTEST
     if (!isInitialized) {
@@ -296,7 +296,14 @@ bool HybridMgmt::Load(const string& loadPath)
     vector<CkptFeatureType> loadFeatures;
     SetFeatureTypeForLoad(loadFeatures);
 
-    EmbeddingMgmt::Instance()->Load(loadPath);
+    if (warmStartTables.size() == 0) {
+        EmbeddingMgmt::Instance()->Load(loadPath);
+    } else {
+        for (auto& tableName: warmStartTables) {
+            EmbeddingMgmt::Instance()->Load(tableName, loadPath);
+        }
+    }
+
     loadOffsetToSend = EmbeddingMgmt::Instance()->GetLoadOffsets();
 
     // 执行加载操作
@@ -704,8 +711,7 @@ bool HybridMgmt::ParseKeysHBM(int channelId, int& batchId)
         LOG_DEBUG("channelId:{} batchId:{}, sendLookupSyncTC(ms):{}", channelId, batchId, sendLookupSyncTC.ElapsedMS());
 
         // 训练时，使用全局去重聚合梯度，发送全局去重的key和对应的恢复向量
-        if (GlobalEnv::applyGradientsStrategy == ApplyGradientsStrategyOptions::SUM_SAME_ID_GRADIENTS_AND_APPLY &&
-            channelId == TRAIN_CHANNEL_ID) {
+        if (mgmtRankInfo.useSumSameIdGradients && channelId == TRAIN_CHANNEL_ID) {
             SendUniqKeysAndRestoreVecHBM(channelId, batchId, embInfo, infoVecs);
         }
 
@@ -864,8 +870,7 @@ bool HybridMgmt::ProcessEmbInfo(const std::string& embName, int batchId, int cha
     LOG_DEBUG("channelId:{} batchId:{}, hostHashMapProcessTC(ms):{}",
               channelId, batchId, hostHashMapProcessTC.ElapsedMS());
 
-    if (GlobalEnv::applyGradientsStrategy == ApplyGradientsStrategyOptions::SUM_SAME_ID_GRADIENTS_AND_APPLY &&
-        channelId == TRAIN_CHANNEL_ID && remainBatchOut) {
+    if (mgmtRankInfo.useSumSameIdGradients && channelId == TRAIN_CHANNEL_ID && remainBatchOut) {
         SendUniqKeysAndRestoreVecDDR(embName, batchId, channelId, ddrParam);
     }
 

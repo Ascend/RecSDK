@@ -15,9 +15,6 @@
 # ==============================================================================
 
 kill -9 `ps -ef | grep python | grep -v grep | awk '{print $2}'` > /dev/null 2>&1
-rm -rf /root/ascend/log/*
-rm -rf ./kernel*
-rm -rf ./export_graph/*
 
 # 获取输入参数：py、ip
 if [ $# -ge 1 ]; then
@@ -83,12 +80,7 @@ export TF_CPP_MIN_LOG_LEVEL=3 # tensorflow日志级别,3对应FATAL
 # 设置应用类日志的全局日志级别及各模块日志级别，具体请参考昇腾官网CANN文档
 export ASCEND_GLOBAL_LOG_LEVEL=3 # “设置日志级别”章节0:debug, 1:info, 2:warning, 3:error, 4:NULL
 export MXREC_MODE="ASC"
-export USE_MODE="train_and_evaluate" # 支持[train, predict, train_and_evaluate]
-
-if [ $USE_MODE = "train" ] || [ $USE_MODE = "train_and_evaluate" ];then
-  echo "train mode: saved-model will be deleted"
-  rm -rf ./_rank*
-fi
+export USE_MODE="train_and_evaluate" # 支持[train, predict, train_and_evaluate],train相关模式将删除./_rank*目录
 
 ################# 参数配置 ######################
 export USE_DYNAMIC=1            # 0：静态shape；1：动态shape
@@ -104,8 +96,7 @@ export KEY_PROCESS_THREAD_NUM=6 #default 6, max 10
 export FAST_UNIQUE=0   #if use fast unique
 export MGMT_HBM_TASK_MODE=0 #if async h2d (get and send tensors)
 ################## 测试配置项 #####################
-# NOTE: 仅在测试constant、string相关op作为稀疏表输入时启用，当前版本只支持TF1。
-export ENABLE_PUSH_OPS_TEST=0
+export ENABLE_SLICER_TEST=0
 
 # 帮助信息，不需要修改
 if [[ $1 == --help || $1 == -h ]];then
@@ -150,7 +141,6 @@ else
       echo "CM_CHIEF_DEVICE=$CM_CHIEF_DEVICE"
       echo "CM_WORKER_IP=$CM_WORKER_IP"
       echo "CM_WORKER_SIZE=$CM_WORKER_SIZE"
-      echo "ASCEND_VISIBLE_DEVICES=$ASCEND_VISIBLE_DEVICES"
       #########################################################
     else
       echo "ip: $ip not available!" # 使用ranktable方案

@@ -27,11 +27,6 @@ def get_dense_and_sparse_variable():
     return dense_variables, sparse_variables
 
 
-def check_and_get_config_via_var(variable, optimizer_type: str):
+def get_config_via_var(variable):
     table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(variable)
-
-    if not table_instance.is_hbm and not table_instance.optimizer:
-        raise EnvironmentError(f"When ASC with DDR, you must pass the '{optimizer_type}' optimizer instances to the"
-                               f" init method of SparseEmbedding.")
-
     return table_instance

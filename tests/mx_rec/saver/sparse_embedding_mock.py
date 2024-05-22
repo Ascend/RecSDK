@@ -29,11 +29,4 @@ class SparseEmbeddingMock:
         self.emb_size = 4
         self.is_hbm = host_vocab_size == 0
         self.host_vocabulary_size = host_vocab_size
-        self.optimizer = dict()
         self.use_dynamic_expansion = False
-
-    def set_optimizer(self, key, state_dict):
-        if key in self.optimizer:
-            raise ValueError(f"optimizer {key} has been set for hash table {self.table_name}")
-
-        self.optimizer[key] = state_dict

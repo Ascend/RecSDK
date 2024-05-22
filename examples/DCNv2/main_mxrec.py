@@ -14,17 +14,20 @@
 # limitations under the License.
 # ==============================================================================
 
+import os
+import random
+import shutil
 import time
 import warnings
-import random
 from glob import glob
-
 from sklearn.metrics import roc_auc_score
+
 import numpy as np
+
 from npu_bridge.npu_init import *
 
 from model import MyModel
-from dlrm.model.config import sess_config, Config
+from config import sess_config, Config
 from optimizer import get_dense_and_sparse_optimizer
 from mx_rec.core.asc.helper import FeatureSpec, get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
@@ -53,8 +56,8 @@ def add_timestamp_func(batch):
     return batch
 
 
-def make_batch_and_iterator(cfg, feature_spec_list, is_training, dump_graph, use_faae=False):
-    if cfg.USE_PIPELINE_TEST:
+def make_batch_and_iterator(config, feature_spec_list, is_training, dump_graph, is_use_faae=False):
+    if config.USE_PIPELINE_TEST:
         num_parallel = 1
     else:
         num_parallel = 8
@@ -62,9 +65,9 @@ def make_batch_and_iterator(cfg, feature_spec_list, is_training, dump_graph, use
     def extract_fn(data_record):
         features = {
             # Extract features using the keys set during creation
-            'label': tf.compat.v1.FixedLenFeature(shape=(cfg.line_per_sample,), dtype=tf.int64),
-            'sparse_feature': tf.compat.v1.FixedLenFeature(shape=(26 * cfg.line_per_sample,), dtype=tf.int64),
-            'dense_feature': tf.compat.v1.FixedLenFeature(shape=(13 * cfg.line_per_sample,), dtype=tf.float32),
+            'label': tf.compat.v1.FixedLenFeature(shape=(config.line_per_sample,), dtype=tf.int64),
+            'sparse_feature': tf.compat.v1.FixedLenFeature(shape=(26 * config.line_per_sample,), dtype=tf.int64),
+            'dense_feature': tf.compat.v1.FixedLenFeature(shape=(13 * config.line_per_sample,), dtype=tf.float32),
         }
         sample = tf.compat.v1.parse_single_example(data_record, features)
         return sample
@@ -77,24 +80,24 @@ def make_batch_and_iterator(cfg, feature_spec_list, is_training, dump_graph, use
         return batch
 
     if is_training:
-        files_list = glob(os.path.join(cfg.data_path, cfg.train_file_pattern) + '/*.tfrecord')
+        files_list = glob(os.path.join(config.data_path, config.train_file_pattern) + '/*.tfrecord')
     else:
-        files_list = glob(os.path.join(cfg.data_path, cfg.test_file_pattern) + '/*.tfrecord')
+        files_list = glob(os.path.join(config.data_path, config.test_file_pattern) + '/*.tfrecord')
     dataset = tf.data.TFRecordDataset(files_list, num_parallel_reads=num_parallel)
-    batch_size = cfg.batch_size // cfg.line_per_sample
+    batch_size = config.batch_size // config.line_per_sample
 
-    dataset = dataset.shard(cfg.rank_size, cfg.rank_id)
+    dataset = dataset.shard(config.rank_size, config.rank_id)
     if is_training:
         dataset = dataset.shuffle(batch_size * 1000, seed=SHUFFLE_SEED)
     if is_training:
-        dataset = dataset.repeat(cfg.train_epoch)
+        dataset = dataset.repeat(config.train_epoch)
     else:
-        dataset = dataset.repeat(cfg.test_epoch)
+        dataset = dataset.repeat(config.test_epoch)
 
     dataset = dataset.map(extract_fn, num_parallel_calls=num_parallel).batch(batch_size,
                                                                              drop_remainder=True)
     dataset = dataset.map(reshape_fn, num_parallel_calls=num_parallel)
-    if use_faae:
+    if is_use_faae:
         dataset = dataset.map(add_timestamp_func)
 
     if not MODIFY_GRAPH_FLAG:
@@ -155,7 +158,7 @@ def evaluate():
         try:
             eval_current_steps += 1
             eval_start = time.time()
-            eval_loss, pred, label = sess.run([eval_model["loss"], eval_model["pred"], eval_label])
+            eval_loss, pred, label = sess.run([eval_model.get("loss"), eval_model.get("pred"), eval_label])
             eval_cost = time.time() - eval_start
             eval_qps = (1 / eval_cost) * rank_size * cfg.batch_size
             log_loss_list += list(eval_loss.reshape(-1))
@@ -186,7 +189,7 @@ def evaluate_fix(step):
     while not finished:
         try:
             eval_current_steps += 1
-            eval_loss, pred, label = sess.run([eval_model["loss"], eval_model["pred"], eval_model["label"]])
+            eval_loss, pred, label = sess.run([eval_model.get("loss"), eval_model.get("pred"), eval_model.get("label")])
             log_loss_list += list(eval_loss.reshape(-1))
             pred_list += list(pred.reshape(-1))
             label_list += list(label.reshape(-1))
@@ -245,12 +248,25 @@ def create_feature_spec_list(use_timestamp=False):
     return feature_spec_list
 
 
+def _del_related_dir(del_path: str) -> None:
+    if not os.path.isabs(del_path):
+        del_path = os.path.join(os.getcwd(), del_path)
+    dirs = glob(del_path)
+    for sub_dir in dirs:
+        shutil.rmtree(sub_dir, ignore_errors=True)
+        logger.info(f"delete dir:{sub_dir}")
+
+
+def _clear_saved_model() -> None:
+    _del_related_dir("/root/ascend/log/*")
+
+
 if __name__ == "__main__":
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     warnings.filterwarnings("ignore")
+    _clear_saved_model()
 
-    rank_id = int(os.getenv("RANK_ID")) if os.getenv("RANK_ID") else None
-    rank_size = int(os.getenv("RANK_SIZE")) if os.getenv("RANK_SIZE") else None
+    rank_size = int(os.getenv("TRAIN_RANK_SIZE")) if os.getenv("TRAIN_RANK_SIZE") else None
     interval = int(os.getenv("INTERVAL")) if os.getenv("INTERVAL") else None
     train_steps = 10000
     eval_steps = 1360
@@ -286,16 +302,15 @@ if __name__ == "__main__":
         feature_spec_list_eval = create_feature_spec_list(use_timestamp=False)
 
     train_batch, train_iterator = make_batch_and_iterator(cfg, feature_spec_list_train, is_training=True,
-                                                          dump_graph=True, use_faae=use_faae)
+                                                          dump_graph=True, is_use_faae=use_faae)
     eval_batch, eval_iterator = make_batch_and_iterator(cfg, feature_spec_list_eval, is_training=False,
-                                                        dump_graph=False, use_faae=use_faae)
+                                                        dump_graph=False, is_use_faae=use_faae)
     logger.info(f"train_batch: {train_batch}")
 
     if use_faae:
         cfg.dev_vocab_size = cfg.dev_vocab_size // 2
 
     optimizer_list = [get_dense_and_sparse_optimizer(cfg)]
-    sparse_optimizer_list = [sparse_optimizer for dense_optimizer, sparse_optimizer in optimizer_list]
 
     # note: variance_scaling_initializer only support HBM mode
     emb_initializer = tf.compat.v1.truncated_normal_initializer(stddev=0.05, seed=SPARSE_HASHTABLE_SEED) \
@@ -306,7 +321,6 @@ if __name__ == "__main__":
         dim=tf.TensorShape([cfg.emb_dim]),
         name="sparse_embeddings",
         emb_initializer=emb_initializer,
-        optimizer_list=[sparse_optimizer_list[0]._optimizer],
         **cfg.get_emb_table_cfg()
     )
     if use_faae:
@@ -323,7 +337,7 @@ if __name__ == "__main__":
     rank_size = mxrec_util.communication.hccl_ops.get_rank_size()
     train_ops = []
     # multi task training
-    for loss, (dense_optimizer, sparse_optimizer) in zip([train_model["loss"]], optimizer_list):
+    for loss, (dense_optimizer, sparse_optimizer) in zip([train_model.get("loss")], optimizer_list):
         # do dense optimization
         grads = dense_optimizer.compute_gradients(loss, var_list=dense_variables)
         avg_grads = []
@@ -336,9 +350,9 @@ if __name__ == "__main__":
         train_ops.append(dense_optimizer.apply_gradients(avg_grads))
 
         if use_dynamic_expansion:
-            from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS
+            from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_ID_OFFSET
 
-            train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS)
+            train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET)
             train_emb_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)
             # do sparse optimization by addr
             sparse_grads = sparse_optimizer.compute_gradients(loss, train_emb_list)  # local_embedding
@@ -405,7 +419,7 @@ if __name__ == "__main__":
         start_time = time.time()
 
         try:
-            grad, loss = sess.run([train_ops, train_model["loss"]])
+            grad, loss = sess.run([train_ops, train_model.get("loss")])
             lr = sess.run(cfg.learning_rate)
             global_step = sess.run(cfg.global_step)
         except tf.errors.OutOfRangeError:

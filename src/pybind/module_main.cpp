@@ -79,6 +79,8 @@ namespace {
 
         m.attr("USE_DYNAMIC_EXPANSION") = py::int_(HybridOption::USE_DYNAMIC_EXPANSION);
 
+        m.attr("USE_SUM_SAME_ID_GRADIENTS") = py::int_(HybridOption::USE_SUM_SAME_ID_GRADIENTS);
+
         GetRankInfo(m);
 
         GetEmbInfoParams(m);
@@ -214,7 +216,8 @@ namespace {
                      py::arg("seed") = DEFAULT_RANDOM_SEED, py::arg("threshold_values") = vector<ThresholdValue> {},
                      py::arg("if_load") = false)
                 .def("save", &MxRec::HybridMgmt::Save, py::arg("save_path") = "")
-                .def("load", &MxRec::HybridMgmt::Load, py::arg("load_path") = "")
+                .def("load", &MxRec::HybridMgmt::Load, py::arg("load_path") = "",
+                     py::arg("warm_start_tables") = vector<string> {})
                 .def("destroy", &MxRec::HybridMgmt::Destroy)
                 .def("evict", &MxRec::HybridMgmt::Evict)
                 .def("send", &MxRec::HybridMgmt::SendHostMap, py::arg("table_name") = "")

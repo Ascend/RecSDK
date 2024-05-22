@@ -74,10 +74,10 @@ public:
 
 GTEST_PRIVATE:
 
-    int LoadHashMap(const string& savePath);
+    void LoadKey(const string& savePath);
     void LoadEmbAndOptim(const string& savePath);
 
-    int SaveKey(const string& savePath);
+    void SaveKey(const string& savePath);
     void SaveEmbData(const string &savePath);
     void SaveOptimData(const string& savePath);
     void SaveEmbAndOptim(const string& savePath);

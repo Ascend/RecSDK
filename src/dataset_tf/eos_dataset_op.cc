@@ -74,15 +74,15 @@ int CheckCommFinished(MPI_Request& req, int channelId)
 // 表示数据集的不可变性定义，这个类的 MakeIterator() 方法告诉 TensorFlow 怎样在数据集上生成迭代器对象。
 class EosDatasetOp::Dataset : public DatasetBase {
 public:
-    explicit Dataset(OpKernelContext *ctx, const DatasetBase *input, int32_t channelId, int32_t maxTrainSteps,
-        int32_t maxEvalSteps)
+    explicit Dataset(OpKernelContext *ctx, const DatasetBase *input, int32_t channelId,
+                     int32_t maxTrainSteps,
+                     int32_t maxEvalSteps)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           channelId_(channelId),
           maxTrainSteps_(maxTrainSteps),
           maxEvalSteps_(maxEvalSteps),
-          id_(g_datasetId[channelId])
-    {
+          id_(g_datasetId[channelId]) {
         input_->Ref();
         auto os_input = input->output_shapes();
         output_shapes_ = os_input;
@@ -93,12 +93,13 @@ public:
         MPI_Comm_size(g_comm[channelId], &g_rankSize);
 
         LOG_DEBUG("EosDataset: {} was born for channel: {}, maxTrainSteps: {}, maxEvalSteps: {}.",
-            g_datasetId[channelId], channelId, maxTrainSteps, maxEvalSteps);
+                  g_datasetId[channelId], channelId, maxTrainSteps, maxEvalSteps);
         g_datasetId[channelId] += 1;
     }
 
-    Dataset(const Dataset&) = delete;
-    Dataset& operator=(const Dataset&) = delete;
+    Dataset(const Dataset &) = delete;
+
+    Dataset &operator=(const Dataset &) = delete;
 
     ~Dataset() override
     {
@@ -147,8 +148,10 @@ public:
     }
 
 protected:
-    Status AsGraphDefInternal(SerializationContext *ctx, DatasetGraphDefBuilder *b, Node **output) const override
-    {
+    Status
+    AsGraphDefInternal(SerializationContext *ctx, DatasetGraphDefBuilder *b,
+                       Node **output) const override
+                       {
         Node *input_graph = nullptr;
         TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph));
         Node *channel_id_x = nullptr;
@@ -158,7 +161,8 @@ protected:
         Node *max_eval_steps_x = nullptr;
         TF_RETURN_IF_ERROR(b->AddScalar(maxEvalSteps_, &max_eval_steps_x));
         TF_RETURN_IF_ERROR(
-            b->AddDataset(this, { input_graph, channel_id_x, max_train_steps_x, max_eval_steps_x }, output));
+            b->AddDataset(this, {input_graph, channel_id_x, max_train_steps_x, max_eval_steps_x},
+                output));
         return Status::OK();
     }
 
@@ -166,20 +170,27 @@ private:
     // 表示特定数据集上的迭代器的可变性，这个类的 GetNextInternal() 方法告诉 TensorFlow 怎样获取迭代器的下一个元素。
     class Iterator : public DatasetIterator<Dataset> {
     public:
-        explicit Iterator(const Params &params) : DatasetIterator<Dataset>(params), i_(0), iter_times_(0) {}
+        explicit Iterator(const Params &params) : DatasetIterator<Dataset>(params), i_(0),
+                                                  iter_times_(0) {}
+
 #if defined(TF_VERSION_TF2)
         Status Initialize(IteratorContext* ctx) override
         {
             return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
         }
 #else
+
         Status Initialize(IteratorContext *ctx) override
         {
             return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
         }
+
 #endif
-        Status GetNextInternal(IteratorContext *ctx, std::vector<Tensor> *out_tensors, bool *end_of_sequence) override
-        {
+
+        Status
+        GetNextInternal(IteratorContext *ctx, std::vector <Tensor> *out_tensors,
+                        bool *end_of_sequence) override
+                        {
             mutex_lock l(mu_);
             if (!input_impl_) {
                 *end_of_sequence = true;
@@ -202,12 +213,14 @@ private:
                 getNextStatus = GET_NEXT_TERMINATE;
 
                 MPI_Request req;
-                MPI_Iallreduce(MPI_IN_PLACE, &getNextStatus, 1, MPI_INT, MPI_SUM, g_comm[channelId], &req);
+                MPI_Iallreduce(MPI_IN_PLACE, &getNextStatus, 1, MPI_INT, MPI_SUM, g_comm[channelId],
+                               &req);
                 CheckCommFinished(req, channelId);
 
                 keyProcess->SetEos(1, dataset()->channelId_);
-                LOG_DEBUG("[ACTIVE] GetNext eos was triggered actively, channel: {}, iter: {}", dataset()->channelId_,
-                    iter_times_);
+                LOG_DEBUG("[ACTIVE] GetNext eos was triggered actively, channel: {}, iter: {}",
+                          dataset()->channelId_,
+                          iter_times_);
 
                 input_impl_.reset();
                 return Status::OK();
@@ -220,7 +233,8 @@ private:
             if (getNextStatus < g_rankSize) {
                 *end_of_sequence = true;
                 keyProcess->SetEos(1, dataset()->channelId_);
-                LOG_DEBUG("[PASSIVE] GetNext eos was triggered passively, channel: {}, iter: {}, sum: {}",
+                LOG_DEBUG(
+                    "[PASSIVE] GetNext eos was triggered passively, channel: {}, iter: {}, sum: {}",
                     dataset()->channelId_, iter_times_, getNextStatus);
 
                 input_impl_.reset();
@@ -232,11 +246,12 @@ private:
         }
 
     protected:
-        std::shared_ptr<model::Node> CreateNode(
-                IteratorContext* ctx, model::Node::Args args) const override
-        {
-            return model::MakeKnownRatioNode(std::move(args), /* ratio= */ 1);
+        std::shared_ptr <model::Node> CreateNode(
+                IteratorContext *ctx, model::Node::Args args) const override
+                {
+            return model::MakeKnownRatioNode(std::move(args), 1); // ratio = 1
         }
+
 #if defined(TF_VERSION_TF2)
         Status SaveInternal(SerializationContext* ctx, IteratorStateWriter* writer) override
         {
@@ -244,15 +259,18 @@ private:
             return Status::OK();
         }
 #else
-        Status SaveInternal(IteratorStateWriter* writer) override
+
+        Status SaveInternal(IteratorStateWriter *writer) override
         {
             TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
             return Status::OK();
         }
+
 #endif
-        Status RestoreInternal(IteratorContext* ctx,
-                               IteratorStateReader* reader) override
-        {
+
+        Status RestoreInternal(IteratorContext *ctx,
+                               IteratorStateReader *reader) override
+                               {
             mutex_lock l(mu_);
             TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
             return Status::OK();
@@ -261,11 +279,14 @@ private:
     private:
         static constexpr int GET_NEXT_CONTINUE = 1;
         static constexpr int GET_NEXT_TERMINATE = 0;
-    
+
         tensorflow::mutex mu_;
-        int64 i_ GUARDED_BY(mu_);
-        int64 iter_times_ GUARDED_BY(mu_);
-        std::unique_ptr <IteratorBase> input_impl_ GUARDED_BY(mu_);
+        int64 i_
+        GUARDED_BY(mu_);
+        int64 iter_times_
+        GUARDED_BY(mu_);
+        std::unique_ptr <IteratorBase> input_impl_
+        GUARDED_BY(mu_);
     };
 
     const DatasetBase *input_;
