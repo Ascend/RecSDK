@@ -27,7 +27,7 @@ import numpy as np
 from npu_bridge.npu_init import *
 
 from model import MyModel
-from config import sess_config, Config
+from config import sess_config, Config, SSD_DATA_PATH, CacheModeEnum
 from optimizer import get_dense_and_sparse_optimizer
 from mx_rec.core.asc.helper import FeatureSpec, get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
@@ -259,6 +259,14 @@ def _del_related_dir(del_path: str) -> None:
 
 def _clear_saved_model() -> None:
     _del_related_dir("/root/ascend/log/*")
+    if os.getenv("CACHE_MODE", "") != CacheModeEnum.SSD.value:
+        return
+    logger.info("current cache mode is SSD, and file overwrite is not allowed in SSD mode, deleting exist directory"
+                " then create empty directory for this use case.")
+    for sub_path in SSD_DATA_PATH:
+        _del_related_dir(sub_path)
+        os.makedirs(sub_path, mode=0o550, exist_ok=True)
+        logger.info(f"mkdir dir:{sub_path}")
 
 
 if __name__ == "__main__":

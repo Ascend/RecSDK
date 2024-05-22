@@ -15,6 +15,7 @@
 # ==============================================================================
 
 import os
+import shutil
 import time
 import warnings
 import random
@@ -25,7 +26,7 @@ from sklearn.metrics import roc_auc_score
 import numpy as np
 
 from optimizer import get_dense_and_sparse_optimizer
-from config import sess_config, Config
+from config import sess_config, Config, SSD_DATA_PATH, CacheModeEnum
 from model import MyModel
 from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_ID_OFFSET
 from mx_rec.core.asc.helper import FeatureSpec, get_asc_insert_func
@@ -247,9 +248,35 @@ def create_feature_spec_list(use_timestamp=False):
     return feature_spec_list
 
 
+def _del_related_dir(del_path: str) -> None:
+    if not os.path.isabs(del_path):
+        del_path = os.path.join(os.getcwd(), del_path)
+    dirs = glob(del_path)
+    for sub_dir in dirs:
+        shutil.rmtree(sub_dir, ignore_errors=True)
+        logger.info(f"delete dir:{sub_dir}")
+
+
+def _clear_saved_model() -> None:
+    _del_related_dir("/root/ascend/log/*")
+    _del_related_dir("kernel*")
+    _del_related_dir("model_dir_rank*")
+    _del_related_dir("op_cache")
+
+    if os.getenv("CACHE_MODE", "") != CacheModeEnum.SSD.value:
+        return
+    logger.info("current cache mode is SSD, and file overwrite is not allowed in SSD mode, deleting exist directory"
+                " then create empty directory for this use case.")
+    for sub_path in SSD_DATA_PATH:
+        _del_related_dir(sub_path)
+        os.makedirs(sub_path, mode=0o550, exist_ok=True)
+        logger.info(f"mkdir dir:{sub_path}")
+
+
 if __name__ == "__main__":
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     warnings.filterwarnings("ignore")
+    _clear_saved_model()
 
     rank_id = int(os.getenv("RANK_ID")) if os.getenv("RANK_ID") else None
     rank_size = int(os.getenv("TRAIN_RANK_SIZE")) if os.getenv("TRAIN_RANK_SIZE") else None
