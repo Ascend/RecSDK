@@ -50,17 +50,6 @@ class SaveModelThread(threading.Thread):
 
 
 class Saver(object):
-    @staticmethod
-    def _make_table_name_dir(root_dir, table_instance, table_name):
-        if not table_instance.is_hbm:
-            table_dir = os.path.join(root_dir, "HashTable", "DDR", table_name)
-        else:
-            table_dir = os.path.join(root_dir, "HashTable", "HBM", table_name)
-        try:
-            tf.io.gfile.makedirs(table_dir)
-        except Exception as err:
-            raise RuntimeError(f"make dir {table_dir} for saving sparse table failed!") from err
-
     @para_checker_decorator(check_option_list=[
         ("var_list", ClassValidator, {"classes": (list, type(None))}),
         ("max_to_keep", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
@@ -81,6 +70,17 @@ class Saver(object):
         self.config_instance = ConfigInitializer.get_instance()
         self.build()
         self.warm_start_tables = warm_start_tables
+
+    @staticmethod
+    def _make_table_name_dir(root_dir, table_instance, table_name):
+        if not table_instance.is_hbm:
+            table_dir = os.path.join(root_dir, "HashTable", "DDR", table_name)
+        else:
+            table_dir = os.path.join(root_dir, "HashTable", "HBM", table_name)
+        try:
+            tf.io.gfile.makedirs(table_dir)
+        except Exception as err:
+            raise RuntimeError(f"make dir {table_dir} for saving sparse table failed!") from err
 
     def build(self):
         if self.var_list is None:
@@ -237,6 +237,18 @@ class Saver(object):
                 attribute = attribute.tostring()
                 file.write(attribute)
 
+    def get_warm_start_dict(self, table_list):
+        placeholder_dict = defaultdict(dict)
+        restore_fetch_list = []
+        for table_name, v in self.placeholder_dict.items():
+            if table_name in table_list:
+                placeholder_dict[table_name] = v
+                restore_fetch_list.append(self.restore_fetch_dict.get(table_name))
+
+        if not restore_fetch_list:
+            logger.warning("no tables can be warm start restored.")
+        return placeholder_dict, restore_fetch_list
+
     @performance("_save")
     def _save(self, sess, root_dir):
         for table_name in self.save_op_dict:
@@ -316,18 +328,6 @@ class Saver(object):
                     continue
                 assign_op = state.assign(sub_optimizer_placeholder_dict.get(key_state))
                 self.restore_fetch_dict[table_instance.table_name].append(assign_op)
-
-    def get_warm_start_dict(self, table_list):
-        placeholder_dict = defaultdict(dict)
-        restore_fetch_list = []
-        for table_name, v in self.placeholder_dict.items():
-            if table_name in table_list:
-                placeholder_dict[table_name] = v
-                restore_fetch_list.append(self.restore_fetch_dict.get(table_name))
-
-        if not restore_fetch_list:
-            logger.warning("no tables can be warm start restored.")
-        return placeholder_dict, restore_fetch_list
 
     def _restore(self, sess, reading_path, warm_start_tables=None):
         # 根据table_list去改造
