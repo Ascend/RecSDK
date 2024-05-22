@@ -157,4 +157,4 @@ DATE=$(date +%Y-%m-%d-%H-%M-%S)
 horovodrun --network-interface ${interface} -np ${num_process} --mpi-args "${mpi_args}" --mpi -H localhost:${local_rank_size} \
 python3.7 ${py} \
 --run_mode=$USE_MODE \
-2>&1 | tee "temp_${local_rank_size}p_${KEY_PROCESS_THREAD_NUM}t_${DATE}.log"
+2>&1 | tee "temp_${num_process}p_${KEY_PROCESS_THREAD_NUM}t_${DATE}.log"
