@@ -214,7 +214,7 @@ def get_table_name_set_by_ckpt_path(warm_start_path: str) -> List[str]:
     ckpt_name = f"sparse-{base_name}"
     sparse_path = os.path.join(directory, ckpt_name)
     if not tf.io.gfile.isdir(sparse_path):
-        logger.info(f"under the warm start path {warm_start_path}, sparse directory {sparse_path} not exists.")
+        logger.info("under the warm start path %s, sparse directory %s not exists.", warm_start_path, sparse_path)
     else:
         for dirname in tf.io.gfile.listdir(sparse_path):
             table_name_list.append(dirname)
