@@ -48,13 +48,13 @@ private:
 
     void MallocEmbeddingBlock(int embNum);
 
-    int SaveKey(const string& savePath);
+    void SaveKey(const string& savePath);
 
     void SaveEmbAndOptim(const string& savePath);
 
     void SetOptimizerInfo(OptimizerInfo& optimizerInfo);
 
-    int LoadKey(const string& savePath);
+    void LoadKey(const string& savePath);
 
     void LoadEmbAndOptim(const string& savePath);
 

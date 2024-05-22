@@ -50,6 +50,27 @@ class SaveModelThread(threading.Thread):
 
 
 class Saver(object):
+    @para_checker_decorator(check_option_list=[
+        ("var_list", ClassValidator, {"classes": (list, type(None))}),
+        ("max_to_keep", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
+        ("prefix_name", ClassValidator, {"classes": (str, type(None))}),
+        ("prefix_name", OptionalStringValidator, {"min_len": 1, "max_len": 50}, ["check_string_length"]),
+    ])
+    def __init__(self, var_list=None, max_to_keep=3, prefix_name="checkpoint", warm_start_tables=None):
+        self.max_to_keep = max_to_keep
+        self._prefix_name = prefix_name
+        self.var_list = var_list
+        self.rank_id = get_rank_id()
+        self.local_rank_size = get_local_rank_size()
+        self.local_rank_id = self.rank_id % self.local_rank_size
+        self.save_op_dict = defaultdict(dict)
+        self.restore_fetch_dict = defaultdict()
+        self.placeholder_dict = defaultdict(dict)
+        self._last_checkponts = []
+        self.config_instance = ConfigInitializer.get_instance()
+        self.build()
+        self.warm_start_tables = warm_start_tables
+
     @staticmethod
     def _make_table_name_dir(root_dir, table_instance, table_name):
         if not table_instance.is_hbm:
@@ -60,26 +81,6 @@ class Saver(object):
             tf.io.gfile.makedirs(table_dir)
         except Exception as err:
             raise RuntimeError(f"make dir {table_dir} for saving sparse table failed!") from err
-
-    @para_checker_decorator(check_option_list=[
-        ("var_list", ClassValidator, {"classes": (list, type(None))}),
-        ("max_to_keep", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
-        ("prefix_name", ClassValidator, {"classes": (str, type(None))}),
-        ("prefix_name", OptionalStringValidator, {"min_len": 1, "max_len": 50}, ["check_string_length"]),
-    ])
-    def __init__(self, var_list=None, max_to_keep=3, prefix_name="checkpoint"):
-        self.max_to_keep = max_to_keep
-        self._prefix_name = prefix_name
-        self.var_list = var_list
-        self.rank_id = get_rank_id()
-        self.local_rank_size = get_local_rank_size()
-        self.local_rank_id = self.rank_id % self.local_rank_size
-        self.save_op_dict = defaultdict(dict)
-        self.restore_fetch_list = []
-        self.placeholder_dict = defaultdict(dict)
-        self._last_checkponts = []
-        self.config_instance = ConfigInitializer.get_instance()
-        self.build()
 
     def build(self):
         if self.var_list is None:
@@ -175,7 +176,7 @@ class Saver(object):
         logger.info("======== Saving finished for rank id %s ========", self.rank_id)
 
     @performance("Restore")
-    def restore(self, sess, reading_path):
+    def restore(self, sess, reading_path, warm_start_tables=None):
         logger.debug("======== Start restoring ========")
         if not check_file_system_is_valid(reading_path):
             raise ValueError("the path to save sparse embedding table data belong to invalid file system, "
@@ -185,11 +186,10 @@ class Saver(object):
         ckpt_name = f"sparse-{base_name}"
 
         reading_path = os.path.join(directory, ckpt_name)
-        self.config_instance.train_params_config.sparse_dir = reading_path
         if not tf.io.gfile.exists(reading_path):
             raise FileExistsError(f"Given dir {reading_path} does not exist, please double check.")
 
-        self._restore(sess, reading_path)
+        self._restore(sess, reading_path, warm_start_tables)
         logger.info("sparse model was restored from dir '%s' .", reading_path)
         logger.debug("======== Restoring finished ========")
 
@@ -233,7 +233,21 @@ class Saver(object):
 
             attribute = attribute.astype(np.int64)
             attribute_dir = os.path.join(upper_dir, "slice.attribute")
-            attribute.tofile(attribute_dir)
+            with tf.io.gfile.GFile(attribute_dir, "wb") as file:
+                attribute = attribute.tostring()
+                file.write(attribute)
+
+    def get_warm_start_dict(self, table_list):
+        placeholder_dict = defaultdict(dict)
+        restore_fetch_list = []
+        for table_name, v in self.placeholder_dict.items():
+            if table_name in table_list:
+                placeholder_dict[table_name] = v
+                restore_fetch_list.append(self.restore_fetch_dict.get(table_name))
+
+        if not restore_fetch_list:
+            logger.warning("no tables can be warm start restored.")
+        return placeholder_dict, restore_fetch_list
 
     @performance("_save")
     def _save(self, sess, root_dir):
@@ -294,7 +308,7 @@ class Saver(object):
                                                                       table_instance.emb_size],
                                              name=DataName.EMBEDDING.value)
                 assign_op = var.assign(variable)
-                self.restore_fetch_list.append(assign_op)
+                self.restore_fetch_dict[table_instance.table_name] = [assign_op]
                 optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(
                     table_instance.table_name)
                 if optimizer:
@@ -313,16 +327,23 @@ class Saver(object):
                 if sub_optimizer_placeholder_dict.get(key_state).graph is not state.graph:
                     continue
                 assign_op = state.assign(sub_optimizer_placeholder_dict.get(key_state))
-                self.restore_fetch_list.append(assign_op)
+                self.restore_fetch_dict[table_instance.table_name].append(assign_op)
 
-    def _restore(self, sess, reading_path):
-        for table_name in self.placeholder_dict:
+    def _restore(self, sess, reading_path, warm_start_tables=None):
+        # 根据table_list去改造
+        if warm_start_tables:
+            placeholder_dict, restore_fetch_list = self.get_warm_start_dict(warm_start_tables)
+        else:
+            placeholder_dict, restore_fetch_list = self.placeholder_dict, self.restore_fetch_dict
+
+
+        for table_name in placeholder_dict:
             optimizer_instance = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
             if optimizer_instance:
                 set_optimizer_info(optimizer_instance, table_name)
 
         if self.config_instance.hybrid_manager_config.asc_manager:
-            self.config_instance.hybrid_manager_config.restore_host_data(reading_path)
+            self.config_instance.hybrid_manager_config.restore_host_data(reading_path, warm_start_tables)
             logger.info("host data was restored.")
 
         if self.config_instance.use_dynamic_expansion:
@@ -331,7 +352,7 @@ class Saver(object):
 
         restore_feed_dict = defaultdict(dict)
 
-        for table_name, sub_placeholder_dict in self.placeholder_dict.items():
+        for table_name, sub_placeholder_dict in placeholder_dict.items():
             load_offset = self.config_instance.hybrid_manager_config.get_load_offset(table_name)
             fill_placeholder(reading_path, sub_placeholder_dict, restore_feed_dict,
                              NameDescriptor(table_name, DataName.EMBEDDING.value), load_offset)
@@ -341,7 +362,7 @@ class Saver(object):
                 _fill_placeholder_for_optimizer(optimizer_state_placeholder_dict_group, reading_path,
                                                 restore_feed_dict, table_name, load_offset)
 
-        sess.run(self.restore_fetch_list, feed_dict=restore_feed_dict)
+        sess.run(restore_fetch_list, feed_dict=restore_feed_dict)
 
 
 class NameDescriptor:
@@ -393,7 +414,7 @@ def save_embedding_data(root_dir, table_name, dump_data_dict, suffix):
     attribute = dict()
     attribute[DataAttr.DATATYPE.value] = data_to_write.dtype.name
     attribute[DataAttr.SHAPE.value] = data_to_write.shape
-    write_binary_data(target_path, suffix, data_to_write, attributes=attribute)
+    write_binary_data(target_path, suffix, data_to_write)
 
 
 def save_feature_mapping_data(root_dir, table_name, dump_data_dict, suffix):
@@ -405,7 +426,7 @@ def save_feature_mapping_data(root_dir, table_name, dump_data_dict, suffix):
     attribute = dict()
     attribute[DataAttr.DATATYPE.value] = data_to_write.dtype.name
     attribute[DataName.THRESHOLD.value] = int(dump_data_dict.get(DataName.THRESHOLD.value))
-    write_binary_data(target_path, suffix, data_to_write, attributes=attribute)
+    write_binary_data(target_path, suffix, data_to_write)
 
 
 def save_offset_data(root_dir, table_name, dump_data_dict, suffix):
@@ -416,7 +437,7 @@ def save_offset_data(root_dir, table_name, dump_data_dict, suffix):
 
     attribute = dict()
     attribute[DataAttr.DATATYPE.value] = data_to_write.dtype.name
-    write_binary_data(target_path, suffix, data_to_write, attributes=attribute)
+    write_binary_data(target_path, suffix, data_to_write)
 
 
 def save_optimizer_state_data(root_dir, table_name, optimizer_name, dump_optimizer_data, suffix):
@@ -427,7 +448,7 @@ def save_optimizer_state_data(root_dir, table_name, optimizer_name, dump_optimiz
         attribute = dict()
         attribute[DataAttr.DATATYPE.value] = data_to_write.dtype.name
         attribute[DataAttr.SHAPE.value] = data_to_write.shape
-        write_binary_data(target_path, suffix, data_to_write, attributes=attribute)
+        write_binary_data(target_path, suffix, data_to_write)
 
 
 def generate_path(*args):
@@ -438,15 +459,16 @@ def generate_file_name(suffix):
     return "slice_%d.data" % suffix, "slice_%d.attribute" % suffix
 
 
-def write_binary_data(writing_path, suffix, data, attributes=None):
+def write_binary_data(writing_path: str, suffix: int, data: np.ndarray):
     try:
         tf.io.gfile.makedirs(writing_path)
     except Exception as err:
         raise RuntimeError(f"make dir {writing_path} for writing data failed!") from err
     data_file, attribute_file = generate_file_name(suffix)
     target_data_dir = os.path.join(writing_path, data_file)
-
-    with tf.io.gfile.GFile(target_data_dir, "ab") as file:
+    # append mode of hdfs system supports not well when the file not exists.
+    file_mode = "wb" if not tf.io.gfile.exists(target_data_dir) else "ab"
+    with tf.io.gfile.GFile(target_data_dir, file_mode) as file:
         data = data.tostring()
         file.write(data)
 
@@ -470,7 +492,11 @@ def read_binary_data(reading_path: str, data_name: str, table_name: str, load_of
 
     with tf.io.gfile.GFile(target_attribute_dir, "rb") as fin:
         validate_read_file(target_attribute_dir)
-        attributes = np.fromfile(target_attribute_dir, dtype=np.int64)
+        attributes = fin.read()
+        try:
+            attributes = np.fromstring(attributes, dtype=np.int64)
+        except ValueError as err:
+            raise RuntimeError(f"get attributes from file {target_attribute_dir} failed.") from err
 
     with tf.io.gfile.GFile(target_data_dir, "rb") as file:
         validate_read_file(target_data_dir)

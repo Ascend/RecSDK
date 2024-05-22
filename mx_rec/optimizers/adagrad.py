@@ -21,10 +21,10 @@ from __future__ import print_function
 
 from collections import defaultdict
 
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import adagrad, training_ops
-from tensorflow.python.training import slot_creator
 
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.initialize import ConfigInitializer
@@ -76,30 +76,8 @@ class CustomizedAdagrad(adagrad.AdagradOptimizer, CustomizedOptimizer):
                                                 initial_accumulator_value=initial_accumulator_value,
                                                 use_locking=use_locking,
                                                 name=self.unique_name)
-
-    def initialize_slots(self, var, table_instance):
-        # Create slots for the first and second moments.
-        def creat_one_single_slot(var, op_name):
-            new_slot_variable = slot_creator.create_zeros_slot(var, op_name)
-            # make sure sparse optimizer statements will not be saved and restored within tf checkpoint.
-            return new_slot_variable
-
-        accumulator = creat_one_single_slot(var, self._name + "/" + "accumulator")
-        ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(accumulator.name)
-        named_slot_key = (var.op.graph, var.op.name)
-        table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
-        ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name,
-                                                                                  self.optimizer_type,
-                                                                                  {"accumulator": accumulator})
-        return [{"slot": accumulator, "named_slot_key": named_slot_key, "slot_name": "acc", "optimizer": self}]
-
-    def insert_slot(self, slot, named_slots_key, slot_name):
-        named_slots = self._slot_dict(slot_name)
-        if named_slots_key in named_slots:
-            raise EnvironmentError(f"named_slots_key should be global unique, but it has been in use now, "
-                                   f"please double check.")
-
-        named_slots[named_slots_key] = slot
+        self._slot_num = 1
+        self._derivative = 2
 
     def get_slot_init_values(self):
         # return state value list of adagrad that needs to initialize in ASC DDR.
@@ -118,6 +96,20 @@ class CustomizedAdagrad(adagrad.AdagradOptimizer, CustomizedOptimizer):
             acc_state_name = self._name + "/" + "accumulator"
             self._get_or_make_slot_with_initializer(var, init, var.get_shape(), dtype,
                                                     "acc", acc_state_name)
+
+    def _apply_sparse_duplicate_indices(self, grad, var):
+        #  _apply_sparse_duplicate_indices method include tf.unique and unsorted_segment_sum operations which may
+        #  introduce dynamic shape problem, if encounter that, please de-annotation the method below.
+        unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad.values, var=var, is_expansion=False)
+        gradient_no_duplicate_indices = ops.IndexedSlices(
+            indices=unique_keys,
+            values=unique_local_grad,
+            dense_shape=grad.dense_shape)
+        return self._apply_sparse(gradient_no_duplicate_indices, var)
+
+    def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
+        unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad, var=handle, is_expansion=False)
+        return self._resource_apply_sparse(unique_local_grad, handle, unique_keys)
 
     def _apply_sparse(self, grad, var):
         acc = self.get_slot(var, "acc")

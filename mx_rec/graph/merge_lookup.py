@@ -91,7 +91,8 @@ def do_merge_lookup(is_train: bool = True):
         if not ConfigInitializer.get_instance().use_static:
             kwargs["feature_spec_name_ids_dict"] = feature_spec_name_ids_dict
         lookup_result = table_instance.lookup_for_feat_spec(feature_spec, send_count, **kwargs)
-        replace_anchor_vec(cutting_point, ASCAnchorAttr.MOCK_LOOKUP_RESULT, lookup_result)
+        graph = tf.compat.v1.get_default_graph()
+        replace_anchor_vec(graph, cutting_point, ASCAnchorAttr.MOCK_LOOKUP_RESULT, lookup_result)
         logger.debug("The mock lookup result of %s for %s was replaced.", feature_spec.name, table_instance.table_name)
 
     # records whether the current mode has been merged or restored lookup

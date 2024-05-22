@@ -19,15 +19,17 @@ import os
 from typing import Optional, Union
 
 import tensorflow as tf
+from tensorflow import Tensor
 from tensorflow.python.ops.init_ops import Initializer as InitializerV1
 from tensorflow.python.ops.init_ops_v2 import Initializer as InitializerV2
 
+from mx_rec.constants import constants
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
 from mx_rec.core.emb.emb_factory import HBMDynamicSparseEmbeddingFactory, HBMSparseEmbeddingFactory, \
     ExternalStorageSparseEmbeddingFactory
-from mx_rec.graph.utils import tag_orphan_ids
 from mx_rec.constants.constants import MAX_INT32, All2allGradientsOp, MAX_VOCABULARY_SIZE, MAX_DEVICE_VOCABULARY_SIZE
+from mx_rec.graph.constants import AnchorIteratorOp
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import ClassValidator, StringValidator, SSDFeatureValidator, \
     para_checker_decorator, IntValidator, NumValidator, OptionValidator, OptionalIntValidator, \
@@ -43,7 +45,6 @@ from mx_rec.util.log import logger
     ("dim", NumValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
     ("name", StringValidator, {"min_len": 1, "max_len": 100}, ["check_string_length", "check_whitelist"]),
     ("emb_initializer", ClassValidator, {"classes": (InitializerV1, InitializerV2)}),
-    ("optimizer_list", ClassValidator, {"classes": (list, type(None))}),
     (["ssd_vocabulary_size", "ssd_data_path", "host_vocabulary_size"], SSDFeatureValidator),
     ("device_vocabulary_size", IntValidator, {"min_value": 1, "max_value": MAX_DEVICE_VOCABULARY_SIZE},
      ["check_value"]),
@@ -59,7 +60,6 @@ from mx_rec.util.log import logger
     ("hashtable_threshold", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"])
 ])
 def create_table(key_dtype, dim, name, emb_initializer,
-                 optimizer_list: Optional[list] = None,
                  device_vocabulary_size=1,
                  host_vocabulary_size=0,
                  ssd_vocabulary_size=0,
@@ -77,7 +77,6 @@ def create_table(key_dtype, dim, name, emb_initializer,
         dim: embedding vector size
         name: hash table name
         emb_initializer: the initializer for embedding values
-        optimizer_list: specify the optimizers to use for current hash table
         device_vocabulary_size: embedding vector numbers on device
         host_vocabulary_size: embedding vector numbers on ddr
         ssd_vocabulary_size: embedding vector numbers on ssd
@@ -95,8 +94,7 @@ def create_table(key_dtype, dim, name, emb_initializer,
     config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
                   device_vocabulary_size=device_vocabulary_size, host_vocabulary_size=host_vocabulary_size,
                   ssd_vocabulary_size=ssd_vocabulary_size, ssd_data_path=ssd_data_path,
-                  optimizer_list=optimizer_list, init_param=init_param, is_save=is_save,
-                  all2all_gradients_op=all2all_gradients_op)
+                  init_param=init_param, is_save=is_save, all2all_gradients_op=all2all_gradients_op)
     # 动态扩容
     if ConfigInitializer.get_instance().use_dynamic_expansion:
         return HBMDynamicSparseEmbeddingFactory().create_embedding(config)
@@ -172,7 +170,7 @@ def sparse_lookup(hashtable: BaseSparseEmbedding,
 
     # 对于向上找没有IteratorGetNext的孤儿ids需要标记，以便于后续ACGPushOpsToDataset工作
     if isinstance(ids, tf.Tensor):
-        ids = tag_orphan_ids(ids)
+        ids = mark_orphan_lookup_key(ids)
 
     with tf.compat.v1.variable_scope("{0}//{1}".format(hashtable.table_name, kwargs.get("name"))):
         if isinstance(ids, FeatureSpec):
@@ -188,3 +186,18 @@ def sparse_lookup(hashtable: BaseSparseEmbedding,
 
         ConfigInitializer.get_instance().modify_graph = modify_graph
         return hashtable.lookup(ids, send_count, **kwargs)
+
+
+def mark_orphan_lookup_key(lookup_key: Tensor) -> Tensor:
+    graph_def = tf.compat.v1.get_default_graph().as_graph_def()
+    subgraph = tf.compat.v1.graph_util.extract_sub_graph(graph_def, [lookup_key.op.name])
+
+    for node in subgraph.node:
+        if node.op == AnchorIteratorOp.ITERATOR_GET_NEXT.value:
+            return lookup_key
+
+    name_prefix = constants.ORPHAN_LOOKUP_KEY_PREFIX
+    marked_lookup_key = tf.identity(lookup_key, name="{}/{}".format(name_prefix, lookup_key.op.name))
+
+    logger.info('Mark orphan lookup key %s as %s.', lookup_key, marked_lookup_key)
+    return marked_lookup_key

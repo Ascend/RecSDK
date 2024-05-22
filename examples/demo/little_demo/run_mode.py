@@ -44,7 +44,9 @@ class RunMode:
             eval_model, train_iterator, eval_iterator, max_train_steps: int, infer_steps: int, params: dict):
         self.is_modify_graph = is_modify_graph
         self.is_faae = is_faae
-        self.session = tf.compat.v1.Session(config=sess_config(dump_data=False))
+        self.use_deterministic = params.get("use_deterministic")
+        self.session = tf.compat.v1.Session(
+            config=sess_config(dump_data=False, use_deterministic=self.use_deterministic))
         self.train_model = train_model
         self.train_iterator = train_iterator
         self.eval_model = eval_model
@@ -95,11 +97,11 @@ class RunMode:
             self.train_ops.append(dense_optimizer.apply_gradients(avg_grads))
 
             if bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0))):
-                from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS
+                from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_ID_OFFSET
 
                 train_emb_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)
 
-                train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS)
+                train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET)
 
                 # do sparse optimization by addr
                 local_grads = tf.gradients(loss, train_emb_list)  # local_embedding
@@ -138,7 +140,9 @@ class RunMode:
         for i in range(start_step, start_step + self.max_train_steps):
             logger.info("################    training at step %d    ################", i)
             try:
-                self.session.run([self.train_ops, self.train_model.loss_list])
+                _, loss = self.session.run([self.train_ops, self.train_model.loss_list])
+                if self.use_deterministic:
+                    logger.info(f"train_loss: {loss[0]}")
             except tf.errors.OutOfRangeError:
                 logger.info("Encounter the end of Sequence for training.")
                 break
