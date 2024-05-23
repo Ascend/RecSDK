@@ -174,11 +174,8 @@ def _clear_saved_model() -> None:
                 " then create empty directory for this use case.")
     for sub_path in _SSD_SAVE_PATH:
         _del_related_dir(sub_path)
-        try:
-            os.mkdir(sub_path)
-            logger.info(f"mkdir dir:{sub_path}")
-        except OSError:
-            logger.warning("ssd path has exist")  # 多进程并行，忽略异常
+        os.makedirs(sub_path, mode=0o550, exist_ok=True)
+        logger.info(f"Create dir:{sub_path}")
 
 
 if __name__ == "__main__":
