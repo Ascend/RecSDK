@@ -180,8 +180,6 @@ def _warm_settings_filter(warm_start_setting: tf.estimator.WarmStartSettings) ->
         matching_tables = [table for table in table_name_list if re.match(vars_to_warm_start, table)]
         if matching_tables:
             WarmStartController().add_element(warm_start_setting.ckpt_to_initialize_from, matching_tables)
-        if vars_to_warm_start != ".*":
-            return warm_start_setting_res
         warm_start_setting_res = warm_start_setting
     elif all(isinstance(v, str) for v in vars_to_warm_start):
         sparse_vars = []
