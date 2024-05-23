@@ -261,12 +261,12 @@ def _clear_saved_model() -> None:
     _del_related_dir("/root/ascend/log/*")
     if os.getenv("CACHE_MODE", "") != CacheModeEnum.SSD.value:
         return
-    logger.info("current cache mode is SSD, and file overwrite is not allowed in SSD mode, deleting exist directory"
+    logger.info("Current cache mode is SSD, and file overwrite is not allowed in SSD mode, deleting exist directory"
                 " then create empty directory for this use case.")
     for sub_path in SSD_DATA_PATH:
         _del_related_dir(sub_path)
         os.makedirs(sub_path, mode=0o550, exist_ok=True)
-        logger.info(f"mkdir dir:{sub_path}")
+        logger.info(f"Create dir:{sub_path}")
 
 
 if __name__ == "__main__":

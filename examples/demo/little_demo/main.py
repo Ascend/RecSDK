@@ -175,7 +175,7 @@ def _clear_saved_model() -> None:
     for sub_path in _SSD_SAVE_PATH:
         _del_related_dir(sub_path)
         os.makedirs(sub_path, mode=0o550, exist_ok=True)
-        logger.info(f"mkdir dir:{sub_path}")
+        logger.info(f"Create dir:{sub_path}")
 
 
 if __name__ == "__main__":

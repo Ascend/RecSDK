@@ -164,7 +164,7 @@ class Config:
         else:
             raise ValueError(f"get CACHE_MODE:{self.cache_mode}, expect in [HBM, DDR, SSD]")
 
-    def get_emb_table_cfg(self) -> dict:
+    def get_emb_table_cfg(self):
         if self.cache_mode == CacheModeEnum.HBM.value:
             return {"device_vocabulary_size": self.dev_vocab_size}
         elif self.cache_mode == CacheModeEnum.DDR.value:
