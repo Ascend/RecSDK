@@ -254,7 +254,7 @@ def _del_related_dir(del_path: str) -> None:
     dirs = glob(del_path)
     for sub_dir in dirs:
         shutil.rmtree(sub_dir, ignore_errors=True)
-        logger.info(f"delete dir:{sub_dir}")
+        logger.info(f"Delete dir:{sub_dir}")
 
 
 def _clear_saved_model() -> None:
