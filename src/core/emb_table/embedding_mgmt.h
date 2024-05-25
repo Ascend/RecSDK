@@ -34,8 +34,7 @@ public:
      * @param[in] rInfo 从python侧传过了的rank信息
      * @param[in] eInfos 从python侧传过了的embedding表信息
      */
-    void Init(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
-              const vector<ThresholdValue>& thresholdValues = {}, int seed = 0);
+    void Init(const RankInfo& rInfo, const vector<EmbInfo>& eInfos, int seed = 0);
 
     /**
      * 从embedding表中查批量查找key
@@ -45,29 +44,18 @@ public:
      */
     void Key2Offset(const std::string& name, std::vector<emb_key_t>& keys, int channel);
 
-    void FindOffset(const std::string& name, const vector<emb_key_t>& keys,
-                    size_t currentBatchId, size_t keepBatchId, int channel);
-
     /**
      * 在指定的embedding表中淘汰key
      * @param[in] name embedding表名
      * @param[in] keys 待淘汰的key
      */
-    void EvictKeys(const std::string& name, const vector<emb_key_t>& keys);
+    void EvictKeys(const std::string& name, const vector<emb_cache_key_t>& keys);
 
     /**
      * 在全部的embedding表中淘汰key
      * @param[in] keys 待淘汰的key
      */
-    void EvictKeysCombine(const vector<emb_key_t>& keys);
-
-    const std::vector<size_t>& GetMissingKeys(const std::string& name);
-
-    void ClearMissingKeys(const std::string& name);
-
-    void LoadMaxOffset(OffsetMemT& loadData);
-
-    void LoadKeyOffsetMap(KeyOffsetMemT& loadData);
+    void EvictKeysCombine(const vector<emb_cache_key_t>& keys);
 
     size_t GetMaxOffset(const std::string& name);
 
@@ -81,17 +69,15 @@ public:
 
     static EmbeddingMgmt* Instance();
 
-    std::shared_ptr<EmbeddingTable> GetTable(const string& name);
-
-     /**
+    /**
      * 加载单个表
      */
-    void Load(const string& name, const string& filePath);
+    void Load(const string& name, const string& filePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
 
     /**
      * 加载所有表
      */
-    void Load(const string& filePath);
+    void Load(const string& filePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
 
     /**
      * 保存单个表
@@ -113,8 +99,6 @@ public:
     */
     OffsetMapT GetLoadOffsets();
 
-    EmbHashMemT GetEmbHashMaps();
-
     /**
     * 设置某张表的优化器信息
     */
@@ -122,11 +106,9 @@ public:
 
     void SetCacheManagerForEmbTable(CacheManager* cacheManager);
 
-    void EnableSSD();
+    void SetHDTransferForEmbTable(HDTransfer* hdTransfer);
 
-    void LockSave();
-
-    void UnLockSave();
+    void SetEmbCacheForEmbTable(const ock::ctr::EmbCacheManagerPtr& embCache);
 private:
 
     EmbeddingMgmt();

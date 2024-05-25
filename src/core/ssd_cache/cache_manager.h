@@ -23,10 +23,11 @@ See the License for the specific language governing permissions and
 #include <unordered_set>
 
 #include "hd_transfer/hd_transfer.h"
-#include "host_emb/host_emb.h"
 #include "lfu_cache.h"
 #include "ssd_engine/ssd_engine.h"
 #include "utils/common.h"
+#include "preprocess_mapper.h"
+#include "ock_ctr_common/include/factory.h"
 
 namespace MxRec {
 
@@ -36,8 +37,13 @@ namespace MxRec {
         size_t devVocabSize;
         size_t& maxOffset;
         absl::flat_hash_map<emb_key_t, int64_t>& keyOffsetMap;
-        std::vector<int64_t>& evictDevPos;     // 记录HBM内被淘汰的key
-        std::vector<int64_t>& evictHostPos; // 记录Host内淘汰列表
+    };
+
+    struct SwapOutInfo {
+        vector<emb_cache_key_t> swapOutDDRKeys;
+        vector<emb_cache_key_t> swapOutDDRAddrOffs;
+        vector<emb_cache_key_t> swapOutSSDKeys;
+        vector<emb_cache_key_t> swapOutSSDAddrOffs;
     };
 
     enum class TransferRet {
@@ -67,34 +73,48 @@ namespace MxRec {
 
         ~CacheManager();
 
-        void Init(HostEmb* hostEmbPtr, vector<EmbInfo>& mgmtEmbInfo);
+        void Init(ock::ctr::EmbCacheManagerPtr embCachePtr, vector<EmbInfo>& mgmtEmbInfo);
 
-        void Load(unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>>& ddrFreqInitMap,
-                  unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>>& excludeDdrFreqInitMap,
-                  int step, int rankSize, int rankId);
+        void Load(const std::vector<EmbInfo>& mgmtEmbInfo, int step,
+                  map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
 
         void SaveSSDEngine(int step);
 
-        // 转换DDR和SSD数据
-        TransferRet TransferDDREmbWithSSD(TableInfo& table,
-                                          const vector<emb_key_t>& originalKeys, int channelId);
+        bool IsKeyInSSD(const string& embTableName, emb_cache_key_t key);
 
-        /* HBM与DDR换入换出时刷新频次信息 */
-        void RefreshFreqInfoCommon(const string& embTableName, vector<emb_key_t>& keys,
-                                   TransferType type);
-
-        bool IsKeyInSSD(const string& embTableName, emb_key_t key);
-
-        void EvictSSDEmbedding(const string& embTableName, vector<emb_key_t>& keys);
+        void EvictSSDEmbedding(const string& embTableName, const vector<emb_cache_key_t>& keys);
 
         void PutKey(const string& embTableName, const emb_key_t& key, RecordType type);
+
+        void ProcessSwapOutKeys(const string& tableName, const vector<emb_cache_key_t>& swapOutKeys,
+                                SwapOutInfo& info);
+
+        void ProcessSwapInKeys(const string& tableName, const vector<emb_cache_key_t>& swapInKeys,
+                               vector<emb_cache_key_t>& DDRToSSDKeys, vector<emb_cache_key_t>& SSDToDDRKeys);
+
+        void UpdateSSDEmb(string tableName, float* embPtr, uint32_t extEmbeddingSize, vector<emb_cache_key_t>& keys,
+                          const vector<uint64_t>& swapOutSSDAddrOffs);
+
+        void TransferDDR2SSD(string tableName, uint32_t extEmbeddingSize, vector<emb_cache_key_t>& keys,
+                             vector<float*>& addrs);
+
+        void FetchSSDEmb2DDR(string tableName, uint32_t extEmbeddingSize, vector<emb_cache_key_t>& keys,
+                             const vector<float*>& addrs);
+
+        int64_t GetTableEmbeddingSize(const string& tableName);
 
         // DDR内每个表中emb数据频次缓存；map<embTableName, 频次缓存>
         unordered_map<std::string, LFUCache> ddrKeyFreqMap;
         // 每张表中非DDR内key的出现次数
-        unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>> excludeDDRKeyCountMap;
+        unordered_map<std::string, unordered_map<emb_cache_key_t, freq_num_t>> excludeDDRKeyCountMap;
 
-        int64_t GetTableEmbeddingSize(const string& tableName);
+        // 每一个table对应一个PreProcessMapper，预先推演HBM->DDR的情况
+        std::unordered_map<std::string, PreProcessMapper> preProcessMapper;
+
+        int preProcessStep = 0;
+        int embeddingTaskStep = 0;
+        std::mutex evictWaitMut;
+        std::condition_variable evictWaitCond;
 
     private:
         struct EmbBaseInfo {
@@ -103,53 +123,14 @@ namespace MxRec {
             bool isExist;
         };
 
-        void GetDDREmbInfo(vector<emb_key_t>& keys,
-                           TableInfo& table,
-                           vector<size_t>& ddrTransferPos, vector<vector<float>>& ddrEmbData) const;
-
-        void UpdateDDREmbInfo(const std::string& embTableName,
-                              vector<size_t>& ddrTransferPos,
-                              vector<vector<float>>& ssdEmbData) const;
-
-        void RefreshRelateInfoWithDDR2SSD(TableInfo& table,
-                                          vector<emb_key_t>& ddrSwapOutKeys, vector<freq_num_t>& ddrSwapOutCounts);
-
-        void RefreshRelateInfoWithSSD2DDR(TableInfo& table,
-                                          vector<emb_key_t>& externalSSDKeys, vector<size_t>& ddrTransferPos);
-
-        void GetSSDKeys(const std::string& embTableName, vector<emb_key_t>& externalKeys,
-                        vector<emb_key_t>& externalSSDKeys);
-
-        TransferRet TransferDDREmb2SSD(TableInfo& table,
-                                       int64_t ddrSwapOutSize, const vector<emb_key_t>& keys,
-                                       vector<size_t>& ddrTransferPos);
-
-        TransferRet TransferSSDEmb2DDR(TableInfo& table,
-                                       vector<emb_key_t>& externalSSDKeys, vector<size_t>& ddrTransferPos,
-                                       vector<vector<float>>& ssdEmbData);
-
         void CreateSSDTableIfNotExist(const std::string& embTableName);
-
-        void RestoreLeastFreqInfo(const std::string& embTableName, vector<emb_key_t>& ddrSwapOutKeys,
-                                  vector<freq_num_t>& ddrSwapOutCounts);
-
-        static void HandleDDRTransferPos(vector<size_t>& ddrTransferPos, vector<emb_key_t>& externalSSDKeys,
-                                         TableInfo& table);
-
-        inline void GetExternalKeys(const absl::flat_hash_map<emb_key_t, int64_t> &keyOffsetMap,
-                                    vector<emb_key_t>& externalKeys,
-                                    vector<emb_key_t>& internalKeys, const vector<emb_key_t>& keys) const;
-
-        void AddDebugAndTraceLog(size_t batchKeySize, vector<emb_key_t>& externalKeys,
-                                 vector<emb_key_t>& externalSSDKeys) const;
-
-        void HandleRepeatAndInvalidKey(const vector<emb_key_t>& originalKeys, vector<emb_key_t>& keys) const;
 
         unordered_map<std::string, EmbBaseInfo> embBaseInfos;
 
     GTEST_PRIVATE:
         shared_ptr<SSDEngine> ssdEngine = std::make_shared<SSDEngine>();
-        HostEmb* hostEmbs {};
+        vector<std::thread> ssdEvictThreads;
+        ock::ctr::EmbCacheManagerPtr embCache {};
     };
 }
 

@@ -143,7 +143,7 @@ protected:
         }
     }
 
-    void SetDDRKeyFreqMap(unordered_map<emb_key_t, freq_num_t>& testDDRKeyFreqMap)
+    void SetDDRKeyFreqMap(unordered_map<emb_cache_key_t, freq_num_t>& testDDRKeyFreqMap)
     {
         for (int64_t i { 0 }; i < hostVocabSize; ++i) {
             testDDRKeyFreqMap[featMem] = i;
@@ -159,7 +159,7 @@ protected:
         }
     }
 
-    void SetExcludeDDRKeyFreqMap(unordered_map<emb_key_t, freq_num_t>& testExcludeDDRKeyFreqMap)
+    void SetExcludeDDRKeyFreqMap(unordered_map<emb_cache_key_t, freq_num_t>& testExcludeDDRKeyFreqMap)
     {
         for (int64_t i { 0 }; i < hostVocabSize; ++i) {
             testExcludeDDRKeyFreqMap[featMem] = i;
@@ -169,7 +169,7 @@ protected:
 
     void SetDDRKeyFreqMaps(KeyFreqMemT& testDDRKeyFreqMaps)
     {
-        unordered_map<emb_key_t, freq_num_t> testDDRKeyFreqMap;
+        unordered_map<emb_cache_key_t, freq_num_t> testDDRKeyFreqMap;
         for (const auto& testEmbInfo : testEmbInfos) {
             SetDDRKeyFreqMap(testDDRKeyFreqMap);
             testDDRKeyFreqMaps[testEmbInfo.name] = std::move(testDDRKeyFreqMap);
@@ -187,7 +187,7 @@ protected:
 
     void SetExcludeDDRKeyFreqMaps(KeyFreqMemT& testExcludeDDRKeyFreqMaps)
     {
-        unordered_map<emb_key_t, freq_num_t> testExcludeDDRKeyFreqMap;
+        unordered_map<emb_cache_key_t, freq_num_t> testExcludeDDRKeyFreqMap;
         for (const auto& testEmbInfo : testEmbInfos) {
             SetExcludeDDRKeyFreqMap(testExcludeDDRKeyFreqMap);
             testExcludeDDRKeyFreqMaps[testEmbInfo.name] = std::move(testExcludeDDRKeyFreqMap);

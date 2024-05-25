@@ -15,7 +15,6 @@ See the License for the specific language governing permissions and
 
 #include <gtest/gtest.h>
 #include "hybrid_mgmt/hybrid_mgmt.h"
-#include "host_emb/host_emb.h"
 #include "utils/common.h"
 
 using namespace std;
@@ -62,30 +61,6 @@ protected:
     string constantInitializerName = "constant_initializer";
     int nBatch = 10;
 
-    void UpdateEmb(vector<size_t> &missingKeysHostPos, int channelId, const string &embName,
-        std::unique_ptr<HostEmb> &hostEmb, vector<Tensor> &d2h_emb)
-    {
-        LOG_INFO(HD + "update emb start");
-        if (d2h_emb.size() == 0) {
-            LOG_INFO(HD + "emb is none channelId:{}", channelId);
-            return;
-        }
-
-        auto tensorPtr = d2h_emb[0].flat<float>().data();
-        for (size_t i = 0; i < missingKeysHostPos.size(); i++) {
-            (hostEmb->GetEmb(embName).embData[missingKeysHostPos[i]]).assign(
-                tensorPtr,
-                tensorPtr + hostEmb->GetEmb(embName).hostEmbInfo.extEmbeddingSize);
-            tensorPtr = tensorPtr + hostEmb->GetEmb(embName).hostEmbInfo.extEmbeddingSize;
-        }
-        for (size_t i = 0; i < hostEmb->GetEmb(embName).embData.size(); ++i) {
-            LOG_INFO("hostEmb: embName {}, {} is: {}", embName, i,
-                VectorToString(hostEmb->GetEmb(embName).embData[i]));
-        }
-        LOG_INFO(HD + "update emb end");
-        d2h_emb.clear();
-    }
-
     bool Float2TensorVec(const vector<vector<float>>& Datas, vector<Tensor>& tensors)
     {
         tensors.clear();
@@ -116,63 +91,6 @@ protected:
         // delete
     }
 };
-#ifndef GTEST
-TEST_F(EmbMgmtTest, Initialize)
-{
-    vector<size_t> vocabsize = { devVocabSize, hostVocabSize };
-    aoto param = EmbInfoParams(name, sendCount, embeddingSize, extEmbeddingSize, isSave)
-    embInfo = EmbInfo(param, vocabsize, initializeInfos);
-    embInfos.emplace_back(embInfo);
-    vector<ThresholdValue> thresholdValues = {};
-
-    auto hybridMgmt = Singleton<HybridMgmt>::GetInstance();
-    cout << "setup..." << endl;
-
-    allRank = RankInfo(GlogConfig::gRankId, deviceId, localRankSize, useStatic, nBatch, maxStep);
-    hybridMgmt->Initialize(allRank, embInfos, seed, thresholdValues, false);
-    auto hostEmbs = make_unique<HostEmb>();
-    hostEmbs->Initialize(embInfos, seed);
-    auto hostHashMaps = make_unique<EmbHashMap>();
-    hostHashMaps->Init(allRank, embInfos, false);
-
-    int currentBatchId = 0;
-    vector<emb_key_t> lookupKeys = { 1, 3, 5, 7 };
-    vector<Tensor> d2h_emb;
-    vector<vector<float>> tmpDatas;
-    vector<Tensor> tmpData;
-    hostHashMaps->Process(embInfo.name, lookupKeys, currentBatchId, tmpData);
-    auto missingKeys = hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos;
-    LOG_INFO("missingKeys {}", missingKeys);
-    hostEmbs->EmbDataGenerator(initializeInfos, seed, missingKeys.size(), embeddingSize, tmpDatas);
-    auto status = Float2TensorVec(tmpDatas, d2h_emb);
-    ASSERT_EQ(status, true);
-    UpdateEmb(missingKeys, 0, embInfo.name, hostEmbs, d2h_emb);
-    hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos.clear();
-
-    lookupKeys = { 2, 3, 5, 6 };
-    hostHashMaps->Process(embInfo.name, lookupKeys, currentBatchId, tmpData);
-    missingKeys = hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos;
-    LOG_INFO("missingKeys {}", missingKeys);
-    hostEmbs->EmbDataGenerator(initializeInfos, seed, missingKeys.size(), embeddingSize, tmpDatas);
-    status = Float2TensorVec(tmpDatas, d2h_emb);
-    ASSERT_EQ(status, true);
-    UpdateEmb(missingKeys, 0, embInfo.name, hostEmbs, d2h_emb);
-    hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos.clear();
-
-    lookupKeys = { 1, 7, 9, 10 };
-    hostHashMaps->Process(embInfo.name, lookupKeys, currentBatchId, tmpData);
-    missingKeys = hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos;
-    LOG_INFO("missingKeys {}", missingKeys);
-    hostEmbs->EmbDataGenerator(initializeInfos, seed, missingKeys.size(), embeddingSize, tmpDatas);
-    Float2TensorVec(tmpDatas, d2h_emb);
-    status = Float2TensorVec(tmpDatas, d2h_emb);
-    ASSERT_EQ(status, true);
-    UpdateEmb(missingKeys, 0, embInfo.name, hostEmbs, d2h_emb);
-    hostHashMaps->embHashMaps[embInfo.name].missingKeysHostPos.clear();
-
-    hybridMgmt->Destroy();
-}
-#endif
 
 #ifndef GTEST
 TEST_F(EmbMgmtTest, Initialize_HBM)

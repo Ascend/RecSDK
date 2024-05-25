@@ -34,45 +34,35 @@ public:
 
     virtual int64_t capacity() const;
 
-    virtual std::vector<int32_t> FindOffset(const vector<emb_key_t>& keys,
-                                            size_t batchId, int channelId,
-                                            std::vector<size_t>& swapPos);
-
-    emb_key_t FindOffsetHelper(const emb_key_t& key, int channelId);
-
-    void UpdateBatchId(const vector<emb_key_t>& keys, size_t currentBatchId);
-
-    emb_key_t FindSwapPosOld(emb_key_t key, size_t hostOffset, size_t batchId, std::vector<size_t>& swapPos);
-
     virtual void EvictKeys(const vector<emb_key_t>& keys);
 
-//    std::vector<int32_t> lookUpVec; // 查询结果
+    void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
 
-    virtual void ClearLookupAndSwapOffset();
+    void LoadKey(const string& savePath, vector<emb_cache_key_t>& keys);
 
-    void SetStartCount();
+    void LoadEmbedding(const string& savePath, vector<vector<float>>& embeddings);
 
-    void Load(const string& savePath);
+    void LoadOptimizerSlot(const string& savePath, vector<vector<float>>& optimizerSlots);
 
     void Save(const string& savePath);
+
+    void SyncLatestEmbedding();
+
+    void SaveKey(const string& savePath, vector<emb_cache_key_t>& keys);
+
+    void SaveEmbedding(const string& savePath, vector<vector<float>>& embeddings);
+
+    void SaveOptimizerSlot(const string& savePath, vector<vector<float>>& optimizerSlots, size_t keySize);
 
     vector<int64_t> GetDeviceOffset();
 
     void SetOptimizerInfo(OptimizerInfo& optimizerInfo);
 
-    void RefreshFreqInfoWithSwap();
-
-    void AddKeyFreqInfo(const emb_key_t& key, RecordType type);
-
     void SetCacheManager(CacheManager *cm);
-
-    void AddCacheManagerTraceLog() const;
 
     TableInfo GetTableInfo();
 
-    void RefreshFreqInfoAfterLoad();
-
-GTEST_PRIVATE:
+    void SetHDTransfer(HDTransfer* hdTransfer);
 
     void LoadKey(const string& savePath);
     void LoadEmbAndOptim(const string& savePath);
@@ -81,10 +71,11 @@ GTEST_PRIVATE:
     void SaveEmbData(const string &savePath);
     void SaveOptimData(const string& savePath);
     void SaveEmbAndOptim(const string& savePath);
+    void SetEmbCache(ock::ctr::EmbCacheManagerPtr embCache);
+
+GTEST_PRIVATE:
 
     void EvictDeleteEmb(const vector<emb_key_t>& keys);
-
-    std::vector<emb_key_t> devOffset2Key;
 
     size_t maxOffsetOld { 0 };
     std::vector<size_t> evictPosChange;
@@ -92,32 +83,16 @@ GTEST_PRIVATE:
     std::vector<std::pair<int, emb_key_t>> devOffset2KeyOld;
     std::vector<std::pair<emb_key_t, emb_key_t>> oldSwap; // (old on dev, old on host)
 
-    /*
-     * HBM与DDR换入换出时,已存在于DDR且要转移到HBM的key(不包含新key); 用于SSD模式
-     * (区别于oldSwap: pair.second为已存在于DDR key + 换入换出前映射到DDR的新key)
-     */
-    std::vector<emb_key_t> ddr2HbmKeys;
-    std::vector<int> devOffset2Batch; // has -1
-
-    /**
-     * 记录HBM上查找空位的当前位置
-     * 值域为[0, devVocabSize]
-    **/
-    size_t currentUpdatePos;
-    size_t currentUpdatePosStart; // 记录HBM上查找空位的起始位置
-
-    vector<int64_t> hostKey;
-    vector<int64_t> hostOffset;
-    vector<int64_t> deviceKey;
-    vector<int64_t> deviceOffset;
-
     vector<float *> embContent;
 
     std::string optimName;
     std::vector<std::string> optimParams;
-    std::map<std::string, vector<float*>> optimContentMap;
 
     vector<int64_t> hostLoadOffset;
+
+    HDTransfer *hdTransfer = nullptr;
+    ock::ctr::EmbCacheManagerPtr embCache = nullptr;
+    int deviceId = -1;
 };
 
 }
