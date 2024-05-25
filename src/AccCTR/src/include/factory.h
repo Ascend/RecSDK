@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <memory>
 #include "unique.h"
+#include "embedding_cache.h"
 
 
 #ifdef __cplusplus
@@ -39,11 +40,13 @@ class Factory;
 
 using FactoryPtr = std::shared_ptr<Factory>;
 using UniquePtr = std::shared_ptr<Unique>;
+using EmbCacheManagerPtr = std::shared_ptr<EmbCache::EmbCacheManager>;
 
 class Factory {
 public:
     virtual ~Factory() = default;
     virtual int CreateUnique(UniquePtr &out) = 0;
+    virtual int CreateEmbCacheManager(EmbCacheManagerPtr &out) = 0;
     virtual int SetExternalLogFuncInner(ExternalLog logFunc) = 0;
 
 public:
@@ -52,7 +55,7 @@ public:
         int result = 0;
         uintptr_t factory = 0;
         /* dynamic load function */
-        if ((result = OckCtrCommonDef::CreatFactory(&factory)) == 0) {
+        if ((result = OckCtrCommonDef::CreateFactory(&factory)) == 0) {
             out.reset(reinterpret_cast<Factory *>(factory));
         }
         return result;

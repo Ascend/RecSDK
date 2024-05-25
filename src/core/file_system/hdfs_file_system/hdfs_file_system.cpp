@@ -94,7 +94,7 @@ ssize_t HdfsFileSystem::Write(const string& filePath, const char* fileContent, s
     return static_cast<ssize_t>(writeBytesNum);
 }
 
-ssize_t HdfsFileSystem::Write(const string& filePath, vector<float*> fileContent, size_t dataSize)
+ssize_t HdfsFileSystem::Write(const string& filePath, vector<vector<float>>& fileContent, size_t dataSize)
 {
     hdfsFS fs = ConnectHdfs();
 
@@ -107,7 +107,7 @@ ssize_t HdfsFileSystem::Write(const string& filePath, vector<float*> fileContent
     tSize writeBytesNum = 0;
     size_t loops = fileContent.size();
     for (size_t i = 0; i < loops; i++) {
-        tSize res = hdfs->Write(fs, file, fileContent[i], dataSize);
+        tSize res = hdfs->Write(fs, file, reinterpret_cast<const char *>(&fileContent[i]), dataSize);
         if (res == -1) {
             hdfs->CloseFile(fs, file);
             hdfs->Disconnect(fs);
@@ -138,6 +138,13 @@ void HdfsFileSystem::WriteEmbedding(const string& filePath, const int& embedding
     }
 
 #ifndef GTEST
+    auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
+    if (res != ACL_ERROR_NONE) {
+        hdfs->CloseFile(fs, file);
+        hdfs->Disconnect(fs);
+        throw runtime_error(StringFormat("Set device failed, device_id:%d", deviceId).c_str());
+    }
+
     for (size_t i = 0; i < addressArr.size(); i += embHashNum) {
         vector<float> row(embeddingSize);
         int64_t address = addressArr.at(i);
@@ -244,6 +251,11 @@ void HdfsFileSystem::ReadEmbedding(const string& filePath, EmbeddingSizeInfo& em
     if (!file) {
         hdfs->Disconnect(fs);
         throw runtime_error(StringFormat("Error: Unable to open hdfs file : {}.", filePath.c_str()));
+    }
+
+    auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
+    if (res != ACL_ERROR_NONE) {
+        throw runtime_error(StringFormat("Set device failed, device_id:%d", deviceId).c_str());
     }
 
     float* floatPtr = reinterpret_cast<float*>(firstAddress);

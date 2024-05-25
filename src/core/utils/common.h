@@ -35,6 +35,8 @@ See the License for the specific language governing permissions and
 #include "initializer/constant_initializer/constant_initializer.h"
 #include "initializer/truncated_normal_initializer/truncated_normal_initializer.h"
 #include "initializer/random_normal_initializer/random_normal_initializer.h"
+#include "ock_ctr_common/include/factory.h"
+#include "ock_ctr_common/include/embedding_cache.h"
 
 #if defined(BUILD_WITH_EASY_PROFILER)
     #include <easy/profiler.h>
@@ -53,6 +55,7 @@ namespace MxRec {
 #define MGMT_CPY_THREADS 4
 #define PROFILING
     using namespace tensorflow;
+    extern ock::ctr::FactoryPtr factory;
     constexpr int TRAIN_CHANNEL_ID = 0;
     constexpr int EVAL_CHANNEL_ID = 1;
 
@@ -65,6 +68,7 @@ namespace MxRec {
     constexpr size_t MAX_VOCABULARY_SIZE = 1e10;
     constexpr int SSD_SIZE_INDEX = 2;
     constexpr int MAX_FILE_NUM = 1000;
+    constexpr int EMBEDDING_THREAD_NUM = 2;
     // for GLOG
     struct GlogConfig {
         static bool gStatOn;
@@ -111,10 +115,13 @@ namespace MxRec {
     const string COMBINE_HISTORY_NAME = "combine_table_history";
 
     using emb_key_t = int64_t;
+    using emb_cache_key_t = uint64_t;
     using freq_num_t = int64_t;
     using EmbNameT= std::string;
     using KeysT = std::vector<emb_key_t>;
     using LookupKeyT = std::tuple<int, EmbNameT, KeysT>;             // batch_id quarry_lable keys_vector
+    using UinqueKeyT = std::tuple<int, EmbNameT, std::vector<uint64_t>>;
+    using RestoreVecSecT = std::tuple<int, EmbNameT, std::vector<int32_t>>;
     using TensorInfoT = std::tuple<int, EmbNameT, std::list<std::unique_ptr<std::vector<Tensor>>>::iterator>;
 
     namespace HybridOption {
@@ -228,12 +235,17 @@ namespace MxRec {
         int localRankSize {};
         bool useStatic { false };
         uint32_t option {};
-        int nBatch {};
         bool isDDR { false };
         bool isSSDEnabled { false };
         bool useDynamicExpansion {false};
         bool useSumSameIdGradients {true};
-        std::vector<int> ctrlSteps; // 包含三个步数: train_steps, eval_steps, save_steps
+        std::vector<int> ctrlSteps; // 包含4个步数: train_steps, eval_steps, save_steps, max_train_steps
+    };
+
+    struct EmbBaseInfo {
+        int batchId;
+        int channelId;
+        string name;
     };
 
     enum TensorIndex : uint32_t {
@@ -445,7 +457,7 @@ namespace MxRec {
 
         EmbInfo(const EmbInfoParams& embInfoParams,
                 std::vector<size_t> vocabsize,
-                std::vector<InitializeInfo> initializeInfos,
+                std::vector<EmbCache::InitializerInfo> initializeInfos,
                 std::vector<std::string> ssdDataPath)
             : name(embInfoParams.name),
               sendCount(embInfoParams.sendCount),
@@ -456,7 +468,7 @@ namespace MxRec {
               devVocabSize(vocabsize[0]),
               hostVocabSize(vocabsize[1]),
               ssdVocabSize(vocabsize[SSD_SIZE_INDEX]),
-              initializeInfos(initializeInfos),
+              initializeInfos(std::move(initializeInfos)),
               ssdDataPath(std::move(ssdDataPath))
         {
         }
@@ -470,52 +482,13 @@ namespace MxRec {
         size_t devVocabSize;
         size_t hostVocabSize;
         size_t ssdVocabSize;
-        std::vector<InitializeInfo> initializeInfos;
+        std::vector<EmbCache::InitializerInfo> initializeInfos;
         std::vector<std::string> ssdDataPath;
     };
 
     struct HostEmbTable {
         EmbInfo hostEmbInfo;
         std::vector<std::vector<float>> embData;
-    };
-
-    struct EmbHashMapInfo {
-        absl::flat_hash_map<emb_key_t, int64_t> hostHashMap; // key在HBM中的偏移
-        std::vector<int> devOffset2Batch; // has -1
-        std::vector<emb_key_t> devOffset2Key;
-        size_t currentUpdatePos;
-        size_t currentUpdatePosStart;
-        size_t hostVocabSize;
-        size_t devVocabSize;
-        size_t freeSize;
-        std::vector<int32_t> lookUpVec;
-        std::vector<size_t> missingKeysHostPos; // 用于记录当前batch在host上需要换出的偏移
-        std::vector<size_t> swapPos; // 记录从HBM换出到DDR的offset
-        /*
-         * 取值范围：[0,devVocabSize+hostVocabSize);
-         * [0,devVocabSize-1]时存储在HBM, [devVocabSize,devVocabSize+hostVocabSize)存储在DDR
-         */
-        size_t maxOffset { 0 };
-        /*
-         * 记录DDR内淘汰列表，其值为相对HBM+DDR大表的；hostHashMap可直接使用；操作ddr内emb时需减掉devVocabSize
-         * 例如：HBM表大小20(offset:0~19)，DDR表大小为100（offset:0~99）；
-         * 若DDR内0位置被淘汰，记录到evictPos的值为0+20=20
-         */
-        std::vector<size_t> evictPos;
-        std::vector<size_t> evictDevPos; // 记录HBM内淘汰列表
-        size_t maxOffsetOld { 0 };
-        std::vector<size_t> evictPosChange;
-        std::vector<size_t> evictDevPosChange;
-        std::vector<std::pair<int, emb_key_t>> devOffset2KeyOld;
-        std::vector<std::pair<emb_key_t, emb_key_t>> oldSwap; // (old on dev, old on host)
-        /*
-         * HBM与DDR换入换出时,已存在于DDR且要转移到HBM的key(不包含新key); 用于SSD模式
-         * (区别于oldSwap: pair.second为已存在于DDR key + 换入换出前映射到DDR的新key)
-         */
-        std::vector<emb_key_t> ddr2HbmKeys;
-        void SetStartCount();
-
-        bool HasFree(size_t i) const;
     };
 
     struct All2AllInfo {
@@ -542,7 +515,6 @@ namespace MxRec {
     };
 
     using EmbMemT = absl::flat_hash_map<std::string, HostEmbTable>;
-    using EmbHashMemT = absl::flat_hash_map<std::string, EmbHashMapInfo>;
     using OffsetMemT = std::map<EmbNameT, size_t>;
     using KeyOffsetMemT = std::map<EmbNameT, absl::flat_hash_map<emb_key_t, int64_t>>;
     using KeyCountMemT = std::map<EmbNameT, absl::flat_hash_map<emb_key_t, size_t>>;
@@ -551,7 +523,8 @@ namespace MxRec {
     using OffsetMapT = std::map<EmbNameT, std::vector<int64_t>>;
     using OffsetT = std::vector<int64_t>;
     using AllKeyOffsetMapT = std::map<std::string, std::map<int64_t, int64_t>>;
-    using KeyFreqMemT = unordered_map<std::string, unordered_map<emb_key_t, freq_num_t>>;
+    using KeyFreqMemT = unordered_map<std::string, unordered_map<emb_cache_key_t, freq_num_t>>;
+    using EmbLocalTableT = EmbCache::EmbCacheManager;
 
     enum class CkptFeatureType {
         HOST_EMB = 0,
@@ -561,12 +534,12 @@ namespace MxRec {
         FEAT_ADMIT_N_EVICT = 4,
         DDR_KEY_FREQ_MAP = 5,
         EXCLUDE_DDR_KEY_FREQ_MAP = 6,
-        KEY_COUNT_MAP = 7
+        KEY_COUNT_MAP = 7,
+        EMB_LOCAL_TABLE = 8
     };
 
     struct CkptData {
         EmbMemT* hostEmbs = nullptr;
-        EmbHashMemT embHashMaps;
         OffsetMemT maxOffset;
         KeyOffsetMemT keyOffsetMap;
         OffsetMapT offsetMap;
@@ -581,7 +554,6 @@ namespace MxRec {
     struct CkptTransData {
         std::vector<int64_t> int64Arr;
         std::vector<int64_t> addressArr;
-        std::vector<float*> floatArr;
         std::vector<int32_t> int32Arr;
         std::vector<trans_serialize_t> transDataset; // may all use this to transfer data
         std::vector<size_t> attribute; // may need to use other form for attributes
@@ -605,6 +577,33 @@ namespace MxRec {
         EVICT_POS = 12,
         KEY_COUNT_MAP = 13
     };
+
+    enum CTRLogLevel {  // can't use enum class due to compatibility for AccCTR
+        DEBUG = 0,
+        INFO,
+        WARN,
+        ERROR,
+    };
+
+    static void CTRLog(int level, const char *msg)
+    {
+        switch (level) {
+            case CTRLogLevel::DEBUG:
+                LOG_DEBUG(msg);
+                break;
+            case CTRLogLevel::INFO:
+                LOG_INFO(msg);
+                break;
+            case CTRLogLevel::WARN:
+                LOG_WARN(msg);
+                break;
+            case CTRLogLevel::ERROR:
+                LOG_ERROR(msg);
+                break;
+            default:
+                break;
+        }
+    }
 
     ostream& operator<<(ostream& ss, MxRec::CkptDataType type);
     bool CheckFilePermission(const string& filePath);

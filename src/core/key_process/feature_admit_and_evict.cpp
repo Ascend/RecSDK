@@ -144,7 +144,7 @@ FeatureAdmitType FeatureAdmitAndEvict::FeatureAdmitHelper(const int channel, con
 }
 
 // 特征淘汰接口
-void FeatureAdmitAndEvict::FeatureEvict(map<std::string, std::vector<emb_key_t>>& evictKeyMap)
+void FeatureAdmitAndEvict::FeatureEvict(map<std::string, std::vector<emb_cache_key_t>>& evictKeyMap)
 {
     std::vector<std::string> tableNames = GetAllNeedEvictTableNames();
     if (tableNames.empty()) {
@@ -163,7 +163,7 @@ void FeatureAdmitAndEvict::FeatureEvict(map<std::string, std::vector<emb_key_t>>
     }
 }
 
-void FeatureAdmitAndEvict::FeatureEvictHelper(const std::string& embName, std::vector<emb_key_t>& evictKey)
+void FeatureAdmitAndEvict::FeatureEvictHelper(const std::string& embName, std::vector<emb_cache_key_t>& evictKey)
 {
     // 从 m_historyRecords 中淘汰删除
     time_t currTime = m_recordsData.timestamps[embName];

@@ -15,8 +15,7 @@ limitations under the License.
 #include <sstream>
 #include <fstream>
 #include "unique_test.h"
-
-FactoryPtr factory;
+#include "common.h"
 
 void UniqueTest::SetUpTestCase()
 {
@@ -144,7 +143,10 @@ TEST_F(UniqueTest, DoUniqueNormal)
     std::string input_path(path);
     std::cout << "input_path:" + input_path + "/data30.txt" << std::endl;
     std::ifstream input(input_path + "/data30.txt");
-
+    if(!input.good()) {
+        std::cout << "Failed to open file:" + input_path + "/data30.txt" << std::endl;
+        return;
+    }
     std::vector<int64_t> numbers;
     std::string line;
     while (std::getline(input, line, ',')) {
@@ -155,6 +157,8 @@ TEST_F(UniqueTest, DoUniqueNormal)
     std::cout << "read data close, numbers size:" << numbers.size() << std::endl;
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.trace = true;
@@ -213,6 +217,8 @@ TEST_F(UniqueTest, UseErrOutputTypeEnhanced)
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
 
+    factory->SetExternalLogFuncInner(CTRLog);
+
     UniqueConf conf;
     conf.desiredSize = 6;
     conf.dataType = DataType::INT64;
@@ -253,6 +259,8 @@ TEST_F(UniqueTest, UseErrOutputTypeNormal)
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
 
+    factory->SetExternalLogFuncInner(CTRLog);
+
     UniqueConf conf;
     conf.desiredSize = 6;
     conf.dataType = DataType::INT64;
@@ -291,6 +299,8 @@ TEST_F(UniqueTest, DoEnhancedUnique)
     std::cout << "===========DoEnhancedUnique start=============" << std::endl;
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.desiredSize = 6;
@@ -339,6 +349,8 @@ TEST_F(UniqueTest, DoEnhancedUniqueErr)
     std::cout << "===========DoEnhancedUniqueErr start=============" << std::endl;
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.desiredSize = 6;
@@ -402,6 +414,8 @@ TEST_F(UniqueTest, DoEnhancedUnique_UniqueIdSize)
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
 
+    factory->SetExternalLogFuncInner(CTRLog);
+
     UniqueConf conf;
     conf.desiredSize = 6;
     conf.dataType = DataType::INT64;
@@ -449,6 +463,8 @@ TEST_F(UniqueTest, idCntIsNull)
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
 
+    factory->SetExternalLogFuncInner(CTRLog);
+
     UniqueConf conf;
     conf.desiredSize = 6;
     conf.dataType = DataType::INT64;
@@ -487,6 +503,8 @@ TEST_F(UniqueTest, idCntIsNullSharding)
     std::cout << "===========idCntIsNullSharding start=============" << std::endl;
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.desiredSize = 6;
@@ -536,6 +554,8 @@ TEST_F(UniqueTest, DoUniqueShard)
 
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.useSharding = true;
@@ -612,6 +632,8 @@ TEST_F(UniqueTest, DoUniqueOnlyShard)
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
 
+    factory->SetExternalLogFuncInner(CTRLog);
+
     UniqueConf conf;
     conf.useSharding = true;
     conf.desiredSize = 6;
@@ -674,6 +696,8 @@ TEST_F(UniqueTest, DoUniquePadding)
 
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.usePadding = true;
@@ -755,6 +779,8 @@ TEST_F(UniqueTest, DoUniqueNoThreadPool)
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
 
+    factory->SetExternalLogFuncInner(CTRLog);
+
     UniqueConf conf;
     conf.desiredSize = 20; // 配置空间大于实际输入数组长度，验证正常运行
     conf.dataType = DataType::INT64;
@@ -816,6 +842,8 @@ TEST_F(UniqueTest, DoUniqueShardNumberOversize)
 
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.useSharding = true;
@@ -895,6 +923,7 @@ TEST_F(UniqueTest, DoUniqueSpecial)
 
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+    factory->SetExternalLogFuncInner(CTRLog);
 
     int count = 1000000;
     UniqueConf conf;
@@ -963,6 +992,8 @@ TEST_F(UniqueTest, IdLarge)
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
 
+    factory->SetExternalLogFuncInner(CTRLog);
+
     UniqueConf conf;
     conf.desiredSize = 6;
     conf.dataType = DataType::INT64;
@@ -998,6 +1029,8 @@ TEST_F(UniqueTest, DoUniqueNormalInt32)
     std::cout << "===========DoUniqueNormalInt32 start=============" << std::endl;
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.useSharding = true;
@@ -1121,6 +1154,8 @@ TEST_F(UniqueTest, DoUniqueShardMultipleTimes)
 
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.useSharding = true;
@@ -1286,6 +1321,8 @@ TEST_F(UniqueTest, IdCntSmall)
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
 
+    factory->SetExternalLogFuncInner(CTRLog);
+
     UniqueConf conf;
     conf.desiredSize = 6;
     conf.dataType = DataType::INT64;
@@ -1321,7 +1358,10 @@ TEST_F(UniqueTest, DoUniqueLotsDataFunction)
     std::string input_path(path);
     std::cout << "input_path:" + input_path + "/data40.txt" << std::endl;
     std::ifstream input(input_path + "/data40.txt");
-
+    if(!input.good()) {
+        std::cout << "Failed to open file:" + input_path + "/data40.txt" << std::endl;
+        return;
+    }
     std::vector<int64_t> numbers;
     std::string line;
     while (std::getline(input, line, ',')) {
@@ -1423,7 +1463,10 @@ TEST_F(UniqueTest, DoUniqueLotsDataPaddingFunction)
     std::string input_path(path);
     std::cout << "input_path:" + input_path + "/data30.txt" << std::endl;
     std::ifstream input(input_path + "/data30.txt");
-
+    if(!input.good()) {
+        std::cout << "Failed to open file:" + input_path + "/data30.txt" << std::endl;
+        return;
+    }
     std::vector<int64_t> numbers;
     std::string line;
     while (std::getline(input, line, ',')) {

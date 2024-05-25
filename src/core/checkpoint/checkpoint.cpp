@@ -196,9 +196,7 @@ void Checkpoint::WriteStream(CkptTransData& transData, const string& dataDir, si
     }
 
     ssize_t writeBytesNum;
-    if (floatTransSet.find(dataType) != floatTransSet.end()) {
-        writeBytesNum = fileSystemPtr->Write(dataDir, transData.floatArr, dataSize);
-    } else if (int32TransSet.find(dataType) != int32TransSet.end()) {
+    if (int32TransSet.find(dataType) != int32TransSet.end()) {
         writeBytesNum = fileSystemPtr->Write(dataDir,
                                              reinterpret_cast<const char*>(transData.int32Arr.data()), dataSize);
     } else if (int64TransSet.find(dataType) != int64TransSet.end()) {
@@ -207,6 +205,8 @@ void Checkpoint::WriteStream(CkptTransData& transData, const string& dataDir, si
     } else if (dataType == CkptDataType::ATTRIBUTE) {
         writeBytesNum = fileSystemPtr->Write(dataDir,
                                              reinterpret_cast<const char*>(transData.attribute.data()), dataSize);
+    } else {
+        throw runtime_error("unknown CkptDataType");
     }
 
     if (writeBytesNum == -1) {
@@ -276,7 +276,6 @@ void Checkpoint::LoadDataset(const vector<string>& embNames,
             auto attributeDir { datasetPath + dirSeparator + "slice" + attribFileType };
 
             CkptTransData transData;
-
             LOG_DEBUG("====Start reading data from: {}", attributeDir);
             auto dataElmtBytes { dataHandler->GetDataElmtBytes(CkptDataType::ATTRIBUTE) };
             ReadStream(transData, attributeDir, CkptDataType::ATTRIBUTE, dataElmtBytes);
@@ -328,10 +327,10 @@ void Checkpoint::ReadStream(CkptTransData& transData,
         readBytesNum = fileSystemPtr->Read(dataDir, reinterpret_cast<char*>(transData.int32Arr.data()), datasetSize);
     } else if (int64TransSet.find(dataType) != int64TransSet.end()) {
         readBytesNum = fileSystemPtr->Read(dataDir, reinterpret_cast<char*>(transData.int64Arr.data()), datasetSize);
-    } else if (floatTransSet.find(dataType) != floatTransSet.end()) {
-        readBytesNum = fileSystemPtr->Read(dataDir, reinterpret_cast<char*>(transData.floatArr.data()), datasetSize);
     } else if (dataType == CkptDataType::ATTRIBUTE) {
         readBytesNum = fileSystemPtr->Read(dataDir, reinterpret_cast<char *>(transData.attribute.data()), datasetSize);
+    } else {
+        throw runtime_error("unknown CkptDataType");
     }
 
     if (readBytesNum == -1) {
@@ -383,9 +382,9 @@ void Checkpoint::SetTransDataSize(CkptTransData& transData, size_t datasetSize, 
         transData.int32Arr.resize(datasetSize);
     } else if (int64TransSet.find(dataType) != int64TransSet.end()) {
         transData.int64Arr.resize(datasetSize);
-    } else if (floatTransSet.find(dataType) != floatTransSet.end()) {
-        transData.floatArr.resize(datasetSize);
     } else if (dataType == CkptDataType::ATTRIBUTE) {
         transData.attribute.resize(datasetSize);
+    } else {
+        throw runtime_error("unknown CkptDataType");
     }
 }

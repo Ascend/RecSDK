@@ -78,6 +78,7 @@ EmbTable::~EmbTable()
 // 从embeddingList获取一个可用的emb地址
 int64_t EmbTable::GetEmbAddress()
 {
+    int64_t ret = -1;
 #ifndef GTEST
     if (embeddingList.empty()) {
         PrintStatus();
@@ -97,8 +98,9 @@ int64_t EmbTable::GetEmbAddress()
     float *embAddr = embeddingList.front();
     embeddingList.pop_front();
     usedCapacity++;
-    return reinterpret_cast<int64_t>(embAddr);
+    ret = reinterpret_cast<int64_t>(embAddr);
 #endif
+    return ret;
 }
 
 void EmbTable::RandomInit(void* newBlock)

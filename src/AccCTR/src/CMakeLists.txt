@@ -23,12 +23,17 @@ set(OUTPUT                          ${PROJECT_SOURCE_DIR}/output)
 set(OCK_CTR_PLATFORM_UTIL_DIR       ${PROJECT_SOURCE_DIR}/../../../opensource)
 set(OCK_CTR_UTIL_INSTALL_DIR        ${PROJECT_SOURCE_DIR}/install)
 
-
 if (${BUILD_MODE} MATCHES "ut")
     add_compile_options(-ftest-coverage -fprofile-arcs)
     link_libraries(gcov)
+else()
+    add_compile_options(-D_GLIBCXX_USE_CXX11_ABI=0)  # must set this option otherwise pybind will not find embCache symbol
 endif (${BUILD_MODE} MATCHES "ut")
 
+if (${BUILD_MODE} MATCHES "fuzz")
+    add_compile_options(-ftest-coverage -fprofile-arcs -fdump-rtl-expand)
+    link_libraries(gcov asan)
+endif (${BUILD_MODE} MATCHES "fuzz")
 
 message("include : " ${OCK_CTR_SRC_INCLUDE_DIR})
 
@@ -37,6 +42,7 @@ set(LIB_HW_SECURE ${OCK_CTR_PLATFORM_UTIL_DIR}/securec/lib/libsecurec.so)
 add_subdirectory(include)
 add_subdirectory(common)
 add_subdirectory(unique)
+add_subdirectory(embedding_cache)
 
 
 file(GLOB_RECURSE CTR_SRC factory_impl.cpp)
@@ -52,6 +58,7 @@ target_include_directories(_ock_ctr_common
 target_link_libraries(_ock_ctr_common PUBLIC
         -Wl,--start-group
         unique
+        embedding_cache
         dl
         utils
         ${LIB_HW_SECURE}

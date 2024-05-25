@@ -194,6 +194,7 @@ def initialize_emb_cache(table_info_list, threshold_list):
     train_steps = ConfigInitializer.get_instance().train_steps
     eval_steps = ConfigInitializer.get_instance().eval_steps
     save_steps = ConfigInitializer.get_instance().save_steps
+    max_train_steps = ConfigInitializer.get_instance().max_steps
 
     if_load = ConfigInitializer.get_instance().if_load
     option = 0
@@ -206,8 +207,8 @@ def initialize_emb_cache(table_info_list, threshold_list):
     if optimizer and optimizer.derivative == 2:
         option = option | USE_SUM_SAME_ID_GRADIENTS
 
-    # [train_steps, eval_steps, save_steps] pass step information to HybridMgmt for data process loop
-    rank_info = RankInfo(rank_id, device_id, rank_size, option, [train_steps, eval_steps, save_steps])
+    # pass step information to HybridMgmt for data process loop
+    rank_info = RankInfo(rank_id, device_id, rank_size, option, [train_steps, eval_steps, save_steps, max_train_steps])
 
     emb_cache = HybridMgmt()
 

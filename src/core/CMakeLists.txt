@@ -27,6 +27,11 @@ if(NOT SECUREC_PATH)
 endif()
 message("SECUREC_PATH: " ${SECUREC_PATH})
 
+if(NOT ACCCTR_PATH)
+    set(ACCCTR_PATH ${PROJECT_SOURCE_DIR}/AccCTR)
+endif()
+message("ACCCTR_PATH: " ${ACCCTR_PATH})
+
 include_directories(${ABSEIL_PATH}/include)
 link_directories(${ABSEIL_PATH}/lib)
 
@@ -38,7 +43,7 @@ endif()
 
 link_libraries(stdc++fs)
 
-file(GLOB_RECURSE MXREC_SRC ./*.cpp)
+file(GLOB_RECURSE MXREC_SRC ./*.cpp ./*.h)
 add_library(ASC SHARED ${MXREC_SRC})
 
 target_include_directories(ASC
@@ -55,10 +60,11 @@ target_link_directories(ASC
         ${HDF5_PATH}/lib
         ${SECUREC_PATH}/lib
         ${ASCEND_DRIVER_PATH}/lib64/driver
+        ${ACCCTR_PATH}/output/ock_ctr_common/lib
 )
 
 target_link_libraries(ASC PUBLIC ascendcl msprofiler ge_executor gert runtime ge_common register graph ascend_protobuf
-    profapi opt_feature error_manager exe_graph acl_tdt_channel acl_tdt_queue securec drvdsmi_host)
+    profapi opt_feature error_manager exe_graph acl_tdt_channel acl_tdt_queue securec drvdsmi_host _ock_ctr_common)
 target_link_libraries(ASC PUBLIC
         -l:_tf_adapter.so
         OpenMP::OpenMP_CXX ${MPI_CXX_LIBRARIES}

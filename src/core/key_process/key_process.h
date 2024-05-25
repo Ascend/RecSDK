@@ -83,9 +83,11 @@ namespace MxRec {
         bool Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
                        const vector<ThresholdValue>& thresholdValues = {}, int seed = 0);
 
-        unique_ptr<vector<Tensor>> GetInfoVec(int batch, const string& embName, int channel, ProcessedInfo type);
+        unique_ptr<vector<Tensor>> GetInfoVec(const EmbBaseInfo& info, ProcessedInfo type, bool &isEos);
 
-        KeysT GetLookupKeys(int batch, const string& embName, int channel);
+        vector<uint64_t> GetUniqueKeys(const EmbBaseInfo &info, bool &isEos, map<string, int> &lookUpSwapInAddrsPushId);
+
+        vector<int32_t> GetRestoreVecSec(const EmbBaseInfo& info);
 
         int GetMaxStep(int channelId) const;
 
@@ -109,9 +111,9 @@ namespace MxRec {
 
         void LoadSaveUnlock();
 
-        void EvictKeys(const string& embName, const vector<emb_key_t>& keys);
+        void EvictKeys(const string& embName, const vector<emb_cache_key_t>& keys);
 
-        void EvictKeysCombine(const vector<emb_key_t>& keys);
+        void EvictKeysCombine(const vector<emb_cache_key_t>& keys);
 
         void SetupHotEmbUpdateStep();
 
@@ -157,7 +159,7 @@ namespace MxRec {
 
         void SetEos(int status, int channelId);
 
-        void SendEos(int batchId, int channel);
+        void SendEos(const string& embName, int batchId, int channel, bool sendAllChannel);
 
         bool isRunning { false };
 
@@ -167,12 +169,13 @@ namespace MxRec {
         {
             return embInfos.find(embName) != embInfos.end();
         };
+
     GTEST_PRIVATE:
 
         int Start();
 
         template<class T>
-        T GetInfo(info_list_t<T>& list, int batch, const string& embName, int channel);
+        T GetInfo(info_list_t<T>& list, const EmbBaseInfo &info);
 
         RankInfo rankInfo;
         map<EmbNameT, EmbInfo> embInfos;
@@ -181,6 +184,8 @@ namespace MxRec {
         vector<std::unique_ptr<std::thread>> procThreads {};
         std::mutex loadSaveMut[MAX_CHANNEL_NUM][MAX_KEY_PROCESS_THREAD] {};
         info_list_t<LookupKeyT> lookupKeysList;
+        info_list_t<UinqueKeyT> uniqueKeysList;
+        info_list_t<RestoreVecSecT> restoreVecSecList;
         list<unique_ptr<vector<Tensor>>> storage;
         info_list_t<TensorInfoT> infoList;
         info_list_t<TensorInfoT> all2AllList;
@@ -195,7 +200,13 @@ namespace MxRec {
         ock::ctr::FactoryPtr factory {};
         int hotEmbUpdateStep = HOT_EMB_UPDATE_STEP_DEFAULT;
         bool isWithFAAE;
-        bool isNeedSendEos[2] = { 0, 0 }; // 分别代表通道0、1的eos状态
+
+        // for end-of-sequence case
+        bool isNeedSendEos[2] = {false, false}; // 表示各表通道0、1的eos状态
+        atomic<int> readySendEosCnt[2];
+        atomic<int> finishSendEosCnt[2];
+        const double timeoutGetUniqueKeys = 10.0;  // 如果超时仍未获取到数据将触发EOS
+        const double timeoutGetUniqueKeysEmpty = 1.0;  // 如果超时仍未获取到数据将打印信息
 
         void InitHotEmbTotCount(const EmbInfo& info, const RankInfo& rInfo);
 
@@ -262,7 +273,10 @@ namespace MxRec {
         void HandleHotAndSendCount(const unique_ptr<EmbBatchT> &batch, UniqueInfo& uniqueInfoOut,
                                        KeySendInfo& keySendInfo, vector<int>& sc, vector<int>& splitSize);
 
-        void PushResult(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors, KeysT& lookupKeys);
+        void PushResultHBM(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors);
+
+        void PushResultDDR(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors,
+                           std::vector<uint64_t>& uniqueKeys, std::vector<int32_t>& restoreVecSec);
 
         void PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys, int channel);
 
@@ -290,6 +304,15 @@ namespace MxRec {
         }
 
         string DumpSplitKeys(vector<vector<emb_key_t>>& splitKeys) const;
+
+        bool IsGetInfoVecEos(int batch, const string& embName, int channel);
+
+        bool IsGetUniqueKeysEos(const EmbBaseInfo& info, std::chrono::_V2::system_clock::time_point& startTime,
+                                map<string, int>& lookUpSwapInAddrsPushId);
+
+        void SendEosTensor(const std::string& embName, int channel, bool sendAllChannel);
+
+        std::thread StartEosMonitorThread(const EmbBaseInfo& info, bool& cancelMonitor);
     };
 
 #define KEY_PROCESS_INSTANCE Singleton<KeyProcess>::GetInstance()

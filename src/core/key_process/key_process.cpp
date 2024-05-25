@@ -24,7 +24,6 @@ See the License for the specific language governing permissions and
 #include "utils/singleton.h"
 #include "utils/time_cost.h"
 #include "utils/config.h"
-#include "host_emb/host_emb.h"
 #include "emb_table/embedding_mgmt.h"
 #include "hd_transfer/hd_transfer.h"
 #include "ock_ctr_common/include/error_code.h"
@@ -44,10 +43,15 @@ bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos
                             const vector<ThresholdValue>& thresholdValues,
                             int seed)
 {
+    readySendEosCnt[TRAIN_CHANNEL_ID].store(0);
+    readySendEosCnt[EVAL_CHANNEL_ID].store(0);
+    finishSendEosCnt[TRAIN_CHANNEL_ID].store(0);
+    finishSendEosCnt[EVAL_CHANNEL_ID].store(0);
+
     this->rankInfo = rInfo;
-    
+
     SetupHotEmbUpdateStep();
-    
+
     map<EmbNameT, int> scInfo;
     for (const auto& info: eInfos) {
         embInfos[info.name] = info;
@@ -77,13 +81,6 @@ bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos
     } else {
         m_featureAdmitAndEvict.SetFunctionSwitch(false);
         LOG_WARN(KEY_PROCESS "Feature admit-and-evict function is unavailable ...");
-    }
-
-    if (GlobalEnv::fastUnique) {
-        int result = ock::ctr::Factory::Create(factory);
-        if (result != 0) {
-            throw runtime_error(Logger::Format("create fast factory failed, error code:{}", result));
-        }
     }
 
     LOG_INFO(KEY_PROCESS "scInfo:{}, localRankSize:{}, rankSize:{}, useStatic:{}",
@@ -374,25 +371,32 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch
     // Static all2all，need send count
     if (!rankInfo.useStatic) { SendA2A(uniqueInfo.all2AllInfo.scAll, batch->name, batch->channel, batch->batchId); }
 
+    TimeCost pushResultTC;
     auto tensors = make_unique<vector<Tensor>>();
     tensors->push_back(Vec2TensorI32(uniqueInfo.restore));
 
     uniqueInfo.hotPos.resize(hotEmbTotCount[batch->name], -1);
     tensors->push_back(Vec2TensorI32(uniqueInfo.hotPos));
-    
+
     if (!rankInfo.isDDR) {
         PushGlobalUniqueTensors(move(tensors), uniqueInfo.all2AllInfo.keyRecv, channel);
         tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(uniqueInfo.all2AllInfo.keyRecv) :
-                                                            Vec2TensorI32(uniqueInfo.all2AllInfo.keyRecv));
+                           Vec2TensorI32(uniqueInfo.all2AllInfo.keyRecv));
+        PushResultHBM(batch, move(tensors));
+    } else {
+        std::vector<uint64_t> lookupKeysUint(uniqueInfo.all2AllInfo.keyRecv.begin(),
+                                             uniqueInfo.all2AllInfo.keyRecv.end());
+        vector<uint64_t> uniqueKeys;
+        vector<int32_t> restoreVecSec;
+        GlobalUnique(lookupKeysUint, uniqueKeys, restoreVecSec);
+        PushResultDDR(batch, move(tensors), uniqueKeys, restoreVecSec);
     }
 
-    TimeCost pushResultTC;
-    PushResult(batch, move(tensors), uniqueInfo.all2AllInfo.keyRecv);
+    LOG_DEBUG("pushResultTC(ms):{}", pushResultTC.ElapsedMS());
     if (GlogConfig::gStatOn) {
         LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} key_process_time_cost_with_fast_unique {}",
             channel, batch->batchId, rankInfo.rankId, totalTimeCost.ElapsedMS());
     }
-    LOG_DEBUG("pushResultTC(ms):{}", pushResultTC.ElapsedMS());
     return true;
 }
 
@@ -440,13 +444,19 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
 
     hotPos.resize(hotEmbTotCount[batch->name], 0);
     tensors->push_back(Vec2TensorI32(hotPos));
-    
+
     if (!rankInfo.isDDR) {
         PushGlobalUniqueTensors(tensors, lookupKeys, channel);
         tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(lookupKeys) : Vec2TensorI32(lookupKeys));
+        PushResultHBM(batch, move(tensors));
+    } else {
+        std::vector<uint64_t> lookupKeysUint(lookupKeys.begin(), lookupKeys.end());
+        vector<uint64_t> uniqueKeys;
+        vector<int32_t> restoreVecSec;
+        GlobalUnique(lookupKeysUint, uniqueKeys, restoreVecSec);
+        PushResultDDR(batch, move(tensors), uniqueKeys, restoreVecSec);
     }
 
-    PushResult(batch, move(tensors), lookupKeys);
     LOG_DEBUG("pushResultTC(ms):{}", pushResultTC.ElapsedMS());
     if (GlogConfig::gStatOn) {
         LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} key_process_time_cost {}",
@@ -504,15 +514,22 @@ vector<uint32_t> KeyProcess::GetCountRecv(const unique_ptr<EmbBatchT>& batch, in
     return countRecv;
 }
 
-void KeyProcess::PushResult(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors,
-                            KeysT& lookupKeys)
+void KeyProcess::PushResultHBM(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors)
 {
     std::unique_lock<std::mutex> lockGuard(mut);
     storage.push_front(move(tensors));
     infoList[batch->name][batch->channel].push(make_tuple(batch->batchId, batch->name, storage.begin()));
-    if (rankInfo.isDDR) {
-        lookupKeysList[batch->name][batch->channel].push(make_tuple(batch->batchId, batch->name, move(lookupKeys)));
-    }
+    lockGuard.unlock();
+}
+
+void KeyProcess::PushResultDDR(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors,
+                               std::vector<uint64_t>& uniqueKeys, std::vector<int32_t>& restoreVecSec)
+{
+    std::unique_lock<std::mutex> lockGuard(mut);
+    storage.push_front(move(tensors));
+    infoList[batch->name][batch->channel].push(make_tuple(batch->batchId, batch->name, storage.begin()));
+    uniqueKeysList[batch->name][batch->channel].push(make_tuple(batch->batchId, batch->name, move(uniqueKeys)));
+    restoreVecSecList[batch->name][batch->channel].push(make_tuple(batch->batchId, batch->name, move(restoreVecSec)));
     lockGuard.unlock();
 }
 
@@ -1158,33 +1175,113 @@ void KeyProcess::BuildRestoreVec(const unique_ptr<EmbBatchT>& batch, const vecto
 }
 
 template<class T>
-T KeyProcess::GetInfo(info_list_t<T>& list, int batch, const string& embName, int channel)
+T KeyProcess::GetInfo(info_list_t<T>& list, const EmbBaseInfo &info)
 {
     std::lock_guard<std::mutex> lockGuard(mut);
-    if (list[embName][channel].empty()) {
+    if (list[info.name][info.channelId].empty()) {
         LOG_TRACE("get info list is empty.");
         throw EmptyList();
     }
-    auto topBatch = get<int>(list[embName][channel].top());
-    if (topBatch < batch) {
-        LOG_ERROR("wrong batch id, top:{} getting:{}, channel:{}, may not clear channel", topBatch, batch, channel);
+    auto topBatch = get<int>(list[info.name][info.channelId].top());
+    if (topBatch < info.batchId) {
+        LOG_ERROR("wrong batch id, top:{} getting:{}, channel:{}, may not clear channel",
+                  topBatch, info.batchId, info.channelId);
         this_thread::sleep_for(1s);
     }
-    if (topBatch != batch) {
-        LOG_TRACE("topBatch({}) is not equal batch({}).", topBatch, batch);
+    if (topBatch != info.batchId) {
+        LOG_TRACE("topBatch({}) is not equal batch({}).", topBatch, info.batchId);
         throw WrongListTop();
     }
-    auto t = list[embName][channel].top();
-    list[embName][channel].pop();
+    auto t = list[info.name][info.channelId].top();
+    list[info.name][info.channelId].pop();
     return move(t);
 }
 
-/// DDR模式下，从list中获取查询tensor向量
-/// \param batch 已处理的batch数
-/// \param embName 表名
-/// \param channel 通道索引（训练/推理）
-/// \return
-KeysT KeyProcess::GetLookupKeys(int batch, const string& embName, int channel)
+vector<uint64_t> KeyProcess::GetUniqueKeys(const EmbBaseInfo& info, bool& isEos,
+                                           map<string, int> &lookUpSwapInAddrsPushId)
+{
+    TimeCost tc = TimeCost();
+
+    HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
+    bool cancelMonitor = false;
+    thread timeoutMonitor;
+    if (info.batchId != 0) {
+        timeoutMonitor = StartEosMonitorThread(info, cancelMonitor);
+    }
+
+    // 循环尝试获取list中的数据；如果key process线程退出或者处理数据超时，返回空vector
+
+    vector<uint64_t> ret;
+    auto startTime = std::chrono::system_clock::now();
+    while (true) {
+        if (!isRunning) {
+            break;
+        }
+        auto endTime = std::chrono::system_clock::now();
+        // 判断此时的info.batchId id是否已经过期，即通道已经刷新
+        if (info.batchId != hybridMgmtBlock->hybridBatchId[info.channelId]) {
+            LOG_DEBUG(KEY_PROCESS "Detected that the batch has expired at this time, exiting the loop! {}[{}]:{}",
+                      info.name, info.channelId, info.batchId);
+            break;
+        }
+        if (info.batchId != 0 && info.channelId != 0 && tc.ElapsedSec() > KEY_PROCESS_TIMEOUT) {
+            LOG_WARN(KEY_PROCESS "getting lookup keys timeout! {}[{}]:{}",
+                     info.name, info.channelId, info.batchId);
+            break;
+        }
+        try {
+            auto infoVec = GetInfo(uniqueKeysList, info);
+            ret = get<std::vector<uint64_t>>(infoVec);
+            break;
+        } catch (EmptyList&) {
+            unique_lock<mutex> lockEosGuard(eosMutex);
+            isEos = IsGetUniqueKeysEos(info, startTime, lookUpSwapInAddrsPushId);
+            if (isEos) {
+                break;
+            }
+            this_thread::sleep_for(1ms);
+        } catch (WrongListTop&) {
+            LOG_TRACE("getting info failed table:{}, channel:{}, mgmt batchId:{}, wrong top",
+                      info.name, info.channelId, info.channelId);
+            this_thread::sleep_for(1ms);
+        }
+    }
+    cancelMonitor = true;
+    if (timeoutMonitor.joinable()) {
+        timeoutMonitor.join();
+    }
+    return ret;
+}
+
+bool KeyProcess::IsGetUniqueKeysEos(const EmbBaseInfo& info, std::chrono::_V2::system_clock::time_point& startTime,
+                                    map<string, int>& lookUpSwapInAddrsPushId)
+{
+    HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
+    auto endTime = std::chrono::system_clock::now();
+    
+    // readEmbKey真实的次数是readEmbedBatchId减1
+    int readEmbKeyBatchId = hybridMgmtBlock->readEmbedBatchId[info.channelId] - 1;
+    // 避免eos在keyProcess还未处理完数据时插队到通道前面
+    std::chrono::duration<double> elapsedTime = endTime - startTime;
+    if (info.batchId != 0 && elapsedTime.count() >= timeoutGetUniqueKeysEmpty) {
+        LOG_DEBUG("table:{}, channelId:{}, isNeedSendEos:{}, readEmbKeyBatchId:{}, batch:{}, h2dNextBatchId:{},"
+                  " lookUpSwapInAddrsPushId:{}", info.name, info.channelId, isNeedSendEos[info.channelId],
+                  readEmbKeyBatchId, info.batchId, hybridMgmtBlock->h2dNextBatchId[info.name],
+                  lookUpSwapInAddrsPushId[info.name]);
+        startTime = std::chrono::system_clock::now();
+    }
+    if (isNeedSendEos[info.channelId] && readEmbKeyBatchId < info.batchId &&
+        hybridMgmtBlock->h2dNextBatchId[info.name] == lookUpSwapInAddrsPushId[info.name]) {
+        LOG_INFO("table:{}, channelId:{} batchId:{}, GetUniqueKeys eos",
+                 info.name, info.channelId, info.batchId);
+        return true;
+    }
+    LOG_TRACE("getting uniqueKeys failed, table:{}, channel:{}, mgmt batchId:{}, readEmbKey batchId:{}, list is empty",
+              info.name, info.channelId, info.batchId, readEmbKeyBatchId);
+    return false;
+}
+
+std::vector<int32_t> KeyProcess::GetRestoreVecSec(const EmbBaseInfo& info)
 {
     TimeCost tc = TimeCost();
     // 循环尝试获取list中的数据；如果key process线程退出或者处理数据超时，返回空vector
@@ -1194,74 +1291,80 @@ KeysT KeyProcess::GetLookupKeys(int batch, const string& embName, int channel)
         }
         // 判断此时的batch id是否已经过期，即通道已经刷新
         HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
-        if (batch != hybridMgmtBlock->hybridBatchId[channel]) {
+        if (info.batchId != hybridMgmtBlock->hybridBatchId[info.channelId]) {
             LOG_DEBUG(KEY_PROCESS "Detected that the batch has expired at this time, exiting the loop! {}[{}]:{}",
-                    embName, channel, batch);
+                      info.name, info.channelId, info.batchId);
             return {};
         }
-        if (batch != 0 && channel != 0 && tc.ElapsedSec() > KEY_PROCESS_TIMEOUT) {
-            LOG_WARN(KEY_PROCESS "getting lookup keys timeout! {}[{}]:{}", embName, channel, batch);
+        if (info.batchId != 0 && info.channelId != 0 && tc.ElapsedSec() > KEY_PROCESS_TIMEOUT) {
+            LOG_WARN(KEY_PROCESS "getting lookup keys timeout! {}[{}]:{}", info.name, info.channelId, info.batchId);
             return {};
         }
         try {
-            auto ret = GetInfo(lookupKeysList, batch, embName, channel);
-            return get<KeysT>(ret);
+            auto ret = GetInfo(restoreVecSecList, info);
+            return get<std::vector<int32_t>>(ret);
         } catch (EmptyList&) {
             unique_lock<mutex> lockEosGuard(eosMutex);
             // readEmbKey真实的次数是readEmbedBatchId减1
-            int readEmbKeyBatchId = hybridMgmtBlock->readEmbedBatchId[channel] - 1;
+            int readEmbKeyBatchId = hybridMgmtBlock->readEmbedBatchId[info.channelId] - 1;
             // 避免eos在keyProcess还未处理完数据时插队到通道前面
-            if (isNeedSendEos[channel] && readEmbKeyBatchId < batch) {
-                LOG_INFO("channelId:{} batchId:{}, GetLookupKeys eos.", channel, batch);
-                unique_lock<mutex> lockDestroyGuard(destroyMutex);
-                SendEos(batch, channel);
-                return {};
+            if (isNeedSendEos[info.channelId] && readEmbKeyBatchId < info.batchId &&
+                hybridMgmtBlock->h2dNextBatchId[info.name] == info.batchId) {
+                LOG_ERROR("channelId:{} batchId:{}, GetRestoreVecSec eos, code should not reach here",
+                          info.channelId, info.batchId);
+                throw runtime_error("GetRestoreVecSec eos, code should not reach here");
             }
             LOG_TRACE("getting info failed {}[{}], list is empty, and mgmt batchId: {}, readEmbKey batchId: {}.",
-                embName, channel, batch, readEmbKeyBatchId);
+                      info.name, info.channelId, info.batchId, readEmbKeyBatchId);
             this_thread::sleep_for(1ms);
         } catch (WrongListTop&) {
-            LOG_TRACE("getting info failed {}[{}]:{} wrong top", embName, channel, batch);
+            LOG_TRACE("getting info failed {}[{}]:{} wrong top", info.name, info.channelId, info.batchId);
             this_thread::sleep_for(1ms);
         }
     }
 }
 
 /// 当数据列表为空，且eos标志位为true时，主动发送eos
+/// \param embName 表名
 /// \param batchId 已处理的batch数
 /// \param channel 通道索引（训练/推理）
-void KeyProcess::SendEos(int batchId, int channel)
+/// \param sendAllChannel 是否强制发送所有channel
+void KeyProcess::SendEos(const std::string& embName, int batchId, int channel, bool sendAllChannel)
 {
 #ifndef GTEST
-    LOG_INFO("channelId:{} batchId:{}, SendEos start.", channel, batchId);
-
-    auto trans = Singleton<HDTransfer>::GetInstance();
-    unordered_map<std::string, acltdtChannelHandle*> transChannels = trans->GetTransChannel();
-    std::set<std::string> usedChannelNames = trans->GetUsedTransChannel()[channel];
-
-    vector<Tensor> tensors;
-    bool isNeedResend = true;
-
-    for (const auto& emb: as_const(embInfos)) { // 一个表触发以后，其余表都发送eos，最后外层接收null退出此次循环
-        LOG_INFO("channelId:{} batchId:{}, the embName:{} related channel SendEos start.", channel, batchId, emb.first);
-        if (!isRunning) {
-            throw EndRunExit("SendEos end run, isRunning is false after lock destroyMutex.");
-        }
-        for (const string& transName : usedChannelNames) {
-            string sendName = StringFormat("%s_%s_%d", emb.first.c_str(), transName.c_str(), channel);
-            size_t channelSize = 0;
-            
-            acltdtQueryChannelSize(transChannels[sendName], &channelSize);
-            LOG_INFO("[EOS] Before send eos, {} contains {}.", sendName, channelSize);
-            SendTensorsByAcl(transChannels[sendName], ACL_TENSOR_DATA_END_OF_SEQUENCE, tensors, isNeedResend);
-            acltdtQueryChannelSize(transChannels[sendName], &channelSize);
-            LOG_INFO("[EOS] After send eos, {} contains {}.", sendName, channelSize);
-        }
-        LOG_INFO("channelId:{} batchId:{}, the embName:{} related channel SendEos end.", channel, batchId, emb.first);
+    finishSendEosCnt[channel].store(0);
+    ++readySendEosCnt[channel];
+    LOG_INFO("table:{}, channelId:{} batchId:{}, readySendEosCnt:{}, ready to SendEos",
+             embName, channel, batchId, readySendEosCnt[channel]);
+    while (readySendEosCnt[channel] != static_cast<int>(embInfos.size())) {
+        LOG_DEBUG("table:{}, readySendEosCnt:{}, waiting other table enter SendEos", embName, readySendEosCnt[channel]);
+        this_thread::sleep_for(1000ms);
     }
+    LOG_INFO("table:{}, channelId:{} batchId:{}, SendEos start, acquiring destroyMutex", embName, channel, batchId);
+    destroyMutex.lock();
 
-    LOG_INFO("channelId:{} batchId:{}, SendEos end.", channel, batchId);
+    LOG_INFO("table:{}, channelId:{} batchId:{}, SendEos start", embName, channel, batchId);
+    if (!isRunning) {
+        LOG_INFO("other table trigger eos ahead, keyProcess already destroyed. skip sending eos for table:{}", embName);
+        ++finishSendEosCnt[channel];
+        destroyMutex.unlock();
+        return;
+    }
+    SendEosTensor(embName, channel, sendAllChannel);
+    destroyMutex.unlock();
+    LOG_INFO("channelId:{} batchId:{}, the embName:{} SendEos end, release destroyMutex", channel, batchId, embName);
+
+    ++finishSendEosCnt[channel];
+    LOG_INFO("table:{}, channelId:{} batchId:{}, finishSendEosCnt:{}, finish SendEos",
+             embName, channel, batchId, finishSendEosCnt[channel]);
+    while (finishSendEosCnt[channel] != static_cast<int>(embInfos.size())) {
+        LOG_DEBUG("table:{}, channelId:{} batchId:{}, finishSendEosCnt:{}, waiting other table finish SendEos",
+                  embName, channel, batchId, finishSendEosCnt[channel]);
+        this_thread::sleep_for(1000ms);
+    }
+    readySendEosCnt[channel].store(0);
     isNeedSendEos[channel] = false;
+    LOG_DEBUG("isNeedSendEos set to false, table:{}, channelId:{} batchId:{}", embName, channel, batchId);
 #endif
 }
 
@@ -1271,7 +1374,7 @@ void KeyProcess::SendEos(int batchId, int channel)
 /// \param channel 通道索引（训练/推理）
 /// \param type 数据类型
 /// \return
-unique_ptr<vector<Tensor>> KeyProcess::GetInfoVec(int batch, const string& embName, int channel, ProcessedInfo type)
+unique_ptr<vector<Tensor>> KeyProcess::GetInfoVec(const EmbBaseInfo &info, ProcessedInfo type, bool &isEos)
 {
     TimeCost tc = TimeCost();
     info_list_t<TensorInfoT>* list;
@@ -1288,47 +1391,46 @@ unique_ptr<vector<Tensor>> KeyProcess::GetInfoVec(int batch, const string& embNa
             throw std::invalid_argument("Invalid ProcessedInfo Type.");
     }
 
+    unique_ptr<vector<Tensor>> ret = nullptr;
     // 循环尝试获取list中的数据；如果key process线程退出或者处理数据超时，返回空指针
     while (true) {
         if (!isRunning) {
-            return nullptr;
+            break;
         }
         // 判断此时的batch id是否已经过期，即通道已经刷新
         HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
-        if (batch != hybridMgmtBlock->hybridBatchId[channel]) {
+        if (info.batchId != hybridMgmtBlock->hybridBatchId[info.channelId]) {
             LOG_DEBUG(KEY_PROCESS "Detected that the batch has expired at this time, exiting the loop! {}[{}]:{}",
-                embName, channel, batch);
-            return nullptr;
+                info.name, info.channelId, info.batchId);
+            break;
         }
-        if (batch != 0 && channel != 0 && tc.ElapsedSec() > KEY_PROCESS_TIMEOUT) {
-            LOG_WARN(KEY_PROCESS "getting lookup keys timeout! {}[{}]:{}", embName, channel, batch);
-            return nullptr;
+        if (info.batchId != 0 && info.channelId != 0 && tc.ElapsedSec() > KEY_PROCESS_TIMEOUT) {
+            LOG_WARN(KEY_PROCESS "getting lookup keys timeout! {}[{}]:{}", info.name, info.channelId, info.batchId);
+            break;
         }
 
         try {
-            auto ret = GetInfo(*list, batch, embName, channel);
-            auto it = get<std::list<unique_ptr<vector<Tensor>>>::iterator>(ret);
-            auto uTensor = move(*it);
+            auto infoVec = GetInfo(*list, info);
+            auto it = get<std::list<unique_ptr<vector<Tensor>>>::iterator>(infoVec);
+            ret = std::move(*it);
             std::unique_lock<std::mutex> lockGuard(mut);
             storage.erase(it);
-            return uTensor;
+            break;
         } catch (EmptyList&) {
             unique_lock<mutex> lockEosGuard(eosMutex);
-            // 避免eos在keyProcess还未处理完数据时插队到通道前面, readEmbKey真实的次数是readEmbedBatchId减1
-            if (isNeedSendEos[channel] && (hybridMgmtBlock->readEmbedBatchId[channel] - 1) < batch) {
-                LOG_INFO("channelId:{} batchId:{}, GetInfoVec eos.", channel, batch);
-                unique_lock<mutex> lockDestroyGuard(destroyMutex);
-                SendEos(batch, channel);
-                return nullptr;
+            isEos = IsGetInfoVecEos(info.batchId, info.name, info.channelId);
+            if (isEos) {
+                break;
             }
             LOG_TRACE("getting info failed {}[{}], list is empty, and mgmt batchId: {}, readEmbKey batchId: {}.",
-                embName, channel, batch, (hybridMgmtBlock->readEmbedBatchId[channel] - 1));
+                info.name, info.channelId, info.batchId, (hybridMgmtBlock->readEmbedBatchId[info.channelId] - 1));
             this_thread::sleep_for(1ms);
         } catch (WrongListTop&) {
-            LOG_TRACE("getting info failed {}[{}]:{} wrong top", embName, channel, batch);
+            LOG_TRACE("getting info failed {}[{}]:{} wrong top", info.name, info.channelId, info.batchId);
             this_thread::sleep_for(1ms);
         }
     }
+    return ret;
 }
 
 void KeyProcess::SendA2A(const vector<int>& a2aInfo, const string& embName, int channel, int batch)
@@ -1355,13 +1457,13 @@ int KeyProcess::GetMaxStep(int channelId) const
     return rankInfo.ctrlSteps.at(channelId);
 }
 
-void KeyProcess::EvictKeys(const string& embName, const vector<emb_key_t>& keys) // hbm
+void KeyProcess::EvictKeys(const string& embName, const vector<emb_cache_key_t>& keys) // hbm
 {
     LOG_INFO(KEY_PROCESS "hbm funEvictCall: [{}]! keySize:{}", embName, keys.size());
     EmbeddingMgmt::Instance()->EvictKeys(embName, keys);
 }
 
-void KeyProcess::EvictKeysCombine(const vector<emb_key_t>& keys) // hbm
+void KeyProcess::EvictKeysCombine(const vector<emb_cache_key_t>& keys) // hbm
 {
     LOG_INFO(KEY_PROCESS "hbm combine funEvictCall, keySize:{}", keys.size());
     EmbeddingMgmt::Instance()->EvictKeysCombine(keys);
@@ -1466,7 +1568,94 @@ void KeyProcess::RecordKeyCountMap(const unique_ptr<EmbBatchT>& batch)
 void KeyProcess::SetEos(int status, int channelId)
 {
     unique_lock<mutex> lockGuard(eosMutex);
-    LOG_INFO("isNeedSendEos status is changed, before status:[{}], input status:{}, channel:[{}], ",
-             isNeedSendEos[channelId], status, channelId);
+    LOG_INFO("isNeedSendEos status is changed, channel:{}, before status:{}, input status:{}",
+             channelId, isNeedSendEos[channelId], status);
     isNeedSendEos[channelId] = (status == 1);
+}
+
+bool KeyProcess::IsGetInfoVecEos(int batch, const string& embName, int channel)
+{
+    HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
+
+    // 避免eos在keyProcess还未处理完数据时插队到通道前面, readEmbKey真实的次数是readEmbedBatchId减1
+    int readEmbKeyBatchId = hybridMgmtBlock->readEmbedBatchId[channel] - 1;
+    if (rankInfo.isDDR) {
+        if (isNeedSendEos[channel] && readEmbKeyBatchId < batch &&
+            hybridMgmtBlock->h2dNextBatchId[embName] == batch) {
+            LOG_ERROR("channelId:{} batchId:{}, GetInfoVec eos, code should not reach here", channel, batch);
+            throw runtime_error("GetInfoVec eos, code should not reach here");
+        }
+    } else {
+        LOG_TRACE("table:{}, channelId:{}, readEmbKeyBatchId:{}, batchId:{}, isNeedSendEos:{}",
+                  embName, channel, readEmbKeyBatchId, batch, isNeedSendEos[channel]);
+        if (isNeedSendEos[channel] && readEmbKeyBatchId < batch) {
+            LOG_INFO("table:{}, channelId:{} batchId:{}, GetInfoVec eos", embName, channel, batch);
+            return true;
+        }
+    }
+    return false;
+}
+
+std::thread KeyProcess::StartEosMonitorThread(const EmbBaseInfo &info, bool &cancelMonitor)
+{
+    // 由于embCache延迟发送swapPos的特性，step n需要step n+1的数据来启动，当获取不到step n+1时，需要触发eos并补发step n需要的swapPos
+    LOG_DEBUG("table:{}, channel:{}, batchId:{}, start a monitor thread to check eos",
+              info.name, info.channelId, info.batchId);
+    return thread([&]() {
+        chrono::high_resolution_clock::time_point start = chrono::high_resolution_clock::now();
+        chrono::high_resolution_clock::time_point end = chrono::high_resolution_clock::now();
+        chrono::duration<double> duration = chrono::duration_cast<chrono::duration<double>>(end - start);
+        while (!cancelMonitor && duration.count() < timeoutGetUniqueKeys) {
+            this_thread::sleep_for(1ms);
+            end = chrono::high_resolution_clock::now();
+            duration = chrono::duration_cast<chrono::duration<double >>(end - start);
+        }
+        if (!cancelMonitor) {
+            this->SetEos(1, info.channelId);
+            LOG_INFO("table:{}, channel:{}, batchId:{}, timeout:{}(s) monitor empty data, set eos",
+                     info.name, info.channelId, info.batchId, timeoutGetUniqueKeys);
+        } else {
+            LOG_DEBUG("table:{}, channel:{}, batchId:{}, timeout monitor canceled",
+                      info.name, info.channelId, info.batchId);
+        }
+    });
+}
+
+void KeyProcess::SendEosTensor(const std::string& embName, int channel, bool sendAllChannel)
+{
+#ifndef GTEST
+    auto trans = Singleton<HDTransfer>::GetInstance();
+    unordered_map<std::string, acltdtChannelHandle*> transChannels = trans->GetTransChannel();
+    std::set<std::string> usedChannelNames = trans->GetUsedTransChannel()[channel];
+
+    vector<Tensor> tensors;
+    bool isNeedResend = true;
+    string sendName;
+    for (const string& transName : usedChannelNames) {
+        if (transName == TransferChannel2Str(TransferChannel::SAVE_D2H) ||
+            transName == TransferChannel2Str(TransferChannel::SAVE_H2D)) {
+            // do nothing on save channel, it's independent to train, eval and predict channel;
+            continue;
+        }
+
+        if (transName == TransferChannel2Str(TransferChannel::SWAP) ||
+            transName == TransferChannel2Str(TransferChannel::H2D)) {
+            sendName = StringFormat("%s_%s_all", embName.c_str(), transName.c_str());
+            if (channel == EVAL_CHANNEL_ID && !sendAllChannel) {
+                LOG_INFO("skip send eos for share channel:{}, channel id:{}", sendName, channel);
+                LOG_INFO("check if train ProcessEmbInfo run and let it decide eos or not");
+                continue;
+            }
+        } else {
+            sendName = StringFormat("%s_%s_%d", embName.c_str(), transName.c_str(), channel);
+        }
+
+        size_t channelSize = 0;
+        acltdtQueryChannelSize(transChannels[sendName], &channelSize);
+        LOG_INFO("[EOS] Before send eos, channel:{}, size:{}.", sendName, channelSize);
+        SendTensorsByAcl(transChannels[sendName], ACL_TENSOR_DATA_END_OF_SEQUENCE, tensors, isNeedResend);
+        acltdtQueryChannelSize(transChannels[sendName], &channelSize);
+        LOG_INFO("[EOS] After send eos, channel:{}, size:{}.", sendName, channelSize);
+    }
+#endif
 }

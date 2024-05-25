@@ -27,7 +27,7 @@ EmbeddingDynamic::EmbeddingDynamic()
 }
 
 EmbeddingDynamic::EmbeddingDynamic(const EmbInfo& info, const RankInfo& rankInfo, int inSeed)
-    : EmbeddingTable(info, rankInfo, inSeed)
+    : EmbeddingTable(info, rankInfo, inSeed), deviceId(rankInfo.deviceId)
 {
     if (isDynamic_) {
         auto ret = aclrtSetDevice(static_cast<int32_t>(rankInfo.deviceId));
@@ -197,7 +197,7 @@ void EmbeddingDynamic::SaveEmbData(const string& savePath)
 
     unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
     unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-    fileSystemPtr->WriteEmbedding(ss.str(), embSize_, embAddress, rankId_);
+    fileSystemPtr->WriteEmbedding(ss.str(), embSize_, embAddress, deviceId);
 }
 
 void EmbeddingDynamic::SaveOptimData(const string &savePath)
@@ -210,11 +210,11 @@ void EmbeddingDynamic::SaveOptimData(const string &savePath)
 
         unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
         unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-        fileSystemPtr->WriteEmbedding(ss.str(), embSize_, content.second, rankId_);
+        fileSystemPtr->WriteEmbedding(ss.str(), embSize_, content.second, deviceId);
     }
 }
 
-void EmbeddingDynamic::Load(const string& savePath)
+void EmbeddingDynamic::Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet)
 {
     LoadKey(savePath);
     LoadEmbAndOptim(savePath);
@@ -240,7 +240,7 @@ void EmbeddingDynamic::LoadEmbAndOptim(const string& savePath)
         stringstream paramStream;
         paramStream << ss.str() << "/" << optimName + "_" + param << "/slice.data";
         fileSystemPtr->ReadEmbedding(paramStream.str(), embeddingSizeInfo,
-                                     firstAddress + optimIndex * embSize_ * sizeof(float), rankId_, loadOffset);
+                                     firstAddress + optimIndex * embSize_ * sizeof(float), deviceId, loadOffset);
         optimIndex++;
     }
 }

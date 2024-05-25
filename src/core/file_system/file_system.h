@@ -31,10 +31,7 @@ namespace MxRec {
         virtual size_t GetFileSize(const string& filePath) = 0;
 
         virtual ssize_t Write(const string& filePath, const char* fileContent, size_t dataSize) = 0;
-        virtual ssize_t Write(const string& filePath, vector<float*> fileContent, size_t dataSize) = 0;
-
-        // In the dynamic expansion mode, embedding is transported to the host side from the device side
-        // and written into a file.
+        virtual ssize_t Write(const string& filePath, vector<vector<float>>& fileContent, size_t dataSize) = 0;
         virtual void WriteEmbedding(const string& filePath, const int& embeddingSize,
                                     const vector<int64_t>& addressArr, int deviceId) = 0;
 

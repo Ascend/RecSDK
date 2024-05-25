@@ -31,7 +31,7 @@ using namespace testing;
  */
 vector<emb_key_t> INPUT_KEYS = {1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 6, 6, 8, 9};
 
-inline void CompareHandleRet(vector<emb_key_t>& leastFreqKeys, vector<freq_num_t>& leastFreq,
+inline void CompareHandleRet(vector<emb_cache_key_t>& leastFreqKeys, vector<freq_num_t>& leastFreq,
                              vector<emb_key_t>& expectKeys,
                              vector<freq_num_t>& expectFreq)
 {
@@ -81,8 +81,8 @@ TEST(LFUCache, PutInitTest)
     cache.PutWithInit(6, 2);
     cache.PutWithInit(8, 1);
     cache.PutWithInit(9, 1);
-    vector<emb_key_t> retainedKeys = {4, 6};
-    vector<emb_key_t> leastFreqKeys;
+    vector<emb_cache_key_t> retainedKeys = {4, 6};
+    vector<emb_cache_key_t> leastFreqKeys;
     vector<freq_num_t> leastFreq;
     cache.GetAndDeleteLeastFreqKeyInfo(2, retainedKeys, leastFreqKeys, leastFreq);
     vector<emb_key_t> expectKeys = {9, 8};
@@ -95,8 +95,8 @@ TEST(LFUCache, LFUDeleteTotalFreqListTest)
 {
     LFUCache cache;
     PutKeys(cache, INPUT_KEYS);
-    vector<emb_key_t> retainedKeys = {4, 6, 8, 9};
-    vector<emb_key_t> leastFreqKeys;
+    vector<emb_cache_key_t> retainedKeys = {4, 6, 8, 9};
+    vector<emb_cache_key_t> leastFreqKeys;
     vector<freq_num_t> leastFreq;
     cache.GetAndDeleteLeastFreqKeyInfo(2, retainedKeys, leastFreqKeys, leastFreq);
     vector<emb_key_t> expectKeys = {3, 2};
@@ -108,8 +108,8 @@ TEST(LFUCache, BaseCacheTest)
 {
     LFUCache cache;
     PutKeys(cache, INPUT_KEYS);
-    vector<emb_key_t> retainedKeys = {8, 4, 6, 2};
-    vector<emb_key_t> leastFreqKeys;
+    vector<emb_cache_key_t> retainedKeys = {8, 4, 6, 2};
+    vector<emb_cache_key_t> leastFreqKeys;
     vector<freq_num_t> leastFreq;
     cache.GetAndDeleteLeastFreqKeyInfo(2, retainedKeys, leastFreqKeys, leastFreq);
     vector<emb_key_t> expectKeys = {9, 3};
@@ -120,5 +120,5 @@ TEST(LFUCache, BaseCacheTest)
     cache.Put(9);
     ASSERT_EQ(cache.Get(9), 1);
     cache.Put(9);
-    ASSERT_EQ(cache.minFreq, 2);
+    ASSERT_EQ(cache.minFreq, 1);
 }

@@ -138,7 +138,7 @@ namespace {
     {
         pybind11::class_<EmbInfo>(m, "EmbInfo")
                 .def(pybind11::init<const EmbInfoParams&, std::vector<size_t>,
-                     std::vector<InitializeInfo>&, std::vector<std::string>&>(),
+                     std::vector<EmbCache::InitializerInfo>&, std::vector<std::string>&>(),
                      py::arg("embInfoParams"),
                      py::arg("vocab_size"),
                      py::arg("initialize_infos"),
@@ -176,36 +176,38 @@ namespace {
 
     void GetInitializeInfo(pybind11::module_ &m)
     {
-        pybind11::class_<InitializeInfo>(m, "InitializeInfo")
-                .def(py::init<std::string &, int, int, ConstantInitializerInfo>(), py::arg("name"), py::arg("start"),
-                     py::arg("len"), py::arg("constant_initializer_info"))
-                .def(py::init<std::string &, int, int, NormalInitializerInfo>(), py::arg("name"), py::arg("start"),
-                     py::arg("len"), py::arg("normal_initializer_info"))
-                .def_readwrite("name", &InitializeInfo::name)
-                .def_readwrite("start", &InitializeInfo::start)
-                .def_readwrite("len", &InitializeInfo::len)
-                .def_readwrite("ConstantInitializerInfo", &InitializeInfo::constantInitializerInfo)
-                .def_readwrite("NormalInitializerInfo", &InitializeInfo::normalInitializerInfo);
+        pybind11::class_<EmbCache::InitializerInfo>(m, "InitializeInfo")
+            .def(py::init<std::string &, uint32_t, uint32_t, EmbCache::ConstantInitializerInfo>(),
+                 py::arg("name"), py::arg("start"), py::arg("len"), py::arg("constant_initializer_info"))
+            .def(py::init<std::string &, uint32_t, uint32_t, EmbCache::NormalInitializerInfo>(),
+                 py::arg("name"), py::arg("start"), py::arg("len"), py::arg("normal_initializer_info"))
+            .def_readwrite("name", &EmbCache::InitializerInfo::name)
+            .def_readwrite("start", &EmbCache::InitializerInfo::start)
+            .def_readwrite("len", &EmbCache::InitializerInfo::len)
+            .def_readwrite("ConstantInitializerInfo", &EmbCache::InitializerInfo::constantInitializerInfo)
+            .def_readwrite("NormalInitializerInfo", &EmbCache::InitializerInfo::normalInitializerInfo);
     }
 
     void GetConstantInitializerInfo(pybind11::module_ &m)
     {
-        pybind11::class_<ConstantInitializerInfo>(m, "ConstantInitializerInfo")
-                .def(py::init<float, float>(), py::arg("constant_val") = 0, py::arg("initK") = 1.0)
-                .def_readwrite("constant_val", &ConstantInitializerInfo::constantValue)
-                .def_readwrite("initK", &ConstantInitializerInfo::initK);
+        pybind11::class_<EmbCache::ConstantInitializerInfo>(m, "ConstantInitializerInfo")
+            .def(py::init<float, float>(), py::arg("constant_val") = 0, py::arg("initK") = 1.0)
+            .def_readwrite("constant_val", &EmbCache::ConstantInitializerInfo::constantValue)
+            .def_readwrite("initK", &EmbCache::ConstantInitializerInfo::initK);
     }
 
     void GetNormalInitializerInfo(pybind11::module_ &m)
     {
-        pybind11::class_<NormalInitializerInfo>(m, "NormalInitializerInfo")
-                .def(py::init<float, float, int, float>(), py::arg("mean") = 0.0,
-                     py::arg("stddev") = 1.0, py::arg("seed") = 0,
-                     py::arg("initK") = 1.0)
-                .def_readwrite("mean", &NormalInitializerInfo::mean)
-                .def_readwrite("stddev", &NormalInitializerInfo::stddev)
-                .def_readwrite("seed", &NormalInitializerInfo::seed)
-                .def_readwrite("initK", &NormalInitializerInfo::initK);
+        pybind11::class_<EmbCache::NormalInitializerInfo>(m, "NormalInitializerInfo")
+            .def(py::init<float, float, uint32_t, float>(),
+                 py::arg("mean") = 0.0,
+                 py::arg("stddev") = 1.0,
+                 py::arg("seed") = 0,
+                 py::arg("initK") = 1.0)
+            .def_readwrite("mean", &EmbCache::NormalInitializerInfo::mean)
+            .def_readwrite("stddev", &EmbCache::NormalInitializerInfo::stddev)
+            .def_readwrite("seed", &EmbCache::NormalInitializerInfo::seed)
+            .def_readwrite("initK", &EmbCache::NormalInitializerInfo::initK);
     }
 
     void GetHybridMgmt(pybind11::module_& m)
@@ -220,6 +222,7 @@ namespace {
                      py::arg("warm_start_tables") = vector<string> {})
                 .def("destroy", &MxRec::HybridMgmt::Destroy)
                 .def("evict", &MxRec::HybridMgmt::Evict)
+                .def("fetch_device_emb", &MxRec::HybridMgmt::FetchDeviceEmb)
                 .def("send", &MxRec::HybridMgmt::SendHostMap, py::arg("table_name") = "")
                 .def("send_load_offset", &MxRec::HybridMgmt::SendLoadMap, py::arg("table_name") = "")
                 .def("receive", &MxRec::HybridMgmt::ReceiveHostMap, py::arg("key_offset_map"))

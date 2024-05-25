@@ -26,6 +26,7 @@ See the License for the specific language governing permissions and
 namespace MxRec {
     const std::string HYBRID_BLOCKING = "[HYBRID_BLOCKING] ";
     const int SAVE_STEP_INDEX = 2;
+    const int MAX_TRAIN_STEP_INDEX = 3;
     const std::chrono::milliseconds SLEEP_MS = 20ms;
 
     class HybridMgmtBlock {
@@ -39,6 +40,11 @@ namespace MxRec {
         int pythonBatchId[2] = {0, 0};
         // readEmbed算子侧将要处理的batch id
         int readEmbedBatchId[2] = {0, 0};
+        int maxTrainStep = 0;
+        int stepsInterval[2] = {0, 0};  // 通道i运行多少步后切换为通道j
+
+        // hybrid已完成H2D的step
+        map<string, int> h2dNextBatchId;
 
         int loop[2] = {1, 1};
 
@@ -76,14 +82,19 @@ namespace MxRec {
 
         void Destroy();
 
+        void Wake(int channelId);
+
+        bool IsNeedWaitSave();
+
+        void FinishSave();
+
     private:
-        // 通道i运行多少步后切换为通道j
-        int stepsInterval[2] = {0, 0};
         // 控制通道阻塞的变量
         bool isBlock[2] = {true, true};
         // 控制训练了多少步进行保存的步数
         int saveInterval = 0;
         RankInfo rankInfo;
+        bool finishSave = true;
     };
 
     class HybridMgmtBlockingException : public std::exception {
