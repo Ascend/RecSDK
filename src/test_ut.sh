@@ -38,6 +38,15 @@ opensource_path="${ROOT_DIR}"/../opensource
 acc_ctr_path="${ROOT_DIR}"/src/AccCTR
 export LD_LIBRARY_PATH="${acc_ctr_path}"/output/ock_ctr_common/lib:$LD_LIBRARY_PATH
 
+# config asan report dir and environment variable
+if [ ! -d asan_report ]; then
+  mkdir -p asan_report
+else
+  rm -rf ./asan_report/*
+fi
+export ASAN_OPTIONS=halt_on_error=0:detect_leaks=1:log_path="${CUR_DIR}"/asan_report/asan.log
+
+
 function prepare_googletest(){
   cd ${opensource_path}
   if [ ! -d googletest-release-1.8.1 ]; then
