@@ -75,13 +75,11 @@ TEST_F(HdfsFileSystemTest, CreateDirFailed)
 
 TEST_F(HdfsFileSystemTest, GetFileSize)
 {
-    auto* fileInfo = new hdfsFileInfo();
-    fileInfo->mSize = 1;
-    EMOCK(&HdfsWrapper::GetPathInfo).stubs().will(returnValue(fileInfo));
+    std::unique_ptr<hdfsFileInfo> fileInfo = std::make_unique<hdfsFileInfo>();
+    EMOCK(&HdfsWrapper::GetPathInfo).stubs().will(returnValue(fileInfo.get()));
     string filePath = "hdfs://master:9000/test_dir/";
     auto fileSystemHandler = make_unique<FileSystemHandler>();
     auto fileSystemPtr = fileSystemHandler->Create(filePath);
     EXPECT_NO_THROW(fileSystemPtr->GetFileSize(filePath));
-    delete fileInfo;
 }
 
