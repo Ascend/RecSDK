@@ -27,7 +27,6 @@ void Dedup::Insert(uint64_t val)
 
     for (int8_t i = 0; i < count; ++i) {
         if (bucket->data[totalCount] == val) {
-            TryIncreaseIdCount(bucket->idCount[totalCount]);
             // found one
             return;
         }
@@ -38,7 +37,6 @@ void Dedup::Insert(uint64_t val)
         std::lock_guard<SpinLockG> lg(bucket->lock);
         for (int8_t j = totalCount; j < bucket->count; ++j) {
             if (bucket->data[totalCount] == val) {
-                TryIncreaseIdCount(bucket->idCount[totalCount]);
                 // found one
                 return;
             }
@@ -47,19 +45,11 @@ void Dedup::Insert(uint64_t val)
         if (totalCount < n) {
             bucket->data[totalCount] = val;
             bucket->count++;
-            TryIncreaseIdCount(bucket->idCount[totalCount]);
             return;
         }
     }
     // shift to the overflow reservior
     InsertOverflow(val);
-}
-
-inline void Dedup::TryIncreaseIdCount(std::atomic<uint16_t> &val)
-{
-    if (idCountEnable_) {
-        val++;
-    }
 }
 
 int32_t Dedup::GetReplaceOffsetUnsafe(uint64_t val)
@@ -108,7 +98,6 @@ void Dedup::Clear(uint64_t newBucketCountPowerOf2)
     }
     bzero(table_, sizeof(Meta<n>) * bucketCount_);
     overflow_.clear();
-    idCountOverflow_.clear();
 }
 
 void Dedup::NewParameter()
@@ -168,6 +157,58 @@ int32_t ShardedDedup::GetFillOffset(const std::vector<size_t> &totalUniqueSize, 
     }
 }
 
+void ShardedDedup::GetIndexAndStart(const int32_t *uniqueSizeInBucket, bool usePadding, int shardingNumber, int &start,
+                                    int &index)
+{
+    if (shardingNumber > 0) {
+        index += uniqueSizeInBucket[shardingNumber - 1];
+    }
+
+    if (usePadding) {
+        start = shardingNumber * conf.paddingSize;
+    } else {
+        start = index;
+    }
+}
+
+int ShardedDedup::PrintMemCpyLog(int rc, const uint32_t dstSize, const std::string &logMsg)
+{
+    if (rc != 0) {
+        std::stringstream ssm;
+        ssm << "[" << logMsg << "] memcpy_s failed... dstSize: " << dstSize;
+        ExternalLogger::PrintLog(LogLevel::ERROR, ssm.str());
+        return H_COPY_ERROR;
+    } else {
+        return H_OK;
+    }
+}
+
+int ShardedDedup::HandleIdCountFill(std::vector<std::atomic<int32_t>> &idCount, UniqueOutSelf &uniqueOut)
+{
+    if (conf.usePadding) {
+        uint32_t memSize = idCount.size() * sizeof(int32_t);
+        auto rc = memcpy_s(uniqueOut.idCntFill, memSize, (int32_t *)(idCount.data()), memSize);
+        if (rc != 0) {
+            return rc;
+        }
+        int ret = PrintMemCpyLog(rc, memSize, "[TileAndFill/idCntFill]");
+        if (ret != 0) {
+            return ret;
+        }
+    } else {
+        uint32_t memSize = idCount.size() * sizeof(int32_t);
+        auto rc = memcpy_s(uniqueOut.idCnt, memSize, (int32_t *)(idCount.data()), memSize);
+        if (rc != 0) {
+            return rc;
+        }
+
+        int ret = PrintMemCpyLog(rc, memSize, "[TileAndFill/idCnt]");
+        if (ret != 0) {
+            return ret;
+        }
+    }
+    return H_OK;
+}
 
 size_t ShardedDedup::CalThreadNum() const
 {

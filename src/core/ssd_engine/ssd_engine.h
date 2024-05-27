@@ -31,17 +31,18 @@ namespace MxRec {
     public:
         bool IsTableExist(const string &tableName);
 
-        bool IsKeyExist(const string &tableName, emb_key_t key);
+        bool IsKeyExist(const string &tableName, emb_cache_key_t key);
 
         void CreateTable(const string &tableName, vector<string> savePaths, uint64_t maxTableSize);
 
         int64_t GetTableAvailableSpace(const string &tableName);
 
-        void InsertEmbeddings(const string &tableName, vector<emb_key_t> &keys, vector<vector<float>> &embeddings);
+        void InsertEmbeddings(const string &tableName, vector<emb_cache_key_t> &keys,
+                              vector<vector<float>> &embeddings);
 
-        void DeleteEmbeddings(const string &tableName, vector<emb_key_t> &keys);
+        void DeleteEmbeddings(const string &tableName, vector<emb_cache_key_t> &keys);
 
-        vector<vector<float>> FetchEmbeddings(const string &tableName, vector<emb_key_t> &keys);
+        vector<vector<float>> FetchEmbeddings(const string &tableName, vector<emb_cache_key_t> &keys);
 
         void Save(int step);
 
@@ -56,6 +57,11 @@ namespace MxRec {
         void SetCompactThreshold(double threshold);
 
         int64_t GetTableEmbeddingSize(const string& tableName);
+
+        void InsertEmbeddingsByAddr(const string &tableName, vector<emb_cache_key_t> &keys,
+                                    vector<float*> &embeddingsAddr, uint64_t extEmbeddingSize);
+
+        vector<std::pair<string, vector<emb_cache_key_t>>> ExportTableKey();
 
     private:
         bool isRunning = false;

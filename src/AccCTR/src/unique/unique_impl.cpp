@@ -228,6 +228,14 @@ int UniqueImpl::CheckEnhancedUniqueConf(const UniqueConf &conf)
         if (CheckInputZero(conf.shardingNum, "shardingNum")) {
             return H_NUM_SMALL;
         }
+        if (conf.performance) {
+            bool isExponentOfTwo =
+                (conf.shardingNum > 0) && ((conf.shardingNum & (conf.shardingNum - 1)) == 0); // 判断是不是2的N次幂
+            if (!isExponentOfTwo) {
+                ExternalLogger::PrintLog(LogLevel::ERROR, "if performance is true, shardingNum must be 2^N");
+                return H_ERROR;
+            }
+        }
     }
 
     return H_OK;

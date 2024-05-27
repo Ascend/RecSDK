@@ -31,10 +31,10 @@ namespace MxRec {
 
     // 记录key和次数信息
     struct LFUCacheNode {
-        emb_key_t key;
+        emb_cache_key_t key;
         freq_num_t freq;
 
-        LFUCacheNode(emb_key_t key, freq_num_t freq) : key(key), freq(freq)
+        LFUCacheNode(emb_cache_key_t key, freq_num_t freq) : key(key), freq(freq)
         {}
     };
 
@@ -42,25 +42,29 @@ namespace MxRec {
     public:
         LFUCache();
 
-        freq_num_t Get(emb_key_t key);
+        explicit LFUCache(const string& cacheName);
 
-        void GetAndDeleteLeastFreqKeyInfo(int64_t num, const vector<emb_key_t>& keys,
-                                          vector<emb_key_t>& ddrSwapOutKeys,
+        freq_num_t Get(emb_cache_key_t key);
+
+        void GetAndDeleteLeastFreqKeyInfo(uint64_t num, const vector<emb_cache_key_t>& keys,
+                                          vector<emb_cache_key_t>& ddrSwapOutKeys,
                                           vector<freq_num_t>& ddrSwapOutCounts);
 
-        void Put(emb_key_t key);
+        void Put(emb_cache_key_t key);
 
-        bool Pop(emb_key_t key);
+        bool Pop(emb_cache_key_t key);
 
-        void PutWithInit(emb_key_t key, freq_num_t freq);
+        void PutWithInit(emb_cache_key_t key, freq_num_t freq);
 
-        std::unordered_map<emb_key_t, freq_num_t> GetFreqTable();
+        std::unordered_map<emb_cache_key_t, freq_num_t> GetFreqTable();
         // 最小频次
         freq_num_t minFreq = 0;
         // 次数, 该次数对应的key列表(key, freq)
         std::unordered_map<freq_num_t, std::list<LFUCacheNode>> freqTable;
         // key, key所属node在freqTable的节点列表中的存储位置地址
-        std::unordered_map<emb_key_t, std::list<LFUCacheNode>::iterator> keyTable;
+        std::unordered_map<emb_cache_key_t, std::list<LFUCacheNode>::iterator> keyTable;
+    private:
+        string name;
     };
 }
 

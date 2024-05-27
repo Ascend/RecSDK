@@ -24,7 +24,7 @@ using namespace MxRec;
 /// 创建新文件实例，包含元数据文件、数据文件
 /// \param fileID 文件ID
 /// \param fileDir 当前文件目录
-File::File(uint64_t fileID, string &fileDir) : fileID(fileID), fileDir(fileDir)
+File::File(uint64_t fileID, string& fileDir) : fileID(fileID), fileDir(fileDir)
 {
     LOG_DEBUG("start init file, fileID:{}", fileID);
 
@@ -75,7 +75,7 @@ File::File(uint64_t fileID, string &fileDir) : fileID(fileID), fileDir(fileDir)
 /// \param loadDir 加载文件的目录
 /// \param fileDir 当前文件目录
 /// \param step 加载的步数
-File::File(uint64_t fileID, string &fileDir, string &loadDir, int step) : fileID(fileID), fileDir(fileDir)
+File::File(uint64_t fileID, string& fileDir, string& loadDir, int step) : fileID(fileID), fileDir(fileDir)
 {
     LOG_DEBUG("start init file with load, fileID:{}", fileID);
 
@@ -141,13 +141,13 @@ File::~File()
     fs::remove(dataFilePath);
 }
 
-bool File::IsKeyExist(emb_key_t key)
+bool File::IsKeyExist(emb_cache_key_t key) const
 {
     auto it = keyToOffset.find(key);
     return !(it == keyToOffset.end());
 }
 
-void File::InsertEmbeddings(vector<emb_key_t> &keys, vector<vector<float>> &embeddings)
+void File::InsertEmbeddings(vector<emb_cache_key_t>& keys, vector<vector<float>>& embeddings)
 {
     if (keys.size() != embeddings.size()) {
         throw invalid_argument("keys' length not equal to embeddings' length");
@@ -178,10 +178,10 @@ void File::InsertEmbeddings(vector<emb_key_t> &keys, vector<vector<float>> &embe
     dataCnt += dLen;
 }
 
-vector<vector<float>> File::FetchEmbeddings(vector<emb_key_t> &keys)
+vector<vector<float>> File::FetchEmbeddings(vector<emb_cache_key_t>& keys)
 {
     vector<vector<float>> ret;
-    for (emb_key_t k: keys) {
+    for (emb_cache_key_t k: keys) {
         auto it = keyToOffset.find(k);
         if (it == keyToOffset.end()) {
             throw invalid_argument("key not exist");
@@ -208,7 +208,7 @@ vector<vector<float>> File::FetchEmbeddings(vector<emb_key_t> &keys)
     return ret;
 }
 
-void File::DeleteEmbedding(emb_key_t key)
+void File::DeleteEmbedding(emb_cache_key_t key)
 {
     if (!IsKeyExist(key)) {
         return;
@@ -217,7 +217,7 @@ void File::DeleteEmbedding(emb_key_t key)
     staleDataCnt += 1;
 }
 
-void File::Save(const string &saveDir, int step)
+void File::Save(const string& saveDir, int step)
 {
     LOG_DEBUG("start save file at step:{}, fileID:{}", step, fileID);
 
@@ -278,7 +278,7 @@ void File::Load()
 {
     // file already validate and open in instantiation
     LOG_DEBUG("start reading meta file, fileID:{}", fileID);
-    emb_key_t key;
+    emb_cache_key_t key;
     offset_t offset;
     do {
         localFileMeta.read(reinterpret_cast<char *>(&key), keyDataLen);
@@ -311,9 +311,9 @@ void File::Load()
     LOG_DEBUG("end reading meta file, fileID:{}", fileID);
 }
 
-vector<emb_key_t> File::GetKeys()
+vector<emb_cache_key_t> File::GetKeys()
 {
-    vector<emb_key_t> ret;
+    vector<emb_cache_key_t> ret;
     for (auto item: keyToOffset) {
         ret.push_back(item.first);
     }
@@ -333,4 +333,41 @@ uint64_t File::GetFileID() const
 uint64_t File::GetStaleDataCnt() const
 {
     return staleDataCnt;
+}
+
+void File::InsertEmbeddingsByAddr(vector<emb_cache_key_t>& keys, vector<float*>& embeddingsAddr,
+                                  uint64_t extEmbeddingSize)
+{
+    if (keys.size() != embeddingsAddr.size()) {
+        throw invalid_argument("keys' length not equal to embeddings' length");
+    }
+
+    size_t dLen = keys.size();
+    for (size_t i = 0; i < dLen; ++i) {
+        if (embeddingsAddr[i] == nullptr) {
+            throw invalid_argument("Null pointer found in embeddingsAddr");
+        }
+    }
+
+    localFileData.seekp(lastWriteOffset);  // always set pointer to buffer end in case reading happened before
+
+    for (size_t i = 0; i < dLen; ++i) {
+        if (IsKeyExist(keys[i])) {
+            staleDataCnt++;
+        }
+        keyToOffset[keys[i]] = lastWriteOffset;
+
+        if (extEmbeddingSize > maxEmbSize) {
+            throw invalid_argument("embedding size too large");
+        }
+        localFileData.write(reinterpret_cast<char const*>(&extEmbeddingSize), sizeof(extEmbeddingSize));
+        localFileData.write(reinterpret_cast<char const*>(embeddingsAddr[i]), extEmbeddingSize * sizeof(float));
+
+        auto pos = localFileData.tellp();
+        if (pos == -1) {
+            throw runtime_error("can't get file position pointer, write data failed");
+        }
+        lastWriteOffset = offset_t(pos);
+    }
+    dataCnt += dLen;
 }

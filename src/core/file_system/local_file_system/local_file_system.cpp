@@ -112,44 +112,23 @@ ssize_t LocalFileSystem::Write(const string& filePath, const char* fileContent, 
     return writeBytesNum;
 }
 
-ssize_t LocalFileSystem::Write(const string& filePath, vector<float*> fileContent, size_t dataSize)
+ssize_t LocalFileSystem::Write(const string& filePath, vector<vector<float>>& fileContent, size_t dataSize)
 {
     int fd = open(filePath.c_str(), O_RDWR | O_CREAT | O_TRUNC, fileMode);
     if (fd == -1) {
         throw runtime_error(StringFormat("open file %s to write failed.", filePath.c_str()));
     }
 
-    buffer.reserve(BUFFER_SIZE);
-    BufferQueue queue;
-    ssize_t writeBytesNum = 0;
-    std::thread writer(&LocalFileSystem::WriterFn, this, std::ref(queue), fd, std::ref(writeBytesNum));
-
-    size_t loops = fileContent.size();
-    for (size_t i = 0; i < loops; i++) {
-        size_t idx = 0;
-        size_t writeSize = 0;
-        size_t dataCol = dataSize;
-        while (dataCol != 0) {
-            if (dataCol > oneTimeReadWriteLen) {
-                writeSize = oneTimeReadWriteLen;
-            } else {
-                writeSize = dataCol;
-            }
-            FillToBuffer(queue, reinterpret_cast<const char *>(fileContent[i]) + idx, writeSize);
-            dataCol -= writeSize;
-            idx += writeSize;
-        }
+    vector<float> flattenContent;
+    for (auto& vec : fileContent) {
+        flattenContent.insert(flattenContent.cend(), vec.cbegin(), vec.cend());
     }
 
-    // After all data has been processed, check if there is any data left in the buffer
-    if (!buffer.empty()) {
-        queue.Push(std::move(buffer));
-        buffer.clear();
-    }
+    ssize_t writeBytesNum =
+        write(fd, reinterpret_cast<const char*>(flattenContent.data()), flattenContent.size() * sizeof(float));
 
-    queue.Push(std::vector<char>());
-    writer.join();
     close(fd);
+
     return writeBytesNum;
 }
 
@@ -168,6 +147,12 @@ void LocalFileSystem::WriteEmbedding(const string& filePath, const int& embeddin
     }
 
 #ifndef GTEST
+    auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
+    if (res != ACL_ERROR_NONE) {
+        close(fd);
+        throw runtime_error(StringFormat("Set device failed, device_id:%d", deviceId).c_str());
+    }
+
     for (size_t i = 0; i < addressArr.size(); i += keyAddrElem) {
         vector<float> row(embeddingSize);
         int64_t address = addressArr.at(i);
@@ -270,6 +255,10 @@ void LocalFileSystem::ReadEmbedding(const string& filePath, EmbeddingSizeInfo& e
     FILE *fp = fopen(filePath.c_str(), "rb");
     if (fp == nullptr) {
         throw runtime_error(StringFormat("Failed to open read file: %s", filePath.c_str()));
+    }
+    auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
+    if (res != ACL_ERROR_NONE) {
+        throw runtime_error(StringFormat("Set device failed, device_id:%d", deviceId).c_str());
     }
 
     float* floatPtr = reinterpret_cast<float*>(firstAddress);

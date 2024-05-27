@@ -14,10 +14,13 @@
 # limitations under the License.
 # ==============================================================================
 
+import enum
 import os
 
 import tensorflow as tf
 from tensorflow.core.protobuf.rewriter_config_pb2 import RewriterConfig
+
+SSD_DATA_PATH = ["ssd_data"]
 
 
 class LearningRateScheduler:
@@ -86,6 +89,12 @@ class LearningRateScheduler:
         return lr_dense, lr_sparse
 
 
+class CacheModeEnum(enum.Enum):
+    HBM = "HBM"
+    DDR = "DDR"
+    SSD = "SSD"
+
+
 class Config:
     def __init__(self, ):
         self.rank_id = int(os.getenv("OMPI_COMM_WORLD_RANK")) if os.getenv("OMPI_COMM_WORLD_RANK") else None
@@ -141,30 +150,30 @@ class Config:
         if self.cache_mode is None:
             raise ValueError("please export CACHE_MODE environment variable, support:[HBM, DDR, SSD]")
 
-        if self.cache_mode == "HBM":
+        if self.cache_mode == CacheModeEnum.HBM.value:
             self.dev_vocab_size = 24_000_000 * self.rank_size
             self.host_vocab_size = 0
-        elif self.cache_mode == "DDR":
+        elif self.cache_mode == CacheModeEnum.DDR.value:
             self.dev_vocab_size = 500_000 * self.rank_size
             self.host_vocab_size = 24_000_000 * self.rank_size
-        elif self.cache_mode == "SSD":
+        elif self.cache_mode == CacheModeEnum.SSD.value:
             self.dev_vocab_size = 100_000 * self.rank_size
             self.host_vocab_size = 2_000_000 * self.rank_size
             self.ssd_vocab_size = 24_000_000 * self.rank_size
         else:
             raise ValueError(f"get CACHE_MODE:{self.cache_mode}, expect in [HBM, DDR, SSD]")
 
-    def get_emb_table_cfg(self) -> dict:
-        if self.cache_mode == "HBM":
+    def get_emb_table_cfg(self):
+        if self.cache_mode == CacheModeEnum.HBM.value:
             return {"device_vocabulary_size": self.dev_vocab_size}
-        elif self.cache_mode == "DDR":
+        elif self.cache_mode == CacheModeEnum.DDR.value:
             return {"device_vocabulary_size": self.dev_vocab_size,
                     "host_vocabulary_size": self.host_vocab_size}
-        elif self.cache_mode == "SSD":
+        elif self.cache_mode == CacheModeEnum.SSD.value:
             return {"device_vocabulary_size": self.dev_vocab_size,
                     "host_vocabulary_size": self.host_vocab_size,
                     "ssd_vocabulary_size": self.ssd_vocab_size,
-                    "ssd_data_path": ["ssd_data"]}
+                    "ssd_data_path": SSD_DATA_PATH}
         else:
             raise RuntimeError(f"get CACHE_MODE:{self.cache_mode}, check Config.__set_emb_table_size implementation")
 

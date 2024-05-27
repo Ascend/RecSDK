@@ -12,7 +12,7 @@
 # limitations under the License.
 # ==============================================================================
 
-set(INCLUDE_HEADERS factory.h ock_ctr_common_def.h unique.h)
+set(INCLUDE_HEADERS factory.h ock_ctr_common_def.h unique.h embedding_cache.h)
 
 set(TARGET_INSTALL_INCLUDE ${OUTPUT}/ock_ctr_common/include)
 

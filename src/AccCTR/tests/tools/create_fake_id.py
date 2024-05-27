@@ -68,12 +68,6 @@ def write_data(file_name, x, y, dup):
 
 
 def main():
-    # 300w id去重率20%
-    # 6x + y =300
-    # x + y = 60
-    # x = 48 y =12
-    write_data('data20.txt', 48*10000, 12*10000, 6)
-
     # 300w id去重率30%
     # 6x + y =300
     # x + y = 90

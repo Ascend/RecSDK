@@ -28,18 +28,6 @@ local_rank_size=8
 num_process=$((num_server * local_rank_size))
 export TRAIN_RANK_SIZE=$num_process
 
-# 删除数据
-echo "CACHE_MODE:${CACHE_MODE}"
-if [ ${CACHE_MODE} = "SSD" ]; then
-  echo "SSD train mode not allow file exist before training,
-        deleting dir ${cur_path}/ssd_data then create for SSD use case"
-  rm -rf ssd_data
-  mkdir ssd_data
-fi
-rm -rf kernel*
-rm -rf /root/ascend/log/*
-rm -rf model_dir_rank* op_cache
-
 ################# 参数配置 ######################
 export USE_DYNAMIC=0            # 0：静态shape；1：动态shape
 export CACHE_MODE="HBM"         # HBM；DDR；SSD
@@ -48,6 +36,7 @@ export USE_DYNAMIC_EXPANSION=0  # 0：关闭动态扩容；1: 开启动态扩容
 export USE_MULTI_LOOKUP=0       # 0：一表一查；1：一表多查
 export USE_MODIFY_GRAPH=0       # 0：feature spec模式；1：自动改图模式
 ################################################
+echo "CACHE_MODE:${CACHE_MODE}"
 
 export HCCL_CONNECT_TIMEOUT=1200
 export DLRM_CRITEO_DATA_PATH=${dlrm_criteo_data_path}
