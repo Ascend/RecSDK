@@ -82,5 +82,6 @@ TEST_F(HdfsFileSystemTest, GetFileSize)
     auto fileSystemHandler = make_unique<FileSystemHandler>();
     auto fileSystemPtr = fileSystemHandler->Create(filePath);
     EXPECT_NO_THROW(fileSystemPtr->GetFileSize(filePath));
+    delete fileInfo;
 }
 
