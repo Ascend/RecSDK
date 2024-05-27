@@ -174,11 +174,8 @@ def _clear_saved_model() -> None:
                 " then create empty directory for this use case.")
     for sub_path in _SSD_SAVE_PATH:
         _del_related_dir(sub_path)
-        try:
-            os.mkdir(sub_path)
-            logger.info(f"mkdir dir:{sub_path}")
-        except OSError:
-            logger.warning("ssd path has exist")  # 多进程并行，忽略异常
+        os.makedirs(sub_path, mode=0o550, exist_ok=True)
+        logger.info(f"Create dir:{sub_path}")
 
 
 if __name__ == "__main__":
@@ -188,7 +185,8 @@ if __name__ == "__main__":
 
     use_mode = UseMode.mapping(os.getenv("USE_MODE"))
     # 最大数据集生成数量
-    MAX_DATASET_GENERATE = 200
+    MAX_DATASET_GENERATE_TRAIN = 200
+    MAX_DATASET_GENERATE_EVAL = 10
     # 最大训练的步数
     MAX_TRAIN_STEPS = 200
     # 训练多少步切换为评估
@@ -235,6 +233,7 @@ if __name__ == "__main__":
     init(train_steps=TRAIN_STEPS,
          eval_steps=EVAL_STEPS,
          save_steps=SAVING_INTERVAL,
+         max_steps=MAX_TRAIN_STEPS,
          use_dynamic=use_dynamic,
          use_dynamic_expansion=use_dynamic_expansion,
          if_load=if_load)
@@ -264,12 +263,12 @@ if __name__ == "__main__":
     # 验证DDR的配置参考：建议跑dynamic避免调参。数据集key总量大于device表，小于device+host；一个batch的unique key数量小于device表。
     # 验证SSD的配置参考：建议跑dynamic避免调参。数据集key总量大于device+host；一个batch的unique key数量小于device表。
     hbm_test_cfg = {"device_vocabulary_size": cfg.user_vocab_size, "host_vocabulary_size": 0}
-    ddr_test_cfg = {"device_vocabulary_size": int(cfg.user_vocab_size * 0.2),
-                    "host_vocabulary_size": int(cfg.user_vocab_size * 0.8)}
+    ddr_test_cfg = {"device_vocabulary_size": int(cfg.user_vocab_size * 0.4),
+                    "host_vocabulary_size": int(cfg.user_vocab_size * 1.0)}
     ssd_test_cfg = {
-        "device_vocabulary_size": int(cfg.user_vocab_size * 0.1),
-        "host_vocabulary_size": int(cfg.user_vocab_size * 0.1),
-        "ssd_vocabulary_size": int(cfg.user_vocab_size * 0.8), "ssd_data_path": _SSD_SAVE_PATH
+        "device_vocabulary_size": int(cfg.user_vocab_size * 0.4),
+        "host_vocabulary_size": int(cfg.user_vocab_size * 0.8),
+        "ssd_vocabulary_size": int(cfg.user_vocab_size * 1.8), "ssd_data_path": _SSD_SAVE_PATH
     }
     cache_mode_dict = {CacheModeEnum.HBM.value: hbm_test_cfg, CacheModeEnum.DDR.value: ddr_test_cfg,
                        CacheModeEnum.SSD.value: ssd_test_cfg}
@@ -300,14 +299,16 @@ if __name__ == "__main__":
     train_batch = None
     table_list = [user_hashtable, item_hashtable]
     if use_mode in [UseMode.TRAIN, UseMode.LOAD_AND_TRAIN]:
-        train_iterator, train_model, train_batch = build_graph(table_list, is_train=True,
-                                                               feature_spec_list=train_feature_spec_list,
-                                                               config_dict=ACCESS_AND_EVICT,
-                                                               batch_number=MAX_DATASET_GENERATE * get_rank_size())
+        train_iterator, train_model, train_batch = build_graph(
+            table_list, is_train=True,
+            feature_spec_list=train_feature_spec_list,
+            config_dict=ACCESS_AND_EVICT,
+            batch_number=MAX_DATASET_GENERATE_TRAIN * get_rank_size()
+        )
     eval_iterator, eval_model, eval_batch = build_graph(table_list, is_train=False,
                                                         feature_spec_list=eval_feature_spec_list,
                                                         config_dict=ACCESS_AND_EVICT,
-                                                        batch_number=MAX_DATASET_GENERATE * get_rank_size())
+                                                        batch_number=MAX_DATASET_GENERATE_EVAL * get_rank_size())
     dense_variables, sparse_variables = get_dense_and_sparse_variable()
 
     params = {"train_batch": train_batch, "eval_batch": eval_batch, "use_one_shot": USE_ONE_SHOT,

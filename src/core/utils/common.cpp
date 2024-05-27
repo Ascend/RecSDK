@@ -37,6 +37,8 @@ namespace MxRec {
     int GlogConfig::gGlogLevel;
     string GlogConfig::gRankId;
 
+    ock::ctr::FactoryPtr factory {};
+
     RankInfo::RankInfo(int rankId, int deviceId, int localRankSize, int option, const vector<int>& ctrlSteps)
         : rankId(rankId), deviceId(deviceId), localRankSize(localRankSize), option(option), ctrlSteps(ctrlSteps)
     {

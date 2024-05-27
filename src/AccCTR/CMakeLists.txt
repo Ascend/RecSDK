@@ -23,8 +23,6 @@ if (${BUILD_MODE} MATCHES "release")
             -Wall
             -fPIC
             -fms-extensions
-            -Wno-unused-parameter
-            -Wno-unused-function
             -Wunused-variable
             -Wunused-value
             -Wcast-align
@@ -47,8 +45,6 @@ elseif (${BUILD_MODE} MATCHES "debug")
             -Wall
             -fPIC
             -fms-extensions
-            -Wno-unused-parameter
-            -Wno-unused-function
             -Wunused-variable
             -Wunused-value
             -Winvalid-pch
@@ -67,8 +63,6 @@ elseif (${BUILD_MODE} MATCHES "ut")
             -Wall
             -fPIC
             -fms-extensions
-            -Wno-unused-parameter
-            -Wno-unused-function
             -Wunused-variable
             -Wunused-value
             -Winvalid-pch
@@ -79,10 +73,6 @@ elseif (${BUILD_MODE} MATCHES "ut")
             -Wfloat-equal
             -Wextra
             -std=c++17
-            #-fsanitize=address
-            #-fno-omit-frame-pointer
-            #-fstack-protector-all
-            #-fstack-protector-strong
             )
 else ()
     message(FATAL_ERROR "======BUILD_MODE not found")
@@ -100,7 +90,6 @@ elseif (${CMAKE_HOST_SYSTEM_PROCESSOR} MATCHES "x86_64")
             ${CXX_FLAGS}
             -msse2
             -mavx
-            #-w
             )
 else ()
     message(FATAL_ERROR "don't support ${CMAKE_HOST_SYSTEM_PROCESSOR}")
@@ -109,6 +98,11 @@ endif (${CMAKE_HOST_SYSTEM_PROCESSOR} MATCHES "aarch64")
 set(OCK_CTR_PLATFORM_UTIL_DIR       ${PROJECT_SOURCE_DIR}/../../../opensource)
 message(===============${OCK_CTR_PLATFORM_UTIL_DIR})
 include_directories(${OCK_CTR_PLATFORM_UTIL_DIR}/securec/include)
+
+include_directories(
+        ${PROJECT_SOURCE_DIR}/src
+        ${PROJECT_SOURCE_DIR}/src/embedding_cache
+)
 
 add_subdirectory(3rdparty)
 add_subdirectory(src)

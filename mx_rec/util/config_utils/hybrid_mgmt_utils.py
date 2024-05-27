@@ -92,3 +92,9 @@ class HybridManagerConfig:
             raise TypeError("Asc load data does not match usr setups, \
             please re-consider if you want to restore from this dir")
         logger.debug("Data from host pipeline has been restored.")
+
+    def fetch_device_emb(self):
+        if self.asc_manager is None:
+            raise RuntimeError("ASC manager not exist.")
+        self.asc_manager.fetch_device_emb()
+        logger.debug("request of fetching embedding from device to host for saving has been send")

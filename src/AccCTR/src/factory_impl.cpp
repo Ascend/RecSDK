@@ -54,6 +54,17 @@ int FactoryImpl::CreateUnique(std::shared_ptr<Unique> &out)
     return H_OK;
 }
 
+int FactoryImpl::CreateEmbCacheManager(std::shared_ptr<EmbCache::EmbCacheManager> &out)
+{
+    auto tmp = new (std::nothrow) EmbCache::EmbCacheManagerImpl();
+    if (tmp == nullptr) {
+        return H_NEW_OBJECT_FAILED;
+    }
+
+    out.reset(dynamic_cast<EmbCache::EmbCacheManager *>(tmp));
+    return H_OK;
+}
+
 int FactoryImpl::SetExternalLogFuncInner(ExternalLog logFunc)
 {
     auto logger = ExternalLogger::Instance();

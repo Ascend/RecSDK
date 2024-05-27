@@ -72,27 +72,27 @@ Table::Table(const string &name, vector<string> &saveDirs, uint64_t maxTableSize
     LOG_INFO("load table:{} done. try store at path:{}", name, curTablePath);
 }
 
-bool Table::IsKeyExist(emb_key_t key)
+bool Table::IsKeyExist(emb_cache_key_t key)
 {
     lock_guard<mutex> guard(rwLock);
     auto it = keyToFile.find(key);
     return !(it == keyToFile.end());
 }
 
-void Table::InsertEmbeddings(vector<emb_key_t> &keys, vector<vector<float>> &embeddings)
+void Table::InsertEmbeddings(vector<emb_cache_key_t> &keys, vector<vector<float>> &embeddings)
 {
     lock_guard<mutex> guard(rwLock);
     InsertEmbeddingsInner(keys, embeddings);
 }
 
-vector<vector<float>> Table::FetchEmbeddings(vector<emb_key_t> &keys)
+vector<vector<float>> Table::FetchEmbeddings(vector<emb_cache_key_t> &keys)
 {
     lock_guard<mutex> guard(rwLock);
     return FetchEmbeddingsInner(keys);
 }
 
 
-void Table::DeleteEmbeddings(vector<emb_key_t> &keys)
+void Table::DeleteEmbeddings(vector<emb_cache_key_t> &keys)
 {
     lock_guard<mutex> guard(rwLock);
     DeleteEmbeddingsInner(keys);
@@ -205,7 +205,7 @@ void Table::LoadDataFileSet(const shared_ptr<fstream> &metaFile, int step)
             throw invalid_argument("table size too small, key quantity exceed while loading data");
         }
 
-        for (emb_key_t k: keys) {
+        for (emb_cache_key_t k: keys) {
             if (keyToFile.find(k) != keyToFile.end()) {
                 throw invalid_argument(
                     "find duplicate key in files, compaction already done before saving, file may broken or modified");
@@ -267,7 +267,7 @@ void Table::Load(const string &metaFilePath, int step)
     LOG_INFO("table:{}, end load data file", name);
 }
 
-void Table::InsertEmbeddingsInner(vector<emb_key_t> &keys, vector<vector<float>> &embeddings)
+void Table::InsertEmbeddingsInner(vector<emb_cache_key_t> &keys, vector<vector<float>> &embeddings)
 {
     if (totalKeyCnt > maxTableSize) {
         throw invalid_argument("table size too small, key quantity exceed while loading data");
@@ -281,7 +281,7 @@ void Table::InsertEmbeddingsInner(vector<emb_key_t> &keys, vector<vector<float>>
         curMaxFileID++;
     }
 
-    for (emb_key_t k: keys) {
+    for (emb_cache_key_t k: keys) {
         auto it = keyToFile.find(k);
         if (it != keyToFile.end()) {
             it->second->DeleteEmbedding(k);
@@ -294,25 +294,25 @@ void Table::InsertEmbeddingsInner(vector<emb_key_t> &keys, vector<vector<float>>
     totalKeyCnt += keys.size();
 }
 
-vector<vector<float>> Table::FetchEmbeddingsInner(vector<emb_key_t> &keys)
+vector<vector<float>> Table::FetchEmbeddingsInner(vector<emb_cache_key_t> &keys)
 {
     // build mini batch for each file, first element for keys, second for index
     size_t dLen = keys.size();
-    unordered_map<shared_ptr<File>, shared_ptr<pair<vector<emb_key_t>, vector<size_t>>>> miniBatch;
+    unordered_map<shared_ptr<File>, shared_ptr<pair<vector<emb_cache_key_t>, vector<size_t>>>> miniBatch;
     for (size_t i = 0; i < dLen; ++i) {
         auto it = as_const(keyToFile).find(keys[i]);
         if (it == keyToFile.end()) {
             throw invalid_argument(StringFormat("failed to find the key, {key=%d} not exist!", keys[i]));
         }
         if (miniBatch[it->second] == nullptr) {
-            miniBatch[it->second] = make_shared<pair<vector<emb_key_t>, vector<size_t>>>();
+            miniBatch[it->second] = make_shared<pair<vector<emb_cache_key_t>, vector<size_t>>>();
         }
         miniBatch[it->second]->first.emplace_back(keys[i]);
         miniBatch[it->second]->second.emplace_back(i);
     }
 
     // must convert map to list to perform parallel query, omp not support to iterate map
-    vector<tuple<shared_ptr<File>, vector<emb_key_t>, vector<size_t>>> queryList;
+    vector<tuple<shared_ptr<File>, vector<emb_cache_key_t>, vector<size_t>>> queryList;
     queryList.reserve(miniBatch.size());
     for (auto [f, info]: miniBatch) {
         queryList.emplace_back(f, info->first, info->second);
@@ -368,7 +368,7 @@ void Table::Compact(bool fullCompact)
     for (const auto &f: compactFileList) {
         staleDataFileSet.erase(f);
         fileSet.erase(f);
-        vector<emb_key_t> validKeys = f->GetKeys();
+        vector<emb_cache_key_t> validKeys = f->GetKeys();
         vector<vector<float>> validEmbs = f->FetchEmbeddings(validKeys);
         InsertEmbeddingsInner(validKeys, validEmbs);
     }
@@ -381,9 +381,9 @@ uint64_t Table::GetTableAvailableSpace()
     return maxTableSize - totalKeyCnt;
 }
 
-void Table::DeleteEmbeddingsInner(vector<emb_key_t> &keys)
+void Table::DeleteEmbeddingsInner(vector<emb_cache_key_t> &keys)
 {
-    for (emb_key_t k: keys) {
+    for (emb_cache_key_t k: keys) {
         auto it = keyToFile.find(k);
         if (it != keyToFile.end()) {
             it->second->DeleteEmbedding(k);
@@ -441,3 +441,46 @@ void Table::CreateTableDir(const string &path)
     LOG_DEBUG("create table dir:{}", path);
 }
 
+void Table::InsertEmbeddingsByAddr(vector<emb_cache_key_t>& keys, vector<float*>& embeddingsAddr,
+                                   uint32_t extEmbeddingSize)
+{
+    lock_guard<mutex> guard(rwLock);
+    InsertEmbeddingsByAddrInner(keys, embeddingsAddr, extEmbeddingSize);
+}
+
+void Table::InsertEmbeddingsByAddrInner(vector<emb_cache_key_t>& keys, vector<float*>& embeddingsAddr,
+                                        uint64_t extEmbeddingSize)
+{
+    if (totalKeyCnt > maxTableSize) {
+        throw invalid_argument("table size too small, key quantity exceed while loading data");
+    }
+
+    if (curFile == nullptr || (curFile != nullptr && curFile->GetDataCnt() >= maxDataNumInFile)) {
+        SetTablePathToDiskWithSpace();
+        CreateTableDir(curTablePath);
+        curFile = make_shared<File>(curMaxFileID, curTablePath);
+        fileSet.insert(curFile);
+        curMaxFileID++;
+    }
+
+    for (emb_cache_key_t k : keys) {
+        auto it = keyToFile.find(k);
+        if (it != keyToFile.end()) {
+            it->second->DeleteEmbedding(k);
+            staleDataFileSet.insert(it->second);
+            totalKeyCnt -= 1;
+        }
+        keyToFile[k] = curFile;
+    }
+    curFile->InsertEmbeddingsByAddr(keys, embeddingsAddr, extEmbeddingSize);
+    totalKeyCnt += keys.size();
+}
+
+vector<emb_cache_key_t> Table::ExportKeys()
+{
+    vector<emb_cache_key_t> vec;
+    for (const auto& p : keyToFile) {
+        vec.push_back(p.first);
+    }
+    return vec;
+}

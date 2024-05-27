@@ -106,7 +106,7 @@ void EmbeddingStatic::SaveKey(const string& savePath)
     }
 }
 
-void EmbeddingStatic::Load(const string& savePath)
+void EmbeddingStatic::Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet)
 {
     LoadKey(savePath);
 }

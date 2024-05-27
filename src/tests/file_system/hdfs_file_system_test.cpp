@@ -17,7 +17,6 @@ See the License for the specific language governing permissions and
 #include <emock/emock.hpp>
 
 #include "file_system/file_system_handler.h"
-#include "file_system/hdfs_file_system/hdfs_file_system.h"
 #include "file_system/hdfs_file_system/hdfs_wrapper.h"
 
 using namespace std;

@@ -40,6 +40,7 @@ void HybridMgmtBlock::CheckAndSetBlock(int channelId)
         LOG_DEBUG(HYBRID_BLOCKING + "blocking by save saveInterval {} pythonBatchId {} hybridBatchId {}",
                   saveInterval, pythonBatchId[channelId], hybridBatchId[channelId]);
         isBlock[TRAIN_CHANNEL_ID] = true;
+        finishSave = false;
     }
     if (stepsInterval[channelId] == -1) {
         return;
@@ -74,7 +75,8 @@ bool HybridMgmtBlock::WaitValid(int channelId)
 {
     // 等待hybrid处理完成
     int reTryNumber = 100;
-    LOG_INFO(HYBRID_BLOCKING + "check step invalid, wait {} {}", channelId, hybridBatchId[channelId]);
+    LOG_INFO(HYBRID_BLOCKING + "validate step and wait, channel:{}, pythonBatchId:{}, hybridBatchId:{}",
+             channelId, pythonBatchId[channelId], hybridBatchId[channelId]);
     // 等待hybrid处理完成后再一次唤醒
     while (pythonBatchId[lastRunChannelId] != hybridBatchId[lastRunChannelId] and isRunning) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10ms));
@@ -85,6 +87,8 @@ bool HybridMgmtBlock::WaitValid(int channelId)
     }
 
     if (pythonBatchId[channelId] == hybridBatchId[channelId]) {
+        LOG_ERROR(HYBRID_BLOCKING + "step not equal, channel:{}, pythonBatchId:{}, hybridBatchId:{}",
+                  channelId, pythonBatchId[channelId], hybridBatchId[channelId]);
         return true;
     } else {
         // 如果等待python侧处理较长时间后hybrid依旧无法追赶上python则异常
@@ -159,13 +163,18 @@ void HybridMgmtBlock::DoBlock(int channelId)
 /// \param channelId channelId  train 0 eval 1
 void HybridMgmtBlock::ResetAll(int channelId)
 {
-    LOG_DEBUG(HYBRID_BLOCKING + "Hybridmgmt is resetting data channelId {} hybridBatchId {}",
-        channelId, hybridBatchId[channelId]);
+    LOG_DEBUG(HYBRID_BLOCKING + "start reset block status,"
+                                " channelId:{}, pythonBatchId:{}, readEmbedBatchId:{}, hybridBatchId:{}",
+              channelId, pythonBatchId[channelId], readEmbedBatchId[channelId], hybridBatchId[channelId]);
 
     readEmbedBatchId[channelId] = 0;
     pythonBatchId[channelId] = 0;
     hybridBatchId[channelId] = 0;
     isBlock[channelId] = false;
+
+    LOG_DEBUG(HYBRID_BLOCKING + "after reset block status,"
+                                " channelId:{}, pythonBatchId:{}, readEmbedBatchId:{}, hybridBatchId:{}",
+              channelId, pythonBatchId[channelId], readEmbedBatchId[channelId], hybridBatchId[channelId]);
 
     LOG_DEBUG("Start to reset isNeedSendEos");
     Singleton<KeyProcess>::GetInstance()->SetEos(0, channelId);
@@ -224,16 +233,37 @@ void HybridMgmtBlock::SetRankInfo(RankInfo ri)
     this->stepsInterval[TRAIN_CHANNEL_ID] = ri.ctrlSteps[TRAIN_CHANNEL_ID];
     this->stepsInterval[EVAL_CHANNEL_ID] = ri.ctrlSteps[EVAL_CHANNEL_ID];
     this->saveInterval = ri.ctrlSteps[SAVE_STEP_INDEX];
+    this->maxTrainStep = ri.ctrlSteps[MAX_TRAIN_STEP_INDEX];
     this->rankInfo = ri;
-};
+}
 
 void HybridMgmtBlock::SetStepInterval(int trainStep, int evalStep)
 {
     this->stepsInterval[0] = trainStep;
     this->stepsInterval[1] = evalStep;
-};
+}
 
 HybridMgmtBlock::~HybridMgmtBlock()
 {
     Destroy();
+}
+
+void HybridMgmtBlock::Wake(int channelId)
+{
+    isBlock[channelId] = false;
+}
+
+bool HybridMgmtBlock::IsNeedWaitSave()
+{
+    if (saveInterval != 0 && saveInterval != -1 &&
+        hybridBatchId[TRAIN_CHANNEL_ID] % saveInterval == 0
+        && !finishSave) {
+        return true;
+    }
+    return false;
+}
+
+void HybridMgmtBlock::FinishSave()
+{
+    finishSave = true;
 }

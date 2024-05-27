@@ -41,6 +41,7 @@ class TestSaver(unittest.TestCase):
 
     @mock.patch.multiple("mx_rec.saver.saver",
                          get_rank_id=mock.MagicMock(return_value=0),
+                         get_rank_size=mock.MagicMock(return_value=1),
                          get_local_rank_size=mock.MagicMock(return_value=1))
     @mock.patch("mx_rec.saver.saver.ConfigInitializer")
     def test_save_and_load_is_consistent(self, saver_config_initializer):

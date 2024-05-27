@@ -20,11 +20,81 @@ limitations under the License.
 #include <sstream>
 #include <vector>
 #include <future>
+#include <queue>
+#include <thread>
+#include <condition_variable>
+#include <functional>
 #include "singleton.h"
 
 using ExternalThread = void (*)(const std::vector<std::function<void()>> &tasks);
 
 namespace ock {
+class ThreadPoolAsync {
+public:
+    ThreadPoolAsync() : stop(false) {}
+
+    ~ThreadPoolAsync()
+    {
+        {
+            std::lock_guard<std::mutex> lock(taskMutex);
+            stop = true;
+        }
+        taskCv.notify_all();
+        for (auto &t : workerThreads) {
+            t.join();
+        }
+    }
+
+    void SetNumThreads(int n)
+    {
+        if (n < 1) {
+            return;
+        }
+
+        for (int i = 0; i < n; ++i) {
+            workerThreads.emplace_back(std::bind(&ThreadPoolAsync::WorkerThread, this));
+        }
+    }
+
+    template <typename F> std::future<int> AddTask(F &&f)
+    {
+        std::lock_guard<std::mutex> lock(taskMutex);
+
+        auto pt = std::make_unique<std::packaged_task<int()>>(std::forward<F>(f));
+        auto fut = pt->get_future();
+        tasks.emplace(std::move(pt));
+        taskCv.notify_one();
+        return fut;
+    }
+
+private:
+    std::vector<std::thread> workerThreads;
+    std::queue<std::unique_ptr<std::packaged_task<int()>>> tasks;
+    std::mutex taskMutex;
+    std::condition_variable taskCv;
+    std::atomic<bool> stop = false;
+
+    void WorkerThread()
+    {
+        while (true) {
+            std::unique_ptr<std::packaged_task<int()>> task;
+            {
+                std::unique_lock<std::mutex> lock(taskMutex);
+                while (tasks.empty() && !stop) {
+                    taskCv.wait(lock);
+                }
+                if (stop) {
+                    break;
+                }
+                task = std::move(tasks.front());
+                tasks.pop();
+            }
+            (*task)();
+        }
+    }
+};
+
+
 class SimpleThreadPool {
 public:
     static void SyncRun(const std::vector<std::function<void()>> &tasks)

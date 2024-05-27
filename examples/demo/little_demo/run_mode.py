@@ -16,6 +16,7 @@
 # ==============================================================================
 
 import os
+import sys
 from typing import List
 
 import tensorflow as tf
@@ -72,6 +73,8 @@ class RunMode:
         channel_id = ConfigInitializer.get_instance().train_params_config.get_training_mode_channel_id(False)
         import_host_pipeline_ops().clear_channel(channel_id)
 
+        if self.infer_steps == -1:
+            self.infer_steps = sys.maxsize  # 消耗全部数据
         for i in range(1, self.infer_steps + 1):
             logger.info("###############    infer at step %d    ################", i)
             try:
@@ -126,17 +129,19 @@ class RunMode:
             self.session.run(initializer)
         else:
             logger.debug(f"use one shot iterator and modify graph is `{self.is_modify_graph}`.")
-
         self.saver = tf.compat.v1.train.Saver()
-        start_step = 1
 
+        latest_ckpt_step = 0
+        start_step = 1
         if if_load:
-            latest_step = get_load_step(model_file)
-            start_step = latest_step + 1
-            self.saver.restore(self.session, f"./saved-model/model-{latest_step}")
+            latest_ckpt_step = get_load_step(model_file)
+            start_step = latest_ckpt_step + 1
+            self.saver.restore(self.session, f"./saved-model/model-{latest_ckpt_step}")
         else:
             self.session.run(tf.compat.v1.global_variables_initializer())
 
+        if self.max_train_steps == -1:
+            self.max_train_steps = sys.maxsize  # 消耗全部数据
         for i in range(start_step, start_step + self.max_train_steps):
             logger.info("################    training at step %d    ################", i)
             try:
@@ -151,13 +156,13 @@ class RunMode:
                     logger.info(f"training at step:{i}, table[{t.table_name}], table size:{t.size()}, "
                                 f"table capacity:{t.capacity()}")
 
-                if i % train_interval == 0:
+                if train_interval != -1 and (i - latest_ckpt_step) % train_interval == 0:
                     self.evaluate()
 
-                if i % saving_interval == 0:
+                if saving_interval != -1 and (i - latest_ckpt_step) % saving_interval == 0:
                     self.saver.save(self.session, f"./saved-model/model", global_step=i)
 
-                if self.is_faae and i == train_interval // 2:
+                if train_interval != -1 and self.is_faae and i == train_interval // 2:
                     logger.info("###############    set_threshold at step:%d   ################", i)
                     self.change_threshold()
 

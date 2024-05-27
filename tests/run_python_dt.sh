@@ -36,7 +36,7 @@ cd -
 
 # set environment variable
 export PYTHONPATH="${TOP_PATH}"/output:$PYTHONPATH
-export LD_LIBRARY_PATH="${TOP_PATH}"/output:/usr/local/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH="${TOP_PATH}"/output:/usr/local/lib:"${TOP_PATH}"/mx_rec/libasc:$LD_LIBRARY_PATH
 
 rm -rf result
 mkdir -p result

@@ -18,8 +18,6 @@ See the License for the specific language governing permissions and
 
 #include <functional>
 
-#include "emb_hashmap/emb_hashmap.h"
-#include "host_emb/host_emb.h"
 #include "utils/common.h"
 
 namespace MxRec {

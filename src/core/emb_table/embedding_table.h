@@ -38,20 +38,10 @@ public:
     virtual void Key2Offset(std::vector<emb_key_t>& keys, int channel);
 
     /**
-     * DDR模式使用
-     */
-    virtual void FindOffset(const vector<emb_key_t>& keys,
-                            size_t currentBatchId, size_t keepBatchId, int channelId);
-
-    virtual std::vector<int32_t> FindOffset(const vector<emb_key_t>& keys,
-                                            size_t batchId, int channelId,
-                                            std::vector<size_t>& swapPos);
-
-    /**
      * 淘汰key,  配合GetEvictedKeys一起使用GetEvictedKeys
      * EvictKeys执行，通过GetEvictedKeys, GetEvictedKeys拿结果
      */
-    virtual void EvictKeys(const std::vector<emb_key_t>& keys);
+    virtual void EvictKeys(const std::vector<emb_cache_key_t>& keys);
 
     /**
      * 获取设备侧淘汰的key的偏移或者地址
@@ -73,23 +63,11 @@ public:
 
     virtual size_t size() const;
 
-    void ClearMissingKeys();
-
-    virtual const std::vector<size_t>& GetMissingKeys();
-
     absl::flat_hash_map<emb_key_t, int64_t> GetKeyOffsetMap();
 
-    virtual void SetStartCount();
-
-    virtual void ClearLookupAndSwapOffset();
-
-    virtual void Load(const string& savePath);
+    virtual void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
 
     virtual void Save(const string& savePath);
-
-    size_t GetDevVocabSize();
-
-    size_t GetHostVocabSize();
 
     static void MakeDir(const string& dirName);
 
@@ -101,20 +79,20 @@ public:
 
     virtual void SetCacheManager(CacheManager* cacheManager);
 
-    void EnableSSD();
-
-    virtual void RefreshFreqInfoWithSwap();
-
     virtual TableInfo GetTableInfo();
+
+    virtual void SetHDTransfer(HDTransfer *hdTransfer);
+
+    virtual void SetEmbCache(ock::ctr::EmbCacheManagerPtr embCache);
 
     std::string name;
     size_t hostVocabSize;
     size_t devVocabSize;
+    size_t ssdVocabSize;
     size_t maxOffset;
     absl::flat_hash_map<emb_key_t, int64_t> keyOffsetMap;
     std::vector<int64_t> evictDevPos;     // 记录HBM内被淘汰的key
     std::vector<int64_t> evictHostPos; // 记录Host内淘汰列表
-    std::mutex mutSave_;  // 用于保存时锁住KeyOffsetMap
 
 #ifdef NDEBUG
 protected:

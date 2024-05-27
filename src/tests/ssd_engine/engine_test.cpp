@@ -47,9 +47,9 @@ TEST(SSDEngine, CreateAndWriteAndReadAndAutoCompactAndSave)
     ASSERT_EQ(eng->IsTableExist(tbName), true);
 
     // write
-    vector<emb_key_t> keys;
+    vector<emb_cache_key_t> keys;
     vector<vector<float>> embeddings;
-    for (emb_key_t k = 0; k < 10; k++) {
+    for (emb_cache_key_t k = 0; k < 10; k++) {
         keys.emplace_back(k);
         vector<float> emb = {static_cast<float>(k + 0.1), static_cast<float>(k + 0.2)};
         embeddings.emplace_back(emb);
@@ -64,7 +64,7 @@ TEST(SSDEngine, CreateAndWriteAndReadAndAutoCompactAndSave)
     ASSERT_EQ(eng->GetTableAvailableSpace(tbName), maxTableSize - keys.size());
 
     // delete and wait auto compact
-    vector<emb_key_t> deleteKeys = {0};
+    vector<emb_cache_key_t> deleteKeys = {0};
     eng->DeleteEmbeddings(tbName, deleteKeys);
     this_thread::sleep_for(compactPeriod);
 
@@ -124,9 +124,9 @@ TEST(SSDEngine, LoadAndRead)
     engSave->CreateTable(tbName, savePath, maxTableSize);
 
     // write
-    vector<emb_key_t> keys;
+    vector<emb_cache_key_t> keys;
     vector<vector<float>> embeddings;
-    for (emb_key_t k = 0; k < 10; k++) {
+    for (emb_cache_key_t k = 0; k < 10; k++) {
         keys.emplace_back(k);
         vector<float> emb = {static_cast<float>(k + 0.1), static_cast<float>(k + 0.2)};
         embeddings.emplace_back(emb);
@@ -141,7 +141,7 @@ TEST(SSDEngine, LoadAndRead)
     shared_ptr<SSDEngine> engLoad = make_shared<SSDEngine>();
     engLoad->Start();
     engLoad->Load(tbName, savePath, maxTableSize, saveStep);
-    for (emb_key_t k: keys) {
+    for (emb_cache_key_t k: keys) {
         ASSERT_EQ(engLoad->IsKeyExist(tbName, k), true);
     }
     auto ret = engLoad->FetchEmbeddings(tbName, keys);

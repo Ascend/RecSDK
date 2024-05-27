@@ -30,7 +30,6 @@ using namespace MxRec;
 using namespace testing;
 
 static constexpr size_t BATCH_NUM_EACH_THREAD = 3;
-ock::ctr::FactoryPtr factory;
 
 class SimpleThreadPool {
 public:
@@ -45,17 +44,6 @@ public:
         }
     }
 };
-
-static void CTRLog(int level, const char *msg)
-{
-    switch (level) {
-        case 0:
-            LOG_DEBUG(msg);
-            break;
-        default:
-            break;
-    }
-}
 
 class KeyProcessTest : public testing::Test {
 protected:
@@ -352,7 +340,7 @@ TEST_F(KeyProcessTest, Start)
     ASSERT_EQ(process.Start(), 0);
     setenv("keyProcessThreadNum", "abc", 1);
     ASSERT_EQ(process.Start(), 0);
-    CTRLog(0, "key process start successful");
+    LOG_INFO("key process start successful");
     process.Destroy();
 }
 
