@@ -18,7 +18,6 @@ See the License for the specific language governing permissions and
 
 #include "file_system/file_system_handler.h"
 #include "file_system/hdfs_file_system/hdfs_wrapper.h"
-#include "utils/logger.h"
 
 using namespace std;
 using namespace MxRec;
@@ -77,6 +76,7 @@ TEST_F(HdfsFileSystemTest, CreateDirFailed)
 TEST_F(HdfsFileSystemTest, GetFileSize)
 {
     auto* fileInfo = new hdfsFileInfo();
+    fileInfo->mSize = 1;
     EMOCK(&HdfsWrapper::GetPathInfo).stubs().will(returnValue(fileInfo));
     string filePath = "hdfs://master:9000/test_dir/";
     auto fileSystemHandler = make_unique<FileSystemHandler>();
