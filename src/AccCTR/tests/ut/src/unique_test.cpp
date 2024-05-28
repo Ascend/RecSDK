@@ -1389,6 +1389,7 @@ TEST_F(UniqueTest, IdCntSmall)
     ASSERT_EQ(unique->DoEnhancedUnique(uniqueIn, uniqueOut), 4); // idcnt过小
 
     unique->UnInitialize();
+    delete[] idCnt;
 
     std::cout << "===========IdCntSmall end=============" << std::endl;
 }
@@ -1491,6 +1492,7 @@ TEST_F(UniqueTest, DoUniqueLotsDataFunction)
     ASSERT_THAT(idCnt, testing::ElementsAreArray(expectedIdCnt));
 
     unique->UnInitialize();
+    delete[] uniqueIdInBucket;
     if (path) {
         free(path);
     }
@@ -1599,6 +1601,8 @@ TEST_F(UniqueTest, DoUniqueLotsDataPaddingFunction)
 
     unique->UnInitialize();
     ASSERT_EQ(unique->DoEnhancedUnique(uniqueIn, uniqueOut), 11);
+    delete[] idCnt;
+    delete[] uniqueIdInBucket;
     if (path) {
         free(path);
     }
