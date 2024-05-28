@@ -95,6 +95,13 @@ TEST_F(UniqueTest, Conf)
     ASSERT_EQ(unique->DoEnhancedUnique(uniqueIn, uniqueOut), 3); // idCntFill空指针
     uniqueOut.idCntFill = idCntFill;
     ASSERT_EQ(unique->DoEnhancedUnique(uniqueIn, uniqueOut), 7); // padding长度过小
+
+    unique->UnInitialize();
+    delete[] idCnt;
+    delete[] idCntFill;
+    delete[] uniqueIdCntInBucket;
+    delete[] uniqueIdInBucket;
+
     std::cout << "===========Conf end=============" << std::endl;
 }
 
@@ -115,6 +122,9 @@ TEST_F(UniqueTest, usePaddingNoShardingErr)
     conf.outputType = OutputType::ENHANCED;
 
     ASSERT_EQ(unique->Initialize(conf), 9);
+
+    unique->UnInitialize();
+
     std::cout << "===========usePaddingNoShardingErr end=============" << std::endl;
 }
 
@@ -131,6 +141,8 @@ TEST_F(UniqueTest, useNegativeDesiredSize)
     conf.outputType = OutputType::NORMAL;
 
     ASSERT_EQ(unique->Initialize(conf), 1);
+
+    unique->UnInitialize();
 
     std::cout << "===========useNegativeDesiredSize end=============" << std::endl;
 }
@@ -404,6 +416,9 @@ TEST_F(UniqueTest, DoEnhancedUniqueErr)
     ASSERT_EQ(uniqueOut.uniqueIdCnt, (int)idsSet.size());
 
     unique->UnInitialize();
+    delete[] uniqueIdInBucket;
+    delete[] idCnt;
+
     std::cout << "===========DoEnhancedUniqueErr end=============" << std::endl;
 }
 
@@ -544,6 +559,9 @@ TEST_F(UniqueTest, idCntIsNullSharding)
     ASSERT_EQ(ret, 3);
 
     unique->UnInitialize();
+    delete[] uniqueIdCntInBucket;
+    delete[] uniqueIdInBucket;
+
     std::cout << "===========idCntIsNullSharding end=============" << std::endl;
 }
 
@@ -620,6 +638,7 @@ TEST_F(UniqueTest, DoUniqueShard)
     ASSERT_THAT(uniqueIdCntInBucket, testing::ElementsAreArray(expectedUniqueIdCnt));
     ASSERT_THAT(idCnt, testing::ElementsAreArray(expectedIdCnt));
     unique->UnInitialize();
+    delete[] uniqueIdInBucket;
 
     std::cout << "===========DoUniqueShard end=============" << std::endl;
 }
@@ -685,6 +704,7 @@ TEST_F(UniqueTest, DoUniqueOnlyShard)
     ASSERT_THAT(inputId, testing::ElementsAreArray(restoreIds));
     ASSERT_THAT(uniqueIdCntInBucket, testing::ElementsAreArray(expectedUniqueIdCnt));
     unique->UnInitialize();
+    delete[] uniqueIdInBucket;
 
     std::cout << "===========DoUniqueOnlyShard end=============" << std::endl;
 }
@@ -769,6 +789,8 @@ TEST_F(UniqueTest, DoUniquePadding)
     ASSERT_THAT(idCntFill, testing::ElementsAreArray(expectedIdCnt));
     ASSERT_EQ(uniqueOut.uniqueIdCnt, conf.paddingSize * conf.shardingNum);
     unique->UnInitialize();
+    delete[] idCnt;
+    delete[] uniqueIdInBucket;
     std::cout << "===========DoUniquePadding end=============" << std::endl;
 }
 
@@ -913,6 +935,7 @@ TEST_F(UniqueTest, DoUniqueShardNumberOversize)
     ASSERT_THAT(uniqueIdCntInBucket, testing::ElementsAreArray(expectedUniqueIdCnt));
     ASSERT_THAT(idCnt, testing::ElementsAreArray(expectedIdCnt));
     unique->UnInitialize();
+    delete[] uniqueIdInBucket;
 
     std::cout << "===========DoUniqueShardNumberOversize end=============" << std::endl;
 }
@@ -981,6 +1004,12 @@ TEST_F(UniqueTest, DoUniqueSpecial)
     }
 
     unique->UnInitialize();
+    delete[] uniqueData;
+    delete[] index;
+    delete[] idCnt;
+    delete[] idCntFill;
+    delete[] uniqueIdCntInBucket;
+    delete[] uniqueIdInBucket;
 
     std::cout << "===========DoUniqueSpecial end=============" << std::endl;
 }
@@ -1020,6 +1049,10 @@ TEST_F(UniqueTest, IdLarge)
     uniqueOut.idCnt = idCnt;
 
     ASSERT_EQ(unique->DoEnhancedUnique(uniqueIn, uniqueOut), 6); // ID太大
+
+    unique->UnInitialize();
+    delete[] idCnt;
+
     std::cout << "===========IdLarge end=============" << std::endl;
 }
 
@@ -1095,6 +1128,8 @@ TEST_F(UniqueTest, DoUniqueNormalInt32)
     ASSERT_THAT(idCnt, testing::ElementsAreArray(expectedIdCnt));
 
     unique->UnInitialize();
+    delete[] uniqueIdInBucket;
+
     std::cout << "===========DoUniqueNormalInt32 end=============" << std::endl;
 }
 
@@ -1228,6 +1263,7 @@ TEST_F(UniqueTest, DoUniqueShardMultipleTimes)
         ASSERT_THAT(idCnt, testing::ElementsAreArray(expectedIdCnt));
     }
     unique->UnInitialize();
+    delete[] uniqueIdInBucket;
 
     std::cout << "===========DoUniqueShardMultipleTimes end=============" << std::endl;
 }
@@ -1312,6 +1348,9 @@ TEST_F(UniqueTest, DoUniquePaddingMultipleTimes)
     }
 
     unique->UnInitialize();
+    delete[] idCnt;
+    delete[] uniqueIdInBucket;
+
     std::cout << "===========DoUniquePaddingMultipleTimes end=============" << std::endl;
 }
 
@@ -1348,6 +1387,9 @@ TEST_F(UniqueTest, IdCntSmall)
     uniqueOut.idCnt = idCnt;
 
     ASSERT_EQ(unique->DoEnhancedUnique(uniqueIn, uniqueOut), 4); // idcnt过小
+
+    unique->UnInitialize();
+
     std::cout << "===========IdCntSmall end=============" << std::endl;
 }
 

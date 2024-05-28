@@ -73,6 +73,10 @@ elseif (${BUILD_MODE} MATCHES "ut")
             -Wfloat-equal
             -Wextra
             -std=c++17
+            -fsanitize=address
+            -fsanitize-recover=address,all
+            -fno-omit-frame-pointer
+            -fstack-protector-all
             )
 else ()
     message(FATAL_ERROR "======BUILD_MODE not found")

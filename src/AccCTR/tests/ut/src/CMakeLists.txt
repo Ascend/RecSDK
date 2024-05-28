@@ -24,7 +24,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../conf/toolchain.cmake")
 set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../src)
 set(TOP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../)
 
-file(GLOB_RECURSE TEST_UNIQUE_FILES *.cpp *.h)
+file(GLOB_RECURSE TEST_UNIQUE_FILES unique_test.cpp *.h)
 add_executable(test_unique_files ${TEST_UNIQUE_FILES})
 include_directories(${OCK_CTR_UTIL_INSTALL_DIR}/googletest-release-1.8.1/include)
 link_directories(${OCK_CTR_UTIL_INSTALL_DIR}/googletest-release-1.8.1/lib64)
