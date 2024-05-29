@@ -156,6 +156,11 @@ void EmbeddingDDR::LoadEmbedding(const string &savePath, vector<vector<float>> &
 
 void EmbeddingDDR::LoadOptimizerSlot(const string &savePath, vector<vector<float>> &optimizerSlots)
 {
+    if (optimParams.size() == 0) {
+        LOG_DEBUG("optimizer has no slot data to load");
+        return;
+    }
+
     // must init first
     for (size_t i = 0; i < hostLoadOffset.size(); i++) {
         vector<float> tmp(extEmbSize_ - embSize_);
@@ -293,6 +298,11 @@ void EmbeddingDDR::SaveEmbedding(const string& savePath, vector<vector<float>>& 
 
 void EmbeddingDDR::SaveOptimizerSlot(const string& savePath, vector<vector<float>>& optimizerSlots, size_t keySize)
 {
+    if (optimizerSlots.size() == 0) {
+        LOG_DEBUG("optimizer has no slot data to save");
+        return;
+    }
+    
     if (optimizerSlots.size() != keySize) {
         string errMsg = StringFormat("optimizer slot data size not equal to key size, "
                                      "optimizerSlots.size:%d, keySize:%d",

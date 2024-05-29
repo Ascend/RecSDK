@@ -260,52 +260,61 @@ class Saver(object):
 
         table_instance0 = self.config_instance.sparse_embed_config.get_table_instance(self.var_list[0])
         if table_instance0.is_hbm:
-            self.config_instance.hybrid_manager_config.save_host_data(root_dir)
-            if self.config_instance.use_dynamic_expansion:
-                # Data related to dynamic expansion needs to be saved only on the host side.
-                return
-
-            result = self.save_op_dict
-            threads = []
-            for table_name in result.keys():
-                thread = SaveModelThread(self, sess, result, root_dir, table_name)
-                threads.append(thread)
-
-            for thread in threads:
-                thread.start()
-
-            for thread in threads:
-                thread.join()
+            self._save_hbm(sess, root_dir)
         else:
-            # 接受host侧传来的需要swap_out的offset用于更新host侧并保存
-            self.config_instance.hybrid_manager_config.fetch_device_emb()
-            for var in self.var_list:
-                table_instance = self.config_instance.sparse_embed_config.get_table_instance(var)
-                table_name = table_instance.table_name
+            self._save_ddr(sess, root_dir)
+        logger.debug(f"Host data was saved.")
+        
+    def _save_hbm(self, sess, root_dir):
+        self.config_instance.hybrid_manager_config.save_host_data(root_dir)
+        if self.config_instance.use_dynamic_expansion:
+            # Data related to dynamic expansion needs to be saved only on the host side.
+            return
 
-                use_static = ConfigInitializer.get_instance().use_static
-                max_lookup_vec_size = None
-                if use_static:
-                    max_lookup_vec_size = table_instance.send_count * self.rank_size
-                swap_out_pos, swap_out_len = npu_ops.gen_npu_ops.get_next(
-                    output_types=[tf.int32, tf.int32],
-                    output_shapes=[[max_lookup_vec_size], []],
-                    channel_name=f'{table_name}_save_h2d_{TRAIN_CHANNEL_ID}')
-                if use_static:
-                    swap_out_pos = swap_out_pos[:swap_out_len]
-                    
-                optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(table_name)
-                table = [var] + [slot_var for slots in optimizer.values() for slot_var in slots.values()]
+        result = self.save_op_dict
+        threads = []
+        for table_name in result.keys():
+            thread = SaveModelThread(self, sess, result, root_dir, table_name)
+            threads.append(thread)
 
-                swap_outs = [tf.gather(one_table, swap_out_pos) for one_table in table]
-                swap_out = tf.concat(swap_outs, axis=1)
-                channel_name = f'{table_name}_save_d2h_{TRAIN_CHANNEL_ID}'
-                logger.debug('channel %s was built for op swap_out_op.', channel_name)
-                swap_out_op = npu_ops.outfeed_enqueue_op(channel_name=channel_name, inputs=[swap_out])
-                # 发送host需要的embedding
-                sess.run(swap_out_op)
-            self.config_instance.hybrid_manager_config.save_host_data(root_dir)
-        logger.debug(f"host data was saved.")
+        for thread in threads:
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+            
+    def _save_ddr(self, sess, root_dir):
+        # 接受host侧传来的需要swap_out的offset用于更新host侧并保存
+        self.config_instance.hybrid_manager_config.fetch_device_emb()
+        for var in self.var_list:
+            table_instance = self.config_instance.sparse_embed_config.get_table_instance(var)
+            table_name = table_instance.table_name
+
+            use_static = ConfigInitializer.get_instance().use_static
+            max_lookup_vec_size = None
+            if use_static:
+                max_lookup_vec_size = table_instance.send_count * self.rank_size
+            swap_out_pos, swap_out_len = npu_ops.gen_npu_ops.get_next(
+                output_types=[tf.int32, tf.int32],
+                output_shapes=[[max_lookup_vec_size], []],
+                channel_name=f'{table_name}_save_h2d_{TRAIN_CHANNEL_ID}')
+            if use_static:
+                swap_out_pos = swap_out_pos[:swap_out_len]
+                
+            table = [var]
+            optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(table_name)
+            if optimizer is not None:
+                for slots in optimizer.values():
+                    table += list(slots.values())
+
+            swap_outs = [tf.gather(one_table, swap_out_pos) for one_table in table]
+            swap_out = tf.concat(swap_outs, axis=1)
+            channel_name = f'{table_name}_save_d2h_{TRAIN_CHANNEL_ID}'
+            logger.debug('channel %s was built for op swap_out_op.', channel_name)
+            swap_out_op = npu_ops.outfeed_enqueue_op(channel_name=channel_name, inputs=[swap_out])
+            # 发送host需要的embedding
+            sess.run(swap_out_op)
+        self.config_instance.hybrid_manager_config.save_host_data(root_dir)
 
     def _get_valid_dict_data(self, dump_data_dict, table_name):
         host_data = self.config_instance.hybrid_manager_config.get_host_data(table_name)

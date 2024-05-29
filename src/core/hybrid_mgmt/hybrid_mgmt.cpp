@@ -557,7 +557,7 @@ bool HybridMgmt::IsEvalEndBatch(int batchId) const
 bool HybridMgmt::ParseKeys(int channelId, int& batchId, TaskType type)
 {
 #ifndef GTEST
-    LOG_INFO(MGMT + "channelId:{} batchId:{}, DDR mode, ParseKeys start.", channelId, batchId);
+    LOG_INFO(MGMT + "channelId:{} batchId:{}, ParseKeys start.", channelId, batchId);
     TimeCost parseKeyTC;
     bool remainBatch = true; // 是否从通道获取了数据
 
@@ -1328,7 +1328,7 @@ void HybridMgmt::InitEmbeddingCache(const vector<EmbInfo>& embInfos)
         specialProcessStatus[embInfo.name] = ProcessStatus::NORMAL;
 
         // 初始化embedding cache
-        LOG_INFO("create cache for table:{}, hostVocabSize:{}, embSize:{}, maxCacheSize:{}",
+        LOG_INFO("create cache for table:{}, hostVocabSize:{}, extEmbeddingSize:{}, maxCacheSize(devVocabSize):{}",
                  embInfo.name, embInfo.hostVocabSize, embInfo.extEmbeddingSize, embInfo.devVocabSize);
         EmbCache::EmbCacheInfo embCacheInfo(embInfo.name, embInfo.hostVocabSize, embInfo.embeddingSize,
                                             embInfo.extEmbeddingSize, embInfo.devVocabSize);
