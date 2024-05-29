@@ -219,6 +219,9 @@ TEST_F(UniqueTest, DoUniqueNormal)
     ASSERT_EQ(uniqueOut.uniqueIdCnt, (int)idsSet.size());
 
     unique->UnInitialize();
+    if (path) {
+        free(path);
+    }
     std::cout << "===========DoUniqueNormal end=============" << std::endl;
 }
 
