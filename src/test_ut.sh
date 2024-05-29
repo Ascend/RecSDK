@@ -130,7 +130,7 @@ cd build
 
 python_path="$(dirname "$(dirname "$(which python3.7)")")"
 # config asan environment variable
-export ASAN_OPTIONS=halt_on_error=1:detect_leaks=1
+export ASAN_OPTIONS=halt_on_error=1:detect_leaks=1:fast_unwind_on_malloc=0
 export LSAN_OPTIONS=suppressions=../tests/leaks.supp
 
 cmake -DCMAKE_BUILD_TYPE=Debug \
