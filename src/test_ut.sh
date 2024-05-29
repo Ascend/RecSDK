@@ -38,10 +38,6 @@ opensource_path="${ROOT_DIR}"/../opensource
 acc_ctr_path="${ROOT_DIR}"/src/AccCTR
 export LD_LIBRARY_PATH="${acc_ctr_path}"/output/ock_ctr_common/lib:$LD_LIBRARY_PATH
 
-# config asan environment variable
-export ASAN_OPTIONS=halt_on_error=1:detect_leaks=1
-
-
 function prepare_googletest(){
   cd ${opensource_path}
   if [ ! -d googletest-release-1.8.1 ]; then
@@ -133,6 +129,9 @@ mkdir build
 cd build
 
 python_path="$(dirname "$(dirname "$(which python3.7)")")"
+# config asan environment variable
+export ASAN_OPTIONS=halt_on_error=1:detect_leaks=1
+export LSAN_OPTIONS=suppressions=../tests/leaks.supp
 
 cmake -DCMAKE_BUILD_TYPE=Debug \
     -DTF_PATH="${python_path}"/lib/python3.7/site-packages/"${TF_DIR}" \
