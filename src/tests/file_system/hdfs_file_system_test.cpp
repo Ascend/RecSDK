@@ -26,10 +26,10 @@ using namespace emock;
 
 void MockHdfs()
 {
+    EMOCK(&HdfsWrapper::LoadHdfsLib).stubs().will(ignoreReturnValue());
     hdfsFS ConnectFs;
     hdfsFile hdfsFileHandler;
     hdfsFileInfo* fileInfo;
-    EMOCK(&HdfsWrapper::LoadHdfsLib).stubs().will(ignoreReturnValue());
     EMOCK(&HdfsWrapper::CloseHdfsLib).stubs().will(ignoreReturnValue());
     EMOCK(&HdfsWrapper::Connect).stubs().will(returnValue(ConnectFs));
     EMOCK(&HdfsWrapper::Disconnect).stubs().will(returnValue(1));
