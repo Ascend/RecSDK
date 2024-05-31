@@ -1,4 +1,5 @@
 """define Factorization-Machine based Neural Network Model"""
+from npu_bridge.npu_init import *
 import math
 import numpy as np
 import tensorflow as tf
@@ -407,3 +408,4 @@ class ExtremeDeepFMModel(BaseModel):
             self.layer_params.append(b_nn_output)
             nn_output = tf.nn.xw_plus_b(hidden_nn_layers[-1], w_nn_output, b_nn_output)
             return nn_output
+

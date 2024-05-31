@@ -1,4 +1,5 @@
 """define FfmCache class for cache the format dataset"""
+from npu_bridge.npu_init import *
 from IO.base_cache import BaseCache
 import tensorflow as tf
 import numpy as np
@@ -160,3 +161,4 @@ class FfmCache(BaseCache):
             for item in sort_feature_cnt:
                 f.write(str(item[0]) + ',' + str(item[1]) + '\n')
         return sample_num, impression_id_list
+

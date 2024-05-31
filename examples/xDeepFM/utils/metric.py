@@ -1,4 +1,5 @@
 """define metrics"""
+from npu_bridge.npu_init import *
 from collections import defaultdict
 from sklearn.metrics import roc_auc_score, log_loss, mean_squared_error
 import numpy as np
@@ -95,3 +96,4 @@ def cal_group_auc(labels, preds, impression_id_list):
     group_auc = float(total_auc) / impression_total
     group_auc = round(group_auc, 4)
     return group_auc
+
