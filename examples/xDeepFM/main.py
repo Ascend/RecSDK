@@ -153,10 +153,10 @@ def check_nn_config(config):
 def check_config(config):
     """check networks config"""
     if config['model']['model_type'] not in ['deepFM', 'deepWide', 'dnn', 'ipnn', \
-                                             'opnn', 'fm', 'lr', 'din', 'cccfnet', 'deepcross', 'exDeepFM', "cross", "CIN"]:
+                                             'opnn', 'fm', 'lr', 'din', 'cccfnet', 'deepcross', 'exDeepFM', "cross"]:
         raise ValueError(
-            "model type must be cccfnet, deepFM, deepWide, dnn, ipnn, opnn, fm, lr, din, deepcross, exDeepFM, cross, CIN but you set is {0}".format(
-                config['model']['model_type']))
+            "model type must be cccfnet, deepFM, deepWide, dnn, ipnn, opnn, fm, lr, din, deepcross, exDeepFM, "
+            "cross, but you set is {0}".format(config['model']['model_type']))
     check_nn_config(config)
 
 
@@ -172,6 +172,12 @@ def load_yaml():
 
 def main():
     """main function"""
+
+    # init
+    from mx_rec.util.initialize import init
+    init(use_dynamic=True,
+         use_dynamic_expansion=False)
+
     # flag = True
     util.check_tensorflow_version()
     util.check_and_mkdir()
