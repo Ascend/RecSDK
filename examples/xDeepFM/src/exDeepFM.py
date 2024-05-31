@@ -3,6 +3,8 @@ from npu_bridge.npu_init import *
 import math
 import numpy as np
 import tensorflow as tf
+from mx_rec.core.embedding import create_table
+from mx_rec.core.embedding import sparse_lookup
 from src.base_model import BaseModel
 
 __all__ = ["ExtremeDeepFMModel"]
@@ -37,10 +39,22 @@ class ExtremeDeepFMModel(BaseModel):
         fm_sparse_weight = tf.SparseTensor(self.iterator.dnn_feat_indices,
                                            self.iterator.dnn_feat_weights,
                                            self.iterator.dnn_feat_shape)
-        w_fm_nn_input_orgin = tf.nn.embedding_lookup_sparse(self.embedding,
-                                                            fm_sparse_index,
-                                                            fm_sparse_weight,
-                                                            combiner="sum")
+        dense_indices = tf.sparse.to_dense(fm_sparse_index, default_value=0)
+        dense_weights = tf.sparse.to_dense(fm_sparse_weight, default_value=0)
+
+        sparse_hashtable = create_table(key_dtype=tf.int32,
+                                        dim=tf.TensorShape([hparams.dim]),
+                                        name='sparse_embeddings_table',
+                                        emb_initializer=tf.zeros_initializer(),
+                                        device_vocabulary_size=hparams.FEATURE_COUNT,
+                                        host_vocabulary_size=0
+                                        )
+        embedded_values = sparse_lookup(sparse_hashtable,
+                                        dense_indices,
+                                        is_train=True,
+                                        name="sparse_embeddings",
+                                        modify_graph=True)
+        w_fm_nn_input_orgin = tf.reduce_sum(embedded_values * tf.expand_dims(dense_weights, axis=-1), axis=1)
         embedding = tf.reshape(w_fm_nn_input_orgin, [-1, hparams.dim * hparams.FIELD_COUNT])
         embedding_size = hparams.FIELD_COUNT * hparams.dim
         return embedding, embedding_size

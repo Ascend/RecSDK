@@ -18,7 +18,6 @@ from IO.ffm_cache import FfmCache
 #from src.cccfnet import CCCFModel
 #from src.deepcross import DeepCrossModel
 from src.exDeepFM import ExtremeDeepFMModel
-from src.CIN import CINModel
 #from src.cross import CrossModel
 import utils.util as util
 import utils.metric as metric
@@ -32,29 +31,27 @@ class TrainModel(collections.namedtuple("TrainModel", ("graph", "model", "iterat
 
 
 def create_train_model(model_creator, hparams, scope=None):
-    graph = tf.Graph()
-    with graph.as_default():
-        # feed train file name, valid file name, or test file name
-        filenames = tf.placeholder(tf.string, shape=[None])
-        #src_dataset = tf.contrib.data.TFRecordDataset(filenames)
-        src_dataset = tf.data.TFRecordDataset(filenames)
+    # feed train file name, valid file name, or test file name
+    filenames = tf.placeholder(tf.string, shape=[None])
+    # src_dataset = tf.contrib.data.TFRecordDataset(filenames)
+    src_dataset = tf.data.TFRecordDataset(filenames)
 
-        if hparams.data_format == 'ffm':
-            batch_input = FfmIterator(src_dataset)
-        elif hparams.data_format == 'din':
-            batch_input = DinIterator(src_dataset)
-        elif hparams.data_format == 'cccfnet':
-            batch_input = CCCFNetIterator(src_dataset)
-        else:
-            raise ValueError("not support {0} format data".format(hparams.data_format))
-        # build model
-        model = model_creator(
-            hparams,
-            iterator=batch_input,
-            scope=scope)
+    if hparams.data_format == 'ffm':
+        batch_input = FfmIterator(src_dataset)
+    elif hparams.data_format == 'din':
+        batch_input = DinIterator(src_dataset)
+    elif hparams.data_format == 'cccfnet':
+        batch_input = CCCFNetIterator(src_dataset)
+    else:
+        raise ValueError("not support {0} format data".format(hparams.data_format))
+    # build model
+    model = model_creator(
+        hparams,
+        iterator=batch_input,
+        scope=scope)
 
     return TrainModel(
-        graph=graph,
+        graph=tf.get_default_graph(),
         model=model,
         iterator=batch_input,
         filenames=filenames)
@@ -65,12 +62,15 @@ def run_eval(load_model, load_sess, filename, sample_num_file, hparams, flag):
     # load sample num
     with open(sample_num_file, 'r') as f:
         sample_num = int(f.readlines()[0].strip())
-    load_sess.run(load_model.iterator.initializer, feed_dict={load_model.filenames: [filename]})
+    from mx_rec.util.initialize import ConfigInitializer
+    eval_label = ConfigInitializer.get_instance().train_params_config.get_target_batch(True).get("labels")
+    initializer = ConfigInitializer.get_instance().train_params_config.get_initializer(True)
+    load_sess.run(initializer, feed_dict={load_model.filenames: [filename]})
     preds = []
     labels = []
     while True:
         try:
-            _, _, step_pred, step_labels = load_model.model.eval(load_sess)
+            _, _, step_pred, step_labels = load_model.model.eval(load_sess, eval_label)
             preds.extend(np.reshape(step_pred, -1))
             labels.extend(np.reshape(step_labels, -1))
         except tf.errors.OutOfRangeError:
@@ -207,10 +207,7 @@ def train(hparams, scope=None, target_session=""):
     elif hparams.model_type == 'cross':
         print("run extreme cross model!")
         model_creator = CrossModel
-    elif hparams.model_type == 'CIN':
-        print("run extreme cin model!")
-        model_creator = CINModel
-    
+
     else:
         raise ValueError("model type should be cccfnet, deepFM, deepWide, dnn, fm, lr, ipnn, opnn, din")
 
@@ -220,6 +217,10 @@ def train(hparams, scope=None, target_session=""):
     gpuconfig = tf.ConfigProto()
     gpuconfig.gpu_options.allow_growth = True
     tf.set_random_seed(1234)
+
+    from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
+    modify_graph_and_start_emb_cache(dump_graph=True)
+
     train_sess = tf.Session(target=target_session, graph=train_model.graph, config=npu_config_proto(config_proto=gpuconfig))
 
     train_sess.run(train_model.model.init_op)
@@ -236,7 +237,10 @@ def train(hparams, scope=None, target_session=""):
     last_eval = 0
     for epoch in range(hparams.epochs):
         step = 0
-        train_sess.run(train_model.iterator.initializer, feed_dict={train_model.filenames: [hparams.train_file_cache]})
+        from mx_rec.util.initialize import ConfigInitializer
+        initializer = ConfigInitializer.get_instance().train_params_config.get_initializer(True)
+        train_sess.run(initializer, feed_dict={train_model.filenames: [hparams.train_file_cache]})
+
         epoch_loss = 0
         train_start = time.time()
         train_load_time = 0

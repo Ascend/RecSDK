@@ -77,11 +77,11 @@ class BaseModel(object):
         for param in self.cross_params:
             cross_l_loss = tf.add(cross_l_loss, tf.multiply(hparams.cross_l1, tf.norm(param, ord=1)))
             cross_l_loss = tf.add(cross_l_loss, tf.multiply(hparams.cross_l2, tf.norm(param, ord=1)))
-        return cross_l_loss 
+        return cross_l_loss
 
     def _get_initializer(self, hparams):
         if hparams.init_method == 'tnormal':
-            return tf.truncated_normal_initializer(stddev=hparams.init_value)
+            return tf.zeros_initializer()
         elif hparams.init_method == 'uniform':
             return tf.random_uniform_initializer(-hparams.init_value, hparams.init_value)
         elif hparams.init_method == 'normal':
@@ -185,8 +185,8 @@ class BaseModel(object):
         return sess.run([self.update, self.loss, self.data_loss, self.merged], \
                         feed_dict={self.layer_keeps: self.keep_prob_train})
 
-    def eval(self, sess):
-        return sess.run([self.loss, self.data_loss, self.pred, self.iterator.labels], \
+    def eval(self, sess, eval_label):
+        return sess.run([self.loss, self.data_loss, self.pred, eval_label], \
                         feed_dict={self.layer_keeps: self.keep_prob_test})
 
     def infer(self, sess):
