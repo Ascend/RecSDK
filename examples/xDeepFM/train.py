@@ -1,4 +1,5 @@
 """define train, infer, eval, test process"""
+from npu_bridge.npu_init import *
 import numpy as np
 import os, time, collections
 import tensorflow as tf
@@ -219,7 +220,7 @@ def train(hparams, scope=None, target_session=""):
     gpuconfig = tf.ConfigProto()
     gpuconfig.gpu_options.allow_growth = True
     tf.set_random_seed(1234)
-    train_sess = tf.Session(target=target_session, graph=train_model.graph, config=gpuconfig)
+    train_sess = tf.Session(target=target_session, graph=train_model.graph, config=npu_config_proto(config_proto=gpuconfig))
 
     train_sess.run(train_model.model.init_op)
     # load model from checkpoint
@@ -302,3 +303,4 @@ def train(hparams, scope=None, target_session=""):
     # after train,run infer
     if hparams.infer_file is not None:
         run_infer(train_model, train_sess, hparams.infer_file_cache, hparams, util.INFER_NUM)
+

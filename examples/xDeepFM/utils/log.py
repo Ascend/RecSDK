@@ -1,4 +1,5 @@
 """define logging configure"""
+from npu_bridge.npu_init import *
 import logging
 from datetime import datetime, timedelta, timezone
 import platform
@@ -18,3 +19,4 @@ class Log(object):
         formatter = logging.Formatter('%(message)s')
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
+

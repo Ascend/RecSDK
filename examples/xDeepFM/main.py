@@ -1,4 +1,5 @@
 """This script parse and run train function"""
+from npu_bridge.npu_init import *
 import train
 import utils.util as util
 import tensorflow as tf
@@ -185,3 +186,4 @@ def main():
 
 
 main()
+

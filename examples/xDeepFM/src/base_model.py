@@ -1,4 +1,5 @@
 """define base class model"""
+from npu_bridge.npu_init import *
 import abc
 import math
 import tensorflow as tf
@@ -177,7 +178,7 @@ class BaseModel(object):
             raise ValueError("this activations not defined {0}".format(activation))
 
     def _dropout(self, logit, layer_idx):
-        logit = tf.nn.dropout(x=logit, keep_prob=self.layer_keeps[layer_idx])
+        logit = npu_ops.dropout(x=logit, keep_prob=self.layer_keeps[layer_idx])
         return logit
 
     def train(self, sess):
@@ -191,3 +192,4 @@ class BaseModel(object):
     def infer(self, sess):
         return sess.run([self.pred], \
                         feed_dict={self.layer_keeps: self.keep_prob_test})
+

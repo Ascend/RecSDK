@@ -1,4 +1,5 @@
 """define util function and  global variable"""
+from npu_bridge.npu_init import *
 import tensorflow as tf
 import os, sys
 import time, yaml
@@ -81,3 +82,4 @@ def convert_res_name(file_name):
         replace(".csv", ".tfrecord"). \
         replace(".libsvm", ".tfrecord")
     return res_name
+

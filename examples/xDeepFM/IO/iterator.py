@@ -1,4 +1,5 @@
 """define iterator"""
+from npu_bridge.npu_init import *
 import collections
 import tensorflow as tf
 import abc
@@ -205,3 +206,4 @@ class CCCFNetIterator(BaseIterator):
         return labels, userIds, itemIds, \
                user_profiles_indices, user_profiles_values, user_profiles_weights, user_profiles_shape, \
                item_profiles_indices, item_profiles_values, item_profiles_weights, item_profiles_shape
+

@@ -1,4 +1,5 @@
 """define abstract base class"""
+from npu_bridge.npu_init import *
 import abc
 
 __all__ = ["BaseCache"]
@@ -11,3 +12,4 @@ class BaseCache(object):
     def write_tfrecord(self, infile, outfile, hparams):
         """Subclass must implement this."""
         pass
+
