@@ -424,6 +424,7 @@ void HybridMgmt::Destroy()
             cvLastRecvFinishMap[embInfo.name][index].notify_all();
         }
     }
+    cvCheckSave.notify_all();  // 防止save异常退出场景阻塞在EvalTask
 
     {
         // 获取锁 避免KeyProcess中手动发送结束信息时通道关闭
