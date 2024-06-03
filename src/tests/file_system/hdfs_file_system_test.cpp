@@ -26,10 +26,10 @@ using namespace emock;
 
 void MockHdfs()
 {
+    EMOCK(&HdfsWrapper::LoadHdfsLib).stubs().will(ignoreReturnValue());
     hdfsFS ConnectFs;
     hdfsFile hdfsFileHandler;
     hdfsFileInfo* fileInfo;
-    EMOCK(&HdfsWrapper::LoadHdfsLib).stubs().will(ignoreReturnValue());
     EMOCK(&HdfsWrapper::CloseHdfsLib).stubs().will(ignoreReturnValue());
     EMOCK(&HdfsWrapper::Connect).stubs().will(returnValue(ConnectFs));
     EMOCK(&HdfsWrapper::Disconnect).stubs().will(returnValue(1));
@@ -75,8 +75,8 @@ TEST_F(HdfsFileSystemTest, CreateDirFailed)
 
 TEST_F(HdfsFileSystemTest, GetFileSize)
 {
-    hdfsFileInfo* fileInfo;
-    EMOCK(&HdfsWrapper::GetPathInfo).stubs().will(returnValue(fileInfo));
+    std::unique_ptr<hdfsFileInfo> fileInfo = std::make_unique<hdfsFileInfo>();
+    EMOCK(&HdfsWrapper::GetPathInfo).stubs().will(returnValue(fileInfo.get()));
     string filePath = "hdfs://master:9000/test_dir/";
     auto fileSystemHandler = make_unique<FileSystemHandler>();
     auto fileSystemPtr = fileSystemHandler->Create(filePath);
