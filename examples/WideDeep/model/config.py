@@ -85,8 +85,8 @@ class LearningRateScheduler:
             global_step < self.warmup_steps, lambda: lr_factor_warmup, lambda: poly_schedule_dense
         )
 
-        lr_sparse = self.base_lr_sparse * lr_factor_sparse
-        lr_dense = self.base_lr_dense * lr_factor_dense
+        lr_sparse = self.base_lr_sparse * lr_factor_constant
+        lr_dense = self.base_lr_dense * lr_factor_constant
         return lr_dense, lr_sparse
 
 
@@ -108,10 +108,10 @@ class Config:
         self.train_file_pattern = "train"
         self.test_file_pattern = "test"
 
-        self.batch_size = 8192
-        self.line_per_sample = 1024
-        self.train_epoch = 3
-        self.test_epoch = 1
+        self.batch_size = 4096
+        self.line_per_sample = 1
+        self.train_epoch = 1
+        self.test_epoch = 9
         self.perform_shuffle = False
 
         self.key_type = tf.int64
@@ -124,12 +124,10 @@ class Config:
         self.field_num = 26
         self.send_count = 46000 // self.rank_size
 
-        self.emb_dim = 128
+        self.emb_dim = 8
         self.hashtable_threshold = 1
 
         self.USE_PIPELINE_TEST = False
-        # False indicates use SGD optimizer, else use LazyAdam. If True, is incompatible with dynamic_expansion
-        self.use_lazy_adam_optimizer = False
 
         # 动态学习率
         GLOBAL_BATCH_SIZE = 8192 * 8
@@ -140,8 +138,8 @@ class Config:
         ]
         self.global_step = tf.Variable(0, trainable=False)
         _lr_scheduler = LearningRateScheduler(
-            28.443,
-            33.71193,
+            0.001,
+            0.001,
             LR_SCHEDULE_STEPS[0],
             LR_SCHEDULE_STEPS[1],
             LR_SCHEDULE_STEPS[2],
@@ -154,7 +152,7 @@ class Config:
             raise ValueError("please export CACHE_MODE environment variable, support:[HBM, DDR, SSD]")
 
         if self.cache_mode == CacheModeEnum.HBM.value:
-            self.dev_vocab_size = 24_000_000 * self.rank_size
+            self.dev_vocab_size = 14_000_000 * self.rank_size
             self.host_vocab_size = 0
         elif self.cache_mode == CacheModeEnum.DDR.value:
             self.dev_vocab_size = 500_000 * self.rank_size
