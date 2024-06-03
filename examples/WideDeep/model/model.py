@@ -34,7 +34,7 @@ class MyModel:
         self._loss_fn = None
         self.is_training = None
 
-    def build_model(self,model_args):
+    def build_model(self, model_args):
         wide_embedding = model_args.wide_embedding
         deep_embedding = model_args.deep_embedding
         label = model_args.label
