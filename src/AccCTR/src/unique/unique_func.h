@@ -175,22 +175,24 @@ public:
             }
             bucket->replaceBase = replaceOffset;
             for (int j = 0; j < bucket->count; ++j) {
-                out[total++] = bucket->data[j];
+                out[total] = static_cast<int64_t>(bucket->data[j]);
+                ++total;
             }
             replaceOffset += bucket->count;
         }
         auto it = overflow_.begin();
         int32_t totalOverflow = 0;
         while (it != overflow_.end()) {
-            out[total++] = it->first;
+            out[total] = it->first;
             it->second = replaceOffset++;
+            ++total;
             ++it;
             ++totalOverflow;
         }
 
         // set total overflow count
         stats_.totalUniques = static_cast<uint64_t>(total - priorTotal);
-        stats_.totalOverflowUniques = totalOverflow;
+        stats_.totalOverflowUniques = static_cast<uint64_t>(totalOverflow);
         return total - priorTotal;
     }
 
@@ -241,17 +243,14 @@ public:
     {
         const int numOfGroupsInShard = groupMethod_.GroupCount();
         uint32_t totalSize = conf.desiredSize + (conf.desiredSize >> 1);
-        while (bucketCountPower2_ * K_BUCKET_WIDTH * numOfGroupsInShard * estimatedDuplicateRatio < totalSize) {
+        while (static_cast<uint32_t>(bucketCountPower2_ * K_BUCKET_WIDTH * numOfGroupsInShard *
+                                     estimatedDuplicateRatio) < totalSize) {
             bucketCountPower2_ <<= 1;
         }
 
         idCountEnable_ = (conf.outputType == OutputType::ENHANCED) && conf.useIdCount;
         for (int32_t i = 0; i < numOfGroupsInShard; ++i) {
             auto obj = new DedupT(bucketCountPower2_, numOfGroupsInShard, idCountEnable_);
-            if (obj == nullptr) {
-                ExternalLogger::PrintLog(LogLevel::ERROR, "creat object error");
-                throw NullptrError();
-            }
             dedupShards_.emplace_back(obj);
         }
     }
@@ -302,7 +301,7 @@ public:
         if (conf.outputType == OutputType::ENHANCED) {
             int totalNumber = 0;
             for (int i = 0; i < conf.shardingNum; i++) {
-                totalUniqueSize[i] = totalNumber;
+                totalUniqueSize[i] = static_cast<size_t>(totalNumber);
                 if (conf.useSharding) {
                     totalNumber += uniqueOut.uniqueIdCntInBucket[i];
                 }
@@ -376,14 +375,14 @@ private:
                 if (conf.useSharding && conf.useIdCount) {
                     inGroupTotal =
                         dedupShards_[j]->UniqueRaw<T>(uniqueOut.uniqueIdInBucket, total); // 特征计数使能和shard同时使能
-                    uniqueOut.uniqueIdCntInBucket[j] = inGroupTotal;
+                    uniqueOut.uniqueIdCntInBucket[j] = static_cast<int>(inGroupTotal);
                 } else if (!conf.useSharding && conf.useIdCount) {
                     inGroupTotal =
                         dedupShards_[j]->UniqueRaw<T>(uniqueOut.uniqueId, total); // 特征计数使能和shard不使能
                 } else if (conf.useSharding && !conf.useIdCount) {
                     inGroupTotal =
                         dedupShards_[j]->UniqueRaw<T>(uniqueOut.uniqueIdInBucket, total); // 特征计数使能和shard不使能
-                    uniqueOut.uniqueIdCntInBucket[j] = inGroupTotal;
+                    uniqueOut.uniqueIdCntInBucket[j] = static_cast<int>(inGroupTotal);
                 } else {
                     inGroupTotal = dedupShards_[j]->UniqueRaw<T>(uniqueOut.uniqueId,
                         total); // 特征计数不使能和shard不使能，跟普通unique对等
@@ -391,7 +390,7 @@ private:
             } else {
                 inGroupTotal = dedupShards_[j]->UniqueRaw<T>(uniqueOut.uniqueId, total);
             }
-            total += inGroupTotal;
+            total += static_cast<int32_t>(inGroupTotal);
         }
         uniqueOut.uniqueIdCnt = total;
     }

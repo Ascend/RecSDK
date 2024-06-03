@@ -91,7 +91,7 @@ public:
         std::vector<uint64_t> swapInKeysID = FilterKeys(keys, swapInKoPair);
 
         uint64_t swapInCnt = 0;
-        int ret = FindInUsedPos(keys, swapInCnt, swapInKeysID, swapInKoPair, swapOutKoPair);
+        auto ret = FindInUsedPos(keys, swapInCnt, swapInKeysID, swapInKoPair, swapOutKoPair);
         if (ret != ock::ctr::H_OK) {
             return ret;
         }
