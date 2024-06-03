@@ -16,6 +16,7 @@
 
 import os
 import shutil
+import collections
 import time
 import warnings
 import random
@@ -34,7 +35,7 @@ from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.core.feature_process import EvictHook
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache, GraphModifierHook
-from mx_rec.constants.constants import ASCEND_TIMESTAMP
+from mx_rec.constants.constants import ASCEND_TIMESTAMP, LIBREC_EOS_OPS_SO
 from mx_rec.util.initialize import ConfigInitializer, init, terminate_config_initializer
 from mx_rec.util.ops import import_host_pipeline_ops
 import mx_rec.util as mxrec_util
@@ -57,7 +58,7 @@ def add_timestamp_func(batch):
     return batch
 
 
-def make_batch_and_iterator(config, feature_spec_list, is_training, dump_graph, is_use_faae=False):
+def make_batch_and_iterator(config, feature_spec_list, is_training, dump_graph, is_use_faae=False, **kwargs):
     if config.USE_PIPELINE_TEST:
         num_parallel = 1
     else:
@@ -68,7 +69,7 @@ def make_batch_and_iterator(config, feature_spec_list, is_training, dump_graph, 
             # Extract features using the keys set during creation
             'label': tf.compat.v1.FixedLenFeature(shape=(config.line_per_sample,), dtype=tf.int64),
             'sparse_feature': tf.compat.v1.FixedLenFeature(shape=(26 * config.line_per_sample,), dtype=tf.int64),
-            'dense_feature': tf.compat.v1.FixedLenFeature(shape=(13 * config.line_per_sample,), dtype=tf.float32),
+            'dense_feature': tf.compat.v1.FixedLenFeature(shape=(13 * config.line_per_sample,), dtype=tf.int64),
         }
         sample = tf.compat.v1.parse_single_example(data_record, features)
         return sample
@@ -76,7 +77,6 @@ def make_batch_and_iterator(config, feature_spec_list, is_training, dump_graph, 
     def reshape_fn(batch):
         batch['label'] = tf.reshape(batch['label'], [-1, 1])
         batch['dense_feature'] = tf.reshape(batch['dense_feature'], [-1, 13])
-        batch['dense_feature'] = tf.math.log(batch['dense_feature'] + 3.0)
         batch['sparse_feature'] = tf.reshape(batch['sparse_feature'], [-1, 26])
         return batch
 
@@ -97,10 +97,24 @@ def make_batch_and_iterator(config, feature_spec_list, is_training, dump_graph, 
     dataset = dataset.map(extract_fn, num_parallel_calls=num_parallel).batch(batch_size,
                                                                              drop_remainder=True)
     dataset = dataset.map(reshape_fn, num_parallel_calls=num_parallel)
+
+    def map_fn(batch):
+        new_batch = batch
+        new_batch['sparse_feature'] = tf.concat([batch['dense_feature'], batch['sparse_feature']], axis=1)
+        return new_batch
+    dataset = dataset.map(map_fn, num_parallel_calls=num_parallel)
+
     if is_use_faae:
         dataset = dataset.map(add_timestamp_func)
 
     if not MODIFY_GRAPH_FLAG:
+
+        # Enable EOSDataset manually.
+        librec = import_host_pipeline_ops(LIBREC_EOS_OPS_SO)
+        channel_id = 0 if is_training else 1
+        # 此处eos_map的调用必须先于insert_func,避免多卡数据不均匀的情况
+        dataset = dataset.eos_map(librec, channel_id, kwargs.get("max_train_steps", max_train_steps),
+                                  kwargs.get("max_eval_steps", eval_steps))
         insert_fn = get_asc_insert_func(tgt_key_specs=feature_spec_list, is_training=is_training, dump_graph=dump_graph)
         dataset = dataset.map(insert_fn)
 
@@ -111,32 +125,69 @@ def make_batch_and_iterator(config, feature_spec_list, is_training, dump_graph, 
     return batch, iterator
 
 
-def model_forward(feature_list, hash_table_list, batch, is_train, modify_graph):
-    embedding_list = []
-    logger.debug(f"In model_forward function, is_train: {is_train}, feature_list: {len(feature_list)}, "
-                 f"hash_table_list: {len(hash_table_list)}")
-    for feature, hash_table in zip(feature_list, hash_table_list):
-        if MODIFY_GRAPH_FLAG:
-            feature = batch["sparse_feature"]
-        embedding = sparse_lookup(hash_table, feature, cfg.send_count, dim=None, is_train=is_train,
-                                  name="user_embedding_lookup", modify_graph=modify_graph, batch=batch,
-                                  access_and_evict_config=None)
-        embedding_list.append(embedding)
 
-    if len(embedding_list) == 1:
-        emb = embedding_list[0]
-    elif len(embedding_list) > 1:
-        emb = tf.reduce_sum(embedding_list, axis=0, keepdims=False)
+
+def model_forward(model_args):
+    feature_list = model_args.feature_list
+    wide_hash_table_list = model_args.wide_hash_table_list
+    deep_hash_table_list = model_args.deep_hash_table_list
+    batch = model_args.batch
+    is_train =  model_args.is_train
+    modify_graph = model_args.modify_graph
+    is_use_faae = model_args.is_use_faae
+
+    wide_embedding_list = []
+    deep_embedding_list = []
+    wide_feature_list = []
+    deep_feature_list = []
+    if is_use_faae:
+        feature_list_copy = feature_list[:-1]
+    else:
+        feature_list_copy = feature_list
+
+    for i, item in enumerate(feature_list_copy):
+        if i % 2 == 0:
+            wide_feature_list.append(item)
+        else:
+            deep_feature_list.append(item)
+
+    logger.debug(f"In model_forward function, is_train: {is_train}, feature_list: {len(feature_list)}, "
+                 f"wide_hash_table_list: {len(wide_hash_table_list)}, "
+                 f"deep_hash_table_list: {len(deep_hash_table_list)}")
+
+    # wide
+    for wide_feature, wide_hash_table in zip(wide_feature_list, wide_hash_table_list):
+        if MODIFY_GRAPH_FLAG:
+            wide_feature = batch["sparse_feature"]
+        wide_embedding = sparse_lookup(wide_hash_table, wide_feature, cfg.send_count, dim=None, is_train=is_train,
+                                  name="wide_embedding_lookup", modify_graph=modify_graph, batch=batch,
+                                  access_and_evict_config=None)
+        wide_embedding_list.append(wide_embedding)
+
+    # deep
+    for deep_feature, deep_hash_table in zip(deep_feature_list, deep_hash_table_list):
+        if MODIFY_GRAPH_FLAG:
+            deep_feature = batch["sparse_feature"]
+        deep_embedding = sparse_lookup(deep_hash_table, deep_feature, cfg.send_count, dim=None, is_train=is_train,
+                                  name="deep_embedding_lookup", modify_graph=modify_graph, batch=batch,
+                                  access_and_evict_config=None)
+        deep_embedding_list.append(deep_embedding)
+
+    if len(wide_embedding_list) == 1:
+        wide_emb = wide_embedding_list[0]
+        deep_emb = deep_embedding_list[0]
+    elif len(wide_embedding_list) > 1:
+        wide_emb = tf.reduce_sum(wide_embedding_list, axis=0, keepdims=False)
+        deep_emb = tf.reduce_sum(deep_embedding_list, axis=0, keepdims=False)
     else:
         raise ValueError("the length of embedding_list must be greater than or equal to 1.")
     my_model = MyModel()
-    model_output = my_model.build_model(embedding=emb,
-                                        dense_feature=batch["dense_feature"],
-                                        label=batch["label"],
-                                        is_training=is_train,
-                                        seed=dense_hashtable_seed)
-    return model_output
 
+    BuildModel = collections.namedtuple("BuildModel", ["wide_embedding", "deep_embedding", "label", "is_training",
+                                                       "seed", "dropout_rate", "batch_norm"])
+    build_model_args = BuildModel(wide_emb, deep_emb, batch["label"], is_train, dense_hashtable_seed, 0.5, False)
+    model_output = my_model.build_model(build_model_args)
+    return model_output
 
 def evaluate():
     print("read_test dataset")
@@ -236,13 +287,20 @@ def create_feature_spec_list(use_timestamp=False):
         access_threshold = 1000
         eviction_threshold = 180
 
-    feature_spec_list = [FeatureSpec("sparse_feature", table_name="sparse_embeddings", batch_size=cfg.batch_size,
+    feature_spec_list = [FeatureSpec("sparse_feature", table_name="wide_embeddings", batch_size=cfg.batch_size,
+                                     access_threshold=access_threshold, eviction_threshold=eviction_threshold),
+                         FeatureSpec("sparse_feature", table_name="deep_embeddings", batch_size=cfg.batch_size,
                                      access_threshold=access_threshold, eviction_threshold=eviction_threshold)]
+
     if use_multi_lookup:
-        feature_spec_list.append(FeatureSpec("sparse_feature", table_name="sparse_embeddings",
+        feature_spec_list.extend([FeatureSpec("sparse_feature", table_name="wide_embeddings",
                                              batch_size=cfg.batch_size,
                                              access_threshold=access_threshold,
-                                             eviction_threshold=eviction_threshold))
+                                             eviction_threshold=eviction_threshold),
+                                  FeatureSpec("sparse_feature", table_name="deep_embeddings",
+                                             batch_size=cfg.batch_size,
+                                             access_threshold=access_threshold,
+                                             eviction_threshold=eviction_threshold)])
     if use_timestamp:
         feature_spec_list.append(FeatureSpec("timestamp", is_timestamp=True))
     return feature_spec_list
@@ -281,8 +339,9 @@ if __name__ == "__main__":
     rank_id = int(os.getenv("RANK_ID")) if os.getenv("RANK_ID") else None
     rank_size = int(os.getenv("TRAIN_RANK_SIZE")) if os.getenv("TRAIN_RANK_SIZE") else None
     interval = int(os.getenv("INTERVAL")) if os.getenv("INTERVAL") else None
-    train_steps = 10000
-    eval_steps = 1360
+    max_train_steps = 1270
+    train_steps = 1120
+    eval_steps = 1080
 
     try:
         use_dynamic_expansion = bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0)))
@@ -315,9 +374,11 @@ if __name__ == "__main__":
         feature_spec_list_eval = create_feature_spec_list(use_timestamp=False)
 
     train_batch, train_iterator = make_batch_and_iterator(cfg, feature_spec_list_train, is_training=True,
-                                                          dump_graph=True, is_use_faae=use_faae)
+                                                          dump_graph=True, is_use_faae=use_faae,
+                                                          max_train_steps=max_train_steps, max_eval_steps=eval_steps)
     eval_batch, eval_iterator = make_batch_and_iterator(cfg, feature_spec_list_eval, is_training=False,
-                                                        dump_graph=False, is_use_faae=use_faae)
+                                                        dump_graph=False, is_use_faae=use_faae,
+                                                        max_train_steps=max_train_steps, max_eval_steps=eval_steps)
     logger.info(f"train_batch: {train_batch}")
 
     if use_faae:
@@ -325,60 +386,75 @@ if __name__ == "__main__":
 
     optimizer_list = [get_dense_and_sparse_optimizer(cfg)]
 
-    # note: variance_scaling_initializer only support HBM mode
-    emb_initializer = tf.compat.v1.truncated_normal_initializer(stddev=0.05, seed=sparse_hashtable_seed) \
-        if cfg.cache_mode != "HBM" or use_dynamic_expansion else \
-        tf.compat.v1.variance_scaling_initializer(mode="fan_avg", distribution='normal', seed=sparse_hashtable_seed)
-    sparse_hashtable = create_table(
+    # 创表操作
+    wide_emb_initializer = tf.compat.v1.truncated_normal_initializer(stddev=0.05, seed=sparse_hashtable_seed)
+    deep_emb_initializer = tf.compat.v1.truncated_normal_initializer(stddev=0.05, seed=sparse_hashtable_seed)
+
+    sparse_hashtable_wide = create_table(
         key_dtype=cfg.key_type,
         dim=tf.TensorShape([cfg.emb_dim]),
-        name="sparse_embeddings",
-        emb_initializer=emb_initializer,
+        name="wide_embeddings",
+        emb_initializer=wide_emb_initializer,
         **cfg.get_emb_table_cfg()
     )
+
+    sparse_hashtable_deep = create_table(
+        key_dtype=cfg.key_type,
+        dim=tf.TensorShape([cfg.emb_dim]),
+        name="deep_embeddings",
+        emb_initializer=deep_emb_initializer,
+        **cfg.get_emb_table_cfg()
+    )
+
     if use_faae:
         tf.compat.v1.add_to_collection(ASCEND_TIMESTAMP, train_batch["timestamp"])
 
-    sparse_hashtable_list = [sparse_hashtable, sparse_hashtable] if use_multi_lookup else [sparse_hashtable]
-    train_model = model_forward(feature_spec_list_train, sparse_hashtable_list, train_batch,
-                                is_train=True, modify_graph=MODIFY_GRAPH_FLAG)
-    eval_model = model_forward(feature_spec_list_eval, sparse_hashtable_list, eval_batch,
-                               is_train=False, modify_graph=MODIFY_GRAPH_FLAG)
+    # 一表多查
+    wide_hashtable_list = [sparse_hashtable_wide, sparse_hashtable_wide] if use_multi_lookup else \
+                          [sparse_hashtable_wide]
+    deep_hashtable_list = [sparse_hashtable_deep, sparse_hashtable_deep] if use_multi_lookup else \
+                          [sparse_hashtable_deep]
 
-    dense_variables, sparse_variables = get_dense_and_sparse_variable()
-    trainable_varibles = []
-    trainable_varibles.extend(dense_variables)
-    if use_dynamic_expansion:
-        trainable_varibles.append(tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)[0])
-    else:
-        trainable_varibles.extend(sparse_variables)
+
+    Forward = collections.namedtuple("Forward", ["feature_list", "wide_hash_table_list", "deep_hash_table_list",
+                                                 "batch", "is_train", "modify_graph", "is_use_faae"])
+    train_forward_args = Forward(feature_spec_list_train, wide_hashtable_list, deep_hashtable_list, train_batch,
+                                True, MODIFY_GRAPH_FLAG, use_faae)
+    eval_forward_args = Forward(feature_spec_list_eval, wide_hashtable_list, deep_hashtable_list, eval_batch,
+                                False, MODIFY_GRAPH_FLAG, use_faae)
+    train_model = model_forward(train_forward_args)
+    eval_model = model_forward(eval_forward_args)
+
+    train_variables, emb_variables = get_dense_and_sparse_variable()
+
     rank_size = mxrec_util.communication.hccl_ops.get_rank_size()
     train_ops = []
     # multi task training
-    for loss, (dense_optimizer, sparse_optimizer) in zip([train_model.get("loss")], optimizer_list):
-        # do dense optimization
-        grads = dense_optimizer.compute_gradients(loss, var_list=trainable_varibles)
+    for loss, (model_optimizer, emb_optimizer) in zip([train_model.get("loss")], optimizer_list):
+        # do model optimization
+        grads = model_optimizer.compute_gradients(loss, var_list=train_variables)
         avg_grads = []
-        for grad, var in grads[:-1]:
+        for grad, var in grads:
             if rank_size > 1:
                 grad = hccl_ops.allreduce(grad, "sum") if grad is not None else None
             if grad is not None:
                 avg_grads.append((grad / 8.0, var))
         # apply gradients: update variables
-        train_ops.append(dense_optimizer.apply_gradients(avg_grads))
+        train_ops.append(model_optimizer.apply_gradients(avg_grads))
 
         if use_dynamic_expansion:
             train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET)
-            # do sparse optimization by addr
-            sparse_grads = list(grads[-1])  # local_embedding
+            train_emb_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)
+            # do embedding optimization by addr
+            sparse_grads = emb_optimizer.compute_gradients(loss, train_emb_list)  # local_embedding
             grads_and_vars = [(grad, address) for grad, address in zip(sparse_grads, train_address_list)]
-            train_ops.append(sparse_optimizer.apply_gradients(grads_and_vars))
+            train_ops.append(emb_optimizer.apply_gradients(grads_and_vars))
         else:
-            # do sparse optimization
-            sparse_grads = list(grads[-1])
+            # do embedding optimization
+            sparse_grads = emb_optimizer.compute_gradients(loss, emb_variables)
             print("sparse_grads_tensor:", sparse_grads)
-            grads_and_vars = [(grad, variable) for grad, variable in zip(sparse_grads, sparse_variables)]
-            train_ops.append(sparse_optimizer.apply_gradients(grads_and_vars))
+            grads_and_vars = [(grad, variable) for grad, variable in zip(sparse_grads, emb_variables)]
+            train_ops.append(emb_optimizer.apply_gradients(grads_and_vars))
 
     # 动态学习率更新
     train_ops.extend([cfg.global_step.assign(cfg.global_step + 1), cfg.learning_rate[0], cfg.learning_rate[1]])
@@ -451,8 +527,11 @@ if __name__ == "__main__":
         logger.info(f"step: {i * iteration_per_loop}; lr: {lr}")
         logger.info(f"global step: {global_step}")
         logger.info(f"step: {i * iteration_per_loop}; current sess cost time: {cost_time:.10f}; current QPS: {qps}")
-        logger.info(f"training at step:{i * iteration_per_loop}, table[{sparse_hashtable.table_name}], "
-                    f"table size:{sparse_hashtable.size()}, table capacity:{sparse_hashtable.capacity()}")
+        logger.info(f"training at step:{i * iteration_per_loop}, "
+                    f"table[{sparse_hashtable_wide.table_name}], "
+                    f"table size:{sparse_hashtable_wide.size()}, table capacity:{sparse_hashtable_wide.capacity()}, "
+                    f"table[{sparse_hashtable_deep.table_name}], "
+                    f"table size:{sparse_hashtable_deep.size()}, table capacity:{sparse_hashtable_deep.capacity()}")
 
         if i % (train_steps // iteration_per_loop) == 0:
             if interval is not None:
