@@ -2047,9 +2047,15 @@ void HybridMgmt::SendRestoreVec(const EmbBaseInfo &info, bool &remainBatchOut)
 void HybridMgmt::SendLookupOffsets(const EmbBaseInfo &info,
                                    vector<uint64_t> &uniqueKeys, vector<int32_t> &restoreVecSec)
 {
+    // uniqueKeys already transfer to offset in GetSwapPairsAndKey2Offset
+    // graph will filter out invalid offset(-1). see function _set_specific_value_for_non_valid_key
     TimeCost sendLookupOffsetsTC;
     std::vector<uint64_t> lookupOffsets;
     for (const auto &index : restoreVecSec) {
+        if (index == INVALID_INDEX_VALUE) {
+            lookupOffsets.emplace_back(static_cast<uint64_t>(INVALID_KEY_VALUE));
+            continue;
+        }
         lookupOffsets.emplace_back(uniqueKeys[index]);
     }
     hdTransfer->Send(TransferChannel::LOOKUP, { Vec2TensorI32(lookupOffsets) }, info.channelId, info.name);
