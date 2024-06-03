@@ -7,10 +7,7 @@ import numpy as np
 import tensorflow as tf
 from tqdm import tqdm
 
-NAMES = ['label', 'I1', 'I2', 'I3', 'I4', 'I5', 'I6', 'I7', 'I8', 'I9', 'I10', 'I11',
-         'I12', 'I13', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10', 'C11',
-         'C12', 'C13', 'C14', 'C15', 'C16', 'C17', 'C18', 'C19', 'C20', 'C21', 'C22',
-         'C23', 'C24', 'C25', 'C26']
+NAMES = ['label'] + [f'I{i}' for i in range(1, 14)] + [f'C{i}' for i in range(1, 27)]
 
 
 def make_sub_file(lines, head, src_name, sub_dir_name, sub):
@@ -38,7 +35,7 @@ def make_sub_file(lines, head, src_name, sub_dir_name, sub):
         f.writelines(lines)
         return sub + 1
     finally:
-        os.close(f)
+        f.close()
 
 
 def split_byline_count(filename, count, sub_dir_name):
@@ -103,7 +100,7 @@ def get_fea_map(fea_map_path=None, split_file_list=None):
     """
     if fea_map_path is None and split_file_list is None:
         raise ValueError('Please give feature map path or split file list.')
-    if fea_map_path is None and os.path.join(os.path.dirname(split_file_list[0]), "fea_map.pkl"):
+    if fea_map_path is None and split_file_list is not None:
         fea_map_path = os.path.join(os.path.dirname(split_file_list[0]), "fea_map.pkl")
     if os.path.exists(fea_map_path) and fea_map_path[-3:] == 'pkl':
         with open(fea_map_path, 'rb') as f:
@@ -141,7 +138,6 @@ def get_fea_map(fea_map_path=None, split_file_list=None):
     with os.fdopen(os.open(fea_map_path, flags, modes), 'wb') as fd:
         pickle.dump(fea_map, fd, pickle.HIGHEST_PROTOCOL)
 
-    fd.close()
     return fea_map
 
 
@@ -162,7 +158,7 @@ def rec_kbins_discretizer(dat, n_bins, min_max_dict):
         rtol = 1.e-5
         atol = 1.e-8
         eps = atol + rtol * np.abs(dat[feature])
-        np.digitize(dat[feature] + eps, bin_edges[idx][1:])
+        dat[feature] = np.digitize(dat[feature] + eps, bin_edges[idx][1:])
     return dat
 
 
