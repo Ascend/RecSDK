@@ -11,10 +11,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
  ==============================================================================*/
+#include "unique_test.h"
 
 #include <sstream>
 #include <fstream>
-#include "unique_test.h"
 #include "common.h"
 
 void UniqueTest::SetUpTestCase()
@@ -155,7 +155,7 @@ TEST_F(UniqueTest, DoUniqueNormal)
     std::string input_path(path);
     std::cout << "input_path:" + input_path + "/data30.txt" << std::endl;
     std::ifstream input(input_path + "/data30.txt");
-    if(!input.good()) {
+    if (!input.good()) {
         std::cout << "Failed to open file:" + input_path + "/data30.txt" << std::endl;
         return;
     }
@@ -1404,7 +1404,7 @@ TEST_F(UniqueTest, DoUniqueLotsDataFunction)
     std::string input_path(path);
     std::cout << "input_path:" + input_path + "/data40.txt" << std::endl;
     std::ifstream input(input_path + "/data40.txt");
-    if(!input.good()) {
+    if (!input.good()) {
         std::cout << "Failed to open file:" + input_path + "/data40.txt" << std::endl;
         return;
     }
@@ -1510,7 +1510,7 @@ TEST_F(UniqueTest, DoUniqueLotsDataPaddingFunction)
     std::string input_path(path);
     std::cout << "input_path:" + input_path + "/data30.txt" << std::endl;
     std::ifstream input(input_path + "/data30.txt");
-    if(!input.good()) {
+    if (!input.good()) {
         std::cout << "Failed to open file:" + input_path + "/data30.txt" << std::endl;
         return;
     }
