@@ -65,6 +65,7 @@ def split_byline_count(filename, count, sub_dir_name):
     finally:
         f.close()
 
+
 def get_split_file_path(parent_path=None, dataset_path=None, sample_num=4600000):
     """Get the list of split file path.
     Note: Either parent_path or dataset_path must be valid.

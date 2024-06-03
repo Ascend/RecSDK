@@ -19,6 +19,7 @@ from tensorflow.python.training import optimizer
 
 from config import Config
 
+
 class DenseLossScaleOptimizer:
     def __init__(self, opt: optimizer.Optimizer, loss_scale: int) -> None:
         if not isinstance(opt, optimizer.Optimizer):
