@@ -12,6 +12,7 @@ NAMES = ['label', 'I1', 'I2', 'I3', 'I4', 'I5', 'I6', 'I7', 'I8', 'I9', 'I10', '
          'C12', 'C13', 'C14', 'C15', 'C16', 'C17', 'C18', 'C19', 'C20', 'C21', 'C22',
          'C23', 'C24', 'C25', 'C26']
 
+
 def make_sub_file(lines, head, src_name, sub_dir_name, sub):
     """Write sub-data.
     Args:
@@ -38,6 +39,7 @@ def make_sub_file(lines, head, src_name, sub_dir_name, sub):
         return sub + 1
     finally:
         os.close(f)
+
 
 def split_byline_count(filename, count, sub_dir_name):
     """Split File.
@@ -85,6 +87,7 @@ def get_split_file_path(parent_path=None, dataset_path=None, sample_num=4600000)
     split_file_name.sort()
     split_file_list = [parent_path + "/" + file_name for file_name in split_file_name if file_name[-3:] == 'txt']
     return split_file_list
+
 
 def get_fea_map(fea_map_path=None, split_file_list=None):
     """Get feature map.
@@ -140,6 +143,7 @@ def get_fea_map(fea_map_path=None, split_file_list=None):
     fd.close()
     return fea_map
 
+
 def rec_kbins_discretizer(dat, n_bins, min_max_dict):
     """Bin continuous data into intervals.
     Note: The strategy is "uniform".
@@ -159,6 +163,7 @@ def rec_kbins_discretizer(dat, n_bins, min_max_dict):
         eps = atol + rtol * np.abs(dat[feature])
         np.digitize(dat[feature] + eps, bin_edges[idx][1:])
     return dat
+
 
 def convert_input2tfrd(in_file_path, out_file_path):
     """

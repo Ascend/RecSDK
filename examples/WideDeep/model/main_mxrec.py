@@ -125,14 +125,12 @@ def make_batch_and_iterator(config, feature_spec_list, is_training, dump_graph, 
     return batch, iterator
 
 
-
-
 def model_forward(model_args):
     feature_list = model_args.feature_list
     wide_hash_table_list = model_args.wide_hash_table_list
     deep_hash_table_list = model_args.deep_hash_table_list
     batch = model_args.batch
-    is_train =  model_args.is_train
+    is_train = model_args.is_train
     modify_graph = model_args.modify_graph
     is_use_faae = model_args.is_use_faae
 
@@ -145,8 +143,8 @@ def model_forward(model_args):
     else:
         feature_list_copy = feature_list
 
-    for i, item in enumerate(feature_list_copy):
-        if i % 2 == 0:
+    for index, item in enumerate(feature_list_copy):
+        if index % 2 == 0:
             wide_feature_list.append(item)
         else:
             deep_feature_list.append(item)
@@ -188,6 +186,7 @@ def model_forward(model_args):
     build_model_args = BuildModel(wide_emb, deep_emb, batch["label"], is_train, dense_hashtable_seed, 0.5, False)
     model_output = my_model.build_model(build_model_args)
     return model_output
+
 
 def evaluate():
     print("read_test dataset")

@@ -135,7 +135,7 @@ bash run.sh {so_path} {mx_rec_package_path} {hccl_cfg_json} {dlrm_criteo_data_pa
 ***
 ## 模型迁移
 
-**迁移思路：** 参考开源项目，在现有已适配好的dlrm模型框架下，改动相关代码逻辑，完成Wide&deep模型的适配。  
+**迁移思路：** 在现有已适配好的dlrm模型框架下，改动相关代码逻辑，完成Wide&deep模型的适配。**核心：根据开源项目model代码修改`model.py`；数据处理操作一部分放入`criteo.py`,一部分放入`main_mxrec.py`中`make_batch_and_iterator()`内；`main_mxrec.py`中其他相关代码改动主要是为了适配mxrec提供的相关特性。**  
 
 下文所提到的`动态扩容`、`动态shape`、`自动改图`、`一表多查`是mxrec提供的相关特性，开关选项见`run.sh`。
 
@@ -164,6 +164,7 @@ export USE_MODIFY_GRAPH=0       # 0：feature spec模式；1：自动改图模�
 
 ***
 
+### 代码改动说明
 #### 1. config.py
 实验超参数配置如下：取消动态学习率逻辑，学习率固定为0.001。
 
@@ -438,7 +439,7 @@ def model_forward(feature_list, wide_hash_table_list, deep_hash_table_list, batc
                                         dropout_rate=0.5)
     return model_output
 ```
-该函数是前向传播函数，主要包括sparse_feature的embedding操作（查表）与model前向操作。130~141行代码是预处理`sparse_lookup`传参的逻辑。147~162行代码对应开源项目中wide部分`self.linear`与deep部分`self.embed_layers`对39个特征作embedding的逻辑。164~171行是配置mxrec中`一表多查`特性的逻辑。
+该函数是前向传播函数，主要包括sparse_feature的embedding操作（查表）与model前向操作。130-141行代码是预处理`sparse_lookup`传参的逻辑。147-162行代码对应开源项目中wide部分`self.linear`与deep部分`self.embed_layers`对39个特征作embedding的逻辑。164-171行是配置mxrec中`一表多查`特性的逻辑。
 
 ***
 3.3 创表操作
@@ -536,7 +537,7 @@ for loss, (model_optimizer, emb_optimizer) in zip([train_model.get("loss")], opt
 # 动态学习率更新
 train_ops.extend([cfg.global_step.assign(cfg.global_step + 1), cfg.learning_rate[0], cfg.learning_rate[1]])
 ```
-410~442行代码是模型的反向过程操作。mxRec对推荐模型中sparse_feature的创表查表操作作了加速，使用`create_table`与`sparse_lookup`接口替换tensorflow中的`tf.nn.embedding_lookup`接口。因此模型反向更新分为两部分：417~425行代码是对`model.py`内的模型部分的反向；427~439行代码是对sparse_feature作embedding操作部分的反向过程，根据是否开启`动态扩容`选择不同的参数计算梯度并更新权重。
+410-442行代码是模型的反向过程操作。mxRec对推荐模型中sparse_feature的创表查表操作作了加速，使用`create_table`与`sparse_lookup`接口替换tensorflow中的`tf.nn.embedding_lookup`接口。因此模型反向更新分为两部分：417-425行代码是对`model.py`内的模型部分的反向；427-439行代码是对sparse_feature作embedding操作部分的反向过程，根据是否开启`动态扩容`选择不同的参数计算梯度并更新权重。
 
 ***
 
