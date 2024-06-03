@@ -128,6 +128,8 @@ class Config:
         self.hashtable_threshold = 1
 
         self.USE_PIPELINE_TEST = False
+        # False indicates use SGD optimizer, else use LazyAdam. If True, is incompatible with dynamic_expansion
+        self.use_lazy_adam_optimizer = False
 
         # 动态学习率
         GLOBAL_BATCH_SIZE = 8192 * 8
