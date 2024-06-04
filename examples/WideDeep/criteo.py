@@ -179,7 +179,7 @@ def convert_input2tfrd(in_file_path, out_file_path):
 
         return example
 
-    file_name = out_file_path + in_file_path[-12:-4] + '.tfrecords'
+    file_name = out_file_path + in_file_path[-12:-4] + '.tfrecord'
     file_writer = tf.io.TFRecordWriter(file_name)
 
     with open(in_file_path, encoding='utf-8') as file_in:
