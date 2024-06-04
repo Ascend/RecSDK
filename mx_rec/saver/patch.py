@@ -30,6 +30,7 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import graph_io
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import gfile
@@ -41,6 +42,7 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
 import numpy as np
+from mpi4py import MPI
 
 from mx_rec.saver.saver import Saver as SparseSaver, check_file_system_is_valid
 from mx_rec.util.initialize import ConfigInitializer
@@ -248,7 +250,6 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
         self.sparse_saver.save(sess, save_path=checkpoint_file)
         logger.info("Save sparse model into dir %s", checkpoint_file)
 
-    from mpi4py import MPI
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     comm.Barrier()
@@ -447,6 +448,18 @@ class BulkSaverBuilder(BaseSaverBuilder):
             return io_ops.restore_v2(filename_tensor, tensor_names, tensor_slices, tensor_dtypes)
 
 
+def patch_for_write_graph_func(func):
+    def wrapper(*args, **kwargs):
+        comm = MPI.COMM_WORLD
+        rank = comm.Get_rank()
+        # In the case of multiple processes, choose one process to write graph.
+        if rank == 0:
+            return func(*args, **kwargs)
+        else:
+            return None
+    return wrapper
+
+
 def patch_for_saver():
     dense_saver = tf.compat.v1.train.Saver
     dense_saver.__init__ = saver_init
@@ -454,3 +467,4 @@ def patch_for_saver():
     dense_saver.restore = restore
     dense_saver.build = build
     logger.debug("Class tf.train.Saver has been patched.")
+    training_util.write_graph = patch_for_write_graph_func(graph_io.write_graph)

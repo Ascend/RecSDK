@@ -286,6 +286,9 @@ class Saver(object):
     def _save_ddr(self, sess, root_dir):
         # 接受host侧传来的需要swap_out的offset用于更新host侧并保存
         self.config_instance.hybrid_manager_config.fetch_device_emb()
+        # In DDR mode, within the save process, the graph has been fixed and cannot execute the get_next op.
+        # The _unsafe_unfinalize operation can modify the state of the graph being fixed.
+        sess.graph._unsafe_unfinalize()
         for var in self.var_list:
             table_instance = self.config_instance.sparse_embed_config.get_table_instance(var)
             table_name = table_instance.table_name

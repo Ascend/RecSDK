@@ -21,6 +21,7 @@ See the License for the specific language governing permissions and
 
 #include "utils/common.h"
 #include "ssd_cache/cache_manager.h"
+#include "file_system/file_system_handler.h"
 
 namespace MxRec {
 
@@ -65,11 +66,15 @@ public:
 
     absl::flat_hash_map<emb_key_t, int64_t> GetKeyOffsetMap();
 
+    void SetFileSystemPtr(const string& savePath);
+
+    void UnsetFileSystemPtr();
+
     virtual void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
 
     virtual void Save(const string& savePath);
 
-    static void MakeDir(const string& dirName);
+    void MakeDir(const string& dirName);
 
     virtual vector<int64_t> GetDeviceOffset();
 
@@ -116,6 +121,8 @@ protected:
     std::vector<size_t> missingKeysHostPos_; // 用于记录当前batch在host上需要换出的偏移
     CacheManager* cacheManager_;
     bool isSSDEnabled_ = false;
+
+    unique_ptr<FileSystem> fileSystemPtr_;
 };
 
 }

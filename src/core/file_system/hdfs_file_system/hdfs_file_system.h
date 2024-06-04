@@ -24,11 +24,11 @@ namespace MxRec {
 
     class HdfsFileSystem : public FileSystem {
     public:
-        HdfsFileSystem()
+        HdfsFileSystem() {};
+        ~HdfsFileSystem()
         {
-            hdfs = make_unique<HdfsWrapper>();
-        };
-        ~HdfsFileSystem() override {}
+            hdfs->Disconnect(fs);
+        }
 
         void CreateDir(const string& dirName) override;
         vector<string> ListDir(const string& dirName) override;
@@ -47,7 +47,8 @@ namespace MxRec {
 
         hdfsFS ConnectHdfs();
 
-        unique_ptr<HdfsWrapper> hdfs;
+        unique_ptr<HdfsWrapper> hdfs = make_unique<HdfsWrapper>();
+        hdfsFS fs = ConnectHdfs();
     };
 }
 
