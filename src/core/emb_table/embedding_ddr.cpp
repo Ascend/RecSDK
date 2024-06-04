@@ -18,7 +18,7 @@ See the License for the specific language governing permissions and
 
 #include "utils/logger.h"
 #include "utils/singleton.h"
-#include "ssd_cache/cache_manager.h"
+#include "l3_storage/cache_manager.h"
 #include "ock_ctr_common/include/error_code.h"
 
 using namespace MxRec;
@@ -253,7 +253,7 @@ void EmbeddingDDR::SyncLatestEmbedding()
                 throw std::invalid_argument(errMsg);
             }
         }
-        cacheManager_->UpdateSSDEmb(name, ptr, embInfo_.extEmbeddingSize, info.swapOutSSDKeys, info.swapOutSSDAddrOffs);
+        cacheManager_->UpdateL3StorageEmb(name, ptr, embInfo_.extEmbeddingSize, info.swapOutL3StorageKeys, info.swapOutL3StorageAddrOffs);
     }
 }
 

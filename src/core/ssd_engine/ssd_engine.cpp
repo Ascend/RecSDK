@@ -199,7 +199,7 @@ void SSDEngine::SetCompactThreshold(double threshold)
     throw invalid_argument("compact threshold should in range [0, 1]");
 }
 
-int64_t SSDEngine::GetTableEmbeddingSize(const string &tableName)
+int64_t SSDEngine::GetTableUsage(const string &tableName)
 {
     if (!isRunning) {
         throw runtime_error("SSDEngine not running");
