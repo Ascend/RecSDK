@@ -170,6 +170,8 @@ class ASCAnchorAttr(Enum):
     RESTORE_VECTOR_SECOND = "restore_vector_second"
     UNIQUE_KEYS = "unique_keys"
     IS_GRAD = "is_grad"
+    TABLE_NAME = "table_name"
+    CHANNEL_ID = "channel_id"
 
 
 class OptimizerType(Enum):

@@ -26,7 +26,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import adagrad, training_ops
 
-from mx_rec.optimizers.base import CustomizedOptimizer
+from mx_rec.optimizers.base import CustomizedOptimizer, control_update_op_decorator
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import para_checker_decorator, StringValidator, ClassValidator, FloatValidator
 
@@ -111,6 +111,7 @@ class CustomizedAdagrad(adagrad.AdagradOptimizer, CustomizedOptimizer):
         unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad, var=handle, is_expansion=False)
         return self._resource_apply_sparse(unique_local_grad, handle, unique_keys)
 
+    @control_update_op_decorator
     def _apply_sparse(self, grad, var):
         acc = self.get_slot(var, "acc")
         return training_ops.sparse_apply_adagrad(
@@ -119,6 +120,7 @@ class CustomizedAdagrad(adagrad.AdagradOptimizer, CustomizedOptimizer):
             grad.indices,
             use_locking=self._use_locking)
 
+    @control_update_op_decorator
     def _resource_apply_sparse(self, grad, var, indices):
         acc = self.get_slot(var, "acc")
         return training_ops.resource_sparse_apply_adagrad(

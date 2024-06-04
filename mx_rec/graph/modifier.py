@@ -253,11 +253,20 @@ class _GraphModifier:
                 swap_args_dict = swap_args.swap_config_dict[table_instance.table_name][channel_id]
                 swap_op = _get_swap_info(
                     table_instance, variable_and_slot_list, swap_args_dict["swap_info"], channel_id)
+                # gather for id_offset need to be executed after swap_op
                 swap_control_dict = swap_args.swap_control_dict[table_instance.table_name][channel_id]
                 if "control_ops" not in swap_control_dict:
-                    raise ValueError("Missing Required key in modify_graph_for_asc: control_ops")
+                    raise ValueError("swap control missing key [control_ops] in modify_graph_for_asc")
                 control_ops = swap_control_dict["control_ops"]
                 utils.replace_anchor_control(self._full_graph, control_ops, swap_op)
+
+                if is_training:
+                    # gather for slot need to be executed after swap_op
+                    slot_control_dict = swap_args.slot_control_dict[table_instance.variable]
+                    if "control_ops" not in slot_control_dict:
+                        raise ValueError("slot control missing key [control_ops] in modify_graph_for_asc")
+                    slot_control_ops = slot_control_dict["control_ops"]
+                    utils.replace_anchor_control(self._full_graph, slot_control_ops, swap_op)
 
     def _generate_get_next_op_specs(self, cutting_point_list: List[Tensor]) -> Dict[Tensor, _AnchorRecord]:
         get_next_op_map = defaultdict(dict)
