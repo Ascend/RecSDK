@@ -119,6 +119,17 @@ absl::flat_hash_map<emb_key_t, int64_t> EmbeddingTable::GetKeyOffsetMap()
     return keyOffsetMap;
 }
 
+void EmbeddingTable::SetFileSystemPtr(const string& savePath)
+{
+    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
+    fileSystemPtr_ = fileSystemHandler->Create(savePath);
+}
+
+void EmbeddingTable::UnsetFileSystemPtr()
+{
+    fileSystemPtr_ = nullptr;
+}
+
 vector<int64_t> EmbeddingTable::GetLoadOffset()
 {
     return loadOffset;
@@ -134,9 +145,10 @@ void EmbeddingTable::Save(const string& filePath)
 
 void EmbeddingTable::MakeDir(const string& dirName)
 {
-    auto fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(dirName);
-    fileSystemPtr->CreateDir(dirName);
+    if (fileSystemPtr_ == nullptr) {
+        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
+    }
+    fileSystemPtr_->CreateDir(dirName);
 }
 
 void EmbeddingTable::SetCacheManager(CacheManager *cm)
