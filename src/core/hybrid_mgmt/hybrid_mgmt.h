@@ -33,7 +33,7 @@ See the License for the specific language governing permissions and
 #include "ock_ctr_common/include/error_code.h"
 
 #include "hd_transfer/hd_transfer.h"
-#include "ssd_cache/cache_manager.h"
+#include "l3_storage/cache_manager.h"
 #include "hybrid_mgmt_block.h"
 #include "emb_table/embedding_table.h"
 
@@ -131,7 +131,7 @@ namespace MxRec {
 
         void ProcessEmbInfoDDR(const EmbBaseInfo& info, bool& remainBatchOut);
 
-        void ProcessEmbInfoSSD(const EmbBaseInfo& info, bool& remainBatchOut);
+        void ProcessEmbInfoL3Storage(const EmbBaseInfo& info, bool& remainBatchOut);
 
     GTEST_PRIVATE:
         bool mutexDestroy { false };
@@ -160,9 +160,9 @@ namespace MxRec {
         std::vector<std::future<void>> lookUpThreads;
 
         std::map<std::string, TaskQueue<std::vector<uint64_t>>> HBMSwapKeyQue;
-        std::map<std::string, TaskQueue<std::vector<uint64_t>>> SwapOut2SSDKeyQue;
+        std::map<std::string, TaskQueue<std::vector<uint64_t>>> SwapOut2L3StorageKeyQue;
         std::map<std::string, TaskQueue<std::vector<uint64_t>>> DDRSwapKeyQue;
-        std::map<std::string, TaskQueue<std::vector<uint64_t>>> DDRSwapKeyForSSDQue;
+        std::map<std::string, TaskQueue<std::vector<uint64_t>>> DDRSwapKeyForL3StorageQue;
         std::map<std::string, TaskQueue<std::vector<float *>>> DDRSwapAddrsQue;
 
         std::mutex evictMut;
@@ -188,7 +188,7 @@ namespace MxRec {
 
         void InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfos) const;
 
-        void EvictSSDKeys(const string& embName, const vector<emb_cache_key_t>& keys) const;
+        void EvictL3StorageKeys(const string& embName, const vector<emb_cache_key_t>& keys) const;
 
         int GetStepFromPath(const string& loadPath) const;
 
@@ -204,9 +204,9 @@ namespace MxRec {
 
         void EmbeddingReceiveAndUpdateDDR(int batchId, int index, const EmbInfo& embInfo);
 
-        void EmbeddingLookUpAndSendSSD(int batchId, int index, const EmbInfo& embInfo);
+        void EmbeddingLookUpAndSendL3Storage(int batchId, int index, const EmbInfo& embInfo);
 
-        void EmbeddingReceiveAndUpdateSSD(int batchId, int index, const EmbInfo& embInfo);
+        void EmbeddingReceiveAndUpdateL3Storage(int batchId, int index, const EmbInfo& embInfo);
 
         void SendTensorForSwap(const EmbBaseInfo& info,
                                const vector<uint64_t> &swapInPosUint,
@@ -222,7 +222,7 @@ namespace MxRec {
         HDTransfer *hdTransfer;
         OffsetMapT offsetMapToSend;
         OffsetMapT loadOffsetToSend;
-        bool isSSDEnabled { false };
+        bool isL3StorageEnabled { false };
         bool isRunning;
         bool isLoad { false };
         bool isInitialized { false };
@@ -247,7 +247,7 @@ namespace MxRec {
 
         void InitDataPipelineForDDR(const string &embName);
 
-        void InitDataPipelineForSSD(const string &embName, int extEmbeddingSize);
+        void InitDataPipelineForL3Storage(const string &embName, int extEmbeddingSize);
 
         void JoinEmbeddingCacheThread();
 
@@ -265,13 +265,13 @@ namespace MxRec {
 
         void EmbeddingSendDDR(const EmbTaskInfo& info, vector<Tensor>& h2dEmb);
 
-        bool EmbeddingReceiveSSD(const EmbTaskInfo& info, float*& ptr, vector<float*>& swapOutAddrs, int64_t& dims0);
+        bool EmbeddingReceiveL3Storage(const EmbTaskInfo& info, float*& ptr, vector<float*>& swapOutAddrs, int64_t& dims0);
 
-        void EmbeddingUpdateSSD(const EmbTaskInfo& info, float* embPtr, vector<float*>& swapOutAddrs, int64_t& dims0);
+        void EmbeddingUpdateL3Storage(const EmbTaskInfo& info, float* embPtr, vector<float*>& swapOutAddrs, int64_t& dims0);
 
-        bool EmbeddingLookUpSSD(const EmbTaskInfo& info, vector<Tensor>& h2dEmb);
+        bool EmbeddingLookUpL3Storage(const EmbTaskInfo& info, vector<Tensor>& h2dEmb);
 
-        void EmbeddingSendSSD(const EmbTaskInfo& info, vector<Tensor>& h2dEmb);
+        void EmbeddingSendL3Storage(const EmbTaskInfo& info, vector<Tensor>& h2dEmb);
 
         void CreateEmbeddingLookUpAndSendThread(int index, const EmbInfo& embInfo);
 
@@ -281,12 +281,12 @@ namespace MxRec {
                                      std::pair<vector<uint64_t>, vector<uint64_t>>& swapInKoPair,
                                      std::pair<vector<uint64_t>, vector<uint64_t>>& swapOutKoPair);
 
-        void HandleFirstBatchCaseSSD(const EmbBaseInfo& info,
-                                     std::pair<vector<uint64_t>, vector<uint64_t>>& swapInKoPair,
-                                     std::pair<vector<uint64_t>, vector<uint64_t>>& swapOutKoPair);
+        void HandleFirstBatchCaseL3Storage(const EmbBaseInfo& info,
+                                           std::pair<vector<uint64_t>, vector<uint64_t>>& swapInKoPair,
+                                           std::pair<vector<uint64_t>, vector<uint64_t>>& swapOutKoPair);
 
-        void HandleDataSwapForSSD(const EmbBaseInfo& info,
-                                  vector<uint64_t> &swapInKeys, vector<uint64_t> &swapOutKeys);
+        void HandleDataSwapForL3Storage(const EmbBaseInfo& info,
+                                        vector<uint64_t> &swapInKeys, vector<uint64_t> &swapOutKeys);
 
         bool BuildH2DEmbedding(const EmbTaskInfo& info, vector<Tensor>& h2dEmb);
 
@@ -306,13 +306,13 @@ namespace MxRec {
                                            std::pair<vector<uint64_t>, vector<uint64_t>>& swapInKoPair,
                                            std::pair<vector<uint64_t>, vector<uint64_t>>& swapOutKoPair);
 
-        bool HandleSpecialProcessStatusSSD(const EmbBaseInfo& info, TimeCost& getAndSendTensorsTC,
-                                           std::pair<vector<uint64_t>, vector<uint64_t>>& swapInKoPair,
-                                           std::pair<vector<uint64_t>, vector<uint64_t>>& swapOutKoPair);
+        bool HandleSpecialProcessStatusL3Storage(const EmbBaseInfo& info, TimeCost& getAndSendTensorsTC,
+                                                 std::pair<vector<uint64_t>, vector<uint64_t>>& swapInKoPair,
+                                                 std::pair<vector<uint64_t>, vector<uint64_t>>& swapOutKoPair);
 
         void CheckLookupAddrSuccessDDR();
 
-        void CheckLookupAddrSuccessSSD();
+        void CheckLookupAddrSuccessL3Storage();
 
         void GetSwapPairsAndKey2Offset(const EmbBaseInfo& info, vector<uint64_t> &uniqueKeys,
                                        std::pair<vector<uint64_t>, vector<uint64_t>>& swapInKoPair,
