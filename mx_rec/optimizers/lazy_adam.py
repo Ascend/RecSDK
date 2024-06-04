@@ -29,7 +29,7 @@ from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import adam
 
-from mx_rec.optimizers.base import CustomizedOptimizer
+from mx_rec.optimizers.base import CustomizedOptimizer, control_update_op_decorator
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.validator.validator import para_checker_decorator, StringValidator, FloatValidator, ClassValidator
@@ -120,6 +120,7 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
         }
         return temp
 
+    @control_update_op_decorator
     def _resource_apply_sparse(self, grad, handle, indices):
         return self._apply_sparse_shared(
             grad,
@@ -127,6 +128,7 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
             indices,
             self._resource_scatter_nd_add)
 
+    @control_update_op_decorator
     def _apply_sparse(self, grad, var):
         return self._apply_sparse_shared(
             grad.values,
@@ -168,7 +170,7 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
         v_t_slice = temp_b2 * old_v_slice + (1 - temp_b2) * math_ops.square(grad)
         v_update_op = scatter_nd_add(velocity, nd_indices, v_t_slice - old_v_slice)
 
-        denominator_slice = math_ops.sqrt(v_t_slice) + temp_epsilon
+        denominator_slice = math_ops.sqrt(v_t_slice + temp_epsilon)
         var_update_op = scatter_nd_add(var, nd_indices, tf.divide(-learning_rate * m_t_slice, denominator_slice))
         return control_flow_ops.group(m_update_op, v_update_op, var_update_op)
 

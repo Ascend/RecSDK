@@ -21,6 +21,7 @@ from typing import Optional, List, Dict, Union, Tuple
 import tensorflow as tf
 
 import mxrec_pybind
+from mx_rec.constants.constants import ASCAnchorAttr
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.tf_version_adapter import npu_ops
 from mx_rec.util.log import logger
@@ -36,7 +37,8 @@ class SwapInfo:
 
 
 def get_restore_vector(config):
-    logger.debug('Channel %s_restore_%s was built for getnext', config.get("table_name"), config.get("channel_id"))
+    logger.debug('Channel %s_restore_%s was built for getnext', config.get(ASCAnchorAttr.TABLE_NAME.value),
+                 config.get(ASCAnchorAttr.CHANNEL_ID.value))
     if config.get("is_hbm"):
         if not isinstance(config.get("emb_size"), int) or config.get("emb_size") < 1:
             raise TypeError(f"emb_size must be a int")
@@ -58,32 +60,36 @@ def get_restore_vector(config):
         restore_size = None
         hot_size = None
 
-    with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
+    with tf.compat.v1.variable_scope(config.get(ASCAnchorAttr.TABLE_NAME.value), reuse=tf.compat.v1.AUTO_REUSE):
         restore_vector, hot_pos = npu_ops.gen_npu_ops.get_next(
             output_types=[tf.int32, tf.int32],
             output_shapes=[restore_size, [hot_size]],
-            channel_name=f'{config.get("table_name")}_restore_{config.get("channel_id")}')
+            channel_name=f'{config.get(ASCAnchorAttr.TABLE_NAME.value)}'
+                         f'_restore_{config.get(ASCAnchorAttr.CHANNEL_ID.value)}')
 
     return restore_vector, hot_pos
 
 
 def get_id_offsets(max_lookup_vec_size: int, config: dict) -> Tuple[int, SwapInfo]:
-    logger.debug('Channel %s_lookup_%s was built for getnext', config.get("table_name"), config.get("channel_id"))
+    logger.debug('Channel %s_lookup_%s was built for getnext', config.get(ASCAnchorAttr.TABLE_NAME.value),
+                 config.get(ASCAnchorAttr.CHANNEL_ID.value))
     # 自动扩容当前只支持HBM模式，默认没有换入换出
     swap_info = SwapInfo()
 
-    with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
+    with tf.compat.v1.variable_scope(config.get(ASCAnchorAttr.TABLE_NAME.value), reuse=tf.compat.v1.AUTO_REUSE):
         if config.get("use_dynamic_expansion"):
             [id_offsets] = npu_ops.gen_npu_ops.get_next(
                 output_types=[tf.int64],
                 output_shapes=[[max_lookup_vec_size]],
-                channel_name=f'{config.get("table_name")}_lookup_{config.get("channel_id")}')
+                channel_name=f'{config.get(ASCAnchorAttr.TABLE_NAME.value)}'
+                             f'_lookup_{config.get(ASCAnchorAttr.CHANNEL_ID.value)}')
             return id_offsets, swap_info
 
         [id_offsets] = npu_ops.gen_npu_ops.get_next(
             output_types=[tf.int32],
             output_shapes=[[max_lookup_vec_size]],
-            channel_name=f'{config.get("table_name")}_lookup_{config.get("channel_id")}')
+            channel_name=f'{config.get(ASCAnchorAttr.TABLE_NAME.value)}'
+                         f'_lookup_{config.get(ASCAnchorAttr.CHANNEL_ID.value)}')
         if config.get("is_hbm"):
             return id_offsets, swap_info
         (
@@ -94,9 +100,9 @@ def get_id_offsets(max_lookup_vec_size: int, config: dict) -> Tuple[int, SwapInf
         ) = npu_ops.gen_npu_ops.get_next(
             output_types=[tf.int32, tf.int32, tf.int32, tf.int32],
             output_shapes=[[max_lookup_vec_size], [max_lookup_vec_size], [], []],
-            channel_name=f'{config.get("table_name")}_swap_all',
+            channel_name=f'{config.get(ASCAnchorAttr.TABLE_NAME.value)}_swap_all',
         )
-        logger.debug('Channel %s_swap_all was built for getnext', config.get("table_name"))
+        logger.debug('Channel %s_swap_all was built for getnext', config.get(ASCAnchorAttr.TABLE_NAME.value))
     return id_offsets, swap_info
 
 
@@ -111,13 +117,15 @@ def get_all2all_args(use_static: bool, config: dict) -> Optional[list]:
     if use_static:
         return all2all_args
 
-    with tf.compat.v1.variable_scope(config.get("table_name"), reuse=tf.compat.v1.AUTO_REUSE):
+    with tf.compat.v1.variable_scope(config.get(ASCAnchorAttr.TABLE_NAME.value), reuse=tf.compat.v1.AUTO_REUSE):
         with tf.compat.v1.variable_scope("all2all"):
-            logger.debug('Channel %s_a2a_%s was built for getnext', config.get("table_name"), config.get("channel_id"))
+            logger.debug('Channel %s_a2a_%s was built for getnext', config.get(ASCAnchorAttr.TABLE_NAME.value),
+                         config.get(ASCAnchorAttr.CHANNEL_ID.value))
             all2all_args = npu_ops.gen_npu_ops.get_next(
                 output_types=[tf.int64],
                 output_shapes=[[config.get("rank_size"), config.get("rank_size")]],
-                channel_name=f'{config.get("table_name")}_all2all_{config.get("channel_id")}',
+                channel_name=f'{config.get(ASCAnchorAttr.TABLE_NAME.value)}'
+                             f'_all2all_{config.get(ASCAnchorAttr.CHANNEL_ID.value)}',
                 name="a2a_get_next")[0] * config.get("emb_size")
 
     return all2all_args
@@ -139,8 +147,8 @@ def get_preprocessed_tensor_for_asc(table, config):
         # 一表多查时，会多次进入get_preprocessed_tensor_for_asc，最后一次大查询替换map的key-value即可
         swap_args = SwapArgs()
         
-        swap_args.set_data(SwapDataType.CONFIG.value, var_name=config.get("table_name"),
-                           var_channel=config.get("channel_id"), config=config, swap_info=swap_info)
+        swap_args.set_data(SwapDataType.CONFIG.value, var_name=config.get(ASCAnchorAttr.TABLE_NAME.value),
+                           var_channel=config.get(ASCAnchorAttr.CHANNEL_ID.value), config=config, swap_info=swap_info)
 
     all2all_args = get_all2all_args(use_static, config)
 

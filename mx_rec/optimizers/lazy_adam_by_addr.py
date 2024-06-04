@@ -136,7 +136,7 @@ class CustomizedLazyAdamByAddress(adam.AdamOptimizer, CustomizedOptimizer):
         old_v_slice = split_tensors[2]
         v_t_slice = temp_b2 * old_v_slice + (1 - temp_b2) * math_ops.square(grad)
 
-        denominator_slice = math_ops.sqrt(v_t_slice) + temp_epsilon
+        denominator_slice = math_ops.sqrt(v_t_slice + temp_epsilon)
         update_list = [tf.divide(-learning_rate * m_t_slice, denominator_slice)] + [m_t_slice - old_m_slice] + \
                       [v_t_slice - old_v_slice]
         update_tensor = tf.concat(update_list, axis=1)
