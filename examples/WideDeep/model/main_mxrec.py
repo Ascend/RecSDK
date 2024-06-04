@@ -89,7 +89,6 @@ def make_batch_and_iterator(config, feature_spec_list, is_training, dump_graph, 
     dataset = dataset.shard(config.rank_size, config.rank_id)
     if is_training:
         dataset = dataset.shuffle(batch_size * 1000, seed=shuffle_seed)
-    if is_training:
         dataset = dataset.repeat(config.train_epoch)
     else:
         dataset = dataset.repeat(config.test_epoch)
@@ -382,8 +381,6 @@ if __name__ == "__main__":
     if use_faae:
         cfg.dev_vocab_size = cfg.dev_vocab_size // 2
 
-    optimizer_list = [get_dense_and_sparse_optimizer(cfg)]
-
     # 创表操作
     wide_emb_initializer = tf.compat.v1.truncated_normal_initializer(stddev=0.05, seed=sparse_hashtable_seed)
     deep_emb_initializer = tf.compat.v1.truncated_normal_initializer(stddev=0.05, seed=sparse_hashtable_seed)
@@ -424,6 +421,7 @@ if __name__ == "__main__":
     eval_model = model_forward(eval_forward_args)
 
     train_variables, emb_variables = get_dense_and_sparse_variable()
+    optimizer_list = [get_dense_and_sparse_optimizer(cfg)]
 
     rank_size = mxrec_util.communication.hccl_ops.get_rank_size()
     train_ops = []
