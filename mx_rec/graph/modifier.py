@@ -260,7 +260,7 @@ class _GraphModifier:
                 control_ops = swap_control_dict["control_ops"]
                 utils.replace_anchor_control(self._full_graph, control_ops, swap_op)
 
-                if is_training:
+                if is_training and slot_num > 1:
                     # gather for slot need to be executed after swap_op
                     slot_control_dict = swap_args.slot_control_dict[table_instance.variable]
                     if "control_ops" not in slot_control_dict:
