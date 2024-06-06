@@ -95,7 +95,7 @@ def create_table(key_dtype, dim, name, emb_initializer,
     name = fix_invalid_table_name(name)
 
     voc_size_list = [device_vocabulary_size, host_vocabulary_size, ssd_vocabulary_size]
-    if check_and_set_default_voc_size(voc_size_list, dim):
+    if not check_and_set_default_voc_size(voc_size_list, dim):
         raise ValueError("voc_size_lis does not fit this cache mode")
 
     config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
