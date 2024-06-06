@@ -94,8 +94,12 @@ def create_table(key_dtype, dim, name, emb_initializer,
     """
     name = fix_invalid_table_name(name)
 
+    if isinstance(dim, tf.TensorShape):
+        dim_bytes = dim.as_list()[0] * 4  # float32 4 bytes
+    else:
+        dim_bytes = dim * 4  # float32 4 bytes
     voc_size_list = [device_vocabulary_size, host_vocabulary_size, ssd_vocabulary_size]
-    if not check_and_set_default_voc_size(voc_size_list, dim):
+    if not check_and_set_default_voc_size(voc_size_list, dim_bytes):
         raise ValueError("voc_size_lis does not fit this cache mode")
 
     config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
@@ -210,7 +214,7 @@ def mark_orphan_lookup_key(lookup_key: Tensor) -> Tensor:
     return marked_lookup_key
 
 
-def check_and_set_default_voc_size(voc_size_list: List[int], dim: int) -> bool:
+def check_and_set_default_voc_size(voc_size_list: List[int], dim_bytes: int) -> bool:
     if ConfigInitializer.get_instance().use_dynamic_expansion:
         voc_size_list[1] = 0
         voc_size_list[2] = 0
@@ -232,10 +236,12 @@ def check_and_set_default_voc_size(voc_size_list: List[int], dim: int) -> bool:
     if cache_mode == CacheModeEnum.DDR.value and voc_size_list[2] > 0:
         return False
     if voc_size_list[0] == 1:
-        voc_size_list[0] = int(DEFAULT_DEVICE_CACHE_MEMORY_SIZE / dim / 4)  # float32 4 bytes
+        voc_size_list[0] = int(DEFAULT_DEVICE_CACHE_MEMORY_SIZE / dim_bytes)
     if (cache_mode == CacheModeEnum.DDR.value or cache_mode == CacheModeEnum.SSD.value) and voc_size_list[1] == 0:
-        sys_mem = psutil.virtual_memory().total / dim / 4  # float32 4 bytes
-        voc_size_list[1] = sys_mem if sys_mem is not None else int(DEFAULT_HOST_CACHE_MEMORY_SIZE / dim / 4)
+        sys_voc = int(psutil.virtual_memory().total * 0.8 / dim_bytes)  # max host mem equal (0.8 * sys mem)
+        default_host_voc_size = int(DEFAULT_HOST_CACHE_MEMORY_SIZE / dim_bytes)
+        max_host_voc_size = MAX_VOCABULARY_SIZE if (sys_voc is not None and sys_voc > MAX_VOCABULARY_SIZE) else sys_voc
+        voc_size_list[1] = max_host_voc_size if sys_voc is not None else default_host_voc_size
     if cache_mode == CacheModeEnum.SSD.value and voc_size_list[2] == 0:
         voc_size_list[2] = DEFAULT_SSD_CACHE_MEMORY_SIZE
     return True
