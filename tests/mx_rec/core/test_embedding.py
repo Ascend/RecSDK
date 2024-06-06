@@ -88,7 +88,8 @@ class TestCreateTableFunc(unittest.TestCase):
             test_table = create_table(key_dtype=tf.int64,
                                       dim=8,
                                       name='test_table',
-                                      emb_initializer=tf.compat.v1.truncated_normal_initializer())
+                                      emb_initializer=tf.compat.v1.truncated_normal_initializer(),
+                                      device_vocabulary_size=8)
             self.assertIsInstance(test_table, HBMSparseEmbedding)
 
     @mock.patch.multiple("mx_rec.core.emb.base_sparse_embedding",
@@ -120,6 +121,7 @@ class TestCreateTableFunc(unittest.TestCase):
                                       dim=8,
                                       name='test_table',
                                       emb_initializer=tf.compat.v1.truncated_normal_initializer(),
+                                      device_vocabulary_size=8,
                                       host_vocabulary_size=8)
             self.assertIsInstance(test_table, ExternalStorageSparseEmbedding)
 
