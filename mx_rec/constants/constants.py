@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
+import sys
 from enum import Enum
 import numpy as np
 
@@ -25,6 +25,12 @@ ASCEND_SPARSE_LOOKUP_ID_OFFSET = "ASCEND_SPARSE_LOOKUP_ID_OFFSET"
 ASCEND_TIMESTAMP = "ASCEND_TIMESTAMP"
 ASCEND_SPARSE_LOOKUP_LOCAL_EMB = "ASCEND_SPARSE_LOOKUP_LOCAL_EMB"
 EMPTY_STR = ""
+
+# default emb memory size for hbm、ddr、ssd
+DEFAULT_DEVICE_CACHE_MEMORY_SIZE = 2 * 12024 * 1024 * 1024
+DEFAULT_HOST_CACHE_MEMORY_SIZE = 20 * 12024 * 1024 * 1024
+DEFAULT_SSD_CACHE_MEMORY_SIZE = sys.maxsize
+
 
 # 获取ConfigInitializer对象实例失败提示信息
 GET_CONFIG_INSTANCE_ERR_MSG = "Please init the environment for mx_rec at first."
@@ -140,6 +146,12 @@ class EnvOption(Enum):
     OMPI_COMM_WORLD_SIZE = "OMPI_COMM_WORLD_SIZE"
     OMPI_COMM_WORLD_LOCAL_SIZE = "OMPI_COMM_WORLD_LOCAL_SIZE"
     OMPI_COMM_WORLD_RANK = "OMPI_COMM_WORLD_RANK"
+
+
+class CacheModeEnum(Enum):
+    HBM = "HBM"
+    DDR = "DDR"
+    SSD = "SSD"
 
 
 class DataName(Enum):
