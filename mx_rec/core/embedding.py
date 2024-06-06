@@ -95,8 +95,7 @@ def create_table(key_dtype, dim, name, emb_initializer,
 
     dim_bytes = dim.as_list()[0] * 4 if isinstance(dim, tf.TensorShape) else dim * 4  # float32 4 bytes
     voc_size_list = [device_vocabulary_size, host_vocabulary_size, ssd_vocabulary_size]
-    if not check_and_set_default_voc_size(voc_size_list, dim_bytes):
-        raise ValueError("voc_size_lis does not fit this cache mode")
+    check_and_set_default_voc_size(voc_size_list, dim_bytes)
 
     config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
                   device_vocabulary_size=voc_size_list[0], host_vocabulary_size=voc_size_list[1],
@@ -210,27 +209,29 @@ def mark_orphan_lookup_key(lookup_key: Tensor) -> Tensor:
     return marked_lookup_key
 
 
-def check_and_set_default_voc_size(voc_size_list: List[int], dim_bytes: int) -> bool:
+def check_and_set_default_voc_size(voc_size_list: List[int], dim_bytes: int):
     if ConfigInitializer.get_instance().use_dynamic_expansion:
         voc_size_list[1] = 0
         voc_size_list[2] = 0
-        return True
+        return
     cache_mode = os.getenv("CACHE_MODE")
-    if cache_mode is None and voc_size_list[0] <= 1:  # no cache mode, no use_dynamic_expansion, must input dev-voc
-        return False
-    if cache_mode is None and voc_size_list[1] == 0:  # no cache mode, dev-voc not None, use HBM
-        return True
-    if cache_mode is None and voc_size_list[2] == 0:  # no cache mode, dev-voc/host-voc not None, use DDR
-        return True
-    if cache_mode is None:  # no cache mode, dev-voc/host-voc/ssd-voc not None, use SSD
-        return True
+    if not cache_mode and voc_size_list[0] <= 1:
+        raise ValueError("no cache mode, no use_dynamic_expansion, must input dev-voc")
+    if not cache_mode and voc_size_list[1] == 0 and voc_size_list[2] == 0:  # no cache mode, dev-voc not None, use HBM
+        return
+    if not cache_mode and voc_size_list[1] == 0 and voc_size_list[2] > 0:
+        raise ValueError("no cache mode, dev-voc is not none and host-voc is none, ssd-voc must be none too")
+    if not cache_mode and voc_size_list[2] == 0:  # no cache mode, dev-voc/host-voc not None, use DDR
+        return
+    if not cache_mode:  # no cache mode, dev-voc/host-voc/ssd-voc not None, use SSD
+        return
 
     if cache_mode not in [mode.value for mode in CacheModeEnum]:
-        return False
-    if cache_mode == CacheModeEnum.HBM.value and (voc_size_list[1] > 0 or voc_size_list[2]) > 0:
-        return False
+        raise ValueError("cache mode need to fit HBM, DDR, SSD")
+    if cache_mode == CacheModeEnum.HBM.value and (voc_size_list[1] > 0 or voc_size_list[2] > 0):
+        raise ValueError("cache mode HBM, host-voc or ssd-voc is need to be none")
     if cache_mode == CacheModeEnum.DDR.value and voc_size_list[2] > 0:
-        return False
+        raise ValueError("cache mode DDR, ssd-voc is need to be none")
     if voc_size_list[0] == 1:
         default_device_voc_size = int(DEFAULT_DEVICE_CACHE_MEMORY_SIZE / dim_bytes)
         voc_size_list[0] = default_device_voc_size if default_device_voc_size < MAX_VOCABULARY_SIZE \
@@ -240,4 +241,4 @@ def check_and_set_default_voc_size(voc_size_list: List[int], dim_bytes: int) -> 
         voc_size_list[1] = default_host_voc_size if default_host_voc_size < MAX_VOCABULARY_SIZE else MAX_VOCABULARY_SIZE
     if cache_mode == CacheModeEnum.SSD.value and voc_size_list[2] == 0:
         voc_size_list[2] = DEFAULT_SSD_CACHE_MEMORY_SIZE
-    return True
+    return
