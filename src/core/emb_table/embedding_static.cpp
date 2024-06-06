@@ -83,9 +83,6 @@ void EmbeddingStatic::SaveKey(const string& savePath)
     MakeDir(ss.str());
     ss << "slice_" << rankId_ << ".data";
 
-    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-
     deviceKey.clear();
     deviceOffset.clear();
 
@@ -94,8 +91,12 @@ void EmbeddingStatic::SaveKey(const string& savePath)
         deviceOffset.push_back(it.second);
     }
 
+    if (fileSystemPtr_ == nullptr) {
+        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
+    }
+
     size_t writeSize = static_cast<size_t>(deviceKey.size() * sizeof(int64_t));
-    ssize_t res = fileSystemPtr->Write(ss.str(), reinterpret_cast<const char *>(deviceKey.data()), writeSize);
+    ssize_t res = fileSystemPtr_->Write(ss.str(), reinterpret_cast<const char *>(deviceKey.data()), writeSize);
     if (res == -1) {
         throw runtime_error(StringFormat("Error: Save keys failed. "
                                          "An error occurred while writing file: {}.", ss.str()));
@@ -116,10 +117,10 @@ void EmbeddingStatic::LoadKey(const string& savePath)
     stringstream ss;
     ss << savePath << "/" << name << "/key/slice.data";
 
-    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-
-    size_t fileSize = fileSystemPtr->GetFileSize(ss.str());
+    if (fileSystemPtr_ == nullptr) {
+        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
+    }
+    size_t fileSize = fileSystemPtr_->GetFileSize(ss.str());
     if (fileSize >= FILE_MAX_SIZE) {
         throw runtime_error(StringFormat("Error: Load keys failed. file {} size {}  is too big.", ss.str(), fileSize));
     }
@@ -130,7 +131,7 @@ void EmbeddingStatic::LoadKey(const string& savePath)
                                          "failed to allocate {} bytes using malloc.", fileSize));
     }
 
-    ssize_t res = fileSystemPtr->Read(ss.str(), reinterpret_cast<char *>(buf), fileSize);
+    ssize_t res = fileSystemPtr_->Read(ss.str(), reinterpret_cast<char *>(buf), fileSize);
     if (res == -1) {
         throw runtime_error(StringFormat("Error: Load keys failed. "
                                          "An error occurred while reading file: {}.", ss.str()));

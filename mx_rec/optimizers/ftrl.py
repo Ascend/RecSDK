@@ -30,7 +30,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.training import ftrl
 
-from mx_rec.optimizers.base import CustomizedOptimizer
+from mx_rec.optimizers.base import CustomizedOptimizer, control_update_op_decorator
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.constants.constants import MAX_INT32
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, StringValidator, \
@@ -128,6 +128,7 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
                 grad.indices,
                 lambda x, i, v: tf.compat.v1.scatter_nd_update(x, i, v))
 
+    @control_update_op_decorator
     def _apply_sparse_shared(self, grad, var, indices, scatter_nd_update):
         accum = self.get_slot(var, "accum")
         linear = self.get_slot(var, "linear")
@@ -169,6 +170,7 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
 
         return control_flow_ops.group(accum_update_op, linear_update_op, var_update_op)
 
+    @control_update_op_decorator
     def _apply_sparse_shared_v2(self, grad, var, indices, scatter_nd_update):
         accum = self.get_slot(var, "accum")
         linear = self.get_slot(var, "linear")

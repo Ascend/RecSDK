@@ -149,6 +149,17 @@ namespace MxRec {
         return true;
     }
 
+    std::string FloatPtrToLimitStr(float* ptr, const size_t& prtSize)
+    {
+        constexpr size_t maxDispLen = 10; // max display number
+        int maxLen = static_cast<int>(std::min(prtSize, maxDispLen));
+        std::string s;
+        for (int i = 0; i < maxLen; i++) {
+            s += std::to_string(*(ptr + i)) + " ";
+        }
+        return s;
+    }
+
     ostream& operator<<(ostream& ss, MxRec::CkptDataType type)
     {
         ss << static_cast<int>(type);

@@ -18,7 +18,6 @@ See the License for the specific language governing permissions and
 
 #include "utils/logger.h"
 #include "utils/singleton.h"
-#include "file_system/file_system_handler.h"
 #include "ssd_cache/cache_manager.h"
 #include "ock_ctr_common/include/error_code.h"
 
@@ -86,12 +85,13 @@ void EmbeddingDDR::LoadKey(const string &savePath, vector<emb_cache_key_t> &keys
     stringstream ss;
     ss << savePath << "/" << name << "/key/slice.data";
 
-    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
+    if (fileSystemPtr_ == nullptr) {
+        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
+    }
 
     size_t fileSize = 0;
     try {
-        fileSize = fileSystemPtr->GetFileSize(ss.str());
+        fileSize = fileSystemPtr_->GetFileSize(ss.str());
     } catch (exception& e) {
         string errMsg = StringFormat("open file failed:%s, error code:%d", ss.str().c_str(), strerror(errno));
         throw runtime_error(errMsg);
@@ -107,7 +107,7 @@ void EmbeddingDDR::LoadKey(const string &savePath, vector<emb_cache_key_t> &keys
         string errMsg = StringFormat("malloc buffer failed, error code:%d", strerror(errno));
         throw runtime_error(errMsg);
     }
-    ssize_t result = fileSystemPtr->Read(ss.str(), reinterpret_cast<char*>(buf), fileSize);
+    ssize_t result = fileSystemPtr_->Read(ss.str(), reinterpret_cast<char*>(buf), fileSize);
     if (result == -1) {
         free(static_cast<void*>(buf));
         string errMsg = StringFormat("read buffer failed, error code:%d", strerror(errno));
@@ -144,18 +144,23 @@ void EmbeddingDDR::LoadEmbedding(const string &savePath, vector<vector<float>> &
 
     stringstream ss;
     ss << savePath << "/" << name;
-
-    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-
     stringstream embedStream;
     embedStream << ss.str() << "/" << "embedding/slice.data";
-    ssize_t res = fileSystemPtr->Read(embedStream.str(), embeddings, 0, hostLoadOffset, embSize_);
+
+    if (fileSystemPtr_ == nullptr) {
+        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
+    }
+    ssize_t res = fileSystemPtr_->Read(embedStream.str(), embeddings, 0, hostLoadOffset, embSize_);
     LOG_DEBUG("load embedding done, table:{}, read bytes:{}", name, res);
 }
 
 void EmbeddingDDR::LoadOptimizerSlot(const string &savePath, vector<vector<float>> &optimizerSlots)
 {
+    if (optimParams.size() == 0) {
+        LOG_DEBUG("optimizer has no slot data to load");
+        return;
+    }
+
     // must init first
     for (size_t i = 0; i < hostLoadOffset.size(); i++) {
         vector<float> tmp(extEmbSize_ - embSize_);
@@ -165,14 +170,14 @@ void EmbeddingDDR::LoadOptimizerSlot(const string &savePath, vector<vector<float
     stringstream ss;
     ss << savePath << "/" << name;
 
-    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-
+    if (fileSystemPtr_ == nullptr) {
+        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
+    }
     int64_t slotIdx = 0;
     for (const auto &param: optimParams) {
         stringstream paramStream;
         paramStream << ss.str() << "/" << optimName + "_" + param << "/slice.data";
-        ssize_t res = fileSystemPtr->Read(paramStream.str(), optimizerSlots, slotIdx, hostLoadOffset, embSize_);
+        ssize_t res = fileSystemPtr_->Read(paramStream.str(), optimizerSlots, slotIdx, hostLoadOffset, embSize_);
         slotIdx++;
         LOG_DEBUG("load optimizer slot, table:{}, slot:{}, read bytes:{}", name, param, res);
     }
@@ -259,14 +264,14 @@ void EmbeddingDDR::SaveKey(const string& savePath, vector<emb_cache_key_t>& keys
     MakeDir(ss.str());
     ss << "slice_" << rankId_ << ".data";
 
-    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-
     // 暂时向HBM兼容，转成int64_t，后续再归一key类型为uint64_t
     vector<int64_t> keysCompat(keys.cbegin(), keys.cend());
 
-    ssize_t res = fileSystemPtr->Write(ss.str(), reinterpret_cast<const char *>(keysCompat.data()),
-                                       static_cast<size_t>(keys.size() * sizeof(int64_t)));
+    if (fileSystemPtr_ == nullptr) {
+        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
+    }
+    ssize_t res = fileSystemPtr_->Write(ss.str(), reinterpret_cast<const char *>(keysCompat.data()),
+                                        static_cast<size_t>(keys.size() * sizeof(int64_t)));
     if (res == -1) {
         throw runtime_error("save key failed!");
     }
@@ -279,10 +284,10 @@ void EmbeddingDDR::SaveEmbedding(const string& savePath, vector<vector<float>>& 
     MakeDir(ss.str());
     ss << "slice_" << rankId_ << ".data";
 
-    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-
-    ssize_t writeBytesNum = fileSystemPtr->Write(ss.str(), embeddings, embSize_);
+    if (fileSystemPtr_ == nullptr) {
+        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
+    }
+    ssize_t writeBytesNum = fileSystemPtr_->Write(ss.str(), embeddings, embSize_);
     ssize_t expectWriteBytes = embeddings.size() * embSize_ * sizeof(float);
     if (writeBytesNum != expectWriteBytes) {
         string errMsg = StringFormat("save embedding failed, write expect:%d, actual:%d, path:%s",
@@ -293,6 +298,11 @@ void EmbeddingDDR::SaveEmbedding(const string& savePath, vector<vector<float>>& 
 
 void EmbeddingDDR::SaveOptimizerSlot(const string& savePath, vector<vector<float>>& optimizerSlots, size_t keySize)
 {
+    if (optimizerSlots.size() == 0) {
+        LOG_DEBUG("optimizer has no slot data to save");
+        return;
+    }
+    
     if (optimizerSlots.size() != keySize) {
         string errMsg = StringFormat("optimizer slot data size not equal to key size, "
                                      "optimizerSlots.size:%d, keySize:%d",
@@ -307,15 +317,12 @@ void EmbeddingDDR::SaveOptimizerSlot(const string& savePath, vector<vector<float
         MakeDir(ss.str());
         ss << "slice_" << rankId_ << ".data";
 
-        unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-        unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-
         vector<vector<float>> slotData;
         for (const auto &data: optimizerSlots) {
             vector<float> tmp(data.cbegin() + slotIdx * embSize_, data.cbegin() + (slotIdx+1) * embSize_);
             slotData.emplace_back(tmp);
         }
-        ssize_t writeBytesNum = fileSystemPtr->Write(ss.str(), slotData, embSize_);
+        ssize_t writeBytesNum = fileSystemPtr_->Write(ss.str(), slotData, embSize_);
         ssize_t expectWriteBytes = slotData.size() * embSize_ * sizeof(float);
         if (writeBytesNum != expectWriteBytes) {
             string errMsg = StringFormat("save optimizer slot failed, write expect:%d, actual:%d, path:%s",

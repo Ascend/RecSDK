@@ -33,8 +33,8 @@ namespace MxRec {
     using offset_t = uint32_t;
 
     class File {
-        static constexpr uint64_t keyDataLen = sizeof(emb_cache_key_t);
-        static constexpr uint64_t offsetDataLen = sizeof(offset_t);
+        static constexpr uint64_t KEY_DATA_LEN = sizeof(emb_cache_key_t);
+        static constexpr uint64_t OFFSET_DATA_LEN = sizeof(offset_t);
 
     public:
         File(uint64_t fileID, string& fileDir);

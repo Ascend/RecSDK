@@ -424,6 +424,7 @@ void HybridMgmt::Destroy()
             cvLastRecvFinishMap[embInfo.name][index].notify_all();
         }
     }
+    cvCheckSave.notify_all();  // 防止save异常退出场景阻塞在EvalTask
 
     {
         // 获取锁 避免KeyProcess中手动发送结束信息时通道关闭
@@ -557,7 +558,7 @@ bool HybridMgmt::IsEvalEndBatch(int batchId) const
 bool HybridMgmt::ParseKeys(int channelId, int& batchId, TaskType type)
 {
 #ifndef GTEST
-    LOG_INFO(MGMT + "channelId:{} batchId:{}, DDR mode, ParseKeys start.", channelId, batchId);
+    LOG_INFO(MGMT + "channelId:{} batchId:{}, ParseKeys start.", channelId, batchId);
     TimeCost parseKeyTC;
     bool remainBatch = true; // 是否从通道获取了数据
 
@@ -1328,7 +1329,7 @@ void HybridMgmt::InitEmbeddingCache(const vector<EmbInfo>& embInfos)
         specialProcessStatus[embInfo.name] = ProcessStatus::NORMAL;
 
         // 初始化embedding cache
-        LOG_INFO("create cache for table:{}, hostVocabSize:{}, embSize:{}, maxCacheSize:{}",
+        LOG_INFO("create cache for table:{}, hostVocabSize:{}, extEmbeddingSize:{}, maxCacheSize(devVocabSize):{}",
                  embInfo.name, embInfo.hostVocabSize, embInfo.extEmbeddingSize, embInfo.devVocabSize);
         EmbCache::EmbCacheInfo embCacheInfo(embInfo.name, embInfo.hostVocabSize, embInfo.embeddingSize,
                                             embInfo.extEmbeddingSize, embInfo.devVocabSize);
@@ -1514,8 +1515,15 @@ void HybridMgmt::EmbeddingUpdateDDR(const EmbTaskInfo& info, const float* embPtr
             throw runtime_error("memcpy_s failed, error code:" + to_string(rc));
         }
     }
-    LOG_DEBUG("table:{}, batchId:{}, thread:{}, EmbeddingUpdateTC(ms):{}",
-              info.name, info.batchId, info.threadIdx, EmbeddingUpdateTC.ElapsedMS());
+    if (MxRec::Logger::GetLevel() <= MxRec::Logger::DEBUG) {
+        string sample;
+        if (!swapOutAddrs.empty()) {
+            sample = FloatPtrToLimitStr(swapOutAddrs.front(), info.extEmbeddingSize); // print first element
+        }
+        LOG_DEBUG("table:{}, batchId:{}, thread:{}, receive d2hEmb, ext emb:{}, emb size:{}, emb samples:{}, "
+                  "EmbeddingUpdateTC(ms):{}", info.name.c_str(), info.batchId, info.threadIdx,
+                  info.extEmbeddingSize, swapOutAddrs.size(), sample, EmbeddingUpdateTC.ElapsedMS());
+    }
 
     lastUpdateFinishStepMap[info.name]++;
     cvLastUpdateFinishMap[info.name][info.cvNotifyIndex].notify_all();
@@ -1952,8 +1960,10 @@ bool HybridMgmt::BuildH2DEmbedding(const EmbTaskInfo &info, vector<Tensor> &h2dE
             throw runtime_error("memcpy_s failed, error code:" + to_string(rc));
         }
     }
-    LOG_DEBUG("table:{}, thread:{}, embeddingLookupTC(ms):{}",
-              info.name.c_str(), info.threadIdx, embeddingLookupTC.ElapsedMS());
+    LOG_DEBUG("table:{}, thread:{}, batchId:{}, send h2dEmb, emb size:{}, emb samples:{}, embeddingLookupTC(ms):{}",
+              info.name.c_str(), info.threadIdx, info.batchId, swapInAddrs.size(),
+              FloatPtrToLimitStr(h2dEmbAddr, swapInAddrs.size() * info.extEmbeddingSize),
+              embeddingLookupTC.ElapsedMS());
     return true;
 }
 
@@ -2046,9 +2056,15 @@ void HybridMgmt::SendRestoreVec(const EmbBaseInfo &info, bool &remainBatchOut)
 void HybridMgmt::SendLookupOffsets(const EmbBaseInfo &info,
                                    vector<uint64_t> &uniqueKeys, vector<int32_t> &restoreVecSec)
 {
+    // uniqueKeys already transfer to offset in GetSwapPairsAndKey2Offset
+    // graph will filter out invalid offset(-1). see function _set_specific_value_for_non_valid_key
     TimeCost sendLookupOffsetsTC;
     std::vector<uint64_t> lookupOffsets;
     for (const auto &index : restoreVecSec) {
+        if (index == INVALID_INDEX_VALUE) {
+            lookupOffsets.emplace_back(static_cast<uint64_t>(INVALID_KEY_VALUE));
+            continue;
+        }
         lookupOffsets.emplace_back(uniqueKeys[index]);
     }
     hdTransfer->Send(TransferChannel::LOOKUP, { Vec2TensorI32(lookupOffsets) }, info.channelId, info.name);
@@ -2189,6 +2205,11 @@ void HybridMgmt::GetSwapPairsAndKey2Offset(const EmbBaseInfo &info, vector<uint6
     }
     LOG_DEBUG("table:{}, channel:{}, batchId:{}, GetSwapPairsAndKey2OffsetTC(ms):{}",
               info.name, info.channelId, info.batchId, GetSwapPairsAndKey2OffsetTC.ElapsedMS());
+
+    LOG_DEBUG("table:{}, channel:{}, batchId:{}, swapIn keys:{}, swapIn pos:{}, swapOut keys:{}, swapOut pos:{}",
+              info.name, info.channelId, info.batchId, VectorToString(swapInKoPair.first),
+              VectorToString(swapInKoPair.second), VectorToString(swapOutKoPair.first),
+              VectorToString(swapOutKoPair.second));
 }
 
 void HybridMgmt::EnqueueSwapInfo(const EmbBaseInfo &info,

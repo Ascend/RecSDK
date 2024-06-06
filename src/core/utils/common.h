@@ -102,8 +102,8 @@ namespace MxRec {
     constexpr int EOS_TIMEOUT = 30;
 
     constexpr size_t DEFAULT_RANDOM_SEED = 10086;
-    // constexpr int INVALID_KEY_VALUE = -1;
     constexpr int64_t INVALID_KEY_VALUE = -1;
+    constexpr int32_t INVALID_INDEX_VALUE = -1;
     constexpr int ALLTOALLVC_ALIGN = 128;
     constexpr int PROFILING_START_BATCH_ID = 100;
     constexpr int PROFILING_END_BATCH_ID = 200;
@@ -361,9 +361,12 @@ namespace MxRec {
     template<typename T>
     std::string VectorToString(const std::vector<T>& vec)
     {
+        constexpr size_t maxDispLen = 20; // max display number
+        int maxLen = static_cast<int>(std::min(vec.size(), maxDispLen));
+
         std::stringstream ss;
         ss << "[";
-        for (size_t i = 0; i < vec.size(); ++i) {
+        for (size_t i = 0; i < maxLen; ++i) {
             ss << vec[i];
             if (i != vec.size() - 1) {
                 ss << ", ";
@@ -372,6 +375,8 @@ namespace MxRec {
         ss << "]";
         return ss.str();
     }
+
+    std::string FloatPtrToLimitStr(float* ptr, const size_t& prtSize);
 
     template<typename K, typename V>
     std::string MapToString(const std::map<K, V>& map)
