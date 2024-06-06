@@ -24,7 +24,7 @@ from glob import glob
 import numpy as np
 import tensorflow as tf
 
-from mx_rec.constants.constants import ASCEND_TIMESTAMP
+from mx_rec.constants.constants import ASCEND_TIMESTAMP, CacheModeEnum
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.helper import get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
@@ -44,12 +44,6 @@ from run_mode import RunMode, UseMode
 tf.compat.v1.disable_eager_execution()
 
 _SSD_SAVE_PATH = ["ssd_data"]  # user should make sure directory exist and clean before training
-
-
-class CacheModeEnum(enum.Enum):
-    HBM = "HBM"
-    DDR = "DDR"
-    SSD = "SSD"
 
 
 def make_batch_and_iterator(is_training, feature_spec_list=None,
