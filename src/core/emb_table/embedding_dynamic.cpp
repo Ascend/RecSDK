@@ -17,7 +17,6 @@ See the License for the specific language governing permissions and
 #include "utils/logger.h"
 #include "utils/singleton.h"
 #include "hd_transfer/hd_transfer.h"
-#include "file_system/file_system_handler.h"
 #include "utils/common.h"
 
 using namespace MxRec;
@@ -139,9 +138,6 @@ void EmbeddingDynamic::SaveKey(const string& savePath)
     MakeDir(ss.str());
     ss << "slice_" << rankId_ << ".data";
 
-    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-
     deviceKey.clear();
     embAddress.clear();
 
@@ -150,8 +146,11 @@ void EmbeddingDynamic::SaveKey(const string& savePath)
         embAddress.push_back(it.second);
     }
 
+    if (fileSystemPtr_ == nullptr) {
+        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
+    }
     size_t writeSize = static_cast<size_t>(deviceKey.size() * sizeof(int64_t));
-    ssize_t res = fileSystemPtr->Write(ss.str(), reinterpret_cast<const char *>(deviceKey.data()), writeSize);
+    ssize_t res = fileSystemPtr_->Write(ss.str(), reinterpret_cast<const char *>(deviceKey.data()), writeSize);
     if (res == -1) {
         throw runtime_error(StringFormat("Error: Save keys failed. "
                                          "An error occurred while writing file: {}.", ss.str()));
@@ -195,22 +194,25 @@ void EmbeddingDynamic::SaveEmbData(const string& savePath)
     MakeDir(ss.str());
     ss << "slice_" << rankId_ << ".data";
 
-    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-    fileSystemPtr->WriteEmbedding(ss.str(), embSize_, embAddress, deviceId);
+    if (fileSystemPtr_ == nullptr) {
+        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
+    }
+    fileSystemPtr_->WriteEmbedding(ss.str(), embSize_, embAddress, deviceId);
 }
 
 void EmbeddingDynamic::SaveOptimData(const string &savePath)
 {
+    if (fileSystemPtr_ == nullptr) {
+        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
+    }
+
     for (const auto &content: optimAddressMap) {
         stringstream ss;
         ss << savePath << "/" << name << "/" << optimName + "_" + content.first << "/";
         MakeDir(ss.str());
         ss << "slice_" << rankId_ << ".data";
 
-        unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-        unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-        fileSystemPtr->WriteEmbedding(ss.str(), embSize_, content.second, deviceId);
+        fileSystemPtr_->WriteEmbedding(ss.str(), embSize_, content.second, deviceId);
     }
 }
 
@@ -225,22 +227,23 @@ void EmbeddingDynamic::LoadEmbAndOptim(const string& savePath)
     stringstream ss;
     ss << savePath << "/" << name;
 
-    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-
     // 读embedding
     stringstream embedStream;
     embedStream << ss.str() << "/" << "embedding/slice.data";
+
+    if (fileSystemPtr_ == nullptr) {
+        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
+    }
     EmbeddingSizeInfo embeddingSizeInfo = {embSize_, extEmbSize_};
-    fileSystemPtr->ReadEmbedding(embedStream.str(), embeddingSizeInfo, firstAddress, rankId_, loadOffset);
+    fileSystemPtr_->ReadEmbedding(embedStream.str(), embeddingSizeInfo, firstAddress, rankId_, loadOffset);
 
     // 读optim
     int optimIndex = 1;
     for (const auto &param: optimParams) {
         stringstream paramStream;
         paramStream << ss.str() << "/" << optimName + "_" + param << "/slice.data";
-        fileSystemPtr->ReadEmbedding(paramStream.str(), embeddingSizeInfo,
-                                     firstAddress + optimIndex * embSize_ * sizeof(float), deviceId, loadOffset);
+        fileSystemPtr_->ReadEmbedding(paramStream.str(), embeddingSizeInfo,
+                                      firstAddress + optimIndex * embSize_ * sizeof(float), deviceId, loadOffset);
         optimIndex++;
     }
 }
@@ -250,10 +253,10 @@ void EmbeddingDynamic::LoadKey(const string& savePath)
     stringstream ss;
     ss << savePath << "/" << name << "/key/slice.data";
 
-    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(ss.str());
-
-    size_t fileSize = fileSystemPtr->GetFileSize(ss.str());
+    if (fileSystemPtr_ == nullptr) {
+        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
+    }
+    size_t fileSize = fileSystemPtr_->GetFileSize(ss.str());
     if (fileSize >= FILE_MAX_SIZE) {
         throw runtime_error(StringFormat("Error: Load keys failed. file {} size {}  is too big.", ss.str(), fileSize));
     }
@@ -264,7 +267,7 @@ void EmbeddingDynamic::LoadKey(const string& savePath)
                                          "failed to allocate {} bytes using malloc.", fileSize));
     }
 
-    ssize_t res = fileSystemPtr->Read(ss.str(), reinterpret_cast<char*>(buf), fileSize);
+    ssize_t res = fileSystemPtr_->Read(ss.str(), reinterpret_cast<char*>(buf), fileSize);
     if (res == -1) {
         throw runtime_error(StringFormat("Error: Load keys failed. "
                                          "An error occurred while reading file: {}.", ss.str()));

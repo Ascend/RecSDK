@@ -41,6 +41,7 @@ class SwapArgs:
     def __init__(self):
         self.swap_config_dict = defaultdict(dict)
         self.swap_control_dict = defaultdict(dict)
+        self.slot_control_dict = defaultdict(dict)
 
     def set_data(self, data_type: str, **kwargs):
         if "var_name" not in kwargs:
@@ -56,3 +57,9 @@ class SwapArgs:
             self.swap_control_dict[var_name][var_channel] = kwargs
         else:
             raise ValueError(f"Error data type in swap args: {data_type}")
+
+    def set_slot_control(self, **kwargs):
+        if "var_name" not in kwargs:
+            raise ValueError("Missing Required key: var_name")
+        var_name = kwargs.pop("var_name")
+        self.slot_control_dict[var_name] = kwargs

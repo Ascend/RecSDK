@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.training.optimizer import _TensorProcessor
 
+from mx_rec.core.asc.swap_args import SwapArgs
 from mx_rec.constants.constants import ASCAnchorAttr
 from mx_rec.util.tf_version_adapter import npu_ops
 from mx_rec.util.initialize import ConfigInitializer
@@ -141,6 +142,18 @@ def custom_update_op(self, opt, grad):
         return update_op
     else:
         raise RuntimeError("Only support g with type Tensor.")
+
+
+def control_update_op_decorator(apply_sparse):
+    def wrapper(*args, **kwargs):
+        second_arg = args[2] if len(args) > 2 else None  # index 2 input must be var
+        slot_control_ops = tf.no_op(name="place_holder_slot_control_op")
+        swap_args = SwapArgs()
+        swap_args.set_slot_control(var_name=second_arg, control_ops=slot_control_ops)
+        with tf.control_dependencies([slot_control_ops]):
+            result = apply_sparse(*args, **kwargs)
+        return result
+    return wrapper
 
 
 def patch_for_optimizer():

@@ -281,12 +281,12 @@ void File::Load()
     emb_cache_key_t key;
     offset_t offset;
     do {
-        localFileMeta.read(reinterpret_cast<char *>(&key), keyDataLen);
+        localFileMeta.read(reinterpret_cast<char*>(&key), KEY_DATA_LEN);
         if (!localFileMeta.eof() && localFileMeta.fail()) {
             throw invalid_argument("file broken while reading key");
         }
 
-        localFileMeta.read(reinterpret_cast<char *>(&offset), offsetDataLen);
+        localFileMeta.read(reinterpret_cast<char*>(&offset), OFFSET_DATA_LEN);
         if (!localFileMeta.eof() && localFileMeta.fail()) {
             throw invalid_argument("file broken while reading offset");
         }
