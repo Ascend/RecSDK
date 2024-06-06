@@ -284,10 +284,12 @@ def create_feature_spec_list(use_timestamp=False):
         access_threshold = 1000
         eviction_threshold = 180
 
-    feature_spec_list = [FeatureSpec("sparse_feature", table_name="wide_embeddings", batch_size=cfg.batch_size,
+    feature_spec_list = [
+                    FeatureSpec("sparse_feature", table_name="wide_embeddings", batch_size=cfg.batch_size,
                                      access_threshold=access_threshold, eviction_threshold=eviction_threshold),
-                         FeatureSpec("sparse_feature", table_name="deep_embeddings", batch_size=cfg.batch_size,
-                                     access_threshold=access_threshold, eviction_threshold=eviction_threshold)]
+                    FeatureSpec("sparse_feature", table_name="deep_embeddings", batch_size=cfg.batch_size,
+                                     access_threshold=access_threshold, eviction_threshold=eviction_threshold)
+    ]
 
     if use_multi_lookup:
         feature_spec_list.extend([FeatureSpec("sparse_feature", table_name="wide_embeddings",
