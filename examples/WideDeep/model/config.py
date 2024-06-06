@@ -21,6 +21,8 @@ import tensorflow as tf
 from tensorflow.core.protobuf.rewriter_config_pb2 import RewriterConfig
 from npu_bridge.estimator.npu.npu_config import NPURunConfig
 
+from mx_rec.constants.constants import CacheModeEnum
+
 SSD_DATA_PATH = ["ssd_data"]
 
 
@@ -88,12 +90,6 @@ class LearningRateScheduler:
         lr_sparse = self.base_lr_sparse * lr_factor_constant
         lr_dense = self.base_lr_dense * lr_factor_constant
         return lr_dense, lr_sparse
-
-
-class CacheModeEnum(enum.Enum):
-    HBM = "HBM"
-    DDR = "DDR"
-    SSD = "SSD"
 
 
 class Config:
