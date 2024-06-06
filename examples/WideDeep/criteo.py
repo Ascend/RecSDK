@@ -167,10 +167,9 @@ def convert_input2tfrd(in_file_path, out_file_path):
     txt to tfrecords
     """
     def make_example(label_list, dense_feat_list, sparse_feat_list):
-        # '1.0' >> 1.0 >> 1
-        dense_feature = np.array(np.array(dense_feat_list, dtype=np.float32), dtype=np.int64).reshape(-1)
-        sparse_feature = np.array(np.array(sparse_feat_list, dtype=np.float32), dtype=np.int64).reshape(-1)
-        label = np.array(np.array(label_list, dtype=np.float32), dtype=np.int64).reshape(-1)
+        dense_feature = np.array(dense_feat_list, dtype=np.int64).reshape(-1)
+        sparse_feature = np.array(sparse_feat_list, dtype=np.int64).reshape(-1)
+        label = np.array(label_list, dtype=np.int64).reshape(-1)
         feature_dict = {"dense_feature": tf.train.Feature(int64_list=tf.train.Int64List(value=dense_feature)),
                         "sparse_feature": tf.train.Feature(int64_list=tf.train.Int64List(value=sparse_feature)),
                         "label": tf.train.Feature(int64_list=tf.train.Int64List(value=label))
