@@ -1711,7 +1711,8 @@ void HybridMgmt::EmbeddingUpdateL3Storage(const EmbTaskInfo& info, float *embPtr
     if (dims0 != static_cast<int64_t>(swapOutAddrs.size() + swapOutL3StorageKeys.size())) {
         throw runtime_error("data dims[0] != swapOutKeys.size");
     }
-    cacheManager->UpdateL3StorageEmb(info.name, embPtr, extEmbeddingSize, swapOutL3StorageKeys, swapOutL3StorageAddrOffs);
+    cacheManager->UpdateL3StorageEmb(info.name, embPtr, extEmbeddingSize, swapOutL3StorageKeys,
+                                     swapOutL3StorageAddrOffs);
     LOG_DEBUG("table:{}, batchId:{}, thread{}, L3StorageUpdateTC(ms):{}",
               info.name.c_str(), info.batchId, info.threadIdx, L3StorageUpdateTC.ElapsedMS());
 
@@ -1917,7 +1918,8 @@ void HybridMgmt::HandleDataSwapForL3Storage(const EmbBaseInfo& info,
     LOG_DEBUG("table:{}, batchId:{}, channelId:{}, swapOutDDRKeys:{}, swapOutDDRAddrOffs:{}, "
               "swapOutL3StorageKeys:{}, swapOutL3StorageAddrOff:{}",
               info.name, info.batchId, info.channelId, swapInfo.swapOutDDRKeys.size(),
-              swapInfo.swapOutDDRAddrOffs.size(), swapInfo.swapOutL3StorageKeys.size(), swapInfo.swapOutL3StorageAddrOffs.size());
+              swapInfo.swapOutDDRAddrOffs.size(), swapInfo.swapOutL3StorageKeys.size(),
+              swapInfo.swapOutL3StorageAddrOffs.size());
     LOG_DEBUG("table:{}, batchId:{}, channelId:{}, DDRToL3StorageKeys:{}, L3StorageToDDRKeys:{}",
               info.name, info.batchId, info.channelId, DDRToL3StorageKeys.size(), L3StorageToDDRKeys.size());
 
@@ -2150,8 +2152,8 @@ bool HybridMgmt::HandleSpecialProcessStatusL3Storage(const EmbBaseInfo &info, Ti
         if (mgmtRankInfo.ctrlSteps[info.channelId] == 1) {
             vector<uint64_t> emptySwapOutPos;
             SendTensorForSwap(info, swapInPos, emptySwapOutPos);
-            LOG_DEBUG("ProcessEmbInfoL3Storage special case, user only run one step, table:{}, channelId:{}, batchId:{}",
-                      info.name, info.channelId, info.batchId);
+            LOG_DEBUG("ProcessEmbInfoL3Storage special case, user only run one step, "
+                      "table:{}, channelId:{}, batchId:{}", info.name, info.channelId, info.batchId);
         }
 
         specialProcessStatus[info.name] = ProcessStatus::AFTER_SWITCH_SECOND_BATCH;

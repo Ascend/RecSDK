@@ -25,7 +25,8 @@ See the License for the specific language governing permissions and
 
 using namespace MxRec;
 
-void CacheManager::Init(ock::ctr::EmbCacheManagerPtr embCachePtr, vector<EmbInfo>& mgmtEmbInfo, shared_ptr<L3Storage> level3Storage)
+void CacheManager::Init(ock::ctr::EmbCacheManagerPtr embCachePtr, vector<EmbInfo>& mgmtEmbInfo,
+                        shared_ptr<L3Storage> level3Storage)
 {
     LOG_INFO("CacheManager Init method begin");
     if (level3Storage == nullptr) {
@@ -214,7 +215,8 @@ void CacheManager::ProcessSwapOutKeys(const string& tableName, const vector<emb_
 }
 
 void CacheManager::ProcessSwapInKeys(const string& tableName, const vector<emb_cache_key_t>& swapInKeys,
-                                     vector<emb_cache_key_t>& DDRToL3StorageKeys, vector<emb_cache_key_t>& L3StorageToDDRKeys)
+                                     vector<emb_cache_key_t>& DDRToL3StorageKeys,
+                                     vector<emb_cache_key_t>& L3StorageToDDRKeys)
 {
     auto& keyMapper = preProcessMapper[tableName];
     size_t externalDDRSize = 0;
@@ -236,7 +238,8 @@ void CacheManager::ProcessSwapInKeys(const string& tableName, const vector<emb_c
         size_t transNum = externalDDRSize - ddrAvailableSize;
 
         if (transNum > keyMapper.L3StorageAvailableSize()) {
-            throw invalid_argument("L3Storage table size too small, key quantity exceed while transferring DDR data to L3Storage");
+            throw invalid_argument(
+                "L3Storage table size too small, key quantity exceed while transferring DDR data to L3Storage");
         }
         // DDR--->L3Storage
         keyMapper.GetAndDeleteLeastFreqDDRKey2L3Storage(transNum, swapInKeys, DDRToL3StorageKeys);

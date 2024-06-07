@@ -253,7 +253,8 @@ void EmbeddingDDR::SyncLatestEmbedding()
                 throw std::invalid_argument(errMsg);
             }
         }
-        cacheManager_->UpdateL3StorageEmb(name, ptr, embInfo_.extEmbeddingSize, info.swapOutL3StorageKeys, info.swapOutL3StorageAddrOffs);
+        cacheManager_->UpdateL3StorageEmb(name, ptr, embInfo_.extEmbeddingSize, info.swapOutL3StorageKeys,
+                                          info.swapOutL3StorageAddrOffs);
     }
 }
 
