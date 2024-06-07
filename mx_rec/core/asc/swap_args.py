@@ -22,6 +22,7 @@ from enum import Enum
 class SwapDataType(Enum):
     CONFIG = "config"
     CONTROL = "control"
+    CONTROL_OPS = "control_ops"
 
 
 def singleton(cls):
