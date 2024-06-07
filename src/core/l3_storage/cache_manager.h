@@ -50,7 +50,7 @@ namespace MxRec {
     enum class TransferRet {
         TRANSFER_OK = 0, // 转移成功或无需处理
         TRANSFER_ERROR,
-        L3Storage_SPACE_NOT_ENOUGH,
+        L3STORAGE_SPACE_NOT_ENOUGH,
         DDR_SPACE_NOT_ENOUGH,
     };
 
@@ -74,7 +74,8 @@ namespace MxRec {
 
         ~CacheManager();
 
-        void Init(ock::ctr::EmbCacheManagerPtr embCachePtr, vector<EmbInfo>& mgmtEmbInfo, shared_ptr<L3Storage> level3Storage);
+        void Init(ock::ctr::EmbCacheManagerPtr embCachePtr, vector<EmbInfo>& mgmtEmbInfo,
+                  shared_ptr<L3Storage> level3Storage);
 
         void Load(const std::vector<EmbInfo>& mgmtEmbInfo, int step,
                   map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
@@ -91,7 +92,8 @@ namespace MxRec {
                                 SwapOutInfo& info);
 
         void ProcessSwapInKeys(const string& tableName, const vector<emb_cache_key_t>& swapInKeys,
-                               vector<emb_cache_key_t>& DDRToL3StorageKeys, vector<emb_cache_key_t>& L3StorageToDDRKeys);
+                               vector<emb_cache_key_t>& DDRToL3StorageKeys,
+                               vector<emb_cache_key_t>& L3StorageToDDRKeys);
 
         void UpdateL3StorageEmb(string tableName, float* embPtr, uint32_t extEmbeddingSize, vector<emb_cache_key_t>& keys,
                                 const vector<uint64_t>& swapOutL3StorageAddrOffs);

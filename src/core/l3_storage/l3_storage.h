@@ -21,7 +21,6 @@ See the License for the specific language governing permissions and
 
 #include "utils/common.h"
 
-using MxRec::emb_cache_key_t;
 using std::string;
 using std::vector;
 

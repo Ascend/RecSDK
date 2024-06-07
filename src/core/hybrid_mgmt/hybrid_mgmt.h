@@ -265,9 +265,11 @@ namespace MxRec {
 
         void EmbeddingSendDDR(const EmbTaskInfo& info, vector<Tensor>& h2dEmb);
 
-        bool EmbeddingReceiveL3Storage(const EmbTaskInfo& info, float*& ptr, vector<float*>& swapOutAddrs, int64_t& dims0);
+        bool EmbeddingReceiveL3Storage(const EmbTaskInfo& info, float*& ptr, vector<float*>& swapOutAddrs,
+                                       int64_t& dims0);
 
-        void EmbeddingUpdateL3Storage(const EmbTaskInfo& info, float* embPtr, vector<float*>& swapOutAddrs, int64_t& dims0);
+        void EmbeddingUpdateL3Storage(const EmbTaskInfo& info, float* embPtr, vector<float*>& swapOutAddrs,
+                                      int64_t& dims0);
 
         bool EmbeddingLookUpL3Storage(const EmbTaskInfo& info, vector<Tensor>& h2dEmb);
 

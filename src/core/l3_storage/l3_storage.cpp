@@ -16,6 +16,7 @@ See the License for the specific language governing permissions and
 #include "l3_storage.h"
 
 using MxRec::L3Storage;
+using MxRec::emb_cache_key_t;
 
 L3Storage::L3Storage() {}
 
@@ -39,7 +40,7 @@ int64_t L3Storage::GetTableAvailableSpace(const string& tableName)
 }
 
 void L3Storage::InsertEmbeddingsByAddr(const string& tableName, vector<emb_cache_key_t>& keys,
-                                            vector<float*>& embeddingsAddr, uint64_t extEmbeddingSize)
+                                       vector<float*>& embeddingsAddr, uint64_t extEmbeddingSize)
 {
 }
 
