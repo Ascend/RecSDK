@@ -25,55 +25,61 @@ See the License for the specific language governing permissions and
 
 using namespace MxRec;
 
-void CacheManager::Init(ock::ctr::EmbCacheManagerPtr embCachePtr, vector<EmbInfo>& mgmtEmbInfo)
+void CacheManager::Init(ock::ctr::EmbCacheManagerPtr embCachePtr, vector<EmbInfo>& mgmtEmbInfo,
+                        shared_ptr<L3Storage> level3Storage)
 {
     LOG_INFO("CacheManager Init method begin");
+    if (level3Storage == nullptr) {
+        throw runtime_error("level3Storage is nullptr");
+    }
+    
     this->embCache = std::move(embCachePtr);
     for (auto& emb : mgmtEmbInfo) {
         EmbBaseInfo baseInfo {emb.ssdVocabSize, emb.ssdDataPath, false};
         embBaseInfos.emplace(emb.name, baseInfo);
         preProcessMapper[emb.name].Initialize(emb.name, emb.hostVocabSize, emb.ssdVocabSize);
     }
-    ssdEngine->Start();
+    this->l3Storage = level3Storage;
+    this->l3Storage->Start();
     LOG_INFO("CacheManager Init method end");
 }
 
-bool CacheManager::IsKeyInSSD(const string& embTableName, emb_cache_key_t key)
+bool CacheManager::IsKeyInL3Storage(const string& embTableName, emb_cache_key_t key)
 {
-    return ssdEngine->IsKeyExist(embTableName, key);
+    return l3Storage->IsKeyExist(embTableName, key);
 }
 
-/// 淘汰SSD中Emb信息
+/// 淘汰三级存储中Emb信息
 /// \param embTableName emb表名
 /// \param keys 淘汰key列表
-void CacheManager::EvictSSDEmbedding(const string& embTableName, const vector<emb_cache_key_t>& keys)
+void CacheManager::EvictL3StorageEmbedding(const string& embTableName, const vector<emb_cache_key_t>& keys)
 {
     if (keys.empty()) {
         return;
     }
 
     int keyStep = preProcessStep;
-    unordered_map<emb_cache_key_t, freq_num_t>& ssdMap = preProcessMapper[embTableName].excludeDDRKeyCountMap;
+    unordered_map<emb_cache_key_t, freq_num_t>& l3StorageMap = preProcessMapper[embTableName].excludeDDRKeyCountMap;
     LFUCache& ddrLfu = preProcessMapper[embTableName].lfuCache;
-    std::vector<emb_cache_key_t> ssdKeysToBeDeleted;
+    std::vector<emb_cache_key_t> l3StorageKeysToBeDeleted;
     // 1 删除缓存中记录的key的次数
     for (auto &key: keys) {
-        auto it = ssdMap.find(key);
-        if (it != ssdMap.end()) {
-            ssdMap.erase(it);
-            ssdKeysToBeDeleted.emplace_back(key);
+        auto it = l3StorageMap.find(key);
+        if (it != l3StorageMap.end()) {
+            l3StorageMap.erase(it);
+            l3StorageKeysToBeDeleted.emplace_back(key);
         } else {
             ddrLfu.Pop(key);
         }
     }
 
-    ssdEvictThreads.emplace_back([=]() mutable {
-        // 2 删除SSD中保存的Emb数据
+    l3StorageEvictThreads.emplace_back([=]() mutable {
+        // 2 删除L3Storage中保存的Emb数据
         std::unique_lock<std::mutex> lk(evictWaitMut);
         evictWaitCond.wait(lk, [keyStep, this] {
             return embeddingTaskStep == keyStep;
         });
-        ssdEngine->DeleteEmbeddings(embTableName, ssdKeysToBeDeleted);
+        l3Storage->DeleteEmbeddings(embTableName, l3StorageKeysToBeDeleted);
     });
 }
 
@@ -93,29 +99,29 @@ void CacheManager::PutKey(const string& embTableName, const emb_key_t& key, Reco
     hashMap[key] = count;
 }
 
-void CacheManager::CreateSSDTableIfNotExist(const std::string& embTableName)
+void CacheManager::CreateL3StorageTableIfNotExist(const std::string& embTableName)
 {
     if (embBaseInfos[embTableName].isExist) {
         return;
     }
-    if (!ssdEngine->IsTableExist(embTableName)) {
-        ssdEngine->CreateTable(embTableName, embBaseInfos[embTableName].savePath,
+    if (!l3Storage->IsTableExist(embTableName)) {
+        l3Storage->CreateTable(embTableName, embBaseInfos[embTableName].savePath,
                                embBaseInfos[embTableName].maxTableSize);
         embBaseInfos[embTableName].isExist = true;
-        LOG_INFO("create ssd table end, embTableName:" + embTableName);
+        LOG_INFO("create l3Storage table end, embTableName:" + embTableName);
         return;
     }
-    // 续训场景：embBaseInfos 没有保存，不会初始化；SSD表会初始化，此时表已存在
+    // 续训场景：embBaseInfos 没有保存，不会初始化；L3Storage表会初始化，此时表已存在
     embBaseInfos[embTableName].isExist = true;
-    LOG_INFO("ssd table is exist, embTableName:" + embTableName);
+    LOG_INFO("l3Storage table is exist, embTableName:" + embTableName);
 }
 
 CacheManager::~CacheManager()
 {
-    for (auto &t : ssdEvictThreads) {
+    for (auto& t : l3StorageEvictThreads) {
         t.join();
     }
-    ssdEngine->Stop();
+    l3Storage->Stop();
     ddrKeyFreqMap.clear();
     excludeDDRKeyCountMap.clear();
 }
@@ -123,18 +129,18 @@ CacheManager::~CacheManager()
 /// 加载数据到CacheManager
 /// \param ddrFreqInitMap ddr内key频次数据
 /// \param excludeDdrFreqInitMap 非DDR key频次数据
-/// \param step 加载SSDEngine传入步数
+/// \param step 加载L3Storage传入步数
 void CacheManager::Load(const std::vector<EmbInfo> &mgmtEmbInfo, int step,
                         map<string, unordered_set<emb_cache_key_t>>& trainKeySet)
 {
-    // 加载SSDEngine数据
+    // 加载L3Storage数据
 #ifndef GTEST
     for (auto& it : embBaseInfos) {
         string embTableName = it.first;
         EmbBaseInfo& embBase = it.second;
-        ssdEngine->Load(embTableName, embBase.savePath, embBase.maxTableSize, step);
+        l3Storage->Load(embTableName, embBase.savePath, embBase.maxTableSize, step);
     }
-    auto tableKeysVec = ssdEngine->ExportTableKey();
+    auto tableKeysVec = l3Storage->ExportTableKey();
     for (auto &it: tableKeysVec) {
         auto &embTableName = it.first;
         auto &keys = it.second;
@@ -159,19 +165,19 @@ void CacheManager::Load(const std::vector<EmbInfo> &mgmtEmbInfo, int step,
 #endif
 }
 
-void CacheManager::SaveSSDEngine(int step)
+void CacheManager::Save(int step)
 {
 #ifndef GTEST
-    ssdEngine->Save(step);
+    l3Storage->Save(step);
 #endif
 }
 
-int64_t CacheManager::GetTableEmbeddingSize(const string& tableName)
+int64_t CacheManager::GetTableUsage(const string& tableName)
 {
-    if (ssdEngine == nullptr) {
-        throw runtime_error("SSDEngine not init");
+    if (l3Storage == nullptr) {
+        throw runtime_error("L3Storage not init");
     }
-    return ssdEngine->GetTableEmbeddingSize(tableName);
+    return l3Storage->GetTableUsage(tableName);
 }
 
 void CacheManager::ProcessSwapOutKeys(const string& tableName, const vector<emb_cache_key_t>& swapOutKeys,
@@ -179,10 +185,10 @@ void CacheManager::ProcessSwapOutKeys(const string& tableName, const vector<emb_
 {
     auto& swapOutDDRKeys = info.swapOutDDRKeys;
     auto& swapOutDDRAddrOffs = info.swapOutDDRAddrOffs;
-    auto& swapOutSSDKeys = info.swapOutSSDKeys;
-    auto& swapOutSSDAddrOffs = info.swapOutSSDAddrOffs;
+    auto& swapOutL3StorageKeys = info.swapOutL3StorageKeys;
+    auto& swapOutL3StorageAddrOffs = info.swapOutL3StorageAddrOffs;
 
-    // 处理一下没见过的key，看是更新到DDR还是SSD中
+    // 处理一下没见过的key，看是更新到DDR还是L3Storage中
     auto& keyMapper = preProcessMapper[tableName];
     size_t availableDDRSize = keyMapper.DDRAvailableSize();
     for (size_t i = 0; i < swapOutKeys.size(); ++i) {
@@ -191,25 +197,26 @@ void CacheManager::ProcessSwapOutKeys(const string& tableName, const vector<emb_
             keyMapper.lfuCache.Put(key);
             swapOutDDRKeys.push_back(key);
             swapOutDDRAddrOffs.push_back(i);
-        } else if (keyMapper.IsSSDKeyExist(key)) {
+        } else if (keyMapper.IsL3StorageKeyExist(key)) {
             keyMapper.excludeDDRKeyCountMap[key]++;
-            swapOutSSDKeys.push_back(key);
-            swapOutSSDAddrOffs.push_back(i);
+            swapOutL3StorageKeys.push_back(key);
+            swapOutL3StorageAddrOffs.push_back(i);
         } else if (availableDDRSize > 0) {
             keyMapper.InsertDDRKey(key);
             swapOutDDRKeys.push_back(key);
             swapOutDDRAddrOffs.push_back(i);
             availableDDRSize--;
         } else {
-            keyMapper.InsertSSDKey(key);
-            swapOutSSDKeys.push_back(key);
-            swapOutSSDAddrOffs.push_back(i);
+            keyMapper.InsertL3StorageKey(key);
+            swapOutL3StorageKeys.push_back(key);
+            swapOutL3StorageAddrOffs.push_back(i);
         }
     }
 }
 
 void CacheManager::ProcessSwapInKeys(const string& tableName, const vector<emb_cache_key_t>& swapInKeys,
-                                     vector<emb_cache_key_t>& DDRToSSDKeys, vector<emb_cache_key_t>& SSDToDDRKeys)
+                                     vector<emb_cache_key_t>& DDRToL3StorageKeys,
+                                     vector<emb_cache_key_t>& L3StorageToDDRKeys)
 {
     auto& keyMapper = preProcessMapper[tableName];
     size_t externalDDRSize = 0;
@@ -219,28 +226,29 @@ void CacheManager::ProcessSwapInKeys(const string& tableName, const vector<emb_c
             continue;
         }
         externalDDRSize++;
-        if (keyMapper.IsSSDKeyExist(key)) {
-            SSDToDDRKeys.push_back(key);
+        if (keyMapper.IsL3StorageKeyExist(key)) {
+            L3StorageToDDRKeys.push_back(key);
         } else {
             firstSeenKeys.push_back(key);
         }
     }
 
     auto ddrAvailableSize = keyMapper.DDRAvailableSize();
-    if (externalDDRSize > ddrAvailableSize) {  // 需要DDR--->SSD
+    if (externalDDRSize > ddrAvailableSize) {  // 需要DDR--->L3Storage
         size_t transNum = externalDDRSize - ddrAvailableSize;
 
-        if (transNum > keyMapper.SSDAvailableSize()) {
-            throw invalid_argument("SSD table size too small, key quantity exceed while transferring DDR data to SSD");
+        if (transNum > keyMapper.L3StorageAvailableSize()) {
+            throw invalid_argument(
+                "L3Storage table size too small, key quantity exceed while transferring DDR data to L3Storage");
         }
-        // DDR--->SSD
-        keyMapper.GetAndDeleteLeastFreqDDRKey2SSD(transNum, swapInKeys, DDRToSSDKeys);
+        // DDR--->L3Storage
+        keyMapper.GetAndDeleteLeastFreqDDRKey2L3Storage(transNum, swapInKeys, DDRToL3StorageKeys);
     }
 
-    // SSD--->DDR
-    for (uint64_t key : SSDToDDRKeys) {
+    // L3Storage--->DDR
+    for (uint64_t key : L3StorageToDDRKeys) {
         keyMapper.InsertDDRKey(key);
-        keyMapper.RemoveSSDKey(key);
+        keyMapper.RemoveL3StorageKey(key);
     }
     for (uint64_t key : firstSeenKeys) {
         keyMapper.InsertDDRKey(key);
@@ -248,31 +256,31 @@ void CacheManager::ProcessSwapInKeys(const string& tableName, const vector<emb_c
     preProcessStep++;
 }
 
-void CacheManager::UpdateSSDEmb(string tableName, float* embPtr, uint32_t extEmbeddingSize,
-                                vector<emb_cache_key_t>& keys, const vector<uint64_t>& swapOutSSDddrOffs)
+void CacheManager::UpdateL3StorageEmb(string tableName, float* embPtr, uint32_t extEmbeddingSize,
+                                      vector<emb_cache_key_t>& keys, const vector<uint64_t>& swapOutL3StorageOffs)
 {
     vector<float*> embeddingsAddr(keys.size());
-    for (uint64_t i = 0; i < swapOutSSDddrOffs.size(); i++) {
-        embeddingsAddr[i] = embPtr + swapOutSSDddrOffs[i] * extEmbeddingSize;
+    for (uint64_t i = 0; i < swapOutL3StorageOffs.size(); i++) {
+        embeddingsAddr[i] = embPtr + swapOutL3StorageOffs[i] * extEmbeddingSize;
     }
-    ssdEngine->InsertEmbeddingsByAddr(tableName, keys, embeddingsAddr, extEmbeddingSize);
+    l3Storage->InsertEmbeddingsByAddr(tableName, keys, embeddingsAddr, extEmbeddingSize);
 }
 
-void CacheManager::TransferDDR2SSD(string tableName, uint32_t extEmbeddingSize, vector<emb_cache_key_t>& keys,
-                                   vector<float*>& addrs)
+void CacheManager::TransferDDR2L3Storage(string tableName, uint32_t extEmbeddingSize, vector<emb_cache_key_t>& keys,
+                                         vector<float*>& addrs)
 {
-    CreateSSDTableIfNotExist(tableName);
-    ssdEngine->InsertEmbeddingsByAddr(tableName, keys, addrs, extEmbeddingSize);
+    CreateL3StorageTableIfNotExist(tableName);
+    l3Storage->InsertEmbeddingsByAddr(tableName, keys, addrs, extEmbeddingSize);
     for (auto addr : addrs) {
         free(addr);
         addr = nullptr;
     }
 }
 
-void CacheManager::FetchSSDEmb2DDR(string tableName, uint32_t extEmbeddingSize, vector<emb_cache_key_t>& keys,
-                                   const vector<float*>& addrs)
+void CacheManager::FetchL3StorageEmb2DDR(string tableName, uint32_t extEmbeddingSize, vector<emb_cache_key_t>& keys,
+                                         const vector<float*>& addrs)
 {
-    auto embeddings = ssdEngine->FetchEmbeddings(tableName, keys);
+    auto embeddings = l3Storage->FetchEmbeddings(tableName, keys);
     for (uint64_t i = 0; i < embeddings.size(); i++) {
         int rc = memcpy_s(addrs[i], extEmbeddingSize * sizeof(float), embeddings[i].data(),
                           extEmbeddingSize * sizeof(float));
@@ -280,7 +288,7 @@ void CacheManager::FetchSSDEmb2DDR(string tableName, uint32_t extEmbeddingSize, 
             throw runtime_error("memcpy_s failed, rc: " + to_string(rc));
         }
     }
-    ssdEngine->DeleteEmbeddings(tableName, keys);
+    l3Storage->DeleteEmbeddings(tableName, keys);
 
     embeddingTaskStep++;
     evictWaitCond.notify_all();

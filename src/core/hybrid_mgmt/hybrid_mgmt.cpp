@@ -48,17 +48,17 @@ void HybridMgmt::InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfo
 
     // 计算训练任务涉及的所有表在DDR中需要分配的key数量
     size_t totHostVocabSize = 0;
-    size_t totalSsdVocabSize = 0;
+    size_t totalL3StorageVocabSize = 0;
     for (const auto& emb : embInfos) {
         totHostVocabSize += emb.hostVocabSize;
-        totalSsdVocabSize += emb.ssdVocabSize;
+        totalL3StorageVocabSize += emb.ssdVocabSize;
     }
 
     // 根据DDR的key数量，配置存储模式HBM/DDR
     if (totHostVocabSize != 0) {
         rankInfo.isDDR = true;
     }
-    if (totalSsdVocabSize != 0) {
+    if (totalL3StorageVocabSize != 0) {
         rankInfo.isSSDEnabled = true;
     }
 #endif
@@ -115,16 +115,18 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     KEY_PROCESS_INSTANCE->Initialize(rankInfo, embInfos, thresholdValues, seed);
 
     isRunning = true;
-    isSSDEnabled = rankInfo.isSSDEnabled;
+    isL3StorageEnabled = rankInfo.isSSDEnabled;
     EmbeddingMgmt::Instance()->Init(rankInfo, embInfos, seed);
 
     if (rankInfo.isDDR) {
         InitEmbeddingCache(embInfos);
     }
 
-    if (isSSDEnabled) {
+    if (isL3StorageEnabled) {
         cacheManager = Singleton<MxRec::CacheManager>::GetInstance();
-        cacheManager->Init(embCache, mgmtEmbInfo);
+        // 用户可实现L3Storage接口替换SSDEngine以对接外部存储服务
+        auto ssdEngine = std::make_shared<SSDEngine>();
+        cacheManager->Init(embCache, mgmtEmbInfo, ssdEngine);
         EmbeddingMgmt::Instance()->SetCacheManagerForEmbTable(cacheManager);
     }
     isLoad = ifLoad;
@@ -170,10 +172,10 @@ void HybridMgmt::Save(const string& savePath)
         offsetMapToSend = EmbeddingMgmt::Instance()->GetDeviceOffsets();
     }
 
-    if (isSSDEnabled) {
-        LOG_DEBUG(MGMT + "start save SSD data");
+    if (isL3StorageEnabled) {
+        LOG_DEBUG(MGMT + "start save L3Storage data");
         auto step = GetStepFromPath(savePath);
-        cacheManager->SaveSSDEngine(step);
+        cacheManager->Save(step);
     }
 
     // 保存特征准入淘汰相关的数据
@@ -248,8 +250,8 @@ bool HybridMgmt::Load(const string& loadPath, vector<string> warmStartTables)
         featAdmitNEvict.LoadHistoryRecords(loadData.histRec);
     }
 
-    if (isSSDEnabled) {
-        LOG_DEBUG(MGMT + "Start host side load: ssd key freq map");
+    if (isL3StorageEnabled) {
+        LOG_DEBUG(MGMT + "Start host side load: L3Storage key freq map");
         auto step = GetStepFromPath(loadPath);
         cacheManager->Load(mgmtEmbInfo, step, trainKeysSet);
     }
@@ -572,13 +574,13 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId, TaskType type)
                 });
                 break;
             case TaskType::DDR:
-                if (!isSSDEnabled) {
+                if (!isL3StorageEnabled) {
                     parseKeyThreadPool.emplace_back([this, info, &remainBatch, embInfo]() {
                         ProcessEmbInfoDDR(info, remainBatch);
                     });
                 } else {
                     parseKeyThreadPool.emplace_back([this, info, &remainBatch, embInfo]() {
-                        ProcessEmbInfoSSD(info, remainBatch);
+                        ProcessEmbInfoL3Storage(info, remainBatch);
                     });
                 }
                 break;
@@ -780,12 +782,12 @@ bool HybridMgmt::Evict()
             }
             for (const string& embName : allTableNames) {
                 EvictKeys(embName, evictKeyMap[COMBINE_HISTORY_NAME]);
-                EvictSSDKeys(embName, evictKeyMap[COMBINE_HISTORY_NAME]);
+                EvictL3StorageKeys(embName, evictKeyMap[COMBINE_HISTORY_NAME]);
             }
         } else {
             for (const auto& evict : as_const(evictKeyMap)) {
                 EvictKeys(evict.first, evict.second);
-                EvictSSDKeys(evict.first, evict.second);
+                EvictL3StorageKeys(evict.first, evict.second);
             }
         }
     }
@@ -809,12 +811,12 @@ void HybridMgmt::EvictKeys(const string& embName, const vector<emb_cache_key_t>&
     }
 }
 
-void HybridMgmt::EvictSSDKeys(const string& embName, const vector<emb_cache_key_t>& keys) const
+void HybridMgmt::EvictL3StorageKeys(const string& embName, const vector<emb_cache_key_t>& keys) const
 {
-    if (!isSSDEnabled) {
+    if (!isL3StorageEnabled) {
         return;
     }
-    cacheManager->EvictSSDEmbedding(embName, keys);
+    cacheManager->EvictL3StorageEmbedding(embName, keys);
 }
 
 int HybridMgmt::GetStepFromPath(const string& loadPath) const
@@ -885,14 +887,14 @@ int64_t HybridMgmt::GetTableSize(const string& embName) const
         LOG_INFO(MGMT + "HBM mode, get emb:[{}] size:{}", embName, size);
         return size;
     }
-    int64_t ssdSize = 0;
-    if (mgmtRankInfo.isSSDEnabled) {
-        ssdSize = cacheManager->GetTableEmbeddingSize(embName);
+    int64_t l3StorageUsage = 0;
+    if (isL3StorageEnabled) {
+        l3StorageUsage = cacheManager->GetTableUsage(embName);
     }
 
     uint32_t ddrSize = embCache->GetUsage(embName);
-    size = static_cast<int64_t>(ddrSize) + ssdSize;
-    LOG_INFO(MGMT + "DDR/SSD mode, get emb:[{}] size:{}", embName, size);
+    size = static_cast<int64_t>(ddrSize) + l3StorageUsage;
+    LOG_INFO(MGMT + "DDR/L3Storage mode, get emb:[{}] size:{}", embName, size);
 #endif
     return size;
 }
@@ -1118,7 +1120,7 @@ void HybridMgmt::EmbeddingReceiveAndUpdateDDR(int batchId, int index, const EmbI
     EmbeddingUpdateDDR(info, ptr, swapOutAddrs);
 }
 
-void HybridMgmt::EmbeddingLookUpAndSendSSD(int batchId, int index, const EmbInfo& embInfo)
+void HybridMgmt::EmbeddingLookUpAndSendL3Storage(int batchId, int index, const EmbInfo& embInfo)
 {
     int cvNotifyIndex = 0;
     if (index + 1 != EMBEDDING_THREAD_NUM) {
@@ -1134,16 +1136,16 @@ void HybridMgmt::EmbeddingLookUpAndSendSSD(int batchId, int index, const EmbInfo
     };
     vector<Tensor> h2dEmb;
 
-    auto isSuccess = EmbeddingLookUpSSD(info, h2dEmb);
+    auto isSuccess = EmbeddingLookUpL3Storage(info, h2dEmb);
     if (!isSuccess) {
         LOG_INFO("HybridMgmt is not running");
         return;
     }
 
-    EmbeddingSendSSD(info, h2dEmb);
+    EmbeddingSendL3Storage(info, h2dEmb);
 }
 
-void HybridMgmt::EmbeddingReceiveAndUpdateSSD(int batchId, int index, const EmbInfo& embInfo)
+void HybridMgmt::EmbeddingReceiveAndUpdateL3Storage(int batchId, int index, const EmbInfo& embInfo)
 {
     int cvNotifyIndex = 0;
     if (index + 1 != EMBEDDING_THREAD_NUM) {
@@ -1160,9 +1162,9 @@ void HybridMgmt::EmbeddingReceiveAndUpdateSSD(int batchId, int index, const EmbI
     float* ptr = nullptr;
     vector<float*> swapOutAddrs;
     int64_t dims0 = 0;
-    EmbeddingReceiveSSD(info, ptr, swapOutAddrs, dims0);
+    EmbeddingReceiveL3Storage(info, ptr, swapOutAddrs, dims0);
 
-    EmbeddingUpdateSSD(info, ptr, swapOutAddrs, dims0);
+    EmbeddingUpdateL3Storage(info, ptr, swapOutAddrs, dims0);
 }
 
 
@@ -1172,11 +1174,11 @@ void HybridMgmt::EmbeddingReceiveAndUpdateSSD(int batchId, int index, const EmbI
 /// \param channelId 通道索引（训练/推理）
 /// \param remainBatchOut 是否从通道获取了数据
 /// \return 是否处理成功
-void HybridMgmt::ProcessEmbInfoSSD(const EmbBaseInfo& info, bool& remainBatchOut)
+void HybridMgmt::ProcessEmbInfoL3Storage(const EmbBaseInfo& info, bool& remainBatchOut)
 {
 #ifndef GTEST
     TimeCost getAndSendTensorsTC;
-    LOG_DEBUG("ProcessEmbInfoSSD table:{}, channel:{}, batchId:{}", info.name, info.channelId, info.batchId);
+    LOG_DEBUG("ProcessEmbInfoL3Storage table:{}, channel:{}, batchId:{}", info.name, info.channelId, info.batchId);
 
     if (info.channelId == TRAIN_CHANNEL_ID  && info.batchId == hybridMgmtBlock->maxTrainStep) {
         HandleReachMaxStepCase(info, remainBatchOut);
@@ -1184,7 +1186,7 @@ void HybridMgmt::ProcessEmbInfoSSD(const EmbBaseInfo& info, bool& remainBatchOut
     }
 
     // 只有在每次GetUniqueKeys的时候才知道上游是否已经EOS
-    // 注意GetUniqueKeys与EOS关联，需要在ProcessEmbInfoSSD最先调用，如需调整位置，请参考并适配其他函数
+    // 注意GetUniqueKeys与EOS关联，需要在ProcessEmbInfoL3Storage最先调用，如需调整位置，请参考并适配其他函数
     // 获取GlobalUnique向量
     auto uniqueKeys = GetUniqueKeys(info, remainBatchOut);
     if (uniqueKeys.empty()) {
@@ -1215,7 +1217,7 @@ void HybridMgmt::ProcessEmbInfoSSD(const EmbBaseInfo& info, bool& remainBatchOut
 
     SendGlobalUniqueVec(info, uniqueKeys, restoreVecSec);
 
-    auto isNeedReturn = HandleSpecialProcessStatusSSD(info, getAndSendTensorsTC, swapInKoPair, swapOutKoPair);
+    auto isNeedReturn = HandleSpecialProcessStatusL3Storage(info, getAndSendTensorsTC, swapInKoPair, swapOutKoPair);
     if (isNeedReturn) {
         return;
     }
@@ -1226,7 +1228,7 @@ void HybridMgmt::ProcessEmbInfoSSD(const EmbBaseInfo& info, bool& remainBatchOut
     auto &swapOutKeys = swapOutKoPair.first;
     auto &swapOutPos = swapOutKoPair.second;
 
-    HandleDataSwapForSSD(info, swapInKeys, swapOutKeys);
+    HandleDataSwapForL3Storage(info, swapInKeys, swapOutKeys);
 
     auto lastSwapInPos = lastSwapInPosMap[info.name];
     lastSwapInPosMap[info.name] = swapInPos; // 暂存待下一步发送
@@ -1238,13 +1240,13 @@ void HybridMgmt::ProcessEmbInfoSSD(const EmbBaseInfo& info, bool& remainBatchOut
 
     HandleEndBatchCase(info, swapInPos);
 
-    CheckLookupAddrSuccessSSD();
+    CheckLookupAddrSuccessL3Storage();
 
     if (info.channelId == TRAIN_CHANNEL_ID) {
         alreadyTrainOnce = true;
     }
 
-    LOG_DEBUG("ProcessEmbInfoSSD end, table:{}, batchId:{}, swapProcessTC(ms):{}, getAndSendTensorsTC(ms):{}",
+    LOG_DEBUG("ProcessEmbInfoL3Storage end, table:{}, batchId:{}, swapProcessTC(ms):{}, getAndSendTensorsTC(ms):{}",
               info.name, info.batchId, swapProcessTC.ElapsedMS(), getAndSendTensorsTC.ElapsedMS());
 #endif
 }
@@ -1286,7 +1288,7 @@ void HybridMgmt::InitDataPipelineForDDR(const string &embName)
     LOG_DEBUG("data pipeline for ddr init");
 }
 
-void HybridMgmt::InitDataPipelineForSSD(const string &embName, int extEmbeddingSize)
+void HybridMgmt::InitDataPipelineForL3Storage(const string &embName, int extEmbeddingSize)
 {
     // 初始化公共队列
     HBMSwapKeyQue[embName+SWAP_IN_STR];
@@ -1295,21 +1297,21 @@ void HybridMgmt::InitDataPipelineForSSD(const string &embName, int extEmbeddingS
     tableToQueueLookup[embName+SWAP_OUT_STR];
 
     HBMSwapKeyQue[embName + ADDR_STR];
-    SwapOut2SSDKeyQue[embName + SWAP_IN_STR];
-    SwapOut2SSDKeyQue[embName + ADDR_STR];
-    SwapOut2SSDKeyQue[embName + SWAP_OUT_STR];
+    SwapOut2L3StorageKeyQue[embName + SWAP_IN_STR];
+    SwapOut2L3StorageKeyQue[embName + ADDR_STR];
+    SwapOut2L3StorageKeyQue[embName + SWAP_OUT_STR];
 
     DDRSwapKeyQue[embName + SWAP_OUT_STR];
     DDRSwapKeyQue[embName + SWAP_IN_STR];
-    DDRSwapKeyForSSDQue[embName + SWAP_OUT_STR];
-    DDRSwapKeyForSSDQue[embName + SWAP_IN_STR];
+    DDRSwapKeyForL3StorageQue[embName + SWAP_OUT_STR];
+    DDRSwapKeyForL3StorageQue[embName + SWAP_IN_STR];
     DDRSwapAddrsQue[embName + SWAP_OUT_STR];
     DDRSwapAddrsQue[embName + SWAP_IN_STR];
 
     // 初始化lookup线程
     lookUpThreads.emplace_back(
         std::async(std::launch::async, [=] { LookUpAddrs(embName, extEmbeddingSize); }));
-    LOG_DEBUG("data pipeline for ssd init");
+    LOG_DEBUG("data pipeline for L3Storage init");
 }
 
 void HybridMgmt::InitEmbeddingCache(const vector<EmbInfo>& embInfos)
@@ -1320,8 +1322,8 @@ void HybridMgmt::InitEmbeddingCache(const vector<EmbInfo>& embInfos)
     EmbeddingMgmt::Instance()->SetHDTransferForEmbTable(hdTransfer);
 
     for (auto embInfo: embInfos) {
-        if (isSSDEnabled) {
-            InitDataPipelineForSSD(embInfo.name, embInfo.extEmbeddingSize);
+        if (isL3StorageEnabled) {
+            InitDataPipelineForL3Storage(embInfo.name, embInfo.extEmbeddingSize);
         } else {
             InitDataPipelineForDDR(embInfo.name);
         }
@@ -1349,13 +1351,13 @@ void HybridMgmt::JoinEmbeddingCacheThread()
     for (auto &p : HBMSwapKeyQue) {
         p.second.DestroyQueue();
     }
-    for (auto &p : SwapOut2SSDKeyQue) {
+    for (auto &p : SwapOut2L3StorageKeyQue) {
         p.second.DestroyQueue();
     }
     for (auto &p : DDRSwapKeyQue) {
         p.second.DestroyQueue();
     }
-    for (auto &p : DDRSwapKeyForSSDQue) {
+    for (auto &p : DDRSwapKeyForL3StorageQue) {
         p.second.DestroyQueue();
     }
     for (auto &p : DDRSwapAddrsQue) {
@@ -1585,10 +1587,10 @@ void HybridMgmt::CreateEmbeddingLookUpAndSendThread(int index, const EmbInfo& em
                 int cur_batch_id = lookUpAndSendTableBatchMap[embInfo.name];
                 lookUpAndSendTableBatchMap[embInfo.name]++;
                 lookUpAndSendBatchIdMtx.unlock();
-                if (!isSSDEnabled) {
+                if (!isL3StorageEnabled) {
                     EmbeddingLookUpAndSendDDR(cur_batch_id, index, embInfo);
                 } else {
-                    EmbeddingLookUpAndSendSSD(cur_batch_id, index, embInfo);
+                    EmbeddingLookUpAndSendL3Storage(cur_batch_id, index, embInfo);
                 }
             } else {
                 lookUpAndSendBatchIdMtx.unlock();
@@ -1609,10 +1611,10 @@ void HybridMgmt::CreateEmbeddingReceiveAndUpdateThread(int index, const EmbInfo&
                 int cur_batch_id = receiveAndUpdateTableBatchMap[embInfo.name];
                 receiveAndUpdateTableBatchMap[embInfo.name]++;
                 receiveAndUpdateBatchIdMtx.unlock();
-                if (!isSSDEnabled) {
+                if (!isL3StorageEnabled) {
                     EmbeddingReceiveAndUpdateDDR(cur_batch_id, index, embInfo);
                 } else {
-                    EmbeddingReceiveAndUpdateSSD(cur_batch_id, index, embInfo);
+                    EmbeddingReceiveAndUpdateL3Storage(cur_batch_id, index, embInfo);
                 }
             } else {
                 receiveAndUpdateBatchIdMtx.unlock();
@@ -1624,8 +1626,8 @@ void HybridMgmt::CreateEmbeddingReceiveAndUpdateThread(int index, const EmbInfo&
     });
 }
 
-bool HybridMgmt::EmbeddingReceiveSSD(const EmbTaskInfo &info, float *&ptr,
-                                     vector<float *> &swapOutAddrs, int64_t& dims0)
+bool HybridMgmt::EmbeddingReceiveL3Storage(const EmbTaskInfo &info, float *&ptr,
+                                           vector<float *> &swapOutAddrs, int64_t& dims0)
 {
     std::unique_lock<std::mutex> lastRecvFinishLocker(lastRecvFinishMutexMap[info.name][info.threadIdx]);
     cvLastRecvFinishMap[info.name][info.threadIdx].wait(lastRecvFinishLocker, [info, this] {
@@ -1671,8 +1673,8 @@ bool HybridMgmt::EmbeddingReceiveSSD(const EmbTaskInfo &info, float *&ptr,
     return true;
 }
 
-void HybridMgmt::EmbeddingUpdateSSD(const EmbTaskInfo& info, float *embPtr,
-                                    vector<float *>& swapOutAddrs, int64_t& dims0)
+void HybridMgmt::EmbeddingUpdateL3Storage(const EmbTaskInfo& info, float *embPtr,
+                                          vector<float *>& swapOutAddrs, int64_t& dims0)
 {
     std::unique_lock<std::mutex> lastUpdateFinishLocker(lastUpdateFinishMutexMap[info.name][info.threadIdx]);
     cvLastUpdateFinishMap[info.name][info.threadIdx].wait(lastUpdateFinishLocker, [info, this] {
@@ -1698,26 +1700,27 @@ void HybridMgmt::EmbeddingUpdateSSD(const EmbTaskInfo& info, float *embPtr,
     LOG_DEBUG("table:{}, batchId:{}, thread:{}, EmbeddingUpdateTC(ms):{}",
               info.name.c_str(), info.batchId, info.threadIdx, EmbeddingUpdateTC.ElapsedMS());
 
-    // SSD更新
-    TimeCost SSDUpdateTC = TimeCost();
-    std::vector<uint64_t> swapOutSSDAddrOffs = SwapOut2SSDKeyQue[info.name + ADDR_STR].WaitAndPop();
-    std::vector<uint64_t> swapOutSSDKeys = SwapOut2SSDKeyQue[info.name + SWAP_OUT_STR].WaitAndPop();
+    // L3Storage更新
+    TimeCost L3StorageUpdateTC = TimeCost();
+    std::vector<uint64_t> swapOutL3StorageAddrOffs = SwapOut2L3StorageKeyQue[info.name + ADDR_STR].WaitAndPop();
+    std::vector<uint64_t> swapOutL3StorageKeys = SwapOut2L3StorageKeyQue[info.name + SWAP_OUT_STR].WaitAndPop();
     if (!isRunning) {
         return;
     }
 
-    if (dims0 != static_cast<int64_t>(swapOutAddrs.size() + swapOutSSDKeys.size())) {
+    if (dims0 != static_cast<int64_t>(swapOutAddrs.size() + swapOutL3StorageKeys.size())) {
         throw runtime_error("data dims[0] != swapOutKeys.size");
     }
-    cacheManager->UpdateSSDEmb(info.name, embPtr, extEmbeddingSize, swapOutSSDKeys, swapOutSSDAddrOffs);
-    LOG_DEBUG("table:{}, batchId:{}, thread{}, SSDUpdateTC(ms):{}",
-              info.name.c_str(), info.batchId, info.threadIdx, SSDUpdateTC.ElapsedMS());
+    cacheManager->UpdateL3StorageEmb(info.name, embPtr, extEmbeddingSize, swapOutL3StorageKeys,
+                                     swapOutL3StorageAddrOffs);
+    LOG_DEBUG("table:{}, batchId:{}, thread{}, L3StorageUpdateTC(ms):{}",
+              info.name.c_str(), info.batchId, info.threadIdx, L3StorageUpdateTC.ElapsedMS());
 
     lastUpdateFinishStepMap[info.name]++;
     cvLastUpdateFinishMap[info.name][info.cvNotifyIndex].notify_all();
 }
 
-bool HybridMgmt::EmbeddingLookUpSSD(const EmbTaskInfo& info, vector<Tensor>& h2dEmb)
+bool HybridMgmt::EmbeddingLookUpL3Storage(const EmbTaskInfo& info, vector<Tensor>& h2dEmb)
 {
     std::unique_lock<std::mutex> lastUpdateFinishLocker(lastUpdateFinishMutexMap[info.name][info.threadIdx]);
     cvLastUpdateFinishMap[info.name][info.threadIdx].wait(lastUpdateFinishLocker, [info, this] {
@@ -1735,27 +1738,27 @@ bool HybridMgmt::EmbeddingLookUpSSD(const EmbTaskInfo& info, vector<Tensor>& h2d
         return false;
     }
 
-    TimeCost transferDDR2SSDTC = TimeCost();
+    TimeCost transferDDR2L3StorageTC = TimeCost();
     // DDR腾空间
-    std::vector<uint64_t> DDR2SSDKeys = DDRSwapKeyForSSDQue[info.name + SWAP_OUT_STR].WaitAndPop();
-    std::vector<float*> DDR2SSDAddrs = DDRSwapAddrsQue[info.name + SWAP_OUT_STR].WaitAndPop();
+    std::vector<uint64_t> DDR2L3StorageKeys = DDRSwapKeyForL3StorageQue[info.name + SWAP_OUT_STR].WaitAndPop();
+    std::vector<float*> DDR2L3StorageAddrs = DDRSwapAddrsQue[info.name + SWAP_OUT_STR].WaitAndPop();
     if (!isRunning) {
         return false;
     }
-    cacheManager->TransferDDR2SSD(info.name, info.extEmbeddingSize, DDR2SSDKeys, DDR2SSDAddrs);
-    LOG_DEBUG("table:{}, thread:{}, transferDDR2SSDTC(ms):{}",
-              info.name.c_str(), info.threadIdx, transferDDR2SSDTC.ElapsedMS());
+    cacheManager->TransferDDR2L3Storage(info.name, info.extEmbeddingSize, DDR2L3StorageKeys, DDR2L3StorageAddrs);
+    LOG_DEBUG("table:{}, thread:{}, transferDDR2L3StorageTC(ms):{}",
+              info.name.c_str(), info.threadIdx, transferDDR2L3StorageTC.ElapsedMS());
 
-    TimeCost fetchSSDEmb2DDRTC = TimeCost();
-    // swapInKeys中在SSD的到DDR
-    std::vector<uint64_t> SSD2DDRKeys = DDRSwapKeyForSSDQue[info.name + SWAP_IN_STR].WaitAndPop();
-    std::vector<float*> SSD2DDRAddrs = DDRSwapAddrsQue[info.name + SWAP_IN_STR].WaitAndPop();
+    TimeCost fetchL3StorageEmb2DDRTC = TimeCost();
+    // swapInKeys中在L3Storage的挪到DDR
+    std::vector<uint64_t> L3Storage2DDRKeys = DDRSwapKeyForL3StorageQue[info.name + SWAP_IN_STR].WaitAndPop();
+    std::vector<float*> L3Storage2DDRAddrs = DDRSwapAddrsQue[info.name + SWAP_IN_STR].WaitAndPop();
     if (!isRunning) {
         return false;
     }
-    cacheManager->FetchSSDEmb2DDR(info.name, info.extEmbeddingSize, SSD2DDRKeys, SSD2DDRAddrs);
-    LOG_DEBUG("table:{}, thread:{}, fetchSSDEmb2DDRTC(ms):{}",
-              info.name.c_str(), info.threadIdx, fetchSSDEmb2DDRTC.ElapsedMS());
+    cacheManager->FetchL3StorageEmb2DDR(info.name, info.extEmbeddingSize, L3Storage2DDRKeys, L3Storage2DDRAddrs);
+    LOG_DEBUG("table:{}, thread:{}, fetchL3StorageEmb2DDRTC(ms):{}",
+              info.name.c_str(), info.threadIdx, fetchL3StorageEmb2DDRTC.ElapsedMS());
 
     bool isSuccess = BuildH2DEmbedding(info, h2dEmb);
     if (!isSuccess) {
@@ -1768,7 +1771,7 @@ bool HybridMgmt::EmbeddingLookUpSSD(const EmbTaskInfo& info, vector<Tensor>& h2d
     return true;
 }
 
-void HybridMgmt::EmbeddingSendSSD(const EmbTaskInfo& info, vector<Tensor>& h2dEmb)
+void HybridMgmt::EmbeddingSendL3Storage(const EmbTaskInfo& info, vector<Tensor>& h2dEmb)
 {
     std::unique_lock<std::mutex> lastSendFinishLocker(lastSendFinishMutexMap[info.name][info.threadIdx]);
     cvLastSendFinishMap[info.name][info.threadIdx].wait(lastSendFinishLocker, [info, this] {
@@ -1847,9 +1850,9 @@ void HybridMgmt::HandleFirstBatchCaseDDR(const EmbBaseInfo& info,
     HBMSwapKeyQue[info.name + SWAP_IN_STR].Pushv(swapInKeys);
 }
 
-void HybridMgmt::HandleFirstBatchCaseSSD(const EmbBaseInfo& info,
-                                         std::pair<vector<uint64_t>, vector<uint64_t>>& swapInKoPair,
-                                         std::pair<vector<uint64_t>, vector<uint64_t>>& swapOutKoPair)
+void HybridMgmt::HandleFirstBatchCaseL3Storage(const EmbBaseInfo& info,
+                                               std::pair<vector<uint64_t>, vector<uint64_t>>& swapInKoPair,
+                                               std::pair<vector<uint64_t>, vector<uint64_t>>& swapOutKoPair)
 {
     // 发现train、save、eval切换，先保存状态，发emptySwapOutKeys以对应上一步的emptySwapOutPos
     vector<uint64_t> emptySwapOutKeys;
@@ -1858,51 +1861,51 @@ void HybridMgmt::HandleFirstBatchCaseSSD(const EmbBaseInfo& info,
     trainTestSwitchInfoStore[info.name] = {swapOutKoPair.first, swapOutKoPair.second};
 
     TimeCost ProcessSwapInKeysTC = TimeCost();
-    vector<emb_cache_key_t> SSDToDDRKeys;
-    vector<emb_cache_key_t> DDRToSSDKeys;
-    cacheManager->ProcessSwapInKeys(info.name, swapInKoPair.first, DDRToSSDKeys, SSDToDDRKeys);
+    vector<emb_cache_key_t> L3StorageToDDRKeys;
+    vector<emb_cache_key_t> DDRToL3StorageKeys;
+    cacheManager->ProcessSwapInKeys(info.name, swapInKoPair.first, DDRToL3StorageKeys, L3StorageToDDRKeys);
     LOG_DEBUG("ProcessSwapInKeysTC(ms):{} ", ProcessSwapInKeysTC.ElapsedMS());
 
     vector<uint64_t> emptySwapOutDDRKeys;
     vector<uint64_t> emptySwapOutDDRAddrOffs;
-    vector<uint64_t> emptySwapOutSSDKeys;
-    vector<uint64_t> emptySwapOutSSDAddrOff;
+    vector<uint64_t> emptySwapOutL3StorageKeys;
+    vector<uint64_t> emptySwapOutL3StorageAddrOff;
 
     LOG_DEBUG("table:{}, batchId:{}, channelId:{}, swapInSize:{}, swapOutSize:{}",
               info.name, info.batchId, info.channelId, swapInKoPair.first.size(), swapOutKoPair.first.size());
     LOG_DEBUG("table:{}, batchId:{}, channelId:{}, swapOutDDRKeys.size:{}, swapOutDDRAddrOffs.size:{}, "
-              "swapOutSSDKeys.size:{}, swapOutSSDAddrOff.size:{}",
+              "swapOutL3StorageKeys.size:{}, swapOutL3StorageAddrOff.size:{}",
               info.name, info.batchId, info.channelId, emptySwapOutDDRKeys.size(), emptySwapOutDDRAddrOffs.size(),
-              emptySwapOutSSDKeys.size(), emptySwapOutSSDAddrOff.size());
-    LOG_DEBUG("table:{}, batchId:{}, channelId:{}, DDRToSSDKeys.size:{}, SSDToDDRKeys.size:{}",
-              info.name, info.batchId, info.channelId, DDRToSSDKeys.size(), SSDToDDRKeys.size());
+              emptySwapOutL3StorageKeys.size(), emptySwapOutL3StorageAddrOff.size());
+    LOG_DEBUG("table:{}, batchId:{}, channelId:{}, DDRToL3StorageKeys.size:{}, L3StorageToDDRKeys.size:{}",
+              info.name, info.batchId, info.channelId, DDRToL3StorageKeys.size(), L3StorageToDDRKeys.size());
 
-    auto DDRToSSDKeysForSSD = DDRToSSDKeys;
-    auto SSDToDDRKeysForSSD = SSDToDDRKeys;
-    // DDR<->SSD
-    DDRSwapKeyQue[info.name + SWAP_OUT_STR].Pushv(DDRToSSDKeys);
-    DDRSwapKeyQue[info.name + SWAP_IN_STR].Pushv(SSDToDDRKeys);
+    auto DDRToL3StorageKeysForL3S = DDRToL3StorageKeys;
+    auto L3StorageToDDRKeysForL3S = L3StorageToDDRKeys;
+    // DDR<->L3Storage
+    DDRSwapKeyQue[info.name + SWAP_OUT_STR].Pushv(DDRToL3StorageKeys);
+    DDRSwapKeyQue[info.name + SWAP_IN_STR].Pushv(L3StorageToDDRKeys);
 
-    DDRSwapKeyForSSDQue[info.name + SWAP_OUT_STR].Pushv(DDRToSSDKeysForSSD);
-    DDRSwapKeyForSSDQue[info.name + SWAP_IN_STR].Pushv(SSDToDDRKeysForSSD);
+    DDRSwapKeyForL3StorageQue[info.name + SWAP_OUT_STR].Pushv(DDRToL3StorageKeysForL3S);
+    DDRSwapKeyForL3StorageQue[info.name + SWAP_IN_STR].Pushv(L3StorageToDDRKeysForL3S);
 
     // HBM<->DDR
     HBMSwapKeyQue[info.name + SWAP_OUT_STR].Pushv(emptySwapOutDDRKeys);
     HBMSwapKeyQue[info.name + ADDR_STR].Pushv(emptySwapOutDDRAddrOffs);
     HBMSwapKeyQue[info.name + SWAP_IN_STR].Pushv(swapInKoPair.first);
 
-    // HBM->SSD
-    SwapOut2SSDKeyQue[info.name + SWAP_OUT_STR].Pushv(emptySwapOutSSDKeys);
-    SwapOut2SSDKeyQue[info.name + ADDR_STR].Pushv(emptySwapOutSSDAddrOff);
+    // HBM->L3Storage
+    SwapOut2L3StorageKeyQue[info.name + SWAP_OUT_STR].Pushv(emptySwapOutL3StorageKeys);
+    SwapOut2L3StorageKeyQue[info.name + ADDR_STR].Pushv(emptySwapOutL3StorageAddrOff);
 }
 
-void HybridMgmt::HandleDataSwapForSSD(const EmbBaseInfo& info,
-                                      vector<uint64_t> &swapInKeys, vector<uint64_t> &swapOutKeys)
+void HybridMgmt::HandleDataSwapForL3Storage(const EmbBaseInfo& info,
+                                            vector<uint64_t> &swapInKeys, vector<uint64_t> &swapOutKeys)
 {
     TimeCost ProcessSwapInKeysTC;
-    vector<emb_cache_key_t> SSDToDDRKeys;
-    vector<emb_cache_key_t> DDRToSSDKeys;
-    cacheManager->ProcessSwapInKeys(info.name, swapInKeys, DDRToSSDKeys, SSDToDDRKeys);
+    vector<emb_cache_key_t> L3StorageToDDRKeys;
+    vector<emb_cache_key_t> DDRToL3StorageKeys;
+    cacheManager->ProcessSwapInKeys(info.name, swapInKeys, DDRToL3StorageKeys, L3StorageToDDRKeys);
     LOG_DEBUG("ProcessSwapInKeysTC(ms):{} ", ProcessSwapInKeysTC.ElapsedMS());
 
     TimeCost ProcessSwapOutKeysTC;
@@ -1913,29 +1916,30 @@ void HybridMgmt::HandleDataSwapForSSD(const EmbBaseInfo& info,
     LOG_DEBUG("table:{}, batchId:{}, channelId:{}, swapInSize:{}, swapOutSize:{}",
               info.name, info.batchId, info.channelId, swapInKeys.size(), swapOutKeys.size());
     LOG_DEBUG("table:{}, batchId:{}, channelId:{}, swapOutDDRKeys:{}, swapOutDDRAddrOffs:{}, "
-              "swapOutSSDKeys:{}, swapOutSSDAddrOff:{}",
+              "swapOutL3StorageKeys:{}, swapOutL3StorageAddrOff:{}",
               info.name, info.batchId, info.channelId, swapInfo.swapOutDDRKeys.size(),
-              swapInfo.swapOutDDRAddrOffs.size(), swapInfo.swapOutSSDKeys.size(), swapInfo.swapOutSSDAddrOffs.size());
-    LOG_DEBUG("table:{}, batchId:{}, channelId:{}, DDRToSSDKeys:{}, SSDToDDRKeys:{}",
-              info.name, info.batchId, info.channelId, DDRToSSDKeys.size(), SSDToDDRKeys.size());
+              swapInfo.swapOutDDRAddrOffs.size(), swapInfo.swapOutL3StorageKeys.size(),
+              swapInfo.swapOutL3StorageAddrOffs.size());
+    LOG_DEBUG("table:{}, batchId:{}, channelId:{}, DDRToL3StorageKeys:{}, L3StorageToDDRKeys:{}",
+              info.name, info.batchId, info.channelId, DDRToL3StorageKeys.size(), L3StorageToDDRKeys.size());
 
-    auto DDRToSSDKeysForSSD = DDRToSSDKeys;
-    auto SSDToDDRKeysForSSD = SSDToDDRKeys;
-    // DDR<->SSD
-    DDRSwapKeyQue[info.name + SWAP_OUT_STR].Pushv(DDRToSSDKeys);
-    DDRSwapKeyQue[info.name + SWAP_IN_STR].Pushv(SSDToDDRKeys);
+    auto DDRToL3StorageKeysForL3S = DDRToL3StorageKeys;
+    auto L3StorageToDDRKeysForL3S = L3StorageToDDRKeys;
+    // DDR<->L3Storage
+    DDRSwapKeyQue[info.name + SWAP_OUT_STR].Pushv(DDRToL3StorageKeys);
+    DDRSwapKeyQue[info.name + SWAP_IN_STR].Pushv(L3StorageToDDRKeys);
 
-    DDRSwapKeyForSSDQue[info.name + SWAP_OUT_STR].Pushv(DDRToSSDKeysForSSD);
-    DDRSwapKeyForSSDQue[info.name + SWAP_IN_STR].Pushv(SSDToDDRKeysForSSD);
+    DDRSwapKeyForL3StorageQue[info.name + SWAP_OUT_STR].Pushv(DDRToL3StorageKeysForL3S);
+    DDRSwapKeyForL3StorageQue[info.name + SWAP_IN_STR].Pushv(L3StorageToDDRKeysForL3S);
 
     // HBM<->DDR
     HBMSwapKeyQue[info.name + SWAP_OUT_STR].Pushv(swapInfo.swapOutDDRKeys);
     HBMSwapKeyQue[info.name + ADDR_STR].Pushv(swapInfo.swapOutDDRAddrOffs);
     HBMSwapKeyQue[info.name + SWAP_IN_STR].Pushv(swapInKeys);
 
-    // HBM->SSD
-    SwapOut2SSDKeyQue[info.name + SWAP_OUT_STR].Pushv(swapInfo.swapOutSSDKeys);
-    SwapOut2SSDKeyQue[info.name + ADDR_STR].Pushv(swapInfo.swapOutSSDAddrOffs);
+    // HBM->L3Storage
+    SwapOut2L3StorageKeyQue[info.name + SWAP_OUT_STR].Pushv(swapInfo.swapOutL3StorageKeys);
+    SwapOut2L3StorageKeyQue[info.name + ADDR_STR].Pushv(swapInfo.swapOutL3StorageAddrOffs);
 }
 
 bool HybridMgmt::BuildH2DEmbedding(const EmbTaskInfo &info, vector<Tensor> &h2dEmb)
@@ -2130,9 +2134,9 @@ bool HybridMgmt::HandleSpecialProcessStatusDDR(const EmbBaseInfo &info, TimeCost
     return false;
 }
 
-bool HybridMgmt::HandleSpecialProcessStatusSSD(const EmbBaseInfo &info, TimeCost &getAndSendTensorsTC,
-                                               pair<vector<uint64_t>, vector<uint64_t>> &swapInKoPair,
-                                               pair<vector<uint64_t>, vector<uint64_t>> &swapOutKoPair)
+bool HybridMgmt::HandleSpecialProcessStatusL3Storage(const EmbBaseInfo &info, TimeCost &getAndSendTensorsTC,
+                                                     pair<vector<uint64_t>, vector<uint64_t>> &swapInKoPair,
+                                                     pair<vector<uint64_t>, vector<uint64_t>> &swapOutKoPair)
 {
     TimeCost swapProcessTC;
     auto &swapInPos = swapInKoPair.second;
@@ -2141,19 +2145,19 @@ bool HybridMgmt::HandleSpecialProcessStatusSSD(const EmbBaseInfo &info, TimeCost
 
     if (specialProcessStatus[info.name] == ProcessStatus::AFTER_SWITCH_FIRST_BATCH) {
         // 发现train、save、eval切换，先保存状态，发emptySwapOutKeys以对应上一步的emptySwapOutPos
-        HandleFirstBatchCaseSSD(info, swapInKoPair, swapOutKoPair);
+        HandleFirstBatchCaseL3Storage(info, swapInKoPair, swapOutKoPair);
         LOG_DEBUG("handle channel switch case:afterSwitchFirstBatch, table:{}, channelId:{}, batchId:{}",
                   info.name, info.channelId, info.batchId);
 
         if (mgmtRankInfo.ctrlSteps[info.channelId] == 1) {
             vector<uint64_t> emptySwapOutPos;
             SendTensorForSwap(info, swapInPos, emptySwapOutPos);
-            LOG_DEBUG("ProcessEmbInfoSSD special case, user only run one step, table:{}, channelId:{}, batchId:{}",
-                      info.name, info.channelId, info.batchId);
+            LOG_DEBUG("ProcessEmbInfoL3Storage special case, user only run one step, "
+                      "table:{}, channelId:{}, batchId:{}", info.name, info.channelId, info.batchId);
         }
 
         specialProcessStatus[info.name] = ProcessStatus::AFTER_SWITCH_SECOND_BATCH;
-        LOG_DEBUG("ProcessEmbInfoSSD end, table:{}, batchId:{}, swapProcessTC(ms):{}, getAndSendTensorsTC(ms):{}",
+        LOG_DEBUG("ProcessEmbInfoL3Storage end, table:{}, batchId:{}, swapProcessTC(ms):{}, getAndSendTensorsTC(ms):{}",
                   info.name, info.batchId, swapProcessTC.ElapsedMS(), getAndSendTensorsTC.ElapsedMS());
         return true;
     }
@@ -2183,7 +2187,7 @@ void HybridMgmt::CheckLookupAddrSuccessDDR()
     }
 }
 
-void HybridMgmt::CheckLookupAddrSuccessSSD()
+void HybridMgmt::CheckLookupAddrSuccessL3Storage()
 {
     if (!lookupAddrSuccess) {
         for (auto& t : lookUpThreads) {

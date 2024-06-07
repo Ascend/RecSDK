@@ -20,7 +20,7 @@ See the License for the specific language governing permissions and
 #include <vector>
 
 #include "utils/common.h"
-#include "ssd_cache/cache_manager.h"
+#include "l3_storage/cache_manager.h"
 #include "file_system/file_system_handler.h"
 
 namespace MxRec {

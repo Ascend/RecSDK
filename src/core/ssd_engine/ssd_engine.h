@@ -22,12 +22,12 @@ See the License for the specific language governing permissions and
 #include <map>
 #include <vector>
 
-#include "utils/common.h"
+#include "l3_storage/l3_storage.h"
 
 
 namespace MxRec {
 
-    class SSDEngine {
+    class SSDEngine : public L3Storage {
     public:
         bool IsTableExist(const string &tableName);
 
@@ -56,7 +56,7 @@ namespace MxRec {
 
         void SetCompactThreshold(double threshold);
 
-        int64_t GetTableEmbeddingSize(const string& tableName);
+        int64_t GetTableUsage(const string& tableName);
 
         void InsertEmbeddingsByAddr(const string &tableName, vector<emb_cache_key_t> &keys,
                                     vector<float*> &embeddingsAddr, uint64_t extEmbeddingSize);

@@ -16,7 +16,7 @@ See the License for the specific language governing permissions and
 #include <iostream>
 #include <gtest/gtest.h>
 
-#include "ssd_cache/lfu_cache.h"
+#include "l3_storage/lfu_cache.h"
 
 using namespace std;
 using namespace MxRec;
