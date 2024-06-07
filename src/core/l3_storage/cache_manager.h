@@ -95,7 +95,8 @@ namespace MxRec {
                                vector<emb_cache_key_t>& DDRToL3StorageKeys,
                                vector<emb_cache_key_t>& L3StorageToDDRKeys);
 
-        void UpdateL3StorageEmb(string tableName, float* embPtr, uint32_t extEmbeddingSize, vector<emb_cache_key_t>& keys,
+        void UpdateL3StorageEmb(string tableName, float* embPtr, uint32_t extEmbeddingSize,\
+                                vector<emb_cache_key_t>& keys,
                                 const vector<uint64_t>& swapOutL3StorageAddrOffs);
 
         void TransferDDR2L3Storage(string tableName, uint32_t extEmbeddingSize, vector<emb_cache_key_t>& keys,
