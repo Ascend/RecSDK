@@ -38,7 +38,7 @@ from mx_rec.constants.constants import (
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.helper import get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
-from mx_rec.core.asc.swap_args import SwapArgs
+from mx_rec.core.asc.swap_args import SwapArgs, SwapDataType
 from mx_rec.core.asc.build_graph import SwapInfo
 from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
 from mx_rec.graph.merge_lookup import do_merge_lookup
@@ -255,17 +255,17 @@ class _GraphModifier:
                     table_instance, variable_and_slot_list, swap_args_dict["swap_info"], channel_id)
                 # gather for id_offset need to be executed after swap_op
                 swap_control_dict = swap_args.swap_control_dict[table_instance.table_name][channel_id]
-                if "control_ops" not in swap_control_dict:
+                if SwapDataType.CONTROL_OPS.value not in swap_control_dict:
                     raise ValueError("swap control missing key [control_ops] in modify_graph_for_asc")
-                control_ops = swap_control_dict["control_ops"]
+                control_ops = swap_control_dict[SwapDataType.CONTROL_OPS.value]
                 utils.replace_anchor_control(self._full_graph, control_ops, swap_op)
 
                 if is_training and slot_num > 1:
                     # gather for slot need to be executed after swap_op
                     slot_control_dict = swap_args.slot_control_dict[table_instance.variable]
-                    if "control_ops" not in slot_control_dict:
+                    if SwapDataType.CONTROL_OPS.value not in slot_control_dict:
                         raise ValueError("slot control missing key [control_ops] in modify_graph_for_asc")
-                    slot_control_ops = slot_control_dict["control_ops"]
+                    slot_control_ops = slot_control_dict[SwapDataType.CONTROL_OPS.value]
                     utils.replace_anchor_control(self._full_graph, slot_control_ops, swap_op)
 
     def _generate_get_next_op_specs(self, cutting_point_list: List[Tensor]) -> Dict[Tensor, _AnchorRecord]:
@@ -728,8 +728,8 @@ def _get_variable_and_slot_list(each_var, slot_num, table_name, channel_id):
     return variable_and_slot_list
 
 
-def _get_swap_info(table_instance: BaseSparseEmbedding, variable_and_slot_list: list, 
-                   swap_info: SwapInfo, channel_id: int) -> list:    
+def _get_swap_info(table_instance: BaseSparseEmbedding, variable_and_slot_list: list,
+                   swap_info: SwapInfo, channel_id: int) -> list:
     """
     Get swap op.
     :param table_instance: BaseSparseEmbedding
@@ -740,10 +740,10 @@ def _get_swap_info(table_instance: BaseSparseEmbedding, variable_and_slot_list: 
     """
     if table_instance.is_hbm:
         return [tf.no_op()]
-    
+
     if len(variable_and_slot_list) == 0:
         raise RuntimeError("When enable emb_transfer, optimizer should have slots")
-    
+
     use_static = ConfigInitializer.get_instance().use_static
     max_lookup_vec_size = None
     if use_static:
@@ -756,7 +756,7 @@ def _get_swap_info(table_instance: BaseSparseEmbedding, variable_and_slot_list: 
             output_shapes=[[max_lookup_vec_size, table_instance.ext_emb_size]],
             channel_name=f'{table_instance.table_name}_h2d_all')[0]
     logger.debug("h2d_emb shape: %s", h2d_emb)
-    
+
     swap_out_pos = swap_info.swap_out_pos
     swap_in_pos = swap_info.swap_in_pos
     if use_static:
@@ -766,14 +766,14 @@ def _get_swap_info(table_instance: BaseSparseEmbedding, variable_and_slot_list: 
     swap_outs = [tf.gather(one_table, swap_out_pos) for one_table in variable_and_slot_list]
     swap_out = tf.concat(swap_outs, axis=1)
     logger.debug('Channel %s_d2h_all was built for op outfeed.', table_instance.table_name)
-    
+
     swap_out_op = npu_ops.outfeed_enqueue_op(
         channel_name=f'{table_instance.table_name}_d2h_all', inputs=[swap_out])
     with tf.control_dependencies([swap_out_op]):
         nd_swap_pos = tf.expand_dims(swap_in_pos, 1)
         var_num = len(variable_and_slot_list)
         h2d_emb_split = tf.split(h2d_emb, var_num, axis=1)
-        
+
         optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(
             table_instance.table_name)
         if optimizer is None and channel_id == 1:
