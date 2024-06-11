@@ -81,9 +81,6 @@ namespace MxRec {
     constexpr int GLOG_TIME_WIDTH_6 = 6;
     constexpr char GLOG_STAT_FLAG[] = "statOn";
 
-    // for file system
-    constexpr int RETRY_COUNT = 100;
-
     // unique related config
     constexpr int UNIQUE_BUCKET = 6;
     constexpr int MIN_UNIQUE_THREAD_NUM = 1;
