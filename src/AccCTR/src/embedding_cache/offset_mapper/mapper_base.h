@@ -313,10 +313,13 @@ public:
             }
 
             /* make physical page and set to zero */
-            auto ret = memset_s(tmp, sizeof(NetHashBucket) * bucketCount, 0, sizeof(NetHashBucket) * bucketCount);
+            auto ret = SafeMemset(tmp, 0, sizeof(NetHashBucket) * bucketCount);
             if (ret != 0) {
-                ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR,
-                    "memset_s failed... size: " + std::to_string(sizeof(NetHashBucket) * bucketCount));
+                delete[] tmp;
+                tmp = nullptr;
+                FreeSubMaps();
+                ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR, "memset_s failed... size: " +
+                std::to_string(sizeof(NetHashBucket) * bucketCount) + ", error code:" + std::to_string(ret));
                 return false;
             }
 
@@ -691,6 +694,25 @@ private:
                 mSubMap = nullptr;
             }
         }
+    }
+
+    /*
+     * Description: SECUREC_MEM_MAX_LEN of memset_s function is 2GB
+     * Parameter: dest - destination address
+     * Parameter: c - the value to be copied
+     * Parameter: count - copies count bytes of value to dest
+     */
+    int SafeMemset(void* dest, int c, size_t count)
+    {
+        char* destBytePtr = reinterpret_cast<char*>(dest);
+        for (size_t i = 0; i < count; i += MEMSET_S_MAX_SIZE) {
+            size_t bytesOnceSet = (i + MEMSET_S_MAX_SIZE <= count) ? MEMSET_S_MAX_SIZE : (count - i);
+            auto ret = memset_s(destBytePtr + i, bytesOnceSet, c, bytesOnceSet);
+            if (ret != 0) {
+                return ret;
+            }
+        }
+        return 0;
     }
 
     void FreeOverFlowedEntries()

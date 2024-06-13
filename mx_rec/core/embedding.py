@@ -32,6 +32,7 @@ from mx_rec.constants.constants import (MAX_INT32, All2allGradientsOp, MAX_VOCAB
                                         CacheModeEnum, DEFAULT_DEVICE_CACHE_MEMORY_SIZE, DEFAULT_HOST_CACHE_MEMORY_SIZE,
                                         DEFAULT_SSD_CACHE_MEMORY_SIZE)
 from mx_rec.graph.constants import AnchorIteratorOp
+from mx_rec.util.communication.hccl_ops import get_rank_size
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import ClassValidator, StringValidator, SSDFeatureValidator, \
     para_checker_decorator, IntValidator, NumValidator, OptionValidator, OptionalIntValidator, \
@@ -233,12 +234,11 @@ def check_and_set_default_voc_size(voc_size_list: List[int], dim_bytes: int):
     if cache_mode == CacheModeEnum.DDR.value and voc_size_list[2] > 0:
         raise ValueError("cache mode DDR, ssd-voc is need to be none")
     if voc_size_list[0] == 1:
-        default_device_voc_size = int(DEFAULT_DEVICE_CACHE_MEMORY_SIZE / dim_bytes)
-        voc_size_list[0] = default_device_voc_size if default_device_voc_size < MAX_VOCABULARY_SIZE \
-            else MAX_VOCABULARY_SIZE
+        default_device_voc_size = int(DEFAULT_DEVICE_CACHE_MEMORY_SIZE / dim_bytes * get_rank_size())  # single rank 2GB
+        voc_size_list[0] = min(default_device_voc_size, MAX_DEVICE_VOCABULARY_SIZE)
     if (cache_mode == CacheModeEnum.DDR.value or cache_mode == CacheModeEnum.SSD.value) and voc_size_list[1] == 0:
-        default_host_voc_size = int(DEFAULT_HOST_CACHE_MEMORY_SIZE / dim_bytes)
-        voc_size_list[1] = default_host_voc_size if default_host_voc_size < MAX_VOCABULARY_SIZE else MAX_VOCABULARY_SIZE
+        default_host_voc_size = int(DEFAULT_HOST_CACHE_MEMORY_SIZE / dim_bytes)  # total 40GB
+        voc_size_list[1] = min(default_host_voc_size, MAX_VOCABULARY_SIZE)
     if cache_mode == CacheModeEnum.SSD.value and voc_size_list[2] == 0:
         voc_size_list[2] = DEFAULT_SSD_CACHE_MEMORY_SIZE
     return
