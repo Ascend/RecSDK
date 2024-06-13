@@ -21,9 +21,6 @@ See the License for the specific language governing permissions and
 
 #include "utils/common.h"
 
-using std::string;
-using std::vector;
-
 namespace MxRec {
 
 class L3Storage {
@@ -31,32 +28,34 @@ public:
     L3Storage();
     virtual ~L3Storage();
 
-    virtual bool IsTableExist(const string& tableName);
+    virtual bool IsTableExist(const std::string& tableName);
 
-    virtual bool IsKeyExist(const string& tableName, emb_cache_key_t key);
+    virtual bool IsKeyExist(const std::string& tableName, emb_cache_key_t key);
 
-    virtual void CreateTable(const string& tableName, vector<string> savePaths, uint64_t maxTableSize);
+    virtual void CreateTable(const std::string& tableName, std::vector<std::string> savePaths, uint64_t maxTableSize);
 
-    virtual int64_t GetTableAvailableSpace(const string& tableName);
+    virtual int64_t GetTableAvailableSpace(const std::string& tableName);
 
-    virtual void InsertEmbeddingsByAddr(const string& tableName, vector<emb_cache_key_t>& keys,
-                                        vector<float*>& embeddingsAddr, uint64_t extEmbeddingSize);
+    virtual void InsertEmbeddingsByAddr(const std::string& tableName, std::vector<emb_cache_key_t>& keys,
+                                        std::vector<float*>& embeddingsAddr, uint64_t extEmbeddingSize);
 
-    virtual void DeleteEmbeddings(const string& tableName, vector<emb_cache_key_t>& keys);
+    virtual void DeleteEmbeddings(const std::string& tableName, std::vector<emb_cache_key_t>& keys);
 
-    virtual vector<vector<float>> FetchEmbeddings(const string& tableName, vector<emb_cache_key_t>& keys);
+    virtual std::vector<std::vector<float>> FetchEmbeddings(const std::string& tableName,
+                                                            std::vector<emb_cache_key_t>& keys);
 
     virtual void Save(int step);
 
-    virtual void Load(const string& tableName, vector<string> savePaths, uint64_t maxTableSize, int step);
+    virtual void Load(const std::string& tableName, std::vector<std::string> savePaths, uint64_t maxTableSize,
+                      int step);
 
     virtual void Start();
 
     virtual void Stop();
 
-    virtual int64_t GetTableUsage(const string& tableName);
+    virtual int64_t GetTableUsage(const std::string& tableName);
 
-    virtual vector<std::pair<string, vector<emb_cache_key_t>>> ExportTableKey();
+    virtual std::vector<std::pair<std::string, std::vector<emb_cache_key_t>>> ExportTableKey();
 };
 }  // namespace MxRec
 #endif  // MX_REC_L3_STORAGE_H
