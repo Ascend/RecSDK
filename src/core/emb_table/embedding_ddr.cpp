@@ -115,8 +115,8 @@ void EmbeddingDDR::LoadKey(const string &savePath, vector<emb_cache_key_t> &keys
     }
     if (result != fileSize) {
         free(static_cast<void*>(buf));
-        throw runtime_error(StringFormat("Error: Load keys failed. Expected to read {} bytes, "
-                                         "but actually read {} bytes to file {}.", fileSize, result, ss.str()));
+        throw runtime_error(StringFormat("Error: Load keys failed. Expected to read %d bytes, "
+                                         "but actually read %d bytes to file %s.", fileSize, result, ss.str().c_str()));
     }
 
     hostLoadOffset.clear();

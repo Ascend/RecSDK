@@ -38,13 +38,13 @@ void LocalFileSystem::CreateDir(const string& dirName)
     while (getline(input, tmp, '/')) {
         guard++;
         if (guard > maxDepth) {
-            throw runtime_error(StringFormat("create directory {} exceed max depth", dirName.c_str()));
+            throw runtime_error(StringFormat("create directory %s exceed max depth", dirName.c_str()));
         }
         ss << tmp << '/';
         int ret = mkdir(ss.str().c_str(), dirMode);
         if (ret != 0 && errno != EEXIST) {
             LOG_ERROR("Unable to create directory: {} ret:{} error info: {}", dirName, ret, strerror(errno));
-            throw runtime_error(StringFormat("create directory {} failed: {}", dirName.c_str(), strerror(errno)));
+            throw runtime_error(StringFormat("create directory %s failed: %s", dirName.c_str(), strerror(errno)));
         }
     }
 }
