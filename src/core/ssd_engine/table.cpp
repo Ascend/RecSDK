@@ -137,7 +137,7 @@ void Table::Save(int step)
             SetTablePathToDiskWithSpace();
         } catch (runtime_error &e) {
             metaFile.close();
-            throw runtime_error(StringFormat("set table path to disk with space error:{}", e.what()));
+            throw runtime_error(StringFormat("set table path to disk with space error:%s", e.what()));
         }
         try {
             CreateTableDir(curTablePath);
@@ -258,7 +258,7 @@ void Table::Load(const string &metaFilePath, int step)
         LoadDataFileSet(metaFile, step);
     } catch (exception &e) {
         metaFile->close();
-        throw runtime_error(StringFormat("load data file set error:{}", e.what()));
+        throw runtime_error(StringFormat("load data file set error: %s", e.what()));
     }
     metaFile->close();
     if (metaFile->fail()) {
