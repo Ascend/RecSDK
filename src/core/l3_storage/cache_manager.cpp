@@ -108,12 +108,12 @@ void CacheManager::CreateL3StorageTableIfNotExist(const std::string& embTableNam
         l3Storage->CreateTable(embTableName, embBaseInfos[embTableName].savePath,
                                embBaseInfos[embTableName].maxTableSize);
         embBaseInfos[embTableName].isExist = true;
-        LOG_INFO("create l3Storage table end, embTableName:" + embTableName);
+        LOG_INFO("create l3Storage table end, embTableName:{}", embTableName);
         return;
     }
     // 续训场景：embBaseInfos 没有保存，不会初始化；L3Storage表会初始化，此时表已存在
     embBaseInfos[embTableName].isExist = true;
-    LOG_INFO("l3Storage table is exist, embTableName:" + embTableName);
+    LOG_INFO("l3Storage table is exist, embTableName:{}", embTableName);
 }
 
 CacheManager::~CacheManager()
