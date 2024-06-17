@@ -170,7 +170,7 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
         v_t_slice = temp_b2 * old_v_slice + (1 - temp_b2) * math_ops.square(grad)
         v_update_op = scatter_nd_add(velocity, nd_indices, v_t_slice - old_v_slice)
 
-        denominator_slice = math_ops.sqrt(v_t_slice + temp_epsilon)
+        denominator_slice = math_ops.sqrt(tf.abs(v_t_slice)) + temp_epsilon
         var_update_op = scatter_nd_add(var, nd_indices, tf.divide(-learning_rate * m_t_slice, denominator_slice))
         return control_flow_ops.group(m_update_op, v_update_op, var_update_op)
 
