@@ -17,6 +17,8 @@ See the License for the specific language governing permissions and
 
 using MxRec::L3Storage;
 using MxRec::emb_cache_key_t;
+using std::vector;
+using std::string;
 
 L3Storage::L3Storage() {}
 
