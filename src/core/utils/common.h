@@ -110,6 +110,7 @@ namespace MxRec {
     constexpr float HOT_EMB_CACHE_PCT = static_cast<float>(1. / 3);  // hot emb cache percent
 
     const string COMBINE_HISTORY_NAME = "combine_table_history";
+    const string SAVE_SPARSE_PATH_PREFIX = "sparse";
 
     using emb_key_t = int64_t;
     using emb_cache_key_t = uint64_t;
