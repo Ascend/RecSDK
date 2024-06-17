@@ -821,7 +821,7 @@ void HybridMgmt::EvictL3StorageKeys(const string& embName, const vector<emb_cach
 
 int HybridMgmt::GetStepFromPath(const string& loadPath) const
 {
-    regex pattern("sparse-model-(\\d+)");
+    regex pattern(SAVE_SPARSE_PATH_PREFIX + "-.*-(\\d+)");
     smatch match;
     if (regex_search(loadPath, match, pattern)) {
         int res = 0;
