@@ -709,18 +709,18 @@ void HybridMgmt::ProcessEmbInfoDDR(const EmbBaseInfo& info, bool& remainBatchOut
 
     SendGlobalUniqueVec(info, uniqueKeys, restoreVecSec);
 
+    TimeCost swapProcessTC;
+    auto &swapInPos = swapInKoPair.second;
+    auto &swapOutPos = swapOutKoPair.second;
+    auto lastSwapInPos = lastSwapInPosMap[info.name];
+    lastSwapInPosMap[info.name] = swapInPos; // 暂存待下一步发送
+
     auto isNeedReturn = HandleSpecialProcessStatusDDR(info, getAndSendTensorsTC, swapInKoPair, swapOutKoPair);
     if (isNeedReturn) {
         return;
     }
 
-    TimeCost swapProcessTC;
     EnqueueSwapInfo(info, swapInKoPair, swapOutKoPair);
-
-    auto &swapInPos = swapInKoPair.second;
-    auto &swapOutPos = swapOutKoPair.second;
-    auto lastSwapInPos = lastSwapInPosMap[info.name];
-    lastSwapInPosMap[info.name] = swapInPos; // 暂存待下一步发送
 
     // 下发swaptensor
     if (info.batchId != 0) {
@@ -1217,21 +1217,20 @@ void HybridMgmt::ProcessEmbInfoL3Storage(const EmbBaseInfo& info, bool& remainBa
 
     SendGlobalUniqueVec(info, uniqueKeys, restoreVecSec);
 
-    auto isNeedReturn = HandleSpecialProcessStatusL3Storage(info, getAndSendTensorsTC, swapInKoPair, swapOutKoPair);
-    if (isNeedReturn) {
-        return;
-    }
-
     TimeCost swapProcessTC;
     auto &swapInKeys = swapInKoPair.first;
     auto &swapInPos = swapInKoPair.second;
     auto &swapOutKeys = swapOutKoPair.first;
     auto &swapOutPos = swapOutKoPair.second;
-
-    HandleDataSwapForL3Storage(info, swapInKeys, swapOutKeys);
-
     auto lastSwapInPos = lastSwapInPosMap[info.name];
     lastSwapInPosMap[info.name] = swapInPos; // 暂存待下一步发送
+
+    auto isNeedReturn = HandleSpecialProcessStatusL3Storage(info, getAndSendTensorsTC, swapInKoPair, swapOutKoPair);
+    if (isNeedReturn) {
+        return;
+    }
+
+    HandleDataSwapForL3Storage(info, swapInKeys, swapOutKeys);
 
     // 下发swaptensor
     if (info.batchId != 0) {
