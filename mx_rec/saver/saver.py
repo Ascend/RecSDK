@@ -36,6 +36,9 @@ from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.tf_version_adapter import npu_ops
 
 
+SAVE_SPARSE_PATH_PREFIX = "sparse"
+
+
 # define save model thread
 class SaveModelThread(threading.Thread):
     def __init__(self, saver, sess, result, root_dir, table_name):
@@ -128,9 +131,9 @@ class Saver(object):
         if global_step:
             if not isinstance(global_step, compat.integral_types):
                 global_step = int(sess.run(global_step))
-            ckpt_name = f"sparse-{base_name}-{global_step}"
+            ckpt_name = f"{SAVE_SPARSE_PATH_PREFIX}-{base_name}-{global_step}"
         else:
-            ckpt_name = f"sparse-{base_name}"
+            ckpt_name = f"{SAVE_SPARSE_PATH_PREFIX}-{base_name}"
 
         saving_path = os.path.join(directory, ckpt_name)
         self.config_instance.train_params_config.sparse_dir = saving_path
@@ -185,7 +188,7 @@ class Saver(object):
                              "only local file system and hdfs file system supported. ")
 
         directory, base_name = os.path.split(reading_path)
-        ckpt_name = f"sparse-{base_name}"
+        ckpt_name = f"{SAVE_SPARSE_PATH_PREFIX}-{base_name}"
 
         reading_path = os.path.join(directory, ckpt_name)
         if not tf.io.gfile.exists(reading_path):
