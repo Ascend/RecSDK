@@ -140,11 +140,10 @@ namespace MxRec {
                 throw runtime_error("Failed to obtain the pointer of the function hdfsRead from the libhdfs.");
             }
 
-            tSize reTryCount = 0;
             tSize unReadLength = length;
             tSize readBytes = 0;
 
-            while (unReadLength != 0 && reTryCount < RETRY_COUNT) {
+            while (unReadLength != 0) {
                 tSize offset = (length - unReadLength) / sizeof(char);
                 tSize res = hdfsRead(fs, file, buffer + offset, unReadLength);
                 if (res == -1) {
@@ -152,7 +151,6 @@ namespace MxRec {
                 }
                 unReadLength -= res;
                 readBytes += res;
-                reTryCount++;
             }
             return readBytes;
         }
@@ -163,11 +161,10 @@ namespace MxRec {
                 throw runtime_error("Failed to obtain the pointer of the function hdfsRead from the libhdfs.");
             }
 
-            tSize reTryCount = 0;
             tSize unReadLength = length;
             tSize readBytes = 0;
 
-            while (unReadLength != 0 && reTryCount < RETRY_COUNT) {
+            while (unReadLength != 0) {
                 tSize offset = (length - unReadLength) / sizeof(float);
                 tSize res = hdfsRead(fs, file, buffer + offset, unReadLength);
                 if (res == -1) {
@@ -175,7 +172,6 @@ namespace MxRec {
                 }
                 unReadLength -= res;
                 readBytes += res;
-                reTryCount++;
             }
             return readBytes;
         }
@@ -185,11 +181,10 @@ namespace MxRec {
             if (hdfsWrite == nullptr) {
                 throw runtime_error("Failed to obtain the pointer of the function hdfsWrite from the libhdfs.");
             }
-            tSize reTryCount = 0;
             tSize unWriteLength = length;
             tSize writeBytes = 0;
 
-            while (unWriteLength != 0 && reTryCount < RETRY_COUNT) {
+            while (unWriteLength != 0) {
                 tSize offset = (length - unWriteLength) / sizeof(char);
                 tSize res = hdfsWrite(fs, file, buffer + offset, unWriteLength);
                 if (res == -1) {
@@ -197,7 +192,6 @@ namespace MxRec {
                 }
                 unWriteLength -= res;
                 writeBytes += res;
-                reTryCount++;
             }
             return writeBytes;
         }
@@ -207,11 +201,10 @@ namespace MxRec {
             if (hdfsWrite == nullptr) {
                 throw runtime_error("Failed to obtain the pointer of the function hdfsWrite from the libhdfs.");
             }
-            tSize reTryCount = 0;
             tSize unWriteLength = length;
             tSize writeBytes = 0;
 
-            while (unWriteLength != 0 && reTryCount < RETRY_COUNT) {
+            while (unWriteLength != 0) {
                 tSize offset = (length - unWriteLength) / sizeof(float);
                 tSize res = hdfsWrite(fs, file, buffer + offset, unWriteLength);
                 if (res == -1) {
@@ -219,7 +212,6 @@ namespace MxRec {
                 }
                 unWriteLength -= res;
                 writeBytes += res;
-                reTryCount++;
             }
             return writeBytes;
         }

@@ -1,3 +1,19 @@
+# coding=utf-8
+# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 import os
 import stat
 import pickle
@@ -58,7 +74,10 @@ def split_byline_count(filename, count, sub_dir_name):
                 sub = make_sub_file(buf, head, filename, sub_dir_name, sub)
                 buf = []
         if len(buf) != 0:
-            make_sub_file(buf, head, filename, sub_dir_name, sub)
+            try:
+                make_sub_file(buf, head, filename, sub_dir_name, sub)
+            except FileNotFoundError as err:
+                raise FileNotFoundError("please check the filename of data") from err
     finally:
         f.close()
 
@@ -170,10 +189,11 @@ def convert_input2tfrd(in_file_path, out_file_path):
         dense_feature = np.array(dense_feat_list, dtype=np.int64).reshape(-1)
         sparse_feature = np.array(sparse_feat_list, dtype=np.int64).reshape(-1)
         label = np.array(label_list, dtype=np.int64).reshape(-1)
-        feature_dict = {"dense_feature": tf.train.Feature(int64_list=tf.train.Int64List(value=dense_feature)),
-                        "sparse_feature": tf.train.Feature(int64_list=tf.train.Int64List(value=sparse_feature)),
-                        "label": tf.train.Feature(int64_list=tf.train.Int64List(value=label))
-                        }
+        feature_dict = {
+                    "dense_feature": tf.train.Feature(int64_list=tf.train.Int64List(value=dense_feature)),
+                    "sparse_feature": tf.train.Feature(int64_list=tf.train.Int64List(value=sparse_feature)),
+                    "label": tf.train.Feature(int64_list=tf.train.Int64List(value=label))
+        }
         example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
 
         return example
@@ -183,7 +203,7 @@ def convert_input2tfrd(in_file_path, out_file_path):
 
     with open(in_file_path, encoding='utf-8') as file_in:
 
-        for i, line in tqdm(enumerate(file_in)):
+        for _, line in tqdm(enumerate(file_in)):
 
             line = line.strip('\n')
             items = line.split('\t')
@@ -226,13 +246,18 @@ if __name__ == '__main__':
         data_df[dense_features] = data_df[dense_features].fillna(0)
         # sparse feature: mapping
         for col in sparse_features:
-            data_df[col] = data_df[col].map(lambda x: feature_map[col][x])
+            try:
+                data_df[col] = data_df[col].map(lambda x: feature_map[col][x])
+            except KeyError as er:
+                raise KeyError("Feature {} not found in dataset".format(col)) from er
         # dense feature: Bin continuous data into intervals.
         data_df[dense_features] = rec_kbins_discretizer(data_df[dense_features], 1000, feature_map)
         # add offsets
-        slot_size_array = [1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001,
-                           1462, 585, 10131228, 2202609, 307, 25, 12519, 635, 5, 93147, 5685, 8351594, 3196,
-                           29, 14994, 5461307, 12, 5654, 2174, 5, 7046548, 19, 17, 286182, 106, 142573]
+        slot_size_array = [
+                        1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001,
+                        1462, 585, 10131228, 2202609, 307, 25, 12519, 635, 5, 93147, 5685, 8351594, 3196,
+                        29, 14994, 5461307, 12, 5654, 2174, 5, 7046548, 19, 17, 286182, 106, 142573
+        ]
         offset_size_list = np.cumsum([0] + slot_size_array[:-1])
         for col_index in range(1, len(offset_size_list) + 1):
             data_df.iloc[:, col_index] += offset_size_list[col_index - 1]

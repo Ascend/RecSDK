@@ -81,9 +81,6 @@ namespace MxRec {
     constexpr int GLOG_TIME_WIDTH_6 = 6;
     constexpr char GLOG_STAT_FLAG[] = "statOn";
 
-    // for file system
-    constexpr int RETRY_COUNT = 100;
-
     // unique related config
     constexpr int UNIQUE_BUCKET = 6;
     constexpr int MIN_UNIQUE_THREAD_NUM = 1;
@@ -113,6 +110,7 @@ namespace MxRec {
     constexpr float HOT_EMB_CACHE_PCT = static_cast<float>(1. / 3);  // hot emb cache percent
 
     const string COMBINE_HISTORY_NAME = "combine_table_history";
+    const string SAVE_SPARSE_PATH_PREFIX = "sparse";
 
     using emb_key_t = int64_t;
     using emb_cache_key_t = uint64_t;

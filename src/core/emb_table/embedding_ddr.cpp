@@ -18,7 +18,7 @@ See the License for the specific language governing permissions and
 
 #include "utils/logger.h"
 #include "utils/singleton.h"
-#include "ssd_cache/cache_manager.h"
+#include "l3_storage/cache_manager.h"
 #include "ock_ctr_common/include/error_code.h"
 
 using namespace MxRec;
@@ -115,8 +115,8 @@ void EmbeddingDDR::LoadKey(const string &savePath, vector<emb_cache_key_t> &keys
     }
     if (result != fileSize) {
         free(static_cast<void*>(buf));
-        throw runtime_error(StringFormat("Error: Load keys failed. Expected to read {} bytes, "
-                                         "but actually read {} bytes to file {}.", fileSize, result, ss.str()));
+        throw runtime_error(StringFormat("Error: Load keys failed. Expected to read %d bytes, "
+                                         "but actually read %d bytes to file %s.", fileSize, result, ss.str().c_str()));
     }
 
     hostLoadOffset.clear();
@@ -253,7 +253,8 @@ void EmbeddingDDR::SyncLatestEmbedding()
                 throw std::invalid_argument(errMsg);
             }
         }
-        cacheManager_->UpdateSSDEmb(name, ptr, embInfo_.extEmbeddingSize, info.swapOutSSDKeys, info.swapOutSSDAddrOffs);
+        cacheManager_->UpdateL3StorageEmb(name, ptr, embInfo_.extEmbeddingSize, info.swapOutL3StorageKeys,
+                                          info.swapOutL3StorageAddrOffs);
     }
 }
 

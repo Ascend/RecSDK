@@ -210,13 +210,13 @@ void Checkpoint::WriteStream(CkptTransData& transData, const string& dataDir, si
     }
 
     if (writeBytesNum == -1) {
-        throw runtime_error(StringFormat("Error: Save data failed. data type: {}. "
-                                         "An error occurred while writing file: {}.", dataType, dataDir));
+        throw runtime_error(StringFormat("Error: Save data failed. data type: %d. "
+                                         "An error occurred while writing file: %s.", dataType, dataDir.c_str()));
     }
     if (writeBytesNum != dataSize) {
-        throw runtime_error(StringFormat("Error: Save data failed. data type: {} ."
-                                         "Expected to write {} bytes, but actually write {} bytes to file {}.",
-                                         dataType, dataSize, writeBytesNum, dataDir));
+        throw runtime_error(StringFormat("Error: Save data failed. data type: %d ."
+                                         "Expected to write %d bytes, but actually write %d bytes to file %s.",
+                                         dataType, dataSize, writeBytesNum, dataDir.c_str()));
     }
 }
 
@@ -334,13 +334,13 @@ void Checkpoint::ReadStream(CkptTransData& transData,
     }
 
     if (readBytesNum == -1) {
-        throw runtime_error(StringFormat("Error: Load data failed. data type: {} ."
-                                         "An error occurred while reading file: {}.", dataType, dataDir));
+        throw runtime_error(StringFormat("Error: Load data failed. data type: %d ."
+                                         "An error occurred while reading file: %s.", dataType, dataDir.c_str()));
     }
     if (readBytesNum != datasetSize) {
-        throw runtime_error(StringFormat("Error: Load data failed. data type: {} ."
-                                         "Expected to read {} bytes, but actually read {} bytes to file {}.",
-                                         dataType, datasetSize, readBytesNum, dataDir));
+        throw runtime_error(StringFormat("Error: Load data failed. data type: %d ."
+                                         "Expected to read %d bytes, but actually read %d bytes to file %s.",
+                                         dataType, datasetSize, readBytesNum, dataDir.c_str()));
     }
 }
 

@@ -28,6 +28,7 @@ See the License for the specific language governing permissions and
 #include "utils/common.h"
 #include "preprocess_mapper.h"
 #include "ock_ctr_common/include/factory.h"
+#include "l3_storage.h"
 
 namespace MxRec {
 
@@ -42,14 +43,14 @@ namespace MxRec {
     struct SwapOutInfo {
         vector<emb_cache_key_t> swapOutDDRKeys;
         vector<emb_cache_key_t> swapOutDDRAddrOffs;
-        vector<emb_cache_key_t> swapOutSSDKeys;
-        vector<emb_cache_key_t> swapOutSSDAddrOffs;
+        vector<emb_cache_key_t> swapOutL3StorageKeys;
+        vector<emb_cache_key_t> swapOutL3StorageAddrOffs;
     };
 
     enum class TransferRet {
         TRANSFER_OK = 0, // 转移成功或无需处理
         TRANSFER_ERROR,
-        SSD_SPACE_NOT_ENOUGH,
+        L3STORAGE_SPACE_NOT_ENOUGH,
         DDR_SPACE_NOT_ENOUGH,
     };
 
@@ -73,16 +74,17 @@ namespace MxRec {
 
         ~CacheManager();
 
-        void Init(ock::ctr::EmbCacheManagerPtr embCachePtr, vector<EmbInfo>& mgmtEmbInfo);
+        void Init(ock::ctr::EmbCacheManagerPtr embCachePtr, vector<EmbInfo>& mgmtEmbInfo,
+                  shared_ptr<L3Storage> level3Storage);
 
         void Load(const std::vector<EmbInfo>& mgmtEmbInfo, int step,
                   map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
 
-        void SaveSSDEngine(int step);
+        void Save(int step);
 
-        bool IsKeyInSSD(const string& embTableName, emb_cache_key_t key);
+        bool IsKeyInL3Storage(const string& embTableName, emb_cache_key_t key);
 
-        void EvictSSDEmbedding(const string& embTableName, const vector<emb_cache_key_t>& keys);
+        void EvictL3StorageEmbedding(const string& embTableName, const vector<emb_cache_key_t>& keys);
 
         void PutKey(const string& embTableName, const emb_key_t& key, RecordType type);
 
@@ -90,18 +92,20 @@ namespace MxRec {
                                 SwapOutInfo& info);
 
         void ProcessSwapInKeys(const string& tableName, const vector<emb_cache_key_t>& swapInKeys,
-                               vector<emb_cache_key_t>& DDRToSSDKeys, vector<emb_cache_key_t>& SSDToDDRKeys);
+                               vector<emb_cache_key_t>& DDRToL3StorageKeys,
+                               vector<emb_cache_key_t>& L3StorageToDDRKeys);
 
-        void UpdateSSDEmb(string tableName, float* embPtr, uint32_t extEmbeddingSize, vector<emb_cache_key_t>& keys,
-                          const vector<uint64_t>& swapOutSSDAddrOffs);
+        void UpdateL3StorageEmb(string tableName, float* embPtr, uint32_t extEmbeddingSize,\
+                                vector<emb_cache_key_t>& keys,
+                                const vector<uint64_t>& swapOutL3StorageAddrOffs);
 
-        void TransferDDR2SSD(string tableName, uint32_t extEmbeddingSize, vector<emb_cache_key_t>& keys,
-                             vector<float*>& addrs);
+        void TransferDDR2L3Storage(string tableName, uint32_t extEmbeddingSize, vector<emb_cache_key_t>& keys,
+                                   vector<float*>& addrs);
 
-        void FetchSSDEmb2DDR(string tableName, uint32_t extEmbeddingSize, vector<emb_cache_key_t>& keys,
-                             const vector<float*>& addrs);
+        void FetchL3StorageEmb2DDR(string tableName, uint32_t extEmbeddingSize, vector<emb_cache_key_t>& keys,
+                                   const vector<float*>& addrs);
 
-        int64_t GetTableEmbeddingSize(const string& tableName);
+        int64_t GetTableUsage(const string& tableName);
 
         // DDR内每个表中emb数据频次缓存；map<embTableName, 频次缓存>
         unordered_map<std::string, LFUCache> ddrKeyFreqMap;
@@ -123,13 +127,13 @@ namespace MxRec {
             bool isExist;
         };
 
-        void CreateSSDTableIfNotExist(const std::string& embTableName);
+        void CreateL3StorageTableIfNotExist(const std::string& embTableName);
 
         unordered_map<std::string, EmbBaseInfo> embBaseInfos;
 
     GTEST_PRIVATE:
-        shared_ptr<SSDEngine> ssdEngine = std::make_shared<SSDEngine>();
-        vector<std::thread> ssdEvictThreads;
+        shared_ptr<L3Storage> l3Storage;
+        vector<std::thread> l3StorageEvictThreads;
         ock::ctr::EmbCacheManagerPtr embCache {};
     };
 }
