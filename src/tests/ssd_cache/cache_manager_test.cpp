@@ -18,8 +18,8 @@ See the License for the specific language governing permissions and
 #include <mpi.h>
 
 #include "absl/container/flat_hash_map.h"
-#include "ssd_cache/lfu_cache.h"
-#include "ssd_cache/cache_manager.h"
+#include "l3_storage/lfu_cache.h"
+#include "l3_storage/cache_manager.h"
 #include "utils/common.h"
 
 using namespace std;
@@ -34,16 +34,21 @@ void InitSSDEngine(CacheManager& manager, string embTableName, uint64_t ssdSize)
 {
     // Init ssd engine data
     chrono::seconds period = chrono::seconds(120);
-    manager.ssdEngine->SetCompactPeriod(period);
-    manager.ssdEngine->SetCompactThreshold(1);
-    manager.ssdEngine->CreateTable(embTableName, {SSD_SAVE_PATH}, ssdSize);
+    auto ssdEngine = static_pointer_cast<SSDEngine>(manager.l3Storage);
+    ssdEngine->SetCompactPeriod(period);
+    ssdEngine->SetCompactThreshold(1);
+    ssdEngine->CreateTable(embTableName, {SSD_SAVE_PATH}, ssdSize);
     vector<emb_cache_key_t> ssdKeys = {15, 25}; // 预设15， 25存储在SSD
-    std::vector<std::vector<float>> ssdEmbData = {{15.0f},
-                                                  {25.0f}};
+    auto emb1 = new float(15.0f);
+    auto emb2 = new float(25.0f);
+    uint64_t extEmbeddingSize = 1;
+    std::vector<float*> ssdEmbData = {{emb1}, {emb2}};
     auto& excludeMap = manager.preProcessMapper[embTableName].excludeDDRKeyCountMap;
     excludeMap[15] = 3; // 初始化次数
     excludeMap[25] = 5;
-    manager.ssdEngine->InsertEmbeddings(embTableName, ssdKeys, ssdEmbData);
+    ssdEngine->InsertEmbeddingsByAddr(embTableName, ssdKeys, ssdEmbData, extEmbeddingSize);
+    delete emb1;
+    delete emb2;
 }
 
 void InitDDREmbData(absl::flat_hash_map<string, HostEmbTable>& loadData, string& embTableName,
@@ -105,7 +110,8 @@ protected:
 
         ock::ctr::EmbCacheManagerPtr embCachePtr = nullptr;
 
-        cacheManager.Init(embCachePtr, mgmtEmbInfos);
+        auto ssdEngine = make_shared<SSDEngine>();
+        cacheManager.Init(embCachePtr, mgmtEmbInfos, ssdEngine);
 
         InitSSDEngine(cacheManager, embTableName, 5);
         InitSSDEngine(cacheManager, embTableName2, 10);
@@ -141,31 +147,31 @@ TEST_F(CacheManagerTest, PutKey)
     LOG_INFO("test PutKey end.");
 }
 
-TEST_F(CacheManagerTest, IsKeyInSSD)
+TEST_F(CacheManagerTest, IsKeyInL3Storage)
 {
     vector<emb_key_t> checkKeys = {1, 2, 15, 25};
-    ASSERT_FALSE(cacheManager.IsKeyInSSD(embTableName, checkKeys[0]));
-    ASSERT_FALSE(cacheManager.IsKeyInSSD(embTableName, checkKeys[1]));
-    ASSERT_TRUE(cacheManager.IsKeyInSSD(embTableName, checkKeys[2]));
-    ASSERT_TRUE(cacheManager.IsKeyInSSD(embTableName, checkKeys[3]));
-    LOG_INFO("test IsKeyInSSD end.");
+    ASSERT_FALSE(cacheManager.IsKeyInL3Storage(embTableName, checkKeys[0]));
+    ASSERT_FALSE(cacheManager.IsKeyInL3Storage(embTableName, checkKeys[1]));
+    ASSERT_TRUE(cacheManager.IsKeyInL3Storage(embTableName, checkKeys[2]));
+    ASSERT_TRUE(cacheManager.IsKeyInL3Storage(embTableName, checkKeys[3]));
+    LOG_INFO("test IsKeyInL3Storage end.");
 }
 
-TEST_F(CacheManagerTest, EvictSSDEmbedding)
+TEST_F(CacheManagerTest, EvictL3StorageEmbedding)
 {
     // 构造时ssd中已存在的key: 15 25
     emb_cache_key_t key = 15;
     vector<emb_cache_key_t> ssdKeys = {key};
-    cacheManager.EvictSSDEmbedding(embTableName, ssdKeys);
+    cacheManager.EvictL3StorageEmbedding(embTableName, ssdKeys);
     int maxLoop = 1000;
-    while (!cacheManager.ssdEvictThreads.empty() && maxLoop > 0) {
+    while (!cacheManager.l3StorageEvictThreads.empty() && maxLoop > 0) {
         this_thread::sleep_for(1ms);
         maxLoop--;
     }
-    ASSERT_FALSE(cacheManager.IsKeyInSSD(embTableName, key));
+    ASSERT_FALSE(cacheManager.IsKeyInL3Storage(embTableName, key));
     const auto it = cacheManager.excludeDDRKeyCountMap[embTableName].find(key);
     ASSERT_EQ(it, cacheManager.excludeDDRKeyCountMap[embTableName].end());
-    LOG_INFO("test EvictSSDEmbedding end.");
+    LOG_INFO("test EvictL3StorageEmbedding end.");
 }
 
 TEST_F(CacheManagerTest, LoadTest)

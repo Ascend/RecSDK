@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
+import sys
 from enum import Enum
 import numpy as np
 
@@ -25,6 +25,12 @@ ASCEND_SPARSE_LOOKUP_ID_OFFSET = "ASCEND_SPARSE_LOOKUP_ID_OFFSET"
 ASCEND_TIMESTAMP = "ASCEND_TIMESTAMP"
 ASCEND_SPARSE_LOOKUP_LOCAL_EMB = "ASCEND_SPARSE_LOOKUP_LOCAL_EMB"
 EMPTY_STR = ""
+
+# default emb memory size for hbm、ddr、ssd
+DEFAULT_DEVICE_CACHE_MEMORY_SIZE = 2 * 1024 * 1024 * 1024
+DEFAULT_HOST_CACHE_MEMORY_SIZE = 40 * 1024 * 1024 * 1024
+DEFAULT_SSD_CACHE_MEMORY_SIZE = sys.maxsize
+
 
 # 获取ConfigInitializer对象实例失败提示信息
 GET_CONFIG_INSTANCE_ERR_MSG = "Please init the environment for mx_rec at first."
@@ -68,7 +74,7 @@ DEFAULT_EVICT_TIME_INTERVAL = 60 * 60 * 24
 TRAIN_CHANNEL_ID = 0
 EVAL_CHANNEL_ID = 1
 HASHTABLE_COLLECTION_NAME_LENGTH = 30
-MAX_VOCABULARY_SIZE = 10**10
+MAX_VOCABULARY_SIZE = 10**9
 MAX_DEVICE_VOCABULARY_SIZE = 10 ** 9
 
 # RANK INFO
@@ -140,6 +146,12 @@ class EnvOption(Enum):
     OMPI_COMM_WORLD_SIZE = "OMPI_COMM_WORLD_SIZE"
     OMPI_COMM_WORLD_LOCAL_SIZE = "OMPI_COMM_WORLD_LOCAL_SIZE"
     OMPI_COMM_WORLD_RANK = "OMPI_COMM_WORLD_RANK"
+
+
+class CacheModeEnum(Enum):
+    HBM = "HBM"
+    DDR = "DDR"
+    SSD = "SSD"
 
 
 class DataName(Enum):

@@ -16,7 +16,7 @@
 # ==============================================================================
 
 import os
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 import tensorflow as tf
 from tensorflow import Tensor
@@ -28,8 +28,11 @@ from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
 from mx_rec.core.emb.emb_factory import HBMDynamicSparseEmbeddingFactory, HBMSparseEmbeddingFactory, \
     ExternalStorageSparseEmbeddingFactory
-from mx_rec.constants.constants import MAX_INT32, All2allGradientsOp, MAX_VOCABULARY_SIZE, MAX_DEVICE_VOCABULARY_SIZE
+from mx_rec.constants.constants import (MAX_INT32, All2allGradientsOp, MAX_VOCABULARY_SIZE, MAX_DEVICE_VOCABULARY_SIZE,
+                                        CacheModeEnum, DEFAULT_DEVICE_CACHE_MEMORY_SIZE, DEFAULT_HOST_CACHE_MEMORY_SIZE,
+                                        DEFAULT_SSD_CACHE_MEMORY_SIZE)
 from mx_rec.graph.constants import AnchorIteratorOp
+from mx_rec.util.communication.hccl_ops import get_rank_size
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import ClassValidator, StringValidator, SSDFeatureValidator, \
     para_checker_decorator, IntValidator, NumValidator, OptionValidator, OptionalIntValidator, \
@@ -51,19 +54,19 @@ from mx_rec.util.log import logger
     ("host_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
     ("ssd_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
     ("ssd_data_path", ClassValidator, {"classes": (list, tuple)}),
-    ("is_save", ClassValidator, {"classes": (bool, )}),
+    ("is_save", ClassValidator, {"classes": (bool,)}),
     ("init_param", FloatValidator, {"min_value": -10, "max_value": 10}, ["check_value"]),
     ("all2all_gradients_op", OptionValidator, {"options": [i.value for i in list(All2allGradientsOp)]}),
     ("value_dtype", OptionValidator, {"options": [tf.float32]}),
     ("shard_num", IntValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
-    ("fusion_optimizer_var", ClassValidator, {"classes": (bool, )}),
+    ("fusion_optimizer_var", ClassValidator, {"classes": (bool,)}),
     ("hashtable_threshold", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"])
 ])
 def create_table(key_dtype, dim, name, emb_initializer,
                  device_vocabulary_size=1,
                  host_vocabulary_size=0,
                  ssd_vocabulary_size=0,
-                 ssd_data_path=(os.getcwd(), ),
+                 ssd_data_path=(os.getcwd(),),
                  is_save=True,
                  init_param=1.,
                  all2all_gradients_op=All2allGradientsOp.SUM_GRADIENTS.value,
@@ -91,24 +94,28 @@ def create_table(key_dtype, dim, name, emb_initializer,
     """
     name = fix_invalid_table_name(name)
 
+    dim_bytes = dim.as_list()[0] * 4 if isinstance(dim, tf.TensorShape) else dim * 4  # float32 4 bytes
+    voc_size_list = [device_vocabulary_size, host_vocabulary_size, ssd_vocabulary_size]
+    check_and_set_default_voc_size(voc_size_list, dim_bytes)
+
     config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
-                  device_vocabulary_size=device_vocabulary_size, host_vocabulary_size=host_vocabulary_size,
-                  ssd_vocabulary_size=ssd_vocabulary_size, ssd_data_path=ssd_data_path,
+                  device_vocabulary_size=voc_size_list[0], host_vocabulary_size=voc_size_list[1],
+                  ssd_vocabulary_size=voc_size_list[2], ssd_data_path=ssd_data_path,
                   init_param=init_param, is_save=is_save, all2all_gradients_op=all2all_gradients_op)
     # 动态扩容
     if ConfigInitializer.get_instance().use_dynamic_expansion:
         return HBMDynamicSparseEmbeddingFactory().create_embedding(config)
     # DDR or SSD
-    if host_vocabulary_size > 0:
+    if voc_size_list[1] > 0:
         return ExternalStorageSparseEmbeddingFactory().create_embedding(config)
     # HBM
     return HBMSparseEmbeddingFactory().create_embedding(config)
 
 
 @para_checker_decorator(check_option_list=[
-    ("hashtable", ClassValidator, {"classes": (BaseSparseEmbedding, )}),
+    ("hashtable", ClassValidator, {"classes": (BaseSparseEmbedding,)}),
     ("ids", ClassValidator, {"classes": (FeatureSpec, tf.Tensor)}),
-    ("is_train", ClassValidator, {"classes": (bool, )}),
+    ("is_train", ClassValidator, {"classes": (bool,)}),
     ("send_count", ClassValidator, {"classes": (int, type(None))}),
     ("send_count", OptionalIntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
     ("name", ClassValidator, {"classes": (str, type(None))}),
@@ -116,7 +123,7 @@ def create_table(key_dtype, dim, name, emb_initializer,
     ("modify_graph", ClassValidator, {"classes": (bool, type(None))}),
     ("batch", ClassValidator, {"classes": (dict, type(None))}),
     ("access_and_evict_config", ClassValidator, {"classes": (dict, type(None))}),
-    ("is_grad", ClassValidator, {"classes": (bool, )}),
+    ("is_grad", ClassValidator, {"classes": (bool,)}),
     ("serving_default_value", ClassValidator, {"classes": (tf.Tensor, type(None))})
 ])
 def sparse_lookup(hashtable: BaseSparseEmbedding,
@@ -201,3 +208,37 @@ def mark_orphan_lookup_key(lookup_key: Tensor) -> Tensor:
 
     logger.info('Mark orphan lookup key %s as %s.', lookup_key, marked_lookup_key)
     return marked_lookup_key
+
+
+def check_and_set_default_voc_size(voc_size_list: List[int], dim_bytes: int):
+    if ConfigInitializer.get_instance().use_dynamic_expansion:
+        voc_size_list[1] = 0
+        voc_size_list[2] = 0
+        return
+    cache_mode = os.getenv("CACHE_MODE")
+    if not cache_mode and voc_size_list[0] <= 1:
+        raise ValueError("no cache mode, no use_dynamic_expansion, must input dev-voc")
+    if not cache_mode and voc_size_list[1] == 0 and voc_size_list[2] == 0:  # no cache mode, dev-voc not None, use HBM
+        return
+    if not cache_mode and voc_size_list[1] == 0 and voc_size_list[2] > 0:
+        raise ValueError("no cache mode, dev-voc is not none and host-voc is none, ssd-voc must be none too")
+    if not cache_mode and voc_size_list[2] == 0:  # no cache mode, dev-voc/host-voc not None, use DDR
+        return
+    if not cache_mode:  # no cache mode, dev-voc/host-voc/ssd-voc not None, use SSD
+        return
+
+    if cache_mode not in [mode.value for mode in CacheModeEnum]:
+        raise ValueError("cache mode need to fit HBM, DDR, SSD")
+    if cache_mode == CacheModeEnum.HBM.value and (voc_size_list[1] > 0 or voc_size_list[2] > 0):
+        raise ValueError("cache mode HBM, host-voc or ssd-voc is need to be none")
+    if cache_mode == CacheModeEnum.DDR.value and voc_size_list[2] > 0:
+        raise ValueError("cache mode DDR, ssd-voc is need to be none")
+    if voc_size_list[0] == 1:
+        default_device_voc_size = int(DEFAULT_DEVICE_CACHE_MEMORY_SIZE / dim_bytes * get_rank_size())  # single rank 2GB
+        voc_size_list[0] = min(default_device_voc_size, MAX_DEVICE_VOCABULARY_SIZE)
+    if (cache_mode == CacheModeEnum.DDR.value or cache_mode == CacheModeEnum.SSD.value) and voc_size_list[1] == 0:
+        default_host_voc_size = int(DEFAULT_HOST_CACHE_MEMORY_SIZE / dim_bytes)  # total 40GB
+        voc_size_list[1] = min(default_host_voc_size, MAX_VOCABULARY_SIZE)
+    if cache_mode == CacheModeEnum.SSD.value and voc_size_list[2] == 0:
+        voc_size_list[2] = DEFAULT_SSD_CACHE_MEMORY_SIZE
+    return
