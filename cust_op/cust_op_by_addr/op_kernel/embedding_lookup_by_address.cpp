@@ -115,7 +115,7 @@ private:
             int64_t address = srcAddrLocal.GetValue(i);
 
             if (address != 0) {
-                srcDataBufferGm.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL); 
+                srcDataBufferGm.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL);
                 srcDataBufferGm.SetGlobalBuffer((__gm__ T *)(address), embDimAligned);
                 DataCopy(dataLocal[embDimAligned * nums], srcDataBufferGm, embDimAligned);
             } else {

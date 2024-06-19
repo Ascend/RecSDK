@@ -42,7 +42,7 @@ public:
 
     // set `GlobalTensor` cache mode explicitly
     srcAddrGlobal.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL);
-    srcDataBufferGm.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL); 
+    srcDataBufferGm.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL);
     outDataGm.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL);
 
     // get start index for current core, core parallel block_indx block_dim
