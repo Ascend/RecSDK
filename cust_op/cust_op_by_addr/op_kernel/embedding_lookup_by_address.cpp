@@ -44,6 +44,10 @@ public:
     pipe.InitBuffer(inQueue, pingpongNum, veclen);
     pipe.InitBuffer(outQueue, pingpongNum, veclen);
 
+    // set `GlobalTensor` cache mode explicitly
+    srcAddrGlobal.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL);
+    dstDataGm.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL);
+
     // get start index for current core, core parallel block_indx block_dim，即使是最后一个核也应该多初始化一些，并对齐4的倍数
     srcAddrGlobal.SetGlobalBuffer((__gm__ int64_t *)(address + block_idx * singleCoreAddrLen), needComputeAddrLen);
     dstDataGm.SetGlobalBuffer((__gm__ T *)(y));
@@ -111,6 +115,7 @@ private:
             int64_t address = srcAddrLocal.GetValue(i);
 
             if (address != 0) {
+                srcDataBufferGm.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL); 
                 srcDataBufferGm.SetGlobalBuffer((__gm__ T *)(address), embDimAligned);
                 DataCopy(dataLocal[embDimAligned * nums], srcDataBufferGm, embDimAligned);
             } else {
