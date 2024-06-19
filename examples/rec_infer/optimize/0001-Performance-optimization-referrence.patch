@@ -1,0 +1,72 @@
+---
+ tensorflow_serving/model_servers/BUILD     | 1 +
+ tensorflow_serving/model_servers/main.cc   | 8 +++++++-
+ tensorflow_serving/model_servers/server.cc | 5 +++++
+ tensorflow_serving/model_servers/server.h  | 6 +++++-
+ 4 files changed, 18 insertions(+), 2 deletions(-)
+
+diff --git a/tensorflow_serving/model_servers/BUILD b/tensorflow_serving/model_servers/BUILD
+index f60f3d7..e74a514 100644
+--- a/tensorflow_serving/model_servers/BUILD
++++ b/tensorflow_serving/model_servers/BUILD
+@@ -373,6 +373,7 @@ cc_binary(
+     deps = [
+         ":tensorflow_model_server_main_lib",
+     ],
++    linkops = ["-L/usr/local/lib -lstringlib", "-L/usr/local/lib -ljemalloc"]
+ )
+ 
+ py_test(
+diff --git a/tensorflow_serving/model_servers/main.cc b/tensorflow_serving/model_servers/main.cc
+index 2b83500..3a055d0 100644
+--- a/tensorflow_serving/model_servers/main.cc
++++ b/tensorflow_serving/model_servers/main.cc
+@@ -192,7 +192,13 @@ int main(int argc, char** argv) {
+                        "EXPERIMENTAL; CAN BE REMOVED ANYTIME! Load and use "
+                        "TensorFlow Lite model from `model.tflite` file in "
+                        "SavedModel directory instead of the TensorFlow model "
+-                       "from `saved_model.pb` file.")};
++                       "from `saved_model.pb` file."),
++      tensorflow::Flag("set_SyncServerOption_flag", &options.set_SyncServerOption_flag,
++          "if true,the server will config SyncServerOption"),
++      tensorflow::Flag("NUM_CQS", &options.NUM_CQS, "config NUM_CQS"),
++      tensorflow::Flag("MIN_POLLERS", &options.MIN_POLLERS, "config MIN_POLLERS"),
++      tensorflow::Flag("MAX_POLLERS", &options.MAX_POLLERS, "config MAX_POLLERS"),
++      };
+ 
+   const auto& usage = tensorflow::Flags::Usage(argv[0], flag_list);
+   if (!tensorflow::Flags::Parse(&argc, argv, flag_list)) {
+diff --git a/tensorflow_serving/model_servers/server.cc b/tensorflow_serving/model_servers/server.cc
+index 9808f9a..b5df129 100644
+--- a/tensorflow_serving/model_servers/server.cc
++++ b/tensorflow_serving/model_servers/server.cc
+@@ -330,6 +330,11 @@ Status Server::BuildAndStart(const Options& server_options) {
+                              BuildServerCredentialsFromSSLConfigFile(
+                                  server_options.ssl_config_file));
+   }
++  if (server_options.set_SyncServerOption_flag) {
++    builder.SetSyncServerOption(::grpc::ServerBuilder::SyncServerOption.NUM_CQS, server_options.NUM_CQS);
++    builder.SetSyncServerOption(::grpc::ServerBuilder::SyncServerOption.MIN_POLLERS, server_options.MIN_POLLERS);
++    builder.SetSyncServerOption(::grpc::ServerBuilder::SyncServerOption.MAX_POLLERS, server_options.MAX_POLLERS);
++  }
+   builder.RegisterService(model_service_.get());
+   builder.RegisterService(prediction_service_.get());
+   builder.SetMaxMessageSize(tensorflow::kint32max);
+diff --git a/tensorflow_serving/model_servers/server.h b/tensorflow_serving/model_servers/server.h
+index 7738f29..90a0994 100644
+--- a/tensorflow_serving/model_servers/server.h
++++ b/tensorflow_serving/model_servers/server.h
+@@ -83,7 +83,11 @@ class Server {
+     bool enforce_session_run_timeout = true;
+     bool remove_unused_fields_from_bundle_metagraph = true;
+     bool use_tflite_model = false;
+-
++    // SyncServerOption config
++    bool set_SyncServerOption_flag = false;
++    tensorflow::int32 NUM_CQS = 3;
++    tensorflow::int32 MIN_POLLERS = 6;
++    tensorflow::int32 MAX_POLLERS = 12;
+     Options();
+   };
+ 
+-- 
