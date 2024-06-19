@@ -449,6 +449,8 @@ void HybridMgmt::Destroy()
     procThreads.clear();
     // 停止预处理
     KEY_PROCESS_INSTANCE->Destroy();
+    // stop embCache, even if the host emb is still allocating
+    embCache->Destroy();
     LOG_DEBUG(MGMT + "Destroy hybrid_mgmt module end.");
 }
 
