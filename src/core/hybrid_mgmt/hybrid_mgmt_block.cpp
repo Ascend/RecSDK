@@ -115,18 +115,18 @@ void HybridMgmtBlock::CheckValid(int channelId)
     if (lastRunChannelId == -1) {
         LOG_DEBUG(HYBRID_BLOCKING +
                   "The data channel was called for the first time, and the parameters were "
-                  "checked to be normal channelId {} hybridBatchId {}",
+                  "checked to be normal channelId {} hybridBatchId {}.",
                   channelId, hybridBatchId[channelId]);
 
         lastRunChannelId = channelId;
         return;
     }
-    t
+
     // 在通道切换时，hybrid预处理的batch与python的一致。
     if (pythonBatchId[lastRunChannelId] == hybridBatchId[lastRunChannelId]) {
         LOG_DEBUG(HYBRID_BLOCKING +
                   "HybridMgmt is switching data channels and checking for normal parameters. The number of steps "
-                  "in the previous round is lastRunChannelId {} pythonBatchId {} hybridBatchId {}",
+                  "in the previous round is lastRunChannelId {} pythonBatchId {} hybridBatchId {}.",
                   lastRunChannelId, pythonBatchId[lastRunChannelId], hybridBatchId[lastRunChannelId]);
     } else if (pythonBatchId[lastRunChannelId] < hybridBatchId[lastRunChannelId]) {
         // 在通道切换时，上一个通道处理的数据超出了python侧的调用
@@ -271,7 +271,7 @@ void HybridMgmtBlock::FinishSave()
     finishSave = true;
 }
 
-void HybridMgmtBlock::IncreaseReadEmbBatchId(const int channelId)
+void HybridMgmtBlock::IncrementReadEmbBatchId(const int channelId)
 {
     this->readEmbedBatchId[channelId] += 1;
     this->readEmbedBatchIdAll += 1;
