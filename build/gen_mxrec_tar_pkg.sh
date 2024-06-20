@@ -82,10 +82,3 @@ function clean()
 gen_tar_file
 
 clean
-
-# compile cust op
-echo "----------------        start to compile cust op        ----------------"
-cd "${MxRec_DIR}"/cust_op/cust_op_by_addr
-chmod u+x run.sh
-./run.sh
-echo "----------------      compile cust op success!!!!       ----------------"
