@@ -103,6 +103,7 @@ public:
     void Stop()
     {
         stop = true;
+        std::lock_guard<std::mutex> lock(producerMutex);
         producerCv.notify_all();
         fullCv.notify_all();
     }
