@@ -450,7 +450,7 @@ void HybridMgmt::Destroy()
     // 停止预处理
     KEY_PROCESS_INSTANCE->Destroy();
     // stop embCache, even if the host emb is still allocating
-    embCache->Destroy();
+    if (embCache != nullptr) { embCache->Destroy(); }
     LOG_DEBUG(MGMT + "Destroy hybrid_mgmt module end.");
 }
 
