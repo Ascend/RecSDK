@@ -29,8 +29,7 @@ from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
 from mx_rec.core.emb.emb_factory import HBMDynamicSparseEmbeddingFactory, HBMSparseEmbeddingFactory, \
     ExternalStorageSparseEmbeddingFactory
 from mx_rec.constants.constants import (MAX_INT32, All2allGradientsOp, MAX_VOCABULARY_SIZE, MAX_DEVICE_VOCABULARY_SIZE,
-                                        CacheModeEnum, DEFAULT_DEVICE_CACHE_MEMORY_SIZE, DEFAULT_HOST_CACHE_MEMORY_SIZE,
-                                        DEFAULT_SSD_CACHE_MEMORY_SIZE)
+                                        CacheModeEnum, DEFAULT_DEVICE_CACHE_MEMORY_SIZE, DEFAULT_HOST_CACHE_MEMORY_SIZE)
 from mx_rec.graph.constants import AnchorIteratorOp
 from mx_rec.util.communication.hccl_ops import get_rank_size
 from mx_rec.util.initialize import ConfigInitializer
@@ -240,5 +239,5 @@ def check_and_set_default_voc_size(voc_size_list: List[int], dim_bytes: int):
         default_host_voc_size = int(DEFAULT_HOST_CACHE_MEMORY_SIZE / dim_bytes)  # total 40GB
         voc_size_list[1] = min(default_host_voc_size, MAX_VOCABULARY_SIZE)
     if cache_mode == CacheModeEnum.SSD.value and voc_size_list[2] == 0:
-        voc_size_list[2] = DEFAULT_SSD_CACHE_MEMORY_SIZE
+        voc_size_list[2] = MAX_VOCABULARY_SIZE
     return

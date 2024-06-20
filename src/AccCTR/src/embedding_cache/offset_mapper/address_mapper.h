@@ -92,10 +92,8 @@ public:
 
     ~AutoRefillEmbeddingMemoryPool()
     {
-        {
-            std::lock_guard<std::mutex> lock(producerMutex);
-            stop = true;
-        }
+        stop = true;
+        std::lock_guard<std::mutex> lock(producerMutex);
         producerCv.notify_all();
         fullCv.notify_all();
         for (auto& t : producerThreads) {
@@ -105,8 +103,8 @@ public:
 
     void Stop()
     {
-        std::lock_guard<std::mutex> lock(producerMutex);
         stop = true;
+        std::lock_guard<std::mutex> lock(producerMutex);
         producerCv.notify_all();
         fullCv.notify_all();
     }
@@ -141,7 +139,7 @@ private:
     uint64_t totalLeftVocabSize;
     uint32_t numThreads;
     std::atomic<uint64_t> currBufferSize{0};
-    volatile bool stop = false;
+    volatile std::atomic<bool> stop = false;
     volatile std::atomic<bool> full = false;
     std::mutex producerMutex;
     std::mutex getAddrMutex;
