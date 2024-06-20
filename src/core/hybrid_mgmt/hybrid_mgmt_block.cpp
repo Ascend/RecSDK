@@ -113,9 +113,10 @@ void HybridMgmtBlock::CheckValid(int channelId)
     }
     // 当python侧第一次调用时，此时跳过参数检查
     if (lastRunChannelId == -1) {
-        LOG_DEBUG(HYBRID_BLOCKING + "The data channel was called for the first time, and the parameters were "
-                                    "checked to be normal channelId {} hybridBatchId {}", channelId,
-                  hybridBatchId[channelId]);
+        LOG_DEBUG(HYBRID_BLOCKING +
+                  "The data channel was called for the first time, and the parameters were "
+                  "checked to be normal channelId {} hybridBatchId {}",
+                  channelId, hybridBatchId[channelId]);
 
         lastRunChannelId = channelId;
         return;
