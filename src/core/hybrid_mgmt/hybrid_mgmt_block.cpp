@@ -113,18 +113,21 @@ void HybridMgmtBlock::CheckValid(int channelId)
     }
     // 当python侧第一次调用时，此时跳过参数检查
     if (lastRunChannelId == -1) {
-        LOG_DEBUG(HYBRID_BLOCKING + "The data channel was called for the first time, and the parameters were "
-            "checked to be normal channelId {} hybridBatchId {}", channelId, hybridBatchId[channelId]);
+        LOG_DEBUG(HYBRID_BLOCKING +
+                  "The data channel was called for the first time, and the parameters were "
+                  "checked to be normal channelId {} hybridBatchId {}.",
+                  channelId, hybridBatchId[channelId]);
 
         lastRunChannelId = channelId;
         return;
     }
+
     // 在通道切换时，hybrid预处理的batch与python的一致。
     if (pythonBatchId[lastRunChannelId] == hybridBatchId[lastRunChannelId]) {
         LOG_DEBUG(HYBRID_BLOCKING +
-            "HybridMgmt is switching data channels and checking for normal parameters. he number of steps "
-            "in the previous round is lastRunChannelId {} pythonBatchId {} hybridBatchId {}",
-            lastRunChannelId,  pythonBatchId[lastRunChannelId], hybridBatchId[lastRunChannelId]);
+                  "HybridMgmt is switching data channels and checking for normal parameters. The number of steps "
+                  "in the previous round is lastRunChannelId {} pythonBatchId {} hybridBatchId {}.",
+                  lastRunChannelId, pythonBatchId[lastRunChannelId], hybridBatchId[lastRunChannelId]);
     } else if (pythonBatchId[lastRunChannelId] < hybridBatchId[lastRunChannelId]) {
         // 在通道切换时，上一个通道处理的数据超出了python侧的调用
         if (rankInfo.isDDR and !WaitValid(lastRunChannelId)) {
@@ -133,10 +136,10 @@ void HybridMgmtBlock::CheckValid(int channelId)
     } else {
         // 在通道切换时，hybrid处理的数据还没有赶上python侧，此时需要等待hybrid处理完成
         LOG_INFO(HYBRID_BLOCKING +
-            "When switching data channels, it was found that HybridMgmt processed less data than the "
-            "Python side.In this case, after reading the dataset, the Python side called it again, but it was "
-            "interrupted midway,which did not affect the subsequent calls lastRunChannelId {} hybridBatchId {}",
-            lastRunChannelId, hybridBatchId[lastRunChannelId]);
+                 "When switching data channels, it was found that HybridMgmt processed less data than the "
+                 "Python side.In this case, after reading the dataset, the Python side called it again, but it was "
+                 "interrupted midway,which did not affect the subsequent calls lastRunChannelId {} hybridBatchId {}",
+                 lastRunChannelId, hybridBatchId[lastRunChannelId]);
     }
     lastRunChannelId = channelId;
 }
@@ -147,7 +150,7 @@ void HybridMgmtBlock::DoBlock(int channelId)
 {
     // 通道没有切换，不用处理
     LOG_DEBUG(HYBRID_BLOCKING + "HybridMgmt starts blocking channelId {} hybridBatchId {}",
-        channelId, hybridBatchId[channelId]);
+              channelId, hybridBatchId[channelId]);
 
     while (isBlock[channelId]) {
         std::this_thread::sleep_for(SLEEP_MS);
@@ -156,7 +159,7 @@ void HybridMgmtBlock::DoBlock(int channelId)
         }
     }
     LOG_DEBUG(HYBRID_BLOCKING + "HybridMgmt is starting to wake up channelId {} hybridBatchId {}",
-        channelId, hybridBatchId[channelId]);
+              channelId, hybridBatchId[channelId]);
 }
 
 /// 重置所有的步数，主要用于图重构的情况，readembedkey算子重建
@@ -187,24 +190,24 @@ int HybridMgmtBlock::CheckSaveEmbMapValid()
     // 检查数据通道此时的HashMap是否被提前处理了
     if (pythonBatchId[lastRunChannelId] >= hybridBatchId[lastRunChannelId]) {
         LOG_DEBUG(HYBRID_BLOCKING +
-            "HybridMgmt is checking the step and checking that the parameters are normal. "
-            "The number of steps in the previous round is "
-            "lastRunChannelId {} pythonBatchId {} hybridBatchId {}",
-            lastRunChannelId, pythonBatchId[lastRunChannelId], hybridBatchId[lastRunChannelId]);
+                  "HybridMgmt is checking the step and checking that the parameters are normal. "
+                  "The number of steps in the previous round is "
+                  "lastRunChannelId {} pythonBatchId {} hybridBatchId {}",
+                  lastRunChannelId, pythonBatchId[lastRunChannelId], hybridBatchId[lastRunChannelId]);
         return 0;
     } else if (pythonBatchId[lastRunChannelId] + 1 == hybridBatchId[lastRunChannelId]) {
         // 在通道切换时，上一个通道处理的数据超出了python侧的调用
         LOG_DEBUG(HYBRID_BLOCKING +
-            "HybridMgmt is checking the step, and the parameters have been processed one step "
-            "in advance. The number of steps in the previous round was "
-            "lastRunChannelId {} pythonBatchId {} hybridBatchId {}",
-            lastRunChannelId, pythonBatchId[lastRunChannelId], hybridBatchId[lastRunChannelId]);
+                  "HybridMgmt is checking the step, and the parameters have been processed one step "
+                  "in advance. The number of steps in the previous round was "
+                  "lastRunChannelId {} pythonBatchId {} hybridBatchId {}",
+                  lastRunChannelId, pythonBatchId[lastRunChannelId], hybridBatchId[lastRunChannelId]);
 
         return 1;
     } else {
         // 在通道切换时，hybrid处理的数据还没有赶上python侧，此时需要等待hybrid处理完成
         LOG_DEBUG(HYBRID_BLOCKING + "ERROR FLAG lastRunChannelId {} hybridBatchId {}",
-            lastRunChannelId, hybridBatchId[lastRunChannelId]);
+                  lastRunChannelId, hybridBatchId[lastRunChannelId]);
         return -1;
     }
 }
@@ -266,4 +269,10 @@ bool HybridMgmtBlock::IsNeedWaitSave()
 void HybridMgmtBlock::FinishSave()
 {
     finishSave = true;
+}
+
+void HybridMgmtBlock::IncrementReadEmbBatchId(const int channelId)
+{
+    this->readEmbedBatchId[channelId] += 1;
+    this->readEmbedBatchIdAll += 1;
 }
