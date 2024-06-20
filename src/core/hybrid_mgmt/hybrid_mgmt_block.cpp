@@ -121,10 +121,11 @@ void HybridMgmtBlock::CheckValid(int channelId)
         lastRunChannelId = channelId;
         return;
     }
+    t
     // 在通道切换时，hybrid预处理的batch与python的一致。
     if (pythonBatchId[lastRunChannelId] == hybridBatchId[lastRunChannelId]) {
         LOG_DEBUG(HYBRID_BLOCKING +
-                  "HybridMgmt is switching data channels and checking for normal parameters. he number of steps "
+                  "HybridMgmt is switching data channels and checking for normal parameters. The number of steps "
                   "in the previous round is lastRunChannelId {} pythonBatchId {} hybridBatchId {}",
                   lastRunChannelId, pythonBatchId[lastRunChannelId], hybridBatchId[lastRunChannelId]);
     } else if (pythonBatchId[lastRunChannelId] < hybridBatchId[lastRunChannelId]) {
