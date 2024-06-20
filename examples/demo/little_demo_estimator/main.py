@@ -214,6 +214,8 @@ if __name__ == '__main__':
     # set init
     init(train_steps=args.train_steps,
          eval_steps=args.eval_steps,
+         save_steps=args.save_checkpoints_steps,
+         max_steps=args.max_steps,
          use_dynamic=use_dynamic,
          use_dynamic_expansion=use_dynamic_expansion)
 
