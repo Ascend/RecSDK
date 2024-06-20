@@ -1270,8 +1270,10 @@ bool KeyProcess::IsGetUniqueKeysEos(const EmbBaseInfo& info, std::chrono::_V2::s
                   lookUpSwapInAddrsPushId[info.name]);
         startTime = std::chrono::system_clock::now();
     }
+    // Check '>= readEmbedBatchIdAll' condition to avoid send eos before handle all batch data from readEmbKey Op.
     if (isNeedSendEos[info.channelId] && readEmbKeyBatchId < info.batchId &&
-        hybridMgmtBlock->h2dNextBatchId[info.name] == lookUpSwapInAddrsPushId[info.name]) {
+        hybridMgmtBlock->h2dNextBatchId[info.name] == lookUpSwapInAddrsPushId[info.name] &&
+        hybridMgmtBlock->h2dNextBatchId[info.name] >= hybridMgmtBlock->readEmbedBatchIdAll) {
         LOG_INFO("table:{}, channelId:{} batchId:{}, GetUniqueKeys eos",
                  info.name, info.channelId, info.batchId);
         return true;
