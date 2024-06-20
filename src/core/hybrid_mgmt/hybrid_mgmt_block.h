@@ -91,7 +91,7 @@ namespace MxRec {
 
         void FinishSave();
 
-        void IncreaseReadEmbBatchId(const int channelId);
+        void IncrementReadEmbBatchId(const int channelId);
 
     private:
         // 控制通道阻塞的变量
