@@ -93,6 +93,7 @@ public:
     ~AutoRefillEmbeddingMemoryPool()
     {
         stop = true;
+        std::lock_guard<std::mutex> lock(producerMutex);
         producerCv.notify_all();
         fullCv.notify_all();
         for (auto& t : producerThreads) {
