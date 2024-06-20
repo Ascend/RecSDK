@@ -214,7 +214,7 @@ namespace MxRec {
                     return;
                 }
             }
-            hybridMgmtBlock->readEmbedBatchId[channelId] += 1;
+            hybridMgmtBlock->IncreaseReadEmbBatchId(channelId);
             const Tensor& inputTensor = context->input(TensorIndex::TENSOR_INDEX_0);
             const auto& splits = context->input(TENSOR_INDEX_1).flat<int32>();
             int fieldNum = 0;
@@ -407,7 +407,7 @@ namespace MxRec {
                     return;
                 }
             }
-            hybridMgmtBlock->readEmbedBatchId[channelId] += 1;
+            hybridMgmtBlock->IncreaseReadEmbBatchId(channelId);
             const Tensor& inputTensor = context->input(TensorIndex::TENSOR_INDEX_0);
             size_t dataSize = inputTensor.NumElements();
 
