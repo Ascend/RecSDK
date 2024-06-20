@@ -2046,7 +2046,9 @@ void HybridMgmt::SendRestoreVec(const EmbBaseInfo &info, bool &remainBatchOut)
         info, ProcessedInfo::RESTORE, isEos);
     if (infoVecs == nullptr) {
         remainBatchOut = false;
-        LOG_ERROR("Information vector is nullptr!");
+        if (isRunning) {
+            LOG_ERROR("Information vector is nullptr!");
+        }
         return;
     }
     LOG_DEBUG("table:{}, channelId:{}, batchId:{}, get restore end, getRestoreTC(ms):{}",
