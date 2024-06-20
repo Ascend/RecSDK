@@ -26,7 +26,7 @@ namespace MxRec {
     */
     class PreProcessMapper {
     public:
-        void Initialize(const string& embName, uint32_t ddrVocabSize, uint32_t l3StorageVocabSize)
+        void Initialize(const string& embName, size_t ddrVocabSize, size_t l3StorageVocabSize)
         {
             tableName = embName;
             lfuCache = LFUCache(embName);

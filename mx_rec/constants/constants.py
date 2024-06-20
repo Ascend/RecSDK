@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import sys
 from enum import Enum
 import numpy as np
 
@@ -29,8 +28,6 @@ EMPTY_STR = ""
 # default emb memory size for hbm、ddr、ssd
 DEFAULT_DEVICE_CACHE_MEMORY_SIZE = 2 * 1024 * 1024 * 1024
 DEFAULT_HOST_CACHE_MEMORY_SIZE = 40 * 1024 * 1024 * 1024
-DEFAULT_SSD_CACHE_MEMORY_SIZE = sys.maxsize
-
 
 # 获取ConfigInitializer对象实例失败提示信息
 GET_CONFIG_INSTANCE_ERR_MSG = "Please init the environment for mx_rec at first."
