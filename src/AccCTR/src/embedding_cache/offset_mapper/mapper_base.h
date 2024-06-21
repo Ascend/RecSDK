@@ -698,7 +698,7 @@ private:
 
         /* make physical page and set to zero */
         size_t bucketsBytes = sizeof(NetHashBucket) * bucketCount;
-        char* destBytePtr = reinterpret_cast<char*>(dest);
+        char* destBytePtr = reinterpret_cast<char*>(bucketPtr);
         for (size_t i = 0; i < bucketsBytes; i += MEMSET_S_MAX_SIZE) {
             size_t bytesOnceSet = (i + MEMSET_S_MAX_SIZE <= bucketsBytes) ? MEMSET_S_MAX_SIZE : (bucketsBytes - i);
             auto ret = memset_s(destBytePtr + i, bytesOnceSet, c, bytesOnceSet);
