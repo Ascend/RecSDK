@@ -103,9 +103,16 @@ void SSDEngine::Save(int step)
     if (!isRunning) {
         throw runtime_error("SSDEngine not running");
     }
+
+    if (step == loadStep) {
+        LOG_INFO("save step equal to load step, skip saving, step:{}", step);
+        return;
+    }
+
     for (auto item: as_const(tableMap)) {
         item.second->Save(step);
     }
+    saveStep = step;
 }
 
 void SSDEngine::Load(const string &tableName, vector<string> savePaths, uint64_t maxTableSize, int step)
@@ -113,12 +120,19 @@ void SSDEngine::Load(const string &tableName, vector<string> savePaths, uint64_t
     if (!isRunning) {
         throw runtime_error("SSDEngine not running");
     }
+
+    if (step == saveStep) {
+        LOG_INFO("load step equal to save step, skip loading, step:{}", step);
+        return;
+    }
+
     auto it = as_const(tableMap).find(tableName);
     if (it != tableMap.end()) {
         throw invalid_argument("table already exist");
     }
 
     tableMap[tableName] = make_shared<Table>(tableName, savePaths, maxTableSize, compactThreshold, step);
+    loadStep = step;
 }
 
 void SSDEngine::Start()

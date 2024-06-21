@@ -187,12 +187,15 @@ void EmbeddingDDR::LoadOptimizerSlot(const string &savePath, vector<vector<float
 
 void EmbeddingDDR::Save(const string& savePath)
 {
-    SyncLatestEmbedding();
-
     vector<emb_cache_key_t> keys;
     vector<vector<float>> embeddings;
     vector<vector<float>> optimizerSlots;
-    embCache->GetEmbTableInfos(name, keys, embeddings, optimizerSlots);
+
+    auto step = GetStepFromPath(savePath);
+    if (step > 0) {
+        SyncLatestEmbedding();
+        embCache->GetEmbTableInfos(name, keys, embeddings, optimizerSlots);
+    }
 
     SaveKey(savePath, keys);
     SaveEmbedding(savePath, embeddings);
@@ -291,7 +294,7 @@ void EmbeddingDDR::SaveEmbedding(const string& savePath, vector<vector<float>>& 
     ssize_t writeBytesNum = fileSystemPtr_->Write(ss.str(), embeddings, embSize_);
     ssize_t expectWriteBytes = embeddings.size() * embSize_ * sizeof(float);
     if (writeBytesNum != expectWriteBytes) {
-        string errMsg = StringFormat("save embedding failed, write expect:%d, actual:%d, path:%s",
+        string errMsg = StringFormat("Save embedding failed, write expect:%ld, actual:%ld, path:%s .",
                                      expectWriteBytes, writeBytesNum, savePath.c_str());
         throw runtime_error(errMsg);
     }

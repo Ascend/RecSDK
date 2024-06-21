@@ -20,6 +20,7 @@ See the License for the specific language governing permissions and
 #include <stdexcept>
 #include <experimental/filesystem>
 #include <unistd.h>
+#include <regex>
 
 #include <mpi.h>
 
@@ -166,4 +167,23 @@ namespace MxRec {
         return ss;
     }
 
+    int GetStepFromPath(const string& loadPath)
+    {
+        regex pattern(SAVE_SPARSE_PATH_PREFIX + "-.*-(\\d+)");
+        smatch match;
+        if (!regex_search(loadPath, match, pattern)) {
+            return 0;
+        }
+        int res = 0;
+        unsigned int minSize = 2;
+        if (match.size() < minSize) {
+            return res;
+        }
+        try {
+            res = stoi(match[1]);
+        } catch (const std::invalid_argument& e) {
+            LOG_ERROR(e.what());
+        }
+        return res;
+    }
 } // end namespace MxRec
