@@ -40,10 +40,12 @@ public:
     pipe.InitBuffer(inQueue, pingpongNum, veclen);
     pipe.InitBuffer(outQueue, pingpongNum, veclen);
 
+#ifdef L2_CACHE_HINT
     // set `GlobalTensor` cache mode explicitly
     srcAddrGlobal.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL);
     srcDataBufferGm.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL);
     outDataGm.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL);
+#endif
 
     // get start index for current core, core parallel block_indx block_dim
     srcAddrGlobal.SetGlobalBuffer((__gm__ int64_t *)(address + block_idx * singleCoreAddrLen));
@@ -117,7 +119,9 @@ private:
             for (int i = 0; i < addrNum; i++) {
                 address = srcAddrLocal.GetValue(i);
                 if (address != 0) {
+#ifdef L2_CACHE_HINT
                     dstDataGm.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL);
+#endif
                     dstDataGm.SetGlobalBuffer((__gm__ T*)(address));
                     DataCopy(dstDataGm, dstLocal[i * inputDimAligned], inputDimAligned);
                 }
@@ -156,7 +160,9 @@ private:
         LocalTensor<T> dstLocal = outQueue.DeQue<T>();
 
         if (address != 0) {
+#ifdef L2_CACHE_HINT
             dstDataGm.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL);
+#endif
             dstDataGm.SetGlobalBuffer((__gm__ T *)(address));
 
             if (updateType == 0) {
