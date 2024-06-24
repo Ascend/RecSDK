@@ -206,6 +206,12 @@ bool HybridMgmt::Load(const string& loadPath, vector<string> warmStartTables)
         throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
     }
 
+    if (mgmtRankInfo.isDDR && IsTrainAndEvalCase()) {
+        LOG_INFO("estimator train and eval case, skip loading, "
+                 "host will reuse data in memory while evaluating since is's same as saved data");
+        return true;
+    }
+
     // 数据处理线程上锁
     KEY_PROCESS_INSTANCE->LoadSaveLock();
 
@@ -821,27 +827,6 @@ void HybridMgmt::EvictL3StorageKeys(const string& embName, const vector<emb_cach
     cacheManager->EvictL3StorageEmbedding(embName, keys);
 }
 
-int HybridMgmt::GetStepFromPath(const string& loadPath) const
-{
-    regex pattern(SAVE_SPARSE_PATH_PREFIX + "-.*-(\\d+)");
-    smatch match;
-    if (regex_search(loadPath, match, pattern)) {
-        int res = 0;
-        unsigned int minSize = 2;
-        if (match.size() < minSize) {
-            return res;
-        }
-        try {
-            res = stoi(match[1]);
-        } catch (const std::invalid_argument& e) {
-            LOG_ERROR(e.what());
-        } catch (const std::out_of_range& e) {
-            LOG_ERROR(e.what());
-        }
-        return res;
-    }
-    return 0;
-}
 
 /// 通过pyBind在python侧调用，通知hybridMgmt上层即将进行图的执行，需要进行唤醒
 /// \param channelID 通道id
@@ -2232,4 +2217,16 @@ void HybridMgmt::EnqueueSwapInfo(const EmbBaseInfo &info,
     HBMSwapKeyQue[info.name + SWAP_IN_STR].Pushv(swapInKeys);
 
     CheckLookupAddrSuccessDDR();
+}
+
+bool HybridMgmt::IsTrainAndEvalCase()
+{
+    bool isChannelSwitchCase = false;
+    for (auto& i: mgmtEmbInfo) {
+        if (specialProcessStatus[i.name] == ProcessStatus::AFTER_SWITCH_FIRST_BATCH) {
+            isChannelSwitchCase = true;
+            break;
+        }
+    }
+    return alreadyTrainOnce && isChannelSwitchCase;
 }

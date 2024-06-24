@@ -610,6 +610,8 @@ namespace MxRec {
 
     ostream& operator<<(ostream& ss, MxRec::CkptDataType type);
     bool CheckFilePermission(const string& filePath);
+
+    int GetStepFromPath(const string& loadPath);
 } // end namespace MxRec
 
 #define KEY_PROCESS "\033[45m[KeyProcess]\033[0m "
