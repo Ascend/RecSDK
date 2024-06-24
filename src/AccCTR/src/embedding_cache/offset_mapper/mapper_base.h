@@ -706,8 +706,8 @@ private:
                 delete[] bucketPtr;
                 bucketPtr = nullptr;
                 FreeSubMaps();
-                ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR, "memset_s failed... size: " + std::to_string(
-                        bucketsBytes) + ", error code:" + std::to_string(ret));
+                ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR,
+                    "memset_s failed... size: " + std::to_string(bucketsBytes) + ", error code:" + std::to_string(ret));
                 return false;
             }
         }
