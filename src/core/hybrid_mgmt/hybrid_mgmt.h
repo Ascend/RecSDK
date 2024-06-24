@@ -190,8 +190,6 @@ namespace MxRec {
 
         void EvictL3StorageKeys(const string& embName, const vector<emb_cache_key_t>& keys) const;
 
-        int GetStepFromPath(const string& loadPath) const;
-
         void LookUpAddrs(const string &embName, int extEmbeddingSize);
 
         void LookUpSwapAddrs(const std::string &embName, const std::string &swapStr);
@@ -323,6 +321,8 @@ namespace MxRec {
         void EnqueueSwapInfo(const EmbBaseInfo& info,
                              std::pair<vector<uint64_t>, vector<uint64_t>>& swapInKoPair,
                              std::pair<vector<uint64_t>, vector<uint64_t>>& swapOutKoPair);
+
+        bool IsTrainAndEvalCase();
     };
 }
 #endif // MX_REC_EMB_MGMT_H

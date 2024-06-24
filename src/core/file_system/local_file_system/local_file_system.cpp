@@ -124,8 +124,27 @@ ssize_t LocalFileSystem::Write(const string& filePath, vector<vector<float>>& fi
         flattenContent.insert(flattenContent.cend(), vec.cbegin(), vec.cend());
     }
 
-    ssize_t writeBytesNum =
-        write(fd, reinterpret_cast<const char*>(flattenContent.data()), flattenContent.size() * sizeof(float));
+    size_t writeBytesRemain = flattenContent.size() * sizeof(float);
+    size_t writeSize = 0;
+    size_t idx = 0;
+    ssize_t writeBytesNum = 0;
+    auto dumpPtr = reinterpret_cast<const char*>(flattenContent.data());
+
+    while (writeBytesRemain != 0) {
+        if (writeBytesRemain > oneTimeReadWriteLen) {
+            writeSize = oneTimeReadWriteLen;
+        } else {
+            writeSize = writeBytesRemain;
+        }
+        ssize_t res = write(fd, dumpPtr + idx, writeSize);
+        if (res == -1) {
+            close(fd);
+            return res;
+        }
+        writeBytesRemain -= res;
+        idx += res;
+        writeBytesNum += res;
+    }
 
     close(fd);
 

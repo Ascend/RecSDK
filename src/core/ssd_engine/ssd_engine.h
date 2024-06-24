@@ -74,6 +74,9 @@ namespace MxRec {
         shared_ptr<thread> compactThread = nullptr;
 
         void CompactMonitor();
+
+        int loadStep = -1;
+        int saveStep = -1;
     };
 }
 
