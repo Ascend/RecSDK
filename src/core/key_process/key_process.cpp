@@ -57,11 +57,6 @@ bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos
         embInfos[info.name] = info;
         scInfo[info.name] = info.sendCount;
         InitHotEmbTotCount(info, rInfo);
-        if (rankInfo.useDynamicExpansion) {
-            // 动态扩容
-            embeddingTableMap[info.name].Init(info, rInfo, seed);
-            LOG_INFO(KEY_PROCESS "EmbeddingTableMap：{} init success", info.name);
-        }
     }
 
     LOG_INFO(KEY_PROCESS "hot emb count info:{}", MapToString(hotEmbTotCount));
@@ -1111,40 +1106,6 @@ void KeyProcess::Key2Offset(const EmbNameT& embName, KeysT& splitKey, int channe
         throw std::runtime_error("dev cache overflow!");
     }
     LOG_DEBUG("current hbm emb:{}, usage:{}/{} key2OffsetTC({} ms)",
-        embName, maxOffsetTmp, embInfos[embName].devVocabSize, key2OffsetTC.ElapsedMS());
-}
-
-void KeyProcess::Key2OffsetDynamicExpansion(const EmbNameT& embName, KeysT& splitKey, int channel)
-{
-    TimeCost key2OffsetTC;
-    EASY_FUNCTION(profiler::colors::Blue600)
-    std::lock_guard<std::mutex> lk(mut); // lock for PROCESS_THREAD
-    auto& key2Offset = keyOffsetMap[embName];
-    auto& maxOffsetTmp  = maxOffset[embName];
-    auto& curEmbTable = embeddingTableMap[embName]; // empty when not use dynamic expansion
-    for (long& key : splitKey) {
-        if (key == -1) {
-            key = 0;
-            continue;
-        }
-        const auto& iter = key2Offset.find(key);
-        if (iter != key2Offset.end()) {
-            key = iter->second;
-        } else {
-            // 新值
-            if (channel == TRAIN_CHANNEL_ID) {
-#ifndef GTEST
-                int64_t addr = curEmbTable.GetEmbAddress();
-                key2Offset[key] = addr;
-                key = addr;
-#endif
-                maxOffsetTmp++;
-                continue;
-            }
-            key = 0;
-        }
-    }
-    LOG_DEBUG("current expansion emb:{}, usage:{}/{}, key2OffsetTC({} ms)",
         embName, maxOffsetTmp, embInfos[embName].devVocabSize, key2OffsetTC.ElapsedMS());
 }
 
