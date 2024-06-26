@@ -304,25 +304,8 @@ public:
 
         /* allocate buckets for sub-maps */
         for (auto &mSubMap : mSubMaps) {
-            auto tmp = new (std::nothrow) NetHashBucket[bucketCount];
-            if (HM_UNLIKELY(tmp == nullptr)) {
-                FreeSubMaps();
-                ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR,
-                    "Failed to new hash bucket, probably out of memory");
-                return false;
-            }
-
-            /* make physical page and set to zero */
-            auto ret = SafeMemset(tmp, 0, sizeof(NetHashBucket) * bucketCount);
-            if (ret != 0) {
-                delete[] tmp;
-                tmp = nullptr;
-                FreeSubMaps();
-                ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR, "memset_s failed... size: " +
-                std::to_string(sizeof(NetHashBucket) * bucketCount) + ", error code:" + std::to_string(ret));
-                return false;
-            }
-
+            NetHashBucket* tmp;
+            if (!NewAndSetBucket(bucketCount, 0, tmp)) { return false;}
             mSubMap = tmp;
         }
 
@@ -697,22 +680,38 @@ private:
     }
 
     /*
-     * Description: SECUREC_MEM_MAX_LEN of memset_s function is 2GB
-     * Parameter: dest - destination address
+     * Description: allocate buckets and init it
+     * Parameter: bucketCount - the bucket counts
      * Parameter: c - the value to be copied
-     * Parameter: count - copies count bytes of value to dest
+     * Parameter: bucketPtr - pointing at the bucket array which is allocated
+     * NOTES: SECUREC_MEM_MAX_LEN of memset_s function is 2GB
      */
-    int SafeMemset(void* dest, int c, size_t count)
+    bool NewAndSetBucket(const uint32_t& bucketCount, const int& c, NetHashBucket* &bucketPtr)
     {
-        char* destBytePtr = reinterpret_cast<char*>(dest);
-        for (size_t i = 0; i < count; i += MEMSET_S_MAX_SIZE) {
-            size_t bytesOnceSet = (i + MEMSET_S_MAX_SIZE <= count) ? MEMSET_S_MAX_SIZE : (count - i);
+        bucketPtr = new (std::nothrow) NetHashBucket[bucketCount];
+        if (HM_UNLIKELY(bucketPtr == nullptr)) {
+            FreeSubMaps();
+            ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR,
+                                          "Failed to new hash bucket, probably out of memory");
+            return false;
+        }
+
+        /* make physical page and set to zero */
+        size_t bucketsBytes = sizeof(NetHashBucket) * bucketCount;
+        char* destBytePtr = reinterpret_cast<char*>(bucketPtr);
+        for (size_t i = 0; i < bucketsBytes; i += MEMSET_S_MAX_SIZE) {
+            size_t bytesOnceSet = (i + MEMSET_S_MAX_SIZE <= bucketsBytes) ? MEMSET_S_MAX_SIZE : (bucketsBytes - i);
             auto ret = memset_s(destBytePtr + i, bytesOnceSet, c, bytesOnceSet);
             if (ret != 0) {
-                return ret;
+                delete[] bucketPtr;
+                bucketPtr = nullptr;
+                FreeSubMaps();
+                ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR,
+                    "memset_s failed... size: " + std::to_string(bucketsBytes) + ", error code:" + std::to_string(ret));
+                return false;
             }
         }
-        return 0;
+        return true;
     }
 
     void FreeOverFlowedEntries()
