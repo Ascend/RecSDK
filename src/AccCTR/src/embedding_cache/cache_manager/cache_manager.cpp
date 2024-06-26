@@ -40,7 +40,9 @@ int EmbCacheManagerImpl::CreateCacheForTable(const EmbCacheInfo& embCacheInfo,
     }
 
     if (embCacheInfo.vocabSize < embCacheInfo.maxCacheSize) {
-        ExternalLogger::PrintLog(LogLevel::ERROR, "vocabSize must be greater than or equal to maxCacheSize");
+        ExternalLogger::PrintLog(LogLevel::ERROR, "host vocabSize:" + std::to_string(embCacheInfo.vocabSize) +
+        " must be greater than or equal to device vocabSize:" + std::to_string(embCacheInfo.maxCacheSize) +
+        ", please increase [host vocabSize] in [create_table] interface");
         return H_HOST_VOCAB_SIZE_TOO_SMALL;
     }
 
