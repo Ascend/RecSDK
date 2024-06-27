@@ -1259,23 +1259,32 @@ bool KeyProcess::IsGetUniqueKeysEos(const EmbBaseInfo& info, std::chrono::_V2::s
     HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
     auto endTime = std::chrono::system_clock::now();
     
-    // readEmbKey真实的次数是readEmbedBatchId减1
+    // readEmbKey start with 0
     int readEmbKeyBatchId = hybridMgmtBlock->readEmbedBatchId[info.channelId] - 1;
     // 避免eos在keyProcess还未处理完数据时插队到通道前面
     std::chrono::duration<double> elapsedTime = endTime - startTime;
+    // train and eval batch total num
+    int allChannelBatchId = 0;
+    if (info.channelId == EVAL_CHANNEL_ID) {
+        allChannelBatchId = hybridMgmtBlock->evalBatchIdTotal + hybridMgmtBlock->hybridBatchId[TRAIN_CHANNEL_ID] +
+                            hybridMgmtBlock->readEmbedBatchId[info.channelId];
+    } else {
+        allChannelBatchId = hybridMgmtBlock->evalBatchIdTotal + hybridMgmtBlock->readEmbedBatchId[info.channelId];
+    }
     if (info.batchId != 0 && elapsedTime.count() >= timeoutGetUniqueKeysEmpty) {
         LOG_DEBUG("table:{}, channelId:{}, isNeedSendEos:{}, readEmbKeyBatchId:{}, batch:{}, h2dNextBatchId:{},"
-                  " lookUpSwapInAddrsPushId:{}", info.name, info.channelId, isNeedSendEos[info.channelId],
-                  readEmbKeyBatchId, info.batchId, hybridMgmtBlock->h2dNextBatchId[info.name],
-                  lookUpSwapInAddrsPushId[info.name]);
+                  " lookUpSwapInAddrsPushId:{}, allChannelBatchId:{}", info.name, info.channelId,
+                  isNeedSendEos[info.channelId], readEmbKeyBatchId, info.batchId,
+                  hybridMgmtBlock->h2dNextBatchId[info.name], lookUpSwapInAddrsPushId[info.name], allChannelBatchId);
         startTime = std::chrono::system_clock::now();
     }
     // Check '>= readEmbedBatchIdAll' condition to avoid send eos before handle all batch data from readEmbKey Op.
     if (isNeedSendEos[info.channelId] && readEmbKeyBatchId < info.batchId &&
         hybridMgmtBlock->h2dNextBatchId[info.name] == lookUpSwapInAddrsPushId[info.name] &&
-        hybridMgmtBlock->h2dNextBatchId[info.name] >= hybridMgmtBlock->readEmbedBatchIdAll) {
-        LOG_INFO("table:{}, channelId:{} batchId:{}, GetUniqueKeys eos",
-                 info.name, info.channelId, info.batchId);
+        hybridMgmtBlock->h2dNextBatchId[info.name] >= allChannelBatchId) {
+        LOG_INFO("table:{}, channelId:{} batchId:{}, GetUniqueKeys eos, h2dNextBatchId:{}, allChannelBatchId:{}",
+                 info.name, info.channelId, info.batchId, hybridMgmtBlock->h2dNextBatchId[info.name],
+                 allChannelBatchId);
         return true;
     }
     LOG_TRACE("getting uniqueKeys failed, table:{}, channel:{}, mgmt batchId:{}, readEmbKey batchId:{}, list is empty",
