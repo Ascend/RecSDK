@@ -174,6 +174,9 @@ void HybridMgmtBlock::ResetAll(int channelId)
     pythonBatchId[channelId] = 0;
     hybridBatchId[channelId] = 0;
     isBlock[channelId] = false;
+    if (channelId == EVAL_CHANNEL_ID) {
+        evalBatchIdTotal += readEmbedBatchId[channelId];
+    }
 
     LOG_DEBUG(HYBRID_BLOCKING + "after reset block status,"
                                 " channelId:{}, pythonBatchId:{}, readEmbedBatchId:{}, hybridBatchId:{}",
@@ -269,10 +272,4 @@ bool HybridMgmtBlock::IsNeedWaitSave()
 void HybridMgmtBlock::FinishSave()
 {
     finishSave = true;
-}
-
-void HybridMgmtBlock::IncrementReadEmbBatchId(const int channelId)
-{
-    this->readEmbedBatchId[channelId] += 1;
-    this->readEmbedBatchIdAll += 1;
 }
