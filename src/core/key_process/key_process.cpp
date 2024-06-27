@@ -1259,7 +1259,7 @@ bool KeyProcess::IsGetUniqueKeysEos(const EmbBaseInfo& info, std::chrono::_V2::s
     HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
     auto endTime = std::chrono::system_clock::now();
     
-    // readEmbKey真实的次数是readEmbedBatchId减1
+    // readEmbKey start with 0
     int readEmbKeyBatchId = hybridMgmtBlock->readEmbedBatchId[info.channelId] - 1;
     // 避免eos在keyProcess还未处理完数据时插队到通道前面
     std::chrono::duration<double> elapsedTime = endTime - startTime;
@@ -1267,9 +1267,9 @@ bool KeyProcess::IsGetUniqueKeysEos(const EmbBaseInfo& info, std::chrono::_V2::s
     int allChannelBatchId = 0;
     if (info.channelId == EVAL_CHANNEL_ID) {
         allChannelBatchId = hybridMgmtBlock->evalBatchIdTotal + hybridMgmtBlock->hybridBatchId[TRAIN_CHANNEL_ID] +
-                            readEmbKeyBatchId;
+                            hybridMgmtBlock->readEmbedBatchId[info.channelId];
     } else {
-        allChannelBatchId = hybridMgmtBlock->evalBatchIdTotal + readEmbKeyBatchId;
+        allChannelBatchId = hybridMgmtBlock->evalBatchIdTotal + hybridMgmtBlock->readEmbedBatchId[info.channelId];
     }
     if (info.batchId != 0 && elapsedTime.count() >= timeoutGetUniqueKeysEmpty) {
         LOG_DEBUG("table:{}, channelId:{}, isNeedSendEos:{}, readEmbKeyBatchId:{}, batch:{}, h2dNextBatchId:{},"
@@ -1283,7 +1283,8 @@ bool KeyProcess::IsGetUniqueKeysEos(const EmbBaseInfo& info, std::chrono::_V2::s
         hybridMgmtBlock->h2dNextBatchId[info.name] == lookUpSwapInAddrsPushId[info.name] &&
         hybridMgmtBlock->h2dNextBatchId[info.name] >= allChannelBatchId) {
         LOG_INFO("table:{}, channelId:{} batchId:{}, GetUniqueKeys eos, h2dNextBatchId:{}, allChannelBatchId:{}",
-                 info.name, info.channelId, info.batchId, hybridMgmtBlock->h2dNextBatchId[info.name], allChannelBatchId);
+                 info.name, info.channelId, info.batchId, hybridMgmtBlock->h2dNextBatchId[info.name],
+                 allChannelBatchId);
         return true;
     }
     LOG_TRACE("getting uniqueKeys failed, table:{}, channel:{}, mgmt batchId:{}, readEmbKey batchId:{}, list is empty",
