@@ -78,14 +78,14 @@ def check_emb_lookup_params(table_params: dict, feature_spec: Union[tf.Tensor, F
     if slice_device_vocabulary_size < send_count * rank_size:
         raise ValueError(f"Given device_vocabulary_size was too small for table '{table_name}', "
                          f"in which slice_device_vocabulary_size was {slice_device_vocabulary_size} "
-                         f"and send_count({send_count}) * rank_size({rank_size}) was "
-                         f"{send_count * rank_size}.")
+                         f"and it must be bigger than send_count({send_count}) * rank_size({rank_size}): "
+                         f"{send_count * rank_size}, please increase [device vocabSize] in [create_table] interface")
 
     if slice_host_vocabulary_size < send_count * rank_size:
         raise ValueError(f"Given host_vocabulary_size was too small for table '{table_name}', "
                          f"in which slice_host_vocabulary_size was {slice_host_vocabulary_size} "
-                         f"and send_count({send_count}) * rank_size({rank_size}) was "
-                         f"{send_count * rank_size}.")
+                         f"and it must be bigger than send_count({send_count}) * rank_size({rank_size}): "
+                         f"{send_count * rank_size}, please increase [host vocabSize] in [create_table] interface")
 
 
 def check_emb_multi_lookup_times(lookup_times: int, table_name: str):
