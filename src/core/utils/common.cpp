@@ -182,7 +182,7 @@ namespace MxRec {
         try {
             res = stoi(match[1]);
         } catch (const std::invalid_argument& e) {
-            LOG_ERROR(e.what());
+            LOG_ERROR("argument is invalid: {}", e.what());
         }
         return res;
     }
