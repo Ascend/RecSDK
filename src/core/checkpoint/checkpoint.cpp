@@ -90,17 +90,18 @@ void Checkpoint::SetDataHandler(CkptData& ckptData)
 
 void Checkpoint::SetDataHandler(const vector<CkptFeatureType>& featureTypes)
 {
-    map<CkptFeatureType, function<void()>> setCkptMap{{CkptFeatureType::FEAT_ADMIT_N_EVICT,
-                                                       [this] {
-                                                           dataHandlers.push_back(make_unique<FeatAdmitNEvictCkpt>());
-                                                       }},
-                                                      {CkptFeatureType::DDR_KEY_FREQ_MAP,
-                                                       [this] {
-                                                           dataHandlers.push_back(make_unique<KeyFreqMapCkpt>());
-                                                       }},
-                                                      {CkptFeatureType::KEY_COUNT_MAP, [this] {
-                                                           dataHandlers.push_back(make_unique<KeyCountMapCkpt>());
-                                                       }}};
+    auto featAdmitNEvictHandler = [this] {
+        dataHandlers.push_back(make_unique<FeatAdmitNEvictCkpt>());
+    };
+    auto ddrKeyFreqMapHandler = [this] {
+        dataHandlers.push_back(make_unique<KeyFreqMapCkpt>());
+    };
+    auto keyCountMapHandler = [this] {
+        dataHandlers.push_back(make_unique<KeyCountMapCkpt>());
+    };
+    map<CkptFeatureType, function<void()>> setCkptMap{{CkptFeatureType::FEAT_ADMIT_N_EVICT, featAdmitNEvictHandler},
+                                                      {CkptFeatureType::DDR_KEY_FREQ_MAP, ddrKeyFreqMapHandler},
+                                                      {CkptFeatureType::KEY_COUNT_MAP, keyCountMapHandler}};
 
     for (const auto& featureType : featureTypes) {
         setCkptMap.at(featureType)();
@@ -341,7 +342,8 @@ void Checkpoint::ReadStream(CkptTransData& transData, const string& dataDir, Ckp
     if (readBytesNum != datasetSize) {
         throw runtime_error(StringFormat("Error: Load data failed. data type: %s. "
                                          "Expected to read %d bytes, but actually read %d bytes to file %s.",
-                                         CkptDataTypeName(dataType).c_str(), datasetSize, readBytesNum, dataDir.c_str()));
+                                         CkptDataTypeName(dataType).c_str(), datasetSize, readBytesNum,
+                                         dataDir.c_str()));
     }
 }
 
