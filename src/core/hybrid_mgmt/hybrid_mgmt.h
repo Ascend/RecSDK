@@ -133,6 +133,10 @@ namespace MxRec {
 
         void ProcessEmbInfoL3Storage(const EmbBaseInfo& info, bool& remainBatchOut);
 
+        void BackUpTrainStatus();
+
+        void RecoverTrainStatus();
+
     GTEST_PRIVATE:
         bool mutexDestroy { false };
         std::mutex lookUpAndSendBatchIdMtx;
@@ -225,6 +229,7 @@ namespace MxRec {
         bool isLoad { false };
         bool isInitialized { false };
         bool alreadyTrainOnce = false;  // 用于判断是否为predict模式
+        bool isBackUpTrainStatus = false; // 用于判断当前是否已经备份了train的状态
         map<string, int> lookUpSwapInAddrsPushId;  // 用于处理eos场景，当消费者追上生产者且长时间无上游数据，会触发eos
         map<string, ProcessStatus> specialProcessStatus;
 

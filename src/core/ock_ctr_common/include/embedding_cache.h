@@ -315,6 +315,20 @@ public:
     virtual int LoadEmbTableInfos(std::string tableName, const std::vector<uint64_t>& keys,
                                   const std::vector<std::vector<float>>& embeddings,
                                   const std::vector<std::vector<float>>& optimizerSlots) = 0;
+
+    /* *
+     * train通道切换为eval, 备份当前表的offsetMapper对象, 存储下当前train对应的devices上key的状态
+     * @Param tableName: 需要加载信息的table名字
+     * @Return errorCode
+     */
+     virtual int BackUpTrainStatus(std::string tableName) = 0;
+
+    /* *
+     * eval通道切换为train, 将当前表的offsetMapper对象还原成备份的train对应的的device上key的状态
+     * @Param tableName: 需要加载信息的table名字
+     * @Return errorCode
+     */
+     virtual int RecoverTrainStatus(std::string tableName) = 0;
 };
 }  // namespace EmbCache
 

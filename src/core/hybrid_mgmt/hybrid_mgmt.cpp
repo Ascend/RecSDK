@@ -221,6 +221,7 @@ bool HybridMgmt::Load(const string& loadPath, vector<string> warmStartTables)
     Checkpoint loadCkpt;
     vector<CkptFeatureType> loadFeatures;
     SetFeatureTypeForLoad(loadFeatures);
+    BackUpTrainStatus();
 
     if (warmStartTables.size() == 0) {
         EmbeddingMgmt::Instance()->Load(loadPath, trainKeysSet);
@@ -499,6 +500,8 @@ void HybridMgmt::EvalTask(TaskType type)
             cvCheckSave.wait(checkSaveLocker, [this] {
                 return !hybridMgmtBlock->IsNeedWaitSave() || mutexDestroy;
             });
+            // 在唤醒train的数据处理进程之前，需要将备份的train状态还原
+            RecoverTrainStatus();
             hybridMgmtBlock->Wake(TRAIN_CHANNEL_ID);
             LOG_DEBUG("wake TrainTask");
             hybridMgmtBlock->DoBlock(channelId);
@@ -2229,4 +2232,28 @@ bool HybridMgmt::IsTrainAndEvalCase()
         }
     }
     return alreadyTrainOnce && isChannelSwitchCase;
+}
+
+void HybridMgmt::BackUpTrainStatus()
+{
+    int channelID = TRAIN_CHANNEL_ID;
+    int& theTrainBatchId = hybridMgmtBlock->hybridBatchId[channelID];
+    //续训load、predict模式下的load不需要对train的状态进行备份
+    if (theTrainBatchId==0) {
+        return;
+    }
+    // train and eval模式下，train切换为eval之后
+    // eval的load需要线备份原有的相关状态， HBM非扩容模式需要备份keyOffsetMap, DDR模式需要备份offsetMapper对象
+    LOG_INFO("On Estimator train and eval mode, start to backup train status, "
+             "current train batchId: {} .", theTrainBatchId);
+    EmbeddingMgmt::Instance()->BackUpTrainStatusBeforeLoad();
+    isBackUpTrainStatus = true;
+}
+
+void HybridMgmt::RecoverTrainStatus()
+{
+    if (isBackUpTrainStatus) {
+        EmbeddingMgmt::Instance()->RecoverTrainStatus();
+    }
+    isBackUpTrainStatus = false;
 }

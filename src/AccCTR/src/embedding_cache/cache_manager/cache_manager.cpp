@@ -317,6 +317,33 @@ int EmbCacheManagerImpl::LoadEmbTableInfos(std::string tableName, const std::vec
     return H_OK;
 }
 
+int EmbCacheManagerImpl::BackUpTrainStatus(std:string tableName)
+{
+    int checkTableNameRet = CheckValidTableName(tableName);
+    if (checkTableNameRet != H_OK) {
+        return checkTableNameRet;
+    }
+
+    auto om = offsetMappersBackUp.find(tableName);
+    if (om != offsetMappersBackUp.end()) {
+        offsetMappersBackUp[tableName] = offsetMappers[tableName];
+    } else{
+        offsetMappersBackUp[tableName].Initialize(1000, 1000);
+        offsetMappersBackUp[tableName] = offsetMappers[tableName];
+    }
+    return H_OK;
+}
+
+int EmbCacheManagerImpl::RecoverTrainStatus(std:string tableName)
+{
+    int checkTableNameRet = CheckValidTableName(tableName);
+    if (checkTableNameRet != H_OK) {
+        return checkTableNameRet;
+    }
+    offsetMappers[tableName] = offsetMappersBackUp[tableName];
+    return H_OK;
+}
+
 void EmbCacheManagerImpl::Destroy()
 {
     for (auto it = offsetMappers.begin(); it != offsetMappers.end(); it++) {

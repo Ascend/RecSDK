@@ -39,6 +39,10 @@ public:
 
     void Save(const string& savePath);
 
+    void BackUpTrainStatus();
+
+    void RecoverTrainStatus();
+
     vector<int64_t> GetDeviceOffset();
 
 GTEST_PRIVATE:
