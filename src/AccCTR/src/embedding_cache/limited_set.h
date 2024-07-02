@@ -47,6 +47,24 @@ public:
         delete tail;
     }
 
+    // 拷贝构造函数
+    LimitedSet(const LimitedSet& other): head(new Node(-1)), tail(new Node(-1))
+    {
+        nodes.resize(other.nodes.size());
+        for (auto &node: nodes) {
+            node = new Node(-1);
+        }
+
+        // 初始化头尾节点
+        head->next = tail;
+        tail->prev = head;
+
+        // 遍历原vector的每一个节点并复制
+        for (Node* node = other.head->next; node != other.tail; node = node->next) {
+            insert(node->value);
+        }
+    }
+
     void insert(uint64_t value)
     {
         if (nodes[value]->value == value) {

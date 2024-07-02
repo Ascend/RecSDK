@@ -376,3 +376,13 @@ void EmbeddingDDR::SetEmbCache(ock::ctr::EmbCacheManagerPtr embCache)
 {
     this->embCache = embCache;
 }
+
+void EmbeddingDDR::BackUpTrainStatus()
+{
+    embCache->BackUpTrainStatus(name);
+}
+
+void EmbeddingDDR::RecoverTrainStatus()
+{
+    embCache->RecoverTrainStatus(name);
+}

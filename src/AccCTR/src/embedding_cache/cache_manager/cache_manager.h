@@ -73,11 +73,15 @@ public:
                           const std::vector<std::vector<float>>& embeddings,
                           const std::vector<std::vector<float>>& optimizerSlots) override;
 
+    int BackUpTrainStatus(std:string tableName) override;
+    int RecoverTrainStatus(std::string tableName) override;
+
     uint32_t GetUsage(const std::string& tableName) override;
 
 private:
     std::map<std::string, EmbCacheInfo> embCacheInfos;
     std::map<std::string, OffsetMapper> offsetMappers;
+    std::map<std::string, OffsetMapper> offsetMappersBackUp;
     std::map<std::string, EmbLocalTable> embTables;
 
     int CheckValidTableName(const std::string& tableName);

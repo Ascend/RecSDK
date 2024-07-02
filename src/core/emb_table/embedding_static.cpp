@@ -160,11 +160,23 @@ void EmbeddingStatic::LoadKey(const string& savePath)
     }
 
     maxOffset = keyOffsetMap.size();
-
     free(static_cast<void*>(buf));
 }
 
 vector<int64_t> EmbeddingStatic::GetDeviceOffset()
 {
     return deviceOffset;
+}
+
+void EmbeddingStatic::BackUpTrainStatus()
+{
+    keyOffsetMapBackUp = keyOffsetMap;
+}
+
+void EmbeddingStatic::RecoverTrainStatus()
+{
+    if (keyOffsetMapBackUp.size()!=0) {
+        keyOffsetMap = keyOffsetMapBackUp;
+        keyOffsetMapBackUp.clear();
+    }
 }
