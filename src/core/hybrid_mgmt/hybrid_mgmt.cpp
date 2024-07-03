@@ -962,8 +962,8 @@ void HybridMgmt::LookUpAndRemoveAddrs(const EmbTaskInfo &info)
 
     lookUpFunc(DDRSwapKeyQue, DDRSwapAddrsQue, SWAP_OUT_STR, ddrSwapKeyQueName);
     lookUpFunc(DDRSwapKeyQue, DDRSwapAddrsQue, SWAP_IN_STR, ddrSwapKeyQueName);
-    lookUpFunc(HBMSwapKeyQue, tableToQueueLookup, SWAP_IN_STR, hbmSwapKeyQueName);
-    lookUpFunc(HBMSwapKeyQue, tableToQueueLookup, SWAP_OUT_STR, hbmSwapKeyQueName);
+    lookUpFunc(HBMSwapKeyQue, HBMSwapAddrsQue, SWAP_IN_STR, hbmSwapKeyQueName);
+    lookUpFunc(HBMSwapKeyQue, HBMSwapAddrsQue, SWAP_OUT_STR, hbmSwapKeyQueName);
     lookUpSwapInAddrsPushId[info.name]++;
 }
 
@@ -987,7 +987,7 @@ void HybridMgmt::LookUpSwapAddrs(const string &embName, const string &swapStr)
         LOG_DEBUG(
             "table:{}, swapStr:{}, keys.size:{}, addrs.size:{}, pushId:{}, lookupAddrsTC(ms):{}",
             embName, swapStr, keys.size(), addrs.size(), id, lookupAddrsTC.ElapsedMS());
-        tableToQueueLookup[swapName].Pushv(addrs);
+        HBMSwapAddrsQue[swapName].Pushv(addrs);
         if (swapStr==SWAP_IN_STR) {
             lookUpSwapInAddrsPushId[embName]++;
             LOG_DEBUG("LookUpSwapAddrs, table:{}, pushId:{}, lookUpSwapInAddrsPushId:{}",
@@ -1258,8 +1258,8 @@ void HybridMgmt::InitDataPipelineForDDR(const string &embName)
     // 初始化公共队列
     HBMSwapKeyQue[embName+SWAP_IN_STR];
     HBMSwapKeyQue[embName+SWAP_OUT_STR];
-    tableToQueueLookup[embName+SWAP_IN_STR];
-    tableToQueueLookup[embName+SWAP_OUT_STR];
+    HBMSwapAddrsQue[embName + SWAP_IN_STR];
+    HBMSwapAddrsQue[embName + SWAP_OUT_STR];
 
     // 初始化lookup线程
     lookUpSwapInAddrsPushId[embName];  // 此处初始化，避免多线程竞争导致计数错误
@@ -1276,13 +1276,13 @@ void HybridMgmt::InitDataPipelineForL3Storage(const string &embName, int extEmbe
     // 初始化公共队列
     HBMSwapKeyQue[embName+SWAP_IN_STR];
     HBMSwapKeyQue[embName+SWAP_OUT_STR];
-    tableToQueueLookup[embName+SWAP_IN_STR];
-    tableToQueueLookup[embName+SWAP_OUT_STR];
+    HBMSwapAddrsQue[embName + SWAP_IN_STR];
+    HBMSwapAddrsQue[embName + SWAP_OUT_STR];
 
     HBMSwapKeyQue[embName + ADDR_STR];
-    SwapOut2L3StorageKeyQue[embName + SWAP_IN_STR];
-    SwapOut2L3StorageKeyQue[embName + ADDR_STR];
-    SwapOut2L3StorageKeyQue[embName + SWAP_OUT_STR];
+    HBMSwapKeyForL3StorageQue[embName + SWAP_IN_STR];
+    HBMSwapKeyForL3StorageQue[embName + ADDR_STR];
+    HBMSwapKeyForL3StorageQue[embName + SWAP_OUT_STR];
 
     DDRSwapKeyQue[embName + SWAP_OUT_STR];
     DDRSwapKeyQue[embName + SWAP_IN_STR];
@@ -1316,9 +1316,8 @@ void HybridMgmt::InitEmbeddingCache(const vector<EmbInfo>& embInfos)
                  embInfo.name, embInfo.hostVocabSize, embInfo.extEmbeddingSize, embInfo.devVocabSize);
         EmbCache::EmbCacheInfo embCacheInfo(embInfo.name, embInfo.hostVocabSize, embInfo.embeddingSize,
                                             embInfo.extEmbeddingSize, embInfo.devVocabSize);
-        size_t prefill = std::max(embInfo.hostVocabSize/10, 2 * embInfo.devVocabSize);
         int ret = embCache->CreateCacheForTable(
-            embCacheInfo, embInfo.initializeInfos, INVALID_KEY_VALUE, prefill, EMBEDDING_THREAD_NUM);
+            embCacheInfo, embInfo.initializeInfos, INVALID_KEY_VALUE, embInfo.hostVocabSize, EMBEDDING_THREAD_NUM);
         if (ret != H_OK) {
             throw runtime_error(embInfo.name + "create cache for table failed, error code: " + std::to_string(ret));
         }
@@ -1327,13 +1326,13 @@ void HybridMgmt::InitEmbeddingCache(const vector<EmbInfo>& embInfos)
 
 void HybridMgmt::JoinEmbeddingCacheThread()
 {
-    for (auto &p : tableToQueueLookup) {
+    for (auto &p : HBMSwapAddrsQue) {
         p.second.DestroyQueue();
     }
     for (auto &p : HBMSwapKeyQue) {
         p.second.DestroyQueue();
     }
-    for (auto &p : SwapOut2L3StorageKeyQue) {
+    for (auto &p : HBMSwapKeyForL3StorageQue) {
         p.second.DestroyQueue();
     }
     for (auto &p : DDRSwapKeyQue) {
@@ -1439,7 +1438,7 @@ bool HybridMgmt::EmbeddingReceiveDDR(const EmbTaskInfo& info, float*& ptr, vecto
     }
     TimeCost EmbeddingRecvTC = TimeCost();
 
-    swapOutAddrs = tableToQueueLookup[info.name+SWAP_OUT_STR].WaitAndPop();
+    swapOutAddrs = HBMSwapAddrsQue[info.name + SWAP_OUT_STR].WaitAndPop();
     if (!isRunning) {
         return false;
     }
@@ -1617,7 +1616,7 @@ bool HybridMgmt::EmbeddingReceiveL3Storage(const EmbTaskInfo &info, float *&ptr,
     }
     TimeCost EmbeddingRecvTC = TimeCost();
     // finish时会pop空vector，因此需要额外判定isRunning
-    swapOutAddrs = tableToQueueLookup[info.name+SWAP_OUT_STR].WaitAndPop();
+    swapOutAddrs = HBMSwapAddrsQue[info.name + SWAP_OUT_STR].WaitAndPop();
     if (!isRunning) {
         return false;
     }
@@ -1681,8 +1680,8 @@ void HybridMgmt::EmbeddingUpdateL3Storage(const EmbTaskInfo& info, float *embPtr
 
     // L3Storage更新
     TimeCost L3StorageUpdateTC = TimeCost();
-    std::vector<uint64_t> swapOutL3StorageAddrOffs = SwapOut2L3StorageKeyQue[info.name + ADDR_STR].WaitAndPop();
-    std::vector<uint64_t> swapOutL3StorageKeys = SwapOut2L3StorageKeyQue[info.name + SWAP_OUT_STR].WaitAndPop();
+    std::vector<uint64_t> swapOutL3StorageAddrOffs = HBMSwapKeyForL3StorageQue[info.name + ADDR_STR].WaitAndPop();
+    std::vector<uint64_t> swapOutL3StorageKeys = HBMSwapKeyForL3StorageQue[info.name + SWAP_OUT_STR].WaitAndPop();
     if (!isRunning) {
         return;
     }
@@ -1874,8 +1873,8 @@ void HybridMgmt::HandleFirstBatchCaseL3Storage(const EmbBaseInfo& info,
     HBMSwapKeyQue[info.name + SWAP_IN_STR].Pushv(swapInKoPair.first);
 
     // HBM->L3Storage
-    SwapOut2L3StorageKeyQue[info.name + SWAP_OUT_STR].Pushv(emptySwapOutL3StorageKeys);
-    SwapOut2L3StorageKeyQue[info.name + ADDR_STR].Pushv(emptySwapOutL3StorageAddrOff);
+    HBMSwapKeyForL3StorageQue[info.name + SWAP_OUT_STR].Pushv(emptySwapOutL3StorageKeys);
+    HBMSwapKeyForL3StorageQue[info.name + ADDR_STR].Pushv(emptySwapOutL3StorageAddrOff);
 }
 
 void HybridMgmt::HandleDataSwapForL3Storage(const EmbBaseInfo& info,
@@ -1888,18 +1887,18 @@ void HybridMgmt::HandleDataSwapForL3Storage(const EmbBaseInfo& info,
     LOG_DEBUG("ProcessSwapInKeysTC(ms):{} ", ProcessSwapInKeysTC.ElapsedMS());
 
     TimeCost ProcessSwapOutKeysTC;
-    SwapOutInfo swapInfo;
-    cacheManager->ProcessSwapOutKeys(info.name, swapOutKeys, swapInfo);
+    HBMSwapOutInfo hbmSwapInfo;
+    cacheManager->ProcessSwapOutKeys(info.name, swapOutKeys, hbmSwapInfo);
     LOG_DEBUG("ProcessSwapOutKeysTC(ms):{} ", ProcessSwapOutKeysTC.ElapsedMS());
 
     LOG_DEBUG("table:{}, batchId:{}, channelId:{}, swapInSize:{}, swapOutSize:{}",
               info.name, info.batchId, info.channelId, swapInKeys.size(), swapOutKeys.size());
-    LOG_DEBUG("table:{}, batchId:{}, channelId:{}, swapOutDDRKeys:{}, swapOutDDRAddrOffs:{}, "
-              "swapOutL3StorageKeys:{}, swapOutL3StorageAddrOff:{}",
-              info.name, info.batchId, info.channelId, swapInfo.swapOutDDRKeys.size(),
-              swapInfo.swapOutDDRAddrOffs.size(), swapInfo.swapOutL3StorageKeys.size(),
-              swapInfo.swapOutL3StorageAddrOffs.size());
-    LOG_DEBUG("table:{}, batchId:{}, channelId:{}, DDRToL3StorageKeys:{}, L3StorageToDDRKeys:{}",
+    LOG_DEBUG("table:{}, batchId:{}, channelId:{}, swap out, HBM2DDR Keys:{}, HBM2DDR AddrOffs:{}, "
+              "HBM2L3Storage Keys:{}, HBM2L3Storage AddrOff:{}",
+              info.name, info.batchId, info.channelId, hbmSwapInfo.swapOutDDRKeys.size(),
+              hbmSwapInfo.swapOutDDRAddrOffs.size(), hbmSwapInfo.swapOutL3StorageKeys.size(),
+              hbmSwapInfo.swapOutL3StorageAddrOffs.size());
+    LOG_DEBUG("table:{}, batchId:{}, channelId:{}, DDR2L3Storage Keys:{}, L3Storage2DDR Keys:{}",
               info.name, info.batchId, info.channelId, DDRToL3StorageKeys.size(), L3StorageToDDRKeys.size());
 
     auto DDRToL3StorageKeysForL3S = DDRToL3StorageKeys;
@@ -1912,18 +1911,18 @@ void HybridMgmt::HandleDataSwapForL3Storage(const EmbBaseInfo& info,
     DDRSwapKeyForL3StorageQue[info.name + SWAP_IN_STR].Pushv(L3StorageToDDRKeysForL3S);
 
     // HBM<->DDR
-    HBMSwapKeyQue[info.name + SWAP_OUT_STR].Pushv(swapInfo.swapOutDDRKeys);
-    HBMSwapKeyQue[info.name + ADDR_STR].Pushv(swapInfo.swapOutDDRAddrOffs);
+    HBMSwapKeyQue[info.name + SWAP_OUT_STR].Pushv(hbmSwapInfo.swapOutDDRKeys);
+    HBMSwapKeyQue[info.name + ADDR_STR].Pushv(hbmSwapInfo.swapOutDDRAddrOffs);
     HBMSwapKeyQue[info.name + SWAP_IN_STR].Pushv(swapInKeys);
 
     // HBM->L3Storage
-    SwapOut2L3StorageKeyQue[info.name + SWAP_OUT_STR].Pushv(swapInfo.swapOutL3StorageKeys);
-    SwapOut2L3StorageKeyQue[info.name + ADDR_STR].Pushv(swapInfo.swapOutL3StorageAddrOffs);
+    HBMSwapKeyForL3StorageQue[info.name + SWAP_OUT_STR].Pushv(hbmSwapInfo.swapOutL3StorageKeys);
+    HBMSwapKeyForL3StorageQue[info.name + ADDR_STR].Pushv(hbmSwapInfo.swapOutL3StorageAddrOffs);
 }
 
 bool HybridMgmt::BuildH2DEmbedding(const EmbTaskInfo &info, vector<Tensor> &h2dEmb)
 {
-    std::vector<float*> swapInAddrs = tableToQueueLookup[info.name+SWAP_IN_STR].WaitAndPop();
+    std::vector<float*> swapInAddrs = HBMSwapAddrsQue[info.name + SWAP_IN_STR].WaitAndPop();
     if (!isRunning) {
         return false;
     }
