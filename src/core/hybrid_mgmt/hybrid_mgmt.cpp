@@ -1142,8 +1142,6 @@ void HybridMgmt::EmbeddingReceiveAndUpdateL3Storage(int batchId, int index, cons
         .extEmbeddingSize=embInfo.extEmbeddingSize,
         .name=embInfo.name
     };
-    // host swap out need to be executed before lookup
-    LookUpAndRemoveAddrs(info);
 
     float* ptr = nullptr;
     vector<float*> swapOutAddrs;
@@ -1614,6 +1612,9 @@ bool HybridMgmt::EmbeddingReceiveL3Storage(const EmbTaskInfo &info, float *&ptr,
     if (!isRunning) {
         return false;
     }
+    // DDR swap out key need to be removed
+    LookUpAndRemoveAddrs(info);
+
     TimeCost EmbeddingRecvTC = TimeCost();
     // finish时会pop空vector，因此需要额外判定isRunning
     swapOutAddrs = HBMSwapAddrsQue[info.name + SWAP_OUT_STR].WaitAndPop();
