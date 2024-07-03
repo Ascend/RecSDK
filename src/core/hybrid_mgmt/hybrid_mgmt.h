@@ -159,21 +159,20 @@ namespace MxRec {
         std::vector<std::future<void>> lookUpSwapInAddrsThreads;
 
         std::map<std::string, TaskQueue<std::vector<uint64_t>>> HBMSwapKeyQue;
-        std::map<std::string, TaskQueue<std::vector<uint64_t>>> SwapOut2L3StorageKeyQue;
+        std::map<std::string, TaskQueue<std::vector<uint64_t>>> HBMSwapKeyForL3StorageQue;
         std::map<std::string, TaskQueue<std::vector<uint64_t>>> DDRSwapKeyQue;
         std::map<std::string, TaskQueue<std::vector<uint64_t>>> DDRSwapKeyForL3StorageQue;
+        std::map<std::string, TaskQueue<std::vector<float *>>> HBMSwapAddrsQue;
         std::map<std::string, TaskQueue<std::vector<float *>>> DDRSwapAddrsQue;
 
         std::mutex evictMut;
 
         std::map<std::string, std::unordered_set<uint64_t>> trainKeysSet;
-
         const string SWAP_IN_STR = "SwapIn";
         const string SWAP_OUT_STR = "SwapOut";
-        const string ADDR_STR = "Addr";
 
+        const string ADDR_STR = "Addr";
         ock::ctr::EmbCacheManagerPtr embCache = nullptr;
-        std::map<std::string, TaskQueue<std::vector<float *>>> tableToQueueLookup;
         std::map<std::string, std::vector<uint64_t>> lastSwapInPosMap {};
         std::map<std::string, std::vector<std::vector<uint64_t>>> trainTestSwitchInfoStore {};
         std::atomic<bool> lookupAddrSuccess {true};

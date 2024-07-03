@@ -235,7 +235,7 @@ void EmbeddingDDR::SyncLatestEmbedding()
         }
     } else {
         // 在保存之前先更新ddr和ssd的embedding
-        SwapOutInfo info;
+        HBMSwapOutInfo info;
         cacheManager_->ProcessSwapOutKeys(name, swapOutKeys, info);
         vector<float*> swapOutAddrs;
         rc = embCache->EmbeddingLookupAddrs(name, info.swapOutDDRKeys, swapOutAddrs);
