@@ -157,7 +157,6 @@ namespace MxRec {
         std::vector<std::thread> EmbeddingReceiveAndUpdateThreadPool;
         std::vector<std::future<void>> lookUpSwapOutAddrsThreads;
         std::vector<std::future<void>> lookUpSwapInAddrsThreads;
-        std::vector<std::future<void>> lookUpThreads;
 
         std::map<std::string, TaskQueue<std::vector<uint64_t>>> HBMSwapKeyQue;
         std::map<std::string, TaskQueue<std::vector<uint64_t>>> SwapOut2L3StorageKeyQue;
@@ -190,9 +189,9 @@ namespace MxRec {
 
         void EvictL3StorageKeys(const string& embName, const vector<emb_cache_key_t>& keys) const;
 
-        void LookUpAddrs(const string &embName, int extEmbeddingSize);
+        void LookUpAndRemoveAddrs(const EmbTaskInfo &info);  // L3Storage, synchronous
 
-        void LookUpSwapAddrs(const std::string &embName, const std::string &swapStr);
+        void LookUpSwapAddrs(const std::string &embName, const std::string &swapStr);  // DDR, asynchronous
 
         void EmbeddingTask();
 
@@ -311,8 +310,6 @@ namespace MxRec {
                                                  std::pair<vector<uint64_t>, vector<uint64_t>>& swapOutKoPair);
 
         void CheckLookupAddrSuccessDDR();
-
-        void CheckLookupAddrSuccessL3Storage();
 
         void GetSwapPairsAndKey2Offset(const EmbBaseInfo& info, vector<uint64_t> &uniqueKeys,
                                        std::pair<vector<uint64_t>, vector<uint64_t>>& swapInKoPair,
