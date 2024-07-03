@@ -181,7 +181,7 @@ int64_t CacheManager::GetTableUsage(const string& tableName)
 }
 
 void CacheManager::ProcessSwapOutKeys(const string& tableName, const vector<emb_cache_key_t>& swapOutKeys,
-                                      SwapOutInfo& info)
+                                      HBMSwapOutInfo& info)
 {
     auto& swapOutDDRKeys = info.swapOutDDRKeys;
     auto& swapOutDDRAddrOffs = info.swapOutDDRAddrOffs;
