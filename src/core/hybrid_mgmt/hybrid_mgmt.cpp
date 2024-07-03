@@ -918,28 +918,27 @@ void HybridMgmt::SetOptimizerInfo(const string& embName, OptimizerInfo optimInfo
     EmbeddingMgmt::Instance()->SetOptimizerInfo(embName, optimInfo);
 }
 
-void HybridMgmt::LookUpAddrs(const string &embName, int extEmbeddingSize)
+// L3Storage
+void HybridMgmt::LookUpAndRemoveAddrs(const EmbTaskInfo &info)
 {
-    int id = 0;
-    uint64_t memSize = extEmbeddingSize * sizeof(float);
+    uint64_t memSize = info.extEmbeddingSize * sizeof(float);
     const std::string hbmSwapKeyQueName = "HBMSwapKeyQue";
     const std::string ddrSwapKeyQueName = "DDRSwapKeyQue";
-    auto lookUpFunc = [this, memSize, embName, id](
+    auto lookUpFunc = [this, memSize, info](
         std::map<std::string, TaskQueue<std::vector<uint64_t>>> &fromQue,
         std::map<std::string, TaskQueue<std::vector<float *>>> &toQue,
         const string &swapStr, const string &fromQueName
     ) {
-        std::vector<uint64_t> keys = fromQue[embName + swapStr].WaitAndPop();
+        std::vector<uint64_t> keys = fromQue[info.name + swapStr].WaitAndPop();
         if (!isRunning) {
             return;
         }
         std::vector<float*> addrs;
         TimeCost lookupAddrsTC;
-        int rc = embCache->EmbeddingLookupAddrs(embName, keys, addrs);
+        int rc = embCache->EmbeddingLookupAddrs(info.name, keys, addrs);
         if (rc != H_OK) {
-            lookupAddrSuccess = false;
             LOG_ERROR("lookUpAddrs, table:{}, fromQue: {}, swapStr:{}, keys.size:{}, addrs.size:{}, pushId:{}",
-                      embName, fromQueName, swapStr, keys.size(), addrs.size(), id);
+                      info.name, fromQueName, swapStr, keys.size(), addrs.size(), info.batchId);
             throw runtime_error("EmbeddingLookupAddrs failed! error code:" + std::to_string(rc));
         }
         if (&fromQue == &DDRSwapKeyQue && swapStr == SWAP_OUT_STR) {
@@ -947,31 +946,28 @@ void HybridMgmt::LookUpAddrs(const string &embName, int extEmbeddingSize)
                 auto *newAddr = (float*)malloc(memSize);
                 rc = memcpy_s(newAddr, memSize, addr, memSize);
                 if (rc != 0) {
-                    lookupAddrSuccess = false;
                     throw runtime_error("memcpy_s failed! error code:" + std::to_string(rc));
                 }
                 addr = newAddr;
             }
-            rc = embCache->EmbeddingRemove(embName, keys);
+            rc = embCache->EmbeddingRemove(info.name, keys);
             if (rc != H_OK) {
-                lookupAddrSuccess = false;
                 throw runtime_error("EmbeddingRemove failed! error code:" + std::to_string(rc));
             }
         }
         LOG_DEBUG("table:{}, fromQue:{}, swapStr:{}, keys.size:{}, addrs.size:{}, pushId:{}, lookupAddrsTC(ms):{}",
-                  embName, fromQueName, swapStr, keys.size(), addrs.size(), id, lookupAddrsTC.ElapsedMS());
-        toQue[embName + swapStr].Pushv(addrs);
+                  info.name, fromQueName, swapStr, keys.size(), addrs.size(), info.batchId, lookupAddrsTC.ElapsedMS());
+        toQue[info.name + swapStr].Pushv(addrs);
     };
-    while (isRunning && lookupAddrSuccess) {
-        lookUpFunc(DDRSwapKeyQue, DDRSwapAddrsQue, SWAP_OUT_STR, ddrSwapKeyQueName);
-        lookUpFunc(DDRSwapKeyQue, DDRSwapAddrsQue, SWAP_IN_STR, ddrSwapKeyQueName);
-        lookUpFunc(HBMSwapKeyQue, tableToQueueLookup, SWAP_IN_STR, hbmSwapKeyQueName);
-        lookUpFunc(HBMSwapKeyQue, tableToQueueLookup, SWAP_OUT_STR, hbmSwapKeyQueName);
-        id++;
-        lookUpSwapInAddrsPushId[embName]++;
-    }
+
+    lookUpFunc(DDRSwapKeyQue, DDRSwapAddrsQue, SWAP_OUT_STR, ddrSwapKeyQueName);
+    lookUpFunc(DDRSwapKeyQue, DDRSwapAddrsQue, SWAP_IN_STR, ddrSwapKeyQueName);
+    lookUpFunc(HBMSwapKeyQue, tableToQueueLookup, SWAP_IN_STR, hbmSwapKeyQueName);
+    lookUpFunc(HBMSwapKeyQue, tableToQueueLookup, SWAP_OUT_STR, hbmSwapKeyQueName);
+    lookUpSwapInAddrsPushId[info.name]++;
 }
 
+// DDR
 void HybridMgmt::LookUpSwapAddrs(const string &embName, const string &swapStr)
 {
     int id = 0;
@@ -1146,6 +1142,9 @@ void HybridMgmt::EmbeddingReceiveAndUpdateL3Storage(int batchId, int index, cons
         .extEmbeddingSize=embInfo.extEmbeddingSize,
         .name=embInfo.name
     };
+    // host swap out need to be executed before lookup
+    LookUpAndRemoveAddrs(info);
+
     float* ptr = nullptr;
     vector<float*> swapOutAddrs;
     int64_t dims0 = 0;
@@ -1226,8 +1225,6 @@ void HybridMgmt::ProcessEmbInfoL3Storage(const EmbBaseInfo& info, bool& remainBa
 
     HandleEndBatchCase(info, swapInPos);
 
-    CheckLookupAddrSuccessL3Storage();
-
     if (info.channelId == TRAIN_CHANNEL_ID) {
         alreadyTrainOnce = true;
     }
@@ -1295,8 +1292,6 @@ void HybridMgmt::InitDataPipelineForL3Storage(const string &embName, int extEmbe
     DDRSwapAddrsQue[embName + SWAP_IN_STR];
 
     // 初始化lookup线程
-    lookUpThreads.emplace_back(
-        std::async(std::launch::async, [=] { LookUpAddrs(embName, extEmbeddingSize); }));
     LOG_DEBUG("data pipeline for L3Storage init");
 }
 
@@ -1321,8 +1316,9 @@ void HybridMgmt::InitEmbeddingCache(const vector<EmbInfo>& embInfos)
                  embInfo.name, embInfo.hostVocabSize, embInfo.extEmbeddingSize, embInfo.devVocabSize);
         EmbCache::EmbCacheInfo embCacheInfo(embInfo.name, embInfo.hostVocabSize, embInfo.embeddingSize,
                                             embInfo.extEmbeddingSize, embInfo.devVocabSize);
+        size_t prefill = std::max(embInfo.hostVocabSize/10, 2 * embInfo.devVocabSize);
         int ret = embCache->CreateCacheForTable(
-            embCacheInfo, embInfo.initializeInfos, INVALID_KEY_VALUE, embInfo.hostVocabSize, EMBEDDING_THREAD_NUM);
+            embCacheInfo, embInfo.initializeInfos, INVALID_KEY_VALUE, prefill, EMBEDDING_THREAD_NUM);
         if (ret != H_OK) {
             throw runtime_error(embInfo.name + "create cache for table failed, error code: " + std::to_string(ret));
         }
@@ -1354,9 +1350,6 @@ void HybridMgmt::JoinEmbeddingCacheThread()
     }
     for (auto& t : EmbeddingReceiveAndUpdateThreadPool) {
         t.join();
-    }
-    for (auto& t : lookUpThreads) {
-        t.wait();
     }
     for (auto& t : lookUpSwapInAddrsThreads) {
         t.wait();
@@ -2175,14 +2168,6 @@ void HybridMgmt::CheckLookupAddrSuccessDDR()
     }
 }
 
-void HybridMgmt::CheckLookupAddrSuccessL3Storage()
-{
-    if (!lookupAddrSuccess) {
-        for (auto& t : lookUpThreads) {
-            t.get();
-        }
-    }
-}
 
 void HybridMgmt::GetSwapPairsAndKey2Offset(const EmbBaseInfo &info, vector<uint64_t> &uniqueKeys,
                                            pair<vector<uint64_t>, vector<uint64_t>> &swapInKoPair,
