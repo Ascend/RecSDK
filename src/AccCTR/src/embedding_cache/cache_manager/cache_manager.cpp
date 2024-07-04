@@ -64,8 +64,8 @@ int EmbCacheManagerImpl::CreateCacheForTable(const EmbCacheInfo& embCacheInfo,
     }
 
     if ((prefillBufferSize < 1) || (prefillBufferSize > embCacheInfo.vocabSize)) {
-        ExternalLogger::PrintLog(LogLevel::ERROR, "prefillBufferSize: " + std::to_string(prefillBufferSize) +
-        "has to be between [1, hostVocabSize]");
+        ExternalLogger::PrintLog(LogLevel::ERROR, "PrefillBufferSize: " + std::to_string(prefillBufferSize) +
+                                                  " has to be between [1, hostVocabSize].");
         return H_PREFILL_BUFFER_SIZE_INVALID;
     }
 
