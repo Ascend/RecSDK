@@ -21,7 +21,6 @@ See the License for the specific language governing permissions and
 #include <acl/acl_rt.h>
 #include <limits>
 #include "utils/common.h"
-#include "emb_table/emb_table.h"
 #include "emb_table/embedding_static.h"
 
 using namespace std;
