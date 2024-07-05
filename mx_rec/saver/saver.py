@@ -35,7 +35,6 @@ from mx_rec.util.log import logger
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.tf_version_adapter import npu_ops
 
-
 SAVE_SPARSE_PATH_PREFIX = "sparse"
 
 
@@ -171,7 +170,7 @@ class Saver(object):
         comm = MPI.COMM_WORLD
         rank = comm.Get_rank()
         comm.Barrier()
-        if rank == 0:
+        if should_write_data(rank, saving_path):
             table_list = self.save_op_dict.keys()
             for table_name in table_list:
                 self.merge_sparse_file(saving_path, table_name)
@@ -267,7 +266,7 @@ class Saver(object):
         else:
             self._save_ddr(sess, root_dir)
         logger.debug(f"Host data was saved.")
-        
+
     def _save_hbm(self, sess, root_dir):
         self.config_instance.hybrid_manager_config.save_host_data(root_dir)
         if self.config_instance.use_dynamic_expansion:
@@ -285,7 +284,7 @@ class Saver(object):
 
         for thread in threads:
             thread.join()
-            
+
     def _save_ddr(self, sess, root_dir):
         # 接受host侧传来的需要swap_out的offset用于更新host侧并保存
         self.config_instance.hybrid_manager_config.fetch_device_emb()
@@ -306,7 +305,7 @@ class Saver(object):
                 channel_name=f'{table_name}_save_h2d_{TRAIN_CHANNEL_ID}')
             if use_static:
                 swap_out_pos = swap_out_pos[:swap_out_len]
-                
+
             table = [var]
             optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(table_name)
             if optimizer is not None:
@@ -382,7 +381,6 @@ class Saver(object):
         else:
             placeholder_dict, restore_fetch_list = self.placeholder_dict, self.restore_fetch_dict
 
-
         for table_name in placeholder_dict:
             optimizer_instance = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
             if optimizer_instance:
@@ -395,7 +393,7 @@ class Saver(object):
         table_instance0 = self.config_instance.sparse_embed_config.get_table_instance(self.var_list[0])
         if not table_instance0.is_hbm:
             return
-        
+
         if self.config_instance.use_dynamic_expansion:
             # Data related to dynamic expansion needs to be restored only on the host side.
             return
@@ -405,7 +403,7 @@ class Saver(object):
         for table_name, sub_placeholder_dict in placeholder_dict.items():
             load_offset = self.config_instance.hybrid_manager_config.get_load_offset(table_name)
             fill_placeholder(reading_path, sub_placeholder_dict, restore_feed_dict,
-                                NameDescriptor(table_name, DataName.EMBEDDING.value), load_offset)
+                             NameDescriptor(table_name, DataName.EMBEDDING.value), load_offset)
 
             if "optimizer" in sub_placeholder_dict:
                 optimizer_state_placeholder_dict_group = sub_placeholder_dict.get("optimizer")
@@ -699,3 +697,14 @@ def set_optimizer_info(optimizer: CustomizedOptimizer, table_name: str):
     from mxrec_pybind import OptimizerInfo
     optim_info = OptimizerInfo(optimizer.optimizer_type, optimizer.optim_param_list)
     ConfigInitializer.get_instance().hybrid_manager_config.set_optim_info(table_name, optim_info)
+
+
+def should_write_data(rank_id: int, save_path: str) -> bool:
+    # When using hdfs filesystem, only the rank0 process execute write data operation, assuming use same hdfs path in
+    #   multi-machine.
+    # When using local filesystem, the process which `rank_id % local_rank_size == 0` execute write data operation.
+    # When using hdfs filesystem, and use different hdfs path to save data, should modify check condition
+    #    as same as local filesystem.
+    is_hdfs = check_file_system_is_hdfs(save_path)
+    local_rank_size = get_local_rank_size()
+    return rank_id == 0 if is_hdfs else rank_id % local_rank_size == 0
