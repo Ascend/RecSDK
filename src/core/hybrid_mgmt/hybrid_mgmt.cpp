@@ -1321,8 +1321,9 @@ void HybridMgmt::InitEmbeddingCache(const vector<EmbInfo>& embInfos)
                  embInfo.name, embInfo.hostVocabSize, embInfo.extEmbeddingSize, embInfo.devVocabSize);
         EmbCache::EmbCacheInfo embCacheInfo(embInfo.name, embInfo.hostVocabSize, embInfo.embeddingSize,
                                             embInfo.extEmbeddingSize, embInfo.devVocabSize);
+        size_t prefill = std::max(embInfo.hostVocabSize/HOST_TO_PREFILL_RATIO, embInfo.devVocabSize);
         int ret = embCache->CreateCacheForTable(
-            embCacheInfo, embInfo.initializeInfos, INVALID_KEY_VALUE, embInfo.hostVocabSize, EMBEDDING_THREAD_NUM);
+            embCacheInfo, embInfo.initializeInfos, INVALID_KEY_VALUE, prefill, EMBEDDING_THREAD_NUM);
         if (ret != H_OK) {
             throw runtime_error(embInfo.name + "create cache for table failed, error code: " + std::to_string(ret));
         }
