@@ -77,9 +77,9 @@ class ExternalStorageSparseEmbedding(SparseEmbedding):
     def capacity(self) -> int:
         # DDR
         if not self._ssd_vocabulary_size:
-            return self._device_vocabulary_size + self._host_vocabulary_size
+            return self._host_vocabulary_size
         # SSD
-        return self._device_vocabulary_size + self._host_vocabulary_size + self._ssd_vocabulary_size
+        return self._host_vocabulary_size + self._ssd_vocabulary_size
 
 
 def _set_specific_value_for_non_valid_key(id_offsets: Optional[tf.Tensor],
