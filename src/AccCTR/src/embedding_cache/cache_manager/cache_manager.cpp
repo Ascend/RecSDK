@@ -64,7 +64,8 @@ int EmbCacheManagerImpl::CreateCacheForTable(const EmbCacheInfo& embCacheInfo,
     }
 
     if ((prefillBufferSize < 1) || (prefillBufferSize > embCacheInfo.vocabSize)) {
-        ExternalLogger::PrintLog(LogLevel::ERROR, "prefillBufferSize has to be between [1, hostVocabSize]");
+        ExternalLogger::PrintLog(LogLevel::ERROR, "PrefillBufferSize: " + std::to_string(prefillBufferSize) +
+                                                  " has to be between [1, hostVocabSize].");
         return H_PREFILL_BUFFER_SIZE_INVALID;
     }
 
@@ -72,15 +73,16 @@ int EmbCacheManagerImpl::CreateCacheForTable(const EmbCacheInfo& embCacheInfo,
         return H_THREAD_NUM_ERROR;
     }
 
-    uint32_t reserve = embCacheInfo.vocabSize / VOCAB_CACHE_RATIO;
-    if (!offsetMappers[embCacheInfo.tableName].Initialize(reserve, embCacheInfo.maxCacheSize)) {
+    uint32_t reserveDevice = embCacheInfo.maxCacheSize / VOCAB_CACHE_RATIO;
+    if (!offsetMappers[embCacheInfo.tableName].Initialize(reserveDevice, embCacheInfo.maxCacheSize)) {
         offsetMappers[embCacheInfo.tableName].UnInitialize();
         offsetMappers.erase(embCacheInfo.tableName);
         return H_MEMORY_ALLOC_ERROR;
     }
 
     EmbPoolParam embPoolParam{prefillBufferSize, refillThreadNum};
-    if (!embTables[embCacheInfo.tableName].Initialize(embCacheInfo, reserve, initializerInfos, embPoolParam)) {
+    uint32_t reserveHost = embCacheInfo.vocabSize / VOCAB_CACHE_RATIO;
+    if (!embTables[embCacheInfo.tableName].Initialize(embCacheInfo, reserveHost, initializerInfos, embPoolParam)) {
         offsetMappers.erase(embCacheInfo.tableName);
         embTables.erase(embCacheInfo.tableName);
         return H_MEMORY_ALLOC_ERROR;
