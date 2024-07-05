@@ -70,6 +70,7 @@ constexpr size_t MAX_VOCABULARY_SIZE = 1e10;
 constexpr int SSD_SIZE_INDEX = 2;
 constexpr int MAX_FILE_NUM = 1000;
 constexpr int EMBEDDING_THREAD_NUM = 2;
+constexpr int HOST_TO_PREFILL_RATIO = 10;
 // for GLOG
 struct GlogConfig {
     static bool gStatOn;
