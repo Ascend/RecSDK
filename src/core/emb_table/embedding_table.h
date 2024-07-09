@@ -114,7 +114,7 @@ protected:
     size_t embSize_;
     size_t extEmbSize_;
     int seed_;
-    std::atomic<int64> capacity_;
+    std::atomic<int64_t> capacity_{0};
     size_t rankId_;
     size_t rankSize_;
     vector<int64_t> loadOffset;
