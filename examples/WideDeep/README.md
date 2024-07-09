@@ -5,6 +5,7 @@
 ***
 ## 开源项目链接
 Commits on Apr 29, 2022, 提交的SHA-1 hash值（提交ID）：4bbfb492b872c5a3290a2bce1ed5c160162558a3
+commit的链接: https://github.com/ZiyaoGeng/RecLearn/tree/4bbfb492b872c5a3290a2bce1ed5c160162558a3
 ```shell
 https://github.com/ZiyaoGeng/RecLearn
 ```
@@ -68,8 +69,8 @@ data_df[dense_features] = rec_kbins_discretizer(data_df[dense_features], 1000, f
 for col in sparse_features:
     try:
         data_df[col] = data_df[col].map(lambda x: feature_map[col][x])
-    except KeyError as er:
-        raise KeyError("Feature {} not found in dataset".format(col)) from er
+    except KeyError as e:
+        raise KeyError("Feature {} not found in dataset".format(col)) from e
 ```
 ***
 #### 5. 39个特征增加偏移项
