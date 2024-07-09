@@ -4,7 +4,7 @@
 
 ***
 ## 开源项目链接
-
+Commits on Apr 29, 2022, 提交的SHA-1 hash值（提交ID）：4bbfb492b872c5a3290a2bce1ed5c160162558a3
 ```shell
 https://github.com/ZiyaoGeng/RecLearn
 ```
@@ -41,7 +41,7 @@ python critro.py --data_path data_path --output_path output_path
 
 ```python
 # get txt_list
-split_file_list = get_split_file_path(dataset_path = dataset_path)
+file_split_list = get_split_file_path(dataset_path=data_path)
 ```
 ***
 #### 2. 建立特征映射
@@ -49,7 +49,7 @@ split_file_list = get_split_file_path(dataset_path = dataset_path)
 
 ```python
 # get feature_map
-fea_map = get_fea_map(split_file_list=split_file_list)
+feature_map = get_fea_map(split_file_list=file_split_list)
 ```
 ***
 #### 3. dense_feature分桶离散化
@@ -57,7 +57,7 @@ fea_map = get_fea_map(split_file_list=split_file_list)
 
 ```python
 # dense feature: Bin continuous data into intervals.
-data_df[dense_features] = rec_kbins_discretizer(data_df[dense_features], 1000, fea_map)
+data_df[dense_features] = rec_kbins_discretizer(data_df[dense_features], 1000, feature_map)
 ```
 ***
 #### 4. sparse_feature特征映射
@@ -66,7 +66,10 @@ data_df[dense_features] = rec_kbins_discretizer(data_df[dense_features], 1000, f
 ```python
 # sparse feature: mapping
 for col in sparse_features:
-    data_df[col] = data_df[col].map(lambda x: fea_map[col][x])
+    try:
+        data_df[col] = data_df[col].map(lambda x: feature_map[col][x])
+    except KeyError as er:
+        raise KeyError("Feature {} not found in dataset".format(col)) from er
 ```
 ***
 #### 5. 39个特征增加偏移项
@@ -74,12 +77,14 @@ for col in sparse_features:
 
 ```python
 # add offsets
-slot_size_array = [1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001,
-                   1462, 585, 10131228, 2202609, 307, 25, 12519, 635, 5, 93147, 5685, 8351594, 3196,
-                   29, 14994, 5461307, 12, 5654, 2174, 5, 7046548, 19, 17, 286182, 106, 142573]
+slot_size_array = [
+                1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001, 1001,
+                1462, 585, 10131228, 2202609, 307, 25, 12519, 635, 5, 93147, 5685, 8351594, 3196,
+                29, 14994, 5461307, 12, 5654, 2174, 5, 7046548, 19, 17, 286182, 106, 142573
+]
 offset_size_list = np.cumsum([0] + slot_size_array[:-1])
-for j in range(1,len(offset_size_list)+1):
-    data_df.iloc[:, j] += offset_size_list[j-1]
+for col_index in range(1, len(offset_size_list) + 1):
+    data_df.iloc[:, col_index] += offset_size_list[col_index - 1]
 ```
 ***
 #### 6. 数据集格式转换：txt >> tfrecord
@@ -93,13 +98,25 @@ convert_input2tfrd(in_file_path=file, out_file_path=output_path)
 
 ## 模型运行
 
-参考mxrec的`README.md`文件在NPU服务器上配置环境后，可按照[mxrec-tf1](https://ascendhub.huawei.com/#/detail/mxrec-tf1)中DLRM模型运行命令启动模型训练。`so_path`、`mx_rec_package_path`、`hccl_cfg_json`配置不变，根据实际数据集路径配置`dlrm_criteo_data_path`。
+参考mxrec的`README.md`文件在NPU服务器上配置环境并安装镜像创建容器后，可参考DLRM模型运行命令启动模型训练。模型运行脚本是run.sh，运行此脚本需要四个参数：so_path、mx_rec_package_path、hccl_cfg_json以及dlrm_criteo_data_path。其中，   
+- so_path: mxrec中libasc所在路径，在镜像中已经安装过mxrec，所以so_path是：/usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec/libasc/
+- mx_rec_package_path: mxrec这个包的安装路径，镜像中是：/usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec/  
+- hccl_cfg_json:  hccl配置文件所在路径，一般是当前路径下的hccl文件
+- dlrm_criteo_data_path: Wide&Deep模型需要的数据所在路径，根据实际情况进行配置
 
+运行mxRec有两种方式，一种是使用hccl配置文件（rank table方案），一种是不使用hccl配置文件（去rank table方案）。
+- 使用hccl配置文件（rank table方案）
 ```shell
-# 运行命令
 bash run.sh {so_path} {mx_rec_package_path} {hccl_cfg_json} {dlrm_criteo_data_path}
 ```
 ***
+- 不使用hccl配置文件（去rank table方案）
+```shell
+bash run.sh {so_path} {mx_rec_package_path} {hccl_cfg_json} {dlrm_criteo_data_path} {IP}
+```
+如：bash run.sh /usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec/libasc/ /usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec/ hccl_json_8p.json /dataset 10.10.10.10。  
+**注意:** 去rank table方案，当前路径下不存在hccl文件，模型仍可正常运行。
+
 
 ## 模型结果
 [开源项目](https://github.com/ZiyaoGeng/RecLearn)使用Criteo4500W数据集在GPU上训练模型，结果为`Log Loss=0.4692`、`AUC=0.7930`。适配完成模型后，固定`CACHE_MODE="HBM"`、`USE_FAAE=0`，在`run.sh`中配置其他选项卡，运行结果如下。
@@ -135,8 +152,8 @@ bash run.sh {so_path} {mx_rec_package_path} {hccl_cfg_json} {dlrm_criteo_data_pa
 ***
 ## 模型迁移
 
-**迁移思路：** 在现有已适配好的dlrm模型框架下，改动相关代码逻辑，完成Wide&deep模型的适配。**核心：根据开源项目model代码修改`model.py`；数据处理操作一部分放入`criteo.py`,一部分放入`main_mxrec.py`中`make_batch_and_iterator()`内；`main_mxrec.py`中其他相关代码改动主要是为了适配mxrec提供的相关特性。**  
-
+**迁移思路：** 在现有已适配好的dlrm模型框架下，改动相关代码逻辑，完成Wide&deep模型的适配。**核心：根据开源项目model代码修改`model.py`；数据处理操作一部分放入`criteo.py`,一部分放入`main_mxrec.py`中`make_batch_and_iterator()`内；`main_mxrec.py`中其他相关代码改动主要是为了适配mxrec提供的相关特性。**
+详细改动见https://gitee.com/ascend/mxrec/pulls/171/commits，Commits ID：7a05b033d41af51df9aed7414ad04216dff821cc。  
 下文所提到的`动态扩容`、`动态shape`、`自动改图`、`一表多查`是mxrec提供的相关特性，开关选项见`run.sh`。
 
 ```shell
