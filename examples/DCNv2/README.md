@@ -14,7 +14,7 @@
 ```
 
 ## 1.准备数据
-参考dlrm模型中criteo_tb目录下的说明文档准备好模型所需要的数据集，放在一个目录下，比如：/data/criteo_tb/。
+参考DLRM模型中criteo_tb目录下的说明文档准备好模型所需要的数据集，放在一个目录下，比如：/data/criteo_tb/。
 
 ## 2.准备运行环境
 运行环境可以参考[mxRec用户指南](https://www.hiascend.com/document/detail/zh/mind-sdk/60rc1/mxRec/mxrecug/mxrecug_0007.html)
@@ -41,8 +41,8 @@ mxRec软件包可以通过[mxRec用户指南](https://www.hiascend.com/document/
 其中，tf1_whl和tf2_whl目录下分别是适配tf1和tf2的mxRec软件包，按照自己需要选择其中一个进行安装即可（用pip/pip3 install 软件包这种方式进行安装）。
 确认安装mxRec的目录，比如mxRec安装在 /usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec这个目录下。
 
-## 4.运行DLRM模型
-执行完以上步骤之后，接下来就可以运行DLRM模型，其中run.sh就是运行的脚本，默认是8张卡。其中需要传入5个参数，分别对应：so_path、mx_rec_package_path、hccl_cfg_json、
+## 4.运行DCNv2模型
+执行完以上步骤之后，接下来就可以运行DCNv2模型，其中run.sh就是运行的脚本，默认是8张卡。其中需要传入5个参数，分别对应：so_path、mx_rec_package_path、hccl_cfg_json、
 dlrm_criteo_data_path和ip。运行命令如：
 ```shell
 bash run.sh {so_path} {mx_rec_package_path} {hccl_cfg_json} {dlrm_criteo_data_path} {ip}
