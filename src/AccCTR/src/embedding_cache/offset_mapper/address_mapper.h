@@ -109,7 +109,7 @@ public:
         fullCv.notify_all();
     }
 
-    BeforePutFuncState GetNewValueToBeInserted(uint64_t& value, uint32_t maxRetry = 10000)
+    BeforePutFuncState GetNewValueToBeInserted(uint64_t& value, uint32_t maxRetry = 1000)
     {
         for (uint32_t i = 0; i < maxRetry; i++) {
             if (BufferBin.pop(value)) {
@@ -252,8 +252,11 @@ public:
     FkvState FindAndPutIfNotFound(uint64_t key, uint64_t& value)
     {
         FkvState ret = MapperBase::FindAndPutIfNotFound(key, value, [&]() {
-            if (HM_UNLIKELY(current_size.load() > hostVocabSize)) {
-                ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR, "host does not have enough space");
+            if (HM_UNLIKELY(current_size.load() >= hostVocabSize)) {
+                ock::ExternalLogger::PrintLog(
+                    ock::LogLevel::ERROR,
+                    "host does not have enough space, current: " + std::to_string(current_size.load()) +
+                        ", host max size: " + std::to_string(hostVocabSize));
                 return BeforePutFuncState::BEFORE_NO_SPACE;
             }
             return emExpendMemInfoPtr->GetNewValueToBeInserted(value);
