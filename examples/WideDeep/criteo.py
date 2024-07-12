@@ -248,8 +248,8 @@ if __name__ == '__main__':
         for col in sparse_features:
             try:
                 data_df[col] = data_df[col].map(lambda x: feature_map[col][x])
-            except KeyError as er:
-                raise KeyError("Feature {} not found in dataset".format(col)) from er
+            except KeyError as e:
+                raise KeyError("Feature {} not found in dataset".format(col)) from e
         # dense feature: Bin continuous data into intervals.
         data_df[dense_features] = rec_kbins_discretizer(data_df[dense_features], 1000, feature_map)
         # add offsets
