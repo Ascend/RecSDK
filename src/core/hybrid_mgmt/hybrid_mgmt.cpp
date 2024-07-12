@@ -501,7 +501,7 @@ void HybridMgmt::EvalTask(TaskType type)
             cvCheckSave.wait(checkSaveLocker, [this] { return !hybridMgmtBlock->IsNeedWaitSave() || mutexDestroy; });
 
             if (hybridMgmtBlock->pythonBatchId[EVAL_CHANNEL_ID] >= hybridMgmtBlock->hybridBatchId[EVAL_CHANNEL_ID]) {
-                hybridMgmtBlockgi->Wake(TRAIN_CHANNEL_ID);
+                hybridMgmtBlock->Wake(TRAIN_CHANNEL_ID);
             } else {
                 std::this_thread::sleep_for(SLEEP_MS);
                 continue;
