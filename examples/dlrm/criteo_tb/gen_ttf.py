@@ -224,9 +224,9 @@ def make_example(label_list, dense_feat_list, sparse_feat_list):
     sparse_feature = np.array(sparse_feat_list, dtype=np.int64).reshape(-1)
     label = np.array(label_list, dtype=np.int64).reshape(-1)
     feature_dict = {"dense_feature": tf.train.Feature(float_list=tf.train.FloatList(value=dense_feature)),
-                "sparse_feature": tf.train.Feature(int64_list=tf.train.Int64List(value=sparse_feature)),
-                "label": tf.train.Feature(int64_list=tf.train.Int64List(value=label))
-                }
+                    "sparse_feature": tf.train.Feature(int64_list=tf.train.Int64List(value=sparse_feature)),
+                    "label": tf.train.Feature(int64_list=tf.train.Int64List(value=label))
+                    }
     example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
 
     return example
@@ -273,10 +273,10 @@ def convert_input2tfrd_multiprocess(proc_num, proc_id, in_file_path, output_file
             label = int(items[0])
             values = items[1:14]
             cats = items[14:]
-            if len(values) == 13:
-                raise ValueError("values.size： {}".format(len(values)))
-            if len(cats) == 26:
-                raise ValueError("cats.size： {}".format(len(cats)))
+            if len(values) != 13:
+                raise ValueError("dense feature length must be 13, current values.size: {}".format(len(values)))
+            if len(cats) != 26:
+                raise ValueError("sparse feature length must be 26, current cats.size: {}".format(len(cats)))
             val_list, cat_list = criteo_stats_dict.map_cat2id(values, cats)
             dense_res_list.append(val_list)
             cat_res_list.append(cat_list)
@@ -363,7 +363,7 @@ if __name__ == "__main__":
     process_num = args.train_process_num
     if len(train_data_files) == 0:
         raise ValueError(f'file not exist in train_data_dir:{train_data_dir}')
-    if process_num % len(train_data_files) == 0:
+    if process_num % len(train_data_files) != 0:
         raise ValueError(f'process_num {process_num} must exact div length of train_data_files {len(train_data_files)}')
 
     for process_id in range(process_num):
@@ -387,7 +387,7 @@ if __name__ == "__main__":
     process_num = args.test_process_num
     if len(test_data_files) == 0:
         raise ValueError(f'file not exist in test_data_dir:{test_data_dir}')
-    if process_num % len(test_data_files) == 0:
+    if process_num % len(test_data_files) != 0:
         raise ValueError(f'process_num {process_num} must exact div length of test_data_files {len(test_data_files)}')
 
     for process_id in range(process_num):
