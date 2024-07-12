@@ -61,18 +61,18 @@ class TestSaver(unittest.TestCase):
             self.saver = Saver()
 
         with tf.compat.v1.Session(graph=self.graph) as sess:
-            embedding_directory = "./sparse-model/test_table/embedding"
+            embedding_directory = "./sparse-model-1/test_table/embedding"
             data_file = os.path.join(embedding_directory, "slice.data")
             attribute_file = os.path.join(embedding_directory, "slice.attribute")
             sess.run(tf.global_variables_initializer())
             origin_embedding = sess.run(self.var)[[0, 1, 4, 6, 8], :]
 
-            self.saver.save(sess)
+            self.saver.save(sess, save_path="model-1")
             self.assertTrue(os.path.exists(embedding_directory), "embedding目录已创建")
             self.assertTrue(os.path.exists(data_file), "embedding的data文件存储成功")
             self.assertTrue(os.path.exists(attribute_file), "embedding的attribute文件存储成功")
 
-            tf.io.gfile.rmtree("./sparse-model")
+            tf.io.gfile.rmtree("./sparse-model-1")
 
     def build_graph(self):
         self.graph = tf.compat.v1.Graph()

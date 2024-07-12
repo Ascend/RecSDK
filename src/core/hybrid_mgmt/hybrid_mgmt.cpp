@@ -499,7 +499,14 @@ void HybridMgmt::EvalTask(TaskType type)
                       hybridMgmtBlock->IsNeedWaitSave());
             std::unique_lock<std::mutex> checkSaveLocker(saveMutex);
             cvCheckSave.wait(checkSaveLocker, [this] { return !hybridMgmtBlock->IsNeedWaitSave() || mutexDestroy; });
-            hybridMgmtBlock->Wake(TRAIN_CHANNEL_ID);
+
+            if (hybridMgmtBlock->pythonBatchId[EVAL_CHANNEL_ID] >= hybridMgmtBlock->hybridBatchId[EVAL_CHANNEL_ID]) {
+                hybridMgmtBlock->Wake(TRAIN_CHANNEL_ID);
+            } else {
+                std::this_thread::sleep_for(SLEEP_MS);
+                continue;
+            }
+
             LOG_DEBUG("wake TrainTask");
             hybridMgmtBlock->DoBlock(channelId);
         }
