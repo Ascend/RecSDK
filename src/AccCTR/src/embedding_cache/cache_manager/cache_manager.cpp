@@ -253,8 +253,7 @@ int EmbCacheManagerImpl::ExportDeviceKeyOffsetPairs(const std::string& tableName
     if (checkTableNameRet != H_OK) {
         return checkTableNameRet;
     }
-    OffsetMapper& om = offsetMappers[tableName];
-    koVec = om.ExportSortedKVPairs();
+    koVec = offsetMappers[tableName].ExportSortedKVPairs();
     return H_OK;
 }
 
@@ -318,30 +317,58 @@ int EmbCacheManagerImpl::LoadEmbTableInfos(std::string tableName, const std::vec
     return H_OK;
 }
 
-int EmbCacheManagerImpl::BackUpTrainStatus(std:string tableName)
+int EmbCacheManagerImpl::BackUpTrainStatus(const std::string& tableName)
 {
     int checkTableNameRet = CheckValidTableName(tableName);
     if (checkTableNameRet != H_OK) {
         return checkTableNameRet;
     }
+
+    // Back up the key-offset correspondence on the device
+    kvVecsBackUp[tableName] = offsetMappers[tableName].ExportVec();
+
+    auto embInfo = embCacheInfos.find(tableName);
+    if (embInfo == embCacheInfos.end()) {
+        return H_EMB_CACHE_INFO_LOST;
+    }
+    uint32_t reserve = embInfo->second.maxCacheSize / VOCAB_CACHE_RATIO;
+    uint32_t maxCacheSize = embInfo->second.maxCacheSize;
 
     auto om = offsetMappersBackUp.find(tableName);
     if (om != offsetMappersBackUp.end()) {
-        offsetMappersBackUp[tableName] = offsetMappers[tableName];
-    } else{
-        offsetMappersBackUp[tableName].Initialize(1000, 1000);
-        offsetMappersBackUp[tableName] = offsetMappers[tableName];
+        offsetMappersBackUp[tableName].UnInitialize();
     }
+    offsetMappersBackUp[tableName].Initialize(reserve, maxCacheSize);
+    offsetMappersBackUp[tableName] = offsetMappers[tableName];
+
     return H_OK;
 }
 
-int EmbCacheManagerImpl::RecoverTrainStatus(std:string tableName)
+int EmbCacheManagerImpl::RecoverTrainStatus(const std::string& tableName)
 {
     int checkTableNameRet = CheckValidTableName(tableName);
     if (checkTableNameRet != H_OK) {
         return checkTableNameRet;
     }
+
+    auto embInfo = embCacheInfos.find(tableName);
+    if (embInfo == embCacheInfos.end()) {
+        return H_EMB_CACHE_INFO_LOST;
+    }
+    uint32_t reserve = embInfo->second.maxCacheSize / VOCAB_CACHE_RATIO;
+    uint32_t maxCacheSize = embInfo->second.maxCacheSize;
+
+    offsetMappers[tableName].UnInitialize();
+    offsetMappers[tableName].Initialize(reserve, maxCacheSize);
     offsetMappers[tableName] = offsetMappersBackUp[tableName];
+
+    // Recover the key-offset correspondence on the device
+    auto kvVecBackUp = kvVecsBackUp[tableName];
+    for (const auto& kvPair: kvVecBackUp) {
+        offsetMappers[tableName].Put(kvPair.first, kvPair.second);
+    }
+
+    kvVecBackUp.clear();
     return H_OK;
 }
 
@@ -448,4 +475,18 @@ int EmbCacheManagerImpl::CheckCreateTableName(const std::string& tableName)
 uint32_t EmbCacheManagerImpl::GetUsage(const std::string& tableName)
 {
     return embTables[tableName].GetUsage();
+}
+
+int EmbCacheManagerImpl::ResetOffsetMappers()
+{
+    for (auto it = offsetMappers.begin(); it != offsetMappers.end(); it++)  {
+        auto embInfo = embCacheInfos.find(it->first);
+        if (embInfo == embCacheInfos.end()) {
+            return H_EMB_CACHE_INFO_LOST;
+        }
+        it->second.UnInitialize();
+        uint32_t reserve = embInfo->second.maxCacheSize / VOCAB_CACHE_RATIO;
+        it->second.Initialize(reserve, embInfo->second.maxCacheSize);
+    }
+    return H_OK;
 }

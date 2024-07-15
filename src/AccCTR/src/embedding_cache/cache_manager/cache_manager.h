@@ -73,8 +73,11 @@ public:
                           const std::vector<std::vector<float>>& embeddings,
                           const std::vector<std::vector<float>>& optimizerSlots) override;
 
-    int BackUpTrainStatus(std:string tableName) override;
-    int RecoverTrainStatus(std::string tableName) override;
+    int BackUpTrainStatus(const std::string& tableName) override;
+
+    int RecoverTrainStatus(const std::string& tableName) override;
+
+    int ResetOffsetMappers() override;
 
     uint32_t GetUsage(const std::string& tableName) override;
 
@@ -83,6 +86,7 @@ private:
     std::map<std::string, OffsetMapper> offsetMappers;
     std::map<std::string, OffsetMapper> offsetMappersBackUp;
     std::map<std::string, EmbLocalTable> embTables;
+    std::map<std::string, std::vector<std::pair<uint64_t, uint64_t>>> kvVecsBackUp;
 
     int CheckValidTableName(const std::string& tableName);
 

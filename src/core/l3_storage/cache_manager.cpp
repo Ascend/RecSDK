@@ -32,10 +32,10 @@ void CacheManager::Init(ock::ctr::EmbCacheManagerPtr embCachePtr, vector<EmbInfo
     if (level3Storage == nullptr) {
         throw runtime_error("level3Storage is nullptr");
     }
-    
+
     this->embCache = std::move(embCachePtr);
     for (auto& emb : mgmtEmbInfo) {
-        EmbBaseInfo baseInfo {emb.ssdVocabSize, emb.ssdDataPath, false};
+        EmbBaseInfo baseInfo {emb.ssdVocabSize, emb.ssdDataPath, false, emb.extEmbeddingSize};
         embBaseInfos.emplace(emb.name, baseInfo);
         preProcessMapper[emb.name].Initialize(emb.name, emb.hostVocabSize, emb.ssdVocabSize);
     }
@@ -293,3 +293,73 @@ void CacheManager::FetchL3StorageEmb2DDR(string tableName, uint32_t extEmbedding
     embeddingTaskStep++;
     evictWaitCond.notify_all();
 }
+
+void CacheManager::BackUpTrainStatus()
+{
+    ddrKeyFreqMapBackUp = ddrKeyFreqMap;
+    excludeDDRKeyCountMapBackUp = excludeDDRKeyCountMap;
+}
+
+void CacheManager::RecoverTrainStatus()
+{
+    for (const auto& pair: excludeDDRKeyCountMapBackUp) {
+        auto tableName = pair.first;
+
+        std::vector<emb_cache_key_t> ssdKeysBeforeEval;
+        std::vector<emb_cache_key_t> ssdKeysAfterEval;
+        std::vector<emb_cache_key_t> swapInKeys;
+        std::vector<emb_cache_key_t> swapOutKeys;
+
+        for (const auto& keyMap : pair.second) {
+            ssdKeysBeforeEval.push_back(keyMap.first);
+        }
+        for (const auto& keyMap : excludeDDRKeyCountMap[tableName]) {
+            ssdKeysAfterEval.push_back(keyMap.first);
+        }
+
+        GetSwapInAndSwapOutKeys(ssdKeysBeforeEval, ssdKeysAfterEval, swapInKeys, swapOutKeys);
+
+        // ddr <-> ssd
+        // ddr-> lookup address, ssd->insert embedding , ddr->remove embedding
+        vector<float*> swapInKeysAddr;
+        int rc = embCache->EmbeddingLookupAddrs(tableName, swapInKeys, swapInKeysAddr);
+        if (rc != 0) {
+            throw runtime_error("EmbeddingLookUpAddrs failed! error code: " + std::to_string(rc));
+        }
+        auto extEmbeddingSize = embBaseInfos[tableName].extEmbeddingSize;
+        l3Storage->InsertEmbeddingsByAddr(tableName, swapInKeys, swapInKeysAddr, extEmbeddingSize);
+        rc = embCache->EmbeddingRemove(tableName, swapInKeys);
+        if (rc != 0) {
+            throw runtime_error("EmbeddingRemove failed! error code: " + std::to_string(rc));
+        }
+
+        // ssd->fetch embedding, ddr->EmbeddingUpdate, ssd->delete embedding
+        auto swapOutEmbeddings = l3Storage->FetchEmbeddings(tableName, swapOutKeys);
+        vector<float> swapOutFlattenEmbeddings;
+        for (auto& emb : swapOutEmbeddings) {
+            swapOutFlattenEmbeddings.insert(swapOutFlattenEmbeddings.cend(), emb.cbegin(), emb.cend());
+        }
+        rc = embCache->EmbeddingUpdate(tableName, swapOutKeys, swapOutFlattenEmbeddings.data());
+        l3Storage->DeleteEmbeddings(tableName, swapOutKeys);
+    }
+
+    ddrKeyFreqMap = ddrKeyFreqMapBackUp;
+    excludeDDRKeyCountMap = excludeDDRKeyCountMapBackUp;
+}
+
+void CacheManager::GetSwapInAndSwapOutKeys(vector<emb_cache_key_t>& ssdKeysBeforeEval,
+                                           vector<emb_cache_key_t>& ssdKeysAfterEval,
+                                           vector<emb_cache_key_t>& swapInKeys, vector<emb_cache_key_t>& swapOutKeys)
+{
+    std::sort(ssdKeysBeforeEval.begin(), ssdKeysBeforeEval.end());
+    std::sort(ssdKeysAfterEval.begin(), ssdKeysAfterEval.end());
+    vector<emb_cache_key_t> intersectionKeys;
+    std::set_intersection(ssdKeysBeforeEval.begin(), ssdKeysBeforeEval.end(), ssdKeysAfterEval.begin(),
+                          ssdKeysAfterEval.end(), std::back_inserter(intersectionKeys));
+
+    std::set_difference(ssdKeysBeforeEval.begin(), ssdKeysBeforeEval.end(), intersectionKeys.begin(),
+                        intersectionKeys.end(), std::back_inserter(swapInKeys));
+    std::set_difference(ssdKeysAfterEval.begin(), ssdKeysAfterEval.end(), intersectionKeys.begin(),
+                        intersectionKeys.end(), std::back_inserter(swapOutKeys));
+}
+
