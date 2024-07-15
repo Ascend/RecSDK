@@ -90,15 +90,14 @@ public:
     void Save(const string& filePath);
 
     /**
-     * estimator模式下train切换为eval时， 备份所有表train的状态
+     * In estimator mode, when switching from train to eval, backup the training state of all tables.
      */
     void BackUpTrainStatusBeforeLoad();
 
     /**
-     * estimator模式下eval切换为train时， 还原所有表train的状态
+     * In estimator mode, when switching from eval to train, recover the training state of all tables.
      */
     void RecoverTrainStatus();
-
 
     /**
     * 获取所有表对应的DeviceOffsets，该偏移用于python侧保存embedding时抽取key对应的embedding

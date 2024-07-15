@@ -317,18 +317,24 @@ public:
                                   const std::vector<std::vector<float>>& optimizerSlots) = 0;
 
     /* *
-     * train通道切换为eval, 备份当前表的offsetMapper对象, 存储下当前train对应的devices上key的状态
-     * @Param tableName: 需要加载信息的table名字
+     * When switch the channel to eval, backup the current table's offsetMapper object.
+     * @Param tableName: embedding table name
      * @Return errorCode
      */
-     virtual int BackUpTrainStatus(std::string tableName) = 0;
+    virtual int BackUpTrainStatus(const std::string& tableName) = 0;
 
     /* *
-     * eval通道切换为train, 将当前表的offsetMapper对象还原成备份的train对应的的device上key的状态
-     * @Param tableName: 需要加载信息的table名字
+     * When switch the eval channel back to train, Recover the current table's offsetMapper object to the backup state.
+     * @Param tableName: embedding table name
      * @Return errorCode
      */
-     virtual int RecoverTrainStatus(std::string tableName) = 0;
+    virtual int RecoverTrainStatus(const std::string& tableName) = 0;
+
+    /* *
+     * Reset the offsetMapper object to revert to its initialized state after loading.
+     * @Return errorCode
+     */
+    virtual int ResetOffsetMappers() = 0;
 };
 }  // namespace EmbCache
 

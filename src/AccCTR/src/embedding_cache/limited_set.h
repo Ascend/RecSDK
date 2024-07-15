@@ -20,19 +20,21 @@ limitations under the License.
 
 namespace EmbCache {
 
+static constexpr int64_t NODE_DEFAULT_VALUE = -1;
+
 class LimitedSet {
 public:
     struct Node {
         uint64_t value;
         Node *prev, *next;
-        Node(uint64_t val = -1) : value(val), prev(nullptr), next(nullptr) {}
+        Node(uint64_t val = NODE_DEFAULT_VALUE) : value(val), prev(nullptr), next(nullptr) {}
     };
 
-    LimitedSet(uint64_t maxRange) : head(new Node(-1)), tail(new Node(-1))
+    LimitedSet(uint64_t maxRange) : head(new Node(NODE_DEFAULT_VALUE)), tail(new Node(NODE_DEFAULT_VALUE))
     {
         nodes.resize(maxRange);
         for (auto &node : nodes) {
-            node = new Node(-1);
+            node = new Node(NODE_DEFAULT_VALUE);
         }
         head->next = tail;
         tail->prev = head;
@@ -47,19 +49,16 @@ public:
         delete tail;
     }
 
-    // 拷贝构造函数
-    LimitedSet(const LimitedSet& other): head(new Node(-1)), tail(new Node(-1))
+    LimitedSet(const LimitedSet& other): head(new Node(NODE_DEFAULT_VALUE)), tail(new Node(NODE_DEFAULT_VALUE))
     {
         nodes.resize(other.nodes.size());
-        for (auto &node: nodes) {
-            node = new Node(-1);
+        for (auto& node: nodes) {
+            node = new Node(NODE_DEFAULT_VALUE);
         }
 
-        // 初始化头尾节点
         head->next = tail;
         tail->prev = head;
 
-        // 遍历原vector的每一个节点并复制
         for (Node* node = other.head->next; node != other.tail; node = node->next) {
             insert(node->value);
         }
@@ -87,7 +86,7 @@ public:
         Node *node = nodes[value];
         node->prev->next = node->next;
         node->next->prev = node->prev;
-        node->value = -1;
+        node->value = NODE_DEFAULT_VALUE;
     }
 
     bool find(uint64_t value)

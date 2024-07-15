@@ -206,12 +206,6 @@ bool HybridMgmt::Load(const string& loadPath, vector<string> warmStartTables)
         throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
     }
 
-    if (mgmtRankInfo.isDDR && IsTrainAndEvalCase()) {
-        LOG_INFO("estimator train and eval case, skip loading, "
-                 "host will reuse data in memory while evaluating since is's same as saved data");
-        return true;
-    }
-
     // 数据处理线程上锁
     KEY_PROCESS_INSTANCE->LoadSaveLock();
 
@@ -257,10 +251,15 @@ bool HybridMgmt::Load(const string& loadPath, vector<string> warmStartTables)
         featAdmitNEvict.LoadHistoryRecords(loadData.histRec);
     }
 
+    int& theTrainBatchId = hybridMgmtBlock->hybridBatchId[TRAIN_CHANNEL_ID];
     if (isL3StorageEnabled) {
         LOG_DEBUG(MGMT + "Start host side load: L3Storage key freq map");
         auto step = GetStepFromPath(loadPath);
-        cacheManager->Load(mgmtEmbInfo, step, trainKeysSet);
+        // When in load and train mode or predict mode, SSD needs to actually execute loading
+        // When in the train and eval modes, loading before eval should be directly skipped
+        if (theTrainBatchId == 0) {
+            cacheManager->Load(mgmtEmbInfo, step, trainKeysSet);
+        }
     }
 
     LOG_DEBUG(MGMT + "Finish host side load process");
@@ -502,7 +501,7 @@ void HybridMgmt::EvalTask(TaskType type)
             cvCheckSave.wait(checkSaveLocker, [this] { return !hybridMgmtBlock->IsNeedWaitSave() || mutexDestroy; });
 
             if (hybridMgmtBlock->pythonBatchId[EVAL_CHANNEL_ID] >= hybridMgmtBlock->hybridBatchId[EVAL_CHANNEL_ID]) {
-                // 在唤醒train的数据处理进程之前，需要将备份的train状态还原
+                // Before waking the data process for training, Recover the backed-up training state
                 RecoverTrainStatus();
                 hybridMgmtBlock->Wake(TRAIN_CHANNEL_ID);
             } else {
@@ -2210,15 +2209,18 @@ void HybridMgmt::BackUpTrainStatus()
 {
     int channelID = TRAIN_CHANNEL_ID;
     int& theTrainBatchId = hybridMgmtBlock->hybridBatchId[channelID];
-    //续训load、predict模式下的load不需要对train的状态进行备份
-    if (theTrainBatchId==0) {
+    if (theTrainBatchId == 0) {
         return;
     }
-    // train and eval模式下，train切换为eval之后
-    // eval的load需要线备份原有的相关状态， HBM非扩容模式需要备份keyOffsetMap, DDR模式需要备份offsetMapper对象
+
     LOG_INFO("On Estimator train and eval mode, start to backup train status, "
              "current train batchId: {} .", theTrainBatchId);
+    // When in the train and eval mode of estimator, backup training states before loading.
     EmbeddingMgmt::Instance()->BackUpTrainStatusBeforeLoad();
+
+    if (isL3StorageEnabled) {
+        cacheManager->BackUpTrainStatus();
+    }
     isBackUpTrainStatus = true;
 }
 
@@ -2226,6 +2228,10 @@ void HybridMgmt::RecoverTrainStatus()
 {
     if (isBackUpTrainStatus) {
         EmbeddingMgmt::Instance()->RecoverTrainStatus();
+    }
+
+    if (isL3StorageEnabled) {
+        cacheManager->RecoverTrainStatus();
     }
     isBackUpTrainStatus = false;
 }
