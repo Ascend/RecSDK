@@ -966,30 +966,43 @@ void HybridMgmt::LookUpAndRemoveAddrs(const EmbTaskInfo& info)
 }
 
 // DDR
-void HybridMgmt::LookUpSwapAddrs(const string& embName, const string& swapStr)
+void HybridMgmt::LookUpSwapAddrs(const string& embName)
 {
     int id = 0;
-    std::string swapName = embName + swapStr;
+    std::string swapInName = embName + SWAP_IN_STR;
+    std::string swapOutName = embName + SWAP_OUT_STR;
+    std::vector<float*> addrs;
     while (isRunning && lookupAddrSuccess) {
-        std::vector<uint64_t> keys = HBMSwapKeyQue[swapName].WaitAndPop();
         if (!isRunning) {
             return;
         }
-        vector<float*> addrs;
-        TimeCost lookupAddrsTC;
+        // swap in
+        std::vector<uint64_t> keys = HBMSwapKeyQue[swapInName].WaitAndPop();
+        TimeCost lookupAddrsInTC;
         int rc = embCache->EmbeddingLookupAddrs(embName, keys, addrs);
         if (rc != H_OK) {
             lookupAddrSuccess = false;
             throw runtime_error("EmbeddingLookupAddrs failed! error code: " + std::to_string(rc));
         }
-        LOG_DEBUG("table:{}, swapStr:{}, keys.size:{}, addrs.size:{}, pushId:{}, lookupAddrsTC(ms):{}", embName,
-                  swapStr, keys.size(), addrs.size(), id, lookupAddrsTC.ElapsedMS());
-        HBMSwapAddrsQue[swapName].Pushv(addrs);
-        if (swapStr == SWAP_IN_STR) {
-            lookUpSwapInAddrsPushId[embName]++;
-            LOG_DEBUG("LookUpSwapAddrs, table:{}, pushId:{}, lookUpSwapInAddrsPushId:{}", embName, id,
-                      lookUpSwapInAddrsPushId[embName]);
+        LOG_DEBUG("table:{}, swapStr:{}, keys.size:{}, addrs.size:{}, pushId:{}, lookupAddrsInTC(ms):{}", embName,
+                  SWAP_IN_STR, keys.size(), addrs.size(), id, lookupAddrsInTC.ElapsedMS());
+        HBMSwapAddrsQue[swapInName].Pushv(addrs);
+
+        lookUpSwapInAddrsPushId[embName]++;
+        LOG_DEBUG("LookUpSwapAddrs, table:{}, pushId:{}, lookUpSwapInAddrsPushId:{}", embName, id,
+                  lookUpSwapInAddrsPushId[embName]);
+
+        // swap out
+        keys = HBMSwapKeyQue[swapOutName].WaitAndPop();
+        TimeCost lookupAddrsOutTC;
+        rc = embCache->EmbeddingLookupAddrs(embName, keys, addrs);
+        if (rc != H_OK) {
+            lookupAddrSuccess = false;
+            throw runtime_error("EmbeddingLookupAddrs failed! error code: " + std::to_string(rc));
         }
+        LOG_DEBUG("table:{}, swapStr:{}, keys.size:{}, addrs.size:{}, pushId:{}, lookupAddrsOutTC(ms):{}", embName,
+                  SWAP_OUT_STR, keys.size(), addrs.size(), id, lookupAddrsOutTC.ElapsedMS());
+        HBMSwapAddrsQue[swapOutName].Pushv(addrs);
         id++;
     }
 }
@@ -1249,9 +1262,7 @@ void HybridMgmt::InitDataPipelineForDDR(const string& embName)
     // 初始化lookup线程
     lookUpSwapInAddrsPushId[embName];  // 此处初始化，避免多线程竞争导致计数错误
     lookUpSwapInAddrsThreads.emplace_back(
-        std::async(std::launch::async, [=] { LookUpSwapAddrs(embName, SWAP_IN_STR); }));
-    lookUpSwapOutAddrsThreads.emplace_back(
-        std::async(std::launch::async, [=] { LookUpSwapAddrs(embName, SWAP_OUT_STR); }));
+        std::async(std::launch::async, [=] { LookUpSwapAddrs(embName); }));
 
     LOG_DEBUG("data pipeline for ddr init");
 }
