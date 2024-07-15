@@ -971,7 +971,7 @@ void HybridMgmt::LookUpSwapAddrs(const string& embName)
     int id = 0;
     std::string swapInName = embName + SWAP_IN_STR;
     std::string swapOutName = embName + SWAP_OUT_STR;
-    vector<float*> addrs;
+    std::vector<float*> addrs;
     while (isRunning && lookupAddrSuccess) {
         if (!isRunning) {
             return;
