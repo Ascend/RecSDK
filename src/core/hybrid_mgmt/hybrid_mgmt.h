@@ -187,7 +187,7 @@ public:
 
     void LookUpAndRemoveAddrs(const EmbTaskInfo& info);  // L3Storage, synchronous
 
-    void LookUpSwapAddrs(const std::string& embName, const std::string& swapStr);  // DDR, asynchronous
+    void LookUpSwapAddrs(const std::string& embName);  // DDR, asynchronous
 
     void EmbeddingTask();
 
