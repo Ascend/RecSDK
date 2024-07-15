@@ -403,7 +403,7 @@ namespace MxRec {
             out(0) = batchId;
             if (channelId == 1) {
                 if (maxStep != -1 && batchId >= maxStep) {
-                    LOG_DEBUG(StringFormat("skip excess batch after {}/{}", batchId, maxStep));
+                    LOG_DEBUG(StringFormat("skip excess batch after %d/%d", batchId, maxStep));
                     return;
                 }
             }

@@ -15,6 +15,7 @@ See the License for the specific language governing permissions and
 
 #ifndef MX_REC_EMBEDDING_TABLE_H
 #define MX_REC_EMBEDDING_TABLE_H
+#include <atomic>
 #include <map>
 #include <string>
 #include <vector>
@@ -118,7 +119,7 @@ protected:
     size_t embSize_;
     size_t extEmbSize_;
     int seed_;
-    int64_t capacity_;
+    std::atomic<int64_t> capacity_{0};
     size_t rankId_;
     size_t rankSize_;
     vector<int64_t> loadOffset;
