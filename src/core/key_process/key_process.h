@@ -28,7 +28,6 @@ See the License for the specific language governing permissions and
 #include "ock_ctr_common/include/factory.h"
 
 #include "utils/common.h"
-#include "emb_table/emb_table.h"
 #include "feature_admit_and_evict.h"
 #include "hybrid_mgmt/hybrid_mgmt_block.h"
 #include "utils/singleton.h"
@@ -196,7 +195,6 @@ namespace MxRec {
         map<EmbNameT, std::vector<size_t>> evictPosMap {};
         map<EmbNameT, absl::flat_hash_map<emb_key_t, int>> hotKey {};
         map<EmbNameT, int> hotEmbTotCount;
-        map<EmbNameT, EmbTable> embeddingTableMap {};
         ock::ctr::FactoryPtr factory {};
         int hotEmbUpdateStep = HOT_EMB_UPDATE_STEP_DEFAULT;
         bool isWithFAAE;
@@ -250,8 +248,6 @@ namespace MxRec {
                                vector<int> &scAllOut);
 
         void Key2Offset(const EmbNameT& embName, KeysT& splitKey, int channel);
-
-        void Key2OffsetDynamicExpansion(const EmbNameT& embName, KeysT& splitKey, int channel);
 
         unique_ptr<EmbBatchT> GetBatchData(int channel, int commId) const;
 

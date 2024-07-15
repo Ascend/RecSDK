@@ -40,7 +40,7 @@ namespace MxRec {
         absl::flat_hash_map<emb_key_t, int64_t>& keyOffsetMap;
     };
 
-    struct SwapOutInfo {
+    struct HBMSwapOutInfo {
         vector<emb_cache_key_t> swapOutDDRKeys;
         vector<emb_cache_key_t> swapOutDDRAddrOffs;
         vector<emb_cache_key_t> swapOutL3StorageKeys;
@@ -89,7 +89,7 @@ namespace MxRec {
         void PutKey(const string& embTableName, const emb_key_t& key, RecordType type);
 
         void ProcessSwapOutKeys(const string& tableName, const vector<emb_cache_key_t>& swapOutKeys,
-                                SwapOutInfo& info);
+                                HBMSwapOutInfo& info);
 
         void ProcessSwapInKeys(const string& tableName, const vector<emb_cache_key_t>& swapInKeys,
                                vector<emb_cache_key_t>& DDRToL3StorageKeys,

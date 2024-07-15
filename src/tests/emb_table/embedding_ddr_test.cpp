@@ -22,7 +22,6 @@ See the License for the specific language governing permissions and
 #include <limits>
 #include <mpi.h>
 #include "utils/common.h"
-#include "emb_table/emb_table.h"
 #include "emb_table/embedding_ddr.h"
 
 using namespace std;

@@ -77,7 +77,7 @@ void EmbeddingDynamic::Key2Offset(std::vector<emb_key_t>& keys, int channel)
 
 int64_t EmbeddingDynamic::capacity() const
 {
-    return capacity_;
+    return capacity_.load();
 }
 
 int64_t EmbeddingDynamic::GetEmptyEmbeddingAddress()
@@ -103,7 +103,7 @@ void EmbeddingDynamic::MallocEmbeddingBlock(int embNum)
         float *embAddr = static_cast<float*>(block) + (i * extEmbSize_);
         embeddingList_.push_back(embAddr);
     }
-    capacity_ += embNum;
+    capacity_.fetch_add(embNum);
 }
 
 void EmbeddingDynamic::RandomInit(void* addr, size_t embNum)
