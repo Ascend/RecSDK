@@ -176,6 +176,7 @@ private:
         this->updateV = localVSlice + this->updateV;
 
         // 计算Var
+        Abs(this->updateV, this->updateV, row * this->dim2);
         Sqrt(this->updateVar, this->updateV, row * this->dim2);
         Adds(this->updateVar, this->updateVar, this->epsilon, row * this->dim2);
         Muls(this->temp, this->updateM, -this->lr, row * this->dim2);
@@ -233,5 +234,10 @@ extern "C" __global__ __aicore__ void lazy_adam(GM_ADDR gradient, GM_ADDR indice
               tiling_data.row, tiling_data.indicesAllocSize, tiling_data.otherAllocSize, tiling_data.batch,
               tiling_data.loopCount, tiling_data.rowLeft, tiling_data.loopCountTail, tiling_data.rowLeftTail,
               tiling_data.coreNum);
+#ifdef KERNEL_TASK_TYPE_DEFAULT
+    // Set kernel type with new versions of CANN to avoid matmul error during compiling.
+    // In previous versions of CANN, avoid matmul error by using '#ifndef __GET_CODE_CHANNEL__'.
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+#endif
     op32.Process();
 }

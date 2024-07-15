@@ -121,7 +121,7 @@ def _gen_golden_data():
     update_v = beta2 * old_v_slice + (1 - beta2) * np.square(gradient)
     out_v = _scatter_nd_update(input_v, indices, update_v)
 
-    denominator_slice = np.sqrt(update_v) + epsilon
+    denominator_slice = np.sqrt(np.abs(update_v)) + epsilon
     update_var = np.divide(-lr * update_m, denominator_slice)
     out_var = _scatter_nd_add(input_var, indices, update_var)
 
