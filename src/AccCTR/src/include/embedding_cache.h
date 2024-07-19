@@ -315,6 +315,26 @@ public:
     virtual int LoadEmbTableInfos(std::string tableName, const std::vector<uint64_t>& keys,
                                   const std::vector<std::vector<float>>& embeddings,
                                   const std::vector<std::vector<float>>& optimizerSlots) = 0;
+
+    /* *
+     * When switch the channel to eval, backup the current table's offsetMapper object.
+     * @Param tableName: embedding table name
+     * @Return errorCode
+     */
+    virtual int BackUpTrainStatus(const std::string& tableName) = 0;
+
+    /* *
+     * When switch the eval channel back to train, Recover the current table's offsetMapper object to the backup state.
+     * @Param tableName: embedding table name
+     * @Return errorCode
+     */
+    virtual int RecoverTrainStatus(const std::string& tableName) = 0;
+
+    /* *
+     * Reset the offsetMapper object to revert to its initialized state after loading.
+     * @Return errorCode
+     */
+    virtual int ResetOffsetMappers() = 0;
 };
 }  // namespace EmbCache
 

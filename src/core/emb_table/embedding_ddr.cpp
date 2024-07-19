@@ -78,6 +78,11 @@ void EmbeddingDDR::Load(const string& savePath, map<string, unordered_set<emb_ca
     }
 
     trainKeySet[name].insert(keys.cbegin(), keys.cend());
+    // Reset the offsetMapper object to revert to its initialized state after loading
+    auto rs = embCache->ResetOffsetMappers();
+    if (rs != 0) {
+        throw runtime_error("embCache->ResetOffsetMappers failed, err code: " + to_string(rc));
+    }
 }
 
 void EmbeddingDDR::LoadKey(const string &savePath, vector<emb_cache_key_t> &keys)
@@ -187,15 +192,13 @@ void EmbeddingDDR::LoadOptimizerSlot(const string &savePath, vector<vector<float
 
 void EmbeddingDDR::Save(const string& savePath)
 {
+    SyncLatestEmbedding();
     vector<emb_cache_key_t> keys;
     vector<vector<float>> embeddings;
     vector<vector<float>> optimizerSlots;
 
     auto step = GetStepFromPath(savePath);
-    if (step > 0) {
-        SyncLatestEmbedding();
-        embCache->GetEmbTableInfos(name, keys, embeddings, optimizerSlots);
-    }
+    embCache->GetEmbTableInfos(name, keys, embeddings, optimizerSlots);
 
     SaveKey(savePath, keys);
     SaveEmbedding(savePath, embeddings);
@@ -375,4 +378,14 @@ void EmbeddingDDR::SetHDTransfer(HDTransfer *hdTransfer)
 void EmbeddingDDR::SetEmbCache(ock::ctr::EmbCacheManagerPtr embCache)
 {
     this->embCache = embCache;
+}
+
+void EmbeddingDDR::BackUpTrainStatus()
+{
+    embCache->BackUpTrainStatus(name);
+}
+
+void EmbeddingDDR::RecoverTrainStatus()
+{
+    embCache->RecoverTrainStatus(name);
 }

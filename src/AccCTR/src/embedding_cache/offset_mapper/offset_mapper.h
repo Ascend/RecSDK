@@ -35,6 +35,38 @@ public:
 
     ~OffsetMapper() = default;
 
+    OffsetMapper(const OffsetMapper& other): maxCacheSize(other.maxCacheSize), useLength(other.useLength),
+                                             validPos(new LimitedSet(*other.validPos)),
+                                             evictPos(new LimitedSet(*other.evictPos)),
+                                             pos2Key(other.pos2Key), lastBatchPos(other.lastBatchPos),
+                                             evictSize(other.evictSize)
+    {
+    }
+
+    OffsetMapper& operator=(const OffsetMapper& other)
+    {
+        if (this != &other) {
+            delete validPos;
+            validPos = nullptr;
+            delete evictPos;
+            evictPos = nullptr;
+
+            if (other.validPos != nullptr) {
+                validPos = new LimitedSet(*other.validPos);
+            }
+            if (other.evictPos != nullptr) {
+                evictPos = new LimitedSet(*other.evictPos);
+            }
+
+            maxCacheSize = other.maxCacheSize;
+            useLength = other.useLength;
+            pos2Key = other.pos2Key;
+            lastBatchPos = other.lastBatchPos;
+            evictSize = other.evictSize;
+        }
+        return *this;
+    }
+
     bool Initialize(uint32_t reserve, uint32_t maxSize = 0)
     {
         maxCacheSize = maxSize;

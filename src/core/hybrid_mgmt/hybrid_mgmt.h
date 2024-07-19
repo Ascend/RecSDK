@@ -131,6 +131,10 @@ public:
 
     void ProcessEmbInfoL3Storage(const EmbBaseInfo& info, bool& remainBatchOut);
 
+    void BackUpTrainStatus();
+
+    void RecoverTrainStatus();
+
     GTEST_PRIVATE : bool mutexDestroy{false};
     std::mutex lookUpAndSendBatchIdMtx;
     std::mutex receiveAndUpdateBatchIdMtx;
@@ -219,6 +223,7 @@ private:
     bool isLoad{false};
     bool isInitialized{false};
     bool alreadyTrainOnce = false;  // 用于判断是否为predict模式
+    bool isBackUpTrainStatus = false; // whether the train state has been backed up
     map<string, int> lookUpSwapInAddrsPushId;  // 用于处理eos场景，当消费者追上生产者且长时间无上游数据，会触发eos
     map<string, ProcessStatus> specialProcessStatus;
 

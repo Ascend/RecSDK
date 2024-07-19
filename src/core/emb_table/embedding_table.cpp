@@ -143,6 +143,14 @@ void EmbeddingTable::Save(const string& filePath)
 {
 }
 
+void EmbeddingTable::BackUpTrainStatus()
+{
+}
+
+void EmbeddingTable::RecoverTrainStatus()
+{
+}
+
 void EmbeddingTable::MakeDir(const string& dirName)
 {
     if (fileSystemPtr_ == nullptr) {
