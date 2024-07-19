@@ -73,6 +73,9 @@ public:
     void SaveEmbAndOptim(const string& savePath);
     void SetEmbCache(ock::ctr::EmbCacheManagerPtr embCache);
 
+    void BackUpTrainStatus();
+    void RecoverTrainStatus();
+
 GTEST_PRIVATE:
 
     void EvictDeleteEmb(const vector<emb_key_t>& keys);

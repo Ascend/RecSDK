@@ -107,10 +107,20 @@ namespace MxRec {
 
         int64_t GetTableUsage(const string& tableName);
 
+        void BackUpTrainStatus();
+
+        void RecoverTrainStatus();
+
+        void GetSwapInAndSwapOutKeys(vector<emb_cache_key_t>& ssdKeysBeforeEval,
+                                     vector<emb_cache_key_t>& ssdKeysAfterEval,
+                                     vector<emb_cache_key_t>& swapInKeys, vector<emb_cache_key_t>& swapOutKeys);
+
         // DDR内每个表中emb数据频次缓存；map<embTableName, 频次缓存>
         unordered_map<std::string, LFUCache> ddrKeyFreqMap;
+        unordered_map<std::string, LFUCache> ddrKeyFreqMapBackUp;
         // 每张表中非DDR内key的出现次数
         unordered_map<std::string, unordered_map<emb_cache_key_t, freq_num_t>> excludeDDRKeyCountMap;
+        unordered_map<std::string, unordered_map<emb_cache_key_t, freq_num_t>> excludeDDRKeyCountMapBackUp;
 
         // 每一个table对应一个PreProcessMapper，预先推演HBM->DDR的情况
         std::unordered_map<std::string, PreProcessMapper> preProcessMapper;
@@ -125,6 +135,7 @@ namespace MxRec {
             uint64_t maxTableSize;
             vector<std::string> savePath;
             bool isExist;
+            int extEmbeddingSize;
         };
 
         void CreateL3StorageTableIfNotExist(const std::string& embTableName);

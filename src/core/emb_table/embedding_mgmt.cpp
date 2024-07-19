@@ -196,3 +196,17 @@ void EmbeddingMgmt::SetEmbCacheForEmbTable(const ock::ctr::EmbCacheManagerPtr& e
         table.second->SetEmbCache(embCache);
     }
 }
+
+void EmbeddingMgmt::BackUpTrainStatusBeforeLoad()
+{
+    for (auto& table: embeddings) {
+        table.second->BackUpTrainStatus();
+    }
+}
+
+void EmbeddingMgmt::RecoverTrainStatus()
+{
+    for (auto& table: embeddings) {
+        table.second->RecoverTrainStatus();
+    }
+}
