@@ -42,7 +42,7 @@ class MyModel:
         for i in range(0, self.expert_num):
             expert_linear = tf.layers.dense(input, units=self.expert_size, activation=None, name=f'expert_payer_{i}', 
                                             kernel_initializer=tf.constant_initializer(value=0.1), 
-                                            bias_initializer=tf.constant_initializer(values = 0.1))
+                                            bias_initializer=tf.constant_initializer(value=0.1))
             
             param_expert.append(expert_linear)
         return param_expert
@@ -53,7 +53,7 @@ class MyModel:
         for i in range(0, self.gate_num):
             gate_linear = tf.layers.dense(input, units=self.gate_size, activation=None, name=f'gate_payer_{i}', 
                                             kernel_initializer=tf.constant_initializer(value=0.1), 
-                                            bias_initializer=tf.constant_initializer(values = 0.1))
+                                            bias_initializer=tf.constant_initializer(value=0.1))
             
             param_gate.append(gate_linear)
         return param_gate
@@ -62,12 +62,12 @@ class MyModel:
     def tower_layer(self, input, layer_name):
         tower_linear = tf.layers.dense(input, units=self.tower_size, activation=None, name=f'tower_payer_{layer_name}', 
                                             kernel_initializer=tf.constant_initializer(value=0.1), 
-                                            bias_initializer=tf.constant_initializer(values = 0.1))
+                                            bias_initializer=tf.constant_initializer(value=0.1))
         
         tower_linear_out = tf.layers.dense(tower_linear, units=self.tower_size, activation=None, 
                                             name=f'tower_payer_out_{layer_name}', 
                                             kernel_initializer=tf.constant_initializer(value=0.1), 
-                                            bias_initializer=tf.constant_initializer(values=0.1))
+                                            bias_initializer=tf.constant_initializer(value=0.1))
         
         return tower_linear_out
         
