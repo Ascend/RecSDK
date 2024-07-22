@@ -66,18 +66,17 @@ def make_batch_and_iterator(config, feature_spec_list, is_training, dump_graph, 
     def extract_fn(data_record):
         features = {
             # Extract features using the keys set during creation
-            'label': tf.compat.v1.FixedLenFeature(shape=(config.line_per_sample,), dtype=tf.int64),
-            'sparse_feature': tf.compat.v1.FixedLenFeature(shape=(26 * config.line_per_sample,), dtype=tf.int64),
-            'dense_feature': tf.compat.v1.FixedLenFeature(shape=(13 * config.line_per_sample,), dtype=tf.float32),
+            'label': tf.compat.v1.FixedLenFeature(shape=(2 * config.line_per_sample,), dtype=tf.int64),
+            'sparse_feature': tf.compat.v1.FixedLenFeature(shape=(29 * config.line_per_sample,), dtype=tf.int64),
+            'dense_feature': tf.compat.v1.FixedLenFeature(shape=(11 * config.line_per_sample,), dtype=tf.float32),
         }
         sample = tf.compat.v1.parse_single_example(data_record, features)
         return sample
 
     def reshape_fn(batch):
-        batch['label'] = tf.reshape(batch['label'], [-1, 1])
-        batch['dense_feature'] = tf.reshape(batch['dense_feature'], [-1, 13])
-        batch['dense_feature'] = tf.math.log(batch['dense_feature'] + 3.0)
-        batch['sparse_feature'] = tf.reshape(batch['sparse_feature'], [-1, 26])
+        batch['label'] = tf.reshape(batch['label'], [-1, 2])
+        batch['dense_feature'] = tf.reshape(batch['dense_feature'], [-1, 11])
+        batch['sparse_feature'] = tf.reshape(batch['sparse_feature'], [-1, 29])
         return batch
 
     if is_training:
@@ -129,6 +128,7 @@ def model_forward(feature_list, hash_table_list, batch, is_train, modify_graph):
         emb = tf.reduce_sum(embedding_list, axis=0, keepdims=False)
     else:
         raise ValueError("the length of embedding_list must be greater than or equal to 1.")
+    emb = tf.reduce_sum(emb, axis=1)
     my_model = MyModel()
     model_output = my_model.build_model(embedding=emb,
                                         dense_feature=batch["dense_feature"],
@@ -148,8 +148,10 @@ def evaluate():
         eval_label = ConfigInitializer.get_instance().train_params_config.get_target_batch(False).get("label")
         sess.run([ConfigInitializer.get_instance().train_params_config.get_initializer(False)])
     log_loss_list = []
-    pred_list = []
-    label_list = []
+    pred_income_list = []
+    pred_mat_list = []
+    label_income_list = []
+    label_mat_list = []
     eval_current_steps = 0
     finished = False
     print("eval begin")
@@ -162,16 +164,21 @@ def evaluate():
             eval_cost = time.time() - eval_start
             qps_eval = (1 / eval_cost) * rank_size * cfg.batch_size
             log_loss_list += list(eval_loss.reshape(-1))
-            pred_list += list(pred.reshape(-1))
-            label_list += list(label.reshape(-1))
+            pred_income = pred[0]
+            pred_mat = pred[1]
+            pred_income_list += list(pred_income.reshape(-1))
+            pred_mat_list += list(pred_mat.reshape(-1))
+            label_income_list += list(label[:, 0].reshape(-1))
+            label_mat_list += list(label[:, 1].reshape(-1))
             print(f"eval current_steps: {eval_current_steps}, qps: {qps_eval}")
             if eval_current_steps == eval_steps:
                 finished = True
         except tf.errors.OutOfRangeError:
             finished = True
-    auc = roc_auc_score(label_list, pred_list)
+    auc_income = roc_auc_score(label_income_list, pred_income_list)
+    auc_mat = roc_auc_score(label_mat_list, pred_mat_list)
     mean_log_loss = np.mean(log_loss_list)
-    return auc, mean_log_loss
+    return auc_income, auc_mat, mean_log_loss
 
 
 def evaluate_fix(step):
@@ -281,8 +288,8 @@ if __name__ == "__main__":
     rank_id = int(os.getenv("RANK_ID")) if os.getenv("RANK_ID") else None
     rank_size = int(os.getenv("TRAIN_RANK_SIZE")) if os.getenv("TRAIN_RANK_SIZE") else None
     interval = int(os.getenv("INTERVAL")) if os.getenv("INTERVAL") else None
-    train_steps = 10000
-    eval_steps = 1360
+    train_steps = 1000
+    eval_steps = 1000
 
     try:
         use_dynamic_expansion = bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0)))
@@ -326,9 +333,7 @@ if __name__ == "__main__":
     optimizer_list = [get_dense_and_sparse_optimizer(cfg)]
 
     # note: variance_scaling_initializer only support HBM mode
-    emb_initializer = tf.compat.v1.truncated_normal_initializer(stddev=0.05, seed=sparse_hashtable_seed) \
-        if cfg.cache_mode != "HBM" or use_dynamic_expansion else \
-        tf.compat.v1.variance_scaling_initializer(mode="fan_avg", distribution='normal', seed=sparse_hashtable_seed)
+    emb_initializer = tf.constant_initializer(value = 0.1)
     sparse_hashtable = create_table(
         key_dtype=cfg.key_type,
         dim=tf.TensorShape([cfg.emb_dim]),
@@ -422,7 +427,8 @@ if __name__ == "__main__":
     epoch = 0
     cost_sum = 0
     qps_sum = 0
-    best_auc = 0
+    best_income_auc = 0
+    best_auc_mat = 0
     iteration_per_loop = 10
 
     train_ops = util.set_iteration_per_loop(sess, train_ops, 10)
@@ -456,12 +462,17 @@ if __name__ == "__main__":
 
         if i % (train_steps // iteration_per_loop) == 0:
             if interval is not None:
-                test_auc, test_mean_log_loss = evaluate_fix(i * iteration_per_loop)
+                test_auc_income, test_auc_mat, test_mean_log_loss = evaluate_fix(i * iteration_per_loop)
             else:
-                test_auc, test_mean_log_loss = evaluate()
-            print("Test auc: {}; log_loss: {} ".format(test_auc, test_mean_log_loss))
-            best_auc = max(best_auc, test_auc)
-            logger.info(f"training step: {i * iteration_per_loop}, best auc: {best_auc}")
+                test_auc_income, test_auc_mat, test_mean_log_loss = evaluate()
+            print("Test auc income: {};Test auc mat: {} ;log_loss: {} ".format(test_auc_income, 
+                                                                               test_auc_mat,test_mean_log_loss))
+            best_auc_income = max(best_auc_income, test_auc_income)
+            best_auc_mat = max(best_auc_mat, test_auc_mat)
+            logger.info(f"training step: {i * iteration_per_loop}, 
+                        best auc income: {best_auc_income} , 
+                        best auc mat: {best_auc_mat}")
+
 
     sess.close()
 
