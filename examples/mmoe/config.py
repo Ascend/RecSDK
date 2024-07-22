@@ -42,10 +42,6 @@ class LearningRateScheduler:
         self.base_lr_sparse = base_lr_sparse
 
     def calc(self, global_step):
-        # used for the warmup stage
-        warmup_step = tf.cast(1 / self.warmup_steps, tf.float32)
-        lr_factor_warmup = 1 - tf.cast(self.warmup_steps - global_step, tf.float32) * warmup_step
-        lr_factor_warmup = tf.cast(lr_factor_warmup, tf.float32)
         # used for the constant stage
         lr_factor_constant = tf.cast(1.0, tf.float32)
         
@@ -66,10 +62,15 @@ class Config:
         self.train_file_pattern = "train"
         self.test_file_pattern = "test"
 
-        self.batch_size = 4096
+        self.batch_size = 32
         self.line_per_sample = 1
-        self.train_epoch = 1
-        self.test_epoch = 9
+        self.train_epoch = 100
+        self.test_epoch = 100
+        self.expert_num = 8
+        self.gate_num = 2
+        self.expert_size = 16
+        self.tower_size = 8
+        
         self.perform_shuffle = False
 
         self.key_type = tf.int64
@@ -82,7 +83,7 @@ class Config:
         self.field_num = 26
         self.send_count = 46000 // self.rank_size
 
-        self.emb_dim = 8
+        self.emb_dim = self.expert_num * self.expert_size + self.gate_num * self.expert_num
         self.hashtable_threshold = 1
 
         self.USE_PIPELINE_TEST = False
@@ -102,7 +103,7 @@ class Config:
             LR_SCHEDULE_STEPS[1],
             LR_SCHEDULE_STEPS[2],
         )
-        self.learning_rate = _lr_scheduler.calc(self.global_step)
+        self.learning_rate = _lr_scheduler.calc()
 
     def __set_emb_table_size(self):
         self.cache_mode = os.getenv("CACHE_MODE")
@@ -110,15 +111,15 @@ class Config:
             raise ValueError("please export CACHE_MODE environment variable, support:[HBM, DDR, SSD]")
 
         if self.cache_mode == CacheModeEnum.HBM.value:
-            self.dev_vocab_size = 14_000_000 * self.rank_size
+            self.dev_vocab_size = 1000 * self.rank_size
             self.host_vocab_size = 0
         elif self.cache_mode == CacheModeEnum.DDR.value:
-            self.dev_vocab_size = 500_000 * self.rank_size
-            self.host_vocab_size = 24_000_000 * self.rank_size
+            self.dev_vocab_size = 1000 * self.rank_size
+            self.host_vocab_size = 1000 * self.rank_size
         elif self.cache_mode == CacheModeEnum.SSD.value:
-            self.dev_vocab_size = 100_000 * self.rank_size
-            self.host_vocab_size = 2_000_000 * self.rank_size
-            self.ssd_vocab_size = 24_000_000 * self.rank_size
+            self.dev_vocab_size = 1000 * self.rank_size
+            self.host_vocab_size = 1000 * self.rank_size
+            self.ssd_vocab_size = 1000 * self.rank_size
         else:
             raise ValueError(f"get CACHE_MODE:{self.cache_mode}, expect in [HBM, DDR, SSD]")
 
