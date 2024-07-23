@@ -32,16 +32,11 @@ class LearningRateScheduler:
     TF-based cond operations necessary for performance in graph mode.
     """
 
-    def __init__(self, base_lr_dense, base_lr_sparse, warmup_steps, decay_start_step, decay_steps):
-        self.warmup_steps = tf.constant(warmup_steps, dtype=tf.int32)
-        self.decay_start_step = tf.constant(decay_start_step, dtype=tf.int32)
-        self.decay_steps = tf.constant(decay_steps)
-        self.decay_end_step = decay_start_step + decay_steps  # 65041
-        self.poly_power = 2.0
+    def __init__(self, base_lr_dense, base_lr_sparse):
         self.base_lr_dense = base_lr_dense
         self.base_lr_sparse = base_lr_sparse
 
-    def calc(self, global_step):
+    def calc(self):
         # used for the constant stage
         lr_factor_constant = tf.cast(1.0, tf.float32)
         
@@ -51,7 +46,7 @@ class LearningRateScheduler:
 
 
 class Config:
-    def __init__(self, ):
+    def __init__(self, ) -> None:
         self.rank_id = int(os.getenv("OMPI_COMM_WORLD_RANK")) if os.getenv("OMPI_COMM_WORLD_RANK") else None
         tmp = os.getenv("TRAIN_RANK_SIZE")
         if tmp is None:
@@ -81,31 +76,30 @@ class Config:
         self.__set_emb_table_size()
 
         self.field_num = 26
-        self.send_count = 46000 // self.rank_size
+        self.send_count = self.get_send_count(self.rank_size)
 
         self.emb_dim = self.expert_num * self.expert_size + self.gate_num * self.expert_num
         self.hashtable_threshold = 1
 
         self.USE_PIPELINE_TEST = False
 
-        # 动态学习率
-        GLOBAL_BATCH_SIZE = 8192 * 8
-        LR_SCHEDULE_STEPS = [
-            int(2750 * 55296 / GLOBAL_BATCH_SIZE),
-            int(49315 * 55296 / GLOBAL_BATCH_SIZE),
-            int(27772 * 55296 / GLOBAL_BATCH_SIZE),
-        ]
         self.global_step = tf.Variable(0, trainable=False)
         _lr_scheduler = LearningRateScheduler(
             0.001,
-            0.001,
-            LR_SCHEDULE_STEPS[0],
-            LR_SCHEDULE_STEPS[1],
-            LR_SCHEDULE_STEPS[2],
+            0.001
         )
         self.learning_rate = _lr_scheduler.calc()
+        
+    def get_send_count(self, rank_size):
+        try:
+            return  46000 // rank_size
+        except ZeroDivisionError as exp:
+            raise ZeroDivisionError('Rank size can not be zero.') from exp
+        
+        
+    
 
-    def __set_emb_table_size(self):
+    def __set_emb_table_size(self) -> None:
         self.cache_mode = os.getenv("CACHE_MODE")
         if self.cache_mode is None:
             raise ValueError("please export CACHE_MODE environment variable, support:[HBM, DDR, SSD]")
@@ -123,7 +117,7 @@ class Config:
         else:
             raise ValueError(f"get CACHE_MODE:{self.cache_mode}, expect in [HBM, DDR, SSD]")
 
-    def get_emb_table_cfg(self):
+    def get_emb_table_cfg(self) -> None:
         if self.cache_mode == CacheModeEnum.HBM.value:
             return {"device_vocabulary_size": self.dev_vocab_size}
         elif self.cache_mode == CacheModeEnum.DDR.value:

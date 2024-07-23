@@ -24,10 +24,7 @@ from glob import glob
 import tensorflow as tf
 from sklearn.metrics import roc_auc_score
 import numpy as np
-
-from optimizer import get_dense_and_sparse_optimizer
-from config import sess_config, Config, SSD_DATA_PATH, CacheModeEnum
-from model import MyModel
+from npu_bridge.npu_init import *
 from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_ID_OFFSET
 from mx_rec.core.asc.helper import FeatureSpec, get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
@@ -40,7 +37,9 @@ from mx_rec.util.ops import import_host_pipeline_ops
 import mx_rec.util as mxrec_util
 from mx_rec.util.variable import get_dense_and_sparse_variable
 from mx_rec.util.log import logger
-from npu_bridge.npu_init import *
+from optimizer import get_dense_and_sparse_optimizer
+from config import sess_config, Config, SSD_DATA_PATH, CacheModeEnum
+from model import MyModel
 
 npu_plugin.set_device_sat_mode(0)
 
@@ -52,7 +51,6 @@ random.seed(shuffle_seed)
 
 def add_timestamp_func(batch):
     timestamp = import_host_pipeline_ops().return_timestamp(tf.cast(batch['label'], dtype=tf.int64))
-    # tf.constant(np.random.randint(1,1688109060,1)), tf.int64))
     batch["timestamp"] = timestamp
     return batch
 
@@ -144,7 +142,8 @@ def evaluate():
         eval_label = eval_model.get("label")
         sess.run([eval_iterator.initializer])
     else:
-        # 在sess run模式下，若还是使用原来batch中的label去sess run，则会出现getnext超时报错，需要使用新数据集中的batch
+        # In sess run mode, if the label from the original batch is still used for sess run, 
+        # a getnext timeout error will occur, and a new batch from the new dataset needs to be used
         eval_label = ConfigInitializer.get_instance().train_params_config.get_target_batch(False).get("label")
         sess.run([ConfigInitializer.get_instance().train_params_config.get_initializer(False)])
     log_loss_list = []
@@ -157,24 +156,26 @@ def evaluate():
     print("eval begin")
 
     while not finished:
+        
+        eval_current_steps += 1
+        eval_start = time.time()
         try:
-            eval_current_steps += 1
-            eval_start = time.time()
             eval_loss, pred, label = sess.run([eval_model.get("loss"), eval_model.get("pred"), eval_label])
-            eval_cost = time.time() - eval_start
-            qps_eval = (1 / eval_cost) * rank_size * cfg.batch_size
-            log_loss_list += list(eval_loss.reshape(-1))
-            pred_income = pred[0]
-            pred_mat = pred[1]
-            pred_income_list += list(pred_income.reshape(-1))
-            pred_mat_list += list(pred_mat.reshape(-1))
-            label_income_list += list(label[:, 0].reshape(-1))
-            label_mat_list += list(label[:, 1].reshape(-1))
-            print(f"eval current_steps: {eval_current_steps}, qps: {qps_eval}")
-            if eval_current_steps == eval_steps:
-                finished = True
         except tf.errors.OutOfRangeError:
+            break
+        eval_cost = time.time() - eval_start
+        qps_eval = (1 / eval_cost) * rank_size * cfg.batch_size
+        log_loss_list += list(eval_loss.reshape(-1))
+        pred_income = pred[0]
+        pred_mat = pred[1]
+        pred_income_list += list(pred_income.reshape(-1))
+        pred_mat_list += list(pred_mat.reshape(-1))
+        label_income_list += list(label[:, 0].reshape(-1))
+        label_mat_list += list(label[:, 1].reshape(-1))
+        print(f"eval current_steps: {eval_current_steps}, qps: {qps_eval}")
+        if eval_current_steps == eval_steps:
             finished = True
+        
     auc_income = roc_auc_score(label_income_list, pred_income_list)
     auc_mat = roc_auc_score(label_mat_list, pred_mat_list)
     mean_log_loss = np.mean(log_loss_list)
@@ -285,7 +286,6 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore")
     _clear_saved_model()
 
-    rank_id = int(os.getenv("RANK_ID")) if os.getenv("RANK_ID") else None
     rank_size = int(os.getenv("TRAIN_RANK_SIZE")) if os.getenv("TRAIN_RANK_SIZE") else None
     interval = int(os.getenv("INTERVAL")) if os.getenv("INTERVAL") else None
     train_steps = 1000
@@ -304,13 +304,8 @@ if __name__ == "__main__":
     logger.info(f"USE_DYNAMIC:{use_dynamic}")
     init(train_steps=train_steps, eval_steps=eval_steps,
          use_dynamic=use_dynamic, use_dynamic_expansion=use_dynamic_expansion)
-    IF_LOAD = False
+    
     rank_id = mxrec_util.communication.hccl_ops.get_rank_id()
-    filelist = glob(f"./saved-model/sparse-model-0")
-    if filelist:
-        IF_LOAD = True
-    ConfigInitializer.get_instance().if_load = IF_LOAD
-
     cfg = Config()
     feature_spec_list_train = None
     feature_spec_list_eval = None
@@ -385,14 +380,11 @@ if __name__ == "__main__":
             grads_and_vars = [(grad, variable) for grad, variable in zip(sparse_grads, sparse_variables)]
             train_ops.append(sparse_optimizer.apply_gradients(grads_and_vars))
 
-    # 动态学习率更新
-    train_ops.extend([cfg.global_step.assign(cfg.global_step + 1), cfg.learning_rate[0], cfg.learning_rate[1]])
 
     with tf.control_dependencies(train_ops):
         train_ops = tf.no_op()
         cfg.learning_rate = [cfg.learning_rate[0], cfg.learning_rate[1]]
 
-    saver = tf.train.Saver()
     if MODIFY_GRAPH_FLAG:
         modify_graph_and_start_emb_cache(dump_graph=True)
     else:
@@ -405,7 +397,6 @@ if __name__ == "__main__":
         if MODIFY_GRAPH_FLAG:  # 该场景添加hook处理校验问题
             hook_list.append(GraphModifierHook(modify_graph=False))
 
-    # with tf.compat.v1.Session(config=sess_config(dump_data=False)) as sess:
     if use_faae:
         sess = tf.compat.v1.train.MonitoredTrainingSession(
             hooks=hook_list,
@@ -427,13 +418,12 @@ if __name__ == "__main__":
     epoch = 0
     cost_sum = 0
     qps_sum = 0
-    best_income_auc = 0
+    best_auc_income= 0
     best_auc_mat = 0
     iteration_per_loop = 10
 
     train_ops = util.set_iteration_per_loop(sess, train_ops, 10)
 
-    # for i in range(1, TRAIN_STEPS):
     i = 0
     while True:
         i += 1
@@ -441,9 +431,8 @@ if __name__ == "__main__":
         start_time = time.time()
 
         try:
-            grad, loss = sess.run([train_ops, train_model.get("loss")])
-            lr = sess.run(cfg.learning_rate)
-            global_step = sess.run(cfg.global_step)
+            grad, loss, lr, global_step = sess.run([train_ops, train_model.get("loss"), 
+                                                    cfg.learning_rate, cfg.global_step])
         except tf.errors.OutOfRangeError:
             logger.info(f"Encounter the end of Sequence for training.")
             break
@@ -469,9 +458,7 @@ if __name__ == "__main__":
                                                                                test_auc_mat,test_mean_log_loss))
             best_auc_income = max(best_auc_income, test_auc_income)
             best_auc_mat = max(best_auc_mat, test_auc_mat)
-            logger.info(f"training step: {i * iteration_per_loop}, 
-                        best auc income: {best_auc_income} , 
-                        best auc mat: {best_auc_mat}")
+            logger.info(f"training step: {i * iteration_per_loop}, best auc income: {best_auc_income} , best auc mat: {best_auc_mat}")
 
 
     sess.close()
