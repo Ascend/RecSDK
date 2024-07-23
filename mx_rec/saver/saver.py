@@ -127,15 +127,6 @@ class Saver(object):
         save_path = save_path if save_path else self._prefix_name
         directory, base_name = os.path.split(save_path)
 
-        # skip save in step-0, cause host skip save in step-0 EmbeddingDDR::Save SyncLatestEmbedding
-        try:
-            step_in_name = int(base_name.split("-")[-1])
-            if step_in_name == 0:
-                return
-        except ValueError as err:
-            raise ValueError(f"The base_name {base_name} needs to include save_step message "
-                             f"eg: mode-100") from err
-
         if global_step:
             if not isinstance(global_step, compat.integral_types):
                 global_step = int(sess.run(global_step))
