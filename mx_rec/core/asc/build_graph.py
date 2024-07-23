@@ -135,7 +135,8 @@ def get_preprocessed_tensor_for_asc(table, config):
     use_static = ConfigInitializer.get_instance().use_static
     max_lookup_vec_size = None
     if use_static:
-        max_lookup_vec_size = config.get("send_count") * config.get("rank_size")
+        max_lookup_vec_size = config.get("send_count") * config.get("rank_size") if not config.get("is_dp") else (
+            config.get("send_count"))
 
     with tf.compat.v1.variable_scope("restore_vector"):
         restore_vector, hot_pos = get_restore_vector(config)
@@ -150,13 +151,14 @@ def get_preprocessed_tensor_for_asc(table, config):
         swap_args.set_data(SwapDataType.CONFIG.value, var_name=config.get(ASCAnchorAttr.TABLE_NAME.value),
                            var_channel=config.get(ASCAnchorAttr.CHANNEL_ID.value), config=config, swap_info=swap_info)
 
-    all2all_args = get_all2all_args(use_static, config)
-
     result = {
         'restore_vector': restore_vector,
         'hot_pos': hot_pos,
         'id_offsets': id_offsets,
-        'all2all_args': all2all_args,
     }
+
+    if not config.get("is_dp"):
+        all2all_args = get_all2all_args(use_static, config)
+        result.update({'all2all_args': all2all_args})
 
     return result

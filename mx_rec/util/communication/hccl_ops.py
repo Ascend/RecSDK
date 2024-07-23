@@ -63,7 +63,8 @@ def get_rank_size() -> Optional[int]:
     except ValueError as e:
         raise ValueError(f"Environment variable RANK_SIZE should be number, but got the type: "
                          f"{type(rank_size)}.") from e
-
+    if rank_size_int <= 0:
+        raise ValueError("Rank size should be greater than 0.")
     return rank_size_int
 
 
@@ -81,5 +82,6 @@ def get_local_rank_size() -> Optional[int]:
     except ValueError as e:
         raise ValueError(f"Environment variable LOCAL_RANK_SIZE should be number, but got the type:"
                          f" {type(local_rank_size)}.") from e
-
+    if local_rank_size_int <= 0:
+        raise ValueError("Local rank size should be greater than 0.")
     return local_rank_size_int

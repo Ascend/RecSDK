@@ -66,6 +66,26 @@ void EmbeddingStatic::Key2Offset(std::vector<emb_key_t>& keys, int channel)
     }
 }
 
+void EmbeddingStatic::Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel)
+{
+    std::lock_guard<std::mutex> lk(mut_); // lock for PROCESS_THREAD
+    for (emb_key_t& key : keys) {
+        if (key == INVALID_KEY_VALUE) {
+            continue;
+        }
+        const auto& iter = keyOffsetMap.find(key);
+        if (iter != keyOffsetMap.end()) {
+            key = iter->second;
+            continue;
+        }
+        // New key.
+        if (channel == TRAIN_CHANNEL_ID) {
+            throw runtime_error(StringFormat("Error: LookupKeys contains invalid key %d.", key));
+        }
+        key = INVALID_KEY_VALUE;
+    }
+}
+
 int64_t EmbeddingStatic::capacity() const
 {
     return this->devVocabSize;
@@ -146,11 +166,12 @@ void EmbeddingStatic::LoadKey(const string& savePath)
     loadOffset.clear();
     int keyCount = 0;
     for (int i = 0; i < loadKeySize; i = i + 1) {
-        if (buf[i] % rankSize_ == rankId_) {
-            keyOffsetMap[buf[i]] = keyCount;
-            loadOffset.push_back(i);
-            keyCount++;
+        if (!embInfo_.isDp && buf[i] % rankSize_ != rankId_) {
+            continue;
         }
+        keyOffsetMap[buf[i]] = keyCount;
+        loadOffset.push_back(i);
+        keyCount++;
     }
 
     if (loadOffset.size() > devVocabSize) {

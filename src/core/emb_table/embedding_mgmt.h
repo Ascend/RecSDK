@@ -45,6 +45,14 @@ public:
     void Key2Offset(const std::string& name, std::vector<emb_key_t>& keys, int channel);
 
     /**
+     * Dp模式下，从embedding表中查批量查找key，查不到即为error
+     * @param[in] name embedding表名
+     * @param[in,out] splitKey 待查找的key，输出为找到的HBM偏移或者HBM地址
+     * @param[in] channel 数据通道，主要区分train和eval
+     */
+    void Key2OffsetForDp(const std::string& name, std::vector<emb_key_t>& keys, int channel);
+
+    /**
      * 在指定的embedding表中淘汰key
      * @param[in] name embedding表名
      * @param[in] keys 待淘汰的key

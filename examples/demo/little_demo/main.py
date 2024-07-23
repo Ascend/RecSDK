@@ -198,11 +198,12 @@ if __name__ == "__main__":
         MODIFY_GRAPH_FLAG = bool(int(os.getenv("USE_MODIFY_GRAPH", 0)))
         USE_TIMESTAMP = bool(int(os.getenv("USE_TIMESTAMP", 0)))
         USE_ONE_SHOT = bool(int(os.getenv("USE_ONE_SHOT", 0)))
+        USE_DP = bool(int(os.getenv("USE_DP", 0)))
         USE_DETERMINISTIC = bool(int(os.getenv("USE_DETERMINISTIC", 0)))
     except ValueError as err:
         raise ValueError("please correctly config USE_MPI or USE_DYNAMIC or USE_DYNAMIC_EXPANSION or "
-                         "USE_MULTI_LOOKUP or USE_MODIFY_GRAPH or USE_TIMESTAMP or USE_ONE_SHOT or USE_DETERMINISTIC"
-                         "only 0 or 1 is supported.") from err
+                         "USE_MULTI_LOOKUP or USE_MODIFY_GRAPH or USE_TIMESTAMP or USE_ONE_SHOT or USE_DP or "
+                         "USE_DETERMINISTIC only 0 or 1 is supported.") from err
 
     try:
         MULTI_LOOKUP_TIMES = int(os.getenv("MULTI_LOOKUP_TIMES", 2))
@@ -279,6 +280,7 @@ if __name__ == "__main__":
                                   name='user_table',
                                   emb_initializer=emb_initializer,
                                   all2all_gradients_op="sum_gradients_and_div_by_ranksize",
+                                  is_dp=True if USE_DP else False,
                                   **cache_mode_dict[cache_mode])
 
     item_hashtable = create_table(key_dtype=tf.int64,

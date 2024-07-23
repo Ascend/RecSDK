@@ -54,6 +54,11 @@ void EmbeddingMgmt::Key2Offset(const std::string& name, std::vector<emb_key_t>& 
     embeddings[name]->Key2Offset(keys, channel);
 }
 
+void EmbeddingMgmt::Key2OffsetForDp(const std::string& name, std::vector<emb_key_t>& keys, int channel)
+{
+    embeddings[name]->Key2OffsetForDp(keys, channel);
+}
+
 size_t EmbeddingMgmt::GetMaxOffset(const std::string& name)
 {
     return embeddings[name]->GetMaxOffset();

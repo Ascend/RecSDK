@@ -119,19 +119,21 @@ namespace {
     void GetEmbInfoParams(pybind11::module_& m)
     {
         pybind11::class_<EmbInfoParams>(m, "EmbInfoParams")
-                .def(pybind11::init<const std::string&, int, int, int, bool, bool>(),
+                .def(pybind11::init<const std::string&, int, int, int, bool, bool, bool>(),
                      py::arg("name"),
                      py::arg("send_count"),
                      py::arg("embedding_size"),
                      py::arg("ext_embedding_size"),
                      py::arg("is_save"),
-                     py::arg("is_grad"))
+                     py::arg("is_grad"),
+                     py::arg("is_dp"))
                 .def_readwrite("name", &EmbInfoParams::name)
                 .def_readwrite("send_count", &EmbInfoParams::sendCount)
                 .def_readwrite("embedding_size", &EmbInfoParams::embeddingSize)
                 .def_readwrite("ext_embedding_size", &EmbInfoParams::extEmbeddingSize)
                 .def_readwrite("is_save", &EmbInfoParams::isSave)
-                .def_readwrite("is_grad", &EmbInfoParams::isGrad);
+                .def_readwrite("is_grad", &EmbInfoParams::isGrad)
+                .def_readwrite("is_dp", &EmbInfoParams::isDp);
     }
 
     void GetEmbInfo(pybind11::module_& m)
@@ -149,6 +151,7 @@ namespace {
                 .def_readwrite("ext_embedding_size", &EmbInfo::extEmbeddingSize)
                 .def_readwrite("is_save", &EmbInfo::isSave)
                 .def_readwrite("is_grad", &EmbInfo::isGrad)
+                .def_readwrite("is_dp", &EmbInfo::isDp)
                 .def_readwrite("dev_vocab_size", &EmbInfo::devVocabSize)
                 .def_readwrite("host_vocab_size", &EmbInfo::hostVocabSize)
                 .def_readwrite("initialize_infos", &EmbInfo::initializeInfos)
