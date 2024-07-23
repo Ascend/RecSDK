@@ -489,4 +489,8 @@ def _patch_for_summary_writer(func):
 
 
 def patch_for_summary_writer():
+    """
+    Patch for `tf.summary.FileWriter.__init__` method, add rankId to init param `filename_suffix`.
+    """
     FileWriter.__init__ = _patch_for_summary_writer(FileWriter.__init__)
+    logger.debug("Method `tf.summary.FileWriter.__init__` has been patched.")
