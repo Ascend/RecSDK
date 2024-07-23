@@ -60,11 +60,11 @@ class MyModel:
     
     
     def tower_layer(self, _input, layer_name):
-        tower_linear = tf.layers.dense(_input, units=self.tower_size, activation=None, name=f'tower_layer_{layer_name}', 
+        tower_linear = tf.layers.dense(_input, units=self.tower_size, activation='relu', name=f'tower_layer_{layer_name}', 
                                             kernel_initializer=tf.constant_initializer(value=0.1), 
                                             bias_initializer=tf.constant_initializer(value=0.1))
         
-        tower_linear_out = tf.layers.dense(tower_linear, units=self.tower_size, activation=None, 
+        tower_linear_out = tf.layers.dense(tower_linear, units=2, activation=None, 
                                             name=f'tower_payer_out_{layer_name}', 
                                             kernel_initializer=tf.constant_initializer(value=0.1), 
                                             bias_initializer=tf.constant_initializer(value=0.1))
