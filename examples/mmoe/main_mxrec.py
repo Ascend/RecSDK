@@ -25,6 +25,7 @@ import tensorflow as tf
 from sklearn.metrics import roc_auc_score
 import numpy as np
 from npu_bridge.npu_init import *
+from config import sess_config, Config, SSD_DATA_PATH, CacheModeEnum
 from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_ID_OFFSET
 from mx_rec.core.asc.helper import FeatureSpec, get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
@@ -38,7 +39,7 @@ import mx_rec.util as mxrec_util
 from mx_rec.util.variable import get_dense_and_sparse_variable
 from mx_rec.util.log import logger
 from optimizer import get_dense_and_sparse_optimizer
-from config import sess_config, Config, SSD_DATA_PATH, CacheModeEnum
+
 from model import MyModel
 
 npu_plugin.set_device_sat_mode(0)
@@ -328,7 +329,7 @@ if __name__ == "__main__":
     optimizer_list = [get_dense_and_sparse_optimizer(cfg)]
 
     # note: variance_scaling_initializer only support HBM mode
-    emb_initializer = tf.constant_initializer(value = 0.1)
+    emb_initializer = tf.constant_initializer(value=0.1)
     sparse_hashtable = create_table(
         key_dtype=cfg.key_type,
         dim=tf.TensorShape([cfg.emb_dim]),
@@ -418,7 +419,7 @@ if __name__ == "__main__":
     epoch = 0
     cost_sum = 0
     qps_sum = 0
-    best_auc_income= 0
+    best_auc_income = 0
     best_auc_mat = 0
     iteration_per_loop = 10
 
@@ -455,10 +456,11 @@ if __name__ == "__main__":
             else:
                 test_auc_income, test_auc_mat, test_mean_log_loss = evaluate()
             print("Test auc income: {};Test auc mat: {} ;log_loss: {} ".format(test_auc_income, 
-                                                                               test_auc_mat,test_mean_log_loss))
+                                                                               test_auc_mat, test_mean_log_loss))
             best_auc_income = max(best_auc_income, test_auc_income)
             best_auc_mat = max(best_auc_mat, test_auc_mat)
-            logger.info(f"training step: {i * iteration_per_loop}, best auc income: {best_auc_income} , best auc mat: {best_auc_mat}")
+            logger.info(f"training step: {i * iteration_per_loop}, best auc income: "
+                        f"{best_auc_income} , best auc mat: {best_auc_mat}")
 
 
     sess.close()

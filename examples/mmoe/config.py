@@ -90,14 +90,14 @@ class Config:
         )
         self.learning_rate = _lr_scheduler.calc()
         
+        
+    @staticmethod
     def get_send_count(self, rank_size):
         try:
-            return  46000 // rank_size
+            return 46000 // rank_size
         except ZeroDivisionError as exp:
             raise ZeroDivisionError('Rank size can not be zero.') from exp
-        
-        
-    
+         
 
     def __set_emb_table_size(self) -> None:
         self.cache_mode = os.getenv("CACHE_MODE")
