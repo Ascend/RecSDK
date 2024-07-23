@@ -23,6 +23,7 @@ import os
 import time
 
 import tensorflow as tf
+from tensorflow.compat.v1.summary import FileWriter
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.core.protobuf import trackable_object_graph_pb2
 from tensorflow.python import pywrap_tensorflow
@@ -45,12 +46,14 @@ import numpy as np
 from mpi4py import MPI
 
 from mx_rec.saver.saver import Saver as SparseSaver, check_file_system_is_valid, should_write_data
-from mx_rec.util.communication.hccl_ops import get_local_rank_size
+from mx_rec.util.communication.hccl_ops import get_rank_id
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, StringValidator, OptionalIntValidator, \
     OptionalStringValidator, DirectoryValidator
 from mx_rec.util.log import logger
 from mx_rec.constants.constants import MAX_INT32, INVALID_CHARS
+
+_FILENAME_SUFFIX = "filename_suffix"
 
 
 def get_sparse_vars(var_list):
@@ -470,3 +473,24 @@ def patch_for_saver():
     dense_saver.build = build
     logger.debug("Class tf.train.Saver has been patched.")
     training_util.write_graph = patch_for_write_graph_func(graph_io.write_graph)
+
+
+def _patch_for_summary_writer(func):
+    def wrapper(*args, **kwargs):
+        filename_suffix = kwargs.get(_FILENAME_SUFFIX, "")
+        filename_suffix = filename_suffix or ""
+        rank_suffix = "_rank" + str(get_rank_id())
+        if rank_suffix not in filename_suffix:
+            filename_suffix = rank_suffix + "_" + filename_suffix if filename_suffix else rank_suffix
+        kwargs[_FILENAME_SUFFIX] = filename_suffix
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
+def patch_for_summary_writer():
+    """
+    Patch for `tf.summary.FileWriter.__init__` method, add rankId to init param `filename_suffix`.
+    """
+    FileWriter.__init__ = _patch_for_summary_writer(FileWriter.__init__)
+    logger.debug("Method `tf.summary.FileWriter.__init__` has been patched.")
