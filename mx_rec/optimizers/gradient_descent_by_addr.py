@@ -60,13 +60,7 @@ class CustomizedGradientDescentByAddr(gradient_descent.GradientDescentOptimizer,
                                                               name=self.unique_name)
 
         self._slot_num = 0
-
-    @property
-    def slot_num(self):
-        return self._slot_num
-
-    def initialize_slots(self, var, table_instance):
-        return []
+        self._derivative = 1
 
     def get_slot_init_values(self):
         return []

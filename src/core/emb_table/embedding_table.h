@@ -15,12 +15,14 @@ See the License for the specific language governing permissions and
 
 #ifndef MX_REC_EMBEDDING_TABLE_H
 #define MX_REC_EMBEDDING_TABLE_H
+#include <atomic>
 #include <map>
 #include <string>
 #include <vector>
 
 #include "utils/common.h"
-#include "ssd_cache/cache_manager.h"
+#include "l3_storage/cache_manager.h"
+#include "file_system/file_system_handler.h"
 
 namespace MxRec {
 
@@ -38,20 +40,10 @@ public:
     virtual void Key2Offset(std::vector<emb_key_t>& keys, int channel);
 
     /**
-     * DDR模式使用
-     */
-    virtual void FindOffset(const vector<emb_key_t>& keys,
-                            size_t currentBatchId, size_t keepBatchId, int channelId);
-
-    virtual std::vector<int32_t> FindOffset(const vector<emb_key_t>& keys,
-                                            size_t batchId, int channelId,
-                                            std::vector<size_t>& swapPos);
-
-    /**
      * 淘汰key,  配合GetEvictedKeys一起使用GetEvictedKeys
      * EvictKeys执行，通过GetEvictedKeys, GetEvictedKeys拿结果
      */
-    virtual void EvictKeys(const std::vector<emb_key_t>& keys);
+    virtual void EvictKeys(const std::vector<emb_cache_key_t>& keys);
 
     /**
      * 获取设备侧淘汰的key的偏移或者地址
@@ -73,25 +65,17 @@ public:
 
     virtual size_t size() const;
 
-    void ClearMissingKeys();
-
-    virtual const std::vector<size_t>& GetMissingKeys();
-
     absl::flat_hash_map<emb_key_t, int64_t> GetKeyOffsetMap();
 
-    virtual void SetStartCount();
+    void SetFileSystemPtr(const string& savePath);
 
-    virtual void ClearLookupAndSwapOffset();
+    void UnsetFileSystemPtr();
 
-    virtual void Load(const string& savePath);
+    virtual void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
 
     virtual void Save(const string& savePath);
 
-    size_t GetDevVocabSize();
-
-    size_t GetHostVocabSize();
-
-    static void MakeDir(const string& dirName);
+    void MakeDir(const string& dirName);
 
     virtual vector<int64_t> GetDeviceOffset();
 
@@ -101,20 +85,20 @@ public:
 
     virtual void SetCacheManager(CacheManager* cacheManager);
 
-    void EnableSSD();
-
-    virtual void RefreshFreqInfoWithSwap();
-
     virtual TableInfo GetTableInfo();
+
+    virtual void SetHDTransfer(HDTransfer *hdTransfer);
+
+    virtual void SetEmbCache(ock::ctr::EmbCacheManagerPtr embCache);
 
     std::string name;
     size_t hostVocabSize;
     size_t devVocabSize;
+    size_t ssdVocabSize;
     size_t maxOffset;
     absl::flat_hash_map<emb_key_t, int64_t> keyOffsetMap;
     std::vector<int64_t> evictDevPos;     // 记录HBM内被淘汰的key
     std::vector<int64_t> evictHostPos; // 记录Host内淘汰列表
-    std::mutex mutSave_;  // 用于保存时锁住KeyOffsetMap
 
 #ifdef NDEBUG
 protected:
@@ -130,7 +114,7 @@ protected:
     size_t embSize_;
     size_t extEmbSize_;
     int seed_;
-    int64_t capacity_;
+    std::atomic<int64_t> capacity_{0};
     size_t rankId_;
     size_t rankSize_;
     vector<int64_t> loadOffset;
@@ -138,6 +122,8 @@ protected:
     std::vector<size_t> missingKeysHostPos_; // 用于记录当前batch在host上需要换出的偏移
     CacheManager* cacheManager_;
     bool isSSDEnabled_ = false;
+
+    unique_ptr<FileSystem> fileSystemPtr_;
 };
 
 }

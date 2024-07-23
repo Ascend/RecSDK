@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "include/factory.h"
 #include "unique/unique_impl.h"
+#include "embedding_cache/cache_manager/cache_manager.h"
 
 namespace ock {
 namespace ctr {
@@ -27,6 +28,7 @@ public:
 
 public:
     int CreateUnique(std::shared_ptr<Unique> &out) override;
+    int CreateEmbCacheManager(std::shared_ptr<EmbCache::EmbCacheManager> &out) override;
     int SetExternalLogFuncInner(ExternalLog logFunc) override;
 
 public:

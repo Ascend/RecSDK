@@ -15,6 +15,7 @@
 # ==============================================================================
 
 import os
+import shutil
 import time
 import warnings
 import random
@@ -24,6 +25,10 @@ import tensorflow as tf
 from sklearn.metrics import roc_auc_score
 import numpy as np
 
+from optimizer import get_dense_and_sparse_optimizer
+from config import sess_config, Config, SSD_DATA_PATH, CacheModeEnum
+from model import MyModel
+from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_ID_OFFSET
 from mx_rec.core.asc.helper import FeatureSpec, get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import create_table, sparse_lookup
@@ -36,10 +41,6 @@ import mx_rec.util as mxrec_util
 from mx_rec.util.variable import get_dense_and_sparse_variable
 from mx_rec.util.log import logger
 from npu_bridge.npu_init import *
-
-from model import MyModel
-from config import sess_config, Config
-from optimizer import get_dense_and_sparse_optimizer
 
 npu_plugin.set_device_sat_mode(0)
 
@@ -56,8 +57,8 @@ def add_timestamp_func(batch):
     return batch
 
 
-def make_batch_and_iterator(cfg, feature_spec_list, is_training, dump_graph, use_faae=False):
-    if cfg.USE_PIPELINE_TEST:
+def make_batch_and_iterator(config, feature_spec_list, is_training, dump_graph, is_use_faae=False):
+    if config.USE_PIPELINE_TEST:
         num_parallel = 1
     else:
         num_parallel = 8
@@ -65,9 +66,9 @@ def make_batch_and_iterator(cfg, feature_spec_list, is_training, dump_graph, use
     def extract_fn(data_record):
         features = {
             # Extract features using the keys set during creation
-            'label': tf.compat.v1.FixedLenFeature(shape=(cfg.line_per_sample,), dtype=tf.int64),
-            'sparse_feature': tf.compat.v1.FixedLenFeature(shape=(26 * cfg.line_per_sample,), dtype=tf.int64),
-            'dense_feature': tf.compat.v1.FixedLenFeature(shape=(13 * cfg.line_per_sample,), dtype=tf.float32),
+            'label': tf.compat.v1.FixedLenFeature(shape=(config.line_per_sample,), dtype=tf.int64),
+            'sparse_feature': tf.compat.v1.FixedLenFeature(shape=(26 * config.line_per_sample,), dtype=tf.int64),
+            'dense_feature': tf.compat.v1.FixedLenFeature(shape=(13 * config.line_per_sample,), dtype=tf.float32),
         }
         sample = tf.compat.v1.parse_single_example(data_record, features)
         return sample
@@ -80,24 +81,23 @@ def make_batch_and_iterator(cfg, feature_spec_list, is_training, dump_graph, use
         return batch
 
     if is_training:
-        files_list = glob(os.path.join(cfg.data_path, cfg.train_file_pattern) + '/*.tfrecord')
+        files_list = glob(os.path.join(config.data_path, config.train_file_pattern) + '/*.tfrecord')
     else:
-        files_list = glob(os.path.join(cfg.data_path, cfg.test_file_pattern) + '/*.tfrecord')
+        files_list = glob(os.path.join(config.data_path, config.test_file_pattern) + '/*.tfrecord')
     dataset = tf.data.TFRecordDataset(files_list, num_parallel_reads=num_parallel)
-    batch_size = cfg.batch_size // cfg.line_per_sample
+    batch_size = config.batch_size // config.line_per_sample
 
-    dataset = dataset.shard(cfg.rank_size, cfg.rank_id)
+    dataset = dataset.shard(config.rank_size, config.rank_id)
     if is_training:
         dataset = dataset.shuffle(batch_size * 1000, seed=shuffle_seed)
     if is_training:
-        dataset = dataset.repeat(cfg.train_epoch)
+        dataset = dataset.repeat(config.train_epoch)
     else:
-        dataset = dataset.repeat(cfg.test_epoch)
-    # dataset = dataset.repeat(cfg.num_epochs)
+        dataset = dataset.repeat(config.test_epoch)
     dataset = dataset.map(extract_fn, num_parallel_calls=num_parallel).batch(batch_size,
                                                                              drop_remainder=True)
     dataset = dataset.map(reshape_fn, num_parallel_calls=num_parallel)
-    if use_faae:
+    if is_use_faae:
         dataset = dataset.map(add_timestamp_func)
 
     if not MODIFY_GRAPH_FLAG:
@@ -128,7 +128,7 @@ def model_forward(feature_list, hash_table_list, batch, is_train, modify_graph):
     elif len(embedding_list) > 1:
         emb = tf.reduce_sum(embedding_list, axis=0, keepdims=False)
     else:
-        raise ValueError("The length of embedding_list must be greater than or equal to 1.")
+        raise ValueError("the length of embedding_list must be greater than or equal to 1.")
     my_model = MyModel()
     model_output = my_model.build_model(embedding=emb,
                                         dense_feature=batch["dense_feature"],
@@ -158,13 +158,13 @@ def evaluate():
         try:
             eval_current_steps += 1
             eval_start = time.time()
-            eval_loss, pred, label = sess.run([eval_model["loss"], eval_model["pred"], eval_label])
+            eval_loss, pred, label = sess.run([eval_model.get("loss"), eval_model.get("pred"), eval_label])
             eval_cost = time.time() - eval_start
-            qps = (1 / eval_cost) * rank_size * cfg.batch_size
+            qps_eval = (1 / eval_cost) * rank_size * cfg.batch_size
             log_loss_list += list(eval_loss.reshape(-1))
             pred_list += list(pred.reshape(-1))
             label_list += list(label.reshape(-1))
-            print(f"eval current_steps: {eval_current_steps}, qps: {qps}")
+            print(f"eval current_steps: {eval_current_steps}, qps: {qps_eval}")
             if eval_current_steps == eval_steps:
                 finished = True
         except tf.errors.OutOfRangeError:
@@ -189,7 +189,7 @@ def evaluate_fix(step):
     while not finished:
         try:
             eval_current_steps += 1
-            eval_loss, pred, label = sess.run([eval_model["loss"], eval_model["pred"], eval_model["label"]])
+            eval_loss, pred, label = sess.run([eval_model.get("loss"), eval_model.get("pred"), eval_model.get("label")])
             log_loss_list += list(eval_loss.reshape(-1))
             pred_list += list(pred.reshape(-1))
             label_list += list(label.reshape(-1))
@@ -216,7 +216,6 @@ def evaluate_fix(step):
     os.mknod(f"flag_{rank_id}.txt")
     while True:
         file_exists_list = [os.path.exists(f"flag_{i}.txt") for i in range(rank_size)]
-        # print(file_exists_list)
         if sum(file_exists_list) == rank_size:
             print("All saved!!!!!!!!!!")
             break
@@ -249,12 +248,38 @@ def create_feature_spec_list(use_timestamp=False):
     return feature_spec_list
 
 
+def _del_related_dir(del_path: str) -> None:
+    if not os.path.isabs(del_path):
+        del_path = os.path.join(os.getcwd(), del_path)
+    dirs = glob(del_path)
+    for sub_dir in dirs:
+        shutil.rmtree(sub_dir, ignore_errors=True)
+        logger.info(f"Delete dir:{sub_dir}")
+
+
+def _clear_saved_model() -> None:
+    _del_related_dir("/root/ascend/log/*")
+    _del_related_dir("kernel*")
+    _del_related_dir("model_dir_rank*")
+    _del_related_dir("op_cache")
+
+    if os.getenv("CACHE_MODE", "") != CacheModeEnum.SSD.value:
+        return
+    logger.info("Current cache mode is SSD, and file overwrite is not allowed in SSD mode, deleting exist directory"
+                " then create empty directory for this use case.")
+    for sub_path in SSD_DATA_PATH:
+        _del_related_dir(sub_path)
+        os.makedirs(sub_path, mode=0o550, exist_ok=True)
+        logger.info(f"Create dir:{sub_path}")
+
+
 if __name__ == "__main__":
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     warnings.filterwarnings("ignore")
+    _clear_saved_model()
 
     rank_id = int(os.getenv("RANK_ID")) if os.getenv("RANK_ID") else None
-    rank_size = int(os.getenv("RANK_SIZE")) if os.getenv("RANK_SIZE") else None
+    rank_size = int(os.getenv("TRAIN_RANK_SIZE")) if os.getenv("TRAIN_RANK_SIZE") else None
     interval = int(os.getenv("INTERVAL")) if os.getenv("INTERVAL") else None
     train_steps = 10000
     eval_steps = 1360
@@ -265,8 +290,8 @@ if __name__ == "__main__":
         MODIFY_GRAPH_FLAG = bool(int(os.getenv("USE_MODIFY_GRAPH", 0)))
         use_faae = bool(int(os.getenv("USE_FAAE", 0)))
     except ValueError as err:
-        raise ValueError(f"please correctly config USE_DYNAMIC_EXPANSION or USE_MULTI_LOOKUP or USE_FAAE "
-                         f"or USE_MODIFY_GRAPH only 0 or 1 is supported.") from err
+        raise ValueError("please correctly config USE_DYNAMIC_EXPANSION or USE_MULTI_LOOKUP or USE_FAAE "
+                         "or USE_MODIFY_GRAPH only 0 or 1 is supported.") from err
 
     use_dynamic = bool(int(os.getenv("USE_DYNAMIC", 0)))
     logger.info(f"USE_DYNAMIC:{use_dynamic}")
@@ -290,16 +315,15 @@ if __name__ == "__main__":
         feature_spec_list_eval = create_feature_spec_list(use_timestamp=False)
 
     train_batch, train_iterator = make_batch_and_iterator(cfg, feature_spec_list_train, is_training=True,
-                                                          dump_graph=True, use_faae=use_faae)
+                                                          dump_graph=True, is_use_faae=use_faae)
     eval_batch, eval_iterator = make_batch_and_iterator(cfg, feature_spec_list_eval, is_training=False,
-                                                        dump_graph=False, use_faae=use_faae)
+                                                        dump_graph=False, is_use_faae=use_faae)
     logger.info(f"train_batch: {train_batch}")
 
     if use_faae:
         cfg.dev_vocab_size = cfg.dev_vocab_size // 2
 
     optimizer_list = [get_dense_and_sparse_optimizer(cfg)]
-    sparse_optimizer_list = [sparse_optimizer for dense_optimizer, sparse_optimizer in optimizer_list]
 
     # note: variance_scaling_initializer only support HBM mode
     emb_initializer = tf.compat.v1.truncated_normal_initializer(stddev=0.05, seed=sparse_hashtable_seed) \
@@ -310,7 +334,6 @@ if __name__ == "__main__":
         dim=tf.TensorShape([cfg.emb_dim]),
         name="sparse_embeddings",
         emb_initializer=emb_initializer,
-        optimizer_list=[sparse_optimizer_list[0]._optimizer],
         **cfg.get_emb_table_cfg()
     )
     if use_faae:
@@ -323,15 +346,20 @@ if __name__ == "__main__":
                                is_train=False, modify_graph=MODIFY_GRAPH_FLAG)
 
     dense_variables, sparse_variables = get_dense_and_sparse_variable()
-
+    trainable_varibles = []
+    trainable_varibles.extend(dense_variables)
+    if use_dynamic_expansion:
+        trainable_varibles.append(tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)[0])
+    else:
+        trainable_varibles.extend(sparse_variables)
     rank_size = mxrec_util.communication.hccl_ops.get_rank_size()
     train_ops = []
     # multi task training
-    for loss, (dense_optimizer, sparse_optimizer) in zip([train_model["loss"]], optimizer_list):
+    for loss, (dense_optimizer, sparse_optimizer) in zip([train_model.get("loss")], optimizer_list):
         # do dense optimization
-        grads = dense_optimizer.compute_gradients(loss, var_list=dense_variables)
+        grads = dense_optimizer.compute_gradients(loss, var_list=trainable_varibles)
         avg_grads = []
-        for grad, var in grads:
+        for grad, var in grads[:-1]:
             if rank_size > 1:
                 grad = hccl_ops.allreduce(grad, "sum") if grad is not None else None
             if grad is not None:
@@ -340,17 +368,14 @@ if __name__ == "__main__":
         train_ops.append(dense_optimizer.apply_gradients(avg_grads))
 
         if use_dynamic_expansion:
-            from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS
-
-            train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS)
-            train_emb_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)
+            train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET)
             # do sparse optimization by addr
-            sparse_grads = sparse_optimizer.compute_gradients(loss, train_emb_list)  # local_embedding
+            sparse_grads = list(grads[-1])  # local_embedding
             grads_and_vars = [(grad, address) for grad, address in zip(sparse_grads, train_address_list)]
             train_ops.append(sparse_optimizer.apply_gradients(grads_and_vars))
         else:
             # do sparse optimization
-            sparse_grads = sparse_optimizer.compute_gradients(loss, sparse_variables)
+            sparse_grads = list(grads[-1])
             print("sparse_grads_tensor:", sparse_grads)
             grads_and_vars = [(grad, variable) for grad, variable in zip(sparse_grads, sparse_variables)]
             train_ops.append(sparse_optimizer.apply_gradients(grads_and_vars))
@@ -410,7 +435,7 @@ if __name__ == "__main__":
         start_time = time.time()
 
         try:
-            grad, loss = sess.run([train_ops, train_model["loss"]])
+            grad, loss = sess.run([train_ops, train_model.get("loss")])
             lr = sess.run(cfg.learning_rate)
             global_step = sess.run(cfg.global_step)
         except tf.errors.OutOfRangeError:
@@ -421,7 +446,6 @@ if __name__ == "__main__":
         cost_time = end_time - start_time
         qps = (1 / cost_time) * rank_size * cfg.batch_size * iteration_per_loop
         cost_sum += cost_time
-        # qps_sum += qps
         logger.info(f"step: {i * iteration_per_loop}; training loss: {loss}")
         logger.info(f"step: {i * iteration_per_loop}; grad: {grad}")
         logger.info(f"step: {i * iteration_per_loop}; lr: {lr}")

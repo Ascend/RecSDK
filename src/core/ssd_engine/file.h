@@ -33,36 +33,40 @@ namespace MxRec {
     using offset_t = uint32_t;
 
     class File {
-        static const uint64_t keyDataLen = sizeof(emb_key_t);
-        static const uint64_t offsetDataLen = sizeof(offset_t);
+        static constexpr uint64_t KEY_DATA_LEN = sizeof(emb_cache_key_t);
+        static constexpr uint64_t OFFSET_DATA_LEN = sizeof(offset_t);
 
     public:
-        File(uint64_t fileID, string &fileDir);
+        File(uint64_t fileID, string& fileDir);
 
-        File(uint64_t fileID, string &fileDir, string &loadDir, int step); // initialize with loading specific step data
+        File(uint64_t fileID, string& fileDir, string& loadDir,
+             int step);  // initialize with loading specific step data
 
         File(const File&) = delete;
         File& operator=(const File&) = delete;
 
         ~File();
 
-        bool IsKeyExist(emb_key_t key);
+        bool IsKeyExist(emb_cache_key_t key) const;
 
-        void InsertEmbeddings(vector<emb_key_t> &keys, vector<vector<float>> &embeddings);
+        void InsertEmbeddings(vector<emb_cache_key_t>& keys, vector<vector<float>>& embeddings);
 
-        vector<vector<float>> FetchEmbeddings(vector<emb_key_t> &keys);
+        vector<vector<float>> FetchEmbeddings(vector<emb_cache_key_t>& keys);
 
-        void DeleteEmbedding(emb_key_t key);
+        void DeleteEmbedding(emb_cache_key_t key);
 
-        void Save(const string &saveDir, int step);
+        void Save(const string& saveDir, int step);
 
-        vector<emb_key_t> GetKeys();
+        vector<emb_cache_key_t> GetKeys();
 
         uint64_t GetDataCnt() const;
 
         uint64_t GetFileID() const;
 
         uint64_t GetStaleDataCnt() const;
+
+        void InsertEmbeddingsByAddr(vector<emb_cache_key_t>& keys, vector<float*>& embeddingsAddr,
+                                    uint64_t extEmbeddingSize);
 
     private:
         uint64_t fileID;  // init by constructor
@@ -77,7 +81,7 @@ namespace MxRec {
 
         uint64_t dataCnt = 0;
         uint64_t staleDataCnt = 0;
-        unordered_map<emb_key_t, offset_t> keyToOffset{}; // offset_t >> maxDataNumInFile * embDataSize
+        unordered_map<emb_cache_key_t, offset_t> keyToOffset{}; // offset_t >> maxDataNumInFile * embDataSize
         offset_t lastWriteOffset = 0;
 
         void Load();

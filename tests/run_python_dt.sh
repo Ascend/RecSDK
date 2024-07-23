@@ -26,7 +26,7 @@ if [ $ARCH == "aarch64" ]; then
 fi
 
 # build mxRec and get output directory
-bash "$TOP_PATH"/build/build_tf1_with_opensource.sh
+bash "$TOP_PATH"/build/build_tf1.sh
 
 # create libasc directory and copy so files into it
 cd "$TOP_PATH"/mx_rec
@@ -36,7 +36,7 @@ cd -
 
 # set environment variable
 export PYTHONPATH="${TOP_PATH}"/output:$PYTHONPATH
-export LD_LIBRARY_PATH="${TOP_PATH}"/output:/usr/local/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH="${TOP_PATH}"/output:/usr/local/lib:"${TOP_PATH}"/mx_rec/libasc:$LD_LIBRARY_PATH
 
 rm -rf result
 mkdir -p result

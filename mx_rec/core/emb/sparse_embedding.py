@@ -11,10 +11,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 
 from mx_rec.core.asc.feature_spec import FeatureSpec
-from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
 from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
-from mx_rec.optimizers.emb_optimizer import EmbOptimizer
-from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.log import logger
 
 
@@ -30,22 +27,6 @@ class SparseEmbedding(BaseSparseEmbedding):
     def capacity(self) -> int:
         pass
 
-    @abc.abstractmethod
-    def set_optimizer(self, key: str, state_dict: dict):
-        pass
-
-    @abc.abstractmethod
-    def _set_ext_emb_size(self):
-        pass
-
-    @abc.abstractmethod
-    def _build_optimizer_states(self):
-        pass
-
-    @abc.abstractmethod
-    def _get_preprocessed_tensor(self, feature_spec: FeatureSpec, is_training: bool, send_count: Optional[int]) -> dict:
-        pass
-
     def _set_slice_vocab_size(self):
         self._slice_device_vocabulary_size = math.ceil(self._device_vocabulary_size / self._rank_size)
         self._slice_host_vocabulary_size = math.ceil(self._host_vocabulary_size / self._rank_size)
@@ -53,11 +34,8 @@ class SparseEmbedding(BaseSparseEmbedding):
 
     def _get_update_grad(self, local_grad: tf.Tensor, result: dict,
                          table: Union[tf.compat.v1.Variable, tf.Tensor]) -> Union[tf.IndexedSlices, tf.Tensor]:
-        unique_local_grad = tf.compat.v1.unsorted_segment_sum(local_grad,
-                                                              result.get("restore_vector_second"),
-                                                              array_ops.shape(result.get("unique_keys"))[0])
-        return ops.IndexedSlices(values=unique_local_grad,
-                                 indices=result.get("unique_keys"),
+        return ops.IndexedSlices(values=local_grad,
+                                 indices=result.get("id_offsets"),
                                  dense_shape=tf.shape(table))
 
     def _get_local_embeddings(self, table: Union[tf.compat.v1.Variable, tf.Tensor], result: dict,
@@ -87,25 +65,6 @@ class HBMSparseEmbedding(SparseEmbedding):
     def capacity(self) -> int:
         return self._device_vocabulary_size
 
-    def set_optimizer(self, key: str, state_dict: dict):
-        pass
-
-    def _build_optimizer_states(self):
-        pass
-
-    def _set_ext_emb_size(self):
-        self._ext_emb_size = self._emb_size * self._ext_coefficient
-        logger.debug("Init table, ext_emb_size is set to be %s.", self._ext_emb_size)
-
-    def _get_preprocessed_tensor(self, feature_spec: FeatureSpec, is_training: bool, send_count: Optional[int]) -> dict:
-        channel_id = ConfigInitializer.get_instance().train_params_config.get_training_mode_channel_id(is_training)
-        config = dict(batch_size=feature_spec.batch_size, feat_cnt=feature_spec.feat_cnt, send_count=send_count,
-                      rank_size=self._rank_size, channel_id=channel_id, table_name=self._table_name,
-                      is_hbm=self._is_hbm, ext_emb_size=self._ext_emb_size,
-                      emb_size=self._emb_size, device_id=self._device_id)
-
-        return get_preprocessed_tensor_for_asc(self._variable, config)
-
 
 class ExternalStorageSparseEmbedding(SparseEmbedding):
     """
@@ -113,52 +72,14 @@ class ExternalStorageSparseEmbedding(SparseEmbedding):
     """
 
     def __init__(self, config: dict):
-        self.emb_optimizer = EmbOptimizer(config.get("optimizer_list"))
-        self.emb_optimizer.check_optimizer_instance_list()
-
         super(ExternalStorageSparseEmbedding, self).__init__(config)
-
-    @property
-    def optimizer(self):
-        return self.emb_optimizer.optimizer
-
-    @property
-    def optimizer_instance_list(self):
-        return self.emb_optimizer.optimizer_instance_list
 
     def capacity(self) -> int:
         # DDR
         if not self._ssd_vocabulary_size:
-            return self._device_vocabulary_size + self._host_vocabulary_size
+            return self._host_vocabulary_size
         # SSD
-        return self._device_vocabulary_size + self._host_vocabulary_size + self._ssd_vocabulary_size
-
-    def set_optimizer(self, key: str, state_dict: dict):
-        self.emb_optimizer.set_optimizer(key, state_dict, self._table_name)
-
-    def _set_ext_emb_size(self):
-        self._ext_coefficient += len(self.emb_optimizer.optimizer_slot_info_list)
-        self._ext_emb_size = self._emb_size * self._ext_coefficient
-        logger.debug("Init table, ext_emb_size is set to be %s.", self._ext_emb_size)
-
-    def _build_optimizer_states(self):
-        for sparse_optimizer_instance in self.emb_optimizer.optimizer_instance_list:
-            slot_info_list = sparse_optimizer_instance.initialize_slots(self._variable, self)
-            self.emb_optimizer.optimizer_slot_info_list.extend(slot_info_list)
-
-        for slot_info in self.emb_optimizer.optimizer_slot_info_list:
-            self.emb_optimizer.set_optimizer_slot(slot_info)
-
-    def _get_preprocessed_tensor(self, feature_spec: FeatureSpec, is_training: bool, send_count: Optional[int]) -> dict:
-        channel_id = ConfigInitializer.get_instance().train_params_config.get_training_mode_channel_id(is_training)
-        config = dict(batch_size=feature_spec.batch_size, feat_cnt=feature_spec.feat_cnt, send_count=send_count,
-                      rank_size=self._rank_size, channel_id=channel_id, table_name=self._table_name,
-                      is_hbm=self._is_hbm, ext_emb_size=self._ext_emb_size,
-                      emb_size=self._emb_size, device_id=self._device_id)
-
-        variable_list = [self._variable] + \
-                        [slot_info.get("slot") for slot_info in self.emb_optimizer.optimizer_slot_info_list]
-        return get_preprocessed_tensor_for_asc(variable_list, config)
+        return self._host_vocabulary_size + self._ssd_vocabulary_size
 
 
 def _set_specific_value_for_non_valid_key(id_offsets: Optional[tf.Tensor],

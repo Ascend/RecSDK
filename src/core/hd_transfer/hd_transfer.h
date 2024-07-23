@@ -24,8 +24,8 @@ See the License for the specific language governing permissions and
 #include "utils/common.h"
 #include "utils/config.h"
 
-#ifndef tdtCreateChannel
-#define tdtCreateChannel acltdtCreateChannelWithCapacity
+#ifndef TDT_CREATE_CHANNEL
+#define TDT_CREATE_CHANNEL acltdtCreateChannelWithCapacity
 #endif
 
 namespace MxRec {
@@ -45,6 +45,8 @@ namespace MxRec {
         EVICT,
         H2D,
         SWAP,
+        SAVE_D2H,
+        SAVE_H2D,
         INVALID
     };
 
@@ -69,6 +71,10 @@ namespace MxRec {
                 return "h2d";
             case TransferChannel::SWAP:
                 return "swap";
+            case TransferChannel::SAVE_D2H:
+                return "save_d2h";
+            case TransferChannel::SAVE_H2D:
+                return "save_h2d";
             default:
                 throw std::invalid_argument("Invalid TransferChannel");
         }
@@ -76,7 +82,7 @@ namespace MxRec {
 
     class HDTransfer {
     public:
-        std::unordered_map<std::string, acltdtDataset*> aclDatasets;
+        std::unordered_map<std::string, std::unordered_map<int, acltdtDataset*>> aclDatasets;
 
         HDTransfer() = default;
 
@@ -87,7 +93,8 @@ namespace MxRec {
 
         vector<Tensor> Recv(TransferChannel channel, int channelId, const string& embName);
 
-        size_t RecvAcl(TransferChannel channel, int channelId, const string& embName);
+        size_t RecvAcl(TransferChannel channel, int channelId, const string& embName,
+                       int embeddingThreadId, int batchId);
 
         void Destroy();
 

@@ -157,7 +157,7 @@ void FeatAdmitNEvictCkpt::SetHistRec(string embName)
     for (size_t i = featItemInfoOffset; i < featItemInfoTotalSize + featItemInfoOffset; i += featItemInfoSaveNum) {
         process = i % printPerStep;
         if (process == 1) {
-            LOG_DEBUG("====in SetHistRec, process : %f", i / featItemInfoTotalSize);
+            LOG_TRACE("====in SetHistRec, process : {}", i / featItemInfoTotalSize);
         }
         auto featureId = transArr[i + featureIdIdxOffset];
         auto count = transArr[i + countIdxOffset];

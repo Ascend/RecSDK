@@ -22,9 +22,7 @@ See the License for the specific language governing permissions and
 #include <limits>
 #include <mpi.h>
 #include "utils/common.h"
-#include "emb_table/emb_table.h"
 #include "emb_table/embedding_ddr.h"
-#include "host_emb/host_emb.h"
 
 using namespace std;
 using namespace MxRec;
@@ -36,8 +34,8 @@ protected:
     EmbeddingDDRTest()
     {
         struct EmbInfoParams embParam(string("test1"), 0, 1000, 2000, true, true);
-        std::vector<size_t> vocabsize = {100};
-        std::vector<InitializeInfo> initializeInfos = {};
+        std::vector<size_t> vocabsize = {100, 100, 100};
+        vector<EmbCache::InitializerInfo> initializeInfos = {};
         std::vector<std::string> ssdDataPath = {""};
         vector<int> maxStep = {1000};
         embInfo_ = EmbInfo(embParam, vocabsize, initializeInfos, ssdDataPath);
@@ -75,79 +73,6 @@ protected:
  */
 TEST_F(EmbeddingDDRTest, SaveLoadEmbeddingData)
 {
-    vector<EmbInfo> embInfos = {embInfo_};
-    HostEmb* hostEmbs = Singleton<MxRec::HostEmb>::GetInstance();
-    hostEmbs->Initialize(embInfos, 0);
-    HostEmbTable& table = hostEmbs->GetEmb("test1");
-
-    vector<float> tmp1 {1.1, 2.1, 3.1};
-    vector<float> tmp2 {1.2, 2.2, 3.2};
-    vector<float> tmp3 {1.3, 2.3, 3.3};
-    vector<vector<float>> testData;
-    testData.push_back(tmp1);
-    testData.push_back(tmp2);
-    testData.push_back(tmp3);
-
-    for (vector<float>& tmp : testData) {
-        table.embData.push_back(tmp);
-    }
-
-    shared_ptr<EmbeddingDDR> ddr1 = std::make_shared<EmbeddingDDR>(embInfo_, rankInfo_, 0);
-    shared_ptr<EmbeddingDDR> ddr2 = std::make_shared<EmbeddingDDR>(embInfo_, rankInfo_, 0);
-    ddr1->Save("test_dir");
-    // 修改成0
-    for (vector<float>& tmp: table.embData) {
-        for (float& t : tmp) {
-            t = 0;
-        }
-    }
-    bool fileExist = false;
-    if (access("./test_dir/test1/embedding", F_OK) == 0) {
-        fileExist = true;
-    }
-    EXPECT_EQ(fileExist, true);
-}
-
-/**
- * 测试基本查找
- */
-TEST_F(EmbeddingDDRTest, DDRBasic)
-{
-    shared_ptr<EmbeddingDDR> table = std::make_shared<EmbeddingDDR>(embInfo_, rankInfo_, 0);
-    const size_t testNum = 100;
-    vector<emb_key_t> testKeys;
-    vector<size_t> testSwap;
-    for (size_t i = 0; i < testNum; ++i) {
-        testKeys.push_back(i);
-    }
-    table->FindOffset(testKeys, 0, TRAIN_CHANNEL_ID, testSwap);
-    EXPECT_EQ(testKeys.size(), 100);
-    EXPECT_EQ(testSwap.size(), 0);
-}
-
-TEST_F(EmbeddingDDRTest, evict)
-{
-    shared_ptr<EmbeddingDDR> table = std::make_shared<EmbeddingDDR>(embInfo_, rankInfo_, 0);
-    const size_t testNum = 100;
-    vector<emb_key_t> testKeys;
-    vector<size_t> testSwap;
-    for (size_t i = 0; i < testNum; ++i) {
-        testKeys.push_back(i);
-    }
-    table->FindOffset(testKeys, 0, TRAIN_CHANNEL_ID, testSwap);
-    table->EvictKeys(testKeys);
-    EXPECT_EQ(table->evictDevPos.size(), 100);
-    EXPECT_EQ(testKeys.size(), 100);
-    EXPECT_EQ(testSwap.size(), 0);
-}
-
-TEST_F(EmbeddingDDRTest, FindSwap)
-{
-    shared_ptr<EmbeddingDDR> table = std::make_shared<EmbeddingDDR>(embInfo_, rankInfo_, 0);
-    const size_t testNum = 100;
-    vector<size_t> testSwap;
-    table->FindSwapPosOld(0, 0, 0, testSwap);
-    EXPECT_EQ(testSwap.size(), 1);
 }
 
 TEST_F(EmbeddingDDRTest, EvictDeleteEmb)

@@ -43,7 +43,7 @@ private:
 
 private:
     ShardedDedup *unique = nullptr;
-    UniqueConf uniqueConf {};
+    UniqueConf uniqueConf{};
 };
 }
 }

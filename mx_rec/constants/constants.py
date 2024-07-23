@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 from enum import Enum
 import numpy as np
 
@@ -22,16 +21,19 @@ ASCEND_GLOBAL_HASHTABLE_COLLECTION = "ASCEND_GLOBAL_HASHTABLE_COLLECTION"
 ASCEND_CUTTING_POINT_INITIALIZER = "ASCEND_CUTTING_POINT_INITIALIZER"
 ASCEND_SPARSE_LOOKUP_ENTRANCE = "ASCEND_SPARSE_LOOKUP_ENTRANCE"
 ASCEND_SPARSE_LOOKUP_ID_OFFSET = "ASCEND_SPARSE_LOOKUP_ID_OFFSET"
-ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS = "ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS"
 ASCEND_TIMESTAMP = "ASCEND_TIMESTAMP"
 ASCEND_SPARSE_LOOKUP_LOCAL_EMB = "ASCEND_SPARSE_LOOKUP_LOCAL_EMB"
 EMPTY_STR = ""
 
+# default emb memory size for hbm、ddr、ssd
+DEFAULT_DEVICE_CACHE_MEMORY_SIZE = 2 * 1024 * 1024 * 1024
+DEFAULT_HOST_CACHE_MEMORY_SIZE = 40 * 1024 * 1024 * 1024
+
 # 获取ConfigInitializer对象实例失败提示信息
 GET_CONFIG_INSTANCE_ERR_MSG = "Please init the environment for mx_rec at first."
 
-# 自动改图模式下从计算图中寻找dataset的锚点名称
-ANCHOR_DATASET_NAME = "PrefetchDataset"
+# Used for slicer finding the orphan lookup key.
+ORPHAN_LOOKUP_KEY_PREFIX = "orphan"
 
 # the name of the embedding table merged by third party
 ASCEND_TABLE_NAME_MUST_CONTAIN = None
@@ -43,6 +45,11 @@ MAX_WHILE_SIZE = 800
 DEFAULT_HD_CHANNEL_SIZE = 40
 MAX_HD_CHANNEL_SIZE = 8192
 MIN_HD_CHANNEL_SIZE = 2
+
+# CM_WORKER_SIZE集群节点数
+DEFAULT_CM_WORKER_SIZE = 0
+MAX_CM_WORKER_SIZE = 512
+MIN_CM_WORKER_SIZE = 0
 
 # key process线程数
 DEFAULT_KP_THREAD_NUM = 6
@@ -64,7 +71,7 @@ DEFAULT_EVICT_TIME_INTERVAL = 60 * 60 * 24
 TRAIN_CHANNEL_ID = 0
 EVAL_CHANNEL_ID = 1
 HASHTABLE_COLLECTION_NAME_LENGTH = 30
-MAX_VOCABULARY_SIZE = 10**10
+MAX_VOCABULARY_SIZE = 10**9
 MAX_DEVICE_VOCABULARY_SIZE = 10 ** 9
 
 # RANK INFO
@@ -117,7 +124,6 @@ class BaseEnum(Enum):
 class EnvOption(Enum):
     MXREC_LOG_LEVEL = "MXREC_LOG_LEVEL"
     RANK_TABLE_FILE = "RANK_TABLE_FILE"
-    ASCEND_VISIBLE_DEVICES = "ASCEND_VISIBLE_DEVICES"
     CM_CHIEF_DEVICE = "CM_CHIEF_DEVICE"
     CM_WORKER_SIZE = "CM_WORKER_SIZE"
     TF_DEVICE = "TF_DEVICE"
@@ -137,6 +143,12 @@ class EnvOption(Enum):
     OMPI_COMM_WORLD_SIZE = "OMPI_COMM_WORLD_SIZE"
     OMPI_COMM_WORLD_LOCAL_SIZE = "OMPI_COMM_WORLD_LOCAL_SIZE"
     OMPI_COMM_WORLD_RANK = "OMPI_COMM_WORLD_RANK"
+
+
+class CacheModeEnum(Enum):
+    HBM = "HBM"
+    DDR = "DDR"
+    SSD = "SSD"
 
 
 class DataName(Enum):
@@ -166,8 +178,9 @@ class ASCAnchorAttr(Enum):
     MOCK_LOOKUP_RESULT = "mock_lookup_result"
     RESTORE_VECTOR_SECOND = "restore_vector_second"
     UNIQUE_KEYS = "unique_keys"
-    GRADIENTS_STRATEGY = "gradients_strategy"
     IS_GRAD = "is_grad"
+    TABLE_NAME = "table_name"
+    CHANNEL_ID = "channel_id"
 
 
 class OptimizerType(Enum):
@@ -214,16 +227,3 @@ class TFDevice(Enum):
 class Flag(Enum):
     TRUE = "1"
     FALSE = "0"
-
-
-class AnchorDatasetOp(Enum):
-    MODEL_DATASET = "ModelDataset"
-    OPTIMIZE_DATASET = "OptimizeDataset"
-    PREFETCH_DATASET = "PrefetchDataset"
-
-
-class AnchorIteratorOp(Enum):
-    ITERATOR_GET_NEXT = "IteratorGetNext"
-    MAKE_ITERATOR = "MakeIterator"
-    ONE_SHOT_ITERATOR = "OneShotIterator"
-
