@@ -60,7 +60,8 @@ class MyModel:
     
     
     def tower_layer(self, _input, layer_name):
-        tower_linear = tf.layers.dense(_input, units=self.tower_size, activation='relu', name=f'tower_layer_{layer_name}', 
+        tower_linear = tf.layers.dense(_input, units=self.tower_size, activation='relu', 
+                                            name=f'tower_layer_{layer_name}', 
                                             kernel_initializer=tf.constant_initializer(value=0.1), 
                                             bias_initializer=tf.constant_initializer(value=0.1))
         
@@ -112,7 +113,7 @@ class MyModel:
                 
                 out = self.tower_layer(cur_gate_expert, i)
                 out = tf.nn.softmax(out)
-                out = tf.clip_by_value(out, clip_value_min=1e-15, clip_value_max=1.0-1e-15)
+                out = tf.clip_by_value(out, clip_value_min=1e-15, clip_value_max=1.0 - 1e-15)
                 output_layers.append(out)
                 out_pred.append(tf.nn.softmax(out[:, 1]))
                 _slice_num = slice_num_end
