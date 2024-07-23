@@ -37,10 +37,10 @@ class MyModel:
         self.gate_num = gate_num
 
     
-    def expert_layer(self, input):
+    def expert_layer(self, _input):
         param_expert = []
         for i in range(0, self.expert_num):
-            expert_linear = tf.layers.dense(input, units=self.expert_size, activation=None, name=f'expert_payer_{i}', 
+            expert_linear = tf.layers.dense(_input, units=self.expert_size, activation=None, name=f'expert_layer_{i}', 
                                             kernel_initializer=tf.constant_initializer(value=0.1), 
                                             bias_initializer=tf.constant_initializer(value=0.1))
             
@@ -48,10 +48,10 @@ class MyModel:
         return param_expert
     
     
-    def gate_layer(self, input):
+    def gate_layer(self, _input):
         param_gate = []
         for i in range(0, self.gate_num):
-            gate_linear = tf.layers.dense(input, units=self.gate_size, activation=None, name=f'gate_payer_{i}', 
+            gate_linear = tf.layers.dense(_input, units=self.expert_num, activation=None, name=f'gate_layer_{i}', 
                                             kernel_initializer=tf.constant_initializer(value=0.1), 
                                             bias_initializer=tf.constant_initializer(value=0.1))
             
@@ -59,8 +59,8 @@ class MyModel:
         return param_gate
     
     
-    def tower_layer(self, input, layer_name):
-        tower_linear = tf.layers.dense(input, units=self.tower_size, activation=None, name=f'tower_payer_{layer_name}', 
+    def tower_layer(self, _input, layer_name):
+        tower_linear = tf.layers.dense(_input, units=self.tower_size, activation=None, name=f'tower_layer_{layer_name}', 
                                             kernel_initializer=tf.constant_initializer(value=0.1), 
                                             bias_initializer=tf.constant_initializer(value=0.1))
         
@@ -109,7 +109,10 @@ class MyModel:
 
                 cur_gate_expert = tf.multiply(x=expert_concat, y=cur_gate)
                 cur_gate_expert = tf.reduce_sum(cur_gate_expert, axis=1)
+                
                 out = self.tower_layer(cur_gate_expert, i)
+                out = tf.nn.softmax(out)
+                out = tf.clip_by_value(out, clip_value_min=1e-15, clip_value_max=1.0-1e-15)
                 output_layers.append(out)
                 out_pred.append(tf.nn.softmax(out[:, 1]))
                 _slice_num = slice_num_end
