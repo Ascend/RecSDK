@@ -116,7 +116,7 @@ class MyModel:
                 out = tf.clip_by_value(out, clip_value_min=1e-15, clip_value_max=1.0 - 1e-15)
                 output_layers.append(out)
                 out_pred.append(tf.nn.softmax(out[:, 1]))
-                _slice_num = slice_num_end
+                _slice_num = slice_gate_end
             trainable_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='mmoe')
 
             label_income = label[:, 0:1]
