@@ -747,7 +747,8 @@ def _get_swap_info(table_instance: BaseSparseEmbedding, variable_and_slot_list: 
     use_static = ConfigInitializer.get_instance().use_static
     max_lookup_vec_size = None
     if use_static:
-        max_lookup_vec_size = table_instance.send_count * table_instance.rank_size
+        max_lookup_vec_size = table_instance.send_count * table_instance.rank_size if not table_instance.is_dp else (
+            table_instance.send_count)
 
     with tf.compat.v1.variable_scope("h2d_emb"):
         logger.debug('Channel %s_h2d_%s was built for getnext', table_instance.table_name, channel_id)

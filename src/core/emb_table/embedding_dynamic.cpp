@@ -75,6 +75,29 @@ void EmbeddingDynamic::Key2Offset(std::vector<emb_key_t>& keys, int channel)
     LOG_DEBUG("current expansion emb:{}, usage:{}/{})", name, maxOffset, devVocabSize);
 }
 
+void EmbeddingDynamic::Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel)
+{
+    // The invalid address in the dynamic expansion is 0.
+    constexpr emb_key_t INVALID_DYNAMIC_EXPANSION_ADDR = 0;
+    std::lock_guard<std::mutex> lk(mut_); // lock for PROCESS_THREAD
+    for (emb_key_t& key : keys) {
+        if (key == INVALID_KEY_VALUE) {
+            key = INVALID_DYNAMIC_EXPANSION_ADDR;
+            continue;
+        }
+        const auto& iter = keyOffsetMap.find(key);
+        if (iter != keyOffsetMap.end()) {
+            key = iter->second;
+            continue;
+        }
+        // New key.
+        if (channel == TRAIN_CHANNEL_ID) {
+            throw runtime_error(StringFormat("Error: LookupKeys contains invalid key %d.", key));
+        }
+        key = INVALID_DYNAMIC_EXPANSION_ADDR;
+    }
+}
+
 int64_t EmbeddingDynamic::capacity() const
 {
     return capacity_.load();
@@ -283,10 +306,11 @@ void EmbeddingDynamic::LoadKey(const string& savePath)
     deviceKey.clear();
     loadOffset.clear();
     for (int i = 0; i < loadKeySize; i = i + 1) {
-        if (buf[i] % rankSize_ == rankId_) {
-            deviceKey.push_back(buf[i]);
-            loadOffset.push_back(i);
+        if (!embInfo_.isDp && buf[i] % rankSize_ != rankId_) {
+            continue;
         }
+        deviceKey.push_back(buf[i]);
+        loadOffset.push_back(i);
     }
 
     auto datasetSize = deviceKey.size() * extEmbSize_ * sizeof(float);

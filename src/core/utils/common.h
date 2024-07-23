@@ -239,6 +239,7 @@ struct EmbBaseInfo {
     int batchId;
     int channelId;
     string name;
+    bool isDp{false};
 };
 
 enum TensorIndex : uint32_t {
@@ -430,16 +431,18 @@ struct EmbInfoParams {
     int extEmbeddingSize;
     bool isSave;
     bool isGrad;
+    bool isDp;
     EmbInfoParams() = default;
 
     EmbInfoParams(const std::string& name, int sendCount, int embeddingSize, int extEmbeddingSize, bool isSave,
-                  bool isGrad)
+                  bool isGrad, bool isDp)
         : name(name),
           sendCount(sendCount),
           embeddingSize(embeddingSize),
           extEmbeddingSize(extEmbeddingSize),
           isSave(isSave),
-          isGrad(isGrad)
+          isGrad(isGrad),
+          isDp(isDp)
     {
     }
 };
@@ -455,6 +458,7 @@ struct EmbInfo {
           extEmbeddingSize(embInfoParams.extEmbeddingSize),
           isSave(embInfoParams.isSave),
           isGrad(embInfoParams.isGrad),
+          isDp(embInfoParams.isDp),
           devVocabSize(vocabsize[0]),
           hostVocabSize(vocabsize[1]),
           ssdVocabSize(vocabsize[SSD_SIZE_INDEX]),
@@ -469,6 +473,7 @@ struct EmbInfo {
     int extEmbeddingSize;
     bool isSave;
     bool isGrad;
+    bool isDp;
     size_t devVocabSize;
     size_t hostVocabSize;
     size_t ssdVocabSize;

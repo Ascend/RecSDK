@@ -172,6 +172,7 @@ if __name__ == '__main__':
     parser.add_argument('--model_ckpt_dir', type=str, default='')
     parser.add_argument('--learning_rate', type=float, default=0.0008)
     parser.add_argument('--use_timestamp', type=bool, default=False)  # 是否开启特征准入与淘汰
+    parser.add_argument('--use_dp', type=bool, default=False)  # 是否开启user table Dp特性
     parser.add_argument('--modify_graph', type=bool, default=False)  # 是否开启自动改图
     parser.add_argument('--use_multi_lookup', type=bool, default=True)  # 是否一表多查
     parser.add_argument('--multi_lookup_times', type=int, default=2)  # 一表多查次数
@@ -190,11 +191,12 @@ if __name__ == '__main__':
         use_multi_lookup = bool(int(os.getenv("USE_MULTI_LOOKUP", 1)))
         MODIFY_GRAPH_FLAG = bool(int(os.getenv("USE_MODIFY_GRAPH", 0)))
         USE_TIMESTAMP = bool(int(os.getenv("USE_TIMESTAMP", 0)))
+        USE_DP = bool(int(os.getenv("USE_DP", 0)))
         args.use_one_shot = bool(int(os.getenv("USE_ONE_SHOT", 0)))
         args.enable_slicer_test = bool(int(os.getenv("ENABLE_SLICER_TEST", 0)))
     except ValueError as err:
         raise ValueError("please correctly config USE_MPI or USE_DYNAMIC or USE_DYNAMIC_EXPANSION or "
-                         "USE_MULTI_LOOKUP or USE_MODIFY_GRAPH or USE_TIMESTAMP or USE_ONE_SHOT "
+                         "USE_MULTI_LOOKUP or USE_MODIFY_GRAPH or USE_TIMESTAMP or USE_ONE_SHOT or USE_DP"
                          "only 0 or 1 is supported.") from err
 
     try:
@@ -224,6 +226,7 @@ if __name__ == '__main__':
     args.use_timestamp = USE_TIMESTAMP
     args.use_multi_lookup = use_multi_lookup
     args.multi_lookup_times = MULTI_LOOKUP_TIMES
+    args.use_all_dp = USE_DP
     cfg = Config()
     # multi lookup config, batch size: 32 * 128 = 4096
     if use_multi_lookup and MULTI_LOOKUP_TIMES > 2:
