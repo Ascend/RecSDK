@@ -25,6 +25,8 @@ from typing import List
 import toml
 from tabulate import tabulate
 
+NEW_FILE_FLAG = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+
 
 def generate_flamegraph(
     perf_bin: str, perf_data: str, output_svg: str, flamegraph_path: str
@@ -59,7 +61,7 @@ def generate_flamegraph(
 
     # Generate the folded stack output
     folded_output = perf_data + ".folded"
-    fd = os.open(folded_output, os.O_WRONLY | os.O_CREAT, 0o640)
+    fd = os.open(folded_output, NEW_FILE_FLAG, 0o640)
     with os.fdopen(fd, "w") as f:
         script_output = subprocess.run(
             [perf_bin, "script", "-i", perf_data],
@@ -76,7 +78,7 @@ def generate_flamegraph(
         )
 
     # Generate the flamegraph
-    fd_svg = os.open(output_svg, os.O_WRONLY | os.O_CREAT, 0o640)
+    fd_svg = os.open(output_svg, NEW_FILE_FLAG, 0o640)
     with os.fdopen(fd_svg, "w") as f:
         subprocess.run(
             [flamegraph_script_path, folded_output], shell=False, check=True, stdout=f
@@ -139,7 +141,7 @@ def analyze_folded_stack(folded_output: str) -> None:
     # Prepare data for tabulate
     # Write call stacks to file
     table_data = []
-    fd_call_stacks = os.open("call_stacks.txt", os.O_WRONLY | os.O_CREAT, 0o640)
+    fd_call_stacks = os.open("call_stacks.txt", NEW_FILE_FLAG, 0o640)
     with os.fdopen(fd_call_stacks, "w") as f:
         for func, call_stack in results:
             percentage = (
