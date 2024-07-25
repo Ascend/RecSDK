@@ -36,7 +36,6 @@ constexpr int32_t ORIG_PADDED_DIM1 = (56 * 16);
 constexpr int32_t TRANSPOSED_UNPAD_DIM0 = (16 * 50);
 constexpr int32_t TRANSPOSED_UNPAD_DIM1 = 16;
 constexpr int32_t TRANSPOSE_CONST = 7;
-constexpr int32_t SHAPE_DIMS = 3;
 constexpr int32_t UB_TILES = 3;
 constexpr int32_t DIM0 = 0;
 constexpr int32_t DIM1 = 1;
@@ -142,7 +141,7 @@ static int32_t SoftmaxTiling(gert::TilingContext* context, AttentionFusionTiling
 
     // divisor should not be 0
     if (normalizeRow == 0) {
-        printf("[ERROR] divisor normalizeRow == 0.")
+        printf("[ERROR] divisor normalizeRow == 0.");
         return ge::GRAPH_FAILED;
     }
     int normalizeLoop = qShape.GetDim(DIM1) / normalizeRow;
@@ -215,6 +214,11 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
 
 namespace ge {
+constexpr int32_t SHAPE_DIMS = 3;
+constexpr int32_t DIM0 = 0;
+constexpr int32_t DIM1 = 1;
+constexpr int32_t DIM2 = 2;
+
 static ge::graphStatus InferShape(gert::InferShapeContext* context)
 {
     const gert::Shape* qShape = context->GetInputShape(0);

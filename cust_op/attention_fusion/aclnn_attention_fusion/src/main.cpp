@@ -24,9 +24,11 @@ See the License for the specific language governing permissions and
 
 #include "common.h"
 
+using namespace AclnnAttention;
+
 bool g_isDevice = false;
 int g_deviceId = 0;
-namespace AclnnAttention {
+namespace {
 
     OperatorDesc CreateOpDesc()
     {
@@ -121,7 +123,7 @@ namespace AclnnAttention {
         aclrtRunMode runMode;
         if (aclrtGetRunMode(&runMode) != ACL_SUCCESS) {
             ERROR_LOG("Get run mode failed");
-            DestoryResource();
+            DestroyResource();
             return false;
         }
         g_isDevice = (runMode == ACL_DEVICE);
@@ -163,7 +165,7 @@ namespace AclnnAttention {
         INFO_LOG("Run op success");
         return true;
     }
-} // namespace AclnnAttention
+}
 
 int main(int argc, char **argv)
 {
@@ -174,11 +176,11 @@ int main(int argc, char **argv)
     INFO_LOG("Init resource success");
 
     if (!RunOp()) {
-        DestoryResource();
+        DestroyResource();
         return FAILED;
     }
 
-    DestoryResource();
+    DestroyResource();
 
     return SUCCESS;
 }

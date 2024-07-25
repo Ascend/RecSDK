@@ -23,7 +23,7 @@ See the License for the specific language governing permissions and
 #include <iomanip>
 
 #include "acl/acl.h"
-
+namespace AclnnAttention {
 #define SUCCESS 0
 #define FAILED 1
 
@@ -47,5 +47,5 @@ bool ReadFile(const std::string &filePath, size_t fileSize, void *buffer, size_t
  * @return write result
  */
 bool WriteFile(const std::string &filePath, const void *buffer, size_t size);
-
+} // namespace AclnnAttention
 #endif // COMMON_H
