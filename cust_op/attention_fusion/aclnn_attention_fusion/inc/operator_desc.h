@@ -21,6 +21,7 @@ See the License for the specific language governing permissions and
 
 #include "acl/acl.h"
 
+namespace AclnnAttention {
 /**
  * Op description
  */
@@ -60,5 +61,5 @@ struct OperatorDesc {
     std::vector<aclTensorDesc *> outputDesc;
     int32_t maskOnOptional;
 };
-
+} // namespace AclnnAttention
 #endif // OPERATOR_DESC_H

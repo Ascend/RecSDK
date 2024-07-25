@@ -1,10 +1,10 @@
-# AttentionFusionGrad融合算子及样例说明
+# AttentionFusion融合算子及样例说明
 
-## AttentionFusionGrad融合算子文件结构
+## AttentionFusion融合算子文件结构
 
 ```shell
-├── aclnn_attention_fusion_grad  # 单算子测试用例
-├── attention_fusion_grad.json    # 算子原型配置
+├── aclnn_attention_fusion  # 单算子测试用例
+├── attention_fusion.json    # 算子原型配置
 ├── op_host    # AttentionGrad融合算子Host侧实现
 ├── op_kernel  # AttentionGrad融合算子Kernel侧实现
 ├── README.md  # AttentionGrad融合算子说明文档
@@ -18,7 +18,7 @@ C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/deta
 
 ## AttentionFusionGrad融合算子使用
 
-1. 上传attention_fusion_grad文件夹到目标环境，并进入当前目录，执行指令对attention_fusion_grad融合算子进行编译和部署
+1. 上传attention_fusion文件夹到目标环境，并进入当前目录，执行指令对attention_fusion融合算子进行编译和部署
 
 ```shell
 bash creat.sh
@@ -34,28 +34,29 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 
 1. 算子分析
 
-a) 算子的主要功能是实现Attention的反向计算；  
+a) 算子的主要功能是实现Attention的正向计算；  
 b) 算子输入说明：
-* dout: 前向算子反向传播的梯度;
-* softmax_out: 前向softmax的输出；
-* query: query矩阵；
-* key: key矩阵；
-* value: value矩阵；
+* query：query矩阵
+* key: key矩阵
+* value: value矩阵
+* attn_mask: mask矩阵
+* mask_on: 可配置mask是否生效，默认为0
 
 c) 算子输出说明：
-* grad_query: query的反向；
-* grad_key: key的反向；
-* grad_value: value的反向；
+* atten_score: 算子输出结果
+* softmax_out: softmax结果
 
 d) 算子约束说明：
 * 支持的型号：Atlas A2系列产品;
 * 支持的CANN版本：8.0.RC1及之后版本；
 * 支持的输入数据类型：float32；
-* 输入的数据只支持3维。
 * 输入的数据的batch size均相等, 且值在(0, 2000)
 * 输入的数据的满足attention的公式，shape支持对应的matmul计算
 * 输入的数据除batch size外，所有的维度满足(0, 1000)
-* 融合算子在key的第2维度为8的倍数且较长如大于500是计算性能较好
+* 输入query、key的M必须一致
+* 输入value、key的N必须一致
+* 输入mask的N, M分别等于query的N，key的M。mask的值只能为0或1。
+* mask_on的取值范围为[0, 1], 其中0为不进行mask计算，1为开启mask计算。
 * 融合算子的性能提升适用于小算子间free时间较长的情况
 
 2. Host侧算子实现
@@ -77,9 +78,9 @@ c) 原型注册
 
 3. Kernel侧算子实现
 
-Kernel侧算子实现在目录op_kernel下，其中包括：attention_fusion_grad.cpp。
+Kernel侧算子实现在目录op_kernel下，其中包括：attention_fusion.cpp。
 
-a) 核函数的入口：extern "C" __global__ __aicore__ void attention_fusion_grad
+a) 核函数的入口：extern "C" __global__ __aicore__ void attention_fusion
 
 b) 解析tiling参数：GET_TILING_DATA(tilingData, tiling)从TilingData中获取host侧传入的数据
 
@@ -91,7 +92,7 @@ c) 调用AttentionFusionGradKernel完成计算；
 
 单算子调用分为两种方式：单算子API执行和模型执行。mxRec提供单算子API执行供参考。
 
-单算子测试用例在目录aclnn_attention_fusion_grad下，其中：
+单算子测试用例在目录aclnn_attention_fusion下，其中：
 
 * inc是头文件目录
 * scripts存放生成数据和验证数据的python脚本

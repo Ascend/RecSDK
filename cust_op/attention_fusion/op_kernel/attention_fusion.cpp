@@ -17,7 +17,6 @@ See the License for the specific language governing permissions and
 #include "attention_fusion_kernel.h"
 using namespace AscendC;
 
-namespace Attention_Kernel {
 // call of kernel function
 extern "C" __global__ __aicore__ void attention_fusion(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR attnMask,
                                             GM_ADDR attenScore, GM_ADDR softmaxOut, GM_ADDR workspace, GM_ADDR tiling) {
@@ -27,7 +26,7 @@ extern "C" __global__ __aicore__ void attention_fusion(GM_ADDR query, GM_ADDR ke
     const TCubeTiling *kvMatmulTiling = &tiling_data.kvMatmulTiling;
     const SoftMaxTiling *softMaxTilingData = &tiling_data.softMaxTilingData;
 
-    AttentionFusionArgs args {
+    Attention_Kernel::AttentionFusionArgs args {
         query, key, value, attnMask, attenScore, softmaxOut, tiling_data.normalizeAttr, tiling_data.queryDim1,
         tiling_data.queryDim2, tiling_data.keyDim1, tiling_data.valueDim2, tiling_data.batchNum,
         tiling_data.normalizeLoop, tiling_data.normalizeRow, tiling_data.normalizeColumn, tiling_data.maskIsOn,
@@ -36,7 +35,6 @@ extern "C" __global__ __aicore__ void attention_fusion(GM_ADDR query, GM_ADDR ke
         &tiling_data.confusionTransposeTilingData2, &tiling_data.confusionTransposeTilingData3
     };
 
-    AttentionFusionKernel<float, float, float> kernel;
+    Attention_Kernel::AttentionFusionKernel<float, float, float> kernel;
     kernel.Compute(args);
-}
 }
