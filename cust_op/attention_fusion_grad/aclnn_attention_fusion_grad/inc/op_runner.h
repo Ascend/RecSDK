@@ -38,6 +38,11 @@ public:
     bool Init();
 
     /**
+    * @brief Init op runner output info
+    */
+    bool InitOutputInfo();
+
+    /**
      * @brief Get number of inputs
      * @return number of inputs
      */
