@@ -416,7 +416,7 @@ def main():
         tracing.extend(op_metadata)
         tracing.extend(op_tracing)
 
-    fd = os.open("mxrec_tracing.json", os.O_WRONLY | os.O_CREAT, 0o640)
+    fd = os.open("mxrec_tracing.json", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o640)
     with os.fdopen(fd, "w") as file:
         json.dump(tracing, file, indent=4, default=lambda obj: obj.__dict__)
 
