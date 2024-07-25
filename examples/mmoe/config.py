@@ -92,7 +92,7 @@ class Config:
         
         
     @staticmethod
-    def get_send_count(self, rank_size):
+    def get_send_count(rank_size):
         try:
             return 46000 // rank_size
         except ZeroDivisionError as exp:
