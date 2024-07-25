@@ -63,9 +63,6 @@ namespace MxRec {
             CkptDataType::KEY_COUNT_MAP,
             CkptDataType::EVICT_POS
         };
-        const set<CkptDataType> floatTransSet{
-            CkptDataType::EMB_DATA
-        };
 
         vector<unique_ptr<CkptDataHandler>> dataHandlers;
         string processPath;

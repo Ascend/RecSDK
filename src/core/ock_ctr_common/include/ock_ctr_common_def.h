@@ -20,15 +20,15 @@ See the License for the specific language governing permissions and
 #include <iostream>
 #include <mutex>
 
-using CTR_CREATE_FACTORY_FUNCTION = int (*)(uintptr_t *);
+using CTR_CREATE_FACTORY_FUNCTION = int (*)(uintptr_t*);
 
 namespace ock {
 namespace ctr {
 class OckCtrCommonDef {
 public:
-    static int CreatFactory(uintptr_t *factory)
+    static int CreateFactory(uintptr_t* factory)
     {
-        static void *handle = nullptr;
+        static void* handle = nullptr;
         static std::mutex m;
         std::unique_lock<std::mutex> lock(m);
         if (handle != nullptr) {
@@ -38,8 +38,8 @@ public:
 
         handle = dlopen(LIBRARY_NAME, RTLD_NOW);
         if (handle == nullptr) {
-            std::cout << "Failed to call dlopen to load library '" << LIBRARY_NAME << "', error " << dlerror() <<
-                std::endl;
+            std::cout << "Failed to call dlopen to load library '" << LIBRARY_NAME << "', error " << dlerror()
+                      << std::endl;
             return -1;
         }
 
@@ -55,9 +55,9 @@ public:
     }
 
 private:
-    constexpr static const char *LIBRARY_NAME = "lib_ock_ctr_common.so";
+    constexpr static const char* LIBRARY_NAME = "lib_ock_ctr_common.so";
 };
-}
-}
+}  // namespace ctr
+}  // namespace ock
 
-#endif // OCK_OCK_CTR_COMMON_DEF_H
+#endif  // OCK_OCK_CTR_COMMON_DEF_H

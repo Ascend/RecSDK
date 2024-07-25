@@ -24,6 +24,9 @@ TOOL_FILE="create_fake_id.py"
 CPU_TYPE=$(arch)
 BUILD_MODE=$1
 
+# config asan environment variable
+export ASAN_OPTIONS=halt_on_error=1:detect_leaks=1
+
 create_data()
 {
     cd ${TOOL_PATH}

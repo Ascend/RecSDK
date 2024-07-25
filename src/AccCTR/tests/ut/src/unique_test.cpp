@@ -11,12 +11,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
  ==============================================================================*/
+#include "unique_test.h"
 
 #include <sstream>
 #include <fstream>
-#include "unique_test.h"
-
-FactoryPtr factory;
+#include "common.h"
 
 void UniqueTest::SetUpTestCase()
 {
@@ -96,6 +95,13 @@ TEST_F(UniqueTest, Conf)
     ASSERT_EQ(unique->DoEnhancedUnique(uniqueIn, uniqueOut), 3); // idCntFill空指针
     uniqueOut.idCntFill = idCntFill;
     ASSERT_EQ(unique->DoEnhancedUnique(uniqueIn, uniqueOut), 7); // padding长度过小
+
+    unique->UnInitialize();
+    delete[] idCnt;
+    delete[] idCntFill;
+    delete[] uniqueIdCntInBucket;
+    delete[] uniqueIdInBucket;
+
     std::cout << "===========Conf end=============" << std::endl;
 }
 
@@ -116,6 +122,9 @@ TEST_F(UniqueTest, usePaddingNoShardingErr)
     conf.outputType = OutputType::ENHANCED;
 
     ASSERT_EQ(unique->Initialize(conf), 9);
+
+    unique->UnInitialize();
+
     std::cout << "===========usePaddingNoShardingErr end=============" << std::endl;
 }
 
@@ -133,6 +142,8 @@ TEST_F(UniqueTest, useNegativeDesiredSize)
 
     ASSERT_EQ(unique->Initialize(conf), 1);
 
+    unique->UnInitialize();
+
     std::cout << "===========useNegativeDesiredSize end=============" << std::endl;
 }
 
@@ -144,7 +155,10 @@ TEST_F(UniqueTest, DoUniqueNormal)
     std::string input_path(path);
     std::cout << "input_path:" + input_path + "/data30.txt" << std::endl;
     std::ifstream input(input_path + "/data30.txt");
-
+    if (!input.good()) {
+        std::cout << "Failed to open file:" + input_path + "/data30.txt" << std::endl;
+        return;
+    }
     std::vector<int64_t> numbers;
     std::string line;
     while (std::getline(input, line, ',')) {
@@ -155,6 +169,8 @@ TEST_F(UniqueTest, DoUniqueNormal)
     std::cout << "read data close, numbers size:" << numbers.size() << std::endl;
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.trace = true;
@@ -203,6 +219,9 @@ TEST_F(UniqueTest, DoUniqueNormal)
     ASSERT_EQ(uniqueOut.uniqueIdCnt, (int)idsSet.size());
 
     unique->UnInitialize();
+    if (path) {
+        free(path);
+    }
     std::cout << "===========DoUniqueNormal end=============" << std::endl;
 }
 
@@ -212,6 +231,8 @@ TEST_F(UniqueTest, UseErrOutputTypeEnhanced)
     std::cout << "===========UseErrOutputTypeEnhanced start=============" << std::endl;
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.desiredSize = 6;
@@ -253,6 +274,8 @@ TEST_F(UniqueTest, UseErrOutputTypeNormal)
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
 
+    factory->SetExternalLogFuncInner(CTRLog);
+
     UniqueConf conf;
     conf.desiredSize = 6;
     conf.dataType = DataType::INT64;
@@ -291,6 +314,8 @@ TEST_F(UniqueTest, DoEnhancedUnique)
     std::cout << "===========DoEnhancedUnique start=============" << std::endl;
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.desiredSize = 6;
@@ -339,6 +364,8 @@ TEST_F(UniqueTest, DoEnhancedUniqueErr)
     std::cout << "===========DoEnhancedUniqueErr start=============" << std::endl;
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.desiredSize = 6;
@@ -392,6 +419,9 @@ TEST_F(UniqueTest, DoEnhancedUniqueErr)
     ASSERT_EQ(uniqueOut.uniqueIdCnt, (int)idsSet.size());
 
     unique->UnInitialize();
+    delete[] uniqueIdInBucket;
+    delete[] idCnt;
+
     std::cout << "===========DoEnhancedUniqueErr end=============" << std::endl;
 }
 
@@ -401,6 +431,8 @@ TEST_F(UniqueTest, DoEnhancedUnique_UniqueIdSize)
     std::cout << "===========DoEnhancedUnique_UniqueIdSize start=============" << std::endl;
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.desiredSize = 6;
@@ -449,6 +481,8 @@ TEST_F(UniqueTest, idCntIsNull)
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
 
+    factory->SetExternalLogFuncInner(CTRLog);
+
     UniqueConf conf;
     conf.desiredSize = 6;
     conf.dataType = DataType::INT64;
@@ -488,6 +522,8 @@ TEST_F(UniqueTest, idCntIsNullSharding)
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
 
+    factory->SetExternalLogFuncInner(CTRLog);
+
     UniqueConf conf;
     conf.desiredSize = 6;
     conf.dataType = DataType::INT64;
@@ -526,6 +562,9 @@ TEST_F(UniqueTest, idCntIsNullSharding)
     ASSERT_EQ(ret, 3);
 
     unique->UnInitialize();
+    delete[] uniqueIdCntInBucket;
+    delete[] uniqueIdInBucket;
+
     std::cout << "===========idCntIsNullSharding end=============" << std::endl;
 }
 
@@ -536,6 +575,8 @@ TEST_F(UniqueTest, DoUniqueShard)
 
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.useSharding = true;
@@ -600,6 +641,7 @@ TEST_F(UniqueTest, DoUniqueShard)
     ASSERT_THAT(uniqueIdCntInBucket, testing::ElementsAreArray(expectedUniqueIdCnt));
     ASSERT_THAT(idCnt, testing::ElementsAreArray(expectedIdCnt));
     unique->UnInitialize();
+    delete[] uniqueIdInBucket;
 
     std::cout << "===========DoUniqueShard end=============" << std::endl;
 }
@@ -611,6 +653,8 @@ TEST_F(UniqueTest, DoUniqueOnlyShard)
 
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.useSharding = true;
@@ -663,6 +707,7 @@ TEST_F(UniqueTest, DoUniqueOnlyShard)
     ASSERT_THAT(inputId, testing::ElementsAreArray(restoreIds));
     ASSERT_THAT(uniqueIdCntInBucket, testing::ElementsAreArray(expectedUniqueIdCnt));
     unique->UnInitialize();
+    delete[] uniqueIdInBucket;
 
     std::cout << "===========DoUniqueOnlyShard end=============" << std::endl;
 }
@@ -674,6 +719,8 @@ TEST_F(UniqueTest, DoUniquePadding)
 
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.usePadding = true;
@@ -745,6 +792,8 @@ TEST_F(UniqueTest, DoUniquePadding)
     ASSERT_THAT(idCntFill, testing::ElementsAreArray(expectedIdCnt));
     ASSERT_EQ(uniqueOut.uniqueIdCnt, conf.paddingSize * conf.shardingNum);
     unique->UnInitialize();
+    delete[] idCnt;
+    delete[] uniqueIdInBucket;
     std::cout << "===========DoUniquePadding end=============" << std::endl;
 }
 
@@ -754,6 +803,8 @@ TEST_F(UniqueTest, DoUniqueNoThreadPool)
     std::cout << "===========DoUniqueNoThreadPool start=============" << std::endl;
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.desiredSize = 20; // 配置空间大于实际输入数组长度，验证正常运行
@@ -816,6 +867,8 @@ TEST_F(UniqueTest, DoUniqueShardNumberOversize)
 
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.useSharding = true;
@@ -885,6 +938,7 @@ TEST_F(UniqueTest, DoUniqueShardNumberOversize)
     ASSERT_THAT(uniqueIdCntInBucket, testing::ElementsAreArray(expectedUniqueIdCnt));
     ASSERT_THAT(idCnt, testing::ElementsAreArray(expectedIdCnt));
     unique->UnInitialize();
+    delete[] uniqueIdInBucket;
 
     std::cout << "===========DoUniqueShardNumberOversize end=============" << std::endl;
 }
@@ -895,6 +949,7 @@ TEST_F(UniqueTest, DoUniqueSpecial)
 
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+    factory->SetExternalLogFuncInner(CTRLog);
 
     int count = 1000000;
     UniqueConf conf;
@@ -952,6 +1007,12 @@ TEST_F(UniqueTest, DoUniqueSpecial)
     }
 
     unique->UnInitialize();
+    delete[] uniqueData;
+    delete[] index;
+    delete[] idCnt;
+    delete[] idCntFill;
+    delete[] uniqueIdCntInBucket;
+    delete[] uniqueIdInBucket;
 
     std::cout << "===========DoUniqueSpecial end=============" << std::endl;
 }
@@ -962,6 +1023,8 @@ TEST_F(UniqueTest, IdLarge)
     std::cout << "===========IdLarge start=============" << std::endl;
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.desiredSize = 6;
@@ -989,6 +1052,10 @@ TEST_F(UniqueTest, IdLarge)
     uniqueOut.idCnt = idCnt;
 
     ASSERT_EQ(unique->DoEnhancedUnique(uniqueIn, uniqueOut), 6); // ID太大
+
+    unique->UnInitialize();
+    delete[] idCnt;
+
     std::cout << "===========IdLarge end=============" << std::endl;
 }
 
@@ -998,6 +1065,8 @@ TEST_F(UniqueTest, DoUniqueNormalInt32)
     std::cout << "===========DoUniqueNormalInt32 start=============" << std::endl;
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.useSharding = true;
@@ -1062,6 +1131,8 @@ TEST_F(UniqueTest, DoUniqueNormalInt32)
     ASSERT_THAT(idCnt, testing::ElementsAreArray(expectedIdCnt));
 
     unique->UnInitialize();
+    delete[] uniqueIdInBucket;
+
     std::cout << "===========DoUniqueNormalInt32 end=============" << std::endl;
 }
 
@@ -1122,6 +1193,8 @@ TEST_F(UniqueTest, DoUniqueShardMultipleTimes)
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
 
+    factory->SetExternalLogFuncInner(CTRLog);
+
     UniqueConf conf;
     conf.useSharding = true;
     conf.desiredSize = 6;
@@ -1162,14 +1235,14 @@ TEST_F(UniqueTest, DoUniqueShardMultipleTimes)
         unordered_set<int> uniqueIdSet;
         map<int64_t, int> expectedIdCntMap;
 
-        for (size_t i = 0; i < uniqueIn.inputIdCnt; i++) {
-            restoreIds[i] = uniqueId[index[i]];
-            expectedIdCntMap[inputId[i]]++;
-            if (uniqueIdSet.find(inputId[i]) != uniqueIdSet.end()) {
+        for (size_t j = 0; j < uniqueIn.inputIdCnt; j++) {
+            restoreIds[j] = uniqueId[index[j]];
+            expectedIdCntMap[inputId[j]]++;
+            if (uniqueIdSet.find(inputId[j]) != uniqueIdSet.end()) {
                 continue;
             } else {
-                uniqueIdSet.insert(inputId[i]);
-                expectedUniqueIdCnt[inputId[i] % conf.shardingNum]++;
+                uniqueIdSet.insert(inputId[j]);
+                expectedUniqueIdCnt[inputId[j] % conf.shardingNum]++;
             }
         }
 
@@ -1177,13 +1250,14 @@ TEST_F(UniqueTest, DoUniqueShardMultipleTimes)
 
         int uniqueSum = 0;
 
-        for (int i = 0; i < conf.shardingNum; i++) {
-            uniqueSum += uniqueIdCntInBucket[i];
+        for (int j = 0; j < conf.shardingNum; j++) {
+            uniqueSum += uniqueIdCntInBucket[j];
         }
 
         vector<int> expectedIdCnt(uniqueSum);
-        for (int i = 0; i < uniqueSum; i++) {
-            expectedIdCnt[i] = expectedIdCntMap[uniqueId[i]];
+
+        for (int j = 0; j < uniqueSum; j++) {
+            expectedIdCnt[j] = expectedIdCntMap[uniqueId[j]];
         }
         expectedIdCnt.resize(uniqueIn.inputIdCnt);
 
@@ -1192,6 +1266,7 @@ TEST_F(UniqueTest, DoUniqueShardMultipleTimes)
         ASSERT_THAT(idCnt, testing::ElementsAreArray(expectedIdCnt));
     }
     unique->UnInitialize();
+    delete[] uniqueIdInBucket;
 
     std::cout << "===========DoUniqueShardMultipleTimes end=============" << std::endl;
 }
@@ -1276,6 +1351,9 @@ TEST_F(UniqueTest, DoUniquePaddingMultipleTimes)
     }
 
     unique->UnInitialize();
+    delete[] idCnt;
+    delete[] uniqueIdInBucket;
+
     std::cout << "===========DoUniquePaddingMultipleTimes end=============" << std::endl;
 }
 
@@ -1284,6 +1362,8 @@ TEST_F(UniqueTest, IdCntSmall)
     std::cout << "===========IdCntSmall start=============" << std::endl;
     UniquePtr unique;
     ASSERT_EQ(factory->CreateUnique(unique), 0);
+
+    factory->SetExternalLogFuncInner(CTRLog);
 
     UniqueConf conf;
     conf.desiredSize = 6;
@@ -1310,6 +1390,10 @@ TEST_F(UniqueTest, IdCntSmall)
     uniqueOut.idCnt = idCnt;
 
     ASSERT_EQ(unique->DoEnhancedUnique(uniqueIn, uniqueOut), 4); // idcnt过小
+
+    unique->UnInitialize();
+    delete[] idCnt;
+
     std::cout << "===========IdCntSmall end=============" << std::endl;
 }
 
@@ -1320,7 +1404,10 @@ TEST_F(UniqueTest, DoUniqueLotsDataFunction)
     std::string input_path(path);
     std::cout << "input_path:" + input_path + "/data40.txt" << std::endl;
     std::ifstream input(input_path + "/data40.txt");
-
+    if (!input.good()) {
+        std::cout << "Failed to open file:" + input_path + "/data40.txt" << std::endl;
+        return;
+    }
     std::vector<int64_t> numbers;
     std::string line;
     while (std::getline(input, line, ',')) {
@@ -1408,6 +1495,7 @@ TEST_F(UniqueTest, DoUniqueLotsDataFunction)
     ASSERT_THAT(idCnt, testing::ElementsAreArray(expectedIdCnt));
 
     unique->UnInitialize();
+    delete[] uniqueIdInBucket;
     if (path) {
         free(path);
     }
@@ -1422,7 +1510,10 @@ TEST_F(UniqueTest, DoUniqueLotsDataPaddingFunction)
     std::string input_path(path);
     std::cout << "input_path:" + input_path + "/data30.txt" << std::endl;
     std::ifstream input(input_path + "/data30.txt");
-
+    if (!input.good()) {
+        std::cout << "Failed to open file:" + input_path + "/data30.txt" << std::endl;
+        return;
+    }
     std::vector<int64_t> numbers;
     std::string line;
     while (std::getline(input, line, ',')) {
@@ -1513,6 +1604,8 @@ TEST_F(UniqueTest, DoUniqueLotsDataPaddingFunction)
 
     unique->UnInitialize();
     ASSERT_EQ(unique->DoEnhancedUnique(uniqueIn, uniqueOut), 11);
+    delete[] idCnt;
+    delete[] uniqueIdInBucket;
     if (path) {
         free(path);
     }

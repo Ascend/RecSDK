@@ -17,10 +17,10 @@
 
 import tensorflow as tf
 from mx_rec.constants.constants import ASCEND_TIMESTAMP
+from mx_rec.util.log import logger
 
 from nn_model_build import LittleModel
 from nn_optim import get_train_op
-from mx_rec.util.log import logger
 
 
 def get_model_fn(create_fs_params, cfg, access_and_evict_config_dict=None):
@@ -29,7 +29,7 @@ def get_model_fn(create_fs_params, cfg, access_and_evict_config_dict=None):
             if params.use_timestamp:
                 model = LittleModel(params, cfg, mode, features, create_fs_params,
                                     access_and_evict_config_dict=access_and_evict_config_dict)
-                tf.add_to_collection(ASCEND_TIMESTAMP, features["timestamp"])
+                tf.compat.v1.add_to_collection(ASCEND_TIMESTAMP, features["timestamp"])
             else:
                 model = LittleModel(params, cfg, mode, features, create_fs_params)
         else:
@@ -39,19 +39,19 @@ def get_model_fn(create_fs_params, cfg, access_and_evict_config_dict=None):
 
         loss_dict = {}
         if mode == tf.estimator.ModeKeys.TRAIN:
-            logger.info(f"use estimator train mode")
+            logger.info("Use estimator train mode")
             loss_dict['loss'] = [['train_loss', loss]]
             return tf.estimator.EstimatorSpec(mode=mode,
                                               loss=loss,
                                               train_op=get_train_op(params, loss_dict.get('loss')))
 
         if mode == tf.estimator.ModeKeys.EVAL:
-            logger.info("use estimator eval mode")
+            logger.info("Use estimator eval mode")
             return tf.estimator.EstimatorSpec(mode=mode,
                                               loss=loss)
 
         if mode == tf.estimator.ModeKeys.PREDICT:
-            logger.info("use estimator predict mode")
+            logger.info("Use estimator predict mode")
             loss_dict['task_1'] = prediction[0]
 
             loss_dict['task_2'] = prediction[1]

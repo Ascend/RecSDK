@@ -16,6 +16,7 @@
 # ==============================================================================
 
 import os
+import sys
 from typing import List
 
 import tensorflow as tf
@@ -44,7 +45,9 @@ class RunMode:
             eval_model, train_iterator, eval_iterator, max_train_steps: int, infer_steps: int, params: dict):
         self.is_modify_graph = is_modify_graph
         self.is_faae = is_faae
-        self.session = tf.compat.v1.Session(config=sess_config(dump_data=False))
+        self.use_deterministic = params.get("use_deterministic")
+        self.session = tf.compat.v1.Session(
+            config=sess_config(dump_data=False, use_deterministic=self.use_deterministic))
         self.train_model = train_model
         self.train_iterator = train_iterator
         self.eval_model = eval_model
@@ -70,12 +73,14 @@ class RunMode:
         channel_id = ConfigInitializer.get_instance().train_params_config.get_training_mode_channel_id(False)
         import_host_pipeline_ops().clear_channel(channel_id)
 
+        if self.infer_steps == -1:
+            self.infer_steps = sys.maxsize  # 消耗全部数据
         for i in range(1, self.infer_steps + 1):
             logger.info("###############    infer at step %d    ################", i)
             try:
                 self.session.run(self.eval_model.loss_list)
             except tf.errors.OutOfRangeError:
-                logger.info(f"Encounter the end of Sequence for eval.")
+                logger.info("Encounter the end of Sequence for eval.")
                 break
 
     def set_train_ops(self):
@@ -95,11 +100,11 @@ class RunMode:
             self.train_ops.append(dense_optimizer.apply_gradients(avg_grads))
 
             if bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0))):
-                from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS
+                from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_ID_OFFSET
 
                 train_emb_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)
 
-                train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_UNIQUE_KEYS)
+                train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET)
 
                 # do sparse optimization by addr
                 local_grads = tf.gradients(loss, train_emb_list)  # local_embedding
@@ -124,36 +129,40 @@ class RunMode:
             self.session.run(initializer)
         else:
             logger.debug(f"use one shot iterator and modify graph is `{self.is_modify_graph}`.")
-
         self.saver = tf.compat.v1.train.Saver()
-        start_step = 1
 
+        latest_ckpt_step = 0
+        start_step = 1
         if if_load:
-            latest_step = get_load_step(model_file)
-            start_step = latest_step + 1
-            self.saver.restore(self.session, f"./saved-model/model-{latest_step}")
+            latest_ckpt_step = get_load_step(model_file)
+            start_step = latest_ckpt_step + 1
+            self.saver.restore(self.session, f"./saved-model/model-{latest_ckpt_step}")
         else:
             self.session.run(tf.compat.v1.global_variables_initializer())
 
+        if self.max_train_steps == -1:
+            self.max_train_steps = sys.maxsize  # 消耗全部数据
         for i in range(start_step, start_step + self.max_train_steps):
             logger.info("################    training at step %d    ################", i)
             try:
-                self.session.run([self.train_ops, self.train_model.loss_list])
+                _, loss = self.session.run([self.train_ops, self.train_model.loss_list])
+                if self.use_deterministic:
+                    logger.info(f"train_loss: {loss[0]}")
             except tf.errors.OutOfRangeError:
-                logger.info(f"Encounter the end of Sequence for training.")
+                logger.info("Encounter the end of Sequence for training.")
                 break
             else:
                 for t in self.table_list:
                     logger.info(f"training at step:{i}, table[{t.table_name}], table size:{t.size()}, "
                                 f"table capacity:{t.capacity()}")
 
-                if i % train_interval == 0:
+                if train_interval != -1 and (i - latest_ckpt_step) % train_interval == 0:
                     self.evaluate()
 
-                if i % saving_interval == 0:
+                if saving_interval != -1 and (i - latest_ckpt_step) % saving_interval == 0:
                     self.saver.save(self.session, f"./saved-model/model", global_step=i)
 
-                if self.is_faae and i == train_interval // 2:
+                if train_interval != -1 and self.is_faae and i == train_interval // 2:
                     logger.info("###############    set_threshold at step:%d   ################", i)
                     self.change_threshold()
 
@@ -170,14 +179,14 @@ class RunMode:
         self.epoch += 1
 
     def predict(self, model_file: List[str]):
-        logger.info(f"###############    start predict    ################")
+        logger.info("###############    start predict    ################")
 
         # get the latest model
         latest_step = get_load_step(model_file)
         self.saver = tf.compat.v1.train.Saver()
         self.saver.restore(self.session, f"./saved-model/model-{latest_step}")
         self._infer()
-        logger.info(f"###############    predict end    ################")
+        logger.info("###############    predict end    ################")
 
     def change_threshold(self):
         thres_tensor = tf.constant(60, dtype=tf.int32)

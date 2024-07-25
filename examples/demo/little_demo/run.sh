@@ -15,26 +15,12 @@
 # ==============================================================================
 
 kill -9 `ps -ef | grep python | grep -v grep | awk '{print $2}'` > /dev/null 2>&1
-rm -rf /root/ascend/log/*
-rm -rf ./kernel*
-rm -rf ./export_graph/*
 
 # 支持[train, load_and_train, predict]
-export USE_MODE="train"
-if [ $USE_MODE = "train" ]; then
-  echo "train mode: saved-model will be deleted"
-  rm -rf ./saved-model
-fi
+export USE_MODE="train"  # if train mode, will remove dir ./saved-model
 
 # cache mode support: HBM, DDR, SSD
 export CACHE_MODE="HBM"
-if [ $CACHE_MODE = "SSD" ] && [ $USE_MODE = "train" ]; then
-  echo "SSD train mode not allow file exist in directory when training a model from stratch in case overwrite,
-        deleting directory ssd_data then create for this use case"
-  rm -rf ssd_data
-  mkdir ssd_data
-fi
-
 
 # 获取输入参数：py、ip
 if [ $# -ge 1 ]; then
@@ -100,15 +86,13 @@ export TF_CPP_MIN_LOG_LEVEL=3 # tensorflow日志级别,3对应FATAL
 # 设置应用类日志的全局日志级别及各模块日志级别，具体请参考昇腾官网CANN文档
 export ASCEND_GLOBAL_LOG_LEVEL=3 # “设置日志级别”章节0:debug, 1:info, 2:warning, 3:error, 4:NULL
 export MXREC_MODE="ASC"
-export USE_MPI=1
 
 ################# 参数配置 ######################
 export USE_DYNAMIC=1            # 0：静态shape；1：动态shape
-export USE_HOT=0                # 0：关闭hot emb；1: 开启hot emb
 export USE_DYNAMIC_EXPANSION=0  # 0：关闭动态扩容；1: 开启动态扩容
 export USE_MULTI_LOOKUP=1       # 0：一表一查；1：一表多查
 export MULTI_LOOKUP_TIMES=2     # 一表多查次数：默认2，上限127（因为一表已经有一查）；仅当export USE_MULTI_LOOKUP=1时生效
-export USE_MODIFY_GRAPH=0       # 0：feature spec模式；1：自动改图模式
+export USE_MODIFY_GRAPH=1       # 0：feature spec模式；1：自动改图模式
 export USE_TIMESTAMP=0          # 0：关闭特征准入淘汰；1：开启特征准入淘汰
 export USE_ONE_SHOT=0           # 0：MakeIterator；1：OneShotIterator
 export UpdateEmb_V2=1           # 0: UpdateEmb同步更新；1：UpdateEmb_V2异步更新
@@ -162,7 +146,6 @@ else
       echo "CM_CHIEF_DEVICE=$CM_CHIEF_DEVICE"
       echo "CM_WORKER_IP=$CM_WORKER_IP"
       echo "CM_WORKER_SIZE=$CM_WORKER_SIZE"
-      echo "ASCEND_VISIBLE_DEVICES=$ASCEND_VISIBLE_DEVICES"
       #########################################################
     else
       echo "ip: $ip not available!" # 使用ranktable方案
@@ -177,5 +160,5 @@ fi
 echo "use horovod to start tasks"
 DATE=$(date +%Y-%m-%d-%H-%M-%S)
 horovodrun --network-interface ${interface} -np ${num_process} --mpi-args "${mpi_args}" --mpi -H localhost:${local_rank_size} \
-python3.7 ${py} 2>&1 | tee "temp_${local_rank_size}p_${KEY_PROCESS_THREAD_NUM}t_${USE_MODE}_${CACHE_MODE}_${DATE}.log"
+python3.7 ${py} 2>&1 | tee "temp_${num_process}p_${KEY_PROCESS_THREAD_NUM}t_${USE_MODE}_${CACHE_MODE}_${DATE}.log"
 

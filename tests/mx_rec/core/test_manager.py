@@ -74,7 +74,6 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
 
             mock_opt = MockOptimizer()
             manager_config_initializer.get_instance().optimizer_config.optimizer_instance = mock_opt
-            test_table.optimizer_instance_list = [mock_opt]
 
             table_info_list = generate_table_info_list()
             self.assertListEqual(table_info_list, [])
@@ -100,7 +99,6 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
 
             mock_opt = MockOptimizer()
             manager_config_initializer.get_instance().optimizer_config.optimizer_instance = mock_opt
-            test_table.optimizer_instance_list = [mock_opt]
 
             table_info_list = generate_table_info_list()
             self.assertListEqual(table_info_list, [])
@@ -139,7 +137,6 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
 
             mock_opt = MockOptimizer()
             manager_config_initializer.get_instance().optimizer_config.optimizer_instance = mock_opt
-            test_table.optimizer_instance_list = [mock_opt]
 
             table_info_list = generate_table_info_list()
             self.assertListEqual(table_info_list, ["test_table_info"])
@@ -338,7 +335,6 @@ class TestMatchedOptSlotInitializersFunc(unittest.TestCase):
             table_instance.ext_emb_size = 24
             mock_opt = MockOptimizer()
             manager_config_initializer.get_instance().optimizer_config.optimizer_instance = mock_opt
-            table_instance.optimizer_instance_list = [mock_opt]
 
             slot_initializers = matched_opt_slot_initializers(table_instance)
             self.assertListEqual(slot_initializers, ["slot_initializer", "slot_initializer"])
@@ -383,8 +379,8 @@ class TestInitializeEmbCacheFunc(unittest.TestCase):
                          get_device_id=mock.MagicMock(return_value=0),
                          get_rank_size=mock.MagicMock(return_value=0),
                          USE_STATIC=mock.MagicMock(return_value=0),
-                         USE_HOT=mock.MagicMock(return_value=1),
                          USE_DYNAMIC_EXPANSION=mock.MagicMock(return_value=2),
+                         USE_SUM_SAME_ID_GRADIENTS=mock.MagicMock(return_value=4),
                          RankInfo=mock.MagicMock(return_value="mock_info"),
                          HybridMgmt=mock.MagicMock(return_value=MockHybridMgmt(is_initialized=False)))
     @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
@@ -398,6 +394,9 @@ class TestInitializeEmbCacheFunc(unittest.TestCase):
         mock_config_initializer = MockConfigInitializer(use_static=True, use_dynamic_expansion=True)
         manager_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
+        mock_opt = MockOptimizer()
+        manager_config_initializer.get_instance().optimizer_config.optimizer_instance = mock_opt
+
         with self.assertRaises(RuntimeError):
             initialize_emb_cache([], [])
 
@@ -406,8 +405,8 @@ class TestInitializeEmbCacheFunc(unittest.TestCase):
                          get_device_id=mock.MagicMock(return_value=0),
                          get_rank_size=mock.MagicMock(return_value=0),
                          USE_STATIC=mock.MagicMock(return_value=0),
-                         USE_HOT=mock.MagicMock(return_value=1),
                          USE_DYNAMIC_EXPANSION=mock.MagicMock(return_value=2),
+                         USE_SUM_SAME_ID_GRADIENTS=mock.MagicMock(return_value=4),
                          RankInfo=mock.MagicMock(return_value="mock_info"))
     @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
     @mock.patch("mx_rec.core.asc.manager.HybridMgmt")
@@ -420,6 +419,9 @@ class TestInitializeEmbCacheFunc(unittest.TestCase):
 
         mock_config_initializer = MockConfigInitializer(use_static=True, use_dynamic_expansion=True)
         manager_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
+        mock_opt = MockOptimizer()
+        manager_config_initializer.get_instance().optimizer_config.optimizer_instance = mock_opt
 
         mock_mgmt = MockHybridMgmt(is_initialized=True)
         mock_hybrid_mgmt.return_value = mock_mgmt

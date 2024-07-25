@@ -3,6 +3,7 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2023. All rights reserved.
 from typing import Optional
 
+from tensorflow.python.framework import ops
 from tensorflow import Variable
 
 from mx_rec.util.log import logger
@@ -18,6 +19,7 @@ class SparseEmbedConfig:
         self._table_name_set = set()
         self._removing_var_list = []
         self._name_to_var_dict = dict()
+        self._tensor_to_table_instance_dict = dict()
 
     @property
     def table_instance_dict(self):
@@ -44,6 +46,12 @@ class SparseEmbedConfig:
             raise KeyError(f"Given key does not exist.")
 
         return self._table_instance_dict.get(key)
+
+    def get_table_instance_by_tensor(self, tensor) -> object:
+        if tensor not in self._tensor_to_table_instance_dict:
+            raise KeyError(f"Given tensor does not exist.")
+
+        return self._tensor_to_table_instance_dict.get(tensor)
 
     def get_table_instance_by_name(self, table_name: Optional[str]) -> object:
         if table_name not in self._name_to_var_dict:
@@ -73,6 +81,12 @@ class SparseEmbedConfig:
         self._table_name_set.add(name)
         self._name_to_var_dict[name] = key
         self._table_instance_dict[key] = instance
+
+    def insert_table_instance_to_tensor_dict(self, tensor: ops.Tensor, instance: object) -> None:
+        if tensor in self._tensor_to_table_instance_dict:
+            raise KeyError(f"Given tensor {tensor} has been used.")
+        logger.debug("Record one hash table for expansion mode, with tensor: %s.", tensor)
+        self._tensor_to_table_instance_dict[tensor] = instance
 
     def export_table_num(self) -> int:
         return len(self.table_instance_dict) if self.table_instance_dict else 0

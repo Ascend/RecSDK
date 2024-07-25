@@ -41,13 +41,13 @@ TEST(Table, WriteAndReadAndDeleteAndCompact)
     // write
     emb_key_t nData = 1000000;
     emb_key_t batchSize = 10000;
-    vector<emb_key_t> allKeys;
+    vector<emb_cache_key_t> allKeys;
     vector<vector<float>> allEmbs;
-    vector<emb_key_t> batchKeys;
+    vector<emb_cache_key_t> batchKeys;
     vector<vector<float>> batchEmbs;
 
     chrono::milliseconds writeCost = 0ms;
-    for (emb_key_t k = 0; k < nData; k++) {
+    for (emb_cache_key_t k = 0; k < nData; k++) {
         vector<float> emb;
         emb.resize(embDim);
         for (uint64_t i = 0; i < embDim; ++i) {
@@ -122,9 +122,9 @@ TEST(Table, SaveAndLoad)
 
     // write and save
     emb_key_t nData = 10;
-    vector<emb_key_t> keys;
+    vector<emb_cache_key_t> keys;
     vector<vector<float>> embs;
-    for (emb_key_t k = 0; k < nData; k++) {
+    for (emb_cache_key_t k = 0; k < nData; k++) {
         vector<float> emb = {static_cast<float>(k + 0.1), static_cast<float>(k + 0.2)};
         keys.emplace_back(k);
         embs.emplace_back(emb);
@@ -160,7 +160,7 @@ TEST(Table, GetTableUsage)
 
     // write
     uint64_t expectKeyCnt = 2;
-    vector<emb_key_t> keys = {1, 2};
+    vector<emb_cache_key_t> keys = {1, 2};
     vector<vector<float>> embs = {{0.1}, {0.2}};
     tbSave->InsertEmbeddings(keys, embs);
 

@@ -23,6 +23,7 @@ import tensorflow as tf
 
 from mx_rec.saver.saver import Saver
 from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION
+from mx_rec.util.initialize import ConfigInitializer
 from tests.mx_rec.core.mock_class import MockConfigInitializer
 from tests.mx_rec.saver.sparse_embedding_mock import SparseEmbeddingMock
 
@@ -40,8 +41,8 @@ class TestSaver(unittest.TestCase):
 
     @mock.patch.multiple("mx_rec.saver.saver",
                          get_rank_id=mock.MagicMock(return_value=0),
-                         get_local_rank_size=mock.MagicMock(return_value=1),
-                         set_optimizer_info=mock.MagicMock(return_value=None))
+                         get_rank_size=mock.MagicMock(return_value=1),
+                         get_local_rank_size=mock.MagicMock(return_value=1))
     @mock.patch("mx_rec.saver.saver.ConfigInitializer")
     def test_save_and_load_is_consistent(self, saver_config_initializer):
         mock_config_initializer = \
@@ -60,18 +61,18 @@ class TestSaver(unittest.TestCase):
             self.saver = Saver()
 
         with tf.compat.v1.Session(graph=self.graph) as sess:
-            embedding_directory = "./sparse-model/test_table/embedding"
+            embedding_directory = "./sparse-model-1/test_table/embedding"
             data_file = os.path.join(embedding_directory, "slice.data")
             attribute_file = os.path.join(embedding_directory, "slice.attribute")
             sess.run(tf.global_variables_initializer())
             origin_embedding = sess.run(self.var)[[0, 1, 4, 6, 8], :]
 
-            self.saver.save(sess)
+            self.saver.save(sess, save_path="model-1")
             self.assertTrue(os.path.exists(embedding_directory), "embedding目录已创建")
             self.assertTrue(os.path.exists(data_file), "embedding的data文件存储成功")
             self.assertTrue(os.path.exists(attribute_file), "embedding的attribute文件存储成功")
 
-            tf.io.gfile.rmtree("./sparse-model")
+            tf.io.gfile.rmtree("./sparse-model-1")
 
     def build_graph(self):
         self.graph = tf.compat.v1.Graph()
@@ -86,7 +87,6 @@ class TestSaver(unittest.TestCase):
             optim_v_tensor = emb_initializer(self.shape)
             self.optimizer_v = tf.compat.v1.get_variable(self.optim_v_name, trainable=False, initializer=optim_v_tensor)
 
-            table_instance.set_optimizer("LazyAdam", {"momentum": self.optimizer_m, "velocity": self.optimizer_v})
             tf.compat.v1.add_to_collection(ASCEND_GLOBAL_HASHTABLE_COLLECTION, self.var)
         return self.graph
 

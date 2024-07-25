@@ -27,7 +27,7 @@ EmbeddingTable::EmbeddingTable()
 
 EmbeddingTable::EmbeddingTable(const EmbInfo& info, const RankInfo& rankInfo, int inSeed)
     : name(info.name), hostVocabSize(info.hostVocabSize), devVocabSize(info.devVocabSize),
-      freeSize_(0), maxOffset(0), isDynamic_(rankInfo.useDynamicExpansion),
+      ssdVocabSize(info.ssdVocabSize), freeSize_(0), maxOffset(0), isDynamic_(rankInfo.useDynamicExpansion),
       embSize_(info.embeddingSize), extEmbSize_(info.extEmbeddingSize),
       embInfo_(info), seed_(inSeed), rankId_(rankInfo.rankId), rankSize_(rankInfo.rankSize)
 {
@@ -41,19 +41,6 @@ EmbeddingTable::~EmbeddingTable()
 void EmbeddingTable::Key2Offset(std::vector<emb_key_t>& keys, int channel)
 {
     return;
-}
-
-void EmbeddingTable::FindOffset(const vector<emb_key_t>& keys,
-                                size_t currentBatchId, size_t keepBatchId, int channelId)
-{
-    return;
-}
-
-std::vector<int32_t> EmbeddingTable::FindOffset(const vector<emb_key_t>& keys,
-                                                size_t batchId, int channelId,
-                                                std::vector<size_t>& swapPos)
-{
-    return {};
 }
 
 size_t EmbeddingTable::GetMaxOffset()
@@ -71,7 +58,7 @@ size_t EmbeddingTable::size() const
     return maxOffset;
 }
 
-void EmbeddingTable::EvictKeys(const std::vector<emb_key_t>& keys)
+void EmbeddingTable::EvictKeys(const std::vector<emb_cache_key_t>& keys)
 {
     std::lock_guard<std::mutex> lk(mut_); // lock for PROCESS_THREAD
     size_t keySize = keys.size();
@@ -132,32 +119,15 @@ absl::flat_hash_map<emb_key_t, int64_t> EmbeddingTable::GetKeyOffsetMap()
     return keyOffsetMap;
 }
 
-void EmbeddingTable::ClearMissingKeys()
+void EmbeddingTable::SetFileSystemPtr(const string& savePath)
 {
-    missingKeysHostPos_.clear();
+    unique_ptr<FileSystemHandler> fileSystemHandler = make_unique<FileSystemHandler>();
+    fileSystemPtr_ = fileSystemHandler->Create(savePath);
 }
 
-const std::vector<size_t>& EmbeddingTable::GetMissingKeys()
+void EmbeddingTable::UnsetFileSystemPtr()
 {
-    return missingKeysHostPos_;
-}
-
-void EmbeddingTable::SetStartCount()
-{
-}
-
-void EmbeddingTable::ClearLookupAndSwapOffset()
-{
-}
-
-size_t EmbeddingTable::GetDevVocabSize()
-{
-    return devVocabSize;
-}
-
-size_t EmbeddingTable::GetHostVocabSize()
-{
-    return hostVocabSize;
+    fileSystemPtr_ = nullptr;
 }
 
 vector<int64_t> EmbeddingTable::GetLoadOffset()
@@ -165,7 +135,7 @@ vector<int64_t> EmbeddingTable::GetLoadOffset()
     return loadOffset;
 }
 
-void EmbeddingTable::Load(const string& filePath)
+void EmbeddingTable::Load(const string& filePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet)
 {
 }
 
@@ -175,21 +145,13 @@ void EmbeddingTable::Save(const string& filePath)
 
 void EmbeddingTable::MakeDir(const string& dirName)
 {
-    auto fileSystemHandler = make_unique<FileSystemHandler>();
-    unique_ptr<FileSystem> fileSystemPtr = fileSystemHandler->Create(dirName);
-    fileSystemPtr->CreateDir(dirName);
+    if (fileSystemPtr_ == nullptr) {
+        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
+    }
+    fileSystemPtr_->CreateDir(dirName);
 }
 
 void EmbeddingTable::SetCacheManager(CacheManager *cm)
-{
-}
-
-void EmbeddingTable::EnableSSD()
-{
-    isSSDEnabled_ = true;
-}
-
-void EmbeddingTable::RefreshFreqInfoWithSwap()
 {
 }
 
@@ -201,8 +163,6 @@ TableInfo EmbeddingTable::GetTableInfo()
         .devVocabSize=devVocabSize,
         .maxOffset=maxOffset,
         .keyOffsetMap=keyOffsetMap,
-        .evictDevPos=evictDevPos,
-        .evictHostPos=evictHostPos,
     };
     return ti;
 }
@@ -213,5 +173,13 @@ vector<int64_t> EmbeddingTable::GetDeviceOffset()
 }
 
 void EmbeddingTable::SetOptimizerInfo(OptimizerInfo& optimizerInfo)
+{
+}
+
+void EmbeddingTable::SetHDTransfer(HDTransfer *hdTransfer)
+{
+}
+
+void EmbeddingTable::SetEmbCache(ock::ctr::EmbCacheManagerPtr embCache)
 {
 }

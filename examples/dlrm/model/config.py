@@ -14,11 +14,16 @@
 # limitations under the License.
 # ==============================================================================
 
+import enum
 import os
 
 import tensorflow as tf
 from tensorflow.core.protobuf.rewriter_config_pb2 import RewriterConfig
 from npu_bridge.estimator.npu.npu_config import NPURunConfig
+
+from mx_rec.constants.constants import CacheModeEnum
+
+SSD_DATA_PATH = ["ssd_data"]
 
 
 class LearningRateScheduler:
@@ -40,7 +45,6 @@ class LearningRateScheduler:
         # used for the warmup stage
         warmup_step = tf.cast(1 / self.warmup_steps, tf.float32)
         lr_factor_warmup = 1 - tf.cast(self.warmup_steps - global_step, tf.float32) * warmup_step
-        # lr_factor_warmup = tf.cast(global_step, tf.float32) / tf.cast(self.warmup_steps, tf.float32) #hx
         lr_factor_warmup = tf.cast(lr_factor_warmup, tf.float32)
         # used for the constant stage
         lr_factor_constant = tf.cast(1.0, tf.float32)
@@ -55,7 +59,6 @@ class LearningRateScheduler:
             global_step < self.decay_end_step,
             lambda: lr_factor_decay,
             lambda: sparse_after_decay,
-            # lambda: 0.000 #hx
         )
 
         lr_factor_decay_dense = tf.cond(
@@ -91,10 +94,10 @@ class LearningRateScheduler:
 
 class Config:
     def __init__(self, ):
-        self.rank_id = int(os.getenv("RANK_ID")) if os.getenv("RANK_ID") else None
-        tmp = os.getenv("RANK_SIZE")
+        self.rank_id = int(os.getenv("OMPI_COMM_WORLD_RANK")) if os.getenv("OMPI_COMM_WORLD_RANK") else None
+        tmp = os.getenv("TRAIN_RANK_SIZE")
         if tmp is None:
-            raise ValueError("please export RANK_SIZE")
+            raise ValueError("please export TRAIN_RANK_SIZE")
         self.rank_size = int(tmp)
 
         self.data_path = os.getenv("DLRM_CRITEO_DATA_PATH")
@@ -119,9 +122,10 @@ class Config:
 
         self.emb_dim = 128
         self.hashtable_threshold = 1
-        # self.learning_rate = 0.01
 
         self.USE_PIPELINE_TEST = False
+        # False indicates use SGD optimizer, else use LazyAdam. If True, is incompatible with dynamic_expansion
+        self.use_lazy_adam_optimizer = False
 
         # 动态学习率
         GLOBAL_BATCH_SIZE = 8192 * 8
@@ -145,30 +149,30 @@ class Config:
         if self.cache_mode is None:
             raise ValueError("please export CACHE_MODE environment variable, support:[HBM, DDR, SSD]")
 
-        if self.cache_mode == "HBM":
+        if self.cache_mode == CacheModeEnum.HBM.value:
             self.dev_vocab_size = 24_000_000 * self.rank_size
             self.host_vocab_size = 0
-        elif self.cache_mode == "DDR":
+        elif self.cache_mode == CacheModeEnum.DDR.value:
             self.dev_vocab_size = 500_000 * self.rank_size
             self.host_vocab_size = 24_000_000 * self.rank_size
-        elif self.cache_mode == "SSD":
+        elif self.cache_mode == CacheModeEnum.SSD.value:
             self.dev_vocab_size = 100_000 * self.rank_size
             self.host_vocab_size = 2_000_000 * self.rank_size
             self.ssd_vocab_size = 24_000_000 * self.rank_size
         else:
             raise ValueError(f"get CACHE_MODE:{self.cache_mode}, expect in [HBM, DDR, SSD]")
 
-    def get_emb_table_cfg(self) -> dict:
-        if self.cache_mode == "HBM":
+    def get_emb_table_cfg(self):
+        if self.cache_mode == CacheModeEnum.HBM.value:
             return {"device_vocabulary_size": self.dev_vocab_size}
-        elif self.cache_mode == "DDR":
+        elif self.cache_mode == CacheModeEnum.DDR.value:
             return {"device_vocabulary_size": self.dev_vocab_size,
                     "host_vocabulary_size": self.host_vocab_size}
-        elif self.cache_mode == "SSD":
+        elif self.cache_mode == CacheModeEnum.SSD.value:
             return {"device_vocabulary_size": self.dev_vocab_size,
                     "host_vocabulary_size": self.host_vocab_size,
                     "ssd_vocabulary_size": self.ssd_vocab_size,
-                    "ssd_data_path": ["ssd_data"]}
+                    "ssd_data_path": SSD_DATA_PATH}
         else:
             raise RuntimeError(f"get CACHE_MODE:{self.cache_mode}, check Config.__set_emb_table_size implementation")
 
@@ -182,8 +186,8 @@ def sess_config(dump_data=False, dump_path="./dump_output", dump_steps="0|1|2"):
     custom_op.parameter_map["mix_compile_mode"].b = False
     custom_op.parameter_map["use_off_line"].b = True
     custom_op.parameter_map["min_group_size"].b = 1
+    # 可选配置level0:pairwise;level1:pairwise
     custom_op.parameter_map["HCCL_algorithm"].s = tf.compat.as_bytes("level0:fullmesh;level1:fullmesh")
-    # custom_op.parameter_map["HCCL_algorithm"].s = tf.compat.as_bytes("level0:pairwise;level1:pairwise")
     custom_op.parameter_map["enable_data_pre_proc"].b = True
     custom_op.parameter_map["iterations_per_loop"].i = 10
     custom_op.parameter_map["precision_mode"].s = tf.compat.as_bytes("allow_mix_precision")
@@ -228,7 +232,6 @@ def get_npu_run_config():
         iterations_per_loop=1,
         jit_compile=False,
         op_compiler_cache_mode="enable",
-        HCCL_algorithm="level0:fullmesh;level1:fullmesh"
-        # HCCL_algorithm="level0:pairwise;level1:pairwise"
+        HCCL_algorithm="level0:fullmesh;level1:fullmesh"  # 可选配置：level0:pairwise;level1:pairwise
     )
     return run_config

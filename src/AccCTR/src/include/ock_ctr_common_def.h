@@ -25,7 +25,7 @@ namespace ock {
 namespace ctr {
 class OckCtrCommonDef {
 public:
-    static int CreatFactory(uintptr_t *factory)
+    static int CreateFactory(uintptr_t *factory)
     {
         static void *handle = nullptr;
         static std::mutex m;

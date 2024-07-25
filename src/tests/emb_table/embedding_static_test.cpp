@@ -21,7 +21,6 @@ See the License for the specific language governing permissions and
 #include <acl/acl_rt.h>
 #include <limits>
 #include "utils/common.h"
-#include "emb_table/emb_table.h"
 #include "emb_table/embedding_static.h"
 
 using namespace std;
@@ -34,8 +33,8 @@ protected:
     EmbeddingStaticTest()
     {
         struct EmbInfoParams embParam(string("test1"), 0, 1000, 2000, true, true);
-        std::vector<size_t> vocabsize = {100};
-        std::vector<InitializeInfo> initializeInfos = {};
+        std::vector<size_t> vocabsize = {100, 100, 100};
+        vector<EmbCache::InitializerInfo> initializeInfos = {};
         std::vector<std::string> ssdDataPath = {""};
         vector<int> maxStep = {1000};
         embInfo_ = EmbInfo(embParam, vocabsize, initializeInfos, ssdDataPath);
@@ -136,7 +135,8 @@ TEST_F(EmbeddingStaticTest, Key2OffsetEvict)
     }
     table->Key2Offset(testData, TRAIN_CHANNEL_ID);
     // 全部淘汰
-    table->EvictKeys(testData);
+    vector<emb_cache_key_t> testDataAdapt(testData.cbegin(), testData.cend());
+    table->EvictKeys(testDataAdapt);
 
     vector<emb_key_t> new_data;
     for (size_t i = 0; i < testNum; ++i) {
@@ -155,6 +155,7 @@ TEST_F(EmbeddingStaticTest, SaveKeyData)
 {
     vector<EmbInfo> embInfos = {embInfo_};
     shared_ptr<EmbeddingStatic> hbm = std::make_shared<EmbeddingStatic>(embInfo_, rankInfo_, 0);
+    hbm->SetFileSystemPtr("test_dir");
     hbm->Save("test_dir");
     bool fileExist = false;
     if (access("./test_dir/test1/key", F_OK) == 0) {

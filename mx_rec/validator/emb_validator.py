@@ -57,8 +57,8 @@ def check_emb_lookup_params(table_params: dict, feature_spec: Union[tf.Tensor, F
     slice_device_vocabulary_size = table_params.get("slice_device_vocabulary_size")
     slice_host_vocabulary_size = table_params.get("slice_host_vocabulary_size")
     table_name = table_params.get("table_name")
-    if slice_host_vocabulary_size + slice_device_vocabulary_size > MAX_VOCABULARY_SIZE:
-        raise ValueError(f"Given device_vocabulary_size and host_vocabulary_size was too big for table "
+    if slice_host_vocabulary_size > MAX_VOCABULARY_SIZE:
+        raise ValueError(f"given host_vocabulary_size was too big for table "
                          f"'{table_name}', in which slice_device_vocabulary_size was "
                          f"{slice_device_vocabulary_size} and slice_host_vocabulary_size was "
                          f"{slice_host_vocabulary_size}.")
@@ -78,14 +78,14 @@ def check_emb_lookup_params(table_params: dict, feature_spec: Union[tf.Tensor, F
     if slice_device_vocabulary_size < send_count * rank_size:
         raise ValueError(f"Given device_vocabulary_size was too small for table '{table_name}', "
                          f"in which slice_device_vocabulary_size was {slice_device_vocabulary_size} "
-                         f"and send_count({send_count}) * rank_size({rank_size}) was "
-                         f"{send_count * rank_size}.")
+                         f"and it must be bigger than send_count({send_count}) * rank_size({rank_size}): "
+                         f"{send_count * rank_size}, please increase [device vocabSize] in [create_table] interface")
 
     if slice_host_vocabulary_size < send_count * rank_size:
         raise ValueError(f"Given host_vocabulary_size was too small for table '{table_name}', "
                          f"in which slice_host_vocabulary_size was {slice_host_vocabulary_size} "
-                         f"and send_count({send_count}) * rank_size({rank_size}) was "
-                         f"{send_count * rank_size}.")
+                         f"and it must be bigger than send_count({send_count}) * rank_size({rank_size}): "
+                         f"{send_count * rank_size}, please increase [host vocabSize] in [create_table] interface")
 
 
 def check_emb_multi_lookup_times(lookup_times: int, table_name: str):

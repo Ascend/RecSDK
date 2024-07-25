@@ -22,7 +22,6 @@ See the License for the specific language governing permissions and
 #include <limits>
 #include <mpi.h>
 #include "utils/common.h"
-#include "emb_table/emb_table.h"
 #include "emb_table/embedding_mgmt.h"
 
 using namespace std;
@@ -35,8 +34,8 @@ protected:
     EmbeddingMgmtTest()
     {
         struct EmbInfoParams embParam(string("test1"), 0, 1000, 2000, true, true);
-        std::vector<size_t> vocabsize = {100};
-        std::vector<InitializeInfo> initializeInfos = {};
+        std::vector<size_t> vocabsize = {100, 100, 100};
+        vector<EmbCache::InitializerInfo> initializeInfos = {};
         std::vector<std::string> ssdDataPath = {""};
         vector<int> maxStep = {1000};
         embInfo_ = EmbInfo(embParam, vocabsize, initializeInfos, ssdDataPath);
@@ -75,7 +74,7 @@ TEST_F(EmbeddingMgmtTest, Init)
     ThresholdValue thvalue(tableName, 0, 0, 0, false);
     vector<EmbInfo> embInfos = {embInfo_};
     vector<ThresholdValue> thresholds = {thvalue};
-    EmbeddingMgmt::Instance()->Init(rankInfo_, embInfos, thresholds, 0);
+    EmbeddingMgmt::Instance()->Init(rankInfo_, embInfos, 0);
 
     constexpr int testNum = 100;
     vector<emb_key_t> testKeys;
@@ -95,7 +94,7 @@ TEST_F(EmbeddingMgmtTest, GetAttributes)
     ThresholdValue thvalue(tableName, 0, 0, 0, false);
     vector<EmbInfo> embInfos = {embInfo_};
     vector<ThresholdValue> thresholds = {thvalue};
-    EmbeddingMgmt::Instance()->Init(rankInfo_, embInfos, thresholds, 0);
+    EmbeddingMgmt::Instance()->Init(rankInfo_, embInfos, 0);
 
     constexpr int testNum = 100;
     vector<emb_key_t> testKeys;

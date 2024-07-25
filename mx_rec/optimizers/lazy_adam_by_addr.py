@@ -73,10 +73,7 @@ class CustomizedLazyAdamByAddress(adam.AdamOptimizer, CustomizedOptimizer):
                                                           name=self.unique_name)
 
         self._slot_num = 2
-
-    @property
-    def slot_num(self):
-        return self._slot_num
+        self._derivative = 2
 
     def get_slot_init_values(self):
         # return state value list of adam that needs to initialize in ASC DDR.
@@ -109,9 +106,10 @@ class CustomizedLazyAdamByAddress(adam.AdamOptimizer, CustomizedOptimizer):
         return temp
 
     def _apply_sparse(self, grad, addr):
+        unique_local_grad, unique_addr = self.sum_same_id_gradients(grad=grad, var=addr, is_expansion=True)
         return self._apply_sparse_shared(
-            grad,
-            addr)
+            unique_local_grad,
+            unique_addr)
 
     def _apply_sparse_shared(self, grad, addr):
         power_b1, power_b2 = self._get_beta_accumulators()
@@ -138,7 +136,7 @@ class CustomizedLazyAdamByAddress(adam.AdamOptimizer, CustomizedOptimizer):
         old_v_slice = split_tensors[2]
         v_t_slice = temp_b2 * old_v_slice + (1 - temp_b2) * math_ops.square(grad)
 
-        denominator_slice = math_ops.sqrt(v_t_slice) + temp_epsilon
+        denominator_slice = math_ops.sqrt(tf.abs(v_t_slice)) + temp_epsilon
         update_list = [tf.divide(-learning_rate * m_t_slice, denominator_slice)] + [m_t_slice - old_m_slice] + \
                       [v_t_slice - old_v_slice]
         update_tensor = tf.concat(update_list, axis=1)

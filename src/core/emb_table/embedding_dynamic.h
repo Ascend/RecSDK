@@ -35,7 +35,7 @@ public:
 
     virtual int64_t capacity() const;
 
-    void Load(const string& savePath);
+    void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
 
     void Save(const string& savePath);
 
@@ -48,13 +48,13 @@ private:
 
     void MallocEmbeddingBlock(int embNum);
 
-    int SaveKey(const string& savePath);
+    void SaveKey(const string& savePath);
 
     void SaveEmbAndOptim(const string& savePath);
 
     void SetOptimizerInfo(OptimizerInfo& optimizerInfo);
 
-    int LoadKey(const string& savePath);
+    void LoadKey(const string& savePath);
 
     void LoadEmbAndOptim(const string& savePath);
 
@@ -74,6 +74,7 @@ private:
     std::string optimName;
     std::vector<std::string> optimParams;
     std::map<std::string, vector<int64_t>> optimAddressMap;
+    int deviceId = -1;
 
     int64_t firstAddress;
 };

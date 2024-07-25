@@ -24,7 +24,7 @@ import tensorflow as tf
 from tensorflow.python.util import compat
 
 from mx_rec.constants.constants import DataName, DataAttr, MIN_SIZE, MAX_FILE_SIZE, Flag, TFDevice, \
-    MAX_INT32, HDFS_FILE_PREFIX
+    MAX_INT32, HDFS_FILE_PREFIX, TRAIN_CHANNEL_ID
 from mx_rec.util.communication.hccl_ops import get_rank_id, get_rank_size, get_local_rank_size
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.perf import performance
@@ -33,6 +33,9 @@ from mx_rec.validator.validator import DirectoryValidator, FileValidator, para_c
 from mx_rec.util.global_env_conf import global_env
 from mx_rec.util.log import logger
 from mx_rec.optimizers.base import CustomizedOptimizer
+from mx_rec.util.tf_version_adapter import npu_ops
+
+SAVE_SPARSE_PATH_PREFIX = "sparse"
 
 
 # define save model thread
@@ -50,6 +53,28 @@ class SaveModelThread(threading.Thread):
 
 
 class Saver(object):
+    @para_checker_decorator(check_option_list=[
+        ("var_list", ClassValidator, {"classes": (list, type(None))}),
+        ("max_to_keep", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
+        ("prefix_name", ClassValidator, {"classes": (str, type(None))}),
+        ("prefix_name", OptionalStringValidator, {"min_len": 1, "max_len": 50}, ["check_string_length"]),
+    ])
+    def __init__(self, var_list=None, max_to_keep=3, prefix_name="checkpoint", warm_start_tables=None):
+        self.max_to_keep = max_to_keep
+        self._prefix_name = prefix_name
+        self.var_list = var_list
+        self.rank_id = get_rank_id()
+        self.local_rank_size = get_local_rank_size()
+        self.local_rank_id = self.rank_id % self.local_rank_size
+        self.rank_size = get_rank_size()
+        self.save_op_dict = defaultdict(dict)
+        self.restore_fetch_dict = defaultdict()
+        self.placeholder_dict = defaultdict(dict)
+        self._last_checkponts = []
+        self.config_instance = ConfigInitializer.get_instance()
+        self.build()
+        self.warm_start_tables = warm_start_tables
+
     @staticmethod
     def _make_table_name_dir(root_dir, table_instance, table_name):
         if not table_instance.is_hbm:
@@ -60,26 +85,6 @@ class Saver(object):
             tf.io.gfile.makedirs(table_dir)
         except Exception as err:
             raise RuntimeError(f"make dir {table_dir} for saving sparse table failed!") from err
-
-    @para_checker_decorator(check_option_list=[
-        ("var_list", ClassValidator, {"classes": (list, type(None))}),
-        ("max_to_keep", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
-        ("prefix_name", ClassValidator, {"classes": (str, type(None))}),
-        ("prefix_name", OptionalStringValidator, {"min_len": 1, "max_len": 50}, ["check_string_length"]),
-    ])
-    def __init__(self, var_list=None, max_to_keep=3, prefix_name="checkpoint"):
-        self.max_to_keep = max_to_keep
-        self._prefix_name = prefix_name
-        self.var_list = var_list
-        self.rank_id = get_rank_id()
-        self.local_rank_size = get_local_rank_size()
-        self.local_rank_id = self.rank_id % self.local_rank_size
-        self.save_op_dict = defaultdict(dict)
-        self.restore_fetch_list = []
-        self.placeholder_dict = defaultdict(dict)
-        self._last_checkponts = []
-        self.config_instance = ConfigInitializer.get_instance()
-        self.build()
 
     def build(self):
         if self.var_list is None:
@@ -122,12 +127,21 @@ class Saver(object):
         save_path = save_path if save_path else self._prefix_name
         directory, base_name = os.path.split(save_path)
 
+        # skip save in step-0, cause host skip save in step-0 EmbeddingDDR::Save SyncLatestEmbedding
+        try:
+            step_in_name = int(base_name.split("-")[-1])
+            if step_in_name == 0:
+                return
+        except ValueError as err:
+            raise ValueError(f"The base_name {base_name} needs to include save_step message "
+                             f"eg: mode-100") from err
+
         if global_step:
             if not isinstance(global_step, compat.integral_types):
                 global_step = int(sess.run(global_step))
-            ckpt_name = f"sparse-{base_name}-{global_step}"
+            ckpt_name = f"{SAVE_SPARSE_PATH_PREFIX}-{base_name}-{global_step}"
         else:
-            ckpt_name = f"sparse-{base_name}"
+            ckpt_name = f"{SAVE_SPARSE_PATH_PREFIX}-{base_name}"
 
         saving_path = os.path.join(directory, ckpt_name)
         self.config_instance.train_params_config.sparse_dir = saving_path
@@ -165,7 +179,7 @@ class Saver(object):
         comm = MPI.COMM_WORLD
         rank = comm.Get_rank()
         comm.Barrier()
-        if rank == 0:
+        if should_write_data(rank, saving_path):
             table_list = self.save_op_dict.keys()
             for table_name in table_list:
                 self.merge_sparse_file(saving_path, table_name)
@@ -175,21 +189,20 @@ class Saver(object):
         logger.info("======== Saving finished for rank id %s ========", self.rank_id)
 
     @performance("Restore")
-    def restore(self, sess, reading_path):
+    def restore(self, sess, reading_path, warm_start_tables=None):
         logger.debug("======== Start restoring ========")
         if not check_file_system_is_valid(reading_path):
             raise ValueError("the path to save sparse embedding table data belong to invalid file system, "
                              "only local file system and hdfs file system supported. ")
 
         directory, base_name = os.path.split(reading_path)
-        ckpt_name = f"sparse-{base_name}"
+        ckpt_name = f"{SAVE_SPARSE_PATH_PREFIX}-{base_name}"
 
         reading_path = os.path.join(directory, ckpt_name)
-        self.config_instance.train_params_config.sparse_dir = reading_path
         if not tf.io.gfile.exists(reading_path):
             raise FileExistsError(f"Given dir {reading_path} does not exist, please double check.")
 
-        self._restore(sess, reading_path)
+        self._restore(sess, reading_path, warm_start_tables)
         logger.info("sparse model was restored from dir '%s' .", reading_path)
         logger.debug("======== Restoring finished ========")
 
@@ -233,7 +246,21 @@ class Saver(object):
 
             attribute = attribute.astype(np.int64)
             attribute_dir = os.path.join(upper_dir, "slice.attribute")
-            attribute.tofile(attribute_dir)
+            with tf.io.gfile.GFile(attribute_dir, "wb") as file:
+                attribute = attribute.tostring()
+                file.write(attribute)
+
+    def get_warm_start_dict(self, table_list):
+        placeholder_dict = defaultdict(dict)
+        restore_fetch_list = []
+        for table_name, v in self.placeholder_dict.items():
+            if table_name in table_list:
+                placeholder_dict[table_name] = v
+                restore_fetch_list.append(self.restore_fetch_dict.get(table_name))
+
+        if not restore_fetch_list:
+            logger.warning("no tables can be warm start restored.")
+        return placeholder_dict, restore_fetch_list
 
     @performance("_save")
     def _save(self, sess, root_dir):
@@ -242,10 +269,15 @@ class Saver(object):
             if optimizer_instance:
                 set_optimizer_info(optimizer_instance, table_name)
 
-        if self.config_instance.hybrid_manager_config.asc_manager:
-            self.config_instance.hybrid_manager_config.save_host_data(root_dir)
-            logger.debug(f"host data was saved.")
+        table_instance0 = self.config_instance.sparse_embed_config.get_table_instance(self.var_list[0])
+        if table_instance0.is_hbm:
+            self._save_hbm(sess, root_dir)
+        else:
+            self._save_ddr(sess, root_dir)
+        logger.debug(f"Host data was saved.")
 
+    def _save_hbm(self, sess, root_dir):
+        self.config_instance.hybrid_manager_config.save_host_data(root_dir)
         if self.config_instance.use_dynamic_expansion:
             # Data related to dynamic expansion needs to be saved only on the host side.
             return
@@ -261,6 +293,42 @@ class Saver(object):
 
         for thread in threads:
             thread.join()
+
+    def _save_ddr(self, sess, root_dir):
+        # 接受host侧传来的需要swap_out的offset用于更新host侧并保存
+        self.config_instance.hybrid_manager_config.fetch_device_emb()
+        # In DDR mode, within the save process, the graph has been fixed and cannot execute the get_next op.
+        # The _unsafe_unfinalize operation can modify the state of the graph being fixed.
+        sess.graph._unsafe_unfinalize()
+        for var in self.var_list:
+            table_instance = self.config_instance.sparse_embed_config.get_table_instance(var)
+            table_name = table_instance.table_name
+
+            use_static = ConfigInitializer.get_instance().use_static
+            max_lookup_vec_size = None
+            if use_static:
+                max_lookup_vec_size = table_instance.send_count * self.rank_size
+            swap_out_pos, swap_out_len = npu_ops.gen_npu_ops.get_next(
+                output_types=[tf.int32, tf.int32],
+                output_shapes=[[max_lookup_vec_size], []],
+                channel_name=f'{table_name}_save_h2d_{TRAIN_CHANNEL_ID}')
+            if use_static:
+                swap_out_pos = swap_out_pos[:swap_out_len]
+
+            table = [var]
+            optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(table_name)
+            if optimizer is not None:
+                for slots in optimizer.values():
+                    table += list(slots.values())
+
+            swap_outs = [tf.gather(one_table, swap_out_pos) for one_table in table]
+            swap_out = tf.concat(swap_outs, axis=1)
+            channel_name = f'{table_name}_save_d2h_{TRAIN_CHANNEL_ID}'
+            logger.debug('channel %s was built for op swap_out_op.', channel_name)
+            swap_out_op = npu_ops.outfeed_enqueue_op(channel_name=channel_name, inputs=[swap_out])
+            # 发送host需要的embedding
+            sess.run(swap_out_op)
+        self.config_instance.hybrid_manager_config.save_host_data(root_dir)
 
     def _get_valid_dict_data(self, dump_data_dict, table_name):
         host_data = self.config_instance.hybrid_manager_config.get_host_data(table_name)
@@ -294,7 +362,7 @@ class Saver(object):
                                                                       table_instance.emb_size],
                                              name=DataName.EMBEDDING.value)
                 assign_op = var.assign(variable)
-                self.restore_fetch_list.append(assign_op)
+                self.restore_fetch_dict[table_instance.table_name] = [assign_op]
                 optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(
                     table_instance.table_name)
                 if optimizer:
@@ -313,17 +381,27 @@ class Saver(object):
                 if sub_optimizer_placeholder_dict.get(key_state).graph is not state.graph:
                     continue
                 assign_op = state.assign(sub_optimizer_placeholder_dict.get(key_state))
-                self.restore_fetch_list.append(assign_op)
+                self.restore_fetch_dict[table_instance.table_name].append(assign_op)
 
-    def _restore(self, sess, reading_path):
-        for table_name in self.placeholder_dict:
+    def _restore(self, sess, reading_path, warm_start_tables=None):
+        # 根据table_list去改造
+        if warm_start_tables:
+            placeholder_dict, restore_fetch_list = self.get_warm_start_dict(warm_start_tables)
+        else:
+            placeholder_dict, restore_fetch_list = self.placeholder_dict, self.restore_fetch_dict
+
+        for table_name in placeholder_dict:
             optimizer_instance = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
             if optimizer_instance:
                 set_optimizer_info(optimizer_instance, table_name)
 
         if self.config_instance.hybrid_manager_config.asc_manager:
-            self.config_instance.hybrid_manager_config.restore_host_data(reading_path)
+            self.config_instance.hybrid_manager_config.restore_host_data(reading_path, warm_start_tables)
             logger.info("host data was restored.")
+
+        table_instance0 = self.config_instance.sparse_embed_config.get_table_instance(self.var_list[0])
+        if not table_instance0.is_hbm:
+            return
 
         if self.config_instance.use_dynamic_expansion:
             # Data related to dynamic expansion needs to be restored only on the host side.
@@ -331,7 +409,7 @@ class Saver(object):
 
         restore_feed_dict = defaultdict(dict)
 
-        for table_name, sub_placeholder_dict in self.placeholder_dict.items():
+        for table_name, sub_placeholder_dict in placeholder_dict.items():
             load_offset = self.config_instance.hybrid_manager_config.get_load_offset(table_name)
             fill_placeholder(reading_path, sub_placeholder_dict, restore_feed_dict,
                              NameDescriptor(table_name, DataName.EMBEDDING.value), load_offset)
@@ -341,7 +419,7 @@ class Saver(object):
                 _fill_placeholder_for_optimizer(optimizer_state_placeholder_dict_group, reading_path,
                                                 restore_feed_dict, table_name, load_offset)
 
-        sess.run(self.restore_fetch_list, feed_dict=restore_feed_dict)
+        sess.run(restore_fetch_list, feed_dict=restore_feed_dict)
 
 
 class NameDescriptor:
@@ -393,7 +471,7 @@ def save_embedding_data(root_dir, table_name, dump_data_dict, suffix):
     attribute = dict()
     attribute[DataAttr.DATATYPE.value] = data_to_write.dtype.name
     attribute[DataAttr.SHAPE.value] = data_to_write.shape
-    write_binary_data(target_path, suffix, data_to_write, attributes=attribute)
+    write_binary_data(target_path, suffix, data_to_write)
 
 
 def save_feature_mapping_data(root_dir, table_name, dump_data_dict, suffix):
@@ -405,7 +483,7 @@ def save_feature_mapping_data(root_dir, table_name, dump_data_dict, suffix):
     attribute = dict()
     attribute[DataAttr.DATATYPE.value] = data_to_write.dtype.name
     attribute[DataName.THRESHOLD.value] = int(dump_data_dict.get(DataName.THRESHOLD.value))
-    write_binary_data(target_path, suffix, data_to_write, attributes=attribute)
+    write_binary_data(target_path, suffix, data_to_write)
 
 
 def save_offset_data(root_dir, table_name, dump_data_dict, suffix):
@@ -416,7 +494,7 @@ def save_offset_data(root_dir, table_name, dump_data_dict, suffix):
 
     attribute = dict()
     attribute[DataAttr.DATATYPE.value] = data_to_write.dtype.name
-    write_binary_data(target_path, suffix, data_to_write, attributes=attribute)
+    write_binary_data(target_path, suffix, data_to_write)
 
 
 def save_optimizer_state_data(root_dir, table_name, optimizer_name, dump_optimizer_data, suffix):
@@ -427,7 +505,7 @@ def save_optimizer_state_data(root_dir, table_name, optimizer_name, dump_optimiz
         attribute = dict()
         attribute[DataAttr.DATATYPE.value] = data_to_write.dtype.name
         attribute[DataAttr.SHAPE.value] = data_to_write.shape
-        write_binary_data(target_path, suffix, data_to_write, attributes=attribute)
+        write_binary_data(target_path, suffix, data_to_write)
 
 
 def generate_path(*args):
@@ -438,15 +516,16 @@ def generate_file_name(suffix):
     return "slice_%d.data" % suffix, "slice_%d.attribute" % suffix
 
 
-def write_binary_data(writing_path, suffix, data, attributes=None):
+def write_binary_data(writing_path: str, suffix: int, data: np.ndarray):
     try:
         tf.io.gfile.makedirs(writing_path)
     except Exception as err:
         raise RuntimeError(f"make dir {writing_path} for writing data failed!") from err
     data_file, attribute_file = generate_file_name(suffix)
     target_data_dir = os.path.join(writing_path, data_file)
-
-    with tf.io.gfile.GFile(target_data_dir, "ab") as file:
+    # append mode of hdfs system supports not well when the file not exists.
+    file_mode = "wb" if not tf.io.gfile.exists(target_data_dir) else "ab"
+    with tf.io.gfile.GFile(target_data_dir, file_mode) as file:
         data = data.tostring()
         file.write(data)
 
@@ -470,7 +549,11 @@ def read_binary_data(reading_path: str, data_name: str, table_name: str, load_of
 
     with tf.io.gfile.GFile(target_attribute_dir, "rb") as fin:
         validate_read_file(target_attribute_dir)
-        attributes = np.fromfile(target_attribute_dir, dtype=np.int64)
+        attributes = fin.read()
+        try:
+            attributes = np.fromstring(attributes, dtype=np.int64)
+        except ValueError as err:
+            raise RuntimeError(f"get attributes from file {target_attribute_dir} failed.") from err
 
     with tf.io.gfile.GFile(target_data_dir, "rb") as file:
         validate_read_file(target_data_dir)
@@ -623,3 +706,14 @@ def set_optimizer_info(optimizer: CustomizedOptimizer, table_name: str):
     from mxrec_pybind import OptimizerInfo
     optim_info = OptimizerInfo(optimizer.optimizer_type, optimizer.optim_param_list)
     ConfigInitializer.get_instance().hybrid_manager_config.set_optim_info(table_name, optim_info)
+
+
+def should_write_data(rank_id: int, save_path: str) -> bool:
+    # When using hdfs filesystem, only the rank0 process execute write data operation, assuming use same hdfs path in
+    #   multi-machine.
+    # When using local filesystem, the process which `rank_id % local_rank_size == 0` execute write data operation.
+    # When using hdfs filesystem, and use different hdfs path to save data, should modify check condition
+    #    as same as local filesystem.
+    is_hdfs = check_file_system_is_hdfs(save_path)
+    local_rank_size = get_local_rank_size()
+    return rank_id == 0 if is_hdfs else rank_id % local_rank_size == 0

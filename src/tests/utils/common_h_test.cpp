@@ -113,12 +113,6 @@ TEST(TestHostEmbTable, DefaultConstructor)
     MxRec::HostEmbTable hostEmbTable;
 }
 
-// 测试 EmbHashMapInfo 结构的默认构造函数
-TEST(TestEmbHashMapInfo, DefaultConstructor)
-{
-    MxRec::EmbHashMapInfo embHashMapInfo;
-}
-
 // 测试 All2AllInfo 结构的默认构造函数
 TEST(TestAll2AllInfo, DefaultConstructor)
 {

@@ -13,21 +13,22 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-#include <iostream>
-#include <sys/mman.h>
-#include <unistd.h>
-#include <sys/stat.h>
+#include "checkpoint.h"
+
 #include <fcntl.h>
 #include <omp.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include <iostream>
 
 #include "ckpt_data_handler/feat_admit_n_evict_ckpt/feat_admit_n_evict_ckpt.h"
-#include "ckpt_data_handler/key_freq_map_ckpt/key_freq_map_ckpt.h"
 #include "ckpt_data_handler/key_count_map_ckpt/key_count_map_ckpt.h"
-#include "utils/time_cost.h"
-#include "utils/common.h"
+#include "ckpt_data_handler/key_freq_map_ckpt/key_freq_map_ckpt.h"
 #include "file_system/file_system_handler.h"
-
-#include "checkpoint.h"
+#include "utils/common.h"
+#include "utils/time_cost.h"
 
 using namespace std;
 using namespace MxRec;
@@ -89,11 +90,18 @@ void Checkpoint::SetDataHandler(CkptData& ckptData)
 
 void Checkpoint::SetDataHandler(const vector<CkptFeatureType>& featureTypes)
 {
-    map<CkptFeatureType, function<void()>> setCkptMap{
-        {CkptFeatureType::FEAT_ADMIT_N_EVICT, [this] { dataHandlers.push_back(make_unique<FeatAdmitNEvictCkpt>()); }},
-        {CkptFeatureType::DDR_KEY_FREQ_MAP,   [this] { dataHandlers.push_back(make_unique<KeyFreqMapCkpt>()); }},
-        {CkptFeatureType::KEY_COUNT_MAP,      [this] { dataHandlers.push_back(make_unique<KeyCountMapCkpt>()); }}
+    auto featAdmitNEvictHandler = [this] {
+        dataHandlers.push_back(make_unique<FeatAdmitNEvictCkpt>());
     };
+    auto ddrKeyFreqMapHandler = [this] {
+        dataHandlers.push_back(make_unique<KeyFreqMapCkpt>());
+    };
+    auto keyCountMapHandler = [this] {
+        dataHandlers.push_back(make_unique<KeyCountMapCkpt>());
+    };
+    map<CkptFeatureType, function<void()>> setCkptMap{{CkptFeatureType::FEAT_ADMIT_N_EVICT, featAdmitNEvictHandler},
+                                                      {CkptFeatureType::DDR_KEY_FREQ_MAP, ddrKeyFreqMapHandler},
+                                                      {CkptFeatureType::KEY_COUNT_MAP, keyCountMapHandler}};
 
     for (const auto& featureType : featureTypes) {
         setCkptMap.at(featureType)();
@@ -104,8 +112,8 @@ void Checkpoint::SaveProcess(CkptData& ckptData)
 {
     for (const auto& dataHandler : dataHandlers) {
         dataHandler->SetProcessData(ckptData);
-        vector<string> embNames { dataHandler->GetEmbNames() };
-        vector<CkptDataType> saveDataTypes { dataHandler->GetDataTypes() };
+        vector<string> embNames{dataHandler->GetEmbNames()};
+        vector<CkptDataType> saveDataTypes{dataHandler->GetDataTypes()};
         MakeUpperLayerSaveDir();
         MakeDataLayerSaveDir(embNames, saveDataTypes, dataHandler);
         SaveDataset(embNames, saveDataTypes, dataHandler);
@@ -118,17 +126,16 @@ void Checkpoint::MakeUpperLayerSaveDir()
     MakeSaveDir(innerDirPath);
 }
 
-void Checkpoint::MakeDataLayerSaveDir(const vector<string>& embNames,
-                                      const vector<CkptDataType>& saveDataTypes,
+void Checkpoint::MakeDataLayerSaveDir(const vector<string>& embNames, const vector<CkptDataType>& saveDataTypes,
                                       const unique_ptr<CkptDataHandler>& dataHandler)
 {
     for (const auto& embName : embNames) {
-        auto dataDir { innerDirPath + dirSeparator + embName };
+        auto dataDir{innerDirPath + dirSeparator + embName};
         MakeSaveDir(dataDir);
 
         for (const auto& saveDataType : saveDataTypes) {
-            auto dataDirName { dataHandler->GetDataDirName(saveDataType) };
-            auto datasetPath { dataDir + dirSeparator + dataDirName };
+            auto dataDirName{dataHandler->GetDataDirName(saveDataType)};
+            auto datasetPath{dataDir + dirSeparator + dataDirName};
             MakeSaveDir(datasetPath);
         }
     }
@@ -146,7 +153,7 @@ void Checkpoint::MakeSaveDir(const string& dirName) const
 Checkpoint::EmbSizeInfo Checkpoint::GetEmbeddingSize(const string& embName)
 {
     EmbSizeInfo embSizeInfo;
-    for (const auto &embInfo: mgmtEmbInfo) {
+    for (const auto& embInfo : mgmtEmbInfo) {
         if (embInfo.name == embName) {
             embSizeInfo.embSize = embInfo.embeddingSize;
             embSizeInfo.extEmbSize = embInfo.extEmbeddingSize;
@@ -158,29 +165,28 @@ Checkpoint::EmbSizeInfo Checkpoint::GetEmbeddingSize(const string& embName)
 
 bool Checkpoint::CheckEmbNames(const string& embName)
 {
-    for (const auto &embInfo: mgmtEmbInfo) {
-        if (embInfo.name == embName && embInfo.isSave)  {
+    for (const auto& embInfo : mgmtEmbInfo) {
+        if (embInfo.name == embName && embInfo.isSave) {
             return true;
         }
     }
     return false;
 }
 
-void Checkpoint::SaveDataset(const vector<string>& embNames,
-                             const vector<CkptDataType>& saveDataTypes,
+void Checkpoint::SaveDataset(const vector<string>& embNames, const vector<CkptDataType>& saveDataTypes,
                              const unique_ptr<CkptDataHandler>& dataHandler)
 {
-    for (const auto& embName: embNames) {
+    for (const auto& embName : embNames) {
         if (!CheckEmbNames(embName)) {
             continue;
         }
         auto dataDir{innerDirPath + dirSeparator + embName};
-        for (const auto& saveDataType: saveDataTypes) {
-            auto datasetPath { dataDir + dirSeparator + dataHandler->GetDataDirName(saveDataType) };
-            auto datasetDir { datasetPath + dirSeparator + datasetName + to_string(rankId) + dataFileType };
+        for (const auto& saveDataType : saveDataTypes) {
+            auto datasetPath{dataDir + dirSeparator + dataHandler->GetDataDirName(saveDataType)};
+            auto datasetDir{datasetPath + dirSeparator + datasetName + to_string(rankId) + dataFileType};
 
             LOG_DEBUG("====Start getting data from handler to: {}", datasetDir);
-            auto transData { dataHandler->GetDataset(saveDataType, embName) };
+            auto transData{dataHandler->GetDataset(saveDataType, embName)};
 
             LOG_DEBUG("====Start saving data to: {}", datasetDir);
             WriteStream(transData, datasetDir, transData.datasetSize, saveDataType);
@@ -196,32 +202,37 @@ void Checkpoint::WriteStream(CkptTransData& transData, const string& dataDir, si
     }
 
     ssize_t writeBytesNum;
-    if (floatTransSet.find(dataType) != floatTransSet.end()) {
-        writeBytesNum = fileSystemPtr->Write(dataDir, transData.floatArr, dataSize);
-    } else if (int32TransSet.find(dataType) != int32TransSet.end()) {
-        writeBytesNum = fileSystemPtr->Write(dataDir,
-                                             reinterpret_cast<const char*>(transData.int32Arr.data()), dataSize);
+    if (int32TransSet.find(dataType) != int32TransSet.end()) {
+        writeBytesNum =
+            fileSystemPtr->Write(dataDir, reinterpret_cast<const char*>(transData.int32Arr.data()), dataSize);
     } else if (int64TransSet.find(dataType) != int64TransSet.end()) {
-        writeBytesNum = fileSystemPtr->Write(dataDir,
-                                             reinterpret_cast<const char*>(transData.int64Arr.data()), dataSize);
+        writeBytesNum =
+            fileSystemPtr->Write(dataDir, reinterpret_cast<const char*>(transData.int64Arr.data()), dataSize);
     } else if (dataType == CkptDataType::ATTRIBUTE) {
-        writeBytesNum = fileSystemPtr->Write(dataDir,
-                                             reinterpret_cast<const char*>(transData.attribute.data()), dataSize);
+        writeBytesNum =
+            fileSystemPtr->Write(dataDir, reinterpret_cast<const char*>(transData.attribute.data()), dataSize);
+    } else {
+        throw runtime_error("unknown CkptDataType");
     }
 
     if (writeBytesNum == -1) {
-        LOG_ERROR("error happened when writing data to file.");
-        throw runtime_error("error happened when writing data to file.");
+        throw runtime_error(StringFormat("Error: Save data failed. data type: %s. "
+                                         "An error occurred while writing file: %s.",
+                                         CkptDataTypeName(dataType).c_str(), dataDir.c_str()));
+    }
+    if (writeBytesNum != dataSize) {
+        throw runtime_error(StringFormat("Error: Save data failed. data type: %s. "
+                                         "Expected to write %d bytes, but actually write %d bytes to file %s.",
+                                         CkptDataTypeName(dataType).c_str(), dataSize, writeBytesNum, dataDir.c_str()));
     }
 }
-
 
 void Checkpoint::LoadProcess(CkptData& ckptData)
 {
     for (const auto& dataHandler : dataHandlers) {
-        vector<string> embNames {};
-        vector<string> dirNames { dataHandler->GetDirNames() };
-        vector<CkptDataType> saveDataTypes { dataHandler->GetDataTypes() };
+        vector<string> embNames{};
+        vector<string> dirNames{dataHandler->GetDirNames()};
+        vector<CkptDataType> saveDataTypes{dataHandler->GetDataTypes()};
         innerDirPath = processPath;
         if (find(dirNames.begin(), dirNames.end(), ssdSymbol) != dirNames.end()) {
             embNames = GetTableLayerLoadDir();
@@ -232,7 +243,6 @@ void Checkpoint::LoadProcess(CkptData& ckptData)
         dataHandler->GetProcessData(ckptData);
     }
 }
-
 
 vector<string> Checkpoint::GetEmbedTableNames()
 {
@@ -257,23 +267,20 @@ vector<string> Checkpoint::GetTableLayerLoadDir()
     return loadTableDir;
 }
 
-void Checkpoint::LoadDataset(const vector<string>& embNames,
-                             const vector<CkptDataType>& saveDataTypes,
-                             const unique_ptr<CkptDataHandler>& dataHandler,
-                             CkptData& ckptData)
+void Checkpoint::LoadDataset(const vector<string>& embNames, const vector<CkptDataType>& saveDataTypes,
+                             const unique_ptr<CkptDataHandler>& dataHandler, CkptData& ckptData)
 {
     for (const auto& embName : embNames) {
-        auto dataDir { innerDirPath + dirSeparator + embName };
+        auto dataDir{innerDirPath + dirSeparator + embName};
         for (const auto& saveDataType : saveDataTypes) {
-            auto datasetPath { dataDir + dirSeparator + dataHandler->GetDataDirName(saveDataType) };
+            auto datasetPath{dataDir + dirSeparator + dataHandler->GetDataDirName(saveDataType)};
 
-            auto datasetDir { datasetPath + dirSeparator + "slice" + dataFileType };
-            auto attributeDir { datasetPath + dirSeparator + "slice" + attribFileType };
+            auto datasetDir{datasetPath + dirSeparator + "slice" + dataFileType};
+            auto attributeDir{datasetPath + dirSeparator + "slice" + attribFileType};
 
             CkptTransData transData;
-
             LOG_DEBUG("====Start reading data from: {}", attributeDir);
-            auto dataElmtBytes { dataHandler->GetDataElmtBytes(CkptDataType::ATTRIBUTE) };
+            auto dataElmtBytes{dataHandler->GetDataElmtBytes(CkptDataType::ATTRIBUTE)};
             ReadStream(transData, attributeDir, CkptDataType::ATTRIBUTE, dataElmtBytes);
 
             dataElmtBytes = dataHandler->GetDataElmtBytes(saveDataType);
@@ -286,7 +293,7 @@ void Checkpoint::LoadDataset(const vector<string>& embNames,
             }
 
             LOG_DEBUG("====Start loading data from: {} to data handler.", attributeDir);
-            if ((saveDataType == CkptDataType::EMB_INFO))  {
+            if ((saveDataType == CkptDataType::EMB_INFO)) {
                 dataHandler->SetDatasetForLoadEmb(saveDataType, embName, transData, ckptData);
             } else {
                 dataHandler->SetDataset(saveDataType, embName, transData);
@@ -295,14 +302,12 @@ void Checkpoint::LoadDataset(const vector<string>& embNames,
     }
 }
 
-void Checkpoint::ReadStream(CkptTransData& transData,
-                            const string& dataDir,
-                            CkptDataType dataType,
+void Checkpoint::ReadStream(CkptTransData& transData, const string& dataDir, CkptDataType dataType,
                             uint32_t dataElmtBytes)
 {
     if (dataElmtBytes == 0) {
         LOG_WARN("dataElmtBytes is 0, don't handle [/ %] operation");
-        return ;
+        return;
     }
 
     if (fileSystemPtr == nullptr) {
@@ -311,7 +316,7 @@ void Checkpoint::ReadStream(CkptTransData& transData,
     }
 
     size_t datasetSize = fileSystemPtr->GetFileSize(dataDir);
-    auto resizeSize { datasetSize / dataElmtBytes };
+    auto resizeSize{datasetSize / dataElmtBytes};
     SetTransDataSize(transData, resizeSize, dataType);
 
     if (datasetSize % dataElmtBytes > 0) {
@@ -323,27 +328,31 @@ void Checkpoint::ReadStream(CkptTransData& transData,
         readBytesNum = fileSystemPtr->Read(dataDir, reinterpret_cast<char*>(transData.int32Arr.data()), datasetSize);
     } else if (int64TransSet.find(dataType) != int64TransSet.end()) {
         readBytesNum = fileSystemPtr->Read(dataDir, reinterpret_cast<char*>(transData.int64Arr.data()), datasetSize);
-    } else if (floatTransSet.find(dataType) != floatTransSet.end()) {
-        readBytesNum = fileSystemPtr->Read(dataDir, reinterpret_cast<char*>(transData.floatArr.data()), datasetSize);
     } else if (dataType == CkptDataType::ATTRIBUTE) {
-        readBytesNum = fileSystemPtr->Read(dataDir, reinterpret_cast<char *>(transData.attribute.data()), datasetSize);
+        readBytesNum = fileSystemPtr->Read(dataDir, reinterpret_cast<char*>(transData.attribute.data()), datasetSize);
+    } else {
+        throw runtime_error("unknown CkptDataType");
     }
 
     if (readBytesNum == -1) {
-        LOG_ERROR("error happened when reading data from file.");
-        throw runtime_error("error happened when reading data from file.");
+        throw runtime_error(StringFormat("Error: Load data failed. data type: %s. "
+                                         "An error occurred while reading file: %s.",
+                                         CkptDataTypeName(dataType).c_str(), dataDir.c_str()));
+    }
+    if (readBytesNum != datasetSize) {
+        throw runtime_error(StringFormat("Error: Load data failed. data type: %s. "
+                                         "Expected to read %d bytes, but actually read %d bytes to file %s.",
+                                         CkptDataTypeName(dataType).c_str(), datasetSize, readBytesNum,
+                                         dataDir.c_str()));
     }
 }
 
-void Checkpoint::ReadStreamForEmbData(CkptTransData& transData,
-                                      const string& dataDir,
-                                      uint32_t dataElmtBytes,
-                                      CkptData& ckptData,
-                                      string embName) const
+void Checkpoint::ReadStreamForEmbData(CkptTransData& transData, const string& dataDir, uint32_t dataElmtBytes,
+                                      CkptData& ckptData, string embName) const
 {
     if (dataElmtBytes == 0) {
         LOG_ERROR("dataElmtBytes is 0, don't handle [/ %] operation");
-        return ;
+        return;
     }
 
     if (fileSystemPtr == nullptr) {
@@ -373,9 +382,9 @@ void Checkpoint::SetTransDataSize(CkptTransData& transData, size_t datasetSize, 
         transData.int32Arr.resize(datasetSize);
     } else if (int64TransSet.find(dataType) != int64TransSet.end()) {
         transData.int64Arr.resize(datasetSize);
-    } else if (floatTransSet.find(dataType) != floatTransSet.end()) {
-        transData.floatArr.resize(datasetSize);
     } else if (dataType == CkptDataType::ATTRIBUTE) {
         transData.attribute.resize(datasetSize);
+    } else {
+        throw runtime_error("unknown CkptDataType");
     }
 }

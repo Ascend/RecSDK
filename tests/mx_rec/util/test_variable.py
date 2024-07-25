@@ -21,7 +21,7 @@ from unittest.mock import patch
 
 import tensorflow as tf
 from mx_rec.util.global_env_conf import global_env
-from mx_rec.util.variable import check_and_get_config_via_var
+from mx_rec.util.variable import get_config_via_var
 from mx_rec.util.variable import get_dense_and_sparse_variable
 from tests.mx_rec.core.mock_class import MockConfigInitializer
 
@@ -29,7 +29,6 @@ from tests.mx_rec.core.mock_class import MockConfigInitializer
 class MockTableInstance:
     def __init__(self):
         self.is_hbm = False
-        self.optimizer = False
 
 
 @patch.multiple(
@@ -44,10 +43,8 @@ class VariableTest(unittest.TestCase):
         """
         self.cm_worker_size = global_env.cm_worker_size
         self.cm_chief_device = global_env.cm_chief_device
-        self.ascend_visible_devices = global_env.ascend_visible_devices
         global_env.cm_worker_size = "8"
         global_env.cm_chief_device = "0"
-        global_env.ascend_visible_devices = "0-7"
 
     def tearDown(self):
         """
@@ -56,7 +53,6 @@ class VariableTest(unittest.TestCase):
         """
         global_env.cm_worker_size = self.cm_worker_size
         global_env.cm_chief_device = self.cm_chief_device
-        global_env.ascend_visible_devices = self.ascend_visible_devices
 
     @mock.patch("mx_rec.util.variable.ConfigInitializer")
     def test_get_dense_and_sparse_variable(self, variable_config_initializer):
@@ -75,14 +71,6 @@ class VariableTest(unittest.TestCase):
 
         self.assertTrue(result_run)
         tf.reset_default_graph()
-
-    @mock.patch("mx_rec.util.variable.ConfigInitializer")
-    def test_check_and_get_config_via_var_when_environment_error(self, variable_config_initializer):
-        mock_config_initializer = MockConfigInitializer(var=MockTableInstance())
-        variable_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
-
-        with self.assertRaises(EnvironmentError):
-            self.assertEqual(MockTableInstance(), check_and_get_config_via_var("1", "optimize"))
 
 
 if __name__ == '__main__':

@@ -403,7 +403,7 @@ namespace MxRec {
             out(0) = batchId;
             if (channelId == 1) {
                 if (maxStep != -1 && batchId >= maxStep) {
-                    LOG_DEBUG(StringFormat("skip excess batch after {}/{}", batchId, maxStep));
+                    LOG_DEBUG(StringFormat("skip excess batch after %d/%d", batchId, maxStep));
                     return;
                 }
             }
@@ -640,4 +640,22 @@ namespace tensorflow {
     });
 
     REGISTER_KERNEL_BUILDER(Name("EmbeddingUpdateByAddress").Device(DEVICE_CPU), MxRec::CustOps);
+
+    // ######################## tf注册LazyAdam融合算子同名算子 ########################
+    REGISTER_OP("LazyAdam")
+        .Input("gradient: float32")
+        .Input("indices: int32")
+        .Input("input_m: float32")
+        .Input("input_v: float32")
+        .Input("input_var: float32")
+        .Input("lr: float32")
+        .Attr("beta1: float")
+        .Attr("beta2: float")
+        .Attr("epsilon: float")
+        .Output("output_m: float32")
+        .Output("output_v: float32")
+        .Output("output_var: float32")
+        .SetIsStateful()
+        .SetShapeFn(::tensorflow::shape_inference::UnknownShape);
+    REGISTER_KERNEL_BUILDER(Name("LazyAdam").Device(DEVICE_CPU), MxRec::CustOps);
 }

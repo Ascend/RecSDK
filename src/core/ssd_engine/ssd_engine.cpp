@@ -27,7 +27,7 @@ bool SSDEngine::IsTableExist(const string &tableName)
     return !(it == tableMap.end());
 }
 
-bool SSDEngine::IsKeyExist(const string &tableName, emb_key_t key)
+bool SSDEngine::IsKeyExist(const string &tableName, emb_cache_key_t key)
 {
     if (!isRunning) {
         throw runtime_error("SSDEngine not running");
@@ -54,7 +54,8 @@ void SSDEngine::CreateTable(const string &tableName, vector<string> savePaths, u
     tableMap[tableName] = make_shared<Table>(tableName, savePaths, maxTableSize, compactThreshold);
 }
 
-void SSDEngine::InsertEmbeddings(const string &tableName, vector<emb_key_t> &keys, vector<vector<float>> &embeddings)
+void SSDEngine::InsertEmbeddings(const string& tableName, vector<emb_cache_key_t>& keys,
+                                 vector<vector<float>>& embeddings)
 {
     if (!isRunning) {
         throw runtime_error("SSDEngine not running");
@@ -71,7 +72,7 @@ void SSDEngine::InsertEmbeddings(const string &tableName, vector<emb_key_t> &key
     it->second->InsertEmbeddings(keys, embeddings);
 }
 
-void SSDEngine::DeleteEmbeddings(const string &tableName, vector<emb_key_t> &keys)
+void SSDEngine::DeleteEmbeddings(const string &tableName, vector<emb_cache_key_t> &keys)
 {
     if (!isRunning) {
         throw runtime_error("SSDEngine not running");
@@ -102,9 +103,16 @@ void SSDEngine::Save(int step)
     if (!isRunning) {
         throw runtime_error("SSDEngine not running");
     }
+
+    if (step == loadStep) {
+        LOG_INFO("save step equal to load step, skip saving, step:{}", step);
+        return;
+    }
+
     for (auto item: as_const(tableMap)) {
         item.second->Save(step);
     }
+    saveStep = step;
 }
 
 void SSDEngine::Load(const string &tableName, vector<string> savePaths, uint64_t maxTableSize, int step)
@@ -112,12 +120,19 @@ void SSDEngine::Load(const string &tableName, vector<string> savePaths, uint64_t
     if (!isRunning) {
         throw runtime_error("SSDEngine not running");
     }
+
+    if (step == saveStep) {
+        LOG_INFO("load step equal to save step, skip loading, step:{}", step);
+        return;
+    }
+
     auto it = as_const(tableMap).find(tableName);
     if (it != tableMap.end()) {
         throw invalid_argument("table already exist");
     }
 
     tableMap[tableName] = make_shared<Table>(tableName, savePaths, maxTableSize, compactThreshold, step);
+    loadStep = step;
 }
 
 void SSDEngine::Start()
@@ -154,7 +169,7 @@ void SSDEngine::CompactMonitor()
     LOG_DEBUG("SSDEngine end CompactMonitor");
 }
 
-vector<vector<float>> SSDEngine::FetchEmbeddings(const string &tableName, vector<emb_key_t> &keys)
+vector<vector<float>> SSDEngine::FetchEmbeddings(const string &tableName, vector<emb_cache_key_t> &keys)
 {
     if (!isRunning) {
         throw runtime_error("SSDEngine not running");
@@ -198,7 +213,7 @@ void SSDEngine::SetCompactThreshold(double threshold)
     throw invalid_argument("compact threshold should in range [0, 1]");
 }
 
-int64_t SSDEngine::GetTableEmbeddingSize(const string &tableName)
+int64_t SSDEngine::GetTableUsage(const string &tableName)
 {
     if (!isRunning) {
         throw runtime_error("SSDEngine not running");
@@ -208,4 +223,31 @@ int64_t SSDEngine::GetTableEmbeddingSize(const string &tableName)
         return -1;
     }
     return static_cast<int64_t>(it->second->GetTableUsage());
+}
+
+void SSDEngine::InsertEmbeddingsByAddr(const string& tableName, vector<emb_cache_key_t>& keys,
+                                       vector<float*>& embeddingsAddr, uint64_t extEmbeddingSize)
+{
+    if (!isRunning) {
+        throw runtime_error("SSDEngine not running");
+    }
+    auto it = as_const(tableMap).find(tableName);
+    if (it == tableMap.end()) {
+        throw invalid_argument("table not found");
+    }
+
+    if (keys.size() != embeddingsAddr.size()) {
+        throw invalid_argument("keys' length not equal to embeddings' length");
+    }
+
+    it->second->InsertEmbeddingsByAddr(keys, embeddingsAddr, extEmbeddingSize);
+}
+
+vector<pair<string, vector<emb_cache_key_t>>> SSDEngine::ExportTableKey()
+{
+    vector<pair<string, vector<emb_cache_key_t>>> tableKeysVec;
+    for (const auto& p : tableMap) {
+        tableKeysVec.emplace_back(p.first, p.second->ExportKeys());
+    }
+    return tableKeysVec;
 }

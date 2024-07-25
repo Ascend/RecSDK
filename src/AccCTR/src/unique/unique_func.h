@@ -30,6 +30,7 @@ limitations under the License.
 #include <vector>
 #include <map>
 #include <limits>
+#include <unistd.h>
 
 #include "securec.h"
 #include "common_includes.h"
@@ -37,6 +38,14 @@ limitations under the License.
 
 namespace ock {
 namespace ctr {
+#ifndef LIKELY
+#define LIKELY(x) __builtin_expect(!!(x), 1)
+#endif
+
+#ifndef UNLIKELY
+#define UNLIKELY(x) __builtin_expect(!!(x), 0)
+#endif
+
 using UniqueOutSelf = struct UniqueSelf {
     void *uniqueId = nullptr;           // 去重分桶填充之后最终的的ids(需要用户申请)必选
     uint32_t *index = nullptr;          // 去重后id的索引位置(需要用户申请)必选
@@ -47,7 +56,7 @@ using UniqueOutSelf = struct UniqueSelf {
     int uniqueIdCnt = 0;      // 每个桶去重后的id个数(需要用户申请)
 };
 
-constexpr int UNIQUE_MAX_BUCKET_WIDTH = 5;
+constexpr int UNIQUE_MAX_BUCKET_WIDTH = 6;
 
 template <DataType> struct Map {};
 template <> struct Map<DataType::INT64> {
@@ -111,7 +120,7 @@ class Dedup {
     static constexpr uint32_t K_MINIMAL_WORKLOAD_PER_WORKER = 1 << 12;
     static constexpr size_t K_ALIGNMENT = 64;
     static const int kDefaultBucketCount = 1 << 24;
-    static const int8_t n = 4;
+    static const int8_t n = UNIQUE_MAX_BUCKET_WIDTH;
 
     template <int M> struct Meta {
         static_assert(M <= UNIQUE_MAX_BUCKET_WIDTH, "should be no larger than max bucket width");
@@ -119,7 +128,6 @@ class Dedup {
         volatile int8_t count {};
         uint32_t replaceBase {};
         volatile uint64_t data[M] {};
-        std::atomic<uint16_t> idCount[M] {};
     } __attribute__((__aligned__(64)));
 
     struct Statistics {
@@ -152,11 +160,10 @@ public:
     void Insert(uint64_t val);
     int32_t GetReplaceOffsetUnsafe(uint64_t val);
     void InitTable();
-    void TryIncreaseIdCount(std::atomic<uint16_t> &val);
     void Clear(uint64_t newBucketCountPowerOf2);
     void NewParameter();
 
-    template <DataType T> uint32_t UniqueRaw(void *output, uint32_t priorTotal, int32_t *idCount)
+    template <DataType T> uint32_t UniqueRaw(void *output, uint32_t priorTotal)
     {
         uint32_t total = priorTotal;
         uint32_t replaceOffset = priorTotal;
@@ -168,28 +175,24 @@ public:
             }
             bucket->replaceBase = replaceOffset;
             for (int j = 0; j < bucket->count; ++j) {
-                if (idCountEnable_) {
-                    idCount[total] = bucket->idCount[j];
-                }
-                out[total++] = bucket->data[j];
+                out[total] = static_cast<int64_t>(bucket->data[j]);
+                ++total;
             }
             replaceOffset += bucket->count;
         }
         auto it = overflow_.begin();
         int32_t totalOverflow = 0;
         while (it != overflow_.end()) {
-            if (idCountEnable_) {
-                idCount[total] = idCountOverflow_[it->first];
-            }
-            out[total++] = it->first;
+            out[total] = it->first;
             it->second = replaceOffset++;
+            ++total;
             ++it;
             ++totalOverflow;
         }
 
         // set total overflow count
         stats_.totalUniques = static_cast<uint64_t>(total - priorTotal);
-        stats_.totalOverflowUniques = totalOverflow;
+        stats_.totalOverflowUniques = static_cast<uint64_t>(totalOverflow);
         return total - priorTotal;
     }
 
@@ -200,14 +203,13 @@ private:
     int largeCount_ { 0 };
     Meta<n> *table_ {};
     std::unordered_map<uint64_t, uint32_t> overflow_;
-    std::unordered_map<uint64_t, uint32_t> idCountOverflow_;
     SpinLockG overflowMutex_;
     Statistics stats_;
     bool idCountEnable_ { false };
 
     static inline uint64_t Hash(uint64_t val)
     {
-        return val ^ (val >> HASH_L_L) ^ (val >> HASH_L_L) ^ (val >> HASH_H);
+        return val ^ (val >> HASH_L_L) ^ (val >> HASH_L) ^ (val >> HASH_H);
     }
 
     void InsertOverflow(uint64_t val)
@@ -216,10 +218,6 @@ private:
         auto it = overflow_.find(val);
         if (it == overflow_.end()) {
             overflow_[val] = 0;
-        }
-
-        if (idCountEnable_) {
-            idCountOverflow_[val]++;
         }
     }
 
@@ -234,6 +232,7 @@ class ShardedDedup {
     static constexpr uint32_t K_MINIMAL_WORKLOAD_PER_WORKER = 1 << 13;
     static constexpr int K_DEFAULT_DUPLICATE_RATIO = 4;
     static constexpr int K_BUCKET_WIDTH = 4;
+    static constexpr int CLEAR_WAIT_TIME = 10;
 
 public:
     using DedupT = Dedup;
@@ -244,42 +243,42 @@ public:
     {
         const int numOfGroupsInShard = groupMethod_.GroupCount();
         uint32_t totalSize = conf.desiredSize + (conf.desiredSize >> 1);
-        while (bucketCountPower2_ * K_BUCKET_WIDTH * numOfGroupsInShard * estimatedDuplicateRatio < totalSize) {
+        while (static_cast<uint32_t>(bucketCountPower2_ * K_BUCKET_WIDTH * numOfGroupsInShard *
+                                     estimatedDuplicateRatio) < totalSize) {
             bucketCountPower2_ <<= 1;
         }
 
         idCountEnable_ = (conf.outputType == OutputType::ENHANCED) && conf.useIdCount;
         for (int32_t i = 0; i < numOfGroupsInShard; ++i) {
             auto obj = new DedupT(bucketCountPower2_, numOfGroupsInShard, idCountEnable_);
-            if (obj == nullptr) {
-                ExternalLogger::PrintLog(LogLevel::ERROR, "creat object error");
-                throw NullptrError();
-            }
             dedupShards_.emplace_back(obj);
         }
     }
 
     ~ShardedDedup() = default;
 
-    void StartNewRound()
+    int StartNewRound()
     {
         for (auto &s : dedupShards_) {
             s->NewParameter();
         }
+        clearFinish_ = true;
+        return 0;
     }
 
 public:
     template <DataType T> int Compute(UniqueIn &uniqueIn, UniqueOutSelf &uniqueOut)
     {
-        try {
-            if (!firstEnterFlag_) {
-                StartNewRound();
-            }
-        } catch (AllocError &) {
-            ExternalLogger::PrintLog(LogLevel::ERROR, "memory alloc error");
-            return H_MEMORY_ALLOC_ERROR;
+        if (firstEnter_) {
+            pool_.SetNumThreads(1);
+            firstEnter_ = false;
         }
-        firstEnterFlag_ = false;
+
+        while (!clearFinish_) {
+            usleep(CLEAR_WAIT_TIME);
+        }
+
+        clearFinish_ = false;
         size_t threadNum = CalThreadNum();
         partSize = (uniqueIn.inputIdCnt + threadNum - 1) / threadNum;
 
@@ -302,23 +301,29 @@ public:
         if (conf.outputType == OutputType::ENHANCED) {
             int totalNumber = 0;
             for (int i = 0; i < conf.shardingNum; i++) {
-                totalUniqueSize[i] = totalNumber;
+                totalUniqueSize[i] = static_cast<size_t>(totalNumber);
                 if (conf.useSharding) {
                     totalNumber += uniqueOut.uniqueIdCntInBucket[i];
                 }
             }
         }
 
-        ret = CalUniqueOut<T>(uniqueIn, uniqueOut, totalUniqueSize);
+        int size = 1;
+        if (conf.useIdCount) {
+            size = conf.usePadding ? conf.paddingSize * conf.shardingNum : uniqueOut.uniqueIdCnt;
+        }
+        std::vector<std::atomic<int32_t>> idCount(size);
+        ret = CalUniqueOut<T>(uniqueIn, uniqueOut, totalUniqueSize, idCount);
         if (ret != H_OK) {
             ExternalLogger::PrintLog(LogLevel::ERROR, "CalUniqueOut ERROR");
             return ret;
         }
 
         if (conf.outputType == OutputType::ENHANCED) {
-            HandleTileAndFill<T>(uniqueIn, uniqueOut);
+            HandleTileAndFill<T>(uniqueOut, idCount);
         }
 
+        pool_.AddTask([this]() { return StartNewRound(); });
         return H_OK;
     }
 
@@ -334,17 +339,22 @@ private:
 
     int32_t GetFillOffset(const std::vector<size_t> &totalUniqueSize, int64_t val, int32_t group);
 
-    template <DataType T> int HandleTileAndFill(UniqueIn &uniqueIn, UniqueOutSelf &uniqueOut)
+    void GetIndexAndStart(const int32_t *uniqueSizeInBucket, bool usePadding, int shardingNumber, int &start,
+        int &index);
+
+    int PrintMemCpyLog(int rc, const uint32_t dstSize, const std::string &logMsg);
+
+    int HandleIdCountFill(std::vector<std::atomic<int32_t>> &idCount, UniqueOutSelf &uniqueOut);
+
+    template <DataType T> int HandleTileAndFill(UniqueOutSelf &uniqueOut, std::vector<std::atomic<int32_t>> &idCount)
     {
         int ret = H_OK;
         if (conf.useSharding) { // 使能shard
-            ret = TileAndFill<T>(uniqueOut.uniqueIdInBucket, uniqueOut.uniqueIdCntInBucket, uniqueOut.uniqueId,
-                uniqueOut.idCnt, uniqueOut.idCntFill);
+            ret = TileAndFill<T>(uniqueOut, uniqueOut.uniqueIdCntInBucket, idCount);
         } else if (!conf.useSharding && conf.useIdCount) { // 不使能shard和使能特征计数
             std::vector<int32_t> count;
             count.emplace_back(uniqueOut.uniqueIdCnt); // 记录去重后id个数
-            ret = TileAndFill<T>(uniqueOut.uniqueId, count.data(), uniqueOut.uniqueId, uniqueOut.idCnt,
-                uniqueOut.idCntFill);
+            ret = TileAndFill<T>(uniqueOut, count.data(), idCount);
         }
 
         if (ret != H_OK) {
@@ -363,37 +373,37 @@ private:
             uint64_t inGroupTotal;
             if (conf.outputType == OutputType::ENHANCED) {
                 if (conf.useSharding && conf.useIdCount) {
-                    inGroupTotal = dedupShards_[j]->UniqueRaw<T>(uniqueOut.uniqueIdInBucket, total,
-                        uniqueOut.idCnt); // 特征计数使能和shard同时使能
-                    uniqueOut.uniqueIdCntInBucket[j] = inGroupTotal;
+                    inGroupTotal =
+                        dedupShards_[j]->UniqueRaw<T>(uniqueOut.uniqueIdInBucket, total); // 特征计数使能和shard同时使能
+                    uniqueOut.uniqueIdCntInBucket[j] = static_cast<int>(inGroupTotal);
                 } else if (!conf.useSharding && conf.useIdCount) {
-                    inGroupTotal = dedupShards_[j]->UniqueRaw<T>(uniqueOut.uniqueId, total,
-                        uniqueOut.idCnt); // 特征计数使能和shard不使能
+                    inGroupTotal =
+                        dedupShards_[j]->UniqueRaw<T>(uniqueOut.uniqueId, total); // 特征计数使能和shard不使能
                 } else if (conf.useSharding && !conf.useIdCount) {
-                    inGroupTotal = dedupShards_[j]->UniqueRaw<T>(uniqueOut.uniqueIdInBucket, total,
-                        nullptr); // 特征计数使能和shard不使能
-                    uniqueOut.uniqueIdCntInBucket[j] = inGroupTotal;
+                    inGroupTotal =
+                        dedupShards_[j]->UniqueRaw<T>(uniqueOut.uniqueIdInBucket, total); // 特征计数使能和shard不使能
+                    uniqueOut.uniqueIdCntInBucket[j] = static_cast<int>(inGroupTotal);
                 } else {
-                    inGroupTotal = dedupShards_[j]->UniqueRaw<T>(uniqueOut.uniqueId, total,
-                        nullptr); // 特征计数不使能和shard不使能，跟普通unique对等
+                    inGroupTotal = dedupShards_[j]->UniqueRaw<T>(uniqueOut.uniqueId,
+                        total); // 特征计数不使能和shard不使能，跟普通unique对等
                 }
             } else {
-                inGroupTotal = dedupShards_[j]->UniqueRaw<T>(uniqueOut.uniqueId, total, nullptr);
+                inGroupTotal = dedupShards_[j]->UniqueRaw<T>(uniqueOut.uniqueId, total);
             }
-            total += inGroupTotal;
+            total += static_cast<int32_t>(inGroupTotal);
         }
         uniqueOut.uniqueIdCnt = total;
     }
 
     template <DataType T>
-    int TileAndFill(void *uniqueIdInBucket, const int32_t *uniqueSizeInBucket, void *uniqueIds, const int32_t *idCnt,
-        int32_t *idCntFill)
+    int TileAndFill(UniqueOutSelf &uniqueOut, const int32_t *uniqueSizeInBucket,
+        std::vector<std::atomic<int32_t>> &idCount)
     {
         int start = 0;
         int index = 0;
 
-        auto uIdInBucket = TypeTrans<T>(uniqueIdInBucket);
-        auto uIds = TypeTrans<T>(uniqueIds);
+        auto uIdInBucket = TypeTrans<T>(conf.useSharding ? uniqueOut.uniqueIdInBucket : uniqueOut.uniqueId);
+        auto uIds = TypeTrans<T>(uniqueOut.uniqueId);
 
         for (int i = 0; i < conf.shardingNum; i++) {
             GetIndexAndStart(uniqueSizeInBucket, conf.usePadding, i, start, index);
@@ -417,35 +427,31 @@ private:
 
             if (conf.useIdCount && conf.usePadding) {
                 memSize = uniqueSizeInBucket[i] * sizeof(int32_t);
-                rc = memcpy_s(idCntFill + start, memSize, idCnt + index, memSize);
-                ret = PrintMemCpyLog(rc, memSize, "[TileAndFill/idCntFill]");
+                rc = memcpy_s(uniqueOut.idCnt + index, memSize, (int32_t *)(idCount.data()) + start,
+                    memSize); // 填充idCount
+                ret = PrintMemCpyLog(rc, memSize, "[TileAndFill/idCnt]");
             }
+
+            if (ret != 0) {
+                return ret;
+            }
+        }
+
+        if (conf.useIdCount) {
+            int ret = HandleIdCountFill(idCount, uniqueOut);
             if (ret != 0) {
                 return ret;
             }
         }
 
         if (conf.usePadding) {
-            HandleFill<T>(uIds, uniqueSizeInBucket, idCntFill);
+            HandleFill<T>(uIds, uniqueSizeInBucket);
         }
 
         return H_OK;
     }
 
-    int PrintMemCpyLog(int rc, const uint32_t dstSize, const std::string &logMsg)
-    {
-        if (rc != 0) {
-            std::stringstream ssm;
-            ssm << "[" << logMsg << "] memcpy_s failed... dstSize: " << dstSize;
-            ExternalLogger::PrintLog(LogLevel::ERROR, ssm.str());
-            return H_COPY_ERROR;
-        } else {
-            return H_OK;
-        }
-    }
-
-    template <DataType T>
-    void HandleFill(typename Map<T>::type *uIds, const int32_t *uniqueSizeInBucket, int32_t *idCntFill)
+    template <DataType T> void HandleFill(typename Map<T>::type *uIds, const int32_t *uniqueSizeInBucket)
     {
         int start = 0;
         int index = 0;
@@ -457,26 +463,6 @@ private:
             for (int j = 0; j < fillLen; j++) {
                 uIds[start + uniqueSizeInBucket[i] + j] = conf.paddingVal; // padding填充
             }
-
-            if (idCntFill != nullptr) {
-                for (int y = 0; y < fillLen; y++) {
-                    idCntFill[start + uniqueSizeInBucket[i] + y] = 0; // 特征计数填充
-                }
-            }
-        }
-    }
-
-    void GetIndexAndStart(const int32_t *uniqueSizeInBucket, bool usePadding, int shardingNumber, int &start,
-        int &index)
-    {
-        if (shardingNumber > 0) {
-            index += uniqueSizeInBucket[shardingNumber - 1];
-        }
-
-        if (usePadding) {
-            start = shardingNumber * conf.paddingSize;
-        } else {
-            start = index;
         }
     }
 
@@ -491,13 +477,18 @@ private:
             tasks.push_back([this, val, start, end, &ret]() {
                 for (uint64_t j = start; j < end; ++j) {
                     auto value = val[j];
-                    if (value > conf.maxIdVal) {
+                    if (UNLIKELY(value > conf.maxIdVal)) {
                         ExternalLogger::PrintLog(LogLevel::ERROR, "id val is larger than maxIdVal");
                         ret = H_ID_LARGE;
                         break;
                     }
-                    auto group = groupMethod_.GroupId(value);
-                    dedupShards_[group]->Insert(value);
+
+                    if (conf.performance) {
+                        dedupShards_[value & (conf.shardingNum - 1)]->Insert(value);
+                    } else {
+                        auto group = groupMethod_.GroupId(value);
+                        dedupShards_[group]->Insert(value);
+                    }
                 }
             });
         }
@@ -518,7 +509,8 @@ private:
     }
 
     template <DataType T>
-    int CalUniqueOut(UniqueIn &uniqueIn, UniqueOutSelf &uniqueOut, std::vector<size_t> &totalUniqueSize)
+    int CalUniqueOut(UniqueIn &uniqueIn, UniqueOutSelf &uniqueOut, std::vector<size_t> &totalUniqueSize,
+        std::vector<std::atomic<int32_t>> &idCount)
     {
         uint32_t *beginPtr = uniqueOut.index;
         uint32_t *finishPtr = beginPtr + uniqueIn.inputIdCnt;
@@ -531,18 +523,32 @@ private:
             if (partEndPtr > finishPtr) {
                 partEndPtr = finishPtr;
             }
-            if (partBeginPtr < partEndPtr) {
-                // Due to cacheline alignment computation, the actual number of
-                // threads created here may not match threadNum exactly but
-                // should be +/-1 off.
-                tasks.push_back([this, val, beginPtr, partBeginPtr, partEndPtr, totalUniqueSize]() {
-                    for (uint32_t *ptr = partBeginPtr; ptr < partEndPtr; ++ptr) {
-                        auto group = groupMethod_.GroupId(val[ptr - beginPtr]);
-                        int32_t fillOffset = GetFillOffset(totalUniqueSize, val[ptr - beginPtr], group);
-                        *ptr = fillOffset;
-                    }
-                });
+
+            if (partBeginPtr >= partEndPtr) {
+                partBeginPtr = partEndPtr;
+                partEndPtr += partSize;
+                continue;
             }
+
+            // Due to cacheline alignment computation, the actual number of
+            // threads created here may not match threadNum exactly but
+            // should be +/-1 off.
+            tasks.push_back([this, val, beginPtr, partBeginPtr, partEndPtr, totalUniqueSize, &idCount]() {
+                for (uint32_t *ptr = partBeginPtr; ptr < partEndPtr; ++ptr) {
+                    int32_t fillOffset;
+                    if (conf.performance) {
+                        fillOffset = GetFillOffset(totalUniqueSize, val[ptr - beginPtr],
+                            val[ptr - beginPtr] & (conf.shardingNum - 1));
+                    } else {
+                        auto group = groupMethod_.GroupId(val[ptr - beginPtr]);
+                        fillOffset = GetFillOffset(totalUniqueSize, val[ptr - beginPtr], group);
+                    }
+                    *ptr = fillOffset;
+                    if (LIKELY(conf.useIdCount)) {
+                        idCount[fillOffset]++;
+                    }
+                }
+            });
             partBeginPtr = partEndPtr;
             partEndPtr += partSize;
         }
@@ -567,8 +573,10 @@ private:
     UniqueConf conf;
     std::vector<std::unique_ptr<DedupT>> dedupShards_ {};
     uint32_t partSize;
-    bool firstEnterFlag_ = false;
+    bool clearFinish_ = true;
     bool idCountEnable_ { false };
+    ThreadPoolAsync pool_;
+    bool firstEnter_ = true;
 };
 }
 }

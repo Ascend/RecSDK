@@ -16,7 +16,6 @@ See the License for the specific language governing permissions and
 #include <gtest/gtest.h>
 
 #include "file_system/file_system_handler.h"
-#include "file_system/local_file_system/local_file_system.h"
 
 using namespace std;
 using namespace MxRec;
@@ -42,10 +41,10 @@ TEST(LocalFileSystem, WriteAndReadFile)
 TEST(LocalFileSystem, WriteEmbedding)
 {
     string filePath = "./write.data";
-    float p[5] = {1.1, 2.2, 3.3, 4.4, 5.5};
-    vector<float*> writeData = {p, p+1, p+2, p+3, p+4};
+    vector<float> writeData = {1.1, 2.2, 3.3, 4.4, 5.5};
+    vector<vector<float>> writeData1 = {writeData};
     auto fileSystemHandler = make_unique<FileSystemHandler>();
     auto fileSystemPtr = fileSystemHandler->Create(filePath);
-    ssize_t res = fileSystemPtr->Write(filePath, writeData, sizeof(float));
+    ssize_t res = fileSystemPtr->Write(filePath, writeData1, sizeof(float));
     ASSERT_EQ(writeData.size() * sizeof(float), res);
 }

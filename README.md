@@ -14,7 +14,7 @@ mxRec作为面向互联网市场搜索推荐广告的应用使能SDK产品，对
 
 ## 安装方式
 
-安装前，请参考《CANN 软件安装指南》安装CANN开发套件软件包和TensorFlow适配昇腾插件。
+安装前，请参考[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC2alpha003/softwareinst/instg/instg_0022.html)安装CANN开发套件软件包和TensorFlow适配昇腾插件。
 
 CANN软件提供进程级环境变量设置脚本，供用户在进程中引用，以自动完成环境变量设置。用户进程结束后自动失效。可在程序启动的Shell脚本中使用如下命令设置CANN的相关环境变量，也可通过命令行执行如下命令（以root用户默认安装路径“/usr/local/Ascend”为例）：
 ```shell
@@ -24,7 +24,7 @@ source /usr/local/Ascend/tfplugin/set_env.sh
 
 安装依赖，若未构建镜像，直接在物理机上进行开发，则须安装以下Python依赖
 ```shell
-pip3 install numpy decorator sympy==1.4 cffi==1.12.3 pyyaml pathlib2 grpcio grpcio-tools protobuf==3.20.0 scipy requests mpi4py easydict scikit-learn==0.20.0 attrs
+pip3 install numpy decorator sympy==1.4 cffi==1.12.3 pyyaml pathlib2 pandas grpcio grpcio-tools protobuf==3.20.0 scipy requests mpi4py easydict scikit-learn==0.20.0 attrs
 ```
 
 horovod依赖安装前需配置“HOROVOD_WITH_MPI”、“HOROVOD_WITH_TENSORFLOW”，依赖安装命令参考如下。
@@ -58,37 +58,95 @@ bash run.sh
 - CMake 3.20.6
 
 开源依赖：
-- pybind11 v2.10.3
-- securec
-- openmpi 4.1.1: 请参考软件文档在编译环境完成安装
+- [pybind11 v2.10.3](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
+- [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
+- [openmpi 4.1.5](https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.gz): 请参考软件文档在编译环境完成安装
 - tensorflow 1.15/2.6.5：根据实际需求选择对应版本
 
-pybind11的压缩包放在与mxRec代码同级的opensource/opensource目录下，如果没有opensource目录，则需要在mxRec同级的目录下手动创建opensource/opensource目录。然后将pybind11的压缩包放在opensource/opensource目录下。解压压缩包，并且将解压之后的压缩包改名为pybind11。
+将pybind11和securec的压缩包放在与mxRec代码同级的opensource目录下，并且将其分别更名为pybind11-2.10.3.zip、huaweicloud-sdk-c-obs-3.23.9.zip。如果没有opensource目录，则需要在mxRec同级的目录下手动创建opensource目录，然后将pybind11和securec的压缩包放在opensource目录下。
 
-securec是华为开源的安全函数库。下载后：
-1. 将platform下的eSDK_LogAPI_V2.1.10文件夹删除
-2. 将platform下的huaweisecurec改名为securec
-3. 在securec文件夹下，有src、lib和include三个文件夹，删除lib文件夹下的所有文件
-4. 将platform文件夹放到MxRec代码目录下
+由于构建脚本需要适配内部构建工程，所以在脚本中存在适配代码，但是这些代码可能对于用户来说不需要，所以在编译之前需要做如下处理：
 
-为了构建多个版本的whl包，编译脚本在python虚拟环境完成对应tensorflow版本的安装。用户可以根据实际情况调整编译脚本，指定tensorflow的安装路径。编译方法：
-- build/build.sh：执行脚本完成tf1和tf2版本whl包的构建和打包。执行脚本前，请参考build/build_tf1.sh、build/build_tf2.sh创建对应的虚拟环境，在虚拟环境中完成对应tensorflow版本的安装，并修改对应的激活命令。
-- build/build_tf1_with_opensource.sh：执行脚本完成tf1版本whl包的构建，构建成功后，whl包在tf1_whl子目录下。执行脚本前，创建tf1虚拟环境，在虚拟环境中完成tensorflow 1.15.0版本的安装，并修改对应的激活命令。
-- build/build_tf2_with_opensource.sh：执行脚本完成tf2版本whl包的构建，构建成功后，whl包在tf2_whl子目录下。执行脚本前，创建tf2虚拟环境，在虚拟环境中完成tensorflow 2.6.5版本的安装，并修改对应的激活命令。
+在build目录中存在build_tf1.sh和build_tf2.sh，其中分别存在如下代码：
+```shell
+# 配置tf1路径
+source /opt/buildtools/tf1_env/bin/activate
+tf1_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/tensorflow_core
+deactivate tf1_env
+```
+```shell
+# 配置tf2路径
+source /opt/buildtools/tf2_env/bin/activate
+tf2_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/tensorflow
+deactivate tf2_env
+```
+
+可以看到，上述代码中都有激活Python虚拟环境的步骤，因此用户有两种选择：
+
+1. 根据需要在/opt/buildtools/目录下（没有此目录需要先创建）创建tf1_env和tf2_env两个Python虚拟环境，并在虚拟环境中安装对应版本的Tensorflow
+2. 将source /opt/buildtools/tf1_env/bin/activate和deactivate tf1_env注释掉或者删除或者source /opt/buildtools/tf2_env/bin/activate和deactivate tf2_env注释掉或者删除
+
+
+编译方法：
+
+进入mxRec代码目录：
+- setup.py：此脚本供内部使用，用于同时构建tf1和tf2的mxRec包，用户通常只需要其中一个，所以建议使用下面两个脚本构建。
+- setup_tf1.py：执行脚本setup_tf1.py，比如：**python3.7 setup_tf1.py bdist_wheel**完成tf1版本whl包的构建，构建成功后，whl包在build/mindxsdk-mxrec/tf1_whl子目录下。
+- setup_tf2.py：执行脚本setup_tf2.py，比如：**python3.7 setup_tf2.py bdist_wheel**完成tf2版本whl包的构建，构建成功后，whl包在build/mindxsdk-mxrec/tf2_whl子目录下。
 
 如需使用动态扩容功能，进入“./cust_op/cust_op_by_addr”目录中。参考以下命令编译并安装动态扩容算子包。
 ```shell
 bash run.sh
 ```
 
+## 测试用例
+
+### Python侧测试用例
+
+运行Python测试用例所需依赖：
+
+- pytest 7.1.1
+- pytest-cov 4.1.0
+- pytest-html
+
+如需使用python测试用例，需要先安装上述依赖以及能够在tf1环境下进行源码编译，然后进入tests目录中。参考以下命令执行python侧测试用例：
+```shell
+bash run_python_dt.sh
+```
+
+### C++侧测试用例
+
+运行C++侧测试用例所需依赖：
+
+- [googletest 1.8.1](https://github.com/google/googletest/archive/refs/tags/release-1.8.1.zip)
+- [emock 0.9.0](https://github.com/ez8-co/emock/archive/refs/tags/v0.9.0.zip)
+- [pybind11 v2.10.3](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
+- [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
+
+将googletest、emock、pybind11和securec的压缩包放在与mxRec代码同级的opensource目录下，并且将其分别更名为googletest-release-1.8.1.zip、
+emock-0.9.0.zip、pybind11-2.10.3.zip、 huaweicloud-sdk-c-obs-3.23.9.zip。如果没有opensource目录，则需要在mxRec同级的目录下手动创建opensource目录，
+然后将前述几个压缩包放在opensource目录下。
+
+如需使用C++测试用例，需要按照上述描述准备需要的依赖，准备好之后，进入src目录中。参考以下命令执行C++测试用例：
+
+tf1环境下使用如下命令：
+```shell
+bash test_ut.sh tf1
+```
+
+tf2环境下使用如下命令：
+```shell
+bash test_ut.sh tf2
+```
+
 ## 使用指导
 
-mxRec所支持的使用环境、功能特性、API接口与使用样例请参考mxRec用户指南。
+mxRec所支持的使用环境、功能特性、API接口与使用样例请参考[mxRec用户指南](https://www.hiascend.com/document/detail/zh/mind-sdk/60rc1/mxRec/mxrecug/mxrecug_0001.html)。
 
 ## 参考设计
 
 mxRec框架基础镜像，基于TensorFlow 1.15.0、tensorflow2.6.5制作的基础镜像，安装mxRec后即可开始训练，以及样例使用介绍。
 
-1. https://ascendhub.huawei.com/#/detail/mxrec-tf1
+1. https://www.hiascend.com/developer/ascendhub/detail/mxrec-tf1
 
-2. https://ascendhub.huawei.com/#/detail/mxrec-tf2
+2. https://www.hiascend.com/developer/ascendhub/detail/mxrec-tf2

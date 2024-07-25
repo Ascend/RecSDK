@@ -19,12 +19,12 @@ import collections
 import logging
 import argparse
 from multiprocessing import Process
-import numpy as np
+import sys
 import time
+import numpy as np
 from tqdm import tqdm
 from glob import glob
 from collections import Counter, OrderedDict
-import sys
 
 import tensorflow as tf
 
@@ -50,11 +50,11 @@ class Logger(object):
         self.logger.addHandler(sh)  # 把对象加到logger里
         self.logger.addHandler(th)
 
-    def info(self, *args):
-        if len(args) == 1:
-            self.logger.info(*args)
+    def info(self, *prams):
+        if len(prams) == 1:
+            self.logger.info(*prams)
         else:
-            self.logger.info([*args])
+            self.logger.info([*prams])
 
 
 class CriteoStatsDict():
@@ -89,12 +89,11 @@ class CriteoStatsDict():
         for i, cat in enumerate(cat_list):
             map_cat_count(i, cat)
 
-    #
-    def save_dict(self, output_path, hist_map, prefix=""):
-        with open(os.path.join(output_path, "{}hist_map.pkl".format(prefix)), "wb") as file_wrt:
+    @staticmethod
+    def save_dict(output_file_path, hist_map, prefix=""):
+        with os.fdopen(os.path.join(output_file_path, "{}hist_map.pkl".format(prefix)), "wb") as file_wrt:
             pickle.dump(hist_map, file_wrt)
 
-    #
     def load_dict(self, dict_path, prefix=""):
         with open(os.path.join(dict_path, "{}hist_map.pkl".format(prefix)), "rb") as file_wrt:
             self.hist_map = pickle.load(file_wrt)
@@ -128,13 +127,14 @@ class CriteoStatsDict():
 
         return dense_list, cat_list
 
-def statsdata_multiprocess(process_num, process_id, data_file_path, output_path, criteo_stats):
+
+def statsdata_multiprocess(proc_num, proc_id, data_file_path, output_file_path, criteo_stats_data):
     start_time = time.time()
     with open(data_file_path, encoding="utf-8") as file_in:
         errorline_list = []
         count = 0
         for i, line in enumerate(file_in):
-            if i % process_num != process_id:
+            if i % proc_num != proc_id:
                 continue
             count += 1
             line = line.strip("\n")
@@ -146,26 +146,26 @@ def statsdata_multiprocess(process_num, process_id, data_file_path, output_path,
             if count % 1000000 == 0:
                 print("Have handle {}w lines.".format(count // 10000))
             cats = items[14:]
-            criteo_stats.stats_cats(cats)
-    criteo_stats.save_dict(output_path)
+            criteo_stats_data.stats_cats(cats)
+    criteo_stats_data.save_dict(output_file_path)
     print('statsdata time cost: {:.2f}s'.format(time.time() - start_time))
 
 
-def get_unique_id_multiprocess(process_num, process_id, data_file_path, output_path, criteo_stats):
-    if os.path.exists(os.path.join(output_path, "unique_id.pkl")):
+def get_unique_id_multiprocess(proc_num, proc_id, data_file_path, output_file_path, criteo_stats_data):
+    if os.path.exists(os.path.join(output_file_path, "unique_id.pkl")):
         return
     start_time = time.time()
-    cat_sets = [OrderedDict() for col in criteo_stats.cat_cols]
-    cat_global_id_nums = [0 for col in criteo_stats.cat_cols]
-    hash_bucket = criteo_stats.hash_bucket
+    cat_sets = [OrderedDict() for col in criteo_stats_data.cat_cols]
+    cat_global_id_nums = [0 for col in criteo_stats_data.cat_cols]
+    hash_bucket = criteo_stats_data.hash_bucket
     line_num = 0
     with open(data_file_path, encoding="utf-8") as file_in:
         errorline_list = []
 
         for i, line in enumerate(file_in):
             line_num += 1
-    start_line = process_id * ((line_num + process_num) // process_num)
-    end_line = (process_id + 1) * ((line_num + process_num) // process_num)
+    start_line = proc_id * ((line_num + proc_num) // proc_num)
+    end_line = (proc_id + 1) * ((line_num + proc_num) // proc_num)
     with open(data_file_path, encoding="utf-8") as file_in:
         errorline_list = []
         count = 0
@@ -183,21 +183,17 @@ def get_unique_id_multiprocess(process_num, process_id, data_file_path, output_p
                 print("Have handle {}w lines.".format(count // 10000))
                 sys.stdout.flush()
             cats = items[14:]
-            # criteo_stats.stats_cats(cats)
-            # def map_cat_count(i, cat):
             for k, cat in enumerate(cats):
-                # map_cat_count(i, cat)
                 capped_value = int(cat, 16) % hash_bucket if cat else hash_bucket
-                # if capped_value not in self.hist_map[key_col]:
                 if capped_value not in cat_sets:
                     cat_sets[k][capped_value] = cat_global_id_nums[k]
                     cat_global_id_nums[k] += 1
-    with open(os.path.join(output_path, "unique_id.pkl"), "wb") as file_wrt:
+    with os.fdopen(os.path.join(output_file_path, "unique_id.pkl"), "wb") as file_wrt:
         pickle.dump(cat_sets, file_wrt)
     print('statsdata time cost: {:.2f}s'.format(time.time() - start_time))
 
 
-def merge_stats_count(stats_dir, criteo_stats):
+def merge_stats_count(stats_dir, criteo_stats_data):
     if os.path.exists(f'{stats_dir}/hist_map.pkl'):
         return
     stats_sub_dirs = sorted(glob(f'{stats_dir}/*[0-9]'))
@@ -207,15 +203,15 @@ def merge_stats_count(stats_dir, criteo_stats):
     for i in tqdm(range(1, len(stats_sub_dirs))):
         with open(f'{stats_sub_dirs[i]}/unique_id.pkl', 'rb') as f:
             others_count = pickle.load(f)
-        for k, _ in enumerate(criteo_stats.cat_cols):
+        for k, _ in enumerate(criteo_stats_data.cat_cols):
             all_count_1, others_count_1 = all_hist_map[k], others_count[k]
             all_count_1.update(others_count_1)
             all_hist_map[k] = all_count_1
     hist_map = {}
-    for i, col in enumerate(criteo_stats.cat_cols):
+    for i, col in enumerate(criteo_stats_data.cat_cols):
         hist_map[col] = dict(zip(list(all_hist_map[i].keys()), range(len(all_hist_map[i]))))
 
-    criteo_stats.save_dict(stats_dir, hist_map)
+    criteo_stats_data.save_dict(stats_dir, hist_map)
 
 
 def mkdir_path(file_path):
@@ -228,20 +224,21 @@ def make_example(label_list, dense_feat_list, sparse_feat_list):
     sparse_feature = np.array(sparse_feat_list, dtype=np.int64).reshape(-1)
     label = np.array(label_list, dtype=np.int64).reshape(-1)
     feature_dict = {"dense_feature": tf.train.Feature(float_list=tf.train.FloatList(value=dense_feature)),
-                "sparse_feature": tf.train.Feature(int64_list=tf.train.Int64List(value=sparse_feature)),
-                "label": tf.train.Feature(int64_list=tf.train.Int64List(value=label))
-                }
+                    "sparse_feature": tf.train.Feature(int64_list=tf.train.Int64List(value=sparse_feature)),
+                    "label": tf.train.Feature(int64_list=tf.train.Int64List(value=label))
+                    }
     example = tf.train.Example(features=tf.train.Features(feature=feature_dict))
 
     return example
 
-def convert_input2tfrd_multiprocess(process_num, process_id, in_file_path, output_path, criteo_stats, line_per_sample=1024,
-                            part_rows=2000000, mode="train_"):
+
+def convert_input2tfrd_multiprocess(proc_num, proc_id, in_file_path, output_file_path, criteo_stats_dict,
+                                    line_per_sample=1024, part_rows=2000000):
     start_time = time.time()
     print("----------" * 10 + "\n" * 2)
 
     part_number = 0
-    file_name = output_path + "part_{:0>8d}.tfrecord"
+    file_name = output_file_path + "part_{:0>8d}.tfrecord"
 
     file_writer = tf.python_io.TFRecordWriter(file_name.format(part_number))
     sample_count = 0
@@ -250,11 +247,11 @@ def convert_input2tfrd_multiprocess(process_num, process_id, in_file_path, outpu
     with open(in_file_path, encoding="utf-8") as file_in:
         errorline_list = []
 
-        for i, line in tqdm(enumerate(file_in)):
+        for _ in tqdm(file_in):
             line_num += 1
     print(f'line_num: {line_num}')
-    start_line = process_id * ((line_num + process_num) // process_num)
-    end_line = (process_id + 1) * ((line_num + process_num) // process_num)
+    start_line = proc_id * ((line_num + proc_num) // proc_num)
+    end_line = (proc_id + 1) * ((line_num + proc_num) // proc_num)
     dense_res_list = []
     cat_res_list = []
     label_res_list = []
@@ -276,9 +273,11 @@ def convert_input2tfrd_multiprocess(process_num, process_id, in_file_path, outpu
             label = int(items[0])
             values = items[1:14]
             cats = items[14:]
-            assert len(values) == 13, "values.size： {}".format(len(values))
-            assert len(cats) == 26, "cats.size： {}".format(len(cats))
-            val_list, cat_list = criteo_stats.map_cat2id(values, cats)
+            if len(values) != 13:
+                raise ValueError("dense feature length must be 13, current values.size: {}".format(len(values)))
+            if len(cats) != 26:
+                raise ValueError("sparse feature length must be 26, current cats.size: {}".format(len(cats)))
+            val_list, cat_list = criteo_stats_dict.map_cat2id(values, cats)
             dense_res_list.append(val_list)
             cat_res_list.append(cat_list)
             label_res_list.append(label)
@@ -362,16 +361,18 @@ if __name__ == "__main__":
     mkdir_path(save_tfrecord_path)
     processs = []
     process_num = args.train_process_num
-    assert process_num % len(train_data_files) == 0, print(
-        f'process_num {process_num} must exact div length of data_files {len(data_files)}')
+    if len(train_data_files) == 0:
+        raise ValueError(f'file not exist in train_data_dir:{train_data_dir}')
+    if process_num % len(train_data_files) != 0:
+        raise ValueError(f'process_num {process_num} must exact div length of train_data_files {len(train_data_files)}')
 
     for process_id in range(process_num):
         sub_process_num = process_num // len(train_data_files)
         data_file = train_data_files[process_id // sub_process_num]
         output_path = f'{save_tfrecord_path}/{process_id:04}_'
-        p = Process(target=convert_input2tfrd_multiprocess, args=(sub_process_num, process_id%sub_process_num, data_file, output_path,
-                                                     criteo_stats, spe_num,
-                                                     5000000))
+        p = Process(target=convert_input2tfrd_multiprocess, args=(sub_process_num, process_id % sub_process_num,
+                                                                  data_file, output_path, criteo_stats, spe_num,
+                                                                  5000000))
         processs.append(p)
     for p in processs:
         p.start()
@@ -384,17 +385,18 @@ if __name__ == "__main__":
     mkdir_path(save_tfrecord_path)
     processs = []
     process_num = args.test_process_num
-    assert process_num % len(test_data_files) == 0, print(
-        f'process_num {process_num} must exact div length of data_files {len(data_files)}')
+    if len(test_data_files) == 0:
+        raise ValueError(f'file not exist in test_data_dir:{test_data_dir}')
+    if process_num % len(test_data_files) != 0:
+        raise ValueError(f'process_num {process_num} must exact div length of test_data_files {len(test_data_files)}')
 
     for process_id in range(process_num):
         sub_process_num = process_num // len(test_data_files)
         data_file = test_data_files[process_id // sub_process_num]
         output_path = f'{save_tfrecord_path}/{process_id:04}_'
-        p = Process(target=convert_input2tfrd_multiprocess, args=(sub_process_num, process_id%sub_process_num, data_file, output_path,
-                                                     criteo_stats, spe_num,
-                                                     5000000))
-
+        p = Process(target=convert_input2tfrd_multiprocess, args=(sub_process_num, process_id % sub_process_num,
+                                                                  data_file, output_path, criteo_stats, spe_num,
+                                                                  5000000))
         processs.append(p)
     for p in processs:
         p.start()

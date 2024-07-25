@@ -33,7 +33,7 @@ namespace MxRec {
         size_t GetFileSize(const string& filePath) override;
 
         ssize_t Write(const string& filePath, const char* fileContent, size_t dataSize) override;
-        ssize_t Write(const string& filePath, vector<float*> fileContent, size_t dataSize) override;
+        ssize_t Write(const string& filePath, vector<vector<float>>& fileContent, size_t dataSize) override;
         void WriteEmbedding(const string& filePath, const int& embeddingSize,
                             const vector<int64_t>& addressArr, int deviceId) override;
 
@@ -46,8 +46,6 @@ namespace MxRec {
         void WriterFn(BufferQueue& queue, int fd, ssize_t& writerBytesNum);
         void FillToBuffer(BufferQueue& queue, const char* data, size_t dataSize);
         void CalculateMapSize(off_t fileSize, size_t& mapByteSize, size_t& mapRowNum, size_t onceReadByteSize) const;
-        void HandleMappedData(char* mappedData, size_t mapRowNum, size_t onceReadByteSize,
-                                               vector<vector<float>>& dst, size_t cnt) const;
 
     private:
         const mode_t dirMode;

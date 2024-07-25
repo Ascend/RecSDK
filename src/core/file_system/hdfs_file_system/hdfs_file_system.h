@@ -24,18 +24,18 @@ namespace MxRec {
 
     class HdfsFileSystem : public FileSystem {
     public:
-        HdfsFileSystem()
+        HdfsFileSystem() {};
+        ~HdfsFileSystem()
         {
-            hdfs = make_unique<HdfsWrapper>();
-        };
-        ~HdfsFileSystem() override {}
+            hdfs->Disconnect(fs);
+        }
 
         void CreateDir(const string& dirName) override;
         vector<string> ListDir(const string& dirName) override;
         size_t GetFileSize(const string& filePath) override;
 
         ssize_t Write(const string& filePath, const char* fileContent, size_t dataSize) override;
-        ssize_t Write(const string& filePath, vector<float*> fileContent, size_t dataSize) override;
+        ssize_t Write(const string& filePath, vector<vector<float>>& fileContent, size_t dataSize) override;
         void WriteEmbedding(const string& filePath, const int& embeddingSize,
                             const vector<int64_t>& addressArr, int deviceId) override;
 
@@ -47,7 +47,8 @@ namespace MxRec {
 
         hdfsFS ConnectHdfs();
 
-        unique_ptr<HdfsWrapper> hdfs;
+        unique_ptr<HdfsWrapper> hdfs = make_unique<HdfsWrapper>();
+        hdfsFS fs = ConnectHdfs();
     };
 }
 

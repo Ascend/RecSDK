@@ -50,9 +50,9 @@ class EvictHook(tf.compat.v1.train.SessionRunHook):
         self._global_step_tensor = None
 
         if evict_step_interval is None:
-            logger.info(f"_EvictHook - > evict_time_interval: %d", self._evict_time_interval)
+            logger.info("_EvictHook - > evict_time_interval: %d", self._evict_time_interval)
         else:
-            logger.info(f"_EvictHook - > evict_time_interval: %d, evict_step_interval: %d",
+            logger.info("_EvictHook - > evict_time_interval: %d, evict_step_interval: %d",
                         self._evict_time_interval, self._evict_step_interval)
 
     def begin(self):
@@ -61,6 +61,8 @@ class EvictHook(tf.compat.v1.train.SessionRunHook):
             raise RuntimeError("Global step should be created to use _EvictHook.")
         self.check_name_and_get_hashtable()
         for name, instance in self._hash_table_instance.items():
+            if not instance.is_hbm:
+                continue
             scope_name = f"{instance.table_name}//evict"
             with tf.compat.v1.variable_scope(scope_name):
                 logger.debug('Channel %s_evict_%d was built for op getnext', instance.table_name, TRAIN_CHANNEL_ID)
@@ -99,7 +101,9 @@ class EvictHook(tf.compat.v1.train.SessionRunHook):
             if not ConfigInitializer.get_instance().hybrid_manager_config.trigger_evict():
                 return
             self._start_time = cur_time
-            for name in self._hash_table_instance.keys():
+            for name, instance in self._hash_table_instance.items():
+                if not instance.is_hbm:
+                    continue
                 run_context.session.run(self._evict_op.get(name))
 
     def check_name_and_get_hashtable(self):

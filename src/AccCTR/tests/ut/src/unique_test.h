@@ -19,28 +19,12 @@ limitations under the License.
 #include <vector>
 #include <unordered_set>
 #include <map>
-#include "factory.h"
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 #include "unique.h"
 
 using namespace std;
 using namespace ock::ctr;
-
-
-class SimpleThreadPool {
-public:
-    static void SyncRun(const std::vector<std::function<void()>> &tasks)
-    {
-        std::vector<std::future<void>> futs;
-        for (auto &task : tasks) {
-            futs.push_back(std::async(task));
-        }
-        for (auto &fut : futs) {
-            fut.wait();
-        }
-    }
-};
 
 
 class UniqueTest : public testing::Test {

@@ -248,7 +248,7 @@ protected:
                 currTime = time(nullptr);
                 if (currTime - lastTime >= SleepTime::SLEEP_SECOND_4) {
                     LOG_INFO("Evict-thread doing at currTime[{}] ...", currTime);
-                    map<std::string, std::vector<emb_key_t>> evictPosMap {};
+                    map<std::string, std::vector<emb_cache_key_t>> evictPosMap {};
                     faae.FeatureEvict(evictPosMap);
                     lastTime = currTime;
                 }
@@ -258,7 +258,7 @@ protected:
     }
     void WaitEvictThread()
     {
-        map<std::string, std::vector<emb_key_t>> evictPosMap {};
+        map<std::string, std::vector<emb_cache_key_t>> evictPosMap {};
         faae.FeatureEvict(evictPosMap); // 退出前保证执行了一次“淘汰”
         isExitFlag = true;
         if (evictThr.joinable()) {

@@ -20,11 +20,10 @@ See the License for the specific language governing permissions and
 using namespace MxRec;
 
 RandomNormalInitializer::RandomNormalInitializer(int start, int len, NormalInitializerInfo& initInfo)
-    : start(start), len(len), mean(initInfo.mean), stddev(initInfo.stddev), seed(initInfo.seed)
+    : start(start), len(len), mean(initInfo.mean), stddev(initInfo.stddev), seed(initInfo.seed),
+      initParam(initInfo.initK), generator(std::default_random_engine(seed)),
+      distribution(std::normal_distribution<float>(mean, stddev))
 {
-    initParam = initInfo.initK;
-    generator = std::default_random_engine(seed);
-    distribution = std::normal_distribution<float>(mean, stddev);
 }
 
 void RandomNormalInitializer::GenerateData(float* const emb, const int embSize)
