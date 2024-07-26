@@ -138,7 +138,7 @@ static int32_t GradSoftmaxTiling(gert::TilingContext* context, AttentionFusionGr
 
     // Platform configuration
     auto ascnedPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    int softmaxOutSize = qShape.GetDim(0) * qShape.GetDim(1) * kShape.GetDim(1) * sizeof(float);
+    size_t softmaxOutSize = qShape.GetDim(0) * qShape.GetDim(1) * kShape.GetDim(1) * sizeof(float);
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
     size_t systemWorkspacesSize = ascnedPlatform.GetLibApiWorkSpaceSize();
     currentWorkspace[0] = softmaxOutSize + systemWorkspacesSize;
