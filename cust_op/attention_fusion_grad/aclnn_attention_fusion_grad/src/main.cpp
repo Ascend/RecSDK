@@ -20,7 +20,7 @@
 using namespace AttentionFusionGrad;
 
 bool g_isDevice = false;
-int g_deviceId = 15;
+int g_deviceId = 0;
 
 namespace AttentionFusionGrad {
 OperatorDesc CreateOpDesc()
