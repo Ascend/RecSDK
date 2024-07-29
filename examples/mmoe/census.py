@@ -5,7 +5,6 @@ import argparse
 import pandas as pd
 import numpy as np
 import tensorflow as tf
-from tqdm import tqdm
 
 
 # All column names of census dataset
@@ -90,7 +89,7 @@ def get_fea_map(fea_map_path=None, split_file_list=None):
             fea_map = pickle.load(f)
         return fea_map
     fea_map = {}
-    for file_open in tqdm(split_file_list):
+    for file_open in split_file_list:
         fea_dataframe = pd.read_csv(file_open, names = COLUMN_NAMES, header=None)
         fea_unique_dataframe = dataframe_column_unique(fea_dataframe)
         
@@ -164,14 +163,14 @@ if __name__ == '__main__':
     os.makedirs(output_path, exist_ok=True)
 
     # get txt_list
-    file_split_list = [train_data_path, test_data_path]
+    file_path_dict = {'train':train_data_path, 'test':test_data_path}
     # get feature_map
-    feature_map = get_fea_map(split_file_list=file_split_list)
+    feature_map = get_fea_map(split_file_list=file_path_dict.values)
 
-    for file in tqdm( ):
+    for class_usage, file_path in file_path_dict.items():
 
         # read data
-        data_df = pd.read_csv(file, sep=',', header=None, names=COLUMN_NAMES)
+        data_df = pd.read_csv(file_path, sep=',', header=None, names=COLUMN_NAMES)
 
         # data processing
         data_df[DENSE_COLUMNS] = data_df[DENSE_COLUMNS].fillna(0)
@@ -196,4 +195,4 @@ if __name__ == '__main__':
             data_df[slot_column] += offset_size_list[ind_]
 
         # txt to tfrecords
-        convert_input2tfrd(data_frame=data_df, in_file_path=file, out_file_path=output_path)
+        convert_input2tfrd(data_frame=data_df, in_file_path=file_path, out_file_path=output_path)
