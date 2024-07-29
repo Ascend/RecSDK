@@ -193,6 +193,9 @@ if __name__ == '__main__':
 
         for ind_, slot_column in enumerate(CATEGORICAL_COLUMNS):
             data_df[slot_column] += offset_size_list[ind_]
+        
+        output_path_ = os.path.join(output_path, class_usage)
+        os.makedirs(output_path_, exist_ok=True)
 
         # txt to tfrecords
         convert_input2tfrd(data_frame=data_df, in_file_path=file_path, out_file_path=output_path)
