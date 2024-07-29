@@ -21,7 +21,7 @@ C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/deta
 1. 上传attention_fusion文件夹到目标环境，并进入当前目录，执行指令对attention_fusion融合算子进行编译和部署
 
 ```shell
-bash creat.sh
+bash run.sh
 ```
 
 注：需先在环境中设置CANN相关环境变量，再执行算子编译和安装指令。使用默认路径安装CANN时设置环境变量指令如下：
@@ -48,7 +48,7 @@ c) 算子输出说明：
 
 d) 算子约束说明：
 * 支持的型号：Atlas A2系列产品;
-* 支持的CANN版本：8.0.RC1及之后版本；
+* 支持的CANN版本：8.0.RC2及之后版本；
 * 支持的输入数据类型：float32；
 * 输入的数据只支持3维。
 * 输入的数据的batch size均相等, 且值在(0, 2000)
