@@ -2,10 +2,10 @@ import os
 import stat
 import pickle
 import argparse
+import shutil
 import pandas as pd
 import numpy as np
 import tensorflow as tf
-
 
 # All column names of census dataset
 COLUMN_NAMES = [
@@ -19,7 +19,7 @@ COLUMN_NAMES = [
         'mig_prev_sunbelt', 'num_emp', 'fam_under_18', 'country_father',
         'country_mother', 'country_self', 'citizenship', 'own_or_self',
         'vet_question', 'vet_benefits', 'weeks_worked', 'year', 'income_50k'
-    ]
+]
 
 # Sparse feature column names 
 CATEGORICAL_COLUMNS = [
@@ -31,32 +31,30 @@ CATEGORICAL_COLUMNS = [
         'mig_chg_reg', 'mig_move_reg', 'mig_same', 'mig_prev_sunbelt',
         'fam_under_18', 'country_father', 'country_mother', 'country_self',
         'citizenship', 'vet_question'
-    ]
+]
 
 DENSE_COLUMNS = [
     'age', 'wage_per_hour', 'capital_gains', 'capital_losses', 'stock_dividends', 'instance_weight',
     'num_emp', 'own_or_self', 'vet_benefits', 'weeks_worked', 'year'
-    ]
-
+]
 
 LABEL_COLUMNS = ['income_50k', 'marital_stat']
 
 
 def dataframe_column_unique(row_dataframe):
-    
     # Get the unique value of each column
-    unique_counts = row_dataframe.nunique(axis = 0)
+    unique_counts = row_dataframe.nunique(axis=0)
     
     #Filter out the columns that need to be deduplicated
     cols_to_drop_deduplicates = row_dataframe.columns[unique_counts < len(row_dataframe)]
     
-    df_unique = row_dataframe.drop_duplicates(subset = cols_to_drop_deduplicates)
+    df_unique = row_dataframe.drop_duplicates(subset=cols_to_drop_deduplicates)
     
     return df_unique
     
 
 def fun1(x):
-    if x==' 50000+.':
+    if x == ' 50000+.':
         return 1
     else:
         return 0
@@ -90,7 +88,7 @@ def get_fea_map(fea_map_path=None, split_file_list=None):
         return fea_map
     fea_map = {}
     for file_open in split_file_list:
-        fea_dataframe = pd.read_csv(file_open, names = COLUMN_NAMES, header=None)
+        fea_dataframe = pd.read_csv(file_open, names=COLUMN_NAMES, header=None)
         fea_unique_dataframe = dataframe_column_unique(fea_dataframe)
         
         for fea_column in CATEGORICAL_COLUMNS:
@@ -101,7 +99,6 @@ def get_fea_map(fea_map_path=None, split_file_list=None):
                     fea_map[fea_column][fea_value] = len(fea_map[fea_column])
             
     fea_map_path = os.path.join(os.path.dirname(split_file_list[0]), "fea_map.pkl")
-
 
     modes = stat.S_IWUSR | stat.S_IRUSR
     flags = os.O_WRONLY | os.O_TRUNC | os.O_CREAT
@@ -115,12 +112,13 @@ def convert_input2tfrd(data_frame, in_file_path, out_file_path):
     """
     txt to tfrecords
     """
+    
     def make_example(label_list, dense_feat_list, sparse_feat_list):
-        dense_feature = np.array(dense_feat_list, dtype=np.Float).reshape(-1)
+        dense_feature = np.array(dense_feat_list, dtype=np.float).reshape(-1)
         sparse_feature = np.array(sparse_feat_list, dtype=np.int64).reshape(-1)
         label = np.array(label_list, dtype=np.int64).reshape(-1)
         feature_dict = {
-                    "dense_feature": tf.train.Feature(int64_list=tf.train.Float64List(value=dense_feature)),
+                    "dense_feature": tf.train.Feature(float_list=tf.train.FloatList(value=dense_feature)),
                     "sparse_feature": tf.train.Feature(int64_list=tf.train.Int64List(value=sparse_feature)),
                     "label": tf.train.Feature(int64_list=tf.train.Int64List(value=label))
         }
@@ -128,12 +126,10 @@ def convert_input2tfrd(data_frame, in_file_path, out_file_path):
 
         return example
 
-    file_name = os.path.join(out_file_path, os.path.basename(in_file_path), '.tfrecord')
+    file_name = os.path.join(out_file_path, os.path.basename(in_file_path) + '.tfrecord')
     file_writer = tf.io.TFRecordWriter(file_name)
 
-
     for _, row_info in data_frame.iterrows():
-
         labels = row_info[LABEL_COLUMNS].values
         dense = row_info[DENSE_COLUMNS].values
         sparse = row_info[CATEGORICAL_COLUMNS].values
@@ -142,7 +138,6 @@ def convert_input2tfrd(data_frame, in_file_path, out_file_path):
         
         serialized = ex.SerializeToString()
         file_writer.write(serialized)
-        
 
     file_writer.close()
 
@@ -157,15 +152,15 @@ if __name__ == '__main__':
     train_data_path = args.train_data_path
     test_data_path = args.test_data_path
     output_path = args.output_path
-    
+        
     if os.path.exists(output_path):
-        os.rmdir(output_path)
+        shutil.rmtree(output_path)
     os.makedirs(output_path, exist_ok=True)
 
     # get txt_list
-    file_path_dict = {'train':train_data_path, 'test':test_data_path}
+    file_path_dict = {'train': train_data_path, 'test': test_data_path}
     # get feature_map
-    feature_map = get_fea_map(split_file_list=file_path_dict.values)
+    feature_map = get_fea_map(split_file_list=list(file_path_dict.values()))
 
     for class_usage, file_path in file_path_dict.items():
 
