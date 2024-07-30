@@ -49,7 +49,7 @@ CATEGORICAL_COLUMNS = [
         'citizenship', 'vet_question'
 ]
 
-DENSE_COLUMNS = [
+DENSE_COLUMNS = [ 
     'age', 'wage_per_hour', 'capital_gains', 'capital_losses', 'stock_dividends', 'instance_weight',
     'num_emp', 'own_or_self', 'vet_benefits', 'weeks_worked', 'year'
 ]
@@ -112,7 +112,7 @@ def get_fea_map(fea_map_path=None, split_file_list=None):
             for fea_value in fea_unique_dataframe[fea_column].to_list():
                 fea_map.setdefault(fea_column, {})
                 if fea_map.get(fea_column).get(fea_value) is None:
-                    fea_map[fea_column][fea_value] = len(fea_map[fea_column])
+                    fea_map.get(fea_column).update({fea_value: len(fea_map.get(fea_column))})
             
     fea_map_path = os.path.join(os.path.dirname(split_file_list[0]), "fea_map.pkl")
 
@@ -199,7 +199,13 @@ if __name__ == '__main__':
             LABEL_COLUMNS[1]].apply(lambda x: fun2(x))
 
         # add offsets
-        slot_size_array = [len(feature_map[i]) for i in CATEGORICAL_COLUMNS]
+        slot_size_array = []
+        for i in CATEGORICAL_COLUMNS:
+            if feature_map.get(i) is not None:
+                slot_size_array.append(len(feature_map.get(i)))
+            else:
+                slot_size_array.append[0]
+        
         offset_size_list = np.cumsum([0] + slot_size_array[:-1])
 
         for ind_, slot_column in enumerate(CATEGORICAL_COLUMNS):
@@ -209,4 +215,4 @@ if __name__ == '__main__':
         os.makedirs(output_path_, exist_ok=True)
 
         # txt to tfrecords
-        convert_input2tfrd(data_frame=data_df, in_file_path=file_path, out_file_path=output_path)
+        convert_input2tfrd(data_frame=data_df, in_file_path=file_path, out_file_path=output_path_)
