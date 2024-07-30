@@ -117,9 +117,9 @@ def get_fea_map(fea_map_path: str = None, split_file_list: List = None) -> Dict[
             
     fea_map_path = os.path.join(os.path.dirname(split_file_list[0]), "fea_map.pkl")
 
-    modes = stat.S_IWUSR | stat.S_IRUSR
+    modes = 0o640
     flags = os.O_WRONLY | os.O_TRUNC | os.O_CREAT
-    with os.fdopen(os.open(fea_map_path, flags, modes), 'wb') as fd:
+    with os.fdopen(os.open(fea_map_path, flags, modes), 'w') as fd:
         json.dump(fea_map, fd)
 
     return fea_map
