@@ -1,8 +1,25 @@
+# coding=utf-8
+# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 import os
 import stat
 import pickle
 import argparse
 import shutil
+
 import pandas as pd
 import numpy as np
 import tensorflow as tf
@@ -176,11 +193,11 @@ if __name__ == '__main__':
             except KeyError as er:
                 raise KeyError("Feature {} not found in dataset".format(col)) from er
 
-        data_df['income_50k'] = data_df['income_50k'].apply(
+        data_df[LABEL_COLUMNS[0]] = data_df[LABEL_COLUMNS[0]].apply(
             lambda x: fun1(x))
 
-        data_df['marital_stat'] = data_df[
-            'marital_stat'].apply(lambda x: fun2(x))
+        data_df[LABEL_COLUMNS[1]] = data_df[
+            LABEL_COLUMNS[1]].apply(lambda x: fun2(x))
 
         # add offsets
         slot_size_array = [len(feature_map[i]) for i in CATEGORICAL_COLUMNS]
