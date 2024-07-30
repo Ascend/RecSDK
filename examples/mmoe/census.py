@@ -14,10 +14,11 @@
 
 
 import os
-import stat
-import pickle
+import stat  
 import shutil
 import argparse
+import json
+from typing import Dict, List, Optional
 
 import pandas as pd
 import numpy as np
@@ -83,7 +84,7 @@ def fun2(x):
         return 0
 
 
-def get_fea_map(fea_map_path=None, split_file_list=None):
+def get_fea_map(fea_map_path: str = None, split_file_list: List = None) -> Dict[str, Dict[str, int]]:
     """Get feature map.
     Note: Either parent_path or dataset_path must be valid.
     If exists dir(split_file_list[0]) + "/fea_map.pkl", fea_map_path is valid.
@@ -98,9 +99,9 @@ def get_fea_map(fea_map_path=None, split_file_list=None):
         raise ValueError('Please give feature map path or split file list.')
     if fea_map_path is None and split_file_list is not None:
         fea_map_path = os.path.join(os.path.dirname(split_file_list[0]), "fea_map.pkl")
-    if os.path.exists(fea_map_path) and fea_map_path[-3:] == 'pkl':
+    if os.path.exists(fea_map_path) and fea_map_path[-4:] == 'json':
         with open(fea_map_path, 'rb') as f:
-            fea_map = pickle.load(f)
+            fea_map = json.load(f)
         return fea_map
     fea_map = {}
     for file_open in split_file_list:
@@ -119,12 +120,12 @@ def get_fea_map(fea_map_path=None, split_file_list=None):
     modes = stat.S_IWUSR | stat.S_IRUSR
     flags = os.O_WRONLY | os.O_TRUNC | os.O_CREAT
     with os.fdopen(os.open(fea_map_path, flags, modes), 'wb') as fd:
-        pickle.dump(fea_map, fd, pickle.HIGHEST_PROTOCOL)
+        json.dump(fea_map, fd)
 
     return fea_map
 
 
-def convert_input2tfrd(data_frame, in_file_path, out_file_path):
+def convert_input2tfrd(data_frame: pd.DataFrame, in_file_path: str, out_file_path: str) -> None:
     """
     txt to tfrecords
     """
@@ -143,19 +144,23 @@ def convert_input2tfrd(data_frame, in_file_path, out_file_path):
         return example
 
     file_name = os.path.join(out_file_path, os.path.basename(in_file_path) + '.tfrecord')
-    file_writer = tf.io.TFRecordWriter(file_name)
+    try:
+        file_writer = tf.io.TFRecordWriter(file_name)
 
-    for _, row_info in data_frame.iterrows():
-        labels = row_info[LABEL_COLUMNS].values
-        dense = row_info[DENSE_COLUMNS].values
-        sparse = row_info[CATEGORICAL_COLUMNS].values
-        
-        ex = make_example(label_list=labels, dense_feat_list=dense, sparse_feat_list=sparse)
-        
-        serialized = ex.SerializeToString()
-        file_writer.write(serialized)
+        for _, row_info in data_frame.iterrows():
+            labels = row_info[LABEL_COLUMNS].values
+            dense = row_info[DENSE_COLUMNS].values
+            sparse = row_info[CATEGORICAL_COLUMNS].values
+            
+            ex = make_example(label_list=labels, dense_feat_list=dense, sparse_feat_list=sparse)
+            
+            serialized = ex.SerializeToString()
+            file_writer.write(serialized)
+    except IOError as e:
+        print(f"Error writing to file {file_name}: {e}")
+    finally:
+        file_writer.close()
 
-    file_writer.close()
 
 
 if __name__ == '__main__':
