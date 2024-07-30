@@ -204,7 +204,7 @@ if __name__ == '__main__':
             if feature_map.get(i) is not None:
                 slot_size_array.append(len(feature_map.get(i)))
             else:
-                slot_size_array.append[0]
+                slot_size_array.append(0)
         
         offset_size_list = np.cumsum([0] + slot_size_array[:-1])
 
