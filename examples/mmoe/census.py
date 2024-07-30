@@ -46,9 +46,9 @@ def dataframe_column_unique(row_dataframe):
     unique_counts = row_dataframe.nunique(axis=0)
     
     #Filter out the columns that need to be deduplicated
-    cols_to_drop_deduplicates = row_dataframe.columns[unique_counts < len(row_dataframe)]
+    cols_to_drop_duplicates = row_dataframe.columns[unique_counts < len(row_dataframe)]
     
-    df_unique = row_dataframe.drop_duplicates(subset=cols_to_drop_deduplicates)
+    df_unique = row_dataframe.drop_duplicates(subset=cols_to_drop_duplicates)
     
     return df_unique
     
