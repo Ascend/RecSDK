@@ -59,6 +59,13 @@ LABEL_COLUMNS = ['income_50k', 'marital_stat']
 
 
 def dataframe_column_unique(row_dataframe):
+    """
+        Remove duplicate rows from the given DataFrame based on columns that have fewer unique values than the 
+        number of rows in the DataFrame.
+        row_dataframe (pandas.DataFrame): The input DataFrame whose columns will be checked based on unique value 
+        counts to decide whether duplicate rows should be removed.  
+    """
+    
     # Get the unique value of each column
     unique_counts = row_dataframe.nunique(axis=0)
     
@@ -157,7 +164,7 @@ def convert_input2tfrd(data_frame: pd.DataFrame, in_file_path: str, out_file_pat
             serialized = ex.SerializeToString()
             file_writer.write(serialized)
     except IOError as e:
-        print(f"Error writing to file {file_name}: {e}")
+        raise IOError(f"Error writing to file {file_name}: {e}") from e
     finally:
         file_writer.close()
 
