@@ -73,7 +73,7 @@ int EmbCacheManagerImpl::CreateCacheForTable(const EmbCacheInfo& embCacheInfo,
         return H_THREAD_NUM_ERROR;
     }
 
-    uint32_t reserveDevice = embCacheInfo.maxCacheSize / VOCAB_CACHE_RATIO;
+    uint32_t reserveDevice = embCacheInfo.vocabSize / VOCAB_CACHE_RATIO;
     if (!offsetMappers[embCacheInfo.tableName].Initialize(reserveDevice, embCacheInfo.maxCacheSize)) {
         offsetMappers[embCacheInfo.tableName].UnInitialize();
         offsetMappers.erase(embCacheInfo.tableName);
@@ -331,7 +331,7 @@ int EmbCacheManagerImpl::BackUpTrainStatus(const std::string& tableName)
     if (embInfo == embCacheInfos.end()) {
         return H_EMB_CACHE_INFO_LOST;
     }
-    uint32_t reserve = embInfo->second.maxCacheSize / VOCAB_CACHE_RATIO;
+    uint32_t reserve = embInfo->second.vocabSize / VOCAB_CACHE_RATIO;
     uint32_t maxCacheSize = embInfo->second.maxCacheSize;
 
     auto om = offsetMappersBackUp.find(tableName);
@@ -355,7 +355,7 @@ int EmbCacheManagerImpl::RecoverTrainStatus(const std::string& tableName)
     if (embInfo == embCacheInfos.end()) {
         return H_EMB_CACHE_INFO_LOST;
     }
-    uint32_t reserve = embInfo->second.maxCacheSize / VOCAB_CACHE_RATIO;
+    uint32_t reserve = embInfo->second.vocabSize / VOCAB_CACHE_RATIO;
     uint32_t maxCacheSize = embInfo->second.maxCacheSize;
 
     offsetMappers[tableName].UnInitialize();
@@ -485,7 +485,7 @@ int EmbCacheManagerImpl::ResetOffsetMappers()
             return H_EMB_CACHE_INFO_LOST;
         }
         it->second.UnInitialize();
-        uint32_t reserve = embInfo->second.maxCacheSize / VOCAB_CACHE_RATIO;
+        uint32_t reserve = embInfo->second.vocabSize / VOCAB_CACHE_RATIO;
         it->second.Initialize(reserve, embInfo->second.maxCacheSize);
     }
     return H_OK;
