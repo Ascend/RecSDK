@@ -32,7 +32,7 @@ from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.core.feature_process import EvictHook
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache, GraphModifierHook
-from mx_rec.constants.constants import ASCEND_TIMESTAMP
+from mx_rec.constants.constants import ASCEND_TIMESTAMP, LIBREC_EOS_OPS_SO
 from mx_rec.util.initialize import ConfigInitializer, init, terminate_config_initializer
 from mx_rec.util.ops import import_host_pipeline_ops
 import mx_rec.util as mxrec_util
@@ -56,7 +56,7 @@ def add_timestamp_func(batch):
     return batch
 
 
-def make_batch_and_iterator(config, feature_spec_list, is_training, dump_graph, is_use_faae=False):
+def make_batch_and_iterator(config, feature_spec_list, is_training, dump_graph, is_use_faae=False, **kwargs):
     if config.USE_PIPELINE_TEST:
         num_parallel = 1
     else:
@@ -99,6 +99,10 @@ def make_batch_and_iterator(config, feature_spec_list, is_training, dump_graph, 
         dataset = dataset.map(add_timestamp_func)
 
     if not MODIFY_GRAPH_FLAG:
+        # Enable EOSDataset manually.
+        librec = import_host_pipeline_ops(LIBREC_EOS_OPS_SO)
+        channel_id = 0 if is_training else 1
+        dataset = dataset.eos_map(librec, channel_id, -1, kwargs.get("max_eval_steps", eval_steps))
         insert_fn = get_asc_insert_func(tgt_key_specs=feature_spec_list, is_training=is_training, dump_graph=dump_graph)
         dataset = dataset.map(insert_fn)
 
@@ -289,8 +293,6 @@ if __name__ == "__main__":
 
     rank_size = int(os.getenv("TRAIN_RANK_SIZE")) if os.getenv("TRAIN_RANK_SIZE") else None
     interval = int(os.getenv("INTERVAL")) if os.getenv("INTERVAL") else None
-    train_steps = 1000
-    eval_steps = 1000
 
     try:
         use_dynamic_expansion = bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0)))
@@ -301,13 +303,16 @@ if __name__ == "__main__":
         raise ValueError("please correctly config USE_DYNAMIC_EXPANSION or USE_MULTI_LOOKUP or USE_FAAE "
                          "or USE_MODIFY_GRAPH only 0 or 1 is supported.") from err
 
+    cfg = Config()
+    train_steps = 1000
+    eval_steps = 1500
     use_dynamic = bool(int(os.getenv("USE_DYNAMIC", 0)))
     logger.info(f"USE_DYNAMIC:{use_dynamic}")
     init(train_steps=train_steps, eval_steps=eval_steps,
          use_dynamic=use_dynamic, use_dynamic_expansion=use_dynamic_expansion)
     
     rank_id = mxrec_util.communication.hccl_ops.get_rank_id()
-    cfg = Config()
+    
     feature_spec_list_train = None
     feature_spec_list_eval = None
     if use_faae:
@@ -318,9 +323,11 @@ if __name__ == "__main__":
         feature_spec_list_eval = create_feature_spec_list(use_timestamp=False)
 
     train_batch, train_iterator = make_batch_and_iterator(cfg, feature_spec_list_train, is_training=True,
-                                                          dump_graph=True, is_use_faae=use_faae)
+                                                          dump_graph=True, is_use_faae=use_faae, 
+                                                          max_eval_steps=eval_steps)
     eval_batch, eval_iterator = make_batch_and_iterator(cfg, feature_spec_list_eval, is_training=False,
-                                                        dump_graph=False, is_use_faae=use_faae)
+                                                        dump_graph=False, is_use_faae=use_faae, 
+                                                        max_eval_steps=eval_steps)
     logger.info(f"train_batch: {train_batch}")
 
     if use_faae:
