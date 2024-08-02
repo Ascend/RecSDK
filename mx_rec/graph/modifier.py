@@ -754,7 +754,8 @@ def _get_swap_info(table_instance: BaseSparseEmbedding, variable_and_slot_list: 
         h2d_emb = npu_ops.gen_npu_ops.get_next(
             output_types=[tf.float32],
             output_shapes=[[max_lookup_vec_size, table_instance.ext_emb_size]],
-            channel_name=f'{table_instance.table_name}_h2d_all')[0]
+            channel_name=f'{table_instance.table_name}_h2d_{channel_id}')[0]
+
     logger.debug("h2d_emb shape: %s", h2d_emb)
 
     swap_out_pos = swap_info.swap_out_pos
@@ -765,10 +766,10 @@ def _get_swap_info(table_instance: BaseSparseEmbedding, variable_and_slot_list: 
         swap_in_pos = swap_in_pos[:swap_info.swap_in_len]
     swap_outs = [tf.gather(one_table, swap_out_pos) for one_table in variable_and_slot_list]
     swap_out = tf.concat(swap_outs, axis=1)
-    logger.debug('Channel %s_d2h_all was built for op outfeed.', table_instance.table_name)
+    logger.debug('Channel %s_d2h_%s was built for op outfeed.', table_instance.table_name, channel_id)
 
     swap_out_op = npu_ops.outfeed_enqueue_op(
-        channel_name=f'{table_instance.table_name}_d2h_all', inputs=[swap_out])
+        channel_name=f'{table_instance.table_name}_d2h_{channel_id}', inputs=[swap_out])
     with tf.control_dependencies([swap_out_op]):
         nd_swap_pos = tf.expand_dims(swap_in_pos, 1)
         var_num = len(variable_and_slot_list)
