@@ -5,10 +5,10 @@
 ```shell
 ├── aclnn_attention_fusion  # 单算子测试用例
 ├── attention_fusion.json    # 算子原型配置
-├── op_host    # AttentionGrad融合算子Host侧实现
-├── op_kernel  # AttentionGrad融合算子Kernel侧实现
-├── README.md  # AttentionGrad融合算子说明文档
-└── creat.sh     # AttentionGrad融合算子安装脚本
+├── op_host    # Attention融合算子Host侧实现
+├── op_kernel  # Attention融合算子Kernel侧实现
+├── README.md  # Attention融合算子说明文档
+└── run.sh     # Attention融合算子安装脚本
 ```
 
 ## Ascend C参考设计
@@ -16,7 +16,7 @@
 更多详情可以参考CANN官方的Ascend
 C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0001.html)。
 
-## AttentionFusionGrad融合算子使用
+## AttentionFusion融合算子使用
 
 1. 上传attention_fusion文件夹到目标环境，并进入当前目录，执行指令对attention_fusion融合算子进行编译和部署
 
@@ -30,7 +30,7 @@ bash run.sh
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
 ```
 
-## AttentionFusionGrad融合算子介绍
+## AttentionFusion融合算子介绍
 
 1. 算子分析
 
@@ -85,7 +85,7 @@ a) 核函数的入口：extern "C" __global__ __aicore__ void attention_fusion
 
 b) 解析tiling参数：GET_TILING_DATA(tilingData, tiling)从TilingData中获取host侧传入的数据
 
-c) 调用AttentionFusionGradKernel完成计算；
+c) 调用AttentionFusionKernel完成计算；
 
 ## AclNN单算子测试参考设计
 
@@ -155,7 +155,7 @@ run.sh脚本依次执行：
 
 ### scripts脚本
 
-* gen_data.py：生成AttentionFusionGrad融合算子的输入数据和用于精度校验的golden数据，可自行修改测试相关dim参数。
+* gen_data.py：生成AttentionFusion融合算子的输入数据和用于精度校验的golden数据，可自行修改测试相关dim参数。
 * verify_result.py：将算子的输出和脚本生成的golden数据进行精度比对，并输出比较结果。比对规则为：允许误差精度loss：1e-4
 
 a) 绝对误差
