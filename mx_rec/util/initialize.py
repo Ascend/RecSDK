@@ -70,6 +70,37 @@ class ConfigInitializer:
         self._optimizer_config = OptimizerConfig()
         self._train_params_config = TrainParamsConfig()
 
+        # incremental checkpoint settings
+        self._save_checkpoint_due_time = kwargs.get("save_checkpoint_due_time", None)
+        self._save_delta_checkpoints_secs = kwargs.get("save_delta_checkpoints_secs", None)
+        self._is_incremental_checkpoint = kwargs.get("is_incremental_checkpoint", False)
+        self._restore_model_version = kwargs.get("restore_model_version", None)
+        self._is_first_restore = True
+
+    @property
+    def save_checkpoint_due_time(self):
+        return self._save_checkpoint_due_time
+
+    @property
+    def save_delta_checkpoints_secs(self):
+        return self._save_delta_checkpoints_secs
+
+    @property
+    def is_incremental_checkpoint(self):
+        return self._is_incremental_checkpoint
+
+    @property
+    def restore_model_version(self):
+        return self._restore_model_version
+
+    @property
+    def is_first_restore(self):
+        return self._is_first_restore
+
+    @is_first_restore.setter
+    def is_first_restore(self, is_first_restore: bool):
+        self._is_first_restore = is_first_restore
+
     @property
     def modify_graph(self):
         return self._modify_graph

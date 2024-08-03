@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import json
 import os
 import threading
 from collections import defaultdict
@@ -106,7 +107,7 @@ class Saver(object):
         logger.debug("Save & Restore graph was built.")
 
     @performance("Save")
-    def save(self, sess, save_path="model", global_step=None):
+    def save(self, sess, save_path="model", global_step=None, save_delta=False):
         """
         Save sparse tables. checkpoint is saved in under format:
         ./rank_id/HashTable/HBM/embed_table_name/key/xxx.data
@@ -117,8 +118,12 @@ class Saver(object):
         :param save_path: Only absolute path supported
         :param global_step: If provided the global step number is appended to save_path to create
          the checkpoint filenames. The optional argument can be a Tensor, a Tensor name or an integer.
+        :param save_delta: check if save delta model in incremental checkpoint pattern
         :return: None
         """
+        # TODO：delta模型需要保存的内容对应的代码未完成，暂时将delta模型保存跳过
+        if save_delta:
+            return
         logger.debug("======== Start saving for rank id %s ========", self.rank_id)
         if not check_file_system_is_valid(save_path):
             raise ValueError("the path to save sparse embedding table data belong to invalid file system, "
@@ -180,7 +185,7 @@ class Saver(object):
         logger.info("======== Saving finished for rank id %s ========", self.rank_id)
 
     @performance("Restore")
-    def restore(self, sess, reading_path, warm_start_tables=None):
+    def restore(self, sess, reading_path, warm_start_tables=None, model_type="base"):
         logger.debug("======== Start restoring ========")
         if not check_file_system_is_valid(reading_path):
             raise ValueError("the path to save sparse embedding table data belong to invalid file system, "
@@ -708,3 +713,34 @@ def should_write_data(rank_id: int, save_path: str) -> bool:
     is_hdfs = check_file_system_is_hdfs(save_path)
     local_rank_size = get_local_rank_size()
     return rank_id == 0 if is_hdfs else rank_id % local_rank_size == 0
+
+
+def update_model_index(save_dir: str, model_index: dict):
+    model_index_file = os.path.join(save_dir, "model_index.json")
+    if not os.path.exists(model_index_file):
+        model_index_list = []
+    else:
+        with open(model_index_file, "r", encoding="utf-8") as f:
+            model_index_list = json.load(f)
+    model_index_list.append(model_index)
+    with open(model_index_file, "w", encoding="utf-8") as f:
+        json.dump(model_index_list, f, ensure_ascii=False, separators=(",", ": "), indent=4)
+
+
+def write_delta_export_time_ms(save_dir: str, delta_export_time_ms: dict):
+    delta_export_time_ms_file = os.path.join(save_dir, "delta_export_time_ms.json")
+    with open(delta_export_time_ms_file, "w", encoding="utf-8") as f:
+        json.dump(delta_export_time_ms, f, indent=4)
+
+
+def get_model_type_by_version(save_dir: str, model_version: str):
+    model_index_file = os.path.join(save_dir, "model_index.json")
+    with open(model_index_file, "r", encoding="utf-8") as f:
+        model_index_list = json.load(f)
+
+    model_type = None
+    for model_index in model_index_list:
+        if model_index["global_step"] == int(model_version):
+            model_type = model_index["type"]
+            return model_type
+    return model_type

@@ -21,6 +21,8 @@
 
 import os
 import time
+import logging
+import json
 
 import tensorflow as tf
 from tensorflow.compat.v1.summary import FileWriter
@@ -42,10 +44,14 @@ from tensorflow.python.util import compat
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
+from tensorflow_estimator.python.estimator.hooks.basic_session_run_hooks import SecondOrStepTimer
+from tensorflow.core.util.event_pb2 import SessionLog
 import numpy as np
 from mpi4py import MPI
 
-from mx_rec.saver.saver import Saver as SparseSaver, check_file_system_is_valid, should_write_data
+from mx_rec.saver.saver import Saver as SparseSaver
+from mx_rec.saver.saver import check_file_system_is_valid, should_write_data, update_model_index, \
+    write_delta_export_time_ms, get_model_type_by_version
 from mx_rec.util.communication.hccl_ops import get_rank_id
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, StringValidator, OptionalIntValidator, \
@@ -216,7 +222,14 @@ def check_characters_is_valid(characters: str) -> bool:
     ("save_debug_info", ClassValidator, {"classes": (bool, type(None))})
 ])
 def save(self, sess, save_path, global_step=None, latest_filename=None, meta_graph_suffix="meta", write_meta_graph=True,
-         write_state=True, strip_default_attrs=False, save_debug_info=False):
+         write_state=True, strip_default_attrs=False, save_debug_info=False, is_incremental_checkpoint=False,
+         save_delta=False):
+    msg = "Saving model by normal pattern."
+    if is_incremental_checkpoint:
+        start_save_time = time.time()
+        saved_model_type = "delta" if save_delta else "base"
+        msg = "Saving {0} model by incremental checkpoint pattern.".format(saved_model_type)
+    tf_logging.info(msg)
     if not check_characters_is_valid(save_path):
         raise ValueError("save_path contains invalid characters such as newline, formfeed,"
                          " carriage return, backspace, tab, vertical tab, and delete.")
@@ -251,7 +264,7 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
     # mxRec Patch
     # save sparse model, only run when self.sparse_saver is not None
     if not context.executing_eagerly() and self.sparse_saver:
-        self.sparse_saver.save(sess, save_path=checkpoint_file)
+        self.sparse_saver.save(sess, save_path=checkpoint_file, save_delta=save_delta)
         logger.info("Save sparse model into dir %s", checkpoint_file)
 
     comm = MPI.COMM_WORLD
@@ -266,6 +279,20 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
             write_meta_graph_task(self, checkpoint_file=checkpoint_file, meta_graph_suffix=meta_graph_suffix, sess=sess,
                                   strip_default_attrs=strip_default_attrs, save_debug_info=save_debug_info)
     comm.Barrier()
+    if is_incremental_checkpoint:
+        save_cost_time = time.time() - start_save_time
+        save_dir, _ = os.path.split(save_path)
+        export_tag = "Seconds" if save_delta else "DueTime"
+        model_index_info = {"timestamp": str(int(start_save_time)), "export_tag": export_tag, "type": saved_model_type,
+                            "global_step": int(global_step), "cost_ms": int(save_cost_time * 1000)}
+        if save_delta:
+            delta_model_version = "delta_" + str(int(global_step))
+            write_delta_export_time_ms(save_dir, {delta_model_version: int(save_cost_time * 1000)})
+        update_model_index(save_dir, model_index_info)
+
+    # TODO: 当保存base的时候清空delta目录
+    # if not save_delta:
+    #     clear_delta_model()
     return model_checkpoint_path
 
 
@@ -276,6 +303,21 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
 def restore(self, sess, save_path):
     if save_path is None:
         raise ValueError("Can't load save_path when it is None.")
+
+    is_incremental_checkpoint = ConfigInitializer.get_instance().is_incremental_checkpoint
+    restore_model_version = ConfigInitializer.get_instance().restore_model_version
+    is_first_restore = ConfigInitializer.get_instance().is_first_restore
+    model_type = None
+    # TODO: 如果restore_model_version不为空（即指定恢复的版本），则修改save_path，因为此时save_path是最新的步数对应的保存路径
+    if is_incremental_checkpoint and restore_model_version is not None and is_first_restore:
+        directory, base_name = os.path.split(save_path)
+        base_name = base_name.split("-")[0] + "-" + restore_model_version
+        save_path = os.path.join(directory, base_name)
+        model_type = get_model_type_by_version(directory, restore_model_version)
+        ConfigInitializer.get_instance().is_first_restore = False
+        tf_logging.info(f"Restoring {model_type} parameters from specified step {restore_model_version}.")
+    else:
+        tf_logging.info(f"Restoring parameters from latest step {restore_model_version}.")
 
     if not check_characters_is_valid(save_path):
         raise ValueError("save_path contains invalid characters such as newline, "
@@ -303,7 +345,7 @@ def restore(self, sess, save_path):
             # mxRec Patch
             # restore sparse model, only run when self.sparse_saver is not None
             if self.sparse_saver:
-                self.sparse_saver.restore(sess, save_path)
+                self.sparse_saver.restore(sess, save_path, model_type=model_type)
 
             sess.run(self.saver_def.restore_op_name,
                      {self.saver_def.filename_tensor_name: save_path})
@@ -494,3 +536,164 @@ def patch_for_summary_writer():
     """
     FileWriter.__init__ = _patch_for_summary_writer(FileWriter.__init__)
     logger.debug("Method `tf.summary.FileWriter.__init__` has been patched.")
+
+
+def second_or_step_timer_init(self, every_secs=None, every_steps=None, is_incremental_checkpoint=False):
+    self.reset()
+    self._every_secs = every_secs
+    self._every_steps = every_steps
+
+    # TODO: 以下两个参数通过mxrec去拿，这两个参数参数在from mx_rec.util.initialize import ConfigInitializer
+    from mx_rec.util.initialize import ConfigInitializer
+    self._save_checkpoint_due_time = ConfigInitializer.get_instance().save_checkpoint_due_time
+    self._save_delta_checkpoints_secs = ConfigInitializer.get_instance().save_delta_checkpoints_secs
+    self._is_incremental_checkpoint = is_incremental_checkpoint
+    self._is_delta = False
+    self._last_triggered_base_time = None
+    self._last_triggered_delta_time = None
+    self._is_first_update = True
+
+    if self._every_secs is None and self._every_steps is None:
+        raise ValueError("Either every_secs or every_steps should be provided.")
+    if (self._every_secs is not None) and (self._every_steps is not None):
+        raise ValueError("Can not provide both every_secs and every_steps.")
+    # TODO：增加对新增参数的判断，这两个参数都需要传入
+    if is_incremental_checkpoint:
+        if (self._save_checkpoint_due_time is None) or (self._save_delta_checkpoints_secs is None):
+            raise ValueError("Both save_checkpoint_due_time and save_delta_checkpoints_secs should be provided.")
+
+    super(SecondOrStepTimer, self).__init__()
+
+
+def should_trigger_for_step(self, step):
+    if self._last_triggered_step is None:
+        return True
+
+    if self._last_triggered_step == step:
+        return False
+
+    # TODO: 在非增量保存加载场景下走原来的逻辑
+    if not self._is_incremental_checkpoint:
+        if self._every_secs is not None:
+            if time.time() >= self._last_triggered_time + self._every_secs:
+                return True
+
+        if self._every_steps is not None:
+            if step >= self._last_triggered_step + self._every_steps:
+                return True
+        return False
+
+    # TODO: 增加对_save_checkpoint_due_time的判断，用于触发保存base
+    if self._save_checkpoint_due_time is not None:
+        if time.time() >= self._last_triggered_base_time + self._save_checkpoint_due_time:
+            self._is_delta = False
+            return True
+
+    # TODO: 增加对_save_delta_checkpoints_secs的判断，用于触发保存delta
+    if self._save_delta_checkpoints_secs is not None:
+        if time.time() >= self._last_triggered_delta_time + self._save_delta_checkpoints_secs:
+            self._is_delta = True
+            return True
+
+    return False
+
+
+def update_last_triggered_step(self, step):
+    current_time = time.time()
+    if self._last_triggered_time is None:
+        elapsed_secs = None
+        elapsed_steps = None
+    else:
+        elapsed_secs = current_time - self._last_triggered_time
+        elapsed_steps = step - self._last_triggered_step
+
+    self._last_triggered_time = current_time
+
+    # TODO：增加开启增量保存的时候对base、delta的更新时间的代码
+    if self._is_incremental_checkpoint and self._is_first_update:
+        self._last_triggered_base_time = current_time
+        self._last_triggered_delta_time = current_time
+        self._last_triggered_step = step
+        self._is_first_update = False
+        return (elapsed_secs, elapsed_steps)
+
+    if self._is_incremental_checkpoint:
+        if self._is_delta:
+            self._last_triggered_delta_time = current_time
+        else:
+            self._last_triggered_base_time = current_time
+
+    self._last_triggered_step = step
+    return (elapsed_secs, elapsed_steps)
+
+
+def patch_for_second_or_step_timer():
+    second_or_step_timer = tf.compat.v1.train.SecondOrStepTimer
+    second_or_step_timer.__init__ = second_or_step_timer_init
+    second_or_step_timer.should_trigger_for_step = should_trigger_for_step
+    second_or_step_timer.update_last_triggered_step = update_last_triggered_step
+    logger.info("Class 'tf.compat.v1.train.SecondOrStepTimer' has been patched.")
+
+
+def checkpoint_saver_hook_init(self, checkpoint_dir, save_secs=None, save_steps=None, saver=None,
+                               checkpoint_basename="model.ckpt", scaffold=None, listeners=None):
+    logging.info("Create CheckpointSaverHook.")
+    if saver is not None and scaffold is not None:
+        raise ValueError("You cannot provide both saver and scaffold.")
+    self._saver = saver
+    self._checkpoint_dir = checkpoint_dir
+    self._save_path = os.path.join(checkpoint_dir, checkpoint_basename)
+    self._scaffold = scaffold
+    from mx_rec.util.initialize import ConfigInitializer
+    self._timer = SecondOrStepTimer(
+        every_secs=save_secs, every_steps=save_steps)
+    self._is_incremental_checkpoint = ConfigInitializer.get_instance().is_incremental_checkpoint
+    if self._is_incremental_checkpoint:
+        self._timer = SecondOrStepTimer(every_secs=save_secs, every_steps=save_steps,
+                                        is_incremental_checkpoint=self._is_incremental_checkpoint)
+    self._listeners = listeners or []
+    self._steps_per_run = 1
+
+
+def after_run_checkpoint_saver_hook(self, run_context, run_values):
+    stale_global_step = run_values.results
+    if self._timer.should_trigger_for_step(stale_global_step +
+                                           self._steps_per_run):
+        # get the real value after train op.
+        global_step = run_context.session.run(self._global_step_tensor)
+        if self._timer.should_trigger_for_step(global_step):
+            self._timer.update_last_triggered_step(global_step)
+            if self._save(run_context.session, global_step, self._timer._is_delta):
+                run_context.request_stop()
+
+
+def save_checkpoint_saver_hook(self, session, step, save_delta=False):
+    logging.info("Saving checkpoints for %d into %s.", step, self._save_path)
+
+    for listener in self._listeners:
+        listener.before_save(session, step)
+    # TODO:新增参数save_delta表示保存的是base还是delta，is_incremental_checkpoint
+    self._get_saver().save(session, self._save_path, global_step=step,
+                           is_incremental_checkpoint=self._timer._is_incremental_checkpoint,
+                           save_delta=save_delta)
+    self._summary_writer.add_session_log(
+        SessionLog(
+            status=SessionLog.CHECKPOINT, checkpoint_path=self._save_path),
+        step)
+
+    should_stop = False
+    for listener in self._listeners:
+        if listener.after_save(session, step):
+            logging.info(
+                "A CheckpointSaverListener requested that training be stopped. "
+                "listener: {}".format(listener))
+            should_stop = True
+    return should_stop
+
+
+def patch_for_checkpoint_saver_hook():
+    checkpoint_saver_hook = tf.compat.v1.train.CheckpointSaverHook
+    checkpoint_saver_hook.__init__ = checkpoint_saver_hook_init
+    checkpoint_saver_hook._save = save_checkpoint_saver_hook
+    checkpoint_saver_hook.after_run = after_run_checkpoint_saver_hook
+    logger.info("Class 'tf.compat.v1.train.CheckpointSaverHook' has been patched.")

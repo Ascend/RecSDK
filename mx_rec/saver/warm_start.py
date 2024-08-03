@@ -26,6 +26,8 @@ from tensorflow.python.training import warm_starting_util
 
 from mx_rec.util.log import logger
 from mx_rec.saver.saver import Saver
+# from mx_rec.saver.saver import get_model_type_by_version
+# from mx_rec.util.initialize import ConfigInitializer
 
 
 class WarmStartController:
@@ -229,6 +231,18 @@ def get_latest_ckpt(warm_start_path: str) -> str:
         latest_ckpt = latest_ckpt.split("/")[-1]
     path = os.path.join(warm_start_path, latest_ckpt)
     return path
+#
+# # 暂时不适配warm start，后续再适配
+# def get_specified_restore_path_and_model_type_by_incremental_checkpoint(restore_path):
+#     is_incremental_checkpoint = ConfigInitializer.get_instance().is_incremental_checkpoint
+#     restore_model_version = ConfigInitializer.get_instance().restore_model_version
+#     model_type = None
+#     if is_incremental_checkpoint and restore_model_version is not None:
+#         directory, base_name = os.path.split(restore_path)
+#         base_name = base_name.split("-")[0] + "-" + restore_model_version
+#         restore_path = os.path.join(directory, base_name)
+#         model_type = get_model_type_by_version(directory, restore_model_version)
+#     return restore_path, model_type
 
 
 class SparseRestoreHook(tf.estimator.SessionRunHook):
@@ -247,5 +261,7 @@ class SparseRestoreHook(tf.estimator.SessionRunHook):
             self._warm_start_dict = WarmStartController().get_elements()
             for path, restore_tables in self._warm_start_dict.items():
                 restore_path = get_latest_ckpt(path)
+                # restore_path, model_type = get_specified_restore_path_and_model_type_by_incremental_checkpoint(restore_path)
+                # self._saver.restore(session, restore_path, restore_tables, model_type)
                 self._saver.restore(session, restore_path, restore_tables)
             self._is_warm_start = True
