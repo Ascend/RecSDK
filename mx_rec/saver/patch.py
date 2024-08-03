@@ -672,7 +672,7 @@ def save_checkpoint_saver_hook(self, session, step, save_delta=False):
 
     for listener in self._listeners:
         listener.before_save(session, step)
-    # TODO:新增参数save_delta表示保存的是base还是delta，is_incremental_checkpoint
+    # 新增参数save_delta表示保存的是base还是delta，is_incremental_checkpoint
     self._get_saver().save(session, self._save_path, global_step=step,
                            is_incremental_checkpoint=self._timer._is_incremental_checkpoint,
                            save_delta=save_delta)

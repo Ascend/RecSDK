@@ -14,8 +14,10 @@ See the License for the specific language governing permissions and
 ==============================================================================*/
 
 #include "emb_table/embedding_static.h"
+
 #include "utils/logger.h"
 #include "file_system/file_system_handler.h"
+#include "hybrid_mgmt/hybrid_mgmt.h"
 
 using namespace MxRec;
 
@@ -58,7 +60,6 @@ void EmbeddingStatic::Key2Offset(std::vector<emb_key_t>& keys, int channel)
             continue;
         }
         keyOffsetMap[key] = maxOffset;
-        offsetKeyMap[maxOffset] = key;
         key = maxOffset++;
     }
     if (maxOffset > devVocabSize) {
@@ -72,22 +73,27 @@ int64_t EmbeddingStatic::capacity() const
     return this->devVocabSize;
 }
 
-void EmbeddingStatic::Save(const string& savePath)
+void EmbeddingStatic::Save(const string& savePath, bool saveDelta)
 {
-    SaveKey(savePath);
+    SaveKey(savePath, saveDelta);
 }
 
-void EmbeddingStatic::SaveKey(const string& savePath)
+void EmbeddingStatic::SaveKey(const string& savePath, bool saveDelta)
 {
     stringstream ss;
     ss << savePath << "/" << name << "/key/";
     MakeDir(ss.str());
     ss << "slice_" << rankId_ << ".data";
+    LOG_INFO("0803 debug, save path is: {}.", ss.str());
 
     deviceKey.clear();
     deviceOffset.clear();
 
     for (const auto& it: keyOffsetMap) {
+        // 如果是保存delta模型，需要先从keyOffsetMap中提取deltaMap[name]中isChanged为true的key
+        if (saveDelta) {
+            //
+        }
         deviceKey.push_back(it.first);
         deviceOffset.push_back(it.second);
     }

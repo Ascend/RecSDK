@@ -72,44 +72,6 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId)
     return true;
 }
 
-int HDTransfer::IncrmentalInit(const vector<EmbInfo>& embInfos, uint32_t localRankId)
-{
-//#ifndef GTEST
-    LOG_INFO(MGMT + "begin hd_transfer initialize, rank:{}", localRankId);
-    // 使用AscendCL接口开发应用时，必须先调用aclInit接口，否则可能会导致后续系统内部资源初始化出错，进而导致其它业务异常。
-    aclError retOk = aclInit(nullptr);
-    LOG_INFO(MGMT + "end aclInit, rank:{}", localRankId);
-    if (retOk != ACL_SUCCESS) {
-        LOG_ERROR(MGMT + "aclInit fail, rank:{}, errno:{}", localRankId, retOk);
-        return false;
-    }
-    LOG_INFO(MGMT + "start Set device, rank:{}", localRankId);
-    // 指定当前进程或线程中用于运算的Device，同时隐式创建默认Context
-    auto ret = aclrtSetDevice(static_cast<int32_t>(localRankId));
-    if (ret != ACL_ERROR_NONE) {
-        LOG_ERROR("Set device failed, device_id:{}", localRankId);
-        return false;
-    }
-    LOG_INFO(MGMT + "end Set device, rank:{}", localRankId);
-    for (const auto& embInfo: embInfos) {
-        auto embName = embInfo.name;
-        for (int i = 0; i < MAX_CHANNEL_NUM; ++i) {
-            CreateChannelForIncrementalCkpt(localRankId, embInfo.name, i);
-        }
-        // 创建acltdtDataset类型的数据，对等一个Vector<tensor>。同步接口。
-        acltdtDataset* dataset = acltdtCreateDataset();
-        if (dataset == nullptr) {
-            LOG_ERROR("create acltdtDataset failed, table:{}, threadId:{}", embName);
-            throw runtime_error("create acltdtDataset failed");
-        }
-        aclDatasetsForIncrementalCkpt[embInfo.name] = dataset;
-    }
-    running = true;
-    LOG_INFO(MGMT + "hd_transfer incremental checkpoint init end");
-//#endif
-    return true;
-}
-
 /// 删除所有通道和TDT dataset
 void HDTransfer::Destroy()
 {
@@ -295,7 +257,7 @@ size_t HDTransfer::RecvAcl(TransferChannel channel, int channelId, const string&
 {
     EASY_FUNCTION()
     size_t ret = 0;
-//#ifndef GTEST
+#ifndef GTEST
     string recvName;
     if (channel == TransferChannel::SWAP || channel == TransferChannel::D2H || channel == TransferChannel::H2D) {
         recvName = StringFormat("%s_%s_all", embName.c_str(), TransferChannel2Str(channel).c_str());
@@ -318,7 +280,7 @@ size_t HDTransfer::RecvAcl(TransferChannel channel, int channelId, const string&
     }
     LOG_INFO("hd transfer recv:{}, batchId:{}, cost:{}ms", recvName, batchId, tc.ElapsedMS());
     ret =  acltdtGetDatasetSize(aclDatasets[embName][embeddingThreadId]);
-//#endif
+#endif
     return ret;
 }
 

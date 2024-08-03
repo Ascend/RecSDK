@@ -76,11 +76,11 @@ class HybridManagerConfig:
         logger.debug("start to send optimizer info.")
         self.asc_manager.set_optim_info(table_name, optim_info)
 
-    def save_host_data(self, root_dir: Optional[str]) -> None:
+    def save_host_data(self, root_dir: Optional[str], save_delta: bool) -> None:
         if self.asc_manager is None:
             raise RuntimeError("ASC manager does not exist.")
 
-        self.asc_manager.save(root_dir)
+        self.asc_manager.save(root_dir, save_delta)
         logger.debug("Data from host pipeline has been saved.")
 
     def restore_host_data(self, root_dir: Optional[str], warm_start_tables=None) -> None:

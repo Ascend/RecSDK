@@ -129,11 +129,11 @@ void EmbeddingMgmt::Load(const string& filePath, map<string, unordered_set<emb_c
 void EmbeddingMgmt::Save(const string& name, const string& filePath)
 {
     embeddings[name]->SetFileSystemPtr(filePath);
-    embeddings[name]->Save(filePath);
+    embeddings[name]->Save(filePath, false);
     embeddings[name]->UnsetFileSystemPtr();
 }
 
-void EmbeddingMgmt::Save(const string& filePath)
+void EmbeddingMgmt::Save(const string& filePath, bool saveDelta)
 {
     for (auto& tablePair: embeddings) {
         tablePair.second->SetFileSystemPtr(filePath);
@@ -142,7 +142,7 @@ void EmbeddingMgmt::Save(const string& filePath)
     vector<future<void>> futures;
     for (auto& tablePair: embeddings) {
         futures.emplace_back(
-            std::async(std::launch::async, [table = tablePair.second, filePath] { table->Save(filePath); }));
+            std::async(std::launch::async, [table = tablePair.second, filePath, saveDelta] { table->Save(filePath, saveDelta); }));
     }
     for (auto& f: futures) {
         f.get();  // get() will repost exception if happened

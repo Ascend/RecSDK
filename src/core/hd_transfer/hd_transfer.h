@@ -91,7 +91,6 @@ namespace MxRec {
         HDTransfer() = default;
 
         int Init(const vector<EmbInfo>& embInfos, uint32_t localRankId);
-        int IncrmentalInit(const vector<EmbInfo>& embInfos, uint32_t localRankId);
 
         void Send(TransferChannel channel, const vector<Tensor>& tensors,
                   int channelId, const string& embName, int batchId = -1);

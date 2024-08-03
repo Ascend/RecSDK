@@ -37,6 +37,7 @@ from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.tf_version_adapter import npu_ops
 
 SAVE_SPARSE_PATH_PREFIX = "sparse"
+SAVE_DELTA_SPARSE_PATH_PREFIX = "delta-sparse"
 
 
 # define save model thread
@@ -121,9 +122,6 @@ class Saver(object):
         :param save_delta: check if save delta model in incremental checkpoint pattern
         :return: None
         """
-        # TODO：delta模型需要保存的内容对应的代码未完成，暂时将delta模型保存跳过
-        if save_delta:
-            return
         logger.debug("======== Start saving for rank id %s ========", self.rank_id)
         if not check_file_system_is_valid(save_path):
             raise ValueError("the path to save sparse embedding table data belong to invalid file system, "
@@ -131,13 +129,14 @@ class Saver(object):
 
         save_path = save_path if save_path else self._prefix_name
         directory, base_name = os.path.split(save_path)
+        save_path_prefix = SAVE_SPARSE_PATH_PREFIX if not save_delta else SAVE_DELTA_SPARSE_PATH_PREFIX
 
         if global_step:
             if not isinstance(global_step, compat.integral_types):
                 global_step = int(sess.run(global_step))
-            ckpt_name = f"{SAVE_SPARSE_PATH_PREFIX}-{base_name}-{global_step}"
+            ckpt_name = f"{save_path_prefix}-{base_name}-{global_step}"
         else:
-            ckpt_name = f"{SAVE_SPARSE_PATH_PREFIX}-{base_name}"
+            ckpt_name = f"{save_path_prefix}-{base_name}"
 
         saving_path = os.path.join(directory, ckpt_name)
         self.config_instance.train_params_config.sparse_dir = saving_path
@@ -159,7 +158,7 @@ class Saver(object):
                 raise RuntimeError(f"make dir {saving_path} for saving sparse table failed!") from err
             logger.info("Saving_path '%s' has been made.", saving_path)
 
-        self._save(sess, saving_path)
+        self._save(sess, saving_path, save_delta)
         if self.max_to_keep:
             self._last_checkponts.append(saving_path)
             if len(self._last_checkponts) > self.max_to_keep:
@@ -259,7 +258,7 @@ class Saver(object):
         return placeholder_dict, restore_fetch_list
 
     @performance("_save")
-    def _save(self, sess, root_dir):
+    def _save(self, sess, root_dir, save_delta):
         for table_name in self.save_op_dict:
             optimizer_instance = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
             if optimizer_instance:
@@ -267,13 +266,13 @@ class Saver(object):
 
         table_instance0 = self.config_instance.sparse_embed_config.get_table_instance(self.var_list[0])
         if table_instance0.is_hbm:
-            self._save_hbm(sess, root_dir)
+            self._save_hbm(sess, root_dir, save_delta)
         else:
             self._save_ddr(sess, root_dir)
         logger.debug(f"Host data was saved.")
 
-    def _save_hbm(self, sess, root_dir):
-        self.config_instance.hybrid_manager_config.save_host_data(root_dir)
+    def _save_hbm(self, sess, root_dir, save_delta):
+        self.config_instance.hybrid_manager_config.save_host_data(root_dir, save_delta)
         if self.config_instance.use_dynamic_expansion:
             # Data related to dynamic expansion needs to be saved only on the host side.
             return
