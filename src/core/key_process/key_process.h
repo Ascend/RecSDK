@@ -84,6 +84,8 @@ namespace MxRec {
 
         unique_ptr<vector<Tensor>> GetInfoVec(const EmbBaseInfo& info, ProcessedInfo type, bool &isEos);
 
+        unique_ptr<vector<Tensor>> GetKCInfoVec(const EmbBaseInfo& info);
+
         vector<uint64_t> GetUniqueKeys(const EmbBaseInfo &info, bool &isEos, map<string, int> &lookUpSwapInAddrsPushId);
 
         vector<int32_t> GetRestoreVecSec(const EmbBaseInfo& info);
@@ -176,6 +178,9 @@ namespace MxRec {
         template<class T>
         T GetInfo(info_list_t<T>& list, const EmbBaseInfo &info);
 
+        template<class T>
+        T GetKeyCountVec(info_list_t<T>& list, const EmbBaseInfo &info);
+
         RankInfo rankInfo;
         map<EmbNameT, EmbInfo> embInfos;
         MPI_Comm comm[MAX_CHANNEL_NUM][MAX_KEY_PROCESS_THREAD];
@@ -186,7 +191,9 @@ namespace MxRec {
         info_list_t<UinqueKeyT> uniqueKeysList;
         info_list_t<RestoreVecSecT> restoreVecSecList;
         list<unique_ptr<vector<Tensor>>> storage;
+        list<unique_ptr<vector<Tensor>>> keyCountStorage;
         info_list_t<TensorInfoT> infoList;
+        info_list_t<TensorInfoT> keyCountInfoList;
         info_list_t<TensorInfoT> all2AllList;
         map<EmbNameT, size_t> maxOffset {};
         map<EmbNameT, absl::flat_hash_map<emb_key_t, int64_t>> keyOffsetMap {};
@@ -235,7 +242,7 @@ namespace MxRec {
 
         auto HashSplit(const unique_ptr<EmbBatchT>& batch) const -> tuple<vector<KeysT>, vector<int32_t>>;
 
-        auto HotHashSplit(const unique_ptr<EmbBatchT>& batch) -> tuple<vector<KeysT>, vector<int32_t>, vector<int>>;
+        auto HotHashSplit(const unique_ptr<EmbBatchT>& batch) -> tuple<vector<KeysT>, vector<int32_t>, vector<int>, vector<emb_key_t>>;
 
         void PaddingAlltoallVC(vector<KeysT>& splitKeys) const;
 
@@ -274,6 +281,8 @@ namespace MxRec {
         void PushResultDDR(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors,
                            std::vector<uint64_t>& uniqueKeys, std::vector<int32_t>& restoreVecSec);
 
+        void PushKeyCountHBM(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors);
+
         void PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys, int channel);
 
         void AddCountStartToHotPos(vector<KeysT>& splitKeys, vector<int>& hotPos, const vector<int>& hotPosDev,
@@ -287,7 +296,7 @@ namespace MxRec {
 
         void HashSplitHelper(const unique_ptr <EmbBatchT>& batch, vector <KeysT>& splitKeys,
                              vector <int32_t>& restore, vector <int32_t>& hotPos,
-                             vector <vector<uint32_t>>& keyCount);
+                             vector <vector<uint32_t>>& keyCount, vector<emb_key_t>& keyCountVec);
 
         template<class T>
         inline vector<T> Count2Start(const vector<T>& count) const

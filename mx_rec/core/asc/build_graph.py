@@ -14,14 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
+import time
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Union, Tuple
 
 import tensorflow as tf
 
 import mxrec_pybind
-from mx_rec.constants.constants import ASCAnchorAttr
+from mx_rec.constants.constants import ASCAnchorAttr, TRAIN_CHANNEL_ID
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.tf_version_adapter import npu_ops
 from mx_rec.util.log import logger
@@ -84,7 +84,7 @@ def get_id_offsets(max_lookup_vec_size: int, config: dict) -> Tuple[int, SwapInf
                 channel_name=f'{config.get(ASCAnchorAttr.TABLE_NAME.value)}'
                              f'_lookup_{config.get(ASCAnchorAttr.CHANNEL_ID.value)}')
             return id_offsets, swap_info
-
+        # TODO: output_types=[tf.int32] -> output_types=[tf.int64]
         [id_offsets] = npu_ops.gen_npu_ops.get_next(
             output_types=[tf.int32],
             output_shapes=[[max_lookup_vec_size]],
@@ -143,20 +143,27 @@ def get_preprocessed_tensor_for_asc(table, config):
     with tf.compat.v1.variable_scope("id_offsets"):
         id_offsets, swap_info = get_id_offsets(max_lookup_vec_size, config)
 
-    if not config.get("is_hbm"):
-        # 一表多查时，会多次进入get_preprocessed_tensor_for_asc，最后一次大查询替换map的key-value即可
-        swap_args = SwapArgs()
-        
-        swap_args.set_data(SwapDataType.CONFIG.value, var_name=config.get(ASCAnchorAttr.TABLE_NAME.value),
-                           var_channel=config.get(ASCAnchorAttr.CHANNEL_ID.value), config=config, swap_info=swap_info)
+    table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(table)
+    channel_name = f"{table_instance.table_name}_key_d2h_{TRAIN_CHANNEL_ID}"
+    # 每一步训练消耗时间在几百毫秒，同时时间戳是一个整数（用秒表示），所以在每一步训练开始前记录时间和每一步训练结束时间差异不大，所以在这里记录时间
+    time_stamp = int(time.time())
+    time_op = tf.constant([time_stamp], dtype=tf.int64)
+    send_timestamp_op = npu_ops.outfeed_enqueue_op(channel_name=channel_name, inputs=[time_op])
+    with tf.control_dependencies([send_timestamp_op]):
+        if not config.get("is_hbm"):
+            # 一表多查时，会多次进入get_preprocessed_tensor_for_asc，最后一次大查询替换map的key-value即可
+            swap_args = SwapArgs()
 
-    all2all_args = get_all2all_args(use_static, config)
+            swap_args.set_data(SwapDataType.CONFIG.value, var_name=config.get(ASCAnchorAttr.TABLE_NAME.value),
+                               var_channel=config.get(ASCAnchorAttr.CHANNEL_ID.value), config=config, swap_info=swap_info)
 
-    result = {
-        'restore_vector': restore_vector,
-        'hot_pos': hot_pos,
-        'id_offsets': id_offsets,
-        'all2all_args': all2all_args,
-    }
+        all2all_args = get_all2all_args(use_static, config)
+
+        result = {
+            'restore_vector': restore_vector,
+            'hot_pos': hot_pos,
+            'id_offsets': id_offsets,
+            'all2all_args': all2all_args,
+        }
 
     return result

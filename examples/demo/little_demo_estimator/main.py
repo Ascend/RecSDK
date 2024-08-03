@@ -77,11 +77,15 @@ def main(params, config):
         hooks_list.append(evict_hook)
     create_fs_params = dict(cfg=config, use_timestamp=params.use_timestamp,
                             use_multi_lookup=use_multi_lookup, multi_lookup_times=MULTI_LOOKUP_TIMES)
+    warm_start_settings = tf.estimator.WarmStartSettings(ckpt_to_initialize_from=["./_rank_bak/"],
+                                                         vars_to_warm_start=[".*"],
+                                                         var_name_to_prev_var_name=[{}])
     est = NPUEstimator(
         model_fn=get_model_fn(create_fs_params, config, access_and_evict),
         params=params,
         model_dir=params.model_dir,
-        config=run_config
+        config=run_config,
+        warm_start_from=warm_start_settings
     )
 
     if params.run_mode == 'train':
@@ -163,7 +167,7 @@ def _clear_saved_model() -> None:
     if not mode.startswith("train"):
         return
     logger.info("current mode contains train, will delete previous saved model data if exist.")
-    _del_related_dir("_rank*")
+    #_del_related_dir("_rank*")
 
 
 if __name__ == '__main__':
@@ -217,7 +221,11 @@ if __name__ == '__main__':
          save_steps=args.save_checkpoints_steps,
          max_steps=args.max_steps,
          use_dynamic=use_dynamic,
-         use_dynamic_expansion=use_dynamic_expansion)
+         use_dynamic_expansion=use_dynamic_expansion,
+         save_checkpoint_due_time=4,
+         save_delta_checkpoints_secs=2,
+         is_incremental_checkpoint=True,
+         restore_model_version="2")
 
     args.model_dir = f"{args.model_ckpt_dir}_rank"
     args.modify_graph = MODIFY_GRAPH_FLAG

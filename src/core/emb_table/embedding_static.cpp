@@ -58,6 +58,7 @@ void EmbeddingStatic::Key2Offset(std::vector<emb_key_t>& keys, int channel)
             continue;
         }
         keyOffsetMap[key] = maxOffset;
+        offsetKeyMap[maxOffset] = key;
         key = maxOffset++;
     }
     if (maxOffset > devVocabSize) {

@@ -72,9 +72,9 @@ void HybridMgmt::InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfo
 /// \param ifLoad 是否断点续训
 /// \return
 bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, int seed,
-                            const vector<ThresholdValue>& thresholdValues, bool ifLoad)
+                            const vector<ThresholdValue>& thresholdValues, bool ifLoad, bool isIncrementalCheckpoint)
 {
-#ifndef GTEST
+//#ifndef GTEST
     // 环境变量初始化
     ConfigGlobalEnv();
 
@@ -107,12 +107,18 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     // 进行acl资源初始化，设置当前训练进程的device，为每张表创建数据传输通道
     hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
     hdTransfer->Init(embInfos, rankInfo.deviceId);
+//    hdTransfer->IncrmentalInit(embInfos, rankInfo.deviceId);
 
     hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
     hybridMgmtBlock->SetRankInfo(rankInfo);
 
     // 启动数据处理线程
     KEY_PROCESS_INSTANCE->Initialize(rankInfo, embInfos, thresholdValues, seed);
+
+    // 当场景为增量保存加载时，初始化meta表和delta表（两张表合在一起）
+    if (isIncrementalCheckpoint) {
+        //
+    }
 
     isRunning = true;
     isL3StorageEnabled = rankInfo.isSSDEnabled;
@@ -134,6 +140,11 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
         Start();
     }
 
+    // 启动接收python侧发回的key的线程
+    if (!isIncrementalCheckpoint) {
+        ReceiveKey();
+    }
+
     for (const auto& info : embInfos) {
         LOG_INFO(MGMT + "table:{}, vocab size dev+host:{}+{}, send count:{}", info.name, info.devVocabSize,
                  info.hostVocabSize, info.sendCount);
@@ -143,7 +154,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
              rankInfo.rankId, rankInfo.isDDR, rankInfo.ctrlSteps.at(TRAIN_CHANNEL_ID),
              rankInfo.ctrlSteps.at(EVAL_CHANNEL_ID), rankInfo.ctrlSteps.at(SAVE_STEP_INDEX),
              rankInfo.ctrlSteps.at(MAX_TRAIN_STEP_INDEX));
-#endif
+//#endif
     isInitialized = true;
 
     return true;
@@ -154,7 +165,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
 /// \return
 void HybridMgmt::Save(const string& savePath)
 {
-#ifndef GTEST
+//#ifndef GTEST
     if (!isInitialized) {
         throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
     }
@@ -193,7 +204,7 @@ void HybridMgmt::Save(const string& savePath)
     KEY_PROCESS_INSTANCE->LoadSaveUnlock();
     hybridMgmtBlock->FinishSave();
     cvCheckSave.notify_all();
-#endif
+//#endif
 }
 
 /// 加载模型
@@ -372,7 +383,7 @@ void HybridMgmt::Start()
 /// 启动HBM模式数据处理线程
 void HybridMgmt::StartThreadForHBM()
 {
-#ifndef GTEST
+//#ifndef GTEST
     auto parseKeysTaskForHBMTrain = [this]() {
         TrainTask(TaskType::HBM);
         LOG_INFO("parseKeysTaskForHBMTrain done");
@@ -384,7 +395,7 @@ void HybridMgmt::StartThreadForHBM()
         LOG_INFO("parseKeysTaskForHBMEval done");
     };
     procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForHBMEval));
-#endif
+//#endif
 }
 
 void HybridMgmt::StartThreadForDDR()
@@ -453,6 +464,11 @@ void HybridMgmt::Destroy()
     }
     JoinEmbeddingCacheThread();
     procThreads.clear();
+    // 等待并销毁接收key的线程
+    for (auto& t : receiveKeyThreads) {
+        t.join();
+    }
+    receiveKeyThreads.clear();
     // 停止预处理
     KEY_PROCESS_INSTANCE->Destroy();
     // stop embCache, even if the host emb is still allocating
@@ -466,7 +482,7 @@ void HybridMgmt::Destroy()
 /// \param type
 void HybridMgmt::TrainTask(TaskType type)
 {
-#ifndef GTEST
+//#ifndef GTEST
     int channelId = TRAIN_CHANNEL_ID;
     int& theTrainBatchId = hybridMgmtBlock->hybridBatchId[channelId];
     do {
@@ -481,7 +497,7 @@ void HybridMgmt::TrainTask(TaskType type)
 
         ParseKeys(TRAIN_CHANNEL_ID, theTrainBatchId, type);
     } while (true);
-#endif
+//#endif
 }
 
 /// 推理数据处理：数据处理状态正常，处理的batch数小于用户预设值或者设为-1时，会循环处理；
@@ -574,7 +590,7 @@ bool HybridMgmt::IsEvalEndBatch(int batchId) const
 /// \return
 bool HybridMgmt::ParseKeys(int channelId, int& batchId, TaskType type)
 {
-#ifndef GTEST
+//#ifndef GTEST
     LOG_INFO(MGMT + "channelId:{} batchId:{}, ParseKeys start.", channelId, batchId);
     TimeCost parseKeyTC;
     bool remainBatch = true;  // 是否从通道获取了数据
@@ -615,7 +631,7 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId, TaskType type)
     LOG_DEBUG(MGMT + "channelId:{} batchId:{}, ParseKeys end, parseKeyTC(ms):{}", channelId, batchId,
               parseKeyTC.ElapsedMS());
     batchId++;
-#endif
+//#endif
     return true;
 }
 
@@ -1061,6 +1077,82 @@ void HybridMgmt::MultiThreadEmbHDTransWrap()
             CreateEmbeddingLookUpAndSendThread(index, embInfo);
             CreateEmbeddingReceiveAndUpdateThread(index, embInfo);
         }
+    }
+}
+
+void HybridMgmt::ReceiveKey()
+{
+    for (const auto& embInfo : mgmtEmbInfo) {
+        ReceiveKeyThread(embInfo);
+    }
+}
+
+void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
+{
+    receiveKeyThreads.emplace_back([embInfo, this]() {
+        while (true) {
+            TransferChannel transferName = TransferChannel::KEY_D2H;
+            size_t ret = hdTransfer->RecvOffsetsAcl(transferName, TRAIN_CHANNEL_ID,
+                                                    embInfo.name);
+            if (ret == 0) {
+                LOG_WARN("Receive empty data.");
+            } else {
+                LOG_INFO("Receive data success, get {} data size: {}.", embInfo.name, ret);
+                auto aclData =
+                        acltdtGetDataItem(hdTransfer->aclDatasetsForIncrementalCkpt[embInfo.name], 0);
+                if (aclData == nullptr) {
+                    throw runtime_error("Acl get tensor data failed.");
+                }
+                auto ptr = reinterpret_cast<int64_t*>(acltdtGetDataAddrFromItem(aclData));
+                int64_t timeStamp = *ptr;
+                LOG_INFO("0731 receive {} offsets: {}.", embInfo.name, timeStamp);
+
+                // 从队列中获取keyCountVec
+                int batchId = hybridMgmtBlock->pythonBatchId[TRAIN_CHANNEL_ID];
+                EmbBaseInfo info = {.batchId=batchId, .channelId=TRAIN_CHANNEL_ID, .name=embInfo.name};
+                unique_ptr<vector<Tensor>> keyCountVecInfo =
+                        KEY_PROCESS_INSTANCE->GetKCInfoVec(info);
+                auto keyCountVecTmp = keyCountVecInfo->at(0).flat<int64>();
+                vector<int64_t> keyCountVec;
+                int64 keyCountSize = keyCountVecTmp.size();
+                keyCountVec.reserve(keyCountSize);
+                for(int64 i = 0; i < keyCountSize; ++i) {
+                    keyCountVec.push_back(static_cast<int64_t>(keyCountVecTmp(i)));
+                }
+                LOG_INFO("0802 debug, emb table: {}, channel: {}, size is: {}, data: {}",
+                         embInfo.name, TRAIN_CHANNEL_ID, keyCountSize, VectorToString(keyCountVec));
+
+                // 更新delta表
+                updateDeltaInfo(embInfo.name, keyCountVec, timeStamp, batchId);
+            }
+
+            if (!isRunning) {
+                return;
+            }
+        }
+    });
+}
+
+void HybridMgmt::updateDeltaInfo(const string& embName, vector<int64_t>& keyCountVec, int64_t timeStamp, int batchId)
+{
+    auto keyCountSize = keyCountVec.size();
+    for (int i = 0; i < keyCountSize; i = i + 2){
+        deltaMap[embName][keyCountVec.at(i)].totalCount += keyCountVec.at(i+1);
+        deltaMap[embName][keyCountVec.at(i)].recentCount += keyCountVec.at(i+1);
+        deltaMap[embName][keyCountVec.at(i)].isChanged = true;
+        deltaMap[embName][keyCountVec.at(i)].batchID = batchId;
+        deltaMap[embName][keyCountVec.at(i)].lastUseTime = timeStamp;
+    }
+    LOG_INFO("0802 debug, batchid: {}, delta map size: {}, emb {} size: {}", batchId, deltaMap.size(), embName,
+             deltaMap[embName].size());
+}
+
+void HybridMgmt::resetDeltaInfo(const string &embName)
+{
+    auto& embKeyCountInfo = deltaMap[embName];
+    for (auto& it : embKeyCountInfo) {
+        it.second.recentCount = 0;
+        it.second.isChanged = false;
     }
 }
 
