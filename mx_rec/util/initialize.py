@@ -47,6 +47,10 @@ class ConfigInitializer:
         ("use_dynamic", ClassValidator, {"classes": (bool,)}),
         ("use_dynamic_expansion", ClassValidator, {"classes": (bool,)}),
         ("bind_cpu", ClassValidator, {"classes": (bool,)}),
+        ("save_checkpoint_due_time", IntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
+        ("save_delta_checkpoints_secs", IntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
+        ("is_incremental_checkpoint", ClassValidator, {"classes": (bool,)}),
+        ("restore_model_version", ClassValidator, {"classes": (str,)}),
     ])
     @bind_cpu
     def __init__(self, **kwargs):

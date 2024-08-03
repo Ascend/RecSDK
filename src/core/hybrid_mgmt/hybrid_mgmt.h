@@ -103,7 +103,7 @@ public:
     bool Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, int seed,
                     const vector<ThresholdValue>& thresholdValues, bool ifLoad, bool isIncrementalCheckpoint);
 
-    void Save(const string& savePath);
+    void Save(const string& savePath, bool saveDelta);
 
     bool Load(const string& loadPath, vector<string> warmStartTables);
 
@@ -245,6 +245,7 @@ private:
     bool isInitialized{false};
     bool alreadyTrainOnce = false;  // 用于判断是否为predict模式
     bool isBackUpTrainStatus = false; // whether the train state has been backed up
+    bool isIncrementalCkpt;
     map<string, int> lookUpSwapInAddrsPushId;  // 用于处理eos场景，当消费者追上生产者且长时间无上游数据，会触发eos
     map<string, ProcessStatus> specialProcessStatus;
     map<string, map<emb_key_t, KeyInfo>> deltaMap;

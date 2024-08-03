@@ -37,7 +37,7 @@ public:
 
     void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
 
-    void Save(const string& savePath);
+    void Save(const string& savePath, bool saveDelta);
 
     void BackUpTrainStatus();
 
@@ -46,7 +46,7 @@ public:
     vector<int64_t> GetDeviceOffset();
 
 GTEST_PRIVATE:
-    void SaveKey(const string& savePath);
+    void SaveKey(const string& savePath, bool saveDelta);
 
     void LoadKey(const string& savePath);
 

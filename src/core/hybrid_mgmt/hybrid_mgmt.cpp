@@ -103,6 +103,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
 
     mgmtRankInfo = rankInfo;
     mgmtEmbInfo = embInfos;
+    isIncrementalCkpt = isIncrementalCheckpoint;
 
     // 进行acl资源初始化，设置当前训练进程的device，为每张表创建数据传输通道
     hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
@@ -141,7 +142,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     }
 
     // 启动接收python侧发回的key的线程
-    if (!isIncrementalCheckpoint) {
+    if (isIncrementalCheckpoint) {
         ReceiveKey();
     }
 
@@ -163,12 +164,14 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
 /// 保存模型
 /// \param savePath 保存路径
 /// \return
-void HybridMgmt::Save(const string& savePath)
+void HybridMgmt::Save(const string& savePath, bool saveDelta)
 {
 //#ifndef GTEST
     if (!isInitialized) {
         throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
     }
+    string saveModelType = saveDelta ? "delta" : "base";
+    LOG_INFO(MGMT + "Start to save {} model to {}.", saveModelType, savePath);
 
     // 数据处理线程上锁
     KEY_PROCESS_INSTANCE->LoadSaveLock();
@@ -177,7 +180,7 @@ void HybridMgmt::Save(const string& savePath)
     Checkpoint saveCkpt;
     saveData.keyCountMap = KEY_PROCESS_INSTANCE->GetKeyCountMap();
 
-    EmbeddingMgmt::Instance()->Save(savePath);
+    EmbeddingMgmt::Instance()->Save(savePath, saveDelta);
     if (!mgmtRankInfo.isDDR) {
         // hbm模式只保存必要的offset对应的内容
         offsetMapToSend = EmbeddingMgmt::Instance()->GetDeviceOffsets();
@@ -200,6 +203,7 @@ void HybridMgmt::Save(const string& savePath)
 
     // 执行保存操作
     saveCkpt.SaveModel(savePath, saveData, mgmtRankInfo, mgmtEmbInfo);
+    LOG_INFO(MGMT + "End to save {} model.", saveModelType);
     // 数据处理线程释放锁
     KEY_PROCESS_INSTANCE->LoadSaveUnlock();
     hybridMgmtBlock->FinishSave();
