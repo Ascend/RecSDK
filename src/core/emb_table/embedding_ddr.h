@@ -44,9 +44,9 @@ public:
 
     void LoadOptimizerSlot(const string& savePath, vector<vector<float>>& optimizerSlots);
 
-    void Save(const string& savePath);
+    void Save(const string& savePath, const int pythonBatchId);
 
-    void SyncLatestEmbedding();
+    void SyncLatestEmbedding(const int pythonBatchId);
 
     void SaveKey(const string& savePath, vector<emb_cache_key_t>& keys);
 
@@ -79,6 +79,8 @@ public:
 GTEST_PRIVATE:
 
     void EvictDeleteEmb(const vector<emb_key_t>& keys);
+
+    void EmbeddingUpdateWithSSD(const vector<uint64_t>& swapOutKeys, float* deviceDataPtr);
 
     size_t maxOffsetOld { 0 };
     std::vector<size_t> evictPosChange;
