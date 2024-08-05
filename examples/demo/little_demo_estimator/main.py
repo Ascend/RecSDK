@@ -226,7 +226,7 @@ if __name__ == '__main__':
     args.use_timestamp = USE_TIMESTAMP
     args.use_multi_lookup = use_multi_lookup
     args.multi_lookup_times = MULTI_LOOKUP_TIMES
-    args.use_all_dp = USE_DP
+    args.use_dp = USE_DP
     cfg = Config()
     # multi lookup config, batch size: 32 * 128 = 4096
     if use_multi_lookup and MULTI_LOOKUP_TIMES > 2:

@@ -39,7 +39,7 @@ public:
 
     void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
 
-    void Save(const string& savePath);
+    void Save(const string& savePath, const int pythonBatchId);
 
 private:
     constexpr static int BLOCK_EMB_NUM = 100000; // 每次扩容分配10w条

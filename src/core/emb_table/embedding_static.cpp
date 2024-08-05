@@ -91,8 +91,9 @@ int64_t EmbeddingStatic::capacity() const
     return this->devVocabSize;
 }
 
-void EmbeddingStatic::Save(const string& savePath)
+void EmbeddingStatic::Save(const string& savePath, const int pythonBatchId)
 {
+    // Param pythonBatchId not use in this method, and only use in embedding_ddr.
     SaveKey(savePath);
 }
 
@@ -181,11 +182,23 @@ void EmbeddingStatic::LoadKey(const string& savePath)
     }
 
     maxOffset = keyOffsetMap.size();
-
     free(static_cast<void*>(buf));
 }
 
 vector<int64_t> EmbeddingStatic::GetDeviceOffset()
 {
     return deviceOffset;
+}
+
+void EmbeddingStatic::BackUpTrainStatus()
+{
+    keyOffsetMapBackUp = keyOffsetMap;
+}
+
+void EmbeddingStatic::RecoverTrainStatus()
+{
+    if (keyOffsetMapBackUp.size()!=0) {
+        keyOffsetMap = keyOffsetMapBackUp;
+        keyOffsetMapBackUp.clear();
+    }
 }

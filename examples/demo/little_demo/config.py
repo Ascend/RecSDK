@@ -38,9 +38,15 @@ class Config:
         self.label_type = tf.float32
         self.value_type = tf.float32
 
-        self.item_range = 80000 * get_rank_size()
-        self.user_range = 200000 * get_rank_size()
-        self.category_range = 5000 * get_rank_size()
+        try:
+            import os
+            use_dp = bool(int(os.getenv("USE_DP", 0)))
+        except ValueError as err:
+            raise ValueError("Please correctly config USE_DP only 0 or 1 is supported.") from err
+
+        self.item_range = 80000 * get_rank_size() if not use_dp else 80000
+        self.user_range = 200000 * get_rank_size() if not use_dp else 200000
+        self.category_range = 5000 * get_rank_size() if not use_dp else 5000
         self.item_feat_cnt = 16
         self.user_feat_cnt = 8
         self.category_feat_cnt = 3
@@ -53,11 +59,13 @@ class Config:
             max_ui_send_cnt = max(self.item_feat_cnt, self.user_feat_cnt)
             max_ui_range = max(self.item_range, self.user_range)
             self.item_send_cnt = min(int(self.batch_size * self.item_feat_cnt * coefficient),
-                                     math.ceil(self.item_range / rank_size))
-            self.item_vocab_size = max(self.item_send_cnt * rank_size * rank_size, self.item_range)
+                                     math.ceil(self.item_range / rank_size)) if not use_dp else self.item_range
+            self.item_vocab_size = max(self.item_send_cnt * rank_size * rank_size, self.item_range) if not use_dp \
+                else max(self.item_send_cnt * rank_size, self.item_range)
             self.user_send_cnt = min(int(self.batch_size * max_ui_send_cnt * coefficient),
-                                     math.ceil(max_ui_range / rank_size))
-            self.user_vocab_size = max(self.user_send_cnt * rank_size * rank_size, self.user_range)
+                                     math.ceil(max_ui_range / rank_size)) if not use_dp else self.user_range
+            self.user_vocab_size = max(self.user_send_cnt * rank_size * rank_size, self.user_range) if not use_dp \
+                else max(self.user_send_cnt * rank_size, self.user_range)
             self.category_send_cnt = min(int(self.batch_size * self.category_feat_cnt * coefficient),
                                          math.ceil(self.category_range / rank_size))
         else:

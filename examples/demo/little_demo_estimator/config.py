@@ -46,17 +46,26 @@ class Config:
         self.access_threshold = 100
         self.eviction_threshold = 60
 
+        try:
+            import os
+            use_dp = bool(int(os.getenv("USE_DP", 0)))
+        except ValueError as err:
+            raise ValueError("Please correctly config USE_DP only 0 or 1 is supported.") from err
+
         rank_size = get_rank_size()
         coefficient = 1.1
         if rank_size != 0:
             self.item_send_cnt = min(int(self.batch_size * self.item_feat_cnt * coefficient),
-                                    math.ceil(self.item_range / rank_size))
-            self.item_vocab_size = max(self.item_send_cnt * rank_size * rank_size, self.item_range)
+                                    math.ceil(self.item_range / rank_size)) if not use_dp else self.item_range
+            self.item_vocab_size = max(self.item_send_cnt * rank_size * rank_size, self.item_range) if not use_dp \
+                else max(self.item_send_cnt * rank_size, self.item_range)
             self.user_send_cnt = min(int(self.batch_size * self.user_feat_cnt * coefficient),
-                                     math.ceil(self.user_range / rank_size))
-            self.user_vocab_size = max(self.user_send_cnt * rank_size * rank_size, self.user_range)
+                                     math.ceil(self.user_range / rank_size)) if not use_dp else self.user_range
+            self.user_vocab_size = max(self.user_send_cnt * rank_size * rank_size, self.user_range) if not use_dp \
+                else max(self.user_send_cnt * rank_size, self.user_range)
             self.category_send_cnt = min(int(self.batch_size * self.category_feat_cnt * coefficient),
-                                        math.ceil(self.category_range / rank_size))
+                                        math.ceil(self.category_range / rank_size)) if not use_dp \
+                else self.category_range
         else:
             raise ZeroDivisionError("rank size must be an integer which is greater value zero.")
 

@@ -253,7 +253,10 @@ public:
     {
         FkvState ret = MapperBase::FindAndPutIfNotFound(key, value, [&]() {
             if (HM_UNLIKELY(current_size.load() >= hostVocabSize)) {
-                ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR, "host does not have enough space");
+                ock::ExternalLogger::PrintLog(
+                    ock::LogLevel::ERROR,
+                    "host does not have enough space, current: " + std::to_string(current_size.load()) +
+                        ", host max size: " + std::to_string(hostVocabSize));
                 return BeforePutFuncState::BEFORE_NO_SPACE;
             }
             return emExpendMemInfoPtr->GetNewValueToBeInserted(value);
