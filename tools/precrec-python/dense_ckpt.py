@@ -15,20 +15,23 @@
 # limitations under the License.
 # ==============================================================================
 
-import copy
 import logging
 import os
+
 import numpy as np
 import tensorflow as tf
-from utils import nested_dict_to_str
 
-
+DUMP_DENSE_STR = "02dump_model"
 DENSE_ALLCLOSE_RTOL = 1e-10
 
 
 class DenseModel:
-    def __init__(self, data_dir:str, data_step:int):
-        self.dense_path = os.path.join(data_dir, "02dump_model", f"model-{data_step}")
+    """
+    This class is used to represent parsed dense model for choosen step and rank.
+    """
+
+    def __init__(self, data_dir: str, data_step: int):
+        self.dense_path = os.path.join(data_dir, DUMP_DENSE_STR, f"model-{data_step}")
 
         var_list = tf.train.list_variables(self.dense_path)
         self.var_name_list = [var_item[0] for var_item in var_list]
@@ -41,9 +44,9 @@ class DenseModel:
     def __eq__(self, other) -> bool:
         if self.var_name_list != other.var_name_list:
             logging.error(
-                f"Dense ckpt var items not equal!\n"
-                f"Test var_name_list:{self.var_name_list}\n"
-                f"Golden var_name_list:{other.var_name_list}\n"
+                "Dense ckpt var items not equal!\nTest var_name_list:%s\nGolden var_name_list:%s\n",
+                self.var_name_list,
+                other.var_name_list,
             )
             return False
 
@@ -52,17 +55,20 @@ class DenseModel:
             golden_var = other.var_dict[var_name]
             if test_var.shape != golden_var.shape:
                 logging.error(
-                    f"[DenseModel]Test and Golden shape not equal!Variable name:{var_name}\n"
-                    f"Test:{test_var.shape}\n"
-                    f"Golden:{golden_var.shape}\n"
+                    "[DenseModel]Test and Golden shape not equal!Variable name:%s\nTest:%s\nGolden:%s\n",
+                    var_name,
+                    test_var.shape,
+                    golden_var.shape,
                 )
                 return False
 
             if not np.allclose(test_var, golden_var, rtol=DENSE_ALLCLOSE_RTOL):
                 logging.error(
-                    f"[DenseModel]Test and Golden value not equal!Variable name:{var_name}\n"
-                    f"Test var_name_list:\n{test_var}"
-                    f"Golden var_name_list:\n{golden_var}\n"
+                    "[DenseModel]Test and Golden value not equal!Variable name:%s\n"
+                    "Test var_name_list:\n%sGolden var_name_list:\n%s\n",
+                    var_name,
+                    test_var,
+                    golden_var,
                 )
                 return False
         return True
