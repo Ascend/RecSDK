@@ -125,8 +125,9 @@ void EmbeddingDynamic::RandomInit(void* addr, size_t embNum)
 }
 
 
-void EmbeddingDynamic::Save(const string& savePath)
+void EmbeddingDynamic::Save(const string& savePath, const int pythonBatchId)
 {
+    // Param pythonBatchId not use in this method, and only use in embedding_ddr.
     SaveKey(savePath);
     SaveEmbAndOptim(savePath);
 }
