@@ -37,7 +37,7 @@ OP_NUMPY_ATOL = 1e-10
 
 DUMP_NP_LEN = 8
 
-INSTRUCT_PYTHON = "python3"
+INSTRUCT_PYTHON = "python"
 INSTRUCT_CONVERT = "convert"
 INSTRUCT_D = "-d"
 INSTRUCT_OUT = "-out"
@@ -58,7 +58,6 @@ DATA_TYPE = "data_type"
 DATA_INDEX = "data_index"
 
 LOOKUP_TABLE = "lookup_table"
-UPDATE_TABLE = "update_table"
 UPDATE_GRAD = "update_grad"
 
 
@@ -295,9 +294,10 @@ def exe_msaccucmp_convert(op_data_path: str) -> str:
     )
 
     # check convertion result
-    if convert_result.returncode != 0:
+    convert_returncode = convert_result.returncode
+    if convert_returncode != 0:
         raise ValueError(
-            f"Msaccucmp convert dump op to numpy Failed!\n" + f"{convert_result.stdout}"
+            f"Msaccucmp convert dump op to numpy Failed!\n Command: {instruct_item_command}"
         )
 
     logging.info("Msaccucmp convert dump op to numpy succeed.")
@@ -424,20 +424,13 @@ def parse_dump_data(
             ops_name.replace("/", "_") for ops_name in temp_emb_look_ops
         ]
 
-        temp_emb_update_ops = dump_emb_op_info[table][UPDATE_TABLE]
-        dump_emb_op_info[table][UPDATE_TABLE] = [
-            ops_name.replace("/", "_") for ops_name in temp_emb_update_ops
-        ]
-
         temp_emb_update_ops = dump_emb_op_info[table][UPDATE_GRAD]
         dump_emb_op_info[table][UPDATE_GRAD] = [
             ops_name.replace("/", "_") for ops_name in temp_emb_update_ops
         ]
 
         temp_info_ops_name = (
-            dump_emb_op_info[table][LOOKUP_TABLE]
-            + dump_emb_op_info[table][UPDATE_TABLE]
-            + dump_emb_op_info[table][UPDATE_GRAD]
+            dump_emb_op_info[table][LOOKUP_TABLE] + dump_emb_op_info[table][UPDATE_GRAD]
         )
         info_ops_list.extend(temp_info_ops_name)
 
