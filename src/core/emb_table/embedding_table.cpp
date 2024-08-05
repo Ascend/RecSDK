@@ -143,7 +143,15 @@ void EmbeddingTable::Load(const string& filePath, map<string, unordered_set<emb_
 {
 }
 
-void EmbeddingTable::Save(const string& filePath)
+void EmbeddingTable::Save(const string& filePath, const int pythonBatchId)
+{
+}
+
+void EmbeddingTable::BackUpTrainStatus()
+{
+}
+
+void EmbeddingTable::RecoverTrainStatus()
 {
 }
 

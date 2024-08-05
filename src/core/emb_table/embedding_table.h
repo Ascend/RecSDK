@@ -80,9 +80,13 @@ public:
 
     virtual void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
 
-    virtual void Save(const string& savePath);
+    virtual void Save(const string& savePath, const int pythonBatchId);
 
     void MakeDir(const string& dirName);
+
+    virtual void BackUpTrainStatus();
+
+    virtual void RecoverTrainStatus();
 
     virtual vector<int64_t> GetDeviceOffset();
 
@@ -104,6 +108,7 @@ public:
     size_t ssdVocabSize;
     size_t maxOffset;
     absl::flat_hash_map<emb_key_t, int64_t> keyOffsetMap;
+    absl::flat_hash_map<emb_key_t, int64_t> keyOffsetMapBackUp;
     std::vector<int64_t> evictDevPos;     // 记录HBM内被淘汰的key
     std::vector<int64_t> evictHostPos; // 记录Host内淘汰列表
 

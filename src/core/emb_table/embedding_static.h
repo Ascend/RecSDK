@@ -39,7 +39,11 @@ public:
 
     void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
 
-    void Save(const string& savePath);
+    void Save(const string& savePath, const int pythonBatchId);
+
+    void BackUpTrainStatus();
+
+    void RecoverTrainStatus();
 
     vector<int64_t> GetDeviceOffset();
 

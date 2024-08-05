@@ -6,7 +6,7 @@
 ├── aclnn_lazy_adam_test  # 单算子测试用例
 ├── lazy_adam.json    # 算子原型配置
 ├── op_host    # LazyAdam融合算子Host侧实现
-├── op_kernel  # LazyAdam融合算子Kernel测实现
+├── op_kernel  # LazyAdam融合算子Kernel侧实现
 ├── README.md  # LazyAdam融合算子说明文档
 └── run.sh     # LazyAdam融合算子安装脚本
 ```

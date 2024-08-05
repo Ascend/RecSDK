@@ -82,6 +82,11 @@ void EmbeddingDDR::Load(const string& savePath, map<string, unordered_set<emb_ca
     }
 
     trainKeySet[name].insert(keys.cbegin(), keys.cend());
+    // Reset the offsetMapper object to revert to its initialized state after loading
+    auto rs = embCache->ResetOffsetMappers();
+    if (rs != 0) {
+        throw runtime_error("embCache->ResetOffsetMappers failed, err code: " + to_string(rc));
+    }
 }
 
 void EmbeddingDDR::LoadKey(const string &savePath, vector<emb_cache_key_t> &keys)
@@ -189,24 +194,22 @@ void EmbeddingDDR::LoadOptimizerSlot(const string &savePath, vector<vector<float
     LOG_DEBUG("load optimizer slot done, table:{}", name);
 }
 
-void EmbeddingDDR::Save(const string& savePath)
+void EmbeddingDDR::Save(const string& savePath, const int pythonBatchId)
 {
+    SyncLatestEmbedding(pythonBatchId);
     vector<emb_cache_key_t> keys;
     vector<vector<float>> embeddings;
     vector<vector<float>> optimizerSlots;
 
     auto step = GetStepFromPath(savePath);
-    if (step > 0) {
-        SyncLatestEmbedding();
-        embCache->GetEmbTableInfos(name, keys, embeddings, optimizerSlots);
-    }
+    embCache->GetEmbTableInfos(name, keys, embeddings, optimizerSlots);
 
     SaveKey(savePath, keys);
     SaveEmbedding(savePath, embeddings);
     SaveOptimizerSlot(savePath, optimizerSlots, keys.size());
 }
 
-void EmbeddingDDR::SyncLatestEmbedding()
+void EmbeddingDDR::SyncLatestEmbedding(const int pythonBatchId)
 {
     // 导出host记录的存在于npu的embedding
     std::vector<std::pair<uint64_t, uint64_t>> koVec;
@@ -230,6 +233,12 @@ void EmbeddingDDR::SyncLatestEmbedding()
     }
     auto* ptr = reinterpret_cast<float*>(acltdtGetDataAddrFromItem(aclData));
 
+    // In step 0, can't update cacheEmb because key-pos mapping has been modified in hybrid_mgmt `ParseKeys` method.
+    if (pythonBatchId == 0) {
+        LOG_DEBUG("In step 0, skipping update cacheEmb.");
+        return;
+    }
+
     if (ssdVocabSize == 0) {
         // 在保存之前先更新host的embedding
         rc = embCache->EmbeddingUpdate(name, swapOutKeys, ptr);
@@ -238,31 +247,37 @@ void EmbeddingDDR::SyncLatestEmbedding()
             throw std::invalid_argument(errMsg);
         }
     } else {
-        // 在保存之前先更新ddr和ssd的embedding
-        HBMSwapOutInfo info;
-        cacheManager_->ProcessSwapOutKeys(name, swapOutKeys, info);
-        vector<float*> swapOutAddrs;
-        rc = embCache->EmbeddingLookupAddrs(name, info.swapOutDDRKeys, swapOutAddrs);
-        if (rc != ock::ctr::H_OK) {
-            string errMsg = StringFormat("EmbeddingLookupAddrs failed, table:%s, error code:%d", name.c_str(), rc);
+        // SSD mode embedding update.
+        EmbeddingUpdateWithSSD(swapOutKeys, ptr);
+    }
+}
+
+void EmbeddingDDR::EmbeddingUpdateWithSSD(const vector<uint64_t>& swapOutKeys, float* deviceDataPtr)
+{
+    // 在保存之前先更新ddr和ssd的embedding
+    HBMSwapOutInfo info;
+    cacheManager_->ProcessSwapOutKeys(name, swapOutKeys, info);
+    vector<float*> swapOutAddrs;
+    int rc = embCache->EmbeddingLookupAddrs(name, info.swapOutDDRKeys, swapOutAddrs);
+    if (rc != ock::ctr::H_OK) {
+        string errMsg = StringFormat("EmbeddingLookupAddrs failed, table:%s, error code:%d", name.c_str(), rc);
+        throw std::invalid_argument(errMsg);
+    }
+    uint32_t extEmbeddingSize = embInfo_.extEmbeddingSize;
+    uint32_t memSize = extEmbeddingSize * sizeof(float);
+    // DDR更新
+#pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) \
+    shared(swapOutAddrs, info, deviceDataPtr, extEmbeddingSize, memSize)
+    for (uint64_t i = 0; i < swapOutAddrs.size(); i++) {
+        int errCode = memcpy_s(swapOutAddrs[i], memSize,
+                               deviceDataPtr + info.swapOutDDRAddrOffs[i] * extEmbeddingSize, memSize);
+        if (errCode != 0) {
+            string errMsg = StringFormat("memcpy_s failed, table:%s, error code:%d", name.c_str(), errCode);
             throw std::invalid_argument(errMsg);
         }
-        uint32_t extEmbeddingSize = embInfo_.extEmbeddingSize;
-        uint32_t memSize = extEmbeddingSize * sizeof(float);
-        // DDR更新
-#pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) \
-    shared(swapOutAddrs, info, ptr, extEmbeddingSize, memSize)
-        for (uint64_t i = 0; i < swapOutAddrs.size(); i++) {
-            int errCode = memcpy_s(
-                swapOutAddrs[i], memSize, ptr + info.swapOutDDRAddrOffs[i] * extEmbeddingSize, memSize);
-            if (errCode != 0) {
-                string errMsg = StringFormat("memcpy_s failed, table:%s, error code:%d", name.c_str(), errCode);
-                throw std::invalid_argument(errMsg);
-            }
-        }
-        cacheManager_->UpdateL3StorageEmb(name, ptr, embInfo_.extEmbeddingSize, info.swapOutL3StorageKeys,
-                                          info.swapOutL3StorageAddrOffs);
     }
+    cacheManager_->UpdateL3StorageEmb(name, deviceDataPtr, embInfo_.extEmbeddingSize, info.swapOutL3StorageKeys,
+                                      info.swapOutL3StorageAddrOffs);
 }
 
 void EmbeddingDDR::SaveKey(const string& savePath, vector<emb_cache_key_t>& keys)
@@ -379,4 +394,14 @@ void EmbeddingDDR::SetHDTransfer(HDTransfer *hdTransfer)
 void EmbeddingDDR::SetEmbCache(ock::ctr::EmbCacheManagerPtr embCache)
 {
     this->embCache = embCache;
+}
+
+void EmbeddingDDR::BackUpTrainStatus()
+{
+    embCache->BackUpTrainStatus(name);
+}
+
+void EmbeddingDDR::RecoverTrainStatus()
+{
+    embCache->RecoverTrainStatus(name);
 }
