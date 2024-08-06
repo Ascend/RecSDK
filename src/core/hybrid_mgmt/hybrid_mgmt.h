@@ -20,6 +20,10 @@ See the License for the specific language governing permissions and
 #include <memory>
 #include <unordered_set>
 #include <vector>
+#include <mutex>
+#include <atomic>
+#include <condition_variable>
+#include <thread>
 
 #include "absl/container/flat_hash_map.h"
 #include "emb_table/embedding_table.h"
@@ -71,18 +75,6 @@ struct EmbTaskInfo {
     int cvNotifyIndex;
     int extEmbeddingSize;
     string name;
-};
-
-struct KeyInfo {
-    int64_t lastUseTime;       // 最后使用时间
-    int64_t recentCount;       // 最近使用次数
-    bool isChanged;            // 是否有变更
-    int batchID;               // batch id
-    int64_t totalCount;        // key总使用次数
-
-    // 构造函数初始化所有成员变量
-    KeyInfo(): lastUseTime(0), recentCount(0), isChanged(false),
-              batchID(0), totalCount(0) {}
 };
 
 class HybridMgmt {
@@ -224,9 +216,9 @@ public:
     void SendTensorForSwap(const EmbBaseInfo& info, const vector<uint64_t>& swapInPosUint,
                            const vector<uint64_t>& swapOutPosUint);
 
-    void updateDeltaInfo(const string& embName, vector<int64_t>& keyCountVec, int64_t timeStamp, int batchId);
+    void updateDeltaInfo(const string& embName, vector<int64_t>& keyCountVec, int64_t timeStamp, int64_t batchId);
 
-    void resetDeltaInfo(const string& embName);
+    void resetDeltaInfo();
 
 private:
     HybridMgmtBlock* hybridMgmtBlock;
@@ -249,6 +241,12 @@ private:
     map<string, int> lookUpSwapInAddrsPushId;  // 用于处理eos场景，当消费者追上生产者且长时间无上游数据，会触发eos
     map<string, ProcessStatus> specialProcessStatus;
     map<string, map<emb_key_t, KeyInfo>> deltaMap;
+    map<string, int> embBatchIdMap;
+    bool isFirstSave = true;
+    std::mutex updateMtx;
+    std::condition_variable cv;
+    bool checkConditionMet = false;
+
 
     void TrainTask(TaskType type);
 

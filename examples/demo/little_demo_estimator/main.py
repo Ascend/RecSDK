@@ -220,8 +220,8 @@ if __name__ == '__main__':
          use_dynamic_expansion=use_dynamic_expansion,
          save_checkpoint_due_time=4,
          save_delta_checkpoints_secs=2,
-         is_incremental_checkpoint=False,
-         restore_model_version="2")
+         is_incremental_checkpoint=True,
+         restore_model_version="3")
 
     args.model_dir = f"{args.model_ckpt_dir}_rank"
     args.modify_graph = MODIFY_GRAPH_FLAG

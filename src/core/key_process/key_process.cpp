@@ -41,7 +41,7 @@ void KeyProcess::SetupHotEmbUpdateStep()
 
 bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
                             const vector<ThresholdValue>& thresholdValues,
-                            int seed)
+                            int seed, bool isIncrementalCkpt)
 {
     readySendEosCnt[TRAIN_CHANNEL_ID].store(0);
     readySendEosCnt[EVAL_CHANNEL_ID].store(0);
@@ -68,6 +68,7 @@ bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos
         }
     }
     isRunning = true;
+    isIncrementalCheckpoint = isIncrementalCkpt;
 
     // 特征准入与特征淘汰
     if (!thresholdValues.empty()) {
@@ -970,9 +971,11 @@ tuple<vector<KeysT>, vector<int32_t>, vector<int>, vector<emb_key_t>> KeyProcess
         uKey[key] = restore[i];
     }
 
-    for(auto& it : keyCountOneBatch) {
-        keyCountVec.emplace_back(it.first);
-        keyCountVec.emplace_back(it.second);
+    if (isIncrementalCheckpoint) {
+        for(auto& it : keyCountOneBatch) {
+            keyCountVec.emplace_back(it.first);
+            keyCountVec.emplace_back(it.second);
+        }
     }
 
     LOG_INFO(KEY_PROCESS "0801 debug, hot hash split.batch id: {}, batch name: {}, channel: {}, kc size: {}, data: {}",

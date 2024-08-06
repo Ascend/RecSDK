@@ -139,7 +139,7 @@ void EmbeddingTable::Load(const string& filePath, map<string, unordered_set<emb_
 {
 }
 
-void EmbeddingTable::Save(const string& filePath, bool saveDelta)
+void EmbeddingTable::Save(const string& filePath, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo)
 {
 }
 

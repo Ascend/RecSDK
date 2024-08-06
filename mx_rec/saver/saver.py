@@ -191,13 +191,18 @@ class Saver(object):
                              "only local file system and hdfs file system supported. ")
 
         directory, base_name = os.path.split(reading_path)
-        ckpt_name = f"{SAVE_SPARSE_PATH_PREFIX}-{base_name}"
+        if model_type == "base":
+            ckpt_name = f"{SAVE_SPARSE_PATH_PREFIX}-{base_name}"
+        else:
+            ckpt_name = f"tmp-{SAVE_SPARSE_PATH_PREFIX}-{base_name}"
 
         reading_path = os.path.join(directory, ckpt_name)
         if not tf.io.gfile.exists(reading_path):
             raise FileExistsError(f"Given dir {reading_path} does not exist, please double check.")
 
         self._restore(sess, reading_path, warm_start_tables)
+        if model_type == "delta":
+            tf.io.gfile.rmtree(reading_path)
         logger.info("sparse model was restored from dir '%s' .", reading_path)
         logger.debug("======== Restoring finished ========")
 
@@ -743,3 +748,92 @@ def get_model_type_by_version(save_dir: str, model_version: str):
             model_type = model_index["type"]
             return model_type
     return model_type
+
+
+def get_base_and_delta_models(save_dir: str, model_version: str):
+    model_index_file = os.path.join(save_dir, "model_index.json")
+    with open(model_index_file, "r", encoding="utf-8") as f:
+        model_index_list = json.load(f)
+        # 将加载起来的model_index_list逆序，因为需要根据delta往前推，拿到离delta最近的base和一系列delta
+        model_index_list.reverse()
+
+    base_model = ""
+    delta_models = []
+    found_delta_model = False
+    for model_index in model_index_list:
+        if model_index["global_step"] == int(model_version):
+            delta_models.append(model_version)
+            found_delta_model = True
+            continue
+        if not found_delta_model:
+            continue
+        if model_index["type"] == "delta":
+            delta_models.append(str(model_index["global_step"]))
+        else:
+            base_model = str(model_index["global_step"])
+            break
+    delta_models.reverse()
+    return base_model, delta_models
+
+
+def read_base_delta_and_write(save_dir: str, base_model: str, delta_models: list):
+    table_name_set = ConfigInitializer.get_instance().sparse_embed_config.table_name_set
+    base_table = {table_name: {"key": None, "embedding": None} for table_name in table_name_set}
+    # 读取base model
+    base_model_path = os.path.join(save_dir, f"{SAVE_SPARSE_PATH_PREFIX}-model.ckpt-{base_model}")
+    for table_name in table_name_set:
+        key_data, embedding_data = get_table_key_emb(base_model_path, table_name)
+        base_table[table_name]["key"] = key_data
+        base_table[table_name]["embedding"] = embedding_data
+
+    # 依次读取delta model更新到base model中
+    for delta_model in delta_models:
+        delta_model_path = os.path.join(save_dir, f"{SAVE_DELTA_SPARSE_PATH_PREFIX}-model.ckpt-{delta_model}")
+        for table_name in table_name_set:
+            key_data, embedding_data = get_table_key_emb(delta_model_path, table_name)
+            # 更新base_table
+            for k, v in zip(key_data, embedding_data):
+                key = base_table[table_name]["key"]
+                embed = base_table[table_name]["embedding"]
+                if k in key:
+                    idx = np.where(key == k)[0][0]
+                    embed[idx] = v
+                else:
+                    base_table[table_name]["key"] = np.append(key, k)
+                    base_table[table_name]["embedding"] = np.vstack([embed, v])
+
+    # 将base model写入文件
+    tmp_path = f"{save_dir}/tmp-{SAVE_SPARSE_PATH_PREFIX}-model.ckpt-{delta_models[-1]}"
+    write_base_table_to_file(tmp_path, base_table)
+    return tmp_path
+
+
+def get_table_key_emb(model_path: str, table_name: str):
+    key_path = os.path.join(model_path, table_name, "key")
+    data_file = os.path.join(key_path, "slice.data")
+    key_data = np.fromfile(data_file, dtype=np.int64)
+    embedding_path = os.path.join(model_path, table_name, "embedding")
+    attribute_file = os.path.join(embedding_path, "slice.attribute")
+    embed_attr = np.fromfile(attribute_file, dtype=np.int64)
+    data_file = os.path.join(embedding_path, "slice.data")
+    embedding_data = np.fromfile(data_file, dtype=np.float32).reshape(embed_attr[:-1])
+    return key_data, embedding_data
+
+
+def write_base_table_to_file(save_dir: str, base_table: dict):
+    for table_name, table in base_table.items():
+        for k, v in table.items():
+            writing_path = os.path.join(save_dir, table_name, k)
+            try:
+                tf.io.gfile.makedirs(writing_path)
+            except Exception as err:
+                raise RuntimeError(f"Create dir {writing_path} for writing data failed!") from err
+            data_file, attribute_file = "slice.data", "slice.attribute"
+            target_data_dir, target_attribute_dir = os.path.join(writing_path, data_file), os.path.join(writing_path,
+                                                                                                        attribute_file)
+            write_bytes = 8 if k == "key" else 4
+            attribute = np.append(v.shape, write_bytes)
+            with tf.io.gfile.GFile(target_attribute_dir, "wb") as file:
+                file.write(attribute.tostring())
+            with tf.io.gfile.GFile(target_data_dir, "wb") as file:
+                file.write(v.tostring())

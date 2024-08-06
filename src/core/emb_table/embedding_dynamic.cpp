@@ -125,13 +125,13 @@ void EmbeddingDynamic::RandomInit(void* addr, size_t embNum)
 }
 
 
-void EmbeddingDynamic::Save(const string& savePath)
+void EmbeddingDynamic::Save(const string& savePath, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo)
 {
-    SaveKey(savePath);
+    SaveKey(savePath, saveDelta, keyInfo);
     SaveEmbAndOptim(savePath);
 }
 
-void EmbeddingDynamic::SaveKey(const string& savePath)
+void EmbeddingDynamic::SaveKey(const string& savePath, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo)
 {
     stringstream ss;
     ss << savePath << "/" << name << "/key/";
@@ -142,6 +142,13 @@ void EmbeddingDynamic::SaveKey(const string& savePath)
     embAddress.clear();
 
     for (const auto &it: keyOffsetMap) {
+        // 如果是保存delta模型，需要先从keyOffsetMap中提取deltaMap[name]中isChanged为true的key
+        if (saveDelta) {
+            auto result = keyInfo.find(it.first);
+            if (result == keyInfo.end() || !result->second.isChanged) {
+                continue;
+            }
+        }
         deviceKey.push_back(it.first);
         embAddress.push_back(it.second);
     }

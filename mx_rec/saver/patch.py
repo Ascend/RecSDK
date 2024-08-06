@@ -51,7 +51,7 @@ from mpi4py import MPI
 
 from mx_rec.saver.saver import Saver as SparseSaver
 from mx_rec.saver.saver import check_file_system_is_valid, should_write_data, update_model_index, \
-    write_delta_export_time_ms, get_model_type_by_version
+    write_delta_export_time_ms, get_model_type_by_version, get_base_and_delta_models, read_base_delta_and_write
 from mx_rec.util.communication.hccl_ops import get_rank_id
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, StringValidator, OptionalIntValidator, \
@@ -228,7 +228,7 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
     if is_incremental_checkpoint:
         start_save_time = time.time()
         saved_model_type = "delta" if save_delta else "base"
-        msg = "Saving {0} model by incremental checkpoint pattern.".format(saved_model_type)
+        msg = f"Saving {saved_model_type} model by incremental checkpoint pattern."
     tf_logging.info(msg)
     if not check_characters_is_valid(save_path):
         raise ValueError("save_path contains invalid characters such as newline, formfeed,"
@@ -304,20 +304,52 @@ def restore(self, sess, save_path):
     if save_path is None:
         raise ValueError("Can't load save_path when it is None.")
 
+    # 加载场景
+    # 不开增量保存加载：和原来的加载逻辑一致，直接加载最新的model即可
+    # 开启增量保存加载：
+    # 1、指定版本：加载对应版本的model，获取对应model的类型
+    # 2、不指定版本：直接加载最新的model，获取对应model的类型
+    # 3、当拿到需要加载的模型类型时，需要分情况：
+    # 全量（base）model：直接去加载对应目录下的模型即可
+    # 增量（delta）model：先找到对应最近的全量（base）model，读取其数据；然后找到这个全量（base）model之后的所有增量（delta）model，依次
+    # 加载增量（delta）model，即读取其中的数据并将其更新的加载起来的全量（base）model中，然后创建一个临时目录，用于保存加载起来的model。
+
     is_incremental_checkpoint = ConfigInitializer.get_instance().is_incremental_checkpoint
     restore_model_version = ConfigInitializer.get_instance().restore_model_version
     is_first_restore = ConfigInitializer.get_instance().is_first_restore
-    model_type = None
-    # TODO: 如果restore_model_version不为空（即指定恢复的版本），则修改save_path，因为此时save_path是最新的步数对应的保存路径
-    if is_incremental_checkpoint and restore_model_version is not None and is_first_restore:
-        directory, base_name = os.path.split(save_path)
-        base_name = base_name.split("-")[0] + "-" + restore_model_version
-        save_path = os.path.join(directory, base_name)
-        model_type = get_model_type_by_version(directory, restore_model_version)
-        ConfigInitializer.get_instance().is_first_restore = False
-        tf_logging.info(f"Restoring {model_type} parameters from specified step {restore_model_version}.")
+    model_type = "base"
+
+    directory, base_name = os.path.split(save_path)
+    if is_incremental_checkpoint:
+        if not restore_model_version:
+            # 开启增量保存加载且不指定版本：加载最新的model
+            restore_model_version = base_name.split("-")[1]
+            model_type = get_model_type_by_version(directory, restore_model_version)
+            if model_type == "delta":
+                # 加载delta
+                # 获取离此delta model最近的一个base model，以及这个base model和此delta model之间所有的delta models（包括这个delta
+                # model）
+                base_model, delta_models = get_base_and_delta_models(directory, restore_model_version)
+                logger.info(f"Restore {model_type} model from base model: {base_model} and delta models: "
+                            f"{','.join(delta_models)}.")
+                read_base_delta_and_write(directory, base_model, delta_models)
+            save_path = os.path.join(directory, base_name)
+        else:
+            base_name = base_name.split("-")[0] + "-" + restore_model_version
+            model_type = get_model_type_by_version(directory, restore_model_version)
+            if model_type == "delta":
+                # 加载delta
+                # 获取离此delta model最近的一个base model，以及这个base model和此delta model之间所有的delta models（包括这个delta
+                # model）
+                base_model, delta_models = get_base_and_delta_models(directory, restore_model_version)
+                delta_models_str = " ".join(delta_models)
+                logger.info(f"Restore {model_type} model from base model: {base_model} and delta models: "
+                            f"{delta_models_str}.")
+                read_base_delta_and_write(directory, base_model, delta_models)
+            save_path = os.path.join(directory, base_name)
     else:
-        tf_logging.info(f"Restoring parameters from latest step {restore_model_version}.")
+        model_type = "base"
+        save_path = os.path.join(directory, base_name)
 
     if not check_characters_is_valid(save_path):
         raise ValueError("save_path contains invalid characters such as newline, "
