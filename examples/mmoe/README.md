@@ -29,7 +29,7 @@ https://archive.ics.uci.edu/static/public/117/census+income+kdd.zip
 ***
 ### 数据预处理运行脚本
 ```python
-python critro.py --train_data_path train_data_path --test_data_path test_data_path --output_path output_path 
+python census.py --train_data_path train_data_path --test_data_path test_data_path --output_path output_path 
 ```
 参数说明：
 - train_data_path: census-income.data的路径，如："D:\dat\census-income.data"
@@ -44,7 +44,7 @@ python critro.py --train_data_path train_data_path --test_data_path test_data_pa
 
 ```python
 # get feature_map
-feature_map = get_fea_map(split_file_list=file_split_list)
+feature_map = get_fea_map(split_file_list=list(file_path_dict.values()))
 ```
 ***
 
@@ -62,11 +62,11 @@ for col in sparse_features:
 ***
 
 #### 3. 数据集格式转换：txt >> tfrecord
-调用`census.py`文件中的`convert_input2tfrd(in_file_path, out_file_path)`方法将txt文件转换为tfrecord文件。
+调用`census.py`文件中的`convert_input2tfrd()`方法将txt文件转换为tfrecord文件。
 
 ```python
 # txt to tfrecords
-convert_input2tfrd(in_file_path=file, out_file_path=output_path)
+convert_input2tfrd(data_frame=data_df, in_file_path=file_path, out_file_path=output_path_)
 ```
 ***
 
@@ -135,10 +135,7 @@ lr_dense = self.base_lr_dense * lr_factor_constant
 # 140~146行
 _lr_scheduler = LearningRateScheduler(
     0.001,
-    0.001,
-    LR_SCHEDULE_STEPS[0],
-    LR_SCHEDULE_STEPS[1],
-    LR_SCHEDULE_STEPS[2],
+    0.001
 )
 # 超参数
 self.batch_size = 32
