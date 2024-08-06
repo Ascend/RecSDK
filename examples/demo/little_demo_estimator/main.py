@@ -217,11 +217,7 @@ if __name__ == '__main__':
          save_steps=args.save_checkpoints_steps,
          max_steps=args.max_steps,
          use_dynamic=use_dynamic,
-         use_dynamic_expansion=use_dynamic_expansion,
-         save_checkpoint_due_time=4,
-         save_delta_checkpoints_secs=2,
-         is_incremental_checkpoint=True,
-         restore_model_version="3")
+         use_dynamic_expansion=use_dynamic_expansion)
 
     args.model_dir = f"{args.model_ckpt_dir}_rank"
     args.modify_graph = MODIFY_GRAPH_FLAG

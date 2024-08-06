@@ -175,7 +175,6 @@ void HybridMgmt::Save(const string& savePath, bool saveDelta)
     Checkpoint saveCkpt;
     saveData.keyCountMap = KEY_PROCESS_INSTANCE->GetKeyCountMap();
 
-    // TODO: 当续训的时候保存路径中的step不是从1开始，所以在下面判断step是否满足条件的时候会有问题，需要修改
     int saveStep = GetStepFromPath(savePath);
     if(isFirstSave){
         for(auto& embInfo : mgmtEmbInfo) {
@@ -185,7 +184,6 @@ void HybridMgmt::Save(const string& savePath, bool saveDelta)
     LOG_INFO("0805 debug, save model at step {}.", saveStep);
     std::unique_lock<std::mutex> lock(updateMtx);
     checkConditionMet = false;
-    // TODO:增加超时判断
     while (!checkConditionMet) {
         cv.wait(lock, [this, saveStep] {
             for(const auto& it : embBatchIdMap) {
@@ -1136,8 +1134,7 @@ void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
                 auto ptr = reinterpret_cast<int64_t*>(acltdtGetDataAddrFromItem(aclData));
                 int64_t timeStamp = *ptr;
                 int64_t globalStep = *(ptr + 1);
-                LOG_INFO("0731 receive {} timeStamp: {}, global step: {}.", embInfo.name, timeStamp, globalStep);
-                TimeCost tmp;
+                LOG_INFO("Receive {} timeStamp: {}, global step: {}.", embInfo.name, timeStamp, globalStep);
                 // tensorflow获取的global step是从1开始的，但是在key process中batch id则是从0开始，因此，下面的info中的batchId需要用
                 // globalStep - 1
                 EmbBaseInfo info = {.batchId=static_cast<int>(globalStep-1), .channelId=TRAIN_CHANNEL_ID, .name=embInfo.name};
@@ -1150,18 +1147,14 @@ void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
                 for(int64 i = 0; i < keyCountSize; ++i) {
                     keyCountVec.push_back(static_cast<int64_t>(keyCountVecTmp(i)));
                 }
-                LOG_INFO("0805 debug, process key count cost: {}", tmp.ElapsedMS());
                 LOG_INFO("0802 debug, emb table: {}, channel: {}, size is: {}, data: {}",
                          embInfo.name, TRAIN_CHANNEL_ID, keyCountSize, VectorToString(keyCountVec));
 
                 // 更新delta表
-                TimeCost tmp1;
-                // TODO: updateDeltaInfo函数执行需要消耗比较多的时间，需要优化
                 std::lock_guard<std::mutex> lock(updateMtx);
                 updateDeltaInfo(embInfo.name, keyCountVec, timeStamp, globalStep);
                 embBatchIdMap[embInfo.name]++;
                 cv.notify_all();
-                LOG_INFO("0805 debug, update delta cost: {}", tmp1.ElapsedMS());
             }
 
             if (!isRunning) {
@@ -1200,7 +1193,7 @@ void HybridMgmt::resetDeltaInfo()
     }
 }
 
-void HybridMgmt::EmbeddingLookUpAndSendDDR(int batchId, int index, const EmbInfo& embInfo)
+void HybridMgmt::EmbeddingLookUpAndSendDDR(int batchId, int index, const EmbInfo& embInfo, int channelId)
 {
     int cvNotifyIndex = 0;
     if (index + 1 != EMBEDDING_THREAD_NUM) {
