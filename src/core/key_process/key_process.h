@@ -86,7 +86,7 @@ namespace MxRec {
 
         unique_ptr<vector<Tensor>> GetKCInfoVec(const EmbBaseInfo& info);
 
-        vector<uint64_t> GetUniqueKeys(const EmbBaseInfo &info, bool &isEos, map<string, int> &lookUpSwapInAddrsPushId);
+        vector<uint64_t> GetUniqueKeys(const EmbBaseInfo &info, bool &isEos);
 
         vector<int32_t> GetRestoreVecSec(const EmbBaseInfo& info);
 
@@ -160,7 +160,7 @@ namespace MxRec {
 
         void SetEos(int status, int channelId);
 
-        void SendEos(const string& embName, int batchId, int channel, bool sendAllChannel);
+        void SendEos(const string& embName, int batchId, int channel);
 
         bool isRunning { false };
 

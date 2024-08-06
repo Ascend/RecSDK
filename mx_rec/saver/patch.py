@@ -575,7 +575,6 @@ def second_or_step_timer_init(self, every_secs=None, every_steps=None, is_increm
     self._every_secs = every_secs
     self._every_steps = every_steps
 
-    # TODO: 以下两个参数通过mxrec去拿，这两个参数参数在from mx_rec.util.initialize import ConfigInitializer
     from mx_rec.util.initialize import ConfigInitializer
     self._save_checkpoint_due_time = ConfigInitializer.get_instance().save_checkpoint_due_time
     self._save_delta_checkpoints_secs = ConfigInitializer.get_instance().save_delta_checkpoints_secs
@@ -589,7 +588,6 @@ def second_or_step_timer_init(self, every_secs=None, every_steps=None, is_increm
         raise ValueError("Either every_secs or every_steps should be provided.")
     if (self._every_secs is not None) and (self._every_steps is not None):
         raise ValueError("Can not provide both every_secs and every_steps.")
-    # TODO：增加对新增参数的判断，这两个参数都需要传入
     if is_incremental_checkpoint:
         if (self._save_checkpoint_due_time is None) or (self._save_delta_checkpoints_secs is None):
             raise ValueError("Both save_checkpoint_due_time and save_delta_checkpoints_secs should be provided.")
@@ -604,7 +602,6 @@ def should_trigger_for_step(self, step):
     if self._last_triggered_step == step:
         return False
 
-    # TODO: 在非增量保存加载场景下走原来的逻辑
     if not self._is_incremental_checkpoint:
         if self._every_secs is not None:
             if time.time() >= self._last_triggered_time + self._every_secs:
@@ -615,13 +612,11 @@ def should_trigger_for_step(self, step):
                 return True
         return False
 
-    # TODO: 增加对_save_checkpoint_due_time的判断，用于触发保存base
     if self._save_checkpoint_due_time is not None:
         if time.time() >= self._last_triggered_base_time + self._save_checkpoint_due_time:
             self._is_delta = False
             return True
 
-    # TODO: 增加对_save_delta_checkpoints_secs的判断，用于触发保存delta
     if self._save_delta_checkpoints_secs is not None:
         if time.time() >= self._last_triggered_delta_time + self._save_delta_checkpoints_secs:
             self._is_delta = True
@@ -641,7 +636,6 @@ def update_last_triggered_step(self, step):
 
     self._last_triggered_time = current_time
 
-    # TODO：增加开启增量保存的时候对base、delta的更新时间的代码
     if self._is_incremental_checkpoint and self._is_first_update:
         self._last_triggered_base_time = current_time
         self._last_triggered_delta_time = current_time
