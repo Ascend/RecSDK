@@ -27,7 +27,7 @@ using namespace std;
 /// \return
 int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId)
 {
-//#ifndef GTEST
+#ifndef GTEST
     LOG_INFO(MGMT + "begin hd_transfer initialize, rank:{}", localRankId);
     // 使用AscendCL接口开发应用时，必须先调用aclInit接口，否则可能会导致后续系统内部资源初始化出错，进而导致其它业务异常。
     aclError retOk = aclInit(nullptr);
@@ -68,7 +68,7 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId)
     }
     running = true;
     LOG_INFO(MGMT + "hd_transfer init end");
-//#endif
+#endif
     return true;
 }
 
@@ -102,7 +102,7 @@ void HDTransfer::Destroy()
 /// \param channelNum 通道索引
 void HDTransfer::CreateChannel(const uint32_t localRankId, const string& embName, const int channelNum)
 {
-//#ifndef GTEST
+#ifndef GTEST
     int channelSize = GlobalEnv::hdChannelSize;
     LOG_INFO("user config all2all restore lookup channel size:{}", channelSize);
     for (int c = static_cast<int>(TransferChannel::D2H); c != static_cast<int>(TransferChannel::KEY_D2H); c++) {
@@ -133,12 +133,11 @@ void HDTransfer::CreateChannel(const uint32_t localRankId, const string& embName
         }
         LOG_INFO("create channel:{} {}", sendName, static_cast<void*>(transferChannels[sendName]));
     }
-//#endif
+#endif
 }
 
 void HDTransfer::CreateChannelForIncrementalCkpt(const uint32_t localRankId, const string& embName, const int channelNum)
 {
-//#ifndef GTEST
     int channelSize = GlobalEnv::hdChannelSize;
     LOG_INFO("user config all2all restore lookup channel size:{}", channelSize);
     int c = static_cast<int>(TransferChannel::KEY_D2H);
@@ -147,8 +146,7 @@ void HDTransfer::CreateChannelForIncrementalCkpt(const uint32_t localRankId, con
     sendName = StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channel).c_str(), channelNum);
     transferChannels[sendName] = TDT_CREATE_CHANNEL(localRankId, sendName.c_str(), PING_PONG_SIZE);
     LOG_INFO("create channel:{} {}", sendName, static_cast<void*>(transferChannels[sendName]));
-//    }
-//#endif
+
 }
 
 /// 将tensor发送到channel
@@ -219,7 +217,7 @@ vector<tensorflow::Tensor> HDTransfer::Recv(TransferChannel channel, int channel
 {
     EASY_FUNCTION()
     vector<tensorflow::Tensor> tensors;
-//#ifndef GTEST
+#ifndef GTEST
     string recvName;
     if (channel == TransferChannel::SWAP || channel == TransferChannel::D2H || channel == TransferChannel::H2D) {
         recvName = StringFormat("%s_%s_all", embName.c_str(), TransferChannel2Str(channel).c_str());
@@ -243,7 +241,7 @@ vector<tensorflow::Tensor> HDTransfer::Recv(TransferChannel channel, int channel
         sizes.push_back(t.NumElements());
     }
     LOG_INFO("hd transfer recv:{}, size:{} cost:{}ms", recvName, VectorToString(sizes), tc.ElapsedMS());
-//#endif
+#endif
     return tensors;
 }
 

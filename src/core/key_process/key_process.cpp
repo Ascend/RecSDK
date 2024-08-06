@@ -81,9 +81,9 @@ bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos
 
     LOG_INFO(KEY_PROCESS "scInfo:{}, localRankSize:{}, rankSize:{}, useStatic:{}",
         MapToString(scInfo), rInfo.localRankSize, rInfo.rankSize, rInfo.useStatic);
-//#ifndef GTEST
+#ifndef GTEST
     Start();
-//#endif
+#endif
     return true;
 }
 
@@ -1470,11 +1470,8 @@ unique_ptr<vector<Tensor>> KeyProcess::GetKCInfoVec(const EmbBaseInfo& info)
             auto infoVec = GetKeyCountVec(*list, info);
             auto it = get<std::list<unique_ptr<vector<Tensor>>>::iterator>(infoVec);
             ret = std::move(*it);
-            LOG_INFO("0802 debug, move it done.");
             std::unique_lock<std::mutex> lockGuard(mut);
-            LOG_INFO("0802 debug, lockGuard done.");
             keyCountStorage.erase(it);
-            LOG_INFO("0802 debug, erase done.");
             break;
         } catch (EmptyList&) {
             unique_lock<mutex> lockEosGuard(eosMutex);

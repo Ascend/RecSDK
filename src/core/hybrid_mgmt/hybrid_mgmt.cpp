@@ -74,7 +74,7 @@ void HybridMgmt::InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfo
 bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, int seed,
                             const vector<ThresholdValue>& thresholdValues, bool ifLoad, bool isIncrementalCheckpoint)
 {
-//#ifndef GTEST
+#ifndef GTEST
     // 环境变量初始化
     ConfigGlobalEnv();
 
@@ -150,7 +150,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
              rankInfo.rankId, rankInfo.isDDR, rankInfo.ctrlSteps.at(TRAIN_CHANNEL_ID),
              rankInfo.ctrlSteps.at(EVAL_CHANNEL_ID), rankInfo.ctrlSteps.at(SAVE_STEP_INDEX),
              rankInfo.ctrlSteps.at(MAX_TRAIN_STEP_INDEX));
-//#endif
+#endif
     isInitialized = true;
 
     return true;
@@ -161,7 +161,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
 /// \return
 void HybridMgmt::Save(const string& savePath, bool saveDelta)
 {
-//#ifndef GTEST
+#ifndef GTEST
     if (!isInitialized) {
         throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
     }
@@ -241,7 +241,7 @@ void HybridMgmt::Save(const string& savePath, bool saveDelta)
     KEY_PROCESS_INSTANCE->LoadSaveUnlock();
     hybridMgmtBlock->FinishSave();
     cvCheckSave.notify_all();
-//#endif
+#endif
 }
 
 /// 加载模型
@@ -420,7 +420,7 @@ void HybridMgmt::Start()
 /// 启动HBM模式数据处理线程
 void HybridMgmt::StartThreadForHBM()
 {
-//#ifndef GTEST
+#ifndef GTEST
     auto parseKeysTaskForHBMTrain = [this]() {
         TrainTask(TaskType::HBM);
         LOG_INFO("parseKeysTaskForHBMTrain done");
@@ -432,7 +432,7 @@ void HybridMgmt::StartThreadForHBM()
         LOG_INFO("parseKeysTaskForHBMEval done");
     };
     procThreads.emplace_back(std::make_unique<std::thread>(parseKeysTaskForHBMEval));
-//#endif
+#endif
 }
 
 void HybridMgmt::StartThreadForDDR()
@@ -519,7 +519,7 @@ void HybridMgmt::Destroy()
 /// \param type
 void HybridMgmt::TrainTask(TaskType type)
 {
-//#ifndef GTEST
+#ifndef GTEST
     int channelId = TRAIN_CHANNEL_ID;
     int& theTrainBatchId = hybridMgmtBlock->hybridBatchId[channelId];
     do {
@@ -534,7 +534,7 @@ void HybridMgmt::TrainTask(TaskType type)
 
         ParseKeys(TRAIN_CHANNEL_ID, theTrainBatchId, type);
     } while (true);
-//#endif
+#endif
 }
 
 /// 推理数据处理：数据处理状态正常，处理的batch数小于用户预设值或者设为-1时，会循环处理；
@@ -627,7 +627,7 @@ bool HybridMgmt::IsEvalEndBatch(int batchId) const
 /// \return
 bool HybridMgmt::ParseKeys(int channelId, int& batchId, TaskType type)
 {
-//#ifndef GTEST
+#ifndef GTEST
     LOG_INFO(MGMT + "channelId:{} batchId:{}, ParseKeys start.", channelId, batchId);
     TimeCost parseKeyTC;
     bool remainBatch = true;  // 是否从通道获取了数据
@@ -668,7 +668,7 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId, TaskType type)
     LOG_DEBUG(MGMT + "channelId:{} batchId:{}, ParseKeys end, parseKeyTC(ms):{}", channelId, batchId,
               parseKeyTC.ElapsedMS());
     batchId++;
-//#endif
+#endif
     return true;
 }
 
