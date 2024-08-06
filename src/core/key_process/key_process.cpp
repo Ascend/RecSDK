@@ -249,21 +249,17 @@ void KeyProcess::KeyProcessTaskWithFastUnique(int channel, int threadId)
     size_t preBatchSize = 0;
     bool uniqueInitialize = false;
 
-    LOG_INFO("0803 debug, start to create unique.");
     int ret = factory->CreateUnique(unique);
     if (ret != ock::ctr::H_OK) {
         throw runtime_error(Logger::Format("create fast unique failed, error code:{}", ret));
     }
-    LOG_INFO("0803 debug, end to create unique.");
     GetUniqueConfig(uniqueConf);
 
     try {
         while (true) {
             TimeCost getAndProcessTC;
             TimeCost getBatchDataTC;
-            LOG_INFO("0803 debug, start to get batch data.");
             batch = GetBatchData(channel, threadId); // get batch data from SingletonQueue<EmbBatchT>
-            LOG_INFO("0803 debug, end to get batch data.");
             LOG_DEBUG("getBatchDataTC(ms):{}", getBatchDataTC.ElapsedMS());
             if (batch == nullptr) {
                 break;
@@ -1203,8 +1199,7 @@ T KeyProcess::GetKeyCountVec(info_list_t<T>& list, const EmbBaseInfo &info)
     return move(t);
 }
 
-vector<uint64_t> KeyProcess::GetUniqueKeys(const EmbBaseInfo& info, bool& isEos,
-                                           map<string, int> &lookUpSwapInAddrsPushId)
+vector<uint64_t> KeyProcess::GetUniqueKeys(const EmbBaseInfo& info, bool& isEos)
 {
     TimeCost tc = TimeCost();
 

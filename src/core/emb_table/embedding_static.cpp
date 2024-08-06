@@ -84,7 +84,6 @@ void EmbeddingStatic::SaveKey(const string& savePath, bool saveDelta, const map<
     ss << savePath << "/" << name << "/key/";
     MakeDir(ss.str());
     ss << "slice_" << rankId_ << ".data";
-    LOG_INFO("0803 debug, save path is: {}.", ss.str());
 
     deviceKey.clear();
     deviceOffset.clear();
@@ -100,7 +99,7 @@ void EmbeddingStatic::SaveKey(const string& savePath, bool saveDelta, const map<
         deviceKey.push_back(it.first);
         deviceOffset.push_back(it.second);
     }
-    LOG_INFO("0805 debug, device key size: {}, device offset size: {}.", deviceKey.size(), deviceOffset.size());
+    LOG_INFO("device key size: {}, device offset size: {}.", deviceKey.size(), deviceOffset.size());
 
     if (fileSystemPtr_ == nullptr) {
         throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
