@@ -244,7 +244,8 @@ GTEST_PRIVATE:
 
     auto HashSplit(const unique_ptr<EmbBatchT>& batch) const -> tuple<vector<KeysT>, vector<int32_t>>;
 
-    auto HotHashSplit(const unique_ptr<EmbBatchT>& batch) -> tuple<vector<KeysT>, vector<int32_t>, vector<int>, vector<emb_key_t>>;
+    auto HotHashSplit(const unique_ptr<EmbBatchT>& batch) -> tuple<vector<KeysT>, vector<int32_t>, vector<int>,
+            vector<emb_key_t>>;
 
     void PaddingAlltoallVC(vector<KeysT>& splitKeys) const;
 
