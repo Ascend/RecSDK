@@ -20,7 +20,7 @@ from math import sqrt
 import numpy as np
 
 _MASK_CONST = 10000
-_MASK_CONST_NE = 10000
+_MASK_CONST_NE = -10000
 _BATCH_ = 1024
 _Q_DIM1_ = 1000
 _Q_DIM2_ = 80

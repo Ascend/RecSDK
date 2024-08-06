@@ -97,8 +97,29 @@ class Config:
             return 46000 // rank_size
         except ZeroDivisionError as exp:
             raise ZeroDivisionError('Rank size can not be zero.') from exp
-         
+        
 
+    def get_emb_table_cfg(self) -> None:
+        if self.cache_mode not in [CacheModeEnum.HBM.value, CacheModeEnum.DDR.value, CacheModeEnum.SSD.value]:
+            raise RuntimeError(f"Invalid MODE:{self.cache_mode}, check Config.__set_emb_table_size implementation")
+        
+        result = {"device_vocabulary_size": self.dev_vocab_size}
+
+        if self.cache_mode == CacheModeEnum.HBM.value:
+            return result
+
+        result["host_vocabulary_size"] = self.host_vocab_size
+
+        if self.cache_mode == CacheModeEnum.DDR.value:
+            return result
+
+        # At this point, we know it's SSD mode
+        result["ssd_vocabulary_size"] = self.ssd_vocab_size
+        result["ssd_data_path"] = SSD_DATA_PATH
+
+        return result
+    
+    
     def __set_emb_table_size(self) -> None:
         self.cache_mode = os.getenv("CACHE_MODE")
         if self.cache_mode is None:
@@ -116,20 +137,6 @@ class Config:
             self.ssd_vocab_size = 1000 * self.rank_size
         else:
             raise ValueError(f"get CACHE_MODE:{self.cache_mode}, expect in [HBM, DDR, SSD]")
-
-    def get_emb_table_cfg(self) -> None:
-        if self.cache_mode == CacheModeEnum.HBM.value:
-            return {"device_vocabulary_size": self.dev_vocab_size}
-        elif self.cache_mode == CacheModeEnum.DDR.value:
-            return {"device_vocabulary_size": self.dev_vocab_size,
-                    "host_vocabulary_size": self.host_vocab_size}
-        elif self.cache_mode == CacheModeEnum.SSD.value:
-            return {"device_vocabulary_size": self.dev_vocab_size,
-                    "host_vocabulary_size": self.host_vocab_size,
-                    "ssd_vocabulary_size": self.ssd_vocab_size,
-                    "ssd_data_path": SSD_DATA_PATH}
-        else:
-            raise RuntimeError(f"get CACHE_MODE:{self.cache_mode}, check Config.__set_emb_table_size implementation")
 
 
 def sess_config(dump_data=False, dump_path="./dump_output", dump_steps="0|1|2"):
