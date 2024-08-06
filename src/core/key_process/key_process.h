@@ -80,7 +80,7 @@ namespace MxRec {
     class KeyProcess {
     public:
         bool Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
-                       const vector<ThresholdValue>& thresholdValues = {}, int seed = 0);
+                       const vector<ThresholdValue>& thresholdValues = {}, int seed = 0, bool isIncrementalCkpt = false);
 
         unique_ptr<vector<Tensor>> GetInfoVec(const EmbBaseInfo& info, ProcessedInfo type, bool &isEos);
 
@@ -163,6 +163,8 @@ namespace MxRec {
         void SendEos(const string& embName, int batchId, int channel, bool sendAllChannel);
 
         bool isRunning { false };
+
+        bool isIncrementalCheckpoint { false };
 
         std::mutex destroyMutex;
         std::mutex eosMutex;

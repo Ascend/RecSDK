@@ -108,18 +108,13 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     // 进行acl资源初始化，设置当前训练进程的device，为每张表创建数据传输通道
     hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
     hdTransfer->Init(embInfos, rankInfo.deviceId);
-//    hdTransfer->IncrmentalInit(embInfos, rankInfo.deviceId);
 
     hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
     hybridMgmtBlock->SetRankInfo(rankInfo);
 
     // 启动数据处理线程
-    KEY_PROCESS_INSTANCE->Initialize(rankInfo, embInfos, thresholdValues, seed);
-
-    // 当场景为增量保存加载时，初始化meta表和delta表（两张表合在一起）
-    if (isIncrementalCheckpoint) {
-        //
-    }
+    KEY_PROCESS_INSTANCE->Initialize(rankInfo, embInfos, thresholdValues, seed,
+                                     isIncrementalCheckpoint);
 
     isRunning = true;
     isL3StorageEnabled = rankInfo.isSSDEnabled;
@@ -180,7 +175,44 @@ void HybridMgmt::Save(const string& savePath, bool saveDelta)
     Checkpoint saveCkpt;
     saveData.keyCountMap = KEY_PROCESS_INSTANCE->GetKeyCountMap();
 
-    EmbeddingMgmt::Instance()->Save(savePath, saveDelta);
+    // TODO: 当续训的时候保存路径中的step不是从1开始，所以在下面判断step是否满足条件的时候会有问题，需要修改
+    int saveStep = GetStepFromPath(savePath);
+    if(isFirstSave){
+        for(auto& embInfo : mgmtEmbInfo) {
+            embBatchIdMap[embInfo.name] = saveStep;
+        }
+    }
+    LOG_INFO("0805 debug, save model at step {}.", saveStep);
+    std::unique_lock<std::mutex> lock(updateMtx);
+    checkConditionMet = false;
+    // TODO:增加超时判断
+    while (!checkConditionMet) {
+        cv.wait(lock, [this, saveStep] {
+            for(const auto& it : embBatchIdMap) {
+                if(it.second != saveStep) {
+                    return false;
+                }
+            }
+            LOG_INFO("0805 debug, step {} equal to batch id", saveStep);
+            checkConditionMet = true;
+            return true;
+        });
+    }
+    map<string, map<emb_key_t, KeyInfo>> keyInfoMap;
+    if (saveDelta) {
+        for(auto& delta : deltaMap) {
+            auto& deltaInfo = delta.second;
+            for(auto& it : deltaInfo) {
+                if (it.second.isChanged) {
+                    keyInfoMap[delta.first][it.first] = it.second;
+                }
+            }
+            LOG_INFO("0805 debug, table {} size {}.", delta.first, keyInfoMap[delta.first].size());
+        }
+    }
+    EmbeddingMgmt::Instance()->Save(savePath, saveDelta, keyInfoMap);
+    // 保存完key、embedding之后将deltaMap中的key重置（isChanged->false, recentCount->0）
+    resetDeltaInfo();
     if (!mgmtRankInfo.isDDR) {
         // hbm模式只保存必要的offset对应的内容
         offsetMapToSend = EmbeddingMgmt::Instance()->GetDeviceOffsets();
@@ -203,6 +235,7 @@ void HybridMgmt::Save(const string& savePath, bool saveDelta)
 
     // 执行保存操作
     saveCkpt.SaveModel(savePath, saveData, mgmtRankInfo, mgmtEmbInfo);
+    isFirstSave = false;
     LOG_INFO(MGMT + "End to save {} model.", saveModelType);
     // 数据处理线程释放锁
     KEY_PROCESS_INSTANCE->LoadSaveUnlock();
@@ -1109,11 +1142,12 @@ void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
                 }
                 auto ptr = reinterpret_cast<int64_t*>(acltdtGetDataAddrFromItem(aclData));
                 int64_t timeStamp = *ptr;
-                LOG_INFO("0731 receive {} offsets: {}.", embInfo.name, timeStamp);
-
-                // 从队列中获取keyCountVec
-                int batchId = hybridMgmtBlock->pythonBatchId[TRAIN_CHANNEL_ID];
-                EmbBaseInfo info = {.batchId=batchId, .channelId=TRAIN_CHANNEL_ID, .name=embInfo.name};
+                int64_t globalStep = *(ptr + 1);
+                LOG_INFO("0731 receive {} timeStamp: {}, global step: {}.", embInfo.name, timeStamp, globalStep);
+                TimeCost tmp;
+                // tensorflow获取的global step是从1开始的，但是在key process中batch id则是从0开始，因此，下面的info中的batchId需要用
+                // globalStep - 1
+                EmbBaseInfo info = {.batchId=static_cast<int>(globalStep-1), .channelId=TRAIN_CHANNEL_ID, .name=embInfo.name};
                 unique_ptr<vector<Tensor>> keyCountVecInfo =
                         KEY_PROCESS_INSTANCE->GetKCInfoVec(info);
                 auto keyCountVecTmp = keyCountVecInfo->at(0).flat<int64>();
@@ -1123,11 +1157,18 @@ void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
                 for(int64 i = 0; i < keyCountSize; ++i) {
                     keyCountVec.push_back(static_cast<int64_t>(keyCountVecTmp(i)));
                 }
+                LOG_INFO("0805 debug, process key count cost: {}", tmp.ElapsedMS());
                 LOG_INFO("0802 debug, emb table: {}, channel: {}, size is: {}, data: {}",
                          embInfo.name, TRAIN_CHANNEL_ID, keyCountSize, VectorToString(keyCountVec));
 
                 // 更新delta表
-                updateDeltaInfo(embInfo.name, keyCountVec, timeStamp, batchId);
+                TimeCost tmp1;
+                // TODO: updateDeltaInfo函数执行需要消耗比较多的时间，需要优化
+                std::lock_guard<std::mutex> lock(updateMtx);
+                updateDeltaInfo(embInfo.name, keyCountVec, timeStamp, globalStep);
+                embBatchIdMap[embInfo.name]++;
+                cv.notify_all();
+                LOG_INFO("0805 debug, update delta cost: {}", tmp1.ElapsedMS());
             }
 
             if (!isRunning) {
@@ -1137,26 +1178,32 @@ void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
     });
 }
 
-void HybridMgmt::updateDeltaInfo(const string& embName, vector<int64_t>& keyCountVec, int64_t timeStamp, int batchId)
+void HybridMgmt::updateDeltaInfo(const string& embName, vector<int64_t>& keyCountVec, int64_t timeStamp, int64_t batchId)
 {
     auto keyCountSize = keyCountVec.size();
+    auto& embMap = deltaMap[embName];
     for (int i = 0; i < keyCountSize; i = i + 2){
-        deltaMap[embName][keyCountVec.at(i)].totalCount += keyCountVec.at(i+1);
-        deltaMap[embName][keyCountVec.at(i)].recentCount += keyCountVec.at(i+1);
-        deltaMap[embName][keyCountVec.at(i)].isChanged = true;
-        deltaMap[embName][keyCountVec.at(i)].batchID = batchId;
-        deltaMap[embName][keyCountVec.at(i)].lastUseTime = timeStamp;
+        emb_key_t key = keyCountVec[i];
+        int64_t recentCount = keyCountVec[i+1];
+        KeyInfo& keyInfo = embMap[key];
+        keyInfo.totalCount += recentCount;
+        keyInfo.recentCount += recentCount;
+        keyInfo.isChanged = true;
+        keyInfo.batchID = batchId;
+        keyInfo.lastUseTime = timeStamp;
     }
     LOG_INFO("0802 debug, batchid: {}, delta map size: {}, emb {} size: {}", batchId, deltaMap.size(), embName,
              deltaMap[embName].size());
 }
 
-void HybridMgmt::resetDeltaInfo(const string &embName)
+void HybridMgmt::resetDeltaInfo()
 {
-    auto& embKeyCountInfo = deltaMap[embName];
-    for (auto& it : embKeyCountInfo) {
-        it.second.recentCount = 0;
-        it.second.isChanged = false;
+    for (const auto& embInfo : mgmtEmbInfo) {
+        auto& embKeyCountInfo = deltaMap[embInfo.name];
+        for (auto& it : embKeyCountInfo) {
+            it.second.recentCount = 0;
+            it.second.isChanged = false;
+        }
     }
 }
 

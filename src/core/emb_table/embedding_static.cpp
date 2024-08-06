@@ -73,12 +73,12 @@ int64_t EmbeddingStatic::capacity() const
     return this->devVocabSize;
 }
 
-void EmbeddingStatic::Save(const string& savePath, bool saveDelta)
+void EmbeddingStatic::Save(const string& savePath, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo)
 {
-    SaveKey(savePath, saveDelta);
+    SaveKey(savePath, saveDelta, keyInfo);
 }
 
-void EmbeddingStatic::SaveKey(const string& savePath, bool saveDelta)
+void EmbeddingStatic::SaveKey(const string& savePath, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo)
 {
     stringstream ss;
     ss << savePath << "/" << name << "/key/";
@@ -92,11 +92,15 @@ void EmbeddingStatic::SaveKey(const string& savePath, bool saveDelta)
     for (const auto& it: keyOffsetMap) {
         // 如果是保存delta模型，需要先从keyOffsetMap中提取deltaMap[name]中isChanged为true的key
         if (saveDelta) {
-            //
+            auto result = keyInfo.find(it.first);
+            if (result == keyInfo.end() || !result->second.isChanged) {
+                continue;
+            }
         }
         deviceKey.push_back(it.first);
         deviceOffset.push_back(it.second);
     }
+    LOG_INFO("0805 debug, device key size: {}, device offset size: {}.", deviceKey.size(), deviceOffset.size());
 
     if (fileSystemPtr_ == nullptr) {
         throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
