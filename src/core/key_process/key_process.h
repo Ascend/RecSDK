@@ -314,10 +314,9 @@ namespace MxRec {
 
         bool IsGetInfoVecEos(int batch, const string& embName, int channel);
 
-        bool IsGetUniqueKeysEos(const EmbBaseInfo& info, std::chrono::_V2::system_clock::time_point& startTime,
-                                map<string, int>& lookUpSwapInAddrsPushId);
+        bool IsGetUniqueKeysEos(const EmbBaseInfo& info, std::chrono::_V2::system_clock::time_point& startTime);
 
-        void SendEosTensor(const std::string& embName, int channel, bool sendAllChannel);
+        void SendEosTensor(const std::string& embName, int channel);
 
         std::thread StartEosMonitorThread(const EmbBaseInfo& info, bool& cancelMonitor);
     };

@@ -181,7 +181,6 @@ void HybridMgmt::Save(const string& savePath, bool saveDelta)
             embBatchIdMap[embInfo.name] = saveStep;
         }
     }
-    LOG_INFO("0805 debug, save model at step {}.", saveStep);
     std::unique_lock<std::mutex> lock(updateMtx);
     checkConditionMet = false;
     while (!checkConditionMet) {
@@ -191,7 +190,6 @@ void HybridMgmt::Save(const string& savePath, bool saveDelta)
                     return false;
                 }
             }
-            LOG_INFO("0805 debug, step {} equal to batch id", saveStep);
             checkConditionMet = true;
             return true;
         });
@@ -205,7 +203,6 @@ void HybridMgmt::Save(const string& savePath, bool saveDelta)
                     keyInfoMap[delta.first][it.first] = it.second;
                 }
             }
-            LOG_INFO("0805 debug, table {} size {}.", delta.first, keyInfoMap[delta.first].size());
         }
     }
     EmbeddingMgmt::Instance()->Save(savePath, saveDelta, keyInfoMap);

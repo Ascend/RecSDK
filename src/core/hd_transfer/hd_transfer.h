@@ -47,8 +47,8 @@ namespace MxRec {
         SWAP,
         SAVE_D2H,
         SAVE_H2D,
-        KEY_D2H,
-        INVALID
+        INVALID,
+        KEY_D2H
     };
 
     inline string TransferChannel2Str(TransferChannel e)
