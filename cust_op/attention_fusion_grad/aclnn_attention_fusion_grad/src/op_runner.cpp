@@ -1,12 +1,17 @@
-/**
- * @file op_runner.cpp
- *
- * Copyright (C) 2024. Huawei Technologies Co., Ltd. All rights reserved.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- */
+/* Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+        limitations under the License.
+==============================================================================*/
 
 #include "op_runner.h"
 
@@ -383,96 +388,4 @@ bool OpRunner::RunOp()
 
     (void)aclrtDestroyStream(stream);
     return true;
-}
-
-template <typename T>
-void DoPrintData(const T* data, size_t count, size_t elementsPerRow)
-{
-    assert(elementsPerRow != 0);
-    for (size_t i = 0; i < count; ++i) {
-        if (i % elementsPerRow == elementsPerRow - 1) {
-            std::cout << std::endl;
-        }
-    }
-}
-
-void DoPrintFp16Data(const aclFloat16* data, size_t count, size_t elementsPerRow)
-{
-    assert(elementsPerRow != 0);
-    for (size_t i = 0; i < count; ++i) {
-        if (i % elementsPerRow == elementsPerRow - 1) {
-            std::cout << std::endl;
-        }
-    }
-}
-
-void PrintData(const void* data, size_t count, aclDataType dataType, size_t elementsPerRow)
-{
-    if (data == nullptr) {
-        ERROR_LOG("Print data failed. data is nullptr");
-        return;
-    }
-
-    switch (dataType) {
-        case ACL_BOOL:
-            DoPrintData(reinterpret_cast<const bool*>(data), count, elementsPerRow);
-            break;
-        case ACL_INT8:
-            DoPrintData(reinterpret_cast<const int8_t*>(data), count, elementsPerRow);
-            break;
-        case ACL_UINT8:
-            DoPrintData(reinterpret_cast<const uint8_t*>(data), count, elementsPerRow);
-            break;
-        case ACL_INT16:
-            DoPrintData(reinterpret_cast<const int16_t*>(data), count, elementsPerRow);
-            break;
-        case ACL_UINT16:
-            DoPrintData(reinterpret_cast<const uint16_t*>(data), count, elementsPerRow);
-            break;
-        case ACL_INT32:
-            DoPrintData(reinterpret_cast<const int32_t*>(data), count, elementsPerRow);
-            break;
-        case ACL_UINT32:
-            DoPrintData(reinterpret_cast<const uint32_t*>(data), count, elementsPerRow);
-            break;
-        case ACL_INT64:
-            DoPrintData(reinterpret_cast<const int64_t*>(data), count, elementsPerRow);
-            break;
-        case ACL_UINT64:
-            DoPrintData(reinterpret_cast<const uint64_t*>(data), count, elementsPerRow);
-            break;
-        case ACL_FLOAT16:
-            DoPrintFp16Data(reinterpret_cast<const aclFloat16*>(data), count, elementsPerRow);
-            break;
-        case ACL_FLOAT:
-            DoPrintData(reinterpret_cast<const float*>(data), count, elementsPerRow);
-            break;
-        case ACL_DOUBLE:
-            DoPrintData(reinterpret_cast<const double*>(data), count, elementsPerRow);
-            break;
-        default:
-            ERROR_LOG("Unsupported type: %d", dataType);
-    }
-}
-
-void OpRunner::PrintInput(size_t index, size_t numElementsPerRow)
-{
-    if (index >= numInputs_) {
-        ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numInputs_);
-        return;
-    }
-
-    auto desc = opDesc_->inputDesc[index];
-    PrintData(hostInputs_[index], GetInputElementCount(index), aclGetTensorDescType(desc), numElementsPerRow);
-}
-
-void OpRunner::PrintOutput(size_t index, size_t numElementsPerRow)
-{
-    if (index >= numOutputs_) {
-        ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
-        return;
-    }
-
-    auto desc = opDesc_->outputDesc[index];
-    PrintData(hostOutputs_[index], GetOutputElementCount(index), aclGetTensorDescType(desc), numElementsPerRow);
 }

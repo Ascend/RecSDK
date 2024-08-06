@@ -83,7 +83,7 @@ public:
     /**
      * 保存单个表
      */
-    void Save(const string& name, const string& filePath);
+    void Save(const string& name, const string& filePath, const int pythonBatchId);
 
     /**
      * 保存所有表

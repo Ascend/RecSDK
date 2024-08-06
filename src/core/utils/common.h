@@ -606,41 +606,8 @@ enum class CkptDataType {
     KEY_COUNT_MAP = 13
 };
 
-static std::string CkptDataTypeName(CkptDataType type)
-{
-    switch (type) {
-        case CkptDataType::EMB_INFO:
-            return "EMB_INFO";
-        case CkptDataType::EMB_DATA:
-            return "EMB_DATA";
-        case CkptDataType::EMB_HASHMAP:
-            return "EMB_HASHMAP";
-        case CkptDataType::DEV_OFFSET:
-            return "DEV_OFFSET";
-        case CkptDataType::EMB_CURR_STAT:
-            return "EMB_CURR_STAT";
-        case CkptDataType::NDDR_OFFSET:
-            return "NDDR_OFFSET";
-        case CkptDataType::NDDR_FEATMAP:
-            return "NDDR_FEATMAP";
-        case CkptDataType::TABLE_2_THRESH:
-            return "TABLE_2_THRESH";
-        case CkptDataType::HIST_REC:
-            return "HIST_REC";
-        case CkptDataType::ATTRIBUTE:
-            return "ATTRIBUTE";
-        case CkptDataType::DDR_FREQ_MAP:
-            return "DDR_FREQ_MAP";
-        case CkptDataType::EXCLUDE_FREQ_MAP:
-            return "EXCLUDE_FREQ_MAP";
-        case CkptDataType::EVICT_POS:
-            return "EVICT_POS";
-        case CkptDataType::KEY_COUNT_MAP:
-            return "KEY_COUNT_MAP";
-        default:
-            return "UNKNOWN";
-    }
-}
+std::string CkptDataTypeName(CkptDataType type);
+
 
 enum CTRLogLevel {  // can't use enum class due to compatibility for AccCTR
     DEBUG = 0,
@@ -673,6 +640,8 @@ ostream& operator<<(ostream& ss, MxRec::CkptDataType type);
 bool CheckFilePermission(const string& filePath);
 
 int GetStepFromPath(const string& loadPath);
+
+string MakeKeyName(int id, const string& tableName, int channelId);
 }  // end namespace MxRec
 
 #define KEY_PROCESS "\033[45m[KeyProcess]\033[0m "

@@ -212,7 +212,6 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 }
 }
 
-
 namespace ge {
 constexpr int32_t SHAPE_DIMS = 3;
 constexpr int32_t DIM0 = 0;
@@ -248,7 +247,6 @@ static ge::graphStatus InferDtype(gert::InferDataTypeContext* context)
     return GRAPH_SUCCESS;
 }
 }
-
 
 namespace ops {
 class AttentionFusion : public OpDef {
