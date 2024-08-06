@@ -86,7 +86,6 @@ def get_id_offsets(max_lookup_vec_size: int, config: dict) -> Tuple[int, SwapInf
                 channel_name=f'{config.get(ASCAnchorAttr.TABLE_NAME.value)}'
                              f'_lookup_{config.get(ASCAnchorAttr.CHANNEL_ID.value)}')
             return id_offsets, swap_info
-        # TODO: output_types=[tf.int32] -> output_types=[tf.int64]
         [id_offsets] = npu_ops.gen_npu_ops.get_next(
             output_types=[tf.int32],
             output_shapes=[[max_lookup_vec_size]],
@@ -151,12 +150,9 @@ def get_preprocessed_tensor_for_asc(table, config):
         channel_name = f"{table_instance.table_name}_key_d2h_{TRAIN_CHANNEL_ID}"
         # 每一步训练消耗时间在几百毫秒，同时时间戳是一个整数（用秒表示），所以在每一步训练开始前记录时间和每一步训练结束时间差异不大，所以在这里记录时间
         time_stamp = tf.cast(tf.timestamp(), tf.int64)
-        # 将time_stamp转换为秩1的张量
         time_stamp_tensor = tf.expand_dims(time_stamp, axis=0)
-        # time_op = tf.constant([time_stamp], dtype=tf.int64)
         graph = ops.get_default_graph()
         global_step_tensor = get_global_step(graph)
-        # 确保 global_step_tensor 是秩1的张量
         global_step_tensor = tf.expand_dims(global_step_tensor, axis=0)
         send_op = tf.concat([time_stamp_tensor, global_step_tensor], axis=0)
         send_timestamp_op = npu_ops.outfeed_enqueue_op(channel_name=channel_name, inputs=[send_op])
