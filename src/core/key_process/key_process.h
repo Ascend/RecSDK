@@ -194,7 +194,6 @@ public:
     map<EmbNameT, std::vector<size_t>> evictPosMap{};
     map<EmbNameT, absl::flat_hash_map<emb_key_t, int>> hotKey{};
     map<EmbNameT, int> hotEmbTotCount;
-    ock::ctr::FactoryPtr factory{};
     int hotEmbUpdateStep = HOT_EMB_UPDATE_STEP_DEFAULT;
     bool isWithFAAE;
 
