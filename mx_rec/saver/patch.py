@@ -704,7 +704,7 @@ def save_checkpoint_saver_hook(self, session, step, save_delta=False):
         if listener.after_save(session, step):
             logging.info(
                 "A CheckpointSaverListener requested that training be stopped. "
-                "listener: {}".format(listener))
+                "listener: %s", listener)
             should_stop = True
     return should_stop
 

@@ -2140,7 +2140,7 @@ void HybridMgmt::GetDeltaModelKeys(const string& savePath, bool saveDelta,
         while (!checkConditionMet) {
             keyCountUpdateCv.wait(lock, [this, saveStep] {
                 for (const auto& it : keyBatchIdMap) {
-                    if(it.second != saveStep) {
+                    if (it.second != saveStep) {
                         return false;
                     }
                 }
@@ -2150,7 +2150,7 @@ void HybridMgmt::GetDeltaModelKeys(const string& savePath, bool saveDelta,
         }
 
         if (saveDelta) {
-            for(auto& delta : deltaMap) {
+            for (auto& delta : deltaMap) {
                 auto& deltaInfo = delta.second;
                 for (auto& it : deltaInfo) {
                     if (it.second.isChanged) {
