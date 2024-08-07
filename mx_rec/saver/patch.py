@@ -51,7 +51,8 @@ from mpi4py import MPI
 
 from mx_rec.saver.saver import Saver as SparseSaver
 from mx_rec.saver.saver import check_file_system_is_valid, should_write_data, update_model_index, \
-    write_delta_export_time_ms, get_model_type_by_version, get_base_and_delta_models, read_base_delta_and_write
+    write_delta_export_time_ms, get_model_type_by_version, get_base_and_delta_models, read_base_delta_and_write, \
+    clear_delta_models
 from mx_rec.util.communication.hccl_ops import get_rank_id
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, StringValidator, OptionalIntValidator, \
@@ -290,9 +291,9 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
             write_delta_export_time_ms(save_dir, {delta_model_version: int(save_cost_time * 1000)})
         update_model_index(save_dir, model_index_info)
 
-    # TODO: 当保存base的时候清空delta目录
-    # if not save_delta:
-    #     clear_delta_model()
+        # 当保存base的时候清空delta目录
+        if not save_delta:
+            clear_delta_models(save_dir)
     return model_checkpoint_path
 
 
@@ -301,23 +302,25 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
     ("save_path", StringValidator, {"min_len": 1, "max_len": 150}, ["check_string_length"]),
 ])
 def restore(self, sess, save_path):
+    """
+    不开增量保存加载：和原来的加载逻辑一致，直接加载最新的model即可
+    开启增量保存加载：
+    1、指定版本：加载对应版本的model，获取对应model的类型
+    2、不指定版本：直接加载最新的model，获取对应model的类型
+    3、当拿到需要加载的模型类型时，需要分情况：
+    全量（base）model：直接去加载对应目录下的模型即可
+    增量（delta）model：先找到对应最近的全量（base）model，读取其数据；然后找到这个全量（base）model之后的所有增量（delta）model，依次
+    加载增量（delta）model，即读取其中的数据并将其更新的加载起来的全量（base）model中，然后创建一个临时目录，用于保存加载起来的model。
+    :param self:
+    :param sess: tf session
+    :param save_path: restore model path
+    :return:
+    """
     if save_path is None:
         raise ValueError("Can't load save_path when it is None.")
 
-    # 加载场景
-    # 不开增量保存加载：和原来的加载逻辑一致，直接加载最新的model即可
-    # 开启增量保存加载：
-    # 1、指定版本：加载对应版本的model，获取对应model的类型
-    # 2、不指定版本：直接加载最新的model，获取对应model的类型
-    # 3、当拿到需要加载的模型类型时，需要分情况：
-    # 全量（base）model：直接去加载对应目录下的模型即可
-    # 增量（delta）model：先找到对应最近的全量（base）model，读取其数据；然后找到这个全量（base）model之后的所有增量（delta）model，依次
-    # 加载增量（delta）model，即读取其中的数据并将其更新的加载起来的全量（base）model中，然后创建一个临时目录，用于保存加载起来的model。
-
     is_incremental_checkpoint = ConfigInitializer.get_instance().is_incremental_checkpoint
     restore_model_version = ConfigInitializer.get_instance().restore_model_version
-    is_first_restore = ConfigInitializer.get_instance().is_first_restore
-    model_type = "base"
 
     directory, base_name = os.path.split(save_path)
     if is_incremental_checkpoint:
@@ -326,7 +329,6 @@ def restore(self, sess, save_path):
             restore_model_version = base_name.split("-")[1]
             model_type = get_model_type_by_version(directory, restore_model_version)
             if model_type == "delta":
-                # 加载delta
                 # 获取离此delta model最近的一个base model，以及这个base model和此delta model之间所有的delta models（包括这个delta
                 # model）
                 base_model, delta_models = get_base_and_delta_models(directory, restore_model_version)
@@ -338,7 +340,6 @@ def restore(self, sess, save_path):
             base_name = base_name.split("-")[0] + "-" + restore_model_version
             model_type = get_model_type_by_version(directory, restore_model_version)
             if model_type == "delta":
-                # 加载delta
                 # 获取离此delta model最近的一个base model，以及这个base model和此delta model之间所有的delta models（包括这个delta
                 # model）
                 base_model, delta_models = get_base_and_delta_models(directory, restore_model_version)

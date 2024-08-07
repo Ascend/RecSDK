@@ -17,6 +17,8 @@
 import json
 import os
 import threading
+import glob
+import shutil
 from collections import defaultdict
 from typing import Dict, List
 
@@ -837,3 +839,13 @@ def write_base_table_to_file(save_dir: str, base_table: dict):
                 file.write(attribute.tostring())
             with tf.io.gfile.GFile(target_data_dir, "wb") as file:
                 file.write(v.tostring())
+
+
+def clear_delta_models(save_dir: str):
+    delta_directories = glob.glob(os.path.join(save_dir, 'delta-sparse*'))
+    for delta_dir in delta_directories:
+        if os.path.isdir(delta_dir):
+            tf.io.gfile.rmtree(delta_dir)
+            logger.info(f"Deleted directory: {delta_dir}")
+        else:
+            logger.info(f"Not a directory or already deleted: {delta_dir}")
