@@ -16,37 +16,37 @@ See the License for the specific language governing permissions and
 #ifndef MX_REC_KEY_PROCESS_H
 #define MX_REC_KEY_PROCESS_H
 
-#include <vector>
 #include <map>
 #include <memory>
+#include <shared_mutex>
 #include <string>
 #include <thread>
-#include <shared_mutex>
+#include <vector>
 
-#include <mpi.h>
-#include <absl/container/flat_hash_map.h>
-#include "ock_ctr_common/include/factory.h"
+#include "mpi.h"
 
-#include "utils/common.h"
+#include "absl/container/flat_hash_map.h"
 #include "feature_admit_and_evict.h"
 #include "hybrid_mgmt/hybrid_mgmt_block.h"
+#include "ock_ctr_common/include/factory.h"
+#include "utils/common.h"
 #include "utils/singleton.h"
 
 namespace MxRec {
 using namespace std;
 
-template<class T>
+template <class T>
 struct Cmp {
     bool operator()(const T& a, const T& b) const
     {
-        return get<int>(a) > get<int>(b); // batch id order
+        return get<int>(a) > get<int>(b);  // batch id order
     }
 };
 
-template<class T>
+template <class T>
 using heap_t = priority_queue<T, deque<T>, Cmp<T>>;
 
-template<class T>
+template <class T>
 using info_list_t = map<EmbNameT, array<heap_t<T>, MAX_QUEUE_NUM>>;
 
 enum class ProcessedInfo {
@@ -68,14 +68,12 @@ private:
     const char* errorMessage;
 };
 
-constexpr int MPI_ABNORMAL_SEND_VALUE = 0; // MPI异常通信时发送0
-constexpr int MPI_NORMAL_SEND_VALUE = 1; // MPI正常通信时发送1
+constexpr int MPI_ABNORMAL_SEND_VALUE = 0;  // MPI异常通信时发送0
+constexpr int MPI_NORMAL_SEND_VALUE = 1;    // MPI正常通信时发送1
 
-class EmptyList : public std::exception {
-};
+class EmptyList : public std::exception {};
 
-class WrongListTop : public std::exception {
-};
+class WrongListTop : public std::exception {};
 
 class KeyProcess {
 public:
@@ -86,7 +84,7 @@ public:
 
     unique_ptr<vector<Tensor>> GetKCInfoVec(const EmbBaseInfo& info);
 
-    vector<uint64_t> GetUniqueKeys(const EmbBaseInfo &info, bool &isEos);
+    vector<uint64_t> GetUniqueKeys(const EmbBaseInfo& info, bool& isEos);
 
     vector<int32_t> GetRestoreVecSec(const EmbBaseInfo& info);
 
@@ -133,8 +131,8 @@ public:
 
         for (size_t i = 0; i < lookupKeys.size(); ++i) {
             int64_t key = lookupKeys[i];
-            if (rankInfo.useStatic && (
-                    (!rankInfo.useDynamicExpansion && key == -1) || (rankInfo.useDynamicExpansion && key == 0))) {
+            if (rankInfo.useStatic &&
+                ((!rankInfo.useDynamicExpansion && key == -1) || (rankInfo.useDynamicExpansion && key == 0))) {
                 continue;
             }
 
@@ -162,9 +160,9 @@ public:
 
     void SendEos(const string& embName, int batchId, int channel);
 
-    bool isRunning { false };
+    bool isRunning {false};
 
-    bool isIncrementalCheckpoint { false };
+    bool isIncrementalCheckpoint {false};
 
     std::mutex destroyMutex;
     std::mutex eosMutex;
@@ -173,22 +171,22 @@ public:
         return embInfos.find(embName) != embInfos.end();
     };
 
-GTEST_PRIVATE:
+    GTEST_PRIVATE:
 
-    int Start();
+        int Start();
 
-    template<class T>
-    T GetInfo(info_list_t<T>& list, const EmbBaseInfo &info);
+    template <class T>
+    T GetInfo(info_list_t<T>& list, const EmbBaseInfo& info);
 
-    template<class T>
+    template <class T>
     T GetKeyCountVec(info_list_t<T>& list, const EmbBaseInfo& info);
 
     RankInfo rankInfo;
     map<EmbNameT, EmbInfo> embInfos;
     MPI_Comm comm[MAX_CHANNEL_NUM][MAX_KEY_PROCESS_THREAD];
-    std::mutex mut {};
-    vector<std::unique_ptr<std::thread>> procThreads {};
-    std::mutex loadSaveMut[MAX_CHANNEL_NUM][MAX_KEY_PROCESS_THREAD] {};
+    std::mutex mut{};
+    vector<std::unique_ptr<std::thread>> procThreads{};
+    std::mutex loadSaveMut[MAX_CHANNEL_NUM][MAX_KEY_PROCESS_THREAD]{};
     info_list_t<LookupKeyT> lookupKeysList;
     info_list_t<UinqueKeyT> uniqueKeysList;
     info_list_t<RestoreVecSecT> restoreVecSecList;
@@ -197,21 +195,21 @@ GTEST_PRIVATE:
     info_list_t<TensorInfoT> infoList;
     info_list_t<TensorInfoT> keyCountInfoList;
     info_list_t<TensorInfoT> all2AllList;
-    map<EmbNameT, size_t> maxOffset {};
-    map<EmbNameT, absl::flat_hash_map<emb_key_t, int64_t>> keyOffsetMap {};
-    map<EmbNameT, absl::flat_hash_map<emb_key_t, size_t>> keyCountMap {};
-    FeatureAdmitAndEvict m_featureAdmitAndEvict {};
-    map<EmbNameT, std::vector<size_t>> evictPosMap {};
-    map<EmbNameT, absl::flat_hash_map<emb_key_t, int>> hotKey {};
+    map<EmbNameT, size_t> maxOffset{};
+    map<EmbNameT, absl::flat_hash_map<emb_key_t, int64_t>> keyOffsetMap{};
+    map<EmbNameT, absl::flat_hash_map<emb_key_t, size_t>> keyCountMap{};
+    FeatureAdmitAndEvict m_featureAdmitAndEvict{};
+    map<EmbNameT, std::vector<size_t>> evictPosMap{};
+    map<EmbNameT, absl::flat_hash_map<emb_key_t, int>> hotKey{};
     map<EmbNameT, int> hotEmbTotCount;
     int hotEmbUpdateStep = HOT_EMB_UPDATE_STEP_DEFAULT;
     bool isWithFAAE;
 
     // for end-of-sequence case
-    bool isNeedSendEos[2] = {false, false}; // 表示各表通道0、1的eos状态
+    bool isNeedSendEos[2] = {false, false};  // 表示各表通道0、1的eos状态
     atomic<int> readySendEosCnt[2];
     atomic<int> finishSendEosCnt[2];
-    const double timeoutGetUniqueKeys = 30.0;  // 如果超时仍未获取到数据将触发EOS
+    const double timeoutGetUniqueKeys = 30.0;      // 如果超时仍未获取到数据将触发EOS
     const double timeoutGetUniqueKeysEmpty = 1.0;  // 如果超时仍未获取到数据将打印信息
 
     void InitHotEmbTotCount(const EmbInfo& info, const RankInfo& rInfo);
@@ -222,11 +220,11 @@ GTEST_PRIVATE:
 
     bool KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel, int threadId);
 
-    bool KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT> &batch, ock::ctr::UniquePtr& unique,
-                                        int channel, int threadId);
+    bool KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch, ock::ctr::UniquePtr& unique,
+                                            int channel, int threadId);
 
-    tuple<KeysT, vector<int>, vector<int>> ProcessSplitKeys(const unique_ptr<EmbBatchT>& batch,
-            int id, vector<KeysT>& splitKeys);
+    tuple<KeysT, vector<int>, vector<int>> ProcessSplitKeys(const unique_ptr<EmbBatchT>& batch, int id,
+                                                            vector<KeysT>& splitKeys);
 
     void GetUniqueConfig(ock::ctr::UniqueConf& uniqueConf);
 
@@ -236,9 +234,9 @@ GTEST_PRIVATE:
     void ProcessBatchWithFastUnique(const unique_ptr<EmbBatchT>& batch, ock::ctr::UniquePtr& unique,
                                        int id, UniqueInfo& uniqueInfoOut);
 
-    size_t GetKeySize(const unique_ptr<EmbBatchT> &batch);
+    size_t GetKeySize(const unique_ptr<EmbBatchT>& batch);
 
-    void All2All(vector<int>& sc, int id, const unique_ptr<EmbBatchT> &batch, KeySendInfo& keySendInfo,
+    void All2All(vector<int>& sc, int id, const unique_ptr<EmbBatchT>& batch, KeySendInfo& keySendInfo,
                  All2AllInfo& all2AllInfoOut);
 
     auto HashSplit(const unique_ptr<EmbBatchT>& batch) const -> tuple<vector<KeysT>, vector<int32_t>>;
@@ -253,8 +251,8 @@ GTEST_PRIVATE:
 
     vector<int> GetScAll(const vector<int>& keyScLocal, int commId, const unique_ptr<EmbBatchT>& batch);
 
-    void GetScAllForUnique(const vector<int>& keyScLocal, int commId, const unique_ptr<EmbBatchT> &batch,
-                           vector<int> &scAllOut);
+    void GetScAllForUnique(const vector<int>& keyScLocal, int commId, const unique_ptr<EmbBatchT>& batch,
+                           vector<int>& scAllOut);
 
     void Key2Offset(const EmbNameT& embName, KeysT& splitKey, int channel);
 
@@ -272,10 +270,10 @@ GTEST_PRIVATE:
     void UpdateHotMap(absl::flat_hash_map<emb_key_t, int>& keyCountMapByEmbName, uint32_t count, bool refresh,
                       const string& embName);
 
-    void UpdateHotMapForUnique(const KeysT &keySend, const vector<int32_t> &keyCount,
-                               uint32_t count, bool refresh, const string& embName);
+    void UpdateHotMapForUnique(const KeysT& keySend, const vector<int32_t>& keyCount, uint32_t count, bool refresh,
+                               const string& embName);
 
-    void HandleHotAndSendCount(const unique_ptr<EmbBatchT> &batch, UniqueInfo& uniqueInfoOut,
+    void HandleHotAndSendCount(const unique_ptr<EmbBatchT>& batch, UniqueInfo& uniqueInfoOut,
                                    KeySendInfo& keySendInfo, vector<int>& sc, vector<int>& splitSize);
 
     void PushResultHBM(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors);
@@ -290,20 +288,20 @@ GTEST_PRIVATE:
     void AddCountStartToHotPos(vector<KeysT>& splitKeys, vector<int>& hotPos, const vector<int>& hotPosDev,
                                const unique_ptr<EmbBatchT>& batch);
 
-    void ComputeHotPos(const unique_ptr<EmbBatchT> &batch, absl::flat_hash_map<emb_key_t, int> &hotMap,
-                       vector<int> &hotPos, vector<int32_t> &restore, const int hotOffset) const;
+    void ComputeHotPos(const unique_ptr<EmbBatchT>& batch, absl::flat_hash_map<emb_key_t, int>& hotMap,
+                       vector<int>& hotPos, vector<int32_t>& restore, const int hotOffset) const;
 
-    vector<uint32_t> GetCountRecv(const unique_ptr<EmbBatchT>& batch, int id,
-                                  vector<vector<uint32_t>>& keyCount, vector<int> scAll, vector<int> ss);
+    vector<uint32_t> GetCountRecv(const unique_ptr<EmbBatchT>& batch, int id, vector<vector<uint32_t>>& keyCount,
+                                  vector<int> scAll, vector<int> ss);
 
     void HashSplitHelper(const unique_ptr <EmbBatchT>& batch, vector <KeysT>& splitKeys,
                          vector <int32_t>& restore, vector <int32_t>& hotPos,
                          vector <vector<uint32_t>>& keyCount, vector<emb_key_t>& keyCountVec);
 
-    template<class T>
+    template <class T>
     inline vector<T> Count2Start(const vector<T>& count) const
     {
-        vector<T> start = { 0 };
+        vector<T> start = {0};
         for (size_t i = 0; i < count.size() - 1; ++i) {
             start.push_back(count[i] + start.back());
         }
@@ -322,6 +320,6 @@ GTEST_PRIVATE:
 };
 
 #define KEY_PROCESS_INSTANCE Singleton<KeyProcess>::GetInstance()
-} // end namespace MxRec
+}  // end namespace MxRec
 
-#endif // MX_REC_KEY_PROCESS_H
+#endif  // MX_REC_KEY_PROCESS_H
