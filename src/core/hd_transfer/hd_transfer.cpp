@@ -277,8 +277,7 @@ size_t HDTransfer::RecvOffsetsAcl(TransferChannel channel, int channelId, const 
 {
     EASY_FUNCTION()
     size_t ret = 0;
-    string recvName;
-    recvName = StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channel).c_str(), channelId);
+    string recvName = StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channel).c_str(), channelId);
     LOG_DEBUG("hd transfer try recv:{}", recvName);
     TimeCost tc = TimeCost();
     if (aclDatasetsForIncrementalCkpt[embName] == nullptr) {

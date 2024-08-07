@@ -920,8 +920,8 @@ tuple<vector<KeysT>, vector<int32_t>, vector<vector<uint32_t>>> KeyProcess::Hash
     return {splitKeys, restore, keyCount};
 }
 
-tuple<vector<KeysT>, vector<int32_t>, vector<int>, vector<emb_key_t>> KeyProcess::HotHashSplit(
-        const unique_ptr<EmbBatchT>& batch)
+tuple<vector<KeysT>, vector<int32_t>, vector<int>, vector<emb_key_t>> KeyProcess::HotHashSplit(const
+unique_ptr<EmbBatchT>& batch)
 {
     EASY_FUNCTION(profiler::colors::Gold)
     emb_key_t* batchData = batch->sample.data();
