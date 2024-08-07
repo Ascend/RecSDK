@@ -440,7 +440,7 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
 
     // 将keyCountVec放进tensor里并推到一个队列里
     auto keyCountTensors = make_unique<vector<Tensor>>();
-    if (isIncrementalCheckpoint){
+    if (isIncrementalCheckpoint) {
         keyCountTensors->push_back(Vec2TensorI64(keyCountVec));
     }
 
@@ -542,7 +542,8 @@ void KeyProcess::PushKeyCountHBM(unique_ptr<EmbBatchT>& batch, unique_ptr<vector
 {
     std::unique_lock<std::mutex> lockGuard(mut);
     keyCountStorage.push_front(move(tensors));
-    keyCountInfoList[batch->name][batch->channel].push(make_tuple(batch->batchId, batch->name, keyCountStorage.begin()));
+    keyCountInfoList[batch->name][batch->channel].push(make_tuple(batch->batchId, batch->name,
+                                                                  keyCountStorage.begin()));
     lockGuard.unlock();
     LOG_INFO("Push key count to list success.");
 }
@@ -919,7 +920,8 @@ tuple<vector<KeysT>, vector<int32_t>, vector<vector<uint32_t>>> KeyProcess::Hash
     return {splitKeys, restore, keyCount};
 }
 
-tuple<vector<KeysT>, vector<int32_t>, vector<int>, vector<emb_key_t>> KeyProcess::HotHashSplit(const unique_ptr<EmbBatchT>& batch)
+tuple<vector<KeysT>, vector<int32_t>, vector<int>, vector<emb_key_t>> KeyProcess::HotHashSplit(
+        const unique_ptr<EmbBatchT>& batch)
 {
     EASY_FUNCTION(profiler::colors::Gold)
     emb_key_t* batchData = batch->sample.data();
@@ -970,17 +972,14 @@ tuple<vector<KeysT>, vector<int32_t>, vector<int>, vector<emb_key_t>> KeyProcess
         }
         uKey[key] = restore[i];
     }
-
     if (isIncrementalCheckpoint) {
-        for(auto& it : keyCountOneBatch) {
+        for (auto& it : keyCountOneBatch) {
             keyCountVec.emplace_back(it.first);
             keyCountVec.emplace_back(it.second);
         }
     }
-
-    LOG_INFO(KEY_PROCESS "0801 debug, hot hash split.batch id: {}, batch name: {}, channel: {}, kc size: {}, data: {}",
+    LOG_INFO(KEY_PROCESS "Hot hash split, batch id: {}, batch name: {}, channel: {}, kc size: {}, data: {}",
              batch->batchId, batch->name, batch->channel, keyCountVec.size(), VectorToString(keyCountVec));
-
     if (GlogConfig::gStatOn) {
         size_t uniqueKeyNum = 0;
         for (int devId = 0; devId < rankInfo.rankSize; ++devId) {

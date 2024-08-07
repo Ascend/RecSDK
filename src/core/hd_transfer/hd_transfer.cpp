@@ -134,17 +134,17 @@ void HDTransfer::CreateChannel(const uint32_t localRankId, const string& embName
 #endif
 }
 
-void HDTransfer::CreateChannelForIncrementalCkpt(const uint32_t localRankId, const string& embName, const int channelNum)
+void HDTransfer::CreateChannelForIncrementalCkpt(const uint32_t localRankId, const string& embName,
+                                                 const int channelNum)
 {
     int channelSize = GlobalEnv::hdChannelSize;
-    LOG_INFO("user config all2all restore lookup channel size:{}", channelSize);
+    LOG_INFO("User config send timestamp and global step channel size:{}.", channelSize);
     int c = static_cast<int>(TransferChannel::KEY_D2H);
     auto channel = static_cast<TransferChannel>(c);
-    std::string sendName;
-    sendName = StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channel).c_str(), channelNum);
+    std::string sendName = StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channel).c_str(),
+                                        channelNum);
     transferChannels[sendName] = TDT_CREATE_CHANNEL(localRankId, sendName.c_str(), PING_PONG_SIZE);
-    LOG_INFO("create channel:{} {}", sendName, static_cast<void*>(transferChannels[sendName]));
-
+    LOG_INFO("Create channel:{} {}.", sendName, static_cast<void*>(transferChannels[sendName]));
 }
 
 /// 将tensor发送到channel

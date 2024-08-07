@@ -740,8 +740,8 @@ def get_model_type_by_version(save_dir: str, model_version: str):
     for model_index in model_index_list:
         try:
             model_version_int = int(model_version)
-        except ValueError:
-            raise ValueError("Can not transfer %s to integer.", model_version)
+        except ValueError as err:
+            raise ValueError("Can not transfer %s to integer.", model_version) from err
         if model_index[GLOBAL_STEP_STR] == model_version_int:
             model_type = model_index["type"]
             return model_type

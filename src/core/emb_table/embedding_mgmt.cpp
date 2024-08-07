@@ -144,13 +144,13 @@ void EmbeddingMgmt::Save(const string& filePath, const int pythonBatchId, bool s
     vector<future<void>> futures;
     for (auto& tablePair: embeddings) {
         map<emb_key_t, KeyInfo> keyInfo;
-        if(saveDelta){
+        if (saveDelta) {
             keyInfo = keyInfoMap.at(tablePair.first);
         }
         futures.emplace_back(
-            std::async(std::launch::async, [table = tablePair.second, filePath, pythonBatchId,
-                                            saveDelta,keyInfo] { table->Save(filePath, pythonBatchId,
-                                                                             saveDelta, keyInfo); }));
+            std::async(std::launch::async,
+                       [table = tablePair.second, filePath, pythonBatchId, saveDelta,
+                        keyInfo] { table->Save(filePath, pythonBatchId, saveDelta, keyInfo); }));
     }
     for (auto& f: futures) {
         f.get();  // get() will repost exception if happened
