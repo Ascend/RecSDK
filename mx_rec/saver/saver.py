@@ -717,23 +717,23 @@ def update_model_index(save_dir: str, model_index: Dict[str, Union[str, int]]):
     if not tf.io.gfile.exists(model_index_file):
         model_index_list = []
     else:
-        with tf.io.gfile.GFile(model_index_file, "r", encoding="utf-8") as f:
+        with tf.io.gfile.GFile(model_index_file, "r") as f:
             model_index_list = json.load(f)
     model_index_list.append(model_index)
-    with tf.io.gfile.GFile(model_index_file, "w", encoding="utf-8") as f:
+    with tf.io.gfile.GFile(model_index_file, "w") as f:
         json.dump(model_index_list, f, ensure_ascii=False, separators=(",", ": "), indent=4)
 
 
 def write_delta_export_time_ms(save_dir: str, delta_export_time_ms: dict):
     delta_export_time_ms_file = os.path.join(save_dir, "delta_export_time_ms.json")
-    with tf.io.gfile.GFile(delta_export_time_ms_file, "w", encoding="utf-8") as f:
+    with tf.io.gfile.GFile(delta_export_time_ms_file, "w") as f:
         json.dump(delta_export_time_ms, f, indent=4)
 
 
 def get_model_type_by_version(save_dir: str, model_version: str):
     model_index_file = os.path.join(save_dir, "model_index.json")
     validate_read_file(model_index_file)
-    with tf.io.gfile.GFile(model_index_file, "r", encoding="utf-8") as f:
+    with tf.io.gfile.GFile(model_index_file, "r") as f:
         model_index_list = json.load(f)
 
     model_type = None
@@ -751,7 +751,7 @@ def get_model_type_by_version(save_dir: str, model_version: str):
 def get_base_and_delta_models(save_dir: str, model_version: str):
     model_index_file = os.path.join(save_dir, "model_index.json")
     validate_read_file(model_index_file)
-    with tf.io.gfile.GFile(model_index_file, "r", encoding="utf-8") as f:
+    with tf.io.gfile.GFile(model_index_file, "r") as f:
         model_index_list = json.load(f)
         model_index_list.reverse()
 
