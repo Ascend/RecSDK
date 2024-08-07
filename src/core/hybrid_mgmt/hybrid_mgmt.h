@@ -38,6 +38,7 @@ See the License for the specific language governing permissions and
 #include "utils/singleton.h"
 #include "utils/task_queue.h"
 #include "utils/time_cost.h"
+#include "utils/thread_pool.h"
 
 namespace MxRec {
 using namespace std;
@@ -110,11 +111,11 @@ public:
 
     void FetchDeviceEmb();
 
-    void ProcessEmbInfoHBM(const EmbBaseInfo& info, bool& remainBatchOut, bool isGrad);
+    bool ProcessEmbInfoHBM(const EmbBaseInfo& info, bool isGrad);
 
-    void ProcessEmbInfoDDR(const EmbBaseInfo& info, bool& remainBatchOut);
+    bool ProcessEmbInfoDDR(const EmbBaseInfo& info);
 
-    void ProcessEmbInfoL3Storage(const EmbBaseInfo& info, bool& remainBatchOut);
+    bool ProcessEmbInfoL3Storage(const EmbBaseInfo& info);
 
     void BackUpTrainStatus();
 
@@ -165,6 +166,8 @@ public:
 
     std::mutex saveMutex;
     std::condition_variable cvCheckSave;
+
+    unique_ptr<ThreadPool> threadPool;
 
     void SetFeatureTypeForLoad(vector<CkptFeatureType>& loadFeatures);
 
