@@ -216,7 +216,7 @@ private:
     bool isBackUpTrainStatus = false; // whether the train state has been backed up
     bool isIncrementalCkpt;
     map<string, map<emb_key_t, KeyInfo>> deltaMap;
-    map<string, int> embBatchIdMap;
+    map<string, int> keyBatchIdMap;
     bool isFirstSave = true;
     std::mutex updateMtx;
     std::condition_variable cv;

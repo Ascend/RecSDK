@@ -449,7 +449,9 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
         PushGlobalUniqueTensors(tensors, lookupKeys, channel);
         tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(lookupKeys) : Vec2TensorI32(lookupKeys));
         PushResultHBM(batch, move(tensors));
-        PushKeyCountHBM(batch, move(keyCountTensors));
+        if (isIncrementalCheckpoint) {
+            PushKeyCountHBM(batch, move(keyCountTensors));
+        }
     } else {
         std::vector<uint64_t> lookupKeysUint(lookupKeys.begin(), lookupKeys.end());
         vector<uint64_t> uniqueKeys;
@@ -540,7 +542,7 @@ void KeyProcess::PushKeyCountHBM(unique_ptr<EmbBatchT>& batch, unique_ptr<vector
     keyCountStorage.push_front(move(tensors));
     keyCountInfoList[batch->name][batch->channel].push(make_tuple(batch->batchId, batch->name, keyCountStorage.begin()));
     lockGuard.unlock();
-    LOG_INFO("0802 debug, push key count to list success.");
+    LOG_INFO("Push key count to list success.");
 }
 
 /*
@@ -938,7 +940,9 @@ tuple<vector<KeysT>, vector<int32_t>, vector<int>, vector<emb_key_t>> KeyProcess
         if (batch->batchId % hotEmbUpdateStep == 0) {
             keyCountMapByEmbName[key]++;
         }
-        keyCountOneBatch[key]++;
+        if (isIncrementalCheckpoint) {
+            keyCountOneBatch[key]++;
+        }
         emb_key_t devId = abs(key % static_cast<emb_key_t>(rankInfo.rankSize));
         auto result = uKey.find(key);
         if (result != uKey.end()) {  // // already in splitKeys
