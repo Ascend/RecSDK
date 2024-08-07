@@ -160,7 +160,7 @@ public:
 
     void SendEos(const string& embName, int batchId, int channel);
 
-    bool isRunning {false};
+    bool isRunning{false};
 
     bool isIncrementalCheckpoint {false};
 
@@ -171,9 +171,10 @@ public:
         return embInfos.find(embName) != embInfos.end();
     };
 
-    GTEST_PRIVATE:
+    GTEST_PRIVATE :
 
-        int Start();
+        int
+        Start();
 
     template <class T>
     T GetInfo(info_list_t<T>& list, const EmbBaseInfo& info);
@@ -220,8 +221,8 @@ public:
 
     bool KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel, int threadId);
 
-    bool KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch, ock::ctr::UniquePtr& unique,
-                                            int channel, int threadId);
+    bool KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch, ock::ctr::UniquePtr& unique, int channel,
+                                            int threadId);
 
     tuple<KeysT, vector<int>, vector<int>> ProcessSplitKeys(const unique_ptr<EmbBatchT>& batch, int id,
                                                             vector<KeysT>& splitKeys);
@@ -229,10 +230,10 @@ public:
     void GetUniqueConfig(ock::ctr::UniqueConf& uniqueConf);
 
     void InitializeUnique(ock::ctr::UniqueConf& uniqueConf, size_t& preBatchSize, bool& uniqueInitialize,
-                              const unique_ptr <EmbBatchT>& batch, ock::ctr::UniquePtr& unique);
+                          const unique_ptr <EmbBatchT>& batch, ock::ctr::UniquePtr& unique);
 
-    void ProcessBatchWithFastUnique(const unique_ptr<EmbBatchT>& batch, ock::ctr::UniquePtr& unique,
-                                       int id, UniqueInfo& uniqueInfoOut);
+    void ProcessBatchWithFastUnique(const unique_ptr<EmbBatchT>& batch, ock::ctr::UniquePtr& unique, int id,
+                                    UniqueInfo& uniqueInfoOut);
 
     size_t GetKeySize(const unique_ptr<EmbBatchT>& batch);
 
@@ -246,8 +247,8 @@ public:
 
     void PaddingAlltoallVC(vector<KeysT>& splitKeys) const;
 
-    tuple<vector<KeysT>, vector<int32_t>, vector<vector<uint32_t>>>
-    HashSplitWithFAAE(const unique_ptr<EmbBatchT>& batch) const;
+    tuple<vector<KeysT>, vector<int32_t>, vector<vector<uint32_t>>> HashSplitWithFAAE(
+            const unique_ptr<EmbBatchT>& batch) const;
 
     vector<int> GetScAll(const vector<int>& keyScLocal, int commId, const unique_ptr<EmbBatchT>& batch);
 
@@ -258,8 +259,8 @@ public:
 
     unique_ptr<EmbBatchT> GetBatchData(int channel, int commId) const;
 
-    void BuildRestoreVec(const unique_ptr<EmbBatchT>& batch, const vector<int>& blockOffset,
-                         vector<int>& restoreVec, int hotPosSize = 0) const;
+    void BuildRestoreVec(const unique_ptr<EmbBatchT>& batch, const vector<int>& blockOffset, vector<int>& restoreVec,
+                         int hotPosSize = 0) const;
 
     void SendA2A(const vector<int>& a2aInfo, const string& embName, int channel, int batch);
 
@@ -273,8 +274,8 @@ public:
     void UpdateHotMapForUnique(const KeysT& keySend, const vector<int32_t>& keyCount, uint32_t count, bool refresh,
                                const string& embName);
 
-    void HandleHotAndSendCount(const unique_ptr<EmbBatchT>& batch, UniqueInfo& uniqueInfoOut,
-                                   KeySendInfo& keySendInfo, vector<int>& sc, vector<int>& splitSize);
+    void HandleHotAndSendCount(const unique_ptr<EmbBatchT>& batch, UniqueInfo& uniqueInfoOut, KeySendInfo& keySendInfo,
+                               vector<int>& sc, vector<int>& splitSize);
 
     void PushResultHBM(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors);
 
@@ -315,8 +316,6 @@ public:
     bool IsGetUniqueKeysEos(const EmbBaseInfo& info, std::chrono::_V2::system_clock::time_point& startTime);
 
     void SendEosTensor(const std::string& embName, int channel);
-
-    std::thread StartEosMonitorThread(const EmbBaseInfo& info, bool& cancelMonitor);
 };
 
 #define KEY_PROCESS_INSTANCE Singleton<KeyProcess>::GetInstance()
