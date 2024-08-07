@@ -248,7 +248,7 @@ public:
     void PaddingAlltoallVC(vector<KeysT>& splitKeys) const;
 
     tuple<vector<KeysT>, vector<int32_t>, vector<vector<uint32_t>>> HashSplitWithFAAE(
-            const unique_ptr<EmbBatchT>& batch) const;
+        const unique_ptr<EmbBatchT>& batch) const;
 
     vector<int> GetScAll(const vector<int>& keyScLocal, int commId, const unique_ptr<EmbBatchT>& batch);
 
