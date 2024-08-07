@@ -55,7 +55,8 @@ enum class SaveModelType {
     BASE
 };
 
-inline string TransferModelType2Str(SaveModelType t){
+inline string TransferModelType2Str(SaveModelType t)
+{
     switch (t) {
         case SaveModelType::DELTA:
             return "delta";
@@ -214,7 +215,7 @@ public:
 
     void updateDeltaInfo(const string& embName, vector<int64_t>& keyCountVec, int64_t timeStamp, int64_t batchId);
 
-    void resetDeltaInfo();
+    void ResetDeltaInfo();
 
     void GetDeltaModelKeys(const string& savePath, bool saveDelta, map<string, map<emb_key_t, KeyInfo>>& keyInfoMap);
 
@@ -242,7 +243,6 @@ private:
     std::mutex keyCountUpdateMtx;
     std::condition_variable keyCountUpdateCv;
     bool checkConditionMet = false;
-
 
     void TrainTask(TaskType type);
 

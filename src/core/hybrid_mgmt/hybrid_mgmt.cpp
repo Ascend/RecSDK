@@ -184,7 +184,7 @@ void HybridMgmt::Save(const string& savePath, bool saveDelta)
     EmbeddingMgmt::Instance()->Save(savePath, hybridMgmtBlock->pythonBatchId[TRAIN_CHANNEL_ID], saveDelta, keyInfoMap);
     // after save key、embedding, reset deltaMap, isChanged->false, recentCount->0
     if (isIncrementalCkpt) {
-        resetDeltaInfo();
+        ResetDeltaInfo();
     }
     if (!mgmtRankInfo.isDDR) {
         // hbm模式只保存必要的offset对应的内容
@@ -1124,7 +1124,8 @@ void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
                 LOG_INFO("Receive {} timeStamp: {}, global step: {}.", embInfo.name, timeStamp, globalStep);
                 // tensorflow获取的global step是从1开始的，但是在key process中batch id则是从0开始，因此，下面的info中的batchId需要用
                 // globalStep - 1
-                EmbBaseInfo info = {.batchId=static_cast<int>(globalStep-1), .channelId=TRAIN_CHANNEL_ID, .name=embInfo.name};
+                EmbBaseInfo info = {.batchId=static_cast<int>(globalStep-1), .channelId=TRAIN_CHANNEL_ID,
+                                    .name=embInfo.name};
                 unique_ptr<vector<Tensor>> keyCountVecInfo =
                         KEY_PROCESS_INSTANCE->GetKCInfoVec(info);
                 if (keyCountVecInfo == nullptr) {
@@ -1135,7 +1136,7 @@ void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
                 vector<int64_t> keyCountVec;
                 int64 keyCountSize = keyCountVecTmp.size();
                 keyCountVec.reserve(keyCountSize);
-                for(int64 i = 0; i < keyCountSize; ++i) {
+                for (int64 i = 0; i < keyCountSize; ++i) {
                     keyCountVec.push_back(static_cast<int64_t>(keyCountVecTmp(i)));
                 }
                 LOG_INFO("Emb table: {}, channel: {}, size is: {}, data: {}",
@@ -1151,11 +1152,12 @@ void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
     });
 }
 
-void HybridMgmt::updateDeltaInfo(const string& embName, vector<int64_t>& keyCountVec, int64_t timeStamp, int64_t batchId)
+void HybridMgmt::updateDeltaInfo(const string& embName, vector<int64_t>& keyCountVec, int64_t timeStamp,
+                                 int64_t batchId)
 {
     auto keyCountSize = keyCountVec.size();
     auto& embMap = deltaMap[embName];
-    for (int i = 0; i < keyCountSize; i = i + 2){
+    for (int i = 0; i < keyCountSize; i += KEY_COUNT_ELEMENT_NUM) {
         emb_key_t key = keyCountVec[i];
         int64_t recentCount = keyCountVec[i+1];
         KeyInfo& keyInfo = embMap[key];
@@ -1169,7 +1171,7 @@ void HybridMgmt::updateDeltaInfo(const string& embName, vector<int64_t>& keyCoun
              deltaMap[embName].size());
 }
 
-void HybridMgmt::resetDeltaInfo()
+void HybridMgmt::ResetDeltaInfo()
 {
     for (const auto& embInfo : mgmtEmbInfo) {
         auto& embKeyCountInfo = deltaMap[embInfo.name];
@@ -2127,8 +2129,8 @@ void HybridMgmt::GetDeltaModelKeys(const string& savePath, bool saveDelta,
                                    map<string, map<emb_key_t, KeyInfo>>& keyInfoMap)
 {
     int saveStep = GetStepFromPath(savePath);
-    if(isFirstSave){
-        for(auto& embInfo : mgmtEmbInfo) {
+    if (isFirstSave) {
+        for (auto& embInfo : mgmtEmbInfo) {
             keyBatchIdMap[embInfo.name] = saveStep;
         }
     }
@@ -2137,7 +2139,7 @@ void HybridMgmt::GetDeltaModelKeys(const string& savePath, bool saveDelta,
         checkConditionMet = false;
         while (!checkConditionMet) {
             keyCountUpdateCv.wait(lock, [this, saveStep] {
-                for(const auto& it : keyBatchIdMap) {
+                for (const auto& it : keyBatchIdMap) {
                     if(it.second != saveStep) {
                         return false;
                     }
@@ -2150,7 +2152,7 @@ void HybridMgmt::GetDeltaModelKeys(const string& savePath, bool saveDelta,
         if (saveDelta) {
             for(auto& delta : deltaMap) {
                 auto& deltaInfo = delta.second;
-                for(auto& it : deltaInfo) {
+                for (auto& it : deltaInfo) {
                     if (it.second.isChanged) {
                         keyInfoMap[delta.first][it.first] = it.second;
                     }

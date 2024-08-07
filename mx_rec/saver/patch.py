@@ -662,7 +662,6 @@ def checkpoint_saver_hook_init(self, checkpoint_dir, save_secs=None, save_steps=
     self._checkpoint_dir = checkpoint_dir
     self._save_path = os.path.join(checkpoint_dir, checkpoint_basename)
     self._scaffold = scaffold
-    from mx_rec.util.initialize import ConfigInitializer
     self._timer = SecondOrStepTimer(
         every_secs=save_secs, every_steps=save_steps)
     self._is_incremental_checkpoint = ConfigInitializer.get_instance().is_incremental_checkpoint

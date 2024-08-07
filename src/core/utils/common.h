@@ -71,6 +71,7 @@ constexpr int SSD_SIZE_INDEX = 2;
 constexpr int MAX_FILE_NUM = 1000;
 constexpr int EMBEDDING_THREAD_NUM = 2;
 constexpr int HOST_TO_PREFILL_RATIO = 10;
+constexpr int KEY_COUNT_ELEMENT_NUM = 2;
 // for GLOG
 struct GlogConfig {
     static bool gStatOn;
