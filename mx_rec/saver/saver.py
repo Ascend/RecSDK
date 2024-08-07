@@ -549,21 +549,8 @@ def read_binary_data(reading_path: str, data_name: str, table_name: str, load_of
     if not tf.io.gfile.exists(target_attribute_dir):
         raise FileExistsError(f"Target_attribute_dir {target_attribute_dir} does not exist when reading.")
 
-    with tf.io.gfile.GFile(target_attribute_dir, "rb") as fin:
-        validate_read_file(target_attribute_dir)
-        attributes = fin.read()
-        try:
-            attributes = np.fromstring(attributes, dtype=np.int64)
-        except ValueError as err:
-            raise RuntimeError(f"get attributes from file {target_attribute_dir} failed.") from err
-
-    with tf.io.gfile.GFile(target_data_dir, "rb") as file:
-        validate_read_file(target_data_dir)
-        if check_file_system_is_hdfs(target_data_dir):
-            data_to_restore = file.read()
-            data_to_restore = np.fromstring(data_to_restore, dtype=np.float32)
-        else:
-            data_to_restore = np.fromfile(target_data_dir, dtype=np.float32)
+    attributes = read_attribute_file(target_attribute_dir)
+    data_to_restore = read_data_file(target_data_dir)
     try:
         embedding_size = list(attributes)[1]
     except Exception as err:
@@ -780,45 +767,61 @@ def get_base_and_delta_models(save_dir: str, model_version: str):
 
 def read_base_delta_and_write(save_dir: str, base_model: str, delta_models: list):
     table_name_set = ConfigInitializer.get_instance().sparse_embed_config.table_name_set
-    base_table = {table_name: {"key": None, "embedding": None} for table_name in table_name_set}
-    # 读取base model
-    base_model_path = os.path.join(save_dir, f"{SAVE_SPARSE_PATH_PREFIX}-model.ckpt-{base_model}")
-    for table_name in table_name_set:
-        key_data, embedding_data = get_table_key_emb(base_model_path, table_name)
-        base_table[table_name]["key"] = key_data
-        base_table[table_name]["embedding"] = embedding_data
+    optimizer = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
+    optimizer_type, optim_param_list = optimizer.optimizer_type, optimizer.optim_param_list
+    optimizer_param_name_list = [f"{optimizer_type}_{optim_param}" for optim_param in optim_param_list]
+    # restore base model's optimizer
+    base_optimizer = get_base_optimizer(save_dir, table_name_set, base_model)
+    # restore base model's key and embedding
+    base_table = get_base_key_embedding(save_dir, table_name_set, base_model)
 
-    # 依次读取delta model更新到base model中
+    # read delta model and update to base model one by one
     for delta_model in delta_models:
         delta_model_path = os.path.join(save_dir, f"{SAVE_DELTA_SPARSE_PATH_PREFIX}-model.ckpt-{delta_model}")
+        delta_optimizer_params = {}
         for table_name in table_name_set:
-            key_data, embedding_data = get_table_key_emb(delta_model_path, table_name)
-            # 更新base_table
-            for k, v in zip(key_data, embedding_data):
+            delta_key_data, delta_embedding_data = get_table_key_emb(delta_model_path, table_name)
+            for optimizer_param_name in optimizer_param_name_list:
+                delta_optimizer_params[optimizer_param_name] = \
+                    get_table_optimizer_param(delta_model_path, table_name, optimizer_param_name)
+            # update base table
+            len_of_delta_table = len(delta_key_data)
+            for i in range(len_of_delta_table):
                 key = base_table[table_name]["key"]
                 embed = base_table[table_name]["embedding"]
+                idx = None
+                k, v = delta_key_data[i], delta_embedding_data[i]
                 if k in key:
                     idx = np.where(key == k)[0][0]
                     embed[idx] = v
                 else:
                     base_table[table_name]["key"] = np.append(key, k)
                     base_table[table_name]["embedding"] = np.vstack([embed, v])
+                if delta_optimizer_params:
+                    for optimizer_param_name in optimizer_param_name_list:
+                        tmp = delta_optimizer_params[optimizer_param_name][i]
+                        optimizer_param = base_optimizer[table_name][optimizer_param_name]
+                        if idx is not None:
+                            optimizer_param[idx] = tmp
+                        else:
+                            base_optimizer[table_name][optimizer_param_name] = np.vstack([optimizer_param, tmp])
 
-    # 将base model写入文件
+    # write base model data to file
     tmp_path = f"{save_dir}/tmp-{SAVE_SPARSE_PATH_PREFIX}-model.ckpt-{delta_models[-1]}"
     write_base_table_to_file(tmp_path, base_table)
+    write_base_table_to_file(tmp_path, base_optimizer)
     return tmp_path
 
 
 def get_table_key_emb(model_path: str, table_name: str):
     key_path = os.path.join(model_path, table_name, "key")
     data_file = os.path.join(key_path, "slice.data")
-    key_data = np.fromfile(data_file, dtype=np.int64)
+    key_data = read_attribute_file(data_file)
     embedding_path = os.path.join(model_path, table_name, "embedding")
     attribute_file = os.path.join(embedding_path, "slice.attribute")
-    embed_attr = np.fromfile(attribute_file, dtype=np.int64)
+    embed_attr = read_attribute_file(attribute_file)
     data_file = os.path.join(embedding_path, "slice.data")
-    embedding_data = np.fromfile(data_file, dtype=np.float32).reshape(embed_attr[:-1])
+    embedding_data = read_data_file(data_file).reshape(embed_attr[:-1])
     return key_data, embedding_data
 
 
@@ -846,6 +849,65 @@ def clear_delta_models(save_dir: str):
     for delta_dir in delta_directories:
         if os.path.isdir(delta_dir):
             tf.io.gfile.rmtree(delta_dir)
-            logger.info(f"Deleted directory: {delta_dir}")
+            logger.info(f"Deleted directory: {delta_dir}.")
         else:
-            logger.info(f"Not a directory or already deleted: {delta_dir}")
+            logger.info(f"Not a directory or already deleted: {delta_dir}.")
+
+
+def get_table_optimizer_param(model_path: str, table_name: str, optimizer_param_name: str):
+    attribute_file = os.path.join(model_path, table_name, optimizer_param_name, "slice.attribute")
+    data_file = os.path.join(model_path, table_name, optimizer_param_name, "slice.data")
+    attribute = read_attribute_file(attribute_file)
+    data_to_restore = read_data_file(data_file).reshape(attribute[:-1])
+    return data_to_restore
+
+
+def read_attribute_file(target_attribute_dir: str):
+    with tf.io.gfile.GFile(target_attribute_dir, "rb") as fin:
+        validate_read_file(target_attribute_dir)
+        attributes = fin.read()
+        try:
+            attributes = np.fromstring(attributes, dtype=np.int64)
+        except ValueError as err:
+            raise RuntimeError(f"get attributes from file {target_attribute_dir} failed.") from err
+    return attributes
+
+
+def read_data_file(target_data_dir: str):
+    with tf.io.gfile.GFile(target_data_dir, "rb") as file:
+        validate_read_file(target_data_dir)
+        if check_file_system_is_hdfs(target_data_dir):
+            data_to_restore = file.read()
+            data_to_restore = np.fromstring(data_to_restore, dtype=np.float32)
+        else:
+            data_to_restore = np.fromfile(target_data_dir, dtype=np.float32)
+    return data_to_restore
+
+
+def get_base_optimizer(save_dir: str, table_name_set: set, base_model: str):
+    optimizer = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
+    optimizer_type = optimizer.optimizer_type
+    optim_param_list = optimizer.optim_param_list
+    base_optimizer = {}
+    # if optimizer's params exist, then restore them; otherwise no need to restore
+    if optim_param_list:
+        optimizer_status_name_list = [f"{optimizer_type}_{optim_param}" for optim_param in optim_param_list]
+        base_optimizer = {table_name: {optimizer_status_name: None} for table_name in table_name_set
+                          for optimizer_status_name in optimizer_status_name_list}
+
+        base_model_path = os.path.join(save_dir, f"{SAVE_SPARSE_PATH_PREFIX}-model.ckpt-{base_model}")
+        for table_name in table_name_set:
+            for optimizer_status_name in optimizer_status_name_list:
+                optimier_data = get_table_optimizer_param(base_model_path, table_name, optimizer_status_name)
+                base_optimizer[table_name][optimizer_status_name] = optimier_data
+    return base_optimizer
+
+
+def get_base_key_embedding(save_dir: str, table_name_set: set, base_model: str):
+    base_table = {table_name: {"key": None, "embedding": None} for table_name in table_name_set}
+    base_model_path = os.path.join(save_dir, f"{SAVE_SPARSE_PATH_PREFIX}-model.ckpt-{base_model}")
+    for table_name in table_name_set:
+        key_data, embedding_data = get_table_key_emb(base_model_path, table_name)
+        base_table[table_name]["key"] = key_data
+        base_table[table_name]["embedding"] = embedding_data
+    return base_table

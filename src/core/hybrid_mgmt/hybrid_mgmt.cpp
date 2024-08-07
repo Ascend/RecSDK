@@ -178,36 +178,41 @@ void HybridMgmt::Save(const string& savePath, bool saveDelta)
     int saveStep = GetStepFromPath(savePath);
     if(isFirstSave){
         for(auto& embInfo : mgmtEmbInfo) {
-            embBatchIdMap[embInfo.name] = saveStep;
+            keyBatchIdMap[embInfo.name] = saveStep;
         }
     }
-    std::unique_lock<std::mutex> lock(updateMtx);
-    checkConditionMet = false;
-    while (!checkConditionMet) {
-        cv.wait(lock, [this, saveStep] {
-            for(const auto& it : embBatchIdMap) {
-                if(it.second != saveStep) {
-                    return false;
-                }
-            }
-            checkConditionMet = true;
-            return true;
-        });
-    }
     map<string, map<emb_key_t, KeyInfo>> keyInfoMap;
-    if (saveDelta) {
-        for(auto& delta : deltaMap) {
-            auto& deltaInfo = delta.second;
-            for(auto& it : deltaInfo) {
-                if (it.second.isChanged) {
-                    keyInfoMap[delta.first][it.first] = it.second;
+    if (isIncrementalCkpt) {
+        std::unique_lock<std::mutex> lock(updateMtx);
+        checkConditionMet = false;
+        while (!checkConditionMet) {
+            cv.wait(lock, [this, saveStep] {
+                for(const auto& it : keyBatchIdMap) {
+                    if(it.second != saveStep) {
+                        return false;
+                    }
+                }
+                checkConditionMet = true;
+                return true;
+            });
+        }
+
+        if (saveDelta) {
+            for(auto& delta : deltaMap) {
+                auto& deltaInfo = delta.second;
+                for(auto& it : deltaInfo) {
+                    if (it.second.isChanged) {
+                        keyInfoMap[delta.first][it.first] = it.second;
+                    }
                 }
             }
         }
     }
     EmbeddingMgmt::Instance()->Save(savePath, saveDelta, keyInfoMap);
-    // 保存完key、embedding之后将deltaMap中的key重置（isChanged->false, recentCount->0）
-    resetDeltaInfo();
+    // after save key、embedding, reset deltaMap, isChanged->false, recentCount->0
+    if (isIncrementalCkpt) {
+        resetDeltaInfo();
+    }
     if (!mgmtRankInfo.isDDR) {
         // hbm模式只保存必要的offset对应的内容
         offsetMapToSend = EmbeddingMgmt::Instance()->GetDeviceOffsets();
@@ -1150,7 +1155,7 @@ void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
                 // 更新delta表
                 std::lock_guard<std::mutex> lock(updateMtx);
                 updateDeltaInfo(embInfo.name, keyCountVec, timeStamp, globalStep);
-                embBatchIdMap[embInfo.name]++;
+                keyBatchIdMap[embInfo.name]++;
                 cv.notify_all();
             }
 
