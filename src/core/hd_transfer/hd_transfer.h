@@ -47,8 +47,8 @@ namespace MxRec {
         SWAP,
         SAVE_D2H,
         SAVE_H2D,
+        KEY_D2H,
         INVALID,
-        KEY_D2H
     };
 
     inline string TransferChannel2Str(TransferChannel e)
@@ -90,7 +90,7 @@ namespace MxRec {
 
         HDTransfer() = default;
 
-        int Init(const vector<EmbInfo>& embInfos, uint32_t localRankId);
+        int Init(const vector<EmbInfo>& embInfos, uint32_t localRankId, bool isIncrementalCkpt);
 
         void Send(TransferChannel channel, const vector<Tensor>& tensors,
                   int channelId, const string& embName, int batchId = -1);

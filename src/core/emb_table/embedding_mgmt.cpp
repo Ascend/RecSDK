@@ -130,11 +130,12 @@ void EmbeddingMgmt::Save(const string& name, const string& filePath, const int p
 {
     map<emb_key_t, KeyInfo> keyInfo;
     embeddings[name]->SetFileSystemPtr(filePath);
-    embeddings[name]->Save(filePath, false, keyInfo);
+    embeddings[name]->Save(filePath, pythonBatchId, false, keyInfo);
     embeddings[name]->UnsetFileSystemPtr();
 }
 
-void EmbeddingMgmt::Save(const string& filePath, bool saveDelta, const map<string, map<emb_key_t, KeyInfo>>& keyInfoMap)
+void EmbeddingMgmt::Save(const string& filePath, const int pythonBatchId, bool saveDelta,
+                         const map<string, map<emb_key_t, KeyInfo>>& keyInfoMap)
 {
     for (auto& tablePair: embeddings) {
         tablePair.second->SetFileSystemPtr(filePath);
@@ -143,13 +144,13 @@ void EmbeddingMgmt::Save(const string& filePath, bool saveDelta, const map<strin
     vector<future<void>> futures;
     for (auto& tablePair: embeddings) {
         map<emb_key_t, KeyInfo> keyInfo;
-        if(saveDelta)
-        {
+        if(saveDelta){
             keyInfo = keyInfoMap.at(tablePair.first);
         }
         futures.emplace_back(
-            std::async(std::launch::async, [table = tablePair.second, filePath, saveDelta,
-                                            keyInfo] { table->Save(filePath, saveDelta, keyInfo); }));
+            std::async(std::launch::async, [table = tablePair.second, filePath, pythonBatchId,
+                                            saveDelta,keyInfo] { table->Save(filePath, pythonBatchId,
+                                                                             saveDelta, keyInfo); }));
     }
     for (auto& f: futures) {
         f.get();  // get() will repost exception if happened

@@ -75,10 +75,10 @@ class ConfigInitializer:
         self._train_params_config = TrainParamsConfig()
 
         # incremental checkpoint settings
-        self._save_checkpoint_due_time = kwargs.get("save_checkpoint_due_time", None)
-        self._save_delta_checkpoints_secs = kwargs.get("save_delta_checkpoints_secs", None)
+        self._save_checkpoint_due_time = kwargs.get("save_checkpoint_due_time")
+        self._save_delta_checkpoints_secs = kwargs.get("save_delta_checkpoints_secs")
         self._is_incremental_checkpoint = kwargs.get("is_incremental_checkpoint", False)
-        self._restore_model_version = kwargs.get("restore_model_version", None)
+        self._restore_model_version = kwargs.get("restore_model_version")
         self._recent_key_count_threshold = kwargs.get("recent_key_count_threshold", 0)
         self._is_first_restore = True
 

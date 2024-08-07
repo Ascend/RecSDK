@@ -516,30 +516,11 @@ struct KeyInfo {
     int64_t lastUseTime;       // 最后使用时间
     int64_t recentCount;       // 最近使用次数
     bool isChanged;            // 是否有变更
-    int64_t batchID;               // batch id
+    int64_t batchID;           // batch id
     int64_t totalCount;        // key总使用次数
 
-    // 构造函数初始化所有成员变量
     KeyInfo(): lastUseTime(0), recentCount(0), isChanged(false),
                batchID(0), totalCount(0) {}
-
-    // 拷贝构造函数
-    KeyInfo(const KeyInfo& other)
-            : lastUseTime(other.lastUseTime), recentCount(other.recentCount),
-              isChanged(other.isChanged), batchID(other.batchID),
-              totalCount(other.totalCount) {}
-
-    // 赋值操作符
-    KeyInfo& operator=(const KeyInfo& other) {
-        if (this != &other) { // 防止自赋值
-            lastUseTime = other.lastUseTime;
-            recentCount = other.recentCount;
-            isChanged = other.isChanged;
-            batchID = other.batchID;
-            totalCount = other.totalCount;
-        }
-        return *this;
-    }
 };
 
 using EmbMemT = absl::flat_hash_map<std::string, HostEmbTable>;

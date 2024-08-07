@@ -20,14 +20,14 @@ import threading
 import glob
 import shutil
 from collections import defaultdict
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import numpy as np
 import tensorflow as tf
 from tensorflow.python.util import compat
 
 from mx_rec.constants.constants import DataName, DataAttr, MIN_SIZE, MAX_FILE_SIZE, Flag, TFDevice, \
-    MAX_INT32, HDFS_FILE_PREFIX, TRAIN_CHANNEL_ID
+    MAX_INT32, HDFS_FILE_PREFIX, TRAIN_CHANNEL_ID, BASE_MODEL, DELTA_MODEL
 from mx_rec.util.communication.hccl_ops import get_rank_id, get_rank_size, get_local_rank_size
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.perf import performance
@@ -40,6 +40,7 @@ from mx_rec.util.tf_version_adapter import npu_ops
 
 SAVE_SPARSE_PATH_PREFIX = "sparse"
 SAVE_DELTA_SPARSE_PATH_PREFIX = "delta-sparse"
+GLOBAL_STEP_STR = "global_step"
 
 
 # define save model thread
@@ -193,7 +194,7 @@ class Saver(object):
                              "only local file system and hdfs file system supported. ")
 
         directory, base_name = os.path.split(reading_path)
-        if model_type == "base":
+        if model_type == BASE_MODEL:
             ckpt_name = f"{SAVE_SPARSE_PATH_PREFIX}-{base_name}"
         else:
             ckpt_name = f"tmp-{SAVE_SPARSE_PATH_PREFIX}-{base_name}"
@@ -203,8 +204,11 @@ class Saver(object):
             raise FileExistsError(f"Given dir {reading_path} does not exist, please double check.")
 
         self._restore(sess, reading_path, warm_start_tables)
-        if model_type == "delta":
-            tf.io.gfile.rmtree(reading_path)
+        if model_type == DELTA_MODEL:
+            try:
+                tf.io.gfile.rmtree(reading_path)
+            except tf.errors.NotFoundError:
+                logger.warning("%s is not exists, maybe it has been deleted.", reading_path)
         logger.info("sparse model was restored from dir '%s' .", reading_path)
         logger.debug("======== Restoring finished ========")
 
@@ -708,32 +712,37 @@ def should_write_data(rank_id: int, save_path: str) -> bool:
     return rank_id == 0 if is_hdfs else rank_id % local_rank_size == 0
 
 
-def update_model_index(save_dir: str, model_index: dict):
+def update_model_index(save_dir: str, model_index: Dict[str, Union[str, int]]):
     model_index_file = os.path.join(save_dir, "model_index.json")
-    if not os.path.exists(model_index_file):
+    if not tf.io.gfile.exists(model_index_file):
         model_index_list = []
     else:
-        with open(model_index_file, "r", encoding="utf-8") as f:
+        with tf.io.gfile.GFile(model_index_file, "r", encoding="utf-8") as f:
             model_index_list = json.load(f)
     model_index_list.append(model_index)
-    with open(model_index_file, "w", encoding="utf-8") as f:
+    with tf.io.gfile.GFile(model_index_file, "w", encoding="utf-8") as f:
         json.dump(model_index_list, f, ensure_ascii=False, separators=(",", ": "), indent=4)
 
 
 def write_delta_export_time_ms(save_dir: str, delta_export_time_ms: dict):
     delta_export_time_ms_file = os.path.join(save_dir, "delta_export_time_ms.json")
-    with open(delta_export_time_ms_file, "w", encoding="utf-8") as f:
+    with tf.io.gfile.GFile(delta_export_time_ms_file, "w", encoding="utf-8") as f:
         json.dump(delta_export_time_ms, f, indent=4)
 
 
 def get_model_type_by_version(save_dir: str, model_version: str):
     model_index_file = os.path.join(save_dir, "model_index.json")
-    with open(model_index_file, "r", encoding="utf-8") as f:
+    validate_read_file(model_index_file)
+    with tf.io.gfile.GFile(model_index_file, "r", encoding="utf-8") as f:
         model_index_list = json.load(f)
 
     model_type = None
     for model_index in model_index_list:
-        if model_index["global_step"] == int(model_version):
+        try:
+            model_version_int = int(model_version)
+        except ValueError:
+            raise ValueError("Can not transfer %s to integer.", model_version)
+        if model_index[GLOBAL_STEP_STR] == model_version_int:
             model_type = model_index["type"]
             return model_type
     return model_type
@@ -741,25 +750,25 @@ def get_model_type_by_version(save_dir: str, model_version: str):
 
 def get_base_and_delta_models(save_dir: str, model_version: str):
     model_index_file = os.path.join(save_dir, "model_index.json")
-    with open(model_index_file, "r", encoding="utf-8") as f:
+    validate_read_file(model_index_file)
+    with tf.io.gfile.GFile(model_index_file, "r", encoding="utf-8") as f:
         model_index_list = json.load(f)
-        # 将加载起来的model_index_list逆序，因为需要根据delta往前推，拿到离delta最近的base和一系列delta
         model_index_list.reverse()
 
     base_model = ""
     delta_models = []
     found_delta_model = False
     for model_index in model_index_list:
-        if model_index["global_step"] == int(model_version):
+        if model_index[GLOBAL_STEP_STR] == int(model_version):
             delta_models.append(model_version)
             found_delta_model = True
             continue
         if not found_delta_model:
             continue
-        if model_index["type"] == "delta":
-            delta_models.append(str(model_index["global_step"]))
+        if model_index["type"] == DELTA_MODEL:
+            delta_models.append(str(model_index[GLOBAL_STEP_STR]))
         else:
-            base_model = str(model_index["global_step"])
+            base_model = str(model_index[GLOBAL_STEP_STR])
             break
     delta_models.reverse()
     return base_model, delta_models
@@ -847,11 +856,10 @@ def write_base_table_to_file(save_dir: str, base_table: dict):
 def clear_delta_models(save_dir: str):
     delta_directories = glob.glob(os.path.join(save_dir, 'delta-sparse*'))
     for delta_dir in delta_directories:
-        if os.path.isdir(delta_dir):
+        try:
             tf.io.gfile.rmtree(delta_dir)
-            logger.info(f"Deleted directory: {delta_dir}.")
-        else:
-            logger.info(f"Not a directory or already deleted: {delta_dir}.")
+        except tf.errors.NotFoundError:
+            logger.warning("%s is not exists, maybe it has been deleted.", delta_dir)
 
 
 def get_table_optimizer_param(model_path: str, table_name: str, optimizer_param_name: str):

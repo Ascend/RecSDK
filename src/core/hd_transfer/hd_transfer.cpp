@@ -27,7 +27,7 @@ using namespace std;
 /// \param embInfos 稀疏表元信息类的list
 /// \param localRankId 设备逻辑ID
 /// \return
-int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId)
+int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId, bool isIncrementalCkpt)
 {
 #ifndef GTEST
     LOG_INFO(MGMT + "begin hd_transfer initialize, rank:{}", localRankId);
@@ -50,7 +50,9 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId)
         auto embName = embInfo.name;
         for (int i = 0; i < MAX_CHANNEL_NUM; ++i) {
             CreateChannel(localRankId, embInfo.name, i);
-            CreateChannelForIncrementalCkpt(localRankId, embInfo.name, i);
+            if (isIncrementalCkpt) {
+                CreateChannelForIncrementalCkpt(localRankId, embInfo.name, i);
+            }
         }
         // 创建acltdtDataset类型的数据，对等一个Vector<tensor>。同步接口。
         for (int j = 0; j < EMBEDDING_THREAD_NUM; j++) {
@@ -61,12 +63,14 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId)
             }
             aclDatasets[embInfo.name][j] = dataset;
         }
-        acltdtDataset* dataset = acltdtCreateDataset();
-        if (dataset == nullptr) {
-            LOG_ERROR("create acltdtDataset failed, table:{}, threadId:{}", embName);
-            throw runtime_error("create acltdtDataset failed");
+        if (isIncrementalCkpt) {
+            acltdtDataset* dataset = acltdtCreateDataset();
+            if (dataset == nullptr) {
+                LOG_ERROR("Create acltdtDataset failed, table:{}.", embName);
+                throw runtime_error("create acltdtDataset failed");
+            }
+            aclDatasetsForIncrementalCkpt[embInfo.name] = dataset;
         }
-        aclDatasetsForIncrementalCkpt[embInfo.name] = dataset;
     }
     running = true;
     LOG_INFO(MGMT + "hd_transfer init end");
@@ -107,7 +111,7 @@ void HDTransfer::CreateChannel(const uint32_t localRankId, const string& embName
 #ifndef GTEST
     int channelSize = GlobalEnv::hdChannelSize;
     LOG_INFO("user config all2all restore lookup channel size:{}", channelSize);
-    for (int c = static_cast<int>(TransferChannel::D2H); c != static_cast<int>(TransferChannel::INVALID); c++) {
+    for (int c = static_cast<int>(TransferChannel::D2H); c != static_cast<int>(TransferChannel::KEY_D2H); c++) {
         if ((c == static_cast<int>(TransferChannel::SAVE_D2H) || c == static_cast<int>(TransferChannel::SAVE_H2D)) &&
             channelNum == EVAL_CHANNEL_ID) {
             continue;

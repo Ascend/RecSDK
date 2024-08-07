@@ -440,7 +440,9 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
 
     // 将keyCountVec放进tensor里并推到一个队列里
     auto keyCountTensors = make_unique<vector<Tensor>>();
-    keyCountTensors->push_back(Vec2TensorI64(keyCountVec));
+    if (isIncrementalCheckpoint){
+        keyCountTensors->push_back(Vec2TensorI64(keyCountVec));
+    }
 
     hotPos.resize(hotEmbTotCount[batch->name], 0);
     tensors->push_back(Vec2TensorI32(hotPos));
@@ -1187,19 +1189,19 @@ T KeyProcess::GetInfo(info_list_t<T>& list, const EmbBaseInfo& info)
 }
 
 template<class T>
-T KeyProcess::GetKeyCountVec(info_list_t<T>& list, const EmbBaseInfo &info)
+T KeyProcess::GetKeyCountVec(info_list_t<T>& list, const EmbBaseInfo& info)
 {
     std::lock_guard<std::mutex> lockGuard(mut);
     if (list[info.name][info.channelId].empty()) {
-        LOG_TRACE("get info list is empty.");
+        LOG_ERROR("get info list is empty.");
         throw EmptyList();
     }
     auto t = list[info.name][info.channelId].top();
     if (list.empty()) {
-        LOG_INFO("0802 debug, get data t is null.");
+        LOG_INFO("Get data t is null.");
     }
     list[info.name][info.channelId].pop();
-    LOG_INFO("0802 debug, get key count vector from list success.");
+    LOG_INFO("Get key count vector from list success.");
     return move(t);
 }
 

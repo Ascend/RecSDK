@@ -110,7 +110,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
 
     // 进行acl资源初始化，设置当前训练进程的device，为每张表创建数据传输通道
     hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
-    hdTransfer->Init(embInfos, rankInfo.deviceId);
+    hdTransfer->Init(embInfos, rankInfo.deviceId, isIncrementalCheckpoint);
 
     hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
     hybridMgmtBlock->SetRankInfo(rankInfo);
@@ -168,7 +168,8 @@ void HybridMgmt::Save(const string& savePath, bool saveDelta)
     if (!isInitialized) {
         throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
     }
-    string saveModelType = saveDelta ? "delta" : "base";
+    string saveModelType =
+            saveDelta ? TransferModelType2Str(SaveModelType::DELTA) : TransferModelType2Str(SaveModelType::BASE);
     LOG_INFO(MGMT + "Start to save {} model to {}.", saveModelType, savePath);
 
     // 数据处理线程上锁
@@ -178,40 +179,9 @@ void HybridMgmt::Save(const string& savePath, bool saveDelta)
     Checkpoint saveCkpt;
     saveData.keyCountMap = KEY_PROCESS_INSTANCE->GetKeyCountMap();
 
-    int saveStep = GetStepFromPath(savePath);
-    if(isFirstSave){
-        for(auto& embInfo : mgmtEmbInfo) {
-            keyBatchIdMap[embInfo.name] = saveStep;
-        }
-    }
     map<string, map<emb_key_t, KeyInfo>> keyInfoMap;
-    if (isIncrementalCkpt) {
-        std::unique_lock<std::mutex> lock(updateMtx);
-        checkConditionMet = false;
-        while (!checkConditionMet) {
-            cv.wait(lock, [this, saveStep] {
-                for(const auto& it : keyBatchIdMap) {
-                    if(it.second != saveStep) {
-                        return false;
-                    }
-                }
-                checkConditionMet = true;
-                return true;
-            });
-        }
-
-        if (saveDelta) {
-            for(auto& delta : deltaMap) {
-                auto& deltaInfo = delta.second;
-                for(auto& it : deltaInfo) {
-                    if (it.second.isChanged) {
-                        keyInfoMap[delta.first][it.first] = it.second;
-                    }
-                }
-            }
-        }
-    }
-    EmbeddingMgmt::Instance()->Save(savePath, saveDelta, keyInfoMap);
+    GetDeltaModelKeys(savePath, saveDelta, keyInfoMap);
+    EmbeddingMgmt::Instance()->Save(savePath, hybridMgmtBlock->pythonBatchId[TRAIN_CHANNEL_ID], saveDelta, keyInfoMap);
     // after save key、embedding, reset deltaMap, isChanged->false, recentCount->0
     if (isIncrementalCkpt) {
         resetDeltaInfo();
@@ -1135,7 +1105,7 @@ void HybridMgmt::ReceiveKey()
 void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
 {
     receiveKeyThreads.emplace_back([embInfo, this]() {
-        while (true) {
+        while (isRunning) {
             TransferChannel transferName = TransferChannel::KEY_D2H;
             size_t ret = hdTransfer->RecvOffsetsAcl(transferName, TRAIN_CHANNEL_ID,
                                                     embInfo.name);
@@ -1157,6 +1127,10 @@ void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
                 EmbBaseInfo info = {.batchId=static_cast<int>(globalStep-1), .channelId=TRAIN_CHANNEL_ID, .name=embInfo.name};
                 unique_ptr<vector<Tensor>> keyCountVecInfo =
                         KEY_PROCESS_INSTANCE->GetKCInfoVec(info);
+                if (keyCountVecInfo == nullptr) {
+                    LOG_ERROR("Get key count info vector is empty.");
+                    throw runtime_error("Get key count info vector is empty.");
+                }
                 auto keyCountVecTmp = keyCountVecInfo->at(0).flat<int64>();
                 vector<int64_t> keyCountVec;
                 int64 keyCountSize = keyCountVecTmp.size();
@@ -1164,18 +1138,14 @@ void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
                 for(int64 i = 0; i < keyCountSize; ++i) {
                     keyCountVec.push_back(static_cast<int64_t>(keyCountVecTmp(i)));
                 }
-                LOG_INFO("0802 debug, emb table: {}, channel: {}, size is: {}, data: {}",
+                LOG_INFO("Emb table: {}, channel: {}, size is: {}, data: {}",
                          embInfo.name, TRAIN_CHANNEL_ID, keyCountSize, VectorToString(keyCountVec));
 
                 // 更新delta表
-                std::lock_guard<std::mutex> lock(updateMtx);
+                std::lock_guard<std::mutex> lock(keyCountUpdateMtx);
                 updateDeltaInfo(embInfo.name, keyCountVec, timeStamp, globalStep);
                 keyBatchIdMap[embInfo.name]++;
-                cv.notify_all();
-            }
-
-            if (!isRunning) {
-                return;
+                keyCountUpdateCv.notify_all();
             }
         }
     });
@@ -1195,7 +1165,7 @@ void HybridMgmt::updateDeltaInfo(const string& embName, vector<int64_t>& keyCoun
         keyInfo.batchID = batchId;
         keyInfo.lastUseTime = timeStamp;
     }
-    LOG_INFO("0802 debug, batchid: {}, delta map size: {}, emb {} size: {}", batchId, deltaMap.size(), embName,
+    LOG_INFO("Batch id: {}, delta map size: {}, emb {} size: {}", batchId, deltaMap.size(), embName,
              deltaMap[embName].size());
 }
 
@@ -2151,4 +2121,41 @@ void HybridMgmt::RecoverTrainStatus()
         cacheManager->RecoverTrainStatus();
     }
     isBackUpTrainStatus = false;
+}
+
+void HybridMgmt::GetDeltaModelKeys(const string& savePath, bool saveDelta,
+                                   map<string, map<emb_key_t, KeyInfo>>& keyInfoMap)
+{
+    int saveStep = GetStepFromPath(savePath);
+    if(isFirstSave){
+        for(auto& embInfo : mgmtEmbInfo) {
+            keyBatchIdMap[embInfo.name] = saveStep;
+        }
+    }
+    if (isIncrementalCkpt) {
+        std::unique_lock<std::mutex> lock(keyCountUpdateMtx);
+        checkConditionMet = false;
+        while (!checkConditionMet) {
+            keyCountUpdateCv.wait(lock, [this, saveStep] {
+                for(const auto& it : keyBatchIdMap) {
+                    if(it.second != saveStep) {
+                        return false;
+                    }
+                }
+                checkConditionMet = true;
+                return true;
+            });
+        }
+
+        if (saveDelta) {
+            for(auto& delta : deltaMap) {
+                auto& deltaInfo = delta.second;
+                for(auto& it : deltaInfo) {
+                    if (it.second.isChanged) {
+                        keyInfoMap[delta.first][it.first] = it.second;
+                    }
+                }
+            }
+        }
+    }
 }

@@ -82,7 +82,7 @@ public:
     bool Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
                    const vector<ThresholdValue>& thresholdValues = {}, int seed = 0, bool isIncrementalCkpt = false);
 
-    unique_ptr<vector<Tensor>> GetInfoVec(const EmbBaseInfo& info, ProcessedInfo type, bool &isEos);
+    unique_ptr<vector<Tensor>> GetInfoVec(const EmbBaseInfo& info, ProcessedInfo type, bool& isEos);
 
     unique_ptr<vector<Tensor>> GetKCInfoVec(const EmbBaseInfo& info);
 
@@ -181,7 +181,7 @@ GTEST_PRIVATE:
     T GetInfo(info_list_t<T>& list, const EmbBaseInfo &info);
 
     template<class T>
-    T GetKeyCountVec(info_list_t<T>& list, const EmbBaseInfo &info);
+    T GetKeyCountVec(info_list_t<T>& list, const EmbBaseInfo& info);
 
     RankInfo rankInfo;
     map<EmbNameT, EmbInfo> embInfos;
@@ -233,7 +233,7 @@ GTEST_PRIVATE:
     void InitializeUnique(ock::ctr::UniqueConf& uniqueConf, size_t& preBatchSize, bool& uniqueInitialize,
                               const unique_ptr <EmbBatchT>& batch, ock::ctr::UniquePtr& unique);
 
-    void ProcessBatchWithFastUnique(const unique_ptr<EmbBatchT> &batch, ock::ctr::UniquePtr& unique,
+    void ProcessBatchWithFastUnique(const unique_ptr<EmbBatchT>& batch, ock::ctr::UniquePtr& unique,
                                        int id, UniqueInfo& uniqueInfoOut);
 
     size_t GetKeySize(const unique_ptr<EmbBatchT> &batch);
