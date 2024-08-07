@@ -151,47 +151,37 @@ def get_preprocessed_tensor_for_asc(table, config):
     if is_incremental_checkpoint:
         table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(table)
         channel_name = f"{table_instance.table_name}_key_d2h_{TRAIN_CHANNEL_ID}"
-        # 每一步训练消耗时间在几百毫秒，同时时间戳是一个整数（用秒表示），所以在每一步训练开始前记录时间和每一步训练结束时间差异不大，所以在这里记录时间
-        time_stamp = tf.cast(tf.timestamp(), tf.int64)
-        time_stamp_tensor = tf.expand_dims(time_stamp, axis=0)
+        # send timestamp and global step tensor to host
+        time_stamp_tensor = tf.expand_dims(tf.cast(tf.timestamp(), tf.int64), axis=0)
         graph = ops.get_default_graph()
-        global_step_tensor = get_global_step(graph)
-        global_step_tensor = tf.expand_dims(global_step_tensor, axis=0)
+        global_step_tensor = tf.expand_dims(get_global_step(graph), axis=0)
         send_op = tf.concat([time_stamp_tensor, global_step_tensor], axis=0)
         send_timestamp_op = npu_ops.outfeed_enqueue_op(channel_name=channel_name, inputs=[send_op])
         with tf.control_dependencies([send_timestamp_op]):
             if not config.get("is_hbm"):
                 # 一表多查时，会多次进入get_preprocessed_tensor_for_asc，最后一次大查询替换map的key-value即可
                 swap_args = SwapArgs()
-
                 swap_args.set_data(SwapDataType.CONFIG.value, var_name=config.get(ASCAnchorAttr.TABLE_NAME.value),
-                                   var_channel=config.get(ASCAnchorAttr.CHANNEL_ID.value), config=config, swap_info=swap_info)
-
+                                   var_channel=config.get(ASCAnchorAttr.CHANNEL_ID.value), config=config,
+                                   swap_info=swap_info)
             all2all_args = get_all2all_args(use_static, config)
-
             result = {
                 'restore_vector': restore_vector,
                 'hot_pos': hot_pos,
                 'id_offsets': id_offsets,
                 'all2all_args': all2all_args,
             }
-
         return result
-
     if not config.get("is_hbm"):
         # 一表多查时，会多次进入get_preprocessed_tensor_for_asc，最后一次大查询替换map的key-value即可
         swap_args = SwapArgs()
-
         swap_args.set_data(SwapDataType.CONFIG.value, var_name=config.get(ASCAnchorAttr.TABLE_NAME.value),
                            var_channel=config.get(ASCAnchorAttr.CHANNEL_ID.value), config=config, swap_info=swap_info)
-
     all2all_args = get_all2all_args(use_static, config)
-
     result = {
         'restore_vector': restore_vector,
         'hot_pos': hot_pos,
         'id_offsets': id_offsets,
         'all2all_args': all2all_args,
     }
-
     return result

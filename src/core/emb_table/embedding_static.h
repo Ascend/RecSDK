@@ -38,7 +38,7 @@ public:
 
     void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
 
-    void Save(const string& savePath, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo);
+    void Save(const string& savePath, const int pythonBatchId, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo);
 
     void BackUpTrainStatus();
 

@@ -73,8 +73,10 @@ int64_t EmbeddingStatic::capacity() const
     return this->devVocabSize;
 }
 
-void EmbeddingStatic::Save(const string& savePath, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo)
+void EmbeddingStatic::Save(const string& savePath, const int pythonBatchId, bool saveDelta,
+                           const map<emb_key_t, KeyInfo>& keyInfo)
 {
+    // Param pythonBatchId not use in this method, and only use in embedding_ddr.
     SaveKey(savePath, saveDelta, keyInfo);
 }
 
@@ -89,7 +91,8 @@ void EmbeddingStatic::SaveKey(const string& savePath, bool saveDelta, const map<
     deviceOffset.clear();
 
     for (const auto& it: keyOffsetMap) {
-        // 如果是保存delta模型，需要先从keyOffsetMap中提取deltaMap[name]中isChanged为true的key
+        // When saving a delta model, you need to first extract the keys from deltaMap[name] where isChanged is true
+        // from the keyOffsetMap.
         if (saveDelta) {
             auto result = keyInfo.find(it.first);
             if (result == keyInfo.end() || !result->second.isChanged) {
@@ -99,7 +102,7 @@ void EmbeddingStatic::SaveKey(const string& savePath, bool saveDelta, const map<
         deviceKey.push_back(it.first);
         deviceOffset.push_back(it.second);
     }
-    LOG_INFO("device key size: {}, device offset size: {}.", deviceKey.size(), deviceOffset.size());
+    LOG_INFO("Device key size: {}, device offset size: {}.", deviceKey.size(), deviceOffset.size());
 
     if (fileSystemPtr_ == nullptr) {
         throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");

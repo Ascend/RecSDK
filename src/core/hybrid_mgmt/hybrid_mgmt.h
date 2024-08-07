@@ -50,6 +50,22 @@ enum class TaskType {
     DDR
 };
 
+enum class SaveModelType {
+    DELTA,
+    BASE
+};
+
+inline string TransferModelType2Str(SaveModelType t){
+    switch (t) {
+        case SaveModelType::DELTA:
+            return "delta";
+        case SaveModelType::BASE:
+            return "base";
+        default:
+            throw std::invalid_argument("Invalid ModelType.");
+    }
+}
+
 struct EmbTaskInfo {
     int batchId;
     int threadIdx;
@@ -200,6 +216,8 @@ public:
 
     void resetDeltaInfo();
 
+    void GetDeltaModelKeys(const string& savePath, bool saveDelta, map<string, map<emb_key_t, KeyInfo>>& keyInfoMap);
+
 private:
     HybridMgmtBlock* hybridMgmtBlock;
     vector<EmbInfo> mgmtEmbInfo;
@@ -218,11 +236,11 @@ private:
     bool alreadyTrainOnce = false;  // 用于判断是否为predict模式
     bool isBackUpTrainStatus = false; // whether the train state has been backed up
     bool isIncrementalCkpt;
-    map<string, map<emb_key_t, KeyInfo>> deltaMap;
-    map<string, int> keyBatchIdMap;
+    map<string, absl::flat_hash_map<emb_key_t, KeyInfo>> deltaMap;
+    absl::flat_hash_map<string, int> keyBatchIdMap;
     bool isFirstSave = true;
-    std::mutex updateMtx;
-    std::condition_variable cv;
+    std::mutex keyCountUpdateMtx;
+    std::condition_variable keyCountUpdateCv;
     bool checkConditionMet = false;
 
 

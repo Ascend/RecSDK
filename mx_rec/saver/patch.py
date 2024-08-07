@@ -22,7 +22,7 @@
 import os
 import time
 import logging
-import json
+from typing import Optional
 
 import tensorflow as tf
 from tensorflow.compat.v1.summary import FileWriter
@@ -58,7 +58,7 @@ from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, StringValidator, OptionalIntValidator, \
     OptionalStringValidator, DirectoryValidator
 from mx_rec.util.log import logger
-from mx_rec.constants.constants import MAX_INT32, INVALID_CHARS
+from mx_rec.constants.constants import MAX_INT32, INVALID_CHARS, BASE_MODEL, DELTA_MODEL
 
 _FILENAME_SUFFIX = "filename_suffix"
 
@@ -228,7 +228,7 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
     msg = "Saving model by normal pattern."
     if is_incremental_checkpoint:
         start_save_time = time.time()
-        saved_model_type = "delta" if save_delta else "base"
+        saved_model_type = DELTA_MODEL if save_delta else BASE_MODEL
         msg = f"Saving {saved_model_type} model by incremental checkpoint pattern."
     tf_logging.info(msg)
     if not check_characters_is_valid(save_path):
@@ -302,20 +302,6 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
     ("save_path", StringValidator, {"min_len": 1, "max_len": 150}, ["check_string_length"]),
 ])
 def restore(self, sess, save_path):
-    """
-    不开增量保存加载：和原来的加载逻辑一致，直接加载最新的model即可
-    开启增量保存加载：
-    1、指定版本：加载对应版本的model，获取对应model的类型
-    2、不指定版本：直接加载最新的model，获取对应model的类型
-    3、当拿到需要加载的模型类型时，需要分情况：
-    全量（base）model：直接去加载对应目录下的模型即可
-    增量（delta）model：先找到对应最近的全量（base）model，读取其数据；然后找到这个全量（base）model之后的所有增量（delta）model，依次
-    加载增量（delta）model，即读取其中的数据并将其更新的加载起来的全量（base）model中，然后创建一个临时目录，用于保存加载起来的model。
-    :param self:
-    :param sess: tf session
-    :param save_path: restore model path
-    :return:
-    """
     if save_path is None:
         raise ValueError("Can't load save_path when it is None.")
 
@@ -325,31 +311,30 @@ def restore(self, sess, save_path):
     directory, base_name = os.path.split(save_path)
     if is_incremental_checkpoint:
         if not restore_model_version:
-            # 开启增量保存加载且不指定版本：加载最新的model
+            # open incremental checkpoint and restore_model_version is none, then restore the latest model
             restore_model_version = base_name.split("-")[1]
             model_type = get_model_type_by_version(directory, restore_model_version)
-            if model_type == "delta":
-                # 获取离此delta model最近的一个base model，以及这个base model和此delta model之间所有的delta models（包括这个delta
-                # model）
+            if model_type == DELTA_MODEL:
+                # get the newest base model and then restore delta models one by one
                 base_model, delta_models = get_base_and_delta_models(directory, restore_model_version)
-                logger.info(f"Restore {model_type} model from base model: {base_model} and delta models: "
-                            f"{','.join(delta_models)}.")
+                delta_models_str = " ".join(delta_models)
+                logger.info(f"Restore %s model from base model: %s and delta models: %s.", model_type, base_model,
+                            delta_models_str)
                 read_base_delta_and_write(directory, base_model, delta_models)
             save_path = os.path.join(directory, base_name)
         else:
             base_name = base_name.split("-")[0] + "-" + restore_model_version
             model_type = get_model_type_by_version(directory, restore_model_version)
-            if model_type == "delta":
-                # 获取离此delta model最近的一个base model，以及这个base model和此delta model之间所有的delta models（包括这个delta
-                # model）
+            if model_type == DELTA_MODEL:
+                # get the newest base model and then restore delta models one by one
                 base_model, delta_models = get_base_and_delta_models(directory, restore_model_version)
                 delta_models_str = " ".join(delta_models)
-                logger.info(f"Restore {model_type} model from base model: {base_model} and delta models: "
-                            f"{delta_models_str}.")
+                logger.info(f"Restore %s model from base model: %s and delta models: %s.", model_type, base_model,
+                            delta_models_str)
                 read_base_delta_and_write(directory, base_model, delta_models)
             save_path = os.path.join(directory, base_name)
     else:
-        model_type = "base"
+        model_type = BASE_MODEL
         save_path = os.path.join(directory, base_name)
 
     if not check_characters_is_valid(save_path):
@@ -571,12 +556,20 @@ def patch_for_summary_writer():
     logger.debug("Method `tf.summary.FileWriter.__init__` has been patched.")
 
 
-def second_or_step_timer_init(self, every_secs=None, every_steps=None, is_incremental_checkpoint=False):
+def second_or_step_timer_init(self, every_secs: int = None, every_steps: int = None,
+                              is_incremental_checkpoint: bool = False):
+    """
+    Timer for save model.
+    :param self:
+    :param every_secs: time interval for saving model
+    :param every_steps: step interval for saving model
+    :param is_incremental_checkpoint: check if opening incremental checkpoint
+    :return:
+    """
     self.reset()
     self._every_secs = every_secs
     self._every_steps = every_steps
 
-    from mx_rec.util.initialize import ConfigInitializer
     self._save_checkpoint_due_time = ConfigInitializer.get_instance().save_checkpoint_due_time
     self._save_delta_checkpoints_secs = ConfigInitializer.get_instance().save_delta_checkpoints_secs
     self._is_incremental_checkpoint = is_incremental_checkpoint
@@ -596,7 +589,7 @@ def second_or_step_timer_init(self, every_secs=None, every_steps=None, is_increm
     super(SecondOrStepTimer, self).__init__()
 
 
-def should_trigger_for_step(self, step):
+def should_trigger_for_step(self, step: int) -> bool:
     if self._last_triggered_step is None:
         return True
 
@@ -604,13 +597,11 @@ def should_trigger_for_step(self, step):
         return False
 
     if not self._is_incremental_checkpoint:
-        if self._every_secs is not None:
-            if time.time() >= self._last_triggered_time + self._every_secs:
-                return True
+        if self._every_secs is not None and (time.time() >= self._last_triggered_time + self._every_secs):
+            return True
 
-        if self._every_steps is not None:
-            if step >= self._last_triggered_step + self._every_steps:
-                return True
+        if self._every_steps is not None and (step >= self._last_triggered_step + self._every_steps):
+            return True
         return False
 
     if self._save_checkpoint_due_time is not None:
@@ -626,7 +617,7 @@ def should_trigger_for_step(self, step):
     return False
 
 
-def update_last_triggered_step(self, step):
+def update_last_triggered_step(self, step: int) -> (Optional[float], Optional[int]):
     current_time = time.time()
     if self._last_triggered_time is None:
         elapsed_secs = None
@@ -684,14 +675,16 @@ def checkpoint_saver_hook_init(self, checkpoint_dir, save_secs=None, save_steps=
 
 def after_run_checkpoint_saver_hook(self, run_context, run_values):
     stale_global_step = run_values.results
-    if self._timer.should_trigger_for_step(stale_global_step +
+    if not self._timer.should_trigger_for_step(stale_global_step +
                                            self._steps_per_run):
-        # get the real value after train op.
-        global_step = run_context.session.run(self._global_step_tensor)
-        if self._timer.should_trigger_for_step(global_step):
-            self._timer.update_last_triggered_step(global_step)
-            if self._save(run_context.session, global_step, self._timer._is_delta):
-                run_context.request_stop()
+        return
+    # get the real value after train op.
+    global_step = run_context.session.run(self._global_step_tensor)
+    if not self._timer.should_trigger_for_step(global_step):
+        return
+    self._timer.update_last_triggered_step(global_step)
+    if self._save(run_context.session, global_step, self._timer._is_delta):
+        run_context.request_stop()
 
 
 def save_checkpoint_saver_hook(self, session, step, save_delta=False):
@@ -699,7 +692,6 @@ def save_checkpoint_saver_hook(self, session, step, save_delta=False):
 
     for listener in self._listeners:
         listener.before_save(session, step)
-    # 新增参数save_delta表示保存的是base还是delta，is_incremental_checkpoint
     self._get_saver().save(session, self._save_path, global_step=step,
                            is_incremental_checkpoint=self._timer._is_incremental_checkpoint,
                            save_delta=save_delta)

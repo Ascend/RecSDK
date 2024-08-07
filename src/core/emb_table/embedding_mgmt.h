@@ -88,7 +88,8 @@ public:
     /**
      * 保存所有表
      */
-    void Save(const string& filePath, bool saveDelta, const map<string, map<emb_key_t, KeyInfo>>& keyInfoMap);
+    void Save(const string& filePath, const int pythonBatchId, bool saveDelta,
+              const map<string, map<emb_key_t, KeyInfo>>& keyInfoMap);
 
     /**
      * In estimator mode, when switching from train to eval, backup the training state of all tables.
