@@ -14,14 +14,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
+import time
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Union, Tuple
 
 import tensorflow as tf
+from tensorflow.python.framework import ops
+from tensorflow.python.training.training_util import get_global_step
 
 import mxrec_pybind
-from mx_rec.constants.constants import ASCAnchorAttr
+from mx_rec.constants.constants import ASCAnchorAttr, TRAIN_CHANNEL_ID
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.tf_version_adapter import npu_ops
 from mx_rec.util.log import logger
@@ -84,7 +86,6 @@ def get_id_offsets(max_lookup_vec_size: int, config: dict) -> Tuple[int, SwapInf
                 channel_name=f'{config.get(ASCAnchorAttr.TABLE_NAME.value)}'
                              f'_lookup_{config.get(ASCAnchorAttr.CHANNEL_ID.value)}')
             return id_offsets, swap_info
-
         [id_offsets] = npu_ops.gen_npu_ops.get_next(
             output_types=[tf.int32],
             output_shapes=[[max_lookup_vec_size]],
@@ -146,20 +147,41 @@ def get_preprocessed_tensor_for_asc(table, config):
     with tf.compat.v1.variable_scope("id_offsets"):
         id_offsets, swap_info = get_id_offsets(max_lookup_vec_size, config)
 
+    is_incremental_checkpoint = ConfigInitializer.get_instance().is_incremental_checkpoint
+    if is_incremental_checkpoint:
+        table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(table)
+        channel_name = f"{table_instance.table_name}_key_d2h_{TRAIN_CHANNEL_ID}"
+        # send timestamp and global step tensor to host
+        time_stamp_tensor = tf.expand_dims(tf.cast(tf.timestamp(), tf.int64), axis=0)
+        graph = ops.get_default_graph()
+        global_step_tensor = tf.expand_dims(get_global_step(graph), axis=0)
+        send_op = tf.concat([time_stamp_tensor, global_step_tensor], axis=0)
+        send_timestamp_op = npu_ops.outfeed_enqueue_op(channel_name=channel_name, inputs=[send_op])
+        with tf.control_dependencies([send_timestamp_op]):
+            if not config.get("is_hbm"):
+                # 一表多查时，会多次进入get_preprocessed_tensor_for_asc，最后一次大查询替换map的key-value即可
+                swap_args = SwapArgs()
+                swap_args.set_data(SwapDataType.CONFIG.value, var_name=config.get(ASCAnchorAttr.TABLE_NAME.value),
+                                   var_channel=config.get(ASCAnchorAttr.CHANNEL_ID.value), config=config,
+                                   swap_info=swap_info)
+            all2all_args = get_all2all_args(use_static, config)
+            result = {
+                'restore_vector': restore_vector,
+                'hot_pos': hot_pos,
+                'id_offsets': id_offsets,
+                'all2all_args': all2all_args,
+            }
+        return result
     if not config.get("is_hbm"):
         # 一表多查时，会多次进入get_preprocessed_tensor_for_asc，最后一次大查询替换map的key-value即可
         swap_args = SwapArgs()
-
         swap_args.set_data(SwapDataType.CONFIG.value, var_name=config.get(ASCAnchorAttr.TABLE_NAME.value),
                            var_channel=config.get(ASCAnchorAttr.CHANNEL_ID.value), config=config, swap_info=swap_info)
-
     all2all_args = get_all2all_args(use_static, config)
-
     result = {
         'restore_vector': restore_vector,
         'hot_pos': hot_pos,
         'id_offsets': id_offsets,
         'all2all_args': all2all_args,
     }
-
     return result

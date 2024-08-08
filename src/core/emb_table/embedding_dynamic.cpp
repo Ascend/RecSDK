@@ -125,14 +125,15 @@ void EmbeddingDynamic::RandomInit(void* addr, size_t embNum)
 }
 
 
-void EmbeddingDynamic::Save(const string& savePath, const int pythonBatchId)
+void EmbeddingDynamic::Save(const string& savePath, const int pythonBatchId, bool saveDelta, const map<emb_key_t,
+                            KeyInfo>& keyInfo)
 {
     // Param pythonBatchId not use in this method, and only use in embedding_ddr.
-    SaveKey(savePath);
+    SaveKey(savePath, saveDelta, keyInfo);
     SaveEmbAndOptim(savePath);
 }
 
-void EmbeddingDynamic::SaveKey(const string& savePath)
+void EmbeddingDynamic::SaveKey(const string& savePath, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo)
 {
     stringstream ss;
     ss << savePath << "/" << name << "/key/";
@@ -143,6 +144,12 @@ void EmbeddingDynamic::SaveKey(const string& savePath)
     embAddress.clear();
 
     for (const auto &it: keyOffsetMap) {
+        if (saveDelta) {
+            auto result = keyInfo.find(it.first);
+            if (result == keyInfo.end() || !result->second.isChanged) {
+                continue;
+            }
+        }
         deviceKey.push_back(it.first);
         embAddress.push_back(it.second);
     }
