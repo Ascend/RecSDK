@@ -78,9 +78,11 @@ class WrongListTop : public std::exception {};
 class KeyProcess {
 public:
     bool Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
-                    const vector<ThresholdValue>& thresholdValues = {}, int seed = 0);
+                   const vector<ThresholdValue>& thresholdValues = {}, int seed = 0, bool isIncrementalCkpt = false);
 
     unique_ptr<vector<Tensor>> GetInfoVec(const EmbBaseInfo& info, ProcessedInfo type, bool& isEos);
+
+    unique_ptr<vector<Tensor>> GetKCInfoVec(const EmbBaseInfo& info);
 
     vector<uint64_t> GetUniqueKeys(const EmbBaseInfo& info, bool& isEos);
 
@@ -160,6 +162,8 @@ public:
 
     bool isRunning{false};
 
+    bool isIncrementalCheckpoint {false};
+
     std::mutex destroyMutex;
     std::mutex eosMutex;
     inline bool HasEmbName(const string& embName)
@@ -175,6 +179,9 @@ public:
     template <class T>
     T GetInfo(info_list_t<T>& list, const EmbBaseInfo& info);
 
+    template <class T>
+    T GetKeyCountVec(info_list_t<T>& list, const EmbBaseInfo& info);
+
     RankInfo rankInfo;
     map<EmbNameT, EmbInfo> embInfos;
     MPI_Comm comm[MAX_CHANNEL_NUM][MAX_KEY_PROCESS_THREAD];
@@ -185,7 +192,9 @@ public:
     info_list_t<UinqueKeyT> uniqueKeysList;
     info_list_t<RestoreVecSecT> restoreVecSecList;
     list<unique_ptr<vector<Tensor>>> storage;
+    list<unique_ptr<vector<Tensor>>> keyCountStorage;
     info_list_t<TensorInfoT> infoList;
+    info_list_t<TensorInfoT> keyCountInfoList;
     info_list_t<TensorInfoT> all2AllList;
     map<EmbNameT, size_t> maxOffset{};
     map<EmbNameT, absl::flat_hash_map<emb_key_t, int64_t>> keyOffsetMap{};
@@ -221,7 +230,7 @@ public:
     void GetUniqueConfig(ock::ctr::UniqueConf& uniqueConf);
 
     void InitializeUnique(ock::ctr::UniqueConf& uniqueConf, size_t& preBatchSize, bool& uniqueInitialize,
-                          const unique_ptr<EmbBatchT>& batch, ock::ctr::UniquePtr& unique);
+                          const unique_ptr <EmbBatchT>& batch, ock::ctr::UniquePtr& unique);
 
     void ProcessBatchWithFastUnique(const unique_ptr<EmbBatchT>& batch, ock::ctr::UniquePtr& unique, int id,
                                     UniqueInfo& uniqueInfoOut);
@@ -233,7 +242,8 @@ public:
 
     auto HashSplit(const unique_ptr<EmbBatchT>& batch) const -> tuple<vector<KeysT>, vector<int32_t>>;
 
-    auto HotHashSplit(const unique_ptr<EmbBatchT>& batch) -> tuple<vector<KeysT>, vector<int32_t>, vector<int>>;
+    auto HotHashSplit(const unique_ptr<EmbBatchT>& batch) -> tuple<vector<KeysT>, vector<int32_t>, vector<int>,
+            vector<emb_key_t>>;
 
     void PaddingAlltoallVC(vector<KeysT>& splitKeys) const;
 
@@ -272,6 +282,8 @@ public:
     void PushResultDDR(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors,
                        std::vector<uint64_t>& uniqueKeys, std::vector<int32_t>& restoreVecSec);
 
+    void PushKeyCountHBM(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors);
+
     void PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys, int channel);
 
     void AddCountStartToHotPos(vector<KeysT>& splitKeys, vector<int>& hotPos, const vector<int>& hotPosDev,
@@ -283,8 +295,9 @@ public:
     vector<uint32_t> GetCountRecv(const unique_ptr<EmbBatchT>& batch, int id, vector<vector<uint32_t>>& keyCount,
                                   vector<int> scAll, vector<int> ss);
 
-    void HashSplitHelper(const unique_ptr<EmbBatchT>& batch, vector<KeysT>& splitKeys, vector<int32_t>& restore,
-                         vector<int32_t>& hotPos, vector<vector<uint32_t>>& keyCount);
+    void HashSplitHelper(const unique_ptr <EmbBatchT>& batch, vector <KeysT>& splitKeys,
+                         vector <int32_t>& restore, vector <int32_t>& hotPos,
+                         vector <vector<uint32_t>>& keyCount, vector<emb_key_t>& keyCountVec);
 
     template <class T>
     inline vector<T> Count2Start(const vector<T>& count) const

@@ -21,6 +21,7 @@ See the License for the specific language governing permissions and
 #include <memory>
 #include "utils/common.h"
 #include "emb_table/embedding_table.h"
+#include "hybrid_mgmt/hybrid_mgmt.h"
 
 namespace MxRec {
 
@@ -87,7 +88,8 @@ public:
     /**
      * 保存所有表
      */
-    void Save(const string& filePath, const int pythonBatchId);
+    void Save(const string& filePath, const int pythonBatchId, bool saveDelta,
+              const map<string, map<emb_key_t, KeyInfo>>& keyInfoMap);
 
     /**
      * In estimator mode, when switching from train to eval, backup the training state of all tables.

@@ -41,7 +41,8 @@ void KeyProcess::SetupHotEmbUpdateStep()
 }
 
 bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
-                            const vector<ThresholdValue>& thresholdValues, int seed)
+                            const vector<ThresholdValue>& thresholdValues,
+                            int seed, bool isIncrementalCkpt)
 {
     readySendEosCnt[TRAIN_CHANNEL_ID].store(0);
     readySendEosCnt[EVAL_CHANNEL_ID].store(0);
@@ -68,6 +69,7 @@ bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos
         }
     }
     isRunning = true;
+    isIncrementalCheckpoint = isIncrementalCkpt;
 
     // 特征准入与特征淘汰
     if (!thresholdValues.empty()) {
@@ -257,7 +259,7 @@ void KeyProcess::KeyProcessTaskWithFastUnique(int channel, int threadId)
         while (true) {
             TimeCost getAndProcessTC;
             TimeCost getBatchDataTC;
-            batch = GetBatchData(channel, threadId);  // get batch data from SingletonQueue<EmbBatchT>
+            batch = GetBatchData(channel, threadId); // get batch data from SingletonQueue<EmbBatchT>
             LOG_DEBUG("getBatchDataTC(ms):{}", getBatchDataTC.ElapsedMS());
             if (batch == nullptr) {
                 break;
@@ -317,15 +319,16 @@ void KeyProcess::KeyProcessTask(int channel, int threadId)
     LOG_INFO(KEY_PROCESS "KeyProcessTask exit. rank:{} channelId:{}, threadId:{}", rankInfo.rankId, channel, threadId);
 }
 
-void KeyProcess::HashSplitHelper(const unique_ptr<EmbBatchT>& batch, vector<KeysT>& splitKeys, vector<int32_t>& restore,
-                                 vector<int32_t>& hotPos, vector<vector<uint32_t>>& keyCount)
+void KeyProcess::HashSplitHelper(const unique_ptr <EmbBatchT>& batch, vector <KeysT>& splitKeys,
+                                 vector <int32_t>& restore, vector <int32_t>& hotPos,
+                                 vector <vector<uint32_t>>& keyCount, vector<emb_key_t>& keyCountVec)
 {
     TimeCost uniqueTc;
     if (m_featureAdmitAndEvict.GetFunctionSwitch() &&
         FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE) {
         tie(splitKeys, restore, keyCount) = HashSplitWithFAAE(batch);  // 按存储dev id切分并去重
     } else {
-        tie(splitKeys, restore, hotPos) = HotHashSplit(batch);  // 按存储dev id切分并去重
+        tie(splitKeys, restore, hotPos, keyCountVec) = HotHashSplit(batch);   // 按存储dev id切分并去重
     }
     LOG_DEBUG("uniqueTc(ms):{}", uniqueTc.ElapsedMS());
 }
@@ -400,8 +403,9 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
     vector<int32_t> restore;
     vector<int32_t> hotPos;
     vector<vector<uint32_t>> keyCount;
+    vector<emb_key_t> keyCountVec;
     TimeCost totalTimeCost = TimeCost();
-    HashSplitHelper(batch, splitKeys, restore, hotPos, keyCount);
+    HashSplitHelper(batch, splitKeys, restore, hotPos, keyCount, keyCountVec);
     auto [lookupKeys, scAll, ss] = ProcessSplitKeys(batch, threadId, splitKeys);
 
     vector<uint32_t> countRecv;
@@ -434,6 +438,12 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
     auto tensors = make_unique<vector<Tensor>>();
     tensors->push_back(Vec2TensorI32(restore));
 
+    // 将keyCountVec放进tensor里并推到一个队列里
+    auto keyCountTensors = make_unique<vector<Tensor>>();
+    if (isIncrementalCheckpoint) {
+        keyCountTensors->push_back(Vec2TensorI64(keyCountVec));
+    }
+
     hotPos.resize(hotEmbTotCount[batch->name], 0);
     tensors->push_back(Vec2TensorI32(hotPos));
 
@@ -441,6 +451,9 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
         PushGlobalUniqueTensors(tensors, lookupKeys, channel);
         tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(lookupKeys) : Vec2TensorI32(lookupKeys));
         PushResultHBM(batch, move(tensors));
+        if (isIncrementalCheckpoint) {
+            PushKeyCountHBM(batch, move(keyCountTensors));
+        }
     } else {
         std::vector<uint64_t> lookupKeysUint(lookupKeys.begin(), lookupKeys.end());
         vector<uint64_t> uniqueKeys;
@@ -523,6 +536,16 @@ void KeyProcess::PushResultDDR(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<T
     uniqueKeysList[batch->name][batch->channel].push(make_tuple(batch->batchId, batch->name, move(uniqueKeys)));
     restoreVecSecList[batch->name][batch->channel].push(make_tuple(batch->batchId, batch->name, move(restoreVecSec)));
     lockGuard.unlock();
+}
+
+void KeyProcess::PushKeyCountHBM(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors)
+{
+    std::unique_lock<std::mutex> lockGuard(mut);
+    keyCountStorage.push_front(move(tensors));
+    keyCountInfoList[batch->name][batch->channel].push(make_tuple(batch->batchId, batch->name,
+                                                                  keyCountStorage.begin()));
+    lockGuard.unlock();
+    LOG_INFO("Push key count to list success.");
 }
 
 /*
@@ -897,7 +920,8 @@ tuple<vector<KeysT>, vector<int32_t>, vector<vector<uint32_t>>> KeyProcess::Hash
     return {splitKeys, restore, keyCount};
 }
 
-tuple<vector<KeysT>, vector<int32_t>, vector<int>> KeyProcess::HotHashSplit(const unique_ptr<EmbBatchT>& batch)
+tuple<vector<KeysT>, vector<int32_t>, vector<int>, vector<emb_key_t>> KeyProcess::HotHashSplit(const
+unique_ptr<EmbBatchT>& batch)
 {
     EASY_FUNCTION(profiler::colors::Gold)
     emb_key_t* batchData = batch->sample.data();
@@ -906,6 +930,8 @@ tuple<vector<KeysT>, vector<int32_t>, vector<int>> KeyProcess::HotHashSplit(cons
     vector<int32_t> restore(batch->Size());
     absl::flat_hash_map<emb_key_t, int> uKey;  // 用于去重查询
     absl::flat_hash_map<emb_key_t, int> keyCountMapByEmbName;
+    absl::flat_hash_map<emb_key_t, emb_key_t> keyCountOneBatch;
+    vector<emb_key_t> keyCountVec;
     std::shared_lock<std::shared_mutex> lock(g_smut);
     auto hotMap = hotKey[batch->name];
     lock.unlock();
@@ -917,6 +943,9 @@ tuple<vector<KeysT>, vector<int32_t>, vector<int>> KeyProcess::HotHashSplit(cons
         const emb_key_t& key = batchData[i];
         if (batch->batchId % hotEmbUpdateStep == 0) {
             keyCountMapByEmbName[key]++;
+        }
+        if (isIncrementalCheckpoint) {
+            keyCountOneBatch[key]++;
         }
         emb_key_t devId = abs(key % static_cast<emb_key_t>(rankInfo.rankSize));
         auto result = uKey.find(key);
@@ -943,7 +972,14 @@ tuple<vector<KeysT>, vector<int32_t>, vector<int>> KeyProcess::HotHashSplit(cons
         }
         uKey[key] = restore[i];
     }
-
+    if (isIncrementalCheckpoint) {
+        for (auto& it : keyCountOneBatch) {
+            keyCountVec.emplace_back(it.first);
+            keyCountVec.emplace_back(it.second);
+        }
+    }
+    LOG_INFO(KEY_PROCESS "Hot hash split, batch id: {}, batch name: {}, channel: {}, kc size: {}, data: {}",
+             batch->batchId, batch->name, batch->channel, keyCountVec.size(), VectorToString(keyCountVec));
     if (GlogConfig::gStatOn) {
         size_t uniqueKeyNum = 0;
         for (int devId = 0; devId < rankInfo.rankSize; ++devId) {
@@ -956,7 +992,7 @@ tuple<vector<KeysT>, vector<int32_t>, vector<int>> KeyProcess::HotHashSplit(cons
     UpdateHotMap(keyCountMapByEmbName, hotEmbTotCount[batch->name], batch->batchId % hotEmbUpdateStep == 0,
                  batch->name);
     AddCountStartToHotPos(splitKeys, hotPos, hotPosDev, batch);
-    return {splitKeys, restore, hotPos};
+    return { splitKeys, restore, hotPos, keyCountVec };
 }
 
 void KeyProcess::AddCountStartToHotPos(vector<KeysT>& splitKeys, vector<int>& hotPos, const vector<int>& hotPosDev,
@@ -1148,6 +1184,23 @@ T KeyProcess::GetInfo(info_list_t<T>& list, const EmbBaseInfo& info)
     }
     auto t = list[info.name][info.channelId].top();
     list[info.name][info.channelId].pop();
+    return move(t);
+}
+
+template<class T>
+T KeyProcess::GetKeyCountVec(info_list_t<T>& list, const EmbBaseInfo& info)
+{
+    std::lock_guard<std::mutex> lockGuard(mut);
+    if (list[info.name][info.channelId].empty()) {
+        LOG_ERROR("get info list is empty.");
+        throw EmptyList();
+    }
+    auto t = list[info.name][info.channelId].top();
+    if (list.empty()) {
+        LOG_INFO("Get data t is null.");
+    }
+    list[info.name][info.channelId].pop();
+    LOG_INFO("Get key count vector from list success.");
     return move(t);
 }
 
@@ -1371,6 +1424,36 @@ unique_ptr<vector<Tensor>> KeyProcess::GetInfoVec(const EmbBaseInfo& info, Proce
             }
             LOG_TRACE("getting info failed {}[{}], list is empty, and mgmt batchId: {}, readEmbKey batchId: {}.",
                       info.name, info.channelId, info.batchId, (hybridMgmtBlock->readEmbedBatchId[info.channelId] - 1));
+            this_thread::sleep_for(1ms);
+        } catch (WrongListTop&) {
+            LOG_TRACE("getting info failed {}[{}]:{} wrong top", info.name, info.channelId, info.batchId);
+            this_thread::sleep_for(1ms);
+        }
+    }
+    return ret;
+}
+
+unique_ptr<vector<Tensor>> KeyProcess::GetKCInfoVec(const EmbBaseInfo& info)
+{
+    info_list_t<TensorInfoT>* list;
+    list = &keyCountInfoList;
+    unique_ptr<vector<Tensor>> ret = nullptr;
+    // 循环尝试获取list中的数据
+    while (true) {
+        if (!isRunning) {
+            break;
+        }
+
+        try {
+            auto infoVec = GetKeyCountVec(*list, info);
+            auto it = get<std::list<unique_ptr<vector<Tensor>>>::iterator>(infoVec);
+            ret = std::move(*it);
+            std::unique_lock<std::mutex> lockGuard(mut);
+            keyCountStorage.erase(it);
+            break;
+        } catch (EmptyList&) {
+            unique_lock<mutex> lockEosGuard(eosMutex);
+            LOG_TRACE("getting info failed, list is empty.");
             this_thread::sleep_for(1ms);
         } catch (WrongListTop&) {
             LOG_TRACE("getting info failed {}[{}]:{} wrong top", info.name, info.channelId, info.batchId);

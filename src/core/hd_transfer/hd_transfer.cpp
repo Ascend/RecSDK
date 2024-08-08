@@ -27,7 +27,7 @@ using namespace std;
 /// \param embInfos 稀疏表元信息类的list
 /// \param localRankId 设备逻辑ID
 /// \return
-int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId)
+int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId, bool isIncrementalCkpt)
 {
 #ifndef GTEST
     LOG_INFO(MGMT + "begin hd_transfer initialize, rank:{}", localRankId);
@@ -50,6 +50,9 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId)
         auto embName = embInfo.name;
         for (int i = 0; i < MAX_CHANNEL_NUM; ++i) {
             CreateChannel(localRankId, embInfo.name, i);
+            if (isIncrementalCkpt) {
+                CreateChannelForIncrementalCkpt(localRankId, embInfo.name, i);
+            }
         }
         // 创建acltdtDataset类型的数据，对等一个Vector<tensor>。同步接口。
         for (int j = 0; j < EMBEDDING_THREAD_NUM; j++) {
@@ -60,9 +63,17 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId)
             }
             aclDatasets[embInfo.name][j] = dataset;
         }
+        if (isIncrementalCkpt) {
+            acltdtDataset* dataset = acltdtCreateDataset();
+            if (dataset == nullptr) {
+                LOG_ERROR("Create acltdtDataset failed, table:{}.", embName);
+                throw runtime_error("create acltdtDataset failed");
+            }
+            aclDatasetsForIncrementalCkpt[embInfo.name] = dataset;
+        }
     }
     running = true;
-    LOG(INFO) << "hd_transfer init";
+    LOG_INFO(MGMT + "hd_transfer init end");
 #endif
     return true;
 }
@@ -100,7 +111,7 @@ void HDTransfer::CreateChannel(const uint32_t localRankId, const string& embName
 #ifndef GTEST
     int channelSize = GlobalEnv::hdChannelSize;
     LOG_INFO("user config all2all restore lookup channel size:{}", channelSize);
-    for (int c = static_cast<int>(TransferChannel::D2H); c != static_cast<int>(TransferChannel::INVALID); c++) {
+    for (int c = static_cast<int>(TransferChannel::D2H); c != static_cast<int>(TransferChannel::KEY_D2H); c++) {
         if ((c == static_cast<int>(TransferChannel::SAVE_D2H) || c == static_cast<int>(TransferChannel::SAVE_H2D)) &&
             channelNum == EVAL_CHANNEL_ID) {
             continue;
@@ -121,6 +132,19 @@ void HDTransfer::CreateChannel(const uint32_t localRankId, const string& embName
         LOG_INFO("create channel:{} {}", sendName, static_cast<void*>(transferChannels[sendName]));
     }
 #endif
+}
+
+void HDTransfer::CreateChannelForIncrementalCkpt(const uint32_t localRankId, const string& embName,
+                                                 const int channelNum)
+{
+    int channelSize = GlobalEnv::hdChannelSize;
+    LOG_INFO("User config send timestamp and global step channel size:{}.", channelSize);
+    int c = static_cast<int>(TransferChannel::KEY_D2H);
+    auto channel = static_cast<TransferChannel>(c);
+    std::string sendName = StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channel).c_str(),
+                                        channelNum);
+    transferChannels[sendName] = TDT_CREATE_CHANNEL(localRankId, sendName.c_str(), PING_PONG_SIZE);
+    LOG_INFO("Create channel:{} {}.", sendName, static_cast<void*>(transferChannels[sendName]));
 }
 
 /// 将tensor发送到channel
@@ -246,6 +270,29 @@ size_t HDTransfer::RecvAcl(TransferChannel channel, int channelId, const string&
     LOG_INFO("hd transfer recv:{}, {} batchId:{}, cost:{}ms", recvName, recvBatchIdType, batchId, tc.ElapsedMS());
     ret = acltdtGetDatasetSize(aclDatasets[embName][embeddingThreadId]);
 #endif
+    return ret;
+}
+
+size_t HDTransfer::RecvOffsetsAcl(TransferChannel channel, int channelId, const string& embName)
+{
+    EASY_FUNCTION()
+    size_t ret = 0;
+    string recvName = StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channel).c_str(), channelId);
+    LOG_DEBUG("hd transfer try recv:{}", recvName);
+    TimeCost tc = TimeCost();
+    if (aclDatasetsForIncrementalCkpt[embName] == nullptr) {
+        throw runtime_error(StringFormat("Failed recv:%s.", recvName.c_str()).c_str());
+    }
+    auto aclStatus = acltdtReceiveTensor(transferChannels[recvName],
+                                         aclDatasetsForIncrementalCkpt[embName], GlobalEnv::aclTimeout);
+    if (!running) {
+        return 0;
+    }
+    if (aclStatus != ACL_ERROR_NONE && aclStatus != ACL_ERROR_RT_QUEUE_EMPTY) {
+        throw runtime_error(StringFormat("Failed receive data from acl channel, acl status:%d", aclStatus).c_str());
+    }
+    LOG_INFO("hd transfer recv:{}, cost:{}ms", recvName, tc.ElapsedMS());
+    ret = acltdtGetDatasetSize(aclDatasetsForIncrementalCkpt[embName]);
     return ret;
 }
 

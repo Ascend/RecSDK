@@ -14,8 +14,10 @@ See the License for the specific language governing permissions and
 ==============================================================================*/
 
 #include "emb_table/embedding_static.h"
+
 #include "utils/logger.h"
 #include "file_system/file_system_handler.h"
+#include "hybrid_mgmt/hybrid_mgmt.h"
 
 using namespace MxRec;
 
@@ -71,13 +73,14 @@ int64_t EmbeddingStatic::capacity() const
     return this->devVocabSize;
 }
 
-void EmbeddingStatic::Save(const string& savePath, const int pythonBatchId)
+void EmbeddingStatic::Save(const string& savePath, const int pythonBatchId, bool saveDelta,
+                           const map<emb_key_t, KeyInfo>& keyInfo)
 {
     // Param pythonBatchId not use in this method, and only use in embedding_ddr.
-    SaveKey(savePath);
+    SaveKey(savePath, saveDelta, keyInfo);
 }
 
-void EmbeddingStatic::SaveKey(const string& savePath)
+void EmbeddingStatic::SaveKey(const string& savePath, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo)
 {
     stringstream ss;
     ss << savePath << "/" << name << "/key/";
@@ -88,9 +91,18 @@ void EmbeddingStatic::SaveKey(const string& savePath)
     deviceOffset.clear();
 
     for (const auto& it: keyOffsetMap) {
+        // When saving a delta model, you need to first extract the keys from deltaMap[name] where isChanged is true
+        // from the keyOffsetMap.
+        if (saveDelta) {
+            auto result = keyInfo.find(it.first);
+            if (result == keyInfo.end() || !result->second.isChanged) {
+                continue;
+            }
+        }
         deviceKey.push_back(it.first);
         deviceOffset.push_back(it.second);
     }
+    LOG_INFO("Device key size: {}, device offset size: {}.", deviceKey.size(), deviceOffset.size());
 
     if (fileSystemPtr_ == nullptr) {
         throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");

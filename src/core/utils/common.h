@@ -71,6 +71,7 @@ constexpr int SSD_SIZE_INDEX = 2;
 constexpr int MAX_FILE_NUM = 1000;
 constexpr int EMBEDDING_THREAD_NUM = 2;
 constexpr int HOST_TO_PREFILL_RATIO = 10;
+constexpr int KEY_COUNT_ELEMENT_NUM = 2;
 // for GLOG
 struct GlogConfig {
     static bool gStatOn;
@@ -510,6 +511,17 @@ struct UniqueInfo {
 struct KeySendInfo {
     KeysT keySend;
     vector<int32_t> keyCount;
+};
+
+struct KeyInfo {
+    int64_t lastUseTime;       // 最后使用时间
+    int64_t recentCount;       // 最近使用次数
+    bool isChanged;            // 是否有变更
+    int64_t batchID;           // batch id
+    int64_t totalCount;        // key总使用次数
+
+    KeyInfo(): lastUseTime(0), recentCount(0), isChanged(false),
+               batchID(0), totalCount(0) {}
 };
 
 using EmbMemT = absl::flat_hash_map<std::string, HostEmbTable>;

@@ -154,9 +154,10 @@ TEST_F(EmbeddingStaticTest, Key2OffsetEvict)
 TEST_F(EmbeddingStaticTest, SaveKeyData)
 {
     vector<EmbInfo> embInfos = {embInfo_};
+    map<emb_key_t, KeyInfo> keyInfo;
     shared_ptr<EmbeddingStatic> hbm = std::make_shared<EmbeddingStatic>(embInfo_, rankInfo_, 0);
     hbm->SetFileSystemPtr("test_dir");
-    hbm->Save("test_dir", 1);
+    hbm->Save("test_dir", 1, false, keyInfo);
     bool fileExist = false;
     if (access("./test_dir/test1/key", F_OK) == 0) {
         fileExist = true;
