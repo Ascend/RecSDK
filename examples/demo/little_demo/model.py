@@ -18,6 +18,8 @@ from __future__ import print_function
 
 import tensorflow as tf
 
+from config import GLOBAL_RANDOM_SEED
+
 
 class MyModel:
     def __init__(self):
@@ -41,7 +43,7 @@ class MyModel:
             with tf.compat.v1.variable_scope("mlp", reuse=tf.compat.v1.AUTO_REUSE):
                 for i in range(len(self.all_layer_dims) - 2):
                     self.h_w.append(tf.compat.v1.get_variable('h%d_w' % (i + 1), shape=self.all_layer_dims[i: i + 2],
-                                        initializer=tf.random_uniform_initializer(-0.01, 0.01),
+                                        initializer=tf.random_uniform_initializer(-0.01, 0.01, GLOBAL_RANDOM_SEED),
                                         dtype=tf.float32,
                                         collections=[tf.compat.v1.GraphKeys.GLOBAL_VARIABLES, "deep", "mlp_wts"]))
                     self.h_b.append(
@@ -51,7 +53,7 @@ class MyModel:
                                         collections=[tf.compat.v1.GraphKeys.GLOBAL_VARIABLES, "deep", "mlp_bias"]))
                 i += 1
                 self.h_w_head_0 = tf.compat.v1.get_variable('h_w_head_0', shape=self.all_layer_dims[i: i + 2],
-                                        initializer=tf.random_uniform_initializer(-0.01, 0.01),
+                                        initializer=tf.random_uniform_initializer(-0.01, 0.01, GLOBAL_RANDOM_SEED),
                                         dtype=tf.float32,
                                         collections=[tf.compat.v1.GraphKeys.GLOBAL_VARIABLES, "deep", "mlp_wts"])
                 self.h_b_head_0 = tf.compat.v1.get_variable('h_b_head_0', shape=[self.all_layer_dims[i + 1]],
@@ -59,7 +61,7 @@ class MyModel:
                                         dtype=tf.float32,
                                         collections=[tf.compat.v1.GraphKeys.GLOBAL_VARIABLES, "deep", "mlp_bias"])
                 self.h_w_head_1 = tf.compat.v1.get_variable('h_w_head_1', shape=self.all_layer_dims[i: i + 2],
-                                        initializer=tf.random_uniform_initializer(-0.01, 0.01),
+                                        initializer=tf.random_uniform_initializer(-0.01, 0.01, GLOBAL_RANDOM_SEED),
                                         dtype=tf.float32,
                                         collections=[tf.compat.v1.GraphKeys.GLOBAL_VARIABLES, "deep", "mlp_wts"])
                 self.h_b_head_1 = tf.compat.v1.get_variable('h_b_head_1', shape=[self.all_layer_dims[i + 1]],
@@ -89,7 +91,6 @@ class MyModel:
             hidden_output_branch = tf.matmul(self.activate(act_func, hidden_output), h_w)
             logit = hidden_output_branch + h_b
             logit = tf.reshape(logit, [-1, ])
-
             return logit
 
         logit_0 = output_head(hidden_output, self.h_w_head_0, self.h_b_head_0)
