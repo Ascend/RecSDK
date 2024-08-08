@@ -54,3 +54,36 @@ bash run.sh main.py {ip}
 
 **Tips**：run.sh脚本中有一个参数是mx_rec_package_path，mx_rec_package_path是mxRec的安装目录，比如：/usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec。
 这个参数在脚本是默认的，用户需要根据自己环境中mxRec实际安装的路径进行配置。
+
+## 5.开启精度对齐模式
+
+在run.sh脚本中将 PRECISION_CHECK设置为1为开启精度对齐功能
+
+```shell
+############## 精度对齐相关 ##############
+export PRECISION_CHECK=1
+```
+
+精度对齐开启后将会在run.sh同级脚本生成一个 precision_check的数据文件， 结构如下
+
+```shell
+precision_check
+└── 20240807_091347
+    ├── 01dump_dataset # 数据集数据
+    ├── 02dump_model # dense sparse 落盘模型
+    ├── 03dump_loss # 每步loss
+    ├── 04dump_op # 查表 更新表相关数据
+    └── dump_info.json # 模型配置信息
+```
+
+开关开启后暂只支持DUMP第1.2步数据
+在默认配置下，可使用mxrec tools下的precrec-python精度工具来一键解析比较
+precrec-python如何使用可以参照其中指导手册
+也可自行修改代码 dump其他数据
+
+限制（2024-0807）:
+精度对齐暂不支持一表多查、准入淘汰
+CACHE_MODE暂只支持 HBM DDR
+其他已有功能可进行组合适配
+
+新功能请联系开发咨询是否支持，若不支持请提需求适配

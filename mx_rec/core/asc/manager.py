@@ -196,6 +196,7 @@ def initialize_emb_cache(table_info_list, threshold_list):
     eval_steps = ConfigInitializer.get_instance().eval_steps
     save_steps = ConfigInitializer.get_instance().save_steps
     max_train_steps = ConfigInitializer.get_instance().max_steps
+    is_incremental_checkpoint = ConfigInitializer.get_instance().is_incremental_checkpoint
 
     if_load = ConfigInitializer.get_instance().if_load
     option = 0
@@ -214,7 +215,8 @@ def initialize_emb_cache(table_info_list, threshold_list):
     emb_cache = HybridMgmt()
 
     is_initialized = emb_cache.initialize(rank_info=rank_info, emb_info=table_info_list, if_load=if_load,
-                                          threshold_values=threshold_list)
+                                          threshold_values=threshold_list,
+                                          is_incremental_checkpoint=is_incremental_checkpoint)
 
     if is_initialized is False:
         logger.error("Failed to init emb_cache!")
