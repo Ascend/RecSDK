@@ -654,7 +654,7 @@ def patch_for_second_or_step_timer():
 
 
 def checkpoint_saver_hook_init(self, checkpoint_dir, save_secs=None, save_steps=None, saver=None,
-                               checkpoint_basename="model.ckpt", scaffold=None, listeners=None):
+                               checkpoint_basename="model.ckpt", scaffold=None, listeners=None, save_graph_def=True):
     logging.info("Create CheckpointSaverHook.")
     if saver is not None and scaffold is not None:
         raise ValueError("You cannot provide both saver and scaffold.")
@@ -670,6 +670,7 @@ def checkpoint_saver_hook_init(self, checkpoint_dir, save_secs=None, save_steps=
                                         is_incremental_checkpoint=self._is_incremental_checkpoint)
     self._listeners = listeners or []
     self._steps_per_run = 1
+    self._save_graph_def = save_graph_def
 
 
 def after_run_checkpoint_saver_hook(self, run_context, run_values):

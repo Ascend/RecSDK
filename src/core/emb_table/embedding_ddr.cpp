@@ -190,7 +190,8 @@ void EmbeddingDDR::LoadOptimizerSlot(const string &savePath, vector<vector<float
     LOG_DEBUG("load optimizer slot done, table:{}", name);
 }
 
-void EmbeddingDDR::Save(const string& savePath, const int pythonBatchId)
+void EmbeddingDDR::Save(const string& savePath, const int pythonBatchId, bool saveDelta,
+                        const map<emb_key_t, KeyInfo>& keyInfo)
 {
     SyncLatestEmbedding(pythonBatchId);
     vector<emb_cache_key_t> keys;
