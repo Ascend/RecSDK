@@ -437,12 +437,18 @@ if __name__ == "__main__":
     )
 
     # This act will show the result of all comparison that is much easier to understand
-    # print(nested_dict_to_str(global_comparison_result_dict))
+    global_comparison_result_str = nested_dict_to_str(global_comparison_result_dict)
+    logging.info("Comparison result shown below:%s", global_comparison_result_str)
 
+    # Use pdb can look into the parsing data without running the whole process repeatly.
     """
-    Use pdb can look into the parsing data without running the whole process repeatly.
-    print(nested_dict_to_str(test_data.data_dict))
-    print(nested_dict_to_str(golden_data.data_dict))
+    glob_test_data_dict = glob_test_data.data_dict
+    glob_golden_data_dict = glob_golden_data.data_dict
+    test_data_result = nested_dict_to_str(glob_test_data_dict)
+    golden_data_result = nested_dict_to_str(glob_golden_data_dict)
+
+    logging.info("Test Data Dict[glob_test_data_dict]:\n %s", test_data_result)
+    logging.info("Golden Data Dict[glob_golden_data_dict]:\n %s", golden_data_result)
     import pdb
     pdb.set_trace()
     """
