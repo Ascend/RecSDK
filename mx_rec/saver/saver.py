@@ -14,17 +14,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import json
 import os
 import threading
+import glob
+import shutil
 from collections import defaultdict
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import numpy as np
 import tensorflow as tf
 from tensorflow.python.util import compat
 
 from mx_rec.constants.constants import DataName, DataAttr, MIN_SIZE, MAX_FILE_SIZE, Flag, TFDevice, \
-    MAX_INT32, HDFS_FILE_PREFIX, TRAIN_CHANNEL_ID
+    MAX_INT32, HDFS_FILE_PREFIX, TRAIN_CHANNEL_ID, BASE_MODEL, DELTA_MODEL
 from mx_rec.util.communication.hccl_ops import get_rank_id, get_rank_size, get_local_rank_size
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.perf import performance
@@ -36,6 +39,8 @@ from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.tf_version_adapter import npu_ops
 
 SAVE_SPARSE_PATH_PREFIX = "sparse"
+SAVE_DELTA_SPARSE_PATH_PREFIX = "delta-sparse"
+GLOBAL_STEP_STR = "global_step"
 
 
 # define save model thread
@@ -106,7 +111,7 @@ class Saver(object):
         logger.debug("Save & Restore graph was built.")
 
     @performance("Save")
-    def save(self, sess, save_path="model", global_step=None):
+    def save(self, sess, save_path="model", global_step=None, save_delta=False):
         """
         Save sparse tables. checkpoint is saved in under format:
         ./rank_id/HashTable/HBM/embed_table_name/key/xxx.data
@@ -117,6 +122,7 @@ class Saver(object):
         :param save_path: Only absolute path supported
         :param global_step: If provided the global step number is appended to save_path to create
          the checkpoint filenames. The optional argument can be a Tensor, a Tensor name or an integer.
+        :param save_delta: check if save delta model in incremental checkpoint pattern
         :return: None
         """
         logger.debug("======== Start saving for rank id %s ========", self.rank_id)
@@ -126,13 +132,14 @@ class Saver(object):
 
         save_path = save_path if save_path else self._prefix_name
         directory, base_name = os.path.split(save_path)
+        save_path_prefix = SAVE_SPARSE_PATH_PREFIX if not save_delta else SAVE_DELTA_SPARSE_PATH_PREFIX
 
         if global_step:
             if not isinstance(global_step, compat.integral_types):
                 global_step = int(sess.run(global_step))
-            ckpt_name = f"{SAVE_SPARSE_PATH_PREFIX}-{base_name}-{global_step}"
+            ckpt_name = f"{save_path_prefix}-{base_name}-{global_step}"
         else:
-            ckpt_name = f"{SAVE_SPARSE_PATH_PREFIX}-{base_name}"
+            ckpt_name = f"{save_path_prefix}-{base_name}"
 
         saving_path = os.path.join(directory, ckpt_name)
         self.config_instance.train_params_config.sparse_dir = saving_path
@@ -154,7 +161,7 @@ class Saver(object):
                 raise RuntimeError(f"make dir {saving_path} for saving sparse table failed!") from err
             logger.info("Saving_path '%s' has been made.", saving_path)
 
-        self._save(sess, saving_path)
+        self._save(sess, saving_path, save_delta)
         if self.max_to_keep:
             self._last_checkponts.append(saving_path)
             if len(self._last_checkponts) > self.max_to_keep:
@@ -180,20 +187,28 @@ class Saver(object):
         logger.info("======== Saving finished for rank id %s ========", self.rank_id)
 
     @performance("Restore")
-    def restore(self, sess, reading_path, warm_start_tables=None):
+    def restore(self, sess, reading_path, warm_start_tables=None, model_type="base"):
         logger.debug("======== Start restoring ========")
         if not check_file_system_is_valid(reading_path):
             raise ValueError("the path to save sparse embedding table data belong to invalid file system, "
                              "only local file system and hdfs file system supported. ")
 
         directory, base_name = os.path.split(reading_path)
-        ckpt_name = f"{SAVE_SPARSE_PATH_PREFIX}-{base_name}"
+        if model_type == BASE_MODEL:
+            ckpt_name = f"{SAVE_SPARSE_PATH_PREFIX}-{base_name}"
+        else:
+            ckpt_name = f"tmp-{SAVE_SPARSE_PATH_PREFIX}-{base_name}"
 
         reading_path = os.path.join(directory, ckpt_name)
         if not tf.io.gfile.exists(reading_path):
             raise FileExistsError(f"Given dir {reading_path} does not exist, please double check.")
 
         self._restore(sess, reading_path, warm_start_tables)
+        if model_type == DELTA_MODEL:
+            try:
+                tf.io.gfile.rmtree(reading_path)
+            except tf.errors.NotFoundError:
+                logger.warning("%s is not exists, maybe it has been deleted.", reading_path)
         logger.info("sparse model was restored from dir '%s' .", reading_path)
         logger.debug("======== Restoring finished ========")
 
@@ -259,7 +274,7 @@ class Saver(object):
         return placeholder_dict, restore_fetch_list
 
     @performance("_save")
-    def _save(self, sess, root_dir):
+    def _save(self, sess, root_dir, save_delta):
         for table_name in self.save_op_dict:
             optimizer_instance = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
             if optimizer_instance:
@@ -267,13 +282,13 @@ class Saver(object):
 
         table_instance0 = self.config_instance.sparse_embed_config.get_table_instance(self.var_list[0])
         if table_instance0.is_hbm:
-            self._save_hbm(sess, root_dir)
+            self._save_hbm(sess, root_dir, save_delta)
         else:
             self._save_ddr(sess, root_dir)
         logger.debug(f"Host data was saved.")
 
-    def _save_hbm(self, sess, root_dir):
-        self.config_instance.hybrid_manager_config.save_host_data(root_dir)
+    def _save_hbm(self, sess, root_dir, save_delta):
+        self.config_instance.hybrid_manager_config.save_host_data(root_dir, save_delta)
         if self.config_instance.use_dynamic_expansion:
             # Data related to dynamic expansion needs to be saved only on the host side.
             return
@@ -547,21 +562,8 @@ def read_binary_data(reading_path: str, data_name: str, table_name: str, load_of
     if not tf.io.gfile.exists(target_attribute_dir):
         raise FileExistsError(f"Target_attribute_dir {target_attribute_dir} does not exist when reading.")
 
-    with tf.io.gfile.GFile(target_attribute_dir, "rb") as fin:
-        validate_read_file(target_attribute_dir)
-        attributes = fin.read()
-        try:
-            attributes = np.fromstring(attributes, dtype=np.int64)
-        except ValueError as err:
-            raise RuntimeError(f"get attributes from file {target_attribute_dir} failed.") from err
-
-    with tf.io.gfile.GFile(target_data_dir, "rb") as file:
-        validate_read_file(target_data_dir)
-        if check_file_system_is_hdfs(target_data_dir):
-            data_to_restore = file.read()
-            data_to_restore = np.fromstring(data_to_restore, dtype=np.float32)
-        else:
-            data_to_restore = np.fromfile(target_data_dir, dtype=np.float32)
+    attributes = read_attribute_file(target_attribute_dir)
+    data_to_restore = read_data_file(target_data_dir)
     try:
         embedding_size = list(attributes)[1]
     except Exception as err:
@@ -745,6 +747,215 @@ def should_write_data(rank_id: int, save_path: str) -> bool:
     is_hdfs = check_file_system_is_hdfs(save_path)
     local_rank_size = get_local_rank_size()
     return rank_id == 0 if is_hdfs else rank_id % local_rank_size == 0
+
+
+def update_model_index(save_dir: str, model_index: Dict[str, Union[str, int]]):
+    model_index_file = os.path.join(save_dir, "model_index.json")
+    if not tf.io.gfile.exists(model_index_file):
+        model_index_list = []
+    else:
+        with tf.io.gfile.GFile(model_index_file, "r") as f:
+            model_index_list = json.load(f)
+    model_index_list.append(model_index)
+    with tf.io.gfile.GFile(model_index_file, "w") as f:
+        json.dump(model_index_list, f, ensure_ascii=False, separators=(",", ": "), indent=4)
+
+
+def write_delta_export_time_ms(save_dir: str, delta_export_time_ms: dict):
+    delta_export_time_ms_file = os.path.join(save_dir, "delta_export_time_ms.json")
+    with tf.io.gfile.GFile(delta_export_time_ms_file, "w") as f:
+        json.dump(delta_export_time_ms, f, indent=4)
+
+
+def get_model_type_by_version(save_dir: str, model_version: str):
+    model_index_file = os.path.join(save_dir, "model_index.json")
+    validate_read_file(model_index_file)
+    with tf.io.gfile.GFile(model_index_file, "r") as f:
+        model_index_list = json.load(f)
+
+    model_type = None
+    for model_index in model_index_list:
+        try:
+            model_version_int = int(model_version)
+        except ValueError as err:
+            raise ValueError("Can not transfer %s to integer.", model_version) from err
+        if model_index[GLOBAL_STEP_STR] == model_version_int:
+            model_type = model_index["type"]
+            return model_type
+    return model_type
+
+
+def get_base_and_delta_models(save_dir: str, model_version: str):
+    model_index_file = os.path.join(save_dir, "model_index.json")
+    validate_read_file(model_index_file)
+    with tf.io.gfile.GFile(model_index_file, "r") as f:
+        model_index_list = json.load(f)
+        model_index_list.reverse()
+
+    base_model = ""
+    delta_models = []
+    found_delta_model = False
+    for model_index in model_index_list:
+        if model_index[GLOBAL_STEP_STR] == int(model_version):
+            delta_models.append(model_version)
+            found_delta_model = True
+            continue
+        if not found_delta_model:
+            continue
+        if model_index["type"] == DELTA_MODEL:
+            delta_models.append(str(model_index[GLOBAL_STEP_STR]))
+        else:
+            base_model = str(model_index[GLOBAL_STEP_STR])
+            break
+    delta_models.reverse()
+    return base_model, delta_models
+
+
+def read_base_delta_and_write(save_dir: str, base_model: str, delta_models: list):
+    table_name_set = ConfigInitializer.get_instance().sparse_embed_config.table_name_set
+    optimizer = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
+    optimizer_type, optim_param_list = optimizer.optimizer_type, optimizer.optim_param_list
+    optimizer_param_name_list = [f"{optimizer_type}_{optim_param}" for optim_param in optim_param_list]
+    # restore base model's optimizer
+    base_optimizer = get_base_optimizer(save_dir, table_name_set, base_model)
+    # restore base model's key and embedding
+    base_table = get_base_key_embedding(save_dir, table_name_set, base_model)
+
+    # read delta model and update to base model one by one
+    for delta_model in delta_models:
+        delta_model_path = os.path.join(save_dir, f"{SAVE_DELTA_SPARSE_PATH_PREFIX}-model.ckpt-{delta_model}")
+        delta_optimizer_params = {}
+        for table_name in table_name_set:
+            delta_key_data, delta_embedding_data = get_table_key_emb(delta_model_path, table_name)
+            for optimizer_param_name in optimizer_param_name_list:
+                delta_optimizer_params[optimizer_param_name] = \
+                    get_table_optimizer_param(delta_model_path, table_name, optimizer_param_name)
+            # update base table
+            len_of_delta_table = len(delta_key_data)
+            for i in range(len_of_delta_table):
+                key = base_table[table_name]["key"]
+                embed = base_table[table_name]["embedding"]
+                idx = None
+                k, v = delta_key_data[i], delta_embedding_data[i]
+                if k in key:
+                    idx = np.where(key == k)[0][0]
+                    embed[idx] = v
+                else:
+                    base_table[table_name]["key"] = np.append(key, k)
+                    base_table[table_name]["embedding"] = np.vstack([embed, v])
+                if delta_optimizer_params:
+                    for optimizer_param_name in optimizer_param_name_list:
+                        tmp = delta_optimizer_params[optimizer_param_name][i]
+                        optimizer_param = base_optimizer[table_name][optimizer_param_name]
+                        if idx is not None:
+                            optimizer_param[idx] = tmp
+                        else:
+                            base_optimizer[table_name][optimizer_param_name] = np.vstack([optimizer_param, tmp])
+
+    # write base model data to file
+    tmp_path = f"{save_dir}/tmp-{SAVE_SPARSE_PATH_PREFIX}-model.ckpt-{delta_models[-1]}"
+    write_base_table_to_file(tmp_path, base_table)
+    write_base_table_to_file(tmp_path, base_optimizer)
+    return tmp_path
+
+
+def get_table_key_emb(model_path: str, table_name: str):
+    key_path = os.path.join(model_path, table_name, "key")
+    data_file = os.path.join(key_path, "slice.data")
+    key_data = read_attribute_file(data_file)
+    embedding_path = os.path.join(model_path, table_name, "embedding")
+    attribute_file = os.path.join(embedding_path, "slice.attribute")
+    embed_attr = read_attribute_file(attribute_file)
+    data_file = os.path.join(embedding_path, "slice.data")
+    embedding_data = read_data_file(data_file).reshape(embed_attr[:-1])
+    return key_data, embedding_data
+
+
+def write_base_table_to_file(save_dir: str, base_table: dict):
+    for table_name, table in base_table.items():
+        for k, v in table.items():
+            writing_path = os.path.join(save_dir, table_name, k)
+            try:
+                tf.io.gfile.makedirs(writing_path)
+            except Exception as err:
+                raise RuntimeError(f"Create dir {writing_path} for writing data failed!") from err
+            data_file, attribute_file = "slice.data", "slice.attribute"
+            target_data_dir, target_attribute_dir = os.path.join(writing_path, data_file), os.path.join(writing_path,
+                                                                                                        attribute_file)
+            write_bytes = 8 if k == "key" else 4
+            attribute = np.append(v.shape, write_bytes)
+            with tf.io.gfile.GFile(target_attribute_dir, "wb") as file:
+                file.write(attribute.tostring())
+            with tf.io.gfile.GFile(target_data_dir, "wb") as file:
+                file.write(v.tostring())
+
+
+def clear_delta_models(save_dir: str):
+    delta_directories = glob.glob(os.path.join(save_dir, 'delta-sparse*'))
+    for delta_dir in delta_directories:
+        try:
+            tf.io.gfile.rmtree(delta_dir)
+        except tf.errors.NotFoundError:
+            logger.warning("%s is not exists, maybe it has been deleted.", delta_dir)
+
+
+def get_table_optimizer_param(model_path: str, table_name: str, optimizer_param_name: str):
+    attribute_file = os.path.join(model_path, table_name, optimizer_param_name, "slice.attribute")
+    data_file = os.path.join(model_path, table_name, optimizer_param_name, "slice.data")
+    attribute = read_attribute_file(attribute_file)
+    data_to_restore = read_data_file(data_file).reshape(attribute[:-1])
+    return data_to_restore
+
+
+def read_attribute_file(target_attribute_dir: str):
+    with tf.io.gfile.GFile(target_attribute_dir, "rb") as fin:
+        validate_read_file(target_attribute_dir)
+        attributes = fin.read()
+        try:
+            attributes = np.fromstring(attributes, dtype=np.int64)
+        except ValueError as err:
+            raise RuntimeError(f"get attributes from file {target_attribute_dir} failed.") from err
+    return attributes
+
+
+def read_data_file(target_data_dir: str):
+    with tf.io.gfile.GFile(target_data_dir, "rb") as file:
+        validate_read_file(target_data_dir)
+        if check_file_system_is_hdfs(target_data_dir):
+            data_to_restore = file.read()
+            data_to_restore = np.fromstring(data_to_restore, dtype=np.float32)
+        else:
+            data_to_restore = np.fromfile(target_data_dir, dtype=np.float32)
+    return data_to_restore
+
+
+def get_base_optimizer(save_dir: str, table_name_set: set, base_model: str):
+    optimizer = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
+    optimizer_type = optimizer.optimizer_type
+    optim_param_list = optimizer.optim_param_list
+    base_optimizer = {}
+    # if optimizer's params exist, then restore them; otherwise no need to restore
+    if optim_param_list:
+        optimizer_status_name_list = [f"{optimizer_type}_{optim_param}" for optim_param in optim_param_list]
+        base_optimizer = {table_name: {optimizer_status_name: None} for table_name in table_name_set
+                          for optimizer_status_name in optimizer_status_name_list}
+
+        base_model_path = os.path.join(save_dir, f"{SAVE_SPARSE_PATH_PREFIX}-model.ckpt-{base_model}")
+        for table_name in table_name_set:
+            for optimizer_status_name in optimizer_status_name_list:
+                optimier_data = get_table_optimizer_param(base_model_path, table_name, optimizer_status_name)
+                base_optimizer[table_name][optimizer_status_name] = optimier_data
+    return base_optimizer
+
+
+def get_base_key_embedding(save_dir: str, table_name_set: set, base_model: str):
+    base_table = {table_name: {"key": None, "embedding": None} for table_name in table_name_set}
+    base_model_path = os.path.join(save_dir, f"{SAVE_SPARSE_PATH_PREFIX}-model.ckpt-{base_model}")
+    for table_name in table_name_set:
+        key_data, embedding_data = get_table_key_emb(base_model_path, table_name)
+        base_table[table_name]["key"] = key_data
+        base_table[table_name]["embedding"] = embedding_data
+    return base_table
 
 
 def should_save_sparse_embedding(is_dp: bool, save_path: str) -> bool:

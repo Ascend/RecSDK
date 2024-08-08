@@ -71,10 +71,12 @@ public:
         LocalTensor<tType> inLocalTensorCompute = vecInQueue->DeQue<tType>();
         LocalTensor<tType> inGradLocalTensor = vecInGradQueue->AllocTensor<tType>();
 
-        const uint32_t dstShape_[]{(uint32_t)numOfOneMul, (uint32_t)valueDim2};
-        const uint32_t srcShape_[]{1, (uint32_t)valueDim2};
+        uint32_t height = numOfOneMul;
+        uint32_t weight = valueDim2;
+        const uint32_t dstShape[]{height, weight};
+        const uint32_t srcShape[]{1, weight};
         
-        BroadCast<float, DIM_NUMS, 0>(inGradLocalTensor, inLocalTensorCompute, dstShape_, srcShape_);
+        BroadCast<float, DIM_NUMS, 0>(inGradLocalTensor, inLocalTensorCompute, dstShape, srcShape);
 
         DataCopy(inLocalTensorCompute, inGradLocalTensor, numOfOneMul * valueDim2);
 

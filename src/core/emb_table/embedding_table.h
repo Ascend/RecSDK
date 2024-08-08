@@ -80,7 +80,8 @@ public:
 
     virtual void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
 
-    virtual void Save(const string& savePath, const int pythonBatchId);
+    virtual void Save(const string& savePath, const int pythonBatchId, bool saveDelta,
+                      const map<emb_key_t, KeyInfo>& keyInfo);
 
     void MakeDir(const string& dirName);
 

@@ -20,6 +20,10 @@ See the License for the specific language governing permissions and
 #include <memory>
 #include <unordered_set>
 #include <vector>
+#include <mutex>
+#include <atomic>
+#include <condition_variable>
+#include <thread>
 
 #include "absl/container/flat_hash_map.h"
 #include "emb_table/embedding_table.h"
@@ -34,6 +38,7 @@ See the License for the specific language governing permissions and
 #include "utils/singleton.h"
 #include "utils/task_queue.h"
 #include "utils/time_cost.h"
+#include "utils/thread_pool.h"
 
 namespace MxRec {
 using namespace std;
@@ -44,6 +49,23 @@ enum class TaskType {
     HBM,
     DDR
 };
+
+enum class SaveModelType {
+    DELTA,
+    BASE
+};
+
+inline string TransferModelType2Str(SaveModelType t)
+{
+    switch (t) {
+        case SaveModelType::DELTA:
+            return "delta";
+        case SaveModelType::BASE:
+            return "base";
+        default:
+            throw std::invalid_argument("Invalid ModelType.");
+    }
+}
 
 struct EmbTaskInfo {
     int batchId;
@@ -70,9 +92,9 @@ public:
     HybridMgmt& operator=(const HybridMgmt&) = delete;
 
     bool Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, int seed,
-                    const vector<ThresholdValue>& thresholdValues, bool ifLoad);
+                    const vector<ThresholdValue>& thresholdValues, bool ifLoad, bool isIncrementalCheckpoint);
 
-    void Save(const string& savePath);
+    void Save(const string& savePath, bool saveDelta);
 
     bool Load(const string& loadPath, vector<string> warmStartTables);
 
@@ -106,15 +128,19 @@ public:
 
     void FetchDeviceEmb();
 
-    void ProcessEmbInfoHBM(const EmbBaseInfo& info, bool& remainBatchOut, bool isGrad);
+    bool ProcessEmbInfoHBM(const EmbBaseInfo& info, bool isGrad);
 
-    void ProcessEmbInfoDDR(const EmbBaseInfo& info, bool& remainBatchOut);
+    bool ProcessEmbInfoDDR(const EmbBaseInfo& info);
 
-    void ProcessEmbInfoL3Storage(const EmbBaseInfo& info, bool& remainBatchOut);
+    bool ProcessEmbInfoL3Storage(const EmbBaseInfo& info);
 
     void BackUpTrainStatus();
 
     void RecoverTrainStatus();
+
+    void ReceiveKey();
+
+    void ReceiveKeyThread(const EmbInfo& embInfo);
 
     GTEST_PRIVATE : bool mutexDestroy{false};
     std::mutex lookUpAndSendBatchIdMtx[MAX_CHANNEL_NUM];  // train and eval
@@ -158,6 +184,8 @@ public:
     std::mutex saveMutex;
     std::condition_variable cvCheckSave;
 
+    unique_ptr<ThreadPool> threadPool;
+
     void SetFeatureTypeForLoad(vector<CkptFeatureType>& loadFeatures);
 
     void EvictKeys(const string& embName, const vector<emb_cache_key_t>& keys);
@@ -185,12 +213,19 @@ public:
     void SendTensorForSwap(const EmbBaseInfo& info, const vector<uint64_t>& swapInPosUint,
                            const vector<uint64_t>& swapOutPosUint);
 
+    void updateDeltaInfo(const string& embName, vector<int64_t>& keyCountVec, int64_t timeStamp, int64_t batchId);
+
+    void ResetDeltaInfo();
+
+    void GetDeltaModelKeys(const string& savePath, bool saveDelta, map<string, map<emb_key_t, KeyInfo>>& keyInfoMap);
+
 private:
     HybridMgmtBlock* hybridMgmtBlock;
     vector<EmbInfo> mgmtEmbInfo;
     RankInfo mgmtRankInfo;
     CacheManager* cacheManager;
     vector<std::unique_ptr<std::thread>> procThreads{};
+    vector<std::thread> receiveKeyThreads{};
     map<string, vector<emb_cache_key_t>> evictKeyMap{};
     HDTransfer* hdTransfer;
     OffsetMapT offsetMapToSend;
@@ -199,8 +234,15 @@ private:
     bool isRunning;
     bool isLoad{false};
     bool isInitialized{false};
-    bool alreadyTrainOnce = false;     // 用于判断是否为predict模式
-    bool isBackUpTrainStatus = false;  // whether the train state has been backed up
+    bool alreadyTrainOnce = false;  // 用于判断是否为predict模式
+    bool isBackUpTrainStatus = false; // whether the train state has been backed up
+    bool isIncrementalCkpt;
+    map<string, absl::flat_hash_map<emb_key_t, KeyInfo>> deltaMap;
+    absl::flat_hash_map<string, int> keyBatchIdMap;
+    bool isFirstSave = true;
+    std::mutex keyCountUpdateMtx;
+    std::condition_variable keyCountUpdateCv;
+    bool checkConditionMet = false;
 
     void TrainTask(TaskType type);
 

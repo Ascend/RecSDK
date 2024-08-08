@@ -15,10 +15,11 @@
 # ==============================================================================
 
 import tensorflow as tf
-
-from mx_rec.util.communication.hccl_ops import get_rank_size, get_rank_id
+from mx_rec.util.communication.hccl_ops import get_rank_id, get_rank_size
 from mx_rec.util.ops import import_host_pipeline_ops
-from random_data_generator import get_data_generator, get_large_scale_data_generator
+
+from random_data_generator import (get_data_generator,
+                                   get_large_scale_data_generator)
 
 
 def generate_dataset(cfg, use_timestamp=False, batch_number=100):

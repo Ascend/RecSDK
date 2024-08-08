@@ -133,12 +133,14 @@ void EmbeddingMgmt::Load(const string& filePath, map<string, unordered_set<emb_c
 
 void EmbeddingMgmt::Save(const string& name, const string& filePath, const int pythonBatchId)
 {
+    map<emb_key_t, KeyInfo> keyInfo;
     embeddings[name]->SetFileSystemPtr(filePath);
-    embeddings[name]->Save(filePath, pythonBatchId);
+    embeddings[name]->Save(filePath, pythonBatchId, false, keyInfo);
     embeddings[name]->UnsetFileSystemPtr();
 }
 
-void EmbeddingMgmt::Save(const string& filePath, const int pythonBatchId)
+void EmbeddingMgmt::Save(const string& filePath, const int pythonBatchId, bool saveDelta,
+                         const map<string, map<emb_key_t, KeyInfo>>& keyInfoMap)
 {
     for (auto& tablePair: embeddings) {
         tablePair.second->SetFileSystemPtr(filePath);
@@ -146,9 +148,14 @@ void EmbeddingMgmt::Save(const string& filePath, const int pythonBatchId)
     // use multi-thread to prevent receiving save_d2h blocked when table order different between cpp and python
     vector<future<void>> futures;
     for (auto& tablePair: embeddings) {
+        map<emb_key_t, KeyInfo> keyInfo;
+        if (saveDelta) {
+            keyInfo = keyInfoMap.at(tablePair.first);
+        }
         futures.emplace_back(
             std::async(std::launch::async,
-                       [table = tablePair.second, filePath, pythonBatchId] { table->Save(filePath, pythonBatchId); }));
+                       [table = tablePair.second, filePath, pythonBatchId, saveDelta,
+                        keyInfo] { table->Save(filePath, pythonBatchId, saveDelta, keyInfo); }));
     }
     for (auto& f: futures) {
         f.get();  // get() will repost exception if happened

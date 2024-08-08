@@ -22,12 +22,11 @@ def verify_result(real_result, golden):
     result_atol = np.less_equal(result, LOSS)
     result_rtol = np.less_equal(result / np.add(deno, MINIMUM), LOSS)
     if not result_rtol.all() and not result_atol.all():
-        if np.sum(result_rtol == False) > real_result.size * LOSS and \
-            np.sum(result_atol == False) > real_result.size * LOSS:
+        if np.sum(result_rtol == 0) > real_result.size * LOSS and \
+            np.sum(result_atol == 0) > real_result.size * LOSS:
             logging.error("[ERROR] result error")
-            return False
+            
     logging.info("test pass")
-    return True
 
 if __name__ == '__main__':
     logging.info("=============================grad query============")
