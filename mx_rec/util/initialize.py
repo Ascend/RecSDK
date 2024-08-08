@@ -30,7 +30,7 @@ from mx_rec.util.global_env_conf import global_env
 from mx_rec.util.log import logger
 from mx_rec.util.perf_factory.bind_cpu import bind_cpu
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, \
-    IntValidator, ValueCompareValidator
+    IntValidator, ValueCompareValidator, StringValidator
 
 
 class ConfigInitializer:
@@ -47,10 +47,11 @@ class ConfigInitializer:
         ("use_dynamic", ClassValidator, {"classes": (bool,)}),
         ("use_dynamic_expansion", ClassValidator, {"classes": (bool,)}),
         ("bind_cpu", ClassValidator, {"classes": (bool,)}),
-        ("save_checkpoint_due_time", IntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
-        ("save_delta_checkpoints_secs", IntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
+        ("save_checkpoint_due_time", IntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
+        ("save_delta_checkpoints_secs", IntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
         ("is_incremental_checkpoint", ClassValidator, {"classes": (bool,)}),
-        ("restore_model_version", ClassValidator, {"classes": (str,)}),
+        ("restore_model_version", StringValidator, {"min_len": 0, "max_len": 100}, ["check_string_length"]),
+        ("recent_key_count_threshold", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"])
     ])
     @bind_cpu
     def __init__(self, **kwargs):
@@ -78,7 +79,7 @@ class ConfigInitializer:
         self._save_checkpoint_due_time = kwargs.get("save_checkpoint_due_time")
         self._save_delta_checkpoints_secs = kwargs.get("save_delta_checkpoints_secs")
         self._is_incremental_checkpoint = kwargs.get("is_incremental_checkpoint", False)
-        self._restore_model_version = kwargs.get("restore_model_version")
+        self._restore_model_version = kwargs.get("restore_model_version", "")
         self._recent_key_count_threshold = kwargs.get("recent_key_count_threshold", 0)
         self._is_first_restore = True
 
