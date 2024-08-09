@@ -16,8 +16,7 @@
 
 import tensorflow as tf
 from mx_rec.optimizers.lazy_adam import create_hash_optimizer
-from mx_rec.optimizers.lazy_adam_by_addr import \
-    create_hash_optimizer_by_address
+from mx_rec.optimizers.lazy_adam_by_addr import create_hash_optimizer_by_address
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.log import logger
 
