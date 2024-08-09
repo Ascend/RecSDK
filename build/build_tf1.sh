@@ -58,9 +58,9 @@ prepare_pybind
 prepare_securec
 
 # 配置tf1路径
-#source /opt/buildtools/tf1_env/bin/activate
+source /opt/buildtools/tf1_env/bin/activate
 tf1_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/tensorflow_core
-#deactivate tf1_env
+deactivate tf1_env
 
 # 配置MxRec C++代码路径和AccCTR路径
 src_path="${MxRec_DIR}"/src

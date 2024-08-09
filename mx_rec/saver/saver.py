@@ -343,7 +343,7 @@ class Saver(object):
             swap_out_op = npu_ops.outfeed_enqueue_op(channel_name=channel_name, inputs=[swap_out])
             # 发送host需要的embedding
             sess.run(swap_out_op)
-        self.config_instance.hybrid_manager_config.save_host_data(root_dir)
+        self.config_instance.hybrid_manager_config.save_host_data(root_dir, False)
 
     def _get_valid_dict_data(self, dump_data_dict, table_name):
         host_data = self.config_instance.hybrid_manager_config.get_host_data(table_name)

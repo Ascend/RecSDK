@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
+#include "key_process.h"
+
 #include <cstddef>
 #include <iostream>
 
 #include <mpi.h>
 #include <absl/container/flat_hash_set.h>
 
-#include "key_process.h"
 #include "utils/common.h"
 #include "utils/logger.h"
 #include "utils/safe_queue.h"
@@ -305,8 +306,10 @@ void KeyProcess::KeyProcessTask(int channel, int threadId)
 
             bool isKeyProcessTaskSuccess;
             if (embInfos[batch->name].isDp) {
+                // Data parallel key process.
                 isKeyProcessTaskSuccess = KeyProcessTaskHelperForDp(batch, channel, threadId);
             } else {
+                // Model parallel key process.
                 isKeyProcessTaskSuccess = KeyProcessTaskHelper(batch, channel, threadId);
             }
             if (!isKeyProcessTaskSuccess) {
@@ -465,8 +468,9 @@ bool KeyProcess::KeyProcessTaskHelperForDp(unique_ptr<EmbBatchT>& batch, int cha
     vector<int32_t> restore;
     vector<int32_t> hotPos;
     vector<vector<uint32_t>> keyCount;
+    vector<emb_key_t> keyCountVec;
     TimeCost totalTimeCost = TimeCost();
-    HashSplitHelper(batch, splitKeys, restore, hotPos, keyCount);
+    HashSplitHelper(batch, splitKeys, restore, hotPos, keyCount, keyCountVec);
 
     vector<int> scAll;
     vector<int> ss;
@@ -481,11 +485,11 @@ bool KeyProcess::KeyProcessTaskHelperForDp(unique_ptr<EmbBatchT>& batch, int cha
                                       FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE;
     if (!featureAdmitAndEvictSwitch) {
         TimeCost broadcastGlobalDpIdUniqueTC;
-        // No need to lock.
         globalDpIdUniqueVec = BroadcastGlobalDpIdUnique(batch, globalDpIdVec, threadId);
         LOG_DEBUG(KEY_PROCESS "Rank:{}, thread:{}, table name:{}, broadcastGlobalDpIdUniqueTC(ms):{}",
                   rankInfo.rankId, threadId, batch->name, broadcastGlobalDpIdUniqueTC.ElapsedMS());
     } else {
+        // No need to lock.
         countRecv = GetCountRecvForDp(batch, threadId, keyCount[rankInfo.rankId], scAll);
     }
 
@@ -497,7 +501,7 @@ bool KeyProcess::KeyProcessTaskHelperForDp(unique_ptr<EmbBatchT>& batch, int cha
         // Use global ids.
         if (m_featureAdmitAndEvict.FeatureAdmit(channel, batch, globalDpIdVec, countRecv) ==
             FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR) {
-            LOG_ERROR(KEY_PROCESS "rank:{} thread:{}, channel:{}, Feature-admit-and-evict error ...",
+            LOG_ERROR(KEY_PROCESS "Rank:{} thread:{}, channel:{}, Feature-admit-and-evict error ...",
                       rankInfo.rankId, threadId, channel);
             return false;
         }
@@ -532,12 +536,7 @@ bool KeyProcess::KeyProcessTaskHelperForDp(unique_ptr<EmbBatchT>& batch, int cha
         GlobalUniqueForDp(lookupKeysUint, uniqueKeys, restoreVecSec, globalDpIdUniqueVec);
         PushResultDDR(batch, move(tensors), uniqueKeys, restoreVecSec);
     }
-
-    LOG_DEBUG("pushResultTC(ms):{}", pushResultTC.ElapsedMS());
-    if (GlogConfig::gStatOn) {
-        LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} key_process_time_cost {}",
-                 channel, batch->batchId, rankInfo.rankId, totalTimeCost.ElapsedMS());
-    }
+    LOG_DEBUG("Rank:{}, pushResultTC(ms):{}", rankInfo.rankId, pushResultTC.ElapsedMS());
     return true;
 }
 
@@ -655,8 +654,8 @@ void KeyProcess::PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tenso
     }
 }
 
-void KeyProcess::PushGlobalUniqueTensorsForDp(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys, int channel,
-                                         KeysT& globalDpIdUniqueVec, const string& embName)
+void KeyProcess::PushGlobalUniqueTensorsForDp(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys,
+                                              int channel, KeysT& globalDpIdUniqueVec, const string& embName)
 {
     LOG_INFO(KEY_PROCESS "Rank:{}, channel:{}, table name:{}, useSumSameIdGradients:{}.",
              rankInfo.rankId, channel, embName, rankInfo.useSumSameIdGradients);
@@ -1038,7 +1037,8 @@ auto KeyProcess::ProcessSplitKeys(const unique_ptr<EmbBatchT>& batch, int id, ve
     return {keyRecv, scAll, ss};
 }
 
-tuple<KeysT, vector<int>, vector<int>> KeyProcess::ProcessGlobalDpId(const unique_ptr<EmbBatchT>& batch, int id, KeysT& lookupKeys)
+tuple<KeysT, vector<int>, vector<int>> KeyProcess::ProcessGlobalDpId(const unique_ptr<EmbBatchT>& batch, int id,
+                                                                     KeysT& lookupKeys)
 {
     vector<int> sc{static_cast<int>(lookupKeys.size())};
     vector<int> scAll = GetScAll(sc, id, batch);

@@ -36,7 +36,7 @@ from mx_rec.util.variable import get_dense_and_sparse_variable
 from config import (GLOBAL_RANDOM_SEED, MODIFY_GRAPH_FLAG, MULTI_LOOKUP_TIMES,
                     PRECISION_CHECK, USE_DETERMINISTIC, USE_DYNAMIC,
                     USE_DYNAMIC_EXPANSION, USE_MULTI_LOOKUP, USE_ONE_SHOT,
-                    USE_TIMESTAMP, Config)
+                    USE_TIMESTAMP, USE_DP, Config)
 from dataset import generate_dataset
 from model import MyModel
 from optimizer import create_dense_and_sparse_optimizer
@@ -201,30 +201,11 @@ if __name__ == "__main__":
     # 训练多少步进行保存
     SAVING_INTERVAL = 100
 
-    # get init configuration
-    try:
-        use_dynamic = bool(int(os.getenv("USE_DYNAMIC", 0)))
-        use_dynamic_expansion = bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0)))
-        use_multi_lookup = bool(int(os.getenv("USE_MULTI_LOOKUP", 1)))
-        MODIFY_GRAPH_FLAG = bool(int(os.getenv("USE_MODIFY_GRAPH", 0)))
-        USE_TIMESTAMP = bool(int(os.getenv("USE_TIMESTAMP", 0)))
-        USE_ONE_SHOT = bool(int(os.getenv("USE_ONE_SHOT", 0)))
-        USE_DP = bool(int(os.getenv("USE_DP", 0)))
-        USE_DETERMINISTIC = bool(int(os.getenv("USE_DETERMINISTIC", 0)))
-    except ValueError as err:
-        raise ValueError("please correctly config USE_MPI or USE_DYNAMIC or USE_DYNAMIC_EXPANSION or "
-                         "USE_MULTI_LOOKUP or USE_MODIFY_GRAPH or USE_TIMESTAMP or USE_ONE_SHOT or USE_DP or "
-                         "USE_DETERMINISTIC only 0 or 1 is supported.") from err
-
-    try:
-        MULTI_LOOKUP_TIMES = int(os.getenv("MULTI_LOOKUP_TIMES", 2))
-    except ValueError as err:
-        raise ValueError("please correctly config MULTI_LOOKUP_TIMES only int is supported.") from err
-
     task_config = {"use_dynamic": USE_DYNAMIC, "use_dynamic_expansion": USE_DYNAMIC_EXPANSION,
                    "use_multi_lookup": USE_MULTI_LOOKUP, "modify_graph_flag": MODIFY_GRAPH_FLAG,
                    "use_timestamp": USE_TIMESTAMP, "use_one_shot": USE_ONE_SHOT,
-                   "use_deterministic": USE_DETERMINISTIC, "multi_lookup_times": MULTI_LOOKUP_TIMES}
+                   "use_deterministic": USE_DETERMINISTIC, "multi_lookup_times": MULTI_LOOKUP_TIMES,
+                   "use_dp": USE_DP}
     if PRECISION_CHECK:
         task_config["precision_dump_step"] = PRECISION_DUMP_STEP
         task_config["global_rank_size"] = GLOBAL_RANK_SIZE
