@@ -27,8 +27,14 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.training import gradient_descent
 
 from mx_rec.optimizers.base import CustomizedOptimizer
+from mx_rec.util.communication import hccl_ops
 from mx_rec.util.initialize import ConfigInitializer
-from mx_rec.validator.validator import para_checker_decorator, StringValidator, ClassValidator, FloatValidator
+from mx_rec.validator.validator import (
+    para_checker_decorator,
+    StringValidator,
+    ClassValidator,
+    FloatValidator,
+)
 
 
 @para_checker_decorator(check_option_list=[
@@ -38,22 +44,29 @@ from mx_rec.validator.validator import para_checker_decorator, StringValidator, 
 ])
 def create_hash_optimizer(learning_rate, use_locking=False, name="GradientDescent"):
     if ConfigInitializer.get_instance().use_dynamic_expansion:
-        raise ValueError("dynamic expansion mode is not compatible with the optimizer, please config dynamic "
-                         "expansion mode and optimizer correctly")
-    optimizer = CustomizedGradientDescent(learning_rate=learning_rate, use_locking=use_locking, name=name)
+        raise ValueError(
+            "dynamic expansion mode is not compatible with the optimizer, please config dynamic "
+            "expansion mode and optimizer correctly."
+        )
+    optimizer = CustomizedGradientDescent(
+        learning_rate=learning_rate, use_locking=use_locking, name=name
+    )
     ConfigInitializer.get_instance().optimizer_config.optimizer_instance = optimizer
     return optimizer
 
 
-class CustomizedGradientDescent(gradient_descent.GradientDescentOptimizer, CustomizedOptimizer):
+class CustomizedGradientDescent(
+    gradient_descent.GradientDescentOptimizer, CustomizedOptimizer
+):
     name_counter = defaultdict(int)
 
     def __init__(self, learning_rate, use_locking=False, name="GradientDescent"):
         self.optimizer_type = "gradient_descent"
         self.optim_param_list = []
         super(CustomizedGradientDescent, self)._get_name(name=name)
-        super(CustomizedGradientDescent, self).__init__(learning_rate=learning_rate, use_locking=use_locking,
-                                                        name=self.unique_name)
+        super(CustomizedGradientDescent, self).__init__(
+            learning_rate=learning_rate, use_locking=use_locking, name=self.unique_name
+        )
         self._slot_num = 0
         self._derivative = 1
 
@@ -61,9 +74,19 @@ class CustomizedGradientDescent(gradient_descent.GradientDescentOptimizer, Custo
         return []
 
     def _apply_sparse_duplicate_indices(self, grad, var):
+        table_instance = (
+            ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
+        )
+        # The DP mode requires allreduce for gradients.
+        if table_instance.is_dp:
+            grad = hccl_ops.allreduce(grad, "sum")
         nd_indices = tf.expand_dims(grad.indices, 1)
-        nd_value = grad.values * math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype)
-        var_update_op = tf.scatter_nd_add(var, nd_indices, -nd_value, use_locking=self._use_locking)
+        nd_value = grad.values * math_ops.cast(
+            self._learning_rate_tensor, var.dtype.base_dtype
+        )
+        var_update_op = tf.scatter_nd_add(
+            var, nd_indices, -nd_value, use_locking=self._use_locking
+        )
         return var_update_op
 
     def _apply_dense(self, grad, var):

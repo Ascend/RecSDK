@@ -15,6 +15,7 @@
 # limitations under the License.
 # ==============================================================================
 
+import os
 import math
 
 import tensorflow as tf
@@ -47,27 +48,48 @@ class Config:
         self.eviction_threshold = 60
 
         try:
-            import os
             use_dp = bool(int(os.getenv("USE_DP", 0)))
         except ValueError as err:
-            raise ValueError("Please correctly config USE_DP only 0 or 1 is supported.") from err
+            raise ValueError(
+                "please correctly config USE_DP only 0 or 1 is supported."
+            ) from err
 
         rank_size = get_rank_size()
         coefficient = 1.1
-        if rank_size != 0:
-            self.item_send_cnt = min(int(self.batch_size * self.item_feat_cnt * coefficient),
-                                    math.ceil(self.item_range / rank_size)) if not use_dp else self.item_range
-            self.item_vocab_size = max(self.item_send_cnt * rank_size * rank_size, self.item_range) if not use_dp \
-                else max(self.item_send_cnt * rank_size, self.item_range)
-            self.user_send_cnt = min(int(self.batch_size * self.user_feat_cnt * coefficient),
-                                     math.ceil(self.user_range / rank_size)) if not use_dp else self.user_range
-            self.user_vocab_size = max(self.user_send_cnt * rank_size * rank_size, self.user_range) if not use_dp \
-                else max(self.user_send_cnt * rank_size, self.user_range)
-            self.category_send_cnt = min(int(self.batch_size * self.category_feat_cnt * coefficient),
-                                        math.ceil(self.category_range / rank_size)) if not use_dp \
-                else self.category_range
-        else:
-            raise ZeroDivisionError("rank size must be an integer which is greater value zero.")
+        self.item_send_cnt = (
+            min(
+                int(self.batch_size * self.item_feat_cnt * coefficient),
+                math.ceil(self.item_range / rank_size),
+            )
+            if not use_dp
+            else self.item_range
+        )
+        self.item_vocab_size = (
+            max(self.item_send_cnt * rank_size * rank_size, self.item_range)
+            if not use_dp
+            else max(self.item_send_cnt * rank_size, self.item_range)
+        )
+        self.user_send_cnt = (
+            min(
+                int(self.batch_size * self.user_feat_cnt * coefficient),
+                math.ceil(self.user_range / rank_size),
+            )
+            if not use_dp
+            else self.user_range
+        )
+        self.user_vocab_size = (
+            max(self.user_send_cnt * rank_size * rank_size, self.user_range)
+            if not use_dp
+            else max(self.user_send_cnt * rank_size, self.user_range)
+        )
+        self.category_send_cnt = (
+            min(
+                int(self.batch_size * self.category_feat_cnt * coefficient),
+                math.ceil(self.category_range / rank_size),
+            )
+            if not use_dp
+            else self.category_range
+        )
 
         self.user_hashtable_dim = 32
         self.user_hashtable_threshold = 1
@@ -78,8 +100,12 @@ class Config:
 
     def generate_large_scale_config(self):
         self.lookup_count = 40
-        self.tensor_name_list = ["sparse_tensor_%d" % i for i in range(self.lookup_count)]
-        self.hashtable_name_list = ["hashtable_%d" % i for i in range(self.lookup_count)]
+        self.tensor_name_list = [
+            "sparse_tensor_%d" % i for i in range(self.lookup_count)
+        ]
+        self.hashtable_name_list = [
+            "hashtable_%d" % i for i in range(self.lookup_count)
+        ]
         self.batch_size = 9600
 
         self.key_type = tf.int64
@@ -91,11 +117,10 @@ class Config:
 
         rank_size = get_rank_size()
         coefficient = 1.1
-        if rank_size != 0:
-            self.send_cnt = min(int(self.batch_size * self.feat_cnt * coefficient),
-                                     math.ceil(self.vocabulary_size / rank_size))
-        else:
-            raise ZeroDivisionError("rank size must be an integer which is greater value zero.")
+        self.send_cnt = min(
+            int(self.batch_size * self.feat_cnt * coefficient),
+            math.ceil(self.vocabulary_size / rank_size),
+        )
 
         self.hashtable_dim = 8
         self.learning_rate = 0.01

@@ -82,7 +82,8 @@ void EmbeddingStatic::Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel)
         }
         // New key.
         if (channel == TRAIN_CHANNEL_ID) {
-            throw runtime_error(StringFormat("Error: LookupKeys contains invalid key %d.", key));
+            throw runtime_error(StringFormat("Error: LookupKeys contains invalid key %d, "
+                                             "the key must exist in the offset map.", key));
         }
         key = INVALID_KEY_VALUE;
     }

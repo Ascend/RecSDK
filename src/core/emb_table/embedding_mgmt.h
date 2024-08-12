@@ -46,10 +46,10 @@ public:
     void Key2Offset(const std::string& name, std::vector<emb_key_t>& keys, int channel);
 
     /**
-     * Dp模式下，从embedding表中查批量查找key，查不到即为error
-     * @param[in] name embedding表名
-     * @param[in,out] splitKey 待查找的key，输出为找到的HBM偏移或者HBM地址
-     * @param[in] channel 数据通道，主要区分train和eval
+     * In Dp mode, batch search keys are queried in the embedding table.
+     * @param[in] name Embedding table name.
+     * @param[in,out] splitKey The output of the key to be searched is the HBM offset or HBM address found.
+     * @param[in] channel Data channel, which is mainly used to distinguish between train and eval.
      */
     void Key2OffsetForDp(const std::string& name, std::vector<emb_key_t>& keys, int channel);
 
