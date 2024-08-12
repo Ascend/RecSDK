@@ -284,7 +284,7 @@ if __name__ == "__main__":
                                   name='user_table',
                                   emb_initializer=emb_initializer,
                                   all2all_gradients_op="sum_gradients_and_div_by_ranksize",
-                                  is_dp=True if USE_DP else False,
+                                  is_dp=USE_DP,
                                   **cache_mode_dict[cache_mode])
 
     item_hashtable = create_table(key_dtype=tf.int64,

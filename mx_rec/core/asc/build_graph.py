@@ -139,8 +139,8 @@ def get_preprocessed_tensor_for_asc(table, config):
     use_static = ConfigInitializer.get_instance().use_static
     max_lookup_vec_size = None
     if use_static:
-        max_lookup_vec_size = config.get("send_count") * config.get("rank_size") if not config.get("is_dp") else (
-            config.get("send_count"))
+        send_count = config.get("send_count")
+        max_lookup_vec_size = send_count * config.get("rank_size") if not config.get("is_dp") else send_count
 
     with tf.compat.v1.variable_scope("restore_vector"):
         restore_vector, hot_pos = get_restore_vector(config)

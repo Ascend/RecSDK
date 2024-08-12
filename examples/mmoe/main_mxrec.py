@@ -343,7 +343,7 @@ if __name__ == "__main__":
         dim=tf.TensorShape([cfg.emb_dim]),
         name="sparse_embeddings",
         emb_initializer=emb_initializer,
-        is_dp=False if not USE_DP else True,
+        is_dp=USE_DP,
         **cfg.get_emb_table_cfg()
     )
     if use_faae:

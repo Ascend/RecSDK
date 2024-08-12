@@ -168,7 +168,7 @@ public:
 
         restoreVecSec.resize(lookupKeys.size(), -1);
         for (size_t i = 0; i < lookupKeys.size(); ++i) {
-            int64_t key = lookupKeys[i];
+            auto key = lookupKeys[i];
             if (rankInfo.useStatic &&
                 ((!rankInfo.useDynamicExpansion && key == -1) || (rankInfo.useDynamicExpansion && key == 0))) {
                 continue;
@@ -176,19 +176,20 @@ public:
 
             auto result = umap.find(key);
             if (result == umap.end()) {
-                throw runtime_error(StringFormat("Error: Find dp id failed. Rank %d, %d is not dp id.",
-                                                 rankInfo.rankId, key));
+                throw runtime_error(
+                    StringFormat("Error: Find dp id failed. Rank %d, %d is not dp id.", rankInfo.rankId, key));
             }
             restoreVecSec[i] = umap[key];
         }
 
-        if (rankInfo.useStatic) {
-            if (rankInfo.useDynamicExpansion) {
-                uniqueKeys.resize(lookupKeys.size(), 0);
-            } else {
-                uniqueKeys.resize(lookupKeys.size(), -1);
-            }
+        if (!rankInfo.useStatic) {
+            return;
         }
+        if (rankInfo.useDynamicExpansion) {
+            uniqueKeys.resize(lookupKeys.size(), 0);
+            return;
+        }
+        uniqueKeys.resize(lookupKeys.size(), -1);
     }
 
     void SetEos(int status, int channelId);
@@ -340,13 +341,14 @@ public:
     vector<uint32_t> GetCountRecv(const unique_ptr<EmbBatchT>& batch, int id, vector<vector<uint32_t>>& keyCount,
                                   vector<int> scAll, vector<int> ss);
 
+    void HashSplitHelper(const unique_ptr <EmbBatchT>& batch, vector <KeysT>& splitKeys,
+                         vector <int32_t>& restore, vector <int32_t>& hotPos,
+                         vector <vector<uint32_t>>& keyCount, vector<emb_key_t>& keyCountVec);
+
     vector<uint32_t> GetCountRecvForDp(const unique_ptr<EmbBatchT>& batch, const int id,
                                        vector<uint32_t>& keyCount, vector<int> scAll);
 
     KeysT FeatureAdmitForDp(KeysT& lookupKeys, KeysT& globalDpIdVec);
-
-    void HashSplitHelper(const unique_ptr<EmbBatchT>& batch, vector<KeysT>& splitKeys, vector<int32_t>& restore,
-                         vector<int32_t>& hotPos, vector<vector<uint32_t>>& keyCount, vector<emb_key_t>& keyCountVec);
 
     template <class T>
     inline vector<T> Count2Start(const vector<T>& count) const

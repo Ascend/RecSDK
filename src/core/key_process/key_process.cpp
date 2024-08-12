@@ -306,10 +306,10 @@ void KeyProcess::KeyProcessTask(int channel, int threadId)
 
             bool isKeyProcessTaskSuccess;
             if (embInfos[batch->name].isDp) {
-                // Data parallel key process.
+                // Data parallel key processing.
                 isKeyProcessTaskSuccess = KeyProcessTaskHelperForDp(batch, channel, threadId);
             } else {
-                // Model parallel key process.
+                // Model parallel key processing.
                 isKeyProcessTaskSuccess = KeyProcessTaskHelper(batch, channel, threadId);
             }
             if (!isKeyProcessTaskSuccess) {
@@ -443,15 +443,15 @@ KeysT KeyProcess::BroadcastGlobalDpIdUnique(const unique_ptr<EmbBatchT>& batch, 
         LOG_ERROR("Rank {}, globalDpIdUniqueSize MPI_Bcast faild:{}", rankInfo.rankId, retCode);
         throw runtime_error("Failed to MPI_Bcast globalDpIdUniqueSize for Dp.");
     }
-    LOG_DEBUG("Rank:{}, thread:{}, table name:{}, globalDpIdUniqueBcastSizeCommTC(ms):{}", rankInfo.rankId,
-              threadId, batch->name, globalDpIdUniqueBcastSizeCommTC.ElapsedMS());
+    LOG_DEBUG("Rank:{}, thread:{}, table name:{}, globalDpIdUniqueBcastSizeCommTC(ms):{}", rankInfo.rankId, threadId,
+              batch->name, globalDpIdUniqueBcastSizeCommTC.ElapsedMS());
 
     // Broadcast globalDpIdUniqueVec.
     globalDpIdUniqueVec.resize(globalDpIdUniqueSize);
     EASY_BLOCK("globalDpIdUniqueVecBroadcast")
     TimeCost globalDpIdUniqueBcastVecCommTC;
-    retCode = MPI_Bcast(globalDpIdUniqueVec.data(), globalDpIdUniqueSize, MPI_INT64_T,
-                        masterId, comm[batch->channel][threadId]);
+    retCode = MPI_Bcast(globalDpIdUniqueVec.data(), globalDpIdUniqueSize, MPI_INT64_T, masterId,
+                        comm[batch->channel][threadId]);
     EASY_END_BLOCK
     if (retCode != MPI_SUCCESS) {
         LOG_ERROR("Rank:{}, globalDpIdUniqueVec MPI_Bcast faild:{}", rankInfo.rankId, retCode);
@@ -486,8 +486,8 @@ bool KeyProcess::KeyProcessTaskHelperForDp(unique_ptr<EmbBatchT>& batch, int cha
     if (!featureAdmitAndEvictSwitch) {
         TimeCost broadcastGlobalDpIdUniqueTC;
         globalDpIdUniqueVec = BroadcastGlobalDpIdUnique(batch, globalDpIdVec, threadId);
-        LOG_DEBUG(KEY_PROCESS "Rank:{}, thread:{}, table name:{}, broadcastGlobalDpIdUniqueTC(ms):{}",
-                  rankInfo.rankId, threadId, batch->name, broadcastGlobalDpIdUniqueTC.ElapsedMS());
+        LOG_DEBUG(KEY_PROCESS "Rank:{}, thread:{}, table name:{}, broadcastGlobalDpIdUniqueTC(ms):{}", rankInfo.rankId,
+                  threadId, batch->name, broadcastGlobalDpIdUniqueTC.ElapsedMS());
     } else {
         // No need to lock.
         countRecv = GetCountRecvForDp(batch, threadId, keyCount[rankInfo.rankId], scAll);
@@ -501,8 +501,8 @@ bool KeyProcess::KeyProcessTaskHelperForDp(unique_ptr<EmbBatchT>& batch, int cha
         // Use global ids.
         if (m_featureAdmitAndEvict.FeatureAdmit(channel, batch, globalDpIdVec, countRecv) ==
             FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR) {
-            LOG_ERROR(KEY_PROCESS "Rank:{} thread:{}, channel:{}, Feature-admit-and-evict error ...",
-                      rankInfo.rankId, threadId, channel);
+            LOG_ERROR(KEY_PROCESS "Rank:{} thread:{}, channel:{}, Feature-admit-and-evict error ...", rankInfo.rankId,
+                      threadId, channel);
             return false;
         }
 
@@ -654,11 +654,11 @@ void KeyProcess::PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tenso
     }
 }
 
-void KeyProcess::PushGlobalUniqueTensorsForDp(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys,
-                                              int channel, KeysT& globalDpIdUniqueVec, const string& embName)
+void KeyProcess::PushGlobalUniqueTensorsForDp(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys, int channel,
+                                              KeysT& globalDpIdUniqueVec, const string& embName)
 {
-    LOG_INFO(KEY_PROCESS "Rank:{}, channel:{}, table name:{}, useSumSameIdGradients:{}.",
-             rankInfo.rankId, channel, embName, rankInfo.useSumSameIdGradients);
+    LOG_INFO(KEY_PROCESS "Rank:{}, channel:{}, table name:{}, useSumSameIdGradients:{}.", rankInfo.rankId, channel,
+             embName, rankInfo.useSumSameIdGradients);
     if (rankInfo.useSumSameIdGradients && channel == TRAIN_CHANNEL_ID) {
         KeysT uniqueKeys;
         vector<int32_t> restoreVecSec;
@@ -718,8 +718,8 @@ vector<uint32_t> KeyProcess::GetCountRecvForDp(const unique_ptr<MxRec::EmbBatchT
     vector<int> rs = Count2Start(rc);
     vector<uint32_t> countRecv;
     countRecv.resize(rs.back() + rc.back());
-    int retCode = MPI_Allgatherv(keyCount.data(), sc, MPI_UINT32_T, countRecv.data(),
-                                 rc.data(), rs.data(), MPI_UINT32_T, comm[batch->channel][id]);
+    int retCode = MPI_Allgatherv(keyCount.data(), sc, MPI_UINT32_T, countRecv.data(), rc.data(), rs.data(),
+                                 MPI_UINT32_T, comm[batch->channel][id]);
     if (retCode != MPI_SUCCESS) {
         LOG_ERROR("Rank {}, MPI_Allgatherv for Dp failed:{}", rankInfo.rankId, retCode);
         throw runtime_error("Failed to MPI_Allgatherv for Dp.");
@@ -966,12 +966,12 @@ void KeyProcess::All2All(vector<int>& sc, int id, const unique_ptr<EmbBatchT>& b
 void KeyProcess::ProcessKeysWithStatic(const unique_ptr<EmbBatchT>& batch, vector<MxRec::KeysT>& splitKeys)
 {
     for (KeysT& i : splitKeys) {
-        if (static_cast<int>(i.size()) > embInfos[batch->name].sendCount) {
-            LOG_ERROR("{}[{}]:{} overflow! set send count bigger than {}",
-                      batch->name, batch->channel, batch->batchId, i.size());
-            throw runtime_error(
-                StringFormat("%s[%d]:%d overflow! set send count bigger than %d",
-                             batch->name.c_str(), batch->channel, batch->batchId, i.size()).c_str());
+        if (i.size() > embInfos[batch->name].sendCount) {
+            LOG_ERROR("{}[{}]:{} overflow! set send count bigger than {}", batch->name, batch->channel, batch->batchId,
+                      i.size());
+            throw runtime_error(StringFormat("%s[%d]:%d overflow! set send count bigger than %d", batch->name.c_str(),
+                                             batch->channel, batch->batchId, i.size())
+                                    .c_str());
         }
         i.resize(embInfos[batch->name].sendCount, -1);
     }
@@ -1043,24 +1043,24 @@ tuple<KeysT, vector<int>, vector<int>> KeyProcess::ProcessGlobalDpId(const uniqu
     vector<int> sc{static_cast<int>(lookupKeys.size())};
     vector<int> scAll = GetScAll(sc, id, batch);
 
-    vector<int> rc; // receive count
+    vector<int> rc;  // receive count
     for (int i = 0; i < rankInfo.rankSize; ++i) {
         rc.push_back(scAll.at(i));
     }
-    vector<int> rs = Count2Start(rc); // receive displays/offset
+    vector<int> rs = Count2Start(rc);  // receive displays/offset
 
     KeysT keyRecv;
     keyRecv.resize(rs.back() + rc.back());
     EASY_BLOCK("allgather")
 
     TimeCost uniqueAllGatherTC;
-    int retCode = MPI_Allgatherv(lookupKeys.data(), sc.at(0), MPI_INT64_T,
-                                 keyRecv.data(), rc.data(), rs.data(), MPI_INT64_T, comm[batch->channel][id]);
+    int retCode = MPI_Allgatherv(lookupKeys.data(), sc.at(0), MPI_INT64_T, keyRecv.data(), rc.data(), rs.data(),
+                                 MPI_INT64_T, comm[batch->channel][id]);
     if (retCode != MPI_SUCCESS) {
         LOG_ERROR("rank {}, MPI_Allgatherv failed:{}", rankInfo.rankId, retCode);
     }
     LOG_DEBUG("uniqueAllGatherTC(ms):{}", uniqueAllGatherTC.ElapsedMS());
-    return { keyRecv, scAll, Count2Start(sc) };
+    return {keyRecv, scAll, Count2Start(sc)};
 }
 
 /*

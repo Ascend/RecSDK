@@ -77,8 +77,6 @@ void EmbeddingDynamic::Key2Offset(std::vector<emb_key_t>& keys, int channel)
 
 void EmbeddingDynamic::Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel)
 {
-    // The invalid address in the dynamic expansion is 0.
-    constexpr emb_key_t INVALID_DYNAMIC_EXPANSION_ADDR = 0;
     std::lock_guard<std::mutex> lk(mut_); // lock for PROCESS_THREAD
     for (emb_key_t& key : keys) {
         if (key == INVALID_KEY_VALUE) {
@@ -92,7 +90,8 @@ void EmbeddingDynamic::Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel
         }
         // New key.
         if (channel == TRAIN_CHANNEL_ID) {
-            throw runtime_error(StringFormat("Error: LookupKeys contains invalid key %d.", key));
+            throw runtime_error(StringFormat("Error: LookupKeys contains invalid key %d, "
+                                             "the key must exist in the offset map.", key));
         }
         key = INVALID_DYNAMIC_EXPANSION_ADDR;
     }

@@ -33,7 +33,9 @@ class EmbeddingMgmtTest : public testing::Test {
 protected:
     EmbeddingMgmtTest()
     {
-        struct EmbInfoParams embParam(string("test1"), 0, 1000, 2000, true, true);
+        int embSize = 1000;
+        int extEmbSize = 2000;
+        struct EmbInfoParams embParam(string("test1"), 0, embSize, extEmbSize, true, true, false);
         std::vector<size_t> vocabsize = {100, 100, 100};
         vector<EmbCache::InitializerInfo> initializeInfos = {};
         std::vector<std::string> ssdDataPath = {""};

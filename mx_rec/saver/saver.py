@@ -706,17 +706,21 @@ def rename_file_and_remove_others(upper_dir: str):
 
     """
 
-    data_files = [file for file in tf.io.gfile.listdir(upper_dir) if file.startswith("slice_")]
-    if len(data_files) == 0:
-        raise RuntimeError(f"Rename and remove file failed, {upper_dir} not exits slice*.data.")
+    data_files = [
+        file for file in tf.io.gfile.listdir(upper_dir) if file.startswith("slice_")
+    ]
+    if not data_files:
+        raise RuntimeError(
+            f"rename and remove file failed, {upper_dir} not exits slice*.data."
+        )
 
-    # rename: slice_0.data -> slice.data
+    # Rename: slice_0.data -> slice.data.
     data_files = sorted(data_files, key=os.path.basename)
     data_file = os.path.join(upper_dir, data_files[0])
     output_file = os.path.join(upper_dir, "slice.data")
     tf.io.gfile.rename(data_file, output_file, overwrite=True)
 
-    # remove: slice_1.data ... slice_7.data ...
+    # Remove: slice_1.data ... slice_x.data.
     for file in data_files[1:]:
         file_dir = os.path.join(upper_dir, file)
         if tf.io.gfile.exists(file_dir):

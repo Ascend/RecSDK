@@ -140,7 +140,7 @@ class LittleModel:
                                       dim=tf.TensorShape([self.cfg.user_hashtable_dim]),
                                       name='user_table',
                                       emb_initializer=tf.compat.v1.truncated_normal_initializer(),
-                                      is_dp=True if self.params.use_dp else False,
+                                      is_dp=self.params.use_dp,
                                       device_vocabulary_size=self.cfg.user_vocab_size * 10,
                                       host_vocabulary_size=self.cfg.user_vocab_size * 0)
         item_hashtable = create_table(key_dtype=tf.int64,
