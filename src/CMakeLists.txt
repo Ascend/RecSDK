@@ -75,6 +75,7 @@ include_directories(${ASCEND_PATH}/fwkacllib/include)
 include_directories(${ASCEND_PATH}/runtime/include)
 include_directories(${ASCEND_PATH}/compiler/include)
 include_directories(${PROJECT_SOURCE_DIR}/core)
+include_directories(${THIRD_PARTY_PATH}/expected/include)
 
 if (DEFINED TF_PATH)
     message("== TF_PATH: ${TF_PATH}")
