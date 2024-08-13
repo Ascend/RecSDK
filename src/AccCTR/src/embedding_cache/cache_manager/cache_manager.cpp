@@ -73,7 +73,7 @@ int EmbCacheManagerImpl::CreateCacheForTable(const EmbCacheInfo& embCacheInfo,
         return H_THREAD_NUM_ERROR;
     }
 
-    uint32_t reserveDevice = embCacheInfo.vocabSize / VOCAB_CACHE_RATIO;
+    uint32_t reserveDevice = embCacheInfo.maxCacheSize / VOCAB_CACHE_RATIO;
     if (!offsetMappers[embCacheInfo.tableName].Initialize(reserveDevice, embCacheInfo.maxCacheSize)) {
         offsetMappers[embCacheInfo.tableName].UnInitialize();
         offsetMappers.erase(embCacheInfo.tableName);
