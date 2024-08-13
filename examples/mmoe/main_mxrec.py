@@ -298,10 +298,11 @@ if __name__ == "__main__":
         use_dynamic_expansion = bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0)))
         use_multi_lookup = bool(int(os.getenv("USE_MULTI_LOOKUP", 0)))
         MODIFY_GRAPH_FLAG = bool(int(os.getenv("USE_MODIFY_GRAPH", 0)))
+        USE_DP = bool(int(os.getenv("USE_DP", 0)))
         use_faae = bool(int(os.getenv("USE_FAAE", 0)))
     except ValueError as err:
         raise ValueError("please correctly config USE_DYNAMIC_EXPANSION or USE_MULTI_LOOKUP or USE_FAAE "
-                         "or USE_MODIFY_GRAPH only 0 or 1 is supported.") from err
+                         "or USE_MODIFY_GRAPH or USE_DP only 0 or 1 is supported.") from err
 
     cfg = Config()
     train_steps = 1000
@@ -342,6 +343,7 @@ if __name__ == "__main__":
         dim=tf.TensorShape([cfg.emb_dim]),
         name="sparse_embeddings",
         emb_initializer=emb_initializer,
+        is_dp=USE_DP,
         **cfg.get_emb_table_cfg()
     )
     if use_faae:

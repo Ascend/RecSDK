@@ -43,6 +43,10 @@ void EmbeddingDDR::Key2Offset(std::vector<emb_key_t>& splitKey, int channel)
 {
 }
 
+void EmbeddingDDR::Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel)
+{
+}
+
 int64_t EmbeddingDDR::capacity() const
 {
     return capacity_.load();
@@ -128,7 +132,7 @@ void EmbeddingDDR::LoadKey(const string &savePath, vector<emb_cache_key_t> &keys
     size_t loadKeySize = fileSize / sizeof(int64_t);
     for (size_t i = 0; i < loadKeySize; i++) {
         // 分配到不同的卡
-        if (buf[i] % rankSize_ != rankId_) {
+        if (!embInfo_.isDp && buf[i] % rankSize_ != rankId_) {
             continue;
         }
         hostLoadOffset.emplace_back(i);

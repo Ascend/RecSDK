@@ -43,6 +43,10 @@ void EmbeddingTable::Key2Offset(std::vector<emb_key_t>& keys, int channel)
     return;
 }
 
+void EmbeddingTable::Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel)
+{
+}
+
 size_t EmbeddingTable::GetMaxOffset()
 {
     return maxOffset;

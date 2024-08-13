@@ -36,7 +36,7 @@ from mx_rec.util.variable import get_dense_and_sparse_variable
 from config import (GLOBAL_RANDOM_SEED, MODIFY_GRAPH_FLAG, MULTI_LOOKUP_TIMES,
                     PRECISION_CHECK, USE_DETERMINISTIC, USE_DYNAMIC,
                     USE_DYNAMIC_EXPANSION, USE_MULTI_LOOKUP, USE_ONE_SHOT,
-                    USE_TIMESTAMP, Config)
+                    USE_TIMESTAMP, USE_DP, Config)
 from dataset import generate_dataset
 from model import MyModel
 from optimizer import create_dense_and_sparse_optimizer
@@ -201,10 +201,11 @@ if __name__ == "__main__":
     # 训练多少步进行保存
     SAVING_INTERVAL = 100
 
-    task_config = {"use_dynamic":USE_DYNAMIC, "use_dynamic_expansion":USE_DYNAMIC_EXPANSION, 
-                   "use_multi_lookup":USE_MULTI_LOOKUP, "modify_graph_flag":MODIFY_GRAPH_FLAG, 
-                   "use_timestamp":USE_TIMESTAMP, "use_one_shot":USE_ONE_SHOT,
-                   "use_deterministic":USE_DETERMINISTIC, "multi_lookup_times":MULTI_LOOKUP_TIMES}
+    task_config = {"use_dynamic": USE_DYNAMIC, "use_dynamic_expansion": USE_DYNAMIC_EXPANSION,
+                   "use_multi_lookup": USE_MULTI_LOOKUP, "modify_graph_flag": MODIFY_GRAPH_FLAG,
+                   "use_timestamp": USE_TIMESTAMP, "use_one_shot": USE_ONE_SHOT,
+                   "use_deterministic": USE_DETERMINISTIC, "multi_lookup_times": MULTI_LOOKUP_TIMES,
+                   "use_dp": USE_DP}
     if PRECISION_CHECK:
         task_config["precision_dump_step"] = PRECISION_DUMP_STEP
         task_config["global_rank_size"] = GLOBAL_RANK_SIZE
@@ -249,7 +250,7 @@ if __name__ == "__main__":
 
     train_feature_spec_list = None
     eval_feature_spec_list = None
-    
+
     if not MODIFY_GRAPH_FLAG:
         train_feature_spec_list = create_feature_spec_list(use_timestamp=USE_TIMESTAMP)
         eval_feature_spec_list = create_feature_spec_list(use_timestamp=USE_TIMESTAMP)
@@ -283,6 +284,7 @@ if __name__ == "__main__":
                                   name='user_table',
                                   emb_initializer=emb_initializer,
                                   all2all_gradients_op="sum_gradients_and_div_by_ranksize",
+                                  is_dp=USE_DP,
                                   **cache_mode_dict[cache_mode])
 
     item_hashtable = create_table(key_dtype=tf.int64,

@@ -23,6 +23,7 @@ class SparseEmbeddingMock:
 
     def __init__(self, host_vocab_size=0):
         self.is_save = True
+        self.is_dp = False
         self.table_name = "test_table"
         self.slice_device_vocabulary_size = 10
         self.scalar_emb_size = 4

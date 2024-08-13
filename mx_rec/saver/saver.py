@@ -242,7 +242,12 @@ class Saver(object):
 
         for data_type in merge_type_list:
             upper_dir = os.path.join(table_dir, data_type)
-            merge_multi_files(upper_dir)
+            if table_instance.is_dp:
+                # All card embeddings are the same in DP mode, only one copy needs to be kept and no merging is needed.
+                rename_file_and_remove_others(upper_dir)
+            else:
+                # Different card embeddings in MP mode are different and need to be merged.
+                merge_multi_files(upper_dir)
             outfile_path = os.path.join(upper_dir, "slice.data")
             file_size = tf.io.gfile.stat(outfile_path).length
             if data_type == "key":
@@ -291,6 +296,10 @@ class Saver(object):
         result = self.save_op_dict
         threads = []
         for table_name in result.keys():
+            table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance_by_name(table_name)
+            # In DP mode, only one copy of embedding needs to be saved.
+            if not should_save_sparse_embedding(table_instance.is_dp, root_dir):
+                continue
             thread = SaveModelThread(self, sess, result, root_dir, table_name)
             threads.append(thread)
 
@@ -686,6 +695,38 @@ def merge_multi_files(upper_dir: str):
             tf.io.gfile.remove(file_dir)
 
 
+def rename_file_and_remove_others(upper_dir: str):
+    """
+    In DP mode, the embeddings of all cards are the same, and there is no need to merge the saved files.
+
+    Args:
+        upper_dir: model save path.
+
+    Returns: None
+
+    """
+
+    data_files = [
+        file for file in tf.io.gfile.listdir(upper_dir) if file.startswith("slice_")
+    ]
+    if not data_files:
+        raise RuntimeError(
+            f"rename and remove file failed, {upper_dir} not exits slice*.data."
+        )
+
+    # Rename: slice_0.data -> slice.data.
+    data_files = sorted(data_files, key=os.path.basename)
+    data_file = os.path.join(upper_dir, data_files[0])
+    output_file = os.path.join(upper_dir, "slice.data")
+    tf.io.gfile.rename(data_file, output_file, overwrite=True)
+
+    # Remove: slice_1.data ... slice_x.data.
+    for file in data_files[1:]:
+        file_dir = os.path.join(upper_dir, file)
+        if tf.io.gfile.exists(file_dir):
+            tf.io.gfile.remove(file_dir)
+
+
 def set_optimizer_info(optimizer: CustomizedOptimizer, table_name: str):
     """
     往host侧传递稀疏表的优化器名称信息
@@ -919,3 +960,30 @@ def get_base_key_embedding(save_dir: str, table_name_set: set, base_model: str):
         base_table[table_name]["key"] = key_data
         base_table[table_name]["embedding"] = embedding_data
     return base_table
+
+
+def should_save_sparse_embedding(is_dp: bool, save_path: str) -> bool:
+    """
+    Whether embeddings need to be saved for each card.
+
+    Args:
+        is_dp: switch whether to enable dp.
+        save_path: model save path.
+
+    Returns:
+        bool: whether to save.
+
+    """
+
+    if not is_dp:
+        return True
+
+    is_hdfs = check_file_system_is_hdfs(save_path)
+    # In hdfs, all servers only need to save one copy in total.
+    if is_hdfs and get_rank_id() % get_rank_size() == 0:
+        return True
+    # Without hdfs, each server needs to keep a copy.
+    if not is_hdfs and get_rank_id() % get_local_rank_size() == 0:
+        return True
+
+    return False

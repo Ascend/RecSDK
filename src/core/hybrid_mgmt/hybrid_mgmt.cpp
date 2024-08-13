@@ -588,7 +588,7 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId, TaskType type)
 
     std::vector<std::future<bool>> remainResult;
     for (const auto& embInfo : mgmtEmbInfo) {
-        EmbBaseInfo info = {.batchId = batchId, .channelId = channelId, .name = embInfo.name};
+        EmbBaseInfo info = {.batchId = batchId, .channelId = channelId, .name = embInfo.name, .isDp = embInfo.isDp};
         switch (type) {
             case TaskType::HBM: {
                 std::future<bool> remainBatch = threadPool->enqueueWithFuture(
@@ -1970,7 +1970,8 @@ vector<int32_t> HybridMgmt::GetRestoreVecSec(const EmbBaseInfo& info, bool& rema
 
 void HybridMgmt::SendAll2AllVec(const EmbBaseInfo& info, bool& remainBatchOut)
 {
-    if (!mgmtRankInfo.useStatic) {
+    // The static shape and dp cases do not require all2all.
+    if (!mgmtRankInfo.useStatic && !info.isDp) {
         bool isEos = false;  // useless, adapt to HBM mode
         TimeCost getAll2AllTC;
         unique_ptr<vector<Tensor>> all2all = KEY_PROCESS_INSTANCE->GetInfoVec(info, ProcessedInfo::ALL2ALL, isEos);

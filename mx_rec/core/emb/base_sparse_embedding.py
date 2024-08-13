@@ -38,6 +38,7 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         self._init_param = config.get("init_param")
         self._is_hbm = True if config.get("host_vocabulary_size") <= 0 else False
         self._ssd_data_path = list(config.get("ssd_data_path"))
+        self._is_dp = config.get("is_dp")
         self._send_count = 0
         self._slice_device_vocabulary_size = 0
         self._slice_host_vocabulary_size = 0
@@ -154,6 +155,10 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
     @property
     def is_hbm(self):
         return self._is_hbm
+
+    @property
+    def is_dp(self):
+        return self._is_dp
 
     @send_count.setter
     def send_count(self, send_count: int):
@@ -389,7 +394,7 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
                       rank_size=self._rank_size, channel_id=channel_id, table_name=self._table_name,
                       is_hbm=self._is_hbm, ext_emb_size=self._ext_emb_size, emb_size=self._emb_size,
                       use_dynamic_expansion=ConfigInitializer.get_instance().use_dynamic_expansion,
-                      device_id=self._device_id)
+                      device_id=self._device_id, is_dp=self._is_dp)
 
         return get_preprocessed_tensor_for_asc(self._variable, config)
 
@@ -412,7 +417,7 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
                 unique_grads = tf.compat.v1.unsorted_segment_sum(embedding_grad,
                                                                  result.get("restore_vector"),
                                                                  unique_embeddings_shape[0])
-                bp_all2all_args = all2all_args if self._use_static else tf.transpose(all2all_args)
+                bp_all2all_args = all2all_args if (self._use_static or self.is_dp) else tf.transpose(all2all_args)
                 hot, cold = tf.split(unique_grads,
                                      [tf.shape(result.get("hot_pos"))[0],
                                       tf.shape(unique_grads)[0] - tf.shape(result.get("hot_pos"))[0]], axis=0)
@@ -494,10 +499,11 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
 
     def __get_own_emb(self, emb: tf.Tensor, all2all_args: Union[int, tf.Tensor]) -> tf.Tensor:
         src_emb = emb
-        reshape_info = [all2all_args * self._rank_size, self._emb_size] if self._use_static else \
+        reshape_info = [all2all_args * self._rank_size, self._emb_size] if (self._use_static and not self.is_dp) else \
             [-1, self._emb_size]
 
-        if self._rank_size == 1 and self._use_static:
+        # The single-server static shape cases and dp cases do not require alltoall.
+        if (self._rank_size == 1 and self._use_static) or self.is_dp:
             return tf.reshape(src_emb, reshape_info)
 
         if self._use_static:
