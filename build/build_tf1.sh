@@ -34,6 +34,12 @@ if [ ! -d ${opensource_path} ]; then
   exit -1
 fi
 
+function install_expected(){
+  cd "$MxRec_DIR"
+  git submodule init && git submodule update
+  cd -
+}
+
 function prepare_pybind(){
   cd "${opensource_path}"
   if [ ! -d pybind11 ]; then
@@ -112,6 +118,27 @@ function collect_so_file()
 }
 
 # start to build MxRec
+echo "----------------          install     expected          ----------------"
+max_attempts=5
+attempt=1
+until [ $attempt -gt $max_attempts ]
+do
+  install_expected
+  result=$?
+  if [[ $result -eq 0 ]]
+  then
+    break   
+  else
+    echo "Attempt $attempt to install cpp-expected failed! Trying again in 10 seconds..."
+    attempt=$((attempt + 1))
+    sleep 10
+  fi
+done
+
+if [ $attempt -gt $max_attempts ]; then
+    echo "Failed to install cpp-expected after $max_attempts attempts."
+    exit 1
+fi
 echo "----------------          compile     securec           ----------------"
 compile_securec
 echo "----------------          compile     AccCTR            ----------------"
