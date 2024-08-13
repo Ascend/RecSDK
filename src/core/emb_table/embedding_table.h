@@ -40,6 +40,13 @@ public:
     virtual void Key2Offset(std::vector<emb_key_t>& keys, int channel);
 
     /**
+     * In Dp mode, batch search keys are queried in the embedding table.
+     * @param[in,out] keys The output of the key to be searched is the HBM offset or HBM address found.
+     * @param[in] channel Data channel, which is mainly used to distinguish between train and eval.
+     */
+    virtual void Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel);
+
+    /**
      * 淘汰key,  配合GetEvictedKeys一起使用GetEvictedKeys
      * EvictKeys执行，通过GetEvictedKeys, GetEvictedKeys拿结果
      */

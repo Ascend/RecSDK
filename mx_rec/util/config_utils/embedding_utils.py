@@ -42,6 +42,21 @@ class SparseEmbedConfig:
         return self._removing_var_list
 
     def get_table_instance(self, key) -> object:
+        """
+        Get table instance by key.
+
+        Args:
+            key: It's tf.Tensor in dynamic expansion mode and tf.Variable in normal mode(HBM/DDR/SSD).
+
+        Returns: Table instance.
+
+        """
+
+        # Dynamic expansion mode.
+        if isinstance(key, ops.Tensor):
+            return self.get_table_instance_by_tensor(key)
+
+        # Normal mode.
         if key not in self._table_instance_dict:
             raise KeyError(f"Given key does not exist.")
 

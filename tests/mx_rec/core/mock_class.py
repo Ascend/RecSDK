@@ -153,6 +153,7 @@ class MockSparseEmbedding:
     def __init__(self, table_name="test_table", slice_device_vocabulary_size=10, embedding_size=5, init_param=1.,
                  emb_initializer=tf.zeros_initializer()):
         self.is_hbm = True
+        self.is_dp = False
         self.table_name = table_name
         self.slice_device_vocabulary_size = slice_device_vocabulary_size
         self.embedding_size = tf.TensorShape([embedding_size])

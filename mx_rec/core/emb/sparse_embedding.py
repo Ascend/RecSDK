@@ -28,9 +28,15 @@ class SparseEmbedding(BaseSparseEmbedding):
         pass
 
     def _set_slice_vocab_size(self):
-        self._slice_device_vocabulary_size = math.ceil(self._device_vocabulary_size / self._rank_size)
-        self._slice_host_vocabulary_size = math.ceil(self._host_vocabulary_size / self._rank_size)
-        self._slice_ssd_vocabulary_size = math.ceil(self._ssd_vocabulary_size / self._rank_size)
+        # The embedding of each card in DP mode is fully stored, and it is not necessary to divide rank size.
+        if self.is_dp:
+            self._slice_device_vocabulary_size = self._device_vocabulary_size
+            self._slice_host_vocabulary_size = self._host_vocabulary_size
+            self._slice_ssd_vocabulary_size = self._ssd_vocabulary_size
+        else:
+            self._slice_device_vocabulary_size = math.ceil(self._device_vocabulary_size / self._rank_size)
+            self._slice_host_vocabulary_size = math.ceil(self._host_vocabulary_size / self._rank_size)
+            self._slice_ssd_vocabulary_size = math.ceil(self._ssd_vocabulary_size / self._rank_size)
 
     def _get_update_grad(self, local_grad: tf.Tensor, result: dict,
                          table: Union[tf.compat.v1.Variable, tf.Tensor]) -> Union[tf.IndexedSlices, tf.Tensor]:

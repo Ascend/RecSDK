@@ -156,6 +156,42 @@ public:
         }
     }
 
+    template <typename T>
+    void GlobalUniqueForDp(T& lookupKeys, T& uniqueKeys, vector<int32_t>& restoreVecSec, KeysT& globalDpIdUniqueVec)
+    {
+        absl::flat_hash_map<emb_key_t, int32_t> umap;
+        for (size_t i = 0; i < globalDpIdUniqueVec.size(); ++i) {
+            emb_key_t key = globalDpIdUniqueVec[i];
+            uniqueKeys.push_back(key);
+            umap[key] = i;
+        }
+
+        restoreVecSec.resize(lookupKeys.size(), -1);
+        for (size_t i = 0; i < lookupKeys.size(); ++i) {
+            auto key = lookupKeys[i];
+            if (rankInfo.useStatic &&
+                ((!rankInfo.useDynamicExpansion && key == -1) || (rankInfo.useDynamicExpansion && key == 0))) {
+                continue;
+            }
+
+            auto result = umap.find(key);
+            if (result == umap.end()) {
+                throw runtime_error(
+                    StringFormat("Error: Find dp id failed. Rank %d, %d is not dp id.", rankInfo.rankId, key));
+            }
+            restoreVecSec[i] = umap[key];
+        }
+
+        if (!rankInfo.useStatic) {
+            return;
+        }
+        if (rankInfo.useDynamicExpansion) {
+            uniqueKeys.resize(lookupKeys.size(), 0);
+            return;
+        }
+        uniqueKeys.resize(lookupKeys.size(), -1);
+    }
+
     void SetEos(int status, int channelId);
 
     void SendEos(const string& embName, int batchId, int channel);
@@ -221,11 +257,20 @@ public:
 
     bool KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel, int threadId);
 
+    bool KeyProcessTaskHelperForDp(unique_ptr<EmbBatchT>& batch, int channel, int threadId);
+
     bool KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch, ock::ctr::UniquePtr& unique, int channel,
                                             int threadId);
 
     tuple<KeysT, vector<int>, vector<int>> ProcessSplitKeys(const unique_ptr<EmbBatchT>& batch, int id,
                                                             vector<KeysT>& splitKeys);
+
+    void ProcessKeysWithStatic(const unique_ptr<EmbBatchT>& batch, vector<KeysT>& splitKeys);
+
+    tuple<KeysT, vector<int>, vector<int>> ProcessGlobalDpId(const unique_ptr<EmbBatchT>& batch, int id,
+                                                             KeysT& lookupKeys);
+
+    KeysT BroadcastGlobalDpIdUnique(const unique_ptr<EmbBatchT>& batch, const KeysT& globalDpIdVec, int threadId);
 
     void GetUniqueConfig(ock::ctr::UniqueConf& uniqueConf);
 
@@ -248,14 +293,12 @@ public:
     void PaddingAlltoallVC(vector<KeysT>& splitKeys) const;
 
     tuple<vector<KeysT>, vector<int32_t>, vector<vector<uint32_t>>> HashSplitWithFAAE(
-        const unique_ptr<EmbBatchT>& batch) const;
+        const unique_ptr<EmbBatchT>& batch, bool isDp) const;
 
     vector<int> GetScAll(const vector<int>& keyScLocal, int commId, const unique_ptr<EmbBatchT>& batch);
 
     void GetScAllForUnique(const vector<int>& keyScLocal, int commId, const unique_ptr<EmbBatchT>& batch,
                            vector<int>& scAllOut);
-
-    void Key2Offset(const EmbNameT& embName, KeysT& splitKey, int channel);
 
     unique_ptr<EmbBatchT> GetBatchData(int channel, int commId) const;
 
@@ -286,6 +329,9 @@ public:
 
     void PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys, int channel);
 
+    void PushGlobalUniqueTensorsForDp(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys, int channel,
+                                      KeysT& globalDpIdUniqueVec, const string& embName);
+
     void AddCountStartToHotPos(vector<KeysT>& splitKeys, vector<int>& hotPos, const vector<int>& hotPosDev,
                                const unique_ptr<EmbBatchT>& batch);
 
@@ -298,6 +344,11 @@ public:
     void HashSplitHelper(const unique_ptr <EmbBatchT>& batch, vector <KeysT>& splitKeys,
                          vector <int32_t>& restore, vector <int32_t>& hotPos,
                          vector <vector<uint32_t>>& keyCount, vector<emb_key_t>& keyCountVec);
+
+    vector<uint32_t> GetCountRecvForDp(const unique_ptr<EmbBatchT>& batch, const int id,
+                                       vector<uint32_t>& keyCount, vector<int> scAll);
+
+    KeysT FeatureAdmitForDp(KeysT& lookupKeys, KeysT& globalDpIdVec);
 
     template <class T>
     inline vector<T> Count2Start(const vector<T>& count) const

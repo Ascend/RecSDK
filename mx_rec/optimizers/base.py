@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import defaultdict
+from typing import Union
 
 import tensorflow as tf
 from tensorflow.python.framework import ops
@@ -27,8 +28,10 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.training.optimizer import _TensorProcessor
 
 from mx_rec.core.asc.swap_args import SwapArgs
+from mx_rec.core.emb.sparse_embedding import HBMSparseEmbedding, ExternalStorageSparseEmbedding
+from mx_rec.core.emb.dynamic_sparse_embedding import DynamicSparseEmbedding
 from mx_rec.constants.constants import ASCAnchorAttr
-from mx_rec.util.tf_version_adapter import npu_ops
+from mx_rec.util.tf_version_adapter import npu_ops, hccl_ops
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.log import logger
 from mx_rec.util.communication.hccl_ops import get_rank_size
@@ -97,12 +100,8 @@ class CustomizedOptimizer:
 
     @staticmethod
     def sum_same_id_gradients(grad, var, is_expansion):
-        if isinstance(var, ops.Tensor):
-            table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance_by_tensor(var)
-            table_name = table_instance.table_name
-        else:
-            table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
-            table_name = table_instance.table_name
+        table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
+        table_name = table_instance.table_name
 
         max_lookup_vec_size = None
         use_static = ConfigInitializer.get_instance().use_static
@@ -110,6 +109,8 @@ class CustomizedOptimizer:
             send_count = table_instance.send_count
             rank_size = get_rank_size()
             max_lookup_vec_size = send_count * rank_size if send_count > 0 else None
+            if table_instance.is_dp:
+                max_lookup_vec_size = send_count if send_count > 0 else None
 
         with tf.compat.v1.variable_scope(str(ASCAnchorAttr.RESTORE_VECTOR_SECOND)):
             restore_vector_second = get_restore_vector_second(table_name, max_lookup_vec_size)
@@ -120,6 +121,11 @@ class CustomizedOptimizer:
         unique_local_grad = tf.compat.v1.unsorted_segment_sum(grad,
                                                               restore_vector_second,
                                                               array_ops.shape(unique_keys)[0])
+
+        # The DP mode requires allreduce for gradients.
+        if table_instance.is_dp:
+            unique_local_grad = hccl_ops.allreduce(unique_local_grad, 'sum')
+
         return unique_local_grad, unique_keys
 
     def get_slot_init_values(self):

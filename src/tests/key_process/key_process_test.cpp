@@ -378,7 +378,7 @@ TEST_F(KeyProcessTest, HashSplitWithFAAE)
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     process.rankInfo.rankSize = rankSize;
-    auto [splitKeys, restore, keyCount] = process.HashSplitWithFAAE(batch);
+    auto [splitKeys, restore, keyCount] = process.HashSplitWithFAAE(batch, false);
     LOG_INFO(KEY_PROCESS "HashSplitWithFAAE， batch splitKeys: {}, keyCount: {}", VectorToString(splitKeys[0]),
              VectorToString(keyCount[0]));
 
@@ -406,7 +406,7 @@ TEST_F(KeyProcessTest, PaddingHashSplitWithFAAE)
     ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
     ASSERT_EQ(process.isRunning, true);
     process.rankInfo.rankSize = rankSize;
-    auto [splitKeys, restore, keyCount] = process.HashSplitWithFAAE(batch);
+    auto [splitKeys, restore, keyCount] = process.HashSplitWithFAAE(batch, false);
     LOG_INFO(KEY_PROCESS "HashSplitWithFAAE Padding， batch splitKeys: {}, keyCount: {}", VectorToString(splitKeys[0]),
              VectorToString(keyCount[0]));
 
@@ -507,7 +507,7 @@ TEST_F(KeyProcessTest, GetCountRecv)
         unique_ptr<EmbBatchT> batch;
         batch = process.GetBatchData(channel, id); // get batch data from SingletonQueue<EmbBatchT>
         LOG_INFO("rankid :{}, batchid: {}", rankInfo.rankId, batch->batchId);
-        tie(splitKeys, restore, count) = process.HashSplitWithFAAE(batch);
+        tie(splitKeys, restore, count) = process.HashSplitWithFAAE(batch, false);
         auto [lookupKeys, scAll, ss] = process.ProcessSplitKeys(batch, id, splitKeys);
         vector<uint32_t> countRecv = process.GetCountRecv(batch, id, count, scAll, ss);
 

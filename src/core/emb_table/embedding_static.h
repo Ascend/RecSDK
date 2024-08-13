@@ -34,6 +34,8 @@ public:
 
     virtual void Key2Offset(std::vector<emb_key_t>& keys, int channel);
 
+    virtual void Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel);
+
     virtual int64_t capacity() const;
 
     void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
