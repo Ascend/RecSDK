@@ -39,9 +39,15 @@ acc_ctr_path="${ROOT_DIR}"/src/AccCTR
 export LD_LIBRARY_PATH="${acc_ctr_path}"/output/ock_ctr_common/lib:$LD_LIBRARY_PATH
 
 function install_expected(){
-  cd "$ROOT_DIR"
-  git submodule init && git submodule update
-  cd -
+  dir="$ROOT_DIR"/third_party/expected
+  if [ -z "$(ls -A "$dir")" ]; then
+    cd "$ROOT_DIR"
+    git submodule init
+    cmd="git submodule update"
+    # retry five times
+    $cmd || sleep 10 || $cmd || sleep 10 || $cmd || sleep 10 || $cmd || sleep 10 || $cmd
+    cd -
+  fi
 }
 
 function prepare_googletest(){
