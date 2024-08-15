@@ -510,6 +510,9 @@ void HybridMgmt::TrainTask(TaskType type)
             return;
         }
         LOG_INFO(HYBRID_BLOCKING + "hybrid start task channel {} batch {}", channelId, theTrainBatchId);
+        if (isBackUpTrainStatus) {
+            RecoverTrainStatus();
+        }
 
         ParseKeys(TRAIN_CHANNEL_ID, theTrainBatchId, type);
     } while (true);
@@ -531,15 +534,6 @@ void HybridMgmt::EvalTask(TaskType type)
                       hybridMgmtBlock->IsNeedWaitSave());
             std::unique_lock<std::mutex> checkSaveLocker(saveMutex);
             cvCheckSave.wait(checkSaveLocker, [this] { return !hybridMgmtBlock->IsNeedWaitSave() || mutexDestroy; });
-
-            if (hybridMgmtBlock->pythonBatchId[EVAL_CHANNEL_ID] >= hybridMgmtBlock->hybridBatchId[EVAL_CHANNEL_ID]) {
-                // Before waking the data process for training, Recover the backed-up training state
-                RecoverTrainStatus();
-                hybridMgmtBlock->Wake(TRAIN_CHANNEL_ID);
-            } else {
-                std::this_thread::sleep_for(SLEEP_MS);
-                continue;
-            }
 
             LOG_DEBUG("wake TrainTask");
             hybridMgmtBlock->DoBlock(channelId);
