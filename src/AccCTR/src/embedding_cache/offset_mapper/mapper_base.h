@@ -472,16 +472,9 @@ public:
 
         /* get bucket */
         auto buck = &(mSubMaps[key % gSubMapCount][key % mBucketCount]);
-        /* loop all buckets linked */
-        while (buck != nullptr) {
-            if (buck->next != nullptr) {
-                buck = buck->next;
-            } else {
-                break;
-            }
-        }
 
-        // did not find, now do put. continue from the last bucket in find
+        // Execute `Put` operation on the first bucket when not find.
+        // `Put` from the first bucket to reuse the previously removed location.
         /* try 8192 times */
         for (uint16_t i = 0; i < 8192; i++) {
             /* loop all buckets linked */
