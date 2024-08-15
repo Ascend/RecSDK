@@ -34,15 +34,15 @@ enum class ErrorType: uint8_t {
 };
 
 enum class ModuleName: uint8_t {
-    CHECK_POINT,
-    EMB_TABLE,
-    FILE_SYSTEM,
-    HD_TRANSFER,
-    HYBRID_MGMT,
-    KEY_PROCESS,
-    L3_STORAGE,
-    SSD_ENGINE,
-    UTILS,
+    M_CHECK_POINT,
+    M_EMB_TABLE,
+    M_FILE_SYSTEM,
+    M_HD_TRANSFER,
+    M_HYBRID_MGMT,
+    M_KEY_PROCESS,
+    M_L3_STORAGE,
+    M_SSD_ENGINE,
+    M_UTILS,
 };
 
 class Error {
