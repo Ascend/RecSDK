@@ -279,21 +279,22 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
         if write_meta_graph:
             write_meta_graph_task(self, checkpoint_file=checkpoint_file, meta_graph_suffix=meta_graph_suffix, sess=sess,
                                   strip_default_attrs=strip_default_attrs, save_debug_info=save_debug_info)
-    comm.Barrier()
-    if is_incremental_checkpoint:
-        save_cost_time = time.time() - start_save_time
-        save_dir, _ = os.path.split(save_path)
-        export_tag = "Seconds" if save_delta else "DueTime"
-        model_index_info = {"timestamp": str(int(start_save_time)), "export_tag": export_tag, "type": saved_model_type,
-                            "global_step": int(global_step), "cost_ms": int(save_cost_time * 1000)}
-        if save_delta:
-            delta_model_version = "delta_" + str(int(global_step))
-            write_delta_export_time_ms(save_dir, {delta_model_version: int(save_cost_time * 1000)})
-        update_model_index(save_dir, model_index_info)
+        if is_incremental_checkpoint:
+            save_cost_time = time.time() - start_save_time
+            save_dir, _ = os.path.split(save_path)
+            export_tag = "Seconds" if save_delta else "DueTime"
+            model_index_info = {"timestamp": str(int(start_save_time)), "export_tag": export_tag,
+                                "type": saved_model_type, "global_step": int(global_step),
+                                "cost_ms": int(save_cost_time * 1000)}
+            if save_delta:
+                delta_model_version = "delta_" + str(int(global_step))
+                write_delta_export_time_ms(save_dir, {delta_model_version: int(save_cost_time * 1000)})
+            update_model_index(save_dir, model_index_info)
 
-        # 当保存base的时候清空delta目录
-        if not save_delta:
-            clear_delta_models(save_dir)
+            # When saving base model, clear delta model directories.
+            if not save_delta:
+                clear_delta_models(save_dir)
+    comm.Barrier()
     return model_checkpoint_path
 
 
