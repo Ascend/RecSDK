@@ -214,7 +214,7 @@ GTEST_PRIVATE :
     void SendTensorForSwap(const EmbBaseInfo& info, const vector<uint64_t>& swapInPosUint,
                            const vector<uint64_t>& swapOutPosUint);
 
-    void updateDeltaInfo(const string& embName, vector<int64_t>& keyCountVec, int64_t timeStamp, int64_t batchId);
+    void UpdateDeltaInfo(const string& embName, vector<int64_t>& keyCountVec, int64_t timeStamp, int64_t batchId);
 
     void ResetDeltaInfo();
 

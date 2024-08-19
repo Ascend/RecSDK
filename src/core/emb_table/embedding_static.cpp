@@ -111,19 +111,25 @@ void EmbeddingStatic::SaveKey(const string& savePath, bool saveDelta, const map<
     deviceKey.clear();
     deviceOffset.clear();
 
-    for (const auto& it: keyOffsetMap) {
-        // When saving a delta model, you need to first extract the keys from deltaMap[name] where isChanged is true
-        // from the keyOffsetMap.
-        if (saveDelta) {
-            auto result = keyInfo.find(it.first);
-            if (result == keyInfo.end() || !result->second.isChanged) {
-                continue;
+    if (saveDelta) {
+        for (const auto& it : keyInfo) {
+            auto result = keyOffsetMap.find(it.first);
+            if (result == keyOffsetMap.end()) {
+                LOG_ERROR("Key: {} not in keyOffsetMap.", it.first);
+                throw runtime_error(StringFormat("Key: %s not in keyOffsetMap.", it.first));
             }
+            deviceKey.push_back(result->first);
+            deviceOffset.push_back(result->second);
         }
-        deviceKey.push_back(it.first);
-        deviceOffset.push_back(it.second);
+    } else {
+        for (const auto& it: keyOffsetMap) {
+            deviceKey.push_back(it.first);
+            deviceOffset.push_back(it.second);
+        }
     }
-    LOG_INFO("Device key size: {}, device offset size: {}.", deviceKey.size(), deviceOffset.size());
+
+    LOG_INFO("Get device keys and offsets, table: {}, save path: {}, rank id: {}, device key size: {}, device offset "
+             "size: {}.", name, savePath, rankId_, deviceKey.size(), deviceOffset.size());
 
     if (fileSystemPtr_ == nullptr) {
         throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");

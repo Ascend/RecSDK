@@ -280,8 +280,8 @@ GTEST_PRIVATE :
 
     auto HashSplit(const unique_ptr<EmbBatchT>& batch) const -> tuple<vector<KeysT>, vector<int32_t>>;
 
-    auto HotHashSplit(const unique_ptr<EmbBatchT>& batch)
-        -> tuple<vector<KeysT>, vector<int32_t>, vector<int>, vector<emb_key_t>>;
+    auto HotHashSplit(const unique_ptr<EmbBatchT>& batch) -> tuple<vector<KeysT>, vector<int32_t>, vector<int>,
+            vector<vector<uint32_t>>>;
 
     void PaddingAlltoallVC(vector<KeysT>& splitKeys) const;
 
@@ -334,8 +334,8 @@ GTEST_PRIVATE :
     vector<uint32_t> GetCountRecv(const unique_ptr<EmbBatchT>& batch, int id, vector<vector<uint32_t>>& keyCount,
                                   vector<int> scAll, vector<int> ss);
 
-    void HashSplitHelper(const unique_ptr<EmbBatchT>& batch, vector<KeysT>& splitKeys, vector<int32_t>& restore,
-                         vector<int32_t>& hotPos, vector<vector<uint32_t>>& keyCount, vector<emb_key_t>& keyCountVec);
+    void HashSplitHelper(const unique_ptr <EmbBatchT>& batch, vector <KeysT>& splitKeys,
+                         vector <int32_t>& restore, vector <int32_t>& hotPos, vector <vector<uint32_t>>& keyCount);
 
     vector<uint32_t> GetCountRecvForDp(const unique_ptr<EmbBatchT>& batch, const int id, vector<uint32_t>& keyCount,
                                        vector<int> scAll);
