@@ -50,7 +50,7 @@ class ConfigInitializer:
         ("save_checkpoint_due_time", IntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
         ("save_delta_checkpoints_secs", IntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
         ("is_incremental_checkpoint", ClassValidator, {"classes": (bool,)}),
-        ("restore_model_version", StringValidator, {"min_len": 0, "max_len": 100}, ["check_string_length"]),
+        ("restore_model_version", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
         ("recent_key_count_threshold", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"])
     ])
     @bind_cpu
@@ -79,9 +79,8 @@ class ConfigInitializer:
         self._save_checkpoint_due_time = kwargs.get("save_checkpoint_due_time")
         self._save_delta_checkpoints_secs = kwargs.get("save_delta_checkpoints_secs")
         self._is_incremental_checkpoint = kwargs.get("is_incremental_checkpoint", False)
-        self._restore_model_version = kwargs.get("restore_model_version", "")
+        self._restore_model_version = kwargs.get("restore_model_version")
         self._recent_key_count_threshold = kwargs.get("recent_key_count_threshold", 0)
-        self._is_first_restore = True
 
     @property
     def save_checkpoint_due_time(self):
@@ -98,14 +97,6 @@ class ConfigInitializer:
     @property
     def restore_model_version(self):
         return self._restore_model_version
-
-    @property
-    def is_first_restore(self):
-        return self._is_first_restore
-
-    @is_first_restore.setter
-    def is_first_restore(self, is_first_restore: bool):
-        self._is_first_restore = is_first_restore
 
     @property
     def modify_graph(self):

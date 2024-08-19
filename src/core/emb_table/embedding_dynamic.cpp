@@ -165,16 +165,25 @@ void EmbeddingDynamic::SaveKey(const string& savePath, bool saveDelta, const map
     deviceKey.clear();
     embAddress.clear();
 
-    for (const auto &it: keyOffsetMap) {
-        if (saveDelta) {
-            auto result = keyInfo.find(it.first);
-            if (result == keyInfo.end() || !result->second.isChanged) {
-                continue;
+    if (saveDelta) {
+        for (const auto& it : keyInfo) {
+            auto result = keyOffsetMap.find(it.first);
+            if (result == keyOffsetMap.end()) {
+                LOG_ERROR("Key: {} not in keyOffsetMap.", it.first);
+                throw runtime_error(StringFormat("Key: %s not in keyOffsetMap.", it.first));
             }
+            deviceKey.push_back(result->first);
+            embAddress.push_back(result->second);
         }
-        deviceKey.push_back(it.first);
-        embAddress.push_back(it.second);
+    } else {
+        for (const auto &it: keyOffsetMap) {
+            deviceKey.push_back(it.first);
+            embAddress.push_back(it.second);
+        }
     }
+
+    LOG_INFO("Get device keys and embAddress, table: {}, save path: {}, rank id: {}, device key size: {}, device "
+             "embAddress size: {}.", name, savePath, rankId_, deviceKey.size(), embAddress.size());
 
     if (fileSystemPtr_ == nullptr) {
         throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");

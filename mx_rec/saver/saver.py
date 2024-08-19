@@ -818,10 +818,12 @@ def get_base_and_delta_models(save_dir: str, model_version: str):
 def read_base_delta_and_write(save_dir: str, base_model: str, delta_models: list):
     table_name_set = ConfigInitializer.get_instance().sparse_embed_config.table_name_set
     optimizer = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
-    optimizer_type, optim_param_list = optimizer.optimizer_type, optimizer.optim_param_list
-    optimizer_param_name_list = [f"{optimizer_type}_{optim_param}" for optim_param in optim_param_list]
+    optimizer_type, optim_param_list, optimizer_param_name_list = None, None, []
+    if optimizer:
+        optimizer_type, optim_param_list = optimizer.optimizer_type, optimizer.optim_param_list
+        optimizer_param_name_list = [f"{optimizer_type}_{optim_param}" for optim_param in optim_param_list]
     # restore base model's optimizer
-    base_optimizer = get_base_optimizer(save_dir, table_name_set, base_model)
+    base_optimizer = None if not optimizer else get_base_optimizer(save_dir, table_name_set, base_model)
     # restore base model's key and embedding
     base_table = get_base_key_embedding(save_dir, table_name_set, base_model)
 
@@ -859,7 +861,8 @@ def read_base_delta_and_write(save_dir: str, base_model: str, delta_models: list
     # write base model data to file
     tmp_path = f"{save_dir}/tmp-{SAVE_SPARSE_PATH_PREFIX}-model.ckpt-{delta_models[-1]}"
     write_base_table_to_file(tmp_path, base_table)
-    write_base_table_to_file(tmp_path, base_optimizer)
+    if optimizer:
+        write_base_table_to_file(tmp_path, base_optimizer)
     return tmp_path
 
 

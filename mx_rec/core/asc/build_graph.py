@@ -149,7 +149,7 @@ def get_preprocessed_tensor_for_asc(table, config):
         id_offsets, swap_info = get_id_offsets(max_lookup_vec_size, config)
 
     is_incremental_checkpoint = ConfigInitializer.get_instance().is_incremental_checkpoint
-    if is_incremental_checkpoint:
+    if is_incremental_checkpoint and config.get("channel_id") == TRAIN_CHANNEL_ID:
         table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(table)
         channel_name = f"{table_instance.table_name}_key_d2h_{TRAIN_CHANNEL_ID}"
         # send timestamp and global step tensor to host

@@ -1133,7 +1133,7 @@ void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
 
                 // 更新delta表
                 std::lock_guard<std::mutex> lock(keyCountUpdateMtx);
-                updateDeltaInfo(embInfo.name, keyCountVec, timeStamp, globalStep);
+                UpdateDeltaInfo(embInfo.name, keyCountVec, timeStamp, globalStep);
                 keyBatchIdMap[embInfo.name]++;
                 keyCountUpdateCv.notify_all();
             }
@@ -1141,7 +1141,7 @@ void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
     });
 }
 
-void HybridMgmt::updateDeltaInfo(const string& embName, vector<int64_t>& keyCountVec, int64_t timeStamp,
+void HybridMgmt::UpdateDeltaInfo(const string& embName, vector<int64_t>& keyCountVec, int64_t timeStamp,
                                  int64_t batchId)
 {
     auto keyCountSize = keyCountVec.size();
