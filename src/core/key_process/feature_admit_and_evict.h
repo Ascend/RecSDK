@@ -96,8 +96,7 @@ namespace MxRec {
 
         static std::vector<ThresholdValue> m_cfgThresholds;                        // 用于判断阈值配置的有效性
         static absl::flat_hash_map<std::string, SingleEmbTableStatus> m_embStatus; // 用于“准入&淘汰”功能解耦
-
-        GTEST_PRIVATE :
+    GTEST_PRIVATE :
 
         // 解析m_table2Threshold
         bool ParseThresholdCfg(const std::vector<ThresholdValue>& thresholdValues);
