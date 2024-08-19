@@ -189,6 +189,12 @@ namespace MxRec {
             Singleton<HDTransfer>::GetInstance()->ClearTransChannel(channelId);
 
             threadNum = GetThreadNumEnv();
+            if (threadNum <= 0) {
+                context->SetStatus(
+                    errors::Aborted(__FILE__, ":", __LINE__, " ", "ThreadNum invalid. It should be bigger than 0 ..."));
+                return;
+            }
+
             auto keyProcess = Singleton<KeyProcess>::GetInstance();
             if (!keyProcess->isRunning) {
                 context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ", "KeyProcess not running."));
@@ -278,6 +284,7 @@ namespace MxRec {
                 batchData->name = embNames.at(i);
                 size_t len = splits(i);
                 batchData->channel = channelId;
+                batchData->isEos = false;
                 batchData->batchId = ids[0];
                 batchData->sample.resize(len);
                 if (isTimestamp) {
@@ -381,6 +388,11 @@ namespace MxRec {
             Singleton<HDTransfer>::GetInstance()->ClearTransChannel(channelId);
 
             threadNum = GetThreadNumEnv();
+            if (threadNum <= 0) {
+                context->SetStatus(
+                    errors::Aborted(__FILE__, ":", __LINE__, " ", "ThreadNum invalid. It should be bigger than 0 ..."));
+                return;
+            }
             auto keyProcess = Singleton<KeyProcess>::GetInstance();
             if (!keyProcess->isRunning) {
                 context->SetStatus(errors::Aborted(__FILE__, ":", __LINE__, " ", "KeyProcess not running."));
@@ -466,6 +478,7 @@ namespace MxRec {
                 batchData->name = embNames.at(i);
                 size_t len = splits.at(i);
                 batchData->channel = channelId;
+                batchData->isEos = false;
                 batchData->batchId = batchId;
                 batchData->sample.resize(len);
                 if (isTimestamp) {

@@ -17,13 +17,13 @@ See the License for the specific language governing permissions and
 #define MX_REC_EMB_MGMT_H
 
 #include <array>
-#include <memory>
-#include <unordered_set>
-#include <vector>
-#include <mutex>
 #include <atomic>
 #include <condition_variable>
+#include <memory>
+#include <mutex>
 #include <thread>
+#include <unordered_set>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "emb_table/embedding_table.h"
@@ -37,8 +37,8 @@ See the License for the specific language governing permissions and
 #include "utils/config.h"
 #include "utils/singleton.h"
 #include "utils/task_queue.h"
-#include "utils/time_cost.h"
 #include "utils/thread_pool.h"
+#include "utils/time_cost.h"
 
 namespace MxRec {
 using namespace std;
@@ -142,7 +142,8 @@ public:
 
     void ReceiveKeyThread(const EmbInfo& embInfo);
 
-    GTEST_PRIVATE : bool mutexDestroy{false};
+GTEST_PRIVATE :
+    bool mutexDestroy{false};  // LookupAndSend & ReceiveAndUpdate Condition_Variable_Wait stop.
     std::mutex lookUpAndSendBatchIdMtx[MAX_CHANNEL_NUM];  // train and eval
     std::mutex receiveAndUpdateBatchIdMtx[MAX_CHANNEL_NUM];
 
@@ -169,6 +170,9 @@ public:
     std::map<std::string, TaskQueue<std::vector<float*>>[MAX_CHANNEL_NUM]> HBMSwapAddrsQue;
     std::map<std::string, TaskQueue<std::vector<float*>>[MAX_CHANNEL_NUM]> DDRSwapAddrsQue;
 
+    std::map<std::string, TaskQueue<bool>[MAX_CHANNEL_NUM]> EosL1Que;
+    std::map<std::string, TaskQueue<bool>[MAX_CHANNEL_NUM]> EosL2Que;
+
     std::mutex evictMut;
 
     std::map<std::string, std::unordered_set<uint64_t>> trainKeysSet;
@@ -180,9 +184,6 @@ public:
     std::map<std::string, std::vector<uint64_t>> lastSwapInPosMap{};
     std::map<std::string, std::vector<std::vector<uint64_t>>> trainTestSwitchInfoStore{};
     std::atomic<bool> lookupAddrSuccess{true};
-
-    std::mutex saveMutex;
-    std::condition_variable cvCheckSave;
 
     unique_ptr<ThreadPool> threadPool;
 
@@ -234,8 +235,8 @@ private:
     bool isRunning;
     bool isLoad{false};
     bool isInitialized{false};
-    bool alreadyTrainOnce = false;  // 用于判断是否为predict模式
-    bool isBackUpTrainStatus = false; // whether the train state has been backed up
+    bool alreadyTrainOnce = false;     // 用于判断是否为predict模式
+    bool isBackUpTrainStatus = false;  // whether the train state has been backed up
     bool isIncrementalCkpt;
     map<string, absl::flat_hash_map<emb_key_t, KeyInfo>> deltaMap;
     absl::flat_hash_map<string, int> keyBatchIdMap;
@@ -258,8 +259,6 @@ private:
     void InitDataPipelineForL3Storage(const string& embName, int extEmbeddingSize);
 
     void JoinEmbeddingCacheThread();
-
-    void HandleEosCase(const EmbBaseInfo& info, bool& remainBatchOut);
 
     bool EmbeddingReceiveDDR(const EmbTaskInfo& info, float*& ptr, vector<float*>& swapOutAddrs);
 
@@ -286,7 +285,7 @@ private:
 
     bool BuildH2DEmbedding(const EmbTaskInfo& info, vector<Tensor>& h2dEmb);
 
-    vector<uint64_t> GetUniqueKeys(const EmbBaseInfo& info, bool& remainBatchOut);
+    vector<uint64_t> GetUniqueKeys(const EmbBaseInfo& info, bool& remainBatchOut, bool& isEos);
 
     vector<int32_t> GetRestoreVecSec(const EmbBaseInfo& info, bool& remainBatchOut);
 

@@ -122,9 +122,9 @@ using freq_num_t = int64_t;
 using EmbNameT = std::string;
 using KeysT = std::vector<emb_key_t>;
 using LookupKeyT = std::tuple<int, EmbNameT, KeysT>;  // batch_id quarry_lable keys_vector
-using UinqueKeyT = std::tuple<int, EmbNameT, std::vector<uint64_t>>;
+using UinqueKeyT = std::tuple<int, EmbNameT, bool, std::vector<uint64_t>>;
 using RestoreVecSecT = std::tuple<int, EmbNameT, std::vector<int32_t>>;
-using TensorInfoT = std::tuple<int, EmbNameT, std::list<std::unique_ptr<std::vector<Tensor>>>::iterator>;
+using TensorInfoT = std::tuple<int, EmbNameT, bool, std::list<std::unique_ptr<std::vector<Tensor>>>::iterator>;
 
 namespace HybridOption {
 const unsigned int USE_STATIC = 0x001;
@@ -190,6 +190,7 @@ struct Batch {
     size_t batchSize;
     int batchId;
     int channel = 0;
+    bool isEos = false;
     time_t timestamp{-1};
 };
 
@@ -520,14 +521,13 @@ struct KeySendInfo {
 };
 
 struct KeyInfo {
-    int64_t lastUseTime;       // 最后使用时间
-    int64_t recentCount;       // 最近使用次数
-    bool isChanged;            // 是否有变更
-    int64_t batchID;           // batch id
-    int64_t totalCount;        // key总使用次数
+    int64_t lastUseTime;  // 最后使用时间
+    int64_t recentCount;  // 最近使用次数
+    bool isChanged;       // 是否有变更
+    int64_t batchID;      // batch id
+    int64_t totalCount;   // key总使用次数
 
-    KeyInfo(): lastUseTime(0), recentCount(0), isChanged(false),
-               batchID(0), totalCount(0) {}
+    KeyInfo() : lastUseTime(0), recentCount(0), isChanged(false), batchID(0), totalCount(0) {}
 };
 
 using EmbMemT = absl::flat_hash_map<std::string, HostEmbTable>;
@@ -596,7 +596,6 @@ enum class CkptDataType {
 
 std::string CkptDataTypeName(CkptDataType type);
 
-
 enum CTRLogLevel {  // can't use enum class due to compatibility for AccCTR
     DEBUG = 0,
     INFO,
@@ -629,7 +628,7 @@ bool CheckFilePermission(const string& filePath);
 
 int GetStepFromPath(const string& loadPath);
 
-string MakeKeyName(int id, const string& tableName, int channelId);
+string MakeSwapCVName(int id, const string& tableName, int channelId);
 }  // end namespace MxRec
 
 #define KEY_PROCESS "\033[45m[KeyProcess]\033[0m "

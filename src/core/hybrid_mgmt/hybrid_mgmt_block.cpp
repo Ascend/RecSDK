@@ -41,7 +41,6 @@ void HybridMgmtBlock::CheckAndSetBlock(int channelId)
         LOG_DEBUG(HYBRID_BLOCKING + "blocking by save saveInterval {} pythonBatchId {} hybridBatchId {}", saveInterval,
                   pythonBatchId[channelId], hybridBatchId[channelId]);
         isBlock[TRAIN_CHANNEL_ID] = true;
-        finishSave = false;
     }
     if (stepsInterval[channelId] == -1) {
         return;
@@ -175,7 +174,7 @@ void HybridMgmtBlock::ResetAll(int channelId)
         b.second[channelId] = 0;
     }
     // L3 data pipeline, swap
-    for (auto& b : h2dNextBatchId) {
+    for (auto& b : h2dSendBatchId) {
         b.second[channelId] = 0;
     }
 
@@ -187,36 +186,6 @@ void HybridMgmtBlock::ResetAll(int channelId)
     LOG_DEBUG(HYBRID_BLOCKING + "after reset block status,"
                                 " channelId:{}, pythonBatchId:{}, readEmbedBatchId:{}, hybridBatchId:{}",
               channelId, pythonBatchId[channelId], readEmbedBatchId[channelId], hybridBatchId[channelId]);
-
-    LOG_DEBUG("Start to reset isNeedSendEos");
-    Singleton<KeyProcess>::GetInstance()->SetEos(0, channelId);
-}
-
-/// 检查当前的步数是否可以进行save
-/// \return 0 is legal, 1 需要回退一步, -1 表示错误
-int HybridMgmtBlock::CheckSaveEmbMapValid()
-{
-    // 检查数据通道此时的HashMap是否被提前处理了
-    if (pythonBatchId[lastRunChannelId] >= hybridBatchId[lastRunChannelId]) {
-        LOG_DEBUG(HYBRID_BLOCKING + "HybridMgmt is checking the step and checking that the parameters are normal. "
-                                    "The number of steps in the previous round is "
-                                    "lastRunChannelId {} pythonBatchId {} hybridBatchId {}",
-                  lastRunChannelId, pythonBatchId[lastRunChannelId], hybridBatchId[lastRunChannelId]);
-        return 0;
-    } else if (pythonBatchId[lastRunChannelId] + 1 == hybridBatchId[lastRunChannelId]) {
-        // 在通道切换时，上一个通道处理的数据超出了python侧的调用
-        LOG_DEBUG(HYBRID_BLOCKING + "HybridMgmt is checking the step, and the parameters have been processed one step "
-                                    "in advance. The number of steps in the previous round was "
-                                    "lastRunChannelId {} pythonBatchId {} hybridBatchId {}",
-                  lastRunChannelId, pythonBatchId[lastRunChannelId], hybridBatchId[lastRunChannelId]);
-
-        return 1;
-    } else {
-        // 在通道切换时，hybrid处理的数据还没有赶上python侧，此时需要等待hybrid处理完成
-        LOG_DEBUG(HYBRID_BLOCKING + "ERROR FLAG lastRunChannelId {} hybridBatchId {}", lastRunChannelId,
-                  hybridBatchId[lastRunChannelId]);
-        return -1;
-    }
 }
 
 bool HybridMgmtBlock::GetBlockStatus(int channelId)
@@ -256,22 +225,4 @@ void HybridMgmtBlock::SetStepInterval(int trainStep, int evalStep)
 HybridMgmtBlock::~HybridMgmtBlock()
 {
     Destroy();
-}
-
-void HybridMgmtBlock::Wake(int channelId)
-{
-    isBlock[channelId] = false;
-}
-
-bool HybridMgmtBlock::IsNeedWaitSave()
-{
-    if (saveInterval != 0 && saveInterval != -1 && hybridBatchId[TRAIN_CHANNEL_ID] % saveInterval == 0 && !finishSave) {
-        return true;
-    }
-    return false;
-}
-
-void HybridMgmtBlock::FinishSave()
-{
-    finishSave = true;
 }
