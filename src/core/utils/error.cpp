@@ -43,6 +43,8 @@ std::string Error::TypeAsString() const noexcept
             return "IOError";
         case ErrorType::ACL_ERROR:
             return "AscendCLError";
+        case ErrorType::MPI_ERROR:
+            return "MPIError";
         default:
             return "UnknownError";
     }

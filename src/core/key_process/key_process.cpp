@@ -29,6 +29,7 @@ See the License for the specific language governing permissions and
 #include "utils/safe_queue.h"
 #include "utils/singleton.h"
 #include "utils/time_cost.h"
+#include "utils/error.h"
 
 using namespace std;
 using namespace chrono;
@@ -439,8 +440,11 @@ KeysT KeyProcess::BroadcastGlobalDpIdUnique(const unique_ptr<EmbBatchT>& batch, 
     int retCode = MPI_Bcast(&globalDpIdUniqueSize, 1, MPI_INT, masterId, comm[batch->channel][threadId]);
     EASY_END_BLOCK
     if (retCode != MPI_SUCCESS) {
-        LOG_ERROR("Rank {}, globalDpIdUniqueSize MPI_Bcast faild:{}", rankInfo.rankId, retCode);
-        throw runtime_error("Failed to MPI_Bcast globalDpIdUniqueSize for Dp.");
+        auto error =
+            Error(ModuleName::M_KEY_PROCESS, ErrorType::MPI_ERROR,
+                  StringFormat("Rank %d, globalDpIdUniqueSize MPI_Bcast failed: %d.", rankInfo.rankId, retCode));
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
     LOG_DEBUG("Rank:{}, thread:{}, table name:{}, globalDpIdUniqueBcastSizeCommTC(ms):{}", rankInfo.rankId, threadId,
               batch->name, globalDpIdUniqueBcastSizeCommTC.ElapsedMS());
@@ -453,8 +457,11 @@ KeysT KeyProcess::BroadcastGlobalDpIdUnique(const unique_ptr<EmbBatchT>& batch, 
                         comm[batch->channel][threadId]);
     EASY_END_BLOCK
     if (retCode != MPI_SUCCESS) {
-        LOG_ERROR("Rank:{}, globalDpIdUniqueVec MPI_Bcast faild:{}", rankInfo.rankId, retCode);
-        throw runtime_error("Failed to MPI_Bcast globalDpIdUniqueVec for Dp.");
+        auto error =
+            Error(ModuleName::M_KEY_PROCESS, ErrorType::MPI_ERROR,
+                  StringFormat("Rank %d, globalDpIdUniqueVec MPI_Bcast failed: %d.", rankInfo.rankId, retCode));
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
     LOG_DEBUG("Rank:{}, thread:{}, table name:{}, globalDpIdUniqueSize:{}, globalDpIdUniqueBcastVecCommTC(ms):{}",
               rankInfo.rankId, threadId, batch->name, globalDpIdUniqueSize, globalDpIdUniqueBcastVecCommTC.ElapsedMS());
@@ -766,8 +773,11 @@ vector<uint32_t> KeyProcess::GetCountRecvForDp(const unique_ptr<MxRec::EmbBatchT
     int retCode = MPI_Allgatherv(keyCount.data(), sc, MPI_UINT32_T, countRecv.data(), rc.data(), rs.data(),
                                  MPI_UINT32_T, comm[batch->channel][id]);
     if (retCode != MPI_SUCCESS) {
-        LOG_ERROR("Rank {}, MPI_Allgatherv for Dp failed:{}", rankInfo.rankId, retCode);
-        throw runtime_error("Failed to MPI_Allgatherv for Dp.");
+        auto error =
+            Error(ModuleName::M_KEY_PROCESS, ErrorType::MPI_ERROR,
+                  StringFormat("Rank %d, MPI_Allgatherv for count receive failed: %d.", rankInfo.rankId, retCode));
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
     LOG_DEBUG("Rank {}, getCountRecvDpTC(ms)(with-allgather):{}", rankInfo.rankId, getCountRecvDpTC.ElapsedMS());
     return countRecv;
@@ -1017,11 +1027,11 @@ void KeyProcess::ProcessKeysWithStatic(const unique_ptr<EmbBatchT>& batch, vecto
 {
     for (KeysT& i : splitKeys) {
         if (i.size() > embInfos[batch->name].sendCount) {
-            LOG_ERROR("{}[{}]:{} overflow! set send count bigger than {}", batch->name, batch->channel, batch->batchId,
-                      i.size());
-            throw runtime_error(StringFormat("%s[%d]:%d overflow! set send count bigger than %d", batch->name.c_str(),
-                                             batch->channel, batch->batchId, i.size())
-                                    .c_str());
+            auto error = Error(ModuleName::M_KEY_PROCESS, ErrorType::INVALID_ARGUMENT,
+                               StringFormat("%s[%d]:%d overflow! set send count bigger than %d.", batch->name.c_str(),
+                                            batch->channel, batch->batchId, i.size()));
+            LOG_ERROR(error.ToString());
+            throw runtime_error(error.ToString().c_str());
         }
         i.resize(embInfos[batch->name].sendCount, -1);
     }
@@ -1076,7 +1086,10 @@ auto KeyProcess::ProcessSplitKeys(const unique_ptr<EmbBatchT>& batch, int id, ve
     int retCode = MPI_Alltoallv(keySend.data(), sc.data(), ss.data(), MPI_INT64_T, keyRecv.data(), rc.data(), rs.data(),
                                 MPI_INT64_T, comm[batch->channel][id]);
     if (retCode != MPI_SUCCESS) {
-        LOG_ERROR("rank {}, MPI_Alltoallv failed:{}", rankInfo.rankId, retCode);
+        auto error = Error(ModuleName::M_KEY_PROCESS, ErrorType::MPI_ERROR,
+                           StringFormat("Rank %d, MPI_Alltoallv failed: %d.", rankInfo.rankId, retCode));
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
     LOG_DEBUG("uniqueAll2AllTC(ms):{}", uniqueAll2AllTC.ElapsedMS());
 
@@ -1107,7 +1120,10 @@ tuple<KeysT, vector<int>, vector<int>> KeyProcess::ProcessGlobalDpId(const uniqu
     int retCode = MPI_Allgatherv(lookupKeys.data(), sc.at(0), MPI_INT64_T, keyRecv.data(), rc.data(), rs.data(),
                                  MPI_INT64_T, comm[batch->channel][id]);
     if (retCode != MPI_SUCCESS) {
-        LOG_ERROR("rank {}, MPI_Allgatherv failed:{}", rankInfo.rankId, retCode);
+        auto error = Error(ModuleName::M_KEY_PROCESS, ErrorType::MPI_ERROR,
+                           StringFormat("Rank %d, MPI_Allgatherv failed: %d.", rankInfo.rankId, retCode));
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
     LOG_DEBUG("uniqueAllGatherTC(ms):{}", uniqueAllGatherTC.ElapsedMS());
     return {keyRecv, scAll, Count2Start(sc)};
@@ -1399,7 +1415,11 @@ vector<int> KeyProcess::GetScAll(const vector<int>& keyScLocal, int commId, cons
     auto retCode = MPI_Allgather(keyScLocal.data(), sendAndRecvCount, MPI_INT, scAll.data(), sendAndRecvCount, MPI_INT,
                                  comm[batch->channel][commId]);
     if (retCode != MPI_SUCCESS) {
-        LOG_ERROR("rank {} commId {}, MPI_Allgather failed:{}", rankInfo.rankId, commId, retCode);
+        auto error =
+            Error(ModuleName::M_KEY_PROCESS, ErrorType::MPI_ERROR,
+                  StringFormat("Rank %d commId %d, MPI_Allgather failed: %d.", rankInfo.rankId, commId, retCode));
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
     LOG_DEBUG("channelId:{} threadId:{} batchId:{}, GetScAll MPI_Allgather end, key scAll matrix:\n{}", batch->channel,
               commId, batch->batchId, VectorToString(scAll));
