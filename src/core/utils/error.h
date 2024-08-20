@@ -30,6 +30,7 @@ enum class ErrorType: uint8_t {
     INVALID_ARGUMENT,
     IO_ERROR,
     ACL_ERROR,
+    MPI_ERROR,
     UNKNOWN,
 };
 
