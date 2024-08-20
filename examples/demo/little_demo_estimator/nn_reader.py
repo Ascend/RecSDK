@@ -27,7 +27,7 @@ from utils import FeatureSpecIns, create_feature_spec_list
 def input_fn(params, create_fs_params, cfg, is_eval=False, use_one_shot=False):
     dataset = generate_dataset(cfg,
                                use_timestamp=params.use_timestamp,
-                               batch_number=params.max_steps * get_rank_size())
+                               batch_number=params.max_data_generate_steps * get_rank_size())
 
     if not params.modify_graph:
         feature_spec_list = create_feature_spec_list(create_fs_params.get("cfg"),
