@@ -14,10 +14,11 @@ See the License for the specific language governing permissions and
 ==============================================================================*/
 
 #include "emb_table/embedding_dynamic.h"
+#include "hd_transfer/hd_transfer.h"
 #include "utils/logger.h"
 #include "utils/singleton.h"
-#include "hd_transfer/hd_transfer.h"
 #include "utils/common.h"
+#include "utils/error.h"
 
 using namespace MxRec;
 
@@ -90,8 +91,11 @@ void EmbeddingDynamic::Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel
         }
         // New key.
         if (channel == TRAIN_CHANNEL_ID) {
-            throw runtime_error(StringFormat("Error: LookupKeys contains invalid key %d, "
-                                             "the key must exist in the offset map.", key));
+            auto error =
+                Error(ModuleName::M_EMB_TABLE, ErrorType::NOT_FOUND,
+                      StringFormat("LookupKeys contains invalid key %d, the key must exist in the offset map.", key));
+            LOG_ERROR(error.ToString());
+            throw runtime_error(error.ToString().c_str());
         }
         key = INVALID_DYNAMIC_EXPANSION_ADDR;
     }
