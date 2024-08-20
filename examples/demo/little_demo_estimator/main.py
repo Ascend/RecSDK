@@ -176,6 +176,7 @@ if __name__ == '__main__':
     parser.add_argument('--modify_graph', type=bool, default=False)  # 是否开启自动改图
     parser.add_argument('--use_multi_lookup', type=bool, default=True)  # 是否一表多查
     parser.add_argument('--multi_lookup_times', type=int, default=2)  # 一表多查次数
+    parser.add_argument('--max_data_generate_steps', type=int, default=200)  # 生成数据最大步数
     parser.add_argument('--max_steps', type=int, default=200)  # train的最大步数
     parser.add_argument('--train_steps', type=int, default=100)  # 训练train_steps步后进行eval
     parser.add_argument('--eval_steps', type=int, default=10)  # 每次eval的步数
