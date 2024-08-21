@@ -969,7 +969,8 @@ void HybridMgmt::LookUpSwapAddrs(const string& embName, int channelId)
         if (isEos) {
             LOG_DEBUG("Enqueue on EosL2Que, eos status! table:{}, batchId:{}, channelId:{}, EosL1Que size:{}, "
                       "EosL2Que.size: {}",
-                      embName, id, channelId, EosL1Que[embName][channelId].Size(), EosL2Que[embName][channelId].Size());
+                      embName, hybridMgmtBlock->lookUpSwapAddrsPushId[embName][channelId], channelId,
+                      EosL1Que[embName][channelId].Size(), EosL2Que[embName][channelId].Size());
             continue;
         }
 
@@ -1506,10 +1507,16 @@ bool HybridMgmt::EmbeddingReceiveDDR(const EmbTaskInfo& info, float*& ptr, vecto
         return false;
     }
     if (isEos) {
-        LOG_DEBUG("EmbeddingReceiveDDR get eos, table:{}, batchId:{}, channel: {}", info.name, info.batchId,
+        LOG_DEBUG("EmbeddingReceiveDDR get eos, table:{}, accumulate batchId:{}, channel: {}", info.name, info.batchId,
                   info.channelId);
         // It cannot return here after send eos, otherwise it will block the next round of switching.
         KEY_PROCESS_INSTANCE->SendEos(info.name, info.batchId, info.channelId);
+        // Once eos is sent, it will be blocked in [EosL2Que WaitAndPop]. For train mode, it will be finished, but for
+        // eval mode, it will be waked when normal data comes in next turn.
+        isEos = EosL2Que[info.name][info.channelId].WaitAndPop();
+        if (!isRunning) {
+            return false;
+        }
     }
 
     TimeCost EmbeddingRecvTC = TimeCost();
@@ -1720,10 +1727,16 @@ bool HybridMgmt::EmbeddingReceiveL3Storage(const EmbTaskInfo& info, float*& ptr,
         return false;
     }
     if (isEos) {
-        LOG_DEBUG("EmbeddingReceiveL3Storage get eos, table:{}, batchId:{}, channel: {}", info.name, info.batchId,
-                  info.channelId);
+        LOG_DEBUG("EmbeddingReceiveL3Storage get eos, table:{}, accumulate batchId:{}, channel: {}", info.name,
+                  info.batchId, info.channelId);
         // It cannot return here after send eos, otherwise it will block the next round of switching.
         KEY_PROCESS_INSTANCE->SendEos(info.name, info.batchId, info.channelId);
+        // Once eos is sent, it will be blocked in [EosL2Que WaitAndPop]. For train mode, it will be finished, but for
+        // eval mode, it will be waked when normal data comes in next turn.
+        isEos = EosL1Que[info.name][info.channelId].WaitAndPop();
+        if (!isRunning) {
+            return false;
+        }
     }
 
     // DDR swap out key need to be removed
