@@ -153,10 +153,14 @@ def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
         # patch的方式为session增加步数属性
         steps = self.get_mxrec_steps()
 
+    result = None
     # 调用tensorflow原生的方法
-    result = self.old_run_method(fetches, feed_dict, options, run_metadata)
-    if channel_id != -1 and asc_manager:
-        asc_manager.block_count_steps(channel_id, steps)
+    try:
+        result = self.old_run_method(fetches, feed_dict, options, run_metadata)
+    finally:
+        # Add last loop n-step even when eos.
+        if channel_id != -1 and asc_manager:
+            asc_manager.block_count_steps(channel_id, steps)
     return result
 
 
