@@ -45,6 +45,12 @@ std::string Error::TypeAsString() const noexcept
             return "AscendCLError";
         case ErrorType::MPI_ERROR:
             return "MPIError";
+        case ErrorType::CONSTRUCT_ERROR:
+            return "ConstructError";
+        case ErrorType::EXECUTION_ORDER_ERROR:
+            return "ExecuteOrderError";
+        case ErrorType::LOGIC_ERROR:
+            return "LogicError";
         default:
             return "UnknownError";
     }
@@ -71,6 +77,8 @@ std::string Error::ModAsString() const noexcept
             return "SsdEngine";
         case ModuleName::M_UTILS:
             return "Utils";
+        case ModuleName::M_OCK_CTR:
+            return "AccCTR";
         default:
             return "UnknownModule";
     }

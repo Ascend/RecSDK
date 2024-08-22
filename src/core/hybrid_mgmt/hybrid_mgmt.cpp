@@ -30,6 +30,7 @@ See the License for the specific language governing permissions and
 #include "key_process/feature_admit_and_evict.h"
 #include "key_process/key_process.h"
 #include "utils/common.h"
+#include "utils/error.h"
 #include "utils/logger.h"
 #include "utils/time_cost.h"
 
@@ -92,7 +93,10 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     // create factory for fastUnique and embeddingCache
     int result = ock::ctr::Factory::Create(factory);
     if (result != 0) {
-        throw runtime_error(Logger::Format("create fast factory failed, error code:{}", result));
+        auto error = Error(ModuleName::M_OCK_CTR, ErrorType::CONSTRUCT_ERROR,
+                           StringFormat("Create fast factory failed, error code: %d.", result));
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
 
     // InitPool need to be before Start().
@@ -165,7 +169,10 @@ void HybridMgmt::Save(const string& savePath, bool saveDelta)
 {
 #ifndef GTEST
     if (!isInitialized) {
-        throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
+        auto error = Error(ModuleName::M_CHECK_POINT, ErrorType::EXECUTION_ORDER_ERROR,
+                           "HybridMgmt not initialized. Call [start_asc_pipeline] before save.");
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
     string saveModelType =
         saveDelta ? TransferModelType2Str(SaveModelType::DELTA) : TransferModelType2Str(SaveModelType::BASE);
@@ -221,7 +228,10 @@ bool HybridMgmt::Load(const string& loadPath, vector<string> warmStartTables)
 {
 #ifndef GTEST
     if (!isInitialized) {
-        throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
+        auto error = Error(ModuleName::M_CHECK_POINT, ErrorType::EXECUTION_ORDER_ERROR,
+                           "HybridMgmt not initialized. Call [start_asc_pipeline] before load.");
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
 
     // 数据处理线程上锁
@@ -344,7 +354,10 @@ void HybridMgmt::ReceiveHostMap(AllKeyOffsetMapT receiveKeyOffsetMap)
 {
 #ifndef GTEST
     if (!isInitialized) {
-        throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
+        auto error = Error(ModuleName::M_CHECK_POINT, ErrorType::EXECUTION_ORDER_ERROR,
+                           "HybridMgmt not initialized. Call [start_asc_pipeline] before load offset.");
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
 
     KEY_PROCESS_INSTANCE->LoadSaveLock();
@@ -432,7 +445,10 @@ void HybridMgmt::Destroy()
 {
     LOG_DEBUG(MGMT + "start Destroy hybrid_mgmt module");
     if (!isInitialized) {
-        throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
+        auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::EXECUTION_ORDER_ERROR,
+                           "HybridMgmt not initialized. No need to call [terminate].");
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
 
     if (!isRunning) {
@@ -577,8 +593,11 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId, TaskType type)
                     remainResult.push_back(std::move(remainBatch));
                 }
                 break;
-            default:
-                throw std::invalid_argument("Invalid TaskType Type.");
+            default: {
+                auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::INVALID_ARGUMENT, "Invalid TaskType Type.");
+                LOG_ERROR(error.ToString());
+                throw runtime_error(error.ToString().c_str());
+            }
         }
     }
 
@@ -733,7 +752,10 @@ bool HybridMgmt::Evict()
 #ifndef GTEST
     std::lock_guard<std::mutex> lk(evictMut);
     if (!isInitialized) {
-        throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
+        auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::EXECUTION_ORDER_ERROR,
+                           "HybridMgmt not initialized. Call [start_asc_pipeline] before evict hook.");
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
 
     // 配置了淘汰选项，则触发
@@ -813,7 +835,10 @@ void HybridMgmt::EvictL3StorageKeys(const string& embName, const vector<emb_cach
 void HybridMgmt::NotifyBySessionRun(int channelID) const
 {
     if (!isInitialized) {
-        throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
+        auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::EXECUTION_ORDER_ERROR,
+                           "HybridMgmt not initialized. Call [start_asc_pipeline] before sess run.");
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
 
     hybridMgmtBlock->CheckAndNotifyWake(channelID);
@@ -825,7 +850,10 @@ void HybridMgmt::NotifyBySessionRun(int channelID) const
 void HybridMgmt::CountStepBySessionRun(int channelID, int steps) const
 {
     if (!isInitialized) {
-        throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
+        auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::EXECUTION_ORDER_ERROR,
+                           "HybridMgmt not initialized. Call [start_asc_pipeline] before sess run.");
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
 
     hybridMgmtBlock->CountPythonStep(channelID, steps);
@@ -839,7 +867,10 @@ int64_t HybridMgmt::GetTableSize(const string& embName) const
     int64_t size = -1;
 #ifndef GTEST
     if (!isInitialized) {
-        throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
+        auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::EXECUTION_ORDER_ERROR,
+                           "HybridMgmt not initialized. Call [start_asc_pipeline] before [table.size()].");
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
 
     if (mgmtRankInfo.useDynamicExpansion) {
@@ -872,7 +903,10 @@ int64_t HybridMgmt::GetTableCapacity(const string& embName) const
 {
 #ifndef GTEST
     if (!isInitialized) {
-        throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
+        auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::EXECUTION_ORDER_ERROR,
+                           "HybridMgmt not initialized. Call [start_asc_pipeline] before [table.capacity()].");
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
 
     if (mgmtRankInfo.useDynamicExpansion) {
@@ -892,7 +926,10 @@ int64_t HybridMgmt::GetTableCapacity(const string& embName) const
 void HybridMgmt::SetOptimizerInfo(const string& embName, OptimizerInfo optimInfo) const
 {
     if (!isInitialized) {
-        throw runtime_error("HybridMgmt not initialized. Call Initialize first.");
+        auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::EXECUTION_ORDER_ERROR,
+                           "HybridMgmt not initialized. Call [start_asc_pipeline] before [save/restore].");
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
     EmbeddingMgmt::Instance()->SetOptimizerInfo(embName, optimInfo);
 }
@@ -915,24 +952,39 @@ void HybridMgmt::LookUpAndRemoveAddrs(const EmbTaskInfo& info)
         TimeCost lookupAddrsTC;
         int rc = embCache->EmbeddingLookupAddrs(info.name, keys, addrs);
         if (rc != H_OK) {
-            LOG_ERROR("lookUpAddrs, table:{}, fromQue:{}, swapStr:{}, keys.size:{}, addrs.size:{}, "
-                      "lookUpSwapAddrsPushId:{}, channelId:{}",
-                      info.name, fromQueName, swapStr, keys.size(), addrs.size(),
-                      hybridMgmtBlock->lookUpSwapAddrsPushId[info.name][info.channelId], info.channelId);
-            throw runtime_error("EmbeddingLookupAddrs failed! error code:" + std::to_string(rc));
+            auto error =
+                Error(ModuleName::M_OCK_CTR, ErrorType::UNKNOWN,
+                      StringFormat("LookUpAddrs, error code: %d. table: %s, fromQue: %s, swapStr: %s, keys.size: %d, "
+                                   "addrs.size: %d, lookUpSwapAddrsPushId: %d, channelId: %d.",
+                                   rc, info.name, fromQueName, swapStr, keys.size(), addrs.size(),
+                                   hybridMgmtBlock->lookUpSwapAddrsPushId[info.name][info.channelId], info.channelId));
+            LOG_ERROR(error.ToString());
+            throw runtime_error(error.ToString().c_str());
         }
         if (&fromQue == &DDRSwapKeyQue && swapStr == SWAP_OUT_STR) {
             for (auto& addr : addrs) {
                 auto* newAddr = (float*)malloc(memSize);
                 rc = memcpy_s(newAddr, memSize, addr, memSize);
                 if (rc != 0) {
-                    throw runtime_error("memcpy_s failed! error code:" + std::to_string(rc));
+                    auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::UNKNOWN,
+                                       StringFormat("Memcpy_s failed when DDR swap out, error code: %d. MemSize: %d. "
+                                                    "You can query the meaning of security function error code.",
+                                                    rc, memSize));
+                    LOG_ERROR(error.ToString());
+                    throw runtime_error(error.ToString().c_str());
                 }
                 addr = newAddr;
             }
             rc = embCache->EmbeddingRemove(info.name, keys);
             if (rc != H_OK) {
-                throw runtime_error("EmbeddingRemove failed! error code:" + std::to_string(rc));
+                auto error = Error(
+                    ModuleName::M_OCK_CTR, ErrorType::UNKNOWN,
+                    StringFormat("Remove, error code: %d. table: %s, fromQue: %s, swapStr: %s, keys.size: %d, "
+                                 "lookUpSwapAddrsPushId: %d, channelId: %d",
+                                 rc, info.name, fromQueName, swapStr, keys.size(),
+                                 hybridMgmtBlock->lookUpSwapAddrsPushId[info.name][info.channelId], info.channelId));
+                LOG_ERROR(error.ToString());
+                throw runtime_error(error.ToString().c_str());
             }
         }
         LOG_DEBUG("table:{}, fromQue:{}, swapStr:{}, keys.size:{}, addrs.size:{}, lookUpSwapAddrsPushId:{}, "
@@ -983,7 +1035,13 @@ void HybridMgmt::LookUpSwapAddrs(const string& embName, int channelId)
         int rc = embCache->EmbeddingLookupAddrs(embName, keys, addrs);
         if (rc != H_OK) {
             lookupAddrSuccess = false;
-            throw runtime_error("EmbeddingLookupAddrs failed! error code: " + std::to_string(rc));
+            auto error = Error(ModuleName::M_OCK_CTR, ErrorType::UNKNOWN,
+                               StringFormat("LookUpAddrs swap in, error code: %d. embName: %s, keys.size: %d, "
+                                            "addrs.size: %d, lookUpSwapAddrsPushId: %d, channelId: %d.",
+                                            rc, embName, keys.size(), addrs.size(),
+                                            hybridMgmtBlock->lookUpSwapAddrsPushId[embName][channelId], channelId));
+            LOG_ERROR(error.ToString());
+            throw runtime_error(error.ToString().c_str());
         }
         LOG_DEBUG("table:{}, swapStr:{}, keys.size:{}, addrs.size:{}, lookUpSwapAddrsPushId:{}, channelId:{}, "
                   "lookupAddrsInTC(ms):{}",
@@ -1000,7 +1058,13 @@ void HybridMgmt::LookUpSwapAddrs(const string& embName, int channelId)
         }
         if (rc != H_OK) {
             lookupAddrSuccess = false;
-            throw runtime_error("EmbeddingLookupAddrs failed! error code: " + std::to_string(rc));
+            auto error = Error(ModuleName::M_OCK_CTR, ErrorType::UNKNOWN,
+                               StringFormat("LookUpAddrs swap out, error code: %d. embName: %s, keys.size: %d, "
+                                            "addrs.size: %d, lookUpSwapAddrsPushId: %d, channelId: %d.",
+                                            rc, embName, keys.size(), addrs.size(),
+                                            hybridMgmtBlock->lookUpSwapAddrsPushId[embName][channelId], channelId));
+            LOG_ERROR(error.ToString());
+            throw runtime_error(error.ToString().c_str());
         }
         LOG_DEBUG("table:{}, swapStr:{}, keys.size:{}, addrs.size:{}, lookUpSwapAddrsPushId:{}, channelId:{}, "
                   "lookupAddrsOutTC(ms):{}",
@@ -1106,7 +1170,10 @@ void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
                 LOG_INFO("Receive data success, get {} data size: {}.", embInfo.name, ret);
                 auto aclData = acltdtGetDataItem(hdTransfer->aclDatasetsForIncrementalCkpt[embInfo.name], 0);
                 if (aclData == nullptr) {
-                    throw runtime_error("Acl get tensor data failed.");
+                    auto error = Error(ModuleName::M_CHECK_POINT, ErrorType::ACL_ERROR,
+                                       "Acl get tensor data failed in [ReceiveKeyThread].");
+                    LOG_ERROR(error.ToString());
+                    throw runtime_error(error.ToString().c_str());
                 }
                 auto ptr = reinterpret_cast<int64_t*>(acltdtGetDataAddrFromItem(aclData));
                 int64_t timeStamp = *ptr;
@@ -1119,8 +1186,10 @@ void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
                                     .name = embInfo.name};
                 unique_ptr<vector<Tensor>> keyCountVecInfo = KEY_PROCESS_INSTANCE->GetKCInfoVec(info);
                 if (keyCountVecInfo == nullptr) {
-                    LOG_ERROR("Get key count info vector is empty.");
-                    throw runtime_error("Get key count info vector is empty.");
+                    auto error = Error(ModuleName::M_CHECK_POINT, ErrorType::NOT_FOUND,
+                                       "Get key count info vector is empty in [ReceiveKeyThread].");
+                    LOG_ERROR(error.ToString());
+                    throw runtime_error(error.ToString().c_str());
                 }
                 auto keyCountVecTmp = keyCountVecInfo->at(0).flat<int64>();
                 vector<int64_t> keyCountVec;
@@ -1436,7 +1505,10 @@ void HybridMgmt::InitEmbeddingCache(const vector<EmbInfo>& embInfos)
         int ret = embCache->CreateCacheForTable(embCacheInfo, embInfo.initializeInfos, INVALID_KEY_VALUE, prefill,
                                                 EMBEDDING_THREAD_NUM);
         if (ret != H_OK) {
-            throw runtime_error(embInfo.name + "create cache for table failed, error code: " + std::to_string(ret));
+            auto error = Error(ModuleName::M_OCK_CTR, ErrorType::CONSTRUCT_ERROR,
+                               StringFormat("Create cache for table %s failed, error code: %d", embInfo.name, ret));
+            LOG_ERROR(error.ToString());
+            throw runtime_error(error.ToString().c_str());
         }
     }
 }
@@ -1536,7 +1608,10 @@ bool HybridMgmt::EmbeddingReceiveDDR(const EmbTaskInfo& info, float*& ptr, vecto
 
     auto aclData = acltdtGetDataItem(hdTransfer->aclDatasets[info.name][info.threadIdx], 0);
     if (aclData == nullptr) {
-        throw runtime_error("Acl get tensor data from dataset failed.");
+        auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::ACL_ERROR,
+                           "Acl get tensor data from dataset failed in [EmbeddingReceiveDDR].");
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
     ptr = reinterpret_cast<float*>(acltdtGetDataAddrFromItem(aclData));
 
@@ -1551,7 +1626,13 @@ bool HybridMgmt::EmbeddingReceiveDDR(const EmbTaskInfo& info, float*& ptr, vecto
               EmbeddingRecvTC.ElapsedMS());
 
     if (dims[0] != static_cast<int64_t>(swapOutAddrs.size())) {
-        throw runtime_error("data dims[0] != swapOutKeys.size()");
+        auto error =
+            Error(ModuleName::M_HYBRID_MGMT, ErrorType::LOGIC_ERROR,
+                  StringFormat(
+                      "Receive swap-out emb num %d does not equal to swap-out addrs num %d in [EmbeddingReceiveDDR].",
+                      dims[0], swapOutAddrs.size()));
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
     hybridMgmtBlock->lastRecvFinishStep[info.name][info.channelId]++;
 
@@ -1577,7 +1658,12 @@ void HybridMgmt::EmbeddingUpdateDDR(const EmbTaskInfo& info, const float* embPtr
     for (uint64_t i = 0; i < swapOutAddrs.size(); i++) {
         auto rc = memcpy_s(swapOutAddrs[i], memSize, embPtr + i * extEmbeddingSize, memSize);
         if (rc != 0) {
-            throw runtime_error("memcpy_s failed, error code:" + to_string(rc));
+            auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::UNKNOWN,
+                               StringFormat("Memcpy_s failed when emb update ddr, error code: %d. MemSize: %d. You can "
+                                            "query the meaning of security function error code.",
+                                            rc, memSize));
+            LOG_ERROR(error.ToString());
+            throw runtime_error(error.ToString().c_str());
         }
     }
     if (MxRec::Logger::GetLevel() <= MxRec::Logger::DEBUG) {
@@ -1758,7 +1844,10 @@ bool HybridMgmt::EmbeddingReceiveL3Storage(const EmbTaskInfo& info, float*& ptr,
 
     auto aclData = acltdtGetDataItem(hdTransfer->aclDatasets[info.name][info.threadIdx], 0);
     if (aclData == nullptr) {
-        throw runtime_error("Acl get tensor data from dataset failed.");
+        auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::ACL_ERROR,
+                           "Acl get tensor data from dataset failed in [EmbeddingReceiveL3Storage].");
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
     ptr = reinterpret_cast<float*>(acltdtGetDataAddrFromItem(aclData));
 
@@ -1801,7 +1890,12 @@ void HybridMgmt::EmbeddingUpdateL3Storage(const EmbTaskInfo& info, float* embPtr
     for (uint64_t i = 0; i < swapOutAddrs.size(); i++) {
         auto rc = memcpy_s(swapOutAddrs[i], memSize, embPtr + swapOutDDRAddrOffs[i] * extEmbeddingSize, memSize);
         if (rc != 0) {
-            throw runtime_error("memcpy_s failed, error code:" + to_string(rc));
+            auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::UNKNOWN,
+                               StringFormat("Memcpy_s failed when emb update L3Storage, error code: %d. MemSize: %d. "
+                                            "You can query the meaning of security function error code.",
+                                            rc, memSize));
+            LOG_ERROR(error.ToString());
+            throw runtime_error(error.ToString().c_str());
         }
     }
 
@@ -1819,7 +1913,12 @@ void HybridMgmt::EmbeddingUpdateL3Storage(const EmbTaskInfo& info, float* embPtr
     }
 
     if (dims0 != static_cast<int64_t>(swapOutAddrs.size() + swapOutL3StorageKeys.size())) {
-        throw runtime_error("data dims[0] != swapOutKeys.size");
+        auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::LOGIC_ERROR,
+                           StringFormat("Receive swap-out emb num %d does not equal to addrs num %d for swap-out ddr "
+                                        "and %d for swap-out L3Storage in [EmbeddingUpdateL3Storage].",
+                                        dims0, swapOutAddrs.size(), swapOutL3StorageKeys.size()));
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
     cacheManager->UpdateL3StorageEmb(info.name, embPtr, extEmbeddingSize, swapOutL3StorageKeys,
                                      swapOutL3StorageAddrOffs);
@@ -1975,7 +2074,12 @@ bool HybridMgmt::BuildH2DEmbedding(const EmbTaskInfo& info, vector<Tensor>& h2dE
     for (uint64_t i = 0; i < swapInAddrs.size(); i++) {
         auto rc = memcpy_s(h2dEmbAddr + i * info.extEmbeddingSize, memSize, swapInAddrs[i], memSize);
         if (rc != 0) {
-            throw runtime_error("memcpy_s failed, error code:" + to_string(rc));
+            auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::UNKNOWN,
+                               StringFormat("Memcpy_s failed when emb lookup, error code: %d. MemSize: %d. You can "
+                                            "query the meaning of security function error code.",
+                                            rc, memSize));
+            LOG_ERROR(error.ToString());
+            throw runtime_error(error.ToString().c_str());
         }
     }
     LOG_DEBUG(
@@ -2130,9 +2234,11 @@ void HybridMgmt::GetSwapPairsAndKey2Offset(const EmbBaseInfo& info, vector<uint6
     TimeCost GetSwapPairsAndKey2OffsetTC;
     int swapInCode = embCache->GetSwapPairsAndKey2Offset(info.name, uniqueKeys, swapInKoPair, swapOutKoPair);
     if (swapInCode != H_OK) {
-        string errMsg =
-            StringFormat("table:%s, GetSwapPairsAndKey2Offset failed! error code:%d", info.name.c_str(), swapInCode);
-        throw runtime_error(errMsg);
+        auto error = Error(ModuleName::M_OCK_CTR, ErrorType::UNKNOWN,
+                           StringFormat("Table:%s, [GetSwapPairsAndKey2Offset] failed! error code:%d.",
+                                        info.name.c_str(), swapInCode));
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
     LOG_DEBUG("table:{}, channel:{}, batchId:{}, GetSwapPairsAndKey2OffsetTC(ms):{}", info.name, info.channelId,
               info.batchId, GetSwapPairsAndKey2OffsetTC.ElapsedMS());
