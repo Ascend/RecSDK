@@ -1956,6 +1956,9 @@ bool HybridMgmt::EmbeddingLookUpL3Storage(const EmbTaskInfo& info, vector<Tensor
     // DDR腾空间
     std::vector<uint64_t> DDR2L3StorageKeys =
         DDRSwapKeyForL3StorageQue[info.name + SWAP_OUT_STR][info.channelId].WaitAndPop();
+    if (!isRunning) {
+        return false;
+    }
     std::vector<float*> DDR2L3StorageAddrs = DDRSwapAddrsQue[info.name + SWAP_OUT_STR][info.channelId].WaitAndPop();
     if (!isRunning) {
         return false;
@@ -1968,6 +1971,9 @@ bool HybridMgmt::EmbeddingLookUpL3Storage(const EmbTaskInfo& info, vector<Tensor
     // swapInKeys中在L3Storage的挪到DDR
     std::vector<uint64_t> L3Storage2DDRKeys =
         DDRSwapKeyForL3StorageQue[info.name + SWAP_IN_STR][info.channelId].WaitAndPop();
+    if (!isRunning) {
+        return false;
+    }
     std::vector<float*> L3Storage2DDRAddrs = DDRSwapAddrsQue[info.name + SWAP_IN_STR][info.channelId].WaitAndPop();
     if (!isRunning) {
         return false;
