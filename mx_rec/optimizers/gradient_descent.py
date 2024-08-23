@@ -24,10 +24,11 @@ from collections import defaultdict
 import tensorflow as tf
 
 from tensorflow.python.ops import math_ops
+from tensorflow.python.framework import ops
 from tensorflow.python.training import gradient_descent
 
 from mx_rec.optimizers.base import CustomizedOptimizer
-from mx_rec.util.communication import hccl_ops
+from mx_rec.util.tf_version_adapter import hccl_ops
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import (
     para_checker_decorator,
@@ -79,7 +80,12 @@ class CustomizedGradientDescent(
         )
         # The DP mode requires allreduce for gradients.
         if table_instance.is_dp:
-            grad = hccl_ops.allreduce(grad, "sum")
+            grad_values = hccl_ops.allreduce(grad.values, "sum")
+            grad = ops.IndexedSlices(
+                values=grad_values,
+                indices=grad.indices,
+                dense_shape=grad.dense_shape,
+            )
         nd_indices = tf.expand_dims(grad.indices, 1)
         nd_value = grad.values * math_ops.cast(
             self._learning_rate_tensor, var.dtype.base_dtype
