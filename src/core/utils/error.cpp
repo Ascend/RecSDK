@@ -51,6 +51,10 @@ std::string Error::TypeAsString() const noexcept
             return "ExecuteOrderError";
         case ErrorType::LOGIC_ERROR:
             return "LogicError";
+        case ErrorType::LIST_EMPTY:
+            return "ListEmpty";
+        case ErrorType::NULL_PTR:
+            return "NullPtr";
         default:
             return "UnknownError";
     }
