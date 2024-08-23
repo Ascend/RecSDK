@@ -581,6 +581,8 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
             keyCountVec.push_back(it.first);
             keyCountVec.push_back(it.second);
         }
+        LOG_INFO("Current batch: {}, emb table:{} , key count size is: {}, key count: {}.", batch->batchId+1,
+                 batch->name, tmpKeyCountMap.size(), VectorToString(keyCountVec));
     }
     std::lock_guard<std::mutex> lock(loadSaveMut[channel][threadId]);
     RecordKeyCountMap(batch);
@@ -1496,7 +1498,10 @@ T KeyProcess::GetKeyCountVec(info_list_t<T>& list, const EmbBaseInfo& info)
 {
     std::lock_guard<std::mutex> lockGuard(mut);
     if (list[info.name][info.channelId].empty()) {
-        LOG_ERROR("get info list is empty.");
+        auto error = MxRec::Error(ModuleName::M_KEY_PROCESS, ErrorType::LIST_EMPTY,
+                                  StringFormat("Get info list is empty, please check if the channel id and"
+                                               " info name is correct, or check if the list is correct."));
+        LOG_ERROR(error.ToString());
         throw EmptyList();
     }
     auto t = list[info.name][info.channelId].top();

@@ -34,6 +34,8 @@ enum class ErrorType: uint8_t {
     CONSTRUCT_ERROR,
     EXECUTION_ORDER_ERROR,
     LOGIC_ERROR,
+    LIST_EMPTY,
+    NULL_PTR,
     UNKNOWN,
 };
 

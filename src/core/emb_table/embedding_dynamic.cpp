@@ -173,7 +173,11 @@ void EmbeddingDynamic::SaveKey(const string& savePath, bool saveDelta, const map
         for (const auto& it : keyInfo) {
             auto result = keyOffsetMap.find(it.first);
             if (result == keyOffsetMap.end()) {
-                LOG_ERROR("Key: {} not in keyOffsetMap.", it.first);
+                auto error = MxRec::Error(ModuleName::M_EMB_TABLE, ErrorType::NOT_FOUND,
+                                          StringFormat("Key: %s not in keyOffsetMap, please check if deltaMap "
+                                                       "update correctly or get keyInfo from deltaMap is correct.",
+                                                       it.first));
+                LOG_ERROR(error.ToString());
                 throw runtime_error(StringFormat("Key: %s not in keyOffsetMap.", it.first));
             }
             deviceKey.push_back(result->first);
