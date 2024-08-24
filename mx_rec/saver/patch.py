@@ -314,23 +314,20 @@ def restore(self, sess, save_path):
 
     directory, base_name = os.path.split(save_path)
     model_type = BASE_MODEL
+
     if is_incremental_checkpoint:
-        model_type = get_model_type_by_version(directory, base_name.split("-")[1])
-        if not restore_model_version:
-            # open incremental checkpoint and restore_model_version is none, then restore the latest model
-            if model_type == DELTA_MODEL:
-                # get the newest base model and then restore delta models one by one
-                base_model, delta_models = get_base_and_delta_models(directory, base_name.split("-")[1])
-                delta_models_str = " ".join(delta_models)
-                logger.info(f"Restore %s model from base model: %s and delta models: %s.", model_type, base_model,
-                            delta_models_str)
-                read_base_delta_and_write(directory, base_model, delta_models)
-        else:
+        if restore_model_version is not None:
             base_name = base_name.split("-")[0] + "-" + str(restore_model_version)
-            model_type = get_model_type_by_version(directory, str(restore_model_version))
-            if not model_type:
-                logger.error("Get model type by version failed, %s step model not exists.", restore_model_version)
-                raise ValueError(f"Get model type by version failed, {restore_model_version} step model not exists.")
+        restore_model_version = base_name.split("-")[1]
+        model_type = get_model_type_by_version(directory, restore_model_version)
+        if not model_type:
+            logger.error("Get model type by version failed, %s step model not exists.", restore_model_version)
+            raise ValueError(f"Get model type by version failed, {restore_model_version} step model not exists.")
+
+        comm = MPI.COMM_WORLD
+        rank = comm.Get_rank()
+        comm.Barrier()
+        if should_write_data(rank, save_path):
             if model_type == DELTA_MODEL:
                 # get the newest base model and then restore delta models one by one
                 base_model, delta_models = get_base_and_delta_models(directory, str(restore_model_version))
@@ -338,6 +335,7 @@ def restore(self, sess, save_path):
                 logger.info(f"Restore %s model from base model: %s and delta models: %s.", model_type, base_model,
                             delta_models_str)
                 read_base_delta_and_write(directory, base_model, delta_models)
+        comm.Barrier()
 
     save_path = os.path.join(directory, base_name)
 
@@ -608,17 +606,21 @@ def should_trigger_for_step(self, step: int) -> bool:
             return True
         return False
 
+    should_trigger = False
     if self._save_checkpoint_due_time is not None:
         if time.time() >= self._last_triggered_base_time + self._save_checkpoint_due_time:
             self._is_delta = False
-            return True
+            should_trigger = True
 
     if self._save_delta_checkpoints_secs is not None:
         if time.time() >= self._last_triggered_delta_time + self._save_delta_checkpoints_secs:
             self._is_delta = True
-            return True
+            should_trigger = True
 
-    return False
+    comm = MPI.COMM_WORLD
+    result = comm.allreduce(should_trigger, op=MPI.LOR)
+
+    return result
 
 
 def update_last_triggered_step(self, step: int) -> (Optional[float], Optional[int]):
