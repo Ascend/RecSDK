@@ -2275,7 +2275,7 @@ void HybridMgmt::EnqueueSwapInfo(const EmbBaseInfo& info, pair<vector<uint64_t>,
 void HybridMgmt::BackUpTrainStatus()
 {
     int channelID = TRAIN_CHANNEL_ID;
-    int& theTrainBatchId = hybridMgmtBlock->hybridBatchId[channelID];
+    int& theTrainBatchId = hybridMgmtBlock->pythonBatchId[channelID];
     if (theTrainBatchId == 0) {
         return;
     }
