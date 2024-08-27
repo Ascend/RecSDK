@@ -21,6 +21,7 @@ See the License for the specific language governing permissions and
 #include <vector>
 
 #include "utils/common.h"
+#include "utils/error.h"
 #include "l3_storage/cache_manager.h"
 #include "file_system/file_system_handler.h"
 
@@ -102,6 +103,14 @@ public:
     virtual void SetHDTransfer(HDTransfer *hdTransfer);
 
     virtual void SetEmbCache(ock::ctr::EmbCacheManagerPtr embCache);
+
+    void CheckFileSystemPtr() const;
+
+    static void CheckReadKeyFileSize(const string& fileName, size_t fileSize) ;
+
+    static void CheckLoadKeyMallocPtr(const int64_t* mallocPtr, size_t mallocByteSize) ;
+
+    static void CheckReadKeyFileBytes(ssize_t readReturnCode, const string& fileName, size_t fileSize) ;
 
     std::string name;
     size_t hostVocabSize;

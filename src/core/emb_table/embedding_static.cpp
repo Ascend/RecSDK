@@ -64,8 +64,12 @@ void EmbeddingStatic::Key2Offset(std::vector<emb_key_t>& keys, int channel)
         key = maxOffset++;
     }
     if (maxOffset > devVocabSize) {
-        LOG_ERROR("dev cache overflow {} > {}", maxOffset, devVocabSize);
-        throw std::runtime_error("dev cache overflow!");
+        string errMsg = Logger::Format("Device cache overflow! Please set a grater value for `device_vocabulary_size` "
+                                       "parameter. Current offset:{}, device_vocabulary_size:{}.",
+                                       maxOffset, devVocabSize);
+        auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::INVALID_ARGUMENT, errMsg);
+        LOG_ERROR(error.ToString());
+        throw std::runtime_error(error.ToString());
     }
 }
 
@@ -87,7 +91,7 @@ void EmbeddingStatic::Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel)
                 Error(ModuleName::M_EMB_TABLE, ErrorType::NOT_FOUND,
                       StringFormat("LookupKeys contains invalid key %d, the key must exist in the offset map.", key));
             LOG_ERROR(error.ToString());
-            throw runtime_error(error.ToString().c_str());
+            throw runtime_error(error.ToString());
         }
         key = INVALID_KEY_VALUE;
     }
@@ -139,19 +143,23 @@ void EmbeddingStatic::SaveKey(const string& savePath, bool saveDelta, const map<
     LOG_INFO("Get device keys and offsets, table: {}, save path: {}, rank id: {}, device key size: {}, device offset "
              "size: {}.", name, savePath, rankId_, deviceKey.size(), deviceOffset.size());
 
-    if (fileSystemPtr_ == nullptr) {
-        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
-    }
+    CheckFileSystemPtr();
 
     size_t writeSize = static_cast<size_t>(deviceKey.size() * sizeof(int64_t));
     ssize_t res = fileSystemPtr_->Write(ss.str(), reinterpret_cast<const char *>(deviceKey.data()), writeSize);
     if (res == -1) {
-        throw runtime_error(StringFormat("Error: Save keys failed. "
-                                         "An error occurred while writing file: %s.", ss.str().c_str()));
+        auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::LOGIC_ERROR,
+                           StringFormat("Error: Save keys failed. "
+                                        "An error occurred while writing file: %s.", ss.str().c_str()));
+        LOG_ERROR(error.ToString());
+        throw std::runtime_error(error.ToString());
     }
     if (res != writeSize) {
-        throw runtime_error(StringFormat("Error: Save keys failed. Expected to write %d bytes, "
-                                         "but actually write %d bytes to file %s.", writeSize, res, ss.str().c_str()));
+        auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::LOGIC_ERROR,
+                           StringFormat("Error: Save keys failed. Expected to write %d bytes, "
+                                        "but actually write %d bytes to file %s.", writeSize, res, ss.str().c_str()));
+        LOG_ERROR(error.ToString());
+        throw std::runtime_error(error.ToString());
     }
 }
 
@@ -162,33 +170,18 @@ void EmbeddingStatic::Load(const string& savePath, map<string, unordered_set<emb
 
 void EmbeddingStatic::LoadKey(const string& savePath)
 {
+    CheckFileSystemPtr();
+
     stringstream ss;
     ss << savePath << "/" << name << "/key/slice.data";
-
-    if (fileSystemPtr_ == nullptr) {
-        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
-    }
     size_t fileSize = fileSystemPtr_->GetFileSize(ss.str());
-    if (fileSize >= FILE_MAX_SIZE) {
-        throw runtime_error(StringFormat("Error: Load keys failed. "
-                                         "file %s size %d is too big.", ss.str().c_str(), fileSize));
-    }
 
+    CheckReadKeyFileSize(ss.str(), fileSize);
     int64_t* buf = static_cast<int64_t*>(malloc(fileSize));
-    if (buf == nullptr) {
-        throw runtime_error(StringFormat("Error: Load keys failed. "
-                                         "failed to allocate %d bytes using malloc.", fileSize));
-    }
+    CheckLoadKeyMallocPtr(buf, fileSize);
 
     ssize_t res = fileSystemPtr_->Read(ss.str(), reinterpret_cast<char *>(buf), fileSize);
-    if (res == -1) {
-        throw runtime_error(StringFormat("Error: Load keys failed. "
-                                         "An error occurred while reading file: %s.", ss.str().c_str()));
-    }
-    if (res != fileSize) {
-        throw runtime_error(StringFormat("Error: Load keys failed. Expected to read %d bytes, "
-                                         "but actually read %d bytes to file %s.", fileSize, res, ss.str().c_str()));
-    }
+    CheckReadKeyFileBytes(res, ss.str(), fileSize);
 
     size_t loadKeySize = fileSize / sizeof(int64_t);
     loadOffset.clear();
@@ -204,8 +197,11 @@ void EmbeddingStatic::LoadKey(const string& savePath)
 
     if (loadOffset.size() > devVocabSize) {
         free(static_cast<void*>(buf));
-        throw runtime_error(StringFormat("Error: Load keys failed. Load key size :%d exceeds device vocab size: %d.",
-                                         loadOffset.size(), devVocabSize));
+        auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::LOGIC_ERROR,
+                           StringFormat("Error: Load keys failed. Load key size :%d exceeds device vocab size: %d.",
+                                        loadOffset.size(), devVocabSize));
+        LOG_ERROR(error.ToString());
+        throw std::runtime_error(error.ToString());
     }
 
     maxOffset = keyOffsetMap.size();

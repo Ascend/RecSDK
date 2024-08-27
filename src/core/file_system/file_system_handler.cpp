@@ -21,7 +21,10 @@ using namespace MxRec;
 unique_ptr<FileSystem> FileSystemHandler::Create(const string& filePath)
 {
     if (filePath.empty()) {
-        throw runtime_error("dataDir is Null. The pointer of the file system cannot be created.");
+        auto error = Error(ModuleName::M_FILE_SYSTEM, ErrorType::INVALID_ARGUMENT,
+                           "DataDir is Null. The pointer of the file system cannot be created.");
+        LOG_ERROR(error.ToString());
+        throw std::runtime_error(error.ToString());
     }
     for (const auto &prefix: hdfsPrefixes) {
         if (filePath.substr(0, prefix.length()) == prefix) {

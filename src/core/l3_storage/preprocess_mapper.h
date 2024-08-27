@@ -18,6 +18,7 @@ See the License for the specific language governing permissions and
 
 #include <stdexcept>
 #include "lfu_cache.h"
+#include "utils/error.h"
 
 namespace MxRec {
     /*
@@ -47,7 +48,10 @@ namespace MxRec {
         bool InsertDDRKey(uint64_t key)
         {
             if (IsDDRKeyExist(key)) {
-                throw std::invalid_argument("InsertDDRKey failed! key already exist");
+                auto error = Error(ModuleName::M_L3_STORAGE, ErrorType::LOGIC_ERROR,
+                                   "InsertDDRKey failed, key already exist.");
+                LOG_ERROR(error.ToString());
+                throw std::invalid_argument(error.ToString());
             }
 
             freq_num_t freq = excludeDDRKeyCountMap[key] + 1;
@@ -58,7 +62,10 @@ namespace MxRec {
         bool InsertL3StorageKey(uint64_t key)
         {
             if (IsL3StorageKeyExist(key)) {
-                throw std::invalid_argument("InsertL3StorageKey failed! key already exist");
+                auto error = Error(ModuleName::M_L3_STORAGE, ErrorType::LOGIC_ERROR,
+                                   "InsertL3StorageKey failed! key already exist.");
+                LOG_ERROR(error.ToString());
+                throw std::invalid_argument(error.ToString());
             }
 
             excludeDDRKeyCountMap[key] = 1;
@@ -68,7 +75,10 @@ namespace MxRec {
         bool RemoveL3StorageKey(uint64_t key)
         {
             if (!IsL3StorageKeyExist(key)) {
-                throw std::invalid_argument("RemoveKey failed! key not exist");
+                auto error = Error(ModuleName::M_L3_STORAGE, ErrorType::LOGIC_ERROR,
+                                   "RemoveKey failed, key not exist.");
+                LOG_ERROR(error.ToString());
+                throw std::invalid_argument(error.ToString());
             }
             excludeDDRKeyCountMap.erase(key);
             return true;
@@ -77,7 +87,10 @@ namespace MxRec {
         size_t DDRAvailableSize()
         {
             if (ddrAvailableSize < lfuCache.keyTable.size()) {
-                throw std::invalid_argument("ddrAvailableSize < existKeys.size()");
+                auto error = Error(ModuleName::M_L3_STORAGE, ErrorType::LOGIC_ERROR,
+                                   "ddrAvailableSize < existKeys.size().");
+                LOG_ERROR(error.ToString());
+                throw std::invalid_argument(error.ToString());
             }
             return ddrAvailableSize - lfuCache.keyTable.size();
         }
@@ -85,7 +98,10 @@ namespace MxRec {
         size_t L3StorageAvailableSize()
         {
             if (l3StorageAvailableSize < excludeDDRKeyCountMap.size()) {
-                throw std::invalid_argument("l3StorageAvailableSize < existKeys.size()");
+                auto error = Error(ModuleName::M_L3_STORAGE, ErrorType::LOGIC_ERROR,
+                                   "l3StorageAvailableSize < existKeys.size().");
+                LOG_ERROR(error.ToString());
+                throw std::invalid_argument(error.ToString());
             }
             return l3StorageAvailableSize - excludeDDRKeyCountMap.size();
         }
@@ -93,15 +109,17 @@ namespace MxRec {
         void GetAndDeleteLeastFreqDDRKey2L3Storage(uint64_t transNum, const std::vector<uint64_t>& keys,
                                                    std::vector<uint64_t>& DDRSwapOutKeys)
         {
-            LOG_DEBUG("start GetAndDeleteLeastFreqDDRKey2L3Storage, table:{}", tableName);
+            LOG_DEBUG("Start GetAndDeleteLeastFreqDDRKey2L3Storage, table:{}.", tableName);
             std::vector<freq_num_t> DDRSwapOutCounts;
             lfuCache.GetAndDeleteLeastFreqKeyInfo(transNum, keys, DDRSwapOutKeys, DDRSwapOutCounts);
             for (uint64_t i = 0; i < DDRSwapOutKeys.size(); i++) {
                 excludeDDRKeyCountMap[DDRSwapOutKeys[i]] = DDRSwapOutCounts[i];
             }
             if (DDRSwapOutCounts.size() != transNum) {
-                throw std::invalid_argument(
-                    "GetAndDeleteLeastFreqDDRKey2L3Storage failed! DDRSwapOutCounts.size()!=transNum");
+                auto error = Error(ModuleName::M_L3_STORAGE, ErrorType::LOGIC_ERROR,
+                                   "GetAndDeleteLeastFreqDDRKey2L3Storage failed! DDRSwapOutCounts.size()!=transNum.");
+                LOG_ERROR(error.ToString());
+                throw std::invalid_argument(error.ToString());
             }
         }
 

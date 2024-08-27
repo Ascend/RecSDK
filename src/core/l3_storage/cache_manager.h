@@ -115,6 +115,8 @@ namespace MxRec {
                                      vector<emb_cache_key_t>& ssdKeysAfterEval,
                                      vector<emb_cache_key_t>& swapInKeys, vector<emb_cache_key_t>& swapOutKeys);
 
+        static void CheckEmbCacheReturnCode(const string& funcName, int retCode);
+
         // DDR内每个表中emb数据频次缓存；map<embTableName, 频次缓存>
         unordered_map<std::string, LFUCache> ddrKeyFreqMap;
         unordered_map<std::string, LFUCache> ddrKeyFreqMapBackUp;

@@ -47,6 +47,9 @@ namespace MxRec {
 
         hdfsFS ConnectHdfs();
 
+        void CheckHdfsReadRet(hdfsFile file, tSize res, size_t expectReadBytes, const string& filePath);
+        static void CheckOpenHdfsFileRet(hdfsFile file, const string& filePath);
+
         unique_ptr<HdfsWrapper> hdfs = make_unique<HdfsWrapper>();
         hdfsFS fs = ConnectHdfs();
     };

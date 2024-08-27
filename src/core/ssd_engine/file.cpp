@@ -30,7 +30,7 @@ File::File(uint64_t fileID, string& fileDir) : fileID(fileID), fileDir(fileDir)
 
     if (!fs::exists(fs::absolute(fileDir))) {
         if (!fs::create_directories(fs::absolute(fileDir))) {
-            throw runtime_error("fail to create Save directory");
+            ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to create Save directory.");
         }
         try {
             fs::permissions(fileDir, fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec);
@@ -46,7 +46,7 @@ File::File(uint64_t fileID, string& fileDir) : fileID(fileID), fileDir(fileDir)
     dataFilePath = fs::absolute(fileDir + "/" + to_string(fileID) + ".data.latest");
     localFileMeta.open(metaFilePath, ios::out | ios::trunc | ios::binary);
     if (!localFileMeta.is_open()) {
-        throw runtime_error("fail to create meta file");
+        ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to create meta file.");
     }
     try {
         fs::permissions(metaFilePath, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
@@ -57,7 +57,7 @@ File::File(uint64_t fileID, string& fileDir) : fileID(fileID), fileDir(fileDir)
     }
     localFileData.open(dataFilePath, ios::out | ios::in | ios::trunc | ios::binary);
     if (!localFileData.is_open()) {
-        throw runtime_error("fail to create data file");
+        ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to create data file.");
     }
     try {
         fs::permissions(dataFilePath, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
@@ -82,10 +82,10 @@ File::File(uint64_t fileID, string& fileDir, string& loadDir, int step) : fileID
     fs::path metaFileToLoad = fs::absolute(loadDir + "/" + to_string(fileID) + ".meta." + to_string(step));
     fs::path dataFileToLoad = fs::absolute(loadDir + "/" + to_string(fileID) + ".data." + to_string(step));
     if (!fs::exists(metaFileToLoad)) {
-        throw invalid_argument("meta file not found while loading");
+        ThrowInvalidArgError(ErrorType::IO_ERROR, "Meta file not found while loading.");
     }
     if (!fs::exists(dataFileToLoad)) {
-        throw invalid_argument("data file not found while loading");
+        ThrowInvalidArgError(ErrorType::INVALID_ARGUMENT, "Data file not found while loading.");
     }
 
     ValidateReadFile(metaFileToLoad, fs::file_size(metaFileToLoad));
@@ -98,15 +98,15 @@ File::File(uint64_t fileID, string& fileDir, string& loadDir, int step) : fileID
     fs::remove(dataFilePath);
 
     if (!fs::copy_file(metaFileToLoad, metaFilePath)) {
-        throw runtime_error("fail to create latest meta file");
+        ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to create latest meta file.");
     }
     if (!fs::copy_file(dataFileToLoad, dataFilePath)) {
-        throw runtime_error("fail to create latest data file");
+        ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to create latest data file.");
     }
 
     localFileMeta.open(metaFilePath, ios::in | ios::binary);
     if (!localFileMeta.is_open()) {
-        throw runtime_error("fail to Load latest meta file");
+        ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to create latest data file.");
     }
     try {
         fs::permissions(metaFilePath, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
@@ -117,7 +117,7 @@ File::File(uint64_t fileID, string& fileDir, string& loadDir, int step) : fileID
     }
     localFileData.open(dataFilePath, ios::out | ios::in | ios::binary);
     if (!localFileData.is_open()) {
-        throw runtime_error("fail to Load latest data file");
+        ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to Load latest data file.");
     }
     try {
         fs::permissions(dataFilePath, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
@@ -150,7 +150,8 @@ bool File::IsKeyExist(emb_cache_key_t key) const
 void File::InsertEmbeddings(vector<emb_cache_key_t>& keys, vector<vector<float>>& embeddings)
 {
     if (keys.size() != embeddings.size()) {
-        throw invalid_argument("keys' length not equal to embeddings' length");
+        ThrowInvalidArgError(ErrorType::INVALID_ARGUMENT,
+                             "Param error: keys' length not equal to embeddings' length.");
     }
 
     localFileData.seekp(lastWriteOffset); // always set pointer to buffer end in case reading happened before
@@ -164,14 +165,14 @@ void File::InsertEmbeddings(vector<emb_cache_key_t>& keys, vector<vector<float>>
 
         uint64_t embSize = embeddings[i].size();
         if (embSize > maxEmbSize) {
-            throw invalid_argument("embedding size too large");
+            ThrowInvalidArgError(ErrorType::LOGIC_ERROR, "Embedding size too large.");
         }
         localFileData.write(reinterpret_cast<char const *>(&embSize), sizeof(embSize));
         localFileData.write(reinterpret_cast<char const *>(embeddings[i].data()), embSize * sizeof(float));
 
         auto pos = localFileData.tellp();
         if (pos == -1) {
-            throw runtime_error("can't get file position pointer, write data failed");
+            ThrowRuntimeError(ErrorType::IO_ERROR, "Can't get file position pointer, write data failed.");
         }
         lastWriteOffset = offset_t(pos);
     }
@@ -184,20 +185,20 @@ vector<vector<float>> File::FetchEmbeddings(vector<emb_cache_key_t>& keys)
     for (emb_cache_key_t k: keys) {
         auto it = keyToOffset.find(k);
         if (it == keyToOffset.end()) {
-            throw invalid_argument("key not exist");
+            ThrowInvalidArgError(ErrorType::LOGIC_ERROR, "Key not exist.");
         }
         localFileData.seekg(it->second); // for fstream, this moves the file position pointer (both put and get)
         if (localFileData.fail()) {
-            throw runtime_error("can't move file position pointer, read data failed");
+            ThrowRuntimeError(ErrorType::IO_ERROR, "Can't move file position pointer, read data failed.");
         }
 
         uint64_t embSize;
         localFileData.read(reinterpret_cast<char *>(&embSize), sizeof(embSize));
         if (localFileData.fail()) {
-            throw invalid_argument("read embedding size failed, file may broken");
+            ThrowInvalidArgError(ErrorType::IO_ERROR, "Read embedding size failed, file may broken.");
         }
         if (embSize > maxEmbSize) {
-            throw invalid_argument("embedding size too large, file may broken");
+            ThrowInvalidArgError(ErrorType::LOGIC_ERROR, "Embedding size too large, file may broken.");
         }
 
         vector<float> tmp;
@@ -229,46 +230,46 @@ void File::Save(const string& saveDir, int step)
     // flush not guarantee data already written into disk, must call close to force flush and wait
     localFileMeta.flush();
     if (localFileMeta.fail()) {
-        throw runtime_error("fail to save latest meta");
+        ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to save latest meta.");
     }
     localFileMeta.close();
 
     fs::path metaFileToSave = fs::absolute(saveDir + "/" + to_string(fileID) + ".meta." + to_string(step));
     if (fs::exists(metaFileToSave)) {
-        throw invalid_argument("fail to save latest meta, file already exist");
+        ThrowInvalidArgError(ErrorType::INVALID_ARGUMENT, "Failed to save latest meta, file already exist.");
     }
 
     LOG_DEBUG("save latest meta file at step:{}, fileID:{}", step, fileID);
     if (!fs::copy_file(metaFilePath, metaFileToSave)) {
-        throw runtime_error("fail to Save latest meta");
+        ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to Save latest meta.");
     }
 
     // re-open new meta file for next saving
     localFileMeta.open(metaFilePath, ios::out | ios::trunc | ios::binary);
     if (!localFileMeta.is_open()) {
-        throw runtime_error("fail to re-open meta file");
+        ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to re-open meta file.");
     }
 
     // Save data
     LOG_DEBUG("save latest data file at step:{}", step);
     localFileData.flush();
     if (localFileData.fail()) {
-        throw runtime_error("fail to Save data");
+        ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to flush file data.");
     }
     localFileData.close();
 
     fs::path dataFileToSave = fs::absolute(saveDir + "/" + to_string(fileID) + ".data." + to_string(step));
     if (fs::exists(dataFileToSave)) {
-        throw invalid_argument("fail to save latest data, file already exist");
+        ThrowInvalidArgError(ErrorType::INVALID_ARGUMENT, "Failed to save latst data, file already exist.");
     }
     if (!fs::copy_file(dataFilePath, dataFileToSave)) {
-        throw runtime_error("fail to Save latest data");
+        ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to Save latest data.");
     }
 
     // re-open data file for other operation
     localFileData.open(dataFilePath, ios::out | ios::in | ios::app | ios::binary);
     if (!localFileData.is_open()) {
-        throw runtime_error("fail to re-open data file");
+        ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to re-open data file.");
     }
 
     LOG_DEBUG("end save file at step:{}, fileID:{}", step, fileID);
@@ -283,7 +284,7 @@ void File::Load()
     do {
         localFileMeta.read(reinterpret_cast<char*>(&key), KEY_DATA_LEN);
         if (!localFileMeta.eof() && localFileMeta.fail()) {
-            throw invalid_argument("file broken while reading key");
+            ThrowInvalidArgError(ErrorType::IO_ERROR, "File broken while reading key.");
         }
         // When file is empty, read first key failed and break.
         if (localFileMeta.eof()) {
@@ -292,7 +293,7 @@ void File::Load()
 
         localFileMeta.read(reinterpret_cast<char*>(&offset), OFFSET_DATA_LEN);
         if (!localFileMeta.eof() && localFileMeta.fail()) {
-            throw invalid_argument("file broken while reading offset");
+            ThrowInvalidArgError(ErrorType::IO_ERROR, "File broken while reading offset.");
         }
         keyToOffset[key] = offset;
         dataCnt += 1;
@@ -309,7 +310,7 @@ void File::Load()
     // re-open new meta file for next saving
     localFileMeta.open(metaFilePath, ios::out | ios::trunc | ios::binary);
     if (!localFileMeta.is_open()) {
-        throw runtime_error("fail to re-open meta file");
+        ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to re-open meta file.");
     }
 
     LOG_DEBUG("end reading meta file, fileID:{}", fileID);
@@ -343,13 +344,13 @@ void File::InsertEmbeddingsByAddr(vector<emb_cache_key_t>& keys, vector<float*>&
                                   uint64_t extEmbeddingSize)
 {
     if (keys.size() != embeddingsAddr.size()) {
-        throw invalid_argument("keys' length not equal to embeddings' length");
+        ThrowInvalidArgError(ErrorType::INVALID_ARGUMENT, "Param keys' length not equal to embeddings' length.");
     }
 
     size_t dLen = keys.size();
     for (size_t i = 0; i < dLen; ++i) {
         if (embeddingsAddr[i] == nullptr) {
-            throw invalid_argument("Null pointer found in embeddingsAddr");
+            ThrowInvalidArgError(ErrorType::NULL_PTR, "Null pointer found in embeddingsAddr");
         }
     }
 
@@ -362,16 +363,30 @@ void File::InsertEmbeddingsByAddr(vector<emb_cache_key_t>& keys, vector<float*>&
         keyToOffset[keys[i]] = lastWriteOffset;
 
         if (extEmbeddingSize > maxEmbSize) {
-            throw invalid_argument("embedding size too large");
+            ThrowInvalidArgError(ErrorType::INVALID_ARGUMENT, "Embedding size is too large.");
         }
         localFileData.write(reinterpret_cast<char const*>(&extEmbeddingSize), sizeof(extEmbeddingSize));
         localFileData.write(reinterpret_cast<char const*>(embeddingsAddr[i]), extEmbeddingSize * sizeof(float));
 
         auto pos = localFileData.tellp();
         if (pos == -1) {
-            throw runtime_error("can't get file position pointer, write data failed");
+            ThrowRuntimeError(ErrorType::IO_ERROR, "can't get file position pointer, write data failed");
         }
         lastWriteOffset = offset_t(pos);
     }
     dataCnt += dLen;
+}
+
+void File::ThrowRuntimeError(ErrorType errorType, const string& errMsg)
+{
+    auto error = Error(ModuleName::M_SSD_ENGINE, errorType, errMsg);
+    LOG_ERROR(error.ToString());
+    throw std::runtime_error(error.ToString());
+}
+
+void File::ThrowInvalidArgError(ErrorType errorType, const string& errMsg)
+{
+    auto error = Error(ModuleName::M_SSD_ENGINE, errorType, errMsg);
+    LOG_ERROR(error.ToString());
+    throw std::runtime_error(error.ToString());
 }

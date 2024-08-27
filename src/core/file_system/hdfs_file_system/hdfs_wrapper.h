@@ -20,6 +20,7 @@ See the License for the specific language governing permissions and
 #include <iostream>
 
 #include "utils/common.h"
+#include "utils/error.h"
 
 namespace MxRec {
 
@@ -71,74 +72,56 @@ namespace MxRec {
 
         hdfsFS Connect(const char* host, tPort port) const
         {
-            if (hdfsConnect == nullptr) {
-                throw runtime_error("Failed to obtain the pointer of the function hdfsConnect from the libhdfs.");
-            }
+            CheckObtainHdfsFuncPtr(hdfsConnect == nullptr, "hdfsConnect");
             return hdfsConnect(host, port);
         }
 
         int Disconnect(hdfsFS fs) const
         {
-            if (hdfsDisconnect == nullptr) {
-                throw runtime_error("Failed to obtain the pointer of the function hdfsDisconnect from the libhdfs.");
-            }
+            CheckObtainHdfsFuncPtr(hdfsDisconnect == nullptr, "hdfsDisconnect");
             return hdfsDisconnect(fs);
         }
 
         int CreateDirectory(hdfsFS fs, const char* path) const
         {
-            if (hdfsCreateDirectory == nullptr) {
-                throw runtime_error("Failed to obtain the pointer of the function hdfsCreateDirectory from libhdfs.");
-            }
+            CheckObtainHdfsFuncPtr(hdfsCreateDirectory == nullptr, "hdfsCreateDirectory");
             return hdfsCreateDirectory(fs, path);
         }
 
         hdfsFileInfo* ListDirectory(hdfsFS fs, const char* path, int *numEntries) const
         {
-            if (hdfsListDirectory == nullptr) {
-                throw runtime_error("Failed to obtain the pointer of the function hdfsListDirectory from the libhdfs.");
-            }
+            CheckObtainHdfsFuncPtr(hdfsListDirectory == nullptr, "hdfsListDirectory");
             return hdfsListDirectory(fs, path, numEntries);
         }
 
         hdfsFileInfo* GetPathInfo(hdfsFS fs, const char* path) const
         {
-            if (hdfsGetPathInfo == nullptr) {
-                throw runtime_error("Failed to obtain the pointer of the function hdfsGetPathInfo from the libhdfs.");
-            }
+            CheckObtainHdfsFuncPtr(hdfsGetPathInfo == nullptr, "hdfsGetPathInfo");
             return hdfsGetPathInfo(fs, path);
         }
 
         void FreeFileInfo(hdfsFileInfo *hdfsFileInfo, int numEntries) const
         {
-            if (hdfsFreeFileInfo == nullptr) {
-                throw runtime_error("Failed to obtain the pointer of the function hdfsFreeFileInfo from the libhdfs.");
-            }
+            CheckObtainHdfsFuncPtr(hdfsFreeFileInfo == nullptr, "hdfsFreeFileInfo");
             return hdfsFreeFileInfo(hdfsFileInfo, numEntries);
         }
 
         hdfsFile OpenFile(hdfsFS fs, const char* path, int flags, int bufferSize, short replication,
                           tSize blocksize) const
         {
-            if (hdfsOpenFile == nullptr) {
-                throw runtime_error("Failed to obtain the pointer of the function hdfsOpenFile from the libhdfs.");
-            }
+            CheckObtainHdfsFuncPtr(hdfsOpenFile == nullptr, "hdfsOpenFile");
             return hdfsOpenFile(fs, path, flags, bufferSize, replication, blocksize);
         }
 
         int CloseFile(hdfsFS fs, hdfsFile file) const
         {
-            if (hdfsCloseFile == nullptr) {
-                throw runtime_error("Failed to obtain the pointer of the function hdfsCloseFile from the libhdfs.");
-            }
+            CheckObtainHdfsFuncPtr(hdfsCloseFile == nullptr, "hdfsCloseFile");
             return hdfsCloseFile(fs, file);
         }
 
         tSize Read(hdfsFS fs, hdfsFile file, char* buffer, tSize length) const
         {
-            if (hdfsRead == nullptr) {
-                throw runtime_error("Failed to obtain the pointer of the function hdfsRead from the libhdfs.");
-            }
+            CheckObtainHdfsFuncPtr(hdfsRead == nullptr, "hdfsRead");
 
             tSize unReadLength = length;
             tSize readBytes = 0;
@@ -157,9 +140,7 @@ namespace MxRec {
 
         tSize Read(hdfsFS fs, hdfsFile file, float* buffer, tSize length) const
         {
-            if (hdfsRead == nullptr) {
-                throw runtime_error("Failed to obtain the pointer of the function hdfsRead from the libhdfs.");
-            }
+            CheckObtainHdfsFuncPtr(hdfsRead == nullptr, "hdfsRead");
 
             tSize unReadLength = length;
             tSize readBytes = 0;
@@ -178,9 +159,7 @@ namespace MxRec {
 
         tSize Write(hdfsFS fs, hdfsFile file, const char* buffer, tSize length) const
         {
-            if (hdfsWrite == nullptr) {
-                throw runtime_error("Failed to obtain the pointer of the function hdfsWrite from the libhdfs.");
-            }
+            CheckObtainHdfsFuncPtr(hdfsWrite == nullptr, "hdfsWrite");
             tSize unWriteLength = length;
             tSize writeBytes = 0;
 
@@ -198,9 +177,7 @@ namespace MxRec {
 
         tSize Write(hdfsFS fs, hdfsFile file, const float* buffer, tSize length) const
         {
-            if (hdfsWrite == nullptr) {
-                throw runtime_error("Failed to obtain the pointer of the function hdfsWrite from the libhdfs.");
-            }
+            CheckObtainHdfsFuncPtr(hdfsWrite == nullptr, "hdfsWrite");
             tSize unWriteLength = length;
             tSize writeBytes = 0;
 
@@ -218,10 +195,18 @@ namespace MxRec {
 
         int Seek(hdfsFS fs, hdfsFile file, tOffset desiredPos) const
         {
-            if (hdfsSeek == nullptr) {
-                throw runtime_error("Failed to obtain the pointer of the function hdfsSeek from the libhdfs.");
-            }
+            CheckObtainHdfsFuncPtr(hdfsSeek == nullptr, "hdfsSeek");
             return hdfsSeek(fs, file, desiredPos);
+        }
+
+        static void CheckObtainHdfsFuncPtr(bool isNullPtr, const string& hdfsFuncName)
+        {
+            if (isNullPtr) {
+                string errMsg = "Failed to obtain the pointer of the function " + hdfsFuncName + " from the libhdfs.";
+                auto error = Error(ModuleName::M_FILE_SYSTEM, ErrorType::HDFS_ERROR, errMsg);
+                LOG_ERROR(error.ToString());
+                throw std::runtime_error(error.ToString());
+            }
         }
 
     GTEST_PRIVATE:
@@ -256,18 +241,25 @@ namespace MxRec {
             // 动态加载hdfs库
             libhdfs = dlopen("libhdfs.so", RTLD_LAZY);
             if (!libhdfs) {
-                LOG_ERROR("Init hdfs wrapper failed when loading libhdfs.so in environment.");
-                throw runtime_error("Init hdfs wrapper failed when loading libhdfs.so in environment. ");
+                auto error = Error(ModuleName::M_FILE_SYSTEM, ErrorType::HDFS_ERROR,
+                                   "Init hdfs wrapper failed when loading libhdfs.so in environment.");
+                LOG_ERROR(error.ToString());
+                throw std::runtime_error(error.ToString());
             }
 
             void* funcAddr = dlsym(libhdfs, "hdfsConnect");
             Dl_info libInfo;
             if (dladdr(funcAddr, &libInfo) == 0) {
-                throw runtime_error("Init hdfs wrapper failed when getting the path of libhdfs.so. ");
+                auto error = Error(ModuleName::M_FILE_SYSTEM, ErrorType::HDFS_ERROR,
+                                   "Init hdfs wrapper failed when getting the path of libhdfs.so.");
+                LOG_ERROR(error.ToString());
+                throw std::runtime_error(error.ToString());
             }
             if (!CheckFilePermission(libInfo.dli_fname)) {
-                LOG_ERROR("libhdfs.so is invalid.");
-                throw runtime_error("Init hdfs wrapper failed because libhdfs.so is invalid. ");
+                auto error = Error(ModuleName::M_FILE_SYSTEM, ErrorType::HDFS_ERROR,
+                                   "Init hdfs wrapper failed because libhdfs.so is invalid.");
+                LOG_ERROR(error.ToString());
+                throw std::runtime_error(error.ToString());
             }
 
             // 获取hdfs库中的函数指针

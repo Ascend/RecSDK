@@ -36,6 +36,9 @@ enum class ErrorType: uint8_t {
     LOGIC_ERROR,
     LIST_EMPTY,
     NULL_PTR,
+    MEMORY_ERROR,
+    RESOURCE_NOT_ENOUGH,
+    HDFS_ERROR,
     UNKNOWN,
 };
 
@@ -50,6 +53,7 @@ enum class ModuleName: uint8_t {
     M_SSD_ENGINE,
     M_UTILS,
     M_OCK_CTR,
+    M_ACL,
 };
 
 class Error {
