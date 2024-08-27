@@ -26,6 +26,7 @@ See the License for the specific language governing permissions and
 
 #include "file.h"
 #include "utils/common.h"
+#include "utils/error.h"
 
 namespace MxRec {
     using namespace std;
@@ -56,6 +57,10 @@ namespace MxRec {
         void InsertEmbeddingsByAddr(vector<emb_cache_key_t>& keys, vector<float*>& embeddingsAddr,
                                     uint32_t extEmbeddingSize);
 
+        static void ThrowRuntimeError(const string& errMsg, ErrorType errorType = ErrorType::IO_ERROR);
+
+        static void ThrowInvalidArgError(const string& errMsg, ErrorType errorType = ErrorType::INVALID_ARGUMENT);
+
         vector<emb_cache_key_t> ExportKeys();
 
     private:
@@ -75,6 +80,8 @@ namespace MxRec {
 
         void InsertEmbeddingsByAddrInner(vector<emb_cache_key_t>& keys, vector<float*>& embeddingsAddr,
                                          uint64_t extEmbeddingSize);
+
+        void CheckIsGraterThanMaxSize() const;
 
         string name;  // init by constructor
         vector<string> savePaths;  // init by constructor, support Save and Load from multiple path

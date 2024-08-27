@@ -112,6 +112,7 @@ namespace MxRec {
         void ReadStreamForEmbData(CkptTransData& transData, const string& dataDir, uint32_t dataElmtBytes,
                                   CkptData& ckptData, string embName) const;
         void SetTransDataSize(CkptTransData& transData, size_t datasetSize, CkptDataType dataType);
+        void CheckFileSystemPtr() const;
     };
 }
 

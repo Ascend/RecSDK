@@ -236,6 +236,7 @@ class Saver(object):
 
         Returns: None
         """
+        logger.info("Start merge sparse file, merge dir:%s, table_name:%s.", root_dir, table_name)
         table_dir = os.path.join(root_dir, table_name)
         table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance_by_name(table_name)
         merge_type_list = get_merge_type_list(table_dir)

@@ -30,7 +30,10 @@ void CacheManager::Init(ock::ctr::EmbCacheManagerPtr embCachePtr, vector<EmbInfo
 {
     LOG_INFO("CacheManager Init method begin");
     if (level3Storage == nullptr) {
-        throw runtime_error("level3Storage is nullptr");
+        auto error = Error(ModuleName::M_L3_STORAGE, ErrorType::LOGIC_ERROR,
+                           "Attribute:level3Storage is nullptr.");
+        LOG_ERROR(error.ToString());
+        throw std::runtime_error(error.ToString());
     }
 
     this->embCache = std::move(embCachePtr);
@@ -154,7 +157,10 @@ void CacheManager::Load(const std::vector<EmbInfo> &mgmtEmbInfo, int step,
         std::vector<char> buffer;
         int rc = embCache->Serialize(tableName, buffer);
         if (rc != 0) {
-            throw std::runtime_error("Serialize failed!");
+            auto error = Error(ModuleName::M_L3_STORAGE, ErrorType::LOGIC_ERROR,
+                               "Serialize failed!");
+            LOG_ERROR(error.ToString());
+            throw std::runtime_error(error.ToString());
         }
         uint64_t memSize = sizeof(uint64_t) + embInfo.extEmbeddingSize * sizeof(float);
         for (uint64_t i = 0; i < buffer.size(); i += memSize) {
@@ -175,7 +181,9 @@ void CacheManager::Save(int step)
 int64_t CacheManager::GetTableUsage(const string& tableName)
 {
     if (l3Storage == nullptr) {
-        throw runtime_error("L3Storage not init");
+        auto error = Error(ModuleName::M_L3_STORAGE, ErrorType::LOGIC_ERROR, "L3Storage not init.");
+        LOG_ERROR(error.ToString());
+        throw std::runtime_error(error.ToString());
     }
     return l3Storage->GetTableUsage(tableName);
 }
@@ -238,8 +246,11 @@ void CacheManager::ProcessSwapInKeys(const string& tableName, const vector<emb_c
         size_t transNum = externalDDRSize - ddrAvailableSize;
 
         if (transNum > keyMapper.L3StorageAvailableSize()) {
-            throw invalid_argument(
-                "L3Storage table size too small, key quantity exceed while transferring DDR data to L3Storage");
+            auto error = Error(ModuleName::M_L3_STORAGE, ErrorType::LOGIC_ERROR,
+                               "L3Storage table size too small, key quantity exceed while transferring DDR data"
+                               " to L3Storage.");
+            LOG_ERROR(error.ToString());
+            throw std::invalid_argument(error.ToString());
         }
         // DDR--->L3Storage
         keyMapper.GetAndDeleteLeastFreqDDRKey2L3Storage(transNum, swapInKeys, DDRToL3StorageKeys);
@@ -285,7 +296,11 @@ void CacheManager::FetchL3StorageEmb2DDR(string tableName, uint32_t extEmbedding
         int rc = memcpy_s(addrs[i], extEmbeddingSize * sizeof(float), embeddings[i].data(),
                           extEmbeddingSize * sizeof(float));
         if (rc != 0) {
-            throw runtime_error("memcpy_s failed, rc: " + to_string(rc));
+            auto error = Error(ModuleName::M_L3_STORAGE, ErrorType::IO_ERROR,
+                               Logger::Format("Invoke memcpy_s failed, rc:{}. You can query the meaning of "
+                                   "security function error code.", to_string(rc)));
+            LOG_ERROR(error.ToString());
+            throw std::runtime_error(error.ToString());
         }
     }
     l3Storage->DeleteEmbeddings(tableName, keys);
@@ -323,15 +338,12 @@ void CacheManager::RecoverTrainStatus()
         // ddr-> lookup address, ssd->insert embedding , ddr->remove embedding
         vector<float*> swapInKeysAddr;
         int rc = embCache->EmbeddingLookupAddrs(tableName, swapInKeys, swapInKeysAddr);
-        if (rc != 0) {
-            throw runtime_error("EmbeddingLookUpAddrs failed! error code: " + std::to_string(rc));
-        }
+        CheckEmbCacheReturnCode("EmbeddingLookUpAddrs", rc);
+
         auto extEmbeddingSize = embBaseInfos[tableName].extEmbeddingSize;
         l3Storage->InsertEmbeddingsByAddr(tableName, swapInKeys, swapInKeysAddr, extEmbeddingSize);
         rc = embCache->EmbeddingRemove(tableName, swapInKeys);
-        if (rc != 0) {
-            throw runtime_error("EmbeddingRemove failed! error code: " + std::to_string(rc));
-        }
+        CheckEmbCacheReturnCode("EmbeddingRemove", rc);
 
         // ssd->fetch embedding, ddr->EmbeddingUpdate, ssd->delete embedding
         auto swapOutEmbeddings = l3Storage->FetchEmbeddings(tableName, swapOutKeys);
@@ -363,3 +375,14 @@ void CacheManager::GetSwapInAndSwapOutKeys(vector<emb_cache_key_t>& ssdKeysBefor
                         intersectionKeys.end(), std::back_inserter(swapOutKeys));
 }
 
+void CacheManager::CheckEmbCacheReturnCode(const string& funcName, int retCode)
+{
+    if (retCode == 0) {
+        return;
+    }
+    auto error = Error(ModuleName::M_L3_STORAGE, ErrorType::LOGIC_ERROR,
+                       Logger::Format("Invoke embCache func:{} failed, error code:{}.",
+                           funcName, std::to_string(retCode)));
+    LOG_ERROR(error.ToString());
+    throw std::runtime_error(error.ToString());
+}

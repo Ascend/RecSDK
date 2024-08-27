@@ -19,6 +19,7 @@ See the License for the specific language governing permissions and
 #include <functional>
 
 #include "utils/common.h"
+#include "utils/error.h"
 
 namespace MxRec {
     using namespace std;
