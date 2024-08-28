@@ -122,16 +122,20 @@ server.sh/client.sh
 > sh server.sh<br>
 
 若日志中显示Running gRPC ModelServer at 0.0.0.0:xxxx则表示启动成功
+
 2.请求服务器方法
 执行脚本：sh client.sh
 推理成功会打印端到端时延
 
 # 使用切图工具
-1.进入目录：mxrec/tools/graph_partition,修改gen_config.py中的模型目录
-2.执行 python3 gen_config.py，使用生成的test1.cfg文件启动模型，使用方法如下：
-> python3 gen_config.py --output_path . --tars_name serve --output_filename test1.cfg --model_path savedmodel_path<br>
+本工具是基于cann的一个混合计算功能，开发的一个生成配置文件的工具；生成的配置文件中的in_out_pair可以控制具体下沉那些算子到npu，从而提升模型运行性能；
+混合计算功能参考链接（https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC3alpha002/apiref/fmkadptapi/tfmigr1_tfadapi_0020.html#ZH-CN_TOPIC_0000001981222466__section189920476161）
+1. 进入目录：mxrec/tools/graph_partition,修改gen_config.py中的模型目录
+2. 执行 python3 gen_config.py，使用生成的test1.cfg文件启动模型，使用方法如下：
+> python3 gen_config.py --output_path . --tags_name serve --output_filename test1.cfg --model_path savedmodel_path<br>
 + 参数解释：output_path(输出路径),tars_name(模型tags名字多个以逗号隔开),output_filename(输出文件名),model_path(输入模型路径)<br>
 + 得到输出文件后，替换服务启动脚本中--platform_config_file参数选项即可生效
++ tag取值取决于保存模型时打的标签，当一个模型包含不同的MetaGraphDef的时候，可以通过tag来区分具体使用的MetaGraphDef，默认tag为 serve
 
 # 性能优化
-1. 具体参考optimize目录下的文件
+1. 具体参考optimize目录下的README.md文件
