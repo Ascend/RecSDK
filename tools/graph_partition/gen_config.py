@@ -25,9 +25,10 @@ import tensorflow as tf
 from graph_partition import GraphPartitioner
 
 if __name__ == "__main__":
+    logging.getLogger().setLevel(logging.INFO)
     parser = argparse.ArgumentParser(description="")
     parser.add_argument("--model_path", type=str, default="./")
-    parser.add_argument("--tars_name", type=str, default="serve")
+    parser.add_argument("--tags_name", type=str, default="serve")
     parser.add_argument("--output_path", type=str, default="./")
     parser.add_argument("--output_filename", type=str, default="config.cfg")
     args = parser.parse_args()
@@ -47,7 +48,7 @@ if __name__ == "__main__":
 
     with tf.compat.v1.Session() as sess:
         meta_graph = tf.compat.v1.saved_model.loader.load(
-            sess, [args.tars_name], model_path
+            sess, [args.tags_name], model_path
         )
         ops = sess.graph.get_operations()
         graph_partitioner = GraphPartitioner()
@@ -72,3 +73,4 @@ if __name__ == "__main__":
     mode = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP
     with os.fdopen(os.open(output_filepath, flags, mode), "w") as file:
         file.write(output)
+    logging.info("Generate %s success.", output_filepath)
