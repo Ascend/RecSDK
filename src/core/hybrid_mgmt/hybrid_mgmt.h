@@ -147,17 +147,17 @@ GTEST_PRIVATE :
     std::mutex lookUpAndSendBatchIdMtx[MAX_CHANNEL_NUM];  // train and eval
     std::mutex receiveAndUpdateBatchIdMtx[MAX_CHANNEL_NUM];
 
-    std::map<std::string, std::mutex> lastUpdateFinishMutex;
-    std::map<std::string, std::condition_variable> lastUpdateFinishCV;
+    std::unordered_map<std::string, std::mutex> lastUpdateFinishMutex;
+    std::unordered_map<std::string, std::condition_variable> lastUpdateFinishCV;
 
-    std::map<std::string, std::mutex> lastLookUpFinishMutex;
-    std::map<std::string, std::condition_variable> lastLookUpFinishCV;
+    std::unordered_map<std::string, std::mutex> lastLookUpFinishMutex;
+    std::unordered_map<std::string, std::condition_variable> lastLookUpFinishCV;
 
-    std::map<std::string, std::mutex> lastSendFinishMutex;
-    std::map<std::string, std::condition_variable> lastSendFinishCV;
+    std::unordered_map<std::string, std::mutex> lastSendFinishMutex;
+    std::unordered_map<std::string, std::condition_variable> lastSendFinishCV;
 
-    std::map<std::string, std::mutex> lastRecvFinishMutex;
-    std::map<std::string, std::condition_variable> lastRecvFinishCV;
+    std::unordered_map<std::string, std::mutex> lastRecvFinishMutex;
+    std::unordered_map<std::string, std::condition_variable> lastRecvFinishCV;
 
     std::vector<std::thread> EmbeddingLookUpAndSendThreadPool;
     std::vector<std::thread> EmbeddingReceiveAndUpdateThreadPool;
@@ -219,6 +219,8 @@ GTEST_PRIVATE :
     void ResetDeltaInfo();
 
     void GetDeltaModelKeys(const string& savePath, bool saveDelta, map<string, map<emb_key_t, KeyInfo>>& keyInfoMap);
+
+    void InitPipelineMutexAndCV(const string& embTableName);
 
 private:
     HybridMgmtBlock* hybridMgmtBlock;

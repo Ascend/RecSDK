@@ -1490,6 +1490,8 @@ void HybridMgmt::InitEmbeddingCache(const vector<EmbInfo>& embInfos)
     EmbeddingMgmt::Instance()->SetHDTransferForEmbTable(hdTransfer);
 
     for (auto embInfo : embInfos) {
+        // Init mutex and condition_variable.
+        InitPipelineMutexAndCV(embInfo.name);
         if (isL3StorageEnabled) {
             InitDataPipelineForL3Storage(embInfo.name, embInfo.extEmbeddingSize);
         } else {
@@ -2335,6 +2337,23 @@ void HybridMgmt::GetDeltaModelKeys(const string& savePath, bool saveDelta,
                     }
                 }
             }
+        }
+    }
+}
+
+void HybridMgmt::InitPipelineMutexAndCV(const string& embTableName)
+{
+    for (int channelId = 0; channelId < MAX_CHANNEL_NUM; ++channelId) {
+        for (int threadIndex = 0; threadIndex < EMBEDDING_THREAD_NUM; ++threadIndex) {
+            string key = MakeSwapCVName(threadIndex, embTableName, channelId);
+            lastUpdateFinishMutex[key];
+            lastUpdateFinishCV[key];
+            lastLookUpFinishMutex[key];
+            lastLookUpFinishCV[key];
+            lastSendFinishMutex[key];
+            lastSendFinishCV[key];
+            lastRecvFinishMutex[key];
+            lastRecvFinishCV[key];
         }
     }
 }

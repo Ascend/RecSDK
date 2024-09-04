@@ -16,6 +16,8 @@ See the License for the specific language governing permissions and
 #ifndef MX_REC_HD_TRANSFER_H
 #define MX_REC_HD_TRANSFER_H
 
+#include <mutex>
+
 #include "acl/acl_base.h"
 #include "acl/acl.h"
 #include "acl/acl_tdt.h"
@@ -110,11 +112,14 @@ namespace MxRec {
         void ClearTransChannel(int channelId);
 
     private:
+        void CreateChannel(const uint32_t localRankId, const string& embName, const int channelNum);
+        void CreateChannelForIncrementalCkpt(const uint32_t localRankId, const string& embName, const int channelNum);
+        void RecordTrainingChannelStr(TransferChannel channel, const int channelId);
+
         std::unordered_map<std::string, acltdtChannelHandle*> transferChannels;
         std::unordered_map<int, std::set<std::string>> usedChannelsNames; // key是通道0、1
         bool running;
-        void CreateChannel(const uint32_t localRankId, const string& embName, const int channelNum);
-        void CreateChannelForIncrementalCkpt(const uint32_t localRankId, const string& embName, const int channelNum);
+        std::mutex recordChannelMtx;
     };
 }
 #endif // MX_REC_HD_TRANSFER_H

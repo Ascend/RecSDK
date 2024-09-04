@@ -200,10 +200,11 @@ void HDTransfer::Send(TransferChannel channel, const vector<Tensor>& tensors, in
         resendTime++;
     } while (isNeedResend);
 
-    if (channel == TransferChannel::EVICT) {
-        return;
+    if (channel != TransferChannel::EVICT) {
+        // Records used channel name in training and used to send EOS later.
+        RecordTrainingChannelStr(channel, channelId);
     }
-    usedChannelsNames[channelId].insert(TransferChannel2Str(channel));
+    LOG_DEBUG(HD + "hd transfer send end:{}, {} batchId:{}.", sendName, sendBatchIdType, batchId);
 #endif
 }
 
@@ -340,4 +341,16 @@ void HDTransfer::ClearTransChannel(int channelId)
     }
 
     acltdtDestroyDataset(trashDataset);
+}
+
+void HDTransfer::RecordTrainingChannelStr(TransferChannel channel, const int channelId)
+{
+    std::string channelStr = TransferChannel2Str(channel);
+    if (usedChannelsNames[channelId].find(channelStr) != usedChannelsNames[channelId].end()) {
+        return;
+    }
+    std::unique_lock<std::mutex> lock(recordChannelMtx);
+    if (usedChannelsNames[channelId].find(channelStr) == usedChannelsNames[channelId].end()) {
+        usedChannelsNames[channelId].insert(channelStr);
+    }
 }
