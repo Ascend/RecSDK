@@ -16,10 +16,6 @@
 
 set -e
 source /etc/profile
-# 规避算子工程问题
-sed -i '/\/op_host/i\\if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/framework)' /usr/local/Ascend/ascend-toolkit/8.0.RC3/tools/op_project_templates/ascendc/customize/CMakeLists.txt
-sed -i '/\/op_host/i\\    add_subdirectory(framework)' /usr/local/Ascend/ascend-toolkit/8.0.RC3/tools/op_project_templates/ascendc/customize/CMakeLists.txt
-sed -i '/\/op_host/i\\endif()' /usr/local/Ascend/ascend-toolkit/8.0.RC3/tools/op_project_templates/ascendc/customize/CMakeLists.txt
 
 # 查找msopgen的路径，加入到环境变量PATH中
 msopgen_path=$(find /usr/local/Ascend/ -name msopgen | grep bin)
