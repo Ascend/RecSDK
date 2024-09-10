@@ -196,7 +196,7 @@ public:
      * @Return errorCode
      */
     virtual int EmbeddingLookup(std::string tableName, const std::vector<uint64_t>& keys, float* embAddr,
-                                uint32_t threadNum = 4) = 0;
+                                uint32_t threadNum = 1) = 0;
 
     /* *
      * 查询Embedding的地址
@@ -207,7 +207,7 @@ public:
      * @Return errorCode
      */
     virtual int EmbeddingLookupAddrs(std::string tableName, const std::vector<uint64_t>& keys,
-                                     std::vector<float*>& addrs, uint32_t threadNum = 4) = 0;
+                                     std::vector<float*>& addrs, uint32_t threadNum = 1) = 0;
 
     /* *
      * 查询Embedding并且在查询完成之后删除embedding对应的key。如果多线程使用，严格保证传入的key线程间不会重复(unique
@@ -219,7 +219,7 @@ public:
      * @Return errorCode
      */
     virtual int EmbeddingLookupAndRemove(std::string tableName, const std::vector<uint64_t>& keys, float* embAddr,
-                                         uint32_t threadNum = 4) = 0;
+                                         uint32_t threadNum = 1) = 0;
 
     /* *
      * 更新Embedding
@@ -230,7 +230,7 @@ public:
      * @Return errorCode
      */
     virtual int EmbeddingUpdate(std::string tableName, const std::vector<uint64_t>& keys, float* embAddr,
-                                uint32_t threadNum = 4) = 0;
+                                uint32_t threadNum = 1) = 0;
 
     /* *
      * 在EmbLocalTable中移除keys，并将存储其embedding的内存位置记为可复用
@@ -238,7 +238,7 @@ public:
      * @Param keys: 待移除的keys
      * @Return errorCode
      */
-    virtual int EmbeddingRemove(std::string tableName, const std::vector<uint64_t>& keys, uint32_t threadNum = 4) = 0;
+    virtual int EmbeddingRemove(std::string tableName, const std::vector<uint64_t>& keys, uint32_t threadNum = 1) = 0;
 
     /* *
      * 将需要被淘汰的keys从offsetMapper的记录中移除，同时也在EmbLocalTable中移除，并将存储其embedding的内存位置记为可复用
