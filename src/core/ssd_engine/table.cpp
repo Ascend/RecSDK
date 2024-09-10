@@ -321,7 +321,7 @@ vector<vector<float>> Table::FetchEmbeddingsInner(vector<emb_cache_key_t> &keys)
     vector<vector<float>> ret;
     ret.resize(dLen);
     size_t queryLen = queryList.size();
-#pragma omp parallel for num_threads(readThreadNum) default(none) shared(ret, queryLen, queryList)
+
     for (size_t i = 0; i < queryLen; ++i) {
         tuple item = queryList[i];
         auto [f, batchKeys, batchIdx] = item;
