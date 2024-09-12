@@ -72,6 +72,9 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId, bool
             aclDatasetsForIncrementalCkpt[embInfo.name] = dataset;
         }
     }
+    for (int i = 0; i < MAX_CHANNEL_NUM; ++i) {
+        usedChannelsNames[i];
+    }
     running = true;
     LOG_INFO(MGMT + "hd_transfer init end");
 #endif
