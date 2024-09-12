@@ -283,7 +283,7 @@ void EmbeddingDynamic::LoadEmbAndOptim(const string& savePath)
 
     CheckFileSystemPtr();
     EmbeddingSizeInfo embeddingSizeInfo = {embSize_, extEmbSize_};
-    fileSystemPtr_->ReadEmbedding(embedStream.str(), embeddingSizeInfo, firstAddress, rankId_, loadOffset);
+    fileSystemPtr_->ReadEmbedding(embedStream.str(), embeddingSizeInfo, firstAddress, deviceId, loadOffset);
 
     // 读optim
     int optimIndex = 1;
