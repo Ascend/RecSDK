@@ -16,11 +16,11 @@
 
 物理机上已经安装docker，并且docker网络可用
 
-准备好基础镜像，如果用户没准好好基础镜像，可以从[昇腾镜像仓库](https://ascendhub.huawei.com/#/index)拉取基础
+准备好基础镜像，如果用户没准好好基础镜像，可以从[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/)拉取基础
 镜像，建议拉取以下镜像作为基础镜像：
 * 优先拉取mxRec训练镜像，因为AscendHub上的mxRec训练镜像中已经安装gcc、cmake等基础依赖，无需再次安装。
 同时，镜像也安装了CANN以及mxRec包，但是版本较老。所以如果使用mxRec镜像作为基础镜像只需更新其中的CANN和mxRec包即可。
-* 其次从AscendHub上拉取[CentOS7.6.1810](https://ascendhub.huawei.com/#/detail/centos)这个镜像
+* 其次从AscendHub上拉取[CentOS7.6.1810](https://www.hiascend.com/developer/ascendhub/detail/9353d9619c2a44db87845bce546c17bd)这个镜像
 * 最后，如果不用以上两个镜像，用户自己准备一个镜像作为基础镜像，建议这个镜像是CentOS 7.6.1810为基础。
 
 ## 准备依赖
