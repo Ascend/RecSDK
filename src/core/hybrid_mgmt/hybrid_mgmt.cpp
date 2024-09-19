@@ -1655,7 +1655,8 @@ void HybridMgmt::EmbeddingUpdateDDR(const EmbTaskInfo& info, const float* embPtr
 
     uint64_t memSize = info.extEmbeddingSize * sizeof(float);
     uint64_t extEmbeddingSize = info.extEmbeddingSize;
-
+#pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) \
+    shared(swapOutAddrs, embPtr, extEmbeddingSize, memSize)
     for (uint64_t i = 0; i < swapOutAddrs.size(); i++) {
         auto rc = memcpy_s(swapOutAddrs[i], memSize, embPtr + i * extEmbeddingSize, memSize);
         if (rc != 0) {
@@ -1886,7 +1887,8 @@ void HybridMgmt::EmbeddingUpdateL3Storage(const EmbTaskInfo& info, float* embPtr
     uint64_t memSize = info.extEmbeddingSize * sizeof(float);
     uint64_t extEmbeddingSize = info.extEmbeddingSize;
     // DDR更新
-
+#pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) \
+    shared(swapOutAddrs, swapOutDDRAddrOffs, embPtr, extEmbeddingSize, memSize)
     for (uint64_t i = 0; i < swapOutAddrs.size(); i++) {
         auto rc = memcpy_s(swapOutAddrs[i], memSize, embPtr + swapOutDDRAddrOffs[i] * extEmbeddingSize, memSize);
         if (rc != 0) {
@@ -2076,7 +2078,7 @@ bool HybridMgmt::BuildH2DEmbedding(const EmbTaskInfo& info, vector<Tensor>& h2dE
     TimeCost embeddingLookupTC = TimeCost();
 
     uint64_t memSize = info.extEmbeddingSize * sizeof(float);
-
+#pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) shared(swapInAddrs, h2dEmbAddr, info, memSize)
     for (uint64_t i = 0; i < swapInAddrs.size(); i++) {
         auto rc = memcpy_s(h2dEmbAddr + i * info.extEmbeddingSize, memSize, swapInAddrs[i], memSize);
         if (rc != 0) {
