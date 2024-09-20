@@ -214,7 +214,7 @@ public:
         this->SetInferShape(ge::LazyAdamInferShape).SetInferDataType(ge::LazyAdamInferDataType);
         this->AICore().SetTiling(optiling::LazyAdamTilingFunc);
         this->AICore().AddConfig("ascend910b");
-        this->AICore().AddConfig("ascend910c");
+        this->AICore().AddConfig("ascend910_93");
     }
 };
 
