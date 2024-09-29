@@ -157,8 +157,9 @@ inline int GetUBSize(int devID)
     const std::map<string, int> chipUbSizeList = {
         {"910A", UBSize::ASCEND910_A},   {"910B", UBSize::ASCEND910_B},     {"920A", UBSize::ASCEND920_A},
         {"910B1", UBSize::ASCEND910_B1}, {"910B2", UBSize::ASCEND910_B2},   {"910B3", UBSize::ASCEND910_B3},
-        {"910B4", UBSize::ASCEND910_B4}, {"910B2C", UBSize::ASCEND910_B2C}, {"910C1", UBSize::ASCEND910_C1},
-        {"910C2", UBSize::ASCEND910_C1}, {"910C3", UBSize::ASCEND910_C3}};
+        {"910B4", UBSize::ASCEND910_B4}, {"910B2C", UBSize::ASCEND910_B2C}, 
+        {"910_9391", UBSize::ASCEND910_C1}, {"910_9392", UBSize::ASCEND910_C1}, {"910_9381", UBSize::ASCEND910_C2}, 
+        {"910_9382", UBSize::ASCEND910_C2}, {"910_9372", UBSize::ASCEND910_C3}, {"910_9361", UBSize::ASCEND910_C3}};
     auto it = chipUbSizeList.find(GetChipName(devID));
     if (it != chipUbSizeList.end()) {
         return it->second;
