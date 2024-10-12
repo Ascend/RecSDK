@@ -94,7 +94,8 @@ class CustomizedGradientDescentByAddr(
         )
         # The DP mode requires allreduce for gradients.
         if table_instance.is_dp:
-            grad = hccl_ops.allreduce(grad, "sum")
+            # In the DP mode, the second USS is used to align the length of the grad in the allreduce.
+            grad, addr = self.sum_same_id_gradients(grad=grad, var=addr, is_expansion=True)
         host_pipeline_ops = import_host_pipeline_ops()
         dim = grad.shape.as_list()[-1]
         if self.weight_decay is None:

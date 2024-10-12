@@ -80,10 +80,11 @@ class CustomizedGradientDescent(
         )
         # The DP mode requires allreduce for gradients.
         if table_instance.is_dp:
-            grad_values = hccl_ops.allreduce(grad.values, "sum")
+            # In the DP mode, the second USS is used to align the length of the grad in the allreduce.
+            unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad.values, var=var, is_expansion=False)
             grad = ops.IndexedSlices(
-                values=grad_values,
-                indices=grad.indices,
+                values=unique_local_grad,
+                indices=unique_keys,
                 dense_shape=grad.dense_shape,
             )
         nd_indices = tf.expand_dims(grad.indices, 1)

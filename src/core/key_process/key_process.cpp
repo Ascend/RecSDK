@@ -713,7 +713,8 @@ void KeyProcess::PushGlobalUniqueTensorsForDp(const unique_ptr<vector<Tensor>>& 
 {
     LOG_INFO(KEY_PROCESS "Rank:{}, channel:{}, table name:{}, useSumSameIdGradients:{}.", rankInfo.rankId, channel,
              embName, rankInfo.useSumSameIdGradients);
-    if (rankInfo.useSumSameIdGradients && channel == TRAIN_CHANNEL_ID) {
+    // In the DP mode, the second USS is used to align the length of the grad in the allreduce.
+    if (channel == TRAIN_CHANNEL_ID) {
         KeysT uniqueKeys;
         vector<int32_t> restoreVecSec;
         TimeCost globalUniqueSyncTC;

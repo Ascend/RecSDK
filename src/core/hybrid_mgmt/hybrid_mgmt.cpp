@@ -662,7 +662,9 @@ bool HybridMgmt::ProcessEmbInfoHBM(const EmbBaseInfo& info, bool isGrad)
               sendLookupSyncTC.ElapsedMS());
 
     // 训练时，使用全局去重聚合梯度，发送全局去重的key和对应的恢复向量
-    if (mgmtRankInfo.useSumSameIdGradients && info.channelId == TRAIN_CHANNEL_ID) {
+    // In the DP mode, the second USS is used to align the length of the grad in the allreduce.
+    if ((mgmtRankInfo.useSumSameIdGradients && info.channelId == TRAIN_CHANNEL_ID) ||
+        (info.isDp && info.channelId == TRAIN_CHANNEL_ID)) {
         SendUniqKeysAndRestoreVecHBM(info, infoVecs, isGrad);
     }
 
@@ -2207,7 +2209,9 @@ void HybridMgmt::SendLookupOffsets(const EmbBaseInfo& info, vector<uint64_t>& un
 void HybridMgmt::SendGlobalUniqueVec(const EmbBaseInfo& info, vector<uint64_t>& uniqueKeys,
                                      vector<int32_t>& restoreVecSec)
 {
-    if (!(info.channelId == TRAIN_CHANNEL_ID && mgmtRankInfo.useSumSameIdGradients)) {
+    // In the DP mode, the second USS is used to align the length of the grad in the allreduce.
+    if (!((info.channelId == TRAIN_CHANNEL_ID && mgmtRankInfo.useSumSameIdGradients) ||
+          (info.channelId == TRAIN_CHANNEL_ID && info.isDp))) {
         return;
     }
     TimeCost sendUniqueKeysSyncTC;
