@@ -16,7 +16,7 @@
 # ==============================================================================
 
 __all__ = [
-    "init", "terminate_config_initializer"
+    "init", "terminate_config_initializer", "get_dense_and_sparse_variable", "hccl_ops"
 ]
 
 from mx_rec.util.tf_version_adapter import npu_ops, hccl_ops, NPUCheckpointSaverHook
