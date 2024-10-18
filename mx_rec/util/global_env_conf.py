@@ -62,11 +62,9 @@ def get_global_env_conf() -> RecEnv:
         key_process_thread_num=os.getenv(EnvOption.KEY_PROCESS_THREAD_NUM.value, DEFAULT_KP_THREAD_NUM),
         max_unique_thread_num=os.getenv(EnvOption.MAX_UNIQUE_THREAD_NUM.value, DEFAULT_FAST_UNIQUE_THREAD_NUM),
         fast_unique=os.getenv(EnvOption.FAST_UNIQUE.value, Flag.FALSE.value),
-        updateemb_v2=os.getenv(EnvOption.UPDATEEMB_V2.value, Flag.FALSE.value),
         hot_emb_update_step=os.getenv(EnvOption.HOT_EMB_UPDATE_STEP.value, DEFAULT_HOT_EMB_UPDATE_STEP),
         glog_stderrthreahold=os.getenv(EnvOption.GLOG_STDERRTHREAHOLD.value, RecCPPLogLevel.INFO.value),
         use_combine_faae=os.getenv(EnvOption.USE_COMBINE_FAAE.value, Flag.FALSE.value),
-        stat_on=os.getenv(EnvOption.STAT_ON.value, Flag.FALSE.value),
         record_key_count=os.getenv(EnvOption.RECORD_KEY_COUNT.value, Flag.FALSE.value)
     )
 
