@@ -85,12 +85,10 @@ def get_global_env_conf() -> RecEnv:
     ("max_unique_thread_num", Convert2intValidator,
      {"min_value": MIN_FAST_UNIQUE_THREAD_NUM, "max_value": MAX_FAST_UNIQUE_THREAD_NUM}, ["check_value"]),
     ("fast_unique", OptionValidator, {"options": [i.value for i in list(Flag)]}),
-    ("updateemb_v2", OptionValidator, {"options": [i.value for i in list(Flag)]}),
     ("hot_emb_update_step", Convert2intValidator,
      {"min_value": MIN_HOT_EMB_UPDATE_STEP, "max_value": MAX_HOT_EMB_UPDATE_STEP}, ["check_value"]),
     ("glog_stderrthreahold", OptionValidator, {"options": [i.value for i in list(RecCPPLogLevel)]}),
     ("use_combine_faae", OptionValidator, {"options": [i.value for i in list(Flag)]}),
-    ("stat_on", OptionValidator, {"options": [i.value for i in list(Flag)]}),
     ("record_key_count", OptionValidator, {"options": [i.value for i in list(Flag)]})
 ])
 def check_env(**kwargs):
