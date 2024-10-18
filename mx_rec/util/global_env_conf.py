@@ -38,11 +38,9 @@ class RecEnv:
     key_process_thread_num: str
     max_unique_thread_num: str
     fast_unique: str
-    updateemb_v2: str
     hot_emb_update_step: str
     glog_stderrthreahold: str
     use_combine_faae: str
-    stat_on: str
     record_key_count: str
 
 
