@@ -66,12 +66,6 @@ namespace MxRec {
             GlobalEnv::fastUnique = (std::stoi(envFastUnique) == 1);
         }
 
-        // 设置是否使用异步更新d2h的host emb
-        const char *envUpdateEmbV2 = getenv(RecEnvNames::UPDATE_EMB_V2);
-        if (envUpdateEmbV2 != nullptr) {
-            GlobalEnv::updateEmbV2 = (std::stoi(envUpdateEmbV2) == 1);
-        }
-
         // 设置hot emb更新步数
         const char *envHotEmbStep = getenv(RecEnvNames::HOT_EMB_UPDATE_STEP);
         if (envHotEmbStep != nullptr) {
@@ -90,12 +84,6 @@ namespace MxRec {
             GlobalEnv::useCombineFaae = (std::stoi(envFAAEMode) == 1);
         }
 
-        // 设置打开维测信息
-        const char *envStat = getenv(RecEnvNames::STAT_ON);
-        if (envStat != nullptr) {
-            GlobalEnv::statOn = (std::stoi(envStat) == 1);
-        }
-
         // 设置打开记录开关，记录batch中key与出现的count的数目
         const char *envRecordKeyCount = getenv(RecEnvNames::RECORD_KEY_COUNT);
         if (envRecordKeyCount != nullptr) {
@@ -106,17 +94,15 @@ namespace MxRec {
     void LogGlobalEnv()
     {
         LOG_DEBUG("Environment variables are: [{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}], "
-                  "[{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}]",
+                  "[{}: {}], [{}: {}], [{}: {}], [{}: {}].",
                   RecEnvNames::ACL_TIMEOUT, GlobalEnv::aclTimeout,
                   RecEnvNames::HD_CHANNEL_SIZE, GlobalEnv::hdChannelSize,
                   RecEnvNames::KEY_PROCESS_THREAD_NUM, GlobalEnv::keyProcessThreadNum,
                   RecEnvNames::MAX_UNIQUE_THREAD_NUM, GlobalEnv::maxUniqueThreadNum,
                   RecEnvNames::FAST_UNIQUE, GlobalEnv::fastUnique,
-                  RecEnvNames::UPDATE_EMB_V2, GlobalEnv::updateEmbV2,
                   RecEnvNames::HOT_EMB_UPDATE_STEP, GlobalEnv::hotEmbUpdateStep,
                   RecEnvNames::GLOG_STDERR_THRESHOLD, GlobalEnv::glogStderrthreshold,
                   RecEnvNames::USE_COMBINE_FAAE, GlobalEnv::useCombineFaae,
-                  RecEnvNames::STAT_ON, GlobalEnv::statOn,
                   RecEnvNames::RECORD_KEY_COUNT, GlobalEnv::recordKeyCount);
     }
 }
