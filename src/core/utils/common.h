@@ -74,7 +74,6 @@ constexpr int HOST_TO_PREFILL_RATIO = 10;
 constexpr int KEY_COUNT_ELEMENT_NUM = 2;
 // for GLOG
 struct GlogConfig {
-    static bool gStatOn;
     static int gGlogLevel;
     static string gRankId;
 };
@@ -82,7 +81,6 @@ struct GlogConfig {
 constexpr int GLOG_MAX_BUF_SIZE = 1024;
 constexpr int GLOG_TIME_WIDTH_2 = 2;
 constexpr int GLOG_TIME_WIDTH_6 = 6;
-constexpr char GLOG_STAT_FLAG[] = "statOn";
 
 // unique related config
 constexpr int UNIQUE_BUCKET = 6;

@@ -26,11 +26,9 @@ namespace MxRec {
     int GlobalEnv::keyProcessThreadNum = 6; // 默认6个线程
     int GlobalEnv::maxUniqueThreadNum = 8; // 默认最大8个线程
     bool GlobalEnv::fastUnique = false;
-    bool GlobalEnv::updateEmbV2 = false;
     int GlobalEnv::hotEmbUpdateStep = 1000;  // 默认1000步更新
     int GlobalEnv::glogStderrthreshold = 0;  // 默认info级别
     bool GlobalEnv::useCombineFaae = false;
-    bool GlobalEnv::statOn = false;
     bool GlobalEnv::recordKeyCount = false; // 默认不打开记录key count的开关
 
     /// 配置环境变量，Python侧已经做了变量值校验，CPP侧直接使用即可；bool类型，1代表true，0代表false
