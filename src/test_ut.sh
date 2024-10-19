@@ -38,17 +38,6 @@ opensource_path="${ROOT_DIR}"/../opensource
 acc_ctr_path="${ROOT_DIR}"/src/AccCTR
 export LD_LIBRARY_PATH="${acc_ctr_path}"/output/ock_ctr_common/lib:$LD_LIBRARY_PATH
 
-function install_expected(){
-  dir="$ROOT_DIR"/third_party/expected
-  if [ -z "$(ls -A "$dir")" ]; then
-    cd "$ROOT_DIR"
-    git submodule init
-    cmd="git submodule update"
-    # retry five times
-    $cmd || sleep 10 || $cmd || sleep 10 || $cmd || sleep 10 || $cmd || sleep 10 || $cmd
-    cd -
-  fi
-}
 
 function prepare_googletest(){
   cd ${opensource_path}
@@ -113,7 +102,6 @@ function prepare_pybind(){
   fi
 }
 
-install_expected
 prepare_pybind
 echo "opensource path:${opensource_path}"
 prepare_googletest
@@ -154,7 +142,6 @@ cmake -DCMAKE_BUILD_TYPE=Debug \
     -DASCEND_PATH=/usr/local/Ascend/ascend-toolkit/latest \
     -DABSEIL_PATH="${python_path}"/lib/python3.7/site-packages/"${TF_DIR}" \
     -DSECUREC_PATH="${ROOT_DIR}"/../opensource/securec \
-    -DTHIRD_PARTY_PATH="${ROOT_DIR}"/third_party \
     -DBUILD_TESTS=on -DCOVERAGE=on "$(dirname "${PWD}")"
 
 make -j8

@@ -27,7 +27,6 @@ if(NOT EMOCK_LIBRARY)
     set(EMOCK_LIBRARY /usr/local/lib/libemock.a)
 endif()
 message("EMOCK_LIBRARY: " ${EMOCK_LIBRARY})
-include_directories(${THIRD_PARTY_PATH}/expected/include)
 # src
 file(GLOB_RECURSE MXREC_SRC ${PROJECT_SOURCE_DIR}/core/*.cpp)
 message("MXREC_SRC: " ${MXREC_SRC})
