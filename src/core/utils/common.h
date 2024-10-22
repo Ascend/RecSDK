@@ -635,7 +635,6 @@ string MakeSwapCVName(int id, const string& tableName, int channelId);
 }  // end namespace MxRec
 
 #define KEY_PROCESS "\033[45m[KeyProcess]\033[0m "
-#define STAT_INFO "[StatInfo] "
 #ifdef GTEST
 #define GTEST_PRIVATE public
 #else
