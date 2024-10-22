@@ -18,7 +18,7 @@
 from typing import List
 
 import tensorflow as tf
-from tensorflow import Operation, Graph
+from tensorflow import Operation
 
 from mx_rec.util.log import logger
 from mx_rec.graph.slicers import LookupSubgraphSlicer, OrphanLookupKeySlicer

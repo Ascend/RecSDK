@@ -3,7 +3,7 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
 
 import abc
-from typing import Optional, Union, Callable
+from typing import Union, Callable
 
 import tensorflow as tf
 
