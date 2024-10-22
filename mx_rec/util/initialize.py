@@ -30,7 +30,7 @@ from mx_rec.util.global_env_conf import global_env
 from mx_rec.util.log import logger
 from mx_rec.util.perf_factory.bind_cpu import bind_cpu
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, \
-    IntValidator, ValueCompareValidator, StringValidator
+    IntValidator, ValueCompareValidator
 
 
 class ConfigInitializer:
