@@ -350,7 +350,6 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch
     // tuple for keyRec restore hotPos scAll countRecv
     isWithFAAE = m_featureAdmitAndEvict.GetFunctionSwitch() &&
                  FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE;
-    TimeCost totalTimeCost = TimeCost();
     TimeCost fastUniqueTC;
     UniqueInfo uniqueInfo;
     ProcessBatchWithFastUnique(batch, unique, threadId, uniqueInfo);
@@ -401,8 +400,6 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch
     }
 
     LOG_DEBUG("pushResultTC(ms):{}", pushResultTC.ElapsedMS());
-    LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} key_process_time_cost_with_fast_unique {}", channel,
-             batch->batchId, rankInfo.rankId, totalTimeCost.ElapsedMS());
     return true;
 }
 
@@ -559,7 +556,6 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
     vector<int32_t> hotPos;
     vector<vector<uint32_t>> keyCount;
     vector<emb_key_t> keyCountVec;
-    TimeCost totalTimeCost = TimeCost();
     HashSplitHelper(batch, splitKeys, restore, hotPos, keyCount);
     auto [lookupKeys, scAll, ss] = ProcessSplitKeys(batch, threadId, splitKeys);
 
@@ -637,8 +633,6 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
     }
 
     LOG_DEBUG("pushResultTC(ms):{}", pushResultTC.ElapsedMS());
-    LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} key_process_time_cost {}", channel, batch->batchId,
-             rankInfo.rankId, totalTimeCost.ElapsedMS());
     return true;
 }
 
@@ -925,10 +919,6 @@ void KeyProcess::ProcessBatchWithFastUnique(const unique_ptr<EmbBatchT>& batch, 
                           " channel:{}, name:{}, restore:{}, keyCount:{}",
               batch->batchId, batch->Size(), batch->channel, batch->name, uniqueInfoOut.restore.size(),
               keySendInfo.keyCount.size());
-
-    LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} "
-                       "batch_key_num_with_fast_unique {} unique_key_num_with_fast_unique {}",
-             batch->channel, batch->batchId, rankInfo.rankId, batch->Size(), uniqueOut.uniqueIdCnt);
 }
 
 void KeyProcess::HandleHotAndSendCount(const unique_ptr<EmbBatchT>& batch, UniqueInfo& uniqueInfoOut,
@@ -1154,15 +1144,7 @@ tuple<vector<KeysT>, vector<int32_t>> KeyProcess::HashSplit(const unique_ptr<Emb
         }
     }
     EASY_END_BLOCK
-
     LOG_TRACE("dump splitKeys {}", DumpSplitKeys(splitKeys));
-
-    size_t uniqueKeyNum = 0;
-    for (int devId = 0; devId < rankInfo.rankSize; ++devId) {
-        uniqueKeyNum += splitKeys[devId].size();
-    }
-    LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} batch_key_num {} unique_key_num {}", batch->channel,
-             batch->batchId, rankInfo.rankId, batch->Size(), uniqueKeyNum);
     return {splitKeys, restore};
 }
 
@@ -1226,13 +1208,6 @@ tuple<vector<KeysT>, vector<int32_t>, vector<vector<uint32_t>>> KeyProcess::Hash
 
     EASY_END_BLOCK
     LOG_TRACE("dump splitKeys {}", DumpSplitKeys(splitKeys));
-
-    size_t uniqueKeyNum = 0;
-    for (int devId = 0; devId < rankInfo.rankSize; ++devId) {
-        uniqueKeyNum += splitKeys[devId].size();
-    }
-    LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} batch_key_num {} faae_unique_key_num {}",
-             batch->channel, batch->batchId, rankInfo.rankId, batch->Size(), uniqueKeyNum);
     return {splitKeys, restore, keyCount};
 }
 
@@ -1304,13 +1279,6 @@ unique_ptr<EmbBatchT>& batch)
             keyCount[j] = count;
         }
     }
-
-    size_t uniqueKeyNum = 0;
-    for (int devId = 0; devId < rankInfo.rankSize; ++devId) {
-        uniqueKeyNum += splitKeys[devId].size();
-    }
-    LOG_INFO(STAT_INFO "channel_id {} batch_id {} rank_id {} batch_key_num {} hot_unique_key_num {}",
-             batch->channel, batch->batchId, rankInfo.rankId, batch->Size(), uniqueKeyNum);
 
     UpdateHotMap(keyCountMapByEmbName, hotEmbTotCount[batch->name], batch->batchId % hotEmbUpdateStep == 0,
                  batch->name);
