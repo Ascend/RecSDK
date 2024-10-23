@@ -216,6 +216,7 @@ void HdfsFileSystem::ReadEmbedding(const string& filePath, EmbeddingSizeInfo& em
 
     auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
     if (res != ACL_ERROR_NONE) {
+        hdfs->CloseFile(fs, file);
         auto error = Error(ModuleName::M_FILE_SYSTEM, ErrorType::ACL_ERROR,
                            StringFormat("Set device failed, device_id:%d.", deviceId).c_str());
         LOG_ERROR(error.ToString());
