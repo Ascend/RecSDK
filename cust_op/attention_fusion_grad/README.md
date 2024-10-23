@@ -3,7 +3,7 @@
 ## AttentionFusionGrad融合算子文件结构
 
 ```shell
-├── aclnn_attention_fusion_grad  # 单算子测试用例
+├── aclnn_attention_fusion_grad_test  # 单算子测试用例
 ├── attention_fusion_grad.json    # 算子原型配置
 ├── op_host    # AttentionGrad融合算子Host侧实现
 ├── op_kernel  # AttentionGrad融合算子Kernel侧实现
