@@ -25,9 +25,6 @@ ASCEND_TIMESTAMP = "ASCEND_TIMESTAMP"
 ASCEND_SPARSE_LOOKUP_LOCAL_EMB = "ASCEND_SPARSE_LOOKUP_LOCAL_EMB"
 EMPTY_STR = ""
 
-# Bytes
-FLOAT32_BYTES = 4
-
 # default emb memory size for hbm、ddr、ssd
 DEFAULT_DEVICE_CACHE_MEMORY_SIZE = 2 * 1024 * 1024 * 1024
 DEFAULT_HOST_CACHE_MEMORY_SIZE = 40 * 1024 * 1024 * 1024
@@ -74,10 +71,11 @@ DEFAULT_EVICT_TIME_INTERVAL = 60 * 60 * 24
 TRAIN_CHANNEL_ID = 0
 EVAL_CHANNEL_ID = 1
 HASHTABLE_COLLECTION_NAME_LENGTH = 30
-MAX_VOCABULARY_SIZE = 10 ** 9
+MAX_VOCABULARY_SIZE = 10**9
 MAX_DEVICE_VOCABULARY_SIZE = 10 ** 9
 
 # RANK INFO
+VALID_DEVICE_ID_LIST = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"]
 MIN_SIZE = 1
 MAX_CONFIG_SIZE = 10 * 1024 * 1024
 MAX_SIZE = 1024 * 1024 * 1024 * 1024
@@ -85,14 +83,12 @@ MAX_FILE_SIZE = 500 * 1024 * 1024 * 1024
 MAX_RANK_SIZE = 4095
 MIN_RANK_SIZE = 1
 
+LOG_MAX_SIZE = 1024 * 1024
+
 MAX_INT32 = np.iinfo(np.int32).max
 
 DUMP_MIDIFY_GRAPH_FILE_MODE = 0o550
 MAX_DEVICE_ID = 15
-
-# incremental checkpoint related
-BASE_MODEL = "base"
-DELTA_MODEL = "delta"
 
 # HDFS file system's file prefix
 HDFS_FILE_PREFIX = ["viewfs://", "hdfs://"]
@@ -185,6 +181,21 @@ class ASCAnchorAttr(Enum):
     IS_GRAD = "is_grad"
     TABLE_NAME = "table_name"
     CHANNEL_ID = "channel_id"
+
+
+class OptimizerType(Enum):
+    LAZY_ADAM = "LazyAdam"
+    SGD = "SGD"
+
+    @staticmethod
+    def get_optimizer_state_meta(mode):
+        if mode in OPTIMIZER_STATE_META:
+            return OPTIMIZER_STATE_META.get(mode)
+
+        raise ValueError(f"Invalid mode value, please choose one from {list(map(lambda c: c.value, OptimizerType))}")
+
+
+OPTIMIZER_STATE_META = {OptimizerType.LAZY_ADAM: ["momentum", "velocity"], OptimizerType.SGD: []}
 
 
 class All2allGradientsOp(BaseEnum):
