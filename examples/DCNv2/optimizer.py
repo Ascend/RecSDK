@@ -16,12 +16,12 @@
 
 import tensorflow as tf
 
-from delay_loss_scale import DenseLossScaleOptimizer, SparseLossScaleOptimizer
 from mx_rec.optimizers.lazy_adam import create_hash_optimizer
 from mx_rec.optimizers.lazy_adam_by_addr import create_hash_optimizer_by_address
 from mx_rec.util.initialize import ConfigInitializer
-from mx_rec.util.log import logger
 
+from delay_loss_scale import DenseLossScaleOptimizer, SparseLossScaleOptimizer
+from logger import logger
 
 def get_dense_and_sparse_optimizer(cfg):
     dense_optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=cfg.learning_rate[0])

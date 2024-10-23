@@ -22,6 +22,7 @@ from glob import glob
 
 import numpy as np
 import tensorflow as tf
+
 from mx_rec.constants.constants import ASCEND_TIMESTAMP, CacheModeEnum
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.helper import get_asc_insert_func
@@ -30,7 +31,6 @@ from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
 from mx_rec.util.communication.hccl_ops import get_rank_size
 from mx_rec.util.initialize import init, terminate_config_initializer
-from mx_rec.util.log import logger
 from mx_rec.util.variable import get_dense_and_sparse_variable
 
 from config import (GLOBAL_RANDOM_SEED, MODIFY_GRAPH_FLAG, MULTI_LOOKUP_TIMES,
@@ -38,6 +38,7 @@ from config import (GLOBAL_RANDOM_SEED, MODIFY_GRAPH_FLAG, MULTI_LOOKUP_TIMES,
                     USE_DYNAMIC_EXPANSION, USE_MULTI_LOOKUP, USE_ONE_SHOT,
                     USE_TIMESTAMP, USE_DP, Config)
 from dataset import generate_dataset
+from logger import logger
 from model import MyModel
 from optimizer import create_dense_and_sparse_optimizer
 from run_mode import RunMode, UseMode
