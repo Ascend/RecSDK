@@ -16,7 +16,7 @@
 # ==============================================================================
 
 __all__ = [
-    "init", "terminate_config_initializer", "get_dense_and_sparse_variable", "hccl_ops"
+    "init", "terminate_config_initializer", "get_dense_and_sparse_variable", "hccl_ops", "import_host_pipeline_ops"
 ]
 
 from mx_rec.util.tf_version_adapter import hccl_ops
