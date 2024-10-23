@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import defaultdict
-from typing import Union
 
 import tensorflow as tf
 from tensorflow.python.framework import ops
@@ -28,8 +27,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.training.optimizer import _TensorProcessor
 
 from mx_rec.core.asc.swap_args import SwapArgs
-from mx_rec.core.emb.sparse_embedding import HBMSparseEmbedding, ExternalStorageSparseEmbedding
-from mx_rec.core.emb.dynamic_sparse_embedding import DynamicSparseEmbedding
 from mx_rec.constants.constants import ASCAnchorAttr
 from mx_rec.util.tf_version_adapter import npu_ops, hccl_ops
 from mx_rec.util.initialize import ConfigInitializer
