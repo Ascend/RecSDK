@@ -18,7 +18,6 @@ import json
 import os
 import threading
 import glob
-import shutil
 from collections import defaultdict
 from typing import Dict, List, Union
 
@@ -26,7 +25,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.util import compat
 
-from mx_rec.constants.constants import DataName, DataAttr, MIN_SIZE, MAX_FILE_SIZE, Flag, TFDevice, \
+from mx_rec.constants.constants import DataName, DataAttr, MIN_SIZE, MAX_FILE_SIZE, TFDevice, \
     MAX_INT32, HDFS_FILE_PREFIX, TRAIN_CHANNEL_ID, BASE_MODEL, DELTA_MODEL
 from mx_rec.util.communication.hccl_ops import get_rank_id, get_rank_size, get_local_rank_size
 from mx_rec.util.initialize import ConfigInitializer
