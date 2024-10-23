@@ -27,13 +27,13 @@ import tensorflow as tf
 from mx_rec.constants.constants import BaseEnum
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
 from mx_rec.util.initialize import ConfigInitializer
-from mx_rec.util.log import logger
 from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.util.tf_version_adapter import hccl_ops
 from mx_rec.util.variable import get_dense_and_sparse_variable
 
 from config import (PRECISION_CHECK, USE_DETERMINISTIC,
                     construct_npu_sess_config)
+from logger import logger
 from utils import (GLOBAL_RANK_SIZE, LOCAL_RANK_ID, PRECISION_CHECK_PATH,
                    PRECISION_DUMP_STEP, RANK_ZERO, PrecisionDumpInfo)
 
