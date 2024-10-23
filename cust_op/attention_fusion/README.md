@@ -3,7 +3,7 @@
 ## AttentionFusion融合算子文件结构
 
 ```shell
-├── aclnn_attention_fusion  # 单算子测试用例
+├── aclnn_attention_fusion_test  # 单算子测试用例
 ├── attention_fusion.json    # 算子原型配置
 ├── op_host    # Attention融合算子Host侧实现
 ├── op_kernel  # Attention融合算子Kernel侧实现
