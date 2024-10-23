@@ -16,7 +16,7 @@
 # ==============================================================================
 import time
 from dataclasses import dataclass, field
-from typing import Optional, List, Tuple
+from typing import Optional, List, Dict, Union, Tuple
 
 import tensorflow as tf
 from tensorflow.python.framework import ops
