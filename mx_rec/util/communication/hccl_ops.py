@@ -6,6 +6,8 @@ from typing import Optional
 
 from mx_rec.constants.constants import EnvOption
 from mx_rec.util.communication.hccl_mgmt import parse_hccl_json, set_hccl_info_without_json
+from mx_rec.util.global_env_conf import global_env, get_global_env_conf
+from mx_rec.util.log import logger
 from mx_rec.util.global_env_conf import global_env
 
 
