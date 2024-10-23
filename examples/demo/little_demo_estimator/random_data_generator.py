@@ -18,7 +18,8 @@
 import numpy as np
 
 from mx_rec.util.communication.hccl_ops import get_rank_id
-from mx_rec.util.log import logger
+
+from logger import logger
 
 
 def get_data_generator(config, batch_number):

@@ -16,8 +16,6 @@
 # ==============================================================================
 
 
-import os
-
 import tensorflow as tf
 from mx_rec.util.tf_version_adapter import hccl_ops
 from mx_rec.util.communication.hccl_ops import get_rank_size
@@ -25,7 +23,6 @@ from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.variable import get_dense_and_sparse_variable
 from mx_rec.optimizers.gradient_descent import create_hash_optimizer
 from mx_rec.optimizers.gradient_descent_by_addr import create_hash_optimizer_by_addr
-from mx_rec.util.log import logger
 
 
 def get_train_op_list(losses, learning_rate):
