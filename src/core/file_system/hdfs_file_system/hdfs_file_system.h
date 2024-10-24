@@ -25,6 +25,10 @@ namespace MxRec {
     class HdfsFileSystem : public FileSystem {
     public:
         HdfsFileSystem() {};
+
+        HdfsFileSystem(const HdfsFileSystem&) = delete;
+        HdfsFileSystem& operator=(const HdfsFileSystem&) = delete;
+
         ~HdfsFileSystem()
         {
             hdfs->Disconnect(fs);
