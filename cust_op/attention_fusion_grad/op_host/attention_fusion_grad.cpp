@@ -159,9 +159,9 @@ static int32_t GradSoftmaxTiling(gert::TilingContext* context, AttentionFusionGr
     }
 
     const ge::Shape softmaxShape({numRowOfNormalizeOne, paddingKeyDim1});
-    uint64_t toTalUb;
-    ascnedPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ub);
-    uint64_t localWorkSpaceSize = toTalUb - 4 * numRowOfNormalizeOne * paddingKeyDim1 * sizeof(float);
+    uint64_t totalUb;
+    ascnedPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, totalUb);
+    uint64_t localWorkSpaceSize = totalUb - 4 * numRowOfNormalizeOne * paddingKeyDim1 * sizeof(float);
     float attenDimSqrt = 1 / std::sqrt(qShape.GetDim(2));
 
     // set attr
