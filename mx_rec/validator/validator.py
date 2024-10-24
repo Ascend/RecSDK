@@ -247,7 +247,7 @@ class StringValidator(Validator):
         super(StringValidator, self).__init__(name, value)
         self.max_len = max_len
         self.min_len = min_len
-        self.whitelist = "^[0-9A-Za-z_]+$"
+        self.whitelist = "^[0-9A-Za-z_.]+$"
         self.element = element
         msg = msg if msg else f"type of '{name}' is not str, '{value}' is '{type(value)}'"
         self.register_checker(lambda: isinstance(value, str), msg)
