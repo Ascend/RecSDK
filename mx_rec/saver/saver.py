@@ -901,6 +901,10 @@ def write_base_table_to_file(save_dir: str, base_table: dict):
 def clear_delta_models(save_dir: str):
     delta_directories = glob.glob(os.path.join(save_dir, 'delta-sparse*'))
     for delta_dir in delta_directories:
+        file_validator = FileValidator("delta_dir", delta_dir)
+        if not check_file_system_is_hdfs(delta_dir):
+            file_validator.check_not_soft_link()
+        file_validator.check()
         try:
             tf.io.gfile.rmtree(delta_dir)
         except tf.errors.NotFoundError:
