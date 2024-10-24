@@ -596,6 +596,7 @@ def validate_read_file(read_file_path):
     if not check_file_system_is_hdfs(read_file_path):
         file_validator.check_not_soft_link()
         file_validator.check_user_group()
+        file_validator.check_file_mode()
     file_validator.check()
 
 
