@@ -31,12 +31,6 @@ mxRec软件包可以通过[mxRec用户指南](https://www.hiascend.com/document/
 如下：
 ```shell
 .
-├── cust_op
-│   └── cust_op_by_addr
-├── examples
-│   ├── DCNv2
-│   ├── demo
-│   └── dlrm
 ├── tf1_whl
 │   └── mx_rec-{version}-py3-none-linux_x86_64.whl  # version为版本号
 ├── tf2_whl
