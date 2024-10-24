@@ -34,7 +34,6 @@ namespace MxRec {
     namespace fs = std::experimental::filesystem;
 
     bool g_isGlogInit = false;
-    bool GlogConfig::gStatOn = false;
     int GlogConfig::gGlogLevel;
     string GlogConfig::gRankId;
 

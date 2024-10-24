@@ -103,8 +103,6 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     threadPool = make_unique<ThreadPool>(embInfos.size() * MAX_CHANNEL_NUM);
 
     InitRankInfo(rankInfo, embInfos);
-    GlogConfig::gStatOn = GlobalEnv::statOn;
-
     LOG_INFO(MGMT + "begin initialize, localRankSize:{}, localRankId:{}, rank:{}", rankInfo.localRankSize,
              rankInfo.localRankId, rankInfo.rankId);
 
