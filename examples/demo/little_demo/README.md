@@ -14,6 +14,7 @@
 ├── README.md                 # demo模型运行说明
 ├── run_deterministic.sh      # 运行确定性计算的脚本
 ├── run_mode.py               # 执行模型train、evaluate和predict的脚本
+├── utils.py                  # 精度检测工具
 └── run.sh                    # demo运行脚本
 ```
 
@@ -30,12 +31,6 @@ mxRec软件包可以通过[mxRec用户指南](https://www.hiascend.com/document/
 如下：
 ```shell
 .
-├── cust_op
-│   └── cust_op_by_addr
-├── examples
-│   ├── DCNv2
-│   ├── demo
-│   └── dlrm
 ├── tf1_whl
 │   └── mx_rec-{version}-py3-none-linux_x86_64.whl  # version为版本号
 ├── tf2_whl
