@@ -37,6 +37,10 @@ static ge::graphStatus CheckNullPointer(T* pointer, const char* errorMessage)
 
 static ge::graphStatus LazyAdamTilingFunc(gert::TilingContext* context)
 {
+    if (CheckNullPointer(context, "Tiling context") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
     if (CheckNullPointer(currentWorkspace, "currentWorkspace") != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -45,7 +49,13 @@ static ge::graphStatus LazyAdamTilingFunc(gert::TilingContext* context)
 
     LazyAdamTilingData tiling;
     const gert::StorageShape* indicesShape = context->GetInputShape(1);
+    if (CheckNullPointer(indicesShape, "indicesShape") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     const gert::StorageShape* inputMShape = context->GetInputShape(2);
+    if (CheckNullPointer(inputMShape, "inputMShape") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     uint64_t dim0 = inputMShape->GetStorageShape().GetDim(0);
     uint64_t dim1 = indicesShape->GetStorageShape().GetDim(0);
     uint64_t dim2 = inputMShape->GetStorageShape().GetDim(1);
@@ -55,7 +65,9 @@ static ge::graphStatus LazyAdamTilingFunc(gert::TilingContext* context)
     int indicesDtypeSize = ge::GetSizeByDataType(indicesDtype);
 
     auto attrs = context->GetAttrs();
-
+    if (CheckNullPointer(attrs, "GetAttrs attrs") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     float beta1 = *attrs->GetAttrPointer<float>(0);
     float beta2 = *attrs->GetAttrPointer<float>(1);
     float epsilon = *attrs->GetAttrPointer<float>(2);
