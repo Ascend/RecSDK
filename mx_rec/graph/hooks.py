@@ -25,12 +25,12 @@ from mx_rec.graph.slicers import LookupSubgraphSlicer, OrphanLookupKeySlicer
 from mx_rec.validator.validator import ClassValidator, para_checker_decorator
 
 
-@para_checker_decorator(
-    check_option_list=[
-        ("op_types", ClassValidator, {"classes": (list)}),
-    ]
-)
 class LookupSubgraphSlicerHook(tf.estimator.SessionRunHook):
+    @para_checker_decorator(
+        check_option_list=[
+            ("op_types", ClassValidator, {"classes": (list)}),
+        ]
+    )
     def __init__(self, op_types: List[Operation]) -> None:
         super().__init__()
         self._op_types = op_types

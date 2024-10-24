@@ -327,6 +327,7 @@ void EmbeddingDynamic::LoadKey(const string& savePath)
     void *newBlock = nullptr;
     aclError ret = aclrtMalloc(&newBlock, static_cast<int>(datasetSize), ACL_MEM_MALLOC_HUGE_FIRST);
     if (ret != ACL_SUCCESS) {
+        free(static_cast<void*>(buf));
         auto error = Error(ModuleName::M_ACL, ErrorType::LOGIC_ERROR,
                            StringFormat("Error: in dynamic expansion mode, "
                                         "aclrtMalloc failed, malloc size: %d.", datasetSize));

@@ -16,7 +16,7 @@
 # ==============================================================================
 
 import os
-from typing import Optional, Union, List
+from typing import Optional, Union, Tuple
 
 import tensorflow as tf
 from tensorflow import Tensor
@@ -29,10 +29,8 @@ from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
 from mx_rec.core.emb.emb_factory import HBMDynamicSparseEmbeddingFactory, HBMSparseEmbeddingFactory, \
     ExternalStorageSparseEmbeddingFactory
 from mx_rec.constants.constants import (FLOAT32_BYTES, MAX_INT32, All2allGradientsOp, MAX_VOCABULARY_SIZE,
-                                        MAX_DEVICE_VOCABULARY_SIZE, CacheModeEnum, DEFAULT_DEVICE_CACHE_MEMORY_SIZE,
-                                        DEFAULT_HOST_CACHE_MEMORY_SIZE)
+                                        MAX_DEVICE_VOCABULARY_SIZE)
 from mx_rec.graph.constants import AnchorIteratorOp
-from mx_rec.util.communication.hccl_ops import get_rank_size
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import ClassValidator, StringValidator, SSDFeatureValidator, \
     para_checker_decorator, IntValidator, NumValidator, OptionValidator, OptionalIntValidator, \
@@ -98,12 +96,12 @@ def create_table(key_dtype, dim, name, emb_initializer,
     name = fix_invalid_table_name(name)
 
     dim_bytes = dim.as_list()[0] * FLOAT32_BYTES if isinstance(dim, tf.TensorShape) else dim * FLOAT32_BYTES
-    voc_size_list = [device_vocabulary_size, host_vocabulary_size, ssd_vocabulary_size]
-    check_and_set_default_voc_size(voc_size_list, dim_bytes)
+    (device_vocabulary_size, host_vocabulary_size, ssd_vocabulary_size) = \
+    _check_and_set_vocab_size(device_vocabulary_size, host_vocabulary_size, ssd_vocabulary_size)
 
     config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
-                  device_vocabulary_size=voc_size_list[0], host_vocabulary_size=voc_size_list[1],
-                  ssd_vocabulary_size=voc_size_list[2], ssd_data_path=ssd_data_path,
+                  device_vocabulary_size=device_vocabulary_size, host_vocabulary_size=host_vocabulary_size,
+                  ssd_vocabulary_size=ssd_vocabulary_size, ssd_data_path=ssd_data_path,
                   init_param=init_param, is_save=is_save, all2all_gradients_op=all2all_gradients_op, is_dp=is_dp)
 
     logger.info("Create table: The table name is %s, the key type is %s, the embedding size is %s, "
@@ -117,7 +115,7 @@ def create_table(key_dtype, dim, name, emb_initializer,
     if ConfigInitializer.get_instance().use_dynamic_expansion:
         return HBMDynamicSparseEmbeddingFactory().create_embedding(config)
     # DDR or SSD
-    if voc_size_list[1] > 0:
+    if host_vocabulary_size > 0:
         return ExternalStorageSparseEmbeddingFactory().create_embedding(config)
     # HBM
     return HBMSparseEmbeddingFactory().create_embedding(config)
@@ -221,35 +219,14 @@ def mark_orphan_lookup_key(lookup_key: Tensor) -> Tensor:
     return marked_lookup_key
 
 
-def check_and_set_default_voc_size(voc_size_list: List[int], dim_bytes: int):
+def _check_and_set_vocab_size(
+    device_vocab_size: int, host_vocab_size: int, ssd_vocab_size: int
+) -> Tuple[int, int, int]:
     if ConfigInitializer.get_instance().use_dynamic_expansion:
-        voc_size_list[1] = 0
-        voc_size_list[2] = 0
-        return
-    cache_mode = os.getenv("CACHE_MODE")
-    if not cache_mode and voc_size_list[0] <= 1:
-        raise ValueError("no cache mode, no use_dynamic_expansion, must input dev-voc")
-    if not cache_mode and voc_size_list[1] == 0 and voc_size_list[2] == 0:  # no cache mode, dev-voc not None, use HBM
-        return
-    if not cache_mode and voc_size_list[1] == 0 and voc_size_list[2] > 0:
-        raise ValueError("no cache mode, dev-voc is not none and host-voc is none, ssd-voc must be none too")
-    if not cache_mode and voc_size_list[2] == 0:  # no cache mode, dev-voc/host-voc not None, use DDR
-        return
-    if not cache_mode:  # no cache mode, dev-voc/host-voc/ssd-voc not None, use SSD
-        return
+        logger.info("In dyanmic expansion mode, DDR and SSD vocabulary size will be reset to 0 automatically!")
+        return (device_vocab_size, 0, 0)
 
-    if cache_mode not in [mode.value for mode in CacheModeEnum]:
-        raise ValueError("cache mode need to fit HBM, DDR, SSD")
-    if cache_mode == CacheModeEnum.HBM.value and (voc_size_list[1] > 0 or voc_size_list[2] > 0):
-        raise ValueError("cache mode HBM, host-voc or ssd-voc is need to be none")
-    if cache_mode == CacheModeEnum.DDR.value and voc_size_list[2] > 0:
-        raise ValueError("cache mode DDR, ssd-voc is need to be none")
-    if voc_size_list[0] == 1:
-        default_device_voc_size = int(DEFAULT_DEVICE_CACHE_MEMORY_SIZE / dim_bytes * get_rank_size())  # single rank 2GB
-        voc_size_list[0] = min(default_device_voc_size, MAX_DEVICE_VOCABULARY_SIZE)
-    if (cache_mode == CacheModeEnum.DDR.value or cache_mode == CacheModeEnum.SSD.value) and voc_size_list[1] == 0:
-        default_host_voc_size = int(DEFAULT_HOST_CACHE_MEMORY_SIZE / dim_bytes)  # total 40GB
-        voc_size_list[1] = min(default_host_voc_size, MAX_VOCABULARY_SIZE)
-    if cache_mode == CacheModeEnum.SSD.value and voc_size_list[2] == 0:
-        voc_size_list[2] = MAX_VOCABULARY_SIZE
-    return
+    if host_vocab_size == 0 and ssd_vocab_size > 0:
+        raise ValueError("set SSD vocabulary size must set DDR vocabulary size first")
+
+    return (device_vocab_size, host_vocab_size, ssd_vocab_size)

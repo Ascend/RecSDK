@@ -28,10 +28,6 @@ EMPTY_STR = ""
 # Bytes
 FLOAT32_BYTES = 4
 
-# default emb memory size for hbm、ddr、ssd
-DEFAULT_DEVICE_CACHE_MEMORY_SIZE = 2 * 1024 * 1024 * 1024
-DEFAULT_HOST_CACHE_MEMORY_SIZE = 40 * 1024 * 1024 * 1024
-
 # 获取ConfigInitializer对象实例失败提示信息
 GET_CONFIG_INSTANCE_ERR_MSG = "Please init the environment for mx_rec at first."
 
