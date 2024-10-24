@@ -26,7 +26,8 @@ public:
 
     EmbeddingDDR(const EmbInfo& info, const RankInfo& rankInfo, int inSeed);
 
-    EmbeddingDDR& operator=(const EmbeddingDDR& table);
+    EmbeddingDDR(const EmbeddingDDR&) = delete;
+    EmbeddingDDR& operator=(const EmbeddingDDR&) = delete;
 
     ~EmbeddingDDR();
 
