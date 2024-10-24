@@ -19,8 +19,6 @@ See the License for the specific language governing permissions and
 #include <cstdint>
 #include <string>
 
-#include "tl/expected.hpp"
-
 namespace MxRec {
 
 enum class ErrorType: uint8_t {
@@ -71,17 +69,6 @@ private:
     ErrorType err_;
     std::string msg_;
 };
-
-template <typename T>
-using Expected = tl::expected<T, Error>;
-
-using UnExpected = tl::unexpected<Error>;
-
-template <typename... Args, typename std::enable_if<std::is_constructible<Error, Args&&...>::value>::type* = nullptr>
-UnExpected make_unexpected(Args&&... args)
-{
-    return tl::unexpected<Error>(std::forward<Args>(args)...);
-}
 
 }  // namespace MxRec
 
