@@ -124,19 +124,14 @@ void EmbeddingDDR::LoadKey(const string &savePath, vector<emb_cache_key_t> &keys
     // 暂时向HBM兼容，转成int64_t，后续再归一key类型为uint64_t
     auto buf = static_cast<int64_t*>(malloc(fileSize));
     CheckLoadKeyMallocPtr(buf, fileSize);
-    ssize_t result = fileSystemPtr_->Read(ss.str(), reinterpret_cast<char*>(buf), fileSize);
-    if (result == -1) {
-        free(static_cast<void*>(buf));
-        string errMsg = StringFormat("Read buffer failed, error code:%d.", strerror(errno));
-        auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::IO_ERROR, errMsg);
-        LOG_ERROR(error.ToString());
-        throw std::runtime_error(error.ToString());
-    }
-    if (result != fileSize) {
+
+    try {
+        ssize_t result = fileSystemPtr_->Read(ss.str(), reinterpret_cast<char*>(buf), fileSize);
+        CheckReadKeyFileBytes(result, ss.str(), fileSize);
+    } catch (std::runtime_error& e) {
         free(static_cast<void*>(buf));
         auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::IO_ERROR,
-                           StringFormat("Error: Load keys failed. Expected to read %d bytes, but actually"
-                                        " read %d bytes to file %s.", fileSize, result, ss.str().c_str()));
+                           StringFormat("Failed to read file, error is: %s.", e.what()));
         LOG_ERROR(error.ToString());
         throw std::runtime_error(error.ToString());
     }
@@ -170,7 +165,18 @@ void EmbeddingDDR::LoadEmbedding(const string &savePath, vector<vector<float>> &
     embedStream << ss.str() << "/" << "embedding/slice.data";
 
     CheckFileSystemPtr();
-    ssize_t res = fileSystemPtr_->Read(embedStream.str(), embeddings, 0, hostLoadOffset, embSize_);
+    ssize_t res;
+    try {
+        res = fileSystemPtr_->Read(embedStream.str(), embeddings, 0, hostLoadOffset, embSize_);
+        size_t fileSize = hostLoadOffset.size() * embSize_ * sizeof(float);
+        CheckReadKeyFileBytes(res, ss.str(), fileSize);
+    } catch (std::runtime_error& e) {
+        auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::IO_ERROR,
+                           StringFormat("Failed to read file, error is: %s.", e.what()));
+        LOG_ERROR(error.ToString());
+        throw std::runtime_error(error.ToString());
+    }
+
     LOG_DEBUG("Load embedding done, table:{}, read bytes:{}.", name, res);
 }
 
@@ -195,7 +201,19 @@ void EmbeddingDDR::LoadOptimizerSlot(const string &savePath, vector<vector<float
     for (const auto &param: optimParams) {
         stringstream paramStream;
         paramStream << ss.str() << "/" << optimName + "_" + param << "/slice.data";
-        ssize_t res = fileSystemPtr_->Read(paramStream.str(), optimizerSlots, slotIdx, hostLoadOffset, embSize_);
+
+        ssize_t res;
+        try {
+            res = fileSystemPtr_->Read(paramStream.str(), optimizerSlots, slotIdx, hostLoadOffset, embSize_);
+            size_t fileSize = hostLoadOffset.size() * embSize_ * sizeof(float);
+            CheckReadKeyFileBytes(res, ss.str(), fileSize);
+        } catch (std::runtime_error& e) {
+            auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::IO_ERROR,
+                               StringFormat("Failed to read file, error is: %s.", e.what()));
+            LOG_ERROR(error.ToString());
+            throw std::runtime_error(error.ToString());
+        }
+
         slotIdx++;
         LOG_DEBUG("Load optimizer slot, table:{}, slot:{}, read bytes:{}.", name, param, res);
     }

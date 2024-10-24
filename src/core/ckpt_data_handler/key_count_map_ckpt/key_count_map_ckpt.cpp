@@ -84,9 +84,6 @@ void KeyCountMapCkpt::SetDataset(CkptDataType dataType, string embName, CkptTran
     const auto& transArr = transferData.int64Arr;
 
     for (size_t i = 0; i < transArr.size(); i += embHashElmtNum) {
-        if (i + embHashElmtNum > transArr.size()) {
-            // this is an error, need to log this
-        }
         int64_t key { transArr.at(i) };
         singleKeyCountMap[key] = transArr.at(i + 1);
     }
