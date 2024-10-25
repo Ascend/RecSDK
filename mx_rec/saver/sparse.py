@@ -22,9 +22,10 @@ import numpy as np
 import tensorflow as tf
 
 from mx_rec.util.initialize import ConfigInitializer
-from mx_rec.validator.validator import para_checker_decorator, ClassValidator
+from mx_rec.validator.validator import para_checker_decorator, ClassValidator, DirectoryValidator
 from mx_rec.util.log import logger
 from mx_rec.saver.saver import validate_read_file
+from mx_rec.constants.constants import HDFS_FILE_PREFIX
 
 
 class SparseProcessor:
@@ -94,8 +95,20 @@ class SparseProcessor:
             emb_data = self.get_embedding(table_dir)
             transformed_data = dict(zip(key[:], emb_data[:]))
             save_path = os.path.join(table_dir, self.export_name + ".npy")
-            with tf.io.gfile.GFile(save_path, "wb") as file:
-                np.save(file, transformed_data)
+            if any([True if save_path.startswith(prefix) else False for prefix in HDFS_FILE_PREFIX]):
+                with tf.io.gfile.GFile(save_path, "wb") as file:
+                    np.save(file, transformed_data)
+            else:
+                dir_validator = DirectoryValidator("table_dir", table_dir)
+                dir_validator.check_not_soft_link()
+                try:
+                    dir_validator.check()
+                except ValueError as e:
+                    raise ValueError(f"table_dir:{table_dir} can't be soft link") from e
+                file_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                file_mode = 0o640
+                with os.fdopen(os.open(save_path, file_flags, file_mode), "wb") as file:
+                    np.save(file, transformed_data)
 
     def get_embedding(self, table_dir):
         emb_dir = os.path.join(table_dir, self.device_emb_dir)
