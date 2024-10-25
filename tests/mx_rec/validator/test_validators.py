@@ -20,9 +20,11 @@ import sys
 import tempfile
 import unittest
 
+from google.protobuf.internal.type_checkers import IntValueChecker
+
 from mx_rec.validator.validator import ClassValidator, Convert2intValidator, DirectoryValidator, IntValidator, \
     NumValidator, OptionalIntValidator, OptionalStringValidator, OptionValidator, para_checker_decorator, \
-    StringValidator, ValueCompareValidator, FloatValidator, SSDFeatureValidator
+    StringValidator, ValueCompareValidator, FloatValidator, SSDFeatureValidator, ListValidator
 
 sys.modules['mxrec_pybind'] = __import__('os')
 
@@ -44,6 +46,92 @@ class ParameterCheckerTest(unittest.TestCase):
         :return: 无
         """
         super().tearDown()
+
+    def test_length_list_validator(self):
+        self.assertTrue(ListValidator("val", [123, 456], IntValidator, list_max_length=2).
+                        check_list_length().check().is_valid())
+
+        try:
+            (ListValidator("val", [123, 456, 789], IntValidator, list_max_length=2).
+             check_list_length().check().is_valid())
+        except ValueError as exp:
+            self.assertEqual(type(exp), ValueError)
+        else:
+            self.fail("ValueError not raised.")
+
+        try:
+            (ListValidator("val", [123], IntValidator, list_min_length=2, list_max_length=3).
+             check_list_length().check().is_valid())
+        except ValueError as exp:
+            self.assertEqual(type(exp), ValueError)
+        else:
+            self.fail("ValueError not raised.")
+
+    def test_elem_of_list_validator(self):
+        self.assertTrue(ListValidator(
+            name="whatever",
+            value=[123, 1, 2],
+            sub_checker=IntValidator,
+            optional_check_list=["check_value"],
+            list_max_length=3,
+            sub_args={
+                "min_value":1,
+                "max_value":324
+            }).check_list_length().check().is_valid())
+
+        try:
+            self.assertTrue(ListValidator(
+                name="whatever",
+                value=[123, 1, 2],
+                sub_checker=IntValidator,
+                optional_check_list=["check_value"],
+                list_max_length=3,
+                sub_args={
+                    "min_value": 2,
+                    "max_value": 324
+                }).check_list_length().check().is_valid())
+        except ValueError as exp:
+            self.assertEqual(type(exp), ValueError)
+        else:
+            self.fail("ValueError not raised.")
+
+    def test_mutil_layer_list_validator(self):
+        self.assertTrue(ListValidator(
+            name="whatever",
+            value=[[123, 1, 2]],
+            sub_checker=ListValidator,
+            list_max_length=3,
+            optional_check_list=["check_list_length"],
+            sub_args={
+                "sub_checker": IntValidator,
+                "optional_check_list": ["check_value"],
+                "list_max_length": 3,
+                "sub_args": {
+                    "min_value": 1,
+                    "max_value": 324
+                }
+            }).check_list_length().check().is_valid())
+
+        try:
+            self.assertTrue(ListValidator(
+                name="whatever",
+                value=[[123, 1, 2]],
+                sub_checker=ListValidator,
+                list_max_length=3,
+                optional_check_list=["check_list_length"],
+                sub_args={
+                    "sub_checker": IntValidator,
+                    "optional_check_list": ["check_value"],
+                    "list_max_length": 3,
+                    "sub_args": {
+                        "min_value": 2,
+                        "max_value": 324
+                    }
+                }).check_list_length().check().is_valid())
+        except ValueError as exp:
+            self.assertEqual(type(exp), ValueError)
+        else:
+            self.fail("ValueError not raised.")
 
     def test_string_validator_max_len_parameter(self):
         try:
