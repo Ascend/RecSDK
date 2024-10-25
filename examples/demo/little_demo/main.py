@@ -38,7 +38,7 @@ from config import (GLOBAL_RANDOM_SEED, MODIFY_GRAPH_FLAG, MULTI_LOOKUP_TIMES,
                     USE_DYNAMIC_EXPANSION, USE_MULTI_LOOKUP, USE_ONE_SHOT,
                     USE_TIMESTAMP, USE_DP, Config)
 from dataset import generate_dataset
-from logger import logger
+from demo_logger import logger
 from model import MyModel
 from optimizer import create_dense_and_sparse_optimizer
 from run_mode import RunMode, UseMode
