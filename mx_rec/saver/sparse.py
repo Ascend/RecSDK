@@ -17,12 +17,14 @@
 
 import os
 import json
+from typing import List
 
 import numpy as np
 import tensorflow as tf
 
+from mx_rec.constants.constants import MAX_INT32
 from mx_rec.util.initialize import ConfigInitializer
-from mx_rec.validator.validator import para_checker_decorator, ClassValidator
+from mx_rec.validator.validator import para_checker_decorator, ClassValidator, ListValidator, OrValidator, AndValidator
 from mx_rec.util.log import logger
 from mx_rec.saver.saver import validate_read_file
 
@@ -30,7 +32,7 @@ from mx_rec.saver.saver import validate_read_file
 class SparseProcessor:
     single_instance = None
 
-    def __init__(self, table_list):
+    def __init__(self, table_list: List[str]):
         self.export_name = "key-emb"
         self.device_dir_list = ["HashTable", "HBM"]
         self.host_dir_list = ["HashTable", "DDR"]
@@ -137,7 +139,21 @@ class SparseProcessor:
 
 
 @para_checker_decorator(check_option_list=[
-    ("table_list", ClassValidator, {"classes": (list, type(None))})
+    ("table_list", OrValidator, {"options": [
+        (ClassValidator, {"classes": type(None)}),
+        (AndValidator, {"options": [
+            (ClassValidator, {"classes": list}),
+            (ListValidator, {
+                "sub_checker": ClassValidator,
+                "list_max_length": MAX_INT32,
+                "list_min_length": 1,
+                "sub_args": {
+                    "classes": str
+                }
+            },
+             ["check_list_length"])
+        ]})
+    ]})
 ])
 def export(table_list=None):
     empty_value = 0
