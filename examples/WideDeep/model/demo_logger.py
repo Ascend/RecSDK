@@ -11,4 +11,4 @@ def get_logger(log_level: str):
     return wide_deep_logger
 
 
-logger = get_logger("Debug")
+logger = get_logger("DEBUG")
