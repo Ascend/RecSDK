@@ -14,14 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-
 from typing import List, Tuple, Any, Callable, Dict, Optional, Union, Type
 import re
 
 import os
 import inspect
 import functools
+import stat
 
 import tensorflow as tf
 
@@ -614,4 +613,11 @@ class FileValidator(StringValidator):
         file_gid = stat_info.st_gid
         self.register_checker(lambda: process_uid == file_uid or process_gid == file_gid,
                               "Invalid log file user or group.")
+        return self
+
+    def check_file_mode(self, unsupported_mode=0o022):
+        stat_info = os.stat(self.value)
+        mode = stat.S_IMODE(stat_info.st_mode)
+        self.register_checker(lambda: mode & unsupported_mode == 0,
+                              f"Current file mode {oct(mode)} is unsupported")
         return self
