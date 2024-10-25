@@ -40,7 +40,7 @@ from mx_rec.util.variable import get_dense_and_sparse_variable
 from npu_bridge.npu_init import *
 
 from config import sess_config, Config, SSD_DATA_PATH, CacheModeEnum
-from logger import logger
+from demo_logger import logger
 from model import MyModel
 from optimizer import get_dense_and_sparse_optimizer
 
