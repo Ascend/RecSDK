@@ -40,7 +40,7 @@ from mx_rec.util.variable import get_dense_and_sparse_variable
 
 from config import sess_config, Config, SSD_DATA_PATH, CacheModeEnum
 from model import MyModel
-from logger import logger
+from demo_logger import logger
 from optimizer import get_dense_and_sparse_optimizer
 
 

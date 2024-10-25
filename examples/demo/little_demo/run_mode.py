@@ -33,7 +33,7 @@ from mx_rec.util.variable import get_dense_and_sparse_variable
 
 from config import (PRECISION_CHECK, USE_DETERMINISTIC,
                     construct_npu_sess_config)
-from logger import logger
+from demo_logger import logger
 from utils import (GLOBAL_RANK_SIZE, LOCAL_RANK_ID, PRECISION_CHECK_PATH,
                    PRECISION_DUMP_STEP, RANK_ZERO, PrecisionDumpInfo)
 

@@ -21,7 +21,7 @@ from mx_rec.optimizers.lazy_adam_by_addr import create_hash_optimizer_by_address
 from mx_rec.util.initialize import ConfigInitializer
 
 from delay_loss_scale import DenseLossScaleOptimizer, SparseLossScaleOptimizer
-from logger import logger
+from demo_logger import logger
 
 def get_dense_and_sparse_optimizer(cfg):
     dense_optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=cfg.learning_rate[0])
