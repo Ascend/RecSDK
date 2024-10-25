@@ -18,7 +18,7 @@
 import tensorflow as tf
 from mx_rec.constants.constants import ASCEND_TIMESTAMP
 
-from logger import logger
+from demo_logger import logger
 from nn_model_build import LittleModel
 from nn_optim import get_train_op
 
