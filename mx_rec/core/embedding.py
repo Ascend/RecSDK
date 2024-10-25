@@ -33,17 +33,19 @@ from mx_rec.constants.constants import (FLOAT32_BYTES, MAX_INT32, All2allGradien
 from mx_rec.graph.constants import AnchorIteratorOp
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import ClassValidator, StringValidator, SSDFeatureValidator, \
-    para_checker_decorator, IntValidator, NumValidator, OptionValidator, OptionalIntValidator, \
-    OptionalStringValidator, FloatValidator
+    para_checker_decorator, IntValidator, OptionValidator, OptionalIntValidator, \
+    OptionalStringValidator, FloatValidator, TensorShapeValidator, OrValidator, ListValidator
 from mx_rec.validator.emb_validator import check_emb_multi_lookup_times
 from mx_rec.util.normalization import fix_invalid_table_name
 from mx_rec.util.log import logger
 
 
 @para_checker_decorator(check_option_list=[
-    ("key_dtype", OptionValidator, {"options": (tf.int64, tf.int32, tf.string)}),
-    ("dim", ClassValidator, {"classes": (int, tf.TensorShape)}),
-    ("dim", NumValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
+    ("key_dtype", OptionValidator, {"options": (tf.int64, tf.int32)}),
+    ("dim", OrValidator, {"options": [
+        (IntValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
+        (TensorShapeValidator, {"int_checker_args":{"min_value": 1, "max_value": 8192}},)
+    ]}),
     ("name", StringValidator, {"min_len": 1, "max_len": 100}, ["check_string_length", "check_whitelist"]),
     ("emb_initializer", ClassValidator, {"classes": (InitializerV1, InitializerV2)}),
     (["ssd_vocabulary_size", "ssd_data_path", "host_vocabulary_size"], SSDFeatureValidator),
@@ -51,7 +53,9 @@ from mx_rec.util.log import logger
      ["check_value"]),
     ("host_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
     ("ssd_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
-    ("ssd_data_path", ClassValidator, {"classes": (list, tuple)}),
+    ("ssd_data_path", ListValidator,
+     {"sub_checker": ClassValidator, "list_max_length": MAX_INT32, "sub_args": {"classes": str}},
+     ["check_list_length"]),
     ("is_save", ClassValidator, {"classes": (bool,)}),
     ("is_dp", ClassValidator, {"classes": (bool,)}),
     ("init_param", FloatValidator, {"min_value": -10, "max_value": 10}, ["check_value"]),
