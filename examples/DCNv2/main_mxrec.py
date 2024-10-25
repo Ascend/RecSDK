@@ -38,7 +38,7 @@ from mx_rec.util.variable import get_dense_and_sparse_variable
 
 from model import MyModel
 from config import sess_config, Config, SSD_DATA_PATH, CacheModeEnum
-from logger import logger
+from demo_logger import logger
 from optimizer import get_dense_and_sparse_optimizer
 
 npu_plugin.set_device_sat_mode(0)
