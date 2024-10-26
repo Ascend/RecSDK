@@ -14,15 +14,19 @@
 # limitations under the License.
 # ==============================================================================
 
-import enum
 import os
 
 import tensorflow as tf
+from enum import Enum
 from tensorflow.core.protobuf.rewriter_config_pb2 import RewriterConfig
 
-from mx_rec.constants.constants import CacheModeEnum
 
 SSD_DATA_PATH = ["ssd_data"]
+
+class CacheModeEnum(Enum):
+    HBM = "HBM"
+    DDR = "DDR"
+    SSD = "SSD"
 
 
 class LearningRateScheduler:
