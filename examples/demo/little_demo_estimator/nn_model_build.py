@@ -15,6 +15,7 @@
 # limitations under the License.
 # ==============================================================================
 
+import os
 import tensorflow as tf
 from tensorflow import Tensor
 from mx_rec.util.tf_version_adapter import npu_ops
@@ -137,16 +138,13 @@ class LittleModel:
 
     def _get_embedding_list(self):
 
-        # 如需验证DDR模式，请按照key数量、batch unique数量合理设置device与host表大小。
-        # 验证DDR的配置参考：建议跑dynamic避免调参。数据集key总量大于device表，小于device+host；一个batch的unique key数量小于device表。
-        # 验证SSD的配置参考：建议跑dynamic避免调参。数据集key总量大于device+host；一个batch的unique key数量小于device表。
-        hbm_test_cfg = {"device_vocabulary_size": self.user_vocab_size, "host_vocabulary_size": 0}
-        ddr_test_cfg = {"device_vocabulary_size": int(self.user_vocab_size * 0.4),
-                        "host_vocabulary_size": int(self.user_vocab_size * 1.0)}
+        hbm_test_cfg = {"device_vocabulary_size": self.cfg.user_vocab_size, "host_vocabulary_size": 0}
+        ddr_test_cfg = {"device_vocabulary_size": int(self.cfg.user_vocab_size * 0.4),
+                        "host_vocabulary_size": int(self.cfg.user_vocab_size * 1.0)}
         ssd_test_cfg = {
-            "device_vocabulary_size": int(self.user_vocab_size * 0.4),
-            "host_vocabulary_size": int(self.user_vocab_size * 0.8),
-            "ssd_vocabulary_size": int(self.user_vocab_size * 1.8), "ssd_data_path": _SSD_SAVE_PATH
+            "device_vocabulary_size": int(self.cfg.user_vocab_size * 0.4),
+            "host_vocabulary_size": int(self.cfg.user_vocab_size * 0.8),
+            "ssd_vocabulary_size": int(self.cfg.user_vocab_size * 1.8)
         }
         cache_mode_dict = {CacheModeEnum.HBM.value: hbm_test_cfg, CacheModeEnum.DDR.value: ddr_test_cfg,
                            CacheModeEnum.SSD.value: ssd_test_cfg}
@@ -154,7 +152,7 @@ class LittleModel:
         cache_mode = os.getenv("CACHE_MODE")
         if cache_mode not in cache_mode_dict.keys():
             raise ValueError(f"cache mode must in {list(cache_mode_dict.keys())}, get:{cache_mode}")
-        if cache_mode in ["DDR", "SSD"] and not USE_DYNAMIC:
+        if cache_mode in ["DDR", "SSD"] and not self.use_dynamic:
             logger.warning("when cache_mode in [DDR, SSD], suggest use_dynamic=true to avoid tuning size parameter")
 
         user_hashtable = create_table(key_dtype=tf.int64,
