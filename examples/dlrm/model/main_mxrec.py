@@ -39,7 +39,7 @@ import mx_rec.util as mxrec_util
 from mx_rec.util.variable import get_dense_and_sparse_variable
 
 from optimizer import get_dense_and_sparse_optimizer
-from config import sess_config, CacheModeEnum, Config, SSD_DATA_PATH
+from config import sess_config, Config, SSD_DATA_PATH, CacheModeEnum
 from demo_logger import logger
 from model import MyModel
 
