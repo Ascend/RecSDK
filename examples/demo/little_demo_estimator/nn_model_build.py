@@ -151,7 +151,7 @@ class LittleModel:
                            CacheModeEnum.SSD.value: ssd_test_cfg}
 
         cache_mode = os.getenv("CACHE_MODE")
-        use_dynamic = ConfigInitializer.get_instance().use_dynamic
+        use_dynamic = not ConfigInitializer.get_instance().use_static
         if cache_mode not in cache_mode_dict.keys():
             raise ValueError(f"cache mode must in {list(cache_mode_dict.keys())}, get:{cache_mode}")
         if cache_mode in ["DDR", "SSD"] and not use_dynamic:
