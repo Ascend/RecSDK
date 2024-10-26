@@ -21,8 +21,9 @@ from tensorflow import Tensor
 from mx_rec.util.tf_version_adapter import npu_ops
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.core.embedding import create_table, sparse_lookup
-from mx_rec.constants.constants import ASCEND_TIMESTAMP, CacheModeEnum
+from mx_rec.constants.constants import ASCEND_TIMESTAMP
 
+from config import CacheModeEnum
 from utils import FeatureSpecIns
 
 

@@ -23,7 +23,7 @@ from glob import glob
 import numpy as np
 import tensorflow as tf
 
-from mx_rec.constants.constants import ASCEND_TIMESTAMP, CacheModeEnum
+from mx_rec.constants.constants import ASCEND_TIMESTAMP
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.helper import get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
@@ -33,7 +33,7 @@ from mx_rec.util.communication.hccl_ops import get_rank_size
 from mx_rec.util.initialize import init, terminate_config_initializer
 from mx_rec.util.variable import get_dense_and_sparse_variable
 
-from config import (GLOBAL_RANDOM_SEED, MODIFY_GRAPH_FLAG, MULTI_LOOKUP_TIMES,
+from config import (CacheModeEnum, GLOBAL_RANDOM_SEED, MODIFY_GRAPH_FLAG, MULTI_LOOKUP_TIMES,
                     PRECISION_CHECK, USE_DETERMINISTIC, USE_DYNAMIC,
                     USE_DYNAMIC_EXPANSION, USE_MULTI_LOOKUP, USE_ONE_SHOT,
                     USE_TIMESTAMP, USE_DP, Config)
