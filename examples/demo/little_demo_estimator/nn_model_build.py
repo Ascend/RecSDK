@@ -19,6 +19,7 @@ import os
 import tensorflow as tf
 from tensorflow import Tensor
 from mx_rec.util.tf_version_adapter import npu_ops
+from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.constants.constants import ASCEND_TIMESTAMP, CacheModeEnum
 
@@ -150,9 +151,10 @@ class LittleModel:
                            CacheModeEnum.SSD.value: ssd_test_cfg}
 
         cache_mode = os.getenv("CACHE_MODE")
+        use_dynamic = ConfigInitializer.get_instance().use_dynamic
         if cache_mode not in cache_mode_dict.keys():
             raise ValueError(f"cache mode must in {list(cache_mode_dict.keys())}, get:{cache_mode}")
-        if cache_mode in ["DDR", "SSD"] and not self.use_dynamic:
+        if cache_mode in ["DDR", "SSD"] and not use_dynamic:
             logger.warning("when cache_mode in [DDR, SSD], suggest use_dynamic=true to avoid tuning size parameter")
 
         user_hashtable = create_table(key_dtype=tf.int64,
