@@ -275,7 +275,7 @@ if __name__ == "__main__":
     cache_mode = os.getenv("CACHE_MODE")
     if cache_mode not in cache_mode_dict.keys():
         raise ValueError(f"cache mode must in {list(cache_mode_dict.keys())}, get:{cache_mode}")
-    if cache_mode in ["DDR", "SSD"] and not USE_DYNAMIC:
+    if cache_mode in [CacheModeEnum.DDR.value, CacheModeEnum.SSD.value] and not USE_DYNAMIC:
         logger.warning("when cache_mode in [DDR, SSD], suggest use_dynamic=true to avoid tuning size parameter")
 
     emb_initializer = tf.compat.v1.constant_initializer(0.1) if USE_DETERMINISTIC or PRECISION_CHECK \
