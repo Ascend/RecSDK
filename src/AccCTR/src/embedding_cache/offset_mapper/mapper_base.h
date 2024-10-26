@@ -281,7 +281,7 @@ public:
 
     MapperBase() = default;
 
-    ~MapperBase() = default;
+    virtual ~MapperBase() = default;
 
     bool Initialize(uint32_t reserve)
     {
@@ -298,6 +298,9 @@ public:
             uint32_t i = 0;
             while (i < gPrimesCount && gPrimes[i] < bucketCount) {
                 i++;
+            }
+            if (i == gPrimesCount) {
+                i--;
             }
             bucketCount = gPrimes[i];
         }
