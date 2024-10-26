@@ -38,9 +38,9 @@ class Config:
         self.label_type = tf.float32
         self.value_type = tf.float32
 
-        self.item_range = 10000
-        self.user_range = 200000
-        self.category_range = 5000
+        self.item_range = 80000 * get_rank_size() if not USE_DP else 80000
+        self.user_range = 200000 * get_rank_size() if not USE_DP else 200000
+        self.category_range = 5000 * get_rank_size() if not USE_DP else 5000
         self.item_feat_cnt = 16
         self.user_feat_cnt = 8
         self.category_feat_cnt = 3
