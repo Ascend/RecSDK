@@ -17,10 +17,11 @@
 
 import os
 import math
+from enum import Enum
 
 import tensorflow as tf
-from enum import Enum
 from mx_rec.util.communication.hccl_ops import get_rank_size
+
 
 class CacheModeEnum(Enum):
     HBM = "HBM"

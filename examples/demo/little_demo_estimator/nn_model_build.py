@@ -23,9 +23,8 @@ from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.constants.constants import ASCEND_TIMESTAMP
 
-from config import CacheModeEnum
 from utils import FeatureSpecIns
-
+from config import CacheModeEnum
 
 class LittleModel:
     def __init__(self, params, cfg, mode, features, create_fs_params=None, access_and_evict_config_dict=None):

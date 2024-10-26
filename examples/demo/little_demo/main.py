@@ -33,10 +33,10 @@ from mx_rec.util.communication.hccl_ops import get_rank_size
 from mx_rec.util.initialize import init, terminate_config_initializer
 from mx_rec.util.variable import get_dense_and_sparse_variable
 
-from config import (CacheModeEnum, GLOBAL_RANDOM_SEED, MODIFY_GRAPH_FLAG, MULTI_LOOKUP_TIMES,
+from config import (GLOBAL_RANDOM_SEED, MODIFY_GRAPH_FLAG, MULTI_LOOKUP_TIMES,
                     PRECISION_CHECK, USE_DETERMINISTIC, USE_DYNAMIC,
                     USE_DYNAMIC_EXPANSION, USE_MULTI_LOOKUP, USE_ONE_SHOT,
-                    USE_TIMESTAMP, USE_DP, Config)
+                    USE_TIMESTAMP, USE_DP, Config, CacheModeEnum)
 from dataset import generate_dataset
 from demo_logger import logger
 from model import MyModel
