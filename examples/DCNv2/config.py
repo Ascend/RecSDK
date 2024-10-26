@@ -15,13 +15,14 @@
 # ==============================================================================
 
 import os
+from enum import Enum
 
 import tensorflow as tf
-from enum import Enum
 from tensorflow.core.protobuf.rewriter_config_pb2 import RewriterConfig
 
 
 SSD_DATA_PATH = ["ssd_data"]
+
 
 class CacheModeEnum(Enum):
     HBM = "HBM"

@@ -14,15 +14,15 @@
 # limitations under the License.
 # ==============================================================================
 
-import enum
 import os
+from enum import Enum
 
 import tensorflow as tf
-from enum import Enum
 from tensorflow.core.protobuf.rewriter_config_pb2 import RewriterConfig
 from npu_bridge.estimator.npu.npu_config import NPURunConfig
 
 SSD_DATA_PATH = ["ssd_data"]
+
 
 class CacheModeEnum(Enum):
     HBM = "HBM"

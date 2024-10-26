@@ -13,11 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import math
 import os
+import math
+from enum import Enum
 
 import tensorflow as tf
-from enum import Enum
 from mx_rec.util.communication.hccl_ops import get_rank_size
 from tensorflow.core.protobuf.rewriter_config_pb2 import RewriterConfig
 
@@ -42,6 +42,7 @@ except ValueError as err:
         "USE_MULTI_LOOKUP or USE_MODIFY_GRAPH or USE_TIMESTAMP or USE_ONE_SHOT or USE_DETERMINISTIC"
         "or USE_DP only 0 or 1 is supported."
     ) from err
+
 
 class CacheModeEnum(Enum):
     HBM = "HBM"
