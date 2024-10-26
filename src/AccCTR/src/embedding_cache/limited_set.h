@@ -43,10 +43,18 @@ public:
     ~LimitedSet()
     {
         for (auto &node : nodes) {
-            delete node;
+            if (node != nullptr) {
+                delete node;
+            }
         }
-        delete head;
-        delete tail;
+        if (head != nullptr) {
+            delete head;
+            head = nullptr;
+        }
+        if (tail != nullptr) {
+            delete tail;
+            tail = nullptr;
+        }
     }
 
     LimitedSet(const LimitedSet& other): head(new Node(NODE_DEFAULT_VALUE)), tail(new Node(NODE_DEFAULT_VALUE))

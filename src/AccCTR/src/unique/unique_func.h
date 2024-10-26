@@ -153,6 +153,7 @@ public:
     {
         if (table_ != nullptr) {
             free(table_);
+            table_ = nullptr;
         }
     }
 
