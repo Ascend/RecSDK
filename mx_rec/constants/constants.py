@@ -146,12 +146,6 @@ class EnvOption(Enum):
     OMPI_COMM_WORLD_RANK = "OMPI_COMM_WORLD_RANK"
 
 
-class CacheModeEnum(Enum):
-    HBM = "HBM"
-    DDR = "DDR"
-    SSD = "SSD"
-
-
 class DataName(Enum):
     KEY = "key"
     EMBEDDING = "embedding"

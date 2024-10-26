@@ -81,6 +81,7 @@ export TF_CPP_MIN_LOG_LEVEL=3 # tensorflow日志级别,3对应FATAL
 export ASCEND_GLOBAL_LOG_LEVEL=3 # “设置日志级别”章节0:debug, 1:info, 2:warning, 3:error, 4:NULL
 export MXREC_MODE="ASC"
 export USE_MODE="train_and_evaluate" # 支持[train, predict, train_and_evaluate],train相关模式将删除./_rank*目录
+export CACHE_MODE="HBM" # cache mode support: HBM, DDR, SSD
 
 ################# 参数配置 ######################
 export USE_DYNAMIC=1            # 0：静态shape；1：动态shape
