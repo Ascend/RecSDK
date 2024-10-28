@@ -468,7 +468,10 @@ class SSDFeatureValidator(Validator):
         return self
 
     def _is_invalid_path(self, path: str):
-        return not os.path.exists(path) or not os.path.isdir(path) or os.path.islink(path) or ".." in path
+        path_exists = os.path.exists(path)
+        path_is_dir = os.path.isdir(path)
+        path_contains_softlink = os.path.abspath(path) != os.path.realpath(path)
+        return not path_exists or not path_is_dir or path_contains_softlink or ".." in path
 
 
 class NumValidator(Validator):
