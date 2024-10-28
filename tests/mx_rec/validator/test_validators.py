@@ -280,6 +280,34 @@ class ParameterCheckerTest(unittest.TestCase):
             result = False
         self.assertFalse(result)
 
+    def test_ssd_feature_validator_when_softlink_path(self):
+        @para_checker_decorator(check_option_list=[
+            ("name", OptionalStringValidator, {"min_len": 1, "max_len": 255},
+             ["check_string_length", "check_whitelist"]),
+            (["ssd_vocabulary_size", "ssd_data_path", "host_vocabulary_size"], SSDFeatureValidator)])
+        def demo_func(name, host_vocabulary_size=1,
+                      ssd_vocabulary_size=1,
+                      ssd_data_path="./test_link"):
+            return True
+
+        test_file_name = "test_file"
+        test_link_name = "test_link"
+        with os.fdopen(os.open(test_file_name, os.O_WRONLY | os.O_CREAT, 0o600), "w") as file:
+            pass
+        os.symlink(test_file_name, test_link_name)
+
+        try:
+            result = demo_func(name="host", host_vocabulary_size=0,
+                               ssd_vocabulary_size=1,
+                               ssd_data_path="./")
+        except ValueError:
+            result = False
+        finally:
+            os.remove(test_file_name)
+            os.remove(test_link_name)
+
+        self.assertFalse(result)
+
     def test_check_value_for_open_interval(self):
         @para_checker_decorator(check_option_list=[
             ("beta1", FloatValidator, {"min_value": 0, "max_value": 1},
