@@ -34,11 +34,11 @@ from mx_rec.optimizers.base import CustomizedOptimizer, control_update_op_decora
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.constants.constants import MAX_INT32
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, StringValidator, \
-    FloatValidator
+    FloatValidator, LearningRateValidator
 
 
 @para_checker_decorator(check_option_list=[
-    ("learning_rate", FloatValidator, {"min_value": 0.0, "max_value": 10.0}, ["check_value"]),
+    ("learning_rate", LearningRateValidator, {"min_value": 0.0, "max_value": 10.0}, ["check_value"]),
     ("initial_accumulator_value", FloatValidator, {"min_value": 0.0, "max_value": 1.0},
      ["check_value_for_left_open_interval"]),
     ("learning_rate_power", FloatValidator, {"min_value": -MAX_INT32 * 1.0, "max_value": 0.0}, ["check_value"]),
