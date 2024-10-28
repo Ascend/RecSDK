@@ -108,7 +108,7 @@ class SparseProcessor:
                     dir_validator.check()
                 except ValueError as e:
                     raise ValueError(f"table_dir:{table_dir} can't be soft link") from e
-                file_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                file_flags = os.O_WRONLY | os.O_CREAT
                 file_mode = 0o640
                 with os.fdopen(os.open(save_path, file_flags, file_mode), "wb") as file:
                     np.save(file, transformed_data)

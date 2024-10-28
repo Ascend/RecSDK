@@ -271,7 +271,7 @@ class Saver(object):
                     attribute = attribute.tostring()
                     file.write(attribute)
             else:
-                file_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                file_flags = os.O_WRONLY | os.O_CREAT
                 file_mode = 0o640
                 with os.fdopen(os.open(attribute_dir, file_flags, file_mode), "wb") as file:
                     file.write(attribute.tostring())
@@ -706,7 +706,7 @@ def merge_multi_files(upper_dir: str):
     if check_file_system_is_hdfs(outfile_path):
         outfile = tf.io.gfile.GFile(outfile_path, "wb")
     else:
-        file_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        file_flags = os.O_WRONLY | os.O_CREAT
         file_mode = 0o640
         outfile = os.fdopen(os.open(outfile_path, file_flags, file_mode), "wb")
     
@@ -795,7 +795,7 @@ def update_model_index(save_dir: str, model_index: Dict[str, Union[str, int]]):
             dir_validator.check()
         except ValueError as e:
             raise ValueError(f"save_dir:{save_dir} can't be soft link") from e
-        file_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        file_flags = os.O_WRONLY | os.O_CREAT
         file_mode = 0o640
         with os.fdopen(os.open(model_index_file, file_flags, file_mode), "w") as f:
             json.dump(model_index_list, f, ensure_ascii=False, separators=(",", ": "), indent=4)
@@ -813,7 +813,7 @@ def write_delta_export_time_ms(save_dir: str, delta_export_time_ms: dict):
             dir_validator.check()
         except ValueError as e:
             raise ValueError(f"save_dir:{save_dir} can't be soft link") from e
-        file_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        file_flags = os.O_WRONLY | os.O_CREAT
         file_mode = 0o640
         with os.fdopen(os.open(delta_export_time_ms_file, file_flags, file_mode), "w") as f:
             json.dump(delta_export_time_ms, f, indent=4)
@@ -959,7 +959,7 @@ def write_base_table_to_file(save_dir: str, base_table: dict):
                 with tf.io.gfile.GFile(target_data_dir, "wb") as file:
                     file.write(v.tostring())
             else:
-                file_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                file_flags = os.O_WRONLY | os.O_CREAT
                 file_mode = 0o640
                 with os.fdopen(os.open(target_attribute_dir, file_flags, file_mode), "wb") as file:
                     file.write(attribute.tostring())
