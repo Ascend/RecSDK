@@ -585,6 +585,24 @@ class TensorShapeValidator(Validator):
                               self.msg if self.msg else f"type of '{self.name}' is not TensorShape or ndims is not 1")
 
 
+class LearningRateValidator(FloatValidator):
+    def __init__(self, name:str, value: Union[tf.Tensor, float], min_value: float, max_value: float):
+        if isinstance(value, tf.Tensor):
+            sess = tf.Session() if tf.__version__.startswith("1.") else tf.compat.v1.Session()
+            try:
+                value = sess.run(value).item()
+            except Exception as e:
+                # 当前仅支持数值类型Tensor和feed数值类型的tf.PlaceHolder，其它tensor可能会导致程序异常
+                logger.warning("[Validator] Parameter %s is passed, and an exception occurred while getting the value "
+                               "in the tensor: \n%s\n. Ensure that the passed parameter is a constant tensor or "
+                               "a tf.PlaceHolder that feeds a constant value. Otherwise, an exception may occur.",
+                               value, e)
+
+                value = 0.0 if min_value is None else float(min_value)
+
+        super().__init__(name, value, min_value=min_value, max_value=max_value)
+
+
 class OptionalIntValidator(IntValidator):
     """
     Int type validator if value is not None
