@@ -36,7 +36,6 @@ cmake -DCMAKE_BUILD_TYPE=Release \
     -DASCEND_PATH="$ascend_path" \
     -DABSEIL_PATH="$1" \
     -DSECUREC_PATH="$2"/../opensource/securec \
-    -DTHIRD_PARTY_PATH="$2"/third_party \
     -DCMAKE_INSTALL_PREFIX="$2"/output \
     -DBUILD_CUST="$3" ..
 make -j8
