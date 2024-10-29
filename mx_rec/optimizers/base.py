@@ -81,7 +81,7 @@ def get_unique_keys(table_name: str, max_lookup_vec_size: int, is_expansion: boo
 
 
 class CustomizedOptimizer:
-
+    MAX_COUNTER_COUNT = 1000
     name_counter = defaultdict(int)
 
     def __init__(self):
@@ -136,8 +136,11 @@ class CustomizedOptimizer:
             CustomizedOptimizer.name_counter[name] += 1
             count = CustomizedOptimizer.name_counter.get(name)
 
-        else:
+        elif len(CustomizedOptimizer.name_counter) <= CustomizedOptimizer.MAX_COUNTER_COUNT:
             count = CustomizedOptimizer.name_counter[name]
+        else:
+            raise ValueError(f"the optimizer exceeds the max num limitation")
+
         self.unique_name = name + "_" + str(count)
         self.base_name = name
 

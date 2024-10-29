@@ -19,10 +19,14 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
+
+import tensorflow as tf
+from tensorflow.python.client.session import BaseSession
 
 from mx_rec.validator.validator import ClassValidator, Convert2intValidator, DirectoryValidator, IntValidator, \
     NumValidator, OptionalIntValidator, OptionalStringValidator, OptionValidator, para_checker_decorator, \
-    StringValidator, ValueCompareValidator, FloatValidator, SSDFeatureValidator
+    StringValidator, ValueCompareValidator, FloatValidator, SSDFeatureValidator, ListValidator, LearningRateValidator
 
 sys.modules['mxrec_pybind'] = __import__('os')
 
@@ -44,6 +48,129 @@ class ParameterCheckerTest(unittest.TestCase):
         :return: 无
         """
         super().tearDown()
+
+    def test_length_list_validator(self):
+        self.assertTrue(ListValidator("val", [123, 456], IntValidator, list_max_length=2).
+                        check_list_length().check().is_valid())
+
+        try:
+            (ListValidator("val", [123, 456, 789], IntValidator, list_max_length=2).
+             check_list_length().check().is_valid())
+        except ValueError as exp:
+            self.assertEqual(type(exp), ValueError)
+        else:
+            self.fail("ValueError not raised.")
+
+        try:
+            (ListValidator("val", [123], IntValidator, list_min_length=2, list_max_length=3).
+             check_list_length().check().is_valid())
+        except ValueError as exp:
+            self.assertEqual(type(exp), ValueError)
+        else:
+            self.fail("ValueError not raised.")
+
+    def test_elem_of_list_validator(self):
+        self.assertTrue(ListValidator(
+            name="whatever",
+            value=[123, 1, 2],
+            sub_checker=IntValidator,
+            optional_check_list=["check_value"],
+            list_max_length=3,
+            sub_args={
+                "min_value":1,
+                "max_value":324
+            }).check_list_length().check().is_valid())
+
+        try:
+            self.assertTrue(ListValidator(
+                name="whatever",
+                value=[123, 1, 2],
+                sub_checker=IntValidator,
+                optional_check_list=["check_value"],
+                list_max_length=3,
+                sub_args={
+                    "min_value": 2,
+                    "max_value": 324
+                }).check_list_length().check().is_valid())
+        except ValueError as exp:
+            self.assertEqual(type(exp), ValueError)
+        else:
+            self.fail("ValueError not raised.")
+
+    def test_mutil_layer_list_validator(self):
+        self.assertTrue(ListValidator(
+            name="whatever",
+            value=[[123, 1, 2]],
+            sub_checker=ListValidator,
+            list_max_length=3,
+            optional_check_list=["check_list_length"],
+            sub_args={
+                "sub_checker": IntValidator,
+                "optional_check_list": ["check_value"],
+                "list_max_length": 3,
+                "sub_args": {
+                    "min_value": 1,
+                    "max_value": 324
+                }
+            }).check_list_length().check().is_valid())
+
+        try:
+            self.assertTrue(ListValidator(
+                name="whatever",
+                value=[[123, 1, 2]],
+                sub_checker=ListValidator,
+                list_max_length=3,
+                optional_check_list=["check_list_length"],
+                sub_args={
+                    "sub_checker": IntValidator,
+                    "optional_check_list": ["check_value"],
+                    "list_max_length": 3,
+                    "sub_args": {
+                        "min_value": 2,
+                        "max_value": 324
+                    }
+                }).check_list_length().check().is_valid())
+        except ValueError as exp:
+            self.assertEqual(type(exp), ValueError)
+        else:
+            self.fail("ValueError not raised.")
+
+    def test_learning_rate_validator(self):
+        if hasattr(BaseSession, "old_run_method"):
+            BaseSession.run = BaseSession.old_run_method
+
+        self.assertTrue(LearningRateValidator(
+            name="whatever",
+            value=tf.constant([1.0]),
+            min_value=0.0,
+            max_value=10.0
+            ).check_value().check().is_valid())
+
+        try:
+            self.assertTrue(LearningRateValidator(
+                name="whatever",
+                value=tf.constant([11.0]),
+                min_value=0.0,
+                max_value=10.0
+            ).check_value().check().is_valid())
+
+        except ValueError as exp:
+            self.assertEqual(type(exp), ValueError)
+        else:
+            self.fail("ValueError not raised.")
+
+        try:
+            self.assertTrue(LearningRateValidator(
+                name="whatever",
+                value=tf.constant([1.0, 2.0]),
+                min_value=0.0,
+                max_value=10.0
+            ).check_value_for_left_open_interval().check().is_valid())
+
+        except ValueError as exp:
+            self.assertEqual(type(exp), ValueError)
+        else:
+            self.fail("ValueError not raised.")
 
     def test_string_validator_max_len_parameter(self):
         try:
@@ -190,6 +317,34 @@ class ParameterCheckerTest(unittest.TestCase):
                                ssd_data_path="./")
         except ValueError:
             result = False
+        self.assertFalse(result)
+
+    def test_ssd_feature_validator_when_softlink_path(self):
+        @para_checker_decorator(check_option_list=[
+            ("name", OptionalStringValidator, {"min_len": 1, "max_len": 255},
+             ["check_string_length", "check_whitelist"]),
+            (["ssd_vocabulary_size", "ssd_data_path", "host_vocabulary_size"], SSDFeatureValidator)])
+        def demo_func(name, host_vocabulary_size=1,
+                      ssd_vocabulary_size=1,
+                      ssd_data_path="./test_link"):
+            return True
+
+        test_file_name = "test_file"
+        test_link_name = "test_link"
+        with os.fdopen(os.open(test_file_name, os.O_WRONLY | os.O_CREAT, 0o600), "w") as file:
+            pass
+        os.symlink(test_file_name, test_link_name)
+
+        try:
+            result = demo_func(name="host", host_vocabulary_size=0,
+                               ssd_vocabulary_size=1,
+                               ssd_data_path="./")
+        except ValueError:
+            result = False
+        finally:
+            os.remove(test_file_name)
+            os.remove(test_link_name)
+
         self.assertFalse(result)
 
     def test_check_value_for_open_interval(self):

@@ -15,4 +15,6 @@
 # limitations under the License.
 # ==============================================================================
 
-__all__ = ["hccl_mgmt", "hccl_ops"]
+__all__ = ["get_rank_id", "get_rank_size"]
+
+from mx_rec.util.communication.hccl_ops import get_rank_id, get_rank_size

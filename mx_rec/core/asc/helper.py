@@ -19,13 +19,15 @@ from functools import reduce
 
 import tensorflow as tf
 
+from mx_rec.constants.constants import MAX_INT32
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.merge_table import find_dangling_table, should_skip
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.log import logger
 from mx_rec.util.normalization import fix_invalid_table_name
 from mx_rec.util.ops import import_host_pipeline_ops
-from mx_rec.validator.validator import para_checker_decorator, ValueCompareValidator, ClassValidator
+from mx_rec.validator.validator import para_checker_decorator, ValueCompareValidator, ClassValidator, ListValidator, \
+    OrValidator, AndValidator
 
 
 @para_checker_decorator(check_option_list=[
@@ -33,9 +35,52 @@ from mx_rec.validator.validator import para_checker_decorator, ValueCompareValid
      ["check_at_least_one_not_equal_to_target"]),
     (["tgt_key_specs", "args_index_list"], ValueCompareValidator, {"target": None},
      ["check_at_least_one_equal_to_target"]),
-    ("tgt_key_specs", ClassValidator, {"classes": (FeatureSpec, list, tuple, type(None))}),
-    ("args_index_list", ClassValidator, {"classes": (list, type(None))}),
-    ("table_names", ClassValidator, {"classes": (list, type(None))}),
+    ("tgt_key_specs", OrValidator, {"options": [
+        (ClassValidator, {"classes": (FeatureSpec, type(None))}),
+        (AndValidator, {"options": [
+            (ClassValidator, {"classes": (list, tuple)}),
+            (ListValidator,
+             {
+                 "sub_checker": ClassValidator,
+                 "list_max_length": MAX_INT32,
+                 "list_min_length": 1,
+                 "sub_args": {
+                     "classes": FeatureSpec
+                 }
+             },
+             ["check_list_length"])
+        ]})
+    ]}),
+    ("args_index_list", OrValidator, {"options": [
+        (ClassValidator, {"classes": type(None)}),
+        (AndValidator, {"options": [
+            (ClassValidator, {"classes": list}),
+            (ListValidator, {
+                "sub_checker": ClassValidator,
+                "list_max_length": MAX_INT32,
+                "list_min_length": 1,
+                "sub_args": {
+                    "classes": int
+                }
+            },
+             ["check_list_length"])
+        ]})
+    ]}),
+    ("table_names", OrValidator, {"options": [
+        (ClassValidator, {"classes": type(None)}),
+        (AndValidator, {"options": [
+            (ClassValidator, {"classes": list}),
+            (ListValidator, {
+                "sub_checker": ClassValidator,
+                "list_max_length": MAX_INT32,
+                "list_min_length": 1,
+                "sub_args": {
+                    "classes": str
+                }
+            },
+             ["check_list_length"])
+        ]})
+    ]}),
     ("is_training", ClassValidator, {"classes": (bool, type(None))}),
     ("dump_graph", ClassValidator, {"classes": (bool, type(None))}),
 ])

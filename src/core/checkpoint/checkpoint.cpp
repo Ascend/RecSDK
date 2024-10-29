@@ -317,7 +317,10 @@ void Checkpoint::ReadStream(CkptTransData& transData, const string& dataDir, Ckp
     SetTransDataSize(transData, resizeSize, dataType);
 
     if (datasetSize % dataElmtBytes > 0) {
-        LOG_DEBUG("data is missing or incomplete in load file: {}", dataDir);
+        auto error = Error(ModuleName::M_CHECK_POINT, ErrorType::INVALID_ARGUMENT,
+                           StringFormat("Data is missing or incomplete in load file: %s.", dataDir.c_str()));
+        LOG_ERROR(error.ToString());
+        throw std::runtime_error(error.ToString());
     }
 
     ssize_t readBytesNum;

@@ -14,18 +14,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-
 from typing import List, Tuple, Any, Callable, Dict, Optional, Union, Type
 import re
 
 import os
 import inspect
 import functools
+import stat
 
 import tensorflow as tf
 
-from mx_rec.constants.constants import MIN_SIZE, MAX_SIZE, MAX_RANK_SIZE, MIN_RANK_SIZE
+from mx_rec.constants.constants import MIN_SIZE, MAX_SIZE, MAX_RANK_SIZE, MIN_RANK_SIZE, MAX_INT32
 from mx_rec.util.log import logger
 
 
@@ -44,7 +43,7 @@ class Validator:
         self.checkers = []
         self.is_valid_state = None
 
-    def register_checker(self, checker: Callable[[Any], bool], msg: str = None):
+    def register_checker(self, checker: Callable[[], bool], msg: str = None):
         self.checkers.append((checker, msg if msg else self.msg))
 
     def check(self):
@@ -62,6 +61,38 @@ class Validator:
         if self.is_valid_state is None:
             self.check()
         return self.is_valid_state
+
+
+def build_validator(option: Tuple[Union[str], Type[Validator], Optional[Dict], Optional[List[str]]], value):
+    optional_check_list = None
+    validator_kwargs = {}
+
+    # 解包每个检查项的：待检查参数名，检查器，检查器参数，特定的检查方法
+    option_num = len(option)
+    if option_num == 2:
+        para_list_to_be_check, validator = option
+    elif option_num == 3:
+        para_list_to_be_check, validator, validator_kwargs = option
+    else:
+        para_list_to_be_check, validator, validator_kwargs, optional_check_list = option
+
+    # 更新检查器的参数
+    validator_kwargs.update(
+        {
+            "name": para_list_to_be_check,
+            "value": value
+        }
+    )
+
+    validator_instance = validator(**validator_kwargs)
+
+    # 添加检查器特定的检查方法
+    if optional_check_list and len(optional_check_list) != 0:
+        for optional_check in optional_check_list:
+            getattr(validator_instance, optional_check)()
+
+    # 执行检查
+    return validator_instance
 
 
 def para_checker_decorator(check_option_list: List[Tuple[Union[List[str], str],
@@ -178,6 +209,104 @@ class ClassValidator(Validator):
         return self
 
 
+class ListValidator(Validator):
+    def __init__(self, name, value: Union[List, Tuple], sub_checker: type, optional_check_list: List = None,
+                 list_max_length: int = MAX_INT32, list_min_length: int = 1, sub_args: dict = None):
+        super(ListValidator, self).__init__(name, value)
+        if sub_args is None:
+            sub_args = {}
+        self.checker = sub_checker
+        self.optional_check_list = optional_check_list
+        self.sub_args = sub_args if sub_args else {}
+        self.list_min_length = list_min_length
+        self.list_max_length = list_max_length
+        self.register()
+
+    def register(self):
+        def check_func():
+            if not isinstance(self.value, (List, Tuple)):
+                return False
+
+            if not issubclass(self.checker, Validator):
+                return False
+
+            for elem in self.value:
+                checker = self.checker("element of " + self.name, elem, **self.sub_args)
+                if self.optional_check_list and len(self.optional_check_list) != 0:
+                    for optional_check in self.optional_check_list:
+                        getattr(checker, optional_check)()
+                checker.check()
+
+            return True
+
+        self.register_checker(check_func, f"Invalid List '{self.name}'")
+
+    def check_list_length(self):
+        self.register_checker(lambda: self.list_min_length <= len(self.value) <= self.list_max_length,
+                              f"Invalid length of list '{self.name}', "
+                              f"should between '{self.list_min_length}' and '{self.list_max_length}'")
+        return self
+
+
+class OrValidator(Validator):
+    def __init__(self, name: str, value: any, options):
+        super().__init__(name, value)
+        self.options = options
+        self.register()
+
+    def register(self):
+        def or_check():
+            validators = []
+            for option in self.options:
+                option = (self.name, *option)
+                validators.append(build_validator(option, self.value))
+
+            passed = False
+            wrong_msg = []
+            for validator in validators:
+                try:
+                    validator.check()
+                except ValueError as exp:
+                    wrong_msg.append(str(exp))
+                    continue
+                else:
+                    passed = True
+                    break
+
+            if not passed:
+                raise ValueError(f"Or validator of '{self.name}' check failed, due to {wrong_msg}")
+
+            return True
+
+
+        self.register_checker(or_check)
+
+
+class AndValidator(Validator):
+    def __init__(self, name: str, value: any, options):
+        super().__init__(name, value)
+        self.options = options
+        self.register()
+
+    def register(self):
+        def and_check():
+            validators = []
+            for option in self.options:
+                option = (self.name, *option)
+                validators.append(build_validator(option, self.value))
+
+            for validator in validators:
+                try:
+                    validator.check()
+                except ValueError as exp:
+                    exp.args = (f"And validator of '{self.name}' check failed, due to {str(exp)}", )
+                    raise
+
+            return True
+
+        self.register_checker(and_check)
+
+
 class OptionValidator(Validator):
     """
     Check class validator.
@@ -247,7 +376,7 @@ class StringValidator(Validator):
         super(StringValidator, self).__init__(name, value)
         self.max_len = max_len
         self.min_len = min_len
-        self.whitelist = "^[0-9A-Za-z_]+$"
+        self.whitelist = "^[0-9A-Za-z_.]+$"
         self.element = element
         msg = msg if msg else f"type of '{name}' is not str, '{value}' is '{type(value)}'"
         self.register_checker(lambda: isinstance(value, str), msg)
@@ -339,7 +468,10 @@ class SSDFeatureValidator(Validator):
         return self
 
     def _is_invalid_path(self, path: str):
-        return not os.path.exists(path) or not os.path.isdir(path) or os.path.islink(path) or ".." in path
+        path_exists = os.path.exists(path)
+        path_is_dir = os.path.isdir(path)
+        path_contains_softlink = os.path.abspath(path) != os.path.realpath(path)
+        return not path_exists or not path_is_dir or path_contains_softlink or ".." in path
 
 
 class NumValidator(Validator):
@@ -350,23 +482,6 @@ class NumValidator(Validator):
     def __init__(self, name: str, value: Union[int, float], min_value: Union[int, float] = None,
                  max_value: Union[int, float] = None, invalid_options: List = None,
                  constrained_options: List = None, msg: str = ""):
-        if isinstance(value, tf.TensorShape) and value.ndims == 1:
-            value = value.as_list()[0]
-        if isinstance(value, tf.Tensor):
-            sess = tf.Session() if tf.__version__.startswith("1.") else tf.compat.v1.Session()
-            try:
-                value = sess.run(value).item()
-            except Exception as e:
-                # 当前仅支持数值类型Tensor和feed数值类型的tf.PlaceHolder，其它tensor可能会导致程序异常
-                logger.warning("[Validator] Parameter %s is passed, and an exception occurred while getting the value "
-                               "in the tensor: \n%s\n. Ensure that the passed parameter is a constant tensor or "
-                               "a tf.PlaceHolder that feeds a constant value. Otherwise, an exception may occur.",
-                               value, e)
-
-                value = 0 if min_value is None else int(min_value)
-                if isinstance(self, FloatValidator):
-                    value = 0.0 if min_value is None else float(min_value)
-
         super(NumValidator, self).__init__(name, value)
 
         self.min_value = min_value
@@ -445,6 +560,50 @@ class IntValidator(NumValidator):
             return isinstance(self.value, int)
 
         self.register_checker(check_type, msg if msg else f"type of '{name}' is not int")
+
+
+class TensorShapeValidator(Validator):
+    def __init__(self, name: str, value: tf.TensorShape, int_checker_args: dict = None, msg: str = ""):
+        super().__init__(name, value)
+        self.int_checker_args = int_checker_args if int_checker_args else {}
+        self.msg = msg
+        self.register()
+
+    def register(self):
+        def check_tensor_shape():
+            if isinstance(self.value, tf.TensorShape) and self.value.ndims == 1:
+                value = self.value.as_list()[0]
+            else:
+                return False
+
+            int_checker = IntValidator(
+                name=self.name,
+                value=value,
+                **self.int_checker_args,
+            )
+            int_checker.check_value().check()
+            return True
+
+        self.register_checker(check_tensor_shape,
+                              self.msg if self.msg else f"type of '{self.name}' is not TensorShape or ndims is not 1")
+
+
+class LearningRateValidator(FloatValidator):
+    def __init__(self, name:str, value: Union[tf.Tensor, float], min_value: float, max_value: float):
+        if isinstance(value, tf.Tensor):
+            sess = tf.Session() if tf.__version__.startswith("1.") else tf.compat.v1.Session()
+            try:
+                value = sess.run(value).item()
+            except Exception as e:
+                # 当前仅支持数值类型Tensor和feed数值类型的tf.PlaceHolder，其它tensor可能会导致程序异常
+                logger.warning("[Validator] Parameter %s is passed, and an exception occurred while getting the value "
+                               "in the tensor: \n%s\n. Ensure that the passed parameter is a constant tensor or "
+                               "a tf.PlaceHolder that feeds a constant value. Otherwise, an exception may occur.",
+                               value, e)
+
+                value = 0.0 if min_value is None else float(min_value)
+
+        super().__init__(name, value, min_value=min_value, max_value=max_value)
 
 
 class OptionalIntValidator(IntValidator):
@@ -541,7 +700,7 @@ class DirectoryValidator(StringValidator):
         return self
 
     def check_not_soft_link(self):
-        self.register_checker(lambda: not os.path.islink(self.value),
+        self.register_checker(lambda: os.path.abspath(self.value) == os.path.realpath(self.value),
                               f"soft link or relative path: {self.value} should not be in the path parameter")
         return self
 
@@ -602,7 +761,7 @@ class FileValidator(StringValidator):
         return self
 
     def check_not_soft_link(self):
-        self.register_checker(lambda: not os.path.islink(self.value),
+        self.register_checker(lambda: os.path.abspath(self.value) == os.path.realpath(self.value),
                               f"soft link or relative path: {self.value} should not be in the path parameter")
         return self
 
@@ -614,4 +773,11 @@ class FileValidator(StringValidator):
         file_gid = stat_info.st_gid
         self.register_checker(lambda: process_uid == file_uid or process_gid == file_gid,
                               "Invalid log file user or group.")
+        return self
+
+    def check_file_mode(self, unsupported_mode=0o022):
+        stat_info = os.stat(self.value)
+        mode = stat.S_IMODE(stat_info.st_mode)
+        self.register_checker(lambda: mode & unsupported_mode == 0,
+                              f"Current file mode {oct(mode)} is unsupported")
         return self

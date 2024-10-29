@@ -36,6 +36,10 @@ def get_available_cpu_num_and_range():
             file_validator.check_not_soft_link()
             # 2.check file size
             file_validator.check_file_size(MAX_CONFIG_SIZE, MIN_SIZE)
+            # 3.check file mode
+            file_validator.check_file_mode()
+            # 4.check file user
+            file_validator.check_user_group()
             file_validator.check()
             pkg_id = f_in.readline().strip()
             pkg_id2cpu_list[pkg_id].append(cpu)

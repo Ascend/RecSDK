@@ -203,7 +203,7 @@ int UniqueImpl::CheckNormalConf(const UniqueConf &conf)
     }
 
     if (conf.desiredSize > MAX_DESIRED_SIZE) {
-        ExternalLogger::PrintLog(LogLevel::ERROR, "desiredSize can not larger than 1431655765");
+        ExternalLogger::PrintLog(LogLevel::ERROR, "desiredSize can not larger than" + std::to_string(MAX_DESIRED_SIZE));
         return H_ERROR;
     }
 

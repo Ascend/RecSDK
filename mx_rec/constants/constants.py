@@ -28,10 +28,6 @@ EMPTY_STR = ""
 # Bytes
 FLOAT32_BYTES = 4
 
-# default emb memory size for hbm、ddr、ssd
-DEFAULT_DEVICE_CACHE_MEMORY_SIZE = 2 * 1024 * 1024 * 1024
-DEFAULT_HOST_CACHE_MEMORY_SIZE = 40 * 1024 * 1024 * 1024
-
 # 获取ConfigInitializer对象实例失败提示信息
 GET_CONFIG_INSTANCE_ERR_MSG = "Please init the environment for mx_rec at first."
 
@@ -139,23 +135,15 @@ class EnvOption(Enum):
     KEY_PROCESS_THREAD_NUM = "KEY_PROCESS_THREAD_NUM"
     MAX_UNIQUE_THREAD_NUM = "MAX_UNIQUE_THREAD_NUM"
     FAST_UNIQUE = "FAST_UNIQUE"
-    UPDATEEMB_V2 = "UpdateEmb_V2"
     HOT_EMB_UPDATE_STEP = "HOT_EMB_UPDATE_STEP"
     GLOG_STDERRTHREAHOLD = "GLOG_stderrthreshold"
     USE_COMBINE_FAAE = "USE_COMBINE_FAAE"
-    STAT_ON = "STAT_ON"
     RECORD_KEY_COUNT = "RECORD_KEY_COUNT"
 
     # MPI env
     OMPI_COMM_WORLD_SIZE = "OMPI_COMM_WORLD_SIZE"
     OMPI_COMM_WORLD_LOCAL_SIZE = "OMPI_COMM_WORLD_LOCAL_SIZE"
     OMPI_COMM_WORLD_RANK = "OMPI_COMM_WORLD_RANK"
-
-
-class CacheModeEnum(Enum):
-    HBM = "HBM"
-    DDR = "DDR"
-    SSD = "SSD"
 
 
 class DataName(Enum):

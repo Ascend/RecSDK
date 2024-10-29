@@ -30,7 +30,7 @@ tookit和tfplugin。可以参考以下链接下载配套版本的CANN和mxRec：
 
 https://www.hiascend.com/zh/developer/download/community/result?module=sdk+cann
 
-https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=7.0.0.beta1&cann=7.0.0.beta1
+https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=8.0.RC3.alpha003&cann=8.0.RC3.alpha003
 
 具体构建镜像步骤参考mxrec-build下的Dockerfile
 
@@ -73,7 +73,7 @@ mxRec在[昇腾社区](https://www.hiascend.com/developer/download/community/res
 
 https://www.hiascend.com/zh/developer/download/community/result?module=sdk+cann
 
-https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=7.0.0.beta1&cann=7.0.0.beta1
+https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=8.0.RC3.alpha003&cann=8.0.RC3.alpha003
 
 * Tensorflow（1.15.0/2.6.5）
 

@@ -180,8 +180,16 @@ void EmbeddingStatic::LoadKey(const string& savePath)
     int64_t* buf = static_cast<int64_t*>(malloc(fileSize));
     CheckLoadKeyMallocPtr(buf, fileSize);
 
-    ssize_t res = fileSystemPtr_->Read(ss.str(), reinterpret_cast<char *>(buf), fileSize);
-    CheckReadKeyFileBytes(res, ss.str(), fileSize);
+    try {
+        ssize_t res = fileSystemPtr_->Read(ss.str(), reinterpret_cast<char*>(buf), fileSize);
+        CheckReadKeyFileBytes(res, ss.str(), fileSize);
+    } catch (std::runtime_error& e) {
+        free(static_cast<void*>(buf));
+        auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::IO_ERROR,
+                           StringFormat("Failed to read file, error is: %s.", e.what()));
+        LOG_ERROR(error.ToString());
+        throw std::runtime_error(error.ToString());
+    }
 
     size_t loadKeySize = fileSize / sizeof(int64_t);
     loadOffset.clear();

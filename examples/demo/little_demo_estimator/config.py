@@ -17,9 +17,16 @@
 
 import os
 import math
+from enum import Enum
 
 import tensorflow as tf
 from mx_rec.util.communication.hccl_ops import get_rank_size
+
+
+class CacheModeEnum(Enum):
+    HBM = "HBM"
+    DDR = "DDR"
+    SSD = "SSD"
 
 
 class Config:
@@ -31,6 +38,13 @@ class Config:
             self.generate_large_scale_config()
 
     def generate_simple_config(self):
+        try:
+            use_dp = bool(int(os.getenv("USE_DP", 0)))
+        except ValueError as err:
+            raise ValueError(
+                "please correctly config USE_DP only 0 or 1 is supported."
+            ) from err
+
         self.batch_numbers = 8192
         self.batch_size = 4096
 
@@ -38,21 +52,14 @@ class Config:
         self.label_type = tf.float32
         self.value_type = tf.float32
 
-        self.item_range = 10000
-        self.user_range = 200000
-        self.category_range = 5000
+        self.item_range = 80000 * get_rank_size() if not use_dp else 80000
+        self.user_range = 200000 * get_rank_size() if not use_dp else 200000
+        self.category_range = 5000 * get_rank_size() if not use_dp else 5000
         self.item_feat_cnt = 16
         self.user_feat_cnt = 8
         self.category_feat_cnt = 3
         self.access_threshold = 100
         self.eviction_threshold = 60
-
-        try:
-            use_dp = bool(int(os.getenv("USE_DP", 0)))
-        except ValueError as err:
-            raise ValueError(
-                "please correctly config USE_DP only 0 or 1 is supported."
-            ) from err
 
         rank_size = get_rank_size()
         coefficient = 1.1
