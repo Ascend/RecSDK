@@ -84,10 +84,14 @@ public:
 
     void UnInitialize() override
     {
-        delete validPos;
-        delete evictPos;
-        validPos = nullptr;
-        evictPos = nullptr;
+        if (validPos != nullptr) {
+            delete validPos;
+            validPos = nullptr;
+        }
+        if (evictPos != nullptr) {
+            delete evictPos;
+            evictPos = nullptr;
+        }
         MapperBase::UnInitialize();
     }
 

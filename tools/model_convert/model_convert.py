@@ -271,7 +271,7 @@ def generate_data_dir(sparse_file, dir_prefix_list, table_name, data_type, rank_
 
 
 def validate_read_file(read_path):
-    if os.path.islink(read_path):
+    if os.path.abspath(read_path) != os.path.realpath(read_path):
         raise ValueError(f"the path {read_path} to be read is soft link.")
     file_stat = tf.io.gfile.stat(read_path)
     if not min_file_size < file_stat.length <= max_file_size:

@@ -35,7 +35,7 @@ for script in scripts:
 
 # clean pkg_dir existed
 PKG_DIR = "./build/mindxsdk-mxrec"
-if os.path.exists(PKG_DIR):
+if os.path.exists(PKG_DIR) and os.path.abspath(PKG_DIR) == os.path.realpath(PKG_DIR):
     shutil.rmtree(PKG_DIR)
 
 

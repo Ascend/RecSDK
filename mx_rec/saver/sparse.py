@@ -17,20 +17,24 @@
 
 import os
 import json
+from typing import List
 
 import numpy as np
 import tensorflow as tf
 
+from mx_rec.constants.constants import MAX_INT32
 from mx_rec.util.initialize import ConfigInitializer
-from mx_rec.validator.validator import para_checker_decorator, ClassValidator
+from mx_rec.validator.validator import (para_checker_decorator, ClassValidator,
+                                        ListValidator, OrValidator, AndValidator, DirectoryValidator)
 from mx_rec.util.log import logger
 from mx_rec.saver.saver import validate_read_file
+from mx_rec.constants.constants import HDFS_FILE_PREFIX
 
 
 class SparseProcessor:
     single_instance = None
 
-    def __init__(self, table_list):
+    def __init__(self, table_list: List[str]):
         self.export_name = "key-emb"
         self.device_dir_list = ["HashTable", "HBM"]
         self.host_dir_list = ["HashTable", "DDR"]
@@ -94,8 +98,20 @@ class SparseProcessor:
             emb_data = self.get_embedding(table_dir)
             transformed_data = dict(zip(key[:], emb_data[:]))
             save_path = os.path.join(table_dir, self.export_name + ".npy")
-            with tf.io.gfile.GFile(save_path, "wb") as file:
-                np.save(file, transformed_data)
+            if any([True if save_path.startswith(prefix) else False for prefix in HDFS_FILE_PREFIX]):
+                with tf.io.gfile.GFile(save_path, "wb") as file:
+                    np.save(file, transformed_data)
+            else:
+                dir_validator = DirectoryValidator("table_dir", table_dir)
+                dir_validator.check_not_soft_link()
+                try:
+                    dir_validator.check()
+                except ValueError as e:
+                    raise ValueError(f"table_dir:{table_dir} can't be soft link") from e
+                file_flags = os.O_WRONLY | os.O_CREAT
+                file_mode = 0o640
+                with os.fdopen(os.open(save_path, file_flags, file_mode), "wb") as file:
+                    np.save(file, transformed_data)
 
     def get_embedding(self, table_dir):
         emb_dir = os.path.join(table_dir, self.device_emb_dir)
@@ -137,7 +153,21 @@ class SparseProcessor:
 
 
 @para_checker_decorator(check_option_list=[
-    ("table_list", ClassValidator, {"classes": (list, type(None))})
+    ("table_list", OrValidator, {"options": [
+        (ClassValidator, {"classes": type(None)}),
+        (AndValidator, {"options": [
+            (ClassValidator, {"classes": list}),
+            (ListValidator, {
+                "sub_checker": ClassValidator,
+                "list_max_length": MAX_INT32,
+                "list_min_length": 1,
+                "sub_args": {
+                    "classes": str
+                }
+            },
+             ["check_list_length"])
+        ]})
+    ]})
 ])
 def export(table_list=None):
     empty_value = 0

@@ -22,7 +22,8 @@ from glob import glob
 
 import numpy as np
 import tensorflow as tf
-from mx_rec.constants.constants import ASCEND_TIMESTAMP, CacheModeEnum
+
+from mx_rec.constants.constants import ASCEND_TIMESTAMP
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.helper import get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
@@ -30,14 +31,14 @@ from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
 from mx_rec.util.communication.hccl_ops import get_rank_size
 from mx_rec.util.initialize import init, terminate_config_initializer
-from mx_rec.util.log import logger
 from mx_rec.util.variable import get_dense_and_sparse_variable
 
 from config import (GLOBAL_RANDOM_SEED, MODIFY_GRAPH_FLAG, MULTI_LOOKUP_TIMES,
                     PRECISION_CHECK, USE_DETERMINISTIC, USE_DYNAMIC,
                     USE_DYNAMIC_EXPANSION, USE_MULTI_LOOKUP, USE_ONE_SHOT,
-                    USE_TIMESTAMP, USE_DP, Config)
+                    USE_TIMESTAMP, USE_DP, Config, CacheModeEnum)
 from dataset import generate_dataset
+from demo_logger import logger
 from model import MyModel
 from optimizer import create_dense_and_sparse_optimizer
 from run_mode import RunMode, UseMode
@@ -274,7 +275,7 @@ if __name__ == "__main__":
     cache_mode = os.getenv("CACHE_MODE")
     if cache_mode not in cache_mode_dict.keys():
         raise ValueError(f"cache mode must in {list(cache_mode_dict.keys())}, get:{cache_mode}")
-    if cache_mode in ["DDR", "SSD"] and not USE_DYNAMIC:
+    if cache_mode in [CacheModeEnum.DDR.value, CacheModeEnum.SSD.value] and not USE_DYNAMIC:
         logger.warning("when cache_mode in [DDR, SSD], suggest use_dynamic=true to avoid tuning size parameter")
 
     emb_initializer = tf.compat.v1.constant_initializer(0.1) if USE_DETERMINISTIC or PRECISION_CHECK \

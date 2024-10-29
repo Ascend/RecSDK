@@ -103,8 +103,6 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     threadPool = make_unique<ThreadPool>(embInfos.size() * MAX_CHANNEL_NUM);
 
     InitRankInfo(rankInfo, embInfos);
-    GlogConfig::gStatOn = GlobalEnv::statOn;
-
     LOG_INFO(MGMT + "begin initialize, localRankSize:{}, localRankId:{}, rank:{}", rankInfo.localRankSize,
              rankInfo.localRankId, rankInfo.rankId);
 
@@ -1168,47 +1166,55 @@ void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
             size_t ret = hdTransfer->RecvOffsetsAcl(transferName, TRAIN_CHANNEL_ID, embInfo.name);
             if (ret == 0) {
                 LOG_WARN("Receive empty data.");
-            } else {
-                LOG_INFO("Receive data success, get {} data size: {}.", embInfo.name, ret);
-                auto aclData = acltdtGetDataItem(hdTransfer->aclDatasetsForIncrementalCkpt[embInfo.name], 0);
-                if (aclData == nullptr) {
-                    auto error = Error(ModuleName::M_CHECK_POINT, ErrorType::ACL_ERROR,
-                                       "Acl get tensor data failed in [ReceiveKeyThread].");
-                    LOG_ERROR(error.ToString());
-                    throw runtime_error(error.ToString().c_str());
-                }
-                auto ptr = reinterpret_cast<int64_t*>(acltdtGetDataAddrFromItem(aclData));
-                int64_t timeStamp = *ptr;
-                int64_t globalStep = *(ptr + 1);
-                LOG_INFO("Receive {} timeStamp: {}, global step: {}.", embInfo.name, timeStamp, globalStep);
-                // tensorflow获取的global step是从1开始的，但是在key process中batch
-                // id则是从0开始，因此，下面的info中的batchId需要用 globalStep - 1
-                EmbBaseInfo info = {.batchId = static_cast<int>(globalStep - 1),
-                                    .channelId = TRAIN_CHANNEL_ID,
-                                    .name = embInfo.name};
-                unique_ptr<vector<Tensor>> keyCountVecInfo = KEY_PROCESS_INSTANCE->GetKCInfoVec(info);
-                if (keyCountVecInfo == nullptr) {
-                    auto error = Error(ModuleName::M_CHECK_POINT, ErrorType::NOT_FOUND,
-                                       "Get key count info vector is empty in [ReceiveKeyThread].");
-                    LOG_ERROR(error.ToString());
-                    throw runtime_error(error.ToString().c_str());
-                }
-                auto keyCountVecTmp = keyCountVecInfo->at(0).flat<int64>();
-                vector<int64_t> keyCountVec;
-                int64 keyCountSize = keyCountVecTmp.size();
-                keyCountVec.reserve(keyCountSize);
-                for (int64 i = 0; i < keyCountSize; ++i) {
-                    keyCountVec.push_back(static_cast<int64_t>(keyCountVecTmp(i)));
-                }
-                LOG_INFO("Emb table: {}, channel: {}, size is: {}, data: {}", embInfo.name, TRAIN_CHANNEL_ID,
-                         keyCountSize, VectorToString(keyCountVec));
-
-                // 更新delta表
-                std::lock_guard<std::mutex> lock(keyCountUpdateMtx);
-                UpdateDeltaInfo(embInfo.name, keyCountVec, timeStamp, globalStep);
-                keyBatchIdMap[embInfo.name]++;
-                keyCountUpdateCv.notify_all();
+                return;
             }
+            LOG_INFO("Receive data success, get {} data size: {}.", embInfo.name, ret);
+            auto aclData = acltdtGetDataItem(hdTransfer->aclDatasetsForIncrementalCkpt[embInfo.name], 0);
+            if (aclData == nullptr) {
+                auto error = Error(ModuleName::M_CHECK_POINT, ErrorType::ACL_ERROR,
+                                   "Acl get tensor data failed in [ReceiveKeyThread].");
+                LOG_ERROR(error.ToString());
+                throw runtime_error(error.ToString());
+            }
+
+            auto ptr = static_cast<int64_t*>(acltdtGetDataAddrFromItem(aclData));
+            if (ptr == nullptr || (ptr + 1) == nullptr) {
+                auto error = Error(ModuleName::M_CHECK_POINT, ErrorType::NULL_PTR,
+                                   "Failed to parse ACL passing data to timestamp and global step [ReceiveKeyThread].");
+                LOG_ERROR(error.ToString());
+                throw runtime_error(error.ToString());
+            }
+            auto timeStamp = *ptr;
+            auto globalStep = *(ptr + 1);
+
+            LOG_INFO("Receive {} timeStamp: {}, global step: {}.", embInfo.name, timeStamp, globalStep);
+            // tensorflow获取的global step是从1开始的，但是在key process中batch
+            // id则是从0开始，因此，下面的info中的batchId需要用 globalStep - 1
+            EmbBaseInfo info = {.batchId = static_cast<int>(globalStep - 1),
+                                .channelId = TRAIN_CHANNEL_ID,
+                                .name = embInfo.name};
+            unique_ptr<vector<Tensor>> keyCountVecInfo = KEY_PROCESS_INSTANCE->GetKCInfoVec(info);
+            if (keyCountVecInfo == nullptr) {
+                auto error = Error(ModuleName::M_CHECK_POINT, ErrorType::NOT_FOUND,
+                                   "Get key count info vector is empty in [ReceiveKeyThread].");
+                LOG_ERROR(error.ToString());
+                throw runtime_error(error.ToString());
+            }
+            auto keyCountVecTmp = keyCountVecInfo->at(0).flat<int64>();
+            vector<int64_t> keyCountVec;
+            int64 keyCountSize = keyCountVecTmp.size();
+            keyCountVec.reserve(keyCountSize);
+            for (int64 i = 0; i < keyCountSize; ++i) {
+                keyCountVec.push_back(static_cast<int64_t>(keyCountVecTmp(i)));
+            }
+            LOG_INFO("Emb table: {}, channel: {}, size is: {}, data: {}", embInfo.name, TRAIN_CHANNEL_ID, keyCountSize,
+                     VectorToString(keyCountVec));
+
+            // 更新delta表
+            std::lock_guard<std::mutex> lock(keyCountUpdateMtx);
+            UpdateDeltaInfo(embInfo.name, keyCountVec, timeStamp, globalStep);
+            keyBatchIdMap[embInfo.name]++;
+            keyCountUpdateCv.notify_all();
         }
     });
 }

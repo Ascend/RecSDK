@@ -31,12 +31,13 @@ from mx_rec.validator.validator import (
     FloatValidator,
     StringValidator,
     para_checker_decorator,
+    LearningRateValidator,
 )
 
 
 @para_checker_decorator(
     check_option_list=[
-        ("learning_rate", FloatValidator, {"min_value": 0.0, "max_value": 10.0}, ["check_value"]),
+        ("learning_rate", LearningRateValidator, {"min_value": 0.0, "max_value": 10.0}, ["check_value"]),
         (
             "initial_accumulator_value",
             FloatValidator,

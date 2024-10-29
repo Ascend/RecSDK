@@ -30,7 +30,10 @@ void HdfsFileSystem::CreateDir(const string& dirName)
 {
     int ret = hdfs->CreateDirectory(fs, dirName.c_str());
     if (ret == -1) {
-        LOG_DEBUG("Unable to create hdfs directory: {}", dirName);
+        auto error = Error(ModuleName::M_FILE_SYSTEM, ErrorType::HDFS_ERROR,
+                           StringFormat("Unable to create hdfs directory: %s.", dirName.c_str()));
+        LOG_ERROR(error.ToString());
+        throw std::runtime_error(error.ToString());
     }
 }
 
@@ -185,7 +188,11 @@ ssize_t HdfsFileSystem::Read(const string& filePath, vector<vector<float>>& file
     ssize_t readBytesNum = 0;
     size_t embeddingCount = 0;
     for (const auto& offset: offsetArr) {
-        hdfs->Seek(fs, file, offset * embeddingSize * sizeof(float));
+        int seekRes = hdfs->Seek(fs, file, offset * embeddingSize * sizeof(float));
+        if (seekRes == -1) {
+            hdfs->CloseFile(fs, file);
+            return static_cast<ssize_t>(seekRes);
+        }
 
         tSize res = hdfs->Read(fs, file, fileContent[embeddingCount].data() + contentOffset * embeddingSize,
                                embeddingSize * sizeof(float));
@@ -216,6 +223,7 @@ void HdfsFileSystem::ReadEmbedding(const string& filePath, EmbeddingSizeInfo& em
 
     auto res = aclrtSetDevice(static_cast<int32_t>(deviceId));
     if (res != ACL_ERROR_NONE) {
+        hdfs->CloseFile(fs, file);
         auto error = Error(ModuleName::M_FILE_SYSTEM, ErrorType::ACL_ERROR,
                            StringFormat("Set device failed, device_id:%d.", deviceId).c_str());
         LOG_ERROR(error.ToString());

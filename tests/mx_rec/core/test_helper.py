@@ -60,40 +60,106 @@ class TestGetAscInsertFunc(unittest.TestCase):
 
         from mx_rec.core.asc.helper import get_asc_insert_func
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(ValueError):
             get_asc_insert_func(tgt_key_specs=[], table_names=[])
 
-    @mock.patch.multiple("mx_rec.core.asc.helper",
-                         get_asc_insert_func_inner=mock.MagicMock(return_value=Callable))
     def test_get_asc_insert_func_case4(self):
         """
-        case4: tgt_key_specs不为None
+        case4: tgt_key_specs不为None时，为LIST与FeatureSpec组成的复杂类型, 抛出异常
         """
 
         from mx_rec.core.asc.helper import get_asc_insert_func
 
-        self.assertTrue(callable(get_asc_insert_func(tgt_key_specs=[])))
+        with self.assertRaises(ValueError):
+            get_asc_insert_func(tgt_key_specs=[[[]]])
 
     def test_get_asc_insert_func_case5(self):
         """
-        case5: args_index_list不为None时，table_names应不为None，否则抛出异常
+        case5: tgt_key_specs不为None时，长度需要为1至MAX_INT32，长度为0时，抛出异常
+        """
+
+        from mx_rec.core.asc.helper import get_asc_insert_func
+
+        with self.assertRaises(ValueError):
+            get_asc_insert_func(tgt_key_specs=[])
+
+    def test_get_asc_insert_func_case6(self):
+        """
+        case6: tgt_key_specs为None时，args_index_list内部需要为int类型, 不为int类型时抛出异常
+        """
+
+        from mx_rec.core.asc.helper import get_asc_insert_func
+
+        with self.assertRaises(ValueError):
+            get_asc_insert_func(tgt_key_specs=None, args_index_list=["123"], table_names=["123"])
+
+    def test_get_asc_insert_func_case7(self):
+        """
+        case7: tgt_key_specs为None时，table_names内部需要为string类型, 不为strung类型时抛出异常
+        """
+
+        from mx_rec.core.asc.helper import get_asc_insert_func
+
+        with self.assertRaises(ValueError):
+            get_asc_insert_func(tgt_key_specs=None, args_index_list=[1], table_names=[1])
+
+    def test_get_asc_insert_func_case8(self):
+        """
+        case8: tgt_key_specs为None时，table_names列表长度不能为0，否则抛出异常
+        """
+
+        from mx_rec.core.asc.helper import get_asc_insert_func
+
+        with self.assertRaises(ValueError):
+            get_asc_insert_func(tgt_key_specs=None, args_index_list=[1], table_names=[])
+
+    def test_get_asc_insert_func_case9(self):
+        """
+        case9: tgt_key_specs为None时，args_index_list列表长度不能为0，否则抛出异常
+        """
+
+        from mx_rec.core.asc.helper import get_asc_insert_func
+
+        with self.assertRaises(ValueError):
+            get_asc_insert_func(tgt_key_specs=None, args_index_list=[1], table_names=[1])
+
+    @mock.patch.multiple("mx_rec.core.asc.helper",
+                         get_asc_insert_func_inner=mock.MagicMock(return_value=Callable))
+    def test_get_asc_insert_func_case10(self):
+        """
+        case10: tgt_key_specs不为None
+        """
+
+        from mx_rec.core.asc.helper import get_asc_insert_func
+
+        self.assertTrue(callable(get_asc_insert_func(tgt_key_specs=[
+            FeatureSpec(
+                name="sparse_feature",
+                table_name="sparse_embeddings",
+                batch_size=1,
+                access_threshold=1,
+                eviction_threshold=1)])))
+
+    def test_get_asc_insert_func_case11(self):
+        """
+        case11: args_index_list不为None时，table_names应不为None，否则抛出异常
         """
 
         from mx_rec.core.asc.helper import get_asc_insert_func
 
         with self.assertRaises(RuntimeError):
-            get_asc_insert_func(args_index_list=[])
+            get_asc_insert_func(args_index_list=[1])
 
     @mock.patch.multiple("mx_rec.core.asc.helper",
                          get_asc_insert_func_inner=mock.MagicMock(return_value=Callable))
-    def test_get_asc_insert_func_case6(self):
+    def test_get_asc_insert_func_case12(self):
         """
-        case6: args_index_list和table_names都不为None
+        case12: args_index_list和table_names都不为None
         """
 
         from mx_rec.core.asc.helper import get_asc_insert_func
 
-        self.assertTrue(callable(get_asc_insert_func(args_index_list=[], table_names=["xxx"])))
+        self.assertTrue(callable(get_asc_insert_func(args_index_list=[1], table_names=["xxx"])))
 
 
 @mock.patch.multiple(
