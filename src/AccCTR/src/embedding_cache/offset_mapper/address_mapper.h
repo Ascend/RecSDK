@@ -92,8 +92,17 @@ public:
 
     ~AutoRefillEmbeddingMemoryPool()
     {
-        stop = true;
-        std::lock_guard<std::mutex> lock(producerMutex);
+        {
+            // Dont' remove brackets of this code block, otherwise may cause dead lock in ProducerWorker.
+            // To let producerThreads quit, we need:
+            //   1. stop is true;
+            //   2. Make sure all ProducerWorker thread run at wait(lock),
+            //      this condition will satisfy when we acquire lock below;
+            //   3. Release lock below (lock only valid in this code block);
+            //   4. Notify all thread, producerThread will get lock then return from wait, then meet stop flag, return.
+            stop = true;
+            std::lock_guard<std::mutex> lock(producerMutex);
+        }
         producerCv.notify_all();
         fullCv.notify_all();
         for (auto& t : producerThreads) {
