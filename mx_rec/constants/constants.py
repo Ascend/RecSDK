@@ -15,6 +15,8 @@
 # limitations under the License.
 # ==============================================================================
 from enum import Enum
+import os
+
 import numpy as np
 
 ASCEND_GLOBAL_HASHTABLE_COLLECTION = "ASCEND_GLOBAL_HASHTABLE_COLLECTION"
@@ -86,7 +88,11 @@ LOG_MAX_SIZE = 1024 * 1024
 
 MAX_INT32 = np.iinfo(np.int32).max
 
-DUMP_MIDIFY_GRAPH_FILE_MODE = 0o550
+# Permission for saving.
+SAVE_FILE_MODE = 0o640
+SAVE_DIR_MODE = 0o750
+SAVE_FILE_FLAG = os.O_WRONLY | os.O_CREAT
+
 MAX_DEVICE_ID = 15
 
 # incremental checkpoint related

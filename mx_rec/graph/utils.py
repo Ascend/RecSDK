@@ -27,7 +27,7 @@ from tensorflow.python.framework.errors_impl import InvalidArgumentError
 from tensorflow.python.ops import control_flow_ops
 
 from mx_rec.graph.constants import AnchorDatasetOp, AnchorIteratorOp
-from mx_rec.constants.constants import ASCAnchorAttr, DUMP_MIDIFY_GRAPH_FILE_MODE
+from mx_rec.constants.constants import ASCAnchorAttr, SAVE_DIR_MODE
 from mx_rec.core.embedding import BaseSparseEmbedding
 from mx_rec.util.log import logger
 
@@ -303,6 +303,6 @@ def export_pb_graph(
     """
     if dump_graph:
         dir_path = os.path.dirname(os.path.join(export_path, file_name))
-        os.makedirs(dir_path, mode=DUMP_MIDIFY_GRAPH_FILE_MODE, exist_ok=True)
+        os.makedirs(dir_path, mode=SAVE_DIR_MODE, exist_ok=True)
         graph_def = graph_def if graph_def else tf.compat.v1.get_default_graph().as_graph_def()
         tf.io.write_graph(graph_def, export_path, file_name, as_text)
