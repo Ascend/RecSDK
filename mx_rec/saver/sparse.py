@@ -22,7 +22,7 @@ from typing import List
 import numpy as np
 import tensorflow as tf
 
-from mx_rec.constants.constants import MAX_INT32
+from mx_rec.constants.constants import MAX_INT32, SAVE_FILE_FLAG, SAVE_FILE_MODE
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import (para_checker_decorator, ClassValidator,
                                         ListValidator, OrValidator, AndValidator, DirectoryValidator)
@@ -108,9 +108,7 @@ class SparseProcessor:
                     dir_validator.check()
                 except ValueError as e:
                     raise ValueError(f"table_dir:{table_dir} can't be soft link") from e
-                file_flags = os.O_WRONLY | os.O_CREAT
-                file_mode = 0o640
-                with os.fdopen(os.open(save_path, file_flags, file_mode), "wb") as file:
+                with os.fdopen(os.open(save_path, SAVE_FILE_FLAG, SAVE_FILE_MODE), "wb") as file:
                     np.save(file, transformed_data)
 
     def get_embedding(self, table_dir):
