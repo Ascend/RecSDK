@@ -91,7 +91,6 @@ export MULTI_LOOKUP_TIMES=2     # 一表多查次数：默认2，上限127（因
 export USE_MODIFY_GRAPH=1       # 0：feature spec模式；1：自动改图模式
 export USE_TIMESTAMP=0          # 0：关闭特征准入淘汰；1：开启特征准入淘汰
 export USE_DP=0                 # 0：关闭DP；1：开启user table DP
-export UpdateEmb_V2=0           # 0: UpdateEmb同步更新；1：UpdateEmb_V2异步更新
 export USE_ONE_SHOT=0           # 0：MakeIterator；1：OneShotIterator
 ################# 性能调优相关 ####################
 export KEY_PROCESS_THREAD_NUM=6 #default 6, max 10

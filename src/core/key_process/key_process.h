@@ -87,10 +87,6 @@ public:
 
     int GetMaxStep(int channelId) const;
 
-    OffsetMemT GetMaxOffset();
-
-    KeyOffsetMemT GetKeyOffsetMap();
-
     KeyCountMemT GetKeyCountMap();
 
     FeatureAdmitAndEvict& GetFeatAdmitAndEvict();
@@ -109,13 +105,7 @@ public:
 
     void EvictKeys(const string& embName, const vector<emb_cache_key_t>& keys);
 
-    void EvictKeysCombine(const vector<emb_cache_key_t>& keys);
-
     void SetupHotEmbUpdateStep();
-
-    int64_t GetExpansionTableSize(const string& embName);
-
-    int64_t GetExpansionTableCapacity(const string& embName);
 
     void RecordKeyCountMap(const unique_ptr<EmbBatchT>& batch);
 
@@ -299,10 +289,6 @@ GTEST_PRIVATE :
                          int hotPosSize = 0) const;
 
     void SendA2A(const vector<int>& a2aInfo, const string& embName, int channel, int batch);
-
-    void EvictDeleteDeviceEmb(const string& embName, const vector<emb_key_t>& keys);
-
-    void EvictInitDeviceEmb(const string& embName, vector<size_t> offset);
 
     void UpdateHotMap(absl::flat_hash_map<emb_key_t, int>& keyCountMapByEmbName, uint32_t count, bool refresh,
                       const string& embName);

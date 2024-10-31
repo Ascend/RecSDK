@@ -240,7 +240,7 @@ vector<tensorflow::Tensor> HDTransfer::Recv(TransferChannel channel, int channel
     return tensors;
 }
 
-/// 接收从device发送过来的数据（D2H）, updateEmbV2函数使用；使用原生的aclTDT接口
+/// 接收从device发送过来的数据（D2H）；使用原生的aclTDT接口
 /// \param channel 通道实例
 /// \param channelId 通道索引（训练/推理）
 /// \param embName 表名
