@@ -159,7 +159,6 @@ void HDTransfer::CreateChannelForIncrementalCkpt(const uint32_t localRankId, con
 void HDTransfer::Send(TransferChannel channel, const vector<Tensor>& tensors, int channelId, const string& embName,
                       int batchId)
 {
-    EASY_FUNCTION()
     if (!running) {
         return;
     }
@@ -218,7 +217,6 @@ void HDTransfer::Send(TransferChannel channel, const vector<Tensor>& tensors, in
 /// \return
 vector<tensorflow::Tensor> HDTransfer::Recv(TransferChannel channel, int channelId, const string& embName)
 {
-    EASY_FUNCTION()
     vector<tensorflow::Tensor> tensors;
 #ifndef GTEST
     string recvName = StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channel).c_str(), channelId);
@@ -250,7 +248,6 @@ vector<tensorflow::Tensor> HDTransfer::Recv(TransferChannel channel, int channel
 size_t HDTransfer::RecvAcl(TransferChannel channel, int channelId, const string& embName, int embeddingThreadId,
                            int batchId)
 {
-    EASY_FUNCTION()
     size_t ret = 0;
 #ifndef GTEST
     string recvBatchIdType;
@@ -279,7 +276,6 @@ size_t HDTransfer::RecvAcl(TransferChannel channel, int channelId, const string&
 
 size_t HDTransfer::RecvOffsetsAcl(TransferChannel channel, int channelId, const string& embName)
 {
-    EASY_FUNCTION()
     size_t ret = 0;
     string recvName = StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channel).c_str(), channelId);
     LOG_DEBUG("hd transfer try recv:{}", recvName);

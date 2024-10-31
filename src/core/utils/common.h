@@ -39,17 +39,6 @@ See the License for the specific language governing permissions and
 #include "utils/config.h"
 #include "utils/logger.h"
 
-#if defined(BUILD_WITH_EASY_PROFILER)
-#include <easy/arbitrary_value.h>
-#include <easy/profiler.h>
-#else
-#define EASY_FUNCTION(...)
-#define EASY_VALUE(...)
-#define EASY_BLOCK(...)
-#define EASY_END_BLOCK
-#define EASY_PROFILER_ENABLE
-#define EASY_PROFILER_DISABLE
-#endif
 
 namespace MxRec {
 #define INFO_PTR shared_ptr

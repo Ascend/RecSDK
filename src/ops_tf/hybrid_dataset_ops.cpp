@@ -206,7 +206,6 @@ namespace MxRec {
 
         void Compute(OpKernelContextPtr context) override
         {
-            EASY_FUNCTION();
             LOG_DEBUG("enter ReadEmbKeyV2Dynamic");
             TimeCost tc = TimeCost();
             int batchId = hybridMgmtBlock->readEmbedBatchId[channelId];
@@ -405,7 +404,6 @@ namespace MxRec {
 
         void Compute(OpKernelContextPtr context) override
         {
-            EASY_FUNCTION();
             LOG_DEBUG("enter ReadEmbKeyV2");
             TimeCost tc = TimeCost();
             int batchId = hybridMgmtBlock->readEmbedBatchId[channelId];

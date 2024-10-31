@@ -53,10 +53,6 @@ https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=8
 
 下载链接：[https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.gz](https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.gz)
 
-* easy_profiler-2.1.0
-
-下载链接：[https://codeload.github.com/yse/easy_profiler/tar.gz/refs/tags/v2.1.0](https://codeload.github.com/yse/easy_profiler/tar.gz/refs/tags/v2.1.0)
-
 * python-3.7.5
 
 下载链接：[https://repo.huaweicloud.com/python/3.7.5/Python-3.7.5.tar.xz](https://repo.huaweicloud.com/python/3.7.5/Python-3.7.5.tar.xz)

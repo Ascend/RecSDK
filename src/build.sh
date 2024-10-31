@@ -17,7 +17,7 @@
 set -e
 [ -d build ] && rm -rf build;
 mkdir build && cd build || exit 1
-# HDF5_PATH, EASY_PROFILER_PATH is optional
+# HDF5_PATH is optional
 python_path="$(dirname "$(dirname "$(realpath "$(which python3.7)")")")"
 if [ -d /usr/local/Ascend/ascend-toolkit/latest ]; then
     ascend_path=/usr/local/Ascend/ascend-toolkit/latest
@@ -32,7 +32,6 @@ cmake -DCMAKE_BUILD_TYPE=Release \
     -DTF_PATH="$1" \
     -DOMPI_PATH="$(whereis openmpi)" \
     -DPYTHON_PATH="$python_path" \
-    -DEASY_PROFILER_PATH=/ \
     -DASCEND_PATH="$ascend_path" \
     -DABSEIL_PATH="$1" \
     -DSECUREC_PATH="$2"/../opensource/securec \
