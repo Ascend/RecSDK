@@ -171,8 +171,10 @@ public:
      * @Return errorCode
      */
     virtual int CreateCacheForTable(const EmbCacheInfo& embCacheInfo,
-                                    const std::vector<InitializerInfo>& initializerInfos, int64_t invalidKey = -1,
-                                    uint64_t prefillBufferSize = 500000, uint32_t refillThreadNum = 1) = 0;
+                                    const std::vector<InitializerInfo>& initializerInfos,
+                                    int64_t invalidKey = DEFAULE_INVALID_KEY,
+                                    uint64_t prefillBufferSize = DEFAULE_PREFILL_BUF_SIZE,
+                                    uint32_t refillThreadNum = DEFAULE_REFILL_THREAD_NUM) = 0;
 
     /* *
      * 查找当前keys对应的offsets并将本不存在与offsetMapper中的keys插入到offsetMapper中并得到其偏移值offsets，
@@ -195,7 +197,7 @@ public:
      * @Return errorCode
      */
     virtual int EmbeddingLookup(const std::string& tableName, const std::vector<uint64_t>& keys, float* embAddr,
-                                uint32_t threadNum = 4) = 0;
+                                uint32_t threadNum = DEFAULE_LOOKUP_THREAD_NUM) = 0;
 
     /* *
      * 查询Embedding的地址
@@ -206,7 +208,7 @@ public:
      * @Return errorCode
      */
     virtual int EmbeddingLookupAddrs(const std::string& tableName, const std::vector<uint64_t>& keys,
-                                     std::vector<float*>& addrs, uint32_t threadNum = 4) = 0;
+                                     std::vector<float*>& addrs, uint32_t threadNum = DEFAULE_LOOKUP_THREAD_NUM) = 0;
 
     /* *
      * 查询Embedding并且在查询完成之后删除embedding对应的key。如果多线程使用，严格保证传入的key线程间不会重复(unique
@@ -218,7 +220,7 @@ public:
      * @Return errorCode
      */
     virtual int EmbeddingLookupAndRemove(const std::string& tableName, const std::vector<uint64_t>& keys,
-                                         float* embAddr, uint32_t threadNum = 4) = 0;
+                                         float* embAddr, uint32_t threadNum = DEFAULE_LOOKUP_THREAD_NUM) = 0;
 
     /* *
      * 更新Embedding
@@ -229,7 +231,7 @@ public:
      * @Return errorCode
      */
     virtual int EmbeddingUpdate(const std::string& tableName, const std::vector<uint64_t>& keys, float* embAddr,
-                                uint32_t threadNum = 4) = 0;
+                                uint32_t threadNum = DEFAULE_LOOKUP_THREAD_NUM) = 0;
 
     /* *
      * 在EmbLocalTable中移除keys，并将存储其embedding的内存位置记为可复用
@@ -238,7 +240,7 @@ public:
      * @Return errorCode
      */
     virtual int EmbeddingRemove(const std::string& tableName, const std::vector<uint64_t>& keys,
-                                uint32_t threadNum = 4) = 0;
+                                uint32_t threadNum = DEFAULE_LOOKUP_THREAD_NUM) = 0;
 
     /* *
      * 将需要被淘汰的keys从offsetMapper的记录中移除，同时也在EmbLocalTable中移除，并将存储其embedding的内存位置记为可复用
@@ -335,6 +337,12 @@ public:
      * @Return errorCode
      */
     virtual int ResetOffsetMappers() = 0;
+
+private:
+    static const uint32_t DEFAULE_LOOKUP_THREAD_NUM = 4;
+    static const uint32_t DEFAULE_REFILL_THREAD_NUM = 4;
+    static const uint64_t DEFAULE_PREFILL_BUF_SIZE = 500000;
+    static const int64_t DEFAULE_INVALID_KEY = -1;
 };
 }  // namespace EmbCache
 
