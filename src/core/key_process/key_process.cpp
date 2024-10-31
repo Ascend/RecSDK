@@ -128,16 +128,6 @@ void KeyProcess::InitHotEmbTotCount(const EmbInfo& info, const RankInfo& rInfo)
                                                  HOT_EMB_CACHE_PCT / static_cast<float>(info.embeddingSize));
 }
 
-OffsetMemT KeyProcess::GetMaxOffset()
-{
-    return EmbeddingMgmt::Instance()->GetMaxOffset();
-}
-
-KeyOffsetMemT KeyProcess::GetKeyOffsetMap()
-{
-    return keyOffsetMap;
-}
-
 KeyCountMemT KeyProcess::GetKeyCountMap()
 {
     return keyCountMap;
@@ -1674,66 +1664,6 @@ void KeyProcess::EvictKeys(const string& embName, const vector<emb_cache_key_t>&
     EmbeddingMgmt::Instance()->EvictKeys(embName, keys);
 }
 
-void KeyProcess::EvictKeysCombine(const vector<emb_cache_key_t>& keys)  // hbm
-{
-    LOG_INFO(KEY_PROCESS "hbm combine funEvictCall, keySize:{}", keys.size());
-    EmbeddingMgmt::Instance()->EvictKeysCombine(keys);
-}
-
-void KeyProcess::EvictDeleteDeviceEmb(const string& embName, const vector<emb_key_t>& keys)
-{
-    std::lock_guard<std::mutex> lk(mut);  // lock for PROCESS_THREAD
-
-    size_t keySize = keys.size();
-    auto& devHashMap = keyOffsetMap.at(embName);
-    auto& evictPos = evictPosMap.at(embName);
-
-    for (size_t i = 0; i < keySize; i++) {
-        size_t offset;
-        emb_key_t key = keys[i];
-        if (key == -1) {
-            LOG_ERROR("evict key equal -1!");
-            continue;
-        }
-        const auto& iter = devHashMap.find(key);
-        if (iter == devHashMap.end()) {  // not found
-            continue;
-        }
-        offset = iter->second;
-        devHashMap.erase(iter);
-        evictPos.emplace_back(offset);
-        LOG_TRACE("evict embName:{}, offset:{}", embName, offset);
-    }
-    LOG_INFO(KEY_PROCESS "hbm EvictDeleteDeviceEmb: [{}]! evict size on dev:{}", embName, evictPos.size());
-}
-
-void KeyProcess::EvictInitDeviceEmb(const string& embName, vector<size_t> offset)
-{
-    if (offset.size() > embInfos[embName].devVocabSize) {
-        LOG_ERROR("{} overflow! init evict dev, evictOffset size {} bigger than dev vocabSize {}", embName,
-                  offset.size(), embInfos[embName].devVocabSize);
-        throw runtime_error(
-            Logger::Format("{} overflow! init evict dev, evictOffset size {} bigger than dev vocabSize {}", embName,
-                           offset.size(), embInfos[embName].devVocabSize)
-                .c_str());
-    }
-
-    vector<Tensor> tmpDataOut;
-    Tensor tmpData = Vec2TensorI32(offset);
-    tmpDataOut.emplace_back(tmpData);
-    tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, {1}));
-
-    auto evictLen = tmpDataOut.back().flat<int32>();
-    int evictSize = static_cast<int>(offset.size());
-    evictLen(0) = evictSize;
-
-    // evict key发送给dev侧，dev侧初始化emb
-    auto trans = Singleton<HDTransfer>::GetInstance();
-    trans->Send(TransferChannel::EVICT, tmpDataOut, TRAIN_CHANNEL_ID, embName);
-
-    LOG_INFO(KEY_PROCESS "hbm EvictInitDeviceEmb: [{}]! send offsetSize:{}", embName, offset.size());
-}
-
 string KeyProcess::DumpSplitKeys(vector<vector<emb_key_t>>& splitKeys) const
 {
     stringstream ssTrace;
@@ -1745,16 +1675,6 @@ string KeyProcess::DumpSplitKeys(vector<vector<emb_key_t>>& splitKeys) const
         ssTrace << '|';
     }
     return ssTrace.str();
-}
-
-int64_t KeyProcess::GetExpansionTableSize(const string& embName)
-{
-    return EmbeddingMgmt::Instance()->GetSize(embName);
-}
-
-int64_t KeyProcess::GetExpansionTableCapacity(const string& embName)
-{
-    return EmbeddingMgmt::Instance()->GetCapacity(embName);
 }
 
 void KeyProcess::RecordKeyCountMap(const unique_ptr<EmbBatchT>& batch)

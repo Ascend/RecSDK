@@ -96,7 +96,6 @@ export USE_MODIFY_GRAPH=1       # 0：feature spec模式；1：自动改图模�
 export USE_TIMESTAMP=0          # 0：关闭特征准入淘汰；1：开启特征准入淘汰
 export USE_ONE_SHOT=0           # 0：MakeIterator；1：OneShotIterator
 export USE_DP=0                 # 0：关闭DP；1：开启user table DP
-export UpdateEmb_V2=1           # 0: UpdateEmb同步更新；1：UpdateEmb_V2异步更新
 export USE_COMBINE_FAAE=0       # 0: separate history when faae; 1: combine history when faae
 export USE_DETERMINISTIC=0      # 0：不开启确定性计算；1：开启确定性计算
 ################# 性能调优相关 ####################

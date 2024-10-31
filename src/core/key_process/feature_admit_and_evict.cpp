@@ -26,10 +26,6 @@ FeatureAdmitAndEvict::FeatureAdmitAndEvict(int recordsInitSize) : m_recordsInitS
 FeatureAdmitAndEvict::~FeatureAdmitAndEvict()
 {
     m_isEnableFunction = false;
-    m_isExit = true;
-    if (m_evictThread.joinable()) {
-        m_evictThread.join();
-    }
 }
 
 bool FeatureAdmitAndEvict::Init(const std::vector<ThresholdValue>& thresholdValues)
