@@ -138,7 +138,6 @@ cmake -DCMAKE_BUILD_TYPE=Debug \
     -DTF_PATH="${python_path}"/lib/python3.7/site-packages/"${TF_DIR}" \
     -DOMPI_PATH=/usr/local/openmpi/ \
     -DPYTHON_PATH="${python_path}" \
-    -DEASY_PROFILER_PATH=/opt/buildtools/ \
     -DASCEND_PATH=/usr/local/Ascend/ascend-toolkit/latest \
     -DABSEIL_PATH="${python_path}"/lib/python3.7/site-packages/"${TF_DIR}" \
     -DSECUREC_PATH="${ROOT_DIR}"/../opensource/securec \

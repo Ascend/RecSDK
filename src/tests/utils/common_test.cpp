@@ -15,7 +15,6 @@ See the License for the specific language governing permissions and
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
-#include <easy/profiler.h>
 
 #include "utils/common.h"
 
