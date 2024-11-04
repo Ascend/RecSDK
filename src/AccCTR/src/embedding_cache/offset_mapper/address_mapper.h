@@ -236,7 +236,7 @@ public:
 
     ~AddressMapper() = default;
 
-    bool Initialize(uint32_t reserve, uint32_t vocabSize, std::shared_ptr<AutoRefillEmbeddingMemoryPool> expendInfoPtr)
+    bool Initialize(uint64_t reserve, uint64_t vocabSize, std::shared_ptr<AutoRefillEmbeddingMemoryPool> expendInfoPtr)
     {
         hostVocabSize = vocabSize;
         emExpendMemInfoPtr = expendInfoPtr;
@@ -297,7 +297,7 @@ public:
         });
     }
 
-    uint32_t GetUsage()
+    uint64_t GetUsage()
     {
         return MapperBase::current_size;
     }
@@ -311,7 +311,7 @@ private:
     }
 
 private:
-    uint32_t hostVocabSize;
+    uint64_t hostVocabSize;
     std::shared_ptr<AutoRefillEmbeddingMemoryPool> emExpendMemInfoPtr;
 };
 }  // namespace EmbCache

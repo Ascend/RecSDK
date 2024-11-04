@@ -346,46 +346,6 @@ OffsetT HybridMgmt::SendLoadMap(const string tableName)
 #endif
 }
 
-/// 加载key对应的offset，python侧调用；启动数据处理线程
-/// \param ReceiveKeyOffsetMap
-void HybridMgmt::ReceiveHostMap(AllKeyOffsetMapT receiveKeyOffsetMap)
-{
-#ifndef GTEST
-    if (!isInitialized) {
-        auto error = Error(ModuleName::M_CHECK_POINT, ErrorType::EXECUTION_ORDER_ERROR,
-                           "HybridMgmt not initialized. Call [start_asc_pipeline] before load offset.");
-        LOG_ERROR(error.ToString());
-        throw runtime_error(error.ToString().c_str());
-    }
-
-    KEY_PROCESS_INSTANCE->LoadSaveLock();
-    KeyOffsetMemT loadKeyOffsetMap;
-    OffsetMemT loadMaxOffset;
-    if (!receiveKeyOffsetMap.empty()) {
-        for (const auto& keyOffsetMap : as_const(receiveKeyOffsetMap)) {
-            auto& singleHashMap = loadKeyOffsetMap[keyOffsetMap.first];
-            auto& maxOffset = loadMaxOffset[keyOffsetMap.first];
-            for (const auto& it : keyOffsetMap.second) {
-                singleHashMap[it.first] = it.second;
-            }
-            maxOffset = keyOffsetMap.second.size();
-        }
-    }
-    if (mgmtRankInfo.isDDR) {
-        LOG_DEBUG(MGMT + "Start receive sparse data: ddr mode hashmap");
-    } else {
-        LOG_DEBUG(MGMT + "Start receive sparse data: no ddr mode hashmap");
-        KEY_PROCESS_INSTANCE->LoadKeyOffsetMap(loadKeyOffsetMap);
-        KEY_PROCESS_INSTANCE->LoadMaxOffset(loadMaxOffset);
-    }
-
-    KEY_PROCESS_INSTANCE->LoadSaveUnlock();
-    if (isLoad && procThreads.empty()) {
-        Start();
-    }
-#endif
-}
-
 /// 根据HBM/DDR模式，启动数据处理线程
 void HybridMgmt::Start()
 {
@@ -675,9 +635,6 @@ bool HybridMgmt::ProcessEmbInfoHBM(const EmbBaseInfo& info, bool isGrad)
     LOG_INFO(MGMT + "table:{}, channelId:{} batchId:{}, embName:{}, ParseKeys with HBM mode end.", info.name,
              info.channelId, info.batchId, info.name);
 
-    if (info.channelId == TRAIN_CHANNEL_ID) {
-        alreadyTrainOnce = true;
-    }
     return remainBatchOut;
 }
 
@@ -735,9 +692,6 @@ bool HybridMgmt::ProcessEmbInfoDDR(const EmbBaseInfo& info)
     auto& swapInPos = swapInKoPair.second;
     auto& swapOutPos = swapOutKoPair.second;
     SendTensorForSwap(info, swapInPos, swapOutPos);
-    if (info.channelId == TRAIN_CHANNEL_ID) {
-        alreadyTrainOnce = true;
-    }
 
     LOG_DEBUG("ProcessEmbInfoDDR end, table:{}, channel:{}, batchId:{} swapProcessTC(ms):{} getAndSendTensorsTC(ms):{}",
               info.name, info.channelId, info.batchId, swapProcessTC.ElapsedMS(), getAndSendTensorsTC.ElapsedMS());
@@ -787,7 +741,9 @@ bool HybridMgmt::Evict()
             vector<std::string> allTableNames;
             int retCode = embCache->GetEmbTableNames(allTableNames);
             if (retCode != H_OK) {
-                LOG_ERROR("GetEmbTableNames failed!");
+                auto error = Error(ModuleName::M_OCK_CTR, ErrorType::INVALID_ARGUMENT,
+                                   StringFormat("GetEmbTableNames failed, error: %d.", retCode));
+                LOG_ERROR(error.ToString());
                 return false;
             }
             for (const string& embName : allTableNames) {
@@ -816,7 +772,9 @@ void HybridMgmt::EvictKeys(const string& embName, const vector<emb_cache_key_t>&
     }
     int retCode = embCache->RemoveEmbsByKeys(embName, keys);
     if (retCode != H_OK) {
-        LOG_ERROR("RemoveEmbsByKeys failed!");
+        auto error = Error(ModuleName::M_OCK_CTR, ErrorType::UNKNOWN,
+                           StringFormat("RemoveEmbsByKeys failed, error: %d", retCode));
+        LOG_ERROR(error.ToString());
         return;
     }
 }
@@ -1412,10 +1370,6 @@ bool HybridMgmt::ProcessEmbInfoL3Storage(const EmbBaseInfo& info)
 
     SendTensorForSwap(info, swapInPos, swapOutPos);
 
-    if (info.channelId == TRAIN_CHANNEL_ID) {
-        alreadyTrainOnce = true;
-    }
-
     LOG_DEBUG("ProcessEmbInfoL3Storage end, table:{}, batchId:{}, swapProcessTC(ms):{}, getAndSendTensorsTC(ms):{}",
               info.name, info.batchId, swapProcessTC.ElapsedMS(), getAndSendTensorsTC.ElapsedMS());
 #endif
@@ -1612,7 +1566,8 @@ bool HybridMgmt::EmbeddingReceiveDDR(const EmbTaskInfo& info, float*& ptr, vecto
     // 区分通道接收
     auto size = hdTransfer->RecvAcl(TransferChannel::D2H, info.channelId, info.name, info.threadIdx, info.batchId);
     if (size == 0) {
-        LOG_WARN(HOSTEMB + "recv empty data");
+        LOG_WARN("Recv empty data, table:{}, channelId:{}, accumulate batchId:{}.",
+                 info.name, info.channelId, info.batchId);
         return false;
     }
 
@@ -1848,7 +1803,8 @@ bool HybridMgmt::EmbeddingReceiveL3Storage(const EmbTaskInfo& info, float*& ptr,
     // 区分通道接收
     auto size = hdTransfer->RecvAcl(TransferChannel::D2H, info.channelId, info.name, info.threadIdx, info.batchId);
     if (size == 0) {
-        LOG_WARN(HOSTEMB + "recv empty data");
+        LOG_WARN("Recv empty data, table:{}, channelId:{}, accumulate batchId:{}.",
+                 info.name, info.channelId, info.batchId);
         return false;
     }
 
@@ -2180,7 +2136,7 @@ void HybridMgmt::SendRestoreVec(const EmbBaseInfo& info, bool& remainBatchOut)
     if (infoVecs == nullptr) {
         remainBatchOut = false;
         if (isRunning) {
-            LOG_ERROR("Information vector is nullptr!");
+            LOG_WARN("Information vector is nullptr!");
         }
         return;
     }

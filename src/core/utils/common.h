@@ -38,21 +38,10 @@ See the License for the specific language governing permissions and
 #include "tensorflow/core/framework/tensor.h"
 #include "utils/config.h"
 #include "utils/logger.h"
+#include "utils/error.h"
 
-#if defined(BUILD_WITH_EASY_PROFILER)
-#include <easy/arbitrary_value.h>
-#include <easy/profiler.h>
-#else
-#define EASY_FUNCTION(...)
-#define EASY_VALUE(...)
-#define EASY_BLOCK(...)
-#define EASY_END_BLOCK
-#define EASY_PROFILER_ENABLE
-#define EASY_PROFILER_DISABLE
-#endif
 
 namespace MxRec {
-#define INFO_PTR shared_ptr
 #define MGMT_CPY_THREADS 4
 #define PROFILING
 using namespace tensorflow;
@@ -63,12 +52,9 @@ constexpr int EVAL_CHANNEL_ID = 1;
 constexpr int MAX_CHANNEL_NUM = 2;
 constexpr int MAX_KEY_PROCESS_THREAD = 10;
 constexpr int MAX_QUEUE_NUM = MAX_CHANNEL_NUM * MAX_KEY_PROCESS_THREAD;
-constexpr int DEFAULT_KEY_PROCESS_THREAD = 6;
 constexpr int KEY_PROCESS_THREAD = 6;
-constexpr char SUM_SAME_ID[] = "sum_same_id_gradients_and_apply";
 constexpr size_t MAX_VOCABULARY_SIZE = 1e10;
 constexpr int SSD_SIZE_INDEX = 2;
-constexpr int MAX_FILE_NUM = 1000;
 constexpr int EMBEDDING_THREAD_NUM = 2;
 constexpr int HOST_TO_PREFILL_RATIO = 10;
 constexpr int KEY_COUNT_ELEMENT_NUM = 2;
@@ -79,18 +65,13 @@ struct GlogConfig {
 };
 
 constexpr int GLOG_MAX_BUF_SIZE = 1024;
-constexpr int GLOG_TIME_WIDTH_2 = 2;
-constexpr int GLOG_TIME_WIDTH_6 = 6;
 
 // unique related config
-constexpr int UNIQUE_BUCKET = 6;
 constexpr int MIN_UNIQUE_THREAD_NUM = 1;
 
 // validate file
 constexpr long long FILE_MAX_SIZE = 1LL << 40;
 constexpr int FILE_MIN_SIZE = 0;
-constexpr size_t BUFFER_SIZE{1024 * 1024 * 64};
-constexpr size_t MAP_BYTE_SIZE{static_cast<size_t>(10) * 1024 * 1024 * 1024};
 #ifdef GTEST
 constexpr int KEY_PROCESS_TIMEOUT = 3;
 #else
@@ -106,8 +87,6 @@ constexpr int32_t INVALID_INDEX_VALUE = -1;
 constexpr int ALLTOALLVC_ALIGN = 128;
 constexpr int PROFILING_START_BATCH_ID = 100;
 constexpr int PROFILING_END_BATCH_ID = 200;
-constexpr int MGMT_THREAD_BIND = 48;
-constexpr int UNIQUE_MAX_BUCKET_WIDTH = 6;
 constexpr int HOT_EMB_UPDATE_STEP_DEFAULT = 1000;
 constexpr float HOT_EMB_CACHE_PCT = static_cast<float>(1. / 3);  // hot emb cache percent
 
@@ -197,29 +176,7 @@ struct Batch {
     time_t timestamp{-1};
 };
 
-struct BatchTask {
-    vector<int> splits;
-    vector<string> embNames;
-    size_t batchSize;
-    int batchQueueId;
-    int batchId;
-    int channelId;
-    time_t timestamp{-1};
-    const void* tensor;
-};
-
 using EmbBatchT = Batch<int64_t>;
-using BatchTaskT = BatchTask;
-
-struct DDRParam {
-    vector<Tensor> tmpDataOut;
-    vector<int32_t> offsetsOut;
-    DDRParam(vector<Tensor> tmpData, vector<int32_t> offset)
-    {
-        tmpDataOut = tmpData;
-        offsetsOut = offset;
-    }
-};
 
 struct RankInfo {
     RankInfo() = default;
@@ -258,17 +215,6 @@ enum TensorIndex : uint32_t {
     TENSOR_INDEX_6,
     TENSOR_INDEX_7,
     TENSOR_INDEX_8
-};
-
-enum TupleIndex : uint32_t {
-    TUPLE_INDEX_0 = 0,
-    TUPLE_INDEX_1,
-    TUPLE_INDEX_2,
-    TUPLE_INDEX_3,
-    TUPLE_INDEX_4,
-    TUPLE_INDEX_5,
-    TUPLE_INDEX_6,
-    TUPLE_INDEX_7
 };
 
 struct RandomInfo {
@@ -349,12 +295,6 @@ string StringFormat(const string& format, Args... args)
     }
     return string(buf.get(), buf.get() + nChar);
 }
-
-// use environment variable GLOG_v to decide if showing debug log.
-// default 0, debug message will not display.
-// 1 for debug, 2 for trace
-constexpr int GLOG_DEBUG = 1;
-constexpr int GLOG_TRACE = 2;
 
 template <typename T>
 std::string VectorToString(const std::vector<T>& vec)
@@ -543,7 +483,6 @@ using OffsetMapT = std::map<EmbNameT, std::vector<int64_t>>;
 using OffsetT = std::vector<int64_t>;
 using AllKeyOffsetMapT = std::map<std::string, std::map<int64_t, int64_t>>;
 using KeyFreqMemT = unordered_map<std::string, unordered_map<emb_cache_key_t, freq_num_t>>;
-using EmbLocalTableT = EmbCache::EmbCacheManager;
 
 enum class CkptFeatureType {
     HOST_EMB = 0,
@@ -562,7 +501,6 @@ struct CkptData {
     OffsetMemT maxOffset;
     KeyOffsetMemT keyOffsetMap;
     OffsetMapT offsetMap;
-    OffsetMapT* offsetMapPtr = &offsetMap;
     KeyCountMemT keyCountMap;
     Table2ThreshMemT table2Thresh;
     AdmitAndEvictData histRec;

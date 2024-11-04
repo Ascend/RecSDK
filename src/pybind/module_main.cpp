@@ -229,7 +229,6 @@ namespace {
                 .def("fetch_device_emb", &MxRec::HybridMgmt::FetchDeviceEmb)
                 .def("send", &MxRec::HybridMgmt::SendHostMap, py::arg("table_name") = "")
                 .def("send_load_offset", &MxRec::HybridMgmt::SendLoadMap, py::arg("table_name") = "")
-                .def("receive", &MxRec::HybridMgmt::ReceiveHostMap, py::arg("key_offset_map"))
                 .def("block_notify_wake", &MxRec::HybridMgmt::NotifyBySessionRun, py::arg("channel_id"))
                 .def("block_count_steps", &MxRec::HybridMgmt::CountStepBySessionRun,
                      py::arg("channel_id"), py::arg("steps")=1)

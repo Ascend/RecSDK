@@ -26,17 +26,15 @@ FeatureAdmitAndEvict::FeatureAdmitAndEvict(int recordsInitSize) : m_recordsInitS
 FeatureAdmitAndEvict::~FeatureAdmitAndEvict()
 {
     m_isEnableFunction = false;
-    m_isExit = true;
-    if (m_evictThread.joinable()) {
-        m_evictThread.join();
-    }
 }
 
 bool FeatureAdmitAndEvict::Init(const std::vector<ThresholdValue>& thresholdValues)
 {
     if (!ParseThresholdCfg(thresholdValues)) {
         m_isEnableFunction = false;
-        LOG_ERROR("Config is error, feature admin-and-evict function is not available ...");
+        auto error = Error(ModuleName::M_FEATURE_ADMIT_AND_EVICT, ErrorType::INVALID_ARGUMENT,
+                           "Threshold configuration is wrong, feature admin-and-evict function is not available.");
+        LOG_ERROR(error.ToString());
         return false;
     }
     SetCombineSwitch();
@@ -49,7 +47,10 @@ FeatureAdmitReturnType FeatureAdmitAndEvict::FeatureAdmit(int channel,
     const std::unique_ptr<EmbBatchT>& batch, KeysT& splitKey, std::vector<uint32_t>& keyCount)
 {
     if (splitKey.size() != keyCount.size()) {
-        LOG_ERROR("splitKey.size {} != keyCount.size {}", splitKey.size(), keyCount.size());
+        auto error = Error(ModuleName::M_FEATURE_ADMIT_AND_EVICT, ErrorType::LOGIC_ERROR,
+                           StringFormat("Size of splitKey:%ld and keyCount:%ld not equal.",
+                                        splitKey.size(), keyCount.size()));
+        LOG_ERROR(error.ToString());
         return FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR;
     }
     TimeCost featureAdmitAndEvictTC;
@@ -242,15 +243,21 @@ bool FeatureAdmitAndEvict::IsThresholdCfgOK(const std::vector<ThresholdValue>& t
     for (size_t i = 0; i < thresholds.size(); ++i) {
         auto it = std::find(embNames.begin(), embNames.end(), thresholds[i].tableName);
         if (it == embNames.end()) { // 配置不存在于当前跑的模型，也要报错
-            LOG_ERROR("embName[{}] is not exist at current model ...", thresholds[i].tableName);
+            auto error = Error(ModuleName::M_FEATURE_ADMIT_AND_EVICT, ErrorType::INVALID_ARGUMENT,
+                               StringFormat("Table:%s not exist at current model.", thresholds[i].tableName.c_str()));
+            LOG_ERROR(error.ToString());
             return false;
         } else {
             // 同时支持“准入&淘汰”，却没有传时间戳
             if (m_embStatus[*it] == SingleEmbTableStatus::SETS_ERROR) {
-                LOG_ERROR("embName[{}] config error, please check ...", embNames[i]);
+                auto error = Error(ModuleName::M_FEATURE_ADMIT_AND_EVICT, ErrorType::INVALID_ARGUMENT,
+                                   StringFormat("Table:%s configuration error.", embNames[i].c_str()));
+                LOG_ERROR(error.ToString());
                 return false;
             } else if (m_embStatus[*it] == SingleEmbTableStatus::SETS_BOTH && !isTimestamp) {
-                LOG_ERROR("embName[{}] admit and evict, but no timestamp", embNames[i]);
+                auto error = Error(ModuleName::M_FEATURE_ADMIT_AND_EVICT, ErrorType::INVALID_ARGUMENT,
+                                   StringFormat("Table:%s try to enable admit and evict function,"
+                                                " found is_timestamp is false.", embNames[i].c_str()));
                 return false;
             }
         }
@@ -323,7 +330,9 @@ void FeatureAdmitAndEvict::LoadHistoryRecords(AdmitAndEvictData& loadData)
 bool FeatureAdmitAndEvict::ParseThresholdCfg(const std::vector<ThresholdValue>& thresholdValues)
 {
     if (thresholdValues.empty()) {
-        LOG_ERROR("thresholdValues is empty ...");
+        auto error = Error(ModuleName::M_FEATURE_ADMIT_AND_EVICT, ErrorType::INVALID_ARGUMENT,
+                           "thresholdValues is empty.");
+        LOG_ERROR(error.ToString());
         return false;
     }
 
@@ -340,14 +349,20 @@ bool FeatureAdmitAndEvict::ParseThresholdCfg(const std::vector<ThresholdValue>& 
         m_table2Threshold[value.tableName] = value;
 
         if (value.faaeCoefficient < 1) {
-            LOG_ERROR("[{}] config error, coefficient smaller than 1 ...", value.tableName);
+            auto error = Error(ModuleName::M_FEATURE_ADMIT_AND_EVICT, ErrorType::INVALID_ARGUMENT,
+                               StringFormat("Table:%s, faae_coefficient should equal or greater than 1.",
+                                            value.tableName.c_str()));
+            LOG_ERROR(error.ToString());
         }
         if (value.countThreshold != -1 && value.timeThreshold != -1) {
             m_embStatus[value.tableName] = SingleEmbTableStatus::SETS_BOTH;
         } else if (value.countThreshold != -1 && value.timeThreshold == -1) {
             m_embStatus[value.tableName] = SingleEmbTableStatus::SETS_ONLY_ADMIT;
         } else {
-            LOG_ERROR("[{}] config error, have evict but no admit ...", value.tableName);
+            auto error = Error(ModuleName::M_FEATURE_ADMIT_AND_EVICT, ErrorType::INVALID_ARGUMENT,
+                               StringFormat("Table:%s, evict function should enable with admit function.",
+                                            value.tableName.c_str()));
+            LOG_ERROR(error.ToString());
             m_embStatus[value.tableName] = SingleEmbTableStatus::SETS_ERROR;
             return false;
         }

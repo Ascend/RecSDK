@@ -33,8 +33,9 @@ EmbeddingDynamic::EmbeddingDynamic(const EmbInfo& info, const RankInfo& rankInfo
         auto ret = aclrtSetDevice(static_cast<int32_t>(rankInfo.deviceId));
         if (ret != ACL_ERROR_NONE) {
             auto error = Error(ModuleName::M_ACL, ErrorType::NULL_PTR,
-                               StringFormat("Acl set device failed, device_id:%d, ret:%d.",
-                                            rankInfo.deviceId, ret));
+                               StringFormat("Acl set device failed, table:%s, device_id:%d, ret:%d."
+                                            " Check plog for detail.",
+                                            name.c_str(), rankInfo.deviceId, ret));
             LOG_ERROR(error.ToString());
             throw runtime_error(error.ToString());
         }
@@ -47,7 +48,10 @@ EmbeddingDynamic::~EmbeddingDynamic()
     for (auto& it: memoryList_) {
         aclError ret = aclrtFree(it);
         if (ret != ACL_SUCCESS) {
-            LOG_ERROR("aclrtFree failed, ret={}", ret);
+            auto error = Error(ModuleName::M_ACL, ErrorType::ACL_ERROR,
+                               StringFormat("Acl free memory failed, table:%s, error:%d."
+                                            " Check plog for detail.", name.c_str(), ret));
+            LOG_ERROR(error.ToString());
         }
     }
 }
@@ -76,7 +80,7 @@ void EmbeddingDynamic::Key2Offset(std::vector<emb_key_t>& keys, int channel)
         }
         key = INVALID_DYNAMIC_EXPANSION_ADDR;
     }
-    LOG_DEBUG("current expansion emb:{}, usage:{}/{})", name, maxOffset, devVocabSize);
+    LOG_DEBUG("HBM Expansion mode, table:{}, usage:{}/{}.)", name, maxOffset, devVocabSize);
 }
 
 void EmbeddingDynamic::Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel)
@@ -96,7 +100,8 @@ void EmbeddingDynamic::Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel
         if (channel == TRAIN_CHANNEL_ID) {
             auto error =
                 Error(ModuleName::M_EMB_TABLE, ErrorType::NOT_FOUND,
-                      StringFormat("LookupKeys contains invalid key %d, the key must exist in the offset map.", key));
+                      StringFormat("LookupKeys contains invalid key %d, the key must exist in the offset map, table:%s",
+                                   key, name.c_str()));
             LOG_ERROR(error.ToString());
             throw runtime_error(error.ToString());
         }
@@ -137,20 +142,22 @@ void EmbeddingDynamic::MallocEmbeddingBlock(int embNum)
 
 void EmbeddingDynamic::RandomInit(void* addr, size_t embNum)
 {
-    LOG_INFO("Device GenerateEmbData Start, seed:{}, initializer num: {}", seed_, embInfo_.initializeInfos.size());
+    LOG_INFO("Device GenerateEmbData Start, table:{}, seed:{}, initializer num:{}",
+             name, seed_, embInfo_.initializeInfos.size());
     vector<float> hostmem(embNum * extEmbSize_);
     for (const auto& initializeInfo: as_const(embInfo_.initializeInfos)) {
         for (size_t i = 0; i < embNum; ++i) {
             initializeInfo.initializer->GenerateData(&hostmem[i * extEmbSize_], extEmbSize_);
         }
     }
-    LOG_INFO("Device GenerateEmbData End, seed:{}", seed_);
+    LOG_INFO("Device GenerateEmbData End, table:{}.", name);
 
     aclError ret = aclrtMemcpy(addr, embNum * extEmbSize_ * sizeof(float),
                                hostmem.data(), embNum * extEmbSize_ * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
     if (ret != ACL_SUCCESS) {
         auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::ACL_ERROR,
-                           StringFormat("Execute aclrtMemcpy from host to device failed, ret=%d.", ret));
+                           StringFormat("Execute aclrtMemcpy from host to device failed, table:%s, error:%d.",
+                                        name.c_str(), ret));
         LOG_ERROR(error.ToString());
         throw std::runtime_error(error.ToString());
     }
@@ -180,9 +187,9 @@ void EmbeddingDynamic::SaveKey(const string& savePath, bool saveDelta, const map
             auto result = keyOffsetMap.find(it.first);
             if (result == keyOffsetMap.end()) {
                 auto error = MxRec::Error(ModuleName::M_EMB_TABLE, ErrorType::NOT_FOUND,
-                                          StringFormat("Key: %s not in keyOffsetMap, please check if deltaMap "
-                                                       "update correctly or get keyInfo from deltaMap is correct.",
-                                                       it.first));
+                                          StringFormat("Key: %s not in keyOffsetMap, please check if deltaMap update "
+                                                       "correctly or get keyInfo from deltaMap is correct, table:%s.",
+                                                       it.first, name.c_str()));
                 LOG_ERROR(error.ToString());
                 throw runtime_error(StringFormat("Key: %s not in keyOffsetMap.", it.first));
             }
@@ -204,15 +211,16 @@ void EmbeddingDynamic::SaveKey(const string& savePath, bool saveDelta, const map
     ssize_t res = fileSystemPtr_->Write(ss.str(), reinterpret_cast<const char *>(deviceKey.data()), writeSize);
     if (res == -1) {
         auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::LOGIC_ERROR,
-                           StringFormat("Error: Save keys failed. "
-                                        "An error occurred while writing file: %s.", ss.str().c_str()));
+                           StringFormat("Error: Save keys failed. An error occurred while writing"
+                                        " file:%s, table:%s.", ss.str().c_str(), name.c_str()));
         LOG_ERROR(error.ToString());
         throw std::runtime_error(error.ToString());
     }
     if (res != writeSize) {
         auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::LOGIC_ERROR,
                            StringFormat("Error: Save keys failed. Expected to write %d bytes, "
-                                        "but actually write %d bytes to file %s.", writeSize, res, ss.str().c_str()));
+                                        "but actually write %d bytes to file:%s, table:%s.",
+                                        writeSize, res, ss.str().c_str(), name.c_str()));
         LOG_ERROR(error.ToString());
         throw std::runtime_error(error.ToString());
     }
@@ -291,7 +299,7 @@ void EmbeddingDynamic::LoadEmbAndOptim(const string& savePath)
         fileSystemPtr_->ReadEmbedding(embedStream.str(), embeddingSizeInfo, firstAddress, deviceId, loadOffset);
     } catch (std::runtime_error& e) {
         auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::IO_ERROR,
-                           StringFormat("Failed to read file, error is: %s.", e.what()));
+                           StringFormat("Failed to read file, table:%s, error: %s.", name.c_str(), e.what()));
         LOG_ERROR(error.ToString());
         throw std::runtime_error(error.ToString());
     }
@@ -306,7 +314,7 @@ void EmbeddingDynamic::LoadEmbAndOptim(const string& savePath)
                                           firstAddress + optimIndex * embSize_ * sizeof(float), deviceId, loadOffset);
         } catch (std::runtime_error& e) {
             auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::IO_ERROR,
-                               StringFormat("Failed to read file, error is: %s.", e.what()));
+                               StringFormat("Failed to read file, table:%s, error: %s.", name.c_str(), e.what()));
             LOG_ERROR(error.ToString());
             throw std::runtime_error(error.ToString());
         }
@@ -332,7 +340,7 @@ void EmbeddingDynamic::LoadKey(const string& savePath)
     } catch (std::runtime_error& e) {
         free(static_cast<void*>(buf));
         auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::IO_ERROR,
-                           StringFormat("Failed to read file, error is: %s.", e.what()));
+                           StringFormat("Failed to read file, table:%s, error: %s. ", name.c_str(), e.what()));
         LOG_ERROR(error.ToString());
         throw std::runtime_error(error.ToString());
     }
@@ -356,7 +364,7 @@ void EmbeddingDynamic::LoadKey(const string& savePath)
         free(static_cast<void*>(buf));
         auto error = Error(ModuleName::M_ACL, ErrorType::LOGIC_ERROR,
                            StringFormat("Error: in dynamic expansion mode, "
-                                        "aclrtMalloc failed, malloc size: %d.", datasetSize));
+                                        "aclrtMalloc failed, table:%s, malloc size:%d.", name.c_str(), datasetSize));
         LOG_ERROR(error.ToString());
         throw runtime_error(error.ToString());
     }

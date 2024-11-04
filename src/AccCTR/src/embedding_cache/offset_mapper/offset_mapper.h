@@ -67,7 +67,7 @@ public:
         return *this;
     }
 
-    bool Initialize(uint32_t reserve, uint32_t maxSize = 0)
+    bool Initialize(uint64_t reserve, uint64_t maxSize = 0)
     {
         maxCacheSize = maxSize;
         useLength = 0;
@@ -159,7 +159,7 @@ public:
         return ock::ctr::H_OK;
     }
 
-    uint32_t GetUsage()
+    uint64_t GetUsage()
     {
         return useLength - evictSize;
     }
@@ -272,8 +272,8 @@ public:
     }
 
 private:
-    uint32_t maxCacheSize{};            // HBM可容纳embedding条数
-    uint32_t useLength{};               // HBM存储的embedding条数
+    uint64_t maxCacheSize{};            // HBM可容纳embedding条数
+    uint64_t useLength{};               // HBM存储的embedding条数
     LimitedSet *validPos{};             // HBM中可被换出的位置
     LimitedSet *evictPos{};             // 淘汰出的位置
     std::vector<uint64_t> pos2Key;      // HBM中每个位置对应的key

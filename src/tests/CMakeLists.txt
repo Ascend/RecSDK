@@ -43,12 +43,6 @@ if(NOT SECUREC_PATH)
     set(SECUREC_PATH ${PROJECT_SOURCE_DIR}/../platform/securec)
 endif()
 
-if (easy_profiler_FOUND)
-    message("==link with easy_profiler==")
-    target_link_directories(test_main PUBLIC ${EASY_PROFILER_PATH})
-    target_link_libraries(test_main PUBLIC easy_profiler)
-endif ()
-
 include_directories(PRIVATE .)
 target_include_directories(test_main
     PRIVATE

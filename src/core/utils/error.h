@@ -52,6 +52,9 @@ enum class ModuleName: uint8_t {
     M_UTILS,
     M_OCK_CTR,
     M_ACL,
+    M_HYBRID_MGMT_BLOCK,
+    M_FEATURE_ADMIT_AND_EVICT,
+    M_DATASET_OPS,
 };
 
 class Error {
