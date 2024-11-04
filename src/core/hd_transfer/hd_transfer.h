@@ -33,8 +33,6 @@ See the License for the specific language governing permissions and
 namespace MxRec {
     using namespace std;
     const std::string MGMT = "\033[32m[Mgmt]\033[0m ";
-    const std::string HD = "\033[32m[HD]\033[0m ";
-    const std::string HOSTEMB = "\033[32m[HostEmb]\033[0m ";
     const int PING_PONG_SIZE = 6;
 
     enum class TransferChannel {
@@ -96,8 +94,6 @@ namespace MxRec {
 
         void Send(TransferChannel channel, const vector<Tensor>& tensors,
                   int channelId, const string& embName, int batchId = -1);
-
-        vector<Tensor> Recv(TransferChannel channel, int channelId, const string& embName);
 
         size_t RecvAcl(TransferChannel channel, int channelId, const string& embName,
                        int embeddingThreadId, int batchId);
