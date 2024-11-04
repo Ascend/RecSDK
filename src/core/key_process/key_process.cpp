@@ -101,7 +101,9 @@ int KeyProcess::Start()
 #ifndef GTEST
         auto ret = aclrtSetDevice(static_cast<int32_t>(rankInfo.deviceId));
         if (ret != ACL_ERROR_NONE) {
-            LOG_ERROR("Set device failed, device_id:{}", rankInfo.deviceId);
+            auto error = Error(ModuleName::M_ACL, ErrorType::UNKNOWN,
+                               StringFormat("Set device failed, device_id:%d, please check plog.", rankInfo.deviceId));
+            LOG_ERROR(error.ToString());
             return;
         }
 #endif
@@ -349,8 +351,9 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch
     if (isWithFAAE && (m_featureAdmitAndEvict.FeatureAdmit(channel, batch, uniqueInfo.all2AllInfo.keyRecv,
                                                            uniqueInfo.all2AllInfo.countRecv) ==
                        FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR)) {
-        LOG_ERROR(KEY_PROCESS "rank:{} thread:{}, channel:{}, Feature-admit-and-evict error ...", rankInfo.rankId,
-                  threadId, channel);
+        auto error = Error(ModuleName::M_FEATURE_ADMIT_AND_EVICT, ErrorType::UNKNOWN,
+                           StringFormat("Feature-admit-and-evict error, check previous log for detail."));
+        LOG_ERROR(error.ToString());                        
         return false;
     }
     std::lock_guard<std::mutex> lock(loadSaveMut[channel][threadId]);
@@ -489,8 +492,9 @@ bool KeyProcess::KeyProcessTaskHelperForDp(unique_ptr<EmbBatchT>& batch, int cha
         // Use global ids.
         if (m_featureAdmitAndEvict.FeatureAdmit(channel, batch, globalDpIdVec, countRecv) ==
             FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR) {
-            LOG_ERROR(KEY_PROCESS "Rank:{} thread:{}, channel:{}, Feature-admit-and-evict error ...", rankInfo.rankId,
-                      threadId, channel);
+            auto error = Error(ModuleName::M_FEATURE_ADMIT_AND_EVICT, ErrorType::UNKNOWN,
+                               StringFormat("Feature-admit-and-evict error, check previous log for detail."));
+            LOG_ERROR(error.ToString());
             return false;
         }
 
@@ -570,8 +574,9 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
         FeatureAdmitAndEvict::m_embStatus[batch->name] != SingleEmbTableStatus::SETS_NONE &&
         (m_featureAdmitAndEvict.FeatureAdmit(channel, batch, lookupKeys, countRecv) ==
          FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR)) {
-        LOG_ERROR(KEY_PROCESS "rank:{} thread:{}, channel:{}, Feature-admit-and-evict error ...", rankInfo.rankId,
-                  threadId, channel);
+        auto error = Error(ModuleName::M_FEATURE_ADMIT_AND_EVICT, ErrorType::UNKNOWN,
+                           StringFormat("Feature-admit-and-evict error, check previous log for detail."));
+        LOG_ERROR(error.ToString());
         return false;
     }
 
@@ -725,7 +730,10 @@ vector<uint32_t> KeyProcess::GetCountRecv(const unique_ptr<EmbBatchT>& batch, in
     int retCode = MPI_Alltoallv(countSend.data(), sc.data(), ss.data(), MPI_UINT32_T, countRecv.data(), rc.data(),
                                 rs.data(), MPI_UINT32_T, comm[batch->channel][id]);
     if (retCode != MPI_SUCCESS) {
-        LOG_ERROR("rank {}, MPI_Alltoallv failed:{}", rankInfo.rankId, retCode);
+        auto error = Error(ModuleName::M_KEY_PROCESS, ErrorType::UNKNOWN,
+                           StringFormat("MPI_Alltoallv failed, error:%d.", retCode));
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString());
     }
     LOG_DEBUG("getCountRecvTC(ms)(with-all2all):{}", getCountRecvTC.ElapsedMS());
     return countRecv;
@@ -959,7 +967,10 @@ void KeyProcess::All2All(vector<int>& sc, int id, const unique_ptr<EmbBatchT>& b
     int retCode = MPI_Alltoallv(keySendInfo.keySend.data(), sc.data(), ss.data(), MPI_INT64_T,
                                 all2AllInfoOut.keyRecv.data(), rc.data(), rs.data(), MPI_INT64_T, comm[channel][id]);
     if (retCode != MPI_SUCCESS) {
-        LOG_ERROR("rank {}, MPI_Alltoallv failed:{}", rankInfo.rankId, retCode);
+        auto error = Error(ModuleName::M_KEY_PROCESS, ErrorType::MPI_ERROR,
+                           StringFormat("MPI_Allgatherv for count receive failed, error:%d.", retCode));
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
     }
     LOG_DEBUG("channelId:{} threadId:{} batchId:{}, All2All MPI_Alltoallv end.", channel, id, batch->batchId);
     all2AllInfoOut.countRecv.resize(rs.back() + rc.back());
@@ -967,8 +978,10 @@ void KeyProcess::All2All(vector<int>& sc, int id, const unique_ptr<EmbBatchT>& b
         retCode = MPI_Alltoallv(keySendInfo.keyCount.data(), sc.data(), ss.data(), MPI_UINT32_T,
                                 all2AllInfoOut.countRecv.data(), rc.data(), rs.data(), MPI_UINT32_T, comm[channel][id]);
         if (retCode != MPI_SUCCESS) {
-            LOG_ERROR("channelId:{} threadId:{} batchId:{}, MPI_Alltoallv failed:{}", channel, id, batch->batchId,
-                      retCode);
+            auto error = Error(ModuleName::M_KEY_PROCESS, ErrorType::MPI_ERROR,
+                               StringFormat("MPI_Alltoallv failed, error:%d.", retCode));
+            LOG_ERROR(error.ToString());
+            throw runtime_error(error.ToString().c_str());
         }
     }
     LOG_DEBUG("channelId:{} threadId:{} batchId:{}, All2All end, all2allTC TimeCost(ms):{}", channel, id,
@@ -1347,7 +1360,10 @@ void KeyProcess::GetScAllForUnique(const vector<int>& keyScLocal, int commId, co
     auto retCode = MPI_Allgather(keyScLocal.data(), rankInfo.rankSize, MPI_INT, scAllOut.data(), rankInfo.rankSize,
                                  MPI_INT, comm[channel][commId]);
     if (retCode != MPI_SUCCESS) {
-        LOG_ERROR("rank {}, MPI_Allgather failed:{}", rankInfo.rankId, retCode);
+        auto error = Error(ModuleName::M_KEY_PROCESS, ErrorType::MPI_ERROR,
+                           StringFormat("MPI_Allgather failed, error:%d.", retCode));
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());        
     }
     LOG_DEBUG("channelId:{} threadId:{} batchId:{}, GetScAllForUnique end, key scAllOut matrix:\n{}", channel, commId,
               batch->batchId, VectorToString(scAllOut));
@@ -1387,7 +1403,7 @@ T KeyProcess::GetInfo(info_list_t<T>& list, const EmbBaseInfo& info)
     }
     auto topBatch = get<int>(list[info.name][info.channelId].top());
     if (topBatch < info.batchId) {
-        LOG_ERROR("wrong batch id, top:{} getting:{}, channel:{}, may not clear channel", topBatch, info.batchId,
+        LOG_WARN("Wrong batch id, top:{} getting:{}, channel:{}, may not clear channel.", topBatch, info.batchId,
                   info.channelId);
         this_thread::sleep_for(1s);
     }

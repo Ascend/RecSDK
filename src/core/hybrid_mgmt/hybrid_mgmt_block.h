@@ -22,6 +22,7 @@ See the License for the specific language governing permissions and
 #include "hd_transfer/hd_transfer.h"
 #include "utils/common.h"
 #include "utils/singleton.h"
+#include "utils/error.h"
 
 namespace MxRec {
     const std::string HYBRID_BLOCKING = "[HYBRID_BLOCKING] ";
@@ -110,7 +111,8 @@ namespace MxRec {
                                "currentBatchNumber is %d. please check your setting of train "
                                "steps and eval steps", scene.c_str(), channelId, preprocessBatchNumber,
                                currentBatchNumber);
-            LOG_ERROR(str);
+            auto error = Error(ModuleName::M_HYBRID_MGMT_BLOCK, ErrorType::INVALID_ARGUMENT, str);                              
+            LOG_ERROR(error.ToString());
         }
 
     private:

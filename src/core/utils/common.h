@@ -38,6 +38,7 @@ See the License for the specific language governing permissions and
 #include "tensorflow/core/framework/tensor.h"
 #include "utils/config.h"
 #include "utils/logger.h"
+#include "utils/error.h"
 
 
 namespace MxRec {

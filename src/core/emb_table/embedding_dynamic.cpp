@@ -48,7 +48,10 @@ EmbeddingDynamic::~EmbeddingDynamic()
     for (auto& it: memoryList_) {
         aclError ret = aclrtFree(it);
         if (ret != ACL_SUCCESS) {
-            LOG_ERROR("aclrtFree failed, table:{}, error:{}.", name, ret);
+            auto error = Error(ModuleName::M_ACL, ErrorType::ACL_ERROR,
+                               StringFormat("Acl free memory failed, table:%s, error:%d."
+                                " Check plog for detail.", name.c_str(), ret));
+            LOG_ERROR(error.ToString());
         }
     }
 }
