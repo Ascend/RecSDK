@@ -742,7 +742,7 @@ bool HybridMgmt::Evict()
             int retCode = embCache->GetEmbTableNames(allTableNames);
             if (retCode != H_OK) {
                 auto error = Error(ModuleName::M_OCK_CTR, ErrorType::INVALID_ARGUMENT,
-                                   StringFormat("GetEmbTableNames failed, error:%d.", retCode)); 
+                                   StringFormat("GetEmbTableNames failed, error: %d.", retCode));
                 LOG_ERROR(error.ToString());
                 return false;
             }
@@ -773,8 +773,8 @@ void HybridMgmt::EvictKeys(const string& embName, const vector<emb_cache_key_t>&
     int retCode = embCache->RemoveEmbsByKeys(embName, keys);
     if (retCode != H_OK) {
         auto error = Error(ModuleName::M_OCK_CTR, ErrorType::UNKNOWN,
-                            StringFormat("RemoveEmbsByKeys failed, error:%d", retCode)); 
-        LOG_ERROR(error.ToString());        
+                           StringFormat("RemoveEmbsByKeys failed, error: %d", retCode));
+        LOG_ERROR(error.ToString());
         return;
     }
 }

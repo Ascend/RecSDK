@@ -244,8 +244,7 @@ bool FeatureAdmitAndEvict::IsThresholdCfgOK(const std::vector<ThresholdValue>& t
         auto it = std::find(embNames.begin(), embNames.end(), thresholds[i].tableName);
         if (it == embNames.end()) { // 配置不存在于当前跑的模型，也要报错
             auto error = Error(ModuleName::M_FEATURE_ADMIT_AND_EVICT, ErrorType::INVALID_ARGUMENT,
-                               StringFormat("Table:%s not exist at current model.",
-                               thresholds[i].tableName.c_str()));
+                               StringFormat("Table:%s not exist at current model.", thresholds[i].tableName.c_str()));
             LOG_ERROR(error.ToString());
             return false;
         } else {

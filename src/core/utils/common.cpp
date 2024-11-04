@@ -109,7 +109,7 @@ namespace MxRec {
             if (S_ISLNK(fileInfo.st_mode)) {
                 auto error = Error(ModuleName::M_UTILS, ErrorType::INVALID_ARGUMENT,
                                    StringFormat("Found soft link in path:%s.", dataDir.c_str()));
-                LOG_ERROR(error.ToString());                
+                LOG_ERROR(error.ToString());
                 throw invalid_argument(error.ToString());
             }
         }
@@ -118,7 +118,7 @@ namespace MxRec {
             auto error = Error(ModuleName::M_UTILS, ErrorType::INVALID_ARGUMENT,
                                StringFormat("The reading file size is invalid, not in range [%d, %d], path:%s.",
                                             FILE_MIN_SIZE, FILE_MAX_SIZE, dataDir.c_str()));
-            LOG_ERROR(error.ToString());              
+            LOG_ERROR(error.ToString());
             throw invalid_argument(error.ToString());
         }
         // validate file privilege
@@ -135,7 +135,7 @@ namespace MxRec {
         if (ret != 0) {
             auto error = Error(ModuleName::M_UTILS, ErrorType::UNKNOWN,
                                StringFormat("Get stat info failed, file:%s, error:%d.", filePath.c_str(), ret));
-            LOG_ERROR(error.ToString());                
+            LOG_ERROR(error.ToString());
             return false;
         }
 
@@ -152,7 +152,7 @@ namespace MxRec {
                                    StringFormat("File permission wrong, file:%s, type:%s, current permission:%d,"
                                                 " required no greater than:%d.",
                                                 filePath.c_str(), permMsg[i - 1], curPerm, maxPerm));
-                LOG_ERROR(error.ToString());                     
+                LOG_ERROR(error.ToString());
                 return false;
             }
         }

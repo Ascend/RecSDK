@@ -25,14 +25,16 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.util import compat
 
-from mx_rec.constants.constants import DataName, DataAttr, MIN_SIZE, MAX_FILE_SIZE, TFDevice, \
-    MAX_INT32, HDFS_FILE_PREFIX, TRAIN_CHANNEL_ID, BASE_MODEL, DELTA_MODEL, \
-    SAVE_DIR_MODE, SAVE_FILE_MODE, SAVE_FILE_FLAG
+from mx_rec.constants.constants import (
+    DataName, DataAttr, MIN_SIZE, MAX_FILE_SIZE, TFDevice, MAX_INT32, HDFS_FILE_PREFIX, TRAIN_CHANNEL_ID,
+    BASE_MODEL, DELTA_MODEL, SAVE_DIR_MODE, SAVE_FILE_MODE, SAVE_FILE_FLAG
+)
 from mx_rec.util.communication.hccl_ops import get_rank_id, get_rank_size, get_local_rank_size
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.perf import performance
-from mx_rec.validator.validator import DirectoryValidator, FileValidator, para_checker_decorator, ClassValidator, \
-    IntValidator, OptionalStringValidator
+from mx_rec.validator.validator import (
+    DirectoryValidator, FileValidator, para_checker_decorator, ClassValidator, IntValidator, OptionalStringValidator,
+)
 from mx_rec.util.global_env_conf import global_env
 from mx_rec.util.log import logger
 from mx_rec.optimizers.base import CustomizedOptimizer
@@ -561,15 +563,14 @@ def write_binary_data(writing_path: str, suffix: int, data: np.ndarray):
     data_file, _ = generate_file_name(suffix)
     target_data_dir = os.path.join(writing_path, data_file)
     # append mode of hdfs system supports not well when the file not exists.
-    write_mode = "wb" if not tf.io.gfile.exists(target_data_dir) else "ab"  # FIXME
+    write_mode = "wb" if not tf.io.gfile.exists(target_data_dir) else "ab"
     if check_file_system_is_hdfs(target_data_dir):
         with tf.io.gfile.GFile(target_data_dir, write_mode) as file:
             data = data.tostring()
             file.write(data)
     else:
         with os.fdopen(os.open(target_data_dir, SAVE_FILE_FLAG, SAVE_FILE_MODE), write_mode) as file:
-            file.write(target_data_dir.tostring())
-    
+            file.write(data.tostring())
 
 
 def read_binary_data(reading_path: str, data_name: str, table_name: str, load_offset) -> dict:
@@ -823,7 +824,7 @@ def write_delta_export_time_ms(save_dir: str, delta_export_time_ms: dict):
             raise ValueError(f"save_dir:{save_dir} can't be soft link") from e
         with os.fdopen(os.open(delta_export_time_ms_file, SAVE_FILE_FLAG, SAVE_FILE_MODE), "w") as f:
             json.dump(delta_export_time_ms, f, indent=4)
-            
+
 
 def get_model_type_by_version(save_dir: str, model_version: str):
     model_index_file = os.path.join(save_dir, "model_index.json")

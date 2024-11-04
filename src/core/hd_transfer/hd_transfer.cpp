@@ -179,7 +179,7 @@ void HDTransfer::Send(TransferChannel channel, const vector<Tensor>& tensors, in
 
     if (sizes.size() == 0) {
         LOG_WARN("No elements to send, channelName:{}, sendBatchIdType:{}, batchId:{}.",
-                  sendName, sendBatchIdType, batchId);
+                 sendName, sendBatchIdType, batchId);
         return;
     }
 

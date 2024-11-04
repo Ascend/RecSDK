@@ -353,7 +353,7 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch
                        FeatureAdmitReturnType::FEATURE_ADMIT_RETURN_ERROR)) {
         auto error = Error(ModuleName::M_FEATURE_ADMIT_AND_EVICT, ErrorType::UNKNOWN,
                            StringFormat("Feature-admit-and-evict error, check previous log for detail."));
-        LOG_ERROR(error.ToString());                        
+        LOG_ERROR(error.ToString());
         return false;
     }
     std::lock_guard<std::mutex> lock(loadSaveMut[channel][threadId]);
@@ -1363,7 +1363,7 @@ void KeyProcess::GetScAllForUnique(const vector<int>& keyScLocal, int commId, co
         auto error = Error(ModuleName::M_KEY_PROCESS, ErrorType::MPI_ERROR,
                            StringFormat("MPI_Allgather failed, error:%d.", retCode));
         LOG_ERROR(error.ToString());
-        throw runtime_error(error.ToString().c_str());        
+        throw runtime_error(error.ToString().c_str());
     }
     LOG_DEBUG("channelId:{} threadId:{} batchId:{}, GetScAllForUnique end, key scAllOut matrix:\n{}", channel, commId,
               batch->batchId, VectorToString(scAllOut));
@@ -1403,8 +1403,8 @@ T KeyProcess::GetInfo(info_list_t<T>& list, const EmbBaseInfo& info)
     }
     auto topBatch = get<int>(list[info.name][info.channelId].top());
     if (topBatch < info.batchId) {
-        LOG_WARN("Wrong batch id, top:{} getting:{}, channel:{}, may not clear channel.", topBatch, info.batchId,
-                  info.channelId);
+        LOG_WARN("Wrong batch id, top:{} getting:{}, channel:{}, may not clear channel.",
+                 topBatch, info.batchId, info.channelId);
         this_thread::sleep_for(1s);
     }
     if (topBatch != info.batchId) {
