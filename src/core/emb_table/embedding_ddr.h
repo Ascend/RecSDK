@@ -32,6 +32,8 @@ public:
 
     virtual void Key2Offset(std::vector<emb_key_t>& splitKey, int channel);
 
+    virtual void Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel);
+
     virtual int64_t capacity() const;
 
     virtual void EvictKeys(const vector<emb_key_t>& keys);
@@ -44,9 +46,9 @@ public:
 
     void LoadOptimizerSlot(const string& savePath, vector<vector<float>>& optimizerSlots);
 
-    void Save(const string& savePath);
+    void Save(const string& savePath, const int pythonBatchId, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo);
 
-    void SyncLatestEmbedding();
+    void SyncLatestEmbedding(const int pythonBatchId);
 
     void SaveKey(const string& savePath, vector<emb_cache_key_t>& keys);
 
@@ -73,9 +75,14 @@ public:
     void SaveEmbAndOptim(const string& savePath);
     void SetEmbCache(ock::ctr::EmbCacheManagerPtr embCache);
 
+    void BackUpTrainStatus();
+    void RecoverTrainStatus();
+
 GTEST_PRIVATE:
 
     void EvictDeleteEmb(const vector<emb_key_t>& keys);
+
+    void EmbeddingUpdateWithSSD(const vector<uint64_t>& swapOutKeys, float* deviceDataPtr);
 
     size_t maxOffsetOld { 0 };
     std::vector<size_t> evictPosChange;

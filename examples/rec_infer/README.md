@@ -22,17 +22,18 @@
 2. 解压后进入源码目录
 3. 添加TF-serving第三方依赖
 
-a)执行如下命令，在“serving-1.15.0/third_party”目录下创建“tf_adapter”文件夹并进入。
+a.执行如下命令，在“serving-1.15.0/third_party”目录下创建“tf_adapter”文件夹并进入。
 >cd third_party/<br>
 mkdir tf_adapter<br>
 cd tf_adapter<br>
-b)执行如下命令，在“tf_adapter”文件夹下拷贝存放“libpython3.7m.so.1.0”文件，并创建软链接。
+
+b.执行如下命令，在“tf_adapter”文件夹下拷贝存放“libpython3.7m.so.1.0”文件，并创建软链接。
 > cp /usr/local/python3.7.5/lib/libpython3.7m.so.1.0 .<br>
 ln -s libpython3.7m.so.1.0 libpython3.7m.so<br>
 
-c.执行如下命令，在“tf_adapter”文件夹下拷贝存放“_tf_adapter.so”文件，并将“_tf_adapter.so”文件名修改为“lib_tf_adapter.so”。
+c.执行如下命令，在“tf_adapter”文件夹下拷贝存放“_tf_adapter.so”文件，并将“_tf_adapter.so”文件拷贝一份为“lib_tf_adapter.so”。
 >cp /home/HwHiAiUser/Ascend/tfplugin/latest/python/site-packages/npu_bridge/_tf_adapter.so .<br>
-mv _tf_adapter.so lib_tf_adapter.so<br>
+cp _tf_adapter.so lib_tf_adapter.so<br>
 
 4. 编译空的libtensorflow_framework.so、_pywrap_tensorflow_internal.so文件.
 
@@ -59,7 +60,7 @@ ln -s libtensorflow_framework.so libtensorflow_framework.so.1<br>
 
 e.配置环境命令。
 ```text
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(pwd)<br>
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(pwd)
 ```
 
 5. 在“tf_adapter”文件夹下创建BUILD文件。 写入如下内容。
@@ -99,6 +100,7 @@ name = "tensorflow_model_server",<br>
 7. TF Serving,在TF Serving安装目录“serving-1.15.0”下执行如下命令，编译TF Serving。
 
 > bazel --output_user_root=/opt/tf_serving build -c opt --distdir=../depends --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" tensorflow_serving/model_servers:tensorflow_model_server<br>
+
 如果编译过程中遇到依赖包下载失败问题，可手动下载，TF serving编译依赖包(https://www.hiascend.com/document/detail/zh/canncommercial/80RC1/developmentguide/moddevg/onlineinfer1/atlastfserv_26_0011.html)
 
 8. 建立软连接。
@@ -114,21 +116,26 @@ server.sh/client.sh
 1. 启动tf-serving server方法
 进入目录 tf_serving_inerence
 > 更改server.sh中模型路径model_base_path为导出的savedModel路径，<br>
+> 更改可执行文件tensorflow_model_server的路径；<br>
 > 将编译tf_serving的第三方依赖tf_adapter路径加入环境变量,export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/xxx/xxx/serving-1.15.0/third_party/tf_adapter/,<br>
 > source /usr/local/Ascend/ascend-toolkit/set_env.sh<br>
 > sh server.sh<br>
 
 若日志中显示Running gRPC ModelServer at 0.0.0.0:xxxx则表示启动成功
+
 2.请求服务器方法
 执行脚本：sh client.sh
 推理成功会打印端到端时延
 
 # 使用切图工具
-1.进入目录：graph_patition,修改gen_config.py中的模型目录
-2.执行 python3 gen_config.py，使用生成的test1.cfg文件启动模型，使用方法如下：
-> python3 gen_config.py --output_path . --output_filename test1.cfg --model_path savedmodel_path<br>
-+ 参数解释：output_path(输出路径),output_filename(输出文件名),model_path(输入模型路径)<br>
+本工具是基于cann的一个混合计算功能，开发的一个生成配置文件的工具；生成的配置文件中的in_out_pair可以控制具体下沉那些算子到npu，从而提升模型运行性能；
+混合计算功能参考链接（https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC3alpha002/apiref/fmkadptapi/tfmigr1_tfadapi_0020.html#ZH-CN_TOPIC_0000001981222466__section189920476161）
+1. 进入目录：mxrec/tools/graph_partition,修改gen_config.py中的模型目录
+2. 执行 python3 gen_config.py，使用生成的test1.cfg文件启动模型，使用方法如下：
+> python3 gen_config.py --output_path . --tags_name serve --output_filename test1.cfg --model_path savedmodel_path<br>
++ 参数解释：output_path(输出路径),tars_name(模型tags名字多个以逗号隔开),output_filename(输出文件名),model_path(输入模型路径)<br>
 + 得到输出文件后，替换服务启动脚本中--platform_config_file参数选项即可生效
++ tag取值取决于保存模型时打的标签，当一个模型包含不同的MetaGraphDef的时候，可以通过tag来区分具体使用的MetaGraphDef，默认tag为 serve
 
-#性能优化
-1. 具体参考optimize目录下的文件
+# 性能优化
+1. 具体参考optimize目录下的README.md文件

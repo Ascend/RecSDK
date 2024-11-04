@@ -41,7 +41,10 @@ void CkptDataHandler::CleanTransfer()
 void CkptDataHandler::SetDatasetForLoadEmb(CkptDataType dataType, string embName, CkptTransData& loadedData,
                                            CkptData& ckptData)
 {
-    LOG_ERROR("Load host emb failed. dataType:{}, embName:{}, loadedData:{}",
-        dataType, embName, loadedData.datasetSize);
-    throw runtime_error("only EMB_INFO and EMB_DATA supported for load host emb");
+    string errMsg = Logger::Format("Load host emb failed, dataType:{}, embName:{}, loadedData:{}."
+                                   " Only EMB_INFO and EMB_DATA supported for load host emb.",
+                                   dataType, embName, loadedData.datasetSize);
+    auto error = Error(ModuleName::M_CHECK_POINT, ErrorType::NOT_SUPPORTED, errMsg);
+    LOG_ERROR(error.ToString());
+    throw std::runtime_error(error.ToString());
 }

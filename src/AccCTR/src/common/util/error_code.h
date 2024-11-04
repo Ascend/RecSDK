@@ -43,6 +43,7 @@ using CTRCode = enum : int {
     H_TABLE_NAME_EMPTY = 22,
     H_PREFILL_BUFFER_SIZE_INVALID = 23,
     H_TABLE_NAME_TOO_LONG = 24,
+    H_EMB_CACHE_INFO_LOST = 25
 };
 }
 }

@@ -25,9 +25,15 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.training import gradient_descent
 
 from mx_rec.optimizers.base import CustomizedOptimizer
+from mx_rec.util.tf_version_adapter import hccl_ops
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.ops import import_host_pipeline_ops
-from mx_rec.validator.validator import para_checker_decorator, StringValidator, ClassValidator, FloatValidator
+from mx_rec.validator.validator import (
+    para_checker_decorator,
+    StringValidator,
+    ClassValidator,
+    FloatValidator,
+)
 
 
 @para_checker_decorator(check_option_list=[
@@ -38,26 +44,41 @@ from mx_rec.validator.validator import para_checker_decorator, StringValidator, 
 ])
 def create_hash_optimizer_by_addr(learning_rate, weight_decay=0.0001, use_locking=False, name="GradientDescentByAddr"):
     if not ConfigInitializer.get_instance().use_dynamic_expansion:
-        raise ValueError("dynamic expansion mode is not compatible with the optimizer, please config dynamic "
-                         "expansion mode and optimizer correctly")
-    optimizer_by_addr = CustomizedGradientDescentByAddr(learning_rate=learning_rate,
-                                                        weight_decay=weight_decay,
-                                                        use_locking=use_locking,
-                                                        name=name)
-    ConfigInitializer.get_instance().optimizer_config.optimizer_instance = optimizer_by_addr
+        raise ValueError(
+            "dynamic expansion mode is not compatible with the optimizer, please config dynamic "
+            "expansion mode and optimizer correctly."
+        )
+    optimizer_by_addr = CustomizedGradientDescentByAddr(
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        use_locking=use_locking,
+        name=name,
+    )
+    ConfigInitializer.get_instance().optimizer_config.optimizer_instance = (
+        optimizer_by_addr
+    )
     return optimizer_by_addr
 
 
-class CustomizedGradientDescentByAddr(gradient_descent.GradientDescentOptimizer, CustomizedOptimizer):
+class CustomizedGradientDescentByAddr(
+    gradient_descent.GradientDescentOptimizer, CustomizedOptimizer
+):
     name_counter = defaultdict(int)
 
-    def __init__(self, learning_rate, weight_decay, use_locking=False, name="GradientDescentByAddr"):
+    def __init__(
+        self,
+        learning_rate,
+        weight_decay,
+        use_locking=False,
+        name="GradientDescentByAddr",
+    ):
         self.optimizer_type = "gradient_descent"
         self.weight_decay = weight_decay
         self.optim_param_list = []
         super(CustomizedGradientDescentByAddr, self)._get_name(name=name)
-        super(CustomizedGradientDescentByAddr, self).__init__(learning_rate=learning_rate, use_locking=use_locking,
-                                                              name=self.unique_name)
+        super(CustomizedGradientDescentByAddr, self).__init__(
+            learning_rate=learning_rate, use_locking=use_locking, name=self.unique_name
+        )
 
         self._slot_num = 0
         self._derivative = 1
@@ -66,16 +87,33 @@ class CustomizedGradientDescentByAddr(gradient_descent.GradientDescentOptimizer,
         return []
 
     def _apply_sparse(self, grad, addr):
+        table_instance = (
+            ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(
+                addr
+            )
+        )
+        # The DP mode requires allreduce for gradients.
+        if table_instance.is_dp:
+            # In the DP mode, the second USS is used to align the length of the grad in the allreduce.
+            grad, addr = self.sum_same_id_gradients(grad=grad, var=addr, is_expansion=True)
         host_pipeline_ops = import_host_pipeline_ops()
         dim = grad.shape.as_list()[-1]
         if self.weight_decay is None:
-            nd_value = grad * math_ops.cast(self._learning_rate_tensor, grad.dtype.base_dtype)
+            nd_value = grad * math_ops.cast(
+                self._learning_rate_tensor, grad.dtype.base_dtype
+            )
         else:
-            lookup_tensor = \
-                host_pipeline_ops.embedding_lookup_by_address(addr, embedding_dim=dim, embedding_type=1)
-            nd_value = (grad + math_ops.cast(self.weight_decay, grad.dtype.base_dtype) * lookup_tensor) * math_ops.cast(
-                self._learning_rate_tensor, grad.dtype.base_dtype)
-        var_update_op = host_pipeline_ops.embedding_update_by_address(addr, -nd_value, update_type=0)
+            lookup_tensor = host_pipeline_ops.embedding_lookup_by_address(
+                addr, embedding_dim=dim, embedding_type=1
+            )
+            nd_value = (
+                grad
+                + math_ops.cast(self.weight_decay, grad.dtype.base_dtype)
+                * lookup_tensor
+            ) * math_ops.cast(self._learning_rate_tensor, grad.dtype.base_dtype)
+        var_update_op = host_pipeline_ops.embedding_update_by_address(
+            addr, -nd_value, update_type=0
+        )
 
         return var_update_op
 

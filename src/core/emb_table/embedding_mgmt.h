@@ -21,6 +21,7 @@ See the License for the specific language governing permissions and
 #include <memory>
 #include "utils/common.h"
 #include "emb_table/embedding_table.h"
+#include "hybrid_mgmt/hybrid_mgmt.h"
 
 namespace MxRec {
 
@@ -43,6 +44,14 @@ public:
      * @param[in] channel 数据通道，主要区分train和eval
      */
     void Key2Offset(const std::string& name, std::vector<emb_key_t>& keys, int channel);
+
+    /**
+     * In Dp mode, batch search keys are queried in the embedding table.
+     * @param[in] name Embedding table name.
+     * @param[in,out] splitKey The output of the key to be searched is the HBM offset or HBM address found.
+     * @param[in] channel Data channel, which is mainly used to distinguish between train and eval.
+     */
+    void Key2OffsetForDp(const std::string& name, std::vector<emb_key_t>& keys, int channel);
 
     /**
      * 在指定的embedding表中淘汰key
@@ -82,12 +91,23 @@ public:
     /**
      * 保存单个表
      */
-    void Save(const string& name, const string& filePath);
+    void Save(const string& name, const string& filePath, const int pythonBatchId);
 
     /**
      * 保存所有表
      */
-    void Save(const string& filePath);
+    void Save(const string& filePath, const int pythonBatchId, bool saveDelta,
+              const map<string, map<emb_key_t, KeyInfo>>& keyInfoMap);
+
+    /**
+     * In estimator mode, when switching from train to eval, backup the training state of all tables.
+     */
+    void BackUpTrainStatusBeforeLoad();
+
+    /**
+     * In estimator mode, when switching from eval to train, recover the training state of all tables.
+     */
+    void RecoverTrainStatus();
 
     /**
     * 获取所有表对应的DeviceOffsets，该偏移用于python侧保存embedding时抽取key对应的embedding

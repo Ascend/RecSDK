@@ -71,6 +71,7 @@ constexpr int SSD_SIZE_INDEX = 2;
 constexpr int MAX_FILE_NUM = 1000;
 constexpr int EMBEDDING_THREAD_NUM = 2;
 constexpr int HOST_TO_PREFILL_RATIO = 10;
+constexpr int KEY_COUNT_ELEMENT_NUM = 2;
 // for GLOG
 struct GlogConfig {
     static bool gStatOn;
@@ -102,6 +103,7 @@ constexpr int EOS_TIMEOUT = 30;
 
 constexpr size_t DEFAULT_RANDOM_SEED = 10086;
 constexpr int64_t INVALID_KEY_VALUE = -1;
+constexpr int64_t INVALID_DYNAMIC_EXPANSION_ADDR = 0;
 constexpr int32_t INVALID_INDEX_VALUE = -1;
 constexpr int ALLTOALLVC_ALIGN = 128;
 constexpr int PROFILING_START_BATCH_ID = 100;
@@ -120,9 +122,9 @@ using freq_num_t = int64_t;
 using EmbNameT = std::string;
 using KeysT = std::vector<emb_key_t>;
 using LookupKeyT = std::tuple<int, EmbNameT, KeysT>;  // batch_id quarry_lable keys_vector
-using UinqueKeyT = std::tuple<int, EmbNameT, std::vector<uint64_t>>;
+using UinqueKeyT = std::tuple<int, EmbNameT, bool, std::vector<uint64_t>>;
 using RestoreVecSecT = std::tuple<int, EmbNameT, std::vector<int32_t>>;
-using TensorInfoT = std::tuple<int, EmbNameT, std::list<std::unique_ptr<std::vector<Tensor>>>::iterator>;
+using TensorInfoT = std::tuple<int, EmbNameT, bool, std::list<std::unique_ptr<std::vector<Tensor>>>::iterator>;
 
 namespace HybridOption {
 const unsigned int USE_STATIC = 0x001;
@@ -140,9 +142,12 @@ const int ASCEND910_B2 = 196608;
 const int ASCEND910_B1 = 196608;
 const int ASCEND910_B3 = 196608;
 const int ASCEND910_B4 = 196608;
-const int ASCEND910_C1 = 196608;
-const int ASCEND910_C2 = 196608;
-const int ASCEND910_C3 = 196608;
+const int ASCEND910_9391 = 196608;
+const int ASCEND910_9392 = 196608;
+const int ASCEND910_9381 = 196608;
+const int ASCEND910_9382 = 196608;
+const int ASCEND910_9372 = 196608;
+const int ASCEND910_9361 = 196608;
 const int ASCEND920_A = 196608;
 const int ASCEND910_PRO_A = 262144;
 const int ASCEND910_B = 262144;
@@ -155,8 +160,10 @@ inline int GetUBSize(int devID)
     const std::map<string, int> chipUbSizeList = {
         {"910A", UBSize::ASCEND910_A},   {"910B", UBSize::ASCEND910_B},     {"920A", UBSize::ASCEND920_A},
         {"910B1", UBSize::ASCEND910_B1}, {"910B2", UBSize::ASCEND910_B2},   {"910B3", UBSize::ASCEND910_B3},
-        {"910B4", UBSize::ASCEND910_B4}, {"910B2C", UBSize::ASCEND910_B2C}, {"910C1", UBSize::ASCEND910_C1},
-        {"910C2", UBSize::ASCEND910_C1}, {"910C3", UBSize::ASCEND910_C3}};
+        {"910B4", UBSize::ASCEND910_B4}, {"910B2C", UBSize::ASCEND910_B2C}, 
+        {"910_9391", UBSize::ASCEND910_9391}, {"910_9392", UBSize::ASCEND910_9392}, 
+        {"910_9381", UBSize::ASCEND910_9381}, {"910_9382", UBSize::ASCEND910_9382}, 
+        {"910_9372", UBSize::ASCEND910_9372}, {"910_9361", UBSize::ASCEND910_9361}};
     auto it = chipUbSizeList.find(GetChipName(devID));
     if (it != chipUbSizeList.end()) {
         return it->second;
@@ -188,6 +195,7 @@ struct Batch {
     size_t batchSize;
     int batchId;
     int channel = 0;
+    bool isEos = false;
     time_t timestamp{-1};
 };
 
@@ -239,6 +247,7 @@ struct EmbBaseInfo {
     int batchId;
     int channelId;
     string name;
+    bool isDp{false};
 };
 
 enum TensorIndex : uint32_t {
@@ -430,16 +439,18 @@ struct EmbInfoParams {
     int extEmbeddingSize;
     bool isSave;
     bool isGrad;
+    bool isDp;
     EmbInfoParams() = default;
 
     EmbInfoParams(const std::string& name, int sendCount, int embeddingSize, int extEmbeddingSize, bool isSave,
-                  bool isGrad)
+                  bool isGrad, bool isDp)
         : name(name),
           sendCount(sendCount),
           embeddingSize(embeddingSize),
           extEmbeddingSize(extEmbeddingSize),
           isSave(isSave),
-          isGrad(isGrad)
+          isGrad(isGrad),
+          isDp(isDp)
     {
     }
 };
@@ -455,6 +466,7 @@ struct EmbInfo {
           extEmbeddingSize(embInfoParams.extEmbeddingSize),
           isSave(embInfoParams.isSave),
           isGrad(embInfoParams.isGrad),
+          isDp(embInfoParams.isDp),
           devVocabSize(vocabsize[0]),
           hostVocabSize(vocabsize[1]),
           ssdVocabSize(vocabsize[SSD_SIZE_INDEX]),
@@ -469,6 +481,7 @@ struct EmbInfo {
     int extEmbeddingSize;
     bool isSave;
     bool isGrad;
+    bool isDp;
     size_t devVocabSize;
     size_t hostVocabSize;
     size_t ssdVocabSize;
@@ -510,6 +523,16 @@ struct UniqueInfo {
 struct KeySendInfo {
     KeysT keySend;
     vector<int32_t> keyCount;
+};
+
+struct KeyInfo {
+    int64_t lastUseTime;  // 最后使用时间
+    int64_t recentCount;  // 最近使用次数
+    bool isChanged;       // 是否有变更
+    int64_t batchID;      // batch id
+    int64_t totalCount;   // key总使用次数
+
+    KeyInfo() : lastUseTime(0), recentCount(0), isChanged(false), batchID(0), totalCount(0) {}
 };
 
 using EmbMemT = absl::flat_hash_map<std::string, HostEmbTable>;
@@ -576,41 +599,7 @@ enum class CkptDataType {
     KEY_COUNT_MAP = 13
 };
 
-static std::string CkptDataTypeName(CkptDataType type)
-{
-    switch (type) {
-        case CkptDataType::EMB_INFO:
-            return "EMB_INFO";
-        case CkptDataType::EMB_DATA:
-            return "EMB_DATA";
-        case CkptDataType::EMB_HASHMAP:
-            return "EMB_HASHMAP";
-        case CkptDataType::DEV_OFFSET:
-            return "DEV_OFFSET";
-        case CkptDataType::EMB_CURR_STAT:
-            return "EMB_CURR_STAT";
-        case CkptDataType::NDDR_OFFSET:
-            return "NDDR_OFFSET";
-        case CkptDataType::NDDR_FEATMAP:
-            return "NDDR_FEATMAP";
-        case CkptDataType::TABLE_2_THRESH:
-            return "TABLE_2_THRESH";
-        case CkptDataType::HIST_REC:
-            return "HIST_REC";
-        case CkptDataType::ATTRIBUTE:
-            return "ATTRIBUTE";
-        case CkptDataType::DDR_FREQ_MAP:
-            return "DDR_FREQ_MAP";
-        case CkptDataType::EXCLUDE_FREQ_MAP:
-            return "EXCLUDE_FREQ_MAP";
-        case CkptDataType::EVICT_POS:
-            return "EVICT_POS";
-        case CkptDataType::KEY_COUNT_MAP:
-            return "KEY_COUNT_MAP";
-        default:
-            return "UNKNOWN";
-    }
-}
+std::string CkptDataTypeName(CkptDataType type);
 
 enum CTRLogLevel {  // can't use enum class due to compatibility for AccCTR
     DEBUG = 0,
@@ -643,6 +632,8 @@ ostream& operator<<(ostream& ss, MxRec::CkptDataType type);
 bool CheckFilePermission(const string& filePath);
 
 int GetStepFromPath(const string& loadPath);
+
+string MakeSwapCVName(int id, const string& tableName, int channelId);
 }  // end namespace MxRec
 
 #define KEY_PROCESS "\033[45m[KeyProcess]\033[0m "

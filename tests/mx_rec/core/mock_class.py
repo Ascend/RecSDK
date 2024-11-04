@@ -37,7 +37,7 @@ class MockHybridManagerConfig:
     def set_asc_manager(self, cache):
         pass
 
-    def save_host_data(self, root_dir):
+    def save_host_data(self, root_dir, save_delta):
         pass
 
     def get_host_data(self, table_name):
@@ -127,6 +127,7 @@ class MockConfigInitializer:
         self.if_load = kwargs.get("if_load", False)
         self.iterator_type = kwargs.get("iterator_type", "MakeIterator")
         self.sparse_dir = kwargs.get("sparse_dir", "")
+        self.is_incremental_checkpoint = kwargs.get("is_incremental_checkpoint", False)
 
         self.hybrid_manager_config = MockHybridManagerConfig(**kwargs)
         self.sparse_embed_config = MockSparseEmbedConfig(**kwargs)
@@ -152,6 +153,7 @@ class MockSparseEmbedding:
     def __init__(self, table_name="test_table", slice_device_vocabulary_size=10, embedding_size=5, init_param=1.,
                  emb_initializer=tf.zeros_initializer()):
         self.is_hbm = True
+        self.is_dp = False
         self.table_name = table_name
         self.slice_device_vocabulary_size = slice_device_vocabulary_size
         self.embedding_size = tf.TensorShape([embedding_size])
@@ -256,7 +258,8 @@ class MockHybridMgmt:
     """
 
     def __init__(self, is_initialized=True):
-        def _mock_initialize(rank_info=0, emb_info=1, if_load=False, threshold_values=3):
+        def _mock_initialize(rank_info=0, emb_info=1, if_load=False, threshold_values=3,
+                             is_incremental_checkpoint=False):
             return is_initialized
 
         self.initialize = _mock_initialize

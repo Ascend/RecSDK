@@ -38,6 +38,7 @@ PKG_DIR = "./build/mindxsdk-mxrec"
 if os.path.exists(PKG_DIR):
     shutil.rmtree(PKG_DIR)
 
+
 # build tf1's wheel file
 res = subprocess.run([python37_path, "setup_tf1.py", "bdist_wheel"], shell=False)
 if res.returncode:

@@ -47,6 +47,7 @@ namespace MxRec {
         void FillToBuffer(BufferQueue& queue, const char* data, size_t dataSize);
         void CalculateMapSize(off_t fileSize, size_t& mapByteSize, size_t& mapRowNum, size_t onceReadByteSize) const;
 
+        static void CheckOpenFile4Write(const string& filePath, int openRetCode);
     private:
         const mode_t dirMode;
         const mode_t fileMode;

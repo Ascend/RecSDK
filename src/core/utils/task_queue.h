@@ -82,7 +82,7 @@ namespace MxRec {
             void DestroyQueue()
             {
                 finished = true;
-                dataCond.notify_one();
+                dataCond.notify_all();
             }
 
             bool Empty() const

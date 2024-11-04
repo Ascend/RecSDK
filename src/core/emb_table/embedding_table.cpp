@@ -43,6 +43,10 @@ void EmbeddingTable::Key2Offset(std::vector<emb_key_t>& keys, int channel)
     return;
 }
 
+void EmbeddingTable::Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel)
+{
+}
+
 size_t EmbeddingTable::GetMaxOffset()
 {
     return maxOffset;
@@ -92,11 +96,12 @@ const std::vector<int64_t>& EmbeddingTable::GetHostEvictedKeys()
 void EmbeddingTable::EvictInitDeviceEmb()
 {
     if (evictDevPos.size() > devVocabSize) {
-        LOG_ERROR("{} overflow! init evict dev, evictOffset size {} bigger than dev vocabSize {}",
+        auto errMsg = Logger::Format(
+            "Table {} overflow! Init evict dev, evictOffset size {} bigger than dev vocabSize {}.",
             name, evictDevPos.size(), devVocabSize);
-        throw runtime_error(
-            Logger::Format("{} overflow! init evict dev, evictOffset size {} bigger than dev vocabSize {}",
-                name, evictDevPos.size(), devVocabSize).c_str());
+        auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::LOGIC_ERROR, errMsg);
+        LOG_ERROR(error.ToString());
+        throw std::runtime_error(error.ToString());
     }
 
     vector<Tensor> tmpDataOut;
@@ -139,15 +144,22 @@ void EmbeddingTable::Load(const string& filePath, map<string, unordered_set<emb_
 {
 }
 
-void EmbeddingTable::Save(const string& filePath)
+void EmbeddingTable::Save(const string& filePath, const int pythonBatchId, bool saveDelta,
+                          const map<emb_key_t, KeyInfo>& keyInfo)
+{
+}
+
+void EmbeddingTable::BackUpTrainStatus()
+{
+}
+
+void EmbeddingTable::RecoverTrainStatus()
 {
 }
 
 void EmbeddingTable::MakeDir(const string& dirName)
 {
-    if (fileSystemPtr_ == nullptr) {
-        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
-    }
+    CheckFileSystemPtr();
     fileSystemPtr_->CreateDir(dirName);
 }
 
@@ -183,3 +195,59 @@ void EmbeddingTable::SetHDTransfer(HDTransfer *hdTransfer)
 void EmbeddingTable::SetEmbCache(ock::ctr::EmbCacheManagerPtr embCache)
 {
 }
+
+void EmbeddingTable::CheckFileSystemPtr() const
+{
+    if (fileSystemPtr_ != nullptr) {
+        return;
+    }
+    auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::NULL_PTR,
+                       "Failed to obtain the file system pointer, the file system pointer is null.");
+    LOG_ERROR(error.ToString());
+    throw std::runtime_error(error.ToString());
+}
+
+void EmbeddingTable::CheckReadKeyFileSize(const string& fileName, size_t fileSize)
+{
+    if (fileSize < FILE_MAX_SIZE) {
+        return;
+    }
+
+    auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::LOGIC_ERROR,
+                       StringFormat("Error: Load keys failed, "
+                                    "file %s size %d is too big.", fileName.c_str(), fileSize));
+    LOG_ERROR(error.ToString());
+    throw std::runtime_error(error.ToString());
+}
+
+void EmbeddingTable::CheckLoadKeyMallocPtr(const int64_t* mallocPtr, size_t mallocByteSize)
+{
+    if (mallocPtr != nullptr) {
+        return;
+    }
+    auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::LOGIC_ERROR,
+                       StringFormat("Error: Load keys failed. "
+                                    "Failed to allocate %d bytes using malloc.", mallocByteSize));
+    LOG_ERROR(error.ToString());
+    throw std::runtime_error(error.ToString());
+}
+
+void EmbeddingTable::CheckReadKeyFileBytes(ssize_t readReturnCode, const string& fileName, size_t fileSize)
+{
+    if (readReturnCode == -1) {
+        auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::LOGIC_ERROR,
+                           StringFormat("Error: Load keys failed. "
+                                        "An error occurred while reading file: %s.", fileName.c_str()));
+        LOG_ERROR(error.ToString());
+        throw std::runtime_error(error.ToString());
+    }
+    if (readReturnCode != fileSize) {
+        string errMsg = StringFormat(
+            "Error: Load keys failed. Expected to read %d bytes, but actually read %d bytes to file %s.",
+            fileSize, readReturnCode, fileName.c_str());
+        auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::LOGIC_ERROR, errMsg);
+        LOG_ERROR(error.ToString());
+        throw std::runtime_error(error.ToString());
+    }
+}
+

@@ -25,6 +25,9 @@ ASCEND_TIMESTAMP = "ASCEND_TIMESTAMP"
 ASCEND_SPARSE_LOOKUP_LOCAL_EMB = "ASCEND_SPARSE_LOOKUP_LOCAL_EMB"
 EMPTY_STR = ""
 
+# Bytes
+FLOAT32_BYTES = 4
+
 # default emb memory size for hbm、ddr、ssd
 DEFAULT_DEVICE_CACHE_MEMORY_SIZE = 2 * 1024 * 1024 * 1024
 DEFAULT_HOST_CACHE_MEMORY_SIZE = 40 * 1024 * 1024 * 1024
@@ -89,6 +92,10 @@ MAX_INT32 = np.iinfo(np.int32).max
 
 DUMP_MIDIFY_GRAPH_FILE_MODE = 0o550
 MAX_DEVICE_ID = 15
+
+# incremental checkpoint related
+BASE_MODEL = "base"
+DELTA_MODEL = "delta"
 
 # HDFS file system's file prefix
 HDFS_FILE_PREFIX = ["viewfs://", "hdfs://"]

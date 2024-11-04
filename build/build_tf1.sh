@@ -34,6 +34,18 @@ if [ ! -d ${opensource_path} ]; then
   exit -1
 fi
 
+function install_expected(){
+  dir="$MxRec_DIR"/third_party/expected
+  if [ -z "$(ls -A "$dir")" ]; then
+    cd "$MxRec_DIR"
+    git submodule init
+    cmd="git submodule update"
+    # retry five times
+    $cmd || sleep 10 || $cmd || sleep 10 || $cmd || sleep 10 || $cmd || sleep 10 || $cmd
+    cd -
+  fi
+}
+
 function prepare_pybind(){
   cd "${opensource_path}"
   if [ ! -d pybind11 ]; then
@@ -112,6 +124,8 @@ function collect_so_file()
 }
 
 # start to build MxRec
+echo "----------------          install     expected          ----------------"
+install_expected
 echo "----------------          compile     securec           ----------------"
 compile_securec
 echo "----------------          compile     AccCTR            ----------------"

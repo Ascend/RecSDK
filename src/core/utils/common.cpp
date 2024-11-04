@@ -186,4 +186,46 @@ namespace MxRec {
         }
         return res;
     }
+
+    // Make key for mutex and cv in swap pipeline, id: threadId, channelId: train/eval.
+    string MakeSwapCVName(int id, const string& tableName, int channelId)
+    {
+        return to_string(id) + tableName + to_string(channelId);
+    }
+
+    std::string CkptDataTypeName(CkptDataType type)
+    {
+        switch (type) {
+            case CkptDataType::EMB_INFO:
+                return "EMB_INFO";
+            case CkptDataType::EMB_DATA:
+                return "EMB_DATA";
+            case CkptDataType::EMB_HASHMAP:
+                return "EMB_HASHMAP";
+            case CkptDataType::DEV_OFFSET:
+                return "DEV_OFFSET";
+            case CkptDataType::EMB_CURR_STAT:
+                return "EMB_CURR_STAT";
+            case CkptDataType::NDDR_OFFSET:
+                return "NDDR_OFFSET";
+            case CkptDataType::NDDR_FEATMAP:
+                return "NDDR_FEATMAP";
+            case CkptDataType::TABLE_2_THRESH:
+                return "TABLE_2_THRESH";
+            case CkptDataType::HIST_REC:
+                return "HIST_REC";
+            case CkptDataType::ATTRIBUTE:
+                return "ATTRIBUTE";
+            case CkptDataType::DDR_FREQ_MAP:
+                return "DDR_FREQ_MAP";
+            case CkptDataType::EXCLUDE_FREQ_MAP:
+                return "EXCLUDE_FREQ_MAP";
+            case CkptDataType::EVICT_POS:
+                return "EVICT_POS";
+            case CkptDataType::KEY_COUNT_MAP:
+                return "KEY_COUNT_MAP";
+            default:
+                return "UNKNOWN";
+        }
+    }
 } // end namespace MxRec

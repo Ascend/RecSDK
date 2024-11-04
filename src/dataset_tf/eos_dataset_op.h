@@ -44,6 +44,8 @@ namespace data {
 
     private:
         class Dataset;
+        DataTypeVector outputTypes_;
+        std::vector<PartialTensorShape> outputShapes_;
     }; // class EosDatasetOp
 }  // namespace data
 }  // namespace tensorflow

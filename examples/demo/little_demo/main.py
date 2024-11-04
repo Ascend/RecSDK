@@ -15,7 +15,6 @@
 # limitations under the License.
 # ==============================================================================
 
-import enum
 import os
 import shutil
 import warnings
@@ -23,7 +22,6 @@ from glob import glob
 
 import numpy as np
 import tensorflow as tf
-
 from mx_rec.constants.constants import ASCEND_TIMESTAMP, CacheModeEnum
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.helper import get_asc_insert_func
@@ -35,11 +33,15 @@ from mx_rec.util.initialize import init, terminate_config_initializer
 from mx_rec.util.log import logger
 from mx_rec.util.variable import get_dense_and_sparse_variable
 
-from config import Config
+from config import (GLOBAL_RANDOM_SEED, MODIFY_GRAPH_FLAG, MULTI_LOOKUP_TIMES,
+                    PRECISION_CHECK, USE_DETERMINISTIC, USE_DYNAMIC,
+                    USE_DYNAMIC_EXPANSION, USE_MULTI_LOOKUP, USE_ONE_SHOT,
+                    USE_TIMESTAMP, USE_DP, Config)
 from dataset import generate_dataset
 from model import MyModel
 from optimizer import create_dense_and_sparse_optimizer
 from run_mode import RunMode, UseMode
+from utils import GLOBAL_RANK_SIZE, PRECISION_DUMP_STEP, PrecisionDumpInfo
 
 tf.compat.v1.disable_eager_execution()
 
@@ -92,7 +94,7 @@ def build_graph(hash_table_list, is_train, feature_spec_list=None, config_dict=N
                       [cfg.user_send_cnt, cfg.item_send_cnt],
                       [True, True],
                       [cfg.user_hashtable_dim, cfg.item_hashtable_dim]]
-        if use_multi_lookup:
+        if USE_MULTI_LOOKUP:
             # add `MULTI_LOOKUP_TIMES` times
             for i, _ in enumerate(input_list):
                 input_list[i].extend([input_list[i][0]] * MULTI_LOOKUP_TIMES)
@@ -106,7 +108,7 @@ def build_graph(hash_table_list, is_train, feature_spec_list=None, config_dict=N
                       [cfg.user_send_cnt, cfg.item_send_cnt],
                       [True, True],
                       [cfg.user_hashtable_dim, cfg.item_hashtable_dim]]
-        if use_multi_lookup:
+        if USE_MULTI_LOOKUP:
             # add `MULTI_LOOKUP_TIMES` times
             for i, _ in enumerate(input_list):
                 if i == 0:
@@ -130,7 +132,7 @@ def create_feature_spec_list(use_timestamp=False):
                                      access_threshold=access_threshold,
                                      eviction_threshold=eviction_threshold,
                                      faae_coefficient=4)]
-    if use_multi_lookup:
+    if USE_MULTI_LOOKUP:
         # add `MULTI_LOOKUP_TIMES` times
         for _ in range(MULTI_LOOKUP_TIMES):
             feature_spec_list.append(FeatureSpec("user_ids", table_name="user_table",
@@ -172,6 +174,15 @@ def _clear_saved_model() -> None:
         logger.info(f"Create dir:{sub_path}")
 
 
+def index_initializer(shape, dtype=None, partition_info=None):
+    # shape 是一个元组，表示张量的形状，例如 (rows, cols)
+    rows, cols = shape
+    # 创建一个与shape相同大小的列表，用于存储初始化值
+    values = [[i * 1e06 + j * 1e-20 for j in range(cols)] for i in range(rows)]
+    # 将列表转换为numpy数组
+    return tf.constant(values, dtype=dtype)
+
+
 if __name__ == "__main__":
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     warnings.filterwarnings("ignore")
@@ -190,28 +201,19 @@ if __name__ == "__main__":
     # 训练多少步进行保存
     SAVING_INTERVAL = 100
 
-    # get init configuration
-    try:
-        use_dynamic = bool(int(os.getenv("USE_DYNAMIC", 0)))
-        use_dynamic_expansion = bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0)))
-        use_multi_lookup = bool(int(os.getenv("USE_MULTI_LOOKUP", 1)))
-        MODIFY_GRAPH_FLAG = bool(int(os.getenv("USE_MODIFY_GRAPH", 0)))
-        USE_TIMESTAMP = bool(int(os.getenv("USE_TIMESTAMP", 0)))
-        USE_ONE_SHOT = bool(int(os.getenv("USE_ONE_SHOT", 0)))
-        USE_DETERMINISTIC = bool(int(os.getenv("USE_DETERMINISTIC", 0)))
-    except ValueError as err:
-        raise ValueError("please correctly config USE_MPI or USE_DYNAMIC or USE_DYNAMIC_EXPANSION or "
-                         "USE_MULTI_LOOKUP or USE_MODIFY_GRAPH or USE_TIMESTAMP or USE_ONE_SHOT or USE_DETERMINISTIC"
-                         "only 0 or 1 is supported.") from err
-
-    try:
-        MULTI_LOOKUP_TIMES = int(os.getenv("MULTI_LOOKUP_TIMES", 2))
-    except ValueError as err:
-        raise ValueError("please correctly config MULTI_LOOKUP_TIMES only int is supported.") from err
+    task_config = {"use_dynamic": USE_DYNAMIC, "use_dynamic_expansion": USE_DYNAMIC_EXPANSION,
+                   "use_multi_lookup": USE_MULTI_LOOKUP, "modify_graph_flag": MODIFY_GRAPH_FLAG,
+                   "use_timestamp": USE_TIMESTAMP, "use_one_shot": USE_ONE_SHOT,
+                   "use_deterministic": USE_DETERMINISTIC, "multi_lookup_times": MULTI_LOOKUP_TIMES,
+                   "use_dp": USE_DP}
+    if PRECISION_CHECK:
+        task_config["precision_dump_step"] = PRECISION_DUMP_STEP
+        task_config["global_rank_size"] = GLOBAL_RANK_SIZE
+        PrecisionDumpInfo.add_item(key="task_config", value=task_config)
 
     if USE_DETERMINISTIC:
-        np.random.seed(128)
-        tf.random.set_random_seed(128)
+        np.random.seed(GLOBAL_RANDOM_SEED)
+        tf.compat.v2.random.set_seed(GLOBAL_RANDOM_SEED)
 
     if_load = False
     save_path = "./saved-model"
@@ -228,13 +230,13 @@ if __name__ == "__main__":
          eval_steps=EVAL_STEPS,
          save_steps=SAVING_INTERVAL,
          max_steps=MAX_TRAIN_STEPS,
-         use_dynamic=use_dynamic,
-         use_dynamic_expansion=use_dynamic_expansion,
+         use_dynamic=USE_DYNAMIC,
+         use_dynamic_expansion=USE_DYNAMIC_EXPANSION,
          if_load=if_load)
 
     cfg = Config()
     # multi lookup config, batch size: 32 * 128 = 4096
-    if use_multi_lookup and MULTI_LOOKUP_TIMES > 2:
+    if USE_MULTI_LOOKUP and MULTI_LOOKUP_TIMES > 2:
         cfg.batch_size = 32
 
     # access_threshold unit counts; eviction_threshold unit seconds
@@ -245,8 +247,10 @@ if __name__ == "__main__":
         config_for_item_table = dict(access_threshold=cfg.access_threshold, eviction_threshold=cfg.eviction_threshold,
                                      faae_coefficient=4)
         ACCESS_AND_EVICT = dict(user_table=config_for_user_table, item_table=config_for_item_table)
+
     train_feature_spec_list = None
     eval_feature_spec_list = None
+
     if not MODIFY_GRAPH_FLAG:
         train_feature_spec_list = create_feature_spec_list(use_timestamp=USE_TIMESTAMP)
         eval_feature_spec_list = create_feature_spec_list(use_timestamp=USE_TIMESTAMP)
@@ -270,15 +274,17 @@ if __name__ == "__main__":
     cache_mode = os.getenv("CACHE_MODE")
     if cache_mode not in cache_mode_dict.keys():
         raise ValueError(f"cache mode must in {list(cache_mode_dict.keys())}, get:{cache_mode}")
-    if cache_mode in ["DDR", "SSD"] and not use_dynamic:
+    if cache_mode in ["DDR", "SSD"] and not USE_DYNAMIC:
         logger.warning("when cache_mode in [DDR, SSD], suggest use_dynamic=true to avoid tuning size parameter")
-    emb_initializer = tf.compat.v1.constant_initializer(0) if USE_DETERMINISTIC \
+
+    emb_initializer = tf.compat.v1.constant_initializer(0.1) if USE_DETERMINISTIC or PRECISION_CHECK \
         else tf.compat.v1.truncated_normal_initializer()
     user_hashtable = create_table(key_dtype=tf.int64,
                                   dim=tf.TensorShape([cfg.user_hashtable_dim]),
                                   name='user_table',
                                   emb_initializer=emb_initializer,
                                   all2all_gradients_op="sum_gradients_and_div_by_ranksize",
+                                  is_dp=USE_DP,
                                   **cache_mode_dict[cache_mode])
 
     item_hashtable = create_table(key_dtype=tf.int64,
@@ -292,6 +298,7 @@ if __name__ == "__main__":
     train_model = None
     train_batch = None
     table_list = [user_hashtable, item_hashtable]
+
     if use_mode in [UseMode.TRAIN, UseMode.LOAD_AND_TRAIN]:
         train_iterator, train_model, train_batch = build_graph(
             table_list, is_train=True,
@@ -299,14 +306,15 @@ if __name__ == "__main__":
             config_dict=ACCESS_AND_EVICT,
             batch_number=MAX_DATASET_GENERATE_TRAIN * get_rank_size()
         )
+
     eval_iterator, eval_model, eval_batch = build_graph(table_list, is_train=False,
                                                         feature_spec_list=eval_feature_spec_list,
                                                         config_dict=ACCESS_AND_EVICT,
                                                         batch_number=MAX_DATASET_GENERATE_EVAL * get_rank_size())
     dense_variables, sparse_variables = get_dense_and_sparse_variable()
 
-    params = {"train_batch": train_batch, "eval_batch": eval_batch, "use_one_shot": USE_ONE_SHOT,
-              "use_deterministic": USE_DETERMINISTIC}
+    params = {"train_batch": train_batch, "eval_batch": eval_batch, "use_one_shot": USE_ONE_SHOT}
+
     run_mode = RunMode(
         MODIFY_GRAPH_FLAG, USE_TIMESTAMP, table_list, optimizer_list, train_model, eval_model, train_iterator,
         eval_iterator, MAX_TRAIN_STEPS, EVAL_STEPS, params
@@ -315,6 +323,7 @@ if __name__ == "__main__":
     # start host pipeline
     if not MODIFY_GRAPH_FLAG:
         start_asc_pipeline()
+
     # start modify graph
     if MODIFY_GRAPH_FLAG and use_mode not in [UseMode.TRAIN, UseMode.LOAD_AND_TRAIN]:
         logger.info("start to modifying graph")

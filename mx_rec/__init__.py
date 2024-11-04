@@ -15,12 +15,13 @@
 # limitations under the License.
 # ==============================================================================
 
-__version__ = "5.0.RC2"
+__version__ = "6.0.RC3"
 __all__ = ["version", "__version__"]
 
 from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION
 from mx_rec.util.tf_version_adapter import npu_ops, hccl_ops, NPUCheckpointSaverHook
-from mx_rec.saver.patch import patch_for_saver
+from mx_rec.saver.patch import patch_for_saver, patch_for_summary_writer, patch_for_second_or_step_timer, \
+    patch_for_checkpoint_saver_hook
 from mx_rec.graph.patch import patch_for_dataset, patch_for_chief_session_creator, patch_for_bool_gauge, \
     patch_for_assert_eval_spec, patch_for_scale_loss, patch_for_session
 from mx_rec.data.patch import patch_for_dataset_eos_map
@@ -28,6 +29,7 @@ from mx_rec.optimizers.base import patch_for_optimizer
 from mx_rec.saver.warm_start import patch_for_warm_start
 
 patch_for_saver()
+patch_for_summary_writer()
 patch_for_dataset()
 patch_for_dataset_eos_map()
 patch_for_scale_loss()
@@ -37,6 +39,8 @@ patch_for_bool_gauge()
 patch_for_optimizer()
 patch_for_session()
 patch_for_warm_start()
+patch_for_second_or_step_timer()
+patch_for_checkpoint_saver_hook()
 
 
 def version():

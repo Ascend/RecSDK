@@ -15,6 +15,8 @@ See the License for the specific language governing permissions and
 
 #include "table.h"
 
+#include "utils/error.h"
+
 using namespace MxRec;
 
 /// 创建新表
@@ -66,7 +68,7 @@ Table::Table(const string &name, vector<string> &saveDirs, uint64_t maxTableSize
         break;
     }
     if (!isMetaFileFound) {
-        throw invalid_argument(StringFormat("table:%s meta file not found", name.c_str()));
+        ThrowInvalidArgError(StringFormat("Table:%s meta file not found.", name.c_str()));
     }
 
     LOG_INFO("load table:{} done. try store at path:{}", name, curTablePath);
@@ -106,18 +108,18 @@ void Table::Save(int step)
     lock_guard<mutex> guard(rwLock);
     auto metaFilePath = fs::absolute(curTablePath + "/" + name + ".meta" + "." + to_string(step));
     if (fs::exists(metaFilePath)) {
-        throw invalid_argument("fail to save table meta, file already exist");
+        ThrowInvalidArgError("Failed to save table meta, file already exist.");
     }
 
     fstream metaFile;
     metaFile.open(metaFilePath, ios::out | ios::trunc | ios::binary);
     if (!metaFile.is_open()) {
-        throw runtime_error("fail to create table meta file");
+        ThrowRuntimeError("Failed to create table meta file.");
     }
     try {
         fs::permissions(metaFilePath, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
     } catch (runtime_error &e) {
-        LOG_ERROR("fail to change permission of {}", metaFilePath.c_str());
+        LOG_ERROR("Failed to change permission of {}.", metaFilePath.c_str());
         fs::remove_all(metaFilePath);
         throw;
     }
@@ -137,7 +139,7 @@ void Table::Save(int step)
             SetTablePathToDiskWithSpace();
         } catch (runtime_error &e) {
             metaFile.close();
-            throw runtime_error(StringFormat("set table path to disk with space error:%s", e.what()));
+            ThrowRuntimeError(StringFormat("Set table path to disk with space error:%s.", e.what()));
         }
         try {
             CreateTableDir(curTablePath);
@@ -151,11 +153,11 @@ void Table::Save(int step)
     metaFile.flush();
     if (metaFile.fail()) {
         metaFile.close();
-        throw runtime_error("fail to Save table meta file");
+        ThrowRuntimeError("Failed to Save table meta file.");
     }
 
     metaFile.close();
-    LOG_INFO("end save table:{}, at step:{}", name, step);
+    LOG_INFO("End save table:{}, at step:{}.", name, step);
 }
 
 /// 根据元数据加载data文件
@@ -167,14 +169,14 @@ void Table::LoadDataFileSet(const shared_ptr<fstream> &metaFile, int step)
     uint64_t fileCnt;
     metaFile->read(reinterpret_cast<char *>(&fileCnt), sizeof(fileCnt));
     if (metaFile->fail()) {
-        throw invalid_argument("fail to read nFile, meta file broken");
+        ThrowRuntimeError("Failed to read nFile, meta file broken.");
     }
     uint64_t fileID;
     uint64_t fidSize = sizeof(fileID);
     for (uint64_t i = 0; i < fileCnt; ++i) {
         metaFile->read(reinterpret_cast<char *>(&fileID), fidSize);
         if (metaFile->fail()) {
-            throw invalid_argument("fail to read fileID, meta file broken");
+            ThrowRuntimeError("Failed to read fileID, meta file broken.");
         }
         if (fileID > curMaxFileID) {
             curMaxFileID = fileID;
@@ -196,19 +198,18 @@ void Table::LoadDataFileSet(const shared_ptr<fstream> &metaFile, int step)
             }
         }
         if (loadedFile == nullptr) {
-            throw invalid_argument(StringFormat("data file not found, id:%d", fileID));
+            ThrowRuntimeError(StringFormat("Data file not found in all ssd path, fileId:%d.", fileID),
+                              ErrorType::NULL_PTR);
         }
 
         auto keys = loadedFile->GetKeys();
         totalKeyCnt += keys.size();
-        if (totalKeyCnt > maxTableSize) {
-            throw invalid_argument("table size too small, key quantity exceed while loading data");
-        }
+        CheckIsGraterThanMaxSize();
 
         for (emb_cache_key_t k: keys) {
             if (keyToFile.find(k) != keyToFile.end()) {
-                throw invalid_argument(
-                    "find duplicate key in files, compaction already done before saving, file may broken or modified");
+                ThrowInvalidArgError("Find duplicate key in files, compaction already done before saving, "
+                                     "file may broken or modified.");
             }
             keyToFile[k] = loadedFile;
         }
@@ -225,7 +226,7 @@ void Table::Load(const string &metaFilePath, int step)
     metaFile->open(metaFilePath, ios::in | ios::binary);
     LOG_INFO("table:{}, load meta file from path:{}", name, metaFilePath);
     if (!metaFile->is_open()) {
-        throw invalid_argument("fail to open meta");
+        ThrowRuntimeError("Failed to open meta.");
     }
 
     // Load table name and validate
@@ -233,24 +234,24 @@ void Table::Load(const string &metaFilePath, int step)
     metaFile->read(reinterpret_cast<char *>(&nameSize), sizeof(nameSize));
     if (metaFile->fail()) {
         metaFile->close();
-        throw invalid_argument("fail to read table name size");
+        ThrowRuntimeError("Failed to read table name size.");
     }
     if (nameSize > maxNameSize) {
         metaFile->close();
-        throw invalid_argument("table name too large, file may broken");
+        ThrowRuntimeError("Table name too large, file may broken.", ErrorType::LOGIC_ERROR);
     }
     char tmpArr[nameSize + 1];
     auto ec = memset_s(tmpArr, nameSize + 1, '\0', nameSize + 1);
     if (ec != EOK) {
         metaFile->close();
-        throw runtime_error("fail to init table name array");
+        ThrowRuntimeError("Failed to init table name array.");
     }
     metaFile->read(tmpArr, static_cast<long>(nameSize));
     tmpArr[nameSize] = '\0';
     string tbNameInFile = tmpArr;
     if (name != tbNameInFile) {
         metaFile->close();
-        throw invalid_argument("table name not match");
+        ThrowInvalidArgError("Table name not match.");
     }
 
     // construct file set
@@ -258,20 +259,18 @@ void Table::Load(const string &metaFilePath, int step)
         LoadDataFileSet(metaFile, step);
     } catch (exception &e) {
         metaFile->close();
-        throw runtime_error(StringFormat("load data file set error: %s", e.what()));
+        ThrowRuntimeError(StringFormat("load data file set error: %s", e.what()), ErrorType::LOGIC_ERROR);
     }
     metaFile->close();
     if (metaFile->fail()) {
-        throw runtime_error("fail to load table");
+        ThrowRuntimeError("Failed to load table.");
     }
     LOG_INFO("table:{}, end load data file", name);
 }
 
 void Table::InsertEmbeddingsInner(vector<emb_cache_key_t> &keys, vector<vector<float>> &embeddings)
 {
-    if (totalKeyCnt > maxTableSize) {
-        throw invalid_argument("table size too small, key quantity exceed while loading data");
-    }
+    CheckIsGraterThanMaxSize();
 
     if (curFile == nullptr || (curFile != nullptr && curFile->GetDataCnt() >= maxDataNumInFile)) {
         SetTablePathToDiskWithSpace();
@@ -302,7 +301,7 @@ vector<vector<float>> Table::FetchEmbeddingsInner(vector<emb_cache_key_t> &keys)
     for (size_t i = 0; i < dLen; ++i) {
         auto it = as_const(keyToFile).find(keys[i]);
         if (it == keyToFile.end()) {
-            throw invalid_argument(StringFormat("failed to find the key, {key=%d} not exist!", keys[i]));
+            ThrowInvalidArgError(StringFormat("Failed to find the key, {key=%d} not exist!", keys[i]));
         }
         if (miniBatch[it->second] == nullptr) {
             miniBatch[it->second] = make_shared<pair<vector<emb_cache_key_t>, vector<size_t>>>();
@@ -406,7 +405,7 @@ void Table::SetTablePathToDiskWithSpace()
 
         curSavePathIdx += 1;
         if (curSavePathIdx >= savePaths.size()) {
-            throw runtime_error("all disk's space not enough");
+            ThrowRuntimeError("All disk's space are not enough.", ErrorType::RESOURCE_NOT_ENOUGH);
         }
         curTablePath = fs::absolute(
             savePaths.at(curSavePathIdx) + "/" + saveDirPrefix + GlogConfig::gRankId + "/" + name).string();
@@ -429,16 +428,16 @@ void Table::CreateTableDir(const string &path)
         return;
     }
     if (!fs::create_directories(path)) {
-        throw runtime_error(StringFormat("fail to create table directory:%s", path.c_str()));
+        ThrowRuntimeError(StringFormat("Failed to create table directory:%s.", path.c_str()));
     }
     try {
         fs::permissions(path, fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec);
     } catch (runtime_error &e) {
-        LOG_ERROR("fail to change permission of {}", path.c_str());
+        LOG_ERROR("Fail to change permission of {}.", path.c_str());
         fs::remove_all(path);
         throw;
     }
-    LOG_DEBUG("create table dir:{}", path);
+    LOG_DEBUG("Create table dir:{}.", path);
 }
 
 void Table::InsertEmbeddingsByAddr(vector<emb_cache_key_t>& keys, vector<float*>& embeddingsAddr,
@@ -451,9 +450,7 @@ void Table::InsertEmbeddingsByAddr(vector<emb_cache_key_t>& keys, vector<float*>
 void Table::InsertEmbeddingsByAddrInner(vector<emb_cache_key_t>& keys, vector<float*>& embeddingsAddr,
                                         uint64_t extEmbeddingSize)
 {
-    if (totalKeyCnt > maxTableSize) {
-        throw invalid_argument("table size too small, key quantity exceed while loading data");
-    }
+    CheckIsGraterThanMaxSize();
 
     if (curFile == nullptr || (curFile != nullptr && curFile->GetDataCnt() >= maxDataNumInFile)) {
         SetTablePathToDiskWithSpace();
@@ -483,4 +480,26 @@ vector<emb_cache_key_t> Table::ExportKeys()
         vec.push_back(p.first);
     }
     return vec;
+}
+
+void Table::CheckIsGraterThanMaxSize() const
+{
+    if (totalKeyCnt > maxTableSize) {
+        std::string errMsg = Logger::Format("Table size too small, key quantity exceed while loading data."
+                                            "Detail: totalKeyCnt:{}, maxTableSize:{}.",
+                                            totalKeyCnt, maxTableSize);
+        auto error = Error(ModuleName::M_SSD_ENGINE, ErrorType::LOGIC_ERROR, errMsg);
+        LOG_ERROR(error.ToString());
+        throw std::invalid_argument(error.ToString());
+    }
+}
+
+void Table::ThrowRuntimeError(const string& errMsg, ErrorType errorType)
+{
+    File::ThrowRuntimeError(errorType, errMsg);
+}
+
+void Table::ThrowInvalidArgError(const string& errMsg, ErrorType errorType)
+{
+    File::ThrowInvalidArgError(errorType, errMsg);
 }
