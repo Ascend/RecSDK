@@ -91,6 +91,12 @@ std::string Error::ModAsString() const noexcept
             return "AccCTR";
         case ModuleName::M_ACL:
             return "AscendCL";
+        case ModuleName::M_HYBRID_MGMT_BLOCK:
+            return "HybridMgmtBlock";
+        case ModuleName::M_FEATURE_ADMIT_AND_EVICT:
+            return "FeatureAdmitAndEvict";
+        case ModuleName::M_DATASET_OPS:
+            return "DatasetOps";
         default:
             return "UnknownModule";
     }

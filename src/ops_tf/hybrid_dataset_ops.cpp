@@ -27,6 +27,7 @@ See the License for the specific language governing permissions and
 #include "utils/safe_queue.h"
 #include "utils/singleton.h"
 #include "utils/time_cost.h"
+#include "utils/error.h"
 
 using namespace tensorflow;
 using shape_inference::InferenceContext;
@@ -127,7 +128,9 @@ namespace MxRec {
             std::copy(src, src + 1, &threshold);
 
             if (threshold < 0) {
-                LOG_ERROR("set threshold[{}] < 0 ", threshold);
+                auto error = Error(ModuleName::M_DATASET_OPS, ErrorType::INVALID_ARGUMENT,
+                                   StringFormat("Threshold should >= 0, get:%d.", threshold));
+                LOG_ERROR(error.ToString());                     
                 return 0;
             }
             LOG_DEBUG("ParseThresholdAndCheck, emb_name:[{}], ids_name: [{}], threshold: [{}]",
@@ -306,7 +309,10 @@ namespace MxRec {
                                     size_t& dataSize) const
         {
             if (dataSize - fieldNumTmp != 1) { // 说明没有传时间戳
-                LOG_ERROR("dataSize[{}], fieldNum[{}] ...", dataSize, fieldNumTmp);
+                auto error = Error(ModuleName::M_DATASET_OPS, ErrorType::INVALID_ARGUMENT,
+                                   StringFormat("Timestamp field not found, dataSize:%ld, fieldNum:%d.",
+                                                dataSize, fieldNumTmp));
+                LOG_ERROR(error.ToString());              
                 return false;
             }
 
@@ -317,7 +323,9 @@ namespace MxRec {
             dataSize -= 1;
 
             if (timestamp <= 0) {
-                LOG_ERROR("timestamp[{}] <= 0 ", timestamp);
+                auto error = Error(ModuleName::M_DATASET_OPS, ErrorType::INVALID_ARGUMENT,
+                                   StringFormat("Timestamp should greater than 0, get:%ld.", timestamp));
+                LOG_ERROR(error.ToString());                   
                 return false;
             }
 
@@ -499,7 +507,10 @@ namespace MxRec {
                                     size_t& dataSize) const
         {
             if (dataSize - fieldNumTmp != 1) { // 说明没有传时间戳
-                LOG_ERROR("dataSize[{}], fieldNum[{}] ...", dataSize, fieldNumTmp);
+                auto error = Error(ModuleName::M_DATASET_OPS, ErrorType::INVALID_ARGUMENT,
+                                   StringFormat("Timestamp field not found, dataSize:%ld, fieldNum:%d.",
+                                                dataSize, fieldNumTmp));
+                LOG_ERROR(error.ToString());                    
                 return false;
             }
 
@@ -510,7 +521,9 @@ namespace MxRec {
             dataSize -= 1;
 
             if (timestamp <= 0) {
-                LOG_ERROR("timestamp[{}] <= 0 ", timestamp);
+                auto error = Error(ModuleName::M_DATASET_OPS, ErrorType::INVALID_ARGUMENT,
+                                   StringFormat("Timestamp should greater than 0, get:%ld.", timestamp));
+                LOG_ERROR(error.ToString());                   
                 return false;
             }
 

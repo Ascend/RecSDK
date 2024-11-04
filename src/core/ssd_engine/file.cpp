@@ -35,7 +35,9 @@ File::File(uint64_t fileID, string& fileDir) : fileID(fileID), fileDir(fileDir)
         try {
             fs::permissions(fileDir, fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec);
         } catch (runtime_error &e) {
-            LOG_ERROR("fail to change permission of {}", fileDir.c_str());
+            auto error = Error(ModuleName::M_SSD_ENGINE, ErrorType::UNKNOWN, 
+                               StringFormat("Fail to change permission of %s.", fileDir.c_str()));
+            LOG_ERROR(error.ToString());
             fs::remove_all(fileDir);
             throw;
         }
@@ -51,7 +53,9 @@ File::File(uint64_t fileID, string& fileDir) : fileID(fileID), fileDir(fileDir)
     try {
         fs::permissions(metaFilePath, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
     } catch (runtime_error &e) {
-        LOG_ERROR("fail to change permission of {}", metaFilePath.c_str());
+        auto error = Error(ModuleName::M_SSD_ENGINE, ErrorType::UNKNOWN, 
+                           StringFormat("Fail to change permission of %s.", metaFilePath.c_str()));
+        LOG_ERROR(error.ToString());
         fs::remove_all(metaFilePath);
         throw;
     }
@@ -62,7 +66,9 @@ File::File(uint64_t fileID, string& fileDir) : fileID(fileID), fileDir(fileDir)
     try {
         fs::permissions(dataFilePath, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
     } catch (runtime_error &e) {
-        LOG_ERROR("fail to change permission of {}", dataFilePath.c_str());
+        auto error = Error(ModuleName::M_SSD_ENGINE, ErrorType::UNKNOWN, 
+                           StringFormat("Fail to change permission of %s.", dataFilePath.c_str()));
+        LOG_ERROR(error.ToString());        
         fs::remove_all(dataFilePath);
         throw;
     }
@@ -111,7 +117,9 @@ File::File(uint64_t fileID, string& fileDir, string& loadDir, int step) : fileID
     try {
         fs::permissions(metaFilePath, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
     } catch (runtime_error &e) {
-        LOG_ERROR("fail to change permission of {}", metaFilePath.c_str());
+        auto error = Error(ModuleName::M_SSD_ENGINE, ErrorType::UNKNOWN, 
+                           StringFormat("Fail to change permission of %s.", metaFilePath.c_str()));
+        LOG_ERROR(error.ToString());            
         fs::remove_all(metaFilePath);
         throw;
     }
@@ -122,7 +130,9 @@ File::File(uint64_t fileID, string& fileDir, string& loadDir, int step) : fileID
     try {
         fs::permissions(dataFilePath, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
     } catch (runtime_error &e) {
-        LOG_ERROR("fail to change permission of {}", dataFilePath.c_str());
+        auto error = Error(ModuleName::M_SSD_ENGINE, ErrorType::UNKNOWN, 
+                           StringFormat("Fail to change permission of %s.", dataFilePath.c_str()));
+        LOG_ERROR(error.ToString());             
         fs::remove_all(dataFilePath);
         throw;
     }

@@ -741,7 +741,9 @@ bool HybridMgmt::Evict()
             vector<std::string> allTableNames;
             int retCode = embCache->GetEmbTableNames(allTableNames);
             if (retCode != H_OK) {
-                LOG_ERROR("GetEmbTableNames failed!");
+                auto error = Error(ModuleName::M_OCK_CTR, ErrorType::INVALID_ARGUMENT,
+                                   StringFormat("GetEmbTableNames failed, error:%d.", retCode)); 
+                LOG_ERROR(error.ToString());
                 return false;
             }
             for (const string& embName : allTableNames) {
@@ -770,7 +772,9 @@ void HybridMgmt::EvictKeys(const string& embName, const vector<emb_cache_key_t>&
     }
     int retCode = embCache->RemoveEmbsByKeys(embName, keys);
     if (retCode != H_OK) {
-        LOG_ERROR("RemoveEmbsByKeys failed!");
+        auto error = Error(ModuleName::M_OCK_CTR, ErrorType::UNKNOWN,
+                            StringFormat("RemoveEmbsByKeys failed, error:%d", retCode)); 
+        LOG_ERROR(error.ToString());        
         return;
     }
 }
@@ -2132,7 +2136,7 @@ void HybridMgmt::SendRestoreVec(const EmbBaseInfo& info, bool& remainBatchOut)
     if (infoVecs == nullptr) {
         remainBatchOut = false;
         if (isRunning) {
-            LOG_ERROR("Information vector is nullptr!");
+            LOG_WARN("Information vector is nullptr!");
         }
         return;
     }
