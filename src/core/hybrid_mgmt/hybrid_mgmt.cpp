@@ -1562,7 +1562,8 @@ bool HybridMgmt::EmbeddingReceiveDDR(const EmbTaskInfo& info, float*& ptr, vecto
     // 区分通道接收
     auto size = hdTransfer->RecvAcl(TransferChannel::D2H, info.channelId, info.name, info.threadIdx, info.batchId);
     if (size == 0) {
-        LOG_WARN(HOSTEMB + "recv empty data");
+        LOG_WARN("Recv empty data, table:{}, channelId:{}, accumulate batchId:{}.",
+                 info.name, info.channelId, info.batchId);
         return false;
     }
 
@@ -1798,7 +1799,8 @@ bool HybridMgmt::EmbeddingReceiveL3Storage(const EmbTaskInfo& info, float*& ptr,
     // 区分通道接收
     auto size = hdTransfer->RecvAcl(TransferChannel::D2H, info.channelId, info.name, info.threadIdx, info.batchId);
     if (size == 0) {
-        LOG_WARN(HOSTEMB + "recv empty data");
+        LOG_WARN("Recv empty data, table:{}, channelId:{}, accumulate batchId:{}.",
+                 info.name, info.channelId, info.batchId);
         return false;
     }
 

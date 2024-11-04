@@ -71,7 +71,7 @@ CkptTransData KeyCountMapCkpt::GetDataset(CkptDataType dataType, string embName)
         transArr.push_back(it.first);
         transArr.push_back(it.second);
     }
-    LOG_INFO("CkptDataType::EMB_INFO:{}, dataType:{}", CkptDataType::EMB_INFO, dataType);
+    LOG_INFO("GetDataset, tabel:{}, CkptDataType::EMB_INFO:{}, dataType:{}.", embName, CkptDataType::EMB_INFO, dataType);
     return move(transferData);
 }
 
@@ -87,5 +87,5 @@ void KeyCountMapCkpt::SetDataset(CkptDataType dataType, string embName, CkptTran
         int64_t key { transArr.at(i) };
         singleKeyCountMap[key] = transArr.at(i + 1);
     }
-    LOG_INFO("dataType:{}", dataType);
+    LOG_INFO("SetDataset, table:{}, dataType:{}.", embName, dataType);
 }
