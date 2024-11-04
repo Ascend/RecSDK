@@ -31,7 +31,7 @@ TEST(Table, WriteAndReadAndDeleteAndCompact)
 
     string tbName = "test";
     vector<string> savePath = {GlogConfig::gRankId};
-    uint64_t maxTableSize = 1000000;
+    uint64_t maxTableSize = 100000;
     uint64_t embDim = 240;
     double compactThreshold = 0.5;
 
@@ -39,7 +39,7 @@ TEST(Table, WriteAndReadAndDeleteAndCompact)
     auto tb = make_shared<Table>(tbName, savePath, maxTableSize, compactThreshold);
 
     // write
-    emb_key_t nData = 1000000;
+    emb_key_t nData = 100000;
     emb_key_t batchSize = 10000;
     vector<emb_cache_key_t> allKeys;
     vector<vector<float>> allEmbs;

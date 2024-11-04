@@ -45,7 +45,7 @@ enum BucketIdx {
 
 class NetHeapAllocator {
 public:
-    void *Allocate(uint32_t size)
+    void *Allocate(uint64_t size)
     {
         return calloc(1, size);
     }
@@ -277,13 +277,13 @@ struct alignas(K_ALIGNMENT)NetHashBucket {
 class MapperBase {
 public:
     //    DEFINE_RDMA_REF_COUNT_FUNCTIONS
-    std::atomic<uint32_t> current_size{ 0 };
+    std::atomic<uint64_t> current_size{ 0 };
 
     MapperBase() = default;
 
     virtual ~MapperBase() = default;
 
-    bool Initialize(uint32_t reserve)
+    bool Initialize(uint64_t reserve)
     {
         /* already initialized */
         if (mOverflowEntryAlloc != nullptr) {
@@ -291,11 +291,11 @@ public:
         }
 
         /* get proper bucket count */
-        uint32_t bucketCount = std::max(reserve, uint32_t(128));
+        uint64_t bucketCount = std::max(reserve, uint64_t(128));
         if (bucketCount > gPrimes[gPrimesCount - 1]) {
             bucketCount = gPrimes[gPrimesCount - 1];
         } else {
-            uint32_t i = 0;
+            uint64_t i = 0;
             while (i < gPrimesCount && gPrimes[i] < bucketCount) {
                 i++;
             }
@@ -607,7 +607,7 @@ public:
             kvVec.emplace_back(0, zeroValue);
         }
         for (auto &mSubMap : mSubMaps) {
-            for (uint32_t j = 0; j < mBucketCount; j++) {
+            for (uint64_t j = 0; j < mBucketCount; j++) {
                 auto buck = &mSubMap[j];
                 ExtractKeyValInBuck(buck, kvVec);
             }
@@ -617,17 +617,17 @@ public:
 
 protected:
     static constexpr uint16_t gSubMapCount = 5; /* count of sub map */
-    static constexpr uint32_t gPrimesCount = 256;
+    static constexpr uint64_t gPrimesCount = 256;
 
     /* make sure the size of this class is 64 bytes, fit into one cache line */
     NetHeapAllocator *mOverflowEntryAlloc = nullptr; /* allocate overflowed entry in one bucket */
     NetHashBucket *mSubMaps[gSubMapCount]{};         /* sub map */
-    uint32_t mBucketCount = 0;                       /* bucket count of each sub map */
-    uint32_t mBaseSize = 4096;                       /* base size */
+    uint64_t mBucketCount = 0;                       /* bucket count of each sub map */
+    uint64_t mBaseSize = 4096;                       /* base size */
     bool zeroInside = false;
     uint64_t zeroValue = 0;
 
-    const uint32_t gPrimes[gPrimesCount] = {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37,
+    const uint64_t gPrimes[gPrimesCount] = {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37,
                                             41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89,
                                             97, 103, 109, 113, 127, 137, 139, 149, 157, 167,
                                             179, 193, 199, 211, 227, 241, 257, 277, 293, 313,
@@ -682,7 +682,7 @@ private:
      * Parameter: bucketPtr - pointing at the bucket array which is allocated
      * NOTES: SECUREC_MEM_MAX_LEN of memset_s function is 2GB
      */
-    bool NewAndSetBucket(const uint32_t& bucketCount, const int& c, NetHashBucket* &bucketPtr)
+    bool NewAndSetBucket(const uint64_t& bucketCount, const int& c, NetHashBucket* &bucketPtr)
     {
         bucketPtr = new (std::nothrow) NetHashBucket[bucketCount];
         if (HM_UNLIKELY(bucketPtr == nullptr)) {
@@ -718,7 +718,7 @@ private:
             }
 
             /* free overflow entries in one sub map */
-            for (uint32_t buckIndex = 0; buckIndex < mBucketCount; ++buckIndex) {
+            for (uint64_t buckIndex = 0; buckIndex < mBucketCount; ++buckIndex) {
                 auto curBuck = mSubMap[buckIndex].next;
                 NetHashBucket *nextOverflowEntryBuck = nullptr;
 

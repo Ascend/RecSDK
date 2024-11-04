@@ -102,8 +102,6 @@ public:
 
     OffsetT SendLoadMap(const string tableName);
 
-    void ReceiveHostMap(AllKeyOffsetMapT receiveKeyOffsetMap);
-
     void Start();
 
     void StartThreadForHBM();
@@ -237,7 +235,6 @@ private:
     bool isRunning;
     bool isLoad{false};
     bool isInitialized{false};
-    bool alreadyTrainOnce = false;     // 用于判断是否为predict模式
     bool isBackUpTrainStatus = false;  // whether the train state has been backed up
     bool isIncrementalCkpt;
     map<string, absl::flat_hash_map<emb_key_t, KeyInfo>> deltaMap;

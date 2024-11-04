@@ -70,11 +70,5 @@ target_link_libraries(ASC PUBLIC
         OpenMP::OpenMP_CXX ${MPI_CXX_LIBRARIES}
         ${PYTHON_LIBRARY}
 )
-find_package(easy_profiler PATHS ${EASY_PROFILER_PATH} NO_DEFAULT_PATH)
-if (easy_profiler_FOUND)
-    message("==link with easy_profiler==")
-    target_link_directories(ASC PUBLIC ${EASY_PROFILER_PATH})
-    target_link_libraries(ASC PUBLIC easy_profiler )
-endif ()
 
 install(TARGETS ASC LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX})

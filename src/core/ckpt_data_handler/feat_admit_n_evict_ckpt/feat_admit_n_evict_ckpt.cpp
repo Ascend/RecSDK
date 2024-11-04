@@ -155,14 +155,14 @@ void FeatAdmitNEvictCkpt::SetHistRec(string embName)
     timestamp = transArr.front();
 
     size_t featItemInfoTotalSize = attribute.front() * static_cast<size_t>(featItemInfoSaveNum);
-    LOG_DEBUG("====Start SetHistRec, name: {}, featItemInfoTotalSize: {}", embName, featItemInfoTotalSize);
+    LOG_DEBUG("Start SetHistRec, table:{}, featItemInfoTotalSize:{}", embName, featItemInfoTotalSize);
 
     size_t process = 0;
     size_t printPerStep = ((featItemInfoTotalSize / 100) > 0 ? (featItemInfoTotalSize / 100) : 1);
     for (size_t i = featItemInfoOffset; i < featItemInfoTotalSize + featItemInfoOffset; i += featItemInfoSaveNum) {
         process = i % printPerStep;
         if (process == 1) {
-            LOG_TRACE("====in SetHistRec, process : {}", i / featItemInfoTotalSize);
+            LOG_TRACE("In SetHistRec, progress:{}%.", i / featItemInfoTotalSize);
         }
         auto featureId = transArr[i + featureIdIdxOffset];
         auto count = transArr[i + countIdxOffset];
@@ -170,7 +170,7 @@ void FeatAdmitNEvictCkpt::SetHistRec(string embName)
 
         histRecs.emplace(featureId, FeatureItemInfo(static_cast<uint32_t>(count), lastTime));
     }
-    LOG_DEBUG("====End SetHistRec, name: {}", embName);
+    LOG_DEBUG("End SetHistRec, table:{}.", embName);
 }
 
 int FeatAdmitNEvictCkpt::GetTable2ThreshSize()
