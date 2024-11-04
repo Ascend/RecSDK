@@ -91,7 +91,7 @@ class CustomizedGradientDescent(
         nd_value = grad.values * math_ops.cast(
             self._learning_rate_tensor, var.dtype.base_dtype
         )
-        var_update_op = tf.scatter_nd_add(
+        var_update_op = tf.compat.v1.scatter_nd_add(
             var, nd_indices, -nd_value, use_locking=self._use_locking
         )
         return var_update_op
