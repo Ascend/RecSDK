@@ -142,8 +142,8 @@ struct InitializerInfo {
 };
 
 struct EmbCacheInfo {
-    EmbCacheInfo(std::string tableName, uint32_t vocabSize, uint32_t embeddingSize, uint32_t extEmbeddingSize,
-                 uint32_t maxCacheSize)
+    EmbCacheInfo(std::string tableName, uint64_t vocabSize, uint32_t embeddingSize, uint32_t extEmbeddingSize,
+                 uint64_t maxCacheSize)
         : tableName(tableName),
           vocabSize(vocabSize),
           embeddingSize(embeddingSize),
@@ -152,10 +152,10 @@ struct EmbCacheInfo {
     {
     }
     std::string tableName = "";
-    uint32_t vocabSize = 0;  // host侧的容量(能存多少条embedding)
+    uint64_t vocabSize = 0;  // host侧的容量(能存多少条embedding)
     uint32_t embeddingSize = 0;
     uint32_t extEmbeddingSize = 0;  // 包含embedding和优化器信息的embedding长度
-    uint32_t maxCacheSize = 0;      // device侧的容量(能存多少条embedding)
+    uint64_t maxCacheSize = 0;      // device侧的容量(能存多少条embedding)
 };
 
 class EmbCacheManager {
