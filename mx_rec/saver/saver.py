@@ -168,8 +168,13 @@ class Saver(object):
                 logger.info("checkpoints num %d > max_to_keep %d delete %s",
                             len(self._last_checkponts), self.max_to_keep,
                             self._last_checkponts[0])
+                checkpoint_path = self._last_checkponts.pop(0)
+                file_validator = FileValidator("checkpoint_path", checkpoint_path)
+                if not check_file_system_is_hdfs(checkpoint_path):
+                    file_validator.check_not_soft_link()
+                file_validator.check()
                 try:
-                    tf.io.gfile.rmtree(self._last_checkponts.pop(0))
+                    tf.io.gfile.rmtree(checkpoint_path)
                 except tf.errors.NotFoundError as e:
                     logger.warning("oldest checkpoint file is not exist, maybe it has been deleted.")
 
@@ -205,6 +210,10 @@ class Saver(object):
 
         self._restore(sess, reading_path, warm_start_tables)
         if model_type == DELTA_MODEL:
+            file_validator = FileValidator("reading_path", reading_path)
+            if not check_file_system_is_hdfs(reading_path):
+                file_validator.check_not_soft_link()
+            file_validator.check()
             try:
                 tf.io.gfile.rmtree(reading_path)
             except tf.errors.NotFoundError:
