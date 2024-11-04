@@ -50,7 +50,7 @@ EmbeddingDynamic::~EmbeddingDynamic()
         if (ret != ACL_SUCCESS) {
             auto error = Error(ModuleName::M_ACL, ErrorType::ACL_ERROR,
                                StringFormat("Acl free memory failed, table:%s, error:%d."
-                                " Check plog for detail.", name.c_str(), ret));
+                                            " Check plog for detail.", name.c_str(), ret));
             LOG_ERROR(error.ToString());
         }
     }

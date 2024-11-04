@@ -111,7 +111,7 @@ namespace MxRec {
                                "currentBatchNumber is %d. please check your setting of train "
                                "steps and eval steps", scene.c_str(), channelId, preprocessBatchNumber,
                                currentBatchNumber);
-            auto error = Error(ModuleName::M_HYBRID_MGMT_BLOCK, ErrorType::INVALID_ARGUMENT, str);                              
+            auto error = Error(ModuleName::M_HYBRID_MGMT_BLOCK, ErrorType::INVALID_ARGUMENT, str);
             LOG_ERROR(error.ToString());
         }
 

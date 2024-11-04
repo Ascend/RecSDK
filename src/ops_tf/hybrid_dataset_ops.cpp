@@ -130,7 +130,7 @@ namespace MxRec {
             if (threshold < 0) {
                 auto error = Error(ModuleName::M_DATASET_OPS, ErrorType::INVALID_ARGUMENT,
                                    StringFormat("Threshold should >= 0, get:%d.", threshold));
-                LOG_ERROR(error.ToString());                     
+                LOG_ERROR(error.ToString());
                 return 0;
             }
             LOG_DEBUG("ParseThresholdAndCheck, emb_name:[{}], ids_name: [{}], threshold: [{}]",
@@ -312,7 +312,7 @@ namespace MxRec {
                 auto error = Error(ModuleName::M_DATASET_OPS, ErrorType::INVALID_ARGUMENT,
                                    StringFormat("Timestamp field not found, dataSize:%ld, fieldNum:%d.",
                                                 dataSize, fieldNumTmp));
-                LOG_ERROR(error.ToString());              
+                LOG_ERROR(error.ToString());
                 return false;
             }
 
@@ -325,7 +325,7 @@ namespace MxRec {
             if (timestamp <= 0) {
                 auto error = Error(ModuleName::M_DATASET_OPS, ErrorType::INVALID_ARGUMENT,
                                    StringFormat("Timestamp should greater than 0, get:%ld.", timestamp));
-                LOG_ERROR(error.ToString());                   
+                LOG_ERROR(error.ToString());
                 return false;
             }
 
@@ -510,7 +510,7 @@ namespace MxRec {
                 auto error = Error(ModuleName::M_DATASET_OPS, ErrorType::INVALID_ARGUMENT,
                                    StringFormat("Timestamp field not found, dataSize:%ld, fieldNum:%d.",
                                                 dataSize, fieldNumTmp));
-                LOG_ERROR(error.ToString());                    
+                LOG_ERROR(error.ToString());
                 return false;
             }
 
@@ -523,7 +523,7 @@ namespace MxRec {
             if (timestamp <= 0) {
                 auto error = Error(ModuleName::M_DATASET_OPS, ErrorType::INVALID_ARGUMENT,
                                    StringFormat("Timestamp should greater than 0, get:%ld.", timestamp));
-                LOG_ERROR(error.ToString());                   
+                LOG_ERROR(error.ToString());
                 return false;
             }
 

@@ -71,7 +71,8 @@ CkptTransData KeyCountMapCkpt::GetDataset(CkptDataType dataType, string embName)
         transArr.push_back(it.first);
         transArr.push_back(it.second);
     }
-    LOG_INFO("GetDataset, tabel:{}, CkptDataType::EMB_INFO:{}, dataType:{}.", embName, CkptDataType::EMB_INFO, dataType);
+    LOG_INFO("GetDataset, tabel:{}, CkptDataType::EMB_INFO:{}, dataType:{}.",
+             embName, CkptDataType::EMB_INFO, dataType);
     return move(transferData);
 }
 

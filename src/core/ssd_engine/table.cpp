@@ -119,9 +119,9 @@ void Table::Save(int step)
     try {
         fs::permissions(metaFilePath, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
     } catch (runtime_error &e) {
-        auto error = Error(ModuleName::M_SSD_ENGINE, ErrorType::UNKNOWN, 
+        auto error = Error(ModuleName::M_SSD_ENGINE, ErrorType::UNKNOWN,
                            StringFormat("Fail to change permission of %s.", metaFilePath.c_str()));
-        LOG_ERROR(error.ToString());           
+        LOG_ERROR(error.ToString());
         fs::remove_all(metaFilePath);
         throw;
     }
@@ -435,9 +435,9 @@ void Table::CreateTableDir(const string &path)
     try {
         fs::permissions(path, fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec);
     } catch (runtime_error &e) {
-        auto error = Error(ModuleName::M_SSD_ENGINE, ErrorType::UNKNOWN, 
+        auto error = Error(ModuleName::M_SSD_ENGINE, ErrorType::UNKNOWN,
                            StringFormat("Fail to change permission of %s.", path.c_str()));
-        LOG_ERROR(error.ToString());             
+        LOG_ERROR(error.ToString());
         fs::remove_all(path);
         throw;
     }

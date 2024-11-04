@@ -173,7 +173,7 @@ public:
     virtual int CreateCacheForTable(const EmbCacheInfo& embCacheInfo,
                                     const std::vector<InitializerInfo>& initializerInfos,
                                     int64_t invalidKey = DEFAULE_INVALID_KEY,
-                                    uint64_t prefillBufferSize = DEFAULE_PREFILL_BUF_SIZE,
+                                    uint64_t prefillBufferSize = DEFAULE_PREFILL_BUFFER_SIZE,
                                     uint32_t refillThreadNum = DEFAULE_REFILL_THREAD_NUM) = 0;
 
     /* *
@@ -339,10 +339,10 @@ public:
     virtual int ResetOffsetMappers() = 0;
 
 private:
-    static const uint32_t DEFAULE_LOOKUP_THREAD_NUM = 4;
-    static const uint32_t DEFAULE_REFILL_THREAD_NUM = 4;
-    static const uint64_t DEFAULE_PREFILL_BUF_SIZE = 500000;
-    static const int64_t DEFAULE_INVALID_KEY = -1;
+    static constexpr uint32_t DEFAULE_LOOKUP_THREAD_NUM = 4;
+    static constexpr uint32_t DEFAULE_REFILL_THREAD_NUM = 4;
+    static constexpr uint64_t DEFAULE_PREFILL_BUFFER_SIZE = 500000;
+    static constexpr int64_t DEFAULE_INVALID_KEY = -1;
 };
 }  // namespace EmbCache
 
