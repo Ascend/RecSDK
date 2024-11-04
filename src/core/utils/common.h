@@ -130,9 +130,12 @@ namespace MxRec {
         const int ASCEND910_B1 = 196608;
         const int ASCEND910_B3 = 196608;
         const int ASCEND910_B4 = 196608;
-        const int ASCEND910_C1 = 196608;
-        const int ASCEND910_C2 = 196608;
-        const int ASCEND910_C3 = 196608;
+        const int ASCEND910_9391 = 196608;
+        const int ASCEND910_9392 = 196608;
+        const int ASCEND910_9381 = 196608;
+        const int ASCEND910_9382 = 196608;
+        const int ASCEND910_9372 = 196608;
+        const int ASCEND910_9361 = 196608;
         const int ASCEND920_A = 196608;
         const int ASCEND910_PRO_A = 262144;
         const int ASCEND910_B = 262144;
