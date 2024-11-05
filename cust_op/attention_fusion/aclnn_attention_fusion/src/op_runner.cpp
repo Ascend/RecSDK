@@ -1,0 +1,377 @@
+/* Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+        limitations under the License.
+==============================================================================*/
+
+#include <limits>
+#include <cassert>
+#include <chrono>
+#include "aclnn_attention_fusion.h"
+#include "acl/acl_op_compiler.h"
+#include "common.h"
+#include "op_runner.h"
+
+using namespace std;
+
+extern bool g_isDevice;
+namespace AclnnAttention {
+    constexpr int32_t STREAM_TIMEOUT = 5000;
+    OpRunner::OpRunner(OperatorDesc *opDesc) : opDesc_(opDesc)
+    {
+        numInputs_ = opDesc->inputDesc.size();
+        numOutputs_ = opDesc->outputDesc.size();
+    }
+
+    OpRunner::~OpRunner()
+    {
+        for (size_t i = 0; i < numInputs_; ++i) {
+            (void)aclDestroyTensor(inputTensor_[i]);
+            (void)aclDestroyDataBuffer(inputBuffers_[i]);
+            (void)aclrtFree(devInputs_[i]);
+            if (g_isDevice) {
+                (void)aclrtFree(hostInputs_[i]);
+            } else {
+                (void)aclrtFreeHost(hostInputs_[i]);
+            }
+        }
+
+        for (size_t i = 0; i < numOutputs_; ++i) {
+            (void)aclDestroyTensor(outputTensor_[i]);
+            (void)aclDestroyDataBuffer(outputBuffers_[i]);
+            (void)aclrtFree(devOutputs_[i]);
+            if (g_isDevice) {
+                (void)aclrtFree(hostOutputs_[i]);
+            } else {
+                (void)aclrtFreeHost(hostOutputs_[i]);
+            }
+        }
+    }
+
+    bool OpRunner::InitInput()
+    {
+        for (size_t i = 0; i < numInputs_; ++i) {
+            auto size = GetInputSize(i);
+            void *devMem = nullptr;
+            if (aclrtMalloc(&devMem, size, ACL_MEM_MALLOC_HUGE_FIRST) != ACL_SUCCESS) {
+                ERROR_LOG("Malloc device memory for input[%zu] failed", i);
+                return false;
+            }
+            devInputs_.emplace_back(devMem);
+            inputBuffers_.emplace_back(aclCreateDataBuffer(devMem, size));
+
+            void *hostInput = nullptr;
+            if (g_isDevice) {
+                if (aclrtMalloc(&hostInput, size, ACL_MEM_MALLOC_HUGE_FIRST) != ACL_SUCCESS) {
+                    ERROR_LOG("Malloc device memory for input[%zu] failed", i);
+                    return false;
+                }
+            } else {
+                if (aclrtMallocHost(&hostInput, size) != ACL_SUCCESS) {
+                    ERROR_LOG("Malloc device memory for input[%zu] failed", i);
+                    return false;
+                }
+            }
+            if (hostInput == nullptr) {
+                ERROR_LOG("Malloc memory for input[%zu] failed", i);
+                return false;
+            }
+            hostInputs_.emplace_back(hostInput);
+
+            aclTensor *inputTensor = aclCreateTensor(GetInputShape(i).data(), GetInputNumDims(i), GetInputDataType(i),
+                nullptr, 0, GetInputFormat(i), GetInputShape(i).data(), GetInputNumDims(i), devInputs_[i]);
+            if (inputTensor == nullptr) {
+                ERROR_LOG("Create Tensor for input[%zu] failed", i);
+                return false;
+            }
+            inputTensor_.emplace_back(inputTensor);
+        }
+
+        return true;
+    }
+
+    bool OpRunner::InitOutput()
+    {
+        for (size_t i = 0; i < numOutputs_; ++i) {
+            auto size = GetOutputSize(i);
+            void *devMem = nullptr;
+            if (aclrtMalloc(&devMem, size, ACL_MEM_MALLOC_HUGE_FIRST) != ACL_SUCCESS) {
+                ERROR_LOG("Malloc device memory for output[%zu] failed", i);
+                return false;
+            }
+            devOutputs_.emplace_back(devMem);
+            outputBuffers_.emplace_back(aclCreateDataBuffer(devMem, size));
+
+            void *hostOutput = nullptr;
+            if (g_isDevice) {
+                if (aclrtMalloc(&hostOutput, size, ACL_MEM_MALLOC_HUGE_FIRST) != ACL_SUCCESS) {
+                    ERROR_LOG("Malloc device memory for output[%zu] failed", i);
+                    return false;
+                }
+            } else {
+                if (aclrtMallocHost(&hostOutput, size) != ACL_SUCCESS) {
+                    ERROR_LOG("Malloc device memory for output[%zu] failed", i);
+                    return false;
+                }
+            }
+            if (hostOutput == nullptr) {
+                ERROR_LOG("Malloc host memory for output[%zu] failed", i);
+                return false;
+            }
+            hostOutputs_.emplace_back(hostOutput);
+
+            aclTensor *outputTensor = aclCreateTensor(GetOutputShape(i).data(), GetOutputNumDims(i),
+                GetOutputDataType(i), nullptr, 0, GetOutputFormat(i), GetOutputShape(i).data(), GetOutputNumDims(i),
+                devOutputs_[i]);
+            if (outputTensor == nullptr) {
+                ERROR_LOG("Create Tensor for output[%zu] failed", i);
+                return false;
+            }
+            outputTensor_.emplace_back(outputTensor);
+        }
+
+        return true;
+    }
+
+    bool OpRunner::Init()
+    {
+        return InitInput() && InitOutput();
+    }
+
+    const size_t OpRunner::NumInputs()
+    {
+        return numInputs_;
+    }
+
+    const size_t OpRunner::NumOutputs()
+    {
+        return numOutputs_;
+    }
+
+    const size_t OpRunner::GetInputSize(size_t index) const
+    {
+        if (index >= numInputs_) {
+            ERROR_LOG("index out of range. index = %zu, numInputs = %zu", index, numInputs_);
+            return 0;
+        }
+
+        return aclGetTensorDescSize(opDesc_->inputDesc[index]);
+    }
+
+    const size_t OpRunner::GetInputNumDims(size_t index) const
+    {
+        if (index >= numInputs_) {
+            ERROR_LOG("index out of range. index = %zu, numInputs = %zu", index, numInputs_);
+            return 0;
+        }
+
+        return aclGetTensorDescNumDims(opDesc_->inputDesc[index]);
+    }
+
+    aclDataType OpRunner::GetInputDataType(size_t index) const
+    {
+        if (index >= numInputs_) {
+            ERROR_LOG("index out of range. index = %zu, numInputs = %zu", index, numInputs_);
+            return ACL_DT_UNDEFINED;
+        }
+
+        return aclGetTensorDescType(opDesc_->inputDesc[index]);
+    }
+
+    aclFormat OpRunner::GetInputFormat(size_t index) const
+    {
+        if (index >= numInputs_) {
+            ERROR_LOG("index out of range. index = %zu, numInputs = %zu", index, numInputs_);
+            return ACL_FORMAT_UNDEFINED;
+        }
+
+        return aclGetTensorDescFormat(opDesc_->inputDesc[index]);
+    }
+
+    std::vector<int64_t> OpRunner::GetInputShape(size_t index) const
+    {
+        std::vector<int64_t> ret;
+        if (index >= numInputs_) {
+            ERROR_LOG("index out of range. index = %zu, numInputs = %zu", index, numInputs_);
+            return ret;
+        }
+
+        auto desc = opDesc_->inputDesc[index];
+        for (size_t i = 0; i < aclGetTensorDescNumDims(desc); ++i) {
+            int64_t dimSize;
+            if (aclGetTensorDescDimV2(desc, i, &dimSize) != ACL_SUCCESS) {
+                ERROR_LOG("get dims from tensor desc failed. dims index = %zu", i);
+                ret.clear();
+                return ret;
+            }
+            ret.emplace_back(dimSize);
+        }
+
+        return ret;
+    }
+
+    size_t OpRunner::GetOutputSize(size_t index) const
+    {
+        if (index >= numOutputs_) {
+            ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
+            return 0;
+        }
+
+        return aclGetTensorDescSize(opDesc_->outputDesc[index]);
+    }
+
+    const size_t OpRunner::GetOutputNumDims(size_t index) const
+    {
+        if (index >= numOutputs_) {
+            ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
+            return 0;
+        }
+
+        return aclGetTensorDescNumDims(opDesc_->outputDesc[index]);
+    }
+
+    aclDataType OpRunner::GetOutputDataType(size_t index) const
+    {
+        if (index >= numOutputs_) {
+            ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
+            return ACL_DT_UNDEFINED;
+        }
+
+        return aclGetTensorDescType(opDesc_->outputDesc[index]);
+    }
+
+
+    aclFormat OpRunner::GetOutputFormat(size_t index) const
+    {
+        if (index >= numOutputs_) {
+            ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
+            return ACL_FORMAT_UNDEFINED;
+        }
+
+        return aclGetTensorDescFormat(opDesc_->outputDesc[index]);
+    }
+
+    std::vector<int64_t> OpRunner::GetOutputShape(size_t index) const
+    {
+        std::vector<int64_t> ret;
+        if (index >= numOutputs_) {
+            ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
+            return ret;
+        }
+
+        auto desc = opDesc_->outputDesc[index];
+        for (size_t i = 0; i < aclGetTensorDescNumDims(desc); ++i) {
+            int64_t dimSize;
+            if (aclGetTensorDescDimV2(desc, i, &dimSize) != ACL_SUCCESS) {
+                ERROR_LOG("get dims from tensor desc failed. dims index = %zu", i);
+                ret.clear();
+                return ret;
+            }
+            ret.emplace_back(dimSize);
+        }
+        return ret;
+    }
+
+    size_t OpRunner::GetInputElementCount(size_t index) const
+    {
+        if (index >= opDesc_->inputDesc.size()) {
+            ERROR_LOG("index out of range. index = %zu, numInputs = %zu", index, numInputs_);
+            return 0;
+        }
+
+        return aclGetTensorDescElementCount(opDesc_->inputDesc[index]);
+    }
+
+    size_t OpRunner::GetOutputElementCount(size_t index) const
+    {
+        if (index >= opDesc_->outputDesc.size()) {
+            ERROR_LOG("index out of range. index = %zu, numOutputs = %zu", index, numOutputs_);
+            return 0;
+        }
+
+        return aclGetTensorDescElementCount(opDesc_->outputDesc[index]);
+    }
+
+    bool OpRunner::RunOp()
+    {
+        for (size_t i = 0; i < numInputs_; ++i) {
+            auto size = GetInputSize(i);
+            aclrtMemcpyKind kind = ACL_MEMCPY_HOST_TO_DEVICE;
+            if (g_isDevice) {
+                kind = ACL_MEMCPY_DEVICE_TO_DEVICE;
+            }
+            if (aclrtMemcpy(devInputs_[i], size, hostInputs_[i], size, kind) != ACL_SUCCESS) {
+                ERROR_LOG("Copy input[%zu] failed", i);
+                return false;
+            }
+            INFO_LOG("Copy input[%zu] success", i);
+        }
+
+        aclrtStream stream = nullptr;
+        if (aclrtCreateStream(&stream) != ACL_SUCCESS) {
+            ERROR_LOG("Create stream failed");
+            return false;
+        }
+        INFO_LOG("Create stream success");
+
+        size_t workspaceSize = 0;
+        aclOpExecutor *handle = nullptr;
+        auto ret = aclnnAttentionFusionGetWorkspaceSize(inputTensor_[0], inputTensor_[1], inputTensor_[2],
+            inputTensor_[3], opDesc_->maskOnOptional, outputTensor_[0], outputTensor_[1], &workspaceSize, &handle);
+        if (ret != ACL_SUCCESS) {
+            (void)aclrtDestroyStream(stream);
+            ERROR_LOG("Get Operator Workspace failed. error code is %d", static_cast<int32_t>(ret));
+            return false;
+        }
+        INFO_LOG("Execute aclnnAttentionFusionGetWorkspaceSize success, workspace size %lu", workspaceSize);
+        
+        void *workspace = nullptr;
+        if (workspaceSize != 0) {
+            if (aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST) != ACL_SUCCESS) {
+                ERROR_LOG("Malloc device memory failed");
+            }
+        }
+
+        ret = aclnnAttentionFusion(workspace, workspaceSize, handle, stream);
+        if (ret != ACL_SUCCESS) {
+            (void)aclrtDestroyStream(stream);
+            ERROR_LOG("Execute Operator failed. error code is %d", static_cast<int32_t>(ret));
+            return false;
+        }
+        INFO_LOG("Execute aclnnAttentionFusion success");
+        // set timeout to be 5000us
+        ret = aclrtSynchronizeStreamWithTimeout(stream, STREAM_TIMEOUT);
+        if (ret != SUCCESS) {
+            ERROR_LOG("Synchronize stream failed. error code is %d", static_cast<int32_t>(ret));
+            (void)aclrtDestroyStream(stream);
+            return false;
+        }
+        INFO_LOG("Synchronize stream success");
+        
+        for (size_t i = 0; i < numOutputs_; ++i) {
+            auto size = GetOutputSize(i);
+            aclrtMemcpyKind kind = ACL_MEMCPY_DEVICE_TO_HOST;
+            if (g_isDevice) {
+                kind = ACL_MEMCPY_DEVICE_TO_DEVICE;
+            }
+            if (aclrtMemcpy(hostOutputs_[i], size, devOutputs_[i], size, kind) != ACL_SUCCESS) {
+                INFO_LOG("Copy output[%zu] success", i);
+                (void)aclrtDestroyStream(stream);
+                return false;
+            }
+            INFO_LOG("Copy output[%zu] success", i);
+        }
+
+        (void)aclrtDestroyStream(stream);
+        return true;
+    }
+} // namespace AclnnAttention

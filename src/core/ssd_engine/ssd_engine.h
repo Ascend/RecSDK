@@ -23,6 +23,7 @@ See the License for the specific language governing permissions and
 #include <vector>
 
 #include "l3_storage/l3_storage.h"
+#include "utils/error.h"
 
 
 namespace MxRec {
@@ -61,9 +62,13 @@ namespace MxRec {
         void InsertEmbeddingsByAddr(const string &tableName, vector<emb_cache_key_t> &keys,
                                     vector<float*> &embeddingsAddr, uint64_t extEmbeddingSize);
 
+        static void CheckTableExist(bool isThrowError, const string& tableName);
+
         vector<std::pair<string, vector<emb_cache_key_t>>> ExportTableKey();
 
     private:
+        void CheckSSDEngineIsRunning() const;
+
         bool isRunning = false;
 
         // leave 50% space for stale data to avoid modification in file

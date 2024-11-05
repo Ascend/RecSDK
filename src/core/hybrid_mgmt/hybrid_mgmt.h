@@ -17,7 +17,11 @@ See the License for the specific language governing permissions and
 #define MX_REC_EMB_MGMT_H
 
 #include <array>
+#include <atomic>
+#include <condition_variable>
 #include <memory>
+#include <mutex>
+#include <thread>
 #include <unordered_set>
 #include <vector>
 
@@ -33,6 +37,7 @@ See the License for the specific language governing permissions and
 #include "utils/config.h"
 #include "utils/singleton.h"
 #include "utils/task_queue.h"
+#include "utils/thread_pool.h"
 #include "utils/time_cost.h"
 
 namespace MxRec {
@@ -45,31 +50,29 @@ enum class TaskType {
     DDR
 };
 
-enum class ProcessStatus {
-    NORMAL,
-    AFTER_SWITCH_FIRST_BATCH,
-    AFTER_SWITCH_SECOND_BATCH
+enum class SaveModelType {
+    DELTA,
+    BASE
 };
 
-inline string ProcessStatus2Str(ProcessStatus s)
+inline string TransferModelType2Str(SaveModelType t)
 {
-    switch (s) {
-        case ProcessStatus::NORMAL:
-            return "normal";
-        case ProcessStatus::AFTER_SWITCH_FIRST_BATCH:
-            return "afterSwitchFirstBatch";
-        case ProcessStatus::AFTER_SWITCH_SECOND_BATCH:
-            return "afterSwitchSecondBatch";
+    switch (t) {
+        case SaveModelType::DELTA:
+            return "delta";
+        case SaveModelType::BASE:
+            return "base";
         default:
-            throw std::invalid_argument("Invalid ProcessStatus");
+            throw std::invalid_argument("Invalid ModelType.");
     }
-};
+}
 
 struct EmbTaskInfo {
     int batchId;
     int threadIdx;
     int cvNotifyIndex;
     int extEmbeddingSize;
+    int channelId;
     string name;
 };
 
@@ -89,9 +92,9 @@ public:
     HybridMgmt& operator=(const HybridMgmt&) = delete;
 
     bool Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, int seed,
-                    const vector<ThresholdValue>& thresholdValues, bool ifLoad);
+                    const vector<ThresholdValue>& thresholdValues, bool ifLoad, bool isIncrementalCheckpoint);
 
-    void Save(const string& savePath);
+    void Save(const string& savePath, bool saveDelta);
 
     bool Load(const string& loadPath, vector<string> warmStartTables);
 
@@ -125,42 +128,50 @@ public:
 
     void FetchDeviceEmb();
 
-    void ProcessEmbInfoHBM(const EmbBaseInfo& info, bool& remainBatchOut, bool isGrad);
+    bool ProcessEmbInfoHBM(const EmbBaseInfo& info, bool isGrad);
 
-    void ProcessEmbInfoDDR(const EmbBaseInfo& info, bool& remainBatchOut);
+    bool ProcessEmbInfoDDR(const EmbBaseInfo& info);
 
-    void ProcessEmbInfoL3Storage(const EmbBaseInfo& info, bool& remainBatchOut);
+    bool ProcessEmbInfoL3Storage(const EmbBaseInfo& info);
 
-    GTEST_PRIVATE : bool mutexDestroy{false};
-    std::mutex lookUpAndSendBatchIdMtx;
-    std::mutex receiveAndUpdateBatchIdMtx;
-    std::map<std::string, int> lookUpAndSendTableBatchMap;
-    std::map<std::string, int> receiveAndUpdateTableBatchMap;
+    void BackUpTrainStatus();
 
-    std::map<std::string, std::map<int, std::mutex>> lastUpdateFinishMutexMap;
-    std::map<std::string, std::map<int, std::condition_variable>> cvLastUpdateFinishMap;
-    std::map<std::string, int> lastUpdateFinishStepMap;
-    std::map<std::string, std::map<int, std::mutex>> lastLookUpFinishMutexMap;
-    std::map<std::string, std::map<int, std::condition_variable>> cvLastLookUpFinishMap;
-    std::map<std::string, int> lastLookUpFinishStepMap;
-    std::map<std::string, std::map<int, std::mutex>> lastSendFinishMutexMap;
-    std::map<std::string, std::map<int, std::condition_variable>> cvLastSendFinishMap;
-    std::map<std::string, int> lastSendFinishStepMap;
-    std::map<std::string, std::map<int, std::mutex>> lastRecvFinishMutexMap;
-    std::map<std::string, std::map<int, std::condition_variable>> cvLastRecvFinishMap;
-    std::map<std::string, int> lastRecvFinishStepMap;
+    void RecoverTrainStatus();
+
+    void ReceiveKey();
+
+    void ReceiveKeyThread(const EmbInfo& embInfo);
+
+GTEST_PRIVATE :
+    volatile bool mutexDestroy{false};  // LookupAndSend & ReceiveAndUpdate Condition_Variable_Wait stop.
+    std::mutex lookUpAndSendBatchIdMtx[MAX_CHANNEL_NUM];  // train and eval
+    std::mutex receiveAndUpdateBatchIdMtx[MAX_CHANNEL_NUM];
+
+    std::unordered_map<std::string, std::mutex> lastUpdateFinishMutex;
+    std::unordered_map<std::string, std::condition_variable> lastUpdateFinishCV;
+
+    std::unordered_map<std::string, std::mutex> lastLookUpFinishMutex;
+    std::unordered_map<std::string, std::condition_variable> lastLookUpFinishCV;
+
+    std::unordered_map<std::string, std::mutex> lastSendFinishMutex;
+    std::unordered_map<std::string, std::condition_variable> lastSendFinishCV;
+
+    std::unordered_map<std::string, std::mutex> lastRecvFinishMutex;
+    std::unordered_map<std::string, std::condition_variable> lastRecvFinishCV;
 
     std::vector<std::thread> EmbeddingLookUpAndSendThreadPool;
     std::vector<std::thread> EmbeddingReceiveAndUpdateThreadPool;
-    std::vector<std::future<void>> lookUpSwapOutAddrsThreads;
-    std::vector<std::future<void>> lookUpSwapInAddrsThreads;
+    std::vector<std::future<void>> lookUpSwapAddrsThreads;
 
-    std::map<std::string, TaskQueue<std::vector<uint64_t>>> HBMSwapKeyQue;
-    std::map<std::string, TaskQueue<std::vector<uint64_t>>> HBMSwapKeyForL3StorageQue;
-    std::map<std::string, TaskQueue<std::vector<uint64_t>>> DDRSwapKeyQue;
-    std::map<std::string, TaskQueue<std::vector<uint64_t>>> DDRSwapKeyForL3StorageQue;
-    std::map<std::string, TaskQueue<std::vector<float*>>> HBMSwapAddrsQue;
-    std::map<std::string, TaskQueue<std::vector<float*>>> DDRSwapAddrsQue;
+    std::map<std::string, TaskQueue<std::vector<uint64_t>>[MAX_CHANNEL_NUM]> HBMSwapKeyQue;  // train and eval
+    std::map<std::string, TaskQueue<std::vector<uint64_t>>[MAX_CHANNEL_NUM]> HBMSwapKeyForL3StorageQue;
+    std::map<std::string, TaskQueue<std::vector<uint64_t>>[MAX_CHANNEL_NUM]> DDRSwapKeyQue;
+    std::map<std::string, TaskQueue<std::vector<uint64_t>>[MAX_CHANNEL_NUM]> DDRSwapKeyForL3StorageQue;
+    std::map<std::string, TaskQueue<std::vector<float*>>[MAX_CHANNEL_NUM]> HBMSwapAddrsQue;
+    std::map<std::string, TaskQueue<std::vector<float*>>[MAX_CHANNEL_NUM]> DDRSwapAddrsQue;
+
+    std::map<std::string, TaskQueue<bool>[MAX_CHANNEL_NUM]> EosL1Que;
+    std::map<std::string, TaskQueue<bool>[MAX_CHANNEL_NUM]> EosL2Que;
 
     std::mutex evictMut;
 
@@ -174,8 +185,7 @@ public:
     std::map<std::string, std::vector<std::vector<uint64_t>>> trainTestSwitchInfoStore{};
     std::atomic<bool> lookupAddrSuccess{true};
 
-    std::mutex saveMutex;
-    std::condition_variable cvCheckSave;
+    unique_ptr<ThreadPool> threadPool;
 
     void SetFeatureTypeForLoad(vector<CkptFeatureType>& loadFeatures);
 
@@ -187,22 +197,30 @@ public:
 
     void LookUpAndRemoveAddrs(const EmbTaskInfo& info);  // L3Storage, synchronous
 
-    void LookUpSwapAddrs(const std::string& embName);  // DDR, asynchronous
+    void LookUpSwapAddrs(const std::string& embName, int channelId);  // DDR, asynchronous
 
     void EmbeddingTask();
 
     void MultiThreadEmbHDTransWrap();
 
-    void EmbeddingLookUpAndSendDDR(int batchId, int index, const EmbInfo& embInfo);
+    void EmbeddingLookUpAndSendDDR(int batchId, int index, const EmbInfo& embInfo, int channelId);
 
-    void EmbeddingReceiveAndUpdateDDR(int batchId, int index, const EmbInfo& embInfo);
+    void EmbeddingReceiveAndUpdateDDR(int batchId, int index, const EmbInfo& embInfo, int channelId);
 
-    void EmbeddingLookUpAndSendL3Storage(int batchId, int index, const EmbInfo& embInfo);
+    void EmbeddingLookUpAndSendL3Storage(int batchId, int index, const EmbInfo& embInfo, int channelId);
 
-    void EmbeddingReceiveAndUpdateL3Storage(int batchId, int index, const EmbInfo& embInfo);
+    void EmbeddingReceiveAndUpdateL3Storage(int batchId, int index, const EmbInfo& embInfo, int channelId);
 
     void SendTensorForSwap(const EmbBaseInfo& info, const vector<uint64_t>& swapInPosUint,
                            const vector<uint64_t>& swapOutPosUint);
+
+    void UpdateDeltaInfo(const string& embName, vector<int64_t>& keyCountVec, int64_t timeStamp, int64_t batchId);
+
+    void ResetDeltaInfo();
+
+    void GetDeltaModelKeys(const string& savePath, bool saveDelta, map<string, map<emb_key_t, KeyInfo>>& keyInfoMap);
+
+    void InitPipelineMutexAndCV(const string& embTableName);
 
 private:
     HybridMgmtBlock* hybridMgmtBlock;
@@ -210,6 +228,7 @@ private:
     RankInfo mgmtRankInfo;
     CacheManager* cacheManager;
     vector<std::unique_ptr<std::thread>> procThreads{};
+    vector<std::thread> receiveKeyThreads{};
     map<string, vector<emb_cache_key_t>> evictKeyMap{};
     HDTransfer* hdTransfer;
     OffsetMapT offsetMapToSend;
@@ -218,9 +237,15 @@ private:
     bool isRunning;
     bool isLoad{false};
     bool isInitialized{false};
-    bool alreadyTrainOnce = false;  // 用于判断是否为predict模式
-    map<string, int> lookUpSwapInAddrsPushId;  // 用于处理eos场景，当消费者追上生产者且长时间无上游数据，会触发eos
-    map<string, ProcessStatus> specialProcessStatus;
+    bool alreadyTrainOnce = false;     // 用于判断是否为predict模式
+    bool isBackUpTrainStatus = false;  // whether the train state has been backed up
+    bool isIncrementalCkpt;
+    map<string, absl::flat_hash_map<emb_key_t, KeyInfo>> deltaMap;
+    absl::flat_hash_map<string, int> keyBatchIdMap;
+    bool isFirstSave = true;
+    std::mutex keyCountUpdateMtx;
+    std::condition_variable keyCountUpdateCv;
+    bool checkConditionMet = false;
 
     void TrainTask(TaskType type);
 
@@ -229,12 +254,6 @@ private:
     void SendUniqKeysAndRestoreVecHBM(const EmbBaseInfo& info, const unique_ptr<vector<Tensor>>& infoVecs,
                                       bool isGrad) const;
 
-    void HandleEndBatchCase(const EmbBaseInfo& info, vector<uint64_t>& swapInPos);
-
-    bool IsTrainEndBatch(int batchId) const;
-
-    bool IsEvalEndBatch(int batchId) const;
-
     void InitEmbeddingCache(const vector<EmbInfo>& embInfos);
 
     void InitDataPipelineForDDR(const string& embName);
@@ -242,12 +261,6 @@ private:
     void InitDataPipelineForL3Storage(const string& embName, int extEmbeddingSize);
 
     void JoinEmbeddingCacheThread();
-
-    void HandleReachMaxStepCase(const EmbBaseInfo& info, bool& remainBatchOut);
-
-    void HandleEosCase(const EmbBaseInfo& info, bool& remainBatchOut);
-
-    void HandleEosCaseHBM(const string& embName, int batchId, int channelId, bool& remainBatchOut);
 
     bool EmbeddingReceiveDDR(const EmbTaskInfo& info, float*& ptr, vector<float*>& swapOutAddrs);
 
@@ -265,23 +278,16 @@ private:
 
     void EmbeddingSendL3Storage(const EmbTaskInfo& info, vector<Tensor>& h2dEmb);
 
-    void CreateEmbeddingLookUpAndSendThread(int index, const EmbInfo& embInfo);
+    void CreateEmbeddingLookUpAndSendThread(int index, const EmbInfo& embInfo, int channelId);
 
-    void CreateEmbeddingReceiveAndUpdateThread(int index, const EmbInfo& embInfo);
-
-    void HandleFirstBatchCaseDDR(const EmbBaseInfo& info, std::pair<vector<uint64_t>, vector<uint64_t>>& swapInKoPair,
-                                 std::pair<vector<uint64_t>, vector<uint64_t>>& swapOutKoPair);
-
-    void HandleFirstBatchCaseL3Storage(const EmbBaseInfo& info,
-                                       std::pair<vector<uint64_t>, vector<uint64_t>>& swapInKoPair,
-                                       std::pair<vector<uint64_t>, vector<uint64_t>>& swapOutKoPair);
+    void CreateEmbeddingReceiveAndUpdateThread(int index, const EmbInfo& embInfo, int channelId);
 
     void HandleDataSwapForL3Storage(const EmbBaseInfo& info, vector<uint64_t>& swapInKeys,
                                     vector<uint64_t>& swapOutKeys);
 
     bool BuildH2DEmbedding(const EmbTaskInfo& info, vector<Tensor>& h2dEmb);
 
-    vector<uint64_t> GetUniqueKeys(const EmbBaseInfo& info, bool& remainBatchOut);
+    vector<uint64_t> GetUniqueKeys(const EmbBaseInfo& info, bool& remainBatchOut, bool& isEos);
 
     vector<int32_t> GetRestoreVecSec(const EmbBaseInfo& info, bool& remainBatchOut);
 
@@ -293,14 +299,6 @@ private:
 
     void SendGlobalUniqueVec(const EmbBaseInfo& info, vector<uint64_t>& uniqueKeys, vector<int32_t>& restoreVecSec);
 
-    bool HandleSpecialProcessStatusDDR(const EmbBaseInfo& info, TimeCost& getAndSendTensorsTC,
-                                       std::pair<vector<uint64_t>, vector<uint64_t>>& swapInKoPair,
-                                       std::pair<vector<uint64_t>, vector<uint64_t>>& swapOutKoPair);
-
-    bool HandleSpecialProcessStatusL3Storage(const EmbBaseInfo& info, TimeCost& getAndSendTensorsTC,
-                                             std::pair<vector<uint64_t>, vector<uint64_t>>& swapInKoPair,
-                                             std::pair<vector<uint64_t>, vector<uint64_t>>& swapOutKoPair);
-
     void CheckLookupAddrSuccessDDR();
 
     void GetSwapPairsAndKey2Offset(const EmbBaseInfo& info, vector<uint64_t>& uniqueKeys,
@@ -309,8 +307,6 @@ private:
 
     void EnqueueSwapInfo(const EmbBaseInfo& info, std::pair<vector<uint64_t>, vector<uint64_t>>& swapInKoPair,
                          std::pair<vector<uint64_t>, vector<uint64_t>>& swapOutKoPair);
-
-    bool IsTrainAndEvalCase();
 };
 }  // namespace MxRec
 #endif  // MX_REC_EMB_MGMT_H

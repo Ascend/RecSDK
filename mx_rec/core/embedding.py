@@ -28,8 +28,9 @@ from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
 from mx_rec.core.emb.emb_factory import HBMDynamicSparseEmbeddingFactory, HBMSparseEmbeddingFactory, \
     ExternalStorageSparseEmbeddingFactory
-from mx_rec.constants.constants import (MAX_INT32, All2allGradientsOp, MAX_VOCABULARY_SIZE, MAX_DEVICE_VOCABULARY_SIZE,
-                                        CacheModeEnum, DEFAULT_DEVICE_CACHE_MEMORY_SIZE, DEFAULT_HOST_CACHE_MEMORY_SIZE)
+from mx_rec.constants.constants import (FLOAT32_BYTES, MAX_INT32, All2allGradientsOp, MAX_VOCABULARY_SIZE,
+                                        MAX_DEVICE_VOCABULARY_SIZE, CacheModeEnum, DEFAULT_DEVICE_CACHE_MEMORY_SIZE,
+                                        DEFAULT_HOST_CACHE_MEMORY_SIZE)
 from mx_rec.graph.constants import AnchorIteratorOp
 from mx_rec.util.communication.hccl_ops import get_rank_size
 from mx_rec.util.initialize import ConfigInitializer
@@ -54,6 +55,7 @@ from mx_rec.util.log import logger
     ("ssd_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
     ("ssd_data_path", ClassValidator, {"classes": (list, tuple)}),
     ("is_save", ClassValidator, {"classes": (bool,)}),
+    ("is_dp", ClassValidator, {"classes": (bool,)}),
     ("init_param", FloatValidator, {"min_value": -10, "max_value": 10}, ["check_value"]),
     ("all2all_gradients_op", OptionValidator, {"options": [i.value for i in list(All2allGradientsOp)]}),
     ("value_dtype", OptionValidator, {"options": [tf.float32]}),
@@ -67,6 +69,7 @@ def create_table(key_dtype, dim, name, emb_initializer,
                  ssd_vocabulary_size=0,
                  ssd_data_path=(os.getcwd(),),
                  is_save=True,
+                 is_dp=False,
                  init_param=1.,
                  all2all_gradients_op=All2allGradientsOp.SUM_GRADIENTS.value,
                  value_dtype=tf.float32,
@@ -84,6 +87,7 @@ def create_table(key_dtype, dim, name, emb_initializer,
         ssd_vocabulary_size: embedding vector numbers on ssd
         ssd_data_path: ssd embedding data save and load path relation from feature to variable offset will be built
         is_save: switch whether to store sparse table data.
+        is_dp: switch whether to enable data parallel.
         init_param: embedding init param-coefficient
         all2all_gradients_op: sum_grads (default) or sum_gradients_and_div_by_ranksize.
         value_dtype: the type of the value tensors. only tf.float32 if supported for now.
@@ -93,14 +97,22 @@ def create_table(key_dtype, dim, name, emb_initializer,
     """
     name = fix_invalid_table_name(name)
 
-    dim_bytes = dim.as_list()[0] * 4 if isinstance(dim, tf.TensorShape) else dim * 4  # float32 4 bytes
+    dim_bytes = dim.as_list()[0] * FLOAT32_BYTES if isinstance(dim, tf.TensorShape) else dim * FLOAT32_BYTES
     voc_size_list = [device_vocabulary_size, host_vocabulary_size, ssd_vocabulary_size]
     check_and_set_default_voc_size(voc_size_list, dim_bytes)
 
     config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
                   device_vocabulary_size=voc_size_list[0], host_vocabulary_size=voc_size_list[1],
                   ssd_vocabulary_size=voc_size_list[2], ssd_data_path=ssd_data_path,
-                  init_param=init_param, is_save=is_save, all2all_gradients_op=all2all_gradients_op)
+                  init_param=init_param, is_save=is_save, all2all_gradients_op=all2all_gradients_op, is_dp=is_dp)
+
+    logger.info("Create table: The table name is %s, the key type is %s, the embedding size is %s, "
+                "the embedding initializer is %s, the device/host/ssd vocabulary size is %s/%s/%s, "
+                "the ssd data path is %s, the init param is %s, the is_save is %s, the all2all_gradients_op is %s, "
+                "and the is_dp is %s.", name, key_dtype, dim_bytes / FLOAT32_BYTES, emb_initializer,
+                device_vocabulary_size, host_vocabulary_size, ssd_vocabulary_size, ssd_data_path, init_param,
+                is_save, all2all_gradients_op, is_dp)
+
     # 动态扩容
     if ConfigInitializer.get_instance().use_dynamic_expansion:
         return HBMDynamicSparseEmbeddingFactory().create_embedding(config)

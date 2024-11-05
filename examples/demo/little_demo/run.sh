@@ -65,7 +65,7 @@ if [ -n "$ip" ]; then
 fi
 
 cur_path=`pwd`
-mx_rec_package_path="/usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec" # please config
+mx_rec_package_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/mx_rec
 so_path=${mx_rec_package_path}/libasc
 # GLOG_stderrthreshold -2:TRACE -1:DEBUG 0:INFO 1:WARN 2.ERROR, 默认为INFO
 mpi_args='-x BIND_INFO="0:12 12:48 60:48" -x GLOG_stderrthreshold=0 -x GLOG_logtostderr=true -bind-to none -x NCCL_SOCKET_IFNAME=docker0 -mca btl_tcp_if_exclude docker0'
@@ -95,13 +95,35 @@ export MULTI_LOOKUP_TIMES=2     # 一表多查次数：默认2，上限127（因
 export USE_MODIFY_GRAPH=1       # 0：feature spec模式；1：自动改图模式
 export USE_TIMESTAMP=0          # 0：关闭特征准入淘汰；1：开启特征准入淘汰
 export USE_ONE_SHOT=0           # 0：MakeIterator；1：OneShotIterator
+export USE_DP=0                 # 0：关闭DP；1：开启user table DP
 export UpdateEmb_V2=1           # 0: UpdateEmb同步更新；1：UpdateEmb_V2异步更新
 export USE_COMBINE_FAAE=0       # 0: separate history when faae; 1: combine history when faae
+export USE_DETERMINISTIC=0      # 0：不开启确定性计算；1：开启确定性计算
 ################# 性能调优相关 ####################
 export KEY_PROCESS_THREAD_NUM=6 #default 6, max 10
 export FAST_UNIQUE=0   #if use fast unique
 export MGMT_HBM_TASK_MODE=0 #if async h2d (get and send tensors)
-################################################
+############## DUMP CANN计算图 ##############
+# export DUMP_GE_GRAPH=3
+# export DUMP_GRAPH_LEVEL=3
+# if [ "$USE_DYNAMIC_EXPANSION" == 1 ]; then
+#     dyn_scope="dyn"
+# else
+#     dyn_scope="nodyn"
+# fi
+# export DUMP_GRAPH_PATH=${cur_path}/${current_date_time}_${dyn_scope}_dumpgraph_${DUMP_GE_GRAPH}_${DUMP_GRAPH_LEVEL}
+############## 精度对齐相关 ##############
+export PRECISION_CHECK=0
+if [ "$PRECISION_CHECK" == 1 ]; then
+  export USE_DETERMINISTIC=1 # 兼容 USE_DETERMINISTIC 参数
+  export KEY_PROCESS_THREAD_NUM=1 # 消除key process thread 随机性
+
+  export USE_MULTI_LOOKUP=0       # 精度对齐暂不支持一表多查
+  export USE_TIMESTAMP=0          # 精度对齐暂不支持准入淘汰
+  export USE_COMBINE_FAAE=0       # 精度对齐暂不支持准入淘汰
+  export CACHE_MODE="HBM"         # 精度对齐暂只支持 HBM DDR
+fi
+
 
 # 帮助信息，不需要修改
 if [[ $1 == --help || $1 == -h ]];then

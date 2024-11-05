@@ -25,6 +25,7 @@ See the License for the specific language governing permissions and
 #include <experimental/filesystem>
 
 #include "utils/common.h"
+#include "utils/error.h"
 
 namespace MxRec {
     using namespace std;
@@ -68,6 +69,9 @@ namespace MxRec {
         void InsertEmbeddingsByAddr(vector<emb_cache_key_t>& keys, vector<float*>& embeddingsAddr,
                                     uint64_t extEmbeddingSize);
 
+        static void ThrowRuntimeError(ErrorType errorType, const string& errMsg);
+
+        static void ThrowInvalidArgError(ErrorType errorType, const string& errMsg);
     private:
         uint64_t fileID;  // init by constructor
         string fileDir;  // init by constructor

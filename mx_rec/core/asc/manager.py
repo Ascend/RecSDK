@@ -62,8 +62,15 @@ def generate_table_info_list():
             logger.debug("table_instance.slice_ssd_vocabulary_size: %s", table_instance.slice_ssd_vocabulary_size)
             logger.debug("EmbInfoParams: The table name is %s, and the value of `is_grad` in this table is %s.",
                          table_instance.table_name, table_instance.is_grad)
-            params = EmbInfoParams(table_instance.table_name, table_instance.send_count, table_instance.emb_size,
-                                   table_instance.ext_emb_size, table_instance.is_save, table_instance.is_grad)
+            params = EmbInfoParams(
+                table_instance.table_name,
+                table_instance.send_count,
+                table_instance.emb_size,
+                table_instance.ext_emb_size,
+                table_instance.is_save,
+                table_instance.is_grad,
+                table_instance.is_dp,
+            )
             table_info = EmbInfo(params,
                                  [table_instance.slice_device_vocabulary_size,
                                   table_instance.slice_host_vocabulary_size, table_instance.slice_ssd_vocabulary_size],
@@ -195,6 +202,7 @@ def initialize_emb_cache(table_info_list, threshold_list):
     eval_steps = ConfigInitializer.get_instance().eval_steps
     save_steps = ConfigInitializer.get_instance().save_steps
     max_train_steps = ConfigInitializer.get_instance().max_steps
+    is_incremental_checkpoint = ConfigInitializer.get_instance().is_incremental_checkpoint
 
     if_load = ConfigInitializer.get_instance().if_load
     option = 0
@@ -213,7 +221,8 @@ def initialize_emb_cache(table_info_list, threshold_list):
     emb_cache = HybridMgmt()
 
     is_initialized = emb_cache.initialize(rank_info=rank_info, emb_info=table_info_list, if_load=if_load,
-                                          threshold_values=threshold_list)
+                                          threshold_values=threshold_list,
+                                          is_incremental_checkpoint=is_incremental_checkpoint)
 
     if is_initialized is False:
         logger.error("Failed to init emb_cache!")

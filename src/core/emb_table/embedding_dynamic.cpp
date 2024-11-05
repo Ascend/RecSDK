@@ -14,10 +14,11 @@ See the License for the specific language governing permissions and
 ==============================================================================*/
 
 #include "emb_table/embedding_dynamic.h"
+#include "hd_transfer/hd_transfer.h"
 #include "utils/logger.h"
 #include "utils/singleton.h"
-#include "hd_transfer/hd_transfer.h"
 #include "utils/common.h"
+#include "utils/error.h"
 
 using namespace MxRec;
 
@@ -31,8 +32,11 @@ EmbeddingDynamic::EmbeddingDynamic(const EmbInfo& info, const RankInfo& rankInfo
     if (isDynamic_) {
         auto ret = aclrtSetDevice(static_cast<int32_t>(rankInfo.deviceId));
         if (ret != ACL_ERROR_NONE) {
-            LOG_ERROR("Set device failed, device_id:{}, ret={}", rankInfo.deviceId, ret);
-            throw runtime_error("Acl set device failed!");
+            auto error = Error(ModuleName::M_ACL, ErrorType::NULL_PTR,
+                               StringFormat("Acl set device failed, device_id:%d, ret:%d.",
+                                            rankInfo.deviceId, ret));
+            LOG_ERROR(error.ToString());
+            throw runtime_error(error.ToString());
         }
         MallocEmbeddingBlock(BLOCK_EMB_NUM);
     }
@@ -73,6 +77,31 @@ void EmbeddingDynamic::Key2Offset(std::vector<emb_key_t>& keys, int channel)
         key = INVALID_DYNAMIC_EXPANSION_ADDR;
     }
     LOG_DEBUG("current expansion emb:{}, usage:{}/{})", name, maxOffset, devVocabSize);
+}
+
+void EmbeddingDynamic::Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel)
+{
+    std::lock_guard<std::mutex> lk(mut_); // lock for PROCESS_THREAD
+    for (emb_key_t& key : keys) {
+        if (key == INVALID_KEY_VALUE) {
+            key = INVALID_DYNAMIC_EXPANSION_ADDR;
+            continue;
+        }
+        const auto& iter = keyOffsetMap.find(key);
+        if (iter != keyOffsetMap.end()) {
+            key = iter->second;
+            continue;
+        }
+        // New key.
+        if (channel == TRAIN_CHANNEL_ID) {
+            auto error =
+                Error(ModuleName::M_EMB_TABLE, ErrorType::NOT_FOUND,
+                      StringFormat("LookupKeys contains invalid key %d, the key must exist in the offset map.", key));
+            LOG_ERROR(error.ToString());
+            throw runtime_error(error.ToString());
+        }
+        key = INVALID_DYNAMIC_EXPANSION_ADDR;
+    }
 }
 
 int64_t EmbeddingDynamic::capacity() const
@@ -125,13 +154,15 @@ void EmbeddingDynamic::RandomInit(void* addr, size_t embNum)
 }
 
 
-void EmbeddingDynamic::Save(const string& savePath)
+void EmbeddingDynamic::Save(const string& savePath, const int pythonBatchId, bool saveDelta, const map<emb_key_t,
+                            KeyInfo>& keyInfo)
 {
-    SaveKey(savePath);
+    // Param pythonBatchId not use in this method, and only use in embedding_ddr.
+    SaveKey(savePath, saveDelta, keyInfo);
     SaveEmbAndOptim(savePath);
 }
 
-void EmbeddingDynamic::SaveKey(const string& savePath)
+void EmbeddingDynamic::SaveKey(const string& savePath, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo)
 {
     stringstream ss;
     ss << savePath << "/" << name << "/key/";
@@ -141,23 +172,46 @@ void EmbeddingDynamic::SaveKey(const string& savePath)
     deviceKey.clear();
     embAddress.clear();
 
-    for (const auto &it: keyOffsetMap) {
-        deviceKey.push_back(it.first);
-        embAddress.push_back(it.second);
+    if (saveDelta) {
+        for (const auto& it : keyInfo) {
+            auto result = keyOffsetMap.find(it.first);
+            if (result == keyOffsetMap.end()) {
+                auto error = MxRec::Error(ModuleName::M_EMB_TABLE, ErrorType::NOT_FOUND,
+                                          StringFormat("Key: %s not in keyOffsetMap, please check if deltaMap "
+                                                       "update correctly or get keyInfo from deltaMap is correct.",
+                                                       it.first));
+                LOG_ERROR(error.ToString());
+                throw runtime_error(StringFormat("Key: %s not in keyOffsetMap.", it.first));
+            }
+            deviceKey.push_back(result->first);
+            embAddress.push_back(result->second);
+        }
+    } else {
+        for (const auto &it: keyOffsetMap) {
+            deviceKey.push_back(it.first);
+            embAddress.push_back(it.second);
+        }
     }
 
-    if (fileSystemPtr_ == nullptr) {
-        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
-    }
+    LOG_INFO("Get device keys and embAddress, table: {}, save path: {}, rank id: {}, device key size: {}, device "
+             "embAddress size: {}.", name, savePath, rankId_, deviceKey.size(), embAddress.size());
+
+    CheckFileSystemPtr();
     size_t writeSize = static_cast<size_t>(deviceKey.size() * sizeof(int64_t));
     ssize_t res = fileSystemPtr_->Write(ss.str(), reinterpret_cast<const char *>(deviceKey.data()), writeSize);
     if (res == -1) {
-        throw runtime_error(StringFormat("Error: Save keys failed. "
-                                         "An error occurred while writing file: %s.", ss.str().c_str()));
+        auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::LOGIC_ERROR,
+                           StringFormat("Error: Save keys failed. "
+                                        "An error occurred while writing file: %s.", ss.str().c_str()));
+        LOG_ERROR(error.ToString());
+        throw std::runtime_error(error.ToString());
     }
     if (res != writeSize) {
-        throw runtime_error(StringFormat("Error: Save keys failed. Expected to write %d bytes, "
-                                         "but actually write %d bytes to file %s.", writeSize, res, ss.str().c_str()));
+        auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::LOGIC_ERROR,
+                           StringFormat("Error: Save keys failed. Expected to write %d bytes, "
+                                        "but actually write %d bytes to file %s.", writeSize, res, ss.str().c_str()));
+        LOG_ERROR(error.ToString());
+        throw std::runtime_error(error.ToString());
     }
 }
 
@@ -194,17 +248,13 @@ void EmbeddingDynamic::SaveEmbData(const string& savePath)
     MakeDir(ss.str());
     ss << "slice_" << rankId_ << ".data";
 
-    if (fileSystemPtr_ == nullptr) {
-        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
-    }
+    CheckFileSystemPtr();
     fileSystemPtr_->WriteEmbedding(ss.str(), embSize_, embAddress, deviceId);
 }
 
 void EmbeddingDynamic::SaveOptimData(const string &savePath)
 {
-    if (fileSystemPtr_ == nullptr) {
-        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
-    }
+    CheckFileSystemPtr();
 
     for (const auto &content: optimAddressMap) {
         stringstream ss;
@@ -231,11 +281,9 @@ void EmbeddingDynamic::LoadEmbAndOptim(const string& savePath)
     stringstream embedStream;
     embedStream << ss.str() << "/" << "embedding/slice.data";
 
-    if (fileSystemPtr_ == nullptr) {
-        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
-    }
+    CheckFileSystemPtr();
     EmbeddingSizeInfo embeddingSizeInfo = {embSize_, extEmbSize_};
-    fileSystemPtr_->ReadEmbedding(embedStream.str(), embeddingSizeInfo, firstAddress, rankId_, loadOffset);
+    fileSystemPtr_->ReadEmbedding(embedStream.str(), embeddingSizeInfo, firstAddress, deviceId, loadOffset);
 
     // 读optim
     int optimIndex = 1;
@@ -250,51 +298,40 @@ void EmbeddingDynamic::LoadEmbAndOptim(const string& savePath)
 
 void EmbeddingDynamic::LoadKey(const string& savePath)
 {
+    CheckFileSystemPtr();
+
     stringstream ss;
     ss << savePath << "/" << name << "/key/slice.data";
-
-    if (fileSystemPtr_ == nullptr) {
-        throw runtime_error("failed to obtain the file system pointer, the file system pointer is null.");
-    }
     size_t fileSize = fileSystemPtr_->GetFileSize(ss.str());
-    if (fileSize >= FILE_MAX_SIZE) {
-        throw runtime_error(StringFormat("Error: Load keys failed. "
-                                         "file %s size %d is too big.", ss.str().c_str(), fileSize));
-    }
 
+    CheckReadKeyFileSize(ss.str(), fileSize);
     int64_t* buf = static_cast<int64_t*>(malloc(fileSize));
-    if (buf == nullptr) {
-        throw runtime_error(StringFormat("Error: Load keys failed. "
-                                         "failed to allocate %d bytes using malloc.", fileSize));
-    }
+    CheckLoadKeyMallocPtr(buf, fileSize);
 
     ssize_t res = fileSystemPtr_->Read(ss.str(), reinterpret_cast<char*>(buf), fileSize);
-    if (res == -1) {
-        throw runtime_error(StringFormat("Error: Load keys failed. "
-                                         "An error occurred while reading file: %s.", ss.str().c_str()));
-    }
-    if (res != fileSize) {
-        throw runtime_error(StringFormat("Error: Load keys failed. Expected to read %d bytes, "
-                                         "but actually read %d bytes to file %s.", fileSize, res, ss.str().c_str()));
-    }
+    CheckReadKeyFileBytes(res, ss.str(), fileSize);
 
     size_t loadKeySize = fileSize / sizeof(int64_t);
 
     deviceKey.clear();
     loadOffset.clear();
     for (int i = 0; i < loadKeySize; i = i + 1) {
-        if (buf[i] % rankSize_ == rankId_) {
-            deviceKey.push_back(buf[i]);
-            loadOffset.push_back(i);
+        if (!embInfo_.isDp && buf[i] % rankSize_ != rankId_) {
+            continue;
         }
+        deviceKey.push_back(buf[i]);
+        loadOffset.push_back(i);
     }
 
     auto datasetSize = deviceKey.size() * extEmbSize_ * sizeof(float);
     void *newBlock = nullptr;
     aclError ret = aclrtMalloc(&newBlock, static_cast<int>(datasetSize), ACL_MEM_MALLOC_HUGE_FIRST);
     if (ret != ACL_SUCCESS) {
-        throw runtime_error(StringFormat("Error: in dynamic expansion mode, "
-                                         "aclrtMalloc failed, malloc size: %d.", datasetSize));
+        auto error = Error(ModuleName::M_ACL, ErrorType::LOGIC_ERROR,
+                           StringFormat("Error: in dynamic expansion mode, "
+                                        "aclrtMalloc failed, malloc size: %d.", datasetSize));
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString());
     }
     // 此处的 newBlock -> first address;
     // 对key_offset map 进行一个恢复操作

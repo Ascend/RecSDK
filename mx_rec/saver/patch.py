@@ -21,8 +21,11 @@
 
 import os
 import time
+import logging
+from typing import Optional
 
 import tensorflow as tf
+from tensorflow.compat.v1.summary import FileWriter
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.core.protobuf import trackable_object_graph_pb2
 from tensorflow.python import pywrap_tensorflow
@@ -41,16 +44,23 @@ from tensorflow.python.util import compat
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
+from tensorflow_estimator.python.estimator.hooks.basic_session_run_hooks import SecondOrStepTimer
+from tensorflow.core.util.event_pb2 import SessionLog
 import numpy as np
 from mpi4py import MPI
 
-from mx_rec.saver.saver import Saver as SparseSaver, check_file_system_is_valid, should_write_data
-from mx_rec.util.communication.hccl_ops import get_local_rank_size
+from mx_rec.saver.saver import Saver as SparseSaver
+from mx_rec.saver.saver import check_file_system_is_valid, should_write_data, update_model_index, \
+    write_delta_export_time_ms, get_model_type_by_version, get_base_and_delta_models, read_base_delta_and_write, \
+    clear_delta_models
+from mx_rec.util.communication.hccl_ops import get_rank_id
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, StringValidator, OptionalIntValidator, \
     OptionalStringValidator, DirectoryValidator
 from mx_rec.util.log import logger
-from mx_rec.constants.constants import MAX_INT32, INVALID_CHARS
+from mx_rec.constants.constants import MAX_INT32, INVALID_CHARS, BASE_MODEL, DELTA_MODEL
+
+_FILENAME_SUFFIX = "filename_suffix"
 
 
 def get_sparse_vars(var_list):
@@ -210,10 +220,19 @@ def check_characters_is_valid(characters: str) -> bool:
     ("write_meta_graph", ClassValidator, {"classes": (bool, type(None))}),
     ("write_state", ClassValidator, {"classes": (bool, type(None))}),
     ("strip_default_attrs", ClassValidator, {"classes": (bool, type(None))}),
-    ("save_debug_info", ClassValidator, {"classes": (bool, type(None))})
+    ("save_debug_info", ClassValidator, {"classes": (bool, type(None))}),
+    ("is_incremental_checkpoint", ClassValidator, {"classes": (bool, type(None))}),
+    ("save_delta", ClassValidator, {"classes": (bool, type(None))})
 ])
 def save(self, sess, save_path, global_step=None, latest_filename=None, meta_graph_suffix="meta", write_meta_graph=True,
-         write_state=True, strip_default_attrs=False, save_debug_info=False):
+         write_state=True, strip_default_attrs=False, save_debug_info=False, is_incremental_checkpoint=False,
+         save_delta=False):
+    msg = "Saving model by normal pattern."
+    if is_incremental_checkpoint:
+        start_save_time = time.time()
+        saved_model_type = DELTA_MODEL if save_delta else BASE_MODEL
+        msg = f"Saving {saved_model_type} model by incremental checkpoint pattern."
+    tf_logging.info(msg)
     if not check_characters_is_valid(save_path):
         raise ValueError("save_path contains invalid characters such as newline, formfeed,"
                          " carriage return, backspace, tab, vertical tab, and delete.")
@@ -248,7 +267,7 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
     # mxRec Patch
     # save sparse model, only run when self.sparse_saver is not None
     if not context.executing_eagerly() and self.sparse_saver:
-        self.sparse_saver.save(sess, save_path=checkpoint_file)
+        self.sparse_saver.save(sess, save_path=checkpoint_file, save_delta=save_delta)
         logger.info("Save sparse model into dir %s", checkpoint_file)
 
     comm = MPI.COMM_WORLD
@@ -262,6 +281,22 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
         if write_meta_graph:
             write_meta_graph_task(self, checkpoint_file=checkpoint_file, meta_graph_suffix=meta_graph_suffix, sess=sess,
                                   strip_default_attrs=strip_default_attrs, save_debug_info=save_debug_info)
+        if is_incremental_checkpoint:
+            save_cost_time = time.time() - start_save_time
+            save_dir, _ = os.path.split(save_path)
+            export_tag = "Seconds" if save_delta else "DueTime"
+            model_index_info = {
+                "timestamp": str(int(start_save_time)), "export_tag": export_tag,
+                "type": saved_model_type, "global_step": int(global_step), "cost_ms": int(save_cost_time * 1000)
+            }
+            if save_delta:
+                delta_model_version = "delta_" + str(int(global_step))
+                write_delta_export_time_ms(save_dir, {delta_model_version: int(save_cost_time * 1000)})
+            update_model_index(save_dir, model_index_info)
+
+            # When saving base model, clear delta model directories.
+            if not save_delta:
+                clear_delta_models(save_dir)
     comm.Barrier()
     return model_checkpoint_path
 
@@ -273,6 +308,36 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
 def restore(self, sess, save_path):
     if save_path is None:
         raise ValueError("Can't load save_path when it is None.")
+
+    is_incremental_checkpoint = ConfigInitializer.get_instance().is_incremental_checkpoint
+    restore_model_version = ConfigInitializer.get_instance().restore_model_version
+
+    directory, base_name = os.path.split(save_path)
+    model_type = BASE_MODEL
+
+    if is_incremental_checkpoint:
+        if restore_model_version is not None:
+            base_name = base_name.split("-")[0] + "-" + str(restore_model_version)
+        restore_model_version = base_name.split("-")[1]
+        model_type = get_model_type_by_version(directory, restore_model_version)
+        if not model_type:
+            logger.error("Get model type by version failed, %s step model not exists.", restore_model_version)
+            raise ValueError(f"Get model type by version failed, {restore_model_version} step model not exists.")
+
+        comm = MPI.COMM_WORLD
+        rank = comm.Get_rank()
+        comm.Barrier()
+        if should_write_data(rank, save_path):
+            if model_type == DELTA_MODEL:
+                # get the newest base model and then restore delta models one by one
+                base_model, delta_models = get_base_and_delta_models(directory, str(restore_model_version))
+                delta_models_str = " ".join(delta_models)
+                logger.info(f"Restore %s model from base model: %s and delta models: %s.", model_type, base_model,
+                            delta_models_str)
+                read_base_delta_and_write(directory, base_model, delta_models)
+        comm.Barrier()
+
+    save_path = os.path.join(directory, base_name)
 
     if not check_characters_is_valid(save_path):
         raise ValueError("save_path contains invalid characters such as newline, "
@@ -300,7 +365,7 @@ def restore(self, sess, save_path):
             # mxRec Patch
             # restore sparse model, only run when self.sparse_saver is not None
             if self.sparse_saver:
-                self.sparse_saver.restore(sess, save_path)
+                self.sparse_saver.restore(sess, save_path, model_type=model_type)
 
             sess.run(self.saver_def.restore_op_name,
                      {self.saver_def.filename_tensor_name: save_path})
@@ -470,3 +535,190 @@ def patch_for_saver():
     dense_saver.build = build
     logger.debug("Class tf.train.Saver has been patched.")
     training_util.write_graph = patch_for_write_graph_func(graph_io.write_graph)
+
+
+def _patch_for_summary_writer(func):
+    def wrapper(*args, **kwargs):
+        filename_suffix = kwargs.get(_FILENAME_SUFFIX, "")
+        filename_suffix = filename_suffix or ""
+        rank_suffix = "_rank" + str(get_rank_id())
+        if rank_suffix not in filename_suffix:
+            filename_suffix = rank_suffix + "_" + filename_suffix if filename_suffix else rank_suffix
+        kwargs[_FILENAME_SUFFIX] = filename_suffix
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
+def patch_for_summary_writer():
+    """
+    Patch for `tf.summary.FileWriter.__init__` method, add rankId to init param `filename_suffix`.
+    """
+    FileWriter.__init__ = _patch_for_summary_writer(FileWriter.__init__)
+    logger.debug("Method `tf.summary.FileWriter.__init__` has been patched.")
+
+
+def second_or_step_timer_init(self, every_secs: int = None, every_steps: int = None,
+                              is_incremental_checkpoint: bool = False):
+    """
+    Timer for save model.
+    :param self:
+    :param every_secs: time interval for saving model
+    :param every_steps: step interval for saving model
+    :param is_incremental_checkpoint: check if opening incremental checkpoint
+    :return:
+    """
+    self.reset()
+    self._every_secs = every_secs
+    self._every_steps = every_steps
+
+    self._save_checkpoint_due_time = ConfigInitializer.get_instance().save_checkpoint_due_time
+    self._save_delta_checkpoints_secs = ConfigInitializer.get_instance().save_delta_checkpoints_secs
+    self._is_incremental_checkpoint = is_incremental_checkpoint
+    self._is_delta = False
+    self._last_triggered_base_time = None
+    self._last_triggered_delta_time = None
+    self._is_first_update = True
+
+    if self._every_secs is None and self._every_steps is None:
+        raise ValueError("Either every_secs or every_steps should be provided.")
+    if (self._every_secs is not None) and (self._every_steps is not None):
+        raise ValueError("Can not provide both every_secs and every_steps.")
+    if is_incremental_checkpoint:
+        if (self._save_checkpoint_due_time is None) or (self._save_delta_checkpoints_secs is None):
+            raise ValueError("Both save_checkpoint_due_time and save_delta_checkpoints_secs should be provided.")
+
+    super(SecondOrStepTimer, self).__init__()
+
+
+def should_trigger_for_step(self, step: int) -> bool:
+    if self._last_triggered_step is None:
+        return True
+
+    if self._last_triggered_step == step:
+        return False
+
+    if not self._is_incremental_checkpoint:
+        if self._every_secs is not None and (time.time() >= self._last_triggered_time + self._every_secs):
+            return True
+
+        if self._every_steps is not None and (step >= self._last_triggered_step + self._every_steps):
+            return True
+        return False
+
+    should_trigger = False
+    if self._save_checkpoint_due_time is not None:
+        if time.time() >= self._last_triggered_base_time + self._save_checkpoint_due_time:
+            self._is_delta = False
+            should_trigger = True
+
+    if self._save_delta_checkpoints_secs is not None:
+        if time.time() >= self._last_triggered_delta_time + self._save_delta_checkpoints_secs:
+            self._is_delta = True
+            should_trigger = True
+
+    comm = MPI.COMM_WORLD
+    result = comm.allreduce(should_trigger, op=MPI.LOR)
+
+    return result
+
+
+def update_last_triggered_step(self, step: int) -> (Optional[float], Optional[int]):
+    current_time = time.time()
+    if self._last_triggered_time is None:
+        elapsed_secs = None
+        elapsed_steps = None
+    else:
+        elapsed_secs = current_time - self._last_triggered_time
+        elapsed_steps = step - self._last_triggered_step
+
+    self._last_triggered_time = current_time
+
+    if self._is_incremental_checkpoint and self._is_first_update:
+        self._last_triggered_base_time = current_time
+        self._last_triggered_delta_time = current_time
+        self._last_triggered_step = step
+        self._is_first_update = False
+        return (elapsed_secs, elapsed_steps)
+
+    if self._is_incremental_checkpoint:
+        if self._is_delta:
+            self._last_triggered_delta_time = current_time
+        else:
+            self._last_triggered_base_time = current_time
+
+    self._last_triggered_step = step
+    return (elapsed_secs, elapsed_steps)
+
+
+def patch_for_second_or_step_timer():
+    second_or_step_timer = tf.compat.v1.train.SecondOrStepTimer
+    second_or_step_timer.__init__ = second_or_step_timer_init
+    second_or_step_timer.should_trigger_for_step = should_trigger_for_step
+    second_or_step_timer.update_last_triggered_step = update_last_triggered_step
+    logger.info("Class 'tf.compat.v1.train.SecondOrStepTimer' has been patched.")
+
+
+def checkpoint_saver_hook_init(self, checkpoint_dir, save_secs=None, save_steps=None, saver=None,
+                               checkpoint_basename="model.ckpt", scaffold=None, listeners=None, save_graph_def=True):
+    logging.info("Create CheckpointSaverHook.")
+    if saver is not None and scaffold is not None:
+        raise ValueError("You cannot provide both saver and scaffold.")
+    self._saver = saver
+    self._checkpoint_dir = checkpoint_dir
+    self._save_path = os.path.join(checkpoint_dir, checkpoint_basename)
+    self._scaffold = scaffold
+    self._timer = SecondOrStepTimer(
+        every_secs=save_secs, every_steps=save_steps)
+    self._is_incremental_checkpoint = ConfigInitializer.get_instance().is_incremental_checkpoint
+    if self._is_incremental_checkpoint:
+        self._timer = SecondOrStepTimer(every_secs=save_secs, every_steps=save_steps,
+                                        is_incremental_checkpoint=self._is_incremental_checkpoint)
+    self._listeners = listeners or []
+    self._steps_per_run = 1
+    self._save_graph_def = save_graph_def
+
+
+def after_run_checkpoint_saver_hook(self, run_context, run_values):
+    stale_global_step = run_values.results
+    if not self._timer.should_trigger_for_step(stale_global_step +
+                                           self._steps_per_run):
+        return
+    # get the real value after train op.
+    global_step = run_context.session.run(self._global_step_tensor)
+    if not self._timer.should_trigger_for_step(global_step):
+        return
+    self._timer.update_last_triggered_step(global_step)
+    if self._save(run_context.session, global_step, self._timer._is_delta):
+        run_context.request_stop()
+
+
+def save_checkpoint_saver_hook(self, session, step, save_delta=False):
+    logging.info("Saving checkpoints for %d into %s.", step, self._save_path)
+
+    for listener in self._listeners:
+        listener.before_save(session, step)
+    self._get_saver().save(session, self._save_path, global_step=step,
+                           is_incremental_checkpoint=self._timer._is_incremental_checkpoint,
+                           save_delta=save_delta)
+    self._summary_writer.add_session_log(
+        SessionLog(
+            status=SessionLog.CHECKPOINT, checkpoint_path=self._save_path),
+        step)
+
+    should_stop = False
+    for listener in self._listeners:
+        if listener.after_save(session, step):
+            logging.info(
+                "A CheckpointSaverListener requested that training be stopped. "
+                "listener: %s", listener)
+            should_stop = True
+    return should_stop
+
+
+def patch_for_checkpoint_saver_hook():
+    checkpoint_saver_hook = tf.compat.v1.train.CheckpointSaverHook
+    checkpoint_saver_hook.__init__ = checkpoint_saver_hook_init
+    checkpoint_saver_hook._save = save_checkpoint_saver_hook
+    checkpoint_saver_hook.after_run = after_run_checkpoint_saver_hook
+    logger.info("Class 'tf.compat.v1.train.CheckpointSaverHook' has been patched.")

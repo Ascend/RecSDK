@@ -20,36 +20,28 @@ using namespace std;
 
 bool SSDEngine::IsTableExist(const string &tableName)
 {
-    if (!isRunning) {
-        throw runtime_error("SSDEngine not running");
-    }
+    CheckSSDEngineIsRunning();
     auto it = as_const(tableMap).find(tableName);
     return !(it == tableMap.end());
 }
 
 bool SSDEngine::IsKeyExist(const string &tableName, emb_cache_key_t key)
 {
-    if (!isRunning) {
-        throw runtime_error("SSDEngine not running");
-    }
+    CheckSSDEngineIsRunning();
     auto it = as_const(tableMap).find(tableName);
-    if (it == tableMap.end()) {
-        throw invalid_argument("table not found");
-    }
+    CheckTableExist(it == tableMap.end(), tableName);
     return it->second->IsKeyExist(key);
 }
 
 void SSDEngine::CreateTable(const string &tableName, vector<string> savePaths, uint64_t maxTableSize)
 {
-    if (!isRunning) {
-        throw runtime_error("SSDEngine not running");
-    }
+    CheckSSDEngineIsRunning();
     if (savePaths.empty()) {
-        throw invalid_argument("SSDEngine input savePaths is empty");
+        Table::ThrowInvalidArgError("SSDEngine input savePaths is empty.");
     }
     auto it = as_const(tableMap).find(tableName);
     if (it != tableMap.end()) {
-        throw invalid_argument("table already exist");
+        Table::ThrowInvalidArgError(Logger::Format("Table:{} already exist.", tableName));
     }
     tableMap[tableName] = make_shared<Table>(tableName, savePaths, maxTableSize, compactThreshold);
 }
@@ -57,16 +49,12 @@ void SSDEngine::CreateTable(const string &tableName, vector<string> savePaths, u
 void SSDEngine::InsertEmbeddings(const string& tableName, vector<emb_cache_key_t>& keys,
                                  vector<vector<float>>& embeddings)
 {
-    if (!isRunning) {
-        throw runtime_error("SSDEngine not running");
-    }
+    CheckSSDEngineIsRunning();
     auto it = as_const(tableMap).find(tableName);
-    if (it == tableMap.end()) {
-        throw invalid_argument("table not found");
-    }
+    CheckTableExist(it == tableMap.end(), tableName);
 
     if (keys.size() != embeddings.size()) {
-        throw invalid_argument("keys' length not equal to embeddings' length");
+        Table::ThrowInvalidArgError("Param keys' length not equal to embeddings' length.");
     }
 
     it->second->InsertEmbeddings(keys, embeddings);
@@ -74,35 +62,25 @@ void SSDEngine::InsertEmbeddings(const string& tableName, vector<emb_cache_key_t
 
 void SSDEngine::DeleteEmbeddings(const string &tableName, vector<emb_cache_key_t> &keys)
 {
-    if (!isRunning) {
-        throw runtime_error("SSDEngine not running");
-    }
+    CheckSSDEngineIsRunning();
     auto it = as_const(tableMap).find(tableName);
-    if (it == tableMap.end()) {
-        throw invalid_argument("table not found");
-    }
+    CheckTableExist(it == tableMap.end(), tableName);
 
     it->second->DeleteEmbeddings(keys);
 }
 
 int64_t SSDEngine::GetTableAvailableSpace(const string &tableName)
 {
-    if (!isRunning) {
-        throw runtime_error("SSDEngine not running");
-    }
+    CheckSSDEngineIsRunning();
     auto it = as_const(tableMap).find(tableName);
-    if (it == tableMap.end()) {
-        throw invalid_argument("table not found");
-    }
+    CheckTableExist(it == tableMap.end(), tableName);
 
     return it->second->GetTableAvailableSpace();
 }
 
 void SSDEngine::Save(int step)
 {
-    if (!isRunning) {
-        throw runtime_error("SSDEngine not running");
-    }
+    CheckSSDEngineIsRunning();
 
     if (step == loadStep) {
         LOG_INFO("save step equal to load step, skip saving, step:{}", step);
@@ -117,9 +95,7 @@ void SSDEngine::Save(int step)
 
 void SSDEngine::Load(const string &tableName, vector<string> savePaths, uint64_t maxTableSize, int step)
 {
-    if (!isRunning) {
-        throw runtime_error("SSDEngine not running");
-    }
+    CheckSSDEngineIsRunning();
 
     if (step == saveStep) {
         LOG_INFO("load step equal to save step, skip loading, step:{}", step);
@@ -128,7 +104,7 @@ void SSDEngine::Load(const string &tableName, vector<string> savePaths, uint64_t
 
     auto it = as_const(tableMap).find(tableName);
     if (it != tableMap.end()) {
-        throw invalid_argument("table already exist");
+        Table::ThrowInvalidArgError("Table already exist.");
     }
 
     tableMap[tableName] = make_shared<Table>(tableName, savePaths, maxTableSize, compactThreshold, step);
@@ -171,22 +147,16 @@ void SSDEngine::CompactMonitor()
 
 vector<vector<float>> SSDEngine::FetchEmbeddings(const string &tableName, vector<emb_cache_key_t> &keys)
 {
-    if (!isRunning) {
-        throw runtime_error("SSDEngine not running");
-    }
+    CheckSSDEngineIsRunning();
     auto it = as_const(tableMap).find(tableName);
-    if (it == tableMap.end()) {
-        throw invalid_argument("table not found");
-    }
+    CheckTableExist(it == tableMap.end(), tableName);
 
     return it->second->FetchEmbeddings(keys);
 }
 
 void SSDEngine::Stop()
 {
-    if (!isRunning) {
-        throw runtime_error("SSDEngine not running");
-    }
+    CheckSSDEngineIsRunning();
     isRunning = false;
     compactThread->join();
     tableMap.clear();
@@ -210,14 +180,12 @@ void SSDEngine::SetCompactThreshold(double threshold)
         compactThreshold = threshold;
         return;
     }
-    throw invalid_argument("compact threshold should in range [0, 1]");
+    Table::ThrowInvalidArgError("Compact threshold should in range [0, 1].");
 }
 
 int64_t SSDEngine::GetTableUsage(const string &tableName)
 {
-    if (!isRunning) {
-        throw runtime_error("SSDEngine not running");
-    }
+    CheckSSDEngineIsRunning();
     auto it = as_const(tableMap).find(tableName);
     if (it == tableMap.end()) {
         return -1;
@@ -228,16 +196,12 @@ int64_t SSDEngine::GetTableUsage(const string &tableName)
 void SSDEngine::InsertEmbeddingsByAddr(const string& tableName, vector<emb_cache_key_t>& keys,
                                        vector<float*>& embeddingsAddr, uint64_t extEmbeddingSize)
 {
-    if (!isRunning) {
-        throw runtime_error("SSDEngine not running");
-    }
+    CheckSSDEngineIsRunning();
     auto it = as_const(tableMap).find(tableName);
-    if (it == tableMap.end()) {
-        throw invalid_argument("table not found");
-    }
+    CheckTableExist(it == tableMap.end(), tableName);
 
     if (keys.size() != embeddingsAddr.size()) {
-        throw invalid_argument("keys' length not equal to embeddings' length");
+        Table::ThrowInvalidArgError("Param keys' length not equal to embeddings' length.");
     }
 
     it->second->InsertEmbeddingsByAddr(keys, embeddingsAddr, extEmbeddingSize);
@@ -250,4 +214,24 @@ vector<pair<string, vector<emb_cache_key_t>>> SSDEngine::ExportTableKey()
         tableKeysVec.emplace_back(p.first, p.second->ExportKeys());
     }
     return tableKeysVec;
+}
+
+void SSDEngine::CheckSSDEngineIsRunning() const
+{
+    if (isRunning) {
+        return;
+    }
+    auto error = Error(ModuleName::M_SSD_ENGINE, ErrorType::LOGIC_ERROR, "SSDEngine not running.");
+    LOG_ERROR(error.ToString());
+    throw std::invalid_argument(error.ToString());
+}
+
+void SSDEngine::CheckTableExist(bool isThrowError, const string& tableName)
+{
+    if (isThrowError) {
+        auto error = Error(ModuleName::M_SSD_ENGINE, ErrorType::LOGIC_ERROR,
+                           Logger::Format("Table:{} not found in 'tableMap'.", tableName));
+        LOG_ERROR(error.ToString());
+        throw std::invalid_argument(error.ToString());
+    }
 }

@@ -16,6 +16,8 @@ See the License for the specific language governing permissions and
 #ifndef MX_REC_HD_TRANSFER_H
 #define MX_REC_HD_TRANSFER_H
 
+#include <mutex>
+
 #include "acl/acl_base.h"
 #include "acl/acl.h"
 #include "acl/acl_tdt.h"
@@ -47,7 +49,8 @@ namespace MxRec {
         SWAP,
         SAVE_D2H,
         SAVE_H2D,
-        INVALID
+        KEY_D2H,
+        INVALID,
     };
 
     inline string TransferChannel2Str(TransferChannel e)
@@ -75,6 +78,8 @@ namespace MxRec {
                 return "save_d2h";
             case TransferChannel::SAVE_H2D:
                 return "save_h2d";
+            case TransferChannel::KEY_D2H:
+                return "key_d2h";
             default:
                 throw std::invalid_argument("Invalid TransferChannel");
         }
@@ -83,10 +88,11 @@ namespace MxRec {
     class HDTransfer {
     public:
         std::unordered_map<std::string, std::unordered_map<int, acltdtDataset*>> aclDatasets;
+        std::unordered_map<std::string, acltdtDataset*> aclDatasetsForIncrementalCkpt;
 
         HDTransfer() = default;
 
-        int Init(const vector<EmbInfo>& embInfos, uint32_t localRankId);
+        int Init(const vector<EmbInfo>& embInfos, uint32_t localRankId, bool isIncrementalCkpt);
 
         void Send(TransferChannel channel, const vector<Tensor>& tensors,
                   int channelId, const string& embName, int batchId = -1);
@@ -95,6 +101,7 @@ namespace MxRec {
 
         size_t RecvAcl(TransferChannel channel, int channelId, const string& embName,
                        int embeddingThreadId, int batchId);
+        size_t RecvOffsetsAcl(TransferChannel channel, int channelId, const string& embName);
 
         void Destroy();
 
@@ -105,10 +112,14 @@ namespace MxRec {
         void ClearTransChannel(int channelId);
 
     private:
+        void CreateChannel(const uint32_t localRankId, const string& embName, const int channelNum);
+        void CreateChannelForIncrementalCkpt(const uint32_t localRankId, const string& embName, const int channelNum);
+        void RecordTrainingChannelStr(TransferChannel channel, const int channelId);
+
         std::unordered_map<std::string, acltdtChannelHandle*> transferChannels;
         std::unordered_map<int, std::set<std::string>> usedChannelsNames; // key是通道0、1
         bool running;
-        void CreateChannel(const uint32_t localRankId, const string& embName, const int channelNum);
+        std::mutex recordChannelMtx;
     };
 }
 #endif // MX_REC_HD_TRANSFER_H

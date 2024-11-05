@@ -20,8 +20,11 @@ See the License for the specific language governing permissions and
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/mutex.h"
+
 #if defined(TF_VERSION_TF2)
 #include "tensorflow/core/data/name_utils.h"
 #endif
@@ -76,16 +79,18 @@ class EosDatasetOp::Dataset : public DatasetBase {
 public:
     explicit Dataset(OpKernelContext *ctx, const DatasetBase *input, int32_t channelId,
                      int32_t maxTrainSteps,
-                     int32_t maxEvalSteps)
+                     int32_t maxEvalSteps,
+                     const DataTypeVector& outputTypes,
+                     const std::vector<PartialTensorShape>& outputShapes)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           channelId_(channelId),
           maxTrainSteps_(maxTrainSteps),
           maxEvalSteps_(maxEvalSteps),
+          outputTypes_(outputTypes),
+          outputShapes_(outputShapes),
           id_(g_datasetId[channelId]) {
         input_->Ref();
-        auto os_input = input->output_shapes();
-        output_shapes_ = os_input;
 
         MPI_Comm_group(MPI_COMM_WORLD, &g_group);
         MPI_Comm_create(MPI_COMM_WORLD, g_group, &g_comm[channelId]);
@@ -118,14 +123,14 @@ public:
                 this, prefix_para});
     }
 
-    const DataTypeVector &output_dtypes() const override
+    const DataTypeVector& output_dtypes() const override
     {
-        return input_->output_dtypes();
+        return outputTypes_;
     }
 
-    const std::vector <PartialTensorShape> &output_shapes() const override
+    const std::vector<PartialTensorShape>& output_shapes() const override
     {
-        return output_shapes_;
+        return outputShapes_;
     }
 
     string DebugString() const override
@@ -186,7 +191,6 @@ private:
         }
 
 #endif
-
         Status
         GetNextInternal(IteratorContext *ctx, std::vector <Tensor> *out_tensors,
                         bool *end_of_sequence) override
@@ -198,9 +202,10 @@ private:
             }
             TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
 
-            auto keyProcess = Singleton<KeyProcess>::GetInstance();
-            auto datasetId = dataset()->id_;
             auto channelId = dataset()->channelId_;
+            PrintOutput(out_tensors, channelId);
+
+            auto keyProcess = Singleton<KeyProcess>::GetInstance();
             if (channelId == 0 && iter_times_ == dataset()->maxTrainSteps_) {
                 *end_of_sequence = true;
             }
@@ -217,7 +222,8 @@ private:
                                &req);
                 CheckCommFinished(req, channelId);
 
-                keyProcess->SetEos(1, dataset()->channelId_);
+                keyProcess->EnqueueEosBatch(iter_times_, dataset()->channelId_);
+
                 LOG_DEBUG("[ACTIVE] GetNext eos was triggered actively, channel: {}, iter: {}",
                           dataset()->channelId_,
                           iter_times_);
@@ -232,7 +238,9 @@ private:
 
             if (getNextStatus < g_rankSize) {
                 *end_of_sequence = true;
-                keyProcess->SetEos(1, dataset()->channelId_);
+
+                keyProcess->EnqueueEosBatch(iter_times_, dataset()->channelId_);
+
                 LOG_DEBUG(
                     "[PASSIVE] GetNext eos was triggered passively, channel: {}, iter: {}, sum: {}",
                     dataset()->channelId_, iter_times_, getNextStatus);
@@ -276,6 +284,29 @@ private:
             return Status::OK();
         }
 
+        void PrintOutput(std::vector <Tensor> *out_tensors, int channelId)
+        {
+            // Out size equals to zero when batch eos.
+            int outSize = out_tensors->size();
+            if (MxRec::Logger::GetLevel() <= MxRec::Logger::DEBUG) {
+                for (const auto& t : *out_tensors) {
+                    DataType tensor_type = t.dtype();
+                    TensorShape tensor_shape = t.shape();
+                    LOG_DEBUG("Iterator getNext normal, channel: {}, iter: {}, outTensor size: {}, "
+                              "tensor_type: {}, tensor_shape: {}",
+                              channelId,
+                              iter_times_,
+                              outSize,
+                              tensor_type,
+                              tensor_shape.DebugString());
+                }
+            }
+            if (outSize <= 0) {
+                LOG_DEBUG("Iterator getNext eos, channel: {}, iter: {}, outTensor size: {}", channelId,
+                          iter_times_, outSize);
+            }
+        }
+
     private:
         static constexpr int GET_NEXT_CONTINUE = 1;
         static constexpr int GET_NEXT_TERMINATE = 0;
@@ -293,11 +324,15 @@ private:
     int32_t channelId_;
     int32_t maxTrainSteps_;
     int32_t maxEvalSteps_;
-    std::vector <PartialTensorShape> output_shapes_;
+    const DataTypeVector outputTypes_;
+    std::vector <PartialTensorShape> outputShapes_;
     int id_;
 };
 
-EosDatasetOp::EosDatasetOp(OpKernelConstruction *ctx) : UnaryDatasetOpKernel(ctx) {}
+EosDatasetOp::EosDatasetOp(OpKernelConstruction *ctx) : UnaryDatasetOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &outputTypes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &outputShapes_));
+}
 
 void EosDatasetOp::MakeDataset(OpKernelContext *ctx, DatasetBase *input, DatasetBase **output)
 {
@@ -307,7 +342,8 @@ void EosDatasetOp::MakeDataset(OpKernelContext *ctx, DatasetBase *input, Dataset
     OP_REQUIRES_OK(ctx, ParseScalarArgument<int32_t>(ctx, kMaxTrainSteps, &maxTrainSteps));
     int32_t maxEvalSteps;
     OP_REQUIRES_OK(ctx, ParseScalarArgument<int32_t>(ctx, kMaxEvalSteps, &maxEvalSteps));
-    *output = new Dataset(ctx, input, channel, maxTrainSteps, maxEvalSteps);
+    *output = new (std::nothrow) Dataset(ctx, input, channel, maxTrainSteps, maxEvalSteps, outputTypes_, outputShapes_);
+    OP_REQUIRES(ctx, *output != nullptr, errors::InvalidArgument("EosDatasetOp: new dataset failed"));
 }
 
 REGISTER_OP("EosDataset")

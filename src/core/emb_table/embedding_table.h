@@ -21,6 +21,7 @@ See the License for the specific language governing permissions and
 #include <vector>
 
 #include "utils/common.h"
+#include "utils/error.h"
 #include "l3_storage/cache_manager.h"
 #include "file_system/file_system_handler.h"
 
@@ -38,6 +39,13 @@ public:
      * @param[in] channel 数据通道，主要区分train和eval
      */
     virtual void Key2Offset(std::vector<emb_key_t>& keys, int channel);
+
+    /**
+     * In Dp mode, batch search keys are queried in the embedding table.
+     * @param[in,out] keys The output of the key to be searched is the HBM offset or HBM address found.
+     * @param[in] channel Data channel, which is mainly used to distinguish between train and eval.
+     */
+    virtual void Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel);
 
     /**
      * 淘汰key,  配合GetEvictedKeys一起使用GetEvictedKeys
@@ -73,9 +81,14 @@ public:
 
     virtual void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
 
-    virtual void Save(const string& savePath);
+    virtual void Save(const string& savePath, const int pythonBatchId, bool saveDelta,
+                      const map<emb_key_t, KeyInfo>& keyInfo);
 
     void MakeDir(const string& dirName);
+
+    virtual void BackUpTrainStatus();
+
+    virtual void RecoverTrainStatus();
 
     virtual vector<int64_t> GetDeviceOffset();
 
@@ -91,12 +104,21 @@ public:
 
     virtual void SetEmbCache(ock::ctr::EmbCacheManagerPtr embCache);
 
+    void CheckFileSystemPtr() const;
+
+    static void CheckReadKeyFileSize(const string& fileName, size_t fileSize) ;
+
+    static void CheckLoadKeyMallocPtr(const int64_t* mallocPtr, size_t mallocByteSize) ;
+
+    static void CheckReadKeyFileBytes(ssize_t readReturnCode, const string& fileName, size_t fileSize) ;
+
     std::string name;
     size_t hostVocabSize;
     size_t devVocabSize;
     size_t ssdVocabSize;
     size_t maxOffset;
     absl::flat_hash_map<emb_key_t, int64_t> keyOffsetMap;
+    absl::flat_hash_map<emb_key_t, int64_t> keyOffsetMapBackUp;
     std::vector<int64_t> evictDevPos;     // 记录HBM内被淘汰的key
     std::vector<int64_t> evictHostPos; // 记录Host内淘汰列表
 
