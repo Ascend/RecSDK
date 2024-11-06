@@ -36,8 +36,8 @@ from mx_rec.util.variable import get_dense_and_sparse_variable
 from config import (GLOBAL_RANDOM_SEED, MODIFY_GRAPH_FLAG, MULTI_LOOKUP_TIMES,
                     PRECISION_CHECK, USE_DETERMINISTIC, USE_DYNAMIC,
                     USE_DYNAMIC_EXPANSION, USE_MULTI_LOOKUP, USE_ONE_SHOT,
-                    USE_TIMESTAMP, USE_DP, Config, CacheModeEnum)
-from dataset import generate_dataset
+                    USE_TIMESTAMP, USE_DP, USE_TUPLE_DATA_FORMAT, Config, CacheModeEnum)
+from dataset import generate_dataset, generate_tuple_data_format_func
 from demo_logger import logger
 from model import MyModel
 from optimizer import create_dense_and_sparse_optimizer
@@ -52,6 +52,8 @@ _SSD_SAVE_PATH = ["ssd_data"]  # user should make sure directory exist and clean
 def make_batch_and_iterator(is_training, feature_spec_list=None,
                             use_timestamp=False, dump_graph=False, batch_number=100):
     dataset = generate_dataset(cfg, use_timestamp=use_timestamp, batch_number=batch_number)
+    if USE_TUPLE_DATA_FORMAT:
+        dataset = dataset.map(generate_tuple_data_format_func)
     if not MODIFY_GRAPH_FLAG:
         insert_fn = get_asc_insert_func(tgt_key_specs=feature_spec_list, is_training=is_training, dump_graph=dump_graph)
         dataset = dataset.map(insert_fn)
@@ -72,16 +74,28 @@ def model_forward(input_list, batch, is_train, modify_graph, config_dict=None):
         access_and_evict_config = None
         if isinstance(config_dict, dict):
             access_and_evict_config = config_dict.get(hash_table.table_name)
+
+        # The modify graph mode does not require a batch to be passed in.
+        batch_param = None
+        if not MODIFY_GRAPH_FLAG:
+            batch_param = batch
+
         embedding = sparse_lookup(hash_table, feature, send_count, is_train=is_train,
                                   access_and_evict_config=access_and_evict_config, is_grad=is_grad,
-                                  name=hash_table.table_name + "_lookup", modify_graph=modify_graph, batch=batch,
+                                  name=hash_table.table_name + "_lookup", modify_graph=modify_graph, batch=batch_param,
                                   serving_default_value=tf.ones(shape=(dim), dtype=tf.float32) * 2)
 
         reduced_embedding = tf.reduce_sum(embedding, axis=1, keepdims=False)
         embedding_list.append(reduced_embedding)
 
     my_model = MyModel()
-    my_model(embedding_list, batch["label_0"], batch["label_1"])
+    if USE_TUPLE_DATA_FORMAT:
+        label_0 = batch[1]["label_0"]
+        label_1 = batch[1]["label_1"]
+    else:
+        label_0 = batch["label_0"]
+        label_1 = batch["label_1"]
+    my_model(embedding_list, label_0, label_1)
     return my_model
 
 
@@ -90,7 +104,14 @@ def build_graph(hash_table_list, is_train, feature_spec_list=None, config_dict=N
                                               use_timestamp=USE_TIMESTAMP, dump_graph=is_train,
                                               batch_number=batch_number)
     if MODIFY_GRAPH_FLAG:
-        input_list = [[batch["user_ids"], batch["item_ids"]],
+        if USE_TUPLE_DATA_FORMAT:
+            user_ids = batch[0]["user_ids"]
+            item_ids = batch[0]["item_ids"]
+        else:
+            user_ids = batch["user_ids"]
+            item_ids = batch["item_ids"]
+
+        input_list = [[user_ids, item_ids],
                       [hash_table_list[0], hash_table_list[1]],
                       [cfg.user_send_cnt, cfg.item_send_cnt],
                       [True, True],
@@ -100,7 +121,10 @@ def build_graph(hash_table_list, is_train, feature_spec_list=None, config_dict=N
             for i, _ in enumerate(input_list):
                 input_list[i].extend([input_list[i][0]] * MULTI_LOOKUP_TIMES)
         if USE_TIMESTAMP:
-            tf.compat.v1.add_to_collection(ASCEND_TIMESTAMP, batch["timestamp"])
+            if not USE_TUPLE_DATA_FORMAT:
+                tf.compat.v1.add_to_collection(ASCEND_TIMESTAMP, batch["timestamp"])
+            else:
+                tf.compat.v1.add_to_collection(ASCEND_TIMESTAMP, batch[0]["timestamp"])
         model = model_forward(input_list, batch,
                               is_train=is_train, modify_graph=True, config_dict=config_dict)
     else:
@@ -206,7 +230,7 @@ if __name__ == "__main__":
                    "use_multi_lookup": USE_MULTI_LOOKUP, "modify_graph_flag": MODIFY_GRAPH_FLAG,
                    "use_timestamp": USE_TIMESTAMP, "use_one_shot": USE_ONE_SHOT,
                    "use_deterministic": USE_DETERMINISTIC, "multi_lookup_times": MULTI_LOOKUP_TIMES,
-                   "use_dp": USE_DP}
+                   "use_dp": USE_DP, "use_tuple_data_format": USE_TUPLE_DATA_FORMAT}
     if PRECISION_CHECK:
         task_config["precision_dump_step"] = PRECISION_DUMP_STEP
         task_config["global_rank_size"] = GLOBAL_RANK_SIZE

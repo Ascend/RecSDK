@@ -67,13 +67,14 @@ class GetPreprocessingMapFuncTest(TestCase):
     def tearDown(self) -> None:
         tf.compat.v1.reset_default_graph()
 
-    def test_err_none_names_and_indexes(self):
+    def test_get_map_func_success(self):
         mock_graph_def = self._modifier._full_graph.as_graph_def()
         mock_input_names = []
         mock_output_names = []
 
-        with self.assertRaises(ValueError):
-            _GraphModifier._get_preprocessing_map_func(mock_graph_def, mock_input_names, mock_output_names)
+        self.assertTrue(
+            callable(_GraphModifier._get_preprocessing_map_func(mock_graph_def, mock_input_names, mock_output_names))
+        )
 
 
 class GetInputIndexListTest(TestCase):
@@ -90,7 +91,6 @@ class GetInputIndexListTest(TestCase):
             _get_input_index_list(
                 mock_cutting_point_list, mock_replace_ment_specs, mock_mapping_name_list, mock_base_count
             )
-
 
 
 class GetPassingTensorList(TestCase):
@@ -117,7 +117,6 @@ class GetPassingTensorList(TestCase):
         self.assertEqual(passing_tensor_list, expected["passing_tensor_list"])
         self.assertEqual(output_index_list, expected["output_index_list"])
         self.assertEqual(sub_src_tensors, expected["sub_src_tensors"])
-
 
 
 class GetSrcDatasetTest(TestCase):
