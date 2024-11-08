@@ -50,7 +50,7 @@ except IOError:
     LONG_DESCRIPTION = ""
 
 env_version = os.getenv("VERSION")
-VERSION = env_version if env_version is not None else '6.0.RC3'
+VERSION = env_version if env_version is not None else '6.0.0'
 
 INIT_FILE = "mx_rec/__init__.py"
 with open(INIT_FILE, 'r') as file:
