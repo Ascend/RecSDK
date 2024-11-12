@@ -16,6 +16,7 @@
 # ==============================================================================
 
 from functools import reduce
+from typing import Union, List, Tuple, Dict
 
 import tensorflow as tf
 
@@ -318,9 +319,49 @@ def do_insert(args, insert_tensors, splits, table_names, input_dict):
         graph_def = tf.compat.v1.get_default_graph().as_graph_def()
         tf.compat.v1.train.write_graph(graph_def, "./export_graph", "pipeline_graph.pb", False)
 
-    # have to export read_emb_key_v2 op, other wise tensorflow will wipe out it by graph optimizing
+    # Have to export read_emb_key_v2 op, other wise tensorflow will wipe out it by graph optimizing.
+    if auto_change_graph:
+        # Args must be: tuple(origin_batch, tuple(read_emb_key_inputs)).
+        output_batch = insert_read_emb_key_op_with_modify_graph(args, pipeline_op)
+        logger.debug("In do_insert func, the output batch of modify graph is: %s.", output_batch)
+        return output_batch
     output_batch = export_read_emb_key_v2_op(args, pipeline_op)
     return output_batch
+
+
+def insert_read_emb_key_op_with_modify_graph(
+        args: Union[Dict, List, Tuple], pipeline_op: tf.Tensor
+) -> Union[Dict, List, Tuple]:
+    """
+    Insert the read_emb_key operator on the original batch basis.
+
+    Args:
+        args: the original batch.
+        pipeline_op: the read_emb_key operator.
+
+    Returns: Insert the batch after the operator.
+
+    """
+
+    if not isinstance(args, tuple) or len(args) != 2:
+        raise ValueError(
+            f"The shape must be tuple(origin_batch, tuple(read_emb_key_inputs)), but got: {args}."
+        )
+
+    origin_batch = list(args)[0]
+    if isinstance(origin_batch, dict):
+        insert_key = get_valid_op_key(origin_batch)
+        origin_batch[insert_key] = pipeline_op
+    elif isinstance(origin_batch, list):
+        origin_batch.append(pipeline_op)
+    elif isinstance(origin_batch, tuple):
+        new_batch = list(origin_batch)
+        new_batch.append(pipeline_op)
+        origin_batch = tuple(new_batch)
+    else:
+        raise TypeError("Dataset batch must be dict/list/tuple type.")
+
+    return origin_batch
 
 
 def export_read_emb_key_v2_op(args, pipeline_op):
