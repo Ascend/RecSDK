@@ -93,14 +93,14 @@ int EmbCacheManagerImpl::CreateCacheForTable(const EmbCacheInfo& embCacheInfo,
     return H_OK;
 }
 
-int EmbCacheManagerImpl::GetSwapPairsAndKey2Offset(const std::string& tableName, std::vector<uint64_t>& keys,
+int EmbCacheManagerImpl::GetSwapPairsAndKey2Offset(const EmbBaseInfo& info, std::vector<uint64_t>& keys,
                                                    KeyOffsetPair& swapInKoPair, KeyOffsetPair& swapOutKoPair)
 {
-    int checkRet = CheckGetSwapPairsAndKey2Offset(tableName, swapInKoPair, swapOutKoPair);
+    int checkRet = CheckGetSwapPairsAndKey2Offset(info.name, swapInKoPair, swapOutKoPair);
     if (checkRet != H_OK) {
         return checkRet;
     }
-    return offsetMappers[tableName].GetSwapPairsAndKey2Offset(keys, swapInKoPair, swapOutKoPair);
+    return offsetMappers[info.name].GetSwapPairsAndKey2Offset(info, keys, swapInKoPair, swapOutKoPair);
 }
 
 int EmbCacheManagerImpl::EmbeddingLookup(const std::string& tableName, const std::vector<uint64_t>& keys,
@@ -489,4 +489,9 @@ int EmbCacheManagerImpl::ResetOffsetMappers()
         it->second.Initialize(reserve, embInfo->second.maxCacheSize);
     }
     return H_OK;
+}
+
+std::unordered_set<uint64_t> EmbCacheManagerImpl::GetPaddingKeysOffset(const std::string& tableName)
+{
+    return offsetMappers[tableName].GetPaddingKeysOffset();
 }

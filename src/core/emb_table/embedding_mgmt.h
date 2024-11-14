@@ -72,6 +72,8 @@ public:
 
     int64_t GetCapacity(const std::string &name);
 
+    unordered_set<int64_t> GetPaddingKeysOffset(const std::string& name);
+
     std::map<EmbNameT, size_t> GetMaxOffset();
 
     KeyOffsetMemT GetKeyOffsetMap();

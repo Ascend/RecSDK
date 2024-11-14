@@ -379,7 +379,7 @@ bool KeyProcess::KeyProcessTaskHelperWithFastUnique(unique_ptr<EmbBatchT>& batch
     tensors->push_back(Vec2TensorI32(uniqueInfo.hotPos));
 
     if (!rankInfo.isDDR) {
-        PushGlobalUniqueTensors(move(tensors), uniqueInfo.all2AllInfo.keyRecv, channel);
+        PushGlobalUniqueTensors(move(tensors), uniqueInfo.all2AllInfo.keyRecv, channel, batch->name);
         tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(uniqueInfo.all2AllInfo.keyRecv)
                                                         : Vec2TensorI32(uniqueInfo.all2AllInfo.keyRecv));
         PushResultHBM(batch, move(tensors));
@@ -606,7 +606,11 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
 
     // Tensors contains restore、hotPos、restoreSec&unique、idOffset in order when HBM mode, and is pushed in infolist.
     if (!rankInfo.isDDR) {
-        PushGlobalUniqueTensors(tensors, lookupKeys, channel);
+        PushGlobalUniqueTensors(tensors, lookupKeys, channel, batch->name);
+        // The first-order optimizer does not have a second USS, which needs to mask the lookupKeys.
+        if (!rankInfo.useSumSameIdGradients) {
+            PushPaddingKeysTensors(tensors, batch->name, channel, lookupKeys);
+        }
         tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(lookupKeys) : Vec2TensorI32(lookupKeys));
         PushResultHBM(batch, move(tensors));
         if (isIncrementalCheckpoint && channel == TRAIN_CHANNEL_ID) {
@@ -673,7 +677,8 @@ KeysT KeyProcess::FeatureAdmitForDp(KeysT& lookupKeys, KeysT& globalDpIdVec)
     return globalDpIdUniqueVec;
 }
 
-void KeyProcess::PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys, int channel)
+void KeyProcess::PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys, int channel,
+                                         const string& embName)
 {
     LOG_INFO(KEY_PROCESS "rank:{}, channel:{}, useSumSameIdGradients:{} ...", rankInfo.rankId, channel,
              rankInfo.useSumSameIdGradients);
@@ -684,6 +689,10 @@ void KeyProcess::PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tenso
         TimeCost globalUniqueSyncTC;
         GlobalUnique(lookupKeys, uniqueKeys, restoreVecSec);
         LOG_DEBUG("globalUniqueSyncTC(ms):{}", globalUniqueSyncTC.ElapsedMS());
+
+        // The second-order optimizer has a second USS, which needs to mask the uniqueKeys.
+        PushPaddingKeysTensors(tensors, embName, channel, uniqueKeys);
+
         tensors->push_back(Vec2TensorI32(restoreVecSec));
         tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(uniqueKeys) : Vec2TensorI32(uniqueKeys));
     }
@@ -1757,4 +1766,25 @@ void KeyProcess::SendEosTensor(const std::string& embName, int channel)
         LOG_INFO("[EOS] After send eos, channel:{}, size:{}.", sendName, channelSize);
     }
 #endif
+}
+
+void KeyProcess::PushPaddingKeysTensors(const unique_ptr<vector<Tensor>>& tensors, const string& embName, int channel,
+                                        vector<emb_key_t>& offsetKeys)
+{
+    if (channel != TRAIN_CHANNEL_ID || !embInfos[embName].paddingKeysMask) {
+        return;
+    }
+
+    TimeCost pushMaskSyncTC;
+    auto paddingKeysOffset = EmbeddingMgmt::Instance()->GetPaddingKeysOffset(embName);
+    vector<int64_t> paddingKeysMask(offsetKeys.size(), 1);
+    for (size_t i = 0; i < offsetKeys.size(); i++) {
+        int64_t key = offsetKeys[i];
+        if (paddingKeysOffset.find(key) != paddingKeysOffset.end()) {
+            paddingKeysMask[i] = 0;
+        }
+    }
+
+    tensors->push_back(Vec2TensorI32(paddingKeysMask));
+    LOG_DEBUG("In PushPaddingKeysTensors, pushMaskSyncTC(ms):{}.", pushMaskSyncTC.ElapsedMS());
 }

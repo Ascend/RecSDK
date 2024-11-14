@@ -19,6 +19,7 @@ limitations under the License.
 #include <map>
 #include <set>
 #include <utility>
+#include <unordered_set>
 
 #include "embedding_cache.h"
 #include "embedding_local_table/emb_local_table.h"
@@ -35,7 +36,7 @@ public:
     int CreateCacheForTable(const EmbCacheInfo& embCacheInfo, const std::vector<InitializerInfo>& initializerInfos,
                             int64_t invalidKey, uint64_t prefillBufferSize, uint32_t refillThreadNum) override;
 
-    int GetSwapPairsAndKey2Offset(const std::string& tableName, std::vector<uint64_t>& keys,
+    int GetSwapPairsAndKey2Offset(const EmbBaseInfo& info, std::vector<uint64_t>& keys,
                                   KeyOffsetPair& swapInKoPair, KeyOffsetPair& swapOutKoPair) override;
 
     int EmbeddingLookup(const std::string& tableName, const std::vector<uint64_t>& keys, float* embAddr,
@@ -80,6 +81,8 @@ public:
     int ResetOffsetMappers() override;
 
     uint32_t GetUsage(const std::string& tableName) override;
+
+    std::unordered_set<uint64_t> GetPaddingKeysOffset(const std::string& tableName) override;
 
 private:
     std::map<std::string, EmbCacheInfo> embCacheInfos;

@@ -73,6 +73,7 @@ void EmbeddingDynamic::Key2Offset(std::vector<emb_key_t>& keys, int channel)
         // 新值
         if (channel == TRAIN_CHANNEL_ID) {
             int64_t addr = GetEmptyEmbeddingAddress();
+            RecordPaddingKeysOffset(channel, key, addr);
             keyOffsetMap[key] = addr;
             key = addr;
             maxOffset++;

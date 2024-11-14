@@ -31,91 +31,95 @@ See the License for the specific language governing permissions and
 #endif
 
 namespace MxRec {
-    using namespace std;
-    const std::string MGMT = "\033[32m[Mgmt]\033[0m ";
-    const int PING_PONG_SIZE = 6;
+using namespace std;
+const std::string MGMT = "\033[32m[Mgmt]\033[0m ";
+const int PING_PONG_SIZE = 6;
 
-    enum class TransferChannel {
-        D2H,
-        RESTORE,
-        RESTORE_SECOND,
-        ALL2ALL,
-        UNIQKEYS,
-        LOOKUP,
-        EVICT,
-        H2D,
-        SWAP,
-        SAVE_D2H,
-        SAVE_H2D,
-        KEY_D2H,
-        INVALID,
-    };
+enum class TransferChannel {
+    D2H,
+    RESTORE,
+    RESTORE_SECOND,
+    ALL2ALL,
+    UNIQKEYS,
+    LOOKUP,
+    MASK,
+    EVICT,
+    H2D,
+    SWAP,
+    SAVE_D2H,
+    SAVE_H2D,
+    KEY_D2H,
+    INVALID,
+};
 
-    inline string TransferChannel2Str(TransferChannel e)
-    {
-        switch (e) {
-            case TransferChannel::RESTORE_SECOND:
-                return "restore_second";
-            case TransferChannel::D2H:
-                return "d2h";
-            case TransferChannel::RESTORE:
-                return "restore";
-            case TransferChannel::ALL2ALL:
-                return "all2all";
-            case TransferChannel::UNIQKEYS:
-                return "uniquekeys";
-            case TransferChannel::LOOKUP:
-                return "lookup";
-            case TransferChannel::EVICT:
-                return "evict";
-            case TransferChannel::H2D:
-                return "h2d";
-            case TransferChannel::SWAP:
-                return "swap";
-            case TransferChannel::SAVE_D2H:
-                return "save_d2h";
-            case TransferChannel::SAVE_H2D:
-                return "save_h2d";
-            case TransferChannel::KEY_D2H:
-                return "key_d2h";
-            default:
-                throw std::invalid_argument("Invalid TransferChannel");
-        }
-    };
+inline string TransferChannel2Str(TransferChannel e)
+{
+    switch (e) {
+        case TransferChannel::RESTORE_SECOND:
+            return "restore_second";
+        case TransferChannel::D2H:
+            return "d2h";
+        case TransferChannel::RESTORE:
+            return "restore";
+        case TransferChannel::ALL2ALL:
+            return "all2all";
+        case TransferChannel::UNIQKEYS:
+            return "uniquekeys";
+        case TransferChannel::LOOKUP:
+            return "lookup";
+        case TransferChannel::MASK:
+            return "mask";
+        case TransferChannel::EVICT:
+            return "evict";
+        case TransferChannel::H2D:
+            return "h2d";
+        case TransferChannel::SWAP:
+            return "swap";
+        case TransferChannel::SAVE_D2H:
+            return "save_d2h";
+        case TransferChannel::SAVE_H2D:
+            return "save_h2d";
+        case TransferChannel::KEY_D2H:
+            return "key_d2h";
+        default:
+            throw std::invalid_argument("Invalid TransferChannel");
+    }
+};
 
-    class HDTransfer {
-    public:
-        std::unordered_map<std::string, std::unordered_map<int, acltdtDataset*>> aclDatasets;
-        std::unordered_map<std::string, acltdtDataset*> aclDatasetsForIncrementalCkpt;
+class HDTransfer {
+public:
+    std::unordered_map<std::string, std::unordered_map<int, acltdtDataset*>> aclDatasets;
+    std::unordered_map<std::string, acltdtDataset*> aclDatasetsForIncrementalCkpt;
 
-        HDTransfer() = default;
+    HDTransfer() = default;
 
-        int Init(const vector<EmbInfo>& embInfos, uint32_t localRankId, bool isIncrementalCkpt);
+    int Init(const vector<EmbInfo>& embInfos, uint32_t localRankId, bool isIncrementalCkpt);
 
-        void Send(TransferChannel channel, const vector<Tensor>& tensors,
-                  int channelId, const string& embName, int batchId = -1);
+    void Send(TransferChannel channel, const vector<Tensor>& tensors, int channelId, const string& embName,
+              int batchId = -1);
 
-        size_t RecvAcl(TransferChannel channel, int channelId, const string& embName,
-                       int embeddingThreadId, int batchId);
-        size_t RecvOffsetsAcl(TransferChannel channel, int channelId, const string& embName);
+    size_t RecvAcl(TransferChannel channel, int channelId, const string& embName, int embeddingThreadId, int batchId);
+    size_t RecvOffsetsAcl(TransferChannel channel, int channelId, const string& embName);
 
-        void Destroy();
+    void Destroy();
 
-        std::unordered_map<std::string, acltdtChannelHandle*> GetTransChannel();
+    std::unordered_map<std::string, acltdtChannelHandle*> GetTransChannel();
 
-        unordered_map<int, set<std::string>> GetUsedTransChannel();
+    unordered_map<int, set<std::string>> GetUsedTransChannel();
 
-        void ClearTransChannel(int channelId);
+    void ClearTransChannel(int channelId);
 
-    private:
-        void CreateChannel(const uint32_t localRankId, const string& embName, const int channelNum);
-        void CreateChannelForIncrementalCkpt(const uint32_t localRankId, const string& embName, const int channelNum);
-        void RecordTrainingChannelStr(TransferChannel channel, const int channelId);
+private:
+    void CreateChannel(const uint32_t localRankId, const string& embName, const int channelNum);
+    void CreateChannelForIncrementalCkpt(const uint32_t localRankId, const string& embName, const int channelNum);
+    void RecordTrainingChannelStr(TransferChannel channel, const int channelId);
 
-        std::unordered_map<std::string, acltdtChannelHandle*> transferChannels;
-        std::unordered_map<int, std::set<std::string>> usedChannelsNames; // key是通道0、1
-        bool running;
-        std::mutex recordChannelMtx;
-    };
-}
-#endif // MX_REC_HD_TRANSFER_H
+    std::unordered_map<std::string, acltdtChannelHandle*> transferChannels;
+    std::unordered_map<int, std::set<std::string>> usedChannelsNames;  // The key indicates channels 0 and 1.
+    bool running;
+    std::mutex recordChannelMtx;
+};
+
+}  // namespace MxRec
+
+#endif  // MX_REC_HD_TRANSFER_H
