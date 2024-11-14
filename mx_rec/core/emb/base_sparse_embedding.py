@@ -55,6 +55,9 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         self._device_vocabulary_size = config.get("device_vocabulary_size")
         self._host_vocabulary_size = config.get("host_vocabulary_size")
         self._ssd_vocabulary_size = config.get("ssd_vocabulary_size")
+        self._padding_keys = config.get("padding_keys")
+        self._padding_keys_mask = config.get("padding_keys_mask")
+        self._padding_keys_len = config.get("padding_keys_len")
         self._ext_coefficient = 1
         self._default_name_count = -1
         self._same_table_send_count = 0
@@ -150,6 +153,21 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
     @table_name.setter
     def table_name(self, table_name: str) -> None:
         self._table_name = table_name
+    @property
+    def padding_keys(self):
+        return self._padding_keys
+
+    @property
+    def padding_keys_mask(self):
+        return self._padding_keys_mask
+
+    @property
+    def padding_keys_len(self):
+        return self._padding_keys_len
+
+    @property
+    def use_static(self):
+        return self._use_static
 
     @send_count.setter
     def send_count(self, send_count: int):
@@ -162,6 +180,10 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
     @is_grad.setter
     def is_grad(self, is_grad: bool):
         self._is_grad = is_grad
+
+    @use_static.setter
+    def use_static(self, use_static: bool):
+        self._use_static = use_static
 
     @staticmethod
     def get_anchor_attribute(anchor: tf.Tensor, attr: ASCAnchorAttr) -> Union["BaseSparseEmbedding", FeatureSpec, bool]:

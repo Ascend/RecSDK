@@ -29,8 +29,9 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
     Test for 'mx_rec.core.asc.manager.generate_table_info_list'.
     """
 
+    @mock.patch("mx_rec.validator.emb_validator.ConfigInitializer")
     @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
-    def test_generate_table_info_list_case1(self, manager_config_initializer):
+    def test_generate_table_info_list_case1(self, manager_config_initializer, validator_config_initializer):
         """
         case1: 一张表开DDR，一张表没开DDR，抛出异常
         """
@@ -40,6 +41,7 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
         with tf.Graph().as_default():
             mock_config_initializer = MockConfigInitializer()
             manager_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+            validator_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
             test_table1 = MockSparseEmbedding("test_table1")
             test_table1.is_hbm = False
@@ -50,14 +52,15 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
                 "test_table2": test_table2
             }
 
-            with self.assertRaises(ValueError):
+            with self.assertRaises(RuntimeError):
                 generate_table_info_list()
 
     @mock.patch.multiple("mx_rec.core.asc.manager",
                          should_skip=mock.MagicMock(return_value=True),
                          check_dangling_table=mock.MagicMock(return_value=["test_table"]))
+    @mock.patch("mx_rec.validator.emb_validator.ConfigInitializer")
     @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
-    def test_generate_table_info_list_case2(self, manager_config_initializer):
+    def test_generate_table_info_list_case2(self, manager_config_initializer, validator_config_initializer):
         """
         case2: test_table是dangling_table，skip为True
         """
@@ -66,7 +69,10 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
 
         with tf.Graph().as_default():
             mock_config_initializer = MockConfigInitializer()
+            # When the padding keys mask of all tables is True, it should be set to static shape mode.
+            mock_config_initializer.use_static = True
             manager_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+            validator_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
             test_table = MockSparseEmbedding("test_table")
             test_table.host_vocabulary_size = 1
@@ -81,8 +87,9 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
     @mock.patch.multiple("mx_rec.core.asc.manager",
                          should_skip=mock.MagicMock(return_value=True),
                          check_dangling_table=mock.MagicMock(return_value=[]))
+    @mock.patch("mx_rec.validator.emb_validator.ConfigInitializer")
     @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
-    def test_generate_table_info_list_case3(self, manager_config_initializer):
+    def test_generate_table_info_list_case3(self, manager_config_initializer, validator_config_initializer):
         """
         case3: test_table不是dangling_table，skip为True
         """
@@ -91,7 +98,10 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
 
         with tf.Graph().as_default():
             mock_config_initializer = MockConfigInitializer()
+            # When the padding keys mask of all tables is True, it should be set to static shape mode.
+            mock_config_initializer.use_static = True
             manager_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+            validator_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
             test_table = MockSparseEmbedding("test_table")
             test_table.host_vocabulary_size = 1
@@ -110,8 +120,9 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
                          matched_opt_slot_initializers=mock.MagicMock(return_value=[]),
                          should_skip=mock.MagicMock(return_value=False),
                          check_dangling_table=mock.MagicMock(return_value=[]))
+    @mock.patch("mx_rec.validator.emb_validator.ConfigInitializer")
     @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
-    def test_generate_table_info_list_case4(self, manager_config_initializer):
+    def test_generate_table_info_list_case4(self, manager_config_initializer, validator_config_initializer):
         """
         case4: 静态shape，test_table不是dangling_table，skip为False
         """
@@ -121,6 +132,7 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
         with tf.Graph().as_default():
             mock_config_initializer = MockConfigInitializer(use_static=True)
             manager_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+            validator_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
             test_table = MockSparseEmbedding("test_table")
             test_table.host_vocabulary_size = 8

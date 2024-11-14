@@ -159,6 +159,9 @@ class MockSparseEmbedding:
         self.embedding_size = tf.TensorShape([embedding_size])
         self.init_param = init_param
         self.emb_initializer = emb_initializer
+        self.padding_keys = [666]
+        self.padding_keys_len = 4096
+        self.padding_keys_mask = True
         self.variable = tf.compat.v1.get_variable(table_name,
                                                   shape=[slice_device_vocabulary_size, embedding_size],
                                                   trainable=False, initializer=tf.ones_initializer())
