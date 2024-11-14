@@ -306,7 +306,11 @@ GTEST_PRIVATE :
 
     void PushKeyCountHBM(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors);
 
-    void PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys, int channel);
+    void PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys, int channel,
+                                 const string& embName);
+
+    void PushPaddingKeysTensors(const unique_ptr<vector<Tensor>>& tensors, const string& embName, int channel,
+                                vector<emb_key_t>& offsetKeys);
 
     void PushGlobalUniqueTensorsForDp(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys, int channel,
                                       KeysT& globalDpIdUniqueVec, const string& embName);

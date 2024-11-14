@@ -106,11 +106,15 @@ public:
 
     void CheckFileSystemPtr() const;
 
+    unordered_set<int64_t> GetPaddingKeysOffset();
+
     void CheckReadKeyFileSize(const string& fileName, size_t fileSize) ;
 
     void CheckLoadKeyMallocPtr(const int64_t* mallocPtr, size_t mallocByteSize) ;
 
     void CheckReadKeyFileBytes(ssize_t readReturnCode, const string& fileName, size_t fileSize) ;
+
+    void RecordPaddingKeysOffset(int channel, emb_key_t key, int64_t offset);
 
     std::string name;
     size_t hostVocabSize;
@@ -119,6 +123,7 @@ public:
     size_t maxOffset;
     absl::flat_hash_map<emb_key_t, int64_t> keyOffsetMap;
     absl::flat_hash_map<emb_key_t, int64_t> keyOffsetMapBackUp;
+    unordered_set<int64_t> paddingKeysOffset;
     std::vector<int64_t> evictDevPos;     // 记录HBM内被淘汰的key
     std::vector<int64_t> evictHostPos; // 记录Host内淘汰列表
 
