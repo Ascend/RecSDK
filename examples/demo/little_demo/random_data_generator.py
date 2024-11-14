@@ -19,6 +19,7 @@ import numpy as np
 from mx_rec.util.communication.hccl_ops import get_rank_id
 
 from demo_logger import logger
+from config import USE_PADDING_KEYS
 
 
 def get_data_generator(config, batch_number):
@@ -32,6 +33,13 @@ def get_data_generator(config, batch_number):
             category_ids = np.random.randint(0, config.category_range, (config.batch_size, config.category_feat_cnt))
             label_0 = np.random.randint(0, 2, (config.batch_size,))
             label_1 = np.random.randint(0, 2, (config.batch_size,))
+
+            if USE_PADDING_KEYS:
+                batch_id = np.random.randint(0, config.batch_size)
+                # Indexes 1, 3, and 7 are used to assign a padding key to the batch.
+                item_ids[batch_id][1] = config.padding_keys[0]
+                item_ids[batch_id][3] = config.padding_keys[1]
+                item_ids[batch_id][7] = config.padding_keys[0]
 
             yield {"item_ids": item_ids,
                    "user_ids": user_ids,

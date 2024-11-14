@@ -34,8 +34,8 @@ from mx_rec.graph.constants import AnchorIteratorOp
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import ClassValidator, StringValidator, SSDFeatureValidator, \
     para_checker_decorator, IntValidator, OptionValidator, OptionalIntValidator, \
-    OptionalStringValidator, FloatValidator, TensorShapeValidator, OrValidator, ListValidator
-from mx_rec.validator.emb_validator import check_emb_multi_lookup_times
+    OptionalStringValidator, FloatValidator, TensorShapeValidator, OrValidator, ListValidator, AndValidator
+from mx_rec.validator.emb_validator import check_emb_multi_lookup_times, check_and_format_emb_padding_keys
 from mx_rec.util.normalization import fix_invalid_table_name
 from mx_rec.util.log import logger
 
@@ -60,6 +60,26 @@ from mx_rec.util.log import logger
     ("is_dp", ClassValidator, {"classes": (bool,)}),
     ("init_param", FloatValidator, {"min_value": -10, "max_value": 10}, ["check_value"]),
     ("all2all_gradients_op", OptionValidator, {"options": [i.value for i in list(All2allGradientsOp)]}),
+    ("padding_keys", OrValidator, {"options": [
+        (ClassValidator, {"classes": type(None)}),
+        (ClassValidator, {"classes": int}),
+        (AndValidator, {"options": [
+            (ClassValidator, {"classes": list}),
+            (ListValidator, {
+                "sub_checker": ClassValidator,
+                "list_max_length": MAX_INT32,
+                "list_min_length": 1,
+                "sub_args": {
+                    "classes": int
+                }
+            }, ["check_list_length"])
+        ]})
+    ]}),
+    ("padding_keys_mask", ClassValidator, {"classes": (bool,)}),
+    ("padding_keys_len", OrValidator, {"options": [
+        (ClassValidator, {"classes": type(None)}),
+        (IntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"])
+    ]}),
     ("value_dtype", OptionValidator, {"options": [tf.float32]}),
     ("shard_num", IntValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
     ("fusion_optimizer_var", ClassValidator, {"classes": (bool,)}),
@@ -74,6 +94,9 @@ def create_table(key_dtype, dim, name, emb_initializer,
                  is_dp=False,
                  init_param=1.,
                  all2all_gradients_op=All2allGradientsOp.SUM_GRADIENTS.value,
+                 padding_keys=None,
+                 padding_keys_mask=False,
+                 padding_keys_len=None,
                  value_dtype=tf.float32,
                  shard_num=1,
                  fusion_optimizer_var=True,
@@ -92,6 +115,11 @@ def create_table(key_dtype, dim, name, emb_initializer,
         is_dp: switch whether to enable data parallel.
         init_param: embedding init param-coefficient
         all2all_gradients_op: sum_grads (default) or sum_gradients_and_div_by_ranksize.
+        padding_keys: Upper-layer services must ensure that the padding keys are included in the incoming ids.
+        padding_keys_mask: Whether the embedding value corresponding to the padding key is updated;
+                           `True` indicates that the embedding value is not updated.
+        padding_keys_len: Indicates the feature length of the corresponding ids. This parameter is mandatory
+                          if padding keys are specified.
         value_dtype: the type of the value tensors. only tf.float32 if supported for now.
         shard_num: embedding partition number
         fusion_optimizer_var: fusion optimizer variable with embedding
@@ -101,12 +129,14 @@ def create_table(key_dtype, dim, name, emb_initializer,
 
     dim_bytes = dim.as_list()[0] * FLOAT32_BYTES if isinstance(dim, tf.TensorShape) else dim * FLOAT32_BYTES
     (device_vocabulary_size, host_vocabulary_size, ssd_vocabulary_size) = \
-    _check_and_set_vocab_size(device_vocabulary_size, host_vocabulary_size, ssd_vocabulary_size)
+        _check_and_set_vocab_size(device_vocabulary_size, host_vocabulary_size, ssd_vocabulary_size)
+    padding_keys = check_and_format_emb_padding_keys(padding_keys, padding_keys_mask, padding_keys_len)
 
     config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
                   device_vocabulary_size=device_vocabulary_size, host_vocabulary_size=host_vocabulary_size,
                   ssd_vocabulary_size=ssd_vocabulary_size, ssd_data_path=ssd_data_path,
-                  init_param=init_param, is_save=is_save, all2all_gradients_op=all2all_gradients_op, is_dp=is_dp)
+                  init_param=init_param, is_save=is_save, all2all_gradients_op=all2all_gradients_op, is_dp=is_dp,
+                  padding_keys=padding_keys, padding_keys_mask=padding_keys_mask, padding_keys_len=padding_keys_len)
 
     logger.info("Create table: The table name is %s, the key type is %s, the embedding size is %s, "
                 "the embedding initializer is %s, the device/host/ssd vocabulary size is %s/%s/%s, "
@@ -181,12 +211,21 @@ def sparse_lookup(hashtable: BaseSparseEmbedding,
     kwargs["feature_spec_name_ids_dict"] = None
     kwargs["multi_lookup"] = False
     kwargs["lookup_ids"] = None
-    logger.info("Lookup: The table name is %s, and the value of `is_grad` in this lookup (lookup name is %s) is %s.",
-                hashtable.table_name, name, is_grad)
+    logger.info("Lookup: The table name is %s, the padding keys mask is %s, the padding keys is %s, "
+                "and the value of `is_grad` in this lookup (lookup name is %s) is %s.",
+                hashtable.table_name, hashtable.padding_keys_mask, hashtable.padding_keys, name, is_grad)
 
     # 校验一表多查次数
     hashtable.increase_multi_lookup_times(is_train)
     check_emb_multi_lookup_times(hashtable.multi_lookup_times.get(is_train), hashtable.table_name)
+
+    if hashtable.padding_keys_mask and ConfigInitializer.get_instance().use_static:
+        send_count = hashtable.padding_keys_len
+        logger.info(
+            "The table %s needs to perform the padding keys mode, and the send count is set to %s.",
+            hashtable.table_name,
+            send_count,
+        )
 
     # 对于向上找没有IteratorGetNext的孤儿ids需要标记，以便于后续ACGPushOpsToDataset工作
     if isinstance(ids, tf.Tensor):
