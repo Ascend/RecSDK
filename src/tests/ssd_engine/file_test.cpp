@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
+#include <fstream>
 #include <gtest/gtest.h>
 #include <mpi.h>
 
@@ -178,4 +179,56 @@ TEST(File, WriteByAddrAndRead)
     
 
     fs::remove_all(savePath);
+}
+
+TEST(File, SaveAndLoadForIncrementalCkpt)
+{
+    int rankId;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rankId);
+    GlogConfig::gRankId = to_string(rankId);
+
+    int saveStep = 0;
+    string fileDir = GlogConfig::gRankId;
+    auto fTmp = make_shared<File>(0, fileDir);
+
+    vector<emb_cache_key_t> fullKeys= {0, 1};
+    vector<vector<float>> fullEmbeddings = {{0.1, 0.2}, {0.3, 0.4}};
+    vector<emb_cache_key_t> expectedKeys= {1};
+    vector<vector<float>> expectedEmbeddings = {{0.3, 0.4}};
+    fTmp->InsertEmbeddings(fullKeys, fullEmbeddings);
+    string saveDir = fileDir;  // for test convenience
+    map<emb_key_t, KeyInfo> keyInfo = {{1, KeyInfo()}};
+    fTmp->Save(saveDir, saveStep, keyInfo);
+    // In incremental ckpt, saved model's name contains 'delta-', but File interface has no 'delta-' for loading model.
+    // So, we need to rename old model's name.
+    string oldMetaFile = saveDir + "/" + "delta-0" + ".meta." + std::to_string(saveStep);
+    string newMetaFile = saveDir + "/" + "0" + ".meta." + std::to_string(saveStep);
+    string oldDataFile = saveDir + "/" + "delta-0" + ".data." + std::to_string(saveStep);
+    string newDataFile = saveDir + "/" + "0" + ".data." + std::to_string(saveStep);
+    std::fstream f;
+    f.open(oldMetaFile.c_str());
+    if (f.fail()) {
+        std::cout << "File open failed." << std::endl;
+        f.close();
+    } else {
+        f.close();
+        if (rename(oldMetaFile.c_str(), newMetaFile.c_str()) == -1) {
+            std::cout << "Rename file failed." << std::endl;
+        }
+    }
+    f.open(oldDataFile.c_str());
+    if (f.fail()) {
+        std::cout << "File open failed." << std::endl;
+        f.close();
+    } else {
+        f.close();
+        if (rename(oldDataFile.c_str(), newDataFile.c_str()) == -1) {
+            std::cout << "Rename file failed." << std::endl;
+        }
+    }
+    string loadDir = fileDir;  // for test convenience
+    auto fLoad = make_shared<File>(0, fileDir, loadDir, saveStep);
+    auto actualEmbeddings = fLoad->FetchEmbeddings(expectedKeys);
+    ASSERT_EQ(expectedEmbeddings, actualEmbeddings);
+    fs::remove_all(fileDir);
 }

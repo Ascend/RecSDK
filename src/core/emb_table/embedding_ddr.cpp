@@ -225,7 +225,7 @@ void EmbeddingDDR::LoadOptimizerSlot(const string &savePath, vector<vector<float
 void EmbeddingDDR::Save(const string& savePath, const int pythonBatchId, bool saveDelta,
                         const map<emb_key_t, KeyInfo>& keyInfo)
 {
-    SyncLatestEmbedding(pythonBatchId);
+    SyncLatestEmbedding(pythonBatchId, saveDelta, keyInfo);
     vector<emb_cache_key_t> keys;
     vector<vector<float>> embeddings;
     vector<vector<float>> optimizerSlots;
@@ -233,12 +233,33 @@ void EmbeddingDDR::Save(const string& savePath, const int pythonBatchId, bool sa
     auto step = GetStepFromPath(savePath);
     embCache->GetEmbTableInfos(name, keys, embeddings, optimizerSlots);
 
+    if (saveDelta) {
+        // When save delta model, filter keys in keyInfo firstly, and then push back it into deltaKeys.
+        vector<emb_cache_key_t> deltaKeys;
+        vector<vector<float>> deltaEmbeddings;
+        vector<vector<float>> deltaOptimizerSlots;
+        for (size_t i = 0; i < keys.size(); ++i) {
+            if (!keyInfo.count(keys.at(i))) {
+                continue;
+            }
+            deltaKeys.push_back(keys.at(i));
+            deltaEmbeddings.push_back(embeddings.at(i));
+            if (!optimizerSlots.empty()) {
+                deltaOptimizerSlots.push_back(optimizerSlots.at(i));
+            }
+        }
+        SaveKey(savePath, deltaKeys);
+        SaveEmbedding(savePath, deltaEmbeddings);
+        SaveOptimizerSlot(savePath, deltaOptimizerSlots, deltaKeys.size());
+        return;
+    }
+
     SaveKey(savePath, keys);
     SaveEmbedding(savePath, embeddings);
     SaveOptimizerSlot(savePath, optimizerSlots, keys.size());
 }
 
-void EmbeddingDDR::SyncLatestEmbedding(const int pythonBatchId)
+void EmbeddingDDR::SyncLatestEmbedding(const int pythonBatchId, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo)
 {
     // 导出host记录的存在于npu的embedding
     std::vector<std::pair<uint64_t, uint64_t>> koVec;
@@ -252,7 +273,13 @@ void EmbeddingDDR::SyncLatestEmbedding(const int pythonBatchId)
     }
     std::vector<uint64_t> swapOutKeys;
     for (const auto& p : koVec) {
-        swapOutKeys.push_back(p.first);
+        if (!saveDelta) {
+            swapOutKeys.push_back(p.first);
+            continue;
+        }
+        if (keyInfo.count(p.first)) {
+            swapOutKeys.push_back(p.first);
+        }
     }
     LOG_DEBUG("SyncLatestEmbedding, table:{}, swapOutKeys.size:{}.", name, swapOutKeys.size());
 

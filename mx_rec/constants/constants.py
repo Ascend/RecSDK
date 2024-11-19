@@ -29,6 +29,8 @@ EMPTY_STR = ""
 
 # Bytes
 FLOAT32_BYTES = 4
+UINT64_BYTES = 8
+UINT32_BYTES = 4
 
 # 获取ConfigInitializer对象实例失败提示信息
 GET_CONFIG_INSTANCE_ERR_MSG = "Please init the environment for mx_rec at first."
