@@ -26,6 +26,7 @@ from tensorflow.core.framework.graph_pb2 import GraphDef
 from tensorflow.python.data.ops.dataset_ops import DatasetV1Adapter
 from tensorflow.python.framework.errors_impl import InvalidArgumentError
 
+from mx_rec.core.embedding_proxy import MergeableEmbeddingTableProxy
 from mx_rec.graph import utils
 from mx_rec.constants.constants import (
     ASCEND_CUTTING_POINT_INITIALIZER,
@@ -512,6 +513,7 @@ class _GraphModifier:
 def modify_graph_and_start_emb_cache(full_graph: Graph = None, dump_graph: bool = False):
     modifier = _GraphModifier(full_graph=full_graph, dump_graph=dump_graph)
     modifier.modify_graph_for_asc()
+    MergeableEmbeddingTableProxy().reset()
     start_asc_pipeline()
 
 

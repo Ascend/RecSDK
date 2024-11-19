@@ -14,27 +14,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import functools
+
 from collections import defaultdict
 from enum import Enum
+
+from mx_rec.util.singleton import singleton
 
 
 class SwapDataType(Enum):
     CONFIG = "config"
     CONTROL = "control"
     CONTROL_OPS = "control_ops"
-
-
-def singleton(cls):
-    _instance = {}
-
-    @functools.wraps(cls)
-    def inner():
-        if cls not in _instance:
-            _instance[cls] = cls()
-        return _instance[cls]
-
-    return inner
 
 
 @singleton

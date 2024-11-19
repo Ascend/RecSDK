@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2023. All rights reserved.
-from typing import Optional
+from typing import Optional, Any
 
 from tensorflow.python.framework import ops
 from tensorflow import Variable
@@ -13,6 +13,7 @@ class SparseEmbedConfig:
     """
     Sparse table related configurations.
     """
+
     def __init__(self):
         self._table_instance_dict = dict()
         self._dangling_table = []
@@ -52,25 +53,27 @@ class SparseEmbedConfig:
 
         """
 
+        from mx_rec.util.initialize import ConfigInitializer
+
         # Dynamic expansion mode.
-        if isinstance(key, ops.Tensor):
+        if ConfigInitializer.get_instance().use_dynamic_expansion and isinstance(key, ops.Tensor):
             return self.get_table_instance_by_tensor(key)
 
         # Normal mode.
         if key not in self._table_instance_dict:
-            raise KeyError(f"Given key does not exist.")
+            raise KeyError("given key => '{}' does not exist".format(key))
 
         return self._table_instance_dict.get(key)
 
     def get_table_instance_by_tensor(self, tensor) -> object:
         if tensor not in self._tensor_to_table_instance_dict:
-            raise KeyError(f"Given tensor does not exist.")
+            raise KeyError("given tensor => '{}' does not exist".format(tensor))
 
         return self._tensor_to_table_instance_dict.get(tensor)
 
     def get_table_instance_by_name(self, table_name: Optional[str]) -> object:
         if table_name not in self._name_to_var_dict:
-            raise KeyError(f"Given table name does not exist.")
+            raise KeyError("given table name => '{}' does not exist".format(table_name))
 
         key = self._name_to_var_dict.get(table_name)
         return self._table_instance_dict.get(key)
@@ -102,6 +105,11 @@ class SparseEmbedConfig:
             raise KeyError(f"Given tensor {tensor} has been used.")
         logger.debug("Record one hash table for expansion mode, with tensor: %s.", tensor)
         self._tensor_to_table_instance_dict[tensor] = instance
+
+    def update_table_instance(self, table_name: str, emb_table: Any, old_var: Variable, new_var: Variable) -> None:
+        self._name_to_var_dict[table_name] = new_var
+        del self._table_instance_dict[old_var]
+        self._table_instance_dict[new_var] = emb_table
 
     def export_table_num(self) -> int:
         return len(self.table_instance_dict) if self.table_instance_dict else 0
