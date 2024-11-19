@@ -228,9 +228,74 @@ void File::DeleteEmbedding(emb_cache_key_t key)
     staleDataCnt += 1;
 }
 
+void File::Save(const string& saveDir, int step, const map<emb_key_t, KeyInfo>& keyInfo)
+{
+    LOG_DEBUG("Start to save file at step:{}, fileID:{}.", step, fileID);
+
+    // write current meta into meta file
+    for (auto [key, offset]: keyToOffset) {
+        if (keyInfo.count(key)) {
+            localFileMeta.write(reinterpret_cast<char const *>(&key), sizeof(key));
+            localFileMeta.write(reinterpret_cast<char const *>(&offset), sizeof(offset));
+        }
+    }
+    // flush not guarantee data already written into disk, must call close to force flush and wait
+    localFileMeta.flush();
+    if (localFileMeta.fail()) {
+        localFileMeta.close();
+        ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to save latest meta.");
+    }
+    localFileMeta.close();
+
+    fs::path metaFileToSave = fs::absolute(saveDir + "/" + "delta-" + to_string(fileID) + ".meta." +
+            to_string(step));
+    if (fs::exists(metaFileToSave)) {
+        ThrowInvalidArgError(ErrorType::INVALID_ARGUMENT, "Failed to save latest meta, file already exist.");
+    }
+
+    LOG_DEBUG("save latest meta file at step:{}, fileID:{}", step, fileID);
+    if (!fs::copy_file(metaFilePath, metaFileToSave)) {
+        ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to Save latest meta.");
+    }
+
+    // re-open new meta file for next saving
+    localFileMeta.open(metaFilePath, ios::out | ios::trunc | ios::binary);
+    if (!localFileMeta.is_open()) {
+        localFileMeta.close();
+        ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to re-open meta file.");
+    }
+
+    // Save data
+    LOG_DEBUG("save latest data file at step:{}", step);
+    localFileData.flush();
+    if (localFileData.fail()) {
+        localFileData.close();
+        ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to flush file data.");
+    }
+    localFileData.close();
+
+    fs::path dataFileToSave = fs::absolute(saveDir + "/" + "delta-" + to_string(fileID) + ".data." +
+            to_string(step));
+    if (fs::exists(dataFileToSave)) {
+        ThrowInvalidArgError(ErrorType::INVALID_ARGUMENT, "Failed to save latest data, file already exist.");
+    }
+    if (!fs::copy_file(dataFilePath, dataFileToSave)) {
+        ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to Save latest data.");
+    }
+
+    // re-open data file for other operation
+    localFileData.open(dataFilePath, ios::out | ios::in | ios::app | ios::binary);
+    if (!localFileData.is_open()) {
+        localFileData.close();
+        ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to re-open data file.");
+    }
+
+    LOG_DEBUG("end save file at step:{}, fileID:{}", step, fileID);
+}
+
 void File::Save(const string& saveDir, int step)
 {
-    LOG_DEBUG("start save file at step:{}, fileID:{}", step, fileID);
+    LOG_DEBUG("start save file at step:{}, fileID:{}, save dir:{}", step, fileID, saveDir);
 
     // write current meta into meta file
     for (auto [key, offset]: keyToOffset) {
@@ -240,6 +305,7 @@ void File::Save(const string& saveDir, int step)
     // flush not guarantee data already written into disk, must call close to force flush and wait
     localFileMeta.flush();
     if (localFileMeta.fail()) {
+        localFileMeta.close();
         ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to save latest meta.");
     }
     localFileMeta.close();
@@ -257,6 +323,7 @@ void File::Save(const string& saveDir, int step)
     // re-open new meta file for next saving
     localFileMeta.open(metaFilePath, ios::out | ios::trunc | ios::binary);
     if (!localFileMeta.is_open()) {
+        localFileMeta.close();
         ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to re-open meta file.");
     }
 
@@ -264,13 +331,14 @@ void File::Save(const string& saveDir, int step)
     LOG_DEBUG("save latest data file at step:{}", step);
     localFileData.flush();
     if (localFileData.fail()) {
+        localFileData.close();
         ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to flush file data.");
     }
     localFileData.close();
 
     fs::path dataFileToSave = fs::absolute(saveDir + "/" + to_string(fileID) + ".data." + to_string(step));
     if (fs::exists(dataFileToSave)) {
-        ThrowInvalidArgError(ErrorType::INVALID_ARGUMENT, "Failed to save latst data, file already exist.");
+        ThrowInvalidArgError(ErrorType::INVALID_ARGUMENT, "Failed to save latest data, file already exist.");
     }
     if (!fs::copy_file(dataFilePath, dataFileToSave)) {
         ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to Save latest data.");
@@ -279,6 +347,7 @@ void File::Save(const string& saveDir, int step)
     // re-open data file for other operation
     localFileData.open(dataFilePath, ios::out | ios::in | ios::app | ios::binary);
     if (!localFileData.is_open()) {
+        localFileData.close();
         ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to re-open data file.");
     }
 
@@ -294,6 +363,7 @@ void File::Load()
     do {
         localFileMeta.read(reinterpret_cast<char*>(&key), KEY_DATA_LEN);
         if (!localFileMeta.eof() && localFileMeta.fail()) {
+            localFileMeta.close();
             ThrowInvalidArgError(ErrorType::IO_ERROR, "File broken while reading key.");
         }
         // When file is empty, read first key failed and break.
@@ -303,6 +373,7 @@ void File::Load()
 
         localFileMeta.read(reinterpret_cast<char*>(&offset), OFFSET_DATA_LEN);
         if (!localFileMeta.eof() && localFileMeta.fail()) {
+            localFileMeta.close();
             ThrowInvalidArgError(ErrorType::IO_ERROR, "File broken while reading offset.");
         }
         keyToOffset[key] = offset;
@@ -320,6 +391,7 @@ void File::Load()
     // re-open new meta file for next saving
     localFileMeta.open(metaFilePath, ios::out | ios::trunc | ios::binary);
     if (!localFileMeta.is_open()) {
+        localFileMeta.close();
         ThrowRuntimeError(ErrorType::IO_ERROR, "Failed to re-open meta file.");
     }
 

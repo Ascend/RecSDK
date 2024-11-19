@@ -78,6 +78,21 @@ int64_t SSDEngine::GetTableAvailableSpace(const string &tableName)
     return it->second->GetTableAvailableSpace();
 }
 
+void SSDEngine::Save(int step, const map<string, map<emb_key_t, KeyInfo>>& keyInfoMap)
+{
+    CheckSSDEngineIsRunning();
+
+    if (step == loadStep) {
+        LOG_INFO("save step equal to load step, skip saving, step:{}", step);
+        return;
+    }
+
+    for (auto item: as_const(tableMap)) {
+        item.second->Save(step, keyInfoMap.at(item.first));
+    }
+    saveStep = step;
+}
+
 void SSDEngine::Save(int step)
 {
     CheckSSDEngineIsRunning();

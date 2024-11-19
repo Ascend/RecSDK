@@ -304,7 +304,7 @@ GTEST_PRIVATE :
     void PushResultDDR(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors,
                        std::vector<uint64_t>& uniqueKeys, std::vector<int32_t>& restoreVecSec);
 
-    void PushKeyCountHBM(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors);
+    void PushKeyCount(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors);
 
     void PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys, int channel);
 

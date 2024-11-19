@@ -49,7 +49,7 @@ public:
 
     void Save(const string& savePath, const int pythonBatchId, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo);
 
-    void SyncLatestEmbedding(const int pythonBatchId);
+    void SyncLatestEmbedding(const int pythonBatchId, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo);
 
     void SaveKey(const string& savePath, vector<emb_cache_key_t>& keys);
 
