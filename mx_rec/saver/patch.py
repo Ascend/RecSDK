@@ -52,7 +52,7 @@ from mpi4py import MPI
 from mx_rec.saver.saver import Saver as SparseSaver
 from mx_rec.saver.saver import check_file_system_is_valid, should_write_data, update_model_index, \
     write_delta_export_time_ms, get_model_type_by_version, get_base_and_delta_models, read_base_delta_and_write, \
-    clear_delta_models
+    clear_delta_models, read_base_delta_and_write_for_ssd
 from mx_rec.util.communication.hccl_ops import get_rank_id
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, StringValidator, OptionalIntValidator, \
@@ -311,6 +311,9 @@ def restore(self, sess, save_path):
 
     is_incremental_checkpoint = ConfigInitializer.get_instance().is_incremental_checkpoint
     restore_model_version = ConfigInitializer.get_instance().restore_model_version
+    for _, table_instance in ConfigInitializer.get_instance().sparse_embed_config.table_instance_dict.items():
+        is_ssd = True if table_instance.slice_ssd_vocabulary_size else False
+        break
 
     directory, base_name = os.path.split(save_path)
     model_type = BASE_MODEL
@@ -326,6 +329,10 @@ def restore(self, sess, save_path):
 
         comm = MPI.COMM_WORLD
         rank = comm.Get_rank()
+        if model_type == DELTA_MODEL:
+            base_model, delta_models = get_base_and_delta_models(directory, str(restore_model_version))
+            if is_ssd:
+                read_base_delta_and_write_for_ssd(directory, base_model, delta_models, rank)
         comm.Barrier()
         if should_write_data(rank, save_path):
             if model_type == DELTA_MODEL:

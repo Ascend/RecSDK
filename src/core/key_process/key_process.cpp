@@ -614,7 +614,7 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
         tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(lookupKeys) : Vec2TensorI32(lookupKeys));
         PushResultHBM(batch, move(tensors));
         if (isIncrementalCheckpoint && channel == TRAIN_CHANNEL_ID) {
-            PushKeyCountHBM(batch, move(keyCountTensors));
+            PushKeyCount(batch, move(keyCountTensors));
         }
     } else {
         std::vector<uint64_t> lookupKeysUint(lookupKeys.begin(), lookupKeys.end());
@@ -622,6 +622,9 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
         vector<int32_t> restoreVecSec;
         GlobalUnique(lookupKeysUint, uniqueKeys, restoreVecSec);
         PushResultDDR(batch, move(tensors), uniqueKeys, restoreVecSec);
+        if (isIncrementalCheckpoint && channel == TRAIN_CHANNEL_ID) {
+            PushKeyCount(batch, move(keyCountTensors));
+        }
     }
 
     LOG_DEBUG("pushResultTC(ms):{}", pushResultTC.ElapsedMS());
@@ -796,7 +799,7 @@ void KeyProcess::PushResultDDR(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<T
     lockGuard.unlock();
 }
 
-void KeyProcess::PushKeyCountHBM(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors)
+void KeyProcess::PushKeyCount(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors)
 {
     std::unique_lock<std::mutex> lockGuard(mut);
     keyCountStorage.push_front(move(tensors));

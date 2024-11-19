@@ -186,10 +186,7 @@ void HybridMgmt::Save(const string& savePath, bool saveDelta)
     map<string, map<emb_key_t, KeyInfo>> keyInfoMap;
     GetDeltaModelKeys(savePath, saveDelta, keyInfoMap);
     EmbeddingMgmt::Instance()->Save(savePath, hybridMgmtBlock->pythonBatchId[TRAIN_CHANNEL_ID], saveDelta, keyInfoMap);
-    // after save key、embedding, reset deltaMap, isChanged->false, recentCount->0
-    if (isIncrementalCkpt) {
-        ResetDeltaInfo();
-    }
+
     if (!mgmtRankInfo.isDDR) {
         // hbm模式只保存必要的offset对应的内容
         offsetMapToSend = EmbeddingMgmt::Instance()->GetDeviceOffsets();
@@ -198,7 +195,11 @@ void HybridMgmt::Save(const string& savePath, bool saveDelta)
     if (isL3StorageEnabled) {
         LOG_DEBUG(MGMT + "start save L3Storage data");
         auto step = GetStepFromPath(savePath);
-        cacheManager->Save(step);
+        if (saveDelta) {
+            cacheManager->Save(step, keyInfoMap);
+        } else {
+            cacheManager->Save(step);
+        }
     }
 
     // 保存特征准入淘汰相关的数据
@@ -213,6 +214,10 @@ void HybridMgmt::Save(const string& savePath, bool saveDelta)
     // 执行保存操作
     saveCkpt.SaveModel(savePath, saveData, mgmtRankInfo, mgmtEmbInfo);
     isFirstSave = false;
+    // after save key、embedding, reset deltaMap, isChanged->false, recentCount->0
+    if (isIncrementalCkpt) {
+        ResetDeltaInfo();
+    }
     LOG_INFO(MGMT + "End to save {} model.", saveModelType);
     // 数据处理线程释放锁
     KEY_PROCESS_INSTANCE->LoadSaveUnlock();

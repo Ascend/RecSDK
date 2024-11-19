@@ -100,6 +100,69 @@ void Table::DeleteEmbeddings(vector<emb_cache_key_t> &keys)
     DeleteEmbeddingsInner(keys);
 }
 
+void Table::Save(int step, const map<emb_key_t, KeyInfo>& keyInfo)
+{
+    LOG_INFO("start save table:{}, at step:{}", name, step);
+    Compact(true, keyInfo);
+
+    lock_guard<mutex> guard(rwLock);
+    auto metaFilePath = fs::absolute(curTablePath + "/" + name + ".meta" + "." + to_string(step));
+    if (fs::exists(metaFilePath)) {
+        ThrowInvalidArgError("Failed to save table meta, file already exist.");
+    }
+
+    fstream metaFile;
+    metaFile.open(metaFilePath, ios::out | ios::trunc | ios::binary);
+    if (!metaFile.is_open()) {
+        metaFile.close();
+        ThrowRuntimeError("Failed to create table meta file.");
+    }
+    try {
+        fs::permissions(metaFilePath, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
+    } catch (runtime_error& e) {
+        auto error = Error(ModuleName::M_SSD_ENGINE, ErrorType::UNKNOWN,
+                           StringFormat("Fail to change permission of %s.", metaFilePath.c_str()));
+        LOG_ERROR(error.ToString());
+        fs::remove_all(metaFilePath);
+        throw;
+    }
+
+    // dump table name
+    uint32_t nameSize = static_cast<uint32_t>(name.size());
+    metaFile.write(reinterpret_cast<char const *>(&nameSize), sizeof(nameSize));
+    metaFile.write(name.c_str(), nameSize);
+
+    // dump file ID
+    uint64_t fileCnt = fileSet.size();
+    metaFile.write(reinterpret_cast<char const *>(&fileCnt), sizeof(fileCnt));
+    for (const auto &f: fileSet) {
+        uint64_t fid = f->GetFileID();
+        metaFile.write(reinterpret_cast<char const *>(&fid), sizeof(fid));
+        try {
+            SetTablePathToDiskWithSpace();
+        } catch (runtime_error &e) {
+            metaFile.close();
+            ThrowRuntimeError(StringFormat("Set table path to disk with space error:%s.", e.what()));
+        }
+        try {
+            CreateTableDir(curTablePath);
+        } catch (runtime_error &e) {
+            metaFile.close();
+            throw;
+        }
+        f->Save(curTablePath, step, keyInfo);
+    }
+
+    metaFile.flush();
+    if (metaFile.fail()) {
+        metaFile.close();
+        ThrowRuntimeError("Failed to Save table meta file.");
+    }
+
+    metaFile.close();
+    LOG_INFO("End save table:{}, at step:{}.", name, step);
+}
+
 void Table::Save(int step)
 {
     LOG_INFO("start save table:{}, at step:{}", name, step);
@@ -114,6 +177,7 @@ void Table::Save(int step)
     fstream metaFile;
     metaFile.open(metaFilePath, ios::out | ios::trunc | ios::binary);
     if (!metaFile.is_open()) {
+        metaFile.close();
         ThrowRuntimeError("Failed to create table meta file.");
     }
     try {
@@ -123,6 +187,7 @@ void Table::Save(int step)
                            StringFormat("Fail to change permission of %s.", metaFilePath.c_str()));
         LOG_ERROR(error.ToString());
         fs::remove_all(metaFilePath);
+        metaFile.close();
         throw;
     }
 
@@ -334,6 +399,55 @@ vector<vector<float>> Table::FetchEmbeddingsInner(vector<emb_cache_key_t> &keys)
         }
     }
     return ret;
+}
+
+/// 整理数据，将有效数据转移至新文件后，含无效数据的文件将被删除
+/// \param fullCompact 是否执行全量数据清理
+void Table::Compact(bool fullCompact, const map<emb_key_t, KeyInfo>& keyInfo)
+{
+    lock_guard<mutex> guard(rwLock);
+
+    if (staleDataFileSet.empty()) {
+        return;
+    }
+
+    LOG_DEBUG("table:{}, start compact", name);
+
+    vector<shared_ptr<File>> compactFileList;
+    for (const auto &f: staleDataFileSet) {
+        if (fullCompact) {
+            compactFileList.emplace_back(f);
+            continue;
+        }
+        if (double(f->GetDataCnt()) * compactThreshold < static_cast<double>(f->GetStaleDataCnt())) {
+            compactFileList.emplace_back(f);
+        }
+    }
+
+    // always move valid data to new file to avoid repeated compaction
+    if (curFile->GetStaleDataCnt() > 0) {
+        curFile = make_shared<File>(curMaxFileID, curTablePath);
+        fileSet.insert(curFile);
+        curMaxFileID++;
+    }
+
+    for (const auto &f: compactFileList) {
+        staleDataFileSet.erase(f);
+        fileSet.erase(f);
+        vector<emb_cache_key_t> validKeys = f->GetKeys();
+        vector<vector<float>> validEmbs = f->FetchEmbeddings(validKeys);
+        // When save delta model, filter keys in keyInfo firstly, and then push back it into deltaKeys.
+        vector<emb_cache_key_t> deltaValidKeys;
+        vector<vector<float>> deltaValidEmbs;
+        for (size_t i = 0; i < validKeys.size(); ++i) {
+            if (keyInfo.count(validKeys.at(i))) {
+                deltaValidKeys.emplace_back(validKeys.at(i));
+                deltaValidEmbs.emplace_back(validEmbs.at(i));
+            }
+        }
+        InsertEmbeddingsInner(deltaValidKeys, deltaValidEmbs);
+    }
+    LOG_DEBUG("table:{}, end compact", name);
 }
 
 /// 整理数据，将有效数据转移至新文件后，含无效数据的文件将被删除
