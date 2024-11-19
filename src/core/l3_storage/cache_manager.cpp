@@ -171,6 +171,13 @@ void CacheManager::Load(const std::vector<EmbInfo> &mgmtEmbInfo, int step,
 #endif
 }
 
+void CacheManager::Save(int step, const map<string, map<emb_key_t, KeyInfo>>& keyInfoMap)
+{
+#ifndef GTEST
+    l3Storage->Save(step, keyInfoMap);
+#endif
+}
+
 void CacheManager::Save(int step)
 {
 #ifndef GTEST

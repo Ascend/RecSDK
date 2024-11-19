@@ -153,6 +153,27 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
             table_info_list = generate_table_info_list()
             self.assertListEqual(table_info_list, ["test_table_info"])
 
+    @mock.patch("mx_rec.validator.emb_validator.ConfigInitializer")
+    @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
+    def test_padding_keys_check_params_error(self, manager_config_initializer, validator_config_initializer):
+        from mx_rec.core.asc.manager import generate_table_info_list
+
+        with tf.Graph().as_default():
+            mock_config_initializer = MockConfigInitializer()
+            manager_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+            validator_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+
+            test_table1 = MockSparseEmbedding("test_table1")
+            test_table2 = MockSparseEmbedding("test_table2")
+            mock_config_initializer.get_instance().sparse_embed_config.table_instance_dict = {
+                "test_table1": test_table1,
+                "test_table2": test_table2
+            }
+
+            # When the padding keys mask of all tables is True, it should be set to static shape mode.
+            with self.assertRaises(RuntimeError):
+                generate_table_info_list()
+
 
 class TestMatchedConstantInitializerFunc(unittest.TestCase):
     """

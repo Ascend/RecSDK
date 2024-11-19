@@ -44,6 +44,8 @@ public:
     virtual std::vector<std::vector<float>> FetchEmbeddings(const std::string& tableName,
                                                             std::vector<emb_cache_key_t>& keys);
 
+    virtual void Save(int step, const map<string, map<emb_key_t, KeyInfo>>& keyInfoMap);
+
     virtual void Save(int step);
 
     virtual void Load(const std::string& tableName, std::vector<std::string> savePaths, uint64_t maxTableSize,

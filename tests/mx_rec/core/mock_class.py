@@ -162,6 +162,7 @@ class MockSparseEmbedding:
         self.padding_keys = [666]
         self.padding_keys_len = 4096
         self.padding_keys_mask = True
+        self.send_count = 4096
         self.variable = tf.compat.v1.get_variable(table_name,
                                                   shape=[slice_device_vocabulary_size, embedding_size],
                                                   trainable=False, initializer=tf.ones_initializer())

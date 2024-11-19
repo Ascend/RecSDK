@@ -164,7 +164,7 @@ def check_emb_global_params():
     # Check whether DDR is enabled or disabled for all tables.
     table_instance_dict = ConfigInitializer.get_instance().sparse_embed_config.table_instance_dict
     is_hbm_list = [table_instance.is_hbm for table_instance in table_instance_dict.values()]
-    if not all(is_hbm_list):
+    if len(set(is_hbm_list)) != 1:
         raise RuntimeError(
             f"The DDR mode of all tables must be used or not used at the same time. However, is_hbm "
             f"of each table `{table_instance_dict.keys()}` is `{is_hbm_list}`."
