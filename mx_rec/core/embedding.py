@@ -16,68 +16,111 @@
 # ==============================================================================
 
 import os
-from typing import Optional, Union, Tuple
+from typing import Optional, Union
 
 import tensorflow as tf
-from tensorflow import Tensor
 from tensorflow.python.ops.init_ops import Initializer as InitializerV1
 from tensorflow.python.ops.init_ops_v2 import Initializer as InitializerV2
 
-from mx_rec.constants import constants
+from mx_rec.constants.constants import (
+    FLOAT32_BYTES,
+    MAX_DEVICE_VOCABULARY_SIZE,
+    MAX_INT32,
+    MAX_VOCABULARY_SIZE,
+    All2allGradientsOp,
+)
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
-from mx_rec.core.emb.emb_factory import HBMDynamicSparseEmbeddingFactory, HBMSparseEmbeddingFactory, \
-    ExternalStorageSparseEmbeddingFactory
-from mx_rec.constants.constants import (FLOAT32_BYTES, MAX_INT32, All2allGradientsOp, MAX_VOCABULARY_SIZE,
-                                        MAX_DEVICE_VOCABULARY_SIZE)
-from mx_rec.graph.constants import AnchorIteratorOp
+from mx_rec.core.emb.emb_factory import (
+    ExternalStorageSparseEmbeddingFactory,
+    HBMDynamicSparseEmbeddingFactory,
+    HBMSparseEmbeddingFactory,
+)
+from mx_rec.core.embedding_proxy import UnionKey, create_mergeable_embedding
+from mx_rec.core.util import check_and_set_vocab_size, mark_orphan_lookup_key
 from mx_rec.util.initialize import ConfigInitializer
-from mx_rec.validator.validator import ClassValidator, StringValidator, SSDFeatureValidator, \
-    para_checker_decorator, IntValidator, OptionValidator, OptionalIntValidator, \
-    OptionalStringValidator, FloatValidator, TensorShapeValidator, OrValidator, ListValidator
-from mx_rec.validator.emb_validator import check_emb_multi_lookup_times
-from mx_rec.util.normalization import fix_invalid_table_name
 from mx_rec.util.log import logger
+from mx_rec.util.normalization import fix_invalid_table_name
+from mx_rec.validator.emb_validator import check_emb_multi_lookup_times
+from mx_rec.validator.validator import (
+    ClassValidator,
+    FloatValidator,
+    IntValidator,
+    ListValidator,
+    OptionalIntValidator,
+    OptionalStringValidator,
+    OptionValidator,
+    OrValidator,
+    SSDFeatureValidator,
+    StringValidator,
+    TensorShapeValidator,
+    para_checker_decorator,
+)
 
 
-@para_checker_decorator(check_option_list=[
-    ("key_dtype", OptionValidator, {"options": (tf.int64, tf.int32)}),
-    ("dim", OrValidator, {"options": [
-        (IntValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
-        (TensorShapeValidator, {"int_checker_args":{"min_value": 1, "max_value": 8192}},)
-    ]}),
-    ("name", StringValidator, {"min_len": 1, "max_len": 100}, ["check_string_length", "check_whitelist"]),
-    ("emb_initializer", ClassValidator, {"classes": (InitializerV1, InitializerV2)}),
-    (["ssd_vocabulary_size", "ssd_data_path", "host_vocabulary_size"], SSDFeatureValidator),
-    ("device_vocabulary_size", IntValidator, {"min_value": 1, "max_value": MAX_DEVICE_VOCABULARY_SIZE},
-     ["check_value"]),
-    ("host_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
-    ("ssd_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
-    ("ssd_data_path", ListValidator,
-     {"sub_checker": ClassValidator, "list_max_length": MAX_INT32, "sub_args": {"classes": str}},
-     ["check_list_length"]),
-    ("is_save", ClassValidator, {"classes": (bool,)}),
-    ("is_dp", ClassValidator, {"classes": (bool,)}),
-    ("init_param", FloatValidator, {"min_value": -10, "max_value": 10}, ["check_value"]),
-    ("all2all_gradients_op", OptionValidator, {"options": [i.value for i in list(All2allGradientsOp)]}),
-    ("value_dtype", OptionValidator, {"options": [tf.float32]}),
-    ("shard_num", IntValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
-    ("fusion_optimizer_var", ClassValidator, {"classes": (bool,)}),
-    ("hashtable_threshold", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"])
-])
-def create_table(key_dtype, dim, name, emb_initializer,
-                 device_vocabulary_size=1,
-                 host_vocabulary_size=0,
-                 ssd_vocabulary_size=0,
-                 ssd_data_path=(os.getcwd(),),
-                 is_save=True,
-                 is_dp=False,
-                 init_param=1.,
-                 all2all_gradients_op=All2allGradientsOp.SUM_GRADIENTS.value,
-                 value_dtype=tf.float32,
-                 shard_num=1,
-                 fusion_optimizer_var=True,
-                 hashtable_threshold=0):
+@para_checker_decorator(
+    check_option_list=[
+        ("key_dtype", OptionValidator, {"options": (tf.int64, tf.int32)}),
+        (
+            "dim",
+            OrValidator,
+            {
+                "options": [
+                    (IntValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
+                    (
+                        TensorShapeValidator,
+                        {"int_checker_args": {"min_value": 1, "max_value": 8192}},
+                    ),
+                ]
+            },
+        ),
+        ("name", StringValidator, {"min_len": 1, "max_len": 100}, ["check_string_length", "check_whitelist"]),
+        ("emb_initializer", ClassValidator, {"classes": (InitializerV1, InitializerV2)}),
+        (["ssd_vocabulary_size", "ssd_data_path", "host_vocabulary_size"], SSDFeatureValidator),
+        (
+            "device_vocabulary_size",
+            IntValidator,
+            {"min_value": 1, "max_value": MAX_DEVICE_VOCABULARY_SIZE},
+            ["check_value"],
+        ),
+        ("host_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
+        ("ssd_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
+        (
+            "ssd_data_path",
+            ListValidator,
+            {"sub_checker": ClassValidator, "list_max_length": MAX_INT32, "sub_args": {"classes": str}},
+            ["check_list_length"],
+        ),
+        ("is_save", ClassValidator, {"classes": (bool,)}),
+        ("is_dp", ClassValidator, {"classes": (bool,)}),
+        ("init_param", FloatValidator, {"min_value": -10, "max_value": 10}, ["check_value"]),
+        ("all2all_gradients_op", OptionValidator, {"options": [i.value for i in list(All2allGradientsOp)]}),
+        ("enable_merge", ClassValidator, {"classes": (bool,)}),
+        ("value_dtype", OptionValidator, {"options": [tf.float32]}),
+        ("shard_num", IntValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
+        ("fusion_optimizer_var", ClassValidator, {"classes": (bool,)}),
+        ("hashtable_threshold", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
+    ]
+)
+def create_table(
+    key_dtype: tf.DType,
+    dim: tf.TensorShape,
+    name: str,
+    emb_initializer: Union[InitializerV1, InitializerV2],
+    device_vocabulary_size: int = 1,
+    host_vocabulary_size: int = 0,
+    ssd_vocabulary_size: int = 0,
+    ssd_data_path: str = (os.getcwd(),),
+    is_save: bool = True,
+    is_dp: bool = False,
+    init_param: float = 1.0,
+    all2all_gradients_op: str = All2allGradientsOp.SUM_GRADIENTS.value,
+    enable_merge: bool = False,
+    value_dtype: tf.DType = tf.float32,
+    shard_num: int = 1,
+    fusion_optimizer_var: bool = True,
+    hashtable_threshold: int = 0,
+):
     """
     Args:
         key_dtype: data type for feature id
@@ -92,6 +135,7 @@ def create_table(key_dtype, dim, name, emb_initializer,
         is_dp: switch whether to enable data parallel.
         init_param: embedding init param-coefficient
         all2all_gradients_op: sum_grads (default) or sum_gradients_and_div_by_ranksize.
+        enable_merge: enable merge sparse embedding table automatically.
         value_dtype: the type of the value tensors. only tf.float32 if supported for now.
         shard_num: embedding partition number
         fusion_optimizer_var: fusion optimizer variable with embedding
@@ -100,56 +144,97 @@ def create_table(key_dtype, dim, name, emb_initializer,
     name = fix_invalid_table_name(name)
 
     dim_bytes = dim.as_list()[0] * FLOAT32_BYTES if isinstance(dim, tf.TensorShape) else dim * FLOAT32_BYTES
-    (device_vocabulary_size, host_vocabulary_size, ssd_vocabulary_size) = \
-    _check_and_set_vocab_size(device_vocabulary_size, host_vocabulary_size, ssd_vocabulary_size)
+    (device_vocabulary_size, host_vocabulary_size, ssd_vocabulary_size) = check_and_set_vocab_size(
+        device_vocabulary_size, host_vocabulary_size, ssd_vocabulary_size
+    )
 
-    config = dict(key_dtype=key_dtype, embedding_size=dim, table_name=name, emb_initializer=emb_initializer,
-                  device_vocabulary_size=device_vocabulary_size, host_vocabulary_size=host_vocabulary_size,
-                  ssd_vocabulary_size=ssd_vocabulary_size, ssd_data_path=ssd_data_path,
-                  init_param=init_param, is_save=is_save, all2all_gradients_op=all2all_gradients_op, is_dp=is_dp)
+    config = dict(
+        key_dtype=key_dtype,
+        embedding_size=dim,
+        table_name=name,
+        emb_initializer=emb_initializer,
+        device_vocabulary_size=device_vocabulary_size,
+        host_vocabulary_size=host_vocabulary_size,
+        ssd_vocabulary_size=ssd_vocabulary_size,
+        ssd_data_path=ssd_data_path,
+        init_param=init_param,
+        is_save=is_save,
+        all2all_gradients_op=all2all_gradients_op,
+        is_dp=is_dp,
+    )
 
-    logger.info("Create table: The table name is %s, the key type is %s, the embedding size is %s, "
-                "the embedding initializer is %s, the device/host/ssd vocabulary size is %s/%s/%s, "
-                "the ssd data path is %s, the init param is %s, the is_save is %s, the all2all_gradients_op is %s, "
-                "and the is_dp is %s.", name, key_dtype, dim_bytes / FLOAT32_BYTES, emb_initializer,
-                device_vocabulary_size, host_vocabulary_size, ssd_vocabulary_size, ssd_data_path, init_param,
-                is_save, all2all_gradients_op, is_dp)
+    logger.info(
+        "Create table: The table name is %s, the key type is %s, the embedding size is %s, "
+        "the embedding initializer is %s, the device/host/ssd vocabulary size is %s/%s/%s, "
+        "the ssd data path is %s, the init param is %s, the is_save is %s, the all2all_gradients_op is %s, "
+        "and the is_dp is %s.",
+        name,
+        key_dtype,
+        dim_bytes / FLOAT32_BYTES,
+        emb_initializer,
+        device_vocabulary_size,
+        host_vocabulary_size,
+        ssd_vocabulary_size,
+        ssd_data_path,
+        init_param,
+        is_save,
+        all2all_gradients_op,
+        is_dp,
+    )
 
-    # 动态扩容
+    if enable_merge:
+        if not ConfigInitializer.get_instance().use_dynamic_expansion:
+            raise RuntimeError("merge table function requires dynamic expansion mode")
+
+        union_key = UnionKey(
+            key_dtype=key_dtype,
+            emb_dim=dim.num_elements(),
+            initializer_type=type(emb_initializer),
+            is_save=is_save,
+            is_dp=is_dp,
+            init_param=init_param,
+            all2all_gradients_op=all2all_gradients_op,
+        )
+
+        return create_mergeable_embedding(name, config, union_key)
+
     if ConfigInitializer.get_instance().use_dynamic_expansion:
         return HBMDynamicSparseEmbeddingFactory().create_embedding(config)
-    # DDR or SSD
     if host_vocabulary_size > 0:
         return ExternalStorageSparseEmbeddingFactory().create_embedding(config)
-    # HBM
+
     return HBMSparseEmbeddingFactory().create_embedding(config)
 
 
-@para_checker_decorator(check_option_list=[
-    ("hashtable", ClassValidator, {"classes": (BaseSparseEmbedding,)}),
-    ("ids", ClassValidator, {"classes": (FeatureSpec, tf.Tensor)}),
-    ("is_train", ClassValidator, {"classes": (bool,)}),
-    ("send_count", ClassValidator, {"classes": (int, type(None))}),
-    ("send_count", OptionalIntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
-    ("name", ClassValidator, {"classes": (str, type(None))}),
-    ("name", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
-    ("modify_graph", ClassValidator, {"classes": (bool, type(None))}),
-    ("batch", ClassValidator, {"classes": (dict, type(None))}),
-    ("access_and_evict_config", ClassValidator, {"classes": (dict, type(None))}),
-    ("is_grad", ClassValidator, {"classes": (bool,)}),
-    ("serving_default_value", ClassValidator, {"classes": (tf.Tensor, type(None))})
-])
-def sparse_lookup(hashtable: BaseSparseEmbedding,
-                  ids: Union[FeatureSpec, tf.Tensor],
-                  send_count: Optional[int] = None,
-                  is_train: bool = True,
-                  name: Optional[str] = None,
-                  modify_graph: bool = False,
-                  batch: Optional[dict] = None,
-                  access_and_evict_config: Optional[dict] = None,
-                  is_grad: bool = True,
-                  serving_default_value: Optional[tf.Tensor] = None,
-                  **kwargs):
+@para_checker_decorator(
+    check_option_list=[
+        ("hashtable", ClassValidator, {"classes": (BaseSparseEmbedding,)}),
+        ("ids", ClassValidator, {"classes": (FeatureSpec, tf.Tensor)}),
+        ("is_train", ClassValidator, {"classes": (bool,)}),
+        ("send_count", ClassValidator, {"classes": (int, type(None))}),
+        ("send_count", OptionalIntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
+        ("name", ClassValidator, {"classes": (str, type(None))}),
+        ("name", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
+        ("modify_graph", ClassValidator, {"classes": (bool, type(None))}),
+        ("batch", ClassValidator, {"classes": (dict, type(None))}),
+        ("access_and_evict_config", ClassValidator, {"classes": (dict, type(None))}),
+        ("is_grad", ClassValidator, {"classes": (bool,)}),
+        ("serving_default_value", ClassValidator, {"classes": (tf.Tensor, type(None))}),
+    ]
+)
+def sparse_lookup(
+    hashtable: BaseSparseEmbedding,
+    ids: Union[FeatureSpec, tf.Tensor],
+    send_count: Optional[int] = None,
+    is_train: bool = True,
+    name: Optional[str] = None,
+    modify_graph: bool = False,
+    batch: Optional[dict] = None,
+    access_and_evict_config: Optional[dict] = None,
+    is_grad: bool = True,
+    serving_default_value: Optional[tf.Tensor] = None,
+    **kwargs,
+):
     """
     Args:
         hashtable: SparseEmbedding instance to be looked up
@@ -168,27 +253,35 @@ def sparse_lookup(hashtable: BaseSparseEmbedding,
     Returns: Tensor for lookup result
 
     """
+
     kwargs["is_grad"] = is_grad
-    # 一表多查时，只要有一次查询需要grad，那么这张表也需要grad；否则整张表都不需要gard，同时在全局unique情况下，C++也不需要send数据
-    hashtable.is_grad |= is_grad
     kwargs["is_train"] = is_train
     kwargs["name"] = name if name is not None else hashtable.get_default_lookup_name()
     kwargs["modify_graph"] = modify_graph
     kwargs["batch"] = batch
     kwargs["access_and_evict_config"] = access_and_evict_config
     kwargs["serving_default_value"] = serving_default_value
-    # 参数由内部创建，不使用外部入参，覆盖外部入参
+
+    # Parameters are supposed to be created innernally.
     kwargs["feature_spec_name_ids_dict"] = None
     kwargs["multi_lookup"] = False
     kwargs["lookup_ids"] = None
-    logger.info("Lookup: The table name is %s, and the value of `is_grad` in this lookup (lookup name is %s) is %s.",
-                hashtable.table_name, name, is_grad)
 
-    # 校验一表多查次数
+    # When performing multiple queries on a single table, if any one of the queries requires gradients (grad),
+    # then the entire table also needs gradients; otherwise, the whole table does not require gradients.
+    # Additionally, in the case of global uniqueness, backend does not need to send data.
+    hashtable.is_grad |= is_grad
+
+    logger.info(
+        "Lookup: The table name is %s, and the value of `is_grad` in this lookup (lookup name is %s) is %s.",
+        hashtable.table_name,
+        name,
+        is_grad,
+    )
+
     hashtable.increase_multi_lookup_times(is_train)
     check_emb_multi_lookup_times(hashtable.multi_lookup_times.get(is_train), hashtable.table_name)
 
-    # 对于向上找没有IteratorGetNext的孤儿ids需要标记，以便于后续ACGPushOpsToDataset工作
     if isinstance(ids, tf.Tensor):
         ids = mark_orphan_lookup_key(ids)
 
@@ -196,8 +289,10 @@ def sparse_lookup(hashtable: BaseSparseEmbedding,
         if isinstance(ids, FeatureSpec):
             # check whether the name of the table exists with FeatureSpec.
             if hashtable.table_name != ids.table_name:
-                raise ValueError(f"The table name '{ids.table_name}' specified by FeatureSpec is inconsistent with"
-                                 f" the SparseEmbedding table name '{hashtable.table_name}'.")
+                raise ValueError(
+                    f"The table name '{ids.table_name}' specified by FeatureSpec is inconsistent with"
+                    f" the SparseEmbedding table name '{hashtable.table_name}'."
+                )
 
             return hashtable.lookup_for_feat_spec(ids, send_count, **kwargs)
 
@@ -206,31 +301,3 @@ def sparse_lookup(hashtable: BaseSparseEmbedding,
 
         ConfigInitializer.get_instance().modify_graph = modify_graph
         return hashtable.lookup(ids, send_count, **kwargs)
-
-
-def mark_orphan_lookup_key(lookup_key: Tensor) -> Tensor:
-    graph_def = tf.compat.v1.get_default_graph().as_graph_def()
-    subgraph = tf.compat.v1.graph_util.extract_sub_graph(graph_def, [lookup_key.op.name])
-
-    for node in subgraph.node:
-        if node.op == AnchorIteratorOp.ITERATOR_GET_NEXT.value:
-            return lookup_key
-
-    name_prefix = constants.ORPHAN_LOOKUP_KEY_PREFIX
-    marked_lookup_key = tf.identity(lookup_key, name="{}/{}".format(name_prefix, lookup_key.op.name))
-
-    logger.info('Mark orphan lookup key %s as %s.', lookup_key, marked_lookup_key)
-    return marked_lookup_key
-
-
-def _check_and_set_vocab_size(
-    device_vocab_size: int, host_vocab_size: int, ssd_vocab_size: int
-) -> Tuple[int, int, int]:
-    if ConfigInitializer.get_instance().use_dynamic_expansion:
-        logger.info("In dyanmic expansion mode, DDR and SSD vocabulary size will be reset to 0 automatically!")
-        return (device_vocab_size, 0, 0)
-
-    if host_vocab_size == 0 and ssd_vocab_size > 0:
-        raise ValueError("set SSD vocabulary size must set DDR vocabulary size first")
-
-    return (device_vocab_size, host_vocab_size, ssd_vocab_size)

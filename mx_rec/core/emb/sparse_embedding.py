@@ -4,11 +4,10 @@
 
 import abc
 import math
-from typing import Optional, Union, Callable
+from typing import Callable, Optional, Union
 
 import tensorflow as tf
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
@@ -38,25 +37,32 @@ class SparseEmbedding(BaseSparseEmbedding):
             self._slice_host_vocabulary_size = math.ceil(self._host_vocabulary_size / self._rank_size)
             self._slice_ssd_vocabulary_size = math.ceil(self._ssd_vocabulary_size / self._rank_size)
 
-    def _get_update_grad(self, local_grad: tf.Tensor, result: dict,
-                         table: Union[tf.compat.v1.Variable, tf.Tensor]) -> Union[tf.IndexedSlices, tf.Tensor]:
-        return ops.IndexedSlices(values=local_grad,
-                                 indices=result.get("id_offsets"),
-                                 dense_shape=tf.shape(table))
+    def _get_update_grad(
+        self, local_grad: tf.Tensor, result: dict, table: Union[tf.compat.v1.Variable, tf.Tensor]
+    ) -> Union[tf.IndexedSlices, tf.Tensor]:
+        return ops.IndexedSlices(values=local_grad, indices=result.get("id_offsets"), dense_shape=tf.shape(table))
 
-    def _get_local_embeddings(self, table: Union[tf.compat.v1.Variable, tf.Tensor], result: dict,
-                              feature_spec: FeatureSpec, **kwargs) -> tf.Tensor:
+    def _get_local_embeddings(
+        self, table: Union[tf.compat.v1.Variable, tf.Tensor], result: dict, feature_spec: FeatureSpec, **kwargs
+    ) -> tf.Tensor:
         id_offsets_abs = tf.abs(result.get("id_offsets"))
         local_embeddings = tf.gather(table, id_offsets_abs, axis=0, name="gather_for_id_offsets")
-        local_embeddings = _set_specific_value_for_non_valid_key(result.get("id_offsets"),
-                                                                 local_embeddings,
-                                                                 feature_spec.access_threshold,
-                                                                 kwargs.get("serving_default_value"),
-                                                                 is_training=kwargs.get("is_train"))
+        local_embeddings = _set_specific_value_for_non_valid_key(
+            result.get("id_offsets"),
+            local_embeddings,
+            feature_spec.access_threshold,
+            kwargs.get("serving_default_value"),
+            is_training=kwargs.get("is_train"),
+        )
         return local_embeddings
 
-    def _get_sparse_forward_result(self, sparse_forward_fn: Callable, table: Union[tf.compat.v1.Variable, tf.Tensor],
-                                   result: dict, is_training: bool) -> tf.Tensor:
+    def _get_sparse_forward_result(
+        self,
+        sparse_forward_fn: Callable,
+        table: Union[tf.compat.v1.Variable, tf.Tensor],
+        result: dict,
+        is_training: bool,
+    ) -> tf.Tensor:
         return sparse_forward_fn(self._variable)
 
 
@@ -88,11 +94,13 @@ class ExternalStorageSparseEmbedding(SparseEmbedding):
         return self._host_vocabulary_size + self._ssd_vocabulary_size
 
 
-def _set_specific_value_for_non_valid_key(id_offsets: Optional[tf.Tensor],
-                                          embeddings: Optional[tf.Tensor],
-                                          access_threshold: Optional[int],
-                                          serving_default_value: Optional[tf.Tensor] = None,
-                                          is_training: bool = True) -> tf.Tensor:
+def _set_specific_value_for_non_valid_key(
+    id_offsets: Optional[tf.Tensor],
+    embeddings: Optional[tf.Tensor],
+    access_threshold: Optional[int],
+    serving_default_value: Optional[tf.Tensor] = None,
+    is_training: bool = True,
+) -> tf.Tensor:
     """
     将key为-1(无效值)的特征对应的emb置为0或者指定值.
 
