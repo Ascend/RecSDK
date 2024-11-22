@@ -35,14 +35,21 @@ from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.core.asc.merge_table import should_skip, check_dangling_table
 from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
 from mx_rec.util.log import logger
-from mx_rec.validator.emb_validator import check_emb_global_params
+from mx_rec.validator.emb_validator import check_padding_keys_global_params
 
 
 def generate_table_info_list():
     # table_name is corresponding to channel_name which is in used in operator gen_npu_ops.get_next
     table_info_list = []
 
-    check_emb_global_params()
+    # check whether DDR is enabled or disabled for all tables.
+    table_instance_dict = ConfigInitializer.get_instance().sparse_embed_config.table_instance_dict
+    is_hbm_list = [table_instance.is_hbm for table_instance in table_instance_dict.values()]
+    if len(set(is_hbm_list)) != 1:
+        raise ValueError(f"The DDR mode of all tables must be used or not used at the same time. However, is_hbm "
+                         f"of each table `{table_instance_dict.keys()}` is `{is_hbm_list}`.")
+
+    check_padding_keys_global_params()
 
     # 通过create_hash_optimizer创建optimizer_instance
     optimizer_instance = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
@@ -64,14 +71,6 @@ def generate_table_info_list():
         static_shape_rec_flag = ConfigInitializer.get_instance().use_static and table_instance.send_count > 0
         dynamic_shape_rec_flag = not ConfigInitializer.get_instance().use_static
         if static_shape_rec_flag or dynamic_shape_rec_flag:
-            logger.debug("The table slice device vocabulary size is: %s.", table_instance.slice_device_vocabulary_size)
-            logger.debug("The table slice host vocabulary size is: %s.", table_instance.slice_host_vocabulary_size)
-            logger.debug("The table slice ssd vocabulary size is: %s.", table_instance.slice_ssd_vocabulary_size)
-            logger.debug(
-                "EmbInfoParams: The table name is %s, and the value of `is_grad` in this table is %s.",
-                table_instance.table_name,
-                table_instance.is_grad,
-            )
             table_info = _generate_table_info(table_instance)
             table_info_list.append(table_info)
 
@@ -99,6 +98,27 @@ def _generate_table_info(table_instance: BaseSparseEmbedding) -> EmbInfo:
         [matched_emb_initializer(table_instance)] + matched_opt_slot_initializers(table_instance),
         table_instance.ssd_data_path,
         table_instance.padding_keys,
+    )
+    logger.info(
+        "The following parameters are passed to the backend, the `table_name` is %s, the `send_count` is %s, "
+        "the `emb_size` is %s, the `ext_emb_size` is %s, the `is_save` is %s, the `is_grad` is %s, the `is_dp` is %s, "
+        "the `padding_keys_mask` is %s, the `padding_keys` is %s, the `padding_keys_len` is %s, "
+        "the `slice_device_vocabulary_size` is %s, the `slice_host_vocabulary_size` is %s, "
+        "the `slice_ssd_vocabulary_size` is %s, and the `ssd_data_path` is %s.",
+        table_instance.table_name,
+        table_instance.send_count,
+        table_instance.emb_size,
+        table_instance.ext_emb_size,
+        table_instance.is_save,
+        table_instance.is_grad,
+        table_instance.is_dp,
+        table_instance.padding_keys_mask,
+        table_instance.padding_keys,
+        table_instance.padding_keys_len,
+        table_instance.slice_device_vocabulary_size,
+        table_instance.slice_host_vocabulary_size,
+        table_instance.slice_ssd_vocabulary_size,
+        table_instance.ssd_data_path,
     )
     return table_info
 

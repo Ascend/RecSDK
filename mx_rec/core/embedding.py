@@ -63,55 +63,92 @@ from mx_rec.validator.validator import (
 )
 
 
-@para_checker_decorator(check_option_list=[
-    ("key_dtype", OptionValidator, {"options": (tf.int64, tf.int32)}),
-    ("dim", OrValidator, {"options": [
-        (IntValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
-        (TensorShapeValidator, {"int_checker_args":{"min_value": 1, "max_value": 8192}},)
-    ]}),
-    ("name", StringValidator, {"min_len": 1, "max_len": 100}, ["check_string_length", "check_whitelist"]),
-    ("emb_initializer", ClassValidator, {"classes": (InitializerV1, InitializerV2)}),
-    (["ssd_vocabulary_size", "ssd_data_path", "host_vocabulary_size"], SSDFeatureValidator),
-    ("device_vocabulary_size", IntValidator, {"min_value": 1, "max_value": MAX_DEVICE_VOCABULARY_SIZE},
-     ["check_value"]),
-    ("host_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
-    ("ssd_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
-    ("ssd_data_path", ListValidator,
-     {"sub_checker": ClassValidator, "list_max_length": MAX_INT32, "sub_args": {"classes": str}},
-     ["check_list_length"]),
-    ("is_save", ClassValidator, {"classes": (bool,)}),
-    ("is_dp", ClassValidator, {"classes": (bool,)}),
-    ("init_param", FloatValidator, {"min_value": -10, "max_value": 10}, ["check_value"]),
-    ("all2all_gradients_op", OptionValidator, {"options": [i.value for i in list(All2allGradientsOp)]}),
-    ("enable_merge", ClassValidator, {"classes": (bool,)}),
-    ("padding_keys", OrValidator, {"options": [
-        (ClassValidator, {"classes": type(None)}),
-        (ClassValidator, {"classes": int}),
-        (AndValidator, {"options": [
-            (ClassValidator, {"classes": list}),
-            (ListValidator, {
-                "sub_checker": ClassValidator,
-                "list_max_length": MAX_INT32,
-                "list_min_length": 1,
-                "sub_args": {
-                    "classes": int
-                }
-            }, ["check_list_length"])
-        ]})
-    ]}),
-    ("padding_keys_mask", ClassValidator, {"classes": (bool,)}),
-    ("padding_keys_len", OrValidator, {"options": [
-        (ClassValidator, {"classes": type(None)}),
-        (IntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"])
-    ]}),
-    ("value_dtype", OptionValidator, {"options": [tf.float32]}),
-    ("shard_num", IntValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
-    ("fusion_optimizer_var", ClassValidator, {"classes": (bool,)}),
-    ("hashtable_threshold", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"])
-])
+@para_checker_decorator(
+    check_option_list=[
+        ("key_dtype", OptionValidator, {"options": (tf.int64, tf.int32)}),
+        (
+            "dim",
+            OrValidator,
+            {
+                "options": [
+                    (IntValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
+                    (
+                        TensorShapeValidator,
+                        {"int_checker_args": {"min_value": 1, "max_value": 8192}},
+                    ),
+                ]
+            },
+        ),
+        ("name", StringValidator, {"min_len": 1, "max_len": 100}, ["check_string_length", "check_whitelist"]),
+        ("emb_initializer", ClassValidator, {"classes": (InitializerV1, InitializerV2)}),
+        (["ssd_vocabulary_size", "ssd_data_path", "host_vocabulary_size"], SSDFeatureValidator),
+        (
+            "device_vocabulary_size",
+            IntValidator,
+            {"min_value": 1, "max_value": MAX_DEVICE_VOCABULARY_SIZE},
+            ["check_value"],
+        ),
+        ("host_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
+        ("ssd_vocabulary_size", IntValidator, {"min_value": 0, "max_value": MAX_VOCABULARY_SIZE}, ["check_value"]),
+        (
+            "ssd_data_path",
+            ListValidator,
+            {"sub_checker": ClassValidator, "list_max_length": MAX_INT32, "sub_args": {"classes": str}},
+            ["check_list_length"],
+        ),
+        ("is_save", ClassValidator, {"classes": (bool,)}),
+        ("is_dp", ClassValidator, {"classes": (bool,)}),
+        ("init_param", FloatValidator, {"min_value": -10, "max_value": 10}, ["check_value"]),
+        ("all2all_gradients_op", OptionValidator, {"options": [i.value for i in list(All2allGradientsOp)]}),
+        (
+            "padding_keys",
+            OrValidator,
+            {
+                "options": [
+                    (ClassValidator, {"classes": type(None)}),
+                    (ClassValidator, {"classes": int}),
+                    (
+                        AndValidator,
+                        {
+                            "options": [
+                                (ClassValidator, {"classes": list}),
+                                (
+                                    ListValidator,
+                                    {
+                                        "sub_checker": ClassValidator,
+                                        "list_max_length": MAX_INT32,
+                                        "list_min_length": 1,
+                                        "sub_args": {"classes": int},
+                                    },
+                                    ["check_list_length"],
+                                ),
+                            ]
+                        },
+                    ),
+                ]
+            },
+        ),
+        ("padding_keys_mask", ClassValidator, {"classes": (bool,)}),
+        (
+            "padding_keys_len",
+            OrValidator,
+            {
+                "options": [
+                    (ClassValidator, {"classes": type(None)}),
+                    (IntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
+                ]
+            },
+        ),
+        ("enable_merge", ClassValidator, {"classes": (bool,)}),
+        ("value_dtype", OptionValidator, {"options": [tf.float32]}),
+        ("shard_num", IntValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
+        ("fusion_optimizer_var", ClassValidator, {"classes": (bool,)}),
+        ("hashtable_threshold", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
+    ]
+)
 def create_table(
     key_dtype: tf.DType,
-    dim: tf.TensorShape,
+    dim: Union[tf.TensorShape, int],
     name: str,
     emb_initializer: Union[InitializerV1, InitializerV2],
     device_vocabulary_size: int = 1,
@@ -149,7 +186,7 @@ def create_table(
         padding_keys: Upper-layer services must ensure that the padding keys are included in the incoming ids.
         padding_keys_mask: Whether the embedding value corresponding to the padding key is updated;
                            `True` indicates that the embedding value is not updated.
-        padding_keys_len: Indicates the feature length of the corresponding ids. This parameter is mandatory
+        padding_keys_len: indicates the feature length of the corresponding ids. This parameter is mandatory
                           if padding keys are specified.
         value_dtype: the type of the value tensors. only tf.float32 if supported for now.
         shard_num: embedding partition number
@@ -186,7 +223,7 @@ def create_table(
         "Create table: The table name is %s, the key type is %s, the embedding size is %s, "
         "the embedding initializer is %s, the device/host/ssd vocabulary size is %s/%s/%s, "
         "the ssd data path is %s, the init param is %s, the is_save is %s, the all2all_gradients_op is %s, "
-        "the padding keys mask is %s, the padding keys is %s, the padding len is %s,  and the is_dp is %s.",
+        "the padding keys mask is %s, the padding keys is %s, the padding keys len is %s, and the is_dp is %s.",
         name,
         key_dtype,
         dim_bytes / FLOAT32_BYTES,
@@ -216,6 +253,7 @@ def create_table(
             is_dp=is_dp,
             init_param=init_param,
             all2all_gradients_op=all2all_gradients_op,
+            padding_keys_mask=padding_keys_mask,
         )
 
         return create_mergeable_embedding(name, config, union_key)
@@ -321,7 +359,7 @@ def sparse_lookup(
 
     with tf.compat.v1.variable_scope("{0}//{1}".format(hashtable.table_name, kwargs.get("name"))):
         if isinstance(ids, FeatureSpec):
-            # check whether the name of the table exists with FeatureSpec.
+            # Check whether the name of the table exists with FeatureSpec.
             if hashtable.table_name != ids.table_name:
                 raise ValueError(
                     f"The table name '{ids.table_name}' specified by FeatureSpec is inconsistent with"

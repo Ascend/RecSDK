@@ -33,7 +33,7 @@ def check_emb_init_params(is_hbm: bool, embedding_size: tf.TensorShape):
 
 
 def check_emb_lookup_params(
-    table_params: dict, feature_spec: Union[tf.Tensor, FeatureSpec], send_count: Optional[int], is_training: bool
+        table_params: dict, feature_spec: Union[tf.Tensor, FeatureSpec], send_count: Optional[int], is_training: bool
 ):
     """
     校验稀疏表此次lookup的参数.
@@ -115,9 +115,9 @@ def check_emb_multi_lookup_times(lookup_times: int, table_name: str):
 
 
 def check_and_format_emb_padding_keys(
-    padding_keys: Optional[Union[int, List[int]]],
-    padding_keys_mask: bool,
-    padding_keys_len: Optional[int],
+        padding_keys: Optional[Union[int, List[int]]],
+        padding_keys_mask: bool,
+        padding_keys_len: Optional[int],
 ) -> List[int]:
     """
     Check and set the padding keys parameters.
@@ -153,24 +153,24 @@ def check_and_format_emb_padding_keys(
     return padding_keys
 
 
-def check_emb_global_params():
+def check_padding_keys_global_params():
     """
-    Check the global parameters of the embedding.
+    Check the global parameters of the padding keys.
 
     Returns: None
 
     """
 
-    # Check whether DDR is enabled or disabled for all tables.
+    padding_keys_mask_list = []
     table_instance_dict = ConfigInitializer.get_instance().sparse_embed_config.table_instance_dict
-    is_hbm_list = [table_instance.is_hbm for table_instance in table_instance_dict.values()]
-    if not all(is_hbm_list):
-        raise RuntimeError(
-            f"The DDR mode of all tables must be used or not used at the same time. However, is_hbm "
-            f"of each table `{table_instance_dict.keys()}` is `{is_hbm_list}`."
-        )
+    for _, table_instance in table_instance_dict.items():
+        if table_instance.padding_keys_mask and table_instance.is_dp:
+            raise RuntimeError("The padding keys mode does not yet support dp mode.")
 
-    # Check padding keys.
-    padding_keys_mask_list = [table_instance.padding_keys_mask for table_instance in table_instance_dict.values()]
+        if table_instance.padding_keys_mask and not table_instance.is_grad:
+            raise RuntimeError("The padding keys mode should not be used together with the no grad mode.")
+
+        padding_keys_mask_list.append(table_instance.padding_keys_mask)
+
     if all(padding_keys_mask_list) and not ConfigInitializer.get_instance().use_static:
         raise RuntimeError("When the padding keys mask of all tables is True, it should be set to static shape mode.")

@@ -15,7 +15,6 @@
 # ==============================================================================
 
 import numpy as np
-
 from mx_rec.util.communication.hccl_ops import get_rank_id
 
 from demo_logger import logger
