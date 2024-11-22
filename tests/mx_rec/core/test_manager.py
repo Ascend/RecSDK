@@ -52,7 +52,7 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
                 "test_table2": test_table2
             }
 
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(ValueError):
                 generate_table_info_list()
 
     @mock.patch.multiple("mx_rec.core.asc.manager",

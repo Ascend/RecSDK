@@ -163,7 +163,7 @@ class CustomizedOptimizer:
         Set the gradient of the padding keys to 0 on the embedding.
 
         Args:
-            var: It's tf.Tensor in dynamic expansion mode and tf.Variable in normal mode(HBM/DDR/SSD).
+            var: It's tf.Tensor in dynamic expansion mode and tf.Variable in normal mode.
             grad_value: The gradient of the embedding.
 
         Returns: The embedding gradient after mask.

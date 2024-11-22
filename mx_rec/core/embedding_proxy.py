@@ -32,6 +32,7 @@ UnionKey = collections.namedtuple(
         "is_dp",
         "init_param",
         "all2all_gradients_op",
+        "padding_keys_mask",
     ],
 )
 
@@ -77,7 +78,7 @@ class MergeableEmbeddingTableProxy:
         This function will modify `table_name` in config dict, all mergeable table name during
         graph building process should be managed by this proxy class. Besides, no mergeable embedding
         table instance should be created directly, all meregable table instance should be created
-        through proxy class. 
+        through proxy class.
 
         There are at least two mapping relation have to be maintained during graph building process:
             1. union key -> mergeable table instance.
@@ -101,7 +102,7 @@ class MergeableEmbeddingTableProxy:
         config["table_name"] = self._gen_mergeable_table_name()
 
         mergeable_table = MergeableSparseEmbedding(config)
-        mergeable_table.merge_in(small_table_name)
+        mergeable_table.merge_in(small_table_name, config)
 
         self._mtables.append(mergeable_table)
         self._ukey_to_mtable[union_key] = mergeable_table
@@ -127,7 +128,7 @@ class MergeableEmbeddingTableProxy:
             raise TypeError("not supported key type => '{}', expected '{}' or 'str'".format(invalid_type, ukey_type))
 
     def join_mergeable_table(
-        self, mergeable_table: MergeableSparseEmbedding, small_table_name: str
+        self, mergeable_table: MergeableSparseEmbedding, small_table_name: str, config: Dict[str, Any]
     ) -> MergeableSparseEmbedding:
         if small_table_name in mergeable_table.merged_small_tables:
             raise ValueError(
@@ -136,7 +137,7 @@ class MergeableEmbeddingTableProxy:
                 )
             )
 
-        mergeable_table.merge_in(small_table_name)
+        mergeable_table.merge_in(small_table_name, config)
         self._stable_to_mtable[small_table_name] = mergeable_table
         logger.info(
             "Mergeable embedding table '{}' has merged in a new small table '{}'.".format(
@@ -158,7 +159,7 @@ def create_mergeable_embedding(small_table_name: str, config: Dict[str, Any], un
 
     mergeable_table = mtable_proxy.find_mergeable_table(union_key)
     if mergeable_table:
-        mtable_proxy.join_mergeable_table(mergeable_table, small_table_name)
+        mtable_proxy.join_mergeable_table(mergeable_table, small_table_name, config)
     else:
         mergeable_table = mtable_proxy.create_mergeable_table(union_key, small_table_name, config)
 

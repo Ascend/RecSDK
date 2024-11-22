@@ -51,6 +51,7 @@ class CreateMergeableEmbeddingTestCase(unittest.TestCase):
             is_dp=False,
             init_param=1.0,
             all2all_gradients_op=constants.All2allGradientsOp.SUM_GRADIENTS.value,
+            padding_keys_mask=True,
         )
 
     def tearDown(self) -> None:

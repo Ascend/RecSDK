@@ -171,6 +171,10 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
         learning_rate = tf.divide(temp_lr * math_ops.sqrt(1 - power_b2), (1 - power_b1))
 
         if self.use_fusion_optim:
+            table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(var)
+            if table_instance.padding_keys_mask:
+                raise RuntimeError("The padding keys mode does not yet support fusion optimizer.")
+
             nd_indices = tf.expand_dims(indices, 1)
             slot_m = self.get_slot(var, "m")
             slot_v = self.get_slot(var, "v")

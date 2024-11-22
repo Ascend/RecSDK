@@ -158,31 +158,42 @@ class TestCreateTableFunc(unittest.TestCase):
             )
             self.assertIsInstance(test_table, ExternalStorageSparseEmbedding)
 
-    @mock.patch.multiple("mx_rec.core.emb.base_sparse_embedding",
-                         get_rank_size=mock.MagicMock(return_value=8),
-                         get_rank_id=mock.MagicMock(return_value=0),
-                         get_device_id=mock.MagicMock(return_value=0))
+    @mock.patch.multiple(
+        "mx_rec.core.emb.base_sparse_embedding",
+        get_rank_size=mock.MagicMock(return_value=8),
+        get_rank_id=mock.MagicMock(return_value=0),
+        get_device_id=mock.MagicMock(return_value=0),
+    )
+    @mock.patch("mx_rec.core.util.ConfigInitializer")
     @mock.patch("mx_rec.core.embedding.ConfigInitializer")
     @mock.patch("mx_rec.core.emb.base_sparse_embedding.ConfigInitializer")
     @mock.patch("mx_rec.validator.emb_validator.ConfigInitializer")
-    def test_create_table_with_padding_keys(self, embedding_config_initializer,
-                                            base_sparse_embedding_config_initializer, emb_validator_config_initializer):
+    def test_create_table_with_padding_keys(
+        self,
+        util_config_initializer,
+        embedding_config_initializer,
+        base_sparse_embedding_config_initializer,
+        emb_validator_config_initializer,
+    ):
         from mx_rec.core.embedding import create_table
 
         with tf.Graph().as_default():
             mock_config_initializer = MockConfigInitializer(use_dynamic_expansion=True)
             mock_config_initializer.use_static = True
+            util_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
             embedding_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
             base_sparse_embedding_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
             emb_validator_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
-            test_table = create_table(key_dtype=tf.int64,
-                                      dim=8,
-                                      name='test_table',
-                                      emb_initializer=tf.compat.v1.truncated_normal_initializer(),
-                                      padding_keys=666,
-                                      padding_keys_len=4096,
-                                      padding_keys_mask=True)
+            test_table = create_table(
+                key_dtype=tf.int64,
+                dim=8,
+                name="test_table",
+                emb_initializer=tf.compat.v1.truncated_normal_initializer(),
+                padding_keys=666,
+                padding_keys_len=4096,
+                padding_keys_mask=True,
+            )
             self.assertIsInstance(test_table, HBMDynamicSparseEmbedding)
 
 
