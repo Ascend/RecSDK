@@ -3,7 +3,7 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
 
 import abc
-from typing import Optional, Union, Callable
+from typing import Union, Callable
 
 import tensorflow as tf
 
@@ -69,4 +69,3 @@ class HBMDynamicSparseEmbedding(DynamicSparseEmbedding):
     def _set_slice_vocab_size(self):
         # 动态扩容模式下，保留device侧variable，大小设置为1
         self._slice_device_vocabulary_size = 1
-

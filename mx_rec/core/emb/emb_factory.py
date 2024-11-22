@@ -6,48 +6,55 @@ import abc
 
 from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
 from mx_rec.core.emb.dynamic_sparse_embedding import HBMDynamicSparseEmbedding
-from mx_rec.core.emb.sparse_embedding import HBMSparseEmbedding, ExternalStorageSparseEmbedding
+from mx_rec.core.emb.mergeable_sparse_embedding import MergeableSparseEmbedding
+from mx_rec.core.emb.sparse_embedding import (
+    ExternalStorageSparseEmbedding,
+    HBMSparseEmbedding,
+)
+from mx_rec.util.singleton import singleton
 
 
 class BaseSparseEmbeddingFactory(metaclass=abc.ABCMeta):
     """
-    创建Embedding的工厂基类.
+    Base class for sparse embedding table creation.
     """
 
     @abc.abstractmethod
     def create_embedding(self, config: dict) -> BaseSparseEmbedding:
-        """
-        创建embedding类.
+        """Method used for the practical creation process.
 
         Args:
-            config: 创建embedding所需的参数字典.
+            config: Params for embedding table creation.
 
-        Returns: embedding类
+        Returns: Sparse embedding table.
         """
         pass
 
 
+@singleton
 class HBMDynamicSparseEmbeddingFactory(BaseSparseEmbeddingFactory):
     """
-    HBMDynamicSparseEmbedding工厂.
+    Embedding table factory using pure HBM storage with dynamic expansion.
     """
 
     def create_embedding(self, config: dict) -> HBMDynamicSparseEmbedding:
         return HBMDynamicSparseEmbedding(config)
 
 
+@singleton
 class HBMSparseEmbeddingFactory(BaseSparseEmbeddingFactory):
     """
-    HBMSparseEmbedding工厂.
+    Embedding table factory using pure HBM storage without dynamic expansion.
     """
 
     def create_embedding(self, config: dict) -> HBMSparseEmbedding:
         return HBMSparseEmbedding(config)
 
 
+@singleton
 class ExternalStorageSparseEmbeddingFactory(BaseSparseEmbeddingFactory):
     """
-    ExternalStorageSparseEmbedding工厂.
+    Embedding table factory using DDR and SSD storage, which regrad HBM as high speed cache.
     """
 
     def create_embedding(self, config: dict) -> ExternalStorageSparseEmbedding:
