@@ -22,11 +22,11 @@
 demo样例无需从其他地方下载数据集，在demo样例中mxRec会自动生成数据集，详情见dataset.py和random_data_generator.py。
 
 ## 2.准备运行环境
-运行环境可以参考[mxRec用户指南](https://www.hiascend.com/document/detail/zh/mind-sdk/60rc2/mxRec/mxrecug/mxrecug_0008.html)
+运行环境可以参考[mxRec用户指南](https://www.hiascend.com/document/detail/zh/mind-sdk/60rc3/mxRec/mxrecug/mxrecug_0004.html)
 “安装部署”章节进行准备。
 
 ## 3.安装mxRec
-mxRec软件包可以通过[mxRec用户指南](https://www.hiascend.com/document/detail/zh/mind-sdk/60rc2/mxRec/mxrecug/mxrecug_0008.html)
+mxRec软件包可以通过[mxRec用户指南](https://www.hiascend.com/document/detail/zh/mind-sdk/60rc3/mxRec/mxrecug/mxrecug_0004.html)
 “安装部署”>“环境准备”>“获取软件包”章节提供的链接进行下载，选择自己需要的架构（x86或者arm）的mxRec包。下载完成之后，将mxRec包解压，进入解压后的目录（mindxsdk-mxrec）
 如下：
 ```shell

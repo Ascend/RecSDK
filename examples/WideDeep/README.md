@@ -359,7 +359,7 @@ my_model = MyModel()
 ***
 #### 3. main_mxrec.py
 
-`main_mxrec.py`文件中的函数如下所示。`make_batch_and_iterator()`是读取数据集以及对数据作处理的函数；`model_forward()`是前向过程函数；`evaluate()`与`evaluate_fix()`是评估函数，用于计算测试集的AUC与loss。`add_timestamp_func()`与特征准入、淘汰有关；`create_feature_spec_list()`是生成元素为FeatureSpec类的列表的函数，其返回值是`make_batch_and_iterator()`所需的传参。特征准入与淘汰、FeatureSpec类、自动改图等解释见[mxRec用户指南](https://www.hiascend.com/document/detail/zh/mind-sdk/60rc2/mxRec/mxrecug/mxrecug_0004.html)。  
+`main_mxrec.py`文件中的函数如下所示。`make_batch_and_iterator()`是读取数据集以及对数据作处理的函数；`model_forward()`是前向过程函数；`evaluate()`与`evaluate_fix()`是评估函数，用于计算测试集的AUC与loss。`add_timestamp_func()`与特征准入、淘汰有关；`create_feature_spec_list()`是生成元素为FeatureSpec类的列表的函数，其返回值是`make_batch_and_iterator()`所需的传参。特征准入与淘汰、FeatureSpec类、自动改图等解释见[mxRec用户指南](https://www.hiascend.com/document/detail/zh/mind-sdk/60rc3/mxRec/mxrecug/mxrecug_0004.html)。  
 
 - `add_timestamp_func()`
 - `make_batch_and_iterator()`
