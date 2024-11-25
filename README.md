@@ -20,13 +20,13 @@ mxRec作为面向互联网市场搜索推荐广告的应用使能SDK产品，对
 
 ## 版本配套
 
-| 软件                | 版本            | 下载链接                                                                                                                   |
-|-------------------|---------------|------------------------------------------------------------------------------------------------------------------------|
-| MindX Rec SDK     | 6.0.RC2       | https://www.hiascend.com/zh/developer/download/community/result?module=sdk+cann                                        |
-| CANN              | 8.0.RC2.beta1 | https://www.hiascend.com/zh/developer/download/community/result?module=sdk+cann                                        |
-| TensorFlowAdapter | 8.0.RC2.beta1 | https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=8.0.RC2.beta1&cann=8.0.RC2.beta1        |
-| Driver            | 23.0.0        | https://www.hiascend.com/hardware/firmware-drivers/community?product=4&model=26&cann=8.0.RC2.beta1&driver=1.0.25.alpha |
-| Firmware          | 23.0.0        | https://www.hiascend.com/hardware/firmware-drivers/community?product=4&model=26&cann=8.0.RC2.beta1&driver=1.0.25.alpha |
+| 软件                | 版本               | 下载链接                                                                                                                    |
+|-------------------|------------------|-------------------------------------------------------------------------------------------------------------------------|
+| MindX Rec SDK     | 6.0.RC3          | https://gitee.com/ascend/mxrec/releases/tag/6.0.RC3                                                                     |
+| CANN              | 8.0.RC3.alpha003 | https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=8.0.RC3.alpha003&cann=8.0.RC3.alpha003   |
+| TensorFlowAdapter | 8.0.RC3.alpha003 | https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=8.0.RC3.alpha003&cann=8.0.RC3.alpha003   |
+| Driver            | 23.0.0           | https://www.hiascend.com/hardware/firmware-drivers/community?product=4&model=26&cann=All&driver=1.0.25.alpha            |
+| Firmware          | 23.0.0           | https://www.hiascend.com/hardware/firmware-drivers/community?product=4&model=26&cann=All&driver=1.0.25.alpha            |
 
 ## 支持的产品型号
 - Atlas 200T A2 Box16
@@ -161,7 +161,7 @@ bash test_ut.sh tf2
 
 ## 使用指导
 
-mxRec所支持的使用环境、功能特性、API接口与使用样例请参考[mxRec用户指南](https://www.hiascend.com/document/detail/zh/mind-sdk/60rc2/mxRec/mxrecug/mxrecug_0004.html)。
+mxRec所支持的使用环境、功能特性、API接口与使用样例请参考[mxRec用户指南](https://www.hiascend.com/document/detail/zh/mind-sdk/60rc3/mxRec/mxrecug/mxrecug_0004.html)。
 
 ## 样例
 
