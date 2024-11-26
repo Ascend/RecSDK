@@ -140,8 +140,8 @@ public:
 
     void ReceiveKeyThread(const EmbInfo& embInfo);
 
-GTEST_PRIVATE :
-    volatile bool mutexDestroy{false};  // LookupAndSend & ReceiveAndUpdate Condition_Variable_Wait stop.
+    GTEST_PRIVATE
+        : volatile bool mutexDestroy{false};  // LookupAndSend & ReceiveAndUpdate Condition_Variable_Wait stop.
     std::mutex lookUpAndSendBatchIdMtx[MAX_CHANNEL_NUM];  // train and eval
     std::mutex receiveAndUpdateBatchIdMtx[MAX_CHANNEL_NUM];
 
@@ -250,6 +250,11 @@ private:
 
     void SendUniqKeysAndRestoreVecHBM(const EmbBaseInfo& info, const unique_ptr<vector<Tensor>>& infoVecs,
                                       bool isGrad) const;
+
+    void SendPaddingKeysMaskVecHBM(const EmbBaseInfo& info, const unique_ptr<vector<Tensor>>& infoVecs,
+                                   bool isGrad) const;
+
+    void SendPaddingKeysMaskVecDDRL3(const EmbBaseInfo& info, const vector<uint64_t>& offsetKeys) const;
 
     void InitEmbeddingCache(const vector<EmbInfo>& embInfos);
 

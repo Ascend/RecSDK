@@ -40,7 +40,6 @@ See the License for the specific language governing permissions and
 #include "utils/logger.h"
 #include "utils/error.h"
 
-
 namespace MxRec {
 #define MGMT_CPY_THREADS 4
 #define PROFILING
@@ -203,6 +202,8 @@ struct EmbBaseInfo {
     int channelId;
     string name;
     bool isDp{false};
+    bool paddingKeysMask{false};
+    std::vector<int64_t> paddingKeys;
 };
 
 enum TensorIndex : uint32_t {
@@ -378,17 +379,19 @@ struct EmbInfoParams {
     bool isSave;
     bool isGrad;
     bool isDp;
+    bool paddingKeysMask;
     EmbInfoParams() = default;
 
     EmbInfoParams(const std::string& name, int sendCount, int embeddingSize, int extEmbeddingSize, bool isSave,
-                  bool isGrad, bool isDp)
+                  bool isGrad, bool isDp, bool paddingKeysMask)
         : name(name),
           sendCount(sendCount),
           embeddingSize(embeddingSize),
           extEmbeddingSize(extEmbeddingSize),
           isSave(isSave),
           isGrad(isGrad),
-          isDp(isDp)
+          isDp(isDp),
+          paddingKeysMask(paddingKeysMask)
     {
     }
 };
@@ -397,7 +400,8 @@ struct EmbInfo {
     EmbInfo() = default;
 
     EmbInfo(const EmbInfoParams& embInfoParams, std::vector<size_t> vocabsize,
-            std::vector<EmbCache::InitializerInfo> initializeInfos, std::vector<std::string> ssdDataPath)
+            std::vector<EmbCache::InitializerInfo> initializeInfos, std::vector<std::string> ssdDataPath,
+            std::vector<int64_t> paddingKeys)
         : name(embInfoParams.name),
           sendCount(embInfoParams.sendCount),
           embeddingSize(embInfoParams.embeddingSize),
@@ -405,11 +409,13 @@ struct EmbInfo {
           isSave(embInfoParams.isSave),
           isGrad(embInfoParams.isGrad),
           isDp(embInfoParams.isDp),
+          paddingKeysMask(embInfoParams.paddingKeysMask),
           devVocabSize(vocabsize[0]),
           hostVocabSize(vocabsize[1]),
           ssdVocabSize(vocabsize[SSD_SIZE_INDEX]),
           initializeInfos(std::move(initializeInfos)),
-          ssdDataPath(std::move(ssdDataPath))
+          ssdDataPath(std::move(ssdDataPath)),
+          paddingKeys(std::move(paddingKeys))
     {
     }
 
@@ -420,11 +426,13 @@ struct EmbInfo {
     bool isSave;
     bool isGrad;
     bool isDp;
+    bool paddingKeysMask;
     size_t devVocabSize;
     size_t hostVocabSize;
     size_t ssdVocabSize;
     std::vector<EmbCache::InitializerInfo> initializeInfos;
     std::vector<std::string> ssdDataPath;
+    std::vector<int64_t> paddingKeys;
 };
 
 struct HostEmbTable {

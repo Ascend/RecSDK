@@ -24,6 +24,26 @@ See the License for the specific language governing permissions and
 namespace EmbCache {
 using KeyOffsetPair = std::pair<std::vector<uint64_t>, std::vector<uint64_t>>;
 
+struct EmbBaseInfo {
+    EmbBaseInfo(int batchId, int channelId, std::string name, bool isDp, bool paddingKeysMask,
+                std::vector<int64_t> paddingKeys)
+        : batchId(batchId),
+          channelId(channelId),
+          name(name),
+          isDp(isDp),
+          paddingKeysMask(paddingKeysMask),
+          paddingKeys(paddingKeys)
+    {
+    }
+
+    int batchId;
+    int channelId;
+    std::string name;
+    bool isDp{false};
+    bool paddingKeysMask{false};
+    std::vector<int64_t> paddingKeys;
+};
+
 class Initializer {
 public:
     Initializer() = default;
@@ -180,13 +200,13 @@ public:
     /* *
      * 查找当前keys对应的offsets并将本不存在与offsetMapper中的keys插入到offsetMapper中并得到其偏移值offsets，
      * 并且当offsetMapper可存放空间不足时，释放可swapOut的keys，获取当前需要被换入换出的keys和offsets的pair
-     * @Param tableName: 表名
+     * @Param info: The EmbBaseInfo instance.
      * @Param keys: 当前batch所有unique的keys
      * @Param swapInKoPair: 输出参数，需要换入的Key-offset pair
      * @Param swapOutKoPair: 输出参数，需要换出的Key-offset pair
      * @Return errorCode
      */
-    virtual int GetSwapPairsAndKey2Offset(const std::string& tableName, std::vector<uint64_t>& keys,
+    virtual int GetSwapPairsAndKey2Offset(const EmbBaseInfo& info, std::vector<uint64_t>& keys,
                                           KeyOffsetPair& swapInKoPair, KeyOffsetPair& swapOutKoPair) = 0;
 
     /* *
@@ -338,6 +358,13 @@ public:
      * @Return errorCode
      */
     virtual int ResetOffsetMappers() = 0;
+
+    /* *
+     * Gets the padding keys offset of the table.
+     * @Param tableName: The embedding table name.
+     * @Return The padding keys offset.
+     */
+    virtual std::unordered_set<uint64_t> GetPaddingKeysOffset(const std::string& tableName) = 0;
 
 private:
     static constexpr uint32_t DEFAULE_LOOKUP_THREAD_NUM = 4;

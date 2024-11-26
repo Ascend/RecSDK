@@ -253,3 +253,19 @@ void EmbeddingTable::CheckReadKeyFileBytes(ssize_t readReturnCode, const string&
     }
 }
 
+unordered_set<int64_t> EmbeddingTable::GetPaddingKeysOffset()
+{
+    return paddingKeysOffset;
+}
+
+void EmbeddingTable::RecordPaddingKeysOffset(int channel, emb_key_t key, int64_t offset)
+{
+    if (channel != TRAIN_CHANNEL_ID || !embInfo_.paddingKeysMask) {
+        return;
+    }
+
+    auto it = std::find(embInfo_.paddingKeys.begin(), embInfo_.paddingKeys.end(), key);
+    if (it != embInfo_.paddingKeys.end()) {
+        paddingKeysOffset.insert(offset);
+    }
+}

@@ -538,7 +538,8 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId, TaskType type)
 
     std::vector<std::future<bool>> remainResult;
     for (const auto& embInfo : mgmtEmbInfo) {
-        EmbBaseInfo info = {.batchId = batchId, .channelId = channelId, .name = embInfo.name, .isDp = embInfo.isDp};
+        EmbBaseInfo info = {.batchId = batchId, .channelId = channelId, .name = embInfo.name, .isDp = embInfo.isDp,
+                            .paddingKeysMask = embInfo.paddingKeysMask, .paddingKeys = embInfo.paddingKeys};
         switch (type) {
             case TaskType::HBM: {
                 std::future<bool> remainBatch = threadPool->enqueueWithFuture(
@@ -630,6 +631,8 @@ bool HybridMgmt::ProcessEmbInfoHBM(const EmbBaseInfo& info, bool isGrad)
         (info.isDp && info.channelId == TRAIN_CHANNEL_ID)) {
         SendUniqKeysAndRestoreVecHBM(info, infoVecs, isGrad);
     }
+
+    SendPaddingKeysMaskVecHBM(info, infoVecs, isGrad);
 
     // 发送恢复向量和hotPos
     TimeCost sendRestoreSyncTC;
@@ -2171,6 +2174,11 @@ void HybridMgmt::SendLookupOffsets(const EmbBaseInfo& info, vector<uint64_t>& un
     hdTransfer->Send(TransferChannel::LOOKUP, {Vec2TensorI32(lookupOffsets)}, info.channelId, info.name, info.batchId);
     LOG_DEBUG("table:{}, channelId:{}, batchId:{}, send lookupOffset, sendLookupOffsetsTC(ms):{}", info.name,
               info.channelId, info.batchId, sendLookupOffsetsTC.ElapsedMS());
+
+    // The first-order optimizer does not have a second USS, which needs to mask the lookupOffsets.
+    if (!mgmtRankInfo.useSumSameIdGradients) {
+        SendPaddingKeysMaskVecDDRL3(info, lookupOffsets);
+    }
 }
 
 void HybridMgmt::SendGlobalUniqueVec(const EmbBaseInfo& info, vector<uint64_t>& uniqueKeys,
@@ -2193,6 +2201,9 @@ void HybridMgmt::SendGlobalUniqueVec(const EmbBaseInfo& info, vector<uint64_t>& 
                      info.batchId);
     LOG_DEBUG("table:{}, channelId:{}, batchId:{}, sendRestoreVecSecSyncTC(ms):{}", info.name, info.channelId,
               info.batchId, sendRestoreVecSecSyncTC.ElapsedMS());
+
+    // The second-order optimizer has a second USS, which needs to mask the uniqueKeys.
+    SendPaddingKeysMaskVecDDRL3(info, uniqueKeys);
 }
 
 void HybridMgmt::CheckLookupAddrSuccessDDR()
@@ -2211,7 +2222,9 @@ void HybridMgmt::GetSwapPairsAndKey2Offset(const EmbBaseInfo& info, vector<uint6
                                            pair<vector<uint64_t>, vector<uint64_t>>& swapOutKoPair)
 {
     TimeCost GetSwapPairsAndKey2OffsetTC;
-    int swapInCode = embCache->GetSwapPairsAndKey2Offset(info.name, uniqueKeys, swapInKoPair, swapOutKoPair);
+    EmbCache::EmbBaseInfo embBaseInfo(info.batchId, info.channelId, info.name, info.isDp, info.paddingKeysMask,
+                                      info.paddingKeys);
+    int swapInCode = embCache->GetSwapPairsAndKey2Offset(embBaseInfo, uniqueKeys, swapInKoPair, swapOutKoPair);
     if (swapInCode != H_OK) {
         auto error = Error(ModuleName::M_OCK_CTR, ErrorType::UNKNOWN,
                            StringFormat("Table:%s, [GetSwapPairsAndKey2Offset] failed! error code:%d.",
@@ -2329,4 +2342,39 @@ void HybridMgmt::InitPipelineMutexAndCV(const string& embTableName)
             lastRecvFinishCV[key];
         }
     }
+}
+
+void HybridMgmt::SendPaddingKeysMaskVecHBM(const EmbBaseInfo& info, const unique_ptr<vector<Tensor>>& infoVecs,
+                                           bool isGrad) const
+{
+    if (!isGrad || info.channelId != TRAIN_CHANNEL_ID || !info.paddingKeysMask) {
+        return;
+    }
+
+    TimeCost sendMaskSyncTC;
+    hdTransfer->Send(TransferChannel::MASK, {infoVecs->back()}, info.channelId, info.name, info.batchId);
+    infoVecs->pop_back();
+    LOG_DEBUG("In SendPaddingKeysMaskVecHBM, table:{}, channelId:{}, batchId:{}, sendMaskSyncTC(ms):{}.", info.name,
+              info.channelId, info.batchId, sendMaskSyncTC.ElapsedMS());
+}
+
+void HybridMgmt::SendPaddingKeysMaskVecDDRL3(const EmbBaseInfo& info, const vector<uint64_t>& offsetKeys) const
+{
+    if (info.channelId != TRAIN_CHANNEL_ID || !info.paddingKeysMask) {
+        return;
+    }
+
+    TimeCost sendMaskSyncTC;
+    auto paddingKeysOffset = embCache->GetPaddingKeysOffset(info.name);
+    std::vector<int64_t> paddingKeysMask(offsetKeys.size(), 1);
+    for (size_t i = 0; i < offsetKeys.size(); i++) {
+        uint64_t key = offsetKeys[i];
+        if (paddingKeysOffset.find(key) != paddingKeysOffset.end()) {
+            paddingKeysMask[i] = 0;
+        }
+    }
+
+    hdTransfer->Send(TransferChannel::MASK, {Vec2TensorI32(paddingKeysMask)}, info.channelId, info.name, info.batchId);
+    LOG_DEBUG("In SendPaddingKeysMaskVecDDRL3, table:{}, channelId:{}, batchId:{}, sendMaskSyncTC(ms):{}.", info.name,
+              info.channelId, info.batchId, sendMaskSyncTC.ElapsedMS());
 }

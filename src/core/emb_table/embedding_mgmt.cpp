@@ -82,6 +82,11 @@ KeyOffsetMemT EmbeddingMgmt::GetKeyOffsetMap()
     return keyOffsetMap;
 }
 
+unordered_set<int64_t> EmbeddingMgmt::GetPaddingKeysOffset(const std::string& name)
+{
+    return embeddings[name]->GetPaddingKeysOffset();
+}
+
 void EmbeddingMgmt::EvictKeys(const string& name, const vector<emb_cache_key_t>& keys)
 {
     LOG_INFO("Evict keys for table:{}", name);
