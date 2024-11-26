@@ -14,6 +14,7 @@ limitations under the License.
 
 #include "cache_manager.h"
 
+#include <string>
 #include <unordered_set>
 
 #include "external_logger.h"
@@ -493,5 +494,11 @@ int EmbCacheManagerImpl::ResetOffsetMappers()
 
 std::unordered_set<uint64_t> EmbCacheManagerImpl::GetPaddingKeysOffset(const std::string& tableName)
 {
+    int ret = CheckValidTableName(tableName);
+    if (ret != H_OK) {
+        throw std::invalid_argument("Table: " + tableName + " is invalid, please check error log, and error code is " +
+                                    std::to_string(ret) + ".");
+    }
+
     return offsetMappers[tableName].GetPaddingKeysOffset();
 }
