@@ -36,7 +36,7 @@ from mx_rec.util.variable import get_dense_and_sparse_variable
 from config import (GLOBAL_RANDOM_SEED, MODIFY_GRAPH_FLAG, MULTI_LOOKUP_TIMES,
                     PRECISION_CHECK, USE_DETERMINISTIC, USE_DYNAMIC,
                     USE_DYNAMIC_EXPANSION, USE_MULTI_LOOKUP, USE_ONE_SHOT,
-                    USE_TIMESTAMP, USE_DP, USE_TUPLE_DATA_FORMAT, Config, CacheModeEnum)
+                    USE_TIMESTAMP, USE_DP, USE_TUPLE_DATA_FORMAT, USE_PADDING_KEYS, Config, CacheModeEnum)
 from dataset import generate_dataset, generate_tuple_data_format_func
 from demo_logger import logger
 from model import MyModel
@@ -312,10 +312,18 @@ if __name__ == "__main__":
                                   is_dp=USE_DP,
                                   **cache_mode_dict[cache_mode])
 
+    padding_keys_config = {}
+    if USE_PADDING_KEYS:
+        padding_keys_config = {"padding_keys": cfg.padding_keys,
+                               "padding_keys_mask": True,
+                               "padding_keys_len": cfg.batch_size * cfg.item_feat_cnt}
     item_hashtable = create_table(key_dtype=tf.int64,
                                   dim=tf.TensorShape([cfg.item_hashtable_dim]),
                                   name='item_table',
                                   emb_initializer=emb_initializer,
+                                  padding_keys=padding_keys_config.get("padding_keys", None),
+                                  padding_keys_mask=padding_keys_config.get("padding_keys_mask", False),
+                                  padding_keys_len=padding_keys_config.get("padding_keys_len", None),
                                   **cache_mode_dict[cache_mode])
 
     # 在predict的场景下，train model不需要被执行

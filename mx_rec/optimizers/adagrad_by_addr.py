@@ -99,6 +99,8 @@ class CustomizedAdagradByAddress(adagrad.AdagradOptimizer, CustomizedOptimizer):
         return [self._initial_accumulator_value]
 
     def _apply_sparse(self, grad: tf.Tensor, var: tf.Tensor) -> tf.Operation:
+        # The var tensor is used to obtain the table instance in dynamic expansion mode.
+        var_tensor = var
         grad, var = self.sum_same_id_gradients(grad=grad, var=var, is_expansion=True)
         learning_rate_tensor = math_ops.cast(self._learning_rate_tensor, grad.dtype.base_dtype)
         epsilon = math_ops.cast(self._epsilon, grad.dtype.base_dtype)
@@ -114,8 +116,9 @@ class CustomizedAdagradByAddress(adagrad.AdagradOptimizer, CustomizedOptimizer):
         s_t_slice = old_s_slice + math_ops.square(grad)
 
         denominator_slice = math_ops.sqrt(s_t_slice + epsilon)
-
-        update_list = [tf.divide(-learning_rate_tensor * grad, denominator_slice)] + [s_t_slice - old_s_slice]
+        nd_value = tf.divide(-learning_rate_tensor * grad, denominator_slice)
+        nd_value = self._process_grad_value_mask(var_tensor, nd_value)
+        update_list = [nd_value] + [s_t_slice - old_s_slice]
         update_tensor = tf.concat(update_list, axis=1)
         var_update_op = host_pipeline_ops.embedding_update_by_address(var, update_tensor, update_type=0)
 

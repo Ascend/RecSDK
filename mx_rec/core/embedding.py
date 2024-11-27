@@ -41,7 +41,7 @@ from mx_rec.core.util import check_and_set_vocab_size, mark_orphan_lookup_key
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.log import logger
 from mx_rec.util.normalization import fix_invalid_table_name
-from mx_rec.validator.emb_validator import check_emb_multi_lookup_times
+from mx_rec.validator.emb_validator import check_emb_multi_lookup_times, check_and_format_emb_padding_keys
 from mx_rec.validator.validator import (
     ClassValidator,
     FloatValidator,
@@ -51,6 +51,7 @@ from mx_rec.validator.validator import (
     OptionalStringValidator,
     OptionValidator,
     OrValidator,
+    AndValidator,
     SSDFeatureValidator,
     StringValidator,
     TensorShapeValidator,
@@ -95,6 +96,45 @@ from mx_rec.validator.validator import (
         ("is_dp", ClassValidator, {"classes": (bool,)}),
         ("init_param", FloatValidator, {"min_value": -10, "max_value": 10}, ["check_value"]),
         ("all2all_gradients_op", OptionValidator, {"options": [i.value for i in list(All2allGradientsOp)]}),
+        (
+            "padding_keys",
+            OrValidator,
+            {
+                "options": [
+                    (ClassValidator, {"classes": type(None)}),
+                    (ClassValidator, {"classes": int}),
+                    (
+                        AndValidator,
+                        {
+                            "options": [
+                                (ClassValidator, {"classes": list}),
+                                (
+                                    ListValidator,
+                                    {
+                                        "sub_checker": ClassValidator,
+                                        "list_max_length": MAX_INT32,
+                                        "list_min_length": 1,
+                                        "sub_args": {"classes": int},
+                                    },
+                                    ["check_list_length"],
+                                ),
+                            ]
+                        },
+                    ),
+                ]
+            },
+        ),
+        ("padding_keys_mask", ClassValidator, {"classes": (bool,)}),
+        (
+            "padding_keys_len",
+            OrValidator,
+            {
+                "options": [
+                    (ClassValidator, {"classes": type(None)}),
+                    (IntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
+                ]
+            },
+        ),
         ("enable_merge", ClassValidator, {"classes": (bool,)}),
         ("value_dtype", OptionValidator, {"options": [tf.float32]}),
         ("shard_num", IntValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
@@ -104,7 +144,7 @@ from mx_rec.validator.validator import (
 )
 def create_table(
     key_dtype: tf.DType,
-    dim: tf.TensorShape,
+    dim: Union[tf.TensorShape, int],
     name: str,
     emb_initializer: Union[InitializerV1, InitializerV2],
     device_vocabulary_size: int = 1,
@@ -115,6 +155,9 @@ def create_table(
     is_dp: bool = False,
     init_param: float = 1.0,
     all2all_gradients_op: str = All2allGradientsOp.SUM_GRADIENTS.value,
+    padding_keys=None,
+    padding_keys_mask=False,
+    padding_keys_len=None,
     enable_merge: bool = False,
     value_dtype: tf.DType = tf.float32,
     shard_num: int = 1,
@@ -135,6 +178,11 @@ def create_table(
         is_dp: switch whether to enable data parallel.
         init_param: embedding init param-coefficient
         all2all_gradients_op: sum_grads (default) or sum_gradients_and_div_by_ranksize.
+        padding_keys: upper-layer services must ensure that the padding keys are included in the incoming ids.
+        padding_keys_mask: whether the embedding value corresponding to the padding key is updated;
+                           `True` indicates that the embedding value is not updated.
+        padding_keys_len: indicates the feature length of the corresponding ids. This parameter is mandatory
+                          if padding keys are specified.
         enable_merge: enable merge sparse embedding table automatically.
         value_dtype: the type of the value tensors. only tf.float32 if supported for now.
         shard_num: embedding partition number
@@ -147,6 +195,7 @@ def create_table(
     (device_vocabulary_size, host_vocabulary_size, ssd_vocabulary_size) = check_and_set_vocab_size(
         device_vocabulary_size, host_vocabulary_size, ssd_vocabulary_size
     )
+    padding_keys = check_and_format_emb_padding_keys(padding_keys, padding_keys_mask, padding_keys_len)
 
     config = dict(
         key_dtype=key_dtype,
@@ -160,6 +209,9 @@ def create_table(
         init_param=init_param,
         is_save=is_save,
         all2all_gradients_op=all2all_gradients_op,
+        padding_keys=padding_keys,
+        padding_keys_mask=padding_keys_mask,
+        padding_keys_len=padding_keys_len,
         is_dp=is_dp,
     )
 
@@ -167,7 +219,7 @@ def create_table(
         "Create table: The table name is %s, the key type is %s, the embedding size is %s, "
         "the embedding initializer is %s, the device/host/ssd vocabulary size is %s/%s/%s, "
         "the ssd data path is %s, the init param is %s, the is_save is %s, the all2all_gradients_op is %s, "
-        "and the is_dp is %s.",
+        "the padding keys mask is %s, the padding keys is %s, the padding keys len is %s, and the is_dp is %s.",
         name,
         key_dtype,
         dim_bytes / FLOAT32_BYTES,
@@ -179,6 +231,9 @@ def create_table(
         init_param,
         is_save,
         all2all_gradients_op,
+        padding_keys_mask,
+        padding_keys,
+        padding_keys_len,
         is_dp,
     )
 
@@ -194,6 +249,7 @@ def create_table(
             is_dp=is_dp,
             init_param=init_param,
             all2all_gradients_op=all2all_gradients_op,
+            padding_keys_mask=padding_keys_mask,
         )
 
         return create_mergeable_embedding(name, config, union_key)
@@ -282,12 +338,20 @@ def sparse_lookup(
     hashtable.increase_multi_lookup_times(is_train)
     check_emb_multi_lookup_times(hashtable.multi_lookup_times.get(is_train), hashtable.table_name)
 
+    if hashtable.padding_keys_mask and ConfigInitializer.get_instance().use_static:
+        send_count = hashtable.padding_keys_len
+        logger.info(
+            "The table %s needs to perform the padding keys mode, and the send count is set to %s.",
+            hashtable.table_name,
+            send_count,
+        )
+
     if isinstance(ids, tf.Tensor):
         ids = mark_orphan_lookup_key(ids)
 
     with tf.compat.v1.variable_scope("{0}//{1}".format(hashtable.table_name, kwargs.get("name"))):
         if isinstance(ids, FeatureSpec):
-            # check whether the name of the table exists with FeatureSpec.
+            # Check whether the name of the table exists with FeatureSpec.
             if hashtable.table_name != ids.table_name:
                 raise ValueError(
                     f"The table name '{ids.table_name}' specified by FeatureSpec is inconsistent with"

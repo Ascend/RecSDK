@@ -45,7 +45,7 @@ class MergeableSparseEmbedding(DynamicSparseEmbedding):
     def merged_small_tables(self) -> List[str]:
         return self._merged_small_tables
 
-    def merge_in(self, small_table_name: str) -> None:
+    def merge_in(self, small_table_name: str, config: Dict[str, Any]) -> None:
         if small_table_name in self._merged_small_tables:
             raise ValueError(
                 "given table => '{}' already exists in mergeable table => '{}'".format(
@@ -54,6 +54,12 @@ class MergeableSparseEmbedding(DynamicSparseEmbedding):
             )
 
         self._merged_small_tables.append(small_table_name)
+
+        # Merge padding keys.
+        if self._padding_keys_mask:
+            self._padding_keys.extend(config.get("padding_keys"))
+            self._padding_keys = list(set(self._padding_keys))  # Remove duplicates.
+            self._padding_keys_len += config.get("padding_keys_len")
 
     def _set_slice_vocab_size(self):
         """Device vocabulary size will be forced set to 1 in dynamic expansion mode."""
