@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2023. All rights reserved.
-from typing import Optional
+from typing import Optional, Union
 
 from tensorflow.python.framework.ops import Operation
 
@@ -25,6 +25,7 @@ class TrainParamsConfig:
         self._iterator_type = ""
         self._sparse_dir = ""
         self._initializer_dict = dict()
+        self._dataset_element_spec = None
 
     @property
     def iterator_type(self):
@@ -45,6 +46,10 @@ class TrainParamsConfig:
     @property
     def ascend_global_hashtable_collection(self):
         return self._ascend_global_hashtable_collection
+
+    @property
+    def dataset_element_spec(self) -> Optional[Union[list, tuple, dict]]:
+        return self._dataset_element_spec
 
     @iterator_type.setter
     def iterator_type(self, iterator_type):
@@ -68,6 +73,10 @@ class TrainParamsConfig:
     ])
     def ascend_global_hashtable_collection(self, name):
         self._ascend_global_hashtable_collection = name
+
+    @dataset_element_spec.setter
+    def dataset_element_spec(self, dataset_element_spec: Union[list, tuple, dict]):
+        self._dataset_element_spec = dataset_element_spec
 
     @property
     def bool_gauge_set(self):

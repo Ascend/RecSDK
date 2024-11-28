@@ -14,10 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from dataclasses import dataclass
 
 import tensorflow as tf
-from tensorflow_core.python.training import slot_creator
 
 from mx_rec import ASCEND_GLOBAL_HASHTABLE_COLLECTION
 from mx_rec.util.config_utils.feature_spec_utils import FeatureSpecConfig
@@ -25,7 +23,6 @@ from mx_rec.util.config_utils.optimizer_utils import OptimizerConfig
 
 
 class MockHybridManagerConfig:
-
     def __init__(self, **kwargs):
         self.kwargs = kwargs
         self.freeze = kwargs.get("freeze", False)
@@ -48,7 +45,6 @@ class MockHybridManagerConfig:
 
 
 class MockSparseEmbedConfig:
-
     def __init__(self, **kwargs):
         self.kwargs = kwargs
         self.table_instance_dict = kwargs.get("table_instance_dict", {})
@@ -75,7 +71,6 @@ class MockSparseEmbedConfig:
 
 
 class MockTrainParamsConfig:
-
     def __init__(self, **kwargs):
         def _get_training_mode_channel_id(is_training):
             _dict = {True: 0, False: 1}
@@ -85,7 +80,7 @@ class MockTrainParamsConfig:
             pass
 
         def _get_merged_multi_lookup(is_training):
-            return kwargs.get('merged_multi_lookup', False)
+            return kwargs.get("merged_multi_lookup", False)
 
         def _insert_merged_multi_lookup(is_training, flag):
             pass
@@ -96,12 +91,14 @@ class MockTrainParamsConfig:
         def _set_target_batch(is_training, batch):
             pass
 
-        self.ascend_global_hashtable_collection = kwargs.get("ascend_global_hashtable_collection",
-                                                             ASCEND_GLOBAL_HASHTABLE_COLLECTION)
+        self.ascend_global_hashtable_collection = kwargs.get(
+            "ascend_global_hashtable_collection", ASCEND_GLOBAL_HASHTABLE_COLLECTION
+        )
         self.is_graph_modify_hook_running = kwargs.get("is_graph_modify_hook_running", True)
         self.bool_gauge_set = kwargs.get("bool_gauge_set", [])
         self.iterator_type = kwargs.get("iterator_type", "")
         self.sparse_dir = kwargs.get("sparse_dir", "")
+        self.dataset_element_spec = kwargs.get("dataset_element_spec", {})
 
         self.get_training_mode_channel_id = _get_training_mode_channel_id
         self.insert_training_mode_channel_id = _insert_training_mode_channel_id
@@ -140,9 +137,8 @@ class MockConfigInitializer:
 
 
 class MockGlobalEnv:
-
     def __init__(self, **kwargs):
-        self.tf_device = kwargs.get("tf_device", 'NPU')
+        self.tf_device = kwargs.get("tf_device", "NPU")
 
 
 class MockSparseEmbedding:
@@ -150,8 +146,14 @@ class MockSparseEmbedding:
     原始SparseEmbedding会调用很多接口，用MockSparseEmbedding防止mock过多接口
     """
 
-    def __init__(self, table_name="test_table", slice_device_vocabulary_size=10, embedding_size=5, init_param=1.,
-                 emb_initializer=tf.zeros_initializer()):
+    def __init__(
+        self,
+        table_name="test_table",
+        slice_device_vocabulary_size=10,
+        embedding_size=5,
+        init_param=1.0,
+        emb_initializer=tf.zeros_initializer(),
+    ):
         self.is_hbm = True
         self.is_dp = False
         self.is_grad = True
@@ -164,9 +166,12 @@ class MockSparseEmbedding:
         self.padding_keys_len = 4096
         self.padding_keys_mask = True
         self.send_count = 4096
-        self.variable = tf.compat.v1.get_variable(table_name,
-                                                  shape=[slice_device_vocabulary_size, embedding_size],
-                                                  trainable=False, initializer=tf.ones_initializer())
+        self.variable = tf.compat.v1.get_variable(
+            table_name,
+            shape=[slice_device_vocabulary_size, embedding_size],
+            trainable=False,
+            initializer=tf.ones_initializer(),
+        )
 
 
 class MockHostPipeLineOps:
@@ -263,8 +268,9 @@ class MockHybridMgmt:
     """
 
     def __init__(self, is_initialized=True):
-        def _mock_initialize(rank_info=0, emb_info=1, if_load=False, threshold_values=3,
-                             is_incremental_checkpoint=False):
+        def _mock_initialize(
+            rank_info=0, emb_info=1, if_load=False, threshold_values=3, is_incremental_checkpoint=False
+        ):
             return is_initialized
 
         self.initialize = _mock_initialize

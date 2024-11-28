@@ -49,15 +49,17 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
             test_table2.is_hbm = True
             mock_config_initializer.get_instance().sparse_embed_config.table_instance_dict = {
                 "test_table1": test_table1,
-                "test_table2": test_table2
+                "test_table2": test_table2,
             }
 
             with self.assertRaises(ValueError):
                 generate_table_info_list()
 
-    @mock.patch.multiple("mx_rec.core.asc.manager",
-                         should_skip=mock.MagicMock(return_value=True),
-                         check_dangling_table=mock.MagicMock(return_value=["test_table"]))
+    @mock.patch.multiple(
+        "mx_rec.core.asc.manager",
+        should_skip=mock.MagicMock(return_value=True),
+        check_dangling_table=mock.MagicMock(return_value=["test_table"]),
+    )
     @mock.patch("mx_rec.validator.emb_validator.ConfigInitializer")
     @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
     def test_generate_table_info_list_case2(self, manager_config_initializer, validator_config_initializer):
@@ -84,9 +86,11 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
             table_info_list = generate_table_info_list()
             self.assertListEqual(table_info_list, [])
 
-    @mock.patch.multiple("mx_rec.core.asc.manager",
-                         should_skip=mock.MagicMock(return_value=True),
-                         check_dangling_table=mock.MagicMock(return_value=[]))
+    @mock.patch.multiple(
+        "mx_rec.core.asc.manager",
+        should_skip=mock.MagicMock(return_value=True),
+        check_dangling_table=mock.MagicMock(return_value=[]),
+    )
     @mock.patch("mx_rec.validator.emb_validator.ConfigInitializer")
     @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
     def test_generate_table_info_list_case3(self, manager_config_initializer, validator_config_initializer):
@@ -113,13 +117,15 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
             table_info_list = generate_table_info_list()
             self.assertListEqual(table_info_list, [])
 
-    @mock.patch.multiple("mx_rec.core.asc.manager",
-                         EmbInfoParams=mock.MagicMock(return_value=None),
-                         EmbInfo=mock.MagicMock(return_value="test_table_info"),
-                         matched_emb_initializer=mock.MagicMock(return_value=[]),
-                         matched_opt_slot_initializers=mock.MagicMock(return_value=[]),
-                         should_skip=mock.MagicMock(return_value=False),
-                         check_dangling_table=mock.MagicMock(return_value=[]))
+    @mock.patch.multiple(
+        "mx_rec.core.asc.manager",
+        EmbInfoParams=mock.MagicMock(return_value=None),
+        EmbInfo=mock.MagicMock(return_value="test_table_info"),
+        matched_emb_initializer=mock.MagicMock(return_value=[]),
+        matched_opt_slot_initializers=mock.MagicMock(return_value=[]),
+        should_skip=mock.MagicMock(return_value=False),
+        check_dangling_table=mock.MagicMock(return_value=[]),
+    )
     @mock.patch("mx_rec.validator.emb_validator.ConfigInitializer")
     @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
     def test_generate_table_info_list_case4(self, manager_config_initializer, validator_config_initializer):
@@ -167,7 +173,7 @@ class TestGenerateTableInfoListFunc(unittest.TestCase):
             test_table2 = MockSparseEmbedding("test_table2")
             mock_config_initializer.get_instance().sparse_embed_config.table_instance_dict = {
                 "test_table1": test_table1,
-                "test_table2": test_table2
+                "test_table2": test_table2,
             }
 
             # When the padding keys mask of all tables is True, it should be set to static shape mode.
@@ -180,9 +186,11 @@ class TestMatchedConstantInitializerFunc(unittest.TestCase):
     Test for 'mx_rec.core.asc.manager.matched_constant_initializer'.
     """
 
-    @mock.patch.multiple("mx_rec.core.asc.manager",
-                         InitializeInfo=mock.MagicMock(return_value=[]),
-                         ConstantInitializerInfo=mock.MagicMock(return_value=[]))
+    @mock.patch.multiple(
+        "mx_rec.core.asc.manager",
+        InitializeInfo=mock.MagicMock(return_value=[]),
+        ConstantInitializerInfo=mock.MagicMock(return_value=[]),
+    )
     def test_matched_constant_initializer(self):
         """
         case: test matched_constant_initializer
@@ -192,7 +200,7 @@ class TestMatchedConstantInitializerFunc(unittest.TestCase):
 
         with tf.Graph().as_default():
             table_info = MockSparseEmbedding("test_table")
-            table_info.init_param = 1.
+            table_info.init_param = 1.0
             table_info.emb_size = 8
             table_info.emb_initializer.value = 0
 
@@ -204,9 +212,11 @@ class TestMatchedRandomNormalInitializerFunc(unittest.TestCase):
     Test for 'mx_rec.core.asc.manager.matched_random_normal_initializer'.
     """
 
-    @mock.patch.multiple("mx_rec.core.asc.manager",
-                         InitializeInfo=mock.MagicMock(return_value=[]),
-                         NormalInitializerInfo=mock.MagicMock(return_value=[]))
+    @mock.patch.multiple(
+        "mx_rec.core.asc.manager",
+        InitializeInfo=mock.MagicMock(return_value=[]),
+        NormalInitializerInfo=mock.MagicMock(return_value=[]),
+    )
     def test_matched_random_normal_initializer_case1(self):
         """
         case1: emb_initializer.seed为None
@@ -216,7 +226,7 @@ class TestMatchedRandomNormalInitializerFunc(unittest.TestCase):
 
         with tf.Graph().as_default():
             table_info = MockSparseEmbedding("test_table")
-            table_info.init_param = 1.
+            table_info.init_param = 1.0
             table_info.emb_size = 8
             table_info.emb_initializer.seed = None
             table_info.emb_initializer.mean = 1
@@ -224,9 +234,11 @@ class TestMatchedRandomNormalInitializerFunc(unittest.TestCase):
 
             self.assertListEqual(matched_random_normal_initializer(table_info), [])
 
-    @mock.patch.multiple("mx_rec.core.asc.manager",
-                         InitializeInfo=mock.MagicMock(return_value=[]),
-                         NormalInitializerInfo=mock.MagicMock(return_value=[]))
+    @mock.patch.multiple(
+        "mx_rec.core.asc.manager",
+        InitializeInfo=mock.MagicMock(return_value=[]),
+        NormalInitializerInfo=mock.MagicMock(return_value=[]),
+    )
     def test_matched_random_normal_initializer_case2(self):
         """
         case2: emb_initializer.seed非None
@@ -236,7 +248,7 @@ class TestMatchedRandomNormalInitializerFunc(unittest.TestCase):
 
         with tf.Graph().as_default():
             table_info = MockSparseEmbedding("test_table")
-            table_info.init_param = 1.
+            table_info.init_param = 1.0
             table_info.emb_size = 8
             table_info.emb_initializer.seed = 1
             table_info.emb_initializer.mean = 1
@@ -250,9 +262,11 @@ class TestMatchedTruncatedNormalInitializerFunc(unittest.TestCase):
     Test for 'mx_rec.core.asc.manager.matched_truncated_normal_initializer'.
     """
 
-    @mock.patch.multiple("mx_rec.core.asc.manager",
-                         InitializeInfo=mock.MagicMock(return_value=[]),
-                         NormalInitializerInfo=mock.MagicMock(return_value=[]))
+    @mock.patch.multiple(
+        "mx_rec.core.asc.manager",
+        InitializeInfo=mock.MagicMock(return_value=[]),
+        NormalInitializerInfo=mock.MagicMock(return_value=[]),
+    )
     def test_matched_truncated_normal_initializer_case1(self):
         """
         case1: emb_initializer.seed为None
@@ -262,7 +276,7 @@ class TestMatchedTruncatedNormalInitializerFunc(unittest.TestCase):
 
         with tf.Graph().as_default():
             table_info = MockSparseEmbedding("test_table")
-            table_info.init_param = 1.
+            table_info.init_param = 1.0
             table_info.emb_size = 8
             table_info.emb_initializer.seed = None
             table_info.emb_initializer.mean = 1
@@ -270,9 +284,11 @@ class TestMatchedTruncatedNormalInitializerFunc(unittest.TestCase):
 
             self.assertListEqual(matched_truncated_normal_initializer(table_info), [])
 
-    @mock.patch.multiple("mx_rec.core.asc.manager",
-                         InitializeInfo=mock.MagicMock(return_value=[]),
-                         NormalInitializerInfo=mock.MagicMock(return_value=[]))
+    @mock.patch.multiple(
+        "mx_rec.core.asc.manager",
+        InitializeInfo=mock.MagicMock(return_value=[]),
+        NormalInitializerInfo=mock.MagicMock(return_value=[]),
+    )
     def test_matched_random_normal_initializer_case2(self):
         """
         case2: emb_initializer.seed非None
@@ -282,7 +298,7 @@ class TestMatchedTruncatedNormalInitializerFunc(unittest.TestCase):
 
         with tf.Graph().as_default():
             table_info = MockSparseEmbedding("test_table")
-            table_info.init_param = 1.
+            table_info.init_param = 1.0
             table_info.emb_size = 8
             table_info.emb_initializer.seed = 1
             table_info.emb_initializer.mean = 1
@@ -296,8 +312,7 @@ class TestMatchedEmbInitializerFunc(unittest.TestCase):
     Test for 'mx_rec.core.asc.manager.matched_emb_initializer'.
     """
 
-    @mock.patch.multiple("mx_rec.core.asc.manager",
-                         matched_constant_initializer=mock.MagicMock(return_value=1))
+    @mock.patch.multiple("mx_rec.core.asc.manager", matched_constant_initializer=mock.MagicMock(return_value=1))
     def test_matched_emb_initializer_case1(self):
         """
         case1: 初始化器为 tf.constant_initializer
@@ -312,8 +327,7 @@ class TestMatchedEmbInitializerFunc(unittest.TestCase):
 
             self.assertEqual(matched_emb_initializer(table_info), 1)
 
-    @mock.patch.multiple("mx_rec.core.asc.manager",
-                         matched_random_normal_initializer=mock.MagicMock(return_value=2))
+    @mock.patch.multiple("mx_rec.core.asc.manager", matched_random_normal_initializer=mock.MagicMock(return_value=2))
     def test_matched_emb_initializer_case2(self):
         """
         case2: 初始化器为 tf.random_normal_initializer
@@ -328,8 +342,7 @@ class TestMatchedEmbInitializerFunc(unittest.TestCase):
 
             self.assertEqual(matched_emb_initializer(table_info), 2)
 
-    @mock.patch.multiple("mx_rec.core.asc.manager",
-                         matched_truncated_normal_initializer=mock.MagicMock(return_value=3))
+    @mock.patch.multiple("mx_rec.core.asc.manager", matched_truncated_normal_initializer=mock.MagicMock(return_value=3))
     def test_matched_emb_initializer_case3(self):
         """
         case3: 初始化器为 tf.truncated_normal_initializer
@@ -350,8 +363,7 @@ class TestMatchedOptSlotInitializersFunc(unittest.TestCase):
     Test for 'mx_rec.core.asc.manager.matched_opt_slot_initializers'.
     """
 
-    @mock.patch.multiple("mx_rec.core.asc.manager",
-                         InitializeInfo=mock.MagicMock(return_value="slot_initializer"))
+    @mock.patch.multiple("mx_rec.core.asc.manager", InitializeInfo=mock.MagicMock(return_value="slot_initializer"))
     @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
     def test_matched_opt_slot_initializers(self, manager_config_initializer):
         """
@@ -378,8 +390,7 @@ class TestGenerateThresholdListFunc(unittest.TestCase):
     Test for 'mx_rec.core.asc.manager.generate_threshold_list'.
     """
 
-    @mock.patch.multiple("mx_rec.core.asc.manager",
-                         ThresholdValue=mock.MagicMock(return_value=0))
+    @mock.patch.multiple("mx_rec.core.asc.manager", ThresholdValue=mock.MagicMock(return_value=0))
     @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
     def test_generate_threshold_list(self, manager_config_initializer):
         """
@@ -392,10 +403,10 @@ class TestGenerateThresholdListFunc(unittest.TestCase):
             mock_config_initializer = MockConfigInitializer()
             manager_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
-            test_feature_spec1 = FeatureSpec("test_feature_spec1",
-                                             access_threshold=5, eviction_threshold=10, faae_coefficient=None)
-            test_feature_spec2 = FeatureSpec("test_feature_spec2",
-                                             access_threshold=5, faae_coefficient=None)
+            test_feature_spec1 = FeatureSpec(
+                "test_feature_spec1", access_threshold=5, eviction_threshold=10, faae_coefficient=None
+            )
+            test_feature_spec2 = FeatureSpec("test_feature_spec2", access_threshold=5, faae_coefficient=None)
             mock_config_initializer.get_instance().feature_spec_config.insert_feature_spec(test_feature_spec1, True)
             mock_config_initializer.get_instance().feature_spec_config.insert_feature_spec(test_feature_spec2, True)
 
@@ -407,15 +418,17 @@ class TestInitializeEmbCacheFunc(unittest.TestCase):
     Test for 'mx_rec.core.asc.manager.initialize_emb_cache'.
     """
 
-    @mock.patch.multiple("mx_rec.core.asc.manager",
-                         get_rank_id=mock.MagicMock(return_value=0),
-                         get_device_id=mock.MagicMock(return_value=0),
-                         get_rank_size=mock.MagicMock(return_value=0),
-                         USE_STATIC=mock.MagicMock(return_value=0),
-                         USE_DYNAMIC_EXPANSION=mock.MagicMock(return_value=2),
-                         USE_SUM_SAME_ID_GRADIENTS=mock.MagicMock(return_value=4),
-                         RankInfo=mock.MagicMock(return_value="mock_info"),
-                         HybridMgmt=mock.MagicMock(return_value=MockHybridMgmt(is_initialized=False)))
+    @mock.patch.multiple(
+        "mx_rec.core.asc.manager",
+        get_rank_id=mock.MagicMock(return_value=0),
+        get_device_id=mock.MagicMock(return_value=0),
+        get_rank_size=mock.MagicMock(return_value=0),
+        USE_STATIC=mock.MagicMock(return_value=0),
+        USE_DYNAMIC_EXPANSION=mock.MagicMock(return_value=2),
+        USE_SUM_SAME_ID_GRADIENTS=mock.MagicMock(return_value=4),
+        RankInfo=mock.MagicMock(return_value="mock_info"),
+        HybridMgmt=mock.MagicMock(return_value=MockHybridMgmt(is_initialized=False)),
+    )
     @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
     def test_initialize_emb_cache_case1(self, manager_config_initializer):
         """
@@ -433,14 +446,16 @@ class TestInitializeEmbCacheFunc(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             initialize_emb_cache([], [])
 
-    @mock.patch.multiple("mx_rec.core.asc.manager",
-                         get_rank_id=mock.MagicMock(return_value=0),
-                         get_device_id=mock.MagicMock(return_value=0),
-                         get_rank_size=mock.MagicMock(return_value=0),
-                         USE_STATIC=mock.MagicMock(return_value=0),
-                         USE_DYNAMIC_EXPANSION=mock.MagicMock(return_value=2),
-                         USE_SUM_SAME_ID_GRADIENTS=mock.MagicMock(return_value=4),
-                         RankInfo=mock.MagicMock(return_value="mock_info"))
+    @mock.patch.multiple(
+        "mx_rec.core.asc.manager",
+        get_rank_id=mock.MagicMock(return_value=0),
+        get_device_id=mock.MagicMock(return_value=0),
+        get_rank_size=mock.MagicMock(return_value=0),
+        USE_STATIC=mock.MagicMock(return_value=0),
+        USE_DYNAMIC_EXPANSION=mock.MagicMock(return_value=2),
+        USE_SUM_SAME_ID_GRADIENTS=mock.MagicMock(return_value=4),
+        RankInfo=mock.MagicMock(return_value="mock_info"),
+    )
     @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
     @mock.patch("mx_rec.core.asc.manager.HybridMgmt")
     def test_initialize_emb_cache_case2(self, mock_hybrid_mgmt, manager_config_initializer):
@@ -467,9 +482,11 @@ class TestStartAscPipeLineFunc(unittest.TestCase):
     Test for 'mx_rec.core.asc.manager.start_asc_pipeline'.
     """
 
-    @mock.patch.multiple("mx_rec.core.asc.manager",
-                         generate_table_info_list=mock.MagicMock(return_value=[]),
-                         generate_threshold_list=mock.MagicMock(return_value=[]))
+    @mock.patch.multiple(
+        "mx_rec.core.asc.manager",
+        generate_table_info_list=mock.MagicMock(return_value=[]),
+        generate_threshold_list=mock.MagicMock(return_value=[]),
+    )
     def test_start_asc_pipeline_case1(self):
         """
         case1: table_info_list为[]
@@ -480,10 +497,12 @@ class TestStartAscPipeLineFunc(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             start_asc_pipeline()
 
-    @mock.patch.multiple("mx_rec.core.asc.manager",
-                         generate_table_info_list=mock.MagicMock(return_value=["test_table"]),
-                         generate_threshold_list=mock.MagicMock(return_value=[]),
-                         initialize_emb_cache=mock.MagicMock(return_value=None))
+    @mock.patch.multiple(
+        "mx_rec.core.asc.manager",
+        generate_table_info_list=mock.MagicMock(return_value=["test_table"]),
+        generate_threshold_list=mock.MagicMock(return_value=[]),
+        initialize_emb_cache=mock.MagicMock(return_value=None),
+    )
     @mock.patch("mx_rec.core.asc.manager.ConfigInitializer")
     def test_start_asc_pipeline_case2(self, manager_config_initializer):
         """
@@ -500,5 +519,5 @@ class TestStartAscPipeLineFunc(unittest.TestCase):
         self.assertTrue(callable(start_asc_pipeline))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

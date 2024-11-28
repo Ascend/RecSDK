@@ -123,8 +123,10 @@ class _GraphModifier:
         output_names = check_and_force_list(output_names, str)
         pipeline_input_indexes = check_and_force_list(pipeline_input_indexes, int)
 
-        def map_func(*args):
+        def map_func(*args) -> tuple:
             batch = args
+            if not isinstance(batch, tuple) or len(batch) == 0:
+                raise ValueError(f"The dataset batch is invalid, and the batch is: {batch}.")
             logger.debug("In get_preprocessing_map_func, the parse batch is: %s.", batch)
 
             input_tensors = []
@@ -138,7 +140,8 @@ class _GraphModifier:
                 graph_def, input_map=dict(zip(input_names, input_tensors)), return_elements=output_names
             )
 
-            output_batch = [batch, tuple(output_list)]
+            output_batch = list(batch)
+            output_batch.append(tuple(output_list))
             logger.debug("In get_preprocessing_map_func, the output batch is: %s.", output_batch)
             return tuple(output_batch)
 
@@ -361,6 +364,8 @@ class _GraphModifier:
             raise ValueError(f"The length of the outputs of target op `{target_op}` is 0.")
         logger.debug("Find target op `%s`, and output is `%s`.", target_op.name, target_op.outputs)
         src_dataset = utils.find_target_instance_dataset(self._full_graph, target_op.outputs[0])
+        # The element spec of the dataset is used to restore the original batch.
+        ConfigInitializer.get_instance().train_params_config.dataset_element_spec = src_dataset.element_spec
         return src_dataset
 
     def _get_tgt_dataset(
