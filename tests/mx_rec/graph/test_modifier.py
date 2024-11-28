@@ -126,7 +126,11 @@ class GetSrcDatasetTest(TestCase):
     def tearDown(self) -> None:
         tf.compat.v1.reset_default_graph()
 
-    def test_ok_one_shot(self):
+    @patch("mx_rec.graph.modifier.ConfigInitializer")
+    def test_ok_one_shot(self, modifier_config_initializer):
+        mock_config_initializer = MockConfigInitializer(modify_graph=True)
+        modifier_config_initializer.get_instance = Mock(return_value=mock_config_initializer)
+
         mock_dataset = gen_mock_dataset()
         mock_prefetch_dataset = mock_dataset.prefetch(10)
         mock_iterator = mock_prefetch_dataset.make_one_shot_iterator()
