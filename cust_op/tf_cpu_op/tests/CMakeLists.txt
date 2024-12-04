@@ -1,0 +1,8 @@
+message("build mode " ${BUILD_MODE})
+add_compile_options(-ftest-coverage -fprofile-arcs)
+link_libraries(gcov)
+add_compile_options(-flto)
+add_link_options(-flto)
+if (${BUILD_MODE} MATCHES "ut")
+    add_subdirectory(ut)
+endif (${BUILD_MODE} MATCHES "ut")
