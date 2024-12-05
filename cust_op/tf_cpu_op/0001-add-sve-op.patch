@@ -1,0 +1,631 @@
+diff --git a/tensorflow/core/kernels/BUILD b/tensorflow/core/kernels/BUILD
+index 404c0966518..62cb8978950 100644
+--- a/tensorflow/core/kernels/BUILD
++++ b/tensorflow/core/kernels/BUILD
+@@ -2521,7 +2521,7 @@ tf_kernel_library(
+ tf_kernel_library(
+     name = "lookup_table_op",
+     prefix = "lookup_table_op",
+-    deps = LOOKUP_DEPS,
++    deps = LOOKUP_DEPS+["//third_party/rec_base:rec_base_lib"],
+ )
+ 
+ cc_library(
+@@ -3751,7 +3751,7 @@ tf_kernel_library(
+ tf_kernel_library(
+     name = "cwise_op",
+     prefix = "cwise_op",
+-    deps = MATH_DEPS,
++    deps = MATH_DEPS+["//third_party/rec_base:rec_base_lib"],
+ )
+ 
+ tf_kernel_library(
+@@ -3795,7 +3795,7 @@ tf_kernel_library(
+         "//conditions:default": [],
+     }) + mkl_deps() + if_cuda([
+         "//tensorflow/core/platform/default/build_config:cublas_plugin",
+-    ]),
++    ]) + ["//third_party/rec_base:rec_base_lib"],
+ )
+ 
+ tf_mkl_kernel_library(
+diff --git a/tensorflow/core/kernels/cwise_op_floor_mod.cc b/tensorflow/core/kernels/cwise_op_floor_mod.cc
+index 481fc3b8989..5d245a24aaf 100644
+--- a/tensorflow/core/kernels/cwise_op_floor_mod.cc
++++ b/tensorflow/core/kernels/cwise_op_floor_mod.cc
+@@ -14,6 +14,7 @@ limitations under the License.
+ ==============================================================================*/
+ 
+ #include "tensorflow/core/kernels/cwise_ops_common.h"
++#include "third_party/rec_base/math/BinaryOp.h"
+ 
+ namespace tensorflow {
+ REGISTER2(BinaryOp, CPU, "FloorMod", functor::safe_floor_mod, int32, int64);
+diff --git a/tensorflow/core/kernels/cwise_op_greater.cc b/tensorflow/core/kernels/cwise_op_greater.cc
+index d70233dc55c..2db0a9db069 100644
+--- a/tensorflow/core/kernels/cwise_op_greater.cc
++++ b/tensorflow/core/kernels/cwise_op_greater.cc
+@@ -14,6 +14,7 @@ limitations under the License.
+ ==============================================================================*/
+ 
+ #include "tensorflow/core/kernels/cwise_ops_common.h"
++#include "third_party/rec_base/math/BinaryOp.h"
+ 
+ namespace tensorflow {
+ REGISTER9(BinaryOp, CPU, "Greater", functor::greater, float, Eigen::half,
+diff --git a/tensorflow/core/kernels/cwise_op_less.cc b/tensorflow/core/kernels/cwise_op_less.cc
+index 062a029f069..d569312bd45 100644
+--- a/tensorflow/core/kernels/cwise_op_less.cc
++++ b/tensorflow/core/kernels/cwise_op_less.cc
+@@ -14,6 +14,7 @@ limitations under the License.
+ ==============================================================================*/
+ 
+ #include "tensorflow/core/kernels/cwise_ops_common.h"
++#include "third_party/rec_base/math/BinaryOp.h"
+ 
+ namespace tensorflow {
+ REGISTER5(BinaryOp, CPU, "Less", functor::less, float, Eigen::half, double,
+diff --git a/tensorflow/core/kernels/cwise_op_select.cc b/tensorflow/core/kernels/cwise_op_select.cc
+index 911462c8eff..cbe81582884 100644
+--- a/tensorflow/core/kernels/cwise_op_select.cc
++++ b/tensorflow/core/kernels/cwise_op_select.cc
+@@ -23,6 +23,8 @@ limitations under the License.
+ #include "tensorflow/core/framework/register_types.h"
+ #include "tensorflow/core/kernels/cwise_ops_common.h"
+ #include "tensorflow/core/platform/prefetch.h"
++#include "third_party/rec_base/include/select.h"
++#include "tensorflow/core/util/work_sharder.h"
+ 
+ namespace tensorflow {
+ 
+@@ -44,6 +46,9 @@ class SelectOp : public OpKernel {
+   explicit SelectOp(OpKernelConstruction* context) : OpKernel(context) {}
+ 
+   void Compute(OpKernelContext* ctx) override {
++    static uint64_t test_cnt;
++    static uint64_t test_dur_sum;
++    auto start_time = std::chrono::high_resolution_clock::now();
+     const Tensor* cond;
+     const Tensor* then;
+     const Tensor* else_;
+@@ -64,6 +69,16 @@ class SelectOp : public OpKernel {
+     } else {
+       ComputeElementwise(ctx, cond, then, else_);
+     }
++    auto end_time = std::chrono::high_resolution_clock::now();
++    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
++    test_dur_sum += duration;
++    test_cnt++;
++    if (test_cnt % 1000 == 0) {
++      std::string message = "Select avg took " + std::to_string(1.0 * test_dur_sum / test_cnt) + " us";
++      std::cout << message << std::endl;
++      test_dur_sum = 0;
++      test_cnt = 0;
++    }
+   }
+ 
+  protected:
+@@ -143,6 +158,145 @@ class SelectOp : public OpKernel {
+  private:
+   TF_DISALLOW_COPY_AND_ASSIGN(SelectOp);
+ };
++
++template <typename Device> class SelectOp<Device, long long> : public OpKernel {
++ public:
++  using T = int64_t;
++  explicit SelectOp(OpKernelConstruction* context) : OpKernel(context) {}
++
++  void Compute(OpKernelContext* ctx) override {
++    static uint64_t test_cnt;
++    static uint64_t test_dur_sum;
++    auto start_time = std::chrono::high_resolution_clock::now();
++    const Tensor* cond;
++    const Tensor* then;
++    const Tensor* else_;
++    OP_REQUIRES_OK(ctx, ctx->input("condition", &cond));
++    OP_REQUIRES_OK(ctx, ctx->input("t", &then));
++    OP_REQUIRES_OK(ctx, ctx->input("e", &else_));
++
++    if (TensorShapeUtils::IsScalar(cond->shape())) {
++      ComputeScalar(ctx, cond, then, else_);
++      return;
++    }
++
++    bool broadcasting = (TensorShapeUtils::IsVector(cond->shape()) &&
++                         !TensorShapeUtils::IsVector(then->shape()));
++
++    if (broadcasting) {
++      ComputeBroadcasting(ctx, cond, then, else_);
++      return;
++    }
++    if (!ctx->ValidateInputsAreSameShape(this)) {
++      return;
++    }
++    Tensor *output = nullptr;
++    Op_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output({ "t", "e"}, "output", then->shape(), &output));
++    if (output->NumElements() <= 0) {
++      return;
++    }
++
++    int64_t *thenPtr = const_cast<int64_t *>(reinterpret_cast<const int64_t *>(then->flat<long long>().data()));
++    int64_t *elsePtr = const_cast<int64_t *>(reinterpret_cast<const int64_t *>(else_->flat<long long>().data()));
++    int64_t *outputPtr = const_cast<int64_t *>(reinterpret_cast<const int64_t *>(output->flat<long long>().data()));
++    bool *condPtr = const_cast<bool *>(reinterpret_cast<const bool *>(cond->flat<bool>().data()));
++
++    auto work = [&](int64_t start, int64_t end) {
++      ock::Select(condPtr + start, thenPtr + start, elsePtr + start, outputPtr + start, end - start);
++    };
++    auto *worker_threads = ctx->device()->tensorflow_cpu_worker_threads();
++    Shard(worker_threads->num_threads, worker_threads->workers, cond->flat<bool>().size(), 10, work) ;
++
++    auto end_time = std::chrono::high_resolution_clock::now();
++    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
++    test_dur_sum += duration;
++    test_cnt++;
++    if (test_cnt % 1000 == 0) {
++      std::string message = "Select avg took " + std::to_string(1.0 * test_dur_sum / test_cnt) + " us";
++      std::cout << message << std::endl;
++      test_dur_sum = 0;
++      test_cnt = 0;
++    }
++  }
++
++ protected:
++  void ComputeBroadcasting(OpKernelContext* ctx, const Tensor* cond,
++                           const Tensor* then, const Tensor* else_) {
++    // Preliminary validation of sizes.
++    OP_REQUIRES(
++        ctx, TensorShapeUtils::IsVector(cond->shape()),
++        errors::InvalidArgument("'cond' must be a vector, but saw shape: ",
++                                cond->shape().DebugString()));
++    OP_REQUIRES(
++        ctx,
++        FastBoundsCheck(cond->NumElements(),
++                        std::numeric_limits<Eigen::DenseIndex>::max()),
++        errors::InvalidArgument("cond vector larger than ",
++                                std::numeric_limits<Eigen::DenseIndex>::max()));
++    OP_REQUIRES(
++        ctx,
++        FastBoundsCheck(then->flat_outer_dims<long, long>().dimension(1),
++                        std::numeric_limits<Eigen::DenseIndex>::max()),
++        errors::InvalidArgument("flat outer dims dim 1 size >= ",
++                                std::numeric_limits<Eigen::DenseIndex>::max()));
++
++    OP_REQUIRES(ctx, TensorShapeUtils::IsVectorOrHigher(then->shape()),
++                errors::InvalidArgument(
++                    "'then' must be at least a vector, but saw shape: ",
++                    then->shape().DebugString()));
++    OP_REQUIRES(
++        ctx, then->shape().dim_size(0) == cond->NumElements(),
++        errors::InvalidArgument(
++            "Number of batches of 'then' must match size of 'cond', but saw: ",
++            then->shape().dim_size(0), " vs. ", cond->NumElements()));
++    OP_REQUIRES(
++        ctx, then->shape().IsSameSize(else_->shape()),
++        errors::InvalidArgument(
++            "'then' and 'else' must have the same size.  but received: ",
++            then->shape().DebugString(), " vs. ",
++            else_->shape().DebugString()));
++
++    Tensor* output = nullptr;
++    OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
++                            {"t", "e"}, "output", then->shape(), &output));
++    if (output->NumElements() > 0) {
++      functor::BatchSelectFunctor<Device, long long> func;
++      func(ctx->eigen_device<Device>(), output->flat_outer_dims<long long>(),
++           cond->vec<bool>(), then->flat_outer_dims<long long>(),
++           else_->flat_outer_dims<long long>());
++    }
++  }
++
++  void ComputeElementwise(OpKernelContext* ctx, const Tensor* cond,
++                          const Tensor* then, const Tensor* else_) {
++    if (!ctx->ValidateInputsAreSameShape(this)) return;
++    Tensor* output = nullptr;
++    OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
++                            {"t", "e"}, "output", then->shape(), &output));
++    if (output->NumElements() > 0) {
++      functor::SelectFunctor<Device, long long> func;
++      func(ctx->eigen_device<Device>(), output->flat<long long>(), cond->flat<bool>(),
++           then->flat<long long>(), else_->flat<long long>());
++    }
++  }
++
++  void ComputeScalar(OpKernelContext* ctx, const Tensor* cond,
++                     const Tensor* then, const Tensor* else_) {
++    OP_REQUIRES(
++        ctx, then->shape().IsSameSize(else_->shape()),
++        errors::InvalidArgument(
++            "'then' and 'else' must have the same size.  but received: ",
++            then->shape().DebugString(), " vs. ",
++            else_->shape().DebugString()));
++
++    functor::SelectScalarHandler<Device, long long> handler;
++    handler(ctx, cond, then, else_);
++  }
++
++ private:
++  TF_DISALLOW_COPY_AND_ASSIGN(SelectOp);
++};
++
+ template <typename Device, typename T>
+ class SelectV2Op : public OpKernel {
+  public:
+diff --git a/tensorflow/core/kernels/cwise_ops_common.h b/tensorflow/core/kernels/cwise_ops_common.h
+index 2701d4133ee..54475388110 100644
+--- a/tensorflow/core/kernels/cwise_ops_common.h
++++ b/tensorflow/core/kernels/cwise_ops_common.h
+@@ -36,6 +36,10 @@ limitations under the License.
+ #include "tensorflow/core/platform/logging.h"
+ #include "tensorflow/core/util/bcast.h"
+ 
++#include <chrono>
++#include <iostream>
++#include <string>
++
+ namespace tensorflow {
+ 
+ typedef Eigen::ThreadPoolDevice CPUDevice;
+@@ -90,6 +94,9 @@ class BinaryOp : public BinaryOpShared {
+                        DataTypeToEnum<Tin>::v()) {}
+ 
+   void Compute(OpKernelContext* ctx) override {
++    static uint64_t test_cnt;
++    static uint64_t test_dur_sum;
++    auto start_time = std::chrono::high_resolution_clock::now();
+     // 'state': Shared helper not dependent on T to reduce code size
+     BinaryOpState state(ctx);
+     auto& bcast = state.bcast;
+@@ -168,6 +175,19 @@ class BinaryOp : public BinaryOpShared {
+     if (Functor::has_errors && error) {
+       SetComputeError(ctx);
+     }
++    auto end_time = std::chrono::high_resolution_clock::now();
++    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
++    test_dur_sum += duration;
++    test_cnt++;
++    if (test_cnt % 1000 == 0) {
++      if (ctx->op_kernel().name().find("random_uniform") == std::string::npos) {
++        std::string message =
++          ctx->op_kernel().name() + "avg took " + std::to_string(1.0 * test_dur_sum / test_cnt) + " us";
++        std::cout << message << std::endl;
++        test_dur_sum = 0;
++        test_cnt = 0;
++      }
++    }
+   }
+ };
+ 
+diff --git a/tensorflow/lite/build_def.bzl b/tensorflow/lite/build_def.bzl
+index cd235d3bca3..d04ed4cbfd8 100644
+--- a/tensorflow/lite/build_def.bzl
++++ b/tensorflow/lite/build_def.bzl
+@@ -11,6 +11,7 @@ def tflite_copts():
+     """Defines compile time flags."""
+     copts = [
+         "-DFARMHASH_NO_CXX_STRING",
++        "-flax-vector-conversions",
+     ] + select({
+         str(Label("//tensorflow:android_arm64")): [
+             "-O3",
+diff --git a/tensorflow/python/lib/core/bfloat16.cc b/tensorflow/python/lib/core/bfloat16.cc
+index fde3a837702..7d170113a3e 100644
+--- a/tensorflow/python/lib/core/bfloat16.cc
++++ b/tensorflow/python/lib/core/bfloat16.cc
+@@ -490,7 +490,7 @@ bool RegisterBfloat16Cast(int numpy_type, bool cast_is_safe) {
+ }
+ 
+ template <typename InType, typename OutType, typename Functor>
+-void BinaryUFunc(char** args, npy_intp* dimensions, npy_intp* steps,
++void BinaryUFunc(char** args, npy_intp const* dimensions, npy_intp const* steps,
+                  void* data) {
+   const char* i0 = args[0];
+   const char* i1 = args[1];
+@@ -506,7 +506,7 @@ void BinaryUFunc(char** args, npy_intp* dimensions, npy_intp* steps,
+ }
+ 
+ template <typename Functor>
+-void CompareUFunc(char** args, npy_intp* dimensions, npy_intp* steps,
++void CompareUFunc(char** args, npy_intp const* dimensions, npy_intp const* steps,
+                   void* data) {
+   BinaryUFunc<bfloat16, npy_bool, Functor>(args, dimensions, steps, data);
+ }
+diff --git a/third_party/rec_base/BUILD b/third_party/rec_base/BUILD
+new file mode 100644
+index 00000000000..7e5146df7ed
+--- /dev/null
++++ b/third_party/rec_base/BUILD
+@@ -0,0 +1,15 @@
++licenses(["notice"])
++cc_library(
++    name = "rec_base_lib",
++    srcs = ["lib/lib_rec_base.so"],
++    hdrs = [
++        "include/cmp.h",
++        "include/floor_mod.h",
++        "include/select.h",
++        "include/set_external_logger.h",
++        "math/BinaryOp.h",
++        "math/tools.h",
++    ],
++    includes = ["."],
++    visibility = ["//visibility:public"],
++)
+\ No newline at end of file
+diff --git a/third_party/rec_base/include/cmp.h b/third_party/rec_base/include/cmp.h
+new file mode 100644
+index 00000000000..efc1db23f2e
+--- /dev/null
++++ b/third_party/rec_base/include/cmp.h
+@@ -0,0 +1,27 @@
++#ifndef RECBASE_CMP_H
++#define RECBASE_CMP_H
++
++#include <cstdlib>
++
++namespace ock {
++// Less
++template <typename T> int Less(T *input0, T *input1, bool *output, size_t length);
++
++// Less right
++template <typename T> int Less(T *input0, T input1, bool *output, size_t length);
++
++// Less left
++template <typename T> int Less(T input0, T *input1, bool *output, size_t length);
++
++// greater
++template <typename T> int Greater(T *input0, T *input1, bool *output, size_t length);
++
++// greater right
++template <typename T> int Greater(T *input0, T input1, bool *output, size_t length);
++
++// greater left
++template <typename T> int Greater(T input0, T *input1, bool *output, size_t length);
++} // namespace ock
++
++#endif // RECBASE_CMP_H
++
+diff --git a/third_party/rec_base/include/floor_mod.h b/third_party/rec_base/include/floor_mod.h
+new file mode 100644
+index 00000000000..4814183bb68
+--- /dev/null
++++ b/third_party/rec_base/include/floor_mod.h
+@@ -0,0 +1,11 @@
++#ifndef RECBASE_FLOOR_MOD_H
++#define RECBASE_FLOOR_MOD_H
++
++namespace ock {
++template <typename T> int FloorMod(T *input, T *mod, T *output, size_t length);
++
++template <typename T> int FloorMod(T input, T *mod, T *output, size_t length);
++
++template <typename T> int FloorMod(T *input, T mod, T *output, size_t length);
++}
++#endif // RECBASE_FLOOR_MOD_H
+\ No newline at end of file
+diff --git a/third_party/rec_base/include/select.h b/third_party/rec_base/include/select.h
+new file mode 100644
+index 00000000000..ca6e4e1c0fa
+--- /dev/null
++++ b/third_party/rec_base/include/select.h
+@@ -0,0 +1,9 @@
++#ifndef RECBASE_SELECT_H
++#define RECBASE_SELECT_H
++
++#include <cstdlib>
++
++namespace ock {
++template <typename T> int Select(bool *cond, T *thenBranch, T *elseBranch, T *output, size_t length);
++} // namespace ock
++#endif // RECBASE_SELECT_H
+\ No newline at end of file
+diff --git a/third_party/rec_base/include/set_external_logger.h b/third_party/rec_base/include/set_external_logger.h
+new file mode 100644
+index 00000000000..69cff6a773c
+--- /dev/null
++++ b/third_party/rec_base/include/set_external_logger.h
+@@ -0,0 +1,17 @@
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++using ExternalLog = void (*) (int level, const char *msg);
++
++#ifdef __cplusplus
++}
++#endif
++
++#ifndef RECBASE_SET_EXTERNAL_LOGGER_H
++#define RECBASE_SET_EXTERNAL_LOGGER_H
++namespace ock
++{
++int SetExternalLogFunc(ExternalLog logFunc);
++} // namespace ock
++#endif // RECBASE_SET_EXTERNAL_LOGGER_H
+diff --git a/third_party/rec_base/math/BinaryOp.h b/third_party/rec_base/math/BinaryOp.h
+new file mode 100644
+index 00000000000..b7e9bbd442a
+--- /dev/null
++++ b/third_party/rec_base/math/BinaryOp.h
+@@ -0,0 +1,149 @@
++#ifndef TF_BINARYOP_H
++#define TF_BINARYOP_H
++
++#include "tensorflow/core/kernels/cwise_ops_common.h"
++#include "tensorflow/core/util/work_sharder.h"
++#include "tools.h"
++#include "third_party/rec_base/include/floor_mod.h"
++#include "third_party/rec_base/include/cmp.h"
++#include <chrono>
++#include <iostream>
++#include <cstdlib>
++#include <string>
++#include <stdexcept>
++using namespace ock;
++
++namespace tensorflow
++{
++#define REGISTER_BINARY_FUNC(tf_func, scalar_type, ock_in_type, ock_out_type, func)                                 \
++    template <> class BinaryOp<CPUDevice, tf_func<scalar_type>> : public BinaryOpShared {                           \
++    public:                                                                                                         \
++        typedef CPUDevice Device;                                                                                   \
++        typedef typename tf_func<scalar_type> Functor;                                                              \
++        typedef typename Functor::in_type Tin;                                                                      \
++        typedef typename Functor::out_type Tout;                                                                    \
++        explicit BinaryOp(OpKernelConstruction *ctx)                                                                \
++            : BinaryOpShared(ctx, DataTypeToEnum<Tout>::v(), DataTypeToEnum<Tin>::v()) {}                           \
++        void Compute(OpKernelContext* ctx) override {                                                               \
++            static uint64_t test_cnt;                                                                               \
++            static uint64_t test_dur_sum;                                                                           \
++            auto start_time = std::chrono::high_resolution_clock::now();                                            \
++            BinaryOpState state(ctx);                                                                               \
++            auto& bcast = state.bcast;                                                                              \
++            const Device& eigen_device = ctx->eigen_device<Device>();                                               \
++            auto &in0 = state.in0;                                                                                  \
++            auto &in1 = state.in1;                                                                                  \
++            Tensor* out = state.out;                                                                                \
++            if (!bcast.IsValid()) {                                                                                 \
++            if (ctx->status().ok()) {                                                                               \
++                if (state.result) {                                                                                 \
++                functor::SetOneFunctor<Device, bool>()(eigen_device,                                                \
++                                                        out->flat<bool>());                                         \
++                } else {                                                                                            \
++                functor::SetZeroFunctor<Device, bool>()(eigen_device,                                               \
++                                                        out->flat<bool>());                                         \
++                }                                                                                                   \
++            }                                                                                                       \
++            return;                                                                                                 \
++        }                                                                                                           \
++        if (state.out_num_elements == 0) {                                                                          \
++            return;                                                                                                 \
++        }                                                                                                           \
++        auto input0 = in0.flat<Tin>();                                                                              \
++        auto input1 = in1.flat<Tin>();                                                                              \
++        auto output_flat = out->flat<Tout>();                                                                       \
++        ock_in_type *input0_data =                                                                                  \
++            const_cast<ock_in_type *> (reinterpret_cast<const ock_in_type *>(input0.data()));                       \
++        ock_in_type *input1_data =                                                                                  \
++            const_cast<ock_in_type *> (reinterpret_cast<const ock_in_type *>(input1.data()));                       \
++        ock_out_type *output_data =                                                                                 \
++            const_cast<ock_out_type *> (reinterpret_cast<const ock_out_type *>(output_flat.data()));                \
++        const int ndims = state.ndims;                                                                              \
++        bool error = false;                                                                                         \
++        bool* const error_ptr = Functor::has_errors ? &error : nullptr;                                             \
++        const int PacketSize = Eigen::internal::packet_traits<Tin>::size;                                           \
++        const int size = output_flat.size();                                                                        \
++        int n = size / PacketSize;                                                                                  \
++        const char* env_var = std::getenv("PER_COST");                                                              \
++        int per_cost = 8;                                                                                           \
++        if (env_var != nullptr) {                                                                                   \
++            per_cost = std::stoi(env_var);                                                                          \
++        }                                                                                                           \
++        if (ndims <= 1) {                                                                                           \
++            if (state.in1_num_elements == 1 && state.in0_num_elements != 1) {                                       \
++                auto work = [&](int64_t start, int64_t end) {                                                       \
++                    func(input0_data + start, input1_data[0], output_data + start, end - start);                    \
++                };                                                                                                  \
++                auto *worker_threads = ctx->device()->tensorflow_cpu_worker_threads();                              \
++                Shard(worker_threads->num_threads, worker_threads->workers, size,                                   \
++                    per_cost, work);                                                                                \
++            } else if (state.in0_num_elements == 1 && state.in1_num_elements != 1) {                                \
++                auto work = [&](int64_t start, int64_t end) {                                                       \
++                    func(input0_data[0], input1_data + start, output_data + start, end - start);                    \
++                };                                                                                                  \
++                auto *worker_threads = ctx->device()->tensorflow_cpu_worker_threads();                              \
++                Shard(worker_threads->num_threads, worker_threads->workers, size,                                   \
++                    per_cost, work);                                                                                \
++            } else {                                                                                                \
++                auto work = [&](int64_t start, int64_t end) {                                                       \
++                    func(input0_data + start, input1_data + start, output_data + start, end - start);               \
++                };                                                                                                  \
++                auto *worker_threads = ctx->device()->tensorflow_cpu_worker_threads();                              \
++                Shard(worker_threads->num_threads, worker_threads->workers, size,                                   \
++                    per_cost, work);                                                                                \
++            }                                                                                                       \
++        } else if (ndims == 2) {                                                                                    \
++            functor::BinaryFunctor<Device, Functor, 2>().BCast(                                                     \
++                eigen_device, out->shaped<Tout, 2>(bcast.result_shape()),                                           \
++                in0.template shaped<Tin, 2>(bcast.x_reshape()),                                                     \
++                BCast::ToIndexArray<2>(bcast.x_bcast()),                                                            \
++                in1.template shaped<Tin, 2>(bcast.y_reshape()),                                                     \
++                BCast::ToIndexArray<2>(bcast.y_bcast()), error_ptr);                                                \
++            } else if (ndims == 3) {                                                                                \
++            functor::BinaryFunctor<Device, Functor, 3>().BCast(                                                     \
++                eigen_device, out->shaped<Tout, 3>(bcast.result_shape()),                                           \
++                in0.template shaped<Tin, 3>(bcast.x_reshape()),                                                     \
++                BCast::ToIndexArray<3>(bcast.x_bcast()),                                                            \
++                in1.template shaped<Tin, 3>(bcast.y_reshape()),                                                     \
++                BCast::ToIndexArray<3>(bcast.y_bcast()), error_ptr);                                                \
++            } else if (ndims == 4) {                                                                                \
++            functor::BinaryFunctor<Device, Functor, 4>().BCast(                                                     \
++                eigen_device, out->shaped<Tout, 4>(bcast.result_shape()),                                           \
++                in0.template shaped<Tin, 4>(bcast.x_reshape()),                                                     \
++                BCast::ToIndexArray<4>(bcast.x_bcast()),                                                            \
++                in1.template shaped<Tin, 4>(bcast.y_reshape()),                                                     \
++                BCast::ToIndexArray<4>(bcast.y_bcast()), error_ptr);                                                \
++            } else if (ndims == 5) {                                                                                \
++            functor::BinaryFunctor<Device, Functor, 5>().BCast(                                                     \
++                eigen_device, out->shaped<Tout, 5>(bcast.result_shape()),                                           \
++                in0.template shaped<Tin, 5>(bcast.x_reshape()),                                                     \
++                BCast::ToIndexArray<5>(bcast.x_bcast()),                                                            \
++                in1.template shaped<Tin, 5>(bcast.y_reshape()),                                                     \
++                BCast::ToIndexArray<5>(bcast.y_bcast()), error_ptr);                                                \
++            } else {                                                                                                \
++            SetUnimplementedError(ctx);                                                                             \
++            }                                                                                                       \
++            if (Functor::has_errors && error) {                                                                     \
++            SetComputeError(ctx);                                                                                   \
++            }                                                                                                       \
++            auto end_time = std::chrono::high_resolution_clock::now();                                              \
++            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();   \
++            test_dur_sum += duration;                                                                               \
++            test_cnt++;                                                                                             \
++            if (test_cnt % 1000 == 0) {                                                                             \
++            std::string message = #func " avg took " + std::to_string(1.0 * test_dur_sum / test_cnt) + " us";        \
++            std::cout << message << std::endl;                                                                      \
++            test_dur_sum = 0;                                                                                       \
++            test_cnt = 0;                                                                                           \
++            }                                                                                                       \
++        }                                                                                                           \
++    };                                                                                                              \
++
++REGISTER_BINARY_FUNC(functor::floor_fmod, float, float, float, FloorMod);
++REGISTER_BINARY_FUNC(functor::floor_fmod, double, double, double, FloorMod);
++REGISTER_BINARY_FUNC(functor::less, int64, int64_t, bool, Less);
++REGISTER_BINARY_FUNC(functor::less, int32, int32_t, bool, Less);
++REGISTER_BINARY_FUNC(functor::greater, int64, int64_t, bool, Greater);
++REGISTER_BINARY_FUNC(functor::greater, int32, int32_t, bool, Greater);
++} // namespace tensorflow
++#endif // TF_BINARYOP_H
+\ No newline at end of file
+diff --git a/third_party/rec_base/math/tools.h b/third_party/rec_base/math/tools.h
+new file mode 100644
+index 00000000000..12e7fb48e9e
+--- /dev/null
++++ b/third_party/rec_base/math/tools.h
+@@ -0,0 +1,23 @@
++#ifndef KUNPENG_TOOLS_H
++#define KUNPENG_TOOLS_H
++
++#include "third_party/eigen3/Eigen/Core"
++
++namespace Eigen {
++namespace internal {
++template <>
++EIGEN_STRONG_INLINE Packet2d pfloor<Packet2d>(const Packet2d &a)
++{
++    const Packet2d cst_1 = pset1<Packet2d>(1.0);
++    /* perform a floorf */
++    const Packet2d tmp = vcvtq_f64_s64(vcvtq_s64_f64(a));
++
++    /* if greater, substract 1 */
++    uint64x2_t mask = vcgtq_f64(tmp, a);
++    mask = vandq_u64(mask, vreinterpretq_u64_f64(cst_1));
++    return vsubq_f64(tmp, vreinterpretq_f64_u64(mask));
++}
++} // namespace internal
++} // namespace Eigen
++
++#endif // KUNPENG_TOOLS_H
+\ No newline at end of file
+-- 
