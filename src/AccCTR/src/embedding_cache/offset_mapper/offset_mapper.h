@@ -100,6 +100,9 @@ public:
             delete evictPos;
             evictPos = nullptr;
         }
+        pos2Key.clear();
+        lastBatchPos.clear();
+        useLength = 0;
         MapperBase::UnInitialize();
     }
 

@@ -118,6 +118,12 @@ namespace MxRec {
         double compactThreshold = 0.5;
         double diskAvailSpaceThreshold = 0.05;  // in range [0, 1), leave diskAvailSpaceThreshold*100 % for disk space
     };
+
+    enum class SsdCompactLevel {
+        NO_COMPACT = 0,
+        PARTIAL_COMPACT = 1,
+        FULL_COMPACT = 2
+    };
 }
 
 #endif // MXREC_TABLE_H

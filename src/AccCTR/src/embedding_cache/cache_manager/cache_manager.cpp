@@ -342,6 +342,12 @@ int EmbCacheManagerImpl::BackUpTrainStatus(const std::string& tableName)
     offsetMappersBackUp[tableName].Initialize(reserve, maxCacheSize);
     offsetMappersBackUp[tableName] = offsetMappers[tableName];
 
+    // clear key-offset status because estimator train-and-eval mode will build new graph when switching train to eval.
+    ExternalLogger::PrintLog(LogLevel::INFO, "Start to clear offsetMappers, table:" + tableName);
+    offsetMappers[tableName].UnInitialize();
+    offsetMappers[tableName].Initialize(reserve, maxCacheSize);
+    offsetMappers[tableName] = offsetMappers[tableName];
+
     return H_OK;
 }
 
