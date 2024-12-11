@@ -28,14 +28,38 @@ import tensorflow as tf
 from tensorflow.python.util import compat
 
 from mx_rec.constants.constants import (
-    DataName, DataAttr, MIN_SIZE, MAX_FILE_SIZE, TFDevice, MAX_INT32, HDFS_FILE_PREFIX, TRAIN_CHANNEL_ID,
-    BASE_MODEL, DELTA_MODEL, SAVE_DIR_MODE, SAVE_FILE_MODE, SAVE_FILE_FLAG, FLOAT32_BYTES, UINT64_BYTES, UINT32_BYTES
+    DataName,
+    DataAttr,
+    MIN_SIZE,
+    MAX_FILE_SIZE,
+    TFDevice,
+    MAX_INT32,
+    HDFS_FILE_PREFIX,
+    TRAIN_CHANNEL_ID,
+    BASE_MODEL,
+    DELTA_MODEL,
+    SAVE_DIR_MODE,
+    SAVE_FILE_MODE,
+    SAVE_FILE_FLAG,
+    FLOAT32_BYTES,
+    UINT64_BYTES,
+    UINT32_BYTES,
 )
-from mx_rec.util.communication.hccl_ops import get_rank_id, get_rank_size, get_local_rank_size
+from mx_rec.saver.constants import FILE_BUFFER_SIZE
+from mx_rec.util.communication.hccl_ops import (
+    get_rank_id,
+    get_rank_size,
+    get_local_rank_size,
+)
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.perf import performance
 from mx_rec.validator.validator import (
-    DirectoryValidator, FileValidator, para_checker_decorator, ClassValidator, IntValidator, OptionalStringValidator,
+    DirectoryValidator,
+    FileValidator,
+    para_checker_decorator,
+    ClassValidator,
+    IntValidator,
+    OptionalStringValidator,
 )
 from mx_rec.util.global_env_conf import global_env
 from mx_rec.util.log import logger
@@ -351,23 +375,29 @@ class Saver(object):
             thread.join()
 
     def _save_ddr(self, sess, root_dir, save_delta):
-        # 接受host侧传来的需要swap_out的offset用于更新host侧并保存
+        # start host's threads for syncing data between device and host
+        self.config_instance.hybrid_manager_config.start_sync_thread()
+
+        # let hybridMgmt send swap_out offset from host
         self.config_instance.hybrid_manager_config.fetch_device_emb()
+
         # In DDR mode, within the save process, the graph has been fixed and cannot execute the get_next op.
         # The _unsafe_unfinalize operation can modify the state of the graph being fixed.
         sess.graph._unsafe_unfinalize()
+
         for var in self.var_list:
             table_instance = self.config_instance.sparse_embed_config.get_table_instance(var)
             table_name = table_instance.table_name
 
+            # receive syncing info from host
             use_static = ConfigInitializer.get_instance().use_static
             max_lookup_vec_size = None
             if use_static:
                 max_lookup_vec_size = table_instance.send_count * self.rank_size
-            swap_out_pos, swap_out_len = npu_ops.gen_npu_ops.get_next(
-                output_types=[tf.int32, tf.int32],
-                output_shapes=[[max_lookup_vec_size], []],
-                channel_name=f'{table_name}_save_h2d_{TRAIN_CHANNEL_ID}')
+            swap_out_pos, swap_out_len, sync_remain_flag = npu_ops.gen_npu_ops.get_next(
+                output_types=[tf.int32, tf.int32, tf.bool],
+                output_shapes=[[max_lookup_vec_size], [], []],
+                channel_name=f"{table_name}_save_h2d_{TRAIN_CHANNEL_ID}")
             if use_static:
                 swap_out_pos = swap_out_pos[:swap_out_len]
 
@@ -376,14 +406,21 @@ class Saver(object):
             if optimizer is not None:
                 for slots in optimizer.values():
                     table += list(slots.values())
-
             swap_outs = [tf.gather(one_table, swap_out_pos) for one_table in table]
             swap_out = tf.concat(swap_outs, axis=1)
-            channel_name = f'{table_name}_save_d2h_{TRAIN_CHANNEL_ID}'
-            logger.debug('channel %s was built for op swap_out_op.', channel_name)
+            channel_name = f"{table_name}_save_d2h_{TRAIN_CHANNEL_ID}"
+            logger.info("Channel %s was built for op swap_out_op.", channel_name)
             swap_out_op = npu_ops.outfeed_enqueue_op(channel_name=channel_name, inputs=[swap_out])
-            # 发送host需要的embedding
-            sess.run(swap_out_op)
+
+            # send embedding to host
+            sync_cnt = 0
+            is_sync_remain = True
+            while is_sync_remain:
+                _, is_sync_remain = sess.run([swap_out_op, sync_remain_flag])
+                sync_cnt += 1
+                logger.info("Sending embedding to host, table:%s, sync_cnt:%d, is_sync_remain:%d.",
+                            table_name, sync_cnt, is_sync_remain)
+            logger.info("Finish sending embedding to host, table:%s.", table_name)
         self.config_instance.hybrid_manager_config.save_host_data(root_dir, save_delta)
 
     def _get_valid_dict_data(self, dump_data_dict, table_name):
@@ -733,19 +770,43 @@ def merge_multi_files(upper_dir: str):
 
     Returns: None
     """
+    if check_file_system_is_hdfs(upper_dir):
+        merge_hdfs_file(upper_dir)
+        return
+    merge_local_file(upper_dir)
+
+
+def merge_hdfs_file(upper_dir: str):
     data_files = [file for file in tf.io.gfile.listdir(upper_dir) if file.startswith("slice_")]
     data_files = sorted(data_files, key=os.path.basename)
     outfile_path = os.path.join(upper_dir, "slice.data")
-    if check_file_system_is_hdfs(outfile_path):
-        outfile = tf.io.gfile.GFile(outfile_path, "wb")
-    else:
-        outfile = os.fdopen(os.open(outfile_path, SAVE_FILE_FLAG, SAVE_FILE_MODE), "wb")
-    
+    outfile = tf.io.gfile.GFile(outfile_path, "wb")
     for file in data_files:
         file_dir = os.path.join(upper_dir, file)
         with tf.io.gfile.GFile(file_dir, "rb") as file:
             outfile.write(file.read())
         tf.io.gfile.remove(file_dir)
+    outfile.close()
+
+
+def merge_local_file(upper_dir: str) -> None:
+    data_files = [file for file in os.listdir(upper_dir) if file.startswith("slice_")]
+    data_files = sorted(data_files, key=os.path.basename)    
+    outfile_path = os.path.join(upper_dir, "slice.data")
+    outfile = os.fdopen(os.open(outfile_path, SAVE_FILE_FLAG, SAVE_FILE_MODE), "wb", buffering=FILE_BUFFER_SIZE)
+    for file in data_files:
+        file_dir = os.path.join(upper_dir, file)
+        if os.path.getsize(file_dir) == 0:
+            os.remove(file_dir)
+            continue
+        f = open(file_dir, "rb", buffering=FILE_BUFFER_SIZE)
+        while True:
+            data = f.read(FILE_BUFFER_SIZE)
+            if not data:
+                break
+            outfile.write(data)
+        f.close()
+        os.remove(file_dir)
     outfile.close()
 
 

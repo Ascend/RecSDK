@@ -131,13 +131,18 @@ public:
     void SetHDTransferForEmbTable(HDTransfer* hdTransfer);
 
     void SetEmbCacheForEmbTable(const ock::ctr::EmbCacheManagerPtr& embCache);
+
+    void SyncLatestEmbedding(int pythonBatchId);
 private:
 
     EmbeddingMgmt();
 
     EmbeddingMgmt(const EmbeddingMgmt& mgmt) = delete;
+    
+    EmbeddingMgmt& operator=(const EmbeddingMgmt& other) = delete;
 
     std::unordered_map<std::string, std::shared_ptr<EmbeddingTable>> embeddings;
+    unique_ptr<ThreadPool> syncThreadPool = nullptr;
 };
 
 }

@@ -1047,34 +1047,76 @@ void HybridMgmt::LookUpSwapAddrs(const string& embName, int channelId)
     }
 }
 
+vector<Tensor> HybridMgmt::BuildSaveSwapTensor(vector<uint64_t> swapOutPos, bool isSyncRemain)
+{
+#ifndef GTEST
+    vector<Tensor> swapTensor;
+    swapTensor.emplace_back(Vec2TensorI32(swapOutPos));
+    swapTensor.emplace_back(Tensor(tensorflow::DT_INT32, {1}));
+    auto swapOutLen = swapTensor.back().flat<int32>();
+    swapOutLen(0) = swapOutPos.size();
+    swapTensor.emplace_back(Tensor(tensorflow::DT_BOOL, {1}));
+    auto swapRemainFlag = swapTensor.back().flat<bool>();
+    swapRemainFlag(0) = isSyncRemain;
+    return swapTensor;
+#endif
+}
+
 /// 导出npu的embedding
 void HybridMgmt::FetchDeviceEmb()
 {
+#ifndef GTEST
     // 数据处理线程上锁
     KEY_PROCESS_INSTANCE->LoadSaveLock();
 
     if (mgmtRankInfo.isDDR) {
-        // DDR模式保存host的emb表以及hashmap
-        LOG_DEBUG(MGMT + "start host side save: ddr mode");
+        LOG_INFO("Start FetchDeviceEmb.");
         for (const auto& embInfo : mgmtEmbInfo) {
-            std::vector<std::pair<uint64_t, uint64_t>> koVec;
+            LOG_INFO("Start send swapOutPos to device, table:{}.", embInfo.name);
+            vector<std::pair<uint64_t, uint64_t>> koVec;
             embCache->ExportDeviceKeyOffsetPairs(embInfo.name, koVec);
-            std::vector<uint64_t> swapOutPos;
+            vector<uint64_t> swapOutPos;
             for (const auto& p : koVec) {
                 swapOutPos.push_back(p.second);
             }
 
-            vector<Tensor> swapTensor;
-            swapTensor.emplace_back(Vec2TensorI32(swapOutPos));
-            swapTensor.emplace_back(Tensor(tensorflow::DT_INT32, {1}));
-            auto swapOutLen = swapTensor.back().flat<int32>();
-            swapOutLen(0) = swapOutPos.size();
-            LOG_DEBUG(MGMT + "save swapOutPos size:{}", swapOutPos.size());
-            // 发送SwapOutPos信息
-            hdTransfer->Send(TransferChannel::SAVE_H2D, swapTensor, TRAIN_CHANNEL_ID, embInfo.name);
+            if (swapOutPos.empty()) {
+                auto swapTensor = BuildSaveSwapTensor(swapOutPos, false);
+                hdTransfer->Send(TransferChannel::SAVE_H2D, swapTensor, TRAIN_CHANNEL_ID, embInfo.name);
+                LOG_INFO("Send empty swapOutPos to device, table:{}, isSyncRemain:{}.", embInfo.name, false);
+                continue;
+            }
+
+            auto oneEmbMemCost = static_cast<size_t>(embInfo.extEmbeddingSize) * sizeof(float);
+            auto totalSyncMem = oneEmbMemCost * swapOutPos.size();
+            auto syncCnt = static_cast<size_t>(totalSyncMem / MAX_OUTFEED_ENQUEUE_INPUT_SIZE) + 1;
+            auto onceSyncPosCnt = static_cast<size_t>(swapOutPos.size() / syncCnt);
+
+            bool isSyncRemain = true;
+            size_t syncPosRemain = swapOutPos.size();
+            size_t syncPosCnt = onceSyncPosCnt;
+            size_t syncBatchId = 0;
+            for (size_t startIdx = 0; startIdx < swapOutPos.size(); startIdx += syncPosCnt) {
+                syncPosCnt = std::min(syncPosRemain, onceSyncPosCnt);
+                vector<uint64_t> swapOutPosSlice(
+                    swapOutPos.begin() + startIdx,
+                    swapOutPos.begin() + startIdx + syncPosCnt
+                );
+
+                if (startIdx + syncPosCnt >= swapOutPos.size()) {
+                    isSyncRemain = false;
+                }
+                auto swapTensor = BuildSaveSwapTensor(swapOutPos, isSyncRemain);
+                LOG_INFO("Send swapOutPos for syncing, table:{}, syncBatchId:{}, swapOutPos.size:{}, isSyncRemain:{}",
+                         embInfo.name, syncBatchId, swapOutPos.size(), isSyncRemain);
+                hdTransfer->Send(TransferChannel::SAVE_H2D, swapTensor, TRAIN_CHANNEL_ID, embInfo.name);
+                ++syncBatchId;
+                syncPosRemain -= syncPosCnt;
+            }
         }
     }
     KEY_PROCESS_INSTANCE->LoadSaveUnlock();
+#endif
 }
 
 // 这里就是新增的embedding处理线程
@@ -2377,4 +2419,15 @@ void HybridMgmt::SendPaddingKeysMaskVecDDRL3(const EmbBaseInfo& info, const vect
     hdTransfer->Send(TransferChannel::MASK, {Vec2TensorI32(paddingKeysMask)}, info.channelId, info.name, info.batchId);
     LOG_DEBUG("In SendPaddingKeysMaskVecDDRL3, table:{}, channelId:{}, batchId:{}, sendMaskSyncTC(ms):{}.", info.name,
               info.channelId, info.batchId, sendMaskSyncTC.ElapsedMS());
+}
+
+void HybridMgmt::StartSyncThread()
+{
+    if (!mgmtRankInfo.isDDR) {
+        auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::LOGIC_ERROR,
+                           "This function only use for syncing embedding from device to host in DDR/SSD mode.");
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
+    }
+    EmbeddingMgmt::Instance()->SyncLatestEmbedding(hybridMgmtBlock->pythonBatchId[TRAIN_CHANNEL_ID]);
 }

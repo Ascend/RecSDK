@@ -269,3 +269,7 @@ void EmbeddingTable::RecordPaddingKeysOffset(int channel, emb_key_t key, int64_t
         paddingKeysOffset.insert(offset);
     }
 }
+
+void EmbeddingTable::SyncLatestEmbedding(int pythonBatchId)
+{
+}

@@ -73,6 +73,7 @@ private:
     AddressMapper embMap;
     uint32_t embeddingSize;
     uint32_t extEmbeddingSize;
+    std::string name;
 
     template <class T>
     void insertData(std::vector<char>& buffer, T& data);

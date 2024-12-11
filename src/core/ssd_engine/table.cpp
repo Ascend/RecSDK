@@ -165,8 +165,19 @@ void Table::Save(int step, const map<emb_key_t, KeyInfo>& keyInfo)
 
 void Table::Save(int step)
 {
-    LOG_INFO("start save table:{}, at step:{}", name, step);
-    Compact(true);
+    auto saveCompactLevel = GlobalEnv::ssdSaveCompactLevel;
+    LOG_INFO("start save table:{}, at step:{}, saveCompactLevel:{}", name, step, saveCompactLevel);
+    switch (saveCompactLevel) {
+        case static_cast<int>(SsdCompactLevel::NO_COMPACT):
+            break;
+        case static_cast<int>(SsdCompactLevel::PARTIAL_COMPACT):
+            Compact(false);
+            break;
+        case static_cast<int>(SsdCompactLevel::FULL_COMPACT):
+        default:
+            Compact(true);
+            break;
+    }
 
     lock_guard<mutex> guard(rwLock);
     auto metaFilePath = fs::absolute(curTablePath + "/" + name + ".meta" + "." + to_string(step));

@@ -140,6 +140,8 @@ public:
 
     void ReceiveKeyThread(const EmbInfo& embInfo);
 
+    void StartSyncThread();
+
     GTEST_PRIVATE
         : volatile bool mutexDestroy{false};  // LookupAndSend & ReceiveAndUpdate Condition_Variable_Wait stop.
     std::mutex lookUpAndSendBatchIdMtx[MAX_CHANNEL_NUM];  // train and eval
@@ -309,6 +311,8 @@ private:
 
     void EnqueueSwapInfo(const EmbBaseInfo& info, std::pair<vector<uint64_t>, vector<uint64_t>>& swapInKoPair,
                          std::pair<vector<uint64_t>, vector<uint64_t>>& swapOutKoPair);
+
+    vector<Tensor> BuildSaveSwapTensor(vector<uint64_t> swapOutPos, bool isSyncRemain);
 };
 }  // namespace MxRec
 #endif  // MX_REC_EMB_MGMT_H

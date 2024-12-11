@@ -68,6 +68,19 @@ void EmbeddingDDR::EvictKeys(const vector<emb_key_t>& keys)
 
 void EmbeddingDDR::Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet)
 {
+    auto step = GetStepFromPath(savePath);
+    if (step > 0) {
+        /*
+          note: estimator will trigger loading while switching train to eval after new graph is built,
+                however embCache status stays the same, thus skip loading here.
+                But, if we need to support loading model within train process in future, must
+                add more condition to handle different cases.
+        */
+        LOG_INFO("On estimator train-and-eval mode, skip loading since nothing change in host side,"
+                 " current train batchId:{}.", step);
+        return;
+    }
+
     vector<emb_cache_key_t> keys;
     vector<vector<float>> embeddings;
     vector<vector<float>> optimizerSlots;
@@ -75,6 +88,9 @@ void EmbeddingDDR::Load(const string& savePath, map<string, unordered_set<emb_ca
     LoadKey(savePath, keys);
     LoadEmbedding(savePath, embeddings);
     LoadOptimizerSlot(savePath, optimizerSlots);
+
+    auto usage = embCache->GetUsage(name);
+    LOG_INFO("Before LoadEmbTableInfos, table:{}, usage:{}", name, usage);
 
     auto rc = embCache->LoadEmbTableInfos(name, keys, embeddings, optimizerSlots);
     if (rc != 0) {
@@ -225,7 +241,6 @@ void EmbeddingDDR::LoadOptimizerSlot(const string &savePath, vector<vector<float
 void EmbeddingDDR::Save(const string& savePath, const int pythonBatchId, bool saveDelta,
                         const map<emb_key_t, KeyInfo>& keyInfo)
 {
-    SyncLatestEmbedding(pythonBatchId, saveDelta, keyInfo);
     vector<emb_cache_key_t> keys;
     vector<vector<float>> embeddings;
     vector<vector<float>> optimizerSlots;
@@ -281,39 +296,25 @@ void EmbeddingDDR::SyncLatestEmbedding(const int pythonBatchId, bool saveDelta, 
             swapOutKeys.push_back(p.first);
         }
     }
-    LOG_DEBUG("SyncLatestEmbedding, table:{}, swapOutKeys.size:{}.", name, swapOutKeys.size());
 
-    // 接收python save接口发送的卡内embedding
-    auto size = hdTransfer->RecvAcl(TransferChannel::SAVE_D2H, TRAIN_CHANNEL_ID, name, 0, -1);
-    LOG_DEBUG("Receive D2H data, table:{}, acl dataset size:{}.", name, size);
-    auto aclData = acltdtGetDataItem(hdTransfer->aclDatasets[name][0], 0);
-    if (aclData == nullptr) {
-        auto error = Error(ModuleName::M_ACL, ErrorType::NULL_PTR,
-                           "Failed to get Acl DataItem pointer from Acl Dataset. Check plog for detail.");
-        LOG_ERROR(error.ToString());
-        throw runtime_error(error.ToString());
-    }
-    auto* ptr = reinterpret_cast<float*>(acltdtGetDataAddrFromItem(aclData));
-
-    // In step 0, can't update cacheEmb because key-pos mapping has been modified in hybrid_mgmt `ParseKeys` method.
-    if (pythonBatchId == 0) {
-        LOG_DEBUG("In step 0, skipping update cacheEmb, table:{}.", name);
+    LOG_INFO("Start SyncLatestEmbedding, table:{}, total swapOutKeys.size:{}.", name, swapOutKeys.size());
+    if (swapOutKeys.empty()) {
+        auto size = hdTransfer->RecvAcl(TransferChannel::SAVE_D2H, TRAIN_CHANNEL_ID, name, 0, -1);
+        LOG_INFO("Receive D2H data, table:{}, acl dataset size:{}.", name, size);
+        auto aclData = acltdtGetDataItem(hdTransfer->aclDatasets[name][0], 0);
+        if (aclData == nullptr) {
+            auto error = Error(ModuleName::M_ACL, ErrorType::NULL_PTR,
+                               "Failed to get Acl DataItem pointer from Acl Dataset. Check plog for detail.");
+            LOG_ERROR(error.ToString());
+            throw runtime_error(error.ToString());
+        }
+        LOG_INFO("Finish SyncLatestEmbedding, empty keys, table:{}, batchId.", name, pythonBatchId);
         return;
     }
 
-    if (ssdVocabSize == 0) {
-        // 在保存之前先更新host的embedding
-        rc = embCache->EmbeddingUpdate(name, swapOutKeys, ptr);
-        if (rc != ock::ctr::H_OK) {
-            auto error = Error(ModuleName::M_OCK_CTR, ErrorType::LOGIC_ERROR,
-                               StringFormat("EmbeddingUpdate failed, table:%s, error code:%d.", name.c_str(), rc));
-            LOG_ERROR(error.ToString());
-            throw std::invalid_argument(error.ToString());
-        }
-    } else {
-        // SSD mode embedding update.
-        EmbeddingUpdateWithSSD(swapOutKeys, ptr);
-    }
+    BatchSynchronization(pythonBatchId, swapOutKeys);
+
+    LOG_INFO("Finish SyncLatestEmbedding, table:{}, total swapOutKeys.size:{}.", name, swapOutKeys.size());
 }
 
 void EmbeddingDDR::EmbeddingUpdateWithSSD(const vector<uint64_t>& swapOutKeys, float* deviceDataPtr)
@@ -474,10 +475,79 @@ void EmbeddingDDR::SetEmbCache(ock::ctr::EmbCacheManagerPtr embCache)
 
 void EmbeddingDDR::BackUpTrainStatus()
 {
-    embCache->BackUpTrainStatus(name);
+    auto ret = embCache->BackUpTrainStatus(name);
+    if (ret != 0) {
+        auto error = Error(ModuleName::M_OCK_CTR, ErrorType::UNKNOWN,
+                           "BackUpTrainStatus failed, table:" + name + ", error code:" + std::to_string(ret));
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
+    }
 }
 
 void EmbeddingDDR::RecoverTrainStatus()
 {
-    embCache->RecoverTrainStatus(name);
+    auto ret = embCache->RecoverTrainStatus(name);
+    if (ret != 0) {
+        auto error = Error(ModuleName::M_OCK_CTR, ErrorType::UNKNOWN,
+                           "RecoverTrainStatus failed, table:" + name + ", error code:" + std::to_string(ret));
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
+    }
+}
+
+void EmbeddingDDR::BatchSynchronization(int pythonBatchId, vector<uint64_t>& swapOutKeys)
+{
+#ifndef GTEST
+    auto oneEmbMemCost = static_cast<size_t>(extEmbSize_) * sizeof(float);
+    auto totalSyncMem = oneEmbMemCost * swapOutKeys.size();
+    auto syncCnt = static_cast<size_t>(totalSyncMem / MAX_OUTFEED_ENQUEUE_INPUT_SIZE) + 1;
+    auto onceSyncKeyCnt = static_cast<size_t>(swapOutKeys.size() / syncCnt);
+
+    size_t syncKeysRemain = swapOutKeys.size();
+    size_t syncPosCnt = onceSyncKeyCnt;
+    size_t syncBatchId = 0;
+    for (size_t startIdx = 0; startIdx < swapOutKeys.size(); startIdx += syncPosCnt) {
+        syncPosCnt = std::min(syncKeysRemain, onceSyncKeyCnt);
+        vector<uint64_t> swapOutKeysSlice(
+            swapOutKeys.begin() + startIdx,
+            swapOutKeys.begin() + startIdx + syncPosCnt
+        );
+
+        LOG_INFO("Start update embedding from device, table:{}, batchId:{}, syncBatchId:{}, syncPosCnt:{}",
+                 name, pythonBatchId, syncBatchId, syncPosCnt);
+        auto size = hdTransfer->RecvAcl(TransferChannel::SAVE_D2H, TRAIN_CHANNEL_ID, name, 0, -1);
+        LOG_DEBUG("Receive D2H data, table:{}, batchId:{}, syncBatchId:{}, acl dataset size:{}.",
+                  name, pythonBatchId, syncBatchId, size);
+        auto aclData = acltdtGetDataItem(hdTransfer->aclDatasets[name][0], 0);
+        if (aclData == nullptr) {
+            auto error = Error(ModuleName::M_ACL, ErrorType::NULL_PTR,
+                               "Failed to get Acl DataItem pointer from Acl Dataset. Check plog for detail.");
+            LOG_ERROR(error.ToString());
+            throw runtime_error(error.ToString());
+        }
+        auto* ptr = reinterpret_cast<float*>(acltdtGetDataAddrFromItem(aclData));
+
+        // In step 0, can't update cacheEmb because key-pos mapping has been modified in hybrid_mgmt `ParseKeys` method.
+        if (pythonBatchId == 0) {
+            LOG_INFO("In step 0, skipping update cacheEmb, table:{}, syncBatchId:{}.", name, syncBatchId);
+            ++syncBatchId;
+            continue;
+        }
+
+        if (ssdVocabSize == 0) {
+            int rc = embCache->EmbeddingUpdate(name, swapOutKeys, ptr);
+            if (rc != ock::ctr::H_OK) {
+                auto error = Error(ModuleName::M_OCK_CTR, ErrorType::LOGIC_ERROR,
+                                   StringFormat("EmbeddingUpdate failed, table:%s, error code:%d.", name.c_str(), rc));
+                LOG_ERROR(error.ToString());
+                throw std::invalid_argument(error.ToString());
+            }
+        } else {
+            EmbeddingUpdateWithSSD(swapOutKeys, ptr);
+        }
+        LOG_INFO("Finish update embedding from device, table:{}, batchId:{}, syncBatchId:{}, syncPosCnt:{}",
+                 name, pythonBatchId, syncBatchId, syncPosCnt);
+        ++syncBatchId;
+    }
+#endif
 }

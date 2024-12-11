@@ -401,7 +401,7 @@ bool EmbLocalTable::Deserialize(const vector<char>& buffer)
 
 uint32_t EmbLocalTable::GetUsage()
 {
-    return embMap.current_size;
+    return embMap.currentSize;
 }
 
 void EmbLocalTable::GetEmbTableInfos(std::vector<uint64_t>& keys, std::vector<std::vector<float>>& embeddings,
@@ -442,7 +442,10 @@ bool EmbLocalTable::LoadEmbTableInfos(const std::vector<uint64_t>& keys,
     for (uint64_t i = 0; i < keys.size(); i++) {
         uint64_t value = 0;
         if (FindAndPutIfNotFound(keys[i], value) != H_OK) {
-            ExternalLogger::PrintLog(LogLevel::ERROR, "FindAndPutIfNotFound failed!");
+            ExternalLogger::PrintLog(
+                LogLevel::ERROR,
+                "FindAndPutIfNotFound failed! Table:" + name + ", Try put keys' quantity:" +
+                std::to_string(keys.size()) + ", already put quantity:" + std::to_string(i) + ".");
             return false;
         }
         if (embeddings[i].size() != embeddingSize) {
