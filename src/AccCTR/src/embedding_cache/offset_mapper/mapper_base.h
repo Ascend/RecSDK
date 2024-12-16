@@ -276,8 +276,8 @@ struct alignas(K_ALIGNMENT)NetHashBucket {
 
 class MapperBase {
 public:
-    //    DEFINE_RDMA_REF_COUNT_FUNCTIONS
-    std::atomic<uint64_t> current_size{ 0 };
+    // DEFINE_RDMA_REF_COUNT_FUNCTIONS
+    std::atomic<uint64_t> currentSize{ 0 };
 
     MapperBase() = default;
 
@@ -344,6 +344,8 @@ public:
         delete mOverflowEntryAlloc;
         mOverflowEntryAlloc = nullptr;
         mBucketCount = 0;
+        currentSize = 0;
+        zeroInside = false;
     }
 
     FkvState FindAndPutIfNotFound(uint64_t key, uint64_t &value,
@@ -363,7 +365,7 @@ public:
                     return FkvState::FKV_NO_SPACE;
                 }
                 zeroValue = value;
-                current_size++;
+                currentSize++;
                 return FkvState::FKV_NOT_EXIST;
             }
             return FkvState::FKV_KEY_CONFLICT;
@@ -398,7 +400,7 @@ public:
             if (zeroInside) {
                 if (__sync_bool_compare_and_swap(&zeroInside, true, false)) {
                     zeroValue = 0;
-                    current_size--;
+                    currentSize--;
                 }
                 return FkvState::FKV_EXIST;
             }
@@ -413,7 +415,7 @@ public:
         while (buck != nullptr) {
             if (buck->Find(key, value)) {
                 buck->Remove(key);
-                current_size--;
+                currentSize--;
                 return FkvState::FKV_EXIST;
             }
 
@@ -435,7 +437,7 @@ public:
                     return FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL;
                 }
                 zeroValue = 0;
-                current_size--;
+                currentSize--;
             }
             return FkvState::FKV_EXIST;
         }
@@ -452,7 +454,7 @@ public:
                     return FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL;
                 }
 
-                current_size--;
+                currentSize--;
                 return FkvState::FKV_EXIST;
             }
 
@@ -467,7 +469,7 @@ public:
         if (HM_UNLIKELY(key == 0)) {
             if (__sync_bool_compare_and_swap(&zeroInside, false, true)) {
                 zeroValue = value;
-                current_size++;
+                currentSize++;
                 return FkvState::FKV_NOT_EXIST;
             }
             return FkvState::FKV_KEY_CONFLICT;
@@ -485,7 +487,7 @@ public:
                 /* if there is an entry to put, just break */
                 FkvState putRet = buck->Put(key, value, []() -> BeforePutFuncState { return {}; });
                 if (putRet == FkvState::FKV_NOT_EXIST) {
-                    current_size++;
+                    currentSize++;
                     return FkvState::FKV_NOT_EXIST;
                 }
 
@@ -576,7 +578,7 @@ public:
                     return FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL;
                 }
                 zeroValue = 0;
-                current_size--;
+                currentSize--;
             }
 
             return FkvState::FKV_EXIST;
@@ -590,7 +592,7 @@ public:
                 if (HM_UNLIKELY(ret == FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL)) {
                     return FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL;
                 }
-                current_size--;
+                currentSize--;
                 return FkvState::FKV_EXIST;
             }
 
@@ -749,7 +751,7 @@ private:
                 FkvState putRet = buck->Put(key, value, beforePutFunc);
                 buck->spinLock.UnLock();
                 if (putRet == FkvState::FKV_NOT_EXIST) {
-                    current_size++;
+                    currentSize++;
                     return FkvState::FKV_NOT_EXIST;
                 }
 

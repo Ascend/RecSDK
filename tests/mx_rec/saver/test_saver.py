@@ -23,7 +23,12 @@ from unittest import mock
 
 import tensorflow as tf
 
-from mx_rec.saver.saver import Saver, SSD_SAVE_PATH_PREFIX, read_base_delta_and_write_for_ssd
+from mx_rec.saver.saver import (
+    Saver,
+    SSD_SAVE_PATH_PREFIX,
+    read_base_delta_and_write_for_ssd,
+    merge_local_file,
+)
 from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION
 from tests.mx_rec.core.mock_class import MockConfigInitializer, MockSparseEmbedConfig
 from tests.mx_rec.saver.sparse_embedding_mock import SparseEmbeddingMock
@@ -159,6 +164,32 @@ class TestReadSSDModel(unittest.TestCase):
         self.assertTrue(tf.io.gfile.exists(expected_meta_file), "New meta file created.")
         self.assertTrue(tf.io.gfile.exists(expected_data_file), "New data file created.")
         tf.io.gfile.rmtree(SSD_SAVE_PATH_PREFIX + str(params.rank_id))
+
+
+class TestMergeFile(unittest.TestCase):
+    """
+    Test merge file function.
+    """
+    root_dir = os.path.join(os.getcwd(), "test_merge")
+    rank_size = 8
+    
+    def create_file(self):
+        os.mkdir(TestMergeFile.root_dir)
+        for i in range(TestMergeFile.rank_size):
+            file_path = os.path.join(TestMergeFile.root_dir, f"slice_{i}.data")
+            f = open(file_path, "wb")
+            if i % 2 == 0:
+                f.write(b"1")
+            f.close()
+                
+    def test_merge_local_file(self):
+        self.create_file()
+        merge_local_file(TestMergeFile.root_dir)
+        self.assertEqual(len(os.listdir(TestMergeFile.root_dir)), 1)
+        merged_file = os.path.join(TestMergeFile.root_dir, "slice.data")
+        self.assertTrue(os.path.exists(merged_file))
+        self.assertEqual(os.path.getsize(merged_file), TestMergeFile.rank_size / 2)
+        tf.io.gfile.rmtree(TestMergeFile.root_dir)
 
 
 if __name__ == '__main__':

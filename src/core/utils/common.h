@@ -88,6 +88,8 @@ constexpr int PROFILING_START_BATCH_ID = 100;
 constexpr int PROFILING_END_BATCH_ID = 200;
 constexpr int HOT_EMB_UPDATE_STEP_DEFAULT = 1000;
 constexpr float HOT_EMB_CACHE_PCT = static_cast<float>(1. / 3);  // hot emb cache percent
+// max data size for syncing device to host while saving
+constexpr int MAX_OUTFEED_ENQUEUE_INPUT_SIZE = 1024 * 1024 * 1024;  // 1GB
 
 const string COMBINE_HISTORY_NAME = "combine_table_history";
 const string SAVE_SPARSE_PATH_PREFIX = "sparse";

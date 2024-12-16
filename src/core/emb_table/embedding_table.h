@@ -116,6 +116,8 @@ public:
 
     void RecordPaddingKeysOffset(int channel, emb_key_t key, int64_t offset);
 
+    virtual void SyncLatestEmbedding(int pythonBatchId);
+
     std::string name;
     size_t hostVocabSize;
     size_t devVocabSize;

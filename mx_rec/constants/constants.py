@@ -95,6 +95,13 @@ SAVE_FILE_MODE = 0o640
 SAVE_DIR_MODE = 0o750
 SAVE_FILE_FLAG = os.O_WRONLY | os.O_CREAT
 
+
+# can't move to saver.constant, otherwise will cause circle import
+class SsdCompactLevel(Enum):
+    NO_COMPACT = 0
+    PARTIAL_COMPACT = 1
+    FULL_COMPACT = 2
+
 MAX_DEVICE_ID = 15
 
 # incremental checkpoint related
@@ -147,6 +154,7 @@ class EnvOption(Enum):
     GLOG_STDERRTHREAHOLD = "GLOG_stderrthreshold"
     USE_COMBINE_FAAE = "USE_COMBINE_FAAE"
     RECORD_KEY_COUNT = "RECORD_KEY_COUNT"
+    SSD_SAVE_COMPACT_LEVEL = "SSD_SAVE_COMPACT_LEVEL"
 
     # MPI env
     OMPI_COMM_WORLD_SIZE = "OMPI_COMM_WORLD_SIZE"

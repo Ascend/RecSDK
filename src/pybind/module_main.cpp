@@ -225,7 +225,8 @@ void GetHybridMgmt(pybind11::module_& m)
              py::arg("steps") = 1)
         .def("get_table_size", &MxRec::HybridMgmt::GetTableSize, py::arg("table_name"))
         .def("get_table_capacity", &MxRec::HybridMgmt::GetTableCapacity, py::arg("table_name"))
-        .def("set_optim_info", &MxRec::HybridMgmt::SetOptimizerInfo, py::arg("table_name"), py::arg("optimizer_info"));
+        .def("set_optim_info", &MxRec::HybridMgmt::SetOptimizerInfo, py::arg("table_name"), py::arg("optimizer_info"))
+        .def("start_sync_thread", &MxRec::HybridMgmt::StartSyncThread);
 }
 
 void GetThresholdValue(pybind11::module_& m)

@@ -30,6 +30,7 @@ namespace MxRec {
     int GlobalEnv::glogStderrthreshold = 0;  // 默认info级别
     bool GlobalEnv::useCombineFaae = false;
     bool GlobalEnv::recordKeyCount = false; // 默认不打开记录key count的开关
+    int GlobalEnv::ssdSaveCompactLevel = 2;  // 0:完全不压缩；1：只压缩超阈值的文件；2：所有文件都压缩
 
     /// 配置环境变量，Python侧已经做了变量值校验，CPP侧直接使用即可；bool类型，1代表true，0代表false
     void ConfigGlobalEnv()
@@ -86,6 +87,11 @@ namespace MxRec {
         const char *envRecordKeyCount = getenv(RecEnvNames::RECORD_KEY_COUNT);
         if (envRecordKeyCount != nullptr) {
             GlobalEnv::recordKeyCount = (std::stoi(envRecordKeyCount) == 1);
+        }
+
+        const char *envSsdSaveCompactLevel = getenv(RecEnvNames::SSD_SAVE_COMPACT_LEVEL);
+        if (envSsdSaveCompactLevel != nullptr) {
+            GlobalEnv::ssdSaveCompactLevel = std::stoi(envSsdSaveCompactLevel);
         }
     }
 

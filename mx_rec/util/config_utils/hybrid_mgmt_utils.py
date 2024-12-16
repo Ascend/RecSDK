@@ -98,3 +98,9 @@ class HybridManagerConfig:
             raise RuntimeError("ASC manager not exist.")
         self.asc_manager.fetch_device_emb()
         logger.debug("request of fetching embedding from device to host for saving has been send")
+
+    def start_sync_thread(self):
+        if self.asc_manager is None:
+            raise RuntimeError("ASC manager not exist.")
+        self.asc_manager.start_sync_thread()
+        logger.debug("Finish calling start_sync_thread.")
