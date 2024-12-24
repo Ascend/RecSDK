@@ -66,7 +66,7 @@ index 062a029f069..d569312bd45 100644
  namespace tensorflow {
  REGISTER5(BinaryOp, CPU, "Less", functor::less, float, Eigen::half, double,
 diff --git a/tensorflow/core/kernels/cwise_op_select.cc b/tensorflow/core/kernels/cwise_op_select.cc
-index 911462c8eff..cbe81582884 100644
+index 911462c8eff..7bdd9c89c64 100644
 --- a/tensorflow/core/kernels/cwise_op_select.cc
 +++ b/tensorflow/core/kernels/cwise_op_select.cc
 @@ -23,6 +23,8 @@ limitations under the License.
@@ -78,34 +78,7 @@ index 911462c8eff..cbe81582884 100644
  
  namespace tensorflow {
  
-@@ -44,6 +46,9 @@ class SelectOp : public OpKernel {
-   explicit SelectOp(OpKernelConstruction* context) : OpKernel(context) {}
- 
-   void Compute(OpKernelContext* ctx) override {
-+    static uint64_t test_cnt;
-+    static uint64_t test_dur_sum;
-+    auto start_time = std::chrono::high_resolution_clock::now();
-     const Tensor* cond;
-     const Tensor* then;
-     const Tensor* else_;
-@@ -64,6 +69,16 @@ class SelectOp : public OpKernel {
-     } else {
-       ComputeElementwise(ctx, cond, then, else_);
-     }
-+    auto end_time = std::chrono::high_resolution_clock::now();
-+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
-+    test_dur_sum += duration;
-+    test_cnt++;
-+    if (test_cnt % 1000 == 0) {
-+      std::string message = "Select avg took " + std::to_string(1.0 * test_dur_sum / test_cnt) + " us";
-+      std::cout << message << std::endl;
-+      test_dur_sum = 0;
-+      test_cnt = 0;
-+    }
-   }
- 
-  protected:
-@@ -143,6 +158,145 @@ class SelectOp : public OpKernel {
+@@ -143,6 +145,131 @@ class SelectOp : public OpKernel {
   private:
    TF_DISALLOW_COPY_AND_ASSIGN(SelectOp);
  };
@@ -116,9 +89,6 @@ index 911462c8eff..cbe81582884 100644
 +  explicit SelectOp(OpKernelConstruction* context) : OpKernel(context) {}
 +
 +  void Compute(OpKernelContext* ctx) override {
-+    static uint64_t test_cnt;
-+    static uint64_t test_dur_sum;
-+    auto start_time = std::chrono::high_resolution_clock::now();
 +    const Tensor* cond;
 +    const Tensor* then;
 +    const Tensor* else_;
@@ -142,7 +112,7 @@ index 911462c8eff..cbe81582884 100644
 +      return;
 +    }
 +    Tensor *output = nullptr;
-+    Op_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output({ "t", "e"}, "output", then->shape(), &output));
++    OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output({ "t", "e"}, "output", then->shape(), &output));
 +    if (output->NumElements() <= 0) {
 +      return;
 +    }
@@ -157,17 +127,6 @@ index 911462c8eff..cbe81582884 100644
 +    };
 +    auto *worker_threads = ctx->device()->tensorflow_cpu_worker_threads();
 +    Shard(worker_threads->num_threads, worker_threads->workers, cond->flat<bool>().size(), 10, work) ;
-+
-+    auto end_time = std::chrono::high_resolution_clock::now();
-+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
-+    test_dur_sum += duration;
-+    test_cnt++;
-+    if (test_cnt % 1000 == 0) {
-+      std::string message = "Select avg took " + std::to_string(1.0 * test_dur_sum / test_cnt) + " us";
-+      std::cout << message << std::endl;
-+      test_dur_sum = 0;
-+      test_cnt = 0;
-+    }
 +  }
 +
 + protected:
@@ -186,7 +145,7 @@ index 911462c8eff..cbe81582884 100644
 +                                std::numeric_limits<Eigen::DenseIndex>::max()));
 +    OP_REQUIRES(
 +        ctx,
-+        FastBoundsCheck(then->flat_outer_dims<long, long>().dimension(1),
++        FastBoundsCheck(then->flat_outer_dims<long long>().dimension(1),
 +                        std::numeric_limits<Eigen::DenseIndex>::max()),
 +        errors::InvalidArgument("flat outer dims dim 1 size >= ",
 +                                std::numeric_limits<Eigen::DenseIndex>::max()));
@@ -252,7 +211,7 @@ index 911462c8eff..cbe81582884 100644
  class SelectV2Op : public OpKernel {
   public:
 diff --git a/tensorflow/core/kernels/cwise_ops_common.h b/tensorflow/core/kernels/cwise_ops_common.h
-index 2701d4133ee..54475388110 100644
+index 2701d4133ee..ec4df30e796 100644
 --- a/tensorflow/core/kernels/cwise_ops_common.h
 +++ b/tensorflow/core/kernels/cwise_ops_common.h
 @@ -36,6 +36,10 @@ limitations under the License.
@@ -266,36 +225,6 @@ index 2701d4133ee..54475388110 100644
  namespace tensorflow {
  
  typedef Eigen::ThreadPoolDevice CPUDevice;
-@@ -90,6 +94,9 @@ class BinaryOp : public BinaryOpShared {
-                        DataTypeToEnum<Tin>::v()) {}
- 
-   void Compute(OpKernelContext* ctx) override {
-+    static uint64_t test_cnt;
-+    static uint64_t test_dur_sum;
-+    auto start_time = std::chrono::high_resolution_clock::now();
-     // 'state': Shared helper not dependent on T to reduce code size
-     BinaryOpState state(ctx);
-     auto& bcast = state.bcast;
-@@ -168,6 +175,19 @@ class BinaryOp : public BinaryOpShared {
-     if (Functor::has_errors && error) {
-       SetComputeError(ctx);
-     }
-+    auto end_time = std::chrono::high_resolution_clock::now();
-+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
-+    test_dur_sum += duration;
-+    test_cnt++;
-+    if (test_cnt % 1000 == 0) {
-+      if (ctx->op_kernel().name().find("random_uniform") == std::string::npos) {
-+        std::string message =
-+          ctx->op_kernel().name() + "avg took " + std::to_string(1.0 * test_dur_sum / test_cnt) + " us";
-+        std::cout << message << std::endl;
-+        test_dur_sum = 0;
-+        test_cnt = 0;
-+      }
-+    }
-   }
- };
- 
 diff --git a/tensorflow/lite/build_def.bzl b/tensorflow/lite/build_def.bzl
 index cd235d3bca3..d04ed4cbfd8 100644
 --- a/tensorflow/lite/build_def.bzl
@@ -421,7 +350,7 @@ index 00000000000..ca6e4e1c0fa
 \ No newline at end of file
 diff --git a/third_party/rec_base/include/set_external_logger.h b/third_party/rec_base/include/set_external_logger.h
 new file mode 100644
-index 00000000000..69cff6a773c
+index 00000000000..58cb3017ddd
 --- /dev/null
 +++ b/third_party/rec_base/include/set_external_logger.h
 @@ -0,0 +1,17 @@
@@ -442,12 +371,13 @@ index 00000000000..69cff6a773c
 +int SetExternalLogFunc(ExternalLog logFunc);
 +} // namespace ock
 +#endif // RECBASE_SET_EXTERNAL_LOGGER_H
+\ No newline at end of file
 diff --git a/third_party/rec_base/math/BinaryOp.h b/third_party/rec_base/math/BinaryOp.h
 new file mode 100644
-index 00000000000..b7e9bbd442a
+index 00000000000..5171595dec5
 --- /dev/null
 +++ b/third_party/rec_base/math/BinaryOp.h
-@@ -0,0 +1,149 @@
+@@ -0,0 +1,136 @@
 +#ifndef TF_BINARYOP_H
 +#define TF_BINARYOP_H
 +
@@ -475,9 +405,6 @@ index 00000000000..b7e9bbd442a
 +        explicit BinaryOp(OpKernelConstruction *ctx)                                                                \
 +            : BinaryOpShared(ctx, DataTypeToEnum<Tout>::v(), DataTypeToEnum<Tin>::v()) {}                           \
 +        void Compute(OpKernelContext* ctx) override {                                                               \
-+            static uint64_t test_cnt;                                                                               \
-+            static uint64_t test_dur_sum;                                                                           \
-+            auto start_time = std::chrono::high_resolution_clock::now();                                            \
 +            BinaryOpState state(ctx);                                                                               \
 +            auto& bcast = state.bcast;                                                                              \
 +            const Device& eigen_device = ctx->eigen_device<Device>();                                               \
@@ -571,23 +498,13 @@ index 00000000000..b7e9bbd442a
 +                in1.template shaped<Tin, 5>(bcast.y_reshape()),                                                     \
 +                BCast::ToIndexArray<5>(bcast.y_bcast()), error_ptr);                                                \
 +            } else {                                                                                                \
-+            SetUnimplementedError(ctx);                                                                             \
++                SetUnimplementedError(ctx);                                                                         \
 +            }                                                                                                       \
 +            if (Functor::has_errors && error) {                                                                     \
-+            SetComputeError(ctx);                                                                                   \
-+            }                                                                                                       \
-+            auto end_time = std::chrono::high_resolution_clock::now();                                              \
-+            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();   \
-+            test_dur_sum += duration;                                                                               \
-+            test_cnt++;                                                                                             \
-+            if (test_cnt % 1000 == 0) {                                                                             \
-+            std::string message = #func " avg took " + std::to_string(1.0 * test_dur_sum / test_cnt) + " us";        \
-+            std::cout << message << std::endl;                                                                      \
-+            test_dur_sum = 0;                                                                                       \
-+            test_cnt = 0;                                                                                           \
++                SetComputeError(ctx);                                                                               \
 +            }                                                                                                       \
 +        }                                                                                                           \
-+    };                                                                                                              \
++    };
 +
 +REGISTER_BINARY_FUNC(functor::floor_fmod, float, float, float, FloorMod);
 +REGISTER_BINARY_FUNC(functor::floor_fmod, double, double, double, FloorMod);
