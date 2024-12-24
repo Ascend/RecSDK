@@ -7,7 +7,6 @@ tf.app.flags.DEFINE_integer('maxval', 10000, 'max val')
 tf.app.flags.DEFINE_integer('iters', 5000, 'op iters')
 tf.app.flags.DEFINE_integer('row', 1, 'maxtrix row')
 tf.app.flags.DEFINE_integer('col', 4000, 'maxtrix col')
-tf.app.flags.DEFINE_boolean('is_uniform', True, 'matrix type : uniform or normal')
 FLAGS = tf.app.flags.FLAGS
 
 
@@ -20,19 +19,13 @@ class TensorflowBenchmark(tf.test.Benchmark):
         minval = FLAGS.minval
         maxval = FLAGS.maxval
         with tf.compat.v1.Session() as sess:
-            matrix1_placeholder = tf.compat.v1.placeholder(tf.int64, shape=shape)
-            matrix2_placeholder = tf.compat.v1.placeholder(tf.int64, shape=shape)
-            matrix1 = np.random.randint(low=minval, high=maxval, size=shape, dtype=np.int64)
-            matrix2 = np.random.randint(low=minval, high=maxval, size=shape, dtype=np.int64)
+            matrix1 = tf.random.uniform([shape[0], shape[1]], minval=minval, maxval=maxval, dtype=tf.int64)
+            matrix2 = tf.random.uniform([shape[0], shape[1]], minval=minval, maxval=maxval, dtype=tf.int64)
 
-            product = tf.less(matrix1_placeholder, matrix2_placeholder)
+            product = tf.less(matrix1, matrix2)
             _ = tf.test.Benchmark().run_op_benchmark(
                 sess=sess,
                 op_or_tensor=product,
-                feed_dict={
-                    matrix1_placeholder: matrix1,
-                    matrix2_placeholder: matrix2
-                },
                 burn_iters=10,
                 min_iters=iters,
                 store_trace=False
@@ -43,19 +36,13 @@ class TensorflowBenchmark(tf.test.Benchmark):
         minval = FLAGS.minval
         maxval = FLAGS.maxval
         with tf.compat.v1.Session() as sess:
-            matrix1_placeholder = tf.compat.v1.placeholder(tf.int64, shape=shape)
-            matrix2_placeholder = tf.compat.v1.placeholder(tf.int64, shape=shape)
-            matrix1 = np.random.randint(low=minval, high=maxval, size=shape, dtype=np.int64)
-            matrix2 = np.random.randint(low=minval, high=maxval, size=shape, dtype=np.int64)
+            matrix1 = tf.random.uniform([shape[0], shape[1]], minval=minval, maxval=maxval, dtype=tf.int64)
+            matrix2 = tf.random.uniform([shape[0], shape[1]], minval=minval, maxval=maxval, dtype=tf.int64)
 
-            product = tf.greater(matrix1_placeholder, matrix2_placeholder)
+            product = tf.greater(matrix1, matrix2)
             _ = tf.test.Benchmark().run_op_benchmark(
                 sess=sess,
                 op_or_tensor=product,
-                feed_dict={
-                    matrix1_placeholder: matrix1,
-                    matrix2_placeholder: matrix2
-                },
                 burn_iters=10,
                 min_iters=iters,
                 store_trace=False
@@ -65,29 +52,14 @@ class TensorflowBenchmark(tf.test.Benchmark):
         iters = FLAGS.iters
         minval = FLAGS.minval
         maxval = FLAGS.maxval
-        is_uniform = FLAGS.is_uniform
         with tf.compat.v1.Session() as sess:
-            if is_uniform:
-                matrix1_placeholder = tf.compat.v1.placeholder(tf.float32, shape=shape)
-                matrix2_placeholder = tf.compat.v1.placeholder(tf.float32, shape=shape)
-                matrix1 = np.random.uniform(low=minval, high=maxval, size=shape).astype(np.float32)
-                matrix2 = np.random.uniform(low=minval, high=maxval, size=shape).astype(np.float32)
-            else:
-                matrix1_placeholder = tf.compat.v1.placeholder(tf.float32, shape=shape)
-                matrix2_placeholder = tf.compat.v1.placeholder(tf.float32, shape=shape)
-                mean = 0
-                stddev = 1
-                matrix1 = np.random.normal(loc=mean, scale=stddev, size=shape).astype(np.float32)
-                matrix2 = np.random.normal(loc=mean, scale=stddev, size=shape).astype(np.float32)
+            matrix1 = tf.random.uniform([shape[0], shape[1]], minval=minval, maxval=maxval, dtype=tf.float32)
+            matrix2 = tf.random.uniform([shape[0], shape[1]], minval=minval, maxval=maxval, dtype=tf.float32)
 
-            product = tf.math.floormod(matrix1_placeholder, matrix2_placeholder, name='FloorMod')
+            product = tf.math.floormod(matrix1, matrix2, name='FloorMod')
             _ = tf.test.Benchmark().run_op_benchmark(
                 sess=sess,
                 op_or_tensor=product,
-            feed_dict={
-                matrix1_placeholder: matrix1,
-                matrix2_placeholder: matrix2
-            },
                 burn_iters=10,
                 min_iters=iters,
                 store_trace=False
