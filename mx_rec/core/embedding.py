@@ -100,34 +100,6 @@ from mx_rec.validator.validator import (
         ("is_dp", ClassValidator, {"classes": (bool,)}),
         ("init_param", FloatValidator, {"min_value": -10, "max_value": 10}, ["check_value"]),
         ("all2all_gradients_op", OptionValidator, {"options": [i.value for i in list(All2allGradientsOp)]}),
-        (
-            "padding_keys",
-            OrValidator,
-            {
-                "options": [
-                    (ClassValidator, {"classes": type(None)}),
-                    (ClassValidator, {"classes": int}),
-                    (
-                        AndValidator,
-                        {
-                            "options": [
-                                (ClassValidator, {"classes": list}),
-                                (
-                                    ListValidator,
-                                    {
-                                        "sub_checker": ClassValidator,
-                                        "list_max_length": MAX_INT32,
-                                        "list_min_length": 1,
-                                        "sub_args": {"classes": int},
-                                    },
-                                    ["check_list_length"],
-                                ),
-                            ]
-                        },
-                    ),
-                ]
-            },
-        ),
         ("padding_keys_mask", ClassValidator, {"classes": (bool,)}),
         (
             "padding_keys_len",

@@ -6,7 +6,7 @@ from typing import Union, Optional, List
 
 import tensorflow as tf
 
-from mx_rec.constants.constants import MAX_VOCABULARY_SIZE, MULTI_LOOKUP_TIMES
+from mx_rec.constants.constants import MAX_VOCABULARY_SIZE, MULTI_LOOKUP_TIMES, MAX_INT64, MAX_INT32, MIN_INT64
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.util.communication.hccl_ops import get_rank_size
 from mx_rec.util.initialize import ConfigInitializer
@@ -33,7 +33,7 @@ def check_emb_init_params(is_hbm: bool, embedding_size: tf.TensorShape):
 
 
 def check_emb_lookup_params(
-        table_params: dict, feature_spec: Union[tf.Tensor, FeatureSpec], send_count: Optional[int], is_training: bool
+    table_params: dict, feature_spec: Union[tf.Tensor, FeatureSpec], send_count: Optional[int], is_training: bool
 ):
     """
     校验稀疏表此次lookup的参数.
@@ -115,9 +115,9 @@ def check_emb_multi_lookup_times(lookup_times: int, table_name: str):
 
 
 def check_and_format_emb_padding_keys(
-        padding_keys: Optional[Union[int, List[int]]],
-        padding_keys_mask: bool,
-        padding_keys_len: Optional[int],
+    padding_keys: Optional[Union[int, List[int]]],
+    padding_keys_mask: bool,
+    padding_keys_len: Optional[int],
 ) -> List[int]:
     """
     Check and set the padding keys parameters.
@@ -133,10 +133,21 @@ def check_and_format_emb_padding_keys(
 
     """
 
-    if padding_keys is None:
+    if isinstance(padding_keys, int):
+        if padding_keys < MIN_INT64 or padding_keys > MAX_INT64:
+            raise ValueError(f"the padding keys should be between {MIN_INT64} and {MAX_INT64}")
+    elif isinstance(padding_keys, list):
+        if len(padding_keys) < 1 or len(padding_keys) > MAX_INT32:
+            raise ValueError(f"the length of the padding keys should be between 1 and {MAX_INT32}")
+        for padding_key in padding_keys:
+            if padding_key < MIN_INT64 or padding_key > MAX_INT64:
+                raise ValueError(f"the padding keys should be between {MIN_INT64} and {MAX_INT64}")
+    elif isinstance(padding_keys, type(None)):
         if padding_keys_mask:
-            raise ValueError("Padding keys mask be False when padding keys is None.")
+            raise ValueError("the padding keys mask be False when padding keys is None")
         return []
+    else:
+        raise TypeError(f"the padding keys must be None/int/list type")
 
     if not padding_keys_mask:
         raise ValueError("Padding keys mask be True when padding keys is not None.")
