@@ -89,6 +89,8 @@ MIN_RANK_SIZE = 1
 LOG_MAX_SIZE = 1024 * 1024
 
 MAX_INT32 = np.iinfo(np.int32).max
+MAX_INT64 = np.iinfo(np.int64).max
+MIN_INT64 = np.iinfo(np.int64).min
 
 # Permission for saving.
 SAVE_FILE_MODE = 0o640
