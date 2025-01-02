@@ -14,7 +14,7 @@
 请参照昇腾社区CANN商用版文档先使用迁移工具进行NPU自动迁移：https://www.hiascend.com/document/detail/zh/canncommercial/700/modeldev/tfmigr1/tfmigr1_000009.html
 
 
-## 迁移mxRec
+## 迁移Rec SDK
 
 1、修改IO/iterator.py，把第30~41行
 
@@ -209,7 +209,7 @@ from mx_rec.core.embedding import sparse_lookup
         initializer = ConfigInitializer.get_instance().train_params_config.get_initializer(True)
         train_sess.run(initializer, feed_dict={train_model.filenames: [hparams.train_file_cache]})
 ```
-6、为了适配mxRec运行环境，添加了run.sh。
+6、为了适配Rec SDK运行环境，添加了run.sh。
 
 ## 适配其他代码
 
@@ -276,7 +276,7 @@ finish one epoch!
 at epoch 2 train info: loss:0.6748818755149841 eval info: auc:0.4832, logloss:0.6738 test info: auc:0.4832, logloss:0.6738
 at epoch 2 , train time: 0.1 eval time: 0.1
 ```
-2、mxRec:
+2、Rec SDK:
 ```log
 [1,0]<stdout>:step 1 , total_loss: 0.6931, data_loss: 0.6931
 [1,0]<stdout>:step 2 , total_loss: 0.6905, data_loss: 0.6905

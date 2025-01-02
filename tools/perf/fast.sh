@@ -1,7 +1,7 @@
 #!/bin/bash
 # Copyright (c) Huawei Technologies Co., Ltd. 2021-2023. All rights reserved.
 # Description: performace analysis tool
-# Author: MindX SDK
+# Author: MindSDK
 # Create: 2023
 # History: NA
 
@@ -14,7 +14,7 @@
 # bash fast.sh your_log_file.log
 #
 # 3. 注意事项
-# 基于spdlog::debug，mxRec中添加了TimeCost打点日志，因此，在执行前务必确保run.sh中设置
+# 基于spdlog::debug，Rec SDK中添加了TimeCost打点日志，因此，在执行前务必确保run.sh中设置
 # SPDLOG_LEVEL=debug  (如果没有设置，本工具会退出，并给予提示)
 #
 # 4. 解读结果

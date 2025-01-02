@@ -89,7 +89,7 @@ c) 调用AttentionFusionGradKernel完成计算；
 
 更多详情可以参考CANN官方的[Ascend C单算子调用概述](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0036.html)。
 
-单算子调用分为两种方式：单算子API执行和模型执行。mxRec提供单算子API执行供参考。
+单算子调用分为两种方式：单算子API执行和模型执行。Rec SDK提供单算子API执行供参考。
 
 单算子测试用例在目录aclnn_attention_fusion_grad下，其中：
 

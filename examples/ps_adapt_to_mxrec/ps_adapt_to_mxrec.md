@@ -6,9 +6,9 @@
 
    commit 11b42c08a357d4ea5924403daa357587f4d8b5e2（包含本commit及之后都可以）
 
-2. mxRec
+2. Rec SDK
 
-   [mxrec: 华为昇腾-MindX 推荐SDK - Gitee.com](https://gitee.com/ascend/mxrec/tree/develop/)
+   [Rec SDK: 华为昇腾-应用使能 推荐SDK - Gitee.com](https://gitee.com/ascend/mxrec/tree/develop/)
 
    commit ae36047f1dda8c03fa849184205bdc8bcfb4a137
 
@@ -88,7 +88,7 @@ ${CITYHASH}:
 
 ```c++
 /**
- * \brief for mxrec embedding storage
+ * \brief for Rec SDK embedding storage
  */
 template <typename Val>
 struct KVServerMxRecHandle {
@@ -379,7 +379,7 @@ make -j8
 
 无报错表示正常。
 
-## mxrec
+## Rec SDK
 
 ### 调整ps-lite
 
@@ -436,7 +436,7 @@ target_link_libraries(ASC PUBLIC ascendcl msprofiler ge_executor gert runtime ge
 #include <memory>
 
 #include "l3_storage/l3_storage.h"
-#include "ps/ps.h"  // must set behind any mxrec header file, otherwise will compile fail
+#include "ps/ps.h"  // must set behind any Rec SDK header file, otherwise will compile fail
 
 using MxRec::L3Storage;
 using ps::KVWorker;
@@ -737,7 +737,7 @@ export REC_WORKER_ID_START_IDX=0
 在模型目录拉起训练
 
 ```shell
-# 修改缓存模式为SSD（按上述mxrec源码修改步骤，SSDEngine已被替换为ps-lite，为了不影响对外接口，未修改对外暴露的ssd参数，用户可自行修改）
+# 修改缓存模式为SSD（按上述Rec SDK源码修改步骤，SSDEngine已被替换为ps-lite，为了不影响对外接口，未修改对外暴露的ssd参数，用户可自行修改）
 export CACHE_MODE="SSD"
 
 ./run.sh $LIBSAC_PATH $PYTHON_PATH $HCCL_JSON_PATH $DATA_PATH

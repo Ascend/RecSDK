@@ -46,7 +46,7 @@ class RecEnv:
 
 def get_global_env_conf() -> RecEnv:
     """
-    获取mxRec全局环境变量，并做校验
+    获取Rec SDK全局环境变量，并做校验
     :return:
     """
     rec_env = RecEnv(
