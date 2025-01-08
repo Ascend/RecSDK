@@ -42,13 +42,13 @@ enum Op {
 };
 
 struct CommArgs {
-    int rank;           // attr rank_id, global rank
+    int rank;  // attr rank_id, global rank
     int localRank;
-    int rankSize; // global rank size
+    int rankSize;  // global rank size
     int localRankSize;
     uint32_t extraFlag;
     GM_ADDR peerMems[LCAL_MAX_RANK_SIZE];
     int64_t sendCountMatrix[LCAL_MAX_RANK_SIZE * LCAL_MAX_RANK_SIZE];
 };
 
-#endif //LCCL_COMM_ARGS_H
+#endif  // LCCL_COMM_ARGS_H

@@ -128,7 +128,8 @@ public:
     }
 
     // 检验所有rank从startBlock开始的flagNum个卡间同步标志（内存B）
-    __aicore__ inline bool CheckAllRankPartOuterFlag(int32_t magic, int32_t eventID, int64_t startBlock, int64_t flagNum)
+    __aicore__ inline bool CheckAllRankPartOuterFlag(int32_t magic, int32_t eventID,
+                                                     int64_t startBlock, int64_t flagNum)
     {
         int64_t value = GetFlagValue(magic, eventID);
         __gm__ int64_t* flagAddr;
@@ -310,4 +311,4 @@ public:
     TPipe pipe;
 };
 
-#endif //LCCL_SYNC_H
+#endif  // LCCL_SYNC_H

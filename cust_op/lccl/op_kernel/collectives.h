@@ -23,24 +23,14 @@
 #include "datacopy_gm2gm.h"
 using namespace AscendC;
 
-#define KERNELS_ARGS_FUN() \
-GM_ADDR input, GM_ADDR output, GM_ADDR commArgs, int64_t len, int64_t magic, int op, int root, int cycleCount
-
-#define KERNELS_ARGS_CALL() \
-input, output, commArgs, len, magic, op, root, cycleCount
-
-#define KERNELS_GATHER_TABLE_ARGS_FUN() \
-GM_ADDR embTable, GM_ADDR lookup, GM_ADDR revData, int64_t lookupLen, int64_t embTableLen, int64_t embTableDim
-
-#define KERNELS_GATHER_TABLE_ARGS_CALL() \
-embTable, lookup, revData, lookupLen, embTableLen, embTableDim
 
 class Collectives {
 public:
     FORCE_INLINE_AICORE Collectives(int rank, int rankSize, uint32_t extraFlag)
-            : rank(rank),rankSize(rankSize),extraFlag(extraFlag) {}
+        : rank(rank), rankSize(rankSize), extraFlag(extraFlag) {}
 
-    FORCE_INLINE_AICORE void Init(KERNELS_ARGS_FUN())
+    FORCE_INLINE_AICORE void Init(GM_ADDR input, GM_ADDR output, GM_ADDR commArgs,
+                                  int64_t len, int64_t magic, int op, int root, int cycleCount)
     {
         GlobalTensor<GM_ADDR> peerMemsAddrGm;
         peerMemsAddrGm.SetGlobalBuffer(&(reinterpret_cast<__gm__ CommArgs *>(commArgs))->peerMems[0],
@@ -62,7 +52,8 @@ public:
 
 public:
     template <typename T>
-    FORCE_INLINE_AICORE void CpGM2GM(const GlobalTensor<T>& outputGT, const GlobalTensor<T>& inputGT, const uint32_t calCount, int op)
+    FORCE_INLINE_AICORE void CpGM2GM(const GlobalTensor<T>& outputGT, const GlobalTensor<T>& inputGT,
+                                     const uint32_t calCount, int op)
     {
         DataCopyGM2GM<T> cpKernel;
         cpKernel.Init(outputGT, inputGT, calCount, op);
@@ -241,4 +232,4 @@ FORCE_INLINE_AICORE int64_t Align(int64_t len)
     return CeilDiv(len, ALIGN_SIZE) * ALIGN_SIZE;
 }
 
-#endif //LCCL_COLLECTIVES_H
+#endif  // LCCL_COLLECTIVES_H

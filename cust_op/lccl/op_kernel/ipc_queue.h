@@ -123,7 +123,6 @@ public:
         int64_t minIndex = LLONG_MAX;
 
         for (int i = 0; i < checkCount; i++) {
-
             sync->WaitInnerFlag(magic, sliceIdx-1, rankList[i], checkBlock);  // 后续改成IPC单独的标志位
             pipe_barrier(PIPE_ALL);
 
@@ -150,7 +149,6 @@ public:
         int64_t minIndex = LLONG_MAX;
 
         for (int i = 0; i < checkCount; i++) {
-
             sync->WaitInnerFlag(magic, count, rankList[i], blockIdxList[i]);  // 后续改成IPC单独的标志位
             pipe_barrier(PIPE_ALL);
 
@@ -185,4 +183,4 @@ private:
     int blockIdx;
 };
 
-#endif //LCCL_IPC_QUEUE_H
+#endif  // LCCL_IPC_QUEUE_H
