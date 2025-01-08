@@ -41,7 +41,7 @@ FORCE_INLINE_AICORE void SetAtomicDataType()
         set_atomic_s8();
     } else if (std::is_same<T, int16_t>::value) {
         set_atomic_s16();
-    } else if(std::is_same<T, bfloat16_t>::value) {
+    } else if (std::is_same<T, bfloat16_t>::value) {
         set_atomic_bf16();
     } else {
         set_atomic_s32();
@@ -74,7 +74,8 @@ class DataCopyGM2GM {
 public:
     FORCE_INLINE_AICORE DataCopyGM2GM() {}
 
-    FORCE_INLINE_AICORE void Init(const GlobalTensor<T>& outputGt, const GlobalTensor<T>& inputGt, const uint32_t calCount, int op)
+    FORCE_INLINE_AICORE void Init(const GlobalTensor<T>& outputGt, const GlobalTensor<T>& inputGt,
+                                  const uint32_t calCount, int op)
     {
         inputGm = inputGt.GetPhyAddr();
         outputGm = outputGt.GetPhyAddr();
@@ -109,7 +110,7 @@ private:
     FORCE_INLINE_AICORE void CpUB2GM(__gm__ T *gmAddr, __ubuf__ T *ubAddr, uint32_t size)
     {
         pipe_barrier(PIPE_ALL);
-        if(op != -1) {
+        if (op != -1) {
             SetAtomicDataType<T>();
 #ifdef __DAV_C220_VEC__
             SetAtomicOpType(op);
@@ -118,7 +119,7 @@ private:
         pipe_barrier(PIPE_ALL);
 
         copy_ubuf_to_gm_align_b8(gmAddr, ubAddr, 0, 1, size, 0, 0, 0, 0);
-        if(op != -1) {
+        if (op != -1) {
             set_atomic_none();
         }
     }
@@ -136,4 +137,4 @@ private:
     int op;
 };
 
-#endif //LCCL_DATACOPY_GM2GM_H
+#endif  // LCCL_DATACOPY_GM2GM_H
