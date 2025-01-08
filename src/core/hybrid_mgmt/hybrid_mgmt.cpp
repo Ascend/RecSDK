@@ -276,7 +276,7 @@ bool HybridMgmt::Load(const string& loadPath, vector<string> warmStartTables)
 
     // 将加载的特征准入淘汰记录进行赋值
     FeatureAdmitAndEvict& featAdmitNEvict = KEY_PROCESS_INSTANCE->GetFeatAdmitAndEvict();
-    if (featAdmitNEvict.GetFunctionSwitch()) {
+    if (featAdmitNEvict.GetFunctionSwitch() && !loadData.noFeatAdmitAndEvictData) {
         LOG_DEBUG(MGMT + "Start host side load: feature admit and evict");
         featAdmitNEvict.LoadTableThresholds(loadData.table2Thresh);
         featAdmitNEvict.LoadHistoryRecords(loadData.histRec);

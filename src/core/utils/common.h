@@ -516,6 +516,7 @@ struct CkptData {
     AdmitAndEvictData histRec;
     KeyFreqMemT ddrKeyFreqMaps;
     KeyFreqMemT excludeDDRKeyFreqMaps;
+    bool noFeatAdmitAndEvictData {false};
 };
 
 struct CkptTransData {
@@ -580,6 +581,8 @@ bool CheckFilePermission(const string& filePath);
 int GetStepFromPath(const string& loadPath);
 
 string MakeSwapCVName(int id, const string& tableName, int channelId);
+
+bool CheckFileExist(const string& filePath);
 }  // end namespace MxRec
 
 #define KEY_PROCESS "\033[45m[KeyProcess]\033[0m "
