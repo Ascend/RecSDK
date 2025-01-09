@@ -80,32 +80,6 @@ public:
     }
 
     /**
-     * @brief 校验多个读端是否完成队列头的数据搬运
-     * @param checkRank     校验的读端rank号
-     * @param checkBlock    校验的读端blockIdx，缺省时使用和当前相同的blockIdx
-     */
-    FORCE_INLINE_AICORE void DeQue(int *rankList, int checkCount, int checkBlock = -1)
-    {
-        if (!Full()) {
-            return;
-        }
-        if (checkBlock == -1) {
-            checkBlock = blockIdx;
-        }
-        // 校验其他卡都已完成队列头的数据搬运
-        int64_t minIndex = LLONG_MAX;
-        for (int i = 0; i < checkCount; ++i) {
-            sync->WaitInnerFlag(magic, count, rankList[i], checkBlock);  // 后续改成IPC单独的标志位
-            pipe_barrier(PIPE_ALL);
-            int64_t val = sync->GetInnerFlag(rankList[i], checkBlock) & EVENT_ID_MASK;
-            if (minIndex > val) {
-                minIndex = val;
-            }
-        }
-        front = (val + 1) % depth;
-    }
-
-    /**
      * @brief 校验多个读端是否完成队列头的读取
      * @param rankList      校验多个读端的rank号数组首地址
      * @param checkCount    数组长度
