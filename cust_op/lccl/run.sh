@@ -22,6 +22,7 @@ export PATH=$parent_dir:$PATH
 rm -rf ./custom_op
 msopgen gen -i emb_custom.json -f tf -c ai_core-ascend910b1 -lan cpp -out ./custom_op -m 0 -op LcclAllToAll
 msopgen gen -i emb_custom.json -f tf -c ai_core-ascend910b1 -lan cpp -out ./custom_op -m 1 -op LcclAllUss
+msopgen gen -i emb_custom.json -f tf -c ai_core-ascend910b1 -lan cpp -out ./custom_op -m 1 -op LcclGatherAll
 
 cp -rf op_kernel custom_op/
 cp -rf op_host custom_op/
