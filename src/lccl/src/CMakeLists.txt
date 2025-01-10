@@ -13,11 +13,18 @@
 # limitations under the License.
 # ==============================================================================
 
-cmake_minimum_required(VERSION 3.20)
+set(LCAL_SOURCE_FILE
+        lcal_comm.cpp
+        tools/socket/lcal_sock_exchange.h
+        tools/socket/lcal_sock_exchange.cpp
+        ${ATB_LOG_FILES})
 
-pybind11_add_module(mxrec_pybind module_main.cpp)
-set_target_properties(mxrec_pybind PROPERTIES LINK_FLAGS "-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack")
-target_include_directories(mxrec_pybind PUBLIC ${ASCEND_DRIVER_PATH}/include)
-target_link_directories(mxrec_pybind PUBLIC ${ASCEND_DRIVER_PATH}/lib64/driver)
-target_link_libraries(mxrec_pybind PUBLIC ASC lcal)
-install(TARGETS mxrec_pybind LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX})
+add_library(lcal SHARED ${LCAL_SOURCE_FILE})
+add_library(lcal_static STATIC ${LCAL_SOURCE_FILE})
+set_target_properties(lcal_static PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+target_link_libraries(lcal ascendcl runtime profapi c_sec)
+target_link_libraries(lcal_static ascendcl runtime profapi c_sec)
+
+install(TARGETS lcal LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX})
+install(TARGETS lcal_static DESTINATION ${CMAKE_INSTALL_PREFIX})

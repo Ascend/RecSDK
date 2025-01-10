@@ -17,6 +17,7 @@ See the License for the specific language governing permissions and
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include "lcal_comm.h"
 #include "hybrid_mgmt/hybrid_mgmt.h"
 
 namespace py = pybind11;
@@ -67,8 +68,33 @@ uint32_t GetDeviceCount()
     return count;
 }
 
+vector<int64_t> GetPeerMem(int32_t rankId, int deviceId, int rankSize)
+{
+    static bool firstGetPeerMem = true;
+    static constexpr int32_t maxRankPerNode = 16;
+    int32_t localRankId = rankId % maxRankPerNode;
+    auto ret = aclrtSetDevice(localRankId);
+    if (ret != ACL_ERROR_NONE) {
+        LOG_ERROR("Set device failed, device_id:{}", localRankId);
+        return {};
+    }
+    auto tmp = vector<int>{deviceId};
+    static Lcal::LcalComm c(rankId, rankSize, tmp);
+    if (firstGetPeerMem) {
+        c.Init();
+    }
+    firstGetPeerMem = false;
+    static vector <int64_t> peerMem;
+    for (int i = 0; i < rankSize; i++) {
+        peerMem.emplace_back(reinterpret_cast<int64_t>(c.peerMem_[i]));
+    }
+    return peerMem;
+}
+
 PYBIND11_MODULE(mxrec_pybind, m)
 {
+    m.def("get_peer_mem", &GetPeerMem, py::arg("rank_id"), py::arg("device_id"), py::arg("rank_size"));
+
     m.def("get_ub_hot_size", &GetUBHotSize, py::arg("device_id"));
 
     m.def("get_logic_id", &GetLogicID, py::arg("physic_id"));
