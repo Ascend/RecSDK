@@ -32,12 +32,15 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId, bool
 #ifndef GTEST
     LOG_INFO("start init HDTransfer.");
     LOG_INFO("Start aclInit, rank:{}.", localRankId);
-    // 使用AscendCL接口开发应用时，必须先调用aclInit接口，否则可能会导致后续系统内部资源初始化出错，进而导致其它业务异常。
-    aclError retOk = aclInit(nullptr);
-    LOG_INFO("End aclInit, rank:{}.", localRankId);
-    if (retOk != ACL_SUCCESS) {
-        LOG_ERROR("aclInit failed, rank:{}, errno:{}.", localRankId, retOk);
-        return false;
+    // 开启LCCL时，不用调用 aclInit()
+    if (!GlobalEnv::useLccl) {
+        // 使用AscendCL接口开发应用时，必须先调用aclInit接口，否则可能会导致后续系统内部资源初始化出错，进而导致其它业务异常。
+        aclError retOk = aclInit(nullptr);
+        LOG_INFO("End aclInit, rank:{}.", localRankId);
+        if (retOk != ACL_SUCCESS) {
+            LOG_ERROR("aclInit failed, rank:{}, errno:{}.", localRankId, retOk);
+            return false;
+        }
     }
     LOG_INFO("Start aclrtSetDevice, rank:{}.", localRankId);
     // 指定当前进程或线程中用于运算的Device，同时隐式创建默认Context
@@ -128,7 +131,8 @@ void HDTransfer::CreateChannel(const uint32_t localRankId, const string& embName
         if (TransferChannel2Str(channel) == "all2all" || TransferChannel2Str(channel) == "restore" ||
             TransferChannel2Str(channel) == "lookup" || TransferChannel2Str(channel) == "restore_second" ||
             TransferChannel2Str(channel) == "uniquekeys" || TransferChannel2Str(channel) == "evict" ||
-            TransferChannel2Str(channel) == "swap" || TransferChannel2Str(channel) == "mask") {
+            TransferChannel2Str(channel) == "swap" || TransferChannel2Str(channel) == "mask" ||
+            TransferChannel2Str(channel) == "recvshape") {
             transferChannels[sendName] = TDT_CREATE_CHANNEL(localRankId, sendName.c_str(), channelSize);
         } else {
             transferChannels[sendName] = TDT_CREATE_CHANNEL(localRankId, sendName.c_str(), PING_PONG_SIZE);

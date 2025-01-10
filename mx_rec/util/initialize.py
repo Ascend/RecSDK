@@ -55,6 +55,7 @@ class ConfigInitializer:
             ("if_load", ClassValidator, {"classes": (bool,)}),
             ("use_dynamic", ClassValidator, {"classes": (bool,)}),
             ("use_dynamic_expansion", ClassValidator, {"classes": (bool,)}),
+            ("use_lccl", ClassValidator, {"classes": (bool,)}),
             ("bind_cpu", ClassValidator, {"classes": (bool,)}),
             ("save_checkpoint_due_time", IntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
             ("save_delta_checkpoints_secs", IntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
@@ -76,6 +77,7 @@ class ConfigInitializer:
 
         self._use_static = not kwargs.get("use_dynamic", True)
         self._use_dynamic_expansion = kwargs.get("use_dynamic_expansion", False)
+        self._use_lccl = kwargs.get("use_lccl", False)
 
         self._is_terminated = False
 
@@ -91,6 +93,10 @@ class ConfigInitializer:
         self._is_incremental_checkpoint = kwargs.get("is_incremental_checkpoint", False)
         self._restore_model_version = kwargs.get("restore_model_version")
         self._recent_key_count_threshold = kwargs.get("recent_key_count_threshold", 0)
+
+    @property
+    def use_lccl(self):
+        return self._use_lccl
 
     @property
     def save_checkpoint_due_time(self):

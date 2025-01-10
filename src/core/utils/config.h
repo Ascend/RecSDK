@@ -28,6 +28,7 @@ namespace MxRec {
         const char *const USE_COMBINE_FAAE = "USE_COMBINE_FAAE";
         const char *const RECORD_KEY_COUNT = "RECORD_KEY_COUNT";
         const char *const SSD_SAVE_COMPACT_LEVEL = "SSD_SAVE_COMPACT_LEVEL";
+        const char *const USE_LCCL = "USE_LCCL";
     };
 
     struct GlobalEnv {
@@ -41,6 +42,7 @@ namespace MxRec {
         static bool useCombineFaae;
         static bool recordKeyCount;
         static int ssdSaveCompactLevel;
+        static bool useLccl;
     };
 
     void ConfigGlobalEnv();

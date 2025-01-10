@@ -682,4 +682,72 @@ namespace tensorflow {
         .SetIsStateful()
         .SetShapeFn(::tensorflow::shape_inference::UnknownShape);
     REGISTER_KERNEL_BUILDER(Name("LazyAdam").Device(DEVICE_CPU), MxRec::CustOps);
+
+    REGISTER_OP("LcclAllToAll")
+        .Input("send_data: float")
+        .Input("send_count_matrix: int64")
+        .Input("shape_vec: int32")
+        .Input("peer_mem: int64")
+        .Attr("rank: int")
+        .Attr("rank_size: int")
+        .Attr("dim: int")
+        .Output("rev_data: float")
+        .SetIsStateful()
+        .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+            ShapeHandle dataShape;
+            TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(2), 1, &dataShape));
+            tensorflow::shape_inference::DimensionHandle rows = c->Dim(dataShape, 0);
+            int64_t shape1 = c->Value(rows);
+            int dim = 0;
+            c->GetAttr("dim", &dim);
+            c->set_output(0, c->MakeShape({shape1, dim, 1}));
+            return Status::OK();
+        });
+    REGISTER_KERNEL_BUILDER(Name("LcclAllToAll").Device(DEVICE_CPU), MxRec::CustOps);
+
+    REGISTER_OP("LcclGatherAll")
+        .Input("emb_table: float")
+        .Input("lookup: int32")
+        .Input("send_count_matrix: int64")
+        .Input("shape_vec: int32")
+        .Input("peer_mem: int64")
+        .Attr("rank: int")
+        .Attr("rank_size: int")
+        .Attr("dim: int")
+        .Output("rev_data: float")
+        .SetIsStateful()
+        .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+            int dim = 0;
+            c->GetAttr("dim", &dim);
+            ShapeHandle dataShape;
+            TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(3), 1, &dataShape));
+            tensorflow::shape_inference::DimensionHandle rows = c->Dim(dataShape, 0);
+            int64_t shape1 = c->Value(rows);
+            c->set_output(0, c->MakeShape({shape1, dim, 1}));
+            return Status::OK();
+        });
+    REGISTER_KERNEL_BUILDER(Name("LcclGatherAll").Device(DEVICE_CPU), MxRec::CustOps);
+
+    REGISTER_OP("LcclAllUss")
+        .Input("send_data: float")
+        .Input("send_count_matrix: int64")
+        .Input("shape_vec: int32")
+        .Input("peer_mem: int64")
+        .Input("restore: int32")
+        .Attr("rank: int")
+        .Attr("rank_size: int")
+        .Attr("dim: int")
+        .Output("rev_data: float")
+        .SetIsStateful()
+        .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+            int dim = 0;
+            c->GetAttr("dim", &dim);
+            ShapeHandle dataShape;
+            TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(2), 1, &dataShape));
+            tensorflow::shape_inference::DimensionHandle rows = c->Dim(dataShape, 0);
+            int64_t shape1 = c->Value(rows);
+            c->set_output(0, c->MakeShape({shape1, dim, 1}));
+            return Status::OK();
+        });
+    REGISTER_KERNEL_BUILDER(Name("LcclAllUss").Device(DEVICE_CPU), MxRec::CustOps);
 }

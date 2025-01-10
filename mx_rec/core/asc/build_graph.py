@@ -14,9 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import time
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Union, Tuple
+from typing import Optional, List, Tuple
 
 import tensorflow as tf
 from tensorflow.python.framework import ops
@@ -36,6 +35,53 @@ class SwapInfo:
     swap_in_pos: List[tf.Tensor] = field(default_factory=lambda: [])
     swap_out_len: int = 0
     swap_out_pos: List[tf.Tensor] = field(default_factory=lambda: [])
+
+
+def get_restore_vector_second(table_name: str, max_lookup_vec_size: int) -> tf.Tensor:
+    channel_id = 0
+    logger.debug('Channel %s_restore_second_%s was built for getnext',
+                 table_name, channel_id)
+    with tf.compat.v1.variable_scope(table_name, reuse=tf.compat.v1.AUTO_REUSE):
+        restore_vector_second = npu_ops.gen_npu_ops.get_next(
+            output_types=[tf.int32],
+            output_shapes=[[max_lookup_vec_size]],
+            channel_name=f'{table_name}_restore_second_{channel_id}')[0]
+    return restore_vector_second
+
+
+def get_unique_keys(table_name: str, max_lookup_vec_size: int, is_expansion: bool) -> tf.Tensor:
+    channel_id = 0
+    logger.debug('Channel %s_uniquekeys_%s was built for getnext', table_name, channel_id)
+    with tf.compat.v1.variable_scope(table_name, reuse=tf.compat.v1.AUTO_REUSE):
+        if is_expansion:
+            unique_keys = npu_ops.gen_npu_ops.get_next(
+                output_types=[tf.int64],
+                output_shapes=[[max_lookup_vec_size]],
+                channel_name=f'{table_name}_uniquekeys_{channel_id}')[0]
+            return unique_keys
+
+        unique_keys = npu_ops.gen_npu_ops.get_next(
+            output_types=[tf.int32],
+            output_shapes=[[max_lookup_vec_size]],
+            channel_name=f'{table_name}_uniquekeys_{channel_id}')[0]
+        return unique_keys
+
+
+def get_unique_shape(config):
+    logger.debug('Channel %s_recvshape_%s was built for getnext', config.get(ASCAnchorAttr.TABLE_NAME.value),
+                 config.get(ASCAnchorAttr.CHANNEL_ID.value))
+    unique_size = None
+    unique_shape = None
+
+    if ConfigInitializer.get_instance().use_lccl:
+        logger.debug("Get_unique_shape start.")
+        with tf.compat.v1.variable_scope(config.get(ASCAnchorAttr.TABLE_NAME.value), reuse=tf.compat.v1.AUTO_REUSE):
+            unique_shape = npu_ops.gen_npu_ops.get_next(
+                output_types=[tf.int32],
+                output_shapes=[unique_size],
+                channel_name=f'{config.get(ASCAnchorAttr.TABLE_NAME.value)}'
+                             f'_recvshape_{config.get(ASCAnchorAttr.CHANNEL_ID.value)}')[0]
+    return unique_shape
 
 
 def get_restore_vector(config):
@@ -141,12 +187,23 @@ def get_preprocessed_tensor_for_asc(table, config):
     if use_static:
         send_count = config.get("send_count")
         max_lookup_vec_size = send_count * config.get("rank_size") if not config.get("is_dp") else send_count
+        unique_shape = None
+    else:
+        with tf.compat.v1.variable_scope("unique_shape"):
+            unique_shape = get_unique_shape(config)
 
     with tf.compat.v1.variable_scope("restore_vector"):
         restore_vector, hot_pos = get_restore_vector(config)
 
     with tf.compat.v1.variable_scope("id_offsets"):
         id_offsets, swap_info = get_id_offsets(max_lookup_vec_size, config)
+
+    with tf.compat.v1.variable_scope("restore_vector_second"):
+        restore_vector_second = get_restore_vector_second(
+            config.get(ASCAnchorAttr.TABLE_NAME.value), max_lookup_vec_size)
+
+    with tf.compat.v1.variable_scope("unique_keys"):
+        unique_keys = get_unique_keys(config.get(ASCAnchorAttr.TABLE_NAME.value), max_lookup_vec_size, False)
 
     is_incremental_checkpoint = ConfigInitializer.get_instance().is_incremental_checkpoint
     if is_incremental_checkpoint and config.get("channel_id") == TRAIN_CHANNEL_ID:
@@ -169,8 +226,11 @@ def get_preprocessed_tensor_for_asc(table, config):
             result = {
                 'restore_vector': restore_vector,
                 'hot_pos': hot_pos,
+                'unique_shape': unique_shape,
                 'id_offsets': id_offsets,
                 'all2all_args': all2all_args,
+                'restore_vector_second': restore_vector_second,
+                'unique_keys': unique_keys,
             }
         return result
     if not config.get("is_hbm"):
@@ -182,7 +242,10 @@ def get_preprocessed_tensor_for_asc(table, config):
     result = {
         'restore_vector': restore_vector,
         'hot_pos': hot_pos,
+        'unique_shape': unique_shape,
         'id_offsets': id_offsets,
+        'restore_vector_second': restore_vector_second,
+        'unique_keys': unique_keys,
     }
 
     if not config.get("is_dp"):

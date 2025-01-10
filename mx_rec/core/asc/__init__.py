@@ -15,8 +15,9 @@
 # limitations under the License.
 # ==============================================================================
 
-__all__ = ["get_asc_insert_func", "start_asc_pipeline", "FeatureSpec"]
+__all__ = ["get_asc_insert_func", "start_asc_pipeline", "FeatureSpec", "get_restore_vector_second", "get_unique_keys"]
 
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.asc.helper import get_asc_insert_func
+from mx_rec.core.asc.build_graph import get_restore_vector_second, get_unique_keys
