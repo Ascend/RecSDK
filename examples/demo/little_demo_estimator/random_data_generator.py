@@ -20,25 +20,45 @@ import numpy as np
 from mx_rec.util.communication.hccl_ops import get_rank_id
 
 from demo_logger import logger
+from config import USE_DETERMINISTIC
 
 
 def get_data_generator(config, batch_number):
     rank_id = get_rank_id()
 
     def data_generator():
+        if USE_DETERMINISTIC:
+            import pickle as pkl
+            try:
+                with open("data.dat", "rb") as f:
+                    data = pkl.load(f)
+            except FileNotFoundError as e:
+                raise ValueError(
+                    f"USE_DETERMINISTIC is true, user should use gen_data.py to generate offline data"
+                ) from e
+            if len(data) < batch_number:
+                raise ValueError(
+                    "Data not enough, make sure gen_data.py's parameter is same as model file,"
+                    f" offline data length:{len(data)}, model batch_number:{batch_number}."
+                )
+        
         i = 0
         while i < batch_number:
-            item_ids = np.random.randint(0, config.item_range, (config.batch_size, config.item_feat_cnt))
-            user_ids = np.random.randint(0, config.user_range, (config.batch_size, config.user_feat_cnt))
-            category_ids = np.random.randint(0, config.category_range, (config.batch_size, config.category_feat_cnt))
-            label_0 = np.random.randint(0, 2, (config.batch_size,))
-            label_1 = np.random.randint(0, 2, (config.batch_size,))
+            if USE_DETERMINISTIC:
+                yield data[i]
+            else:
+                item_ids = np.random.randint(0, config.item_range, (config.batch_size, config.item_feat_cnt))
+                user_ids = np.random.randint(0, config.user_range, (config.batch_size, config.user_feat_cnt))
+                category_ids = np.random.randint(
+                    0, config.category_range, (config.batch_size, config.category_feat_cnt))
+                label_0 = np.random.randint(0, 2, (config.batch_size,))
+                label_1 = np.random.randint(0, 2, (config.batch_size,))
 
-            yield {"item_ids": item_ids,
-                   "user_ids": user_ids,
-                   "category_ids": category_ids,
-                   "label_0": label_0,
-                   "label_1": label_1}
+                yield {"item_ids": item_ids,
+                    "user_ids": user_ids,
+                    "category_ids": category_ids,
+                    "label_0": label_0,
+                    "label_1": label_1}
             i += 1
 
         logger.debug(f"================ end of data generator for {config.task_name} task | rank id {rank_id} "

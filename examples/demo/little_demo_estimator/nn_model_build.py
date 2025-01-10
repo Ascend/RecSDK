@@ -16,22 +16,27 @@
 # ==============================================================================
 
 import os
+
 import tensorflow as tf
 from tensorflow import Tensor
-from config import CacheModeEnum
 from mx_rec.util.tf_version_adapter import npu_ops
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.constants.constants import ASCEND_TIMESTAMP
 
 from utils import FeatureSpecIns
+from config import (
+    CacheModeEnum, USE_DETERMINISTIC, USE_DP, USE_MODIFY_GRAPH, USE_TIMESTAMP, USE_MULTI_LOOKUP, ENABLE_SLICER_TEST,
+    MULTI_LOOKUP_TIMES
+)
+from demo_logger import logger
 
 
 class LittleModel:
-    def __init__(self, params, cfg, mode, features, create_fs_params=None, access_and_evict_config_dict=None):
+    def __init__(self, cfg, mode, features, access_and_evict_config_dict=None):
         self.layer_dims = [1024, 512, 256, 128]
         self.act_func = 'relu'
-        self.keep_prob = 0.8
+        self.keep_prob = 1.0 if USE_DETERMINISTIC else 0.8
         self._lambda = 4.91e-7
         self.emb_dim = None
         self.loss_list = []
@@ -42,9 +47,7 @@ class LittleModel:
 
         self.is_train = mode == tf.estimator.ModeKeys.TRAIN
         self.cfg = cfg
-        self.params = params
         self.features = features
-        self.create_fs_params = create_fs_params
         self.access_and_evict_config_dict = access_and_evict_config_dict
 
     @staticmethod
@@ -62,11 +65,14 @@ class LittleModel:
             embedding = tf.concat(embedding_list, axis=1)
             self.emb_dim = embedding.shape.as_list()[-1]
             self.all_layer_dims = [self.emb_dim] + self.layer_dims + [1]
+            
+            initializer = tf.compat.v1.constant_initializer(0.01) if USE_DETERMINISTIC else \
+                tf.random_uniform_initializer(-0.01, 0.01)
 
             with tf.compat.v1.variable_scope("mlp", reuse=tf.compat.v1.AUTO_REUSE):
                 for i in range(len(self.all_layer_dims) - 2):
                     self.h_w.append(tf.compat.v1.get_variable('h%d_w' % (i + 1), shape=self.all_layer_dims[i: i + 2],
-                                                              initializer=tf.random_uniform_initializer(-0.01, 0.01),
+                                                              initializer=initializer,
                                                               dtype=tf.float32,
                                                               collections=[tf.compat.v1.GraphKeys.GLOBAL_VARIABLES,
                                                                            "deep", "mlp_wts"]))
@@ -78,8 +84,7 @@ class LittleModel:
                                                                "mlp_bias"]))
                 i += 1
                 self.h_w_head_0 = tf.compat.v1.get_variable('h_w_head_0', shape=self.all_layer_dims[i: i + 2],
-                                                            initializer=tf.compat.v1.random_uniform_initializer(-0.01,
-                                                                                                                0.01),
+                                                            initializer=initializer,
                                                             dtype=tf.float32,
                                                             collections=[tf.compat.v1.GraphKeys.GLOBAL_VARIABLES,
                                                                          "deep", "mlp_wts"])
@@ -89,8 +94,7 @@ class LittleModel:
                                                             collections=[tf.compat.v1.GraphKeys.GLOBAL_VARIABLES,
                                                                          "deep", "mlp_bias"])
                 self.h_w_head_1 = tf.compat.v1.get_variable('h_w_head_1', shape=self.all_layer_dims[i: i + 2],
-                                                            initializer=tf.compat.v1.random_uniform_initializer(-0.01,
-                                                                                                                0.01),
+                                                            initializer=initializer,
                                                             dtype=tf.float32,
                                                             collections=[tf.compat.v1.GraphKeys.GLOBAL_VARIABLES,
                                                                          "deep", "mlp_wts"])
@@ -145,7 +149,7 @@ class LittleModel:
                         "host_vocabulary_size": int(self.cfg.user_vocab_size * 1.0)}
         ssd_test_cfg = {
             "device_vocabulary_size": int(self.cfg.user_vocab_size * 0.4),
-            "host_vocabulary_size": int(self.cfg.user_vocab_size * 0.8),
+            "host_vocabulary_size": int(self.cfg.user_vocab_size * 0.4),
             "ssd_vocabulary_size": int(self.cfg.user_vocab_size * 1.8)
         }
         cache_mode_dict = {CacheModeEnum.HBM.value: hbm_test_cfg, CacheModeEnum.DDR.value: ddr_test_cfg,
@@ -157,21 +161,24 @@ class LittleModel:
             raise ValueError(f"cache mode must in {list(cache_mode_dict.keys())}, get:{cache_mode}")
         if cache_mode in [CacheModeEnum.DDR.value, CacheModeEnum.SSD.value] and not use_dynamic:
             logger.warning("when cache_mode in [DDR, SSD], suggest use_dynamic=true to avoid tuning size parameter")
+            
+        emb_initializer = tf.compat.v1.constant_initializer(0.1) if USE_DETERMINISTIC else \
+            tf.truncated_normal_initializer()
 
         user_hashtable = create_table(key_dtype=tf.int64,
                                       dim=tf.TensorShape([self.cfg.user_hashtable_dim]),
                                       name='user_table',
-                                      emb_initializer=tf.compat.v1.truncated_normal_initializer(),
-                                      is_dp=self.params.use_dp,
+                                      emb_initializer=emb_initializer,
+                                      is_dp=USE_DP,
                                       **cache_mode_dict[cache_mode])
         item_hashtable = create_table(key_dtype=tf.int64,
                                       dim=tf.TensorShape([self.cfg.item_hashtable_dim]),
                                       name='item_table',
-                                      emb_initializer=tf.compat.v1.truncated_normal_initializer(),
+                                      emb_initializer=emb_initializer,
                                       **cache_mode_dict[cache_mode])
 
-        if self.params.modify_graph:
-            if not self.params.enable_slicer_test:
+        if USE_MODIFY_GRAPH:
+            if not ENABLE_SLICER_TEST:
                 input_list = [[self.features["user_ids"], self.features["item_ids"]],
                               [user_hashtable, item_hashtable],
                               [self.cfg.user_send_cnt, self.cfg.item_send_cnt],
@@ -184,13 +191,13 @@ class LittleModel:
                               [self.cfg.user_send_cnt, self.cfg.item_send_cnt],
                               [True, True]]
 
-            if self.params.use_multi_lookup:
+            if USE_MULTI_LOOKUP:
                 # add `MULTI_LOOKUP_TIMES` times
-                input_list[0].extend([self.features["user_ids"]] * self.params.multi_lookup_times)
-                input_list[1].extend([user_hashtable] * self.params.multi_lookup_times)
-                input_list[2].extend([self.cfg.user_send_cnt] * self.params.multi_lookup_times)
-                input_list[3].extend([False] * self.params.multi_lookup_times)
-            if self.params.use_timestamp:
+                input_list[0].extend([self.features["user_ids"]] * MULTI_LOOKUP_TIMES)
+                input_list[1].extend([user_hashtable] * MULTI_LOOKUP_TIMES)
+                input_list[2].extend([self.cfg.user_send_cnt] * MULTI_LOOKUP_TIMES)
+                input_list[3].extend([False] * MULTI_LOOKUP_TIMES)
+            if USE_TIMESTAMP:
                 tf.compat.v1.add_to_collection(ASCEND_TIMESTAMP, self.features["timestamp"])
         else:
             if self.is_train:
@@ -201,11 +208,11 @@ class LittleModel:
                           [user_hashtable, item_hashtable],
                           [self.cfg.user_send_cnt, self.cfg.item_send_cnt],
                           [True, True]]
-            if self.params.use_multi_lookup:
+            if USE_MULTI_LOOKUP:
                 # add `MULTI_LOOKUP_TIMES` times
-                input_list[1].extend([user_hashtable] * self.params.multi_lookup_times)
-                input_list[2].extend([self.cfg.user_send_cnt] * self.params.multi_lookup_times)
-                input_list[3].extend([False] * self.params.multi_lookup_times)
+                input_list[1].extend([user_hashtable] * MULTI_LOOKUP_TIMES)
+                input_list[2].extend([self.cfg.user_send_cnt] * MULTI_LOOKUP_TIMES)
+                input_list[3].extend([False] * MULTI_LOOKUP_TIMES)
 
         embedding_list = []
         feature_list, hash_table_list, send_count_list, is_grad_list = input_list
@@ -214,7 +221,7 @@ class LittleModel:
             if isinstance(self.access_and_evict_config_dict, dict):
                 access_and_evict_config = self.access_and_evict_config_dict.get(hash_table.table_name)
             embedding = sparse_lookup(hash_table, feature, send_count, dim=None, is_train=self.is_train, is_grad=is_grad,
-                                      name=hash_table.table_name + "_lookup", modify_graph=self.params.modify_graph,
+                                      name=hash_table.table_name + "_lookup", modify_graph=USE_MODIFY_GRAPH,
                                       access_and_evict_config=access_and_evict_config, batch=self.features)
 
             reduced_embedding = tf.reduce_sum(embedding, axis=1, keepdims=False)
