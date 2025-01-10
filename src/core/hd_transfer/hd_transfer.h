@@ -49,6 +49,7 @@ enum class TransferChannel {
     SAVE_D2H,
     SAVE_H2D,
     KEY_D2H,
+    RECVSHAPE,
     INVALID,
 };
 
@@ -81,6 +82,8 @@ inline string TransferChannel2Str(TransferChannel e)
             return "save_h2d";
         case TransferChannel::KEY_D2H:
             return "key_d2h";
+        case TransferChannel::RECVSHAPE:
+            return "recvshape";
         default:
             throw std::invalid_argument("Invalid TransferChannel");
     }

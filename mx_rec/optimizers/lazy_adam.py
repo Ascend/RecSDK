@@ -122,6 +122,9 @@ class CustomizedLazyAdam(adam.AdamOptimizer, CustomizedOptimizer):
     def _apply_sparse_duplicate_indices(self, grad, var):
         #  _apply_sparse_duplicate_indices method include tf.unique and unsorted_segment_sum operations which may
         #  introduce dynamic shape problem, if encounter that, please de-annotation the method below.
+        if ConfigInitializer.get_instance().use_lccl:
+            return self._apply_sparse(grad, var)
+
         unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad.values, var=var, is_expansion=False)
         gradient_no_duplicate_indices = ops.IndexedSlices(
             indices=unique_keys, values=unique_local_grad, dense_shape=grad.dense_shape

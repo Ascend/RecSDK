@@ -634,6 +634,10 @@ bool HybridMgmt::ProcessEmbInfoHBM(const EmbBaseInfo& info, bool isGrad)
 
     SendPaddingKeysMaskVecHBM(info, infoVecs, isGrad);
 
+    if (GlobalEnv::useLccl && !mgmtRankInfo.useStatic) {
+        hdTransfer->Send(TransferChannel::RECVSHAPE, { infoVecs->back() }, info.channelId, info.name);
+        infoVecs->pop_back();
+    }
     // 发送恢复向量和hotPos
     TimeCost sendRestoreSyncTC;
     hdTransfer->Send(TransferChannel::RESTORE, *infoVecs, info.channelId, info.name, info.batchId);

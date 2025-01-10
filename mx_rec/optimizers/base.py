@@ -33,51 +33,7 @@ from mx_rec.util.tf_version_adapter import npu_ops, hccl_ops
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.log import logger
 from mx_rec.util.communication.hccl_ops import get_rank_size
-
-
-def get_restore_vector_second(table_name: str, max_lookup_vec_size: int) -> tf.Tensor:
-    """
-    Get restore vector which is calculated after the second all2all
-    :param table_name: embedding table_name
-    :param max_lookup_vec_size: static shape
-    :return: the restore vector calculated after the second all2all
-    """
-    channel_id = 0
-    logger.debug("Channel %s_restore_second_%s was built for getnext.", table_name, channel_id)
-    with tf.compat.v1.variable_scope(table_name, reuse=tf.compat.v1.AUTO_REUSE):
-        restore_vector_second = npu_ops.gen_npu_ops.get_next(
-            output_types=[tf.int32],
-            output_shapes=[[max_lookup_vec_size]],
-            channel_name=f"{table_name}_restore_second_{channel_id}",
-        )[0]
-    return restore_vector_second
-
-
-def get_unique_keys(table_name: str, max_lookup_vec_size: int, is_expansion: bool) -> tf.Tensor:
-    """
-    Get the global unique keys which is calculated after the second all2all
-    :param table_name: embedding table_name
-    :param max_lookup_vec_size: static shape
-    :param is_expansion: use dynamic expansion
-    :return: the global unique keys calculated after the second all2all
-    """
-    channel_id = 0
-    logger.debug("Channel %s_uniquekeys_%s was built for getnext.", table_name, channel_id)
-    with tf.compat.v1.variable_scope(table_name, reuse=tf.compat.v1.AUTO_REUSE):
-        if is_expansion:
-            unique_keys = npu_ops.gen_npu_ops.get_next(
-                output_types=[tf.int64],
-                output_shapes=[[max_lookup_vec_size]],
-                channel_name=f"{table_name}_uniquekeys_{channel_id}",
-            )[0]
-            return unique_keys
-
-        unique_keys = npu_ops.gen_npu_ops.get_next(
-            output_types=[tf.int32],
-            output_shapes=[[max_lookup_vec_size]],
-            channel_name=f"{table_name}_uniquekeys_{channel_id}",
-        )[0]
-        return unique_keys
+from mx_rec.core.asc import get_restore_vector_second, get_unique_keys
 
 
 def _get_padding_keys_offset_mask(table_name: str, max_lookup_vec_size: int) -> tf.Tensor:

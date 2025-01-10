@@ -36,6 +36,7 @@ export USE_FAAE=0               # 0：关闭准入淘汰；1：开启准入淘�
 export USE_DYNAMIC_EXPANSION=0  # 0：关闭动态扩容；1: 开启动态扩容
 export USE_MULTI_LOOKUP=0       # 0：一表一查；1：一表多查
 export USE_MODIFY_GRAPH=0       # 0：feature spec模式；1：自动改图模式
+export USE_LCCL=0               # 0：使用HCCL；1：使用LCCL
 ################################################
 
 echo "CACHE_MODE:${CACHE_MODE}"
