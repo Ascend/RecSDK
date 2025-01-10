@@ -158,5 +158,90 @@
                 "type": "int"
             }
         ]
+    },
+    {
+        "op": "LcclGatherAll",
+        "language": "cpp",
+        "input_desc": [
+            {
+                "name": "emb_table",
+                "param_type": "required",
+                "format": [
+                    "ND","ND","ND"
+                ],
+                "type": [
+                    "fp32","fp32","fp32"
+                ]
+            },
+            {
+                "name": "lookup",
+                "param_type": "required",
+                "format": [
+                    "ND","ND","ND"
+                ],
+                "type": [
+                    "int32","int32","int32"
+                ]
+            },
+            {
+                "name": "send_count_matrix",
+                "param_type": "required",
+                "format": [
+                    "ND","ND","ND"
+                ],
+                "type": [
+                    "int64","int64","int64"
+                ]
+            },
+            {
+                "name": "shape_vec",
+                "param_type": "required",
+                "format": [
+                    "ND","ND","ND"
+                ],
+                "type": [
+                    "int32","int32","int32"
+                ]
+            },
+            {
+                "name": "peer_mem",
+                "param_type": "required",
+                "format": [
+                    "ND","ND","ND"
+                ],
+                "type": [
+                    "int64","int64","int64"
+                ]
+            }
+        ],
+        "output_desc": [
+            {
+                "name": "recv_data",
+                "param_type": "required",
+                "format": [
+                    "ND","ND","ND"
+                ],
+                "type": [
+                    "fp32","fp32","fp32"
+                ]
+            }
+        ],
+        "attr": [
+            {
+                "name": "rank",
+                "param_type": "required",
+                "type": "int"
+            },
+            {
+                "name": "rank_size",
+                "param_type": "required",
+                "type": "int"
+            },
+            {
+                "name": "dim",
+                "param_type": "required",
+                "type": "int"
+            }
+        ]
     }
 ]
