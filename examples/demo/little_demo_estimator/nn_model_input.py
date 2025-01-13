@@ -61,7 +61,7 @@ def get_model_fn(cfg, access_and_evict_config_dict=None):
         if mode == tf.estimator.ModeKeys.TRAIN:
             logger.info("Use estimator train mode")
             logging_hook = tf.compat.v1.train.LoggingTensorHook(
-                {"train_loss": loss}, every_n_iter=1, formatter=partial(log_formatter, mode=mode))
+                {"train_loss": loss}, every_n_iter=1, formatter=partial(log_formatter, mode))
             loss_dict['loss'] = [['train_loss', loss]]
             return tf.estimator.EstimatorSpec(mode=mode,
                                               loss=loss,
@@ -70,14 +70,14 @@ def get_model_fn(cfg, access_and_evict_config_dict=None):
         elif mode == tf.estimator.ModeKeys.EVAL:
             logger.info("Use estimator eval mode")
             logging_hook = tf.compat.v1.train.LoggingTensorHook(
-                {"eval_loss": loss}, every_n_iter=1, formatter=partial(log_formatter, mode=mode))
+                {"eval_loss": loss}, every_n_iter=1, formatter=partial(log_formatter, mode))
             return tf.estimator.EstimatorSpec(mode=mode,
                                               loss=loss,
                                               evaluation_hooks=[logging_hook])
         elif mode == tf.estimator.ModeKeys.PREDICT:
             logger.info("Use estimator predict mode")
             logging_hook = tf.compat.v1.train.LoggingTensorHook(
-                {"predict_loss": loss}, every_n_iter=1, formatter=partial(log_formatter, mode=mode))
+                {"predict_loss": loss}, every_n_iter=1, formatter=partial(log_formatter, mode))
             loss_dict['task_1'] = prediction[0]
             loss_dict['task_2'] = prediction[1]
             if RUN_MODE != 'export_pb':
