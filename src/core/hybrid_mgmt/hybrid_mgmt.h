@@ -92,7 +92,8 @@ public:
     HybridMgmt& operator=(const HybridMgmt&) = delete;
 
     bool Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, int seed,
-                    const vector<ThresholdValue>& thresholdValues, bool ifLoad, bool isIncrementalCheckpoint);
+                    const vector<ThresholdValue>& thresholdValues, bool ifLoad,
+                    bool isIncrementalCheckpoint, bool useLccl);
 
     void Save(const string& savePath, bool saveDelta);
 
@@ -245,6 +246,7 @@ private:
     std::mutex keyCountUpdateMtx;
     std::condition_variable keyCountUpdateCv;
     bool checkConditionMet = false;
+    bool enableLccl = false;
 
     void TrainTask(TaskType type);
 
