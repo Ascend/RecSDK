@@ -18,9 +18,23 @@ mxRec作为面向互联网市场搜索推荐广告的应用使能SDK产品，对
 2. 推荐场景特有功能。基于mxRec的稀疏表方案，mxRec提供必备功能，如特征保存和加载、特征准入、特征淘汰等。
 3. 大规模稀疏表特有功能。支持加速卡内存、主机内存、主机磁盘多级存储、支持多机存储、支持动态扩容。规模可超10TB。
 
+## 版本配套
+
+| 软件                | 版本               | 下载链接                                                                                                                  |
+|-------------------|------------------|-----------------------------------------------------------------------------------------------------------------------|
+| MindX Rec SDK     | 6.0.RC3          | https://gitee.com/ascend/mxrec/releases/tag/6.0.RC3                                                                   |
+| CANN              | 8.0.RC3.alpha003 | https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=8.0.RC3.alpha003&cann=8.0.RC3.alpha003 |
+| TensorFlowAdapter | 8.0.RC3.alpha003 | https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=8.0.RC3.alpha003&cann=8.0.RC3.alpha003 |
+| Driver            | 23.0.0           | https://www.hiascend.com/hardware/firmware-drivers/community?product=4&model=26&cann=All&driver=1.0.25.alpha          |
+| Firmware          | 23.0.0           | https://www.hiascend.com/hardware/firmware-drivers/community?product=4&model=26&cann=All&driver=1.0.25.alpha          |
+
+## 支持的产品型号
+- Atlas 200T A2 Box16
+- Atlas 800T A2 训练服务器
+
 ## 安装方式
 
-安装前，请参考[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC2alpha003/softwareinst/instg/instg_0022.html)安装CANN开发套件软件包和TensorFlow适配昇腾插件。
+安装前，请参考[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/800alpha001/softwareinst/instg/instg_0001.html?Mode=PmIns&OS=Ubuntu&Software=cannToolKit)安装CANN开发套件软件包和TensorFlow适配昇腾插件。
 
 CANN软件提供进程级环境变量设置脚本，供用户在进程中引用，以自动完成环境变量设置。用户进程结束后自动失效。可在程序启动的Shell脚本中使用如下命令设置CANN的相关环境变量，也可通过命令行执行如下命令（以root用户默认安装路径“/usr/local/Ascend”为例）：
 ```shell
@@ -147,9 +161,9 @@ bash test_ut.sh tf2
 
 ## 使用指导
 
-mxRec所支持的使用环境、功能特性、API接口与使用样例请参考[mxRec用户指南](https://www.hiascend.com/document/detail/zh/mind-sdk/60rc1/mxRec/mxrecug/mxrecug_0001.html)。
+mxRec所支持的使用环境、功能特性、API接口与使用样例请参考[mxRec用户指南](https://www.hiascend.com/document/detail/zh/mind-sdk/60rc3/mxRec/mxrecug/mxrecug_0004.html)。
 
-## 参考设计
+## 样例
 
 mxRec框架基础镜像，基于TensorFlow 1.15.0、tensorflow2.6.5制作的基础镜像，安装mxRec后即可开始训练，以及样例使用介绍。
 

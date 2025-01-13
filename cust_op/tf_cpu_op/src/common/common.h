@@ -13,24 +13,14 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-#include "buffer_queue.h"
+#ifndef RECBASE_COMMON_H
+#define RECBASE_COMMON_H
+#include <cstdint>
 
-using namespace MxRec;
-using namespace std;
-
-void BufferQueue::Push(std::vector<char> &&buffer)
+namespace ock {
+inline bool OCK_PREDICT_FALSE(bool x)
 {
-    std::unique_lock<std::mutex> lock(mtx);
-    bufferQueue.push(std::move(buffer));
-    cv.notify_one();
+    return __builtin_expect(!!(x), 0);
 }
-
-void BufferQueue::Pop(std::vector<char>& buffer)
-{
-    std::unique_lock<std::mutex> lock(mtx);
-    cv.wait(lock, [this] {
-        return !bufferQueue.empty();
-    });
-    buffer = std::move(bufferQueue.front());
-    bufferQueue.pop();
 }
+#endif // RECBASE_COMMON_H

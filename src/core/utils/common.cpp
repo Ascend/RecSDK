@@ -34,7 +34,6 @@ namespace MxRec {
     namespace fs = std::experimental::filesystem;
 
     bool g_isGlogInit = false;
-    bool GlogConfig::gStatOn = false;
     int GlogConfig::gGlogLevel;
     string GlogConfig::gRankId;
 
@@ -108,14 +107,19 @@ namespace MxRec {
         struct stat fileInfo;
         if (lstat(dataDir.c_str(), &fileInfo) != -1) {
             if (S_ISLNK(fileInfo.st_mode)) {
-                LOG_ERROR("soft link {} should not in the path parameter", dataDir);
-                throw invalid_argument(StringFormat("soft link should not be the path parameter"));
+                auto error = Error(ModuleName::M_UTILS, ErrorType::INVALID_ARGUMENT,
+                                   StringFormat("Found soft link in path:%s.", dataDir.c_str()));
+                LOG_ERROR(error.ToString());
+                throw invalid_argument(error.ToString());
             }
         }
         // validate file size
         if (datasetSize > FILE_MAX_SIZE) {
-            LOG_ERROR("the reading file size is invalid, not in range [{},{}]", FILE_MIN_SIZE, FILE_MAX_SIZE);
-            throw invalid_argument(StringFormat("file size invalid"));
+            auto error = Error(ModuleName::M_UTILS, ErrorType::INVALID_ARGUMENT,
+                               StringFormat("The reading file size is invalid, not in range [%d, %d], path:%s.",
+                                            FILE_MIN_SIZE, FILE_MAX_SIZE, dataDir.c_str()));
+            LOG_ERROR(error.ToString());
+            throw invalid_argument(error.ToString());
         }
         // validate file privilege
         fs::perms permissions = fs::status(dataDir).permissions();
@@ -129,7 +133,9 @@ namespace MxRec {
         struct stat fileInfo;
         int ret = stat(filePath.c_str(), &fileInfo);
         if (ret != 0) {
-            LOG_ERROR("get file {} stat info failed", filePath.c_str());
+            auto error = Error(ModuleName::M_UTILS, ErrorType::UNKNOWN,
+                               StringFormat("Get stat info failed, file:%s, error:%d.", filePath.c_str(), ret));
+            LOG_ERROR(error.ToString());
             return false;
         }
 
@@ -142,8 +148,11 @@ namespace MxRec {
             int maxPerm = (maxMode & mask) >> ((i - 1) * perPermWidth);
             mask = mask >> perPermWidth;
             if (curPerm > maxPerm) {
-                LOG_ERROR(" {} : Check {} : Current permission is {}, but required no greater than {} ",
-                          filePath.c_str(), permMsg[i - 1], curPerm, maxPerm);
+                auto error = Error(ModuleName::M_UTILS, ErrorType::INVALID_ARGUMENT,
+                                   StringFormat("File permission wrong, file:%s, type:%s, current permission:%d,"
+                                                " required no greater than:%d.",
+                                                filePath.c_str(), permMsg[i - 1], curPerm, maxPerm));
+                LOG_ERROR(error.ToString());
                 return false;
             }
         }
@@ -182,7 +191,7 @@ namespace MxRec {
         try {
             res = stoi(match[1]);
         } catch (const std::invalid_argument& e) {
-            LOG_ERROR("argument is invalid: {}", e.what());
+            LOG_WARN("Fail to get step from path:{}, error:{}. Set step as 0.", loadPath, e.what());
         }
         return res;
     }

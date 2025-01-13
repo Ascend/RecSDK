@@ -38,11 +38,9 @@ class RecEnv:
     key_process_thread_num: str
     max_unique_thread_num: str
     fast_unique: str
-    updateemb_v2: str
     hot_emb_update_step: str
     glog_stderrthreahold: str
     use_combine_faae: str
-    stat_on: str
     record_key_count: str
 
 
@@ -62,11 +60,9 @@ def get_global_env_conf() -> RecEnv:
         key_process_thread_num=os.getenv(EnvOption.KEY_PROCESS_THREAD_NUM.value, DEFAULT_KP_THREAD_NUM),
         max_unique_thread_num=os.getenv(EnvOption.MAX_UNIQUE_THREAD_NUM.value, DEFAULT_FAST_UNIQUE_THREAD_NUM),
         fast_unique=os.getenv(EnvOption.FAST_UNIQUE.value, Flag.FALSE.value),
-        updateemb_v2=os.getenv(EnvOption.UPDATEEMB_V2.value, Flag.FALSE.value),
         hot_emb_update_step=os.getenv(EnvOption.HOT_EMB_UPDATE_STEP.value, DEFAULT_HOT_EMB_UPDATE_STEP),
         glog_stderrthreahold=os.getenv(EnvOption.GLOG_STDERRTHREAHOLD.value, RecCPPLogLevel.INFO.value),
         use_combine_faae=os.getenv(EnvOption.USE_COMBINE_FAAE.value, Flag.FALSE.value),
-        stat_on=os.getenv(EnvOption.STAT_ON.value, Flag.FALSE.value),
         record_key_count=os.getenv(EnvOption.RECORD_KEY_COUNT.value, Flag.FALSE.value)
     )
 
@@ -87,12 +83,10 @@ def get_global_env_conf() -> RecEnv:
     ("max_unique_thread_num", Convert2intValidator,
      {"min_value": MIN_FAST_UNIQUE_THREAD_NUM, "max_value": MAX_FAST_UNIQUE_THREAD_NUM}, ["check_value"]),
     ("fast_unique", OptionValidator, {"options": [i.value for i in list(Flag)]}),
-    ("updateemb_v2", OptionValidator, {"options": [i.value for i in list(Flag)]}),
     ("hot_emb_update_step", Convert2intValidator,
      {"min_value": MIN_HOT_EMB_UPDATE_STEP, "max_value": MAX_HOT_EMB_UPDATE_STEP}, ["check_value"]),
     ("glog_stderrthreahold", OptionValidator, {"options": [i.value for i in list(RecCPPLogLevel)]}),
     ("use_combine_faae", OptionValidator, {"options": [i.value for i in list(Flag)]}),
-    ("stat_on", OptionValidator, {"options": [i.value for i in list(Flag)]}),
     ("record_key_count", OptionValidator, {"options": [i.value for i in list(Flag)]})
 ])
 def check_env(**kwargs):

@@ -92,8 +92,17 @@ public:
 
     ~AutoRefillEmbeddingMemoryPool()
     {
-        stop = true;
-        std::lock_guard<std::mutex> lock(producerMutex);
+        {
+            // Dont' remove brackets of this code block, otherwise may cause dead lock in ProducerWorker.
+            // To let producerThreads quit, we need:
+            //   1. stop is true;
+            //   2. Make sure all ProducerWorker thread run at wait(lock),
+            //      this condition will satisfy when we acquire lock below;
+            //   3. Release lock below (lock only valid in this code block);
+            //   4. Notify all thread, producerThread will get lock then return from wait, then meet stop flag, return.
+            stop = true;
+            std::lock_guard<std::mutex> lock(producerMutex);
+        }
         producerCv.notify_all();
         fullCv.notify_all();
         for (auto& t : producerThreads) {
@@ -227,7 +236,7 @@ public:
 
     ~AddressMapper() = default;
 
-    bool Initialize(uint32_t reserve, uint32_t vocabSize, std::shared_ptr<AutoRefillEmbeddingMemoryPool> expendInfoPtr)
+    bool Initialize(uint64_t reserve, uint64_t vocabSize, std::shared_ptr<AutoRefillEmbeddingMemoryPool> expendInfoPtr)
     {
         hostVocabSize = vocabSize;
         emExpendMemInfoPtr = expendInfoPtr;
@@ -288,7 +297,7 @@ public:
         });
     }
 
-    uint32_t GetUsage()
+    uint64_t GetUsage()
     {
         return MapperBase::current_size;
     }
@@ -302,7 +311,7 @@ private:
     }
 
 private:
-    uint32_t hostVocabSize;
+    uint64_t hostVocabSize;
     std::shared_ptr<AutoRefillEmbeddingMemoryPool> emExpendMemInfoPtr;
 };
 }  // namespace EmbCache

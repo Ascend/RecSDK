@@ -22,8 +22,12 @@ import tensorflow as tf
 
 from mx_rec.util.log import logger
 from mx_rec.constants.constants import LIBASC_OPS_SO
+from mx_rec.validator.validator import para_checker_decorator, StringValidator
 
 
+@para_checker_decorator(check_option_list=[
+    ("so_pkg_name", StringValidator, {"min_len": 1, "max_len": 100}, ["check_string_length", "check_whitelist"])
+])
 def import_host_pipeline_ops(so_pkg_name: str = LIBASC_OPS_SO) -> ModuleType:
     """
     导入so包.

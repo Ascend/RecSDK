@@ -27,7 +27,6 @@ if(NOT EMOCK_LIBRARY)
     set(EMOCK_LIBRARY /usr/local/lib/libemock.a)
 endif()
 message("EMOCK_LIBRARY: " ${EMOCK_LIBRARY})
-include_directories(${THIRD_PARTY_PATH}/expected/include)
 # src
 file(GLOB_RECURSE MXREC_SRC ${PROJECT_SOURCE_DIR}/core/*.cpp)
 message("MXREC_SRC: " ${MXREC_SRC})
@@ -43,12 +42,6 @@ add_executable(test_main ${MXREC_SRC} ${MXREC_TEST_SRC})
 if(NOT SECUREC_PATH)
     set(SECUREC_PATH ${PROJECT_SOURCE_DIR}/../platform/securec)
 endif()
-
-if (easy_profiler_FOUND)
-    message("==link with easy_profiler==")
-    target_link_directories(test_main PUBLIC ${EASY_PROFILER_PATH})
-    target_link_libraries(test_main PUBLIC easy_profiler)
-endif ()
 
 include_directories(PRIVATE .)
 target_include_directories(test_main

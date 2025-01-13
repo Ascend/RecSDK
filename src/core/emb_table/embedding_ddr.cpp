@@ -30,7 +30,7 @@ EmbeddingDDR::EmbeddingDDR()
 EmbeddingDDR::EmbeddingDDR(const EmbInfo& info, const RankInfo& rankInfo, int inSeed)
     : EmbeddingTable(info, rankInfo, inSeed), deviceId(rankInfo.deviceId)
 {
-    LOG_INFO("Init DDR table:{}, devVocabSize:{}, hostVocabSize:{}", name, devVocabSize, hostVocabSize);
+    LOG_INFO("Init DDR table:{}, devVocabSize:{}, hostVocabSize:{}.", name, devVocabSize, hostVocabSize);
 }
 
 EmbeddingDDR::~EmbeddingDDR()
@@ -109,13 +109,14 @@ void EmbeddingDDR::LoadKey(const string &savePath, vector<emb_cache_key_t> &keys
         fileSize = fileSystemPtr_->GetFileSize(ss.str());
     } catch (exception& e) {
         auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::IO_ERROR,
-                           StringFormat("Open file failed:%s, error code:%d",
-                                        ss.str().c_str(), strerror(errno)));
+                           StringFormat("Open file failed:%s, table:%s, error code:%d",
+                                        ss.str().c_str(), name.c_str(), strerror(errno)));
         LOG_ERROR(error.ToString());
         throw std::runtime_error(error.ToString());
     }
     if (fileSize >= FILE_MAX_SIZE) {
-        string errMsg = StringFormat("Invalid file:%s, size:%d is too big.", ss.str().c_str(), fileSize);
+        string errMsg = StringFormat("Invalid file:%s, size:%d is too big, table:%s.",
+                                     ss.str().c_str(), fileSize, name.c_str());
         auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::INVALID_ARGUMENT, errMsg);
         LOG_ERROR(error.ToString());
         throw std::runtime_error(error.ToString());
@@ -124,19 +125,14 @@ void EmbeddingDDR::LoadKey(const string &savePath, vector<emb_cache_key_t> &keys
     // 暂时向HBM兼容，转成int64_t，后续再归一key类型为uint64_t
     auto buf = static_cast<int64_t*>(malloc(fileSize));
     CheckLoadKeyMallocPtr(buf, fileSize);
-    ssize_t result = fileSystemPtr_->Read(ss.str(), reinterpret_cast<char*>(buf), fileSize);
-    if (result == -1) {
-        free(static_cast<void*>(buf));
-        string errMsg = StringFormat("Read buffer failed, error code:%d.", strerror(errno));
-        auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::IO_ERROR, errMsg);
-        LOG_ERROR(error.ToString());
-        throw std::runtime_error(error.ToString());
-    }
-    if (result != fileSize) {
+
+    try {
+        ssize_t result = fileSystemPtr_->Read(ss.str(), reinterpret_cast<char*>(buf), fileSize);
+        CheckReadKeyFileBytes(result, ss.str(), fileSize);
+    } catch (std::runtime_error& e) {
         free(static_cast<void*>(buf));
         auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::IO_ERROR,
-                           StringFormat("Error: Load keys failed. Expected to read %d bytes, but actually"
-                                        " read %d bytes to file %s.", fileSize, result, ss.str().c_str()));
+                           StringFormat("Failed to read file, table:%s, error is:%s.", name.c_str(), e.what()));
         LOG_ERROR(error.ToString());
         throw std::runtime_error(error.ToString());
     }
@@ -153,7 +149,7 @@ void EmbeddingDDR::LoadKey(const string &savePath, vector<emb_cache_key_t> &keys
     }
 
     free(static_cast<void*>(buf));
-    LOG_DEBUG("load key done, table:{}", name);
+    LOG_DEBUG("Load key done, table:{}.", name);
 }
 
 void EmbeddingDDR::LoadEmbedding(const string &savePath, vector<vector<float>> &embeddings)
@@ -170,14 +166,25 @@ void EmbeddingDDR::LoadEmbedding(const string &savePath, vector<vector<float>> &
     embedStream << ss.str() << "/" << "embedding/slice.data";
 
     CheckFileSystemPtr();
-    ssize_t res = fileSystemPtr_->Read(embedStream.str(), embeddings, 0, hostLoadOffset, embSize_);
+    ssize_t res;
+    try {
+        res = fileSystemPtr_->Read(embedStream.str(), embeddings, 0, hostLoadOffset, embSize_);
+        size_t fileSize = hostLoadOffset.size() * embSize_ * sizeof(float);
+        CheckReadKeyFileBytes(res, ss.str(), fileSize);
+    } catch (std::runtime_error& e) {
+        auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::IO_ERROR,
+                           StringFormat("Failed to read file, table:%s, error is: %s.", name.c_str(), e.what()));
+        LOG_ERROR(error.ToString());
+        throw std::runtime_error(error.ToString());
+    }
+
     LOG_DEBUG("Load embedding done, table:{}, read bytes:{}.", name, res);
 }
 
 void EmbeddingDDR::LoadOptimizerSlot(const string &savePath, vector<vector<float>> &optimizerSlots)
 {
     if (optimParams.size() == 0) {
-        LOG_DEBUG("Optimizer has no slot data to load.");
+        LOG_DEBUG("Optimizer has no slot data to load, table:{}.", name);
         return;
     }
 
@@ -195,7 +202,19 @@ void EmbeddingDDR::LoadOptimizerSlot(const string &savePath, vector<vector<float
     for (const auto &param: optimParams) {
         stringstream paramStream;
         paramStream << ss.str() << "/" << optimName + "_" + param << "/slice.data";
-        ssize_t res = fileSystemPtr_->Read(paramStream.str(), optimizerSlots, slotIdx, hostLoadOffset, embSize_);
+
+        ssize_t res;
+        try {
+            res = fileSystemPtr_->Read(paramStream.str(), optimizerSlots, slotIdx, hostLoadOffset, embSize_);
+            size_t fileSize = hostLoadOffset.size() * embSize_ * sizeof(float);
+            CheckReadKeyFileBytes(res, ss.str(), fileSize);
+        } catch (std::runtime_error& e) {
+            auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::IO_ERROR,
+                               StringFormat("Failed to read file, table:%s, error: %s.", name.c_str(), e.what()));
+            LOG_ERROR(error.ToString());
+            throw std::runtime_error(error.ToString());
+        }
+
         slotIdx++;
         LOG_DEBUG("Load optimizer slot, table:{}, slot:{}, read bytes:{}.", name, param, res);
     }
@@ -235,15 +254,15 @@ void EmbeddingDDR::SyncLatestEmbedding(const int pythonBatchId)
     for (const auto& p : koVec) {
         swapOutKeys.push_back(p.first);
     }
-    LOG_DEBUG("Save swapOutKeys.size:{}, table:{}.", swapOutKeys.size(), name);
+    LOG_DEBUG("SyncLatestEmbedding, table:{}, swapOutKeys.size:{}.", name, swapOutKeys.size());
 
     // 接收python save接口发送的卡内embedding
     auto size = hdTransfer->RecvAcl(TransferChannel::SAVE_D2H, TRAIN_CHANNEL_ID, name, 0, -1);
-    LOG_DEBUG("Receive D2H data end with DDR mode, size:{}, table:{}.", size, name);
+    LOG_DEBUG("Receive D2H data, table:{}, acl dataset size:{}.", name, size);
     auto aclData = acltdtGetDataItem(hdTransfer->aclDatasets[name][0], 0);
     if (aclData == nullptr) {
         auto error = Error(ModuleName::M_ACL, ErrorType::NULL_PTR,
-                           "Failed to get Acl DataItem pointer from Acl Dataset.");
+                           "Failed to get Acl DataItem pointer from Acl Dataset. Check plog for detail.");
         LOG_ERROR(error.ToString());
         throw runtime_error(error.ToString());
     }
@@ -251,7 +270,7 @@ void EmbeddingDDR::SyncLatestEmbedding(const int pythonBatchId)
 
     // In step 0, can't update cacheEmb because key-pos mapping has been modified in hybrid_mgmt `ParseKeys` method.
     if (pythonBatchId == 0) {
-        LOG_DEBUG("In step 0, skipping update cacheEmb.");
+        LOG_DEBUG("In step 0, skipping update cacheEmb, table:{}.", name);
         return;
     }
 
@@ -317,7 +336,8 @@ void EmbeddingDDR::SaveKey(const string& savePath, vector<emb_cache_key_t>& keys
     ssize_t res = fileSystemPtr_->Write(ss.str(), reinterpret_cast<const char *>(keysCompat.data()),
                                         static_cast<size_t>(keys.size() * sizeof(int64_t)));
     if (res == -1) {
-        auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::IO_ERROR, "Save key failed!");
+        auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::IO_ERROR,
+                           StringFormat("Save key failed, table:%s.", name.c_str()));
         LOG_ERROR(error.ToString());
         throw std::runtime_error(error.ToString());
     }
@@ -335,8 +355,8 @@ void EmbeddingDDR::SaveEmbedding(const string& savePath, vector<vector<float>>& 
     ssize_t expectWriteBytes = embeddings.size() * embSize_ * sizeof(float);
     if (writeBytesNum != expectWriteBytes) {
         auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::LOGIC_ERROR,
-                           StringFormat("Save embedding failed, write expect:%ld, actual:%ld, path:%s.",
-                                        expectWriteBytes, writeBytesNum, savePath.c_str()));
+                           StringFormat("Save embedding failed, table:%s, write expect:%ld, actual:%ld, path:%s.",
+                                        name.c_str(), expectWriteBytes, writeBytesNum, savePath.c_str()));
         LOG_ERROR(error.ToString());
         throw std::runtime_error(error.ToString());
     }
@@ -345,14 +365,14 @@ void EmbeddingDDR::SaveEmbedding(const string& savePath, vector<vector<float>>& 
 void EmbeddingDDR::SaveOptimizerSlot(const string& savePath, vector<vector<float>>& optimizerSlots, size_t keySize)
 {
     if (optimizerSlots.size() == 0) {
-        LOG_DEBUG("optimizer has no slot data to save");
+        LOG_DEBUG("Optimizer has no slot data to save, table:{}.", name);
         return;
     }
     
     if (optimizerSlots.size() != keySize) {
         string errMsg = StringFormat("Optimizer slot data size not equal to key size, "
-                                     "optimizerSlots.size:%d, keySize:%d.",
-                                     optimizerSlots.size(), keySize);
+                                     "table:%s, optimizerSlots.size:%d, keySize:%d.",
+                                     name.c_str(), optimizerSlots.size(), keySize);
         auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::LOGIC_ERROR, errMsg);
         LOG_ERROR(error.ToString());
         throw std::runtime_error(error.ToString());
@@ -373,8 +393,8 @@ void EmbeddingDDR::SaveOptimizerSlot(const string& savePath, vector<vector<float
         ssize_t writeBytesNum = fileSystemPtr_->Write(ss.str(), slotData, embSize_);
         ssize_t expectWriteBytes = slotData.size() * embSize_ * sizeof(float);
         if (writeBytesNum != expectWriteBytes) {
-            string errMsg = StringFormat("Save optimizer slot failed, write expect:%d, actual:%d, path:%s.",
-                                         expectWriteBytes, writeBytesNum, savePath.c_str());
+            string errMsg = StringFormat("Save optimizer slot failed, table:%s, write expect:%d, actual:%d, path:%s.",
+                                         name.c_str(), expectWriteBytes, writeBytesNum, savePath.c_str());
             auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::LOGIC_ERROR, errMsg);
             LOG_ERROR(error.ToString());
             throw std::runtime_error(error.ToString());
@@ -399,7 +419,7 @@ void EmbeddingDDR::SetOptimizerInfo(OptimizerInfo& optimizerInfo)
 
 void EmbeddingDDR::SetCacheManager(CacheManager *cm)
 {
-    LOG_DEBUG("set CacheManager");
+    LOG_DEBUG("Set CacheManager for table:{}.", name);
     cacheManager_ = cm;
 }
 

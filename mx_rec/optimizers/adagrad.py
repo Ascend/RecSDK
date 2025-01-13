@@ -28,11 +28,12 @@ from tensorflow.python.training import adagrad, training_ops
 
 from mx_rec.optimizers.base import CustomizedOptimizer, control_update_op_decorator
 from mx_rec.util.initialize import ConfigInitializer
-from mx_rec.validator.validator import para_checker_decorator, StringValidator, ClassValidator, FloatValidator
+from mx_rec.validator.validator import (para_checker_decorator, StringValidator, ClassValidator,
+                                        FloatValidator, LearningRateValidator)
 
 
 @para_checker_decorator(check_option_list=[
-    ("learning_rate", FloatValidator, {"min_value": 0.0, "max_value": 10.0}, ["check_value"]),
+    ("learning_rate", LearningRateValidator, {"min_value": 0.0, "max_value": 10.0}, ["check_value"]),
     ("initial_accumulator_value", FloatValidator, {"min_value": 0.0, "max_value": 1.0},
         ["check_value_for_left_open_interval"]),
     ("use_locking", ClassValidator, {"classes": (bool, )}),

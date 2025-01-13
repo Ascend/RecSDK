@@ -87,8 +87,10 @@ bool HybridMgmtBlock::WaitValid(int channelId)
     }
 
     if (pythonBatchId[channelId] == hybridBatchId[channelId]) {
-        LOG_ERROR(HYBRID_BLOCKING + "step not equal, channel:{}, pythonBatchId:{}, hybridBatchId:{}", channelId,
-                  pythonBatchId[channelId], hybridBatchId[channelId]);
+        auto error = Error(ModuleName::M_HYBRID_MGMT_BLOCK, ErrorType::LOGIC_ERROR,
+                           StringFormat("Step not equal, channelId:%d, pythonBatchId:%d, hybridBatchId:%d",
+                                        channelId, pythonBatchId[channelId], hybridBatchId[channelId]));
+        LOG_ERROR(error.ToString());
         return true;
     } else {
         // 如果等待python侧处理较长时间后hybrid依旧无法追赶上python则异常

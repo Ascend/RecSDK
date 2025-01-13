@@ -15,9 +15,12 @@
 # limitations under the License.
 # ==============================================================================
 
+import os
 import tensorflow as tf
 from tensorflow import Tensor
+from config import CacheModeEnum
 from mx_rec.util.tf_version_adapter import npu_ops
+from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.constants.constants import ASCEND_TIMESTAMP
 
@@ -136,19 +139,36 @@ class LittleModel:
         return logit_list
 
     def _get_embedding_list(self):
+
+        hbm_test_cfg = {"device_vocabulary_size": self.cfg.user_vocab_size, "host_vocabulary_size": 0}
+        ddr_test_cfg = {"device_vocabulary_size": int(self.cfg.user_vocab_size * 0.4),
+                        "host_vocabulary_size": int(self.cfg.user_vocab_size * 1.0)}
+        ssd_test_cfg = {
+            "device_vocabulary_size": int(self.cfg.user_vocab_size * 0.4),
+            "host_vocabulary_size": int(self.cfg.user_vocab_size * 0.8),
+            "ssd_vocabulary_size": int(self.cfg.user_vocab_size * 1.8)
+        }
+        cache_mode_dict = {CacheModeEnum.HBM.value: hbm_test_cfg, CacheModeEnum.DDR.value: ddr_test_cfg,
+                           CacheModeEnum.SSD.value: ssd_test_cfg}
+
+        cache_mode = os.getenv("CACHE_MODE")
+        use_dynamic = not ConfigInitializer.get_instance().use_static
+        if cache_mode not in cache_mode_dict.keys():
+            raise ValueError(f"cache mode must in {list(cache_mode_dict.keys())}, get:{cache_mode}")
+        if cache_mode in [CacheModeEnum.DDR.value, CacheModeEnum.SSD.value] and not use_dynamic:
+            logger.warning("when cache_mode in [DDR, SSD], suggest use_dynamic=true to avoid tuning size parameter")
+
         user_hashtable = create_table(key_dtype=tf.int64,
                                       dim=tf.TensorShape([self.cfg.user_hashtable_dim]),
                                       name='user_table',
                                       emb_initializer=tf.compat.v1.truncated_normal_initializer(),
                                       is_dp=self.params.use_dp,
-                                      device_vocabulary_size=self.cfg.user_vocab_size * 10,
-                                      host_vocabulary_size=self.cfg.user_vocab_size * 0)
+                                      **cache_mode_dict[cache_mode])
         item_hashtable = create_table(key_dtype=tf.int64,
                                       dim=tf.TensorShape([self.cfg.item_hashtable_dim]),
                                       name='item_table',
                                       emb_initializer=tf.compat.v1.truncated_normal_initializer(),
-                                      device_vocabulary_size=self.cfg.item_vocab_size * 10,
-                                      host_vocabulary_size=self.cfg.item_vocab_size * 0)
+                                      **cache_mode_dict[cache_mode])
 
         if self.params.modify_graph:
             if not self.params.enable_slicer_test:
