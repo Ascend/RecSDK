@@ -254,6 +254,7 @@ def initialize_emb_cache(table_info_list, threshold_list):
     save_steps = ConfigInitializer.get_instance().save_steps
     max_train_steps = ConfigInitializer.get_instance().max_steps
     is_incremental_checkpoint = ConfigInitializer.get_instance().is_incremental_checkpoint
+    use_lccl = ConfigInitializer.get_instance().use_lccl
 
     if_load = ConfigInitializer.get_instance().if_load
     option = 0
@@ -277,6 +278,7 @@ def initialize_emb_cache(table_info_list, threshold_list):
         if_load=if_load,
         threshold_values=threshold_list,
         is_incremental_checkpoint=is_incremental_checkpoint,
+        use_lccl=use_lccl,
     )
 
     if is_initialized is False:
@@ -289,6 +291,7 @@ def initialize_emb_cache(table_info_list, threshold_list):
     logger.debug("train_steps is %s.", train_steps)
     logger.debug("eval_steps is %s.", eval_steps)
     logger.debug("threshold_values are %s.", threshold_list)
+    logger.debug("use_lccl is %s.", use_lccl)
 
 
 def start_asc_pipeline():

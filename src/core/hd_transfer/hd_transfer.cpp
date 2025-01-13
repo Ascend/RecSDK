@@ -27,13 +27,13 @@ using namespace std;
 /// \param embInfos 稀疏表元信息类的list
 /// \param localRankId 设备逻辑ID
 /// \return
-int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId, bool isIncrementalCkpt)
+int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId, bool isIncrementalCkpt, bool useLccl)
 {
 #ifndef GTEST
     LOG_INFO("start init HDTransfer.");
     LOG_INFO("Start aclInit, rank:{}.", localRankId);
     // 开启LCCL时，不用调用 aclInit()
-    if (!GlobalEnv::useLccl) {
+    if (!useLccl) {
         // 使用AscendCL接口开发应用时，必须先调用aclInit接口，否则可能会导致后续系统内部资源初始化出错，进而导致其它业务异常。
         aclError retOk = aclInit(nullptr);
         LOG_INFO("End aclInit, rank:{}.", localRankId);

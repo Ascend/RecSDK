@@ -16,7 +16,7 @@ from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, All2allGra
 from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
 from mx_rec.core.asc.feature_spec import FeatureSpec, get_feature_spec, set_temporary_feature_spec_attribute
 from mx_rec.core.asc.swap_args import SwapArgs, SwapDataType
-from mx_rec.util.communication.hccl_ops import get_device_id, get_rank_id, get_rank_size
+from mx_rec.util.communication.hccl_ops import get_device_id, get_rank_id, get_rank_size, get_rank_to_device_dict
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.log import logger
 from mx_rec.util.tf_version_adapter import hccl_ops
@@ -81,7 +81,9 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
 
         self.peer_mem = None
         if ConfigInitializer.get_instance().use_lccl:
-            peer_mem_ = mxrec_pybind.get_peer_mem(self._rank_id, self._device_id, self._rank_size)
+            device_ids = get_rank_to_device_dict()
+            comm_server_rank_id = min(device_ids.values())
+            peer_mem_ = mxrec_pybind.get_peer_mem(self._rank_id, comm_server_rank_id, self._rank_size)
             logger.debug("Get peer_mem_:%s.", peer_mem_)
             self.peer_mem = tf.constant(peer_mem_, dtype=tf.int64)
 
@@ -505,8 +507,8 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
                                                                    shape_vec=result.get("unique_keys"),
                                                                    peer_mem=self.peer_mem,
                                                                    restore=result.get("restore_vector_second"),
-                                                                   rank=self.rank_id_,
-                                                                   rank_size=self.rank_size_,
+                                                                   rank=self._rank_id,
+                                                                   rank_size=self._rank_size,
                                                                    dim=self._emb_size)
                 unique_local_grad = tf.reshape(unique_local_grad, [-1, self._emb_size])
                 unique_local_grad = compute_all2all_gradient(unique_local_grad)
@@ -548,8 +550,8 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
                                                                         send_count_matrix=all2all_args,
                                                                         shape_vec=result.get('unique_shape'),
                                                                         peer_mem=self.peer_mem,
-                                                                        rank=self.rank_id_,
-                                                                        rank_size=self.rank_size_,
+                                                                        rank=self._rank_id,
+                                                                        rank_size=self._rank_size,
                                                                         dim=self._emb_size)
                 unique_embeddings = tf.reshape(unique_embeddings_, [-1, self._emb_size])
             else:
@@ -621,7 +623,7 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         logger.debug("SSD vocabulary size for table %s is %s.", self._table_name, self._ssd_vocabulary_size)
         logger.debug("Slice ssd vocabulary_size for table %s is %s.", self._table_name, self._slice_ssd_vocabulary_size)
 
-    def __get_own_emb(self, emb: tf.Tensor, all2all_args: Union[int, tf.Tensor], vec_info: tf.Tensor, is_back:bool) \
+    def __get_own_emb(self, emb: tf.Tensor, all2all_args: Union[int, tf.Tensor], vec_info: tf.Tensor, is_back: bool) \
             -> tf.Tensor:
         src_emb = emb
         reshape_info = (
@@ -648,8 +650,8 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
                                                             send_count_matrix=send_count_matrix,
                                                             shape_vec=vec_info,
                                                             peer_mem=self.peer_mem,
-                                                            rank=self.rank_id_,
-                                                            rank_size=self.rank_size_,
+                                                            rank=self._rank_id,
+                                                            rank_size=self._rank_size,
                                                             dim=self._emb_size)
             else:
                 src_emb = hccl_ops.all_to_all_v(send_data=emb,
@@ -663,8 +665,8 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
                                                             send_count_matrix=all2all_args,
                                                             shape_vec=vec_info,
                                                             peer_mem=self.peer_mem,
-                                                            rank=self.rank_id_,
-                                                            rank_size=self.rank_size_,
+                                                            rank=self._rank_id,
+                                                            rank_size=self._rank_size,
                                                             dim=self._emb_size)
             else:
                 src_emb = hccl_ops.all_to_all_v_c(send_data=emb, send_count_matrix=all2all_args, rank=self._rank_id)

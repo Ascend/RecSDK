@@ -237,7 +237,7 @@ void GetHybridMgmt(pybind11::module_& m)
         .def(py::init())
         .def("initialize", &MxRec::HybridMgmt::Initialize, py::arg("rank_info"), py::arg("emb_info"),
              py::arg("seed") = DEFAULT_RANDOM_SEED, py::arg("threshold_values") = vector<ThresholdValue>{},
-             py::arg("if_load") = false, py::arg("is_incremental_checkpoint") = false)
+             py::arg("if_load") = false, py::arg("is_incremental_checkpoint") = false, py::arg("use_lccl") = false)
         .def("save", &MxRec::HybridMgmt::Save, py::arg("save_path") = "", py::arg("save_delta") = false)
         .def("load", &MxRec::HybridMgmt::Load, py::arg("load_path") = "",
              py::arg("warm_start_tables") = vector<string>{})
