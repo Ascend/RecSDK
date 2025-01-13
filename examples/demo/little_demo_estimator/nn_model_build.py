@@ -163,7 +163,7 @@ class LittleModel:
             logger.warning("when cache_mode in [DDR, SSD], suggest use_dynamic=true to avoid tuning size parameter")
             
         emb_initializer = tf.compat.v1.constant_initializer(0.1) if USE_DETERMINISTIC else \
-            tf.truncated_normal_initializer()
+            tf.compat.v1.truncated_normal_initializer()
 
         user_hashtable = create_table(key_dtype=tf.int64,
                                       dim=tf.TensorShape([self.cfg.user_hashtable_dim]),

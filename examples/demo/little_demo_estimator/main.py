@@ -38,6 +38,7 @@ from config import (
 from demo_logger import logger
 from utils import FeatureSpecIns
 
+tf.compat.v1.disable_eager_execution()
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
 
 
