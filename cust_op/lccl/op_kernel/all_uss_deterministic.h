@@ -104,7 +104,6 @@ public:
         if (coreGroup == PRODUCER_CORE) {
             if (blockIdx != 0) {
                 sync.WaitInnerFlag(1, 0, rank, SYNC_FLAG_START + blockIdx);
-                sync.SetInnerFlag(0, 0, rank, SYNC_FLAG_START + blockIdx);
             } else {
                 sync.SetInnerFlag(1, 0, rank, SYNC_FLAG_START + blockIdx);
             }
@@ -117,6 +116,7 @@ public:
             sync.WaitInnerFlag(1, 0, rank, SYNC_FLAG_START + blockIdx - coreNumsPerStage);
             ConsumerStage();
             sync.SetInnerFlag(1, 0, rank, SYNC_FLAG_START + blockIdx - coreNumsPerStage + 1);
+            sync.SetInnerFlag(0, 0, rank, SYNC_FLAG_START + blockIdx);
         }
     }
 
