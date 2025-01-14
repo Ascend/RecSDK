@@ -37,6 +37,7 @@ export TF_CPP_MIN_LOG_LEVEL=3
 
 export HCCL_BUFFSIZE=1
 export BETTER_EXCEPTIONS=1
+export LCCL_DETERMINISTIC=0
 
 for i in $(ipcs -m | tail -n +4 | awk {'print $2'}); do
     ipcrm -m $i
@@ -48,7 +49,7 @@ host_string=${host//_/:${local_rank_size},node}:${local_rank_size}
 echo run in $host_string
 
 interface="lo"
-mpi_args='-x BIND_INFO="0:48 48:48 96:48" -x MXREC_LOG_LEVEL=DEBUG -bind-to none'
+mpi_args='-x BIND_INFO="0:48 48:48 96:48" -bind-to none'
 env
-horovodrun --network-interface ${interface} -np ${num_process} --mpi-args "${mpi_rags}" --mpi -H localhost:${local_rank_size} \
+horovodrun --network-interface ${interface} -np ${num_process} --mpi-args "${mpi_args}" --mpi -H localhost:${local_rank_size} \
     python3.7 ${py} --local_rank_size ${local_rank_size} --hccl_json hccl_json_${local_rank_size}p.json | tee temp.log
