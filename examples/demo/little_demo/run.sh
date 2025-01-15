@@ -65,8 +65,8 @@ if [ -n "$ip" ]; then
 fi
 
 cur_path=`pwd`
-mx_rec_package_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/mx_rec
-so_path=${mx_rec_package_path}/libasc
+rec_package_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/mx_rec
+so_path=${rec_package_path}/libasc
 # GLOG_stderrthreshold -2:TRACE -1:DEBUG 0:INFO 1:WARN 2.ERROR, 默认为INFO
 mpi_args='-x BIND_INFO="0:12 12:48 60:48" -x GLOG_stderrthreshold=0 -x GLOG_logtostderr=true -bind-to none -x NCCL_SOCKET_IFNAME=docker0 -mca btl_tcp_if_exclude docker0'
 interface="lo"
@@ -98,6 +98,8 @@ export USE_ONE_SHOT=0           # 0：MakeIterator；1：OneShotIterator
 export USE_DP=0                 # 0：关闭DP；1：开启user table DP
 export USE_COMBINE_FAAE=0       # 0: separate history when faae; 1: combine history when faae
 export USE_DETERMINISTIC=0      # 0：不开启确定性计算；1：开启确定性计算
+export USE_TUPLE_DATA_FORMAT=0  # 0：Dict数据格式；1：Tuple数据格式；限自动改图模式使能。
+export USE_PADDING_KEYS=0       # 0：不使用padding keys；1：使用padding keys
 ################# 性能调优相关 ####################
 export KEY_PROCESS_THREAD_NUM=6 #default 6, max 10
 export FAST_UNIQUE=0   #if use fast unique

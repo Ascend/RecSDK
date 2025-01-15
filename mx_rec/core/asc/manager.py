@@ -17,13 +17,25 @@
 
 import tensorflow as tf
 
-from mxrec_pybind import InitializeInfo, ConstantInitializerInfo, NormalInitializerInfo, EmbInfo, EmbInfoParams, \
-    ThresholdValue, HybridMgmt, RankInfo, USE_STATIC, USE_DYNAMIC_EXPANSION, USE_SUM_SAME_ID_GRADIENTS
-
+from mxrec_pybind import (
+    InitializeInfo,
+    ConstantInitializerInfo,
+    NormalInitializerInfo,
+    EmbInfo,
+    EmbInfoParams,
+    ThresholdValue,
+    HybridMgmt,
+    RankInfo,
+    USE_STATIC,
+    USE_DYNAMIC_EXPANSION,
+    USE_SUM_SAME_ID_GRADIENTS,
+)
 from mx_rec.util.communication.hccl_ops import get_rank_id, get_device_id, get_rank_size
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.core.asc.merge_table import should_skip, check_dangling_table
+from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
 from mx_rec.util.log import logger
+from mx_rec.validator.emb_validator import check_padding_keys_global_params
 
 
 def generate_table_info_list():
@@ -37,6 +49,8 @@ def generate_table_info_list():
         raise ValueError(f"The DDR mode of all tables must be used or not used at the same time. However, is_hbm "
                          f"of each table `{table_instance_dict.keys()}` is `{is_hbm_list}`.")
 
+    check_padding_keys_global_params()
+
     # 通过create_hash_optimizer创建optimizer_instance
     optimizer_instance = ConfigInitializer.get_instance().optimizer_config.optimizer_instance
     # generate table info
@@ -49,102 +63,142 @@ def generate_table_info_list():
             logger.info("ext_emb_size is reset to be %s in generate_table_info_list.", table_instance.ext_emb_size)
         skip = should_skip(table_instance.table_name)
         if table_instance.table_name in dangling_table or skip:
-            logger.info("skip table %s: %s which does not need to be provided to the EmbInfo.",
-                        skip, table_instance.table_name)
+            logger.info(
+                "Skip table %s: %s which does not need to be provided to the EmbInfo.", skip, table_instance.table_name
+            )
             continue
 
         static_shape_rec_flag = ConfigInitializer.get_instance().use_static and table_instance.send_count > 0
         dynamic_shape_rec_flag = not ConfigInitializer.get_instance().use_static
         if static_shape_rec_flag or dynamic_shape_rec_flag:
-            logger.debug("table_instance.slice_device_vocabulary_size: %s",
-                         table_instance.slice_device_vocabulary_size)
-            logger.debug("table_instance.slice_host_vocabulary_size: %s", table_instance.slice_host_vocabulary_size)
-            logger.debug("table_instance.slice_ssd_vocabulary_size: %s", table_instance.slice_ssd_vocabulary_size)
-            logger.debug("EmbInfoParams: The table name is %s, and the value of `is_grad` in this table is %s.",
-                         table_instance.table_name, table_instance.is_grad)
-            params = EmbInfoParams(
-                table_instance.table_name,
-                table_instance.send_count,
-                table_instance.emb_size,
-                table_instance.ext_emb_size,
-                table_instance.is_save,
-                table_instance.is_grad,
-                table_instance.is_dp,
-            )
-            table_info = EmbInfo(params,
-                                 [table_instance.slice_device_vocabulary_size,
-                                  table_instance.slice_host_vocabulary_size, table_instance.slice_ssd_vocabulary_size],
-                                 [matched_emb_initializer(table_instance)] +
-                                 matched_opt_slot_initializers(table_instance), table_instance.ssd_data_path)
+            table_info = _generate_table_info(table_instance)
             table_info_list.append(table_info)
 
     return table_info_list
 
 
+def _generate_table_info(table_instance: BaseSparseEmbedding) -> EmbInfo:
+    params = EmbInfoParams(
+        table_instance.table_name,
+        table_instance.send_count,
+        table_instance.emb_size,
+        table_instance.ext_emb_size,
+        table_instance.is_save,
+        table_instance.is_grad,
+        table_instance.is_dp,
+        table_instance.padding_keys_mask,
+    )
+    table_info = EmbInfo(
+        params,
+        [
+            table_instance.slice_device_vocabulary_size,
+            table_instance.slice_host_vocabulary_size,
+            table_instance.slice_ssd_vocabulary_size,
+        ],
+        [matched_emb_initializer(table_instance)] + matched_opt_slot_initializers(table_instance),
+        table_instance.ssd_data_path,
+        table_instance.padding_keys,
+    )
+    logger.info(
+        "The following parameters are passed to the backend, the `table_name` is %s, the `send_count` is %s, "
+        "the `emb_size` is %s, the `ext_emb_size` is %s, the `is_save` is %s, the `is_grad` is %s, the `is_dp` is %s, "
+        "the `padding_keys_mask` is %s, the `padding_keys` is %s, the `padding_keys_len` is %s, "
+        "the `slice_device_vocabulary_size` is %s, the `slice_host_vocabulary_size` is %s, "
+        "the `slice_ssd_vocabulary_size` is %s, and the `ssd_data_path` is %s.",
+        table_instance.table_name,
+        table_instance.send_count,
+        table_instance.emb_size,
+        table_instance.ext_emb_size,
+        table_instance.is_save,
+        table_instance.is_grad,
+        table_instance.is_dp,
+        table_instance.padding_keys_mask,
+        table_instance.padding_keys,
+        table_instance.padding_keys_len,
+        table_instance.slice_device_vocabulary_size,
+        table_instance.slice_host_vocabulary_size,
+        table_instance.slice_ssd_vocabulary_size,
+        table_instance.ssd_data_path,
+    )
+    return table_info
+
+
 def matched_constant_initializer(tabel_info):
     init_param = tabel_info.init_param
-    logger.debug("constant_initializer, tabel: %s, initK is %s.", tabel_info.table_name, init_param)
-    return InitializeInfo(name="constant_initializer", start=0, len=tabel_info.emb_size,
-                          constant_initializer_info=ConstantInitializerInfo(
-                              constant_val=tabel_info.emb_initializer.value, initK=init_param))
+    logger.debug("In constant_initializer, tabel: %s, initK is %s.", tabel_info.table_name, init_param)
+    return InitializeInfo(
+        name="constant_initializer",
+        start=0,
+        len=tabel_info.emb_size,
+        constant_initializer_info=ConstantInitializerInfo(
+            constant_val=tabel_info.emb_initializer.value, initK=init_param
+        ),
+    )
 
 
 def matched_random_normal_initializer(tabel_info):
     random_seed = 0 if tabel_info.emb_initializer.seed is None else tabel_info.emb_initializer.seed
     init_param = tabel_info.init_param
-    logger.debug("random_normal_initializer, tabel: %s, initK is %s.", tabel_info.table_name, init_param)
-    return InitializeInfo(name="random_normal_initializer", start=0, len=tabel_info.emb_size,
-                          normal_initializer_info=NormalInitializerInfo(
-                              mean=tabel_info.emb_initializer.mean,
-                              stddev=tabel_info.emb_initializer.stddev,
-                              seed=random_seed,
-                              initK=init_param
-                          ))
+    logger.debug("In random_normal_initializer, tabel: %s, initK is %s.", tabel_info.table_name, init_param)
+    return InitializeInfo(
+        name="random_normal_initializer",
+        start=0,
+        len=tabel_info.emb_size,
+        normal_initializer_info=NormalInitializerInfo(
+            mean=tabel_info.emb_initializer.mean,
+            stddev=tabel_info.emb_initializer.stddev,
+            seed=random_seed,
+            initK=init_param,
+        ),
+    )
 
 
 def matched_truncated_normal_initializer(tabel_info):
     random_seed = 0 if tabel_info.emb_initializer.seed is None else tabel_info.emb_initializer.seed
     init_param = tabel_info.init_param
-    logger.debug("truncated_normal_initializer, tabel: %s, initK is %s.", tabel_info.table_name, init_param)
-    return InitializeInfo(name="truncated_normal_initializer", start=0, len=tabel_info.emb_size,
-                          normal_initializer_info=NormalInitializerInfo(
-                              mean=tabel_info.emb_initializer.mean,
-                              stddev=tabel_info.emb_initializer.stddev,
-                              seed=random_seed,
-                              initK=init_param
-                          ))
+    logger.debug("In truncated_normal_initializer, tabel: %s, initK is %s.", tabel_info.table_name, init_param)
+    return InitializeInfo(
+        name="truncated_normal_initializer",
+        start=0,
+        len=tabel_info.emb_size,
+        normal_initializer_info=NormalInitializerInfo(
+            mean=tabel_info.emb_initializer.mean,
+            stddev=tabel_info.emb_initializer.stddev,
+            seed=random_seed,
+            initK=init_param,
+        ),
+    )
 
 
 def matched_emb_initializer(tabel_info):
     initializer_case_map = {
-        "tf1/tf2_constant_initializer":
-            isinstance(tabel_info.emb_initializer, tf.keras.initializers.Constant) or
-            isinstance(tabel_info.emb_initializer, tf.constant_initializer),
-        "tf1/tf2_random_normal_initializer":
-            isinstance(tabel_info.emb_initializer, tf.keras.initializers.RandomNormal) or
-            isinstance(tabel_info.emb_initializer, tf.random_normal_initializer),
-        "tf1_truncated_normal_initializer":
-            tf.__version__.startswith("1") and
-            (isinstance(tabel_info.emb_initializer, tf.truncated_normal_initializer) or
-             isinstance(tabel_info.emb_initializer, tf.keras.initializers.TruncatedNormal)),
-        "tf2_truncated_normal_initializer":
-            tf.__version__.startswith("2") and
-            isinstance(tabel_info.emb_initializer, tf.keras.initializers.TruncatedNormal),
+        "tf1/tf2_constant_initializer": isinstance(tabel_info.emb_initializer, tf.keras.initializers.Constant)
+        or isinstance(tabel_info.emb_initializer, tf.constant_initializer),
+        "tf1/tf2_random_normal_initializer": isinstance(tabel_info.emb_initializer, tf.keras.initializers.RandomNormal)
+        or isinstance(tabel_info.emb_initializer, tf.random_normal_initializer),
+        "tf1_truncated_normal_initializer": tf.__version__.startswith("1")
+        and (
+            isinstance(tabel_info.emb_initializer, tf.truncated_normal_initializer)
+            or isinstance(tabel_info.emb_initializer, tf.keras.initializers.TruncatedNormal)
+        ),
+        "tf2_truncated_normal_initializer": tf.__version__.startswith("2")
+        and isinstance(tabel_info.emb_initializer, tf.keras.initializers.TruncatedNormal),
     }
     if initializer_case_map.get("tf1/tf2_constant_initializer"):
         initializer = matched_constant_initializer(tabel_info)
     elif initializer_case_map.get("tf1/tf2_random_normal_initializer"):
         initializer = matched_random_normal_initializer(tabel_info)
-    elif initializer_case_map.get("tf1_truncated_normal_initializer") or \
-            initializer_case_map.get("tf2_truncated_normal_initializer"):
+    elif initializer_case_map.get("tf1_truncated_normal_initializer") or initializer_case_map.get(
+        "tf2_truncated_normal_initializer"
+    ):
         initializer = matched_truncated_normal_initializer(tabel_info)
     else:
-        initializer = InitializeInfo(name="truncated_normal_initializer", start=0, len=tabel_info.emb_size,
-                                     normal_initializer_info=NormalInitializerInfo(
-                                         mean=0.0,
-                                         stddev=1.0,
-                                         seed=0
-                                     ))
+        initializer = InitializeInfo(
+            name="truncated_normal_initializer",
+            start=0,
+            len=tabel_info.emb_size,
+            normal_initializer_info=NormalInitializerInfo(mean=0.0, stddev=1.0, seed=0),
+        )
     return initializer
 
 
@@ -156,17 +210,20 @@ def matched_opt_slot_initializers(table_instance):
     if not optimizer:
         return slot_initializers
     for slot_init_value in optimizer.get_slot_init_values():
-        slot_initializer = InitializeInfo(name="constant_initializer",
-                                          start=start_index,
-                                          len=table_instance.emb_size,
-                                          constant_initializer_info=ConstantInitializerInfo(
-                                              constant_val=slot_init_value
-                                          ))
+        slot_initializer = InitializeInfo(
+            name="constant_initializer",
+            start=start_index,
+            len=table_instance.emb_size,
+            constant_initializer_info=ConstantInitializerInfo(constant_val=slot_init_value),
+        )
         slot_initializers.append(slot_initializer)
         start_index += table_instance.emb_size
 
-    logger.debug("matched_opt_slot_initializers, ext emb size:%s, slot_initializers size:%s",
-                 table_instance.ext_emb_size, len(slot_initializers))
+    logger.debug(
+        "In matched_opt_slot_initializers, ext emb size:%s, slot_initializers size:%s.",
+        table_instance.ext_emb_size,
+        len(slot_initializers),
+    )
     return slot_initializers
 
 
@@ -176,19 +233,13 @@ def generate_threshold_list():
     for _, feature_spec in ConfigInitializer.get_instance().feature_spec_config.feature_spec_dict.items():
         coef = 1 if feature_spec.faae_coefficient is None else feature_spec.faae_coefficient
         if feature_spec.eviction_threshold:
-            threshold = ThresholdValue(feature_spec.table_name,
-                                       feature_spec.access_threshold,
-                                       feature_spec.eviction_threshold,
-                                       coef,
-                                       True)
+            threshold = ThresholdValue(
+                feature_spec.table_name, feature_spec.access_threshold, feature_spec.eviction_threshold, coef, True
+            )
             threshold_list.append(threshold)
             continue
         if feature_spec.access_threshold:
-            threshold = ThresholdValue(feature_spec.table_name,
-                                       feature_spec.access_threshold,
-                                       -1,
-                                       coef,
-                                       True)
+            threshold = ThresholdValue(feature_spec.table_name, feature_spec.access_threshold, -1, coef, True)
             threshold_list.append(threshold)
 
     return threshold_list
@@ -203,6 +254,7 @@ def initialize_emb_cache(table_info_list, threshold_list):
     save_steps = ConfigInitializer.get_instance().save_steps
     max_train_steps = ConfigInitializer.get_instance().max_steps
     is_incremental_checkpoint = ConfigInitializer.get_instance().is_incremental_checkpoint
+    use_lccl = ConfigInitializer.get_instance().use_lccl
 
     if_load = ConfigInitializer.get_instance().if_load
     option = 0
@@ -220,9 +272,14 @@ def initialize_emb_cache(table_info_list, threshold_list):
 
     emb_cache = HybridMgmt()
 
-    is_initialized = emb_cache.initialize(rank_info=rank_info, emb_info=table_info_list, if_load=if_load,
-                                          threshold_values=threshold_list,
-                                          is_incremental_checkpoint=is_incremental_checkpoint)
+    is_initialized = emb_cache.initialize(
+        rank_info=rank_info,
+        emb_info=table_info_list,
+        if_load=if_load,
+        threshold_values=threshold_list,
+        is_incremental_checkpoint=is_incremental_checkpoint,
+        use_lccl=use_lccl,
+    )
 
     if is_initialized is False:
         logger.error("Failed to init emb_cache!")
@@ -234,6 +291,7 @@ def initialize_emb_cache(table_info_list, threshold_list):
     logger.debug("train_steps is %s.", train_steps)
     logger.debug("eval_steps is %s.", eval_steps)
     logger.debug("threshold_values are %s.", threshold_list)
+    logger.debug("use_lccl is %s.", use_lccl)
 
 
 def start_asc_pipeline():

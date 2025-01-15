@@ -19,7 +19,6 @@ See the License for the specific language governing permissions and
 #include <iostream>
 #include <dirent.h>
 #include <sys/mman.h>
-#include <thread>
 #include <fcntl.h>
 
 #include "utils/common.h"

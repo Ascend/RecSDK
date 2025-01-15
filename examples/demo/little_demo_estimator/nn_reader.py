@@ -20,20 +20,24 @@ from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.core.asc.helper import get_asc_insert_func
 from mx_rec.util.initialize import ConfigInitializer
 
-from dataset import generate_dataset
+from dataset import generate_dataset, generate_tuple_data_format_func
 from utils import FeatureSpecIns, create_feature_spec_list
+from config import Config, USE_TUPLE_DATA_FORMAT, USE_MODIFY_GRAPH, USE_TIMESTAMP, USE_MULTI_LOOKUP, MULTI_LOOKUP_TIMES
 
 
-def input_fn(params, create_fs_params, cfg, is_eval=False, use_one_shot=False):
+def input_fn(params, cfg: Config, is_eval=False, use_one_shot=False):
     dataset = generate_dataset(cfg,
-                               use_timestamp=params.use_timestamp,
+                               use_timestamp=USE_TIMESTAMP,
                                batch_number=params.max_data_generate_steps * get_rank_size())
 
-    if not params.modify_graph:
-        feature_spec_list = create_feature_spec_list(create_fs_params.get("cfg"),
-                                                     create_fs_params.get("use_timestamp"),
-                                                     create_fs_params.get("use_multi_lookup"),
-                                                     create_fs_params.get("multi_lookup_times"))
+    if USE_TUPLE_DATA_FORMAT:
+        dataset = dataset.map(generate_tuple_data_format_func)
+
+    if not USE_MODIFY_GRAPH:
+        feature_spec_list = create_feature_spec_list(cfg,
+                                                     USE_TIMESTAMP,
+                                                     USE_MULTI_LOOKUP,
+                                                     MULTI_LOOKUP_TIMES)
         if is_eval:
             FeatureSpecIns.get_instance().set_eval_feature_spec_list(feature_spec_list)
             dataset = dataset.map(get_asc_insert_func(tgt_key_specs=feature_spec_list, is_training=False))

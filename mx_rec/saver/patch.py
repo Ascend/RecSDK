@@ -3,7 +3,7 @@
 # Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
 # Some code is derived from Tensorflow, which is subject to the following copyright notice:
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
-# We pick up the code of Tensorflow to make the api of mxRec compatible with Tensorflow for model saving and loading.
+# We pick up the code of Tensorflow to make the api of Rec SDK compatible with Tensorflow for model saving and loading.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ from mpi4py import MPI
 from mx_rec.saver.saver import Saver as SparseSaver
 from mx_rec.saver.saver import check_file_system_is_valid, should_write_data, update_model_index, \
     write_delta_export_time_ms, get_model_type_by_version, get_base_and_delta_models, read_base_delta_and_write, \
-    clear_delta_models
+    clear_delta_models, read_base_delta_and_write_for_ssd
 from mx_rec.util.communication.hccl_ops import get_rank_id
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, StringValidator, OptionalIntValidator, \
@@ -117,7 +117,7 @@ def saver_init(self, var_list=None, reshape=False, sharded=False, max_to_keep=5,
     # mt customed parameter
     self._fid_version = fid_version
 
-    # mxRec Patch
+    # Rec SDK Patch
     # create sparse saver only when sparse_var_list is not None
     self.sparse_saver = None
     sparse_var_list = get_sparse_vars(var_list)
@@ -264,7 +264,7 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
     if self._is_empty:
         return model_checkpoint_path
 
-    # mxRec Patch
+    # Rec SDK Patch
     # save sparse model, only run when self.sparse_saver is not None
     if not context.executing_eagerly() and self.sparse_saver:
         self.sparse_saver.save(sess, save_path=checkpoint_file, save_delta=save_delta)
@@ -311,6 +311,9 @@ def restore(self, sess, save_path):
 
     is_incremental_checkpoint = ConfigInitializer.get_instance().is_incremental_checkpoint
     restore_model_version = ConfigInitializer.get_instance().restore_model_version
+    for _, table_instance in ConfigInitializer.get_instance().sparse_embed_config.table_instance_dict.items():
+        is_ssd = True if table_instance.slice_ssd_vocabulary_size else False
+        break
 
     directory, base_name = os.path.split(save_path)
     model_type = BASE_MODEL
@@ -326,6 +329,10 @@ def restore(self, sess, save_path):
 
         comm = MPI.COMM_WORLD
         rank = comm.Get_rank()
+        if model_type == DELTA_MODEL:
+            base_model, delta_models = get_base_and_delta_models(directory, str(restore_model_version))
+            if is_ssd:
+                read_base_delta_and_write_for_ssd(directory, base_model, delta_models, rank)
         comm.Barrier()
         if should_write_data(rank, save_path):
             if model_type == DELTA_MODEL:
@@ -362,7 +369,7 @@ def restore(self, sess, save_path):
     tf_logging.info("Restoring parameters from %s", checkpoint_prefix)
     try:
         if not context.executing_eagerly():
-            # mxRec Patch
+            # Rec SDK Patch
             # restore sparse model, only run when self.sparse_saver is not None
             if self.sparse_saver:
                 self.sparse_saver.restore(sess, save_path, model_type=model_type)

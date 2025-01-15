@@ -18,7 +18,7 @@
 import dataclasses
 from collections import defaultdict
 from collections.abc import Callable
-from typing import Any, List, Dict, Tuple, DefaultDict
+from typing import List, Dict, Tuple, DefaultDict, Union
 
 import tensorflow as tf
 from tensorflow import Operation, Tensor, Graph
@@ -26,6 +26,7 @@ from tensorflow.core.framework.graph_pb2 import GraphDef
 from tensorflow.python.data.ops.dataset_ops import DatasetV1Adapter
 from tensorflow.python.framework.errors_impl import InvalidArgumentError
 
+from mx_rec.core.embedding_proxy import MergeableEmbeddingTableProxy
 from mx_rec.graph import utils
 from mx_rec.constants.constants import (
     ASCEND_CUTTING_POINT_INITIALIZER,
@@ -74,8 +75,8 @@ class GraphModifierHook(tf.estimator.SessionRunHook):
 
         self._iterator_type = ConfigInitializer.get_instance().train_params_config.iterator_type
         if self._modify_graph and self._iterator_type not in (
-            AnchorIteratorOp.MAKE_ITERATOR.value,
-            AnchorIteratorOp.ONE_SHOT_ITERATOR.value,
+                AnchorIteratorOp.MAKE_ITERATOR.value,
+                AnchorIteratorOp.ONE_SHOT_ITERATOR.value,
         ):
             raise ValueError("the value of iterator type should be like `MakeIterator` or `OneShotIterator`.")
         logger.debug("In GraphModifierHook, iterator type is `%s`.", self._iterator_type)
@@ -113,51 +114,34 @@ class _GraphModifier:
 
     @staticmethod
     def _get_preprocessing_map_func(
-        graph_def: GraphDef,
-        input_names: List[str],
-        output_names: List[str],
-        batch_tensor_names: List[str] = None,
-        pipeline_input_indexes: List[int] = None,
+            graph_def: GraphDef,
+            input_names: List[str],
+            output_names: List[str],
+            pipeline_input_indexes: List[int] = None,
     ) -> Callable:
         input_names = check_and_force_list(input_names, str)
         output_names = check_and_force_list(output_names, str)
-        batch_tensor_names = check_and_force_list(batch_tensor_names, str)
         pipeline_input_indexes = check_and_force_list(pipeline_input_indexes, int)
-        both_is_none = batch_tensor_names is None and pipeline_input_indexes is None
-        both_not_none = batch_tensor_names is not None and pipeline_input_indexes is not None
-        if both_is_none or both_not_none:
-            raise ValueError(
-                "It is legal when and only when one of the parameters 'batch_tensor_names' and "
-                "'pipeline_input_indexes' was given."
-            )
 
-        def map_func(*args):
-            logger.debug("In get_preprocessing_map_func, the old batch is: %s.", args)
-            batch = dict()
-            _parse_batch(args, batch, key=None)
+        def map_func(*args) -> tuple:
+            batch = args
+            if not isinstance(batch, tuple) or len(batch) == 0:
+                raise ValueError(f"The dataset batch is invalid, and the batch is: {batch}.")
             logger.debug("In get_preprocessing_map_func, the parse batch is: %s.", batch)
 
             input_tensors = []
-            if batch_tensor_names is not None:
-                for tensor_name in batch_tensor_names:
-                    tensor = batch.get(tensor_name)
-                    if tensor is None:
-                        raise ValueError(f"Given input_tensor_name '{tensor_name}' is invalid.")
-
-                    input_tensors.append(tensor)
-
-            else:
-                graph = tf.compat.v1.get_default_graph()
-                for index in pipeline_input_indexes:
-                    tensor = graph.get_tensor_by_name("args_%d:0" % index)
-                    input_tensors.append(tensor)
+            graph = tf.compat.v1.get_default_graph()
+            for index in pipeline_input_indexes:
+                tensor = graph.get_tensor_by_name("args_%d:0" % index)
+                input_tensors.append(tensor)
 
             # 以tf.import_graph_def()作为read emb key的输入，保证数据读取到传入lookup的ids过程中的特征处理关系能够保留在子图中。
             output_list = tf.import_graph_def(
                 graph_def, input_map=dict(zip(input_names, input_tensors)), return_elements=output_names
             )
 
-            output_batch = [batch, tuple(output_list)]
+            output_batch = list(batch)
+            output_batch.append(tuple(output_list))
             logger.debug("In get_preprocessing_map_func, the output batch is: %s.", output_batch)
             return tuple(output_batch)
 
@@ -300,7 +284,7 @@ class _GraphModifier:
         return get_next_op_map
 
     def _get_sub_graph(
-        self, input_tensors: List[Tensor], output_tensors: List[Tensor]
+            self, input_tensors: List[Tensor], output_tensors: List[Tensor]
     ) -> Tuple[GraphDef, List[str], List[str]]:
         input_tensors = check_and_force_list(input_tensors, tf.Tensor)
         output_tensors = check_and_force_list(output_tensors, tf.Tensor)
@@ -380,14 +364,16 @@ class _GraphModifier:
             raise ValueError(f"The length of the outputs of target op `{target_op}` is 0.")
         logger.debug("Find target op `%s`, and output is `%s`.", target_op.name, target_op.outputs)
         src_dataset = utils.find_target_instance_dataset(self._full_graph, target_op.outputs[0])
+        # The element spec of the dataset is used to restore the original batch.
+        ConfigInitializer.get_instance().train_params_config.dataset_element_spec = src_dataset.element_spec
         return src_dataset
 
     def _get_tgt_dataset(
-        self,
-        src_dataset: DatasetV1Adapter,
-        sub_cutting_point_list: List[Tensor],
-        record: _AnchorRecord,
-        prefetch: int = 10,
+            self,
+            src_dataset: DatasetV1Adapter,
+            sub_cutting_point_list: List[Tensor],
+            record: _AnchorRecord,
+            prefetch: int = 10,
     ) -> DatasetV1Adapter:
         """
         根据原始数据集生成新的数据集实例.
@@ -443,7 +429,7 @@ class _GraphModifier:
         return tgt_dataset
 
     def _update_iterator_getnext(
-        self, get_next_op: Operation, tgt_dataset: DatasetV1Adapter, is_training: bool, record: _AnchorRecord
+            self, get_next_op: Operation, tgt_dataset: DatasetV1Adapter, is_training: bool, record: _AnchorRecord
     ) -> None:
         """
         用新数据集中的`IteratorGetNext`算子替换计算图中原始数据集的`IteratorGetNext`算子，即用新数据集的batch替换原始数据集的batch.
@@ -481,18 +467,16 @@ class _GraphModifier:
         new_batch = new_iterator.get_next()
         ConfigInitializer.get_instance().train_params_config.set_target_batch(is_training, new_batch)
 
-        try:
-            new_batch_tensor = list(new_batch.values())[0]
-        except IndexError as err:
-            raise IndexError("Cannot find a tensor from given batch.") from err
+        new_batch_tensor = _get_new_batch_tensor(new_batch)
+        logger.debug("New dataset batch tensor is : %s.", new_batch_tensor)
         new_get_next_op_name = utils.upward_bfs_op(new_batch_tensor.op, AnchorIteratorOp.ITERATOR_GET_NEXT.value).name
         self._update_input_tensor_with_new_batch(record.replacement_spec, new_get_next_op_name, new_batch)
 
     def _update_input_tensor_with_new_batch(
-        self,
-        replacement_specs: DefaultDict[Tensor, List[Tuple[int, Operation]]],
-        new_get_next_op_name: str,
-        new_batch: Dict[str, Tensor],
+            self,
+            replacement_specs: DefaultDict[Tensor, List[Tuple[int, Operation]]],
+            new_get_next_op_name: str,
+            new_batch: Dict[str, Tensor],
     ) -> None:
         """
         用新batch中的IteratorGetNext替换计算图中老batch的IteratorGetNext.
@@ -534,63 +518,16 @@ class _GraphModifier:
 def modify_graph_and_start_emb_cache(full_graph: Graph = None, dump_graph: bool = False):
     modifier = _GraphModifier(full_graph=full_graph, dump_graph=dump_graph)
     modifier.modify_graph_for_asc()
+    MergeableEmbeddingTableProxy().reset()
     start_asc_pipeline()
 
 
-def _parse_batch(data_args: Any, data_batch: dict, key: str = None):
-    """
-    解析原始数据集中的batch，并将非dict格式的batch转为dict格式.
-    Args:
-        data_args: 待解析的batch
-        data_batch: 解析后的batch
-        key: batch中的key
-
-    Returns: None
-
-    """
-
-    def parse_tensor(data_tensor: Tensor, data_batch: dict, key: str = None):
-        """
-        将待解析batch中的tensor写入解析后的batch中，如果key存在则使用原key，不存在则生成batch中字典序最小的key.
-        Args:
-            data_tensor: 待解析batch中的tensor
-            data_batch: 解析后的batch
-            key: batch中的key
-
-        Returns: None
-
-        """
-
-        if key:
-            data_batch[key] = data_tensor
-            return
-
-        last_key = f"{sorted(data_batch)[-1]}_last_key"
-        data_batch[last_key] = data_tensor
-
-    # 开始解析old batch
-    if isinstance(data_args, dict):
-        for key, data_tensor in data_args.items():
-            _parse_batch(data_tensor, data_batch, key)
-        return
-    if isinstance(data_args, (list, tuple)):
-        for data_arg in data_args:
-            _parse_batch(data_arg, data_batch, key)
-        return
-    if isinstance(data_args, Tensor):
-        # 将old batch中的tensor加入到dict中
-        parse_tensor(data_args, data_batch, key)
-        return
-
-    raise ValueError(f"Invalid batch type, expected: (dict, list, tuple, Tensor), got: {type(data_args)}.")
-
-
 def _get_input_index_list(
-    cutting_point_list: List[Tensor],
-    replacement_specs: DefaultDict[Tensor, List[Tuple[int, Operation]]],
-    mapping_name_list: List[str],
-    base_count: int,
-    timestamp_index: int = None,
+        cutting_point_list: List[Tensor],
+        replacement_specs: DefaultDict[Tensor, List[Tuple[int, Operation]]],
+        mapping_name_list: List[str],
+        base_count: int,
+        timestamp_index: int = None,
 ) -> List[int]:
     input_index_list = []
     for cutting_point in cutting_point_list:
@@ -610,7 +547,7 @@ def _get_input_index_list(
 
 
 def _get_passing_tensor_list(
-    src_tensors: List[Tensor], target_op: Operation
+        src_tensors: List[Tensor], target_op: Operation
 ) -> Tuple[List[Tensor], List[int], List[Tensor]]:
     def get_passing_tensors(src_tensor):
         passing_tensors = []
@@ -782,5 +719,35 @@ def _get_swap_info(table_instance: BaseSparseEmbedding, variable_and_slot_list: 
             swap_in_op = [tf.compat.v1.scatter_nd_update(variable_and_slot_list[0], nd_swap_pos, h2d_emb_split[0])]
         else:
             swap_in_op = [tf.compat.v1.scatter_nd_update(variable_and_slot_list[i], nd_swap_pos, h2d_emb_split[i])
-                        for i in range(var_num)]
+                          for i in range(var_num)]
     return swap_in_op
+
+
+def _get_new_batch_tensor(new_batch: Union[List, Tuple, Dict, tf.Tensor]) -> tf.Tensor:
+    """
+    Get a tensor from the new batch.
+
+    Args:
+        new_batch: New dataset batch.
+
+    Returns: A tensor in the batch.
+
+    """
+
+    if isinstance(new_batch, list):
+        batch_tensor = new_batch.pop()
+        return _get_new_batch_tensor(batch_tensor)
+    elif isinstance(new_batch, tuple):
+        new_batch = list(new_batch)
+        batch_tensor = new_batch.pop()
+        return _get_new_batch_tensor(batch_tensor)
+    elif isinstance(new_batch, dict):
+        for _, value in new_batch.items():
+            return _get_new_batch_tensor(value)
+
+    if not isinstance(new_batch, tf.Tensor):
+        raise TypeError(f"Cannot find a tensor from give batch: {new_batch}.")
+    if AnchorIteratorOp.ITERATOR_GET_NEXT.value not in new_batch.name:
+        raise ValueError(f"{new_batch} is not {AnchorIteratorOp.ITERATOR_GET_NEXT.value} tensor.")
+
+    return new_batch

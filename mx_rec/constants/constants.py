@@ -29,6 +29,8 @@ EMPTY_STR = ""
 
 # Bytes
 FLOAT32_BYTES = 4
+UINT64_BYTES = 8
+UINT32_BYTES = 4
 
 # 获取ConfigInitializer对象实例失败提示信息
 GET_CONFIG_INSTANCE_ERR_MSG = "Please init the environment for mx_rec at first."
@@ -87,11 +89,20 @@ MIN_RANK_SIZE = 1
 LOG_MAX_SIZE = 1024 * 1024
 
 MAX_INT32 = np.iinfo(np.int32).max
+MAX_INT64 = np.iinfo(np.int64).max
+MIN_INT64 = np.iinfo(np.int64).min
 
 # Permission for saving.
 SAVE_FILE_MODE = 0o640
 SAVE_DIR_MODE = 0o750
 SAVE_FILE_FLAG = os.O_WRONLY | os.O_CREAT
+
+
+# can't move to saver.constant, otherwise will cause circle import
+class SsdCompactLevel(Enum):
+    NO_COMPACT = 0
+    PARTIAL_COMPACT = 1
+    FULL_COMPACT = 2
 
 MAX_DEVICE_ID = 15
 
@@ -145,6 +156,7 @@ class EnvOption(Enum):
     GLOG_STDERRTHREAHOLD = "GLOG_stderrthreshold"
     USE_COMBINE_FAAE = "USE_COMBINE_FAAE"
     RECORD_KEY_COUNT = "RECORD_KEY_COUNT"
+    SSD_SAVE_COMPACT_LEVEL = "SSD_SAVE_COMPACT_LEVEL"
 
     # MPI env
     OMPI_COMM_WORLD_SIZE = "OMPI_COMM_WORLD_SIZE"

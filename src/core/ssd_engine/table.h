@@ -46,9 +46,13 @@ namespace MxRec {
 
         void DeleteEmbeddings(vector<emb_cache_key_t>& keys);
 
+        void Save(int step, const map<emb_key_t, KeyInfo>& keyInfo);
+
         void Save(int step);
 
         uint64_t GetTableAvailableSpace();
+
+        void Compact(bool fullCompact, const map<emb_key_t, KeyInfo>& keyInfo);
 
         void Compact(bool fullCompact);
 
@@ -113,6 +117,12 @@ namespace MxRec {
         uint32_t maxDataNumInFile = 10000;  // relax constrain for performance, need tuning
         double compactThreshold = 0.5;
         double diskAvailSpaceThreshold = 0.05;  // in range [0, 1), leave diskAvailSpaceThreshold*100 % for disk space
+    };
+
+    enum class SsdCompactLevel {
+        NO_COMPACT = 0,
+        PARTIAL_COMPACT = 1,
+        FULL_COMPACT = 2
     };
 }
 

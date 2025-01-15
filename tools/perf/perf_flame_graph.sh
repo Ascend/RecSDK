@@ -1,7 +1,7 @@
 #!/bin/bash
 # Copyright (c) Huawei Technologies Co., Ltd. 2021-2023. All rights reserved.
 # Description: performace analysis tool
-# Author: MindX SDK
+# Author: MindSDK
 # Create: 2023
 # History: NA
 
@@ -29,9 +29,9 @@ wait $!
 
 perf script -i perf.data | \
   "${flame_graph_path}"/stackcollapse-perf.pl | \
-  "${flame_graph_path}"/flamegraph.pl > perf_mxRec.svg
+  "${flame_graph_path}"/flamegraph.pl > perf_Rec.svg
 wait $!
 
-LOG_INFO "perf_mxRec.svg is created, please check!"
+LOG_INFO "perf_Rec.svg is created, please check!"
 
 

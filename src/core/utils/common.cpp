@@ -237,4 +237,10 @@ namespace MxRec {
                 return "UNKNOWN";
         }
     }
+
+    bool CheckFileExist(const string& filePath)
+    {
+        std::ifstream file(filePath.c_str());
+        return file.is_open();
+    }
 } // end namespace MxRec

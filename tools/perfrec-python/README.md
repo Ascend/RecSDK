@@ -57,7 +57,7 @@ Generate CPU/NPU fusion tracing json.
 optional arguments:
   -h, --help            show this help message and exit
   --debug_log DEBUG_LOG
-                        MxRec DEBUG level log flie path.
+                        Rec SDK DEBUG level log flie path.
   --msprof_output MSPROF_OUTPUT
                         msprof output path.
 ```

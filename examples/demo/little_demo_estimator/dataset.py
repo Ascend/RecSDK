@@ -17,9 +17,11 @@
 
 import tensorflow as tf
 
-from random_data_generator import get_data_generator, get_large_scale_data_generator
 from mx_rec.util.communication.hccl_ops import get_rank_size, get_rank_id
 from mx_rec.util.ops import import_host_pipeline_ops
+
+from random_data_generator import get_data_generator, get_large_scale_data_generator
+from demo_logger import logger
 
 
 def generate_dataset(cfg, use_timestamp=False, batch_number=100):
@@ -75,3 +77,25 @@ def generate_large_scale_data(cfg):
     iterator = dataset.make_initializable_iterator()
     batch = iterator.get_next()
     return batch, iterator
+
+
+def generate_tuple_data_format_func(batch: dict) -> tuple:
+    """
+    Convert the dict data format to tuple format.
+
+    Args:
+        batch: The original batch.
+
+    Returns: The transformed tuple data format.
+
+    """
+
+    new_batch = [{}, {}]
+    for key, value in batch.items():
+        if "label" in key:
+            new_batch[1][key] = value
+        else:
+            new_batch[0][key] = value
+    logger.info("The transformed tuple data format is %s.", tuple(new_batch))
+
+    return tuple(new_batch)

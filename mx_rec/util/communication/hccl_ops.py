@@ -2,12 +2,11 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2023. All rights reserved.
 import os
-from typing import Optional
+from typing import Optional, Dict
 
 from mx_rec.constants.constants import EnvOption
 from mx_rec.util.communication.hccl_mgmt import parse_hccl_json, set_hccl_info_without_json
-from mx_rec.util.global_env_conf import global_env, get_global_env_conf
-from mx_rec.util.log import logger
+from mx_rec.util.global_env_conf import global_env
 
 
 def get_rank_id() -> Optional[int]:
@@ -27,16 +26,20 @@ def get_rank_id() -> Optional[int]:
     return rank_id_int
 
 
+def get_rank_to_device_dict() -> Dict[int, int]:
+    if global_env.rank_table_file:
+        return parse_hccl_json()
+    
+    return set_hccl_info_without_json()
+
+
 def get_device_id() -> Optional[int]:
     """
      Get the device logic id of the calling process
      Note: this method should be used after mpi init
     :return: int or None, the device logic id of the calling process
     """
-    if global_env.rank_table_file:
-        rank_to_device_dict = parse_hccl_json()
-    else:
-        rank_to_device_dict = set_hccl_info_without_json()
+    rank_to_device_dict = get_rank_to_device_dict()
     # 对local_rank_size取模适配多机场景
     device_id = rank_to_device_dict.get(get_rank_id() % get_local_rank_size())
     if device_id is None:

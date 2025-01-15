@@ -36,7 +36,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 from mx_rec.optimizers.lazy_adam import create_hash_optimizer
 
 # 创建lazy_adam优化器时增加"use_fusion_optim=True"参数，表示使用融合算子实现。use_fusion_optim参数默认值为False。
-# lazy_adam优化器详细使用指导请参考mxRec用户指南。
+# lazy_adam优化器详细使用指导请参考Rec SDK用户指南。
 sparse_optimizer = create_hash_optimizer(learning_rate=0.001, use_fusion_optim=True)
 ```
 
@@ -99,7 +99,7 @@ d) Process方法，进行数据搬入和计算，并且计算完成后将计算�
 
 更多详情可以参考CANN官方的[Ascend C单算子调用概述](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0036.html)。
 
-单算子调用分为两种方式：单算子API执行和模型执行。mxRec提供单算子API执行供参考。
+单算子调用分为两种方式：单算子API执行和模型执行。Rec SDK提供单算子API执行供参考。
 
 单算子测试用例在目录fused_lazy_adam/aclnn_lazy_adam_test下，其中：
 

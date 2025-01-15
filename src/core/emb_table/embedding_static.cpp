@@ -60,6 +60,7 @@ void EmbeddingStatic::Key2Offset(std::vector<emb_key_t>& keys, int channel)
             key = INVALID_KEY_VALUE;
             continue;
         }
+        RecordPaddingKeysOffset(channel, key, maxOffset);
         keyOffsetMap[key] = maxOffset;
         key = maxOffset++;
     }

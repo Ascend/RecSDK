@@ -80,6 +80,8 @@ namespace MxRec {
         void Load(const std::vector<EmbInfo>& mgmtEmbInfo, int step,
                   map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
 
+        void Save(int step, const map<string, map<emb_key_t, KeyInfo>>& keyInfoMap);
+
         void Save(int step);
 
         bool IsKeyInL3Storage(const string& embTableName, emb_cache_key_t key);

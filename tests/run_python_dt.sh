@@ -25,7 +25,7 @@ if [ $ARCH == "aarch64" ]; then
   export LD_PRELOAD=/usr/local/gcc7.3.0/lib64/libgomp.so.1
 fi
 
-# build mxRec and get output directory
+# build Rec SDK and get output directory
 bash "$TOP_PATH"/build/build_tf1.sh
 
 # create libasc directory and copy so files into it
@@ -50,12 +50,12 @@ function run_test_cases() {
     rm -rf coverage.xml final.xml final.html htmlcov
 }
 
-echo "************************************* Start MxRec LLT Test *************************************"
+echo "************************************* Start Rec SDK LLT Test *************************************"
 start=$(date +%s)
 run_test_cases
 ret=$?
 end=$(date +%s)
-echo "*************************************  End  MxRec LLT Test *************************************"
+echo "*************************************  End  Rec SDK LLT Test *************************************"
 echo "LLT running take: $(expr "${end}" - "${start}") seconds"
 
 rm -rf "$TOP_PATH"/mx_rec/libasc

@@ -30,6 +30,7 @@ namespace MxRec {
     int GlobalEnv::glogStderrthreshold = 0;  // 默认info级别
     bool GlobalEnv::useCombineFaae = false;
     bool GlobalEnv::recordKeyCount = false; // 默认不打开记录key count的开关
+    int GlobalEnv::ssdSaveCompactLevel = 2;  // 0:完全不压缩；1：只压缩超阈值的文件；2：所有文件都压缩
 
     /// 配置环境变量，Python侧已经做了变量值校验，CPP侧直接使用即可；bool类型，1代表true，0代表false
     void ConfigGlobalEnv()
@@ -87,12 +88,18 @@ namespace MxRec {
         if (envRecordKeyCount != nullptr) {
             GlobalEnv::recordKeyCount = (std::stoi(envRecordKeyCount) == 1);
         }
+        
+        // 设置SSD保存时的压缩等级
+        const char *envSsdSaveCompactLevel = getenv(RecEnvNames::SSD_SAVE_COMPACT_LEVEL);
+        if (envSsdSaveCompactLevel != nullptr) {
+            GlobalEnv::ssdSaveCompactLevel = std::stoi(envSsdSaveCompactLevel);
+        }
     }
 
     void LogGlobalEnv()
     {
         LOG_DEBUG("Environment variables are: [{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}], "
-                  "[{}: {}], [{}: {}], [{}: {}], [{}: {}].",
+                  "[{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}].",
                   RecEnvNames::ACL_TIMEOUT, GlobalEnv::aclTimeout,
                   RecEnvNames::HD_CHANNEL_SIZE, GlobalEnv::hdChannelSize,
                   RecEnvNames::KEY_PROCESS_THREAD_NUM, GlobalEnv::keyProcessThreadNum,
@@ -101,6 +108,7 @@ namespace MxRec {
                   RecEnvNames::HOT_EMB_UPDATE_STEP, GlobalEnv::hotEmbUpdateStep,
                   RecEnvNames::GLOG_STDERR_THRESHOLD, GlobalEnv::glogStderrthreshold,
                   RecEnvNames::USE_COMBINE_FAAE, GlobalEnv::useCombineFaae,
-                  RecEnvNames::RECORD_KEY_COUNT, GlobalEnv::recordKeyCount);
+                  RecEnvNames::RECORD_KEY_COUNT, GlobalEnv::recordKeyCount,
+                  RecEnvNames::SSD_SAVE_COMPACT_LEVEL, GlobalEnv::ssdSaveCompactLevel);
     }
 }

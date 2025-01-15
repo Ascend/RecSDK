@@ -289,9 +289,10 @@ if __name__ == "__main__":
                          "or USE_MODIFY_GRAPH only 0 or 1 is supported.") from err
 
     use_dynamic = bool(int(os.getenv("USE_DYNAMIC", 0)))
+    use_lccl = bool(int(os.getenv("USE_LCCL", 0)))
     logger.info(f"USE_DYNAMIC: {use_dynamic}")
     init(train_steps=train_steps, eval_steps=eval_steps,
-         use_dynamic=use_dynamic, use_dynamic_expansion=use_dynamic_expansion)
+         use_dynamic=use_dynamic, use_dynamic_expansion=use_dynamic_expansion, use_lccl=use_lccl)
     IF_LOAD = False
     rank_id = mxrec_util.communication.hccl_ops.get_rank_id()
     filelist = glob("./saved-model/sparse-model-0")

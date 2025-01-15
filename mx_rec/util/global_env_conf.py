@@ -22,7 +22,7 @@ from mx_rec.constants.constants import EnvOption, RecPyLogLevel, Flag, EMPTY_STR
     DEFAULT_HD_CHANNEL_SIZE, DEFAULT_KP_THREAD_NUM, DEFAULT_FAST_UNIQUE_THREAD_NUM, RecCPPLogLevel, MAX_INT32, \
     MIN_HD_CHANNEL_SIZE, MAX_HD_CHANNEL_SIZE, MIN_KP_THREAD_NUM, MAX_KP_THREAD_NUM, \
     MIN_FAST_UNIQUE_THREAD_NUM, MAX_FAST_UNIQUE_THREAD_NUM, DEFAULT_HOT_EMB_UPDATE_STEP, MIN_HOT_EMB_UPDATE_STEP, \
-    MAX_HOT_EMB_UPDATE_STEP, TFDevice, MAX_CM_WORKER_SIZE, MIN_CM_WORKER_SIZE, DEFAULT_CM_WORKER_SIZE
+    MAX_HOT_EMB_UPDATE_STEP, TFDevice, MAX_CM_WORKER_SIZE, MIN_CM_WORKER_SIZE, DEFAULT_CM_WORKER_SIZE, SsdCompactLevel
 from mx_rec.validator.validator import para_checker_decorator, OptionValidator, DirectoryValidator, Convert2intValidator
 
 
@@ -42,11 +42,12 @@ class RecEnv:
     glog_stderrthreahold: str
     use_combine_faae: str
     record_key_count: str
+    ssd_save_compact_level: str
 
 
 def get_global_env_conf() -> RecEnv:
     """
-    获取mxRec全局环境变量，并做校验
+    获取Rec SDK全局环境变量，并做校验
     :return:
     """
     rec_env = RecEnv(
@@ -63,7 +64,8 @@ def get_global_env_conf() -> RecEnv:
         hot_emb_update_step=os.getenv(EnvOption.HOT_EMB_UPDATE_STEP.value, DEFAULT_HOT_EMB_UPDATE_STEP),
         glog_stderrthreahold=os.getenv(EnvOption.GLOG_STDERRTHREAHOLD.value, RecCPPLogLevel.INFO.value),
         use_combine_faae=os.getenv(EnvOption.USE_COMBINE_FAAE.value, Flag.FALSE.value),
-        record_key_count=os.getenv(EnvOption.RECORD_KEY_COUNT.value, Flag.FALSE.value)
+        record_key_count=os.getenv(EnvOption.RECORD_KEY_COUNT.value, Flag.FALSE.value),
+        ssd_save_compact_level=os.getenv(EnvOption.SSD_SAVE_COMPACT_LEVEL.value, SsdCompactLevel.FULL_COMPACT.value)
     )
 
     return rec_env
@@ -87,7 +89,9 @@ def get_global_env_conf() -> RecEnv:
      {"min_value": MIN_HOT_EMB_UPDATE_STEP, "max_value": MAX_HOT_EMB_UPDATE_STEP}, ["check_value"]),
     ("glog_stderrthreahold", OptionValidator, {"options": [i.value for i in list(RecCPPLogLevel)]}),
     ("use_combine_faae", OptionValidator, {"options": [i.value for i in list(Flag)]}),
-    ("record_key_count", OptionValidator, {"options": [i.value for i in list(Flag)]})
+    ("record_key_count", OptionValidator, {"options": [i.value for i in list(Flag)]}),
+    ("ssd_save_compact_level", Convert2intValidator,
+     {"min_value": SsdCompactLevel.NO_COMPACT.value, "max_value": SsdCompactLevel.FULL_COMPACT.value}, ["check_value"])
 ])
 def check_env(**kwargs):
     pass

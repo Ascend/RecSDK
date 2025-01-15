@@ -14,6 +14,7 @@ limitations under the License.
 
 #include "cache_manager.h"
 
+#include <string>
 #include <unordered_set>
 
 #include "external_logger.h"
@@ -93,14 +94,14 @@ int EmbCacheManagerImpl::CreateCacheForTable(const EmbCacheInfo& embCacheInfo,
     return H_OK;
 }
 
-int EmbCacheManagerImpl::GetSwapPairsAndKey2Offset(const std::string& tableName, std::vector<uint64_t>& keys,
+int EmbCacheManagerImpl::GetSwapPairsAndKey2Offset(const EmbBaseInfo& info, std::vector<uint64_t>& keys,
                                                    KeyOffsetPair& swapInKoPair, KeyOffsetPair& swapOutKoPair)
 {
-    int checkRet = CheckGetSwapPairsAndKey2Offset(tableName, swapInKoPair, swapOutKoPair);
+    int checkRet = CheckGetSwapPairsAndKey2Offset(info.name, swapInKoPair, swapOutKoPair);
     if (checkRet != H_OK) {
         return checkRet;
     }
-    return offsetMappers[tableName].GetSwapPairsAndKey2Offset(keys, swapInKoPair, swapOutKoPair);
+    return offsetMappers[info.name].GetSwapPairsAndKey2Offset(info, keys, swapInKoPair, swapOutKoPair);
 }
 
 int EmbCacheManagerImpl::EmbeddingLookup(const std::string& tableName, const std::vector<uint64_t>& keys,
@@ -341,6 +342,12 @@ int EmbCacheManagerImpl::BackUpTrainStatus(const std::string& tableName)
     offsetMappersBackUp[tableName].Initialize(reserve, maxCacheSize);
     offsetMappersBackUp[tableName] = offsetMappers[tableName];
 
+    // clear key-offset status because estimator train-and-eval mode will build new graph when switching train to eval.
+    ExternalLogger::PrintLog(LogLevel::INFO, "Start to clear offsetMappers, table:" + tableName);
+    offsetMappers[tableName].UnInitialize();
+    offsetMappers[tableName].Initialize(reserve, maxCacheSize);
+    offsetMappers[tableName] = offsetMappers[tableName];
+
     return H_OK;
 }
 
@@ -489,4 +496,15 @@ int EmbCacheManagerImpl::ResetOffsetMappers()
         it->second.Initialize(reserve, embInfo->second.maxCacheSize);
     }
     return H_OK;
+}
+
+std::unordered_set<uint64_t> EmbCacheManagerImpl::GetPaddingKeysOffset(const std::string& tableName)
+{
+    int ret = CheckValidTableName(tableName);
+    if (ret != H_OK) {
+        throw std::invalid_argument("Table: " + tableName + " is invalid, please check error log, and error code is " +
+                                    std::to_string(ret) + ".");
+    }
+
+    return offsetMappers[tableName].GetPaddingKeysOffset();
 }

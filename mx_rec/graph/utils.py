@@ -110,11 +110,7 @@ def find_target_instance_dataset(graph: Graph, variant_tensor: Tensor) -> Datase
             if not isinstance(ins, DatasetV1Adapter):
                 ins = ins._input_dataset
             logger.debug("Find target instance '%s', whose variant_tensor is '%s'.", ins, variant_tensor)
-            if not isinstance(ins.element_spec, dict) and not (
-                isinstance(ins.element_spec, (list, tuple))
-                and len(ins.element_spec) == 2
-                and isinstance(ins.element_spec[0], dict)
-            ):
+            if not isinstance(ins.element_spec, (list, tuple, dict)):
                 raise NotImplementedError("the found dataset does not return a valid layout.")
 
             return ins

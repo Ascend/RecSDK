@@ -21,6 +21,7 @@ See the License for the specific language governing permissions and
 #include "emb_table/embedding_ddr.h"
 #include "file_system/file_system_handler.h"
 #include "utils/logger.h"
+#include "embedding_mgmt.h"
 
 using namespace MxRec;
 
@@ -80,6 +81,11 @@ KeyOffsetMemT EmbeddingMgmt::GetKeyOffsetMap()
         keyOffsetMap[it.first] = it.second->GetKeyOffsetMap();
     }
     return keyOffsetMap;
+}
+
+unordered_set<int64_t> EmbeddingMgmt::GetPaddingKeysOffset(const std::string& name)
+{
+    return embeddings[name]->GetPaddingKeysOffset();
 }
 
 void EmbeddingMgmt::EvictKeys(const string& name, const vector<emb_cache_key_t>& keys)
@@ -221,5 +227,21 @@ void EmbeddingMgmt::RecoverTrainStatus()
 {
     for (auto& table: embeddings) {
         table.second->RecoverTrainStatus();
+    }
+}
+
+void EmbeddingMgmt::SyncLatestEmbedding(int pythonBatchId)
+{
+    LOG_INFO("Start threads for syncing embedding, pythonBatchId(train):{}.", pythonBatchId);
+    if (syncThreadPool == nullptr) {
+        syncThreadPool = make_unique<ThreadPool>(embeddings.size());
+    }
+
+    for (const auto& table: embeddings) {
+        syncThreadPool->enqueue(
+            [table, pythonBatchId]() {
+                table.second->SyncLatestEmbedding(pythonBatchId);
+            }
+        );
     }
 }

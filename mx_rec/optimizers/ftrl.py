@@ -33,27 +33,80 @@ from tensorflow.python.training import ftrl
 from mx_rec.optimizers.base import CustomizedOptimizer, control_update_op_decorator
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.constants.constants import MAX_INT32
-from mx_rec.validator.validator import para_checker_decorator, ClassValidator, StringValidator, \
-    FloatValidator, LearningRateValidator
+from mx_rec.validator.validator import (
+    para_checker_decorator,
+    ClassValidator,
+    StringValidator,
+    FloatValidator,
+    LearningRateValidator,
+)
 
 
-@para_checker_decorator(check_option_list=[
-    ("learning_rate", LearningRateValidator, {"min_value": 0.0, "max_value": 10.0}, ["check_value"]),
-    ("initial_accumulator_value", FloatValidator, {"min_value": 0.0, "max_value": 1.0},
-     ["check_value_for_left_open_interval"]),
-    ("learning_rate_power", FloatValidator, {"min_value": -MAX_INT32 * 1.0, "max_value": 0.0}, ["check_value"]),
-    ("l1_regularization_strength", FloatValidator, {"min_value": 0.0, "max_value": 1e4}, ["check_value"]),
-    ("l2_regularization_strength", FloatValidator, {"min_value": 0.0, "max_value": 1e4}, ["check_value"]),
-    ("l2_shrinkage_regularization_strength", FloatValidator, {"min_value": 0.0, "max_value": 1e4}, ["check_value"]),
-    ("use_locking", ClassValidator, {"classes": (bool,)}),
-    ("name", StringValidator, {"min_len": 1, "max_len": 200}, ["check_string_length"]),
-    ("accum_name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
-    ("linear_name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"])
-])
+@para_checker_decorator(
+    check_option_list=[
+        (
+            "learning_rate",
+            LearningRateValidator,
+            {"min_value": 0.0, "max_value": 10.0},
+            ["check_value"],
+        ),
+        (
+            "initial_accumulator_value",
+            FloatValidator,
+            {"min_value": 0.0, "max_value": 1.0},
+            ["check_value_for_left_open_interval"],
+        ),
+        (
+            "learning_rate_power",
+            FloatValidator,
+            {"min_value": -MAX_INT32 * 1.0, "max_value": 0.0},
+            ["check_value"],
+        ),
+        (
+            "l1_regularization_strength",
+            FloatValidator,
+            {"min_value": 0.0, "max_value": 1e4},
+            ["check_value"],
+        ),
+        (
+            "l2_regularization_strength",
+            FloatValidator,
+            {"min_value": 0.0, "max_value": 1e4},
+            ["check_value"],
+        ),
+        (
+            "l2_shrinkage_regularization_strength",
+            FloatValidator,
+            {"min_value": 0.0, "max_value": 1e4},
+            ["check_value"],
+        ),
+        ("use_locking", ClassValidator, {"classes": (bool,)}),
+        (
+            "name",
+            StringValidator,
+            {"min_len": 1, "max_len": 200},
+            ["check_string_length"],
+        ),
+        (
+            "accum_name",
+            StringValidator,
+            {"min_len": 1, "max_len": 255},
+            ["check_string_length"],
+        ),
+        (
+            "linear_name",
+            StringValidator,
+            {"min_len": 1, "max_len": 255},
+            ["check_string_length"],
+        ),
+    ]
+)
 def create_hash_optimizer(learning_rate, use_locking=False, name="Ftrl", **kwargs):
     if ConfigInitializer.get_instance().use_dynamic_expansion:
-        raise ValueError("dynamic expansion mode is not compatible with the optimizer, please config dynamic "
-                         "expansion mode and optimizer correctly")
+        raise ValueError(
+            "The dynamic expansion mode is not compatible with the optimizer, please config dynamic "
+            "expansion mode and optimizer correctly."
+        )
     optimizer = CustomizedFtrl(learning_rate=learning_rate, use_locking=use_locking, name=name, **kwargs)
     ConfigInitializer.get_instance().optimizer_config.optimizer_instance = optimizer
     return optimizer
@@ -76,7 +129,7 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
             name=self.unique_name,
             accum_name=kwargs.get("accum_name", None),
             linear_name=kwargs.get("linear_name", None),
-            l2_shrinkage_regularization_strength=kwargs.get("l2_shrinkage_regularization_strength", 0.0)
+            l2_shrinkage_regularization_strength=kwargs.get("l2_shrinkage_regularization_strength", 0.0),
         )
         self._slot_num = 2
         self._derivative = 2
@@ -89,11 +142,13 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
     def _apply_sparse_duplicate_indices(self, grad, var):
         #  _apply_sparse_duplicate_indices method include tf.unique and unsorted_segment_sum operations which may
         #  introduce dynamic shape problem, if encounter that, please de-annotation the method below.
+        if ConfigInitializer.get_instance().use_lccl:
+            return self._apply_sparse(grad, var)
+
         unique_local_grad, unique_keys = self.sum_same_id_gradients(grad=grad.values, var=var, is_expansion=False)
         gradient_no_duplicate_indices = ops.IndexedSlices(
-            indices=unique_keys,
-            values=unique_local_grad,
-            dense_shape=grad.dense_shape)
+            indices=unique_keys, values=unique_local_grad, dense_shape=grad.dense_shape
+        )
         return self._apply_sparse(gradient_no_duplicate_indices, var)
 
     def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
@@ -102,17 +157,9 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
 
     def _resource_apply_sparse(self, grad, handle, indices):
         if self._l2_shrinkage_regularization_strength <= 0.0:
-            return self._apply_sparse_shared(
-                grad,
-                handle,
-                indices,
-                self._resource_scatter_nd_update)
+            return self._apply_sparse_shared(grad, handle, indices, self._resource_scatter_nd_update)
         else:
-            return self._apply_sparse_shared_v2(
-                grad,
-                handle,
-                indices,
-                self._resource_scatter_nd_update)
+            return self._apply_sparse_shared_v2(grad, handle, indices, self._resource_scatter_nd_update)
 
     def _apply_sparse(self, grad, var):
         if self._l2_shrinkage_regularization_strength <= 0.0:
@@ -120,13 +167,15 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
                 grad.values,
                 var,
                 grad.indices,
-                lambda x, i, v: tf.compat.v1.scatter_nd_update(x, i, v))
+                lambda x, i, v: tf.compat.v1.scatter_nd_update(x, i, v),
+            )
         else:
             return self._apply_sparse_shared_v2(
                 grad.values,
                 var,
                 grad.indices,
-                lambda x, i, v: tf.compat.v1.scatter_nd_update(x, i, v))
+                lambda x, i, v: tf.compat.v1.scatter_nd_update(x, i, v),
+            )
 
     @control_update_op_decorator
     def _apply_sparse_shared(self, grad, var, indices, scatter_nd_update):
@@ -165,7 +214,7 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
         mask = math_ops.cast(tf.math.greater(tf.abs(linear_update), l1), var.dtype.base_dtype)
 
         var_update = tf.multiply(var_new, mask)
-
+        var_update = self._process_grad_value_mask(var, var_update)
         var_update_op = scatter_nd_update(var, nd_indices, var_update)
 
         return control_flow_ops.group(accum_update_op, linear_update_op, var_update_op)
@@ -210,32 +259,34 @@ class CustomizedFtrl(ftrl.FtrlOptimizer, CustomizedOptimizer):
         mask = math_ops.cast(tf.math.greater(tf.abs(linear_update), l1), var.dtype.base_dtype)
 
         var_update = tf.multiply(var_new, mask)
-
+        var_update = self._process_grad_value_mask(var, var_update)
         var_update_op = scatter_nd_update(var, nd_indices, var_update)
 
         return control_flow_ops.group(accum_update_op, linear_update_op, var_update_op)
 
     def _resource_scatter_nd_update(self, x, i, v):
-        with ops.control_dependencies([
-            gen_state_ops.resource_scatter_nd_update(x.handle, i, v)]):
+        with ops.control_dependencies([gen_state_ops.resource_scatter_nd_update(x.handle, i, v)]):
             return x.value()
 
     def _create_slots(self, var_list):
-
         # Create slots for the first and second moments.
         accum_state_name = self._name + "/" + "accum"
         linear_state_name = self._name + "/" + "linear"
         for each_var in var_list:
             with ops.colocate_with(each_var):
                 val = constant_op.constant(
-                    self._initial_accumulator_value, dtype=each_var.dtype, shape=each_var.get_shape())
+                    self._initial_accumulator_value,
+                    dtype=each_var.dtype,
+                    shape=each_var.get_shape(),
+                )
                 accum = self._get_or_make_slot(each_var, val, "accum", accum_state_name)
                 linear = self._zeros_slot(each_var, "linear", linear_state_name)
                 # make sure sparse optimizer statements will not be saved and restored within tf checkpoint.
                 ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(accum.name)
                 ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(linear.name)
                 table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(each_var)
-                ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(table_instance.table_name,
-                                                                                         self.optimizer_type,
-                                                                                         {"accum": accum,
-                                                                                          "linear": linear})
+                ConfigInitializer.get_instance().optimizer_config.set_optimizer_for_table(
+                    table_instance.table_name,
+                    self.optimizer_type,
+                    {"accum": accum, "linear": linear},
+                )

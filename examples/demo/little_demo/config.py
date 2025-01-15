@@ -36,11 +36,13 @@ try:
     MULTI_LOOKUP_TIMES = int(os.getenv("MULTI_LOOKUP_TIMES", 2))
     PRECISION_CHECK = bool(int(os.getenv("PRECISION_CHECK", 0)))
     USE_DP = bool(int(os.getenv("USE_DP", 0)))
+    USE_TUPLE_DATA_FORMAT = bool(int(os.getenv("USE_TUPLE_DATA_FORMAT", 0)))
+    USE_PADDING_KEYS = bool(int(os.getenv("USE_PADDING_KEYS", 0)))
 except ValueError as err:
     raise ValueError(
         "please correctly config USE_DYNAMIC or USE_DYNAMIC_EXPANSION or "
         "USE_MULTI_LOOKUP or USE_MODIFY_GRAPH or USE_TIMESTAMP or USE_ONE_SHOT or USE_DETERMINISTIC"
-        "or USE_DP only 0 or 1 is supported."
+        "or USE_DP or USE_TUPLE_DATA_FORMAT or USE_PADDING_KEYS only 0 or 1 is supported."
     ) from err
 
 
@@ -61,6 +63,9 @@ class Config:
     def generate_simple_config(self):
         self.batch_number = 8192
         self.batch_size = 4096
+
+        # The 666 and 777 are padding keys.
+        self.padding_keys = [666, 777]
 
         self.key_type = tf.int64
         self.label_type = tf.float32

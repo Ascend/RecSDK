@@ -4,28 +4,36 @@
 
 import abc
 from collections import defaultdict
-from typing import Optional, Union, Callable
+from typing import Any, Callable, Dict, Optional, Union
 
+from mpi4py import MPI
 import tensorflow as tf
+from tensorflow import Tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.framework import ops
 
-from mx_rec.constants.constants import All2allGradientsOp, ASCEND_SPARSE_LOOKUP_ENTRANCE, ASCAnchorAttr
+from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, All2allGradientsOp, ASCAnchorAttr
 from mx_rec.core.asc.build_graph import get_preprocessed_tensor_for_asc
-from mx_rec.core.asc.feature_spec import set_temporary_feature_spec_attribute, get_feature_spec, FeatureSpec
+from mx_rec.core.asc.feature_spec import FeatureSpec, get_feature_spec, set_temporary_feature_spec_attribute
 from mx_rec.core.asc.swap_args import SwapArgs, SwapDataType
-from mx_rec.util.communication.hccl_ops import get_rank_size, get_rank_id, get_device_id
-from mx_rec.util.tf_version_adapter import hccl_ops
+from mx_rec.util.communication.hccl_ops import get_device_id, get_rank_id, get_rank_size, get_rank_to_device_dict
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.log import logger
+from mx_rec.util.tf_version_adapter import hccl_ops
 from mx_rec.validator.emb_validator import check_emb_init_params, check_emb_lookup_params
+from mx_rec.util.ops import import_host_pipeline_ops
+import mxrec_pybind
+
+host_pipeline_ops = import_host_pipeline_ops()
 
 
 class BaseSparseEmbedding(metaclass=abc.ABCMeta):
     """
-    稀疏表基类
+    Abstract base class for sparse embedding table.
     """
-    # 自动改图使用的全局字典，以ids和待保存内容的字符串为key
-    anchor_tensor_specs = defaultdict(dict)
+
+    # Global dict used for graph modification, used id-like tensor and `AnchorAttr` as key.
+    anchor_tensor_specs: Dict[Tensor, Dict[str, Any]] = defaultdict(dict)
 
     def __init__(self, config: dict):
         self._embedding_size = config.get("embedding_size")
@@ -53,6 +61,9 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         self._device_vocabulary_size = config.get("device_vocabulary_size")
         self._host_vocabulary_size = config.get("host_vocabulary_size")
         self._ssd_vocabulary_size = config.get("ssd_vocabulary_size")
+        self._padding_keys = config.get("padding_keys")
+        self._padding_keys_mask = config.get("padding_keys_mask")
+        self._padding_keys_len = config.get("padding_keys_len")
         self._ext_coefficient = 1
         self._default_name_count = -1
         self._same_table_send_count = 0
@@ -64,25 +75,17 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         self._device_id = get_device_id()
         self._use_static = ConfigInitializer.get_instance().use_static
 
-        # init variable
         self._set_slice_vocab_size()
-
-        if ConfigInitializer.get_instance().hybrid_manager_config.freeze and \
-                self._table_name in ConfigInitializer.get_instance().sparse_embed_config.name_to_var_dict:
-            self._variable = tf.compat.v1.get_variable(self._table_name, trainable=False,
-                                                       shape=(self._slice_device_vocabulary_size, self._emb_size))
-            if not ConfigInitializer.get_instance().use_dynamic_expansion:
-                self.__record(eval_flag=True)
-                tf.compat.v1.add_to_collection(
-                    ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection,
-                    self._variable)
-
-        else:
-            check_emb_init_params(self._is_hbm, self._embedding_size)
-            self.__initialize_variables()
-            tf.compat.v1.add_to_collection(
-                ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection, self._variable)
         self._set_ext_emb_size()
+        self._init_sliced_variable()
+
+        self.peer_mem = None
+        if ConfigInitializer.get_instance().use_lccl:
+            device_ids = get_rank_to_device_dict()
+            comm_server_rank_id = min(device_ids.values())
+            peer_mem_ = mxrec_pybind.get_peer_mem(self._rank_id, comm_server_rank_id, self._rank_size)
+            logger.debug("Get peer_mem_:%s.", peer_mem_)
+            self.peer_mem = tf.constant(peer_mem_, dtype=tf.int64)
 
     @property
     def embedding_size(self):
@@ -160,6 +163,25 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
     def is_dp(self):
         return self._is_dp
 
+    @table_name.setter
+    def table_name(self, table_name: str) -> None:
+        self._table_name = table_name
+    @property
+    def padding_keys(self):
+        return self._padding_keys
+
+    @property
+    def padding_keys_mask(self):
+        return self._padding_keys_mask
+
+    @property
+    def padding_keys_len(self):
+        return self._padding_keys_len
+
+    @property
+    def use_static(self):
+        return self._use_static
+
     @send_count.setter
     def send_count(self, send_count: int):
         self._send_count = send_count
@@ -172,17 +194,20 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
     def is_grad(self, is_grad: bool):
         self._is_grad = is_grad
 
+    @use_static.setter
+    def use_static(self, use_static: bool):
+        self._use_static = use_static
+
     @staticmethod
-    def get_anchor_attribute(anchor: tf.Tensor, attr: ASCAnchorAttr) -> \
-            Union['BaseSparseEmbedding', FeatureSpec, bool]:
+    def get_anchor_attribute(anchor: tf.Tensor, attr: ASCAnchorAttr) -> Union["BaseSparseEmbedding", FeatureSpec, bool]:
         """
-        获取anchor ids对应的属性.
+        Acquire some attrs of ID type tensor.
 
         Args:
-            anchor: lookup传入的ids
-            attr: 待获取属性名称
+            anchor: ID type tensor.
+            attr: attribute name.
 
-        Returns: anchor_tensor_specs中key为attr的属性.
+        Returns: find value for given 'anchor' and 'attr' in anchor_spec dict.
         """
         if not isinstance(anchor, tf.Tensor):
             raise TypeError("Anchor must be a Tensor.")
@@ -204,25 +229,55 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         """
         pass
 
-
     @abc.abstractmethod
     def _set_slice_vocab_size(self):
         pass
 
     @abc.abstractmethod
-    def _get_update_grad(self, local_grad: tf.Tensor, result: dict,
-                         table: Union[tf.compat.v1.Variable, tf.Tensor]) -> Union[tf.IndexedSlices, tf.Tensor]:
+    def _get_update_grad(
+        self, local_grad: tf.Tensor, result: dict, table: Union[tf.compat.v1.Variable, tf.Tensor]
+    ) -> Union[tf.IndexedSlices, tf.Tensor]:
         pass
 
     @abc.abstractmethod
-    def _get_local_embeddings(self, table: Union[tf.compat.v1.Variable, tf.Tensor], result: dict,
-                              feature_spec: FeatureSpec, **kwargs) -> tf.Tensor:
+    def _get_local_embeddings(
+        self, table: Union[tf.compat.v1.Variable, tf.Tensor], result: dict, feature_spec: FeatureSpec, **kwargs
+    ) -> tf.Tensor:
         pass
 
     @abc.abstractmethod
-    def _get_sparse_forward_result(self, sparse_forward_fn: Callable, table: Union[tf.compat.v1.Variable, tf.Tensor],
-                                   result: dict, is_training: bool) -> tf.Tensor:
+    def _get_sparse_forward_result(
+        self,
+        sparse_forward_fn: Callable,
+        table: Union[tf.compat.v1.Variable, tf.Tensor],
+        result: dict,
+        is_training: bool,
+    ) -> tf.Tensor:
         pass
+
+    def _init_sliced_variable(self):
+        if (
+            ConfigInitializer.get_instance().hybrid_manager_config.freeze
+            and self._table_name in ConfigInitializer.get_instance().sparse_embed_config.name_to_var_dict
+        ):
+            self._variable = tf.compat.v1.get_variable(
+                self._table_name, trainable=False, shape=(self._slice_device_vocabulary_size, self._emb_size)
+            )
+
+            if not ConfigInitializer.get_instance().use_dynamic_expansion:
+                self._record(eval_flag=True)
+                tf.compat.v1.add_to_collection(
+                    ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection,
+                    self._variable,
+                )
+
+            return
+
+        check_emb_init_params(self._is_hbm, self._embedding_size)
+        self._initialize_variables()
+        tf.compat.v1.add_to_collection(
+            ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection, self._variable
+        )
 
     def size(self) -> int:
         """
@@ -284,10 +339,15 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
             raise RuntimeError("Cannot build new sparse forward graph after emb cache management was built.")
 
         # record send count
-        eval_mode = not is_training and \
-                    ConfigInitializer.get_instance().train_params_config.get_training_mode_channel_id(True) is None
-        if is_training or eval_mode or \
-                "train_and_evaluate" in ConfigInitializer.get_instance().train_params_config.bool_gauge_set:
+        eval_mode = (
+            not is_training
+            and ConfigInitializer.get_instance().train_params_config.get_training_mode_channel_id(True) is None
+        )
+        if (
+            is_training
+            or eval_mode
+            or "train_and_evaluate" in ConfigInitializer.get_instance().train_params_config.bool_gauge_set
+        ):
             self._same_table_send_count += send_count if send_count is not None else 0
 
         # create feature spec
@@ -339,10 +399,14 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         if not self._modify_graph and not self._is_hbm:
             raise RuntimeError("when the 'ddr or ssd' mode are used, the 'modify graph' is required")
         table_name = feature_spec.table_name
-        same_table_feature_spec = \
-            ConfigInitializer.get_instance().feature_spec_config.table_name_to_feature_spec[table_name][is_training]
-        logger.debug("The feature spec of the same table is %s, table name is %s.",
-                     ([fs.name for fs in same_table_feature_spec],), self._table_name)
+        same_table_feature_spec = ConfigInitializer.get_instance().feature_spec_config.table_name_to_feature_spec[
+            table_name
+        ][is_training]
+        logger.debug(
+            "The feature spec of the same table is %s, table name is %s.",
+            ([fs.name for fs in same_table_feature_spec],),
+            self._table_name,
+        )
 
         same_table_spec_count = len(same_table_feature_spec)
         if same_table_spec_count == 0:
@@ -390,19 +454,32 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         logger.debug("Init table, ext_emb_size is set to be %s.", self._ext_emb_size)
 
     def _get_preprocessed_tensor(self, feature_spec: FeatureSpec, channel_id: int, send_count: Optional[int]) -> dict:
-        config = dict(batch_size=feature_spec.batch_size, feat_cnt=feature_spec.feat_cnt, send_count=send_count,
-                      rank_size=self._rank_size, channel_id=channel_id, table_name=self._table_name,
-                      is_hbm=self._is_hbm, ext_emb_size=self._ext_emb_size, emb_size=self._emb_size,
-                      use_dynamic_expansion=ConfigInitializer.get_instance().use_dynamic_expansion,
-                      device_id=self._device_id, is_dp=self._is_dp)
+        config = dict(
+            batch_size=feature_spec.batch_size,
+            feat_cnt=feature_spec.feat_cnt,
+            send_count=send_count,
+            rank_size=self._rank_size,
+            channel_id=channel_id,
+            table_name=self._table_name,
+            is_hbm=self._is_hbm,
+            ext_emb_size=self._ext_emb_size,
+            emb_size=self._emb_size,
+            use_dynamic_expansion=ConfigInitializer.get_instance().use_dynamic_expansion,
+            device_id=self._device_id,
+            is_dp=self._is_dp,
+        )
 
         return get_preprocessed_tensor_for_asc(self._variable, config)
 
     def _lookup_forward(self, feature_spec: FeatureSpec, send_count: Optional[int], **kwargs) -> tf.Tensor:
         is_training = kwargs.get("is_train")
-        hashtable_params = dict(slice_device_vocabulary_size=self._slice_device_vocabulary_size,
-                                slice_host_vocabulary_size=self._slice_host_vocabulary_size, send_count=send_count,
-                                table_name=self._table_name, is_hbm=self._is_hbm)
+        hashtable_params = dict(
+            slice_device_vocabulary_size=self._slice_device_vocabulary_size,
+            slice_host_vocabulary_size=self._slice_host_vocabulary_size,
+            send_count=send_count,
+            table_name=self._table_name,
+            is_hbm=self._is_hbm,
+        )
         check_emb_lookup_params(hashtable_params, feature_spec, send_count, is_training)
         if ConfigInitializer.get_instance().use_static:
             self._send_count = send_count
@@ -411,32 +488,76 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
 
         @tf.custom_gradient
         def sparse_forward(table):
+            def compute_all2all_gradient(local_grad_):
+                if self._all2all_gradients_op == All2allGradientsOp.SUM_GRADIENTS_AND_DIV_BY_RANKSIZE:
+                    try:
+                        local_grad_ = local_grad_ / get_rank_size()
+                    except ZeroDivisionError as exp:
+                        raise ZeroDivisionError("Rank size cannot be zero.") from exp
+                return local_grad_
+
+            def lccl_uss(bp_all2all_args, unique_grads):
+                if self._use_static:
+                    send_count_matrix = tf.constant(
+                        [[bp_all2all_args * self._emb_size] * self._rank_size] * self._rank_size, dtype=tf.int64)
+                else:
+                    send_count_matrix = bp_all2all_args
+                unique_local_grad = host_pipeline_ops.lccl_all_uss(send_data=unique_grads,
+                                                                   send_count_matrix=send_count_matrix,
+                                                                   shape_vec=result.get("unique_keys"),
+                                                                   peer_mem=self.peer_mem,
+                                                                   restore=result.get("restore_vector_second"),
+                                                                   rank=self._rank_id,
+                                                                   rank_size=self._rank_size,
+                                                                   dim=self._emb_size)
+                unique_local_grad = tf.reshape(unique_local_grad, [-1, self._emb_size])
+                unique_local_grad = compute_all2all_gradient(unique_local_grad)
+                return ops.IndexedSlices(values=unique_local_grad,
+                                         indices=result.get("unique_keys"),
+                                         dense_shape=tf.shape(table))
+
             def grad(lookup_grad):
                 logger.debug("Into lookup grad function, feature spec name: %s.", feature_spec.name)
                 embedding_grad = tf.reshape(lookup_grad, [-1, self._emb_size])
-                unique_grads = tf.compat.v1.unsorted_segment_sum(embedding_grad,
-                                                                 result.get("restore_vector"),
-                                                                 unique_embeddings_shape[0])
+                unique_grads = tf.compat.v1.unsorted_segment_sum(
+                    embedding_grad, result.get("restore_vector"), unique_embeddings_shape[0]
+                )
                 bp_all2all_args = all2all_args if (self._use_static or self.is_dp) else tf.transpose(all2all_args)
-                hot, cold = tf.split(unique_grads,
-                                     [tf.shape(result.get("hot_pos"))[0],
-                                      tf.shape(unique_grads)[0] - tf.shape(result.get("hot_pos"))[0]], axis=0)
+                hot, cold = tf.split(
+                    unique_grads,
+                    [
+                        tf.shape(result.get("hot_pos"))[0],
+                        tf.shape(unique_grads)[0] - tf.shape(result.get("hot_pos"))[0],
+                    ],
+                    axis=0,
+                )
                 unique_grads = tf.tensor_scatter_nd_add(cold, tf.expand_dims(result.get("hot_pos"), 1), hot)
-                local_grad = self.__get_own_emb(unique_grads, bp_all2all_args)
+                if not (ConfigInitializer.get_instance().optimizer_config.optimizer_instance.derivative == 2 and \
+                        ConfigInitializer.get_instance().use_lccl):
+                    local_grad = self.__get_own_emb(unique_grads, bp_all2all_args, result.get('id_offsets'), True)
+                    local_grad = compute_all2all_gradient(local_grad)
 
-                if self._all2all_gradients_op == All2allGradientsOp.SUM_GRADIENTS_AND_DIV_BY_RANKSIZE:
-                    try:
-                        local_grad = local_grad / get_rank_size()
-                    except ZeroDivisionError as exp:
-                        raise ZeroDivisionError("Rank size cannot be zero.") from exp
-
-                return self._get_update_grad(local_grad, result, table)
+                    return self._get_update_grad(local_grad, result, table)
+                return lccl_uss(bp_all2all_args, unique_grads)
 
             logger.debug("fp rank size: %s", self._rank_size)
-            local_embeddings = self._get_local_embeddings(table, result, feature_spec, **kwargs)
             all2all_args = send_count if self._use_static else result.get("all2all_args")
 
-            unique_embeddings = self.__get_own_emb(local_embeddings, all2all_args)
+            if ((not ConfigInitializer.get_instance().use_dynamic_expansion) and (not self._use_static) and
+                    ConfigInitializer.get_instance().use_lccl):
+                unique_embeddings_ = host_pipeline_ops.lccl_gather_all(emb_table=table,
+                                                                        lookup=tf.abs(result.get("id_offsets")),
+                                                                        send_count_matrix=all2all_args,
+                                                                        shape_vec=result.get('unique_shape'),
+                                                                        peer_mem=self.peer_mem,
+                                                                        rank=self._rank_id,
+                                                                        rank_size=self._rank_size,
+                                                                        dim=self._emb_size)
+                unique_embeddings = tf.reshape(unique_embeddings_, [-1, self._emb_size])
+            else:
+                local_embeddings = self._get_local_embeddings(table, result, feature_spec, **kwargs)
+                unique_embeddings = self.__get_own_emb(
+                    local_embeddings, all2all_args, result.get('unique_shape'), False)
             unique_embeddings = tf.concat([tf.gather(unique_embeddings, result.get("hot_pos"), name="hot_pos"),
                                            unique_embeddings], axis=0)
 
@@ -447,8 +568,9 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
 
             notify_hybridmgmt_op = self.__generate_lookup_id_notify_hybrid(is_training)
             with tf.control_dependencies([notify_hybridmgmt_op]):
-                embeddings = tf.gather(unique_embeddings, result.get("restore_vector"), axis=0,
-                                       name="gather_for_restore_vector")
+                embeddings = tf.gather(
+                    unique_embeddings, result.get("restore_vector"), axis=0, name="gather_for_restore_vector"
+                )
 
             if self._use_static:
                 return tf.reshape(embeddings, feature_spec.dims + [self._emb_size]), grad
@@ -469,38 +591,46 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
 
         ddr_control_ops = tf.no_op(name="place_holder_swap_op")
         swap_args = SwapArgs()
-        swap_args.set_data(SwapDataType.CONTROL.value, var_name=self._table_name, var_channel=channel_id,
-                           control_ops=ddr_control_ops)
+        swap_args.set_data(
+            SwapDataType.CONTROL.value, var_name=self._table_name, var_channel=channel_id, control_ops=ddr_control_ops
+        )
         with tf.control_dependencies([ddr_control_ops]):
             return self._get_sparse_forward_result(sparse_forward, self._variable, result, is_training)
 
-    def __initialize_variables(self):
-        initialized_tensor = self._emb_initializer(
-            self._slice_device_vocabulary_size + self._embedding_size) * self._init_param
+    def _initialize_variables(self):
+        initialized_tensor = (
+            self._emb_initializer(self._slice_device_vocabulary_size + self._embedding_size) * self._init_param
+        )
         self._variable = tf.compat.v1.get_variable(self._table_name, trainable=False, initializer=initialized_tensor)
 
         # make sure sparse table variable will not be saved and restored within tf checkpoint.
         ConfigInitializer.get_instance().sparse_embed_config.insert_removing_var_list(self._variable.name)
 
-        self.__record()
+        self._record()
 
-    def __record(self, eval_flag=False):
+    def _record(self, eval_flag=False):
         ConfigInitializer.get_instance().sparse_embed_config.insert_table_instance(
-            self._table_name, self._variable, self, eval_flag)
+            self._table_name, self._variable, self, eval_flag
+        )
         logger.debug("Device vocabulary_size for table %s is %s.", self._table_name, self._device_vocabulary_size)
-        logger.debug("Slice_device_vocabulary_size for table %s is %s.",
-                     self._table_name, self._slice_device_vocabulary_size)
+        logger.debug(
+            "Slice_device_vocabulary_size for table %s is %s.", self._table_name, self._slice_device_vocabulary_size
+        )
         logger.debug("Host vocabulary size for table %s is %s.", self._table_name, self._host_vocabulary_size)
-        logger.debug("Slice host vocabulary_size for table %s is %s.",
-                     self._table_name, self._slice_host_vocabulary_size)
+        logger.debug(
+            "Slice host vocabulary_size for table %s is %s.", self._table_name, self._slice_host_vocabulary_size
+        )
         logger.debug("SSD vocabulary size for table %s is %s.", self._table_name, self._ssd_vocabulary_size)
-        logger.debug("Slice ssd vocabulary_size for table %s is %s.",
-                     self._table_name, self._slice_ssd_vocabulary_size)
+        logger.debug("Slice ssd vocabulary_size for table %s is %s.", self._table_name, self._slice_ssd_vocabulary_size)
 
-    def __get_own_emb(self, emb: tf.Tensor, all2all_args: Union[int, tf.Tensor]) -> tf.Tensor:
+    def __get_own_emb(self, emb: tf.Tensor, all2all_args: Union[int, tf.Tensor], vec_info: tf.Tensor, is_back: bool) \
+            -> tf.Tensor:
         src_emb = emb
-        reshape_info = [all2all_args * self._rank_size, self._emb_size] if (self._use_static and not self.is_dp) else \
-            [-1, self._emb_size]
+        reshape_info = (
+            [all2all_args * self._rank_size, self._emb_size]
+            if (self._use_static and not self.is_dp)
+            else [-1, self._emb_size]
+        )
 
         # The single-server static shape cases and dp cases do not require alltoall.
         if (self._rank_size == 1 and self._use_static) or self.is_dp:
@@ -508,17 +638,38 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
 
         if self._use_static:
             emb_send_cnt = tf.constant([all2all_args * self._emb_size] * self._rank_size, dtype=tf.int64)
-            emb_send_offset = tf.constant([all2all_args * self._emb_size * i for i in range(self._rank_size)],
-                                          dtype=tf.int64)
-            src_emb = hccl_ops.all_to_all_v(send_data=emb,
-                                            send_counts=emb_send_cnt,
-                                            send_displacements=emb_send_offset,
-                                            recv_counts=emb_send_cnt,
-                                            recv_displacements=emb_send_offset)
+            emb_send_offset = tf.constant(
+                [all2all_args * self._emb_size * i for i in range(self._rank_size)], dtype=tf.int64
+            )
+            if ConfigInitializer.get_instance().use_lccl and is_back:
+                send_count_matrix = tf.constant(
+                    [[all2all_args * self._emb_size] * self._rank_size] * self._rank_size, dtype=tf.int64)
+                vec_info = tf.constant([1] * all2all_args * self._rank_size, dtype=tf.int32)
+                vec_info = tf.reshape(vec_info, [-1, 1])
+                src_emb = host_pipeline_ops.lccl_all_to_all(send_data=emb,
+                                                            send_count_matrix=send_count_matrix,
+                                                            shape_vec=vec_info,
+                                                            peer_mem=self.peer_mem,
+                                                            rank=self._rank_id,
+                                                            rank_size=self._rank_size,
+                                                            dim=self._emb_size)
+            else:
+                src_emb = hccl_ops.all_to_all_v(send_data=emb,
+                                                send_counts=emb_send_cnt,
+                                                send_displacements=emb_send_offset,
+                                                recv_counts=emb_send_cnt,
+                                                recv_displacements=emb_send_offset)
         else:
-            src_emb = hccl_ops.all_to_all_v_c(send_data=emb,
-                                              send_count_matrix=all2all_args,
-                                              rank=self._rank_id)
+            if ConfigInitializer.get_instance().use_lccl:
+                src_emb = host_pipeline_ops.lccl_all_to_all(send_data=emb,
+                                                            send_count_matrix=all2all_args,
+                                                            shape_vec=vec_info,
+                                                            peer_mem=self.peer_mem,
+                                                            rank=self._rank_id,
+                                                            rank_size=self._rank_size,
+                                                            dim=self._emb_size)
+            else:
+                src_emb = hccl_ops.all_to_all_v_c(send_data=emb, send_count_matrix=all2all_args, rank=self._rank_id)
 
         return tf.reshape(src_emb, reshape_info)
 
@@ -529,8 +680,9 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
             modify_graph_tensor_dict = kwargs.get("feature_spec_name_ids_dict")
             batch_tensor_dict = feature_spec_tensor_dict if not self._modify_graph else modify_graph_tensor_dict
             if batch_tensor_dict is None:
-                raise KeyError(f"The tensor dict of batch does not exist in kwargs, and modify graph "
-                               f"is `{self._modify_graph}`.")
+                raise KeyError(
+                    f"The tensor dict of batch does not exist in kwargs, and modify graph is `{self._modify_graph}`."
+                )
 
             feature_spec_tensor = batch_tensor_dict.get(feat_spec.index_key)
             modify_graph_tensor = batch_tensor_dict.get(feat_spec.name)
@@ -541,14 +693,23 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
             same_table_tensor_list.append(tensor)
         return same_table_tensor_list
 
-    def __split_lookup_result(self, same_table_feature_spec: list, tensor_split_list: list, tensor_list: list,
-                              lookup_result: tf.Tensor, is_training: bool):
+    def __split_lookup_result(
+        self,
+        same_table_feature_spec: list,
+        tensor_split_list: list,
+        tensor_list: list,
+        lookup_result: tf.Tensor,
+        is_training: bool,
+    ):
         lookup_result_split = tf.split(lookup_result, tensor_split_list)
         if len(lookup_result_split) != len(same_table_feature_spec) or (
-                not self._use_static and len(same_table_feature_spec) != len(tensor_list)):
-            raise RuntimeError(f"shape not match. len(lookup_result_split): {len(lookup_result_split)},"
-                               f"len(same_table_feature_spec): {len(same_table_feature_spec)}"
-                               f"len(tensor_list): {len(tensor_list)}")
+            not self._use_static and len(same_table_feature_spec) != len(tensor_list)
+        ):
+            raise RuntimeError(
+                f"shape not match. len(lookup_result_split): {len(lookup_result_split)},"
+                f"len(same_table_feature_spec): {len(same_table_feature_spec)}"
+                f"len(tensor_list): {len(tensor_list)}"
+            )
         for idx, (one_feature_spec, one_result) in enumerate(zip(same_table_feature_spec, lookup_result_split)):
             if one_feature_spec.name not in self._lookup_result:
                 self._lookup_result[one_feature_spec.name] = {}

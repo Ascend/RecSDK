@@ -33,12 +33,13 @@ protected:
     {
         int embSize = 1000;
         int extEmbSize = 2000;
-        struct EmbInfoParams embParam(string("test1"), 0, embSize, extEmbSize, true, true, false);
+        struct EmbInfoParams embParam(string("test1"), 0, embSize, extEmbSize, true, true, false, false);
         std::vector<size_t> vocabsize = {100, 100, 100};
         vector<EmbCache::InitializerInfo> initializeInfos = {};
         std::vector<std::string> ssdDataPath = {""};
+        std::vector<int64_t> paddingKeys = {1};
         vector<int> maxStep = {1000};
-        embInfo_ = EmbInfo(embParam, vocabsize, initializeInfos, ssdDataPath);
+        embInfo_ = EmbInfo(embParam, vocabsize, initializeInfos, ssdDataPath, paddingKeys);
         rankInfo_ = RankInfo(0, 0, 0, 1, maxStep);
     }
 
