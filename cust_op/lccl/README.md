@@ -14,11 +14,11 @@ LCAL（Low Latency Collective Acceleration Library）
 
 ├──cust_op
 ├────lccl
-├────── tf_test  			 # 单算子测试用例
-├────── emb_custom.json    	 # 算子原型配置
-├────── op_host    			 # LCCL算子Host侧实现
-├────── op_kernel  			 # LCCL算子Kernel侧实现
-├────── README.md  			 # LCCL算子说明文档
+├────── tf_test              # 单算子测试用例
+├────── emb_custom.json      # 算子原型配置
+├────── op_host              # LCCL算子Host侧实现
+├────── op_kernel            # LCCL算子Kernel侧实现
+├────── README.md            # LCCL算子说明文档
 ├────── run.sh               # LCCL算子安装脚本
 ├──src
 ├────lccl                    # 共享内存申请、元信息同步库
@@ -29,7 +29,7 @@ LCAL（Low Latency Collective Acceleration Library）
 ├────── tf_ops.h
 ├────── hybrid_dataset_ops.cpp
 ├────── CMakeLists.txt
-├────pybind				     # 共享内存申请的python接口绑定（GetPeerMem接口）
+├────pybind                  # 共享内存申请的python接口绑定（GetPeerMem接口）
 ├────── CMakeLists.txt
 └────── module_main.cpp
 ```
@@ -41,10 +41,11 @@ LCAL（Low Latency Collective Acceleration Library）
 软件：
 
 * CANN 8.0及以上配套软件，需安装kernels包
-* 安装Rec SDK 7.0及以上。或参考目录自行编译算子库、pybind库，参考单算子测试用例调用方式。
+* 安装Rec SDK 7.0及以上。或参考目录自行编译算子库、pybind库，参考单算子测试用例调用方式
 
 技术限制：
 
+* 对于Rec SDK，当前仅支持片上内存非扩容模式
 * AllToAll通信量小于2GB
 * 使用时确保卡独占，若中途有其他进程抢占卡会导致算子被阻塞，最终超时导致运行失败
 
@@ -67,7 +68,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 ```python
 from mx_rec.util.initialize import init
 
-# 详细使用指导请参考mxRec用户指南。
+# 详细使用指导请参考Rec SDK用户指南。
 init(use_lccl=True, ...)
 ```
 
@@ -272,8 +273,7 @@ class WideDeep:
 
     def forward(self):
         with tf.control_dependencies([self.lbl_hldr]):
-            all2all_result_ = ops_so.lccl_all_to_all(
-                ...)
+            all2all_result_ = ops_so.lccl_all_to_all(...)
             self.all2all_result = tf.reshape(all2all_result_, [-1, dim])
         return self.all2all_result
 ```
@@ -287,4 +287,12 @@ class WideDeep:
 ```shell
 ./run.sh 8 all2all.py
 ```
+主要日志：
+```shell
+# 表示当前已完成的执行步数和耗时
+current steps: ..., time cost(ms): ...
 
+# 精度测试通过
+all2all precision test pass
+```
+如果期望观察性能，可以调整`stop_steps`参数的值，观察日志中的`time cost`。
