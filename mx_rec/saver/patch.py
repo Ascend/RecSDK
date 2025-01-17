@@ -22,9 +22,10 @@
 import os
 import time
 import logging
-from typing import Optional
+from typing import Optional, Dict, Callable
 
 import tensorflow as tf
+from tensorflow_estimator.python.estimator.mode_keys import ModeKeys
 from tensorflow.compat.v1.summary import FileWriter
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.core.protobuf import trackable_object_graph_pb2
@@ -210,7 +211,7 @@ def check_characters_is_valid(characters: str) -> bool:
 
 @para_checker_decorator(check_option_list=[
     ("sess", ClassValidator, {"classes": (tf.compat.v1.Session, tf.compat.v1.train.MonitoredSession)}),
-    ("save_path", StringValidator, {"min_len": 1, "max_len": 150}, ["check_string_length"]),
+    ("save_path", StringValidator, {"min_len": 1, "max_len": MAX_INT32}, ["check_string_length"]),
     ("global_step", ClassValidator, {"classes": (int, np.int64, type(None))}),
     ("global_step", OptionalIntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
     ("latest_filename", ClassValidator, {"classes": (str, type(None))}),
@@ -303,7 +304,7 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
 
 @para_checker_decorator(check_option_list=[
     ("sess", ClassValidator, {"classes": (tf.compat.v1.Session, tf.compat.v1.train.MonitoredSession)}),
-    ("save_path", StringValidator, {"min_len": 1, "max_len": 150}, ["check_string_length"]),
+    ("save_path", StringValidator, {"min_len": 1, "max_len": MAX_INT32}, ["check_string_length"]),
 ])
 def restore(self, sess, save_path):
     if save_path is None:
@@ -729,3 +730,83 @@ def patch_for_checkpoint_saver_hook():
     checkpoint_saver_hook._save = save_checkpoint_saver_hook
     checkpoint_saver_hook.after_run = after_run_checkpoint_saver_hook
     logger.info("Class 'tf.compat.v1.train.CheckpointSaverHook' has been patched.")
+
+
+def _export_all_saved_models(
+    self,
+    export_dir_base: str,
+    input_receiver_fn_map: Dict[str, Callable],
+    assets_extra: Optional[Dict[str, str]] = None,
+    as_text: bool = False,
+    checkpoint_path: Optional[str] = None,
+    strip_default_attrs: bool = True,
+):
+    """Exports multiple modes in the model function to a SavedModel."""
+
+    def _locate_latest_checkpoint() -> str:
+        if tf.__version__.startswith("1"):
+            return checkpoint_management.latest_checkpoint(self._model_dir)
+        return self.latest_checkpoint()
+
+    def _process_warm_start() -> str:
+        if not self._warm_start_settings:
+            raise ValueError("Couldn't find trained model at {}.".format(self._model_dir))
+
+        if not tf.compat.v1.gfile.IsDirectory(self._warm_start_settings.ckpt_to_initialize_from):
+            return self._warm_start_settings.ckpt_to_initialize_from
+
+        if tf.__version__.startswith("1"):
+            return checkpoint_management.latest_checkpoint(checkpoint_path)
+        return tf.train.latest_checkpoint(checkpoint_path)
+
+    def _process_meta_graph():
+        save_variables = True
+        for mode in [ModeKeys.TRAIN, ModeKeys.EVAL, ModeKeys.PREDICT]:
+            if not input_receiver_fn_map.get(mode):
+                continue
+
+            ConfigInitializer.get_instance().train_params_config.experimental_mode = mode
+            self._add_meta_graph_for_mode(
+                builder,
+                input_receiver_fn_map,
+                checkpoint_path,
+                save_variables,
+                mode=mode,
+                strip_default_attrs=strip_default_attrs,
+            )
+            save_variables = False
+
+        logger.info(
+            "The experimental mode is %s.", ConfigInitializer.get_instance().train_params_config.experimental_mode
+        )
+        if not save_variables:
+            return
+        raise ValueError("No valid modes for exporting found. Got {}.".format(input_receiver_fn_map.keys()))
+
+    with context.graph_mode():
+        if not checkpoint_path:
+            checkpoint_path = _locate_latest_checkpoint()
+        if not checkpoint_path:
+            checkpoint_path = _process_warm_start()
+
+        export_dir_base = tf.compat.as_bytes(export_dir_base)
+        builder = tf.compat.v1.saved_model.Builder(export_dir_base)
+
+        _process_meta_graph()
+
+        builder.save(as_text)
+
+        if assets_extra:
+            assets_extra_path = os.path.join(tf.compat.as_bytes(export_dir_base), tf.compat.as_bytes("assets.extra"))
+            for dest_relative, source in assets_extra.items():
+                dest_absolute = os.path.join(tf.compat.as_bytes(assets_extra_path), tf.compat.as_bytes(dest_relative))
+                dest_path = os.path.dirname(dest_absolute)
+                tf.compat.v1.gfile.MakeDirs(dest_path)
+                tf.compat.v1.gfile.Copy(source, dest_absolute)
+
+        return export_dir_base
+
+
+def patch_for_export_saved_model():
+    tf.compat.v1.estimator.Estimator._export_all_saved_models = _export_all_saved_models
+    logger.info("Function 'tf.compat.v1.estimator.Estimator._export_all_saved_models' has been patched.")

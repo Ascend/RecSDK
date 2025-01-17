@@ -93,6 +93,7 @@ export USE_TIMESTAMP=0          # 0：关闭特征准入淘汰；1：开启特�
 export USE_DP=0                 # 0：关闭DP；1：开启user table DP
 export USE_ONE_SHOT=0           # 0：MakeIterator；1：OneShotIterator
 export USE_TUPLE_DATA_FORMAT=0  # 0：Dict数据格式；1：Tuple数据格式；限自动改图模式使能。
+export USE_EXPORT_SAVED_MODEL=0 # 0：正常保存；1：调用export_saved_model接口保存。
 ################# 性能调优相关 ####################
 export KEY_PROCESS_THREAD_NUM=6 #default 6, max 10
 export FAST_UNIQUE=0   #if use fast unique

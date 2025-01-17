@@ -46,6 +46,7 @@ from mx_rec.constants.constants import (
     UINT32_BYTES,
 )
 from mx_rec.saver.constants import FILE_BUFFER_SIZE
+from mx_rec.saver.utils import check_files_in_directories, get_optimizer_dict_by_table_name
 from mx_rec.util.communication.hccl_ops import (
     get_rank_id,
     get_rank_size,
@@ -65,11 +66,14 @@ from mx_rec.util.global_env_conf import global_env
 from mx_rec.util.log import logger
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.tf_version_adapter import npu_ops
+from mx_rec.graph.merge_lookup import do_merge_lookup
+from mx_rec.graph.modifier import replace_anchor_for_ddr_ssd, change_ext_emb_size_by_opt
 
 SAVE_SPARSE_PATH_PREFIX = "sparse"
 SAVE_DELTA_SPARSE_PATH_PREFIX = "delta-sparse"
 GLOBAL_STEP_STR = "global_step"
 SSD_SAVE_PATH_PREFIX = "ssd_sparse_model_rank_"
+SSD_SAVE_FILE_PATTERNS = ["*.meta.*"]
 SSD_DATA_FILE_MIN_SIZE = 0
 
 
@@ -132,6 +136,9 @@ class Saver(object):
             raise RuntimeError(f"make dir {table_dir} for saving sparse table failed!") from err
 
     def build(self):
+        # If the 'export_saved_model' interface is called, the graph modification is required.
+        self._modify_graph_for_export_model()
+
         if self.var_list is None:
             self.var_list = []
             logger.debug("optimizer collection name: %s",
@@ -292,7 +299,7 @@ class Saver(object):
         table_dir = os.path.join(root_dir, table_name)
         table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance_by_name(table_name)
         merge_type_list = get_merge_type_list(table_dir)
-        
+
         if not check_file_system_is_hdfs(root_dir):
             dir_validator = DirectoryValidator("root_dir", root_dir)
             dir_validator.check_not_soft_link()
@@ -402,7 +409,7 @@ class Saver(object):
                 swap_out_pos = swap_out_pos[:swap_out_len]
 
             table = [var]
-            optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(table_name)
+            optimizer = get_optimizer_dict_by_table_name(table_name)
             if optimizer is not None:
                 for slots in optimizer.values():
                     table += list(slots.values())
@@ -421,7 +428,8 @@ class Saver(object):
                 logger.info("Sending embedding to host, table:%s, sync_cnt:%d, is_sync_remain:%d.",
                             table_name, sync_cnt, is_sync_remain)
             logger.info("Finish sending embedding to host, table:%s.", table_name)
-        self.config_instance.hybrid_manager_config.save_host_data(root_dir, save_delta)
+
+        self._save_host_data(root_dir, save_delta, sess)
 
     def _get_valid_dict_data(self, dump_data_dict, table_name):
         host_data = self.config_instance.hybrid_manager_config.get_host_data(table_name)
@@ -439,7 +447,7 @@ class Saver(object):
             with tf.compat.v1.variable_scope(table_name):
                 sub_dict = self.save_op_dict[table_name]
                 sub_dict[DataName.EMBEDDING.value] = var
-                optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(table_name)
+                optimizer = get_optimizer_dict_by_table_name(table_name)
                 if optimizer:
                     sub_dict["optimizer"] = optimizer
 
@@ -456,8 +464,7 @@ class Saver(object):
                                              name=DataName.EMBEDDING.value)
                 assign_op = var.assign(variable)
                 self.restore_fetch_dict[table_instance.table_name] = [assign_op]
-                optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(
-                    table_instance.table_name)
+                optimizer = get_optimizer_dict_by_table_name(table_instance.table_name)
                 if optimizer:
                     self._build_optimizer_restore(sub_placeholder_dict, table_instance, optimizer)
 
@@ -513,6 +520,47 @@ class Saver(object):
                                                 restore_feed_dict, table_name, load_offset)
 
         sess.run(restore_fetch_list, feed_dict=restore_feed_dict)
+
+    def _modify_graph_for_export_model(self):
+        experimental_mode = self.config_instance.train_params_config.experimental_mode
+        if experimental_mode is None or not self.config_instance.modify_graph:
+            return
+
+        is_training = experimental_mode == tf.compat.v1.estimator.ModeKeys.TRAIN
+        do_merge_lookup(is_train=is_training)
+
+        slot_num = 0
+        optimizer_ins = self.config_instance.optimizer_config.optimizer_instance
+        if optimizer_ins is not None:
+            change_ext_emb_size_by_opt(optimizer_ins)
+            slot_num = optimizer_ins.slot_num
+        channel_id = 0 if is_training else 1
+        replace_anchor_for_ddr_ssd(tf.compat.v1.get_default_graph(), slot_num, channel_id)
+
+    def _save_host_data(self, root_dir: str, save_delta: bool, sess: tf.compat.v1.Session):
+        if ConfigInitializer.get_instance().train_params_config.experimental_mode is None:
+            self.config_instance.hybrid_manager_config.save_host_data(root_dir, save_delta)
+            return
+
+        # In the export saved model mode, if the SSD ckpt has already been saved, it will not be saved again.
+        all_saved = True
+        global_step = sess.run(tf.compat.v1.train.get_global_step())
+        if global_step is None:
+            raise ValueError("the global step cannot be None")
+        ssd_save_file_patterns = [pattern + str(global_step) for pattern in SSD_SAVE_FILE_PATTERNS]
+        logger.info("The patterns of the ssd file is: %s.", ssd_save_file_patterns)
+        for var in self.var_list:
+            table_instance = self.config_instance.sparse_embed_config.get_table_instance(var)
+            if table_instance.ssd_vocabulary_size == 0:
+                continue
+            for ssd_path in table_instance.ssd_data_path:
+                data_path = os.path.join(ssd_path, SSD_SAVE_PATH_PREFIX + "*")
+                is_exists = check_files_in_directories(data_path, ssd_save_file_patterns)
+                all_saved &= is_exists
+
+        is_save_l3_storage = not all_saved
+        logger.info("The `is_save_l3_storage` is %s.", is_save_l3_storage)
+        self.config_instance.hybrid_manager_config.save_host_data(root_dir, save_delta, is_save_l3_storage)
 
 
 class NameDescriptor:
@@ -791,7 +839,7 @@ def merge_hdfs_file(upper_dir: str):
 
 def merge_local_file(upper_dir: str) -> None:
     data_files = [file for file in os.listdir(upper_dir) if file.startswith("slice_")]
-    data_files = sorted(data_files, key=os.path.basename)    
+    data_files = sorted(data_files, key=os.path.basename)
     outfile_path = os.path.join(upper_dir, "slice.data")
     outfile = os.fdopen(os.open(outfile_path, SAVE_FILE_FLAG, SAVE_FILE_MODE), "wb", buffering=FILE_BUFFER_SIZE)
     for file in data_files:
@@ -876,7 +924,7 @@ def update_model_index(save_dir: str, model_index: Dict[str, Union[str, int]]):
         with tf.io.gfile.GFile(model_index_file, "r") as f:
             model_index_list = json.load(f)
     model_index_list.append(model_index)
-    
+
     if check_file_system_is_hdfs(model_index_file):
         with tf.io.gfile.GFile(model_index_file, "w") as f:
             json.dump(model_index_list, f, ensure_ascii=False, separators=(",", ": "), indent=4)
@@ -1022,7 +1070,7 @@ def write_base_table_to_file(save_dir: str, base_table: dict):
             dir_validator.check()
         except ValueError as e:
             raise ValueError(f"save_dir:{save_dir} can't be soft link") from e
-    
+
     for table_name, table in base_table.items():
         for k, v in table.items():
             writing_path = os.path.join(save_dir, table_name, k)
@@ -1033,7 +1081,7 @@ def write_base_table_to_file(save_dir: str, base_table: dict):
                     os.makedirs(writing_path, SAVE_DIR_MODE, exist_ok=True)
             except Exception as err:
                 raise RuntimeError(f"Create dir {writing_path} for writing data failed!") from err
-            
+
             data_file, attribute_file = "slice.data", "slice.attribute"
             target_data_dir = os.path.join(writing_path, data_file)
             target_attribute_dir = os.path.join(writing_path, attribute_file)

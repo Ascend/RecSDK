@@ -95,6 +95,7 @@ class MockTrainParamsConfig:
             "ascend_global_hashtable_collection", ASCEND_GLOBAL_HASHTABLE_COLLECTION
         )
         self.is_graph_modify_hook_running = kwargs.get("is_graph_modify_hook_running", True)
+        self.experimental_mode = kwargs.get("experimental_mode")
         self.bool_gauge_set = kwargs.get("bool_gauge_set", [])
         self.iterator_type = kwargs.get("iterator_type", "")
         self.sparse_dir = kwargs.get("sparse_dir", "")

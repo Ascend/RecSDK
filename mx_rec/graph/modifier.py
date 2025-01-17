@@ -216,44 +216,13 @@ class _GraphModifier:
             slot_num = 0
         else:
             # DDR和扩容需要在获取优化器后重置ext
-            _change_ext_emb_size_by_opt(optimizer_instance)
+            change_ext_emb_size_by_opt(optimizer_instance)
             slot_num = optimizer_instance.slot_num
 
         for _, record in get_next_op_map.items():
             is_training = record.is_training
             channel_id = 0 if is_training else 1
-
-            swap_args = SwapArgs()
-            sparse_variables = self._full_graph.get_collection(
-                ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection
-            )
-
-            for each_var in sparse_variables:
-                table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(each_var)
-                if table_instance.is_hbm:
-                    continue
-                variable_and_slot_list = _get_variable_and_slot_list(
-                    each_var, slot_num, table_instance.table_name, channel_id
-                )
-
-                swap_args_dict = swap_args.swap_config_dict[table_instance.table_name][channel_id]
-                swap_op = _get_swap_info(
-                    table_instance, variable_and_slot_list, swap_args_dict["swap_info"], channel_id
-                )
-                # gather for id_offset need to be executed after swap_op
-                swap_control_dict = swap_args.swap_control_dict[table_instance.table_name][channel_id]
-                if SwapDataType.CONTROL_OPS.value not in swap_control_dict:
-                    raise ValueError("swap control missing key [control_ops] in modify_graph_for_asc")
-                control_ops = swap_control_dict[SwapDataType.CONTROL_OPS.value]
-                utils.replace_anchor_control(self._full_graph, control_ops, swap_op)
-
-                if is_training and slot_num > 1:
-                    # gather for slot need to be executed after swap_op
-                    slot_control_dict = swap_args.slot_control_dict[table_instance.variable]
-                    if SwapDataType.CONTROL_OPS.value not in slot_control_dict:
-                        raise ValueError("slot control missing key [control_ops] in modify_graph_for_asc")
-                    slot_control_ops = slot_control_dict[SwapDataType.CONTROL_OPS.value]
-                    utils.replace_anchor_control(self._full_graph, slot_control_ops, swap_op)
+            replace_anchor_for_ddr_ssd(self._full_graph, slot_num, channel_id)
 
     def _generate_get_next_op_specs(self, cutting_point_list: List[Tensor]) -> Dict[Tensor, _AnchorRecord]:
         get_next_op_map = defaultdict(dict)
@@ -633,7 +602,7 @@ def _get_timestamp_index(graph: Graph, get_next_op: Operation, is_training: bool
     return timestamp_index
 
 
-def _change_ext_emb_size_by_opt(optimizer):
+def change_ext_emb_size_by_opt(optimizer: tf.compat.v1.train.Optimizer):
     for _, table_instance in ConfigInitializer.get_instance().sparse_embed_config.table_instance_dict.items():
         # When dynamic expansion mode, ext_emb_size is set by optimizer
         if ConfigInitializer.get_instance().use_dynamic_expansion or not table_instance.is_hbm:
@@ -657,7 +626,9 @@ def _get_variable_and_slot_list(each_var, slot_num, table_name, channel_id):
             "before modify_graph, please check whether apply_gradients is performed"
         )
 
-    # predict不需要传优化器，但是如果客户创建了优化器，ddr模式加载的是维度ext_size的emb用作换入换出，所以需要给slot零值占位
+    # For eval or predict, there is no need to pass an optimizer. However, if the customer has created an optimizer,
+    # in DDR/SSD mode, the loaded embedding with dimension ext_size is used for swapping in and out. Therefore,
+    # placeholders need to be provided for the slots.
     if optimizer is None and channel_id == EVAL_CHANNEL_ID:
         slot_place_holder = tf.ones_like(each_var)
         for _ in range(slot_num):
@@ -770,3 +741,33 @@ def _get_new_batch_tensor(new_batch: Union[List, Tuple, Dict, tf.Tensor]) -> tf.
         raise ValueError(f"{new_batch} is not {AnchorIteratorOp.ITERATOR_GET_NEXT.value} tensor.")
 
     return new_batch
+
+
+def replace_anchor_for_ddr_ssd(graph: tf.Graph, slot_num: int, channel_id: int):
+    swap_args = SwapArgs()
+    sparse_variables = graph.get_collection(
+        ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection
+    )
+
+    for each_var in sparse_variables:
+        table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(each_var)
+        if table_instance.is_hbm:
+            continue
+
+        variable_and_slot_list = _get_variable_and_slot_list(each_var, slot_num, table_instance.table_name, channel_id)
+        swap_args_dict = swap_args.swap_config_dict[table_instance.table_name][channel_id]
+        swap_op = _get_swap_info(table_instance, variable_and_slot_list, swap_args_dict["swap_info"], channel_id)
+        # Gather for id_offset need to be executed after swap_op.
+        swap_control_dict = swap_args.swap_control_dict[table_instance.table_name][channel_id]
+        if SwapDataType.CONTROL_OPS.value not in swap_control_dict:
+            raise ValueError("swap control missing key [control_ops] in modify_graph_for_asc")
+        control_ops = swap_control_dict[SwapDataType.CONTROL_OPS.value]
+        utils.replace_anchor_control(graph, control_ops, swap_op)
+
+        if channel_id == TRAIN_CHANNEL_ID and slot_num > 1:
+            # Gather for slot need to be executed after swap_op.
+            slot_control_dict = swap_args.slot_control_dict[table_instance.variable]
+            if SwapDataType.CONTROL_OPS.value not in slot_control_dict:
+                raise ValueError("slot control missing key [control_ops] in modify_graph_for_asc")
+            slot_control_ops = slot_control_dict[SwapDataType.CONTROL_OPS.value]
+            utils.replace_anchor_control(graph, slot_control_ops, swap_op)
