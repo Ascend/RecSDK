@@ -121,18 +121,19 @@ int64_t EmbeddingMgmt::GetCapacity(const std::string &name)
 }
 
 void EmbeddingMgmt::Load(const string& name, const string& filePath,
-                         map<string, unordered_set<emb_cache_key_t>>& trainKeySet)
+                         map<string, unordered_set<emb_cache_key_t>>& trainKeySet, vector<string> warmStartTables)
 {
     embeddings[name]->SetFileSystemPtr(filePath);
-    embeddings[name]->Load(filePath, trainKeySet);
+    embeddings[name]->Load(filePath, trainKeySet, warmStartTables);
     embeddings[name]->UnsetFileSystemPtr();
 }
 
-void EmbeddingMgmt::Load(const string& filePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet)
+void EmbeddingMgmt::Load(const string& filePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet,
+                         vector<string> warmStartTables)
 {
     for (auto& tablePair: embeddings) {
         tablePair.second->SetFileSystemPtr(filePath);
-        tablePair.second->Load(filePath, trainKeySet);
+        tablePair.second->Load(filePath, trainKeySet, warmStartTables);
         tablePair.second->UnsetFileSystemPtr();
     }
 }

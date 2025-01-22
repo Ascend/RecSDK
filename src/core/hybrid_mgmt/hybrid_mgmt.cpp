@@ -251,10 +251,10 @@ bool HybridMgmt::Load(const string& loadPath, vector<string> warmStartTables)
     BackUpTrainStatus();
 
     if (warmStartTables.size() == 0) {
-        EmbeddingMgmt::Instance()->Load(loadPath, trainKeysSet);
+        EmbeddingMgmt::Instance()->Load(loadPath, trainKeysSet, warmStartTables);
     } else {
         for (auto& tableName : warmStartTables) {
-            EmbeddingMgmt::Instance()->Load(tableName, loadPath, trainKeysSet);
+            EmbeddingMgmt::Instance()->Load(tableName, loadPath, trainKeysSet, warmStartTables);
         }
     }
 
