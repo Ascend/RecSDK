@@ -165,7 +165,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
 /// 保存模型
 /// \param savePath 保存路径
 /// \return
-void HybridMgmt::Save(const string& savePath, bool saveDelta)
+void HybridMgmt::Save(const string& savePath, bool saveDelta, bool isSaveL3Storage)
 {
 #ifndef GTEST
     if (!isInitialized) {
@@ -194,7 +194,7 @@ void HybridMgmt::Save(const string& savePath, bool saveDelta)
         offsetMapToSend = EmbeddingMgmt::Instance()->GetDeviceOffsets();
     }
 
-    if (isL3StorageEnabled) {
+    if (isL3StorageEnabled && isSaveL3Storage) {
         LOG_DEBUG(MGMT + "start save L3Storage data");
         auto step = GetStepFromPath(savePath);
         if (saveDelta) {

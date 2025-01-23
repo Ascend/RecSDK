@@ -36,11 +36,13 @@ try:
     ENABLE_SLICER_TEST = bool(int(os.getenv("ENABLE_SLICER_TEST", 0)))
     USE_TUPLE_DATA_FORMAT = bool(int(os.getenv("USE_TUPLE_DATA_FORMAT", 0)))
     USE_DETERMINISTIC = bool(int(os.getenv("USE_DETERMINISTIC", 0)))
+    USE_EXPORT_SAVED_MODEL = bool(int(os.getenv("USE_EXPORT_SAVED_MODEL", 0)))
 except ValueError as err:
     raise ValueError(
         "please correctly config USE_DYNAMIC or USE_DYNAMIC_EXPANSION or "
         "USE_MULTI_LOOKUP or USE_MODIFY_GRAPH or USE_TIMESTAMP or USE_ONE_SHOT or USE_DETERMINISTIC"
-        "or USE_DP or USE_TUPLE_DATA_FORMAT only integer is supported, 0 is disable, none 0 is enable,."
+        "or USE_DP or USE_TUPLE_DATA_FORMAT or USE_EXPORT_SAVED_MODEL only integer is supported, 0 is disable, "
+        "none 0 is enable"
     ) from err
 
 

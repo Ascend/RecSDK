@@ -50,13 +50,15 @@ class TestSaver(unittest.TestCase):
                          get_rank_size=mock.MagicMock(return_value=1),
                          get_local_rank_size=mock.MagicMock(return_value=1))
     @mock.patch("mx_rec.saver.saver.ConfigInitializer")
-    def test_save_and_load_is_consistent(self, saver_config_initializer):
+    @mock.patch("mx_rec.saver.utils.ConfigInitializer")
+    def test_save_and_load_is_consistent(self, saver_config_initializer, utils_config_initializer):
         mock_config_initializer = \
             MockConfigInitializer(var=table_instance, asc_manager=True,
                                   use_dynamic_expansion=False,
                                   host_data=[0, 1, 4, 6, 8],
                                   ascend_global_hashtable_collection=ASCEND_GLOBAL_HASHTABLE_COLLECTION)
         saver_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+        utils_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
         self.table_name = "test_table"
         self.optim_m_name = "test_table/LazyAdam/m"

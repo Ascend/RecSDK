@@ -35,6 +35,8 @@ from mx_rec.constants.constants import (
     ASCEND_TIMESTAMP,
     MAX_WHILE_SIZE,
     LIBREC_EOS_OPS_SO,
+    TRAIN_CHANNEL_ID,
+    EVAL_CHANNEL_ID,
 )
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.asc.helper import get_asc_insert_func
@@ -75,8 +77,8 @@ class GraphModifierHook(tf.estimator.SessionRunHook):
 
         self._iterator_type = ConfigInitializer.get_instance().train_params_config.iterator_type
         if self._modify_graph and self._iterator_type not in (
-                AnchorIteratorOp.MAKE_ITERATOR.value,
-                AnchorIteratorOp.ONE_SHOT_ITERATOR.value,
+            AnchorIteratorOp.MAKE_ITERATOR.value,
+            AnchorIteratorOp.ONE_SHOT_ITERATOR.value,
         ):
             raise ValueError("the value of iterator type should be like `MakeIterator` or `OneShotIterator`.")
         logger.debug("In GraphModifierHook, iterator type is `%s`.", self._iterator_type)
@@ -114,10 +116,10 @@ class _GraphModifier:
 
     @staticmethod
     def _get_preprocessing_map_func(
-            graph_def: GraphDef,
-            input_names: List[str],
-            output_names: List[str],
-            pipeline_input_indexes: List[int] = None,
+        graph_def: GraphDef,
+        input_names: List[str],
+        output_names: List[str],
+        pipeline_input_indexes: List[int] = None,
     ) -> Callable:
         input_names = check_and_force_list(input_names, str)
         output_names = check_and_force_list(output_names, str)
@@ -214,43 +216,13 @@ class _GraphModifier:
             slot_num = 0
         else:
             # DDR和扩容需要在获取优化器后重置ext
-            _change_ext_emb_size_by_opt(optimizer_instance)
+            change_ext_emb_size_by_opt(optimizer_instance)
             slot_num = optimizer_instance.slot_num
 
         for _, record in get_next_op_map.items():
             is_training = record.is_training
             channel_id = 0 if is_training else 1
-
-            swap_args = SwapArgs()
-            sparse_variables = self._full_graph.get_collection(
-                ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection
-            )
-
-            for each_var in sparse_variables:
-                table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(each_var)
-                if table_instance.is_hbm:
-                    continue
-                variable_and_slot_list = _get_variable_and_slot_list(
-                    each_var, slot_num, table_instance.table_name, channel_id
-                )
-
-                swap_args_dict = swap_args.swap_config_dict[table_instance.table_name][channel_id]
-                swap_op = _get_swap_info(
-                    table_instance, variable_and_slot_list, swap_args_dict["swap_info"], channel_id)
-                # gather for id_offset need to be executed after swap_op
-                swap_control_dict = swap_args.swap_control_dict[table_instance.table_name][channel_id]
-                if SwapDataType.CONTROL_OPS.value not in swap_control_dict:
-                    raise ValueError("swap control missing key [control_ops] in modify_graph_for_asc")
-                control_ops = swap_control_dict[SwapDataType.CONTROL_OPS.value]
-                utils.replace_anchor_control(self._full_graph, control_ops, swap_op)
-
-                if is_training and slot_num > 1:
-                    # gather for slot need to be executed after swap_op
-                    slot_control_dict = swap_args.slot_control_dict[table_instance.variable]
-                    if SwapDataType.CONTROL_OPS.value not in slot_control_dict:
-                        raise ValueError("slot control missing key [control_ops] in modify_graph_for_asc")
-                    slot_control_ops = slot_control_dict[SwapDataType.CONTROL_OPS.value]
-                    utils.replace_anchor_control(self._full_graph, slot_control_ops, swap_op)
+            replace_anchor_for_ddr_ssd(self._full_graph, slot_num, channel_id)
 
     def _generate_get_next_op_specs(self, cutting_point_list: List[Tensor]) -> Dict[Tensor, _AnchorRecord]:
         get_next_op_map = defaultdict(dict)
@@ -284,7 +256,7 @@ class _GraphModifier:
         return get_next_op_map
 
     def _get_sub_graph(
-            self, input_tensors: List[Tensor], output_tensors: List[Tensor]
+        self, input_tensors: List[Tensor], output_tensors: List[Tensor]
     ) -> Tuple[GraphDef, List[str], List[str]]:
         input_tensors = check_and_force_list(input_tensors, tf.Tensor)
         output_tensors = check_and_force_list(output_tensors, tf.Tensor)
@@ -369,11 +341,11 @@ class _GraphModifier:
         return src_dataset
 
     def _get_tgt_dataset(
-            self,
-            src_dataset: DatasetV1Adapter,
-            sub_cutting_point_list: List[Tensor],
-            record: _AnchorRecord,
-            prefetch: int = 10,
+        self,
+        src_dataset: DatasetV1Adapter,
+        sub_cutting_point_list: List[Tensor],
+        record: _AnchorRecord,
+        prefetch: int = 10,
     ) -> DatasetV1Adapter:
         """
         根据原始数据集生成新的数据集实例.
@@ -429,7 +401,7 @@ class _GraphModifier:
         return tgt_dataset
 
     def _update_iterator_getnext(
-            self, get_next_op: Operation, tgt_dataset: DatasetV1Adapter, is_training: bool, record: _AnchorRecord
+        self, get_next_op: Operation, tgt_dataset: DatasetV1Adapter, is_training: bool, record: _AnchorRecord
     ) -> None:
         """
         用新数据集中的`IteratorGetNext`算子替换计算图中原始数据集的`IteratorGetNext`算子，即用新数据集的batch替换原始数据集的batch.
@@ -473,10 +445,10 @@ class _GraphModifier:
         self._update_input_tensor_with_new_batch(record.replacement_spec, new_get_next_op_name, new_batch)
 
     def _update_input_tensor_with_new_batch(
-            self,
-            replacement_specs: DefaultDict[Tensor, List[Tuple[int, Operation]]],
-            new_get_next_op_name: str,
-            new_batch: Dict[str, Tensor],
+        self,
+        replacement_specs: DefaultDict[Tensor, List[Tuple[int, Operation]]],
+        new_get_next_op_name: str,
+        new_batch: Dict[str, Tensor],
     ) -> None:
         """
         用新batch中的IteratorGetNext替换计算图中老batch的IteratorGetNext.
@@ -523,11 +495,11 @@ def modify_graph_and_start_emb_cache(full_graph: Graph = None, dump_graph: bool 
 
 
 def _get_input_index_list(
-        cutting_point_list: List[Tensor],
-        replacement_specs: DefaultDict[Tensor, List[Tuple[int, Operation]]],
-        mapping_name_list: List[str],
-        base_count: int,
-        timestamp_index: int = None,
+    cutting_point_list: List[Tensor],
+    replacement_specs: DefaultDict[Tensor, List[Tuple[int, Operation]]],
+    mapping_name_list: List[str],
+    base_count: int,
+    timestamp_index: int = None,
 ) -> List[int]:
     input_index_list = []
     for cutting_point in cutting_point_list:
@@ -547,7 +519,7 @@ def _get_input_index_list(
 
 
 def _get_passing_tensor_list(
-        src_tensors: List[Tensor], target_op: Operation
+    src_tensors: List[Tensor], target_op: Operation
 ) -> Tuple[List[Tensor], List[int], List[Tensor]]:
     def get_passing_tensors(src_tensor):
         passing_tensors = []
@@ -630,7 +602,7 @@ def _get_timestamp_index(graph: Graph, get_next_op: Operation, is_training: bool
     return timestamp_index
 
 
-def _change_ext_emb_size_by_opt(optimizer):
+def change_ext_emb_size_by_opt(optimizer: tf.compat.v1.train.Optimizer):
     for _, table_instance in ConfigInitializer.get_instance().sparse_embed_config.table_instance_dict.items():
         # When dynamic expansion mode, ext_emb_size is set by optimizer
         if ConfigInitializer.get_instance().use_dynamic_expansion or not table_instance.is_hbm:
@@ -644,16 +616,21 @@ def _get_variable_and_slot_list(each_var, slot_num, table_name, channel_id):
         return variable_and_slot_list
 
     # 通过apply_gradients创建optimizer
-    optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(table_name)
-    if optimizer is None and channel_id == 0:
+    is_training = True if channel_id == TRAIN_CHANNEL_ID else False
+    optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(
+        table_name, is_training=is_training
+    )
+    if optimizer is None and channel_id == TRAIN_CHANNEL_ID:
         raise RuntimeError(
             "In training mode, table_instance should have been set_optimizer_for_table "
             "before modify_graph, please check whether apply_gradients is performed"
         )
 
-    # predict不需要传优化器，但是如果客户创建了优化器，ddr模式加载的是维度ext_size的emb用作换入换出，所以需要给slot零值占位
-    if optimizer is None and channel_id == 1:
-        slot_place_holder = tf.zeros_like(each_var)
+    # For eval or predict, there is no need to pass an optimizer. However, if the customer has created an optimizer,
+    # in DDR/SSD mode, the loaded embedding with dimension ext_size is used for swapping in and out. Therefore,
+    # placeholders need to be provided for the slots.
+    if optimizer is None and channel_id == EVAL_CHANNEL_ID:
+        slot_place_holder = tf.ones_like(each_var)
         for _ in range(slot_num):
             variable_and_slot_list.append(slot_place_holder)
     else:
@@ -665,8 +642,12 @@ def _get_variable_and_slot_list(each_var, slot_num, table_name, channel_id):
     return variable_and_slot_list
 
 
-def _get_swap_info(table_instance: BaseSparseEmbedding, variable_and_slot_list: list,
-                   swap_info: SwapInfo, channel_id: int) -> list:
+def _get_swap_info(
+    table_instance: BaseSparseEmbedding,
+    variable_and_slot_list: List[tf.Variable],
+    swap_info: SwapInfo,
+    channel_id: int,
+) -> List[tf.Operation]:
     """
     Get swap op.
     :param table_instance: BaseSparseEmbedding
@@ -684,42 +665,51 @@ def _get_swap_info(table_instance: BaseSparseEmbedding, variable_and_slot_list: 
     use_static = ConfigInitializer.get_instance().use_static
     max_lookup_vec_size = None
     if use_static:
-        max_lookup_vec_size = table_instance.send_count * table_instance.rank_size if not table_instance.is_dp else (
-            table_instance.send_count)
+        max_lookup_vec_size = (
+            table_instance.send_count * table_instance.rank_size
+            if not table_instance.is_dp
+            else table_instance.send_count
+        )
 
     with tf.compat.v1.variable_scope("h2d_emb"):
-        logger.debug('Channel %s_h2d_%s was built for getnext', table_instance.table_name, channel_id)
+        logger.debug("Channel %s_h2d_%s was built for getnext.", table_instance.table_name, channel_id)
         h2d_emb = npu_ops.gen_npu_ops.get_next(
             output_types=[tf.float32],
             output_shapes=[[max_lookup_vec_size, table_instance.ext_emb_size]],
-            channel_name=f'{table_instance.table_name}_h2d_{channel_id}')[0]
+            channel_name=f"{table_instance.table_name}_h2d_{channel_id}",
+        )[0]
 
     logger.debug("h2d_emb shape: %s", h2d_emb)
 
     swap_out_pos = swap_info.swap_out_pos
     swap_in_pos = swap_info.swap_in_pos
     if use_static:
-        swap_out_pos = swap_out_pos[:swap_info.swap_out_len]
-        h2d_emb = h2d_emb[:swap_info.swap_in_len, :]
-        swap_in_pos = swap_in_pos[:swap_info.swap_in_len]
+        swap_out_pos = swap_out_pos[: swap_info.swap_out_len]
+        h2d_emb = h2d_emb[: swap_info.swap_in_len, :]
+        swap_in_pos = swap_in_pos[: swap_info.swap_in_len]
     swap_outs = [tf.gather(one_table, swap_out_pos) for one_table in variable_and_slot_list]
     swap_out = tf.concat(swap_outs, axis=1)
-    logger.debug('Channel %s_d2h_%s was built for op outfeed.', table_instance.table_name, channel_id)
+    logger.debug("Channel %s_d2h_%s was built for op outfeed.", table_instance.table_name, channel_id)
 
     swap_out_op = npu_ops.outfeed_enqueue_op(
-        channel_name=f'{table_instance.table_name}_d2h_{channel_id}', inputs=[swap_out])
+        channel_name=f"{table_instance.table_name}_d2h_{channel_id}", inputs=[swap_out]
+    )
     with tf.control_dependencies([swap_out_op]):
         nd_swap_pos = tf.expand_dims(swap_in_pos, 1)
         var_num = len(variable_and_slot_list)
         h2d_emb_split = tf.split(h2d_emb, var_num, axis=1)
 
+        is_training = True if channel_id == TRAIN_CHANNEL_ID else False
         optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(
-            table_instance.table_name)
-        if optimizer is None and channel_id == 1:
+            table_instance.table_name, is_training=is_training
+        )
+        if optimizer is None and channel_id == EVAL_CHANNEL_ID:
             swap_in_op = [tf.compat.v1.scatter_nd_update(variable_and_slot_list[0], nd_swap_pos, h2d_emb_split[0])]
         else:
-            swap_in_op = [tf.compat.v1.scatter_nd_update(variable_and_slot_list[i], nd_swap_pos, h2d_emb_split[i])
-                          for i in range(var_num)]
+            swap_in_op = [
+                tf.compat.v1.scatter_nd_update(variable_and_slot_list[i], nd_swap_pos, h2d_emb_split[i])
+                for i in range(var_num)
+            ]
     return swap_in_op
 
 
@@ -751,3 +741,33 @@ def _get_new_batch_tensor(new_batch: Union[List, Tuple, Dict, tf.Tensor]) -> tf.
         raise ValueError(f"{new_batch} is not {AnchorIteratorOp.ITERATOR_GET_NEXT.value} tensor.")
 
     return new_batch
+
+
+def replace_anchor_for_ddr_ssd(graph: tf.Graph, slot_num: int, channel_id: int):
+    swap_args = SwapArgs()
+    sparse_variables = graph.get_collection(
+        ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection
+    )
+
+    for each_var in sparse_variables:
+        table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(each_var)
+        if table_instance.is_hbm:
+            continue
+
+        variable_and_slot_list = _get_variable_and_slot_list(each_var, slot_num, table_instance.table_name, channel_id)
+        swap_args_dict = swap_args.swap_config_dict[table_instance.table_name][channel_id]
+        swap_op = _get_swap_info(table_instance, variable_and_slot_list, swap_args_dict["swap_info"], channel_id)
+        # Gather for id_offset need to be executed after swap_op.
+        swap_control_dict = swap_args.swap_control_dict[table_instance.table_name][channel_id]
+        if SwapDataType.CONTROL_OPS.value not in swap_control_dict:
+            raise ValueError("swap control missing key [control_ops] in modify_graph_for_asc")
+        control_ops = swap_control_dict[SwapDataType.CONTROL_OPS.value]
+        utils.replace_anchor_control(graph, control_ops, swap_op)
+
+        if channel_id == TRAIN_CHANNEL_ID and slot_num > 1:
+            # Gather for slot need to be executed after swap_op.
+            slot_control_dict = swap_args.slot_control_dict[table_instance.variable]
+            if SwapDataType.CONTROL_OPS.value not in slot_control_dict:
+                raise ValueError("slot control missing key [control_ops] in modify_graph_for_asc")
+            slot_control_ops = slot_control_dict[SwapDataType.CONTROL_OPS.value]
+            utils.replace_anchor_control(graph, slot_control_ops, swap_op)

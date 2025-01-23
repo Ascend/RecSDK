@@ -1,6 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright (c) Huawei Technologies Co., Ltd. 2023. All rights reserved.
+# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 from typing import Optional, Union
 
 from tensorflow.python.framework.ops import Operation
@@ -26,6 +40,7 @@ class TrainParamsConfig:
         self._sparse_dir = ""
         self._initializer_dict = dict()
         self._dataset_element_spec = None
+        self._experimental_mode = None
 
     @property
     def iterator_type(self):
@@ -51,6 +66,14 @@ class TrainParamsConfig:
     def dataset_element_spec(self) -> Optional[Union[list, tuple, dict]]:
         return self._dataset_element_spec
 
+    @property
+    def experimental_mode(self) -> str:
+        return self._experimental_mode
+
+    @experimental_mode.setter
+    def experimental_mode(self, mode: str):
+        self._experimental_mode = mode
+
     @iterator_type.setter
     def iterator_type(self, iterator_type):
         self._iterator_type = iterator_type
@@ -68,9 +91,9 @@ class TrainParamsConfig:
         self._is_last_round = last_round
 
     @ascend_global_hashtable_collection.setter
-    @para_checker_decorator(check_option_list=[
-        ("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"])
-    ])
+    @para_checker_decorator(
+        check_option_list=[("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"])]
+    )
     def ascend_global_hashtable_collection(self, name):
         self._ascend_global_hashtable_collection = name
 

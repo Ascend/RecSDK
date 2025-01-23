@@ -33,8 +33,8 @@ from nn_model_input import get_model_fn
 from config import (
     Config, USE_DETERMINISTIC, GLOBAL_RANDOM_SEED, USE_DYNAMIC, USE_DYNAMIC_EXPANSION,
     USE_MULTI_LOOKUP, USE_MODIFY_GRAPH, USE_TIMESTAMP, USE_DP, USE_ONE_SHOT, MULTI_LOOKUP_TIMES,
-    ENABLE_SLICER_TEST, RUN_MODE
-)    
+    ENABLE_SLICER_TEST, RUN_MODE, USE_EXPORT_SAVED_MODEL
+)
 from demo_logger import logger
 from utils import FeatureSpecIns
 
@@ -45,7 +45,7 @@ tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
 def set_seed():
     import random
     import numpy as np
-    
+
     random.seed(GLOBAL_RANDOM_SEED)
     np.random.seed(GLOBAL_RANDOM_SEED)
     tf.compat.v2.random.set_seed(GLOBAL_RANDOM_SEED)
@@ -90,7 +90,7 @@ def main(params, config: Config):
         access_and_evict = dict(user_table=config_for_user_table, item_table=config_for_item_table)
         evict_hook = EvictHook(evict_enable=True, evict_time_interval=10)
         hooks_list.append(evict_hook)
-    
+
     est = NPUEstimator(
         model_fn=get_model_fn(config, access_and_evict),
         params=params,
@@ -121,6 +121,9 @@ def main(params, config: Config):
                                           throttle_secs=0)
         tf.estimator.train_and_evaluate(est, train_spec=train_spec, eval_spec=eval_spec)
 
+        if USE_EXPORT_SAVED_MODEL:
+            _export_model("./model_path", config, est)
+
     elif RUN_MODE == 'predict':
         results = est.predict(input_fn=lambda: input_fn(params, config),
                               hooks=npu_hooks_append(hooks_list=hooks_list), yield_single_examples=False)
@@ -139,6 +142,23 @@ def main(params, config: Config):
     logger.info("Demo done!")
 
 
+def _export_model(save_path: str, config: Config, est: tf.compat.v1.estimator.Estimator):
+    _del_related_dir(save_path)
+
+    def _serving_input_fn():
+        inputs = {
+            "user_ids": tf.compat.v1.placeholder(shape=(None, config.user_feat_cnt), dtype=tf.int64, name="user_ids"),
+            "item_ids": tf.compat.v1.placeholder(shape=(None, config.item_feat_cnt), dtype=tf.int64, name="item_ids"),
+            "label_0": tf.compat.v1.placeholder(shape=(None,), dtype=tf.float32, name="label_0"),
+            "label_1": tf.compat.v1.placeholder(shape=(None,), dtype=tf.float32, name="label_1"),
+        }
+        return tf.estimator.export.ServingInputReceiver(features=inputs, receiver_tensors=inputs)
+
+    target_pb_path = os.path.abspath(save_path)
+    export_path = est.export_saved_model(target_pb_path, _serving_input_fn).decode("utf-8")
+    logger.info("The export saved model path is %s.", export_path)
+
+
 def _del_related_dir(del_path: str) -> None:
     if not os.path.isabs(del_path):
         del_path = os.path.join(os.getcwd(), del_path)
@@ -153,7 +173,7 @@ def _clear_saved_model() -> None:
     _del_related_dir("kernel*")
     _del_related_dir("export_graph")
 
-    if RUN_MODE.startswith("train"):
+    if not USE_EXPORT_SAVED_MODEL and RUN_MODE.startswith("train"):
         return
     logger.warning("Current mode contains train, will delete previous saved model data if exist.")
     _del_related_dir("_rank*")
@@ -181,7 +201,7 @@ if __name__ == '__main__':
         args.save_checkpoints_steps = args.train_steps
     else:
         raise ValueError(f"RUN_MODE not in [train, predict, train_and_evaluate]")
-    
+
     _clear_saved_model()
 
     # set init

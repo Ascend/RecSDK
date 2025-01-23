@@ -95,7 +95,7 @@ public:
                     const vector<ThresholdValue>& thresholdValues, bool ifLoad,
                     bool isIncrementalCheckpoint, bool useLccl);
 
-    void Save(const string& savePath, bool saveDelta);
+    void Save(const string& savePath, bool saveDelta, bool isSaveL3Storage = true);
 
     bool Load(const string& loadPath, vector<string> warmStartTables);
 

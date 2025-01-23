@@ -35,9 +35,11 @@ class HybridManagerConfig:
 
     def set_asc_manager(self, manager) -> None:
         from mxrec_pybind import HybridMgmt
+
         if not isinstance(manager, HybridMgmt):
-            raise ValueError(f"Given manager must be the instance of {HybridMgmt}, which is {type(manager)} "
-                             f"type currently.")
+            raise ValueError(
+                f"given manager must be the instance of {HybridMgmt}, which is {type(manager)} type currently"
+            )
         self._asc_manager = manager
         self._is_freeze = True
 
@@ -76,11 +78,11 @@ class HybridManagerConfig:
         logger.debug("start to send optimizer info.")
         self.asc_manager.set_optim_info(table_name, optim_info)
 
-    def save_host_data(self, root_dir: Optional[str], save_delta: bool) -> None:
+    def save_host_data(self, root_dir: Optional[str], save_delta: bool, is_save_l3_storage: bool = True) -> None:
         if self.asc_manager is None:
             raise RuntimeError("ASC manager does not exist.")
 
-        self.asc_manager.save(root_dir, save_delta)
+        self.asc_manager.save(root_dir, save_delta, is_save_l3_storage)
         logger.debug("Data from host pipeline has been saved.")
 
     def restore_host_data(self, root_dir: Optional[str], warm_start_tables=None) -> None:
@@ -89,8 +91,9 @@ class HybridManagerConfig:
         if not warm_start_tables:
             warm_start_tables = []
         if not self.asc_manager.load(root_dir, warm_start_tables):
-            raise TypeError("Asc load data does not match usr setups, \
-            please re-consider if you want to restore from this dir")
+            raise TypeError(
+                "load data does not match usr setups, please re-consider if you want to restore from this dir"
+            )
         logger.debug("Data from host pipeline has been restored.")
 
     def fetch_device_emb(self):
