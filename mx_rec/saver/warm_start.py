@@ -15,7 +15,6 @@
 # limitations under the License.
 # ==============================================================================
 import os
-import logging
 import re
 from typing import List
 import six
@@ -39,7 +38,7 @@ class WarmStartController:
         return cls._instance
 
     def __init__(self):
-        logging.info("start to build WarmStartController.")
+        logger.info("start to build WarmStartController.")
 
     def add_element(self, path: str, table_list: List[str]):
         if path not in self._warm_start_dict:
@@ -233,14 +232,14 @@ def get_latest_ckpt(warm_start_path: str) -> str:
 
 class SparseRestoreHook(tf.estimator.SessionRunHook):
     def __init__(self):
-        logging.info("In warm start mode, SparseRestoreHook has been initialized.")
+        logger.info("In warm start mode, SparseRestoreHook has been initialized.")
         self._is_warm_start = False
         self._saver = None
         self._warm_start_dict = {}
 
     def begin(self):
         self._saver = Saver()
-        logging.info("In warm start mode, begin SparseRestoreHook.")
+        logger.info("In warm start mode, begin SparseRestoreHook.")
 
     def after_create_session(self, session, coord):
         if not self._is_warm_start:

@@ -141,7 +141,8 @@ vector<int64_t> EmbeddingTable::GetLoadOffset()
     return loadOffset;
 }
 
-void EmbeddingTable::Load(const string& filePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet)
+void EmbeddingTable::Load(const string& filePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet,
+                          vector<string> warmStartTables)
 {
 }
 
