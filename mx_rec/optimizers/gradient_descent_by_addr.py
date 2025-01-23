@@ -85,6 +85,8 @@ class CustomizedGradientDescentByAddr(gradient_descent.GradientDescentOptimizer,
         return []
 
     def _apply_sparse(self, grad, addr):
+        # The var tensor is used to obtain the table instance in dynamic expansion mode.
+        var_tensor = addr
         table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(addr)
         # The DP mode requires allreduce for gradients.
         if table_instance.is_dp:
@@ -100,7 +102,7 @@ class CustomizedGradientDescentByAddr(gradient_descent.GradientDescentOptimizer,
                 self._learning_rate_tensor, grad.dtype.base_dtype
             )
 
-        nd_value = self._process_grad_value_mask(addr, nd_value)
+        nd_value = self._process_grad_value_mask(var_tensor, nd_value)
         var_update_op = host_pipeline_ops.embedding_update_by_address(addr, -nd_value, update_type=0)
 
         return var_update_op
