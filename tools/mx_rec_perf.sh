@@ -1,6 +1,6 @@
 #!/bin/bash
 # Copyright (c) Huawei Technologies Co., Ltd.
-# Description MxRec性能分析脚本 V1.0
+# Description Rec SDK性能分析脚本 V1.0
 set -e
 
 file="$1" #请输入spdlog文件
@@ -29,7 +29,7 @@ perf() {
   step="${step:-step}"
   cat ${file} | grep -P "key process cost|${step}"|tail -n100|less
 }
-echo -e "\e[45m\e[1m        =========MxRec分析脚本 V1.0=========           \e[0m"
+echo -e "\e[45m\e[1m        =========Rec SDK分析脚本 V1.0=========           \e[0m"
 echo
 
 stuck_check() {

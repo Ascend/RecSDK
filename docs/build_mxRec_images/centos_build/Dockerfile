@@ -168,7 +168,7 @@ RUN umask 0022 && \
     rm -rf $ASCEND_BASE/driver && \
     rm -rf /etc/ascend_install.info
 
-# 14.安装mxRec，确认安装tf1或tf2
+# 14.安装Rec SDK，确认安装tf1或tf2
 RUN tar -zxvf Ascend-mindxsdk-mxrec*.tar.gz && \
     pip3 install mindxsdk-mxrec/{tf1|tf2}_whl/mx_rec-*.whl --force-reinstall
 

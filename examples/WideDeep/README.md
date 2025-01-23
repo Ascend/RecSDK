@@ -1,6 +1,6 @@
 # wide&deep模型 迁移样例（基于DLRM模型框架）
 
-开源项目在保证原有结构不变的情况下，可采用替换相关API接口的方式将项目由GPU >> NPU >> mxrec。在模型迁移适配过程中可能因兼容性问题而导致模型迁移失败，此处提供另一种模型适配方案。  
+开源项目在保证原有结构不变的情况下，可采用替换相关API接口的方式将项目由GPU >> NPU >> Rec SDK。在模型迁移适配过程中可能因兼容性问题而导致模型迁移失败，此处提供另一种模型适配方案。  
 
 ***
 ## 开源项目链接
@@ -99,21 +99,21 @@ convert_input2tfrd(in_file_path=file, out_file_path=output_path)
 
 ## 模型运行
 
-参考mxrec的`README.md`文件在NPU服务器上配置环境并安装镜像创建容器后，可参考DLRM模型运行命令启动模型训练。模型运行脚本是run.sh，运行此脚本需要四个参数：so_path、mx_rec_package_path、hccl_cfg_json以及dlrm_criteo_data_path。其中，   
-- so_path: mxrec中libasc所在路径，在镜像中已经安装过mxrec，所以so_path是：/usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec/libasc/
-- mx_rec_package_path: mxrec这个包的安装路径，镜像中是：/usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec/  
+参考Rec SDK的`README.md`文件在NPU服务器上配置环境并安装镜像创建容器后，可参考DLRM模型运行命令启动模型训练。模型运行脚本是run.sh，运行此脚本需要四个参数：so_path、rec_package_path、hccl_cfg_json以及dlrm_criteo_data_path。其中，   
+- so_path: Rec SDK中libasc所在路径，在镜像中已经安装过Rec SDK，所以so_path是：/usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec/libasc/
+- rec_package_path: Rec SDK这个包的安装路径，镜像中是：/usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec/  
 - hccl_cfg_json:  hccl配置文件所在路径，一般是当前路径下的hccl文件
 - dlrm_criteo_data_path: Wide&Deep模型需要的数据所在路径，根据实际情况进行配置
 
-运行mxRec有两种方式，一种是使用hccl配置文件（rank table方案），一种是不使用hccl配置文件（去rank table方案）。
+运行Rec SDK有两种方式，一种是使用hccl配置文件（rank table方案），一种是不使用hccl配置文件（去rank table方案）。
 - 使用hccl配置文件（rank table方案）
 ```shell
-bash run.sh {so_path} {mx_rec_package_path} {hccl_cfg_json} {dlrm_criteo_data_path}
+bash run.sh {so_path} {rec_package_path} {hccl_cfg_json} {dlrm_criteo_data_path}
 ```
 ***
 - 不使用hccl配置文件（去rank table方案）
 ```shell
-bash run.sh {so_path} {mx_rec_package_path} {hccl_cfg_json} {dlrm_criteo_data_path} {IP}
+bash run.sh {so_path} {rec_package_path} {hccl_cfg_json} {dlrm_criteo_data_path} {IP}
 ```
 如：bash run.sh /usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec/libasc/ /usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec/ hccl_json_8p.json /dataset 10.10.10.10。  
 **注意:** 去rank table方案，当前路径下不存在hccl文件，模型仍可正常运行。
@@ -153,9 +153,9 @@ bash run.sh {so_path} {mx_rec_package_path} {hccl_cfg_json} {dlrm_criteo_data_pa
 ***
 ## 模型迁移
 
-**迁移思路：** 在现有已适配好的dlrm模型框架下，改动相关代码逻辑，完成Wide&deep模型的适配。**核心：根据开源项目model代码修改`model.py`；数据处理操作一部分放入`criteo.py`,一部分放入`main_mxrec.py`中`make_batch_and_iterator()`内；`main_mxrec.py`中其他相关代码改动主要是为了适配mxrec提供的相关特性。**
-详细改动见https://gitee.com/ascend/mxrec/pulls/171/commits，Commits ID：7a05b033d41af51df9aed7414ad04216dff821cc。  
-下文所提到的`动态扩容`、`动态shape`、`自动改图`、`一表多查`是mxrec提供的相关特性，开关选项见`run.sh`。
+**迁移思路：** 在现有已适配好的dlrm模型框架下，改动相关代码逻辑，完成Wide&deep模型的适配。**核心：根据开源项目model代码修改`model.py`；数据处理操作一部分放入`criteo.py`,一部分放入`main_mxrec.py`中`make_batch_and_iterator()`内；`main_mxrec.py`中其他相关代码改动主要是为了适配Rec SDK提供的相关特性。**
+详细改动见https://gitee.com/ascend/RecSDK/pulls/171/commits，Commits ID：7a05b033d41af51df9aed7414ad04216dff821cc。  
+下文所提到的`动态扩容`、`动态shape`、`自动改图`、`一表多查`是Rec SDK提供的相关特性，开关选项见`run.sh`。
 
 ```shell
 # run.sh: 32~37行
@@ -209,7 +209,7 @@ self.emb_dim = 8
 
 
 #### 2. model.py
-迁移过程中，`model.py`需参考开源项目文件`reclearn/models/ranking/wdl.py`的代码逻辑，使用tensorflow的低阶API重新编写。输出参数必须包括`loss`,`prediction`,`label`,`trainable_variables`。**迁移重点：mxRec对推荐模型中sparse_feature的创表查表操作作了加速，使用`create_table`与`sparse_lookup`接口替换tensorflow中的`tf.nn.embedding_lookup`接口。** 因此在适配开源项目时，会将sparse_feature的embedding操作放在模型结构外。 
+迁移过程中，`model.py`需参考开源项目文件`reclearn/models/ranking/wdl.py`的代码逻辑，使用tensorflow的低阶API重新编写。输出参数必须包括`loss`,`prediction`,`label`,`trainable_variables`。**迁移重点：Rec SDK对推荐模型中sparse_feature的创表查表操作作了加速，使用`create_table`与`sparse_lookup`接口替换tensorflow中的`tf.nn.embedding_lookup`接口。** 因此在适配开源项目时，会将sparse_feature的embedding操作放在模型结构外。 
 
 **reclearn开源项目原始代码：**
 ```python
@@ -359,7 +359,7 @@ my_model = MyModel()
 ***
 #### 3. main_mxrec.py
 
-`main_mxrec.py`文件中的函数如下所示。`make_batch_and_iterator()`是读取数据集以及对数据作处理的函数；`model_forward()`是前向过程函数；`evaluate()`与`evaluate_fix()`是评估函数，用于计算测试集的AUC与loss。`add_timestamp_func()`与特征准入、淘汰有关；`create_feature_spec_list()`是生成元素为FeatureSpec类的列表的函数，其返回值是`make_batch_and_iterator()`所需的传参。特征准入与淘汰、FeatureSpec类、自动改图等解释见[mxRec用户指南](https://www.hiascend.com/document/detail/zh/mind-sdk/60rc1/mxRec/mxrecug/mxrecug_0001.html)。  
+`main_mxrec.py`文件中的函数如下所示。`make_batch_and_iterator()`是读取数据集以及对数据作处理的函数；`model_forward()`是前向过程函数；`evaluate()`与`evaluate_fix()`是评估函数，用于计算测试集的AUC与loss。`add_timestamp_func()`与特征准入、淘汰有关；`create_feature_spec_list()`是生成元素为FeatureSpec类的列表的函数，其返回值是`make_batch_and_iterator()`所需的传参。特征准入与淘汰、FeatureSpec类、自动改图等解释见[Rec SDK用户指南](https://www.hiascend.com/document/detail/zh/mind-sdk/60rc2/mxRec/mxrecug/mxrecug_0001.html)。  
 
 - `add_timestamp_func()`
 - `make_batch_and_iterator()`
@@ -457,7 +457,7 @@ def model_forward(feature_list, wide_hash_table_list, deep_hash_table_list, batc
                                         dropout_rate=0.5)
     return model_output
 ```
-该函数是前向传播函数，主要包括sparse_feature的embedding操作（查表）与model前向操作。130-141行代码是预处理`sparse_lookup`传参的逻辑。147-162行代码对应开源项目中wide部分`self.linear`与deep部分`self.embed_layers`对39个特征作embedding的逻辑。164-171行是配置mxrec中`一表多查`特性的逻辑。
+该函数是前向传播函数，主要包括sparse_feature的embedding操作（查表）与model前向操作。130-141行代码是预处理`sparse_lookup`传参的逻辑。147-162行代码对应开源项目中wide部分`self.linear`与deep部分`self.embed_layers`对39个特征作embedding的逻辑。164-171行是配置Rec SDK中`一表多查`特性的逻辑。
 
 ***
 3.3 创表操作
@@ -555,12 +555,12 @@ for loss, (model_optimizer, emb_optimizer) in zip([train_model.get("loss")], opt
 # 动态学习率更新
 train_ops.extend([cfg.global_step.assign(cfg.global_step + 1), cfg.learning_rate[0], cfg.learning_rate[1]])
 ```
-410-442行代码是模型的反向过程操作。mxRec对推荐模型中sparse_feature的创表查表操作作了加速，使用`create_table`与`sparse_lookup`接口替换tensorflow中的`tf.nn.embedding_lookup`接口。因此模型反向更新分为两部分：417-425行代码是对`model.py`内的模型部分的反向；427-439行代码是对sparse_feature作embedding操作部分的反向过程，根据是否开启`动态扩容`选择不同的参数计算梯度并更新权重。
+410-442行代码是模型的反向过程操作。Rec SDK对推荐模型中sparse_feature的创表查表操作作了加速，使用`create_table`与`sparse_lookup`接口替换tensorflow中的`tf.nn.embedding_lookup`接口。因此模型反向更新分为两部分：417-425行代码是对`model.py`内的模型部分的反向；427-439行代码是对sparse_feature作embedding操作部分的反向过程，根据是否开启`动态扩容`选择不同的参数计算梯度并更新权重。
 
 ***
 
 #### 4. optimizer.py
-如上所述，模型反向过程分为`model.py`与`embedding`两部分；`model.py`可使用tf原生的优化器，`embedding`部分选择mxrec提供的`lazy_adam`或`lazy_adam_by_addr`优化器。`delay_loss_scale.py`包装`dense_optimizer`与`sparse_optimizer`并对其应用损失缩放技术，该技术主要作用于混合精度训练过程中。 
+如上所述，模型反向过程分为`model.py`与`embedding`两部分；`model.py`可使用tf原生的优化器，`embedding`部分选择Rec SDK提供的`lazy_adam`或`lazy_adam_by_addr`优化器。`delay_loss_scale.py`包装`dense_optimizer`与`sparse_optimizer`并对其应用损失缩放技术，该技术主要作用于混合精度训练过程中。 
 
 ```python
 import tensorflow as tf

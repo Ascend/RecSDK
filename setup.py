@@ -48,7 +48,7 @@ res = subprocess.run([python37_path, "setup_tf2.py", "bdist_wheel"], shell=False
 if res.returncode:
     raise RuntimeError(f"build tf2's wheel file failed!")
 
-# copy cust_op, examples files, etc. Then gen mxrec's tar pkg
+# copy cust_op, examples files, etc. Then gen RecSDK's tar pkg
 res = subprocess.run(["./build/gen_mxrec_tar_pkg.sh"], shell=False)
 if res.returncode:
-    raise RuntimeError(f"gen mxrec's tar pkg failed!")
+    raise RuntimeError(f"gen RecSDK's tar pkg failed!")
