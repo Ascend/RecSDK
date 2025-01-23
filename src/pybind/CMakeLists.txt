@@ -14,6 +14,7 @@
 # ==============================================================================
 
 cmake_minimum_required(VERSION 3.20)
+set(CMAKE_CXX_STANDARD 17)
 
 pybind11_add_module(mxrec_pybind module_main.cpp)
 set_target_properties(mxrec_pybind PROPERTIES LINK_FLAGS "-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack")

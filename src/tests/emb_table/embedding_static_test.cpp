@@ -166,3 +166,97 @@ TEST_F(EmbeddingStaticTest, SaveKeyData)
     }
     EXPECT_EQ(fileExist, true);
 }
+
+TEST_F(EmbeddingStaticTest, ShouldReturnTargetOffsetWhenFindExistKey)
+{
+    vector<EmbInfo> embInfos = {embInfo_};
+    auto table = std::make_unique<EmbeddingStatic>(embInfo_, rankInfo_, 0);
+    vector<emb_key_t> targetKey = {3};
+    table->Key2Offset(targetKey, TRAIN_CHANNEL_ID);
+    EXPECT_EQ(*targetKey.begin(), 0);
+
+    vector<emb_key_t> observeKey = {3};
+    table->Key2Offset(observeKey, TRAIN_CHANNEL_ID);
+    EXPECT_EQ(*observeKey.begin(), 0);
+}
+
+TEST_F(EmbeddingStaticTest, ShouldReturnTargetMaxOffsetWhenFindKeyIn5Threads)
+{
+    std::vector<std::unique_ptr<std::thread>> threads;
+    vector<EmbInfo> embInfos = {embInfo_};
+    auto table = std::make_unique<EmbeddingStatic>(embInfo_, rankInfo_, 0);
+    vector<emb_key_t> testData;
+    constexpr size_t testNum = 50;
+    for (size_t i = 0; i < testNum; ++i) {
+        testData.push_back(i);
+    }
+    table->Key2Offset(testData, TRAIN_CHANNEL_ID);
+    auto proc = [&testData, &table]() {
+        auto tempData = testData;
+        table->Key2Offset(tempData, TRAIN_CHANNEL_ID);
+        for (size_t i = 0; i < tempData.size(); ++i) {
+            EXPECT_EQ(tempData[i], i);
+        }
+    };
+    constexpr int threadNum = 5;
+    for (int i = 0; i < threadNum; ++i) {
+        threads.push_back(std::make_unique<std::thread>(proc));
+    }
+    for (auto& it : threads) {
+        it->join();
+    }
+    EXPECT_EQ(table->size(), testNum);
+    EXPECT_EQ(table->size(), table->GetMaxOffset());
+}
+
+TEST_F(EmbeddingStaticTest, ShouldReturnTargetMaxOffsetWhenEmplaceKeyIn5Threads)
+{
+    std::vector<std::unique_ptr<std::thread>> threads;
+    vector<EmbInfo> embInfos = {embInfo_};
+    auto table = std::make_unique<EmbeddingStatic>(embInfo_, rankInfo_, 0);
+    
+    auto proc = [&table](int index) {
+        vector<emb_key_t> testData;
+        for (int i = index * 20; i < (index + 1) * 20; ++i) {
+            testData.push_back(i);
+        }
+        table->Key2Offset(testData, TRAIN_CHANNEL_ID);
+    };
+    constexpr int threadNum = 5;
+    for (int i = 0; i < threadNum; ++i) {
+        threads.push_back(std::make_unique<std::thread>(proc, i));
+    }
+    for (auto& it : threads) {
+        it->join();
+    }
+    EXPECT_EQ(table->size(), 100);
+    EXPECT_EQ(table->size(), table->GetMaxOffset());
+}
+
+TEST_F(EmbeddingStaticTest, ShouldReturnTargetMaxOffsetWhenEmplaceAndFindKeyIn5Threads)
+{
+    std::vector<std::unique_ptr<std::thread>> threads;
+    vector<EmbInfo> embInfos = {embInfo_};
+    auto table = std::make_unique<EmbeddingStatic>(embInfo_, rankInfo_, 0);
+    vector<emb_key_t> testData;
+    for (size_t i = 0; i < 100; ++i) {
+        testData.push_back(i);
+    }
+
+    auto proc = [&testData, &table]() {
+        auto tempData = testData;
+        table->Key2Offset(tempData, TRAIN_CHANNEL_ID);
+        for (size_t i = 0; i < tempData.size(); ++i) {
+            EXPECT_EQ(tempData[i], i);
+        }
+    };
+    constexpr int threadNum = 5;
+    for (int i = 0; i < threadNum; ++i) {
+        threads.push_back(std::make_unique<std::thread>(proc));
+    }
+    for (auto& it : threads) {
+        it->join();
+    }
+    EXPECT_EQ(table->size(), 100);
+    EXPECT_EQ(table->size(), table->GetMaxOffset());
+}

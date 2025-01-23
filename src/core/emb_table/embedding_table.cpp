@@ -65,7 +65,7 @@ size_t EmbeddingTable::size() const
 
 void EmbeddingTable::EvictKeys(const std::vector<emb_cache_key_t>& keys)
 {
-    std::lock_guard<std::mutex> lk(mut_); // lock for PROCESS_THREAD
+    std::unique_lock<std::shared_mutex> lock(keyOffsetMutex_); // lock for PROCESS_THREAD
     size_t keySize = keys.size();
     for (size_t i = 0; i < keySize; i++) {
         emb_key_t key = keys[i];

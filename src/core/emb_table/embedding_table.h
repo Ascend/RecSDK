@@ -19,6 +19,7 @@ See the License for the specific language governing permissions and
 #include <map>
 #include <string>
 #include <vector>
+#include <shared_mutex>
 
 #include "utils/common.h"
 #include "utils/error.h"
@@ -138,7 +139,6 @@ protected:
 
     size_t freeSize_;
     bool isDynamic_;
-    std::mutex mut_;
     std::vector<InitializeInfo> initializeInfos_;
     EmbInfo embInfo_;
     size_t embSize_;
@@ -154,6 +154,7 @@ protected:
     bool isSSDEnabled_ = false;
 
     unique_ptr<FileSystem> fileSystemPtr_;
+    mutable std::shared_mutex keyOffsetMutex_;
 };
 
 }
