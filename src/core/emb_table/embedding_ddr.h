@@ -51,7 +51,7 @@ public:
 
     void Save(const string& savePath, const int pythonBatchId, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo);
 
-    void SyncLatestEmbedding(const int pythonBatchId, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo);
+    void SyncLatestEmbedding(const int pythonBatchId);
 
     void SaveKey(const string& savePath, vector<emb_cache_key_t>& keys);
 
@@ -111,6 +111,8 @@ GTEST_PRIVATE:
     HDTransfer *hdTransfer = nullptr;
     ock::ctr::EmbCacheManagerPtr embCache = nullptr;
     int deviceId = -1;
+    bool isSyncFinish = true;
+    static constexpr int MAX_WAIT_LOOP = 1800;
 };
 
 }
