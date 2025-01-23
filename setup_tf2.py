@@ -77,7 +77,7 @@ setup(
     name='mx_rec',
     version=VERSION,
     author='HUAWEI Inc',
-    description='MindX SDK Recommend',
+    description='MindSDK Recommend',
     long_description=LONG_DESCRIPTION,
     # include mx_rec
     packages=find_packages(

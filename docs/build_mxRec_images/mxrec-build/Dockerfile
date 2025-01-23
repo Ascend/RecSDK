@@ -1,5 +1,5 @@
 # please configure 根据实际情况使用基础镜像
-FROM mxrec-tf1:6.0.RC1
+FROM rec_sdk-tf1:6.0.RC1
 
 WORKDIR /tmp
 COPY . ./
@@ -30,6 +30,6 @@ RUN umask 0022 && \
     rm -rf /root/.cache/pip && \
     rm -f $TOOLKIT_PKG
 
-# 安装mxRec，确认安装tf1或tf2
+# 安装Rec SDK，确认安装tf1或tf2
 RUN tar -zxvf Ascend-mindxsdk-mxrec*.tar.gz && \
     pip3 install mindxsdk-mxrec/{tf1|tf2}_whl/mx_rec-*.whl --force-reinstall

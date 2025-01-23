@@ -33,7 +33,7 @@ get_version() {
 }
 
 get_version
-echo "MindX SDK mxrec: ${VERSION}" >> ./version.info
+echo "Rec SDK: ${VERSION}" >> ./version.info
 
 pkg_dir=mindxsdk-mxrec
 release_tar=Ascend-"${pkg_dir}"_"${VERSION}"_linux-"${ARCH}".tar.gz

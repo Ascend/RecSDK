@@ -14,7 +14,7 @@
 ## Ascend C参考设计
 更多详情可以参考CANN官方的Ascend C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0001.html)。
 
-针对mxRec，用于动态扩容功能的Ascend C算子有两个：**查询算子embedding_lookup_by_addr**和**更新算子embedding_update_by_addr**，
+针对Rec SDK，用于动态扩容功能的Ascend C算子有两个：**查询算子embedding_lookup_by_addr**和**更新算子embedding_update_by_addr**，
 以下以embedding_lookup_by_addr算子为例对扩容算子做详细说明，embedding_update_by_addr算子同理。
 
 ## 查询算子embedding_lookup_by_addr
@@ -66,7 +66,7 @@ f) KernelEimtable::Process函数实现算子的搬运和计算，最终输出结
 
 更多详情可以参考CANN官方的[Ascend C单算子调用概述](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0036.html)。
 
-单算子调用分为两种方式：单算子API执行和模型执行。mxRec提供单算子API执行供参考。
+单算子调用分为两种方式：单算子API执行和模型执行。Rec SDK提供单算子API执行供参考。
 
 单算子测试用例在目录cust_op_by_addr/aclnn_lookup_test和cust_op_by_addr/aclnn_update_test下，其中：
 * inc是头文件目录
@@ -87,7 +87,7 @@ bash run.sh
 参考[host侧算子实现](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0026.html)完成host侧实现相关准备。
 2. 参考[算子编译部署](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0031.html)完成算子的编译部署，编译部署时需要开启算子的二进制编译功能：修改算子工程中的编译配置项文件CMakePresets.json，将
 ENABLE_BINARY_PACKAGE设置为True。编译部署时可将算子的二进制部署到当前环境，便于后续算子的调用。
-3. 检查API执行需要的头文件和库文件是否自动生成，针对mxRec，检查cust_op/cust_op_by_addr/custom_op/build_out/autogen目录下，是否有
+3. 检查API执行需要的头文件和库文件是否自动生成，针对Rec SDK，检查cust_op/cust_op_by_addr/custom_op/build_out/autogen目录下，是否有
 aclnn_embedding_lookup_by_address.cpp和aclnn_embedding_lookup_by_address.h等。
 
 注意：对于cust_op/cust_op_by_addr/run.sh脚本，安装算子后会删除构建目录。运行单算子测试时，需要屏蔽掉删除rm rf ./custom_op这一步，以确保前置条件3。

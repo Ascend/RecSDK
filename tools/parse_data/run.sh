@@ -1,7 +1,7 @@
 #!/bin/bash
 # Copyright (c) Huawei Technologies Co., Ltd. 2021-2023. All rights reserved.
 # Description: performace analysis tool
-# Author: MindX SDK
+# Author: MindSDK
 # Create: 2023
 # History: NA
 
