@@ -249,6 +249,22 @@ void EmbeddingDDR::Save(const string& savePath, const int pythonBatchId, bool sa
     auto step = GetStepFromPath(savePath);
     embCache->GetEmbTableInfos(name, keys, embeddings, optimizerSlots);
 
+    // Wait until SyncLatestEmbedding finish.
+    LOG_INFO("Start waiting until SyncLatestEmbedding finish, table:{}.", name);
+    int loopCnt = 0;
+    while (!isSyncFinish) {
+        this_thread::sleep_for(1s);
+        ++loopCnt;
+        if (loopCnt >= MAX_WAIT_LOOP) {
+            auto error = Error(
+                ModuleName::M_EMB_TABLE, ErrorType::IO_ERROR,
+                StringFormat("Sync latest embedding timeout {} seconds, table:%s.", MAX_WAIT_LOOP, name.c_str()));
+            LOG_ERROR(error.ToString());
+            throw std::runtime_error(error.ToString());
+        }
+    }
+    LOG_INFO("End waiting SyncLatestEmbedding, table:{}.", name);
+
     if (saveDelta) {
         // When save delta model, filter keys in keyInfo firstly, and then push back it into deltaKeys.
         vector<emb_cache_key_t> deltaKeys;
@@ -275,8 +291,10 @@ void EmbeddingDDR::Save(const string& savePath, const int pythonBatchId, bool sa
     SaveOptimizerSlot(savePath, optimizerSlots, keys.size());
 }
 
-void EmbeddingDDR::SyncLatestEmbedding(const int pythonBatchId, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo)
+void EmbeddingDDR::SyncLatestEmbedding(const int pythonBatchId)
 {
+    isSyncFinish = false;
+
     // 导出host记录的存在于npu的embedding
     std::vector<std::pair<uint64_t, uint64_t>> koVec;
     int rc = embCache->ExportDeviceKeyOffsetPairs(name, koVec);
@@ -289,16 +307,11 @@ void EmbeddingDDR::SyncLatestEmbedding(const int pythonBatchId, bool saveDelta, 
     }
     std::vector<uint64_t> swapOutKeys;
     for (const auto& p : koVec) {
-        if (!saveDelta) {
-            swapOutKeys.push_back(p.first);
-            continue;
-        }
-        if (keyInfo.count(p.first)) {
-            swapOutKeys.push_back(p.first);
-        }
+        swapOutKeys.push_back(p.first);
     }
 
-    LOG_INFO("Start SyncLatestEmbedding, table:{}, total swapOutKeys.size:{}.", name, swapOutKeys.size());
+    LOG_INFO("Start SyncLatestEmbedding, table:{}, pythonBatchId:{}, total swapOutKeys.size:{}.",
+             name, pythonBatchId, swapOutKeys.size());
     if (swapOutKeys.empty()) {
         auto size = hdTransfer->RecvAcl(TransferChannel::SAVE_D2H, TRAIN_CHANNEL_ID, name, 0, -1);
         LOG_INFO("Receive D2H data, table:{}, acl dataset size:{}.", name, size);
@@ -309,13 +322,15 @@ void EmbeddingDDR::SyncLatestEmbedding(const int pythonBatchId, bool saveDelta, 
             LOG_ERROR(error.ToString());
             throw runtime_error(error.ToString());
         }
-        LOG_INFO("Finish SyncLatestEmbedding, empty keys, table:{}, batchId.", name, pythonBatchId);
+        LOG_INFO("Finish SyncLatestEmbedding, empty keys, table:{}, pythonBatchId:{}.", name, pythonBatchId);
         return;
     }
 
     BatchSynchronization(pythonBatchId, swapOutKeys);
 
-    LOG_INFO("Finish SyncLatestEmbedding, table:{}, total swapOutKeys.size:{}.", name, swapOutKeys.size());
+    isSyncFinish = true;
+    LOG_INFO("Finish SyncLatestEmbedding, table:{}, pythonBatchId:{}, total swapOutKeys.size:{}.",
+             name, pythonBatchId, swapOutKeys.size());
 }
 
 void EmbeddingDDR::EmbeddingUpdateWithSSD(const vector<uint64_t>& swapOutKeys, float* deviceDataPtr)

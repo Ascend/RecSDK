@@ -1120,6 +1120,7 @@ void HybridMgmt::FetchDeviceEmb()
                 syncPosRemain -= syncPosCnt;
             }
         }
+        LOG_INFO("End FetchDeviceEmb.");
     }
     KEY_PROCESS_INSTANCE->LoadSaveUnlock();
 #endif
