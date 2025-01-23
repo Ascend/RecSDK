@@ -15,12 +15,12 @@
 # ==============================================================================
 
 ##################################################################
-#   build_tf1_with_opensource.sh 编译MxRec和动态扩容算子
+#   build_tf1_with_opensource.sh 编译Rec SDK和动态扩容算子
 # 编译环境：Python3.7.5 GCC 7.3.0 CMake 3.20.6
 # 代码主要分为四部分：
-# 1、准备编译MxRec所需依赖：pybind11(v2.10.3) securec
-# 2、编译securec、AccCTR以及MxRec
-# 3、生成MxRec Wheel包，生成的whl包在当前目录下的mindxsdk-mxrec/tf1_whl
+# 1、准备编译Rec SDK所需依赖：pybind11(v2.10.3) securec
+# 2、编译securec、AccCTR以及Rec SDK
+# 3、生成Rec SDK Wheel包，生成的whl包在当前目录下的mindxsdk-mxrec/tf1_whl
 # 4、编译动态扩容算子
 ##################################################################
 
@@ -81,17 +81,17 @@ function get_version() {
 rm -rf  "${project_output_path}"
 rm -rf  "${SCRIPT_DIR}/lib"
 
-# 获取MxRec版本信息
+# 获取Rec SDK版本信息
 get_version
 export VERSION
-echo "MindX SDK MxRec: ${VERSION}" >> ./version.info
+echo "Rec SDK: ${VERSION}" >> ./version.info
 
 pkg_dir=mindxsdk-mxrec
 rm -rf "${pkg_dir}"
 mkdir "${pkg_dir}"
 mv version.info "${pkg_dir}"
 
-# 配置MxRec C++代码路径和AccCTR路径
+# 配置Rec SDK C++代码路径和AccCTR路径
 src_path="${MxRec_DIR}"/src
 acc_ctr_path="${MxRec_DIR}"/src/AccCTR
 cd "${MxRec_DIR}"
@@ -149,18 +149,18 @@ function gen_wheel_file()
   rm -rf "${MxRec_DIR}"/mx_rec/libasc
 }
 
-# start to build MxRec
+# start to build Rec SDK
 echo "----------------          compile     securec           ----------------"
 compile_securec
 echo "----------------          compile     AccCTR            ----------------"
 compile_acc_ctr_so_file
-echo "----------------          compile MxRec so files        ----------------"
+echo "----------------          compile Rec SDK so files        ----------------"
 compile_so_file "${tf1_path}"
 echo "---------------- collect so files and mv them to libasc ----------------"
 collect_so_file
-echo "----------------      generate MxRec wheel package      ----------------"
+echo "----------------      generate Rec SDK wheel package      ----------------"
 gen_wheel_file  "$SCRIPT_DIR"/"${pkg_dir}"/tf1_whl
-echo "----------------        compile MxRec success!!!!       ----------------"
+echo "----------------        compile Rec SDK success!!!!       ----------------"
 
 # start to compile cust op
 echo "----------------        start to compile cust op        ----------------"

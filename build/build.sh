@@ -48,7 +48,7 @@ remove "${project_output_path}"
 remove "${SCRIPT_DIR}/lib"
 get_version
 export VERSION
-echo "MindX SDK mxrec: ${VERSION}" >> ./version.info
+echo "Rec SDK: ${VERSION}" >> ./version.info
 
 pkg_dir=mindxsdk-mxrec
 remove "${pkg_dir}"
