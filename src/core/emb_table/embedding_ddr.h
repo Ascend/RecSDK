@@ -41,7 +41,7 @@ public:
     virtual void EvictKeys(const vector<emb_key_t>& keys);
 
     void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet,
-              vector<string> warmStartTables);
+              const vector<string>& warmStartTables);
 
     void LoadKey(const string& savePath, vector<emb_cache_key_t>& keys);
 

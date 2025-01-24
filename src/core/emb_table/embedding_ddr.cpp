@@ -67,7 +67,7 @@ void EmbeddingDDR::EvictKeys(const vector<emb_key_t>& keys)
 }
 
 void EmbeddingDDR::Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet,
-                        vector<string> warmStartTables)
+                        const vector<string>& warmStartTables)
 {
     auto step = GetStepFromPath(savePath);
     if (step > 0 && warmStartTables.size() == 0) {
