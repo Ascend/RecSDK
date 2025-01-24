@@ -189,7 +189,8 @@ void EmbeddingStatic::SaveKey(const string& savePath, bool saveDelta, const map<
     }
 }
 
-void EmbeddingStatic::Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet)
+void EmbeddingStatic::Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet,
+                           const vector<string>& warmStartTables)
 {
     LoadKey(savePath);
 }

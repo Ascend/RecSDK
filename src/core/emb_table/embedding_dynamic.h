@@ -40,7 +40,8 @@ public:
 
     virtual int64_t capacity() const;
 
-    void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
+    void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet,
+              const vector<string>& warmStartTables);
 
     void Save(const string& savePath, const int pythonBatchId, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo);
 
