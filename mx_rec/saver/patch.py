@@ -62,6 +62,8 @@ from mx_rec.util.log import logger
 from mx_rec.constants.constants import MAX_INT32, INVALID_CHARS, BASE_MODEL, DELTA_MODEL
 
 _FILENAME_SUFFIX = "filename_suffix"
+# The maximum path length in Linux is usually 4096 characters.
+_MAX_SAVE_PATH_LEN = 1024
 
 
 def get_sparse_vars(var_list):
@@ -211,7 +213,7 @@ def check_characters_is_valid(characters: str) -> bool:
 
 @para_checker_decorator(check_option_list=[
     ("sess", ClassValidator, {"classes": (tf.compat.v1.Session, tf.compat.v1.train.MonitoredSession)}),
-    ("save_path", StringValidator, {"min_len": 1, "max_len": MAX_INT32}, ["check_string_length"]),
+    ("save_path", StringValidator, {"min_len": 1, "max_len": _MAX_SAVE_PATH_LEN}, ["check_string_length"]),
     ("global_step", ClassValidator, {"classes": (int, np.int64, type(None))}),
     ("global_step", OptionalIntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
     ("latest_filename", ClassValidator, {"classes": (str, type(None))}),
@@ -304,7 +306,7 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
 
 @para_checker_decorator(check_option_list=[
     ("sess", ClassValidator, {"classes": (tf.compat.v1.Session, tf.compat.v1.train.MonitoredSession)}),
-    ("save_path", StringValidator, {"min_len": 1, "max_len": MAX_INT32}, ["check_string_length"]),
+    ("save_path", StringValidator, {"min_len": 1, "max_len": _MAX_SAVE_PATH_LEN}, ["check_string_length"]),
 ])
 def restore(self, sess, save_path):
     if save_path is None:
