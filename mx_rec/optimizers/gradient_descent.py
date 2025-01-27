@@ -34,12 +34,12 @@ from mx_rec.validator.validator import (
     para_checker_decorator,
     StringValidator,
     ClassValidator,
-    FloatValidator,
+    LearningRateValidator
 )
 
 
 @para_checker_decorator(check_option_list=[
-    ("learning_rate", FloatValidator, {"min_value": 0.0, "max_value": 10.0}, ["check_value"]),
+    ("learning_rate", LearningRateValidator, {"min_value": 0.0, "max_value": 10.0}, ["check_value"]),
     ("use_locking", ClassValidator, {"classes": (bool,)}),
     ("name", StringValidator, {"min_len": 1, "max_len": 200}, ["check_string_length"])
 ])
@@ -91,7 +91,7 @@ class CustomizedGradientDescent(
         nd_value = grad.values * math_ops.cast(
             self._learning_rate_tensor, var.dtype.base_dtype
         )
-        var_update_op = tf.scatter_nd_add(
+        var_update_op = tf.compat.v1.scatter_nd_add(
             var, nd_indices, -nd_value, use_locking=self._use_locking
         )
         return var_update_op

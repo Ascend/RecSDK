@@ -29,6 +29,7 @@ See the License for the specific language governing permissions and
 #include "utils/safe_queue.h"
 #include "utils/singleton.h"
 #include "utils/time_cost.h"
+#include "utils/error.h"
 
 namespace MxRec {
     enum class FeatureAdmitType {
@@ -48,9 +49,6 @@ namespace MxRec {
     };
 
     const int DEFAULT_RECORDS_INIT_SIZE = 10000;
-    const int FEATURE_EVICT_TIME_INTERVAL = 3600 * 24;
-    const int FEATURE_MIN_TIME_INTERVAL = 10;
-
 
     class FeatureAdmitAndEvict {
     public:
@@ -69,8 +67,6 @@ namespace MxRec {
 
         // 特征淘汰接口
         void FeatureEvict(map<std::string, std::vector<emb_cache_key_t>>& evictKeyMap);
-        void ExecuteFeatureAdmit(
-            const string& tableName, int channel, KeysT& splitKey, absl::flat_hash_map<int64_t, uint32_t>& mergeKeys);
 
         // 特征淘汰的使能接口
         void SetFunctionSwitch(bool isEnableEvict);
@@ -107,13 +103,11 @@ namespace MxRec {
         void ResetAllRecords();
 
         bool m_isEnableFunction { true };                                    // “特征淘汰”的使能开关
-        bool m_isExit { false };                                             // 淘汰线程退出的标识
         bool m_isCombine { false };                                          // 是否合并统计history
         absl::flat_hash_map<std::string, ThresholdValue> m_table2Threshold; // table-X ---> ThresholdValue 映射
         AdmitAndEvictData m_recordsData;
         std::mutex m_syncMutexs;         // 特征准入与特征淘汰竞争的同步锁
         int m_recordsInitSize { DEFAULT_RECORDS_INIT_SIZE }; // m_historyRecords表初始容量
-        std::thread m_evictThread; // 特征淘汰功能，以“线程 + 定时任务”方式实现
     };
 }
 

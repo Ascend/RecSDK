@@ -13,24 +13,35 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-#ifndef MXREC_BUFFER_QUEUE_H
-#define MXREC_BUFFER_QUEUE_H
+#ifndef RECBASE_SINGLETON_H_
+#define RECBASE_SINGLETON_H_
 
-#include <vector>
-#include <condition_variable>
 #include <mutex>
-#include <queue>
+#include <iostream>
 
-namespace MxRec {
-    class BufferQueue {
-    public:
-        void Push(std::vector<char> &&buffer);
-        void Pop(std::vector<char>& buffer);
-    private:
-        std::queue<std::vector<char>> bufferQueue;
-        std::mutex mtx;
-        std::condition_variable cv;
-    };
+/**
+ * T must be destructed
+ * @tparam T
+ */
+namespace ock {
+template <typename T> class Singleton {
+public:
+    Singleton() = delete;
+
+    Singleton(const Singleton &singleton) = delete;
+
+    Singleton &operator = (const Singleton &singleton) = delete;
+
+    static T *GetInstance()
+    {
+        try {
+            static T instance;
+            return &instance;
+        } catch (std::exception &e) {
+            std::cout<< " create singleton error" << std::endl;
+            return nullptr;
+        }
+    }
+};
 }
-
-#endif
+#endif // RECBASE_SINGLETON_H_

@@ -28,11 +28,11 @@ from tensorflow.python.training import adam
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.ops import import_host_pipeline_ops
-from mx_rec.validator.validator import para_checker_decorator, StringValidator, FloatValidator
+from mx_rec.validator.validator import para_checker_decorator, StringValidator, FloatValidator, LearningRateValidator
 
 
 @para_checker_decorator(check_option_list=[
-    ("learning_rate", FloatValidator, {"min_value": 0.0, "max_value": 10.0}, ["check_value"]),
+    ("learning_rate", LearningRateValidator, {"min_value": 0.0, "max_value": 10.0}, ["check_value"]),
     ("beta1", FloatValidator, {"min_value": 0.0, "max_value": 1.0}, ["check_value_for_open_interval"]),
     ("beta2", FloatValidator, {"min_value": 0.0, "max_value": 1.0}, ["check_value"]),
     ("epsilon", FloatValidator, {"min_value": 0.0, "max_value": 1.0}, ["check_value_for_left_open_interval"]),

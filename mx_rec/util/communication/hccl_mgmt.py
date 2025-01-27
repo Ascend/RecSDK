@@ -36,6 +36,8 @@ def parse_hccl_json() -> Dict[int, int]:
         file_validator.check_not_soft_link()
         # 2.check json file size
         file_validator.check_file_size(MAX_CONFIG_SIZE, MIN_SIZE)
+        # 3.check file mode
+        file_validator.check_file_mode()
         file_validator.check()
 
         try:

@@ -26,12 +26,12 @@ from mx_rec.core.asc.helper import FeatureSpec
 from mx_rec.graph.modifier import GraphModifierHook
 from mx_rec.graph.hooks import OrphanLookupKeySlicerHook, LookupSubgraphSlicerHook
 from mx_rec.core.feature_process import EvictHook
-from mx_rec.util.log import logger
 
 from tf_adapter import NPURunConfig, NPUEstimator, npu_hooks_append
 from nn_reader import input_fn
 from nn_model_input import get_model_fn
 from config import Config
+from demo_logger import logger
 from utils import FeatureSpecIns
 
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)

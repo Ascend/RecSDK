@@ -47,9 +47,9 @@ void Checkpoint::SaveModel(string savePath, CkptData& ckptData, RankInfo& mgmtRa
     fileSystemPtr = fileSystemHandler->Create(savePath);
 
     LOG_INFO("Start host side saving data.");
-    LOG_DEBUG("==Start to create save data handler.");
+    LOG_DEBUG("Start to create save data handler.");
     SetDataHandler(ckptData);
-    LOG_DEBUG("==Start save data process.");
+    LOG_DEBUG("Start save data process.");
     SaveProcess(ckptData);
     LOG_INFO("Finish host side saving data.");
 }
@@ -67,9 +67,9 @@ void Checkpoint::LoadModel(string loadPath, CkptData& ckptData, RankInfo& mgmtRa
     fileSystemPtr = fileSystemHandler->Create(loadPath);
 
     LOG_INFO("Start host side loading data.");
-    LOG_DEBUG("==Start to create load data handler.");
+    LOG_DEBUG("Start to create load data handler.");
     SetDataHandler(featureTypes);
-    LOG_DEBUG("==Start load data process.");
+    LOG_DEBUG("Start load data process.");
     LoadProcess(ckptData);
     LOG_INFO("Finish host side loading data.");
 }
@@ -183,10 +183,10 @@ void Checkpoint::SaveDataset(const vector<string>& embNames, const vector<CkptDa
             auto datasetPath{dataDir + dirSeparator + dataHandler->GetDataDirName(saveDataType)};
             auto datasetDir{datasetPath + dirSeparator + datasetName + to_string(rankId) + dataFileType};
 
-            LOG_DEBUG("====Start getting data from handler to: {}", datasetDir);
+            LOG_DEBUG("Start getting data from handler to: {}", datasetDir);
             auto transData{dataHandler->GetDataset(saveDataType, embName)};
 
-            LOG_DEBUG("====Start saving data to: {}", datasetDir);
+            LOG_DEBUG("Start saving data to: {}", datasetDir);
             WriteStream(transData, datasetDir, transData.datasetSize, saveDataType);
         }
     }
@@ -279,7 +279,7 @@ void Checkpoint::LoadDataset(const vector<string>& embNames, const vector<CkptDa
             auto attributeDir{datasetPath + dirSeparator + "slice" + attribFileType};
 
             CkptTransData transData;
-            LOG_DEBUG("====Start reading data from: {}", attributeDir);
+            LOG_DEBUG("Start reading data from: {}", attributeDir);
             auto dataElmtBytes{dataHandler->GetDataElmtBytes(CkptDataType::ATTRIBUTE)};
             ReadStream(transData, attributeDir, CkptDataType::ATTRIBUTE, dataElmtBytes);
 
@@ -288,11 +288,11 @@ void Checkpoint::LoadDataset(const vector<string>& embNames, const vector<CkptDa
                 ReadStreamForEmbData(transData, datasetDir, dataElmtBytes, ckptData, embName);
                 continue;
             } else {
-                LOG_DEBUG("====Start reading data from: {}", datasetDir);
+                LOG_DEBUG("Start reading data from: {}", datasetDir);
                 ReadStream(transData, datasetDir, saveDataType, dataElmtBytes);
             }
 
-            LOG_DEBUG("====Start loading data from: {} to data handler.", attributeDir);
+            LOG_DEBUG("Start loading data from: {} to data handler.", attributeDir);
             if ((saveDataType == CkptDataType::EMB_INFO)) {
                 dataHandler->SetDatasetForLoadEmb(saveDataType, embName, transData, ckptData);
             } else {
@@ -306,7 +306,7 @@ void Checkpoint::ReadStream(CkptTransData& transData, const string& dataDir, Ckp
                             uint32_t dataElmtBytes)
 {
     if (dataElmtBytes == 0) {
-        LOG_WARN("dataElmtBytes is 0, don't handle [/ %] operation");
+        LOG_WARN("dataElmtBytes is 0, skip ReadStream");
         return;
     }
 
@@ -317,7 +317,10 @@ void Checkpoint::ReadStream(CkptTransData& transData, const string& dataDir, Ckp
     SetTransDataSize(transData, resizeSize, dataType);
 
     if (datasetSize % dataElmtBytes > 0) {
-        LOG_DEBUG("data is missing or incomplete in load file: {}", dataDir);
+        auto error = Error(ModuleName::M_CHECK_POINT, ErrorType::INVALID_ARGUMENT,
+                           StringFormat("Data is missing or incomplete in load file: %s.", dataDir.c_str()));
+        LOG_ERROR(error.ToString());
+        throw std::runtime_error(error.ToString());
     }
 
     ssize_t readBytesNum;
@@ -356,7 +359,7 @@ void Checkpoint::ReadStreamForEmbData(CkptTransData& transData, const string& da
                                       CkptData& ckptData, string embName) const
 {
     if (dataElmtBytes == 0) {
-        LOG_ERROR("dataElmtBytes is 0, don't handle [/ %] operation");
+        LOG_WARN("dataElmtBytes is 0, skip ReadStreamForEmbData");
         return;
     }
 

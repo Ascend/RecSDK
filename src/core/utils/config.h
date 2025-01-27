@@ -23,11 +23,9 @@ namespace MxRec {
         const char *const KEY_PROCESS_THREAD_NUM = "KEY_PROCESS_THREAD_NUM";
         const char *const MAX_UNIQUE_THREAD_NUM = "MAX_UNIQUE_THREAD_NUM";
         const char *const FAST_UNIQUE = "FAST_UNIQUE";
-        const char *const UPDATE_EMB_V2 = "UpdateEmb_V2";
         const char *const HOT_EMB_UPDATE_STEP = "HOT_EMB_UPDATE_STEP";
         const char *const GLOG_STDERR_THRESHOLD = "GLOG_stderrthreshold";
         const char *const USE_COMBINE_FAAE = "USE_COMBINE_FAAE";
-        const char *const STAT_ON = "STAT_ON";
         const char *const RECORD_KEY_COUNT = "RECORD_KEY_COUNT";
     };
 
@@ -37,11 +35,9 @@ namespace MxRec {
         static int keyProcessThreadNum;
         static int maxUniqueThreadNum;
         static bool fastUnique;
-        static bool updateEmbV2;
         static int hotEmbUpdateStep;
         static int glogStderrthreshold;
         static bool useCombineFaae;
-        static bool statOn;
         static bool recordKeyCount;
     };
 

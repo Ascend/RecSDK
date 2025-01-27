@@ -30,7 +30,7 @@ tookit和tfplugin。可以参考以下链接下载配套版本的CANN和mxRec：
 
 https://www.hiascend.com/zh/developer/download/community/result?module=sdk+cann
 
-https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=7.0.0.beta1&cann=7.0.0.beta1
+https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=8.0.RC3.alpha003&cann=8.0.RC3.alpha003
 
 具体构建镜像步骤参考mxrec-build下的Dockerfile
 
@@ -53,10 +53,6 @@ https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=7
 
 下载链接：[https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.gz](https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.gz)
 
-* easy_profiler-2.1.0
-
-下载链接：[https://codeload.github.com/yse/easy_profiler/tar.gz/refs/tags/v2.1.0](https://codeload.github.com/yse/easy_profiler/tar.gz/refs/tags/v2.1.0)
-
 * python-3.7.5
 
 下载链接：[https://repo.huaweicloud.com/python/3.7.5/Python-3.7.5.tar.xz](https://repo.huaweicloud.com/python/3.7.5/Python-3.7.5.tar.xz)
@@ -73,7 +69,7 @@ mxRec在[昇腾社区](https://www.hiascend.com/developer/download/community/res
 
 https://www.hiascend.com/zh/developer/download/community/result?module=sdk+cann
 
-https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=7.0.0.beta1&cann=7.0.0.beta1
+https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=8.0.RC3.alpha003&cann=8.0.RC3.alpha003
 
 * Tensorflow（1.15.0/2.6.5）
 

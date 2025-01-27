@@ -22,8 +22,10 @@ from mx_rec.graph.utils import check_cutting_points, replace_anchor_vec
 from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.log import logger
+from mx_rec.validator.validator import para_checker_decorator, ClassValidator
 
 
+@para_checker_decorator(check_option_list=[("is_train", ClassValidator, {"classes":bool})])
 def do_merge_lookup(is_train: bool = True):
     """
     自动改图一表一查/多查，添加前向和反向节点：

@@ -103,8 +103,6 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     threadPool = make_unique<ThreadPool>(embInfos.size() * MAX_CHANNEL_NUM);
 
     InitRankInfo(rankInfo, embInfos);
-    GlogConfig::gStatOn = GlobalEnv::statOn;
-
     LOG_INFO(MGMT + "begin initialize, localRankSize:{}, localRankId:{}, rank:{}", rankInfo.localRankSize,
              rankInfo.localRankId, rankInfo.rankId);
 
@@ -345,46 +343,6 @@ OffsetT HybridMgmt::SendLoadMap(const string tableName)
         }
     }
     return offsetMap;
-#endif
-}
-
-/// 加载key对应的offset，python侧调用；启动数据处理线程
-/// \param ReceiveKeyOffsetMap
-void HybridMgmt::ReceiveHostMap(AllKeyOffsetMapT receiveKeyOffsetMap)
-{
-#ifndef GTEST
-    if (!isInitialized) {
-        auto error = Error(ModuleName::M_CHECK_POINT, ErrorType::EXECUTION_ORDER_ERROR,
-                           "HybridMgmt not initialized. Call [start_asc_pipeline] before load offset.");
-        LOG_ERROR(error.ToString());
-        throw runtime_error(error.ToString().c_str());
-    }
-
-    KEY_PROCESS_INSTANCE->LoadSaveLock();
-    KeyOffsetMemT loadKeyOffsetMap;
-    OffsetMemT loadMaxOffset;
-    if (!receiveKeyOffsetMap.empty()) {
-        for (const auto& keyOffsetMap : as_const(receiveKeyOffsetMap)) {
-            auto& singleHashMap = loadKeyOffsetMap[keyOffsetMap.first];
-            auto& maxOffset = loadMaxOffset[keyOffsetMap.first];
-            for (const auto& it : keyOffsetMap.second) {
-                singleHashMap[it.first] = it.second;
-            }
-            maxOffset = keyOffsetMap.second.size();
-        }
-    }
-    if (mgmtRankInfo.isDDR) {
-        LOG_DEBUG(MGMT + "Start receive sparse data: ddr mode hashmap");
-    } else {
-        LOG_DEBUG(MGMT + "Start receive sparse data: no ddr mode hashmap");
-        KEY_PROCESS_INSTANCE->LoadKeyOffsetMap(loadKeyOffsetMap);
-        KEY_PROCESS_INSTANCE->LoadMaxOffset(loadMaxOffset);
-    }
-
-    KEY_PROCESS_INSTANCE->LoadSaveUnlock();
-    if (isLoad && procThreads.empty()) {
-        Start();
-    }
 #endif
 }
 
@@ -677,9 +635,6 @@ bool HybridMgmt::ProcessEmbInfoHBM(const EmbBaseInfo& info, bool isGrad)
     LOG_INFO(MGMT + "table:{}, channelId:{} batchId:{}, embName:{}, ParseKeys with HBM mode end.", info.name,
              info.channelId, info.batchId, info.name);
 
-    if (info.channelId == TRAIN_CHANNEL_ID) {
-        alreadyTrainOnce = true;
-    }
     return remainBatchOut;
 }
 
@@ -737,9 +692,6 @@ bool HybridMgmt::ProcessEmbInfoDDR(const EmbBaseInfo& info)
     auto& swapInPos = swapInKoPair.second;
     auto& swapOutPos = swapOutKoPair.second;
     SendTensorForSwap(info, swapInPos, swapOutPos);
-    if (info.channelId == TRAIN_CHANNEL_ID) {
-        alreadyTrainOnce = true;
-    }
 
     LOG_DEBUG("ProcessEmbInfoDDR end, table:{}, channel:{}, batchId:{} swapProcessTC(ms):{} getAndSendTensorsTC(ms):{}",
               info.name, info.channelId, info.batchId, swapProcessTC.ElapsedMS(), getAndSendTensorsTC.ElapsedMS());
@@ -789,7 +741,9 @@ bool HybridMgmt::Evict()
             vector<std::string> allTableNames;
             int retCode = embCache->GetEmbTableNames(allTableNames);
             if (retCode != H_OK) {
-                LOG_ERROR("GetEmbTableNames failed!");
+                auto error = Error(ModuleName::M_OCK_CTR, ErrorType::INVALID_ARGUMENT,
+                                   StringFormat("GetEmbTableNames failed, error: %d.", retCode));
+                LOG_ERROR(error.ToString());
                 return false;
             }
             for (const string& embName : allTableNames) {
@@ -818,7 +772,9 @@ void HybridMgmt::EvictKeys(const string& embName, const vector<emb_cache_key_t>&
     }
     int retCode = embCache->RemoveEmbsByKeys(embName, keys);
     if (retCode != H_OK) {
-        LOG_ERROR("RemoveEmbsByKeys failed!");
+        auto error = Error(ModuleName::M_OCK_CTR, ErrorType::UNKNOWN,
+                           StringFormat("RemoveEmbsByKeys failed, error: %d", retCode));
+        LOG_ERROR(error.ToString());
         return;
     }
 }
@@ -1168,47 +1124,55 @@ void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
             size_t ret = hdTransfer->RecvOffsetsAcl(transferName, TRAIN_CHANNEL_ID, embInfo.name);
             if (ret == 0) {
                 LOG_WARN("Receive empty data.");
-            } else {
-                LOG_INFO("Receive data success, get {} data size: {}.", embInfo.name, ret);
-                auto aclData = acltdtGetDataItem(hdTransfer->aclDatasetsForIncrementalCkpt[embInfo.name], 0);
-                if (aclData == nullptr) {
-                    auto error = Error(ModuleName::M_CHECK_POINT, ErrorType::ACL_ERROR,
-                                       "Acl get tensor data failed in [ReceiveKeyThread].");
-                    LOG_ERROR(error.ToString());
-                    throw runtime_error(error.ToString().c_str());
-                }
-                auto ptr = reinterpret_cast<int64_t*>(acltdtGetDataAddrFromItem(aclData));
-                int64_t timeStamp = *ptr;
-                int64_t globalStep = *(ptr + 1);
-                LOG_INFO("Receive {} timeStamp: {}, global step: {}.", embInfo.name, timeStamp, globalStep);
-                // tensorflow获取的global step是从1开始的，但是在key process中batch
-                // id则是从0开始，因此，下面的info中的batchId需要用 globalStep - 1
-                EmbBaseInfo info = {.batchId = static_cast<int>(globalStep - 1),
-                                    .channelId = TRAIN_CHANNEL_ID,
-                                    .name = embInfo.name};
-                unique_ptr<vector<Tensor>> keyCountVecInfo = KEY_PROCESS_INSTANCE->GetKCInfoVec(info);
-                if (keyCountVecInfo == nullptr) {
-                    auto error = Error(ModuleName::M_CHECK_POINT, ErrorType::NOT_FOUND,
-                                       "Get key count info vector is empty in [ReceiveKeyThread].");
-                    LOG_ERROR(error.ToString());
-                    throw runtime_error(error.ToString().c_str());
-                }
-                auto keyCountVecTmp = keyCountVecInfo->at(0).flat<int64>();
-                vector<int64_t> keyCountVec;
-                int64 keyCountSize = keyCountVecTmp.size();
-                keyCountVec.reserve(keyCountSize);
-                for (int64 i = 0; i < keyCountSize; ++i) {
-                    keyCountVec.push_back(static_cast<int64_t>(keyCountVecTmp(i)));
-                }
-                LOG_INFO("Emb table: {}, channel: {}, size is: {}, data: {}", embInfo.name, TRAIN_CHANNEL_ID,
-                         keyCountSize, VectorToString(keyCountVec));
-
-                // 更新delta表
-                std::lock_guard<std::mutex> lock(keyCountUpdateMtx);
-                UpdateDeltaInfo(embInfo.name, keyCountVec, timeStamp, globalStep);
-                keyBatchIdMap[embInfo.name]++;
-                keyCountUpdateCv.notify_all();
+                return;
             }
+            LOG_INFO("Receive data success, get {} data size: {}.", embInfo.name, ret);
+            auto aclData = acltdtGetDataItem(hdTransfer->aclDatasetsForIncrementalCkpt[embInfo.name], 0);
+            if (aclData == nullptr) {
+                auto error = Error(ModuleName::M_CHECK_POINT, ErrorType::ACL_ERROR,
+                                   "Acl get tensor data failed in [ReceiveKeyThread].");
+                LOG_ERROR(error.ToString());
+                throw runtime_error(error.ToString());
+            }
+
+            auto ptr = static_cast<int64_t*>(acltdtGetDataAddrFromItem(aclData));
+            if (ptr == nullptr || (ptr + 1) == nullptr) {
+                auto error = Error(ModuleName::M_CHECK_POINT, ErrorType::NULL_PTR,
+                                   "Failed to parse ACL passing data to timestamp and global step [ReceiveKeyThread].");
+                LOG_ERROR(error.ToString());
+                throw runtime_error(error.ToString());
+            }
+            auto timeStamp = *ptr;
+            auto globalStep = *(ptr + 1);
+
+            LOG_INFO("Receive {} timeStamp: {}, global step: {}.", embInfo.name, timeStamp, globalStep);
+            // tensorflow获取的global step是从1开始的，但是在key process中batch
+            // id则是从0开始，因此，下面的info中的batchId需要用 globalStep - 1
+            EmbBaseInfo info = {.batchId = static_cast<int>(globalStep - 1),
+                                .channelId = TRAIN_CHANNEL_ID,
+                                .name = embInfo.name};
+            unique_ptr<vector<Tensor>> keyCountVecInfo = KEY_PROCESS_INSTANCE->GetKCInfoVec(info);
+            if (keyCountVecInfo == nullptr) {
+                auto error = Error(ModuleName::M_CHECK_POINT, ErrorType::NOT_FOUND,
+                                   "Get key count info vector is empty in [ReceiveKeyThread].");
+                LOG_ERROR(error.ToString());
+                throw runtime_error(error.ToString());
+            }
+            auto keyCountVecTmp = keyCountVecInfo->at(0).flat<int64>();
+            vector<int64_t> keyCountVec;
+            int64 keyCountSize = keyCountVecTmp.size();
+            keyCountVec.reserve(keyCountSize);
+            for (int64 i = 0; i < keyCountSize; ++i) {
+                keyCountVec.push_back(static_cast<int64_t>(keyCountVecTmp(i)));
+            }
+            LOG_INFO("Emb table: {}, channel: {}, size is: {}, data: {}", embInfo.name, TRAIN_CHANNEL_ID, keyCountSize,
+                     VectorToString(keyCountVec));
+
+            // 更新delta表
+            std::lock_guard<std::mutex> lock(keyCountUpdateMtx);
+            UpdateDeltaInfo(embInfo.name, keyCountVec, timeStamp, globalStep);
+            keyBatchIdMap[embInfo.name]++;
+            keyCountUpdateCv.notify_all();
         }
     });
 }
@@ -1406,10 +1370,6 @@ bool HybridMgmt::ProcessEmbInfoL3Storage(const EmbBaseInfo& info)
 
     SendTensorForSwap(info, swapInPos, swapOutPos);
 
-    if (info.channelId == TRAIN_CHANNEL_ID) {
-        alreadyTrainOnce = true;
-    }
-
     LOG_DEBUG("ProcessEmbInfoL3Storage end, table:{}, batchId:{}, swapProcessTC(ms):{}, getAndSendTensorsTC(ms):{}",
               info.name, info.batchId, swapProcessTC.ElapsedMS(), getAndSendTensorsTC.ElapsedMS());
 #endif
@@ -1606,7 +1566,8 @@ bool HybridMgmt::EmbeddingReceiveDDR(const EmbTaskInfo& info, float*& ptr, vecto
     // 区分通道接收
     auto size = hdTransfer->RecvAcl(TransferChannel::D2H, info.channelId, info.name, info.threadIdx, info.batchId);
     if (size == 0) {
-        LOG_WARN(HOSTEMB + "recv empty data");
+        LOG_WARN("Recv empty data, table:{}, channelId:{}, accumulate batchId:{}.",
+                 info.name, info.channelId, info.batchId);
         return false;
     }
 
@@ -1842,7 +1803,8 @@ bool HybridMgmt::EmbeddingReceiveL3Storage(const EmbTaskInfo& info, float*& ptr,
     // 区分通道接收
     auto size = hdTransfer->RecvAcl(TransferChannel::D2H, info.channelId, info.name, info.threadIdx, info.batchId);
     if (size == 0) {
-        LOG_WARN(HOSTEMB + "recv empty data");
+        LOG_WARN("Recv empty data, table:{}, channelId:{}, accumulate batchId:{}.",
+                 info.name, info.channelId, info.batchId);
         return false;
     }
 
@@ -2174,7 +2136,7 @@ void HybridMgmt::SendRestoreVec(const EmbBaseInfo& info, bool& remainBatchOut)
     if (infoVecs == nullptr) {
         remainBatchOut = false;
         if (isRunning) {
-            LOG_ERROR("Information vector is nullptr!");
+            LOG_WARN("Information vector is nullptr!");
         }
         return;
     }
