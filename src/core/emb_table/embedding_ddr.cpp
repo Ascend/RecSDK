@@ -323,6 +323,7 @@ void EmbeddingDDR::SyncLatestEmbedding(const int pythonBatchId)
             throw runtime_error(error.ToString());
         }
         LOG_INFO("Finish SyncLatestEmbedding, empty keys, table:{}, pythonBatchId:{}.", name, pythonBatchId);
+        isSyncFinish = true;
         return;
     }
 
