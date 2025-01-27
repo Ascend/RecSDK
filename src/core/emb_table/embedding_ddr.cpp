@@ -322,8 +322,8 @@ void EmbeddingDDR::SyncLatestEmbedding(const int pythonBatchId)
             LOG_ERROR(error.ToString());
             throw runtime_error(error.ToString());
         }
-        LOG_INFO("Finish SyncLatestEmbedding, empty keys, table:{}, pythonBatchId:{}.", name, pythonBatchId);
         isSyncFinish = true;
+        LOG_INFO("Finish SyncLatestEmbedding, empty keys, table:{}, pythonBatchId:{}.", name, pythonBatchId);
         return;
     }
 
