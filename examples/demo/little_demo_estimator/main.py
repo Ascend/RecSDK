@@ -173,7 +173,7 @@ def _clear_saved_model() -> None:
     _del_related_dir("kernel*")
     _del_related_dir("export_graph")
 
-    if not USE_EXPORT_SAVED_MODEL and RUN_MODE.startswith("train"):
+    if not USE_EXPORT_SAVED_MODEL and not RUN_MODE.startswith("train"):
         return
     logger.warning("Current mode contains train, will delete previous saved model data if exist.")
     _del_related_dir("_rank*")
