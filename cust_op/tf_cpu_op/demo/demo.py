@@ -9,6 +9,11 @@ tf.app.flags.DEFINE_integer('row', 1, 'maxtrix row')
 tf.app.flags.DEFINE_integer('col', 4000, 'maxtrix col')
 FLAGS = tf.app.flags.FLAGS
 
+MAX_COL = 100000
+MAX_ITERS = 10000
+MIN_VAL = -32768
+MAX_VAL = 32767
+
 
 class TensorflowBenchmark(tf.test.Benchmark):
     def __init__(self):
@@ -86,7 +91,7 @@ class TensorflowBenchmark(tf.test.Benchmark):
             )
 
 
-def go(_):
+def run_op():
     shape = [FLAGS.row, FLAGS.col]
     if FLAGS.op == 'Less':
         benchmark.benchmark_less(shape)
@@ -97,7 +102,24 @@ def go(_):
     elif FLAGS.op == 'Select':
         benchmark.benchmark_select(shape)
     else:
-        raise Exception(f"给定算子不存在: {FLAGS.op}")
+        raise Exception(f"operator {FLAGS.op} is not found")
+
+
+def go(_):
+    if FLAGS.iters < 1 or FLAGS.iters > MAX_ITERS:
+        raise Exception(f"iters should in [1,{MAX_ITERS}],but get {FLAGS.iters}")
+    if FLAGS.minval < MIN_VAL or FLAGS.minval > MAX_VAL:
+        raise Exception(f"minval should in [{MIN_VAL},{MAX_VAL}],but get {FLAGS.minval}")
+    if FLAGS.maxval < MIN_VAL or FLAGS.maxval > MAX_VAL:
+        raise Exception(f"maxval should in [{MIN_VAL},{MAX_VAL}],but get {FLAGS.maxval}")
+    if FLAGS.maxval <= FLAGS.minval:
+        raise Exception(f"minval({FLAGS.minval}) shoud less than maxval({FLAGS.maxval})")
+    if FLAGS.row != 1:
+        raise Exception(f"row shold be 1,but get {FLAGS.row}")
+    if FLAGS.col < 1 or FLAGS.col > MAX_COL:
+        raise Exception(f"col should in [1,{MAX_COL}],but get ({FLAGS.col})")
+
+    run_op()
 
 
 if __name__ == '__main__':

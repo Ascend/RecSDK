@@ -87,3 +87,10 @@ tips:这一步会下载安装依赖包，请确保网络正常
 配置lib_rec_base.so所在目录到LD_LIBRARY_PATH环境变量中：export LD_LIBRARY_PATH=/xx/xx:$LD_LIBRARY_PATH  
 进入到demo路径下  
 python3 demo.py --op=Less --iters=5000 --minval=5000 --maxval=10000 --row=1 --col=4000
+
+入参解释：  
+--op:指定算子类型，范围为Less，Greater，FloorMod，Select  
+--iters：指定demo测试算子的次数，整型,范围为[1-10000]  
+--minval:用于算子计算的随机数的最小值，整型,范围为[-32767，32768]，并且小于maxval  
+--maxval:用于算子计算的随机数的最大值，整型,范围为[-32767，32768]，并且大于minval  
+--row，--col：用于算子计算的数据的shape，row只支持1，col为整型,取值范围[1,100000]  
