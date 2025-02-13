@@ -247,7 +247,6 @@ void EmbeddingDDR::Save(const string& savePath, const int pythonBatchId, bool sa
     vector<vector<float>> optimizerSlots;
 
     auto step = GetStepFromPath(savePath);
-    embCache->GetEmbTableInfos(name, keys, embeddings, optimizerSlots);
 
     // Wait until SyncLatestEmbedding finish.
     LOG_INFO("Start waiting until SyncLatestEmbedding finish, table:{}.", name);
@@ -265,6 +264,8 @@ void EmbeddingDDR::Save(const string& savePath, const int pythonBatchId, bool sa
     }
     LOG_INFO("End waiting SyncLatestEmbedding, table:{}.", name);
 
+    // Get emb table need after emb sync complete. Prevent operation in parallel
+    embCache->GetEmbTableInfos(name, keys, embeddings, optimizerSlots);
     if (saveDelta) {
         // When save delta model, filter keys in keyInfo firstly, and then push back it into deltaKeys.
         vector<emb_cache_key_t> deltaKeys;

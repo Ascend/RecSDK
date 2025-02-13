@@ -411,8 +411,14 @@ void EmbLocalTable::GetEmbTableInfos(std::vector<uint64_t>& keys, std::vector<st
 
     for (auto& p : kvVec) {
         std::vector<float> curEmbedding;
-        keys.emplace_back(p.first);
         auto* addr = reinterpret_cast<float*>(p.second);
+        if (addr == nullptr) {
+            ExternalLogger::PrintLog(
+                LogLevel::ERROR,
+                "The new key:" + std::to_string(p.first) + " is being inserted in parallel. Addr is null!");
+            throw std::runtime_error("GetEmbTableInfos fail. Addr is null");
+        }
+        keys.emplace_back(p.first);
         curEmbedding.insert(curEmbedding.end(), addr, reinterpret_cast<float*>((addr + embeddingSize)));
         embeddings.emplace_back(curEmbedding);
         if (extEmbeddingSize > embeddingSize) {

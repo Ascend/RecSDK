@@ -819,7 +819,9 @@ private:
                 if (buck->keys[k] == 0) {
                     continue;
                 }
+                buck->spinLock.Lock();
                 kvVec.emplace_back(buck->keys[k].load(), buck->values[k]);
+                buck->spinLock.UnLock();
             }
             buck = buck->next;
         }
