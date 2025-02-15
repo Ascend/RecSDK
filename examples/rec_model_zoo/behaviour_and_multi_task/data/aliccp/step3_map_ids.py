@@ -21,7 +21,7 @@ def parse_data(file_name, write_name):
     for field, l_val in map_dict.items():
         map_map_dict[field] = dict([(str(value), index) for index, value in enumerate(l_val)])
     map_dict: dict[str, dict[str, int]] = map_map_dict
-    flags = os.O_WRONLY | os.O_TRUNC
+    flags = os.O_WRONLY | os.O_TRUNC | os.O_CREAT
     modes = stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
     with os.fdopen(os.open(write_name, flags, modes), "w") as write_file:
         line_count = 0

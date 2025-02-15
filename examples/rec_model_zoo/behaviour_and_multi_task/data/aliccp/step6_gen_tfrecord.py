@@ -51,7 +51,7 @@ def gen_tfrecords(chunk_data):
     modes = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH
     max_length_file_info = json.load(os.fdopen(os.open(max_length_file_path, flags, modes), "r"))
 
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    flags = os.O_RDONLY
     modes = stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
     tfrecord_out = tf.io.TFRecordWriter(out_file)
     with os.fdopen(os.open(input_file_path, flags, modes), "rb") as fi:

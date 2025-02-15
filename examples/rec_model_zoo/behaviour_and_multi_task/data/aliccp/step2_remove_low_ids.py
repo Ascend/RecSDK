@@ -35,5 +35,7 @@ for key in obj.keys():
         os.makedirs("./aliccp_out/vocab")
     flags = os.O_WRONLY | os.O_CREAT
     modes = stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
-    with os.fdopen(os.open(os.path.join("./aliccp_out/vocab/vocab_", key), flags, modes), "w") as fp:
+    voca_filename = "vocab_" + key
+    voca_path = os.path.join("./aliccp_out/vocab", key)
+    with os.fdopen(os.open(voca_path, flags, modes), "w") as fp:
         fp.writelines([f"{val}\n" for val in new_dict[key]])
