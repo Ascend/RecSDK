@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-
 import os
 import glob
 import shutil
@@ -15,7 +14,7 @@ import numpy as np
 import tensorflow as tf
 from npu_bridge.npu_init import NPUEstimator, NPURunConfig
 
-from utils import get_third_nearest_checkpoint
+from utils import get_third_nearest_checkpoint, dump_pred
 
 MODEL_NAME = "AFN_plus"
 
@@ -241,6 +240,12 @@ def model_fn(features, labels, mode, params):
         tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY: tf.estimator.export.PredictOutput(
             predictions)}
 
+    if mode == tf.estimator.ModeKeys.PREDICT:
+        return tf.estimator.EstimatorSpec(
+            mode=mode,
+            predictions=predictions,
+            export_outputs=export_outputs)
+
     loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=y, labels=labels)) \
            + tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=y_d, labels=labels)) \
            + tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=y_afn, labels=labels))
@@ -256,20 +261,14 @@ def model_fn(features, labels, mode, params):
     }
 
     train_op = build_optimizer(loss, learning_rate, params)
-    # Provide an estimator spec for `ModeKeys.PREDICT`
-    if mode == tf.estimator.ModeKeys.PREDICT:
-        return tf.estimator.EstimatorSpec(
-            mode=mode,
-            predictions=predictions,
-            export_outputs=export_outputs)
-    elif mode == tf.estimator.ModeKeys.EVAL:
+
+    if mode == tf.estimator.ModeKeys.EVAL:
         return tf.estimator.EstimatorSpec(
             mode=mode,
             predictions=predictions,
             loss=loss,
             eval_metric_ops=eval_metric_ops,
             train_op=train_op)
-    # Provide an estimator spec for `ModeKeys.TRAIN` modes
     elif mode == tf.estimator.ModeKeys.TRAIN:
         return tf.estimator.EstimatorSpec(
             mode=mode,
@@ -290,18 +289,6 @@ def batch_norm_layer(x, train_phase, scope_bn, model_cfg):
                                             updates_collections=None, is_training=False, reuse=True, scope=scope_bn)
     z = tf.cond(tf.cast(train_phase, tf.bool), lambda: bn_train, lambda: bn_infer)
     return z
-
-
-def dump_pred(preds, model_cfg):
-    """
-    Dump the prediction results to a file.
-    """
-    flags = os.O_WRONLY | os.O_TRUNC
-    modes = stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
-    pred_path = os.path.join(model_cfg.data_dir, "pred.txt")
-    with os.fdopen(os.open(pred_path, flags, modes), "w") as fo:
-        for prob in preds:
-            fo.write("%f\n" % (prob['prob']))
 
 
 def main(model_cfg):
@@ -366,7 +353,7 @@ def main(model_cfg):
         preds = estimator.predict(input_fn=lambda: input_fn(te_files, num_epochs=1, batch_size=model_cfg.batch_size,
                                                             field_size=model_cfg.field_size),
                                   predict_keys="prob")
-        dump_pred(preds, model_cfg)
+        dump_pred(preds, model_cfg.data_dir)
 
     elif model_cfg.task_type == 'profiling_train':
         estimator.train(input_fn=lambda: input_fn(tr_files, num_epochs=1, batch_size=model_cfg.batch_size,
@@ -377,7 +364,7 @@ def main(model_cfg):
         preds = estimator.predict(input_fn=lambda: input_fn(te_files, num_epochs=1, batch_size=model_cfg.batch_size,
                                                             field_size=model_cfg.field_size),
                                   predict_keys="prob", hooks=[hook_stop])
-        dump_pred(preds, model_cfg)
+        dump_pred(preds, model_cfg.data_dir)
     else:
         raise ValueError(
             "Invalid task_type. task_type must be one of "

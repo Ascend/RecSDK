@@ -1,20 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#    http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
-
 
 import os
 import glob
@@ -27,9 +12,10 @@ from datetime import date, timedelta, datetime
 
 import pytz
 import tensorflow as tf
-
-from utils import get_third_nearest_checkpoint
 from npu_bridge.npu_init import NPUEstimator, NPURunConfig
+
+from utils import get_third_nearest_checkpoint, dump_pred
+
 
 MODEL_NAME = "PNN"
 
@@ -197,7 +183,6 @@ def model_fn(features, labels, mode, params):
         tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY: tf.estimator.export.PredictOutput(
             predictions)}
 
-    # Provide an estimator spec for `ModeKeys.PREDICT`
     if mode == tf.estimator.ModeKeys.PREDICT:
         return tf.estimator.EstimatorSpec(
             mode=mode,
@@ -207,7 +192,6 @@ def model_fn(features, labels, mode, params):
     # ------bulid loss------
     loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=y, labels=labels))
 
-    # Provide an estimator spec for `ModeKeys.EVAL`
     log_loss = tf.compat.v1.losses.log_loss(labels, pred)
     auc_metric = tf.compat.v1.metrics.auc(labels, pred)
     loss_metric = tf.compat.v1.metrics.mean(log_loss)
@@ -229,7 +213,6 @@ def model_fn(features, labels, mode, params):
             eval_metric_ops=eval_metric_ops,
             train_op=train_op)
 
-    # Provide an estimator spec for `ModeKeys.TRAIN` modes
     if mode == tf.estimator.ModeKeys.TRAIN:
         return tf.estimator.EstimatorSpec(
             mode=mode,
@@ -238,18 +221,6 @@ def model_fn(features, labels, mode, params):
             train_op=train_op)
     else:
         raise ValueError("Only support TRAIN, EVAL and PREDICT modes")
-
-
-def dump_pred(preds, model_cfg):
-    """
-    Dump the prediction results to a file.
-    """
-    flags = os.O_WRONLY | os.O_TRUNC
-    modes = stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
-    pred_path = os.path.join(model_cfg.data_dir, "pred.txt")
-    with os.fdopen(os.open(pred_path, flags, modes), "w") as fo:
-        for prob in preds:
-            fo.write("%f\n" % (prob['prob']))
 
 
 def main(model_cfg):
@@ -314,7 +285,7 @@ def main(model_cfg):
         preds = estimator.predict(input_fn=lambda: input_fn(te_files, num_epochs=1, batch_size=model_cfg.batch_size,
                                                             field_size=model_cfg.field_size),
                                   predict_keys="prob")
-        dump_pred(preds, model_cfg)
+        dump_pred(preds, model_cfg.data_dir)
 
     elif model_cfg.task_type == 'profiling_train':
         estimator.train(input_fn=lambda: input_fn(tr_files, num_epochs=1, batch_size=model_cfg.batch_size,
@@ -325,7 +296,7 @@ def main(model_cfg):
         preds = estimator.predict(input_fn=lambda: input_fn(te_files, num_epochs=1, batch_size=model_cfg.batch_size,
                                                             field_size=model_cfg.field_size),
                                   predict_keys="prob", hooks=[hook_stop])
-        dump_pred(preds, model_cfg)
+        dump_pred(preds, model_cfg.data_dir)
 
     else:
         raise ValueError("Unsupported task type: {}".format(model_cfg.task_type))

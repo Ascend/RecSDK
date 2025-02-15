@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-
 import os
 import glob
 import shutil
@@ -188,17 +187,13 @@ def model_fn(features, labels, mode, params):
         tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY: tf.estimator.export.PredictOutput(
             predictions)}
 
-    # Provide an estimator spec for `ModeKeys.PREDICT`
     if mode == tf.estimator.ModeKeys.PREDICT:
         return tf.estimator.EstimatorSpec(
             mode=mode,
             predictions=predictions,
             export_outputs=export_outputs)
 
-    # ------bulid loss------
     loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=y, labels=labels))
-
-    # Provide an estimator spec for `ModeKeys.EVAL`
     log_loss = tf.compat.v1.losses.log_loss(labels, pred)
     auc_metric = tf.compat.v1.metrics.auc(labels, pred)
     loss_metric = tf.compat.v1.metrics.mean(log_loss)

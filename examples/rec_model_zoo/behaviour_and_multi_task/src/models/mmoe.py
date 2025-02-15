@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#    http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
 
 import os
 import stat
@@ -30,7 +16,7 @@ import pytz
 import tensorflow as tf
 from npu_bridge.npu_init import NPUEstimator, NPURunConfig
 
-from utils import get_third_nearest_checkpoint
+from utils import get_third_nearest_checkpoint, dump_pred_multi
 
 tf.compat.v1.enable_control_flow_v2()
 tf.compat.v1.enable_resource_variables()
@@ -134,18 +120,6 @@ def input_fn(filenames: list, mode_type: str, batch_size: int = 32, num_epochs: 
     batch_features, batch_labels = iterator.get_next()
 
     return batch_features, batch_labels
-
-
-def dump_pred(preds, model_cfg):
-    """
-    Dump the prediction results to a file.
-    """
-    flags = os.O_WRONLY | os.O_TRUNC
-    modes = stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
-    pred_path = os.path.join(model_cfg.data_dir, "pred.txt")
-    with os.fdopen(os.open(pred_path, flags, modes), "w") as fo:
-        for prob in preds:
-            fo.write("%f\t%f\t%f\n" % (prob['ctr'], prob['cvr'], prob['ctcvr']))
 
 
 def embedding_lookup_sparse_fake(params: tf.Tensor, ids: tf.Tensor, combiner: str = None,
@@ -454,12 +428,13 @@ def model_fn(features: dict, labels: dict, mode: tf.estimator.ModeKeys,
     export_outputs = {
         tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY: tf.estimator.export.PredictOutput(predictions)
     }
+    if mode == tf.estimator.ModeKeys.PREDICT:
+        return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions, export_outputs=export_outputs)
+
     loss = build_loss(labels, predictions["ctr"], predictions["ctcvr"], params)
     train_op = build_optimizer(loss, params)
 
-    if mode == tf.estimator.ModeKeys.PREDICT:
-        return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions, export_outputs=export_outputs)
-    elif mode == tf.estimator.ModeKeys.EVAL:
+    if mode == tf.estimator.ModeKeys.EVAL:
         ctr_mask = labels["y"] > 0
         cvr_labels = tf.boolean_mask(labels["z"], ctr_mask)
         cvr_pre = tf.boolean_mask(predictions["cvr"], ctr_mask)
@@ -544,7 +519,7 @@ def main(model_cfg):
         preds = model.predict(input_fn=lambda: input_fn(te_files, num_epochs=1, batch_size=model_cfg.batch_size,
                                                         mode_type=tf.estimator.ModeKeys.PREDICT),
                               predict_keys=["ctr", "cvr", "ctcvr"], hooks=[])
-        dump_pred(preds, model_cfg)
+        dump_pred_multi(preds, model_cfg.data_dir)
 
     elif model_cfg.task_type == 'profiling_train':
         model.train(
@@ -557,7 +532,7 @@ def main(model_cfg):
                                                         mode_type=tf.estimator.ModeKeys.PREDICT),
                               predict_keys=["ctr", "cvr", "ctcvr"], hooks=[hook_stop])
 
-        dump_pred(preds, model_cfg)
+        dump_pred_multi(preds, model_cfg.data_dir)
     else:
         raise ValueError("Unsupported task type: {}".format(model_cfg.task_type))
 

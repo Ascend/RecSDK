@@ -28,7 +28,7 @@ import pytz
 import tensorflow as tf
 from npu_bridge.npu_init import NPUEstimator, NPURunConfig
 
-from utils import get_third_nearest_checkpoint
+from utils import get_third_nearest_checkpoint, dump_pred
 
 MODEL_NAME = "AutoInt"
 
@@ -308,18 +308,6 @@ def model_fn(features, labels, mode, params):
         raise NotImplementedError("Unknown mode: {}".format(mode))
 
 
-def dump_pred(preds, model_cfg):
-    """
-    Dump the prediction results to a file.
-    """
-    flags = os.O_WRONLY | os.O_TRUNC
-    modes = stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
-    pred_path = os.path.join(model_cfg.data_dir, "pred.txt")
-    with os.fdopen(os.open(pred_path, flags, modes), "w") as fo:
-        for prob in preds:
-            fo.write("%f\n" % (prob['prob']))
-
-
 def main(model_cfg):
     # ------check Arguments------
     if model_cfg.dt_dir == "":
@@ -383,7 +371,7 @@ def main(model_cfg):
         preds = estimator.predict(input_fn=lambda: input_fn(te_files, num_epochs=1, batch_size=model_cfg.batch_size,
                                                             field_size=model_cfg.field_size),
                                   predict_keys="prob")
-        dump_pred(preds, model_cfg)
+        dump_pred(preds, model_cfg.data_dir)
 
     elif model_cfg.task_type == 'profiling_train':
         estimator.train(input_fn=lambda: input_fn(tr_files, num_epochs=1, batch_size=model_cfg.batch_size,
@@ -394,7 +382,7 @@ def main(model_cfg):
         preds = estimator.predict(input_fn=lambda: input_fn(te_files, num_epochs=1, batch_size=model_cfg.batch_size,
                                                             field_size=model_cfg.field_size),
                                   predict_keys="prob", hooks=[hook_stop])
-        dump_pred(preds, model_cfg)
+        dump_pred(preds, model_cfg.data_dir)
 
 
 if __name__ == "__main__":

@@ -26,7 +26,7 @@ def dump_pred(preds: List[Dict[str, float]], data_dir: str) -> None:
     Returns:
         None
     """
-    flags = os.O_WRONLY | os.O_TRUNC
+    flags = os.O_WRONLY | os.O_TRUNC | os.O_CREAT
     modes = stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
     pred_path = os.path.join(data_dir, "pred.txt")
     with os.fdopen(os.open(pred_path, flags, modes), "w") as fo:
