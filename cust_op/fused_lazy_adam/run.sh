@@ -17,8 +17,6 @@
 set -e
 
 source /etc/profile
-# 规避新版本的CANN漏合代码导致GE无法识别到自定义算子问题
-sed -i '37i\set(ASCEND_FRAMEWORK_TYPE {plugin})' /usr/local/Ascend/ascend-toolkit/latest/tools/op_project_templates/ascendc/customize/cmake/config.cmake
 
 # 查找msopgen的路径，加入到环境变量PATH中
 msopgen_path=$(find /usr/local/Ascend/ -name msopgen | grep bin)
