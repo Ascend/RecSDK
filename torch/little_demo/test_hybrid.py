@@ -25,13 +25,8 @@ from torchrec.distributed.planner import (
     Topology,
     ParameterConstraints,
 )
-from hybrid_torchrec.distributed.hybrid_train_pipeline import (
-    HybridTrainPipelineSparseDist,
-)
-from hybrid_torchrec.distributed.sharding.hybrid_embeddingbag import (
-    HybridEmbeddingBagCollectionSharder,
-)
-
+from hybrid_torchrec.distributed.sharding_plan import get_default_hybrid_sharders
+from hybrid_torchrec.distributed.hybrid_train_pipeline import HybridTrainPipelineSparseDist
 from dataset import RandomRecDataset
 from model import TestModel
 import torch.distributed as dist
@@ -86,7 +81,7 @@ def invoke_main():
     )
 
     # Shard
-    hybrid_sharder = HybridEmbeddingBagCollectionSharder(host_env=host_env)
+    hybrid_sharders = get_default_hybrid_sharders(host_env=host_env)
     constrans = {
         table_name: ParameterConstraints(sharding_types=["table_wise"])
         for table_name in TABLE_NAMES
@@ -97,10 +92,10 @@ def invoke_main():
         constraints=constrans,
     )
 
-    plan = planner.collective_plan(test_model, [hybrid_sharder], dist.GroupMember.WORLD)
+    plan = planner.collective_plan(test_model, hybrid_sharders, dist.GroupMember.WORLD)
     logging.info(plan)
     ddp_model = DistributedModelParallel(
-        test_model, device=torch.device("npu"), plan=plan, sharders=[hybrid_sharder]
+        test_model, device=torch.device("npu"), plan=plan, sharders=hybrid_sharders
     )
     optimizer = CombinedOptimizer([ddp_model.fused_optimizer])
 
