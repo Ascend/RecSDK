@@ -43,4 +43,5 @@ class TestModel(torch.nn.Module):
         result = self.ebc(batch.sparse_features)
         result: torch.Tensor = result.values()
         loss = result.mean() + result.sum() + result.max() + result.min()
-        return loss, resul
+        return loss, result
+
