@@ -36,7 +36,7 @@ TEST(common, InitializeInfo)
 
     NormalInitializerInfo nInfoInvalid;
     string nameInvalid = "x";
-    bool isExceptionThrow = { false };
+    bool isExceptionThrow = {false};
     try {
         iInfo = InitializeInfo(nameInvalid, 0, 1, nInfoInvalid);
     } catch (const std::invalid_argument& e) {
@@ -82,4 +82,39 @@ TEST(TestGetThreadNumEnv, Basic)
 TEST(TestValidateReadFile, Basic)
 {
     EXPECT_NO_THROW(MxRec::ValidateReadFile("/home/slice_0.data", 28000000));
+}
+
+TEST(RankInfoTest, ConstructOk)
+{
+    auto maxSteps = vector<int>{100};
+    auto rankInfo = RankInfo(1, 1, maxSteps);
+    EXPECT_EQ(rankInfo.localRankSize, 1);
+}
+
+TEST(CommTest, CheckFilePermissionErr)
+{
+    auto filePath = string("/etc/os-release");
+    EXPECT_EQ(CheckFilePermission(filePath), false);
+
+    filePath = string("/etc/unknown");
+    EXPECT_EQ(CheckFilePermission(filePath), false);
+}
+
+TEST(CommTest, FloatPtrToLimitStrOk)
+{
+    float val = 0;
+    auto ptrVal = &val;
+    auto strVal = FloatPtrToLimitStr(ptrVal, 1);
+    EXPECT_EQ(strVal, "0.000000 ");
+}
+
+TEST(CommTest, GetStepFromPathOk) {
+    const auto loadPath = SAVE_SPARSE_PATH_PREFIX + "-ckpt-0";
+    auto step = GetStepFromPath(loadPath);
+    EXPECT_EQ(step, 0);
+}
+
+TEST(CommTest, CheckFileExistOk) {
+    const auto filePath = "invalid_path"s;
+    EXPECT_FALSE(CheckFileExist(filePath));
 }

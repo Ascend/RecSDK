@@ -204,38 +204,29 @@ namespace MxRec {
 
     std::string CkptDataTypeName(CkptDataType type)
     {
-        switch (type) {
-            case CkptDataType::EMB_INFO:
-                return "EMB_INFO";
-            case CkptDataType::EMB_DATA:
-                return "EMB_DATA";
-            case CkptDataType::EMB_HASHMAP:
-                return "EMB_HASHMAP";
-            case CkptDataType::DEV_OFFSET:
-                return "DEV_OFFSET";
-            case CkptDataType::EMB_CURR_STAT:
-                return "EMB_CURR_STAT";
-            case CkptDataType::NDDR_OFFSET:
-                return "NDDR_OFFSET";
-            case CkptDataType::NDDR_FEATMAP:
-                return "NDDR_FEATMAP";
-            case CkptDataType::TABLE_2_THRESH:
-                return "TABLE_2_THRESH";
-            case CkptDataType::HIST_REC:
-                return "HIST_REC";
-            case CkptDataType::ATTRIBUTE:
-                return "ATTRIBUTE";
-            case CkptDataType::DDR_FREQ_MAP:
-                return "DDR_FREQ_MAP";
-            case CkptDataType::EXCLUDE_FREQ_MAP:
-                return "EXCLUDE_FREQ_MAP";
-            case CkptDataType::EVICT_POS:
-                return "EVICT_POS";
-            case CkptDataType::KEY_COUNT_MAP:
-                return "KEY_COUNT_MAP";
-            default:
-                return "UNKNOWN";
+        static const unordered_map<CkptDataType, string> typeNameMap = {
+            {CkptDataType::EMB_INFO, "EMB_INFO"},
+            {CkptDataType::EMB_DATA, "EMB_DATA"},
+            {CkptDataType::EMB_HASHMAP, "EMB_HASHMAP"},
+            {CkptDataType::DEV_OFFSET, "DEV_OFFSET"},
+            {CkptDataType::EMB_CURR_STAT, "EMB_CURR_STAT"},
+            {CkptDataType::NDDR_OFFSET, "NDDR_OFFSET"},
+            {CkptDataType::NDDR_FEATMAP, "NDDR_FEATMAP"},
+            {CkptDataType::TABLE_2_THRESH, "TABLE_2_THRESH"},
+            {CkptDataType::HIST_REC, "HIST_REC"},
+            {CkptDataType::ATTRIBUTE, "ATTRIBUTE"},
+            {CkptDataType::DDR_FREQ_MAP, "DDR_FREQ_MAP"},
+            {CkptDataType::EXCLUDE_FREQ_MAP, "EXCLUDE_FREQ_MAP"},
+            {CkptDataType::EVICT_POS, "EVICT_POS"},
+            {CkptDataType::KEY_COUNT_MAP, "KEY_COUNT_MAP"}
+        };
+
+        auto it = typeNameMap.find(type);
+        if (it != typeNameMap.end()) {
+            return it->second;
         }
+
+        return "UNKNOWN";
     }
 
     bool CheckFileExist(const string& filePath)
