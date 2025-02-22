@@ -146,6 +146,7 @@ void HDTransfer::CreateChannel(const uint32_t localRankId, const string& embName
 void HDTransfer::CreateChannelForIncrementalCkpt(const uint32_t localRankId, const string& embName,
                                                  const int channelNum)
 {
+#ifndef GTEST
     int channelSize = GlobalEnv::hdChannelSize;
     LOG_INFO("Start create channel for IncrementalCkpt, size:{}.", channelSize);
     int c = static_cast<int>(TransferChannel::KEY_D2H);
@@ -153,6 +154,7 @@ void HDTransfer::CreateChannelForIncrementalCkpt(const uint32_t localRankId, con
     std::string sendName = StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channel).c_str(), channelNum);
     transferChannels[sendName] = TDT_CREATE_CHANNEL(localRankId, sendName.c_str(), PING_PONG_SIZE);
     LOG_INFO("Create channel:{}.", sendName);
+#endif
 }
 
 /// 将tensor发送到channel
@@ -257,6 +259,7 @@ size_t HDTransfer::RecvAcl(TransferChannel channel, int channelId, const string&
 size_t HDTransfer::RecvOffsetsAcl(TransferChannel channel, int channelId, const string& embName)
 {
     size_t ret = 0;
+#ifndef GTEST
     string recvName = StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channel).c_str(), channelId);
     LOG_DEBUG("Start receive, channelName:{}.", recvName);
     TimeCost tc = TimeCost();
@@ -273,6 +276,7 @@ size_t HDTransfer::RecvOffsetsAcl(TransferChannel channel, int channelId, const 
     }
     LOG_INFO("End receive, channelName:{}, cost:{}ms.", recvName, tc.ElapsedMS());
     ret = acltdtGetDatasetSize(aclDatasetsForIncrementalCkpt[embName]);
+#endif
     return ret;
 }
 
@@ -289,7 +293,7 @@ std::unordered_map<int, std::set<std::string>> HDTransfer::GetUsedTransChannel()
 void HDTransfer::ClearTransChannel(int channelId)
 {
     LOG_INFO("Start to clear channel, channelId:{}", channelId);
-
+#ifndef GTEST
     acltdtDataset* trashDataset = acltdtCreateDataset();
     std::unordered_map<std::string, acltdtChannelHandle*> transChannels = this->GetTransChannel();
 
@@ -320,10 +324,12 @@ void HDTransfer::ClearTransChannel(int channelId)
     }
 
     acltdtDestroyDataset(trashDataset);
+#endif
 }
 
 void HDTransfer::RecordTrainingChannelStr(TransferChannel channel, const int channelId)
 {
+#ifndef GTEST
     std::string channelStr = TransferChannel2Str(channel);
     if (usedChannelsNames[channelId].find(channelStr) != usedChannelsNames[channelId].end()) {
         return;
@@ -332,4 +338,5 @@ void HDTransfer::RecordTrainingChannelStr(TransferChannel channel, const int cha
     if (usedChannelsNames[channelId].find(channelStr) == usedChannelsNames[channelId].end()) {
         usedChannelsNames[channelId].insert(channelStr);
     }
+#endif
 }

@@ -99,4 +99,4 @@ target_link_libraries(test_main PUBLIC
         MPI::MPI_CXX)
 
 target_link_libraries(test_main PUBLIC ascendcl msprofiler ge_executor gert runtime ge_common register graph ascend_protobuf
-        profapi opt_feature error_manager exe_graph acl_tdt_channel acl_tdt_queue securec drvdsmi_host ${EMOCK_LIBRARY})
+        profapi opt_feature error_manager exe_graph acl_tdt_channel acl_tdt_queue securec drvdsmi_host ${EMOCK_LIBRARY} gmock)
