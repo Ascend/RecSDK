@@ -106,3 +106,42 @@ TEST_F(HybridMgmtBlockTest, CountPythonStep)
     ASSERT_EQ(hybridMgmtBlock->pythonBatchId[0], loop + 1);
     ASSERT_EQ(hybridMgmtBlock->loop[0], loop);
 }
+
+TEST_F(HybridMgmtBlockTest, CheckAndSetBlockOnSave)
+{
+    hybridMgmtBlock = std::make_unique<HybridMgmtBlock>();
+    RankInfo ri;
+    ri.ctrlSteps = {1, 1, 1, 100};
+    hybridMgmtBlock->SetRankInfo(ri);
+    hybridMgmtBlock->hybridBatchId[TRAIN_CHANNEL_ID] = 1;
+    hybridMgmtBlock->CheckAndSetBlock(TRAIN_CHANNEL_ID);
+    EXPECT_EQ(hybridMgmtBlock->GetBlockStatus(TRAIN_CHANNEL_ID), true);
+}
+
+TEST_F(HybridMgmtBlockTest, CheckAndDonotBlockByInvalidStepsInterval)
+{
+    hybridMgmtBlock = std::make_unique<HybridMgmtBlock>();
+    hybridMgmtBlock->SetStepInterval(0, -1);
+    hybridMgmtBlock->hybridBatchId[TRAIN_CHANNEL_ID] = 1;
+    hybridMgmtBlock->hybridBatchId[EVAL_CHANNEL_ID] = 1;
+
+    hybridMgmtBlock->CheckAndSetBlock(0);
+    hybridMgmtBlock->CheckAndSetBlock(1);
+    EXPECT_EQ(hybridMgmtBlock->GetBlockStatus(0), true);
+    EXPECT_EQ(hybridMgmtBlock->GetBlockStatus(1), true);
+}
+
+TEST_F(HybridMgmtBlockTest, WaitValid)
+{
+    hybridMgmtBlock = std::make_unique<HybridMgmtBlock>();
+    hybridMgmtBlock->hybridBatchId[TRAIN_CHANNEL_ID] = 1;
+    hybridMgmtBlock->pythonBatchId[TRAIN_CHANNEL_ID] = 0;
+    auto ret = hybridMgmtBlock->WaitValid(TRAIN_CHANNEL_ID);
+    EXPECT_EQ(ret, false);
+}
+
+TEST_F(HybridMgmtBlockTest, HybridMgmtBlockingExceptionShouldConstructExceptionWhenSceneIsValid)
+{
+    std::string scene = "TestScene";
+    HybridMgmtBlockingException exception(scene);
+}
