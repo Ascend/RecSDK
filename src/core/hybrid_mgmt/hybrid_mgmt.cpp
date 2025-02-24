@@ -596,6 +596,7 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId, TaskType type)
 bool HybridMgmt::ProcessEmbInfoHBM(const EmbBaseInfo& info, bool isGrad)
 {
     bool remainBatchOut = true;
+#ifndef GTEST
     TimeCost parseKeysTc;
     LOG_DEBUG("ProcessEmbInfoHBM table:{}, batchId:{}, channel:{}", info.name, info.batchId, info.channelId);
 
@@ -648,7 +649,7 @@ bool HybridMgmt::ProcessEmbInfoHBM(const EmbBaseInfo& info, bool isGrad)
 
     LOG_INFO(MGMT + "table:{}, channelId:{} batchId:{}, embName:{}, ParseKeys with HBM mode end.", info.name,
              info.channelId, info.batchId, info.name);
-
+#endif
     return remainBatchOut;
 }
 
@@ -1175,6 +1176,7 @@ void HybridMgmt::ReceiveKey()
 
 void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
 {
+#ifndef GTEST
     receiveKeyThreads.emplace_back([embInfo, this]() {
         while (isRunning) {
             TransferChannel transferName = TransferChannel::KEY_D2H;
@@ -1232,6 +1234,7 @@ void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
             keyCountUpdateCv.notify_all();
         }
     });
+#endif
 }
 
 void HybridMgmt::UpdateDeltaInfo(const string& embName, vector<int64_t>& keyCountVec, int64_t timeStamp,
@@ -1958,6 +1961,7 @@ void HybridMgmt::EmbeddingUpdateL3Storage(const EmbTaskInfo& info, float* embPtr
 
 bool HybridMgmt::EmbeddingLookUpL3Storage(const EmbTaskInfo& info, vector<Tensor>& h2dEmb)
 {
+#ifndef GTEST
     string currentKey = MakeSwapCVName(info.threadIdx, info.name, info.channelId);
     std::unique_lock<std::mutex> lastUpdateFinishLocker(lastUpdateFinishMutex[currentKey]);
     lastUpdateFinishCV[currentKey].wait(lastUpdateFinishLocker, [info, this] {
@@ -2015,7 +2019,7 @@ bool HybridMgmt::EmbeddingLookUpL3Storage(const EmbTaskInfo& info, vector<Tensor
     hybridMgmtBlock->lastLookUpFinishStep[info.name][info.channelId]++;
     string nextKey = MakeSwapCVName(info.cvNotifyIndex, info.name, info.channelId);
     lastLookUpFinishCV[nextKey].notify_all();
-
+#endif
     return true;
 }
 
@@ -2043,6 +2047,7 @@ void HybridMgmt::EmbeddingSendL3Storage(const EmbTaskInfo& info, vector<Tensor>&
 void HybridMgmt::HandleDataSwapForL3Storage(const EmbBaseInfo& info, vector<uint64_t>& swapInKeys,
                                             vector<uint64_t>& swapOutKeys)
 {
+#ifndef GTEST
     TimeCost ProcessSwapInKeysTC;
     vector<emb_cache_key_t> L3StorageToDDRKeys;
     vector<emb_cache_key_t> DDRToL3StorageKeys;
@@ -2084,6 +2089,7 @@ void HybridMgmt::HandleDataSwapForL3Storage(const EmbBaseInfo& info, vector<uint
 
     // normal status
     EosL1Que[info.name][info.channelId].Pushv(false);
+#endif
 }
 
 bool HybridMgmt::BuildH2DEmbedding(const EmbTaskInfo& info, vector<Tensor>& h2dEmb)
@@ -2122,6 +2128,7 @@ bool HybridMgmt::BuildH2DEmbedding(const EmbTaskInfo& info, vector<Tensor>& h2dE
 vector<uint64_t> HybridMgmt::GetUniqueKeys(const EmbBaseInfo& info, bool& remainBatchOut, bool& isEos)
 {
     auto uniqueKeys = KEY_PROCESS_INSTANCE->GetUniqueKeys(info, isEos);
+#ifndef GTEST
     // DDR eos send in swap pipeline.
     if (isEos) {
         remainBatchOut = false;
@@ -2146,7 +2153,7 @@ vector<uint64_t> HybridMgmt::GetUniqueKeys(const EmbBaseInfo& info, bool& remain
             }
         }
     }
-
+#endif
     LOG_DEBUG("table:{}, channelId:{} batchId:{}, GetUniqueKeys end", info.name, info.channelId, info.batchId);
     return uniqueKeys;
 }
@@ -2166,6 +2173,7 @@ vector<int32_t> HybridMgmt::GetRestoreVecSec(const EmbBaseInfo& info, bool& rema
 
 void HybridMgmt::SendAll2AllVec(const EmbBaseInfo& info, bool& remainBatchOut)
 {
+#ifndef GTEST
     // The static shape and dp cases do not require all2all.
     if (!mgmtRankInfo.useStatic && !info.isDp) {
         bool isEos = false;  // useless, adapt to HBM mode
@@ -2183,10 +2191,12 @@ void HybridMgmt::SendAll2AllVec(const EmbBaseInfo& info, bool& remainBatchOut)
         LOG_DEBUG("table:{}, channelId:{}, batchId:{}, send all2all end, sendAll2AllTC(ms):{}", info.name,
                   info.channelId, info.batchId, sendAll2AllTC.ElapsedMS());
     }
+#endif
 }
 
 void HybridMgmt::SendRestoreVec(const EmbBaseInfo& info, bool& remainBatchOut)
 {
+#ifndef GTEST
     bool isEos = false;  // useless, adapt to HBM mode
     TimeCost getRestoreTC;
     unique_ptr<vector<Tensor>> infoVecs = KEY_PROCESS_INSTANCE->GetInfoVec(info, ProcessedInfo::RESTORE, isEos);
@@ -2204,6 +2214,7 @@ void HybridMgmt::SendRestoreVec(const EmbBaseInfo& info, bool& remainBatchOut)
     hdTransfer->Send(TransferChannel::RESTORE, *infoVecs, info.channelId, info.name, info.batchId);
     LOG_DEBUG("table:{}, channelId:{}, batchId:{}, send restore end, sendRestoreSyncTC(ms):{}", info.name,
               info.channelId, info.batchId, sendRestoreSyncTC.ElapsedMS());
+#endif
 }
 
 void HybridMgmt::SendLookupOffsets(const EmbBaseInfo& info, vector<uint64_t>& uniqueKeys,

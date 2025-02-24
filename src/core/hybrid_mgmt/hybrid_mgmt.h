@@ -223,7 +223,7 @@ public:
 
     void InitPipelineMutexAndCV(const string& embTableName);
 
-private:
+GTEST_PRIVATE:
     HybridMgmtBlock* hybridMgmtBlock;
     vector<EmbInfo> mgmtEmbInfo;
     RankInfo mgmtRankInfo;
