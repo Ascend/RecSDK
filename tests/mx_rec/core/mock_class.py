@@ -132,7 +132,7 @@ class MockConfigInitializer:
         self.train_params_config = MockTrainParamsConfig(**kwargs)
         self.optimizer_config = OptimizerConfig()
         self.feature_spec_config = FeatureSpecConfig()
-        
+
         self.use_lccl = False
 
     def get_instance(self):
@@ -142,6 +142,7 @@ class MockConfigInitializer:
 class MockGlobalEnv:
     def __init__(self, **kwargs):
         self.tf_device = kwargs.get("tf_device", "NPU")
+        self.rank_table_file = kwargs.get("rank_table_file", "")
 
 
 class MockSparseEmbedding:
@@ -272,9 +273,14 @@ class MockHybridMgmt:
 
     def __init__(self, is_initialized=True):
         def _mock_initialize(
-            rank_info=0, emb_info=1, if_load=False, threshold_values=3,
-            is_incremental_checkpoint=False, use_lccl=False
+            rank_info=0, emb_info=1, if_load=False, threshold_values=3, is_incremental_checkpoint=False, use_lccl=False
         ):
             return is_initialized
 
         self.initialize = _mock_initialize
+
+
+class MockFeatureSpec:
+    def __init__(self, **kwargs):
+        self.name = kwargs.get("name")
+        self.table_name = kwargs.get("table_name")
