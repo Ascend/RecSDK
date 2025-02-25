@@ -186,9 +186,3 @@ def check_table_param(table_list, default_table_list):
             logger.warning("%s not be created , please check your table name.", table)
 
     return out_list
-
-
-def set_upper_dir(model_dir, dir_list):
-    for directory in dir_list:
-        model_dir = os.path.join(model_dir, directory)
-    return model_dir

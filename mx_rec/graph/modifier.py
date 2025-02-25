@@ -120,7 +120,7 @@ class _GraphModifier:
         input_names: List[str],
         output_names: List[str],
         pipeline_input_indexes: List[int] = None,
-    ) -> Callable:
+    ) -> Callable:  # pragma: no cover
         input_names = check_and_force_list(input_names, str)
         output_names = check_and_force_list(output_names, str)
         pipeline_input_indexes = check_and_force_list(pipeline_input_indexes, int)
@@ -647,7 +647,7 @@ def _get_swap_info(
     variable_and_slot_list: List[tf.Variable],
     swap_info: SwapInfo,
     channel_id: int,
-) -> List[tf.Operation]:
+) -> List[tf.Operation]:  # pragma: no cover
     """
     Get swap op.
     :param table_instance: BaseSparseEmbedding

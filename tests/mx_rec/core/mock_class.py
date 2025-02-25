@@ -43,6 +43,9 @@ class MockHybridManagerConfig:
     def restore_host_data(self, path):
         pass
 
+    def get_load_offset(self, table_name):
+        return self.kwargs.get("load_offset")
+
 
 class MockSparseEmbedConfig:
     def __init__(self, **kwargs):
@@ -50,6 +53,7 @@ class MockSparseEmbedConfig:
         self.table_instance_dict = kwargs.get("table_instance_dict", {})
         self.dangling_table = kwargs.get("dangling_table", [])
         self.table_name_set = kwargs.get("table_name_set", set())
+        self.removing_var_list = kwargs.get("removing_var_list", [])
 
     @staticmethod
     def insert_dangling_table(table_name):
@@ -126,6 +130,7 @@ class MockConfigInitializer:
         self.iterator_type = kwargs.get("iterator_type", "MakeIterator")
         self.sparse_dir = kwargs.get("sparse_dir", "")
         self.is_incremental_checkpoint = kwargs.get("is_incremental_checkpoint", False)
+        self.restore_model_version = kwargs.get("restore_model_version")
 
         self.hybrid_manager_config = MockHybridManagerConfig(**kwargs)
         self.sparse_embed_config = MockSparseEmbedConfig(**kwargs)

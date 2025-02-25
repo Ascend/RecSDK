@@ -121,20 +121,6 @@ class Saver(object):
         self.build()
         self.warm_start_tables = warm_start_tables
 
-    @staticmethod
-    def _make_table_name_dir(root_dir, table_instance, table_name):
-        if not table_instance.is_hbm:
-            table_dir = os.path.join(root_dir, "HashTable", "DDR", table_name)
-        else:
-            table_dir = os.path.join(root_dir, "HashTable", "HBM", table_name)
-        try:
-            if check_file_system_is_hdfs(table_dir):
-                tf.io.gfile.makedirs(table_dir)
-            else:
-                os.makedirs(table_dir, SAVE_DIR_MODE, exist_ok=True)
-        except Exception as err:
-            raise RuntimeError(f"make dir {table_dir} for saving sparse table failed!") from err
-
     def build(self):
         # If the 'export_saved_model' interface is called, the graph modification is required.
         self._modify_graph_for_export_model()
@@ -612,29 +598,6 @@ def save_embedding_data(root_dir, table_name, dump_data_dict, suffix):
     attribute = dict()
     attribute[DataAttr.DATATYPE.value] = data_to_write.dtype.name
     attribute[DataAttr.SHAPE.value] = data_to_write.shape
-    write_binary_data(target_path, suffix, data_to_write)
-
-
-def save_feature_mapping_data(root_dir, table_name, dump_data_dict, suffix):
-    target_path = generate_path(root_dir, "HashTable", "HBM", table_name, DataName.FEATURE_MAPPING.value)
-    data_to_write = dump_data_dict.get(DataName.FEATURE_MAPPING.value)
-    valid_len = dump_data_dict.get(DataName.VALID_LEN.value)
-    data_to_write = data_to_write[:valid_len * 3]
-
-    attribute = dict()
-    attribute[DataAttr.DATATYPE.value] = data_to_write.dtype.name
-    attribute[DataName.THRESHOLD.value] = int(dump_data_dict.get(DataName.THRESHOLD.value))
-    write_binary_data(target_path, suffix, data_to_write)
-
-
-def save_offset_data(root_dir, table_name, dump_data_dict, suffix):
-    target_path = generate_path(root_dir, "HashTable", "HBM", table_name, DataName.OFFSET.value)
-    data_to_write = dump_data_dict.get(DataName.OFFSET.value)
-    valid_bucket_num = dump_data_dict.get(DataName.VALID_BUCKET_NUM.value)
-    data_to_write = data_to_write[:valid_bucket_num]
-
-    attribute = dict()
-    attribute[DataAttr.DATATYPE.value] = data_to_write.dtype.name
     write_binary_data(target_path, suffix, data_to_write)
 
 
