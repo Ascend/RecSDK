@@ -16,14 +16,17 @@ See the License for the specific language governing permissions and
 #ifndef MXREC_THREAD_POOL_H
 #define MXREC_THREAD_POOL_H
 
-#include <condition_variable>
-#include <functional>
-#include <future>
-#include <memory>
 #include <mutex>
 #include <queue>
 #include <thread>
 #include <vector>
+#include <utility>
+#include <condition_variable>
+#include <functional>
+#include <future>
+#include <memory>
+
+#include "logger.h"
 
 namespace MxRec {
 
@@ -39,11 +42,14 @@ public:
                     {
                         std::unique_lock<std::mutex> lock(this->mutex);
                         this->condition.wait(lock, [this] { return this->stop || !this->tasks.empty(); });
+
                         if (this->stop && this->tasks.empty()) {
                             return;
                         }
+
                         task = std::move(this->tasks.front());
                         this->tasks.pop();
+
                         LOG_TRACE("ThreadPool pop one task!");
                     }
                     task();
@@ -85,9 +91,9 @@ public:
     template <typename F, typename... A>
     auto enqueueWithFuture(F&& f, A&&... args) -> std::future<decltype(f(std::forward<A>(args)...))>
     {
-        using ReturnType = decltype(declval<F>()(declval<A>()...));
-        auto task = std::make_shared<std::packaged_task<ReturnType()>>(
-            std::bind(std::forward<F>(f), std::forward<A>(args)...));
+        using ReturnType = decltype(std::declval<F>()(std::declval<A>()...));
+        auto task =
+            std::make_shared<std::packaged_task<ReturnType()>>(std::bind(std::forward<F>(f), std::forward<A>(args)...));
 
         // Get task return value.
         std::future<ReturnType> futureRes = task->get_future();

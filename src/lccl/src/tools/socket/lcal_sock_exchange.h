@@ -16,18 +16,19 @@
 #ifndef LCCL_SOCK_EXCHANGE_H
 #define LCCL_SOCK_EXCHANGE_H
 
-#include <vector>
-#include <string>
-#include <memory>
-#include <ctime>
-
-#include <sys/socket.h>
+#include <arpa/inet.h>
 #include <ifaddrs.h>
 #include <net/if.h>
-#include <arpa/inet.h>
+#include <sys/socket.h>
 
-#include "lcal_types.h"
+#include <ctime>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "lcal_api.h"
+#include "lcal_types.h"
+#include "lcal_comm.h"
 
 namespace Lcal {
 /* Common socket address storage structure for IPv4/IPv6 */
@@ -55,7 +56,7 @@ class LcalSockExchange {
 public:
     LcalSockExchange(int rank, int rankSize, std::vector<int>& rankList);
     LcalSockExchange(int rank, int rankSize, LcalUniqueId lcalCommId);
-    ~LcalSockExchange();
+    virtual ~LcalSockExchange();
 
     /* *
      * @brief All gather data from @ref sendBuf to @ref recvBuf
@@ -63,30 +64,33 @@ public:
      * @note recvBuf's space must larger than sendSize * rankSize_
      * @return LCAL_SUCCESS for success, other for failed
      */
-    int AllGather(const void* sendBuf, size_t sendSize, void* recvBuf);
+    virtual int AllGather(const void* sendBuf, size_t sendSize, void* recvBuf);
 
-    int GetNodeNum();
+    virtual int GetNodeNum();
 
     static bool CheckValid(LcalUniqueId lcalCommId)
     {
-        LcalBootstrap id {};
+        LcalBootstrap id{};
         id.uid = lcalCommId;
         return id.handle.magic == LCAL_MAGIC;
     }
 
-private:
+GTEST_PRIVATE:
     void GetIpAndPort();
-    int Prepare();
+    virtual int Prepare();
     int Listen();
     int Accept();
     int Send(int fd, const void* sendBuf, size_t sendSize, int flag);
-    template <typename T> int Recv(int fd, T* recvBuf, size_t recvSize, int flag);
+    template <typename T>
+    int Recv(int fd, T* recvBuf, size_t recvSize, int flag);
     void Close(int& fd);
     int Connect();
-    int AcceptConnection(int fd, sockaddr_in& clientAddr, socklen_t* sinSize);
+    virtual int AcceptConnection(int fd, sockaddr_in& clientAddr, socklen_t* sinSize);
 
-    template <typename T> int ClientSendRecv(const T* sendBuf, size_t sendSize, T* recvBuf);
-    template <typename T> int ServerRecvSend(const T* sendBuf, size_t sendSize, T* recvBuf);
+    template <typename T>
+    int ClientSendRecv(const T* sendBuf, size_t sendSize, T* recvBuf);
+    template <typename T>
+    int ServerRecvSend(const T* sendBuf, size_t sendSize, T* recvBuf);
     void Cleanup();
 
     bool IsServer();
@@ -101,6 +105,13 @@ private:
     uint16_t port_ = 0;
     LcalBootstrap lcalCommId_ = {};
 };
-} // namespace Lcal
+
+int ParseIpAndPort(const char* input, std::string& ip, uint16_t& port);
+
+int GetAddrFromString(LcalSocketAddress* ua, const char* ipPortPair);
+
+int BootstrapGetServerIp(LcalSocketAddress& handle);
+
+}  // namespace Lcal
 
 #endif

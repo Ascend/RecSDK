@@ -16,6 +16,12 @@
 #ifndef LCAL_COMM_H
 #define LCAL_COMM_H
 
+#ifdef GTEST
+#define GTEST_PRIVATE public
+#else
+#define GTEST_PRIVATE private
+#endif
+
 #include <vector>
 #include <string>
 #include <unordered_map>
@@ -66,23 +72,30 @@ public:
     LcalUniqueId commId_ = {};
     LcalSockExchange* socketExchange_ = nullptr;
 
-private:
-    int SetMemoryName(std::string& name);
-    int SetIpcPidSdid(std::string& name, const uint32_t* pids, const int64_t* sdids) const;
-    int OpenIpcMem(const char names[LCAL_MAX_RANK_SIZE][IPC_NAME_SIZE]);
-    int GatherDevId();
-    int GatherDevIdThread();
-    int EnablePeerAccess();
-    int InitCommMem();
-    int InitCommon();
-    void CloseIpcMem();
-    void FreePeerMem(int8_t*& mem);
-    int InitMem();
-    int GetSidId(int64_t sdids[LCAL_MAX_RANK_SIZE]);
-    int GetPid(uint32_t pids[LCAL_MAX_RANK_SIZE]);
-    int GetName(std::string& name, char names[LCAL_MAX_RANK_SIZE][IPC_NAME_SIZE]);
-    int SyncCommArgs();
+GTEST_PRIVATE:
+    virtual int SetMemoryName(std::string& name);
+    virtual int SetIpcPidSdid(std::string& name, const uint32_t* pids, const int64_t* sdids) const;
+    virtual int OpenIpcMem(const char names[LCAL_MAX_RANK_SIZE][IPC_NAME_SIZE]);
+    virtual int GatherDevId();
+    virtual int GatherDevIdThread();
+    virtual int EnablePeerAccess();
+    virtual int InitCommMem();
+    virtual int InitCommon();
+    virtual void CloseIpcMem();
+    virtual void FreePeerMem(int8_t*& mem);
+    virtual int InitMem();
+    virtual int GetSidId(int64_t sdids[LCAL_MAX_RANK_SIZE]);
+    virtual int GetPid(uint32_t pids[LCAL_MAX_RANK_SIZE]);
+    virtual int GetName(std::string& name, char names[LCAL_MAX_RANK_SIZE][IPC_NAME_SIZE]);
+    virtual int SyncCommArgs();
 };
+
+uint32_t GetCoreNum(ChipName chipName);
+
+ChipName& GetChipName();
+
+bool SkipUnusedChannel910B2C(int curRank, int peerRank, ChipName chipName);
+
 } // namespace Lcal
 
 #endif // LCAL_COMM_H
