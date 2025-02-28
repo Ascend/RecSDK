@@ -439,6 +439,114 @@ protected:
         LOG_INFO("TestCase6 over ...");
     }
 
+    void TestAdmitAndEvictInit()
+    {
+        faae.ResetAllRecords();
+        std::vector<ThresholdValue> emptyThresholds = {};
+        bool parseRet = faae.Init(emptyThresholds);
+        ASSERT_EQ(parseRet, false);
+
+        parseRet = faae.Init(thresholds);
+        ASSERT_EQ(parseRet, true);
+    }
+
+    void TestAdmitAndEvictThresholdCfgCheck()
+    {
+        faae.ResetAllRecords();
+        std::vector<ThresholdValue> emptyThresholds = {};
+        bool ret = faae.ParseThresholdCfg(emptyThresholds);
+        ASSERT_EQ(ret, false);
+
+        // when thresholds is empty, should return true.
+        std::vector<std::string> embNames = {"tableCCC", "tableBBB"};
+        bool checkRet = faae.IsThresholdCfgOK(emptyThresholds, embNames, false);
+        ASSERT_EQ(checkRet, true);
+
+        // when can not find table name in table list, return false.
+        checkRet = faae.IsThresholdCfgOK(thresholds, embNames, false);
+        ASSERT_EQ(checkRet, false);
+
+        embNames.emplace_back("tableAAA");
+
+        // check threshold cfg parse ret.
+        faae.m_embStatus["tableAAA"] = SingleEmbTableStatus::SETS_ERROR;
+        checkRet = faae.IsThresholdCfgOK(thresholds, embNames, false);
+        ASSERT_EQ(checkRet, false);
+        faae.m_embStatus["tableAAA"] = SingleEmbTableStatus::SETS_BOTH;
+        ASSERT_EQ(checkRet, false);
+        for (auto i = 0; i < embNames.size(); i++) {
+            faae.m_embStatus[embNames[i]] = SingleEmbTableStatus::SETS_NONE;
+        }
+        checkRet = faae.IsThresholdCfgOK(thresholds, embNames, false);
+        ASSERT_EQ(checkRet, true);
+    }
+
+    void TestAdmitAndEvictSetThresholdTest()
+    {
+        faae.ResetAllRecords();
+        std::string embName = "";
+        int thresholdTmp = 0;
+        bool ret = faae.SetTableThresholds(thresholdTmp, embName);
+
+        embName = "tableAAA";
+        faae.m_table2Threshold[embName] = {"tableAAA", 2, 5, 1, true};
+        ret = faae.SetTableThresholds(thresholdTmp, embName);
+        ASSERT_EQ(ret, true);
+
+        thresholdTmp = 1;
+        ret = faae.SetTableThresholds(thresholdTmp, embName);
+        ASSERT_EQ(ret, true);
+    }
+
+    void TestAdmitAndEvictGetAndLoadThresholds()
+    {
+        faae.ResetAllRecords();
+        auto ret = faae.GetTableThresholds();
+        ASSERT_EQ(ret.empty(), true);
+
+        ThresholdValue tv = {"tableAAA", 2, 5, 1, true};
+        absl::flat_hash_map<std::string, ThresholdValue> thresholdMap;
+        thresholdMap.emplace("tableAAA", tv);
+        faae.LoadTableThresholds(thresholdMap);
+        ret = faae.GetTableThresholds();
+        ASSERT_EQ(ret.size(), 1);
+        ASSERT_EQ(ret.find("tableAAA") != ret.end(), true);
+    }
+
+    void TestAdmitAndEvictHistoryRecords()
+    {
+        faae.ResetAllRecords();
+        auto ret = faae.GetHistoryRecords();
+        ASSERT_EQ(ret.historyRecords.empty(), true);
+
+        // build data
+        absl::flat_hash_map<int64_t, FeatureItemInfo> keyRecords;
+        FeatureItemInfo info = {1, -1};
+        keyRecords.emplace(1, info);
+        HistoryRecords historyRecords;
+        historyRecords.emplace("tableAAA", keyRecords);
+
+        absl::flat_hash_map<std::string, time_t> timestamps;
+        timestamps.emplace("tableAAA", -1);
+        AdmitAndEvictData histRec;
+        histRec.historyRecords = historyRecords;
+        histRec.timestamps = timestamps;
+        faae.LoadHistoryRecords(histRec);
+        auto record = faae.m_recordsData.historyRecords;
+        ASSERT_EQ(record.size(), 1);
+        ASSERT_EQ(record.find("tableAAA") != record.end(), true);
+    }
+
+    void TestAdmitAndEvictSetFunctionSwitch()
+    {
+        faae.ResetAllRecords();
+        bool ret = faae.GetFunctionSwitch();
+        ASSERT_EQ(ret, true);
+        faae.SetFunctionSwitch(false);
+        ret = faae.GetFunctionSwitch();
+        ASSERT_EQ(ret, false);
+    }
+
     bool isExitFlag { false };
     HashMapInfo initHistory;
     FeatureAdmitAndEvict faae;
@@ -491,4 +599,34 @@ TEST_F(FeatureAdmitAndEvictTest, TestAdmitAndEvict5)
 TEST_F(FeatureAdmitAndEvictTest, TestAdmitAndEvict6)
 {
     TestCase6();
+}
+
+TEST_F(FeatureAdmitAndEvictTest, TestAdmitAndEvictInit)
+{
+    TestAdmitAndEvictInit();
+}
+
+TEST_F(FeatureAdmitAndEvictTest, TestAdmitAndEvictThresholdCfgCheck)
+{
+    TestAdmitAndEvictThresholdCfgCheck();
+}
+
+TEST_F(FeatureAdmitAndEvictTest, TestAdmitAndEvictSetThresholdTest)
+{
+    TestAdmitAndEvictSetThresholdTest();
+}
+
+TEST_F(FeatureAdmitAndEvictTest, TestAdmitAndEvictGetAndLoadThresholds)
+{
+    TestAdmitAndEvictGetAndLoadThresholds();
+}
+
+TEST_F(FeatureAdmitAndEvictTest, TestAdmitAndEvictHistoryRecords)
+{
+    TestAdmitAndEvictHistoryRecords();
+}
+
+TEST_F(FeatureAdmitAndEvictTest, TestAdmitAndEvictSetFunctionSwitch)
+{
+    TestAdmitAndEvictSetFunctionSwitch();
 }
