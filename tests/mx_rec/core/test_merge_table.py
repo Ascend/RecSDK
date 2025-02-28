@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,6 +21,8 @@ from unittest import mock
 import tensorflow as tf
 
 import mx_rec.core.asc.merge_table
+from mx_rec.core.asc.merge_table import find_dangling_table, check_dangling_table
+from mx_rec.util.global_env_conf import global_env
 from tests.mx_rec.core.mock_class import MockSparseEmbedding, MockConfigInitializer, MockGlobalEnv
 
 
@@ -114,8 +116,7 @@ class TestIsTrainTaskFunc(unittest.TestCase):
 
         self.assertFalse(is_train_task())
 
-    @mock.patch.multiple("mx_rec.core.asc.merge_table",
-                         check_op=mock.MagicMock(return_value=True))
+    @mock.patch.multiple("mx_rec.core.asc.merge_table", check_op=mock.MagicMock(return_value=True))
     @mock.patch("mx_rec.core.asc.merge_table.ConfigInitializer")
     @mock.patch("mx_rec.graph.patch.ConfigInitializer")
     def test_is_train_task_case2(self, graph_patch_config_initializer, merge_table_config_initializer):
@@ -139,6 +140,7 @@ class TestFindDanglingTableFunc(unittest.TestCase):
 
     @mock.patch("mx_rec.graph.patch.ConfigInitializer")
     def setUp(self, graph_patch_config_initializer):
+        tf.compat.v1.reset_default_graph()
         mock_config_initializer = MockConfigInitializer()
         graph_patch_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
@@ -146,35 +148,45 @@ class TestFindDanglingTableFunc(unittest.TestCase):
         a = tf.constant(1)
         b = tf.constant(2)
         c = tf.add(a, b)
-        with tf.Session() as sess:
-            sess.run(c)
+        identity_n = tf.identity_n([c], name="test_table_identity_n")
+        with tf.compat.v1.Session() as sess:
+            sess.run(identity_n)
 
     def tearDown(self):
         # 删除tensorflow默认图中添加的op
-        tf.reset_default_graph()
+        tf.compat.v1.reset_default_graph()
 
-    @mock.patch.multiple("mx_rec.core.asc.merge_table",
-                         is_train_task=mock.MagicMock(return_value=False))
+    @mock.patch.multiple("mx_rec.core.asc.merge_table", is_train_task=mock.MagicMock(return_value=False))
     def test_find_dangling_table_case1(self):
         """
         case1: is_train_task为False
         """
 
-        from mx_rec.core.asc.merge_table import find_dangling_table
-
         self.assertListEqual(find_dangling_table([]), [])
 
-    @mock.patch.multiple("mx_rec.core.asc.merge_table",
-                         is_train_task=mock.MagicMock(return_value=True),
-                         global_env=mock.MagicMock(return_value=MockGlobalEnv(tf_device='GPU')))
+    @mock.patch.multiple(
+        "mx_rec.core.asc.merge_table",
+        is_train_task=mock.MagicMock(return_value=True),
+        global_env=mock.MagicMock(return_value=MockGlobalEnv(tf_device="GPU")),
+    )
     def test_find_dangling_table_case2(self):
         """
         case2: is_train_task为True，merge为False
         """
 
-        from mx_rec.core.asc.merge_table import find_dangling_table
-
         self.assertListEqual(find_dangling_table([]), [])
+
+    @mock.patch.multiple(
+        "mx_rec.core.asc.merge_table",
+        is_train_task=mock.MagicMock(return_value=True),
+    )
+    @mock.patch.object(global_env, "tf_device", new="NPU")
+    @mock.patch("mx_rec.core.asc.merge_table.ConfigInitializer")
+    def test_merge_is_true(self, merge_table_config_init):
+        test_table = MockSparseEmbedding(table_name="test_table")
+        mock_config_init = MockConfigInitializer(table_instance_dict={"test_table": test_table})
+        merge_table_config_init.get_instance = mock.Mock(return_value=mock_config_init)
+        self.assertListEqual(find_dangling_table(["test_table"]), ["test_table"])
 
 
 class TestShouldSkipFunc(unittest.TestCase):
@@ -216,5 +228,29 @@ class TestShouldSkipFunc(unittest.TestCase):
         self.assertFalse(should_skip("merged_table"))
 
 
-if __name__ == '__main__':
+class TestCheckDanglingTable(unittest.TestCase):
+    def setUp(self):
+        tf.compat.v1.reset_default_graph()
+
+    def tearDown(self):
+        tf.compat.v1.reset_default_graph()
+
+    @mock.patch("mx_rec.core.asc.merge_table.ConfigInitializer")
+    def test_dangling_table_empty(self, merge_table_config_init):
+        test_table = MockSparseEmbedding(table_name="test_table")
+        mock_config_init = MockConfigInitializer(table_instance_dict={"test_table": test_table})
+        merge_table_config_init.get_instance = mock.Mock(return_value=mock_config_init)
+        self.assertListEqual(check_dangling_table(), [])
+
+    @mock.patch("mx_rec.core.asc.merge_table.ConfigInitializer")
+    def test_dangling_table_ok(self, merge_table_config_init):
+        test_table = MockSparseEmbedding(table_name="test_table")
+        mock_config_init = MockConfigInitializer(
+            dangling_table=["test_table"], table_instance_dict={"test_table": test_table}
+        )
+        merge_table_config_init.get_instance = mock.Mock(return_value=mock_config_init)
+        self.assertNotEqual(check_dangling_table(), [])
+
+
+if __name__ == "__main__":
     unittest.main()

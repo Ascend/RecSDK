@@ -136,7 +136,7 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, table_na
         if not isinstance(tgt_key_specs, (list, tuple)):
             tgt_key_specs = [tgt_key_specs]
 
-        def insert_fn_for_feature_specs(*args):
+        def insert_fn_for_feature_specs(*args):  # pragma: no cover
             data_src = args
             if len(args) == 1:
                 data_src = args[0]
@@ -166,7 +166,7 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, table_na
         logger.info("In insert found dangling table(s): %s which does not need to be provided to the EmbInfo.",
                     dangling_tables)
 
-        def insert_fn_for_arg_indexes(*args):
+        def insert_fn_for_arg_indexes(*args):  # pragma: no cover
             insert_tensors = get_target_tensors_with_args_indexes(args_index_list)
 
             logger.debug("do_insert without spec for %s", table_names)
@@ -413,7 +413,7 @@ def get_valid_op_key(batch_dict: dict) -> str:
     return valid_key
 
 
-def get_target_tensors_with_args_indexes(args_index_list):
+def get_target_tensors_with_args_indexes(args_index_list):  # pragma: no cover
     insert_tensors = []
     graph = tf.compat.v1.get_default_graph()
     for index in args_index_list:

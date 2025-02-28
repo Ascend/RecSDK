@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # coding: UTF-8
-# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import unittest
 from collections import namedtuple
 from unittest import mock
 
+import numpy as np
 import tensorflow as tf
 
 from mx_rec.saver.saver import (
@@ -30,35 +31,161 @@ from mx_rec.saver.saver import (
     merge_local_file,
 )
 from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION
+from mx_rec.core.embedding import create_table
 from tests.mx_rec.core.mock_class import MockConfigInitializer, MockSparseEmbedConfig
 from tests.mx_rec.saver.sparse_embedding_mock import SparseEmbeddingMock
 
-table_instance = SparseEmbeddingMock()
 
-
-@mock.patch.multiple(
-    "mx_rec.graph.patch",
-    ConfigInitializer=mock.Mock(return_value=MockConfigInitializer()),
-)
 class TestSaver(unittest.TestCase):
     """
     Test the function of saving and loading sparse tables.
     """
 
-    @mock.patch.multiple("mx_rec.saver.saver",
-                         get_rank_id=mock.MagicMock(return_value=0),
-                         get_rank_size=mock.MagicMock(return_value=1),
-                         get_local_rank_size=mock.MagicMock(return_value=1))
+    _mock_config_init_default = MockConfigInitializer(use_dynamic_expansion=False)
+    _mock_config_init_incremental = MockConfigInitializer(use_dynamic_expansion=False, is_incremental_checkpoint=True)
+
+    def tearDown(self) -> None:
+        tf.compat.v1.reset_default_graph()
+
+    @mock.patch.multiple(
+        "mx_rec.saver.saver",
+        get_rank_size=mock.MagicMock(return_value=1),
+        get_rank_id=mock.MagicMock(return_value=0),
+        get_local_rank_size=mock.MagicMock(return_value=1),
+    )
+    @mock.patch.multiple(
+        "mx_rec.core.emb.base_sparse_embedding",
+        get_rank_size=mock.MagicMock(return_value=1),
+        get_rank_id=mock.MagicMock(return_value=0),
+        get_device_id=mock.MagicMock(return_value=0),
+    )
+    @mock.patch("mx_rec.graph.patch.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.saver.utils.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.core.emb.base_sparse_embedding.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.validator.emb_validator.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.core.util.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.core.embedding.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.saver.patch.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.saver.saver.ConfigInitializer", new=_mock_config_init_default)
+    def test_saver_init_ok(self):
+        test_table = create_table(
+            key_dtype=tf.int64,
+            dim=8,
+            name="user_table",
+            emb_initializer=tf.compat.v1.constant_initializer(0.1),
+            device_vocabulary_size=16,
+        )
+        self._mock_config_init_default.get_instance().sparse_embed_config.kwargs = {"var": test_table}
+
+        saver = tf.train.Saver(var_list=[test_table.variable])
+        self.assertIsNotNone(saver)
+
+    @mock.patch.multiple(
+        "mx_rec.saver.saver",
+        get_rank_size=mock.MagicMock(return_value=1),
+        get_rank_id=mock.MagicMock(return_value=0),
+        get_local_rank_size=mock.MagicMock(return_value=1),
+        read_data_file=mock.MagicMock(return_value=np.ones(shape=(16, 8))),
+    )
+    @mock.patch.multiple(
+        "mx_rec.core.emb.base_sparse_embedding",
+        get_rank_size=mock.MagicMock(return_value=1),
+        get_rank_id=mock.MagicMock(return_value=0),
+        get_device_id=mock.MagicMock(return_value=0),
+    )
+    @mock.patch("mx_rec.graph.patch.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.saver.utils.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.core.emb.base_sparse_embedding.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.validator.emb_validator.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.core.util.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.core.embedding.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.saver.patch.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.saver.saver.ConfigInitializer", new=_mock_config_init_default)
+    def test_saver_save_and_restore_ok(self):
+        test_table = create_table(
+            key_dtype=tf.int64,
+            dim=8,
+            name="user_table",
+            emb_initializer=tf.compat.v1.constant_initializer(0.1),
+            device_vocabulary_size=16,
+        )
+        self._mock_config_init_default.get_instance().sparse_embed_config.kwargs = {"var": test_table}
+
+        saver = tf.train.Saver(var_list=[test_table.variable])
+        save_path = "tmp_save_model/save_path"
+        if tf.io.gfile.isdir("tmp_save_model"):
+            tf.io.gfile.rmtree("tmp_save_model")
+        with tf.compat.v1.Session() as sess:
+            sess.run(tf.compat.v1.global_variables_initializer())
+            saver.save(sess, save_path)
+            saver.restore(sess, save_path)
+        self.assertIsNotNone(saver)
+        tf.io.gfile.rmtree("tmp_save_model")
+
+    @mock.patch.multiple(
+        "mx_rec.saver.saver",
+        get_rank_size=mock.MagicMock(return_value=1),
+        get_rank_id=mock.MagicMock(return_value=0),
+        get_local_rank_size=mock.MagicMock(return_value=1),
+        read_data_file=mock.MagicMock(return_value=np.ones(shape=(16, 8))),
+    )
+    @mock.patch.multiple(
+        "mx_rec.core.emb.base_sparse_embedding",
+        get_rank_size=mock.MagicMock(return_value=1),
+        get_rank_id=mock.MagicMock(return_value=0),
+        get_device_id=mock.MagicMock(return_value=0),
+    )
+    @mock.patch("mx_rec.graph.patch.ConfigInitializer", new=_mock_config_init_incremental)
+    @mock.patch("mx_rec.saver.utils.ConfigInitializer", new=_mock_config_init_incremental)
+    @mock.patch("mx_rec.core.emb.base_sparse_embedding.ConfigInitializer", new=_mock_config_init_incremental)
+    @mock.patch("mx_rec.validator.emb_validator.ConfigInitializer", new=_mock_config_init_incremental)
+    @mock.patch("mx_rec.core.util.ConfigInitializer", new=_mock_config_init_incremental)
+    @mock.patch("mx_rec.core.embedding.ConfigInitializer", new=_mock_config_init_incremental)
+    @mock.patch("mx_rec.saver.patch.ConfigInitializer", new=_mock_config_init_incremental)
+    @mock.patch("mx_rec.saver.saver.ConfigInitializer", new=_mock_config_init_incremental)
+    def test_saver_save_and_restore_incremental_ok(self):
+        test_table = create_table(
+            key_dtype=tf.int64,
+            dim=8,
+            name="user_table",
+            emb_initializer=tf.compat.v1.constant_initializer(0.1),
+            device_vocabulary_size=16,
+        )
+        self._mock_config_init_incremental.get_instance().sparse_embed_config.kwargs = {"var": test_table}
+
+        saver = tf.train.Saver(var_list=[test_table.variable])
+        save_path = "tmp_save_model_incremental/save_path"
+        if tf.io.gfile.isdir("tmp_save_model_incremental"):
+            tf.io.gfile.rmtree("tmp_save_model_incremental")
+        with tf.compat.v1.Session() as sess:
+            sess.run(tf.compat.v1.global_variables_initializer())
+            saver.save(sess, save_path, global_step=1, is_incremental_checkpoint=True)
+            saver.restore(sess, "tmp_save_model_incremental/save_path-1")
+        self.assertIsNotNone(saver)
+        tf.io.gfile.rmtree("tmp_save_model_incremental")
+
+    @mock.patch.multiple(
+        "mx_rec.saver.saver",
+        get_rank_id=mock.MagicMock(return_value=0),
+        get_rank_size=mock.MagicMock(return_value=1),
+        get_local_rank_size=mock.MagicMock(return_value=1),
+    )
+    @mock.patch("mx_rec.graph.patch.ConfigInitializer")
     @mock.patch("mx_rec.saver.saver.ConfigInitializer")
     @mock.patch("mx_rec.saver.utils.ConfigInitializer")
-    def test_save_and_load_is_consistent(self, saver_config_initializer, utils_config_initializer):
-        mock_config_initializer = \
-            MockConfigInitializer(var=table_instance, asc_manager=True,
-                                  use_dynamic_expansion=False,
-                                  host_data=[0, 1, 4, 6, 8],
-                                  ascend_global_hashtable_collection=ASCEND_GLOBAL_HASHTABLE_COLLECTION)
+    def test_save_and_load_is_consistent(
+        self, utils_config_initializer, saver_config_initializer, graph_config_initializer
+    ):
+        mock_config_initializer = MockConfigInitializer(
+            var=SparseEmbeddingMock(),
+            asc_manager=True,
+            use_dynamic_expansion=False,
+            host_data=[0, 1, 4, 6, 8],
+            ascend_global_hashtable_collection=ASCEND_GLOBAL_HASHTABLE_COLLECTION,
+        )
         saver_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
         utils_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
+        graph_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
 
         self.table_name = "test_table"
         self.optim_m_name = "test_table/LazyAdam/m"
@@ -73,7 +200,6 @@ class TestSaver(unittest.TestCase):
             data_file = os.path.join(embedding_directory, "slice.data")
             attribute_file = os.path.join(embedding_directory, "slice.attribute")
             sess.run(tf.global_variables_initializer())
-            origin_embedding = sess.run(self.var)[[0, 1, 4, 6, 8], :]
 
             self.saver.save(sess, save_path="model-1")
             self.assertTrue(os.path.exists(embedding_directory), "embedding目录已创建")
@@ -103,10 +229,14 @@ class TestReadSSDModel(unittest.TestCase):
     """
     Test read base model and delta models for SSD.
     """
+
     def create_ssd_model_file(self, params):
         # Create 0th step model as base model.
-        table_name_meta_file = os.path.join(SSD_SAVE_PATH_PREFIX + str(params.rank_id), params.table_name,
-                                            params.table_name + ".meta." + params.base_model)
+        table_name_meta_file = os.path.join(
+            SSD_SAVE_PATH_PREFIX + str(params.rank_id),
+            params.table_name,
+            params.table_name + ".meta." + params.base_model,
+        )
         tf.io.gfile.makedirs(os.path.join(SSD_SAVE_PATH_PREFIX + str(params.rank_id), params.table_name))
         with tf.io.gfile.GFile(table_name_meta_file, "wb") as file:
             file.write(struct.pack("I", len(params.table_name)))
@@ -114,18 +244,25 @@ class TestReadSSDModel(unittest.TestCase):
             file.write(struct.pack("Q", params.file_cnt))
             file.write(struct.pack("Q", params.file_id))
 
-        table_meta_file = os.path.join(SSD_SAVE_PATH_PREFIX + str(params.rank_id), params.table_name,
-                                       str(params.file_id) + ".meta." + params.base_model)
-        table_data_file = os.path.join(SSD_SAVE_PATH_PREFIX + str(params.rank_id), params.table_name,
-                                       str(params.file_id) + ".data." + params.base_model)
+        table_meta_file = os.path.join(
+            SSD_SAVE_PATH_PREFIX + str(params.rank_id),
+            params.table_name,
+            str(params.file_id) + ".meta." + params.base_model,
+        )
+        table_data_file = os.path.join(
+            SSD_SAVE_PATH_PREFIX + str(params.rank_id),
+            params.table_name,
+            str(params.file_id) + ".data." + params.base_model,
+        )
         with tf.io.gfile.GFile(table_meta_file, "wb") as f1, tf.io.gfile.GFile(table_data_file, "wb") as f2:
             f1.write("")
             f2.write("")
 
         # Create 1th step model as delta model.
         for delta in params.delta_models:
-            table_name_meta_file = os.path.join(SSD_SAVE_PATH_PREFIX + str(params.rank_id), params.table_name,
-                                                params.table_name + ".meta." + delta)
+            table_name_meta_file = os.path.join(
+                SSD_SAVE_PATH_PREFIX + str(params.rank_id), params.table_name, params.table_name + ".meta." + delta
+            )
             tf.io.gfile.makedirs(os.path.join(SSD_SAVE_PATH_PREFIX + str(params.rank_id), params.table_name))
             with tf.io.gfile.GFile(table_name_meta_file, "wb") as file:
                 file.write(struct.pack("I", len(params.table_name)))
@@ -133,10 +270,16 @@ class TestReadSSDModel(unittest.TestCase):
                 file.write(struct.pack("Q", params.file_cnt))
                 file.write(struct.pack("Q", params.file_id))
 
-            meta_file = os.path.join(SSD_SAVE_PATH_PREFIX + str(params.rank_id), params.table_name,
-                                     "delta-" + str(params.file_id) + ".meta." + delta)
-            data_file = os.path.join(SSD_SAVE_PATH_PREFIX + str(params.rank_id), params.table_name,
-                                     "delta-" + str(params.file_id) + ".data." + delta)
+            meta_file = os.path.join(
+                SSD_SAVE_PATH_PREFIX + str(params.rank_id),
+                params.table_name,
+                "delta-" + str(params.file_id) + ".meta." + delta,
+            )
+            data_file = os.path.join(
+                SSD_SAVE_PATH_PREFIX + str(params.rank_id),
+                params.table_name,
+                "delta-" + str(params.file_id) + ".data." + delta,
+            )
             with tf.io.gfile.GFile(meta_file, "wb") as file:
                 for key, offset in zip(params.keys, params.offsets):
                     file.write(struct.pack("Q", key))
@@ -148,17 +291,44 @@ class TestReadSSDModel(unittest.TestCase):
 
     @mock.patch("mx_rec.saver.saver.ConfigInitializer")
     def test_read_base_delta_and_write_for_ssd(self, saver_config_initializer):
-        params_for_create_ssd_data = namedtuple("params_for_create_ssd_data", ["rank_id", "table_name", "file_cnt",
-                                                                               "file_id", "base_model", "delta_models",
-                                                                               "keys", "offsets", "emb_size",
-                                                                               "embedding"])
-        params = params_for_create_ssd_data(rank_id=0, table_name="test_table", file_cnt=1, file_id=0, base_model="0",
-                                            delta_models=["1"], keys=[1], offsets=[1], emb_size=8, embedding=[0.1] * 8)
+        params_for_create_ssd_data = namedtuple(
+            "params_for_create_ssd_data",
+            [
+                "rank_id",
+                "table_name",
+                "file_cnt",
+                "file_id",
+                "base_model",
+                "delta_models",
+                "keys",
+                "offsets",
+                "emb_size",
+                "embedding",
+            ],
+        )
+        params = params_for_create_ssd_data(
+            rank_id=0,
+            table_name="test_table",
+            file_cnt=1,
+            file_id=0,
+            base_model="0",
+            delta_models=["1"],
+            keys=[1],
+            offsets=[1],
+            emb_size=8,
+            embedding=[0.1] * 8,
+        )
         self.create_ssd_model_file(params)
-        expected_meta_file = os.path.join(SSD_SAVE_PATH_PREFIX + str(params.rank_id), params.table_name,
-                                          str(params.file_id) + ".meta." + params.delta_models[-1])
-        expected_data_file = os.path.join(SSD_SAVE_PATH_PREFIX + str(params.rank_id), params.table_name,
-                                          str(params.file_id) + ".data." + params.delta_models[-1])
+        expected_meta_file = os.path.join(
+            SSD_SAVE_PATH_PREFIX + str(params.rank_id),
+            params.table_name,
+            str(params.file_id) + ".meta." + params.delta_models[-1],
+        )
+        expected_data_file = os.path.join(
+            SSD_SAVE_PATH_PREFIX + str(params.rank_id),
+            params.table_name,
+            str(params.file_id) + ".data." + params.delta_models[-1],
+        )
         mock_config_initializer = MockConfigInitializer()
         mock_config_initializer.sparse_embed_config = MockSparseEmbedConfig(table_name_set=[params.table_name])
         saver_config_initializer.get_instance = mock.Mock(return_value=mock_config_initializer)
@@ -172,9 +342,10 @@ class TestMergeFile(unittest.TestCase):
     """
     Test merge file function.
     """
+
     root_dir = os.path.join(os.getcwd(), "test_merge")
     rank_size = 8
-    
+
     def create_file(self):
         os.mkdir(TestMergeFile.root_dir)
         for i in range(TestMergeFile.rank_size):
@@ -183,7 +354,7 @@ class TestMergeFile(unittest.TestCase):
             if i % 2 == 0:
                 f.write(b"1")
             f.close()
-                
+
     def test_merge_local_file(self):
         self.create_file()
         merge_local_file(TestMergeFile.root_dir)
@@ -194,5 +365,5 @@ class TestMergeFile(unittest.TestCase):
         tf.io.gfile.rmtree(TestMergeFile.root_dir)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
