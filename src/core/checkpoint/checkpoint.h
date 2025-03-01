@@ -35,7 +35,7 @@ namespace MxRec {
         void LoadModel(string loadPath, CkptData& ckptData, RankInfo& mgmtRankInfo, const vector<EmbInfo>& embInfo,
                        const vector<CkptFeatureType>& featureTypes);
 
-    private:
+    GTEST_PRIVATE:
         std::vector<char> buffer;
         std::vector<char> writeBuffer;
         const string datasetName { "slice_" };
