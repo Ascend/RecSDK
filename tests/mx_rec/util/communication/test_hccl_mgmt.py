@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,14 +15,11 @@
 # limitations under the License.
 # ==============================================================================
 
-import sys
 import unittest
 from unittest import mock
 from unittest.mock import mock_open, patch
 
-from mx_rec.constants.constants import MAX_RANK_SIZE
-from mx_rec.util.communication.hccl_mgmt import parse_hccl_json
-from mx_rec.util.communication.hccl_mgmt import get_device_list
+from mx_rec.util.communication.hccl_mgmt import parse_hccl_json, set_hccl_info_without_json
 from mx_rec.util.global_env_conf import global_env
 
 
@@ -43,15 +40,23 @@ class HCCLMGMTTest(unittest.TestCase):
         global_env.rank_table_file = self.rank_table_file
 
     def test_parse_hccl_json_when_attribute_error(self):
-        with patch("builtins.open", mock_open(read_data="""{
+        with patch(
+            "builtins.open",
+            mock_open(
+                read_data="""{
           "server_count":"1",
           "status":"completed",
           "version":"1.0"
-        }""")) as mock_file:
+        }"""
+            ),
+        ) as mock_file:
             with self.assertRaises(AttributeError):
                 rank_to_device_dict, local_rank_size = parse_hccl_json()
 
-        with patch("builtins.open", mock_open(read_data="""{
+        with patch(
+            "builtins.open",
+            mock_open(
+                read_data="""{
           "server_count":"1",
           "server_list":[
             {
@@ -60,20 +65,30 @@ class HCCLMGMTTest(unittest.TestCase):
           ],
           "status":"completed",
           "version":"1.0"
-        }""")) as mock_file:
+        }"""
+            ),
+        ) as mock_file:
             with self.assertRaises(AttributeError):
                 rank_to_device_dict, local_rank_size = parse_hccl_json()
 
     def test_parse_hccl_json_when_value_error(self):
-        with patch("builtins.open", mock_open(read_data="""{
+        with patch(
+            "builtins.open",
+            mock_open(
+                read_data="""{
           "server_count":"1",
           "server_list":[],
           "status":"completed",
           "version":"1.0"
-        }""")) as mock_file:
+        }"""
+            ),
+        ) as mock_file:
             with self.assertRaises(ValueError):
                 rank_to_device_dict, local_rank_size = parse_hccl_json()
-        with patch("builtins.open", mock_open(read_data="""{
+        with patch(
+            "builtins.open",
+            mock_open(
+                read_data="""{
           "server_count":"1",
           "server_list":[
             {
@@ -85,10 +100,15 @@ class HCCLMGMTTest(unittest.TestCase):
           ],
           "status":"completed",
           "version":"1.0"
-        }""")) as mock_file:
+        }"""
+            ),
+        ) as mock_file:
             with self.assertRaises(ValueError):
                 rank_to_device_dict, local_rank_size = parse_hccl_json()
-        with patch("builtins.open", mock_open(read_data="""{
+        with patch(
+            "builtins.open",
+            mock_open(
+                read_data="""{
           "server_count":"1",
           "server_list":[
             {
@@ -100,10 +120,33 @@ class HCCLMGMTTest(unittest.TestCase):
           ],
           "status":"completed",
           "version":"1.0"
-        }""")) as mock_file:
+        }"""
+            ),
+        ) as mock_file:
             with self.assertRaises(ValueError):
                 rank_to_device_dict, local_rank_size = parse_hccl_json()
 
 
-if __name__ == '__main__':
+class TestSetHcclInfoWithoutJson(unittest.TestCase):
+    @mock.patch.object(global_env, "cm_worker_size", "1")
+    @mock.patch.object(global_env, "cm_chief_device", "0")
+    @mock.patch.multiple(
+        "mx_rec.util.communication.hccl_mgmt",
+        get_device_list=mock.MagicMock(return_value=[1]),
+    )
+    def test_value_err(self):
+        with self.assertRaises(ValueError):
+            set_hccl_info_without_json()
+
+    @mock.patch.object(global_env, "cm_worker_size", "1")
+    @mock.patch.object(global_env, "cm_chief_device", "0")
+    @mock.patch.multiple(
+        "mx_rec.util.communication.hccl_mgmt",
+        get_device_list=mock.MagicMock(return_value=[0]),
+    )
+    def test_ok(self):
+        self.assertIsNotNone(set_hccl_info_without_json())
+
+
+if __name__ == "__main__":
     unittest.main()

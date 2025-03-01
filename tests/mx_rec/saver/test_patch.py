@@ -105,3 +105,88 @@ class TestSaverFromObjectBasedCheckpoint(unittest.TestCase):
         checkpoint_path = "tmp_xxx_saver_from_object_based_checkpoint"
         with self.assertRaises(ValueError):
             saver_from_object_based_checkpoint(checkpoint_path)
+
+
+class TestPatchForSecondOrStepTimer(unittest.TestCase):
+    def setUp(self):
+        tf.compat.v1.reset_default_graph()
+
+    def tearDown(self):
+        tf.compat.v1.reset_default_graph()
+
+    @mock.patch(
+        "mx_rec.saver.patch.ConfigInitializer",
+        new=MockConfigInitializer(save_checkpoint_due_time=1, save_delta_checkpoints_secs=1),
+    )
+    def test_init_all_none(self):
+        with self.assertRaises(ValueError) as e:
+            tf.compat.v1.train.SecondOrStepTimer(every_secs=None, every_steps=None)
+        self.assertIn("Either every_secs or every_steps should be provided", str(e.exception))
+
+    @mock.patch(
+        "mx_rec.saver.patch.ConfigInitializer",
+        new=MockConfigInitializer(save_checkpoint_due_time=1, save_delta_checkpoints_secs=1),
+    )
+    def test_init_all_not_none(self):
+        with self.assertRaises(ValueError) as e:
+            tf.compat.v1.train.SecondOrStepTimer(every_secs=1, every_steps=1)
+        self.assertIn("Can not provide both every_secs and every_steps", str(e.exception))
+
+    @mock.patch(
+        "mx_rec.saver.patch.ConfigInitializer",
+        new=MockConfigInitializer(save_checkpoint_due_time=None, save_delta_checkpoints_secs=None),
+    )
+    def test_init_incremental_all_not_none(self):
+        with self.assertRaises(ValueError) as e:
+            tf.compat.v1.train.SecondOrStepTimer(every_secs=1, every_steps=None, is_incremental_checkpoint=True)
+        self.assertIn("Both save_checkpoint_due_time and save_delta_checkpoints_secs", str(e.exception))
+
+    @mock.patch(
+        "mx_rec.saver.patch.ConfigInitializer",
+        new=MockConfigInitializer(save_checkpoint_due_time=1, save_delta_checkpoints_secs=1),
+    )
+    def test_init_ok(self):
+        timer = tf.compat.v1.train.SecondOrStepTimer(every_secs=1, every_steps=None, is_incremental_checkpoint=True)
+        self.assertIsNotNone(timer)
+
+    @mock.patch(
+        "mx_rec.saver.patch.ConfigInitializer",
+        new=MockConfigInitializer(save_checkpoint_due_time=1, save_delta_checkpoints_secs=1),
+    )
+    def test_last_triggered_step_is_none(self):
+        timer = tf.compat.v1.train.SecondOrStepTimer(every_secs=1, every_steps=None, is_incremental_checkpoint=True)
+        self.assertTrue(timer.should_trigger_for_step(1))
+
+    @mock.patch(
+        "mx_rec.saver.patch.ConfigInitializer",
+        new=MockConfigInitializer(save_checkpoint_due_time=1, save_delta_checkpoints_secs=1),
+    )
+    def test_last_triggered_step_equal(self):
+        timer = tf.compat.v1.train.SecondOrStepTimer(every_secs=1, every_steps=None, is_incremental_checkpoint=True)
+        timer.update_last_triggered_step(1)
+        self.assertFalse(timer.should_trigger_for_step(1))
+
+    @mock.patch(
+        "mx_rec.saver.patch.ConfigInitializer",
+        new=MockConfigInitializer(save_checkpoint_due_time=1, save_delta_checkpoints_secs=1),
+    )
+    def test_last_triggered_step_with_incremental_is_true_ok(self):
+        timer = tf.compat.v1.train.SecondOrStepTimer(every_secs=1, every_steps=None, is_incremental_checkpoint=True)
+        timer.update_last_triggered_step(1)
+        self.assertFalse(timer.should_trigger_for_step(2))
+
+    @mock.patch(
+        "mx_rec.saver.patch.ConfigInitializer",
+        new=MockConfigInitializer(save_checkpoint_due_time=1, save_delta_checkpoints_secs=1),
+    )
+    def test_last_triggered_step_with_incremental_is_false_ok(self):
+        timer = tf.compat.v1.train.SecondOrStepTimer(every_secs=1, every_steps=None, is_incremental_checkpoint=False)
+        timer.update_last_triggered_step(1)
+        self.assertFalse(timer.should_trigger_for_step(2))
+
+
+class TestCheckpointSaverHook(unittest.TestCase):
+    @mock.patch("mx_rec.saver.patch.ConfigInitializer", new=MockConfigInitializer())
+    def test_init_ok(self):
+        hook = tf.compat.v1.train.CheckpointSaverHook("tmp", save_secs=1)
+        self.assertIsNotNone(hook)

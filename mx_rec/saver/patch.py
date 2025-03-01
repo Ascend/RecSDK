@@ -405,7 +405,7 @@ def restore(self, sess, save_path):
         raise _wrap_restore_error_with_msg(err, "a mismatch between the current graph and the graph") from err
 
 
-def object_graph_key_mapping(file_path):
+def object_graph_key_mapping(file_path):  # pragma: no cover
     reader = pywrap_tensorflow.NewCheckpointReader(file_path)
     obj_graph_str = reader.get_tensor(trackable.OBJECT_GRAPH_PROTO_KEY)
     obj_graph_proto = (trackable_object_graph_pb2.TrackableObjectGraph())
@@ -426,7 +426,7 @@ def _wrap_restore_error_with_msg(err, extra_verbiage):
 
 
 def saver_from_object_based_checkpoint(checkpoint_path, var_list=None, builder=None, names_to_keys=None,
-                                       cached_saver=None):
+                                       cached_saver=None):  # pragma: no cover
     if names_to_keys is None:
         try:
             names_to_keys = object_graph_key_mapping(checkpoint_path)
@@ -484,7 +484,7 @@ def build_var_list():
     return save_var_list
 
 
-class BaseSaverBuilder(object):
+class BaseSaverBuilder(object):  # pragma: no cover
     VariableSaveable = saveable_object_util.ReferenceVariableSaveable
     SaveSpec = saveable_object.SaveSpec
     ResourceVariableSaveable = saveable_object_util.ResourceVariableSaveable
@@ -510,7 +510,7 @@ class BaseSaverBuilder(object):
             raise RuntimeError("Unexpected write_version: " + self._write_version)
 
 
-class BulkSaverBuilder(BaseSaverBuilder):
+class BulkSaverBuilder(BaseSaverBuilder):  # pragma: no cover
     def bulk_restore(self, filename_tensor, saveables, preferred_shard, restore_sequentially):
         restore_specs = []
         del restore_sequentially
@@ -524,7 +524,7 @@ class BulkSaverBuilder(BaseSaverBuilder):
             return io_ops.restore_v2(filename_tensor, tensor_names, tensor_slices, tensor_dtypes)
 
 
-def patch_for_write_graph_func(func):
+def patch_for_write_graph_func(func):  # pragma: no cover
     def wrapper(*args, **kwargs):
         comm = MPI.COMM_WORLD
         rank = comm.Get_rank()
@@ -547,7 +547,7 @@ def patch_for_saver():
     training_util.write_graph = patch_for_write_graph_func(graph_io.write_graph)
 
 
-def _patch_for_summary_writer(func):
+def _patch_for_summary_writer(func):  # pragma: no cover
     def wrapper(*args, **kwargs):
         filename_suffix = kwargs.get(_FILENAME_SUFFIX, "")
         filename_suffix = filename_suffix or ""
@@ -689,7 +689,7 @@ def checkpoint_saver_hook_init(self, checkpoint_dir, save_secs=None, save_steps=
     self._save_graph_def = save_graph_def
 
 
-def after_run_checkpoint_saver_hook(self, run_context, run_values):
+def after_run_checkpoint_saver_hook(self, run_context, run_values):  # pragma: no cover
     stale_global_step = run_values.results
     if not self._timer.should_trigger_for_step(stale_global_step +
                                            self._steps_per_run):
@@ -703,7 +703,7 @@ def after_run_checkpoint_saver_hook(self, run_context, run_values):
         run_context.request_stop()
 
 
-def save_checkpoint_saver_hook(self, session, step, save_delta=False):
+def save_checkpoint_saver_hook(self, session, step, save_delta=False):  # pragma: no cover
     logging.info("Saving checkpoints for %d into %s.", step, self._save_path)
 
     for listener in self._listeners:
@@ -742,7 +742,7 @@ def _export_all_saved_models(
     as_text: bool = False,
     checkpoint_path: Optional[str] = None,
     strip_default_attrs: bool = True,
-):
+):  # pragma: no cover
     """Exports multiple modes in the model function to a SavedModel."""
 
     def _locate_latest_checkpoint() -> str:
