@@ -13,10 +13,17 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <stdexcept>
+#include <utility>
+
 #include <mpi.h>
 #include <gtest/gtest.h>
+#include <emock/emock.hpp>
 
 #include "checkpoint/checkpoint.h"
+#include "ckpt_data_handler/key_count_map_ckpt/key_count_map_ckpt.h"
+#include "utils/common.h"
 
 using namespace std;
 using namespace MxRec;
@@ -25,30 +32,30 @@ const float MEM_INIT_VALUE = 0.5;
 
 class CheckpointTest : public testing::Test {
 protected:
-    string testPath { "./ckpt_mgmt_test" };
+    string testPath{"./ckpt_mgmt_test"};
     int rankId;
 
-    int floatBytes { 4 };
-    int int32Bytes { 4 };
-    int int64Bytes { 8 };
+    int floatBytes{4};
+    int int32Bytes{4};
+    int int64Bytes{8};
 
-    int64_t int64Min { static_cast<int64_t>(UINT32_MAX) };
+    int64_t int64Min{static_cast<int64_t>(UINT32_MAX)};
 
     int maxChannelNum = MAX_CHANNEL_NUM;
     int keyProcessThread = 1;
 
-    int embInfoNum { 10 };
+    int embInfoNum{10};
 
-    float floatMem { MEM_INIT_VALUE };
-    int64_t featMem { static_cast<int64_t>(UINT32_MAX) };
-    int32_t offsetMem { 0 };
-    int32_t maxOffsetMem { 16 };
+    float floatMem{MEM_INIT_VALUE};
+    int64_t featMem{static_cast<int64_t>(UINT32_MAX)};
+    int32_t offsetMem{0};
+    int32_t maxOffsetMem{16};
 
-    string name { "table" };
-    int sendCount { 8 };
-    int embeddingSize { 100 };
-    int devVocabSize { 8 };
-    int hostVocabSize { 16 };
+    string name{"table"};
+    int sendCount{8};
+    int embeddingSize{100};
+    int devVocabSize{8};
+    int hostVocabSize{16};
 
     vector<EmbInfo> testEmbInfos;
     RankInfo rankInfo;
@@ -62,11 +69,13 @@ protected:
         MPI_Comm_rank(MPI_COMM_WORLD, &rankId);
         rankInfo.rankId = rankId;
         rankInfo.useDynamicExpansion = false;
+
+        emock::GlobalMockObject::reset();
     }
 
     void SetEmbInfo()
     {
-        int idx { 0 };
+        int idx{0};
         testEmbInfos.resize(embInfoNum);
         for (auto& testEmbInfo : testEmbInfos) {
             testEmbInfo.name = name + to_string(idx);
@@ -97,8 +106,8 @@ protected:
         vector<vector<float>> testEmbData;
         for (const auto& testEmbInfo : testEmbInfos) {
             SetEmbData(testEmbData);
-            HostEmbTable embTable { testEmbInfo, move(testEmbData) };
-            testHostEmbs->insert({testEmbInfo.name,  move(embTable)}); // set test input data
+            HostEmbTable embTable{testEmbInfo, move(testEmbData)};
+            testHostEmbs->insert({testEmbInfo.name, move(embTable)});  // set test input data
         }
     }
 
@@ -114,18 +123,17 @@ protected:
                     testValue = 0;
                 }
             }
-            HostEmbTable embTable { testEmbInfo, move(testEmbData) };
-            loadHostEmbs->insert({testEmbInfo.name,  move(embTable)}); // set test input data
+            HostEmbTable embTable{testEmbInfo, move(testEmbData)};
+            loadHostEmbs->insert({testEmbInfo.name, move(embTable)});  // set test input data
         }
     }
 
-    void SetHashMapInfo(absl::flat_hash_map<emb_key_t, size_t>& testHash,
-                        vector<int32_t>& testDev2B,
+    void SetHashMapInfo(absl::flat_hash_map<emb_key_t, size_t>& testHash, vector<int32_t>& testDev2B,
                         vector<int64_t>& testDev2K)
     {
         testDev2B.resize(devVocabSize);
         testDev2K.resize(devVocabSize);
-        for (int i { 0 }; i < devVocabSize; ++i) {
+        for (int i{0}; i < devVocabSize; ++i) {
             testDev2K.at(i) = offsetMem;
             testHash[featMem] = offsetMem;
 
@@ -137,7 +145,7 @@ protected:
 
     void SetKeyOffsetMap(absl::flat_hash_map<emb_key_t, int64_t>& testKeyOffsetMap)
     {
-        for (int64_t i { 0 }; i < hostVocabSize; ++i) {
+        for (int64_t i{0}; i < hostVocabSize; ++i) {
             testKeyOffsetMap[featMem] = i;
             featMem++;
         }
@@ -145,7 +153,7 @@ protected:
 
     void SetDDRKeyFreqMap(unordered_map<emb_cache_key_t, freq_num_t>& testDDRKeyFreqMap)
     {
-        for (int64_t i { 0 }; i < hostVocabSize; ++i) {
+        for (int64_t i{0}; i < hostVocabSize; ++i) {
             testDDRKeyFreqMap[featMem] = i;
             featMem++;
         }
@@ -153,7 +161,7 @@ protected:
 
     void SetKeyCountMap(absl::flat_hash_map<emb_key_t, size_t>& testKeyCountMap)
     {
-        for (int64_t i { 0 }; i < hostVocabSize; ++i) {
+        for (int64_t i{0}; i < hostVocabSize; ++i) {
             testKeyCountMap[featMem] = i;
             featMem++;
         }
@@ -161,7 +169,7 @@ protected:
 
     void SetExcludeDDRKeyFreqMap(unordered_map<emb_cache_key_t, freq_num_t>& testExcludeDDRKeyFreqMap)
     {
-        for (int64_t i { 0 }; i < hostVocabSize; ++i) {
+        for (int64_t i{0}; i < hostVocabSize; ++i) {
             testExcludeDDRKeyFreqMap[featMem] = i;
             featMem++;
         }
@@ -176,7 +184,7 @@ protected:
         }
     }
 
-    void SetKeyCountMaps(KeyCountMemT & testKeyCountMaps)
+    void SetKeyCountMaps(KeyCountMemT& testKeyCountMaps)
     {
         absl::flat_hash_map<emb_key_t, size_t> testKeyCountMap;
         for (const auto& testEmbInfo : testEmbInfos) {
@@ -196,14 +204,14 @@ protected:
 
     void SetHistRec(AdmitAndEvictData& histRec)
     {
-        int64_t featureId { int64Min };
-        int count { 1 };
-        time_t lastTime { 1000 };
-        time_t timeStamp { 10000 };
+        int64_t featureId{int64Min};
+        int count{1};
+        time_t lastTime{1000};
+        time_t timeStamp{10000};
 
         for (const auto& testEmbInfo : testEmbInfos) {
-            auto& historyRecords { histRec.historyRecords[testEmbInfo.name] };
-            auto& timestamps { histRec.timestamps[testEmbInfo.name] };
+            auto& historyRecords{histRec.historyRecords[testEmbInfo.name]};
+            auto& timestamps{histRec.timestamps[testEmbInfo.name]};
 
             timestamps = timeStamp;
 
@@ -238,13 +246,13 @@ protected:
 
     void SetHistRecCombine(AdmitAndEvictData& histRec)
     {
-        int64_t featureId { int64Min };
-        int count { 1 };
-        time_t lastTime { 1000 };
-        time_t timeStamp { 10000 };
+        int64_t featureId{int64Min};
+        int count{1};
+        time_t lastTime{1000};
+        time_t timeStamp{10000};
 
-        auto& historyRecords { histRec.historyRecords[COMBINE_HISTORY_NAME] };
-        auto& timestamps { histRec.timestamps[COMBINE_HISTORY_NAME] };
+        auto& historyRecords{histRec.historyRecords[COMBINE_HISTORY_NAME]};
+        auto& timestamps{histRec.timestamps[COMBINE_HISTORY_NAME]};
 
         timestamps = timeStamp;
 
@@ -355,4 +363,147 @@ TEST_F(CheckpointTest, FeatAdmitNEvict)
         fileExist = true;
     }
     EXPECT_EQ(fileExist, true);
+}
+
+TEST_F(CheckpointTest, LoadModelOk)
+{
+    auto savePath = "./ckpt_mgmt_test"s;
+    auto ckptData = CkptData();
+    auto rankInfo = RankInfo();
+    auto embInfos = vector<EmbInfo>();
+    auto featTypes = vector<CkptFeatureType>();
+
+    auto embInfo = EmbInfo();
+    embInfo.name = "table0"s;
+    embInfos.push_back(embInfo);
+
+    auto ckpt = Checkpoint();
+    ckpt.LoadModel(savePath, ckptData, rankInfo, embInfos, featTypes);
+
+    ckptData.keyCountMap.emplace("testKey"s, absl::flat_hash_map<emb_key_t, size_t>());
+
+    ckpt.SetDataHandler(ckptData);
+    ckpt.LoadProcess(ckptData);
+    EXPECT_EQ(ckpt.GetEmbeddingSize("table0"s).extEmbSize, 0);
+
+    auto rankSize = 0;
+    MPI_Comm_size(MPI_COMM_WORLD, &rankSize);
+
+    auto res = ckpt.GetTableLayerLoadDir();
+    std::sort(res.begin(), res.end());
+    EXPECT_EQ(res.size(), 10);
+}
+
+TEST_F(CheckpointTest, LoadDatasetOk)
+{
+    EMOCK(&Checkpoint::CheckFileSystemPtr).expects(once()).will(returnValue(true));
+    EMOCK(&Checkpoint::ReadStream).expects(exactly(2));
+    EMOCK(&KeyCountMapCkpt::SetDatasetForLoadEmb).expects(once());
+
+    auto ckpt = Checkpoint();
+
+    auto embNames = vector<string>{"test"};
+    auto dataTypes = vector<CkptDataType>{CkptDataType::EMB_INFO};
+    auto dataHandler = make_unique<KeyCountMapCkpt>();
+    auto ckptData = CkptData();
+
+    ckpt.LoadDataset(embNames, dataTypes, std::move(dataHandler), ckptData);
+}
+
+TEST_F(CheckpointTest, ReadStreamOk)
+{
+    EMOCK(&Checkpoint::CheckFileSystemPtr).expects(once()).will(returnValue(true));
+    EMOCK(&LocalFileSystem::GetFileSize).expects(once()).will(returnValue(static_cast<size_t>(0)));
+    EMOCK(&Checkpoint::SetTransDataSize).expects(once());
+    EMOCK((ssize_t(LocalFileSystem::*)(const string&, char*, size_t))(&LocalFileSystem::Read))
+        .expects(once())
+        .will(returnValue(0));
+
+    auto ckpt = Checkpoint();
+
+    auto transData = CkptTransData();
+    auto dataDir = "./test"s;
+    auto dataType = CkptDataType::EMB_INFO;
+    auto dataElemBytes = 1;
+
+    ckpt.fileSystemPtr = std::make_unique<LocalFileSystem>(LocalFileSystem());
+    ckpt.ReadStream(transData, dataDir, dataType, dataElemBytes);
+}
+
+TEST_F(CheckpointTest, ReadStreamForEmbDataOk)
+{
+    EMOCK(&Checkpoint::CheckFileSystemPtr).expects(once()).will(returnValue(true));
+    EMOCK(&LocalFileSystem::GetFileSize).expects(once()).will(returnValue(static_cast<size_t>(0)));
+
+    auto transData = CkptTransData();
+    transData.attribute.push_back(32);
+
+    auto dataDir = "./test"s;
+    uint32_t dataElemBytes = 32;
+    auto embName = "test"s;
+
+    auto ckptData = CkptData();
+    auto embMem = new EmbMemT();
+    embMem->emplace(embName, HostEmbTable());
+    ckptData.hostEmbs = embMem;
+
+    auto ckpt = Checkpoint();
+    ckpt.fileSystemPtr = std::make_unique<LocalFileSystem>(LocalFileSystem());
+    ckpt.ReadStreamForEmbData(transData, dataDir, dataElemBytes, ckptData, embName);
+
+    EXPECT_NE(ckptData.hostEmbs->at("test").embData.size(), 1);
+
+    delete embMem;
+}
+
+TEST_F(CheckpointTest, ReadStreamForEmbDataErr)
+{
+    EMOCK(&Checkpoint::CheckFileSystemPtr).expects(exactly(2)).will(returnValue(true));
+
+    auto transData = CkptTransData();
+    transData.attribute.push_back(-1);
+
+    auto dataDir = "./test"s;
+    uint32_t dataElemBytes = 32;
+    auto embName = "test"s;
+
+    auto ckptData = CkptData();
+
+    auto ckpt = Checkpoint();
+    ckpt.fileSystemPtr = std::make_unique<LocalFileSystem>(LocalFileSystem());
+
+    EXPECT_THROW(ckpt.ReadStreamForEmbData(transData, dataDir, dataElemBytes, ckptData, embName), std::runtime_error);
+
+    EMOCK(&LocalFileSystem::GetFileSize).expects(once()).will(returnValue(static_cast<size_t>(1)));
+
+    auto embMem = new EmbMemT();
+    embMem->emplace(embName, HostEmbTable());
+    ckptData.hostEmbs = embMem;
+
+    transData.attribute.clear();
+    transData.attribute.push_back(MAX_VOCABULARY_SIZE);
+
+    EXPECT_THROW(ckpt.ReadStreamForEmbData(transData, dataDir, dataElemBytes, ckptData, embName), std::runtime_error);
+
+    delete embMem;
+}
+
+TEST_F(CheckpointTest, SetTransDataSizeOk)
+{
+    auto ckpt = Checkpoint();
+
+    auto transData = CkptTransData();
+    size_t datasetSize = 0;
+
+    auto dataType = CkptDataType::EMB_INFO;
+    ckpt.SetTransDataSize(transData, datasetSize, dataType);
+
+    dataType = CkptDataType::EMB_HASHMAP;
+    ckpt.SetTransDataSize(transData, datasetSize, dataType);
+
+    dataType = CkptDataType::ATTRIBUTE;
+    ckpt.SetTransDataSize(transData, datasetSize, dataType);
+
+    dataType = static_cast<CkptDataType>(-1);
+    EXPECT_THROW(ckpt.SetTransDataSize(transData, datasetSize, dataType), std::runtime_error);
 }
