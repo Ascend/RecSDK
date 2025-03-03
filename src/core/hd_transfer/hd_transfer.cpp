@@ -33,7 +33,7 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId, bool
     LOG_INFO("start init HDTransfer.");
     LOG_INFO("Start aclInit, rank:{}.", localRankId);
     // 开启LCCL时，不用调用 aclInit()
-    if (!useLccl) {
+    if (!useLccl && !GlobalEnv::useShmSwap) {
         // 使用AscendCL接口开发应用时，必须先调用aclInit接口，否则可能会导致后续系统内部资源初始化出错，进而导致其它业务异常。
         aclError retOk = aclInit(nullptr);
         LOG_INFO("End aclInit, rank:{}.", localRankId);
@@ -80,6 +80,7 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId, bool
         usedChannelsNames[i];
     }
     running = true;
+    localDeviceId = localRankId;
     LOG_INFO("End init HDTransfer.");
 #endif
     return true;
@@ -104,6 +105,9 @@ void HDTransfer::Destroy()
                 throw runtime_error("Acl destroy tensor dataset failed.");
             }
         }
+    }
+    if (GlobalEnv::useShmSwap) {
+        FreeShmAddr(localDeviceId);
     }
     aclFinalize();
 #endif
@@ -219,6 +223,86 @@ void HDTransfer::Send(TransferChannel channel, const vector<Tensor>& tensors, in
 #endif
 }
 
+size_t HDTransfer::RecvByShm(RmaShmHeader *queueHeader, float*& ptr, int64_t &dim0, bool &emptyFlag)
+{
+    if ((queueHeader->seqIn - queueHeader->seqOut) == 0) {
+        emptyFlag = true;
+        return 0;
+    }
+
+    RmaShmData *dataHead = ShmDequeuePre(queueHeader);
+    if (dataHead != nullptr) {
+        LOG_DEBUG("Shm recv data-seq: {}, total-len: {}, dim-num: {}, dim-0: {}, dim-1: {}.",
+                  dataHead->sequence, dataHead->totalLen, dataHead->dimNum, dataHead->dims[0], dataHead->dims[1]);
+
+        ptr = reinterpret_cast<float*>(GetDataAddr(dataHead));
+        dim0 = dataHead->dims[0];
+        emptyFlag = false;
+        return dataHead->dataLen;
+    }
+    emptyFlag = true;
+    return 0;
+}
+
+size_t HDTransfer::RecvMteShm(TransferChannel channel, int channelId, const string& embName,
+                              float*& ptr, int64_t& dim0, int batchId)
+{
+    size_t ret = 0;
+#ifndef GTEST
+    string recvBatchIdType;
+    if (channel == TransferChannel::D2H) {
+        recvBatchIdType = "accumulate";
+    }
+
+    string recvName = StringFormat("%s_%s_%d_%d", embName.c_str(), TransferChannel2Str(channel).c_str(),
+                                   channelId, localDeviceId);
+    LOG_DEBUG("Start receive, channelName:{}, recvBatchIdType:{}, batchId:{}.", recvName, recvBatchIdType, batchId);
+    TimeCost tc = TimeCost();
+
+    auto *shmAddr = GetHostAddr(recvName);
+    if (shmAddr == nullptr) {
+        auto error = Error(ModuleName::M_HD_TRANSFER, ErrorType::INVALID_ARGUMENT,
+                           StringFormat("Failed to find valid shm for channel: %s device: %d.",
+                                        recvName.c_str(), localDeviceId));
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString());
+    }
+
+    do {
+        bool emptyFlag = false;
+        ret = RecvByShm((RmaShmHeader *)shmAddr, ptr, dim0, emptyFlag);
+        if (!emptyFlag) {
+            break;
+        }
+
+        if (!running) {
+            return 0;
+        }
+    } while (true);
+
+    LOG_INFO("End receive, channelName:{}, recvBatchIdType{}, batchId:{}, cost:{}ms.", recvName, recvBatchIdType,
+             batchId, tc.ElapsedMS());
+#endif
+    return ret;
+}
+
+void HDTransfer::DequeueShm(TransferChannel channel, int channelId, const string& embName)
+{
+    string recvName = StringFormat("%s_%s_%d_%d", embName.c_str(), TransferChannel2Str(channel).c_str(),
+                                   channelId, localDeviceId);
+    RmaShmHeader *queueHeader = reinterpret_cast<RmaShmHeader *>(GetHostAddr(recvName));
+    if (queueHeader == nullptr) {
+        auto error = Error(ModuleName::M_HD_TRANSFER, ErrorType::INVALID_ARGUMENT,
+                           StringFormat("Failed to find valid shm for channel: %s device: %d.",
+                                        recvName.c_str(), localDeviceId));
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString());
+    }
+    if (ShmDequeue(queueHeader) == nullptr) {
+        LOG_DEBUG("Shm queue {} is already empty.", recvName);
+    }
+}
+
 /// 接收从device发送过来的数据（D2H）；使用原生的aclTDT接口
 /// \param channel 通道实例
 /// \param channelId 通道索引（训练/推理）
@@ -324,6 +408,9 @@ void HDTransfer::ClearTransChannel(int channelId)
     }
 
     acltdtDestroyDataset(trashDataset);
+    if (GlobalEnv::useShmSwap) {
+        ClearShmQueue();
+    }
 #endif
 }
 

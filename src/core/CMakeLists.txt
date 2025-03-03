@@ -50,6 +50,7 @@ target_include_directories(ASC
     PUBLIC
         ${SECUREC_PATH}/include
         ${ASCEND_DRIVER_PATH}/include
+        ${ASCEND_DRIVER_PATH}/kernel/inc
 )
 
 target_link_directories(ASC

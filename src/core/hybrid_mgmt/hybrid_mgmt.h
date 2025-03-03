@@ -276,6 +276,10 @@ GTEST_PRIVATE:
 
     void EmbeddingSendDDR(const EmbTaskInfo& info, vector<Tensor>& h2dEmb);
 
+    bool EmbeddingBuildAndSendDDR(const EmbTaskInfo& info, float*& h2dEmb, int64_t dims[]);
+
+    bool BuildAndSendH2DEmbedding(const EmbTaskInfo& info, float*& h2dEmb, int64_t dims[]);
+
     bool EmbeddingReceiveL3Storage(const EmbTaskInfo& info, float*& ptr, vector<float*>& swapOutAddrs, int64_t& dims0);
 
     void EmbeddingUpdateL3Storage(const EmbTaskInfo& info, float* embPtr, vector<float*>& swapOutAddrs, int64_t& dims0);

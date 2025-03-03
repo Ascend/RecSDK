@@ -56,6 +56,7 @@ class ConfigInitializer:
             ("use_dynamic", ClassValidator, {"classes": (bool,)}),
             ("use_dynamic_expansion", ClassValidator, {"classes": (bool,)}),
             ("use_lccl", ClassValidator, {"classes": (bool,)}),
+            ("use_shm_swap", ClassValidator, {"classes": (bool,)}),
             ("bind_cpu", ClassValidator, {"classes": (bool,)}),
             ("save_checkpoint_due_time", IntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
             ("save_delta_checkpoints_secs", IntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
@@ -78,6 +79,7 @@ class ConfigInitializer:
         self._use_static = not kwargs.get("use_dynamic", True)
         self._use_dynamic_expansion = kwargs.get("use_dynamic_expansion", False)
         self._use_lccl = kwargs.get("use_lccl", False)
+        self._use_shm_swap = kwargs.get("use_shm_swap", False)
 
         self._is_terminated = False
 
@@ -159,6 +161,10 @@ class ConfigInitializer:
         return self._use_dynamic_expansion
 
     @property
+    def use_shm_swap(self):
+        return self._use_shm_swap
+
+    @property
     def sparse_embed_config(self):
         return self._sparse_embed_config
 
@@ -213,6 +219,10 @@ class ConfigInitializer:
     @use_static.setter
     def use_static(self, use_static):
         self._use_static = use_static
+
+    @use_shm_swap.setter
+    def use_shm_swap(self, use_shm_swap):
+        self._use_shm_swap = use_shm_swap
 
     @staticmethod
     def get_instance():

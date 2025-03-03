@@ -53,7 +53,9 @@ from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.util.perf import performance
 from mx_rec.util.tf_version_adapter import npu_ops
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator
-
+from mx_rec.util.communication.hccl_ops import get_rank_id, get_device_id
+import mxrec_pybind
+host_pipeline_ops = import_host_pipeline_ops()
 
 class GraphModifierHook(tf.estimator.SessionRunHook):
     @para_checker_decorator(
@@ -641,6 +643,26 @@ def _get_variable_and_slot_list(each_var, slot_num, table_name, channel_id):
 
     return variable_and_slot_list
 
+def shm_swap(tables, swap_in_index, swap_out_index, shm_swap_in, shm_swap_out):
+    MAX_TABLE_NUM = 6
+    table_list = []
+    table_num = len(tables)
+    for i in range(MAX_TABLE_NUM):
+        if i < table_num:
+            table_list.append(tables[i])
+        else:
+            table_list.append(tables[0])
+    shm_swap_op = host_pipeline_ops.rma_swap_multi_tables(swap_in_index = swap_in_index,
+                                                          swap_out_index = swap_out_index,
+                                                          table_a = table_list[0],
+                                                          table_b = table_list[1],
+                                                          table_c = table_list[2],
+                                                          table_d = table_list[3],
+                                                          table_e = table_list[4],
+                                                          table_f = table_list[5],
+                                                          table_num = table_num,
+                                                          shm_swap_in = shm_swap_in, shm_swap_out = shm_swap_out)
+    return shm_swap_op
 
 def _get_swap_info(
     table_instance: BaseSparseEmbedding,
@@ -671,46 +693,78 @@ def _get_swap_info(
             else table_instance.send_count
         )
 
-    with tf.compat.v1.variable_scope("h2d_emb"):
-        logger.debug("Channel %s_h2d_%s was built for getnext.", table_instance.table_name, channel_id)
-        h2d_emb = npu_ops.gen_npu_ops.get_next(
-            output_types=[tf.float32],
-            output_shapes=[[max_lookup_vec_size, table_instance.ext_emb_size]],
-            channel_name=f"{table_instance.table_name}_h2d_{channel_id}",
-        )[0]
-
-    logger.debug("h2d_emb shape: %s", h2d_emb)
-
     swap_out_pos = swap_info.swap_out_pos
     swap_in_pos = swap_info.swap_in_pos
     if use_static:
         swap_out_pos = swap_out_pos[: swap_info.swap_out_len]
-        h2d_emb = h2d_emb[: swap_info.swap_in_len, :]
         swap_in_pos = swap_in_pos[: swap_info.swap_in_len]
-    swap_outs = [tf.gather(one_table, swap_out_pos) for one_table in variable_and_slot_list]
-    swap_out = tf.concat(swap_outs, axis=1)
-    logger.debug("Channel %s_d2h_%s was built for op outfeed.", table_instance.table_name, channel_id)
+    use_shm_swap = ConfigInitializer.get_instance().use_shm_swap
 
-    swap_out_op = npu_ops.outfeed_enqueue_op(
-        channel_name=f"{table_instance.table_name}_d2h_{channel_id}", inputs=[swap_out]
-    )
-    with tf.control_dependencies([swap_out_op]):
-        nd_swap_pos = tf.expand_dims(swap_in_pos, 1)
+    if use_shm_swap:
+        device_id = get_device_id()
+
+        swap_in_pos = tf.cast(swap_in_pos, dtype=tf.int64)
+        swap_out_pos = tf.cast(swap_out_pos, dtype=tf.int64)
+        rma_shm_host_swap_in = \
+            mxrec_pybind.get_shm_mem(f'{table_instance.table_name}_h2d_{channel_id}_{device_id}', device_id, 50)
+        host_shm_swap_in = str(rma_shm_host_swap_in)
+
+        rma_shm_host_swap_out = \
+            mxrec_pybind.get_shm_mem(f'{table_instance.table_name}_d2h_{channel_id}_{device_id}', device_id, 50)
+        host_shm_swap_out = str(rma_shm_host_swap_out)
+
         var_num = len(variable_and_slot_list)
-        h2d_emb_split = tf.split(h2d_emb, var_num, axis=1)
 
-        is_training = True if channel_id == TRAIN_CHANNEL_ID else False
         optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(
-            table_instance.table_name, is_training=is_training
+            table_instance.table_name)
+
+        if optimizer is None and channel_id == 1:
+
+            swap_op = [shm_swap([variable_and_slot_list[0]],
+                            swap_in_index = swap_in_pos, swap_out_index = swap_out_pos,
+                            shm_swap_in = host_shm_swap_in, shm_swap_out = host_shm_swap_out)]
+        else :
+            swap_op = [shm_swap(variable_and_slot_list,
+                            swap_in_index = swap_in_pos, swap_out_index = swap_out_pos,
+                            shm_swap_in = host_shm_swap_in, shm_swap_out = host_shm_swap_out)]
+        eturn swap_op
+    else:
+        with tf.compat.v1.variable_scope("h2d_emb"):
+            logger.debug("Channel %s_h2d_%s was built for getnext.", table_instance.table_name, channel_id)
+            h2d_emb = npu_ops.gen_npu_ops.get_next(
+                output_types=[tf.float32],
+                output_shapes=[[max_lookup_vec_size, table_instance.ext_emb_size]],
+                channel_name=f"{table_instance.table_name}_h2d_{channel_id}",
+            )[0]
+
+        logger.debug("h2d_emb shape: %s", h2d_emb)
+        if use_static:
+            h2d_emb = h2d_emb[:swap_info.swap_in_len, :]
+        swap_outs = [tf.gather(one_table, swap_out_pos) for one_table in variable_and_slot_list]
+        swap_out = tf.concat(swap_outs, axis=1)
+        logger.debug("Channel %s_d2h_%s was built for op outfeed.", table_instance.table_name, channel_id)
+
+        swap_out_op = npu_ops.outfeed_enqueue_op(
+            channel_name=f"{table_instance.table_name}_d2h_{channel_id}", inputs=[swap_out]
         )
-        if optimizer is None and channel_id == EVAL_CHANNEL_ID:
-            swap_in_op = [tf.compat.v1.scatter_nd_update(variable_and_slot_list[0], nd_swap_pos, h2d_emb_split[0])]
-        else:
-            swap_in_op = [
-                tf.compat.v1.scatter_nd_update(variable_and_slot_list[i], nd_swap_pos, h2d_emb_split[i])
-                for i in range(var_num)
-            ]
-    return swap_in_op
+
+        with tf.control_dependencies([swap_out_op]):
+            nd_swap_pos = tf.expand_dims(swap_in_pos, 1)
+            var_num = len(variable_and_slot_list)
+            h2d_emb_split = tf.split(h2d_emb, var_num, axis=1)
+
+            is_training = True if channel_id == TRAIN_CHANNEL_ID else False
+            optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(
+                table_instance.table_name, is_training=is_training
+            )
+            if optimizer is None and channel_id == EVAL_CHANNEL_ID:
+                swap_in_op = [tf.compat.v1.scatter_nd_update(variable_and_slot_list[0], nd_swap_pos, h2d_emb_split[0])]
+            else:
+                swap_in_op = [
+                    tf.compat.v1.scatter_nd_update(variable_and_slot_list[i], nd_swap_pos, h2d_emb_split[i])
+                    for i in range(var_num)
+                ]
+        return swap_in_op
 
 
 def _get_new_batch_tensor(new_batch: Union[List, Tuple, Dict, tf.Tensor]) -> tf.Tensor:
