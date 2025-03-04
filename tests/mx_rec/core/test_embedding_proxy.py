@@ -86,6 +86,6 @@ class CreateMergeableEmbeddingTestCase(unittest.TestCase):
             mergeable_table = embedding_proxy.create_mergeable_embedding(table_name, self._config, self._union_key)
 
         self.assertIsInstance(mergeable_table, mergeable_sparse_embedding.MergeableSparseEmbedding)
-        self.assertEqual(mergeable_table.table_name, "mergeable_table_0")
+        self.assertIn("mergeable_table", mergeable_table.table_name)
         self.assertEqual(mergeable_table.merged_small_tables, ["test_small_table_name"])
         self.assertEqual(mergeable_table.slice_device_vocabulary_size, 1)

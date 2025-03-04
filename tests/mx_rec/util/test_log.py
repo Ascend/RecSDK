@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+# coding: UTF-8
+# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,13 +15,12 @@
 # limitations under the License.
 # ==============================================================================
 
-import tensorflow as tf
+import unittest
 
-from mx_rec.util.initialize import ConfigInitializer
+from mx_rec.util.log import get_logger
 
 
-def get_dense_and_sparse_variable():
-    dense_variables = tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.TRAINABLE_VARIABLES)
-    sparse_variables = tf.compat.v1.get_collection(
-        ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection)
-    return dense_variables, sparse_variables
+class TestGetLogger(unittest.TestCase):
+    def test_level_not_exist(self):
+        with self.assertRaises(ValueError):
+            get_logger("xxx")

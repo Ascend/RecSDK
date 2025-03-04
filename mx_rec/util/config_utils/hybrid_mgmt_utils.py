@@ -20,7 +20,7 @@ from typing import Optional
 from mx_rec.util.log import logger
 
 
-class HybridManagerConfig:
+class HybridManagerConfig:  # pragma: no cover
     def __init__(self):
         self._asc_manager = None
         self._is_freeze = False

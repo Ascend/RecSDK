@@ -131,6 +131,8 @@ class MockConfigInitializer:
         self.sparse_dir = kwargs.get("sparse_dir", "")
         self.is_incremental_checkpoint = kwargs.get("is_incremental_checkpoint", False)
         self.restore_model_version = kwargs.get("restore_model_version")
+        self.save_checkpoint_due_time = kwargs.get("save_checkpoint_due_time")
+        self.save_delta_checkpoints_secs = kwargs.get("save_delta_checkpoints_secs")
 
         self.hybrid_manager_config = MockHybridManagerConfig(**kwargs)
         self.sparse_embed_config = MockSparseEmbedConfig(**kwargs)
