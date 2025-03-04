@@ -1326,7 +1326,7 @@ void HybridMgmt::EmbeddingReceiveAndUpdateDDR(int batchId, int index, const EmbI
     }
     EmbeddingUpdateDDR(info, ptr, swapOutAddrs);
     if(GlobalEnv::useShmSwap) {
-        hdTransfer->DequueShm(TransferChannel::D2H, info.channelId, info.name);
+        hdTransfer->DequeueShm(TransferChannel::D2H, info.channelId, info.name);
     }
 }
 
