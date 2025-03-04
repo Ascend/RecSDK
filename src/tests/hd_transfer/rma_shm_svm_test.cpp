@@ -49,7 +49,7 @@ protected:
     }
 
     void PushBatch() {
-        std::vector<float> data = CreteBatchData();
+        std::vector<float> data = CreateBatchData();
         auto dataHeader = MallocFromShm(sendName, dims);
         float* h2dEmb = reinterpret_cast<float*>(GetDataAddr(dataHeader));
         uint64_t memSize = dims[1] * sizeof(float);
