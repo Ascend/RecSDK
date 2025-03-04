@@ -28,7 +28,7 @@ using namespace std;
 using namespace MxRec;
 using namespace testing;
 
-class RmaShmSvmTest :  : public testing::Test {
+class RmaShmSvmTest : public testing::Test {
 protected:
     int deviceId = 0;
     int capacity = 5;
