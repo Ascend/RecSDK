@@ -13,10 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#include "rma_shm_svm.h"
 #include <unordered_map>
 #include <vector>
-#include <string>
 #include <fstream>
 #include <cstdlib>
 #include <cstdio>
@@ -25,7 +24,6 @@
 #include <acl/acl.h>
 #include <driver/ascend_hal_define.h>
 #include "securec.h"
-#include "rma_shm_svm.h"
 #include "utils/common.h"
 
 using namespace MxRec;
@@ -37,9 +35,11 @@ drvError_t halHostUnregister(void* srcPtr, UINT32 devid);
 drvError_t rtDeviceGetBareTgid(uint32_t* pid);
 }
 
-const uint64_t RMA_SHM_TOTAL_MEM_SIZE = 1 * 1024 * 1024 * 1024 * 1L; // shared memory total size(B)
+constexpr uint64_t RMA_SHM_TOTAL_MEM_SIZE = 1 * 1024 * 1024 * 1024 * 1L; // shared memory total size(B)
 constexpr int RMA_SHM_QUEUE_CAPACITY = 50;                           // max depth
 constexpr int32_t MAX_RANK_SIZE = 4095;
+constexpr uint32_t KEY_DIM = 0;
+constexpr uint32_t EMB_DIM = 1;
 
 uint32_t g_pid = 0;
 bool g_aclInit[MAX_RANK_SIZE] = {false};
@@ -73,19 +73,20 @@ void ResetShmHeader(RmaShmHeader* header)
     header->frontOffsetPre = RMA_SHM_HEAD_LEN;
 }
 
-void RmaFreeShm(std::string shmName, void* memory)
+void RmaFreeShm(std::string& shmName, void* memory)
 {
     if (g_rmaDevModel == RmaDevModel::SVM_MAP_DEV) {
         if (aclrtFreeHost(memory) != ACL_ERROR_NONE) {
             LOG_WARN("Free host mem failed.");
         }
-    } else {
-        int shmId = g_shmId[shmName];
-        LOG_INFO("Free shm with shmid: {} success.", shmId);
-        (void)shmdt(memory);
+    }
 
+    if (g_rmaDevModel == RmaDevModel::PCIE_TH_DEV)
+        int shmId = g_shmId[shmName];
+        (void)shmdt(memory);
         shmctl(shmId, IPC_RMID, nullptr);
         g_shmId.erase(shmName);
+        LOG_INFO("Free shm with shmid: {} success.", shmId);
     }
 }
 
@@ -107,21 +108,9 @@ uint32_t GetRegisterFlag(RmaDevModel mode)
     }
 }
 
-// malloc shared memory
-void *RmaCreateShm(std::string shmName, uint64_t memSize, int deviceId, int capacity)
+void* ShmMemSet(std::string& shmName, uint64_t memSize)
 {
-    string chipName = GetChipName(deviceId);
-    if (IsPrefix(chipName, "910B")) {
-        g_rmaDevModel = RmaDevModel::PCIE_TH_DEV;
-    } else if (IsPrefix(chipName, "910_93")) {
-        g_rmaDevModel = RmaDevModel::SVM_MAP_DEV;
-    } else {
-        auto error = Error(ModuleName::M_RMA_SHM_SVM, ErrorType::UNKNOWN,
-                           StringFormat("Unsupported chip type: %s.", chipName.c_str()));
-        LOG_ERROR(error.ToString());
-        throw runtime_error(error.ToString());
-    }
-    void *memory = nullptr;
+    void* memory = nullptr;
     if (g_rmaDevModel == RmaDevModel::SVM_MAP_DEV) {
         if (aclrtMallocHost((void **)&memory, memSize) != ACL_ERROR_NONE) {
             auto error = Error(ModuleName::M_RMA_SHM_SVM, ErrorType::UNKNOWN,
@@ -161,7 +150,25 @@ void *RmaCreateShm(std::string shmName, uint64_t memSize, int deviceId, int capa
         g_shmId.insert(std::make_pair(shmName, shmId));
         LOG_INFO("Create shm {}, shmid: {}, size: {} bytes successfully.", shmName.c_str(), shmId, memSize);
     }
+    return memory;
+}
 
+// malloc shared memory
+void *RmaCreateShm(std::string& shmName, uint64_t memSize, int deviceId, int capacity)
+{
+    string chipName = GetChipName(deviceId);
+    if (IsPrefix(chipName, "910B")) {
+        g_rmaDevModel = RmaDevModel::PCIE_TH_DEV;
+    } else if (IsPrefix(chipName, "910_93")) {
+        g_rmaDevModel = RmaDevModel::SVM_MAP_DEV;
+    } else {
+        auto error = Error(ModuleName::M_RMA_SHM_SVM, ErrorType::UNKNOWN,
+                           StringFormat("Unsupported chip type: %s.", chipName.c_str()));
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString());
+    }
+
+    void* memory = ShmMemSet(shmName, memSize);
     uint32_t flag = GetRegisterFlag(g_rmaDevModel);
     void *svmMem = nullptr;
     if (halHostRegister(memory, memSize, flag, deviceId, &svmMem) != DRV_ERROR_NONE) {
@@ -171,17 +178,13 @@ void *RmaCreateShm(std::string shmName, uint64_t memSize, int deviceId, int capa
         LOG_ERROR(error.ToString());
         throw runtime_error(error.ToString());
     }
-
     g_shmAddr.insert(std::make_pair(shmName, memory));
-
-    // init queue head
     InitShmHeader(reinterpret_cast<RmaShmHeader *>(memory), memSize, capacity);
 
     return svmMem;
 }
 
-// for pybind call, create shm
-int64_t GetShmAddr(std::string name, int deviceId, int capacity)
+int64_t GetShmAddr(std::string& name, int deviceId, int capacity)
 {
     auto memSize = RMA_SHM_TOTAL_MEM_SIZE;
     if (capacity > RMA_SHM_QUEUE_CAPACITY) {
@@ -189,8 +192,16 @@ int64_t GetShmAddr(std::string name, int deviceId, int capacity)
     }
 
     if (!g_aclInit[deviceId]) {
-        aclInit(nullptr);
-        aclrtSetDevice(deviceId);
+        aclError retOk = aclInit(nullptr);
+        if (retOk != ACL_SUCCESS) {
+            LOG_ERROR("aclInit failed, rank:{}", deviceId);
+            return false;
+        }
+        auto ret = aclrtSetDevice(deviceId);
+        if (ret != ACL_ERROR_NONE) {
+            LOG_ERROR("aclrtSetDevice failed, rank:{}", deviceId);
+            return false;
+        }
         g_aclInit[deviceId] = true;
     }
 
@@ -208,18 +219,20 @@ int64_t GetShmAddr(std::string name, int deviceId, int capacity)
 }
 
 // get shm's ddr address for send and recive
-void *GetHostAddr(std::string name)
+void *GetHostAddr(std::string& name)
 {
     std::string shmName = name + "_" + std::to_string(g_pid);
+    if (g_shmAddr.find(shmName) == g_shmAddr.end()) {
+        return nullptr;
+    }
     return g_shmAddr[shmName];
 }
 
-void FreeShmAddr(int deviceId)
+void FreeShmAddr(uint32_t deviceId)
 {
     if (!g_aclInit[deviceId]) {
         return;
     }
-
     for (auto &pair : g_shmAddr) {
         halHostUnregister(pair.second, deviceId);
         RmaFreeShm(pair.first, pair.second);
@@ -229,7 +242,6 @@ void FreeShmAddr(int deviceId)
     g_shmAddr.clear();
     g_shmId.clear();
     g_shmSvmMap.clear();
-
     if (g_aclInit[deviceId]) {
         aclrtResetDevice(deviceId);
         aclFinalize();
@@ -258,10 +270,9 @@ bool Full(RmaShmHeader* queHeader, uint64_t dataSize)
     if (queHeader->seqIn - queHeader->seqOut >= queHeader->queueCapacity) {
         return true;
     }
-    if (queHeader->tailOffset + dataSize > queHeader->totalMemSize) {
-        if (dataSize + RMA_SHM_HEAD_LEN > queHeader->frontOffset) {
-            return true;
-        }
+    if (queHeader->tailOffset + dataSize > queHeader->totalMemSize &&
+            dataSize + RMA_SHM_HEAD_LEN > queHeader->frontOffset) {
+        return true;
     } else {
         if (queHeader->tailOffset < queHeader->frontOffset &&
             queHeader->tailOffset + dataSize >= queHeader->frontOffset) {
@@ -271,20 +282,24 @@ bool Full(RmaShmHeader* queHeader, uint64_t dataSize)
     return false;
 }
 
-uint8_t *ShmEnqueueHeadRaw(RmaShmHeader* header, int64_t dims[RMA_DIM_MAX], uint64_t sequence)
+uint8_t *ShmEnqueueHeadRaw(RmaShmHeader* header, std::array<int64_t, RMA_DIM_MAX>& dims, uint64_t sequence)
 {
-    int64_t dataSize = dims[0] * dims[1] * sizeof(float) * 1L;
+    int64_t dataSize = dims[KEY_DIM] * dims[EMB_DIM] * sizeof(float) * 1L;
     uint8_t *lastPos = nullptr;
     RmaShmData dataHead;
-
-    LOG_INFO("Before enqueue, capacity: {}, seq-in: {}, seq-out: {}, head: {}, tail: {}, buff-limit: {}.",
-             header->queueCapacity, header->seqIn, header->seqOut,
-             header->frontOffset, header->tailOffset, header->buffLimit);
-
+    LOG_INFO("Before enqueue, capacity: {}, seq-in: {}, seq-out: {}.",
+             header->queueCapacity, header->seqIn, header->seqOut);
+    int loopCnt = 0;
     while (Full(header, dataSize)) {
         this_thread::sleep_for(1ms);
+        ++loopCnt;
+        if (loopCnt >= MAX_WAIT_LOOP) {
+            auto error = Error(ModuleName::M_RMA_SHM_SVM, ErrorType::UNKNOWN,
+                               StringFormat("check full loop failed"));
+            LOG_ERROR(error.ToString());
+            throw std::runtime_error(error.ToString());
+        }
     }
-
     dataHead.totalLen = dataSize + RMA_SHM_DATA_HEAD;
     dataHead.dataType = 0;
     dataHead.dimNum = RMA_DIM_MAX;
@@ -295,8 +310,6 @@ uint8_t *ShmEnqueueHeadRaw(RmaShmHeader* header, int64_t dims[RMA_DIM_MAX], uint
     dataHead.readyLen = 0;
 
     if (header->tailOffset + dataSize > header->totalMemSize) {
-        // If the empty space at the end of the queue cannot accommodate the newly inserted data,
-        // it is inserted from the head of the queue
         lastPos = reinterpret_cast<uint8_t *>(header) + RMA_SHM_HEAD_LEN;
         if (memcpy_s(lastPos, RMA_SHM_DATA_HEAD, &dataHead, RMA_SHM_DATA_HEAD) != EOK) {
             auto error = Error(ModuleName::M_RMA_SHM_SVM, ErrorType::UNKNOWN,
@@ -304,7 +317,6 @@ uint8_t *ShmEnqueueHeadRaw(RmaShmHeader* header, int64_t dims[RMA_DIM_MAX], uint
             LOG_ERROR(error.ToString());
             throw runtime_error(error.ToString());
         }
-        // Indicates that there is no data to read after this location and needs to be returned to the queue header
         header->buffLimit = header->tailOffset;
         header->tailOffset = RMA_SHM_HEAD_LEN + dataHead.totalLen; // Offset from the head of the queue
     } else {
@@ -317,19 +329,15 @@ uint8_t *ShmEnqueueHeadRaw(RmaShmHeader* header, int64_t dims[RMA_DIM_MAX], uint
         }
         header->tailOffset += dataHead.totalLen;
     }
-
     header->seqIn = sequence;
-
-    LOG_INFO("After enqueue, capacity: {}, seq-in: {}, seq-out: {}, head: {}, tail: {}, buff-limit: {}.",
-             header->queueCapacity, header->seqIn, header->seqOut,
-             header->frontOffset, header->tailOffset, header->buffLimit);
+    LOG_INFO("After enqueue, capacity: {}, seq-in: {}, seq-out: {}.",
+             header->queueCapacity, header->seqIn, header->seqOut);
     return lastPos;
 }
 
 int64_t GetShmElemNum(RmaShmHeader* header)
 {
     int64_t queueNum = header->seqIn - header->seqOut;
-
     return queueNum;
 }
 
@@ -346,14 +354,11 @@ RmaShmData *ShmDequeuePre(RmaShmHeader* queHeader)
     if (queHeader->frontOffsetPre == queHeader->buffLimit) {
         queHeader->frontOffsetPre = RMA_SHM_HEAD_LEN;
     }
-
     RmaShmData *dataHeader = reinterpret_cast<RmaShmData *>(
             reinterpret_cast<uint8_t *>(queHeader) + queHeader->frontOffsetPre);
-
     uint64_t dataLen = dataHeader->totalLen;
     queHeader->frontOffsetPre += dataLen;
     queHeader->seqOutPre = dataHeader->sequence;
-
     LOG_DEBUG("After pre-dequeue, data-len: {}, seq-in: {}, seq-out: {}, front: {}, tail: {}, buff-limit: {}.",
               dataLen, queHeader->seqIn, queHeader->seqOutPre,
               queHeader->frontOffsetPre, queHeader->tailOffset, queHeader->buffLimit);
@@ -365,7 +370,6 @@ RmaShmData *ShmDequeue(RmaShmHeader* queHeader)
     if (GetShmElemNum(queHeader) <= 0) {
         return nullptr;
     }
-
     LOG_DEBUG("Before dequeue, seq-in: {}, seq-out: {}, front: {}, tail: {}, buff-limit: {}.",
               queHeader->seqIn, queHeader->seqOut,
               queHeader->frontOffset, queHeader->tailOffset, queHeader->buffLimit);
@@ -374,21 +378,19 @@ RmaShmData *ShmDequeue(RmaShmHeader* queHeader)
         queHeader->frontOffset = RMA_SHM_HEAD_LEN;
         queHeader->buffLimit = 0;
     }
-
     RmaShmData *dataHeader = reinterpret_cast<RmaShmData *>(
             reinterpret_cast<uint8_t *>(queHeader) + queHeader->frontOffset);
 
     uint64_t dataLen = dataHeader->totalLen;
     queHeader->frontOffset += dataLen;
     queHeader->seqOut = dataHeader->sequence;
-
     LOG_DEBUG("After dequeue, data-len: {}, seq-in: {}, seq-out: {}, front: {}, tail: {}, buff-limit: {}.",
               dataLen, queHeader->seqIn, queHeader->seqOut,
               queHeader->frontOffset, queHeader->tailOffset, queHeader->buffLimit);
     return dataHeader;
 }
 
-RmaShmData *MallocFromShm(std::string channelName, int64_t dims[RMA_DIM_MAX])
+RmaShmData *MallocFromShm(std::string& channelName, std::array<int64_t, RMA_DIM_MAX>& dims)
 {
     RmaShmHeader *queueHeader = reinterpret_cast<RmaShmHeader *>(GetHostAddr(channelName));
     if (queueHeader == nullptr) {
@@ -405,11 +407,12 @@ RmaShmData *MallocFromShm(std::string channelName, int64_t dims[RMA_DIM_MAX])
 
 uint8_t *GetDataAddr(RmaShmData* dataHeader)
 {
-    return reinterpret_cast<uint8_t *>(dataHeader) + RMA_SHM_DATA_HEAD;;
+    return reinterpret_cast<uint8_t *>(dataHeader) + RMA_SHM_DATA_HEAD;
 }
 
 void SetReadyLen(RmaShmData* dataHeader, uint64_t value)
 {
-    uint64_t *readyLen = reinterpret_cast<uint64_t *>(reinterpret_cast<uint8_t *>(dataHeader) + RMA_SHM_READY_LEN);
+    uint64_t *readyLen = reinterpret_cast<uint64_t *>(reinterpret_cast<uint8_t *>(dataHeader) +
+            sizeof(RmaShmData) - sizeof(uint64_t));
     *readyLen = value;
 }

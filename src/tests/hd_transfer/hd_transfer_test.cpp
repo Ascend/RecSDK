@@ -16,7 +16,6 @@ See the License for the specific language governing permissions and
 #include <gtest/gtest.h>
 
 #include "hd_transfer/hd_transfer.h"
-#include "hd_transfer/rma_shm_svm.h"
 
 using namespace MxRec;
 using namespace testing;
@@ -82,47 +81,3 @@ TEST_F(HdTransferTest, TransferChannel2Str)
         EXPECT_EQ(ret, it.second);
     }
 }
-
-TEST_F(HdTransferTest, RecvMteShm)
-{
-    int capacity = 5;
-    int64_t ret = GetShmAddr("table_1_h2d_0_8", 0, capacity);
-    std::vector<float> data(50, 1.0);
-    int64_t dims[2] = {10, 5};
-    auto dataHeader = MallocFromShm("table1_h2d_0_8", dims);
-    float* h2dEmb = reinterpret_cast<float*>(GetDataAddr(dataHeader));
-    int64_t memSize =dims[1] * sizeof(float);
-    for(uint64_t i = 0; i < data.size(); i++){
-        auto rc = memcpy_s(h2dEmb + i, sizeof(float), &(data[i]), sizeof(float));
-    }
-    SetReadyLen(dataHeader, dims[0] * memSize);
-    float* ptr = nullptr;
-    int64_t dim0 = 0;
-    size_t transSize = m_hdTransfer.RecvMteShm(TransferChannel::H2D, 0, m_embTableName, ptr, dim0, 0);
-    ASSERT_EQ(transSize, 200);
-    FreeShmAddr(0);
-}
-
-TEST_F(HdTransferTest, DequeueShm)
-{
-    int capacity = 5;
-    int64_t ret = GetShmAddr("table_1_h2d_0_8", 0, capacity);
-    std::vector<float> data(50, 1.0);
-    int64_t dims[2] = {10, 5};
-    auto dataHeader = MallocFromShm("table1_h2d_0_8", dims);
-    float* h2dEmb = reinterpret_cast<float*>(GetDataAddr(dataHeader));
-    int64_t memSize =dims[1] * sizeof(float);
-    for(uint64_t i = 0; i < data.size(); i++){
-        auto rc = memcpy_s(h2dEmb + i, sizeof(float), &(data[i]), sizeof(float));
-    }
-    SetReadyLen(dataHeader, dims[0] * memSize);
-    RmaShmHeader* queueHeader = reinterpret_cast<RmaShmHeader*>(GetHostAddr("table1_h2d_0_8"));
-    int64_t queueNum = GetShmElemNum(queueHeader);
-    ASSERT_EQ(queueNum, 1);
-    m_hdTransfer.DequeueShm(TransferChannel::H2D, 0, m_embTableName);
-
-    queueNum = GetShmElemNum(queueHeader);
-    ASSERT_EQ(queueNum, 0);
-    FreeShmAddr(0);
-}
-

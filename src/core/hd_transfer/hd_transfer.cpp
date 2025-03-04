@@ -32,9 +32,7 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId, bool
 #ifndef GTEST
     LOG_INFO("start init HDTransfer.");
     LOG_INFO("Start aclInit, rank:{}.", localRankId);
-    // 开启LCCL时，不用调用 aclInit()
     if (!useLccl && !GlobalEnv::useShmSwap) {
-        // 使用AscendCL接口开发应用时，必须先调用aclInit接口，否则可能会导致后续系统内部资源初始化出错，进而导致其它业务异常。
         aclError retOk = aclInit(nullptr);
         LOG_INFO("End aclInit, rank:{}.", localRankId);
         if (retOk != ACL_SUCCESS) {
@@ -43,7 +41,6 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId, bool
         }
     }
     LOG_INFO("Start aclrtSetDevice, rank:{}.", localRankId);
-    // 指定当前进程或线程中用于运算的Device，同时隐式创建默认Context
     auto ret = aclrtSetDevice(static_cast<int32_t>(localRankId));
     if (ret != ACL_ERROR_NONE) {
         LOG_ERROR("aclrtSetDevice failed, rank:{}, error:{}.", localRankId, ret);
@@ -58,7 +55,6 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId, bool
                 CreateChannelForIncrementalCkpt(localRankId, embInfo.name, i);
             }
         }
-        // 创建acltdtDataset类型的数据，对等一个Vector<tensor>。同步接口。
         for (int j = 0; j < EMBEDDING_THREAD_NUM; j++) {
             acltdtDataset* dataset = acltdtCreateDataset();
             if (dataset == nullptr) {
@@ -223,7 +219,7 @@ void HDTransfer::Send(TransferChannel channel, const vector<Tensor>& tensors, in
 #endif
 }
 
-size_t HDTransfer::RecvByShm(RmaShmHeader *queueHeader, float*& ptr, int64_t &dim0, bool &emptyFlag)
+size_t HDTransfer::RecvByShm(RmaShmHeader* queueHeader, float*& ptr, int64_t& dim0, bool& emptyFlag)
 {
     if ((queueHeader->seqIn - queueHeader->seqOut) == 0) {
         emptyFlag = true;
@@ -244,18 +240,11 @@ size_t HDTransfer::RecvByShm(RmaShmHeader *queueHeader, float*& ptr, int64_t &di
     return 0;
 }
 
-size_t HDTransfer::RecvMteShm(TransferChannel channel, int channelId, const string& embName,
-                              float*& ptr, int64_t& dim0, int batchId)
+size_t HDTransfer::RecvMteShm(string& name, float*& ptr, int64_t& dim0, int batchId)
 {
     size_t ret = 0;
-    string recvBatchIdType;
-    if (channel == TransferChannel::D2H) {
-        recvBatchIdType = "accumulate";
-    }
-
-    string recvName = StringFormat("%s_%s_%d_%d", embName.c_str(), TransferChannel2Str(channel).c_str(),
-                                   channelId, localDeviceId);
-    LOG_DEBUG("Start receive, channelName:{}, recvBatchIdType:{}, batchId:{}.", recvName, recvBatchIdType, batchId);
+    string recvName = StringFormat("%s_%d", name, localDeviceId);
+    LOG_DEBUG("Start receive, channelName:{}, batchId:{}.", recvName, batchId);
     TimeCost tc = TimeCost();
 
     auto *shmAddr = GetHostAddr(recvName);
@@ -269,7 +258,7 @@ size_t HDTransfer::RecvMteShm(TransferChannel channel, int channelId, const stri
 
     do {
         bool emptyFlag = false;
-        ret = RecvByShm((RmaShmHeader *)shmAddr, ptr, dim0, emptyFlag);
+        ret = RecvByShm(reinterpret_cast<RmaShmHeader *>shmAddr, ptr, dim0, emptyFlag);
         if (!emptyFlag) {
             break;
         }
@@ -277,10 +266,9 @@ size_t HDTransfer::RecvMteShm(TransferChannel channel, int channelId, const stri
         if (!running) {
             return 0;
         }
-    } while (true);
+    } while (running);
 
-    LOG_INFO("End receive, channelName:{}, recvBatchIdType{}, batchId:{}, cost:{}ms.", recvName, recvBatchIdType,
-             batchId, tc.ElapsedMS());
+    LOG_INFO("End receive, channelName:{}, batchId:{}, cost:{}ms.", recvName, batchId, tc.ElapsedMS());
     return ret;
 }
 

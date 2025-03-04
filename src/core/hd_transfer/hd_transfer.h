@@ -105,8 +105,7 @@ public:
     size_t RecvAcl(TransferChannel channel, int channelId, const string& embName, int embeddingThreadId, int batchId);
     size_t RecvOffsetsAcl(TransferChannel channel, int channelId, const string& embName);
 
-    size_t RecvMteShm(TransferChannel channel, int channelId, const string& embName, float*& ptr, int64_t& dim0,
-                      int batchId);
+    size_t RecvMteShm(string& name, float*& ptr, int64_t& dim0, int batchId);
     void DequeueShm(TransferChannel channel, int channelId, const string& embName);
 
     void Destroy();

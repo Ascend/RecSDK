@@ -1314,7 +1314,6 @@ void HybridMgmt::EmbeddingReceiveAndUpdateDDR(int batchId, int index, const EmbI
                         .extEmbeddingSize = embInfo.extEmbeddingSize,
                         .channelId = channelId,
                         .name = embInfo.name};
-
     float* ptr = nullptr;
     vector<float*> swapOutAddrs;
     auto isSuccess = EmbeddingReceiveDDR(info, ptr, swapOutAddrs);
@@ -1640,7 +1639,9 @@ bool HybridMgmt::EmbeddingReceiveDDR(const EmbTaskInfo& info, float*& ptr, vecto
     int64_t dim0 = 0;
     size_t size = 0;
     if (GlobalEnv::useShmSwap) {
-        size = hdTransfer->RecvMteShm(TransferChannel::D2H, info.channelId, info.name, ptr, dim0, info.batchId);
+        string recvName = StringFormat("%s_%s_%d", info.name.c_str(), TransferChannel2Str(TransferChannel::D2H).c_str(),
+                                       info.channelId);
+        size = hdTransfer->RecvMteShm(recvName, ptr, dim0, info.batchId);
     } else {
         size = hdTransfer->RecvAcl(TransferChannel::D2H, info.channelId, info.name, info.threadIdx, info.batchId);
     }
@@ -1761,7 +1762,7 @@ bool HybridMgmt::EmbeddingLookUpDDR(const EmbTaskInfo& info, vector<Tensor>& h2d
               info.name, info.channelId, info.batchId, info.threadIdx);
     return true;
 }
-bool HybridMgmt::EmbeddingBuildAndSendDDR(const EmbTaskInfo& info, float*& h2dEmb, int64_t dims[RMA_DIM_MAX])
+bool HybridMgmt::EmbeddingBuildAndSendDDR(const EmbTaskInfo& info, float*& h2dEmb, std::array<int64_t, RMA_DIM_MAX>& dims)
 {
     string currentKey = MakeSwapCVName(info.threadIdx, info.name, info.channelId);
     std::unique_lock<std::mutex> lastUpdateFinishLocker(lastUpdateFinishMutex[currentKey]);
@@ -2144,7 +2145,7 @@ void HybridMgmt::HandleDataSwapForL3Storage(const EmbBaseInfo& info, vector<uint
     EosL1Que[info.name][info.channelId].Pushv(false);
 #endif
 }
-bool HybridMgmt::BuildAndSendH2DEmbedding(const EmbTaskInfo& info, float*& h2dEmb, int64_t dims[RMA_DIM_MAX])
+bool HybridMgmt::BuildAndSendH2DEmbedding(const EmbTaskInfo& info, float*& h2dEmb, std::array<int64_t, RMA_DIM_MAX>& dims)
 {
    std::vector<float*> swapInAddrs = HBMSwapAddrsQue[info.name + SWAP_IN_STR][info.channelId].WaitAndPop();
    if (!isRunning) {
@@ -2169,7 +2170,7 @@ bool HybridMgmt::BuildAndSendH2DEmbedding(const EmbTaskInfo& info, float*& h2dEm
 
    uint64_t memSize = info.extEmbeddingSize * sizeof(float);
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) shared(swapInAddrs, h2dEmb, info, memSize)
-   for (uint64_t i = 0; i < swapInAddrs.size(); i++) {
+   for (size_t i = 0; i < swapInAddrs.size(); i++) {
        auto rc = memcpy_s(h2dEmb + i * info.extEmbeddingSize, memSize, swapInAddrs[i], memSize);
        if (rc != 0) {
            auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::UNKNOWN,

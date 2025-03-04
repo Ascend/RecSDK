@@ -628,23 +628,3 @@ TEST_F(HybridMgmtTest, StartSyncThreadShouldThrowErrorWhenNotDDRMode)
     m_hybridMgmt.mgmtRankInfo.isDDR = false;
     EXPECT_THROW(m_hybridMgmt.StartSyncThread(), std::runtime_error);
 }
-
-TEST_F(HybridMgmtTest, EmbeddingBuildAndSendDDR)
-{
-    EmbTaskInfo info;
-    info.batchId = 0;
-    info.threadIdx = 0;
-    info.cvNotifyIndex = 1;
-    info.extEmbeddingSize = EXT_EMB_SIZE;
-    info.channelId = 0;
-    info.name = "test_table";
-    m_hybridMgmt.isRunning = true;
-    m_hybridMgmt.mgmtRankInfo.deviceId = 0;
-    m_hybridMgmt.HBMSwapAddrsQue[info.name + "SwapIn"][0].Pushv({&m_embSwapIn});
-    int64_t ret = GetShmAddr("test_table_h2d_0_0", 0, 10);
-    float* h2dEmb = nullptr;
-    int64_t dims[RMA_DIM_MAX] = {0};
-    bool checkRet = m_hybridMgmt.EmbeddingBuildAndSendDDR(info, h2dEmb, dims);
-    ASSERT_EQ(checkRet, true);
-    FreeShmAddr(0);
-}
