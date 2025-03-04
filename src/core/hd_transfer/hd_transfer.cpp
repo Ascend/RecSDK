@@ -258,7 +258,7 @@ size_t HDTransfer::RecvMteShm(string& name, float*& ptr, int64_t& dim0, int batc
 
     do {
         bool emptyFlag = false;
-        ret = RecvByShm(reinterpret_cast<RmaShmHeader *>shmAddr, ptr, dim0, emptyFlag);
+        ret = RecvByShm(reinterpret_cast<RmaShmHeader *>(shmAddr), ptr, dim0, emptyFlag);
         if (!emptyFlag) {
             break;
         }

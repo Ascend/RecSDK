@@ -1282,7 +1282,7 @@ void HybridMgmt::EmbeddingLookUpAndSendDDR(int batchId, int index, const EmbInfo
                         .name = embInfo.name};
     if (GlobalEnv::useShmSwap) {
         float *h2dEmb = nullptr;
-        int64_t dims[RMA_DIM_MAX] = {0};
+        std::array<int64_t, RMA_DIM_MAX> dims= {0, 0};
         auto isSuccess = EmbeddingBuildAndSendDDR(info, h2dEmb, dims);
         if (!isSuccess) {
             LOG_DEBUG("HybridMgmt is not running when [LookUpAndSendDDR], table:{}, batchId:{}, channel:{}",
