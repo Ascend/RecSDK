@@ -23,6 +23,7 @@ constexpr int32_t RMA_SHM_HEAD_LEN = 128; // queue's head length
 constexpr int32_t RMA_SHM_DATA_HEAD = 56; // queue item's head length
 constexpr int32_t RMA_SHM_READY_LEN = 48; // offset of readyLen in item's head
 constexpr int32_t RMA_DIM_MAX = 2;
+constexpr int MAX_WAIT_LOOP = 1800;
 
 namespace MxRec {
 enum class RmaDevModel {
@@ -54,13 +55,11 @@ struct RmaShmData {
     uint64_t readyLen = 0;         // data length(B) has been written to queue
 };
 
-bool Full(RmaShmHeader* queHeader, uint64_t dataSize);
 int64_t GetShmAddr(std::string& name, int rankId, int capacity);
 void *GetHostAddr(std::string& name);
 void FreeShmAddr(uint32_t deviceId);
 RmaShmData *ShmDequeuePre(RmaShmHeader* queHeader);
 RmaShmData *ShmDequeue(RmaShmHeader* queHeader);
-int64_t GetShmElemNum(RmaShmHeader* header);
 uint64_t GetShmSeq(RmaShmHeader* queueHeader);
 void ClearShmQueue();
 RmaShmData *MallocFromShm(std::string& channelName, std::array<int64_t, RMA_DIM_MAX>& dims);

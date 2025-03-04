@@ -29,6 +29,8 @@
 using namespace MxRec;
 using namespace std;
 
+namespace MxRec {
+
 extern "C" {
 drvError_t halHostRegister(void* srcPtr, UINT64 size, UINT32 flag, UINT32 devid, void** dstPtr);
 drvError_t halHostUnregister(void* srcPtr, UINT32 devid);
@@ -73,7 +75,7 @@ void ResetShmHeader(RmaShmHeader* header)
     header->frontOffsetPre = RMA_SHM_HEAD_LEN;
 }
 
-void RmaFreeShm(std::string shmName, void* memory)
+void RmaFreeShm(std::string& shmName, void* memory)
 {
     if (g_rmaDevModel == RmaDevModel::SVM_MAP_DEV) {
         if (aclrtFreeHost(memory) != ACL_ERROR_NONE) {
@@ -264,7 +266,7 @@ void ClearShmQueue()
     }
 }
 
-bool Full(RmaShmHeader* queHeader, uint64_t dataSize)
+bool FullQueue(RmaShmHeader* queHeader, uint64_t dataSize)
 {
     dataSize += RMA_SHM_DATA_HEAD;
     if (queHeader->seqIn - queHeader->seqOut >= queHeader->queueCapacity) {
@@ -290,7 +292,7 @@ uint8_t *ShmEnqueueHeadRaw(RmaShmHeader* header, std::array<int64_t, RMA_DIM_MAX
     LOG_INFO("Before enqueue, capacity: {}, seq-in: {}, seq-out: {}.",
              header->queueCapacity, header->seqIn, header->seqOut);
     int loopCnt = 0;
-    while (Full(header, dataSize)) {
+    while (FullQueue(header, dataSize)) {
         this_thread::sleep_for(1ms);
         ++loopCnt;
         if (loopCnt >= MAX_WAIT_LOOP) {
@@ -415,4 +417,5 @@ void SetReadyLen(RmaShmData* dataHeader, uint64_t value)
     uint64_t *readyLen = reinterpret_cast<uint64_t *>(reinterpret_cast<uint8_t *>(dataHeader) +
             sizeof(RmaShmData) - sizeof(uint64_t));
     *readyLen = value;
+}
 }
