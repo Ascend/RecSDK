@@ -81,7 +81,7 @@ void RmaFreeShm(std::string& shmName, void* memory)
         }
     }
 
-    if (g_rmaDevModel == RmaDevModel::PCIE_TH_DEV)
+    if (g_rmaDevModel == RmaDevModel::PCIE_TH_DEV) {
         int shmId = g_shmId[shmName];
         (void)shmdt(memory);
         shmctl(shmId, IPC_RMID, nullptr);
