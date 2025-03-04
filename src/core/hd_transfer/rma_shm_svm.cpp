@@ -75,7 +75,7 @@ void ResetShmHeader(RmaShmHeader* header)
     header->frontOffsetPre = RMA_SHM_HEAD_LEN;
 }
 
-void RmaFreeShm(std::string& shmName, void* memory)
+void RmaFreeShm(std::string shmName, void* memory)
 {
     if (g_rmaDevModel == RmaDevModel::SVM_MAP_DEV) {
         if (aclrtFreeHost(memory) != ACL_ERROR_NONE) {
