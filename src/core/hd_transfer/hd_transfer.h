@@ -127,7 +127,7 @@ private:
     std::unordered_map<int, std::set<std::string>> usedChannelsNames;  // The key indicates channels 0 and 1.
     bool running;
     std::mutex recordChannelMtx;
-    int32_t localDeviceId;
+    uint32_t localDeviceId;
 };
 
 }  // namespace MxRec

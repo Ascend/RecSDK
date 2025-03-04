@@ -750,4 +750,24 @@ namespace tensorflow {
             return Status::OK();
         });
     REGISTER_KERNEL_BUILDER(Name("LcclAllUss").Device(DEVICE_CPU), MxRec::CustOps);
+
+    REGISTER_OP("RmaSwapMultiTables")
+        .Input("swap_in_index: int64")
+        .Input("swap_out_index: int64")
+        .Input("table_a: float32")
+        .Input("table_b: float32")
+        .Input("table_c: float32")
+        .Input("table_d: float32")
+        .Input("table_e: float32")
+        .Input("table_f: float32")
+        .Output("output: int64")
+        .Attr("table_num: int")
+        .Attr("shm_swap_in: string")
+        .Attr("shm_swap_out: string")
+        .SetIsStateful()
+        .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+            c->set_output(0, c->MakeShape({48}));
+            return Status::OK();
+        });
+    REGISTER_KERNEL_BUILDER(Name("RmaSwapMultiTables").Device(DEVICE_CPU), MxRec::CustOps);
 }

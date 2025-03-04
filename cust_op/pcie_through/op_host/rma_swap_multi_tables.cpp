@@ -106,6 +106,12 @@ namespace ge {
 
         return GRAPH_SUCCESS;
     }
+
+    static ge::graphStatus InferDataType(gert::InferDataTypeContext* context)
+    {
+        context->SetOutputDataType(0, ge::DT_INT64);
+        return ge::GRAPH_SUCCESS;
+    }
 }
 
 namespace ops {
@@ -163,7 +169,7 @@ namespace ops {
             this->Attr("shm_swap_out").String();
 
             this->SetInferShape(ge::InferShape);
-
+            this->SetInferDataType(ge::InferDataType);
             this->AICore().SetTiling(optiling::TilingFunc);
             this->AICore().AddConfig("ascend910b");
             this->AICore().AddConfig("ascend910_93");

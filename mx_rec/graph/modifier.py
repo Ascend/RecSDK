@@ -727,7 +727,7 @@ def _get_swap_info(
             swap_op = [shm_swap(variable_and_slot_list,
                             swap_in_index = swap_in_pos, swap_out_index = swap_out_pos,
                             shm_swap_in = host_shm_swap_in, shm_swap_out = host_shm_swap_out)]
-        eturn swap_op
+        return swap_op
     else:
         with tf.compat.v1.variable_scope("h2d_emb"):
             logger.debug("Channel %s_h2d_%s was built for getnext.", table_instance.table_name, channel_id)

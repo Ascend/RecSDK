@@ -248,7 +248,6 @@ size_t HDTransfer::RecvMteShm(TransferChannel channel, int channelId, const stri
                               float*& ptr, int64_t& dim0, int batchId)
 {
     size_t ret = 0;
-#ifndef GTEST
     string recvBatchIdType;
     if (channel == TransferChannel::D2H) {
         recvBatchIdType = "accumulate";
@@ -282,7 +281,6 @@ size_t HDTransfer::RecvMteShm(TransferChannel channel, int channelId, const stri
 
     LOG_INFO("End receive, channelName:{}, recvBatchIdType{}, batchId:{}, cost:{}ms.", recvName, recvBatchIdType,
              batchId, tc.ElapsedMS());
-#endif
     return ret;
 }
 

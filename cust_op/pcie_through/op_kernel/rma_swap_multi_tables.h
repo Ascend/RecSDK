@@ -157,7 +157,7 @@ private:
         SetFlag(ub_buff, (__gm__ uint64_t *)output + blockIdx, 0);
         uint64_t times = 0;
         //换出队列，24个核
-        if (blockIdx < processBlockNum) {[]
+        if (blockIdx < processBlockNum) {
             //循环，直到队列有位置能放下换出的数据
             do {
                 //获得队列头，保存到queueHeader

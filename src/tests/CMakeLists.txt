@@ -61,6 +61,7 @@ target_include_directories(test_main
         ${CMAKE_CURRENT_SOURCE_DIR}/../lccl/src/tools/socket
         ${CMAKE_CURRENT_SOURCE_DIR}/../lccl/src/3rdparty
         ${ASCEND_DRIVER_PATH}/include
+        ${ASCEND_DRIVER_PATH}/kernel/inc
         ${SECUREC_PATH}/include
         ${ASCEND_PATH}/include/
         ${ASCEND_PATH}/${ARCH}-linux/include/hccl
@@ -97,4 +98,4 @@ target_link_libraries(test_main PUBLIC
         MPI::MPI_CXX)
 
 target_link_libraries(test_main PUBLIC ascendcl msprofiler ge_executor gert runtime ge_common register graph ascend_protobuf
-        profapi opt_feature error_manager exe_graph acl_tdt_channel acl_tdt_queue securec drvdsmi_host ${EMOCK_LIBRARY} gmock)
+        profapi opt_feature error_manager exe_graph acl_tdt_channel acl_tdt_queue securec drvdsmi_host ${EMOCK_LIBRARY} gmock libascend_hal.so)

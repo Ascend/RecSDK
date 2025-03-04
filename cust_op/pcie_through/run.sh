@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 
-CHIP_TYPE="910_93"  # support：910B 910_93
+CHIP_TYPE="910B"  # support：910B 910_93
 
 msopgen_path=$(find /usr/local/Ascend/ -name msopgen | grep bin)
 parent_dir=$(dirname "$msopgen_path")

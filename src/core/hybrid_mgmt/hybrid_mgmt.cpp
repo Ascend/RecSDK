@@ -1298,6 +1298,7 @@ void HybridMgmt::EmbeddingLookUpAndSendDDR(int batchId, int index, const EmbInfo
             return;
         }
         EmbeddingSendDDR(info, h2dEmb);
+    }
 }
 
 void HybridMgmt::EmbeddingReceiveAndUpdateDDR(int batchId, int index, const EmbInfo& embInfo, int channelId)
@@ -1324,6 +1325,9 @@ void HybridMgmt::EmbeddingReceiveAndUpdateDDR(int batchId, int index, const EmbI
         return;
     }
     EmbeddingUpdateDDR(info, ptr, swapOutAddrs);
+    if(GlobalEnv::useShmSwap) {
+        hdTransfer->DequueShm(TransferChannel::D2H, info.channelId, info.name);
+    }
 }
 
 void HybridMgmt::EmbeddingLookUpAndSendL3Storage(int batchId, int index, const EmbInfo& embInfo, int channelId)
@@ -1672,7 +1676,7 @@ bool HybridMgmt::EmbeddingReceiveDDR(const EmbTaskInfo& info, float*& ptr, vecto
             Error(ModuleName::M_HYBRID_MGMT, ErrorType::LOGIC_ERROR,
                   StringFormat(
                       "Receive swap-out emb num %d does not equal to swap-out addrs num %d in [EmbeddingReceiveDDR].",
-                      dims[0], swapOutAddrs.size()));
+                      dim0, swapOutAddrs.size()));
         LOG_ERROR(error.ToString());
         throw runtime_error(error.ToString().c_str());
     }
@@ -2170,7 +2174,7 @@ bool HybridMgmt::BuildAndSendH2DEmbedding(const EmbTaskInfo& info, float*& h2dEm
        if (rc != 0) {
            auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::UNKNOWN,
                    StringFormat("Memcpy_s failed when emb lookup, error code: %d. MemSize: %d. You can "
-                                "query the meaning of security function error code.",rc, memSize));
+                                "query the meaning of security function error code.", rc, memSize));
            LOG_ERROR(error.ToString());
            throw runtime_error(error.ToString().c_str());
        }
