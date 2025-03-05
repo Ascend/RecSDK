@@ -45,7 +45,6 @@ struct RmaShmHeader {
     uint64_t seqOutPre = 0;        // prefetched sequence
     uint64_t frontOffsetPre = 0;   // prefetched front offset
 };
-
 // item header definition
 struct RmaShmData {
     uint64_t totalLen = 0;         // item total length(B) = dataLen + RMA_SHM_DATA_HEAD
