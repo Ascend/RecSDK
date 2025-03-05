@@ -48,7 +48,6 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId, bool
     }
     LOG_INFO("End aclrtSetDevice, rank:{}.", localRankId);
     for (const auto& embInfo : embInfos) {
-        auto embName = embInfo.name;
         for (int i = 0; i < MAX_CHANNEL_NUM; ++i) {
             CreateChannel(localRankId, embInfo.name, i);
             if (isIncrementalCkpt) {
@@ -58,7 +57,7 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId, bool
         for (int j = 0; j < EMBEDDING_THREAD_NUM; j++) {
             acltdtDataset* dataset = acltdtCreateDataset();
             if (dataset == nullptr) {
-                LOG_ERROR("Create acltdtDataset failed, table:{}, threadId:{}.", embName, j);
+                LOG_ERROR("Create acltdtDataset failed, table:{}, threadId:{}.", embInfo.name, j);
                 throw runtime_error("Create acltdtDataset failed.");
             }
             aclDatasets[embInfo.name][j] = dataset;
@@ -66,7 +65,7 @@ int HDTransfer::Init(const vector<EmbInfo>& embInfos, uint32_t localRankId, bool
         if (isIncrementalCkpt) {
             acltdtDataset* dataset = acltdtCreateDataset();
             if (dataset == nullptr) {
-                LOG_ERROR("Create acltdtDataset failed, table:{}.", embName);
+                LOG_ERROR("Create acltdtDataset failed, table:{}.", embInfo.name);
                 throw runtime_error("Create acltdtDataset failed.");
             }
             aclDatasetsForIncrementalCkpt[embInfo.name] = dataset;

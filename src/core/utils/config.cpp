@@ -98,7 +98,7 @@ namespace MxRec {
         }
 
         // Enable or disable large pages of shared memory
-        const char *envHugeTlbEnable= getenv(RecEnvNames::HUGE_TLB_ENABLE);
+        const char *envHugeTlbEnable = getenv(RecEnvNames::HUGE_TLB_ENABLE);
         if (envHugeTlbEnable != nullptr) {
             GlobalEnv::hugeTlbEnable = (std::stoi(envHugeTlbEnable) == 1);
         }

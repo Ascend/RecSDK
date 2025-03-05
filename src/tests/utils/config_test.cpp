@@ -35,7 +35,6 @@ void SetEnvironmentVariables()
     setenv(RecEnvNames::RECORD_KEY_COUNT, "1", 1);
     setenv(RecEnvNames::USE_SHM_SWAP, "1", 1);
     setenv(RecEnvNames::HUGE_TLB_ENABLE, "1", 1);
-
 }
 
 void UnsetEnvironmentVariables()

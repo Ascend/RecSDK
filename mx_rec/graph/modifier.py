@@ -17,15 +17,15 @@
 
 import dataclasses
 import mxrec_pybind
+import tensorflow as tf
+
 from collections import defaultdict
 from collections.abc import Callable
-from typing import List, Dict, Tuple, DefaultDict, Union
-
-import tensorflow as tf
 from tensorflow import Operation, Tensor, Graph
 from tensorflow.core.framework.graph_pb2 import GraphDef
 from tensorflow.python.data.ops.dataset_ops import DatasetV1Adapter
 from tensorflow.python.framework.errors_impl import InvalidArgumentError
+from typing import List, Dict, Tuple, DefaultDict, Union
 
 from mx_rec.core.embedding_proxy import MergeableEmbeddingTableProxy
 from mx_rec.graph import utils
@@ -647,10 +647,10 @@ def _get_variable_and_slot_list(each_var, slot_num, table_name, channel_id):
 
 def shm_swap(tables, swap_in_index, swap_out_index, h2d_name, d2h_name) -> tf.Operation:
     #var and clot num for table，set max num
-    MAX_TABLE_NUM  = 6
+    max_table_nun  = 6
     table_list = []
     table_num = len(tables)
-    for i in range(MAX_TABLE_NUM):
+    for i in range(max_table_nun):
         if i < table_num:
             table_list.append(tables[i])
         else:
@@ -662,25 +662,24 @@ def shm_swap(tables, swap_in_index, swap_out_index, h2d_name, d2h_name) -> tf.Op
     h2d_name_id = f'{h2d_name}_{device_id}'
     d2h_name_id = f'{d2h_name}_{device_id}'
 
-    CAPACITY = 50
-    rma_shm_host_swap_in = mxrec_pybind.get_shm_mem(h2d_name_id, device_id, CAPACITY)
+    capacity = 50
+    rma_shm_host_swap_in = mxrec_pybind.get_shm_mem(h2d_name_id, device_id, capacity)
     shm_swap_in = str(rma_shm_host_swap_in)
 
-    rma_shm_host_swap_out = mxrec_pybind.get_shm_mem(d2h_name_id, device_id, CAPACITY)
+    rma_shm_host_swap_out = mxrec_pybind.get_shm_mem(d2h_name_id, device_id, capacity)
     shm_swap_out = str(rma_shm_host_swap_out)
 
-    shm_swap_op = host_pipeline_ops.rma_swap_multi_tables(
-        swap_in_index = swap_in_index,
-        swap_out_index = swap_out_index,
-        table_a = table_list[0],
-        table_b = table_list[1],
-        table_c = table_list[2],
-        table_d = table_list[3],
-        table_e = table_list[4],
-        table_f = table_list[5],
-        table_num = table_num,
-        shm_swap_in = shm_swap_in,
-        shm_swap_out = shm_swap_out)
+    shm_swap_op = host_pipeline_ops.rma_swap_multi_tables(swap_in_index = swap_in_index,
+                                                          swap_out_index = swap_out_index,
+                                                          table_a = table_list[0],
+                                                          table_b = table_list[1],
+                                                          table_c = table_list[2],
+                                                          table_d = table_list[3],
+                                                          table_e = table_list[4],
+                                                          table_f = table_list[5],
+                                                          table_num = table_num,
+                                                          shm_swap_in = shm_swap_in,
+                                                          shm_swap_out = shm_swap_out)
     return shm_swap_op
 
 

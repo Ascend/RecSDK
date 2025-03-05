@@ -1293,8 +1293,9 @@ void HybridMgmt::EmbeddingLookUpAndSendDDR(int batchId, int index, const EmbInfo
         vector<Tensor> h2dEmb;
         auto isSuccess = EmbeddingLookUpDDR(info, h2dEmb);
         if (!isSuccess) {
-            LOG_DEBUG("HybridMgmt is not running when [LookUpAndSendDDR], table:{}, batchId:{}, channel:{}", embInfo.name,
-                    batchId, channelId);
+            LOG_DEBUG("HybridMgmt is not running when [LookUpAndSendDDR], "
+                      "table:{}, batchId:{}, channel:{}",
+                      embInfo.name, batchId, channelId);
             return;
         }
         EmbeddingSendDDR(info, h2dEmb);
@@ -1324,7 +1325,7 @@ void HybridMgmt::EmbeddingReceiveAndUpdateDDR(int batchId, int index, const EmbI
         return;
     }
     EmbeddingUpdateDDR(info, ptr, swapOutAddrs);
-    if(GlobalEnv::useShmSwap) {
+    if (GlobalEnv::useShmSwap) {
         hdTransfer->DequeueShm(TransferChannel::D2H, info.channelId, info.name);
     }
 }
@@ -1654,7 +1655,7 @@ bool HybridMgmt::EmbeddingReceiveDDR(const EmbTaskInfo& info, float*& ptr, vecto
         auto aclData = acltdtGetDataItem(hdTransfer->aclDatasets[info.name][info.threadIdx], 0);
         if (aclData == nullptr) {
             auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::ACL_ERROR,
-                           "Acl get tensor data from dataset failed in [EmbeddingReceiveDDR].");
+                               "Acl get tensor data from dataset failed in [EmbeddingReceiveDDR].");
             LOG_ERROR(error.ToString());
             throw runtime_error(error.ToString().c_str());
         }
@@ -1762,7 +1763,8 @@ bool HybridMgmt::EmbeddingLookUpDDR(const EmbTaskInfo& info, vector<Tensor>& h2d
               info.name, info.channelId, info.batchId, info.threadIdx);
     return true;
 }
-bool HybridMgmt::EmbeddingBuildAndSendDDR(const EmbTaskInfo& info, float*& h2dEmb, std::array<int64_t, RMA_DIM_MAX>& dims)
+bool HybridMgmt::EmbeddingBuildAndSendDDR(const EmbTaskInfo& info, float*& h2dEmb,
+                                          std::array<int64_t, RMA_DIM_MAX>& dims)
 {
     string currentKey = MakeSwapCVName(info.threadIdx, info.name, info.channelId);
     std::unique_lock<std::mutex> lastUpdateFinishLocker(lastUpdateFinishMutex[currentKey]);
@@ -1791,7 +1793,8 @@ bool HybridMgmt::EmbeddingBuildAndSendDDR(const EmbTaskInfo& info, float*& h2dEm
     lastLookUpFinishCV[nextKey].notify_all();
 
     LOG_DEBUG(MGMT + "In swap thread, finish embedding lookup, table:{}, channelId:{}, accumulate batchId:{}, "
-                         "thread:{}",info.name, info.channelId, info.batchId, info.threadIdx);
+                     "thread:{}",
+              info.name, info.channelId, info.batchId, info.threadIdx);
     return true;
 }
 
@@ -2145,48 +2148,48 @@ void HybridMgmt::HandleDataSwapForL3Storage(const EmbBaseInfo& info, vector<uint
     EosL1Que[info.name][info.channelId].Pushv(false);
 #endif
 }
-bool HybridMgmt::BuildAndSendH2DEmbedding(const EmbTaskInfo& info, float*& h2dEmb, std::array<int64_t, RMA_DIM_MAX>& dims)
+bool HybridMgmt::BuildAndSendH2DEmbedding(const EmbTaskInfo& info, float*& h2dEmb,
+                                          std::array<int64_t, RMA_DIM_MAX>& dims)
 {
-   std::vector<float*> swapInAddrs = HBMSwapAddrsQue[info.name + SWAP_IN_STR][info.channelId].WaitAndPop();
-   if (!isRunning) {
-       return false;
-   }
-   int64_t data_len = swapInAddrs.size() * info.extEmbeddingSize * sizeof(float);
+    std::vector<float*> swapInAddrs = HBMSwapAddrsQue[info.name + SWAP_IN_STR][info.channelId].WaitAndPop();
+    if (!isRunning) {
+        return false;
+    }
+    int64_t data_len = swapInAddrs.size() * info.extEmbeddingSize * sizeof(float);
 
-   dims[0] = swapInAddrs.size();
-   dims[1] = info.extEmbeddingSize;
-   std::string sendName = StringFormat("%s_%s_%d_%d",
-           info.name.c_str(), TransferChannel2Str(TransferChannel::H2D).c_str(), info.channelId, mgmtRankInfo.deviceId);
-   auto dataHeader = MallocFromShm(sendName, dims);
-   h2dEmb = reinterpret_cast<float *>(GetDataAddr(dataHeader));
-   if (h2dEmb == nullptr) {
-       auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::INVALID_ARGUMENT,
-               StringFormat("Failed to malloc memory from shm channel: %s.",
-                       sendName.c_str()));
-       LOG_ERROR(error.ToString());
-       throw runtime_error(error.ToString());
-   }
-   TimeCost embeddingLookupTC = TimeCost();
+    dims[0] = swapInAddrs.size();
+    dims[1] = info.extEmbeddingSize;
+    std::string sendName = StringFormat("%s_%s_%d_%d",
+                                        info.name.c_str(), TransferChannel2Str(TransferChannel::H2D).c_str(),
+                                        info.channelId, mgmtRankInfo.deviceId);
+    auto dataHeader = MallocFromShm(sendName, dims);
+    h2dEmb = reinterpret_cast<float *>(GetDataAddr(dataHeader));
+    if (h2dEmb == nullptr) {
+        auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::INVALID_ARGUMENT,
+                           StringFormat("Failed to malloc memory from shm channel: %s.", sendName.c_str()));
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString());
+    }
+    TimeCost embeddingLookupTC = TimeCost();
 
-   uint64_t memSize = info.extEmbeddingSize * sizeof(float);
+    uint64_t memSize = info.extEmbeddingSize * sizeof(float);
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) shared(swapInAddrs, h2dEmb, info, memSize)
-   for (size_t i = 0; i < swapInAddrs.size(); i++) {
-       auto rc = memcpy_s(h2dEmb + i * info.extEmbeddingSize, memSize, swapInAddrs[i], memSize);
-       if (rc != 0) {
-           auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::UNKNOWN,
-                   StringFormat("Memcpy_s failed when emb lookup, error code: %d. MemSize: %d. You can "
-                                "query the meaning of security function error code.", rc, memSize));
-           LOG_ERROR(error.ToString());
-           throw runtime_error(error.ToString().c_str());
-       }
-   }
-   SetReadyLen(dataHeader, dims[0] * memSize);
-   LOG_DEBUG(
-           "[BuildAndSendH2DEmbedding] table:{}, channel:{}, thread:{}, accumulate batchId:{}, emb size:{}, emb samples:{}, "
-           "embeddingLookupTC(ms):{}",
-           info.name.c_str(), info.channelId, info.threadIdx, info.batchId, swapInAddrs.size(),
-           FloatPtrToLimitStr(h2dEmb, swapInAddrs.size() * info.extEmbeddingSize), embeddingLookupTC.ElapsedMS());
-   return true;
+    for (size_t i = 0; i < swapInAddrs.size(); i++) {
+        auto rc = memcpy_s(h2dEmb + i * info.extEmbeddingSize, memSize, swapInAddrs[i], memSize);
+        if (rc != 0) {
+            auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::UNKNOWN,
+                               StringFormat("Memcpy_s failed when emb lookup, error code: %d. MemSize: %d. You can "
+                                            "query the meaning of security function error code.", rc, memSize));
+            LOG_ERROR(error.ToString());
+            throw runtime_error(error.ToString().c_str());
+        }
+    }
+    SetReadyLen(dataHeader, dims[0] * memSize);
+    LOG_DEBUG("[BuildAndSendH2DEmbedding] table:{}, channel:{}, thread:{}, accumulate batchId:{}, "
+              "emb size:{}, emb samples:{},embeddingLookupTC(ms):{}",
+              info.name.c_str(), info.channelId, info.threadIdx, info.batchId, swapInAddrs.size(),
+              FloatPtrToLimitStr(h2dEmb, swapInAddrs.size() * info.extEmbeddingSize), embeddingLookupTC.ElapsedMS());
+    return true;
 }
 
 bool HybridMgmt::BuildH2DEmbedding(const EmbTaskInfo& info, vector<Tensor>& h2dEmb)

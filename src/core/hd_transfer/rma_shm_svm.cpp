@@ -127,9 +127,9 @@ void* ShmMemSet(std::string& shmName, uint64_t memSize)
         key_t key = IPC_PRIVATE;    // create new shared memory every time
         int shmId = -1;
         if (GlobalEnv::hugeTlbEnable) {
-            shmId = shmget(key, memSize, IPC_CREAT | 0666 | SHM_HUGETLB);
+            shmId = shmget(key, memSize, IPC_CREAT | SHM_WR_ALL | SHM_HUGETLB);
         } else {
-            shmId = shmget(key, memSize, IPC_CREAT | 0600);
+            shmId = shmget(key, memSize, IPC_CREAT | SHM_WR_OWN);
         }
         if (shmId == -1) {
             auto error = Error(ModuleName::M_RMA_SHM_SVM, ErrorType::UNKNOWN,
@@ -139,7 +139,7 @@ void* ShmMemSet(std::string& shmName, uint64_t memSize)
         }
 
         memory = shmat(shmId, nullptr, 0);
-        if (memory == (void *)-1) {
+        if (memory == reinterpret_cast<void *>(-1)) {
             shmctl(shmId, IPC_RMID, nullptr);
             auto error = Error(ModuleName::M_RMA_SHM_SVM, ErrorType::UNKNOWN,
                                StringFormat("Shmat failed."));
