@@ -1,0 +1,433 @@
+# Copyright The Lightning AI team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+diff --git a/src/lightning/fabric/accelerators/__init__.py b/src/lightning/fabric/accelerators/__init__.py
+index 3d4b43f..16677df 100644
+--- a/src/lightning/fabric/accelerators/__init__.py
++++ b/src/lightning/fabric/accelerators/__init__.py
+@@ -18,7 +18,10 @@ from lightning.fabric.accelerators.cuda import CUDAAccelerator, find_usable_cuda
+ from lightning.fabric.accelerators.mps import MPSAccelerator  # noqa: F401
+ from lightning.fabric.accelerators.registry import _AcceleratorRegistry
+ from lightning.fabric.accelerators.xla import XLAAccelerator  # noqa: F401
++from lightning.fabric.accelerators.npu import NPUAccelerator
+ from lightning.fabric.utilities.registry import _register_classes
+ 
++#from lightning.fabric.accelerators.npu import NPUAccelerator
++
+ ACCELERATOR_REGISTRY = _AcceleratorRegistry()
+ _register_classes(ACCELERATOR_REGISTRY, "register_accelerators", sys.modules[__name__], Accelerator)
+diff --git a/src/lightning/fabric/accelerators/accelerator.py b/src/lightning/fabric/accelerators/accelerator.py
+index 3a8aa85..cf518b7 100644
+--- a/src/lightning/fabric/accelerators/accelerator.py
++++ b/src/lightning/fabric/accelerators/accelerator.py
+@@ -59,3 +59,4 @@ class Accelerator(ABC):
+     @classmethod
+     def register_accelerators(cls, accelerator_registry: _AcceleratorRegistry) -> None:
+         pass
++
+diff --git a/src/lightning/fabric/accelerators/cuda.py b/src/lightning/fabric/accelerators/cuda.py
+index 4afc9be..39a54d3 100644
+--- a/src/lightning/fabric/accelerators/cuda.py
++++ b/src/lightning/fabric/accelerators/cuda.py
+@@ -21,7 +21,6 @@ from lightning.fabric.accelerators.accelerator import Accelerator
+ from lightning.fabric.accelerators.registry import _AcceleratorRegistry
+ from lightning.fabric.utilities.rank_zero import rank_zero_info
+ 
+-
+ class CUDAAccelerator(Accelerator):
+     """Accelerator for NVIDIA CUDA devices."""
+ 
+diff --git a/src/lightning/fabric/connector.py b/src/lightning/fabric/connector.py
+index 9fb6625..6b9fa4c 100644
+--- a/src/lightning/fabric/connector.py
++++ b/src/lightning/fabric/connector.py
+@@ -23,6 +23,7 @@ from lightning.fabric.accelerators.accelerator import Accelerator
+ from lightning.fabric.accelerators.cuda import CUDAAccelerator
+ from lightning.fabric.accelerators.mps import MPSAccelerator
+ from lightning.fabric.accelerators.xla import XLAAccelerator
++from lightning.fabric.accelerators.npu import NPUAccelerator
+ from lightning.fabric.plugins import (
+     BitsandbytesPrecision,
+     CheckpointIO,
+@@ -141,6 +142,8 @@ class _Connector:
+             self._accelerator_flag = self._choose_auto_accelerator()
+         elif self._accelerator_flag == "gpu":
+             self._accelerator_flag = self._choose_gpu_accelerator_backend()
++        elif self._accelerator_flag == "npu":
++            self._accelerator_flag = self._choose_npu_accelerator_backend()
+ 
+         self._set_parallel_devices_and_init_accelerator()
+ 
+@@ -197,7 +200,7 @@ class _Connector:
+ 
+         if (
+             accelerator not in self._registered_accelerators
+-            and accelerator not in ("auto", "gpu")
++            and accelerator not in ("auto", "gpu","npu")
+             and not isinstance(accelerator, Accelerator)
+         ):
+             raise ValueError(
+@@ -211,7 +214,7 @@ class _Connector:
+         is_deepspeed_str = isinstance(strategy, str) and "deepspeed" in strategy
+         is_parallel_strategy = isinstance(strategy, ParallelStrategy) or is_ddp_str or is_dp_str or is_deepspeed_str
+         is_mps_accelerator = MPSAccelerator.is_available() and (
+-            accelerator in ("mps", "auto", "gpu", None) or isinstance(accelerator, MPSAccelerator)
++            accelerator in ("mps", "auto", "gpu", "npu", None) or isinstance(accelerator, MPSAccelerator)
+         )
+         if is_mps_accelerator and is_parallel_strategy:
+             raise ValueError(
+@@ -322,6 +325,8 @@ class _Connector:
+             return "mps"
+         if CUDAAccelerator.is_available():
+             return "cuda"
++        if NPUAccelerator.is_available():
++            return "npu"
+         return "cpu"
+ 
+     @staticmethod
+@@ -332,6 +337,12 @@ class _Connector:
+             return "cuda"
+         raise RuntimeError("No supported gpu backend found!")
+ 
++    @staticmethod
++    def _choose_npu_accelerator_backend() -> str:
++        if NPUAccelerator.is_available():
++            return "npu"
++        raise RuntimeError("No supported npu backend found!")
++
+     def _set_parallel_devices_and_init_accelerator(self) -> None:
+         if isinstance(self._accelerator_flag, Accelerator):
+             self.accelerator: Accelerator = self._accelerator_flag
+@@ -339,7 +350,7 @@ class _Connector:
+             assert self._accelerator_flag is not None
+             self.accelerator = ACCELERATOR_REGISTRY.get(self._accelerator_flag)
+         accelerator_cls = self.accelerator.__class__
+-
++        
+         if not accelerator_cls.is_available():
+             available_accelerator = [
+                 acc_str
+@@ -400,8 +411,8 @@ class _Connector:
+         if self._num_nodes_flag > 1:
+             return "ddp"
+         if len(self._parallel_devices) <= 1:
+-            if isinstance(self._accelerator_flag, (CUDAAccelerator, MPSAccelerator)) or (
+-                isinstance(self._accelerator_flag, str) and self._accelerator_flag in ("cuda", "gpu", "mps")
++            if isinstance(self._accelerator_flag, (CUDAAccelerator, MPSAccelerator, NPUAccelerator)) or (
++                isinstance(self._accelerator_flag, str) and self._accelerator_flag in ("cuda", "gpu", "mps", "npu")
+             ):
+                 device = _determine_root_gpu_device(self._parallel_devices)
+             else:
+diff --git a/src/lightning/fabric/strategies/ddp.py b/src/lightning/fabric/strategies/ddp.py
+index 0ec5df1..6fddf95 100644
+--- a/src/lightning/fabric/strategies/ddp.py
++++ b/src/lightning/fabric/strategies/ddp.py
+@@ -11,11 +11,13 @@
+ # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
++
+ from contextlib import nullcontext
+ from datetime import timedelta
+ from typing import Any, ContextManager, Dict, List, Literal, Optional, Union
+ 
+ import torch
++import torch_npu
+ import torch.distributed
+ from lightning_utilities.core.rank_zero import rank_zero_only as utils_rank_zero_only
+ from torch import Tensor
+@@ -125,6 +127,7 @@ class DDPStrategy(ParallelStrategy):
+         device_ids = self._determine_ddp_device_ids()
+         # https://pytorch.org/docs/stable/notes/cuda.html#id5
+         ctx = torch.cuda.stream(torch.cuda.Stream()) if device_ids is not None else nullcontext()
++
+         with ctx:
+             return DistributedDataParallel(module=module, device_ids=device_ids, **self._ddp_kwargs)
+ 
+diff --git a/src/lightning/fabric/strategies/deepspeed.py b/src/lightning/fabric/strategies/deepspeed.py
+index 93a17f1..9c3476a 100644
+--- a/src/lightning/fabric/strategies/deepspeed.py
++++ b/src/lightning/fabric/strategies/deepspeed.py
+@@ -22,12 +22,14 @@ from pathlib import Path
+ from typing import TYPE_CHECKING, Any, Callable, ContextManager, Dict, List, Mapping, Optional, Tuple, Union
+ 
+ import torch
++import torch_npu
+ from lightning_utilities.core.imports import RequirementCache
+ from torch.nn import Module
+ from torch.optim import Optimizer
+ from typing_extensions import override
+ 
+-from lightning.fabric.accelerators import Accelerator, CUDAAccelerator
++
++from lightning.fabric.accelerators import Accelerator, CUDAAccelerator, NPUAccelerator
+ from lightning.fabric.plugins.environments.cluster_environment import ClusterEnvironment
+ from lightning.fabric.plugins.precision import Precision
+ from lightning.fabric.strategies.ddp import DDPStrategy
+@@ -616,7 +618,8 @@ class DeepSpeedStrategy(DDPStrategy, _Sharded):
+ 
+     @override
+     def setup_environment(self) -> None:
+-        if not isinstance(self.accelerator, CUDAAccelerator):
++        if not isinstance(self.accelerator, (CUDAAccelerator, NPUAccelerator)):
++
+             raise RuntimeError(
+                 f"The DeepSpeed strategy is only supported on CUDA GPUs but `{self.accelerator.__class__.__name__}`"
+                 " is used."
+diff --git a/src/lightning/fabric/strategies/launchers/subprocess_script.py b/src/lightning/fabric/strategies/launchers/subprocess_script.py
+index 63ae8b0..5af9b4f 100644
+--- a/src/lightning/fabric/strategies/launchers/subprocess_script.py
++++ b/src/lightning/fabric/strategies/launchers/subprocess_script.py
+@@ -98,6 +98,7 @@ class _SubprocessScriptLauncher(_Launcher):
+             **kwargs: Optional keyword arguments to be passed to the given function.
+ 
+         """
++        self.num_processes = 8
+         self.cluster_environment.validate_settings(num_devices=self.num_processes, num_nodes=self.num_nodes)
+         if not self.cluster_environment.creates_processes_externally:
+             self._call_children_scripts()
+diff --git a/src/lightning/pytorch/accelerators/__init__.py b/src/lightning/pytorch/accelerators/__init__.py
+index 4cadee5..4a8b296 100644
+--- a/src/lightning/pytorch/accelerators/__init__.py
++++ b/src/lightning/pytorch/accelerators/__init__.py
+@@ -21,5 +21,6 @@ from lightning.pytorch.accelerators.cuda import CUDAAccelerator  # noqa: F401
+ from lightning.pytorch.accelerators.mps import MPSAccelerator  # noqa: F401
+ from lightning.pytorch.accelerators.xla import XLAAccelerator  # noqa: F401
+ 
++from lightning.pytorch.accelerators.npu import NPUAccelerator
+ AcceleratorRegistry = _AcceleratorRegistry()
+ _register_classes(AcceleratorRegistry, "register_accelerators", sys.modules[__name__], Accelerator)
+diff --git a/src/lightning/pytorch/accelerators/accelerator.py b/src/lightning/pytorch/accelerators/accelerator.py
+index 0490c2d..5399d83 100644
+--- a/src/lightning/pytorch/accelerators/accelerator.py
++++ b/src/lightning/pytorch/accelerators/accelerator.py
+@@ -18,6 +18,7 @@ import lightning.pytorch as pl
+ from lightning.fabric.accelerators.accelerator import Accelerator as _Accelerator
+ from lightning.fabric.utilities.types import _DEVICE
+ 
++from contextlib import nullcontext
+ 
+ class Accelerator(_Accelerator, ABC):
+     """The Accelerator base class for Lightning PyTorch.
+@@ -45,3 +46,9 @@ class Accelerator(_Accelerator, ABC):
+ 
+         """
+         raise NotImplementedError
++
++    def get_distribute_name(self) -> str:
++        return "gloo"
++
++    def get_stream_context(self, device_id: Any) -> Any:
++        return nullcontext()
+diff --git a/src/lightning/pytorch/accelerators/cuda.py b/src/lightning/pytorch/accelerators/cuda.py
+index 6df3bc6..8b0b007 100644
+--- a/src/lightning/pytorch/accelerators/cuda.py
++++ b/src/lightning/pytorch/accelerators/cuda.py
+@@ -27,7 +27,7 @@ from lightning.fabric.utilities.device_parser import _parse_gpu_ids
+ from lightning.fabric.utilities.types import _DEVICE
+ from lightning.pytorch.accelerators.accelerator import Accelerator
+ from lightning.pytorch.utilities.exceptions import MisconfigurationException
+-
++from contextlib import nullcontext
+ _log = logging.getLogger(__name__)
+ 
+ 
+@@ -104,6 +104,14 @@ class CUDAAccelerator(Accelerator):
+     def is_available() -> bool:
+         return num_cuda_devices() > 0
+ 
++    @override
++    def get_distribute_name(self) -> str:
++        return "nccl"
++
++    @override
++    def get_stream_context(self, device_id: List[int]) -> Any:
++        return torch.cuda.stream(torch.cuda.Stream()) if device_id is not None else nullcontext()
++
+     @classmethod
+     @override
+     def register_accelerators(cls, accelerator_registry: _AcceleratorRegistry) -> None:
+diff --git a/src/lightning/pytorch/strategies/ddp.py b/src/lightning/pytorch/strategies/ddp.py
+index 9031b6e..16fa8f8 100644
+--- a/src/lightning/pytorch/strategies/ddp.py
++++ b/src/lightning/pytorch/strategies/ddp.py
+@@ -12,7 +12,7 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ import logging
+-from contextlib import nullcontext
++# from contextlib import nullcontext
+ from datetime import timedelta
+ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Union
+ 
+@@ -31,7 +31,7 @@ from lightning.fabric.plugins.collectives.torch_collective import default_pg_tim
+ from lightning.fabric.strategies import _StrategyRegistry
+ from lightning.fabric.utilities.distributed import (
+     _distributed_is_initialized,
+-    _get_default_process_group_backend_for_device,
++    # _get_default_process_group_backend_for_device,
+     _init_dist_connection,
+     _sync_ddp_if_available,
+ )
+@@ -190,7 +190,9 @@ class DDPStrategy(ParallelStrategy):
+         device_ids = self.determine_ddp_device_ids()
+         log.debug(f"setting up DDP model with device ids: {device_ids}, kwargs: {self._ddp_kwargs}")
+         # https://pytorch.org/docs/stable/notes/cuda.html#id5
+-        ctx = torch.cuda.stream(torch.cuda.Stream()) if device_ids is not None else nullcontext()
++        # ctx = torch.cuda.stream(torch.cuda.Stream()) if device_ids is not None else nullcontext()
++        assert self.accelerator is not None
++        ctx = self.accelerator.get_stream_context(device_ids)
+         with ctx:
+             return DistributedDataParallel(module=model, device_ids=device_ids, **self._ddp_kwargs)
+ 
+@@ -203,8 +205,9 @@ class DDPStrategy(ParallelStrategy):
+         _init_dist_connection(self.cluster_environment, self._process_group_backend, timeout=self._timeout)
+ 
+     def _get_process_group_backend(self) -> str:
+-        return self._process_group_backend or _get_default_process_group_backend_for_device(self.root_device)
+-
++        # return self._process_group_backend or _get_default_process_group_backend_for_device(self.root_device)
++        assert self.accelerator is not None
++        return self._process_group_backend or self.accelerator.get_distribute_name()
+     def set_world_ranks(self) -> None:
+         if self.cluster_environment is not None:
+             self.cluster_environment.set_global_rank(self.node_rank * self.num_processes + self.local_rank)
+diff --git a/src/lightning/pytorch/strategies/deepspeed.py b/src/lightning/pytorch/strategies/deepspeed.py
+index 382f807..40e2898 100644
+--- a/src/lightning/pytorch/strategies/deepspeed.py
++++ b/src/lightning/pytorch/strategies/deepspeed.py
+@@ -21,6 +21,8 @@ from contextlib import contextmanager
+ from pathlib import Path
+ from typing import TYPE_CHECKING, Any, Dict, Generator, List, Mapping, Optional, Tuple, Union
+ 
++from lightning.pytorch.accelerators.npu import NPUAccelerator
++
+ import torch
+ from torch.nn import Module
+ from torch.optim import Optimizer
+@@ -316,9 +318,12 @@ class DeepSpeedStrategy(DDPStrategy):
+ 
+     @override
+     def setup_environment(self) -> None:
+-        if not isinstance(self.accelerator, CUDAAccelerator):
++        # if not isinstance(self.accelerator, CUDAAccelerator):
++        if not isinstance(self.accelerator, (CUDAAccelerator, NPUAccelerator)):
++
+             raise RuntimeError(
+-                f"The DeepSpeed strategy is only supported on CUDA GPUs but `{self.accelerator.__class__.__name__}`"
++                # f"The DeepSpeed strategy is only supported on CUDA GPUs but `{self.accelerator.__class__.__name__}`"
++                f"The DeepSpeed strategy is only supported on CUDA GPUs or Ascend NPUs but `{self.accelerator.__class__.__name__}`"
+                 " is used."
+             )
+         super().setup_environment()
+diff --git a/src/lightning/pytorch/strategies/fsdp.py b/src/lightning/pytorch/strategies/fsdp.py
+index ab6e579..a568d52 100644
+--- a/src/lightning/pytorch/strategies/fsdp.py
++++ b/src/lightning/pytorch/strategies/fsdp.py
+@@ -62,7 +62,7 @@ from lightning.fabric.strategies.fsdp import (
+ from lightning.fabric.strategies.model_parallel import _load_raw_module_state
+ from lightning.fabric.utilities.distributed import (
+     _distributed_is_initialized,
+-    _get_default_process_group_backend_for_device,
++    # _get_default_process_group_backend_for_device,
+     _init_dist_connection,
+     _sync_ddp_if_available,
+ )
+@@ -275,7 +275,9 @@ class FSDPStrategy(ParallelStrategy):
+             self.kwargs["device_mesh"] = init_device_mesh("cuda", self.kwargs["device_mesh"])
+ 
+     def _get_process_group_backend(self) -> str:
+-        return self._process_group_backend or _get_default_process_group_backend_for_device(self.root_device)
++        # return self._process_group_backend or _get_default_process_group_backend_for_device(self.root_device)
++        assert self.accelerator is not None
++        return self._process_group_backend or self.accelerator.get_distribute_name()
+ 
+     def set_world_ranks(self) -> None:
+         if self.cluster_environment is not None:
+diff --git a/src/lightning/pytorch/trainer/connectors/accelerator_connector.py b/src/lightning/pytorch/trainer/connectors/accelerator_connector.py
+index 06f3ee3..6242d09 100644
+--- a/src/lightning/pytorch/trainer/connectors/accelerator_connector.py
++++ b/src/lightning/pytorch/trainer/connectors/accelerator_connector.py
+@@ -35,6 +35,7 @@ from lightning.pytorch.accelerators.accelerator import Accelerator
+ from lightning.pytorch.accelerators.cuda import CUDAAccelerator
+ from lightning.pytorch.accelerators.mps import MPSAccelerator
+ from lightning.pytorch.accelerators.xla import XLAAccelerator
++from lightning.pytorch.accelerators.npu import NPUAccelerator
+ from lightning.pytorch.plugins import (
+     _PLUGIN_INPUT,
+     BitsandbytesPrecision,
+@@ -342,6 +343,8 @@ class _AcceleratorConnector:
+             return "mps"
+         if CUDAAccelerator.is_available():
+             return "cuda"
++        if NPUAccelerator.is_available():
++            return "npu"
+         return "cpu"
+ 
+     @staticmethod
+@@ -438,7 +441,8 @@ class _AcceleratorConnector:
+             return "ddp"
+         if len(self._parallel_devices) <= 1:
+             if isinstance(self._accelerator_flag, (CUDAAccelerator, MPSAccelerator)) or (
+-                isinstance(self._accelerator_flag, str) and self._accelerator_flag in ("cuda", "gpu", "mps")
++                # isinstance(self._accelerator_flag, str) and self._accelerator_flag in ("cuda", "gpu", "mps")
++                isinstance(self._accelerator_flag, str) and self._accelerator_flag in ("cuda", "gpu", "mps", "npu")
+             ):
+                 device = _determine_root_gpu_device(self._parallel_devices)
+             else:
+@@ -458,9 +462,11 @@ class _AcceleratorConnector:
+ 
+         if (
+             strategy_flag in FSDPStrategy.get_registered_strategies() or type(self._strategy_flag) is FSDPStrategy
+-        ) and self._accelerator_flag not in ("cuda", "gpu"):
++        # ) and self._accelerator_flag not in ("cuda", "gpu"):
++        ) and self._accelerator_flag not in ("cuda", "gpu", "npu"):
+             raise ValueError(
+-                f"The strategy `{FSDPStrategy.strategy_name}` requires a GPU accelerator, but got:"
++                # f"The strategy `{FSDPStrategy.strategy_name}` requires a GPU accelerator, but got:"
++                f"The strategy `{FSDPStrategy.strategy_name}` requires a GPU or a NPU accelerator, but got:"
+                 f" {self._accelerator_flag}"
+             )
+         if strategy_flag in _DDP_FORK_ALIASES and "fork" not in torch.multiprocessing.get_all_start_methods():
+diff --git a/src/lightning/pytorch/trainer/setup.py b/src/lightning/pytorch/trainer/setup.py
+index 00b546b..5a494e3 100644
+--- a/src/lightning/pytorch/trainer/setup.py
++++ b/src/lightning/pytorch/trainer/setup.py
+@@ -17,7 +17,8 @@ from typing import Optional, Union
+ 
+ import lightning.pytorch as pl
+ from lightning.fabric.utilities.warnings import PossibleUserWarning
+-from lightning.pytorch.accelerators import CUDAAccelerator, MPSAccelerator, XLAAccelerator
++# from lightning.pytorch.accelerators import CUDAAccelerator, MPSAccelerator, XLAAccelerator
++from lightning.pytorch.accelerators import CUDAAccelerator, MPSAccelerator, XLAAccelerator, NPUAccelerator
+ from lightning.pytorch.loggers.logger import DummyLogger
+ from lightning.pytorch.profilers import (
+     AdvancedProfiler,
+@@ -168,6 +169,9 @@ def _log_device_info(trainer: "pl.Trainer") -> None:
+         hpu_available = False
+     rank_zero_info(f"HPU available: {hpu_available}, using: {num_hpus} HPUs")
+ 
++    number_npu_cores = trainer.num_devices if isinstance(trainer.accelerator, NPUAccelerator) else 0
++    rank_zero_info(f"NPU available: {NPUAccelerator.is_available()}, using: {number_npu_cores} NPU cores")
++
+     if (
+         CUDAAccelerator.is_available()
+         and not isinstance(trainer.accelerator, CUDAAccelerator)
+@@ -187,3 +191,6 @@ def _log_device_info(trainer: "pl.Trainer") -> None:
+ 
+         if HPUAccelerator.is_available() and not isinstance(trainer.accelerator, HPUAccelerator):
+             rank_zero_warn("HPU available but not used. You can set it by doing `Trainer(accelerator='hpu')`.")
++
++    if NPUAccelerator.is_available() and not isinstance(trainer.accelerator, NPUAccelerator):
++        rank_zero_warn("NPU available but not used. You can set it by doing `Trainer(accelerator='npu')`.")
+\ No newline at end of file
