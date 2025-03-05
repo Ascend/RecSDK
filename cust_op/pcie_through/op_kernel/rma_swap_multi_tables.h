@@ -46,12 +46,12 @@ public:
         Collectives::Init();
 
         this->tableNum = tableNum;
-        this->updateTables[0] = table_a; //第0个表
-        this->updateTables[1] = table_b; //第1个表
-        this->updateTables[2] = table_c; //第2个表
-        this->updateTables[3] = table_d; //第3个表
-        this->updateTables[4] = table_e; //第4个表
-        this->updateTables[5] = table_f; //第5个表
+        this->updateTables[0] = table_a;
+        this->updateTables[1] = table_b;
+        this->updateTables[2] = table_c;
+        this->updateTables[3] = table_d;
+        this->updateTables[4] = table_e;
+        this->updateTables[5] = table_f;
         this->swapInIndex = swapInIndex;
         this->swapOutIndex = swapOutIndex;
         this->swapInLen = swapInLen;
@@ -198,7 +198,6 @@ private:
         __gm__ uint64_t *buffLimitSwapOut = (__gm__ uint64_t *)svmBuffSwapOut + RmaQueueOffset::RMA_BUFF_LIMIT_OFFSET;
         GM_ADDR svmDataBuff;
         __gm__ uint64_t *svmReadyCount;
-
         __ubuf__ RmaShmDataHead *ub_datahead_buff = (__ubuf__ RmaShmDataHead *)get_imm(0);
         ub_datahead_buff->totalLen = dataHeadSwapOut.totalLen;
         ub_datahead_buff->sequence = dataHeadSwapOut.sequence;
@@ -210,15 +209,11 @@ private:
         ub_datahead_buff->dataLen = dataHeadSwapOut.dataLen;
         ub_datahead_buff->readyLen = dataHeadSwapOut.readyLen;
         pipe_barrier(PIPE_ALL);
-
         // free space in queue's tail is not enough, put data from queue's begin pos
         if (queueHeader.tailOffset + ub_datahead_buff->totalLen > queueHeader.totalMemSize) {
             *ub_buff = queueHeader.tailOffset;
             CpUB2GM<uint64_t>(buffLimitSwapOut, ub_buff, sizeof(uint64_t));
-
-            // write data head to swap out queue
             ub2gm(svmBuffSwapOut + RMA_SHM_HEAD_LEN, (__ubuf__ uint8_t *)ub_datahead_buff, RMA_SHM_DATA_HEAD);
-
             svmDataBuff = svmBuffSwapOut + RMA_SHM_HEAD_LEN + RMA_SHM_DATA_HEAD;
             svmReadyCount = (__gm__ uint64_t *)(svmBuffSwapOut + RMA_SHM_HEAD_LEN) + RMA_READY_LEN_OFFSET;
             *ub_buff = RMA_SHM_HEAD_LEN + ub_datahead_buff->totalLen;
@@ -249,7 +244,6 @@ private:
             if (cacheFront > cacheRear) {  // crocess tail of cache, address is discontinuity
                 copyCount = cacheCapacity - cacheFront;
             }
-
             gm2gm(copyCount * dataHeadSwapOut.dims[1] * sizeof(float), ub_data_buff,
                   svmDataBuff + swapOutCount * embDim, embSwapCache + cacheFront * embDim);
             cacheFront = (cacheFront + copyCount) % cacheCapacity;
@@ -260,8 +254,6 @@ private:
             loopCount++;
         }
         SetFlag(ub_buff, outfeed_count, swapOutCount);
-
-        // update seqIn
         *ub_buff = dataHeadSwapOut.sequence;
         CpUB2GM<uint64_t>(seqInSwapOut, ub_buff, sizeof(uint64_t));
     }
@@ -320,7 +312,6 @@ private:
         __gm__ uint64_t *seqOutSwapIn = (__gm__ uint64_t *)svmBuffSwapIn + RmaQueueOffset::RMA_SEQ_OUT_OFFSET;
         __gm__ uint64_t *frontSwapIn = (__gm__ uint64_t *)svmBuffSwapIn + RmaQueueOffset::RMA_QUEUE_FRONT_OFFSET;
         __gm__ uint64_t *buffLimitSwapIn = (__gm__ uint64_t *)svmBuffSwapIn + RmaQueueOffset::RMA_BUFF_LIMIT_OFFSET;
-
         bool updataBuffLimit = false;
         uint64_t frontOffset = queueHeader.frontOffset;
         if (queueHeader.buffLimit == frontOffset) {
@@ -340,7 +331,6 @@ private:
         }
         const uint64_t pipeBlockSize = ((2 * UNIT_COPY_SIZE) / embDim) * embDim;
         const uint64_t stride = pipeBlockSize * GET_NEXT_THREAD_NUM;
-
         if (sizeOfData > 0) {
             uint64_t updateCount = 0;   // emb count
             uint64_t readyLen = 0;      // Byte
@@ -358,7 +348,7 @@ private:
                     continue;
                 }
                 uint64_t copySize = (copyOffset + pipeBlockSize <= sizeOfData) ?
-                                                                pipeBlockSize : (sizeOfData - copyOffset);
+                                    pipeBlockSize : (sizeOfData - copyOffset);
                 uint64_t cacheSize = 0;
                 if (cacheRear >= cacheFront) {
                     if (cacheFront == 0) {
@@ -369,7 +359,6 @@ private:
                 } else {
                     cacheSize = (cacheFront - cacheRear - 1) * embDim;
                 }
-
                 copySize = (copySize > cacheSize) ? cacheSize : copySize;
                 gm2gm(copySize, ub_data_buff, embSwapCache + cacheRear * embDim, svmDataBuff + copyOffset);
                 if (copyOffset + stride >= sizeOfData) {
@@ -383,7 +372,6 @@ private:
             }
             SetFlag(ub_buff, getnext_count, getnextCount);
         }
-
         if (processBlockIdx == 0) {
             __gm__ uint64_t *getnextFlags[MAX_BLOCK_NUM];
             for (int i = 1; i < GET_NEXT_THREAD_NUM; ++i) {
@@ -393,15 +381,12 @@ private:
             while (minGetnext < swapInLen) {
                 minGetnext = GetMinFlag(ub_buff, getnextFlags, GET_NEXT_THREAD_NUM - 1);
             }
-
             if (updataBuffLimit) {
                 *ub_buff = 0;
                 CpUB2GM<uint64_t>(buffLimitSwapIn, ub_buff, sizeof(uint64_t));
             }
-            // update front offset
             *ub_buff = frontOffset + sizeOfTotalData;
             CpUB2GM<uint64_t>(frontSwapIn, ub_buff, sizeof(uint64_t));
-            // update seqOut
             *ub_buff = sequence;
             CpUB2GM<uint64_t>(seqOutSwapIn, ub_buff, sizeof(uint64_t));
         }

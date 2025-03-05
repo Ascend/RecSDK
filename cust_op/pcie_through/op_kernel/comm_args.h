@@ -70,7 +70,7 @@ struct RmaShmDataHead {
     uint64_t sequence;                  // item's sequence
     int32_t dataType;                   // data type: {0:float32}
     int32_t dimNum;
-    int64_t dims[RMA_SHAPE_DIM_MAX];    //[换出key的数量，emb长度（val+slot）]
+    int64_t dims[RMA_SHAPE_DIM_MAX];
     uint64_t dataLen;                   // data size(B)
     uint64_t readyLen;                  // data size has been written to queue(use to pipe)
 };

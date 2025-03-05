@@ -34,8 +34,8 @@ namespace optiling {
         auto dimNum = context->GetInputShape(2)->GetStorageShape().GetDimNum();
         uint64_t dims[RMA_DIM_MAX] = {0};
         if (dimNum == RMA_DIM_MAX) {
-            dims[0] = context->GetInputTensor(1)->GetShapeSize();   // 获取第一个输入张量的形状大小
-            dims[1] = context->GetInputShape(2)->GetStorageShape().GetDim(1);   // 获取第二个输入形状的第二个维度（嵌入维度）
+            dims[0] = context->GetInputTensor(1)->GetShapeSize();
+            dims[1] = context->GetInputShape(2)->GetStorageShape().GetDim(1);
         } else {
             LOG_ERROR("Dim-num %d is invalid. should be 2", dimNum);
             return ge::GRAPH_FAILED;
