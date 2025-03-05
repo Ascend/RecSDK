@@ -647,7 +647,7 @@ def _get_variable_and_slot_list(each_var, slot_num, table_name, channel_id):
 
 def shm_swap(tables, swap_in_index, swap_out_index, h2d_name, d2h_name) -> tf.Operation:
     #var and clot num for table，set max num
-    max_table_nun  = 6
+    max_table_nun = 6
     table_list = []
     table_num = len(tables)
     for i in range(max_table_nun):
@@ -720,8 +720,8 @@ def _get_swap_info(
         h2d_name = f'{table_instance.table_name}_h2d_{channel_id}'
         d2h_name = f'{table_instance.table_name}_d2h_{channel_id}'
         if optimizer is None and channel_id == EVAL_CHANNEL_ID:
-            swap_op = [shm_swap([variable_and_slot_list[0]], swap_in_index = swap_in_pos, swap_out_index = swap_out_pos,
-                                h2d_name = h2d_name, d2h_name = d2h_name)]
+            swap_op = [shm_swap([variable_and_slot_list[0]], swap_in_index = swap_in_pos,
+                                swap_out_index = swap_out_pos, h2d_name = h2d_name, d2h_name = d2h_name)]
         else:
             swap_op = [shm_swap(variable_and_slot_list, swap_in_index = swap_in_pos, swap_out_index = swap_out_pos,
                                 h2d_name = h2d_name, d2h_name = d2h_name)]

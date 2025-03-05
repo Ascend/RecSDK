@@ -2155,8 +2155,6 @@ bool HybridMgmt::BuildAndSendH2DEmbedding(const EmbTaskInfo& info, float*& h2dEm
     if (!isRunning) {
         return false;
     }
-    int64_t data_len = swapInAddrs.size() * info.extEmbeddingSize * sizeof(float);
-
     dims[0] = swapInAddrs.size();
     dims[1] = info.extEmbeddingSize;
     std::string sendName = StringFormat("%s_%s_%d_%d",

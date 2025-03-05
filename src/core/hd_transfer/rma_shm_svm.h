@@ -29,8 +29,8 @@ constexpr int SHM_WR_ALL = 0666;
 
 namespace MxRec {
 enum class RmaDevModel {
-    SVM_MAP_DEV,    // 910_93
-    PCIE_TH_DEV     // 910B
+    SVM_MAP_DEV,
+    PCIE_TH_DEV
 };
 
 // Queue header definition
