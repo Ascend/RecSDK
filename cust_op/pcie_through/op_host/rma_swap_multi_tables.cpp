@@ -23,7 +23,6 @@ constexpr int32_t BLOCK_DIM = 48;
 
 namespace optiling {
     constexpr int32_t RMA_DIM_MAX = 2;
-    //换入换出各101M，其中1M是用于标志位
     constexpr int32_t RMA_WORK_SPACE_SIZE = 202 * 1024 * 1024;
 
     static ge::graphStatus TilingFunc(gert::TilingContext* context)
@@ -32,32 +31,24 @@ namespace optiling {
         RmaSwapMultiTablesTilingData tiling;
         context->SetBlockDim(BLOCK_DIM);
         context->SetTilingKey(1);
-        //table_a的dim维度
         auto dimNum = context->GetInputShape(2)->GetStorageShape().GetDimNum();
-        //等于1的判断可以删掉
         uint64_t dims[RMA_DIM_MAX] = {0};
-        if (dimNum == 1) {
-            dims[0] = 1;
-            dims[1] = context->GetInputShape(2)->GetStorageShape().GetDim(0);
-        } else if (dimNum == RMA_DIM_MAX) {
-            dims[0] = context->GetInputTensor(1)->GetShapeSize();   // swap out index length
-            dims[1] = context->GetInputShape(2)->GetStorageShape().GetDim(1);   // emb dim
+        if (dimNum == RMA_DIM_MAX) {
+            dims[0] = context->GetInputTensor(1)->GetShapeSize();   // 获取第一个输入张量的形状大小
+            dims[1] = context->GetInputShape(2)->GetStorageShape().GetDim(1);   // 获取第二个输入形状的第二个维度（嵌入维度）
         } else {
             LOG_ERROR("Dim-num %d is invalid. should be 2", dimNum);
             return ge::GRAPH_FAILED;
         }
         tiling.set_dimValue(dims);
         tiling.set_dimNum(RMA_DIM_MAX);
-        //换入的key的数量
         uint64_t size = context->GetInputTensor(0)->GetShapeSize();
         tiling.set_updateLen(size);
-
         auto attrs = context->GetAttrs();
         if (attrs == nullptr) {
             LOG_ERROR("context GetAttrs failed");
             return ge::GRAPH_FAILED;
         }
-        //有效的table数量，[var + slots]
         auto tableNumAttr = attrs->GetInt(0);
         int tableNum = (*tableNumAttr);
         if (tableNum <= 0) {
@@ -65,7 +56,6 @@ namespace optiling {
             return ge::GRAPH_FAILED;
         }
         tiling.set_tableNum(tableNum);
-        //换入的共享内存地址，共享内存在device的地址
         auto gmemAttrIn = attrs->GetStr(1);
         int32_t *shmSwapIn = static_cast<int32_t*>(std::stoul(gmemAttrIn));
         if (shmSwapIn == nullptr) {
@@ -73,7 +63,6 @@ namespace optiling {
             return ge::GRAPH_FAILED;
         }
         tiling.set_shmSwapIn((uint64_t)shmSwapIn);
-        //换出的共享内存地址，共享内存在device的地址
         auto gmemAttrOut = attrs->GetStr(2);
         int32_t *shmSwapOut = (int32_t *)(std::stoul(gmemAttrOut));
         if (shmSwapOut == nullptr) {
@@ -81,15 +70,12 @@ namespace optiling {
             return ge::GRAPH_FAILED;
         }
         tiling.set_shmSwapOut((uint64_t)shmSwapOut);
-
         tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
         context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
-
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
         uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
         size_t *currentWorkspace = context->GetWorkspaceSizes(1);
         currentWorkspace[0] = RMA_WORK_SPACE_SIZE + sysWorkspaceSize;
-
         return ge::GRAPH_SUCCESS;
     }
 }
@@ -97,7 +83,6 @@ namespace optiling {
 namespace ge {
     static ge::graphStatus InferShape(gert::InferShapeContext* context)
     {
-        //output实际没有什么具体的输出，这里给的是标志位，用于判断48个核是不是有不正常的情况，每个核一个标志位判断
         LOG_DEBUG("RmaSwap InferShape.");
         gert::Shape *outputShape = context->GetOutputShape(0);
         if (outputShape == nullptr) {
@@ -170,12 +155,9 @@ namespace ops {
             this->Attr("table_num").Int();
             this->Attr("shm_swap_in").String();
             this->Attr("shm_swap_out").String();
-
-            this->SetInferShape(ge::InferShape);
-            this->SetInferDataType(ge::InferDataType);
+            this->SetInferShape(ge::InferShape).SetInferDataType(ge::InferDataType);
             this->AICore().SetTiling(optiling::TilingFunc);
             this->AICore().AddConfig("ascend910b");
-            this->AICore().AddConfig("ascend910_93");
         }
     };
 

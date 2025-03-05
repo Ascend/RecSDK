@@ -64,14 +64,14 @@ public:
         pipe_barrier(PIPE_ALL);
 #endif
     }
-    //设置标志位
+
     __attribute__((always_inline)) inline __aicore__ void SetFlag(__ubuf__ uint64_t* ctrlFlagsUB,
                                                                   __gm__ uint64_t* ctrlFlagGM, uint64_t checkValue)
     {
         *ctrlFlagsUB = checkValue;
-        CpUB2GM((__gm__ uint8_t* )ctrlFlagGM, (__ubuf__ uint8_t *)ctrlFlagsUB, sizeof(uint64_t));
+        CpUB2GM((__gm__ uint8_t*)ctrlFlagGM, (__ubuf__ uint8_t *)ctrlFlagsUB, sizeof(uint64_t));
     }
-    //检查标志位
+
     __attribute__((always_inline)) inline __aicore__ void CheckFlag(__ubuf__ uint64_t* ctrlFlagsUB,
     __gm__ uint64_t* ctrlFlagGM, uint64_t checkValue)
     {
@@ -82,7 +82,7 @@ public:
             }
         }
     }
-    //获取标志位
+
     template <typename T>
     __attribute__((always_inline)) inline __aicore__ T GetFlag(__ubuf__ T* ctrlFlagsUB, __gm__ T* ctrlFlagGM)
     {
@@ -96,7 +96,7 @@ public:
         CpGM2UB((__ubuf__ uint8_t *)ctrlFlagsUB, (__gm__ uint8_t *)ctrlFlagGM, sizeof(uint64_t));
         return *ctrlFlagsUB;
     }
-    //获得最小的标志位
+
     __attribute__((always_inline)) inline __aicore__ uint64_t GetMinFlag(__ubuf__ uint64_t* ctrlFlagsUB,
         __gm__ uint64_t** ctrlFlagGMs, int32_t num)
     {
@@ -109,7 +109,7 @@ public:
         }
         return minFlag;
     }
-    //将数据从HBM的一块地址拷贝到另外一块地址
+
     __attribute__((always_inline)) inline __aicore__ void gm2gm(uint64_t data_size, __ubuf__ uint8_t* ub_buff,
     GM_ADDR dest_buff, GM_ADDR src_buff)
     {

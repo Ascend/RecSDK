@@ -29,21 +29,20 @@ extern "C" __global__ __aicore__ void rma_swap_multi_tables(GM_ADDR swapInIndex,
 
     int tableNum = tiling_data.tableNum;
     int tableLength = tiling_data.tableLength;
-    //换入换出的共享内存地址
     GM_ADDR svmBuffSwapIn = (GM_ADDR)(tiling_data.shmSwapIn);
     GM_ADDR svmBuffSwapOut = (GM_ADDR)(tiling_data.shmSwapOut);
-    //换入的key的数量
     uint64_t swapInLen = tiling_data.updateLen;
     int32_t dimNum = tiling_data.dimNum;
     uint64_t dimValue[RMA_SHAPE_DIM_MAX];
-    //dimValue[0]:换出的key数量
-    //dimValue[1]:emb的长度
     for (int i = 0; i < dimNum; ++i) {
         dimValue[i] = tiling_data.dimValue[i];
     }
     if (TILING_KEY_IS(1)) {
         RmaSwapMultiTables opKernel;
-        opKernel.Init(RMA_SWAP_MULTI_TABLE_ARGS_CALL());
+        opKernel.Init(table_a, table_b, table_c, table_d, table_e, table_f,
+                      tableNum, tableLength, swapInIndex, swapOutIndex, swapInLen,
+                      svmBuffSwapIn, svmBuffSwapOut, usrWorkspace, dimNum, dimValue, output
+        );
 
         opKernel.Process();
     }

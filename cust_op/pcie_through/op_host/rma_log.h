@@ -19,7 +19,8 @@
 
 #include <string>
 #include <cstdlib>
-namespace optiling{
+
+namespace optiling {
 constexpr int32_t DEBUG_SWITCH = 0;
 
 #if DEBUG_SWITCH

@@ -17,7 +17,7 @@
 #ifndef LCCL_COMM_ARGS_H
 #define LCCL_COMM_ARGS_H
 
-#include <limits.h>
+#include <climits>
 #include "kernel_operator.h"
 
 constexpr int32_t MAX_BLOCK_NUM = 48;
@@ -34,13 +34,9 @@ constexpr int32_t RMA_SHAPE_DIM_MAX = 2;
 
 constexpr uint64_t RMA_WORK_SPACE_SIZE = 202 * 1024 * 1024;
 constexpr uint64_t SWAP_CACHE_SIZE = 100 * 1024 * 1024;        // cache size
-//偏移位置0：换入的flag，长度1 * 1024 * 1024
 constexpr uint64_t SWAP_IN_FLAG_OFFSET = 0;                    // offset of flags
-//偏移位置1 * 1024 * 1024：换入的缓存，长度100 * 1024 * 1024
 constexpr uint64_t SWAP_IN_CACHE_OFFSET = 1 * 1024 * 1024;     // data cache offset
-//偏移位置101 * 1024 * 1024：换出的flag，长度1 * 1024 * 1024
 constexpr uint64_t SWAP_OUT_FLAG_OFFSET = 101 * 1024 * 1024;   // offset of flags
-//偏移位置102 * 1024 * 1024：换出的缓存，长度100 * 1024 * 1024
 constexpr uint64_t SWAP_OUT_CACHE_OFFSET = 102 * 1024 * 1024;  // data cache offset
 
 // queue's head

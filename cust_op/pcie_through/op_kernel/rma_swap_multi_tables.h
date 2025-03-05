@@ -23,43 +23,39 @@ using namespace AscendC;
 
 constexpr uint64_t MAX_TABLE_NUM = 6;
 constexpr uint64_t GET_NEXT_THREAD_NUM = 4;
-
-#define RMA_SWAP_MULTI_TABLE_ARGS_FUN() \
-GM_ADDR table_a, GM_ADDR table_b, GM_ADDR table_c, GM_ADDR table_d, GM_ADDR table_e, GM_ADDR table_f, \
-int tableNum, int tableLength, GM_ADDR swapInIndex, GM_ADDR swapOutIndex, uint64_t swapInLen, \
-GM_ADDR svmBuffSwapIn, GM_ADDR svmBuffSwapOut, GM_ADDR usrWorkspace, int32_t dimNum, uint64_t *dimValue, GM_ADDR output
-
-#define RMA_SWAP_MULTI_TABLE_ARGS_CALL() \
-table_a, table_b, table_c, table_d, table_e, table_f, \
-tableNum, tableLength, swapInIndex, swapOutIndex, swapInLen, \
-svmBuffSwapIn, svmBuffSwapOut, usrWorkspace, dimNum, dimValue, output
+constexpr uint64_t SPLIT_NUM = 2;
+constexpr uint64_t LOOP_CHECK = 8;
+constexpr uint64_t OUTFEED_CHECK = 4;
 
 /**
  * @brief swap in & out operators
  * @tparam svmBuffSwapIn swap in queue
  * @tparam svmBuffSwapOut swap out queue
  */
-class RmaSwapMultiTables : Collectives {
+class RmaSwapMultiTables : public Collectives {
 public:
     __aicore__ inline RmaSwapMultiTables() : Collectives() {};
 
-    __aicore__ inline void Init(RMA_SWAP_MULTI_TABLE_ARGS_FUN())
+    __aicore__ inline void Init(GM_ADDR table_a, GM_ADDR table_b, GM_ADDR table_c, GM_ADDR table_d, GM_ADDR table_e,
+                                GM_ADDR table_f, int tableNum, int tableLength, GM_ADDR swapInIndex,
+                                GM_ADDR swapOutIndex, uint64_t swapInLen, GM_ADDR svmBuffSwapIn,
+                                GM_ADDR svmBuffSwapOut, GM_ADDR usrWorkspace, int32_t dimNum, uint64_t *dimValue,
+                                GM_ADDR output)
     {
         __ubuf__ uint64_t *ub_buff = (__ubuf__ uint64_t *)get_imm(0);
         Collectives::Init();
 
         this->tableNum = tableNum;
-        this->updateTables[0] = table_a;
-        this->updateTables[1] = table_b;
-        this->updateTables[2] = table_c;
-        this->updateTables[3] = table_d;
-        this->updateTables[4] = table_e;
-        this->updateTables[5] = table_f;
+        this->updateTables[0] = table_a; //第0个表
+        this->updateTables[1] = table_b; //第1个表
+        this->updateTables[2] = table_c; //第2个表
+        this->updateTables[3] = table_d; //第3个表
+        this->updateTables[4] = table_e; //第4个表
+        this->updateTables[5] = table_f; //第5个表
         this->swapInIndex = swapInIndex;
         this->swapOutIndex = swapOutIndex;
         this->swapInLen = swapInLen;
         this->swapOutLen = dimValue[0];
-        //共享内存
         this->svmBuffSwapIn = svmBuffSwapIn;
         this->svmBuffSwapOut = svmBuffSwapOut;
         this->usrWorkspace = usrWorkspace;
@@ -77,19 +73,15 @@ public:
         dataHeadSwapOut.totalLen = totalLength + RMA_SHM_DATA_HEAD;
         dataHeadSwapOut.dataLen = totalLength;
         dataHeadSwapOut.readyLen = 0;
-        //换入的flag
         swapFlagSwapIn = usrWorkspace + SWAP_IN_FLAG_OFFSET;
-        //换出的flag
         swapFlagSwapOut = usrWorkspace + SWAP_OUT_FLAG_OFFSET;
 
-        processBlockNum = blockNum / 2;
+        processBlockNum = blockNum / SPLIT_NUM;
         processBlockIdx = blockIdx % processBlockNum;
-
         GetQueHead();
         cacheCapacity = SWAP_CACHE_SIZE / embDim;
         cacheFront = 0;
         cacheRear = 0;
-
         SyncPreprocess();
     }
 
@@ -100,14 +92,12 @@ public:
             SyncPostprocess();
             return;
         }
-        //如果是换出的核
         if (blockIdx < processBlockNum) {   // swap out
             if (processBlockIdx == 0) {
                 OutfeedEnqueue();
             } else {
                 LookUpTable();
             }
-        //如果是换入的核
         } else {                            // swap in
             if (processBlockIdx < GET_NEXT_THREAD_NUM) {
                 GetNextMultiThreads();
@@ -117,8 +107,8 @@ public:
         }
         SyncPostprocess();
     }
+
 private:
-    //判断队列是不是已经满了，满了返回true
     __aicore__ inline bool Full(uint64_t dataSize)
     {
         dataSize += RMA_SHM_DATA_HEAD;
@@ -143,37 +133,30 @@ private:
         __ubuf__ uint64_t *ub_buff = (__ubuf__ uint64_t *)get_imm(0);
         SetFlag(ub_buff, (__gm__ uint64_t *)output + blockIdx, 0);
         uint64_t times = 0;
-        //换出队列，24个核
         if (blockIdx < processBlockNum) {
-            do {
+            for (; times <= TIME_OUT; ++times) {
                 ReadHeader(svmBuffSwapOut);
                 if (!Full(dataHeadSwapOut.dataLen)) {
-                    break;
-                }
-                if (++times > TIME_OUT) {
-                    SetFlag(ub_buff, (__gm__ uint64_t *)output + blockIdx, RMA_QUEUE_TIME_OUT);
+                    dataHeadSwapOut.sequence = queueHeader.seqIn + 1;
+                    embSwapCache = usrWorkspace + SWAP_OUT_CACHE_OFFSET;
                     return;
                 }
-            } while(true);
-            dataHeadSwapOut.sequence = queueHeader.seqIn + 1;
-            embSwapCache = usrWorkspace + SWAP_OUT_CACHE_OFFSET;
-        //换入队列，24个核
+            }
+            SetFlag(ub_buff, (__gm__ uint64_t *)output + blockIdx, RMA_QUEUE_TIME_OUT);
+            return;
         } else {
-            //循环，直到能从队列中获得H2D的数据
-            do {
+            for (; times <= TIME_OUT; ++times) {
                 ReadHeader(svmBuffSwapIn);
                 if ((queueHeader.seqIn - queueHeader.seqOut) > 0) {
-                    break;
-                }
-                if (++times > TIME_OUT) {
-                    SetFlag(ub_buff, (__gm__ uint64_t *)output + blockIdx, RMA_QUEUE_TIME_OUT);
+                    embSwapCache = usrWorkspace + SWAP_IN_CACHE_OFFSET;
                     return;
                 }
-            } while (true);
-            embSwapCache = usrWorkspace + SWAP_IN_CACHE_OFFSET;
+            }
+            SetFlag(ub_buff, (__gm__ uint64_t *)output + blockIdx, RMA_QUEUE_TIME_OUT);
+            return;
         }
     }
-    //23个核处理换出
+
     __aicore__ inline void LookUpTable()
     {
         __ubuf__ uint64_t *ub_buff = (__ubuf__ uint64_t *)get_imm(0);
@@ -181,12 +164,11 @@ private:
         __gm__ uint64_t *outfeed_count = (__gm__ uint64_t *)swapFlagSwapOut;
         __gm__ uint64_t *lookup_flag = (__gm__ uint64_t *)swapFlagSwapOut + processBlockIdx * FLAG_UNIT_INT_NUM;
         uint64_t outfeedCount = 0;
-        uint64_t visitedIdx = processBlockIdx - 1; // 最开始每个核处理key的索引，
-        const uint64_t stride = processBlockNum - 1;  //下面的循环，每次23个核并发处理key的emb
+        uint64_t visitedIdx = processBlockIdx - 1;
+        const uint64_t stride = processBlockNum - 1;
         cacheRear = visitedIdx % cacheCapacity;
         uint64_t loopCount = 0;
         while (visitedIdx < swapOutLen) {
-            //判断23个核向换出缓存中写入的emb是不是已经堆满缓存了，如果堆满了，就循环获得outfeedCount，直到有缓存
             if (visitedIdx + 1 - outfeedCount >= cacheCapacity - 1) {    // cache is full
                 outfeedCount = GetFlag2(ub_buff, outfeed_count);
                 continue;
@@ -198,7 +180,7 @@ private:
             }
             cacheRear = (cacheRear + stride) % cacheCapacity;
             visitedIdx += stride;
-            if (loopCount % 8 == 0 || visitedIdx + 1 - outfeedCount >= cacheCapacity - 1) {
+            if (loopCount % LOOP_CHECK == 0 || visitedIdx + 1 - outfeedCount >= cacheCapacity - 1) {
                 SetFlag(ub_buff, lookup_flag, visitedIdx);
             }
             loopCount++;
@@ -206,7 +188,6 @@ private:
         SetFlag(ub_buff, lookup_flag, visitedIdx);
     }
 
-    //第0个换出核处理
     __aicore__ inline void OutfeedEnqueue()
     {
         __ubuf__ uint64_t *ub_buff = (__ubuf__ uint64_t *)get_imm(RMA_UB_B8_BUFF_OFFSET);
@@ -218,8 +199,6 @@ private:
         GM_ADDR svmDataBuff;
         __gm__ uint64_t *svmReadyCount;
 
-        // generating data header information
-        //更新换出的数据head到ub里面
         __ubuf__ RmaShmDataHead *ub_datahead_buff = (__ubuf__ RmaShmDataHead *)get_imm(0);
         ub_datahead_buff->totalLen = dataHeadSwapOut.totalLen;
         ub_datahead_buff->sequence = dataHeadSwapOut.sequence;
@@ -275,7 +254,7 @@ private:
                   svmDataBuff + swapOutCount * embDim, embSwapCache + cacheFront * embDim);
             cacheFront = (cacheFront + copyCount) % cacheCapacity;
             swapOutCount += copyCount;
-            if (loopCount % 4 == 0 || lookUpCount <= swapOutCount) {
+            if (loopCount % OUTFEED_CHECK == 0 || lookUpCount <= swapOutCount) {
                 SetFlag(ub_buff, outfeed_count, swapOutCount);
             }
             loopCount++;
@@ -324,7 +303,7 @@ private:
             }
             visitedIdx += stride;
             cacheFront = visitedIdx % cacheCapacity;
-            if (loopCount % 8 == 0 || getnextCount <= visitedIdx) {
+            if (loopCount % LOOP_CHECK == 0 || getnextCount <= visitedIdx) {
                 SetFlag(ub_buff, update_flag, visitedIdx);
             }
             loopCount++;
@@ -348,7 +327,6 @@ private:
             frontOffset = RMA_SHM_HEAD_LEN;
             updataBuffLimit = true;
         }
-        //拷贝共享内存一个batch的数据头到UB里面
         CpGM2UB<uint8_t>((__ubuf__ uint8_t *)ub_datahead_buff, svmBuffSwapIn + frontOffset, RMA_SHM_DATA_HEAD);
         const uint64_t sizeOfTotalData = ub_datahead_buff->totalLen;
         const uint64_t sizeOfData = ub_datahead_buff->dataLen;
@@ -366,24 +344,19 @@ private:
         if (sizeOfData > 0) {
             uint64_t updateCount = 0;   // emb count
             uint64_t readyLen = 0;      // Byte
-            //当前核拷贝的偏移地址
             uint64_t copyOffset = processBlockIdx * pipeBlockSize;  // Byte
-            //当前核写入缓存的最新位置
             uint64_t getnextCount = copyOffset / embDim;            // emb count
             cacheRear = (copyOffset / embDim) % cacheCapacity;
             while (copyOffset < sizeOfData) {
                 if ((readyLen < sizeOfData && readyLen < copyOffset + pipeBlockSize) ||
                             (getnextCount >= updateCount && getnextCount - updateCount > cacheCapacity)) {
-                    //获得准备好的数据长度
                     if (readyLen < sizeOfData) {
                         readyLen = GetFlag2(ub_buff, ready_len);
                     }
-                    //读取缓存的最新偏移位置
                     updateCount = GetMinFlag(ub_buff, updateFlags, processBlockNum - GET_NEXT_THREAD_NUM);
                     cacheFront = updateCount % cacheCapacity;
                     continue;
                 }
-                //拷贝的数据量大小
                 uint64_t copySize = (copyOffset + pipeBlockSize <= sizeOfData) ?
                                                                 pipeBlockSize : (sizeOfData - copyOffset);
                 uint64_t cacheSize = 0;
@@ -398,9 +371,7 @@ private:
                 }
 
                 copySize = (copySize > cacheSize) ? cacheSize : copySize;
-                //共享内存向缓存拷贝数据，每次拷贝copySize个
                 gm2gm(copySize, ub_data_buff, embSwapCache + cacheRear * embDim, svmDataBuff + copyOffset);
-                //更新偏移的位置
                 if (copyOffset + stride >= sizeOfData) {
                     copyOffset = sizeOfData;
                 } else {
@@ -412,13 +383,12 @@ private:
             }
             SetFlag(ub_buff, getnext_count, getnextCount);
         }
-        //用0核来更新数据头的信息
+
         if (processBlockIdx == 0) {
             __gm__ uint64_t *getnextFlags[MAX_BLOCK_NUM];
             for (int i = 1; i < GET_NEXT_THREAD_NUM; ++i) {
                 getnextFlags[i - 1] = (__gm__ uint64_t *)swapFlagSwapIn + i * FLAG_UNIT_INT_NUM;
             }
-            //保证所有的换入数据都已经从共享内存拷贝到缓存里面，才更新数据头信息
             uint64_t minGetnext = 0;
             while (minGetnext < swapInLen) {
                 minGetnext = GetMinFlag(ub_buff, getnextFlags, GET_NEXT_THREAD_NUM - 1);
@@ -428,7 +398,6 @@ private:
                 *ub_buff = 0;
                 CpUB2GM<uint64_t>(buffLimitSwapIn, ub_buff, sizeof(uint64_t));
             }
-
             // update front offset
             *ub_buff = frontOffset + sizeOfTotalData;
             CpUB2GM<uint64_t>(frontSwapIn, ub_buff, sizeof(uint64_t));
@@ -441,21 +410,13 @@ private:
     __aicore__ inline void ReadHeader(GM_ADDR svm_buff)
     {
         __ubuf__ RmaShmHeader *ub_buff = (__ubuf__ RmaShmHeader *)get_imm(0);
-        //拷贝共享内存里面队列头到UB里面
         CpGM2UB<RmaShmHeader>(ub_buff, (__gm__ RmaShmHeader *)svm_buff, sizeof(RmaShmHeader));
-        //队列深度
         queueHeader.queueCapacity = ub_buff->queueCapacity;
-        //共享内存大小
         queueHeader.totalMemSize = ub_buff->totalMemSize;
-        //最新写入的seq
         queueHeader.seqIn = ub_buff->seqIn;
-        //最新读取的seq
         queueHeader.seqOut = ub_buff->seqOut;
-        //可访问的内存地址偏移量
         queueHeader.frontOffset = ub_buff->frontOffset;
-        //可写入数据的地址偏移量
         queueHeader.tailOffset = ub_buff->tailOffset;
-        //队列尾部无法写入数据的偏移，标识队列需要返回到头部进行写入
         queueHeader.buffLimit = ub_buff->buffLimit;
 
         pipe_barrier(PIPE_ALL);
@@ -480,10 +441,8 @@ private:
     {
         __ubuf__ uint64_t *ub_buff = (__ubuf__ uint64_t *)get_imm(0);
         __gm__ uint64_t *syncAllFlag = (__gm__ uint64_t *)swapFlagSwapIn + MAX_BLOCK_NUM * FLAG_UNIT_INT_NUM;
-        //0核会进行初始化48*2个空间，并设置同步flag，
         if (blockIdx == 0) {
             ClearFlag();
-            //设置同步flag为RMA_PRE_SYNC
             SetFlag(ub_buff, syncAllFlag, RMA_PRE_SYNC);
         } else {
             CheckFlag(ub_buff, syncAllFlag, RMA_PRE_SYNC);
@@ -505,7 +464,6 @@ private:
     }
 
 private:
-    //队列头
     RmaShmHeader queueHeader;
     RmaShmDataHead dataHeadSwapOut;
     GM_ADDR updateTables[MAX_TABLE_NUM];
