@@ -27,6 +27,8 @@ namespace MxRec {
         const char *const GLOG_STDERR_THRESHOLD = "GLOG_stderrthreshold";
         const char *const USE_COMBINE_FAAE = "USE_COMBINE_FAAE";
         const char *const RECORD_KEY_COUNT = "RECORD_KEY_COUNT";
+        const char *const USE_SHM_SWAP = "USE_SHM_SWAP";
+        const char *const HUGE_TLB_ENABLE = "HUGE_TLB_ENABLE";
         const char *const SSD_SAVE_COMPACT_LEVEL = "SSD_SAVE_COMPACT_LEVEL";
     };
 
@@ -40,6 +42,8 @@ namespace MxRec {
         static int glogStderrthreshold;
         static bool useCombineFaae;
         static bool recordKeyCount;
+        static bool useShmSwap;
+        static bool hugeTlbEnable;
         static int ssdSaveCompactLevel;
     };
 

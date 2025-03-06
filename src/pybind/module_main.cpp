@@ -19,6 +19,7 @@ See the License for the specific language governing permissions and
 
 #include "lcal_comm.h"
 #include "hybrid_mgmt/hybrid_mgmt.h"
+#include "hd_transfer/rma_shm_svm.h"
 
 namespace py = pybind11;
 using namespace MxRec;
@@ -94,6 +95,8 @@ vector<int64_t> GetPeerMem(int32_t rankId, int deviceId, int rankSize)
 PYBIND11_MODULE(mxrec_pybind, m)
 {
     m.def("get_peer_mem", &GetPeerMem, py::arg("rank_id"), py::arg("device_id"), py::arg("rank_size"));
+
+    m.def("get_shm_mem", &GetShmAddr, py::arg("name"), py::arg("rankId"), py::arg("capacity"));
 
     m.def("get_ub_hot_size", &GetUBHotSize, py::arg("device_id"));
 

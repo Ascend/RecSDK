@@ -28,6 +28,7 @@ See the License for the specific language governing permissions and
 #include "absl/container/flat_hash_map.h"
 #include "emb_table/embedding_table.h"
 #include "hd_transfer/hd_transfer.h"
+#include "hd_transfer/rma_shm_svm.h"
 #include "hybrid_mgmt_block.h"
 #include "l3_storage/cache_manager.h"
 #include "ock_ctr_common/include/embedding_cache.h"
@@ -275,6 +276,10 @@ GTEST_PRIVATE:
     bool EmbeddingLookUpDDR(const EmbTaskInfo& info, vector<Tensor>& h2dEmb);
 
     void EmbeddingSendDDR(const EmbTaskInfo& info, vector<Tensor>& h2dEmb);
+
+    bool EmbeddingBuildAndSendDDR(const EmbTaskInfo& info, float*& h2dEmb, std::array<int64_t, RMA_DIM_MAX>& dims);
+
+    bool BuildAndSendH2DEmbedding(const EmbTaskInfo& info, float*& h2dEmb, std::array<int64_t, RMA_DIM_MAX>& dims);
 
     bool EmbeddingReceiveL3Storage(const EmbTaskInfo& info, float*& ptr, vector<float*>& swapOutAddrs, int64_t& dims0);
 

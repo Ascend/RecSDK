@@ -73,7 +73,8 @@ std::string Error::ModAsString() const noexcept
         {ModuleName::M_ACL, "AscendCL"},
         {ModuleName::M_HYBRID_MGMT_BLOCK, "HybridMgmtBlock"},
         {ModuleName::M_FEATURE_ADMIT_AND_EVICT, "FeatureAdmitAndEvict"},
-        {ModuleName::M_DATASET_OPS, "DatasetOps"}
+        {ModuleName::M_DATASET_OPS, "DatasetOps"},
+        {ModuleName::M_RMA_SHM_SVM, "RmaShmSvm"}
     };
 
     auto it = moduleNameMap.find(this->mod_);

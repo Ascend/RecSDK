@@ -290,9 +290,11 @@ if __name__ == "__main__":
 
     use_dynamic = bool(int(os.getenv("USE_DYNAMIC", 0)))
     use_lccl = bool(int(os.getenv("USE_LCCL", 0)))
+    use_shm_swap = bool(int(os.getenv("USE_SHM_SWAP", 0)))
     logger.info(f"USE_DYNAMIC: {use_dynamic}")
     init(train_steps=train_steps, eval_steps=eval_steps,
-         use_dynamic=use_dynamic, use_dynamic_expansion=use_dynamic_expansion, use_lccl=use_lccl)
+         use_dynamic=use_dynamic, use_dynamic_expansion=use_dynamic_expansion,
+         use_lccl=use_lccl, use_shm_swap=use_shm_swap)
     IF_LOAD = False
     rank_id = mxrec_util.communication.hccl_ops.get_rank_id()
     filelist = glob("./saved-model/sparse-model-0")
@@ -392,7 +394,7 @@ if __name__ == "__main__":
         hook_evict = EvictHook(evict_enable=True, evict_time_interval=120)
         hook_list.append(hook_evict)
         if MODIFY_GRAPH_FLAG:  # 该场景添加hook处理校验问题
-            hook_list.append(GraphModifierHook(modify_graph=False))
+            hook_list.append(GraphModifierHook(modify_graph=False, use_shm_swap=use_shm_swap))
 
     if use_faae:
         sess = tf.compat.v1.train.MonitoredTrainingSession(
