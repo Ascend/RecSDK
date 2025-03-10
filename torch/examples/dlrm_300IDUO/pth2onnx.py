@@ -32,7 +32,7 @@ import torch
 
 def main(argv):
     torch.manual_seed(FLAGS.seed)
-    torch.npu.set_compile_mode(jit_mode=False)
+    torch.npu.set_compile_mode(jit_compile=False)
 
     use_gpu = "cpu" not in FLAGS.base_device.lower()
     rank, world_size, gpu = dist.init_distributed(backed=FLAGS.backend, use_gpu=use_gpu)

@@ -39,15 +39,15 @@ ${image_name} \
 | [dllogger](https://github.com/NVIDIA/dllogger) | 1.0.0 |
 | tqdm | 4.66.5 |
 | torch_npu | 2.1.0.post10 |
-| [Apex Patch](https://gitee.com/luweizheng/ascend-apex) | 0.1+ascend |
+| [Apex Patch](https://gitee.com/ascend/apex.git) | 0.1+ascend |
 
 ## 设置环境变量
 `source /usr/local/Ascend/ascend-toolkit/set_env.sh`
 
 ## 适配
-1. dlrm/cuda_ext/dot_based_interact.py
+1. dlrm/cuda_ext/dot_based_interact.py  
 删除19-22行
-2. dlrm/cuda_ext/fused_gather_embedding.py
+2. dlrm/cuda_ext/fused_gather_embedding.py   
 删除23行，添加如下代码
 ```python
 import torch_npu
@@ -67,7 +67,7 @@ else:
 ```
 原31行替换成`output = fused_embedding_fwd(embedding, indices, offsets, amp_train)`
 
-3. dlrm/cuda_ext/sparse_embedding.py
+3. dlrm/cuda_ext/sparse_embedding.py  
 删除19行，69行替换成如下
 ```python
 if hasattr(torch, "npu"):
@@ -77,7 +77,7 @@ if hasattr(torch, "npu"):
 else:
     embedding_gather = EmbeddingGatherFunction.apply
 ```
-4. dlrm/model/distributed.py(分布式需要用到，若不使用分布式可忽略)
+4. dlrm/model/distributed.py(分布式需要用到，若不使用分布式可忽略)  
 64-68行替换成如下
 ```python
         gathered_outputs = [torch.empty(
@@ -93,10 +93,10 @@ else:
             bottom_output_buffer.append(split_tensors[rank])
 ```
 
-5. dlrm/nn/factories.py
-删除22行的CppMlp
-添加import torch
-27行修改成`return TorchMlp(input_dim, sizes)`
+5. dlrm/nn/factories.py  
+删除22行的CppMlp  
+添加import torch  
+27行修改成`return TorchMlp(input_dim, sizes)`  
 58-60替换成
 ```python
         if hasattr(torch, "npu"):
@@ -106,11 +106,11 @@ else:
                 DotInteraction(embedding_num, embedding_dim)
             )
 ```
-6. /dlrm/nn/mlps.py
+6. /dlrm/nn/mlps.py  
 删除18、23-44、117-140行
-7. /dlrm/nn/parts.py
+7. /dlrm/nn/parts.py  
 删除59行
-8. 添加文件/dlrm/scripts/caculate_loss_auc.py(不在推理阶段进行AUC和loss计算，单独脚本计算)
+8. 添加文件/dlrm/scripts/caculate_loss_auc.py(不在推理阶段进行AUC和loss计算，单独脚本计算)  
 内容详见caculate_loss_auc.py
 9. dlrm/scripts/main.py
 添加
@@ -127,7 +127,7 @@ validate_flags函数添加如下判断
             print('WARNING: Automatic mixed precision not supported on NPU')
             FLAGS.amp = False
 ```
-原389行即main函数一开始，添加一行`torch.npu.set_compile_mode(jit_compile=False)`
+原389行即main函数一开始，添加一行`torch.npu.set_compile_mode(jit_compile=False)`  
 原468-471行修改成
 ```python
     if hasattr(torch, "npu"):
@@ -152,13 +152,13 @@ validate_flags函数添加如下判断
             total_devices = 1
         auc, valid_loss = dist_evaluate(model, data_loader_test, device_id, total_devices)
 ```
-原733行修改成`def dist_evaluate(model, data_loader, device_id=0, total_devices=1):`
-原755行修改成`    steps_per_epoch = len(data_loader)//total_devices + int(bool(len(data_loader) % total_devices > device_id))`
+原733行修改成`def dist_evaluate(model, data_loader, device_id=0, total_devices=1):`  
+原755行修改成`    steps_per_epoch = len(data_loader)//total_devices + int(bool(len(data_loader) % total_devices > device_id))`  
 原772-773行修改成
 ```python
         for step in range(len(data_loader)//total_devices + int(bool(len(data_loader) % total_devices > device_id))):
             try:
-                for i in range(device_id):
+                for i in range(total_devices):
                     if i == device_id:
                         numerical_features, categorical_features, click = next(batch_iter)
                     else:
@@ -173,7 +173,7 @@ validate_flags函数添加如下判断
         if not os.path.exists('output'):
             os.makedirs('output')
         
-        np.save(f'output/output_click_{device_id}.pt', output_click)
+        torch.save(output_click, f'output/output_click_{device_id}.pt')
 
         if world_size > 1:
             torch.distributed.barrier()
@@ -184,21 +184,21 @@ validate_flags函数添加如下判断
 ```
 10. 添加文件dlrm/scripts/test_main.py(替代分布式，用多进程开启多个芯片跑数据)
 文件内容详见test_main.py
-11. dlrm/preproc/run_spark_cpu.sh
-将64行改成 export MASTER=local[1]
+11. dlrm/preproc/run_spark_cpu.sh  
+将64行改成 export MASTER=local[1]   
 这一步是在CPU使用spark处理数据时可能需要的步骤
 
-12. dlrm/data/factories.py
+12. dlrm/data/factories.py  
 若启动在线推理且不准备train数据，则需要将105-112注释，且123行改成`return None dataset_test`
 
-13. dlrm/scripts/generate_data_for_om.py
-创建新文件，文件内容详见generate_data_for_om.ppy
+13. dlrm/scripts/generate_data_for_om.py  
+创建新文件，文件内容详见generate_data_for_om.py  
 该文件为生成离线推理数据脚本
 
 14. dlrm/scripts/pth2onnx.py
 新建该文件，文件内容详见pth2onnx.py
 
-## 数据预处理
+## 数据预处理（CPU处理）
 需安装spark及相关依赖
 | 名称 | 版本 |
 | ----- | ----- |
@@ -206,15 +206,18 @@ validate_flags函数添加如下判断
 | java | 1.8.0 |
 | scala | 2.13.0 |
 ### 相关适配
-1. bind.sh
-75行需要修改成npu数量
-98-101行需要根据lscpu数量决定，不能让num_gpus小于num_nodes
+1. bind.sh  
+75行需要修改成npu数量  
+98-101行需要根据lscpu数量决定，不能让num_gpus小于num_nodes  
 启动命令
 ```bash
 cd dlrm/preproc
 bash prepare_dataset.sh 15 CPU Spark
 ```
 预估需要一天时间处理数据
+2. 需要设置spark/sbin文件夹路径到系统环境变量中  
+3. 需要设置环境变量`export DGX_VERSION=DGX-2`  
+4. 也可以基于原生提供的GPU处理方式处理数据
 
 ## 启动命令
 ### 在线推理
@@ -223,22 +226,59 @@ bash prepare_dataset.sh 15 CPU Spark
 cd /workspace/DeepLeaningExamples/PyTorch/Recommendation/DLRM
 python3 dlrm/scripts/main.py --mode test --dataset /your/path/to/data --load_checkpoint_path /your/path/to/checkpoint --base_device npu --test_batch_size 65000
 ```
+- --mode: 指定运行模式为测试模式。可选train/test/inference_benchmark，推理阶段选择test。
+- --dataset: 数据集路径。
+- --load_checkpoint_path: 加载checkpoint路径
+- --base_device: 指定基础设备为NPU。可选gpu/npu/cpu。
+- --test_batch_size: 测试批处理大小。
+更多参数可参考原生main.py里的参数详解
 多芯片
 ```bash
-python3 dlrm/scripts/test_main.py --args "--mode test --dataset /your/path/to/data --load_checkpoint_path /your/path/to/checkpoint --base_device npu --embedding_type joint --test_batch_size 40000 --total_devices=2"
+python3 dlrm/scripts/test_main.py --args "--mode test --dataset /your/path/to/data --load_checkpoint_path /your/path/to/checkpoint --base_device npu --test_batch_size 65000 --total_devices=2"
 ```
+- --args: 参数字符串
+- --mode: 指定运行模式为测试模式。可选train/test/inference_benchmark，推理阶段选择test。
+- --dataset: 数据集路径。
+- --load_checkpoint_path: 加载checkpoint路径
+- --base_device: 指定基础设备为NPU。可选gpu/npu/cpu。
+- --test_batch_size: 测试批处理大小。
+- --total_devices: 使用的设备总数。
+更多参数可参考原生main.py里的参数详解
+#### auc计算
+```bash
+python3 dlrm/scripts/caculate_loss_auc.py --path /your/path/to/output_click.pt
+```
+- --path 在线推理输出的output_click.pt文件
 ### 离线推理
 1. 先生成onnx文件
 `python dlrm/scripts/pth2onnx.py --mode test --dataset /your/path/to/data --load_checkpoint_path /your/path/to/checkpoint --base_device npu --test_batch_size 65000`
+- --mode: 指定运行模式为测试模式。可选train/test/inference_benchmark。
+- --dataset: 数据集路径。
+- --load_checkpoint_path: 加载checkpoint路径
+- --base_device: 指定基础设备为NPU。可选GPU/NPU/CPU。
+- --test_batch_size: 测试批处理大小。
+更多参数可参考原生main.py里的参数详解
 2. onnx转om
 由于pytorch1.10之后的特性，onnx文件会被分割成多个文件，转om时只需要加载onnx单个文件即可，其他文件atc会自动加载
 `atc --model output/dlrm.onnx --framework=5 --input_shape="numerical_features:65000,13;categorical_features:65000,26" --soc_version=Ascend310P3 --output=dlrm_output`
+- --model 模型输出地址
+- --framework 原始网络模型框架类型，5代表ONNX
+- --input_shape 模型输入数据的shape
+- --soc_version 模型转换时指定芯片版本
+更多参数可参考： https://www.hiascend.com/document/detail/zh/canncommercial/800/devaids/devtools/atc/atlasatc_16_0039.html
 3. 生成离线推理数据
-`python dlrm/scripts/generate_data_for_om.py --mode test --dataset /your/path/to/data --base_device cpu --base_device npu --test_batch_size 65000`
+`python dlrm/scripts/generate_data_for_om.py --mode test --dataset /your/path/to/data --base_device cpu --test_batch_size 65000 --output_dir ./`
+- --mode: 指定运行模式为测试模式。可选train/test/inference_benchmark。
+- --dataset: 数据集路径。
+- --base_device: 指定基础设备为NPU。可选gpu/npu/cpu。
+- --test_batch_size: 测试批处理大小。
+- --output_dir: 输出文件夹地址，默认当前路径下
+更多参数可参考原生main.py里的参数详解
 4. 离线推理
 `python -m ais_bench --model path/to/om --input "path/to/numerical_features,path/to/categorical_features" --output path/to/output`
-
+- --model 模型地址
+- --input generate_data_for_om.py生成的数据文件路径
+- --output 推理输出文件地址
+更多参数可参考：https://www.hiascend.com/document/detail/zh/Atlas%20300I%20Duo%20Inference%20Card/Atlas%20300I%20Duo%20Inference%20Card/apn_032.html
 ## note
 - main.py的step time含义：单step消耗时间
-
-  

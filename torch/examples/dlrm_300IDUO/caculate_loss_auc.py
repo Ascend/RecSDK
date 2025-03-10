@@ -36,7 +36,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(level
 def caculate(argv):
     path = FLAGS.path
     output_click_lst = torch.load(path)
-    for i, output_click in enumerate(output_click_lst):
+    for i, output_click in enumerate(zip(*output_click_lst)):
         y_true, y_score = output_click
         y_score = torch.sigmoid(y_score).float()
         auc = utils.roc_auc_score(y_true, y_score)

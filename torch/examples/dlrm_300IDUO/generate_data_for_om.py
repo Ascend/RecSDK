@@ -29,7 +29,7 @@ from dlrm.utils.distributed import get_device_mapping
 import torch
 
 
-flags.DEFINE_string("output_dir", None, "Output directory for test mode")
+flags.DEFINE_string("output_dir", "./", "Output directory for test mode")
 
 
 def load_feature_spec():
@@ -63,7 +63,7 @@ def main(argv):
     data_stream = torch.cuda.Stream()
     batch_iter = prefetcher(iter(dataloader), data_stream)
 
-    for count, step in enumerate(batch_iter):
+    for count, step in enumerate(dataloader):
         numerical_features, categorical_features, click = next(batch_iter)
         torch.cuda.synchronize()
 
