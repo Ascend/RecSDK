@@ -242,7 +242,7 @@ size_t HDTransfer::RecvByShm(RmaShmHeader* queueHeader, float*& ptr, int64_t& di
 size_t HDTransfer::RecvMteShm(string& name, float*& ptr, int64_t& dim0, int batchId)
 {
     size_t ret = 0;
-    string recvName = StringFormat("%s_%d", name, localDeviceId);
+    string recvName = name + "_" + std::to_string(localDeviceId);
     LOG_DEBUG("Start receive, channelName:{}, batchId:{}.", recvName, batchId);
     TimeCost tc = TimeCost();
 

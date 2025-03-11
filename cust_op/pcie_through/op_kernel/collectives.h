@@ -32,7 +32,9 @@ public:
     __attribute__((always_inline)) inline __aicore__ void gm2ub(__ubuf__ uint8_t* ub_addr, __gm__ uint8_t* gm_addr,
     size_t data_size)
     {
+#ifndef __GET_CODE_CHANNEL__
         copy_gm_to_ubuf_align_b16(ub_addr, gm_addr, 0, 1, data_size, 0, 0, 0, 0);
+#endif
         set_flag(PIPE_MTE2, PIPE_MTE3, EVENT_ID0);
         wait_flag(PIPE_MTE2, PIPE_MTE3, EVENT_ID0);
     }
@@ -40,7 +42,9 @@ public:
     __attribute__((always_inline)) inline __aicore__ void ub2gm(__gm__ uint8_t* gm_addr, __ubuf__ uint8_t* ub_addr,
     size_t data_size)
     {
+#ifndef __GET_CODE_CHANNEL__
         copy_ubuf_to_gm_align_b16(gm_addr, ub_addr, 0, 1, data_size, 0, 0, 0, 0);
+#endif
         set_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID1);
         wait_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID1);
     }

@@ -1640,8 +1640,8 @@ bool HybridMgmt::EmbeddingReceiveDDR(const EmbTaskInfo& info, float*& ptr, vecto
     int64_t dim0 = 0;
     size_t size = 0;
     if (GlobalEnv::useShmSwap) {
-        string recvName = StringFormat("%s_%s_%d", info.name.c_str(), TransferChannel2Str(TransferChannel::D2H).c_str(),
-                                       info.channelId);
+        string recvName = info.name + "_" + TransferChannel2Str(TransferChannel::D2H) + "_" +
+                          std::to_string(info.channelId);
         size = hdTransfer->RecvMteShm(recvName, ptr, dim0, info.batchId);
     } else {
         size = hdTransfer->RecvAcl(TransferChannel::D2H, info.channelId, info.name, info.threadIdx, info.batchId);
