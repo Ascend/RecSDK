@@ -27,7 +27,7 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string("path", None, "Path to the model")
 
 
-loss_fn = torch.nn.BCEWithLogitsLoss(reduction="mean")
+loss_fn = torch.nn.BCELoss(reduction="mean")
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
