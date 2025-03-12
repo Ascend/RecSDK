@@ -50,14 +50,14 @@ namespace optiling {
             return ge::GRAPH_FAILED;
         }
         auto tableNumAttr = attrs->GetInt(0);
-        int tableNum = (*tableNumAttr);
+        int tableNum = (int)(*tableNumAttr);
         if (tableNum <= 0) {
             LOG_ERROR("Table num: %d is invalid.", tableNum);
             return ge::GRAPH_FAILED;
         }
         tiling.set_tableNum(tableNum);
         auto gmemAttrIn = attrs->GetStr(1);
-        int32_t *shmSwapIn = static_cast<int32_t*>(std::stoul(gmemAttrIn));
+        int32_t *shmSwapIn = (int32_t*)(std::stoul(gmemAttrIn));
         if (shmSwapIn == nullptr) {
             LOG_ERROR("Table get shmSwapIn is null");
             return ge::GRAPH_FAILED;
