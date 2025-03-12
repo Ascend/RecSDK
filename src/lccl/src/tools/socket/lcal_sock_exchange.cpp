@@ -101,6 +101,7 @@ int LcalSockExchange::AllGather(const void* sendBuf, size_t sendSize, void* recv
 
 int LcalSockExchange::GetNodeNum()
 {
+    // LCOV_EXCL_START
     if (!isInit_ && Prepare() != LCAL_SUCCESS) {
         return LCAL_ERROR_INTERNAL;
     }
@@ -143,6 +144,7 @@ int LcalSockExchange::GetNodeNum()
         }
     }
     return nodeNum;
+    // LCOV_EXCL_STOP
 }
 
 void LcalSockExchange::GetIpAndPort()

@@ -14,10 +14,14 @@ See the License for the specific language governing permissions and
 ==============================================================================*/
 
 #include <fstream>
-#include <gtest/gtest.h>
+#include <stdexcept>
+
 #include <mpi.h>
+#include <emock/emock.hpp>
+#include <gtest/gtest.h>
 
 #include "utils/common.h"
+#include "utils/error.h"
 #include "ssd_engine/file.h"
 
 using namespace std;
@@ -34,7 +38,7 @@ TEST(File, CreateEmptyFile)
     bool isExceptionThrown = false;
     try {
         auto f = make_shared<File>(0, fileDir);
-    } catch (runtime_error &e) {
+    } catch (runtime_error& e) {
         isExceptionThrown = true;
         LOG_ERROR(e.what());
     }
@@ -60,8 +64,8 @@ TEST(File, LoadFromFile)
 
     fstream localFileMeta;
     localFileMeta.open(fileDir + "/0.meta.0", ios::out | ios::trunc | ios::binary);
-    localFileMeta.write(reinterpret_cast<char const *>(&key), sizeof(key));
-    localFileMeta.write(reinterpret_cast<char const *>(&offset), sizeof(offset));
+    localFileMeta.write(reinterpret_cast<char const*>(&key), sizeof(key));
+    localFileMeta.write(reinterpret_cast<char const*>(&offset), sizeof(offset));
     localFileMeta.flush();
     if (localFileMeta.fail()) {
         throw runtime_error("fail to prepare meta file");
@@ -71,8 +75,8 @@ TEST(File, LoadFromFile)
     fstream localFileData;
     localFileData.open(fileDir + "/0.data.0", ios::out | ios::trunc | ios::binary);
     uint64_t embSize = val.size();
-    localFileData.write(reinterpret_cast<char const *>(&embSize), sizeof(embSize));
-    localFileData.write(reinterpret_cast<char const *>(val.data()), val.size() * sizeof(float));
+    localFileData.write(reinterpret_cast<char const*>(&embSize), sizeof(embSize));
+    localFileData.write(reinterpret_cast<char const*>(val.data()), val.size() * sizeof(float));
     localFileData.flush();
     if (localFileData.fail()) {
         throw runtime_error("fail to prepare data file");
@@ -84,7 +88,7 @@ TEST(File, LoadFromFile)
     string loadDir = fileDir;  // for test convenience
     try {
         auto f = make_shared<File>(0, fileDir, loadDir, 0);
-    } catch (runtime_error &e) {
+    } catch (runtime_error& e) {
         LOG_ERROR(e.what());
         isExceptionThrown = true;
     }
@@ -112,7 +116,6 @@ TEST(File, WriteAndRead)
     f->InsertEmbeddings(keys, embeddings);
     auto ret = f->FetchEmbeddings(keys);
     ASSERT_EQ(embeddings, ret);
-
 
     f->DeleteEmbedding(0);
     ASSERT_EQ(f->IsKeyExist(0), false);
@@ -171,12 +174,10 @@ TEST(File, WriteByAddrAndRead)
         }
     }
 
-    for (auto emb : embeddings)
-    {
+    for (auto emb : embeddings) {
         delete emb;
         emb = nullptr;
     }
-    
 
     fs::remove_all(savePath);
 }
@@ -191,9 +192,9 @@ TEST(File, SaveAndLoadForIncrementalCkpt)
     string fileDir = GlogConfig::gRankId;
     auto fTmp = make_shared<File>(0, fileDir);
 
-    vector<emb_cache_key_t> fullKeys= {0, 1};
+    vector<emb_cache_key_t> fullKeys = {0, 1};
     vector<vector<float>> fullEmbeddings = {{0.1, 0.2}, {0.3, 0.4}};
-    vector<emb_cache_key_t> expectedKeys= {1};
+    vector<emb_cache_key_t> expectedKeys = {1};
     vector<vector<float>> expectedEmbeddings = {{0.3, 0.4}};
     fTmp->InsertEmbeddings(fullKeys, fullEmbeddings);
     string saveDir = fileDir;  // for test convenience
@@ -231,4 +232,30 @@ TEST(File, SaveAndLoadForIncrementalCkpt)
     auto actualEmbeddings = fLoad->FetchEmbeddings(expectedKeys);
     ASSERT_EQ(expectedEmbeddings, actualEmbeddings);
     fs::remove_all(fileDir);
+}
+
+class EmbFileTest : public ::testing::Test {
+protected:
+    void SetUp() override
+    {
+        emock::GlobalMockObject::reset();
+    }
+};
+
+TEST_F(EmbFileTest, AllGetMethodsOk)
+{
+    auto fileDir = "file-test-dir"s;
+    auto file = File(0, fileDir);
+
+    EXPECT_EQ(file.GetFileID(), 0);
+    EXPECT_EQ(file.GetStaleDataCnt(), 0);
+    EXPECT_EQ(file.GetDataCnt(), 0);
+    EXPECT_EQ(file.GetKeys().size(), 0);
+}
+
+TEST_F(EmbFileTest, AllThrowMethodsOK)
+{
+    auto emptyErrMsg = ""s;
+    EXPECT_THROW(File::ThrowRuntimeError(ErrorType::ACL_ERROR, emptyErrMsg), std::runtime_error);
+    EXPECT_THROW(File::ThrowInvalidArgError(ErrorType::ACL_ERROR, emptyErrMsg), std::runtime_error);
 }

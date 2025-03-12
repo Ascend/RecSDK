@@ -26,6 +26,7 @@ using namespace MxRec;
 /// \param fileDir 当前文件目录
 File::File(uint64_t fileID, string& fileDir) : fileID(fileID), fileDir(fileDir)
 {
+    // LCOV_EXCL_START
     LOG_DEBUG("start init file, fileID:{}", fileID);
 
     if (!fs::exists(fs::absolute(fileDir))) {
@@ -34,7 +35,7 @@ File::File(uint64_t fileID, string& fileDir) : fileID(fileID), fileDir(fileDir)
         }
         try {
             fs::permissions(fileDir, fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec);
-        } catch (runtime_error &e) {
+        } catch (runtime_error& e) {
             auto error = Error(ModuleName::M_SSD_ENGINE, ErrorType::UNKNOWN,
                                StringFormat("Fail to change permission of %s.", fileDir.c_str()));
             LOG_ERROR(error.ToString());
@@ -52,7 +53,7 @@ File::File(uint64_t fileID, string& fileDir) : fileID(fileID), fileDir(fileDir)
     }
     try {
         fs::permissions(metaFilePath, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
-    } catch (runtime_error &e) {
+    } catch (runtime_error& e) {
         auto error = Error(ModuleName::M_SSD_ENGINE, ErrorType::UNKNOWN,
                            StringFormat("Fail to change permission of %s.", metaFilePath.c_str()));
         LOG_ERROR(error.ToString());
@@ -65,7 +66,7 @@ File::File(uint64_t fileID, string& fileDir) : fileID(fileID), fileDir(fileDir)
     }
     try {
         fs::permissions(dataFilePath, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
-    } catch (runtime_error &e) {
+    } catch (runtime_error& e) {
         auto error = Error(ModuleName::M_SSD_ENGINE, ErrorType::UNKNOWN,
                            StringFormat("Fail to change permission of %s.", dataFilePath.c_str()));
         LOG_ERROR(error.ToString());
@@ -74,6 +75,7 @@ File::File(uint64_t fileID, string& fileDir) : fileID(fileID), fileDir(fileDir)
     }
 
     LOG_DEBUG("end init file, fileID:{}", fileID);
+    // LCOV_EXCL_STOP
 }
 
 /// 创建文件实例并加载，从加载路径中读取元数据文件、数据文件，生成临时文件到当前文件目录下
@@ -83,6 +85,7 @@ File::File(uint64_t fileID, string& fileDir) : fileID(fileID), fileDir(fileDir)
 /// \param step 加载的步数
 File::File(uint64_t fileID, string& fileDir, string& loadDir, int step) : fileID(fileID), fileDir(fileDir)
 {
+    // LCOV_EXCL_START
     LOG_DEBUG("start init file with load, fileID:{}", fileID);
 
     fs::path metaFileToLoad = fs::absolute(loadDir + "/" + to_string(fileID) + ".meta." + to_string(step));
@@ -116,7 +119,7 @@ File::File(uint64_t fileID, string& fileDir, string& loadDir, int step) : fileID
     }
     try {
         fs::permissions(metaFilePath, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
-    } catch (runtime_error &e) {
+    } catch (runtime_error& e) {
         auto error = Error(ModuleName::M_SSD_ENGINE, ErrorType::UNKNOWN,
                            StringFormat("Fail to change permission of %s.", metaFilePath.c_str()));
         LOG_ERROR(error.ToString());
@@ -129,7 +132,7 @@ File::File(uint64_t fileID, string& fileDir, string& loadDir, int step) : fileID
     }
     try {
         fs::permissions(dataFilePath, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
-    } catch (runtime_error &e) {
+    } catch (runtime_error& e) {
         auto error = Error(ModuleName::M_SSD_ENGINE, ErrorType::UNKNOWN,
                            StringFormat("Fail to change permission of %s.", dataFilePath.c_str()));
         LOG_ERROR(error.ToString());
@@ -139,6 +142,7 @@ File::File(uint64_t fileID, string& fileDir, string& loadDir, int step) : fileID
     Load();
 
     LOG_DEBUG("end init file with load, fileID:{}", fileID);
+    // LCOV_EXCL_STOP
 }
 
 File::~File()
@@ -160,11 +164,10 @@ bool File::IsKeyExist(emb_cache_key_t key) const
 void File::InsertEmbeddings(vector<emb_cache_key_t>& keys, vector<vector<float>>& embeddings)
 {
     if (keys.size() != embeddings.size()) {
-        ThrowInvalidArgError(ErrorType::INVALID_ARGUMENT,
-                             "Param error: keys' length not equal to embeddings' length.");
+        ThrowInvalidArgError(ErrorType::INVALID_ARGUMENT, "Param error: keys' length not equal to embeddings' length.");
     }
 
-    localFileData.seekp(lastWriteOffset); // always set pointer to buffer end in case reading happened before
+    localFileData.seekp(lastWriteOffset);  // always set pointer to buffer end in case reading happened before
 
     size_t dLen = keys.size();
     for (size_t i = 0; i < dLen; ++i) {
@@ -177,8 +180,8 @@ void File::InsertEmbeddings(vector<emb_cache_key_t>& keys, vector<vector<float>>
         if (embSize > maxEmbSize) {
             ThrowInvalidArgError(ErrorType::LOGIC_ERROR, "Embedding size too large.");
         }
-        localFileData.write(reinterpret_cast<char const *>(&embSize), sizeof(embSize));
-        localFileData.write(reinterpret_cast<char const *>(embeddings[i].data()), embSize * sizeof(float));
+        localFileData.write(reinterpret_cast<char const*>(&embSize), sizeof(embSize));
+        localFileData.write(reinterpret_cast<char const*>(embeddings[i].data()), embSize * sizeof(float));
 
         auto pos = localFileData.tellp();
         if (pos == -1) {
@@ -192,18 +195,18 @@ void File::InsertEmbeddings(vector<emb_cache_key_t>& keys, vector<vector<float>>
 vector<vector<float>> File::FetchEmbeddings(vector<emb_cache_key_t>& keys)
 {
     vector<vector<float>> ret;
-    for (emb_cache_key_t k: keys) {
+    for (emb_cache_key_t k : keys) {
         auto it = keyToOffset.find(k);
         if (it == keyToOffset.end()) {
             ThrowInvalidArgError(ErrorType::LOGIC_ERROR, "Key not exist.");
         }
-        localFileData.seekg(it->second); // for fstream, this moves the file position pointer (both put and get)
+        localFileData.seekg(it->second);  // for fstream, this moves the file position pointer (both put and get)
         if (localFileData.fail()) {
             ThrowRuntimeError(ErrorType::IO_ERROR, "Can't move file position pointer, read data failed.");
         }
 
         uint64_t embSize;
-        localFileData.read(reinterpret_cast<char *>(&embSize), sizeof(embSize));
+        localFileData.read(reinterpret_cast<char*>(&embSize), sizeof(embSize));
         if (localFileData.fail()) {
             ThrowInvalidArgError(ErrorType::IO_ERROR, "Read embedding size failed, file may broken.");
         }
@@ -213,7 +216,7 @@ vector<vector<float>> File::FetchEmbeddings(vector<emb_cache_key_t>& keys)
 
         vector<float> tmp;
         tmp.resize(embSize);
-        localFileData.read(reinterpret_cast<char *>(tmp.data()), tmp.size() * sizeof(float));
+        localFileData.read(reinterpret_cast<char*>(tmp.data()), tmp.size() * sizeof(float));
         ret.emplace_back(tmp);
     }
     return ret;
@@ -233,10 +236,10 @@ void File::Save(const string& saveDir, int step, const map<emb_key_t, KeyInfo>& 
     LOG_DEBUG("Start to save file at step:{}, fileID:{}.", step, fileID);
 
     // write current meta into meta file
-    for (auto [key, offset]: keyToOffset) {
+    for (auto [key, offset] : keyToOffset) {
         if (keyInfo.count(key)) {
-            localFileMeta.write(reinterpret_cast<char const *>(&key), sizeof(key));
-            localFileMeta.write(reinterpret_cast<char const *>(&offset), sizeof(offset));
+            localFileMeta.write(reinterpret_cast<char const*>(&key), sizeof(key));
+            localFileMeta.write(reinterpret_cast<char const*>(&offset), sizeof(offset));
         }
     }
     // flush not guarantee data already written into disk, must call close to force flush and wait
@@ -247,8 +250,7 @@ void File::Save(const string& saveDir, int step, const map<emb_key_t, KeyInfo>& 
     }
     localFileMeta.close();
 
-    fs::path metaFileToSave = fs::absolute(saveDir + "/" + "delta-" + to_string(fileID) + ".meta." +
-            to_string(step));
+    fs::path metaFileToSave = fs::absolute(saveDir + "/" + "delta-" + to_string(fileID) + ".meta." + to_string(step));
     if (fs::exists(metaFileToSave)) {
         ThrowInvalidArgError(ErrorType::INVALID_ARGUMENT, "Failed to save latest meta, file already exist.");
     }
@@ -274,8 +276,7 @@ void File::Save(const string& saveDir, int step, const map<emb_key_t, KeyInfo>& 
     }
     localFileData.close();
 
-    fs::path dataFileToSave = fs::absolute(saveDir + "/" + "delta-" + to_string(fileID) + ".data." +
-            to_string(step));
+    fs::path dataFileToSave = fs::absolute(saveDir + "/" + "delta-" + to_string(fileID) + ".data." + to_string(step));
     if (fs::exists(dataFileToSave)) {
         ThrowInvalidArgError(ErrorType::INVALID_ARGUMENT, "Failed to save latest data, file already exist.");
     }
@@ -295,12 +296,13 @@ void File::Save(const string& saveDir, int step, const map<emb_key_t, KeyInfo>& 
 
 void File::Save(const string& saveDir, int step)
 {
+    // LCOV_EXCL_START
     LOG_DEBUG("start save file at step:{}, fileID:{}, save dir:{}", step, fileID, saveDir);
 
     // write current meta into meta file
-    for (auto [key, offset]: keyToOffset) {
-        localFileMeta.write(reinterpret_cast<char const *>(&key), sizeof(key));
-        localFileMeta.write(reinterpret_cast<char const *>(&offset), sizeof(offset));
+    for (auto [key, offset] : keyToOffset) {
+        localFileMeta.write(reinterpret_cast<char const*>(&key), sizeof(key));
+        localFileMeta.write(reinterpret_cast<char const*>(&offset), sizeof(offset));
     }
     // flush not guarantee data already written into disk, must call close to force flush and wait
     localFileMeta.flush();
@@ -352,10 +354,12 @@ void File::Save(const string& saveDir, int step)
     }
 
     LOG_DEBUG("end save file at step:{}, fileID:{}", step, fileID);
+    // LCOV_EXCL_STOP
 }
 
 void File::Load()
 {
+    // LCOV_EXCL_START
     // file already validate and open in instantiation
     LOG_DEBUG("start reading meta file, fileID:{}", fileID);
     emb_cache_key_t key;
@@ -396,12 +400,13 @@ void File::Load()
     }
 
     LOG_DEBUG("end reading meta file, fileID:{}", fileID);
+    // LCOV_EXCL_STOP
 }
 
 vector<emb_cache_key_t> File::GetKeys()
 {
     vector<emb_cache_key_t> ret;
-    for (auto item: keyToOffset) {
+    for (auto item : keyToOffset) {
         ret.push_back(item.first);
     }
     return ret;

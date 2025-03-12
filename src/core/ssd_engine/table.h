@@ -52,7 +52,7 @@ namespace MxRec {
 
         uint64_t GetTableAvailableSpace();
 
-        void Compact(bool fullCompact, const map<emb_key_t, KeyInfo>& keyInfo);
+        virtual void Compact(bool fullCompact, const map<emb_key_t, KeyInfo>& keyInfo);
 
         void Compact(bool fullCompact);
 
