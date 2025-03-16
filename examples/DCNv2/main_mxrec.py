@@ -290,7 +290,11 @@ if __name__ == "__main__":
 
     use_dynamic = bool(int(os.getenv("USE_DYNAMIC", 0)))
     use_lccl = bool(int(os.getenv("USE_LCCL", 0)))
-    use_shm_swap = bool(int(os.getenv("USE_SHM_SWAP", 0)))
+    shm_swap_value = os.getenv("USE_SHM_SWAP", 0)
+    if shm_swap_value not in [0, 1]:
+        shm_swap_value = 0
+        logger.info(f"USE_SHM_SWAP: {shm_swap_value} is illegal, use defualt")
+    use_shm_swap = bool(int(shm_swap_value))
     logger.info(f"USE_DYNAMIC: {use_dynamic}")
     init(train_steps=train_steps, eval_steps=eval_steps,
          use_dynamic=use_dynamic, use_dynamic_expansion=use_dynamic_expansion,
@@ -394,7 +398,7 @@ if __name__ == "__main__":
         hook_evict = EvictHook(evict_enable=True, evict_time_interval=120)
         hook_list.append(hook_evict)
         if MODIFY_GRAPH_FLAG:  # 该场景添加hook处理校验问题
-            hook_list.append(GraphModifierHook(modify_graph=False, use_shm_swap=use_shm_swap))
+            hook_list.append(GraphModifierHook(modify_graph=False))
 
     if use_faae:
         sess = tf.compat.v1.train.MonitoredTrainingSession(
