@@ -285,9 +285,10 @@ if __name__ == "__main__":
         MODIFY_GRAPH_FLAG = bool(int(os.getenv("USE_MODIFY_GRAPH", 0)))
         use_faae = bool(int(os.getenv("USE_FAAE", 0)))
         use_shm_swap = bool(int(os.getenv("USE_SHM_SWAP", 0)))
+        huge_tle_enable = bool(int(os.getenv("HUGE_TLB_ENABLE", 0)))
     except ValueError as err:
         raise ValueError("please correctly config USE_DYNAMIC_EXPANSION or USE_MULTI_LOOKUP or USE_FAAE "
-                         "or USE_MODIFY_GRAPH or USE_SHM_SWAP only 0 or 1 is supported.") from err
+                         "or USE_MODIFY_GRAPH or USE_SHM_SWAP or HUGE_TLB_ENABLE only 0 or 1 is supported.") from err
 
     use_dynamic = bool(int(os.getenv("USE_DYNAMIC", 0)))
     use_lccl = bool(int(os.getenv("USE_LCCL", 0)))
