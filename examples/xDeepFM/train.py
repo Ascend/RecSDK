@@ -4,26 +4,12 @@ import numpy as np
 import os, time, collections
 import tensorflow as tf
 from IO.iterator import FfmIterator #, DinIterator, CCCFNetIterator
-#from IO.din_cache import DinCache
 from IO.ffm_cache import FfmCache
-#from IO.cccfnet_cache import CCCFNetCache
-#from src.deep_fm import DeepfmModel
-#from src.deep_wide import DeepWideModel
-#from src.fm import FmModel
-#from src.dnn import DnnModel
-#from src.opnn import OpnnModel
-#from src.ipnn import IpnnModel
-#from src.lr import LrModel
-#from src.din import DinModel
-#from src.cccfnet import CCCFModel
-#from src.deepcross import DeepCrossModel
 from src.exDeepFM import ExtremeDeepFMModel
-#from src.cross import CrossModel
 import utils.util as util
 import utils.metric as metric
-# from utils.log import Log
-
-# log = Log(hparams)
+from mx_rec.util.initialize import ConfigInitializer
+from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
 
 class TrainModel(collections.namedtuple("TrainModel", ("graph", "model", "iterator", "filenames"))):
     """define train class, include graph, model, iterator"""
@@ -62,7 +48,6 @@ def run_eval(load_model, load_sess, filename, sample_num_file, hparams, flag):
     # load sample num
     with open(sample_num_file, 'r') as f:
         sample_num = int(f.readlines()[0].strip())
-    from mx_rec.util.initialize import ConfigInitializer
     eval_label = ConfigInitializer.get_instance().train_params_config.get_target_batch(True).get("labels")
     initializer = ConfigInitializer.get_instance().train_params_config.get_initializer(True)
     load_sess.run(initializer, feed_dict={load_model.filenames: [filename]})
@@ -89,7 +74,9 @@ def run_infer(load_model, load_sess, filename, hparams, sample_num_file):
         sample_num = int(f.readlines()[0].strip())
     if not os.path.exists(util.RES_DIR):
         os.mkdir(util.RES_DIR)
-    load_sess.run(load_model.iterator.initializer, feed_dict={load_model.filenames: [filename]})
+    # In the run_eval function, get_initializer's parameter is set to true.
+    initializer = ConfigInitializer.get_instance().train_params_config.get_initializer(True)
+    load_sess.run(initializer, feed_dict={load_model.filenames: [filename]})
     preds = []
     while True:
         try:
@@ -99,7 +86,6 @@ def run_infer(load_model, load_sess, filename, hparams, sample_num_file):
             break
     preds = preds[:sample_num]
     hparams.res_name = util.convert_res_name(hparams.infer_file)
-    # print('result name:', hparams.res_name)
     with open(hparams.res_name, 'w') as out:
         out.write('\n'.join(map(str, preds)))
 
@@ -218,7 +204,6 @@ def train(hparams, scope=None, target_session=""):
     gpuconfig.gpu_options.allow_growth = True
     tf.set_random_seed(1234)
 
-    from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
     modify_graph_and_start_emb_cache(dump_graph=True)
 
     train_sess = tf.Session(target=target_session, graph=train_model.graph, config=npu_config_proto(config_proto=gpuconfig))
@@ -237,7 +222,6 @@ def train(hparams, scope=None, target_session=""):
     last_eval = 0
     for epoch in range(hparams.epochs):
         step = 0
-        from mx_rec.util.initialize import ConfigInitializer
         initializer = ConfigInitializer.get_instance().train_params_config.get_initializer(True)
         train_sess.run(initializer, feed_dict={train_model.filenames: [hparams.train_file_cache]})
 
@@ -266,7 +250,6 @@ def train(hparams, scope=None, target_session=""):
             checkpoint_path = train_model.model.saver.save(
                 sess=train_sess,
                 save_path=util.MODEL_DIR + 'epoch_' + str(epoch))
-            # print(checkpoint_path)
         train_res = dict()
         train_res["loss"] = epoch_loss / step
         eval_start = time.time()

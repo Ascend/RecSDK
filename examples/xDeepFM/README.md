@@ -122,7 +122,12 @@ from mx_rec.core.embedding import sparse_lookup
          use_dynamic_expansion=False)
 ```
 
-5、修改train.py。把第35~57行
+5、修改train.py。在第11行添加
+```python
+from mx_rec.util.initialize import ConfigInitializer
+from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
+```
+把第35~57行
 ```python
     graph = tf.Graph()
     with graph.as_default():
@@ -183,7 +188,6 @@ from mx_rec.core.embedding import sparse_lookup
 ```
 ` ` ` `改为：
 ```python
-    from mx_rec.util.initialize import ConfigInitializer
     eval_label = ConfigInitializer.get_instance().train_params_config.get_target_batch(True).get("labels")
     initializer = ConfigInitializer.get_instance().train_params_config.get_initializer(True)
     load_sess.run(initializer, feed_dict={load_model.filenames: [filename]})
@@ -196,7 +200,6 @@ from mx_rec.core.embedding import sparse_lookup
 
 ` ` ` `在第223行添加
 ```python
-    from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
     modify_graph_and_start_emb_cache(dump_graph=True)
 ```
 ` ` ` `把第239行
@@ -205,7 +208,6 @@ from mx_rec.core.embedding import sparse_lookup
 ```
 ` ` ` `改为：
 ```python
-        from mx_rec.util.initialize import ConfigInitializer
         initializer = ConfigInitializer.get_instance().train_params_config.get_initializer(True)
         train_sess.run(initializer, feed_dict={train_model.filenames: [hparams.train_file_cache]})
 ```
