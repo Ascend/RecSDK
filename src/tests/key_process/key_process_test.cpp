@@ -29,6 +29,7 @@ using namespace MxRec;
 using namespace testing;
 
 static constexpr size_t BATCH_NUM_EACH_THREAD = 3;
+static const string EMB_TABLE_0 = "emb0";
 
 class SimpleThreadPool {
 public:
@@ -49,7 +50,7 @@ protected:
     void SetUp()
     {
         int defaultUBSize = 196608;
-        EMOCK(GetUBSize).stubs().with(any()).will(returnValue(defaultUBSize));
+        EMOCK(GetUBSize).stubs().with(emock::any()).will(returnValue(defaultUBSize));
 
         int claimed;
         MPI_Query_thread(&claimed);
@@ -71,6 +72,8 @@ protected:
         GenEmbInfos(embNum, embInfos, fieldNums);
         splits = fieldNums;
         BuildExpect();
+
+        Logger::SetLevel(Logger::DEBUG);
     }
 
     // 使用该方法构造的数据需要使用掉，否则会影响其他用例
@@ -304,9 +307,11 @@ protected:
     vector<vector<emb_key_t>> allExpectLookupKeys;
     vector<vector<emb_key_t>> allExpectOffset;
     vector<vector<int64_t>> allExpectCount;
+    int originalLogLevel = Logger::GetLevel();
 
     void TearDown()
     {
+//        Logger::SetLevel(originalLogLevel);
         // delete
         GlobalMockObject::reset();
     }
@@ -330,6 +335,254 @@ TEST_F(KeyProcessTest, Initialize)
     ock::ctr::Factory::Create(factory);
 }
 
+TEST_F(KeyProcessTest, AttributeGetAndSetTest)
+{
+    EmbeddingMgmt::Instance()->Init(rankInfo, embInfos);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
+    ASSERT_EQ(process.isRunning, true);
+    auto keyCountMap = process.GetKeyCountMap();
+    ASSERT_EQ(keyCountMap.empty(), true);
+
+    // using KeyCountMemT = std::map<EmbNameT, absl::flat_hash_map<emb_key_t, size_t>>;
+    absl::flat_hash_map<emb_key_t, size_t> keyCountMapTmp;
+    keyCountMapTmp.emplace(1, 1);
+    KeyCountMemT keyCountMemT;
+    keyCountMemT.emplace("table", keyCountMapTmp);
+    process.LoadKeyCountMap(keyCountMemT);
+    keyCountMap = process.GetKeyCountMap();
+    ASSERT_EQ(keyCountMap.size(), 1);
+
+    // test LoadMaxOffset method
+    OffsetMemT offsetMemT;
+    offsetMemT.emplace("table", 1);
+    process.LoadMaxOffset(offsetMemT);
+    auto& maxOffsetTmp = process.maxOffset;
+    ASSERT_EQ(maxOffsetTmp.find("table") != maxOffsetTmp.end(), true);
+
+    // test LoadKeyOffsetMap method
+    KeyOffsetMemT keyOffsetMemT;
+    absl::flat_hash_map<emb_key_t, int64_t> koMap;
+    koMap.emplace(1, 1);
+    keyOffsetMemT.emplace("table", koMap);
+    process.LoadKeyOffsetMap(keyOffsetMemT);
+    auto& keyOffsetMap = process.keyOffsetMap;
+    ASSERT_EQ(keyOffsetMap.find("table") != keyOffsetMap.end(), true);
+
+    process.Destroy();
+}
+
+// test KeyProcessTaskWithFastUnique
+TEST_F(KeyProcessTest, KeyProcessTaskWithFastUniqueTest)
+{
+    LOG_INFO("start KeyProcessTaskWithFastUniqueTest");
+    EmbeddingMgmt::Instance()->Init(rankInfo, embInfos);
+
+    // only test invoke process, detail methods has been tested by other test function.
+    auto fn = [this](int channel, int threadId) {
+        process.KeyProcessTaskWithFastUnique(channel, threadId);
+        LOG_INFO("rankid :{},threadId: {}", rankInfo.rankId, threadId);
+    };
+    for (int channel = 0; channel < 1; ++channel) {
+        for (int id = 0; id < 1; ++id) {
+            process.procThreads.emplace_back(std::make_unique<std::thread>(fn, channel, id));
+        }
+    }
+
+    this_thread::sleep_for(10s);
+    process.Destroy();
+    LOG_INFO("end KeyProcessTaskWithFastUniqueTest");
+}
+
+TEST_F(KeyProcessTest, HashSplitHelperTest)
+{
+    int rankSize = 4;
+    auto queue = SingletonQueue<EmbBatchT>::GetInstances(0);
+    auto batch = queue->GetOne();
+    KeysT batchKeys = { 1, 4, 23, 14, 16, 7, 2, 21, 21, 29 };
+    vector<int> expectRestore = { 0, 0, 0, 0, 1, 1, 1, 1, 1, 2 };
+    vector<vector<long int>> expectSplitKeys = { { 4, 16 }, { 1, 21, 29 }, { 14, 2 }, { 23, 7 } };
+    batch->sample = std::move(batchKeys);
+    LOG_INFO(KEY_PROCESS "test batch sample: {}", VectorToString(batch->sample));
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
+    ASSERT_EQ(process.isRunning, true);
+    process.rankInfo.rankSize = rankSize;
+
+    vector<KeysT> splitKeysTmp;
+    vector<int32_t> restoreTmp;
+    vector<int32_t> hotPosTmp;
+    vector<vector<uint32_t>> keyCountTmp;
+    process.HashSplitHelper(batch, splitKeysTmp, restoreTmp, hotPosTmp, keyCountTmp);
+    LOG_INFO("restoreTmp:{}, hotPosTmp:{}, ",
+             VectorToString(restoreTmp), VectorToString(hotPosTmp));
+    ASSERT_EQ(restoreTmp.empty(), false);
+    EXPECT_EQ(restoreTmp, expectRestore);
+    for (ssize_t i = 0; i < splitKeysTmp.size(); i++) {
+        LOG_INFO("sub splitKeysTmp:{} ", VectorToString(splitKeysTmp[i]));
+        EXPECT_EQ(splitKeysTmp[i], expectSplitKeys[i]);
+    }
+}
+
+TEST_F(KeyProcessTest, KeyProcessTaskHelperForDpTest)
+{
+    EmbeddingMgmt::Instance()->Init(rankInfo, embInfos);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
+    ASSERT_EQ(process.isRunning, true);
+
+    LOG_INFO("===phy embInfos[0].name:{}", embInfos[0].name);
+    int rankSize = 4;
+    auto queue = SingletonQueue<EmbBatchT>::GetInstances(0);
+    auto batch = queue->GetOne();
+    KeysT batchKeys = { 1, 4, 23, 14, 16, 7, 2, 21, 21, 29 };
+    vector<int> expectRestore = { 0, 0, 0, 0, 1, 1, 1, 1, 1, 2 };
+    vector<vector<int>> expectSplitKeys = { { 4, 16 }, { 1, 21, 29 }, { 14, 2 }, { 23, 7 } };
+    batch->sample = std::move(batchKeys);
+    batch->name = EMB_TABLE_0;
+
+    // test EOS for hbm
+    batch->isEos = true;
+    bool ret = process.KeyProcessTaskHelperForDp(batch, 0, 0);
+    ASSERT_EQ(ret, true);
+    LOG_INFO("infoList.size():{}", process.infoList.size());
+    ASSERT_EQ(process.infoList.size() == 1, true);
+
+    // test EOS for ddr
+    process.rankInfo.isDDR = true;
+    ret = process.KeyProcessTaskHelperForDp(batch, 0, 0);
+    ASSERT_EQ(ret, true);
+    LOG_INFO("uniqueKeysList.size():{}", process.uniqueKeysList.size());
+    ASSERT_EQ(process.uniqueKeysList.size() == 1, true);
+    process.Destroy();
+}
+
+TEST_F(KeyProcessTest, TestKeyProcessTaskHelperForDp)
+{
+    auto& embInfoTmp = embInfos[0];
+    embInfoTmp.isDp = true;
+    embInfoTmp.embeddingSize = 16;
+
+    GlobalEnv::recordKeyCount = true;
+
+    EmbeddingMgmt::Instance()->Init(rankInfo, embInfos);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
+
+    // build batch
+    auto queue = SingletonQueue<EmbBatchT>::GetInstances(0);
+    auto batch = queue->GetOne();
+    KeysT batchKeys = {1, 4, 23, 14, 16, 7, 2, 21, 21, 29};
+    vector<uint64_t> expectUniqueKeys = {1, 4, 23, 14, 16, 7, 2, 21, 29};
+    batch->sample = std::move(batchKeys);
+    batch->name = EMB_TABLE_0;
+    batch->batchId = 0;
+    batch->channel = 0;
+    FeatureAdmitAndEvict::m_embStatus[EMB_TABLE_0] = SingleEmbTableStatus::SETS_NONE;
+    process.hotEmbTotCount[EMB_TABLE_0] = 10;
+    LOG_INFO(KEY_PROCESS "===phy test batch sample: {}", VectorToString(batch->sample));
+    auto ret = process.KeyProcessTaskHelperForDp(batch, 0, 0);
+    ASSERT_EQ(ret, true);
+
+    // check keyCountMap
+    auto kcMap = process.keyCountMap[EMB_TABLE_0];
+    ASSERT_EQ(kcMap[4], 1);
+    ASSERT_EQ(kcMap[23], 1);
+    ASSERT_EQ(kcMap[21], 2);
+    ASSERT_EQ(kcMap.find(55) == kcMap.end(), true);
+
+    int batchIdTmp;
+    std::string tableNameTmp;
+    bool isEosTmp;
+
+    // HBM unique_ptr<vector<Tensor>>
+    ProcessedInfo typeTmp = ProcessedInfo::RESTORE;
+    EmbBaseInfo embBaseInfo;
+    embBaseInfo.batchId = 0;
+    embBaseInfo.channelId = 0;
+    embBaseInfo.name = EMB_TABLE_0;
+    bool isEos = false;
+    unique_ptr<vector<Tensor>> storage = process.GetInfoVec(embBaseInfo, typeTmp, isEos);
+    ASSERT_EQ(storage != nullptr, true);
+    auto detailData = storage->back().flat<tensorflow::int32>();
+    for (int i = 0; i < detailData.size(); i++) {
+        LOG_INFO("===phy i:{}, detailData(i):", i, detailData(i));
+        ASSERT_EQ(detailData(i), i);
+    }
+
+    // DDR: check list[info.name][info.channelId].top()
+    process.rankInfo.isDDR = true;
+    ret = process.KeyProcessTaskHelperForDp(batch, 0, 0);
+    ASSERT_EQ(ret, true);
+    vector<uint64_t> uniqueKeysTmp1;
+    tie(batchIdTmp, tableNameTmp, isEosTmp, uniqueKeysTmp1) = process.uniqueKeysList[EMB_TABLE_0][0].top();
+    vector<uint64_t> uniqueKeysTmp2 = process.GetUniqueKeys(embBaseInfo, isEos);
+    LOG_INFO("===phy uniqueKeysTmp is:{}", VectorToString(uniqueKeysTmp2));
+    process.SendEosTensor(EMB_TABLE_0, 0);
+    ASSERT_EQ(uniqueKeysTmp1, uniqueKeysTmp2);
+    ASSERT_EQ(uniqueKeysTmp2, expectUniqueKeys);
+    process.Destroy();
+}
+
+TEST_F(KeyProcessTest, TestStart4KeyProcessTaskHelperForDp)
+{
+    auto& embInfoTmp = embInfos[0];
+    embInfoTmp.isDp = true;
+    EmbeddingMgmt::Instance()->Init(rankInfo, embInfos);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos), true);
+    ASSERT_EQ(process.isRunning, true);
+    setenv("keyProcessThreadNum", "2", 1);
+    ASSERT_EQ(process.Start(), 0);
+    setenv("keyProcessThreadNum", "abc", 1);
+    ASSERT_EQ(process.Start(), 0);
+    LOG_INFO("key process start successful");
+    process.Destroy();
+}
+
+TEST_F(KeyProcessTest, TestGetFeatAdmitAndEvict)
+{
+    vector<ThresholdValue> thresholdValues;
+    ThresholdValue tv = ThresholdValue(EMB_TABLE_0, 2, 1, 1, false);
+    thresholdValues.emplace_back(tv);
+    ASSERT_EQ(process.Initialize(rankInfo, embInfos, thresholdValues), true);
+    auto threadValueTmp = process.GetFeatAdmitAndEvict().m_table2Threshold[EMB_TABLE_0];
+    ASSERT_EQ(threadValueTmp.tableName, EMB_TABLE_0);
+    ASSERT_EQ(threadValueTmp.countThreshold, 2);
+    ASSERT_EQ(threadValueTmp.timeThreshold, 1);
+    process.Destroy();
+}
+
+TEST_F(KeyProcessTest, TestFeatureAdmitForDp)
+{
+    std::vector<emb_key_t> lookupKeys = {2, 3, 12, 22, 21, 24, 5, 31};
+    std::vector<emb_key_t> globalDpIdVec = {3, 12, 22, 21, 3, 12};
+    // deduplicated for globalDpIdVec as globalUniqueIdVec, and
+    // update lookupKeys element to INVALID_KEY_VALUE which not in globalUniqueIdVec.
+    std::vector<emb_key_t> expectRet = {3, 12, 22, 21};
+    auto globalUniqueIdVec = process.FeatureAdmitForDp(lookupKeys, globalDpIdVec);
+    ASSERT_EQ(globalUniqueIdVec, expectRet);
+    ASSERT_EQ(lookupKeys[0], -1);
+    ASSERT_EQ(lookupKeys[1], 3);
+}
+
+TEST_F(KeyProcessTest, TestGetCountRecvForDp)
+{
+    process.Initialize(rankInfo, embInfos);
+    // build batch
+    auto queue = SingletonQueue<EmbBatchT>::GetInstances(0);
+    auto batch = queue->GetOne();
+    batch->name = EMB_TABLE_0;
+    batch->batchId = 0;
+    batch->channel = 0;
+    vector<uint32_t> keyCount = {2, 2, 1, 2};
+    vector<int> scAll = {0, };
+    // rankInfo 默认staticShape; sendCount = 10;
+    // GetCountRecvForDp(const unique_ptr<MxRec::EmbBatchT>& batch, const int id,
+    //     vector<uint32_t>& keyCount, vector<int> scAll)
+    //  详细梳理下 入参中 keyCount 和 scAll 生成逻辑
+}
+
+
+
+
+
+#ifndef GTEST
 TEST_F(KeyProcessTest, Start)
 {
     EmbeddingMgmt::Instance()->Init(rankInfo, embInfos);
@@ -642,4 +895,4 @@ TEST_F(KeyProcessTest, LoadSaveLock)
     process.LoadSaveLock();
     process.LoadSaveUnlock();
 }
-
+#endif
