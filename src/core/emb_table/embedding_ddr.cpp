@@ -553,7 +553,7 @@ void EmbeddingDDR::BatchSynchronization(int pythonBatchId, vector<uint64_t>& swa
         }
 
         if (ssdVocabSize == 0) {
-            int rc = embCache->EmbeddingUpdate(name, swapOutKeys, ptr);
+            int rc = embCache->EmbeddingUpdate(name, swapOutKeysSlice, ptr);
             if (rc != ock::ctr::H_OK) {
                 auto error = Error(ModuleName::M_OCK_CTR, ErrorType::LOGIC_ERROR,
                                    StringFormat("EmbeddingUpdate failed, table:%s, error code:%d.", name.c_str(), rc));
@@ -561,7 +561,7 @@ void EmbeddingDDR::BatchSynchronization(int pythonBatchId, vector<uint64_t>& swa
                 throw std::invalid_argument(error.ToString());
             }
         } else {
-            EmbeddingUpdateWithSSD(swapOutKeys, ptr);
+            EmbeddingUpdateWithSSD(swapOutKeysSlice, ptr);
         }
         LOG_INFO("Finish update embedding from device, table:{}, batchId:{}, syncBatchId:{}, syncPosCnt:{}",
                  name, pythonBatchId, syncBatchId, syncPosCnt);

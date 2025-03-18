@@ -1113,9 +1113,9 @@ void HybridMgmt::FetchDeviceEmb()
                 if (startIdx + syncPosCnt >= swapOutPos.size()) {
                     isSyncRemain = false;
                 }
-                auto swapTensor = BuildSaveSwapTensor(swapOutPos, isSyncRemain);
-                LOG_INFO("Send swapOutPos for syncing, table:{}, syncBatchId:{}, swapOutPos.size:{}, isSyncRemain:{}",
-                         embInfo.name, syncBatchId, swapOutPos.size(), isSyncRemain);
+                auto swapTensor = BuildSaveSwapTensor(swapOutPosSlice, isSyncRemain);
+                LOG_INFO("Send swapOutPos for syncing, table:{}, syncBatchId:{}, swapOutPosSlice.size:{}, isSyncRemain:{}",
+                         embInfo.name, syncBatchId, swapOutPosSlice.size(), isSyncRemain);
                 hdTransfer->Send(TransferChannel::SAVE_H2D, swapTensor, TRAIN_CHANNEL_ID, embInfo.name);
                 ++syncBatchId;
                 syncPosRemain -= syncPosCnt;
