@@ -284,13 +284,14 @@ if __name__ == "__main__":
         use_multi_lookup = bool(int(os.getenv("USE_MULTI_LOOKUP", 0)))
         MODIFY_GRAPH_FLAG = bool(int(os.getenv("USE_MODIFY_GRAPH", 0)))
         use_faae = bool(int(os.getenv("USE_FAAE", 0)))
+        use_shm_swap = bool(int(os.getenv("USE_SHM_SWAP", 0)))
+        huge_tle_enable = bool(int(os.getenv("HUGE_TLB_ENABLE", 0)))
     except ValueError as err:
         raise ValueError("please correctly config USE_DYNAMIC_EXPANSION or USE_MULTI_LOOKUP or USE_FAAE "
-                         "or USE_MODIFY_GRAPH only 0 or 1 is supported.") from err
+                         "or USE_MODIFY_GRAPH or USE_SHM_SWAP or HUGE_TLB_ENABLE only 0 or 1 is supported.") from err
 
     use_dynamic = bool(int(os.getenv("USE_DYNAMIC", 0)))
     use_lccl = bool(int(os.getenv("USE_LCCL", 0)))
-    use_shm_swap = bool(int(os.getenv("USE_SHM_SWAP", 0)))
     logger.info(f"USE_DYNAMIC: {use_dynamic}")
     init(train_steps=train_steps, eval_steps=eval_steps,
          use_dynamic=use_dynamic, use_dynamic_expansion=use_dynamic_expansion,
@@ -394,7 +395,7 @@ if __name__ == "__main__":
         hook_evict = EvictHook(evict_enable=True, evict_time_interval=120)
         hook_list.append(hook_evict)
         if MODIFY_GRAPH_FLAG:  # 该场景添加hook处理校验问题
-            hook_list.append(GraphModifierHook(modify_graph=False, use_shm_swap=use_shm_swap))
+            hook_list.append(GraphModifierHook(modify_graph=False))
 
     if use_faae:
         sess = tf.compat.v1.train.MonitoredTrainingSession(
