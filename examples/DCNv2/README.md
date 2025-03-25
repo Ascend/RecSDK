@@ -5,6 +5,7 @@
 .
 ├── config.py  # 模型配置文件
 ├── delay_loss_scale.py  # loss缩放函数
+├── demo_logger.py    # 定义logger
 ├── main_mxrec.py     # 主函数
 ├── model.py          # DCNv2模型
 ├── op_impl_mode.ini  # 算子执行模式配置

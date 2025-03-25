@@ -115,6 +115,7 @@ export USE_MODIFY_GRAPH=0       # 0：feature spec模式；1：自动改图模�
 
 - config.py
 - delay_loss_scale.py
+- demo_logger.py
 - gradient_descent_w.py
 - main_mxrec.py
 - mean_auc.py
