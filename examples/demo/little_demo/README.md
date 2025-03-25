@@ -5,6 +5,7 @@
 .
 ├── config.py                 # 模型配置文件
 ├── dataset.py                # 生成数据集的脚本
+├── demo_logger.py            # 定义logger
 ├── deterministic_loss        # 确定性计算loss样例
 ├── main.py                   # 主函数
 ├── model.py                  # demo模型

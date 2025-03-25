@@ -5,6 +5,7 @@
 .
 ├── config.py                 # 模型配置文件
 ├── dataset.py                # 生成数据集的脚本
+├── demo_logger.py            # 定义logger
 ├── main.py                   # 主函数
 ├── nn_model_build.py         # demo模型
 ├── nn_model_input.py         # 定义model_fn

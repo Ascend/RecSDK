@@ -9,6 +9,7 @@
 ├── model
 │   ├── config.py            # 模型配置文件
 │   ├── delay_loss_scale.py  # loss缩放函数
+│   ├── demo_logger.py    # 定义logger
 │   ├── gradient_descent_w.py  # 自定义SGD优化器
 │   ├── main_mxrec.py  # 主函数
 │   ├── mean_auc.py    # 计算acu的脚本
