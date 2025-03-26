@@ -93,6 +93,7 @@ class LearningRateScheduler:
 
         lr_sparse = self.base_lr_sparse * lr_factor_sparse
         lr_dense = self.base_lr_dense * lr_factor_dense
+        lr_sparse = tf.math.maximum(lr_sparse, tf.cast(0.0, tf.float32))
         return lr_dense, lr_sparse
 
 
