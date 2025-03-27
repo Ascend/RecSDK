@@ -23,7 +23,7 @@ constexpr int32_t RMA_SHM_HEAD_LEN = 128; // queue's head length
 constexpr int32_t RMA_SHM_DATA_HEAD = 56; // queue item's head length
 constexpr int32_t RMA_SHM_READY_LEN = 48; // offset of readyLen in item's head
 constexpr int32_t RMA_DIM_MAX = 2;
-constexpr int MAX_WAIT_LOOP = 1800;
+constexpr int MAX_WAIT_LOOP = 300000;
 constexpr int SHM_WR_OWN = 0600;
 constexpr int SHM_WR_ALL = 0666;
 

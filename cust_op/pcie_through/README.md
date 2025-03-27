@@ -8,6 +8,7 @@
 ├── emb_custom.json    # 算子原型配置
 ├── op_host    # pcie_through算子Host侧实现
 ├── op_kernel  # pcie_through算子Kernel侧实现
+├── tf-test    # 单算子测试代码
 ├── README.md  # pcie_through算子说明文档
 └── run.sh     # pcie_through算子安装脚本
 ```
