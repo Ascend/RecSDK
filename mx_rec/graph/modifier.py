@@ -669,17 +669,17 @@ def shm_swap(tables, swap_in_index, swap_out_index, h2d_name, d2h_name) -> tf.Op
     rma_shm_host_swap_out = mxrec_pybind.get_shm_mem(d2h_name_id, device_id, capacity)
     shm_swap_out = str(rma_shm_host_swap_out)
 
-    shm_swap_op = host_pipeline_ops.rma_swap_multi_tables(swap_in_index = swap_in_index,
-                                                          swap_out_index = swap_out_index,
-                                                          table_a = table_list[0],
-                                                          table_b = table_list[1],
-                                                          table_c = table_list[2],
-                                                          table_d = table_list[3],
-                                                          table_e = table_list[4],
-                                                          table_f = table_list[5],
-                                                          table_num = table_num,
-                                                          shm_swap_in = shm_swap_in,
-                                                          shm_swap_out = shm_swap_out)
+    shm_swap_op = host_pipeline_ops.rma_swap_multi_tables(swap_in_index=swap_in_index,
+                                                          swap_out_index=swap_out_index,
+                                                          table_a=table_list[0],
+                                                          table_b=table_list[1],
+                                                          table_c=table_list[2],
+                                                          table_d=table_list[3],
+                                                          table_e=table_list[4],
+                                                          table_f=table_list[5],
+                                                          table_num=table_num,
+                                                          shm_swap_in=shm_swap_in,
+                                                          shm_swap_out=shm_swap_out)
     return shm_swap_op
 
 
@@ -720,11 +720,11 @@ def _get_swap_info(
         h2d_name = f'{table_instance.table_name}_h2d_{channel_id}'
         d2h_name = f'{table_instance.table_name}_d2h_{channel_id}'
         if optimizer is None and channel_id == EVAL_CHANNEL_ID:
-            swap_op = [shm_swap([variable_and_slot_list[0]], swap_in_index = swap_in_pos,
-                                swap_out_index = swap_out_pos, h2d_name = h2d_name, d2h_name = d2h_name)]
+            swap_op = [shm_swap([variable_and_slot_list[0]], swap_in_index=swap_in_pos,
+                                swap_out_index=swap_out_pos, h2d_name=h2d_name, d2h_name=d2h_name)]
         else:
-            swap_op = [shm_swap(variable_and_slot_list, swap_in_index = swap_in_pos, swap_out_index = swap_out_pos,
-                                h2d_name = h2d_name, d2h_name = d2h_name)]
+            swap_op = [shm_swap(variable_and_slot_list, swap_in_index=swap_in_pos, swap_out_index=swap_out_pos,
+                                h2d_name=h2d_name, d2h_name=d2h_name)]
         return swap_op
 
     with tf.compat.v1.variable_scope("h2d_emb"):
