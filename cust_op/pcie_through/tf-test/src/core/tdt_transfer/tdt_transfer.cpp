@@ -21,9 +21,9 @@
 #include <random>
 #include <thread>
 #include <fstream>
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
+#include <cstdlib>
+#include <cstring>
+#include <cstdio>
 #include "securec.h"
 
 #include "acl/acl_base.h"
@@ -37,25 +37,25 @@
 using namespace std;
 using namespace tensorflow;
 
-#ifndef tdtCreateChannel
-#define tdtCreateChannel acltdtCreateChannelWithCapacity
+#ifndef TDT_CREATE_CHANNEL
+#define TDT_CREATE_CHANNEL acltdtCreateChannelWithCapacity
 #endif
 
-#define RANK_SIZE 16
 
 namespace tensorflow {
 Status RecvTensorByAcl(const acltdtChannelHandle* aclHandle, std::vector<Tensor>& tensors);
 Status SendTensorsByAcl(const acltdtChannelHandle* aclHandle, acltdtTensorType aclType,
-                            const std::vector<Tensor>& tensors, bool& isNeedResend);
+                        const std::vector<Tensor>& tensors, bool& isNeedResend);
 }  // namespace tensorflow
 
 namespace TfTest {
 #define OMP_THREADS 16
 #define PRECISION_TEST false
 
-bool acl_init[RANK_SIZE] = {false};
-int32_t max_repeat_times = 8;
 constexpr int MAX_WAIT_LOOP = 300000;
+constexpr int32_t MAX_RANK_SIZE = 4095;
+
+bool g_aclInit[MAX_RANK_SIZE] = {false};
 std::unordered_map<std::string, acltdtDataset*> aclDatasets;
 std::unordered_map<std::string, acltdtChannelHandle*> transferChannels;
 
@@ -83,13 +83,13 @@ void FreeTdtChannel(int deviceId)
 // 仅用于pybind侧调用，创建tdt cahnnel
 void CreateTdtChannel(const string &channelName, int deviceId, int channelSize)
 {
-    if (!acl_init[deviceId]) {
+    if (!g_aclInit[deviceId]) {
         aclInit(nullptr);
         aclrtSetDevice(deviceId);
-        acl_init[deviceId] = true;
+        g_aclInit[deviceId] = true;
     }
 
-    transferChannels[channelName] = tdtCreateChannel(deviceId, channelName.c_str(), channelSize);
+    transferChannels[channelName] = TDT_CREATE_CHANNEL(deviceId, channelName.c_str(), channelSize);
 
     // 创建acltdtDataset类型的数据，对等一个Vector<tensor>。同步接口。
     aclDatasets[channelName] = acltdtCreateDataset();
@@ -117,7 +117,6 @@ bool SendByChannel(const string &channelName, const vector<Tensor> &tensors)
     do {
         status = tensorflow::SendTensorsByAcl(transferChannels[sendName], ACL_TENSOR_DATA_TENSOR, tensors,
                                               isNeedResend);
-
         if (status != tensorflow::Status::OK()) {
             LOG_ERROR("Send by {} failed, error {}", sendName.c_str(), status.error_message());
             return false;
@@ -152,11 +151,12 @@ void RecvByChannel(const string &channelName, int count)
         size_t size = acltdtGetDatasetSize(aclDatasets[recvName]);
         if (size > 0) {
             auto aclData = acltdtGetDataItem(aclDatasets[recvName], i);
-            if (aclData != nullptr) {
-                char *ptr = reinterpret_cast<char*>(acltdtGetDataAddrFromItem(aclData));
-                if (ptr != nullptr) {
-                    size_t acl_data_len = acltdtGetDataSizeFromItem(aclData);
-                }
+            if (aclData == nullptr) {
+                LOG_WARN("Acl get data item failed.");
+                continue;
+            }
+            if (acltdtGetDataAddrFromItem(aclData) == nullptr) {
+                LOG_WARN("Acl get data from item failed.");
             }
         }
     }
@@ -221,7 +221,7 @@ int SendByAclTdtV2(const string &sendName, float *sendData, int64_t dataLen, int
     }
 
     acltdtDataItem *aclData =
-            acltdtCreateDataItem(ACL_TENSOR_DATA_TENSOR, dims, 2, ACL_FLOAT, (char *)(sendData), dataLen);
+            acltdtCreateDataItem(ACL_TENSOR_DATA_TENSOR, dims, 2, ACL_FLOAT, sendData, dataLen);
     if (aclData == nullptr) {
         LOG_ERROR("acltdtCreateDataItem failed");
         DestroyAclDataset(aclDataset, false);
@@ -238,9 +238,6 @@ int SendByAclTdtV2(const string &sendName, float *sendData, int64_t dataLen, int
     LOG_DEBUG("Send by {}, tdt-send start", sendName.c_str());
     auto aclStatus = acltdtSendTensor(transferChannels[sendName], aclDataset, -1);
     DestroyAclDataset(aclDataset, true);
-    if (acltdtDestroyDataItem(aclData) != ACL_ERROR_NONE) {
-        LOG_WARN("Destroy data item failed.");
-    }
     if (aclStatus != ACL_ERROR_NONE) {
         LOG_WARN("Send by {}, tdt-send failed", sendName.c_str());
         return 0;

@@ -15,47 +15,27 @@
 # limitations under the License.
 # ==============================================================================
 
-import tensorflow as tf   # 导入TensorFlow开源库，本样例基于tf1.15编写
-from npu_bridge.estimator import npu_ops   # 导入TensorFlow开源库中的npu_ops模块
-import numpy as np    # 导入Python的数学基础库
 import os
 import time
-import importlib
-import custom_pybind
-from custom_pybind import ShmInfo, HostMgmt
 import argparse
-import random
-from config import *
+import logging
+
+import tensorflow as tf
+import numpy as np
+from npu_bridge.estimator import npu_ops
+from npu_bridge.npu_init import util
+
+from custom_pybind import ShmInfo, HostMgmt
+from config import bind_cpu, sess_config, import_ops, format_size
 
 rma_ops = import_ops("librma_tf_ops.so")
 
 # 定义运行算子的Device ID
 device_id = int(os.environ.get("RMA_DEVICE_ID"))
-queue_capacity = 100
 MAX_TABLE_NUM = 6
 
 
-def shm_op_swap(tables, table_num, swap_in_index, swap_out_index, shm_swap_in, shm_swap_out):
-    table_list = []
-    # table_num = len(tables)
-    for i in range(MAX_TABLE_NUM):
-        if i < table_num:
-            table_list.append(tables[i])
-        else:
-            table_list.append(tables[0])
-    shm_out_op = rma_ops.rma_swap_multi_tables(swap_in_index = swap_in_index, swap_out_index = swap_out_index,
-                                               table_a = table_list[0],
-                                               table_b = table_list[1],
-                                               table_c = table_list[2],
-                                               table_d = table_list[3],
-                                               table_e = table_list[4],
-                                               table_f = table_list[5],
-                                               table_num = table_num, shm_swap_in = shm_swap_in, shm_swap_out = shm_swap_out)
-    return shm_out_op
-
-
 def main(unused_argv):
-    print("device: ", device_id)
     parser = argparse.ArgumentParser(description='命令行参数')
     parser.add_argument('--shape', type=int, help='数据量大小为(shape, shape), float32')
     parser.add_argument('--step', type=int, help='轮次')
@@ -64,7 +44,7 @@ def main(unused_argv):
     shape_value = int(args.shape)
     step = int(args.step)
     table_num = int(args.table_num)
-    print('shape: ({}, {}), step: {}, table_num: {}'.format(shape_value, shape_value, step, table_num))
+    logging.info(f"shape: ({shape_value}, {shape_value}), step: {step}, table_num: {table_num}")
 
     table_dim_split = 128
     table_size = 4000000
@@ -74,7 +54,7 @@ def main(unused_argv):
     table_dtype_params = np.float32
     swap_num = (shape_value * shape_value) // table_dim
 
-    affinity = set(range(193, 203))
+    affinity = set(range(0, 10))
     bind_cpu(affinity)
 
     tables = []
@@ -84,7 +64,7 @@ def main(unused_argv):
     with tf.device('/device:NPU:' + str(device_id)):
         tables = [tf.Variable(table) for table in tables]
 
-    print("====================")
+    logging.info("====================")
     # 在昇腾AI处理器上运行单算子，得到实际运行结果
     index = np.random.choice(np.arange(0, table_size), size=swap_num, replace=False)
 
@@ -100,7 +80,7 @@ def main(unused_argv):
                 channel_name=f"tdt_swap_h2d",
             )[0]
 
-        print(f"h2d_emb shape: {h2d_emb}")
+        logging.info(f"h2d_emb shape: {h2d_emb}")
 
         swap_outs = [tf.gather(one_table, swap_out_pos) for one_table in tables]
         swap_out = tf.concat(swap_outs, axis=1)
@@ -130,11 +110,11 @@ def main(unused_argv):
 
         end_time = time.time()
         time_cost = (end_time - start_time) / (step - 100) * 1000 * 1000  # us
-        print(f"Data size: {format_size(swap_num * table_dim * 4)}, average time cost: {time_cost} us, "
+        logging.info(f"Data size: {format_size(swap_num * table_dim * 4)}, average time cost: {time_cost} us, "
               f"bandwidth = {swap_num * table_dim * 4 / 1024 / 1024 / 1024 / time_cost * 1000 * 1000} GB/s")
 
     host_mgmt.destroy()
-    print('====================================')
+    logging.info('====================================')
 
 
 if __name__ == "__main__":

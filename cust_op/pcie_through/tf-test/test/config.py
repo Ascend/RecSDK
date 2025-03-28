@@ -16,12 +16,13 @@
 # ==============================================================================
 
 import os
-import numpy as np
-import tensorflow as tf
+import logging
 from enum import Enum
 from types import ModuleType
 
-from npu_bridge.npu_init import *
+import numpy as np
+import tensorflow as tf
+from npu_bridge.npu_init import npu_config_proto
 import acl
 
 CUSTOM_OPS_SO = "librma_tf_ops.so"
@@ -37,32 +38,32 @@ class MemcpyKind(Enum):
 def acl_init(device_id):
     ret = acl.init()
     if ret != 0:
-        print(f"acl init failed, ret: {ret}")
+        logging.info(f"acl init failed, ret: {ret}")
         return
     ret = acl.rt.set_device(device_id)
     if ret != 0:
-        print(f"acl set device {device_id} failed ret: {ret}")
+        logging.info(f"acl set device {device_id} failed ret: {ret}")
         return
-    print("acl initialize success.")
+    logging.info("acl initialize success.")
 
 
 def acl_finalize(device_id):
     ret = acl.rt.reset_device(device_id)
     if ret != 0:
-        print(f"acl reset device {device_id} failed, ret: {ret}")
+        logging.info(f"acl reset device {device_id} failed, ret: {ret}")
         return
     ret = acl.finalize()
     if ret != 0:
-        print(f"acl finalize failed, ret: {ret}")
+        logging.info(f"acl finalize failed, ret: {ret}")
         return
-    print("acl finalize success.")
+    logging.info("acl finalize success.")
 
 
 def bind_cpu(affinity):
     os.sched_setaffinity(0, affinity)
 
 
-def dump_data(array, save_path):
+def save_data(array, save_path):
     array = np.array(array).flatten()
     array.tofile(save_path)
 
@@ -77,17 +78,19 @@ def compare_bin_file(base_bin_file, output_bin_file):
     output = read_bin_file(output_bin_file)
 
     if base.size != output.size:
-        print(f"{output_bin_file} length[{output.size}] not equal {base_bin_file} length[{base.size}]")
+        logging.info(f"{output_bin_file} length[{output.size}] not equal {base_bin_file} length[{base.size}]")
         return False
     unequal_indices = np.where(np.abs(base - output) > 2**(-14))
     if len(unequal_indices[0]) == 0:
-        print("两个数组完全相等")
+        logging.info("两个数组完全相等")
         return True
     else:
         # 获取第一个不相等的位置
-        first_unequal_index = (unequal_indices[0][0], unequal_indices[1][0]) if len(unequal_indices) > 1 else unequal_indices[0][0]
-        print(f"第一个不相等的位置: {first_unequal_index}")
-        print(f"arr1[{first_unequal_index}] = {base[first_unequal_index]}, arr2[{first_unequal_index}] = {output[first_unequal_index]}")
+        first_unequal_index =\
+            (unequal_indices[0][0], unequal_indices[1][0]) if len(unequal_indices) > 1 else unequal_indices[0][0]
+        logging.info(f"第一个不相等的位置: {first_unequal_index}")
+        logging.info(f"arr1[{first_unequal_index}] = {base[first_unequal_index]}, "
+              f"arr2[{first_unequal_index}] = {output[first_unequal_index]}")
         return False
 
 
@@ -120,7 +123,7 @@ def sess_config(execute_type, dump_data=False, dump_path="./dump_output", dump_s
 def import_ops(so_pkg_name: str = CUSTOM_OPS_SO) -> ModuleType:
     so_pkg_path = '../src/build/ops_tf/' + so_pkg_name
     if os.path.exists(so_pkg_path):
-        print(f"Using the DEFAULT PATH `{so_pkg_path}` to get ops lib.")
+        logging.info(f"Using the DEFAULT PATH `{so_pkg_path}` to get ops lib.")
         return tf.load_op_library(so_pkg_path)
     else:
         raise ValueError(f"Please check if `{so_pkg_name}` exists.")
