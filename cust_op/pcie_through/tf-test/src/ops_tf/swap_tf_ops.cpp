@@ -36,10 +36,10 @@ using OpKernelConstructionPtr = OpKernelConstruction*;
 using OpKernelContextPtr = OpKernelContext*;
 using InferenceContextPtr = ::tensorflow::shape_inference::InferenceContext*;
 
-namespace Rma {
-    class CustOps : public OpKernel {
+namespace TfTest {
+    class SwapTfOps : public OpKernel {
     public:
-        explicit CustOps(OpKernelConstructionPtr context) : OpKernel(context)
+        explicit SwapTfOps(OpKernelConstructionPtr context) : OpKernel(context)
         {
         }
 
@@ -48,7 +48,7 @@ namespace Rma {
             std::cout << " Cust opp not installed!!" << std::endl;
         }
 
-        ~CustOps() override = default;
+        ~SwapTfOps() override = default;
     };
 }
 
@@ -72,5 +72,5 @@ namespace tensorflow {
     return tensorflow::Status::OK();
     });
 
-    REGISTER_KERNEL_BUILDER(Name("RmaSwapMultiTables").Device(DEVICE_CPU), Rma::CustOps);
+    REGISTER_KERNEL_BUILDER(Name("RmaSwapMultiTables").Device(DEVICE_CPU), TfTest::SwapTfOps);
 }

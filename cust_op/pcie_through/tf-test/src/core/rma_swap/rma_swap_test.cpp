@@ -37,7 +37,7 @@ int64_t GetShmElemNum(MxRec::RmaShmHeader* header)
 // 仅用于pybind侧调用，read共享内存；
 int ReadShmData(std::string name, bool save, std::string savePath)
 {
-    auto* queueHead = reinterpret_cast<MxRec::RmaShmHeader*>(MxRec::GetHostAddr(name));;
+    auto* queueHead = reinterpret_cast<MxRec::RmaShmHeader*>(MxRec::GetHostAddr(name));
     if (queueHead == nullptr) {
         LOG_ERROR("shm addr is invalid");
         return 0;

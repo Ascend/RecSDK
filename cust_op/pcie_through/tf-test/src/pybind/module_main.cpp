@@ -61,8 +61,8 @@ void GetHostMgmt(py::module_& m)
 {
     pybind11::class_<TfTest::HostMgmt>(m, "HostMgmt")
         .def(py::init())
-        .def("initialize", &TfTest::HostMgmt::Initialize, py::arg("shm_infos"), py::arg("step_num"),
-             py::arg("seed"), py::arg("type") = "RMA")
+        .def("initialize", &TfTest::HostMgmt::Initialize, py::arg("shm_infos"), py::arg("steps"),
+             py::arg("random_seed"), py::arg("trans_type") = "RMA")
         .def("destroy", &TfTest::HostMgmt::Destroy);
 }
 

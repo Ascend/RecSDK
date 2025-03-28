@@ -65,7 +65,7 @@ public:
 
     HostMgmt& operator=(const HostMgmt&) = delete;
 
-    bool Initialize(vector <ShmInfo>& shmInfos, int stepNum, int seed, string type = "RMA");
+    bool Initialize(vector <ShmInfo>& shmInfos, int steps, int randomSeed, string transType = "RMA");
 
     void Destroy();
 

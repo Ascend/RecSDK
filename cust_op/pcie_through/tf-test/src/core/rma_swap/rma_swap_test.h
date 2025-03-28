@@ -44,7 +44,7 @@ void DumpVector(std::vector <T>& vec, std::string savePath)
 
     // 写入向量的数据
     if (!vec.empty()) {
-        outputFile.write(reinterpret_cast<const char*>(vec.data()), sizeof(T) * vec.size());
+        outputFile.write(static_cast<const char*>(vec.data()), sizeof(T) * vec.size());
     }
 
     // 关闭文件
@@ -66,7 +66,7 @@ void DumpVector(T* arr, int64_t arrLen, std::string savePath)
     }
 
     if (arrLen > 0) {
-        outputFile.write(reinterpret_cast<const char*>(arr), sizeof(T) * arrLen);
+        outputFile.write(static_cast<const char*>(static_cast<void *>(arr)), sizeof(T) * arrLen);
     }
 
     outputFile.close();

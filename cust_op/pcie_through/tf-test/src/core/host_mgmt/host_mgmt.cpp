@@ -26,7 +26,7 @@ using namespace std;
 
 namespace TfTest {
 
-bool HostMgmt::Initialize(vector <ShmInfo>& shmInfos, int stepNum, int seed, string type)
+bool HostMgmt::Initialize(vector <ShmInfo>& shmInfos, int steps, int randomSeed, string transType)
 {
     MxRec::ConfigGlobalEnv();
 
@@ -35,9 +35,9 @@ bool HostMgmt::Initialize(vector <ShmInfo>& shmInfos, int stepNum, int seed, str
     }
 
     mgmtShmInfos = shmInfos;
-    this->stepNum = stepNum;
-    this->seed = seed;
-    this->type = type;
+    this->stepNum = steps;
+    this->seed = randomSeed;
+    this->type = transType;
 
     auto success = CreateChannel(shmInfos);
     if (!success) {
