@@ -319,7 +319,9 @@ int EmbLocalTable::Scatter(const uint64_t startAddr, const vector<uint64_t>& key
                 auto rc = memcpy_s(reinterpret_cast<void*>(embAddr), memSize,  // 按顺序把新的embedding拷贝到对应地址中
                                    reinterpret_cast<void*>(addr), memSize);
                 if (rc != 0) {
-                    ExternalLogger::PrintLog(LogLevel::ERROR, "memcpy_s failed... dstSize: " + std::to_string(memSize));
+                    ExternalLogger::PrintLog(LogLevel::ERROR, "memcpy_s failed... dstSize: " + std::to_string(memSize)
+                                                                  + ", embAddr:" + std::to_string(embAddr)
+                                                                  + ", rc:" + std::to_string(rc));
                     ret = H_COPY_ERROR;
                     return;
                 }

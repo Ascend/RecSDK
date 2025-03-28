@@ -352,6 +352,7 @@ public:
         const std::function<BeforePutFuncState()> &beforePutFunc)
     {
         if (HM_UNLIKELY(key == 0)) {
+            std::lock_guard<std::mutex> lock(zeroKeyMutex_);
             if (zeroInside) {
                 value = zeroValue;
                 return FkvState::FKV_EXIST;
@@ -397,6 +398,7 @@ public:
     FkvState Remove(uint64_t key)
     {
         if (HM_UNLIKELY(key == 0)) {
+            std::lock_guard<std::mutex> lock(zeroKeyMutex_);
             if (zeroInside) {
                 if (__sync_bool_compare_and_swap(&zeroInside, true, false)) {
                     zeroValue = 0;
@@ -428,6 +430,7 @@ public:
     FkvState Remove(uint64_t key, const std::function<BeforeRemoveFuncState(uint64_t)> &beforeRemoveFunc)
     {
         if (HM_UNLIKELY(key == 0)) {
+            std::lock_guard<std::mutex> lock(zeroKeyMutex_);
             if (!zeroInside) {
                 return FkvState::FKV_NOT_EXIST;
             }
@@ -448,8 +451,10 @@ public:
         /* loop all buckets linked */
         uint64_t value;
         while (buck != nullptr) {
+            buck->spinLock.Lock();
             if (buck->Find(key, value)) {
                 auto ret = buck->Remove(key, beforeRemoveFunc);
+                buck->spinLock.UnLock();
                 if (HM_UNLIKELY(ret == FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL)) {
                     return FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL;
                 }
@@ -457,7 +462,7 @@ public:
                 currentSize--;
                 return FkvState::FKV_EXIST;
             }
-
+            buck->spinLock.UnLock();
             buck = buck->next;
         }
 
@@ -467,6 +472,7 @@ public:
     FkvState Put(uint64_t key, uint64_t value)
     {
         if (HM_UNLIKELY(key == 0)) {
+            std::lock_guard<std::mutex> lock(zeroKeyMutex_);
             if (__sync_bool_compare_and_swap(&zeroInside, false, true)) {
                 zeroValue = value;
                 currentSize++;
@@ -542,6 +548,7 @@ public:
     bool Find(const uint64_t key, uint64_t &value)
     {
         if (HM_UNLIKELY(key == 0)) {
+            std::lock_guard<std::mutex> lock(zeroKeyMutex_);
             if (zeroInside) {
                 value = zeroValue;
                 return true;
@@ -568,6 +575,7 @@ public:
         const std::function<BeforeRemoveFuncState(uint64_t)> &beforeRemoveFunc)
     {
         if (HM_UNLIKELY(key == 0)) {
+            std::lock_guard<std::mutex> lock(zeroKeyMutex_);
             if (!zeroInside) {
                 return FkvState::FKV_NOT_EXIST;
             }
@@ -628,6 +636,7 @@ protected:
     uint64_t mBaseSize = 4096;                       /* base size */
     bool zeroInside = false;
     uint64_t zeroValue = 0;
+    std::mutex zeroKeyMutex_;
 
     const uint64_t gPrimes[gPrimesCount] = {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37,
                                             41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89,
