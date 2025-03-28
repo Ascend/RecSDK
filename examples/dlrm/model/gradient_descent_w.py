@@ -28,6 +28,7 @@ from mx_rec.util.initialize import ConfigInitializer
 
 from demo_logger import logger
 
+
 def create_hash_optimizer(learning_rate, weight_decay=0.0001, use_locking=False, name="GradientDescent"):
     optimizer = CustomizedGradientDescentWithWeighDecay(learning_rate=learning_rate,
                                                         weight_decay=weight_decay,
