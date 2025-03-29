@@ -42,7 +42,7 @@ DATE2=$(date +%H-%M-%S)
 
 export run_py=rma_swap_multi_tables.py
 export ai_type=aicore    #aicpu aicore tdt
-
+export HUGE_TLB_ENABLE=1   #set vm.nr_hugepages = 20480 before
 # 使用py脚本名称作为存放log的文件目录
 logdir=${ai_type}_${run_py%%.*}_${DATE}
 if test -d "$logdir"; then
