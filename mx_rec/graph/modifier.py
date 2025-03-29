@@ -633,6 +633,7 @@ def _get_variable_and_slot_list(each_var, slot_num, table_name, channel_id):
     # in DDR/SSD mode, the loaded embedding with dimension ext_size is used for swapping in and out. Therefore,
     # placeholders need to be provided for the slots.
     if optimizer is None and channel_id == EVAL_CHANNEL_ID:
+        # This is an interim solution to fix ssd precision problem.
         if not ConfigInitializer.get_instance().train_params_config.bool_gauge_set:
             slot_place_holder = tf.zeros_like(each_var)
         else:

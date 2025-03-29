@@ -98,6 +98,7 @@ class LearningRateScheduler:
             lambda: lr_sparse,
             lambda: tf.cast(0.0, tf.float32)
         )
+        lr_sparse = tf.math.minimum(lr_sparse, tf.cast(10.0, tf.float32))
         return lr_dense, lr_sparse
 
 
