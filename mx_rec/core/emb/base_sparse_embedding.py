@@ -4,7 +4,7 @@
 
 import abc
 from collections import defaultdict
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union, List, Tuple
 
 from mpi4py import MPI
 import tensorflow as tf
@@ -387,6 +387,14 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         logger.debug("Return the stub tensor `%s` of the `%s` table.", mock_lookup_result, self._table_name)
         return mock_lookup_result
 
+    @staticmethod
+    def _get_access_and_evict_threshold(table_feature_specs: List[FeatureSpec]) -> Tuple[int, int]:
+        access_threshold_set = set(spec.access_threshold for spec in table_feature_specs)
+        evict_threshold_set = set(spec.eviction_threshold for spec in table_feature_specs)
+        if len(access_threshold_set) != 1 or len(evict_threshold_set) != 1:
+            raise ValueError("the access and evict threshold param must be same in one table when multi lookup.")
+        return access_threshold_set.pop(), evict_threshold_set.pop()
+
     def lookup_for_feat_spec(self, feature_spec: FeatureSpec, send_count: Optional[int], **kwargs) -> tf.Tensor:
         """
         稀疏表的lookup，FeatureSpec模式.
@@ -436,7 +444,11 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         # 改图模式下FeatureSpec是按照lookup顺序创建的，无需对ids进行排序；fs模式下手动创建FeatureSpec，不一定有序
         if not self._modify_graph:
             same_table_feature_spec = sorted(same_table_feature_spec, key=lambda x: x.name)
-        mock_feature_spec = FeatureSpec(f"mock_feature_spec_{table_name}", table_name=table_name)
+
+        access_threshold, evict_threshold = self._get_access_and_evict_threshold(same_table_feature_spec)
+        mock_feature_spec = FeatureSpec(f"mock_feature_spec_{table_name}", table_name=table_name,
+                                        access_threshold=access_threshold,
+                                        eviction_threshold=evict_threshold)
 
         if self._use_static:
             tensor_list = []
