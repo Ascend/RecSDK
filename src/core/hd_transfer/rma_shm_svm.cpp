@@ -37,7 +37,7 @@ drvError_t halHostUnregister(void* srcPtr, UINT32 devid);
 drvError_t rtDeviceGetBareTgid(uint32_t* pid);
 }
 
-constexpr uint64_t RMA_SHM_TOTAL_MEM_SIZE = 1 * 1024 * 1024 * 1024 * 5L; // shared memory total size(B)
+constexpr uint64_t RMA_SHM_TOTAL_MEM_SIZE = 1 * 1024 * 1024 * 1024 * 20L; // shared memory total size(B)
 constexpr int RMA_SHM_QUEUE_CAPACITY = 50;                           // max depth
 constexpr int32_t MAX_RANK_SIZE = 4095;
 constexpr uint32_t KEY_DIM = 0;
