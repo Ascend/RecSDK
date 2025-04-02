@@ -272,7 +272,7 @@ def model_fn(features, labels, mode, params):
             k = tf.tensordot(keys, w_k, axes=(-1, 0))
             v = tf.tensordot(keys, w_v, axes=(-1, 0))
 
-            # (h * None) * T_q * D
+            # Note:(h * None) * T_q * D
             q_ = tf.concat(tf.split(q, heads_num, axis=2), axis=0)
             k_ = tf.concat(tf.split(k, heads_num, axis=2), axis=0)
             v_ = tf.concat(tf.split(v, heads_num, axis=2), axis=0)
@@ -283,18 +283,18 @@ def model_fn(features, labels, mode, params):
 
             key_masks = tf.tile(key_masks, [heads_num, 1])
 
-            # (h * None) * T_q * T_k
+            # Note: (h * None) * T_q * T_k
             key_masks = tf.tile(tf.expand_dims(key_masks, 1), [1, tf.shape(queries)[1], 1])
 
             paddings = tf.ones_like(outputs) * (-2 ** 32 + 1)
 
-            # (h * None) * T_q * T_k
+            # Note: (h * None) * T_q * T_k
             outputs = tf.where(tf.equal(key_masks, 1), outputs, paddings, )
 
             outputs -= tf.reduce_max(outputs, axis=-1, keepdims=True)
             outputs = tf.nn.softmax(outputs, axis=-1)
             query_masks = tf.tile(query_masks, [heads_num, 1])  # (h * None) * T_q
-            # (h * None) * T_q * T_k
+            # Note: (h * None) * T_q * T_k
             query_masks = tf.tile(tf.expand_dims(
                 query_masks, -1), [1, 1, tf.shape(keys)[1]])
 
