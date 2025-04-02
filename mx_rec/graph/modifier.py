@@ -715,11 +715,13 @@ def _get_swap_info(
         )
     swap_out_pos = swap_info.swap_out_pos
     swap_in_pos = swap_info.swap_in_pos
-    if use_static:
-        swap_out_pos = swap_out_pos[: swap_info.swap_out_len]
-        swap_in_pos = swap_in_pos[: swap_info.swap_in_len]
     use_shm_swap = ConfigInitializer.get_instance().use_shm_swap
     if use_shm_swap:
+        if use_static:
+            length_out = tf.cast(swap_info.swap_out_len, dtype=tf.int64)
+            swap_out_pos = swap_out_pos[: length_out]
+            length_in = tf.cast(swap_info.swap_in_len, dtype=tf.int64)
+            swap_in_pos = swap_in_pos[: length_in]
         optimizer = ConfigInitializer.get_instance().optimizer_config.get_optimizer_by_table_name(
             table_instance.table_name)
         h2d_name = f'{table_instance.table_name}_h2d_{channel_id}'
@@ -731,7 +733,9 @@ def _get_swap_info(
             swap_op = [shm_swap(variable_and_slot_list, swap_in_index=swap_in_pos, swap_out_index=swap_out_pos,
                                 h2d_name=h2d_name, d2h_name=d2h_name)]
         return swap_op
-
+    if use_static:
+        swap_out_pos = swap_out_pos[: swap_info.swap_out_len]
+        swap_in_pos = swap_in_pos[: swap_info.swap_in_len]
     with tf.compat.v1.variable_scope("h2d_emb"):
         logger.debug("Channel %s_h2d_%s was built for getnext.", table_instance.table_name, channel_id)
         h2d_emb = npu_ops.gen_npu_ops.get_next(
