@@ -209,8 +209,8 @@ if __name__ == "__main__":
         for j in range(len(all2all[i])):
             all2all[i][j] = int(i / send_row_per_rank) * 100000 + (i % send_row_per_rank) + send_row_per_rank * rank_id
     expect_uss = np.zeros((output_len, dim), dtype=np.float32)
-    for i in range(len(restore_np)):
-        expect_uss[restore_np[i]] += all2all[i]
+    for i, value in enumerate(restore_np):
+        expect_uss[value] += all2all[i]
     actual = np.array(results.get("alluss_result"))
     verify_result(actual, expect_uss)
 
