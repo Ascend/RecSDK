@@ -1,3 +1,4 @@
+import logging
 import os
 import stat
 import math
@@ -5,6 +6,8 @@ import json
 import argparse
 from collections import defaultdict
 
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 parser = argparse.ArgumentParser(description='Parse arguments')
 parser.add_argument("--length", type=float, default=math.inf, help="max length for sequence fields")
 parser.add_argument("--proc", type=int, default=1, help="num of working processes")
@@ -73,7 +76,6 @@ def parse_data(file_name, index_dict_in=None):
 
 
 if __name__ == "__main__":
-    # args = args.parse_args()
     all_field_id = [
         "101",
         "109_14",
@@ -102,7 +104,8 @@ if __name__ == "__main__":
     train_data_path = "."
     test_data_path = "."
     index_dict = parse_data(os.path.join(train_data_path, "sample_skeleton_train.csv"))
-    parse_data(os.path.join(train_data_path, "common_features_train.csv"), index_dict)
+    parse_ret = parse_data(os.path.join(train_data_path, "common_features_train.csv"), index_dict)
+    logging.info("parse_data ret:%s", parse_ret)
     index_dict.pop("common_index")
 
     json_str = json.dumps(index_dict, indent=4)
