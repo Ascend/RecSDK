@@ -58,7 +58,7 @@ def main(unused_argv):
     bind_cpu(affinity)
 
     tables = []
-    for i in range(table_num):
+    for _ in range(table_num):
         tables.append(np.random.uniform(-2, 2, size=table_shape_split_params).astype(table_dtype_params))
     tables = [tf.convert_to_tensor(table, tf.float32) for table in tables]
     with tf.device('/device:NPU:' + str(device_id)):
