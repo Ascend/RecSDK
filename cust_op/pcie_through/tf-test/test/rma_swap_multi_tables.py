@@ -43,17 +43,17 @@ def shm_op_swap(emb_tables, emb_table_num, swap_in_index_arr, swap_out_index_arr
             table_list.append(emb_tables[i])
         else:
             table_list.append(emb_tables[0])
-    shm_out_op = rma_ops.rma_swap_multi_tables(swap_in_index = swap_in_index_arr,
-                                               swap_out_index = swap_out_index_arr,
-                                               table_a = table_list[0],
-                                               table_b = table_list[1],
-                                               table_c = table_list[2],
-                                               table_d = table_list[3],
-                                               table_e = table_list[4],
-                                               table_f = table_list[5],
-                                               table_num = emb_table_num,
-                                               shm_swap_in = shm_swap_in_addr,
-                                               shm_swap_out = shm_swap_out_addr)
+    shm_out_op = rma_ops.rma_swap_multi_tables(swap_in_index=swap_in_index_arr,
+                                               swap_out_index=swap_out_index_arr,
+                                               table_a=table_list[0],
+                                               table_b=table_list[1],
+                                               table_c=table_list[2],
+                                               table_d=table_list[3],
+                                               table_e=table_list[4],
+                                               table_f=table_list[5],
+                                               table_num=emb_table_num,
+                                               shm_swap_in=shm_swap_in_addr,
+                                               shm_swap_out=shm_swap_out_addr)
     return shm_out_op
 
 
@@ -76,11 +76,11 @@ def main(unused_argv):
     table_dtype_params = np.float32
     swap_num = (shape_value * shape_value) // table_dim
 
-    affinity = set(range(0, 10))    # 请根据```npu-smi info -t topo```信息绑核
+    affinity = set(range(0, 10))  # 请根据```npu-smi info -t topo```信息绑核
     bind_cpu(affinity)
 
     tables = []
-    for i in range(table_num):
+    for _ in range(table_num):
         tables.append(np.random.uniform(-2, 2, size=table_shape_split_params).astype(table_dtype_params))
     tables = [tf.convert_to_tensor(table, tf.float32) for table in tables]
     with tf.device('/device:NPU:' + str(device_id)):
@@ -115,14 +115,13 @@ def main(unused_argv):
         end_time = time.time()
         time_cost = (end_time - start_time) / (step - 100) * 1000 * 1000  # us
         logging.info(f"Data size: {format_size(swap_num * table_dim * 4)}, average time cost: {time_cost} us, "
-              f"bandwidth = {swap_num * table_dim * 4 / 1024 / 1024 / 1024 / time_cost * 1000 * 1000} GB/s")
+                     f"bandwidth = {swap_num * table_dim * 4 / 1024 / 1024 / 1024 / time_cost * 1000 * 1000} GB/s")
 
     host_mgmt.destroy()
     logging.info('====================================')
 
 
 if __name__ == "__main__":
-
     os.environ['WHICH_OP'] = 'GEOP'
     os.environ["DEVICE_ID"] = str(device_id)
     os.environ["ASCEND_DEVICE_ID"] = str(device_id)

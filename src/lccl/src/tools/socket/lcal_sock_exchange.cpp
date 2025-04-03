@@ -126,7 +126,7 @@ int LcalSockExchange::GetNodeNum()
             }
             uuidSet.insert(uuid);
         }
-        nodeNum = uuidSet.size();
+        nodeNum = static_cast<int>(uuidSet.size());
         for (int i = 1; i < rankSize_; ++i) {
             if (Send(clientFds_[i], &nodeNum, sizeof(int), 0) <= 0) {
                 ASD_LOG(ERROR) << "Server side send rank " << i << " buffer failed";
