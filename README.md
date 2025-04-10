@@ -31,6 +31,7 @@ Rec SDK作为面向互联网市场搜索推荐广告的应用使能SDK产品，�
 ## 支持的产品型号
 - Atlas 200T A2 Box16
 - Atlas 800T A2 训练服务器
+- Atlas 900 A3 SuperPoD 超节点
 
 ## 安装方式
 
@@ -82,6 +83,7 @@ bash run.sh
 - [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
 - [openmpi 4.1.5](https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.gz): 请参考软件文档在编译环境完成安装
 - tensorflow 1.15/2.6.5：根据实际需求选择对应版本
+
 
 将pybind11和securec的压缩包放在与Rec SDK代码同级的opensource目录下，并且将其分别更名为pybind11-2.10.3.zip、huaweicloud-sdk-c-obs-3.23.9.zip。如果没有opensource目录，则需要在Rec SDK同级的目录下手动创建opensource目录，然后将pybind11和securec的压缩包放在opensource目录下。
 
@@ -158,6 +160,8 @@ tf2环境下使用如下命令：
 ```shell
 bash test_ut.sh tf2
 ```
+
+注：部分c++用例使用了emock库进行打桩，需要在x86环境上运行；在aarm64环境运行失败可忽略。
 
 ## 使用指导
 

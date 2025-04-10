@@ -37,7 +37,8 @@ ROOT_DIR=$(dirname "${CUR_DIR}")
 opensource_path="${ROOT_DIR}"/../opensource
 acc_ctr_path="${ROOT_DIR}"/src/AccCTR
 export LD_LIBRARY_PATH="${acc_ctr_path}"/output/ock_ctr_common/lib:$LD_LIBRARY_PATH
-
+# add asan lib path
+export LIBRARY_PATH=${LIBRARY_PATH}:/usr/local/gcc7.3.0/lib64/
 
 function prepare_googletest(){
   cd ${opensource_path}
