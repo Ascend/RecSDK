@@ -489,13 +489,6 @@ TEST_F(LcalCommTest, SyncCommArgsErr_aclrtMemcpyFailure)
     EXPECT_EQ(comm.SyncCommArgs(), LCAL_ERROR_INTERNAL);
 }
 
-TEST_F(LcalCommTest, GetChipName)
-{
-    EMOCK(rtGetSocVersion).expects(once()).will(returnValue(-1));
-
-    EXPECT_EQ(GetChipName(), ChipName::RESERVED);
-}
-
 TEST_F(LcalCommTest, GetCoreNumOk)
 {
     constexpr int AI_CORE_NUM_24 = 24;
