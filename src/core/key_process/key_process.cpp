@@ -1736,8 +1736,9 @@ void KeyProcess::RecordKeyCountMap(const unique_ptr<EmbBatchT>& batch)
         const emb_key_t& key = batchData[i];
         if (singleKeyCountMap.find(key) == singleKeyCountMap.end()) {
             singleKeyCountMap[key] = 1;
+        } else {
+            singleKeyCountMap[key]++;
         }
-        singleKeyCountMap[key]++;
     }
 }
 
