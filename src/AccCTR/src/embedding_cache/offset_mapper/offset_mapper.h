@@ -232,8 +232,10 @@ public:
         }
 
         if (swapOutCnt < swapOutNum) {
-            std::string errMsg = "Max cache size is too small when swap out from device. "
-                                 "Please increase device_vocabulary_size param when invoke create_table function.";
+            std::string errMsg = "Device cache overflow! Max cache size is too small when swap out from device. "
+                                 "Please set a grater value for `device_vocabulary_size` parameter "
+                                 "when invoke `create_table` function. Current table:" + info.name +
+                                 ", device_vocabulary_size:" + std::to_string(maxCacheSize);
             ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR, errMsg);
             return ock::ctr::H_MAX_CACHESIZE_TOO_SMALL;
         }
@@ -250,8 +252,10 @@ public:
         for (uint64_t i = swapInCnt; i < swapInKeys.size(); i++) {
             swapInPos[i] = useLength++;
             if (HM_UNLIKELY(swapInPos[i] >= maxCacheSize)) {
-                std::string errMsg = "Max cache size is too small when swap in device. "
-                                     "Please increase device_vocabulary_size param when invoke create_table function.";
+                std::string errMsg = "Device cache overflow! Max cache size is too small when swap in device. "
+                                     "Please set a grater value for `device_vocabulary_size` parameter "
+                                     "when invoke `create_table` function. Current table:" + info.name +
+                                     ", device_vocabulary_size:" + std::to_string(maxCacheSize);
                 ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR, errMsg);
                 return ock::ctr::H_MAX_CACHESIZE_TOO_SMALL;
             }

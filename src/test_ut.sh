@@ -29,6 +29,8 @@ fi
 export OMPI_ALLOW_RUN_AS_ROOT=1
 export OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
 
+# Remove CC env, and subsequent compilation uses CC in devtoolset.
+unset CC
 source /etc/profile
 source /opt/rh/devtoolset-7/enable
 

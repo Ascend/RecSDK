@@ -87,36 +87,18 @@ bash run.sh
 
 将pybind11和securec的压缩包放在与Rec SDK代码同级的opensource目录下，并且将其分别更名为pybind11-2.10.3.zip、huaweicloud-sdk-c-obs-3.23.9.zip。如果没有opensource目录，则需要在Rec SDK同级的目录下手动创建opensource目录，然后将pybind11和securec的压缩包放在opensource目录下。
 
-由于构建脚本需要适配内部构建工程，所以在脚本中存在适配代码，但是这些代码可能对于用户来说不需要，所以在编译之前需要做如下处理：
-
-在build目录中存在build_tf1.sh和build_tf2.sh，其中分别存在如下代码：
-```shell
-# 配置tf1路径
-source /opt/buildtools/tf1_env/bin/activate
-tf1_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/tensorflow_core
-deactivate tf1_env
-```
-```shell
-# 配置tf2路径
-source /opt/buildtools/tf2_env/bin/activate
-tf2_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/tensorflow
-deactivate tf2_env
-```
-
-可以看到，上述代码中都有激活Python虚拟环境的步骤，因此用户有两种选择：
-
-1. 根据需要在/opt/buildtools/目录下（没有此目录需要先创建）创建tf1_env和tf2_env两个Python虚拟环境，并在虚拟环境中安装对应版本的Tensorflow
-2. 将source /opt/buildtools/tf1_env/bin/activate和deactivate tf1_env注释掉或者删除或者source /opt/buildtools/tf2_env/bin/activate和deactivate tf2_env注释掉或者删除
-
-
-编译方法：
+**编译方法**
 
 进入Rec SDK代码目录：
-- setup.py：此脚本供内部使用，用于同时构建tf1和tf2的Rec SDK包，用户通常只需要其中一个，所以建议使用下面两个脚本构建。
-- setup_tf1.py：执行脚本setup_tf1.py，比如：**python3.7 setup_tf1.py bdist_wheel**完成tf1版本whl包的构建，构建成功后，whl包在build/mindxsdk-mxrec/tf1_whl子目录下。
-- setup_tf2.py：执行脚本setup_tf2.py，比如：**python3.7 setup_tf2.py bdist_wheel**完成tf2版本whl包的构建，构建成功后，whl包在build/mindxsdk-mxrec/tf2_whl子目录下。
+- setup.py：此脚本供内部使用，用于同时构建tf1和tf2的Rec SDK whl包。
+  - 若需同时构建tf1和tf2的包，需在/opt/buildtools/目录下创建tf1_env、tf2_env的Python虚拟环境，并在虚拟环境中安装对应版本的Tensorflow。（虚拟环境路径、名称可在build/build_tf1/2.sh中修改）
+  - 若只需构建某一个tf版本的包，可使用下面的脚本构建。
+- setup_tf1.py：执行脚本 `python3.7 setup_tf1.py bdist_wheel` 构建tf1版本whl包。构建成功后，whl包在build/mindxsdk-mxrec/tf1_whl子目录下。
+- setup_tf2.py：执行脚本 `python3.7 setup_tf2.py bdist_wheel` 构建tf2版本whl包。构建成功后，whl包在build/mindxsdk-mxrec/tf2_whl子目录下。
 
-如需使用动态扩容功能，进入“./cust_op/cust_op_by_addr”目录中。参考以下命令编译并安装动态扩容算子包。
+whl包安装参考前文二进制包安装。
+
+如需使用动态扩容功能，进入“./cust_op/cust_op_by_addr”目录，参考以下命令编译并安装动态扩容算子包。
 ```shell
 bash run.sh
 ```
@@ -161,7 +143,10 @@ tf2环境下使用如下命令：
 bash test_ut.sh tf2
 ```
 
-注：部分c++用例使用了emock库进行打桩，需要在x86环境上运行；在aarm64环境运行失败可忽略。
+注：
+1. 部分c++用例使用了emock库进行打桩，需要在x86环境上运行；在aarm64环境运行失败时可忽略。
+2. test_ut.sh脚本运行完成后会使用lcov指令生成覆盖率统计信息（还会使用到perl-Digest-MD5），若指令未安装完全生成失败时可忽略。
+
 
 ## 使用指导
 
