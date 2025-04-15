@@ -130,6 +130,8 @@ void EmbeddingDynamic::MallocEmbeddingBlock(int embNum)
     void *block = nullptr;
     aclError ec = aclrtMalloc(&block, embNum * extEmbSize_ * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST);
     if (ec != 0) {
+        LOG_ERROR("Failed to malloc device memory, please check whether the device memory is sufficient. "
+                  "aclrtMalloc error code:{}.", ec);
         throw std::bad_alloc();
     }
     memoryList_.push_back(block);

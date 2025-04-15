@@ -89,7 +89,8 @@ void EmbeddingStatic::EmplaceKeyOffset(std::vector<emb_key_t>& keys, const std::
     }
     if (maxOffset > devVocabSize) {
         string errMsg = Logger::Format("Device cache overflow! Please set a grater value for `device_vocabulary_size` "
-                                       "parameter. Current offset:{}, device_vocabulary_size:{}, table:{}.",
+                                       "parameter when invoke `create_table` function. "
+                                       "Current offset:{}, device_vocabulary_size:{}, table:{}.",
                                        maxOffset, devVocabSize, name);
         auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::INVALID_ARGUMENT, errMsg);
         LOG_ERROR(error.ToString());

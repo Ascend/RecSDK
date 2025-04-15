@@ -379,7 +379,8 @@ vector<vector<float>> Table::FetchEmbeddingsInner(vector<emb_cache_key_t> &keys)
     for (size_t i = 0; i < dLen; ++i) {
         auto it = as_const(keyToFile).find(keys[i]);
         if (it == keyToFile.end()) {
-            ThrowInvalidArgError(StringFormat("Failed to find the key, {key=%d} not exist!", keys[i]));
+            std::string msg = Logger::Format("Failed to find the key:{}, key not exist in table:{}.", keys[i], name);
+            ThrowInvalidArgError(msg);
         }
         if (miniBatch[it->second] == nullptr) {
             miniBatch[it->second] = make_shared<pair<vector<emb_cache_key_t>, vector<size_t>>>();
