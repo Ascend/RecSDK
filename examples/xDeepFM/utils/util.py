@@ -54,7 +54,7 @@ def print_time(s, start_time):
 
 def check_file_exist(filename):
     if not os.path.isfile(filename):
-        raise ValueError("{0} is not exits".format(filename))
+        raise ValueError("{0} is not exist".format(filename))
 
 
 def load_yaml_file(filename):
