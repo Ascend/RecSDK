@@ -55,6 +55,7 @@ HOROVOD_WITH_MPI=1 HOROVOD_WITH_TENSORFLOW=1 pip3.7 install horovod --no-cache-d
 
 ### 二进制包安装
 
+
 从昇腾开源社区直接获取编译打包后的产品包。解压后包含tf1和tf2两个版本的whl安装包，使用pip命令安装whl包（请根据实际需求，选取对应TensorFlow版本匹配的Wheel包）：
 ```shell
 pip3 install mx_rec-{version}-py3-none-linux_{arch}.whl
@@ -104,6 +105,7 @@ bash run.sh
 ```
 
 ## 测试用例
+> 运行测试用例前需先设置CANN相关环境变量，参考前文`安装方式`章节。
 
 ### Python侧测试用例
 
@@ -145,7 +147,7 @@ bash test_ut.sh tf2
 
 注：
 1. 部分c++用例使用了emock库进行打桩，需要在x86环境上运行；在aarm64环境运行失败时可忽略。
-2. test_ut.sh脚本运行完成后会使用lcov指令生成覆盖率统计信息（还会使用到perl-Digest-MD5），若指令未安装完全生成失败时可忽略。
+2. test_ut.sh脚本运行完成后会使用[lcov](https://github.com/linux-test-project/lcov/releases/download/v1.13/lcov-1.13.tar.gz)及相关工具（如perl-Digest-MD5）生成覆盖率统计信息，若指令未安装完全生成失败时可忽略。
 
 
 ## 使用指导
