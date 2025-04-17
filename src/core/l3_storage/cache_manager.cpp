@@ -265,7 +265,7 @@ void CacheManager::ProcessSwapInKeys(const string& tableName, const vector<emb_c
 
     // L3Storage--->DDR
     for (uint64_t key : L3StorageToDDRKeys) {
-        keyMapper.InsertDDRKey(key);
+        keyMapper.InsertDDRKey(key, false);
         keyMapper.RemoveL3StorageKey(key);
     }
     for (uint64_t key : firstSeenKeys) {

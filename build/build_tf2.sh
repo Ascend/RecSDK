@@ -28,6 +28,8 @@ ARCH="$(uname -m)"
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 MxRec_DIR=$(dirname "${SCRIPT_DIR}")
 
+export CC=$(which gcc)
+
 opensource_path="${MxRec_DIR}"/../opensource
 if [ ! -d ${opensource_path} ]; then
   echo "user should download dependency packages to mxRec/../opensource directory, see README.md"
@@ -58,9 +60,9 @@ prepare_pybind
 prepare_securec
 
 # 配置tf2路径
-source /opt/buildtools/tf2_env/bin/activate
+[ -e /opt/buildtools/tf2_env/bin/activate ] && source /opt/buildtools/tf2_env/bin/activate
 tf2_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/tensorflow
-deactivate tf2_env
+[ -e /opt/buildtools/tf2_env/bin/activate ] && deactivate tf2_env
 
 # 配置Rec SDK C++代码路径和AccCTR路径
 src_path="${MxRec_DIR}"/src

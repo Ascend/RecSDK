@@ -837,7 +837,7 @@ def rename_file_and_remove_others(upper_dir: str):
     ]
     if not data_files:
         raise RuntimeError(
-            f"rename and remove file failed, {upper_dir} not exits slice*.data."
+            f"rename and remove file failed, slice*.data do not exist in {upper_dir}."
         )
 
     # Rename: slice_0.data -> slice.data.

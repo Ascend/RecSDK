@@ -121,7 +121,7 @@ function rankTableSolution() {
   export RANK_SIZE=$num_process
   echo "RANK_TABLE_FILE=$RANK_TABLE_FILE"
   if [ ! -f "$RANK_TABLE_FILE" ];then
-    echo "the rank table file does not exit. Please reference {hccl_json_${local_rank_size}p.json} to correctly config rank table file"
+    echo "the rank table file does not exist. Please reference {hccl_json_${local_rank_size}p.json} to correctly config rank table file"
     exit 1
   fi
 }
