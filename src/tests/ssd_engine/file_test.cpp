@@ -15,10 +15,11 @@ See the License for the specific language governing permissions and
 
 #include <fstream>
 #include <stdexcept>
+#include <string>
 
-#include <mpi.h>
-#include <emock/emock.hpp>
-#include <gtest/gtest.h>
+#include "mpi.h"
+#include "emock/emock.hpp"
+#include "gtest/gtest.h"
 
 #include "utils/common.h"
 #include "utils/error.h"
@@ -244,7 +245,10 @@ protected:
 
 TEST_F(EmbFileTest, AllGetMethodsOk)
 {
-    auto fileDir = "file-test-dir"s;
+    int rankId = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rankId);
+
+    auto fileDir = "file-test-dir-" + std::to_string(rankId);
     auto file = File(0, fileDir);
 
     EXPECT_EQ(file.GetFileID(), 0);
