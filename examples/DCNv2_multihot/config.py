@@ -22,6 +22,7 @@ from tensorflow.core.protobuf.rewriter_config_pb2 import RewriterConfig
 
 SSD_DATA_PATH = ["ssd_data"]
 
+
 class CacheModeEnum(enum.Enum):
     HBM = "HBM"
     DDR = "DDR"
