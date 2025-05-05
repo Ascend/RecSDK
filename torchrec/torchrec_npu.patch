@@ -1,0 +1,390 @@
+diff --git a/setup.py b/setup.py
+index 9582f844..c2cfa6b0 100644
+--- a/setup.py
++++ b/setup.py
+@@ -29,8 +29,6 @@ def _get_version():
+     else:
+         with open(os.path.join(ROOT_DIR, "version.txt"), "r") as f:
+             version = f.readline().strip()
+-        if sha is not None and "OFFICIAL_RELEASE" not in os.environ:
+-            version += "+" + sha[:7]
+ 
+     if sha is None:
+         sha = "Unknown"
+@@ -86,13 +84,13 @@ def main(argv: List[str]) -> None:
+         name="torchrec",
+         version=version,
+         author="TorchRec Team",
+-        author_email="packages@pytorch.org",
+-        maintainer="PaulZhang12",
+-        maintainer_email="paulzhan@meta.com",
++        author_email="",
++        maintainer="",
++        maintainer_email="",
+         description="TorchRec: Pytorch library for recommendation systems",
+         long_description=readme,
+         long_description_content_type="text/markdown",
+-        url="https://github.com/pytorch/torchrec",
++        url="",
+         license="BSD-3",
+         keywords=[
+             "pytorch",
+diff --git a/torchrec/__init__.py b/torchrec/__init__.py
+index 29258f6f..b67bdb54 100644
+--- a/torchrec/__init__.py
++++ b/torchrec/__init__.py
+@@ -6,7 +6,8 @@
+ # LICENSE file in the root directory of this source tree.
+ 
+ # pyre-strict
+-
++import enum
++from fbgemm_gpu import split_table_batched_embeddings_ops_training
+ import torchrec.distributed  # noqa
+ import torchrec.quant  # noqa
+ from torchrec.fx import tracer  # noqa
+@@ -34,3 +35,12 @@ try:
+     from .version import __version__, github_version  # noqa
+ except ImportError:
+     pass
++
++
++class ComputeDevice(enum.IntEnum):
++    CPU = 0
++    CUDA = 1
++    MTIA = 2
++    NPU = 3
++
++split_table_batched_embeddings_ops_training.ComputeDevice = ComputeDevice
+\ No newline at end of file
+diff --git a/torchrec/distributed/batched_embedding_kernel.py b/torchrec/distributed/batched_embedding_kernel.py
+index c24b912d..20a564bc 100644
+--- a/torchrec/distributed/batched_embedding_kernel.py
++++ b/torchrec/distributed/batched_embedding_kernel.py
+@@ -1051,6 +1051,11 @@ class BatchedFusedEmbedding(BaseBatchedEmbedding[torch.Tensor], FusedOptimizerMo
+                 # Set EmbeddingLocation.HOST to make embedding op in FBGEMM choose CPU path.
+                 # But the tensor will still be created on MTIA with device type "mtia".
+                 managed.append(EmbeddingLocation.HOST)
++            elif device is not None and device.type == "npu":
++                compute_devices.append(ComputeDevice.NPU)
++                managed.append(
++                    compute_kernel_to_embedding_location(table.compute_kernel)
++                )
+             else:
+                 compute_devices.append(ComputeDevice.CPU)
+                 managed.append(EmbeddingLocation.HOST)
+@@ -1537,6 +1542,11 @@ class BatchedFusedEmbeddingBag(
+                 # Set EmbeddingLocation.HOST to make embedding op in FBGEMM choose CPU path.
+                 # But the tensor will still be created on MTIA with device type "mtia".
+                 managed.append(EmbeddingLocation.HOST)
++            elif device is not None and device.type == "npu":
++                compute_devices.append(ComputeDevice.NPU)
++                managed.append(
++                    compute_kernel_to_embedding_location(table.compute_kernel)
++                )
+             else:
+                 compute_devices.append(ComputeDevice.CPU)
+                 managed.append(EmbeddingLocation.HOST)
+diff --git a/torchrec/distributed/embedding_types.py b/torchrec/distributed/embedding_types.py
+index a4bdc11b..e40f6c70 100644
+--- a/torchrec/distributed/embedding_types.py
++++ b/torchrec/distributed/embedding_types.py
+@@ -424,7 +424,7 @@ class BaseEmbeddingSharder(ModuleSharder[M]):
+             ShardingType.COLUMN_WISE.value,
+             ShardingType.TABLE_COLUMN_WISE.value,
+         ]
+-        if compute_device_type in {"cuda"}:
++        if compute_device_type in {"cuda", "npu"}:
+             types += [
+                 ShardingType.ROW_WISE.value,
+                 ShardingType.TABLE_ROW_WISE.value,
+@@ -444,7 +444,7 @@ class BaseEmbeddingSharder(ModuleSharder[M]):
+             ret += [
+                 EmbeddingComputeKernel.FUSED.value,
+             ]
+-            if compute_device_type in {"cuda"}:
++            if compute_device_type in {"cuda", "npu"}:
+                 ret += [
+                     EmbeddingComputeKernel.FUSED_UVM.value,
+                     EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+@@ -473,15 +473,16 @@ class BaseEmbeddingSharder(ModuleSharder[M]):
+             EmbeddingComputeKernel.FUSED_UVM.value,
+             EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+         }:
+-            assert compute_device_type in {"cuda"}
++            assert compute_device_type in {"cuda", "npu"}
+             return {ParameterStorage.DDR.value: tensor_bytes}
+         else:
+-            assert compute_device_type in {"cuda", "cpu", "mtia"}
++            assert compute_device_type in {"cuda", "cpu", "mtia", "npu"}
+             storage_map = {
+                 "cuda": ParameterStorage.HBM,
+                 "cpu": ParameterStorage.DDR,
+                 # TODO: Update it later. Setting for MTIA is same as CPU's for now.
+                 "mtia": ParameterStorage.DDR,
++                "npu": ParameterStorage.HBM
+             }
+             return {
+                 storage_map[compute_device_type].value: get_tensor_size_bytes(tensor)
+@@ -554,7 +555,7 @@ class BaseQuantEmbeddingSharder(ModuleSharder[M]):
+         ret = [
+             EmbeddingComputeKernel.QUANT.value,
+         ]
+-        if compute_device_type in {"cuda"}:
++        if compute_device_type in {"cuda", "npu"}:
+             ret += [
+                 EmbeddingComputeKernel.QUANT_UVM.value,
+                 EmbeddingComputeKernel.QUANT_UVM_CACHING.value,
+@@ -577,14 +578,15 @@ class BaseQuantEmbeddingSharder(ModuleSharder[M]):
+             EmbeddingComputeKernel.QUANT_UVM.value,
+             EmbeddingComputeKernel.QUANT_UVM_CACHING.value,
+         }:
+-            assert compute_device_type in {"cuda"}
++            assert compute_device_type in {"cuda", "npu"}
+             return {ParameterStorage.DDR.value: tensor_bytes}
+         else:
+-            assert compute_device_type in {"cuda", "cpu", "mtia"}
++            assert compute_device_type in {"cuda", "cpu", "mtia", "npu"}
+             storage_map = {
+                 "cuda": ParameterStorage.HBM,
+                 "cpu": ParameterStorage.DDR,
+                 # TODO: Update it later. Setting for MTIA is same as CPU's for now.
+                 "mtia": ParameterStorage.DDR,
++                "npu": ParameterStorage.HBM
+             }
+             return {storage_map[compute_device_type].value: tensor_bytes}
+diff --git a/torchrec/distributed/fused_embedding.py b/torchrec/distributed/fused_embedding.py
+index 1968e7fa..f9b35653 100644
+--- a/torchrec/distributed/fused_embedding.py
++++ b/torchrec/distributed/fused_embedding.py
+@@ -135,7 +135,7 @@ class FusedEmbeddingCollectionSharder(BaseEmbeddingSharder[FusedEmbeddingCollect
+             ret += [
+                 EmbeddingComputeKernel.FUSED.value,
+             ]
+-            if compute_device_type in {"cuda"}:
++            if compute_device_type in {"cuda", "npu"}:
+                 ret += [
+                     EmbeddingComputeKernel.FUSED_UVM.value,
+                     EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+diff --git a/torchrec/distributed/fused_embeddingbag.py b/torchrec/distributed/fused_embeddingbag.py
+index 43eeda32..e1575133 100644
+--- a/torchrec/distributed/fused_embeddingbag.py
++++ b/torchrec/distributed/fused_embeddingbag.py
+@@ -128,7 +128,7 @@ class FusedEmbeddingBagCollectionSharder(
+             ShardingType.COLUMN_WISE.value,
+             ShardingType.TABLE_COLUMN_WISE.value,
+         ]
+-        if compute_device_type in {"cuda"}:
++        if compute_device_type in {"cuda", "npu"}:
+             types += [
+                 ShardingType.ROW_WISE.value,
+                 ShardingType.TABLE_ROW_WISE.value,
+@@ -144,7 +144,7 @@ class FusedEmbeddingBagCollectionSharder(
+             ret += [
+                 EmbeddingComputeKernel.FUSED.value,
+             ]
+-            if compute_device_type in {"cuda"}:
++            if compute_device_type in {"cuda", "npu"}:
+                 ret += [
+                     EmbeddingComputeKernel.FUSED_UVM.value,
+                     EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+diff --git a/torchrec/distributed/planner/constants.py b/torchrec/distributed/planner/constants.py
+index 7dd86b06..2fe1434f 100644
+--- a/torchrec/distributed/planner/constants.py
++++ b/torchrec/distributed/planner/constants.py
+@@ -94,6 +94,21 @@ def kernel_bw_lookup(
+         )
+         / 10,
+         ("cuda", EmbeddingComputeKernel.KEY_VALUE.value): hbm_to_ddr_mem_bw,
++        # NPU
++        ("npu", EmbeddingComputeKernel.DENSE.value): 0.5 * hbm_mem_bw,
++        ("npu", EmbeddingComputeKernel.FUSED.value): 1 * hbm_mem_bw,
++        ("npu", EmbeddingComputeKernel.FUSED_UVM.value): ddr_mem_bw / 10,
++        ("npu", EmbeddingComputeKernel.FUSED_UVM_CACHING.value): (
++             caching_ratio * hbm_mem_bw + (1 - caching_ratio) * ddr_mem_bw
++        )
++        / 10,
++        ("npu", EmbeddingComputeKernel.QUANT.value): 1 * hbm_mem_bw,
++        ("npu", EmbeddingComputeKernel.QUANT_UVM.value): ddr_mem_bw / 10,
++        ("npu", EmbeddingComputeKernel.QUANT_UVM_CACHING.value): (
++            caching_ratio * hbm_mem_bw + (1 - caching_ratio) * ddr_mem_bw
++        )
++        / 10,
++        ("npu", EmbeddingComputeKernel.KEY_VALUE.value): ddr_mem_bw,
+     }
+ 
+     if (
+@@ -102,5 +117,11 @@ def kernel_bw_lookup(
+         and compute_kernel == EmbeddingComputeKernel.FUSED_UVM_CACHING.value
+     ):
+         return lookup.get(("cuda", EmbeddingComputeKernel.FUSED.value))
++    if (
++        prefetch_pipeline
++        and compute_device == "npu"
++        and compute_kernel == EmbeddingComputeKernel.FUSED_UVM_CACHING.value
++    ):
++        return lookup.get(("npu", EmbeddingComputeKernel.FUSED.value))
+ 
+     return lookup.get((compute_device, compute_kernel))
+diff --git a/torchrec/distributed/planner/shard_estimators.py b/torchrec/distributed/planner/shard_estimators.py
+index 650333d4..1d90d77a 100644
+--- a/torchrec/distributed/planner/shard_estimators.py
++++ b/torchrec/distributed/planner/shard_estimators.py
+@@ -1174,7 +1174,7 @@ def calculate_shard_storages(
+                 count_ephemeral_storage_cost=count_ephemeral_storage_cost,
+                 is_inference=is_inference,
+             )
+-            if compute_device == "cuda"
++            if (compute_device == "cuda" or compute_device == "npu")
+             else 0
+         )
+         for input_size, output_size, hbm_specific_size in zip(
+diff --git a/torchrec/distributed/planner/stats.py b/torchrec/distributed/planner/stats.py
+index 524d2a81..bb519097 100644
+--- a/torchrec/distributed/planner/stats.py
++++ b/torchrec/distributed/planner/stats.py
+@@ -675,7 +675,7 @@ class EmbeddingStats(Stats):
+             used_hbm_gb = bytes_to_gb(used_hbm[rank])
+             used_hbm_ratio = (
+                 used_hbm[rank] / ((1 - reserved_hbm_percent) * device.storage.hbm)
+-                if topology.compute_device == "cuda"
++                if (topology.compute_device == "cuda" or topology.compute_device == "npu")
+                 and ((1 - reserved_hbm_percent) * device.storage.hbm) != 0
+                 else 0
+             )
+diff --git a/torchrec/distributed/planner/storage_reservations.py b/torchrec/distributed/planner/storage_reservations.py
+index 52909970..fad9df2d 100644
+--- a/torchrec/distributed/planner/storage_reservations.py
++++ b/torchrec/distributed/planner/storage_reservations.py
+@@ -73,7 +73,7 @@ def _reserve_dense_storage(
+         dense_tensor_size = dense_tensor_estimate
+ 
+     dense_tensor_storage = Storage(
+-        hbm=dense_tensor_size if topology.compute_device == "cuda" else 0,
++        hbm=dense_tensor_size if (topology.compute_device == "cuda" or topology.compute_device == "npu") else 0,
+         ddr=dense_tensor_size if topology.compute_device in {"cpu", "mtia"} else 0,
+     )
+ 
+@@ -93,7 +93,7 @@ def _reserve_kjt_storage(
+     kjt_size = math.ceil(sum(batch_inputs) * float(input_data_type_size)) * multiplier
+ 
+     kjt_storage = Storage(
+-        hbm=kjt_size if topology.compute_device == "cuda" else 0,
++        hbm=kjt_size if (topology.compute_device == "cuda" or topology.compute_device == "npu") else 0,
+         ddr=kjt_size if topology.compute_device in {"cpu", "mtia"} else 0,
+     )
+ 
+diff --git a/torchrec/distributed/planner/types.py b/torchrec/distributed/planner/types.py
+index 4bb0a4f4..26ca1fc3 100644
+--- a/torchrec/distributed/planner/types.py
++++ b/torchrec/distributed/planner/types.py
+@@ -201,13 +201,14 @@ class Topology:
+             "cpu",
+             "cuda",
+             "mtia",
++            "npu",
+         ], f"unsupported compute device {compute_device}"
+ 
+         self._compute_device = compute_device
+         self._world_size = world_size
+ 
+         hbm_per_device = [0] * world_size
+-        if self._compute_device == "cuda":
++        if self._compute_device == "cuda" or self._compute_device == "npu":
+             hbm_per_device = [hbm_cap if hbm_cap else HBM_CAP] * world_size
+         ddr_cap_per_rank = [ddr_cap if ddr_cap else DDR_CAP] * world_size
+ 
+diff --git a/torchrec/distributed/planner/utils.py b/torchrec/distributed/planner/utils.py
+index 5d0a03a2..de179849 100644
+--- a/torchrec/distributed/planner/utils.py
++++ b/torchrec/distributed/planner/utils.py
+@@ -48,7 +48,7 @@ def placement(
+     """
+ 
+     param_device = compute_device
+-    if compute_device in {"cuda", "mtia"}:
++    if compute_device in {"cuda", "mtia", "npu"}:
+         param_device = torch.device(compute_device, rank % local_size)
+     return f"rank:{rank}/{param_device}"
+ 
+diff --git a/torchrec/distributed/sharding_plan.py b/torchrec/distributed/sharding_plan.py
+index 27b01130..e8b506db 100644
+--- a/torchrec/distributed/sharding_plan.py
++++ b/torchrec/distributed/sharding_plan.py
+@@ -75,7 +75,7 @@ def placement(
+     local_size: int,
+ ) -> str:
+     param_device = compute_device
+-    if compute_device in {"cuda", "mtia"}:
++    if compute_device in {"cuda", "mtia", "npu"}:
+         param_device = torch.device(compute_device, rank % local_size)
+     return f"rank:{rank}/{param_device}"
+ 
+@@ -325,7 +325,7 @@ def _get_compute_kernel(
+         compute_kernels += [
+             EmbeddingComputeKernel.FUSED.value,
+         ]
+-    if device_type in {"cuda"}:
++    if device_type in {"cuda", "npu"}:
+         compute_kernels += [
+             EmbeddingComputeKernel.FUSED_UVM.value,
+             EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+diff --git a/torchrec/distributed/train_pipeline/train_pipelines.py b/torchrec/distributed/train_pipeline/train_pipelines.py
+index 69edabf9..bddd7c1c 100644
+--- a/torchrec/distributed/train_pipeline/train_pipelines.py
++++ b/torchrec/distributed/train_pipeline/train_pipelines.py
+@@ -127,14 +127,14 @@ class TrainPipelineBase(TrainPipeline[In, Out]):
+         self._device = device
+         self._memcpy_stream: Optional[torch.Stream] = (
+             torch.get_device_module(device).Stream()
+-            if device.type in ["cuda", "mtia"]
++            if device.type in ["cuda", "mtia", "npu"]
+             else None
+         )
+ 
+         # pyre-ignore
+         self._stream_context = (
+             torch.get_device_module(self._device).stream
+-            if self._device.type in ["cuda", "mtia"]
++            if self._device.type in ["cuda", "mtia", "npu"]
+             else torch.cuda.stream
+         )
+         self._cur_batch: Optional[In] = None
+@@ -338,22 +338,25 @@ class TrainPipelineSparseDist(TrainPipeline[In, Out]):
+             assert (
+                 not is_torchdynamo_compiling()
+             ), "Train Pipelines rely on cuda streams, which is not supported by Dynamo"
+-
++        if device.type == "npu":
++            assert (
++                not is_torchdynamo_compiling()
++            ), "Train Pipelines rely on npu streams, which is not supported by Dynamo"
+         # pyre-ignore
+         self._stream_context = (
+             torch.get_device_module(self._device).stream
+-            if self._device.type in ["cuda", "mtia"]
++            if self._device.type in ["cuda", "mtia", "npu"]
+             else torch.cuda.stream
+         )
+ 
+         self._memcpy_stream: Optional[torch.Stream] = (
+             (torch.get_device_module(device).Stream(priority=-1))
+-            if device.type in ["cuda", "mtia"]
++            if device.type in ["cuda", "mtia", "npu"]
+             else None
+         )
+         self._data_dist_stream: Optional[torch.Stream] = (
+             (torch.get_device_module(device).Stream(priority=-1))
+-            if device.type in ["cuda", "mtia"]
++            if device.type in ["cuda", "mtia", "npu"]
+             else None
+         )
+ 
+diff --git a/version.txt b/version.txt
+index 9084fa2f..35d511d0 100644
+--- a/version.txt
++++ b/version.txt
+@@ -1 +1 @@
+-1.1.0
++1.1.0+npu
+\ No newline at end of file
