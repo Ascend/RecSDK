@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import numpy as np
 
 torch.npu.config.allow_internal_format = False
 torch.ops.load_library(
-    "../../../torch_library/gather_for_rank1/build/libgather_for_rank1.so"
+    "../../torch_library/2.6.0/gather_for_rank1/build/libgather_for_rank1.so"
 )
 
 
