@@ -1,0 +1,41 @@
+
+[
+    {
+        "op": "GatherForRank1",
+        "language": "cpp",
+        "input_desc": [
+            {
+                "name": "x",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "fp32", "fp16"
+                ]
+            },
+            {
+                "name": "index",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "int64", "int64"
+                ]
+            }
+        ],
+        "output_desc": [
+            {
+                "name": "y",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "fp32", "fp16"
+                ]
+            }
+        ]
+    }
+]
