@@ -14,16 +14,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+from pathlib import Path
 
 import pytest
 import torch
 import torch_npu
 import numpy as np
 
+CURRENT_DIR = Path(__file__).parent
+LIBRARY_PATH = CURRENT_DIR.parent.parent / "torch_library/2.6.0/gather_for_rank1/build/libgather_for_rank1.so"
+
 torch.npu.config.allow_internal_format = False
-torch.ops.load_library(
-    "../../torch_library/2.6.0/gather_for_rank1/build/libgather_for_rank1.so"
-)
+torch.ops.load_library(str(LIBRARY_PATH))
 
 
 def get_loss(index: np.ndarray, weight: np.ndarray):
