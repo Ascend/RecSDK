@@ -1557,13 +1557,17 @@ void KeyProcess::SendEos(const std::string& embName, int batchId, int channel)
     while (readySendEosCnt[channel] != static_cast<int>(embInfos.size())) {
         LOG_DEBUG("table:{}, readySendEosCnt:{}, waiting other table enter SendEos", embName, readySendEosCnt[channel]);
         this_thread::sleep_for(1000ms);
+        if (!isRunning) {
+            LOG_INFO("isRunning in KeyProcess is false, table:{} no need to wait other table enter SendEos", embName);
+            break;
+        }
     }
     LOG_INFO("table:{}, channelId:{} batchId:{}, SendEos start, acquiring destroyMutex", embName, channel, batchId);
     destroyMutex.lock();
 
     LOG_INFO("table:{}, channelId:{} batchId:{}, SendEos start", embName, channel, batchId);
     if (!isRunning) {
-        LOG_INFO("other table trigger eos ahead, keyProcess already destroyed. skip sending eos for table:{}", embName);
+        LOG_INFO("other table trigger eos ahead, KeyProcess already destroyed. skip sending eos for table:{}", embName);
         ++finishSendEosCnt[channel];
         destroyMutex.unlock();
         return;
