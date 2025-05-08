@@ -1,13 +1,11 @@
-from pathlib import Path
+import sysconfig
 import pytest
 import torch
 import torch_npu
 import fbgemm_gpu
 import numpy as np
 
-CURR_DIR = Path(__file__).resolve().parent
-torch.ops.load_library(str(CURR_DIR.parent.parent /
-    "torch_library/2.6.0/permute2d_sparse_data/build/libpermute2d_sparse_data.so"))
+torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
 lengths_type = [np.int64, np.int32, np.int64, np.int32]
 values_type = [np.int64, np.int32, np.float32, np.float32]

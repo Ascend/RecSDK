@@ -1,12 +1,11 @@
+import sysconfig
 import pytest
 import fbgemm_gpu
 import numpy as np
 import torch_npu
 import torch
 
-CURR_DIR = Path(__file__).resolve().parent
-torch.ops.load_library(str(CURR_DIR.parent.parent /
-    "torch_library/2.6.0/jagged_to_padded_dense/build/libjagged_to_padded_dense.so"))
+torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
 DEVICE_ID = 0
 
