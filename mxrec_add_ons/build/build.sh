@@ -24,7 +24,13 @@ source /etc/profile
 torch_plugin_path="${MxRec_DIR}"/rec_for_torch/torch_plugin
 ops_path="${MxRec_DIR}"/rec_for_torch/operators
 
-support_A3_list="asynchronous_complete_cumsum"
+support_A3_list="asynchronous_complete_cumsum
+gather_for_rank1
+index_select_for_rank1_backward
+jagged_to_padded_dense
+permute2d_sparse_data
+dense_to_jagged
+"
 support_310p_list=""
 
 cd "${MxRec_DIR}"
