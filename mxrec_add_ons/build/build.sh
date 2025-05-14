@@ -29,6 +29,7 @@ gather_for_rank1
 index_select_for_rank1_backward
 jagged_to_padded_dense
 permute2d_sparse_data
+split_embedding_codegen_forward_unweighted
 dense_to_jagged
 "
 support_310p_list="gather_for_rank1"
