@@ -1,3 +1,20 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 import sysconfig
 import pytest
 import fbgemm_gpu
@@ -26,7 +43,7 @@ def jagged_data_gen(batch_size, max_seq_len, num_heads, attention_dim):
 def jagged_to_dense(jagged_tensor, seq_lens, max_seq_len, head_num, atten_dim):
     need_pad_seq = []
     offset = 0
-    for batch_id, seq_len in enumerate(seq_lens):
+    for seq_len in seq_lens:
         src_tensor = torch.rand(max_seq_len, head_num, atten_dim)
         src_tensor = torch.zeros((max_seq_len, head_num, atten_dim))
         src_tensor[0:seq_len, :, :] = jagged_tensor[offset: offset + seq_len, :, :]

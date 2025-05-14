@@ -37,13 +37,6 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     auto denseType = context->GetInputTensor(0)->GetDataType();
     auto offsetType = context->GetInputTensor(1)->GetDataType();
 
-    int dataSize = 0;
-    if (denseType == TYPE_FLOAT) {
-        dataSize = SIZEOF_FLOAT;
-    } else if (denseType == TYPE_INT64) {
-        dataSize = SIZEOF_INT64;
-    }
-
     DenseToJaggedTilling tilingData;
     // Platform configuration
     auto ascnedPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());

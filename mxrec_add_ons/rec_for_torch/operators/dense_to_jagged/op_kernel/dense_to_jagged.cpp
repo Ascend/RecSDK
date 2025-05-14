@@ -94,20 +94,13 @@ private:
         tType jaggedPos;
         tType jaggedPosNext;
 
-        int copyRows;
-        int64_t totalLen;
-        uint32_t alignLen;
-        uint32_t overAlignLen;
-        uint32_t unAlignLen;
-        int64_t thisLen;
-
         __gm__ tType *oPtr = (__gm__ tType *)args->offset;
 
         for (int i = 0; i < args->singleCoreBatch; i++) {
             // Get information form offset tensor to jag dense
             jaggedPos = *(oPtr + offsetStartPos + i);
             jaggedPosNext = *(oPtr + offsetStartPos + i + 1);
-            copyRows = jaggedPosNext - jaggedPos;
+            int copyRows = jaggedPosNext - jaggedPos;
 
             // Get jagged Global tensor with offset
             GlobalTensor<uint8_t> jaggedDenseCopyGb = jaggedDenseGb[jaggedPos * args->denseDim2 * align];
@@ -116,16 +109,11 @@ private:
 
             // When offset[n] - offset[n + 1] > dense dim1, only need to copy dense dim1 * dim2
             // otherwise, copy (offset[n] - offset[n + 1]) * dense dim2
-            if (copyRows > args->denseDim1) {
-                totalLen = args->denseDim1 * args->denseDim2 * align;
-            } else {
-                totalLen = copyRows * args->denseDim2 * align;
-            }
-
-            int64_t remainLen = totalLen;
+            int64_t remainLen = copyRows > args->denseDim1 ? (args->denseDim1 * args->denseDim2 * align) :
+                (copyRows * args->denseDim2 * align);
             while (remainLen > 0) {
                 // args->singleLoopSize - ALIGN_32 to avoid overAlignLen exceed singleLoopSize
-                thisLen = args->singleLoopSize - ALIGN_32;
+                int64_t thisLen = args->singleLoopSize - ALIGN_32;
                 if (remainLen < (args->singleLoopSize - ALIGN_32)) {
                     thisLen = remainLen;
                 }
@@ -133,9 +121,9 @@ private:
                 LocalTensor<uint8_t> localIn = inQueue.AllocTensor<uint8_t>();
                 LocalTensor<uint8_t> localOut = outQueue.AllocTensor<uint8_t>();
 
-                overAlignLen = (thisLen + ALIGN_32 - 1) / ALIGN_32 * ALIGN_32;
-                alignLen = thisLen / ALIGN_32 * ALIGN_32;
-                unAlignLen = thisLen - alignLen;
+                uint32_t overAlignLen = (thisLen + ALIGN_32 - 1) / ALIGN_32 * ALIGN_32;
+                uint32_t alignLen = thisLen / ALIGN_32 * ALIGN_32;
+                uint32_t unAlignLen = thisLen - alignLen;
 
                 // Copy over aligned size to avoid dealing unaligned tail
                 DataCopy(localIn, denseCopyGb, overAlignLen);
