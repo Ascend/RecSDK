@@ -79,8 +79,9 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     tiling.set_ubCanUsed(ubCanUsed);
 
     // datatype check
-    if (permuteShape.GetDimNum() != 1 or lengthsShape.GetDimNum() != SUPPORT_EMBEDDING_DIM_NUM)  {
-        printf("[ERROR]permute2d_sparse_data_tiling is only support lengths.dim()==2, got {lengthsShape.GetDimNum()}.");
+    if ((permuteShape.GetDimNum() != 1) || (lengthsShape.GetDimNum() != SUPPORT_EMBEDDING_DIM_NUM) ||
+        (permuteShape.GetDim(0) != lengthsShape.GetDim(0)))  {
+        printf("[ERROR]permute shape or lengths shape is error.");
         return ge::GRAPH_FAILED;
     }
 
