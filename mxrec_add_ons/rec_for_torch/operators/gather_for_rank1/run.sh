@@ -19,6 +19,8 @@ set -e
 # 查找msopgen的路径，加入到环境变量PATH中
 msopgen_path=$(find /usr/local/Ascend/ -name msopgen | grep bin)
 parent_dir=$(dirname "$msopgen_path")
+onnx_path=$(dirname "$(readlink -f "$0")")/../../onnx_plugin
+json_file=$onnx_path/json.hpp
 export PATH=$parent_dir:$PATH
 
 ai_core="ai_core-Ascend910B1"
@@ -35,6 +37,12 @@ rm -rf gather_for_rank1/host/*.h
 rm -rf gather_for_rank1/host/*.cpp
 cp -rf op_kernel gather_for_rank1/
 cp -rf op_host gather_for_rank1/
+
+#onnx适配层
+bash $onnx_path/build_onnx.sh
+mkdir -p gather_for_rank1/framework/onnx_plugin
+cp -rf $json_file gather_for_rank1/framework/onnx_plugin
+cp -rf $onnx_path/onnx_ops/gather_for_rank1/* gather_for_rank1/framework/onnx_plugin
 
 cd gather_for_rank1
 

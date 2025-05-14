@@ -27,7 +27,8 @@ namespace GatherForRank1 {
 constexpr int USE_QUEUE_NUM = 2;
 constexpr int DATA_ALIGN_BYTES = 32;
 constexpr int MAX_XDIM0 = 20480;
-constexpr int DATA_COPY_PAD_ALIGN = 16;
+constexpr int DATA_COPY_PAD_ALIGN_BYTE2 = 16;
+constexpr int DATA_COPY_PAD_ALIGN_BYTE4 = 8;
 #ifdef SUPPORT_V200
     constexpr int ONEBLOCK_ELEM = 8192;
 #else
@@ -80,75 +81,101 @@ public:
 #endif
     }
 
-    __aicore__ inline void DataCopyPadGm2Local(const LocalTensor<uint16_t>& lt, const GlobalTensor<uint16_t> &gt,
-        int64_t len)
+    template <typename T>
+    __aicore__ inline void DataCopyPadGm2Local(const LocalTensor<T>& lt, const GlobalTensor<T> &gt, int64_t len)
     {
-        DataCopy<uint16_t>(lt, gt, DATA_COPY_PAD_ALIGN);
-        uint64_t mask0 = (1uL << 16) - (1uL << len);
-        uint64_t mask[2] = { mask0, 0 };
-        Duplicate<uint16_t>(lt, 0, mask, 1, 1, 1);
+        uint32_t dataCopyPadLen = DATA_COPY_PAD_ALIGN_BYTE2;
+        TEventID eventId = GetTPipePtr()->FetchEventID(HardEvent::MTE3_V);
+        if constexpr (sizeof(T) == 4) {  // float、int32为4字节数据
+            dataCopyPadLen = DATA_COPY_PAD_ALIGN_BYTE4;
+            DataCopy<T>(lt, gt, dataCopyPadLen);
+            SetFlag<HardEvent::MTE3_V>(eventId);
+            WaitFlag<HardEvent::MTE3_V>(eventId);
+            uint64_t mask0 = (1uL << dataCopyPadLen) - (1uL << len);
+            uint64_t mask[1] = { mask0 };
+            Duplicate<T>(lt, 0, mask, 1, 1, 1);
+        } else {
+            DataCopy<T>(lt, gt, dataCopyPadLen);
+            SetFlag<HardEvent::MTE3_V>(eventId);
+            WaitFlag<HardEvent::MTE3_V>(eventId);
+            uint64_t mask0 = (1uL << dataCopyPadLen) - (1uL << len);
+            uint64_t mask[2] = { mask0, 0 };
+            Duplicate<T>(lt, 0, mask, 1, 1, 1);
+        }
+    }
+
+    template <typename T>
+    __aicore__ inline void CpPadGm2Local(const LocalTensor<T>& lt, const GlobalTensor<T>& gt, int64_t len)
+    {
+        uint32_t alignLen = len * sizeof(T) / DATA_ALIGN_BYTES * DATA_ALIGN_BYTES;
+        uint32_t unAlignLen = len * sizeof(T) - alignLen;
+
+        if (alignLen != 0) {
+            DataCopy(lt, gt, alignLen / sizeof(T));
+        }
+        if (unAlignLen != 0) {
+#ifdef SUPPORT_V200
+        DataCopyPadGm2Local(lt[alignLen / sizeof(T)], gt[alignLen / sizeof(T)], unAlignLen / sizeof(T));
+#else
+        const DataCopyExtParams dataCopyExtParams{1, unAlignLen, 0, 0, 0};
+        const DataCopyPadExtParams<T> dataCopyPadExtParams{false, 0, 0, 0};
+        DataCopyPad(lt[alignLen / sizeof(T)], gt[alignLen / sizeof(T)], dataCopyExtParams, dataCopyPadExtParams);
+#endif
+        }
     }
 
     template <typename T>
     __aicore__ inline void CpGm2Local(const LocalTensor<T>& lt, const GlobalTensor<T>& gt, int64_t len)
     {
-        uint32_t alignLen = len * sizeof(T) / DATA_ALIGN_BYTES * DATA_ALIGN_BYTES;
-        uint32_t unAlignLen = len * sizeof(T) - alignLen;
+        GlobalTensor<int32_t> int32Gt;
+        int32Gt.SetGlobalBuffer((__gm__ int32_t*)gt.GetPhyAddr(), len * sizeof(T) / sizeof(int32_t));
+        LocalTensor<int32_t> int32Lt = lt.template ReinterpretCast<int32_t>();
 
-        GlobalTensor<uint16_t> uint16Gt;
-        uint16Gt.SetGlobalBuffer((__gm__ uint16_t*)gt.GetPhyAddr(), len * sizeof(T) / sizeof(uint16_t));
-        LocalTensor<uint16_t> uint16Lt = lt.template ReinterpretCast<uint16_t>();
-
-        if (alignLen != 0) {
-            DataCopy(uint16Lt, uint16Gt, alignLen / sizeof(uint16_t));
-        }
-        if (unAlignLen != 0) {
-#ifdef SUPPORT_V200
-            DataCopyPadGm2Local(uint16Lt[alignLen / sizeof(uint16_t)], uint16Gt[alignLen / sizeof(uint16_t)],
-                unAlignLen / sizeof(uint16_t));
-#else
-            const DataCopyExtParams dataCopyExtParams{1, unAlignLen, 0, 0, 0};
-            const DataCopyPadExtParams<uint16_t> dataCopyPadExtParams{false, 0, 0, 0};
-            DataCopyPad(uint16Lt[alignLen / sizeof(uint16_t)], uint16Gt[alignLen / sizeof(uint16_t)], dataCopyExtParams,
-                dataCopyPadExtParams);
-#endif
-        }
+        int64_t transLen = len * sizeof(T) / sizeof(int32_t);
+        CpPadGm2Local(int32Lt, int32Gt, transLen);
     }
 
-    __aicore__ inline void DataCopyPadLocal2Gm(const GlobalTensor<uint16_t>& gt, const LocalTensor<uint16_t>& lt,
+    __aicore__ inline void DataCopyPadLocal2Gm(const GlobalTensor<xType>& gt, const LocalTensor<xType>& lt,
         int64_t len)
     {
-        SetAtomicAdd<uint16_t>();
-        uint64_t mask0 = (1uL << 16) - (1uL << len);
-        uint64_t mask[2] = { mask0, 0 };
-        Duplicate<uint16_t>(lt, 0, mask, 1, 1, 1);
-        set_flag(PIPE_V, PIPE_MTE3, EVENT_ID0);
-        wait_flag(PIPE_V, PIPE_MTE3, EVENT_ID0);
-        DataCopy<uint16_t>(gt, lt, DATA_COPY_PAD_ALIGN);
+        SetAtomicAdd<xType>();
+        uint32_t dataCopyPadLen = DATA_COPY_PAD_ALIGN_BYTE2;
+        if constexpr (std::is_same<xType, float>::value) {
+            dataCopyPadLen = DATA_COPY_PAD_ALIGN_BYTE4;
+            uint64_t mask0 = (1uL << dataCopyPadLen) - (1uL << len);
+            uint64_t mask[1] = { mask0 };
+            Duplicate<xType>(lt, 0, mask, 1, 1, 1);
+        } else {
+            uint64_t mask0 = (1uL << dataCopyPadLen) - (1uL << len);
+            uint64_t mask[2] = { mask0, 0 };
+            Duplicate<xType>(lt, 0, mask, 1, 1, 1);
+        }
+        
+        pipe_barrier(PIPE_ALL);
+        TEventID eventId = GetTPipePtr()->FetchEventID(HardEvent::V_MTE3);
+        SetFlag<HardEvent::V_MTE3>(eventId);
+        WaitFlag<HardEvent::V_MTE3>(eventId);
+
+        DataCopy<xType>(gt, lt, dataCopyPadLen);
+
+        pipe_barrier(PIPE_ALL);
         SetAtomicNone();
     }
 
-    template <typename T>
-    __aicore__ inline void CpLocal2Gm(const GlobalTensor<T>& gt, const LocalTensor<T>& lt, int64_t len)
+    __aicore__ inline void CpLocal2Gm(const GlobalTensor<xType>& gt, const LocalTensor<xType>& lt, int64_t len)
     {
-        uint32_t alignLen = len * sizeof(T) / DATA_ALIGN_BYTES * DATA_ALIGN_BYTES;
-        uint32_t unAlignLen = len * sizeof(T) - alignLen;
-
-        GlobalTensor<uint16_t> uint16Gt;
-        uint16Gt.SetGlobalBuffer((__gm__ uint16_t*)gt.GetPhyAddr(), len * sizeof(T) / sizeof(uint16_t));
-        LocalTensor<uint16_t> uint16Lt = lt.template ReinterpretCast<uint16_t>();
+        uint32_t alignLen = len * sizeof(xType) / DATA_ALIGN_BYTES * DATA_ALIGN_BYTES;
+        uint32_t unAlignLen = len * sizeof(xType) - alignLen;
 
         if (alignLen != 0) {
-            DataCopy(uint16Gt, uint16Lt, alignLen / sizeof(uint16_t));
+            DataCopy(gt, lt, alignLen / sizeof(xType));
         }
         if (unAlignLen != 0) {
 #ifdef SUPPORT_V200
-            DataCopyPadLocal2Gm(uint16Gt[alignLen / sizeof(uint16_t)], uint16Lt[alignLen / sizeof(uint16_t)],
-                unAlignLen / sizeof(uint16_t));
+            DataCopyPadLocal2Gm(gt[alignLen / sizeof(xType)], lt[alignLen / sizeof(xType)], unAlignLen / sizeof(xType));
 #else
             const DataCopyExtParams dataCopyExtParams{1, unAlignLen, 0, 0, 0};
-            DataCopyPad(uint16Gt[alignLen / sizeof(uint16_t)], uint16Lt[alignLen / sizeof(uint16_t)],
-                dataCopyExtParams);
+            DataCopyPad(gt[alignLen / sizeof(xType)], lt[alignLen / sizeof(xType)], dataCopyExtParams);
 #endif
         }
     }
@@ -178,6 +205,7 @@ public:
 
             indexInQue.EnQue(indexInLt);
             indexInLt = indexInQue.DeQue<int32_t>();
+            pipe_barrier(PIPE_ALL);
 #else
             int64_t paddingLen = Ceil(thisLen, DATA_ALIGN_BYTES / sizeof(int64_t));
 
@@ -203,6 +231,8 @@ public:
             indexInQue.FreeTensor(indexInLt);
 #endif
             LocalTensor<xType> outNewLt = outQue.DeQue<xType>();
+            pipe_barrier(PIPE_ALL);
+
             CpLocal2Gm(yGt[thisOffset], outNewLt, thisLen);
             outQue.FreeTensor(outNewLt);
             remain = remain - thisLen;
@@ -229,9 +259,10 @@ public:
         }
 
         LocalTensor<xType> xInLt = xInQue.AllocTensor<xType>();
-        CpGm2Local(xInLt, xGt, xDim0);
+        CpPadGm2Local(xInLt, xGt, xDim0);
         xInQue.EnQue(xInLt);
         xInLt = xInQue.DeQue<xType>();
+        pipe_barrier(PIPE_ALL);
 
         GatherX(xInLt, offsetOfThisCore, lenOfThisCore);
         xInQue.FreeTensor(xInLt);

@@ -31,7 +31,7 @@ jagged_to_padded_dense
 permute2d_sparse_data
 dense_to_jagged
 "
-support_310p_list=""
+support_310p_list="gather_for_rank1"
 
 cd "${MxRec_DIR}"
 

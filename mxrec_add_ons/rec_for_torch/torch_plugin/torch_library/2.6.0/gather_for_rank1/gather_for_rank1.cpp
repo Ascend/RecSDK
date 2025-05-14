@@ -23,7 +23,7 @@ at::Tensor gather_for_rank1_impl_npu(const at::Tensor& x, const at::Tensor& inde
     TORCH_CHECK(index.dim() == 1, "The index should be 1D");
     auto xConti = x.contiguous();
     auto indexConti = index.contiguous();
-    at::Tensor y = at::empty({indexConti.size(0)}, xConti.options());
+    at::Tensor y = at::zeros_like(index, xConti.options());
     EXEC_NPU_CMD(aclnnGatherForRank1, xConti, indexConti, y);
     return y;
 }
