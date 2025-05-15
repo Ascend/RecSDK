@@ -6,7 +6,7 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 from typing import Optional
-
+import logging
 import torch
 from fbgemm_gpu.split_embedding_codegen_lookup_invokers.lookup_adagrad import (
     OptimizerArgs,
@@ -27,7 +27,6 @@ def check_unique_valid(common_args: HybridCommonArgs):
     unique_indices = common_args.unique_indices.to("cpu")
     unique_offset = common_args.unique_offset.to("cpu")
     unique_inverse = common_args.unique_inverse.to("cpu")
-    import logging
 
     logging.info("batch size %s", batch_size)
     logging.info("unique_indices %s", unique_indices)
