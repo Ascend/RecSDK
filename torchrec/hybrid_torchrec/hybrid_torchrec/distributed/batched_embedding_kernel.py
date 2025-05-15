@@ -158,10 +158,8 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
             use_homogeneous_placements=self.use_homogeneous_placements,
         )
 
-        if self.optimizer == OptimType.NONE:
-            return NotImplemented
-        elif self.optimizer == OptimType.EXACT_SGD:
-            return NotImplemented
+        if not isinstance(self.optimizer, OptimType):
+            raise ValueError(f"Invalid OptimType: {self.optimizer}")
 
         momentum1 = invokers.lookup_args.Momentum(
             dev=self.momentum1_dev,
@@ -170,17 +168,6 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
             offsets=self.momentum1_offsets,
             placements=self.momentum1_placements,
         )
-
-        if self.optimizer == OptimType.LARS_SGD:
-            return NotImplemented
-
-        if self.optimizer == OptimType.EXACT_ADAGRAD:
-            return self._report_io_size_count(
-                "fwd_output",
-                invokers.lookup_adagrad.invoke(
-                    common_args, self.optimizer_args, momentum1
-                ),
-            )
 
         if not self.iter.is_cpu:
             self.iter = self.iter.cpu()
@@ -193,10 +180,16 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
             offsets=self.momentum2_offsets,
             placements=self.momentum2_placements,
         )
-        if self.optimizer == OptimType.EXACT_ROWWISE_WEIGHTED_ADAGRAD:
-            return NotImplemented
 
-        if self.optimizer == OptimType.ADAM:
+        if self.optimizer == OptimType.EXACT_ADAGRAD:
+            return self._report_io_size_count(
+                "fwd_output",
+                invokers.lookup_adagrad.invoke(
+                    common_args, self.optimizer_args, momentum1
+                ),
+            )
+
+        elif self.optimizer == OptimType.ADAM:
             return self._report_io_size_count(
                 "fwd_output",
                 invokers.lookup_adam.invoke(
@@ -209,20 +202,10 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
                     self.iter.item(),
                 ),
             )
-
-        if self.optimizer == OptimType.PARTIAL_ROWWISE_ADAM:
+        else:
             return NotImplemented
 
-        if self.optimizer == OptimType.LAMB:
-            return NotImplemented
 
-        if self.optimizer == OptimType.PARTIAL_ROWWISE_LAMB:
-            return NotImplemented
-
-        if self.optimizer == OptimType.EXACT_ROWWISE_ADAGRAD:
-            return NotImplemented
-
-        raise ValueError(f"Invalid OptimType: {self.optimizer}")
 
     def prepare_inputs(
         self,
