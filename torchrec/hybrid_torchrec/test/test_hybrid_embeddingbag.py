@@ -38,7 +38,6 @@ from torchrec.distributed.types import ShardingEnv
 from torchrec.optim.apply_optimizer_in_backward import apply_optimizer_in_backward
 from torchrec.optim.keyed import CombinedOptimizer
 
-torch.ops.load_library("/home/zengxiong/20250401_torchrec/depend/torch2.6.0/mindxsdk-mxrec-add-ons-poc/torch_library/2.5.1/common/build/libfbgemm_npu_api.so")
 
 LOOP_TIMES = 8
 BATCH_NUM = 32
