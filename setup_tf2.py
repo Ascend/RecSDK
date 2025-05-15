@@ -16,6 +16,7 @@
 # ==============================================================================
 
 import os
+import re
 import stat
 import subprocess
 from setuptools import setup, find_packages
@@ -50,7 +51,10 @@ except IOError:
     LONG_DESCRIPTION = ""
 
 env_version = os.getenv("VERSION")
-VERSION = env_version if env_version is not None else '7.0.RC1'
+if env_version and re.match(r'^[0-9]+\.[0-9]+\.[A-Za-z]+[0-9]+$', env_version):
+    VERSION = env_version
+else:
+    VERSION = "7.0.RC1"
 
 INIT_FILE = "mx_rec/__init__.py"
 with open(INIT_FILE, 'r') as file:
