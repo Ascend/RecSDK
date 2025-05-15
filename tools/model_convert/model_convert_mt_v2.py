@@ -1,11 +1,31 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 import argparse
 import json
 import os
 import re
 from enum import Enum
+import logging
 
 import tensorflow as tf
 import numpy as np
+
+logging.getLogger().setLevel(logging.INFO)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--input_path', type=str, required=True, help='path of the model file to be converted')
@@ -15,14 +35,14 @@ parser.add_argument('--estimator', type=int, choices=[0, 1], default=1, required
 parser.add_argument('--ddr', type=int, choices=[0, 1], default=0, required=False)
 parser.add_argument('--save_easy', type=int, choices=[0, 1], default=1, required=False)
 
-slice_prefix = "slice_"
-sparse_file_prefix = "sparse-"
-data_suffix = ".data"
-attribute_suffix = ".attribute"
+SLICE_PREFIX = "slice_"
+SPARSE_FILE_PREFIX = "sparse-"
+DATA_SUFFIX = ".data"
+ATTRIBUTE_SUFFIX = ".attribute"
 hbm_prefix_list = ["HashTable", "HBM"]
 ddr_prefix_list = ["HashTable", "DDR"]
-min_file_size = 1
-max_file_size = 1024 * 1024 * 1024 * 1024
+MIN_FILE_SIZE = 1
+MAX_FILE_SIZE = 1024 * 1024 * 1024 * 1024
 
 
 class DataAttr(Enum):
@@ -136,7 +156,7 @@ class ModelConverter:
     def _build_sparse_file_list(self):
         if self._is_estimator:
             latest_ckpt = self._get_latest_ckpt_name()
-            sparse_file_name = sparse_file_prefix + latest_ckpt
+            sparse_file_name = SPARSE_FILE_PREFIX + latest_ckpt
             for rank in range(self._rank_size):
                 sparse_file_path = os.path.join(self._input_model_path_list[rank], sparse_file_name)
                 self.sparse_file_list.append(sparse_file_path)
@@ -200,9 +220,9 @@ def get_attribute_and_data_file(table_path):
     attribute_file_list = []
     data_file_list = []
     for file_name in tf.io.gfile.listdir(table_path):
-        if file_name.endswith(attribute_suffix):
+        if file_name.endswith(ATTRIBUTE_SUFFIX):
             attribute_file_list.append(file_name)
-        if file_name.endswith(data_suffix):
+        if file_name.endswith(DATA_SUFFIX):
             data_file_list.append(file_name)
     if len(attribute_file_list) != 1:
         raise AssertionError(f"under the table path {table_path}, ther must only one attribute file. "
@@ -226,14 +246,14 @@ def generate_attribute_dir(sparse_file, dir_prefix_list, table_name, data_type, 
     temp_dir = sparse_file
     for dir in dir_prefix_list:
         temp_dir = os.path.join(temp_dir, dir)
-    return os.path.join(temp_dir, table_name, data_type, f"{slice_prefix}{rank_id}{attribute_suffix}")
+    return os.path.join(temp_dir, table_name, data_type, f"{SLICE_PREFIX}{rank_id}{ATTRIBUTE_SUFFIX}")
 
 
 def generate_data_dir(sparse_file, dir_prefix_list, table_name, data_type, rank_id):
     temp_dir = sparse_file
     for dir in dir_prefix_list:
         temp_dir = os.path.join(temp_dir, dir)
-    return os.path.join(temp_dir, table_name, data_type, f"{slice_prefix}{rank_id}{data_suffix}")
+    return os.path.join(temp_dir, table_name, data_type, f"{SLICE_PREFIX}{rank_id}{DATA_SUFFIX}")
 
 
 if __name__ == "__main__":
@@ -242,5 +262,5 @@ if __name__ == "__main__":
                                       rank_size=args.rank_size,
                                       estimator=args.estimator, ddr=args.ddr, save_easy=args.save_easy)
     convert_instance.convert()
-    print(f"sparse table has been converted to numpy file. output path is {args.output_path}")
+    logging.info(f"sparse table has been converted to numpy file. output path is {args.output_path}")
 

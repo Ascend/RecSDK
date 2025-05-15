@@ -1,28 +1,48 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 import argparse
 import json
 import os
 import re
 from enum import Enum
+import logging
 
 import tensorflow as tf
 import numpy as np
 
+logging.getLogger().setLevel(logging.INFO)
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--input_path', type=str, required=True, help='path of the model file to be converted')
 parser.add_argument('--output_path', type=str, required=True, help='output path of the converted model')
-parser.add_argument('--rank_size', type=int, choices=range(1,17), default=8, required=False)
-parser.add_argument('--estimator', type=int, choices=[0,1], default=0, required=False)
+parser.add_argument('--rank_size', type=int, choices=range(1, 17), default=8, required=False)
+parser.add_argument('--estimator', type=int, choices=[0, 1], default=0, required=False)
 parser.add_argument('--ddr', type=int, choices=[0, 1], default=0, required=False)
 parser.add_argument("--dynamic_expansion", type=int, choices=[0, 1], default=0, required=False)
 
-slice_prefix = "slice_"
-sparse_file_prefix = "sparse-"
-data_suffix = ".data"
-attribute_suffix = ".attribute"
+SLICE_PREFIX = "slice_"
+SPARSE_FILE_PREFIX = "sparse-"
+DATA_SUFFIX = ".data"
+ATTRIBUTE_SUFFIX = ".attribute"
 hbm_prefix_list = ["HashTable", "HBM"]
 ddr_prefix_list = ["HashTable", "DDR"]
-min_file_size = 1
-max_file_size = 1024 * 1024 * 1024 * 1024
+MIN_FILE_SIZE = 1
+MAX_FILE_SIZE = 1024 * 1024 * 1024 * 1024
 
 
 class DataAttr(Enum):
@@ -86,10 +106,10 @@ class ModelConverter:
                     emb_data = self._get_embedding_array(self.sparse_file_list[rank], table_name)
                 insert_op = hash_table.insert(tf.convert_to_tensor(key), tf.convert_to_tensor(emb_data))
                 insert_op_list.append(insert_op)
-            print("build save table:", table_name)
+            logging.info("build save table: %s", table_name)
             hash_table_list.append(hash_table)
         if tf.__version__.startswith("2"):
-            checkpoint = tf.train.Checkpoint(table_list = hash_table_list)
+            checkpoint = tf.train.Checkpoint(table_list=hash_table_list)
             manager = tf.train.CheckpointManager(checkpoint, directory=self._output_path, max_to_keep=5)
             manager.save()
         else:
@@ -155,7 +175,7 @@ class ModelConverter:
     def _build_sparse_file_list(self):
         if self._is_estimator:
             latest_ckpt = self._get_latest_ckpt_name()
-            sparse_file_name = sparse_file_prefix + latest_ckpt
+            sparse_file_name = SPARSE_FILE_PREFIX + latest_ckpt
             for rank in range(self._rank_size):
                 sparse_file_path = os.path.join(self._input_model_path_list[rank], sparse_file_name)
                 self.sparse_file_list.append(sparse_file_path)
@@ -188,7 +208,7 @@ class ModelConverter:
             # validate open file
             validate_read_file(ckpt_path)
             latest_ckpt = fin.readline().rstrip()
-            latest_ckpt = latest_ckpt.split(":")[1].strip(' ').replace('"','')
+            latest_ckpt = latest_ckpt.split(":")[1].strip(' ').replace('"', '')
             latest_ckpt = latest_ckpt.split("/")[-1]
         return latest_ckpt
 
@@ -234,9 +254,9 @@ def get_attribute_and_data_file(table_path):
     attribute_file_list = []
     data_file_list = []
     for file_name in os.listdir(table_path):
-        if file_name.endswith(attribute_suffix):
+        if file_name.endswith(ATTRIBUTE_SUFFIX):
             attribute_file_list.append(file_name)
-        if file_name.endswith(data_suffix):
+        if file_name.endswith(DATA_SUFFIX):
             data_file_list.append(file_name)
     if len(attribute_file_list) != 1:
         raise AssertionError(f"under the table path {table_path}, ther must only one attribute file. "
@@ -260,22 +280,22 @@ def generate_attribute_dir(sparse_file, dir_prefix_list, table_name, data_type, 
     temp_dir = sparse_file
     for dir in dir_prefix_list:
         temp_dir = os.path.join(temp_dir, dir)
-    return os.path.join(temp_dir, table_name, data_type, f"{slice_prefix}{rank_id}{attribute_suffix}")
+    return os.path.join(temp_dir, table_name, data_type, f"{SLICE_PREFIX}{rank_id}{ATTRIBUTE_SUFFIX}")
 
 
 def generate_data_dir(sparse_file, dir_prefix_list, table_name, data_type, rank_id):
     temp_dir = sparse_file
     for dir in dir_prefix_list:
         temp_dir = os.path.join(temp_dir, dir)
-    return os.path.join(temp_dir, table_name, data_type, f"{slice_prefix}{rank_id}{data_suffix}")
+    return os.path.join(temp_dir, table_name, data_type, f"{SLICE_PREFIX}{rank_id}{DATA_SUFFIX}")
 
 
 def validate_read_file(read_path):
     if os.path.abspath(read_path) != os.path.realpath(read_path):
         raise ValueError(f"the path {read_path} to be read is soft link.")
     file_stat = tf.io.gfile.stat(read_path)
-    if not min_file_size < file_stat.length <= max_file_size:
-        raise ValueError(f"file size: {file_stat.length} is invalid, not in ({min_file_size}, {max_file_size}]")
+    if not MIN_FILE_SIZE < file_stat.length <= MAX_FILE_SIZE:
+        raise ValueError(f"file size: {file_stat.length} is invalid, not in ({MIN_FILE_SIZE}, {MAX_FILE_SIZE}]")
 
 
 if __name__ == "__main__":
@@ -284,4 +304,4 @@ if __name__ == "__main__":
                                       rank_size=args.rank_size,
                                       estimator=args.estimator, ddr=args.ddr, dynamic_expansion=args.dynamic_expansion)
     convert_instance.convert()
-    print("convert model success.")
+    logging.info("convert model success.")

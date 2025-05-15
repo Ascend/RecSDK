@@ -54,17 +54,13 @@ export ASCEND_DEVICE_ID=0
 export RANK_ID_START=0
 export JOB_ID=10086
 export CUSTOMIZED_OPS_LIB_PATH=${so_path}/libcust_ops.so # Todo: please config
-#export HOST_PIPELINE_OPS_LIB_PATH=${so_path}/libasc_ops.so # Todo: please config
 export MXREC_LOG_LEVEL="INFO"
 export TF_CPP_MIN_LOG_LEVEL=3
 export ASCEND_GLOBAL_LOG_LEVEL=3
-#export USE_FAAE=1
 export ENABLE_FORCE_V2_CONTROL=1
 
-#apply_gradient_strategy="direct_apply"
 apply_gradient_strategy="sum_same_id_gradients_and_apply"
 export APPLY_GRADIENTS_STRATEGY=${apply_gradient_strategy}
-#export USE_MULTI_LOOKUP=1
 
 export PROFILING_OPTIONS='{"output":"/home/yz/profiling",
                            "training_trace":"on",

@@ -183,7 +183,7 @@ def limit_line(input_content: str, line_length: int) -> str:
     limited_str = ""
     if line_length > 0:
         limited_str = "\n".join(
-            input_content[i : i + line_length]
+            input_content[i: i + line_length]
             for i in range(len(input_content), line_length)
         )
     return limited_str

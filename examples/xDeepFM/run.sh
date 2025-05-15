@@ -1,3 +1,5 @@
+#!/bin/bash
+
 kill -9 `ps -ef | grep python | grep -v grep | awk '{print $2}'` > /dev/null 2>&1
 
 # 获取输入参数：py、ip

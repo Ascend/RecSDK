@@ -25,7 +25,6 @@ export TF_CPP_MIN_LOG_LEVEL=3
 export ASCEND_INSTALL_PATH=/usr/local/Ascend/latest/
 export ASCEND_HOME_PATH=${ASCEND_INSTALL_PATH}
 export ASCEND_LATEST_INSTALL_PATH=/usr/local/Ascend
-#export ASCEND_HOME_PATH=${ASCEND_INSTALL_PATH}/
 CANN_BIN_PATH=${ASCEND_HOME_PATH}/bin:${ASCEND_HOME_PATH}/compiler/ccec_compiler/bin
 CANN_PYTHONPATH=${ASCEND_HOME_PATH}/python/site-packages:${ASCEND_HOME_PATH}/opp/op_impl/built-in/ai_core/tbe #:${ASCEND_INSTALL_PATH}/tfplugin/latest/python/site-packages
 PYTHON_BIN_PATH=/usr/local/python3.7.5/bin/

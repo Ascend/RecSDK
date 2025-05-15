@@ -68,7 +68,7 @@ def gen_tfrecords(chunk_data):
         _, y, z = cells[:3]
         field_values = cells[3:]
         if len(field_values) != len(fields):
-            raise(f"{line} values not enough, {chunk_start}, {chunk_size}, "
+            raise ValueError(f"{line} values not enough, {chunk_start}, {chunk_size}, "
                       f"{input_file_path}, {output_file_path}, {task_index}")
 
         feature = {

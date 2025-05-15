@@ -104,15 +104,6 @@ export USE_PADDING_KEYS=0       # 0：不使用padding keys；1：使用padding 
 export KEY_PROCESS_THREAD_NUM=6 #default 6, max 10
 export FAST_UNIQUE=0   #if use fast unique
 export MGMT_HBM_TASK_MODE=0 #if async h2d (get and send tensors)
-############## DUMP CANN计算图 ##############
-# export DUMP_GE_GRAPH=3
-# export DUMP_GRAPH_LEVEL=3
-# if [ "$USE_DYNAMIC_EXPANSION" == 1 ]; then
-#     dyn_scope="dyn"
-# else
-#     dyn_scope="nodyn"
-# fi
-# export DUMP_GRAPH_PATH=${cur_path}/${current_date_time}_${dyn_scope}_dumpgraph_${DUMP_GE_GRAPH}_${DUMP_GRAPH_LEVEL}
 ############## 精度对齐相关 ##############
 export PRECISION_CHECK=0
 if [ "$PRECISION_CHECK" == 1 ]; then

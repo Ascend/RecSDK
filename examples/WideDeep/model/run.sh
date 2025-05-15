@@ -50,7 +50,6 @@ export CUSTOMIZED_OPS_LIB_PATH=${so_path}/libcust_ops.so # Todo: please config
 export MXREC_LOG_LEVEL="INFO"
 export TF_CPP_MIN_LOG_LEVEL=3
 export ASCEND_GLOBAL_LOG_LEVEL=3
-#export USE_FAAE=1
 export ENABLE_FORCE_V2_CONTROL=1
 
 export PROFILING_OPTIONS='{"output":"/home/yz/profiling",

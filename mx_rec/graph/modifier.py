@@ -16,17 +16,17 @@
 # ==============================================================================
 
 import dataclasses
-import mxrec_pybind
-import tensorflow as tf
-
+from typing import List, Dict, Tuple, DefaultDict, Union
 from collections import defaultdict
 from collections.abc import Callable
+
+import tensorflow as tf
 from tensorflow import Operation, Tensor, Graph
 from tensorflow.core.framework.graph_pb2 import GraphDef
 from tensorflow.python.data.ops.dataset_ops import DatasetV1Adapter
 from tensorflow.python.framework.errors_impl import InvalidArgumentError
-from typing import List, Dict, Tuple, DefaultDict, Union
 
+import mxrec_pybind
 from mx_rec.core.embedding_proxy import MergeableEmbeddingTableProxy
 from mx_rec.graph import utils
 from mx_rec.constants.constants import (

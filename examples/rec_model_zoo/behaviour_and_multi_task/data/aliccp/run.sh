@@ -1,3 +1,5 @@
+#!/bin/bash
+
 MAX_LENGTH=50   # max length for long-sequence features, -1 means no cast
 NUM_OF_PROC=10  # number of process workers, only for step6_gen_tfrecod.py 
 PADDING=true   # whether generate padded dataset, if true, multi-hot fields 

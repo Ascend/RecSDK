@@ -24,11 +24,12 @@ from typing import List, Tuple
 
 from sklearn.metrics import roc_auc_score
 import numpy as np
-
 from npu_bridge.npu_init import *
+
 from model import MyModel
 from config import sess_config, Config, SSD_DATA_PATH, CacheModeEnum
 from optimizer import get_dense_and_sparse_optimizer
+from adacons_hooks import adacons_hooks
 from mx_rec.core.asc.helper import FeatureSpec, get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import create_table, sparse_lookup
@@ -40,7 +41,6 @@ from mx_rec.util.ops import import_host_pipeline_ops
 import mx_rec.util as mxrec_util
 from mx_rec.util.variable import get_dense_and_sparse_variable
 from mx_rec.util.log import logger
-from adacons_hooks import adacons_hooks
 
 npu_plugin.set_device_sat_mode(0)
 

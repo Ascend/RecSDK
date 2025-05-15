@@ -1,12 +1,29 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 import os
 import sys
 import time
 import argparse
+import logging
 import numpy as np
 import tensorflow as tf
 from mpi4py import MPI  # must before emb_cache after SparseOps
 import psutil
-import sys
 from sklearn.metrics import roc_auc_score
 
 from tensorflow.python.ops import math_ops
@@ -14,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.core.protobuf.rewriter_config_pb2 import RewriterConfig
 from npu_bridge.hccl import hccl_ops
 from npu_bridge.estimator import npu_ops
+from sparse_ops.config import set_ascend_env
 
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
 from mx_rec.core.asc.manager import start_asc_pipeline
@@ -24,7 +42,8 @@ from mx_rec.constants.constants import MxRecMode
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.util.initialize import get_ascend_global_hashtable_collection
 
-from sparse_ops.config import set_ascend_env
+
+logging.getLogger().setLevel(logging.INFO)
 
 USE_PIPELINE_TEST = False
 USE_STATIC = False
@@ -100,7 +119,7 @@ if __name__ == '__main__':
     comm = MPI.COMM_WORLD
     rank_id = comm.Get_rank()
     rank_size = comm.Get_size()
-    print(f"rank {rank_id}/{rank_size}")
+    logging.info(f"rank {rank_id}/{rank_size}")
     local_rank_id = rank_id % local_rank_size
     set_ascend_env(rank_id, rank_size, local_rank_size, host=args.hosts, file=args.hccl_json)
 
@@ -118,32 +137,21 @@ if __name__ == '__main__':
     custom_op.parameter_map["HCCL_algorithm"].s = tf.compat.as_bytes("level0:fullmesh;level1:pairwise")
 
     custom_op.parameter_map["iterations_per_loop"].i = 10
-    # custom_op.parameter_map["enable_dump"].b = True
-    # custom_op.parameter_map["dump_path"].s = tf.compat.as_bytes("./dump")
-    # custom_op.parameter_map["dump_step"].s = tf.compat.as_bytes("11|12")
-    # custom_op.parameter_map["dump_mode"].s = tf.compat.as_bytes("all")
-    # custom_op.parameter_map["op_debug_level"].i = 0
     custom_op.parameter_map["op_wait_timeout"].i = 500
     custom_op.parameter_map["op_execute_timeout"].i = 500
     custom_op.parameter_map["op_precision_mode"].s = tf.compat.as_bytes("op_impl_mode.ini")
     custom_op.parameter_map["graph_memory_max_size"].s = tf.compat.as_bytes(str(30000000000))
     custom_op.parameter_map["variable_memory_max_size"].s = tf.compat.as_bytes(str(30000000000))
-    #    custom_op.parameter_map["profiling_mode"].b = True
-    #    custom_op.parameter_map["profiling_options"].s = tf.compat.as_bytes(
-    #         '{"output":"/home","training_trace":"on","task_trace":"on","fp_point":"","bp_point":"","aicpu":"on","aic_metrics":"PipeUtilization"}')
 
     global_start_time = time.time()
     tf.set_random_seed(10086)
     np.random.seed(10086)
 
     my_dim = int(args.my_dim)
-    print("my_dim=", my_dim)
+    logging.info("my_dim=%d", my_dim)
 
     hot_zhanbi = args.chongfudu
     hot_zhanbi = float(hot_zhanbi) / 10
-
-    # if hot_zhanbi == 0:
-    #    hot_zhanbi = int(hot_zhanbi)
 
     config = {
         "data_path": "./data1/data" + str(hot_zhanbi) + "_" + str(float(args.new_key)) + "/",
@@ -212,8 +220,8 @@ if __name__ == '__main__':
         sess.run(tf.global_variables_initializer())
         sess.run([train_iterator.initializer])
         # build model
-        print("start build wdl(single domain) model")
-        print("=========start============")
+        logging.info("start build wdl(single domain) model")
+        logging.info("=========start============")
         # start run loop
         total_start_time = time.time()
         current_steps = 0
@@ -222,7 +230,7 @@ if __name__ == '__main__':
         while not train_finished:
             try:
                 current_steps += 1
-                print("current step =", current_steps)
+                logging.info("current step =%d", current_steps)
                 #
                 run_dict = {
                     "adam": model.op,
@@ -231,22 +239,22 @@ if __name__ == '__main__':
                 if current_steps == 1:
                     total_start_time = time.time()
                 start_time = time.time()
-                print("start sess run")
+                logging.info("start sess run")
                 results = sess.run(fetches=run_dict)
-                print("start sess run 1")
+                logging.info("start sess run 1")
                 end_time = time.time()
-                print(f"current_steps: {current_steps} ,step time:{(end_time - start_time) * 1000}")
+                logging.info(f"current_steps: {current_steps} ,step time:{(end_time - start_time) * 1000}")
                 if current_steps <= 5:
                     total_start_time = time.time()
                 if current_steps % print_steps == 0:
-                    print("----------" * 10)
+                    logging.info("----------" * 10)
                     try:
-                        print(
+                        logging.info(
                             f"current_steps: {current_steps} ,deep_loss:{results['deep_loss']},"
                             f"e2etime per step:{(end_time - start_time) * 1000}")
                     except KeyError:
-                        print(f"current_steps: {current_steps}")
-                    print("----------" * 10)
+                        logging.error(f"current_steps: {current_steps}")
+                    logging.info("----------" * 10)
 
                 if current_steps >= stop_steps:
                     train_finished = True
@@ -255,11 +263,7 @@ if __name__ == '__main__':
                 train_finished = True
 
         # train_finished
-        # emb_cache.destroy()
-        # MPI.Finalize()
-        print(
+        logging.info(
             f"training {current_steps} steps, consume time: {(time.time() - total_start_time) / (current_steps - 5) * 1000} ")
 
         terminate_config_initializer()
-        # emb_cache.destroy()
-        # MPI.Finalize()

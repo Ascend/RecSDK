@@ -703,12 +703,12 @@ def after_run_checkpoint_saver_hook(self, run_context, run_values):  # pragma: n
         run_context.request_stop()
 
 
-def save_checkpoint_saver_hook(self, session, step, save_delta=False):  # pragma: no cover
+def save_checkpoint_saver_hook(self, cur_session, step, save_delta=False):  # pragma: no cover
     logging.info("Saving checkpoints for %d into %s.", step, self._save_path)
 
     for listener in self._listeners:
-        listener.before_save(session, step)
-    self._get_saver().save(session, self._save_path, global_step=step,
+        listener.before_save(cur_session, step)
+    self._get_saver().save(cur_session, self._save_path, global_step=step,
                            is_incremental_checkpoint=self._timer._is_incremental_checkpoint,
                            save_delta=save_delta)
     self._summary_writer.add_session_log(
@@ -718,7 +718,7 @@ def save_checkpoint_saver_hook(self, session, step, save_delta=False):  # pragma
 
     should_stop = False
     for listener in self._listeners:
-        if listener.after_save(session, step):
+        if listener.after_save(cur_session, step):
             logging.info(
                 "A CheckpointSaverListener requested that training be stopped. "
                 "listener: %s", listener)

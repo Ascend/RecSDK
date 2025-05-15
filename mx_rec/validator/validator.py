@@ -589,7 +589,7 @@ class TensorShapeValidator(Validator):
 
 
 class LearningRateValidator(FloatValidator):
-    def __init__(self, name:str, value: Union[tf.Tensor, float], min_value: float, max_value: float):
+    def __init__(self, name: str, value: Union[tf.Tensor, float], min_value: float, max_value: float):
         if isinstance(value, tf.Tensor):
             sess = tf.Session() if tf.__version__.startswith("1.") else tf.compat.v1.Session()
             try:
