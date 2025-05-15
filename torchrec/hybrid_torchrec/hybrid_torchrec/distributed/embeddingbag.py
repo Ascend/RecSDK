@@ -181,9 +181,7 @@ class HybridShardedEmbeddingBagCollection(
         self._inverse_indices_permute_indices: Optional[torch.Tensor] = None
         # to support mean pooling callback hook
         self._has_mean_pooling_callback: bool = (
-            True
-            if PoolingType.MEAN.value in self._pooling_type_to_rs_features
-            else False
+            PoolingType.MEAN.value in self._pooling_type_to_rs_features
         )
         self._dim_per_key: Optional[torch.Tensor] = None
         self._kjt_key_indices: Dict[str, int] = {}
