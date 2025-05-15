@@ -25,12 +25,23 @@ constexpr int FLOAT_BYTESIZE = 4;
 
 static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
-    auto gardShape = context->GetInputShape(0)->GetStorageShape();
+    auto gradShape = context->GetInputShape(0)->GetStorageShape();
     auto xShape = context->GetInputShape(1)->GetStorageShape();
     auto indexShape = context->GetInputShape(2)->GetStorageShape();
 
     if (xShape.GetDimNum() != 1) {
-        printf("[ERROR]IndexSectForRank1Backward is only used for input-1 with dim 0 but is %ld", xShape.GetDimNum());
+        printf("IndexSectForRank1Backward is only used for input-1 with dim 0 but x.dim is %ld",
+               xShape.GetDimNum());
+        return ge::GRAPH_FAILED;
+    }
+    if (gradShape.GetDimNum() != 1) {
+        printf("IndexSectForRank1Backward is only used for input-1 with dim 0 but grad.dim is %ld",
+               gradShape.GetDimNum());
+        return ge::GRAPH_FAILED;
+    }
+    if (indexShape.GetDimNum() != 1) {
+        printf("IndexSectForRank1Backward is only used for input-1 with dim 0 but index.dim is %ld",
+               indexShape.GetDimNum());
         return ge::GRAPH_FAILED;
     }
 
