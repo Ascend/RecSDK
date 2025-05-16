@@ -8,6 +8,7 @@
 from typing import Dict, List, Optional, TypeVar
 
 import torch
+from hybrid_torchrec.modules.ids_process import HashMapBase
 
 from hybrid_torchrec.distributed.embedding_lookup import (
     HybridGroupedPooledEmbeddingsLookup,
@@ -18,7 +19,7 @@ from hybrid_torchrec.distributed.sharding.post_input_dist import (
     UniqueHashFeatureProcess,
     get_feature_len_groupby_table_name,
 )
-from hybrid_torchrec.modules.hash_embeddingbag import HashMap
+
 from torchrec.distributed.embedding_sharding import (
     BaseSparseFeaturesDist,
 )
@@ -89,7 +90,7 @@ class HybridHashTwPooledEmbeddingSharding(HybridTwPooledEmbeddingSharding):
     def __init__(
         self,
         sharding_infos: List[EmbeddingShardingInfo],
-        table2hashmap: Dict[str, HashMap],
+        table2hashmap: Dict[str, HashMapBase],
         env: ShardingEnv,
         host_env: ShardingEnv,
         device: Optional[torch.device] = None,
