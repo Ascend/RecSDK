@@ -244,7 +244,6 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
             offsets, batch_size_per_feature_per_rank
         )
 
-        # bounds_check_indices to support different indices type and offset
         # type
         force_cast_input_types = (
             indices.dtype != offsets.dtype or force_cast_input_types
