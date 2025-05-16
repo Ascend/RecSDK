@@ -14,10 +14,8 @@ from typing import List
 import torch
 from torch.autograd.profiler import record_function
 
-try:
-    torch.ops.load_library(os.path.join(os.path.dirname(__file__), "libhybrid_cpp.so"))
-except Exception as ex:
-    logging.error(f"File libhybrid_cpp.so failed,  {ex}")
+
+torch.ops.load_library(os.path.join(os.path.dirname(__file__), "libhybrid_cpp.so"))
 
 
 class HashMapBase(torch.nn.Module):
