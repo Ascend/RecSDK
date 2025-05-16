@@ -188,7 +188,6 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
                     common_args, self.optimizer_args, momentum1
                 ),
             )
-
         elif self.optimizer == OptimType.ADAM:
             return self._report_io_size_count(
                 "fwd_output",
