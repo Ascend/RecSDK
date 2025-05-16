@@ -81,29 +81,6 @@ class HashEmbeddingBagConfig(EmbeddingBagConfig):
     pass
 
 
-class HashMap(Dict):
-    def __init__(self):
-        super().__init__()
-        self.ids2slot_dict = {}
-        self.index = 0
-
-    def ids2indices(self, ids: torch.Tensor) -> torch.Tensor:
-        raw_device = input.device
-        ids_host = input.cpu()
-        index_of_ids = torch.zeros(ids_host.shape, dtype=torch.long)
-        n = ids.shape[0]
-        for i in range(n):
-            k = ids_host[i].item()
-            if k in self.ids2slot_dict:
-                index_of_ids[i] = self.ids2slot_dict[k]
-            else:
-                self.ids2slot_dict[k] = self.index
-                index_of_ids[i] = self.index
-                self.index += 1
-        index_of_ids = index_of_ids.to(raw_device)
-        return index_of_ids
-
-
 class HashEmbeddingBag(torch.nn.Module):
     def __init__(self, config: HashEmbeddingBagConfig, device: torch.device):
         pass
