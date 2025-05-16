@@ -53,11 +53,11 @@ def main(argv: List[str]) -> None:
     args, unknown = parse_args(argv)
 
     with open(
-        os.path.join(os.path.dirname(__file__), "README.MD"), encoding="utf8"
+        os.path.join(ROOT_DIR, "README.MD"), encoding="utf8"
     ) as f:
         readme = f.read()
     with open(
-        os.path.join(os.path.dirname(__file__), "install-requirements.txt"),
+        os.path.join(ROOT_DIR, "install-requirements.txt"),
         encoding="utf8",
     ) as f:
         reqs = f.read()
@@ -88,7 +88,7 @@ def main(argv: List[str]) -> None:
         description="Pytorch domain library for recommendation systems",
         long_description=readme,
         long_description_content_type="text/markdown",
-        url="https://gitee.com/ascend/torchrec",
+        url="",
         license="BSD-3",
         keywords=["pytorch", "recommendation systems", "sharding"],
         python_requires=">=3.8",
