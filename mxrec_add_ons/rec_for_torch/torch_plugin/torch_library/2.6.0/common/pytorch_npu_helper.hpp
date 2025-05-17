@@ -24,6 +24,7 @@
 #include <filesystem>
 #include <fstream>
 
+#include "securec.h"
 #include "torch_npu/csrc/aten/NPUNativeFunctions.h"
 #include "torch_npu/csrc/core/npu/NPUStream.h"
 #include "torch_npu/csrc/framework/OpCommand.h"
@@ -99,7 +100,10 @@ constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at:
         g_hashOffset = kHashBufMaxSize;                                                                                \
         return;                                                                                                        \
     }                                                                                                                  \
-    memcpy(g_hashBuf + g_hashOffset, data_expression, size_expression);                                                \
+    if (memcpy_s(g_hashBuf + g_hashOffset, size_expression, data_expression, size_expression) != EOK) {                \
+        ASCEND_LOGW("memcpy_s failed.");                                                                               \
+        return;                                                                                                        \
+    }                                                                                                                  \
     g_hashOffset += size_expression;
 
 inline const char* GetOpApiLibName(void)
