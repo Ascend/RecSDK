@@ -100,9 +100,8 @@ constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at:
         g_hashOffset = kHashBufMaxSize;                                                                                \
         return;                                                                                                        \
     }                                                                                                                  \
-    auto ret = memcpy_s(g_hashBuf + g_hashOffset, size_expression, data_expression, size_expression);                  \
-    if (ret != EOK) {                                                                                                  \
-        ASCEND_LOGW("memcpy_s failed, error:%d.", ret);                                                                \
+    if (memcpy_s(g_hashBuf + g_hashOffset, size_expression, data_expression, size_expression) != EOK) {                \
+        ASCEND_LOGW("memcpy_s failed.");                                                                               \
         return;                                                                                                        \
     }                                                                                                                  \
     g_hashOffset += size_expression;
