@@ -41,6 +41,7 @@ from mx_rec.util.initialize import get_rank_size, init, clear_channel, get_rank_
 from mx_rec.constants.constants import MxRecMode
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.util.initialize import get_ascend_global_hashtable_collection
+from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_ID_OFFSET
 
 
 logging.getLogger().setLevel(logging.INFO)
@@ -48,8 +49,6 @@ logging.getLogger().setLevel(logging.INFO)
 USE_PIPELINE_TEST = False
 USE_STATIC = False
 USE_EXPANSION = False
-
-from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_ID_OFFSET
 
 
 class WideDeep:
@@ -180,7 +179,7 @@ if __name__ == '__main__':
     hot_zhanbi = float(hot_zhanbi) / 10
 
     config = {
-        "data_path": "./data1/data" + str(hot_zhanbi) + "_" + str(float(args.new_key)) + "/",
+        "data_path": os.path.join(".", "data1", "data" + str(hot_zhanbi) + "_" + str(float(args.new_key))) + os.sep,
         "train_file_pattern": "tf",
         "test_file_pattern": "test",
         "batch_size": 1024 * 8,
@@ -278,7 +277,8 @@ if __name__ == '__main__':
                     try:
                         logging.info(
                             f"current_steps: {current_steps} ,deep_loss:{results['deep_loss']},"
-                            f"e2etime per step:{(end_time - start_time) * 1000}")
+                            f"e2etime per step:{(end_time - start_time) * 1000}"
+                        )
                     except KeyError:
                         logging.error(f"current_steps: {current_steps}")
                     logging.info("----------" * 10)
@@ -291,6 +291,8 @@ if __name__ == '__main__':
 
         # train_finished
         logging.info(
-            f"training {current_steps} steps, consume time: {(time.time() - total_start_time) / (current_steps - 5) * 1000} ")
+            f"training {current_steps} steps, consume time: "
+            f"{(time.time() - total_start_time) / (current_steps - 5) * 1000} "
+        )
 
         terminate_config_initializer()

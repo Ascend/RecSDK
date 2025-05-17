@@ -421,12 +421,14 @@ def parse_dump_data(
     for table in info_tables:
         temp_emb_look_ops = dump_emb_op_info[table][LOOKUP_TABLE]
         dump_emb_op_info[table][LOOKUP_TABLE] = [
-            ops_name.replace("/", "_") for ops_name in temp_emb_look_ops
+            ops_name.replace("/", "_")
+            for ops_name in temp_emb_look_ops
         ]
 
         temp_emb_update_ops = dump_emb_op_info[table][UPDATE_GRAD]
         dump_emb_op_info[table][UPDATE_GRAD] = [
-            ops_name.replace("/", "_") for ops_name in temp_emb_update_ops
+            ops_name.replace("/", "_")
+            for ops_name in temp_emb_update_ops
         ]
 
         temp_info_ops_name = (
@@ -435,7 +437,8 @@ def parse_dump_data(
         info_ops_list.extend(temp_info_ops_name)
 
         temp_data_ops_name = [
-            op_name for op_name, _ in op_numpy_des_dict[table].items()
+            op_name
+            for op_name, _ in op_numpy_des_dict[table].items()
         ]
         data_ops_list.extend(temp_data_ops_name)
 

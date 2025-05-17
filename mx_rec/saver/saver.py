@@ -833,7 +833,9 @@ def rename_file_and_remove_others(upper_dir: str):
     """
 
     data_files = [
-        file for file in tf.io.gfile.listdir(upper_dir) if file.startswith("slice_")
+        file 
+        for file in tf.io.gfile.listdir(upper_dir) 
+        if file.startswith("slice_")
     ]
     if not data_files:
         raise RuntimeError(
@@ -1113,9 +1115,15 @@ def get_base_optimizer(save_dir: str, table_name_set: set, base_model: str):
     base_optimizer = {}
     # if optimizer's params exist, then restore them; otherwise no need to restore
     if optim_param_list:
-        optimizer_status_name_list = [f"{optimizer_type}_{optim_param}" for optim_param in optim_param_list]
-        base_optimizer = {table_name: {optimizer_status_name: None} for table_name in table_name_set
-                          for optimizer_status_name in optimizer_status_name_list}
+        optimizer_status_name_list = [
+            f"{optimizer_type}_{optim_param}" 
+            for optim_param in optim_param_list
+        ]
+        base_optimizer = {
+            table_name: {optimizer_status_name: None} 
+            for table_name in table_name_set
+            for optimizer_status_name in optimizer_status_name_list
+        }
 
         base_model_path = os.path.join(save_dir, f"{SAVE_SPARSE_PATH_PREFIX}-model.ckpt-{base_model}")
         for table_name in table_name_set:

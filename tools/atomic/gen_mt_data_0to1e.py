@@ -29,7 +29,6 @@ np.random.seed(0)
 LINE_PER_SAMPLE = 10000
 SAMPLES_NUM = 10000 * 800 
 sparse_feat_list = ['feat_ids']
-# todo
 sparse_feat_len = [100]
 
 NUM = 0
@@ -38,11 +37,11 @@ hot_zhanbi = sys.argv[1:][0]
 hot_zhanbi = float(hot_zhanbi)/10
 logging.info("hot_ratio = %f", hot_zhanbi)
 
-tfpath = "/home/insert/data"+str(hot_zhanbi)
+tfpath = os.path.join("/home/insert/data", str(hot_zhanbi))
 if not os.path.exists(tfpath):
     os.mkdir(tfpath)
     
-tfpath = "/home/insert/data"+str(hot_zhanbi)+"/tf"
+tfpath = os.path.join("/home/insert/data", str(hot_zhanbi), "tf")
 
 part1 = np.array(random.sample(range(0, 2), 1)) 
 
@@ -54,7 +53,7 @@ def write_records(writer, line_cnt, file_cnt):
     }
 
     count = 0
-    for i, sparse_feat in enumerate(sparse_feat_list):
+    for _, sparse_feat in enumerate(sparse_feat_list):
         np.random.seed(count)
         # global num
         logging.info("===sparse=%s", sparse_feat)

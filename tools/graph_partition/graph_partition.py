@@ -79,7 +79,7 @@ class GraphPartitioner:
             for tensor in self.sparse_lookup_tensors:
                 if tensor in op.inputs:
                     self.input_nodes.append(op)
-        for k, v in self.signature_def.outputs.items():
+        for _, v in self.signature_def.outputs.items():
             op_name = (
                 str(v)
                 .split("\n")[0]

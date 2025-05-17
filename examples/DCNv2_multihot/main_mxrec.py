@@ -392,7 +392,7 @@ if __name__ == "__main__":
         # do dense optimization
         grads = dense_optimizer.compute_gradients(loss, var_list=dense_variables)
 
-        if cfg.use_adacons == True:
+        if cfg.use_adacons:
             grads_new = adacons_hooks(gradients=grads, rank_size=rank_size, device_id=rank_id)
         else:
             grads_new = cal_average_grad(grads, rank_size)

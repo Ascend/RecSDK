@@ -225,6 +225,14 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
             raise KeyError(f"Given anchor '{anchor}' was not registered.")
 
         return specs.get(attr)
+    
+    @staticmethod
+    def _get_access_and_evict_threshold(table_feature_specs: List[FeatureSpec]) -> Tuple[int, int]:
+        access_threshold_set = set(spec.access_threshold for spec in table_feature_specs)
+        evict_threshold_set = set(spec.eviction_threshold for spec in table_feature_specs)
+        if len(access_threshold_set) != 1 or len(evict_threshold_set) != 1:
+            raise ValueError("the access and evict threshold param must be same in one table when multi lookup.")
+        return access_threshold_set.pop(), evict_threshold_set.pop()
 
     @abc.abstractmethod
     def capacity(self) -> int:
@@ -259,34 +267,6 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         is_training: bool,
     ) -> tf.Tensor:
         pass
-
-    def _init_sliced_variable(self):
-        if (
-            ConfigInitializer.get_instance().hybrid_manager_config.freeze
-            and self._table_name in ConfigInitializer.get_instance().sparse_embed_config.name_to_var_dict
-        ):
-            self._variable = tf.compat.v1.get_variable(
-                self._table_name, trainable=False, shape=(self._slice_device_vocabulary_size, self._emb_size)
-            )
-
-            experimental_mode = ConfigInitializer.get_instance().train_params_config.experimental_mode
-            # In the export saved model mode, during the expansion scenario, variables also need to be recorded
-            # during eval/predict. Otherwise, an empty variable will cause the saver to be created as None.
-            if not experimental_mode and ConfigInitializer.get_instance().use_dynamic_expansion:
-                return
-
-            self._record(eval_flag=True)
-            tf.compat.v1.add_to_collection(
-                ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection,
-                self._variable,
-            )
-            return
-
-        check_emb_init_params(self._is_hbm, self._embedding_size)
-        self._initialize_variables()
-        tf.compat.v1.add_to_collection(
-            ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection, self._variable
-        )
 
     def size(self) -> int:
         """
@@ -387,14 +367,6 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         logger.debug("Return the stub tensor `%s` of the `%s` table.", mock_lookup_result, self._table_name)
         return mock_lookup_result
 
-    @staticmethod
-    def _get_access_and_evict_threshold(table_feature_specs: List[FeatureSpec]) -> Tuple[int, int]:
-        access_threshold_set = set(spec.access_threshold for spec in table_feature_specs)
-        evict_threshold_set = set(spec.eviction_threshold for spec in table_feature_specs)
-        if len(access_threshold_set) != 1 or len(evict_threshold_set) != 1:
-            raise ValueError("the access and evict threshold param must be same in one table when multi lookup.")
-        return access_threshold_set.pop(), evict_threshold_set.pop()
-
     def lookup_for_feat_spec(self, feature_spec: FeatureSpec, send_count: Optional[int], **kwargs) -> tf.Tensor:
         """
         稀疏表的lookup，FeatureSpec模式.
@@ -471,6 +443,34 @@ class BaseSparseEmbedding(metaclass=abc.ABCMeta):
         if not kwargs.get("is_grad"):
             return tf.stop_gradient(self._lookup_result.get(spec_name).get(is_training), name="stop_grad_lookup_res")
         return self._lookup_result.get(spec_name).get(is_training)
+    
+    def _init_sliced_variable(self):
+        if (
+            ConfigInitializer.get_instance().hybrid_manager_config.freeze
+            and self._table_name in ConfigInitializer.get_instance().sparse_embed_config.name_to_var_dict
+        ):
+            self._variable = tf.compat.v1.get_variable(
+                self._table_name, trainable=False, shape=(self._slice_device_vocabulary_size, self._emb_size)
+            )
+
+            experimental_mode = ConfigInitializer.get_instance().train_params_config.experimental_mode
+            # In the export saved model mode, during the expansion scenario, variables also need to be recorded
+            # during eval/predict. Otherwise, an empty variable will cause the saver to be created as None.
+            if not experimental_mode and ConfigInitializer.get_instance().use_dynamic_expansion:
+                return
+
+            self._record(eval_flag=True)
+            tf.compat.v1.add_to_collection(
+                ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection,
+                self._variable,
+            )
+            return
+
+        check_emb_init_params(self._is_hbm, self._embedding_size)
+        self._initialize_variables()
+        tf.compat.v1.add_to_collection(
+            ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection, self._variable
+        )
 
     def _set_ext_emb_size(self):
         # 初始设置_ext_emb_size等于_emb_size，改图阶段会根据优化器的不同而exchange该值

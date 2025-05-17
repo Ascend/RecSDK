@@ -38,6 +38,49 @@ class SparseOps:
         self.fallback = fallback
         self.all2all = hccl_ops.all_to_all_v
 
+    @staticmethod
+    def forward_alltoallc(all2all_args, restore_vec, emb_vec, emb_vec_size, rank):
+        """
+        emb的前向通信
+        all2all_args：用all2all用到的参数
+        restore_vec：恢复向量
+        emb_vec：输入的emb
+        """
+        emb_vec = tf.reshape(emb_vec, [-1])
+
+        result = hccl_ops.all_to_all_v_c(send_data=emb_vec,
+                                         send_count_matrix=all2all_args,
+                                         rank=rank
+                                         )
+
+        result = tf.reshape(result,
+                            [-1, emb_vec_size],
+                            name="after_all2all_reshape")
+        output = tf.gather(result, restore_vec)
+        return output
+    
+    @staticmethod
+    def backward_alltoallc(emb_grad, segment_ids, num_segments, all2all_args, rank):
+        """
+        emb梯度的反向通信
+        id_emb_grad：原始梯度
+        segment_ids：恢复向量
+        num_segments：压缩后的长度
+        """
+        unique_local_grad = tf.math.unsorted_segment_sum(emb_grad,
+                                                         segment_ids=segment_ids,
+                                                         num_segments=num_segments, name="backward_combine")
+        # unique_local_grad 2node shape 37755 same with rc total and num_segment
+        # unique_local_grad shape is [40052, 80]
+        unique_local_grad = tf.reshape(unique_local_grad, [-1])
+
+        all2all_args = tf.transpose(all2all_args)
+        unique_grad = hccl_ops.all_to_all_v_c(send_data=unique_local_grad,
+                                              send_count_matrix=all2all_args,
+                                              rank=rank
+                                              )
+        return unique_grad
+
     def get_a2a_args(self, lookup_vec_size, mini_bs_w_field, rank_size, send_count, emb_vec_size):
         """
         获取a2a args信息
@@ -55,11 +98,11 @@ class SparseOps:
 
     def forward_alltoall(self, all2all_args, restore_vec, hot_pos, emb_vec, emb_vec_size):
         """
-         emb的前向通信
-         all2all_args：用all2all用到的参数
-         restore_vec：恢复向量
-         emb_vec：输入的emb
-         """
+        emb的前向通信
+        all2all_args：用all2all用到的参数
+        restore_vec：恢复向量
+        emb_vec：输入的emb
+        """
         emb_vec = tf.reshape(emb_vec, [-1])
 
         result = self.all2all(send_data=emb_vec,
@@ -78,33 +121,13 @@ class SparseOps:
         output = tf.gather(result, restore_vec)
         return output
 
-    def forward_alltoallc(self, all2all_args, restore_vec, emb_vec, emb_vec_size, rank):
-        """
-         emb的前向通信
-         all2all_args：用all2all用到的参数
-         restore_vec：恢复向量
-         emb_vec：输入的emb
-         """
-        emb_vec = tf.reshape(emb_vec, [-1])
-
-        result = hccl_ops.all_to_all_v_c(send_data=emb_vec,
-                                         send_count_matrix=all2all_args,
-                                         rank=rank
-                                         )
-
-        result = tf.reshape(result,
-                            [-1, emb_vec_size],
-                            name="after_all2all_reshape")
-        output = tf.gather(result, restore_vec)
-        return output
-
     def backward_alltoall(self, emb_grad, hot_pos, segment_ids, num_segments, all2all_args):
         """
-         emb梯度的反向通信
-         id_emb_grad：原始梯度
-         segment_ids：恢复向量
-         num_segments：压缩后的长度
-         """
+        emb梯度的反向通信
+        id_emb_grad：原始梯度
+        segment_ids：恢复向量
+        num_segments：压缩后的长度
+        """
         # unique_local_grad 2node shape 37755 same with rc total and num_segment
         # unique_local_grad shape is [40052, 80]
         if hot_pos is not None:
@@ -126,25 +149,4 @@ class SparseOps:
                                    recv_counts=all2all_args['sc'],
                                    recv_displacements=all2all_args['ss']
                                    )
-        return unique_grad
-
-    def backward_alltoallc(self, emb_grad, segment_ids, num_segments, all2all_args, rank):
-        """
-         emb梯度的反向通信
-         id_emb_grad：原始梯度
-         segment_ids：恢复向量
-         num_segments：压缩后的长度
-         """
-        unique_local_grad = tf.math.unsorted_segment_sum(emb_grad,
-                                                         segment_ids=segment_ids,
-                                                         num_segments=num_segments, name="backward_combine")
-        # unique_local_grad 2node shape 37755 same with rc total and num_segment
-        # unique_local_grad shape is [40052, 80]
-        unique_local_grad = tf.reshape(unique_local_grad, [-1])
-
-        all2all_args = tf.transpose(all2all_args)
-        unique_grad = hccl_ops.all_to_all_v_c(send_data=unique_local_grad,
-                                              send_count_matrix=all2all_args,
-                                              rank=rank
-                                              )
         return unique_grad
