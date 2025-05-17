@@ -76,14 +76,28 @@ def gen_config(server_str, local_rank_size, path=None):
         file_handle.write(conf_str)
 
 
-def set_ascend_env(rank, rank_size, local_rank_size, host, file=None, dev_id=-1, dev_index=-1):
+class AscendEnv:
+    def __init__(self, rank, rank_size, local_rank_size, host, file=None, dev_id=-1, dev_index=-1):
+        self.rank = rank
+        self.rank_size = rank_size
+        self.local_rank_size = local_rank_size
+        self.host = host
+        self.file = file
+        self.dev_id = dev_id
+        self.dev_index = dev_index
+
+
+def set_ascend_env(env: AscendEnv):
     """
     配置昇腾相关的参数和环境变量，生成hccl配置
     """
-    rank = str(rank)
-    rank_size = str(rank_size)
-    local_rank_size = int(local_rank_size)
-    host = str(host)
+    rank = str(env.rank)
+    rank_size = str(env.rank_size)
+    local_rank_size = int(env.local_rank_size)
+    host = str(env.host)
+    file = env.file
+    dev_id = env.dev_id
+    dev_index = env.dev_index
 
     os.environ["MOX_USE_NPU"] = "1"
     os.environ["FUSION_TENSOR_SIZE"] = "2000000000"
