@@ -6,13 +6,9 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-import argparse
 import os
 import subprocess
-import sys
 from pathlib import Path
-from typing import List
-import logging
 
 from setuptools import find_packages, setup
 
@@ -20,8 +16,8 @@ ROOT_DIR = Path(__file__).parent.resolve()
 
 
 def _get_version():
+    cmd = ["git", "rev-parse", "HEAD"]
     try:
-        cmd = ["git", "rev-parse", "HEAD"]
         sha = subprocess.check_output(cmd, cwd=str(ROOT_DIR)).decode("ascii").strip()
     except Exception:
         sha = None
@@ -44,22 +40,10 @@ def _export_version(version, sha):
         fileobj.write("git_version = {}\n".format(repr(sha)))
 
 
-def parse_args(argv: List[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="hybrid_torchrec setup")
-    return parser.parse_known_args(argv)
-
-
-def main(argv: List[str]) -> None:
-    args, unknown = parse_args(argv)
-
-    with open(
-        os.path.join(ROOT_DIR, "README.MD"), encoding="utf8"
-    ) as f:
+def main() -> None:
+    with open(os.path.join(ROOT_DIR, "README.MD"), encoding="utf8") as f:
         readme = f.read()
-    with open(
-        os.path.join(ROOT_DIR, "install-requirements.txt"),
-        encoding="utf8",
-    ) as f:
+    with open(os.path.join(ROOT_DIR, "install-requirements.txt"), encoding="utf8",) as f:
         reqs = f.read()
         install_requires = reqs.strip().split("\n")
 
@@ -77,7 +61,6 @@ def main(argv: List[str]) -> None:
             "*rfc",
         )
     )
-    sys.argv = [sys.argv[0]] + unknown
 
     setup(
         # Metadata
@@ -91,7 +74,7 @@ def main(argv: List[str]) -> None:
         url="",
         license="BSD-3",
         keywords=["pytorch", "recommendation systems", "sharding"],
-        python_requires=">=3.8",
+        python_requires=">=3.11",
         install_requires=install_requires,
         packages=packages,
         package_data={'': ['*.so*']},
@@ -110,4 +93,4 @@ def main(argv: List[str]) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    main()
