@@ -184,6 +184,8 @@ def lookup_npu(indices, offsets, weights, jt_lst, params):
     tbe.weights_dev = torch.nn.Parameter(weights.clone()).to(DEVICEID)
 
     output = tbe(indices, offsets, **kwargs)
+    loss = torch.sum(output ** 2 / 2)
+    loss.backward()
     return output, tbe.weights_dev
 
 
@@ -290,7 +292,7 @@ def execute(params):
     assert (~weights_compare).sum() / total_size < 1e-4
 
 
-@pytest.mark.parametrize("tables", [[(20000, 28), (40000, 28)], [(40000, 128), (80000, 128)]])
+@pytest.mark.parametrize("tables", [[(20000, 32), (40000, 32)], [(40000, 128), (80000, 128)]])
 @pytest.mark.parametrize("mutile_hots", [[8, 16, 100], [2, 64, 200]])
 @pytest.mark.parametrize("batch_size", [8, 16, 64])
 @pytest.mark.parametrize("unique", [False])
@@ -302,7 +304,7 @@ def test_lookup_two_tables(tables, mutile_hots, batch_size, pooling_model, uniqu
     execute(params)
 
 
-@pytest.mark.parametrize("tables", [[(10240, 1024)], [(1234, 1536)], [(1, 4)]])
+@pytest.mark.parametrize("tables", [[(10240, 1024)], [(1234, 1536)], [(1, 8)]])
 @pytest.mark.parametrize("mutile_hots", [[1], [4], [11], [69]])
 @pytest.mark.parametrize("batch_size", [2341, 1])
 @pytest.mark.parametrize("unique", [False])

@@ -370,8 +370,9 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
     m.impl("split_embedding_codegen_lookup_sgd_function",
            torch::dispatch(c10::DispatchKey::Autograd,
                            TORCH_FN(fbgemm_npu_lookups::split_embedding_codegen_lookup_sgd_function)));
-    DISPATCH_TO_NPU("split_embedding_codegen_lookup_sgd_function",
-                    fbgemm_npu_lookups::split_embedding_codegen_lookup_sgd_function);
+    m.impl("split_embedding_codegen_lookup_sgd_function",
+           torch::dispatch(c10::DispatchKey::PrivateUse1,
+                           TORCH_FN(fbgemm_npu_lookups::split_embedding_codegen_lookup_sgd_function)));
 }
 
 TORCH_LIBRARY_FRAGMENT(fbgemm, m)
@@ -404,6 +405,8 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    Tensor unique_inverse = None, "
           "    float learning_rate = 0 "
           ") -> Tensor");
-    DISPATCH_TO_NPU("split_embedding_backward_codegen_sgd_unweighted_exact_cuda",
-                    fbgemm_npu_lookups::split_embedding_backward_codegen_sgd_unweighted_exact_npu);
+
+    m.impl("split_embedding_backward_codegen_sgd_unweighted_exact_cuda",
+           torch::dispatch(c10::DispatchKey::PrivateUse1,
+                           TORCH_FN(fbgemm_npu_lookups::split_embedding_backward_codegen_sgd_unweighted_exact_npu)));
 }

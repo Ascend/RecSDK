@@ -132,8 +132,8 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
     } else if (optimType == SGD) {
         context->SetTilingKey(NORMAL_SGD);
     } else {
-        printf("optimType is not supported%d\n", optimType);
-        ret = ge::FAILED;
+        printf("[ERROR]OptimType is not supported%d\n", optimType);
+        return ge::GRAPH_FAILED;
     }
 
     if (ret != ge::GRAPH_SUCCESS) {
@@ -163,7 +163,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     // Shape and dType
     ge::graphStatus ret = ShapeTilingFunc(context, tiling);
     if (ret != ge::GRAPH_SUCCESS) {
-        printf("ShapeTiling failed.\n");
+        printf("[ERROR]ShapeTiling failed.\n");
         return ret;
     }
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
@@ -176,8 +176,8 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     // Tiling
     size_t coreNum = ascendPlatform.GetCoreNumAiv();
     if (coreNum == 0) {
-        printf("Core num is 0;");
-        return ge::FAILED;
+        printf("[ERROR]Core num is 0;");
+        return ge::GRAPH_FAILED;
     }
 
     int64_t splitBaseLen = tiling.get_indicesDim0() / coreNum;
