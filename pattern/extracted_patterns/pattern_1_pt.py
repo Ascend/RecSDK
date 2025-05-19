@@ -20,6 +20,7 @@ import torch.nn as nn
 
 from utils.logger import default_logger
     
+    
 class PatternModel(nn.Module):
     def __init__(self):
         super(PatternModel, self).__init__()
