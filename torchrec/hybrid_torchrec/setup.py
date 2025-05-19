@@ -51,7 +51,7 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         return args, unknown
     except (argparse.ArgumentError, SystemExit) as e:
         # 处理 argparse.ArgumentError 和 SystemExit 异常
-        print(f"Error: {e}")
+        logging.error(f"Error: {e}")
         return None, None
 
 
