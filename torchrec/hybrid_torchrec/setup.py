@@ -6,13 +6,9 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-import argparse
 import os
 import subprocess
-import sys
 from pathlib import Path
-from typing import List
-import logging
 
 from setuptools import find_packages, setup
 
@@ -44,22 +40,7 @@ def _export_version(version, sha):
         fileobj.write("git_version = {}\n".format(repr(sha)))
 
 
-def parse_args(argv: List[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="hybrid_torchrec setup")
-    try:
-        return parser.parse_known_args(argv)
-    except argparse.ArgumentError as e:
-        # 处理 argparse.ArgumentError
-        logging.error(f"Error: {e}")
-        return None, None
-
-
-def main(argv: List[str]) -> None:
-    _, unknown = parse_args(argv)
-    if unknown is None:
-        # 如果 parse_args 返回 None，表示解析参数时发生错误
-        sys.exit(1)
-
+def main() -> None:
     with open(os.path.join(ROOT_DIR, "README.MD"), encoding="utf8") as f:
         readme = f.read()
     with open(os.path.join(ROOT_DIR, "install-requirements.txt"), encoding="utf8",) as f:
@@ -80,7 +61,6 @@ def main(argv: List[str]) -> None:
             "*rfc",
         )
     )
-    sys.argv = [sys.argv[0]] + unknown
 
     setup(
         # Metadata
@@ -94,7 +74,7 @@ def main(argv: List[str]) -> None:
         url="",
         license="BSD-3",
         keywords=["pytorch", "recommendation systems", "sharding"],
-        python_requires=">=3.8",
+        python_requires=">=3.11",
         install_requires=install_requires,
         packages=packages,
         package_data={'': ['*.so*']},
@@ -113,4 +93,4 @@ def main(argv: List[str]) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    main()
