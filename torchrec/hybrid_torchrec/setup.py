@@ -49,7 +49,7 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
     try:
         return parser.parse_known_args(argv)
     except argparse.ArgumentError as e:
-        # 处理 argparse.ArgumentError 和 SystemExit 异常
+        # 处理 argparse.ArgumentError
         logging.error(f"Error: {e}")
         return None, None
 
