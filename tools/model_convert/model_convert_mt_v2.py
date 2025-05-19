@@ -72,6 +72,20 @@ class ModelConverter:
         self._build_sparse_file_list()
         self._build_table_info_dict()
 
+    @staticmethod
+    def _get_key_array(sparse_file_path, table_name):
+        upper_dir = generate_upper_dir(sparse_file_path, hbm_prefix_list, table_name, "key")
+        attribute_data_dir, target_data_dir = get_attribute_and_data_file(upper_dir)
+        with tf.io.gfile.GFile(attribute_data_dir, "r") as fin:
+            emb_attributes = json.load(fin)
+        with tf.io.gfile.GFile(target_data_dir, "rb") as fin:
+            key_data = fin.read()
+            key_data = np.fromstring(key_data, dtype=emb_attributes.pop(DataAttr.DARATYPE.value))
+
+        data_shape = emb_attributes.pop(DataAttr.SHAPE.value)
+        key = key_data.reshape(data_shape)
+        return key
+
     def convert(self):
         for table_name, _ in self.table_info_dict.items():
             result_key = np.array([])
@@ -115,20 +129,6 @@ class ModelConverter:
         offset = key_offset_data[:, 1]
         key = key_offset_data[:, 0]
         return offset, key
-
-    @staticmethod
-    def _get_key_array(sparse_file_path, table_name):
-        upper_dir = generate_upper_dir(sparse_file_path, hbm_prefix_list, table_name, "key")
-        attribute_data_dir, target_data_dir = get_attribute_and_data_file(upper_dir)
-        with tf.io.gfile.GFile(attribute_data_dir, "r") as fin:
-            emb_attributes = json.load(fin)
-        with tf.io.gfile.GFile(target_data_dir, "rb") as fin:
-            key_data = fin.read()
-            key_data = np.fromstring(key_data, dtype=emb_attributes.pop(DataAttr.DARATYPE.value))
-
-        data_shape = emb_attributes.pop(DataAttr.SHAPE.value)
-        key = key_data.reshape(data_shape)
-        return key
 
     def _get_embedding_array(self, sparse_file_path, table_name):
         upper_dir = generate_upper_dir(sparse_file_path, hbm_prefix_list, table_name, "embedding")
