@@ -20,8 +20,8 @@ ROOT_DIR = Path(__file__).parent.resolve()
 
 
 def _get_version():
+    cmd = ["git", "rev-parse", "HEAD"]
     try:
-        cmd = ["git", "rev-parse", "HEAD"]
         sha = subprocess.check_output(cmd, cwd=str(ROOT_DIR)).decode("ascii").strip()
     except Exception:
         sha = None
@@ -46,20 +46,24 @@ def _export_version(version, sha):
 
 def parse_args(argv: List[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="hybrid_torchrec setup")
-    return parser.parse_known_args(argv)
+    try:
+        args, unknown = parser.parse_known_args(argv)
+        return args, unknown
+    except (argparse.ArgumentError, SystemExit) as e:
+        # 处理 argparse.ArgumentError 和 SystemExit 异常
+        print(f"Error: {e}")
+        return None, None
 
 
 def main(argv: List[str]) -> None:
-    args, unknown = parse_args(argv)
+    _, unknown = parse_args(argv)
+    if unknown is None:
+        # 如果 parse_args 返回 None，表示解析参数时发生错误
+        sys.exit(1)
 
-    with open(
-        os.path.join(ROOT_DIR, "README.MD"), encoding="utf8"
-    ) as f:
+    with open(os.path.join(ROOT_DIR, "README.MD"), encoding="utf8") as f:
         readme = f.read()
-    with open(
-        os.path.join(ROOT_DIR, "install-requirements.txt"),
-        encoding="utf8",
-    ) as f:
+    with open(os.path.join(ROOT_DIR, "install-requirements.txt"), encoding="utf8",) as f:
         reqs = f.read()
         install_requires = reqs.strip().split("\n")
 
@@ -107,6 +111,7 @@ def main(argv: List[str]) -> None:
             "Topic :: Scientific/Engineering :: Artificial Intelligence",
         ],
     )
+
 
 
 if __name__ == "__main__":

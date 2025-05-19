@@ -780,7 +780,8 @@ class HybridShardedEmbeddingBagCollection(
         self._kt_key_ordering_cpu = torch.tensor(keyed_tensor_ordering, device="cpu")
         if inverse_indices:
             key_to_inverse_index = {
-                name: i for i, name in enumerate(inverse_indices[0])
+                name: i
+                for i, name in enumerate(inverse_indices[0])
             }
             self._kjt_inverse_order = torch.tensor(
                 [key_to_inverse_index[key] for key in feature_names],
