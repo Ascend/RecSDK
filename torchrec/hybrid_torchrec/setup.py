@@ -47,9 +47,8 @@ def _export_version(version, sha):
 def parse_args(argv: List[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="hybrid_torchrec setup")
     try:
-        args, unknown = parser.parse_known_args(argv)
-        return args, unknown
-    except (argparse.ArgumentError, SystemExit) as e:
+        return parser.parse_known_args(argv)
+    except argparse.ArgumentError as e:
         # 处理 argparse.ArgumentError 和 SystemExit 异常
         logging.error(f"Error: {e}")
         return None, None
