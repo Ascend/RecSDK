@@ -18,6 +18,7 @@
 import torch
 import torch.nn as nn
 
+from utils.logger import default_logger
     
 class PatternModel(nn.Module):
     def __init__(self):
@@ -50,6 +51,7 @@ class PatternModel(nn.Module):
 
         return final_result
 
+
 def main():
     # 示例输入
     input_tensor = torch.randn(128, 192, 256)
@@ -59,7 +61,7 @@ def main():
     output_tensor = model(input_tensor)
 
     # 打印输出形状
-    print("Output shape:", output_tensor.shape)  # 应该输出: torch.Size([128, 192, 256])
+    default_logger.info("Output shape: %s", output_tensor.shape)  # 应该输出: torch.Size([128, 192, 256])
     
 if __name__ == "__main__":
     main()
