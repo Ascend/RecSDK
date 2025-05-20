@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -60,5 +60,5 @@ sed -i "${line}s/True/False/g" CMakePresets.json
 
 bash build.sh
 
-# # 安装编译成功的算子包
+# 安装编译成功的算子包
 bash ./build_out/custom_opp*.run

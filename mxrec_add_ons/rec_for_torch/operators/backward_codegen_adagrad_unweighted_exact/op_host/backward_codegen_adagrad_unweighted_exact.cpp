@@ -1,9 +1,17 @@
-/**
- * @file backward_codegen_adagrad_unweighted_exact.cpp
- *
- * Copyright (C) 2025. Huawei Technologies Co., Ltd. All rights reserved.
- *
- */
+/* Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+        limitations under the License.
+==============================================================================*/
 
 #include <cmath>
 #include <cstdint>
@@ -101,7 +109,16 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
     int64_t gradOutputDim1 = context->GetInputShape(GRAD_OUTPUT_INDEX)->GetStorageShape().GetDim(1);
     int64_t devWeightsDim0 = context->GetInputShape(DEV_WEIGHTS_INDEX)->GetStorageShape().GetDim(0);
     int64_t weightsOffsetsDim0 = context->GetInputShape(WEIGHTS_OFFSETS_INDEX)->GetStorageShape().GetDim(0);
+    if (weightsOffsetsDim0 == 0) {
+        printf("[ERROR] Invalid weightsOffsets shape!\n");
+        return ge::GRAPH_FAILED;
+    }
+
     int64_t dOffsetsDim0 = context->GetInputShape(D_OFFSETS_INDEX)->GetStorageShape().GetDim(0);
+    if (dOffsetsDim0 <= 1) {
+        printf("[ERROR] Invalid dOffsets shape!\n");
+        return ge::GRAPH_FAILED;
+    }
     int64_t indicesDim0 = context->GetInputShape(INDICES_INDEX)->GetStorageShape().GetDim(0);
     int64_t offsetsDim0 = context->GetInputShape(OFFSETS_INDEX)->GetStorageShape().GetDim(0);
 
