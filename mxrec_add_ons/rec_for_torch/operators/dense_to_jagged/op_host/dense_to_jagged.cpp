@@ -43,6 +43,9 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     auto offsetShape = context->GetInputShape(1)->GetStorageShape();
     auto denseType = context->GetInputTensor(0)->GetDataType();
     auto offsetType = context->GetInputTensor(1)->GetDataType();
+
+    OPS_CHECK(denseShape.GetDim(DIM0) != offsetShape.GetDim(DIM0) - 1,
+        OPS_LOG_E("[ERROR]", "dense shape[0] != offset shape[0] - 1"), return ge::GRAPH_FAILED);
    
     DenseToJaggedTilling tilingData;
     // Platform configuration
