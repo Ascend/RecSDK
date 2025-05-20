@@ -17,6 +17,7 @@ See the License for the specific language governing permissions and
 #include "register/op_def_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 
+#include "../../../common/ops_log.h"
 namespace optiling {
 
 constexpr int GM_ALIGN = 64;
@@ -27,9 +28,16 @@ constexpr int DATA_TYPE_FLOAT32 = 4;
 constexpr int NUM_QUEUE = 4;
 constexpr int UB_ALIGN = 32;
 constexpr int SUPPORT_EMBEDDING_DIM_NUM = 2;
+constexpr int PERMUTE_INDEX = 0;
+constexpr int LENGTH_INDEX = 1;
+constexpr int VALUES_INDEX = 2;
 
-static void SetTypeTiling(gert::TilingContext* context, Permute2dSparseDataTilingData& tiling)
+static ge::graphStatus SetTypeTiling(gert::TilingContext* context, Permute2dSparseDataTilingData& tiling)
 {
+    // check tensor is nullptr
+    OPS_LOG_E_IF_NULL("permute", context->GetInputTensor(PERMUTE_INDEX), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("length", context->GetInputTensor(LENGTH_INDEX), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("value", context->GetInputTensor(VALUES_INDEX), return ge::GRAPH_FAILED);
     // permute: InputTensor(0), support int32
     int64_t permuteDataType = 0;
     ge::DataType permuteDataTypeGe = context->GetInputTensor(0)->GetDataType();
@@ -60,10 +68,16 @@ static void SetTypeTiling(gert::TilingContext* context, Permute2dSparseDataTilin
     tiling.set_valueDataType(valueDataType);
     tiling.set_permuteDataType(permuteDataType);
     tiling.set_lengthsDataType(lengthsDataType);
+    return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
+    OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("permuteShape", context->GetInputShape(PERMUTE_INDEX), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("lengthsShape", context->GetInputShape(LENGTH_INDEX), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("valuesShape", context->GetInputShape(VALUES_INDEX), return ge::GRAPH_FAILED);
+
     Permute2dSparseDataTilingData tiling;
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
 
@@ -116,14 +130,12 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     currentWorkspace[0] = systemWorkspacesSize + (lengthsT + 1) * GM_ALIGN +
                           (lengthsT + 1) * GM_ALIGN * coreNum;
 
-    SetTypeTiling(context, tiling);
+    OPS_LOG_E_IF(SetTypeTiling(context, tiling) == ge::GRAPH_FAILED, context, return ge::GRAPH_FAILED,
+                "SetTypeTiling Failed.");
 
     context->SetBlockDim(coreNum);
 
-    if (context->GetRawTilingData() == nullptr) {
-        printf("[ERROR]context->GetRawTilingData() is nullptr.");
-        return ge::GRAPH_FAILED;
-    }
+    OPS_LOG_E_IF_NULL("raw tilingData", context->GetRawTilingData(), return ge::GRAPH_FAILED);
 
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
@@ -135,12 +147,20 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 namespace ge {
 static ge::graphStatus InferShape(gert::InferShapeContext* context)
 {
-    const gert::Shape* permuteShape = context->GetInputShape(0);
-    const gert::Shape* lengthsShape = context->GetInputShape(1);
-    const gert::Shape* valuesShape = context->GetInputShape(2);
+    OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
+  
+    const gert::Shape* permuteShape = context->GetInputShape(optiling::PERMUTE_INDEX);
+    const gert::Shape* lengthsShape = context->GetInputShape(optiling::LENGTH_INDEX);
+    const gert::Shape* valuesShape = context->GetInputShape(optiling::VALUES_INDEX);
 
     gert::Shape* outPermutedLengths = context->GetOutputShape(0);
     gert::Shape* outPermutedValues = context->GetOutputShape(1);
+
+    OPS_LOG_E_IF_NULL("permuteShape", permuteShape, return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("lengthsShape", lengthsShape, return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("valuesShape", valuesShape, return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("outPermutedLengths", outPermutedLengths, return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("outPermutedValues", outPermutedValues, return ge::GRAPH_FAILED);
 
     int dimSize = 2;
     outPermutedLengths->SetDimNum(dimSize);

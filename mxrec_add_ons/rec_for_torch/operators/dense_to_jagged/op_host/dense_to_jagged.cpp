@@ -18,6 +18,8 @@ See the License for the specific language governing permissions and
 #include "register/op_def_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 
+#include "../../../common/ops_log.h"
+
 namespace optiling {
 constexpr int32_t ALIGN_32 = 32;
 constexpr int32_t ALIGN_512 = 512;
@@ -32,11 +34,16 @@ constexpr int32_t SIZEOF_INT64 = 8;
 
 static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
+    OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("denseShape", context->GetInputShape(0), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("offsetShape", context->GetInputShape(1), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("dense", context->GetInputTensor(0), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("offset", context->GetInputTensor(1), return ge::GRAPH_FAILED);
     auto denseShape = context->GetInputShape(0)->GetStorageShape();
     auto offsetShape = context->GetInputShape(1)->GetStorageShape();
     auto denseType = context->GetInputTensor(0)->GetDataType();
     auto offsetType = context->GetInputTensor(1)->GetDataType();
-
+   
     DenseToJaggedTilling tilingData;
     // Platform configuration
     auto ascnedPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
@@ -52,6 +59,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     ascnedPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ub);
     ub = ub - RESERVER_UB_SIZE;
 
+    OPS_LOG_E_IF_NULL("attrs", context->GetAttrs(), return ge::GRAPH_FAILED);
     const int32_t* outDim0 = context->GetAttrs()->GetAttrPointer<int32_t>(0);
     int outDim1 = denseShape.GetDim(DIM2);
     int64_t jaggedTotal = *outDim0 * outDim1;
@@ -75,11 +83,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     tilingData.set_denseTotal(denseTotal);
     tilingData.set_jaggedTotal(jaggedTotal);
 
-    if (context->GetRawTilingData() == nullptr) {
-        printf("[ERROR]context->GetRawTilingData() is nullptr.");
-        return ge::GRAPH_FAILED;
-    }
-
+    OPS_LOG_E_IF_NULL("raw tilingData", context->GetRawTilingData(), return ge::GRAPH_FAILED);
     context->SetBlockDim(coreNum);
     tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
@@ -92,9 +96,15 @@ constexpr int32_t DIM2 = 2;
 
 static ge::graphStatus InferShape(gert::InferShapeContext* context)
 {
-    const gert::Shape* denseShape = context->GetInputShape(0);
+    OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
 
+    const gert::Shape* denseShape = context->GetInputShape(0);
     gert::Shape* jaggedShape = context->GetOutputShape(0);
+
+    OPS_LOG_E_IF_NULL("denseShape", denseShape, return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("jaggedShape", jaggedShape, return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("attrs", context->GetAttrs(), return ge::GRAPH_FAILED);
+
     const int32_t* jaggedDim0 = context->GetAttrs()->GetAttrPointer<int32_t>(0);
 
     jaggedShape->SetDimNum(DIM2);
