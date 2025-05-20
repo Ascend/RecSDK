@@ -75,14 +75,10 @@ struct UpdateArgs {
     int64_t thisOutOffset;
 };
 
-__aicore__ inline int64_t GetOffset(GM_ADDR offsetAddr, int64_t index, int64_t datType)
+__aicore__ inline int64_t GetOffset(GM_ADDR offsetAddr, int64_t index)
 {
-    if (datType == DATA_TYPE_INT64) {
-        __gm__ int64_t* offsetPtr = (__gm__ int64_t*)offsetAddr;
-        return *(offsetPtr + index);
-    } else {
-        return -1;
-    }
+    __gm__ int64_t* offsetPtr = (__gm__ int64_t*)offsetAddr;
+    return *(offsetPtr + index);
 }
 
 
@@ -150,7 +146,6 @@ public:
 
         // DataType
         bytesOfDataType = sizeof(float);
-        offsetDataType = DATA_TYPE_INT64;
 
         // Tiling
         offsetsSplitLen = tilingData.splitBaseLen;
@@ -287,9 +282,9 @@ public:
                 int64_t thisWeightOffset = *(weightsOffsetsPtr + tableIndex);
                 int64_t thisIndForThisTable = 0;
                 if (enableHash) {
-                    thisIndForThisTable = GetOffset(hashIndices, indicesInd, offsetDataType);
+                    thisIndForThisTable = GetOffset(hashIndices, indicesInd);
                 } else {
-                    thisIndForThisTable = GetOffset(indices, indicesInd, offsetDataType);
+                    thisIndForThisTable = GetOffset(indices, indicesInd);
                 }
                 int64_t thisIndForTotalTable = hashSizeCumsumGT.GetValue(tableIndex) + thisIndForThisTable;
                 // Out offset
@@ -350,9 +345,9 @@ public:
                 int64_t thisWeightOffset = *(weightsOffsetsPtr + tableIndex);
                 int64_t thisIndForThisTable = 0;
                 if (enableHash) {
-                    thisIndForThisTable = GetOffset(hashIndices, indicesInd, offsetDataType);
+                    thisIndForThisTable = GetOffset(hashIndices, indicesInd);
                 } else {
-                    thisIndForThisTable = GetOffset(indices, indicesInd, offsetDataType);
+                    thisIndForThisTable = GetOffset(indices, indicesInd);
                 }
                 int64_t thisIndForTotalTable = hashSizeCumsumGT.GetValue(tableIndex) + thisIndForThisTable;
                 SetTheFlag(workspaceGT[thisIndForTotalTable], NEED_UPDATE);
@@ -440,9 +435,8 @@ public:
     int64_t outDim0;
     int64_t totalHashSize;
 
-    // // DataType
+    // DataType
     int64_t bytesOfDataType;
-    int64_t offsetDataType;
 
     // Tiling
     int64_t offsetsSplitLen;
