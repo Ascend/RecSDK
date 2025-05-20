@@ -128,6 +128,7 @@ def lookup_cpu(kjt, weights, params):
     collection_configs = construct_collection_configs(weights, params)
     model = TestModel(*collection_configs, params.pooling_mode)
     model.zero_grad()
+    optimizer = params.optim(model.parameters(), **OPTIMIZER_PARAM[params.optim])
 
     output = None
     for _ in range(EPOCH):
@@ -137,6 +138,14 @@ def lookup_cpu(kjt, weights, params):
         # 将多个表的查询结果合并
         reshaped_output = [jt.values() if isinstance(jt, JaggedTensor) else jt.view(1, -1) for jt in output.values()]
         output = torch.cat(reshaped_output, dim=0)
+
+        loss = torch.sum(output ** 2 / 2)
+
+        # backward
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
     updated_weights = list(map(lambda x: x.reshape(-1), model.get_all_tables_weights()))
     updated_weights = torch.cat(updated_weights, dim=0)
     return output, updated_weights
@@ -175,6 +184,8 @@ def lookup_npu(indices, offsets, weights, jt_lst, params):
     tbe.weights_dev = torch.nn.Parameter(weights.clone()).to(DEVICEID)
 
     output = tbe(indices, offsets, **kwargs)
+    loss = torch.sum(output ** 2 / 2)
+    loss.backward()
     return output, tbe.weights_dev
 
 
@@ -281,24 +292,24 @@ def execute(params):
     assert (~weights_compare).sum() / total_size < 1e-4
 
 
-@pytest.mark.parametrize("tables", [[(20000, 28), (40000, 28)], [(40000, 128), (80000, 128)]])
+@pytest.mark.parametrize("tables", [[(20000, 32), (40000, 32)], [(40000, 128), (80000, 128)]])
 @pytest.mark.parametrize("mutile_hots", [[8, 16, 100], [2, 64, 200]])
 @pytest.mark.parametrize("batch_size", [8, 16, 64])
 @pytest.mark.parametrize("unique", [False])
 @pytest.mark.parametrize("feature_map", [[0, 0, 1], [0, 1, 1]])
 @pytest.mark.parametrize("pooling_model", [PoolingType.SUM, PoolingType.MEAN, PoolingType.NONE])
-@pytest.mark.parametrize("optim", [Adagrad])
+@pytest.mark.parametrize("optim", [SGD])
 def test_lookup_two_tables(tables, mutile_hots, batch_size, pooling_model, unique, optim, feature_map):
     params = LookupParams(tables, mutile_hots, batch_size, pooling_model, unique, optim, feature_map)
     execute(params)
 
 
-@pytest.mark.parametrize("tables", [[(10240, 1024)], [(1234, 1536)], [(1, 4)]])
+@pytest.mark.parametrize("tables", [[(10240, 1024)], [(1234, 1536)], [(1, 8)]])
 @pytest.mark.parametrize("mutile_hots", [[1], [4], [11], [69]])
 @pytest.mark.parametrize("batch_size", [2341, 1])
 @pytest.mark.parametrize("unique", [False])
 @pytest.mark.parametrize("pooling_model", [PoolingType.SUM, PoolingType.MEAN, PoolingType.NONE])
-@pytest.mark.parametrize("optim", [Adagrad])
+@pytest.mark.parametrize("optim", [SGD])
 def test_lookup_backward_one_table(tables, mutile_hots, batch_size, pooling_model, unique, optim):
     params = LookupParams(tables, mutile_hots, batch_size, pooling_model, unique, optim, None)
     execute(params)
@@ -306,7 +317,7 @@ def test_lookup_backward_one_table(tables, mutile_hots, batch_size, pooling_mode
 
 @pytest.mark.parametrize("unique", [False])
 @pytest.mark.parametrize("pooling_model", [PoolingType.SUM, PoolingType.MEAN, PoolingType.NONE])
-@pytest.mark.parametrize("optim", [Adagrad])
+@pytest.mark.parametrize("optim", [SGD])
 def test_lookup_multi_tables(pooling_model, unique, optim):
     tables, mutile_hots, batch_size = generate_tables(pooling_model)
     params = LookupParams(tables, mutile_hots, batch_size, pooling_model, unique, optim, None)
