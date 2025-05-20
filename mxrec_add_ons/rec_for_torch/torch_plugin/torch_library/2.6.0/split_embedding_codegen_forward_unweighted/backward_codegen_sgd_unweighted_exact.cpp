@@ -301,7 +301,8 @@ at::Tensor split_embedding_backward_codegen_sgd_unweighted_exact_npu(const Tenso
     const int64_t t_max_D = max_D.guard_int(__FILE__, __LINE__);
 
     const at::OptionalDeviceGuard guard(device_of(dev_weights));
-    int64_t totalEmbed = unique_ids.numel() == 0 ? dev_weights.size(0) : unique_ids.numel() * t_max_D;
+    int64_t unique_size = static_cast<int64_t>(unique_ids.numel());
+    int64_t totalEmbed = unique_size == 0 ? dev_weights.size(0) : unique_size * t_max_D;
     auto output = at::empty({totalEmbed}, dev_weights.options());
 
     int optim_type = static_cast<int>(OptimizerType::SGD);
