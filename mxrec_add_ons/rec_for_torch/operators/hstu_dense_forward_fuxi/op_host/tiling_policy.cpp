@@ -52,7 +52,7 @@ ge::graphStatus TilingPolicy::InferDtype(gert::InferDataTypeContext* context)
 {
     auto ret = context->SetOutputDataType(INDEX_T::INDEX_0, context->GetInputDataType(INDEX_T::INDEX_0));
     if (ret != ge::GRAPH_SUCCESS) {
-        OPS_LOG("SetOutputDataType failed. ret = %d", ret);
+        OPS_LOG_E("SetOutputDataType failed. ret = %d", ret);
     }
 
     return ret;
