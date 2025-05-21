@@ -31,7 +31,7 @@ bool ShapeRange::Check(int64_t val) const
 {
     OPS_LOG_E_IF((val < lbound || val > ubound || val % mutiple != 0), "[ERROR]", return false,
         "%s must meet range[%lld %lld] and mutiple of [%lld]. but get value %lld\n",
-        name, lbound, ubound, mutiple, val)
+        name, lbound, ubound, mutiple, val);
     
     return true;
 }
@@ -52,7 +52,7 @@ ge::graphStatus TilingPolicy::InferDtype(gert::InferDataTypeContext* context)
 {
     auto ret = context->SetOutputDataType(INDEX_T::INDEX_0, context->GetInputDataType(INDEX_T::INDEX_0));
     if (ret != ge::GRAPH_SUCCESS) {
-        OPS_LOG_E("SetOutputDataType failed. ret = %d", ret);
+        OPS_LOG_E(context, "SetOutputDataType failed. ret = %d", ret);
     }
 
     return ret;

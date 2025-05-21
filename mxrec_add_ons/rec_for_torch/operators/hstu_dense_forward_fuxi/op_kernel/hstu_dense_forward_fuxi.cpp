@@ -17,13 +17,6 @@ See the License for the specific language governing permissions and
 
 #include "kernel_operator.h"
 
-#ifndef INVOKE_HSTU_NORMAL_V200_FUXI_OP_IMPL
-#define INVOKE_HSTU_NORMAL_V200_FUXI_OP_IMPL(...)    \
-    do {                                   \
-        
-    } while (0)
-#endif
-
 template <typename T>
 __aicore__ void run_op(HstuDenseForwardFuxi::Args& args)
 {
@@ -45,6 +38,6 @@ extern "C" __global__ __aicore__ void hstu_dense_forward_fuxi(GM_ADDR q, GM_ADDR
 {
     HstuDenseForwardFuxi::Args args{q, k, v, timestampBias, positionBias, mask, attnOutput, workspace, tiling};
     if (TILING_KEY_IS(0)) {
-        INVOKE_HSTU_NORMAL_V200_FUXI_OP_IMPL(half);
+        run_op<half>(args);
     }
 }

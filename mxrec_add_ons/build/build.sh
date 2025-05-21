@@ -32,7 +32,7 @@ permute2d_sparse_data
 split_embedding_codegen_forward_unweighted
 dense_to_jagged
 "
-support_310p_list="gather_for_rank1"
+support_310p_list="gather_for_rank1 hstu_dense_forward_fuxi"
 
 cd "${MxRec_DIR}"
 
@@ -62,7 +62,7 @@ function compile_ops() {
         cd "$ops_path"
         if [ -d "$dir" ]; then
             dir_name=$(basename "$dir")
-            if [[ "$dir_name" == "cmake" || "$dir_name" == "common" || "$dir_name" == "hstu_dense_forward_fuxi" ]]; then
+            if [[ "$dir_name" == "cmake" || "$dir_name" == "common" ]]; then
                 continue
             fi
             echo "Entering directory: $dir_name, DIR: $dir"
@@ -76,6 +76,9 @@ function compile_ops() {
                     mv "${new_op_name}" "${opp_output_path}"
                 fi
             done
+            if [[ "$dir_name" == "hstu_dense_forward_fuxi" ]]; then
+                continue
+            fi
             cd "$ops_path"
             cd "$dir_name"
             for item in $support_A3_list; do
