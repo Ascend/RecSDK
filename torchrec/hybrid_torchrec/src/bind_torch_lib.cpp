@@ -6,7 +6,7 @@
 
 #include "ids_mapper.h"
 #include "ids_process/ids_mapper.h"
-#include "unique.h"
+#include "ids_process/bucketize.h"
 
 TORCH_LIBRARY(hybrid, m)
 {
@@ -14,4 +14,6 @@ TORCH_LIBRARY(hybrid, m)
         .def(torch::init<int64_t>())
         .def("ids2indices_unique", &hybrid::IdsMapper::UniqueAndLookup)
         .def("ids2indices_unique_out", &hybrid::IdsMapper::UniqueAndLookupOut);
+        
+    m.def("block_bucketize_sparse_features_cpu", &hybrid::BlockBucketizeSparseFeaturesCpu);
 }

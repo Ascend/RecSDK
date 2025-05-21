@@ -14,7 +14,6 @@
 #include <tuple>
 #include <vector>
 
-
 using at::indexing::Slice;
 namespace hybrid {
 template <typename scalar_t, bool equal_nan>
@@ -116,69 +115,6 @@ std::tuple<at::Tensor, at::Tensor> UniqueParallel(const at::Tensor& ids)
     at::Tensor inverseIndices;
     std::tie(output, inverseIndices) = UniqueCpuSortedTemplate<int64_t>(ids, IsUnique<int64_t, false>());
     return {output, inverseIndices};
-}
-
-void UniqueParallelMutilTensoOut(const torch::Tensor& hashIndices, const torch::Tensor& offset,
-                                 const torch::Tensor& unique, const torch::Tensor& uniqueInverse,
-                                 const torch::Tensor& uniqueOffset, int64_t tensorI)
-{
-    RECORD_FUNCTION(c10::str("hybrid::UniqueParallelMutilTensor"), c10::ArrayRef<const c10::IValue>());
-
-    auto isUnique = IsUnique<int64_t, false>();
-
-    int64_t* offsetPtr = offset.data_ptr<int64_t>();
-    int64_t* uniqueOffsetPtr = uniqueOffset.data_ptr<int64_t>();
-
-    auto thisTensor = hashIndices.index({Slice(offsetPtr[tensorI], offsetPtr[tensorI + 1])});
-
-    auto [inputSorted, inverse] = thisTensor.sort();
-
-    int64_t* inputSortedData = inputSorted.data_ptr<int64_t>();
-    int64_t* indicesData = inverse.data_ptr<int64_t>();
-
-    int numThreads = at::get_num_threads();
-
-    std::vector<int64_t> uniqueCountThread(numThreads, 0);
-    std::vector<int64_t> offsetThread(numThreads, 0);
-
-    const int64_t grainSize = at::internal::GRAIN_SIZE;
-
-    // calculate unique count from each thread
-    at::parallel_for(0, thisTensor.numel(), grainSize, [&](int64_t begin, int64_t end) {
-        int tid = at::get_thread_num();
-        for (const auto i : c10::irange(begin, end)) {
-            if (isUnique(inputSortedData, i)) {
-                uniqueCountThread[tid]++;
-            }
-        }
-    });
-    int64_t uniqueCount = 0;
-    for (const auto t : c10::irange(numThreads)) {
-        offsetThread[t] = uniqueCount;
-        uniqueCount += uniqueCountThread[t];
-    }
-
-    if (tensorI == 0) {
-        uniqueOffsetPtr[tensorI] = 0;
-    }
-    uniqueOffsetPtr[tensorI + 1] = uniqueOffsetPtr[tensorI] + uniqueCount;
-
-    int64_t* outputData = unique.data_ptr<int64_t>();
-    int64_t* inverseIndicesData = uniqueInverse.data_ptr<int64_t>();
-
-    at::parallel_for(0, thisTensor.numel(), grainSize, [&](int64_t begin, int64_t end) {
-        int tid = at::get_thread_num();
-        int64_t offset = offsetThread[tid];
-        for (const auto i : c10::irange(begin, end)) {
-            if (isUnique(inputSortedData, i)) {
-                outputData[offset + uniqueOffsetPtr[tensorI]] = c10::load(&inputSortedData[i]);
-                offset++;
-            }
-            int64_t inverseIndex = offset - 1;
-            int64_t perm = indicesData[i];
-            inverseIndicesData[perm + offsetPtr[tensorI]] = inverseIndex;
-        }
-    });
 }
 
 }  // namespace hybrid

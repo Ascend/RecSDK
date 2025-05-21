@@ -10,16 +10,33 @@
 import os
 import logging
 from typing import List
+from dataclasses import dataclass, asdict
 
 import torch
 from torch.autograd.profiler import record_function
 
-
 torch.ops.load_library(os.path.join(os.path.dirname(__file__), "libhybrid_cpp.so"))
 
 
+@dataclass
+class BucketParams:
+    lengths: torch.Tensor
+    indices: torch.Tensor
+    bucketize_pos: bool
+    sequence: bool
+    block_sizes: torch.Tensor
+    bucket_size: int
+    total_num_blocks: torch.Tensor = None
+    weights: torch.Tensor = None
+    batch_size_per_feature: torch.Tensor = None
+    max_b: torch.Tensor = None
+    block_bucketize_pos: torch.Tensor = None
+    return_bucket_mapping: bool = False
+    keep_orig_idx: bool = False
+
+
 class HashMapBase(torch.nn.Module):
-    def forward(self, ids: torch.Tensor, high_precison: bool) -> tuple[torch.Tensor]:
+    def forward(self, ids: torch.Tensor) -> tuple[torch.Tensor]:
         pass
 
 
@@ -39,10 +56,10 @@ class IdsMapper(HashMapBase):
         self.ids_mapper = torch.classes.hybrid.IdsMapper(n)
         self.n = n
 
-    def forward(self, ids: torch.Tensor, high_precison: bool):
+    def forward(self, ids: torch.Tensor):
         with record_function("## ids2indices ##"):
             result, unique, unique_inverse = self.ids_mapper.ids2indices_unique(
-                ids, high_precison
+                ids
             )
             return result, unique, unique_inverse
 
@@ -54,8 +71,25 @@ class IdsMapper(HashMapBase):
         unique: torch.Tensor,
         unique_inverse: torch.Tensor,
         unique_offset: List[int],
-        tensor_i: int,
+        table_id: int,
     ):
         self.ids_mapper.ids2indices_unique_out(
-            ids, hash_indices, offset, unique, unique_inverse, unique_offset, tensor_i
+            ids, hash_indices, offset, unique, unique_inverse, unique_offset, table_id
         )
+
+
+def block_bucketize_sparse_features_cpu(bucket_params: BucketParams):
+    return torch.ops.hybrid.block_bucketize_sparse_features_cpu(bucket_params.lengths,
+                                                                bucket_params.indices,
+                                                                bucket_params.bucketize_pos,
+                                                                bucket_params.sequence,
+                                                                bucket_params.block_sizes,
+                                                                bucket_params.bucket_size,
+                                                                bucket_params.total_num_blocks,
+                                                                bucket_params.weights,
+                                                                bucket_params.batch_size_per_feature,
+                                                                bucket_params.max_b,
+                                                                bucket_params.block_bucketize_pos,
+                                                                bucket_params.return_bucket_mapping,
+                                                                bucket_params.keep_orig_idx)
+

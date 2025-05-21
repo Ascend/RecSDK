@@ -121,7 +121,7 @@ class HybridHashTable(torch.nn.Module):
     ):
         raw_device = input_tensor.device
         ids_host = input_tensor.cpu()
-        index_of_ids, _, _ = self.ids2slot_dict(ids_host, high_precison=True)
+        index_of_ids, _, _ = self.ids2slot_dict(ids_host)
         index_of_ids = index_of_ids.to(raw_device)
         values = self.vector_table(index_of_ids, offsets)
         return values
