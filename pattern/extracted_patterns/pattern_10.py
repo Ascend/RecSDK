@@ -56,6 +56,5 @@ def main():
     # 打印输出张量的形状 应该输出: torch.Size([128, 50, 400])
     default_logger.info("Output shape: %s", output_tensor.shape)
     
-
-if  __name__ == "__main__":
+if __name__ == "__main__":
     main()
