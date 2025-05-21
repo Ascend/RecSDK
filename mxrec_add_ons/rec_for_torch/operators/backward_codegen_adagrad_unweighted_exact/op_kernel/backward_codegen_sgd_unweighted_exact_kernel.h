@@ -98,8 +98,8 @@ public:
     {
         LocalTensor<float> inputLt = queIn.AllocTensor<float>();
         for (int64_t i = 0; i < cnt; i++) {
-            UpdateArgs theArgs = updateArgs[i];
-            DataCopy(inputLt[i * maxD * numOfOut], outGT[theArgs.thisOutOffset], theArgs.embedDim);
+            UpdateArgs gradArgs = updateArgs[i];
+            DataCopy(inputLt[i * maxD * numOfOut], outGT[gradArgs.thisOutOffset], gradArgs.embedDim);
         }
         queIn.EnQue(inputLt);
     }
@@ -112,11 +112,11 @@ public:
         LocalTensor<float> outLt = queOut.AllocTensor<float>();
 
         for (int64_t i = 0; i < cnt; i++) {
-            UpdateArgs theArgs = updateArgs[i];
+            UpdateArgs gradArgs = updateArgs[i];
             int64_t thisGradIndex = i * maxD * numOfOut;
 
             // p[:] -= hyperparams['lr'] * p.grad
-            Muls<float>(outLt[thisGradIndex], inputLt[thisGradIndex], minusLearningRate, theArgs.embedDim);
+            Muls<float>(outLt[thisGradIndex], inputLt[thisGradIndex], minusLearningRate, gradArgs.embedDim);
         }
 
         queOut.EnQue(outLt);
@@ -128,9 +128,9 @@ public:
         LocalTensor<float> outLt = queOut.DeQue<float>();
         SetAtomicAdd<float>();
         for (int64_t i = 0; i < cnt; i++) {
-            UpdateArgs theArgs = updateArgs[i];
+            UpdateArgs gradArgs = updateArgs[i];
             int64_t thisGradIndex = i * maxD * numOfOut;
-            DataCopy(weightsDevOutGT[theArgs.thisOutOffset], outLt[thisGradIndex], theArgs.embedDim);
+            DataCopy(weightsDevOutGT[gradArgs.thisOutOffset], outLt[thisGradIndex], gradArgs.embedDim);
         }
         SetAtomicNone();
         queOut.FreeTensor(outLt);

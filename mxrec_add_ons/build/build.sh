@@ -62,7 +62,7 @@ function compile_ops() {
         cd "$ops_path"
         if [ -d "$dir" ]; then
             dir_name=$(basename "$dir")
-            if [[ "$dir_name" == "cmake" ]]; then
+            if [[ "$dir_name" == "cmake" || "$dir_name" == "common" ]]; then
                 continue
             fi
             echo "Entering directory: $dir_name, DIR: $dir"

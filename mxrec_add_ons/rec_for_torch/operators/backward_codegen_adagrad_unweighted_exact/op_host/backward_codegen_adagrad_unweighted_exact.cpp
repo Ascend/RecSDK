@@ -19,6 +19,7 @@ See the License for the specific language governing permissions and
 #include "backward_codegen_adagrad_unweighted_exact_tiling.h"
 #include "register/op_def_registry.h"
 #include "tiling/platform/platform_ascendc.h"
+#include "../../../common/ops_log.h"
 
 namespace optiling {
 constexpr int DATA_TYPE_FLOAT32 = 0;
@@ -71,11 +72,9 @@ static ge::graphStatus UniqueTilingFunc(gert::TilingContext* context,
                                         BackwardCodegenAdagradUnweightedExactTilingData& tilingData)
 {
     auto uniqueOffset = context->GetOptionalInputTensor(UNIQUE_HASH_SIZE_INDEX);
+    OPS_LOG_E_IF_NULL("uniqueOffset", uniqueOffset, return ge::GRAPH_FAILED);
     auto uniqueInverse = context->GetOptionalInputTensor(UNIQUE_INVERSE_INDEX);
-    if (uniqueInverse == nullptr || uniqueOffset == nullptr) {
-        printf("[ERROR] uniqueOffset or uniqueInverse should not be nullptr!\n");
-        return ge::GRAPH_FAILED;
-    }
+    OPS_LOG_E_IF_NULL("uniqueInverse", uniqueInverse, return ge::GRAPH_FAILED);
 
     int64_t uniqueHashDim0 = context->GetInputShape(UNIQUE_HASH_SIZE_INDEX)->GetStorageShape().GetDim(0);
     tilingData.set_uniqueHashDim0(uniqueHashDim0);
@@ -109,16 +108,14 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
     int64_t gradOutputDim1 = context->GetInputShape(GRAD_OUTPUT_INDEX)->GetStorageShape().GetDim(1);
     int64_t devWeightsDim0 = context->GetInputShape(DEV_WEIGHTS_INDEX)->GetStorageShape().GetDim(0);
     int64_t weightsOffsetsDim0 = context->GetInputShape(WEIGHTS_OFFSETS_INDEX)->GetStorageShape().GetDim(0);
-    if (weightsOffsetsDim0 == 0) {
-        printf("[ERROR] Invalid weightsOffsets shape!\n");
-        return ge::GRAPH_FAILED;
-    }
+    OPS_CHECK(weightsOffsetsDim0 == 0,
+              OPS_LOG_E("Tiling Debug", "weightsOffsets shape is invalid."),
+              return ge::GRAPH_FAILED);
 
     int64_t dOffsetsDim0 = context->GetInputShape(D_OFFSETS_INDEX)->GetStorageShape().GetDim(0);
-    if (dOffsetsDim0 <= 1) {
-        printf("[ERROR] Invalid dOffsets shape!\n");
-        return ge::GRAPH_FAILED;
-    }
+    OPS_CHECK(dOffsetsDim0 <= 1,
+              OPS_LOG_E("Tiling Debug", "dOffsets shape is invalid."),
+              return ge::GRAPH_FAILED);
     int64_t indicesDim0 = context->GetInputShape(INDICES_INDEX)->GetStorageShape().GetDim(0);
     int64_t offsetsDim0 = context->GetInputShape(OFFSETS_INDEX)->GetStorageShape().GetDim(0);
 
@@ -138,18 +135,10 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
 
     int optimType = *context->GetAttrs()->GetInt(OPTIM_TYPE_INDEX);
     auto uniqueId = context->GetOptionalInputTensor(UNIQUE_ID_INDEX);
-    if (uniqueId != nullptr) {
-        ret = UniqueTilingFunc(context, tilingData);
-        context->SetTilingKey(UNIQUE_ADAGRAD);
-    } else if (optimType == ADAGRAD) {
-        context->SetTilingKey(NORMAL_ADAGRAD);
-    } else if (optimType == ADAM) {
-        ret = NormalAdamTilingFunc(context, tilingData);
-        context->SetTilingKey(NORMAL_ADAM);
-    } else if (optimType == SGD) {
+    if (optimType == SGD) {
         context->SetTilingKey(NORMAL_SGD);
     } else {
-        printf("[ERROR]OptimType is not supported%d\n", optimType);
+        OPS_LOG_E("Tiling Debug", "OptimType shape is not supported.");
         return ge::GRAPH_FAILED;
     }
 
@@ -180,7 +169,6 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     // Shape and dType
     ge::graphStatus ret = ShapeTilingFunc(context, tiling);
     if (ret != ge::GRAPH_SUCCESS) {
-        printf("[ERROR]ShapeTiling failed.\n");
         return ret;
     }
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
@@ -192,10 +180,9 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     // Tiling
     size_t coreNum = ascendPlatform.GetCoreNumAiv();
-    if (coreNum == 0) {
-        printf("[ERROR]Core num is 0;");
-        return ge::GRAPH_FAILED;
-    }
+    OPS_CHECK(coreNum == 0,
+              OPS_LOG_E("Tiling Debug", "Core num is 0."),
+              return ge::GRAPH_FAILED);
 
     int64_t splitBaseLen = tiling.get_indicesDim0() / coreNum;
     int64_t tailSplitIndex = tiling.get_indicesDim0() % coreNum;
@@ -205,7 +192,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     uint64_t ubCanUsed;
     ascendPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubCanUsed);
-    uint64_t flagUb = UB_ALIGN * 2;
+    uint64_t flagUb = UB_ALIGN * 2;  // queFlagIn、queFlagOut两个标志位
     ubCanUsed = ubCanUsed - RESERVER_UB_SIZE - flagUb;
     tiling.set_ubCanUsed(ubCanUsed);
 
@@ -222,10 +209,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     context->SetBlockDim(coreNum);
 
-    if (context->GetRawTilingData() == nullptr) {
-        printf("[ERROR] GetRawTilingData Failed!");
-        return ge::GRAPH_FAILED;
-    }
+    OPS_LOG_E_IF_NULL("raw tilingData", context->GetRawTilingData(), return ge::GRAPH_FAILED);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 

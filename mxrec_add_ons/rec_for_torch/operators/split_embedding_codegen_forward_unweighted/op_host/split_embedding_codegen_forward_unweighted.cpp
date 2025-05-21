@@ -20,6 +20,8 @@ See the License for the specific language governing permissions and
 #include "split_embedding_codegen_forward_unweighted_tiling.h"
 #include "tiling/platform/platform_ascendc.h"
 
+#include "../../../common/ops_log.h"
+
 namespace optiling {
 
 constexpr int DATA_TYPE_FLOAT32 = 0;
@@ -45,36 +47,23 @@ constexpr int MAX_D_INDEX = 1;
 constexpr int EC_KEY = 1;
 constexpr int EBC_KEY = 2;
 
-template<typename T>
-bool CheckPtrIsNull(T ptr, const std::string& ptrName)
-{
-    if (ptr == nullptr) {
-        printf("[ERROR] Failed to get %s!\n", ptrName.c_str());
-        return true;
-    }
-    return false;
-}
-
 static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
                                        SplitEmbeddingCodegenForwardUnweightedTilingData& tilingData)
 {
-    if (CheckPtrIsNull(context->GetInputShape(DEV_WEIGHTS_INDEX), "devWeights shape")) return ge::GRAPH_FAILED;
+    OPS_LOG_E_IF_NULL("devWeights shape", context->GetInputShape(DEV_WEIGHTS_INDEX), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("weightsOffset shape", context->GetInputShape(WEIGHTS_OFFSETS_INDEX), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("dOffsets shape", context->GetInputShape(D_OFFSETS_INDEX), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("indices shape", context->GetInputShape(INDICES_INDEX), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("offsets shape", context->GetInputShape(OFFSETS_INDEX), return ge::GRAPH_FAILED);
+  
     int64_t devWeightsDim0 = context->GetInputShape(DEV_WEIGHTS_INDEX)->GetStorageShape().GetDim(0);
-
-    if (CheckPtrIsNull(context->GetInputShape(WEIGHTS_OFFSETS_INDEX), "weightsOffset shape")) return ge::GRAPH_FAILED;
     int64_t weightsOffsetsDim0 = context->GetInputShape(WEIGHTS_OFFSETS_INDEX)->GetStorageShape().GetDim(0);
-
-    if (CheckPtrIsNull(context->GetInputShape(D_OFFSETS_INDEX), "dOffsets shape")) return ge::GRAPH_FAILED;
     int64_t dOffsetsDim0 = context->GetInputShape(D_OFFSETS_INDEX)->GetStorageShape().GetDim(0);
-
-    if (CheckPtrIsNull(context->GetInputShape(INDICES_INDEX), "indices shape")) return ge::GRAPH_FAILED;
     int64_t indicesDim0 = context->GetInputShape(INDICES_INDEX)->GetStorageShape().GetDim(0);
-
-    if (CheckPtrIsNull(context->GetInputShape(OFFSETS_INDEX), "offsets shape")) return ge::GRAPH_FAILED;
     int64_t offsetsDim0 = context->GetInputShape(OFFSETS_INDEX)->GetStorageShape().GetDim(0);
 
     auto attrs = context->GetAttrs();
-    if (CheckPtrIsNull(attrs, "attrs")) return ge::GRAPH_FAILED;
+    OPS_LOG_E_IF_NULL("attrs", attrs, return ge::GRAPH_FAILED);
 
     if (weightsOffsetsDim0 == 0) {
         printf("[ERROR] Invalid weightsOffsets shape!\n");
@@ -90,7 +79,7 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
         tilingData.set_enableHash(0);
     } else {
         tilingData.set_enableHash(1);
-        if (CheckPtrIsNull(context->GetInputShape(HASH_INDICES_INDEX), "hashIndices shape")) return ge::GRAPH_FAILED;
+        OPS_LOG_E_IF_NULL("hashIndices shape", context->GetInputShape(HASH_INDICES_INDEX), return ge::GRAPH_FAILED);
         indicesDim0 = context->GetInputShape(HASH_INDICES_INDEX)->GetStorageShape().GetDim(0);
     }
     
@@ -125,7 +114,7 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
 
 static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
-    if (CheckPtrIsNull(context, "context")) return ge::GRAPH_FAILED;
+    OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
     auto ascnedPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
     size_t systemWorkspacesSize = ascnedPlatform.GetLibApiWorkSpaceSize();
@@ -159,7 +148,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     context->SetNeedAtomic(true);
 
     auto tilingData = context->GetRawTilingData();
-    if (CheckPtrIsNull(tilingData, "tilingData")) return ge::GRAPH_FAILED;
+    OPS_LOG_E_IF_NULL("tilingData", tilingData, return ge::GRAPH_FAILED);
     tiling.SaveToBuffer(tilingData->GetData(), tilingData->GetCapacity());
 
     tilingData->SetDataSize(tiling.GetDataSize());
@@ -171,11 +160,11 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 namespace ge {
 static ge::graphStatus InferShape(gert::InferShapeContext* context)
 {
-    if (optiling::CheckPtrIsNull(context, "context")) return ge::GRAPH_FAILED;
+    OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
     const gert::Shape* x1_shape = context->GetInputShape(0);
-    if (optiling::CheckPtrIsNull(x1_shape, "x1_shape")) return ge::GRAPH_FAILED;
+    OPS_LOG_E_IF_NULL("x1_shape", x1_shape, return ge::GRAPH_FAILED);
     gert::Shape* y_shape = context->GetOutputShape(0);
-    if (optiling::CheckPtrIsNull(y_shape, "y_shape")) return ge::GRAPH_FAILED;
+    OPS_LOG_E_IF_NULL("y_shape", y_shape, return ge::GRAPH_FAILED);
 
     *y_shape = *x1_shape;
     return GRAPH_SUCCESS;

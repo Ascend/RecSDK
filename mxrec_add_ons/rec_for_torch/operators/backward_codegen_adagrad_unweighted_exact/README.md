@@ -77,7 +77,7 @@ c) 算子约束说明：
 
 * grad_output的dims为[batchsize, total]，dev_weights的dims为所有表的[embed_dim * embed_size]
   ，weights_offsets为表的个数[ num_embed ], weights_offsets的dims为[ num_embed+1 ], D_offsets的dim为[ num_embed+1 ],
-  hash_size_cumsum为[ num_embed+1 ]。indices的dim0为offset最后一位的值。offsets为[batchsize, num_embed]，embed_dim长度需为4的倍数。
+  hash_size_cumsum为[ num_embed+1 ]。indices的dim0为offset最后一位的值。offsets为[batchsize, num_embed]，embed_dim长度需为8的倍数。
 
 2. 算子逻辑
 
@@ -202,7 +202,7 @@ c) 算子约束说明：
 * grad_output的dims为[batchsize, total]，dev_weights的dims为所有表的[embed_dim * embed_size]
   ，weights_offsets为表的个数[ num_embed ], weights_offsets的dims为[ num_embed+1 ], D_offsets的dim为[ num_embed+1 ],
   hash_size_cumsum为[ num_embed+1 ]。
-* indices的dim0为offset最后一位的值。offsets为[batchsize, num_embed]，embed_dim长度需为4的倍数。
+* indices的dim0为offset最后一位的值。offsets为[batchsize, num_embed]，embed_dim长度需为8的倍数。
 
 2. 算子逻辑
 
@@ -330,7 +330,7 @@ c) 算子约束说明：
 * grad_output的dims为[batchsize, total]，dev_weights的dims为所有表的[embed_dim * embed_size]
   ，weights_offsets为表的个数[ num_embed ], weights_offsets的dims为[ num_embed+1 ], D_offsets的dim为[ num_embed+1 ],
   hash_size_cumsum为[ num_embed+1 ]。
-* indices的dim0为offset最后一位的值。offsets为[batchsize, num_embed]，embed_dim长度需为4的倍数。
+* indices的dim0为offset最后一位的值。offsets为[batchsize, num_embed]，embed_dim长度需为8的倍数。
 
 2. 算子逻辑
 

@@ -35,6 +35,6 @@ include_directories(${PYTORCH_NPU_INSTALL_PATH}/include)
 include_directories(${PYTORCH_INSTALL_PATH}/include)
 include_directories(${PYTORCH_INSTALL_PATH}/include/torch/csrc/distributed)
 include_directories(${PYTORCH_INSTALL_PATH}/include/torch/csrc/api/include)
-include_directories(${PYTORCH_INSTALL_PATH}/kernel/libc_sec/include)
+include_directories(${ASCEND_DRIVER_PATH}/kernel/libc_sec/include)
 
 target_link_libraries(fbgemm_npu_api PUBLIC c10 torch torch_cpu torch_npu c_sec)

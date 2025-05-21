@@ -74,6 +74,15 @@ if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
   sed -i '$a\'"$add_cmake_line" ./op_kernel/CMakeLists.txt
 fi
 
+# 增加LOG_CPP编译选项支持错误日志打印
+sed -i "1 i include(../../../cmake/func.cmake)" ./op_host/CMakeLists.txt
+
+line1=`awk '/tartet_compile_definitions(cust_optiling PRIVATE OP_TILING_LIB)/{print NR}' ./op_host/CMakeLists.txt`
+sed -i "${line1}s/OP_TILING_LIB/OP_TILING_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
+
+line2=`awk '/tartet_compile_definitions(cust_op_proto PRIVATE OP_PROTO_LIB)/{print NR}' ./op_host/CMakeLists.txt`
+sed -i "${line2}s/OP_PROTO_LIB/OP_PROTO_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
+
 bash build.sh
 
 # # 安装编译成功的算子包

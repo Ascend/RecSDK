@@ -237,8 +237,8 @@ class UniqueHashFeatureProcess(BasePostInputProcess):
 
     def forward(
         self,
-        sparse_feature: KeyedJaggedTensor,
+        sparse_features: KeyedJaggedTensor,
     ) -> Awaitable[KeyedJaggedTensor]:
         return UniqueHashKJTAwaitable(
-            sparse_feature, self.feature_split_by_table, self.hashmap_list
+            sparse_features, self.feature_split_by_table, self.hashmap_list
         )

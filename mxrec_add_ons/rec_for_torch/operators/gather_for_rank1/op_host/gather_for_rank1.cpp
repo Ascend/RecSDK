@@ -17,6 +17,8 @@ See the License for the specific language governing permissions and
 #include "register/op_def_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 
+#include "../../../common/ops_log.h"
+
 namespace optiling {
 constexpr int RESERVER_UB_SIZE = 20 * 1024;
 constexpr int AT_LEAST_INDEX_UB_SIZE = 32;
@@ -24,6 +26,11 @@ constexpr int MAX_DIM = 20480;
 static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
     GatherForRank1TilingData tiling;
+
+    OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("xShape", context->GetInputShape(0), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("indexShape", context->GetInputShape(1), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("x", context->GetInputTensor(0), return ge::GRAPH_FAILED);
 
     int32_t xDim0 = context->GetInputShape(0)->GetStorageShape().GetShapeSize();
     int32_t indexDim0 = context->GetInputShape(1)->GetStorageShape().GetShapeSize();
@@ -67,8 +74,13 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 namespace ge {
 static ge::graphStatus InferShape(gert::InferShapeContext* context)
 {
+    OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
     const gert::Shape* x1_shape = context->GetInputShape(1);
     gert::Shape* y_shape = context->GetOutputShape(0);
+
+    OPS_LOG_E_IF_NULL("x1_shape", x1_shape, return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("y_shape", y_shape, return ge::GRAPH_FAILED);
+
     *y_shape = *x1_shape;
     return GRAPH_SUCCESS;
 }
