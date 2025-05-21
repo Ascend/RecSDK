@@ -268,27 +268,4 @@ private:
 };
 
 }
-
-
-#ifndef INVOKE_HSTU_NORMAL_V200_FUXI_OP_IMPL
-#define INVOKE_HSTU_NORMAL_V200_FUXI_OP_IMPL(...)    \
-    do {                                   \
-        TPipe tPipe;                        \
-        HstuDenseForwardFuxi::HstuDenseForwardNormalKernelv200Fuxi<__VA_ARGS__> op;  \
-        GET_TILING_DATA(tilingData, args.tiling);  \
-        const HstuDenseForwardFuxiTilingData *__restrict tilingDataPtr = &tilingData; \
-        REGIST_MATMUL_OBJ(&tPipe,             \
-                          GetSysWorkSpacePtr(),  \
-                          op.qkMatmul,         \
-                          &tilingDataPtr->qkMatmul, \
-                          op.svMatmul,           \
-                          &tilingDataPtr->svMatmul, \
-                          op.tvMatmul,           \
-                          &tilingDataPtr->tvMatmul, \
-                          op.pvMatmul,           \
-                          &tilingDataPtr->pvMatmul); \
-        op.Init(args, tilingDataPtr, &tPipe);  \
-        op.Compute(tilingDataPtr);   \
-    } while (0)
-#endif
 #endif

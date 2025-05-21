@@ -17,6 +17,29 @@ See the License for the specific language governing permissions and
 
 #include "kernel_operator.h"
 
+#ifndef INVOKE_HSTU_NORMAL_V200_FUXI_OP_IMPL
+#define INVOKE_HSTU_NORMAL_V200_FUXI_OP_IMPL(...)    \
+    do {                                   \
+        
+    } while (0)
+#endif
+
+template <typename T>
+__aicore__ void run_op(HstuDenseForwardFuxi::Args& args)
+{
+    TPipe tPipe;
+    HstuDenseForwardFuxi::HstuDenseForwardNormalKernelv200Fuxi<T> op;
+    GET_TILING_DATA(tilingData, args.tiling);
+    const HstuDenseForwardFuxiTilingData *__restrict tilingDataPtr = &tilingData;
+    REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(),
+        op.qkMatmul, &tilingDataPtr->qkMatmul,
+        op.svMatmul, &tilingDataPtr->svMatmul,
+        op.tvMatmul, &tilingDataPtr->tvMatmul,
+        op.pvMatmul, &tilingDataPtr->pvMatmul);
+    op.Init(args, tilingDataPtr, &tPipe);
+    op.Compute(tilingDataPtr);
+}
+
 extern "C" __global__ __aicore__ void hstu_dense_forward_fuxi(GM_ADDR q, GM_ADDR k, GM_ADDR v,
     GM_ADDR timestampBias, GM_ADDR positionBias, GM_ADDR mask, GM_ADDR attnOutput, GM_ADDR workspace, GM_ADDR tiling)
 {
