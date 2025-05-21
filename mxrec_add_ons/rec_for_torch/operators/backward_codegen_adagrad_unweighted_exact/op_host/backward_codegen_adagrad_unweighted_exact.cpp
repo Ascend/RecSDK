@@ -26,7 +26,7 @@ constexpr int DATA_TYPE_FLOAT32 = 0;
 constexpr int DATA_TYPE_INT64 = 1;
 
 constexpr int RESERVER_UB_SIZE = 20 * 1024;
-constexpr int UB_ALIGN = 32;
+constexpr uint32_t UB_ALIGN = 32;
 constexpr int NUM_QUEUE = 32;
 // input index
 constexpr int GRAD_OUTPUT_INDEX = 0;
@@ -192,7 +192,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     uint64_t ubCanUsed;
     ascendPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubCanUsed);
-    uint64_t flagUb = static_cast<uint64_t>(UB_ALIGN) * 2;  // queFlagIn、queFlagOut两个标志位
+    uint64_t flagUb = UB_ALIGN * 2;  // queFlagIn、queFlagOut两个标志位
     ubCanUsed = ubCanUsed - RESERVER_UB_SIZE - flagUb;
     tiling.set_ubCanUsed(ubCanUsed);
 
