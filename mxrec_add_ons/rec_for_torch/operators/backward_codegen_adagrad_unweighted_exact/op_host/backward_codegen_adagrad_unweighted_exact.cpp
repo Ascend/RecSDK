@@ -26,7 +26,7 @@ constexpr int DATA_TYPE_FLOAT32 = 0;
 constexpr int DATA_TYPE_INT64 = 1;
 
 constexpr int RESERVER_UB_SIZE = 20 * 1024;
-constexpr uint32_t UB_ALIGN = 32;
+constexpr uint64_t UB_ALIGN = 32;
 constexpr int NUM_QUEUE = 32;
 // input index
 constexpr int GRAD_OUTPUT_INDEX = 0;
