@@ -33,24 +33,13 @@ int GetMaxTmpUbSize(int qkTmpSize, int svTmpSize, int tvTmpSize, int pvTmpSize)
 
 bool TilingPolicyNormalv200Fuxi::GeneralShapeCheck(int64_t batchSize, int64_t seqLen, int64_t headNum, int64_t dim)
 {
-    static const ShapeRange SEQ_RANGE(64, 20480, BLOCK_HEIGHT, "seq size");
-    static const ShapeRange BATCH_RANGE(1, MAX_BATCH_SIZE, 1, "batch size");
-    static const ShapeRange DIM_RANGE(16, 128, 16, "dim size");
-    static const ShapeRange HEAD_RANGE(2, 8, 2, "head num");
+    static const ShapeRange seqRange(64, 20480, BLOCK_HEIGHT, "seq size");
+    static const ShapeRange batchRange(1, MAX_BATCH_SIZE, 1, "batch size");
+    static const ShapeRange dimRange(16, 128, 16, "dim size");
+    static const ShapeRange headRange(2, 8, 2, "head num");
 
-    if (!SEQ_RANGE.Check(seqLen)) {
-        return false;
-    }
-
-    if (!BATCH_RANGE.Check(batchSize)) {
-        return false;
-    }
-
-    if (!HEAD_RANGE.Check(headNum)) {
-        return false;
-    }
-
-    if (!DIM_RANGE.Check(dim)) {
+    if ((!seqRange.Check(seqLen)) || (!batchRange.Check(batchSize)) ||
+        (!dimRange.Check(headNum)) || (!headRange.Check(dim))) {
         return false;
     }
 
