@@ -192,7 +192,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     uint64_t ubCanUsed;
     ascendPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubCanUsed);
-    uint64_t flagUb = UB_ALIGN * 2;  // queFlagIn、queFlagOut两个标志位
+    uint64_t flagUb = static_cast<uint64_t>(UB_ALIGN) * 2;  // queFlagIn、queFlagOut两个标志位
     ubCanUsed = ubCanUsed - RESERVER_UB_SIZE - flagUb;
     tiling.set_ubCanUsed(ubCanUsed);
 
