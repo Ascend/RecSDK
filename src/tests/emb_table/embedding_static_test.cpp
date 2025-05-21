@@ -20,7 +20,10 @@ See the License for the specific language governing permissions and
 #include <acl/acl_rt.h>
 #include <limits>
 #include "utils/common.h"
+#include "utils/logger.h"
+#include "utils/error.h"
 #include "emb_table/embedding_static.h"
+#include "emb_table/embedding_mgmt.h"
 
 using namespace std;
 using namespace MxRec;
@@ -47,7 +50,18 @@ protected:
     }
     void TearDown() {
     }
-    static void TearDownTestCase() {
+
+    static void SetupTestCase()
+    {
+        if (access("test_dir", F_OK) == 0) {
+            system("rm -rf test_dir");
+        }
+    }
+    static void TearDownTestCase()
+    {
+        if (access("test_dir", F_OK) == 0) {
+            system("rm -rf test_dir");
+        }
     }
 
     EmbInfo embInfo_;
@@ -151,20 +165,143 @@ TEST_F(EmbeddingStaticTest, Key2OffsetEvict)
 }
 
 /**
+ * 测试Key2OffsetForDp:使用 eval channel
+ */
+TEST_F(EmbeddingStaticTest, Key2OffsetForDpEval)
+{
+    vector<EmbInfo> embInfos = {embInfo_};
+    shared_ptr<EmbeddingStatic> table = std::make_shared<EmbeddingStatic>(embInfo_, rankInfo_, 0);
+
+    int invalidCount = 20;
+    vector<emb_key_t> tmp1;
+    for (size_t i = 0; i < 100; ++i) {
+        if (i < invalidCount) {
+            tmp1.push_back(INVALID_KEY_VALUE);
+        } else {
+            tmp1.push_back(i);
+        }
+    }
+
+    table->Key2OffsetForDp(tmp1, EVAL_CHANNEL_ID);
+    for (size_t i = 0; i < tmp1.size(); ++i) {
+        EXPECT_EQ(tmp1[i], INVALID_KEY_VALUE);
+    }
+    EXPECT_EQ(table->capacity(), 100);
+}
+
+/**
+ * 测试Key2OffsetForDp:使用 train channel
+ */
+TEST_F(EmbeddingStaticTest, Key2OffsetForDpTrain)
+{
+    vector<EmbInfo> embInfos = {embInfo_};
+    shared_ptr<EmbeddingStatic> table = std::make_shared<EmbeddingStatic>(embInfo_, rankInfo_, 0);
+
+    vector<emb_key_t> tmp1;
+    for (size_t i = 0; i < 100; ++i) {
+        tmp1.push_back(i);
+    }
+
+    int exp = 0;
+    try {
+        table->Key2OffsetForDp(tmp1, TRAIN_CHANNEL_ID);
+    } catch (exception& e) {
+        exp = 1;
+    }
+    EXPECT_EQ(table->capacity(), 100);
+    EXPECT_EQ(exp, 1);
+}
+
+/**
  * 测试key数据的保存和加载
  */
-TEST_F(EmbeddingStaticTest, SaveKeyData)
+TEST_F(EmbeddingStaticTest, SaveAndLoadKeyData)
 {
     vector<EmbInfo> embInfos = {embInfo_};
     map<emb_key_t, KeyInfo> keyInfo;
-    shared_ptr<EmbeddingStatic> hbm = std::make_shared<EmbeddingStatic>(embInfo_, rankInfo_, 0);
-    hbm->SetFileSystemPtr("test_dir");
-    hbm->Save("test_dir", 1, false, keyInfo);
+    shared_ptr<EmbeddingStatic> table = std::make_shared<EmbeddingStatic>(embInfo_, rankInfo_, 0);
+
+    constexpr int testNum = 100;
+    vector<emb_key_t> keyData;
+    for (size_t i = 0; i < testNum; ++i) {
+        keyData.push_back(i);
+    }
+
+    table->Key2Offset(keyData, TRAIN_CHANNEL_ID);
+    MxRec::KeyOffsetMemT kom = EmbeddingMgmt::Instance()->GetKeyOffsetMap();
+    map<EmbNameT, string> tmp;
+    for (auto it = kom.begin(); it != kom.end(); ++it) {
+        tmp.insert(pair<EmbNameT, string>(it->first, MapToString(it->second).c_str()));
+    }
+    LOG_INFO("test Key2Offset: lookupKeys: {}, keyOffsetMap: {}",
+             VectorToString(keyData), MapToString(tmp));
+
+    table->SetFileSystemPtr("test_dir");
+    table->Save("test_dir", 1, false, keyInfo);
+    const char* filePath = "./test_dir/test1/key/slice_0.data";
+    // 检查文件是否存在
+    if (access(filePath, F_OK) != 0) {
+        LOG_INFO("Error: File does not exist: {}", filePath);
+    } else {
+        // 重命名文件
+        const char* newfilePath = "./test_dir/test1/key/slice.data";
+        if (rename(filePath, newfilePath) == 0) {
+            LOG_INFO("File renamed successfully: {}", newfilePath);
+        }
+    }
+
+    map<string, unordered_set<emb_cache_key_t>> trainKeySetOne;
+    vector<string> warmStartTablesOne;
+    table->Load("./test_dir", trainKeySetOne, warmStartTablesOne);
+
     bool fileExist = false;
     if (access("./test_dir/test1/key", F_OK) == 0) {
         fileExist = true;
     }
+    vector<int64_t> deviceOffsetOne = table->GetDeviceOffset();
+
+    EXPECT_EQ(table->GetMaxOffset(), testNum);
     EXPECT_EQ(fileExist, true);
+    EXPECT_NE(deviceOffsetOne.size(), 0);
+}
+
+/**
+ * 测试key数据保存异常场景: saveDelta为true
+ */
+TEST_F(EmbeddingStaticTest, SaveKeyDataForExp)
+{
+    vector<EmbInfo> embInfos = {embInfo_};
+    shared_ptr<EmbeddingStatic> table = std::make_shared<EmbeddingStatic>(embInfo_, rankInfo_, 0);
+
+    constexpr int testNum = 100;
+    map<emb_key_t, KeyInfo> keyInfo;
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    int leftBound = 0;
+    int rightBound = 100;
+    std::uniform_int_distribution<> dis(leftBound, rightBound);
+
+    for (size_t i = 0; i < testNum; ++i) {
+        KeyInfo info;
+        info.lastUseTime = std::time(nullptr);
+        info.recentCount = dis(gen);
+        info.isChanged = false;
+        info.batchID = i;
+        info.totalCount = dis(gen);
+
+        keyInfo[i] = info;
+    }
+
+    table->SetFileSystemPtr("test_dir");
+    int exp = 0;
+    try {
+        table->Save("test_dir", 1, true, keyInfo);
+    } catch (exception& e) {
+        exp = 1;
+    }
+
+    EXPECT_EQ(exp, 1);
+    EXPECT_EQ(table->capacity(), testNum);
 }
 
 TEST_F(EmbeddingStaticTest, ShouldReturnTargetOffsetWhenFindExistKey)
