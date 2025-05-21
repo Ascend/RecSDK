@@ -19,6 +19,7 @@ import torch
 
 from utils.logger import default_logger
 
+
 class PatternModel(torch.nn.Module):
     def forward(self, input0, input1):
         # Step 1: 执行逐元素减法（sub）
@@ -31,6 +32,7 @@ class PatternModel(torch.nn.Module):
         output = torch.cat([input0, input1, sub_output, mul_output], dim=2)
 
         return output
+
 
 def main():
     # 创建两个形状为 (128, 128, 144) 的输入张量

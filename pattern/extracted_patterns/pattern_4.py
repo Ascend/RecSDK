@@ -30,6 +30,7 @@ class PatternModel(torch.nn.Module):
 
         return output_tensor
 
+
 def main():
     # 创建 201 个形状为 (128, 1) 的输入张量
     tensors = [torch.randn(128, 1) for _ in range(201)]

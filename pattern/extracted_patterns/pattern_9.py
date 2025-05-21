@@ -19,6 +19,7 @@ import torch
 
 from utils.logger import default_logger
 
+
 class PatternModel(torch.nn.Module):
     def forward(self, input1, input2, input3, input4):
         # Step 1: matmul [128, 128] x [128, 2560] = [128, 2560]
@@ -69,6 +70,7 @@ class PatternModel(torch.nn.Module):
 
         return final_output
     
+    
 def main():
     # 创建输入张量
     input1 = torch.randn(128, 128, requires_grad=False)
@@ -83,6 +85,7 @@ def main():
 
     # 打印输出张量的形状 应该输出: torch.Size([128])
     default_logger.info("Output shape: %s", output_tensor.shape)
+    
     
 if  __name__ == "__main__":
     main()
