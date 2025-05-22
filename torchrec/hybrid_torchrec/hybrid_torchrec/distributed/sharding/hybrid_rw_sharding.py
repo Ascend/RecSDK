@@ -72,15 +72,12 @@ class InputDistThreadPoolExecutorSingleton:
         cls._instance = super(InputDistThreadPoolExecutorSingleton, cls).__new__(
             cls, *args, **kwargs
         )
-        max_threads = DEFAULT_POST_INPUT_THREADS
-        input_dist_threads_str = os.environ["INPUT_DIST_THREADS"]
-        if input_dist_threads_str is not None:
-            try:
-                max_threads = int(input_dist_threads_str)
-            except ValueError as e:
-                raise Exception("Environment variable INPUT_DIST_THREADS is not a valid integer.") from e
-        cls.executor = ThreadPoolExecutor(max_threads)
-        return cls._instance
+        try:
+            max_threads = int(os.environ.get("INPUT_DIST_THREADS", DEFAULT_POST_INPUT_THREADS))
+            cls.executor = ThreadPoolExecutor(max_threads)
+            return cls._instance
+        except ValueError as e:
+            raise Exception("Environment variable INPUT_DIST_THREADS is not a valid integer.") from e
 
 C = TypeVar("C", bound=Multistreamable)
 F = TypeVar("F", bound=Multistreamable)
