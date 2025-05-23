@@ -244,13 +244,6 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
             offsets, batch_size_per_feature_per_rank
         )
 
-        # bounds indices check
-        last_offsets_indices = offsets[-1].cpu().item()
-        if (indices.size()[0] != last_offsets_indices):
-           raise ValueError(
-                    f"The last element in offsets = {last_offsets_indices}"
-                    f"must be equal to indices size {indices.size()[0]} "
-                )
         # type
         force_cast_input_types = (
             indices.dtype != offsets.dtype or force_cast_input_types

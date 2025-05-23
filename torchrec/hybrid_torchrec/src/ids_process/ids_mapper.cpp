@@ -73,11 +73,16 @@ void IdsMapper::UniqueAndLookupOut(const torch::Tensor& globalIds, const torch::
         auto findResult = ids2indicesMap.find(key);
         if (findResult == ids2indicesMap.end()) {
             std::lock_guard<std::mutex> lock(insertMute);
-            int64_t r = maxIndex++;
-            TORCH_CHECK(r < initMaxIndex, "Ids map reached maxIndex = ",
-                initMaxIndex, " please reallocate a larger buffer.");
-            ids2indicesMap.insert_or_assign(key, r);
-            hashIndicesPtr[i] = r;
+            auto findResult = ids2indicesMap.find(key);
+            if (findResult == ids2indicesMap.end()) {
+                int64_t r = maxIndex++;
+                TORCH_CHECK(r < initMaxIndex, "Ids map reached maxIndex = ",
+                    initMaxIndex, " please reallocate a larger buffer.");
+                ids2indicesMap.insert_or_assign(key, r);
+                hashIndicesPtr[i] = r;
+            } else {
+                hashIndicesPtr[i] = findResult->second;
+            }
         } else {
             hashIndicesPtr[i] = findResult->second;
         }
