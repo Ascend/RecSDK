@@ -8,14 +8,15 @@ execute_process(
 )
 string(STRIP "${python_site_packages_path}" python_site_packages_path)
 
-
 set(CMAKE_CXX_FLAGS "-fstack-protector-all -Wl,-z,relro,-z,now,-z,noexecstack -fPIE -pie ${CMAKE_CXX_FLAGS}")
 set(CMAKE_CXX_FLAGS "-fabi-version=11 ${CMAKE_CXX_FLAGS}")
 set(PYTORCH_INSTALL_PATH ${python_site_packages_path}/torch)
 set(PYTORCH_NPU_INSTALL_PATH ${python_site_packages_path}/torch_npu)
+set(ASCEND_DRIVER_PATH /usr/local/Ascend/driver)
 
 link_directories(${PYTORCH_INSTALL_PATH}/lib)
 link_directories(${PYTORCH_NPU_INSTALL_PATH}/lib)
+link_directories(${ASCEND_DRIVER_PATH}/lib64/common)
 
 add_library(relative_attn_bias SHARED relative_attn_bias.cpp)
 
@@ -27,5 +28,6 @@ include_directories(${PYTORCH_NPU_INSTALL_PATH}/include)
 include_directories(${PYTORCH_INSTALL_PATH}/include)
 include_directories(${PYTORCH_INSTALL_PATH}/include/torch/csrc/distributed)
 include_directories(${PYTORCH_INSTALL_PATH}/include/torch/csrc/api/include)
+include_directories(${ASCEND_DRIVER_PATH}/kernel/libc_sec/include)
 
-target_link_libraries(relative_attn_bias PUBLIC c10 torch torch_cpu torch_npu)
+target_link_libraries(relative_attn_bias PUBLIC c10 torch torch_cpu torch_npu c_sec)
