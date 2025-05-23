@@ -52,7 +52,9 @@ at::Tensor split_embedding_codegen_forward_unweighted_npu(const at::Tensor& dev_
     if (totalLen == 0) {
         return at::Tensor();
     }
-
+    int64_t batchSizeRes = (offsets.size(0) - 1) % featCnt;
+    TORCH_CHECK(batchSizeRes == 0, "offset size = ", offsets.size(0),
+                " is incorrect for feature count = ", featCnt)
     int64_t batchSize = (offsets.size(0) - 1) / featCnt;
     auto output = at::full({batchSize, totalD}, 0.0, dev_weights.options());
 

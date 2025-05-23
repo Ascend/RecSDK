@@ -92,7 +92,7 @@ def check_bucketized_valid(params: BucketResult):
 def test_ids2indices_sequential(input_size):
     """Test ids2indices with sequential numbers"""
     logging.info("Testing sequential ids mapping")
-    mapper = IdsMapper(input_size)
+    mapper = IdsMapper(input_size * IDS_RANGE_TIMES)
     id2indices = {}
     indices2id = {}
     for _ in range(TEST_NUM):
@@ -100,6 +100,21 @@ def test_ids2indices_sequential(input_size):
         indices, unique, unique_inverse = mapper(input_ids)
         verify_mapper(id2indices, indices2id, input_ids, indices)
         verify_unique(indices, unique, unique_inverse)
+
+
+@pytest.mark.parametrize("input_size", [1000])
+def test_ids2indices_sequential_invalid_ids(input_size):
+    """Test ids2indices with sequential numbers"""
+    logging.info("Testing sequential ids mapping")
+    mapper = IdsMapper(input_size)
+    id2indices = {}
+    indices2id = {}
+    with pytest.raises(RuntimeError):
+        for _ in range(TEST_NUM):
+            input_ids = torch.randint(0, input_size * IDS_RANGE_TIMES, (input_size,))
+            indices, unique, unique_inverse = mapper(input_ids)
+            verify_mapper(id2indices, indices2id, input_ids, indices)
+            verify_unique(indices, unique, unique_inverse)
 
 
 @pytest.mark.parametrize("input_size", [10000])
@@ -149,7 +164,7 @@ def test_ids2indices_out_ids_max_than_table_size(input_size, pin_memory, num_map
     logging.info("Testing sequential ids mapping")
     mappers = [IdsMapper(input_size) for _ in range(num_mapper)]
     input_ids = [
-        torch.randint(0, input_size * IDS_RANGE_TIMES, (input_size,))
+        torch.range(0, input_size * IDS_RANGE_TIMES, step=1)
         for _ in range(num_mapper)
     ]
 
