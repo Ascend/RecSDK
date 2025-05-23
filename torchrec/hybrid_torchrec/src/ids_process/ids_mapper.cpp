@@ -30,10 +30,12 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> IdsMapper::FindOrInsertHighPrecis
     int64_t* globalIdsPtr = globalIds.data_ptr<int64_t>();
     for (int64_t i = 0; i < globalIds.numel(); i++) {
         int64_t key = globalIdsPtr[i];
+        TORCH_CHECK(key >= 0, " Invalid key value: ", key);
         auto findResult = ids2indicesMap.find(key);
         if (findResult == ids2indicesMap.end()) {
             int64_t r = maxIndex++;
-            auto findResult = ids2indicesMap.find(key);
+            TORCH_CHECK(r < initMaxIndex, "Ids map reached maxIndex = ",
+                initMaxIndex, " please reallocate a larger buffer.");
             ids2indicesMap.insert_or_assign(key, r);
             hashIndicesPtr[i] = r;
         } else {
@@ -67,21 +69,15 @@ void IdsMapper::UniqueAndLookupOut(const torch::Tensor& globalIds, const torch::
     }
     for (int64_t i = start; i < end; i++) {
         int64_t key = globalIdsPtr[i];
+        TORCH_CHECK(key >= 0, " Invalid key value: ", key);
         auto findResult = ids2indicesMap.find(key);
         if (findResult == ids2indicesMap.end()) {
             std::lock_guard<std::mutex> lock(insertMute);
-            TORCH_CHECK(key < initMaxIndex && key >= 0,
-                "indices = ", key,
-                " must be in range of [0, ", initMaxIndex, "]");
-            auto findResult = ids2indicesMap.find(key);
-            if (findResult == ids2indicesMap.end()) {
-                int64_t r = maxIndex++;
-                auto findResult = ids2indicesMap.find(key);
-                ids2indicesMap.insert_or_assign(key, r);
-                hashIndicesPtr[i] = r;
-            } else {
-                hashIndicesPtr[i] = findResult->second;
-            }
+            int64_t r = maxIndex++;
+            TORCH_CHECK(r < initMaxIndex, "Ids map reached maxIndex = ",
+                initMaxIndex, " please reallocate a larger buffer.");
+            ids2indicesMap.insert_or_assign(key, r);
+            hashIndicesPtr[i] = r;
         } else {
             hashIndicesPtr[i] = findResult->second;
         }
