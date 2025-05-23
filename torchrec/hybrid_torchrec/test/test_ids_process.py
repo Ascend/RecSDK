@@ -116,6 +116,7 @@ def test_ids2indices_sequential_invalid_ids(input_size):
             verify_mapper(id2indices, indices2id, input_ids, indices)
             verify_unique(indices, unique, unique_inverse)
 
+
 @pytest.mark.parametrize("input_size", [10000])
 @pytest.mark.parametrize("pin_memory", [False, True])
 @pytest.mark.parametrize("num_mapper", [3])

@@ -119,6 +119,9 @@ public:
 
         outGT.SetGlobalBuffer((__gm__ float*)out, outDim0 * outDim1);
 
+        assert(offsetGT.GetValue(offsetsDim0 - 1) == indicesDim0,
+               "The last element in offsets %d must be equal to indices size %d",
+               offsetGT.GetValue(offsetsDim0 - 1), indicesDim0);
         // Init pipe
         pipe.InitBuffer(queIn, 1, blockLen * sizeof(float));
         pipe.InitBuffer(queOut, 1, blockLen * sizeof(float));
