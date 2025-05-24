@@ -32,10 +32,10 @@ from pattern.constant import TORCHINDUCTOR_CACHE_ENV
 def load_config():
     """
     加载配置文件。
-    
+
     该函数通过读取当前文件所在目录下的 'config.toml' 文件来加载配置信息。
     使用 TOML 格式解析配置文件，并返回解析后的配置字典。
-    
+
     Returns:
         dict: 解析后的配置文件内容，以字典形式返回。
     """
@@ -44,10 +44,11 @@ def load_config():
 
     # 获取当前文件所在的目录
     current_directory = os.path.dirname(current_file_path)
-    
+
     # 通过调用 toml.load 加载配置文件并返回配置信息
     config = toml.load(os.path.join(current_directory, "config.toml"))
     return config
+
 
 def get_caller_module_name(level=4):
     """
@@ -85,6 +86,7 @@ def perform_test(model: torch.nn.Module, input_list: list):
     else:
         raise ValueError("mode must be 'precision' or 'performance'")
 
+
 def performance_test(model: torch.nn.Module, input_list: list, config: dict):
     """
     测试给定模型的性能。
@@ -101,10 +103,12 @@ def performance_test(model: torch.nn.Module, input_list: list, config: dict):
     无返回值，直接打印模型在指定设备和模式下的平均运行时间。
     """
     # 将输入列表中的每个元素移动到指定设备
-    input_list = [move_to_device(i, config["model_config"]["device"]) for i in input_list]
+    input_list = [
+        move_to_device(i, config["model_config"]["device"]) for i in input_list
+    ]
     # 将模型移动到指定设备
     model = model.to(config["model_config"]["device"])
-    
+
     # 根据配置信息中的模式进行模型编译或直接运行
     if config["model_config"]["mode"] == "graph":
         # 使用torch.compile编译模型，以提高性能
@@ -121,20 +125,27 @@ def performance_test(model: torch.nn.Module, input_list: list, config: dict):
     else:
         # 如果模式不是'graph'或'eager'，抛出异常
         raise ValueError("mode must be 'graph' or 'eager'")
-    
+
     # 准备benchmark需要的全局变量
     timer_globals = {
         "model": model,
         "input_list": input_list,
     }
-    
+
     # 创建benchmark计时器
     t0 = benchmark.Timer(stmt="model(*input_list)", globals=timer_globals)
     # 运行计时测试
     m = t0.timeit(100)
     # 打印平均运行时间
     module_name = get_caller_module_name()
-    default_logger.info("[{}] avg time over {} with {} mode: {}".format(module_name, config["model_config"]["device"], config["model_config"]["mode"], m.mean))
+    default_logger.info(
+        "[{}] avg time over {} with {} mode: {}".format(
+            module_name,
+            config["model_config"]["device"],
+            config["model_config"]["mode"],
+            m.mean,
+        )
+    )
 
 
 def precision_test(model_list: List[torch.nn.Module], input_list: list, config: dict):
@@ -197,8 +208,11 @@ def precision_test(model_list: List[torch.nn.Module], input_list: list, config: 
     # 打印精度测试的结果
     module_name = get_caller_module_name()
     default_logger.info("[%s] Accuracy test result: %s", module_name, stastics)
-    
-def move_to_device(input: Union[list, torch.Tensor], device: str) -> Union[list, torch.Tensor]:
+
+
+def move_to_device(
+    input_tensor: Union[list, torch.Tensor], device: str
+) -> Union[list, torch.Tensor]:
     """
     将输入的数据移动到指定的设备上。
 
@@ -214,16 +228,16 @@ def move_to_device(input: Union[list, torch.Tensor], device: str) -> Union[list,
     Union[list, torch.Tensor]: 移动到指定设备后的输入数据。
     """
     # 如果输入是列表，则递归调用move_to_device函数处理列表中的每个元素
-    if isinstance(input, list):
-        return [move_to_device(x, device) for x in input]
+    if isinstance(input_tensor, list):
+        return [move_to_device(x, device) for x in input_tensor]
     # 如果输入是torch.Tensor，直接调用其to方法将其移动到指定设备
-    return input.to(device)
-    
-    
+    return input_tensor.to(device)
+
+
 def clean_up_inductor_cache():
     """
     清理缓存目录。
-    
+
     该函数检查环境中是否存在 TORCHINDUCTOR_CACHE_ENV 变量，并删除该变量指定的缓存目录。
     """
     # 检查环境变量中是否存在缓存目录路径

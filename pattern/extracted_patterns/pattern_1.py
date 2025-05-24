@@ -19,6 +19,7 @@ import torch
 
 from pattern.util import perform_test
     
+    
 class PatternModel(torch.nn.Module):
     def __init__(self):
         super(PatternModel, self).__init__()

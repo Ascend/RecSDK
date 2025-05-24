@@ -19,6 +19,7 @@ import torch
 
 from pattern.util import perform_test
 
+
 class PatternModel(torch.nn.Module):
     def forward(self, input1, input2, input3):
         # Step 1: Add two tensors

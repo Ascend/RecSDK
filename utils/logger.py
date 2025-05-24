@@ -19,8 +19,10 @@ import logging
 import sys
 import os
 
+
 def error_or_warning(record):
     return record.levelno == logging.ERROR or record.levelno == logging.WARNING
+
 
 def setup_logger(name, log_file=None, error_log_file=None, level=logging.INFO):
     """配置日志器"""

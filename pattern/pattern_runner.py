@@ -60,12 +60,7 @@ def run_all_patterns():
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
 
-            # 添加标志位到模块中
-            module.__perform_test_called__ = False
-
             def wrapped_perform_test(*args, **kwargs):
-                nonlocal module
-                module.__perform_test_called__ = True
                 global total_perform_test_calls
                 total_perform_test_calls += 1
                 from pattern.util import perform_test
