@@ -1,0 +1,12 @@
+[model_config]
+mode = "graph" # 单算子模式还是图模式，可选项["eager", "graph"]
+device = "cpu" # 执行硬件，可选项["cpu", "npu", "cuda"]
+compile_backend = "inductor"  # 编译后端，可选项["inductor", "eager"]
+compile_mode = "default" # torch.compile的模式，可选项["default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"]
+compile_dynamic = false
+compile_fullgraph = true
+
+[test_config]
+ mode = "performance" # 测试性能还是精度，可选项["performance", "precision"]
+ precision.golden = "cpu" # 精度基线，可选项["cpu", "npu", "cuda"]
+ precision.target = "cpu" # 精度基线，可选项["cpu", "npu", "cuda"]
