@@ -17,7 +17,7 @@
 
 import torch
 
-from utils.logger import default_logger
+from pattern.util import perform_test
 
 
 class PatternModel(torch.nn.Module):
@@ -48,13 +48,8 @@ def main():
     input6 = torch.randn(input_shape)
     input7 = torch.randn(input_shape)
     
-    model = PatternModel()
-
-    # 运行模型
-    output_tensor = model(input1, input2, input3, input4, input5, input6, input7)
-
-    # 打印输出张量的形状 应该输出: torch.Size([128, 50, 400])
-    default_logger.info("Output shape: %s", output_tensor.shape)
+    input_list = [input1, input2, input3, input4, input5, input6, input7]
+    perform_test(PatternModel(), input_list)
     
 if __name__ == "__main__":
     main()

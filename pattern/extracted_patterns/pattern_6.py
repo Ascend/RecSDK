@@ -17,8 +17,7 @@
 
 import torch
 
-from utils.logger import default_logger
-
+from pattern.util import perform_test
 
 class PatternModel(torch.nn.Module):
     def forward(self, input1, input2, input3):
@@ -62,12 +61,8 @@ def main():
     input2 = torch.randn(128, 150, 148)
     input3 = torch.randn(128, 150, 1)
 
-    # 调用函数
-    model = PatternModel()
-    output_tensor = model(input1, input2, input3)
-
-    # 打印输出形状 应该输出: torch.Size([128, 150, 148])
-    default_logger.info("Output shape: %s", output_tensor.shape)
+    input_list = [input1, input2, input3]
+    perform_test(PatternModel(), input_list)
 
 if __name__ == "__main__":
     main()

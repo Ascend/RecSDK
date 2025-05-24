@@ -17,14 +17,13 @@
 
 import torch
 
-from utils.logger import default_logger
-    
+from pattern.util import perform_test
     
 class PatternModel(torch.nn.Module):
     def __init__(self):
         super(PatternModel, self).__init__()
         # BatchNormalization 层
-        self.batch_norm = nn.BatchNorm2d(256)  # 输入通道数为 256
+        self.batch_norm = torch.nn.BatchNorm2d(256)  # 输入通道数为 256
 
     def forward(self, input_tensor):
         # Step 1: reshape 为 (128, 192, 1, 256)
@@ -56,12 +55,9 @@ def main():
     # 示例输入
     input_tensor = torch.randn(128, 192, 256)
 
-    model = PatternModel()
-
-    output_tensor = model(input_tensor)
-
-    # 打印输出形状
-    default_logger.info("Output shape: %s", output_tensor.shape)  # 应该输出: torch.Size([128, 192, 256])
+    input_list = [input_tensor]
     
+    perform_test(PatternModel(), input_list)
+
 if __name__ == "__main__":
     main()
