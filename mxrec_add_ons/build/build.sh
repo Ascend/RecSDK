@@ -32,7 +32,7 @@ permute2d_sparse_data
 split_embedding_codegen_forward_unweighted
 dense_to_jagged
 "
-support_310p_list="gather_for_rank1 hstu_dense_forward_fuxi"
+support_310p_list="gather_for_rank1 hstu_dense_forward_fuxi relative_attn_bias"
 
 cd "${MxRec_DIR}"
 
