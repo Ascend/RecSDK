@@ -17,7 +17,7 @@
 
 import torch
 
-from utils.logger import default_logger
+from pattern.util import perform_test
 
 
 class PatternModel(torch.nn.Module):
@@ -31,7 +31,9 @@ class PatternModel(torch.nn.Module):
         inf_r = torch.isinf(mul_result)
         nan_r = torch.isnan(mul_result)
         # Step 3: 输出shape 为 (64)
-        select_r = torch.where(torch.logical_or(inf_r, nan_r), mul_result, input_tensor_select)
+        select_r = torch.where(
+            torch.logical_or(inf_r, nan_r), mul_result, input_tensor_select
+        )
         # Step 4: 输出shape 为 (1)
         square_sum = torch.sum(torch.square(select_r))
         # Step 5: 输出shape 为 (1)
@@ -45,12 +47,9 @@ def main():
 
     input_tensor_select = torch.randn(64)
 
-    model = PatternModel()
+    input_list = [input_tensor_mul, input_tensor_select]
+    perform_test(PatternModel(), input_list)
 
-    output_tensor = model(input_tensor_mul, input_tensor_select)
-
-    # 打印输出形状
-    default_logger.info("Output shape: %s", output_tensor.shape)
 
 if __name__ == "__main__":
     main()

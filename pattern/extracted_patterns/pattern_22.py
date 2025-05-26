@@ -16,54 +16,33 @@
 # ==============================================================================
 
 import torch
-import torch.nn as nn
-import torch_npu
 
-from utils.logger import default_logger
-
-device = torch.device("npu")
+from pattern.util import perform_test
 
 
-class PatternModel(nn.Module):
+class PatternModel(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, input0, input1, in0_start, in1_start):
-        tmp0 = input0[:, :, in0_start:]
-        tmp1 = input1[:, :, in1_start:]
+    def forward(self, input0, input1):
+        tmp0 = input0[:, :, 139:]
+        tmp1 = input1[:, :, 32:]
         return torch.sum(tmp0 * tmp1, dim=1)
 
 
 def main():
-    # 设置参数
     y0_numel = 256
     r0_numel = 64
     x0_numel = 130
     y1_numel = 1
     r1_numel = 64
     x1_numel = 33
-    in0_start = 129
-    in1_start = 32
 
-    input0_cpu = torch.randn(y0_numel, r0_numel, x0_numel)
-    input1_cpu = torch.randn(y1_numel, r1_numel, x1_numel)
-    input0_npu = input0_cpu.to(device)
-    input1_npu = input1_cpu.to(device)
+    in0 = torch.randn(256, 64, 130)
+    in1 = torch.randn(1, 64, 33)
 
-    model_cpu = PatternModel()
-    model_npu = PatternModel().to(device)
-
-    with torch.no_grad():
-        output_cpu = model_cpu(input0_cpu, input1_cpu, in0_start, in1_start)
-        output_npu = model_npu(
-            input0_npu.to(device), input1_npu.to(device), in0_start, in1_start
-        )
-
-    default_logger.info("Output shape: %s", output_npu.shape)
-    if not torch.allclose(output_cpu, output_npu.to("cpu"), rtol=1e-3, atol=1e-3):
-        default_logger.error("precision failed!!")
-    else:
-        default_logger.info("precision OK!")
+    input_list = [in0, in1]
+    perform_test(PatternModel(), input_list)
 
 
 if __name__ == "__main__":

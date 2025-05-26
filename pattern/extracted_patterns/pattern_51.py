@@ -16,14 +16,11 @@
 # ==============================================================================
 
 import torch
-import torch.nn as nn
-import torch_npu
-from utils.logger import default_logger
 
-device = torch.device("npu")
+from pattern.util import perform_test
 
 
-class PatternModel(nn.Module):
+class PatternModel(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
@@ -62,25 +59,9 @@ def main():
     in2 = torch.abs(torch.randn(512, dtype=torch.float16))
     in3 = torch.abs(torch.randn(512, dtype=torch.float16))
     in4 = torch.abs(torch.randn(128, 512, dtype=torch.float16))
-    model_cpu = PatternModel()
-    model_npu = PatternModel().to(device)
 
-    with torch.no_grad():
-        output_cpu = model_cpu(in0, in1, in2, in3, in4)
-        output_npu = model_cpu(
-            in0.to(device),
-            in1.to(device),
-            in2.to(device),
-            in3.to(device),
-            in4.to(device),
-        )
-
-    default_logger.info("Output shape: %s", output_npu.shape)
-
-    if not torch.allclose(output_cpu, output_npu.to("cpu"), rtol=1e-3, atol=1e-3):
-        default_logger.error("precision failed!!")
-    else:
-        default_logger.info("precision OK!")
+    input_list = [in0, in1, in2, in3, in4]
+    perform_test(PatternModel(), input_list)
 
 
 if __name__ == "__main__":
