@@ -137,7 +137,7 @@ def train_fn(train_input_params: TrainInput) -> None:
             )
 
             opt.zero_grad()
-            input_embeddings = model.module.get_item_embeddings(seq_features.past_ids)
+            input_embeddings = model(seq_features.past_ids)
             bs, seq_len, emb_dim = input_embeddings[:, 1:, :].shape
             base_tensor = torch.randn(
                 (bs, seq_len, emb_dim),
