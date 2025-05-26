@@ -24,19 +24,31 @@ class PatternModel(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, input0):
-        sliced = input0[:, :, 1:1 + 128]
-        return sliced.sum(dim=1)
+    def forward(self, input0, input1, input2, input3, input4):
+        combined = (input0 + input1 + input2) * 0.1
+        combined_fp32 = combined.float()
+        mean = combined_fp32.mean(dim=-1, keepdim=True)
+        var = combined_fp32.var(dim=-1, keepdim=True, unbiased=False)
+        normalized = (combined_fp32 - mean) * torch.rsqrt(var + 1e-6)
+
+        gamma = input3
+        beta = input4
+        output_fp32 = normalized * gamma + beta
+        return output_fp32
 
 
 def main():
-    y_dim = 256
-    r_dim = 32
-    x_dim = 130
+    batch_size = 256
+    feature_dim = 48
+    torch.manual_seed(2025)
 
-    in0 = torch.randn(y_dim, r_dim, x_dim)
+    in0 = torch.randn(batch_size, feature_dim, dtype=torch.float16)
+    in1 = torch.randn(batch_size, feature_dim, dtype=torch.float16)
+    in2 = torch.randn(batch_size, feature_dim, dtype=torch.float16)
+    in3 = torch.randn(feature_dim, dtype=torch.float32)
+    in4 = torch.randn(feature_dim, dtype=torch.float32)
 
-    input_list = [in0]
+    input_list = [in0, in1, in2, in3, in4]
     perform_test(PatternModel(), input_list)
 
 

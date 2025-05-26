@@ -14,46 +14,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from dataclasses import dataclass
 
 import torch
-import torch.nn as nn
-import torch_npu
-from utils.logger import default_logger
 
-device = torch.device("npu")
+from pattern.util import perform_test
 
 
-@dataclass
-class ModelInputs:
-    in0: torch.tensor
-    in1: torch.tensor
-    in2: torch.tensor
-    in3: torch.tensor
-    in4: torch.tensor
-    in5: torch.tensor
-
-    def to(self, device_type):
-        return ModelInputs(
-            in0=self.in0.to(device),
-            in1=self.in1.to(device),
-            in2=self.in2.to(device),
-            in3=self.in3.to(device),
-            in4=self.in4.to(device),
-            in5=self.in5.to(device),
-        )
-
-
-class PatternModel(nn.Module):
+class PatternModel(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.layer_norm = nn.LayerNorm([640])
+        self.layer_norm = torch.nn.LayerNorm([640])
 
-    def forward(self, inputs: ModelInputs):
+    def forward(self, inputs):
         concat01 = torch.cat(
-            [inputs.in0, inputs.in1, inputs.in2, inputs.in3, inputs.in4], dim=1
+            [inputs[0], inputs[1], inputs[2], inputs[3], inputs[4]], dim=1
         )
-        mul0 = concat01 * inputs.in5
+        mul0 = concat01 * inputs[5]
         ln_output = self.layer_norm(mul0)
         return ln_output
 
@@ -67,20 +43,8 @@ def main():
     in4 = torch.randn(192, 128, dtype=torch.float16)
     in5 = torch.randn(640, dtype=torch.float16)
 
-    inputs = ModelInputs(in0, in1, in2, in3, in4, in5)
-
-    model_cpu = PatternModel()
-
-    with torch.no_grad():
-        output_cpu = model_cpu(inputs)
-        output_npu = model_npu(inputs.to(device))
-
-    default_logger.info("Output shape: %s", output_npu.shape)
-
-    if not torch.allclose(output_cpu, output_npu.to("cpu"), rtol=1e-3, atol=1e-3):
-        default_logger.error("precision failed!!")
-    else:
-        default_logger.info("precision OK!")
+    input_list = [[in0, in1, in2, in3, in4, in5]]
+    perform_test(PatternModel(), input_list)
 
 
 if __name__ == "__main__":

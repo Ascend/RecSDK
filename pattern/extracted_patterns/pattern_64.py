@@ -17,14 +17,16 @@
 
 import torch
 
-from utils.logger import default_logger
+from pattern.util import perform_test
 
 
 class PatternModel(torch.nn.Module):
     def __init__(self):
         super(PatternModel, self).__init__()
 
-    def forward(self, input_tensor_or_1, input_tensor_or_2, select_tensor_1, select_tensor_2):
+    def forward(
+        self, input_tensor_or_1, input_tensor_or_2, select_tensor_1, select_tensor_2
+    ):
         # Step 1: 输出shape 为 (8192)
         or_result = torch.logical_or(input_tensor_or_1, input_tensor_or_2)
         select_result = torch.where(or_result, select_tensor_1, select_tensor_2)
@@ -41,12 +43,15 @@ def main():
     input_tensor_or_2 = torch.randn([8192]) > 0.5
     select_tensor_1 = torch.randn([8192])
     select_tensor_2 = torch.randn([8192])
-    model = PatternModel()
 
-    output_tensor = model(input_tensor_or_1, input_tensor_or_2, select_tensor_1, select_tensor_2)
+    input_list = [
+        input_tensor_or_1,
+        input_tensor_or_2,
+        select_tensor_1,
+        select_tensor_2,
+    ]
+    perform_test(PatternModel(), input_list)
 
-    # 打印输出形状
-    default_logger.info("Output shape: %s", output_tensor.shape)
 
 if __name__ == "__main__":
     main()

@@ -16,15 +16,11 @@
 # ==============================================================================
 
 import torch
-import torch.nn as nn
-import torch_npu
 
-from utils.logger import default_logger
-
-device = torch.device("npu")
+from pattern.util import perform_test
 
 
-class PatternModel(nn.Module):
+class PatternModel(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
@@ -34,32 +30,15 @@ class PatternModel(nn.Module):
 
 
 def main():
-    # 设置参数
     y0_numel = 256
     x0_numel = 130
     r1_numel = 64
 
-    input0_cpu = torch.randn(y0_numel, r1_numel, x0_numel)
-    input1_cpu = torch.randn(r1_numel)
-    input0_npu = input0_cpu.to(device)
-    input1_npu = input1_cpu.to(device)
+    in0 = torch.randn(y0_numel, r1_numel, x0_numel)
+    in1 = torch.randn(r1_numel)
 
-    # 初始化模型
-    model_cpu = PatternModel()
-    model_npu = PatternModel().to(device)
-
-    # 推理
-    with torch.no_grad():
-        output_cpu = model_cpu(input0_cpu, input1_cpu)
-        output_npu = model_npu(input0_npu, input1_npu)
-
-    # 结果验证
-    default_logger.info("Output shape: %s", output_npu.shape)
-
-    if not torch.allclose(output_cpu, output_npu.to("cpu"), rtol=1e-3, atol=1e-3):
-        default_logger.error("precision failed!!")
-    else:
-        default_logger.info("precision OK!")
+    input_list = [in0, in1]
+    perform_test(PatternModel(), input_list)
 
 
 if __name__ == "__main__":

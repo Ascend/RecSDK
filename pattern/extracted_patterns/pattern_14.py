@@ -16,36 +16,36 @@
 # ==============================================================================
 
 import torch
-import torch.nn as nn
-import torch_npu
 
-from utils.logger import default_logger
-
-device = torch.device("npu")
+from pattern.util import perform_test
 
 
-class PatternModel(nn.Module):
+class PatternModel(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, x, start_indices, slice_len):
+    def forward(self, x, start_indices):
         """
         x: 输入张量形状 [batch, row, col]
         输出形状 [batch, num_slices, row, slice_len]
         """
-        batch_size = x.size(0)
-        outputs = []
+        batch_size, row, col = x.shape
+        num_slices = start_indices.size(0)
+        slice_length = 128
 
-        for idx in start_indices:
-            start_col = idx.item()
-            end_col = start_col + slice_len
+        # shape -> [num_slices, slice_length]
+        indices = start_indices.view(-1, 1) + torch.arange(3)
+        # shape -> [batch, num_slices, slice_length]
+        indices = indices.expand(batch_size, -1, -1)
+        # shape -> [batch, num_slices, row, slice_length]
+        indices = indices.unsqueeze(2).expand(-1, -1, row, -1)
 
-            sliced = x[..., start_col:end_col]
+        # shape -> [batch, num_slices, row, col]
+        x_expanded = x.unsqueeze(1).expand(-1, num_slices, -1, -1)
 
-            outputs.append(sliced.unsqueeze(1))
+        x_sliced = x_expanded.gather(dim=3, index=indices)
 
-        # 拼接所有切片
-        return torch.cat(outputs, dim=1)
+        return x_sliced
 
 
 def main():
@@ -53,29 +53,13 @@ def main():
     input_row = 1000
     input_col = 2048
     slice_num = 4
-    slice_len = 128
 
     torch.manual_seed(2025)
-    start_indices = torch.tensor([256, 512, 768, 1024])
+    start_indices = torch.tensor([256, 512, 700, 800])
+    input_tensor = torch.randn(batch_size, input_row, input_col)
 
-    input_tensor_cpu = torch.randn(batch_size, input_row, input_col)
-    input_tensor_npu = input_tensor_cpu.to(device)
-
-    model = PatternModel()
-
-    # 执行推理
-    with torch.no_grad():
-        output_cpu = model(input_tensor_cpu, start_indices, slice_len)
-        output_npu = model(input_tensor_npu, start_indices.to(device), slice_len)
-
-    # 结果验证
-    default_logger.info("Input shape: %s", input_tensor_npu.shape)
-    default_logger.info("Output shape: %s", output_npu.shape)
-
-    if not torch.allclose(output_cpu, output_npu.to("cpu"), rtol=1e-3, atol=1e-3):
-        default_logger.error("precision failed!!")
-    else:
-        default_logger.info("precision OK!")
+    input_list = [input_tensor, start_indices]
+    perform_test(PatternModel(), input_list)
 
 
 if __name__ == "__main__":

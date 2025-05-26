@@ -17,14 +17,21 @@
 
 import torch
 
-from utils.logger import default_logger
+from pattern.util import perform_test
 
 
 class PatternModel(torch.nn.Module):
     def __init__(self):
         super(PatternModel, self).__init__()
 
-    def forward(self, input_tensors_1, input_tensors_2, input_tensors_3, mul_tensors, cat_tensors):
+    def forward(
+        self,
+        input_tensors_1,
+        input_tensors_2,
+        input_tensors_3,
+        mul_tensors,
+        cat_tensors,
+    ):
         # Step 1: 输出shape 为 (3072,10,16)
         slice_results_1 = [t[:, :, -16:] for t in input_tensors_1]
         addn_result_1 = torch.stack(slice_results_1).sum(dim=0)
@@ -52,12 +59,16 @@ def main():
     input_tensors_3 = [torch.randn([3072, 10, 65]) for _ in range(6)]
     mul_tensors = torch.randn([3072, 1, 48])
     cat_tensors = torch.randn([3072, 10, 16])
-    model = PatternModel()
 
-    output_tensor = model(input_tensors_1, input_tensors_2, input_tensors_3, mul_tensors, cat_tensors)
+    input_list = [
+        input_tensors_1,
+        input_tensors_2,
+        input_tensors_3,
+        mul_tensors,
+        cat_tensors,
+    ]
+    perform_test(PatternModel(), input_list)
 
-    # 打印输出形状
-    default_logger.info("Output shape: %s", output_tensor.shape)
 
 if __name__ == "__main__":
     main()

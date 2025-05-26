@@ -16,45 +16,32 @@
 # ==============================================================================
 
 import torch
-import torch.nn as nn
-import torch_npu
 
-from utils.logger import default_logger
-
-device = torch.device("npu")
+from pattern.util import perform_test
 
 
-class PatternModel(nn.Module):
+class PatternModel(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(
-        self,
-        in0: torch.Tensor,
-        in1: torch.Tensor,
-        in2: torch.Tensor,
-        in3: torch.Tensor,
-        in4: torch.Tensor,
-        in5: torch.Tensor,
-    ):
-
-        tmp0 = in0.to(torch.float32)
-        tmp1 = in1.expand_as(tmp0[..., 0]).unsqueeze(1).expand_as(tmp0)
+    def forward(self, inputs):
+        tmp0 = inputs[0].to(torch.float32)
+        tmp1 = inputs[1].expand_as(tmp0[..., 0]).unsqueeze(1).expand_as(tmp0)
         tmp2 = tmp0 + tmp1
 
-        tmp3 = in2.to(torch.float32)
+        tmp3 = inputs[2].to(torch.float32)
         tmp5 = tmp2 / tmp3
         tmp6 = torch.sigmoid(tmp5)
 
-        tmp7 = in3.unsqueeze(2).expand(-1, -1, tmp0.shape[2]).to(torch.float32)
+        tmp7 = inputs[3].unsqueeze(2).expand(-1, -1, tmp0.shape[2]).to(torch.float32)
         sign = torch.sign(tmp7)
 
         tmp15 = tmp6 * sign
-        tmp16 = in4.to(torch.float32)
+        tmp16 = inputs[4].to(torch.float32)
         tmp17 = tmp15 * tmp16
         output0 = tmp17.sum(dim=1)
 
-        tmp22 = in5.expand_as(tmp16).to(torch.float32)
+        tmp22 = inputs[5].expand_as(tmp16).to(torch.float32)
         tmp23 = tmp22 * tmp16
         output1 = tmp23.sum(dim=1)
 
@@ -62,12 +49,10 @@ class PatternModel(nn.Module):
 
 
 def main():
-    # 配置参数
     y_dim = 256
     x_dim = 32
     r_dim = 32
 
-    # 生成测试数据
     torch.manual_seed(2025)
     in0 = torch.randn(y_dim, r_dim, x_dim) * 2
     in1 = torch.randn(x_dim)
@@ -76,32 +61,8 @@ def main():
     in4 = torch.randn(y_dim, r_dim, x_dim)
     in5 = torch.randn(r_dim, x_dim)
 
-    in0_npu = in0.to(device)
-    in1_npu = in1.to(device)
-    in2_npu = in2.to(device)
-    in3_npu = in3.to(device)
-    in4_npu = in4.to(device)
-    in5_npu = in5.to(device)
-
-    model_cpu = PatternModel().to("cpu")
-    model_npu = PatternModel().to(device)
-
-    with torch.no_grad():
-        out0_cpu, out1_cpu = model_cpu(in0, in1, in2, in3, in4, in5)
-        out0_npu, out1_npu = model_npu(
-            in0_npu, in1_npu, in2_npu, in3_npu, in4_npu, in5_npu
-        )
-
-    # 结果验证
-    default_logger.info("Output0 shape: %s", out0_npu.shape)
-    default_logger.info("Output1 shape: %s", out1_npu.shape)
-
-    if not torch.allclose(
-        out0_cpu, out0_npu.to("cpu"), rtol=1e-3, atol=1e-3
-    ) or not torch.allclose(out1_cpu, out1_npu.to("cpu"), rtol=1e-3, atol=1e-3):
-        default_logger.error("precision failed!!")
-    else:
-        default_logger.info("precision OK!")
+    input_list = [[in0, in1, in2, in3, in4, in5]]
+    perform_test(PatternModel(), input_list)
 
 
 if __name__ == "__main__":

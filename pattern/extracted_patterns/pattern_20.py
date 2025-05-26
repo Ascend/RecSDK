@@ -24,19 +24,17 @@ class PatternModel(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, input0):
-        sliced = input0[:, :, 1:1 + 128]
-        return sliced.sum(dim=1)
+    def forward(self, input0, input1):
+        tmp0 = input0[:, :, 33:]
+        tmp1 = input1[:, :, 32:]
+        return torch.sum(tmp0 * tmp1, dim=1)
 
 
 def main():
-    y_dim = 256
-    r_dim = 32
-    x_dim = 130
+    in0 = torch.randn(256, 64, 34)
+    in1 = torch.randn(1, 64, 33)
 
-    in0 = torch.randn(y_dim, r_dim, x_dim)
-
-    input_list = [in0]
+    input_list = [in0, in1]
     perform_test(PatternModel(), input_list)
 
 

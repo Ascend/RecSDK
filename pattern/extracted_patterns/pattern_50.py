@@ -24,19 +24,42 @@ class PatternModel(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, input0):
-        sliced = input0[:, :, 1:1 + 128]
-        return sliced.sum(dim=1)
+    def forward(self, inputs):
+        # Step 1: (128, 50, 33) -> (128, 50, 32)
+        slice_output = inputs[0][:, :, :32]
+
+        concat_inputs = [
+            slice_output,
+            inputs[1],
+            inputs[2],
+            inputs[3],
+            inputs[4],
+            inputs[5],
+            inputs[6],
+            inputs[7],
+            inputs[8],
+        ]
+
+        # 沿第3维拼接
+        concat_output = torch.cat(concat_inputs, dim=2)
+
+        return concat_output
 
 
 def main():
-    y_dim = 256
-    r_dim = 32
-    x_dim = 130
+    in0 = torch.randn(128, 50, 33)
+    cat_in0 = torch.randn(128, 50, 128)
+    cat_in1 = torch.randn(128, 50, 32)
+    cat_in2 = torch.randn(128, 50, 48)
+    cat_in3 = torch.randn(128, 50, 48)
+    cat_in4 = torch.randn(128, 50, 48)
+    cat_in5 = torch.randn(128, 50, 48)
+    cat_in6 = torch.randn(128, 50, 48)
+    cat_in7 = torch.randn(128, 50, 48)
 
-    in0 = torch.randn(y_dim, r_dim, x_dim)
-
-    input_list = [in0]
+    input_list = [
+        [in0, cat_in0, cat_in1, cat_in2, cat_in3, cat_in4, cat_in5, cat_in6, cat_in7]
+    ]
     perform_test(PatternModel(), input_list)
 
 

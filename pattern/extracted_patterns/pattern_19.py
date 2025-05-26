@@ -16,21 +16,16 @@
 # ==============================================================================
 
 import torch
-import torch.nn as nn
-import torch_npu
 
-from utils.logger import default_logger
-
-device = torch.device("npu")
+from pattern.util import perform_test
 
 
-class PatternModel(nn.Module):
+class PatternModel(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, input0, x1_numel):
-        # 切片获取有效数据区域 [1:x1_numel+1]
-        sliced = input0[:, :, 1:1 + x1_numel]
+    def forward(self, input0):
+        sliced = input0[:, :, 1:1 + 128]
         return sliced.sum(dim=1)
 
 
@@ -38,28 +33,11 @@ def main():
     y_dim = 256
     x_dim = 64
     r_dim = 34
-    output_dim = 32
 
-    # 生成输入数据 (包含 +1 的偏移)
-    input0_cpu = torch.randn(y_dim, x_dim, r_dim)
-    input0_npu = input0_cpu.to(device)
+    in0 = torch.randn(y_dim, x_dim, r_dim)
 
-    model = PatternModel()
-    # 推理
-    with torch.no_grad():
-        output0_cpu = model(input0_cpu, output_dim)
-        output0_npu = model(input0_npu, output_dim)
-
-    # 结果验证
-    default_logger.info("Output0 shape: %s", output0_npu.shape)
-
-    judgement_0 = torch.allclose(
-        output0_cpu, output0_npu.to("cpu"), rtol=1e-3, atol=1e-3
-    )
-    if not judgement_0:
-        default_logger.error("precision failed!!")
-    else:
-        default_logger.info("precision OK!")
+    input_list = [in0]
+    perform_test(PatternModel(), input_list)
 
 
 if __name__ == "__main__":
