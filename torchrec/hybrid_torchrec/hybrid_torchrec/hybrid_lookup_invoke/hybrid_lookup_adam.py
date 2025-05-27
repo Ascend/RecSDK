@@ -21,14 +21,9 @@ def invoke(
     optimizer_args: OptimizerArgs,
     momentum1: Momentum,
     momentum2: Momentum,
-    additional_args: Optional[dict] = None,
+    iteration: int = 0,
 ) -> torch.Tensor:
     vbe_metadata = common_args.vbe_metadata
-
-    iteration = additional_args.get('iteration', 0) if additional_args else 0
-    apply_global_weight_decay = additional_args.get('apply_global_weight_decay', False) if additional_args else False
-    prev_iter_dev = additional_args.get('prev_iter_dev', None) if additional_args else None
-    gwd_lower_bound = additional_args.get('gwd_lower_bound', 0.0) if additional_args else 0.0
 
     return torch.ops.fbgemm.split_embedding_codegen_lookup_adam_function(
         # common_args
@@ -81,13 +76,13 @@ def invoke(
         momentum2_offsets=momentum2.offsets,
         momentum2_placements=momentum2.placements,
         # prev_iter
-        prev_iter_dev=prev_iter_dev,
+        prev_iter_dev=None,
         # iter
         iter=iteration,
         output_dtype=common_args.output_dtype,
         is_experimental=common_args.is_experimental,
         use_uniq_cache_locations_bwd=common_args.use_uniq_cache_locations_bwd,
         use_homogeneous_placements=common_args.use_homogeneous_placements,
-        apply_global_weight_decay=apply_global_weight_decay,
-        gwd_lower_bound=gwd_lower_bound,
+        apply_global_weight_decay=False,
+        gwd_lower_bound=0.0,
     )
