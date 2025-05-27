@@ -1,0 +1,693 @@
+diff --git a/configs/ml-1m/hstu-sampled-softmax-n128-large-final.gin b/configs/ml-1m/hstu-sampled-softmax-n128-large-final.gin
+index 7ffc7ef..b63c0df 100644
+--- a/configs/ml-1m/hstu-sampled-softmax-n128-large-final.gin
++++ b/configs/ml-1m/hstu-sampled-softmax-n128-large-final.gin
+@@ -15,13 +15,13 @@ train_fn.local_batch_size = 128
+ train_fn.main_module = "HSTU"
+ train_fn.dropout_rate = 0.2
+ train_fn.user_embedding_norm = "l2_norm"
+-train_fn.num_epochs = 101
+-train_fn.item_embedding_dim = 50
++train_fn.num_epochs = 1
++train_fn.item_embedding_dim = 64
+ 
+ hstu_encoder.num_blocks = 8
+ hstu_encoder.num_heads = 2
+-hstu_encoder.dqk = 25
+-hstu_encoder.dv = 25
++hstu_encoder.dqk = 32
++hstu_encoder.dv = 32
+ hstu_encoder.linear_dropout_rate = 0.2
+ 
+ train_fn.learning_rate = 1e-3
+diff --git a/generative_recommenders/modeling/sequential/autoregressive_losses.py b/generative_recommenders/modeling/sequential/autoregressive_losses.py
+index f42ae6e..e86a24a 100644
+--- a/generative_recommenders/modeling/sequential/autoregressive_losses.py
++++ b/generative_recommenders/modeling/sequential/autoregressive_losses.py
+@@ -22,7 +22,7 @@ import torch
+ import torch.nn.functional as F
+ 
+ from generative_recommenders.rails.similarities.module import SimilarityModule
+-
++import prefetch_shape
+ from torch.utils.checkpoint import checkpoint
+ 
+ 
+@@ -444,12 +444,14 @@ class BCELossWithRatings(AutoregressiveLoss):
+         Returns:
+           (1), loss for the current engaged sequence.
+         """
++        prefetch_offset_shape = prefetch_shape.args["offset"]
++
+         assert output_embeddings.size() == supervision_embeddings.size()
+         assert supervision_ids.size() == supervision_embeddings.size()[:-1]
+         jagged_id_offsets = torch.ops.fbgemm.asynchronous_complete_cumsum(lengths)
+         jagged_supervision_ids = (
+             torch.ops.fbgemm.dense_to_jagged(
+-                supervision_ids.unsqueeze(-1).float(), [jagged_id_offsets]
++                supervision_ids.unsqueeze(-1).float(), [jagged_id_offsets], prefetch_offset_shape
+             )[0]
+             .squeeze(1)
+             .long()
+@@ -457,21 +459,26 @@ class BCELossWithRatings(AutoregressiveLoss):
+         jagged_supervision_weights = torch.ops.fbgemm.dense_to_jagged(
+             supervision_weights.unsqueeze(-1),
+             [jagged_id_offsets],
++            prefetch_offset_shape
+         )[0].squeeze(1)
++
+         return self.jagged_forward(
+             output_embeddings=torch.ops.fbgemm.dense_to_jagged(
+                 output_embeddings,
+                 [jagged_id_offsets],
++                prefetch_offset_shape
+             )[0],
+             supervision_ids=jagged_supervision_ids,
+             supervision_embeddings=torch.ops.fbgemm.dense_to_jagged(
+                 supervision_embeddings,
+                 [jagged_id_offsets],
++                prefetch_offset_shape
+             )[0],
+             supervision_weights=jagged_supervision_weights,
+             supervision_ratings=torch.ops.fbgemm.dense_to_jagged(
+                 supervision_ratings.unsqueeze(-1),
+                 [jagged_id_offsets],
++                prefetch_offset_shape
+             )[0].squeeze(1),
+             negatives_sampler=negatives_sampler,
+         )
+diff --git a/generative_recommenders/modeling/sequential/embedding_modules.py b/generative_recommenders/modeling/sequential/embedding_modules.py
+index 1d6e8e1..41c7951 100644
+--- a/generative_recommenders/modeling/sequential/embedding_modules.py
++++ b/generative_recommenders/modeling/sequential/embedding_modules.py
+@@ -41,6 +41,7 @@ class LocalEmbeddingModule(EmbeddingModule):
+         self,
+         num_items: int,
+         item_embedding_dim: int,
++        precision_mode: bool = False
+     ) -> None:
+         super().__init__()
+ 
+@@ -48,7 +49,11 @@ class LocalEmbeddingModule(EmbeddingModule):
+         self._item_emb = torch.nn.Embedding(
+             num_items + 1, item_embedding_dim, padding_idx=0
+         )
+-        self.reset_params()
++        if precision_mode:
++            self._item_emb.weight.data.fill_(1)
++            self._item_emb.weight.data[0] = 0
++        else:
++            self.reset_params()
+ 
+     def debug_str(self) -> str:
+         return f"local_emb_d{self._item_embedding_dim}"
+diff --git a/generative_recommenders/modeling/sequential/encoder_utils.py b/generative_recommenders/modeling/sequential/encoder_utils.py
+index 644f9fe..b93332e 100644
+--- a/generative_recommenders/modeling/sequential/encoder_utils.py
++++ b/generative_recommenders/modeling/sequential/encoder_utils.py
+@@ -87,6 +87,7 @@ def hstu_encoder(
+     linear_activation: str = "silu",
+     concat_ua: bool = False,
+     enable_relative_attention_bias: bool = True,
++    precision_mode: bool = False
+ ) -> SequentialEncoderWithLearnedSimilarityModule:
+     return HSTU(
+         embedding_module=embedding_module,
+@@ -108,6 +109,7 @@ def hstu_encoder(
+         concat_ua=concat_ua,
+         enable_relative_attention_bias=enable_relative_attention_bias,
+         verbose=verbose,
++        precision_mode=precision_mode
+     )
+ 
+ 
+@@ -122,6 +124,7 @@ def get_sequential_encoder(
+     output_postproc_module: OutputPostprocessorModule,
+     verbose: bool,
+     activation_checkpoint: bool = False,
++    precision_mode: bool = False
+ ) -> SequentialEncoderWithLearnedSimilarityModule:
+     if module_type == "SASRec":
+         model = sasrec_encoder(
+@@ -144,6 +147,7 @@ def get_sequential_encoder(
+             output_postproc_module=output_postproc_module,
+             activation_checkpoint=activation_checkpoint,
+             verbose=verbose,
++            precision_mode=precision_mode
+         )
+     else:
+         raise ValueError(f"Unsupported module_type {module_type}")
+diff --git a/generative_recommenders/modeling/sequential/features.py b/generative_recommenders/modeling/sequential/features.py
+index 70bf80c..a65b43c 100644
+--- a/generative_recommenders/modeling/sequential/features.py
++++ b/generative_recommenders/modeling/sequential/features.py
+@@ -17,7 +17,7 @@
+ from typing import Dict, NamedTuple, Optional, Tuple
+ 
+ import torch
+-
++import prefetch_shape
+ 
+ class SequentialFeatures(NamedTuple):
+     # (B,) x int64. Requires past_lengths[i] > 0 \forall i.
+@@ -36,6 +36,11 @@ def movielens_seq_features_from_row(
+     device: int,
+     max_output_length: int,
+ ) -> Tuple[SequentialFeatures, torch.Tensor, torch.Tensor]:
++    prefetch_shape.args["offset"] = row["history_lengths"].sum().item()
++    lengths = row["history_lengths"].tolist()
++    cumulative_sum = [sum(lengths[:i]) for i in range(len(lengths) + 1)]
++    prefetch_shape.args["lengths"] = cumulative_sum
++
+     historical_lengths = row["history_lengths"].to(device)  # [B]
+     historical_ids = row["historical_ids"].to(device)  # [B, N]
+     historical_ratings = row["historical_ratings"].to(device)
+diff --git a/generative_recommenders/modeling/sequential/hstu.py b/generative_recommenders/modeling/sequential/hstu.py
+index 7bae34d..52960c2 100644
+--- a/generative_recommenders/modeling/sequential/hstu.py
++++ b/generative_recommenders/modeling/sequential/hstu.py
+@@ -19,7 +19,10 @@ Implements HSTU (Hierarchical Sequential Transduction Unit) in
+ Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for Generative Recommendations
+ (https://arxiv.org/abs/2402.17152, ICML'24).
+ """
+-
++import os
++import numpy
++import torch.distributed as dist
++import torch_npu
+ import abc
+ import math
+ from typing import Callable, Dict, List, Optional, Tuple, Union
+@@ -41,9 +44,52 @@ from generative_recommenders.modeling.similarity_module import (
+     SequentialEncoderWithLearnedSimilarityModule,
+ )
+ from generative_recommenders.rails.similarities.module import SimilarityModule
+-
++import prefetch_shape
+ 
+ TIMESTAMPS_KEY = "timestamps"
++lib_fbgemm_npu_api_so_path = os.getenv('LIB_FBGEMM_NPU_API_SO_PATH')
++torch.ops.load_library(lib_fbgemm_npu_api_so_path)
++try:
++    ENABLE_RELATIVE_ATTENTION_BIAS = bool(int(os.getenv('ENABLE_RAB', 0)))
++except ValueError:
++    raise ValueError("ENABLE_RAB enviroment variable is not a valid integer.")
++
++
++class EmbedRank1Select(torch.autograd.Function):
++    @staticmethod
++    def forward(ctx, x, index):
++        result = torch.ops.mxrec.gather_for_rank1(x, index=index)
++        ctx.save_for_backward(x, index)
++        return result
++
++    @staticmethod
++    def backward(ctx, grad_output):
++        x, index = ctx.saved_tensors
++        gradX, gradIndex = torch.ops.mxrec.index_select_for_rank1_backward(grad_output, x, index)
++        return gradX, gradIndex
++
++
++class HstuFusion(torch.autograd.Function):
++    @staticmethod
++    def forward(ctx, q, k, v, mask, bias, mask_type, mode, seq_offset, max_seq_len):
++        silu_value = 1 / max_seq_len
++        out = torch.ops.mxrec.hstu_dense(q, k, v, mask, bias, mask_type, max_seq_len, silu_value, mode, seq_offset)
++        ctx.save_for_backward(q, k, v, mask, bias)
++        ctx.max_seq_len = max_seq_len
++        ctx.silu_scale = silu_value
++        ctx.seq_offset = seq_offset
++        ctx.mask_type = mask_type
++        ctx.mode = mode
++        return out
++
++    @staticmethod
++    def backward(ctx, grad_output):
++        q, k, v, mask, bias = ctx.saved_tensors
++        q_grad, k_grad, v_grad, bias_grad = torch.ops.mxrec.hstu_dense_backward(
++            grad_output, q, k, v, mask, bias, ctx.mode, ctx.mask_type, ctx.max_seq_len, ctx.silu_scale, ctx.seq_offset)
++        if bias is None:
++            bias_grad = None
++        return q_grad, k_grad, v_grad, None, bias_grad, None, None, None, None
+ 
+ 
+ class RelativeAttentionBiasModule(torch.nn.Module):
+@@ -106,6 +152,7 @@ class RelativeBucketedTimeAndPositionBasedBias(RelativeAttentionBiasModule):
+         self._bucketization_fn: Callable[[torch.Tensor], torch.Tensor] = (
+             bucketization_fn
+         )
++        self.tw_elect_op = EmbedRank1Select()
+ 
+     def forward(
+         self,
+@@ -130,15 +177,13 @@ class RelativeBucketedTimeAndPositionBasedBias(RelativeAttentionBiasModule):
+         # causal masking. Otherwise [:, :-1] - [:, 1:] works
+         bucketed_timestamps = torch.clamp(
+             self._bucketization_fn(
+-                ext_timestamps[:, 1:].unsqueeze(2) - ext_timestamps[:, :-1].unsqueeze(1)
++                (ext_timestamps[:, 1:].unsqueeze(2) - ext_timestamps[:, :-1].unsqueeze(1)).to(torch.float64)
+             ),
+             min=0,
+             max=self._num_buckets,
+         ).detach()
+         rel_pos_bias = t[:, :, r:-r]
+-        rel_ts_bias = torch.index_select(
+-            self._ts_w, dim=0, index=bucketed_timestamps.view(-1)
+-        ).view(B, N, N)
++        rel_ts_bias = self.tw_elect_op.apply(self._ts_w, bucketed_timestamps.view(-1)).view(B, N, N)
+         return rel_pos_bias + rel_ts_bias
+ 
+ 
+@@ -199,26 +244,43 @@ def _hstu_attention_maybe_from_cache(
+             values=k, offsets=[x_offsets], max_lengths=[n], padding_value=0.0
+         )
+ 
+-    qk_attn = torch.einsum(
+-        "bnhd,bmhd->bhnm",
+-        padded_q.view(B, n, num_heads, attention_dim),
+-        padded_k.view(B, n, num_heads, attention_dim),
+-    )
+-    if all_timestamps is not None:
+-        qk_attn = qk_attn + rel_attn_bias(all_timestamps).unsqueeze(1)
+-    qk_attn = F.silu(qk_attn) / n
+-    qk_attn = qk_attn * invalid_attn_mask.unsqueeze(0).unsqueeze(0)
+-    attn_output = torch.ops.fbgemm.dense_to_jagged(
+-        torch.einsum(
+-            "bhnm,bmhd->bnhd",
+-            qk_attn,
+-            torch.ops.fbgemm.jagged_to_padded_dense(v, [x_offsets], [n]).reshape(
+-                B, n, num_heads, linear_dim
+-            ),
+-        ).reshape(B, n, num_heads * linear_dim),
+-        [x_offsets],
+-    )[0]
+-    return attn_output, padded_q, padded_k
++        prefetch_offset_shape = prefetch_shape.args["offset"]
++        use_npu_hstu = int(os.getenv("USE_NPU_HSTU", 0))
++
++        if use_npu_hstu:
++            hstu_fusion_op = HstuFusion()
++            q_ = q.reshape(-1, num_heads, attention_dim)
++            k_ = k.reshape(-1, num_heads, attention_dim)
++            v_ = v.reshape(-1, num_heads, attention_dim)
++            prefetch_lengths = numpy.array(prefetch_shape.args["lengths"])
++            mask_type = 0
++            attn_output = hstu_fusion_op.apply(q_, k_, v_, None, None, mask_type, "jagged", prefetch_lengths, n)
++            attn_output = attn_output.reshape(-1, num_heads * linear_dim)
++            return attn_output, padded_q, padded_k
++        else:
++            qk_attn = torch.einsum(
++                "bnhd,bmhd->bhnm",
++                padded_q.view(B, n, num_heads, attention_dim),
++                padded_k.view(B, n, num_heads, attention_dim),
++            )
++            if all_timestamps is not None and rel_attn_bias:
++                qk_attn = qk_attn + rel_attn_bias(all_timestamps).unsqueeze(1)
++
++            qk_attn = F.silu(qk_attn) / n
++            qk_attn = qk_attn * invalid_attn_mask.unsqueeze(0).unsqueeze(0)
++            attn_output = torch.ops.fbgemm.dense_to_jagged(
++                torch.einsum(
++                    "bhnm,bmhd -> bnhd",
++                    qk_attn,
++                    torch.ops.fbgemm.jagged_to_padded_dense(v, [x_offsets], [n]).reshape(
++                        B, n, num_heads, linear_dim
++                    ),
++                ).reshape(B, n, num_heads * linear_dim),
++                [x_offsets],
++                prefetch_offset_shape
++            )[0]
++
++            return attn_output, padded_q, padded_k
+ 
+ 
+ class SequentialTransductionUnitJagged(torch.nn.Module):
+@@ -237,6 +299,7 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
+         concat_ua: bool = False,
+         epsilon: float = 1e-6,
+         max_length: Optional[int] = None,
++        precision_mode: bool = False
+     ) -> None:
+         super().__init__()
+         self._embedding_dim: int = embedding_dim
+@@ -251,15 +314,15 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
+         self._normalization: str = normalization
+         self._linear_config: str = linear_config
+         if self._linear_config == "uvqk":
+-            self._uvqk: torch.nn.Parameter = torch.nn.Parameter(
+-                torch.empty(
+-                    (
+-                        embedding_dim,
+-                        linear_hidden_dim * 2 * num_heads
+-                        + attention_dim * num_heads * 2,
+-                    )
+-                ).normal_(mean=0, std=0.02),
++            _param = torch.empty(
++                (
++                    embedding_dim,
++                    linear_hidden_dim * 2 * num_heads
++                    + attention_dim * num_heads * 2,
++                )
+             )
++            _param = _param.normal_(mean=0, std=0.02) if not precision_mode else _param.fill(0.01)
++            self._uvqk: torch.nn.Parameter = torch.nn.Parameter(_param,)
+         else:
+             raise ValueError(f"Unknown linear_config {self._linear_config}")
+         self._linear_activation: str = linear_activation
+@@ -339,7 +402,6 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
+ 
+         B: int = x_offsets.size(0) - 1
+         if self._normalization == "rel_bias" or self._normalization == "hstu_rel_bias":
+-            assert self._rel_attn_bias is not None
+             attn_output, padded_q, padded_k = _hstu_attention_maybe_from_cache(
+                 num_heads=self._num_heads,
+                 attention_dim=self._attention_dim,
+@@ -399,12 +461,16 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
+                 qk_attn = qk_attn + self._rel_attn_bias(all_timestamps)
+             qk_attn = F.softmax(qk_attn / math.sqrt(self._attention_dim), dim=-1)
+             qk_attn = qk_attn * invalid_attn_mask
++
++            prefetch_offset_shape = prefetch_shape.args["offset"]
++
+             attn_output = torch.ops.fbgemm.dense_to_jagged(
+                 torch.bmm(
+                     qk_attn,
+                     torch.ops.fbgemm.jagged_to_padded_dense(v, [x_offsets], [n]),
+                 ),
+                 [x_offsets],
++                prefetch_offset_shape
+             )[0]
+         else:
+             raise ValueError(f"Unknown normalization method {self._normalization}")
+@@ -479,7 +545,7 @@ class HSTUJagged(torch.nn.Module):
+         cache_states: List[HSTUCacheState] = []
+ 
+         with torch.autocast(
+-            "cuda",
++            "npu",
+             enabled=self._autocast_dtype is not None,
+             dtype=self._autocast_dtype or torch.float16,
+         ):
+@@ -517,8 +583,11 @@ class HSTUJagged(torch.nn.Module):
+         Returns:
+             x' = f(x), (B, N, D) x float
+         """
++
++        prefetch_offset_shape = prefetch_shape.args["offset"]
++
+         if len(x.size()) == 3:
+-            x = torch.ops.fbgemm.dense_to_jagged(x, [x_offsets])[0]
++            x = torch.ops.fbgemm.dense_to_jagged(x, [x_offsets], prefetch_offset_shape)[0]
+ 
+         jagged_x, cache_states = self.jagged_forward(
+             x=x,
+@@ -570,6 +639,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+         enable_relative_attention_bias: bool = True,
+         concat_ua: bool = False,
+         verbose: bool = True,
++        precision_mode: bool = False
+     ) -> None:
+         super().__init__(ndp_module=similarity_module)
+ 
+@@ -588,7 +658,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+         self._linear_activation: str = linear_activation
+         self._linear_dropout_rate: float = linear_dropout_rate
+         self._attn_dropout_rate: float = attn_dropout_rate
+-        self._enable_relative_attention_bias: bool = enable_relative_attention_bias
++        self._enable_relative_attention_bias: bool = ENABLE_RELATIVE_ATTENTION_BIAS
+         self._hstu = HSTUJagged(
+             modules=[
+                 SequentialTransductionUnitJagged(
+@@ -609,12 +679,13 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+                                 torch.log(torch.abs(x).clamp(min=1)) / 0.301
+                             ).long(),
+                         )
+-                        if enable_relative_attention_bias
++                        if ENABLE_RELATIVE_ATTENTION_BIAS
+                         else None
+                     ),
+                     dropout_ratio=linear_dropout_rate,
+                     attn_dropout_ratio=attn_dropout_rate,
+                     concat_ua=concat_ua,
++                    precision_mode=precision_mode
+                 )
+                 for _ in range(num_blocks)
+             ],
+@@ -635,6 +706,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+             ),
+         )
+         self._verbose: bool = verbose
++        self.precision_mode = precision_mode
+         self.reset_params()
+ 
+     def reset_params(self) -> None:
+@@ -644,7 +716,11 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+                     print(f"Skipping init for {name}")
+                 continue
+             try:
+-                torch.nn.init.xavier_normal_(params.data)
++                if not self.precision_mode:
++                    torch.nn.init.xavier_normal_(params.data)
++                else:
++                    fixed_value = 1
++                    params.data.fill_(fixed_value)
+                 if self._verbose:
+                     print(
+                         f"Initialize {name} as xavier normal: {params.data.size()} params"
+diff --git a/generative_recommenders/modeling/sequential/input_features_preprocessors.py b/generative_recommenders/modeling/sequential/input_features_preprocessors.py
+index 7f6f3e8..3b6fd55 100644
+--- a/generative_recommenders/modeling/sequential/input_features_preprocessors.py
++++ b/generative_recommenders/modeling/sequential/input_features_preprocessors.py
+@@ -47,6 +47,7 @@ class LearnablePositionalEmbeddingInputFeaturesPreprocessor(
+         max_sequence_len: int,
+         embedding_dim: int,
+         dropout_rate: float,
++        precision_mode: bool = False
+     ) -> None:
+         super().__init__()
+ 
+@@ -57,7 +58,10 @@ class LearnablePositionalEmbeddingInputFeaturesPreprocessor(
+         )
+         self._dropout_rate: float = dropout_rate
+         self._emb_dropout = torch.nn.Dropout(p=dropout_rate)
+-        self.reset_state()
++        if precision_mode:
++            self._pos_emb.weight.data.fill_(1)
++        else:
++            self.reset_state()
+ 
+     def debug_str(self) -> str:
+         return f"posi_d{self._dropout_rate}"
+diff --git a/generative_recommenders/rails/similarities/mol/similarity_fn.py b/generative_recommenders/rails/similarities/mol/similarity_fn.py
+index b8542dc..18876fa 100644
+--- a/generative_recommenders/rails/similarities/mol/similarity_fn.py
++++ b/generative_recommenders/rails/similarities/mol/similarity_fn.py
+@@ -29,7 +29,6 @@ from generative_recommenders.rails.similarities.module import SimilarityModule
+ from generative_recommenders.rails.similarities.mol.embeddings_fn import MoLEmbeddingsFn
+ 
+ 
+-@torch.compile(dynamic=True)
+ def _softmax_dropout_combiner_fn(
+     x: torch.Tensor,
+     y: torch.Tensor,
+@@ -47,7 +46,6 @@ def _softmax_dropout_combiner_fn(
+     return x, (x * y).sum(-1)
+ 
+ 
+-@torch.compile
+ def _load_balancing_mi_loss_fn(
+     gating_prs: torch.Tensor,
+     eps: float,
+@@ -328,7 +326,7 @@ class MoLSimilarity(SimilarityModule):
+             (B, X) x float, Dict[str, Tensor] representing auxiliary losses.
+         """
+         with torch.autocast(
+-            enabled=self._autocast_bf16, dtype=torch.bfloat16, device_type="cuda"
++            enabled=self._autocast_bf16, dtype=torch.bfloat16, device_type='npu'
+         ):
+             B = query_embeddings.size(0)
+             B_prime = item_embeddings.shape[0]  # 1 or B
+diff --git a/generative_recommenders/trainer/train.py b/generative_recommenders/trainer/train.py
+index 31861e7..64f46c3 100644
+--- a/generative_recommenders/trainer/train.py
++++ b/generative_recommenders/trainer/train.py
+@@ -27,6 +27,8 @@ import gin
+ 
+ import torch
+ import torch.distributed as dist
++import torch_npu
++import numpy as np
+ 
+ from generative_recommenders.data.eval import (
+     _avg,
+@@ -66,6 +68,19 @@ from generative_recommenders.modeling.similarity_utils import get_similarity_fun
+ from generative_recommenders.trainer.data_loader import create_data_loader
+ from torch.nn.parallel import DistributedDataParallel as DDP
+ from torch.utils.tensorboard import SummaryWriter
++from torch.utils.data import Dataset
++
++
++class RepeatDataset(Dataset):
++    def __init__(self, dataset, num_repeats):
++        self.dataset = dataset
++        self.num_repeats = num_repeats
++
++    def __len__(self):
++        return len(self.dataset) * self.num_repeats
++
++    def __getitem__(self, idx):
++        return self.dataset[idx % len(self.dataset)]
+ 
+ 
+ def setup(rank: int, world_size: int, master_port: int) -> None:
+@@ -73,7 +88,7 @@ def setup(rank: int, world_size: int, master_port: int) -> None:
+     os.environ["MASTER_PORT"] = str(master_port)
+ 
+     # initialize the process group
+-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
++    dist.init_process_group("hccl", rank=rank, world_size=world_size)
+ 
+ 
+ def cleanup() -> None:
+@@ -131,11 +146,18 @@ def train_fn(
+     l2_norm_eps: float = 1e-6,
+     enable_tf32: bool = False,
+     random_seed: int = 42,
++    precision_mode: bool = False
+ ) -> None:
+     # to enable more deterministic results.
+-    random.seed(random_seed)
+-    torch.backends.cuda.matmul.allow_tf32 = enable_tf32
+-    torch.backends.cudnn.allow_tf32 = enable_tf32
++    if precision_mode:
++        shuffle = False
++    else:
++        shuffle = True
++        random.seed(random_seed)
++    torch_npu.npu.set_device(rank)
++    torch_npu.npu.set_compile_mode(jit_compile=False)
++    torch_npu.npu.matmul.allow_hf32 = True
++    torch_npu.npu.conv.allow_hf32 = True
+     logging.info(f"cuda.matmul.allow_tf32: {enable_tf32}")
+     logging.info(f"cudnn.allow_tf32: {enable_tf32}")
+     logging.info(f"Training model on rank {rank}.")
+@@ -148,12 +170,13 @@ def train_fn(
+         positional_sampling_ratio=positional_sampling_ratio,
+     )
+ 
++    train_dataset = RepeatDataset(dataset.train_dataset, num_repeats=100)
+     train_data_sampler, train_data_loader = create_data_loader(
+-        dataset.train_dataset,
++        train_dataset,
+         batch_size=local_batch_size,
+         world_size=world_size,
+         rank=rank,
+-        shuffle=True,
++        shuffle=shuffle,
+         drop_last=world_size > 1,
+     )
+     eval_data_sampler, eval_data_loader = create_data_loader(
+@@ -161,7 +184,7 @@ def train_fn(
+         batch_size=eval_batch_size,
+         world_size=world_size,
+         rank=rank,
+-        shuffle=True,  # needed for partial eval
++        shuffle=shuffle,
+         drop_last=world_size > 1,
+     )
+ 
+@@ -170,6 +193,7 @@ def train_fn(
+         embedding_module: EmbeddingModule = LocalEmbeddingModule(
+             num_items=dataset.max_item_id,
+             item_embedding_dim=item_embedding_dim,
++            precision_mode=precision_mode,
+         )
+     else:
+         raise ValueError(f"Unknown embedding_module_type {embedding_module_type}")
+@@ -199,6 +223,7 @@ def train_fn(
+         max_sequence_len=dataset.max_sequence_length + gr_output_length + 1,
+         embedding_dim=item_embedding_dim,
+         dropout_rate=dropout_rate,
++        precision_mode=precision_mode
+     )
+ 
+     model = get_sequential_encoder(
+@@ -210,6 +235,7 @@ def train_fn(
+         input_preproc_module=input_preproc_module,
+         output_postproc_module=output_postproc_module,
+         verbose=True,
++        precision_mode=precision_mode
+     )
+     model_debug_str = model.debug_str()
+ 
+@@ -261,6 +287,7 @@ def train_fn(
+     device = rank
+     if main_module_bf16:
+         model = model.to(torch.bfloat16)
++    device = f"npu:{device}"
+     model = model.to(device)
+     ar_loss = ar_loss.to(device)
+     negatives_sampler = negatives_sampler.to(device)
+@@ -297,7 +324,7 @@ def train_fn(
+         logging.info(f"Rank {rank}: disabling summary writer")
+ 
+     last_training_time = time.time()
+-    torch.autograd.set_detect_anomaly(True)
++    # torch.autograd.set_detect_anomaly(True)
+ 
+     batch_id = 0
+     epoch = 0
+diff --git a/main.py b/main.py
+index 78b44a1..bfbb2c2 100644
+--- a/main.py
++++ b/main.py
+@@ -31,10 +31,14 @@ import gin
+ 
+ import torch
+ import torch.multiprocessing as mp
++import torch_npu
+ 
+ from absl import app, flags
+ from generative_recommenders.trainer.train import train_fn
+ 
++
++for handler in logging.root.handlers[:]:
++    logging.root.removeHandler(handler)
+ logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+ 
+ 
+@@ -66,9 +70,8 @@ def mp_train_fn(
+ 
+ 
+ def _main(argv) -> None:  # pyre-ignore [2]
+-    world_size = torch.cuda.device_count()
++    world_size = torch_npu.npu.device_count()
+ 
+-    mp.set_start_method("forkserver")
+     mp.spawn(
+         mp_train_fn,
+         args=(world_size, FLAGS.master_port, FLAGS.gin_config_file),
+diff --git a/prefetch_shape.py b/prefetch_shape.py
+new file mode 100644
+index 0000000..c71a4d9
+--- /dev/null
++++ b/prefetch_shape.py
+@@ -0,0 +1 @@
++args = {"offset": 0}
+\ No newline at end of file
+diff --git a/preprocess_public_data.py b/preprocess_public_data.py
+index c722cf5..4414c11 100644
+--- a/preprocess_public_data.py
++++ b/preprocess_public_data.py
+@@ -23,9 +23,9 @@ from generative_recommenders.data.preprocessor import get_common_preprocessors
+ 
+ def main() -> None:
+     get_common_preprocessors()["ml-1m"].preprocess_rating()
+-    get_common_preprocessors()["ml-20m"].preprocess_rating()
++    # get_common_preprocessors()["ml-20m"].preprocess_rating()
+     # get_common_preprocessors()["ml-1b"].preprocess_rating()
+-    get_common_preprocessors()["amzn-books"].preprocess_rating()
++    # get_common_preprocessors()["amzn-books"].preprocess_rating()
+ 
+ 
+ if __name__ == "__main__":
