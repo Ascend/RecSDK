@@ -137,6 +137,9 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
     auto uniqueId = context->GetOptionalInputTensor(UNIQUE_ID_INDEX);
     if (optimType == SGD) {
         context->SetTilingKey(NORMAL_SGD);
+    } else if (optimType == ADAM) {
+        ret = NormalAdamTilingFunc(context, tilingData);
+        context->SetTilingKey(NORMAL_ADAM);
     } else if (optimType == ADAGRAD) {
         context->SetTilingKey(NORMAL_ADAGRAD);
     } else {
