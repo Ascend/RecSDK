@@ -25,7 +25,6 @@ class FfmIterator(BaseIterator):
 
     def get_iterator(self, src_dataset):
         src_dataset = src_dataset.map(self.parser)
-        # src_dataset = src_dataset.shuffle(buffer_size=BUFFER_SIZE)
         iterator = src_dataset.make_initializable_iterator()
         batch = iterator.get_next()
         self.initializer = iterator.initializer
@@ -71,7 +70,6 @@ class DinIterator(BaseIterator):
 
     def get_iterator(self, src_dataset):
         src_dataset = src_dataset.map(self.parser)
-        # src_dataset = src_dataset.shuffle(buffer_size=BUFFER_SIZE)
         iterator = src_dataset.make_initializable_iterator()
         output = iterator.get_next()
         (_attention_news_indices, _attention_news_values, _attention_news_shape, \
@@ -156,7 +154,6 @@ class CCCFNetIterator(BaseIterator):
 
     def get_iterator(self, src_dataset):
         src_dataset = src_dataset.map(self.parser)
-        # src_dataset = src_dataset.shuffle(buffer_size=BUFFER_SIZE)
         iterator = src_dataset.make_initializable_iterator()
         _labels, _userIds, _itemIds, \
         _user_profiles_indices, _user_profiles_values, _user_profiles_weights, _user_profiles_shape, \

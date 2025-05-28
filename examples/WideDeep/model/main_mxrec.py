@@ -475,7 +475,7 @@ if __name__ == "__main__":
         if MODIFY_GRAPH_FLAG:  # 该场景添加hook处理校验问题
             hook_list.append(GraphModifierHook(modify_graph=False))
 
-    # with tf.compat.v1.Session(config=sess_config(dump_data=False)) as sess:
+    # Disable dumping data during session: set dump_data=False in sess_config:
     if use_faae:
         sess = tf.compat.v1.train.MonitoredTrainingSession(
             hooks=hook_list,
