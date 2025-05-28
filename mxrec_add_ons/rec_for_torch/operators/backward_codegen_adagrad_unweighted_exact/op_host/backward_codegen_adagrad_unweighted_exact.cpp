@@ -137,6 +137,8 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
     auto uniqueId = context->GetOptionalInputTensor(UNIQUE_ID_INDEX);
     if (optimType == SGD) {
         context->SetTilingKey(NORMAL_SGD);
+    } else if (optimType == ADAGRAD) {
+        context->SetTilingKey(NORMAL_ADAGRAD);
     } else {
         OPS_LOG_E("Tiling Debug", "OptimType shape is not supported.");
         return ge::GRAPH_FAILED;

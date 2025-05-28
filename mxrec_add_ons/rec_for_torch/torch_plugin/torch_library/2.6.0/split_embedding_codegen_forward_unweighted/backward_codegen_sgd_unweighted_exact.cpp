@@ -49,7 +49,7 @@ Tensor split_embedding_backward_codegen_sgd_unweighted_exact_cuda(const Tensor& 
                                                                   const Tensor& unique_inverse,
                                                                   double learning_rate = 0);
 
-class SplitLookupFunction_sgd_Op : public torch::autograd::Function<SplitLookupFunction_sgd_Op> {
+class SplitLookupSGD : public torch::autograd::Function<SplitLookupSGD> {
 public:
     static constexpr bool isTraceable = true;
 
@@ -263,7 +263,7 @@ Tensor split_embedding_codegen_lookup_sgd_function(
     // Set to experimental if either the feature is enabled in JK, or the user specifies to use TBEv2
     const auto is_experimental = is_experimental_tbe;
 
-    return SplitLookupFunction_sgd_Op::apply(
+    return SplitLookupSGD::apply(
         placeholder_autograd_tensor, output_dtype, dev_weights, uvm_weights, lxu_cache_weights, weights_placements,
         weights_offsets, D_offsets, total_D, max_D, hash_size_cumsum, total_hash_size_bits, indices, hash_indices,
         unique_ids, unique_offsets, unique_inverse, offsets, pooling_mode, indice_weights, feature_requires_grad,
