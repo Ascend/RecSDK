@@ -620,6 +620,20 @@ class OptionalIntValidator(IntValidator):
                                                        invalid_options, constrained_options, msg)
 
 
+class OptionalFloatValidator(FloatValidator):
+    """
+    Float type validator if value is not None
+    """
+
+    def __init__(self, name: str, value: float, min_value: float = None, max_value: float = None,
+                 invalid_options: List = None, constrained_options: List = None, msg: str = ""):
+        if not isinstance(value, float):
+            super(OptionalFloatValidator, self).__init__(name, 0.0, None, None, None, None, msg)
+        else:
+            super(OptionalFloatValidator, self).__init__(name, value, min_value, max_value,
+                                                       invalid_options, constrained_options, msg)
+
+
 class Convert2intValidator(IntValidator):
     """
     check whether a variable can be converted to int or not.
