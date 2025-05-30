@@ -5,67 +5,50 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
-import logging
 import os
-import sysconfig
 from typing import List
-
+import logging
+import sysconfig
 import pytest
-import torch
-import torch.distributed as dist
-import torch.multiprocessing as mp
-import torch_npu
-from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.optim import Adam, Adagrad
-from torch.utils.data import DataLoader
-
 from dataset import RandomRecDataset, Batch
-from hybrid_torchrec import HashEmbeddingBagCollection, HashEmbeddingBagConfig
-from hybrid_torchrec.distributed.sharding_plan import get_default_hybrid_sharders
 from model import Model
 from util import setup_logging
+import torch
+import torch_npu
+import torch.multiprocessing as mp
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data import DataLoader
+from torch.optim import Adam, Adagrad
+
+from hybrid_torchrec import HashEmbeddingBagCollection, HashEmbeddingBagConfig
+from hybrid_torchrec.distributed.sharding_plan import get_default_hybrid_sharders
+from hybrid_torchrec.distributed.hybrid_train_pipeline import (
+    HybridTrainPipelineSparseDist,
+)
 
 import torchrec
+from torchrec import EmbeddingBagConfig
 import torchrec.distributed
-from torchrec import (
-    EmbeddingBagConfig,
-)
+from torchrec.optim.apply_optimizer_in_backward import apply_optimizer_in_backward
 from torchrec.distributed.planner import (
     EmbeddingShardingPlanner,
     Topology,
     ParameterConstraints,
 )
 from torchrec.distributed.types import ShardingEnv
-from torchrec.optim.apply_optimizer_in_backward import apply_optimizer_in_backward
 from torchrec.optim.keyed import CombinedOptimizer
 
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
-
-LOOP_TIMES = 8
-BATCH_NUM = 32
-WORLD_SIZE = 2
 
 OPTIMIZER_PARAM = {
     Adam: dict(lr=0.02),
     Adagrad: dict(lr=0.02, eps=1.0e-8),
 }
 
-
-def generate_hash_config(
-    embedding_dims, num_embeddings, pool_type
-) -> List[HashEmbeddingBagConfig]:
-    test_table_configs: List[HashEmbeddingBagCollection] = []
-    for i, (table_dim, num_embedding) in enumerate(zip(embedding_dims, num_embeddings)):
-        config = HashEmbeddingBagConfig(
-            name=f"table{i}",
-            embedding_dim=table_dim,
-            num_embeddings=num_embedding,
-            feature_names=[f"feat{i}"],
-            pooling=pool_type,
-            init_fn=weight_init,
-        )
-        test_table_configs.append(config)
-    return test_table_configs
+WORLD_SIZE = 2
+LOOP_TIMES = 8
+BATCH_NUM = 32
 
 
 def execute(
@@ -76,31 +59,43 @@ def execute(
     num_embeddings,
     pool_type,
     sharding_type,
-    lockup_len,
+    lookup_len,
     device,
     optim,
 ):
     setup_logging(rank)
     logging.info("this test %s", os.path.basename(__file__))
-    embeding_config = generate_hash_config(embedding_dims, num_embeddings, pool_type)
-
-    dataset = RandomRecDataset(BATCH_NUM, lockup_len, num_embeddings, table_num)
-    gloden_dataset_loader = DataLoader(
-        dataset,
+    # , batch_num, lookup_lens, num_embeddings, table_num
+    dataset_gloden = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num)
+    dataset = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num)
+    dataset_loader_gloden = DataLoader(
+        dataset_gloden,
         batch_size=None,
-        num_workers=1,
+        batch_sampler=None,
+        pin_memory=True,
     )
     data_loader = DataLoader(
         dataset,
         batch_size=None,
+        batch_sampler=None,
         pin_memory=True,
         pin_memory_device="npu",
         num_workers=1,
     )
+    embeding_config = []
+    for i in range(table_num):
+        ebc_config = HashEmbeddingBagConfig(
+            name=f"table{i}",
+            embedding_dim=embedding_dims[i],
+            num_embeddings=num_embeddings[i],
+            feature_names=[f"feat{i}"],
+            pooling=pool_type,
+            init_fn=weight_init,
+        )
+        embeding_config.append(ebc_config)
 
     test_model = TestModel(rank, world_size, device)
-
-    gloden_results = test_model.cpu_gloden_loss(embeding_config, gloden_dataset_loader, optim)
+    gloden_results = test_model.cpu_gloden_loss(embeding_config, dataset_loader_gloden, optim)
     test_results = test_model.test_loss(embeding_config, data_loader, sharding_type, optim)
     for gloden, result in zip(gloden_results, test_results):
         logging.debug("")
@@ -141,17 +136,17 @@ class TestModel:
         num_features = sum([c.num_features() for c in embeding_config])
         ebc = Model(ebc, num_features)
         model = DDP(ebc, device_ids=None, process_group=pg)
-        opt = optim(ebc.parameters(), **OPTIMIZER_PARAM[optim])
 
+        opt = optim(ebc.parameters(), **OPTIMIZER_PARAM[optim])
         results = []
         batch: Batch
         iter_ = iter(dataloader)
         for _ in range(LOOP_TIMES):
             batch = next(iter_)
             opt.zero_grad()
-            loss, out = model(batch)
+            loss, output = model(batch)
             results.append(loss.detach().cpu())
-            results.append(out.detach().cpu())
+            results.append(output.detach().cpu())
             loss.backward()
             opt.step()
 
@@ -176,13 +171,13 @@ class TestModel:
         sharding_type: str,
         optim,
     ):
-        num_features = sum([c.num_features() for c in embeding_config])
         rank, world_size = self.rank, self.world_size
         host_gp = dist.new_group(backend="gloo")
         host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
-        # Shard
+
         table_num = len(embeding_config)
-        ebc = HashEmbeddingBagCollection(device=torch.device("meta"), tables=embeding_config)
+        ebc = HashEmbeddingBagCollection(device=self.device, tables=embeding_config)
+        num_features = sum([c.num_features() for c in embeding_config])
         ebc = Model(ebc, num_features)
         apply_optimizer_in_backward(
             optimizer_class=optim,
@@ -214,16 +209,18 @@ class TestModel:
         # Optimizer
         optimizer = CombinedOptimizer([ddp_model.fused_optimizer])
         results = []
-        batch: Batch
         iter_ = iter(dataloader)
+        ddp_model.train()
+        pipe = HybridTrainPipelineSparseDist(
+            ddp_model,
+            optimizer=optimizer,
+            device=torch.device(self.device),
+            return_loss=True,
+        )
         for _ in range(LOOP_TIMES):
-            batch = next(iter_).to(self.device)
-            optimizer.zero_grad()
-            loss, out = ebc(batch)
+            out, loss = pipe.progress(iter_)
             results.append(loss.detach().cpu())
             results.append(out.detach().cpu())
-            loss.backward()
-            optimizer.step()
 
         for i in range(table_num):
             logging.debug(
@@ -234,25 +231,25 @@ class TestModel:
         return results
 
 
-@pytest.mark.parametrize("table_num", [3])
+@pytest.mark.parametrize("table_num", [2])
 @pytest.mark.parametrize("embedding_dims", [[32, 64, 128]])
 @pytest.mark.parametrize("num_embeddings", [[400, 4000, 400]])
 @pytest.mark.parametrize("pool_type", [torchrec.PoolingType.MEAN])
 @pytest.mark.parametrize("sharding_type", ["table_wise", "row_wise"])
-@pytest.mark.parametrize("lockup_len", [1024])
-@pytest.mark.parametrize("device", ["npu"])
+@pytest.mark.parametrize("lookup_len", [1024])
+@pytest.mark.parametrize("device", ["cpu", "npu"])
 @pytest.mark.parametrize("optim", [Adagrad])
-def test_hstu_dens_normal(
+def test_hybrid_pipeline_hash_embedding_bag(
     table_num,
     embedding_dims,
     num_embeddings,
     pool_type,
     sharding_type,
-    lockup_len,
+    lookup_len,
     device,
     optim,
 ):
-    if device == "cpu" and (sharding_type == "row_wise" or optim == Adam):
+    if device == "cpu" and sharding_type == "row_wise":
         return
     mp.spawn(
         execute,
@@ -263,7 +260,7 @@ def test_hstu_dens_normal(
             num_embeddings,
             pool_type,
             sharding_type,
-            lockup_len,
+            lookup_len,
             device,
             optim,
         ),

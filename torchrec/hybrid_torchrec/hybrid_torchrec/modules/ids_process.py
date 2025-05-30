@@ -29,7 +29,7 @@ class BucketParams:
     total_num_blocks: torch.Tensor = None
     weights: torch.Tensor = None
     batch_size_per_feature: torch.Tensor = None
-    max_b: torch.Tensor = None
+    max_b: int = 0
     block_bucketize_pos: torch.Tensor = None
     return_bucket_mapping: bool = False
     keep_orig_idx: bool = False
