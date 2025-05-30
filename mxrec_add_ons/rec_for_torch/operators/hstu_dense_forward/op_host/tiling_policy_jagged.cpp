@@ -312,9 +312,9 @@ bool TilingPolicyJagged::TilingCore(gert::TilingContext* context, optiling::Hstu
     OPS_CHECK_PTR_NULL(seqOffset, return false);
 
     auto *seqOffsetData = const_cast<int64_t *>(reinterpret_cast<const int64_t *>(seqOffset->GetData()));
-    int seq_offset_lens = seqOffset->GetSize();
-    if (seq_offset_lens > (MAX_BATCH_SIZE + 1)) {
-        OPS_LOG_E("", "seq_offset_lens exceed limit %d \n", MAX_BATCH_SIZE + 1);
+    int seqOffsetLens = seqOffset->GetSize();
+    if (seqOffsetLens > (MAX_BATCH_SIZE + 1)) {
+        OPS_LOG_E("", "seqOffsetLens exceed limit %d \n", MAX_BATCH_SIZE + 1);
         return false;
     }
 
@@ -326,7 +326,7 @@ bool TilingPolicyJagged::TilingCore(gert::TilingContext* context, optiling::Hstu
     std::vector<int> workLoads;
 
     uint32_t seqOffsets[MAX_BATCH_SIZE + 1] = {0};
-    for (auto i = 0; i < seq_offset_lens; i++) {
+    for (auto i = 0; i < seqOffsetLens; i++) {
         seqOffsets[i] = seqOffsetData[i];
     }
 
