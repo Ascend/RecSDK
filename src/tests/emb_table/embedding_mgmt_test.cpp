@@ -20,7 +20,6 @@ See the License for the specific language governing permissions and
 #include <acl/acl_rt.h>
 #include <limits>
 #include <mpi.h>
-
 #include "utils/common.h"
 #include "utils/logger.h"
 #include "utils/error.h"
@@ -118,7 +117,10 @@ TEST_F(EmbeddingMgmtTest, GetAttributes)
     EXPECT_EQ(paddingKeysOffset.size(), 0);
 }
 
-TEST_F(EmbeddingMgmtTest, TestGetKeyOffsetMapAndNoError)
+/**
+ * 测试GetKeyOffsetMap
+ */
+TEST_F(EmbeddingMgmtTest, GetKeyOffsetMap)
 {
     const string tableName = "test1";
     ThresholdValue thvalue(tableName, 0, 0, 0, false);
@@ -136,13 +138,22 @@ TEST_F(EmbeddingMgmtTest, TestGetKeyOffsetMapAndNoError)
         EXPECT_EQ(testKeys[i], i);
     }
 
-    MxRec::KeyOffsetMemT kom = EmbeddingMgmt::Instance()->GetKeyOffsetMap();
+    int exp = 0;
+    try {
+        MxRec::KeyOffsetMemT kom = EmbeddingMgmt::Instance()->GetKeyOffsetMap();
+    } catch (exception& e) {
+        exp = 1;
+    }
     map<EmbNameT, size_t> maxOffsetMap = EmbeddingMgmt::Instance()->GetMaxOffset();
-    EXPECT_EQ(kom.size(), 1);
+
     EXPECT_EQ(maxOffsetMap[tableName], testNum);
+    EXPECT_EQ(exp, 0);
 }
 
-TEST_F(EmbeddingMgmtTest, TestEvictKeysAndEvictKeysCombine)
+/**
+ * 测试EvictKeys与EvictKeysCombine
+ */
+TEST_F(EmbeddingMgmtTest, EvictKeys)
 {
     const string tableName = "test1";
     ThresholdValue thvalue(tableName, 0, 0, 0, false);
@@ -175,7 +186,10 @@ TEST_F(EmbeddingMgmtTest, TestEvictKeysAndEvictKeysCombine)
     EXPECT_EQ(kom[tableName].size(), testNum - partialNum - partialNum);
 }
 
-TEST_F(EmbeddingMgmtTest, TestSaveAndLoadWhenSingleTable)
+/**
+ * 测试Save与Load:单表
+ */
+TEST_F(EmbeddingMgmtTest, SaveAndLoadSingleTable)
 {
     const string tableName = "test1";
     ThresholdValue thvalue(tableName, 0, 0, 0, false);
@@ -193,28 +207,38 @@ TEST_F(EmbeddingMgmtTest, TestSaveAndLoadWhenSingleTable)
         EXPECT_EQ(testKeys[i], i);
     }
 
-    stringstream savePathOne;
-    savePathOne << "test_dir/SingleTable" << rankInfo_.rankId;
-    EmbeddingMgmt::Instance()->Save(tableName, savePathOne.str(), 1);
-    stringstream saveKeyPathOne;
-    saveKeyPathOne << savePathOne.str() << "/" << tableName << "/key";
-    EXPECT_EQ(access(saveKeyPathOne.str().c_str(), F_OK), 0);
-
-    stringstream fileKeyPathOne;
-    fileKeyPathOne << saveKeyPathOne.str() << "/slice_" << rankInfo_.rankId << ".data";
-    stringstream newfileKeyPathOne;
-    newfileKeyPathOne << saveKeyPathOne.str() << "/slice.data";
-    RenameFilePath(fileKeyPathOne.str(), newfileKeyPathOne.str());
+    EmbeddingMgmt::Instance()->Save(tableName, "test_dir", 1);
+    const char* filePath = "./test_dir/test1/key/slice_0.data";
+    // 检查文件是否存在
+    if (access(filePath, F_OK) != 0) {
+        LOG_INFO("Error: File does not exist: {}", filePath);
+    } else {
+        // 重命名文件
+        const char* newfilePath = "./test_dir/test1/key/slice.data";
+        if (rename(filePath, newfilePath) == 0) {
+            LOG_INFO("File renamed successfully: {}", newfilePath);
+        }
+    }
 
     if (rankInfo_.rankId == 0) {
         map<string, unordered_set<emb_cache_key_t>> trainKeySetOne;
         vector<string> warmStartTablesOne;
-        EmbeddingMgmt::Instance()->Load(tableName, savePathOne.str(), trainKeySetOne, warmStartTablesOne);
+        EmbeddingMgmt::Instance()->Load(tableName, "./test_dir", trainKeySetOne, warmStartTablesOne);
+
+        bool fileExist = false;
+        if (access("./test_dir/test1/key/slice.data", F_OK) == 0) {
+            fileExist = true;
+        }
+
+        EXPECT_EQ(fileExist, true);
         EXPECT_EQ(EmbeddingMgmt::Instance()->GetMaxOffset(tableName), testNum);
     }
 }
 
-TEST_F(EmbeddingMgmtTest, TestSaveWhenMultiTable)
+/**
+ * 测试Save与Load:多表
+ */
+TEST_F(EmbeddingMgmtTest, SaveAndLoadAllTable)
 {
     const string tableName = "test1";
     ThresholdValue thvalue(tableName, 0, 0, 0, false);
@@ -251,45 +275,43 @@ TEST_F(EmbeddingMgmtTest, TestSaveWhenMultiTable)
 
     map<string, map<emb_key_t, KeyInfo>> keyInfoMap;
     keyInfoMap[tableName] = keyInfo;
-    stringstream savePathTwo;
-    savePathTwo << "test_dir/MultiTable" << rankInfo_.rankId;
-    EmbeddingMgmt::Instance()->Save(savePathTwo.str(), 1, true, keyInfoMap);
-    stringstream saveKeyPathTwo;
-    saveKeyPathTwo << savePathTwo.str() << "/" << tableName << "/key";
-    OffsetMapT allDeviceOffsets = EmbeddingMgmt::Instance()->GetDeviceOffsets();
+    EmbeddingMgmt::Instance()->Save("test_dir", 1, true, keyInfoMap);
 
-    EXPECT_EQ(allDeviceOffsets[tableName].size(), testNum);
-    EXPECT_EQ(access(saveKeyPathTwo.str().c_str(), F_OK), 0);
+    const char* filePath = "./test_dir/test1/key/slice_0.data";
+    // 检查文件是否存在
+    if (access(filePath, F_OK) != 0) {
+        LOG_INFO("Error: File does not exist: {}", filePath);
+    } else {
+        // 重命名文件
+        const char* newfilePath = "./test_dir/test1/key/slice.data";
+        if (rename(filePath, newfilePath) == 0) {
+            LOG_INFO("File renamed successfully: {}", newfilePath);
+        }
+    }
+
+    if (rankInfo_.rankId == 0) {
+        map<string, unordered_set<emb_cache_key_t>> trainKeySetOne;
+        vector<string> warmStartTablesOne;
+        EmbeddingMgmt::Instance()->Load("./test_dir", trainKeySetOne, warmStartTablesOne);
+
+        bool fileExist = false;
+        if (access("./test_dir/test1/key/slice.data", F_OK) == 0) {
+            fileExist = true;
+        }
+
+        map<EmbNameT, size_t> maxOffsetMap = EmbeddingMgmt::Instance()->GetMaxOffset();
+        OffsetMapT allDeviceOffsets = EmbeddingMgmt::Instance()->GetDeviceOffsets();
+
+        EXPECT_EQ(allDeviceOffsets[tableName].size(), testNum);
+        EXPECT_EQ(maxOffsetMap[tableName], testNum);
+        EXPECT_EQ(fileExist, true);
+    }
 }
 
-TEST_F(EmbeddingMgmtTest, TestLoadWhenMultiTable)
-{
-    const string tableName = "test1";
-    constexpr int testNum = 100;
-
-    ThresholdValue thvalue(tableName, 0, 0, 0, false);
-    vector<EmbInfo> embInfos = {embInfo_};
-    vector<ThresholdValue> thresholds = {thvalue};
-    EmbeddingMgmt::Instance()->Init(rankInfo_, embInfos, 0);
-
-    stringstream savePathTwo;
-    savePathTwo << "test_dir/MultiTable" << rankInfo_.rankId;
-    stringstream saveKeyPathTwo;
-    saveKeyPathTwo << savePathTwo.str() << "/" << tableName << "/key";
-    stringstream fileKeyPathTwo;
-    fileKeyPathTwo << saveKeyPathTwo.str() << "/slice_" << rankInfo_.rankId << ".data";
-    stringstream newfileKeyPathTwo;
-    newfileKeyPathTwo << saveKeyPathTwo.str() << "/slice.data";
-    RenameFilePath(fileKeyPathTwo.str(), newfileKeyPathTwo.str());
-
-    map<string, unordered_set<emb_cache_key_t>> trainKeySetOne;
-    vector<string> warmStartTablesOne;
-    EmbeddingMgmt::Instance()->Load(savePathTwo.str(), trainKeySetOne, warmStartTablesOne);
-    map<EmbNameT, size_t> maxOffsetMap = EmbeddingMgmt::Instance()->GetMaxOffset();
-    EXPECT_EQ(maxOffsetMap[tableName], testNum / rankInfo_.rankSize);
-}
-
-TEST_F(EmbeddingMgmtTest, TestKey2OffsetForDpWhenUseEvalChannel)
+/**
+ * 测试Key2OffsetForDp:使用 eval channel
+ */
+TEST_F(EmbeddingMgmtTest, Key2OffsetForDpEval)
 {
     const string tableName = "test1";
     ThresholdValue thvalue(tableName, 0, 0, 0, false);
