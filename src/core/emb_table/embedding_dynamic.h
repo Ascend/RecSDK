@@ -15,6 +15,11 @@ See the License for the specific language governing permissions and
 
 #ifndef MX_REC_EMBEDDING_DYNAMIC_H
 #define MX_REC_EMBEDDING_DYNAMIC_H
+#ifdef GTEST
+#define GTEST_PRIVATE public
+#else
+#define GTEST_PRIVATE private
+#endif
 
 #include "emb_table/embedding_table.h"
 
@@ -45,28 +50,28 @@ public:
 
     void Save(const string& savePath, const int pythonBatchId, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo);
 
-private:
+GTEST_PRIVATE:
     constexpr static int BLOCK_EMB_NUM = 100000; // 每次扩容分配10w条
 
-    void RandomInit(void* addr, size_t embNum);
+    virtual void RandomInit(void* addr, size_t embNum);
 
-    int64_t GetEmptyEmbeddingAddress();
+    virtual int64_t GetEmptyEmbeddingAddress();
 
-    void MallocEmbeddingBlock(int embNum);
+    virtual void MallocEmbeddingBlock(int embNum);
 
-    void SaveKey(const string& savePath, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo);
+    virtual void SaveKey(const string& savePath, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo);
 
-    void SaveEmbAndOptim(const string& savePath);
+    virtual void SaveEmbAndOptim(const string& savePath);
 
-    void SetOptimizerInfo(OptimizerInfo& optimizerInfo);
+    virtual void SetOptimizerInfo(OptimizerInfo& optimizerInfo);
 
-    void LoadKey(const string& savePath);
+    virtual void LoadKey(const string& savePath);
 
-    void LoadEmbAndOptim(const string& savePath);
+    virtual void LoadEmbAndOptim(const string& savePath);
 
-    void SaveEmbData(const string& savePath);
+    virtual void SaveEmbData(const string& savePath);
 
-    void SaveOptimData(const string& savePath);
+    virtual void SaveOptimData(const string& savePath);
 
     // embedding地址的列表
     list<float*> embeddingList_;
