@@ -6,10 +6,10 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 import os
-import pytest
 import logging
 import sysconfig
 from typing import List
+import pytest
 from dataset import RandomRecDataset, Batch
 from model import Model
 from util import setup_logging
@@ -28,10 +28,9 @@ from hybrid_torchrec.distributed.hybrid_train_pipeline import (
 )
 
 import torchrec
-from torchrec import EmbeddingBagConfig, EmbeddingBagCollection
+from torchrec import EmbeddingBagConfig
 import torchrec.distributed
 from torchrec.optim.apply_optimizer_in_backward import apply_optimizer_in_backward
-from torchrec.distributed.embeddingbag import EmbeddingBagCollectionAwaitable
 from torchrec.distributed.planner import (
     EmbeddingShardingPlanner,
     Topology,
@@ -153,38 +152,38 @@ class TestModel:
         if self.rank == 0:
             logging.debug(plan)
 
-        ddpModel = torchrec.distributed.DistributedModelParallel(
+        ddp_model = torchrec.distributed.DistributedModelParallel(
             ebc,
             sharders=get_default_hybrid_sharders(host_env),
             device=torch.device(self.device),
             plan=plan,
         )
-        logging.debug(ddpModel)
+        logging.debug(ddp_model)
         # Optimizer
-        optimizer = CombinedOptimizer([ddpModel.fused_optimizer])
+        optimizer = CombinedOptimizer([ddp_model.fused_optimizer])
 
         iter_train = iter(data_loader_train)
         iter_eval = iter(data_loader_eval)
 
-        ddpModel.train()
+        ddp_model.train()
         pipe = HybridTrainPipelineSparseDist(
-            ddpModel,
+            ddp_model,
             optimizer=optimizer,
             device=torch.device(self.device),
             return_loss=True,
         )
 
-        isStop = False
+        is_stop = False
         step = 0
         try:
             for step in range(LOOP_TIMES):
                 pipe.progress(iter_train)
                 logging.info("step %s", step)
         except StopIteration:
-            isStop = True
-        assert isStop and step == BATCH_NUM
+            is_stop = True
+        assert is_stop and step == BATCH_NUM
 
-        isStop = False
+        is_stop = False
         step = 0
         pipe._model.eval()
         try:
@@ -192,8 +191,8 @@ class TestModel:
                 pipe.progress(iter_eval)
                 logging.info("step %s", step)
         except StopIteration:
-            isStop = True
-        assert isStop and step == BATCH_NUM
+            is_stop = True
+        assert is_stop and step == BATCH_NUM
 
 
 @pytest.mark.parametrize("table_num", [2])
