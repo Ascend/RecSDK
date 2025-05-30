@@ -583,8 +583,6 @@ int GetStepFromPath(const string& loadPath);
 string MakeSwapCVName(int id, const string& tableName, int channelId);
 
 bool CheckFileExist(const string& filePath);
-
-void RenameFilePath(const string& filePath, const string& newFilePath);
 }  // end namespace MxRec
 
 #define KEY_PROCESS "\033[45m[KeyProcess]\033[0m "
