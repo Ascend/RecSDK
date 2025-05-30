@@ -168,9 +168,10 @@ def test_ids2indices_out_ids_max_than_table_size(input_size, pin_memory, num_map
         for _ in range(num_mapper)
     ]
 
-    ids = torch.concat(input_ids)
+    ids = torch.concat(input_ids).to(torch.int64)
     hash_indices = torch.empty_like(ids, pin_memory=pin_memory)
-    offsets = torch.LongTensor([0, input_size, input_size * 2, input_size * 3])
+    offsets = torch.LongTensor([0, input_size * IDS_RANGE_TIMES, 
+                                input_size * 2 * IDS_RANGE_TIMES, input_size * 3 * IDS_RANGE_TIMES])
     unique = torch.empty_like(ids, pin_memory=pin_memory)
     unique_inverse = torch.empty_like(ids, pin_memory=pin_memory)
     unique_offset = torch.LongTensor([0 for _ in range(num_mapper + 1)])

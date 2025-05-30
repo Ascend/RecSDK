@@ -21,7 +21,7 @@ See the License for the specific language governing permissions and
 
 namespace optiling {
 
-constexpr uint32_t MAX_DIM_SIZE = 4096;
+constexpr uint32_t MAX_DIM_SIZE = 1024;
 constexpr int RESERVE_UB_SIZE = 20 * 1024;
 
 enum class WeightDecay : uint64_t {
@@ -56,7 +56,7 @@ static ge::graphStatus TilingShapeInfo(const gert::TilingContext* context, SgdTi
     tilingData.set_tableSize(inputVarShape->GetStorageShape().GetDim(0));
 
     if (tilingData.get_dimSize() > MAX_DIM_SIZE) {
-        printf("dimSize %d must meet range[1, 4096]\n", tilingData.get_dimSize());
+        printf("dimSize %d must meet range[1, 1024]\n", tilingData.get_dimSize());
         return ge::GRAPH_FAILED;
     }
 
