@@ -41,13 +41,13 @@ def get_chip():
 
 def skip_seq_len(seq_len):
     block_len = 128
-    if (get_chip() and seq_len % block_len):
+    if get_chip() and seq_len % block_len:
         return True
     return False
 
 
 def jagged_data_gen(batch_size, max_seq_len, num_heads, attention_dim, data_type, mask_type):
-    seq_lens = np.random.randint(1, max_seq_len + 1, (batch_size))
+    seq_lens = np.random.randint(1, max_seq_len + 1, batch_size)
 
     seq_offset = torch.concat((torch.zeros((1,), dtype=torch.int64), \
                                torch.cumsum(torch.from_numpy(seq_lens), axis=0))).to(torch.int64).numpy()
