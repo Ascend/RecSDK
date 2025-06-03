@@ -135,6 +135,7 @@ public:
 protected:
 #endif
 
+    EmbeddingTable(const EmbeddingTable&) = delete;
     EmbeddingTable& operator=(const EmbeddingTable& table) = delete;
 
     size_t freeSize_;

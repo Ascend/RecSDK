@@ -683,6 +683,17 @@ namespace tensorflow {
         .SetShapeFn(::tensorflow::shape_inference::UnknownShape);
     REGISTER_KERNEL_BUILDER(Name("LazyAdam").Device(DEVICE_CPU), MxRec::CustOps);
 
+    REGISTER_OP("Sgd")
+        .Input("gradient: float32")
+        .Input("indices: int32")
+        .Input("input_var: float32")
+        .Input("lr: float32")
+        .Attr("weightDecay: float = 0.0")
+        .Output("output_var: float32")
+        .SetIsStateful()
+        .SetShapeFn(::tensorflow::shape_inference::UnknownShape);
+    REGISTER_KERNEL_BUILDER(Name("Sgd").Device(DEVICE_CPU), MxRec::CustOps);
+
     REGISTER_OP("LcclAllToAll")
         .Input("send_data: float")
         .Input("send_count_matrix: int64")

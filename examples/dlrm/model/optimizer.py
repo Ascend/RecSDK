@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,9 +17,9 @@
 import tensorflow as tf
 
 from delay_loss_scale import DenseLossScaleOptimizer, SparseLossScaleOptimizer
-from gradient_descent_w import create_hash_optimizer
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.optimizers.gradient_descent_by_addr import create_hash_optimizer_by_addr
+from mx_rec.optimizers.gradient_descent import create_hash_optimizer
 from mx_rec.optimizers import lazy_adam
 
 
@@ -38,7 +38,8 @@ def get_dense_and_sparse_optimizer(cfg):
         if use_dynamic_expansion:
             sparse_optimizer = create_hash_optimizer_by_addr(learning_rate=cfg.learning_rate[1], weight_decay=0.0001)
         else:
-            sparse_optimizer = create_hash_optimizer(learning_rate=cfg.learning_rate[1], weight_decay=0.0001)
+            sparse_optimizer = create_hash_optimizer(
+                learning_rate=cfg.learning_rate[1], weight_decay=0.0001, use_fusion_optim=cfg.use_fusion_optim)
         loss_scale = 1024
     sparse_optimizer = SparseLossScaleOptimizer(sparse_optimizer, loss_scale)
     dense_optimizer = DenseLossScaleOptimizer(dense_optimizer, loss_scale)

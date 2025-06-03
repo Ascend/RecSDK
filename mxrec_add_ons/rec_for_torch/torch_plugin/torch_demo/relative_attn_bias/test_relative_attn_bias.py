@@ -189,10 +189,6 @@ def rab(num_layers, train_len, candidate_len, bs, dtype):
                                         past_valid_lens=past_valid_lens)
     torch_npu.npu.synchronize()
 
-    # 验证训练正向精度时需注释rab_pos_golden部分
-    rab_pos_out_golden = rab_pos_golden(rel_pos_bias=rel_pos_bias_list[layer_num, ...],
-                                        identity=identity_list[layer_num, ...],
-                                        past_valid_lens=past_valid_lens)
     rab_time_out_golden = rab_time_golden(ts_w=timestamps_weights.transpose(0, 1),
                                           timestamps=timestamps)
     torch_npu.npu.synchronize()

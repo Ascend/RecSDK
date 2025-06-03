@@ -298,7 +298,7 @@ def execute(params):
 @pytest.mark.parametrize("unique", [False])
 @pytest.mark.parametrize("feature_map", [[0, 0, 1], [0, 1, 1]])
 @pytest.mark.parametrize("pooling_model", [PoolingType.SUM, PoolingType.MEAN, PoolingType.NONE])
-@pytest.mark.parametrize("optim", [SGD])
+@pytest.mark.parametrize("optim", [SGD, Adagrad, Adam])
 def test_lookup_two_tables(tables, mutile_hots, batch_size, pooling_model, unique, optim, feature_map):
     params = LookupParams(tables, mutile_hots, batch_size, pooling_model, unique, optim, feature_map)
     execute(params)
@@ -309,7 +309,7 @@ def test_lookup_two_tables(tables, mutile_hots, batch_size, pooling_model, uniqu
 @pytest.mark.parametrize("batch_size", [2341, 1])
 @pytest.mark.parametrize("unique", [False])
 @pytest.mark.parametrize("pooling_model", [PoolingType.SUM, PoolingType.MEAN, PoolingType.NONE])
-@pytest.mark.parametrize("optim", [SGD])
+@pytest.mark.parametrize("optim", [SGD, Adagrad, Adam])
 def test_lookup_backward_one_table(tables, mutile_hots, batch_size, pooling_model, unique, optim):
     params = LookupParams(tables, mutile_hots, batch_size, pooling_model, unique, optim, None)
     execute(params)
@@ -317,7 +317,7 @@ def test_lookup_backward_one_table(tables, mutile_hots, batch_size, pooling_mode
 
 @pytest.mark.parametrize("unique", [False])
 @pytest.mark.parametrize("pooling_model", [PoolingType.SUM, PoolingType.MEAN, PoolingType.NONE])
-@pytest.mark.parametrize("optim", [SGD])
+@pytest.mark.parametrize("optim", [SGD, Adagrad, Adam])
 def test_lookup_multi_tables(pooling_model, unique, optim):
     tables, mutile_hots, batch_size = generate_tables(pooling_model)
     params = LookupParams(tables, mutile_hots, batch_size, pooling_model, unique, optim, None)

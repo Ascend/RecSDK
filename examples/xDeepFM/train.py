@@ -19,7 +19,6 @@ class TrainModel(collections.namedtuple("TrainModel", ("graph", "model", "iterat
 def create_train_model(model_creator, hparams, scope=None):
     # feed train file name, valid file name, or test file name
     filenames = tf.placeholder(tf.string, shape=[None])
-    # src_dataset = tf.contrib.data.TFRecordDataset(filenames)
     src_dataset = tf.data.TFRecordDataset(filenames)
 
     if hparams.data_format == 'ffm':
@@ -253,7 +252,6 @@ def train(hparams, scope=None, target_session=""):
         train_res = dict()
         train_res["loss"] = epoch_loss / step
         eval_start = time.time()
-        # train_res = run_eval(train_model, train_sess, hparams.train_file_cache, util.TRAIN_NUM, hparams, flag='train')
         eval_res = run_eval(train_model, train_sess, hparams.eval_file_cache, util.EVAL_NUM, hparams, flag='eval')
         train_info = ', '.join(
             [str(item[0]) + ':' + str(item[1])

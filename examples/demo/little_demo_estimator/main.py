@@ -215,7 +215,7 @@ if __name__ == '__main__':
          use_dynamic_expansion=USE_DYNAMIC_EXPANSION)
 
     cfg = Config()
-    # multi lookup config, batch size: 32 * 128 = 4096
+    # multi lookup config, batch size: 4096 (32 * 128)
     if USE_MULTI_LOOKUP and MULTI_LOOKUP_TIMES > 2:
         cfg.batch_size = 32
     # init FeatureSpecIns
