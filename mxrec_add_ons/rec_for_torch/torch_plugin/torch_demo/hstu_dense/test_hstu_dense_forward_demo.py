@@ -37,6 +37,7 @@ mask_custom: int = 3
 def get_chip():
     return False
 
+
 def skip_seq_len(seq_len):
     block_len = 128
     if (get_chip() and seq_len % block_len):
