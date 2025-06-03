@@ -114,6 +114,32 @@ class TestHstuJaggedDemo:
 
         return True
 
+    @staticmethod
+    def custom_op_exec(grad, q, k, v, bias, mask, seq_offset, mask_type, max_seq_len, silu_scale, enable_bias,
+                       data_type):
+        grad_npu = grad.to(f"npu:{device_id}")
+        q_npu = q.to(f"npu:{device_id}")
+        k_npu = k.to(f"npu:{device_id}")
+        v_npu = v.to(f"npu:{device_id}")
+        bias_npu = bias.to(f"npu:{device_id}")
+
+        mask_npu = None
+        if mask_type == 3:
+            mask_npu = mask.to(f"npu:{device_id}")
+
+        if enable_bias:
+            q_grad, k_grad, v_grad, bias_grad = torch.ops.mxrec.hstu_dense_backward(
+                grad_npu, q_npu, k_npu, v_npu, mask_npu, bias_npu, "jagged", mask_type, max_seq_len, silu_scale,
+                seq_offset
+            )
+        else:
+            q_grad, k_grad, v_grad, bias_grad = torch.ops.mxrec.hstu_dense_backward(
+                grad_npu, q_npu, k_npu, v_npu, mask_npu, None, "jagged", mask_type, max_seq_len, silu_scale, seq_offset
+            )
+
+        torch.npu.synchronize()
+        return q_grad.cpu(), k_grad.cpu(), v_grad.cpu(), bias_grad.cpu()
+
     def golden_op_exec(self, grad, q, k, v, bias, mask, max_seq_len, seq_offset, mask_type, silu_scale, enable_bias,
                        data_type):
         head_nums = grad.shape[1]
@@ -180,31 +206,6 @@ class TestHstuJaggedDemo:
 
         return q_grad, k_grad, v_grad, bias_grad
 
-    @staticmethod
-    def custom_op_exec(grad, q, k, v, bias, mask, seq_offset, mask_type, max_seq_len, silu_scale, enable_bias,
-                       data_type):
-        grad_npu = grad.to(f"npu:{device_id}")
-        q_npu = q.to(f"npu:{device_id}")
-        k_npu = k.to(f"npu:{device_id}")
-        v_npu = v.to(f"npu:{device_id}")
-        bias_npu = bias.to(f"npu:{device_id}")
-
-        mask_npu = None
-        if mask_type == 3:
-            mask_npu = mask.to(f"npu:{device_id}")
-
-        if enable_bias:
-            q_grad, k_grad, v_grad, bias_grad = torch.ops.mxrec.hstu_dense_backward(
-                grad_npu, q_npu, k_npu, v_npu, mask_npu, bias_npu, "jagged", mask_type, max_seq_len, silu_scale,
-                seq_offset
-            )
-        else:
-            q_grad, k_grad, v_grad, bias_grad = torch.ops.mxrec.hstu_dense_backward(
-                grad_npu, q_npu, k_npu, v_npu, mask_npu, None, "jagged", mask_type, max_seq_len, silu_scale, seq_offset
-            )
-
-        torch.npu.synchronize()
-        return q_grad.cpu(), k_grad.cpu(), v_grad.cpu(), bias_grad.cpu()
 
     def execute(self, batch_size, max_seq_len, head_num, head_dim, mask_type, silu_scale, enable_bias, data_type):
         grad, q, k, v, bias, mask, max_seq_len, seq_offset = jagged_data_gen(
