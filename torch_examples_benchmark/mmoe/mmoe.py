@@ -260,14 +260,15 @@ class TorchMmoeModel(nn.Module):
         Returns:
             torch.Tensor: The concatenated and reshaped embedding tensor.
         """
+        on_hot_field_lst = self.spec.get("one_hot_fields")
+        other_field_lst = self.spec.get("multi_hot_fields") + self.spec.get("special_fields")
+
         embeddings = {}
-        for key in ["101", "121", "122", "124", "125", "126",
-                    "127", "128", "129", "205", "206", "207",
-                    "216", "508", "509", "702", "301"]:
+        for key in on_hot_field_lst:
             embedding_layer = self.embedding_layers[key]
             embeddings[key] = embedding_layer(features[key])
             embeddings[key] = torch.reshape(embeddings[key], [-1, 1, self.params.embedding_size])
-        for key in ["109_14", "110_14", "127_14", "150_14", "210", "853"]:
+        for key in other_field_lst:
             embeddings[key] = torch.unsqueeze(
                 self.embedding_lookup_sparse_fake(key=key, ids=features[key], combiner="sum"),
                 dim=1
@@ -280,9 +281,6 @@ class TorchMmoeModel(nn.Module):
         )
 
         return torch.reshape(embedding, [-1, EMBEDDING_FEATURE_NUM * self.params.embedding_size])
-
-
-
 
     def build_tower(self, tower_input: torch.Tensor, name: str) -> torch.Tensor:
         """
@@ -302,7 +300,6 @@ class TorchMmoeModel(nn.Module):
             relu = nn.ReLU()
             y_tower = relu(tower_linear_out)
         return y_tower
-
 
     def build_predictions(self, task_outputs: list) -> dict:
         """
@@ -362,7 +359,6 @@ class TorchMmoeModel(nn.Module):
 
         return ctr_task_wgt * ctr_loss + (1 - ctr_task_wgt) * ctcvr_loss
 
-
     def build_optimizer(self):
         """
         Build the optimizer for training.
@@ -404,8 +400,6 @@ class TorchMmoeModel(nn.Module):
         return optimizer
 
 
-
-
 def clip_grad(grad):
     if grad is None:
         return grad
@@ -413,13 +407,13 @@ def clip_grad(grad):
 
 
 def train(model: TorchMmoeModel, dataloader, val_dataloader, args, device):
-    model.train()
     optimizer = model.build_optimizer()
     epochs = args.epoch_num
     # 早停相关变量
     best_val_loss = float('inf')
     counter = 0
     for epoch in range(epochs):
+        model.train()
         total_loss = 0.0
         now_index = 0
         for input_sample, target_sample in dataloader:
@@ -521,14 +515,13 @@ def main(args):
     va_files = glob.glob("%sval/data_val.csv.hd5.*" % args.data_dir)
     te_files = glob.glob("%stest/data_test.csv.hd5.*" % args.data_dir)
 
-    if args.clear_existing_model:
-        if os.path.exists(args.model_dir):
-            try:
-                shutil.rmtree(args.model_dir)
-            except PermissionError as e:
-                raise PermissionError("Permission denied: {}".format(e)) from e
-            except Exception as e:
-                raise RuntimeError("Error clearing existing model: {}".format(e)) from e
+    if args.clear_existing_model and os.path.exists(args.model_dir):
+        try:
+            shutil.rmtree(args.model_dir)
+        except PermissionError as e:
+            raise PermissionError("Permission denied: {}".format(e)) from e
+        except Exception as e:
+            raise RuntimeError("Error clearing existing model: {}".format(e)) from e
 
     # ------ for NPU  ------
 
