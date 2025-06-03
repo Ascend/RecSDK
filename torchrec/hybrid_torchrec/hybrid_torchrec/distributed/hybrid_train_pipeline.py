@@ -56,6 +56,8 @@ FRONT_BATCH = 0
 SECOND_BATCH = 1
 THIRD_BATCH = 2
 
+MAX_PIPE_N_BATCH = 12
+
 
 class TaskType(Enum):
     SPLIT = 0
@@ -246,8 +248,8 @@ class HybridTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
         return_loss: bool = False,
         pipe_n_batch: int = 6,
     ) -> None:
+        self.param_check(model, device, pipe_n_batch)
         super().__init__(model, optimizer, device, execute_all_batches, apply_jit)
-        self.param_check(model, optimizer, device, pipe_n_batch)
         self._return_loss = return_loss
         self._contexts = [[] for _ in range(pipe_n_batch)]
         self._current_line_id = 0
@@ -261,13 +263,23 @@ class HybridTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
         device: torch.device,
         pipe_n_batch,
     ):
-        if pipe_n_batch <= 0 or pipe_n_batch > 12:
-            raise ValueError("pipe_n_batch must be in range in [1, 12].")
+        if pipe_n_batch <= 0 or pipe_n_batch > MAX_PIPE_N_BATCH:
+            raise ValueError(f"pipe_n_batch must be in range in [1, {MAX_PIPE_N_BATCH}], \
+                             but pipe_n_batch is {pipe_n_batch}")
+
         if not isinstance(model, torch.nn.Module):
             raise TypeError(f"model expected to be an instance of torch.nn.Module, \
                             but got {type(model)} instead.")
-        if not isinstance(device, torch.device) and device.type not in ["cpu", "npu"]:
-            raise ValueError(f"Unsupported device type: {device.type}.")
+
+        if not isinstance(device, torch.device):
+            raise TypeError(f"device expected to be an instance of torch.device, \
+                            but got {type(device)} instead.")
+        
+        if device.type not in ["cpu", "npu"]:
+            raise ValueError(f"device type expected in [cpu, npu], but got {device.type}.")
+
+        if model.device != device:
+            raise ValueError(f"model device is {model.device}, but input device is {device}.")
     
     def enque_context(self, line_id, context: HybridTrainPipelineContext):
         self._contexts[line_id].append(context)
