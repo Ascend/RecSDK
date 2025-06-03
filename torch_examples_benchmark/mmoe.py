@@ -136,6 +136,8 @@ class TorchMmoeModel(nn.Module):
     def __init__(self, params) -> None:
         super().__init__()
         self.params = params
+        # 获取数据结构配置，处理数据集自动生成
+        self.spec = json_file_load("spec", os.path.join(self.params.data_dir, "spec.json"))
         self.embedding_layers = self.build_embedding_layers()
         self.experts = self.build_experts()
         self.gates = self.build_gate_networks()
@@ -158,7 +160,7 @@ class TorchMmoeModel(nn.Module):
 
     def forward(self, features: dict):
         # Build the embedding layer
-        x_deep = self.get_embedding(features, spec)
+        x_deep = self.get_embedding(features)
         experts_out = [expert(x_deep) for expert in self.experts]
         experts_out = torch.stack(experts_out, dim=1)
 
@@ -174,7 +176,7 @@ class TorchMmoeModel(nn.Module):
 
     def build_embedding_layers(self):
         embeddings = nn.ModuleDict()
-        for key, vocab_len in spec["vocab_length"].items():
+        for key, vocab_len in self.spec["vocab_length"].items():
             weight_matrix = torch.empty((vocab_len + 1, self.params.embedding_size), dtype=torch.float32)
             nn.init.normal_(weight_matrix, mean=0.0, std=STD_DEV)
             emb_weights = nn.Parameter(weight_matrix, requires_grad=True)
@@ -249,13 +251,12 @@ class TorchMmoeModel(nn.Module):
         else:
             raise ValueError("combiner only supoort 'sum', 'mean'")
 
-    def get_embedding(self, features: dict, spec: dict) -> torch.Tensor:
+    def get_embedding(self, features: dict) -> torch.Tensor:
         """
         Build the embedding layer for the model.
 
         Args:
             features (dict): The input features.
-            spec (dict): The specification dictionary containing vocab lengths and field names.
         Returns:
             torch.Tensor: The concatenated and reshaped embedding tensor.
         """
@@ -272,9 +273,9 @@ class TorchMmoeModel(nn.Module):
                 dim=1
             )
         embedding = torch.concat(
-            [embeddings.get(field_name) for field_name in spec.get("one_hot_fields")] +
-            [embeddings.get(field_name) for field_name in spec.get("multi_hot_fields")] +
-            [embeddings.get(field_name) for field_name in spec.get("special_fields")],
+            [embeddings.get(field_name) for field_name in self.spec.get("one_hot_fields")] +
+            [embeddings.get(field_name) for field_name in self.spec.get("multi_hot_fields")] +
+            [embeddings.get(field_name) for field_name in self.spec.get("special_fields")],
             dim=2,
         )
 
@@ -592,9 +593,6 @@ if __name__ == "__main__":
     logger.addHandler(fh)
 
     logger.info("FLAGS: " + str(args))
-
-    spec_json_path = os.path.join(args.data_dir, "spec.json")
-    spec = json_file_load("spec", spec_json_path)
 
     feature_descriptions = {}
     logging.basicConfig(level=logging.INFO)
