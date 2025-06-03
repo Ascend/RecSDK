@@ -122,6 +122,26 @@ class TestHstuJaggedDemo:
 
         return tensor
 
+    @staticmethod
+    def custom_op_exec(q, k, v, seq_offset, bias, mask, max_seq_len, enable_bias, mask_type, silu_scale,
+                       data_type):
+        q_npu = q.to(f"npu:{device_id}").to(data_type)
+        k_npu = k.to(f"npu:{device_id}").to(data_type)
+        v_npu = v.to(f"npu:{device_id}").to(data_type)
+        bias_npu = bias.to(f"npu:{device_id}").to(data_type)
+        mask_npu = mask.to(f"npu:{device_id}").to(data_type)
+
+        if enable_bias:
+            output = torch.ops.mxrec.hstu_dense(
+                q_npu, k_npu, v_npu, mask_npu, bias_npu, mask_type, max_seq_len, silu_scale, "jagged", seq_offset
+            )
+        else:
+            output = torch.ops.mxrec.hstu_dense(
+                q_npu, k_npu, v_npu, mask_npu, None, mask_type, max_seq_len, silu_scale, "jagged", seq_offset
+            )
+        torch.npu.synchronize()
+        return output.cpu().to(data_type).reshape(-1)
+
 
     def gloden_op_exec(self, q, k, v, seq_offset, bias, mask, max_seq_len, enable_bias, mask_type, silu_scale,
                        data_type):
@@ -165,26 +185,6 @@ class TestHstuJaggedDemo:
 
         torch.npu.synchronize()
         return atten_output.to(data_type).reshape(-1)
-
-    def custom_op_exec(self, q, k, v, seq_offset, bias, mask, max_seq_len, enable_bias, mask_type, silu_scale,
-                       data_type):
-        q_npu = q.to(f"npu:{device_id}").to(data_type)
-        k_npu = k.to(f"npu:{device_id}").to(data_type)
-        v_npu = v.to(f"npu:{device_id}").to(data_type)
-        bias_npu = bias.to(f"npu:{device_id}").to(data_type)
-        mask_npu = mask.to(f"npu:{device_id}").to(data_type)
-
-        if enable_bias:
-            output = torch.ops.mxrec.hstu_dense(
-                q_npu, k_npu, v_npu, mask_npu, bias_npu, mask_type, max_seq_len, silu_scale, "jagged", seq_offset
-            )
-        else:
-            output = torch.ops.mxrec.hstu_dense(
-                q_npu, k_npu, v_npu, mask_npu, None, mask_type, max_seq_len, silu_scale, "jagged", seq_offset
-            )
-        torch.npu.synchronize()
-        return output.cpu().to(data_type).reshape(-1)
-
 
     def execute(self, batch_size, max_seq_len, head_num, head_dim, enable_bias, mask_type, silu_scale, data_type):
         q, k, v, seq_offset, bias, mask, max_seq_len = jagged_data_gen(batch_size, max_seq_len, head_num, head_dim,
@@ -311,9 +311,13 @@ class TestHstuNormalDemo:
                              marks=pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P."))
     parambF16 = pytest.param(torch.bfloat16,
                              marks=pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P."))
-    paramsSeqlen = [pytest.param(i, marks=pytest.mark.skipif(skip_seq_len(i),
-                                                             reason="This test case is Skipped for Ascend310P.")) for i
-                    in max_seq_len]
+    paramsSeqlen = []
+    for i in max_seq_len:
+        if skip_seq_len(i):
+            paramsSeqlen.append(
+                pytest.param(i, marks=pytest.mark.skipif(True, reason="This test case is Skipped for Ascend310P.")))
+        else:
+            paramsSeqlen.append(pytest.param(i))
 
     @pytest.mark.parametrize("batch_size", [1, 16])
     @pytest.mark.parametrize("head_num", [2, 4])
