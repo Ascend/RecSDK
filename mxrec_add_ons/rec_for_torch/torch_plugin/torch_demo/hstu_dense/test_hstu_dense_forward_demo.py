@@ -34,15 +34,9 @@ mask_none: int = 2
 mask_custom: int = 3
 
 
-def get_chip():
-    return False
-
-
 def skip_seq_len(seq_len):
-    block_len = 128
-    if (get_chip() and seq_len % block_len):
-        return True
-    return False
+    block_len = 128  # 将 block_len 定义为常量
+    return seq_len % block_len != 0
 
 
 def jagged_data_gen(batch_size, max_seq_len, num_heads, attention_dim, data_type, mask_type):
