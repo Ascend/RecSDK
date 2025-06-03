@@ -49,7 +49,7 @@ protected:
         isDimAlign = (dimSize == alignDimSize);
 
         lrGm.SetGlobalBuffer((__gm__ T1*)learningRate, sizeof(float));
-        lr = lrGm.GetValue(0);
+        neLr = T1(-1) * lrGm.GetValue(0);
 
         gradGm.SetGlobalBuffer((__gm__ T1 *)gradient + offsetBs * dimSize, batchSize * dimSize);
         indicesGm.SetGlobalBuffer((__gm__ T2 *)indices + offsetBs, batchSize);
@@ -136,7 +136,7 @@ protected:
     uint32_t procBs{ 0 };
     uint32_t nLoopBs{ 0 };
     bool isDimAlign{ true };
-    T1 lr{ 0.0f };
+    T1 neLr{ 0.0f };
 
     AscendC::TPipe pipe;
     AscendC::GlobalTensor<T1> gradGm, outputGm, lrGm;
