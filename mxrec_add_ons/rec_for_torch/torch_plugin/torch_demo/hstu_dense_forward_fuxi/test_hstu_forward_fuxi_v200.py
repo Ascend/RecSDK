@@ -112,7 +112,7 @@ class TestHstuNormalFuxiDemo:
     
     def custom_op_exec(self, q, k, v, ts_bias, pos_bias, mask, mask_type, max_seq_len, silu_scale, enable_bias, \
         data_type):
-        if enable_bias == True:
+        if enable_bias:
             output = torch.ops.mxrec.hstu_fuxi(
                 q, k, v, ts_bias, pos_bias, mask, mask_type, max_seq_len, silu_scale, "normal"
             )

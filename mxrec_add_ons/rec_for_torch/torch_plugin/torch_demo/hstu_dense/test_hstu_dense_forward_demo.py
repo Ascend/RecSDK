@@ -311,9 +311,13 @@ class TestHstuNormalDemo:
                              marks=pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P."))
     parambF16 = pytest.param(torch.bfloat16,
                              marks=pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P."))
-    paramsSeqlen = [pytest.param(i, marks=pytest.mark.skipif(skip_seq_len(i),
-                                                             reason="This test case is Skipped for Ascend310P.")) for i
-                    in max_seq_len]
+    paramsSeqlen = []
+    for i in max_seq_len:
+        if skip_seq_len(i):
+            paramsSeqlen.append(
+                pytest.param(i, marks=pytest.mark.skipif(True, reason="This test case is Skipped for Ascend310P.")))
+        else:
+            paramsSeqlen.append(pytest.param(i))
 
     @pytest.mark.parametrize("batch_size", [1, 16])
     @pytest.mark.parametrize("head_num", [2, 4])

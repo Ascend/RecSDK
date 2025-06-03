@@ -136,7 +136,7 @@ class TestHstuAutogradNormal:
         v.retain_grad()
         bias.retain_grad()
 
-        if enable_bias == True:
+        if enable_bias:
             output = torch.ops.mxrec.hstu_dense(q, k, v, mask, bias, mask_type, max_seq_len, silu_scale, "normal")
         else:
             output = torch.ops.mxrec.hstu_dense(q, k, v, mask, None, mask_type, max_seq_len, silu_scale, "normal")
@@ -171,12 +171,12 @@ class TestHstuAutogradNormal:
             res = torch.allclose(output, golden, 1e-3, 1e-3)
         else:
             res = torch.allclose(output, golden, 1e-4, 1e-4)
-        assert res == True
-        assert torch.allclose(q_grad, q_grad_op, 1e-4, 1e-4) == True
-        assert torch.allclose(k_grad, k_grad_op, 1e-4, 1e-4) == True
-        assert torch.allclose(v_grad, v_grad_op, 1e-4, 1e-4) == True
+        assert res
+        assert torch.allclose(q_grad, q_grad_op, 1e-4, 1e-4)
+        assert torch.allclose(k_grad, k_grad_op, 1e-4, 1e-4)
+        assert torch.allclose(v_grad, v_grad_op, 1e-4, 1e-4)
         if enable_bias:
-            assert torch.allclose(bias_grad.to(torch.float32), bias_grad_op.to(torch.float32), 1e-4, 1e-4) == True
+            assert torch.allclose(bias_grad.to(torch.float32), bias_grad_op.to(torch.float32), 1e-4, 1e-4)
         else:
             assert bias_grad is None
             assert bias_grad_op is None
@@ -210,7 +210,7 @@ class TestHstuAutogradJagged:
     def jagged_to_dense(jagged_tensor, seq_lens, max_seq_len, head_nums, atten_dim):
         need_pad_seq = []
         offset = 0
-        for batch_id, seq_len in enumerate(seq_lens):
+        for seq_len in seq_lens:
             src_tensor = torch.rand(max_seq_len, head_nums, atten_dim)
             src_tensor = torch.zeros((max_seq_len, head_nums, atten_dim))
             src_tensor[0:seq_len, :, :] = jagged_tensor[offset: offset + seq_len, :, :]
@@ -263,7 +263,7 @@ class TestHstuAutogradJagged:
         v.retain_grad()
         bias.retain_grad()
 
-        if enable_bias == True:
+        if enable_bias:
             output = torch.ops.mxrec.hstu_dense(q, k, v, mask, bias, mask_type, max_seq_len, silu_scale, "jagged", \
                                                 seq_offset)
         else:
