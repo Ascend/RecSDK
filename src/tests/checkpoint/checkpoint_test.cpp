@@ -410,6 +410,70 @@ TEST_F(CheckpointTest, LoadDatasetOk)
     ckpt.LoadDataset(embNames, dataTypes, std::move(dataHandler), ckptData);
 }
 
+TEST_F(CheckpointTest, LoadDataset_Table2Thresh_PathNotExists)
+{
+    EMOCK(&Checkpoint::CheckFileSystemPtr).expects(once()).will(returnValue(true));
+    EMOCK(&Checkpoint::ReadStream).expects(exactly(2));
+    EMOCK(&KeyCountMapCkpt::SetDatasetForLoadEmb).expects(once());
+    EMOCK(CheckFileExist).expects(once()).will(returnValue(false));
+
+    auto ckpt = Checkpoint();
+    auto embNames = vector<string>{"test"};
+    auto dataTypes = vector<CkptDataType>{CkptDataType::TABLE_2_THRESH};
+    auto dataHandler = make_unique<KeyCountMapCkpt>();
+    auto ckptData = CkptData();
+
+    ckpt.LoadDataset(embNames, dataTypes, std::move(dataHandler), ckptData);
+}
+
+TEST_F(CheckpointTest, LoadDataset_HistRec_PathNotExists)
+{
+    EMOCK(&Checkpoint::CheckFileSystemPtr).expects(once()).will(returnValue(true));
+    EMOCK(&Checkpoint::ReadStream).expects(exactly(2));
+    EMOCK(&KeyCountMapCkpt::SetDatasetForLoadEmb).expects(once());
+    EMOCK(CheckFileExist).expects(once()).will(returnValue(false));
+
+    auto ckpt = Checkpoint();
+    auto embNames = vector<string>{"test"};
+    auto dataTypes = vector<CkptDataType>{CkptDataType::HIST_REC};
+    auto dataHandler = make_unique<KeyCountMapCkpt>();
+    auto ckptData = CkptData();
+
+    ckpt.LoadDataset(embNames, dataTypes, std::move(dataHandler), ckptData);
+}
+
+TEST_F(CheckpointTest, LoadDataset_EmbData)
+{
+    EMOCK(&Checkpoint::CheckFileSystemPtr).expects(once()).will(returnValue(true));
+    EMOCK(&Checkpoint::ReadStream).expects(once());
+    EMOCK(&Checkpoint::ReadStreamForEmbData).expects(once());
+    EMOCK(&KeyCountMapCkpt::SetDatasetForLoadEmb).expects(once());
+
+    auto ckpt = Checkpoint();
+    auto embNames = vector<string>{"test"};
+    auto dataTypes = vector<CkptDataType>{CkptDataType::EMB_DATA};
+    auto dataHandler = make_unique<KeyCountMapCkpt>();
+    auto ckptData = CkptData();
+
+    ckpt.LoadDataset(embNames, dataTypes, std::move(dataHandler), ckptData);
+}
+
+TEST_F(CheckpointTest, LoadDataset_Attribute)
+{
+    EMOCK(&Checkpoint::CheckFileSystemPtr).expects(once()).will(returnValue(true));
+    EMOCK(&Checkpoint::ReadStream).expects(exactly(2));
+    EMOCK(&Checkpoint::ReadStreamForEmbData).expects(once());
+    EMOCK(&KeyCountMapCkpt::SetDatasetForLoadEmb).expects(once());
+
+    auto ckpt = Checkpoint();
+    auto embNames = vector<string>{"test"};
+    auto dataTypes = vector<CkptDataType>{CkptDataType::ATTRIBUTE};
+    auto dataHandler = make_unique<KeyCountMapCkpt>();
+    auto ckptData = CkptData();
+
+    ckpt.LoadDataset(embNames, dataTypes, std::move(dataHandler), ckptData);
+}
+
 TEST_F(CheckpointTest, ReadStreamOk)
 {
     EMOCK(&Checkpoint::CheckFileSystemPtr).expects(once()).will(returnValue(true));
@@ -428,6 +492,91 @@ TEST_F(CheckpointTest, ReadStreamOk)
 
     ckpt.fileSystemPtr = std::make_unique<LocalFileSystem>(LocalFileSystem());
     ckpt.ReadStream(transData, dataDir, dataType, dataElemBytes);
+}
+
+TEST_F(CheckpointTest, ReadStream_DataElmtBytesZero)
+{
+    auto ckpt = Checkpoint();
+    auto transData = CkptTransData();
+    auto dataDir = "./test"s;
+    auto dataType = CkptDataType::EMB_INFO;
+    auto dataElemBytes = 0;
+
+    ckpt.fileSystemPtr = std::make_unique<LocalFileSystem>(LocalFileSystem());
+    ckpt.ReadStream(transData, dataDir, dataType, dataElemBytes);
+}
+
+TEST_F(CheckpointTest, ReadStream_DataIsMissing)
+{
+    EMOCK(&Checkpoint::CheckFileSystemPtr).expects(once()).will(returnValue(true));
+    EMOCK(&LocalFileSystem::GetFileSize).expects(once()).will(returnValue(static_cast<size_t>(4)));
+    EMOCK(&Checkpoint::SetTransDataSize).expects(once());
+
+    auto ckpt = Checkpoint();
+    auto transData = CkptTransData();
+    auto dataDir = "./test"s;
+    auto dataType = CkptDataType::EMB_INFO;
+    auto dataElemBytes = 3;
+
+    ckpt.fileSystemPtr = std::make_unique<LocalFileSystem>(LocalFileSystem());
+    EXPECT_THROW(ckpt.ReadStream(transData, dataDir, dataType, dataElemBytes), std::runtime_error);
+}
+
+TEST_F(CheckpointTest, ReadStream_InputInt64_LoadDataFailed_Error)
+{
+    EMOCK(&Checkpoint::CheckFileSystemPtr).expects(once()).will(returnValue(true));
+    EMOCK(&LocalFileSystem::GetFileSize).expects(once()).will(returnValue(static_cast<size_t>(0)));
+    EMOCK(&Checkpoint::SetTransDataSize).expects(once());
+    EMOCK((ssize_t(LocalFileSystem::*)(const string&, char*, size_t))(&LocalFileSystem::Read))
+        .expects(once())
+        .will(returnValue(-1));
+
+    auto ckpt = Checkpoint();
+    auto transData = CkptTransData();
+    auto dataDir = "./test"s;
+    auto dataType = CkptDataType::EMB_HASHMAP;
+    auto dataElemBytes = 1;
+
+    ckpt.fileSystemPtr = std::make_unique<LocalFileSystem>(LocalFileSystem());
+    EXPECT_THROW(ckpt.ReadStream(transData, dataDir, dataType, dataElemBytes), std::runtime_error);
+}
+
+TEST_F(CheckpointTest, ReadStream_InputAttribute_LoadDataFailed_Error)
+{
+    EMOCK(&Checkpoint::CheckFileSystemPtr).expects(once()).will(returnValue(true));
+    EMOCK(&LocalFileSystem::GetFileSize).expects(once()).will(returnValue(static_cast<size_t>(0)));
+    EMOCK(&Checkpoint::SetTransDataSize).expects(once());
+    EMOCK((ssize_t(LocalFileSystem::*)(const string&, char*, size_t))(&LocalFileSystem::Read))
+        .expects(once())
+        .will(returnValue(-2));
+
+    auto ckpt = Checkpoint();
+    auto transData = CkptTransData();
+    auto dataDir = "./test"s;
+    auto dataType = CkptDataType::ATTRIBUTE;
+    auto dataElemBytes = 1;
+
+    ckpt.fileSystemPtr = std::make_unique<LocalFileSystem>(LocalFileSystem());
+    EXPECT_THROW(ckpt.ReadStream(transData, dataDir, dataType, dataElemBytes), std::runtime_error);
+}
+
+TEST_F(CheckpointTest, ReadStream_InputUnknowType_Error)
+{
+    EMOCK(&Checkpoint::CheckFileSystemPtr).expects(once()).will(returnValue(true));
+    EMOCK(&LocalFileSystem::GetFileSize).expects(once()).will(returnValue(static_cast<size_t>(0)));
+    EMOCK(&Checkpoint::SetTransDataSize).expects(once());
+    EMOCK((ssize_t(LocalFileSystem::*)(const string&, char*, size_t))(&LocalFileSystem::Read))
+        .expects(once())
+        .will(returnValue(0));
+
+    auto ckpt = Checkpoint();
+    auto transData = CkptTransData();
+    auto dataDir = "./test"s;
+    auto dataType = CkptDataType::EMB_DATA;
+    auto dataElemBytes = 1;
+
+    ckpt.fileSystemPtr = std::make_unique<LocalFileSystem>(LocalFileSystem());
+    EXPECT_THROW(ckpt.ReadStream(transData, dataDir, dataType, dataElemBytes), std::runtime_error);
 }
 
 TEST_F(CheckpointTest, ReadStreamForEmbDataOk)
@@ -488,6 +637,19 @@ TEST_F(CheckpointTest, ReadStreamForEmbDataErr)
     delete embMem;
 }
 
+TEST_F(CheckpointTest, ReadStreamForEmbData_EmptyDataElmtByte)
+{
+    auto transData = CkptTransData();
+    transData.attribute.push_back(32);
+    auto dataDir = "./test"s;
+    uint32_t dataElemBytes = 0;
+    auto embName = "test"s;
+    auto ckptData = CkptData();
+    auto ckpt = Checkpoint();
+    
+    ckpt.ReadStreamForEmbData(transData, dataDir, dataElemBytes, ckptData, embName);
+}
+
 TEST_F(CheckpointTest, SetTransDataSizeOk)
 {
     auto ckpt = Checkpoint();
@@ -506,4 +668,127 @@ TEST_F(CheckpointTest, SetTransDataSizeOk)
 
     dataType = static_cast<CkptDataType>(-1);
     EXPECT_THROW(ckpt.SetTransDataSize(transData, datasetSize, dataType), std::runtime_error);
+}
+
+TEST_F(CheckpointTest, SetDataHandler_InputFeatureTypes)
+{
+    vector<CkptFeatureType> featTypes = {
+        CkptFeatureType::FEAT_ADMIT_N_EVICT,
+        CkptFeatureType::DDR_KEY_FREQ_MAP,
+        CkptFeatureType::KEY_COUNT_MAP
+    };
+    auto ckpt = Checkpoint();
+
+    ckpt.SetDataHandler(featTypes);
+}
+
+TEST_F(CheckpointTest, GetEmbeddingSize_mgmtEmbInfoEmpty)
+{
+    auto ckpt = Checkpoint();
+
+    auto res = ckpt.GetEmbeddingSize("test");
+    EXPECT_EQ(res.embSize, 0);
+}
+
+TEST_F(CheckpointTest, GetEmbeddingSize_mgmtEmbInfoEmbNameNotfound)
+{
+    SetEmbInfo();
+    auto ckpt = Checkpoint();
+    ckpt.mgmtEmbInfo = testEmbInfos;
+
+    auto res = ckpt.GetEmbeddingSize("test");
+    EXPECT_EQ(res.embSize, 0);
+}
+
+TEST_F(CheckpointTest, CheckEmbNames_NameNotMatch_ReturnsFalse)
+{
+    SetEmbInfo();
+    auto ckpt = Checkpoint();
+    ckpt.mgmtEmbInfo = testEmbInfos;
+
+    EXPECT_FALSE(ckpt.CheckEmbNames("target"));
+}
+
+TEST_F(CheckpointTest, CheckEmbNames_MatchButNotSave_ReturnsFalse)
+{
+    SetEmbInfo();
+    testEmbInfos[0].isSave = false;
+    testEmbInfos[0].name = "target";
+    auto ckpt = Checkpoint();
+    ckpt.mgmtEmbInfo = testEmbInfos;
+
+    EXPECT_FALSE(ckpt.CheckEmbNames("target"));
+}
+
+TEST_F(CheckpointTest, SaveDataset_CheckEmbNamesFalse)
+{
+    SetEmbInfo();
+    auto embNames = vector<string>{"test"};
+    auto dataTypes = vector<CkptDataType>{CkptDataType::EMB_INFO};
+    unique_ptr<CkptDataHandler> dataHandler;
+    auto ckpt = Checkpoint();
+    ckpt.mgmtEmbInfo = testEmbInfos;
+
+    ckpt.SaveDataset(embNames, dataTypes, dataHandler);
+}
+
+TEST_F(CheckpointTest, WriteStream_DataTypeAttribute_SaveDataError1)
+{
+    EMOCK(static_cast<ssize_t (LocalFileSystem::*)(const string&, const char*, size_t)>(&LocalFileSystem::Write))
+        .expects(once())
+        .will(returnValue(-1));
+
+    auto transData = CkptTransData();
+    auto dataDir = "./test"s;
+    auto dataType = CkptDataType::ATTRIBUTE;
+    auto ckpt = Checkpoint();
+    ckpt.fileSystemPtr = std::make_unique<LocalFileSystem>(LocalFileSystem());
+
+    EXPECT_THROW(ckpt.WriteStream(transData, dataDir, transData.datasetSize, dataType), std::runtime_error);
+}
+
+TEST_F(CheckpointTest, WriteStream_DataTypeAttribute_SaveDataError2)
+{
+    EMOCK(static_cast<ssize_t (LocalFileSystem::*)(const string&, const char*, size_t)>(&LocalFileSystem::Write))
+        .expects(once())
+        .will(returnValue(-2));
+
+    auto transData = CkptTransData();
+    auto dataDir = "./test"s;
+    auto dataType = CkptDataType::ATTRIBUTE;
+    auto ckpt = Checkpoint();
+    ckpt.fileSystemPtr = std::make_unique<LocalFileSystem>(LocalFileSystem());
+
+    EXPECT_THROW(ckpt.WriteStream(transData, dataDir, transData.datasetSize, dataType), std::runtime_error);
+}
+
+TEST_F(CheckpointTest, WriteStream_UnknowType_Error)
+{
+    EMOCK(static_cast<ssize_t (LocalFileSystem::*)(const string&, const char*, size_t)>(&LocalFileSystem::Write))
+        .expects(once())
+        .will(returnValue(1));
+
+    auto transData = CkptTransData();
+    auto dataDir = "./test"s;
+    auto dataType = CkptDataType::EMB_DATA;
+    auto ckpt = Checkpoint();
+    ckpt.fileSystemPtr = std::make_unique<LocalFileSystem>(LocalFileSystem());
+
+    EXPECT_THROW(ckpt.WriteStream(transData, dataDir, transData.datasetSize, dataType), std::runtime_error);
+}
+
+TEST_F(CheckpointTest, GetEmbedTableNames_IsSave)
+{
+    SetEmbInfo();
+    auto ckpt = Checkpoint();
+    ckpt.mgmtEmbInfo = testEmbInfos;
+
+    ckpt.GetEmbedTableNames();
+}
+
+TEST_F(CheckpointTest, CheckFileSystemPtr_NullptrFileSystemPtr)
+{
+    auto ckpt = Checkpoint();
+
+    EXPECT_THROW(ckpt.CheckFileSystemPtr(), std::runtime_error);
 }
