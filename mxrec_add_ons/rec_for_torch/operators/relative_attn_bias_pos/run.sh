@@ -15,16 +15,16 @@ if [ "$#" -eq 1 ]; then
 fi
 
 # 利用msopgen生成可编译文件
-rm -rf ./relative_attn_bias
-python3 /usr/local/Ascend/ascend-toolkit/latest/python/site-packages/bin/msopgen gen -i relative_attn_bias.json -f tf -c ${ai_core} -lan cpp -out ./relative_attn_bias -m 0 -op RelativeAttnBias
-rm -rf relative_attn_bias/op_kernel/*.h
-rm -rf relative_attn_bias/op_kernel/*.cpp
-rm -rf relative_attn_bias/host/*.h
-rm -rf relative_attn_bias/host/*.cpp
-cp -rf op_kernel relative_attn_bias/
-cp -rf op_host relative_attn_bias/
+rm -rf ./relative_attn_bias_pos
+python3 /usr/local/Ascend/ascend-toolkit/latest/python/site-packages/bin/msopgen gen -i relative_attn_bias_pos.json -f tf -c ${ai_core} -lan cpp -out ./relative_attn_bias_pos -m 0 -op RelativeAttnBiasPos
+rm -rf relative_attn_bias_pos/op_kernel/*.h
+rm -rf relative_attn_bias_pos/op_kernel/*.cpp
+rm -rf relative_attn_bias_pos/host/*.h
+rm -rf relative_attn_bias_pos/host/*.cpp
+cp -rf op_kernel relative_attn_bias_pos/
+cp -rf op_host relative_attn_bias_pos/
 
-cd relative_attn_bias
+cd relative_attn_bias_pos
 
 # 判断当前目录下是否存在CMakePresets.json文件
 if [ ! -f "CMakePresets.json" ]; then
@@ -40,11 +40,9 @@ sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g
 # 修改vendor_name 防止覆盖之前vendor_name为customize的算子;
 # vendor_name需要和aclnn中的CMakeLists.txt中的CUST_PKG_PATH值同步，不同步aclnn会调用失败;
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
-sed -i 's:"customize":"relative_attn_bias":g' CMakePresets.json
+sed -i 's:"customize":"relative_attn_bias_pos":g' CMakePresets.json
 
 if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
-    sed -i "1i #define SUPPORT_V200" ./op_kernel/relative_attn_bias_kernel.h
-    sed -i "1i #define SUPPORT_V200" ./op_kernel/relative_attn_bias_time.h
     sed -i "1i #define SUPPORT_V200" ./op_kernel/relative_attn_bias_pos.h
 fi
 

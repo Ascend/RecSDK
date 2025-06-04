@@ -23,7 +23,7 @@ public:
         GET_TILING_DATA(tilingData, args.tiling);
         s = SEQ_EXPAND * tilingData.s;
         bs = tilingData.bs;
-        stride = tilingData.positionStride;
+        stride = tilingData.stride;
         for (auto i = 0; i < bs; ++i) {
             pastValidLens[i] = tilingData.pastValidLens[i];
         }
