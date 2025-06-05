@@ -234,4 +234,28 @@ namespace MxRec {
         std::ifstream file(filePath.c_str());
         return file.is_open();
     }
+
+    void RenameFilePath(const string& filePath, const string& newFilePath)
+    {
+        if (access(newFilePath.c_str(), F_OK) == 0) {
+            LOG_INFO("Target file already exists: {}", newFilePath);
+            return;
+        }
+        if (access(filePath.c_str(), F_OK) != 0) {
+            auto error = Error(ModuleName::M_UTILS, ErrorType::INVALID_ARGUMENT,
+                               StringFormat("File does not exist:%s.", filePath.c_str()));
+            LOG_ERROR(error.ToString());
+            throw invalid_argument(error.ToString());
+        } else {
+            if (rename(filePath.c_str(), newFilePath.c_str()) == 0) {
+                LOG_INFO("File renamed successfully: {}", newFilePath);
+            } else {
+                auto error = Error(ModuleName::M_UTILS, ErrorType::IO_ERROR,
+                                   StringFormat("Failed to rename %s to %s.",
+                                                filePath.c_str(), newFilePath.c_str()));
+                LOG_ERROR(error.ToString());
+                throw std::runtime_error(error.ToString());
+            }
+        }
+    }
 } // end namespace MxRec
