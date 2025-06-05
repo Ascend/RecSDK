@@ -5,27 +5,22 @@
 import logging
 import random
 import sysconfig
-
 from collections import defaultdict
 from dataclasses import dataclass
 
 import pytest
 import torch
-
 from fbgemm_gpu.split_embedding_configs import EmbOptimType
 from fbgemm_gpu.split_table_batched_embeddings_ops_common import (
     EmbeddingLocation,
     PoolingMode,
 )
-from fbgemm_gpu.split_table_batched_embeddings_ops_training import (
-    SplitTableBatchedEmbeddingBagsCodegen,
-    ComputeDevice,
-)
-
+from fbgemm_gpu.split_table_batched_embeddings_ops_training import SplitTableBatchedEmbeddingBagsCodegen
 from hybrid_torchrec.distributed.batched_embedding_kernel import HybridSplitTableBatchedEmbeddingBagsCodegen
 from torch.optim import Adam, Adagrad, SGD
+
 import torchrec
-from torchrec import JaggedTensor, KeyedJaggedTensor, PoolingType
+from torchrec import JaggedTensor, KeyedJaggedTensor, PoolingType, ComputeDevice
 
 logging.getLogger().setLevel(logging.INFO)
 DEVICEID = "npu:0"
