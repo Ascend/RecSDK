@@ -153,7 +153,9 @@ __aicore__ inline void HstuDenseForwardJaggedKernelFuxi<qType>::ComputeBiasMask(
 
     int64_t timestampOffset = positionOffset + computeTaskInfo[taskId].batchId * this->maxSeqLen * this->maxSeqLen;
     
-    int64_t maskOffset = timestampOffset + computeTaskInfo[taskId].headId * this->maxSeqLen * this->maxSeqLen;
+    int64_t maskOffset = positionOffset +
+        computeTaskInfo[taskId].batchId * this->headNum * this->maxSeqLen * this->maxSeqLen +
+        computeTaskInfo[taskId].headId * this->maxSeqLen * this->maxSeqLen;
 
     this->BiasMaskImpl(taskId, timestampOffset, positionOffset, maskOffset,
         computeTaskInfo[taskId].causalMask, computeTaskInfo[taskId].computeASeqLen,
