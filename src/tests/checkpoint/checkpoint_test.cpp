@@ -29,6 +29,8 @@ using namespace std;
 using namespace MxRec;
 
 const float MEM_INIT_VALUE = 0.5;
+const size_t TEST_SIZE = 4;
+const ssize_t RETURN_SIZE = -2;
 
 class CheckpointTest : public testing::Test {
 protected:
@@ -509,7 +511,7 @@ TEST_F(CheckpointTest, ReadStream_DataElmtBytesZero)
 TEST_F(CheckpointTest, ReadStream_DataIsMissing)
 {
     EMOCK(&Checkpoint::CheckFileSystemPtr).expects(once()).will(returnValue(true));
-    EMOCK(&LocalFileSystem::GetFileSize).expects(once()).will(returnValue(static_cast<size_t>(4)));
+    EMOCK(&LocalFileSystem::GetFileSize).expects(once()).will(returnValue(static_cast<size_t>(TEST_SIZE)));
     EMOCK(&Checkpoint::SetTransDataSize).expects(once());
 
     auto ckpt = Checkpoint();
@@ -548,7 +550,7 @@ TEST_F(CheckpointTest, ReadStream_InputAttribute_LoadDataFailed_Error)
     EMOCK(&Checkpoint::SetTransDataSize).expects(once());
     EMOCK((ssize_t(LocalFileSystem::*)(const string&, char*, size_t))(&LocalFileSystem::Read))
         .expects(once())
-        .will(returnValue(-2));
+        .will(returnValue(RETURN_SIZE));
 
     auto ckpt = Checkpoint();
     auto transData = CkptTransData();
@@ -751,7 +753,7 @@ TEST_F(CheckpointTest, WriteStream_DataTypeAttribute_SaveDataError2)
 {
     EMOCK(static_cast<ssize_t (LocalFileSystem::*)(const string&, const char*, size_t)>(&LocalFileSystem::Write))
         .expects(once())
-        .will(returnValue(-2));
+        .will(returnValue(RETURN_SIZE));
 
     auto transData = CkptTransData();
     auto dataDir = "./test"s;

@@ -17,6 +17,7 @@ See the License for the specific language governing permissions and
 
 #include "ckpt_data_handler/feat_admit_n_evict_ckpt/feat_admit_n_evict_ckpt.h"
 #include "ckpt_data_handler/key_count_map_ckpt/key_count_map_ckpt.h"
+#include "ckpt_data_handler/key_freq_map_ckpt/key_freq_map_ckpt.h"
 #include "utils/common.h"
 
 using namespace std;
@@ -292,6 +293,8 @@ TEST_F(CkptDataHandlerTest, FeatAdmitNEvict)
 
     vector<string> embNames { testCkpt.GetEmbNames() };
     EXPECT_EQ(validData.table2Thresh.size(), embNames.size());
+    EXPECT_EQ(testCkpt.GetDataTypes(), vector<CkptDataType>({ CkptDataType::TABLE_2_THRESH, CkptDataType::HIST_REC }));
+    EXPECT_EQ(testCkpt.GetDirNames(), vector<string>({ "HashTable", "FEAT_INFO" }));
 
     InputArgs args = {embNames, validData, testCkpt, validTrens2ThreshArr, validTrens2ThreshAttrib,
                       validHistRecAttrib, validHistRecArr, testData};
@@ -300,6 +303,14 @@ TEST_F(CkptDataHandlerTest, FeatAdmitNEvict)
 
     // 测试load
     TestForLoad(args);
+}
+
+TEST_F(CkptDataHandlerTest, FeatAdmitNEvict_SetProcessData_Error)
+{
+    CkptData testData;
+    FeatAdmitNEvictCkpt testCkpt;
+
+    EXPECT_THROW(testCkpt.SetProcessData(testData), std::runtime_error);
 }
 
 TEST_F(CkptDataHandlerTest, KeyCountMapCkpt)
@@ -330,4 +341,28 @@ TEST_F(CkptDataHandlerTest, SetDatasetForLoadEmb)
     } catch (runtime_error& e) {
         LOG_INFO(KEY_PROCESS "success");
     }
+}
+
+TEST_F(CkptDataHandlerTest, KeyFreqMapCkpt)
+{
+    CkptData data;
+    KeyFreqMapCkpt ckpt;
+    CkptTransData tranData;
+    const int testCount = 10;
+
+    ckpt.GetProcessData(data);
+
+    for (int i = 0; i < testCount; ++i) {
+        tranData.int64Arr.push_back(i);
+    }
+    ckpt.SetDataset(CkptDataType::DDR_FREQ_MAP, "test", tranData);
+    EXPECT_EQ(tranData.datasetSize, 0);
+
+    for (int i = 0; i < testCount; ++i) {
+        tranData.int64Arr.push_back(i);
+    }
+    ckpt.SetDataset(CkptDataType::EXCLUDE_FREQ_MAP, "test", tranData);
+    EXPECT_EQ(tranData.datasetSize, 0);
+    
+    EXPECT_EQ(ckpt.GetDirNames(), vector<string>({ "HashTable", "SSD" }));
 }
