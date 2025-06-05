@@ -115,7 +115,7 @@ bool TilingPolicy::GeneralShapeCheck(int64_t batchSize, int64_t seqLen, int64_t 
     static const ShapeRange headRange(2, 8, 2, "head num");
 
     if ((!seqRange.Check(seqLen)) || (!batchRange.Check(batchSize)) ||
-        (!dimRange.Check(headNum)) || (!headRange.Check(dim))) {
+        (!headRange.Check(headNum)) || (!dimRange.Check(dim))) {
         return false;
     }
 
@@ -226,8 +226,7 @@ bool TilingPolicy::TilingCore(gert::TilingContext* context, optiling::HstuDenseF
 
 bool TilingPolicy::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardFuxiTilingData &tiling)
 {
-    // base unrealized
-    return false;
+    return true;
 }
 
 }

@@ -32,19 +32,26 @@ namespace INDEX_T {
     constexpr int INDEX_5 = 5;
 }
 
-constexpr int FLOAT_TILING_KEY = 2;
-constexpr int BF16_TILING_KEY = 1;
 constexpr int FLOAT16_TILING_KEY = 0;
-
-constexpr int MAX_AIV_NUM = 48;
-constexpr int MAX_BATCH_SIZE = 10;
-constexpr int BLOCK_HEIGHT = 64;
-constexpr int VCORE_NUM_IN_ONE_AIC = 1;
-constexpr int COMPUTE_PIPE_NUM = 3;
-constexpr int TRANS_PIPE_NUM = 4;
 constexpr int TRANS_TASK_NUM = 3;
+constexpr int MAX_AIV_NUM = 48;
 
-constexpr int OUTPUT_DIM_NUM = 3;
+#ifdef SUPPORT_V200
+    constexpr int OUTPUT_DIM_NUM = 3;
+    constexpr int MAX_BATCH_SIZE = 10;
+    constexpr int BLOCK_HEIGHT = 64;
+    constexpr int VCORE_NUM_IN_ONE_AIC = 1;
+    constexpr int COMPUTE_PIPE_NUM = 3;
+    constexpr int TRANS_PIPE_NUM = 1;
+#else
+    constexpr int OUTPUT_DIM_NUM = 2;
+    constexpr int MAX_BATCH_SIZE = 512;
+    constexpr int BLOCK_HEIGHT = 256;
+    constexpr int VCORE_NUM_IN_ONE_AIC = 2;
+    constexpr int COMPUTE_PIPE_NUM = 3;
+    constexpr int TRANS_PIPE_NUM = 4;
+    constexpr int OUTPUT_DIM2_TIMES_3 = 3;
+#endif
 
 }
 

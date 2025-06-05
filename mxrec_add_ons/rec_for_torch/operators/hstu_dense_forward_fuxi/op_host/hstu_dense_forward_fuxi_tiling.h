@@ -43,7 +43,13 @@ TILING_DATA_FIELD_DEF(int32_t, tvBaseN);
 TILING_DATA_FIELD_DEF(int32_t, pvBaseM);
 TILING_DATA_FIELD_DEF(int32_t, pvBaseN);
 
-TILING_DATA_FIELD_DEF(int32_t, tmpUbSize);
+#ifdef SUPPORT_V200
+    TILING_DATA_FIELD_DEF(int32_t, tmpUbSize);
+#else
+    TILING_DATA_FIELD_DEF_ARR(uint32_t, (HstuDenseForwardFuxi::MAX_BATCH_SIZE + 1), seqOffset);
+    TILING_DATA_FIELD_DEF_ARR(uint32_t, HstuDenseForwardFuxi::MAX_AIV_NUM, eachCoreStartBlockId);
+    TILING_DATA_FIELD_DEF_ARR(uint32_t, HstuDenseForwardFuxi::MAX_AIV_NUM, eachCoreEndBlockId);
+#endif
 
 TILING_DATA_FIELD_DEF(uint32_t, enableBias);
 TILING_DATA_FIELD_DEF(uint32_t, maskType);
