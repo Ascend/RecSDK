@@ -31,6 +31,7 @@ class PatternModel(torch.nn.Module):
         sum_result = torch.sum(cast_result, dim=1)
         sum_result = sum_result.type(torch.int64)
 
+        sub_tensor = sub_tensor.type(torch.int64)
         sub_result = torch.sub(sum_result, sub_tensor)
         sub_result = sub_result.type(torch.float32)
         # Step 3: 输出shape 为 (30720)
