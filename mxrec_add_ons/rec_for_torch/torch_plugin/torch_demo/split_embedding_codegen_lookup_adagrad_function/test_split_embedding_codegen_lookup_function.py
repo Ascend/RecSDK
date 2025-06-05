@@ -51,7 +51,7 @@ OPTIMIZER_PARAM = {
 
 @dataclass
 class LookupParams:
-    tables: list[int]
+    tables: list[list[int]]
     mutile_hots: list[int]
     batch_size: int
     pooling_mode: PoolingMode
