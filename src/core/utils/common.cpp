@@ -1,4 +1,4 @@
-/* Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+/* Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -241,21 +241,22 @@ namespace MxRec {
             LOG_INFO("Target file already exists: {}", newFilePath);
             return;
         }
+
         if (access(filePath.c_str(), F_OK) != 0) {
             auto error = Error(ModuleName::M_UTILS, ErrorType::INVALID_ARGUMENT,
                                StringFormat("File does not exist:%s.", filePath.c_str()));
             LOG_ERROR(error.ToString());
             throw invalid_argument(error.ToString());
-        } else {
-            if (rename(filePath.c_str(), newFilePath.c_str()) == 0) {
-                LOG_INFO("File renamed successfully: {}", newFilePath);
-            } else {
-                auto error = Error(ModuleName::M_UTILS, ErrorType::IO_ERROR,
-                                   StringFormat("Failed to rename %s to %s.",
-                                                filePath.c_str(), newFilePath.c_str()));
-                LOG_ERROR(error.ToString());
-                throw std::runtime_error(error.ToString());
-            }
         }
+
+        if (rename(filePath.c_str(), newFilePath.c_str()) != 0) {
+            auto error = Error(ModuleName::M_UTILS, ErrorType::IO_ERROR,
+                               StringFormat("Failed to rename %s to %s.",
+                                            filePath.c_str(), newFilePath.c_str()));
+            LOG_ERROR(error.ToString());
+            throw std::runtime_error(error.ToString());
+        }
+
+        LOG_INFO("File renamed successfully: {}", newFilePath);
     }
 } // end namespace MxRec
