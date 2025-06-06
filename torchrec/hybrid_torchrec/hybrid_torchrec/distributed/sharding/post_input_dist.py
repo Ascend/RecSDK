@@ -30,25 +30,28 @@ W = TypeVar("W")
 DEFAULT_POST_INPUT_THREADS = 6
 MAX_POST_INPUT_THREADS = 12
 
+
 class ThreadPoolExecutorSingleton:
     _instance: "ThreadPoolExecutorSingleton" = None
 
     def __new__(cls, *args, **kwargs):
-        if not cls._instance:
-            cls._instance = super(ThreadPoolExecutorSingleton, cls).__new__(
-                cls, *args, **kwargs
-            )
-            try:
-                max_threads = int(os.environ.get("POST_INPUT_THREADS", DEFAULT_POST_INPUT_THREADS))
-                if max_threads <= 0 or max_threads > MAX_POST_INPUT_THREADS:
-                    raise ValueError(f"POST_INPUT_THREADS expected in range [1, {MAX_POST_INPUT_THREADS}],"
-                                     f"but got {max_threads}.") 
-                cls.executor = ThreadPoolExecutor(max_threads)
-                return cls._instance
-            except ValueError as e:
-                if "invalid literal for int()" in str(e):
-                    raise Exception("Environment variable POST_INPUT_THREADS is not a valid integer.") from e
-                raise
+        if cls._instance:
+            return cls._instance
+        cls._instance = super(ThreadPoolExecutorSingleton, cls).__new__(
+            cls, *args, **kwargs
+        )
+        try:
+            max_threads = int(os.environ.get("POST_INPUT_THREADS", DEFAULT_POST_INPUT_THREADS))
+            if max_threads <= 0 or max_threads > MAX_POST_INPUT_THREADS:
+                raise ValueError(f"POST_INPUT_THREADS expected in range [1, {MAX_POST_INPUT_THREADS}],"
+                                    f"but got {max_threads}.") 
+            cls.executor = ThreadPoolExecutor(max_threads)
+            return cls._instance
+        except ValueError as e:
+            if "invalid literal for int()" in str(e):
+                raise Exception("Environment variable POST_INPUT_THREADS is not a valid integer.") from e
+            raise
+
 
 def get_feature_len_groupby_table_name(grouped_embedding_configs):
     table_names = []

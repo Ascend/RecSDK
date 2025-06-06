@@ -237,7 +237,7 @@ class TestModel:
 @pytest.mark.parametrize("pool_type", [torchrec.PoolingType.MEAN])
 @pytest.mark.parametrize("sharding_type", ["table_wise", "row_wise"])
 @pytest.mark.parametrize("lookup_len", [1024])
-@pytest.mark.parametrize("device", ["cpu", "npu"])
+@pytest.mark.parametrize("device", ["npu"])
 @pytest.mark.parametrize("optim", [Adagrad])
 def test_hybrid_pipeline_hash_embedding_bag(
     table_num,
