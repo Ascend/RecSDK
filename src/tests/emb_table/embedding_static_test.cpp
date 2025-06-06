@@ -1,4 +1,4 @@
-/* Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+/* Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,8 @@ See the License for the specific language governing permissions and
 #include <acl/acl.h>
 #include <acl/acl_rt.h>
 #include <limits>
+#include <mpi.h>
+
 #include "utils/common.h"
 #include "utils/logger.h"
 #include "utils/error.h"
@@ -43,7 +45,9 @@ protected:
         std::vector<int64_t> paddingKeys = {1};
         vector<int> maxStep = {1000};
         embInfo_ = EmbInfo(embParam, vocabsize, initializeInfos, ssdDataPath, paddingKeys);
-        rankInfo_ = RankInfo(0, 0, 0, 1, maxStep);
+        int rankId;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rankId);
+        rankInfo_ = RankInfo(rankId, 0, 0, 1, maxStep);
     }
 
     void SetUp() {
@@ -53,15 +57,12 @@ protected:
 
     static void SetupTestCase()
     {
-        if (access("test_dir", F_OK) == 0) {
-            system("rm -rf test_dir");
+        if (access("test_static", F_OK) == 0) {
+            system("rm -rf test_static");
         }
     }
     static void TearDownTestCase()
     {
-        if (access("test_dir", F_OK) == 0) {
-            system("rm -rf test_dir");
-        }
     }
 
     EmbInfo embInfo_;
@@ -94,7 +95,7 @@ TEST_F(EmbeddingStaticTest, Key2OffsetBasic)
 /**
  * 边界条件:101超过100容量
  */
-TEST_F(EmbeddingStaticTest, Key2OffsetOverflow)
+TEST_F(EmbeddingStaticTest, TestKey2OffsetShouldThrowErrorWhenOverflow)
 {
     vector<EmbInfo> embInfos = {embInfo_};
 
@@ -104,21 +105,12 @@ TEST_F(EmbeddingStaticTest, Key2OffsetOverflow)
     for (size_t i = 0; i < 101; ++i) {
         tmp1.push_back(i);
     }
-    int exp = 0;
-    try {
-        table->Key2Offset(tmp1, TRAIN_CHANNEL_ID);
-    } catch (exception& e) {
-        exp = 1;
-    }
 
     EXPECT_EQ(table->capacity(), 100);
-    EXPECT_EQ(exp, 1);
+    EXPECT_THROW(table->Key2Offset(tmp1, TRAIN_CHANNEL_ID), std::runtime_error);
 }
 
-/**
- * 异常1: 使用eval channel
- */
-TEST_F(EmbeddingStaticTest, Key2OffsetEvalChannel)
+TEST_F(EmbeddingStaticTest, TestKey2OffsetWhenUseEvalChannel)
 {
     vector<EmbInfo> embInfos = {embInfo_};
 
@@ -137,7 +129,7 @@ TEST_F(EmbeddingStaticTest, Key2OffsetEvalChannel)
 /**
  * 正常: 使用淘汰的位置
  */
-TEST_F(EmbeddingStaticTest, Key2OffsetEvict)
+TEST_F(EmbeddingStaticTest, TestEvictKeys)
 {
     vector<EmbInfo> embInfos = {embInfo_};
     shared_ptr<EmbeddingStatic> table = std::make_shared<EmbeddingStatic>(embInfo_, rankInfo_, 0);
@@ -164,10 +156,7 @@ TEST_F(EmbeddingStaticTest, Key2OffsetEvict)
     EXPECT_EQ(evicted_keys.size(), tableNum - testNum);
 }
 
-/**
- * 测试Key2OffsetForDp:使用 eval channel
- */
-TEST_F(EmbeddingStaticTest, Key2OffsetForDpEval)
+TEST_F(EmbeddingStaticTest, TestKey2OffsetForDpWhenUseEvalChannel)
 {
     vector<EmbInfo> embInfos = {embInfo_};
     shared_ptr<EmbeddingStatic> table = std::make_shared<EmbeddingStatic>(embInfo_, rankInfo_, 0);
@@ -189,10 +178,7 @@ TEST_F(EmbeddingStaticTest, Key2OffsetForDpEval)
     EXPECT_EQ(table->capacity(), 100);
 }
 
-/**
- * 测试Key2OffsetForDp:使用 train channel
- */
-TEST_F(EmbeddingStaticTest, Key2OffsetForDpTrain)
+TEST_F(EmbeddingStaticTest, TestKey2OffsetForDpShouldThrowErrorWhenUseTrainChannel)
 {
     vector<EmbInfo> embInfos = {embInfo_};
     shared_ptr<EmbeddingStatic> table = std::make_shared<EmbeddingStatic>(embInfo_, rankInfo_, 0);
@@ -202,21 +188,13 @@ TEST_F(EmbeddingStaticTest, Key2OffsetForDpTrain)
         tmp1.push_back(i);
     }
 
-    int exp = 0;
-    try {
-        table->Key2OffsetForDp(tmp1, TRAIN_CHANNEL_ID);
-    } catch (exception& e) {
-        exp = 1;
-    }
     EXPECT_EQ(table->capacity(), 100);
-    EXPECT_EQ(exp, 1);
+    EXPECT_THROW(table->Key2OffsetForDp(tmp1, TRAIN_CHANNEL_ID), std::runtime_error);
 }
 
-/**
- * 测试key数据的保存和加载
- */
-TEST_F(EmbeddingStaticTest, SaveAndLoadKeyData)
+TEST_F(EmbeddingStaticTest, TestSaveAndLoadKeyDataWhenSaveDeltaIsFalse)
 {
+    const string tableName = "test1";
     vector<EmbInfo> embInfos = {embInfo_};
     map<emb_key_t, KeyInfo> keyInfo;
     shared_ptr<EmbeddingStatic> table = std::make_shared<EmbeddingStatic>(embInfo_, rankInfo_, 0);
@@ -236,39 +214,31 @@ TEST_F(EmbeddingStaticTest, SaveAndLoadKeyData)
     LOG_INFO("test Key2Offset: lookupKeys: {}, keyOffsetMap: {}",
              VectorToString(keyData), MapToString(tmp));
 
-    table->SetFileSystemPtr("test_dir");
-    table->Save("test_dir", 1, false, keyInfo);
-    const char* filePath = "./test_dir/test1/key/slice_0.data";
-    // 检查文件是否存在
-    if (access(filePath, F_OK) != 0) {
-        LOG_INFO("Error: File does not exist: {}", filePath);
-    } else {
-        // 重命名文件
-        const char* newfilePath = "./test_dir/test1/key/slice.data";
-        if (rename(filePath, newfilePath) == 0) {
-            LOG_INFO("File renamed successfully: {}", newfilePath);
-        }
+    stringstream savePath;
+    savePath << "test_static/device" << rankInfo_.rankId;
+    table->SetFileSystemPtr(savePath.str());
+    table->Save(savePath.str(), 1, false, keyInfo);
+    stringstream saveKeyPath;
+    saveKeyPath << savePath.str() << "/" << tableName << "/key";
+    EXPECT_EQ(access(saveKeyPath.str().c_str(), F_OK), 0);
+
+    stringstream fileKeyPath;
+    fileKeyPath << saveKeyPath.str() << "/slice_" << rankInfo_.rankId << ".data";
+    stringstream newFileKeyPath;
+    newFileKeyPath << saveKeyPath.str() << "/slice.data";
+    if (rankInfo_.rankId == 0) {
+        RenameFilePath(fileKeyPath.str(), newFileKeyPath.str());
+
+        map<string, unordered_set<emb_cache_key_t>> trainKeySetOne;
+        vector<string> warmStartTablesOne;
+        table->Load(savePath.str(), trainKeySetOne, warmStartTablesOne);
+        vector<int64_t> deviceOffsetOne = table->GetDeviceOffset();
+        EXPECT_EQ(table->GetMaxOffset(), testNum);
+        EXPECT_NE(deviceOffsetOne.size(), 0);
     }
-
-    map<string, unordered_set<emb_cache_key_t>> trainKeySetOne;
-    vector<string> warmStartTablesOne;
-    table->Load("./test_dir", trainKeySetOne, warmStartTablesOne);
-
-    bool fileExist = false;
-    if (access("./test_dir/test1/key", F_OK) == 0) {
-        fileExist = true;
-    }
-    vector<int64_t> deviceOffsetOne = table->GetDeviceOffset();
-
-    EXPECT_EQ(table->GetMaxOffset(), testNum);
-    EXPECT_EQ(fileExist, true);
-    EXPECT_NE(deviceOffsetOne.size(), 0);
 }
 
-/**
- * 测试key数据保存异常场景: saveDelta为true
- */
-TEST_F(EmbeddingStaticTest, SaveKeyDataForExp)
+TEST_F(EmbeddingStaticTest, TestSaveKeyDataShouldThrowErrorWhenSaveDeltaIsTrue)
 {
     vector<EmbInfo> embInfos = {embInfo_};
     shared_ptr<EmbeddingStatic> table = std::make_shared<EmbeddingStatic>(embInfo_, rankInfo_, 0);
@@ -292,15 +262,10 @@ TEST_F(EmbeddingStaticTest, SaveKeyDataForExp)
         keyInfo[i] = info;
     }
 
-    table->SetFileSystemPtr("test_dir");
-    int exp = 0;
-    try {
-        table->Save("test_dir", 1, true, keyInfo);
-    } catch (exception& e) {
-        exp = 1;
-    }
-
-    EXPECT_EQ(exp, 1);
+    stringstream savePathOne;
+    savePathOne << "test_static/SaveDeltaTrue" << rankInfo_.rankId;
+    table->SetFileSystemPtr(savePathOne.str());
+    EXPECT_THROW(table->Save(savePathOne.str(), 1, true, keyInfo), std::runtime_error);
     EXPECT_EQ(table->capacity(), testNum);
 }
 
@@ -396,4 +361,20 @@ TEST_F(EmbeddingStaticTest, ShouldReturnTargetMaxOffsetWhenEmplaceAndFindKeyIn5T
     }
     EXPECT_EQ(table->size(), 100);
     EXPECT_EQ(table->size(), table->GetMaxOffset());
+}
+
+TEST_F(EmbeddingStaticTest, TestBackUpAndRecoverTrainStatus)
+{
+    shared_ptr<EmbeddingStatic> table = std::make_shared<EmbeddingStatic>(embInfo_, rankInfo_, 0);
+
+    const size_t testNum = 100;
+    vector<emb_key_t> testKeys;
+    for (size_t i = 0; i < testNum; ++i) {
+        testKeys.push_back(i);
+    }
+    table->Key2Offset(testKeys, TRAIN_CHANNEL_ID);
+    table->BackUpTrainStatus();
+    EXPECT_EQ(table->keyOffsetMapBackUp.size(), testNum);
+    table->RecoverTrainStatus();
+    EXPECT_EQ(table->keyOffsetMapBackUp.size(), 0);
 }

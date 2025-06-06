@@ -1,4 +1,4 @@
-/* Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+/* Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -583,6 +583,8 @@ int GetStepFromPath(const string& loadPath);
 string MakeSwapCVName(int id, const string& tableName, int channelId);
 
 bool CheckFileExist(const string& filePath);
+
+void RenameFilePath(const string& filePath, const string& newFilePath);
 }  // end namespace MxRec
 
 #define KEY_PROCESS "\033[45m[KeyProcess]\033[0m "

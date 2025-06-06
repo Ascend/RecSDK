@@ -385,6 +385,7 @@ TEST_F(HybridMgmtTest, InitEmbeddingCacheShouldNotThrowExceptionWhenCreateCacheF
     m_hybridMgmt.isRunning = true;
 
     auto mockFactory = std::make_shared<ock::ctr::FactoryMock>();
+    auto factoryBakUp = factory;
     factory = mockFactory;
 
     EXPECT_CALL(*mockFactory, SetExternalLogFuncInner(_)).Times(1);
@@ -393,6 +394,7 @@ TEST_F(HybridMgmtTest, InitEmbeddingCacheShouldNotThrowExceptionWhenCreateCacheF
     EXPECT_CALL(*m_embCachePtr, Destroy()).Times(1).WillRepeatedly(Return());
 
     EXPECT_NO_THROW(m_hybridMgmt.InitEmbeddingCache(embInfos));
+    factory = factoryBakUp;
 }
 
 TEST_F(HybridMgmtTest, EmbeddingReceiveL3StorageShouldReturnFalseWhenEosL1QueReturnsTrue)
