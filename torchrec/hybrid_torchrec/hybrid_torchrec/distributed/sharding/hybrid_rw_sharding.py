@@ -60,7 +60,8 @@ from torchrec.distributed.types import (
 
 from torchrec.fx.utils import assert_fx_safe
 
-DEFAULT_POST_INPUT_THREADS = 6
+DEFAULT_INPUT_DIST_THREADS = 6
+MAX_INPUT_DIST_THREADS = 12
 
 
 class InputDistThreadPoolExecutorSingleton:
@@ -73,11 +74,16 @@ class InputDistThreadPoolExecutorSingleton:
             cls, *args, **kwargs
         )
         try:
-            max_threads = int(os.environ.get("INPUT_DIST_THREADS", DEFAULT_POST_INPUT_THREADS))
+            max_threads = int(os.environ.get("INPUT_DIST_THREADS", DEFAULT_INPUT_DIST_THREADS))
+            if max_threads <= 0 or max_threads > MAX_INPUT_DIST_THREADS:
+                raise ValueError(f"INPUT_DIST_THREADS expected in range [1, {MAX_INPUT_DIST_THREADS}],"
+                                 f"but got {max_threads}.") 
             cls.executor = ThreadPoolExecutor(max_threads)
             return cls._instance
         except ValueError as e:
-            raise Exception("Environment variable INPUT_DIST_THREADS is not a valid integer.") from e
+            if "invalid literal for int()" in str(e):
+                raise Exception("Environment variable INPUT_DIST_THREADS is not a valid integer.") from e
+            raise
 
 C = TypeVar("C", bound=Multistreamable)
 F = TypeVar("F", bound=Multistreamable)

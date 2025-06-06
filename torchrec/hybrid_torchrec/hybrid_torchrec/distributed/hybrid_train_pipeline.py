@@ -274,9 +274,9 @@ class HybridTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
         if not isinstance(device, torch.device):
             raise TypeError(f"device expected to be an instance of torch.device, \
                             but got {type(device)} instead.")
-        
-        if device.type not in ["cpu", "npu"]:
-            raise ValueError(f"device type expected in [cpu, npu], but got {device.type}.")
+
+        if device.type != "npu":
+            raise ValueError(f"device type only support npu, but got {device.type}.")
 
         if model.device != device:
             raise ValueError(f"model device is {model.device}, but input device is {device}.")
