@@ -37,7 +37,6 @@ struct JaggedTaskInfo {
 };
 
 template <typename qType> class HstuDenseBackwardJaggedKernelFuxi : public HstuDenseBackwardKernelFuxi<qType> {
-
 public:
     __aicore__ inline HstuDenseBackwardJaggedKernelFuxi() {}
 
@@ -252,9 +251,8 @@ public:
         int64_t outOffset = midResultIdx * this->blockHeight * this->blockHeight;
         this->qkMatmul.SetTail(computeTaskInfo[curTaskId].rowLine, computeTaskInfo[curTaskId].colLine, this->headDim);
         this->DoGpVMatmulImpl(computeTaskInfo[curTaskId].qkLeftOffset,
-                             computeTaskInfo[curTaskId].qkRightOffset,
-                             outOffset);
-        
+                              computeTaskInfo[curTaskId].qkRightOffset,
+                              outOffset);
     }
 
     __aicore__ inline void DoJaggedGtVMatmul(int64_t taskId)
@@ -264,8 +262,8 @@ public:
         int64_t outOffset = midResultIdx * this->blockHeight * this->blockHeight;
         this->qkMatmul.SetTail(computeTaskInfo[curTaskId].rowLine, computeTaskInfo[curTaskId].colLine, this->headDim);
         this->DoGtVMatmulImpl(computeTaskInfo[curTaskId].qkLeftOffset,
-                             computeTaskInfo[curTaskId].qkRightOffset,
-                             outOffset);
+                              computeTaskInfo[curTaskId].qkRightOffset,
+                              outOffset);
     }
 
     __aicore__ inline void DoJaggedQGradMatmul(int64_t taskId)
@@ -342,7 +340,8 @@ public:
             isNew = computeTaskInfo[curTaskId].rowId == 0;
         }
 
-        this->vGradMatmul.SetTail(computeTaskInfo[curTaskId].colLine, this->headDim , computeTaskInfo[curTaskId].rowLine);
+        this->vGradMatmul.SetTail(
+            computeTaskInfo[curTaskId].colLine, this->headDim, computeTaskInfo[curTaskId].rowLine);
         this->DoBtGtMatmulImpl(scoreTempOffset,
                                computeTaskInfo[curTaskId].vGradRightOffset,
                                outOffset, isNew);
@@ -364,7 +363,8 @@ public:
             isNew = computeTaskInfo[curTaskId].rowId == 0;
         }
 
-        this->vGradMatmul.SetTail(computeTaskInfo[curTaskId].colLine, this->headDim, computeTaskInfo[curTaskId].rowLine);
+        this->vGradMatmul.SetTail(
+            computeTaskInfo[curTaskId].colLine, this->headDim, computeTaskInfo[curTaskId].rowLine);
         this->DoBpGpMatmulImpl(scoreTempOffset,
                                computeTaskInfo[curTaskId].vGradRightOffset,
                                outOffset, isNew);
@@ -434,7 +434,6 @@ public:
 
         this->DoTransImpl(from, to, fromOffset, toOffset, total);
     }
-
 
     __aicore__ inline void FirstJaggedStagePipeline(int64_t taskId)
     {
