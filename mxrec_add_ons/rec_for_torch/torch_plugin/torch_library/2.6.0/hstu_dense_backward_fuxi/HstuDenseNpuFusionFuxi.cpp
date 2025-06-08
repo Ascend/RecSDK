@@ -59,10 +59,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dens
     const double siluScale,
     c10::optional<at::IntArrayRef> seqOffset)
 {
-    constexpr int64_t chunck_size = 3;
-    constexpr int64_t chunck_dim = 2;
-    constexpr int32_t grad_dim = 3;
-    TORCH_CHECK(grad.dim() == grad_dim, "The grad should be 3D in jagged layout");
+    TORCH_CHECK(grad.dim() == CONST_3, "The grad should be 3D in jagged layout");
 
     auto acSeqOffset = seqOffset.value_or(at::IntArrayRef{});
     TORCH_CHECK(acSeqOffset.size() >= CONST_2, "acSeqOffset params error should have at least two element.");
@@ -80,9 +77,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dens
     auto denseMask = acMask.contiguous();
     bool enableBias = denseBiasPosition.defined();
     if (enableBias) {
-        TORCH_CHECK(grad.size(chunck_dim) % chunck_size == 0, "grad size 2 should be divisible by 3");
+        TORCH_CHECK(grad.size(CONST_2) % CONST_3 == 0, "grad size 2 should be divisible by 3");
     }
-    auto grads = enableBias ? at::chunk(grad, chunck_size, chunck_dim) : std::vector<at::Tensor>{};
+    auto grads = enableBias ? at::chunk(grad, CONST_3, CONST_2) : std::vector<at::Tensor>{};
     auto denseGrad = enableBias ? grads[0].contiguous() : grad.contiguous();
     auto denseGradBiasTimestamp = enableBias ? grads[1].contiguous() : at::Tensor();
     auto denseGradBiasPosition = enableBias ? grads[2].contiguous() : at::Tensor();
