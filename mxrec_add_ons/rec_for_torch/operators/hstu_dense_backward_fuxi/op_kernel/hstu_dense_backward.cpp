@@ -20,16 +20,16 @@ See the License for the specific language governing permissions and
 #include "hstu_dense_backward_kernel.h"
 
 extern "C" __global__ __aicore__ void hstu_dense_backward_fuxi(
-    GM_ADDR grad, GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mask, 
+    GM_ADDR grad, GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mask,
     GM_ADDR biasPosition, GM_ADDR biasTimestamp, GM_ADDR gradBposIn, GM_ADDR gradBtsIn,
     GM_ADDR qGrad, GM_ADDR kGrad, GM_ADDR vGrad, GM_ADDR bposGrad, GM_ADDR btsGrad,
     GM_ADDR vbposGrad, GM_ADDR vbtsGrad,
     GM_ADDR workspace, GM_ADDR tiling)
 {
     HstuDenseBackwardFuxi::Args args{
-        grad, q, k, v, mask, 
-        biasPosition, biasTimestamp, gradBposIn, gradBtsIn, 
-        qGrad, kGrad, vGrad, bposGrad, btsGrad, 
+        grad, q, k, v, mask,
+        biasPosition, biasTimestamp, gradBposIn, gradBtsIn,
+        qGrad, kGrad, vGrad, bposGrad, btsGrad,
         vbposGrad, vbtsGrad,
         workspace, tiling
     };
