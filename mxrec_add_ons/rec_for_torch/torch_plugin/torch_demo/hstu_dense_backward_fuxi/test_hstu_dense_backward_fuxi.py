@@ -36,6 +36,7 @@ mask_custom: int = 3
 
 torch.manual_seed(3)
 
+
 def jagged_data_gen(batch_size, max_seq_len, num_heads, attention_dim, mask_type, data_type):
     seq_lens = torch.randint(1, max_seq_len + 1, (batch_size,), dtype=torch.int64)
     seq_offset = torch.concat((torch.zeros((1,), dtype=torch.int64), torch.cumsum(seq_lens, axis=0))).numpy()
@@ -249,12 +250,13 @@ class TestHstuJaggedDemo:
             )
         else:
             q_grad, k_grad, v_grad, bpos_grad, bts_grad = torch.ops.mxrec.hstu_dense_backward_fuxi(
-                grad_npu, q_npu, k_npu, v_npu, mask_npu, None, None, None, None, "jagged", 
+                grad_npu, q_npu, k_npu, v_npu, mask_npu, None, None, None, None, "jagged",
                 mask_type, max_seq_len, silu_scale, seq_offset
             )
 
         torch.npu.synchronize()
-        return q_grad.cpu(), k_grad.cpu(), v_grad.cpu(), (enable_bias and bpos_grad.cpu()), (enable_bias and bts_grad.cpu())
+        return (q_grad.cpu(), k_grad.cpu(), v_grad.cpu(),
+                (enable_bias and bpos_grad.cpu()), (enable_bias and bts_grad.cpu()))
     
     def execute(self, batch_size, max_seq_len, head_num, head_dim, mask_type, silu_scale, enable_bias, data_type):
         def allclose(a, b, loss1, loss2):
@@ -314,30 +316,33 @@ class TestHstuJaggedDemo:
     @pytest.mark.parametrize("head_num", [2, 4])
     @pytest.mark.parametrize("head_dim", [32, 128])
     @pytest.mark.parametrize("mask_type", [0, 2, 3])
-    @pytest.mark.parametrize("silu_scale", [0.0, 1.0/256])
+    @pytest.mark.parametrize("silu_scale", [0.0, 1.0 / 256])
     @pytest.mark.parametrize("enable_bias", [True])
     @pytest.mark.parametrize("data_type", [torch.float16, torch.float32, torch.bfloat16])
-    def test_hstu_dens_jagged(self, batch_size, max_seq_len, head_num, head_dim, mask_type, silu_scale, enable_bias, data_type):
+    def test_hstu_dens_jagged(self, batch_size, max_seq_len, head_num, head_dim, mask_type, silu_scale,
+                              enable_bias, data_type):
         self.execute(batch_size, max_seq_len, head_num, head_dim, mask_type, silu_scale, enable_bias, data_type)
 
     @pytest.mark.parametrize("max_seq_len", [16])
     @pytest.mark.parametrize("head_num", [2, 6])
     @pytest.mark.parametrize("head_dim", [256])
     @pytest.mark.parametrize("mask_type", [0, 2, 3])
-    @pytest.mark.parametrize("silu_scale", [0.0, 1.0/256])
+    @pytest.mark.parametrize("silu_scale", [0.0, 1.0 / 256])
     @pytest.mark.parametrize("enable_bias", [True])
     @pytest.mark.parametrize("data_type", [torch.float16, torch.float32, torch.bfloat16])
-    def test_hstu_dens_jagged_128bs(self, max_seq_len, head_num, head_dim, mask_type, silu_scale, enable_bias, data_type):
+    def test_hstu_dens_jagged_128bs(self, max_seq_len, head_num, head_dim, mask_type, silu_scale,
+                                    enable_bias, data_type):
         self.execute(128, max_seq_len, head_num, head_dim, mask_type, silu_scale, enable_bias, data_type)
 
     @pytest.mark.parametrize("max_seq_len", [16])
     @pytest.mark.parametrize("head_num", [2])
     @pytest.mark.parametrize("head_dim", [256])
     @pytest.mark.parametrize("mask_type", [0, 2, 3])
-    @pytest.mark.parametrize("silu_scale", [0.0, 1.0/256])
+    @pytest.mark.parametrize("silu_scale", [0.0, 1.0 / 256])
     @pytest.mark.parametrize("enable_bias", [True])
     @pytest.mark.parametrize("data_type", [torch.float16, torch.float32, torch.bfloat16])
-    def test_hstu_dens_jagged_512bs(self, max_seq_len, head_num, head_dim, mask_type, silu_scale, enable_bias, data_type):
+    def test_hstu_dens_jagged_512bs(self, max_seq_len, head_num, head_dim, mask_type, silu_scale,
+                                    enable_bias, data_type):
         self.execute(512, max_seq_len, head_num, head_dim, mask_type, silu_scale, enable_bias, data_type)
 
 

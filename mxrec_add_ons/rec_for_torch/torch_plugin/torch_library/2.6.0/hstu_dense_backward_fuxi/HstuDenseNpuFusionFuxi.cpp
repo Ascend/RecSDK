@@ -74,13 +74,14 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dens
     auto denseBiasPosition = acBiasPosition.contiguous();
     auto denseBiasTimestamp = acBiasTimestamp.contiguous();
 
+    constexpr int64_t CHUNCK_SIZE = 3;
+    constexpr int64_t CHUNCK_DIM = 2;
     auto denseMask = acMask.contiguous();
     bool enableBias = denseBiasPosition.defined();
-
     if (enableBias) {
-        TORCH_CHECK(grad.size(2) % 3 == 0, "grad size 2 should be divisible by 3");
+        TORCH_CHECK(grad.size(CHUNCK_DIM) % CHUNCK_SIZE == 0, "grad size 2 should be divisible by 3");
     }
-    auto grads = enableBias ? at::chunk(grad, 3, 2) : std::vector<at::Tensor>{};
+    auto grads = enableBias ? at::chunk(grad, CHUNCK_SIZE, CHUNCK_DIM) : std::vector<at::Tensor>{};
     auto denseGrad = enableBias ? grads[0].contiguous() : grad.contiguous();
     auto denseGradBiasTimestamp = enableBias ? grads[1].contiguous() : at::Tensor();
     auto denseGradBiasPosition = enableBias ? grads[2].contiguous() : at::Tensor();
@@ -113,9 +114,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dens
         biasTimestampGradOutput = at::zeros({batchSize, headNum, maxSeqLen, maxSeqLen}, denseBiasTimestamp.options());
     } else {
         auto biasGradSeqLen = (maxSeqLen + 256 - 1) / 256 * 256; // get 256 bit aligned biasGrad space
-        biasPositionGradOutput = at::zeros({batchSize, headNum, biasGradSeqLen, biasGradSeqLen}, 
+        biasPositionGradOutput = at::zeros({batchSize, headNum, biasGradSeqLen, biasGradSeqLen},
                                            at::device(denseBiasPosition.device()).dtype(denseGrad.dtype()));
-        biasTimestampGradOutput = at::zeros({batchSize, headNum, biasGradSeqLen, biasGradSeqLen}, 
+        biasTimestampGradOutput = at::zeros({batchSize, headNum, biasGradSeqLen, biasGradSeqLen},
                                             at::device(denseBiasTimestamp.device()).dtype(denseGrad.dtype()));
     }
 
@@ -141,8 +142,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dens
         biasPositionGradOutput,
         biasTimestampGradOutput,
         vBposGradOutput,
-        vBtsGradOutput
-    );
+        vBtsGradOutput);
 
     if (enableBias) {
         vGradOutput = vGradOutput + vBposGradOutput + vBtsGradOutput;
@@ -174,7 +174,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dens
                 "float16, float32 or bfloat16 tensor expected but got a tensor with dtype: ", q.scalar_type());
 
     return hstu_dense_jagged_backward_impl_npu(
-        grad, q, k, v, mask, biasPosition, biasTimestamp, gradBiasPosition, gradBiasTimestamp, 
+        grad, q, k, v, mask, biasPosition, biasTimestamp, gradBiasPosition, gradBiasTimestamp,
         maskType, maxSeqLen, siluScale, seqOffset);
 }
 
