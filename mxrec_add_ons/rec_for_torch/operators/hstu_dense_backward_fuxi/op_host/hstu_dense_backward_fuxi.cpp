@@ -65,7 +65,8 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
 
     int64_t totalTempSpaceForOneVec =
         MID_USE_TIMES *
-            ((vGradAccumTempSpace + kGradAccumTempSpace + biasTimestampAccumTempSpace + biasPositionAccumTempSpace) * sizeof(float) +
+            ((vGradAccumTempSpace + kGradAccumTempSpace + biasTimestampAccumTempSpace +
+              biasPositionAccumTempSpace) * sizeof(float) +
              (qkMatmulTempSpace + gvMatmulTempSpace + scoreTempSpace + biasTimestampTempSpace + biasPositionTempSpace +
               gpvMatmulTempSpace + gtvMatmulTempSpace) * dataTypeLength) +
         maskTempSpace * dataTypeLength;
