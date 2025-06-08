@@ -81,6 +81,9 @@ function compile_ops() {
                     mv "${new_op_name}" "${opp_output_path}"
                 fi
             done
+            if [[ "$dir_name" == "hstu_dense_backward_fuxi" ]]; then
+                continue
+            fi
             cd "$ops_path"
             cd "$dir_name"
             for item in $support_A3_list; do
