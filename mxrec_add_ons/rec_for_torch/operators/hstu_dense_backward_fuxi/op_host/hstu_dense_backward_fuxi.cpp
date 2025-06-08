@@ -65,11 +65,9 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
 
     int64_t totalTempSpaceForOneVec =
         MID_USE_TIMES *
-            ((vGradAccumTempSpace + kGradAccumTempSpace + 
-              biasTimestampAccumTempSpace + biasPositionAccumTempSpace) * sizeof(float) +
-             (qkMatmulTempSpace + gvMatmulTempSpace + scoreTempSpace + 
-              biasTimestampTempSpace + biasPositionTempSpace +
-              gpvMatmulTempSpace + gtvMatmulTempSpace ) * dataTypeLength) +
+            ((vGradAccumTempSpace + kGradAccumTempSpace + biasTimestampAccumTempSpace + biasPositionAccumTempSpace) * sizeof(float) +
+             (qkMatmulTempSpace + gvMatmulTempSpace + scoreTempSpace + biasTimestampTempSpace + biasPositionTempSpace +
+              gpvMatmulTempSpace + gtvMatmulTempSpace) * dataTypeLength) +
         maskTempSpace * dataTypeLength;
 
     int64_t workspaceSize = vecCoreNum * totalTempSpaceForOneVec + attnBiasGradTempSpace;
@@ -129,7 +127,7 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
     biasMaskMatmul.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
     biasMaskMatmul.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
     biasMaskMatmul.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
-                         matmul_tiling::DataType::DT_FLOAT);
+                            matmul_tiling::DataType::DT_FLOAT);
     biasMaskMatmul.SetBiasType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
 
     biasMaskMatmul.SetOrgShape(blockHeight, headDim, blockHeight);
@@ -155,9 +153,9 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
 } // namespace optiling
 
 namespace optiling {
-ge::graphStatus TilingFunc(gert::TilingContext *context) 
+ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
-    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    const gert::RuntimeAttrs* attrs = context->GetAttrs();
     OPS_LOG_E_IF_NULL("attrs", attrs, return ge::GRAPH_FAILED);
 
     InputLayout layout;
@@ -175,7 +173,7 @@ ge::graphStatus TilingFunc(gert::TilingContext *context)
 
     return TilingCommonFunc(context, tiling);
 }
-} // namespace optiling
+}  // namespace optiling
 
 namespace ge {
 static ge::graphStatus InferShape(gert::InferShapeContext *context)
@@ -216,7 +214,7 @@ static ge::graphStatus InferDtype(gert::InferDataTypeContext *context)
 namespace ops {
 class HstuDenseBackwardFuxi : public OpDef {
 public:
-    explicit HstuDenseBackwardFuxi(const char *name) : OpDef(name) 
+    explicit HstuDenseBackwardFuxi(const char* name) : OpDef(name)
     {
         this->Input("grad")
             .ParamType(REQUIRED)

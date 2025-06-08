@@ -30,6 +30,8 @@ struct BlockTaskInfo {
     }
 };
 
+constexpr uint32_t CONST_2 = 2;
+
 class BlockTaskAssign {
 public:
     BlockTaskAssign(uint32_t *seqOffsets, uint32_t coreNum, uint32_t blockLen, uint32_t batchSize, uint32_t headNum)
@@ -101,7 +103,7 @@ public:
 
         int64_t totalTaskNumber = 0;
         totalTaskNumber = std::accumulate(blockNumber.begin(), blockNumber.end(), totalTaskNumber,
-                                          [](int64_t val, int64_t x) { return val + x * (x + 1) / 2; });
+                                          [](int64_t val, int64_t x) { return val + x * (x + 1) / CONST_2; });
 
         int64_t eachCoreTaskNumLimit = (totalTaskNumber + this->coreNum - 1) / this->coreNum;
 
