@@ -21,7 +21,6 @@ constexpr size_t MAX_SEQ_LEN = 20480;
 constexpr uint32_t MASK_TYPE_TRIL = 0;
 constexpr uint32_t MASK_TYPE_TRIU = 1;
 constexpr uint32_t MASK_TYPE_CUSTOM = 3;
-constexpr uint32_t CONST_4 = 4;
 constexpr uint32_t CONST_3 = 3;
 constexpr uint32_t CONST_2 = 2;
 
