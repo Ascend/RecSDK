@@ -189,9 +189,18 @@ index 43eeda32..e1575133 100644
                      EmbeddingComputeKernel.FUSED_UVM.value,
                      EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
 diff --git a/torchrec/distributed/planner/constants.py b/torchrec/distributed/planner/constants.py
-index 7dd86b06..2fe1434f 100644
+index 7dd86b06..43b0a37a 100644
 --- a/torchrec/distributed/planner/constants.py
 +++ b/torchrec/distributed/planner/constants.py
+@@ -22,7 +22,7 @@ NUM_POOLINGS: float = 1.0
+ 
+ BIGINT_DTYPE: int = 8
+ 
+-HBM_CAP: int = 32 * 1024 * 1024 * 1024  # 32 GB
++HBM_CAP: int = 64 * 1024 * 1024 * 1024  # 32 GB
+ DDR_CAP: int = 128 * 1024 * 1024 * 1024  # 128 GB
+ DDR_MEM_BW: float = 51 * 1024 * 1024 * 1024 / 1000  # bytes/ms
+ HBM_MEM_BW: float = 897 * 1024 * 1024 * 1024 / 1000  # bytes/ms
 @@ -94,6 +94,21 @@ def kernel_bw_lookup(
          )
          / 10,
