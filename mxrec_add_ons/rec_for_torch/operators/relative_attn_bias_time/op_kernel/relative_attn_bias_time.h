@@ -49,6 +49,7 @@ public:
         timestampsGT.SetGlobalBuffer((__gm__ int32_t*)args.timestamps, bs * s);
         timestampsWeightsGT.SetGlobalBuffer((__gm__ FloatType*)args.timestampsWeights, numBuckets * numLayer);
         rabTimeBiasOutGT.SetGlobalBuffer((__gm__ FloatType*)args.rabTimeOut, numLayer * bs * s * s);
+        bucketTimestampsOutGT.SetGlobalBuffer((__gm__ int32_t*)args.bucketTimestampsOut, bs * s * s);
 
         pipe.InitBuffer(queTimestamps, 1, stride * alignSeqLen * sizeof(int32_t));
         pipe.InitBuffer(queTimestampsFloat, 1, stride * alignSeqLen * sizeof(float));
@@ -122,7 +123,6 @@ public:
         ClampMax(tsTmp, ts, buff, (float)numBuckets, cnt);
 
         Cast(tsInt, tsTmp, RoundMode::CAST_TRUNC, cnt);
-        Muls(tsInt, tsInt, (int32_t)sizeof(FloatType), cnt);  // 计算gather时的偏移量单位为bytes
 
         tmpQue.FreeTensor(buff);
         queTimestampsFloat.FreeTensor(ts);
@@ -155,25 +155,55 @@ public:
                 DataCopy(rabTimeBiasOutGT[ptr + i * s], rabTime[ptrUb], s);
             }
             // 非对齐拷出
-            if (unalignLen == 0) {
-                continue;
-            }
+            if (unalignLen > 0) {
 #ifdef SUPPORT_V200
-            uint64_t mask0 = (1ul << (DATA_ALIGN_BYTES / sizeof(FloatType))) - (1ul << unalignCnt);
-            uint64_t mask[2] = {mask0, 0};
-            Duplicate(rabTime[ptrUb + alignCnt], (FloatType)0, mask, 1, 1, 1);
-            queTimestampsFloat.EnQue(rabTime);
-            rabTime = queTimestampsFloat.DeQue<FloatType>();
-            SetAtomicAdd<FloatType>();
-            DataCopy(rabTimeBiasOutGT[ptr + i * s + alignCnt], rabTime[ptrUb + alignCnt],
-                     Ceil(unalignLen) / sizeof(FloatType));
-            SetAtomicNone();
+                uint64_t mask0 = (1ul << (DATA_ALIGN_BYTES / sizeof(FloatType))) - (1ul << unalignCnt);
+                uint64_t mask[2] = {mask0, 0};
+                Duplicate(rabTime[ptrUb + alignCnt], (FloatType)0, mask, 1, 1, 1);
+                queTimestampsFloat.EnQue(rabTime);
+                rabTime = queTimestampsFloat.DeQue<FloatType>();
+                SetAtomicAdd<FloatType>();
+                DataCopy(rabTimeBiasOutGT[ptr + i * s + alignCnt], rabTime[ptrUb + alignCnt],
+                         Ceil(unalignLen) / sizeof(FloatType));
+                SetAtomicNone();
 #else
-            const DataCopyExtParams dataCopyExtParams{1, unalignLen, 0, 0, 0};
-            DataCopyPad(rabTimeBiasOutGT[ptr + i * s + alignCnt], rabTime[ptrUb + alignCnt], dataCopyExtParams);
+                const DataCopyExtParams dataCopyExtParams{1, unalignLen, 0, 0, 0};
+                DataCopyPad(rabTimeBiasOutGT[ptr + i * s + alignCnt], rabTime[ptrUb + alignCnt], dataCopyExtParams);
 #endif
+            }
         }
         queTimestampsFloat.FreeTensor(rabTime);
+    }
+
+    __aicore__ inline void DataCopyOutIndex(LocalTensor<int32_t>& bucketTimestamps, uint32_t rowOffset, uint32_t rowCnt)
+    {
+        uint32_t seqDatasize = s * sizeof(int32_t);
+        uint32_t alignLen32 = seqDatasize / DATA_ALIGN_BYTES * DATA_ALIGN_BYTES;
+        uint32_t alignCnt32 = alignLen32 / sizeof(int32_t);
+        uint32_t unalignLen32 = seqDatasize - alignLen32;
+
+        uint32_t ptr = rowOffset * s;
+        uint32_t ptrUb = 0;
+
+        pipe_barrier(PIPE_ALL);
+        for (int i = 0; i < rowCnt; ++i) {
+            // 对齐部分拷出
+            if (alignLen32 > 0) {
+                DataCopy(bucketTimestampsOutGT[ptr], bucketTimestamps[ptrUb], alignCnt32);
+            }
+            // 非对齐拷出
+            if (unalignLen32 > 0) {
+                const DataCopyExtParams dataCopyExtParams{1, unalignLen32, 0, 0, 0};
+                DataCopyPad(bucketTimestampsOutGT[ptr + alignCnt32],
+                            bucketTimestamps[ptrUb + alignCnt32], dataCopyExtParams);
+            }
+            ptr += s;
+            ptrUb += alignSeqLen;
+        }
+
+        TEventID eventId = GetTPipePtr()->FetchEventID(HardEvent::MTE3_V);
+        SetFlag<HardEvent::MTE3_V>(eventId);
+        WaitFlag<HardEvent::MTE3_V>(eventId);
     }
 
     __aicore__ inline void DataCopyInTsw()
@@ -208,15 +238,24 @@ public:
             DataCopyIn(params, rowCnt);
             ComputeBucketTimestamps(params, rowCnt);
 
-            LocalTensor<uint32_t> tsInt = queTimestamps.DeQue<uint32_t>();
+            LocalTensor<int32_t> bucketTimestamps = queTimestamps.DeQue<int32_t>();
+#ifndef SUPPORT_V200
+            DataCopyOutIndex(bucketTimestamps, rowOffset, rowCnt);
+#endif
+            // 计算gather时的偏移量单位为bytes
+            Muls(bucketTimestamps, bucketTimestamps, (int32_t)sizeof(FloatType), rowCnt * alignSeqLen);
+            queTimestamps.EnQue(bucketTimestamps);
+            bucketTimestamps = queTimestamps.DeQue<int32_t>();
+            LocalTensor<uint32_t> index = bucketTimestamps.template ReinterpretCast<uint32_t>();
+
             for (int n = 0; n < numLayer; ++n) {
-                IndexSelect(tsw, tsInt, n, rowCnt);
+                IndexSelect(tsw, index, n, rowCnt);
                 pipe_barrier(PIPE_ALL);
 
                 uint32_t ptr = (n * bs * s + rowOffset) * s;
                 DataCopyOut(ptr, rowCnt);
             }
-            queTimestamps.FreeTensor(tsInt);
+            queTimestamps.FreeTensor(index);
         }
         queTimestampsWeights.FreeTensor(tsw);
     }
@@ -247,6 +286,7 @@ private:
     GlobalTensor<int32_t> timestampsGT;
     GlobalTensor<FloatType> timestampsWeightsGT;
     GlobalTensor<FloatType> rabTimeBiasOutGT;
+    GlobalTensor<int32_t> bucketTimestampsOutGT;
 
     TPipe pipe;
     TQue<TPosition::VECIN, 1> queTimestamps;
