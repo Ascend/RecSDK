@@ -39,7 +39,7 @@ def test_rab_time(ts_dim, tsw_dim, seq_len, dtype):
     while timestamps.dim() != ts_dim:
         timestamps = timestamps.unsqueeze(0)
 
-    while timestamps_weights.dim() != ts_dim:
+    while timestamps_weights.dim() != tsw_dim:
         timestamps_weights = timestamps_weights.unsqueeze(0)
 
     with pytest.raises(RuntimeError):
