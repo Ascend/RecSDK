@@ -309,7 +309,6 @@ class TestHstuJaggedDemo:
         assert bpos_res, analysis(bpos_grad, bpos_grad_golden)
         assert bts_res, analysis(bts_grad, bts_grad_golden)
         assert v_res, analysis(v_grad, v_grad_golden)
-        print('ok')
 
     @pytest.mark.parametrize("batch_size", [2, 4, 32, 64])
     @pytest.mark.parametrize("max_seq_len", [256, 257, 1024, 1234, 2048])

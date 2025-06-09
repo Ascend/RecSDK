@@ -21,11 +21,10 @@ constexpr size_t MAX_SEQ_LEN = 20480;
 constexpr uint32_t MASK_TYPE_TRIL = 0;
 constexpr uint32_t MASK_TYPE_TRIU = 1;
 constexpr uint32_t MASK_TYPE_CUSTOM = 3;
-constexpr uint32_t CONST_4 = 4;
 constexpr uint32_t CONST_3 = 3;
 constexpr uint32_t CONST_2 = 2;
 
-bool MaskCheck(int64_t maskType, uint32_t maskIsDefine)
+bool HstuBackMaskCheck(int64_t maskType)
 {
     if (maskType < MASK_TYPE_TRIL || maskType > MASK_TYPE_CUSTOM) {
         printf("maskType expect in [0, 3], but value is %d\n", maskType);
@@ -37,10 +36,6 @@ bool MaskCheck(int64_t maskType, uint32_t maskIsDefine)
         return false;
     }
 
-    if (maskType == MASK_TYPE_CUSTOM && !maskIsDefine) {
-        printf("use custome mask must have valide mask tensor \n");
-        return false;
-    }
     return true;
 }
 
@@ -91,6 +86,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dens
     TORCH_CHECK(maxSeqLen >= MIN_SEQ_LEN && maxSeqLen <= MAX_SEQ_LEN,
                 "maxSeqLen expect in [1, 20480], but value is ", maxSeqLen);
 
+    TORCH_CHECK(HstuBackMaskCheck(maskType), "maskType check failed");
     if (static_cast<uint32_t>(maskType) == MASK_TYPE_CUSTOM) {
         TORCH_CHECK(denseMask.defined(), "use maskType:MASK_CUSTOM, but no mask given\n");
         // mask dim 2 must be equalto maxSeqLen
