@@ -25,6 +25,21 @@ constexpr uint32_t CONST_4 = 4;
 constexpr uint32_t CONST_3 = 3;
 constexpr uint32_t CONST_2 = 2;
 
+bool HstuBackMaskCheck(int64_t maskType, uint32_t maskIsDefine)
+{
+    if (maskType < MASK_TYPE_TRIL || maskType > MASK_TYPE_CUSTOM) {
+        printf("maskType expect in [0, 3], but value is %d\n", maskType);
+        return false;
+    }
+
+    if (maskType == MASK_TYPE_TRIU) {
+        printf("maskType current not support triu now, pls use custome mask\n");
+        return false;
+    }
+
+    return true;
+}
+
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_jagged_backward_impl_npu(
     const at::Tensor& grad,
     const at::Tensor& q,
@@ -72,6 +87,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dens
     TORCH_CHECK(maxSeqLen >= MIN_SEQ_LEN && maxSeqLen <= MAX_SEQ_LEN,
                 "maxSeqLen expect in [1, 20480], but value is ", maxSeqLen);
 
+    TORCH_CHECK(HstuBackMaskCheck(maskType), "maskType check failed");
     if (static_cast<uint32_t>(maskType) == MASK_TYPE_CUSTOM) {
         TORCH_CHECK(denseMask.defined(), "use maskType:MASK_CUSTOM, but no mask given\n");
         // mask dim 2 must be equalto maxSeqLen
