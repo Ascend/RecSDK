@@ -12,12 +12,13 @@
 extern "C" __global__ __aicore__ void relative_attn_bias_time(GM_ADDR timestamps,
                                                               GM_ADDR timestampsWeights,
                                                               GM_ADDR rabTimeOut,
+                                                              GM_ADDR bucketTimestampsOut,
                                                               GM_ADDR workspace,
                                                               GM_ADDR tiling)
 {
     GET_TILING_DATA(tilingData, tiling);
     Args args{
-        timestamps, timestampsWeights, rabTimeOut, workspace, tiling
+        timestamps, timestampsWeights, rabTimeOut, bucketTimestampsOut, workspace, tiling
     };
     if (tilingData.tswType == static_cast<int>(DataType::FP32)) {
         RelativeAttnBiasTime<float> kernel;

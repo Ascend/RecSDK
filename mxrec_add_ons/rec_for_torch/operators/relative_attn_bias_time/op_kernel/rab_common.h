@@ -26,6 +26,7 @@ struct Args {
     GM_ADDR timestampsWeights;
     // out
     GM_ADDR rabTimeOut;
+    GM_ADDR bucketTimestampsOut;
 
     GM_ADDR workspace;
     GM_ADDR tiling;
