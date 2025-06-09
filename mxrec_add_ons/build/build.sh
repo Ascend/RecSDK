@@ -37,6 +37,7 @@ support_310p_list="gather_for_rank1
 hstu_dense_forward_fuxi
 relative_attn_bias_time
 relative_attn_bias_pos
+hstu_dense_backward_fuxi
 "
 
 cd "${MxRec_DIR}"
@@ -81,9 +82,6 @@ function compile_ops() {
                     mv "${new_op_name}" "${opp_output_path}"
                 fi
             done
-            if [[ "$dir_name" == "hstu_dense_backward_fuxi" ]]; then
-                continue
-            fi
             cd "$ops_path"
             cd "$dir_name"
             for item in $support_A3_list; do
