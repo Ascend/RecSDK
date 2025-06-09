@@ -25,7 +25,7 @@ constexpr uint32_t CONST_4 = 4;
 constexpr uint32_t CONST_3 = 3;
 constexpr uint32_t CONST_2 = 2;
 
-bool HstuBackMaskCheck(int64_t maskType, uint32_t maskIsDefine)
+bool HstuBackMaskCheck(int64_t maskType)
 {
     if (maskType < MASK_TYPE_TRIL || maskType > MASK_TYPE_CUSTOM) {
         printf("maskType expect in [0, 3], but value is %d\n", maskType);
