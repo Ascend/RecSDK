@@ -69,6 +69,9 @@ class HDF5Dataset(Dataset):
             for multi_field in fields:
                 self.input_sample.update({multi_field: torch.tensor(np.array(f[multi_field]), dtype=torch.int64)})
         self._length = len(y)
+        self.positive_indices = np.where(y == 1)[0]
+        self.negative_indices = np.where(y == 0)[0]
+        logger.info(f"load file {self.hdf5_path} finished")
 
     def __len__(self):
         return self._length
@@ -95,11 +98,11 @@ def define_flags():
     parser.add_argument('--expert_layers', type=str, default="512,256", help="Expert layers")
     parser.add_argument('--tower_layers', type=str, default="128,64", help="tower layers")
     parser.add_argument('--ctr_task_wgt', type=float, default=0.5, help="loss weight of ctr task")
-    parser.add_argument('--data_dir', type=str, default="../data/alicpp/", help="Data directory")
+    parser.add_argument('--data_dir', type=str, default="alicpp/aliccp_out", help="Data directory")
     parser.add_argument('--dt_dir', type=str, default="", help="Data dt partition")
-    parser.add_argument('--model_dir', type=str, default=f"../checkpoint/aliccp/{MODEL_NAME}/",
+    parser.add_argument('--model_dir', type=str, default=f"./",
                         help="Model checkpoint directory")
-    parser.add_argument('--servable_model_dir', type=str, default=f"../model/serving/{MODEL_NAME}/",
+    parser.add_argument('--servable_model_dir', type=str, default=f"./",
                         help="Export servable model for pytorch Serving")
     parser.add_argument('--task_type', type=str, default="train", choices=["train", "eval", "predict"],
                         help="Task type")
@@ -111,7 +114,9 @@ def define_flags():
                         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
                         help="Log level")
     parser.add_argument('--epoch_num', type=int, default=10, help="Number of epochs")
-    parser.add_argument('--batch_num', type=int, default=100, help="Number of batchs")
+    parser.add_argument('--train_batch_num', type=int, default=2000, help="Number of train batchs")
+    parser.add_argument('--eval_batch_num', type=int, default=20, help="Number of eval batchs")
+    parser.add_argument('--test_batch_num', type=int, default=20, help="Number of test batchs")
     return parser.parse_args()
 
 
@@ -153,7 +158,9 @@ class TorchMmoeModel(nn.Module):
             in_dim = input_dim
             for out_dim in tower_units:
                 tower_layers.append(nn.Linear(in_dim, out_dim))
+                tower_layers.append(nn.BatchNorm1d(out_dim))
                 tower_layers.append(nn.ReLU())
+                tower_layers.append(nn.Dropout(p=0.2))
                 in_dim = out_dim
             self.towers[name] = nn.Sequential(*tower_layers)
             self.towers_output_layers[name] = nn.Linear(in_dim, 1)
@@ -177,10 +184,8 @@ class TorchMmoeModel(nn.Module):
     def build_embedding_layers(self):
         embeddings = nn.ModuleDict()
         for key, vocab_len in self.spec["vocab_length"].items():
-            weight_matrix = torch.empty((vocab_len + 1, self.params.embedding_size), dtype=torch.float32)
-            nn.init.normal_(weight_matrix, mean=0.0, std=STD_DEV)
-            emb_weights = nn.Parameter(weight_matrix, requires_grad=True)
-            embeddings[key] = nn.Embedding.from_pretrained(emb_weights)
+            embeddings[key] = nn.Embedding(vocab_len + 1, self.params.embedding_size)
+            nn.init.normal_(embeddings[key].weight, std=STD_DEV)
         return embeddings
 
     def build_experts(self):
@@ -195,7 +200,9 @@ class TorchMmoeModel(nn.Module):
 
             for out_features in expert_units:
                 expert_layers.append(nn.Linear(in_features, out_features))
+                expert_layers.append(nn.BatchNorm1d(out_features))
                 expert_layers.append(nn.ReLU())
+                expert_layers.append(nn.Dropout(0.2))
                 in_features = out_features
             experts.append(nn.Sequential(*expert_layers))
         return experts
@@ -317,45 +324,53 @@ class TorchMmoeModel(nn.Module):
             y = self.towers[name](task_outputs[i])
             y = self.towers_output_layers[name](y)
             y = torch.reshape(y, [-1, ])
+            preds[name + '_logit'] = y
             preds[name] = torch.sigmoid(y)
             tower_outputs[name] = y
 
         ctr_pred = preds.get('ctr')
         cvr_pred = preds.get('cvr')
         if ctr_pred is not None and cvr_pred is not None:
-            preds['ctcvr'] = ctr_pred * cvr_pred
+            if 'ctr_logit' not in preds or 'cvr_logit' not in preds:
+                raise ValueError("Missing required keys in preds dictionary")
+            else:
+                preds['ctcvr'] = ctr_pred * cvr_pred
+                preds['ctcvr_logit'] = preds['ctr_logit'] + preds['cvr_logit']
         return preds
 
     def build_loss(self,
                    labels: dict,
-                   y_ctr_prediction: torch.Tensor,
-                   y_ctcvr_prediction: torch.Tensor) -> torch.Tensor:
+                   y_ctr_logit: torch.Tensor,
+                   y_ctcvr_logit: torch.Tensor,
+                   ctr_weight,
+                   ctcvr_weight) -> torch.Tensor:
         """
         Build the loss function for the model.
 
         Args:
             labels (dict): A dictionary containing the true labels for ctr and ctcvr.
-            y_ctr_prediction (torch.Tensor): The predicted ctr values.
-            y_ctcvr_prediction (torch.Tensor): The predicted ctcvr values.
+            y_ctr_logit (torch.Tensor): The predicted ctr values.
+            y_ctcvr_logit (torch.Tensor): The predicted ctcvr values.
         Returns:
             torch.Tensor: The combined loss tensor.
         """
-        epsilon = 1e-7
-        # Weight for the click-through rate (CTR) loss component
-        click_weight = 0.14
-        # Weight for the conversion rate (CVR) loss component
-        conversion_weight = 0.023
-        # Weight for the CTR task in the combined loss function
+        y_ctr_logit = y_ctr_logit.view(-1)
+        y_ctcvr_logit = y_ctcvr_logit.view(-1)
+        y = labels['y'].view(-1)
+        z = labels['z'].view(-1)
+
+        bce_loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([ctr_weight],
+                                                                dtype=torch.float32,
+                                                                device=y.device)
+                                        )
+        ctcvr_bce_loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([ctcvr_weight],
+                                                                      dtype=torch.float32,
+                                                                      device=z.device)
+                                              )
+
+        ctr_loss = bce_loss(y_ctr_logit, y)
+        ctcvr_loss = ctcvr_bce_loss(y_ctcvr_logit, z)
         ctr_task_wgt = self.params.ctr_task_wgt
-
-        ctr_loss = - (1 - click_weight) / click_weight * labels['y'] * torch.log(y_ctr_prediction + epsilon) - \
-                   (1 - labels['y']) * torch.log(1 - y_ctr_prediction + epsilon)
-        ctr_loss = torch.mean(ctr_loss)
-
-        ctcvr_loss = - (1 - conversion_weight) / conversion_weight * labels['z'] * torch.log(
-            y_ctcvr_prediction + epsilon) - \
-                     (1 - labels['z']) * torch.log(1 - y_ctcvr_prediction + epsilon)
-        ctcvr_loss = torch.mean(ctcvr_loss)
 
         return ctr_task_wgt * ctr_loss + (1 - ctr_task_wgt) * ctcvr_loss
 
@@ -406,11 +421,31 @@ def clip_grad(grad):
     return torch.clamp(grad, -1, 1)
 
 
-def train(model: TorchMmoeModel, dataloader, val_dataloader, args, device):
+def train(model: TorchMmoeModel, tr_files, va_files, args, device):
     optimizer = model.build_optimizer()
     epochs = args.epoch_num
+
+    train_dataset = TorchDataSet(tr_files)
+    ctr_percent_train, ctcvr_percent_train = pre_deal_dataset(train_dataset)
+    logging.info("Train data ctr: %.4f, ctcvr: %.4f", ctr_percent_train, ctcvr_percent_train)
+    dataloader = DataLoader(dataset=train_dataset,
+                                  batch_size=args.batch_size,
+                                  shuffle=True,
+                                  collate_fn=collate_fn,
+                                  prefetch_factor=100,
+                                  num_workers=10)
+    va_dataset = TorchDataSet(va_files)
+    val_ctr, val_ctcvr = pre_deal_dataset(va_dataset)
+    logging.info("Eval data ctr: %.4f, ctcvr: %.4f", val_ctr, val_ctcvr)
+    val_dataloader = DataLoader(dataset=va_dataset,
+                               batch_size=args.batch_size,
+                               shuffle=True,
+                               collate_fn=collate_fn,
+                               prefetch_factor=100,
+                               num_workers=10)
+
     # 早停相关变量
-    best_val_loss = float('inf')
+    best_auc = float("inf")
     counter = 0
     for epoch in range(epochs):
         model.train()
@@ -422,7 +457,11 @@ def train(model: TorchMmoeModel, dataloader, val_dataloader, args, device):
             optimizer.zero_grad()
             task_outputs = model.forward(input_sample)
             predictions = model.build_predictions(task_outputs)
-            loss = model.build_loss(target_sample, predictions["ctr"], predictions["ctcvr"])
+            loss = model.build_loss(target_sample,
+                                    predictions["ctr_logit"],
+                                    predictions["ctcvr_logit"],
+                                    ctr_percent_train,
+                                    ctcvr_percent_train)
             loss.backward()
             nn.utils.clip_grad.clip_grad_value_(model.parameters(), 1.0)
             optimizer.step()
@@ -430,12 +469,17 @@ def train(model: TorchMmoeModel, dataloader, val_dataloader, args, device):
             logging.info("Epoch %s - Batch %s - Loss %s", epoch, now_index, loss.item())
 
             now_index += 1
-            if args.batch_num & now_index == args.batch_num:
+            if args.train_batch_num and now_index == args.train_batch_num:
                 break
-        logging.info("Epoch %s - Loss %s - Total avg Loss %s", epoch, loss.item(), total_loss / len(dataloader))
+        if args.train_batch_num:
+            re_train_nums = min(args.train_batch_num, len(dataloader))
+        else:
+            re_train_nums = len(dataloader)
+        logging.info("Epoch %s - Loss %s - Total avg Loss %s", epoch, loss.item(), total_loss / re_train_nums)
 
         model.eval()
         val_loss = 0.0
+        val_index = 0
         with torch.no_grad():
             for eval_input_sample, eval_target_sample in val_dataloader:
                 eval_input_sample = {k: v.to(device) for k, v in eval_input_sample.items()}
@@ -443,14 +487,32 @@ def train(model: TorchMmoeModel, dataloader, val_dataloader, args, device):
 
                 task_outputs = model.forward(eval_input_sample)
                 predictions = model.build_predictions(task_outputs)
-                loss = model.build_loss(eval_target_sample, predictions["ctr"], predictions["ctcvr"])
+                loss = model.build_loss(eval_target_sample,
+                                        predictions["ctr"],
+                                        predictions["ctcvr"],
+                                        val_ctr,
+                                        val_ctcvr)
                 val_loss += loss.item()
-                logging.info("Eval Batch Loss %s", loss.item())
-        avg_val_loss = val_loss / len(val_dataloader)
+                y_true = eval_target_sample["y"].cpu().numpy()
+                z_true = eval_target_sample["z"].cpu().numpy()
+                ctr_auc = roc_auc_score(y_true, predictions["ctr"].detach().cpu().numpy())
+                ctcvr_auc = roc_auc_score(z_true, predictions["ctcvr"].detach().cpu().numpy())
+                logging.info("Eval Batch Loss %s - Ctr Auc %s - Ctcvr Auc %s", loss.item(), ctr_auc, ctcvr_auc)
+
+                val_index += 1
+                if args.eval_batch_num and val_index == args.eval_batch_num:
+                    break
+
+        if args.eval_batch_num:
+            re_eval_nums = min(args.eval_batch_num, len(val_dataloader))
+        else:
+            re_eval_nums = len(val_dataloader)
+
+        avg_val_loss = val_loss / re_eval_nums
         logging.info("Eval Avg Loss %s", avg_val_loss)
 
-        if avg_val_loss < best_val_loss:
-            best_val_loss = avg_val_loss
+        if best_auc < ctcvr_auc:
+            best_auc = ctcvr_auc
             counter = 0
         else:
             counter += 1
@@ -459,9 +521,27 @@ def train(model: TorchMmoeModel, dataloader, val_dataloader, args, device):
                 break
 
 
-def evaluate(model: TorchMmoeModel, test_dataloader, device):
+def evaluate(model: TorchMmoeModel, te_files, device):
     model.eval()
     total_loss = 0.0
+    all_ctr_labels = []
+    all_ctr_preds = []
+    all_cvr_labels = []
+    all_cvr_preds = []
+    all_ctcvr_labels = []
+    all_ctcvr_preds = []
+
+    te_dataset = TorchDataSet(te_files)
+    te_ctr, te_ctcvr = pre_deal_dataset(te_dataset)
+    logging.info("Test data ctr: %.4f, ctcvr: %.4f", te_ctr, te_ctcvr)
+    test_dataloader = DataLoader(dataset=te_dataset,
+                               batch_size=args.batch_size,
+                               shuffle=True,
+                               collate_fn=collate_fn,
+                               prefetch_factor=100,
+                               num_workers=10)
+
+    test_index = 0
     with torch.no_grad():
         for input_sample, target_sample in test_dataloader:
             input_sample = {k: v.to(device) for k, v in input_sample.items()}
@@ -469,15 +549,56 @@ def evaluate(model: TorchMmoeModel, test_dataloader, device):
 
             task_outputs = model.forward(input_sample)
             predictions = model.build_predictions(task_outputs)
-            loss = model.build_loss(target_sample, predictions["ctr"], predictions["ctcvr"])
+            loss = model.build_loss(target_sample,
+                                    predictions["ctr_logit"],
+                                    predictions["ctcvr_logit"],
+                                    te_ctr,
+                                    te_ctcvr)
             total_loss += loss.item()
-            y_true = target_sample['y'].cpu().numpy()
-            y_pred = predictions['ctr'].cpu().numpy()
-            auc = roc_auc_score(y_true, y_pred)
-            logging.info("Eval AUC:  %s.4f", auc)
+            # CTR
+            all_ctr_labels.append(target_sample["y"].detach().cpu().numpy())
+            all_ctr_preds.append(predictions["ctr"].detach().cpu().numpy())
+            # CTCVR
+            all_ctcvr_labels.append(target_sample["z"].detach().cpu().numpy())
+            all_ctcvr_preds.append(predictions["ctcvr"].detach().cpu().numpy())
+            # CVR 只保留点击的
+            mask = (target_sample["y"].squeeze(-1) > 0)
+            if mask.sum() > 0:
+                all_cvr_labels.append(target_sample["z"][mask].detach().cpu().numpy())
+                all_cvr_preds.append(predictions["cvr"][mask].detach().cpu().numpy())
 
-    avg_test_loss = total_loss / len(test_dataloader)
-    logging.info("Test Loss:  %s.4f", avg_test_loss)
+            logging.info("Test Batch Loss %s", loss.item())
+            test_index += 1
+
+            if args.test_batch_num and test_index == args.test_batch_num:
+                break
+
+    if args.test_batch_num:
+        re_test_nums = min(args.test_batch_num, len(test_dataloader))
+    else:
+        re_test_nums = len(test_dataloader)
+
+    avg_test_loss = total_loss / re_test_nums
+    logging.info("Test Avg Loss: %.4f", avg_test_loss)
+
+
+    all_ctr_labels = np.concatenate(all_ctr_labels)
+    all_ctr_preds = np.concatenate(all_ctr_preds)
+    all_ctcvr_labels = np.concatenate(all_ctcvr_labels)
+    all_ctcvr_preds = np.concatenate(all_ctcvr_preds)
+
+    if all_cvr_labels:
+        all_cvr_labels = np.concatenate(all_cvr_labels)
+        all_cvr_preds = np.concatenate(all_cvr_preds)
+
+    auc_ctr = roc_auc_score(all_ctr_labels, all_ctr_preds)
+    auc_ctcvr = roc_auc_score(all_ctcvr_labels, all_ctcvr_preds)
+    auc_cvr = roc_auc_score(all_cvr_labels, all_cvr_preds) if len(all_cvr_labels) > 0 else float("nan")
+
+    logging.info("AUC CTR: %.4f", auc_ctr)
+    logging.info("AUC CVR: %.4f", auc_cvr)
+    logging.info("AUC CTCVR: %.4f", auc_ctcvr)
+
     return avg_test_loss
 
 
@@ -503,6 +624,27 @@ def collate_fn(batch):
     return input_tensors, target_tensors
 
 
+def pre_deal_dataset(dataset):
+    num_pos = 0
+    num_neg = 0
+    num_pos_y = 0
+    num_neg_y = 0
+    dataset_index = 0
+    for sub_ds in dataset.datasets:
+        z = sub_ds.target_sample["z"]
+        num_pos += (z == 1).sum().item()
+        num_neg += (z == 0).sum().item()
+
+        y = sub_ds.target_sample["y"]
+        num_pos_y += (y == 1).sum().item()
+        num_neg_y += (y == 0).sum().item()
+
+        logger.info("find pos index %s", dataset_index)
+        dataset_index += 1
+    return np.log(num_neg_y / num_pos_y), np.log(num_neg / num_pos)
+
+
+
 def main(args):
     args.model_dir = args.model_dir + datetime.now(china_tz).strftime('%Y%m%d')
 
@@ -525,21 +667,6 @@ def main(args):
 
     # ------ for NPU  ------
 
-    train_dataset = TorchDataSet(tr_files)
-    train_dataloader = DataLoader(dataset=train_dataset,
-                                  batch_size=args.batch_size,
-                                  shuffle=True,
-                                  collate_fn=collate_fn,
-                                  prefetch_factor=100,
-                                  num_workers=10)
-    va_dataset = TorchDataSet(va_files)
-    va_dataloader = DataLoader(dataset=va_dataset,
-                               batch_size=args.batch_size,
-                               shuffle=True,
-                               collate_fn=collate_fn,
-                               prefetch_factor=100,
-                               num_workers=10)
-
     model = TorchMmoeModel(args)
     device_type = 'npu'
     if not torch.npu.is_available() and torch.cuda.is_available():
@@ -550,17 +677,11 @@ def main(args):
     model.to(device)
     if args.task_type == "train":
         logger.info("start train and evaluate")
-        train(model, train_dataloader, va_dataloader, args, device)
+        train(model, tr_files, va_files, args, device)
         torch.save(model.load_state_dict, "mmoe.pth")
         logger.info("early stopped, start evaluating....")
-        te_dataset = TorchDataSet(te_files)
-        te_dataloader = DataLoader(dataset=te_dataset,
-                                   batch_size=args.batch_size,
-                                   shuffle=True,
-                                   collate_fn=collate_fn,
-                                   prefetch_factor=100,
-                                   num_workers=10)
-        evaluate(model, te_dataloader, device)
+
+        evaluate(model, te_files, device)
     else:
         raise ValueError("Unsupported task type: {}".format(args.task_type))
 
@@ -578,8 +699,7 @@ if __name__ == "__main__":
     logger.addHandler(console_hand)
     # Define the timezone for China Standard Time
     china_tz = pytz.timezone('Asia/Shanghai')
-    logfile_na = MODEL_NAME + "_" + datetime.now(china_tz).strftime("%Y_%m_%d_%H_%M_%S") + ".log"
-    logfile_path = os.path.join("../logs/aliccp/", logfile_na)
+    logfile_path = MODEL_NAME + "_" + datetime.now(china_tz).strftime("%Y_%m_%d_%H_%M_%S") + ".log"
     fh = logging.FileHandler(logfile_path)
     fh.setLevel(log_level)
     fh.setFormatter(formatter)

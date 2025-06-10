@@ -9,7 +9,7 @@
 2. 对于[Ali-CPP](https://tianchi.aliyun.com/dataset/408)数据集，我们提供完整的预处理流程[参考](https://gitee.com/ascend/RecSDK/blob/develop/examples/rec_model_zoo/behaviour_and_multi_task/data/aliccp/README.md)，
 下载数据集至alicpp目录,如：
 ```commandline
-.
+
 ├── common_features_test.csv
 ├── common_features_train.csv
 ├── sample_skeleton_test.csv
@@ -32,7 +32,7 @@ bash run.sh
 ## 训练
 1.执行训练脚本，传入模型所需参数，参考命令如下：
 ```commandline
-python3 mmoe.py --data_dir .alicpp/aliccp_out/   # 根据实际情况传入参数
+python3 mmoe.py --data_dir alicpp/aliccp_out/ --train_batch_num 2000 --eval_batch_num 20  # 根据实际情况传入参数
 ```
 2.参数说明
 ```commandline

@@ -99,8 +99,8 @@ def gen_torch_dataset(chunk_data):
                       f"{input_file_path}, {output_file_path}, {task_index}")
 
         feature = {
-            "y": torch.tensor([y], dtype=torch.float32),
-            "z": torch.tensor([z], dtype=torch.float32)
+            "y": torch.tensor([float(y)], dtype=torch.float32),
+            "z": torch.tensor([float(z)], dtype=torch.float32)
         }
 
         for index, field in enumerate(fields):
@@ -114,7 +114,7 @@ def gen_torch_dataset(chunk_data):
             else:
                 field_value = list(map(lambda s: int(s), field_value_string.split("#")))
                 if args.padding:
-                    padded = field_values + [-1] * (max_length_file_info[field] - len(field_value))
+                    padded = field_value + [-1] * (max_length_file_info[field] - len(field_value))
                     feature.update({field: torch.tensor(padded, dtype=torch.int64)})
 
                 else:
@@ -141,7 +141,7 @@ for file in file_list:
     output_folder = os.path.join("./aliccp_out", part)
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
-    output_path = os.path.join(output_folder, os.path.basename(file) + ".pth")
+    output_path = os.path.join(output_folder, os.path.basename(file) + ".hd5")
     tasks += chunkify_file(file, output_path, CHUNK_SIZE)
 with Pool(processes=args.proc) as pool:
     result = list(pool.imap(gen_torch_dataset_chunk, tasks))
