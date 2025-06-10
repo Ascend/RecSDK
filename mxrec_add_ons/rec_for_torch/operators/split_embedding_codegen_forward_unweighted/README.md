@@ -57,7 +57,7 @@ b) 算子参数说明：
 c) 算子约束说明：
 
 * 支持的型号：Atlas A2系列产品;
-* 支持的CANN版本：8.2.RC1及之后版本；
+* 支持的CANN版本：8.2.RC1.alpha001及之后版本；
 * 支持的输入数据类型：dev_weights为float32类型，weights_offsets、indices、hash_indices、offsets为int64，D_offsets为int32。
 * 支持的输入shape： dev_weights的dim为所有表的[embed_dim * embed_size]之和，embed_dim长度需为8的倍数, pooling_mode为None时所有表的embed_dim需要保持一致。  
                    weights_offsets的dim为[ feat_cnt ]。  

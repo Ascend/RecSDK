@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
 
+set(CMAKE_SKIP_RPATH TRUE)
+set(CMAKE_SKIP_BUILD_RPATH TRUE)
+
 project(asynchronous_complete_cumsum)
 
 execute_process(
@@ -8,7 +11,7 @@ execute_process(
 )
 string(STRIP "${python_site_packages_path}" python_site_packages_path)
 
-set(CMAKE_CXX_FLAGS "-fstack-protector-all -Wl,-z,relro,-z,now,-z,noexecstack -fPIE -pie ${CMAKE_CXX_FLAGS}")
+set(CMAKE_CXX_FLAGS "-fstack-protector-all -Wl,-z,relro,-z,now,-z,noexecstack -fPIE -pie -s ${CMAKE_CXX_FLAGS}")
 set(CMAKE_CXX_FLAGS "-fabi-version=11 ${CMAKE_CXX_FLAGS}")
 set(PYTORCH_INSTALL_PATH ${python_site_packages_path}/torch)
 set(PYTORCH_NPU_INSTALL_PATH ${python_site_packages_path}/torch_npu)
