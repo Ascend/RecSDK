@@ -461,10 +461,12 @@ public:
         if (!std::is_same<qType, float>::value) {
             Cast(outputScore, inputBias, RoundMode::CAST_RINT, thisLen);
             Cast(outputBias, inputQK, RoundMode::CAST_RINT, thisLen);
-            Cast(outputGradBts, inputGtsV, RoundMode::CAST_RINT, thisLen);
-            Cast(outputGradBpos, inputGposV, RoundMode::CAST_RINT, thisLen);
-            Cast(outputBts, inputBts, RoundMode::CAST_RINT, thisLen);
-            Cast(outputBpos, inputBpos, RoundMode::CAST_RINT, thisLen);
+            if (this->enableBias) {
+                Cast(outputGradBts, inputGtsV, RoundMode::CAST_RINT, thisLen);
+                Cast(outputGradBpos, inputGposV, RoundMode::CAST_RINT, thisLen);
+                Cast(outputBts, inputBts, RoundMode::CAST_RINT, thisLen);
+                Cast(outputBpos, inputBpos, RoundMode::CAST_RINT, thisLen);
+            }
         } else {
             LocalTensor<float> newOutputScore = outputScore.template ReinterpretCast<float>();
             DataCopy(newOutputScore, inputBias, thisLen);
@@ -472,17 +474,19 @@ public:
             LocalTensor<float> newOutputBias = outputBias.template ReinterpretCast<float>();
             DataCopy(newOutputBias, inputQK, thisLen);
 
-            LocalTensor<float> newOutputGradBts = outputGradBts.template ReinterpretCast<float>();
-            DataCopy(newOutputGradBts, inputGtsV, thisLen);
+            if (this->enableBias) {
+                LocalTensor<float> newOutputGradBts = outputGradBts.template ReinterpretCast<float>();
+                DataCopy(newOutputGradBts, inputGtsV, thisLen);
 
-            LocalTensor<float> newOutputGradBpos = outputGradBpos.template ReinterpretCast<float>();
-            DataCopy(newOutputGradBpos, inputGposV, thisLen);
+                LocalTensor<float> newOutputGradBpos = outputGradBpos.template ReinterpretCast<float>();
+                DataCopy(newOutputGradBpos, inputGposV, thisLen);
 
-            LocalTensor<float> newOutputBts = outputBts.template ReinterpretCast<float>();
-            DataCopy(newOutputBts, inputBts, thisLen);
+                LocalTensor<float> newOutputBts = outputBts.template ReinterpretCast<float>();
+                DataCopy(newOutputBts, inputBts, thisLen);
 
-            LocalTensor<float> newOutputBpos = outputBpos.template ReinterpretCast<float>();
-            DataCopy(newOutputBpos, inputBpos, thisLen);
+                LocalTensor<float> newOutputBpos = outputBpos.template ReinterpretCast<float>();
+                DataCopy(newOutputBpos, inputBpos, thisLen);
+            }
         }
         queueVecScoreQK.FreeTensor(inputQK);
         queueVecScoreBias.FreeTensor(inputBias);
@@ -579,11 +583,13 @@ public:
         LocalTensor<qType> outputBts = queueOutputBts.DeQue<qType>();
         LocalTensor<qType> outputBpos = queueOutputBpos.DeQue<qType>();
         DataCopy<qType>(scoreTemp[scoreTempOffset], outputScore, thisLen);
-        DataCopy<qType>(tempBtsM[scoreTempOffset], outputBts, thisLen);
-        DataCopy<qType>(tempBposM[scoreTempOffset], outputBpos, thisLen);
         CopyOutPadding(attnBiasGrad[curAttnBiasOffset], outputBias, validRowNum, totalColNum, biasGradSeqLen);
-        CopyOutPadding(btsGrad[curAttnBiasOffset], outputGradBts, validRowNum, totalColNum, biasGradSeqLen);
-        CopyOutPadding(bposGrad[curAttnBiasOffset], outputGradBpos, validRowNum, totalColNum, biasGradSeqLen);
+        if (this->enableBias) {
+            DataCopy<qType>(tempBtsM[scoreTempOffset], outputBts, thisLen);
+            DataCopy<qType>(tempBposM[scoreTempOffset], outputBpos, thisLen);
+            CopyOutPadding(btsGrad[curAttnBiasOffset], outputGradBts, validRowNum, totalColNum, biasGradSeqLen);
+            CopyOutPadding(bposGrad[curAttnBiasOffset], outputGradBpos, validRowNum, totalColNum, biasGradSeqLen);
+        }
 
         queueOutputScore.FreeTensor(outputScore);
         queueOutputBias.FreeTensor(outputBias);
