@@ -70,13 +70,15 @@ def parse_arguments():
     parser.add_argument("--reuse_hash", type=bool, default=True, help="")
     parser.add_argument("--batch_size", type=int, default=4096, help="Number of batch size")
     parser.add_argument("--learning_rate", type=float, default=0.001, help="learning rate")
-    parser.add_argument("--optimizer", type=str, default="Adam", choices=["Adam", "Adagrad", "GD", "Momentum"], help="")
+    parser.add_argument("--optimizer", type=str, default="Adam",
+                        choices=["Adam", "Adagrad", "GD", "Momentum"], help="")
     parser.add_argument('--early_stop_patience', type=int, default=5, help="")
     parser.add_argument("--data_dir", type=str, default="/aliccp/aliccp_out", help="data dir")
     parser.add_argument("--dt_dir", type=str, default='', help="data dt partition")
     parser.add_argument("--model_dir", type=str, default=f"./", help="code check point dir")
     parser.add_argument("--clear_existing_model", action="store_true", help="")
-    parser.add_argument("--task_type", type=str, default="train", choices=["train", "eval", "predict"], help="task type")
+    parser.add_argument("--task_type", type=str, default="train",
+                        choices=["train", "eval", "predict"], help="task type")
     parser.add_argument("--log_level", type=str, default="DEBUG",
                         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help="Log level")
     parser.add_argument('--epoch_num', type=int, default=1, help="Number of epochs")
@@ -341,8 +343,8 @@ class ShortAttention(nn.Module):
 
         output = torch.matmul(attn, value) # [B, Heads, 1, key_dim]
         output = output.permute(0, 2, 1, 3)
-        b, len, head, dim = output.shape
-        output = output.reshape(b * len, 1, head * dim)
+        b, lens, heads, dims = output.shape
+        output = output.reshape(b * lens, 1, heads * dims)
         output = self.o_fc(output)
         return output
 
