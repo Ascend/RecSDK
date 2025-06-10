@@ -1,5 +1,5 @@
-# Mmoe
-本文档主要介绍如何进行Mmoe模型的数据预处理和训练
+# MMOE模型和ETA模型
+本文档主要介绍如何进行推荐系统模型中的mmoe模型和eta模型的数据预处理和模型训练
 
 ## 主要依赖
 **Pytorch:** 2.6.0
@@ -29,14 +29,18 @@
 bash run.sh 
 ```
 执行完成后预处理后的数据集会生成到指定目录，本用例默认生成在aliccp_out目录。
-## 训练
+## 模型训练
 1.执行训练脚本，传入模型所需参数，参考命令如下：
 ```commandline
+# mmoe模型
 python3 mmoe.py --data_dir alicpp/aliccp_out/ --train_batch_num 2000 --eval_batch_num 20  # 根据实际情况传入参数
+
+# eta模型
+python3 eta.py --data_dir alicpp/aliccp_out/ --train_batch_num 2000 # 根据实际情况传入参数
 ```
 2.参数说明
 ```commandline
-通过以下命令查看参数及默认值情况
-python3 mmoe.py  --help
+# 通过以下命令方式查看参数及默认值情况
+python3 mmoe.py  --help 
 ```
 
