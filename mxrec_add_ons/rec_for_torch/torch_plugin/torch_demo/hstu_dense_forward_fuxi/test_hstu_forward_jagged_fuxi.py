@@ -89,6 +89,28 @@ class TestHstuJaggedFuxi:
 
         return tensor
     
+    @staticmethod
+    def custom_op_exec(q, k, v, seq_offset, ts_bias, pos_bias, mask, mask_type, max_seq_len, silu_scale, \
+        enable_bias, data_type):
+        q_npu = q.to(f"npu:{device_id}").to(data_type)
+        k_npu = k.to(f"npu:{device_id}").to(data_type)
+        v_npu = v.to(f"npu:{device_id}").to(data_type)
+        ts_bias_npu = ts_bias.to(f"npu:{device_id}").to(data_type)
+        pos_bias_npu = pos_bias.to(f"npu:{device_id}").to(data_type)
+        mask_npu = mask.to(f"npu:{device_id}").to(data_type)
+
+        if enable_bias:
+            output = torch.ops.mxrec.hstu_fuxi(
+                q_npu, k_npu, v_npu, ts_bias_npu, pos_bias_npu, mask_npu, mask_type, max_seq_len, silu_scale, \
+                    "jagged", seq_offset
+            )
+        else:
+            output = torch.ops.mxrec.hstu_fuxi(
+                q_npu, k_npu, v_npu, None, None, mask_npu, mask_type, max_seq_len, silu_scale, "jagged", seq_offset
+            )
+        torch.npu.synchronize()
+        return output.cpu().to(data_type).reshape(-1)
+
     def gloden_op_exec(self, q, k, v, seq_offset, ts_bias, pos_bias, mask, mask_type, max_seq_len, silu_scale, \
         enable_bias, data_type):
         head_nums = q.shape[1]
@@ -158,29 +180,7 @@ class TestHstuJaggedFuxi:
             atten_output = torch.cat((atten_output, ts_out, pos_out), -1)
 
         return atten_output.to(data_type).reshape(-1)
-    
-    @staticmethod
-    def custom_op_exec(q, k, v, seq_offset, ts_bias, pos_bias, mask, mask_type, max_seq_len, silu_scale, \
-        enable_bias, data_type):
-        q_npu = q.to(f"npu:{device_id}").to(data_type)
-        k_npu = k.to(f"npu:{device_id}").to(data_type)
-        v_npu = v.to(f"npu:{device_id}").to(data_type)
-        ts_bias_npu = ts_bias.to(f"npu:{device_id}").to(data_type)
-        pos_bias_npu = pos_bias.to(f"npu:{device_id}").to(data_type)
-        mask_npu = mask.to(f"npu:{device_id}").to(data_type)
 
-        if enable_bias == True:
-            output = torch.ops.mxrec.hstu_fuxi(
-                q_npu, k_npu, v_npu, ts_bias_npu, pos_bias_npu, mask_npu, mask_type, max_seq_len, silu_scale, \
-                    "jagged", seq_offset
-            )
-        else:
-            output = torch.ops.mxrec.hstu_fuxi(
-                q_npu, k_npu, v_npu, None, None, mask_npu, mask_type, max_seq_len, silu_scale, "jagged", seq_offset
-            )
-        torch.npu.synchronize()
-        return output.cpu().to(data_type).reshape(-1)
-    
     def execute(self, batch_size, max_seq_len, head_num, head_dim, enable_bias, mask_type, silu_scale, data_type):
         q, k, v, seq_offset, ts_bias, pos_bias, mask = jagged_data_gen(batch_size, max_seq_len, head_num, head_dim, \
             mask_type)
@@ -197,7 +197,7 @@ class TestHstuJaggedFuxi:
             res = torch.allclose(output, gloden, 1e-3, 1e-3)
         else:
             res = torch.allclose(output, gloden, 1e-4, 1e-4)
-        assert res == True
+        assert res
 
     @pytest.mark.parametrize("batch_size", [1, 16])
     @pytest.mark.parametrize("max_seq_len", [15, 1024])
