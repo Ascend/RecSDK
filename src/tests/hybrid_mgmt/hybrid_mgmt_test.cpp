@@ -95,6 +95,22 @@ TEST_F(HybridMgmtTest, SetFeatureTypeForLoad)
     EXPECT_EQ(loadFeatures.size(), 1);
 }
 
+TEST_F(HybridMgmtTest, SetFeatureTypeForLoad_SetGlobalEnv)
+{
+    size_t resSize = 2;
+    GlobalEnv::recordKeyCount = true;
+    std::vector<CkptFeatureType> loadFeatures;
+    m_hybridMgmt.SetFeatureTypeForLoad(loadFeatures);
+    EXPECT_EQ(loadFeatures.size(), resSize);
+}
+
+TEST_F(HybridMgmtTest, Destroy_NotInitialized_Error)
+{
+    m_hybridMgmt.isInitialized = false;
+    EXPECT_THROW(m_hybridMgmt.Destroy(), std::runtime_error);
+    m_hybridMgmt.isInitialized = true;
+}
+
 TEST_F(HybridMgmtTest, SendUniqKeysAndRestoreVecHBMShouldSendUniqKeysWhenIsGradIsTrue)
 {
     EmbBaseInfo info;
@@ -110,6 +126,21 @@ TEST_F(HybridMgmtTest, SendUniqKeysAndRestoreVecHBMShouldSendUniqKeysWhenIsGradI
     EXPECT_EQ(infoVecs->size(), 0);
 }
 
+TEST_F(HybridMgmtTest, SendUniqKeysAndRestoreVecHBM_NotGrad)
+{
+    EmbBaseInfo info;
+    info.channelId = 1;
+    info.batchId = 1;
+    info.name = "test";
+    std::unique_ptr<std::vector<Tensor>> infoVecs = std::make_unique<std::vector<Tensor>>();
+    infoVecs->push_back(Tensor());
+    infoVecs->push_back(Tensor());
+    bool isGrad = false;
+
+    m_hybridMgmt.SendUniqKeysAndRestoreVecHBM(info, infoVecs, isGrad);
+    EXPECT_EQ(infoVecs->size(), 0);
+}
+
 TEST_F(HybridMgmtTest, EvictKeysShouldLogErrorWhenRemoveEmbsByKeysFailsWhenRemoveEmbsByKeysFails)
 {
     std::string embName = "testEmb";
@@ -119,11 +150,38 @@ TEST_F(HybridMgmtTest, EvictKeysShouldLogErrorWhenRemoveEmbsByKeysFailsWhenRemov
     m_hybridMgmt.EvictKeys(embName, keys);
 }
 
+TEST_F(HybridMgmtTest, EvictKeys_RemoveEmbsByKeysOk)
+{
+    std::string embName = "testEmb";
+    std::vector<MxRec::emb_cache_key_t> keys = {1, 2, 3};
+    EXPECT_CALL(*m_embCachePtr, RemoveEmbsByKeys(_, _)).Times(1).WillRepeatedly(Return(0));
+    (void)m_hybridMgmt.Evict();
+    
+    EXPECT_NO_THROW(m_hybridMgmt.EvictKeys(embName, keys));
+}
+
+TEST_F(HybridMgmtTest, EvictKeys_EmptyKeys)
+{
+    std::string embName = "testEmb";
+    std::vector<MxRec::emb_cache_key_t> keys = {};
+    m_hybridMgmt.EvictKeys(embName, keys);
+    EXPECT_CALL(*m_embCachePtr, RemoveEmbsByKeys(_, _)).Times(0);
+}
+
 TEST_F(HybridMgmtTest, EvictL3StorageKeysShouldNotCallEvictL3StorageEmbeddingWhenL3StorageIsNotEnabled)
 {
     m_hybridMgmt.isL3StorageEnabled = false;
     std::string embName = "testEmb";
     std::vector<MxRec::emb_cache_key_t> keys = {1, 2, 3};
+
+    m_hybridMgmt.EvictL3StorageKeys(embName, keys);
+}
+
+TEST_F(HybridMgmtTest, EvictL3StorageKeys_L3StorageEnabled)
+{
+    m_hybridMgmt.isL3StorageEnabled = true;
+    std::string embName = "testEmb";
+    std::vector<MxRec::emb_cache_key_t> keys = {};
 
     m_hybridMgmt.EvictL3StorageKeys(embName, keys);
 }
@@ -182,6 +240,50 @@ TEST_F(HybridMgmtTest, LookUpAndRemoveAddrsShouldNotThrowExceptionWhenEmbeddingL
     EXPECT_NO_THROW(m_hybridMgmt.LookUpAndRemoveAddrs(info));
 }
 
+TEST_F(HybridMgmtTest, LookUpAndRemoveAddrs_NotRunning)
+{
+    EmbTaskInfo info;
+    info.batchId = 1;
+    info.threadIdx = 0;
+    info.cvNotifyIndex = 0;
+    info.extEmbeddingSize = EXT_EMB_SIZE;
+    info.channelId = 0;
+    info.name = "test_table";
+    m_hybridMgmt.isRunning = false;
+
+    std::vector<uint64_t> keys = {1, 2, 3};
+    m_hybridMgmt.DDRSwapKeyQue[info.name + "SwapOut"][info.channelId].Pushv(keys);
+    m_hybridMgmt.DDRSwapKeyQue[info.name + "SwapIn"][info.channelId].Pushv(keys);
+    m_hybridMgmt.HBMSwapKeyQue[info.name + "SwapIn"][info.channelId].Pushv(keys);
+    m_hybridMgmt.HBMSwapKeyQue[info.name + "SwapOut"][info.channelId].Pushv(keys);
+
+    EXPECT_CALL(*m_embCachePtr, EmbeddingLookupAddrs(_, _, _, _)).Times(0);
+    m_hybridMgmt.LookUpAndRemoveAddrs(info);
+}
+
+TEST_F(HybridMgmtTest, LookUpAndRemoveAddrs_Error)
+{
+    EmbTaskInfo info;
+    info.batchId = 1;
+    info.threadIdx = 0;
+    info.cvNotifyIndex = 0;
+    info.extEmbeddingSize = EXT_EMB_SIZE;
+    info.channelId = 0;
+    info.name = "test_table";
+    m_hybridMgmt.isRunning = true;
+
+    std::vector<uint64_t> keys = {1, 2, 3};
+    m_hybridMgmt.DDRSwapKeyQue[info.name + "SwapOut"][info.channelId].Pushv(keys);
+    m_hybridMgmt.DDRSwapKeyQue[info.name + "SwapIn"][info.channelId].Pushv(keys);
+    m_hybridMgmt.HBMSwapKeyQue[info.name + "SwapIn"][info.channelId].Pushv(keys);
+    m_hybridMgmt.HBMSwapKeyQue[info.name + "SwapOut"][info.channelId].Pushv(keys);
+    EXPECT_CALL(*m_embCachePtr,
+                EmbeddingLookupAddrs(_, _, _, _)).Times(AnyNumber()).WillRepeatedly(Return(0));
+    EXPECT_CALL(*m_embCachePtr, EmbeddingRemove(_, _, _)).Times(1).WillRepeatedly(Return(1));
+    EXPECT_CALL(*m_embCachePtr, Destroy()).Times(AnyNumber()).WillRepeatedly(Return());
+    EXPECT_THROW(m_hybridMgmt.LookUpAndRemoveAddrs(info), std::runtime_error);
+}
+
 TEST_F(HybridMgmtTest, LookUpSwapAddrs)
 {
     m_hybridMgmt.isRunning = true;
@@ -193,6 +295,38 @@ TEST_F(HybridMgmtTest, LookUpSwapAddrs)
     EXPECT_CALL(*m_embCachePtr, EmbeddingLookupAddrs(_, _, _, _)).WillOnce(Return(0)).WillOnce(Return(1));
     EXPECT_CALL(*m_embCachePtr, Destroy()).Times(1).WillRepeatedly(Return());
     EXPECT_THROW(m_hybridMgmt.LookUpSwapAddrs(m_embTableName, 0), std::runtime_error);
+}
+
+TEST_F(HybridMgmtTest, LookUpSwapAddrs_Error)
+{
+    m_hybridMgmt.isRunning = true;
+    m_hybridMgmt.lookupAddrSuccess = true;
+    m_hybridMgmt.EosL1Que[m_embTableName][0].Pushv(true);
+    m_hybridMgmt.EosL1Que[m_embTableName][0].Pushv(false);
+    std::vector<uint64_t> keys = {1, 2, 3};
+    m_hybridMgmt.HBMSwapKeyQue[m_embTableName + "SwapIn"][0].Pushv(keys);
+    m_hybridMgmt.HBMSwapKeyQue[m_embTableName + "SwapOut"][0].Pushv(keys);
+    EXPECT_CALL(*m_embCachePtr, EmbeddingLookupAddrs(_, _, _, _)).WillOnce(Return(1));
+    EXPECT_CALL(*m_embCachePtr, Destroy()).Times(AnyNumber()).WillRepeatedly(Return());
+    EXPECT_THROW(m_hybridMgmt.LookUpSwapAddrs(m_embTableName, 0), std::runtime_error);
+}
+
+TEST_F(HybridMgmtTest, LookUpSwapAddrs_NotRunning)
+{
+    m_hybridMgmt.isRunning = false;
+    m_hybridMgmt.lookupAddrSuccess = true;
+
+    EXPECT_CALL(*m_embCachePtr, EmbeddingLookupAddrs(_, _, _, _)).Times(0);
+    m_hybridMgmt.LookUpSwapAddrs(m_embTableName, 0);
+}
+
+TEST_F(HybridMgmtTest, LookUpSwapAddrs_NotLookupAddrSuccess)
+{
+    m_hybridMgmt.isRunning = true;
+    m_hybridMgmt.lookupAddrSuccess = false;
+
+    EXPECT_CALL(*m_embCachePtr, EmbeddingLookupAddrs(_, _, _, _)).Times(0);
+    m_hybridMgmt.LookUpSwapAddrs(m_embTableName, 0);
 }
 
 TEST_F(HybridMgmtTest, SendHostMapAndLoadMap)
@@ -290,9 +424,27 @@ TEST_F(HybridMgmtTest, EmbeddingUpdateDDRShouldNotThrowExceptionWhenMemcpySuccee
     float target = 0;
     std::vector<float*> swapOutAddrs = {&target};
     float emb = 1.0;
+    MxRec::Logger::SetLevel(Logger::DEBUG);
 
     EXPECT_NO_THROW(m_hybridMgmt.EmbeddingUpdateDDR(info, &emb, swapOutAddrs));
     EXPECT_EQ(target, emb);
+}
+
+TEST_F(HybridMgmtTest, EmbeddingUpdateDDR_LoggerGetLevelINFO)
+{
+    EmbTaskInfo info;
+    info.batchId = 0;
+    info.threadIdx = 0;
+    info.cvNotifyIndex = 1;
+    info.extEmbeddingSize = 1;
+    info.channelId = TRAIN_CHANNEL_ID;
+    info.name = m_embTableName;
+    float target = -1;
+    std::vector<float*> swapOutAddrs = {&target};
+    float emb = 1.0;
+    MxRec::Logger::SetLevel(Logger::INFO);
+
+    EXPECT_NO_THROW(m_hybridMgmt.EmbeddingUpdateDDR(info, &emb, swapOutAddrs));
 }
 
 TEST_F(HybridMgmtTest, EmbeddingLookUpL3StorageShouldReturnTrueWhenAllConditionsAreMet)
@@ -397,6 +549,57 @@ TEST_F(HybridMgmtTest, InitEmbeddingCacheShouldNotThrowExceptionWhenCreateCacheF
     factory = factoryBakUp;
 }
 
+TEST_F(HybridMgmtTest, InitEmbeddingCache_L3StorageEnabled)
+{
+    std::vector<EmbInfo> embInfos;
+    EmbInfo embInfo;
+    embInfo.name = m_embTableName;
+    embInfo.hostVocabSize = HOST_VOCAB_SIZE;
+    embInfo.embeddingSize = EXT_EMB_SIZE;
+    embInfo.extEmbeddingSize = EXT_EMB_SIZE + EXT_EMB_SIZE;
+    embInfo.devVocabSize = DEVICE_VOCAB_SIZE;
+    embInfos.push_back(embInfo);
+    m_hybridMgmt.isRunning = true;
+    m_hybridMgmt.isL3StorageEnabled = true;
+
+    auto mockFactory = std::make_shared<ock::ctr::FactoryMock>();
+    auto factoryBakUp = factory;
+    factory = mockFactory;
+
+    EXPECT_CALL(*mockFactory, SetExternalLogFuncInner(_)).Times(1);
+    EXPECT_CALL(*mockFactory, CreateEmbCacheManager(_)).Times(1);
+    EXPECT_CALL(*m_embCachePtr, CreateCacheForTable(_, _, _, _, _)).Times(1).WillRepeatedly(Return(1));
+    EXPECT_CALL(*m_embCachePtr, Destroy()).Times(1).WillRepeatedly(Return());
+
+    EXPECT_THROW(m_hybridMgmt.InitEmbeddingCache(embInfos), std::runtime_error);
+    factory = factoryBakUp;
+}
+
+TEST_F(HybridMgmtTest, EmbeddingReceiveDDR)
+{
+    EmbTaskInfo info;
+    info.name = m_embTableName;
+    info.channelId = TRAIN_CHANNEL_ID;
+    info.batchId = 0;
+    float* ptr{nullptr};
+    std::vector<float*> swapOutAddrs;
+    m_hybridMgmt.isRunning = true;
+    m_hybridMgmt.EosL2Que[info.name][info.channelId].Pushv(true);
+    m_hybridMgmt.EosL2Que[info.name][info.channelId].Pushv(true);
+    
+    std::vector<float> keys = {1, 2, 3};
+    float* rawArray = new float[keys.size()];
+    std::copy(keys.begin(), keys.end(), rawArray);
+    std::vector<float*> vecPtr;
+    vecPtr.push_back(rawArray);
+    m_hybridMgmt.HBMSwapAddrsQue[info.name + "SwapOut"][info.channelId].Pushv(vecPtr);
+
+    EXPECT_CALL(*m_embCachePtr, Destroy()).Times(1).WillRepeatedly(Return());
+    EXPECT_EQ(m_hybridMgmt.EmbeddingReceiveDDR(info, ptr, swapOutAddrs), false);
+
+    delete[] rawArray;
+}
+
 TEST_F(HybridMgmtTest, EmbeddingReceiveL3StorageShouldReturnFalseWhenEosL1QueReturnsTrue)
 {
     EmbTaskInfo info;
@@ -452,6 +655,18 @@ TEST_F(HybridMgmtTest, EmbeddingReceiveAndUpdateL3StorageShouldThrowExceptionWhe
     EXPECT_NO_THROW(m_hybridMgmt.EmbeddingReceiveAndUpdateL3Storage(batchId, index, info, channelId));
 }
 
+TEST_F(HybridMgmtTest, EmbeddingReceiveAndUpdateL3Storage_IndexOne)
+{
+    int batchId = 0;
+    int index = 1;
+    int channelId = 0;
+    EmbInfo info;
+    info.name = m_embTableName;
+    info.extEmbeddingSize = 1;
+
+    EXPECT_NO_THROW(m_hybridMgmt.EmbeddingReceiveAndUpdateL3Storage(batchId, index, info, channelId));
+}
+
 TEST_F(HybridMgmtTest, EmbeddingSendL3StorageShouldSendWhenInfoAndH2dEmbAreValid)
 {
     EmbTaskInfo info;
@@ -482,6 +697,21 @@ TEST_F(HybridMgmtTest, EmbeddingLookUpAndSendL3StorageShouldSendWhenInfoAndH2dEm
     EXPECT_EQ(m_hybridMgmt.lastSendFinishCV.size(), 2); // lastSendFinishCV size is 2
 }
 
+TEST_F(HybridMgmtTest, EmbeddingLookUpAndSendL3Storage_IndexOne)
+{
+    size_t resSize = 2;
+    int batchId = 0;
+    int index = 1;
+    int channelId = 0;
+    EmbInfo info;
+    info.extEmbeddingSize = EXT_EMB_SIZE;
+    info.name = m_embTableName;
+
+    m_hybridMgmt.EmbeddingLookUpAndSendL3Storage(batchId, index, info, channelId);
+
+    EXPECT_EQ(m_hybridMgmt.lastSendFinishCV.size(), resSize);
+}
+
 TEST_F(HybridMgmtTest, GetUniqueKeysAndSendAll2AllVecAndSendRestoreVec)
 {
     EmbBaseInfo info;
@@ -510,6 +740,77 @@ TEST_F(HybridMgmtTest, ShouldSendPaddingKeysMaskVecDDRL3WhenUseSumSameIdGradient
 
     EXPECT_CALL(*m_embCachePtr, GetPaddingKeysOffset(_)).Times(1);
     m_hybridMgmt.SendLookupOffsets(info, uniqueKeys, restoreVecSec);
+}
+
+TEST_F(HybridMgmtTest, SendPaddingKeysMaskVecDDRL3_EVAL_CHANNEL_ID)
+{
+    EmbBaseInfo info;
+    info.channelId = 1;
+    info.name = m_embTableName;
+    info.batchId = 0;
+    info.paddingKeysMask = true;
+    std::vector<uint64_t> uniqueKeys = {1, 2, 3};
+
+    m_hybridMgmt.SendPaddingKeysMaskVecDDRL3(info, uniqueKeys);
+}
+
+TEST_F(HybridMgmtTest, SendPaddingKeysMaskVecDDRL3_NotPaddingKeysMask)
+{
+    EmbBaseInfo info;
+    info.channelId = 0;
+    info.name = m_embTableName;
+    info.batchId = 0;
+    info.paddingKeysMask = false;
+    std::vector<uint64_t> uniqueKeys = {1, 2, 3};
+
+    m_hybridMgmt.SendPaddingKeysMaskVecDDRL3(info, uniqueKeys);
+}
+
+TEST_F(HybridMgmtTest, SendLookupOffsets_InvalidIndex)
+{
+    m_hybridMgmt.mgmtRankInfo.useSumSameIdGradients = true;
+    EmbBaseInfo info;
+    info.channelId = 0;
+    info.name = m_embTableName;
+    info.batchId = 0;
+    info.paddingKeysMask = true;
+    std::vector<uint64_t> uniqueKeys = {1, 2, 3};
+    std::vector<int32_t> restoreVecSec = {-1, 1, 2};
+
+    EXPECT_CALL(*m_embCachePtr, GetPaddingKeysOffset(_)).Times(0);
+    m_hybridMgmt.SendLookupOffsets(info, uniqueKeys, restoreVecSec);
+}
+
+TEST_F(HybridMgmtTest, SendGlobalUniqueVec)
+{
+    m_hybridMgmt.mgmtRankInfo.useSumSameIdGradients = true;
+    EmbBaseInfo info;
+    info.channelId = 1;
+    info.name = m_embTableName;
+    info.batchId = 0;
+    info.paddingKeysMask = true;
+    info.isDp = true;
+    std::vector<uint64_t> uniqueKeys = {1, 2, 3};
+    std::vector<int32_t> restoreVecSec = {0, 1, 2};
+
+    EXPECT_CALL(*m_embCachePtr, GetPaddingKeysOffset(_)).Times(0);
+    m_hybridMgmt.SendGlobalUniqueVec(info, uniqueKeys, restoreVecSec);
+}
+
+TEST_F(HybridMgmtTest, SendGlobalUniqueVec_NotUseSumSameIdGradients)
+{
+    m_hybridMgmt.mgmtRankInfo.useSumSameIdGradients = false;
+    EmbBaseInfo info;
+    info.channelId = 0;
+    info.name = m_embTableName;
+    info.batchId = 0;
+    info.paddingKeysMask = true;
+    info.isDp = true;
+    std::vector<uint64_t> uniqueKeys = {1, 2, 3};
+    std::vector<int32_t> restoreVecSec = {0, 1, 2};
+
+    EXPECT_CALL(*m_embCachePtr, GetPaddingKeysOffset(_)).Times(1);
+    m_hybridMgmt.SendGlobalUniqueVec(info, uniqueKeys, restoreVecSec);
 }
 
 TEST_F(HybridMgmtTest, SendGlobalUniqueVecShouldSendWhenTrainChannelAndUseSumSameIdGradients)
@@ -549,6 +850,18 @@ TEST_F(HybridMgmtTest, GetSwapPairsAndKey2OffsetShouldThrowExceptionWhenGetSwapP
                  std::runtime_error);
 }
 
+TEST_F(HybridMgmtTest, GetSwapPairsAndKey2Offset)
+{
+    EmbBaseInfo info;
+    std::vector<uint64_t> uniqueKeys;
+    std::pair<std::vector<uint64_t>, std::vector<uint64_t>> swapInKoPair;
+    std::pair<std::vector<uint64_t>, std::vector<uint64_t>> swapOutKoPair;
+
+    EXPECT_CALL(*m_embCachePtr, GetSwapPairsAndKey2Offset(_, _, _, _)).WillRepeatedly(Return(0));
+
+    EXPECT_NO_THROW(m_hybridMgmt.GetSwapPairsAndKey2Offset(info, uniqueKeys, swapInKoPair, swapOutKoPair));
+}
+
 TEST_F(HybridMgmtTest, EnqueueSwapInfoShouldEnqueueWhenCalled)
 {
     EmbBaseInfo info;
@@ -574,6 +887,13 @@ TEST_F(HybridMgmtTest, BackUpTrainStatusShouldBackUpWhenTrainBatchIdIsNotZero)
     EXPECT_TRUE(m_hybridMgmt.isBackUpTrainStatus);
 }
 
+TEST_F(HybridMgmtTest, BackUpTrainStatus_ZeroTrainBatchId)
+{
+    m_hybridMgmt.hybridMgmtBlock->pythonBatchId[TRAIN_CHANNEL_ID] = 0;
+    m_hybridMgmt.BackUpTrainStatus();
+    EXPECT_FALSE(m_hybridMgmt.isBackUpTrainStatus);
+}
+
 TEST_F(HybridMgmtTest, RecoverTrainStatusShouldCallRecoverTrainStatusWhenBackUpTrainStatusIsTrue)
 {
     m_hybridMgmt.isBackUpTrainStatus = true;
@@ -589,6 +909,31 @@ TEST_F(HybridMgmtTest, GetDeltaModelKeysShouldSaveAllKeysWhenFirstSave)
     m_hybridMgmt.mgmtEmbInfo.push_back(embInfo);
     std::map<string, map<emb_key_t, KeyInfo>> keyInfoMap;
     m_hybridMgmt.GetDeltaModelKeys("path", false, keyInfoMap);
+    EXPECT_EQ(keyInfoMap.size(), 0);
+    EXPECT_EQ(keyInfoMap[m_embTableName].size(), 0);
+}
+
+TEST_F(HybridMgmtTest, GetDeltaModelKeys_NotFirstSave)
+{
+    m_hybridMgmt.isFirstSave = false;
+    m_hybridMgmt.isIncrementalCkpt = false;
+    EmbInfo embInfo;
+    embInfo.name = m_embTableName;
+    m_hybridMgmt.mgmtEmbInfo.push_back(embInfo);
+    std::map<string, map<emb_key_t, KeyInfo>> keyInfoMap;
+    m_hybridMgmt.GetDeltaModelKeys("path", false, keyInfoMap);
+    EXPECT_EQ(keyInfoMap.size(), 0);
+    EXPECT_EQ(keyInfoMap[m_embTableName].size(), 0);
+}
+
+TEST_F(HybridMgmtTest, GetDeltaModelKeys_SaveDelta)
+{
+    m_hybridMgmt.isFirstSave = true;
+    EmbInfo embInfo;
+    embInfo.name = m_embTableName;
+    m_hybridMgmt.mgmtEmbInfo.push_back(embInfo);
+    std::map<string, map<emb_key_t, KeyInfo>> keyInfoMap;
+    m_hybridMgmt.GetDeltaModelKeys("path", true, keyInfoMap);
     EXPECT_EQ(keyInfoMap.size(), 0);
     EXPECT_EQ(keyInfoMap[m_embTableName].size(), 0);
 }
@@ -625,8 +970,95 @@ TEST_F(HybridMgmtTest, SendPaddingKeysMaskVecHBMShouldSendWhenAllConditionsMet)
     EXPECT_TRUE(infoVecs->empty());
 }
 
+TEST_F(HybridMgmtTest, SendPaddingKeysMaskVecHBM_NotGrad)
+{
+    EmbBaseInfo info;
+    info.channelId = 0;
+    info.paddingKeysMask = true;
+    std::unique_ptr<std::vector<Tensor>> infoVecs = std::make_unique<std::vector<Tensor>>();
+    infoVecs->push_back(Tensor());
+    bool isGrad = false;
+    m_hybridMgmt.SendPaddingKeysMaskVecHBM(info, infoVecs, isGrad);
+    EXPECT_FALSE(infoVecs->empty());
+}
+
+TEST_F(HybridMgmtTest, SendPaddingKeysMaskVecHBM_EVAL_CHANNEL_ID)
+{
+    EmbBaseInfo info;
+    info.channelId = 1;
+    info.paddingKeysMask = true;
+    std::unique_ptr<std::vector<Tensor>> infoVecs = std::make_unique<std::vector<Tensor>>();
+    infoVecs->push_back(Tensor());
+    bool isGrad = true;
+    m_hybridMgmt.SendPaddingKeysMaskVecHBM(info, infoVecs, isGrad);
+    EXPECT_FALSE(infoVecs->empty());
+}
+
+TEST_F(HybridMgmtTest, SendPaddingKeysMaskVecHBM_NotPaddingKeysMask)
+{
+    EmbBaseInfo info;
+    info.channelId = 0;
+    info.paddingKeysMask = false;
+    std::unique_ptr<std::vector<Tensor>> infoVecs = std::make_unique<std::vector<Tensor>>();
+    infoVecs->push_back(Tensor());
+    bool isGrad = true;
+    m_hybridMgmt.SendPaddingKeysMaskVecHBM(info, infoVecs, isGrad);
+    EXPECT_FALSE(infoVecs->empty());
+}
+
 TEST_F(HybridMgmtTest, StartSyncThreadShouldThrowErrorWhenNotDDRMode)
 {
     m_hybridMgmt.mgmtRankInfo.isDDR = false;
     EXPECT_THROW(m_hybridMgmt.StartSyncThread(), std::runtime_error);
+}
+
+TEST_F(HybridMgmtTest, BuildAndSendH2DEmbedding_NotRunning)
+{
+    EmbTaskInfo info;
+    info.batchId = 1;
+    info.threadIdx = 0;
+    info.cvNotifyIndex = 0;
+    info.extEmbeddingSize = EXT_EMB_SIZE;
+    info.channelId = TRAIN_CHANNEL_ID;
+    info.name = "test_table";
+    float* ptr{nullptr};
+    std::array<int64_t, RMA_DIM_MAX> dims= {0, 0};
+
+    std::vector<float> keys = {1, 2, 3};
+    float* rawArray = new float[keys.size()];
+    std::copy(keys.begin(), keys.end(), rawArray);
+    std::vector<float*> vecPtr;
+    vecPtr.push_back(rawArray);
+    m_hybridMgmt.HBMSwapAddrsQue[info.name + "SwapIn"][info.channelId].Pushv(vecPtr);
+
+    EXPECT_EQ(m_hybridMgmt.BuildAndSendH2DEmbedding(info, ptr, dims), false);
+}
+
+TEST_F(HybridMgmtTest, BuildH2DEmbedding_NotRunning)
+{
+    EmbTaskInfo info;
+    info.name = "test_table";
+    info.channelId = TRAIN_CHANNEL_ID;
+    std::vector<Tensor> h2dEmb;
+    h2dEmb.push_back(Tensor());
+
+    std::vector<float> keys = {1, 2, 3};
+    float* rawArray = new float[keys.size()];
+    std::copy(keys.begin(), keys.end(), rawArray);
+    std::vector<float*> vecPtr;
+    vecPtr.push_back(rawArray);
+    m_hybridMgmt.HBMSwapAddrsQue[info.name + "SwapIn"][info.channelId].Pushv(vecPtr);
+
+    EXPECT_EQ(m_hybridMgmt.BuildH2DEmbedding(info, h2dEmb), false);
+}
+
+TEST_F(HybridMgmtTest, GetRestoreVecSec)
+{
+    EmbBaseInfo info;
+    info.name = m_embTableName;
+    info.channelId = 0;
+    info.batchId = 0;
+    bool remainBatchOut = false;
+
+    m_hybridMgmt.GetRestoreVecSec(info, remainBatchOut);
 }
