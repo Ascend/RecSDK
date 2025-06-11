@@ -73,7 +73,7 @@ function run_dlrm_model(){
     --learning_rate 0.005 \
     --pin_memory \
     --mmap_mode \
-    2>&1 |tee ${model}_use_ec=${use_ec}_$(date '+%Y%m%d_%H%M%S').log
+    2>&1 |tee ${model}_use_ec_${use_ec}_$(date '+%Y%m%d_%H%M%S').log
 }
 
 

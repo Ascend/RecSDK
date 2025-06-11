@@ -32,9 +32,15 @@
 
 请根据机器架构、机器型号选择合适的安装包进行安装。
 
-### 安装torch_npu
+### 安装Pytorch配套
 
 ```shell
+# torch版本
+pip3 install torch==2.6.0+cpu  --index-url https://download.pytorch.org/whl/cpu # x86
+pip3 install torch==2.6.0 # arm
+# fbgemm_gpu版本
+pip3 install fbgemm_gpu==1.1.0+cpu -i https://download.pytorch.org/whl/cpu
+# torch_npu
 pip3 install torch_npu-2.6.0.*.whl
 ```
 ### 安装算子
@@ -77,6 +83,11 @@ cd generative-recommenders && git checkout bb389f9539b054e7268528efcd35457a6ad52
 cp ../gr_npu.patch ./ && git apply gr_npu.patch
 ```
 
+## 安装模型依赖python包
+```bash
+pip3 install --ignore-install -r requirements.txt
+```
+说明:本模型样例是迁移NPU适配，并在pytorch框架下运行，可手动注释忽略nvidia和tensorflow相关安装包,torch使用2.6.0版本配套。
 ## 数据集准备
 参考源码，在preprocess_public_data.py同级目录下执行如下命令。
 ```shell
