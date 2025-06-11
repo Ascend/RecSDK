@@ -34,21 +34,22 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 1. 算子分析
 
 a) 算子的主要功能是实现fbgemm的split_embedding_codegen_forward_unweighted, 实现embedding bag的查询功能
+
 b) 算子参数说明：
 
-* dev_weights: 表的weights；
+* dev_weights: 表的权重；
 * uvm_weight: 预留参数不支持配置；
 * lxu_cache_weight: 预留参数不支持配置；
 * weights_pacements: 预留参数不支持配置;
 * weights_offsets: 每张表的偏移量;
-* D_offsets: 每张表embeding dim的offsets;
-* indices: 查询表的indics;
-* hash_indices: 稀疏表查表的indics，可选参数;
-* offsets: indices对应的偏移;
+* D_offsets: 每张表embedding dim的累加和偏移量;
+* indices: 查询表的索引;
+* hash_indices: 稀疏表查表的索引，可选参数;
+* offsets: 查表索引对应的偏移;
 * lxu_cache_locations: 预留参数不支持配置;
 * out: 查询的向量；
-* total_D: 输出的dim之和;
-* max_D: 表中最大的Embedding Dim;;
+* total_D: 输出的embedding dim之和;
+* max_D: 表中最大的embedding dim;;
 * pooling_mode: pooling的方式Sum或者Mean或None;
 * output_dtype: 预留参数不支持配置;
 * is_experimental: 预留参数不支持配置;
@@ -56,9 +57,13 @@ b) 算子参数说明：
 c) 算子约束说明：
 
 * 支持的型号：Atlas A2系列产品;
-* 支持的CANN版本：8.0.RC2及之后版本；
-* 支持的输入数据类型：dev_weights为float32类型，weights_offsets、indices、offsets为int64，D_offsets为int32；
-* dev_weights的dims为所有表的[embed_dim * embed_size]，embed_dim长度需为4的倍数，weights_offsets为表的个数[ num_embed ], weights_offsets的dims为[ num_embed+1 ], D_offsets的dim为[ num_embed+1 ]。indices的dim0为offset最后一位的值。offsets为[batchsize, num_embed]。
+* 支持的CANN版本：8.2.RC1.alpha001及之后版本；
+* 支持的输入数据类型：dev_weights为float32类型，weights_offsets、indices、hash_indices、offsets为int64，D_offsets为int32。
+* 支持的输入shape： dev_weights的dim为所有表的[embed_dim * embed_size]之和，embed_dim长度需为8的倍数, pooling_mode为None时所有表的embed_dim需要保持一致。  
+                   weights_offsets的dim为[ feat_cnt ]。  
+                   D_offsets的dim为[ feat_cnt + 1 ]。  
+                   offsets的dim为[batchsize * feat_cnt + 1]，请注意：offsets中的元素大小超过10000时，可能出现累加误差。  
+                   indices的dim与offset最后一个元素大小相同。  
 
 ## 算子逻辑
 ```
