@@ -49,6 +49,7 @@ c) 算子约束说明：
 * dense为3维tensor；
 * offset为1维tensor，offset的长度必须为dense第一维长度加1，offset必须满足从0开始依次递增；
 * jagged_dim0的值，需与offset最后一个值相等
+* 算子参数均会在GPU显存中存放，请根据显存大小合理设置参数长度。
 
 ## 算子逻辑
 ```
