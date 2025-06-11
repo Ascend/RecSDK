@@ -33,10 +33,10 @@ bash run.sh
 1.执行训练脚本，传入模型所需参数，参考命令如下：
 ```commandline
 # mmoe模型
-python3 mmoe.py --data_dir alicpp/aliccp_out/ --train_batch_num 2000 --eval_batch_num 20  # 根据实际情况传入参数
+python3 mmoe.py --data_dir aliccp/aliccp_out/ --train_batch_num 2000 --eval_batch_num 20  # 根据实际情况传入参数
 
 # eta模型
-python3 eta.py --data_dir alicpp/aliccp_out/ --train_batch_num 2000 # 根据实际情况传入参数
+python3 eta.py --data_dir aliccp/aliccp_out/ --train_batch_num 2000 # 根据实际情况传入参数
 ```
 2.参数说明
 ```commandline
