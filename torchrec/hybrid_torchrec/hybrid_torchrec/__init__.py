@@ -9,8 +9,12 @@
 import os
 import sysconfig
 import torch
-from hybrid_torchrec.modules.hash_embeddingbag import HashEmbeddingBagCollection, HashEmbeddingBagConfig, \
-    HybridHashTable
+from hybrid_torchrec.modules.hash_embeddingbag import (
+    HashEmbeddingBagCollection,
+    HashEmbeddingBagConfig,
+    HybridHashTable,
+)
 
+__all__ = ["HashEmbeddingBagCollection", "HashEmbeddingBagConfig"]
 
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")

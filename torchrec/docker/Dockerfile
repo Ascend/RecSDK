@@ -88,9 +88,9 @@ RUN pip3 install -U pip && \
     pip3 install Cython && \
     pip3 install absl-py && \
     pip3 install gin-config && \
-    pip3 install torch-npu==2.6.0.rc1 && \
     pip3 install torch-2.6.0+cpu-*.whl && \
     pip3 install fbgemm_gpu-1.1.0+cpu-*.whl && \
+    pip3 install torch-npu==2.6.0.rc1 && \
     pip3 install tensorboard==2.18.0 && \
     pip3 install black && \
     pip3 install cmake && \

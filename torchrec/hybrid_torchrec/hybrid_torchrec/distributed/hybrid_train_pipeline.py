@@ -248,7 +248,7 @@ class HybridTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
         return_loss: bool = False,
         pipe_n_batch: int = 6,
     ) -> None:
-        self.param_check(model, device, pipe_n_batch)
+        self.param_check(model, device, pipe_n_batch, apply_jit, execute_all_batches)
         super().__init__(model, optimizer, device, execute_all_batches, apply_jit)
         self._return_loss = return_loss
         self._contexts = [[] for _ in range(pipe_n_batch)]
@@ -262,6 +262,8 @@ class HybridTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
         model: torch.nn.Module,
         device: torch.device,
         pipe_n_batch,
+        apply_jit, 
+        execute_all_batches
     ):
         if pipe_n_batch <= 0 or pipe_n_batch > MAX_PIPE_N_BATCH:
             raise ValueError(f"pipe_n_batch must be in range in [1, {MAX_PIPE_N_BATCH}], \
@@ -280,6 +282,12 @@ class HybridTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
 
         if model.device != device:
             raise ValueError(f"model device is {model.device}, but input device is {device}.")
+        
+        if apply_jit:
+            raise ValueError(f"apply_jit is not support")
+        
+        if not execute_all_batches:
+            raise ValueError(f"execute_all_batches cant not be false")
     
     def enque_context(self, line_id, context: HybridTrainPipelineContext):
         self._contexts[line_id].append(context)

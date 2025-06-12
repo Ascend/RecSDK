@@ -16,6 +16,11 @@ from torchrec.distributed.types import ModuleSharder, ShardingEnv
 
 
 def get_default_hybrid_sharders(host_env: ShardingEnv) -> List[ModuleSharder[nn.Module]]:
+    if host_env.process_group is None:
+        raise RuntimeError("process_group shold be not None")
+    if host_env.process_group._get_backend_name() != "gloo":
+        raise RuntimeError("Rec SDK Torch only support host dit with gloo")
+
     return [
         cast(ModuleSharder[nn.Module], HybridEmbeddingBagCollectionSharder(host_env)),
         cast(ModuleSharder[nn.Module], HybridHashEmbeddingBagCollectionSharder(host_env)),
