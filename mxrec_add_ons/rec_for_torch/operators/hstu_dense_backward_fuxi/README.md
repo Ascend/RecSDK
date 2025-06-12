@@ -36,11 +36,9 @@ Atlas A2 训练系列产品
 * jagged格式：s_b,N,D 3维数据格式 (稠密格式 为了节省显存)
 
 jagged格式如下图所示：
-![alt text](pic/hstu_image-3.png)
+![alt text](hstu_image-3.png)
 
 ## 实现原理
-
-![实现原理](pic/hstu_backward.png)
 
 * 输入Q，K，V，Grad是jagged格式, 首先分别进行matmul计算
 * mask和timestampBias/positionBias按照参数决定是否加入计算

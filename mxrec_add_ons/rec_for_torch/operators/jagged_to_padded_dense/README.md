@@ -49,7 +49,7 @@ c) 算子约束说明：
 * 支持的输入数据类型：values float32/int64, offset int64/int32；
 * values为3维tensor，offset为1维tensor，max_length大于0
 * offset必须满足从0开始依次递增
-* 算子参数均会在GPU显存中存放，请根据显存大小合理设置参数长度。
+* 算子参数均会在NPU显存中存放，请根据显存大小合理设置参数长度。
 
 ## 算子逻辑
 ```

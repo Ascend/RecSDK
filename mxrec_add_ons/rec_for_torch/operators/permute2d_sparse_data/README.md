@@ -45,7 +45,6 @@ b) 算子参数说明：
 * permuted_values: 输出，重排后值tensor;
 * permuted_weights: 输出， 暂不支持
 
-
 c) 算子约束说明：
 
 * 支持的型号：Atlas A2系列产品;
@@ -53,7 +52,7 @@ c) 算子约束说明：
 * 支持的输入数据类型：permute: int32, lengths: int64/int32, values: int64/int32/float；
 * permute为1维tensor，lengths为二维tensor，且permute的第一维长度与lengths的第一维长度相等；
 * values长度为lengths中所有数据长度之和
-* 算子参数均会在GPU显存中存放，请根据显存大小合理设置参数长度。
+* 算子参数均会在NPU显存中存放，请根据显存大小合理设置参数长度。
 
 ## 算子逻辑
 ```
