@@ -136,3 +136,13 @@ TEST(TestCkptTransData, DefaultConstructor)
 {
     MxRec::CkptTransData ckptTransData;
 }
+
+TEST(TestCTRLog, DifferentLevel)
+{
+    int invilid = -1;
+    MxRec::CTRLog(MxRec::CTRLogLevel::DEBUG, "test message");
+    MxRec::CTRLog(MxRec::CTRLogLevel::INFO, "test message");
+    MxRec::CTRLog(MxRec::CTRLogLevel::WARN, "test message");
+    MxRec::CTRLog(MxRec::CTRLogLevel::ERROR, "test message");
+    EXPECT_NO_THROW(MxRec::CTRLog(invilid, "test message"));
+}

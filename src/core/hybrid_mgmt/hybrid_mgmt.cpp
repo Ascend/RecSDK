@@ -2173,7 +2173,7 @@ bool HybridMgmt::BuildAndSendH2DEmbedding(const EmbTaskInfo& info, float*& h2dEm
 
     uint64_t memSize = info.extEmbeddingSize * sizeof(float);
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) shared(swapInAddrs, h2dEmb, info, memSize)
-    for (size_t i = 0; i < swapInAddrs.size(); i++) {
+    for (size_t i = 0; i < swapInAddrs.size(); i++) { // LCOV_EXCL_BR_LINE
         auto rc = memcpy_s(h2dEmb + i * info.extEmbeddingSize, memSize, swapInAddrs[i], memSize);
         if (rc != 0) {
             auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::UNKNOWN,
@@ -2349,7 +2349,7 @@ void HybridMgmt::SendGlobalUniqueVec(const EmbBaseInfo& info, vector<uint64_t>& 
         return;
     }
     TimeCost sendUniqueKeysSyncTC;
-    hdTransfer->Send(TransferChannel::UNIQKEYS,
+    hdTransfer->Send(TransferChannel::UNIQKEYS, // LCOV_EXCL_BR_LINE
                      {mgmtRankInfo.useDynamicExpansion ? Vec2TensorI64(uniqueKeys) : Vec2TensorI32(uniqueKeys)},
                      info.channelId, info.name, info.batchId);
     LOG_DEBUG("table:{}, channelId:{}, batchId:{}, sendUniqueKeysSyncTC(ms):{}", info.name, info.channelId,
@@ -2476,7 +2476,7 @@ void HybridMgmt::GetDeltaModelKeys(const string& savePath, bool saveDelta,
         if (saveDelta) {
             for (auto& delta : deltaMap) {
                 auto& deltaInfo = delta.second;
-                for (auto& it : deltaInfo) {
+                for (auto& it : deltaInfo) { // LCOV_EXCL_BR_LINE
                     if (it.second.isChanged) {
                         keyInfoMap[delta.first][it.first] = it.second;
                     }

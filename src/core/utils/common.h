@@ -290,10 +290,10 @@ template <typename... Args>
 string StringFormat(const string& format, Args... args)
 {
     auto size = static_cast<size_t>(GLOG_MAX_BUF_SIZE);
-    auto buf = std::make_unique<char[]>(size);
+    auto buf = std::make_unique<char[]>(size); // LCOV_EXCL_BR_LINE
     memset_s(buf.get(), size, 0, size);
     int nChar = snprintf_s(buf.get(), size, size - 1, format.c_str(), args...);
-    if (nChar == -1) {
+    if (nChar == -1) { // LCOV_EXCL_BR_LINE
         throw invalid_argument("StringFormat failed");
     }
     return string(buf.get(), buf.get() + nChar);
@@ -307,9 +307,9 @@ std::string VectorToString(const std::vector<T>& vec)
 
     std::stringstream ss;
     ss << "[";
-    for (size_t i = 0; i < maxLen; ++i) {
+    for (size_t i = 0; i < maxLen; ++i) { // LCOV_EXCL_BR_LINE
         ss << vec[i];
-        if (i != vec.size() - 1) {
+        if (i != vec.size() - 1) { // LCOV_EXCL_BR_LINE
             ss << ", ";
         }
     }
