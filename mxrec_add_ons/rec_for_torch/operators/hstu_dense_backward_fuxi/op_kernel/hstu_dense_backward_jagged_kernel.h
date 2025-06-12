@@ -509,60 +509,20 @@ public:
         int64_t prevTaskId = taskId - PREV_TASK_OFFSET;
         int64_t twoPrevTaskId = taskId - TWO_PREV_TASK_OFFSET;
 
-        // QKMatmul(taskId);
-        // GVMatmul(taskId);
-        // GpVMatmul(taskId);
-        // GtVMatmul(taskId);
         StartStage1TaskA(taskId);
 
-        // if (taskId > 1) {
         if (taskId >= TWO_PREV_TASK_OFFSET) {
-            // VGradMatmul(taskId - 2);
-            // KGradMatmul(taskId - 2);
-            // BtGtMatmul(taskId - 2);
-            // BpGpMatmul(taskId - 2);
             StartStage1TaskC(twoPrevTaskId);
         }
 
-        // if (taskId > 0) {
         if (taskId >= PREV_TASK_OFFSET) {
-            // VecScoreJagged(taskId - 1);
             StartStage1TaskB(prevTaskId);
         }
 
-        // // qk gv
-        // this->qkMatmul.WaitIterateAll();
-        // this->qkMatmul.End();
-        // this->qkMatmul.WaitIterateAll();
-        // this->qkMatmul.End();
-        // // gtV gpV
-        // this->qkMatmul.WaitIterateAll();
-        // this->qkMatmul.End();
-        // this->qkMatmul.WaitIterateAll();
-        // this->qkMatmul.End();
         WaitStage1TaskA();
 
-        // if (taskId > 1) {
         if (taskId >= TWO_PREV_TASK_OFFSET) {
-            // this->vGradMatmul.WaitIterateAll();
-            // this->vGradMatmul.End();
-            // this->kGradMatmul.WaitIterateAll();
-            // this->kGradMatmul.End();
-            // // btGt bpGp
-            // this->vGradMatmul.WaitIterateAll();
-            // this->vGradMatmul.End();
-            // this->vGradMatmul.WaitIterateAll();
-            // this->vGradMatmul.End();
             WaitStage1TaskC();
-
-            // if (computeTaskInfo[(taskId - 2) % COMPUTE_PIPE_NUM].accumId !=
-            //     computeTaskInfo[(taskId - 1) % COMPUTE_PIPE_NUM].accumId) {
-            //     DoTransJagged(taskId - 2, this->kGradAccumTemp, this->kGrad);
-            //     // Gv = Gv1 + BtGt + BpGp
-            //     DoTransJagged(taskId - 2, this->vGradAccumTemp, this->vGrad);
-            //     DoTransJagged(taskId - 2, this->tempBtsGtsAccum, this->vbtsGrad);
-            //     DoTransJagged(taskId - 2, this->tempBposGposAccum, this->vbposGrad);
-            // }
             if (computeTaskInfo[(prevTaskId) % COMPUTE_PIPE_NUM].accumId !=
                 computeTaskInfo[(twoPrevTaskId) % COMPUTE_PIPE_NUM].accumId) {
                 PostStage1TaskC(twoPrevTaskId);
@@ -575,77 +535,22 @@ public:
 
         int64_t prevTaskId = taskId - PREV_TASK_OFFSET;
         int64_t twoPrevTaskId = taskId - TWO_PREV_TASK_OFFSET;
-        // if (taskId > 1) {
         if (twoPrevTaskId >= 0) {
-            // VGradMatmul(taskId - 2);
-            // KGradMatmul(taskId - 2);
-            // BtGtMatmul(taskId - 2);
-            // BpGpMatmul(taskId - 2);
-            // VecScoreJagged(taskId - 1);
-            // this->vGradMatmul.WaitIterateAll();
-            // this->vGradMatmul.End();
-            // this->kGradMatmul.WaitIterateAll();
-            // this->kGradMatmul.End();
-            // // btGt bpGp
-            // this->vGradMatmul.WaitIterateAll();
-            // this->vGradMatmul.End();
-            // this->vGradMatmul.WaitIterateAll();
             StartStage1TaskC(twoPrevTaskId);
             StartStage1TaskB(prevTaskId);
             WaitStage1TaskC();
 
-            // if (computeTaskInfo[(taskId - 2) % COMPUTE_PIPE_NUM].accumId !=
-            //     computeTaskInfo[(taskId - 1) % COMPUTE_PIPE_NUM].accumId) {
-            //     DoTransJagged(taskId - 2, this->kGradAccumTemp, this->kGrad);
-            //     DoTransJagged(taskId - 2, this->vGradAccumTemp, this->vGrad);
-            //     DoTransJagged(taskId - 2, this->tempBtsGtsAccum, this->vbtsGrad);
-            //     DoTransJagged(taskId - 2, this->tempBposGposAccum, this->vbposGrad);
-            // }
             if (computeTaskInfo[(prevTaskId) % COMPUTE_PIPE_NUM].accumId !=
                 computeTaskInfo[(twoPrevTaskId) % COMPUTE_PIPE_NUM].accumId) {
                 PostStage1TaskC(twoPrevTaskId);
             }
 
-            // VGradMatmul(taskId - 1);
-            // KGradMatmul(taskId - 1);
-            // BtGtMatmul(taskId - 1);
-            // BpGpMatmul(taskId - 1);
-            // this->vGradMatmul.WaitIterateAll();
-            // this->vGradMatmul.End();
-            // this->kGradMatmul.WaitIterateAll();
-            // this->kGradMatmul.End();
-            // // btGt bpGp
-            // this->vGradMatmul.WaitIterateAll();
-            // this->vGradMatmul.End();
-            // this->vGradMatmul.WaitIterateAll();
-            // DoTransJagged(taskId - 1, this->kGradAccumTemp, this->kGrad);
-            // DoTransJagged(taskId - 1, this->vGradAccumTemp, this->vGrad);
-            // DoTransJagged(taskId - 1, this->tempBtsGtsAccum, this->vbtsGrad);
-            // DoTransJagged(taskId - 1, this->tempBposGposAccum, this->vbposGrad);
             StartStage1TaskC(prevTaskId);
             WaitStage1TaskC();
             PostStage1TaskC(prevTaskId);
         }
 
-        // if (taskId == 1) {
         if (prevTaskId == 0) {
-            // VecScoreJagged(taskId - 1);
-            // VGradMatmul(taskId - 1);
-            // KGradMatmul(taskId - 1);
-            // BtGtMatmul(taskId - 1);
-            // BpGpMatmul(taskId - 1);
-            // this->vGradMatmul.WaitIterateAll();
-            // this->vGradMatmul.End();
-            // this->kGradMatmul.WaitIterateAll();
-            // this->kGradMatmul.End();
-            // // btGt bpGp
-            // this->vGradMatmul.WaitIterateAll();
-            // this->vGradMatmul.End();
-            // this->vGradMatmul.WaitIterateAll();
-            // DoTransJagged(taskId - 1, this->kGradAccumTemp, this->kGrad);
-            // DoTransJagged(taskId - 1, this->vGradAccumTemp, this->vGrad);
-            // DoTransJagged(taskId - 1, this->tempBtsGtsAccum, this->vbtsGrad);
-            // DoTransJagged(taskId - 1, this->tempBposGposAccum, this->vbposGrad);
             StartStage1TaskB(prevTaskId);
             StartStage1TaskC(prevTaskId);
             WaitStage1TaskC();
