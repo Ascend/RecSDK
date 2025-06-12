@@ -41,9 +41,10 @@ b) 算子参数说明：
 
 c) 算子约束说明：
 
-* 支持的型号：Atlas A2系列产品;
+* 支持的型号：Atlas A2系列产品和Atlas 推理系列产品;
 * 支持的CANN版本：8.2.RC1.alpha001及之后版本；
-* 支持的输入数据类型：x支持fp32、fp16。index支持int64_t;
+* 支持的输入数据类型：在Atlas A2系列产品中：x支持fp32、fp16, index支持int64_t;
+*                   在Atlas 推理系列产品中：x支持fp32、fp16, index支持int32_t;
 * x范围：[1,20480];
 * index范围:[1,]
 
