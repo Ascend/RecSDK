@@ -105,11 +105,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dens
         biasPositionGradOutput = at::zeros({batchSize, headNum, maxSeqLen, maxSeqLen}, denseBiasPosition.options());
         biasTimestampGradOutput = at::zeros({batchSize, headNum, maxSeqLen, maxSeqLen}, denseBiasTimestamp.options());
     } else {
-        // auto biasGradSeqLen = (maxSeqLen + 256 - 1) / 256 * 256; // get 256 bit aligned biasGrad space
-        auto biasGradSeqLen = maxSeqLen;
-        biasPositionGradOutput = at::zeros({batchSize, headNum, biasGradSeqLen, biasGradSeqLen},
+        biasPositionGradOutput = at::zeros({batchSize, headNum, maxSeqLen, maxSeqLen},
                                            at::device(denseGrad.device()).dtype(denseGrad.dtype()));
-        biasTimestampGradOutput = at::zeros({batchSize, headNum, biasGradSeqLen, biasGradSeqLen},
+        biasTimestampGradOutput = at::zeros({batchSize, headNum, maxSeqLen, maxSeqLen},
                                             at::device(denseGrad.device()).dtype(denseGrad.dtype()));
     }
 
