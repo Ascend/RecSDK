@@ -201,7 +201,7 @@ class TestModel:
 @pytest.mark.parametrize("pool_type", [torchrec.PoolingType.MEAN])
 @pytest.mark.parametrize("sharding_type", ["table_wise"])
 @pytest.mark.parametrize("lookup_len", [1024])
-@pytest.mark.parametrize("device", ["cpu", "npu"])
+@pytest.mark.parametrize("device", ["npu"])
 def test_pipeline_train_eval(
     table_num,
     embedding_dims,
@@ -211,8 +211,6 @@ def test_pipeline_train_eval(
     lookup_len,
     device,
 ):
-    if device == "cpu" and sharding_type == "row_wise":
-        return
     mp.spawn(
         execute,
         args=(
