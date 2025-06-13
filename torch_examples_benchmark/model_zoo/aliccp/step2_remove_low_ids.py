@@ -54,6 +54,6 @@ for key in obj.keys():
     flags = os.O_WRONLY | os.O_CREAT
     modes = stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
     voca_filename = "vocab_" + key
-    voca_path = os.path.join("./aliccp_out/vocab", key)
+    voca_path = os.path.join("./aliccp_out/vocab", voca_filename)
     with os.fdopen(os.open(voca_path, flags, modes), "w") as fp:
         fp.writelines([f"{val}\n" for val in new_dict[key]])
