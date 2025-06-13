@@ -17,7 +17,7 @@
 
 using BucketResult = std::tuple<at::Tensor, at::Tensor, std::optional<at::Tensor>,
                      std::optional<at::Tensor>,
-                     std::optional<at::Tensor>, std::optional<at::Tensor>>;
+                     std::optional<at::Tensor>, std::optional<at::Tensor>, at::Tensor>;
 namespace hybrid {
 
 // 计算前缀和，preSum数组长度应为length+1
@@ -86,10 +86,10 @@ void FillNewIndices(const OffsetT* offsetsData, const IndexT* indicesData, Offse
     }
 }
 
-template <typename OffsetT, typename IndexT>
-void Deduplicate(OffsetT* newLengthsData, const OffsetT* newOffsetsData, const OffsetT* offsetsData,
-                 const IndexT* indicesData, IndexT* newIndicesData, IndexT* unbucketizePermuteData,
-                 int32_t numFeatures, int32_t batchSize, int64_t bucketSize)
+template <typename OffsetT, typename IndexT, bool ReturnCount>
+int64_t Deduplicate(OffsetT* newLengthsData, const OffsetT* newOffsetsData, const OffsetT* offsetsData,
+                    const IndexT* indicesData, IndexT* newIndicesData, IndexT* unbucketizePermuteData,
+                    int32_t numFeatures, int32_t batchSize, int64_t bucketSize, IndexT* idsCountData)
 {
     int32_t uniqueOffset = 0;
     OffsetT curOffset = 0;
@@ -108,8 +108,15 @@ void Deduplicate(OffsetT* newLengthsData, const OffsetT* newOffsetsData, const O
                 if (it == uniqueMap.end()) {
                     uniqueMap.emplace(idx, uniqueOffset);
                     newIndicesData[uniqueOffset] = idx;
+                    if (ReturnCount) {
+                        idsCountData[uniqueOffset] = 1;
+                    }
                     uniqueOffset++;
                 } else {
+                    if (ReturnCount) {
+                        auto idxUniqueOffset = it->second;
+                        idsCountData[idxUniqueOffset]++;
+                    }
                     newLengthsData[linearIndex]--;
                 }
             }
@@ -131,17 +138,19 @@ void Deduplicate(OffsetT* newLengthsData, const OffsetT* newOffsetsData, const O
             }
         }
     }
+    return uniqueOffset;
 }
 
 // 核心分桶逻辑模板
 template <bool Sequence,             // 是否序列模式
-        bool HasWeight,            // 是否包含权重
-        bool ReturnBucketMapping,  // 是否返回分桶映射
-        typename OffsetT,          // 偏移量类型
-        typename IndexT,           // 索引类型
-        typename ScalarT,          // 标量类型
-        bool DoUnique              // 是否去重
-        >
+          bool HasWeight,            // 是否包含权重
+          bool ReturnBucketMapping,  // 是否返回分桶映射
+          typename OffsetT,          // 偏移量类型
+          typename IndexT,           // 索引类型
+          typename ScalarT,          // 标量类型
+          bool DoUnique,             // 是否去重
+          bool ReturnCount           // 是否返回key count
+          >
 void BlockBucketizeSparseFeaturesCpuKernel(const at::Tensor& lengths, const at::Tensor& indices,
                                            const std::optional<at::Tensor>& weights, const bool bucketizePos,
                                            const at::Tensor& blockSizes,
@@ -151,7 +160,8 @@ void BlockBucketizeSparseFeaturesCpuKernel(const at::Tensor& lengths, const at::
                                            const std::optional<at::Tensor>& unbucketizePermute,
                                            const std::optional<at::Tensor>& batchSizePerFeature,
                                            const std::optional<std::vector<at::Tensor>>& blockBucketizePos,
-                                           const std::optional<at::Tensor>& bucketMapping, const bool keepOrigIdx)
+                                           const std::optional<at::Tensor>& bucketMapping, const bool keepOrigIdx,
+                                           at::Tensor idsCounts)
 {
     // 基本参数校验
     const auto lengthsSize = lengths.numel();
@@ -201,8 +211,14 @@ void BlockBucketizeSparseFeaturesCpuKernel(const at::Tensor& lengths, const at::
 
     // 去重逻辑 (需要时启用)
     if constexpr (DoUnique) {
-        Deduplicate<OffsetT, IndexT>(newLengthsData, newOffsetsData, offsetsData, indicesData, newIndicesData,
-                                     unbucketizePermuteData, numFeatures, batchSize, bucketSize);
+        auto* idsCountData = idsCounts.data_ptr<IndexT>();
+        int64_t uniqueSize = Deduplicate<OffsetT, IndexT, ReturnCount>(
+            newLengthsData, newOffsetsData, offsetsData, indicesData, newIndicesData,
+            unbucketizePermuteData, numFeatures, batchSize, bucketSize, idsCountData);
+        newIndices.resize_(uniqueSize);
+        if (ReturnCount) {
+            idsCounts.resize_(uniqueSize);
+        }
     }
 }
 
@@ -215,7 +231,8 @@ BucketResult BlockBucketizeSparseFeaturesCpu(
     const std::optional<at::Tensor>& weights,
     const std::optional<at::Tensor>& batchSizePerFeature, const int64_t maxBatchSize,
     const std::optional<std::vector<at::Tensor>>& blockBucketizePos,
-    const bool returnBucketMapping, const bool keepOrigIdx)
+    const bool returnBucketMapping, const bool keepOrigIdx, const bool doUnique,
+    const bool returnCount)
 {
     // 参数校验
     TORCH_CHECK(lengths.defined() && lengths.numel() > 0, "Lengths tensor is an empty tensor");
@@ -244,22 +261,36 @@ BucketResult BlockBucketizeSparseFeaturesCpu(
 
     auto newLengths = at::zeros({newLengthsSize}, lengths.options());
     auto newIndices = at::empty_like(indices);
-    auto unbucketizePermute = at::empty(indices.sizes(), indices.options());
+    auto unbucketizePermute = at::empty(indices.sizes(), indices.options().pinned_memory(true));
+    auto idsCounts = sequence && doUnique && returnCount ?
+        at::empty_like(indices) : torch::tensor({}, torch::dtype(torch::kInt64));
 
     // 根据序列模式选择不同内核
-    if (sequence) {
-        BlockBucketizeSparseFeaturesCpuKernel<true, false, false, int64_t, int64_t, int64_t, false>(
+    if (sequence && doUnique) {
+        if (returnCount) {
+            BlockBucketizeSparseFeaturesCpuKernel<true, false, false, int64_t, int64_t, int64_t, true, true>(
+                lengths, indices, weights, bucketizePos, blockSizes, totalNumBlocks, bucketSize, newLengths, newIndices,
+                std::nullopt, std::nullopt, unbucketizePermute, batchSizePerFeature, blockBucketizePos, std::nullopt,
+                keepOrigIdx, idsCounts);
+        } else {
+            BlockBucketizeSparseFeaturesCpuKernel<true, false, false, int64_t, int64_t, int64_t, true, false>(
+                lengths, indices, weights, bucketizePos, blockSizes, totalNumBlocks, bucketSize, newLengths, newIndices,
+                std::nullopt, std::nullopt, unbucketizePermute, batchSizePerFeature, blockBucketizePos, std::nullopt,
+                keepOrigIdx, idsCounts);
+        }
+    } else if (sequence && !doUnique) {
+        BlockBucketizeSparseFeaturesCpuKernel<true, false, false, int64_t, int64_t, int64_t, false, false>(
             lengths, indices, weights, bucketizePos, blockSizes, totalNumBlocks, bucketSize, newLengths, newIndices,
             std::nullopt, std::nullopt, unbucketizePermute, batchSizePerFeature, blockBucketizePos, std::nullopt,
-            keepOrigIdx);
+            keepOrigIdx, idsCounts);
     } else {
-        BlockBucketizeSparseFeaturesCpuKernel<false, false, false, int64_t, int64_t, int64_t, false>(
+        BlockBucketizeSparseFeaturesCpuKernel<false, false, false, int64_t, int64_t, int64_t, false, false>(
             lengths, indices, weights, bucketizePos, blockSizes, totalNumBlocks, bucketSize, newLengths, newIndices,
             std::nullopt, std::nullopt, unbucketizePermute, batchSizePerFeature, blockBucketizePos, std::nullopt,
-            keepOrigIdx);
+            keepOrigIdx, idsCounts);
     }
 
-    return {newLengths, newIndices, std::nullopt, std::nullopt, unbucketizePermute, std::nullopt};
+    return {newLengths, newIndices, std::nullopt, std::nullopt, unbucketizePermute, std::nullopt, idsCounts};
 }
 
 }  // namespace hybrid

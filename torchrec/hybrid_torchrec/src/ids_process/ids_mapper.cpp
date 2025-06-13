@@ -13,6 +13,8 @@
 #include "unique.h"
 namespace hybrid {
 
+constexpr const int EXPAND_CAPACITY_RATE = 2;
+
 std::tuple<at::Tensor, at::Tensor, at::Tensor> IdsMapper::UniqueAndLookup(const torch::Tensor& globalIds)
 {
     TORCH_CHECK(globalIds.device() == torch::kCPU, "globalIds must be on CPU but on ", globalIds.device());
@@ -51,6 +53,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> IdsMapper::FindOrInsertHighPrecis
 
 void IdsMapper::UniqueAndLookupOut(const torch::Tensor& globalIds, const torch::Tensor& hashIndices,
                                    const torch::Tensor& offset, const torch::Tensor& unique,
+                                   const torch::Tensor& uniqueIds,
                                    const torch::Tensor& uniqueInverse, const torch::Tensor& uniqueOffset,
                                    int64_t tableId)
 {
@@ -89,11 +92,12 @@ void IdsMapper::UniqueAndLookupOut(const torch::Tensor& globalIds, const torch::
     }
 
     // Unique
-    UniqueProcessing(hashIndices, offset, unique, uniqueInverse, uniqueOffset, tableId);
+    UniqueProcessing(hashIndices, offset, unique, uniqueIds, uniqueInverse, uniqueOffset, tableId);
 }
 
 void IdsMapper::UniqueProcessing(const torch::Tensor& hashIndices, const torch::Tensor& offset,
-                                 const torch::Tensor& unique, const torch::Tensor& uniqueInverse,
+                                 const torch::Tensor& unique, const torch::Tensor& uniqueIds,
+                                 const torch::Tensor& uniqueInverse,
                                  const torch::Tensor& uniqueOffset, int64_t tableId)
 {
     at::ThreadLocalStateGuard tlsGrad(state);
@@ -112,6 +116,7 @@ void IdsMapper::UniqueProcessing(const torch::Tensor& hashIndices, const torch::
     auto aHashMap = AllocFullHashMap();
     auto aHashMapPtr = aHashMap->data();
     int64_t* uniquePtr = unique.data_ptr<int64_t>();
+    int64_t* uniqueIdsPtr = uniqueIds.data_ptr<int64_t>();
     int64_t* uniqueInversePtr = uniqueInverse.data_ptr<int64_t>();
     if (uniqueOffsetPtr == nullptr || uniquePtr == nullptr || uniqueInversePtr == nullptr) {
         printf("[ERROR] unique, uniqueOffset and uniqueInverse cannot be None!");
@@ -125,6 +130,7 @@ void IdsMapper::UniqueProcessing(const torch::Tensor& hashIndices, const torch::
         if (aHashMapPtr[key] == -1) {
             aHashMapPtr[key] = thisUniqueOffset;
             uniquePtr[globalUniqueOffset + thisUniqueOffset] = hashIndicesPtr[i];
+            uniqueIdsPtr[globalUniqueOffset + thisUniqueOffset] = indice2id[hashIndicesPtr[i]];
             thisUniqueOffset++;
         }
     }
@@ -151,4 +157,116 @@ void IdsMapper::UniqueProcessing(const torch::Tensor& hashIndices, const torch::
 
     DeallocFullHashMap(std::move(aHashMap));
 }
+
+size_t IdsMapper::ProcessIds2Indices(IdsMapper& mapper, std::vector<int64_t>& uniqVec,
+                                     const int64_t start, const int64_t end, const int64_t* gIdsPtr,
+                                     int64_t* hashIdxPtr, int64_t* uniqueInvPtr)
+{
+    auto fullMap = mapper.AllocFullHashMap();
+    int64_t* bitmap = fullMap->data();
+    uniqVec.reserve(end - start);
+
+    for (int64_t i = start; i < end; ++i) {
+        int64_t gid = gIdsPtr[i];
+
+        auto it = mapper.ids2indicesMap.find(gid);
+        if (it == mapper.ids2indicesMap.end()) {
+            std::lock_guard<std::mutex> lk(mapper.insertMute);
+            it = mapper.ids2indicesMap.find(gid);
+            if (it == mapper.ids2indicesMap.end()) {
+                int64_t newIdx = mapper.maxIndex++;
+                mapper.ids2indicesMap.insert_or_assign(gid, newIdx);
+                mapper.indice2id.push_back(gid);
+                hashIdxPtr[i] = newIdx;
+            } else {
+                hashIdxPtr[i] = it->second;
+            }
+        } else {
+            hashIdxPtr[i] = it->second;
+        }
+
+        int64_t hidx = hashIdxPtr[i];
+
+        if (hidx >= static_cast<int64_t>(fullMap->size())) {
+            fullMap->resize(hidx * EXPAND_CAPACITY_RATE + 1, -1);
+            bitmap = fullMap->data();
+        }
+
+        if (bitmap[hidx] == -1) {
+            bitmap[hidx] = static_cast<int64_t>(uniqVec.size());
+            uniqVec.push_back(hidx);
+        }
+    }
+
+    for (int64_t i = start; i < end; ++i) {
+        uniqueInvPtr[i] = bitmap[hashIdxPtr[i]];
+    }
+
+    for (int64_t h : uniqVec) {
+        bitmap[h] = -1;
+    }
+    mapper.DeallocFullHashMap(std::move(fullMap));
+    return uniqVec.size();
+}
+
+void IdsMapper::ParallelUniqueHashOut(
+    const c10::List<c10::intrusive_ptr<IdsMapper>>& mappers,
+    const torch::Tensor& globalIds,
+    const torch::Tensor& hashIndices,
+    const torch::Tensor& offsets,
+    const torch::Tensor& unique,
+    const torch::Tensor& uniqueIds,
+    const torch::Tensor& uniqueInverse,
+    const torch::Tensor& uniqueOffset)
+{
+    auto gIdsPtr = globalIds.data_ptr<int64_t>();
+    auto offPtr = offsets.data_ptr<int64_t>();
+    auto hashIdxPtr = hashIndices.data_ptr<int64_t>();
+    auto uniquePtr = unique.data_ptr<int64_t>();
+    auto uniqueIdsPtr = uniqueIds.data_ptr<int64_t>();
+    auto uniqueInvPtr = uniqueInverse.data_ptr<int64_t>();
+    auto uniqOffPtr = uniqueOffset.data_ptr<int64_t>();
+
+    const int64_t nTables = mappers.size();
+    std::vector<int64_t> uniqueCnt(nTables);
+    std::vector<std::vector<int64_t>> tableUniques(nTables);
+
+    // 表间并行
+    at::parallel_for(0, nTables, 1, [&](int64_t tbBegin, int64_t tbEnd) {
+        for (int64_t t = tbBegin; t < tbEnd; ++t) {
+            IdsMapper& mapper = *mappers[t];
+            const int64_t start = offPtr[t];
+            const int64_t end = offPtr[t + 1];
+
+            if (start == end) {
+                uniqueCnt[t] = 0;
+                continue;
+            }
+
+            auto uniqueVecSize = ProcessIds2Indices(mapper, tableUniques[t], start, end, gIdsPtr,
+                                                    hashIdxPtr, uniqueInvPtr);
+            uniqueCnt[t] = static_cast<int64_t>(uniqueVecSize);
+        }
+    });
+
+    // 最后再串行计算uniqueOffset
+    uniqOffPtr[0] = 0;
+    for (int64_t t = 0; t < nTables; ++t) {
+        uniqOffPtr[t + 1] = uniqOffPtr[t] + uniqueCnt[t];
+    }
+
+    at::parallel_for(0, nTables, 1, [&](int64_t tbBegin, int64_t tbEnd) {
+        for (int64_t t = tbBegin; t < tbEnd; ++t) {
+            const int64_t base = uniqOffPtr[t];
+            auto& mapper = *mappers[t];
+            const auto& vec = tableUniques[t];
+            for (size_t j = 0; j < vec.size(); ++j) {
+                int64_t idx = vec[j];
+                uniquePtr[base + j] = idx;
+                uniqueIdsPtr[base + j] = mapper.indice2id[idx];
+            }
+        }
+    });
+}
+
 }  // namespace hybrid

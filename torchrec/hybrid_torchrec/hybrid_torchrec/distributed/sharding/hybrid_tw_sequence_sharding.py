@@ -8,10 +8,9 @@
 from typing import Dict, List, Optional, TypeVar
 
 import torch
-from hybrid_torchrec.modules.ids_process import HashMapBase
 
 from hybrid_torchrec.distributed.embedding_lookup import (
-    HybridGroupedPooledEmbeddingsLookup,
+    HybridGroupedEmbeddingsLookup,
 )
 from hybrid_torchrec.distributed.sharding.post_input_dist import (
     SparseFeaturesPostDist,
@@ -19,18 +18,22 @@ from hybrid_torchrec.distributed.sharding.post_input_dist import (
     UniqueHashFeatureProcess,
     get_feature_len_groupby_table_name,
 )
+from hybrid_torchrec.modules.hash_embeddingbag import HashMap
 
 from torchrec.distributed.embedding_sharding import (
     BaseSparseFeaturesDist,
     EmbeddingShardingInfo,
 )
+from torchrec.distributed.types import QuantizedCommCodecs, ShardingEnv
+from torchrec.distributed.sharding.tw_sequence_sharding import (
+    TwSequenceEmbeddingSharding,
+)
 from torchrec.distributed.sharding.tw_sharding import (
-    TwPooledEmbeddingSharding,
     TwSparseFeaturesDist,
 )
-from torchrec.distributed.types import QuantizedCommCodecs, ShardingEnv
 from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
 from torchrec.streamable import Multistreamable
+
 
 C = TypeVar("C", bound=Multistreamable)
 F = TypeVar("F", bound=Multistreamable)
@@ -38,7 +41,15 @@ T = TypeVar("T")
 W = TypeVar("W")
 
 
-class HybridTwPooledEmbeddingSharding(TwPooledEmbeddingSharding):
+class HybridTwSparseFeaturesDist(TwSparseFeaturesDist):
+    def __init__(self, pg, features_per_rank):
+        super().__init__(pg, features_per_rank)
+        
+    def forward(self, sparse_features, context):
+        return super().forward(sparse_features)
+
+
+class HybridTwSequenceEmbeddingSharding(TwSequenceEmbeddingSharding):
     """
     Shards embedding bags table-wise, which input dist with host computation and comunication
     """
@@ -60,17 +71,16 @@ class HybridTwPooledEmbeddingSharding(TwPooledEmbeddingSharding):
     ) -> BaseSparseFeaturesDist[KeyedJaggedTensor]:
         if self._pg is None:
             raise ValueError("Host pg is None")
-        return TwSparseFeaturesDist(
+        return HybridTwSparseFeaturesDist(
             self._host_pg,
             self.features_per_rank(),
         )
 
     def create_lookup(self, device=None, fused_params=None, feature_processor=None):
-        return HybridGroupedPooledEmbeddingsLookup(
+        return HybridGroupedEmbeddingsLookup(
             grouped_configs=self._grouped_embedding_configs,
             pg=self._pg,
             device=device if device is not None else self._device,
-            feature_processor=feature_processor,
         )
 
     def create_post_input_dist(
@@ -80,7 +90,7 @@ class HybridTwPooledEmbeddingSharding(TwPooledEmbeddingSharding):
         return EMPTY_POST_INPUT_DIST
 
 
-class HybridHashTwPooledEmbeddingSharding(HybridTwPooledEmbeddingSharding):
+class HybridHashTwSequenceEmbeddingSharding(HybridTwSequenceEmbeddingSharding):
     """
     Shards embedding bags table-wise, which input dist with host computation and comunication
     """
@@ -88,7 +98,7 @@ class HybridHashTwPooledEmbeddingSharding(HybridTwPooledEmbeddingSharding):
     def __init__(
         self,
         sharding_infos: List[EmbeddingShardingInfo],
-        table2hashmap: Dict[str, HashMapBase],
+        table2hashmap: Dict[str, HashMap],
         env: ShardingEnv,
         host_env: ShardingEnv,
         device: Optional[torch.device] = None,
@@ -100,7 +110,7 @@ class HybridHashTwPooledEmbeddingSharding(HybridTwPooledEmbeddingSharding):
     def create_post_input_dist(
         self,
         device: Optional[torch.device] = None,
-    ) -> BaseSparseFeaturesDist[KeyedJaggedTensor]:
+    ) -> SparseFeaturesPostDist[KeyedJaggedTensor]:
 
         table_names, features_split_by_table_name = get_feature_len_groupby_table_name(
             self._grouped_embedding_configs

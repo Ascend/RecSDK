@@ -9,7 +9,6 @@
 import os
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, TypeVar, Tuple
-from concurrent.futures import ThreadPoolExecutor
 
 import torch
 import torch.distributed as dist
@@ -28,7 +27,7 @@ from hybrid_torchrec.modules.ids_process import (
     block_bucketize_sparse_features_cpu,
     BucketParams,
 )
-
+from hybrid_torchrec.sparse import KeyedJaggedTensorWithCount
 from torchrec.distributed.embedding_sharding import (
     BaseEmbeddingLookup,
     BaseSparseFeaturesDist,
@@ -93,12 +92,16 @@ def bucketize_kjt_before_all2all(
     bucketize_pos: bool = False,
     block_bucketize_row_pos: Optional[List[torch.Tensor]] = None,
     keep_original_indices: bool = False,
-) -> Tuple[KeyedJaggedTensor, Optional[torch.Tensor]]:
+    do_unique: bool = False,
+    enable_admit: bool = False,
+) -> Tuple[KeyedJaggedTensor | KeyedJaggedTensorWithCount, Optional[torch.Tensor]]:
     num_features = len(kjt.keys())
     assert_fx_safe(
         block_sizes.numel() == num_features,
         f"Expecting block sizes for {num_features} features, but {block_sizes.numel()} received.",
     )
+    # 开启local unique时且有表开启准入时，需返回counts数据并进行all2all
+    return_count = do_unique and enable_admit
     block_sizes_new_type = _fx_wrap_tensor_to_device_dtype(block_sizes, kjt.values())
     bucket_params = BucketParams( 
         kjt.lengths().view(-1),
@@ -111,7 +114,10 @@ def bucketize_kjt_before_all2all(
         batch_size_per_feature=_fx_wrap_batch_size_per_feature(kjt),
         max_b=_fx_wrap_max_B(kjt),
         block_bucketize_pos=block_bucketize_row_pos,  # each tensor should have the same dtype as kjt.lengths()
-        keep_orig_idx=keep_original_indices,)
+        keep_orig_idx=keep_original_indices,
+        do_unique=do_unique,
+        return_count=return_count
+    )
     (
         bucketized_lengths,
         bucketized_indices,
@@ -119,35 +125,59 @@ def bucketize_kjt_before_all2all(
         pos,
         unbucketize_permute,
         _,
+        counts
     ) = block_bucketize_sparse_features_cpu(bucket_params)
-    return (
-        KeyedJaggedTensor(
-            # duplicate keys will be resolved by AllToAll
-            keys=_fx_wrap_gen_list_n_times(kjt.keys(), num_buckets),
-            values=bucketized_indices,
-            weights=pos if bucketize_pos else bucketized_weights,
-            lengths=bucketized_lengths.view(-1),
-            offsets=None,
-            stride=_fx_wrap_stride(kjt),
-            stride_per_key_per_rank=_fx_wrap_stride_per_key_per_rank(kjt, num_buckets),
-            length_per_key=None,
-            offset_per_key=None,
-            index_per_key=None,
-        ),
-        unbucketize_permute,
-    )
+    if return_count:
+        return (
+            KeyedJaggedTensorWithCount(
+                # duplicate keys will be resolved by AllToAll
+                keys=_fx_wrap_gen_list_n_times(kjt.keys(), num_buckets),
+                values=bucketized_indices,
+                counts=counts,
+                weights=pos if bucketize_pos else bucketized_weights,
+                lengths=bucketized_lengths.view(-1),
+                offsets=None,
+                stride=_fx_wrap_stride(kjt),
+                stride_per_key_per_rank=_fx_wrap_stride_per_key_per_rank(kjt, num_buckets),
+                length_per_key=None,
+                offset_per_key=None,
+                index_per_key=None,
+            ),
+            unbucketize_permute,
+        )
+    else:
+        return (
+            KeyedJaggedTensor(
+                # duplicate keys will be resolved by AllToAll
+                keys=_fx_wrap_gen_list_n_times(kjt.keys(), num_buckets),
+                values=bucketized_indices,
+                weights=pos if bucketize_pos else bucketized_weights,
+                lengths=bucketized_lengths.view(-1),
+                offsets=None,
+                stride=_fx_wrap_stride(kjt),
+                stride_per_key_per_rank=_fx_wrap_stride_per_key_per_rank(kjt, num_buckets),
+                length_per_key=None,
+                offset_per_key=None,
+                index_per_key=None,
+            ),
+            unbucketize_permute,
+        )
 
 
 class HashRwSparseFeaturesDistAwaitable(Awaitable):
-    def __init__(self, function, module, sparse_feature: KeyedJaggedTensor) -> None:
+    def __init__(self, function, module, sparse_feature: KeyedJaggedTensor, context) -> None:
         super().__init__()
         self.future = InputDistThreadPoolExecutorSingleton().executor.submit(
             function, sparse_feature
         )
         self.pg = module.pg
+        self._context = context
 
     def _wait_impl(self) -> Any:
-        return self.future.result()
+        result, unbucketize_permute_tensor = self.future.result()
+        if (self._context is not None):
+            self._context.unbucketize_permute_tensor = unbucketize_permute_tensor
+        return result
 
 
 class HashRwSparseFeaturesDist(RwSparseFeaturesDist):
@@ -175,14 +205,18 @@ class HashRwSparseFeaturesDist(RwSparseFeaturesDist):
             keep_original_indices,
         )
         self.pg = pg
+        
+        # local unique只可用于EC(Embedding Collection / Sequence Embedding)
+        self._do_unique = (os.environ.get("DO_EC_LOCAL_UNIQUE", "False").lower() in ('true', '1', 'yes') and 
+                           os.environ.get("USE_EC", "False").lower() in ('true', '1', 'yes'))
 
-    def forward_function(
+    def _forward_func(
         self,
         sparse_features: KeyedJaggedTensor,
     ) -> Awaitable[Awaitable[KeyedJaggedTensor]]:
         (
             bucketized_features,
-            self.unbucketize_permute_tensor,
+            unbucketize_permute_tensor,
         ) = bucketize_kjt_before_all2all(
             sparse_features,
             num_buckets=self._world_size,
@@ -194,18 +228,20 @@ class HashRwSparseFeaturesDist(RwSparseFeaturesDist):
                 else self._need_pos
             ),
             keep_original_indices=self._keep_original_indices,
+            do_unique=self._do_unique
         )
         result = self._dist(bucketized_features)
         if isinstance(result, Awaitable):
             result = result.wait()
-        return result
+        return result, unbucketize_permute_tensor
 
     def forward(
         self,
         sparse_features: KeyedJaggedTensor,
+        context=None
     ) -> Awaitable[Awaitable[KeyedJaggedTensor]]:
         return HashRwSparseFeaturesDistAwaitable(
-            self.forward_function, self, sparse_features
+            self._forward_func, self, sparse_features, context
         )
 
 
@@ -233,7 +269,7 @@ class HybridRwPooledEmbeddingSharding(RwPooledEmbeddingSharding):
             pg=self._host_pg,
             num_features=num_features,
             feature_hash_sizes=feature_hash_sizes,
-            device=device if device is not None else self._device,
+            device="cpu",
             is_sequence=False,
             has_feature_processor=self._has_feature_processor,
             need_pos=self._need_pos,
