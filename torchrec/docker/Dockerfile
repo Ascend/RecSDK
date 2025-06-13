@@ -7,15 +7,20 @@ COPY ./ascend_install.info ./
 COPY ./Ascend-cann-toolkit_*.run ./
 COPY ./Ascend-cann-kernels-*.run ./
 
-# 1.配置Debian源
-RUN echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main contrib non-free" > ./sources.list && \
-    echo "deb-src http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main contrib non-free" >> ./sources.list && \
-    echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian-security/ bookworm-security main contrib non-free" >> ./sources.list && \
-    echo "deb-src http://mirrors.tuna.tsinghua.edu.cn/debian-security/ bookworm-security main contrib non-free" >> ./sources.list && \
-    echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-updates main contrib non-free" >> ./sources.list && \
-    echo "deb-src http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-updates main contrib non-free" >> ./sources.list
+# 1.配置证书
+RUN apt-get update && \
+    apt-get install -y ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
-# 2.安装编译环境
+# 2.配置Debian源
+RUN echo "deb https://mirrors.huaweicloud.com/debian/ bookworm main contrib non-free" > ./sources.list && \
+    echo "deb-src https://mirrors.huaweicloud.com/debian/ bookworm main contrib non-free" >> ./sources.list && \
+    echo "deb https://mirrors.huaweicloud.com/debian-security/ bookworm-security main contrib non-free" >> ./sources.list && \
+    echo "deb-src https://mirrors.huaweicloud.com/debian-security/ bookworm-security main contrib non-free" >> ./sources.list && \
+    echo "deb https://mirrors.huaweicloud.com/debian/ bookworm-updates main contrib non-free" >> ./sources.list && \
+    echo "deb-src https://mirrors.huaweicloud.com/debian/ bookworm-updates main contrib non-free" >> ./sources.list
+
+# 3.安装编译环境
 RUN mv /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list.d/debian.sources.bak && \
     cp -f ./sources.list /etc/apt/ && \
     apt-get update && \
@@ -26,17 +31,17 @@ RUN mv /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list.d/debian.sou
     rm -rf /var/cache/apt/
 # 注：openssh-server为双机训练样例需要，仅单机训练时可去掉
 
-# 3.安装cmake-3.20.6
+# 4.安装cmake-3.20.6
 # 下载地址: https://cmake.org/files/v3.20/cmake-3.20.6.tar.gz
-RUN wget --no-check-certificate https://cmake.org/files/v3.20/cmake-3.20.6.tar.gz && \
+RUN wget https://cmake.org/files/v3.20/cmake-3.20.6.tar.gz && \
     . /etc/profile && gcc -v && tar -zxf cmake-3.20.6.tar.gz && \
     cd cmake-3.20.6 && \
     ./bootstrap && make -j 32 && make install && cd .. && \
     rm -rf cmake-3.20.6*
 
-# 4.安装python3.11.9
+# 5.安装python3.11.9
 # 下载地址: https://mirrors.huaweicloud.com/python/3.11.9/Python-3.11.9.tgz
-RUN wget --no-check-certificate https://mirrors.huaweicloud.com/python/3.11.9/Python-3.11.9.tgz && \
+RUN wget https://mirrors.huaweicloud.com/python/3.11.9/Python-3.11.9.tgz && \
     . /etc/profile && gcc -v && tar -xvf Python-3.11.9.tgz && \
     cd Python-3.11.9 && \
     mkdir -p build && cd build && \
@@ -58,9 +63,9 @@ RUN mkdir ~/.pip && touch ~/.pip/pip.conf && \
     echo "index-url=http://mirrors.aliyun.com/pypi/simple/" >> ~/.pip/pip.conf && \
     echo "timeout=200" >> ~/.pip/pip.conf
 
-# 5.安装python包
-RUN wget --no-check-certificate https://download.pytorch.org/whl/cpu/torch-2.6.0%2Bcpu-cp311-cp311-linux_x86_64.whl && \
-    wget --no-check-certificate https://download.pytorch.org/whl/cpu/fbgemm_gpu-1.1.0%2Bcpu-cp311-cp311-manylinux2014_x86_64.whl
+# 6.安装python包
+RUN wget https://download.pytorch.org/whl/cpu/torch-2.6.0%2Bcpu-cp311-cp311-linux_x86_64.whl && \
+    wget https://download.pytorch.org/whl/cpu/fbgemm_gpu-1.1.0%2Bcpu-cp311-cp311-manylinux2014_x86_64.whl
 
 RUN pip3 install -U pip && \
     pip3 install numpy==1.25.0 && \
@@ -105,15 +110,15 @@ RUN pip3 install -U pip && \
     rm -rf /root/.cache/pip
 
 
-# 6.设置驱动路径环境变量
+# 7.设置驱动路径环境变量
 ARG ASCEND_BASE=/usr/local/Ascend
 ENV LD_LIBRARY_PATH=$ASCEND_BASE/driver/lib64:$ASCEND_BASE/driver/lib64/common:$ASCEND_BASE/driver/lib64/driver:$LD_LIBRARY_PATH
 
-# 7.安装ascend-toolkit与kernels算子包
-# CANN相关参数
+# 8.安装ascend-toolkit与kernels算子包
+# 9.CANN相关参数
 ARG TOOLKIT_PKG=Ascend-cann-toolkit*.run
 ARG KERNEL_PKG=Ascend-cann-kernels*.run
-# 删除旧的CANN
+# 10.删除旧的CANN
 RUN rm -rf $ASCEND_BASE/ascend-toolkit
 
 RUN umask 0022 && \
@@ -125,5 +130,5 @@ RUN umask 0022 && \
    rm -rf /root/.cache/pip && \
    rm -f $TOOLKIT_PKG && rm -f $KERNEL_PKG
 
-# 10.清理临时目录
+# 11.清理临时目录
 RUN rm -rf ./*
