@@ -228,7 +228,7 @@ class TestHstuJaggedDemo:
 
         return q_grad, k_grad, v_grad, bpos_grad, bts_grad
     
-    def custom_op_exec(self, grad, q, k, v, bpos, bts, grad_pos, grad_ts, mask, seq_offset,
+    def custom_op_exec(self, grad, q, k, v, bpos, bts, grad_pos, grad_ts, mask, seq_offset, 
                        mask_type, max_seq_len, silu_scale, enable_bias, data_type):
         grad_npu = grad.to(f"npu:{device_id}")
         q_npu = q.to(f"npu:{device_id}")
