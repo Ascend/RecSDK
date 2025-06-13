@@ -223,7 +223,7 @@ public:
         }
     }
 
-    __aicore__ inline void QKMatmul(int64_t taskId)
+    __aicore__ inline void DoJaggedQKMatmul(int64_t taskId)
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midResultIdx = taskId % MID_USE_TIMES;
@@ -235,7 +235,7 @@ public:
                              outOffset);
     }
 
-    __aicore__ inline void GVMatmul(int64_t taskId)
+    __aicore__ inline void DoJaggedGVMatmul(int64_t taskId)
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midResultIdx = taskId % MID_USE_TIMES;
@@ -247,7 +247,7 @@ public:
                              outOffset);
     }
 
-    __aicore__ inline void GpVMatmul(int64_t taskId)
+    __aicore__ inline void DoJaggedGpVMatmul(int64_t taskId)
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midResultIdx = taskId % MID_USE_TIMES;
@@ -258,7 +258,7 @@ public:
                               outOffset);
     }
 
-    __aicore__ inline void GtVMatmul(int64_t taskId)
+    __aicore__ inline void DoJaggedGtVMatmul(int64_t taskId)
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midResultIdx = taskId % MID_USE_TIMES;
@@ -269,7 +269,7 @@ public:
                               outOffset);
     }
 
-    __aicore__ inline void QGradMatmul(int64_t taskId)
+    __aicore__ inline void DoJaggedQGradMatmul(int64_t taskId)
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midAccumIdx = computeTaskInfo[curTaskId].accumId % MID_USE_TIMES;
@@ -284,7 +284,7 @@ public:
                                 outOffset, isNew);
     }
 
-    __aicore__ inline void KGradMatmul(int64_t taskId)
+    __aicore__ inline void DoJaggedKGradMatmul(int64_t taskId)
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midAccumIdx = computeTaskInfo[curTaskId].accumId % MID_USE_TIMES;
@@ -304,7 +304,7 @@ public:
                                 outOffset, isNew);
     }
 
-    __aicore__ inline void VGradMatmul(int64_t taskId)
+    __aicore__ inline void DoJaggedVGradMatmul(int64_t taskId)
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midResultIdx = taskId % MID_USE_TIMES;
@@ -327,7 +327,7 @@ public:
                                 outOffset, isNew);
     }
 
-    __aicore__ inline void BtGtMatmul(int64_t taskId)
+    __aicore__ inline void DoJaggedBtGtMatmul(int64_t taskId)
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midResultIdx = taskId % MID_USE_TIMES;
@@ -350,7 +350,7 @@ public:
                                outOffset, isNew);
     }
 
-    __aicore__ inline void BpGpMatmul(int64_t taskId)
+    __aicore__ inline void DoJaggedBpGpMatmul(int64_t taskId)
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midResultIdx = taskId % MID_USE_TIMES;
@@ -440,11 +440,11 @@ public:
 
     __aicore__ inline void StartStage1TaskA(int64_t taskId)
     {
-        QKMatmul(taskId);
-        GVMatmul(taskId);
+        DoJaggedQKMatmul(taskId);
+        DoJaggedGVMatmul(taskId);
         if (this->enableBias) {
-            GpVMatmul(taskId);
-            GtVMatmul(taskId);
+            DoJaggedGpVMatmul(taskId);
+            DoJaggedGtVMatmul(taskId);
         }
     }
 
@@ -470,11 +470,11 @@ public:
 
     __aicore__ inline void StartStage1TaskC(int64_t taskId)
     {
-        VGradMatmul(taskId);
-        KGradMatmul(taskId);
+        DoJaggedVGradMatmul(taskId);
+        DoJaggedKGradMatmul(taskId);
         if (this->enableBias) {
-            BtGtMatmul(taskId);
-            BpGpMatmul(taskId);
+            DoJaggedBtGtMatmul(taskId);
+            DoJaggedBpGpMatmul(taskId);
         }
     }
 
@@ -532,7 +532,6 @@ public:
 
     __aicore__ inline void FirstJaggedStageEnding(int64_t taskId)
     {
-
         int64_t prevTaskId = taskId - PREV_TASK_OFFSET;
         int64_t twoPrevTaskId = taskId - TWO_PREV_TASK_OFFSET;
         if (twoPrevTaskId >= 0) {
@@ -596,7 +595,7 @@ public:
 
     __aicore__ inline void SecondJaggedStagePipeline(int64_t taskId)
     {
-        QGradMatmul(taskId);
+        DoJaggedQGradMatmul(taskId);
         if (taskId > 0) {
             if (computeTaskInfo[(taskId - 1) % COMPUTE_PIPE_NUM].accumId !=
                 computeTaskInfo[taskId % COMPUTE_PIPE_NUM].accumId) {
