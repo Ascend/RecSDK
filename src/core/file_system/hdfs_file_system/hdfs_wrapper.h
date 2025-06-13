@@ -55,6 +55,7 @@ namespace MxRec {
         tTime mLastAccess{};    /* the last access time for the file in seconds */
     };
 
+    // LCOV_EXCL_START
     class HdfsWrapper {
     public:
         HdfsWrapper()
@@ -281,6 +282,7 @@ namespace MxRec {
             dlclose(libhdfs);
         }
     };
+    // LCOV_EXCL_STOP
 }
 
 #endif // MX_REC_HDFS_LOADER_H
