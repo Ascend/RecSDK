@@ -228,8 +228,7 @@ class TestHstuJaggedDemo:
 
         return q_grad, k_grad, v_grad, bpos_grad, bts_grad
     
-    @staticmethod
-    def custom_op_exec(grad, q, k, v, bpos, bts, mask, seq_offset, 
+    def custom_op_exec(self, grad, q, k, v, bpos, bts, grad_pos, grad_ts, mask, seq_offset,
                        mask_type, max_seq_len, silu_scale, enable_bias, data_type):
         grad_npu = grad.to(f"npu:{device_id}")
         q_npu = q.to(f"npu:{device_id}")
@@ -269,7 +268,7 @@ class TestHstuJaggedDemo:
 
         grads = torch.cat((grad, grad_ts, grad_pos), -1) if enable_bias else grad
         q_grad, k_grad, v_grad, bpos_grad, bts_grad = self.custom_op_exec(
-            grads, q, k, v, bpos, bts, mask, seq_offset, 
+            grads, q, k, v, bpos, bts, None, None, mask, seq_offset,
             mask_type, max_seq_len, silu_scale, enable_bias, data_type
         )
 
