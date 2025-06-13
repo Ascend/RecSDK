@@ -19,6 +19,9 @@ See the License for the specific language governing permissions and
 
 namespace HstuDenseBackwardFuxi {
 
+constexpr int64_t PREV_TASK_OFFSET = 1;
+constexpr int64_t TWO_PREV_TASK_OFFSET = 2;
+
 struct JaggedTaskInfo {
     int64_t taskId;        // 基本块任务id，参与临时存储块的偏移计算
     int64_t batchId;       // 基本块batch id
@@ -435,120 +438,122 @@ public:
         this->DoTransImpl(from, to, fromOffset, toOffset, total);
     }
 
-    __aicore__ inline void FirstJaggedStagePipeline(int64_t taskId)
+    __aicore__ inline void StartStage1TaskA(int64_t taskId)
     {
         DoJaggedQKMatmul(taskId);
         DoJaggedGVMatmul(taskId);
-        DoJaggedGpVMatmul(taskId);
-        DoJaggedGtVMatmul(taskId);
+        if (this->enableBias) {
+            DoJaggedGpVMatmul(taskId);
+            DoJaggedGtVMatmul(taskId);
+        }
+    }
 
-        if (taskId > 1) {
-            DoJaggedVGradMatmul(taskId - 2);
-            DoJaggedKGradMatmul(taskId - 2);
-            DoJaggedBtGtMatmul(taskId - 2);
-            DoJaggedBpGpMatmul(taskId - 2);
+    __aicore__ inline void WaitStage1TaskA()
+    {
+        this->qkMatmul.WaitIterateAll();
+        this->qkMatmul.End();
+        this->qkMatmul.WaitIterateAll();
+        this->qkMatmul.End();
+        // gtv gpV
+        if (this->enableBias) {
+            this->qkMatmul.WaitIterateAll();
+            this->qkMatmul.End();
+            this->qkMatmul.WaitIterateAll();
+            this->qkMatmul.End();
+        }
+    }
+
+    __aicore__ inline void StartStage1TaskB(int64_t taskId)
+    {
+        VecScoreJagged(taskId);
+    }
+
+    __aicore__ inline void StartStage1TaskC(int64_t taskId)
+    {
+        DoJaggedVGradMatmul(taskId);
+        DoJaggedKGradMatmul(taskId);
+        if (this->enableBias) {
+            DoJaggedBtGtMatmul(taskId);
+            DoJaggedBpGpMatmul(taskId);
+        }
+    }
+
+    __aicore__ inline void WaitStage1TaskC()
+    {
+        this->vGradMatmul.WaitIterateAll();
+        this->vGradMatmul.End();
+        this->kGradMatmul.WaitIterateAll();
+        this->kGradMatmul.End();
+        // btGt bpGp
+        if (this->enableBias) {
+            this->vGradMatmul.WaitIterateAll();
+            this->vGradMatmul.End();
+            this->vGradMatmul.WaitIterateAll();
+            this->vGradMatmul.End();
+        }
+    }
+
+    __aicore__ inline void PostStage1TaskC(int64_t taskId)
+    {
+        DoTransJagged(taskId, this->kGradAccumTemp, this->kGrad);
+        // Gv = Gv1 + BtGt + BpGp
+        DoTransJagged(taskId, this->vGradAccumTemp, this->vGrad);
+        if (this->enableBias) {
+            DoTransJagged(taskId, this->tempBtsGtsAccum, this->vbtsGrad);
+            DoTransJagged(taskId, this->tempBposGposAccum, this->vbposGrad);
+        }
+    }
+
+    __aicore__ inline void FirstJaggedStagePipeline(int64_t taskId)
+    {
+        int64_t prevTaskId = taskId - PREV_TASK_OFFSET;
+        int64_t twoPrevTaskId = taskId - TWO_PREV_TASK_OFFSET;
+
+        StartStage1TaskA(taskId);
+
+        if (taskId >= TWO_PREV_TASK_OFFSET) {
+            StartStage1TaskC(twoPrevTaskId);
         }
 
-        if (taskId > 0) {
-            VecScoreJagged(taskId - 1);
+        if (taskId >= PREV_TASK_OFFSET) {
+            StartStage1TaskB(prevTaskId);
         }
 
-        // qk gv
-        this->qkMatmul.WaitIterateAll();
-        this->qkMatmul.End();
-        this->qkMatmul.WaitIterateAll();
-        this->qkMatmul.End();
-        // gtV gpV
-        this->qkMatmul.WaitIterateAll();
-        this->qkMatmul.End();
-        this->qkMatmul.WaitIterateAll();
-        this->qkMatmul.End();
+        WaitStage1TaskA();
 
-        if (taskId > 1) {
-            this->vGradMatmul.WaitIterateAll();
-            this->vGradMatmul.End();
-            this->kGradMatmul.WaitIterateAll();
-            this->kGradMatmul.End();
-            // btGt bpGp
-            this->vGradMatmul.WaitIterateAll();
-            this->vGradMatmul.End();
-            this->vGradMatmul.WaitIterateAll();
-            this->vGradMatmul.End();
-            if (computeTaskInfo[(taskId - 2) % COMPUTE_PIPE_NUM].accumId !=
-                computeTaskInfo[(taskId - 1) % COMPUTE_PIPE_NUM].accumId) {
-                DoTransJagged(taskId - 2, this->kGradAccumTemp, this->kGrad);
-                // Gv = Gv1 + BtGt + BpGp
-                DoTransJagged(taskId - 2, this->vGradAccumTemp, this->vGrad);
-                DoTransJagged(taskId - 2, this->tempBtsGtsAccum, this->vbtsGrad);
-                DoTransJagged(taskId - 2, this->tempBposGposAccum, this->vbposGrad);
+        if (taskId >= TWO_PREV_TASK_OFFSET) {
+            WaitStage1TaskC();
+            if (computeTaskInfo[(prevTaskId) % COMPUTE_PIPE_NUM].accumId !=
+                computeTaskInfo[(twoPrevTaskId) % COMPUTE_PIPE_NUM].accumId) {
+                PostStage1TaskC(twoPrevTaskId);
             }
         }
     }
 
     __aicore__ inline void FirstJaggedStageEnding(int64_t taskId)
     {
-        if (taskId > 1) {
-            DoJaggedVGradMatmul(taskId - 2);
-            DoJaggedKGradMatmul(taskId - 2);
-            DoJaggedBtGtMatmul(taskId - 2);
-            DoJaggedBpGpMatmul(taskId - 2);
-            VecScoreJagged(taskId - 1);
-            this->vGradMatmul.WaitIterateAll();
-            this->vGradMatmul.End();
-            this->kGradMatmul.WaitIterateAll();
-            this->kGradMatmul.End();
-            // btGt bpGp
-            this->vGradMatmul.WaitIterateAll();
-            this->vGradMatmul.End();
-            this->vGradMatmul.WaitIterateAll();
-            this->vGradMatmul.End();
+        int64_t prevTaskId = taskId - PREV_TASK_OFFSET;
+        int64_t twoPrevTaskId = taskId - TWO_PREV_TASK_OFFSET;
+        if (twoPrevTaskId >= 0) {
+            StartStage1TaskC(twoPrevTaskId);
+            StartStage1TaskB(prevTaskId);
+            WaitStage1TaskC();
 
-            if (computeTaskInfo[(taskId - 2) % COMPUTE_PIPE_NUM].accumId !=
-                computeTaskInfo[(taskId - 1) % COMPUTE_PIPE_NUM].accumId) {
-                DoTransJagged(taskId - 2, this->kGradAccumTemp, this->kGrad);
-                DoTransJagged(taskId - 2, this->vGradAccumTemp, this->vGrad);
-                DoTransJagged(taskId - 2, this->tempBtsGtsAccum, this->vbtsGrad);
-                DoTransJagged(taskId - 2, this->tempBposGposAccum, this->vbposGrad);
+            if (computeTaskInfo[(prevTaskId) % COMPUTE_PIPE_NUM].accumId !=
+                computeTaskInfo[(twoPrevTaskId) % COMPUTE_PIPE_NUM].accumId) {
+                PostStage1TaskC(twoPrevTaskId);
             }
 
-            DoJaggedVGradMatmul(taskId - 1);
-            DoJaggedKGradMatmul(taskId - 1);
-            DoJaggedBtGtMatmul(taskId - 1);
-            DoJaggedBpGpMatmul(taskId - 1);
-            this->vGradMatmul.WaitIterateAll();
-            this->vGradMatmul.End();
-            this->kGradMatmul.WaitIterateAll();
-            this->kGradMatmul.End();
-            // btGt bpGp
-            this->vGradMatmul.WaitIterateAll();
-            this->vGradMatmul.End();
-            this->vGradMatmul.WaitIterateAll();
-            this->vGradMatmul.End();
-            DoTransJagged(taskId - 1, this->kGradAccumTemp, this->kGrad);
-            DoTransJagged(taskId - 1, this->vGradAccumTemp, this->vGrad);
-            DoTransJagged(taskId - 1, this->tempBtsGtsAccum, this->vbtsGrad);
-            DoTransJagged(taskId - 1, this->tempBposGposAccum, this->vbposGrad);
+            StartStage1TaskC(prevTaskId);
+            WaitStage1TaskC();
+            PostStage1TaskC(prevTaskId);
         }
 
-        if (taskId == 1) {
-            VecScoreJagged(taskId - 1);
-            DoJaggedVGradMatmul(taskId - 1);
-            DoJaggedKGradMatmul(taskId - 1);
-            DoJaggedBtGtMatmul(taskId - 1);
-            DoJaggedBpGpMatmul(taskId - 1);
-            this->vGradMatmul.WaitIterateAll();
-            this->vGradMatmul.End();
-            this->kGradMatmul.WaitIterateAll();
-            this->kGradMatmul.End();
-            // btGt bpGp
-            this->vGradMatmul.WaitIterateAll();
-            this->vGradMatmul.End();
-            this->vGradMatmul.WaitIterateAll();
-            this->vGradMatmul.End();
-            DoTransJagged(taskId - 1, this->kGradAccumTemp, this->kGrad);
-            DoTransJagged(taskId - 1, this->vGradAccumTemp, this->vGrad);
-            DoTransJagged(taskId - 1, this->tempBtsGtsAccum, this->vbtsGrad);
-            DoTransJagged(taskId - 1, this->tempBposGposAccum, this->vbposGrad);
+        if (prevTaskId == 0) {
+            StartStage1TaskB(prevTaskId);
+            StartStage1TaskC(prevTaskId);
+            WaitStage1TaskC();
+            PostStage1TaskC(prevTaskId);
         }
     }
 
