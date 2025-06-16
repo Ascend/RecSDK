@@ -108,6 +108,7 @@ TEST_F(EmbeddingDynamicTest, Key2OffsetForDp)
 {
     shared_ptr<EmbeddingDynamic> table = std::make_shared<EmbeddingDynamic>(embInfo_, rankInfo_, 0);
     vector<emb_key_t> testKeys = {-1, 1, 2, 3};
+    EMOCK(&EmbeddingDynamic::MallocEmbeddingBlock).stubs();
     EXPECT_NO_THROW(table->Key2OffsetForDp(testKeys, EVAL_CHANNEL_ID));
 }
 
@@ -115,6 +116,7 @@ TEST_F(EmbeddingDynamicTest, Key2OffsetForDp_Error)
 {
     shared_ptr<EmbeddingDynamic> table = std::make_shared<EmbeddingDynamic>(embInfo_, rankInfo_, 0);
     vector<emb_key_t> testKeys = {-1, 1, 2, 3};
+    EMOCK(&EmbeddingDynamic::MallocEmbeddingBlock).stubs();
     EXPECT_THROW(table->Key2OffsetForDp(testKeys, TRAIN_CHANNEL_ID), std::runtime_error);
 }
 
@@ -132,6 +134,7 @@ TEST_F(EmbeddingDynamicTest, SaveKey)
     auto localFileSys = make_unique<LocalFileSystem>();
     table->fileSystemPtr_ = move(localFileSys);
 
+    EMOCK(&EmbeddingDynamic::MallocEmbeddingBlock).stubs();
     EMOCK(&EmbeddingTable::MakeDir).stubs();
     EMOCK(&EmbeddingTable::CheckFileSystemPtr).stubs();
     using WriteCharFunc = ssize_t (LocalFileSystem::*)(const string&, const char*, size_t);
@@ -153,6 +156,7 @@ TEST_F(EmbeddingDynamicTest, SaveKey_FailedError)
     auto localFileSys = make_unique<LocalFileSystem>();
     table->fileSystemPtr_ = move(localFileSys);
 
+    EMOCK(&EmbeddingDynamic::MallocEmbeddingBlock).stubs();
     EMOCK(&EmbeddingTable::MakeDir).stubs();
     EMOCK(&EmbeddingTable::CheckFileSystemPtr).stubs();
     using WriteCharFunc = ssize_t (LocalFileSystem::*)(const string&, const char*, size_t);
@@ -172,6 +176,7 @@ TEST_F(EmbeddingDynamicTest, SaveKey_Error)
     shared_ptr<EmbeddingDynamic> table = std::make_shared<EmbeddingDynamic>(embInfo_, rankInfo_, 0);
     table->keyOffsetMap = keyMap;
 
+    EMOCK(&EmbeddingDynamic::MallocEmbeddingBlock).stubs();
     EMOCK(&EmbeddingTable::MakeDir).stubs();
     EXPECT_THROW(table->Save(savePath, pythonBatchId, saveDelta, keyInfoMap), std::runtime_error);
 }
@@ -188,6 +193,7 @@ TEST_F(EmbeddingDynamicTest, SaveKey_NotSaveDelta)
     shared_ptr<EmbeddingDynamic> table = std::make_shared<EmbeddingDynamic>(embInfo_, rankInfo_, 0);
     table->keyOffsetMap = keyMap;
 
+    EMOCK(&EmbeddingDynamic::MallocEmbeddingBlock).stubs();
     EMOCK(&EmbeddingTable::MakeDir).stubs();
     EXPECT_THROW(table->Save(savePath, pythonBatchId, saveDelta, keyInfoMap), std::runtime_error);
 }
@@ -203,6 +209,7 @@ TEST_F(EmbeddingDynamicTest, SaveEmbAndOptim_SaveEmbData)
     auto fileSys = make_unique<LocalFileSystem>();
     table->fileSystemPtr_ = move(fileSys);
 
+    EMOCK(&EmbeddingDynamic::MallocEmbeddingBlock).stubs();
     EMOCK(&EmbeddingTable::CheckFileSystemPtr).stubs();
     EMOCK(&EmbeddingDynamic::SaveKey).stubs();
     EMOCK(&EmbeddingTable::MakeDir).stubs();
@@ -219,6 +226,7 @@ TEST_F(EmbeddingDynamicTest, SaveEmbAndOptim_SaveOptimData)
     keyInfoMap[1] = KeyInfo();
     shared_ptr<EmbeddingDynamic> table = std::make_shared<EmbeddingDynamic>(embInfo_, rankInfo_, 0);
 
+    EMOCK(&EmbeddingDynamic::MallocEmbeddingBlock).stubs();
     EMOCK(&EmbeddingDynamic::SaveKey).stubs();
     EMOCK(&EmbeddingDynamic::SaveEmbData).stubs();
     EMOCK(&EmbeddingTable::CheckFileSystemPtr).stubs();
@@ -237,6 +245,7 @@ TEST_F(EmbeddingDynamicTest, LoadKey)
     auto fileSys = make_unique<LocalFileSystem>();
     table->fileSystemPtr_ = move(fileSys);
 
+    EMOCK(&EmbeddingDynamic::MallocEmbeddingBlock).stubs();
     EMOCK(&EmbeddingTable::CheckFileSystemPtr).stubs();
     EMOCK(&LocalFileSystem::GetFileSize).stubs().will(returnValue(1));
     using ReadCharFunc = ssize_t (LocalFileSystem::*)(const string&, char*, size_t);
@@ -255,6 +264,7 @@ TEST_F(EmbeddingDynamicTest, LoadKey_ReadError)
     auto fileSys = make_unique<LocalFileSystem>();
     table->fileSystemPtr_ = move(fileSys);
 
+    EMOCK(&EmbeddingDynamic::MallocEmbeddingBlock).stubs();
     EMOCK(&EmbeddingTable::CheckFileSystemPtr).stubs();
     EMOCK(&LocalFileSystem::GetFileSize).stubs().will(returnValue(1));
     EXPECT_THROW(table->Load(savePath, trainKeySet, warmStartTables), std::runtime_error);
@@ -271,6 +281,7 @@ TEST_F(EmbeddingDynamicTest, LoadEmbAndOptim)
     auto fileSys = make_unique<LocalFileSystem>();
     table->fileSystemPtr_ = move(fileSys);
 
+    EMOCK(&EmbeddingDynamic::MallocEmbeddingBlock).stubs();
     EMOCK(&EmbeddingDynamic::LoadKey).stubs();
     EMOCK(&EmbeddingTable::CheckFileSystemPtr).stubs();
     EXPECT_NO_THROW(table->Load(savePath, trainKeySet, warmStartTables));
