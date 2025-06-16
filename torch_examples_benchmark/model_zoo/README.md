@@ -3,6 +3,15 @@
 
 ## 主要依赖
 **Pytorch:** 2.6.0
+### 安装pytorch
+```commandline
+pip3 install torch==2.6.0+cpu  --index-url https://download.pytorch.org/whl/cpu # x86
+pip3 install torch==2.6.0 # arm
+```
+### 安装必要依赖
+```commandline
+pip3 install -r requirements.txt
+```
 
 ## 数据集准备
 1. 准备alicpp数据集
