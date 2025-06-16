@@ -60,7 +60,7 @@ RUN ln -s /usr/local/python3.11.9/bin/python3 /usr/bin/python && \
 RUN mkdir ~/.pip && touch ~/.pip/pip.conf && \
     echo "[global]" > ~/.pip/pip.conf && \
     echo "trusted-host=mirrors.aliyun.com" >> ~/.pip/pip.conf && \
-    echo "index-url=http://mirrors.aliyun.com/pypi/simple/" >> ~/.pip/pip.conf && \
+    echo "index-url=https://mirrors.aliyun.com/pypi/simple/" >> ~/.pip/pip.conf && \
     echo "timeout=200" >> ~/.pip/pip.conf
 
 # 6.安装python包
