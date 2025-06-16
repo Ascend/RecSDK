@@ -1,0 +1,7 @@
+h5py==3.13.0
+numpy==1.26.4
+pandas
+pytz
+scikit-learn
+torch==2.6.0
+
