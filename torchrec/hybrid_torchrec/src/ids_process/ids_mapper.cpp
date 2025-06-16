@@ -11,6 +11,7 @@
 #include "torch/torch.h"
 
 #include "unique.h"
+#include "common_utils.h"
 namespace hybrid {
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor> IdsMapper::UniqueAndLookup(const torch::Tensor& globalIds)
@@ -57,12 +58,14 @@ void IdsMapper::UniqueAndLookupOut(const torch::Tensor& globalIds, const torch::
     at::ThreadLocalStateGuard tlsGrad(state);
     RECORD_FUNCTION(c10::str("hybrid::UniqueAndLookupOut"), c10::ArrayRef<const c10::IValue>());
     TORCH_CHECK(offset.numel() - 1 > tableId, "offset must be equal to table size + 1")
-    int64_t* hashIndicesPtr = hashIndices.data_ptr<int64_t>();
-    int64_t* globalIdsPtr = globalIds.data_ptr<int64_t>();
-    int64_t* offsetPtr = offset.data_ptr<int64_t>();
+    // 数据指针获取
+    int64_t* hashIndicesPtr = GetSafeDataPtr<int64_t>(hashIndices, "hashIndices");
+    int64_t* globalIdsPtr = GetSafeDataPtr<int64_t>(globalIds, "globalIds");
+    int64_t* offsetPtr = GetSafeDataPtr<int64_t>(offset, "offset");
+    int64_t* uniqueOffsetPtr = GetSafeDataPtr<int64_t>(uniqueOffset, "uniqueOffset");
+
     int64_t start = offsetPtr[tableId];
     int64_t end = offsetPtr[tableId + 1];
-    int64_t* uniqueOffsetPtr = uniqueOffset.data_ptr<int64_t>();
     if (start == end) {
         uniqueOffsetPtr[tableId + 1] = uniqueOffsetPtr[tableId];
         return;
@@ -99,22 +102,20 @@ void IdsMapper::UniqueProcessing(const torch::Tensor& hashIndices, const torch::
     at::ThreadLocalStateGuard tlsGrad(state);
     RECORD_FUNCTION(c10::str("hybrid::UniqueProcessing"), c10::ArrayRef<const c10::IValue>());
 
-    int64_t* hashIndicesPtr = hashIndices.data_ptr<int64_t>();
-    int64_t* offsetPtr = offset.data_ptr<int64_t>();
+    int64_t* hashIndicesPtr = GetSafeDataPtr<int64_t>(hashIndices, "hashIndices");
+    int64_t* offsetPtr = GetSafeDataPtr<int64_t>(offset, "offset");
+
     int64_t start = offsetPtr[tableId];
     int64_t end = offsetPtr[tableId + 1];
-    int64_t* uniqueOffsetPtr = uniqueOffset.data_ptr<int64_t>();
-    if (start == end) {
-        uniqueOffsetPtr[tableId + 1] = uniqueOffsetPtr[tableId];
-        return;
-    }
 
     auto aHashMap = AllocFullHashMap();
     auto aHashMapPtr = aHashMap->data();
-    int64_t* uniquePtr = unique.data_ptr<int64_t>();
-    int64_t* uniqueInversePtr = uniqueInverse.data_ptr<int64_t>();
-    if (uniqueOffsetPtr == nullptr || uniquePtr == nullptr || uniqueInversePtr == nullptr) {
-        printf("[ERROR] unique, uniqueOffset and uniqueInverse cannot be None!");
+    int64_t* uniquePtr = GetSafeDataPtr<int64_t>(unique, "unique");
+    int64_t* uniqueInversePtr = GetSafeDataPtr<int64_t>(uniqueInverse, "uniqueInverse");
+    int64_t* uniqueOffsetPtr = GetSafeDataPtr<int64_t>(uniqueOffset, "uniqueOffset");
+
+    if (start == end) {
+        uniqueOffsetPtr[tableId + 1] = uniqueOffsetPtr[tableId];
         return;
     }
     int64_t globalUniqueOffset = uniqueOffsetPtr[tableId];
