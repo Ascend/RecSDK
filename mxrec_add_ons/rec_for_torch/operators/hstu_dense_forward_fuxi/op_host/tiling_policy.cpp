@@ -115,7 +115,7 @@ bool TilingPolicy::GeneralShapeCheck(int64_t batchSize, int64_t seqLen, int64_t 
     static const ShapeRange headRange(2, 8, 2, "head num");
 
     if ((!seqRange.Check(seqLen)) || (!batchRange.Check(batchSize)) ||
-        (!dimRange.Check(headNum)) || (!headRange.Check(dim))) {
+        (!dimRange.Check(dim)) || (!headRange.Check(headNum))) {
         return false;
     }
 
