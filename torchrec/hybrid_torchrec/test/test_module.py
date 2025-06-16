@@ -7,13 +7,12 @@
 # LICENSE file in the root directory of this source tree.
 import logging
 import os
-from typing import List
+from typing import Dict, List
 
 import pytest
 import torch
-from torch.utils.data import DataLoader
-
 from dataset import RandomRecDataset, Batch
+from torch.utils.data import DataLoader
 from hybrid_torchrec import (
     HashEmbeddingBagCollection,
     HashEmbeddingBagConfig,
@@ -23,7 +22,6 @@ from util import setup_logging
 
 import torchrec
 from torchrec import EmbeddingBagCollection, EmbeddingBagConfig
-
 
 LOOP_TIMES = 8
 BATCH_NUM = 32
@@ -140,8 +138,8 @@ def test_hstu_dens_normal(
     for gloden, result in zip(gloden_results, test_results):
         logging.debug("")
         logging.debug("===========================")
-        logging.debug("result test %s", gloden)
-        logging.debug("gloden test %s", result)
+        logging.debug("result test %s", result)
+        logging.debug("gloden test %s", gloden)
         assert torch.allclose(
             gloden, result, rtol=1e-04, atol=1e-04
         ), "gloden and result is not closed"

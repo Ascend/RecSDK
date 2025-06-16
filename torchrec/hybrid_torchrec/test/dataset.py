@@ -5,15 +5,13 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
-from dataclasses import dataclass
 from typing import Iterator
-
-import torch
+from dataclasses import dataclass
 import torch_npu
+import torch
 from torch.utils.data.dataset import IterableDataset
-
-from torchrec import KeyedJaggedTensor, JaggedTensor
 from torchrec.streamable import Pipelineable
+from torchrec import KeyedJaggedTensor, JaggedTensor
 
 
 @dataclass
@@ -62,7 +60,7 @@ class RandomRecDataset(IterableDataset[Batch]):
     def generate_one_batch(self) -> Batch:
         input_dict = {}
         feature_len = len(self.num_embeddings)
-        for ind in range(feature_len - 1, -1, -1):
+        for ind in reversed(range(feature_len)):
             name = f"feat{ind}"
             id_range = self.num_embeddings[ind]
             ids = torch.randint(0, id_range, (self.lookup_lens,))
