@@ -1,4 +1,8 @@
 cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
+
+set(CMAKE_SKIP_RPATH TRUE)
+set(CMAKE_SKIP_BUILD_RPATH TRUE)
+
 project(feature_map)
 
 find_package(Torch REQUIRED)

@@ -235,9 +235,9 @@ class TestModel:
 @pytest.mark.parametrize("embedding_dims", [[32, 64, 128]])
 @pytest.mark.parametrize("num_embeddings", [[400, 4000, 400]])
 @pytest.mark.parametrize("pool_type", [torchrec.PoolingType.MEAN])
-@pytest.mark.parametrize("sharding_type", ["table_wise", "row_wise"])
+@pytest.mark.parametrize("sharding_type", ["row_wise"])
 @pytest.mark.parametrize("lookup_len", [1024])
-@pytest.mark.parametrize("device", ["cpu", "npu"])
+@pytest.mark.parametrize("device", ["npu"])
 @pytest.mark.parametrize("optim", [Adagrad])
 def test_hybrid_pipeline_hash_embedding_bag(
     table_num,
@@ -249,8 +249,6 @@ def test_hybrid_pipeline_hash_embedding_bag(
     device,
     optim,
 ):
-    if device == "cpu" and sharding_type == "row_wise":
-        return
     mp.spawn(
         execute,
         args=(

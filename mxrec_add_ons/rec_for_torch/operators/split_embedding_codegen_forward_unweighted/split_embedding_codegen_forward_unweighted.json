@@ -72,6 +72,16 @@
                 "type": [
                     "int64"
                 ]
+            },            
+            {
+                "name": "hash_indices",
+                "param_type": "optional",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "int64"
+                ]
             },
             {
                 "name": "offsets",

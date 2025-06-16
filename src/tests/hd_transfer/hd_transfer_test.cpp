@@ -14,11 +14,14 @@ See the License for the specific language governing permissions and
 ==============================================================================*/
 
 #include <gtest/gtest.h>
+#include <emock/emock.hpp>
 
 #include "hd_transfer/hd_transfer.h"
 
 using namespace MxRec;
 using namespace testing;
+
+const size_t TEST_SIZE = 1024;
 
 struct TransferChannelCompare {
     bool operator()(const TransferChannel& lhs, const TransferChannel& rhs) const
@@ -39,12 +42,14 @@ public:
         {TransferChannel::ALL2ALL,        "all2all"},
         {TransferChannel::UNIQKEYS,       "uniquekeys"},
         {TransferChannel::LOOKUP,         "lookup"},
+        {TransferChannel::MASK,           "mask"},
         {TransferChannel::EVICT,          "evict"},
         {TransferChannel::H2D,            "h2d"},
         {TransferChannel::SWAP,           "swap"},
         {TransferChannel::SAVE_D2H,       "save_d2h"},
         {TransferChannel::SAVE_H2D,       "save_h2d"},
-        {TransferChannel::KEY_D2H,        "key_d2h"}
+        {TransferChannel::KEY_D2H,        "key_d2h"},
+        {TransferChannel::RECVSHAPE,      "recvshape"}
     };
 };
 
@@ -72,6 +77,58 @@ TEST_F(HdTransferTest, FullProcessHdTransferTest)
     m_hdTransfer.ClearTransChannel(channelNum);
 
     m_hdTransfer.Destroy();
+}
+
+TEST_F(HdTransferTest, RecvMteShm_Ok)
+{
+    HDTransfer hdTransfer;
+    std::vector<EmbInfo> embInfos;
+    hdTransfer.Init(embInfos, m_localRankId, false, false);
+
+    std::string testName = "test";
+    float* testPtr = nullptr;
+    int64_t testDim0;
+    int batchId{0};
+    char dummy[TEST_SIZE];
+
+    void* fakePtr = &dummy;
+    EMOCK(GetHostAddr).stubs().will(returnValue(fakePtr));
+    auto* mockData = new RmaShmData();
+    EMOCK(ShmDequeuePre).stubs().will(returnValue(mockData));
+
+    auto ret = hdTransfer.RecvMteShm(testName, testPtr, testDim0, batchId);
+    EXPECT_EQ(ret, 0);
+
+    hdTransfer.Destroy();
+}
+
+TEST_F(HdTransferTest, RecvMteShm_TrueEmptyFlag)
+{
+    HDTransfer hdTransfer;
+    std::vector<EmbInfo> embInfos;
+    hdTransfer.Init(embInfos, m_localRankId, false, false);
+
+    std::string testName = "test";
+    float* testPtr = nullptr;
+    int64_t testDim;
+    int batchId{0};
+    char dummy[TEST_SIZE];
+
+    void* fakePtr = &dummy;
+    EMOCK(GetHostAddr).stubs().will(returnValue(fakePtr));
+    EMOCK(ShmDequeuePre).stubs().will(returnValue((RmaShmData*)nullptr));
+
+    auto ret = hdTransfer.RecvMteShm(testName, testPtr, testDim, batchId);
+    EXPECT_EQ(ret, 0);
+
+    hdTransfer.Destroy();
+}
+
+TEST_F(HdTransferTest, DequeueShm_NullptrQueueHeader)
+{
+    int channelNum{0};
+
+    m_hdTransfer.DequeueShm(TransferChannel::H2D, channelNum, m_embTableName);
 }
 
 TEST_F(HdTransferTest, TransferChannel2Str)

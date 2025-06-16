@@ -8,60 +8,60 @@
                 "name": "q",
                 "param_type": "required",
                 "format": [
-                    "ND"
+                    "ND", "ND", "ND"
                 ],
                 "type": [
-                    "fp16"
+                    "fp16", "fp32", "bf16"
                 ]
             },
             {
                 "name": "k",
                 "param_type": "required",
                 "format": [
-                    "ND"
+                    "ND", "ND", "ND"
                 ],
                 "type": [
-                    "fp16"
+                    "fp16", "fp32", "bf16"
                 ]
             },
             {
                 "name": "v",
                 "param_type": "required",
                 "format": [
-                    "ND"
+                    "ND", "ND", "ND"
                 ],
                 "type": [
-                    "fp16"
+                    "fp16", "fp32", "bf16"
                 ]
             },
             {
                 "name": "timestamp_bias",
                 "param_type": "optional",
                 "format": [
-                    "ND"
+                    "ND", "ND", "ND"
                 ],
                 "type": [
-                    "fp16"
+                    "fp16", "fp32", "bf16"
                 ]
             },
             {
                 "name": "position_bias",
                 "param_type": "optional",
                 "format": [
-                    "ND"
+                    "ND", "ND", "ND"
                 ],
                 "type": [
-                    "fp16"
+                    "fp16", "fp32", "bf16"
                 ]
             },
             {
                 "name": "mask",
                 "param_type": "optional",
                 "format": [
-                    "ND"
+                    "ND", "ND", "ND"
                 ],
                 "type": [
-                    "fp16"
+                    "fp16", "fp32", "bf16"
                 ]
             }
 
@@ -71,10 +71,10 @@
                 "name": "attn_output",
                 "param_type": "required",
                 "format": [
-                    "ND"
+                    "ND", "ND", "ND"
                 ],
                 "type": [
-                    "fp16"
+                    "fp16", "fp32", "bf16"
                 ]
             }
         ],
@@ -102,6 +102,11 @@
                 "param_type": "optional",
                 "type": "string",
                 "default_value": "normal"
+            },
+            {
+                "name": "seq_offset",
+                "param_type": "optional",
+                "type": "list_int"
             }
         ]
     }

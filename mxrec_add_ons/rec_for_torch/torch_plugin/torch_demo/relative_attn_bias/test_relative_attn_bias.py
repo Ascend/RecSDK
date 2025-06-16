@@ -15,160 +15,22 @@
 # limitations under the License.
 # ==============================================================================
 
-import random
-import sysconfig
-
 import pytest
 import torch
-import torch.nn.functional as F
 import torch_npu
 
-torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
+from utils import (create_pos_w, create_past_valid_lens, init_rel_pos_bias, create_timestamps, create_rab_time_grad,
+                   create_bucket_timestamps, create_timestamps_weights, NUM_BUCKETS, BUCKET_DIVISOR,
+                   rab_pos_golden, rab_time_golden, rab_time_backward_golden)
 
 DEVICE = "npu:7"
-NUM_BUCKETS = 128
-BUCKET_DIVISOR = 0.301
-
-
-def create_pos_w(train_len: int, num_layers: int):
-    return torch.range(0, 2 * train_len).unsqueeze(1).repeat(1, num_layers)
-
-
-def create_past_valid_lens(bs: int, past_len: int):
-    return torch.randint(0, past_len, (bs,))
-
-
-def create_timestamps(train_len: int, candidate_len: int, past_valid_lens: torch.Tensor):
-    bs = past_valid_lens.size(0)
-    timestamps = torch.zeros(bs, train_len + candidate_len // 2)
-    for i, valid_len in enumerate(past_valid_lens):
-        if valid_len > 0:
-            timestamps[i, :valid_len] = torch.range(1, valid_len.int())
-
-    if candidate_len <= 0:
-        return timestamps
-    timestamps[:, -candidate_len // 2:] = train_len + 1
-    return timestamps
-
-
-def create_timestamps_weights(num_layers: int):
-    """
-    :param num_layers:
-    :return: timestamps_weights(num_layers, NUM_BUCKETS + 1)
-    """
-    return torch.range(0, NUM_BUCKETS).repeat(num_layers).reshape(num_layers, NUM_BUCKETS + 1)
-
-
-def init_rel_pos_bias(pos_w: torch.Tensor, train_len: int, candidate_len: int, num_layers: int):
-    rel_pos_bias_list, identity_list = [], []
-
-    max_len = train_len + candidate_len // 2
-    max_len_x2 = train_len * 2 + candidate_len
-    for layer_num in range(num_layers):
-        t = F.pad(pos_w[:2 * train_len - 1, layer_num], [0, train_len]).repeat(train_len)
-        t = t[..., :-train_len].reshape(1, train_len, 3 * train_len - 2)
-        r = (2 * train_len - 1) // 2
-
-        _rel_pos_bias = t[:, :, r:-r]
-        _rel_pos_bias = torch.nn.functional.pad(_rel_pos_bias,
-                                                (0, candidate_len // 2, 0, candidate_len // 2),
-                                                'constant',
-                                                0.0)
-        _rel_pos_bias = _rel_pos_bias.unsqueeze(-1).repeat(1, 1, 2, 2).reshape(1, max_len_x2, max_len_x2)
-
-        pos_indices = torch.arange(max_len).repeat(max_len).view(max_len, max_len).to(_rel_pos_bias.device)
-        pos_indices = pos_indices.unsqueeze(-1).repeat(1, 2, 2).reshape(max_len * 2, max_len * 2)
-        identity = (pos_indices.t() == pos_indices).float()
-
-        rel_pos_bias_list.append(_rel_pos_bias.squeeze(0))
-        identity_list.append(identity)
-
-    return torch.stack(rel_pos_bias_list), torch.stack(identity_list)
-
-
-def rab_npu(rel_pos_bias: torch.Tensor,
-            identity: torch.Tensor,
-            timestamps: torch.Tensor,
-            timestamps_weights: torch.Tensor,
-            past_valid_lens: torch.Tensor):
-    """
-    past_len = 1 ~ 4000
-    candidate_len = 256 ~ 600
-    bs = 1 ~ 10
-
-    :param rel_pos_bias: [past_len * 2 + candidate_len][past_len * 2 + candidate_len]
-    :param identity: [past_len * 2 + candidate_len][past_len * 2 + candidate_len]
-    :param past_valid_lens: [bs]
-    :return: [bs][1][past_len * 2 + candidate_len + 2][past_len * 2 + candidate_len + 2]
-    """
-
-    rab_pos, rab_time = torch.ops.mxrec.relative_attn_bias(rel_pos_bias,
-                                                           identity,
-                                                           timestamps,
-                                                           timestamps_weights,
-                                                           past_valid_lens.tolist(),
-                                                           BUCKET_DIVISOR)
-    return rab_pos, rab_time
-
-
-def rab_time_golden(ts_w: torch.Tensor, timestamps: torch.Tensor):
-    """
-    num_buckets = 128
-    num_layers = 1 - 20
-    past_len = 1 - 4000
-    candidate_len = 256 - 600
-
-    :param ts_w: [num_buckets + 1][num_layers]
-    :param timestamps: [bs][past_len + candidate_len // 2]
-    :param bucketization_divisor: float
-    :return: [num_layers][bs][1][2 * past_len + candidate_len + 1][2 * past_len + candidate_len + 2]
-    """
-    infer_len = timestamps.shape[1] * 2
-    bs = timestamps.shape[0]
-    num_layers = ts_w.shape[1]
-
-    timestamps = timestamps.unsqueeze(-1).repeat(1, 1, 2)
-    diff_timestamps = timestamps.reshape(bs, infer_len, 1) - timestamps.reshape(bs, 1, infer_len)
-
-    clamp_max = torch.exp(torch.tensor(NUM_BUCKETS * BUCKET_DIVISOR))
-    diff_timestamps = torch.log(torch.abs(diff_timestamps).clamp(1, clamp_max)) / BUCKET_DIVISOR
-
-    bucket_timestamps = diff_timestamps.long().view(-1)
-    rab_time = torch.index_select(ts_w, dim=0, index=bucket_timestamps)
-    rab_time = rab_time.t().view(num_layers, bs, infer_len, infer_len)
-    return rab_time
-
-
-def rab_pos_golden(rel_pos_bias: torch.Tensor, identity: torch.Tensor, past_valid_lens: torch.Tensor):
-    """
-    past_len = 1 ~ 4000
-    candidate_len = 256 ~ 600
-    bs = 1 ~ 10
-
-    :param rel_pos_bias: [past_len * 2 + candidate_len][past_len * 2 + candidate_len]
-    :param identity: [past_len * 2 + candidate_len][past_len * 2 + candidate_len]
-    :param past_valid_lens: [bs]
-    :return: [bs][1][past_len * 2 + candidate_len + 2][past_len * 2 + candidate_len + 2]
-    """
-    bs = past_valid_lens.shape[0]
-    rel_pos_bias_list = rel_pos_bias[:].unsqueeze(0).repeat(bs, 1, 1)
-    for i, valid_len in enumerate(past_valid_lens):
-        rel_pos_bias_list[i, valid_len:, :] = rel_pos_bias[valid_len, :]
-
-    rel_pos_bias_list = rel_pos_bias_list * (1 - identity) + identity * rel_pos_bias_list[0, 0, 0]
-    rel_pos_bias_list = rel_pos_bias_list[:, :identity.shape[0], :identity.shape[0]]
-    return rel_pos_bias_list
 
 
 @torch.no_grad()
-def rab(num_layers, train_len, candidate_len, bs, dtype):
+def rab_pos(num_layers, train_len, candidate_len, bs, dtype):
     torch_npu.npu.set_device(DEVICE)
-
-    layer_num = random.randint(0, num_layers - 1)
     pos_w = create_pos_w(train_len, num_layers).to(dtype)
     past_valid_lens = create_past_valid_lens(bs, train_len).to(torch.int32)
-    timestamps = create_timestamps(train_len, candidate_len, past_valid_lens).to(torch.int32)
-    timestamps_weights = create_timestamps_weights(num_layers).to(dtype)
     rel_pos_bias_list, identity_list = init_rel_pos_bias(pos_w=pos_w,
                                                          train_len=train_len,
                                                          candidate_len=candidate_len,
@@ -177,22 +39,63 @@ def rab(num_layers, train_len, candidate_len, bs, dtype):
 
     rel_pos_bias_list = rel_pos_bias_list.to(DEVICE)
     identity_list = identity_list.to(DEVICE)
-    timestamps = timestamps.to(DEVICE)
-    timestamps_weights = timestamps_weights.to(DEVICE)
     past_valid_lens = past_valid_lens.to(DEVICE)
     torch_npu.npu.synchronize()
 
-    rab_pos_out, rab_time_out = rab_npu(rel_pos_bias=rel_pos_bias_list[layer_num, ...],
-                                        identity=identity_list[layer_num, ...],
-                                        timestamps=timestamps,
-                                        timestamps_weights=timestamps_weights,
-                                        past_valid_lens=past_valid_lens)
+    for rel_pos_bias, identity in zip(rel_pos_bias_list, identity_list):
+        rab_pos_out = torch.ops.mxrec.relative_attn_bias_pos(rel_pos_bias=rel_pos_bias,
+                                                             identity=identity,
+                                                             past_valid_lens=past_valid_lens.tolist())
+        rab_pos_out_golden = rab_pos_golden(rel_pos_bias=rel_pos_bias,
+                                            identity=identity,
+                                            past_valid_lens=past_valid_lens)
+        assert torch.allclose(rab_pos_out_golden, rab_pos_out)
+
+
+@torch.no_grad()
+def rab_time(num_layers, train_len, candidate_len, bs, dtype):
+    torch_npu.npu.set_device(DEVICE)
+
+    past_valid_lens = create_past_valid_lens(bs, train_len).to(torch.int32)
+    timestamps = create_timestamps(train_len, candidate_len, past_valid_lens).to(torch.int32)
+    timestamps_weights = create_timestamps_weights(num_layers).to(dtype)
+
+    timestamps = timestamps.to(DEVICE)
+    timestamps_weights = timestamps_weights.to(DEVICE)
     torch_npu.npu.synchronize()
 
-    rab_time_out_golden = rab_time_golden(ts_w=timestamps_weights.transpose(0, 1),
-                                          timestamps=timestamps)
+    # 正常使用时为：result_op = torch.ops.mxrec.relative_attn_bias_time(...)
+    result_op, index_op = torch.ops.mxrec.relative_attn_bias_time_with_index(timestamps_weights=timestamps_weights,
+                                                                             timestamps=timestamps,
+                                                                             bucket_divisor=BUCKET_DIVISOR)
+    result_op, index_op = result_op.to('cpu'), index_op.to('cpu')
+
+    result_golden, index_golden = rab_time_golden(timestamps_weights=timestamps_weights.transpose(0, 1),
+                                                  timestamps=timestamps,
+                                                  bucket_divisor=BUCKET_DIVISOR)
+    result_golden, index_golden = result_golden.to('cpu'), index_golden.to('cpu')
     torch_npu.npu.synchronize()
-    assert torch.allclose(rab_time_out_golden, rab_time_out)
+
+    _, s, _ = index_op.shape
+    index_op_repeat = index_op.view(bs, s, 1, s, 1).repeat(1, 1, 2, 1, 2).reshape(index_golden.shape).to(torch.int64)
+    assert torch.allclose(result_golden, result_op)
+    assert torch.allclose(index_golden, index_op_repeat)
+
+
+@torch.no_grad()
+def rab_time_backward(num_layers, train_len, candidate_len, bs, dtype):
+    torch_npu.npu.set_device(DEVICE)
+    s = 2 * train_len + candidate_len
+
+    grad = create_rab_time_grad(num_layers, bs, s).to(dtype).to(DEVICE)
+    bucket_timestamps = create_bucket_timestamps(bs, s // 2).to(torch.int32).to(DEVICE)
+    torch_npu.npu.synchronize()
+
+    golden_result = rab_time_backward_golden(grad, bucket_timestamps).to("cpu")
+    op_result = (torch.ops.mxrec.relative_attn_bias_time_backward(grad, bucket_timestamps, NUM_BUCKETS)
+                 .to(torch.float32).to("cpu"))
+    loss = 1e-5 if dtype == torch.float32 else 1e-3
+    assert torch.allclose(op_result, golden_result, rtol=loss, atol=loss)
 
 
 @pytest.mark.parametrize("num_layers", [1, 8])
@@ -201,7 +104,8 @@ def rab(num_layers, train_len, candidate_len, bs, dtype):
 @pytest.mark.parametrize("bs", [1, 2, 4])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_rab_eval(num_layers, train_len, candidate_len, bs, dtype):
-    rab(num_layers, train_len, candidate_len, bs, dtype)
+    rab_time(num_layers, train_len, candidate_len, bs, dtype)
+    rab_pos(num_layers, train_len, candidate_len, bs, dtype)
 
 
 @pytest.mark.parametrize("num_layers", [1, 8])
@@ -209,4 +113,22 @@ def test_rab_eval(num_layers, train_len, candidate_len, bs, dtype):
 @pytest.mark.parametrize("candidate_len", [0])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_rab_train(num_layers, train_len, candidate_len, bs, dtype):
-    rab(num_layers, train_len, candidate_len, bs, dtype)
+    rab_time(num_layers, train_len, candidate_len, bs, dtype)
+    rab_pos(num_layers, train_len, candidate_len, bs, dtype)
+
+
+@pytest.mark.parametrize("num_layers", [1, 8])
+@pytest.mark.parametrize("train_len", [500, 1000, 2000, 4000])
+@pytest.mark.parametrize("candidate_len", [600])
+@pytest.mark.parametrize("bs", [1, 2, 4])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+def test_rab_eval_backward(num_layers, train_len, candidate_len, bs, dtype):
+    rab_time_backward(num_layers, train_len, candidate_len, bs, dtype)
+
+
+@pytest.mark.parametrize("num_layers", [1, 8])
+@pytest.mark.parametrize("train_len,bs", [(500, 128), (1000, 32), (1000, 64), (4000, 8)])
+@pytest.mark.parametrize("candidate_len", [0])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+def test_rab_train_backward(num_layers, train_len, candidate_len, bs, dtype):
+    rab_time_backward(num_layers, train_len, candidate_len, bs, dtype)

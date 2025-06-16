@@ -89,6 +89,28 @@ TEST(GlobalEnv, ConfigGlobalEnv)
     UnsetEnvironmentVariables();
 }
 
+TEST(GlobalEnv, ConfigGlobalEnv_SetZero)
+{
+    setenv(RecEnvNames::FAST_UNIQUE, "0", 1);
+    setenv(RecEnvNames::USE_COMBINE_FAAE, "0", 1);
+    setenv(RecEnvNames::RECORD_KEY_COUNT, "0", 1);
+    setenv(RecEnvNames::USE_SHM_SWAP, "0", 1);
+    setenv(RecEnvNames::HUGE_TLB_ENABLE, "0", 1);
+    setenv(RecEnvNames::SSD_SAVE_COMPACT_LEVEL, "0", 1);
+
+    ConfigGlobalEnv();
+
+    ASSERT_EQ(GlobalEnv::fastUnique, false);
+    ASSERT_EQ(GlobalEnv::useCombineFaae, false);
+    ASSERT_EQ(GlobalEnv::recordKeyCount, false);
+    ASSERT_EQ(GlobalEnv::useShmSwap, false);
+    ASSERT_EQ(GlobalEnv::hugeTlbEnable, false);
+
+    UnsetEnvironmentVariables();
+
+    ConfigGlobalEnv();
+}
+
 TEST(LogTest, LogGlobalEnv)
 {
     SetEnvironmentVariables();
