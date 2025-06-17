@@ -16,20 +16,29 @@ from typing import (
 
 import torch
 import torch.distributed as dist
-from fbgemm_gpu.split_embedding_configs import EmbOptimType as OptimType
-from fbgemm_gpu.split_table_batched_embeddings_ops_common import CacheAlgorithm
+from torch import nn, Tensor
+
 from fbgemm_gpu.split_table_batched_embeddings_ops_training import (
+    PoolingMode,
     ComputeDevice,
     EmbeddingLocation,
     SplitTableBatchedEmbeddingBagsCodegen,
 )
-from fbgemm_gpu.split_table_batched_embeddings_ops_training_common import is_torchdynamo_compiling
-from torch import nn, Tensor
+from fbgemm_gpu.split_embedding_configs import EmbOptimType as OptimType, SparseType
+from fbgemm_gpu.split_table_batched_embeddings_ops_common import CacheAlgorithm
+from fbgemm_gpu.split_table_batched_embeddings_ops_training_common import (
+    is_torchdynamo_compiling,
+)
 
 import hybrid_torchrec.hybrid_lookup_invoke as invokers
 from hybrid_torchrec.sparse.jagged_tensor_with_looup_helper import (
     KeyedJaggedTensorWithLookHelper,
 )
+import hybrid_torchrec.hybrid_lookup_invoke as invokers
+from hybrid_torchrec.sparse.jagged_tensor_with_looup_helper import (
+    KeyedJaggedTensorWithLookHelper,
+)
+
 from torchrec.distributed.batched_embedding_kernel import (
     BaseBatchedEmbeddingBag,
     EmbeddingFusedOptimizer,
@@ -54,11 +63,36 @@ from torchrec.optim.fused import (
     FusedOptimizerModule,
 )
 from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
+from torchrec.distributed.batched_embedding_kernel import (
+    BaseBatchedEmbedding,
+    BaseBatchedEmbeddingBag,
+    EmbeddingFusedOptimizer,
+    _gen_named_parameters_by_table_fused,
+)
 
 
 class HybridSplitTableBatchedEmbeddingBagsCodegen(
     SplitTableBatchedEmbeddingBagsCodegen
 ):
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+
+        is_mixed_dim = False
+        first_dim = self.dims[0]
+        for d in self.dims:
+            if d != first_dim:
+                is_mixed_dim = True
+                break
+
+        self.is_mixed_dim = is_mixed_dim
+        optimizer_type = kwargs["optimizer"]
+        if optimizer_type in (OptimType.ADAM,):
+            self._optim_num = 2
+        elif optimizer_type in (OptimType.EXACT_ADAGRAD,):
+            self._optim_num = 1
+        else:
+            raise ValueError(f"{optimizer_type} is not support")
+
     def forward(
         self,
         indices: Tensor,
@@ -145,9 +179,9 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
             uvm_cache_stats=(
                 self.local_uvm_cache_stats
                 if (
-                        self.gather_uvm_cache_stats
-                        # Unique conflict misses are only collected when using CacheAlgorithm.LRU
-                        and self.cache_algorithm == CacheAlgorithm.LRU
+                    self.gather_uvm_cache_stats
+                    # Unique conflict misses are only collected when using CacheAlgorithm.LRU
+                    and self.cache_algorithm == CacheAlgorithm.LRU
                 )
                 else None
             ),
@@ -204,8 +238,6 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
         else:
             return NotImplemented
 
-
-
     def prepare_inputs(
         self,
         indices: Tensor,
@@ -258,6 +290,55 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
                 per_sample_weights = per_sample_weights.float()
 
         return indices, offsets, per_sample_weights, vbe_metadata
+
+    def scatter_update_embs(self, indices, updates):
+        if not self.is_mixed_dim:
+            self.weights_dev.reshape(-1, self.dims[0]).index_put_(
+                [indices], updates.reshape(-1, self.dims[0])
+            )
+        else:
+            raise ValueError(f"Mixed dimensions are not supported.")
+        return
+
+    def gather_embs(self, indices) -> Tensor:
+        if not self.is_mixed_dim:
+            return torch.index_select(
+                self.weights_dev.reshape(-1, self.dims[0]), 0, indices
+            ).reshape(-1)
+        else:
+            raise ValueError(f"Mixed dimensions are not supported.")
+
+    def gather_momentum(self, indices: torch.Tensor) -> Tensor:
+        if not self.is_mixed_dim:
+            result = []
+            if self._optim_num > 0:
+                moment1 = torch.index_select(
+                    self.momentum1_dev.reshape(-1, self.dims[0]), 0, indices
+                ).reshape(-1)
+                result.append(moment1)
+            if self._optim_num > 1:
+                moment2 = torch.index_select(
+                    self.momentum2_dev.reshape(-1, self.dims[0]), 0, indices
+                ).reshape(-1)
+                result.append(moment2)
+            return result
+        else:
+            raise ValueError(f"Mixed dimensions are not supported.")
+
+    def scatter_update_momentum(
+        self, indices: torch.Tensor, updates: List[torch.Tensor]
+    ):
+        if not self.is_mixed_dim:
+            if self._optim_num > 0:
+                self.momentum1_dev.reshape(-1, self.dims[0]).index_put_(
+                    [indices], updates[0].reshape(-1, self.dims[0])
+                )
+            if self._optim_num > 1:
+                self.momentum2_dev.reshape(-1, self.dims[0]).index_put_(
+                    [indices], updates[1].reshape(-1, self.dims[0])
+                )
+        else:
+            raise ValueError(f"Mixed dimensions are not supported.")
 
 
 class HybridBatchedFusedEmbeddingBag(
@@ -396,6 +477,151 @@ class HybridBatchedFusedEmbeddingBag(
             prefix, recurse, remove_duplicate
         ):
             param = nn.Parameter(tensor)
+            param._in_backward_optimizers = [EmptyFusedOptimizer()]
+            yield name, param
+
+    def flush(self) -> None:
+        self._emb_module.flush()
+
+    def purge(self) -> None:
+        self._emb_module.reset_cache_states()
+
+
+class HybridBatchedFusedEmbedding(
+    BaseBatchedEmbedding[torch.Tensor], FusedOptimizerModule
+):
+    def __init__(
+        self,
+        config: GroupedEmbeddingConfig,
+        pg: Optional[dist.ProcessGroup] = None,
+        device: Optional[torch.device] = None,
+    ) -> None:
+        super().__init__(config, pg, device)
+
+        managed: List[EmbeddingLocation] = []
+        compute_devices: List[ComputeDevice] = []
+        for table in config.embedding_tables:
+            if device is not None and device.type == "cuda":
+                compute_devices.append(ComputeDevice.CUDA)
+                managed.append(
+                    compute_kernel_to_embedding_location(table.compute_kernel)
+                )
+            elif device is not None and device.type == "mtia":
+                compute_devices.append(ComputeDevice.MTIA)
+                # Set EmbeddingLocation.HOST to make embedding op in FBGEMM choose CPU path.
+                # But the tensor will still be created on MTIA with device type "mtia".
+                managed.append(EmbeddingLocation.HOST)
+            elif device is not None and device.type == "npu":
+                compute_devices.append(ComputeDevice.NPU)
+                managed.append(
+                    compute_kernel_to_embedding_location(table.compute_kernel)
+                )
+            else:
+                compute_devices.append(ComputeDevice.CPU)
+                managed.append(EmbeddingLocation.HOST)
+
+        weights_precision = data_type_to_sparse_type(config.data_type)
+
+        fused_params = config.fused_params or {}
+        if "cache_precision" not in fused_params:
+            fused_params["cache_precision"] = weights_precision
+
+        self._emb_module: HybridSplitTableBatchedEmbeddingBagsCodegen = (
+            HybridSplitTableBatchedEmbeddingBagsCodegen(
+                embedding_specs=list(
+                    zip(self._local_rows, self._local_cols, managed, compute_devices)
+                ),
+                feature_table_map=self._feature_table_map,
+                pooling_mode=PoolingMode.NONE,
+                weights_precision=weights_precision,
+                device=device,
+                table_names=[t.name for t in config.embedding_tables],
+                **fused_params,
+            )
+        )
+        self._optim: EmbeddingFusedOptimizer = EmbeddingFusedOptimizer(
+            config,
+            self._emb_module,
+            pg,
+        )
+        self._param_per_table: Dict[str, TableBatchedEmbeddingSlice] = dict(
+            _gen_named_parameters_by_table_fused(
+                emb_module=self._emb_module,
+                table_name_to_count=self.table_name_to_count.copy(),
+                config=self._config,
+                pg=pg,
+            )
+        )
+        self.init_parameters()
+
+    @property
+    def emb_module(
+        self,
+    ) -> HybridSplitTableBatchedEmbeddingBagsCodegen:
+        return self._emb_module
+
+    @property
+    def fused_optimizer(self) -> FusedOptimizer:
+        return self._optim
+
+    def forward(self, features: KeyedJaggedTensor) -> torch.Tensor:
+        hash_indices = None
+        unique_indices = None
+        unique_offset = None
+        unique_inverse = None
+        if isinstance(features, KeyedJaggedTensorWithLookHelper):
+            features: KeyedJaggedTensorWithLookHelper
+            hash_indices = features.hash_indices
+            unique_indices = features.unique_indices
+            unique_offset = features.unique_offset
+            unique_inverse = features.unique_inverse
+
+        weights = features.weights_or_none()
+        if weights is not None and not torch.is_floating_point(weights):
+            weights = None
+        if features.variable_stride_per_key() and isinstance(
+            self.emb_module, SplitTableBatchedEmbeddingBagsCodegen
+        ):
+            return self.emb_module(
+                indices=features.values().long(),
+                offsets=features.offsets().long(),
+                hash_indices=hash_indices,
+                unique_indices=None,
+                unique_offset=None,
+                unique_inverse=None,
+                per_sample_weights=weights,
+                batch_size_per_feature_per_rank=features.stride_per_key_per_rank(),
+            )
+        else:
+            return self.emb_module(
+                indices=features.values().long(),
+                offsets=features.offsets().long(),
+                hash_indices=hash_indices,
+                unique_indices=unique_indices,
+                unique_offset=unique_offset,
+                unique_inverse=unique_inverse,
+                per_sample_weights=weights,
+            )
+
+    def named_buffers(
+        self, prefix: str = "", recurse: bool = True, remove_duplicate: bool = True
+    ) -> Iterator[Tuple[str, torch.Tensor]]:
+        """
+        By convention, fused parameters are designated as buffers because they no longer
+        have gradients available to external optimizers.
+        """
+        yield from ()
+
+    def named_parameters(
+        self, prefix: str = "", recurse: bool = True, remove_duplicate: bool = True
+    ) -> Iterator[Tuple[str, nn.Parameter]]:
+        for name, tensor in self.named_split_embedding_weights(
+            prefix, recurse, remove_duplicate
+        ):
+            # hack before we support optimizer on sharded parameter level
+            # can delete after SEA deprecation
+            param = nn.Parameter(tensor)
+            # pyre-ignore
             param._in_backward_optimizers = [EmptyFusedOptimizer()]
             yield name, param
 

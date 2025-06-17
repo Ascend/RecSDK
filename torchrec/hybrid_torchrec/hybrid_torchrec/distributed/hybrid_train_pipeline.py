@@ -449,6 +449,10 @@ class HybridTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
             context.awaitables[TaskType.COPY2NPU.value][forward_name].record_stream(
                 cur_stream
             )
+            for shard_context in context.module_contexts[
+                forward_name
+            ].sharding_contexts:
+                shard_context.record_stream(cur_stream)
 
     def _do_post_input_dist(self, context: HybridTrainPipelineContext):
         if context.batch is None:
@@ -494,6 +498,19 @@ class HybridTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
                     context.awaitables[TaskType.COPY2NPU.value][name] = (
                         kjt_list_to_device(kjt_list, self._device, non_blocking=True)
                     )
+                    for ind, shard_contex in enumerate(
+                        context.module_contexts[name].sharding_contexts
+                    ):
+                        if hasattr(shard_contex, "pin_memory") and hasattr(
+                            shard_contex, "to"
+                        ):
+                            shard_contex.sparse_features_recat = None
+                            context.module_contexts[name].sharding_contexts[
+                                ind
+                            ] = shard_contex.pin_memory().to(
+                                self._device, non_blocking=True
+                            )
+
                 if batch is not None:
                     batch = _to_device(batch, self._device, non_blocking=True)
                 elif not self._execute_all_batches:
