@@ -1,0 +1,95 @@
+diff --git a/tzrec/main.py b/tzrec/main.py
+index a95fa0f..c507f5b 100644
+--- a/tzrec/main.py
++++ b/tzrec/main.py
+@@ -88,6 +88,17 @@ from tzrec.utils.plan_util import create_planner, get_default_sharders
+ from tzrec.utils.state_dict_util import fix_mch_state, init_parameters
+ from tzrec.version import __version__ as tzrec_version
+ 
++import torch_npu
++
++
++lib_fbgemm_npu_api_so_path = os.getenv("LIB_FBGEMM_NPU_API_SO_PATH")
++if lib_fbgemm_npu_api_so_path:
++    torch.ops.load_library(lib_fbgemm_npu_api_so_path)
++else:
++    raise ValueError(
++        "Enviroment variable LIB_FBGEMM_NPU_API_SO_PATH is not set. Please configure it with the correct path."
++    )
++
+ 
+ def init_process_group() -> Tuple[torch.device, str]:
+     """Init process_group, device, rank, backend."""
+@@ -96,6 +107,10 @@ def init_process_group() -> Tuple[torch.device, str]:
+         device: torch.device = torch.device(f"cuda:{rank}")
+         backend = "nccl"
+         torch.cuda.set_device(device)
++    elif torch_npu.npu.is_available():
++        device: torch.device = torch.device(f"npu:{rank}")
++        backend = "hccl"
++        torch_npu.npu.set_device(device)
+     else:
+         device: torch.device = torch.device("cpu")
+         backend = "gloo"
+diff --git a/tzrec/utils/plan_util.py b/tzrec/utils/plan_util.py
+index 5edb550..48d6a9e 100644
+--- a/tzrec/utils/plan_util.py
++++ b/tzrec/utils/plan_util.py
+@@ -57,7 +57,7 @@ from torchrec.distributed.types import (
+ 
+ from tzrec.protos import feature_pb2
+ from tzrec.utils.logging_util import logger
+-
++import torch_npu
+ 
+ def _bytes_to_float_bin(num_bytes: Union[float, int], bin_size: float) -> float:
+     return float(num_bytes) / bin_size
+@@ -77,6 +77,8 @@ def create_planner(
+     topo_kwargs = {}
+     if torch.cuda.is_available():
+         topo_kwargs["hbm_cap"] = torch.cuda.get_device_properties(device).total_memory
++    elif torch_npu.npu.is_available():
++        topo_kwargs["hbm_cap"] = torch_npu.npu.get_device_properties(device).total_memory
+ 
+     ddr_cap_per_rank = int(float(psutil.virtual_memory().total) / local_world_size)
+     topo_kwargs["ddr_cap"] = ddr_cap_per_rank
+@@ -131,19 +133,22 @@ def create_planner(
+             if len(global_constraints_cfg.compute_kernels) > 0
+             else None,
+         )
+-
++    # row_wise
++    constraints = {
++        f"{feature_name}_emb": ParameterConstraints(
++            sharding_types=["row_wise"]
++        )
++        for feature_name in ["user_id", "cms_segid", "cms_group_id", "final_gender_code", "age_level",
++                             "pvalue_level", "shopping_level", "occupation", "new_user_class_level", "adgroup_id",
++                             "cate_id", "campaign_id", "customer", "brand", "price", "pid"
++                             ]
++    }
+     # build planner
+     planner = EmbeddingShardingPlanner(
+         topology=topology,
+         batch_size=batch_size,
+-        enumerator=EmbeddingEnumerator(
+-            topology=topology,
+-            batch_size=batch_size,
+-            fqn_constraints=fqn_constraints,
+-            global_constraints=global_constraints,
+-        ),
+         storage_reservation=storage_reservation,
+-        proposer=[DynamicProgrammingProposer(), UniformProposer()],
++        constraints=constraints,
+         debug=True,
+     )
+     return planner
+@@ -153,6 +158,8 @@ def get_default_sharders() -> List[ModuleSharder[nn.Module]]:
+     """Get embedding module default sharder."""
+     if torch.cuda.is_available():
+         return _get_default_sharders()
++    elif torch_npu.npu.is_available():
++        return _get_default_sharders()
+     else:
+         # ShardedEmbeddingCollection is not supported yet.
+         sharders = []
