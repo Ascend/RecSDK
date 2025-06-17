@@ -80,6 +80,15 @@ protected:
     stringstream savePath;
 };
 
+TEST_F(EmbeddingDynamicTest, TestMallocEmbeddingBlockShouldThrowErrorWhenNoUseDynamicExpansion)
+{
+    GlobalMockObject::reset();
+    rankInfo_.useDynamicExpansion = false;
+    shared_ptr<EmbeddingDynamic> table = std::make_shared<EmbeddingDynamic>(embInfo_, rankInfo_, 0);
+    vector<emb_key_t> testKeys = {0, 1, 2, 3};
+    EXPECT_THROW(table->Key2Offset(testKeys, TRAIN_CHANNEL_ID), std::bad_alloc);
+}
+
 TEST_F(EmbeddingDynamicTest, Key2Offset)
 {
     rankInfo_.useDynamicExpansion = false;
