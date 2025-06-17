@@ -95,8 +95,8 @@ bash run.sh {so_path} {rec_package_path} {hccl_cfg_json} {dlrm_criteo_data_path}
 ***
 ## 模型迁移
 
-**迁移思路：** 在现有已适配好的dlrm模型框架下，改动相关代码逻辑，完成mmoe模型的适配。**核心：根据开源项目model代码修改`model.py`；数据处理操作一部分放入`census.py`,一部分放入`main_Rec SDK.py`中`make_batch_and_iterator()`内；`main_mxrec.py`中其他相关代码改动主要是为了适配Rec SDK提供的相关特性。**
-详细改动见https://gitee.com/ascend/mxrec/pulls/171/commits，Commits ID：7a05b033d41af51df9aed7414ad04216dff821cc。  
+**迁移思路：** 在现有已适配好的dlrm模型框架下，改动相关代码逻辑，完成mmoe模型的适配。**核心：根据开源项目model代码修改`model.py`；数据处理操作一部分放入`census.py`,一部分放入`main_mxrec.py`中`make_batch_and_iterator()`内；`main_mxrec.py`中其他相关代码改动主要是为了适配Rec SDK提供的相关特性。**
+详细改动见[https://gitee.com/ascend/mxrec/pulls/231/commits](https://gitee.com/ascend/mxrec/pulls/231/commits)。  
 下文所提到的`动态扩容`、`动态shape`、`自动改图`、`一表多查`是Rec SDK提供的相关特性，开关选项见`run.sh`。
 
 ```shell

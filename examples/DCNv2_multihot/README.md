@@ -57,11 +57,18 @@ bash run_1_16_8192.sh {so_path} {mx_rec_package_path} {hccl_cfg_json} {dlrm_crit
 * hccl_cfg_json：hccl_cfg_json是hccl通信配置文件，如果配置了ip参数，这个参数就不用了，直接给一个""空字符串即可,pod A3不建议使用。
 * dlrm_criteo_data_path：dlrm_criteo_data_path是数据集所在的目录，比如/data/criteo_tb/。
 * ip：ip是运行模型的机器所在的ip，建议配置。
-* 注意：配置ip运行需改动main_mxrec.py, 第50行，改为对应宿主机IP地址，os.environ['CM_WORKER_IP'] = "x.x.x.x"
+* 注意：配置ip运行需改动main_mxrec.py中os.environ['CM_WORKER_IP'] = "x.x.x.x"，将"x.x.x.x"改为对应宿主机IP地址。
 
 ## 5.优化器使用事项注意：
 在使用adgrad优化器时，需做出如下调整：
-* 1.调整config.py文件中191行代码 precision_mode参数为must_keep_origin_dtype
+* 1.将config.py文件中
+```
+custom_op.parameter_map["precision_mode"].s = tf.compat.as_bytes("allow_mix_precision")
+```
+修改为  
+```
+custom_op.parameter_map["precision_mode"].s = tf.compat.as_bytes("must_keep_origin_dtype")
+```
 * 2.添加关闭融合算子配置文件。新增fusion_switch.cfg 文件并插入如下配置
 ```josn
 {
@@ -72,17 +79,30 @@ bash run_1_16_8192.sh {so_path} {mx_rec_package_path} {hccl_cfg_json} {dlrm_crit
     }
 }
 ```
-* 3.修改mxrec源码，删除adagrad.py 36,37行校验，并修改117-121行为:
+* 3.修改mxrec源码，删除adagrad.py中对`initial_accumulator_value`参数的校验，并将
+```python
+return training_ops.sparse_apply_adagrad(
+    var,
+    acc,
+    math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+    grad.values,
+    grad.indices,
+    use_locking=self._use_locking,
+)
+```
+修改为
 ```python
 return training_ops.sparse_apply_adagrad_v2(
-    var, acc, math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype), 1e-8, 
+    var, 
+    acc, 
+    math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype), 1e-8, 
     grad.values,
     grad.indices,
     use_locking=self._use_locking)
 ```
-默认路径为：/usr/local/lib/pythonx.x/site-packages/mx_rec/optimizers/adagrad.py
-* 4.修改tensorflow 1.15.0源码, install后脚本默认位置为/usr/local/lib/pythonx.x/site-packages/tensorflow/training/adagrad.py
-修改62行校验参数，<= 改为<, 修改92行-103行为：
+默认路径为：/usr/local/pythonx.x.x/lib/pythonx.x/site-packages/mx_rec/optimizers/adagrad.py
+* 4.修改tensorflow 1.15.0源码, install后脚本默认位置为/usr/local/pythonx.x.x/lib/pythonx.x/site-packages/tensorflow_core/python/training/adagrad.py。
+修改62行校验参数，<= 改为<, 修改96行-103行为：
 ```python
   def _apply_dense(self, grad, var):
     acc = self.get_slot(var, "accumulator")
@@ -94,7 +114,7 @@ return training_ops.sparse_apply_adagrad_v2(
         use_locking=self._use_locking)
 ```
 * 5.使用adgrad优化器，需要使用固定学习率。sparse和dense均使用0.004
-* 注意：3-4条修改为对齐adagrad实现，若无法修改修改源码，可将config.py中initial_addumulator_value 初始化为一个很小的值如1e-20，效果类似。
+* 注意：3-4条修改为对齐adagrad实现，若无法修改修改源码，可将optimizer.py中initial_addumulator_value初始化为一个很小的值如1e-20，效果类似。
 如果需要再增大global batchsize时请在run脚本添加adacons参数。
 export use_adacons=True
 
