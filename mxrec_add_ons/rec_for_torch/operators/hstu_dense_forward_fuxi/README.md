@@ -10,23 +10,22 @@ Atlas 推理系列产品
 ## 功能描述
 * 算子功能: 推荐场景下，使用Hstu融合算子实现推荐场景中注意力机制
 * 计算公式:
-    $score = Mask(Silu(matmul(Q, K)) * siluScale)$
-    $outputScore = matmul(score, V)$
-    $outputTs = matmul(Mask(timestampBias), V)$
-    $outputPos = matmul(Mask(positionBias), V)$
-    $output = cat([outputScore, outputTs, outputPos], -1)$
+    $$score = Mask(Silu(matmul(Q, K)) * siluScale)$$
+    $$outputScore = matmul(score, V)$$
+    $$outputTs = matmul(Mask(timestampBias), V)$$
+    $$outputPos = matmul(Mask(positionBias), V)$$
+    $$output = cat([outputScore, outputTs, outputPos], -1)$$
 
 其中Q,K,V 可以是normal格式，或者jagged格式。
 * normal格式: B,S,N,D 4维数据格式
 * jagged格式: s_b,N,D 3维数据格式 (稠密格式 为了节省显存)
 normal 排布如下图所示:
-![alt text](pic/hstu_image-2.png)
+![alt text](hstu_image-2.png)
 jagged 排布如下图所示:
-![alt text](pic/hstu_image-3.png)
+![alt text](hstu_image-3.png)
 
 
 ## 实现原理
-![实现原理](pic/hstu_image.png)
 * 输入Q，K是normal格式或者jagged格式, 首先进行matmul计算得到相关度分数
 * 然后进行Silu最后除以系数S，如果是normal格式
 S等于S轴的大小，如果是Jagged格式S是每个序列的长度，得到score。
@@ -48,7 +47,7 @@ Atlas A2 训练系列产品
 | maskType | 属性 | int | N/A | 0:使用内置倒三角mask 不需要传递mask输入 1:使用内置上三角mask 不需要传递mask输入当前暂不支持 2:不使用mask 3:使用用户自定义mask 此时mask输入需要用户定义并传入 |
 | max_seq_len | 属性 | int | N/A | 表示模型最大序列长度 |
 | siluScale | 属性 | float | N/A | 支持用户传入自定义siluScale, 不传入时默认值为1/max_seq_len|
-| layout | 属性 | string | N/A | "normal"代表Q,K,V数据格式为B,S,N,D格式，“jagged”代表Q,K,V数据格式为s_b,N,D格式|
+| layout | 属性 | string | N/A | 当前仅支持"jagged"，"jagged"代表Q,K,V数据格式为s_b,N,D格式|
 |seq_offsets| 可选属性 | list[int64] | N/A | 表示每个序列的偏移，其中第一个序列的偏移一定是0，此选项只对jagged格式下生效，normal格式不生效。
 |output | 输出 | float32/float16/bfloat16 | jagged |
 
@@ -59,12 +58,12 @@ Atlas 推理系列产品
 | K | 输入| float16 | normal |
 | V | 输入| float16 | normal |
 | timestamp_bias | 可选输入 | float32/float16/bfloat16 | B,S,S | S为模型最大的序列长度max_seq_len，不使用时传入None |
-| position_bias | 可选输入 | float32/float16/bfloat16 | 1,S,S | S为模型最大的序列长度max_seq_len，不使用时传入None |
+| position_bias | 可选输入 | float32/float16/bfloat16 | B,S,S | S为模型最大的序列长度max_seq_len，不使用时传入None |
 | mask | 输入 |float16 | B,1,S,S | 掩码，当前仅支持normal格式，S为模型最大的序列长度max_seq_len |
 | maskType | 属性 | int | N/A | 0:使用内置倒三角mask 不需要传递mask输入 1:使用内置上三角mask 不需要传递mask输入当前暂不支持 2:不使用mask 3:使用用户自定义mask 此时mask输入需要用户定义并传入，目前仅支持自定义mask|
 | max_seq_len | 属性 | int | N/A | 表示模型最大序列长度 |
 | siluScale | 属性 | float | N/A | 支持用户传入自定义siluScale，不传入时默认值为1/S， S为等长的序列长度|
-| layout | 可选属性 | string | N/A |  当前仅支持normal，Q,K,V数据格式为B,S,N,D格式
+| layout | 可选属性 | string | N/A |  当前仅支持"normal"，Q,K,V数据格式为B,S,N,D格式
 | output | 输出 | float16 | normal| 输出与输入Q,K,V格式及数据类型保持一致
 
 ## 算子约束

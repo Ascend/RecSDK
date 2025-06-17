@@ -49,7 +49,7 @@ def generate_tensor(batch_size, max_seq_len, num_heads, attention_dim, data_type
     k = torch.rand(total_num).reshape(batch_size, max_seq_len, num_heads, attention_dim)
     v = torch.rand(total_num).reshape(batch_size, max_seq_len, num_heads, attention_dim)
     ts_bias = torch.rand(batch_size, max_seq_len, max_seq_len)
-    pos_bias = torch.rand(1, max_seq_len, max_seq_len)
+    pos_bias = torch.rand(batch_size, max_seq_len, max_seq_len)
 
     invalid_attn_mask = torch.randint(0, 2, (max_seq_len, max_seq_len))
     invalid_attn_mask = torch.tril(invalid_attn_mask)
@@ -98,8 +98,8 @@ class TestHstuNormalFuxiDemo:
             ts_out = ts_out.reshape(batch, seq_len, -1)
 
             pos_bias = pos_bias.to(torch.float32)
-            pos_bias = pos_bias.unsqueeze(0)
-            pos_bias = pos_bias.repeat(batch, num_head, 1, 1)
+            pos_bias = pos_bias.unsqueeze(1)
+            pos_bias = pos_bias.repeat(1, num_head, 1, 1)
             pos_tmp = pos_bias * mask
             pos_tmp = pos_tmp.to(data_type)
             pos_out = torch.matmul(pos_tmp, v)

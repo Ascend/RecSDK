@@ -157,8 +157,7 @@ public:
             tpMaskArgs.kSeqId * this->blockHeight;
 
         int64_t timestampOffset = maskOffset;
-        int64_t positionOffset = tpMaskArgs.qSeqId * this->blockHeight * this->seqLen + \
-            tpMaskArgs.kSeqId * this->blockHeight;
+        int64_t positionOffset = maskOffset;
 
         this->DoBiasMaskImpl(maskOffset, timestampOffset, positionOffset);
     }
