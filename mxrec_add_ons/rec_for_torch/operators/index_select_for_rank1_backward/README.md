@@ -1,4 +1,5 @@
 # index_select_for_rank1_backward优化器融合算子及样例说明
+本算子仅支持NPU调用
 
 ## index_select_for_rank1_backward融合算子文件结构
 

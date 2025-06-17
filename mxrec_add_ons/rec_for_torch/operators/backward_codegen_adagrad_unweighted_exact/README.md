@@ -1,4 +1,5 @@
 # backward_codegen_adagrad_unweighted_exact算子及样例说明
+本算子仅支持NPU调用
 
 ## backward_codegen_adagrad_unweighted_exact算子文件结构
 

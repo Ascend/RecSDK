@@ -1,4 +1,5 @@
 # dense_to_jagged算子及样例说明
+本算子仅支持NPU调用
 
 ## dense_to_jagged算子文件结构
 

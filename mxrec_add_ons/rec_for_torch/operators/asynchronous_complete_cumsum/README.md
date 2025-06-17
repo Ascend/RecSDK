@@ -1,4 +1,5 @@
 # AsynchronousCompleteCumsum算子及样例说明
+本算子仅支持NPU调用
 
 ## AsynchronousCompleteCumsum算子文件结构
 

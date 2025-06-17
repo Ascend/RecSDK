@@ -1,4 +1,5 @@
 # hstu_dense_forward算子及样例说明
+本算子仅支持NPU调用
 
 ## hstu_dense_forward算子文件结构
 

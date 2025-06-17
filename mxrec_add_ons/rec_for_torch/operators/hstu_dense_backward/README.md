@@ -1,4 +1,5 @@
 # hstu_dense_backward算子及样例说明
+本算子仅支持NPU调用
 
 ## hstu_dense_backward算子文件结构
 

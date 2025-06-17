@@ -1,4 +1,5 @@
 # gather_for_rank1算子及样例说明
+本算子仅支持NPU调用
 
 ## gather_for_rank1算子文件结构
 

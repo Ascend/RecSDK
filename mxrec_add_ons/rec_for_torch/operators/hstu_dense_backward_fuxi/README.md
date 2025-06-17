@@ -1,4 +1,5 @@
 # HstuDenseBackward
+本算子仅支持NPU调用
 
 ## 支持产品型号
 
