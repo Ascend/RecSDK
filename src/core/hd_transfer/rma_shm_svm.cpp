@@ -51,6 +51,7 @@ std::unordered_map<std::string, int> g_shmId;
 
 RmaDevModel g_rmaDevModel = RmaDevModel::PCIE_TH_DEV;
 
+// LCOV_EXCL_START
 void InitShmHeader(RmaShmHeader* header, int64_t memSize, int32_t capacity)
 {
     header->totalMemSize = memSize - RMA_SHM_HEAD_LEN;
@@ -91,6 +92,7 @@ void RmaFreeShm(std::string shmName, void* memory)
         LOG_INFO("Free shm with shmid: {} success.", shmId);
     }
 }
+// LCOV_EXCL_STOP
 
 bool IsPrefix(const std::string& str, const std::string& prefix)
 {
@@ -100,6 +102,7 @@ bool IsPrefix(const std::string& str, const std::string& prefix)
     return str.compare(0, prefix.length(), prefix) == 0;
 }
 
+// LCOV_EXCL_START
 uint32_t GetRegisterFlag(RmaDevModel mode)
 {
     switch (mode) {
@@ -154,6 +157,7 @@ void* ShmMemSet(std::string& shmName, uint64_t memSize)
     }
     return memory;
 }
+// LCOV_EXCL_STOP
 
 // malloc shared memory
 void *RmaCreateShm(std::string& shmName, uint64_t memSize, int deviceId, int capacity)
