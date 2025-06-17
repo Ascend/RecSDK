@@ -309,3 +309,12 @@ TEST_F(EmbeddingMgmtTest, TestKey2OffsetForDpWhenUseEvalChannel)
 
     EXPECT_EQ(EmbeddingMgmt::Instance()->GetCapacity(tableName), testNum);
 }
+
+TEST_F(EmbeddingMgmtTest, SyncLatestEmbedding)
+{
+    int pythonBatchId = 1;
+    vector<EmbInfo> embInfos = {embInfo_};
+    EmbeddingMgmt::Instance()->Init(rankInfo_, embInfos, 0);
+
+    EmbeddingMgmt::Instance()->SyncLatestEmbedding(pythonBatchId);
+}

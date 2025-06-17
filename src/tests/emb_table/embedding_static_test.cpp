@@ -16,6 +16,7 @@ See the License for the specific language governing permissions and
 #include <random>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <emock/emock.hpp>
 #include <acl/acl.h>
 #include <acl/acl_rt.h>
 #include <limits>
@@ -52,7 +53,9 @@ protected:
 
     void SetUp() {
     }
-    void TearDown() {
+    void TearDown()
+    {
+        GlobalMockObject::reset();
     }
 
     static void SetupTestCase()
@@ -377,4 +380,46 @@ TEST_F(EmbeddingStaticTest, TestBackUpAndRecoverTrainStatus)
     EXPECT_EQ(table->keyOffsetMapBackUp.size(), testNum);
     table->RecoverTrainStatus();
     EXPECT_EQ(table->keyOffsetMapBackUp.size(), 0);
+}
+
+TEST_F(EmbeddingStaticTest, SaveKeyWritingFaild_Error)
+{
+    const string savePath = "./test/path";
+    const int pythonBatchId = 1;
+    bool saveDelta = false;
+    map<emb_key_t, KeyInfo> keyInfoMap;
+    keyInfoMap[0] = KeyInfo();
+    absl::flat_hash_map<emb_key_t, int64_t> keyMap;
+    keyMap[1] = 0;
+    shared_ptr<EmbeddingStatic> table = std::make_shared<EmbeddingStatic>(embInfo_, rankInfo_, 0);
+    table->keyOffsetMap = keyMap;
+    auto localFileSys = make_unique<LocalFileSystem>();
+    table->fileSystemPtr_ = move(localFileSys);
+
+    EMOCK(&EmbeddingTable::MakeDir).stubs();
+    EMOCK(&EmbeddingTable::CheckFileSystemPtr).stubs();
+    using WriteCharFunc = ssize_t (LocalFileSystem::*)(const string&, const char*, size_t);
+    EMOCK(static_cast<WriteCharFunc>(&LocalFileSystem::Write)).stubs().will(returnValue(-1));
+    EXPECT_THROW(table->Save(savePath, pythonBatchId, saveDelta, keyInfoMap), std::runtime_error);
+}
+
+TEST_F(EmbeddingStaticTest, SaveKeyBytesFaild_Error)
+{
+    const string savePath = "./test/path";
+    const int pythonBatchId = 1;
+    bool saveDelta = false;
+    map<emb_key_t, KeyInfo> keyInfoMap;
+    keyInfoMap[0] = KeyInfo();
+    absl::flat_hash_map<emb_key_t, int64_t> keyMap;
+    keyMap[1] = 0;
+    shared_ptr<EmbeddingStatic> table = std::make_shared<EmbeddingStatic>(embInfo_, rankInfo_, 0);
+    table->keyOffsetMap = keyMap;
+    auto localFileSys = make_unique<LocalFileSystem>();
+    table->fileSystemPtr_ = move(localFileSys);
+
+    EMOCK(&EmbeddingTable::MakeDir).stubs();
+    EMOCK(&EmbeddingTable::CheckFileSystemPtr).stubs();
+    using WriteCharFunc = ssize_t (LocalFileSystem::*)(const string&, const char*, size_t);
+    EMOCK(static_cast<WriteCharFunc>(&LocalFileSystem::Write)).stubs().will(returnValue(0));
+    EXPECT_THROW(table->Save(savePath, pythonBatchId, saveDelta, keyInfoMap), std::runtime_error);
 }

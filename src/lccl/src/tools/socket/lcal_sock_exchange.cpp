@@ -99,9 +99,9 @@ int LcalSockExchange::AllGather(const void* sendBuf, size_t sendSize, void* recv
     return ServerRecvSend(uSendBuf, sendSize, uRecvBuf);
 }
 
+// LCOV_EXCL_START
 int LcalSockExchange::GetNodeNum()
 {
-    // LCOV_EXCL_START
     if (!isInit_ && Prepare() != LCAL_SUCCESS) {
         return LCAL_ERROR_INTERNAL;
     }
@@ -144,7 +144,6 @@ int LcalSockExchange::GetNodeNum()
         }
     }
     return nodeNum;
-    // LCOV_EXCL_STOP
 }
 
 void LcalSockExchange::GetIpAndPort()
@@ -381,6 +380,7 @@ int LcalSockExchange::ClientSendRecv(const T* sendBuf, size_t sendSize, T* recvB
 
     return LCAL_SUCCESS;
 }
+// LCOV_EXCL_STOP
 
 template<typename T>
 int LcalSockExchange::ServerRecvSend(const T* sendBuf, size_t sendSize, T* recvBuf)

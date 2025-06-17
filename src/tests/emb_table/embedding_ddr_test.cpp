@@ -16,6 +16,7 @@ See the License for the specific language governing permissions and
 #include <random>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <emock/emock.hpp>
 #include <acl/acl.h>
 #include <acl/acl_rt.h>
 #include <limits>
@@ -52,7 +53,9 @@ protected:
 
     void SetUp() {
     }
-    void TearDown() {
+    void TearDown()
+    {
+        GlobalMockObject::reset();
     }
 
     static void SetupTestCase()
@@ -405,4 +408,76 @@ TEST_F(EmbeddingDDRTest, TestRecoverTrainStatusShouldThrowError)
     shared_ptr<EmbeddingDDR> table = std::make_shared<EmbeddingDDR>(embInfo_, rankInfo_, 0);
     factory->CreateEmbCacheManager(table->embCache);
     EXPECT_THROW(table->RecoverTrainStatus(), std::runtime_error);
+}
+
+TEST_F(EmbeddingDDRTest, LoadEmbedding_Error)
+{
+    const string savePath = "./test/path";
+    shared_ptr<EmbeddingDDR> table = std::make_shared<EmbeddingDDR>(embInfo_, rankInfo_, 0);
+    vector<vector<float>> embeddings;
+    auto fileSys = make_unique<LocalFileSystem>();
+    table->fileSystemPtr_ = move(fileSys);
+    
+    EMOCK(&EmbeddingTable::CheckFileSystemPtr).stubs();
+    using ReadCharFunc = ssize_t (LocalFileSystem::*)(const string&, vector<vector<float>>&,
+        int64_t, vector<int64_t>, const size_t&);
+    EMOCK(static_cast<ReadCharFunc>(&LocalFileSystem::Read)).stubs().will(returnValue(-1));
+    EXPECT_THROW(table->LoadEmbedding(savePath, embeddings), std::runtime_error);
+}
+
+TEST_F(EmbeddingDDRTest, LoadOptimizerSlot_Error)
+{
+    const string savePath = "./test/path";
+    shared_ptr<EmbeddingDDR> table = std::make_shared<EmbeddingDDR>(embInfo_, rankInfo_, 0);
+    vector<vector<float>> optimizerSlots;
+    OptimizerInfo info;
+    info.optimName = "Adam";
+    info.optimParams = {"momentum", "velocity"};
+    table->SetOptimizerInfo(info);
+    auto fileSys = make_unique<LocalFileSystem>();
+    table->fileSystemPtr_ = move(fileSys);
+    
+    EMOCK(&EmbeddingTable::CheckFileSystemPtr).stubs();
+    using ReadCharFunc = ssize_t (LocalFileSystem::*)(const string&, vector<vector<float>>&,
+        int64_t, vector<int64_t>, const size_t&);
+    EMOCK(static_cast<ReadCharFunc>(&LocalFileSystem::Read)).stubs().will(returnValue(-1));
+    EXPECT_THROW(table->LoadOptimizerSlot(savePath, optimizerSlots), std::runtime_error);
+}
+
+TEST_F(EmbeddingDDRTest, SaveKey_Error)
+{
+    const string savePath = "./test/path";
+    vector<emb_cache_key_t> testKeys = {4, 8, 12, 16, 20};
+    shared_ptr<EmbeddingDDR> table = std::make_shared<EmbeddingDDR>(embInfo_, rankInfo_, 0);
+    auto fileSys = make_unique<LocalFileSystem>();
+    table->fileSystemPtr_ = move(fileSys);
+
+    EMOCK(&EmbeddingTable::MakeDir).stubs();
+    EMOCK(&EmbeddingTable::CheckFileSystemPtr).stubs();
+    using WriteCharFunc = ssize_t (LocalFileSystem::*)(const string&, const char*, size_t);
+    EMOCK(static_cast<WriteCharFunc>(&LocalFileSystem::Write)).stubs().will(returnValue(-1));
+    EXPECT_THROW(table->SaveKey(savePath, testKeys), std::runtime_error);
+}
+
+TEST_F(EmbeddingDDRTest, SaveEmbedding_Error)
+{
+    const string savePath = "./test/path";
+    const size_t keySize = 5;
+    const size_t embSize = 10;
+    shared_ptr<EmbeddingDDR> table = std::make_shared<EmbeddingDDR>(embInfo_, rankInfo_, 0);
+    table->embSize_ = embSize;
+    vector<vector<float>> testEmbeddings(keySize, vector<float>(table->embSize_));
+    for (size_t i = 0; i < keySize; ++i) {
+        for (size_t j = 0; j < table->embSize_; ++j) {
+            testEmbeddings[i][j] = float(i) ;
+        }
+    }
+    auto fileSys = make_unique<LocalFileSystem>();
+    table->fileSystemPtr_ = move(fileSys);
+
+    EMOCK(&EmbeddingTable::MakeDir).stubs();
+    EMOCK(&EmbeddingTable::CheckFileSystemPtr).stubs();
+    using WriteCharFunc = ssize_t (LocalFileSystem::*)(const string&, vector<vector<float>>&, size_t);
+    EMOCK(static_cast<WriteCharFunc>(&LocalFileSystem::Write)).stubs().will(returnValue(-1));
+    EXPECT_THROW(table->SaveEmbedding(savePath, testEmbeddings), std::runtime_error);
 }

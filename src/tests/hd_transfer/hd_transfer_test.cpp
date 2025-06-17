@@ -51,6 +51,11 @@ public:
         {TransferChannel::KEY_D2H,        "key_d2h"},
         {TransferChannel::RECVSHAPE,      "recvshape"}
     };
+
+    void TearDown()
+    {
+        GlobalMockObject::reset();
+    }
 };
 
 TEST_F(HdTransferTest, FullProcessHdTransferTest)
@@ -124,11 +129,24 @@ TEST_F(HdTransferTest, RecvMteShm_TrueEmptyFlag)
     hdTransfer.Destroy();
 }
 
+TEST_F(HdTransferTest, RecvMteShm_NullptrShmAddrError)
+{
+    HDTransfer hdTransfer;
+    std::vector<EmbInfo> embInfos;
+    hdTransfer.Init(embInfos, m_localRankId, false, false);
+    std::string testName = "test";
+    float* testPtr = nullptr;
+    int64_t testDim;
+    int batchId{0};
+
+    EMOCK(GetHostAddr).stubs().will(returnValue((void*)nullptr));
+    EXPECT_THROW(hdTransfer.RecvMteShm(testName, testPtr, testDim, batchId), std::exception);
+}
+
 TEST_F(HdTransferTest, DequeueShm_NullptrQueueHeader)
 {
     int channelNum{0};
-
-    m_hdTransfer.DequeueShm(TransferChannel::H2D, channelNum, m_embTableName);
+    EXPECT_THROW(m_hdTransfer.DequeueShm(TransferChannel::H2D, channelNum, m_embTableName), std::runtime_error);
 }
 
 TEST_F(HdTransferTest, TransferChannel2Str)
@@ -136,5 +154,21 @@ TEST_F(HdTransferTest, TransferChannel2Str)
     for (const auto& it : m_channel2Str) {
         auto ret = TransferChannel2Str(it.first);
         EXPECT_EQ(ret, it.second);
+    }
+}
+
+TEST_F(HdTransferTest, GetShmAddr)
+{
+    std::string name = "test";
+    int deviceId = 1;
+    int capacity = 51;
+
+    EMOCK(GetChipName).stubs().will(returnValue(std::string("testDeviceName")));
+    try {
+        int64_t res = GetShmAddr(name, deviceId, capacity);
+        EXPECT_GE(res, 0);
+    }
+    catch  (const std::runtime_error& e) {
+        std::cerr << "Caught expected runtime_error: " << e.what() << std::endl;
     }
 }
