@@ -50,10 +50,11 @@ protected:
         rankInfo_ = RankInfo(rankId, 0, 0, 1, maxStep);
         rankInfo_.useDynamicExpansion = true;
         savePath << "test_dynamic/device" << rankInfo_.rankId;
-        table = std::make_shared<EmbeddingDynamic>(embInfo_, rankInfo_, 0);
     }
 
-    void SetUp() {
+    void SetUp()
+    {
+        EMOCK(&EmbeddingDynamic::MallocEmbeddingBlock).stubs();
     }
     void TearDown()
     {
@@ -77,12 +78,12 @@ protected:
     EmbInfo embInfo_;
     RankInfo rankInfo_;
     stringstream savePath;
-    shared_ptr<EmbeddingDynamic> table;
 };
 
 TEST_F(EmbeddingDynamicTest, Key2Offset)
 {
     rankInfo_.useDynamicExpansion = false;
+    shared_ptr<EmbeddingDynamic> table = std::make_shared<EmbeddingDynamic>(embInfo_, rankInfo_, 0);
     vector<emb_key_t> testKeys = {-1, 1, 2, 3};
     EMOCK(&EmbeddingDynamic::GetEmptyEmbeddingAddress).stubs().will(returnValue(1));
     EMOCK(&EmbeddingTable::RecordPaddingKeysOffset).stubs();
@@ -92,18 +93,21 @@ TEST_F(EmbeddingDynamicTest, Key2Offset)
 TEST_F(EmbeddingDynamicTest, Key2Offset_EmptyKeys)
 {
     rankInfo_.useDynamicExpansion = false;
+    shared_ptr<EmbeddingDynamic> table = std::make_shared<EmbeddingDynamic>(embInfo_, rankInfo_, 0);
     vector<emb_key_t> testKeys = {};
     EXPECT_NO_THROW(table->Key2Offset(testKeys, EVAL_CHANNEL_ID));
 }
 
 TEST_F(EmbeddingDynamicTest, Key2OffsetForDp)
 {
+    shared_ptr<EmbeddingDynamic> table = std::make_shared<EmbeddingDynamic>(embInfo_, rankInfo_, 0);
     vector<emb_key_t> testKeys = {-1, 1, 2, 3};
     EXPECT_NO_THROW(table->Key2OffsetForDp(testKeys, EVAL_CHANNEL_ID));
 }
 
 TEST_F(EmbeddingDynamicTest, Key2OffsetForDp_Error)
 {
+    shared_ptr<EmbeddingDynamic> table = std::make_shared<EmbeddingDynamic>(embInfo_, rankInfo_, 0);
     vector<emb_key_t> testKeys = {-1, 1, 2, 3};
     EXPECT_THROW(table->Key2OffsetForDp(testKeys, TRAIN_CHANNEL_ID), std::runtime_error);
 }
@@ -117,6 +121,7 @@ TEST_F(EmbeddingDynamicTest, SaveKey)
     keyInfoMap[1] = KeyInfo();
     absl::flat_hash_map<emb_key_t, int64_t> keyMap;
     keyMap[1] = 0;
+    shared_ptr<EmbeddingDynamic> table = std::make_shared<EmbeddingDynamic>(embInfo_, rankInfo_, 0);
     table->keyOffsetMap = keyMap;
     auto localFileSys = make_unique<LocalFileSystem>();
     table->fileSystemPtr_ = move(localFileSys);
@@ -137,6 +142,7 @@ TEST_F(EmbeddingDynamicTest, SaveKey_FailedError)
     keyInfoMap[1] = KeyInfo();
     absl::flat_hash_map<emb_key_t, int64_t> keyMap;
     keyMap[1] = 0;
+    shared_ptr<EmbeddingDynamic> table = std::make_shared<EmbeddingDynamic>(embInfo_, rankInfo_, 0);
     table->keyOffsetMap = keyMap;
     auto localFileSys = make_unique<LocalFileSystem>();
     table->fileSystemPtr_ = move(localFileSys);
@@ -157,6 +163,7 @@ TEST_F(EmbeddingDynamicTest, SaveKey_Error)
     keyInfoMap[0] = KeyInfo();
     absl::flat_hash_map<emb_key_t, int64_t> keyMap;
     keyMap[1] = 0;
+    shared_ptr<EmbeddingDynamic> table = std::make_shared<EmbeddingDynamic>(embInfo_, rankInfo_, 0);
     table->keyOffsetMap = keyMap;
 
     EMOCK(&EmbeddingTable::MakeDir).stubs();
@@ -172,6 +179,7 @@ TEST_F(EmbeddingDynamicTest, SaveKey_NotSaveDelta)
     keyInfoMap[0] = KeyInfo();
     absl::flat_hash_map<emb_key_t, int64_t> keyMap;
     keyMap[1] = 0;
+    shared_ptr<EmbeddingDynamic> table = std::make_shared<EmbeddingDynamic>(embInfo_, rankInfo_, 0);
     table->keyOffsetMap = keyMap;
 
     EMOCK(&EmbeddingTable::MakeDir).stubs();
@@ -185,6 +193,7 @@ TEST_F(EmbeddingDynamicTest, SaveEmbAndOptim_SaveEmbData)
     bool saveDelta = false;
     map<emb_key_t, KeyInfo> keyInfoMap;
     keyInfoMap[1] = KeyInfo();
+    shared_ptr<EmbeddingDynamic> table = std::make_shared<EmbeddingDynamic>(embInfo_, rankInfo_, 0);
     auto fileSys = make_unique<LocalFileSystem>();
     table->fileSystemPtr_ = move(fileSys);
 
@@ -202,7 +211,8 @@ TEST_F(EmbeddingDynamicTest, SaveEmbAndOptim_SaveOptimData)
     bool saveDelta = false;
     map<emb_key_t, KeyInfo> keyInfoMap;
     keyInfoMap[1] = KeyInfo();
-    
+    shared_ptr<EmbeddingDynamic> table = std::make_shared<EmbeddingDynamic>(embInfo_, rankInfo_, 0);
+
     EMOCK(&EmbeddingDynamic::SaveKey).stubs();
     EMOCK(&EmbeddingDynamic::SaveEmbData).stubs();
     EMOCK(&EmbeddingTable::CheckFileSystemPtr).stubs();
@@ -217,6 +227,7 @@ TEST_F(EmbeddingDynamicTest, LoadKey)
     auto& trainKeySet = trainKeySetActual;
     vector<string> warmStartTablesActual;
     const auto& warmStartTables = warmStartTablesActual;
+    shared_ptr<EmbeddingDynamic> table = std::make_shared<EmbeddingDynamic>(embInfo_, rankInfo_, 0);
     auto fileSys = make_unique<LocalFileSystem>();
     table->fileSystemPtr_ = move(fileSys);
 
@@ -234,6 +245,7 @@ TEST_F(EmbeddingDynamicTest, LoadKey_ReadError)
     auto& trainKeySet = trainKeySetActual;
     vector<string> warmStartTablesActual;
     const auto& warmStartTables = warmStartTablesActual;
+    shared_ptr<EmbeddingDynamic> table = std::make_shared<EmbeddingDynamic>(embInfo_, rankInfo_, 0);
     auto fileSys = make_unique<LocalFileSystem>();
     table->fileSystemPtr_ = move(fileSys);
 
@@ -249,6 +261,7 @@ TEST_F(EmbeddingDynamicTest, LoadEmbAndOptim)
     auto& trainKeySet = trainKeySetActual;
     vector<string> warmStartTablesActual;
     const auto& warmStartTables = warmStartTablesActual;
+    shared_ptr<EmbeddingDynamic> table = std::make_shared<EmbeddingDynamic>(embInfo_, rankInfo_, 0);
     auto fileSys = make_unique<LocalFileSystem>();
     table->fileSystemPtr_ = move(fileSys);
 
