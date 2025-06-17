@@ -46,31 +46,31 @@ ut_cover()
     find ${CURRENT_PATH}/.. -name "*.gcda" | xargs  -i mv {} ${GENERATE_DIR}
     find ${CURRENT_PATH}/.. -name "*.gcno" | xargs  -i mv {} ${GENERATE_DIR}
 
-    lcov --d ${GENERATE_DIR} --c --output-file ${GENERATE_DIR}/coverage.info --rc lcov_branch_coverage=1
+    lcov --d ${GENERATE_DIR} --c --output-file ${GENERATE_DIR}/coverage.info --rc lcov_branch_coverage=1 --filter branch
     if [ 0 != $? ];then
       echo "Failed to generate all coverage info"
       exit 1
     fi
 
-    lcov -r ${GENERATE_DIR}/coverage.info "*7.3.0*" -o ${GENERATE_DIR}/coverage.info --rc lcov_branch_coverage=1
+    lcov -r ${GENERATE_DIR}/coverage.info "*7.3.0*" -o ${GENERATE_DIR}/coverage.info --rc lcov_branch_coverage=1 --filter branch
     if [ 0 != $? ];then
       echo "Failed to remove *7.3.0* from coverage info"
       exit 1
     fi
 
-    lcov -r ${GENERATE_DIR}/coverage.info "*tests/ut*" -o ${GENERATE_DIR}/coverage.info --rc lcov_branch_coverage=1
+    lcov -r ${GENERATE_DIR}/coverage.info "*tests/ut*" -o ${GENERATE_DIR}/coverage.info --rc lcov_branch_coverage=1 --filter branch
     if [ 0 != $? ];then
       echo "Failed to remove *tests/ut* from coverage info"
       exit 1
     fi
 
-    lcov -r ${GENERATE_DIR}/coverage.info "*install*" -o ${GENERATE_DIR}/coverage.info --rc lcov_branch_coverage=1
+    lcov -r ${GENERATE_DIR}/coverage.info "*install*" -o ${GENERATE_DIR}/coverage.info --rc lcov_branch_coverage=1 --filter branch
     if [ 0 != $? ];then
       echo "Failed to remove *install* from coverage info"
       exit 1
     fi
 
-    genhtml -o ${GENERATE_DIR}/result ${GENERATE_DIR}/coverage.info --show-details --legend --rc lcov_branch_coverage=1
+    genhtml -o ${GENERATE_DIR}/result ${GENERATE_DIR}/coverage.info --show-details --legend --rc lcov_branch_coverage=1 --filter branch
     if [ 0 != $? ];then
       echo "Failed to generate all coverage info with html format"
       exit 1
