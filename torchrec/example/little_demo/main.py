@@ -1,6 +1,7 @@
 # coding: UTF-8
-# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
-#
+# Copyright 2025. Huawei Technologies Co.,Ltd.
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -61,6 +62,9 @@ def get_distribute_env():
 def invoke_main():
     rank, world_size = get_distribute_env()
     device = torch.device(f"npu")
+    os.environ["MASTER_ADDR"] = "127.0.0.1"
+    os.environ["MASTER_PORT"] = "6000"
+    os.environ["GLOO_SOCKET_IFNAME"] = "lo"
     dist.init_process_group(backend="hccl")
     host_gp = dist.new_group(backend="gloo")
     host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
