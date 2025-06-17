@@ -38,7 +38,6 @@ docker run \
 -u root \
 -it \
 --name ${container_name} \
---net=host \
 --shm-size="300g" \
 -v /etc/localtime:/etc/localtime \
 -e ASCEND_VISIBLE_DEVICES=0-7 \
@@ -63,5 +62,3 @@ sudo su
 
 ## 安装RecSDK相关的包
 参考RecSDK/README_TORCH.md进行源码的编译和安装
-
-
