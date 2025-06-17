@@ -31,7 +31,6 @@ git apply dcnv2_recsdk_torch.patch
 在dlrm/torchrec_dlrm下运行如下脚本启动训练任务。`$insert_your_path_here`为数据集路径。
 
 ```shell
-export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7  # 指定哪些Device对当前进程可见
 export PREPROCESSED_DATASET=$insert_your_path_here
 export TOTAL_TRAINING_SAMPLES=4195197692 ;
 export GLOBAL_BATCH_SIZE=16384;
