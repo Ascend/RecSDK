@@ -1,4 +1,5 @@
 # split_embedding_codegen_forward_unweighted算子及样例说明
+本算子仅支持NPU调用
 
 ## split_embedding_codegen_forward_unweighted算子文件结构
 

@@ -1,4 +1,5 @@
 # permute2d_sparse_data算子及样例说明
+本算子仅支持NPU调用
 
 ## permute2d_sparse_data算子文件结构
 

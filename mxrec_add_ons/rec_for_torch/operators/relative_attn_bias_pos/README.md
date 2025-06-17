@@ -1,4 +1,5 @@
 # relative_attn_bias_pos优化器融合算子及样例说明
+本算子仅支持NPU调用
 
 ## relative_attn_bias_pos融合算子文件结构
 
