@@ -1,0 +1,1 @@
+torchx run -s local_cwd dist.ddp -j 2 --script demo.py
