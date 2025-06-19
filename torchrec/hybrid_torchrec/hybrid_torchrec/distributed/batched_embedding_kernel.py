@@ -201,6 +201,13 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
                     self.iter.item(),
                 ),
             )
+        elif self.optimizer == OptimType.EXACT_SGD:
+            return self._report_io_size_count(
+                "fwd_output",
+                invokers.lookup_sgd.invoke(
+                    common_args, self.optimizer_args
+                ),
+            )
         else:
             return NotImplemented
 

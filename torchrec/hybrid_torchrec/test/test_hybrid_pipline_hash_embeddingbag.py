@@ -19,7 +19,7 @@ import torch.multiprocessing as mp
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
-from torch.optim import Adam, Adagrad
+from torch.optim import Adam, Adagrad, SGD
 
 from hybrid_torchrec import HashEmbeddingBagCollection, HashEmbeddingBagConfig
 from hybrid_torchrec.distributed.sharding_plan import get_default_hybrid_sharders
@@ -44,6 +44,7 @@ torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 OPTIMIZER_PARAM = {
     Adam: dict(lr=0.02),
     Adagrad: dict(lr=0.02, eps=1.0e-8),
+    SGD: dict(lr=0.02),
 }
 
 WORLD_SIZE = 2
@@ -239,7 +240,7 @@ class TestModel:
 @pytest.mark.parametrize("sharding_type", ["row_wise"])
 @pytest.mark.parametrize("lookup_len", [1024])
 @pytest.mark.parametrize("device", ["npu"])
-@pytest.mark.parametrize("optim", [Adagrad])
+@pytest.mark.parametrize("optim", [Adagrad, SGD])
 def test_hybrid_pipeline_hash_embedding_bag(
     table_num,
     embedding_dims,

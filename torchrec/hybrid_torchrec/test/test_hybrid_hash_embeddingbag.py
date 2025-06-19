@@ -16,7 +16,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 import torch_npu
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.optim import Adam, Adagrad
+from torch.optim import Adam, Adagrad, SGD
 from torch.utils.data import DataLoader
 
 from dataset import RandomRecDataset, Batch
@@ -48,6 +48,7 @@ WORLD_SIZE = 2
 OPTIMIZER_PARAM = {
     Adam: dict(lr=0.02),
     Adagrad: dict(lr=0.02, eps=1.0e-8),
+    SGD: dict(lr=0.02),
 }
 
 
@@ -242,7 +243,7 @@ class TestModel:
 @pytest.mark.parametrize("sharding_type", ["row_wise"])
 @pytest.mark.parametrize("lockup_len", [1024])
 @pytest.mark.parametrize("device", ["npu"])
-@pytest.mark.parametrize("optim", [Adagrad])
+@pytest.mark.parametrize("optim", [Adagrad, SGD])
 def test_hstu_dens_normal(
     table_num,
     embedding_dims,
