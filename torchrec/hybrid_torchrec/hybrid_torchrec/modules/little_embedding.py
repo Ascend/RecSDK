@@ -5,7 +5,7 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
 
@@ -14,16 +14,19 @@ import logging
 import torch
 from torch import nn
 import torch.distributed as dist
-from torchrec import KeyedJaggedTensor
+from torchrec import KeyedJaggedTensor, JaggedTensor
 
 
 class Awaitable:
     def __init__(self, a_function=None, *args):
         if a_function is not None:
-            self.result = executor.submit(a_function, *args)
+            self.future = executor.submit(a_function, *args)
+            self.result = None
 
     def wait(self):
-        return self.result.result()
+        if self.result is None:
+            self.result = self.future.result()
+        return self.result
 
 
 executor = ThreadPoolExecutor(6)
@@ -33,7 +36,7 @@ class PostInpuDistAwaitable(Awaitable):
     pass
 
 
-class LookupAndOutputDist(Awaitable):
+class LookupAndOutputDistAwaitable(Awaitable):
     def __init__(self, post_awaitable, lookup_and_out_dist_function, *args):
         super().__init__()
         self.post_awaitable = post_awaitable
@@ -45,8 +48,10 @@ class LookupAndOutputDist(Awaitable):
         return self.lookup_and_out_dist_function(post_result, *self.args)
 
 
+# 不支持一表多查
 @dataclass
 class EmbeddingConfig:
+    table_name: str
     num_embedding: int = 0
     embedding_dim: int = 0
     optimizer: torch.optim.Optimizer = 0
@@ -61,21 +66,21 @@ class AllGatherEmbedding(torch.autograd.Function):
         ctx.fwd_gp = fwd_pg
         ctx.bwd_pg = bwd_pg
         ctx.embedding = embedding.data
-        result_list = [torch.empty_like(embedding) for i in range(2)]
-        fwd_pg.allgather(result_list, embedding)
+        result_list = [torch.zeros_like(embedding) for i in range(2)]
+        fwd_pg.allgather(result_list, embedding.data).wait()
         return tuple(result_list)
 
     @staticmethod
     def backward(ctx, *grad_output: torch.Tensor):
         grad_output = [g.data for g in grad_output]
-        result = torch.empty_like(grad_output[0])
+        result = torch.zeros_like(grad_output[0])
         if grad_output[0].device != torch.device("cpu"):
-            ctx.bwd_pg.reduce_scatter(result, grad_output_list)
+            ctx.bwd_pg.reduce_scatter(result, grad_output).wait()
         else:
             # 模拟reduce scatter
             rank = ctx.bwd_pg.rank()
             grad_output_concat = torch.concat(grad_output)
-            ctx.bwd_pg.allreduce(grad_output_concat, op=dist.reduce_op.SUM)
+            ctx.bwd_pg.allreduce(grad_output_concat, op=dist.reduce_op.SUM).wait()
             result = grad_output_concat.split(6)[rank]
         return None, None, result
 
@@ -100,61 +105,67 @@ class AllGatherEmbeddings(torch.autograd.Function):
         pass
 
 
-class HashEmbeddingModule(nn.Module):
-    def __init__(self, config=None, pipe_n_batch=6):
+class HashEmbeddingModuleCollection(nn.Module):
+    def __init__(self, configs=List[EmbeddingConfig], pipe_n_batch=6):
         super().__init__()
         self.fwd_pg = dist.new_group(backend="gloo")
         self.bwd_pg = dist.new_group(backend="gloo")
-        self.rank = config.rank
-        self.post_input_dist_module = self.create_post_input_dist()
-        self.lookup_module = self.create_lookup()
+        self.rank = configs[0].rank
+        self.post_input_dist_module_dict: Dict[str, nn.Module] = (
+            self.create_post_input_dist()
+        )
+        self.lookup_module_dict: Dict[str, nn.Module] = self.create_lookups()
 
-    def compute_context(self, fid: List[List[torch.Tensor]]) -> LookupContext:
+    def compute_context(self, fid: dict[JaggedTensor]) -> LookupContext:
         pass
 
-    def convert_to_kjt(self, fid: List[List[torch.Tensor]]) -> KeyedJaggedTensor:
+    def create_post_input_dist(self) -> Dict[str, nn.Module]:
         return
 
-    def create_post_input_dist(self):
+    def create_lookups(self) -> Dict[str, nn.Module]:
         return
 
-    def create_lookup(self):
+    def do_post_input_dist(
+        self, jt: JaggedTensor, feat_name: str, context: LookupContext
+    ):
         return
 
-    def do_post_input_dist(self, kjt: KeyedJaggedTensor, context: LookupContext):
-        return
-
-    def do_lookup_and_post_dist(self, kjt: KeyedJaggedTensor, context: LookupContext):
+    def do_lookup_and_post_dist(
+        self, jt: JaggedTensor, feat_name: str, context: LookupContext
+    ):
         return
 
     # 示例代码
-    def fids2indices(self, fids: List[torch.Tensor]):
+    def fids2indices(self, fids: KeyedJaggedTensor):
         return fids
 
     # 示例代码
-    def lookup(self, fids: List[torch.Tensor]):
+    def lookup(self, fids: JaggedTensor, feat_name: str):
         result = []
         test_num = 10
-        for a_id in fids:
+
+        for a_id in fids.values():
             result.append([a_id / test_num, a_id / test_num])
         return nn.Parameter(torch.Tensor(result), requires_grad=True)
 
-    def post_input_dist(self, input_fid_list_each_rank):
-        fid_need_this_rank_lookup = [
-            input_fid_list[self.rank] for input_fid_list in input_fid_list_each_rank
-        ]
-        fid_need_this_rank_lookup = torch.concat(fid_need_this_rank_lookup)
-        indices = self.fids2indices(fid_need_this_rank_lookup)
+    def post_input_dist(self, jt: JaggedTensor, feat_name: str):
+        indices = self.fids2indices(jt)
         return indices
 
-    def lookup_and_post_dist(self, indices):
-        embedding = self.lookup(indices)
+    def lookup_and_post_dist(self, jt: JaggedTensor, feat_name: str):
+        embedding = self.lookup(jt, feat_name)
         result = AllGatherEmbedding().apply(self.fwd_pg, self.bwd_pg, embedding)
         return result
 
-    def forward(self, input_fids_list: List[torch.Tensor], is_full_pipe=True):
-        post_awaitable = PostInpuDistAwaitable(self.post_input_dist, input_fids_list)
-        lookup_and_outdist_awaitable = LookupAndOutputDist(
-            post_awaitable, self.lookup_and_post_dist
-        )
-        return lookup_and_outdist_awaitable
+    def forward(self, kjt_list_each_rank: List[KeyedJaggedTensor]):
+        jt_dict: Dict[str, JaggedTensor] = kjt_list_each_rank[self.rank].to_dict()
+        awaitable_dict: Dict[str, LookupAndOutputDistAwaitable] = {}
+        for feat_name in jt_dict.keys():
+            post_awaitable = PostInpuDistAwaitable(
+                self.post_input_dist, jt_dict[feat_name], feat_name
+            )
+            lookup_and_outdist_awaitable = LookupAndOutputDistAwaitable(
+                post_awaitable, self.lookup_and_post_dist, feat_name
+            )
+            awaitable_dict[feat_name] = lookup_and_outdist_awaitable
+        return awaitable_dict
