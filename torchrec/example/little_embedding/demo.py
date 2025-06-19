@@ -36,10 +36,20 @@ dist.init_process_group(backend="gloo")
 
 def dataset_getnext():
     # 1.使用List
-    jagged0 = JaggedTensor(values=torch.Tensor([1, 3, 5, 11, 13, 15]).long(), lengths=torch.Tensor([1, 1, 1, 1, 1, 1]).long())
-    jagged1 = JaggedTensor(values=torch.Tensor([1, 3, 5, 11, 13, 15]).long(), lengths=torch.Tensor([1, 1, 1, 1, 1, 1]).long())
-    inpurt_for_rank0 = KeyedJaggedTensor.from_jt_dict({"table0": jagged0, "table1": jagged0})
-    inpurt_for_rank1 = KeyedJaggedTensor.from_jt_dict({"table0": jagged1, "table1": jagged1})
+    jagged0 = JaggedTensor(
+        values=torch.Tensor([1, 3, 5, 11, 13, 15]).long(),
+        lengths=torch.Tensor([1, 1, 1, 1, 1, 1]).long(),
+    )
+    jagged1 = JaggedTensor(
+        values=torch.Tensor([1, 3, 5, 11, 13, 15]).long(),
+        lengths=torch.Tensor([1, 1, 1, 1, 1, 1]).long(),
+    )
+    inpurt_for_rank0 = KeyedJaggedTensor.from_jt_dict(
+        {"table0": jagged0, "table1": jagged0}
+    )
+    inpurt_for_rank1 = KeyedJaggedTensor.from_jt_dict(
+        {"table0": jagged1, "table1": jagged1}
+    )
 
     # embeding表 1-> 0.1, 0.1
     # 2-> 0.2, 0.2
@@ -47,8 +57,12 @@ def dataset_getnext():
     return sparse_fid_list
 
 
-config0 = EmbeddingConfig(table_name="table0", num_embedding=100, embedding_dim=32, rank=rank)
-config1 = EmbeddingConfig(table_name="table1", num_embedding=100, embedding_dim=32, rank=rank)
+config0 = EmbeddingConfig(
+    table_name="table0", num_embedding=100, embedding_dim=32, rank=rank
+)
+config1 = EmbeddingConfig(
+    table_name="table1", num_embedding=100, embedding_dim=32, rank=rank
+)
 embedding = HashEmbeddingModuleCollection(configs=[config0, config1])
 
 
