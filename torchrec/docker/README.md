@@ -35,7 +35,6 @@ docker build -t recsdk_torch_base:v1.0-x86 -f Dockerfile --build-arg http_proxy=
 container_name=$1
 image_name=$2
 docker run \
--u root \
 -it \
 --name ${container_name} \
 --shm-size="300g" \
@@ -43,7 +42,6 @@ docker run \
 -e ASCEND_VISIBLE_DEVICES=0-7 \
 -v /etc/ascend_install.info:/etc/ascend_install.info \
 -v /home:/home \
--v /root/.ssh:/root/.ssh \
 -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
 ${image_name} \
 /bin/bash

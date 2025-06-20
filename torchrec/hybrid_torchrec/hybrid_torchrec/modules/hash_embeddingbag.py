@@ -106,11 +106,11 @@ def check_embedding_config_valid(config: HashEmbeddingBagConfig):
     ):
         raise ValueError(
             f"The embedding dim should be in [{EMBEDDINGS_DIM_ALIGNMENT}, "
-            "{MAX_EMBEDDINGS_DIM}], but is {config.embedding_dim}"
+            f"{MAX_EMBEDDINGS_DIM}], but is {config.embedding_dim}"
         )
     if config.num_embeddings < 1 or config.num_embeddings > MAX_NUM_EMBEDDINGS:
         raise ValueError(
-            f"The embedding dim should be in [1, {MAX_NUM_EMBEDDINGS}], but is {config.num_embeddings}"
+            f"The num_embeddings should be in [1, {MAX_NUM_EMBEDDINGS}], but is {config.num_embeddings}"
         )
     if config.data_type != DataType.FP32:
         raise ValueError(f"The data_type should be FP32, but is {config.data_type}")

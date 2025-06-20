@@ -93,16 +93,16 @@ def invoke_main():
 
     # Shard
     hybrid_sharder = get_default_hybrid_sharders(host_env=host_env)
-    constrans = {
+    constraints = {
         table_name: ParameterConstraints(
-            sharding_types=["table_wise"], compute_kernels=["fused"]
+            sharding_types=["row_wise"], compute_kernels=["fused"]
         )
         for table_name in TABLE_NAMES
     }
 
     planner = EmbeddingShardingPlanner(
         topology=Topology(world_size=world_size, compute_device="npu"),
-        constraints=constrans,
+        constraints=constraints,
     )
 
     plan = planner.collective_plan(test_model, hybrid_sharder, dist.GroupMember.WORLD)

@@ -4,6 +4,9 @@
 模型参考的开源链接为:https://github.com/facebookresearch/dlrm/tree/main/torchrec_dlrm/,  
 克隆源码并固定版本为:Commits on Jun 7 , 2024，提交的SHA-1 hash值（提交ID）：b631a99 
 
+## 前提条件
+需要用户构建容器基础环境，参考RecSDK/torchrec/docker/README.md
+
 ## 数据集下载
 ### 使用官网数据集
 进入[开源模型官网](https://github.com/facebookresearch/dlrm/blob/main/torchrec_dlrm/README.MD)，官网提供两种方式跑通demo：

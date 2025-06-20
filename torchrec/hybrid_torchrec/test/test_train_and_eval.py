@@ -200,7 +200,7 @@ class TestModel:
 @pytest.mark.parametrize("embedding_dims", [[32, 64, 128]])
 @pytest.mark.parametrize("num_embeddings", [[400, 4000, 400]])
 @pytest.mark.parametrize("pool_type", [torchrec.PoolingType.MEAN])
-@pytest.mark.parametrize("sharding_type", ["table_wise"])
+@pytest.mark.parametrize("sharding_type", ["row_wise"])
 @pytest.mark.parametrize("lookup_len", [1024])
 @pytest.mark.parametrize("device", ["npu"])
 def test_pipeline_train_eval(
