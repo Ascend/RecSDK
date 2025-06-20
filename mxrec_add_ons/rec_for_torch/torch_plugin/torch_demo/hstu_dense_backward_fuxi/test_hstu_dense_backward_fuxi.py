@@ -178,8 +178,6 @@ class TestHstuJaggedDemo:
             bpos_grad = gpos_v.sum(dim=1).sum(dim=0, keepdim=True)
             bts_grad = gts_v.sum(dim=1)
 
-
-            # qkb = qk + bias
             qkb = qk
 
         else:
