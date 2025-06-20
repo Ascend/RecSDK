@@ -70,6 +70,9 @@ function compile_ops() {
             if [[ "$dir_name" == "cmake" || "$dir_name" == "common" ]]; then
                 continue
             fi
+            if [[ "$dir_name" == "backward_codegen_adagrad_unweighted_exact"]]; then
+                continue
+            fi
             echo "Entering directory: $dir_name, DIR: $dir"
             cd "$dir_name"
             for item in $support_310p_list; do

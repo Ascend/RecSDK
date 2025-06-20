@@ -66,7 +66,7 @@ at::Tensor split_embedding_codegen_forward_unweighted_npu(const at::Tensor& dev_
 
     int64_t experimental = static_cast<int64_t>(is_experimental);
     EXEC_NPU_CMD(aclnnSplitEmbeddingCodegenForwardUnweighted, dev_weights, uvm_weights,         lxu_cache_weights,
-                 weights_placements, weights_offsets, D_offsets, indices, offsets, lxu_cache_locations, hash_indices, 
+                 weights_placements, weights_offsets, D_offsets, indices, offsets, lxu_cache_locations, hash_indices,
                  unique_inverse, totalD, maxD, pooling_mode, output_dtype, experimental, is_dynamic, output);
     return output;
 }
