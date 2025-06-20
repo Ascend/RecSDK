@@ -135,7 +135,7 @@ def check_embedding_config_valid(config: HashEmbeddingBagConfig):
         raise ValueError(
             f"The config.num_embeddings_post_pruning should be None, but is {config.num_embeddings_post_pruning}"
         )
-    if config.init_fn is not None and not hasattr(config.init_fn, "__call__"):
+    if config.init_fn is not None and not callable(config.init_fn):
         raise ValueError(
             f"The config.init_fn should be callable, but is {config.init_fn}"
         )

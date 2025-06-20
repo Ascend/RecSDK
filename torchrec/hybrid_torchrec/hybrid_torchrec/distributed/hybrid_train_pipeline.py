@@ -173,7 +173,7 @@ def _start_data_dist(
 
 
 class HybridPipelinedForward(PipelinedForward):
-    def __call__(self, *input, **kwargs) -> Awaitable:
+    def __call__(self, *inputs, **kwargs) -> Awaitable:
         self._context: HybridTrainPipelineContext
         if self._name not in self._context.awaitables[TaskType.COPY2NPU.value]:
             raise ValueError(f"{self._name} is not in TaskType.COPY2NPU.value")
