@@ -12,10 +12,18 @@ index 4bb9001..ca58ddb 100644
      )
      return dataloader
 diff --git a/torchrec_dlrm/dlrm_main.py b/torchrec_dlrm/dlrm_main.py
-index a3d98b6..52b287e 100644
+index a3d98b6..e03019d 100644
 --- a/torchrec_dlrm/dlrm_main.py
 +++ b/torchrec_dlrm/dlrm_main.py
-@@ -25,7 +25,7 @@ from torchrec.distributed.model_parallel import (
+@@ -8,6 +8,7 @@ import argparse
+ import itertools
+ import os
+ import sys
++import sysconfig
+ from dataclasses import dataclass, field
+ from enum import Enum
+ from typing import Iterator, List, Optional
+@@ -25,7 +26,7 @@ from torchrec.distributed.model_parallel import (
      DistributedModelParallel,
      get_default_sharders,
  )
@@ -24,7 +32,7 @@ index a3d98b6..52b287e 100644
  from torchrec.distributed.planner.storage_reservations import (
      HeuristicalStorageReservation,
  )
-@@ -36,6 +36,13 @@ from torchrec.optim.keyed import CombinedOptimizer, KeyedOptimizerWrapper
+@@ -36,6 +37,13 @@ from torchrec.optim.keyed import CombinedOptimizer, KeyedOptimizerWrapper
  from torchrec.optim.optimizers import in_backward_optimizer_filter
  from tqdm import tqdm
  
@@ -38,7 +46,15 @@ index a3d98b6..52b287e 100644
  # OSS import
  try:
      # pyre-ignore[21]
-@@ -334,7 +341,7 @@ def _evaluate(
+@@ -62,6 +70,7 @@ except ImportError:
+ 
+ TRAIN_PIPELINE_STAGES = 3  # Number of stages in TrainPipelineSparseDist.
+ 
++torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
+ 
+ class InteractionType(Enum):
+     ORIGINAL = "original"
+@@ -334,7 +343,7 @@ def _evaluate(
  
      iterator = itertools.islice(iter(eval_dataloader), limit_batches)
  
@@ -47,7 +63,7 @@ index a3d98b6..52b287e 100644
  
      is_rank_zero = dist.get_rank() == 0
      if is_rank_zero:
-@@ -472,7 +479,7 @@ def train_val_test(
+@@ -472,7 +481,7 @@ def train_val_test(
          TrainValTestResults.
      """
      results = TrainValTestResults()
@@ -56,7 +72,7 @@ index a3d98b6..52b287e 100644
          model, optimizer, device, execute_all_batches=True
      )
  
-@@ -520,7 +527,8 @@ def main(argv: List[str]) -> None:
+@@ -520,7 +529,8 @@ def main(argv: List[str]) -> None:
          except (ValueError, AttributeError):
              pass
  
@@ -66,7 +82,7 @@ index a3d98b6..52b287e 100644
  
      if args.multi_hot_sizes is not None:
          assert (
-@@ -546,6 +554,10 @@ def main(argv: List[str]) -> None:
+@@ -546,6 +556,10 @@ def main(argv: List[str]) -> None:
          device: torch.device = torch.device(f"cuda:{rank}")
          backend = "nccl"
          torch.cuda.set_device(device)
@@ -77,7 +93,7 @@ index a3d98b6..52b287e 100644
      else:
          device: torch.device = torch.device("cpu")
          backend = "gloo"
-@@ -594,7 +606,7 @@ def main(argv: List[str]) -> None:
+@@ -594,7 +608,7 @@ def main(argv: List[str]) -> None:
  
      if args.interaction_type == InteractionType.ORIGINAL:
          dlrm_model = DLRM(
@@ -86,7 +102,7 @@ index a3d98b6..52b287e 100644
                  tables=eb_configs, device=torch.device("meta")
              ),
              dense_in_features=len(DEFAULT_INT_NAMES),
-@@ -604,7 +616,7 @@ def main(argv: List[str]) -> None:
+@@ -604,7 +618,7 @@ def main(argv: List[str]) -> None:
          )
      elif args.interaction_type == InteractionType.DCN:
          dlrm_model = DLRM_DCN(
@@ -95,7 +111,7 @@ index a3d98b6..52b287e 100644
                  tables=eb_configs, device=torch.device("meta")
              ),
              dense_in_features=len(DEFAULT_INT_NAMES),
-@@ -616,7 +628,7 @@ def main(argv: List[str]) -> None:
+@@ -616,7 +630,7 @@ def main(argv: List[str]) -> None:
          )
      elif args.interaction_type == InteractionType.PROJECTION:
          dlrm_model = DLRM_Projection(
@@ -104,7 +120,7 @@ index a3d98b6..52b287e 100644
                  tables=eb_configs, device=torch.device("meta")
              ),
              dense_in_features=len(DEFAULT_INT_NAMES),
-@@ -631,6 +643,9 @@ def main(argv: List[str]) -> None:
+@@ -631,6 +645,9 @@ def main(argv: List[str]) -> None:
              "Unknown interaction option set. Should be original, dcn, or projection."
          )
  
@@ -114,7 +130,7 @@ index a3d98b6..52b287e 100644
      train_model = DLRMTrain(dlrm_model)
      embedding_optimizer = torch.optim.Adagrad if args.adagrad else torch.optim.SGD
      # This will apply the Adagrad optimizer in the backward pass for the embeddings (sparse_arch). This means that
-@@ -648,23 +663,29 @@ def main(argv: List[str]) -> None:
+@@ -648,23 +665,29 @@ def main(argv: List[str]) -> None:
          train_model.model.sparse_arch.parameters(),
          optimizer_kwargs,
      )
@@ -125,7 +141,7 @@ index a3d98b6..52b287e 100644
 +        )
 +        for feature_idx, feature_name in enumerate(DEFAULT_CAT_NAMES)
 +    }
-+    
++
      planner = EmbeddingShardingPlanner(
          topology=Topology(
              local_world_size=get_local_size(),
