@@ -7,17 +7,31 @@
 
 ## 运行样例算子
 ### 1.安装自定义算子
-- 下载mindxsdk-mxrec-add-ons软件包,在mindxsdk-mxrec-add-ons/mxrec_ops/目录下安装所需执行的算子，
-例如：
+- 下载mindxsdk-mxrec-add-ons软件包,在mindxsdk-mxrec-add-ons/mxrec_ops/目录下安装所需执行的算子。
 
+以下算子支持单算子直调：
 ```bash
     # 按需安装算子
     cd mindxsdk-mxrec-add-ons/mxrec_ops/
     bash mxrec_opp_asynchronous_complete_cumsum.run
+    bash mxrec_opp_dense_to_jagged.run
     bash mxrec_opp_gather_for_rank1.run
+    bash mxrec_opp_hstu_dense_backward.run
+    bash mxrec_opp_hstu_dense_backward_fuxi.run
+    bash mxrec_opp_hstu_dense_forward.run
+    bash mxrec_opp_hstu_dense_forward_fuxi.run
     bash mxrec_opp_index_select_for_rank1_backward.run
     bash mxrec_opp_jagged_to_padded_dense.run
-    bash mxrec_opp_permute2d_sparse_data.run
+    bash mxrec_opp_relative_attn_bias_backward.run
+    bash mxrec_opp_relative_attn_bias_pos.run
+    bash mxrec_opp_relative_attn_bias_time.run
+```
+
+以下算子请通过torchrec接口调用：
+```
+  mxrec_opp_backward_codegen_adagrad_unweighted_exact.run
+  mxrec_opp_permute2d_sparse_data.run
+  mxrec_opp_split_embedding_codegen_forward_unweighted.run
 ```
 
 ### 2.安装算子适配层
