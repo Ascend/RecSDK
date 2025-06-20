@@ -42,6 +42,7 @@ struct Args {
     GM_ADDR indices;
     GM_ADDR offsets;
     GM_ADDR hashIndices;
+    GM_ADDR uniqueInverse;
     GM_ADDR out;
     GM_ADDR tiling;
     GM_ADDR workspace;
@@ -54,6 +55,7 @@ struct ComputeArgs {
     int64_t outOffset;
 };
 
+template <typename wType>
 class SplitEmbeddingCodegenForwardUnweightedKernel {
 public:
     __aicore__ inline SplitEmbeddingCodegenForwardUnweightedKernel(Args args)
@@ -67,6 +69,7 @@ public:
         indices = args.indices;
         offsets = args.offsets;
         hashIndices = args.hashIndices;
+        uniqueInverse = args.uniqueInverse;
         out = args.out;
         workspace = args.workspace;
 
@@ -107,7 +110,7 @@ public:
         blockLen = blockLen / FLOAT_ALIGNMENT * FLOAT_ALIGNMENT;
         
         // Init globalbuffer
-        devWeightsGT.SetGlobalBuffer((__gm__ float*)devWeights, devWeightsDim0);
+        devWeightsGT.SetGlobalBuffer((__gm__ wType*)devWeights, devWeightsDim0);
         if (enableHash) {
             indicesGT.SetGlobalBuffer((__gm__ int64_t*)hashIndices, indicesDim0);
         } else {
@@ -116,6 +119,7 @@ public:
         offsetGT.SetGlobalBuffer((__gm__ int64_t*)offsets, offsetsDim0);
         dOffsetGT.SetGlobalBuffer((__gm__ int32_t*)dOffsets, dOffsetsDim0);
         weightOffsetGT.SetGlobalBuffer((__gm__ int64_t*)weightsOffsets, weightsOffsetsDim0);
+        uniqueInverseGT.SetGlobalBuffer((__gm__ int64_t*)uniqueInverse, indicesDim0);
 
         outGT.SetGlobalBuffer((__gm__ float*)out, outDim0 * outDim1);
 
@@ -168,6 +172,20 @@ public:
             CpGm2Local(inputLt[i * alignMaxD], devWeightsGT[indWeightOffset], embedDim);
         }
         queIndices.FreeTensor(indicesLt);
+        queIn.EnQue(inputLt);
+    }
+
+    __aicore__ inline void CopyInDynamic(int64_t startIndices, int64_t thisLen, int64_t embedDim)
+    {
+        LocalTensor<float> inputLt = queIn.AllocTensor<float>();
+        int64_t lastBlockIdx = -1;
+        // datacopy In
+        for (int64_t i = 0; i < thisLen; ++i) {
+            int64_t idx = uniqueInverseGT.GetValue(startIndices + i);
+            int64_t addr = devWeightsGT.GetValue(idx);
+            dynamicDataGT.SetGlobalBuffer((__gm__ float *)(addr), embedDim);
+            CpGm2Local(inputLt[i * maxD], dynamicDataGT, embedDim);
+        }
         queIn.EnQue(inputLt);
     }
 
@@ -244,7 +262,11 @@ public:
             remain -= thisLen;
 
             // copyIn
-            CopyInNormal(startIndices, thisLen, embedDim, thisWeightOffset);
+            if constexpr(std::is_same<wType, float>::value) {
+                CopyInNormal(startIndices, thisLen, embedDim, thisWeightOffset);
+            } else {
+                CopyInDynamic(startIndices, thisLen, embedDim);
+            }
             // compute
             Pooling(meanLen, thisLen, embedDim);
             // copyout
@@ -263,8 +285,11 @@ public:
                 thisLen = indicesNumOneBlock;
             }
             remain -= thisLen;
-
-            CopyInNormal(startIndices, thisLen, maxD, thisWeightOffset);
+            if constexpr(std::is_same<wType, float>::value) {
+                CopyInNormal(startIndices, thisLen, maxD, thisWeightOffset);
+            } else {
+                CopyInDynamic(startIndices, thisLen, maxD);
+            }
             if (alignMaxD == maxD) {
                 CopyOutEC(thisLen, startIndices);
             } else {
@@ -323,6 +348,7 @@ private:
     GM_ADDR indices;
     GM_ADDR offsets;
     GM_ADDR hashIndices;
+    GM_ADDR uniqueInverse;
     GM_ADDR out;
     GM_ADDR workspace;
 
@@ -360,6 +386,10 @@ private:
     int64_t lenOfThisCore;
     int64_t offsetOfThisCore;
 
+    // dynamic
+    int64_t blockEmbNum;
+    bool isDynamic;
+
     // Tpipe
     TPipe pipe;
     TQue<TPosition::VECIN, 1> queIn;
@@ -367,12 +397,14 @@ private:
     TQue<TPosition::VECIN, 1> queIndices;
     
     // ThisCoreAddr
-    GlobalTensor<float> devWeightsGT;
+    GlobalTensor<wType> devWeightsGT;
     GlobalTensor<float> outGT;
     GlobalTensor<int64_t> indicesGT;
     GlobalTensor<int64_t> offsetGT;
     GlobalTensor<int32_t> dOffsetGT;
     GlobalTensor<int64_t> weightOffsetGT;
+    GlobalTensor<float> dynamicDataGT;
+    GlobalTensor<int64_t> uniqueInverseGT;
 };
 }  // namespace SplitEmbeddingCodegenForwardUnweighted
 #endif
