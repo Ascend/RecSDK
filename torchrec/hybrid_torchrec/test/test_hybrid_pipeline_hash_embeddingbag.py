@@ -244,6 +244,7 @@ class TestModel:
 
 
 params = {
+    "world_size": [WORLD_SIZE],
     "table_num": [2],
     "embedding_dims": [[32, 64, 128]],
     "num_embeddings": [[400, 4000, 400]],
