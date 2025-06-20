@@ -119,8 +119,7 @@ def pad_vbe_kjt_lengths(features: KeyedJaggedTensor) -> KeyedJaggedTensor:
     )
 
 
-
-def device_is_in(device, check_deivce: list[str]):
+def device_is_in(device, check_deivce: list[str]) -> bool:
     if isinstance(device, torch.device):
         return device.type in check_deivce
     else:
@@ -944,3 +943,118 @@ class HybridShardedEmbeddingCollection(
             )
             permute_per_sharding.append(permute)
         self._inverse_indices_permute_per_sharding = permute_per_sharding
+
+    def _compute_sequence_vbe_context(
+        self,
+        ctx: EmbeddingCollectionContext,
+        unpadded_features: KeyedJaggedTensor,
+    ) -> None:
+        if unpadded_features.inverse_indices_or_none() is None:
+            raise ValueError("inverse indices must be provided from KJT if using variable batch size per feature.")
+        inverse_indices = unpadded_features.inverse_indices()
+        stride = inverse_indices[1].numel() // len(inverse_indices[0])
+        if self._inverse_indices_permute_per_sharding is None:
+            self._create_inverse_indices_permute_per_sharding(inverse_indices)
+
+        if self._features_order:
+            unpadded_features = unpadded_features.permute(
+                self._features_order,
+                self._features_order_tensor,
+            )
+
+        features_by_sharding = unpadded_features.split(self._feature_splits)
+        for i, feature in enumerate(features_by_sharding):
+            if self._inverse_indices_permute_per_sharding is not None:
+                permute = self._inverse_indices_permute_per_sharding[i]
+                permuted_indices = torch.index_select(inverse_indices[1], 0, permute)
+            else:
+                permuted_indices = inverse_indices[1]
+            stride_per_key = _pin_and_move(
+                torch.tensor(feature.stride_per_key()), feature.device()
+            )
+            offsets = _to_offsets(stride_per_key)[:-1].unsqueeze(-1)
+            recat = (permuted_indices + offsets).flatten().int()
+
+            if self._need_indices:
+                reindexed_lengths, reindexed_values, _ = (
+                    torch.ops.fbgemm.permute_1D_sparse_data(
+                        recat,
+                        feature.lengths(),
+                        feature.values(),
+                    )
+                )
+            else:
+                reindexed_lengths = torch.index_select(feature.lengths(), 0, recat)
+                reindexed_values = None
+
+            reindexed_lengths = reindexed_lengths.view(-1, stride)
+            reindexed_length_per_key = torch.sum(reindexed_lengths, dim=1).tolist()
+
+            ctx.seq_vbe_ctx.append(
+                SequenceVBEContext(
+                    recat=recat,
+                    unpadded_lengths=feature.lengths(),
+                    reindexed_lengths=reindexed_lengths,
+                    reindexed_length_per_key=reindexed_length_per_key,
+                    reindexed_values=reindexed_values,
+                )
+            )
+
+
+class HybridEmbeddingCollectionSharder(BaseEmbeddingSharder[EmbeddingCollection]):
+    def __init__(
+        self,
+        host_env: ShardingEnv,
+        fused_params: Optional[Dict[str, Any]] = None,
+        qcomm_codecs_registry: Optional[Dict[str, QuantizedCommCodecs]] = None,
+        use_index_dedup: bool = False,
+    ) -> None:
+        super().__init__(
+            fused_params=fused_params, qcomm_codecs_registry=qcomm_codecs_registry
+        )
+        self._host_env = host_env
+        self._use_index_dedup = use_index_dedup
+
+    @property
+    def module_type(self) -> Type[EmbeddingCollection]:
+        return EmbeddingCollection
+
+    def shard(
+        self,
+        module: EmbeddingCollection,
+        params: Dict[str, ParameterSharding],
+        env: ShardingEnv,
+        device: Optional[torch.device] = None,
+        module_fqn: Optional[str] = None,
+    ) -> HybridShardedEmbeddingCollection:
+        return HybridShardedEmbeddingCollection(
+            module=module,
+            table_name_to_parameter_sharding=params,
+            env=env,
+            host_env=self._host_env,
+            fused_params=self.fused_params,
+            device=device,
+            qcomm_codecs_registry=self.qcomm_codecs_registry,
+        )
+
+    def sharding_types(self, compute_device_type: str) -> List[str]:
+        types = [
+            ShardingType.DATA_PARALLEL.value,
+            ShardingType.TABLE_WISE.value,
+            ShardingType.COLUMN_WISE.value,
+            ShardingType.TABLE_COLUMN_WISE.value,
+        ]
+        if compute_device_type in {"cuda", "npu", "cpu"}:
+            types += [
+                ShardingType.ROW_WISE.value,
+                ShardingType.TABLE_ROW_WISE.value,
+            ]
+        return types
+
+    def shardable_parameters(
+        self, module: EmbeddingCollection
+    ) -> Dict[str, nn.Parameter]:
+        return {
+            name.split(".")[0]: param
+            for name, param in module.embeddings.named_parameters()
+        }
