@@ -17,6 +17,7 @@ from fbgemm_gpu.split_table_batched_embeddings_ops_training import (
 EmbeddingLocation,
 ComputeDevice,
 )
+from fbgemm_gpu.split_table_batched_embeddings_ops_common import PoolingMode
 
 import torch
 from torch import nn
@@ -67,6 +68,7 @@ class EmbeddingConfig:
     embedding_dim: int = 0
     optimizer: OptimType = OptimType.EXACT_SGD
     world_size: int = 0
+    rank: int = 0
 
 
 # 示例
@@ -120,15 +122,15 @@ class HashEmbeddingModuleCollection(nn.Module):
         super().__init__()
         self.fwd_pg = dist.new_group(backend="gloo")
         self.bwd_pg = dist.new_group(backend="gloo")
-        self.rank = os.environ.get("RANK", 0)
+        self.rank = configs[0].rank
+        self.configs = configs
         self.post_input_dist_module_dict: Dict[str, nn.Module] = (
             self.create_post_input_dist()
         )
         self.lookup_module_dict: Dict[str, nn.Module] = self.create_lookups()
         self._weight_init_mins = 0
         self._weight_init_maxs = 1
-        self.configs = configs
-        self.init_parameters
+        self.init_parameters()
         
     def init_parameters(self):
         for module in self.lookup_module_dict.values():
@@ -154,8 +156,8 @@ class HashEmbeddingModuleCollection(nn.Module):
             feature_table_map = [0]
             output_dtype = SparseType.FP32
             optimizer = config.optimizer
-            optimizer_args = {"learning_rate": 0.01}
-            pooling_mode = None
+            learning_rate = 0.01
+            pooling_mode = PoolingMode.NONE
             device = torch.device("npu")
             table_names = [name]
             lookup_module = HybridSplitTableBatchedEmbeddingBagsCodegen(
@@ -163,7 +165,7 @@ class HashEmbeddingModuleCollection(nn.Module):
                 feature_table_map=feature_table_map,
                 output_dtype=output_dtype,
                 optimizer=optimizer,
-                optimizer_args=optimizer_args,
+                learning_rate=learning_rate,
                 pooling_mode=pooling_mode,
                 device=device,
                 table_names=table_names,
@@ -187,13 +189,14 @@ class HashEmbeddingModuleCollection(nn.Module):
 
     # 示例代码
     def lookup(self, kjt: KeyedJaggedTensorWithLookHelper, feat_name: str):
+        kjt = kjt.to(device=torch.device(f"npu:{self.rank}"))
         return self.lookup_module_dict[feat_name](
             indices=kjt.values().long(),
             offsets=kjt.offsets().long(),
-            hash_indices=kjt.hash_indices(),
-            unique_indices=kjt.unique_indices(),
-            unique_offsets=kjt.unique_offsets(),
-            unique_inverse=kjt.unique_inverse()
+            hash_indices=kjt.hash_indices,
+            unique_indices=kjt.unique_indices,
+            unique_offsets=kjt.unique_offsets,
+            unique_inverse=kjt.unique_inverse
         )
 
     def post_input_dist(self, jt: JaggedTensor, feat_name: str):

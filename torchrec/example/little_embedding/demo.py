@@ -69,7 +69,7 @@ embedding = HashEmbeddingModuleCollection(configs=[config0, config1])
 for i in range(3):
     data = dataset_getnext()
     awaitables: Dict[str, Awaitable] = embedding(data)
-    result = awaitables["table0"].wait() + awaitables["table1"].wait()
+    result = [awaitables["table0"].wait(), awaitables["table1"].wait()]
     logging.info("result %s", result)
     loss = torch.concat(result).sum()
     loss.backward()
