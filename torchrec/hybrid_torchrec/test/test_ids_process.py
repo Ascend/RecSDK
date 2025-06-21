@@ -365,14 +365,7 @@ def test_block_bucketize_sparse_features_cpu(input_size, mutil_hots, my_size, do
         lengths = kjt.lengths().view(-1)
         values = kjt.values()
         block_size = torch.Tensor([100 for _ in range(len(mutil_hots))]).long()
-        (
-            bucketized_lengths,
-            bucketized_indices,
-            bucketized_weights,
-            pos,
-            unbucketize_permute,
-            _,
-        ) = block_bucketize_sparse_features_cpu(
+        params_in = BucketParams(
             lengths,
             values,
             bucketize_pos=False,
@@ -385,6 +378,14 @@ def test_block_bucketize_sparse_features_cpu(input_size, mutil_hots, my_size, do
             block_bucketize_pos=None,
             do_unique=do_unique
         )
+        (
+            bucketized_lengths,
+            bucketized_indices,
+            bucketized_weights,
+            pos,
+            unbucketize_permute,
+            _,
+        ) = block_bucketize_sparse_features_cpu(params_in)
         bucketize_parms = BucketResult(
             bucketized_lengths=bucketized_lengths,
             bucketized_indices=bucketized_indices,
