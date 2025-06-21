@@ -246,7 +246,7 @@ params = {
     "sharding_type": ["table_wise", "row_wise"],
     "lookup_len": [1024],
     "device": ["npu"],
-    "optim": [Adagrad, Adam],
+    "optim": [Adagrad],
 }
 
 

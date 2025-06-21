@@ -65,6 +65,7 @@ class ExecuteConfig:
     lookup_len: int
     device: str
     optim: type
+    pool_type: torchrec.PoolingType
 
 
 def execute(rank: int, config: ExecuteConfig):
@@ -76,6 +77,7 @@ def execute(rank: int, config: ExecuteConfig):
     lookup_len = config.lookup_len
     device = config.device
     optim = config.optim
+    pool_type = config.pool_type
     setup_logging(rank)
     logging.info("this test %s", os.path.basename(__file__))
     dataset_gloden = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num)
