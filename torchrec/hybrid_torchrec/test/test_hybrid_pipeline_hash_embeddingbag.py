@@ -61,11 +61,11 @@ class ExecuteConfig:
     table_num: int
     embedding_dims: List[int]
     num_embeddings: List[int]
+    pool_type: torchrec.PoolingType
     sharding_type: str
     lookup_len: int
     device: str
     optim: type
-    pool_type: torchrec.PoolingType
 
 
 def execute(rank: int, config: ExecuteConfig):
