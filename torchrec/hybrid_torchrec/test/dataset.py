@@ -9,6 +9,7 @@ from typing import Iterator
 from dataclasses import dataclass
 import torch_npu
 import torch
+import numpy as np
 from torch.utils.data.dataset import IterableDataset
 from torchrec.streamable import Pipelineable
 from torchrec import KeyedJaggedTensor, JaggedTensor
@@ -64,6 +65,23 @@ class RandomRecDataset(IterableDataset[Batch]):
             name = f"feat{ind}"
             id_range = self.num_embeddings[ind]
             ids = torch.randint(0, id_range, (self.lookup_lens,))
+            lengths = torch.ones(self.lookup_lens).long()
+            input_dict[name] = JaggedTensor(values=ids, lengths=lengths)
+        kjt_tensor = KeyedJaggedTensor.from_jt_dict(input_dict)
+        label = torch.randint(0, 2, (self.lookup_lens,))
+        return Batch(kjt_tensor, label)
+
+
+class RandomRecDatasetUnique(RandomRecDataset):
+
+    def generate_one_batch(self) -> Batch:
+        input_dict = {}
+        feature_len = len(self.num_embeddings)
+        for ind in reversed(range(feature_len)):
+            name = f"feat{ind}"
+            id_range = self.num_embeddings[ind]
+            choice_ids = np.random.choice(id_range, (self.lookup_lens,), replace=False)
+            ids = torch.Tensor(choice_ids).long()
             lengths = torch.ones(self.lookup_lens).long()
             input_dict[name] = JaggedTensor(values=ids, lengths=lengths)
         kjt_tensor = KeyedJaggedTensor.from_jt_dict(input_dict)

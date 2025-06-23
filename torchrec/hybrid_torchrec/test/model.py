@@ -14,6 +14,7 @@ from hybrid_torchrec import (
 )
 from hybrid_torchrec.distributed.embeddingbag import HybridShardedEmbeddingBagCollection
 from hybrid_torchrec.distributed.embedding import HybridShardedEmbeddingCollection
+from hybrid_torchrec.modules.little_embedding import HashEmbeddingModuleCollection
 from torchrec import (
     EmbeddingBagCollection,
     EmbeddingCollection,
@@ -45,6 +46,18 @@ def permute_values_ec(result: Dict, feature_num) -> torch.Tensor:
     return values
 
 
+# ec和ebc查询结果返回数据类型不一样
+def permute_values_little_emb(result: Dict, feature_num) -> torch.Tensor:
+    keys_nums = feature_num
+    values = []
+    for k in range(keys_nums):
+        k = f"feat{k}"
+        embed = result[k].wait()
+        values.append(embed)
+    values = torch.concat(values, dim=1)
+    return values
+
+
 class Model(torch.nn.Module):
     def __init__(self, module, feature_num):
         super().__init__()
@@ -53,21 +66,32 @@ class Model(torch.nn.Module):
 
     @property
     def _module_type(self):
-        ebc_types = (EmbeddingBagCollection, HashEmbeddingBagCollection, HybridShardedEmbeddingBagCollection)
-        ec_types = (EmbeddingCollection, HashEmbeddingCollection, HybridShardedEmbeddingCollection)
-        
+        ebc_types = (
+            EmbeddingBagCollection,
+            HashEmbeddingBagCollection,
+            HybridShardedEmbeddingBagCollection,
+        )
+        ec_types = (
+            EmbeddingCollection,
+            HashEmbeddingCollection,
+            HybridShardedEmbeddingCollection,
+        )
+        little_embed_types = (HashEmbeddingModuleCollection,)
         if isinstance(self._module, ebc_types):
             return "ebc"
         if isinstance(self._module, ec_types):
             return "ec"
-        
-        raise ValueError("Module must be one of the supported types: EmbeddingCollection or EmbeddingBagCollection")
+        if isinstance(self._module, little_embed_types):
+            return "ec"
+        raise ValueError(
+            "Module must be one of the supported types: EmbeddingCollection or EmbeddingBagCollection"
+        )
 
     @property
     def ebc(self):
         self._ebc = self._module if self._module_type == "ebc" else None
         return self._ebc
-    
+
     @property
     def ec(self):
         self._ec = self._module if self._module_type == "ec" else None
@@ -79,5 +103,7 @@ class Model(torch.nn.Module):
             result = permute_values_ebc(result, self.feature_num)
         elif self._module_type == "ec":
             result = permute_values_ec(result, self.feature_num)
+        elif self._module_type == "permute_values_little_emb":
+            result = permute_values_little_emb(result, self.feature_num)
         loss = result.sum()
         return loss, result
