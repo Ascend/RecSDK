@@ -5,30 +5,27 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
-from typing import List, Tuple, Dict
-from dataclasses import dataclass
-from concurrent.futures import ThreadPoolExecutor
-
-import os
 import logging
+import os
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from typing import List, Tuple, Dict
 
+import torch
+import torch.distributed as dist
 from fbgemm_gpu.split_embedding_configs import EmbOptimType as OptimType, SparseType
 from fbgemm_gpu.split_table_batched_embeddings_ops_training import (
 EmbeddingLocation,
 ComputeDevice,
 )
 from fbgemm_gpu.split_table_batched_embeddings_ops_common import PoolingMode
-
-import torch
 from torch import nn
-import torch.distributed as dist
 
 from hybrid_torchrec.distributed.batched_embedding_kernel import (
 HybridSplitTableBatchedEmbeddingBagsCodegen,
 )
 from hybrid_torchrec.sparse.jagged_tensor_with_looup_helper import KeyedJaggedTensorWithLookHelper
 from torchrec import KeyedJaggedTensor, JaggedTensor
-
 
 
 class Awaitable:
