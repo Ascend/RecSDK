@@ -28,7 +28,6 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.util import compat
 
-from examples.rec_model_zoo.behaviour_and_multi_task.data.aliccp.step6_gen_tfrecord import result
 from mx_rec.constants.constants import (
     DataName,
     DataAttr,
