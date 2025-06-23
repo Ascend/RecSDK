@@ -104,7 +104,7 @@ class AllGatherEmbeddings(torch.autograd.Function):
         return tuple(result_list)
 
     @staticmethod
-    def backward(ctx, *grad_output: Tuple[torch.Tensor]) -> Tuple[torch.Tensor, None]:
+    def backward(ctx, *grad_output: Tuple[torch.Tensor]) -> Tuple[torch.Tensor, None, None]:
         grad_output = [g.data for g in grad_output]
         result = torch.empty(grad_output[ctx.context.rank].size())
         ctx.context.bwd_pg.reduce_scatter(result, grad_output).wait()
