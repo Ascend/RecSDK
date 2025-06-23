@@ -5,15 +5,26 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
-from typing import List, Tuple, Dict
-from dataclasses import dataclass
-from concurrent.futures import ThreadPoolExecutor
-
 import logging
+import os
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from typing import List, Tuple, Dict
 
 import torch
-from torch import nn
 import torch.distributed as dist
+from fbgemm_gpu.split_embedding_configs import EmbOptimType as OptimType, SparseType
+from fbgemm_gpu.split_table_batched_embeddings_ops_training import (
+EmbeddingLocation,
+ComputeDevice,
+)
+from fbgemm_gpu.split_table_batched_embeddings_ops_common import PoolingMode
+from torch import nn
+
+from hybrid_torchrec.distributed.batched_embedding_kernel import (
+HybridSplitTableBatchedEmbeddingBagsCodegen,
+)
+from hybrid_torchrec.sparse.jagged_tensor_with_looup_helper import KeyedJaggedTensorWithLookHelper
 from torchrec import KeyedJaggedTensor, JaggedTensor
 
 
@@ -54,8 +65,8 @@ class EmbeddingConfig:
     table_name: str
     num_embedding: int = 0
     embedding_dim: int = 0
-    optimizer: torch.optim.Optimizer = 0
-    world_sie: int = 0
+    optimizer: OptimType = OptimType.EXACT_ADAGRAD
+    world_size: int = 0
     rank: int = 0
 
 
@@ -111,10 +122,21 @@ class HashEmbeddingModuleCollection(nn.Module):
         self.fwd_pg = dist.new_group(backend="gloo")
         self.bwd_pg = dist.new_group(backend="gloo")
         self.rank = configs[0].rank
+        self.configs = configs
         self.post_input_dist_module_dict: Dict[str, nn.Module] = (
             self.create_post_input_dist()
         )
         self.lookup_module_dict: Dict[str, nn.Module] = self.create_lookups()
+        self._weight_init_mins = 0
+        self._weight_init_maxs = 1
+        self.init_parameters()
+        
+    def init_parameters(self):
+        for module in self.lookup_module_dict.values():
+            embedding_weight = module.split_embedding_weights()[0]
+            embedding_weight.data.uniform_(
+                self._weight_init_mins, self._weight_init_maxs
+            )
 
     def compute_context(self, fid: dict[JaggedTensor]) -> LookupContext:
         pass
@@ -123,7 +145,32 @@ class HashEmbeddingModuleCollection(nn.Module):
         return
 
     def create_lookups(self) -> Dict[str, nn.Module]:
-        return
+        lookup_module_dict = {}
+        for config in self.configs:
+            name = config.table_name
+            num_embeddings = config.num_embedding // config.world_size
+            if self.rank < config.num_embedding % config.world_size:
+                num_embeddings += 1
+            embedding_spec = (num_embeddings, config.embedding_dim, EmbeddingLocation.DEVICE, ComputeDevice.NPU)
+            feature_table_map = [0]
+            output_dtype = SparseType.FP32
+            optimizer = config.optimizer
+            learning_rate = 0.01
+            pooling_mode = PoolingMode.NONE
+            device = torch.device("npu")
+            table_names = [name]
+            lookup_module = HybridSplitTableBatchedEmbeddingBagsCodegen(
+                embedding_specs=[embedding_spec],
+                feature_table_map=feature_table_map,
+                output_dtype=output_dtype,
+                optimizer=optimizer,
+                learning_rate=learning_rate,
+                pooling_mode=pooling_mode,
+                device=device,
+                table_names=table_names,
+            )
+            lookup_module_dict[name] = lookup_module
+        return lookup_module_dict
 
     def do_post_input_dist(
         self, jt: JaggedTensor, feat_name: str, context: LookupContext
@@ -140,20 +187,23 @@ class HashEmbeddingModuleCollection(nn.Module):
         return fids
 
     # 示例代码
-    def lookup(self, fids: JaggedTensor, feat_name: str):
-        result = []
-        test_num = 10
-
-        for a_id in fids.values():
-            result.append([a_id / test_num, a_id / test_num])
-        return nn.Parameter(torch.Tensor(result), requires_grad=True)
+    def lookup(self, kjt: KeyedJaggedTensorWithLookHelper, feat_name: str):
+        kjt = kjt.to(device=torch.device(f"npu:{self.rank}"))
+        return self.lookup_module_dict[feat_name](
+            indices=kjt.values().long(),
+            offsets=kjt.offsets().long(),
+            hash_indices=kjt.hash_indices,
+            unique_indices=kjt.unique_indices,
+            unique_offset=kjt.unique_offset,
+            unique_inverse=kjt.unique_inverse
+        )
 
     def post_input_dist(self, jt: JaggedTensor, feat_name: str):
         indices = self.fids2indices(jt)
         return indices
 
-    def lookup_and_post_dist(self, jt: JaggedTensor, feat_name: str):
-        embedding = self.lookup(jt, feat_name)
+    def lookup_and_post_dist(self, kjt: KeyedJaggedTensorWithLookHelper, feat_name: str):
+        embedding = self.lookup(kjt, feat_name)
         result = AllGatherEmbedding().apply(self.fwd_pg, self.bwd_pg, embedding)
         return result
 
