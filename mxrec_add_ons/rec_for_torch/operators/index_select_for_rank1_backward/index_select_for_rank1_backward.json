@@ -7,30 +7,30 @@
                 "name": "grad_y",
                 "param_type": "required",
                 "format": [
-                    "ND"
+                    "ND", "ND"
                 ],
                 "type": [
-                    "float"
+                    "fp32", "fp32"
                 ]
             },
             {
                 "name": "x",
                 "param_type": "required",
                 "format": [
-                    "ND"
+                    "ND", "ND"
                 ],
                 "type": [
-                    "float"
+                    "fp32", "fp32"
                 ]
             },
             {
                 "name": "index",
                 "param_type": "required",
                 "format": [
-                    "ND"
+                    "ND", "ND"
                 ],
                 "type": [
-                    "int64"
+                    "int32", "int64"
                 ]
             }
         ],
@@ -39,20 +39,10 @@
                 "name": "grad_x",
                 "param_type": "required",
                 "format": [
-                    "ND"
+                    "ND", "ND"
                 ],
                 "type": [
-                    "float"
-                ]
-            }, 
-            {
-                "name": "grad_index",
-                "param_type": "required",
-                "format": [
-                    "ND"
-                ],
-                "type": [
-                    "int64"
+                    "fp32", "fp32"
                 ]
             }
         ]

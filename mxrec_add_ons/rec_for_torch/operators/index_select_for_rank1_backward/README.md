@@ -48,7 +48,7 @@ c) 算子约束说明：
 
 * 支持的型号：Atlas A2系列产品;
 * 支持的CANN版本：8.2.RC1.alpha001及之后版本；
-* 支持的输入数据类型：grad_y float32, x float32, index int64；
+* 支持的输入数据类型：grad_y float32, x float32, index int64/int32；
 * values、x、index都为1维
 * index内的值不得超过x第0长度
 

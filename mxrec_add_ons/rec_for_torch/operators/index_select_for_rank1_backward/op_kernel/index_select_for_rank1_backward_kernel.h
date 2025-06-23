@@ -1,102 +1,104 @@
 /**
-* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-* http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
+ * @file index_select_for_rank1_backward_kernel.h
+ *
+ * Copyright (C) 2025. Huawei Technologies Co., Ltd. All rights reserved.
+ *
  */
 
 #ifndef MXREC_INDEX_SELECT_FOR_RANK1_BACKWARD_KERNEL_H
 #define MXREC_INDEX_SELECT_FOR_RANK1_BACKWARD_KERNEL_H
-#include <cstdint>
 #include "kernel_operator.h"
 
 using namespace AscendC;
+constexpr int DATA_ALIGN_BYTES = 32;
 
-constexpr float ZERO = 0;
-constexpr uint32_t UB_SIZE = 172 * 1024;
-constexpr uint32_t UB_BUF = 1024;
-constexpr uint32_t ALIGN_TARGET = 32;
-
+template <typename IndexType>
 class IndexSelectForRank1BackwardKernel {
 public:
     __aicore__ inline IndexSelectForRank1BackwardKernel(const GM_ADDR tiling)
     {
-        GET_TILING_DATA(tiling_data, tiling);
-        xDim0 = tiling_data.xDim0;
-        int64_t baseLen = tiling_data.baseLen;
-        int64_t tailSplitIndex = tiling_data.tailSplitIndex;
+        GET_TILING_DATA(tilingData, tiling);
+        xDim0 = tilingData.xDim0;
+        stride = tilingData.stride;
+        int32_t baseLen = tilingData.baseLen;
+        int32_t tailSplitIndex = tilingData.tailSplitIndex;
 
         if (GetBlockIdx() >= tailSplitIndex) {
-            indexWindowSize = baseLen;
+            totalLen = baseLen;
             indexOffset = tailSplitIndex * (baseLen + 1) + (GetBlockIdx() - tailSplitIndex) * baseLen;
         } else {
-            indexWindowSize = baseLen + 1;
+            totalLen = baseLen + 1;
             indexOffset = GetBlockIdx() * (baseLen + 1);
         }
-        indexProcessWindowSize = UB_SIZE - xDim0 * sizeof(float) - UB_BUF;
-        indexProcessWindowSize = indexProcessWindowSize / (sizeof(float) + sizeof(int64_t));
-        indexProcessWindowSize = indexProcessWindowSize / ALIGN_TARGET * ALIGN_TARGET;
     }
 
     __aicore__ void Init(GM_ADDR gradY, GM_ADDR index, GM_ADDR gradX)
     {
-        gradYGm.SetGlobalBuffer((__gm__ float*)gradY, indexProcessWindowSize);
-        indexGm.SetGlobalBuffer((__gm__ int64_t*)index, indexProcessWindowSize);
+        gradYGm.SetGlobalBuffer((__gm__ float*)gradY, stride);
+        indexGm.SetGlobalBuffer((__gm__ IndexType*)index, stride);
         gradXGm.SetGlobalBuffer((__gm__ float*)gradX, xDim0);
 
-        pipe.InitBuffer(inQueGradY, 1, Align32(indexProcessWindowSize * sizeof(float)));
-        pipe.InitBuffer(inQueIndex, 1, Align32(indexProcessWindowSize * sizeof(int64_t)));
-        pipe.InitBuffer(outQueGradX, 1, Align32(xDim0 * sizeof(float)));
+        pipe.InitBuffer(inQueGradY, 1, AlignTo32(stride * sizeof(float)));
+        pipe.InitBuffer(inQueIndex, 1, AlignTo32(stride * sizeof(IndexType)));
+        pipe.InitBuffer(outQueGradX, 1, AlignTo32(xDim0 * sizeof(float)));
 
         gradYUb = inQueGradY.AllocTensor<float>();
-        indexUb = inQueIndex.AllocTensor<int64_t>();
+        indexUb = inQueIndex.AllocTensor<IndexType>();
         gradXUb = outQueGradX.AllocTensor<float>();
 
-        Duplicate(gradXUb, ZERO, xDim0);
+        Duplicate(gradXUb, static_cast<float>(0), xDim0);
 
         set_flag(PIPE_V, PIPE_S, EVENT_ID0);
         wait_flag(PIPE_V, PIPE_S, EVENT_ID0);
 
         gradYAddr = reinterpret_cast<__ubuf__ float*>(gradYUb.GetPhyAddr());
-        indexAddr = reinterpret_cast<__ubuf__ int64_t*>(indexUb.GetPhyAddr());
+        indexAddr = reinterpret_cast<__ubuf__ IndexType*>(indexUb.GetPhyAddr());
         gradXAddr = reinterpret_cast<__ubuf__ float*>(gradXUb.GetPhyAddr());
     }
 
     __aicore__ void Process()
     {
-        int64_t remain = indexWindowSize;
-        for (int64_t offset = indexOffset; offset < indexOffset + indexWindowSize; offset += indexProcessWindowSize) {
-            const int64_t process_len = remain > indexProcessWindowSize ? indexProcessWindowSize : remain;
+        int32_t remain = totalLen;
+        int32_t offset = indexOffset;
+        while (remain > 0) {
+            int32_t cnt = remain > stride ? stride : remain;
+            CopyIn(offset, cnt);
+            Compute(cnt);
 
-            CopyIn(offset);
-            Compute(process_len);
-
-            remain -= process_len;
+            remain -= cnt;
+            offset += cnt;
         }
         CopyOut();
     }
 
-    __aicore__ void CopyIn(const int offset)
+    template <typename T>
+    __aicore__ inline void CpPadGm2Local(const LocalTensor<T>& lt, const GlobalTensor<T>& gt, int64_t len)
     {
-        DataCopy(indexUb, indexGm[offset], indexProcessWindowSize);
-        DataCopy(gradYUb, gradYGm[offset], indexProcessWindowSize);
+        uint32_t alignLen = len * sizeof(T) / DATA_ALIGN_BYTES * DATA_ALIGN_BYTES;
+        uint32_t unAlignLen = len * sizeof(T) - alignLen;
+
+        if (alignLen != 0) {
+            DataCopy(lt, gt, alignLen / sizeof(T));
+        }
+        if (unAlignLen != 0) {
+            const DataCopyExtParams dataCopyExtParams{1, unAlignLen, 0, 0, 0};
+            const DataCopyPadExtParams<T> dataCopyPadExtParams{false, 0, 0, 0};
+            DataCopyPad(lt[alignLen / sizeof(T)], gt[alignLen / sizeof(T)], dataCopyExtParams, dataCopyPadExtParams);
+        }
     }
 
-    __aicore__ void Compute(const int64_t process_len)
+    __aicore__ void CopyIn(const int offset, int32_t cnt)
+    {
+        CpPadGm2Local(indexUb, indexGm[offset], cnt);
+        CpPadGm2Local(gradYUb, gradYGm[offset], cnt);
+    }
+
+    __aicore__ void Compute(const int32_t cnt)
     {
         set_flag(PIPE_MTE2, PIPE_S, EVENT_ID0);
         wait_flag(PIPE_MTE2, PIPE_S, EVENT_ID0);
 
-        for (int i = 0; i < process_len; i++) {
+        for (int i = 0; i < cnt; i++) {
             const auto index = indexAddr[i];
             const auto gradY = gradYAddr[i];
             gradXAddr[index] += gradY;
@@ -109,34 +111,28 @@ public:
         wait_flag(PIPE_S, PIPE_MTE3, EVENT_ID0);
 
         SetAtomicAdd<float>();
-        DataCopy(gradXGm, gradXUb, Align32(xDim0 * sizeof(float)) / sizeof(float));
+        DataCopy(gradXGm, gradXUb, AlignTo32(xDim0 * sizeof(float)) / sizeof(float));
         SetAtomicNone();
 
         inQueGradY.FreeTensor<float>(gradYUb);
-        inQueIndex.FreeTensor<int64_t>(indexUb);
+        inQueIndex.FreeTensor<IndexType>(indexUb);
         outQueGradX.FreeTensor<float>(gradXUb);
-    }
-
-    template <typename T>
-    __aicore__ T Align32(T n)
-    {
-        return (n + 31) / 32 * 32;
     }
 
 private:
     LocalTensor<float> gradXUb;
     LocalTensor<float> gradYUb;
-    LocalTensor<int64_t> indexUb;
+    LocalTensor<IndexType> indexUb;
 
     __ubuf__ float* gradXAddr;
     __ubuf__ float* gradYAddr;
-    __ubuf__ int64_t* indexAddr;
+    __ubuf__ IndexType* indexAddr;
 
-    int64_t xDim0;
+    int32_t xDim0;
 
-    int64_t indexWindowSize;
-    int64_t indexProcessWindowSize;
-    int64_t indexOffset;
+    int32_t totalLen;
+    int32_t stride;
+    int32_t indexOffset;
 
     TPipe pipe;
     TQue<TPosition::VECIN, 1> inQueIndex;
@@ -144,7 +140,7 @@ private:
     TQue<TPosition::VECOUT, 1> outQueGradX;
 
     GlobalTensor<float> gradXGm, gradYGm;
-    GlobalTensor<int64_t> indexGm;
+    GlobalTensor<IndexType> indexGm;
 };
 
 #endif  // MXREC_INDEX_SELECT_FOR_RANK1_BACKWARD_KERNEL_H
