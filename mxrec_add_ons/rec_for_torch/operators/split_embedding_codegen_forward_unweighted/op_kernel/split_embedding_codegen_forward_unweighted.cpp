@@ -16,12 +16,16 @@ See the License for the specific language governing permissions and
 #include "split_embedding_codegen_forward_unweighted_kernel.h"
 
 extern "C" __global__ __aicore__ void split_embedding_codegen_forward_unweighted(
-    GM_ADDR devWeights, GM_ADDR uvmWeights, GM_ADDR lxuCacheWeights, GM_ADDR weightsPlacements, GM_ADDR weightsOffsets,
-    GM_ADDR dOffsets, GM_ADDR indices, GM_ADDR offsets, GM_ADDR lxuCacheLocations, GM_ADDR hashIndices,
+    GM_ADDR devWeights, GM_ADDR uvmWeights, GM_ADDR lxuCacheWeights,
+	GM_ADDR weightsPlacements, GM_ADDR weightsOffsets,
+    GM_ADDR dOffsets, GM_ADDR indices, GM_ADDR offsets, GM_ADDR lxuCacheLocations,
+	GM_ADDR hashIndices, GM_ADDR uniqueInverse,
     GM_ADDR out, GM_ADDR workspace, GM_ADDR tiling)
 {
-    SplitEmbeddingCodegenForwardUnweighted::Args args{
-        devWeights, weightsPlacements, weightsOffsets, dOffsets, indices, offsets, hashIndices, out, tiling, workspace};
-    SplitEmbeddingCodegenForwardUnweighted::SplitEmbeddingCodegenForwardUnweightedKernel kernel(args);
+    SplitEmbeddingCodegenForwardUnweighted::Args args{devWeights, weightsPlacements, weightsOffsets,
+                                                      dOffsets, indices, offsets, hashIndices, uniqueInverse,
+                                                      out, tiling, workspace};
+    SplitEmbeddingCodegenForwardUnweighted::SplitEmbeddingCodegenForwardUnweightedKernel<DTYPE_DEV_WEIGHTS> \
+        kernel(args);
     kernel.Compute();
 }
