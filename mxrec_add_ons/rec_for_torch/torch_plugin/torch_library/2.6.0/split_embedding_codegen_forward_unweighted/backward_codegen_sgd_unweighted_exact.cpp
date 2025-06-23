@@ -308,7 +308,7 @@ at::Tensor split_embedding_backward_codegen_sgd_unweighted_exact_npu(const Tenso
     const int iter = 0;
     const float beta = 0;
     const auto grad_output_conti = grad_output.contiguous();
-    EXEC_NPU_CMD(aclnnBackwardCodegenAdagradUnweightedExact, grad_output_conti, dev_weights, uvm_weights, 
+    EXEC_NPU_CMD(aclnnBackwardCodegenAdagradUnweightedExact, grad_output_conti, dev_weights, uvm_weights,
                  lxu_cache_weights, weights_placements, weights_offsets, D_offsets, hash_size_cumsum, indices, offsets,
                  lxu_cache_locations, _unused, _unused, _unused, _unused, _unused, _unused, _unused, _unused,
                  hash_indices, unique_ids, unique_offsets, unique_inverse, t_max_D, total_hash_size_bits, pooling_mode,
