@@ -5,6 +5,7 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
+from collections import defaultdict
 from typing import List, Tuple, Dict
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
@@ -85,24 +86,30 @@ class AllGatherEmbedding(torch.autograd.Function):
         return None, None, result
 
 
+@dataclass
 class LookupContext:
-    def __init__(self):
-        self.fwd_pg
-        self.bwd_pg
-        self.communication_metrix = []
+    rank: int
+    fwd_pg: dist.ProcessGroup
+    bwd_pg: dist.ProcessGroup
+    communication_metrix: Dict[str, List[torch.Size]] = {}
 
 
-# 待实现
 class AllGatherEmbeddings(torch.autograd.Function):
     @staticmethod
-    def forward(
-        ctx, embedding: torch.Tensor, context: LookupContext
-    ) -> Tuple[torch.Tensor]:
-        pass
+    def forward(ctx, embedding: torch.Tensor, feat_name: str, context: LookupContext) -> Tuple[torch.Tensor]:
+        ctx.context = context
+        ctx.feat_name = feat_name
+        result_list = [torch.zeros_like(size) for size in context.communication_metrix[feat_name]]
+        context.fwd_pg.allgather(result_list, embedding.data).wait()
+        return tuple(result_list)
 
     @staticmethod
     def backward(ctx, *grad_output: Tuple[torch.Tensor]) -> Tuple[torch.Tensor, None]:
-        pass
+        grad_output = [g.data for g in grad_output]
+        result = torch.zeros_like(grad_output[ctx.context.rank])
+        ctx.context.bwd_pg.reduce_scatter(result, grad_output).wait()
+
+        return result, None, None
 
 
 class HashEmbeddingModuleCollection(nn.Module):
@@ -116,8 +123,14 @@ class HashEmbeddingModuleCollection(nn.Module):
         )
         self.lookup_module_dict: Dict[str, nn.Module] = self.create_lookups()
 
-    def compute_context(self, fid: dict[JaggedTensor]) -> LookupContext:
-        pass
+    def compute_context(self, kjt_list_each_rank: List[KeyedJaggedTensor]) -> LookupContext:
+        communication_metrix = defaultdict(list)
+        for kjt in kjt_list_each_rank:
+            jt_dict: Dict[str, JaggedTensor] = kjt.to_dict()
+            for feat_name, jt in jt_dict.items():
+                communication_metrix[feat_name].append(jt.values().size())
+
+        return LookupContext(self.rank, self.fwd_pg, self.bwd_pg, communication_metrix)
 
     def create_post_input_dist(self) -> Dict[str, nn.Module]:
         return
@@ -152,12 +165,13 @@ class HashEmbeddingModuleCollection(nn.Module):
         indices = self.fids2indices(jt)
         return indices
 
-    def lookup_and_post_dist(self, jt: JaggedTensor, feat_name: str):
+    def lookup_and_post_dist(self, jt: JaggedTensor, feat_name: str, context: LookupContext):
         embedding = self.lookup(jt, feat_name)
-        result = AllGatherEmbedding().apply(self.fwd_pg, self.bwd_pg, embedding)
+        result = AllGatherEmbeddings().apply(embedding, feat_name,context)
         return result
 
     def forward(self, kjt_list_each_rank: List[KeyedJaggedTensor]):
+        context = self.compute_context(kjt_list_each_rank)
         jt_dict: Dict[str, JaggedTensor] = kjt_list_each_rank[self.rank].to_dict()
         awaitable_dict: Dict[str, LookupAndOutputDistAwaitable] = {}
         for feat_name in jt_dict.keys():
@@ -165,7 +179,7 @@ class HashEmbeddingModuleCollection(nn.Module):
                 self.post_input_dist, jt_dict[feat_name], feat_name
             )
             lookup_and_outdist_awaitable = LookupAndOutputDistAwaitable(
-                post_awaitable, self.lookup_and_post_dist, feat_name
+                post_awaitable, self.lookup_and_post_dist, feat_name, context
             )
             awaitable_dict[feat_name] = lookup_and_outdist_awaitable
         return awaitable_dict
