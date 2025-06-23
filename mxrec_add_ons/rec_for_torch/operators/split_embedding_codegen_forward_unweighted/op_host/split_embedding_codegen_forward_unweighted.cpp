@@ -50,15 +50,23 @@ constexpr int BLOCK_NUM_INDEX = 6;
 constexpr int NORMAL_KEY = 1;
 constexpr int DYNAMIC_KEY = 2;
 
-static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
-                                       SplitEmbeddingCodegenForwardUnweightedTilingData& tilingData)
+static ge::graphStatus ShapeTilingCheckFunc(gert::TilingContext* context)
 {
     OPS_LOG_E_IF_NULL("devWeights shape", context->GetInputShape(DEV_WEIGHTS_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("weightsOffset shape", context->GetInputShape(WEIGHTS_OFFSETS_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("dOffsets shape", context->GetInputShape(D_OFFSETS_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("indices shape", context->GetInputShape(INDICES_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("offsets shape", context->GetInputShape(OFFSETS_INDEX), return ge::GRAPH_FAILED);
-  
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
+                                       SplitEmbeddingCodegenForwardUnweightedTilingData& tilingData)
+{
+    if (ShapeTilingCheckFunc(context) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
     int64_t devWeightsDim0 = context->GetInputShape(DEV_WEIGHTS_INDEX)->GetStorageShape().GetDim(0);
     int64_t weightsOffsetsDim0 = context->GetInputShape(WEIGHTS_OFFSETS_INDEX)->GetStorageShape().GetDim(0);
     int64_t dOffsetsDim0 = context->GetInputShape(D_OFFSETS_INDEX)->GetStorageShape().GetDim(0);
@@ -68,14 +76,12 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
     auto attrs = context->GetAttrs();
     OPS_LOG_E_IF_NULL("attrs", attrs, return ge::GRAPH_FAILED);
 
-    if (weightsOffsetsDim0 == 0) {
-        printf("[ERROR] Invalid weightsOffsets shape!\n");
-        return ge::GRAPH_FAILED;
-    }
-    if (dOffsetsDim0 <= 1) {
-        printf("[ERROR] Invalid dOffsets shape!\n");
-        return ge::GRAPH_FAILED;
-    }
+    OPS_CHECK(weightsOffsetsDim0 == 0,
+              OPS_LOG_E("Tiling Debug", "weightsOffsets shape is invalid."),
+              return ge::GRAPH_FAILED);
+    OPS_CHECK(dOffsetsDim0 <= 1,
+              OPS_LOG_E("Tiling Debug", "dOffsets shape is invalid."),
+              return ge::GRAPH_FAILED);
 
     auto hashIndices = context->GetOptionalInputTensor(HASH_INDICES_INDEX);
     if (hashIndices == nullptr) {
@@ -134,11 +140,9 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     // Tiling
     size_t coreNum = ascnedPlatform.GetCoreNumAiv();
-    if (coreNum == 0) {
-        printf("[ERROR] Core num is 0!\n");
-        return ge::GRAPH_FAILED;
-    }
-
+    OPS_CHECK(coreNum == 0,
+              OPS_LOG_E("Tiling Debug", "Core num is 0."),
+              return ge::GRAPH_FAILED);
     int64_t splitBaseLen = (tiling.get_offsetsDim0() - 1) / coreNum;
     int64_t tailSplitIndex = (tiling.get_offsetsDim0() - 1) % coreNum;
 

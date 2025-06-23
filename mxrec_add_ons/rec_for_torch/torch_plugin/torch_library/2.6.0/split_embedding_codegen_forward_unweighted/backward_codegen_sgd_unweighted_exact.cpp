@@ -334,8 +334,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
 {
     m.def("split_embedding_codegen_lookup_sgd_function("
           "    Tensor placeholder_autograd_tensor, "
-          "    Tensor(a!) dev_weights, "
-          "    Tensor(b!) uvm_weights, "
+          "    Tensor(a!) dev_weights, Tensor(b!) uvm_weights,"
           "    Tensor lxu_cache_weights, "
           "    Tensor weights_placements, "
           "    Tensor weights_offsets, "
