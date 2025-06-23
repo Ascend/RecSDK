@@ -263,7 +263,9 @@ at::Tensor split_embedding_backward_codegen_adagrad_unweighted_exact_npu(
     const int64_t t_max_D = max_D.guard_int(__FILE__, __LINE__);
 
     const at::OptionalDeviceGuard guard(device_of(dev_weights));
-    auto output = at::empty({dev_weights.size(0)}, dev_weights.options());
+    int64_t uniqueSize = static_cast<int64_t>(unique_ids.numel());
+    int64_t totalEmbed = uniqueSize == 0 ? dev_weights.size(0) : uniqueSize * t_max_D;
+    auto output = at::empty({totalEmbed}, dev_weights.options());
 
     int optim_type = static_cast<int>(OptimizerType::ADAGRAD);
     const auto _unused = Tensor();
@@ -276,7 +278,7 @@ at::Tensor split_embedding_backward_codegen_adagrad_unweighted_exact_npu(
                  _unused, _unused, _unused, hash_indices, unique_ids, unique_offsets, unique_inverse, t_max_D,
                  total_hash_size_bits, pooling_mode, BT_block_size, max_segment_length_per_warp, stochastic_rounding,
                  info_B_num_bits, info_B_mask_int64, use_uniq_cache_locations, use_homogeneous_placements, optim_type,
-                 eps, learning_rate, beta, beta, iter, output, momentum1_dev, _unused, dev_weights);
+                 eps, learning_rate, beta, beta, iter, is_dynamic, output, momentum1_dev, _unused, dev_weights);
 
     return at::Tensor();
 }
