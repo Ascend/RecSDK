@@ -19,6 +19,7 @@ import os
 import threading
 import glob
 import struct
+import subprocess
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Union, Generator, Tuple
@@ -731,6 +732,31 @@ def check_file_system_is_hdfs(file_path):
         if file_path.startswith(prefix):
             return True
     return False
+
+
+def get_hdfs_safemode_status():
+    try:
+        result = subprocess.run(["/usr/local/hadoop-3.3.6/bin/hdfs", "dfsadmin", "-safemode", "get"],
+                                capture_output=True, text=True, check=True)
+        output = result.stdout.strip()
+        logger.info(f"HDFS safemode status:{output}.")
+        return output
+    except FileNotFoundError as err:
+        logger.warning(f"Command 'hdfs' not found. Ignore this exception in non-HDFS scenario. Please ensure Hadoop"
+                       f"is installed and 'hdfs' is in your PATH in HDFS scenario.")
+    except Exception as err:
+        logger.warning(f"Failed to get HDFS safemode status:{err}. Ignore this exception in non-HDFS scenario.")
+
+    return ""
+
+
+def check_hdfs_safemode_status():
+    status = get_hdfs_safemode_status()
+    if "Safe mode is ON" in status:
+        raise RuntimeError(
+            "The current HDFS is in safe mode. It is recommended to check the server disk space and the usage of HDFS "
+            "resources. Use 'hdfs dfsadmin -safemode leave' to set Safe mode is OFF, and then run again."
+        )
 
 
 def _fill_placeholder_for_optimizer(optimizer_state_placeholder_dict_group: dict, reading_path: str,
