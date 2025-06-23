@@ -99,14 +99,14 @@ class AllGatherEmbeddings(torch.autograd.Function):
     def forward(ctx, embedding: torch.Tensor, feat_name: str, context: LookupContext) -> Tuple[torch.Tensor]:
         ctx.context = context
         ctx.feat_name = feat_name
-        result_list = [torch.zeros_like(size) for size in context.communication_metrix[feat_name]]
+        result_list = [torch.empty(size) for size in context.communication_metrix[feat_name]]
         context.fwd_pg.allgather(result_list, embedding).wait()
         return tuple(result_list)
 
     @staticmethod
     def backward(ctx, *grad_output: Tuple[torch.Tensor]) -> Tuple[torch.Tensor, None]:
         grad_output = [g.data for g in grad_output]
-        result = torch.zeros_like(grad_output[ctx.context.rank])
+        result = torch.empty(grad_output[ctx.context.rank].size())
         ctx.context.bwd_pg.reduce_scatter(result, grad_output).wait()
 
         return result, None, None
