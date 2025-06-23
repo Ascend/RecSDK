@@ -75,10 +75,14 @@ struct UpdateArgs {
     int64_t thisOutOffset;
 };
 
-__aicore__ inline int64_t GetOffset(GM_ADDR offsetAddr, int64_t index)
+__aicore__ inline int64_t GetOffset(GM_ADDR offsetAddr, int64_t index, int64_t dataType)
 {
-    __gm__ int64_t* offsetPtr = (__gm__ int64_t*)offsetAddr;
-    return *(offsetPtr + index);
+    if (dataType == DATA_TYPE_INT64) {
+        __gm__ int64_t* offsetPtr = (__gm__ int64_t*)offsetAddr;
+        return *(offsetPtr + index);
+    } else {
+        return -1;
+    }
 }
 
 
@@ -108,11 +112,10 @@ __aicore__ inline void CpLocal2Gm(const GlobalTensor<T>& gt, const LocalTensor<T
     }
 }
 
-
+template <typename wType>
 class BackwardCodegenUnweightedExactKernel {
 public:
     __aicore__ inline BackwardCodegenUnweightedExactKernel() {}
-
     __aicore__ inline void Init(Args args)
     {
         GET_TILING_DATA(tilingData, args.tiling);
@@ -146,6 +149,7 @@ public:
 
         // DataType
         bytesOfDataType = sizeof(float);
+        offsetDataType = DATA_TYPE_INT64;
 
         // Tiling
         offsetsSplitLen = tilingData.splitBaseLen;
@@ -171,12 +175,12 @@ public:
         }
 
         gradOutputGT.SetGlobalBuffer((__gm__ float*)gradOutput, gradOutputDim0 * gradOutputDim1);
-        devWeightsGT.SetGlobalBuffer((__gm__ float*)devWeights, devWeightsDim0);
-        momentum1DevGT.SetGlobalBuffer((__gm__ float*)momentum1Dev, outDim0);
+        devWeightsGT.SetGlobalBuffer((__gm__ wType*)devWeights, devWeightsDim0);
+        momentum1DevGT.SetGlobalBuffer((__gm__ wType*)momentum1Dev, outDim0);
 
         outGT.SetGlobalBuffer((__gm__ float*)out, outDim0); // InitGlobalMemory
-        momentum1DevOutGT.SetGlobalBuffer((__gm__ float*)momentum1DevOut, outDim0);
-        weightsDevOutGT.SetGlobalBuffer((__gm__ float*)weightsDevOut, outDim0);
+        momentum1DevOutGT.SetGlobalBuffer((__gm__ wType*)momentum1DevOut, outDim0);
+        weightsDevOutGT.SetGlobalBuffer((__gm__ wType*)weightsDevOut, outDim0);
         hashSizeCumsumGT.SetGlobalBuffer((__gm__ int64_t*)hashSizeCumsum, weightsOffsetsDim0 + 1);
 
         totalHashSize = hashSizeCumsumGT.GetValue(weightsOffsetsDim0);
@@ -282,9 +286,9 @@ public:
                 int64_t thisWeightOffset = *(weightsOffsetsPtr + tableIndex);
                 int64_t thisIndForThisTable = 0;
                 if (enableHash) {
-                    thisIndForThisTable = GetOffset(hashIndices, indicesInd);
+                    thisIndForThisTable = GetOffset(hashIndices, indicesInd, offsetDataType);
                 } else {
-                    thisIndForThisTable = GetOffset(indices, indicesInd);
+                    thisIndForThisTable = GetOffset(indices, indicesInd, offsetDataType);
                 }
                 int64_t thisIndForTotalTable = hashSizeCumsumGT.GetValue(tableIndex) + thisIndForThisTable;
                 // Out offset
@@ -345,9 +349,9 @@ public:
                 int64_t thisWeightOffset = *(weightsOffsetsPtr + tableIndex);
                 int64_t thisIndForThisTable = 0;
                 if (enableHash) {
-                    thisIndForThisTable = GetOffset(hashIndices, indicesInd);
+                    thisIndForThisTable = GetOffset(hashIndices, indicesInd, offsetDataType);
                 } else {
-                    thisIndForThisTable = GetOffset(indices, indicesInd);
+                    thisIndForThisTable = GetOffset(indices, indicesInd, offsetDataType);
                 }
                 int64_t thisIndForTotalTable = hashSizeCumsumGT.GetValue(tableIndex) + thisIndForThisTable;
                 SetTheFlag(workspaceGT[thisIndForTotalTable], NEED_UPDATE);
@@ -437,6 +441,7 @@ public:
 
     // DataType
     int64_t bytesOfDataType;
+    int64_t offsetDataType;
 
     // Tiling
     int64_t offsetsSplitLen;
@@ -466,13 +471,13 @@ public:
     TQue<TPosition::VECOUT, 1> queFlagOut;
 
     // ThisCoreAddr
-    GlobalTensor<float> devWeightsGT;
+    GlobalTensor<wType> devWeightsGT;
     GlobalTensor<float> outGT;
     GlobalTensor<float> gradOutputGT;
-    GlobalTensor<float> momentum1DevGT;
+    GlobalTensor<wType> momentum1DevGT;
     GlobalTensor<int8_t> workspaceGT;
-    GlobalTensor<float> momentum1DevOutGT;
-    GlobalTensor<float> weightsDevOutGT;
+    GlobalTensor<wType> momentum1DevOutGT;
+    GlobalTensor<wType> weightsDevOutGT;
     GlobalTensor<int64_t> hashSizeCumsumGT;
 };
 }  // namespace BackwardCodegenUnweightedExact

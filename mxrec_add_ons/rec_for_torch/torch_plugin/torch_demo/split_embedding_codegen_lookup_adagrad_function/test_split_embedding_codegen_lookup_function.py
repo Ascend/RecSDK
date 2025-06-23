@@ -256,7 +256,7 @@ def generate_unique(jt_lst, feature_map):
 
 
 def execute(params):
-    if params.unique and (params.optim in [SGD, Adam]):
+    if params.unique and (params.optim == SGD):
         return  # 暂未适配adam unique算子
     if params.feature_map is None:
         params.feature_map = list(range(len(params.tables)))
@@ -290,7 +290,7 @@ def execute(params):
 @pytest.mark.parametrize("tables", [[(20000, 32), (40000, 32)], [(40000, 128), (80000, 128)]])
 @pytest.mark.parametrize("mutile_hots", [[8, 16, 100], [2, 64, 200]])
 @pytest.mark.parametrize("batch_size", [8, 16, 64])
-@pytest.mark.parametrize("unique", [False])
+@pytest.mark.parametrize("unique", [True, False])
 @pytest.mark.parametrize("feature_map", [[0, 0, 1], [0, 1, 1]])
 @pytest.mark.parametrize("pooling_model", [PoolingType.SUM, PoolingType.MEAN, PoolingType.NONE])
 @pytest.mark.parametrize("optim", [SGD, Adagrad, Adam])
@@ -302,7 +302,7 @@ def test_lookup_two_tables(tables, mutile_hots, batch_size, pooling_model, uniqu
 @pytest.mark.parametrize("tables", [[(10240, 1024)], [(1234, 1536)], [(1, 8)]])
 @pytest.mark.parametrize("mutile_hots", [[1], [4], [11], [69]])
 @pytest.mark.parametrize("batch_size", [2341, 1])
-@pytest.mark.parametrize("unique", [False])
+@pytest.mark.parametrize("unique", [True, False])
 @pytest.mark.parametrize("pooling_model", [PoolingType.SUM, PoolingType.MEAN, PoolingType.NONE])
 @pytest.mark.parametrize("optim", [SGD, Adagrad, Adam])
 def test_lookup_backward_one_table(tables, mutile_hots, batch_size, pooling_model, unique, optim):
@@ -310,7 +310,7 @@ def test_lookup_backward_one_table(tables, mutile_hots, batch_size, pooling_mode
     execute(params)
 
 
-@pytest.mark.parametrize("unique", [False])
+@pytest.mark.parametrize("unique", [True, False])
 @pytest.mark.parametrize("pooling_model", [PoolingType.SUM, PoolingType.MEAN, PoolingType.NONE])
 @pytest.mark.parametrize("optim", [SGD, Adagrad, Adam])
 def test_lookup_multi_tables(pooling_model, unique, optim):
