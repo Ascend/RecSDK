@@ -167,7 +167,7 @@ class HashEmbeddingModuleCollection(nn.Module):
 
     def lookup_and_post_dist(self, jt: JaggedTensor, feat_name: str, context: LookupContext):
         embedding = self.lookup(jt, feat_name)
-        result = AllGatherEmbeddings().apply(embedding, feat_name,context)
+        result = AllGatherEmbeddings().apply(embedding, feat_name, context)
         return result
 
     def forward(self, kjt_list_each_rank: List[KeyedJaggedTensor]):
