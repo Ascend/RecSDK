@@ -754,7 +754,7 @@ def check_hdfs_safemode_status():
     if "Safe mode is ON" in status:
         raise RuntimeError(
             "The current HDFS is in safe mode. It is recommended to check the server disk space and the usage of HDFS "
-            "resources. Use 'hdfs dfsadmin -safemode leave' to set Safe mode is Off, and then run again."
+            "resources. Use 'hdfs dfsadmin -safemode leave' to set Safe mode is OFF, and then run again."
         )
 
 
