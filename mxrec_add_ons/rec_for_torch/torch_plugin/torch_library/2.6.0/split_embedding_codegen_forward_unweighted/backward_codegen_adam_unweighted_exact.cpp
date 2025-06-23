@@ -404,7 +404,8 @@ at::Tensor split_embedding_backward_codegen_adam_unweighted_exact_npu(const Tens
     auto output = at::empty({dev_weights.size(0)}, dev_weights.options());
 
     int optim_type = static_cast<int>(OptimizerType::ADAM);
-    EXEC_NPU_CMD(aclnnBackwardCodegenAdagradUnweightedExact, grad_output, dev_weights, uvm_weights, lxu_cache_weights,
+    const auto grad_output_conti = grad_output.contiguous();
+    EXEC_NPU_CMD(aclnnBackwardCodegenAdagradUnweightedExact, grad_output_conti, dev_weights, uvm_weights, lxu_cache_weights,
                  weights_placements, weights_offsets, D_offsets, hash_size_cumsum, indices, offsets,
                  lxu_cache_locations, momentum1_dev, momentum1_uvm, momentum1_placements, momentum1_offsets,
                  momentum2_dev, momentum2_uvm, momentum2_placements, momentum2_offsets, hash_indices, unique_ids,

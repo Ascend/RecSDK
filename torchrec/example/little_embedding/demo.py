@@ -5,9 +5,10 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
-from typing import Dict
-import os
 import logging
+import os
+import sysconfig
+from typing import Dict
 
 import torch
 import torch.distributed as dist
@@ -19,6 +20,8 @@ from hybrid_torchrec.modules.little_embedding import (
 )
 from torchrec import KeyedJaggedTensor, JaggedTensor
 
+
+torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -58,10 +61,10 @@ def dataset_getnext():
 
 
 config0 = EmbeddingConfig(
-    table_name="table0", num_embedding=100, embedding_dim=32, rank=rank
+    table_name="table0", num_embedding=100, embedding_dim=32, rank=rank, world_size=world_size
 )
 config1 = EmbeddingConfig(
-    table_name="table1", num_embedding=100, embedding_dim=32, rank=rank
+    table_name="table1", num_embedding=100, embedding_dim=32, rank=rank, world_size=world_size
 )
 embedding = HashEmbeddingModuleCollection(configs=[config0, config1])
 

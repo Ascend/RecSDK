@@ -22,11 +22,13 @@ from fbgemm_gpu.split_table_batched_embeddings_ops_common import PoolingMode
 import torch
 from torch import nn
 import torch.distributed as dist
-from torchrec import KeyedJaggedTensor, JaggedTensor
+
 from hybrid_torchrec.distributed.batched_embedding_kernel import (
 HybridSplitTableBatchedEmbeddingBagsCodegen,
 )
 from hybrid_torchrec.sparse.jagged_tensor_with_looup_helper import KeyedJaggedTensorWithLookHelper
+from torchrec import KeyedJaggedTensor, JaggedTensor
+
 
 
 class Awaitable:
@@ -66,7 +68,7 @@ class EmbeddingConfig:
     table_name: str
     num_embedding: int = 0
     embedding_dim: int = 0
-    optimizer: OptimType = OptimType.EXACT_SGD
+    optimizer: OptimType = OptimType.EXACT_ADAGRAD
     world_size: int = 0
     rank: int = 0
 
@@ -150,8 +152,8 @@ class HashEmbeddingModuleCollection(nn.Module):
         for config in self.configs:
             name = config.table_name
             num_embeddings = config.num_embedding // config.world_size
-            if self.rank == config.world_size - 1:
-                num_embeddings += config.num_embedding % config.world_size
+            if self.rank < config.num_embedding % config.world_size:
+                num_embeddings += 1
             embedding_spec = (num_embeddings, config.embedding_dim, EmbeddingLocation.DEVICE, ComputeDevice.NPU)
             feature_table_map = [0]
             output_dtype = SparseType.FP32
@@ -195,7 +197,7 @@ class HashEmbeddingModuleCollection(nn.Module):
             offsets=kjt.offsets().long(),
             hash_indices=kjt.hash_indices,
             unique_indices=kjt.unique_indices,
-            unique_offsets=kjt.unique_offsets,
+            unique_offset=kjt.unique_offset,
             unique_inverse=kjt.unique_inverse
         )
 
