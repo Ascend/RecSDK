@@ -100,7 +100,7 @@ class AllGatherEmbeddings(torch.autograd.Function):
         ctx.context = context
         ctx.feat_name = feat_name
         result_list = [torch.zeros_like(size) for size in context.communication_metrix[feat_name]]
-        context.fwd_pg.allgather(result_list, embedding.data).wait()
+        context.fwd_pg.allgather(result_list, embedding).wait()
         return tuple(result_list)
 
     @staticmethod
