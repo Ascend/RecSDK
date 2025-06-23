@@ -19,8 +19,8 @@ from hybrid_torchrec.distributed.sharding.post_input_dist import (
     UniqueHashFeatureProcess,
     get_feature_len_groupby_table_name,
 )
-from hybrid_torchrec.modules.hash_embeddingbag import HashMap
 from hybrid_torchrec.distributed.sharding.hybrid_rw_sharding import HashRwSparseFeaturesDist
+from hybrid_torchrec.modules.ids_process import HashMapBase
 
 from torchrec.distributed.embedding_sharding import (
     BaseEmbeddingLookup,
@@ -99,7 +99,7 @@ class HybridHashRwSequenceEmbeddingSharding(HybridRwSequenceEmbeddingSharding):
     def __init__(
         self,
         sharding_infos: List[EmbeddingShardingInfo],
-        table2hashmap: Dict[str, HashMap],
+        table2hashmap: Dict[str, HashMapBase],
         env: ShardingEnv,
         host_env: ShardingEnv,
         device: Optional[torch.device] = None,

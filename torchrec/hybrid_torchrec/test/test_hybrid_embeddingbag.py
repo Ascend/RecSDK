@@ -249,6 +249,7 @@ class TestModel:
         return results
 
 params = {
+    "world_size": [WORLD_SIZE],
     "table_num": [3],
     "embedding_dims": [[32, 32, 32]],
     "num_embeddings": [[400, 4000, 400]],
@@ -274,16 +275,7 @@ def test_hybrid_embedding_bag(config: ExecuteConfig):
         return
     mp.spawn(
         execute,
-        args=(
-            WORLD_SIZE,
-            table_num,
-            embedding_dims,
-            num_embeddings,
-            pool_type,
-            sharding_type,
-            lookup_len,
-            device,
-        ),
+        args=(config,),
         nprocs=WORLD_SIZE,
         join=True,
     )

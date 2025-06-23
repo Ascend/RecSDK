@@ -18,7 +18,7 @@ from hybrid_torchrec.distributed.sharding.post_input_dist import (
     UniqueHashFeatureProcess,
     get_feature_len_groupby_table_name,
 )
-from hybrid_torchrec.modules.hash_embeddingbag import HashMap
+from hybrid_torchrec.modules.ids_process import HashMapBase
 
 from torchrec.distributed.embedding_sharding import (
     BaseSparseFeaturesDist,
@@ -98,7 +98,7 @@ class HybridHashTwSequenceEmbeddingSharding(HybridTwSequenceEmbeddingSharding):
     def __init__(
         self,
         sharding_infos: List[EmbeddingShardingInfo],
-        table2hashmap: Dict[str, HashMap],
+        table2hashmap: Dict[str, HashMapBase],
         env: ShardingEnv,
         host_env: ShardingEnv,
         device: Optional[torch.device] = None,
@@ -110,7 +110,7 @@ class HybridHashTwSequenceEmbeddingSharding(HybridTwSequenceEmbeddingSharding):
     def create_post_input_dist(
         self,
         device: Optional[torch.device] = None,
-    ) -> SparseFeaturesPostDist[KeyedJaggedTensor]:
+    ) -> BaseSparseFeaturesDist[KeyedJaggedTensor]:
 
         table_names, features_split_by_table_name = get_feature_len_groupby_table_name(
             self._grouped_embedding_configs

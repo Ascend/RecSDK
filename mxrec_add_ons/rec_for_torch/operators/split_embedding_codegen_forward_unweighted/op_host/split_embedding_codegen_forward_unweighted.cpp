@@ -44,18 +44,29 @@ constexpr int LXU_CACHE_LOCATIONS_INDEX = 8;
 constexpr int HASH_INDICES_INDEX = 9;
 constexpr int POOL_MODE_INDEX = 2;
 constexpr int MAX_D_INDEX = 1;
-constexpr int EC_KEY = 1;
-constexpr int EBC_KEY = 2;
+constexpr int IS_DYNAMIC_INDEX = 5;
+constexpr int BLOCK_NUM_INDEX = 6;
 
-static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
-                                       SplitEmbeddingCodegenForwardUnweightedTilingData& tilingData)
+constexpr int NORMAL_KEY = 1;
+constexpr int DYNAMIC_KEY = 2;
+
+static ge::graphStatus ShapeTilingCheckFunc(gert::TilingContext* context)
 {
     OPS_LOG_E_IF_NULL("devWeights shape", context->GetInputShape(DEV_WEIGHTS_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("weightsOffset shape", context->GetInputShape(WEIGHTS_OFFSETS_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("dOffsets shape", context->GetInputShape(D_OFFSETS_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("indices shape", context->GetInputShape(INDICES_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("offsets shape", context->GetInputShape(OFFSETS_INDEX), return ge::GRAPH_FAILED);
-  
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
+                                       SplitEmbeddingCodegenForwardUnweightedTilingData& tilingData)
+{
+    if (ShapeTilingCheckFunc(context) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
     int64_t devWeightsDim0 = context->GetInputShape(DEV_WEIGHTS_INDEX)->GetStorageShape().GetDim(0);
     int64_t weightsOffsetsDim0 = context->GetInputShape(WEIGHTS_OFFSETS_INDEX)->GetStorageShape().GetDim(0);
     int64_t dOffsetsDim0 = context->GetInputShape(D_OFFSETS_INDEX)->GetStorageShape().GetDim(0);
@@ -65,14 +76,12 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
     auto attrs = context->GetAttrs();
     OPS_LOG_E_IF_NULL("attrs", attrs, return ge::GRAPH_FAILED);
 
-    if (weightsOffsetsDim0 == 0) {
-        printf("[ERROR] Invalid weightsOffsets shape!\n");
-        return ge::GRAPH_FAILED;
-    }
-    if (dOffsetsDim0 <= 1) {
-        printf("[ERROR] Invalid dOffsets shape!\n");
-        return ge::GRAPH_FAILED;
-    }
+    OPS_CHECK(weightsOffsetsDim0 == 0,
+              OPS_LOG_E("Tiling Debug", "weightsOffsets shape is invalid."),
+              return ge::GRAPH_FAILED);
+    OPS_CHECK(dOffsetsDim0 <= 1,
+              OPS_LOG_E("Tiling Debug", "dOffsets shape is invalid."),
+              return ge::GRAPH_FAILED);
 
     auto hashIndices = context->GetOptionalInputTensor(HASH_INDICES_INDEX);
     if (hashIndices == nullptr) {
@@ -90,9 +99,12 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
     // no bag output shape [indicesNum, maxD]
     if (poolMode == POOL_MODE_NOBAG) {
         outDim0 = indicesDim0;
-        outDim1 = *attrs->GetInt(MAX_D_INDEX);
+        outDim1 = *context->GetAttrs()->GetInt(MAX_D_INDEX);
     }
 
+    // dynamic
+    bool is_dynamic = *context->GetAttrs()->GetBool(IS_DYNAMIC_INDEX);
+    ge::DataType weightsDtype = context ->GetInputTensor(DEV_WEIGHTS_INDEX)->GetDataType();
     int64_t bytesOfDataType = sizeof(float);
     int64_t offsetDataType = DATA_TYPE_INT64;
     int64_t maxD = *attrs->GetInt(MAX_D_INDEX);
@@ -128,11 +140,9 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     // Tiling
     size_t coreNum = ascnedPlatform.GetCoreNumAiv();
-    if (coreNum == 0) {
-        printf("[ERROR] Core num is 0!\n");
-        return ge::GRAPH_FAILED;
-    }
-
+    OPS_CHECK(coreNum == 0,
+              OPS_LOG_E("Tiling Debug", "Core num is 0."),
+              return ge::GRAPH_FAILED);
     int64_t splitBaseLen = (tiling.get_offsetsDim0() - 1) / coreNum;
     int64_t tailSplitIndex = (tiling.get_offsetsDim0() - 1) % coreNum;
 
@@ -176,66 +186,72 @@ class SplitEmbeddingCodegenForwardUnweighted : public OpDef {
 public:
     explicit SplitEmbeddingCodegenForwardUnweighted(const char* name) : OpDef(name)
     {
-        this->Input("dev_weights")
+        this->Input("dev_weights") // dynamic int64
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .DataType({ge::DT_FLOAT, ge::DT_INT64})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("uvm_weights")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("lxu_cache_weights")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("weights_placements")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .DataType({ge::DT_INT32, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("weights_offsets")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT64})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .DataType({ge::DT_INT64, ge::DT_INT64})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("D_offsets")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("indices")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT64})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .DataType({ge::DT_INT64, ge::DT_INT64})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("offsets")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT64})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .DataType({ge::DT_INT64, ge::DT_INT64})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("lxu_cache_locations")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("hash_indices")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT64})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .DataType({ge::DT_INT64, ge::DT_INT64})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Input("unique_inverse")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_INT64, ge::DT_INT64})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("out")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Attr("total_D").Int();
         this->Attr("max_D").Int();
         this->Attr("pool_mode").Int();
         this->Attr("output_dtype").Int();
         this->Attr("is_experimental").Int();
+        this->Attr("is_dynamic").Bool();
 
         this->SetInferShape(ge::InferShape);
 

@@ -25,8 +25,8 @@ using namespace AscendC;
 using namespace BackwardCodegenUnweightedExact;
 
 namespace BackwardCodegenAdamUnweightedExact {
-
-class BackwardCodegenAdamUnweightedExactKernel : public BackwardCodegenUnweightedExactKernel {
+template<typename wType>
+class BackwardCodegenAdamUnweightedExactKernel : public BackwardCodegenUnweightedExactKernel<wType> {
 public:
     __aicore__ inline BackwardCodegenAdamUnweightedExactKernel() {}
 
@@ -35,9 +35,9 @@ public:
         GET_TILING_DATA(tilingData, args.tiling);
         momentum2Dev = args.momentum2Dev;
         momentum2DevOut = args.momentum2DevOut;
-        momentum2DevGT.SetGlobalBuffer((__gm__ float*)momentum2Dev, outDim0);
-        momentum2DevOutGT.SetGlobalBuffer((__gm__ float*)momentum2DevOut, outDim0);
-
+        momentum2DevGT.SetGlobalBuffer((__gm__ float*)momentum2Dev, this->outDim0);
+        momentum2DevOutGT.SetGlobalBuffer((__gm__ float*)momentum2DevOut, this->outDim0);
+        
         beta1 = tilingData.beta1;
         beta2 = tilingData.beta2;
         iter = tilingData.iter;
@@ -45,18 +45,18 @@ public:
         beta2pow = tilingData.beta2pow;
 
         numOfOut = 3;  // 输出个数为3：grad, momentum1, momentum2
-        indicesNumOneBlock = blockLen / numOfOut / maxD;
+        indicesNumOneBlock = this->blockLen / numOfOut / this->maxD;
         if (indicesNumOneBlock >= MAX_ARGS_PIPE_LEN) {
             indicesNumOneBlock = MAX_ARGS_PIPE_LEN;
         }
-        outIndex = 0 * maxD;   // grad偏移
-        outIndex1 = 1 * maxD;  // momentum1偏移
-        outIndex2 = 2 * maxD;  // momentum2偏移
+        outIndex = 0 * this->maxD;  // grad偏移
+        outIndex1 = 1 * this->maxD;  // momentum1偏移
+        outIndex2 = 2 * this->maxD;  // momentum2偏移
     }
 
     __aicore__ inline void Tilling()
     {
-        int64_t allLen = totalHashSize;
+        int64_t allLen = this->totalHashSize;
         int64_t totalTableSizeSplit = allLen % GetBlockNum();
         int64_t aCoreTableLen = allLen / GetBlockNum();
 
@@ -69,8 +69,8 @@ public:
             thisTableOffset = GetBlockIdx() * (aCoreTableLen + 1);
         }
 
-        for (int64_t i = weightsOffsetsDim0; i >= 0; i--) {
-            if (thisTableOffset >= hashSizeCumsumGT.GetValue(i)) {
+        for (int64_t i = this->weightsOffsetsDim0; i >= 0; i--) {
+            if (thisTableOffset >= this->hashSizeCumsumGT.GetValue(i)) {
                 tableIndex = i;
                 break;
             }
@@ -79,22 +79,22 @@ public:
 
     __aicore__ inline int64_t FillUpdateArgs(UpdateArgs* updateArgs, int64_t& remain)
     {
-        __gm__ int32_t* dOffsetsPtr = (__gm__ int32_t*)dOffsets;
-        __gm__ int64_t* weightsOffsetsPtr = (__gm__ int64_t*)weightsOffsets;
+        __gm__ int32_t* dOffsetsPtr = (__gm__ int32_t*)this->dOffsets;
+        __gm__ int64_t* weightsOffsetsPtr = (__gm__ int64_t*)this->weightsOffsets;
 
         int64_t cnt = 0;
         while (cnt < indicesNumOneBlock && remain > 0) {
             int64_t thisIndForTotalTable = thisTableOffset + thisTableLen - remain;
             remain = remain - 1;
-            if (thisIndForTotalTable >= hashSizeCumsumGT.GetValue(tableIndex + 1)) {
+            if (thisIndForTotalTable >= this->hashSizeCumsumGT.GetValue(tableIndex + 1)) {
                 tableIndex = tableIndex + 1;
             }
 
-            if (workspaceGT.GetValue(thisIndForTotalTable) != NEED_UPDATE) {
+            if (this->workspaceGT.GetValue(thisIndForTotalTable) != NEED_UPDATE) {
                 continue;
             }
 
-            int64_t thisIndForThisTable = thisIndForTotalTable - hashSizeCumsumGT.GetValue(tableIndex);
+            int64_t thisIndForThisTable = thisIndForTotalTable - this->hashSizeCumsumGT.GetValue(tableIndex);
             int64_t embedDim = *(dOffsetsPtr + tableIndex + 1) - *(dOffsetsPtr + tableIndex);
             int64_t thisWeightOffset = *(weightsOffsetsPtr + tableIndex);
             int64_t thisOutOffset = thisWeightOffset + thisIndForThisTable * embedDim;
@@ -109,30 +109,33 @@ public:
 
     __aicore__ inline void DataCopyIn(UpdateArgs* updateArgs, int64_t cnt)
     {
-        LocalTensor<float> inputLt = queIn.AllocTensor<float>();
+        LocalTensor<float> inputLt = this->queIn.template AllocTensor<float>();
         for (int64_t i = 0; i < cnt; i++) {
             UpdateArgs theArgs = updateArgs[i];
-            DataCopy(inputLt[i * maxD * numOfOut + outIndex], outGT[theArgs.thisOutOffset], theArgs.embedDim);
-            DataCopy(inputLt[i * maxD * numOfOut + outIndex1], momentum1DevGT[theArgs.thisOutOffset], theArgs.embedDim);
-            DataCopy(inputLt[i * maxD * numOfOut + outIndex2], momentum2DevGT[theArgs.thisOutOffset], theArgs.embedDim);
+            DataCopy(inputLt[i * this->maxD * numOfOut + outIndex], this->outGT[theArgs.thisOutOffset],
+                     theArgs.embedDim);
+            DataCopy(inputLt[i * this->maxD * numOfOut + outIndex1], this->momentum1DevGT[theArgs.thisOutOffset],
+                     theArgs.embedDim);
+            DataCopy(inputLt[i * this->maxD * numOfOut + outIndex2], momentum2DevGT[theArgs.thisOutOffset],
+                     theArgs.embedDim);
         }
-        queIn.EnQue(inputLt);
+        this->queIn.template EnQue(inputLt);
     }
 
     __aicore__ inline void ComputeAdam(UpdateArgs* updateArgs, int64_t cnt)
     {
         float oneMinusBeta1 = (1 - beta1);
         float oneMinusBeta2 = (1 - beta2);
-        float minusLearningRate = -learning_rate;
+        float minusLearningRate = -this->learning_rate;
 
-        LocalTensor<float> inputLt = queIn.DeQue<float>();
-        LocalTensor<float> outLt = queOut.AllocTensor<float>();
+        LocalTensor<float> inputLt = this->queIn.template DeQue<float>();
+        LocalTensor<float> outLt = this->queOut.template AllocTensor<float>();
 
         for (int64_t i = 0; i < cnt; i++) {
             UpdateArgs theArgs = updateArgs[i];
-            int64_t thisGradIndex = i * maxD * numOfOut + outIndex;
-            int64_t thisMoment1Index = i * maxD * numOfOut + outIndex1;
-            int64_t thisMoment2Index = i * maxD * numOfOut + outIndex2;
+            int64_t thisGradIndex = i * this->maxD * numOfOut + outIndex;
+            int64_t thisMoment1Index = i * this->maxD * numOfOut + outIndex1;
+            int64_t thisMoment2Index = i * this->maxD * numOfOut + outIndex2;
 
             // v[:] = beta1 * v + (1 - beta1) * p.grad
             Muls<float>(outLt[thisMoment1Index], inputLt[thisMoment1Index], beta1, theArgs.embedDim);
@@ -152,30 +155,30 @@ public:
 
             // p[:] -= hyperparams['lr'] * v_bias_corr / (torch.sqrt(s_bias_corr) + eps)
             Sqrt<float>(outLt[thisMoment2Index], outLt[thisMoment2Index], theArgs.embedDim);
-            Adds<float>(outLt[thisMoment2Index], outLt[thisMoment2Index], eps, theArgs.embedDim);
+            Adds<float>(outLt[thisMoment2Index], outLt[thisMoment2Index], this->eps, theArgs.embedDim);
             Div<float>(outLt[thisGradIndex], outLt[thisMoment1Index], outLt[thisMoment2Index], theArgs.embedDim);
             Muls<float>(outLt[thisGradIndex], outLt[thisGradIndex], minusLearningRate, theArgs.embedDim);
         }
 
-        queOut.EnQue(outLt);
-        queIn.FreeTensor(inputLt);
+        this->queOut.template EnQue(outLt);
+        this->queIn.template FreeTensor(inputLt);
     }
 
     __aicore__ inline void DataCopyOut(UpdateArgs* updateArgs, int64_t cnt)
     {
-        LocalTensor<float> outLt = queOut.DeQue<float>();
+        LocalTensor<float> outLt = this->queOut.template DeQue<float>();
         SetAtomicAdd<float>();
         for (int64_t i = 0; i < cnt; i++) {
             UpdateArgs theArgs = updateArgs[i];
-            int64_t thisGradIndex = i * maxD * numOfOut + outIndex;
-            int64_t thisMoment1Index = i * maxD * numOfOut + outIndex1;
-            int64_t thisMoment2Index = i * maxD * numOfOut + outIndex2;
-            DataCopy(weightsDevOutGT[theArgs.thisOutOffset], outLt[thisGradIndex], theArgs.embedDim);
-            DataCopy(momentum1DevOutGT[theArgs.thisOutOffset], outLt[thisMoment1Index], theArgs.embedDim);
+            int64_t thisGradIndex = i * this->maxD * numOfOut + outIndex;
+            int64_t thisMoment1Index = i * this->maxD * numOfOut + outIndex1;
+            int64_t thisMoment2Index = i * this->maxD * numOfOut + outIndex2;
+            DataCopy(this->weightsDevOutGT[theArgs.thisOutOffset], outLt[thisGradIndex], theArgs.embedDim);
+            DataCopy(this->momentum1DevOutGT[theArgs.thisOutOffset], outLt[thisMoment1Index], theArgs.embedDim);
             DataCopy(momentum2DevOutGT[theArgs.thisOutOffset], outLt[thisMoment2Index], theArgs.embedDim);
         }
         SetAtomicNone();
-        queOut.FreeTensor(outLt);
+        this->queOut.template FreeTensor(outLt);
     }
 
     __aicore__ inline void UpdateEmbedAdam(Args args)
@@ -195,14 +198,13 @@ public:
 
     __aicore__ inline void Compute(Args args)
     {
-        Init(args);
-
-        ClearGT(workspaceGT, totalHashSize);
-        ClearGrad();
+        this->Init(args);
+        this->ClearGT(this->workspaceGT, this->totalHashSize);
+        this->ClearGrad();
         pipe_barrier(PIPE_ALL);
         SyncAll();
 
-        ComputeGrad();
+        this->ComputeGrad();
         pipe_barrier(PIPE_ALL);
         SyncAll();
 
@@ -218,9 +220,11 @@ private:
 
     float beta1;
     float beta2;
+    float stepSize;
+    float beta2sqrt;
+    int64_t iter;
     float beta1pow;
     float beta2pow;
-    int64_t iter;
 
     int numOfOut;
     int indicesNumOneBlock;

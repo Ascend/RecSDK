@@ -68,7 +68,7 @@ class IdsMapper(HashMapBase):
             ids, offset, counts, table_i
         )
 
-    def forward(self, ids: torch.Tensor, high_precison: bool):
+    def forward(self, ids: torch.Tensor):
         with record_function("## ids2indices ##"):
             result, unique, unique_inverse = self.ids_mapper.ids2indices_unique(
                 ids

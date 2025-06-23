@@ -76,7 +76,6 @@ class HybridShardedHashEmbeddingCollection(HybridShardedEmbeddingCollection):
 
     def create_hybrid_embedding_sharding(
         self,
-        sharding_type: str,
         sharding_infos: List[EmbeddingShardingInfo],
         env: ShardingEnv,
         host_env: ShardingEnv,
@@ -85,6 +84,7 @@ class HybridShardedHashEmbeddingCollection(HybridShardedEmbeddingCollection):
     ) -> EmbeddingSharding[
         EmbeddingShardingContext, KeyedJaggedTensor, torch.Tensor, torch.Tensor
     ]:
+        sharding_type = sharding_infos[0].param_sharding.sharding_type
         if sharding_type == ShardingType.TABLE_WISE.value:
             return HybridHashTwSequenceEmbeddingSharding(
                 sharding_infos,
@@ -114,15 +114,6 @@ class HybridShardedHashEmbeddingCollection(HybridShardedEmbeddingCollection):
             hashmap = module.embeddings[name].ids2slot_dict
             table2hashmap[name] = hashmap
         return table2hashmap
-
-    def forward(self, *input_feature, **kwargs) -> LazyAwaitable[Out]:
-        if len(input_feature) < 1:
-            raise ValueError(f"input must be kjt in 0, but got {input_feature}")
-        ctx = self.create_context()
-        dist_input = self.input_dist(ctx, *input_feature, **kwargs).wait().wait()
-        dist_post_input = self.post_input_dist(ctx, dist_input)
-        dist_post_input = kjt_list_to_device(dist_post_input, self._device)
-        return self.compute_and_output_dist(ctx, dist_post_input)
 
 
 class HybridHashEmbeddingCollectionSharder(

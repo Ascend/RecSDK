@@ -112,7 +112,7 @@ class HashEmbeddingCollection(EmbeddingCollectionInterface):
                 feature_name = feature_names[j]
                 f = jt_dict[feature_name]
                 lookup = emb_module(
-                    input=f.values(),
+                    input_tensor=f.values(),
                 ).float()
                 feature_embeddings[embedding_name] = JaggedTensor(
                     values=lookup,

@@ -30,7 +30,7 @@ Tensor split_embedding_backward_codegen_adagrad_unweighted_exact_cuda(
     const int64_t info_B_mask_int64, const bool use_uniq_cache_locations, const bool use_homogeneous_placements,
     Tensor momentum1_dev, Tensor momentum1_uvm, Tensor momentum1_placements, Tensor momentum1_offsets,
     const Tensor& hash_indices, const Tensor& unique_ids, const Tensor& unique_offsets, const Tensor& unique_inverse,
-    double eps = 0, double learning_rate = 0);
+    double eps = 0, double learning_rate = 0, bool is_dynamic = false);
 
 class SplitLookupAdagrad : public torch::autograd::Function<SplitLookupAdagrad> {
 public:
@@ -49,7 +49,7 @@ public:
         const double max_gradient, const bool stochastic_rounding, const bool is_experimental,
         const bool use_uniq_cache_locations_bwd, const bool use_homogeneous_placements, Tensor momentum1_dev,
         Tensor momentum1_uvm, Tensor momentum1_placements, Tensor momentum1_offsets, double eps = 0,
-        double learning_rate = 0)
+        double learning_rate = 0, bool is_dynamic = false)
     {
         const auto T = weights_offsets.size(0);
         if (T == 0) {
@@ -96,6 +96,7 @@ public:
         ctx->saved_data["use_homogeneous_placements"] = use_homogeneous_placements;
         ctx->saved_data["eps"] = eps;
         ctx->saved_data["learning_rate"] = learning_rate;
+        ctx->saved_data["is_dynamic"] = is_dynamic;
         const auto& flatten_dev_weights = dev_weights;
         // not surport  indice_weights
         if (!indice_weights) {
@@ -107,7 +108,7 @@ public:
             return {embedding_codegen_forward_op.call(
                 flatten_dev_weights, uvm_weights, lxu_cache_weights, weights_placements, weights_offsets, D_offsets,
                 total_D, max_D, indices, offsets, pooling_mode, lxu_cache_locations, uvm_cache_stats_, output_dtype,
-                is_experimental, hash_indices.value_or(Tensor()))};
+                is_experimental, hash_indices.value_or(Tensor()), unique_inverse.value_or(at::Tensor()), is_dynamic)};
         }
         return {at::Tensor()};
     }
@@ -149,6 +150,7 @@ public:
         const auto use_homogeneous_placements = ctx->saved_data["use_homogeneous_placements"].toBool();
         auto eps = ctx->saved_data["eps"].toDouble();
         auto learning_rate = ctx->saved_data["learning_rate"].toDouble();
+        auto is_dynamic = ctx->saved_data["is_dynamic"].toBool();
 
         TORCH_CHECK_EQ(grad_outputs.size(), 1);
 
@@ -169,7 +171,7 @@ public:
             BT_block_size, max_segment_length_per_warp, stochastic_rounding, info_B_num_bits, info_B_mask_int64,
             use_uniq_cache_locations_bwd, use_homogeneous_placements, momentum1_dev, momentum1_uvm,
             momentum1_placements, momentum1_offsets, hash_indices, unique_ids, unique_offsets, unique_inverse, eps,
-            learning_rate);
+            learning_rate, is_dynamic);
         return {
             Tensor(),          // placeholder autograd tensor
             Variable(),        // output_dtype
@@ -205,7 +207,8 @@ public:
             Variable(),        // unique_offsets
             Variable(),        // unique_inverse
             Variable(),        // eps
-            Variable()         // learning_rate
+            Variable(),        // learning_rate
+            Variable(),        // is_dynamic
         };
     }
 };
@@ -232,7 +235,7 @@ Tensor split_embedding_codegen_lookup_adagrad_function(
     const bool use_uniq_cache_locations_bwd = false, const bool use_homogeneous_placements = false,
     const std::optional<Tensor>& uvm_cache_stats = c10::nullopt,
     const std::optional<Tensor>& prev_iter_dev = c10::nullopt, const int64_t iter = 0,
-    const bool apply_global_weight_decay = false, const double gwd_lower_bound = 0)
+    const bool apply_global_weight_decay = false, const double gwd_lower_bound = 0, const bool is_dynamic = false)
 {
     // Set to experimental if either the feature is enabled in JK, or the user specifies to use TBEv2
     const auto is_experimental = is_experimental_tbe;
@@ -243,7 +246,7 @@ Tensor split_embedding_codegen_lookup_adagrad_function(
         unique_ids, unique_offsets, unique_inverse, offsets, pooling_mode, indice_weights, feature_requires_grad,
         lxu_cache_locations, uvm_cache_stats, gradient_clipping, max_gradient, stochastic_rounding, is_experimental,
         use_uniq_cache_locations_bwd, use_homogeneous_placements, momentum1_dev, momentum1_uvm, momentum1_placements,
-        momentum1_offsets, eps, learning_rate)[0];
+        momentum1_offsets, eps, learning_rate, is_dynamic)[0];
 }
 
 at::Tensor split_embedding_backward_codegen_adagrad_unweighted_exact_npu(
@@ -255,25 +258,27 @@ at::Tensor split_embedding_backward_codegen_adagrad_unweighted_exact_npu(
     const int64_t info_B_mask_int64, const bool use_uniq_cache_locations, const bool use_homogeneous_placements,
     Tensor momentum1_dev, Tensor momentum1_uvm, Tensor momentum1_placements, Tensor momentum1_offsets,
     const Tensor& hash_indices, const at::Tensor& unique_ids, const at::Tensor& unique_offsets,
-    const at::Tensor& unique_inverse, double eps = 0, double learning_rate = 0)
+    const at::Tensor& unique_inverse, double eps = 0, double learning_rate = 0, bool is_dynamic = false)
 {
     const int64_t t_max_D = max_D.guard_int(__FILE__, __LINE__);
 
     const at::OptionalDeviceGuard guard(device_of(dev_weights));
-    auto output = at::empty({dev_weights.size(0)}, dev_weights.options());
+    int64_t uniqueSize = static_cast<int64_t>(unique_ids.numel());
+    int64_t totalEmbed = uniqueSize == 0 ? dev_weights.size(0) : uniqueSize * t_max_D;
+    auto output = at::empty({totalEmbed}, dev_weights.options());
 
     int optim_type = static_cast<int>(OptimizerType::ADAGRAD);
     const auto _unused = Tensor();
     double beta = 0;
     int64_t iter = 0;
-
-    EXEC_NPU_CMD(aclnnBackwardCodegenAdagradUnweightedExact, grad_output, dev_weights, uvm_weights, lxu_cache_weights,
-                 weights_placements, weights_offsets, D_offsets, hash_size_cumsum, indices, offsets,
+    const auto grad_output_conti = grad_output.contiguous();
+    EXEC_NPU_CMD(aclnnBackwardCodegenAdagradUnweightedExact, grad_output_conti, dev_weights, uvm_weights,
+                 lxu_cache_weights, weights_placements, weights_offsets, D_offsets, hash_size_cumsum, indices, offsets,
                  lxu_cache_locations, momentum1_dev, momentum1_uvm, momentum1_placements, momentum1_offsets, _unused,
                  _unused, _unused, _unused, hash_indices, unique_ids, unique_offsets, unique_inverse, t_max_D,
                  total_hash_size_bits, pooling_mode, BT_block_size, max_segment_length_per_warp, stochastic_rounding,
                  info_B_num_bits, info_B_mask_int64, use_uniq_cache_locations, use_homogeneous_placements, optim_type,
-                 eps, learning_rate, beta, beta, iter, output, momentum1_dev, _unused, dev_weights);
+                 eps, learning_rate, beta, beta, iter, is_dynamic, output, momentum1_dev, _unused, dev_weights);
 
     return at::Tensor();
 }
@@ -323,7 +328,8 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    Tensor? prev_iter_dev=None, "
           "    int iter=0, "
           "    bool apply_global_weight_decay=False, "
-          "    float gwd_lower_bound=0 "
+          "    float gwd_lower_bound=0, "
+          "    bool is_dynamic = False "
           ") -> Tensor");
 
     m.impl("split_embedding_codegen_lookup_adagrad_function",
@@ -365,7 +371,8 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    Tensor unique_ids = None, "
           "    Tensor unique_offsets = None, "
           "    Tensor unique_inverse = None, "
-          "    float eps = 0, float learning_rate = 0 "
+          "    float eps = 0, float learning_rate = 0, "
+          "    bool is_dynamic = False"
           ") -> Tensor");
 
     m.impl(

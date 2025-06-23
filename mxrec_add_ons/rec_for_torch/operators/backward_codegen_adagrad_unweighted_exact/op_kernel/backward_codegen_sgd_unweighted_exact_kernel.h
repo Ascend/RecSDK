@@ -25,8 +25,8 @@ using namespace AscendC;
 using namespace BackwardCodegenUnweightedExact;
 
 namespace BackwardCodegenSgdUnweightedExact {
-
-class BackwardCodegenSgdUnweightedExactKernel : public BackwardCodegenUnweightedExactKernel {
+template<typename wType>
+class BackwardCodegenSgdUnweightedExactKernel : public BackwardCodegenUnweightedExactKernel<wType> {
 public:
     __aicore__ inline BackwardCodegenSgdUnweightedExactKernel() {}
 
@@ -35,7 +35,7 @@ public:
         GET_TILING_DATA(tilingData, args.tiling);
 
         numOfOut = 1;  // 输出个数为1：grad
-        indicesNumOneBlock = blockLen / numOfOut / maxD;
+        indicesNumOneBlock = this->blockLen / numOfOut / this->maxD;
         if (indicesNumOneBlock >= MAX_ARGS_PIPE_LEN) {
             indicesNumOneBlock = MAX_ARGS_PIPE_LEN;
         }
@@ -43,7 +43,7 @@ public:
 
     __aicore__ inline void Tilling()
     {
-        int64_t allLen = totalHashSize;
+        int64_t allLen = this->totalHashSize;
         int64_t totalTableSizeSplit = allLen % GetBlockNum();
         int64_t aCoreTableLen = allLen / GetBlockNum();
 
@@ -56,8 +56,8 @@ public:
             thisTableOffset = GetBlockIdx() * (aCoreTableLen + 1);
         }
 
-        for (int64_t i = weightsOffsetsDim0; i >= 0; i--) {
-            if (thisTableOffset >= hashSizeCumsumGT.GetValue(i)) {
+        for (int64_t i = this->weightsOffsetsDim0; i >= 0; i--) {
+            if (thisTableOffset >= this->hashSizeCumsumGT.GetValue(i)) {
                 tableIndex = i;
                 break;
             }
@@ -66,22 +66,22 @@ public:
 
     __aicore__ inline int64_t FillUpdateArgs(UpdateArgs* updateArgs, int64_t& remain)
     {
-        __gm__ int32_t* dOffsetsPtr = (__gm__ int32_t*)dOffsets;
-        __gm__ int64_t* weightsOffsetsPtr = (__gm__ int64_t*)weightsOffsets;
+        __gm__ int32_t* dOffsetsPtr = (__gm__ int32_t*)this->dOffsets;
+        __gm__ int64_t* weightsOffsetsPtr = (__gm__ int64_t*)this->weightsOffsets;
 
         int64_t cnt = 0;
         while (cnt < indicesNumOneBlock && remain > 0) {
             int64_t thisIndForTotalTable = thisTableOffset + thisTableLen - remain;
             remain = remain - 1;
-            if (thisIndForTotalTable >= hashSizeCumsumGT.GetValue(tableIndex + 1)) {
+            if (thisIndForTotalTable >= this->hashSizeCumsumGT.GetValue(tableIndex + 1)) {
                 tableIndex = tableIndex + 1;
             }
 
-            if (workspaceGT.GetValue(thisIndForTotalTable) != NEED_UPDATE) {
+            if (this->workspaceGT.GetValue(thisIndForTotalTable) != NEED_UPDATE) {
                 continue;
             }
 
-            int64_t thisIndForThisTable = thisIndForTotalTable - hashSizeCumsumGT.GetValue(tableIndex);
+            int64_t thisIndForThisTable = thisIndForTotalTable - this->hashSizeCumsumGT.GetValue(tableIndex);
             int64_t embedDim = *(dOffsetsPtr + tableIndex + 1) - *(dOffsetsPtr + tableIndex);
             int64_t thisWeightOffset = *(weightsOffsetsPtr + tableIndex);
             int64_t thisOutOffset = thisWeightOffset + thisIndForThisTable * embedDim;
@@ -96,44 +96,44 @@ public:
 
     __aicore__ inline void DataCopyIn(UpdateArgs* updateArgs, int64_t cnt)
     {
-        LocalTensor<float> inputLt = queIn.AllocTensor<float>();
+        LocalTensor<float> inputLt = this->queIn.template AllocTensor<float>();
         for (int64_t i = 0; i < cnt; i++) {
-            UpdateArgs gradArgs = updateArgs[i];
-            DataCopy(inputLt[i * maxD * numOfOut], outGT[gradArgs.thisOutOffset], gradArgs.embedDim);
+            UpdateArgs theArgs = updateArgs[i];
+            DataCopy(inputLt[i * this->maxD * numOfOut], this->outGT[theArgs.thisOutOffset], theArgs.embedDim);
         }
-        queIn.EnQue(inputLt);
+        this->queIn.template EnQue(inputLt);
     }
     
     __aicore__ inline void ComputeSgd(UpdateArgs* updateArgs, int64_t cnt)
     {
-        float minusLearningRate = -learning_rate;
+        float minusLearningRate = -this->learning_rate;
 
-        LocalTensor<float> inputLt = queIn.DeQue<float>();
-        LocalTensor<float> outLt = queOut.AllocTensor<float>();
+        LocalTensor<float> inputLt = this->queIn.template DeQue<float>();
+        LocalTensor<float> outLt = this->queOut.template AllocTensor<float>();
 
         for (int64_t i = 0; i < cnt; i++) {
-            UpdateArgs gradArgs = updateArgs[i];
-            int64_t thisGradIndex = i * maxD * numOfOut;
+            UpdateArgs theArgs = updateArgs[i];
+            int64_t thisGradIndex = i * this->maxD * numOfOut;
 
             // p[:] -= hyperparams['lr'] * p.grad
-            Muls<float>(outLt[thisGradIndex], inputLt[thisGradIndex], minusLearningRate, gradArgs.embedDim);
+            Muls<float>(outLt[thisGradIndex], inputLt[thisGradIndex], minusLearningRate, theArgs.embedDim);
         }
 
-        queOut.EnQue(outLt);
-        queIn.FreeTensor(inputLt);
+        this->queOut.template EnQue(outLt);
+        this->queIn.template FreeTensor(inputLt);
     }
 
     __aicore__ inline void DataCopyOut(UpdateArgs* updateArgs, int64_t cnt)
     {
-        LocalTensor<float> outLt = queOut.DeQue<float>();
+        LocalTensor<float> outLt = this->queOut.template DeQue<float>();
         SetAtomicAdd<float>();
         for (int64_t i = 0; i < cnt; i++) {
-            UpdateArgs gradArgs = updateArgs[i];
-            int64_t thisGradIndex = i * maxD * numOfOut;
-            DataCopy(weightsDevOutGT[gradArgs.thisOutOffset], outLt[thisGradIndex], gradArgs.embedDim);
+            UpdateArgs theArgs = updateArgs[i];
+            int64_t thisGradIndex = i * this->maxD * numOfOut;
+            DataCopy(this->weightsDevOutGT[theArgs.thisOutOffset], outLt[thisGradIndex], theArgs.embedDim);
         }
         SetAtomicNone();
-        queOut.FreeTensor(outLt);
+        this->queOut.template FreeTensor(outLt);
     }
 
     __aicore__ inline void UpdateEmbedSgd(Args args)
@@ -153,14 +153,13 @@ public:
 
     __aicore__ inline void Compute(Args args)
     {
-        Init(args);
-
-        ClearGT(workspaceGT, totalHashSize);
-        ClearGrad();
+        this->Init(args);
+        this->ClearGT(this->workspaceGT, this->totalHashSize);
+        this->ClearGrad();
         pipe_barrier(PIPE_ALL);
         SyncAll();
 
-        ComputeGrad();
+        this->ComputeGrad();
         pipe_barrier(PIPE_ALL);
         SyncAll();
 
