@@ -61,6 +61,7 @@ class ExecuteConfig:
     table_num: int
     embedding_dims: List[int]
     num_embeddings: List[int]
+    pool_type: torchrec.PoolingType
     sharding_type: str
     lookup_len: int
     device: str
@@ -76,6 +77,7 @@ def execute(rank: int, config: ExecuteConfig):
     lookup_len = config.lookup_len
     device = config.device
     optim = config.optim
+    pool_type = config.pool_type
     setup_logging(rank)
     logging.info("this test %s", os.path.basename(__file__))
     dataset_gloden = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num)
@@ -244,6 +246,7 @@ class TestModel:
 
 
 params = {
+    "world_size": [WORLD_SIZE],
     "table_num": [2],
     "embedding_dims": [[32, 64, 128]],
     "num_embeddings": [[400, 4000, 400]],

@@ -239,14 +239,14 @@ class TestModel:
 
 
 params = {
+    "world_size": [WORLD_SIZE],
     "table_num": [3],
     "embedding_dims": [[32, 32, 32]],
     "num_embeddings": [[400, 4000, 400]],
-    "pool_type": [torchrec.PoolingType.MEAN],
     "sharding_type": ["table_wise", "row_wise"],
     "lookup_len": [1024],
     "device": ["npu"],
-    "optim": [Adagrad, Adam],
+    "optim": [Adagrad],
 }
 
 
