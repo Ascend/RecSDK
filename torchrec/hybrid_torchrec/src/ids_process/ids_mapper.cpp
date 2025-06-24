@@ -73,21 +73,25 @@ void IdsMapper::UniqueAndLookupOut(const torch::Tensor& globalIds, const torch::
     for (int64_t i = start; i < end; i++) {
         int64_t key = globalIdsPtr[i];
         TORCH_CHECK(key >= 0, " Invalid key value: ", key);
-        auto findResult = ids2indicesMap.find(key);
-        if (findResult == ids2indicesMap.end()) {
-            std::lock_guard<std::mutex> lock(insertMute);
-            auto findResult = ids2indicesMap.find(key);
-            if (findResult == ids2indicesMap.end()) {
-                int64_t r = maxIndex++;
-                TORCH_CHECK(r < initMaxIndex, "Ids map reached maxIndex = ",
-                    initMaxIndex, " please reallocate a larger buffer.");
-                ids2indicesMap.insert_or_assign(key, r);
-                hashIndicesPtr[i] = r;
-            } else {
-                hashIndicesPtr[i] = findResult->second;
-            }
+        auto it = ids2indicesMap.find(key);
+        if (it != ids2indicesMap.end()) {
+            hashIndicesPtr[i] = it->second;
+            continue;
+        }
+
+        std::lock_guard<std::mutex> lock(insertMute);
+        // after lock, let's find(key) again to make sure that
+        // the followings are executed sequentially by multi-threads
+        it = ids2indicesMap.find(key);
+        if (it == ids2indicesMap.end()) {
+            int64_t r = maxIndex++;
+            TORCH_CHECK(r < initMaxIndex, "Ids map reached maxIndex = ",
+                initMaxIndex, " please reallocate a larger buffer.");
+            ids2indicesMap.insert_or_assign(key, r);
+            indice2id.push_back(key);  // key's offset is r
+            hashIndicesPtr[i] = r;
         } else {
-            hashIndicesPtr[i] = findResult->second;
+            hashIndicesPtr[i] = it->second;
         }
     }
 

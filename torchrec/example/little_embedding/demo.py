@@ -39,6 +39,7 @@ dist.init_process_group(backend="gloo")
 
 def dataset_getnext():
     # 1.使用List
+    # jagged0：当前卡需要从table0查询的所有ids(所有卡分桶+all2all后,分给当前卡的ids)
     jagged0 = JaggedTensor(
         values=torch.Tensor([1, 3, 5, 11, 13, 15]).long(),
         lengths=torch.Tensor([1, 1, 1, 1, 1, 1]).long(),
@@ -47,16 +48,16 @@ def dataset_getnext():
         values=torch.Tensor([1, 3, 5, 11, 13, 15]).long(),
         lengths=torch.Tensor([1, 1, 1, 1, 1, 1]).long(),
     )
-    inpurt_for_rank0 = KeyedJaggedTensor.from_jt_dict(
+    input_for_rank0 = KeyedJaggedTensor.from_jt_dict(
         {"table0": jagged0, "table1": jagged0}
     )
-    inpurt_for_rank1 = KeyedJaggedTensor.from_jt_dict(
+    input_for_rank1 = KeyedJaggedTensor.from_jt_dict(
         {"table0": jagged1, "table1": jagged1}
     )
 
-    # embeding表 1-> 0.1, 0.1
+    # embedding表 1-> 0.1, 0.1
     # 2-> 0.2, 0.2
-    sparse_fid_list = [inpurt_for_rank0, inpurt_for_rank1]
+    sparse_fid_list = [input_for_rank0, input_for_rank1]
     return sparse_fid_list
 
 

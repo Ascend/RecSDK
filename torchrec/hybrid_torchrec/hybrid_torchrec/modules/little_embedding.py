@@ -9,22 +9,24 @@ from collections import defaultdict
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
-from typing import List, Tuple, Dict
+from dataclasses import dataclass, field
+from typing import List, Tuple, Dict, Callable
 
 import torch
+from torch import nn
 import torch.distributed as dist
+
 from fbgemm_gpu.split_embedding_configs import EmbOptimType as OptimType, SparseType
 from fbgemm_gpu.split_table_batched_embeddings_ops_training import (
-EmbeddingLocation,
-ComputeDevice,
+    EmbeddingLocation,
+    ComputeDevice,
 )
 from fbgemm_gpu.split_table_batched_embeddings_ops_common import PoolingMode
-from torch import nn
-
+from hybrid_torchrec.distributed.sharding.post_input_dist import UniqueHashFeatureProcess
 from hybrid_torchrec.distributed.batched_embedding_kernel import (
-HybridSplitTableBatchedEmbeddingBagsCodegen,
+    HybridSplitTableBatchedEmbeddingBagsCodegen,
 )
+from hybrid_torchrec.modules.ids_process import IdsMapper
 from hybrid_torchrec.sparse.jagged_tensor_with_looup_helper import KeyedJaggedTensorWithLookHelper
 from torchrec import KeyedJaggedTensor, JaggedTensor
 
@@ -42,10 +44,6 @@ class Awaitable:
 
 
 executor = ThreadPoolExecutor(6)
-
-
-class PostInpuDistAwaitable(Awaitable):
-    pass
 
 
 class LookupAndOutputDistAwaitable(Awaitable):
@@ -102,7 +100,7 @@ class LookupContext:
     rank: int
     fwd_pg: dist.ProcessGroup
     bwd_pg: dist.ProcessGroup
-    communication_metrix: Dict[str, List[torch.Size]] = {}
+    communication_metrix: Dict[str, List[torch.Size]] = field(default_factory=dict)
 
 
 class AllGatherEmbeddings(torch.autograd.Function):
@@ -124,15 +122,16 @@ class AllGatherEmbeddings(torch.autograd.Function):
 
 
 class HashEmbeddingModuleCollection(nn.Module):
-    def __init__(self, configs=List[EmbeddingConfig], pipe_n_batch=6):
+    def __init__(self, configs: List[EmbeddingConfig], pipe_n_batch=6):
         super().__init__()
         self.fwd_pg = dist.new_group(backend="gloo")
         self.bwd_pg = dist.new_group(backend="gloo")
         self.rank = configs[0].rank
         self.configs = configs
-        self.post_input_dist_module_dict: Dict[str, nn.Module] = (
-            self.create_post_input_dist()
-        )
+
+        self.post_input_dist_module_dict: Dict[str, UniqueHashFeatureProcess] = {}
+        self.create_post_input_dist()
+
         self.lookup_module_dict: Dict[str, nn.Module] = self.create_lookups()
         self._weight_init_mins = 0
         self._weight_init_maxs = 1
@@ -154,8 +153,15 @@ class HashEmbeddingModuleCollection(nn.Module):
 
         return LookupContext(self.rank, self.fwd_pg, self.bwd_pg, communication_metrix)
 
-    def create_post_input_dist(self) -> Dict[str, nn.Module]:
-        return
+    def create_post_input_dist(self):
+        for config_ in self.configs:
+            table_name = config_.table_name
+            self.post_input_dist_module_dict[table_name] = UniqueHashFeatureProcess(
+                [table_name],
+                [1],
+                [IdsMapper(config_.num_embedding)],
+                False
+            )
 
     def create_lookups(self) -> Dict[str, nn.Module]:
         lookup_module_dict = {}
@@ -185,19 +191,17 @@ class HashEmbeddingModuleCollection(nn.Module):
             lookup_module_dict[name] = lookup_module
         return lookup_module_dict
 
-    def do_post_input_dist(
-        self, jt: JaggedTensor, feat_name: str, context: LookupContext
+    def post_input_dist(
+        self, features: JaggedTensor, feat_name: str
     ):
-        return
+        with torch.no_grad():
+            kjt = KeyedJaggedTensor.from_jt_dict({feat_name: features})
+            return self.post_input_dist_module_dict[feat_name](kjt)
 
     def do_lookup_and_post_dist(
         self, jt: JaggedTensor, feat_name: str, context: LookupContext
     ):
         return
-
-    # 示例代码
-    def fids2indices(self, fids: KeyedJaggedTensor):
-        return fids
 
     # 示例代码
     def lookup(self, kjt: KeyedJaggedTensorWithLookHelper, feat_name: str):
@@ -211,10 +215,6 @@ class HashEmbeddingModuleCollection(nn.Module):
             unique_inverse=kjt.unique_inverse
         )
 
-    def post_input_dist(self, jt: JaggedTensor, feat_name: str):
-        indices = self.fids2indices(jt)
-        return indices
-
     def lookup_and_post_dist(self, kjt: KeyedJaggedTensorWithLookHelper, feat_name: str, context: LookupContext):
         embedding = self.lookup(kjt, feat_name)
         result = AllGatherEmbeddings().apply(embedding, feat_name, context)
@@ -225,11 +225,9 @@ class HashEmbeddingModuleCollection(nn.Module):
         jt_dict: Dict[str, JaggedTensor] = kjt_list_each_rank[self.rank].to_dict()
         awaitable_dict: Dict[str, LookupAndOutputDistAwaitable] = {}
         for feat_name in jt_dict.keys():
-            post_awaitable = PostInpuDistAwaitable(
-                self.post_input_dist, jt_dict[feat_name], feat_name
-            )
-            lookup_and_outdist_awaitable = LookupAndOutputDistAwaitable(
+            post_awaitable = self.post_input_dist(jt_dict[feat_name], feat_name)
+            lookup_and_output_dist_awaitable = LookupAndOutputDistAwaitable(
                 post_awaitable, self.lookup_and_post_dist, feat_name, context
             )
-            awaitable_dict[feat_name] = lookup_and_outdist_awaitable
+            awaitable_dict[feat_name] = lookup_and_output_dist_awaitable
         return awaitable_dict

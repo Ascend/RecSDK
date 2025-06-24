@@ -124,7 +124,7 @@ def do_unique_hash(
         origin_kjt.split(segments=feature_split_by_table)
     ):
         hash_indices, unique, inverse = hashmap_list[ind](
-            features_shard.values(), False
+            features_shard.values()
         )
         feature_lens.append(len(features_shard.keys()))
         unique_indices.append(unique)
