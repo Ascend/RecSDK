@@ -230,7 +230,8 @@ def test_sgd(tf_session, static_graph, tf_vars, batch_size, table_size, dim_size
     )
 
     write_to_csv(collect_info)
-    assert res
+    if not res:
+        raise AssertionError("Precision check failed: result do not match")
 
 ## pytest -v -s test.py 直接执行 对比精度和性能
 ## msprof --application="pytest test.py" --output=prof 用msprof工具测量性能
