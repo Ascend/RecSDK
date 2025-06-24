@@ -101,8 +101,12 @@ def execute(
 
     test_model = TestModel(rank, world_size, device)
 
-    gloden_results = test_model.cpu_gloden_loss(embeding_config, gloden_dataset_loader, optim)
-    test_results = test_model.test_loss(embeding_config, data_loader, sharding_type, optim)
+    gloden_results = test_model.cpu_gloden_loss(
+        embeding_config, gloden_dataset_loader, optim
+    )
+    test_results = test_model.test_loss(
+        embeding_config, data_loader, sharding_type, optim
+    )
     for gloden, result in zip(gloden_results, test_results):
         logging.debug("")
         logging.debug("===========================")
@@ -184,7 +188,9 @@ class TestModel:
         host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
         # Shard
         table_num = len(embeding_config)
-        ebc = HashEmbeddingBagCollection(device=torch.device("meta"), tables=embeding_config)
+        ebc = HashEmbeddingBagCollection(
+            device=torch.device("meta"), tables=embeding_config
+        )
         ebc = Model(ebc, num_features)
         apply_optimizer_in_backward(
             optimizer_class=optim,
@@ -193,7 +199,9 @@ class TestModel:
         )
         # Shard
         constrans = {
-            f"table{i}": ParameterConstraints(sharding_types=[sharding_type])
+            f"table{i}": ParameterConstraints(
+                sharding_types=[sharding_type], compute_kernels=["fused"]
+            )
             for i in range(table_num)
         }
         planner = EmbeddingShardingPlanner(

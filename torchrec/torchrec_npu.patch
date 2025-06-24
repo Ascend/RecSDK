@@ -30,23 +30,83 @@ index 9582f844..c2cfa6b0 100644
          keywords=[
              "pytorch",
 diff --git a/torchrec/__init__.py b/torchrec/__init__.py
-index 29258f6f..b67bdb54 100644
+index 29258f6f..01bd33a0 100644
 --- a/torchrec/__init__.py
 +++ b/torchrec/__init__.py
-@@ -6,7 +6,8 @@
- # LICENSE file in the root directory of this source tree.
- 
- # pyre-strict
+@@ -1,36 +1,46 @@
+-#!/usr/bin/env python3
+-# Copyright (c) Meta Platforms, Inc. and affiliates.
+-# All rights reserved.
+-#
+-# This source code is licensed under the BSD-style license found in the
+-# LICENSE file in the root directory of this source tree.
 -
+-# pyre-strict
+-
+-import torchrec.distributed  # noqa
+-import torchrec.quant  # noqa
+-from torchrec.fx import tracer  # noqa
+-from torchrec.modules.embedding_configs import (  # noqa
+-    DataType,
+-    EmbeddingBagConfig,
+-    EmbeddingConfig,
+-    PoolingType,
+-)
+-from torchrec.modules.embedding_modules import (  # noqa
+-    EmbeddingBagCollection,
+-    EmbeddingBagCollectionInterface,
+-    EmbeddingCollection,
+-)  # noqa
+-from torchrec.sparse.jagged_tensor import (  # noqa
+-    JaggedTensor,
+-    KeyedJaggedTensor,
+-    KeyedTensor,
+-)
+-from torchrec.streamable import Multistreamable, Pipelineable  # noqa
+-
+-try:
+-    # pyre-ignore[21]
+-    # @manual=//torchrec/fb:version
+-    from .version import __version__, github_version  # noqa
+-except ImportError:
+-    pass
++#!/usr/bin/env python3
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++# All rights reserved.
++#
++# This source code is licensed under the BSD-style license found in the
++# LICENSE file in the root directory of this source tree.
++
++# pyre-strict
 +import enum
 +from fbgemm_gpu import split_table_batched_embeddings_ops_training
- import torchrec.distributed  # noqa
- import torchrec.quant  # noqa
- from torchrec.fx import tracer  # noqa
-@@ -34,3 +35,12 @@ try:
-     from .version import __version__, github_version  # noqa
- except ImportError:
-     pass
++import torchrec.distributed  # noqa
++import torchrec.quant  # noqa
++from torchrec.fx import tracer  # noqa
++from torchrec.modules.embedding_configs import (  # noqa
++    DataType,
++    EmbeddingBagConfig,
++    EmbeddingConfig,
++    PoolingType,
++)
++from torchrec.modules.embedding_modules import (  # noqa
++    EmbeddingBagCollection,
++    EmbeddingBagCollectionInterface,
++    EmbeddingCollection,
++)  # noqa
++from torchrec.sparse.jagged_tensor import (  # noqa
++    JaggedTensor,
++    KeyedJaggedTensor,
++    KeyedTensor,
++)
++from torchrec.streamable import Multistreamable, Pipelineable  # noqa
++
++try:
++    # pyre-ignore[21]
++    # @manual=//torchrec/fb:version
++    from .version import __version__, github_version  # noqa
++except ImportError:
++    pass
 +
 +
 +class ComputeDevice(enum.IntEnum):
@@ -188,6 +248,37 @@ index 43eeda32..e1575133 100644
                  ret += [
                      EmbeddingComputeKernel.FUSED_UVM.value,
                      EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+diff --git a/torchrec/distributed/model_parallel.py b/torchrec/distributed/model_parallel.py
+index 5cbd2429..16c783db 100644
+--- a/torchrec/distributed/model_parallel.py
++++ b/torchrec/distributed/model_parallel.py
+@@ -48,6 +48,7 @@ from torchrec.distributed.utils import (
+ )
+ from torchrec.optim.fused import FusedOptimizerModule
+ from torchrec.optim.keyed import CombinedOptimizer, KeyedOptimizer
++from torchrec.util import check
+ 
+ try:
+     torch.ops.load_library("//deeplearning/fbgemm/fbgemm_gpu:sparse_ops")
+@@ -233,6 +234,18 @@ class DistributedModelParallel(nn.Module, FusedOptimizerModule):
+         init_parameters: bool = True,
+         data_parallel_wrapper: Optional[DataParallelWrapper] = None,
+     ) -> None:
++        check(module is not None and isinstance(module, nn.Module), "module should be nn.Module")
++        check(device == torch.device("npu"), "device should be npu")
++        check(plan is not None and isinstance(plan, ShardingPlan), "device should be npu")
++        check(sharders is not None and isinstance(sharders, List), "sharders should be List")
++        for sharder in sharders:
++            check(isinstance(sharder, ModuleSharder), "shard should be ModuleSharder")
++
++        check(env is None, "env should be None")
++        check(init_data_parallel == True, "init_data_parallel should be True")
++        check(init_parameters == True, "init_parameters should be True")
++        check(data_parallel_wrapper is None, "data_parallel_wrapper should be None")
++
+         super().__init__()
+         torch._C._log_api_usage_once(f"torchrec.distributed.{self.__class__.__name__}")
+ 
 diff --git a/torchrec/distributed/planner/constants.py b/torchrec/distributed/planner/constants.py
 index 7dd86b06..43b0a37a 100644
 --- a/torchrec/distributed/planner/constants.py
@@ -235,6 +326,49 @@ index 7dd86b06..43b0a37a 100644
 +        return lookup.get(("npu", EmbeddingComputeKernel.FUSED.value))
  
      return lookup.get((compute_device, compute_kernel))
+diff --git a/torchrec/distributed/planner/planners.py b/torchrec/distributed/planner/planners.py
+index 101240d6..85d5b371 100644
+--- a/torchrec/distributed/planner/planners.py
++++ b/torchrec/distributed/planner/planners.py
+@@ -65,6 +65,7 @@ from torchrec.distributed.types import (
+     ShardMetadata,
+ )
+ from torchrec.distributed.utils import none_throws
++from torchrec.util import check
+ 
+ 
+ def to_sharding_plan(
+@@ -182,6 +183,17 @@ class EmbeddingShardingPlanner(ShardingPlanner):
+             List[Callable[[List[ShardingOption]], List[ShardingOption]]]
+         ] = None,
+     ) -> None:
++        check(topology is not None, "topology should be not None")
++        check(constraints is not None, "constraints should be not None")
++        check(batch_size is None or 0 <= batch_size <= 1000000, "batch_size shold in [1, 1000000]")
++        check(enumerator is None, "enumerator should be None")
++        check(storage_reservation is None, "storage_reservation should be None")
++        check(proposer is None, "proposer should be None")
++        check(partitioner is None, "partitioner should be None")
++        check(performance_model is None, "performance_model should be None")
++        check(stats is None, "stats should be None")
++        check(debug is True, "debug should be True")
++        check(callbacks is None, "callbacks should be None")
+         if topology is None:
+             topology = Topology(
+                 local_world_size=get_local_size(),
+@@ -253,6 +265,12 @@ class EmbeddingShardingPlanner(ShardingPlanner):
+         Returns:
+             ShardingPlan: the sharding plan for the module.
+         """
++        check(module is not None, "module can not be None")
++        check(pg is not None and isinstance(pg, dist.ProcessGroup), "pg can be dist.ProcessGroup")
++        check(sharders is not None and isinstance(sharders, List), "sharders should be List")
++        for sharder in sharders:
++            check(isinstance(sharder, ModuleSharder), "shard should be ModuleSharder")
++
+         if pg is None:
+             assert dist.is_initialized(), (
+                 "The default process group is not yet initialized. "
 diff --git a/torchrec/distributed/planner/shard_estimators.py b/torchrec/distributed/planner/shard_estimators.py
 index 650333d4..1d90d77a 100644
 --- a/torchrec/distributed/planner/shard_estimators.py
@@ -284,16 +418,47 @@ index 52909970..fad9df2d 100644
      )
  
 diff --git a/torchrec/distributed/planner/types.py b/torchrec/distributed/planner/types.py
-index 4bb0a4f4..26ca1fc3 100644
+index 4bb0a4f4..5bb4c644 100644
 --- a/torchrec/distributed/planner/types.py
 +++ b/torchrec/distributed/planner/types.py
-@@ -201,13 +201,14 @@ class Topology:
-             "cpu",
-             "cuda",
-             "mtia",
+@@ -38,8 +38,10 @@ from torchrec.distributed.types import (
+ from torchrec.modules.embedding_configs import DataType
+ from torchrec.modules.embedding_modules import EmbeddingCollectionInterface
+ from torchrec.modules.mc_embedding_modules import ManagedCollisionEmbeddingCollection
++from torchrec.util import check
+ 
+ # ---- Perf ---- #
++MAX_WORLD_SIZE = 8
+ 
+ 
+ @dataclass(repr=True, eq=True)
+@@ -198,16 +200,31 @@ class Topology:
+         """
+         # validate input
+         assert compute_device in [
+-            "cpu",
+-            "cuda",
+-            "mtia",
 +            "npu",
          ], f"unsupported compute device {compute_device}"
  
++        if world_size < 1 or world_size > MAX_WORLD_SIZE:
++            raise ValueError(f"world_size must be in range [0, {MAX_WORLD_SIZE}], but got {world_size}")
++        check(compute_device == "npu", "compute_device should be npu")
++        check(hbm_cap is None, "hbm_cap should be None")
++        check(ddr_cap is None, "hbm_cap should be None")
++        check(local_world_size is None, "hbm_cap should be None")
++        check(hbm_mem_bw == HBM_MEM_BW, f"hbm_cap should be {HBM_MEM_BW}")
++        check(ddr_mem_bw == DDR_MEM_BW, f"hbm_cap should be {DDR_MEM_BW}")
++        check(hbm_to_ddr_mem_bw == HBM_TO_DDR_MEM_BW, f"hbm_cap should be {HBM_TO_DDR_MEM_BW}")
++        check(intra_host_bw == INTRA_NODE_BANDWIDTH, f"hbm_cap should be {INTRA_NODE_BANDWIDTH}")
++        check(inter_host_bw == CROSS_NODE_BANDWIDTH, f"hbm_cap should be {CROSS_NODE_BANDWIDTH}")
++        check(bwd_compute_multiplier == BWD_COMPUTE_MULTIPLIER, f"hbm_cap should be {BWD_COMPUTE_MULTIPLIER}")
++        check(custom_topology_data is None, "hbm_cap should be None")
++        check(weighted_feature_bwd_compute_multiplier == WEIGHTED_FEATURE_BWD_COMPUTE_MULTIPLIER, 
++              f"weighted_feature_bwd_compute_multiplier should be {WEIGHTED_FEATURE_BWD_COMPUTE_MULTIPLIER}")
++        check(uneven_sharding_perf_multiplier == 1.0, "uneven_sharding_perf_multiplier should be 1.0")
++       
          self._compute_device = compute_device
          self._world_size = world_size
  
@@ -303,8 +468,37 @@ index 4bb0a4f4..26ca1fc3 100644
              hbm_per_device = [hbm_cap if hbm_cap else HBM_CAP] * world_size
          ddr_cap_per_rank = [ddr_cap if ddr_cap else DDR_CAP] * world_size
  
+@@ -616,6 +633,28 @@ class ParameterConstraints:
+     device_group: Optional[str] = None
+     key_value_params: Optional[KeyValueParams] = None
+ 
++    def __post_init__(self):
++        check(self.sharding_types is not None and isinstance(self.sharding_types, List), "sharding_types should be List")
++        check(self.compute_kernels is not None and isinstance(self.compute_kernels, List), "compute_kernels should be List")
++        for sharding_type in self.sharding_types:
++            if sharding_type != "row_wise":
++                raise ValueError(f"sharing_type only support row_wise, but got {sharding_type}")
++        for compute_kernel in self.compute_kernels:
++            if compute_kernel != "fused":
++                raise ValueError(f"compute_kernel only support fused, but got {compute_kernel}")
++        check(self.min_partition is None , "min_partition should be None")
++        check(self.pooling_factors == [POOLING_FACTOR] , f"pooling_factors should be [{POOLING_FACTOR}]")
++        check(self.num_poolings == None , "num_poolings should be None")
++        check(self.batch_sizes == None , "batch_sizes should be None")
++        check(self.is_weighted == False , "is_weighted should be False")
++        check(self.cache_params == None , "cache_params should be None")
++        check(self.enforce_hbm == None , "enforce_hbm should be None")
++        check(self.stochastic_rounding == None , "stochastic_rounding should be None")
++        check(self.bounds_check_mode == None , "bounds_check_mode should be None")
++        check(self.feature_names == None , "feature_names should be None")
++        check(self.output_dtype == None , "output_dtype should be None")
++        check(self.device_group == None , "device_group should be None")
++        check(self.key_value_params == None , "key_value_params should be None")
+ 
+ class PlannerErrorType(Enum):
+     """
 diff --git a/torchrec/distributed/planner/utils.py b/torchrec/distributed/planner/utils.py
-index 5d0a03a2..de179849 100644
+index 5d0a03a2..770f3c14 100644
 --- a/torchrec/distributed/planner/utils.py
 +++ b/torchrec/distributed/planner/utils.py
 @@ -48,7 +48,7 @@ def placement(
@@ -316,6 +510,13 @@ index 5d0a03a2..de179849 100644
          param_device = torch.device(compute_device, rank % local_size)
      return f"rank:{rank}/{param_device}"
  
+@@ -260,4 +260,4 @@ class LuusJaakolaSearch:
+ 
+     def best(self) -> Tuple[float, float]:
+         "Return the best position so far, and its associated cost."
+-        return self.x, self.fx
++        return self.x, self.fx
+\ No newline at end of file
 diff --git a/torchrec/distributed/sharding_plan.py b/torchrec/distributed/sharding_plan.py
 index 27b01130..e8b506db 100644
 --- a/torchrec/distributed/sharding_plan.py
@@ -389,8 +590,203 @@ index 69edabf9..bddd7c1c 100644
              else None
          )
  
+diff --git a/torchrec/distributed/types.py b/torchrec/distributed/types.py
+index 8085c415..e55a7d03 100644
+--- a/torchrec/distributed/types.py
++++ b/torchrec/distributed/types.py
+@@ -78,6 +78,7 @@ from torch.distributed._shard.sharding_spec import (  # noqa
+ )
+ from torchrec.streamable import Multistreamable
+ 
++MAX_WORLD_SIZE = 8
+ 
+ def _tabulate(
+     table: List[List[Union[str, int]]], headers: Optional[List[str]] = None
+@@ -818,6 +819,14 @@ class ShardingEnv:
+         pg: Optional[dist.ProcessGroup] = None,
+         output_dtensor: bool = False,
+     ) -> None:
++        
++        if world_size < 1 or world_size > MAX_WORLD_SIZE:
++            raise ValueError(f"world_size must be in range [1, {MAX_WORLD_SIZE}], but got {world_size}")
++        if rank < 0 or rank >= world_size:
++            raise ValueError(f"rank must be in range [0, {world_size} - 1]")
++        if pg._get_backend_name() not in ["gloo", "custom"]:
++            raise ValueError(f"ProcessGroup backend only support [gloo, hccl], but got {pg._get_backend_name()}")
++
+         self.world_size = world_size
+         self.rank = rank
+         self.process_group: Optional[dist.ProcessGroup] = pg
+@@ -831,6 +840,8 @@ class ShardingEnv:
+         )
+         self.output_dtensor: bool = output_dtensor
+ 
++        
++
+     @classmethod
+     def from_process_group(cls, pg: dist.ProcessGroup) -> "ShardingEnv":
+         """
+diff --git a/torchrec/optim/apply_optimizer_in_backward.py b/torchrec/optim/apply_optimizer_in_backward.py
+index 99ba72df..cab56dbe 100644
+--- a/torchrec/optim/apply_optimizer_in_backward.py
++++ b/torchrec/optim/apply_optimizer_in_backward.py
+@@ -11,7 +11,7 @@ from typing import Any, Dict, Iterable, Type
+ from warnings import warn
+ 
+ import torch
+-
++from torchrec.util import check
+ 
+ def apply_optimizer_in_backward(
+     optimizer_class: Type[torch.optim.Optimizer],
+@@ -52,6 +52,10 @@ def apply_optimizer_in_backward(
+         "This API is deprecated. Please use Pytorch Distributed's _apply_optimizer_in_backward API instead.",
+         DeprecationWarning,
+     )
++    if (optimizer_class not in [torch.optim.SGD, torch.optim.Adam, torch.optim.Adagrad]):
++        raise ValueError(f"Expected optimizer_class in [torch.optim.SGD, torch.optim.Adam, torch.optim.Adagrad],\
++                          but got {optimizer_class}")
++    check(optimizer_kwargs is not None and isinstance(optimizer_kwargs, Dict), "optimizer_kwargs should be Dict")
+     _apply_optimizer_in_backward(
+         optimizer_class=optimizer_class,
+         params=params,
+diff --git a/torchrec/optim/keyed.py b/torchrec/optim/keyed.py
+index 2f6b75d5..b4745d11 100644
+--- a/torchrec/optim/keyed.py
++++ b/torchrec/optim/keyed.py
+@@ -28,6 +28,7 @@ import torch
+ from torch import optim
+ from torch.distributed._shard.sharded_tensor import ShardedTensor
+ from torch.distributed.tensor import DTensor
++from torchrec.util import check
+ 
+ OptimizerFactory = Callable[[List[Union[torch.Tensor, ShardedTensor]]], optim.Optimizer]
+ 
+@@ -315,8 +316,13 @@ class CombinedOptimizer(KeyedOptimizer):
+     """
+ 
+     def __init__(
+-        self, optims: List[Union[KeyedOptimizer, Tuple[str, KeyedOptimizer]]]
++        self, optims: List[KeyedOptimizer]
+     ) -> None:
++        check(optims is not None and isinstance(optims, List) and len(optims) != 0, "optims should be List")
++        for key_value in optims:
++            check_optim = isinstance(key_value, KeyedOptimizer)
++            check_optim_tuple = isinstance(key_value, Tuple) and len(key_value) == 2 and isinstance(key_value[1], KeyedOptimizer)
++            check(check_optim or check_optim_tuple, "optims should be list of KeyedOptimizer")
+         self.defaults: Dict[str, Any] = {}
+         # Append empty optimizer key if not passed.
+         self._optims: List[Tuple[str, KeyedOptimizer]] = []
+@@ -432,7 +438,10 @@ class KeyedOptimizerWrapper(KeyedOptimizer):
+         params: Mapping[str, Union[torch.Tensor, ShardedTensor]],
+         optim_factory: OptimizerFactory,
+     ) -> None:
++        check(params is not None, "params should not be None")
++        check(optim_factory is not None and callable(optim_factory), "optim_factory should be callable")
+         self._optimizer: optim.Optimizer = optim_factory(list(params.values()))
++        check(self._optimizer is not None and isinstance(self._optimizer, optim.Optimizer), "optim_factory should return Optimizer")
+         super().__init__(params, self._optimizer.state, self._optimizer.param_groups)
+ 
+     def zero_grad(self, set_to_none: bool = False) -> None:
+diff --git a/torchrec/optim/optimizers.py b/torchrec/optim/optimizers.py
+index 10ffcdb2..087c6fd5 100644
+--- a/torchrec/optim/optimizers.py
++++ b/torchrec/optim/optimizers.py
+@@ -15,6 +15,7 @@ import torch
+ from torch import nn
+ 
+ from torch.optim.optimizer import Optimizer
++from torchrec.util import check
+ 
+ 
+ def in_backward_optimizer_filter(
+@@ -30,6 +31,8 @@ def in_backward_optimizer_filter(
+     include(bool): If true, only yields params with in_backward_optimizer. If false, returns the outside set
+         Defaults to include params that are not in_backward (False)
+     """
++    check(named_parameters is not None and isinstance(named_parameters, Iterator), "named_parameters should be Iterator")
++
+     for fqn, param in named_parameters:
+         if hasattr(param, "_in_backward_optimizers") == include:
+             yield fqn, param
+diff --git a/torchrec/sparse/jagged_tensor.py b/torchrec/sparse/jagged_tensor.py
+index 33665883..91aa73d7 100644
+--- a/torchrec/sparse/jagged_tensor.py
++++ b/torchrec/sparse/jagged_tensor.py
+@@ -28,6 +28,7 @@ from torchrec.pt2.checks import (
+     pt2_guard_size_oblivious,
+ )
+ from torchrec.streamable import Pipelineable
++from torchrec.util import check
+ 
+ try:
+     torch.ops.load_library("//deeplearning/fbgemm/fbgemm_gpu:sparse_ops")
+@@ -50,7 +51,8 @@ except OSError:
+ 
+ logger: logging.Logger = logging.getLogger()
+ 
+-
++MAX_VALUE = 2**31
++MAX_LENGTH = 10000
+ def _pin_and_move(tensor: torch.Tensor, device: torch.device) -> torch.Tensor:
+     if is_torchdynamo_compiling():
+         # TODO: remove once FakeTensor supports pin_memory() and to(..., non_blocking=True)
+@@ -77,6 +79,9 @@ def _to_offsets(lengths: torch.Tensor) -> torch.Tensor:
+ def _to_lengths(offsets: torch.Tensor) -> torch.Tensor:
+     return offsets[1:] - offsets[:-1]
+ 
++def is_out_range(tensor, min_val, max_val):
++        out_of_range = (tensor < min_val) | (tensor > max_val)
++        return out_of_range.any().item()
+ 
+ @torch.jit.script_if_tracing
+ def _batched_lengths_to_offsets(lengths: torch.Tensor) -> torch.Tensor:
+@@ -588,6 +593,17 @@ class JaggedTensor(Pipelineable, metaclass=JaggedTensorMeta):
+         lengths: Optional[torch.Tensor] = None,
+         offsets: Optional[torch.Tensor] = None,
+     ) -> None:
++        check(isinstance(values, torch.Tensor), f"values should be torch.Tensor")
++        check(isinstance(lengths, torch.Tensor), f"lengths should be torch.Tensor")
++
++        check(values is not None and not is_out_range(values, 0, 2**31), "value should be [0, 2**31]")
++        check(lengths is not None and not is_out_range(lengths, 0, MAX_LENGTH), f"value should be [0, {MAX_LENGTH}]")
++        check(weights is None, f"weights should be None")
++        if offsets is not None:
++            check(isinstance(offsets, torch.Tensor), f"offsets should be torch.Tensor")
++            check(offsets[0] == 0, f"offsets[0] should be 0")
++            check(((offsets[1:] == lengths.cumsum(0))).all(), "offsets[1:] should be equal with lengths.cumsum()")
++
+ 
+         self._values: torch.Tensor = values
+         self._weights: Optional[torch.Tensor] = weights
+@@ -598,6 +614,13 @@ class JaggedTensor(Pipelineable, metaclass=JaggedTensorMeta):
+             _assert_tensor_has_no_elements_or_has_integers(lengths, "lengths")
+         self._lengths: Optional[torch.Tensor] = lengths
+         self._offsets: Optional[torch.Tensor] = offsets
++        self.param_check()
++    
++    def param_check(self):
++        if is_out_range(self._values, 0, 2**31):
++            raise ValueError(f"Element in value Tensor must be in range[0, {MAX_VALUE}]")
++        if is_out_range(self._lengths, 0, MAX_LENGTH):
++            raise ValueError(f"Element in value Tensor must be in range[0, {MAX_LENGTH}]")
+ 
+     @staticmethod
+     def empty(
+@@ -2002,6 +2025,11 @@ class KeyedJaggedTensor(Pipelineable, metaclass=JaggedTensorMeta):
+         Returns:
+             KeyedJaggedTensor: constructed KeyedJaggedTensor.
+         """
++        check(jt_dict is not None and Dict, "jt_dict should be Dict")
++        check(len(jt_dict) != 0, "jt_dict should not be empty")
++        for k in jt_dict:
++            check(isinstance(jt_dict[k], JaggedTensor), "value in jt_dict should be JaggedTensor")
++
+         kjt_keys = list(jt_dict.keys())
+         kjt_vals_list: List[torch.Tensor] = []
+         kjt_lens_list: List[torch.Tensor] = []
 diff --git a/version.txt b/version.txt
-index 9084fa2f..35d511d0 100644
+index 9084fa2f..637502ca 100644
 --- a/version.txt
 +++ b/version.txt
 @@ -1 +1 @@

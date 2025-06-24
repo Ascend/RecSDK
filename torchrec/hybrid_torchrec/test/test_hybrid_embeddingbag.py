@@ -187,7 +187,9 @@ class TestModel:
         )
         # Shard
         constrans = {
-            f"table{i}": ParameterConstraints(sharding_types=[sharding_type])
+            f"table{i}": ParameterConstraints(
+                sharding_types=[sharding_type], compute_kernels=["fused"]
+            )
             for i in range(table_num)
         }
         planner = EmbeddingShardingPlanner(

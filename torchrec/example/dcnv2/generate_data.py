@@ -7,7 +7,7 @@ from scipy.stats import pareto
 SHAPE_PARAM = 5  # 帕累托分布的形状参数 alpha（必须大于0）,越小尾越大
 SCALE_PARAM = 1.0  # 帕累托分布的尺度参数 x_m（通常设置为一个较小的正数，例如1.0）
 
-LENGTH = 195841983
+LENGTH = 19584198
 MAX_ROWS = 40000000
 DAYS = 24
 CATS = 26

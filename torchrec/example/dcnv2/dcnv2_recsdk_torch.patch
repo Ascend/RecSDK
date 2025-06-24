@@ -12,7 +12,7 @@ index 4bb9001..ca58ddb 100644
      )
      return dataloader
 diff --git a/torchrec_dlrm/dlrm_main.py b/torchrec_dlrm/dlrm_main.py
-index a3d98b6..e03019d 100644
+index a3d98b6..500388a 100644
 --- a/torchrec_dlrm/dlrm_main.py
 +++ b/torchrec_dlrm/dlrm_main.py
 @@ -8,6 +8,7 @@ import argparse
@@ -87,9 +87,9 @@ index a3d98b6..e03019d 100644
          backend = "nccl"
          torch.cuda.set_device(device)
 +    elif torch_npu.npu.is_available():
-+        device: torch.device = torch.device(f"npu:{rank}")
++        torch_npu.npu.set_device(rank)
++        device: torch.device = torch.device(f"npu")
 +        backend = "hccl"
-+        torch_npu.npu.set_device(device)
      else:
          device: torch.device = torch.device("cpu")
          backend = "gloo"
@@ -130,7 +130,7 @@ index a3d98b6..e03019d 100644
      train_model = DLRMTrain(dlrm_model)
      embedding_optimizer = torch.optim.Adagrad if args.adagrad else torch.optim.SGD
      # This will apply the Adagrad optimizer in the backward pass for the embeddings (sparse_arch). This means that
-@@ -648,23 +665,29 @@ def main(argv: List[str]) -> None:
+@@ -648,23 +665,28 @@ def main(argv: List[str]) -> None:
          train_model.model.sparse_arch.parameters(),
          optimizer_kwargs,
      )
@@ -144,7 +144,7 @@ index a3d98b6..e03019d 100644
 +
      planner = EmbeddingShardingPlanner(
          topology=Topology(
-             local_world_size=get_local_size(),
+-            local_world_size=get_local_size(),
              world_size=dist.get_world_size(),
              compute_device=device.type,
          ),
