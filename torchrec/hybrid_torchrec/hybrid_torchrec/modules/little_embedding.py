@@ -176,7 +176,7 @@ class HashEmbeddingModuleCollection(nn.Module):
             optimizer = config.optimizer
             learning_rate = 0.01
             pooling_mode = PoolingMode.NONE
-            device = torch.device("npu")
+            device = torch.device(f"npu:{self.rank}")
             table_names = [name]
             lookup_module = HybridSplitTableBatchedEmbeddingBagsCodegen(
                 embedding_specs=[embedding_spec],
