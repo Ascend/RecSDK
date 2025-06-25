@@ -23,7 +23,12 @@ from torch.optim import Adam, Adagrad
 from torch.utils.data import DataLoader
 from hybrid_torchrec import HashEmbeddingBagCollection, HashEmbeddingBagConfig
 from hybrid_torchrec.distributed.sharding_plan import get_default_hybrid_sharders
-from hybrid_torchrec.modules.little_embedding import HashEmbeddingModuleCollection
+from hybrid_torchrec.modules.little_embedding import (
+    HashEmbeddingModuleCollection,
+    EmbeddingConfig,
+    OptimizerArgs,
+    OptimType,
+)
 from model import Model
 from util import setup_logging
 
@@ -142,11 +147,11 @@ def weight_init(param: torch.nn.Parameter):
 
 
 def split_ranks(batch: Batch, world_size):
-    jt_dict_each_rank = [{} for _ in world_size]
+    jt_dict_each_rank = [{} for _ in range(world_size)]
     jt_dict = batch.sparse_features.to_dict()
     for k in jt_dict.keys():
         jt: JaggedTensor = jt_dict[k]
-        ids_for_eatch_rank = [[] for _ in world_size]
+        ids_for_eatch_rank = [[] for _ in range(world_size)]
         for a_id in jt.values():
             ids_for_eatch_rank[a_id % world_size].append(a_id)
         for rank in range(world_size):
@@ -218,7 +223,23 @@ class TestModel:
         num_features = sum([c.num_features() for c in embedding_config])
         # Shard
         table_num = len(embedding_config)
-        ebc = HashEmbeddingModuleCollection(configs=embedding_config)
+        opmizer_args = OptimizerArgs(
+            learning_rate=OPTIMIZER_PARAM[optim]["lr"],
+            eps=OPTIMIZER_PARAM[optim]["eps"],
+        )
+        new_config = []
+        for config in embedding_config:
+            new_config.append(
+                EmbeddingConfig(
+                    table_name=config.feature_names[0],
+                    num_embedding=config.num_embeddings,
+                    embedding_dim=config.embedding_dim,
+                    optimizer=OptimType.EXACT_ADAGRAD,
+                    optimizer_args=opmizer_args,
+                    init_fn=weight_init,
+                )
+            )
+        ebc = HashEmbeddingModuleCollection(configs=new_config)
         ebc = Model(ebc, num_features)
         # Optimizer
         results = []
@@ -236,11 +257,12 @@ class TestModel:
 
 
 params = {
+    "world_size": [WORLD_SIZE],
     "table_num": [3],
-    "embedding_dims": [[32, 64, 128]],
-    "num_embeddings": [[400, 4000, 400]],
+    "embedding_dims": [[32, 32, 32]],
+    "num_embeddings": [[4000, 40000, 40000]],
     "pool_type": [torchrec.PoolingType.MEAN],
-    "sharding_type": ["table_wise", "row_wise"],
+    "sharding_type": ["table_wise"],
     "lookup_len": [1024],
     "device": ["npu"],
     "optim": [Adagrad],

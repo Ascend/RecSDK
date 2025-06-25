@@ -48,12 +48,13 @@ def permute_values_ec(result: Dict, feature_num) -> torch.Tensor:
 
 # ec和ebc查询结果返回数据类型不一样
 def permute_values_little_emb(result: Dict, feature_num) -> torch.Tensor:
+    result = result[0]
     keys_nums = feature_num
     values = []
     for k in range(keys_nums):
         k = f"feat{k}"
         embed = result[k].wait()
-        values.append(embed)
+        values.append(torch.concat(embed))
     values = torch.concat(values, dim=1)
     return values
 
@@ -82,7 +83,7 @@ class Model(torch.nn.Module):
         if isinstance(self._module, ec_types):
             return "ec"
         if isinstance(self._module, little_embed_types):
-            return "ec"
+            return "permute_values_little_emb"
         raise ValueError(
             "Module must be one of the supported types: EmbeddingCollection or EmbeddingBagCollection"
         )

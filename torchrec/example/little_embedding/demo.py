@@ -12,12 +12,17 @@ from typing import Dict
 
 import torch
 import torch.distributed as dist
+import torch_npu
 
 from hybrid_torchrec.modules.little_embedding import (
     HashEmbeddingModuleCollection,
     Awaitable,
     EmbeddingConfig,
+    OptimizerArgs,
+    OptimType,
+    LookupContext,
 )
+import torch_npu.npu
 from torchrec import KeyedJaggedTensor, JaggedTensor
 
 
@@ -34,15 +39,16 @@ def get_distribute_env():
 
 
 rank, world_size = get_distribute_env()
-dist.init_process_group(backend="gloo")
+torch_npu.npu.set_device(rank)
+dist.init_process_group(backend="hccl")
 
 
 def dataset_getnext():
     # 1.使用List
     # jagged0：当前卡需要从table0查询的所有ids(所有卡分桶+all2all后,分给当前卡的ids)
     jagged0 = JaggedTensor(
-        values=torch.Tensor([1, 3, 5, 11, 13, 15]).long(),
-        lengths=torch.Tensor([1, 1, 1, 1, 1, 1]).long(),
+        values=torch.Tensor([1, 3, 5, 11, 13, 15, 17]).long(),
+        lengths=torch.Tensor([1, 1, 1, 1, 1, 1, 1]).long(),
     )
     jagged1 = JaggedTensor(
         values=torch.Tensor([1, 3, 5, 11, 13, 15]).long(),
@@ -61,20 +67,37 @@ def dataset_getnext():
     return sparse_fid_list
 
 
+optimizer_type = OptimType.EXACT_ADAGRAD
+optimizer_args = OptimizerArgs(
+    learning_rate=0.1,
+    eps=0.1,
+    beta1=0.1,
+    beta2=0.1,
+)
+
 config0 = EmbeddingConfig(
-    table_name="table0", num_embedding=100, embedding_dim=32, rank=rank, world_size=world_size
+    table_name="table0",
+    num_embedding=100,
+    embedding_dim=32,
+    optimizer_args=optimizer_args,
 )
 config1 = EmbeddingConfig(
-    table_name="table1", num_embedding=100, embedding_dim=32, rank=rank, world_size=world_size
+    table_name="table1",
+    num_embedding=100,
+    embedding_dim=32,
+    optimizer_args=optimizer_args,
 )
 embedding = HashEmbeddingModuleCollection(configs=[config0, config1])
 
 
 for i in range(3):
     data = dataset_getnext()
-    awaitables: Dict[str, Awaitable] = embedding(data)
-    result = [awaitables["table0"].wait(), awaitables["table1"].wait()]
+    awaitables: Dict[str, Awaitable]
+    context: LookupContext
+    awaitables, context = embedding(data)
+    result = [awaitables["table0"].wait()[rank], awaitables["table1"].wait()[rank]]
     logging.info("result %s", result)
+    logging.info("context.ids2looup_index %s", context.ids2looup_index["table0"])
     loss = torch.concat(result).sum()
     loss.backward()
     # result =
@@ -83,13 +106,15 @@ for i in range(3):
     #   [torch.Tensor([[0.1, 0.1], [0.3, 0.3], [0.5, 0.5], [1.1, 1.1], [1.3, 1.3], [1.5, 1.5]])],
     #   [torch.Tensor([[0.2, 0.2], [0.4, 0.4], [0.6, 0.6], [1.2, 1.2], [1.4, 1.4], [1.6, 1.6]])],
     # ]
-    #
+    # context.ids2looup_index["table0"] = {1: 0, 3: 1, 5: 2, ...,}
 
 # 2 step pipe_line
 pipe1 = []
 for i in range(10):
     data = dataset_getnext()
-    awaitables: Dict[str, Awaitable] = embedding(data)
+    awaitables: Dict[str, Awaitable]
+    context: LookupContext
+    awaitables, context = embedding(data)
     pipe1.append(awaitables)
 
 pipe2 = []

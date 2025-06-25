@@ -221,7 +221,7 @@ def do_unique_hash_out(
             unique_inverse,
             unique_offset,
         )
-        logger.info(
+        logger.debug(
             "[do_unique_hash_out] run parallel batch implementation. Time cost: %.1f ms",
             (time.perf_counter() - start_tm) * 1000
         )
@@ -237,7 +237,7 @@ def do_unique_hash_out(
                 unique_offset,
                 table_i,
             )
-        logger.info(
+        logger.debug(
             "[do_unique_hash_out] run serial for-loop implementation. Time cost: %.1f ms",
             (time.perf_counter() - start_tm) * 1000
         )

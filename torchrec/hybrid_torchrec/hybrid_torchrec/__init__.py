@@ -5,6 +5,15 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
+import os
+import sysconfig
+import torch
+
 from hybrid_torchrec.modules.hash_embeddingbag import HashEmbeddingBagCollection, HashEmbeddingBagConfig, \
     HybridHashTable
 from hybrid_torchrec.modules.hash_embedding import HashEmbeddingCollection, EmbeddingConfig
+
+if os.path.exists(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so"):
+    torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
+else:
+    raise RuntimeError("libfbgemm_npu_api.so is not exist")

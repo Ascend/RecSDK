@@ -80,6 +80,7 @@ class RandomRecDatasetUnique(RandomRecDataset):
         for ind in reversed(range(feature_len)):
             name = f"feat{ind}"
             id_range = self.num_embeddings[ind]
+            np.random.seed(ind)
             choice_ids = np.random.choice(id_range, (self.lookup_lens,), replace=False)
             ids = torch.Tensor(choice_ids).long()
             lengths = torch.ones(self.lookup_lens).long()
