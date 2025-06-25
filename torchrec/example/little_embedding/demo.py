@@ -97,7 +97,7 @@ for i in range(3):
     awaitables, context = embedding(data)
     result = [awaitables["table0"].wait()[rank], awaitables["table1"].wait()[rank]]
     logging.info("result %s", result)
-    logging.info("context.ids2looup_index %s", context.ids2looup_index["table0"])
+    logging.info("context.ids2lookup_index %s", context.ids2lookup_index["table0"])
     loss = torch.concat(result).sum()
     loss.backward()
     # result =
@@ -106,7 +106,7 @@ for i in range(3):
     #   [torch.Tensor([[0.1, 0.1], [0.3, 0.3], [0.5, 0.5], [1.1, 1.1], [1.3, 1.3], [1.5, 1.5]])],
     #   [torch.Tensor([[0.2, 0.2], [0.4, 0.4], [0.6, 0.6], [1.2, 1.2], [1.4, 1.4], [1.6, 1.6]])],
     # ]
-    # context.ids2looup_index["table0"] = {1: 0, 3: 1, 5: 2, ...,}
+    # context.ids2lookup_index["table0"] = {1: 0, 3: 1, 5: 2, ...,}
 
 # 2 step pipe_line
 pipe1 = []

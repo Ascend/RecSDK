@@ -87,7 +87,7 @@ class LookupContext:
     fwd_pg: dist.ProcessGroup
     bwd_pg: dist.ProcessGroup
     communication_metrix: Dict[str, List[torch.Size]] = field(default_factory=dict)
-    ids2looup_index: Dict[str, Dict[int, int]] = field(default_factory=dict)
+    ids2lookup_index: Dict[str, Dict[int, int]] = field(default_factory=dict)
 
 
 class AllGatherEmbeddings(torch.autograd.Function):
@@ -144,16 +144,16 @@ class HashEmbeddingModuleCollection(nn.Module):
         self, kjt_list_each_rank: List[KeyedJaggedTensor]
     ) -> LookupContext:
         communication_metrix = defaultdict(list)
-        ids2looup_index = defaultdict(defaultdict)
+        ids2lookup_index = defaultdict(defaultdict)
         for kjt in kjt_list_each_rank:
             jt_dict: Dict[str, JaggedTensor] = kjt.to_dict()
             for feat_name, jt in jt_dict.items():
                 communication_metrix[feat_name].append(jt.values().numel())
-                ids2looup_index[feat_name].update(
+                ids2lookup_index[feat_name].update(
                     {ids: index for index, ids in enumerate(jt.values().tolist())}
                 )
         return LookupContext(
-            self.rank, self.fwd_pg, self.bwd_pg, communication_metrix, ids2looup_index
+            self.rank, self.fwd_pg, self.bwd_pg, communication_metrix, ids2lookup_index
         )
 
     def create_post_input_dist(self):
