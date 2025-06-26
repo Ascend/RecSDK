@@ -61,8 +61,6 @@ public:
     {
         GET_TILING_DATA(tilingData, args.tiling);
 
-        GM_ADDR workspace = args.workspace;
-
         batchSize = tilingData.batchSize;
         seqLen = tilingData.seqLen;
         headNum = tilingData.headNum;
@@ -103,8 +101,9 @@ public:
         attnBiasGrad.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(args.attnBiasGrad), totalElementOfAttnBias);
     }
 
-    __aicore__ inline void InitPipe()
+    __aicore__ inline void InitPipe(Args &args)
     {
+        GM_ADDR workspace = args.workspace;
         int64_t qkMatmulTempSpace = blockHeight * blockHeight;
         int64_t gvMatmulTempSpace = blockHeight * blockHeight;
         int64_t vGradAccumTempSpace = blockHeight * headDim;
@@ -152,7 +151,7 @@ public:
     __aicore__ inline void Init(Args &args)
     {
         InitGlobalBuffer(args);
-        InitPipe();
+        InitPipe(args);
         CreateMask();
     }
 
