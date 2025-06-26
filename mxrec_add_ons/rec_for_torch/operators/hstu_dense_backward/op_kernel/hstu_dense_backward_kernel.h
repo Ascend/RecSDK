@@ -57,7 +57,7 @@ public:
         ComputeSecond();
     }
 
-    __aicore__inline void InitGlobalBuffer(Args &args)
+    __aicore__ inline void InitGlobalBuffer(Args &args)
     {
         GET_TILING_DATA(tilingData, args.tiling);
 
