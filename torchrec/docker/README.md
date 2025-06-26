@@ -41,7 +41,6 @@ docker run \
 -v /etc/localtime:/etc/localtime \
 -e ASCEND_VISIBLE_DEVICES=0-7 \
 -v /etc/ascend_install.info:/etc/ascend_install.info \
--v /home:/home \
 -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
 ${image_name} \
 /bin/bash
