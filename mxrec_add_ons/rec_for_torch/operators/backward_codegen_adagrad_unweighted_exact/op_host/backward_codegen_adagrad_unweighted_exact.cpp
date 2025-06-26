@@ -89,6 +89,13 @@ static ge::graphStatus NormalAdamTilingFunc(gert::TilingContext* context,
     float beta2 = *context->GetAttrs()->GetFloat(BETA2_INDEX);
     int64_t iter = *context->GetAttrs()->GetInt(ITER_INDEX);
 
+    OPS_CHECK(beta1 == 1.0,
+              OPS_LOG_E("Tiling Debug", "beta1 can not be 1.0."),
+              return ge::GRAPH_FAILED);
+    OPS_CHECK(beta2 == 1.0,
+              OPS_LOG_E("Tiling Debug", "beta2 can not be 1.0."),
+              return ge::GRAPH_FAILED);
+
     float _beta1 = 1 / (1 - pow(beta1, iter));
     float _beta2 = 1 / (1 - pow(beta2, iter));
 
