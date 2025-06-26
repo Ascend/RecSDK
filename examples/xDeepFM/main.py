@@ -39,56 +39,64 @@ def flat_config(config):
 def create_hparams(FLAGS):
     """Create hparams."""
     FLAGS = flat_config(FLAGS)
-    return tf.contrib.training.HParams(
+
+    hparam_specs = {
         # data
-        train_file=FLAGS['train_file'] if 'train_file' in FLAGS else None,
-        eval_file=FLAGS['eval_file'] if 'eval_file' in FLAGS else None,
-        test_file=FLAGS['test_file'] if 'test_file' in FLAGS else None,
-        infer_file=FLAGS['infer_file'] if 'infer_file' in FLAGS else None,
-        FEATURE_COUNT=FLAGS['FEATURE_COUNT'] if 'FEATURE_COUNT' in FLAGS else None,
-        FIELD_COUNT=FLAGS['FIELD_COUNT'] if 'FIELD_COUNT' in FLAGS else None,
-        data_format=FLAGS['data_format'] if 'data_format' in FLAGS else None,
-        PAIR_NUM=FLAGS['PAIR_NUM'] if 'PAIR_NUM' in FLAGS else None,
-        DNN_FIELD_NUM=FLAGS['DNN_FIELD_NUM'] if 'DNN_FIELD_NUM' in FLAGS else None,
-        n_user=FLAGS['n_user'] if 'n_user' in FLAGS else None,
-        n_item=FLAGS['n_item'] if 'n_item' in FLAGS else None,
-        n_user_attr=FLAGS['n_user_attr'] if 'n_user_attr' in FLAGS else None,
-        n_item_attr=FLAGS['n_item_attr'] if 'n_item_attr' in FLAGS else None,
+        'train_file': None,
+        'eval_file': None,
+        'test_file': None,
+        'infer_file': None,
+        'FEATURE_COUNT': None,
+        'FIELD_COUNT': None,
+        'data_format': None,
+        'PAIR_NUM': None,
+        'DNN_FIELD_NUM': None,
+        'n_user': None,
+        'n_item': None,
+        'n_user_attr': None,
+        'n_item_attr': None,
+
         # model
-        dim=FLAGS['dim'] if 'dim' in FLAGS else None,
-        layer_sizes=FLAGS['layer_sizes'] if 'layer_sizes' in FLAGS else None,
-        cross_layer_sizes=FLAGS['cross_layer_sizes'] if 'cross_layer_sizes' in FLAGS else None,
-        cross_layers = FLAGS['cross_layers'] if 'cross_layers' in FLAGS else None,
-        activation=FLAGS['activation'] if 'activation' in FLAGS else None,
-        cross_activation=FLAGS['cross_activation'] if 'cross_activation' in FLAGS else "identity",
-        dropout=FLAGS['dropout'] if 'dropout' in FLAGS else None,
-        attention_layer_sizes=FLAGS['attention_layer_sizes'] if 'attention_layer_sizes' in FLAGS else None,
-        attention_activation=FLAGS['attention_activation'] if 'attention_activation' in FLAGS else None,
-        model_type=FLAGS['model_type'] if 'model_type' in FLAGS else None,
-        method=FLAGS['method'] if 'method' in FLAGS else None,
-        load_model_name=FLAGS['load_model_name'] if 'load_model_name' in FLAGS else None,
-        mu=FLAGS['mu'] if 'mu' in FLAGS else None,
+        'dim': None,
+        'layer_sizes': None,
+        'cross_layer_sizes': None,
+        'cross_layers': None,
+        'activation': None,
+        'cross_activation': "identity",
+        'dropout': None,
+        'attention_layer_sizes': None,
+        'attention_activation': None,
+        'model_type': None,
+        'method': None,
+        'load_model_name': None,
+        'mu': None,
+
         # train
-        init_method=FLAGS['init_method'] if 'init_method' in FLAGS else 'tnormal',
-        init_value=FLAGS['init_value'] if 'init_value' in FLAGS else 0.01,
-        embed_l2=FLAGS['embed_l2'] if 'embed_l2' in FLAGS else 0.0000,
-        embed_l1=FLAGS['embed_l1'] if 'embed_l1' in FLAGS else 0.0000,
-        layer_l2=FLAGS['layer_l2'] if 'layer_l2' in FLAGS else 0.0000,
-        layer_l1=FLAGS['layer_l1'] if 'layer_l1' in FLAGS else 0.0000,
-        cross_l2=FLAGS['cross_l2'] if 'cross_l2' in FLAGS else 0.0000,
-        cross_l1=FLAGS['cross_l1'] if 'cross_l1' in FLAGS else 0.0000,
-        learning_rate=FLAGS['learning_rate'] if 'learning_rate' in FLAGS else 0.001,
-        loss=FLAGS['loss'] if 'loss' in FLAGS else None,
-        optimizer=FLAGS['optimizer'] if 'optimizer' in FLAGS else 'adam',
-        epochs=FLAGS['epochs'] if 'epochs' in FLAGS else 10,
-        batch_size=FLAGS['batch_size'] if 'batch_size' in FLAGS else 1,
+        'init_method': 'tnormal',
+        'init_value': 0.01,
+        'embed_l2': 0.0000,
+        'embed_l1': 0.0000,
+        'layer_l2': 0.0000,
+        'layer_l1': 0.0000,
+        'cross_l2': 0.0000,
+        'cross_l1': 0.0000,
+        'learning_rate': 0.001,
+        'loss': None,
+        'optimizer': 'adam',
+        'epochs': 10,
+        'batch_size': 1,
+
         # show info
-        log=FLAGS['log'] if 'log' in FLAGS else "log",
-        logger=None,
-        show_step=FLAGS['show_step'] if 'show_step' in FLAGS else 1,
-        save_epoch=FLAGS['save_epoch'] if 'save_epoch' in FLAGS else 5,
-        metrics=FLAGS['metrics'] if 'metrics' in FLAGS else None
-    )
+        'log': "log",
+        'logger': None,
+        'show_step': 1,
+        'save_epoch': 5,
+        'metrics': None,
+    }
+
+    kwargs = {key: FLAGS.get(key, default) for key, default in hparam_specs.items()}
+    
+    return tf.contrib.training.HParams(**kwargs)
 
 
 def check_type(config):

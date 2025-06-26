@@ -122,6 +122,12 @@ class Saver(object):
         self.build()
         self.warm_start_tables = warm_start_tables
 
+    @staticmethod
+    def _check_file_system_is_valid(save_path):
+        if not check_file_system_is_valid(save_path):
+            raise ValueError("the path to save sparse embedding table data belong to invalid file system, "
+                            "only local file system and hdfs file system supported. ")
+
     def build(self):
         # If the 'export_saved_model' interface is called, the graph modification is required.
         self._modify_graph_for_export_model()
@@ -160,9 +166,7 @@ class Saver(object):
         :return: None
         """
         logger.debug("======== Start saving for rank id %s ========", self.rank_id)
-        if not check_file_system_is_valid(save_path):
-            raise ValueError("the path to save sparse embedding table data belong to invalid file system, "
-                             "only local file system and hdfs file system supported. ")
+        self._check_file_system_is_valid(save_path)
 
         save_path = save_path if save_path else self._prefix_name
         directory, base_name = os.path.split(save_path)

@@ -53,44 +53,8 @@ class GraphPartitioner:
         self.embedding_lookup_op_type = s
 
     def get_sub_graph(self):
-        for op in self.graph.get_operations():
-            if self._is_embedding_lookup(op):
-                self.sparse_lookup_ops.append(op)
-        if not self.sparse_lookup_ops:
-            for op in self.graph.get_operations():
-                is_top_op = True
-                for op1 in self.graph.get_operations():
-                    for tensor in op1.outputs:
-                        if tensor in op.inputs:
-                            is_top_op = False
-                            break
-                    if not is_top_op:
-                        break
-                if is_top_op:
-                    self.sparse_lookup_ops.append(op)
-        check_ops = self.sparse_lookup_ops
-        self.sparse_lookup_ops = []
-        for op in check_ops:
-            if not self.has_gray_downstreams(op):
-                self.sparse_lookup_ops.append(op)
-                self.sparse_lookup_tensors.extend(op.outputs)
-
-        for op in self.graph.get_operations():
-            for tensor in self.sparse_lookup_tensors:
-                if tensor in op.inputs:
-                    self.input_nodes.append(op)
-        for _, v in self.signature_def.outputs.items():
-            op_name = (
-                str(v)
-                .split("\n")[0]
-                .replace(" ", "")
-                .replace('"', "")
-                .split(":")[1]
-                .split(":")[0]
-            )
-            for op in self.graph.get_operations():
-                if op.name == op_name:
-                    self.output_nodes.append(op)
+        self._process_sparse_lookup_ops()
+        self._find_input_output_nodes()
 
         float_ups = []
         to_expand = []
@@ -118,6 +82,47 @@ class GraphPartitioner:
                 else:
                     to_expand.append(op)
         return str(in_str), str([op.name for op in self.output_nodes])
+
+    def _process_sparse_lookup_ops(self):
+        for op in self.graph.get_operations():
+            if self._is_embedding_lookup(op):
+                self.sparse_lookup_ops.append(op)
+        if not self.sparse_lookup_ops:
+            for op in self.graph.get_operations():
+                is_top_op = True
+                for op1 in self.graph.get_operations():
+                    for tensor in op1.outputs:
+                        if tensor in op.inputs:
+                            is_top_op = False
+                            break
+                    if not is_top_op:
+                        break
+                if is_top_op:
+                    self.sparse_lookup_ops.append(op)
+        check_ops = self.sparse_lookup_ops
+        self.sparse_lookup_ops = []
+        for op in check_ops:
+            if not self.has_gray_downstreams(op):
+                self.sparse_lookup_ops.append(op)
+                self.sparse_lookup_tensors.extend(op.outputs)
+
+    def _find_input_output_nodes(self):
+        for op in self.graph.get_operations():
+            for tensor in self.sparse_lookup_tensors:
+                if tensor in op.inputs:
+                    self.input_nodes.append(op)
+        for _, v in self.signature_def.outputs.items():
+            op_name = (
+                str(v)
+                .split("\n")[0]
+                .replace(" ", "")
+                .replace('"', "")
+                .split(":")[1]
+                .split(":")[0]
+            )
+            for op in self.graph.get_operations():
+                if op.name == op_name:
+                    self.output_nodes.append(op)
 
     def _is_embedding_lookup(self, op):
         if op.type in self.embedding_lookup_op_type:
