@@ -23,7 +23,7 @@ See the License for the specific language governing permissions and
 
 namespace optiling {
 
-static void SetQKVGrad(matmul_tiling::MatmulApiTiling &matmul)
+static void SetQKVGrad(matmul_tiling::MatmulApiTiling &matmul, matmul_tiling::DataType dataType)
 {
     matmul.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
     matmul.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
@@ -37,7 +37,7 @@ static void SetQKVGrad(matmul_tiling::MatmulApiTiling &matmul)
     matmul.SetBufferSpace(-1, -1, -1);
 }
 
-static void SetQKMatmul(matmul_tiling::MatmulApiTiling &matmul)
+static void SetQKMatmul(matmul_tiling::MatmulApiTiling &matmul, matmul_tiling::DataType dataType)
 {
     matmul.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
     matmul.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
@@ -101,16 +101,16 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
     currentWorkspace[0] = workspaceSize + systemWorkspaceSize;
 
     matmul_tiling::MatmulApiTiling qkMatmul(ascendPlatform);
-    SetQKMatmul(qkMatmul);
+    SetQKMatmul(qkMatmul, dataType);
 
     matmul_tiling::MatmulApiTiling qGradMatmul(ascendPlatform);
-    SetQKVGrad(qGradMatmul);
+    SetQKVGrad(qGradMatmul, dataType);
 
     matmul_tiling::MatmulApiTiling kGradMatmul(ascendPlatform);
-    SetQKVGrad(kGradMatmul);
+    SetQKVGrad(kGradMatmul, dataType);
 
     matmul_tiling::MatmulApiTiling vGradMatmul(ascendPlatform);
-    SetQKVGrad(vGradMatmul);
+    SetQKVGrad(vGradMatmul, dataType);
 
     if (qkMatmul.GetTiling(tiling.qkMatmul) == -1 || qGradMatmul.GetTiling(tiling.qGradMatmul) == -1 ||
         kGradMatmul.GetTiling(tiling.kGradMatmul) == -1 || vGradMatmul.GetTiling(tiling.vGradMatmul) == -1) {
