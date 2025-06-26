@@ -305,22 +305,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_jagged_bac
     }
 
     const char *layout = "jagged";
-    EXEC_NPU_CMD(aclnnHstuDenseBackward,
-        denseGrad,
-        denseQ,
-        denseK,
-        denseV,
-        denseMask,
-        denseAttnBias,
-        layout,
-        maskType,
-        maxSeqLen,
-        realSiluScale,
-        acSeqOffset,
-        qGradOutput,
-        kGradOutput,
-        vGradOutput,
-        attnBiasGradOutput);
+    EXEC_NPU_CMD(aclnnHstuDenseBackward, denseGrad, denseQ, denseK, denseV, denseMask, denseAttnBias, layout, maskType,
+        maxSeqLen, realSiluScale, acSeqOffset, qGradOutput, kGradOutput, vGradOutput, attnBiasGradOutput);
 
     return std::make_tuple(qGradOutput, kGradOutput, vGradOutput, attnBiasGradOutput);
 }

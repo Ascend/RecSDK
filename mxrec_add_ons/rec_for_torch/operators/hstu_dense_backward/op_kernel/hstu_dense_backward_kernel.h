@@ -57,7 +57,7 @@ public:
         ComputeSecond();
     }
 
-    __aicore__ inline void Init(Args &args)
+    __aicore__inline void InitGlobalBuffer(Args &args)
     {
         GET_TILING_DATA(tilingData, args.tiling);
 
@@ -101,7 +101,10 @@ public:
         kGrad.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(args.kGrad), totalElementOfQ);
         vGrad.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(args.vGrad), totalElementOfQ);
         attnBiasGrad.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(args.attnBiasGrad), totalElementOfAttnBias);
+    }
 
+    __aicore__ inline void InitPipe()
+    {
         int64_t qkMatmulTempSpace = blockHeight * blockHeight;
         int64_t gvMatmulTempSpace = blockHeight * blockHeight;
         int64_t vGradAccumTempSpace = blockHeight * headDim;
@@ -144,7 +147,12 @@ public:
         pipe.InitBuffer(queueOutputScore, USE_BUFFER_NUM, vecOnceDataNum * sizeof(qType));
         pipe.InitBuffer(queueOutputBias, USE_BUFFER_NUM, vecOnceDataNum * sizeof(qType));
         pipe.InitBuffer(queueOutputTemp, USE_BUFFER_NUM, vecOnceDataNum * sizeof(qType));
+    }
 
+    __aicore__ inline void Init(Args &args)
+    {
+        InitGlobalBuffer(args);
+        InitPipe();
         CreateMask();
     }
 
