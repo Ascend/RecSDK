@@ -22,38 +22,13 @@ See the License for the specific language governing permissions and
 #include "hstu_dense_backward_jagged_tiling.h"
 
 namespace optiling {
-
-static void SetQKVGrad(matmul_tiling::MatmulApiTiling &matmul, matmul_tiling::DataType dataType,
-    int blockHeight, int headDim)
+static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseBackwardTilingData &tiling)
 {
-    matmul.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
-    matmul.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
-    matmul.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
-                         matmul_tiling::DataType::DT_FLOAT);
-    matmul.SetBiasType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
+    int64_t headDim = tiling.get_headDim();
+    int64_t blockHeight = tiling.get_blockHeight();
+    int64_t dataTypeLength = tiling.get_dataTypeLength();
 
-    matmul.SetOrgShape(blockHeight, headDim, blockHeight);
-    matmul.SetShape(blockHeight, headDim, blockHeight);
-    matmul.SetBias(false);
-    matmul.SetBufferSpace(-1, -1, -1);
-}
-
-static void SetQKMatmul(matmul_tiling::MatmulApiTiling &matmul, matmul_tiling::DataType dataType,
-    int blockHeight, int headDim)
-{
-    matmul.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
-    matmul.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
-    matmul.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
-    matmul.SetBiasType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
-
-    matmul.SetOrgShape(blockHeight, blockHeight, headDim);
-    matmul.SetShape(blockHeight, blockHeight, headDim);
-    matmul.SetBias(false);
-    matmul.SetBufferSpace(-1, -1, -1);
-}
-
-static ge::graphStatus GetDataType(gert::TilingContext *context, matmul_tiling::DataType &dataType)
-{
+    matmul_tiling::DataType dataType;
     ge::DataType gradType = context->GetInputTensor(INDEX_T::INDEX_0)->GetDataType();
     if (gradType == ge::DataType::DT_FLOAT) {
         dataType = matmul_tiling::DataType::DT_FLOAT;
@@ -65,17 +40,6 @@ static ge::graphStatus GetDataType(gert::TilingContext *context, matmul_tiling::
         OPS_LOG_E("", "invalid datatype, only support float/fp16/bf16\n");
         return ge::GRAPH_FAILED;
     }
-}
-
-static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseBackwardTilingData &tiling)
-{
-    int64_t headDim = tiling.get_headDim();
-    int64_t blockHeight = tiling.get_blockHeight();
-    int64_t dataTypeLength = tiling.get_dataTypeLength();
-
-    matmul_tiling::DataType dataType;
-    OPS_CHECK(GetDataType(context, dataType) == ge::GRAPH_FAILED, OPS_LOG_E("", "GetDataType failed\n"),
-        return ge::GRAPH_FAILED);
 
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t coreNum = ascendPlatform.GetCoreNumAic();
@@ -91,7 +55,8 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
 
     int64_t maskTempSpace = blockHeight * blockHeight;
 
-    int64_t totalTempSpaceForOneVec =  MID_USE_TIMES *
+    int64_t totalTempSpaceForOneVec =
+        MID_USE_TIMES *
             ((vGradAccumTempSpace + kGradAccumTempSpace) * sizeof(float) +
              (qkMatmulTempSpace + gvMatmulTempSpace + scoreTempSpace) * dataTypeLength) +
         maskTempSpace * dataTypeLength;
@@ -103,19 +68,56 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
     currentWorkspace[0] = workspaceSize + systemWorkspaceSize;
 
     matmul_tiling::MatmulApiTiling qkMatmul(ascendPlatform);
-    SetQKMatmul(qkMatmul, dataType, blockHeight, headDim);
+    qkMatmul.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
+    qkMatmul.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
+    qkMatmul.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
+    qkMatmul.SetBiasType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
+
+    qkMatmul.SetOrgShape(blockHeight, blockHeight, headDim);
+    qkMatmul.SetShape(blockHeight, blockHeight, headDim);
+    qkMatmul.SetBias(false);
+    qkMatmul.SetBufferSpace(-1, -1, -1);
 
     matmul_tiling::MatmulApiTiling qGradMatmul(ascendPlatform);
-    SetQKVGrad(qGradMatmul, dataType, blockHeight, headDim);
+    qGradMatmul.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
+    qGradMatmul.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
+    qGradMatmul.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
+                         matmul_tiling::DataType::DT_FLOAT);
+    qGradMatmul.SetBiasType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
+
+    qGradMatmul.SetOrgShape(blockHeight, headDim, blockHeight);
+    qGradMatmul.SetShape(blockHeight, headDim, blockHeight);
+    qGradMatmul.SetBias(false);
+    qGradMatmul.SetBufferSpace(-1, -1, -1);
 
     matmul_tiling::MatmulApiTiling kGradMatmul(ascendPlatform);
-    SetQKVGrad(kGradMatmul, dataType, blockHeight, headDim);
+    kGradMatmul.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
+    kGradMatmul.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
+    kGradMatmul.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
+                         matmul_tiling::DataType::DT_FLOAT);
+    kGradMatmul.SetBiasType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
+
+    kGradMatmul.SetOrgShape(blockHeight, headDim, blockHeight);
+    kGradMatmul.SetShape(blockHeight, headDim, blockHeight);
+    kGradMatmul.SetBias(false);
+    kGradMatmul.SetBufferSpace(-1, -1, -1);
 
     matmul_tiling::MatmulApiTiling vGradMatmul(ascendPlatform);
-    SetQKVGrad(vGradMatmul, dataType, blockHeight, headDim);
+    vGradMatmul.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
+    vGradMatmul.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
+    vGradMatmul.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
+                         matmul_tiling::DataType::DT_FLOAT);
+    vGradMatmul.SetBiasType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
 
-    if (qkMatmul.GetTiling(tiling.qkMatmul) == -1 || qGradMatmul.GetTiling(tiling.qGradMatmul) == -1 ||
-        kGradMatmul.GetTiling(tiling.kGradMatmul) == -1 || vGradMatmul.GetTiling(tiling.vGradMatmul) == -1) {
+    vGradMatmul.SetOrgShape(blockHeight, headDim, blockHeight);
+    vGradMatmul.SetShape(blockHeight, headDim, blockHeight);
+    vGradMatmul.SetBias(false);
+    vGradMatmul.SetBufferSpace(-1, -1, -1);
+
+    if (qkMatmul.GetTiling(tiling.qkMatmul) == -1 ||
+        qGradMatmul.GetTiling(tiling.qGradMatmul) == -1 ||
+        kGradMatmul.GetTiling(tiling.kGradMatmul) == -1 ||
+        vGradMatmul.GetTiling(tiling.vGradMatmul) == -1) {
         return ge::GRAPH_FAILED;
     }
 
@@ -188,37 +190,57 @@ class HstuDenseBackward : public OpDef {
 public:
     explicit HstuDenseBackward(const char *name) : OpDef(name)
     {
-        this->Input("grad").ParamType(REQUIRED).DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-        .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Input("q").ParamType(REQUIRED).DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-        .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Input("k").ParamType(REQUIRED).DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-        .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Input("v").ParamType(REQUIRED).DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-        .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Input("mask").ParamType(OPTIONAL).DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-        .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Input("attn_bias").ParamType(OPTIONAL).DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-        .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Input("grad")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Input("q")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Input("k")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Input("v")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Input("mask")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Input("attn_bias")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
 
-        this->Output("q_grad").ParamType(REQUIRED).DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-        .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Output("k_grad").ParamType(REQUIRED).DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-        .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Output("v_grad").ParamType(REQUIRED).DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-        .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Output("attn_bias_grad").ParamType(REQUIRED).DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-        .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Output("q_grad")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Output("k_grad")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Output("v_grad")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Output("attn_bias_grad")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
 
         this->Attr("layout").String("normal");
         this->Attr("mask_type").Int();
@@ -227,8 +249,10 @@ public:
         this->Attr("seq_offsets").AttrType(OPTIONAL).ListInt();
 
         OpAICoreConfig aicore_config;
-        aicore_config.DynamicCompileStaticFlag(true).ExtendCfgInfo("jitCompile.flag", "static_false,dynamic_false")
-        .ExtendCfgInfo("coreType.value", "AiCore").ExtendCfgInfo("prebuildPattern.value", "Opaque");
+        aicore_config.DynamicCompileStaticFlag(true)
+            .ExtendCfgInfo("jitCompile.flag", "static_false,dynamic_false")
+            .ExtendCfgInfo("coreType.value", "AiCore")
+            .ExtendCfgInfo("prebuildPattern.value", "Opaque");
 
         this->SetInferShape(ge::InferShape);
         this->SetInferDataType(ge::InferDtype);
