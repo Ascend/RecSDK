@@ -108,14 +108,11 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
     int64_t gradOutputDim1 = context->GetInputShape(GRAD_OUTPUT_INDEX)->GetStorageShape().GetDim(1);
     int64_t devWeightsDim0 = context->GetInputShape(DEV_WEIGHTS_INDEX)->GetStorageShape().GetDim(0);
     int64_t weightsOffsetsDim0 = context->GetInputShape(WEIGHTS_OFFSETS_INDEX)->GetStorageShape().GetDim(0);
-    OPS_CHECK(weightsOffsetsDim0 == 0,
-              OPS_LOG_E("Tiling Debug", "weightsOffsets shape is invalid."),
+    OPS_CHECK(weightsOffsetsDim0 == 0, OPS_LOG_E("Tiling Debug", "weightsOffsets shape is invalid."),
               return ge::GRAPH_FAILED);
 
     int64_t dOffsetsDim0 = context->GetInputShape(D_OFFSETS_INDEX)->GetStorageShape().GetDim(0);
-    OPS_CHECK(dOffsetsDim0 <= 1,
-              OPS_LOG_E("Tiling Debug", "dOffsets shape is invalid."),
-              return ge::GRAPH_FAILED);
+    OPS_CHECK(dOffsetsDim0 <= 1, OPS_LOG_E("Tiling Debug", "dOffsets shape is invalid."), return ge::GRAPH_FAILED);
     int64_t indicesDim0 = context->GetInputShape(INDICES_INDEX)->GetStorageShape().GetDim(0);
     int64_t offsetsDim0 = context->GetInputShape(OFFSETS_INDEX)->GetStorageShape().GetDim(0);
 
@@ -185,9 +182,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     // Tiling
     size_t coreNum = ascendPlatform.GetCoreNumAiv();
-    OPS_CHECK(coreNum == 0,
-              OPS_LOG_E("Tiling Debug", "Core num is 0."),
-              return ge::GRAPH_FAILED);
+    OPS_CHECK(coreNum == 0, OPS_LOG_E("Tiling Debug", "Core num is 0."), return ge::GRAPH_FAILED);
 
     int64_t splitBaseLen = tiling.get_indicesDim0() / coreNum;
     int64_t tailSplitIndex = tiling.get_indicesDim0() % coreNum;

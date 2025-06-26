@@ -63,26 +63,13 @@ public:
         auto info_B_num_bits = max_B_;
         auto info_B_mask = T;
 
-        ctx->save_for_backward({dev_weights,
-                                uvm_weights,
-                                lxu_cache_weights,
-                                weights_placements,
-                                weights_offsets,
-                                D_offsets,
-                                hash_size_cumsum,
-                                indices,
-                                offsets,
+        ctx->save_for_backward({dev_weights, uvm_weights, lxu_cache_weights, weights_placements,
+                                weights_offsets, D_offsets, hash_size_cumsum, indices, offsets,
                                 indice_weights.value_or(Tensor()),
-                                feature_requires_grad.value_or(Tensor()),
-                                lxu_cache_locations,
-                                momentum1_dev,
-                                momentum1_uvm,
-                                momentum1_placements,
-                                momentum1_offsets,
-                                hash_indices.value_or(Tensor()),
-                                unique_ids.value_or(at::Tensor()),
-                                unique_offsets.value_or(at::Tensor()),
-                                unique_inverse.value_or(at::Tensor())});
+                                feature_requires_grad.value_or(Tensor()), lxu_cache_locations,
+                                momentum1_dev, momentum1_uvm, momentum1_placements, momentum1_offsets,
+                                hash_indices.value_or(Tensor()), unique_ids.value_or(at::Tensor()),
+                                unique_offsets.value_or(at::Tensor()), unique_inverse.value_or(at::Tensor())});
         ctx->saved_data["max_D"] = max_D;
         ctx->saved_data["pooling_mode"] = pooling_mode;
         ctx->saved_data["total_hash_size_bits"] = total_hash_size_bits;
@@ -299,11 +286,9 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    Tensor? indice_weights, "
           "    Tensor? feature_requires_grad, "
           "    Tensor lxu_cache_locations, "
-          "    bool gradient_clipping, "
-          "    float max_gradient, "
+          "    bool gradient_clipping, float max_gradient, "
           "    bool stochastic_rounding, "
-          "    Tensor momentum1_dev, Tensor momentum1_uvm, Tensor momentum1_placements, "
-          "    Tensor momentum1_offsets, "
+          "    Tensor momentum1_dev, Tensor momentum1_uvm, Tensor momentum1_placements, Tensor momentum1_offsets, "
           "    Tensor? hash_indices = None, "
           "    Tensor? unique_ids = None, "
           "    Tensor? unique_offsets = None, "
@@ -320,8 +305,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    bool use_uniq_cache_locations_bwd=False, "
           "    bool use_homogeneous_placements=False, "
           "    Tensor? uvm_cache_stats=None, "
-          "    Tensor? prev_iter_dev=None, "
-          "    int iter=0, "
+          "    Tensor? prev_iter_dev=None, int iter=0, "
           "    bool apply_global_weight_decay=False, "
           "    float gwd_lower_bound=0 "
           ") -> Tensor");

@@ -1,9 +1,9 @@
 /**
-* @file relative_attn_bias_backward.cpp
-*
-* Copyright (C) 2025. Huawei Technologies Co., Ltd. All rights reserved.
-*
-*/
+ * @file relative_attn_bias_backward.cpp
+ *
+ * Copyright (C) 2025. Huawei Technologies Co., Ltd. All rights reserved.
+ *
+ */
 
 #include <cmath>
 #include "relative_attn_bias_backward_tiling.h"
@@ -38,7 +38,7 @@ static ge::graphStatus TimeTilingFunc(RelativeAttnBiasBackwardTilingData& tiling
 {
     // 获取、校验必要shape数据
     auto gradShape = context->GetInputShape(TIMESTAMPS_WEIGHTS_GRAD_INDEX)->GetStorageShape();  // grad(n, b, 2s, 2s)
-    auto indexShape = context->GetInputShape(BUCKET_TIMESTAMPS_INDEX)->GetStorageShape();  // grad(b, 2s, 2s)
+    auto indexShape = context->GetInputShape(BUCKET_TIMESTAMPS_INDEX)->GetStorageShape();       // grad(b, 2s, 2s)
 
     int numBuckets = *context->GetAttrs()->GetInt(NUM_BUCKET_INDEX);
     int numLayer = gradShape.GetDim(DIM0);
@@ -50,23 +50,15 @@ static ge::graphStatus TimeTilingFunc(RelativeAttnBiasBackwardTilingData& tiling
     int indexS1 = indexShape.GetDim(DIM1);
     int indexS2 = indexShape.GetDim(DIM2);
 
-    OPS_CHECK(gradShape.GetDimNum() != RAB_TIME_GRAD_DIM,
-              OPS_LOG_E("Tiling Debug", "Grad shape is invalid."),
+    OPS_CHECK(gradShape.GetDimNum() != RAB_TIME_GRAD_DIM, OPS_LOG_E("Tiling Debug", "Grad shape is invalid."),
               return ge::GRAPH_FAILED);
     OPS_CHECK(indexShape.GetDimNum() != BUCKET_TIMESTAMPS_DIM,
-              OPS_LOG_E("Tiling Debug", "bucket_timestamps shape is invalid."),
+              OPS_LOG_E("Tiling Debug", "bucket_timestamps shape is invalid."), return ge::GRAPH_FAILED);
+    OPS_CHECK(numBuckets <= 0, OPS_LOG_E("Tiling Debug", "NumBuckets is invalid."), return ge::GRAPH_FAILED);
+    OPS_CHECK(numLayer <= 0, OPS_LOG_E("Tiling Debug", "Numlayer is invalid."), return ge::GRAPH_FAILED);
+    OPS_CHECK(batchsize <= 0 || batchsize != indexBatchsize, OPS_LOG_E("Tiling Debug", "Batchsize is invalid."),
               return ge::GRAPH_FAILED);
-    OPS_CHECK(numBuckets <= 0,
-              OPS_LOG_E("Tiling Debug", "NumBuckets is invalid."),
-              return ge::GRAPH_FAILED);
-    OPS_CHECK(numLayer <= 0,
-              OPS_LOG_E("Tiling Debug", "Numlayer is invalid."),
-              return ge::GRAPH_FAILED);
-    OPS_CHECK(batchsize <= 0 || batchsize != indexBatchsize,
-              OPS_LOG_E("Tiling Debug", "Batchsize is invalid."),
-              return ge::GRAPH_FAILED);
-    OPS_CHECK(s <= 0 || s != s2 || s != indexS1 || s != indexS2,
-              OPS_LOG_E("Tiling Debug", "Sequence len is invalid."),
+    OPS_CHECK(s <= 0 || s != s2 || s != indexS1 || s != indexS2, OPS_LOG_E("Tiling Debug", "Sequence len is invalid."),
               return ge::GRAPH_FAILED);
 
     tilingData.set_numBuckets(numBuckets);
@@ -83,8 +75,7 @@ static ge::graphStatus TimeTilingFunc(RelativeAttnBiasBackwardTilingData& tiling
     auto indexDataType = context->GetInputTensor(BUCKET_TIMESTAMPS_INDEX)->GetDataType();
     int gradSize = ge::GetSizeByDataType(gradDataType);
     int indexSize = ge::GetSizeByDataType(indexDataType);
-    OPS_CHECK(gradSize == 0 || indexSize == 0,
-              OPS_LOG_E("Tiling Debug", "Invalid data type."),
+    OPS_CHECK(gradSize == 0 || indexSize == 0, OPS_LOG_E("Tiling Debug", "Invalid data type."),
               return ge::GRAPH_FAILED);
     // 去除tswGrad所需ub
     ub = ub - numBuckets * numLayer * sizeof(float);
@@ -110,9 +101,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t coreNum = ascendPlatform.GetCoreNumAiv();
-    OPS_CHECK(coreNum == 0,
-              OPS_LOG_E("Tiling Debug", "Core num is 0."),
-              return ge::GRAPH_FAILED);
+    OPS_CHECK(coreNum == 0, OPS_LOG_E("Tiling Debug", "Core num is 0."), return ge::GRAPH_FAILED);
     RelativeAttnBiasBackwardTilingData tilingData;
     auto ret = TimeTilingFunc(tilingData, context);
     if (ret != ge::GRAPH_SUCCESS) {
@@ -143,7 +132,6 @@ static ge::graphStatus InferShape(gert::InferShapeContext* context)
 }
 }  // namespace ge
 
-
 namespace ops {
 class RelativeAttnBiasBackward : public OpDef {
 public:
@@ -170,9 +158,9 @@ public:
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
-                .ExtendCfgInfo("jitCompile.flag", "static_false,dynamic_false")
-                .ExtendCfgInfo("coreType.value", "AiCore")
-                .ExtendCfgInfo("prebuildPattern.value", "Opaque");
+            .ExtendCfgInfo("jitCompile.flag", "static_false,dynamic_false")
+            .ExtendCfgInfo("coreType.value", "AiCore")
+            .ExtendCfgInfo("prebuildPattern.value", "Opaque");
 
         this->AICore().SetTiling(optiling::TilingFunc);
         this->AICore().AddConfig("ascend910", aicore_config);

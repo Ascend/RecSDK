@@ -81,7 +81,6 @@ __aicore__ inline int64_t GetOffset(GM_ADDR offsetAddr, int64_t index)
     return *(offsetPtr + index);
 }
 
-
 template <typename T>
 __aicore__ inline void CpGm2Local(const LocalTensor<T>& lt, const GlobalTensor<T>& gt, int64_t len)
 {
@@ -108,14 +107,12 @@ __aicore__ inline void CpLocal2Gm(const GlobalTensor<T>& gt, const LocalTensor<T
     }
 }
 
-
 class BackwardCodegenUnweightedExactKernel {
 public:
     __aicore__ inline BackwardCodegenUnweightedExactKernel() {}
 
-    __aicore__ inline void Init(Args args)
+    __aicore__ inline void InitAddr(Args& args, BackwardCodegenAdagradUnweightedExactTilingData& tilingData)
     {
-        GET_TILING_DATA(tilingData, args.tiling);
         // ADDR
         gradOutput = args.gradOutput;
         devWeights = args.devWeights;
@@ -143,23 +140,54 @@ public:
         outDim0 = tilingData.outDim0;
         maxD = tilingData.maxD;
         enableHash = tilingData.enableHash;
+    }
 
-        // DataType
+    __aicore__ inline void InitDataType()
+    {
         bytesOfDataType = sizeof(float);
+    }
 
+    __aicore__ inline void InitTiling(BackwardCodegenAdagradUnweightedExactTilingData& tilingData)
+    {
         // Tiling
         offsetsSplitLen = tilingData.splitBaseLen;
         offsetsSplitIndex = tilingData.tailSplitIndex;
+    }
 
-        // Ub
+    __aicore__ inline void InitUb(BackwardCodegenAdagradUnweightedExactTilingData& tilingData)
+    {
+        // ub
         ubCanUsed = tilingData.ubCanUsed;
         blockLen = ubCanUsed / USE_QUEUE_NUM / bytesOfDataType;
         blockLen = blockLen / FLOAT_ALIGNMENT * FLOAT_ALIGNMENT;
+    }
 
+    __aicore__ inline void InitFunc(BackwardCodegenAdagradUnweightedExactTilingData& tilingData)
+    {
         // func
         poolMode = tilingData.poolMode;
         eps = tilingData.eps;
         learning_rate = tilingData.learningRate;
+    }
+
+    __aicore__ inline void InitTensor()
+    {
+        // tensor
+        gradOutputGT.SetGlobalBuffer((__gm__ float*)gradOutput, gradOutputDim0 * gradOutputDim1);
+        devWeightsGT.SetGlobalBuffer((__gm__ float*)devWeights, devWeightsDim0);
+        momentum1DevGT.SetGlobalBuffer((__gm__ float*)momentum1Dev, outDim0);
+
+        outGT.SetGlobalBuffer((__gm__ float*)out, outDim0);  // InitGlobalMemory
+        momentum1DevOutGT.SetGlobalBuffer((__gm__ float*)momentum1DevOut, outDim0);
+        weightsDevOutGT.SetGlobalBuffer((__gm__ float*)weightsDevOut, outDim0);
+        hashSizeCumsumGT.SetGlobalBuffer((__gm__ int64_t*)hashSizeCumsum, weightsOffsetsDim0 + 1);
+
+        totalHashSize = hashSizeCumsumGT.GetValue(weightsOffsetsDim0);
+        workspaceGT.SetGlobalBuffer((__gm__ int8_t*)workspace, totalHashSize);
+    }
+
+    __aicore__ inline void InitOffset()
+    {
         // ThisCoreLen
         if (GetBlockIdx() >= offsetsSplitIndex) {
             lenOfThisCore = offsetsSplitLen;
@@ -169,25 +197,29 @@ public:
             lenOfThisCore = offsetsSplitLen + 1;
             offsetOfThisCore = GetBlockIdx() * (offsetsSplitLen + 1);
         }
+    }
 
-        gradOutputGT.SetGlobalBuffer((__gm__ float*)gradOutput, gradOutputDim0 * gradOutputDim1);
-        devWeightsGT.SetGlobalBuffer((__gm__ float*)devWeights, devWeightsDim0);
-        momentum1DevGT.SetGlobalBuffer((__gm__ float*)momentum1Dev, outDim0);
-
-        outGT.SetGlobalBuffer((__gm__ float*)out, outDim0); // InitGlobalMemory
-        momentum1DevOutGT.SetGlobalBuffer((__gm__ float*)momentum1DevOut, outDim0);
-        weightsDevOutGT.SetGlobalBuffer((__gm__ float*)weightsDevOut, outDim0);
-        hashSizeCumsumGT.SetGlobalBuffer((__gm__ int64_t*)hashSizeCumsum, weightsOffsetsDim0 + 1);
-
-        totalHashSize = hashSizeCumsumGT.GetValue(weightsOffsetsDim0);
-        workspaceGT.SetGlobalBuffer((__gm__ int8_t*)workspace, totalHashSize);
-
+    __aicore__ inline void InitPipe()
+    {
         // Init pipe
         pipe.InitBuffer(queIn, 1, blockLen * sizeof(float));
         pipe.InitBuffer(queOut, 1, blockLen * sizeof(float));
 
         pipe.InitBuffer(queFlagIn, 1, DATA_ALIGN_BYTES);
         pipe.InitBuffer(queFlagOut, 1, DATA_ALIGN_BYTES);
+    }
+
+    __aicore__ inline void Init(Args args)
+    {
+        GET_TILING_DATA(tilingData, args.tiling);
+        InitAddr(args, tilingData);
+        InitDataType();
+        InitTiling(tilingData);
+        InitUb(tilingData);
+        InitFunc(tilingData);
+        InitOffset();
+        InitTensor();
+        InitPipe();
     }
 
     __aicore__ inline void SetTheFlag(const GlobalTensor<int8_t>& IndexGt, int8_t flagValue)
@@ -258,17 +290,14 @@ public:
             }
         }
 
-        int64_t total = lenOfThisCore;
-        int64_t remain = total;
-        int64_t indicesNumOneBlock = blockLen / maxD;
-        if (indicesNumOneBlock >= MAX_ARGS_PIPE_LEN) {
-            indicesNumOneBlock = MAX_ARGS_PIPE_LEN;
-        }
+        int64_t remain = lenOfThisCore;
+        // 限制indicesNumOneBlock在MAX_ARGS_PIPE_LEN内
+        int64_t indicesNumOneBlock = (blockLen / maxD) >= MAX_ARGS_PIPE_LEN ? MAX_ARGS_PIPE_LEN : (blockLen / maxD);
         ComputeArgs argsArry[MAX_ARGS_PIPE_LEN];
         while (remain > 0) {
             int64_t thisLen = 0;
             while (thisLen < indicesNumOneBlock && remain > 0) {
-                int64_t indicesInd = offsetOfThisCore + total - remain;
+                int64_t indicesInd = offsetOfThisCore + lenOfThisCore - remain;
                 remain = remain - 1;
                 while (indicesInd < *(offsetsPtr + thisOffsetIndex) ||
                        indicesInd >= *(offsetsPtr + thisOffsetIndex + 1)) {
@@ -280,12 +309,8 @@ public:
 
                 int64_t embedDim = *(dOffsetsPtr + tableIndex + 1) - *(dOffsetsPtr + tableIndex);
                 int64_t thisWeightOffset = *(weightsOffsetsPtr + tableIndex);
-                int64_t thisIndForThisTable = 0;
-                if (enableHash) {
-                    thisIndForThisTable = GetOffset(hashIndices, indicesInd);
-                } else {
-                    thisIndForThisTable = GetOffset(indices, indicesInd);
-                }
+                int64_t thisIndForThisTable =
+                    enableHash ? GetOffset(hashIndices, indicesInd) : GetOffset(indices, indicesInd);
                 int64_t thisIndForTotalTable = hashSizeCumsumGT.GetValue(tableIndex) + thisIndForThisTable;
                 // Out offset
                 int64_t thisOutOffset = thisWeightOffset + thisIndForThisTable * embedDim;

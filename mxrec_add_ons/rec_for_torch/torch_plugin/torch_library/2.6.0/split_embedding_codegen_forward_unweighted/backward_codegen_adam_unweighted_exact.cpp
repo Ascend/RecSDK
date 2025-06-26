@@ -121,30 +121,13 @@ public:
         auto info_B_num_bits = max_B_;
         auto info_B_mask = T;
 
-        ctx->save_for_backward({dev_weights,
-                                uvm_weights,
-                                lxu_cache_weights,
-                                weights_placements,
-                                weights_offsets,
-                                D_offsets,
-                                hash_size_cumsum,
-                                indices,
-                                offsets,
-                                indice_weights.value_or(Tensor()),
-                                feature_requires_grad.value_or(Tensor()),
-                                lxu_cache_locations,
-                                momentum1_dev,
-                                momentum1_uvm,
-                                momentum1_placements,
-                                momentum1_offsets,
-                                momentum2_dev,
-                                momentum2_uvm,
-                                momentum2_placements,
-                                momentum2_offsets,
-                                hash_indices.value_or(Tensor()),
-                                unique_ids.value_or(at::Tensor()),
-                                unique_offsets.value_or(at::Tensor()),
-                                unique_inverse.value_or(at::Tensor())});
+        ctx->save_for_backward({dev_weights, uvm_weights, lxu_cache_weights, weights_placements, weights_offsets,
+                                D_offsets, hash_size_cumsum, indices, offsets, indice_weights.value_or(Tensor()),
+                                feature_requires_grad.value_or(Tensor()), lxu_cache_locations,
+                                momentum1_dev, momentum1_uvm, momentum1_placements, momentum1_offsets,
+                                momentum2_dev, momentum2_uvm, momentum2_placements, momentum2_offsets,
+                                hash_indices.value_or(Tensor()), unique_ids.value_or(at::Tensor()),
+                                unique_offsets.value_or(at::Tensor()), unique_inverse.value_or(at::Tensor())});
         ctx->saved_data["max_D"] = max_D;
         ctx->saved_data["pooling_mode"] = pooling_mode;
         ctx->saved_data["total_hash_size_bits"] = total_hash_size_bits;
@@ -438,33 +421,19 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    Tensor? indice_weights, "
           "    Tensor? feature_requires_grad, "
           "    Tensor lxu_cache_locations, "
-          "    bool gradient_clipping, "
-          "    float max_gradient, "
+          "    bool gradient_clipping, float max_gradient, "
           "    bool stochastic_rounding, "
-          "    Tensor momentum1_dev, "
-          "    Tensor momentum1_uvm, "
-          "    Tensor momentum1_placements, "
-          "    Tensor momentum1_offsets, "
-          "    Tensor momentum2_dev, "
-          "    Tensor momentum2_uvm, "
-          "    Tensor momentum2_placements, "
-          "    Tensor momentum2_offsets, "
-          "    Tensor? hash_indices = None, "
-          "    Tensor? unique_ids = None, "
-          "    Tensor? unique_offsets = None, "
+          "    Tensor momentum1_dev, Tensor momentum1_uvm, Tensor momentum1_placements, Tensor momentum1_offsets, "
+          "    Tensor momentum2_dev, Tensor momentum2_uvm, Tensor momentum2_placements, Tensor momentum2_offsets, "
+          "    Tensor? hash_indices = None, Tensor? unique_ids = None, Tensor? unique_offsets = None, "
           "    Tensor? unique_inverse = None, "
-          "    float eps = 0, "
-          "    float learning_rate = 0, "
-          "    float beta1 = 0, "
-          "    float beta2 = 0, "
-          "    float weight_decay = 0, "
+          "    float eps = 0, float learning_rate = 0, float beta1 = 0, float beta2 = 0,  float weight_decay = 0, "
           "    int iter = 0, "
           "    int output_dtype=0, "
           "    Tensor? B_offsets=None, "
           "    Tensor? vbe_output_offsets_feature_rank=None, "
           "    Tensor? vbe_B_offsets_rank_per_feature=None, "
-          "    SymInt max_B=-1, "
-          "    SymInt max_B_feature_rank=-1, "
+          "    SymInt max_B=-1, SymInt max_B_feature_rank=-1, "
           "    SymInt vbe_output_size=-1, "
           "    bool is_experimental=False, "
           "    bool use_uniq_cache_locations_bwd=False, "

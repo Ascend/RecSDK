@@ -1,9 +1,9 @@
 /**
-* @file relative_attn_bias_time.cpp
-*
-* Copyright (C) 2025. Huawei Technologies Co., Ltd. All rights reserved.
-*
-*/
+ * @file relative_attn_bias_time.cpp
+ *
+ * Copyright (C) 2025. Huawei Technologies Co., Ltd. All rights reserved.
+ *
+ */
 
 #include <cmath>
 
@@ -41,28 +41,23 @@ constexpr int MAX_S = 4300;
 namespace optiling {
 static ge::graphStatus TimeTilingFunc(RelativeAttnBiasTimeTilingData& tilingData, gert::TilingContext* context)
 {
-    auto tsShape = context->GetInputShape(TIMESTAMPS_INDEX)->GetStorageShape();  // (b, s)
+    auto tsShape = context->GetInputShape(TIMESTAMPS_INDEX)->GetStorageShape();           // (b, s)
     auto tswShape = context->GetInputShape(TIMESTAMPS_WEIGHTS_INDEX)->GetStorageShape();  // (num_layer, num_buckets)
 
-    int batchsize = tsShape.GetDim(DIM0);  // (b, s)
-    int s = tsShape.GetDim(DIM1);  // (b, s)
-    int numLayer = tswShape.GetDim(DIM0);  // (num_layer, num_buckets)
+    int batchsize = tsShape.GetDim(DIM0);    // (b, s)
+    int s = tsShape.GetDim(DIM1);            // (b, s)
+    int numLayer = tswShape.GetDim(DIM0);    // (num_layer, num_buckets)
     int numBuckets = tswShape.GetDim(DIM1);  // (num_layer, num_buckets)
     float divs = *context->GetAttrs()->GetFloat(BUCKET_DIV_INDEX);
     float clampMax = exp((numBuckets - 1) * divs);
 
-    OPS_CHECK(tsShape.GetDimNum() != TIMESTAMPS_DIM,
-              OPS_LOG_E("Tiling Debug", "Invalid timestamps shape."),
+    OPS_CHECK(tsShape.GetDimNum() != TIMESTAMPS_DIM, OPS_LOG_E("Tiling Debug", "Invalid timestamps shape."),
               return ge::GRAPH_FAILED);
     OPS_CHECK(tswShape.GetDimNum() != TIMESTAMPS_WEIGHTS_DIM,
-              OPS_LOG_E("Tiling Debug", "Invalid timestamps_weights shape."),
+              OPS_LOG_E("Tiling Debug", "Invalid timestamps_weights shape."), return ge::GRAPH_FAILED);
+    OPS_CHECK(s > MAX_S, OPS_LOG_E("Tiling Debug", "Len of timestamps sequence larger than limit."),
               return ge::GRAPH_FAILED);
-    OPS_CHECK(s > MAX_S,
-              OPS_LOG_E("Tiling Debug", "Len of timestamps sequence larger than limit."),
-              return ge::GRAPH_FAILED);
-    OPS_CHECK(batchsize <= 0,
-              OPS_LOG_E("Tiling Debug", "Invalid batchsize of timestamps."),
-              return ge::GRAPH_FAILED);
+    OPS_CHECK(batchsize <= 0, OPS_LOG_E("Tiling Debug", "Invalid batchsize of timestamps."), return ge::GRAPH_FAILED);
 
     tilingData.set_bs(batchsize);
     tilingData.set_s(s);
@@ -82,12 +77,9 @@ static ge::graphStatus TimeTilingFunc(RelativeAttnBiasTimeTilingData& tilingData
     auto tsType = context->GetInputTensor(TIMESTAMPS_INDEX)->GetDataType();
     int tswSize = ge::GetSizeByDataType(tswType);
     int tsSize = ge::GetSizeByDataType(tsType);
-    OPS_CHECK(tswSize == 0,
-              OPS_LOG_E("Tiling Debug", "Invalid data type of timestamps_weights."),
+    OPS_CHECK(tswSize == 0, OPS_LOG_E("Tiling Debug", "Invalid data type of timestamps_weights."),
               return ge::GRAPH_FAILED);
-    OPS_CHECK(tsSize == 0,
-              OPS_LOG_E("Tiling Debug", "Invalid data type of timestamps."),
-              return ge::GRAPH_FAILED);
+    OPS_CHECK(tsSize == 0, OPS_LOG_E("Tiling Debug", "Invalid data type of timestamps."), return ge::GRAPH_FAILED);
     tilingData.set_tswType(tswType);
     tilingData.set_tsType(tsType);
     // 计算不含buff的stride长度
@@ -118,9 +110,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t coreNum = ascendPlatform.GetCoreNumAiv();
-    OPS_CHECK(coreNum == 0,
-              OPS_LOG_E("Tiling Debug", "Core num is 0."),
-              return ge::GRAPH_FAILED);
+    OPS_CHECK(coreNum == 0, OPS_LOG_E("Tiling Debug", "Core num is 0."), return ge::GRAPH_FAILED);
 
     RelativeAttnBiasTimeTilingData tilingData;
     auto ret = TimeTilingFunc(tilingData, context);
@@ -192,9 +182,9 @@ public:
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
-                .ExtendCfgInfo("jitCompile.flag", "static_false,dynamic_false")
-                .ExtendCfgInfo("coreType.value", "AiCore")
-                .ExtendCfgInfo("prebuildPattern.value", "Opaque");
+            .ExtendCfgInfo("jitCompile.flag", "static_false,dynamic_false")
+            .ExtendCfgInfo("coreType.value", "AiCore")
+            .ExtendCfgInfo("prebuildPattern.value", "Opaque");
 
         this->AICore().SetTiling(optiling::TilingFunc);
         this->AICore().AddConfig("ascend910", aicore_config);
