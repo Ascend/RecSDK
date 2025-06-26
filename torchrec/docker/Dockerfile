@@ -121,7 +121,7 @@ ARG KERNEL_PKG=Ascend-cann-kernels*.run
 # 10.删除旧的CANN
 RUN rm -rf $ASCEND_BASE/ascend-toolkit
 
-RUN umask 0022 && \
+RUN umask 0027 && \
    chmod +x $TOOLKIT_PKG && \
    bash $TOOLKIT_PKG --quiet --install --install-path=$ASCEND_BASE && \
    . $ASCEND_BASE/ascend-toolkit/set_env.sh && \
