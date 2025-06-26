@@ -23,7 +23,8 @@ See the License for the specific language governing permissions and
 
 namespace optiling {
 
-static void SetQKVGrad(matmul_tiling::MatmulApiTiling &matmul, matmul_tiling::DataType dataType)
+static void SetQKVGrad(matmul_tiling::MatmulApiTiling &matmul, matmul_tiling::DataType dataType,
+    int blockHeight, int headDim)
 {
     matmul.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
     matmul.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
@@ -37,7 +38,8 @@ static void SetQKVGrad(matmul_tiling::MatmulApiTiling &matmul, matmul_tiling::Da
     matmul.SetBufferSpace(-1, -1, -1);
 }
 
-static void SetQKMatmul(matmul_tiling::MatmulApiTiling &matmul, matmul_tiling::DataType dataType)
+static void SetQKMatmul(matmul_tiling::MatmulApiTiling &matmul, matmul_tiling::DataType dataType,
+    int blockHeight, int headDim)
 {
     matmul.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
     matmul.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
@@ -101,16 +103,16 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
     currentWorkspace[0] = workspaceSize + systemWorkspaceSize;
 
     matmul_tiling::MatmulApiTiling qkMatmul(ascendPlatform);
-    SetQKMatmul(qkMatmul, dataType);
+    SetQKMatmul(qkMatmul, dataType, blockHeight, headDim);
 
     matmul_tiling::MatmulApiTiling qGradMatmul(ascendPlatform);
-    SetQKVGrad(qGradMatmul, dataType);
+    SetQKVGrad(qGradMatmul, dataType, blockHeight, headDim);
 
     matmul_tiling::MatmulApiTiling kGradMatmul(ascendPlatform);
-    SetQKVGrad(kGradMatmul, dataType);
+    SetQKVGrad(kGradMatmul, dataType, blockHeight, headDim);
 
     matmul_tiling::MatmulApiTiling vGradMatmul(ascendPlatform);
-    SetQKVGrad(vGradMatmul, dataType);
+    SetQKVGrad(vGradMatmul, dataType, blockHeight, headDim);
 
     if (qkMatmul.GetTiling(tiling.qkMatmul) == -1 || qGradMatmul.GetTiling(tiling.qGradMatmul) == -1 ||
         kGradMatmul.GetTiling(tiling.kGradMatmul) == -1 || vGradMatmul.GetTiling(tiling.vGradMatmul) == -1) {
