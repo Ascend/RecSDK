@@ -21,7 +21,7 @@ namespace Embcache {
 constexpr int64_t CAN_REUSE_KEY_VERSION = -2;
 constexpr int64_t OFFSET_OF_INVALID_KEY = 0;
 
-extern int INVALID_KEY;
+extern const int64_t INVALID_KEY;
 
 using ComputeSwapRet = std::tuple<std::vector<int64_t>, std::vector<int64_t>, std::vector<int64_t>,
                                   std::vector<int64_t>, std::vector<int64_t>>;
