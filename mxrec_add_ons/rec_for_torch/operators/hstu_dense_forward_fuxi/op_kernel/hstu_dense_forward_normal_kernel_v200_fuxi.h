@@ -75,10 +75,23 @@ class HstuDenseForwardNormalKernelv200Fuxi : public HstuDenseKernelPattenBsndV20
 public:
     __aicore__ inline HstuDenseForwardNormalKernelv200Fuxi() {}
 
-    __aicore__ inline void PreInit(const HstuDenseForwardFuxiTilingData *__restrict tilingDataPtr)
+    __aicore__ inline void PreInit(const HstuDenseForwardFuxiTilingData *__restrict tilingDataPtr,
+        int64_t& lenOfThisCore, int64_t& offsetOfThisCore)
     {
         seqBlockNumQk = this->seqLen / this->blockHeight;
         qkTotalBlock = this->batchSize * this->numHead * seqBlockNumQk;
+
+        int64_t cubeCoreLen = qkTotalBlock / GetBlockNum();
+        int64_t cubeCoreSplitId = qkTotalBlock % GetBlockNum();
+        if (GetBlockIdx() / SPLIT_CORE >= cubeCoreSplitId) {
+            lenOfThisCore = cubeCoreLen;
+            offsetOfThisCore =
+                cubeCoreSplitId * (cubeCoreLen + 1) + (GetBlockIdx() / SPLIT_CORE - cubeCoreSplitId) * cubeCoreLen;
+            return;
+        }
+
+        lenOfThisCore = cubeCoreLen + 1;
+        offsetOfThisCore = GetBlockIdx() / SPLIT_CORE * (cubeCoreLen + 1);
     }
 
     __aicore__ inline void DoQkMatmul(QkMatmulArgs& qkPosArgs)
@@ -192,27 +205,15 @@ public:
 
     __aicore__ inline void Compute(const HstuDenseForwardFuxiTilingData *__restrict tilingDataPtr)
     {
-        PreInit(tilingDataPtr);
+        int64_t lenOfThisCore;
+        int64_t offsetOfThisCore;
+        PreInit(tilingDataPtr, lenOfThisCore, offsetOfThisCore);
+
         int64_t taskId = 0;
         int64_t transTaskId = 0;
 
-        int64_t cubeCoreLen = qkTotalBlock / GetBlockNum();
-        int64_t cubeCoreSplitId = qkTotalBlock % GetBlockNum();
-
         int64_t blockNumOfOneBatch = this->numHead * seqBlockNumQk;
         int64_t blockNumOfOneHead = seqBlockNumQk;
-
-        int64_t lenOfThisCore;
-        int64_t offsetOfThisCore;
-
-        if (GetBlockIdx() / SPLIT_CORE >= cubeCoreSplitId) {
-            lenOfThisCore = cubeCoreLen;
-            offsetOfThisCore =
-                cubeCoreSplitId * (cubeCoreLen + 1) + (GetBlockIdx() / SPLIT_CORE - cubeCoreSplitId) * cubeCoreLen;
-        } else {
-            lenOfThisCore = cubeCoreLen + 1;
-            offsetOfThisCore = GetBlockIdx() / SPLIT_CORE * (cubeCoreLen + 1);
-        }
 
         for (int64_t qBlockId = offsetOfThisCore; qBlockId < offsetOfThisCore + lenOfThisCore; qBlockId++) {
             int64_t batchId = qBlockId / blockNumOfOneBatch;

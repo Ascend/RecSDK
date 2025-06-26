@@ -88,8 +88,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     // set ub
     uint64_t ubCanUsed;
     ascendPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubCanUsed);
-    ubCanUsed = ubCanUsed - RESERVER_UB_SIZE;
-    ubCanUsed = ubCanUsed / UB_ALIGN / NUM_QUEUE * UB_ALIGN * NUM_QUEUE;
+    ubCanUsed = (ubCanUsed - RESERVER_UB_SIZE) / UB_ALIGN / NUM_QUEUE * UB_ALIGN * NUM_QUEUE;
     tiling.set_ubCanUsed(ubCanUsed);
 
     // datatype check
@@ -127,8 +126,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     // apply workspace
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
     size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
-    currentWorkspace[0] = systemWorkspacesSize + (lengthsT + 1) * GM_ALIGN +
-                          (lengthsT + 1) * GM_ALIGN * coreNum;
+    currentWorkspace[0] = systemWorkspacesSize + (lengthsT + 1) * GM_ALIGN + (lengthsT + 1) * GM_ALIGN * coreNum;
 
     OPS_LOG_E_IF(SetTypeTiling(context, tiling) == ge::GRAPH_FAILED, context, return ge::GRAPH_FAILED,
                 "SetTypeTiling Failed.");

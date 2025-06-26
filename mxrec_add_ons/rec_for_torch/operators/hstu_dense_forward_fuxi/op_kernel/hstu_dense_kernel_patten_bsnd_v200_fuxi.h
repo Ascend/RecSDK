@@ -63,6 +63,35 @@ template <typename qType>
 class HstuDenseKernelPattenBsndV200Fuxi {
 public:
     __aicore__ inline HstuDenseKernelPattenBsndV200Fuxi() {}
+
+    __aicore__ inline void InitGlobalBuffer()
+    {
+        qGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(q));
+        kGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(k));
+        vGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(v));
+
+        int64_t oneBlockSize = blockHeight * dim;
+        int64_t oneBlockMidElem = oneBlockSize * COMPUTE_PIPE_NUM;
+        int64_t oneCoreMidElem = GetBlockNum() * VCORE_NUM_IN_ONE_AIC * oneBlockMidElem;
+
+        if (enableBias) {
+            timestampBiasGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(timestampBias));
+            positionBiasGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(positionBias));
+        }
+        attnMaskGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(attnMask));
+
+        attnOutputGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(attnOutput));
+
+        svResultGt.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(workspace) +
+            GetBlockIdx() * oneBlockMidElem + SV_WORKSPACE_IDX * oneBlockSize, oneBlockSize);
+        if (enableBias) {
+            tvResultGt.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(workspace) +
+                GetBlockIdx() * oneBlockMidElem + TV_WORKSPACE_IDX * oneBlockSize, oneBlockSize);
+            pvResultGt.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(workspace) +
+                GetBlockIdx() * oneBlockMidElem + PV_WORKSPACE_IDX * oneBlockSize, oneBlockSize);
+        }
+    }
+
     __aicore__ inline void Init(const Args &args,
                                 const HstuDenseForwardFuxiTilingData *__restrict tilingDataPtr,
                                 TPipe *pipePtr)
@@ -112,31 +141,7 @@ public:
         // attr
         siluScale = tilingDataPtr->siluScale;
 
-        // Gt
-        qGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(q));
-        kGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(k));
-        vGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(v));
-
-        int64_t oneBlockSize = blockHeight * dim;
-        int64_t oneBlockMidElem = oneBlockSize * COMPUTE_PIPE_NUM;
-        int64_t oneCoreMidElem = GetBlockNum() * VCORE_NUM_IN_ONE_AIC * oneBlockMidElem;
-
-        if (enableBias) {
-            timestampBiasGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(timestampBias));
-            positionBiasGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(positionBias));
-        }
-        attnMaskGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(attnMask));
-
-        attnOutputGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(attnOutput));
-
-        svResultGt.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(workspace) +
-            GetBlockIdx() * oneBlockMidElem + SV_WORKSPACE_IDX * oneBlockSize, oneBlockSize);
-        if (enableBias) {
-            tvResultGt.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(workspace) +
-                GetBlockIdx() * oneBlockMidElem + TV_WORKSPACE_IDX * oneBlockSize, oneBlockSize);
-            pvResultGt.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(workspace) +
-                GetBlockIdx() * oneBlockMidElem + PV_WORKSPACE_IDX * oneBlockSize, oneBlockSize);
-        }
+        InitGlobalBuffer();
 
         // Init pipe
         pipe->InitBuffer(queIn, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(qType));
