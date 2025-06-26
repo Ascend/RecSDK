@@ -20,7 +20,7 @@
 
 namespace Embcache {
 
-constexpr int64_t INVALID_KEY = -1;
+const int64_t INVALID_KEY = -1;
 
 struct FeatureRecord {
     uint64_t count;
