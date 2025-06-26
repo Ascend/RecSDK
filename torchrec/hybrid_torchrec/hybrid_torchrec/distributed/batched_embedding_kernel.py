@@ -5,13 +5,13 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
-
+from dataclasses import dataclass
 from typing import (
     Dict,
     Iterator,
     List,
     Optional,
-    Tuple,
+    Tuple, Any,
 )
 
 import torch
@@ -56,6 +56,19 @@ from torchrec.optim.fused import (
 from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
 
 
+@dataclass
+class CommonArgsInput:
+    indices: Tensor
+    offsets: Tensor
+    vbe_metadata: Any
+    feature_requires_grad: Optional[Tensor] = None
+    hash_indices: torch.Tensor = None
+    per_sample_weights: Optional[Tensor] = None
+    unique_indices: torch.Tensor = None
+    unique_inverse: torch.Tensor = None
+    unique_offset: torch.Tensor = None
+
+
 class HybridSplitTableBatchedEmbeddingBagsCodegen(
     SplitTableBatchedEmbeddingBagsCodegen
 ):
@@ -69,117 +82,22 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
         unique_inverse: torch.Tensor = None,
         per_sample_weights: Optional[Tensor] = None,
         feature_requires_grad: Optional[Tensor] = None,
-        # 2D tensor of batch size for each rank and feature.
-        # Shape (number of features, number of ranks)
         batch_size_per_feature_per_rank: Optional[List[List[int]]] = None,
-        total_unique_indices: Optional[int] = None,
     ) -> Tensor:
-        (
-            indices,
-            offsets,
-            per_sample_weights,
-            vbe_metadata,
-        ) = self.prepare_inputs(
-            indices,
-            offsets,
-            per_sample_weights,
-            batch_size_per_feature_per_rank,
-            force_cast_input_types=True,
-        )
+        (indices, offsets, per_sample_weights, vbe_metadata,) = self.prepare_inputs(
+            indices, offsets, per_sample_weights, batch_size_per_feature_per_rank, force_cast_input_types=True, )
         # Print input stats if enable (for debugging purpose only)
         self._debug_print_input_stats(indices, offsets, per_sample_weights)
 
-        if not is_torchdynamo_compiling():
-            # Mutations of nn.Module attr forces dynamo restart of Analysis which increases compilation time
-
-            # Storing tensors for linear_cache_indices recomputation
-            self._indices = indices
-            self._offsets = offsets
-            self._vbe_b_offsets = vbe_metadata.B_offsets
-            self._vbe_max_b = vbe_metadata.max_B
-
-            self.step += 1
-            self._report_io_size_count("fwd_input", indices)
-            self._report_tbe_mem_usage()
-
-        if len(self.timesteps_prefetched) == 0:
-            # In forward, we don't enable multi-pass prefetch as we want the process
-            # to be as fast as possible and memory usage doesn't matter (will be recycled
-            # by dense fwd/bwd)
-            self._prefetch(
-                indices, offsets, vbe_metadata, multipass_prefetch_config=None
-            )
-
-        if len(self.timesteps_prefetched) > 0:
-            self.timesteps_prefetched.pop(0)
-
-        self.lxu_cache_locations = (
-            self.lxu_cache_locations_empty
-            if len(self.lxu_cache_locations_list) == 0
-            else self.lxu_cache_locations_list.pop(0)
-        )
-        common_args = invokers.lookup_args.HybridCommonArgs(
-            placeholder_autograd_tensor=self.placeholder_autograd_tensor,
-            dev_weights=self.weights_dev,
-            host_weights=self.weights_host,
-            uvm_weights=self.weights_uvm,
-            lxu_cache_weights=self.lxu_cache_weights,
-            weights_placements=self.weights_placements,
-            weights_offsets=self.weights_offsets,
-            D_offsets=self.D_offsets,
-            total_D=self.total_D,
-            max_D=self.max_D,
-            hash_size_cumsum=self.hash_size_cumsum,
-            total_hash_size_bits=self.total_hash_size_bits,
-            indices=indices,
-            offsets=offsets,
-            hash_indices=hash_indices,
-            unique_indices=unique_indices,
-            unique_offset=unique_offset,
-            unique_inverse=unique_inverse,
-            hash_indices2address=None,
-            pooling_mode=self.pooling_mode,
-            indice_weights=per_sample_weights,
-            feature_requires_grad=feature_requires_grad,
-            lxu_cache_locations=self.lxu_cache_locations,
-            uvm_cache_stats=(
-                self.local_uvm_cache_stats
-                if (
-                        self.gather_uvm_cache_stats
-                        # Unique conflict misses are only collected when using CacheAlgorithm.LRU
-                        and self.cache_algorithm == CacheAlgorithm.LRU
-                )
-                else None
-            ),
-            output_dtype=self.output_dtype,
-            vbe_metadata=vbe_metadata,
-            is_experimental=self.is_experimental,
-            use_uniq_cache_locations_bwd=self.use_uniq_cache_locations_bwd,
-            use_homogeneous_placements=self.use_homogeneous_placements,
-        )
+        self.check_preprocess(indices, offsets, vbe_metadata)
+        common_args = self.create_common_args(
+            CommonArgsInput(indices, offsets, vbe_metadata, feature_requires_grad, hash_indices, per_sample_weights,
+                            unique_indices, unique_inverse, unique_offset))
 
         if not isinstance(self.optimizer, OptimType):
             raise ValueError(f"Invalid OptimType: {self.optimizer}")
 
-        momentum1 = invokers.lookup_args.Momentum(
-            dev=self.momentum1_dev,
-            host=self.momentum1_host,
-            uvm=self.momentum1_uvm,
-            offsets=self.momentum1_offsets,
-            placements=self.momentum1_placements,
-        )
-
-        if not self.iter.is_cpu:
-            self.iter = self.iter.cpu()
-        self.iter[0] += 1
-
-        momentum2 = invokers.lookup_args.Momentum(
-            dev=self.momentum2_dev,
-            host=self.momentum2_host,
-            uvm=self.momentum2_uvm,
-            offsets=self.momentum2_offsets,
-            placements=self.momentum2_placements,
-        )
+        momentum1, momentum2 = self.create_momentum()
 
         if self.optimizer == OptimType.EXACT_ADAGRAD:
             return self._report_io_size_count(
@@ -211,7 +129,90 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
         else:
             return NotImplemented
 
+    def create_momentum(self):
+        momentum1 = invokers.lookup_args.Momentum(
+            dev=self.momentum1_dev,
+            host=self.momentum1_host,
+            uvm=self.momentum1_uvm,
+            offsets=self.momentum1_offsets,
+            placements=self.momentum1_placements,
+        )
+        if not self.iter.is_cpu:
+            self.iter = self.iter.cpu()
+        self.iter[0] += 1
+        momentum2 = invokers.lookup_args.Momentum(
+            dev=self.momentum2_dev,
+            host=self.momentum2_host,
+            uvm=self.momentum2_uvm,
+            offsets=self.momentum2_offsets,
+            placements=self.momentum2_placements,
+        )
+        return momentum1, momentum2
 
+    def create_common_args(self, args_input: CommonArgsInput):
+        common_args = invokers.lookup_args.HybridCommonArgs(
+            placeholder_autograd_tensor=self.placeholder_autograd_tensor,
+            dev_weights=self.weights_dev,
+            host_weights=self.weights_host,
+            uvm_weights=self.weights_uvm,
+            lxu_cache_weights=self.lxu_cache_weights,
+            weights_placements=self.weights_placements,
+            weights_offsets=self.weights_offsets,
+            D_offsets=self.D_offsets,
+            total_D=self.total_D,
+            max_D=self.max_D,
+            hash_size_cumsum=self.hash_size_cumsum,
+            total_hash_size_bits=self.total_hash_size_bits,
+            indices=args_input.indices,
+            offsets=args_input.offsets,
+            hash_indices=args_input.hash_indices,
+            unique_indices=args_input.unique_indices,
+            unique_offset=args_input.unique_offset,
+            unique_inverse=args_input.unique_inverse,
+            hash_indices2address=None,
+            pooling_mode=self.pooling_mode,
+            indice_weights=args_input.per_sample_weights,
+            feature_requires_grad=args_input.feature_requires_grad,
+            lxu_cache_locations=self.lxu_cache_locations,
+            uvm_cache_stats=(
+                self.local_uvm_cache_stats
+                if (
+                        self.gather_uvm_cache_stats
+                        # Unique conflict misses are only collected when using CacheAlgorithm.LRU
+                        and self.cache_algorithm == CacheAlgorithm.LRU
+                )
+                else None
+            ),
+            output_dtype=self.output_dtype,
+            vbe_metadata=args_input.vbe_metadata,
+            is_experimental=self.is_experimental,
+            use_uniq_cache_locations_bwd=self.use_uniq_cache_locations_bwd,
+            use_homogeneous_placements=self.use_homogeneous_placements,
+        )
+        return common_args
+
+    def check_preprocess(self, indices, offsets, vbe_metadata):
+        if not is_torchdynamo_compiling():
+            # Mutations of nn.Module attr forces dynamo restart of Analysis which increases compilation time
+
+            # Storing tensors for linear_cache_indices recomputation
+            self._indices = indices
+            self._offsets = offsets
+            self._vbe_b_offsets = vbe_metadata.B_offsets
+            self._vbe_max_b = vbe_metadata.max_B
+
+            self.step += 1
+            self._report_io_size_count("fwd_input", indices)
+            self._report_tbe_mem_usage()
+        if len(self.timesteps_prefetched) == 0:
+            # In forward, we don't enable multi-pass prefetch as we want the process
+            # to be as fast as possible and memory usage doesn't matter (will be recycled
+            # by dense fwd/bwd)
+            self._prefetch(indices, offsets, vbe_metadata, multipass_prefetch_config=None)
+        if len(self.timesteps_prefetched) > 0:
+            self.timesteps_prefetched.pop(0)
+        self.lxu_cache_locations = (self.lxu_cache_locations_empty if len(self.lxu_cache_locations_list) == 0
+                                    else self.lxu_cache_locations_list.pop(0))
 
     def prepare_inputs(
         self,
@@ -283,15 +284,10 @@ class HybridBatchedFusedEmbeddingBag(
         compute_devices: List[ComputeDevice] = []
         for table in config.embedding_tables:
             if table.local_cols % 4 != 0:
-                raise ValueError(
-                    f"table {table.name} has local_cols={table.local_cols} "
-                    "not divisible by 4. "
-                )
+                raise ValueError(f"table {table.name} has local_cols={table.local_cols} " "not divisible by 4. ")
             if device is not None and device.type == "cuda":
                 compute_devices.append(ComputeDevice.CUDA)
-                managed.append(
-                    compute_kernel_to_embedding_location(table.compute_kernel)
-                )
+                managed.append(compute_kernel_to_embedding_location(table.compute_kernel))
             elif device is not None and device.type == "mtia":
                 compute_devices.append(ComputeDevice.MTIA)
                 # Set EmbeddingLocation.HOST to make embedding op in FBGEMM choose CPU path.
@@ -299,9 +295,7 @@ class HybridBatchedFusedEmbeddingBag(
                 managed.append(EmbeddingLocation.HOST)
             elif device is not None and device.type == "npu":
                 compute_devices.append(ComputeDevice.NPU)
-                managed.append(
-                    compute_kernel_to_embedding_location(table.compute_kernel)
-                )
+                managed.append(compute_kernel_to_embedding_location(table.compute_kernel))
             else:
                 compute_devices.append(ComputeDevice.CPU)
                 managed.append(EmbeddingLocation.HOST)
@@ -311,31 +305,15 @@ class HybridBatchedFusedEmbeddingBag(
         if "cache_precision" not in fused_params:
             fused_params["cache_precision"] = weights_precision
 
-        self._emb_module: HybridSplitTableBatchedEmbeddingBagsCodegen = (
-            HybridSplitTableBatchedEmbeddingBagsCodegen(
-                embedding_specs=list(
-                    zip(self._local_rows, self._local_cols, managed, compute_devices)
-                ),
-                feature_table_map=self._feature_table_map,
-                pooling_mode=self._pooling,
-                weights_precision=weights_precision,
-                device=device,
-                **fused_params,
-            )
-        )
-        self._optim: EmbeddingFusedOptimizer = EmbeddingFusedOptimizer(
-            config,
-            self._emb_module,
-            pg,
-        )
+        self._emb_module: HybridSplitTableBatchedEmbeddingBagsCodegen = (HybridSplitTableBatchedEmbeddingBagsCodegen(
+            embedding_specs=list(zip(self._local_rows, self._local_cols, managed, compute_devices)),
+            feature_table_map=self._feature_table_map, pooling_mode=self._pooling, weights_precision=weights_precision,
+            device=device, **fused_params, ))
+        self._optim: EmbeddingFusedOptimizer = EmbeddingFusedOptimizer(config, self._emb_module, pg,)
         self._param_per_table: Dict[str, TableBatchedEmbeddingSlice] = dict(
-            _gen_named_parameters_by_table_fused(
-                emb_module=self._emb_module,
-                table_name_to_count=self.table_name_to_count.copy(),
-                config=self._config,
-                pg=pg,
-            )
-        )
+            _gen_named_parameters_by_table_fused(emb_module=self._emb_module,
+                                                 table_name_to_count=self.table_name_to_count.copy(),
+                                                 config=self._config, pg=pg, ))
         self.init_parameters()
 
     @property
