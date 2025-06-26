@@ -49,7 +49,7 @@ static void SetQKMatmul(matmul_tiling::MatmulApiTiling &matmul, matmul_tiling::D
     matmul.SetOrgShape(blockHeight, blockHeight, headDim);
     matmul.SetShape(blockHeight, blockHeight, headDim);
     matmul.SetBias(false);
-    matmul.SetBufferSpace(-1, -1, -1);}
+    matmul.SetBufferSpace(-1, -1, -1);
 }
 
 static ge::graphStatus GetDataType(gert::TilingContext *context, matmul_tiling::DataType &dataType)
@@ -203,7 +203,7 @@ public:
         this->Input("mask").ParamType(OPTIONAL).DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
         .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
         .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Input("attn_bias").ParamType(OPTIONAL).DataType
+        this->Input("attn_bias").ParamType(OPTIONAL).DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
         .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
         .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
 
