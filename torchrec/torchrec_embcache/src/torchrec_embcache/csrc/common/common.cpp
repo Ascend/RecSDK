@@ -9,7 +9,4 @@
 #include "common/common.h"
 
 namespace Embcache {
-
-
-
 }
