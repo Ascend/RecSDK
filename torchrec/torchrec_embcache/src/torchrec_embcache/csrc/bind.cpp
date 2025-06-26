@@ -11,8 +11,8 @@
 #include <chrono>
 #include <vector>
 
-#include "../../../../../../../../工作文档/月度文档记录/202506文档/0626 embcache代码同步/修改结果2/csrc/embedding_cache/embcache_manager.h"
-#include "../../../../../../../../工作文档/月度文档记录/202506文档/0626 embcache代码同步/修改结果2/csrc/ops/restore.h"
+#include "embedding_cache/embcache_manager.h"
+#include "ops/restore.h"
 
 using namespace Embcache;
 

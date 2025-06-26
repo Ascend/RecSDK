@@ -6,12 +6,12 @@
  * This source code is licensed under the BSD-style license found in the
  * LICENSE file in the root directory of this source tree.
  */
-#include "emb_table/emb_table.h"
+#include <memory>
 
 #include "../common_main.h"
-#include "utils/string_tools.h"
 
-#include <memory>
+#include "emb_table/emb_table.h"
+#include "utils/string_tools.h"
 
 using namespace Embcache;
 

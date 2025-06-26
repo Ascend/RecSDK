@@ -6,12 +6,12 @@
  * This source code is licensed under the BSD-style license found in the
  * LICENSE file in the root directory of this source tree.
  */
-#include "utils/safe_queue.h"
-
 #include <unistd.h>
 #include <thread>
 
+#include "utils/safe_queue.h"
 #include "utils/string_tools.h"
+
 #include "../common_main.h"
 
 using namespace Embcache;

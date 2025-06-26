@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "feature_filter/feature_filter.h"
+
 #include "../common_main.h"
 
 using namespace Embcache;

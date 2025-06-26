@@ -6,8 +6,9 @@
  * This source code is licensed under the BSD-style license found in the
  * LICENSE file in the root directory of this source tree.
  */
-#include "../common_main.h"
 #include "hash_table/hash_bucket.h"
+
+#include "../common_main.h"
 
 using namespace Embcache;
 
