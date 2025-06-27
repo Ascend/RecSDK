@@ -131,7 +131,8 @@ FkvState NetHashBucket::Remove(uint64_t key, const std::function<BeforeRemoveFun
     uint64_t oldValue = key;
     if (keys[static_cast<int>(BucketIdx::FIRST)].load(std::memory_order_relaxed) == key &&
         keys[static_cast<int>(BucketIdx::FIRST)].compare_exchange_strong(oldValue, 0)) {
-        if (HM_UNLIKELY(beforeRemoveFunc(values[static_cast<int>(BucketIdx::FIRST)]) == BeforeRemoveFuncState::BEFORE_FAIL)) {
+        if (HM_UNLIKELY(beforeRemoveFunc(values[static_cast<int>(BucketIdx::FIRST)])
+            == BeforeRemoveFuncState::BEFORE_FAIL)) {
             return FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL;
         }
 
@@ -145,7 +146,8 @@ FkvState NetHashBucket::Remove(uint64_t key, const std::function<BeforeRemoveFun
 
     if (keys[static_cast<int>(BucketIdx::SECOND)].load(std::memory_order_relaxed) == key &&
         keys[static_cast<int>(BucketIdx::SECOND)].compare_exchange_strong(oldValue, 0)) {
-        if (HM_UNLIKELY(beforeRemoveFunc(values[static_cast<int>(BucketIdx::SECOND)]) == BeforeRemoveFuncState::BEFORE_FAIL)) {
+        if (HM_UNLIKELY(beforeRemoveFunc(values[static_cast<int>(BucketIdx::SECOND)])
+            == BeforeRemoveFuncState::BEFORE_FAIL)) {
             return FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL;
         }
 
@@ -159,7 +161,8 @@ FkvState NetHashBucket::Remove(uint64_t key, const std::function<BeforeRemoveFun
 
     if (keys[static_cast<int>(BucketIdx::THIRD)].load(std::memory_order_relaxed) == key &&
         keys[static_cast<int>(BucketIdx::THIRD)].compare_exchange_strong(oldValue, 0)) {
-        if (HM_UNLIKELY(beforeRemoveFunc(values[static_cast<int>(BucketIdx::THIRD)]) == BeforeRemoveFuncState::BEFORE_FAIL)) {
+        if (HM_UNLIKELY(beforeRemoveFunc(values[static_cast<int>(BucketIdx::THIRD)])
+            == BeforeRemoveFuncState::BEFORE_FAIL)) {
             return FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL;
         }
 
