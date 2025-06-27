@@ -566,7 +566,7 @@ public:
         }
     }
 
-    __aicore__ inline void this->ComputeFirst()
+    __aicore__ inline void ComputeFirst()
     {
         int64_t taskId = 0;
         int64_t accumId = 0;
@@ -617,7 +617,7 @@ public:
         this->qGradMatmul.End();
     }
 
-    __aicore__ inline void this->ComputeSecond()
+    __aicore__ inline void ComputeSecond()
     {
         SyncAll();
 
