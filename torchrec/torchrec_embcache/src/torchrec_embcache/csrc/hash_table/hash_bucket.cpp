@@ -13,18 +13,18 @@ FkvState NetHashBucket::Put(uint64_t key, uint64_t& value, const std::function<B
 {
     /* don't put them into loop, flat code is faster than loop */
     uint64_t oldKey = 0;
-    if (keys[BucketIdx::FIRST].load(std::memory_order_relaxed) == 0 &&
-        keys[BucketIdx::FIRST].compare_exchange_strong(oldKey, key)) {
+    if (keys[BUCKET_IDX_FIRST].load(std::memory_order_relaxed) == 0 &&
+        keys[BUCKET_IDX_FIRST].compare_exchange_strong(oldKey, key)) {
         BeforePutFuncState ret = beforePutFunc();
         if (HM_UNLIKELY(ret == BeforePutFuncState::BEFORE_FAIL)) {
-            keys[BucketIdx::FIRST] = 0;
+            keys[BUCKET_IDX_FIRST] = 0;
             return FkvState::FKV_BEFORE_PUT_FUNC_FAIL;
         }
         if (HM_UNLIKELY(ret == BeforePutFuncState::BEFORE_NO_SPACE)) {
-            keys[BucketIdx::FIRST] = 0;
+            keys[BUCKET_IDX_FIRST] = 0;
             return FkvState::FKV_NO_SPACE;
         }
-        values[BucketIdx::FIRST] = value;
+        values[BUCKET_IDX_FIRST] = value;
         return FkvState::FKV_NOT_EXIST;
     }
 
@@ -33,18 +33,18 @@ FkvState NetHashBucket::Put(uint64_t key, uint64_t& value, const std::function<B
     }
 
     oldKey = 0;
-    if (keys[BucketIdx::SECOND].load(std::memory_order_relaxed) == 0 &&
-        keys[BucketIdx::SECOND].compare_exchange_strong(oldKey, key)) {
+    if (keys[BUCKET_IDX_SECOND].load(std::memory_order_relaxed) == 0 &&
+        keys[BUCKET_IDX_SECOND].compare_exchange_strong(oldKey, key)) {
         BeforePutFuncState ret = beforePutFunc();
         if (HM_UNLIKELY(ret == BeforePutFuncState::BEFORE_FAIL)) {
-            keys[BucketIdx::SECOND] = 0;
+            keys[BUCKET_IDX_SECOND] = 0;
             return FkvState::FKV_BEFORE_PUT_FUNC_FAIL;
         }
         if (HM_UNLIKELY(ret == BeforePutFuncState::BEFORE_NO_SPACE)) {
-            keys[BucketIdx::SECOND] = 0;
+            keys[BUCKET_IDX_SECOND] = 0;
             return FkvState::FKV_NO_SPACE;
         }
-        values[BucketIdx::SECOND] = value;
+        values[BUCKET_IDX_SECOND] = value;
         return FkvState::FKV_NOT_EXIST;
     }
 
@@ -53,18 +53,18 @@ FkvState NetHashBucket::Put(uint64_t key, uint64_t& value, const std::function<B
     }
 
     oldKey = 0;
-    if (keys[BucketIdx::THIRD].load(std::memory_order_relaxed) == 0 &&
-        keys[BucketIdx::THIRD].compare_exchange_strong(oldKey, key)) {
+    if (keys[BUCKET_IDX_THIRD].load(std::memory_order_relaxed) == 0 &&
+        keys[BUCKET_IDX_THIRD].compare_exchange_strong(oldKey, key)) {
         BeforePutFuncState ret = beforePutFunc();
         if (HM_UNLIKELY(ret == BeforePutFuncState::BEFORE_FAIL)) {
-            keys[BucketIdx::THIRD] = 0;
+            keys[BUCKET_IDX_THIRD] = 0;
             return FkvState::FKV_BEFORE_PUT_FUNC_FAIL;
         }
         if (HM_UNLIKELY(ret == BeforePutFuncState::BEFORE_NO_SPACE)) {
-            keys[BucketIdx::THIRD] = 0;
+            keys[BUCKET_IDX_THIRD] = 0;
             return FkvState::FKV_NO_SPACE;
         }
-        values[BucketIdx::THIRD] = value;
+        values[BUCKET_IDX_THIRD] = value;
         return FkvState::FKV_NOT_EXIST;
     }
 
@@ -80,18 +80,18 @@ bool NetHashBucket::Find(const uint64_t key, uint64_t& value)
     /*
      * expand the loop, instead of put them into a for/while loop for performance
      */
-    if (key == keys[BucketIdx::FIRST].load(std::memory_order_relaxed)) {
-        value = values[BucketIdx::FIRST];
+    if (key == keys[BUCKET_IDX_FIRST].load(std::memory_order_relaxed)) {
+        value = values[BUCKET_IDX_FIRST];
         return true;
     }
 
-    if (key == keys[BucketIdx::SECOND].load(std::memory_order_relaxed)) {
-        value = values[BucketIdx::SECOND];
+    if (key == keys[BUCKET_IDX_SECOND].load(std::memory_order_relaxed)) {
+        value = values[BUCKET_IDX_SECOND];
         return true;
     }
 
-    if (key == keys[BucketIdx::THIRD].load(std::memory_order_relaxed)) {
-        value = values[BucketIdx::THIRD];
+    if (key == keys[BUCKET_IDX_THIRD].load(std::memory_order_relaxed)) {
+        value = values[BUCKET_IDX_THIRD];
         return true;
     }
 
@@ -102,9 +102,9 @@ FkvState NetHashBucket::Remove(uint64_t key)
 {
     /* don't put them into loop, flat code is faster than loop */
     uint64_t oldValue = key;
-    if (keys[BucketIdx::FIRST].load(std::memory_order_relaxed) == key &&
-        keys[BucketIdx::FIRST].compare_exchange_strong(oldValue, 0)) {
-        values[BucketIdx::FIRST] = 0;
+    if (keys[BUCKET_IDX_FIRST].load(std::memory_order_relaxed) == key &&
+        keys[BUCKET_IDX_FIRST].compare_exchange_strong(oldValue, 0)) {
+        values[BUCKET_IDX_FIRST] = 0;
         return FkvState::FKV_EXIST;
     }
     if (HM_UNLIKELY(oldValue == 0)) {
@@ -112,9 +112,9 @@ FkvState NetHashBucket::Remove(uint64_t key)
     }
     oldValue = key;
 
-    if (keys[BucketIdx::SECOND].load(std::memory_order_relaxed) == key &&
-        keys[BucketIdx::SECOND].compare_exchange_strong(oldValue, 0)) {
-        values[BucketIdx::SECOND] = 0;
+    if (keys[BUCKET_IDX_SECOND].load(std::memory_order_relaxed) == key &&
+        keys[BUCKET_IDX_SECOND].compare_exchange_strong(oldValue, 0)) {
+        values[BUCKET_IDX_SECOND] = 0;
         return FkvState::FKV_EXIST;
     }
     if (HM_UNLIKELY(oldValue == 0)) {
@@ -122,9 +122,9 @@ FkvState NetHashBucket::Remove(uint64_t key)
     }
     oldValue = key;
 
-    if (keys[BucketIdx::THIRD].load(std::memory_order_relaxed) == key &&
-        keys[BucketIdx::THIRD].compare_exchange_strong(oldValue, 0)) {
-        values[BucketIdx::THIRD] = 0;
+    if (keys[BUCKET_IDX_THIRD].load(std::memory_order_relaxed) == key &&
+        keys[BUCKET_IDX_THIRD].compare_exchange_strong(oldValue, 0)) {
+        values[BUCKET_IDX_THIRD] = 0;
         return FkvState::FKV_EXIST;
     }
     if (HM_UNLIKELY(oldValue == 0)) {
@@ -138,13 +138,13 @@ FkvState NetHashBucket::Remove(uint64_t key, const std::function<BeforeRemoveFun
 {
     /* don't put them into loop, flat code is faster than loop */
     uint64_t oldValue = key;
-    if (keys[BucketIdx::FIRST].load(std::memory_order_relaxed) == key &&
-        keys[BucketIdx::FIRST].compare_exchange_strong(oldValue, 0)) {
-        if (HM_UNLIKELY(beforeRemoveFunc(values[BucketIdx::FIRST]) == BeforeRemoveFuncState::BEFORE_FAIL)) {
+    if (keys[BUCKET_IDX_FIRST].load(std::memory_order_relaxed) == key &&
+        keys[BUCKET_IDX_FIRST].compare_exchange_strong(oldValue, 0)) {
+        if (HM_UNLIKELY(beforeRemoveFunc(values[BUCKET_IDX_FIRST]) == BeforeRemoveFuncState::BEFORE_FAIL)) {
             return FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL;
         }
 
-        values[BucketIdx::FIRST] = 0;
+        values[BUCKET_IDX_FIRST] = 0;
         return FkvState::FKV_EXIST;
     }
     if (HM_UNLIKELY(oldValue == 0)) {
@@ -152,13 +152,13 @@ FkvState NetHashBucket::Remove(uint64_t key, const std::function<BeforeRemoveFun
     }
     oldValue = key;
 
-    if (keys[BucketIdx::SECOND].load(std::memory_order_relaxed) == key &&
-        keys[BucketIdx::SECOND].compare_exchange_strong(oldValue, 0)) {
-        if (HM_UNLIKELY(beforeRemoveFunc(values[BucketIdx::SECOND]) == BeforeRemoveFuncState::BEFORE_FAIL)) {
+    if (keys[BUCKET_IDX_SECOND].load(std::memory_order_relaxed) == key &&
+        keys[BUCKET_IDX_SECOND].compare_exchange_strong(oldValue, 0)) {
+        if (HM_UNLIKELY(beforeRemoveFunc(values[BUCKET_IDX_SECOND]) == BeforeRemoveFuncState::BEFORE_FAIL)) {
             return FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL;
         }
 
-        values[BucketIdx::SECOND] = 0;
+        values[BUCKET_IDX_SECOND] = 0;
         return FkvState::FKV_EXIST;
     }
     if (HM_UNLIKELY(oldValue == 0)) {
@@ -166,13 +166,13 @@ FkvState NetHashBucket::Remove(uint64_t key, const std::function<BeforeRemoveFun
     }
     oldValue = key;
 
-    if (keys[BucketIdx::THIRD].load(std::memory_order_relaxed) == key &&
-        keys[BucketIdx::THIRD].compare_exchange_strong(oldValue, 0)) {
-        if (HM_UNLIKELY(beforeRemoveFunc(values[BucketIdx::THIRD]) == BeforeRemoveFuncState::BEFORE_FAIL)) {
+    if (keys[BUCKET_IDX_THIRD].load(std::memory_order_relaxed) == key &&
+        keys[BUCKET_IDX_THIRD].compare_exchange_strong(oldValue, 0)) {
+        if (HM_UNLIKELY(beforeRemoveFunc(values[BUCKET_IDX_THIRD]) == BeforeRemoveFuncState::BEFORE_FAIL)) {
             return FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL;
         }
 
-        values[BucketIdx::THIRD] = 0;
+        values[BUCKET_IDX_THIRD] = 0;
         return FkvState::FKV_EXIST;
     }
     if (HM_UNLIKELY(oldValue == 0)) {

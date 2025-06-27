@@ -15,14 +15,11 @@
 
 namespace Embcache {
 
+constexpr size_t BUCKET_IDX_FIRST = 0;
+constexpr size_t BUCKET_IDX_SECOND = 1;
+constexpr size_t BUCKET_IDX_THIRD = 2;
 constexpr size_t K_ALIGNMENT = 64;
 constexpr size_t K_KV_NUM_IN_BUCKET = 3;
-
-enum BucketIdx {
-    FIRST,
-    SECOND,
-    THIRD
-};
 
 /*
  * @brief Spin lock entry in bucket
