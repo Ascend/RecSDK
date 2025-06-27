@@ -74,7 +74,13 @@ ge::graphStatus TilingPolicyNormalv200Fuxi::InferShape(gert::InferShapeContext* 
 bool TilingPolicyNormalv200Fuxi::TilingShape(gert::TilingContext* context,
     optiling::HstuDenseForwardFuxiTilingData &tiling)
 {
+    OPS_LOG_E_IF_NULL("QShape", context->GetInputShape(INDEX_T::INDEX_0), return false);
+    OPS_LOG_E_IF_NULL("KShape", context->GetInputShape(INDEX_T::INDEX_1), return false);
+    OPS_LOG_E_IF_NULL("VShape", context->GetInputShape(INDEX_T::INDEX_2), return false);
+
     auto qShape = context->GetInputShape(INDEX_T::INDEX_0)->GetStorageShape();
+    auto kShape = context->GetInputShape(INDEX_T::INDEX_1)->GetStorageShape();
+    auto vShape = context->GetInputShape(INDEX_T::INDEX_2)->GetStorageShape();
 
     int64_t batchSize = qShape.GetDim(INDEX_T::INDEX_0);
     tiling.set_batchSize(batchSize);
@@ -85,6 +91,7 @@ bool TilingPolicyNormalv200Fuxi::TilingShape(gert::TilingContext* context,
     int64_t dim = qShape.GetDim(INDEX_T::INDEX_3);
     tiling.set_dim(dim);
 
+    OPS_LOG_E_IF(!(qShape == kShape && kShape == vShape), context, return false, "Shape check failed");
     OPS_LOG_E_IF(!GeneralShapeCheck(batchSize, seqLen, headNum, dim), context, return false, "Shape check failed");
     return true;
 }

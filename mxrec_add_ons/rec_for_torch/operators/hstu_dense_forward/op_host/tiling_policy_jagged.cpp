@@ -33,6 +33,7 @@ constexpr bool JAGGED_TASK_ASSIGN_DEBUG = false;
 #endif
 
 constexpr uint32_t CONST_2 = 2;
+constexpr int QKV_DIM = 3;
 
 namespace {
     struct BlockTaskInfo {
@@ -243,7 +244,7 @@ namespace {
         uint32_t headNum = 0;
     };
 }
-    
+
 namespace HstuDenseForward {
 
 REGISTER_POLICY(LAYOUT_TYPE::JAGGED, std::make_shared<TilingPolicyJagged>());
@@ -267,8 +268,11 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
     int64_t seqOffsetLens = seqOffset->GetSize();
     batchSize = seqOffsetLens - 1;
     OPS_CHECK(batchSize > MAX_BATCH_SIZE,
-        OPS_LOG_E("", "batch size is over limit %d", MAX_BATCH_SIZE), return false);
+              OPS_LOG_E("", "batch size is over limit %d", MAX_BATCH_SIZE), return false);
 
+    if (!QKVShapeCheck(context, QKV_DIM)) {
+        return false;
+    }
     auto queryShape = context->GetInputShape(INDEX_T::INDEX_0)->GetStorageShape();
     headNum = queryShape.GetDim(INDEX_T::INDEX_1);
     headDIM = queryShape.GetDim(INDEX_T::INDEX_2);
@@ -360,7 +364,7 @@ bool TilingPolicyJagged::TilingCore(gert::TilingContext* context, optiling::Hstu
 
     size_t aicCoreNum = ascendPlatform.GetCoreNumAic();
     context->SetBlockDim(aicCoreNum);
-    
+
     return true;
 }
 

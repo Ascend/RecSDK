@@ -37,6 +37,23 @@ bool ShapeRange::Check(int64_t val) const
     return true;
 }
 
+bool QKVShapeCheck(gert::TilingContext* context, int qkvDim)
+{
+    OPS_LOG_E_IF_NULL("QShape", context->GetInputShape(INDEX_T::INDEX_0), return false);
+    OPS_LOG_E_IF_NULL("KShape", context->GetInputShape(INDEX_T::INDEX_1), return false);
+    OPS_LOG_E_IF_NULL("VShape", context->GetInputShape(INDEX_T::INDEX_2), return false);
+
+    auto QShape = context->GetInputShape(INDEX_T::INDEX_0)->GetStorageShape();
+    auto KShape = context->GetInputShape(INDEX_T::INDEX_1)->GetStorageShape();
+    auto VShape = context->GetInputShape(INDEX_T::INDEX_2)->GetStorageShape();
+    int dim = QShape.GetDimNum();
+    bool sameShape = (QShape == KShape && KShape == VShape);
+
+    OPS_CHECK(!sameShape, OPS_LOG_E("", "QKV shape not same."), return false);
+    OPS_CHECK(dim != qkvDim, OPS_LOG_E("", "Jagged QKV dim should be %d, but got %d", qkvDim, dim), return false);
+    return true;
+}
+
 ge::graphStatus TilingPolicy::InferShape(gert::InferShapeContext *context)
 {
     const gert::Shape *queryShape = context->GetInputShape(INDEX_T::INDEX_0);

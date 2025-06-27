@@ -119,6 +119,7 @@ bool TilingPolicyNormalv200::TilingHeighLevelApi(gert::TilingContext* context,
 
 bool TilingPolicyNormalv200::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData &tiling)
 {
+    OPS_LOG_E_IF_NULL("QShape", context->GetInputTensor(0), return false);
     ge::DataType qTypeGe = context->GetInputTensor(0)->GetDataType();
     if (qTypeGe == ge::DataType::DT_FLOAT16) {
         context->SetTilingKey(FLOAT16_TILING_KEY);

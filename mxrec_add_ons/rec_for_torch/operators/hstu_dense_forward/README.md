@@ -38,10 +38,10 @@ a) 算子的主要功能是实现fbgemm的hstu_dense_forward
 b) 算子参数说明：
 
 * q: shape[batch_size, seq_len, num_head, d_qk]；
-* k:  shape[batch_size, seq_len, num_head, d_qk]；
+* k: shape[batch_size, seq_len, num_head, d_qk]；
 * v: shape[batch_size, seq_len, num_head, d_qk]；
 * causal: 是否开启causal_mask;
-* attn_bias: qk^T后加的bias参数， shape[batch_size,num_head, seq_len, seq_len];
+* attn_bias: qk^T后加的bias参数， shape[batch_size, num_head, seq_len, seq_len];
 * silu_scale: silu的系数;
 
 
@@ -49,9 +49,9 @@ c) 算子约束说明：
 
 * 支持的型号：Atlas A2系列产品;
 * 支持的CANN版本：8.0.RC3及之后版本;
-* 支持的输入数据类型：q、k、v支持fp32、fp16、bfp16;
+* 支持的输入数据类型：q、k、v支持fp32、fp16、bf16;
 * seq_len须为256的倍数，范围：[256,4096];
-* d_qk须为32的倍数， 范围：[32,512]
+* d_qk须为16的倍数， 范围：[16,512]
 
 
 ## 算子逻辑

@@ -20,6 +20,8 @@ See the License for the specific language governing permissions and
 #include "tiling_policy_factory.h"
 #include "tiling_policy_normal.h"
 
+constexpr int QKV_DIM = 4;
+
 namespace HstuDenseForward {
 
 REGISTER_POLICY(LAYOUT_TYPE::NORMAL, std::make_shared<TilingPolicyNormal>());
@@ -37,6 +39,9 @@ bool TilingPolicyNormal::TilingShape(gert::TilingContext* context, optiling::Hst
     int64_t dim = qShape.GetDim(3);
     tiling.set_dim(dim);
 
+    if (!QKVShapeCheck(context, QKV_DIM)) {
+        return false;
+    }
     OPS_CHECK(!GeneralShapeCheck(batchSize, seqLen, headNum, dim), OPS_LOG_E("", "Shape Check failed"), return false);
     return true;
 }

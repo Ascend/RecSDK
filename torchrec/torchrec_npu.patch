@@ -755,16 +755,16 @@ index 33665883..39394ae7 100644
          lengths: Optional[torch.Tensor] = None,
          offsets: Optional[torch.Tensor] = None,
      ) -> None:
-+        check(isinstance(values, torch.Tensor), f"values should be torch.Tensor")
-+        check(isinstance(lengths, torch.Tensor), f"lengths should be torch.Tensor")
++        check(isinstance(values, torch.Tensor) and values.dim() == 1, "values should be 1D torch.Tensor")
++        check(isinstance(lengths, torch.Tensor) and lengths.dim() == 1, "lengths should be 1D torch.Tensor")
 +
 +        check(values is not None and not is_out_range(values, 0, 2**31), "value should be [0, 2**31]")
 +        check(lengths is not None and not is_out_range(lengths, 0, MAX_LENGTH), f"value should be [0, {MAX_LENGTH}]")
-+        check(weights is None, f"weights should be None")
++        check(weights is None, "weights should be None")
 +        if offsets is not None:
-+            check(isinstance(offsets, torch.Tensor), f"offsets should be torch.Tensor")
-+            check(offsets[0] == 0, f"offsets[0] should be 0")
-+            check(((offsets[1:] == lengths.cumsum(0))).all(), "offsets[1:] should be equal with lengths.cumsum()")
++            check(isinstance(offsets, torch.Tensor), "offsets should be torch.Tensor")
++            check(offsets[0] == 0, "offsets[0] should be 0")
++            check((offsets[1:] == lengths.cumsum(0)).all(), "offsets[1:] should be equal with lengths.cumsum()")
 +
  
          self._values: torch.Tensor = values

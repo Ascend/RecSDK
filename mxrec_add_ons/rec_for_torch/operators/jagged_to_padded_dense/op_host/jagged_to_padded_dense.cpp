@@ -54,16 +54,18 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
 
     JaggedToPaddedDenseTilingData tiling;
-    auto ascnedPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
 
     OPS_LOG_E_IF_NULL("valuesShape", context->GetInputShape(0), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("valuesTensor", context->GetInputTensor(0), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("offsetsShape", context->GetInputShape(1), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("offsetsTensor", context->GetInputTensor(1), return ge::GRAPH_FAILED);
 
     auto valuesShape = context->GetInputShape(0)->GetStorageShape();
     auto offsetsShape = context->GetInputShape(1)->GetStorageShape();
 
     uint64_t ubCanUsed;
-    ascnedPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubCanUsed);
+    ascendPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubCanUsed);
     ubCanUsed = ubCanUsed - RESERVER_UB_SIZE;
     ubCanUsed = ubCanUsed / UB_ALIGN / NUM_QUEUE * UB_ALIGN * NUM_QUEUE;
     tiling.set_ubCanUsed(ubCanUsed);
@@ -73,13 +75,13 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
         return ge::GRAPH_FAILED;
     }
 
-    size_t coreNum = ascnedPlatform.GetCoreNumAiv();
+    size_t coreNum = ascendPlatform.GetCoreNumAiv();
     if (coreNum == 0) {
         return ge::GRAPH_FAILED;
     }
     
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
-    size_t systemWorkspacesSize = ascnedPlatform.GetLibApiWorkSpaceSize();
+    size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
     currentWorkspace[0] = systemWorkspacesSize;
     // tiling core
     

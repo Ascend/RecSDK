@@ -26,6 +26,7 @@ See the License for the specific language governing permissions and
 #include "tiling_policy_jagged.h"
 
 constexpr uint32_t CONST_2 = 2;
+constexpr int QKV_DIM = 3;
 
 namespace {
     struct BlockTaskInfo {
@@ -242,6 +243,9 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
     OPS_LOG_E_IF(batchSize > MAX_BATCH_SIZE, context, return false,
         "batch size is over limit %d", MAX_BATCH_SIZE);
 
+    if (!QKVShapeCheck(context, QKV_DIM)) {
+        return false;
+    }
     auto queryShape = context->GetInputShape(INDEX_T::INDEX_0)->GetStorageShape();
     int64_t headNum = queryShape.GetDim(INDEX_T::INDEX_1);
     int64_t headDim = queryShape.GetDim(INDEX_T::INDEX_2);
@@ -252,8 +256,8 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
     tiling.set_dim(headDim);
     tiling.set_seqLen(seqLens);
 
-    OPS_LOG_E_IF(!GeneralShapeCheck(batchSize, seqLens, headNum, headDim), context, return false,
-        "Jagged Shape Check failed");
+    OPS_LOG_E_IF(!GeneralShapeCheck(batchSize, seqLens, headNum, headDim),
+                 context, return false, "Jagged Shape Check failed");
     return true;
 }
 

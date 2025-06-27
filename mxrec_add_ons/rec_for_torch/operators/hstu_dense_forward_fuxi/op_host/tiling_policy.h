@@ -22,6 +22,8 @@ See the License for the specific language governing permissions and
 
 namespace HstuDenseForwardFuxi {
 
+bool QKVShapeCheck(gert::TilingContext* context, int qkvDim);
+
 class ShapeRange {
 public:
     int64_t lbound {0}; // shape下限

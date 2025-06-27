@@ -94,7 +94,7 @@
                 "default_value": "normal"
             },
             {
-                "name": "seq_offets",
+                "name": "seq_offsets",
                 "param_type": "optional",
                 "type": "list_int"
             }
