@@ -15,6 +15,7 @@ See the License for the specific language governing permissions and
 #ifndef HSTU_DENSE_BACKWARD_KERNEL_INTERFACE_H
 #define HSTU_DENSE_BACKWARD_KERNEL_INTERFACE_H
 
+#include "hstu_dense_backward_kernel_common.h"
 
 namespace HstuDenseBackward {
 
