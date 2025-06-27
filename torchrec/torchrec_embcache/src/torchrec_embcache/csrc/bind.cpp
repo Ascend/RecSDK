@@ -16,6 +16,25 @@
 
 using namespace Embcache;
 
+void AddEmcacheManager(pybind11::module_& m)
+{
+    py::class_<EmbcacheManager>(m, "EmbcacheManager")
+        .def(py::init<const std::vector<EmbConfig>&>(), py::arg("emb_configs"))
+        .def("compute_swap_info_async", &EmbcacheManager::ComputeSwapInfoAsync, py::arg("batch_keys"),
+             py::arg("jagged_offs"))
+        .def("save", &EmbcacheManager::Save, py::arg("path"), py::arg("rank"))
+        .def("embedding_to_host", &EmbcacheManager::Embedding2Host, py::arg("weights_dev"), py::arg("momentum1_dev"))
+        .def("embedding_lookup_async", &EmbcacheManager::EmbeddingLookupAsync, py::arg("swap_info"))
+        .def("embedding_update_async", &EmbcacheManager::EmbeddingUpdateAsync, py::arg("swap_info"),
+             py::arg("swapout_embs"), py::arg("swapout_optims"))
+        .def("load", &EmbcacheManager::Load, py::arg("path"), py::arg("rank"))
+        .def("record_timestamp", &EmbcacheManager::RecordTimestamp, py::arg("batch_keys"), py::arg("jagged_offs"),
+             py::arg("batch_timestamps"))
+        .def("evict_features", &EmbcacheManager::EvictFeatures)
+        .def("statistics_key_count", &EmbcacheManager::StatisticsKeyCount, py::arg("batch_keys"), py::arg("offset"),
+             py::arg("batch_key_counts"), py::arg("table_index"));
+}
+
 // Registers _C as a Python extension module.
 PYBIND11_MODULE(embcache_pybind, m)
 {
@@ -57,28 +76,7 @@ PYBIND11_MODULE(embcache_pybind, m)
         .def_readwrite("swapin_optims", &SwapinTensor::swapinOptims)
         .def_readwrite("jagged_offs", &SwapinTensor::jaggedOffs);
 
-    py::class_<EmbcacheManager>(m, "EmbcacheManager")
-        .def(py::init<const std::vector<EmbConfig>&>(), py::arg("emb_configs"))
-
-        .def("compute_swap_info_async", &EmbcacheManager::ComputeSwapInfoAsync, py::arg("batch_keys"),
-             py::arg("jagged_offs"))
-
-        .def("save", &EmbcacheManager::Save, py::arg("path"), py::arg("rank"))
-
-        .def("embedding_to_host", &EmbcacheManager::Embedding2Host, py::arg("weights_dev"), py::arg("momentum1_dev"))
-
-        .def("embedding_lookup_async", &EmbcacheManager::EmbeddingLookupAsync, py::arg("swap_info"))
-
-        .def("embedding_update_async", &EmbcacheManager::EmbeddingUpdateAsync, py::arg("swap_info"),
-             py::arg("swapout_embs"), py::arg("swapout_optims"))
-
-        .def("load", &EmbcacheManager::Load, py::arg("path"), py::arg("rank"))
-
-        .def("record_timestamp", &EmbcacheManager::RecordTimestamp, py::arg("batch_keys"), py::arg("jagged_offs"),
-             py::arg("batch_timestamps"))
-        .def("evict_features", &EmbcacheManager::EvictFeatures)
-        .def("statistics_key_count", &EmbcacheManager::StatisticsKeyCount, py::arg("batch_keys"), py::arg("offset"),
-             py::arg("batch_key_counts"), py::arg("table_index"));
+    AddEmcacheManager(m);
 
     py::class_<AsyncTask<SwapInfo>>(m, "AsyncSwapInfo").def("get", &AsyncTask<SwapInfo>::get);
     py::class_<AsyncTask<SwapinTensor>>(m, "AsyncSwapinTensor").def("get", &AsyncTask<SwapinTensor>::get);
