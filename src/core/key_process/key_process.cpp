@@ -534,6 +534,33 @@ bool KeyProcess::KeyProcessTaskHelperForDp(unique_ptr<EmbBatchT>& batch, int cha
     return true;
 }
 
+void KeyProcess::PushResultBasedOnMemoryMode(unique_ptr <EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors,
+                                             int channel, unique_ptr<vector<Tensor>> keyCountTensors,
+                                             std::vector<emb_key_t>& lookupKeys)
+{
+    if (!rankInfo.isDDR) {
+        PushGlobalUniqueTensors(tensors, lookupKeys, channel, batch->name);
+        // The first-order optimizer does not have a second USS, which needs to mask the lookupKeys.
+        if (!rankInfo.useSumSameIdGradients) {
+            PushPaddingKeysTensors(tensors, batch->name, channel, lookupKeys);
+        }
+        tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(lookupKeys) : Vec2TensorI32(lookupKeys));
+        PushResultHBM(batch, move(tensors));
+        if (isIncrementalCheckpoint && channel == TRAIN_CHANNEL_ID) {
+            PushKeyCount(batch, move(keyCountTensors));
+        }
+        return;
+    }
+    vector<uint64_t> lookupKeysUint(lookupKeys.begin(), lookupKeys.end());
+    vector<uint64_t> uniqueKeys;
+    vector<int32_t> restoreVecSec;
+    GlobalUnique(lookupKeysUint, uniqueKeys, restoreVecSec);
+    PushResultDDR(batch, move(tensors), uniqueKeys, restoreVecSec);
+    if (isIncrementalCheckpoint && channel == TRAIN_CHANNEL_ID) {
+        PushKeyCount(batch, move(keyCountTensors));
+    }
+}
+
 bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel, int threadId)
 {
     if (batch->isEos) {
@@ -623,27 +650,7 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
     }
 
     // Tensors contains restore、hotPos、restoreSec&unique、idOffset in order when HBM mode, and is pushed in infolist.
-    if (!rankInfo.isDDR) {
-        PushGlobalUniqueTensors(tensors, lookupKeys, channel, batch->name);
-        // The first-order optimizer does not have a second USS, which needs to mask the lookupKeys.
-        if (!rankInfo.useSumSameIdGradients) {
-            PushPaddingKeysTensors(tensors, batch->name, channel, lookupKeys);
-        }
-        tensors->push_back(rankInfo.useDynamicExpansion ? Vec2TensorI64(lookupKeys) : Vec2TensorI32(lookupKeys));
-        PushResultHBM(batch, move(tensors));
-        if (isIncrementalCheckpoint && channel == TRAIN_CHANNEL_ID) {
-            PushKeyCount(batch, move(keyCountTensors));
-        }
-    } else {
-        std::vector<uint64_t> lookupKeysUint(lookupKeys.begin(), lookupKeys.end());
-        vector<uint64_t> uniqueKeys;
-        vector<int32_t> restoreVecSec;
-        GlobalUnique(lookupKeysUint, uniqueKeys, restoreVecSec);
-        PushResultDDR(batch, move(tensors), uniqueKeys, restoreVecSec);
-        if (isIncrementalCheckpoint && channel == TRAIN_CHANNEL_ID) {
-            PushKeyCount(batch, move(keyCountTensors));
-        }
-    }
+    PushResultBasedOnMemoryMode(batch, move(tensors), channel, move(keyCountTensors), lookupKeys);
 
     LOG_DEBUG("pushResultTC(ms):{}", pushResultTC.ElapsedMS());
     return true;
