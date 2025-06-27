@@ -550,7 +550,7 @@ bool MapperBase::NewAndSetBucket(const uint64_t& bucketCount, const int& c, NetH
     if (HM_UNLIKELY(bucketPtr == nullptr)) {
         FreeSubMaps();
         ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR,
-                                        "Failed to new hash bucket, probably out of memory");
+                                      "Failed to new hash bucket, probably out of memory");
         return false;
     }
 
