@@ -1,5 +1,4 @@
 /*
- * Copyright (c) Meta Platforms, Inc. and affiliates.
  * Copyright (c) huawei Platforms, Inc. and affiliates.
  * All rights reserved.
  *
@@ -8,9 +7,10 @@
  */
 #include "swap_manager.h"
 
-#include <glog/logging.h>
 #include <iostream>
 #include <memory>
+
+#include <glog/logging.h>
 #include <ATen/Parallel.h>
 
 using namespace Embcache;

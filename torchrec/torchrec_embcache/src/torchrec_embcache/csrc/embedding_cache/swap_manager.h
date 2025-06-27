@@ -1,5 +1,4 @@
 /*
- * Copyright (c) Meta Platforms, Inc. and affiliates.
  * Copyright (c) huawei Platforms, Inc. and affiliates.
  * All rights reserved.
  *
@@ -13,6 +12,7 @@
 #include <unordered_set>
 #include <cstdint>
 #include <stdexcept>
+
 #include <c10/util/flat_hash_map.h>
 
 namespace Embcache {
