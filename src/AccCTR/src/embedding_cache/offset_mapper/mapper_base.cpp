@@ -304,53 +304,6 @@ FkvState MapperBase::FindAndPutIfNotFound(uint64_t key, uint64_t &value,
     return PutKeyValue(key, value, buck, beforePutFunc);
 }
 
-FkvState MapperBase::FindAndPutIfNotFound(uint64_t key, uint64_t &value,
-    const std::function<BeforePutFuncState()> &beforePutFunc)
-{
-    if (HM_UNLIKELY(key == 0)) {
-        std::lock_guard<std::mutex> lock(zeroKeyMutex_);
-        if (zeroInside) {
-            value = zeroValue;
-            return FkvState::FKV_EXIST;
-        }
-        if (__sync_bool_compare_and_swap(&zeroInside, false, true)) {
-            BeforePutFuncState ret = beforePutFunc();
-            if (HM_UNLIKELY(ret == BeforePutFuncState::BEFORE_FAIL)) {
-                return FkvState::FKV_BEFORE_PUT_FUNC_FAIL;
-            }
-            if (HM_UNLIKELY(ret == BeforePutFuncState::BEFORE_NO_SPACE)) {
-                return FkvState::FKV_NO_SPACE;
-            }
-            zeroValue = value;
-            currentSize++;
-            return FkvState::FKV_NOT_EXIST;
-        }
-        return FkvState::FKV_KEY_CONFLICT;
-    }
-
-    /* get bucket */
-    auto buck = &(mSubMaps[key % gSubMapCount][key % mBucketCount]);
-
-    /* loop all buckets linked */
-    while (buck != nullptr) {
-        buck->spinLock.Lock();
-        if (buck->Find(key, value)) {
-            buck->spinLock.UnLock();
-            return FkvState::FKV_EXIST;
-        }
-        buck->spinLock.UnLock();
-
-        if (buck->next != nullptr) {
-            buck = buck->next;
-        } else {
-            break;
-        }
-    }
-
-    // did not find, now do put. continue from the last bucket in find
-    return PutKeyValue(key, value, buck, beforePutFunc);
-}
-
 FkvState MapperBase::Remove(uint64_t key)
 {
     if (HM_UNLIKELY(key == 0)) {
