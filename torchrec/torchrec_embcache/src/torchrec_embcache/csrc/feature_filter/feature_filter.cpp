@@ -1,5 +1,4 @@
 /*
- * Copyright (c) Meta Platforms, Inc. and affiliates.
  * Copyright (c) huawei Platforms, Inc. and affiliates.
  * All rights reserved.
  *
@@ -32,7 +31,7 @@ void FeatureFilter::RecordTimestamp(const int64_t* featureDataPtr, int64_t start
         latestTimestamp = std::max(latestTimestamp, timestamp);
     }
     auto afterRecordSize = timestampRecordMap.size();
-    LOG(INFO) << "enter RecordTimestamp, beforeRecordSize:" << beforeRecordSize
+    LOG(INFO) << "Enter RecordTimestamp, beforeRecordSize:" << beforeRecordSize
               << ", afterRecordSize:" << afterRecordSize;
 }
 
@@ -40,7 +39,7 @@ std::vector<int64_t> FeatureFilter::FeatureEvict()
 {
     std::vector<int64_t> evictFeatures;
     if (evictThreshold == 0) {
-        LOG(INFO) << "current table evictThreshold is 0, will skip.";
+        LOG(INFO) << "Current table evictThreshold is 0, will skip.";
         return evictFeatures;
     }
 
@@ -65,7 +64,7 @@ std::vector<int64_t> FeatureFilter::FeatureEvict()
             featureRecordMap.erase(feature);
         }
     }
-    LOG(INFO) << "evictFeatures size:" << evictFeatures.size();
+    LOG(INFO) << "EvictFeatures size:" << evictFeatures.size();
     return evictFeatures;
 }
 
