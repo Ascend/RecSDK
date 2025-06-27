@@ -183,6 +183,21 @@ __aicore__ inline void CopyVGradB1(const LocalTensor<int8_t> &bMatrix, const __g
     int64_t startIdx = row * baseK * headNum * headDim + col * baseN;
     DataCopy(bMatrix.ReinterpretCast<qType>(), globalGt[startIdx], param);
 };
+
+struct BlockInfo {
+    int64_t taskId;
+    int64_t batchId;
+    int64_t headId;
+    int64_t rowId;
+    int64_t colId;
+    int64_t accumId;
+    int64_t qkLeftOffset;
+    int64_t qkRightOffset;
+    int64_t kGradLeftOffset;
+    int64_t vGradRightOffset;
+    int64_t rowLine;
+    int64_t colLine;
+};
 } // namespace HstuDenseBackward
 
 #endif
