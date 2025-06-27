@@ -25,34 +25,34 @@ public:
 
     __aicore__ inline void DoQKMatmulImpl(int64_t left, int64_t right, int64_t out)
     {
-        qkMatmul.SetTensorA(q[left]);
-        qkMatmul.SetTensorB(k[right], true);
+        qkMatmul.SetTensorA(this->q[left]);
+        qkMatmul.SetTensorB(this->k[right], true);
 
-        qkMatmul.template IterateAll<false>(qkTemp[out], 0, false, true);
+        qkMatmul.template IterateAll<false>(this->qkTemp[out], 0, false, true);
     }
 
     __aicore__ inline void DoGVMatmulImpl(int64_t left, int64_t right, int64_t out)
     {
-        qkMatmul.SetTensorA(grad[left]);
-        qkMatmul.SetTensorB(v[right], true);
+        qkMatmul.SetTensorA(this->grad[left]);
+        qkMatmul.SetTensorB(this->v[right], true);
 
-        qkMatmul.template IterateAll<false>(gvTemp[out], 0, false, true);
+        qkMatmul.template IterateAll<false>(this->gvTemp[out], 0, false, true);
     }
 
     __aicore__ inline void DoGpVMatmulImpl(int64_t left, int64_t right, int64_t out)
     {
-        qkMatmul.SetTensorA(gradPosition[left]);
-        qkMatmul.SetTensorB(v[right], true);
+        qkMatmul.SetTensorA(this->gradPosition[left]);
+        qkMatmul.SetTensorB(this->v[right], true);
 
-        qkMatmul.template IterateAll<false>(tempGposVT[out], 0, false, true);
+        qkMatmul.template IterateAll<false>(this->tempGposVT[out], 0, false, true);
     }
 
     __aicore__ inline void DoGtVMatmulImpl(int64_t left, int64_t right, int64_t out)
     {
-        qkMatmul.SetTensorA(gradTimestamp[left]);
-        qkMatmul.SetTensorB(v[right], true);
+        qkMatmul.SetTensorA(this->gradTimestamp[left]);
+        qkMatmul.SetTensorB(this->v[right], true);
 
-        qkMatmul.template IterateAll<false>(tempGtsVT[out], 0, false, true);
+        qkMatmul.template IterateAll<false>(this->tempGtsVT[out], 0, false, true);
     }
 
     // __aicore__ inline void DoQGradMatmul(int64_t taskId)
@@ -71,12 +71,12 @@ public:
 
     __aicore__ inline void DoQGradMatmulImpl(int64_t left, int64_t right, int64_t out, bool isNew)
     {
-        qGradMatmul.SetTensorA(attnBiasGrad[left]);
-        qGradMatmul.SetTensorB(k[right]);
+        qGradMatmul.SetTensorA(this->attnBiasGrad[left]);
+        qGradMatmul.SetTensorB(this->k[right]);
         if (isNew) {
-            qGradMatmul.template IterateAll<false>(kGradAccumTemp[out], 0, false, true);
+            qGradMatmul.template IterateAll<false>(this->kGradAccumTemp[out], 0, false, true);
         } else {
-            qGradMatmul.template IterateAll<false>(kGradAccumTemp[out], 1, false, true);
+            qGradMatmul.template IterateAll<false>(this->kGradAccumTemp[out], 1, false, true);
         }
     }
 
@@ -101,45 +101,45 @@ public:
 
     __aicore__ inline void DoKGradMatmulImpl(int64_t left, int64_t right, int64_t out, bool isNew)
     {
-        kGradMatmul.SetTensorA(attnBiasGrad[left], true);
-        kGradMatmul.SetTensorB(q[right]);
+        kGradMatmul.SetTensorA(this->attnBiasGrad[left], true);
+        kGradMatmul.SetTensorB(this->q[right]);
         if (isNew) {
-            kGradMatmul.template IterateAll<false>(kGradAccumTemp[out], 0, false, true);
+            kGradMatmul.template IterateAll<false>(this->kGradAccumTemp[out], 0, false, true);
         } else {
-            kGradMatmul.template IterateAll<false>(kGradAccumTemp[out], 1, false, true);
+            kGradMatmul.template IterateAll<false>(this->kGradAccumTemp[out], 1, false, true);
         }
     }
 
     __aicore__ inline void DoVGradMatmulImpl(int64_t left, int64_t right, int64_t out, bool isNew)
     {
-        vGradMatmul.SetTensorA(scoreTemp[left], true);
-        vGradMatmul.SetTensorB(grad[right]);
+        vGradMatmul.SetTensorA(this->scoreTemp[left], true);
+        vGradMatmul.SetTensorB(this->grad[right]);
         if (isNew) {
-            vGradMatmul.template IterateAll<false>(vGradAccumTemp[out], 0, false, true);
+            vGradMatmul.template IterateAll<false>(this->vGradAccumTemp[out], 0, false, true);
         } else {
-            vGradMatmul.template IterateAll<false>(vGradAccumTemp[out], 1, false, true);
+            vGradMatmul.template IterateAll<false>(this->vGradAccumTemp[out], 1, false, true);
         }
     }
 
     __aicore__ inline void DoBtGtMatmulImpl(int64_t left, int64_t right, int64_t out, bool isNew)
     {
-        vGradMatmul.SetTensorA(tempBtsM[left], true);
-        vGradMatmul.SetTensorB(gradTimestamp[right]);
+        vGradMatmul.SetTensorA(this->tempBtsM[left], true);
+        vGradMatmul.SetTensorB(this->gradTimestamp[right]);
         if (isNew) {
-            vGradMatmul.template IterateAll<false>(tempBtsGtsAccum[out], 0, false, true);
+            vGradMatmul.template IterateAll<false>(this->tempBtsGtsAccum[out], 0, false, true);
         } else {
-            vGradMatmul.template IterateAll<false>(tempBtsGtsAccum[out], 1, false, true);
+            vGradMatmul.template IterateAll<false>(this->tempBtsGtsAccum[out], 1, false, true);
         }
     }
 
     __aicore__ inline void DoBpGpMatmulImpl(int64_t left, int64_t right, int64_t out, bool isNew)
     {
-        vGradMatmul.SetTensorA(tempBposM[left], true);
-        vGradMatmul.SetTensorB(gradPosition[right]);
+        vGradMatmul.SetTensorA(this->tempBposM[left], true);
+        vGradMatmul.SetTensorB(this->gradPosition[right]);
         if (isNew) {
-            vGradMatmul.template IterateAll<false>(tempBposGposAccum[out], 0, false, true);
+            vGradMatmul.template IterateAll<false>(this->tempBposGposAccum[out], 0, false, true);
         } else {
-            vGradMatmul.template IterateAll<false>(tempBposGposAccum[out], 1, false, true);
+            vGradMatmul.template IterateAll<false>(this->tempBposGposAccum[out], 1, false, true);
         }
     }
 
