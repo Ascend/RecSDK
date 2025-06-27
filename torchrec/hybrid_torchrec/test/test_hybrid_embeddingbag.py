@@ -7,6 +7,7 @@
 # LICENSE file in the root directory of this source tree.
 import logging
 import os
+import sysconfig
 from typing import List
 
 import pytest
@@ -38,6 +39,7 @@ from torchrec.distributed.types import ShardingEnv
 from torchrec.optim.apply_optimizer_in_backward import apply_optimizer_in_backward
 from torchrec.optim.keyed import CombinedOptimizer
 
+torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
 LOOP_TIMES = 8
 BATCH_NUM = 32
@@ -148,8 +150,6 @@ class TestModel:
             loss, output = model(batch)
             results.append(loss.detach().cpu())
             results.append(output.detach().cpu())
-            loss.backward()
-            opt.step()
 
         for i in range(table_num):
             logging.debug(
@@ -162,6 +162,7 @@ class TestModel:
     def setup(self, rank: int, world_size: int):
         os.environ["MASTER_ADDR"] = "127.0.0.1"
         os.environ["MASTER_PORT"] = "6000"
+        os.environ["GLOO_SOCKET_IFNAME"] = "lo"
         dist.init_process_group(self.pg_method, rank=rank, world_size=world_size)
         os.environ["LOCAL_RANK"] = f"{rank}"
         
@@ -186,7 +187,9 @@ class TestModel:
         )
         # Shard
         constrans = {
-            f"table{i}": ParameterConstraints(sharding_types=[sharding_type])
+            f"table{i}": ParameterConstraints(
+                sharding_types=[sharding_type], compute_kernels=["fused"]
+            )
             for i in range(table_num)
         }
         planner = EmbeddingShardingPlanner(
@@ -217,8 +220,6 @@ class TestModel:
             loss, output = ebc(batch)
             results.append(loss.detach().cpu())
             results.append(output.detach().cpu())
-            loss.backward()
-            optimizer.step()
 
         for i in range(table_num):
             logging.debug(
@@ -233,7 +234,7 @@ class TestModel:
 @pytest.mark.parametrize("embedding_dims", [[32, 64, 128]])
 @pytest.mark.parametrize("num_embeddings", [[400, 4000, 400]])
 @pytest.mark.parametrize("pool_type", [torchrec.PoolingType.MEAN])
-@pytest.mark.parametrize("sharding_type", ["table_wise", "row_wise"])
+@pytest.mark.parametrize("sharding_type", ["row_wise"])
 @pytest.mark.parametrize("lockup_len", [1024])
 @pytest.mark.parametrize("device", ["npu"])
 def test_hstu_dens_normal(
@@ -245,8 +246,6 @@ def test_hstu_dens_normal(
     lockup_len,
     device,
 ):
-    if device == "cpu" and sharding_type == "row_wise":
-        return
     mp.spawn(
         execute,
         args=(

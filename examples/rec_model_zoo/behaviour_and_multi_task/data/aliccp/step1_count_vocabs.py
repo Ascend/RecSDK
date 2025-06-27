@@ -49,7 +49,7 @@ def parse_data(file_name, index_dict_in=None):
 
             # sample_id|y|z|common_feature_index|feat_num|feat_list
             elif feat_len == 6:
-                # y=0 & z=1 filter
+                # Skip samples where y is 0 and z is 1
                 if line[1] == "0" and line[2] == "1":
                     continue
 

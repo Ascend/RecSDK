@@ -25,10 +25,8 @@ class ExtremeDeepFMModel(BaseModel):
                 self.embed_params.append(self.embedding)
                 embed_out, embed_layer_size = self._build_embedding(hparams)
             logit = self._build_linear(hparams)
-            # logit = tf.add(logit, self._build_fm(hparams))
             # res: use resnet?  direct: without split?  reduce_D: Dimension reduction?  f_dim: dimension of reduce_D
             logit = tf.add(logit, self._build_extreme_FM(hparams, embed_out, res=False, direct=False, bias=False, reduce_D=False, f_dim=2))
-            # logit = tf.add(logit, self._build_extreme_FM_quick(hparams, embed_out))
             logit = tf.add(logit, self._build_dnn(hparams, embed_out, embed_layer_size))
             return logit
 
@@ -92,93 +90,6 @@ class ExtremeDeepFMModel(BaseModel):
                                               tf.pow(self.embedding, 2)), 1,
                 keep_dims=True)
             return fm_output
-    """
-    def _build_extreme_FM_slow_bad(self, hparams, nn_input):
-        hidden_nn_layers = []
-        field_nums = []
-        final_len = 0
-        field_num = hparams.FIELD_COUNT
-        nn_input = tf.reshape(nn_input, shape=[-1, int(field_num), hparams.dim])
-        field_nums.append(int(field_num))
-        hidden_nn_layers.append(nn_input)
-        final_result = []
-        with tf.variable_scope("exfm_part", initializer=self.initializer) as scope:
-            for idx, layer_size in enumerate(hparams.cross_layer_sizes):
-                dot_results = []
-                split_tensor = tf.split(hidden_nn_layers[-1], field_nums[-1]*[1], 1)
-                for s in split_tensor:
-                    s = tf.tile(s, [1, field_nums[0], 1])
-                    dot_results.append(tf.multiply(s, hidden_nn_layers[0]))
-                dot_result = tf.concat(dot_results, axis=1)
-                filters = tf.get_variable(name="f_"+str(idx),
-                                         shape=[1, len(dot_results)*field_nums[0], layer_size],
-                                         dtype=tf.float32)
-                dot_result = tf.transpose(dot_result, perm=[0, 2, 1])
-                curr_out = tf.nn.conv1d(dot_result, filters=filters, stride=1, padding='VALID')
-                curr_out = tf.transpose(curr_out, perm=[0, 2, 1])
-
-                if idx != len(hparams.cross_layer_sizes)-1:
-                    next_hidden, direct_connect = tf.split(curr_out, 2*[int(layer_size / 2)], 1)
-                    final_len += int(layer_size / 2)
-                else:
-                    direct_connect = curr_out
-                    next_hidden=0
-                    final_len += layer_size
-                
-                ###
-                direct_connect = curr_out
-                next_hidden = curr_out
-                final_len += layer_size
-                ###
-                
-                final_result.append(direct_connect)
-                hidden_nn_layers.append(next_hidden)
-                field_nums.append(int(layer_size / 2))
-                # field_nums.append(int(layer_size))
-                self.cross_params.append(filters)
-            result = tf.concat(final_result, axis=1)
-            result = tf.reduce_sum(result, -1)
-            ###
-            # residual network
-            w_nn_output1 = tf.get_variable(name='w_nn_output1',
-                                          shape=[final_len, 128],
-                                          dtype=tf.float32)
-            b_nn_output1 = tf.get_variable(name='b_nn_output1',
-                                          shape=[128],
-                                          dtype=tf.float32,
-                                          initializer=tf.zeros_initializer())
-            self.layer_params.append(w_nn_output1)
-            self.layer_params.append(b_nn_output1)
-            exFM_out0 = tf.nn.xw_plus_b(result, w_nn_output1, b_nn_output1)
-            exFM_out1 = self._active_layer(logit=exFM_out0,
-                                                      scope=scope,
-                                                      activation="relu",
-                                                      layer_idx=0)
-            w_nn_output2 = tf.get_variable(name='w_nn_output2',
-                                           shape=[128 + final_len, 1],
-                                           dtype=tf.float32)
-            b_nn_output2 = tf.get_variable(name='b_nn_output2',
-                                           shape=[1],
-                                           dtype=tf.float32,
-                                           initializer=tf.zeros_initializer())
-            self.layer_params.append(w_nn_output2)
-            self.layer_params.append(b_nn_output2)
-            exFM_in = tf.concat([exFM_out1, result], axis=1, name="user_emb")
-            exFM_out = tf.nn.xw_plus_b(exFM_in, w_nn_output2, b_nn_output2)
-
-            ###
-            w_nn_output = tf.get_variable(name='w_nn_output',
-                                          shape=[final_len, 1],
-                                          dtype=tf.float32)
-            b_nn_output = tf.get_variable(name='b_nn_output',
-                                          shape=[1],
-                                          dtype=tf.float32)
-            self.layer_params.append(w_nn_output)
-            self.layer_params.append(b_nn_output)
-            exFM_out = tf.nn.xw_plus_b(result, w_nn_output, b_nn_output)
-
-            return exFM_out
-    """
 
     def _build_extreme_FM(self, hparams, nn_input, res=False, direct=False, bias=False, reduce_D=False, f_dim=2):
         hidden_nn_layers = []
@@ -212,7 +123,6 @@ class ExtremeDeepFMModel(BaseModel):
                     filters = tf.get_variable(name="f_"+str(idx),
                                          shape=[1, field_nums[-1]*field_nums[0], layer_size],
                                          dtype=tf.float32)
-                # dot_result = tf.transpose(dot_result, perm=[0, 2, 1])
                 curr_out = tf.nn.conv1d(dot_result, filters=filters, stride=1, padding='VALID')
 
                 # BIAS ADD
@@ -319,7 +229,6 @@ class ExtremeDeepFMModel(BaseModel):
                 filters = tf.get_variable(name="f_"+str(idx),
                                          shape=[1, field_nums[-1]*field_nums[0], layer_size],
                                          dtype=tf.float32)
-                # dot_result = tf.transpose(dot_result, perm=[0, 2, 1])
                 curr_out = tf.nn.conv1d(dot_result, filters=filters, stride=1, padding='VALID')
 
 
@@ -360,20 +269,6 @@ class ExtremeDeepFMModel(BaseModel):
 
 
     def _build_dnn(self, hparams, embed_out, embed_layer_size):
-        """
-        fm_sparse_index = tf.SparseTensor(self.iterator.dnn_feat_indices,
-                                          self.iterator.dnn_feat_values,
-                                          self.iterator.dnn_feat_shape)
-        fm_sparse_weight = tf.SparseTensor(self.iterator.dnn_feat_indices,
-                                           self.iterator.dnn_feat_weights,
-                                           self.iterator.dnn_feat_shape)
-        w_fm_nn_input_orgin = tf.nn.embedding_lookup_sparse(self.embedding,
-                                                            fm_sparse_index,
-                                                            fm_sparse_weight,
-                                                            combiner="sum")
-        w_fm_nn_input = tf.reshape(w_fm_nn_input_orgin, [-1, hparams.dim * hparams.FIELD_COUNT])
-        last_layer_size = hparams.FIELD_COUNT * hparams.dim
-        """
         w_fm_nn_input = embed_out
         last_layer_size = embed_layer_size
         layer_idx = 0

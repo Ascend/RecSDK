@@ -1,6 +1,6 @@
 # coding=utf-8
-# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
-#
+# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+# Copyright (c) 2021; NVIDIA CORPORATION. All rights reserved.
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -132,6 +132,7 @@ class Config:
         self.USE_PIPELINE_TEST = False
         # False indicates use SGD optimizer, else use LazyAdam. If True, is incompatible with dynamic_expansion
         self.use_lazy_adam_optimizer = False
+        self.use_fusion_optim = False
 
         # 动态学习率
         GLOBAL_BATCH_SIZE = 8192 * 8

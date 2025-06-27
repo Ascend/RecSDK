@@ -64,7 +64,6 @@ class WideDeep:
             self.embedding = sparse_lookup(hash_table, feature, 1024 * 1024 // rank_size, dim=None, is_train=True,
                                            name="merged_embedding_lookup", modify_graph=False, batch=self.input_data)
 
-            # with tf.control_dependencies([self.embedding]):
         self.op = self.embedding[0][0]
         return self.op
 

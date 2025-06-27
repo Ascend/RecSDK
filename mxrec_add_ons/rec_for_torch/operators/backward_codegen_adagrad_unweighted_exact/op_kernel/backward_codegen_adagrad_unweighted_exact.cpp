@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
+#include "backward_codegen_adagrad_unweighted_exact_kernel.h"
+#include "backward_codegen_adam_unweighted_exact_kernel.h"
 #include "backward_codegen_sgd_unweighted_exact_kernel.h"
 #include "kernel_operator.h"
 
@@ -51,7 +53,13 @@ extern "C" __global__ __aicore__ void backward_codegen_adagrad_unweighted_exact(
         gradOutput, devWeights,      weightsPlacements, weightsOffsets, dOffsets,  hashSizeCumsum, indices,
         offsets,    momentum1Dev,    momentum2Dev,      hashIndices,    uniqueId,  uniqueHashSize, uniqueInverse,
         out,        momentum1DevOut, momentum2DevOut,   weightsDevOut,  workspace, tiling};
-    if (TILING_KEY_IS(5)) {  // NORMAL_SGD
+    if (TILING_KEY_IS(1)) {  // NORMAL_ADAGRAD
+        BackwardCodegenAdagradUnweightedExact::BackwardCodegenAdagradUnweightedExactKernel kernel;
+        kernel.Compute(args);
+    } else if (TILING_KEY_IS(3)) {  // NORMAL_ADAM
+        BackwardCodegenAdamUnweightedExact::BackwardCodegenAdamUnweightedExactKernel kernel;
+        kernel.Compute(args);
+    } else if (TILING_KEY_IS(5)) {  // NORMAL_SGD
         BackwardCodegenSgdUnweightedExact::BackwardCodegenSgdUnweightedExactKernel kernel;
         kernel.Compute(args);
     }

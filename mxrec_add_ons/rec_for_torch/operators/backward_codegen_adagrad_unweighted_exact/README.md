@@ -1,4 +1,5 @@
 # backward_codegen_adagrad_unweighted_exact算子及样例说明
+本算子仅支持NPU调用
 
 ## backward_codegen_adagrad_unweighted_exact算子文件结构
 
@@ -70,7 +71,7 @@ b) 算子参数说明：
 c) 算子约束说明：
 
 * 支持的型号：Atlas A2系列产品;
-* 支持的CANN版本：8.0.RC2及之后版本；
+* 支持的CANN版本：8.2.RC1.alpha001及之后版本；
 *
 
 支持的输入数据类型：grad_output、dev_weights、momentum1_dev为float32类型，hash_size_cumsum、indices、offsets为int64，D_offsets为int32；max_D、total_hash_size_bits、pooling_mode为int类型。eps、learning_rate为float类型
@@ -194,7 +195,7 @@ b) 算子参数说明：
 c) 算子约束说明：
 
 * 支持的型号：Atlas A2系列产品;
-* 支持的CANN版本：8.0.RC2及之后版本；
+* 支持的CANN版本：8.2.RC1.alpha001及之后版本；
 *
 
 支持的输入数据类型：grad_output、dev_weights、momentum1_dev、momentum2_dev为float32类型，hash_size_cumsum、indices、offsets为int64，D_offsets为int32；max_D、total_hash_size_bits、pooling_mode为int类型。eps、learning_rate、beta1、beta2为float类型
@@ -322,7 +323,7 @@ b) 算子参数说明：
 c) 算子约束说明：
 
 * 支持的型号：Atlas A2系列产品;
-* 支持的CANN版本：8.0.RC2及之后版本；
+* 支持的CANN版本：8.2.RC1.alpha001及之后版本；
 *
 
 支持的输入数据类型：grad_output、dev_weights为float32类型，hash_size_cumsum、indices、offsets为int64，D_offsets为int32；max_D、total_hash_size_bits、pooling_mode为int类型。learning_rate为float类型

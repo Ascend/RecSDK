@@ -13,6 +13,7 @@
 #include "../common/pytorch_npu_helper.hpp"
 using torch::autograd::AutogradContext;
 using torch::autograd::Function;
+using torch::autograd::Variable;
 using tensor_list = std::vector<at::Tensor>;
 using namespace at;
 
@@ -21,25 +22,24 @@ at::Tensor gather_for_rank1_impl_npu(const at::Tensor& x, const at::Tensor& inde
 {
     TORCH_CHECK(x.dim() == 1, "The x should be 1D");
     TORCH_CHECK(index.dim() == 1, "The index should be 1D");
-    auto xConti = x.contiguous();
-    auto indexConti = index.contiguous();
-    at::Tensor y = at::zeros_like(index, xConti.options());
-    EXEC_NPU_CMD(aclnnGatherForRank1, xConti, indexConti, y);
+    auto x_conti = x.contiguous();
+    auto index_conti = index.contiguous();
+    at::Tensor y = at::zeros_like(index, x_conti.options());
+    EXEC_NPU_CMD(aclnnGatherForRank1, x_conti, index_conti, y);
     return y;
 }
 
 // 为NPU设备注册反向实现
 tensor_list gather_for_rank1_backward_impl_npu(
-    const at::Tensor& gradY,
+    const at::Tensor& grady,
     const at::Tensor& x,
     const at::Tensor& index)
 {
-    auto dense_gradY = gradY.contiguous();
-    auto dense_index = index.contiguous();
-    at::Tensor gradX = at::zeros_like(x);
-    at::Tensor gradIndex = at::zeros_like(index);
-    EXEC_NPU_CMD(aclnnIndexSelectForRank1Backward, dense_gradY, x, dense_index, gradX, gradIndex);
-    return {gradX, gradIndex};
+    auto grady_conti = grady.contiguous();
+    auto index_conti = index.contiguous();
+    at::Tensor gradx = at::zeros_like(x);
+    EXEC_NPU_CMD(aclnnIndexSelectForRank1Backward, grady_conti, x, index_conti, gradx);
+    return {gradx, Variable()};
 }
 
 // 通过继承torch::autograd::Function类实现前反向绑定

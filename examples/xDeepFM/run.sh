@@ -56,7 +56,7 @@ num_process=$((${num_server} * ${local_rank_size})) # 训练总的进程数，�
 
 export HCCL_CONNECT_TIMEOUT=1200 # HCCL集合通信 建链超时时间，取值范围[120,7200]
 export PYTHONPATH=${so_path}:$PYTHONPATH # 环境python安装路径
-export LD_PRELOAD=/usr/lib64/libgomp.so.1:/usr/local/python3.7.5/lib/python3.7/site-packages/scikit_learn.libs/libgomp-d22c30c5.so.1.0.0
+export LD_PRELOAD=/usr/lib64/libgomp.so.1:/usr/lib64/libstdc++.so.6:/usr/local/python3.7.5/lib/python3.7/site-packages/scikit_learn.libs/libgomp-d22c30c5.so.1.0.0
 export LD_LIBRARY_PATH=${so_path}:/usr/local/lib:$LD_LIBRARY_PATH
 # 集合通信文件，格式请参考昇腾官网CANN文档，“准备资源配置文件”章节。
 export JOB_ID=10086

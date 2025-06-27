@@ -20,7 +20,7 @@ JSON_FILE=$SCRIPT_DIR/json.hpp
 function get_nlohmann()
 {
     cd $SCRIPT_DIR
-    wget -t 3 -nc --timeout=10 https://github.com/nlohmann/json/archive/v3.9.1.tar.gz --no-check-certificate
+    wget -t 3 -nc --timeout=10 https://github.com/nlohmann/json/archive/v3.9.1.tar.gz
     tar -xvf v3.9.1.tar.gz
     cp json-3.9.1/single_include/nlohmann/json.hpp .
 }

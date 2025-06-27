@@ -159,32 +159,12 @@ class RunMode:
         for i in range(start_step, start_step + self.max_train_steps):
             logger.info("################    training at step %d    ################", i)
             try:
-                dump_precision_ckpt(self.session, self.saver, i)
-                _, loss = self.session.run([self.train_ops, self.train_model.loss_list])
-                if USE_DETERMINISTIC:
-                    logger.info(f"train_loss: {loss[0]}")
-                if PRECISION_CHECK and i in PRECISION_DUMP_STEP:
-                    loss_dict[i] = float(loss[0])
-                    if i == PRECISION_DUMP_STEP[-1]:
-                        time.sleep(10)
-                        break
+                should_break = self._execute_train_step(i, latest_ckpt_step, train_interval, saving_interval, loss_dict)
+                if should_break:
+                    break
             except tf.errors.OutOfRangeError:
                 logger.info("Encounter the end of Sequence for training.")
                 break
-            else:
-                for t in self.table_list:
-                    logger.info(f"training at step:{i}, table[{t.table_name}], table size:{t.size()}, "
-                                f"table capacity:{t.capacity()}")
-
-                if train_interval != -1 and (i - latest_ckpt_step) % train_interval == 0:
-                    self.evaluate()
-
-                if saving_interval != -1 and (i - latest_ckpt_step) % saving_interval == 0:
-                    self.saver.save(self.session, f"./saved-model/model", global_step=i)
-
-                if train_interval != -1 and self.is_faae and i == train_interval // 2:
-                    logger.info("###############    set_threshold at step:%d   ################", i)
-                    self.change_threshold()
 
         dump_precision_dataset(self.session, self.train_iterator, LOCAL_RANK_ID)
         dump_loss_dict(loss_dict)
@@ -217,6 +197,36 @@ class RunMode:
                                                                     emb_name=self.table_list[0].table_name,
                                                                     ids_name=self.table_list[0].table_name + "_lookup")
         self.session.run([set_threshold_op])
+
+    def _execute_train_step(self, i: int, latest_ckpt_step: int, train_interval: int, 
+                            saving_interval: int, loss_dict: dict):
+        dump_precision_ckpt(self.session, self.saver, i)
+        _, loss = self.session.run([self.train_ops, self.train_model.loss_list])
+
+        if USE_DETERMINISTIC:
+            logger.info(f"train_loss: {loss[0]}")
+
+        if PRECISION_CHECK and i in PRECISION_DUMP_STEP:
+            loss_dict[i] = float(loss[0])
+            if i == PRECISION_DUMP_STEP[-1]:
+                time.sleep(10)
+                return True
+
+        for t in self.table_list:
+            logger.info(f"training at step:{i}, table[{t.table_name}], table size:{t.size()}, "
+                        f"table capacity:{t.capacity()}")
+
+        if train_interval != -1 and (i - latest_ckpt_step) % train_interval == 0:
+            self.evaluate()
+
+        if saving_interval != -1 and (i - latest_ckpt_step) % saving_interval == 0:
+            self.saver.save(self.session, f"./saved-model/model", global_step=i)
+
+        if train_interval != -1 and self.is_faae and i == train_interval // 2:
+            logger.info("###############    set_threshold at step:%d   ################", i)
+            self.change_threshold()
+
+        return False
 
 
 def get_load_step(model_file: List[str]):

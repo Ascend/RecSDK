@@ -1,0 +1,47 @@
+[
+  {
+    "op": "RelativeAttnBiasPos",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "rel_pos_bias",
+        "param_type": "required",
+        "format": [
+          "ND", "ND"
+        ],
+        "type": [
+          "fp16", "fp32"
+        ]
+      },
+      {
+        "name": "identity",
+        "param_type": "required",
+        "format": [
+          "ND", "ND"
+        ],
+        "type": [
+          "fp16", "fp32"
+        ]
+      }
+    ],
+    "output_desc": [
+      {
+        "name": "rab_pos",
+        "param_type": "required",
+        "format": [
+          "ND", "ND"
+        ],
+        "type": [
+          "fp16", "fp32"
+        ]
+      }
+    ],
+    "attr": [
+      {
+        "name": "past_valid_lens",
+        "param_type": "required",
+        "type": "list_int"
+      }
+    ]
+  }
+]

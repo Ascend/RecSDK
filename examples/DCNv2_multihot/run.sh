@@ -45,7 +45,7 @@ export HCCL_CONNECT_TIMEOUT=1200
 
 export DLRM_CRITEO_DATA_PATH=${dlrm_criteo_data_path}
 export PYTHONPATH=${mx_rec_package_path}:${so_path}:${fore_path}:$PYTHONPATH
-export LD_PRELOAD=/usr/lib64/libgomp.so.1
+export LD_PRELOAD=/usr/lib64/libgomp.so.1:/usr/lib64/libstdc++.so.6
 export LD_LIBRARY_PATH=${so_path}:/usr/local/lib:$LD_LIBRARY_PATH
 
 export ASCEND_DEVICE_ID=0

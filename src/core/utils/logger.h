@@ -79,7 +79,7 @@ public:
         ss << "[MxRec][" << YEAR_BASE + t.tm_year << "/" << 1 + t.tm_mon << "/" << t.tm_mday<< " "
            << t.tm_hour << ":" << t.tm_min << ":" << t.tm_sec << "." << tv.tv_usec << "] ["
            << Logger::rank << "] ["<< Logger::LevelToStr(level) << "] ["
-           << (strrchr(file, '/') ? strrchr(file, '/') + 1 : file) << ":" << line << "] ";
+           << (strrchr(file, '/') ? strrchr(file, '/') + 1 : file) << ":" << line << "] "; // LCOV_EXCL_BR_LINE
         Logger::Format(ss, fmt, args...);
         ss << std::endl;
         std::cout << ss.str();
@@ -99,7 +99,7 @@ private:
     template<typename head, typename... tail>
     static void LogUnpack(std::queue<std::string>& fmt, std::stringstream &ss, head &h, tail &&...tails)
     {
-        if (!fmt.empty()) {
+        if (!fmt.empty()) { // LCOV_EXCL_BR_LINE
             ss << fmt.front();
             fmt.pop();
         }

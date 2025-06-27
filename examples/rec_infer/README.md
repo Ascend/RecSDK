@@ -171,7 +171,7 @@ multistream_server.sh/client.sh
 
 # 使用切图工具
 本工具是基于cann的一个混合计算功能，开发的一个生成配置文件的工具；生成的配置文件中的in_out_pair可以控制具体下沉那些算子到npu，从而提升模型运行性能；
-混合计算功能参考链接（https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC3alpha002/apiref/fmkadptapi/tfmigr1_tfadapi_0020.html#ZH-CN_TOPIC_0000001981222466__section189920476161）
+混合计算功能参考链接: [https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/81RC1beta1/migration/tfmigr1/tfmigr1_000074.html](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/81RC1beta1/migration/tfmigr1/tfmigr1_000074.html)
 1. 进入目录：mxrec/tools/graph_partition,修改gen_config.py中的模型目录
 2. 执行 python3 gen_config.py，使用生成的test1.cfg文件启动模型，使用方法如下：
 > python3 gen_config.py --output_path . --tags_name serve --output_filename test1.cfg --model_path savedmodel_path<br>

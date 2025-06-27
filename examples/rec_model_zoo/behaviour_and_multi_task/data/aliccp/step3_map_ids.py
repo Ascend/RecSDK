@@ -40,19 +40,7 @@ def parse_data(file_name, write_name):
                     feat_len = len(line)
                     # common_feature_index|feat_num|feat_list
                     if feat_len == 3:
-                        sample_dict: dict[str, list[int]] = dict()
-                        feat_strs = line[2]
-                        for fstr in feat_strs.split("\x01"):
-                            filed, feat_val = fstr.split("\x02")
-                            feat, val = feat_val.split("\x03")
-                            if field_dict[filed] >= args.length:
-                                continue
-                            else:
-                                field_dict[filed] += 1
-                            if filed not in sample_dict:
-                                sample_dict[filed] = []
-                            feat_mapped = map_dict[filed][feat] + 1 if feat in map_dict[filed].keys() else 0
-                            sample_dict[filed].append(feat_mapped)
+                        sample_dict = process_feat_strs(line[2], map_dict, field_dict)
                         str_buffer = []
                         for k, v in sample_dict.items():
                             value_str = "#".join([str(num) for num in v])
@@ -61,24 +49,11 @@ def parse_data(file_name, write_name):
 
                     # sample_id|y|z|common_feature_index|feat_num|feat_list
                     elif feat_len == 6:
-                        # y=0 & z=1 filter
+                        # Skip samples where y is 0 and z is 1
                         if line[1] == "0" and line[2] == "1":
                             continue
-                        sample_dict: dict[str, list[int]] = dict()
-                        feat_strs = line[5]
-                        for fstr in feat_strs.split("\x01"):
-                            filed, feat_val = fstr.split("\x02")
-                            feat, val = feat_val.split("\x03")
-                            if field_dict[field] >= args.length:
-                                continue
-                            else:
-                                field_dict[field] += 1
-                            if filed not in sample_dict:
-                                sample_dict[filed] = []
-                            feat_mapped = map_dict[filed][feat] + 1 if feat in map_dict[filed].keys() else 0
-                            sample_dict[filed].append(feat_mapped)
+                        sample_dict = process_feat_strs(line[5], map_dict, field_dict)
                         str_buffer = []
-
                         for k, v in sample_dict.items():
                             value_str = "#".join([str(num) for num in v])
                             str_buffer.append(f"{k}:{value_str}")
@@ -87,6 +62,22 @@ def parse_data(file_name, write_name):
                         )
                 write_file.writelines(lines_to_write)
         write_file.close()
+
+
+def process_feat_strs(feat_strs: str, map_dict: dict[str, dict[str, int]],
+                      field_dict: dict) -> dict[str, list[int]]:
+    sample_dict = {}
+    for fstr in feat_strs.split("\x01"):
+        filed, feat_val = fstr.split("\x02")
+        feat, val = feat_val.split("\x03")
+        if field_dict[filed] >= args.length:
+            continue
+        field_dict[filed] += 1
+        if filed not in sample_dict:
+            sample_dict[filed] = []
+        feat_mapped = map_dict[filed][feat] + 1 if feat in map_dict[filed].keys() else 0
+        sample_dict[filed].append(feat_mapped)
+    return sample_dict
 
 
 if __name__ == "__main__":

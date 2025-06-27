@@ -60,7 +60,6 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 #endif
     uint64_t ub;
     ascnedPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ub);
-    ub = ub - RESERVER_UB_SIZE;
 
     OPS_LOG_E_IF_NULL("attrs", context->GetAttrs(), return ge::GRAPH_FAILED);
     const int32_t* outDim0 = context->GetAttrs()->GetAttrPointer<int32_t>(0);
@@ -68,13 +67,10 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     int64_t jaggedTotal = *outDim0 * outDim1;
     int64_t denseTotal = denseShape.GetDim(DIM0) * denseShape.GetDim(DIM1) * denseShape.GetDim(DIM2);
     
-    if (coreNum == 0) {
-        printf("[ERROR] aiv core num == 0!");
-        return ge::GRAPH_FAILED;
-    }
+    OPS_CHECK(coreNum == 0, OPS_LOG_E("[ERROR]", "aiv core num == 0"), return ge::GRAPH_FAILED);
     int singleCoreBatch = (offsetShape.GetDim(0) - 1) / coreNum;
     int left = (offsetShape.GetDim(0) - 1) % coreNum;
-    int singleLoopSize = ub / 2 / ALIGN_512 * ALIGN_512;
+    int singleLoopSize = (ub - RESERVER_UB_SIZE) / 2 / ALIGN_512 * ALIGN_512;
 
     tilingData.set_denseDim1(denseShape.GetDim(DIM1));
     tilingData.set_denseDim2(denseShape.GetDim(DIM2));

@@ -71,68 +71,27 @@ def invoke(
         if vbe:
             # create offsets with fixed batch size max_b
             # not efficient but for now we just need a functional implementation for CPU
-            max_b = vbe_metadata.max_B
-            offsets = torch.empty([num_offsets * max_b + 1], dtype=common_args.offsets.dtype,
-                                  device=common_args.offsets.device)
-            for t in range(num_offsets):
-                b_offsets = vbe_metadata.B_offsets
-                if not isinstance(b_offsets, torch.Tensor):
-                    raise TypeError("b_offsets must be a torch.Tensor")
-                begin = b_offsets[t]
-                end = b_offsets[t + 1]
-                offsets[t * max_b: t * max_b + end - begin] = common_args.offsets[begin: end]
-                offsets[t * max_b + end - begin: (t + 1) * max_b] = common_args.offsets[end]
-            offsets[-1] = common_args.offsets[-1]
+            parse_vbe_offset(common_args, num_offsets, vbe_metadata)
         else:
             offsets = common_args.offsets
         output = torch.ops.fbgemm.split_embedding_codegen_lookup_adagrad_function_cpu(
             # common_args
-            host_weights=common_args.host_weights,
-            weights_placements=common_args.weights_placements,
-            weights_offsets=common_args.weights_offsets,
-            D_offsets=common_args.D_offsets,
-            total_D=common_args.total_D,
-            max_D=common_args.max_D,
-            hash_size_cumsum=common_args.hash_size_cumsum,
-            total_hash_size_bits=common_args.total_hash_size_bits,
-            indices=indices,
-            offsets=common_args.offsets,
-            pooling_mode=common_args.pooling_mode,
-            indice_weights=common_args.indice_weights,
+            host_weights=common_args.host_weights, weights_placements=common_args.weights_placements,
+            weights_offsets=common_args.weights_offsets, D_offsets=common_args.D_offsets, total_D=common_args.total_D,
+            max_D=common_args.max_D, hash_size_cumsum=common_args.hash_size_cumsum,
+            total_hash_size_bits=common_args.total_hash_size_bits, indices=indices, offsets=common_args.offsets,
+            pooling_mode=common_args.pooling_mode, indice_weights=common_args.indice_weights,
             feature_requires_grad=common_args.feature_requires_grad,
             # optimizer_args
-            gradient_clipping=optimizer_args.gradient_clipping,
-            max_gradient=optimizer_args.max_gradient,
-            stochastic_rounding=optimizer_args.stochastic_rounding,
-            learning_rate=optimizer_args.learning_rate,
+            gradient_clipping=optimizer_args.gradient_clipping, max_gradient=optimizer_args.max_gradient,
+            stochastic_rounding=optimizer_args.stochastic_rounding, learning_rate=optimizer_args.learning_rate,
             eps=optimizer_args.eps,
             # momentum1
-            momentum1_host=momentum1.host,
-            momentum1_offsets=momentum1.offsets,
+            momentum1_host=momentum1.host, momentum1_offsets=momentum1.offsets,
             momentum1_placements=momentum1.placements,
         )
         if vbe:
-            output_new = torch.empty([vbe_metadata.output_size], dtype=output.dtype, device=output.device)
-            b_offsets_rank_per_feature = vbe_metadata.B_offsets_rank_per_feature
-            if not isinstance(b_offsets_rank_per_feature, torch.Tensor):
-                raise TypeError("b_offsets_rank_per_feature must be a torch.Tensor")
-            output_offsets_feature_rank = vbe_metadata.output_offsets_feature_rank
-            if not isinstance(output_offsets_feature_rank, torch.Tensor):
-                raise TypeError("output_offsets_feature_rank must be a torch.Tensor")
-            num_features = b_offsets_rank_per_feature.size(1) - 1
-            for r in range(num_features):
-                d_offset = 0
-                for t in range(num_offsets):
-                    o_begin = output_offsets_feature_rank[r * num_offsets + t].item()
-                    o_end = output_offsets_feature_rank[r * num_offsets + t + 1].item()
-                    dim = common_args.D_offsets[t + 1].item() - common_args.D_offsets[t].item()
-                    b_begin = b_offsets_rank_per_feature[t][r].item()
-                    b_end = b_offsets_rank_per_feature[t][r + 1].item()
-                    if o_end - o_begin != (b_end - b_begin) * dim:
-                        raise ValueError("Assertion failed: o_end - o_begin != (b_end - b_begin) * dim")
-                    output_new[o_begin: o_end] = output[b_begin: b_end, d_offset: d_offset + dim].flatten()
-                    d_offset += dim
-            return output_new
+            return parse_vbe_output_offset(common_args, num_offsets, output, vbe_metadata)
         else:
             return output
 
@@ -189,3 +148,42 @@ def invoke(
         apply_global_weight_decay=apply_global_weight_decay,
         gwd_lower_bound=gwd_lower_bound,
     )
+
+
+def parse_vbe_output_offset(common_args, num_offsets, output, vbe_metadata):
+    output_new = torch.empty([vbe_metadata.output_size], dtype=output.dtype, device=output.device)
+    b_offsets_rank_per_feature = vbe_metadata.B_offsets_rank_per_feature
+    if not isinstance(b_offsets_rank_per_feature, torch.Tensor):
+        raise TypeError("b_offsets_rank_per_feature must be a torch.Tensor")
+    output_offsets_feature_rank = vbe_metadata.output_offsets_feature_rank
+    if not isinstance(output_offsets_feature_rank, torch.Tensor):
+        raise TypeError("output_offsets_feature_rank must be a torch.Tensor")
+    num_features = b_offsets_rank_per_feature.size(1) - 1
+    for r in range(num_features):
+        d_offset = 0
+        for t in range(num_offsets):
+            o_begin = output_offsets_feature_rank[r * num_offsets + t].item()
+            o_end = output_offsets_feature_rank[r * num_offsets + t + 1].item()
+            dim = common_args.D_offsets[t + 1].item() - common_args.D_offsets[t].item()
+            b_begin = b_offsets_rank_per_feature[t][r].item()
+            b_end = b_offsets_rank_per_feature[t][r + 1].item()
+            if o_end - o_begin != (b_end - b_begin) * dim:
+                raise ValueError("Assertion failed: o_end - o_begin != (b_end - b_begin) * dim")
+            output_new[o_begin: o_end] = output[b_begin: b_end, d_offset: d_offset + dim].flatten()
+            d_offset += dim
+    return output_new
+
+
+def parse_vbe_offset(common_args, num_offsets, vbe_metadata):
+    max_b = vbe_metadata.max_B
+    offsets = torch.empty([num_offsets * max_b + 1], dtype=common_args.offsets.dtype,
+                          device=common_args.offsets.device)
+    for t in range(num_offsets):
+        b_offsets = vbe_metadata.B_offsets
+        if not isinstance(b_offsets, torch.Tensor):
+            raise TypeError("b_offsets must be a torch.Tensor")
+        begin = b_offsets[t]
+        end = b_offsets[t + 1]
+        offsets[t * max_b: t * max_b + end - begin] = common_args.offsets[begin: end]
+        offsets[t * max_b + end - begin: (t + 1) * max_b] = common_args.offsets[end]
+    offsets[-1] = common_args.offsets[-1]

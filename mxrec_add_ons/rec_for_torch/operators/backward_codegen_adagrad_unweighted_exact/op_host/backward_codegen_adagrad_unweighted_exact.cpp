@@ -76,6 +76,7 @@ static ge::graphStatus UniqueTilingFunc(gert::TilingContext* context,
     auto uniqueInverse = context->GetOptionalInputTensor(UNIQUE_INVERSE_INDEX);
     OPS_LOG_E_IF_NULL("uniqueInverse", uniqueInverse, return ge::GRAPH_FAILED);
 
+    OPS_LOG_E_IF_NULL("uniqueHashSizeShape", context->GetInputShape(UNIQUE_HASH_SIZE_INDEX), return ge::GRAPH_FAILED);
     int64_t uniqueHashDim0 = context->GetInputShape(UNIQUE_HASH_SIZE_INDEX)->GetStorageShape().GetDim(0);
     tilingData.set_uniqueHashDim0(uniqueHashDim0);
 
@@ -88,6 +89,13 @@ static ge::graphStatus NormalAdamTilingFunc(gert::TilingContext* context,
     float beta1 = *context->GetAttrs()->GetFloat(BETA1_INDEX);
     float beta2 = *context->GetAttrs()->GetFloat(BETA2_INDEX);
     int64_t iter = *context->GetAttrs()->GetInt(ITER_INDEX);
+
+    OPS_CHECK(beta1 == 1.0,
+              OPS_LOG_E("Tiling Debug", "beta1 can not be 1.0."),
+              return ge::GRAPH_FAILED);
+    OPS_CHECK(beta2 == 1.0,
+              OPS_LOG_E("Tiling Debug", "beta2 can not be 1.0."),
+              return ge::GRAPH_FAILED);
 
     float _beta1 = 1 / (1 - pow(beta1, iter));
     float _beta2 = 1 / (1 - pow(beta2, iter));
@@ -104,18 +112,24 @@ static ge::graphStatus NormalAdamTilingFunc(gert::TilingContext* context,
 static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
                                        BackwardCodegenAdagradUnweightedExactTilingData& tilingData)
 {
+    OPS_LOG_E_IF_NULL("gradOutputIndexShape", context->GetInputShape(GRAD_OUTPUT_INDEX), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("devWeightsIndexShape", context->GetInputShape(DEV_WEIGHTS_INDEX), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("weightsOffsetsIndexShape", context->GetInputShape(WEIGHTS_OFFSETS_INDEX),
+              return ge::GRAPH_FAILED);
+
     int64_t gradOutputDim0 = context->GetInputShape(GRAD_OUTPUT_INDEX)->GetStorageShape().GetDim(0);
     int64_t gradOutputDim1 = context->GetInputShape(GRAD_OUTPUT_INDEX)->GetStorageShape().GetDim(1);
     int64_t devWeightsDim0 = context->GetInputShape(DEV_WEIGHTS_INDEX)->GetStorageShape().GetDim(0);
     int64_t weightsOffsetsDim0 = context->GetInputShape(WEIGHTS_OFFSETS_INDEX)->GetStorageShape().GetDim(0);
-    OPS_CHECK(weightsOffsetsDim0 == 0,
-              OPS_LOG_E("Tiling Debug", "weightsOffsets shape is invalid."),
+    OPS_CHECK(weightsOffsetsDim0 == 0, OPS_LOG_E("Tiling Debug", "weightsOffsets shape is invalid."),
               return ge::GRAPH_FAILED);
 
+    OPS_LOG_E_IF_NULL("dOffsetsIndexShape", context->GetInputShape(D_OFFSETS_INDEX), return ge::GRAPH_FAILED);
     int64_t dOffsetsDim0 = context->GetInputShape(D_OFFSETS_INDEX)->GetStorageShape().GetDim(0);
-    OPS_CHECK(dOffsetsDim0 <= 1,
-              OPS_LOG_E("Tiling Debug", "dOffsets shape is invalid."),
-              return ge::GRAPH_FAILED);
+    OPS_CHECK(dOffsetsDim0 <= 1, OPS_LOG_E("Tiling Debug", "dOffsets shape is invalid."), return ge::GRAPH_FAILED);
+
+    OPS_LOG_E_IF_NULL("indicesIndexShape", context->GetInputShape(INDICES_INDEX), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("offsetsIndexShape", context->GetInputShape(OFFSETS_INDEX), return ge::GRAPH_FAILED);
     int64_t indicesDim0 = context->GetInputShape(INDICES_INDEX)->GetStorageShape().GetDim(0);
     int64_t offsetsDim0 = context->GetInputShape(OFFSETS_INDEX)->GetStorageShape().GetDim(0);
 
@@ -129,6 +143,7 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
         tilingData.set_enableHash(0);
     } else {
         tilingData.set_enableHash(1);
+        OPS_LOG_E_IF_NULL("hashIndicesIndexShape", context->GetInputShape(HASH_INDICES_INDEX), return ge::GRAPH_FAILED);
         indicesDim0 = context->GetInputShape(HASH_INDICES_INDEX)->GetStorageShape().GetDim(0);
     }
     ge::graphStatus ret = ge::GRAPH_SUCCESS;
@@ -137,6 +152,11 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
     auto uniqueId = context->GetOptionalInputTensor(UNIQUE_ID_INDEX);
     if (optimType == SGD) {
         context->SetTilingKey(NORMAL_SGD);
+    } else if (optimType == ADAM) {
+        ret = NormalAdamTilingFunc(context, tilingData);
+        context->SetTilingKey(NORMAL_ADAM);
+    } else if (optimType == ADAGRAD) {
+        context->SetTilingKey(NORMAL_ADAGRAD);
     } else {
         OPS_LOG_E("Tiling Debug", "OptimType shape is not supported.");
         return ge::GRAPH_FAILED;
@@ -162,6 +182,7 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
 
 static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
+    OPS_CHECK_PTR_NULL(context, return ge::GRAPH_FAILED)
     BackwardCodegenAdagradUnweightedExactTilingData tiling;
 
     int64_t total_hash_size_bits = *context->GetAttrs()->GetInt(TOTAL_HASH_SIZE_BITS);
@@ -180,9 +201,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     // Tiling
     size_t coreNum = ascendPlatform.GetCoreNumAiv();
-    OPS_CHECK(coreNum == 0,
-              OPS_LOG_E("Tiling Debug", "Core num is 0."),
-              return ge::GRAPH_FAILED);
+    OPS_CHECK(coreNum == 0, OPS_LOG_E("Tiling Debug", "Core num is 0."), return ge::GRAPH_FAILED);
 
     int64_t splitBaseLen = tiling.get_indicesDim0() / coreNum;
     int64_t tailSplitIndex = tiling.get_indicesDim0() % coreNum;

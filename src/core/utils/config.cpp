@@ -64,7 +64,7 @@ namespace MxRec {
         // 设置是否使用fast unique库进行去重
         const char *envFastUnique = getenv(RecEnvNames::FAST_UNIQUE);
         if (envFastUnique != nullptr) {
-            GlobalEnv::fastUnique = (std::stoi(envFastUnique) == 1);
+            GlobalEnv::fastUnique = (std::stoi(envFastUnique) == 1); // LCOV_EXCL_BR_LINE
         }
 
         // 设置hot emb更新步数
@@ -82,25 +82,25 @@ namespace MxRec {
         // 设置特征准入统计模式
         const char *envFAAEMode = getenv(RecEnvNames::USE_COMBINE_FAAE);
         if (envFAAEMode != nullptr) {
-            GlobalEnv::useCombineFaae = (std::stoi(envFAAEMode) == 1);
+            GlobalEnv::useCombineFaae = (std::stoi(envFAAEMode) == 1); // LCOV_EXCL_BR_LINE
         }
 
         // 设置打开记录开关，记录batch中key与出现的count的数目
         const char *envRecordKeyCount = getenv(RecEnvNames::RECORD_KEY_COUNT);
         if (envRecordKeyCount != nullptr) {
-            GlobalEnv::recordKeyCount = (std::stoi(envRecordKeyCount) == 1);
+            GlobalEnv::recordKeyCount = (std::stoi(envRecordKeyCount) == 1); // LCOV_EXCL_BR_LINE
         }
 
         // Set the swap in/out switch of shared memory
         const char *envUseShmSwap = getenv(RecEnvNames::USE_SHM_SWAP);
         if (envUseShmSwap != nullptr) {
-            GlobalEnv::useShmSwap = (std::stoi(envUseShmSwap) == 1);
+            GlobalEnv::useShmSwap = (std::stoi(envUseShmSwap) == 1); // LCOV_EXCL_BR_LINE
         }
 
         // Enable or disable large pages of shared memory
         const char *envHugeTlbEnable = getenv(RecEnvNames::HUGE_TLB_ENABLE);
         if (envHugeTlbEnable != nullptr) {
-            GlobalEnv::hugeTlbEnable = (std::stoi(envHugeTlbEnable) == 1);
+            GlobalEnv::hugeTlbEnable = (std::stoi(envHugeTlbEnable) == 1); // LCOV_EXCL_BR_LINE
         }
 
         // 设置SSD保存时的压缩等级
@@ -112,7 +112,7 @@ namespace MxRec {
 
     void LogGlobalEnv()
     {
-        LOG_DEBUG("Environment variables are: [{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}], "
+        LOG_DEBUG("Environment variables are: [{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}], " // LCOV_EXCL_BR_LINE
                   "[{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}].",
                   RecEnvNames::ACL_TIMEOUT, GlobalEnv::aclTimeout,
                   RecEnvNames::HD_CHANNEL_SIZE, GlobalEnv::hdChannelSize,

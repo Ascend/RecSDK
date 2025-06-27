@@ -25,13 +25,14 @@ import numpy as np
 import tensorflow as tf
 from mpi4py import MPI
 from tensorflow.core.protobuf.rewriter_config_pb2 import RewriterConfig
+# must load before mxrec_pybind
+ops_so = tf.load_op_library("/usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec/libasc/libasc_ops.so")
 
 import mxrec_pybind
 
 
 tf.compat.v1.disable_eager_execution()
 logging.basicConfig(level=logging.DEBUG)
-ops_so = tf.load_op_library("/usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec/libasc/libasc_ops.so")
 
 
 def set_ascend_env(rank, rank_size, local_rank_size, file=None, dev_id=-1, dev_index=1):

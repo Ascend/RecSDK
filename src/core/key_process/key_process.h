@@ -240,6 +240,10 @@ GTEST_PRIVATE :
 
     void KeyProcessTaskWithFastUnique(int channel, int threadId);
 
+    void PushResultBasedOnMemoryMode(unique_ptr <EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors,
+                                     int channel, unique_ptr<vector<Tensor>> keyCountTensors,
+                                     std::vector<emb_key_t>& lookupKeys);
+
     bool KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel, int threadId);
 
     bool KeyProcessTaskHelperForDp(unique_ptr<EmbBatchT>& batch, int channel, int threadId);

@@ -5,27 +5,22 @@
 import logging
 import random
 import sysconfig
-
 from collections import defaultdict
 from dataclasses import dataclass
 
 import pytest
 import torch
-
 from fbgemm_gpu.split_embedding_configs import EmbOptimType
 from fbgemm_gpu.split_table_batched_embeddings_ops_common import (
     EmbeddingLocation,
     PoolingMode,
 )
-from fbgemm_gpu.split_table_batched_embeddings_ops_training import (
-    SplitTableBatchedEmbeddingBagsCodegen,
-    ComputeDevice,
-)
-
+from fbgemm_gpu.split_table_batched_embeddings_ops_training import SplitTableBatchedEmbeddingBagsCodegen
 from hybrid_torchrec.distributed.batched_embedding_kernel import HybridSplitTableBatchedEmbeddingBagsCodegen
 from torch.optim import Adam, Adagrad, SGD
+
 import torchrec
-from torchrec import JaggedTensor, KeyedJaggedTensor, PoolingType
+from torchrec import JaggedTensor, KeyedJaggedTensor, PoolingType, ComputeDevice
 
 logging.getLogger().setLevel(logging.INFO)
 DEVICEID = "npu:0"
@@ -51,7 +46,7 @@ OPTIMIZER_PARAM = {
 
 @dataclass
 class LookupParams:
-    tables: list[int]
+    tables: list[list[int]]
     mutile_hots: list[int]
     batch_size: int
     pooling_mode: PoolingMode
@@ -298,7 +293,7 @@ def execute(params):
 @pytest.mark.parametrize("unique", [False])
 @pytest.mark.parametrize("feature_map", [[0, 0, 1], [0, 1, 1]])
 @pytest.mark.parametrize("pooling_model", [PoolingType.SUM, PoolingType.MEAN, PoolingType.NONE])
-@pytest.mark.parametrize("optim", [SGD])
+@pytest.mark.parametrize("optim", [SGD, Adagrad, Adam])
 def test_lookup_two_tables(tables, mutile_hots, batch_size, pooling_model, unique, optim, feature_map):
     params = LookupParams(tables, mutile_hots, batch_size, pooling_model, unique, optim, feature_map)
     execute(params)
@@ -309,7 +304,7 @@ def test_lookup_two_tables(tables, mutile_hots, batch_size, pooling_model, uniqu
 @pytest.mark.parametrize("batch_size", [2341, 1])
 @pytest.mark.parametrize("unique", [False])
 @pytest.mark.parametrize("pooling_model", [PoolingType.SUM, PoolingType.MEAN, PoolingType.NONE])
-@pytest.mark.parametrize("optim", [SGD])
+@pytest.mark.parametrize("optim", [SGD, Adagrad, Adam])
 def test_lookup_backward_one_table(tables, mutile_hots, batch_size, pooling_model, unique, optim):
     params = LookupParams(tables, mutile_hots, batch_size, pooling_model, unique, optim, None)
     execute(params)
@@ -317,7 +312,7 @@ def test_lookup_backward_one_table(tables, mutile_hots, batch_size, pooling_mode
 
 @pytest.mark.parametrize("unique", [False])
 @pytest.mark.parametrize("pooling_model", [PoolingType.SUM, PoolingType.MEAN, PoolingType.NONE])
-@pytest.mark.parametrize("optim", [SGD])
+@pytest.mark.parametrize("optim", [SGD, Adagrad, Adam])
 def test_lookup_multi_tables(pooling_model, unique, optim):
     tables, mutile_hots, batch_size = generate_tables(pooling_model)
     params = LookupParams(tables, mutile_hots, batch_size, pooling_model, unique, optim, None)

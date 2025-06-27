@@ -1,0 +1,237 @@
+[
+    {
+        "op": "HstuDenseBackwardFuxi",
+        "language": "cpp",
+        "input_desc": [
+            {
+                "name": "grad",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp32",
+                    "fp16",
+                    "bf16"
+                ]
+            },
+            {
+                "name": "q",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp32",
+                    "fp16",
+                    "bf16"
+                ]
+            },
+            {
+                "name": "k",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp32",
+                    "fp16",
+                    "bf16"
+                ]
+            },
+            {
+                "name": "v",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp32",
+                    "fp16",
+                    "bf16"
+                ]
+            },
+            {
+                "name": "mask",
+                "param_type": "optional",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp32",
+                    "fp16",
+                    "bf16"
+                ]
+            },
+            {
+                "name": "bias_position",
+                "param_type": "optional",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp32",
+                    "fp16",
+                    "bf16"
+                ]
+            },
+            {
+                "name": "bias_timestamp",
+                "param_type": "optional",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp32",
+                    "fp16",
+                    "bf16"
+                ]
+            },
+            {
+                "name": "grad_position",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp32",
+                    "fp16",
+                    "bf16"
+                ]
+            },
+            {
+                "name": "grad_timestamp",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp32",
+                    "fp16",
+                    "bf16"
+                ]
+            }
+        ],
+        "output_desc": [
+            {
+                "name": "q_grad",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp32",
+                    "fp16",
+                    "bf16"
+                ]
+            },
+            {
+                "name": "k_grad",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp32",
+                    "fp16",
+                    "bf16"
+                ]
+            },
+            {
+                "name": "v_grad",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp32",
+                    "fp16",
+                    "bf16"
+                ]
+            },
+            {
+                "name": "bias_position_grad",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp32",
+                    "fp16",
+                    "bf16"
+                ]
+            },
+            {
+                "name": "bias_timestamp_grad",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp32",
+                    "fp16",
+                    "bf16"
+                ]
+            }
+        ],
+        "attr": [
+            {
+                "name": "layout",
+                "param_type": "required",
+                "type": "string",
+                "default_value": "normal"
+            },
+            {
+                "name": "mask_type",
+                "param_type": "required",
+                "type": "int",
+                "default_value": 0
+            },
+            {
+                "name": "max_seq_len",
+                "param_type": "required",
+                "type": "int",
+                "default_value": 0
+            },
+            {
+                "name": "silu_scale",
+                "param_type": "required",
+                "type": "float",
+                "default_value": 0.0
+            },
+            {
+                "name": "seq_offsets",
+                "param_type": "required",
+                "type": "list_int"
+            }
+        ]
+    }
+]

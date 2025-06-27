@@ -59,17 +59,8 @@ public:
     __aicore__ inline SplitEmbeddingCodegenForwardUnweightedKernel(Args args)
     {
         GET_TILING_DATA(tilingData, args.tiling);
-        // ADDR
-        devWeights = args.devWeights;
-        weightsPlacements = args.weightsPlacements;
-        weightsOffsets = args.weightsOffsets;
-        dOffsets = args.dOffsets;
-        indices = args.indices;
-        offsets = args.offsets;
-        hashIndices = args.hashIndices;
-        out = args.out;
-        workspace = args.workspace;
-
+       
+        InitAddr(args);
         // Shape
         devWeightsDim0 = tilingData.devWeightsDim0;
         weightsOffsetsDim0 = tilingData.weightsOffsetsDim0;
@@ -119,10 +110,27 @@ public:
 
         outGT.SetGlobalBuffer((__gm__ float*)out, outDim0 * outDim1);
 
+        assert(offsetGT.GetValue(offsetsDim0 - 1) == indicesDim0,
+               "The last element in offsets %d must be equal to indices size %d",
+               offsetGT.GetValue(offsetsDim0 - 1), indicesDim0);
         // Init pipe
         pipe.InitBuffer(queIn, 1, blockLen * sizeof(float));
         pipe.InitBuffer(queOut, 1, blockLen * sizeof(float));
         pipe.InitBuffer(queIndices, 1, MAX_INDICS_ONE_BLOCK * sizeof(int64_t));
+    }
+
+    __aicore__ inline void InitAddr(const Args &args)
+    {
+        // ADDR
+        devWeights = args.devWeights;
+        weightsPlacements = args.weightsPlacements;
+        weightsOffsets = args.weightsOffsets;
+        dOffsets = args.dOffsets;
+        indices = args.indices;
+        offsets = args.offsets;
+        hashIndices = args.hashIndices;
+        out = args.out;
+        workspace = args.workspace;
     }
 
     template <typename T>
