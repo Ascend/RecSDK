@@ -55,20 +55,6 @@ public:
         qkMatmul.template IterateAll<false>(this->tempGtsVT[out], 0, false, true);
     }
 
-    // __aicore__ inline void DoQGradMatmul(int64_t taskId)
-    // {
-    //     int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
-    //     int64_t midAccumIdx = taskInfo[curTaskId].accumId % MID_USE_TIMES;
-    //     int64_t outOffset = midAccumIdx * blockHeight * headDim;
-
-    //     bool isNew = taskInfo[curTaskId].colId == 0;
-
-    //     qGradMatmul.SetTail(taskInfo[curTaskId].rowLine, headDim, taskInfo[curTaskId].colLine);
-    //     DoQGradMatmulImpl(taskInfo[curTaskId].kGradLeftOffset,
-    //                       taskInfo[curTaskId].vGradRightOffset,
-    //                       outOffset, isNew);
-    // }
-
     __aicore__ inline void DoQGradMatmulImpl(int64_t left, int64_t right, int64_t out, bool isNew)
     {
         qGradMatmul.SetTensorA(this->attnBiasGrad[left]);
@@ -79,25 +65,6 @@ public:
             qGradMatmul.template IterateAll<false>(this->kGradAccumTemp[out], 1, false, true);
         }
     }
-
-    // __aicore__ inline void DoKGradMatmul(int64_t taskId)
-    // {
-    //     int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
-    //     int64_t midAccumIdx = taskInfo[curTaskId].accumId % MID_USE_TIMES;
-    //     int64_t outOffset = midAccumIdx * blockHeight * headDim;
-
-    //     bool isNew = false;
-    //     if (IfMask(maskType, MaskType::MASK_TRIL)) {
-    //         isNew = taskInfo[curTaskId].rowId == taskInfo[curTaskId].colId;
-    //     } else {
-    //         isNew = taskInfo[curTaskId].rowId == 0;
-    //     }
-
-    //     kGradMatmul.SetTail(taskInfo[curTaskId].colLine, headDim, taskInfo[curTaskId].rowLine);
-    //     DoKGradMatmulImpl(taskInfo[curTaskId].kGradLeftOffset,
-    //                       taskInfo[curTaskId].vGradRightOffset,
-    //                       outOffset, isNew);
-    // }
 
     __aicore__ inline void DoKGradMatmulImpl(int64_t left, int64_t right, int64_t out, bool isNew)
     {
