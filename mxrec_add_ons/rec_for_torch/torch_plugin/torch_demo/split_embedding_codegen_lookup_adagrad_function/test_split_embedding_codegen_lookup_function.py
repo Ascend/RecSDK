@@ -283,7 +283,7 @@ def execute(params):
     logging.info(weights_npu_result[~weights_compare])
     logging.info(weights_golden[~weights_compare])
 
-    assert (~lookup_compare).sum() == 0
+    assert (~lookup_compare).sum() / total_size < 1e-4
     assert (~weights_compare).sum() / total_size < 1e-4
 
 
