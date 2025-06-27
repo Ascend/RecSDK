@@ -124,7 +124,7 @@ public:
         CreateMask();
     }
 
-  __aicore__ inline void DuplicateInput(LocalTensor<qType> &input, int32_t validNums)
+  __aicore__ inline void DuplicateInput(LocalTensor<qType> &input, int64_t thisLen, int32_t validNums)
     {
         Duplicate<qType>(input, 0, thisLen);
         for (int i = 0; i < thisLen / blockHeight; i++) {
@@ -152,7 +152,7 @@ public:
                 int32_t validNums = 1 + baseOffset / blockHeight;
 
                 LocalTensor<qType> input = queueVecScoreMask.AllocTensor<qType>();
-                DuplicateInput(input, validNums);
+                DuplicateInput(input, thisLen, validNums);
                 queueVecScoreMask.EnQue(input);
 
                 LocalTensor<qType> newInput = queueVecScoreMask.DeQue<qType>();
