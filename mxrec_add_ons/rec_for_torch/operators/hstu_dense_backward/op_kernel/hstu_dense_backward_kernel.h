@@ -20,32 +20,17 @@ See the License for the specific language governing permissions and
 
 namespace HstuDenseBackward {
 
-struct BlockInfo {
-    int64_t taskId;
-    int64_t batchId;
-    int64_t headId;
-    int64_t rowId;
-    int64_t colId;
-    int64_t accumId;
-    int64_t qkLeftOffset;
-    int64_t qkRightOffset;
-    int64_t kGradLeftOffset;
-    int64_t vGradRightOffset;
-    int64_t rowLine;
-    int64_t colLine;
-};
-
 template <typename qType>
-class HstuDenseBackwardKernel : public HstuDenseBackwardKernelInterface {
+class HstuDenseBackwardKernel : public HstuDenseBackwardKernelInterface<qType> {
 public:
     __aicore__ inline HstuDenseBackwardKernel() {}
 
     __aicore__ inline void Compute(Args &args)
     {
         GET_TILING_DATA(tilingData, args.tiling);
-        REGIST_MATMUL_OBJ(&this->pipe, GetSysWorkSpacePtr(), this->qkMatmul, &tilingData.->qkMatmul, this->qGradMatmul,
-                          &tilingData.->qGradMatmul, this->kGradMatmul, &tilingData.->kGradMatmul, this->vGradMatmul,
-                          &tilingData.->vGradMatmul);
+        REGIST_MATMUL_OBJ(&this->pipe, GetSysWorkSpacePtr(), this->qkMatmul, &tilingData.qkMatmul, this->qGradMatmul,
+                          &tilingData.qGradMatmul, this->kGradMatmul, &tilingData.kGradMatmul, this->vGradMatmul,
+                          &tilingData.vGradMatmul);
         uint64_t tilingPtr = reinterpret_cast<uint64_t>(args.tiling);
         this->qkMatmul.SetUserDefInfo(tilingPtr);
         this->qGradMatmul.SetUserDefInfo(tilingPtr);
