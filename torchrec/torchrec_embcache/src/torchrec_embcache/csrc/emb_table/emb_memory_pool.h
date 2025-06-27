@@ -50,6 +50,10 @@ public:
         }
     }
 
+    EmbMemoryPool(const EmbMemoryPool& pool) = delete;
+
+    EmbMemoryPool& operator=(const EmbMemoryPool& pool) = delete;
+
     ~EmbMemoryPool()
     {
         {

@@ -29,7 +29,7 @@ BeforePutFuncState EmbMemoryPool::GetNewValueToBeInserted(uint64_t& value, uint3
         if (BufferBin.pop(value)) {
             producerCv.notify_one();
             return BeforePutFuncState::BEFORE_SUCCESS;
-        };
+        }
         producerCv.notify_one();
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
@@ -87,9 +87,11 @@ void EmbMemoryPool::Produce()
     // init embedding
     char* initLinear = getenv("INIT_LINEAR");
     if (initLinear) {
-        Initializer::GenLinear((float*)newAddr, embConfig.embDim, embConfig.weightInitMin, embConfig.weightInitMax);
+        Initializer::GenLinear(reinterpret_cast<float*>(newAddr), embConfig.embDim, embConfig.weightInitMin,
+                               embConfig.weightInitMax);
     } else {
-        Initializer::GenUniform((float*)newAddr, embConfig.embDim, embConfig.weightInitMin, embConfig.weightInitMax);
+        Initializer::GenUniform(reinterpret_cast<float*>(newAddr), embConfig.embDim, embConfig.weightInitMin,
+                                embConfig.weightInitMax);
     }
 
     // init optimizer
