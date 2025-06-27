@@ -62,6 +62,38 @@ struct Args {
     GM_ADDR tiling;
 };
 
+struct BlockInfo {
+    int64_t taskId;
+    int64_t batchId;
+    int64_t headId;
+    int64_t rowId;
+    int64_t colId;
+    int64_t accumId;
+    int64_t qkLeftOffset;
+    int64_t qkRightOffset;
+    int64_t kGradLeftOffset;
+    int64_t vGradRightOffset;
+    int64_t rowLine;
+    int64_t colLine;
+};
+
+struct JaggedTaskInfo {
+    int64_t taskId;        // 基本块任务id，参与临时存储块的偏移计算
+    int64_t batchId;       // 基本块batch id
+    int64_t headId;        // 基本块head id
+    int64_t rowId;         // 基本块在当前qk矩阵中的行id，基本单位为blockHeight
+    int64_t colId;         // 基本块在当前qk急诊中的列id，基本单位为blockHeight
+    int64_t accumId;       // 基本块累加id，用来获取q/k/v梯度的累加位置
+    int64_t blockLimit;    // 基本块在当前batch_head下的最大block偏移，超过后需要切换block
+    int64_t curSeqLen;     // 当前计算块的序列长度
+    int64_t qkLeftOffset;  // 基本块qk/gv乘法的左矩阵内存偏移
+    int64_t qkRightOffset; // 基本块qk/gv乘法的右矩阵内存偏移
+    int64_t kGradLeftOffset; // 基本块q/k梯度计算的左矩阵内存偏移，v的左矩阵在缓存中，单独计算
+    int64_t vGradRightOffset; // 基本块q/k/v梯度计算的右矩阵内存偏移
+    int64_t rowLine;          // 基本块需要计算的行数
+    int64_t colLine;          // 基本块需要计算的列数
+};
+
 __aicore__ inline bool IfMask(const int32_t &maskType, MaskType maskTypeEnum)
 {
     return static_cast<int32_t>(maskTypeEnum) == maskType;

@@ -15,31 +15,14 @@ See the License for the specific language governing permissions and
 #ifndef HSTU_DENSE_BACKWARD_JAGGED_KERNEL_H
 #define HSTU_DENSE_BACKWARD_JAGGED_KERNEL_H
 
-#include "hstu_dense_backward_kernel.h"
+#include "hstu_dense_backward_kernel_matmul_fuxi.h"
 
 namespace HstuDenseBackwardFuxi {
 
 constexpr int64_t PREV_TASK_OFFSET = 1;
 constexpr int64_t TWO_PREV_TASK_OFFSET = 2;
 
-struct JaggedTaskInfo {
-    int64_t taskId;        // 基本块任务id，参与临时存储块的偏移计算
-    int64_t batchId;       // 基本块batch id
-    int64_t headId;        // 基本块head id
-    int64_t rowId;         // 基本块在当前qk矩阵中的行id，基本单位为blockHeight
-    int64_t colId;         // 基本块在当前qk急诊中的列id，基本单位为blockHeight
-    int64_t accumId;       // 基本块累加id，用来获取q/k/v梯度的累加位置
-    int64_t blockLimit;    // 基本块在当前batch_head下的最大block偏移，超过后需要切换block
-    int64_t curSeqLen;     // 当前计算块的序列长度
-    int64_t qkLeftOffset;  // 基本块qk/gv乘法的左矩阵内存偏移
-    int64_t qkRightOffset; // 基本块qk/gv乘法的右矩阵内存偏移
-    int64_t kGradLeftOffset; // 基本块q/k梯度计算的左矩阵内存偏移，v的左矩阵在缓存中，单独计算
-    int64_t vGradRightOffset; // 基本块q/k/v梯度计算的右矩阵内存偏移
-    int64_t rowLine;          // 基本块需要计算的行数
-    int64_t colLine;          // 基本块需要计算的列数
-};
-
-template <typename qType> class HstuDenseBackwardJaggedKernelFuxi : public HstuDenseBackwardKernelFuxi<qType> {
+template <typename qType> class HstuDenseBackwardJaggedKernelFuxi : public HstuDenseBackwardKernelMatmulFuxi<qType> {
 public:
     __aicore__ inline HstuDenseBackwardJaggedKernelFuxi() {}
 
@@ -84,11 +67,7 @@ public:
         uint32_t curSeqLen = 0;
         uint32_t curBatchStartBlock = 0;
         int64_t startBlock = 0;
-        if (isCol) {
-            startBlock = startColBlock;
-        } else {
-            startBlock = startRowBlock;
-        }
+        startBlock = isCol ? startColBlock : startRowBlock;
 
         while (batchId < MAX_BATCH_SIZE) {
             curSeqLen = backwardTilingData->seqOffset[batchId + 1] - backwardTilingData->seqOffset[batchId];
@@ -154,9 +133,8 @@ public:
             computeTaskInfo[curTask].headId = 0;
             computeTaskInfo[curTask].batchId += 1;
 
-            uint32_t curSeqLen =
-                backwardTilingData->seqOffset[computeTaskInfo[curTask].batchId + 1] -
-                backwardTilingData->seqOffset[computeTaskInfo[curTask].batchId];
+            uint32_t curSeqLen = backwardTilingData->seqOffset[computeTaskInfo[curTask].batchId + 1] -
+                                 backwardTilingData->seqOffset[computeTaskInfo[curTask].batchId];
             auto curHeadBlock = (curSeqLen + this->blockHeight - 1) / this->blockHeight;
 
             computeTaskInfo[curTask].blockLimit = curHeadBlock;
@@ -231,8 +209,7 @@ public:
 
         this->qkMatmul.SetTail(computeTaskInfo[curTaskId].rowLine, computeTaskInfo[curTaskId].colLine, this->headDim);
         this->DoQKMatmulImpl(computeTaskInfo[curTaskId].qkLeftOffset,
-                             computeTaskInfo[curTaskId].qkRightOffset,
-                             outOffset);
+                             computeTaskInfo[curTaskId].qkRightOffset, outOffset);
     }
 
     __aicore__ inline void DoJaggedGVMatmul(int64_t taskId)
@@ -243,8 +220,7 @@ public:
 
         this->qkMatmul.SetTail(computeTaskInfo[curTaskId].rowLine, computeTaskInfo[curTaskId].colLine, this->headDim);
         this->DoGVMatmulImpl(computeTaskInfo[curTaskId].qkLeftOffset,
-                             computeTaskInfo[curTaskId].qkRightOffset,
-                             outOffset);
+                             computeTaskInfo[curTaskId].qkRightOffset, outOffset);
     }
 
     __aicore__ inline void DoJaggedGpVMatmul(int64_t taskId)
@@ -254,8 +230,7 @@ public:
         int64_t outOffset = midResultIdx * this->blockHeight * this->blockHeight;
         this->qkMatmul.SetTail(computeTaskInfo[curTaskId].rowLine, computeTaskInfo[curTaskId].colLine, this->headDim);
         this->DoGpVMatmulImpl(computeTaskInfo[curTaskId].qkLeftOffset,
-                              computeTaskInfo[curTaskId].qkRightOffset,
-                              outOffset);
+                              computeTaskInfo[curTaskId].qkRightOffset, outOffset);
     }
 
     __aicore__ inline void DoJaggedGtVMatmul(int64_t taskId)
@@ -265,8 +240,7 @@ public:
         int64_t outOffset = midResultIdx * this->blockHeight * this->blockHeight;
         this->qkMatmul.SetTail(computeTaskInfo[curTaskId].rowLine, computeTaskInfo[curTaskId].colLine, this->headDim);
         this->DoGtVMatmulImpl(computeTaskInfo[curTaskId].qkLeftOffset,
-                              computeTaskInfo[curTaskId].qkRightOffset,
-                              outOffset);
+                              computeTaskInfo[curTaskId].qkRightOffset, outOffset);
     }
 
     __aicore__ inline void DoJaggedQGradMatmul(int64_t taskId)
@@ -280,8 +254,7 @@ public:
         this->qGradMatmul.SetTail(
             computeTaskInfo[curTaskId].rowLine, this->headDim, computeTaskInfo[curTaskId].colLine);
         this->DoQGradMatmulImpl(computeTaskInfo[curTaskId].kGradLeftOffset,
-                                computeTaskInfo[curTaskId].vGradRightOffset,
-                                outOffset, isNew);
+                                computeTaskInfo[curTaskId].vGradRightOffset, outOffset, isNew);
     }
 
     __aicore__ inline void DoJaggedKGradMatmul(int64_t taskId)
@@ -290,18 +263,13 @@ public:
         int64_t midAccumIdx = computeTaskInfo[curTaskId].accumId % MID_USE_TIMES;
         int64_t outOffset = midAccumIdx * this->blockHeight * this->headDim;
 
-        bool isNew = false;
-        if (IfMask(this->maskType, MaskType::MASK_TRIL)) {
-            isNew = computeTaskInfo[curTaskId].rowId == computeTaskInfo[curTaskId].colId;
-        } else {
-            isNew = computeTaskInfo[curTaskId].rowId == 0;
-        }
+        auto colId = IfMask(this->maskType, MaskType::MASK_TRIL) ? computeTaskInfo[curTaskId].colId : 0;
+        bool isNew = computeTaskInfo[curTaskId].rowId == colId;
 
         this->kGradMatmul.SetTail(
             computeTaskInfo[curTaskId].colLine, this->headDim, computeTaskInfo[curTaskId].rowLine);
         this->DoKGradMatmulImpl(computeTaskInfo[curTaskId].kGradLeftOffset,
-                                computeTaskInfo[curTaskId].vGradRightOffset,
-                                outOffset, isNew);
+                                computeTaskInfo[curTaskId].vGradRightOffset, outOffset, isNew);
     }
 
     __aicore__ inline void DoJaggedVGradMatmul(int64_t taskId)
@@ -313,18 +281,12 @@ public:
         int64_t scoreTempOffset = midResultIdx * this->blockHeight * this->blockHeight;
         int64_t outOffset = midAccumIdx * this->blockHeight * this->headDim;
 
-        bool isNew = false;
-        if (IfMask(this->maskType, MaskType::MASK_TRIL)) {
-            isNew = computeTaskInfo[curTaskId].rowId == computeTaskInfo[curTaskId].colId;
-        } else {
-            isNew = computeTaskInfo[curTaskId].rowId == 0;
-        }
+        auto colId = IfMask(this->maskType, MaskType::MASK_TRIL) ? computeTaskInfo[curTaskId].colId : 0;
+        bool isNew = computeTaskInfo[curTaskId].rowId == colId;
 
         this->vGradMatmul.SetTail(
             computeTaskInfo[curTaskId].colLine, this->headDim, computeTaskInfo[curTaskId].rowLine);
-        this->DoVGradMatmulImpl(scoreTempOffset,
-                                computeTaskInfo[curTaskId].vGradRightOffset,
-                                outOffset, isNew);
+        this->DoVGradMatmulImpl(scoreTempOffset, computeTaskInfo[curTaskId].vGradRightOffset, outOffset, isNew);
     }
 
     __aicore__ inline void DoJaggedBtGtMatmul(int64_t taskId)
@@ -336,18 +298,12 @@ public:
         int64_t scoreTempOffset = midResultIdx * this->blockHeight * this->blockHeight;
         int64_t outOffset = midAccumIdx * this->blockHeight * this->headDim;
 
-        bool isNew = false;
-        if (IfMask(this->maskType, MaskType::MASK_TRIL)) {
-            isNew = computeTaskInfo[curTaskId].rowId == computeTaskInfo[curTaskId].colId;
-        } else {
-            isNew = computeTaskInfo[curTaskId].rowId == 0;
-        }
+        auto colId = IfMask(this->maskType, MaskType::MASK_TRIL) ? computeTaskInfo[curTaskId].colId : 0;
+        bool isNew = computeTaskInfo[curTaskId].rowId == colId;
 
         this->vGradMatmul.SetTail(
             computeTaskInfo[curTaskId].colLine, this->headDim, computeTaskInfo[curTaskId].rowLine);
-        this->DoBtGtMatmulImpl(scoreTempOffset,
-                               computeTaskInfo[curTaskId].vGradRightOffset,
-                               outOffset, isNew);
+        this->DoBtGtMatmulImpl(scoreTempOffset, computeTaskInfo[curTaskId].vGradRightOffset, outOffset, isNew);
     }
 
     __aicore__ inline void DoJaggedBpGpMatmul(int64_t taskId)
@@ -359,18 +315,12 @@ public:
         int64_t scoreTempOffset = midResultIdx * this->blockHeight * this->blockHeight;
         int64_t outOffset = midAccumIdx * this->blockHeight * this->headDim;
 
-        bool isNew = false;
-        if (IfMask(this->maskType, MaskType::MASK_TRIL)) {
-            isNew = computeTaskInfo[curTaskId].rowId == computeTaskInfo[curTaskId].colId;
-        } else {
-            isNew = computeTaskInfo[curTaskId].rowId == 0;
-        }
+        auto colId = IfMask(this->maskType, MaskType::MASK_TRIL) ? computeTaskInfo[curTaskId].colId : 0;
+        bool isNew = computeTaskInfo[curTaskId].rowId == colId;
 
         this->vGradMatmul.SetTail(
             computeTaskInfo[curTaskId].colLine, this->headDim, computeTaskInfo[curTaskId].rowLine);
-        this->DoBpGpMatmulImpl(scoreTempOffset,
-                               computeTaskInfo[curTaskId].vGradRightOffset,
-                               outOffset, isNew);
+        this->DoBpGpMatmulImpl(scoreTempOffset, computeTaskInfo[curTaskId].vGradRightOffset, outOffset, isNew);
     }
 
     __aicore__ inline void VecScoreJagged(int64_t taskId)
