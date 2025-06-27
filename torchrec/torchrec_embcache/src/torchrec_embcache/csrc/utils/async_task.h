@@ -14,7 +14,9 @@
 #include <thread>
 #include <chrono>
 #include <vector>
+
 #include "thread_pool.h"
+
 namespace Embcache {
 
 template <typename T>

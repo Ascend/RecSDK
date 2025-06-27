@@ -12,22 +12,20 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
-
+#include <mutex>
+#include <stdexcept>
 #include <vector>
 #include <unordered_map>
-#include <mutex>
 
 #include <glog/logging.h>
+#include <torch/torch.h>
 
 #include "common/common.h"
 #include "common/constants.h"
-#include "utils/string_tools.h"
-#include "torch/torch.h"
-
-#include "hash_table/fast_hashmap.h"
-
-#include "initializer.h"
 #include "emb_memory_pool.h"
+#include "hash_table/fast_hashmap.h"
+#include "initializer.h"
+#include "utils/string_tools.h"
 
 constexpr int OPTIMIZER_SLOT_INDEX2 = 2;
 
@@ -186,11 +184,11 @@ public:
                     });
                     if (ret == FkvState::FKV_FAIL) {
                         LOG(ERROR) << "fastHashMapPtr->FindOrInsert failed!";
-                        continue;
+                        throw std::runtime_error("fastHashMapPtr->FindOrInsert failed!");
                     }
                     if (ret == FkvState::FKV_BEFORE_PUT_FUNC_FAIL) {
                         LOG(ERROR) << "memory alloc failed!";
-                        continue;
+                        throw std::runtime_error("memory alloc failed!");
                     }
 
                     std::memcpy(outEmbs + i * embDim, (float*)addrValue, embDim * sizeof(float));
@@ -223,12 +221,12 @@ public:
                         return memPoolPtr->GetNewValueToBeInserted(addrValue);
                     });
                     if (ret == FkvState::FKV_FAIL) {
-                        LOG(ERROR) << "fastHashMapPtr->FindOrInsert failed!";
-                        continue;
+                        LOG(ERROR) << "fastHashMapPtr->InsertOrAssign failed!";
+                        throw std::runtime_error("fastHashMapPtr->InsertOrAssign failed!");
                     }
                     if (ret == FkvState::FKV_BEFORE_PUT_FUNC_FAIL) {
                         LOG(ERROR) << "memory alloc failed!";
-                        continue;
+                        throw std::runtime_error("memory alloc failed!");
                     }
 
                     std::memcpy((float*)addrValue, inEmbs + i * embDim, embDim * sizeof(float));
@@ -252,6 +250,7 @@ public:
             });
             if (ret == FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL) {
                 LOG(ERROR) << "remove embedding failed!";
+                throw std::runtime_error("remove embedding failed!");
             }
         }
     }

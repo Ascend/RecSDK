@@ -81,10 +81,8 @@ bool EmbMemoryPool::GetNewAddr(uint64_t& newAddr)
 void EmbMemoryPool::Produce()
 {
     uint64_t newAddr;
-    if (!recycleBin.pop(newAddr)) {
-        if (!GetNewAddr(newAddr)) {
-            return;
-        }
+    if (!recycleBin.pop(newAddr) && !GetNewAddr(newAddr)) {
+        return;
     }
 
     // init embedding
