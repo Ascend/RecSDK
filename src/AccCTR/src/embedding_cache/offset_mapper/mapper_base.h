@@ -37,7 +37,7 @@ namespace EmbCache {
 inline constexpr size_t K_ALIGNMENT = 64;
 inline constexpr size_t K_KVNUMINBUCKET = 3;
 
-enum BucketIdx {
+enum class BucketIdx {
     FIRST,
     SECOND,
     THIRD
@@ -207,6 +207,9 @@ private:
         const std::function<BeforePutFuncState()>& beforePutFunc);
 
     void ExtractKeyValInBuck(EmbCache::NetHashBucket *buck, std::vector<std::pair<uint64_t, uint64_t>>& kvVec);
+
+    FkvState PutTrySlot(uint64_t key, uint64_t &value, std::atomic<uint64_t> &keySlot,
+        uint64_t &valueSlot, const std::function<BeforePutFuncState()> &beforePutFunc);
 };
 }
 #endif // MXREC_MAPPER_BASE_H
