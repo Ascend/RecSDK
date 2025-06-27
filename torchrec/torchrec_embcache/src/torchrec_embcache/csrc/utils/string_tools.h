@@ -1,5 +1,4 @@
 /*
- * Copyright (c) Meta Platforms, Inc. and affiliates.
  * Copyright (c) huawei Platforms, Inc. and affiliates.
  * All rights reserved.
  *
