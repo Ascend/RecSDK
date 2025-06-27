@@ -107,6 +107,9 @@ struct alignas(K_ALIGNMENT)NetHashBucket {
     FkvState Remove(uint64_t key);
 
     FkvState Remove(uint64_t key, const std::function<BeforeRemoveFuncState(uint64_t)> &beforeRemoveFunc);
+
+    FkvState PutTrySlot(uint64_t key, uint64_t &value, std::atomic<uint64_t> &keySlot,
+        uint64_t &valueSlot, const std::function<BeforePutFuncState()> &beforePutFunc);
 };
 
 
@@ -207,9 +210,6 @@ private:
         const std::function<BeforePutFuncState()>& beforePutFunc);
 
     void ExtractKeyValInBuck(EmbCache::NetHashBucket *buck, std::vector<std::pair<uint64_t, uint64_t>>& kvVec);
-
-    FkvState PutTrySlot(uint64_t key, uint64_t &value, std::atomic<uint64_t> &keySlot,
-        uint64_t &valueSlot, const std::function<BeforePutFuncState()> &beforePutFunc);
 };
 }
 #endif // MXREC_MAPPER_BASE_H
