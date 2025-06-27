@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
+
+
 #ifndef HSTU_DENSE_BACKWARD_KERNEL_INTERFACE_H
 #define HSTU_DENSE_BACKWARD_KERNEL_INTERFACE_H
 
@@ -122,6 +124,18 @@ public:
         CreateMask();
     }
 
+  __aicore__ inline void DuplicateInput(LocalTensor<qType> &input, int32_t validNums)
+    {
+        Duplicate<qType>(input, 0, thisLen);
+        for (int i = 0; i < thisLen / blockHeight; i++) {
+            if (validNums + i >= blockHeight) {
+                Duplicate<qType>(input[i * blockHeight], 1, blockHeight);
+            } else {
+                Duplicate<qType>(input[i * blockHeight], 1, validNums + i);
+            }
+        }
+    }
+
     __aicore__ inline void CreateMask()
     {
         if (IfMask(maskType, MaskType::MASK_TRIL)) {
@@ -138,14 +152,7 @@ public:
                 int32_t validNums = 1 + baseOffset / blockHeight;
 
                 LocalTensor<qType> input = queueVecScoreMask.AllocTensor<qType>();
-                Duplicate<qType>(input, 0, thisLen);
-                for (int i = 0; i < thisLen / blockHeight; i++) {
-                    if (validNums + i >= blockHeight) {
-                        Duplicate<qType>(input[i * blockHeight], 1, blockHeight);
-                    } else {
-                        Duplicate<qType>(input[i * blockHeight], 1, validNums + i);
-                    }
-                }
+                DuplicateInput(input, validNums);
                 queueVecScoreMask.EnQue(input);
 
                 LocalTensor<qType> newInput = queueVecScoreMask.DeQue<qType>();
