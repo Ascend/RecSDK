@@ -44,29 +44,29 @@ public:
 
     __aicore__ inline void CalcBaseOffsets(int64_t curTaskId, bool isCol = true)
     {
-        this->taskInfo[curTaskId].qkLeftOffset = this->taskInfo[curTaskId].batchId * this->seqLen * this->headNum * this->headDim +
-                                           this->taskInfo[curTaskId].rowId * this->blockHeight * this->headNum * this->headDim +
-                                           this->taskInfo[curTaskId].headId * this->headDim;
-        this->taskInfo[curTaskId].qkRightOffset = this->taskInfo[curTaskId].batchId * this->seqLen * this->headNum * this->headDim +
-                                            this->taskInfo[curTaskId].colId * this->blockHeight * this->headNum * this->headDim +
-                                            this->taskInfo[curTaskId].headId * this->headDim;
-        this->taskInfo[curTaskId].kGradLeftOffset = this->taskInfo[curTaskId].batchId * this->headNum * this->biasGradSeqLen * this->biasGradSeqLen +
-                                              this->taskInfo[curTaskId].headId * this->biasGradSeqLen * this->biasGradSeqLen +
-                                              this->taskInfo[curTaskId].rowId * this->blockHeight * this->biasGradSeqLen +
-                                              this->taskInfo[curTaskId].colId * this->blockHeight;
+        this->taskInfo[curTaskId].qkLeftOffset = this->taskInfo[curTaskId].batchId * this->seqLen * this->headNum *
+            this->headDim + this->taskInfo[curTaskId].rowId * this->blockHeight * this->headNum * this->headDim +
+            this->taskInfo[curTaskId].headId * this->headDim;
+        this->taskInfo[curTaskId].qkRightOffset = this->taskInfo[curTaskId].batchId * this->seqLen * this->headNum *
+            this->headDim + this->taskInfo[curTaskId].colId * this->blockHeight *
+            this->headNum * this->headDim + this->taskInfo[curTaskId].headId * this->headDim;
+        this->taskInfo[curTaskId].kGradLeftOffset = this->taskInfo[curTaskId].batchId * this->headNum *
+            this->biasGradSeqLen * this->biasGradSeqLen + this->taskInfo[curTaskId].headId * this->biasGradSeqLen *
+            this->biasGradSeqLen + this->taskInfo[curTaskId].rowId * this->blockHeight * this->biasGradSeqLen +
+            this->taskInfo[curTaskId].colId * this->blockHeight;
         if (isCol) {
-            this->taskInfo[curTaskId].vGradRightOffset = this->taskInfo[curTaskId].batchId * this->seqLen * this->headNum * this->headDim +
-                                                   this->taskInfo[curTaskId].rowId * this->blockHeight * this->headNum * this->headDim +
-                                                   this->taskInfo[curTaskId].headId * this->headDim;
+            this->taskInfo[curTaskId].vGradRightOffset = this->taskInfo[curTaskId].batchId * this->seqLen *
+                this->headNum * this->headDim + this->taskInfo[curTaskId].rowId * this->blockHeight *
+                this->headNum * this->headDim + this->taskInfo[curTaskId].headId * this->headDim;
 
             this->taskInfo[curTaskId].rowLine = this->seqLen - this->taskInfo[curTaskId].rowId * this->blockHeight;
             if (this->taskInfo[curTaskId].rowLine > this->blockHeight) {
                 this->taskInfo[curTaskId].rowLine = this->blockHeight;
             }
         } else {
-            this->taskInfo[curTaskId].vGradRightOffset = this->taskInfo[curTaskId].batchId * this->seqLen * this->headNum * this->headDim +
-                                                   this->taskInfo[curTaskId].colId * this->blockHeight * this->headNum * this->headDim +
-                                                   this->taskInfo[curTaskId].headId * this->headDim;
+            this->taskInfo[curTaskId].vGradRightOffset = this->taskInfo[curTaskId].batchId * this->seqLen *
+                this->headNum * this->headDim + this->taskInfo[curTaskId].colId * this->blockHeight *
+                this->headNum * this->headDim + this->taskInfo[curTaskId].headId * this->headDim;
 
             this->taskInfo[curTaskId].colLine = this->seqLen - this->taskInfo[curTaskId].colId * this->blockHeight;
             if (this->taskInfo[curTaskId].colLine > this->blockHeight) {
@@ -120,7 +120,8 @@ public:
         bool isNew = this->taskInfo[curTaskId].colId == 0;
 
         this->qGradMatmul.SetTail(this->taskInfo[curTaskId].rowLine, this->headDim, this->taskInfo[curTaskId].colLine);
-        DoQGradMatmulImpl(this->taskInfo[curTaskId].kGradLeftOffset, this->taskInfo[curTaskId].vGradRightOffset, outOffset, isNew);
+        DoQGradMatmulImpl(this->taskInfo[curTaskId].kGradLeftOffset, this->taskInfo[curTaskId].vGradRightOffset,
+            outOffset, isNew);
     }
 
     __aicore__ inline void DoQGradMatmulImpl(int64_t left, int64_t right, int64_t out, bool isNew)
@@ -148,7 +149,8 @@ public:
         }
 
         this->kGradMatmul.SetTail(this->taskInfo[curTaskId].colLine, this->headDim, this->taskInfo[curTaskId].rowLine);
-        DoKGradMatmulImpl(this->taskInfo[curTaskId].kGradLeftOffset, this->taskInfo[curTaskId].vGradRightOffset, outOffset, isNew);
+        DoKGradMatmulImpl(this->taskInfo[curTaskId].kGradLeftOffset, this->taskInfo[curTaskId].vGradRightOffset,
+            outOffset, isNew);
     }
 
     __aicore__ inline void DoKGradMatmulImpl(int64_t left, int64_t right, int64_t out, bool isNew)
@@ -292,20 +294,21 @@ public:
     __aicore__ inline void VecScore(int64_t taskId)
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
-        int64_t attnBiasOffset = this->taskInfo[curTaskId].batchId * this->headNum * this->biasGradSeqLen * this->biasGradSeqLen +
-                                 this->taskInfo[curTaskId].headId * this->biasGradSeqLen * this->biasGradSeqLen +
-                                 this->taskInfo[curTaskId].rowId * this->blockHeight * this->biasGradSeqLen +
-                                 this->taskInfo[curTaskId].colId * this->blockHeight;
-        int64_t attnBiasDiagonalOffset = this->taskInfo[curTaskId].batchId * this->headNum * this->biasGradSeqLen * this->biasGradSeqLen +
-                                         this->taskInfo[curTaskId].headId * this->biasGradSeqLen * this->biasGradSeqLen +
-                                         this->taskInfo[curTaskId].colId * this->blockHeight * this->biasGradSeqLen +
-                                         this->taskInfo[curTaskId].rowId * this->blockHeight;
+        int64_t attnBiasOffset = this->taskInfo[curTaskId].batchId * this->headNum * this->biasGradSeqLen *
+            this->biasGradSeqLen + this->taskInfo[curTaskId].headId * this->biasGradSeqLen * this->biasGradSeqLen +
+            this->taskInfo[curTaskId].rowId * this->blockHeight * this->biasGradSeqLen +
+            this->taskInfo[curTaskId].colId * this->blockHeight;
+        int64_t attnBiasDiagonalOffset = this->taskInfo[curTaskId].batchId * this->headNum * this->biasGradSeqLen *
+            this->biasGradSeqLen + this->taskInfo[curTaskId].headId * this->biasGradSeqLen * this->biasGradSeqLen +
+            this->taskInfo[curTaskId].colId * this->blockHeight * this->biasGradSeqLen +
+            this->taskInfo[curTaskId].rowId * this->blockHeight;
 
         int64_t maskOffset = 0;
         if (IfMask(this->maskType, MaskType::MASK_CUSTOM)) {
             maskOffset = this->taskInfo[curTaskId].batchId * this->headNum * this->maxSeqLen * this->maxSeqLen +
-                         this->taskInfo[curTaskId].headId * this->maxSeqLen * this->maxSeqLen +
-                         this->taskInfo[curTaskId].rowId * this->blockHeight * this->maxSeqLen + this->taskInfo[curTaskId].colId * this->blockHeight;
+            this->taskInfo[curTaskId].headId * this->maxSeqLen * this->maxSeqLen +
+            this->taskInfo[curTaskId].rowId * this->blockHeight * this->maxSeqLen +
+            this->taskInfo[curTaskId].colId * this->blockHeight;
         }
 
         bool useMask = false;
@@ -380,7 +383,8 @@ public:
         LocalTensor<qType> outputScore = this->queueOutputScore.template DeQue<qType>();
         LocalTensor<qType> outputBias = this->queueOutputBias.template DeQue<qType>();
         DataCopy<qType>(this->scoreTemp[scoreTempOffset], outputScore, thisLen);
-        CopyOutPadding(this->attnBiasGrad[curAttnBiasOffset], outputBias, validRowNum, totalColNum, this->biasGradSeqLen);
+        CopyOutPadding(this->attnBiasGrad[curAttnBiasOffset], outputBias, validRowNum, totalColNum,
+            this->biasGradSeqLen);
         this->queueOutputScore.template FreeTensor(outputScore);
         this->queueOutputBias.template FreeTensor(outputBias);
     }
@@ -609,7 +613,8 @@ public:
     {
         DoQGradMatmul(taskId);
         if (taskId > 0) {
-            if (this->taskInfo[(taskId - 1) % COMPUTE_PIPE_NUM].accumId != this->taskInfo[taskId % COMPUTE_PIPE_NUM].accumId) {
+            if (this->taskInfo[(taskId - 1) % COMPUTE_PIPE_NUM].accumId !=
+                this->taskInfo[taskId % COMPUTE_PIPE_NUM].accumId) {
                 DoTrans(taskId - 1, this->kGradAccumTemp, this->qGrad, 0);
             }
         }
