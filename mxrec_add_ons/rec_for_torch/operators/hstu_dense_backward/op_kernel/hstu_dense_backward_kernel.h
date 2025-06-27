@@ -236,14 +236,14 @@ public:
             Add<float>(inputQK, inputQK, inputBias, thisLen);
         }
 
-        // score = F.silu(qkb) * this->siluScale * this->mask
+        // score = F.silu(qkb) * siluScale * mask
         Silu<float>(inputBias, inputQK, thisLen);
         Muls<float>(inputBias, inputBias, this->siluScale, thisLen);
         if (useMask) {
             Mul<float>(inputBias, inputBias, inputMask, thisLen);
         }
 
-        // score_grad = gv * this->siluScale * this->mask
+        // score_grad = gv * siluScale * mask
         Muls<float>(inputGV, inputGV, this->siluScale, thisLen);
         if (useMask) {
             Mul<float>(inputGV, inputGV, inputMask, thisLen);
