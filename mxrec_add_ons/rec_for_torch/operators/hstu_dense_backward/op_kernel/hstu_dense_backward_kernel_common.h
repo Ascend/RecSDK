@@ -184,8 +184,6 @@ __aicore__ inline void CopyVGradB1(const LocalTensor<int8_t> &bMatrix, const __g
     DataCopy(bMatrix.ReinterpretCast<qType>(), globalGt[startIdx], param);
 };
 
-
-
 struct BlockInfo {
     int64_t taskId;
     int64_t batchId;
@@ -346,7 +344,6 @@ public:
         InitPipe(args);
         CreateMask();
     }
-
 
     GM_ADDR curAICWorkspace;
 

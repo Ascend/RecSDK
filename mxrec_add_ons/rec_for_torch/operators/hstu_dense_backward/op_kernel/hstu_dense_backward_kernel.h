@@ -195,8 +195,6 @@ public:
         }
     }
 
-
-
     __aicore__ inline void CastQType2Float(LocalTensor<float> dstTensor, LocalTensor<qType> srcTensor,
                                            LocalTensor<qType> midTensor, int64_t len)
     {
