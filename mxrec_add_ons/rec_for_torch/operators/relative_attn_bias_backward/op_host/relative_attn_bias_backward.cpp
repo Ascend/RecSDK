@@ -120,6 +120,12 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 namespace ge {
 static ge::graphStatus InferShape(gert::InferShapeContext* context)
 {
+    OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("timestampsWeightsGrad", context->GetOutputShape(TIMESTAMPS_WEIGHTS_GRAD_INDEX), \
+                      return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("rabTimeGrad", context->GetInputShape(INPUT_GRAD_INDEX), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("attrs", context->GetAttrs(), return ge::GRAPH_FAILED);
+
     gert::Shape* tswGradOutShape = context->GetOutputShape(TIMESTAMPS_WEIGHTS_GRAD_INDEX);
     const gert::Shape* tsGradShape = context->GetInputShape(INPUT_GRAD_INDEX);  // (n, b, 2s, 2s)
     int n = tsGradShape->GetDim(DIM0);

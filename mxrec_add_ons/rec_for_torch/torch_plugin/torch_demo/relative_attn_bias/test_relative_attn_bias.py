@@ -60,6 +60,11 @@ def rab_time(num_layers, train_len, candidate_len, bs, dtype):
     timestamps = create_timestamps(train_len, candidate_len, past_valid_lens).to(torch.int32)
     timestamps_weights = create_timestamps_weights(num_layers).to(dtype)
 
+    # golden放在cpu上跑
+    result_golden, index_golden = rab_time_golden(timestamps_weights=timestamps_weights.transpose(0, 1),
+                                                  timestamps=timestamps,
+                                                  bucket_divisor=BUCKET_DIVISOR)
+
     timestamps = timestamps.to(DEVICE)
     timestamps_weights = timestamps_weights.to(DEVICE)
     torch_npu.npu.synchronize()
@@ -70,9 +75,6 @@ def rab_time(num_layers, train_len, candidate_len, bs, dtype):
                                                                              bucket_divisor=BUCKET_DIVISOR)
     result_op, index_op = result_op.to('cpu'), index_op.to('cpu')
 
-    result_golden, index_golden = rab_time_golden(timestamps_weights=timestamps_weights.transpose(0, 1),
-                                                  timestamps=timestamps,
-                                                  bucket_divisor=BUCKET_DIVISOR)
     result_golden, index_golden = result_golden.to('cpu'), index_golden.to('cpu')
     torch_npu.npu.synchronize()
 
