@@ -34,8 +34,8 @@ namespace EmbCache {
  * @brief Allocator template, for extend memory allocation for overflowed buckets
  */
 
-inline constexpr size_t K_ALIGNMENT = 64;
-inline constexpr size_t K_KVNUMINBUCKET = 3;
+constexpr size_t K_ALIGNMENT = 64;
+constexpr size_t K_KVNUMINBUCKET = 3;
 
 enum class BucketIdx {
     FIRST,
