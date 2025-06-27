@@ -295,6 +295,13 @@ public:
         pipe.InitBuffer(queueOutputTemp, USE_BUFFER_NUM, vecOnceDataNum * sizeof(qType));
     }
 
+    __aicore__ inline void Init(Args &args)
+    {
+        InitGlobalBuffer(args);
+        InitPipe(args);
+        CreateMask();
+    }
+
     __aicore__ inline void CreateMask()
     {
         if (IfMask(maskType, MaskType::MASK_TRIL)) {
@@ -336,13 +343,6 @@ public:
 
             pipe_barrier(PIPE_ALL);
         }
-    }
-
-    __aicore__ inline void Init(Args &args)
-    {
-        InitGlobalBuffer(args);
-        InitPipe(args);
-        CreateMask();
     }
 
     GM_ADDR curAICWorkspace;
