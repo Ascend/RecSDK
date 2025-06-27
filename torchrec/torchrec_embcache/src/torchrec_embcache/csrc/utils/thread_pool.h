@@ -63,8 +63,9 @@ public:
 private:
     explicit ThreadPool(size_t threads) : stopped_(false)
     {
-        if (threads == 0)
+        if (threads == 0) {
             threads = 1;
+        }
         for (size_t i = 0; i < threads; ++i) {
             workers_.emplace_back([this] {
                 while (true) {
