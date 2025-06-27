@@ -25,7 +25,6 @@ constexpr size_t K_KV_NUM_IN_BUCKET = 3;
  * @brief Spin lock entry in bucket
  * used for alloc overflowed buckets
  */
-
 struct NetHashLockEntry {
     uint64_t lock = 0;
 
