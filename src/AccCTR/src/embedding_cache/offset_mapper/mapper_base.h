@@ -34,10 +34,10 @@ namespace EmbCache {
  * @brief Allocator template, for extend memory allocation for overflowed buckets
  */
 
-static constexpr size_t K_ALIGNMENT = 64;
-static constexpr size_t K_KVNUMINBUCKET = 3;
+constexpr size_t K_ALIGNMENT = 64;
+constexpr size_t K_KVNUMINBUCKET = 3;
 
-enum BucketIdx {
+enum class BucketIdx {
     FIRST,
     SECOND,
     THIRD
@@ -96,181 +96,20 @@ struct alignas(K_ALIGNMENT)NetHashBucket {
     NetHashBucket *next = nullptr;
     NetHashLockEntry spinLock{};
 
-    FkvState Put(uint64_t key, uint64_t &value, const std::function<BeforePutFuncState()> &beforePutFunc)
-    {
-        /* don't put them into loop, flat code is faster than loop */
-        uint64_t oldKey = 0;
-        if (keys[BucketIdx::FIRST].load(std::memory_order_relaxed) == 0 &&
-            keys[BucketIdx::FIRST].compare_exchange_strong(oldKey, key)) {
-            BeforePutFuncState ret = beforePutFunc();
-            if (HM_UNLIKELY(ret == BeforePutFuncState::BEFORE_FAIL)) {
-                keys[BucketIdx::FIRST] = 0;
-                return FkvState::FKV_BEFORE_PUT_FUNC_FAIL;
-            }
-            if (HM_UNLIKELY(ret == BeforePutFuncState::BEFORE_NO_SPACE)) {
-                keys[BucketIdx::FIRST] = 0;
-                return FkvState::FKV_NO_SPACE;
-            }
-            values[BucketIdx::FIRST] = value;
-            return FkvState::FKV_NOT_EXIST;
-        }
-
-        if (HM_UNLIKELY(oldKey == key)) {
-            return FkvState::FKV_KEY_CONFLICT;
-        }
-
-        oldKey = 0;
-        if (keys[BucketIdx::SECOND].load(std::memory_order_relaxed) == 0 &&
-            keys[BucketIdx::SECOND].compare_exchange_strong(oldKey, key)) {
-            BeforePutFuncState ret = beforePutFunc();
-            if (HM_UNLIKELY(ret == BeforePutFuncState::BEFORE_FAIL)) {
-                keys[BucketIdx::SECOND] = 0;
-                return FkvState::FKV_BEFORE_PUT_FUNC_FAIL;
-            }
-            if (HM_UNLIKELY(ret == BeforePutFuncState::BEFORE_NO_SPACE)) {
-                keys[BucketIdx::SECOND] = 0;
-                return FkvState::FKV_NO_SPACE;
-            }
-            values[BucketIdx::SECOND] = value;
-            return FkvState::FKV_NOT_EXIST;
-        }
-
-        if (HM_UNLIKELY(oldKey == key)) {
-            return FkvState::FKV_KEY_CONFLICT;
-        }
-
-        oldKey = 0;
-        if (keys[BucketIdx::THIRD].load(std::memory_order_relaxed) == 0 &&
-            keys[BucketIdx::THIRD].compare_exchange_strong(oldKey, key)) {
-            BeforePutFuncState ret = beforePutFunc();
-            if (HM_UNLIKELY(ret == BeforePutFuncState::BEFORE_FAIL)) {
-                keys[BucketIdx::THIRD] = 0;
-                return FkvState::FKV_BEFORE_PUT_FUNC_FAIL;
-            }
-            if (HM_UNLIKELY(ret == BeforePutFuncState::BEFORE_NO_SPACE)) {
-                keys[BucketIdx::THIRD] = 0;
-                return FkvState::FKV_NO_SPACE;
-            }
-            values[BucketIdx::THIRD] = value;
-            return FkvState::FKV_NOT_EXIST;
-        }
-
-        if (HM_UNLIKELY(oldKey == key)) {
-            return FkvState::FKV_KEY_CONFLICT;
-        }
-
-        return FkvState::FKV_FAIL;
-    }
+    FkvState Put(uint64_t key, uint64_t &value,
+        const std::function<BeforePutFuncState()> &beforePutFunc);
 
     /*
      * @brief Remove the address from the bucket and get size
      */
-    bool Find(const uint64_t key, uint64_t &value)
-    {
-        /*
-         * expand the loop, instead of put them into a for/while loop for performance
-         */
-        if (key == keys[BucketIdx::FIRST].load(std::memory_order_relaxed)) {
-            value = values[BucketIdx::FIRST];
-            return true;
-        }
+    bool Find(const uint64_t key, uint64_t &value);
 
-        if (key == keys[BucketIdx::SECOND].load(std::memory_order_relaxed)) {
-            value = values[BucketIdx::SECOND];
-            return true;
-        }
+    FkvState Remove(uint64_t key);
 
-        if (key == keys[BucketIdx::THIRD].load(std::memory_order_relaxed)) {
-            value = values[BucketIdx::THIRD];
-            return true;
-        }
+    FkvState Remove(uint64_t key, const std::function<BeforeRemoveFuncState(uint64_t)> &beforeRemoveFunc);
 
-        return false;
-    }
-
-    FkvState Remove(uint64_t key)
-    {
-        /* don't put them into loop, flat code is faster than loop */
-        uint64_t oldValue = key;
-        if (keys[BucketIdx::FIRST].load(std::memory_order_relaxed) == key &&
-            keys[BucketIdx::FIRST].compare_exchange_strong(oldValue, 0)) {
-            values[BucketIdx::FIRST] = 0;
-            return FkvState::FKV_EXIST;
-        }
-        if (HM_UNLIKELY(oldValue == 0)) {
-            return FkvState::FKV_EXIST;
-        }
-        oldValue = key;
-
-        if (keys[BucketIdx::SECOND].load(std::memory_order_relaxed) == key &&
-            keys[BucketIdx::SECOND].compare_exchange_strong(oldValue, 0)) {
-            values[BucketIdx::SECOND] = 0;
-            return FkvState::FKV_EXIST;
-        }
-        if (HM_UNLIKELY(oldValue == 0)) {
-            return FkvState::FKV_EXIST;
-        }
-        oldValue = key;
-
-        if (keys[BucketIdx::THIRD].load(std::memory_order_relaxed) == key &&
-            keys[BucketIdx::THIRD].compare_exchange_strong(oldValue, 0)) {
-            values[BucketIdx::THIRD] = 0;
-            return FkvState::FKV_EXIST;
-        }
-        if (HM_UNLIKELY(oldValue == 0)) {
-            return FkvState::FKV_EXIST;
-        }
-
-        return FkvState::FKV_NOT_EXIST;
-    }
-
-    FkvState Remove(uint64_t key, const std::function<BeforeRemoveFuncState(uint64_t)> &beforeRemoveFunc)
-    {
-        /* don't put them into loop, flat code is faster than loop */
-        uint64_t oldValue = key;
-        if (keys[BucketIdx::FIRST].load(std::memory_order_relaxed) == key &&
-            keys[BucketIdx::FIRST].compare_exchange_strong(oldValue, 0)) {
-            if (HM_UNLIKELY(beforeRemoveFunc(values[BucketIdx::FIRST]) == BeforeRemoveFuncState::BEFORE_FAIL)) {
-                return FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL;
-            }
-
-            values[BucketIdx::FIRST] = 0;
-            return FkvState::FKV_EXIST;
-        }
-        if (HM_UNLIKELY(oldValue == 0)) {
-            return FkvState::FKV_EXIST;
-        }
-        oldValue = key;
-
-        if (keys[BucketIdx::SECOND].load(std::memory_order_relaxed) == key &&
-            keys[BucketIdx::SECOND].compare_exchange_strong(oldValue, 0)) {
-            if (HM_UNLIKELY(beforeRemoveFunc(values[BucketIdx::SECOND]) == BeforeRemoveFuncState::BEFORE_FAIL)) {
-                return FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL;
-            }
-
-            values[BucketIdx::SECOND] = 0;
-            return FkvState::FKV_EXIST;
-        }
-        if (HM_UNLIKELY(oldValue == 0)) {
-            return FkvState::FKV_EXIST;
-        }
-        oldValue = key;
-
-        if (keys[BucketIdx::THIRD].load(std::memory_order_relaxed) == key &&
-            keys[BucketIdx::THIRD].compare_exchange_strong(oldValue, 0)) {
-            if (HM_UNLIKELY(beforeRemoveFunc(values[BucketIdx::THIRD]) == BeforeRemoveFuncState::BEFORE_FAIL)) {
-                return FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL;
-            }
-
-            values[BucketIdx::THIRD] = 0;
-            return FkvState::FKV_EXIST;
-        }
-        if (HM_UNLIKELY(oldValue == 0)) {
-            return FkvState::FKV_EXIST;
-        }
-
-        return FkvState::FKV_NOT_EXIST;
-    }
+    FkvState PutTrySlot(uint64_t key, uint64_t &value, std::atomic<uint64_t> &keySlot,
+        uint64_t &valueSlot, const std::function<BeforePutFuncState()> &beforePutFunc);
 };
 
 
@@ -283,347 +122,26 @@ public:
 
     virtual ~MapperBase() = default;
 
-    bool Initialize(uint64_t reserve)
-    {
-        /* already initialized */
-        if (mOverflowEntryAlloc != nullptr) {
-            return true;
-        }
+    bool Initialize(uint64_t reserve);
 
-        /* get proper bucket count */
-        uint64_t bucketCount = std::max(reserve, uint64_t(128));
-        if (bucketCount > gPrimes[gPrimesCount - 1]) {
-            bucketCount = gPrimes[gPrimesCount - 1];
-        } else {
-            uint64_t i = 0;
-            while (i < gPrimesCount && gPrimes[i] < bucketCount) {
-                i++;
-            }
-            if (i == gPrimesCount) {
-                i--;
-            }
-            bucketCount = gPrimes[i];
-        }
-
-        /* allocate buckets for sub-maps */
-        for (auto &mSubMap : mSubMaps) {
-            NetHashBucket* tmp;
-            if (!NewAndSetBucket(bucketCount, 0, tmp)) { return false;}
-            mSubMap = tmp;
-        }
-
-        /* create overflow entry allocator */
-        mOverflowEntryAlloc = new (std::nothrow) NetHeapAllocator();
-        if (HM_UNLIKELY(mOverflowEntryAlloc == nullptr)) {
-            FreeSubMaps();
-            ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR,
-                "Failed to new overflow entry allocator, probably out of memory");
-            return false;
-        }
-
-        /* set bucket count */
-        mBucketCount = bucketCount;
-        ock::ExternalLogger::PrintLog(ock::LogLevel::INFO,
-            "fastKV inited, mBucketCount: " + std::to_string(mBucketCount));
-        return true;
-    }
-
-    virtual void UnInitialize()
-    {
-        if (mOverflowEntryAlloc == nullptr) {
-            return;
-        }
-
-        /* free overflowed entries firstly */
-        FreeOverFlowedEntries();
-
-        /* free sub map secondly */
-        FreeSubMaps();
-
-        /* free overflow entry at last */
-        delete mOverflowEntryAlloc;
-        mOverflowEntryAlloc = nullptr;
-        mBucketCount = 0;
-        currentSize = 0;
-        zeroInside = false;
-    }
+    virtual void UnInitialize();
 
     FkvState FindAndPutIfNotFound(uint64_t key, uint64_t &value,
-        const std::function<BeforePutFuncState()> &beforePutFunc)
-    {
-        if (HM_UNLIKELY(key == 0)) {
-            std::lock_guard<std::mutex> lock(zeroKeyMutex_);
-            if (zeroInside) {
-                value = zeroValue;
-                return FkvState::FKV_EXIST;
-            }
-            if (__sync_bool_compare_and_swap(&zeroInside, false, true)) {
-                BeforePutFuncState ret = beforePutFunc();
-                if (HM_UNLIKELY(ret == BeforePutFuncState::BEFORE_FAIL)) {
-                    return FkvState::FKV_BEFORE_PUT_FUNC_FAIL;
-                }
-                if (HM_UNLIKELY(ret == BeforePutFuncState::BEFORE_NO_SPACE)) {
-                    return FkvState::FKV_NO_SPACE;
-                }
-                zeroValue = value;
-                currentSize++;
-                return FkvState::FKV_NOT_EXIST;
-            }
-            return FkvState::FKV_KEY_CONFLICT;
-        }
+        const std::function<BeforePutFuncState()> &beforePutFunc);
 
-        /* get bucket */
-        auto buck = &(mSubMaps[key % gSubMapCount][key % mBucketCount]);
+    FkvState Remove(uint64_t key);
 
-        /* loop all buckets linked */
-        while (buck != nullptr) {
-            buck->spinLock.Lock();
-            if (buck->Find(key, value)) {
-                buck->spinLock.UnLock();
-                return FkvState::FKV_EXIST;
-            }
-            buck->spinLock.UnLock();
+    FkvState Remove(uint64_t key, const std::function<BeforeRemoveFuncState(uint64_t)> &beforeRemoveFunc);
 
-            if (buck->next != nullptr) {
-                buck = buck->next;
-            } else {
-                break;
-            }
-        }
+    FkvState Put(uint64_t key, uint64_t value);
 
-        // did not find, now do put. continue from the last bucket in find
-        return PutKeyValue(key, value, buck, beforePutFunc);
-    }
-
-    FkvState Remove(uint64_t key)
-    {
-        if (HM_UNLIKELY(key == 0)) {
-            std::lock_guard<std::mutex> lock(zeroKeyMutex_);
-            if (zeroInside) {
-                if (__sync_bool_compare_and_swap(&zeroInside, true, false)) {
-                    zeroValue = 0;
-                    currentSize--;
-                }
-                return FkvState::FKV_EXIST;
-            }
-            return FkvState::FKV_NOT_EXIST;
-        }
-
-        /* get bucket */
-        auto buck = &(mSubMaps[key % gSubMapCount][key % mBucketCount]);
-
-        /* loop all buckets linked */
-        uint64_t value;
-        while (buck != nullptr) {
-            if (buck->Find(key, value)) {
-                buck->Remove(key);
-                currentSize--;
-                return FkvState::FKV_EXIST;
-            }
-
-            buck = buck->next;
-        }
-
-        return FkvState::FKV_NOT_EXIST;
-    }
-
-    FkvState Remove(uint64_t key, const std::function<BeforeRemoveFuncState(uint64_t)> &beforeRemoveFunc)
-    {
-        if (HM_UNLIKELY(key == 0)) {
-            std::lock_guard<std::mutex> lock(zeroKeyMutex_);
-            if (!zeroInside) {
-                return FkvState::FKV_NOT_EXIST;
-            }
-            if (__sync_bool_compare_and_swap(&zeroInside, true, false)) {
-                auto ret = beforeRemoveFunc(zeroValue);
-                if (HM_UNLIKELY(ret == BeforeRemoveFuncState::BEFORE_FAIL)) {
-                    return FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL;
-                }
-                zeroValue = 0;
-                currentSize--;
-            }
-            return FkvState::FKV_EXIST;
-        }
-
-        /* get bucket */
-        auto buck = &(mSubMaps[key % gSubMapCount][key % mBucketCount]);
-
-        /* loop all buckets linked */
-        uint64_t value;
-        while (buck != nullptr) {
-            buck->spinLock.Lock();
-            if (buck->Find(key, value)) {
-                auto ret = buck->Remove(key, beforeRemoveFunc);
-                buck->spinLock.UnLock();
-                if (HM_UNLIKELY(ret == FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL)) {
-                    return FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL;
-                }
-
-                currentSize--;
-                return FkvState::FKV_EXIST;
-            }
-            buck->spinLock.UnLock();
-            buck = buck->next;
-        }
-
-        return FkvState::FKV_NOT_EXIST;
-    }
-
-    FkvState Put(uint64_t key, uint64_t value)
-    {
-        if (HM_UNLIKELY(key == 0)) {
-            std::lock_guard<std::mutex> lock(zeroKeyMutex_);
-            if (__sync_bool_compare_and_swap(&zeroInside, false, true)) {
-                zeroValue = value;
-                currentSize++;
-                return FkvState::FKV_NOT_EXIST;
-            }
-            return FkvState::FKV_KEY_CONFLICT;
-        }
-
-        /* get bucket */
-        auto buck = &(mSubMaps[key % gSubMapCount][key % mBucketCount]);
-
-        // Execute `Put` operation on the first bucket when not find.
-        // `Put` from the first bucket to reuse the previously removed location.
-        /* try 8192 times */
-        for (uint16_t i = 0; i < 8192; i++) {
-            /* loop all buckets linked */
-            while (buck != nullptr) {
-                /* if there is an entry to put, just break */
-                FkvState putRet = buck->Put(key, value, []() -> BeforePutFuncState { return {}; });
-                if (putRet == FkvState::FKV_NOT_EXIST) {
-                    currentSize++;
-                    return FkvState::FKV_NOT_EXIST;
-                }
-
-                if (HM_UNLIKELY(putRet == FkvState::FKV_KEY_CONFLICT)) {
-                    return FkvState::FKV_KEY_CONFLICT;
-                }
-                /*
-                 * if no next bucket exist, just for break,
-                 * else move to next bucket linked
-                 */
-                if (buck->next == nullptr) {
-                    break;
-                } else {
-                    buck = buck->next;
-                }
-            }
-
-            /*
-             * if not put successfully in existing buckets, allocate a new one
-             *
-             * NOTES: just allocate memory, don't access new bucket in the spin lock scope,
-             * if access new bucket, which could trigger physical memory allocation which
-             * could trigger page fault, that is quite slow. In this case, spin lock
-             * could occupy too much CPU
-             */
-            auto &lock = buck->spinLock;
-            lock.Lock();
-            /* if other thread allocated new buck already, unlock and continue */
-            if (buck->next != nullptr) {
-                buck = buck->next;
-                lock.UnLock();
-                continue;
-            }
-
-            /* firstly entered thread allocate new bucket */
-            auto newBuck = static_cast<NetHashBucket *>(mOverflowEntryAlloc->Allocate(sizeof(NetHashBucket)));
-            if (HM_UNLIKELY(newBuck == nullptr)) {
-                lock.UnLock();
-                ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR, "Failed to allocate new bucket");
-                return FkvState::FKV_FAIL;
-            }
-            /* link to current buck, set buck to new buck */
-            buck->next = newBuck;
-            buck = newBuck;
-
-            /* unlock */
-            lock.UnLock();
-        }
-        return FkvState::FKV_FAIL;
-    }
-
-    bool Find(const uint64_t key, uint64_t &value)
-    {
-        if (HM_UNLIKELY(key == 0)) {
-            std::lock_guard<std::mutex> lock(zeroKeyMutex_);
-            if (zeroInside) {
-                value = zeroValue;
-                return true;
-            }
-            return false;
-        }
-        /* get bucket */
-        auto buck = &(mSubMaps[key % gSubMapCount][key % mBucketCount]);
-
-        /* loop all buckets linked */
-        while (buck != nullptr) {
-            if (buck->Find(key, value)) {
-                return true;
-            }
-
-            buck = buck->next;
-        }
-
-        return false;
-    }
+    bool Find(const uint64_t key, uint64_t &value);
 
     /* When used in muti thread, this function can only be used when keys are uniqued */
     FkvState FindAndDeleteIfFound(const uint64_t key, uint64_t &value,
-        const std::function<BeforeRemoveFuncState(uint64_t)> &beforeRemoveFunc)
-    {
-        if (HM_UNLIKELY(key == 0)) {
-            std::lock_guard<std::mutex> lock(zeroKeyMutex_);
-            if (!zeroInside) {
-                return FkvState::FKV_NOT_EXIST;
-            }
-            value = zeroValue;
-            if (__sync_bool_compare_and_swap(&zeroInside, true, false)) {
-                auto ret = beforeRemoveFunc(zeroValue);
-                if (HM_UNLIKELY(ret == BeforeRemoveFuncState::BEFORE_FAIL)) {
-                    return FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL;
-                }
-                zeroValue = 0;
-                currentSize--;
-            }
+        const std::function<BeforeRemoveFuncState(uint64_t)> &beforeRemoveFunc);
 
-            return FkvState::FKV_EXIST;
-        }
-        /* get bucket */
-        auto buck = &(mSubMaps[key % gSubMapCount][key % mBucketCount]);
-
-        while (buck != nullptr) {
-            if (buck->Find(key, value)) {
-                auto ret = buck->Remove(key, beforeRemoveFunc);
-                if (HM_UNLIKELY(ret == FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL)) {
-                    return FkvState::FKV_BEFORE_REMOVE_FUNC_FAIL;
-                }
-                currentSize--;
-                return FkvState::FKV_EXIST;
-            }
-
-            buck = buck->next;
-        }
-
-        return FkvState::FKV_NOT_EXIST;
-    }
-
-    std::vector<std::pair<uint64_t, uint64_t>> ExportVec()
-    {
-        std::vector<std::pair<uint64_t, uint64_t>> kvVec;
-        if (zeroInside) {
-            kvVec.emplace_back(0, zeroValue);
-        }
-        for (auto &mSubMap : mSubMaps) {
-            for (uint64_t j = 0; j < mBucketCount; j++) {
-                auto buck = &mSubMap[j];
-                ExtractKeyValInBuck(buck, kvVec);
-            }
-        }
-        return kvVec;
-    }
+    std::vector<std::pair<uint64_t, uint64_t>> ExportVec();
 
 protected:
     static constexpr uint16_t gSubMapCount = 5; /* count of sub map */
@@ -675,16 +193,7 @@ protected:
                                             3238918481, 3504151727, 3791104843, 4101556399, 4294967291};
 
 private:
-    void FreeSubMaps()
-    {
-        /* free all sub maps */
-        for (auto &mSubMap : mSubMaps) {
-            if (mSubMap != nullptr) {
-                delete[] mSubMap;
-                mSubMap = nullptr;
-            }
-        }
-    }
+    void FreeSubMaps();
 
     /*
      * Description: allocate buckets and init it
@@ -693,148 +202,14 @@ private:
      * Parameter: bucketPtr - pointing at the bucket array which is allocated
      * NOTES: SECUREC_MEM_MAX_LEN of memset_s function is 2GB
      */
-    bool NewAndSetBucket(const uint64_t& bucketCount, const int& c, NetHashBucket* &bucketPtr)
-    {
-        bucketPtr = new (std::nothrow) NetHashBucket[bucketCount];
-        if (HM_UNLIKELY(bucketPtr == nullptr)) {
-            FreeSubMaps();
-            ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR,
-                                          "Failed to new hash bucket, probably out of memory");
-            return false;
-        }
+    bool NewAndSetBucket(const uint64_t& bucketCount, const int& c, NetHashBucket* &bucketPtr);
 
-        /* make physical page and set to zero */
-        size_t bucketsBytes = sizeof(NetHashBucket) * bucketCount;
-        char* destBytePtr = reinterpret_cast<char*>(bucketPtr);
-        for (size_t i = 0; i < bucketsBytes; i += MEMSET_S_MAX_SIZE) {
-            size_t bytesOnceSet = (i + MEMSET_S_MAX_SIZE <= bucketsBytes) ? MEMSET_S_MAX_SIZE : (bucketsBytes - i);
-            auto ret = memset_s(destBytePtr + i, bytesOnceSet, c, bytesOnceSet);
-            if (ret != 0) {
-                delete[] bucketPtr;
-                bucketPtr = nullptr;
-                FreeSubMaps();
-                ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR,
-                    "memset_s failed... size: " + std::to_string(bucketsBytes) + ", error code:" + std::to_string(ret));
-                return false;
-            }
-        }
-        return true;
-    }
-
-    void FreeOverFlowedEntries()
-    {
-        for (auto &mSubMap : mSubMaps) {
-            if (mSubMap == nullptr) {
-                continue;
-            }
-
-            /* free overflow entries in one sub map */
-            for (uint64_t buckIndex = 0; buckIndex < mBucketCount; ++buckIndex) {
-                auto curBuck = mSubMap[buckIndex].next;
-                NetHashBucket *nextOverflowEntryBuck = nullptr;
-
-                /* exit loop when curBuck is null */
-                while (curBuck != nullptr) {
-                    /* assign next overflow buck to tmp variable */
-                    nextOverflowEntryBuck = curBuck->next;
-
-                    /* free this overflow bucket */
-                    mOverflowEntryAlloc->Free(curBuck);
-
-                    /* assign next to current */
-                    curBuck = nextOverflowEntryBuck;
-                }
-            }
-        }
-    }
+    void FreeOverFlowedEntries();
 
     FkvState PutKeyValue(uint64_t key, uint64_t& value, EmbCache::NetHashBucket *buck,
-                    const std::function<BeforePutFuncState()>& beforePutFunc)
-    {
-         /* try 8192 times */
-        for (uint16_t i = 0; i < 8192; i++) {
-            /* loop all buckets linked */
-            while (buck != nullptr) {
-                /* if there is an entry to put, just break */
-                buck->spinLock.Lock();
-                FkvState putRet = buck->Put(key, value, beforePutFunc);
-                buck->spinLock.UnLock();
-                if (putRet == FkvState::FKV_NOT_EXIST) {
-                    currentSize++;
-                    return FkvState::FKV_NOT_EXIST;
-                }
+        const std::function<BeforePutFuncState()>& beforePutFunc);
 
-                if (HM_UNLIKELY(putRet == FkvState::FKV_KEY_CONFLICT)) {
-                    return FkvState::FKV_KEY_CONFLICT;
-                }
-
-                if (HM_UNLIKELY(putRet == FkvState::FKV_BEFORE_PUT_FUNC_FAIL)) {
-                    return FkvState::FKV_BEFORE_PUT_FUNC_FAIL;
-                }
-
-                if (HM_UNLIKELY(putRet == FkvState::FKV_NO_SPACE)) {
-                    return FkvState::FKV_NO_SPACE;
-                }
-
-                /*
-                 * if no next bucket exist, just for break,
-                 * else move to next bucket linked
-                 */
-                if (buck->next == nullptr) {
-                    break;
-                } else {
-                    buck = buck->next;
-                }
-            }
-
-            /*
-             * if not put successfully in existing buckets, allocate a new one
-             *
-             * NOTES: just allocate memory, don't access new bucket in the spin lock scope,
-             * if access new bucket, which could trigger physical memory allocation which
-             * could trigger page fault, that is quite slow. In this case, spin lock
-             * could occupy too much CPU
-             */
-            auto &lock = buck->spinLock;
-            lock.Lock();
-            /* if other thread allocated new buck already, unlock and continue */
-            if (buck->next != nullptr) {
-                buck = buck->next;
-                lock.UnLock();
-                continue;
-            }
-
-            /* firstly entered thread allocate new bucket */
-            auto newBuck = static_cast<NetHashBucket *>(mOverflowEntryAlloc->Allocate(sizeof(NetHashBucket)));
-            if (HM_UNLIKELY(newBuck == nullptr)) {
-                lock.UnLock();
-                ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR, "Failed to allocate new bucket");
-                return FkvState::FKV_FAIL;
-            }
-            /* link to current buck, set buck to new buck */
-            buck->next = newBuck;
-            buck = newBuck;
-
-            /* unlock */
-            lock.UnLock();
-        }
-        return FkvState::FKV_FAIL;
-    }
-
-    void ExtractKeyValInBuck(EmbCache::NetHashBucket *buck, std::vector<std::pair<uint64_t, uint64_t>>& kvVec)
-    {
-        while (buck) {
-            for (size_t k = 0; k < K_KVNUMINBUCKET; k++) {
-                if (buck->keys[k] == 0) {
-                    continue;
-                }
-                buck->spinLock.Lock();
-                kvVec.emplace_back(buck->keys[k].load(), buck->values[k]);
-                buck->spinLock.UnLock();
-            }
-            buck = buck->next;
-        }
-    }
+    void ExtractKeyValInBuck(EmbCache::NetHashBucket *buck, std::vector<std::pair<uint64_t, uint64_t>>& kvVec);
 };
 }
 #endif // MXREC_MAPPER_BASE_H
