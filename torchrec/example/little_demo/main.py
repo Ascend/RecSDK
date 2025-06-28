@@ -52,15 +52,13 @@ BATCH_SIZE = 32
 BATCH_NUM = 32
 
 
-def get_distribute_env():
+def set_distribute_env():
     rank = int(os.environ["LOCAL_RANK"])
-    world_size = int(os.environ["WORLD_SIZE"])
     torch.npu.set_device(rank)
     os.environ["MASTER_ADDR"] = "127.0.0.1"
     os.environ["MASTER_PORT"] = "6000"
     os.environ["GLOO_SOCKET_IFNAME"] = "lo"
     dist.init_process_group(backend="hccl")
-    return rank, world_size
 
 
 def create_ddp(test_model):
@@ -90,7 +88,7 @@ def create_ddp(test_model):
 
 
 def invoke_main():
-    get_distribute_env()
+    set_distribute_env()
     device = torch.device("npu")
 
     dataset = RandomRecDataset(BATCH_SIZE, BATCH_NUM, FEAT_NAMES, ID_RANGES)
