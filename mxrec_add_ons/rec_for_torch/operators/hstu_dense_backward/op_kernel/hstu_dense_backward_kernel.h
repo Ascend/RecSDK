@@ -42,39 +42,6 @@ public:
         this->ComputeSecond();
     }
 
-    __aicore__ inline void CalcBaseOffsets(int64_t curTaskId, bool isCol = true)
-    {
-        this->taskInfo[curTaskId].qkLeftOffset = this->taskInfo[curTaskId].batchId * this->seqLen * this->headNum *
-            this->headDim + this->taskInfo[curTaskId].rowId * this->blockHeight * this->headNum * this->headDim +
-            this->taskInfo[curTaskId].headId * this->headDim;
-        this->taskInfo[curTaskId].qkRightOffset = this->taskInfo[curTaskId].batchId * this->seqLen * this->headNum *
-            this->headDim + this->taskInfo[curTaskId].colId * this->blockHeight *
-            this->headNum * this->headDim + this->taskInfo[curTaskId].headId * this->headDim;
-        this->taskInfo[curTaskId].kGradLeftOffset = this->taskInfo[curTaskId].batchId * this->headNum *
-            this->biasGradSeqLen * this->biasGradSeqLen + this->taskInfo[curTaskId].headId * this->biasGradSeqLen *
-            this->biasGradSeqLen + this->taskInfo[curTaskId].rowId * this->blockHeight * this->biasGradSeqLen +
-            this->taskInfo[curTaskId].colId * this->blockHeight;
-        if (isCol) {
-            this->taskInfo[curTaskId].vGradRightOffset = this->taskInfo[curTaskId].batchId * this->seqLen *
-                this->headNum * this->headDim + this->taskInfo[curTaskId].rowId * this->blockHeight *
-                this->headNum * this->headDim + this->taskInfo[curTaskId].headId * this->headDim;
-
-            this->taskInfo[curTaskId].rowLine = this->seqLen - this->taskInfo[curTaskId].rowId * this->blockHeight;
-            if (this->taskInfo[curTaskId].rowLine > this->blockHeight) {
-                this->taskInfo[curTaskId].rowLine = this->blockHeight;
-            }
-        } else {
-            this->taskInfo[curTaskId].vGradRightOffset = this->taskInfo[curTaskId].batchId * this->seqLen *
-                this->headNum * this->headDim + this->taskInfo[curTaskId].colId * this->blockHeight *
-                this->headNum * this->headDim + this->taskInfo[curTaskId].headId * this->headDim;
-
-            this->taskInfo[curTaskId].colLine = this->seqLen - this->taskInfo[curTaskId].colId * this->blockHeight;
-            if (this->taskInfo[curTaskId].colLine > this->blockHeight) {
-                this->taskInfo[curTaskId].colLine = this->blockHeight;
-            }
-        }
-    }
-
     __aicore__ inline void DoQKMatmul(int64_t taskId)
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
@@ -195,31 +162,6 @@ public:
         }
     }
 
-    __aicore__ inline void CastQType2Float(LocalTensor<float> dstTensor, LocalTensor<qType> srcTensor,
-                                           LocalTensor<qType> midTensor, int64_t len)
-    {
-        DataCopy<qType>(midTensor, srcTensor, len);
-        Cast(dstTensor, midTensor, RoundMode::CAST_NONE, len);
-    }
-
-    __aicore__ inline void CastInputData(LocalTensor<float> &inputQK, LocalTensor<float> &inputGV,
-                                         LocalTensor<float> &inputMask, LocalTensor<float> &inputBias, int64_t thisLen,
-                                         bool useMask)
-    {
-        LocalTensor<qType> outputMidTemp = this->queueOutputTemp.template AllocTensor<qType>();
-        if (!std::is_same<qType, float>::value) {
-            CastQType2Float(inputQK, inputQK.template ReinterpretCast<qType>(), outputMidTemp, thisLen);
-            CastQType2Float(inputGV, inputGV.template ReinterpretCast<qType>(), outputMidTemp, thisLen);
-            if (useMask) {
-                CastQType2Float(inputMask, inputMask.template ReinterpretCast<qType>(), outputMidTemp, thisLen);
-            }
-            if (this->enableBias) {
-                CastQType2Float(inputBias, inputBias.template ReinterpretCast<qType>(), outputMidTemp, thisLen);
-            }
-        }
-        this->queueOutputTemp.template FreeTensor(outputMidTemp);
-    }
-
     __aicore__ inline void CalcuScoreWithFloat32(int64_t thisLen, bool useMask)
     {
         auto inputQK = this->queueVecScoreQK.template DeQue<float>();
@@ -229,7 +171,7 @@ public:
         LocalTensor<float> inputBias = this->enableBias ? this->queueVecScoreBias.template DeQue<float>() :
                                                     this->queueVecScoreBias.template AllocTensor<float>();
 
-        CastInputData(inputQK, inputGV, inputMask, inputBias, thisLen, useMask);
+        this->CastInputData(inputQK, inputGV, inputMask, inputBias, thisLen, useMask);
 
         if (this->enableBias) {
             // qkb = qk + attn_bias
@@ -320,32 +262,6 @@ public:
                      this->taskInfo[curTaskId].colLine, useMask);
     }
 
-    __aicore__ inline void CopyInPadding(LocalTensor<qType> dstTensor, GlobalTensor<qType> srcTensor, int64_t rowNum,
-                                         int64_t colNum, int64_t seqLen)
-    {
-        uint16_t blockCount = rowNum;
-        uint32_t blockLen = colNum * sizeof(qType);
-        uint32_t srcStride = (seqLen - colNum) * sizeof(qType);
-        uint32_t dstStride = (this->blockHeight - colNum) / (DATA_ALIGN_BYTES / sizeof(qType));
-        uint8_t rightPadding = (this->blockHeight - colNum) % (DATA_ALIGN_BYTES / sizeof(qType));
-
-        DataCopyExtParams copyParams{blockCount, blockLen, srcStride, dstStride, 0};
-        DataCopyPadExtParams<qType> padParams{true, 0, rightPadding, 0};
-        DataCopyPad(dstTensor, srcTensor, copyParams, padParams);
-    }
-
-    __aicore__ inline void CopyOutPadding(GlobalTensor<qType> dstTensor, LocalTensor<qType> srcTensor, int64_t rowNum,
-                                          int64_t colNum, int64_t seqLen)
-    {
-        uint16_t blockCount = rowNum;
-        uint32_t blockLen = colNum * sizeof(qType);
-        uint32_t srcStride = (this->blockHeight - colNum) / (DATA_ALIGN_BYTES / sizeof(qType));
-        uint32_t dstStride = (seqLen - colNum) * sizeof(qType);
-
-        DataCopyExtParams copyParams{blockCount, blockLen, srcStride, dstStride, 0};
-        DataCopyPad(dstTensor, srcTensor, copyParams);
-    }
-
     __aicore__ inline void ValidVecScore(int64_t thisLen, int64_t validRowNum, int64_t totalColNum, int64_t qkOffset,
                                          int64_t curMaskOffset, int64_t curAttnBiasOffset, bool useMask)
     {
@@ -364,15 +280,15 @@ public:
                 DataCopy<qType>(inputMask.template ReinterpretCast<qType>(), this->maskTemp[curMaskOffset], thisLen);
             }
             if (IfMask(this->maskType, MaskType::MASK_CUSTOM)) {
-                CopyInPadding(inputMask.template ReinterpretCast<qType>(), this->mask[curMaskOffset], validRowNum,
-                              totalColNum, this->maxSeqLen);
+                this->CopyInPadding(inputMask.template ReinterpretCast<qType>(), this->mask[curMaskOffset], validRowNum,
+                    totalColNum, this->maxSeqLen);
             }
             this->queueVecScoreMask.template EnQue(inputMask);
         }
         if (this->enableBias) {
             LocalTensor<float> inputBias = this->queueVecScoreBias.template AllocTensor<float>();
-            CopyInPadding(inputBias.template ReinterpretCast<qType>(), this->attnBias[curAttnBiasOffset], validRowNum,
-                          totalColNum, this->biasGradSeqLen);
+            this->CopyInPadding(inputBias.template ReinterpretCast<qType>(), this->attnBias[curAttnBiasOffset],
+                validRowNum, totalColNum, this->biasGradSeqLen);
             this->queueVecScoreBias.template EnQue(inputBias);
         }
 
@@ -381,7 +297,7 @@ public:
         LocalTensor<qType> outputScore = this->queueOutputScore.template DeQue<qType>();
         LocalTensor<qType> outputBias = this->queueOutputBias.template DeQue<qType>();
         DataCopy<qType>(this->scoreTemp[scoreTempOffset], outputScore, thisLen);
-        CopyOutPadding(this->attnBiasGrad[curAttnBiasOffset], outputBias, validRowNum, totalColNum,
+        this->CopyOutPadding(this->attnBiasGrad[curAttnBiasOffset], outputBias, validRowNum, totalColNum,
             this->biasGradSeqLen);
         this->queueOutputScore.template FreeTensor(outputScore);
         this->queueOutputBias.template FreeTensor(outputBias);
@@ -429,8 +345,8 @@ public:
 
                 int64_t curAttnBiasDiagonalOffset = attnBiasDiagonalOffset + startRowNum * this->biasGradSeqLen;
                 outputTempTensor = this->queueOutputTemp.template DeQue<qType>();
-                CopyOutPadding(this->attnBiasGrad[curAttnBiasDiagonalOffset], outputTempTensor, thisRowNum, totalRowNum,
-                               this->biasGradSeqLen);
+                this->CopyOutPadding(this->attnBiasGrad[curAttnBiasDiagonalOffset], outputTempTensor, thisRowNum,
+                    totalRowNum, this->biasGradSeqLen);
                 this->queueOutputTemp.template FreeTensor(outputTempTensor);
             }
 
@@ -593,7 +509,7 @@ public:
                 int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
                 this->taskInfo[curTaskId] = BlockInfo{taskId, batchId, headId, rowId, colId, accumId};
                 this->taskInfo[curTaskId].colLine = colLine;
-                CalcBaseOffsets(curTaskId);
+                this->CalcBaseOffsets(curTaskId);
 
                 FirstStagePipeline(taskId);
 
@@ -647,7 +563,7 @@ public:
                 int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
                 this->taskInfo[curTaskId] = BlockInfo{taskId, batchId, headId, rowId, colId, accumId};
                 this->taskInfo[curTaskId].rowLine = rowLine;
-                CalcBaseOffsets(curTaskId, false);
+                this->CalcBaseOffsets(curTaskId, false);
 
                 SecondStagePipeline(taskId);
 

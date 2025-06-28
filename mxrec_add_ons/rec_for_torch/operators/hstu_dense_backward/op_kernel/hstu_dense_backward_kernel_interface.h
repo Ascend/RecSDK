@@ -172,6 +172,90 @@ public:
         }
     }
 
+    __aicore__ inline void CopyInPadding(LocalTensor<qType> dstTensor, GlobalTensor<qType> srcTensor, int64_t rowNum,
+                                         int64_t colNum, int64_t seqLen)
+    {
+        uint16_t blockCount = rowNum;
+        uint32_t blockLen = colNum * sizeof(qType);
+        uint32_t srcStride = (seqLen - colNum) * sizeof(qType);
+        uint32_t dstStride = (this->blockHeight - colNum) / (DATA_ALIGN_BYTES / sizeof(qType));
+        uint8_t rightPadding = (this->blockHeight - colNum) % (DATA_ALIGN_BYTES / sizeof(qType));
+
+        DataCopyExtParams copyParams{blockCount, blockLen, srcStride, dstStride, 0};
+        DataCopyPadExtParams<qType> padParams{true, 0, rightPadding, 0};
+        DataCopyPad(dstTensor, srcTensor, copyParams, padParams);
+    }
+
+    __aicore__ inline void CopyOutPadding(GlobalTensor<qType> dstTensor, LocalTensor<qType> srcTensor, int64_t rowNum,
+                                          int64_t colNum, int64_t seqLen)
+    {
+        uint16_t blockCount = rowNum;
+        uint32_t blockLen = colNum * sizeof(qType);
+        uint32_t srcStride = (this->blockHeight - colNum) / (DATA_ALIGN_BYTES / sizeof(qType));
+        uint32_t dstStride = (seqLen - colNum) * sizeof(qType);
+
+        DataCopyExtParams copyParams{blockCount, blockLen, srcStride, dstStride, 0};
+        DataCopyPad(dstTensor, srcTensor, copyParams);
+    }
+
+    __aicore__ inline void CastQType2Float(LocalTensor<float> dstTensor, LocalTensor<qType> srcTensor,
+                                           LocalTensor<qType> midTensor, int64_t len)
+    {
+        DataCopy<qType>(midTensor, srcTensor, len);
+        Cast(dstTensor, midTensor, RoundMode::CAST_NONE, len);
+    }
+
+    __aicore__ inline void CastInputData(LocalTensor<float> &inputQK, LocalTensor<float> &inputGV,
+                                         LocalTensor<float> &inputMask, LocalTensor<float> &inputBias, int64_t thisLen,
+                                         bool useMask)
+    {
+        LocalTensor<qType> outputMidTemp = this->queueOutputTemp.template AllocTensor<qType>();
+        if (!std::is_same<qType, float>::value) {
+            this->CastQType2Float(inputQK, inputQK.template ReinterpretCast<qType>(), outputMidTemp, thisLen);
+            this->CastQType2Float(inputGV, inputGV.template ReinterpretCast<qType>(), outputMidTemp, thisLen);
+            if (useMask) {
+                this->CastQType2Float(inputMask, inputMask.template ReinterpretCast<qType>(), outputMidTemp, thisLen);
+            }
+            if (this->enableBias) {
+                this->CastQType2Float(inputBias, inputBias.template ReinterpretCast<qType>(), outputMidTemp, thisLen);
+            }
+        }
+        this->queueOutputTemp.template FreeTensor(outputMidTemp);
+    }
+
+    __aicore__ inline void CalcBaseOffsets(int64_t curTaskId, bool isCol = true)
+    {
+        this->taskInfo[curTaskId].qkLeftOffset = this->taskInfo[curTaskId].batchId * this->seqLen * this->headNum *
+            this->headDim + this->taskInfo[curTaskId].rowId * this->blockHeight * this->headNum * this->headDim +
+            this->taskInfo[curTaskId].headId * this->headDim;
+        this->taskInfo[curTaskId].qkRightOffset = this->taskInfo[curTaskId].batchId * this->seqLen * this->headNum *
+            this->headDim + this->taskInfo[curTaskId].colId * this->blockHeight *
+            this->headNum * this->headDim + this->taskInfo[curTaskId].headId * this->headDim;
+        this->taskInfo[curTaskId].kGradLeftOffset = this->taskInfo[curTaskId].batchId * this->headNum *
+            this->biasGradSeqLen * this->biasGradSeqLen + this->taskInfo[curTaskId].headId * this->biasGradSeqLen *
+            this->biasGradSeqLen + this->taskInfo[curTaskId].rowId * this->blockHeight * this->biasGradSeqLen +
+            this->taskInfo[curTaskId].colId * this->blockHeight;
+        if (isCol) {
+            this->taskInfo[curTaskId].vGradRightOffset = this->taskInfo[curTaskId].batchId * this->seqLen *
+                this->headNum * this->headDim + this->taskInfo[curTaskId].rowId * this->blockHeight *
+                this->headNum * this->headDim + this->taskInfo[curTaskId].headId * this->headDim;
+
+            this->taskInfo[curTaskId].rowLine = this->seqLen - this->taskInfo[curTaskId].rowId * this->blockHeight;
+            if (this->taskInfo[curTaskId].rowLine > this->blockHeight) {
+                this->taskInfo[curTaskId].rowLine = this->blockHeight;
+            }
+        } else {
+            this->taskInfo[curTaskId].vGradRightOffset = this->taskInfo[curTaskId].batchId * this->seqLen *
+                this->headNum * this->headDim + this->taskInfo[curTaskId].colId * this->blockHeight *
+                this->headNum * this->headDim + this->taskInfo[curTaskId].headId * this->headDim;
+
+            this->taskInfo[curTaskId].colLine = this->seqLen - this->taskInfo[curTaskId].colId * this->blockHeight;
+            if (this->taskInfo[curTaskId].colLine > this->blockHeight) {
+                this->taskInfo[curTaskId].colLine = this->blockHeight;
+            }
+        }
+    }
+
     GM_ADDR curAICWorkspace;
 
     // Shape
