@@ -34,14 +34,13 @@ namespace EmbCache {
  * @brief Allocator template, for extend memory allocation for overflowed buckets
  */
 
-constexpr size_t K_ALIGNMENT = 64;
-constexpr size_t K_KVNUMINBUCKET = 3;
+// Deleting the "static" declaration leads to a decrease in performance.
+static constexpr size_t K_ALIGNMENT = 64;
+static constexpr size_t K_KVNUMINBUCKET = 3;
 
-enum class BucketIdx {
-    FIRST,
-    SECOND,
-    THIRD
-};
+constexpr size_t BUCKET_IDX_FIRST = 0;
+constexpr size_t BUCKET_IDX_SECOND = 1;
+constexpr size_t BUCKET_IDX_THIRD = 2;
 
 class NetHeapAllocator {
 public:
