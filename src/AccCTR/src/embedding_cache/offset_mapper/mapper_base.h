@@ -34,9 +34,8 @@ namespace EmbCache {
  * @brief Allocator template, for extend memory allocation for overflowed buckets
  */
 
-// Deleting the "static" declaration leads to a decrease in performance.
-static constexpr size_t K_ALIGNMENT = 64;
-static constexpr size_t K_KVNUMINBUCKET = 3;
+constexpr size_t K_ALIGNMENT = 64;
+constexpr size_t K_KVNUMINBUCKET = 3;
 
 constexpr size_t BUCKET_IDX_FIRST = 0;
 constexpr size_t BUCKET_IDX_SECOND = 1;
