@@ -133,6 +133,10 @@ class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
     @property
     def unique_inverse(self) -> torch.Tensor:
         return self._unique_inverse
+    
+    @unique_indices.setter
+    def unique_indices(self, value: torch.Tensor) -> None:
+        self._unique_indices = value
 
     @staticmethod
     def from_offsets_sync(
