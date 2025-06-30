@@ -19,11 +19,12 @@ import os
 import re
 import stat
 import subprocess
+from pathlib import Path
 from setuptools import setup, find_packages
 import pkg_resources
 from setuptools.extern.packaging import version as packaging_version
 
-script_path = os.getcwd()
+script_path = Path(__file__).parent.absolute()
 
 
 # Patch Version class to preserve original version string

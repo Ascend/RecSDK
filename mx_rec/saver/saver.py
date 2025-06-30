@@ -741,7 +741,7 @@ def check_file_system_is_hdfs(file_path):
 def get_hdfs_safemode_status():
     try:
         result = subprocess.run(["/usr/local/hadoop-3.3.6/bin/hdfs", "dfsadmin", "-safemode", "get"],
-                                capture_output=True, text=True, check=True)
+                                capture_output=True, text=True, check=True, shell=False)
         output = result.stdout.strip()
         logger.info(f"HDFS safemode status:{output}.")
         return output
