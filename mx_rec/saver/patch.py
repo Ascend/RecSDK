@@ -290,6 +290,14 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
         return model_checkpoint_path
 
     # Rec SDK Patch
+    # validate save_path first, not allow soft link in path for safety reason
+    dir_validator = DirectoryValidator("save_path", save_path)
+    try:
+        dir_validator.check_not_soft_link()
+        dir_validator.check()
+    except ValueError as err:
+        raise ValueError(f"save_path:{save_path} can't contain soft link for safety reason") from err
+    
     # save sparse model, only run when self.sparse_saver is not None
     if not context.executing_eagerly() and self.sparse_saver:
         self.sparse_saver.save(sess, save_path=checkpoint_file, save_delta=save_delta)
