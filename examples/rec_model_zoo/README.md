@@ -10,6 +10,7 @@
 
 1. 对于 [Criteo](https://www.kaggle.com/c/criteo-display-ad-challenge) 数据集, 我们采用 [AFN](https://ojs.aaai.org/index.php/AAAI/article/view/5768) 的预处理，根据其提供的链接下载libsvm格式的数据集，进一步将其转换为tfrecord格式。
 2. download url 'https://worksheets.codalab.org/rest/bundles/0x8dca5e7bac42470aa445f9a205d177c6/contents/blob/', 替换到download_criteo.py中的url。
+   注：请保障url的可靠性，避免url不可信、返回超大结构体、OOM等问题。
     ```shell
     cd feature_interaction/data/
     python download_criteo.py
