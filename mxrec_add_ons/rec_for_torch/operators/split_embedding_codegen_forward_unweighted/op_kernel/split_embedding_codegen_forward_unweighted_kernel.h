@@ -312,7 +312,7 @@ public:
     __aicore__ inline void Scheduler(const int64_t &totalLen, int64_t &offsetLen, int64_t &calcLen)
     {
         int64_t splitBaseLen = totalLen / GetBlockNum();
-        int64_t tailSplitLen = totalLen % GetBlockNum();
+        int64_t tailSplitIndex = totalLen % GetBlockNum();
         if (GetBlockIdx() >= tailSplitIndex) {
             calcLen = splitBaseLen;
             offsetLen = tailSplitIndex * (splitBaseLen + 1) + (GetBlockIdx() -  tailSplitIndex) * splitBaseLen;

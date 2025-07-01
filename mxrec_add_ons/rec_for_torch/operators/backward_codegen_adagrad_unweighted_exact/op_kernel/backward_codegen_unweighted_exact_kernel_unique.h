@@ -149,7 +149,7 @@ public:
     {
         int batches = (this->offsetsDim0 - 1) / this->weightsOffsetsDim0;
         for (size_t i = 0; i <= this->weightsOffsetsDim0; i++) {
-            tables[i] = offsetGT.GetValue(batches * i);
+            tables[i] = offsetsGT.GetValue(batches * i);
         }
     }
 
@@ -193,18 +193,18 @@ public:
 
     __aicore__ inline void ComputeGradEC()
     {
-        int64_t indicesNumOneBlock = blockLen / this->maxD;
+        int64_t indicesNumOneBlock = this->blockLen / this->maxD;
         if (indicesNumOneBlock >= MAX_ARGS_PIPE_LEN) {
             indicesNumOneBlock = MAX_ARGS_PIPE_LEN;
         }
-        int tables[MAX_INDICES_ONE_BLOCK];
+        int tables[MAX_ARGS_PIPE_LEN];
         GetTableSize(tables);
         int64_t lastIndices = 0;
         int64_t thisLen = 0;
-        int64_t batchs = (this->offsesDim0 - 1) / this->weightsOffsetsDim0;
+        int64_t offsetOfThisTable = 0;
         for (int64_t i = 1; i <= this->weightsOffsetsDim0; i++) {
-            Scheduler(tables[i] - lastIndices, this->OffsetOfThisCore, thisLen);
-            int64_t startIndices = this->offsetOfThisCore + lastIndices; // 上一张表的偏移+table_i的偏移
+            Scheduler(tables[i] - lastIndices, offsetOfThisTable, thisLen);
+            int64_t startIndices = offsetOfThisTable + lastIndices; // 上一张表的偏移+table_i的偏移
 
             if (thisLen <= 0) {
                 continue;
