@@ -158,6 +158,14 @@ public:
         }
     }
 
+    __aicore__ inline void GetTableSize(int *tables)
+    {
+        int batches = (offsetsDim0 - 1) / weightsOffsetsDim0; // weightsOffsetsDim0=tableNum
+        for (size_t i = 0; i <= weightsOffsetsDim0; i++) {
+            tables[i] = offsetGT.GetValue(batches * i);
+        }
+    }
+
     __aicore__ inline void CopyInNormal(int64_t startIndices, int64_t thisLen, int64_t embedDim,
         int64_t thisWeightOffset)
     {
@@ -301,15 +309,44 @@ public:
         }
     }
 
-    __aicore__ inline void Compute()
+    __aicore__ inline void Scheduler(const int64_t &totalLen, int64_t &offsetLen, int64_t &calcLen)
+    {
+        int64_t splitBaseLen = totalLen / GetBlockNum();
+        int64_t tailSplitLen = totalLen % GetBlockNum();
+        if (GetBlockIdx() >= tailSplitIndex) {
+            calcLen = splitBaseLen;
+            offsetLen = tailSplitIndex * (splitBaseLen + 1) + (GetBlockIdx() -  tailSplitIndex) * splitBaseLen;
+        } else {
+            calcLen = splitBaseLen + 1;
+            offsetLen = GetBlockIdx() * (splitBaseLen + 1);
+        }
+    }
+
+    __aicore__ inline void ComputeEC()
+    {
+        int tables[MAX_INDICS_ONE_BLOCK];
+        GetTableSize(tables);
+        int64_t lastIndices = 0;
+        int64_t thisTableLen = 0;
+        for (int64_t i = 1; i <= weightsOffsetsDim0; i++) {
+            if (tables[i] != lastIndices) {
+                Scheduler(tables[i] - lastIndices, offsetOfThisCore, thisTableLen);
+                if (thisTableLen > 0) {
+                    int64_t thisTableOffset = offsetOfThisCore + lastIndices;
+                    int64_t thisWeightOffset = weightOffsetGT.GetValue(i - 1);
+                    ProcessEC(thisTableLen, thisTableOffset, thisWeightOffset);
+                }
+                lastIndices = tables[i];
+            }
+        }
+    }
+
+    __aicore__ inline void ComputeEBC()
     {
         if (lenOfThisCore == 0) {
             return;
         }
-        indicesNumOneBlock = blockLen / alignMaxD;
-        if (indicesNumOneBlock >= MAX_INDICS_ONE_BLOCK) {
-            indicesNumOneBlock = MAX_INDICS_ONE_BLOCK;
-        }
+        
         for (int64_t loop = 0; loop < lenOfThisCore; loop++) {
             int64_t i = (offsetOfThisCore + loop) / weightsOffsetsDim0;
             int64_t j = (offsetOfThisCore + loop) % weightsOffsetsDim0;
@@ -325,17 +362,25 @@ public:
             // dataCopy In params
             int64_t tableIndex = thisOffsetIndex / batchs;
             int64_t thisWeightOffset = weightOffsetGT.GetValue(tableIndex);
+            // dataCopy Out params
+            int64_t outBatchInd = thisOffsetIndex % outDim0;
+            int64_t outEmbedOffset = dOffsetGT.GetValue(tableIndex);
+            int64_t outOffset = outBatchInd * outDim1 + outEmbedOffset;
+            int64_t embedDim = dOffsetGT.GetValue(tableIndex + 1) - dOffsetGT.GetValue(tableIndex);
+            ProcessEBC(thisLen, startIndices, embedDim, thisWeightOffset, outOffset);
+        }
+    }
 
-            if (poolMode == NONE_POOL) {
-                ProcessEC(thisLen, startIndices, thisWeightOffset);
-            } else {
-                // dataCopy Out params
-                int64_t outBatchInd = thisOffsetIndex % outDim0;
-                int64_t outEmbedOffset = dOffsetGT.GetValue(tableIndex);
-                int64_t outOffset = outBatchInd * outDim1 + outEmbedOffset;
-                int64_t embedDim = dOffsetGT.GetValue(tableIndex + 1) - dOffsetGT.GetValue(tableIndex);
-                ProcessEBC(thisLen, startIndices, embedDim, thisWeightOffset, outOffset);
-            }
+    __aicore__ inline void Compute()
+    {
+        indicesNumOneBlock = blockLen / alignMaxD;
+        if (indicesNumOneBlock >= MAX_INDICS_ONE_BLOCK) {
+            indicesNumOneBlock = MAX_INDICS_ONE_BLOCK;
+        }
+        if (poolMode == NONE_POOL) {
+            ComputeEC();
+        } else {
+            ComputeEBC();
         }
     }
 
