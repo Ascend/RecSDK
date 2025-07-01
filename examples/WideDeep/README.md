@@ -584,4 +584,8 @@ def get_dense_and_sparse_optimizer(cfg):
     return dense_optimizer, sparse_optimizer
 ```
 
+# 安全说明
+
+本样例使用了pickle模块进行加载，可能存在恶意构造带文件在反序列化时带来的安全风险，请确保加载的文件是可信的。
+
 
