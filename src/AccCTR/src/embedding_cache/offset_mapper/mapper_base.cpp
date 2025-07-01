@@ -16,6 +16,12 @@
 
 #include "mapper_base.h"
 
+namespace {
+    constexpr size_t BUCKET_IDX_FIRST = 0;
+    constexpr size_t BUCKET_IDX_SECOND = 1;
+    constexpr size_t BUCKET_IDX_THIRD = 2;
+}
+
 namespace EmbCache {
 
 FkvState NetHashBucket::PutTrySlot(uint64_t key, uint64_t &value, std::atomic<uint64_t> &keySlot,

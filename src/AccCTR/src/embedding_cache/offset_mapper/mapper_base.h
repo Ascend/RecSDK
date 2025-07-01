@@ -37,10 +37,6 @@ namespace EmbCache {
 constexpr size_t K_ALIGNMENT = 64;
 constexpr size_t K_KVNUMINBUCKET = 3;
 
-constexpr size_t BUCKET_IDX_FIRST = 0;
-constexpr size_t BUCKET_IDX_SECOND = 1;
-constexpr size_t BUCKET_IDX_THIRD = 2;
-
 class NetHeapAllocator {
 public:
     void *Allocate(uint64_t size)
