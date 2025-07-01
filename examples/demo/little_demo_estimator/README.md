@@ -50,3 +50,7 @@ bash run.sh main.py {ip}
 
 **Tips**：run.sh脚本中有一个参数是rec_package_path，rec_package_path是Rec SDK的安装目录，比如：/usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec。
 这个参数在脚本是默认的，用户需要根据自己环境中Rec SDK实际安装的路径进行配置。
+
+# 安全说明
+
+本样例使用了pickle模块进行加载，可能存在恶意构造带文件在反序列化时带来的安全风险，请确保加载的文件是可信的。
