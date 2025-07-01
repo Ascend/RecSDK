@@ -12,18 +12,7 @@ from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
 
 MODEL_MAP = {
-    'deepFM': DeepfmModel,
-    'deepWide': DeepWideModel,
-    'dnn': DnnModel,
-    'ipnn': IpnnModel,
-    'opnn': OpnnModel,
-    'din': DinModel,
-    'fm': FmModel,
-    'lr': LrModel,
-    'cccfnet': CCCFModel,
-    'deepcross': DeepCrossModel,
     'exDeepFM': ExtremeDeepFMModel,
-    'cross': CrossModel,
 }
 
 

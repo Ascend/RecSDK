@@ -24,8 +24,6 @@ import sys
 from utils.log import Log
 
 
-
-
 def flat_config(config):
     """flat config to a dict"""
     f_config = {}
@@ -208,7 +206,7 @@ def main():
     check_config(config)
     hparams = create_hparams(config)
     print(hparams.values())
-    log = Log(hparams)
+    log = Log()
     hparams.logger = log.logger
     train.train(hparams)
 
