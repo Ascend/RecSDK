@@ -53,7 +53,7 @@ from mpi4py import MPI
 from mx_rec.saver.saver import Saver as SparseSaver
 from mx_rec.saver.saver import check_file_system_is_valid, should_write_data, update_model_index, \
     write_delta_export_time_ms, get_model_type_by_version, get_base_and_delta_models, read_base_delta_and_write, \
-    clear_delta_models, read_base_delta_and_write_for_ssd
+    clear_delta_models, read_base_delta_and_write_for_ssd, check_file_system_is_hdfs
 from mx_rec.util.communication.hccl_ops import get_rank_id
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, StringValidator, OptionalIntValidator, \
@@ -291,12 +291,13 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
 
     # Rec SDK Patch
     # validate save_path first, not allow soft link in path for safety reason
-    dir_validator = DirectoryValidator("save_path", save_path)
-    try:
-        dir_validator.check_not_soft_link()
-        dir_validator.check()
-    except ValueError as err:
-        raise ValueError(f"save_path:{save_path} can't contain soft link for safety reason") from err
+    if not check_file_system_is_hdfs(save_path):
+        dir_validator = DirectoryValidator("save_path", save_path)
+        try:
+            dir_validator.check_not_soft_link()
+            dir_validator.check()
+        except ValueError as err:
+            raise ValueError(f"save_path:{save_path} can't contain soft link for safety reason") from err
     
     # save sparse model, only run when self.sparse_saver is not None
     if not context.executing_eagerly() and self.sparse_saver:
