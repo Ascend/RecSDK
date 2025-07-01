@@ -15,8 +15,12 @@ import pytz
 import tensorflow as tf
 from npu_bridge.npu_init import NPUEstimator, NPURunConfig
 
-from utils import get_third_nearest_checkpoint, json_file_load, dump_pred_prob
-
+from utils import (
+    get_third_nearest_checkpoint,
+    json_file_load,
+    dump_pred_prob,
+    embedding_lookup_sparse_fake
+)
 
 tf.compat.v1.set_random_seed(2024)
 random.seed(2024)
@@ -114,18 +118,6 @@ def build_optimizer(model_cfg) -> tf.compat.v1.train.Optimizer:
 
 def model_fn(features, labels, mode, params):
     """build Estimator model"""
-
-    def embedding_lookup_sparse_fake(params, ids, combiner=None, name=None):
-        dense_mask = tf.expand_dims(tf.cast(ids >= 0, tf.float32), axis=-1)
-        ids = tf.where(tf.equal(ids, -1), tf.zeros_like(ids), ids)
-        embedding = tf.nn.embedding_lookup(params, ids, name=name + "_dense_lookup") * dense_mask
-        summed_embedding = tf.reduce_sum(embedding, axis=1)
-        if combiner == "sum":
-            return summed_embedding
-        elif combiner == "mean":
-            return summed_embedding / tf.reduce_sum(dense_mask, axis=1)
-        else:
-            raise ValueError("combiner only supoort 'sum', 'mean'")
 
     hash_weights = tf.compat.v1.get_variable(
         name="hash_weight",

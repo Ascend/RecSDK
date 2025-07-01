@@ -13,6 +13,28 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# MIT License
+#
+# Copyright (c) 2025 Huawei Technologies Co.,Ltd. All rights reserved.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 # ==============================================================================
 
 import os
@@ -28,7 +50,12 @@ import pytz
 import tensorflow as tf
 from npu_bridge.npu_init import NPUEstimator, NPURunConfig
 
-from utils import get_third_nearest_checkpoint, dump_pred
+from utils import (
+    get_third_nearest_checkpoint,
+    dump_pred,
+    input_fn,
+    build_optimizer
+)
 
 MODEL_NAME = "AutoInt"
 
@@ -54,45 +81,6 @@ def define_flags():
     tf.app.flags.DEFINE_boolean("clear_existing_model", True, "clear existing model or not")
     tf.app.flags.DEFINE_string("log_level", "DEBUG", "log level {DEBUG, INFO, WARNING, ERROR, CRITICAL}")
     return model_conf
-
-
-# ------ Load tfrecord dataset ------
-def input_fn(filenames: List[str], batch_size: int = 32, field_size: int = 39, num_epochs: int = 1,
-             perform_shuffle: bool = False) -> Tuple[Dict[str, tf.Tensor], tf.Tensor]:
-    """
-    Input function for loading TFRecord dataset.
-
-    Args:
-        filenames (List[str]): List of TFRecord file paths.
-        batch_size (int): Batch size.
-        field_size (int): Number of fields.
-        num_epochs (int): Number of epochs to repeat the dataset.
-        perform_shuffle (bool): Whether to shuffle the dataset.
-
-    Returns:
-        Tuple[Dict[str, tf.Tensor], tf.Tensor]: Batch features and batch labels.
-    """
-
-    def extract_fn(data_record):
-        features = {
-            # Extract features using the keys set during creation
-            'label': tf.io.FixedLenFeature(shape=(), dtype=tf.float32),
-            'ids': tf.io.FixedLenFeature(shape=(field_size,), dtype=tf.int64),
-            'values': tf.io.FixedLenFeature(shape=(field_size,), dtype=tf.float32),
-        }
-        sample = tf.io.parse_example(data_record, features)
-        sample['ids'] = tf.cast(sample['ids'], dtype=tf.int32)
-        return {"feat_ids": sample['ids'], "feat_vals": sample['values']}, sample['label']
-
-    dataset = tf.data.TFRecordDataset(filenames)
-    if perform_shuffle:
-        dataset = dataset.shuffle(buffer_size=500000)
-
-    dataset = dataset.repeat(num_epochs)
-    dataset = dataset.batch(batch_size, drop_remainder=True).map(extract_fn, num_parallel_calls=10).prefetch(100)
-    iterator = tf.compat.v1.data.make_one_shot_iterator(dataset)
-    batch_features, batch_labels = iterator.get_next()
-    return batch_features, batch_labels
 
 
 def embedding_layer(feat_ids: tf.Tensor, feat_vals: tf.Tensor, feat_emb_deep: tf.Tensor, field_size: int,
@@ -206,29 +194,6 @@ def fc_layer(attention_part: tf.Tensor, field_size: int, embedding_size: int) ->
     return tf.reshape(y, shape=[-1])
 
 
-def build_optimizer(learning_rate: float, model_cfg: object) -> tf.Operation:
-    """
-    Build the optimizer.
-
-    Args:
-        learning_rate (float): The learning rate.
-        model_cfg (object): The model configuration object.
-
-    Returns:
-        tf.Operation: The training operation.
-    """
-    if model_cfg.optimizer == 'Adam':
-        return tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate, beta1=0.9, beta2=0.999, epsilon=1e-8)
-    elif model_cfg.optimizer == 'Adagrad':
-        return tf.compat.v1.train.AdagradOptimizer(learning_rate=learning_rate, initial_accumulator_value=1e-8)
-    elif model_cfg.optimizer == 'Momentum':
-        return tf.compat.v1.train.MomentumOptimizer(learning_rate=learning_rate, momentum=0.95)
-    elif model_cfg.optimizer == 'ftrl':
-        return tf.compat.v1.train.FtrlOptimizer(learning_rate)
-    else:
-        raise ValueError("Invalid optimizer type: {}".format(model_cfg.optimizer))
-
-
 def model_fn(features, labels, mode, params):
     """Bulid Model function f(x) for Estimator."""
     # ------hyperparameters----
@@ -285,7 +250,7 @@ def model_fn(features, labels, mode, params):
     }
 
     # ------bulid optimizer------
-    optimizer = build_optimizer(learning_rate, params)
+    optimizer = build_optimizer(params.optimizer, learning_rate)
 
     train_op = optimizer.minimize(loss, global_step=tf.compat.v1.train.get_global_step())
 

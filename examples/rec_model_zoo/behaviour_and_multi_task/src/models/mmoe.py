@@ -16,7 +16,11 @@ import pytz
 import tensorflow as tf
 from npu_bridge.npu_init import NPUEstimator, NPURunConfig
 
-from utils import get_third_nearest_checkpoint, dump_pred_multi
+from utils import (
+    get_third_nearest_checkpoint,
+    dump_pred_multi,
+    embedding_lookup_sparse_fake
+)
 
 tf.compat.v1.enable_control_flow_v2()
 tf.compat.v1.enable_resource_variables()
@@ -120,39 +124,6 @@ def input_fn(filenames: list, mode_type: str, batch_size: int = 32, num_epochs: 
     batch_features, batch_labels = iterator.get_next()
 
     return batch_features, batch_labels
-
-
-def embedding_lookup_sparse_fake(params: tf.Tensor, ids: tf.Tensor, combiner: str = None,
-                                 name: str = None) -> tf.Tensor:
-    """
-    Perform sparse embedding lookup and combine the results.
-
-    Args:
-        params (tf.Tensor): The embedding parameters.
-        ids (tf.Tensor): The sparse IDs to lookup.
-        combiner (str, optional): The combiner method ('sum' or 'mean'). Defaults to None.
-        name (str, optional): The name for the operation. Defaults to None.
-
-    Returns:
-        tf.Tensor: The combined embedding results.
-
-    Raises:
-        ValueError: If the combiner is not 'sum' or 'mean'.
-    """
-
-    # Create a dense mask where valid IDs are marked as 1.0 and invalid IDs as 0.0
-    dense_mask = tf.expand_dims(tf.cast(ids >= 0, tf.float32), axis=-1)
-
-    # Replace invalid IDs (-1) with zeros
-    ids = tf.where(tf.equal(ids, -1), tf.zeros_like(ids), ids)
-    embedding = tf.nn.embedding_lookup(params, ids, name=name + "_dense_lookup") * dense_mask
-    summed_embedding = tf.reduce_sum(embedding, axis=1)
-    if combiner == "sum":
-        return summed_embedding
-    elif combiner == "mean":
-        return summed_embedding / tf.reduce_sum(dense_mask, axis=1)
-    else:
-        raise ValueError("combiner only supports 'sum' or 'mean'")
 
 
 def build_embedding_layer(features: dict, spec: dict, model_cfg: object) -> tf.Tensor:

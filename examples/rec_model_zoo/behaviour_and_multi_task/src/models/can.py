@@ -14,7 +14,12 @@ import pytz
 import tensorflow as tf
 from npu_bridge.npu_init import NPUEstimator, NPURunConfig
 
-from utils import get_third_nearest_checkpoint, json_file_load, dump_pred_prob
+from utils import (
+    get_third_nearest_checkpoint,
+    json_file_load,
+    dump_pred_prob,
+    embedding_lookup_sparse_fake
+)
 
 tf.compat.v1.set_random_seed(2024)
 random.seed(2024)
@@ -83,32 +88,6 @@ def p_re_lu(_x, name=''):
     pos = tf.nn.relu(_x)
     neg = alphas * (_x - abs(_x)) * 0.5
     return pos + neg
-
-
-def embedding_lookup_sparse_fake(params: tf.Tensor, ids: tf.Tensor, combiner: str = None,
-                                 name: str = None) -> tf.Tensor:
-    """
-    Perform sparse embedding lookup with masking for invalid IDs.
-
-    Args:
-        params (tf.Tensor): Embedding parameters.
-        ids (tf.Tensor): Tensor of IDs for lookup.
-        combiner (Optional[str]): Combiner method ('sum' or 'mean').
-        name (Optional[str]): Name for the operation.
-
-    Returns:
-        tf.Tensor: Resulting embedding tensor.
-    """
-    dense_mask = tf.expand_dims(tf.cast(ids >= 0, tf.float32), axis=-1)
-    ids = tf.where(tf.equal(ids, -1), tf.zeros_like(ids), ids)
-    embedding = tf.nn.embedding_lookup(params, ids, name=name + "_dense_lookup") * dense_mask
-    summed_embedding = tf.reduce_sum(embedding, axis=1)
-    if combiner == "sum":
-        return summed_embedding
-    elif combiner == "mean":
-        return summed_embedding / tf.reduce_sum(dense_mask, axis=1)
-    else:
-        raise ValueError("combiner only supports 'sum' or 'mean'")
 
 
 def build_embedding_layer(features: dict, model_cfg, spec: dict) -> dict:

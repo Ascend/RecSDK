@@ -14,7 +14,12 @@ import numpy as np
 import tensorflow as tf
 from npu_bridge.npu_init import NPUEstimator, NPURunConfig
 
-from utils import get_third_nearest_checkpoint, dump_pred
+from utils import (
+    get_third_nearest_checkpoint,
+    dump_pred,
+    input_fn,
+    build_optimizer
+)
 
 MODEL_NAME = "AFN_plus"
 
@@ -40,45 +45,6 @@ def define_flags():
     tf.app.flags.DEFINE_string("log_level", "DEBUG", "log level {DEBUG, INFO, WARNING, ERROR, CRITICAL}")
     tf.app.flags.DEFINE_string("deep_layers", '400,400,400', "deep layers")
     return model_conf
-
-
-# ------ Load tfrecord dataset ------
-def input_fn(filenames: list, batch_size: int = 32, field_size: int = 39, num_epochs: int = 1,
-             perform_shuffle: bool = False) -> tuple:
-    """
-    Input function for loading TFRecord dataset.
-
-    Args:
-        filenames (list): List of TFRecord file paths.
-        batch_size (int): Number of samples per batch.
-        field_size (int): Number of fields in the dataset.
-        num_epochs (int): Number of epochs to repeat the dataset.
-        perform_shuffle (bool): Whether to shuffle the dataset.
-
-    Returns:
-        tuple: A tuple containing batch features and batch labels.
-    """
-
-    def extract_fn(data_record):
-        features = {
-            # Extract features using the keys set during creation
-            'label': tf.io.FixedLenFeature(shape=(), dtype=tf.float32),
-            'ids': tf.io.FixedLenFeature(shape=(field_size,), dtype=tf.int64),
-            'values': tf.io.FixedLenFeature(shape=(field_size,), dtype=tf.float32),
-        }
-        sample = tf.io.parse_example(data_record, features)
-        sample['ids'] = tf.cast(sample['ids'], dtype=tf.int32)
-        return {"feat_ids": sample['ids'], "feat_vals": sample['values']}, sample['label']
-
-    dataset = tf.data.TFRecordDataset(filenames)
-    if perform_shuffle:
-        dataset = dataset.shuffle(buffer_size=500000)
-
-    dataset = dataset.repeat(num_epochs)
-    dataset = dataset.batch(batch_size, drop_remainder=True).map(extract_fn, num_parallel_calls=10).prefetch(100)
-    iterator = tf.compat.v1.data.make_one_shot_iterator(dataset)
-    batch_features, batch_labels = iterator.get_next()
-    return batch_features, batch_labels
 
 
 def layer_first(embeddings_trans, field_size, hidden_size):
@@ -145,32 +111,6 @@ def combine_layers(y_d, y_afn):
     y_2 = w2 * tf.stop_gradient(y_afn)
     y = y_1 + y_2 + b_p
     return y
-
-
-def build_optimizer(loss: tf.Tensor, learning_rate: float, model_cfg: object) -> tf.Operation:
-    """
-    Build the optimizer.
-
-    Args:
-        loss (tf.Tensor): The loss value.
-        learning_rate (float): The learning rate.
-        model_cfg (object): The model configuration object.
-
-    Returns:
-        tf.Operation: The training operation.
-    """
-    if model_cfg.optimizer == 'Adam':
-        optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate, beta1=0.9, beta2=0.999, epsilon=1e-8)
-    elif model_cfg.optimizer == 'Adagrad':
-        optimizer = tf.compat.v1.train.AdagradOptimizer(learning_rate=learning_rate, initial_accumulator_value=1e-8)
-    elif model_cfg.optimizer == 'Momentum':
-        optimizer = tf.compat.v1.train.MomentumOptimizer(learning_rate=learning_rate, momentum=0.95)
-    elif model_cfg.optimizer == 'ftrl':
-        optimizer = tf.compat.v1.train.FtrlOptimizer(learning_rate)
-    else:
-        raise NotImplementedError("This optimizer is not implemented.")
-    train_op = optimizer.minimize(loss, global_step=tf.compat.v1.train.get_global_step())
-    return train_op
 
 
 def model_fn(features, labels, mode, params):
@@ -260,7 +200,8 @@ def model_fn(features, labels, mode, params):
         "stop_criterion": (auc_metric[0] - loss_metric[0], tf.group(auc_metric[1], loss_metric[1]))
     }
 
-    train_op = build_optimizer(loss, learning_rate, params)
+    optimizer = build_optimizer(params.optimizer, learning_rate)
+    train_op = optimizer.minimize(loss, global_step=tf.compat.v1.train.get_global_step())
 
     if mode == tf.estimator.ModeKeys.EVAL:
         return tf.estimator.EstimatorSpec(
