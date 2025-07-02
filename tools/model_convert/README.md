@@ -91,7 +91,7 @@ restore_table = tf.contrib.lookup.MutableHashTable(
 
 with tf.Session() as sess:  
     saver = tf.train.Saver()  
-    saver.restore(sess, args.path + "/model.ckpt-0"）  
+    saver.restore(sess, args.path + "/model.ckpt-0")
     lookup_embedding = restore_table.lookup(key)  
 ```
 

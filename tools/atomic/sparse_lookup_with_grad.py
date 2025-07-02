@@ -20,22 +20,23 @@ import sys
 import time
 import argparse
 import logging
+
 import numpy as np
 import tensorflow as tf
 from mpi4py import MPI  # must before emb_cache after SparseOps
 import psutil
 from sklearn.metrics import roc_auc_score
-
 from tensorflow.python.ops import math_ops
 from tensorflow.python.framework import ops
 from tensorflow.core.protobuf.rewriter_config_pb2 import RewriterConfig
 from npu_bridge.hccl import hccl_ops
 from npu_bridge.estimator import npu_ops
-from sparse_ops.config import set_ascend_env, AscendEnv
 
+from sparse_ops.config import set_ascend_env, AscendEnv
+from sparse_ops.common import InputConfig, input_fn_tfrecord, USE_PIPELINE_TEST
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
 from mx_rec.core.asc.manager import start_asc_pipeline
-from mx_rec.core.asc.helper import FeatureSpec, get_asc_insert_func
+from mx_rec.core.asc.helper import FeatureSpec
 from mx_rec.util.initialize import get_rank_size, init, clear_channel, get_rank_id, set_if_load, \
     terminate_config_initializer
 from mx_rec.constants.constants import MxRecMode
@@ -44,10 +45,6 @@ from mx_rec.util.initialize import get_ascend_global_hashtable_collection
 from mx_rec.optimizers.lazy_adam import CustomizedLazyAdam
 
 logging.getLogger().setLevel(logging.INFO)
-
-USE_PIPELINE_TEST = False
-USE_STATIC = False
-USE_EXPANSION = False
 
 
 def create_hash_optimizer():
@@ -75,65 +72,6 @@ class WideDeep:
         with tf.control_dependencies([self.loss]):
             self.op = tf.no_op()
         return self.op
-
-
-class InputConfig:
-    def __init__(self, feature_spec_list, rank_id, local_rank_id, rank_size, data_path, file_pattern, 
-                 total_batch_size, num_epochs=1, perform_shuffle=False, training=True):
-        self.feature_spec_list = feature_spec_list
-        self.rank_id = rank_id
-        self.local_rank_id = local_rank_id
-        self.rank_size = rank_size
-        self.data_path = data_path
-        self.file_pattern = file_pattern
-        self.total_batch_size = total_batch_size
-        self.num_epochs = num_epochs
-        self.perform_shuffle = perform_shuffle
-        self.training = training
-
-
-def input_fn_tfrecord(input_config: InputConfig):
-    feature_spec_list = input_config.feature_spec_list
-    rank_id = input_config.rank_id
-    local_rank_id = input_config.local_rank_id
-    rank_size = input_config.rank_size
-    data_path = input_config.data_path
-    file_pattern = input_config.file_pattern
-    total_batch_size = input_config.total_batch_size
-    num_epochs = input_config.num_epochs
-    perform_shuffle = input_config.perform_shuffle
-    training = input_config.training
-
-    line_per_sample = 1024 * 8
-    total_batch_size = int(total_batch_size / line_per_sample)
-    num_parallel = 8
-
-    def extract_fn(data_record):
-        features = {
-            'label': tf.FixedLenFeature(shape=(line_per_sample,), dtype=tf.float32),
-            'feat_ids': tf.FixedLenFeature(shape=(128 * line_per_sample,), dtype=tf.int64)
-        }
-        sample = tf.parse_single_example(data_record, features)
-        return sample
-
-    def reshape_fn(batch):
-        batch['label'] = tf.reshape(batch['label'], [-1, ])
-        batch['feat_ids'] = tf.reshape(batch['feat_ids'], [-1, 128])
-        return batch
-
-    all_files = os.listdir(data_path)
-    files = [os.path.join(data_path, f) for f in all_files if f.startswith(file_pattern)]
-    dataset = tf.data.TFRecordDataset(files, num_parallel_reads=num_parallel)
-    batch_size = total_batch_size // rank_size
-    dataset = dataset.shard(rank_size, rank_id)
-    dataset = dataset.repeat(num_epochs)
-    dataset = dataset.map(extract_fn, num_parallel_calls=num_parallel).batch(batch_size,
-                                                                             drop_remainder=True)
-    dataset = dataset.map(reshape_fn, num_parallel_calls=num_parallel)
-    insert_fn = get_asc_insert_func(tgt_key_specs=feature_spec_list, is_training=True, dump_graph=False)
-    dataset = dataset.map(insert_fn)
-    dataset = dataset.prefetch(int(100))
-    return dataset
 
 
 if __name__ == '__main__':
