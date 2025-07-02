@@ -1,7 +1,9 @@
 import os
+import re
 import logging
 import zipfile
 import urllib.request
+from urllib.parse import urlparse
 from tqdm import tqdm
 
 # Configure logging
@@ -18,7 +20,25 @@ class DownloadProgressBar(tqdm):
         self.update(b * bsize - self.n)
 
 
+def is_valid_url(url):
+    """基础URL校验函数"""
+    try:
+        result = urlparse(url)
+        if not all([result.scheme, result.netloc]):  # 必须包含协议和域名
+            return False
+        return re.match(
+            r'^https?://([\w\-]+\.)+[\w\-]+(:\d+)?(/[\w\-./?%&=]*)?$', 
+            url
+        ) is not None
+    except Exception as e:
+        logger.error(f"check url fail: {str(e)}", exc_info=True)
+        return False
+
+
 def download(url, output_path):
+    if not is_valid_url(url):
+        logging.error(f"Invalid url: {url}")
+        return
     with DownloadProgressBar(unit='B', unit_scale=True,
                              miniters=1, desc=url.split('/')[-1]) as t:
         urllib.request.urlretrieve(url, filename=output_path, reporthook=t.update_to)

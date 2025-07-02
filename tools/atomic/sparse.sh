@@ -41,7 +41,11 @@ export BETTER_EXCEPTIONS=1
 mpi_args='-x BIND_INFO="0:48 48:48 96:48" -x SPDLOG_LEVEL=debug -bind-to none'
 # rm logs
 rm *txt >/dev/null
-rm -rf /root/ascend/log/*
+log_dir="/root/ascend/log"
+if [[ -d "$log_dir" && "$(realpath "$log_dir")" == "/root/ascend/log" ]]; then
+    find "$log_dir" -type f -exec rm -f {} +
+fi
+
 
 # rm shm
 for i in $(ipcs -m | tail -n +4 | awk {'print $2'}); do
