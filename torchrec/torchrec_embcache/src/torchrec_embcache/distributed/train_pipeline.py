@@ -476,6 +476,8 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
             for module in self._pipelined_modules:
                 module_name = module.forward.name
                 if context.swapout_embs[module_name] is None:
+                    # 手动计数host侧embedding update执行次数，用于淘汰功能判断删除emb table中数据的时机
+                    module.record_host_emb_update_times()
                     continue
                 swap_info = context.swap_info[module_name]
                 swapout_embs = context.swapout_embs.get(module_name)

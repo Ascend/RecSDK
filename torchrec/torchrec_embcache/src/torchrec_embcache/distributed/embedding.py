@@ -24,17 +24,12 @@ import numpy as np
 import torch_npu
 import torch
 from torch import distributed as dist, nn, Tensor
-from torch.autograd.profiler import record_function
 
 from fbgemm_gpu.split_embedding_configs import EmbOptimType
 from fbgemm_gpu.split_table_batched_embeddings_ops_training import (
     SplitTableBatchedEmbeddingBagsCodegen,
 )
 
-from hybrid_torchrec.distributed.sharding.post_input_dist import (
-    EMPTY_POST_INPUT_DIST,
-    PostInputKJTListAwaitable,
-)
 from hybrid_torchrec.modules.ids_process import IdsMapper
 from hybrid_torchrec.modules.ids_process import HashMapBase
 from hybrid_torchrec.distributed.sharding.post_input_dist import (
@@ -48,7 +43,7 @@ from hybrid_torchrec.sparse.jagged_tensor_with_looup_helper import (
     KeyedJaggedTensorWithLookHelper,
 )
 
-from torchrec_embcache.distributed.modules.cache_embedding_configs import (
+from torchrec_embcache.distributed.configs import (
     AdmitAndEvictConfig as AdmitAndEvictConfigPy,
     EmbCacheEmbeddingConfig
 )
@@ -65,8 +60,8 @@ from torchrec_embcache import (
     AdmitAndEvictConfig,
     AsyncSwapInfo,
     AsyncSwapinTensor,
+    InitializerType as CppInitType,
     SwapInfo,
-    SwapinTensor,
 )
 from torchrec.distributed.types import (
     Awaitable,
@@ -100,7 +95,6 @@ from torchrec.distributed.embedding_types import (
 from torchrec.modules.embedding_configs import (
     DataType,
     EmbeddingConfig,
-    pooling_type_to_str,
 )
 from torchrec.optim.fused import FusedOptimizerModule
 from torchrec.optim.keyed import CombinedOptimizer
@@ -111,7 +105,6 @@ from torchrec.distributed.embedding import (
     EmbeddingCollectionAwaitable,
     create_sharding_infos_by_sharding,
     pad_vbe_kjt_lengths,
-    set_ec_index_dedup,
     get_ec_index_dedup,
 )
 
@@ -605,6 +598,9 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
             swap_info, swapout_embs, swapout_optims
         )
 
+    def record_host_emb_update_times(self):
+        self._embcache_mgr.record_embedding_update_times()
+
     def host_embedding_lookup_async(self, swap_info: SwapInfo) -> AsyncSwapinTensor:
         return self._embcache_mgr.embedding_lookup_async(swap_info)
 
@@ -627,6 +623,8 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
         for _, sharding_infos in self.sharding_type_to_sharding_infos.items():
             for sharding_info in sharding_infos:
                 embedding_config = sharding_info.embedding_config
+                emb_original_config = self._table_name_to_config[embedding_config.name]
+                cpp_initializer_type = getattr(CppInitType, emb_original_config.initializer_type.name)
                 optim_num = 0
                 if (
                     sharding_info.fused_params["optimizer"]
@@ -657,12 +655,14 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
 
                 emb_configs.append(
                     EmbConfig(
-                        table_name=embedding_config.name,
+                        table_name=embedding_config.name, initializer_type=cpp_initializer_type,
                         emb_dim=embedding_config.embedding_dim,
                         optim_num=optim_num,
                         cache_size=local_shard_size,
                         weight_init_min=embedding_config.get_weight_init_min(),
                         weight_init_max=embedding_config.get_weight_init_max(),
+                        weight_init_mean=emb_original_config.weight_init_mean,
+                        weight_init_stddev=emb_original_config.weight_init_stddev,
                         admit_and_evict_config=self._build_admit_and_evict_config(
                             embedding_config
                         ),

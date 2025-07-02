@@ -25,7 +25,7 @@ bash zbuild.sh
 ```
 cd ./dist
 pip3 uninstall -y torchrec-embcache
-pip3 install torchrec_embcache-0.0.1-py3-none-any.whl
+pip3 install torchrec_embcache-*-py3-none-any.whl
 ```
 
 安装完成后，可以进行测试.

@@ -28,6 +28,7 @@ constexpr int SWAP_INFO_TUPLE_INDEX1 = 1;
 constexpr int SWAP_INFO_TUPLE_INDEX2 = 2;
 constexpr int SWAP_INFO_TUPLE_INDEX3 = 3;
 constexpr int SWAP_INFO_TUPLE_INDEX4 = 4;
+constexpr size_t TABLE_NAME_LENGTH = 100;
 constexpr size_t READ_AND_WRITE_SIZE_PEER_TIME = 32768;
 
 const std::string RANK_STR_PATH = "/rank";
@@ -81,6 +82,8 @@ public:
     void StatisticsKeyCount(const at::Tensor& batchKeys, const torch::Tensor& offset, const at::Tensor& batchKeyCounts,
                             int64_t tableIndex);
 
+    void RecordEmbeddingUpdateTimes();
+
     /**
      * 读取指定文件。 示例：save_dir/sparse/table1/rank0/key/slice.data
      * @tparam T 数据类型泛型
@@ -129,7 +132,7 @@ private:
     std::vector<FeatureFilter> featureFilters;
 
     uint64_t swapCount = 0;       // ComputeSwapInfo 执行次数
-    uint64_t embLookupCount = 0;  // EmbeddingLookup 执行次数
+    uint64_t embUpdateCount = 0;  // EmbeddingUpdate 执行次数
 
     bool enableFastHashMap = false;
     int32_t optimNum;

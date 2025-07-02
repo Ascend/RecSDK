@@ -85,17 +85,12 @@ void EmbMemoryPool::Produce()
     }
 
     // init embedding
-    char* initLinear = getenv("INIT_LINEAR");
-    if (initLinear) {
-        Initializer::GenLinear(reinterpret_cast<float*>(newAddr), embConfig.embDim, embConfig.weightInitMin,
-                               embConfig.weightInitMax);
-    } else {
-        Initializer::GenUniform(reinterpret_cast<float*>(newAddr), embConfig.embDim, embConfig.weightInitMin,
-                                embConfig.weightInitMax);
-    }
+    Initializer::InitEmbeddingWeights(reinterpret_cast<float*>(newAddr), embConfig);
 
     // init optimizer
-    auto ret = memset_s((float*)newAddr + embConfig.embDim, embConfig.optimNum * embConfig.embDim * sizeof(float), 0,
+    auto ret = memset_s(reinterpret_cast<float*>(newAddr) + embConfig.embDim,
+                        embConfig.optimNum * embConfig.embDim * sizeof(float),
+                        0,
                         embConfig.optimNum * embConfig.embDim * sizeof(float));
     if (ret != EOK) {
         throw std::runtime_error("memset_s failed when init optimizer data.");

@@ -23,9 +23,18 @@
 using namespace Embcache;
 
 EmbcacheManager::EmbcacheManager(const std::vector<EmbConfig>& embConfigs)
-    : embNum(embConfigs.size()),
-      embConfigs(embConfigs)
+    : embNum(embConfigs.size())
 {
+    for (const auto& config : embConfigs) {
+        auto length = config.tableName.size();
+        if (config.tableName.size() > TABLE_NAME_LENGTH) {
+            LOG(ERROR) << "The length of table name:" << config.tableName << " is grater than max length "
+                       << TABLE_NAME_LENGTH;
+            throw std::runtime_error("the length of table name is invalid.");
+        }
+    }
+    this->embConfigs = embConfigs;
+    auto length = embConfigs[0].tableName.size();
     Singleton<Glogger>::GetInstance()->Init();
     enableFastHashMap = EnableFastHashMap();
 
@@ -43,7 +52,8 @@ EmbcacheManager::EmbcacheManager(const std::vector<EmbConfig>& embConfigs)
 
         if (embConfigs[i].admitAndEvictConfig.IsFeatureFilterEnabled()) {
             auto& aaeConfig = embConfigs[i].admitAndEvictConfig;
-            featureFilters.emplace_back(FeatureFilter(aaeConfig.admitThreshold, aaeConfig.evictThreshold));
+            featureFilters.emplace_back(FeatureFilter(embConfigs[i].tableName, aaeConfig.admitThreshold,
+                                                      aaeConfig.evictThreshold, aaeConfig.evictStepInterval));
         }
     }
     TORCH_CHECK(embConfigs.size() > 0, "ERROR, Size of embConfigs must > 0")
@@ -170,12 +180,7 @@ SwapinTensor EmbcacheManager::EmbeddingLookup(const std::vector<std::vector<int6
                                          swapinOptimsPtr);
     }
 
-    embLookupCount++;
     LOG(INFO) << "The embeddingLookupTC(ms):" << embeddingLookupTC.ElapsedMS();
-
-    if (NeedEvictEmbeddingTable()) {
-        RemoveEmbeddingTableInfo();
-    }
     return swapinTensor;
 }
 
@@ -210,6 +215,11 @@ void EmbcacheManager::EmbeddingUpdate(const std::vector<std::vector<int64_t>>& s
     }
 
     LOG(INFO) << "The embeddingUpdateTC(ms):" << embeddingUpdateTC.ElapsedMS();
+    embUpdateCount++;
+
+    if (NeedEvictEmbeddingTable()) {
+        RemoveEmbeddingTableInfo();
+    }
 }
 
 // input dist 之前，调用 RecordTimestamp. 后面淘汰时，要判断key是否在当前卡， 当前只能记录到当前卡上原始batch中的key
@@ -231,29 +241,30 @@ void EmbcacheManager::RecordTimestamp(const at::Tensor& batchKeys, const std::ve
 
 void EmbcacheManager::EvictFeatures()
 {
-    LOG(INFO) << "Start invoke EmbcacheManager EvictFeatures().";
+    LOG(INFO) << "Start invoke EvictFeatures method, ComputeSwapInfo execute times:" << swapCount;
     TimeCost evictFeaturesTC;
-    size_t evictKey2OffsetCount = 0;
+    size_t evictKeyCount = 0;
     for (int32_t i = 0; i < embNum; ++i) {
         if (!embConfigs[i].admitAndEvictConfig.IsEvictEnabled()) {
-            LOG(INFO) << "The table index:" << i << ", don't enable evict.";
+            LOG(INFO) << "The table：" << embConfigs[i].tableName << " doesn't enable evict, skip feature evict.";
             continue;
         }
 
         // 获取当前表要淘汰的keys
-        std::vector<int64_t> needEvictFeatures = featureFilters[i].FeatureEvict();
-        LOG(INFO) << "The table index:" << i << ", get needEvictFeatures:" << needEvictFeatures.size();
-
-        // 调用swapManager删除key offset映射，并记录被删除key列表共后续删除embTable embedding使用
-        // 删除embeddingTables中的embedding在 emb lookup执行完成后触发
-        std::vector<int64_t>& evictFeatures = featureFilters[i].evictFeatureRecord.GetEvictKeys();
-        swapManagers[i].RemoveKeys(needEvictFeatures, evictFeatures);
-        LOG(INFO) << "table index:" << i << ", remove swapManager keys:" << evictFeatures.size();
+        std::vector<int64_t> evictFeatures = featureFilters[i].evictFeatureRecord.GetEvictKeys();
+        // 调用swapManager删除映射信息
+        // 删除embeddingTables中的embedding待对应step的swap out emb update执行完成后触发
+        swapManagers[i].RemoveKeys(evictFeatures);
         featureFilters[i].evictFeatureRecord.SetSwapCount(swapCount);
-        evictKey2OffsetCount += evictFeatures.size();
+        evictKeyCount += evictFeatures.size();
     }
     LOG(INFO) << "The evictFeaturesTC(ms):" << evictFeaturesTC.ElapsedMS()
-              << ", all evictKey2Offset from swapManager Count:" << evictKey2OffsetCount;
+              << ", all table evictKeyCount:" << evictKeyCount;
+}
+
+void EmbcacheManager::RecordEmbeddingUpdateTimes()
+{
+    embUpdateCount++;
 }
 
 AsyncTask<void> EmbcacheManager::EmbeddingUpdateAsync(const SwapInfo& swapInfo, const at::Tensor& swapoutEmbs,
@@ -594,7 +605,7 @@ bool EmbcacheManager::NeedEvictEmbeddingTable()
         }
         // 待删除embTable的keys非空且达到和GetSwapInfo相同的步数
         if (!featureFilters[i].evictFeatureRecord.GetEvictKeys().empty() &&
-            featureFilters[i].evictFeatureRecord.CanRemoveFromEmbTable(embLookupCount)) {
+            featureFilters[i].evictFeatureRecord.CanRemoveFromEmbTable(embUpdateCount)) {
             return true;
         }
     }
@@ -603,7 +614,7 @@ bool EmbcacheManager::NeedEvictEmbeddingTable()
 
 void EmbcacheManager::RemoveEmbeddingTableInfo()
 {
-    LOG(INFO) << "Start invoke RemoveEmbeddingTableInfo, embLookupCount:" << embLookupCount;
+    LOG(INFO) << "Start invoke RemoveEmbeddingTableInfo, embUpdateCount:" << embUpdateCount;
     TimeCost removeEmbeddingTableTC;
     for (int32_t i = 0; i < embNum; ++i) {
         auto& keys = featureFilters[i].evictFeatureRecord.GetEvictKeys();
@@ -613,8 +624,9 @@ void EmbcacheManager::RemoveEmbeddingTableInfo()
 
         // 调用embTable Remove
         embeddingTables[i]->RemoveEmbedding(keys);
+        LOG(INFO) << "Remove table embedding info, table:" << embConfigs[i].tableName
+                  << ", remove key size:" << keys.size() << ", detail keys:" << StringTools::ToString(keys);
         featureFilters[i].evictFeatureRecord.ClearEvictInfo();
-        LOG(INFO) << "Evict keys info, table:" << embConfigs[i].tableName << ", evict key count:" << keys.size();
     }
     LOG(INFO) << "The removeEmbeddingTableTC(ms):" << removeEmbeddingTableTC.ElapsedMS();
 }

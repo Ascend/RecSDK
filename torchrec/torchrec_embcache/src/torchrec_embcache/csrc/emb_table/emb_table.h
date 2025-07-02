@@ -33,12 +33,9 @@ namespace Embcache {
 class EmbTable {
 public:
     explicit EmbTable(const EmbConfig& embConfig)
-        : embDim(embConfig.embDim),
-          optimNum(embConfig.optimNum),
-          weightInitMin(embConfig.weightInitMin),
-          weightInitMax(embConfig.weightInitMax)
+        : config(embConfig),
+          extEmbDim((1 + embConfig.optimNum) * embConfig.embDim)
     {
-        extEmbDim = (1 + optimNum) * embDim;
     }
 
     virtual ~EmbTable() = default;
@@ -49,12 +46,8 @@ public:
     virtual void ForEachKey(const std::function<void(const int64_t, const float*)>& callback) = 0;
 
 protected:
-    int32_t embDim;
+    EmbConfig config;
     int32_t extEmbDim;  // embDim + OptimNum * embDim
-    int32_t optimNum;
-
-    float weightInitMin;
-    float weightInitMax;
 };
 
 class EmbTableUnorderedMap : public EmbTable {
@@ -64,18 +57,15 @@ public:
     void FindOrInsert(const std::vector<int64_t>& keys, float* outEmbs, std::vector<float*> outOptims) override
     {
         std::lock_guard<std::mutex> lk(mtx);
+        auto embDim = config.embDim;
+        auto optimNum = config.optimNum;
         for (uint64_t i = 0; i < keys.size(); i++) {
             auto key = keys[i];
             auto it = table.find(key);
             if (it == table.end()) {
                 auto res = table.emplace(key, extEmbDim);
                 it = res.first;
-                char* init_linear = getenv("INIT_LINEAR");
-                if (init_linear) {
-                    Initializer::GenLinear(it->second.data(), embDim, weightInitMin, weightInitMax);
-                } else {
-                    Initializer::GenUniform(it->second.data(), embDim, weightInitMin, weightInitMax);
-                }
+                Initializer::InitEmbeddingWeights(it->second.data(), config);
             }
             auto& emb = it->second;
 
@@ -92,6 +82,8 @@ public:
     void InsertOrAssign(const std::vector<int64_t>& keys, float* inEmbs, std::vector<float*> inOptims) override
     {
         std::lock_guard<std::mutex> lk(mtx);
+        auto embDim = config.embDim;
+        auto optimNum = config.optimNum;
         for (uint64_t i = 0; i < keys.size(); i++) {
             auto key = keys[i];
             auto it = table.find(key);
@@ -166,6 +158,8 @@ public:
 
     void FindOrInsert(const std::vector<int64_t>& keys, float* outEmbs, std::vector<float*> outOptims) override
     {
+        auto embDim = config.embDim;
+        auto optimNum = config.optimNum;
         at::parallel_for(
             0, keys.size(), std::ceil(keys.size() * 1.0 / at::get_num_threads()), [&](int64_t begin, int64_t end) {
                 for (int64_t i = begin; i < end; ++i) {
@@ -204,6 +198,8 @@ public:
 
     void InsertOrAssign(const std::vector<int64_t>& keys, float* inEmbs, std::vector<float*> inOptims) override
     {
+        auto embDim = config.embDim;
+        auto optimNum = config.optimNum;
         at::parallel_for(
             0, keys.size(), std::ceil(keys.size() * 1.0 / at::get_num_threads()), [&](int64_t begin, int64_t end) {
                 for (int64_t i = begin; i < end; ++i) {

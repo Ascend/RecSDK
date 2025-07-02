@@ -5,31 +5,31 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
+from dataclasses import dataclass
 import itertools
 import logging
 import os
-from dataclasses import dataclass
 from typing import List
 
+import numpy as np
 import pytest
 import torch
 import torch_npu
-import numpy as np
 import torch.multiprocessing as mp
 import torch.distributed as dist
-from dataset import RandomRecDataset, Batch
-from model import ModelEc as Model
+from torch import nn, Tensor
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torchrec_embcache.distributed.embedding import EmbCacheEmbeddingCollection
-from torchrec_embcache.distributed.modules.cache_embedding_configs import (EmbCacheEmbeddingConfig,
-                                                                                     AdmitAndEvictConfig)
+from torchrec_embcache.distributed.configs import (EmbCacheEmbeddingConfig,
+                                                   AdmitAndEvictConfig)
 from torchrec_embcache.distributed.train_pipeline import EmbCacheTrainPipelineSparseDist
 from torchrec_embcache.distributed.sharding.embedding_sharder import EmbCacheEmbeddingCollectionSharder
+from torchrec_embcache.sparse.jagged_tensor_with_timestamp import KeyedJaggedTensorWithTimestamp
 from torchrec_embcache.saver import Saver
-from util import setup_logging
-
 import torchrec
 import torchrec.distributed
+from torchrec import EmbeddingCollection
 from torchrec.optim.apply_optimizer_in_backward import apply_optimizer_in_backward
 from torchrec.distributed.planner import (
     EmbeddingShardingPlanner,
@@ -39,6 +39,10 @@ from torchrec.distributed.planner import (
 from torchrec.distributed.types import ShardingEnv
 from torchrec.optim.keyed import CombinedOptimizer
 
+from dataset import RandomRecDataset, Batch
+from model import ModelEc as Model
+from util import setup_logging
+
 _SAVE_PATH = "save_dir/sparse"
 
 lib_fbgemm_npu_api_so_path = os.getenv('LIB_FBGEMM_NPU_API_SO_PATH')
@@ -46,8 +50,8 @@ if lib_fbgemm_npu_api_so_path is None:
     raise RuntimeError("LIB_FBGEMM_NPU_API_SO_PATH environment variable is not set.")
 torch.ops.load_library(lib_fbgemm_npu_api_so_path)
 
-
-WORLD_SIZE = int(os.environ.get("WORLD_SIZE", "2"))
+WORLD_SIZE_STR = str(os.environ.get("WORLD_SIZE", "2"))
+WORLD_SIZE = int(WORLD_SIZE_STR) if WORLD_SIZE_STR.isalnum() else 2
 LOOP_TIMES = 500
 EVICT_STEP_INTERVAL = LOOP_TIMES // 4
 BATCH_NUM = LOOP_TIMES
@@ -66,7 +70,7 @@ def _check_admit_key_count(data_loader_golden, embedding_configs: List[EmbCacheE
             break
         kjt = batch.sparse_features
         if len(kjt.keys()) != len(embedding_configs):
-            return
+            raise ValueError("key num should equal with embedding_configs length")
         values = kjt.values()
         offset_per_key = kjt.offset_per_key()
         for i in range(len(offset_per_key) - 1):
@@ -123,7 +127,6 @@ class ExecuteConfig:
     enable_evict: bool
 
 
-
 def execute(config: ExecuteConfig, rank: int):
     world_size = config.world_size
     table_num = config.table_num
@@ -137,8 +140,8 @@ def execute(config: ExecuteConfig, rank: int):
     setup_logging(rank)
     logging.info("this test %s", os.path.basename(__file__))
 
-    dataset = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num, is_evict_enabled=True)
-    dataset_golden = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num, is_evict_enabled=True)
+    dataset = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num, is_evict_enabled=enable_evict)
+    dataset_golden = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num, is_evict_enabled=enable_evict)
     data_loader_golden = DataLoader(
         dataset_golden,
         batch_size=None,
@@ -160,7 +163,10 @@ def execute(config: ExecuteConfig, rank: int):
     admit_threshold = 2 if enable_admit else default_config.admit_threshold
     evict_threshold = 2000_0000 if enable_evict else default_config.evict_threshold
     for i in range(table_num):
-        admit_and_evict_config = AdmitAndEvictConfig(admit_threshold=admit_threshold, evict_threshold=evict_threshold)
+        admit_and_evict_config = AdmitAndEvictConfig(admit_threshold=admit_threshold,
+                                                     not_admitted_default_value=0.999,
+                                                     evict_threshold=evict_threshold,
+                                                     evict_step_interval=EVICT_STEP_INTERVAL)
         ec_config = EmbCacheEmbeddingConfig(
             name=f"table{i}",
             embedding_dim=embedding_dims[i],
@@ -174,17 +180,28 @@ def execute(config: ExecuteConfig, rank: int):
         embedding_configs.append(ec_config)
 
     test_model = TestModel(rank, world_size, device)
+    test_result_golden = []
+    if not enable_admit and enable_evict:
+        test_result_golden = test_model.cpu_golden_loss(embedding_configs, data_loader_golden, evict_threshold, rank)
     test_results = test_model.test_loss(embedding_configs, data_loader, sharding_type, enable_evict, training=True)
-    is_enable_global_unique = os.environ.get("ENABLE_GLOBAL_UNIQUE", "False").lower() in ('true', '1', 'yes')
-    if enable_admit and not enable_evict and is_enable_global_unique:
+    if enable_admit and not enable_evict:
         _check_admit_key_count(data_loader_golden, embedding_configs, rank)
+
+    # load
+    test_model.test_loss(embedding_configs, data_loader_golden, sharding_type, enable_evict, training=False)
 
     for i, result in enumerate(test_results):
         logging.debug("")
         logging.debug("==============batch %d================", i // 2)
         logging.debug("result test %s", result)
-    # load
-    test_model.test_loss(embedding_configs, data_loader_golden, sharding_type, enable_evict, training=False)
+        # check evict ret
+        if not enable_admit and enable_evict:
+            golden = test_result_golden[i]
+            logging.debug("golden test %s", golden)
+            assert torch.allclose(
+                golden, result, rtol=1e-04, atol=1e-04
+            ), "golden and result is not closed"
+    dist.destroy_process_group()
 
 
 def weight_init(param: torch.nn.Parameter):
@@ -193,6 +210,22 @@ def weight_init(param: torch.nn.Parameter):
     torch.manual_seed(param.shape[1])
     result = torch.linspace(0, 1, steps=param.shape[1]).unsqueeze(0).repeat(param.shape[0], 1)
     param.data.copy_(result)
+
+
+def _get_init_weight(table_dims: List[int]):
+    init_embs = []
+    for dim in table_dims:
+        emb = torch.linspace(0, 1, steps=dim)
+        init_embs.append(emb)
+    return init_embs
+
+
+def _get_init_optimi_slot(table_dims: List[int]):
+    init_slots = []
+    for dim in table_dims:
+        slot = torch.zeros((dim,))
+        init_slots.append(slot)
+    return init_slots
 
 
 class TestModel:
@@ -204,12 +237,18 @@ class TestModel:
         if device == "npu":
             torch_npu.npu.set_device(rank)
         self.setup(rank=rank, world_size=world_size)
+        self.emb_configs: List[EmbCacheEmbeddingConfig] = []
+
+        # for evict 
+        self.timestamps_for_table: List[dict] = []
+        self.last_timestamp_for_table = []
 
     def setup(self, rank: int, world_size: int):
         os.environ["MASTER_ADDR"] = "127.0.0.1"
         os.environ["MASTER_PORT"] = "6015"
         dist.init_process_group(self.pg_method, rank=rank, world_size=world_size)
         os.environ["LOCAL_RANK"] = f"{rank}"
+
 
     def test_loss(
         self,
@@ -302,6 +341,96 @@ class TestModel:
             saver.load(ddp_model, _SAVE_PATH)
         return results
 
+    def _record_timestamp_info_cpu(self, batch, table_num, batch_id):
+        sparse_tensor: KeyedJaggedTensorWithTimestamp = batch.sparse_features
+        values = sparse_tensor.values
+        timestamps = sparse_tensor.timestamps
+        offset_per_key = sparse_tensor.offset_per_key()
+        # init data structure
+        if len(self.timestamps_for_table) == 0:
+            for _ in range(table_num):
+                self.timestamps_for_table.append(dict())
+                self.last_timestamp_for_table.append(0)
+        
+        # record timestamp data
+        for table_index in range(table_num):
+            start = offset_per_key[table_index]
+            end = offset_per_key[table_index + 1]
+            values_per_table = values[start:end]
+            ts_per_table = timestamps[start:end]
+
+            for index, ids in enumerate(values_per_table):
+                ids = ids.item()
+                ts = ts_per_table[index].item()
+                self.timestamps_for_table[table_index][ids] = ts
+                self.last_timestamp_for_table[table_index] = max(self.last_timestamp_for_table[table_index], ts)
+
+    def _evict_embedding_cpu(self, evict_threshold: int, embeddings: nn.ModuleDict,
+                             opt: torch.optim.Adagrad, batch_id: int):
+        logging.info("Start cpu embedding evict, current step:%d", batch_id)
+        emb_dims: List[int] = [c.embedding_dim for c in self.emb_configs]
+        table_names = [c.name for c in self.emb_configs]
+        table_num = len(table_names)
+        emb_init_values: List[Tensor] = _get_init_weight(emb_dims)
+        logging.info("emb_init_values: %s", emb_init_values)
+        optimizer_init_values: List[Tensor] = _get_init_optimi_slot(emb_dims)
+        logging.info("optimizer_init_values: %s", optimizer_init_values)
+        for table_index in range(table_num):
+            evict_ids_per_table = []
+            last_timestamp = self.last_timestamp_for_table[table_index]
+            for ids, ts in self.timestamps_for_table[table_index].items():
+                need_evict = False
+                if last_timestamp - ts > evict_threshold:
+                    evict_ids_per_table.append(ids)
+                    need_evict = True
+
+            table_name = table_names[table_index]
+            # get slot tensor of Adagrad optimizer
+            op_t = opt.param_groups[0]["params"][table_index]
+            slot_tensor = opt.state[op_t]["sum"]
+            for ids in evict_ids_per_table:
+                # step1 delete timestamp record for ids
+                self.timestamps_for_table[table_index].pop(ids)
+                # step2 reset emb and optimizer slot as init value
+                with torch.no_grad():
+                    # init emb
+                    embeddings[table_name].weight.data.copy_(emb_init_values[table_index])
+                    # init optimizer slot
+                    slot_tensor[ids].data.copy_(optimizer_init_values[table_index])
+            logging.info("batchId:%d, table name:%s, evict ids num:%d",
+                         batch_id, table_name, len(evict_ids_per_table))
+
+    def cpu_golden_loss(self, embedding_configs: List[EmbCacheEmbeddingConfig], dataloader: DataLoader[Batch],
+                        evict_threshold: int, rank_id: int):
+        pg = dist.new_group(backend="gloo")
+        self.emb_configs = embedding_configs
+        table_num = len(embedding_configs)
+        ec = EmbeddingCollection(device=torch.device("cpu"), tables=embedding_configs)
+
+        num_features = sum([c.num_features() for c in embedding_configs])
+        ec_wrap = Model(ec, num_features)
+        model = DDP(ec_wrap, process_group=pg)
+
+        opt = torch.optim.Adagrad(model.parameters(), lr=0.02, eps=1e-8)
+        results = []
+        batch: Batch
+        iter_ = iter(dataloader)
+        for i in range(LOOP_TIMES):
+            batch = next(iter_)
+            opt.zero_grad()
+            loss, outputs = model(batch)
+            results.append(loss.detach().cpu())
+            results.append(outputs.detach().cpu())
+            loss.backward()
+            opt.step()
+
+            # 1 record batch timestamp data
+            self._record_timestamp_info_cpu(batch, table_num, i)
+            # evict emb and optimizer data
+            self._evict_embedding_cpu(evict_threshold, ec.embeddings, opt, i)
+
+        return results
+
 
 params = {
     "world_size": [WORLD_SIZE],
@@ -345,6 +474,31 @@ params = {
     ExecuteConfig(*v) for v in itertools.product(*params.values())
 ])
 def test_admit_count_correctness(config: ExecuteConfig):
+    mp.spawn(
+        execute,
+        args=(config,),
+        nprocs=WORLD_SIZE,
+        join=True,
+    )
+
+
+params = {
+    "world_size": [WORLD_SIZE],
+    "table_num": [2],
+    "embedding_dims": [[128, 128]],
+    "num_embeddings": [[4000, 400]],
+    "sharding_type": ["row_wise"],
+    "lookup_len": [128],  # batchsize
+    "device": ["npu"],
+    "enable_admit": [False],
+    "enable_evict": [True],
+}
+
+
+@pytest.mark.parametrize("config", [
+    ExecuteConfig(*v) for v in itertools.product(*params.values())
+])
+def test_evict_correctness(config: ExecuteConfig):
     mp.spawn(
         execute,
         args=(config,),

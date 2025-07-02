@@ -17,22 +17,15 @@ import embcache_pybind
 from hybrid_torchrec.distributed.embedding_lookup import (
     HybridGroupedPooledEmbeddingsLookup,
 )
-
-from hybrid_torchrec.modules.hash_embeddingbag import HashMap
-
+from hybrid_torchrec.modules.ids_process import HashMapBase
 from hybrid_torchrec.distributed.sharding.post_input_dist import (
     SparseFeaturesPostDist,
-    EMPTY_POST_INPUT_DIST,
     UniqueHashFeatureProcess,
     get_feature_len_groupby_table_name,
 )
-
 from hybrid_torchrec.distributed.sharding.hybrid_rw_sharding import (
-    HashRwSparseFeaturesDist,
-    HashRwSparseFeaturesDistAwaitable,
     bucketize_kjt_before_all2all,
 )
-
 
 from torchrec.distributed.types import (
     Awaitable,
@@ -41,22 +34,17 @@ from torchrec.distributed.types import (
     ShardingType,
 )
 from torchrec.distributed.sharding.rw_sharding import (
-    RwPooledEmbeddingDist,
     RwPooledEmbeddingSharding,
     RwSparseFeaturesDist,
 )
 from torchrec.distributed.embedding_sharding import (
     EmbeddingShardingInfo,
-    EmbeddingShardingContext,
-    BaseEmbeddingDist,
     BaseSparseFeaturesDist,
     BaseEmbeddingLookup,
-    _fx_wrap_tensor_to_device_dtype,
 )
 from torchrec.distributed.embedding_types import (
     BaseGroupedFeatureProcessor,
 )
-from torchrec.fx.utils import assert_fx_safe
 from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
 
 
@@ -162,7 +150,7 @@ class EmbCacheRwPooledEmbeddingSharding(RwPooledEmbeddingSharding):
     def __init__(
         self,
         sharding_infos: List[EmbeddingShardingInfo],
-        table2hashmap: Dict[str, HashMap],
+        table2hashmap: Dict[str, HashMapBase],
         cpu_env: ShardingEnv,
         cpu_device: torch.device,
         npu_device: torch.device,

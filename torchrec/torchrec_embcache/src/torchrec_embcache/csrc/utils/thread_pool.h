@@ -7,17 +7,19 @@
  */
 #ifndef EMBEDDING_CACHE_THREAD_POOL_H
 #define EMBEDDING_CACHE_THREAD_POOL_H
-#include <iostream>
-#include <vector>
-#include <queue>
-#include <thread>
-#include <mutex>
+
+#include <atomic>
 #include <condition_variable>
 #include <functional>
 #include <future>
+#include <iostream>
+#include <mutex>
 #include <memory>
+#include <queue>
 #include <stdexcept>
-#include <atomic>
+#include <thread>
+#include <vector>
+
 namespace Embcache {
 
 class ThreadPool {

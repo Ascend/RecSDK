@@ -23,6 +23,7 @@ from embcache_pybind import (
     AdmitAndEvictConfig,
     AsyncSwapInfo,
     AsyncSwapinTensor,
+    InitializerType as CppInitType,
     SwapInfo,
     SwapinTensor,
 )
@@ -553,6 +554,9 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
             swap_info, swapout_embs, swapout_optims
         )
 
+    def record_host_emb_update_times(self):
+        self._embcache_mgr.record_embedding_update_times()
+
     def host_embedding_lookup_async(self, swap_info: SwapInfo) -> AsyncSwapinTensor:
         return self._embcache_mgr.embedding_lookup_async(swap_info)
 
@@ -572,6 +576,8 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
         for _, sharding_infos in self.sharding_type_to_sharding_infos.items():
             for sharding_info in sharding_infos:
                 embedding_config = sharding_info.embedding_config
+                emb_original_config = self._table_name_to_config[embedding_config.name]
+                cpp_initializer_type = getattr(CppInitType, emb_original_config.initializer_type.name)
                 optim_num = 0
                 if (
                     sharding_info.fused_params["optimizer"]
@@ -603,12 +609,14 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
 
                 emb_configs.append(
                     EmbConfig(
-                        table_name=embedding_config.name,
+                        table_name=embedding_config.name, initializer_type=cpp_initializer_type,
                         emb_dim=embedding_config.embedding_dim,
                         optim_num=optim_num,
                         cache_size=local_shard_size,
                         weight_init_min=embedding_config.get_weight_init_min(),
                         weight_init_max=embedding_config.get_weight_init_max(),
+                        weight_init_mean=emb_original_config.weight_init_mean,
+                        weight_init_stddev=emb_original_config.weight_init_stddev,
                     )
                 )
         return EmbcacheManager(emb_configs)

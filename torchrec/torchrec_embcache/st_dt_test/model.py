@@ -6,7 +6,6 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 import itertools
-import logging
 import os
 from dataclasses import dataclass
 from typing import Dict, List, Callable, Union
@@ -21,7 +20,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torchrec_embcache.distributed.embedding import EmbCacheEmbeddingCollection
 from torchrec_embcache.distributed.embedding_bag import EmbCacheEmbeddingBagCollection
-from torchrec_embcache.distributed.modules.cache_embedding_configs import (
+from torchrec_embcache.distributed.configs import (
     AdmitAndEvictConfig, 
     EmbCacheEmbeddingConfig,
     EmbCacheEmbeddingBagConfig,
@@ -38,7 +37,6 @@ import torchrec
 import torchrec.distributed
 from torchrec import (
     EmbeddingConfig,
-    EmbeddingBagConfig,
     EmbeddingBagCollection,
     EmbeddingCollection,
     KeyedJaggedTensor,

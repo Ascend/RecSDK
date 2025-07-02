@@ -24,6 +24,8 @@ constexpr float NORMAL_STDDEV_MIN = 0;
 constexpr float INIT_K_MAX = 10000;
 constexpr float INIT_K_MIN = -10000;
 
+constexpr int64_t INVALID_KEY = -1;
+
 const size_t MEMSET_S_MAX_SIZE = 2LL * 1024 * 1024 * 1024 - 1;
 
 struct EmbMemPoolConfigConstants {

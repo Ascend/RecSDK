@@ -21,7 +21,7 @@ from model import Model
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torchrec_embcache.distributed.embedding_bag import EmbCacheEmbeddingCollection
-from torchrec_embcache.distributed.modules.cache_embedding_configs import AdmitAndEvictConfig, EmbCacheEmbeddingConfig
+from torchrec_embcache.distributed.configs import AdmitAndEvictConfig, EmbCacheEmbeddingConfig
 from torchrec_embcache.distributed.train_pipeline import EmbCacheTrainPipelineSparseDist
 from torchrec_embcache.distributed.sharding.embedding_sharder import EmbCacheEmbeddingCollectionSharder
 from util import setup_logging

@@ -21,7 +21,7 @@ public:
     {
         std::stringstream ss;
         ss << "[";
-        for (int i = 0; i < items.size(); i++) {
+        for (size_t i = 0; i < items.size(); i++) {
             ss << items[i].first << ":" << items[i].second;
             if (i != items.size() - 1) {
                 ss << ", ";
@@ -36,7 +36,7 @@ public:
     {
         std::stringstream ss;
         ss << "[";
-        for (int i = 0; i < items.size(); i++) {
+        for (size_t i = 0; i < items.size(); i++) {
             ss << items[i];
             if (i != items.size() - 1) {
                 ss << ", ";

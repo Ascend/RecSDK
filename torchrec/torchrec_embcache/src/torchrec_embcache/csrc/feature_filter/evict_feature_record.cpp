@@ -9,14 +9,9 @@
 
 namespace Embcache {
 
-void EvictFeatureRecord::RecordOneStep()
+bool EvictFeatureRecord::CanRemoveFromEmbTable(uint64_t embUpdateCount) const
 {
-    executeSwapCount += 1;
-}
-
-bool EvictFeatureRecord::CanRemoveFromEmbTable(uint64_t lookupCount) const
-{
-    return lookupCount == executeSwapCount;
+    return embUpdateCount == executeSwapCount;
 }
 
 void EvictFeatureRecord::SetSwapCount(uint64_t swapCount)
@@ -29,6 +24,7 @@ void EvictFeatureRecord::ClearEvictInfo()
     executeSwapCount = 0;
     evictKeys.clear();
 }
+
 std::vector<int64_t>& EvictFeatureRecord::GetEvictKeys()
 {
     return evictKeys;

@@ -11,11 +11,14 @@
 #include <iostream>
 #include <stdexcept>
 
+#include "common/constants.h"
+
 namespace Embcache {
 
-FeatureFilter::FeatureFilter(int32_t admitThreshold, uint64_t evictThreshold)
-    : admitThreshold(admitThreshold),
-      evictThreshold(evictThreshold)
+FeatureFilter::FeatureFilter(const std::string& tableName, int32_t admitThreshold,
+                             uint64_t evictThreshold, uint64_t evictStepInterval)
+    : tableName(tableName), admitThreshold(admitThreshold),
+      evictThreshold(evictThreshold), evictStepInterval(evictStepInterval)
 {
 }
 
@@ -33,14 +36,20 @@ void FeatureFilter::RecordTimestamp(const int64_t* featureDataPtr, int64_t start
     auto afterRecordSize = timestampRecordMap.size();
     LOG(INFO) << "Enter RecordTimestamp, beforeRecordSize:" << beforeRecordSize
               << ", afterRecordSize:" << afterRecordSize;
+
+    // 因记录timestamp和计算swap info存在步数差异，因此记录timestamp时需同时记录淘汰keys
+    if (recordTsBatchId > 0 && (recordTsBatchId + 1) % evictStepInterval == 0) {
+        FeatureEvict();
+    }
+    recordTsBatchId++;
 }
 
-std::vector<int64_t> FeatureFilter::FeatureEvict()
+void FeatureFilter::FeatureEvict()
 {
-    std::vector<int64_t> evictFeatures;
+    std::vector<int64_t>& evictKeys = evictFeatureRecord.GetEvictKeys();
     if (evictThreshold == 0) {
         LOG(INFO) << "Current table evictThreshold is 0, will skip.";
-        return evictFeatures;
+        return;
     }
 
     LOG(INFO) << "The latestTimestamp for current table:" << latestTimestamp << ", evictThreshold:" << evictThreshold;
@@ -50,22 +59,22 @@ std::vector<int64_t> FeatureFilter::FeatureEvict()
         if (feature == -1) {
             continue;
         }
-
+        bool needEvict = false;
         if (latestTimestamp - iter.second > tempEvictThreshold) {
-            evictFeatures.emplace_back(feature);
+            evictKeys.emplace_back(feature);
+            needEvict = true;
         }
     }
     // 淘汰掉的key从timestampRecordMap中移出
     bool isAdmitEnabled = admitThreshold != -1;
-    for (auto feature : evictFeatures) {
+    for (auto feature : evictKeys) {
         timestampRecordMap.erase(feature);
         if (isAdmitEnabled) {
             // 开启准入时同时移出准入map中的key
             featureRecordMap.erase(feature);
         }
     }
-    LOG(INFO) << "EvictFeatures size:" << evictFeatures.size();
-    return evictFeatures;
+    LOG(INFO) << "The table name:" << tableName << ", get evict keys size:" << evictKeys.size();
 }
 
 const std::unordered_map<int64_t, FeatureRecord>& FeatureFilter::GetFeatureCountMap()
@@ -111,7 +120,6 @@ void FeatureFilter::StatisticsKeyCount(const int64_t* featureDataPtr, const int6
             FeatureRecord featureRecord = {count};
             featureRecordMap[feature] = featureRecord;
         }
-        LOG(INFO) << "In StatisticsKeyCount, key:" << feature << ", count:" << featureRecordMap[feature].count;
     }
 }
 

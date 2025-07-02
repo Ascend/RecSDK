@@ -21,8 +21,6 @@ namespace Embcache {
 constexpr int64_t CAN_REUSE_KEY_VERSION = -2;
 constexpr int64_t OFFSET_OF_INVALID_KEY = 0;
 
-extern const int64_t INVALID_KEY;
-
 using ComputeSwapRet = std::tuple<std::vector<int64_t>, std::vector<int64_t>, std::vector<int64_t>,
                                   std::vector<int64_t>, std::vector<int64_t>>;
 
@@ -37,7 +35,7 @@ public:
     {
         return occupiedNum;
     };
-    void RemoveKeys(const std::vector<int64_t>& keys, std::vector<int64_t>& evictFeatures);
+    void RemoveKeys(const std::vector<int64_t>& keys);
     int64_t GetMemStartOffset() const;
 
 private:

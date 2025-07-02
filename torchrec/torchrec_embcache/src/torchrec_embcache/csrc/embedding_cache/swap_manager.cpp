@@ -13,6 +13,8 @@
 #include <glog/logging.h>
 #include <ATen/Parallel.h>
 
+#include "common/constants.h"
+
 using namespace Embcache;
 
 SwapManager::SwapManager(int64_t cacheSize, int64_t memStartOffset) : cacheSize(cacheSize)
@@ -117,7 +119,9 @@ ComputeSwapRet SwapManager::ComputeSwapInfo(const std::vector<int64_t>& keys)
         swapinKeys.push_back(key);
         swapinOffs.push_back(off);
         int64_t swapoutKey = cache[off].key;
-        key2off.erase(swapoutKey);
+        if (swapoutKey != INVALID_KEY) {
+            key2off.erase(swapoutKey);
+        }
         if (!isEvictedPos) {
             // 非淘汰位置时，才需要将换出的emb/optimizer数据更新到DDR
             swapoutKeys.push_back(swapoutKey);
@@ -133,7 +137,7 @@ ComputeSwapRet SwapManager::ComputeSwapInfo(const std::vector<int64_t>& keys)
     return std::make_tuple(swapoutKeys, swapoutOffs, swapinKeys, swapinOffs, batchOffs);
 }
 
-void SwapManager::RemoveKeys(const std::vector<int64_t>& keys, std::vector<int64_t>& evictFeatures)
+void SwapManager::RemoveKeys(const std::vector<int64_t>& keys)
 {
     for (auto key : keys) {
         auto iter = key2off.find(key);
@@ -143,15 +147,13 @@ void SwapManager::RemoveKeys(const std::vector<int64_t>& keys, std::vector<int64
 
         // 删除 mem cache侧 key offset
         int64_t offset = iter->second;
-        if (offset < cacheSize) {
-            // version字段标记为可换出就代表已删除
-            cache[offset].version = CAN_REUSE_KEY_VERSION;
-        }
+        // version字段标记为可换出就代表已删除
+        cache[offset].version = CAN_REUSE_KEY_VERSION;
+        // 置为无效key，防止该offset在被淘汰到被重用期间进来相同的key, 在重用淘汰位置时，从key2off中误删
+        cache[offset].key = INVALID_KEY;
+
         // 删除host key offset
         key2off.erase(key);
-
-        // 记录被删除的key, 用于延迟删除embTable中embedding数据
-        evictFeatures.emplace_back(key);
     }
 }
 

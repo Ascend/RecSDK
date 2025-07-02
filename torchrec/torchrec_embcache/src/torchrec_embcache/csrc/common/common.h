@@ -32,6 +32,12 @@ enum class FkvState : uint8_t {
     FKV_FAIL = 6,
 };
 
+enum class InitializerType : uint8_t {
+    LINEAR = 0,
+    TRUNCATED_NORMAL = 1,
+    UNIFORM = 2
+};
+
 const char* const FVK_STATE_STR[] = {
     "FKV_EXIST",    "FKV_NOT_EXIST", "FKV_KEY_CONFLICT", "FKV_BEFORE_PUT_FUNC_FAIL", "FKV_BEFORE_REMOVE_FUNC_FAIL",
     "FKV_NO_SPACE", "FKV_FAIL"};
@@ -77,18 +83,15 @@ struct AdmitAndEvictConfig {
 
 struct EmbConfig {
     std::string tableName;
+    InitializerType initializerType;
     int32_t embDim;
     int32_t optimNum;   // 使用的优化器参数数量
     int64_t cacheSize;  // cache 可以存放的 Embedding 数量
     float weightInitMin;
     float weightInitMax;
+    float weightInitMean;  // 仅TRUNCATED_NORMAL使用
+    float weightInitStddev;  // 仅TRUNCATED_NORMAL使用
     AdmitAndEvictConfig admitAndEvictConfig;
-};
-
-struct EmbMemPoolConfig {
-    uint64_t bufferSize;
-    uint64_t hostVocabSize;
-    uint32_t refillThreadNum;
 };
 
 }  // namespace Embcache

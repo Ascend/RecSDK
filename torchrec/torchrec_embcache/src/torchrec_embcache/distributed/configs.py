@@ -7,6 +7,7 @@
 # LICENSE file in the root directory of this source tree.
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Optional
 
 from torchrec import EmbeddingConfig, EmbeddingBagConfig
@@ -46,8 +47,17 @@ class AdmitAndEvictConfig:
         return self.evict_threshold != _DEFAULT_EVICT_THRESHOLD
 
 
+class InitializerType(str, Enum):
+    LINEAR = "linear"
+    TRUNCATED_NORMAL = "truncated_normal"
+    UNIFORM = "uniform"
+
+
 @dataclass
 class EmbCacheEmbeddingBagConfig(EmbeddingBagConfig):
+    initializer_type = InitializerType.UNIFORM
+    weight_init_mean: Optional[float] = 0.0
+    weight_init_stddev: Optional[float] = 0.05
     admit_and_evict_config: Optional[AdmitAndEvictConfig] = field(
         default_factory=lambda: AdmitAndEvictConfig()
     )
@@ -55,6 +65,9 @@ class EmbCacheEmbeddingBagConfig(EmbeddingBagConfig):
 
 @dataclass
 class EmbCacheEmbeddingConfig(EmbeddingConfig):
+    initializer_type = InitializerType.UNIFORM
+    weight_init_mean: Optional[float] = 0.0
+    weight_init_stddev: Optional[float] = 0.05
     admit_and_evict_config: Optional[AdmitAndEvictConfig] = field(
         default_factory=lambda: AdmitAndEvictConfig()
     )

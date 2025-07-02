@@ -19,15 +19,14 @@
 
 namespace Embcache {
 
-const int64_t INVALID_KEY = -1;
-
 struct FeatureRecord {
     uint64_t count;
 };
 
 class FeatureFilter {
 public:
-    FeatureFilter(int32_t admitThreshold, uint64_t evictThreshold);
+    FeatureFilter(const std::string& tableName, int32_t admitThreshold, uint64_t evictThreshold,
+                  uint64_t evictStepInterval);
 
     void StatisticsKeyCount(const int64_t* featureDataPtr, const int64_t* countDataPtr, int64_t startIndex,
                             int64_t endIndex, bool isCountDataEmpty);
@@ -37,7 +36,7 @@ public:
     void RecordTimestamp(const int64_t* featureDataPtr, int64_t startIndex, int64_t endIndex,
                          const int64_t* timestampDataPtr);
 
-    std::vector<int64_t> FeatureEvict();
+    void FeatureEvict();
 
     // 要从embTable中删除的key信息，待lookup执行到和GetSwapInfo相同步数后删除key对应emb
     EvictFeatureRecord evictFeatureRecord;
@@ -49,11 +48,18 @@ public:
     void LoadTimestampRecords(const std::vector<int64_t>& keys, std::vector<int64_t>& timestamps);
 
 private:
+    std::string tableName;
+
+    // 准入相关配置
     int32_t admitThreshold = -1;                                  // 准入阈值，默认值表示未开启准入
-    uint64_t evictThreshold = 0;                                  // unit: second
     std::unordered_map<int64_t, FeatureRecord> featureRecordMap;  // 准入，记录key次数
-    std::unordered_map<int64_t, std::time_t> timestampRecordMap;  // 淘汰，记录key时间戳
+
+    // 淘汰相关配置
+    uint64_t evictThreshold = 0;                                  // unit: second
+    uint64_t evictStepInterval = 0;                               // 淘汰间隔步数
+    uint64_t recordTsBatchId = 0;
     std::time_t latestTimestamp = 0;                              // 当前表最新的时间戳，用于判断淘汰
+    std::unordered_map<int64_t, std::time_t> timestampRecordMap;  // 淘汰，记录key时间戳
 };
 
 }  // namespace Embcache
