@@ -18,7 +18,6 @@
 import argparse
 import os
 import time
-import subprocess
 import logging
 
 import numpy as np

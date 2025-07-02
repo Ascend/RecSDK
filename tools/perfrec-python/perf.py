@@ -28,34 +28,32 @@ from tabulate import tabulate
 NEW_FILE_FLAG = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
 
 
-def generate_flamegraph(
-    perf_bin: str, perf_data: str, output_svg: str, flamegraph_path: str
-) -> None:
+def get_app_path(app: str) -> str:
+    res = subprocess.run(["/usr/bin/which", app], stdout=subprocess.PIPE, text=True, shell=False)
+    if res.returncode:
+        raise RuntimeError(f"get the absolute path of the {app} program failed!")
+    return res.stdout.strip()
+
+
+def generate_flamegraph(perf_data: str, output_svg: str) -> None:
     """
     Generate a flamegraph from perf data.
 
     Args:
         perf_data (str): Path to the perf.data file.
         output_svg (str): Path to the output SVG file.
-        flamegraph_path (str): Path to the Flamegraph scripts directory.
     """
     # Ensure perf script is available
-    try:
-        subprocess.run([perf_bin, "--version"], shell=False, check=True)
-    except subprocess.CalledProcessError:
-        logging.error("perf is not installed or not in PATH.")
-        return
-
+    perf_path = get_app_path("perf")
     # Ensure Flamegraph scripts are available
-    stackcollapse_path = os.path.join(flamegraph_path, "stackcollapse-perf.pl")
-    flamegraph_script_path = os.path.join(flamegraph_path, "flamegraph.pl")
+    stackcollapse_path = get_app_path("stackcollapse-perf.pl")
+    flamegraph_script_path = get_app_path("flamegraph.pl")
 
     if not os.path.isfile(stackcollapse_path) or not os.path.isfile(
         flamegraph_script_path
     ):
         logging.error(
-            "Flamegraph scripts not found in the provided directory %s.",
-            flamegraph_path,
+            "Flamegraph scripts not found."
         )
         return
 
@@ -64,7 +62,7 @@ def generate_flamegraph(
     fd = os.open(folded_output, NEW_FILE_FLAG, 0o640)
     with os.fdopen(fd, "w") as f:
         script_output = subprocess.run(
-            [perf_bin, "script", "-i", perf_data],
+            [perf_path, "script", "-i", perf_data],
             shell=False,
             check=True,
             stdout=subprocess.PIPE,
@@ -225,17 +223,7 @@ def main():
     parser.add_argument(
         "--perf_data", help="Path to the perf.data file.", required=True
     )
-    parser.add_argument(
-        "--flamegraph_path",
-        help="Path to the Flamegraph Perl scripts directory.",
-        required=True,
-    )
-    parser.add_argument(
-        "--perf_bin",
-        help="Path to perf exacutable binary file. (default: perf)",
-        required=False,
-        default="perf",
-    )
+
     parser.add_argument(
         "--output_svg",
         help="Path to the output SVG file. (default: flamegraph.svg)",
@@ -244,9 +232,7 @@ def main():
     )
     args = parser.parse_args()
 
-    generate_flamegraph(
-        args.perf_bin, args.perf_data, args.output_svg, args.flamegraph_path
-    )
+    generate_flamegraph(args.perf_data, args.output_svg)
 
 
 if __name__ == "__main__":

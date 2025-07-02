@@ -290,7 +290,7 @@ def exe_msaccucmp_convert(op_data_path: str) -> str:
     logging.debug("msaccucmp convert exec instruction: %s", instruct_item_command)
 
     convert_result = subprocess.run(
-        instruct_item_command, capture_output=True, text=True
+        instruct_item_command, capture_output=True, text=True, shell=False
     )
 
     # check convertion result
