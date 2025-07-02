@@ -291,13 +291,7 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
 
     # Rec SDK Patch
     # validate save_path first, not allow soft link in path for safety reason
-    if not check_file_system_is_hdfs(save_path):
-        dir_validator = DirectoryValidator("save_path", save_path)
-        try:
-            dir_validator.check_not_soft_link()
-            dir_validator.check()
-        except ValueError as err:
-            raise ValueError(f"save_path:{save_path} can't contain soft link for safety reason") from err
+    validate_save_path(save_path)
     
     # save sparse model, only run when self.sparse_saver is not None
     if not context.executing_eagerly() and self.sparse_saver:
@@ -333,6 +327,16 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
                 clear_delta_models(save_dir)
     comm.Barrier()
     return model_checkpoint_path
+
+
+def validate_save_path(save_path):
+    if not check_file_system_is_hdfs(save_path):
+        dir_validator = DirectoryValidator("save_path", save_path)
+        try:
+            dir_validator.check_not_soft_link()
+            dir_validator.check()
+        except ValueError as err:
+            raise ValueError(f"save_path:{save_path} can't contain soft link for safety reason") from err
 
 
 @para_checker_decorator(check_option_list=[
