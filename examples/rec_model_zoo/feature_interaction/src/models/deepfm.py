@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os
-import logging
 from typing import List
-from datetime import datetime
 
-import pytz
 import tensorflow as tf
 
-from utils import build_optimizer, main
+from utils import build_optimizer, main, setup_logger
 
 MODEL_NAME = "DeepFM"
 
@@ -183,22 +179,7 @@ def model_fn(features, labels, mode, params):
 
 if __name__ == "__main__":
     model_config = define_flags()
-    logger = logging.getLogger()
-    log_level = getattr(logging, model_config.log_level.upper(), logging.DEBUG)
-    logger.setLevel(log_level)
-    console_hand = logging.StreamHandler()
-    formatter = logging.Formatter("%(levelname)s - %(asctime)s: %(message)s")
-    console_hand.setLevel(log_level)
-    console_hand.setFormatter(formatter)
-    logger.addHandler(console_hand)
-    # Define the timezone for China Standard Time
-    china_tz = pytz.timezone('Asia/Shanghai')
-    logfile_na = MODEL_NAME + "_" + datetime.now(china_tz).strftime("%Y_%m_%d_%H_%M_%S") + ".log"
-    logfile_path = os.path.join("../logs/criteo/", logfile_na)
-    fh = logging.FileHandler(logfile_path)
-    fh.setLevel(log_level)
-    fh.setFormatter(formatter)
-    logger.addHandler(fh)
+    logger = setup_logger(model_config, MODEL_NAME)
 
     logger.info("FLAGS: " + str(model_config))
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
