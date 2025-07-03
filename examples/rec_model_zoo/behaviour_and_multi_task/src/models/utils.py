@@ -188,6 +188,4 @@ def setup_logger(model_config, MODEL_NAME):
     fh.setFormatter(formatter)
     logger.addHandler(fh)
 
-    logger.info("FLAGS: " + str(model_config))
-
     return logger, china_tz

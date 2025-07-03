@@ -669,5 +669,6 @@ if __name__ == "__main__":
     logger, china_tz = setup_logger(model_config, MODEL_NAME)
     spec, feature_descriptions = build_feature_descriptions(model_config)
 
+    logger.info("FLAGS: " + str(model_config))
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
     tf.compat.v1.app.run(main=lambda argv: main(argv[0]), argv=[model_config])
