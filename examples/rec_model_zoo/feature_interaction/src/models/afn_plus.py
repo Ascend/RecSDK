@@ -2,24 +2,14 @@
 # -*- coding: utf-8 -*-
 
 import os
-import glob
-import shutil
-import random
 import logging
-import stat
-from datetime import date, timedelta, datetime
+from datetime import datetime
 
 import pytz
 import numpy as np
 import tensorflow as tf
-from npu_bridge.npu_init import NPUEstimator, NPURunConfig
 
-from utils import (
-    get_third_nearest_checkpoint,
-    dump_pred,
-    input_fn,
-    build_optimizer
-)
+from utils import build_optimizer, main
 
 MODEL_NAME = "AFN_plus"
 
@@ -232,86 +222,6 @@ def batch_norm_layer(x, train_phase, scope_bn, model_cfg):
     return z
 
 
-def main(model_cfg):
-    # ------check Arguments------
-    if model_cfg.dt_dir == "":
-        model_cfg.dt_dir = (date.today() + timedelta(-1)).strftime('%Y%m%d')
-    model_cfg.model_dir = model_cfg.model_dir + model_cfg.dt_dir
-
-    # ------init Envs------
-    tr_files = glob.glob("%s/tr*tfrecords" % model_cfg.data_dir)
-    random.shuffle(tr_files)
-    va_files = glob.glob("%s/va*tfrecords" % model_cfg.data_dir)
-    te_files = glob.glob("%s/te*tfrecords" % model_cfg.data_dir)
-
-    train_size = model_cfg.train_size
-
-    if model_cfg.clear_existing_model:
-        if os.path.exists(model_cfg.model_dir):
-            try:
-                shutil.rmtree(model_cfg.model_dir)
-            except PermissionError as e:
-                raise PermissionError("Permission denied: {}".format(e)) from e
-            except Exception as e:
-                raise RuntimeError("Error clearing existing model: {}".format(e)) from e
-        else:
-            logger.info("Model directory does not exist, creating a new one...")
-
-    # ------ for NPU  ------
-    config = NPURunConfig(
-        model_dir=model_cfg.model_dir,
-        log_step_count_steps=100, save_summary_steps=100,
-        save_checkpoints_steps=train_size // model_cfg.batch_size + 1,
-        session_config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
-    )
-    estimator = NPUEstimator(model_fn=model_fn, model_dir=model_cfg.model_dir, params=model_cfg, config=config)
-
-    hook = tf.estimator.experimental.stop_if_no_increase_hook(estimator, "stop_criterion",
-    max_steps_without_increase=train_size // model_cfg.batch_size, run_every_secs=None, run_every_steps=10)
-    hook_stop = tf.estimator.StopAtStepHook(last_step=200)
-    os.makedirs(estimator.eval_dir())
-    if model_cfg.task_type == 'train':
-        train_spec = tf.estimator.TrainSpec(
-            input_fn=lambda: input_fn(tr_files, num_epochs=None, batch_size=model_cfg.batch_size,
-                                      field_size=model_cfg.field_size, perform_shuffle=True),
-            hooks=[hook])
-        eval_spec = tf.estimator.EvalSpec(
-            input_fn=lambda: input_fn(va_files, num_epochs=1, batch_size=model_cfg.batch_size,
-                                      field_size=model_cfg.field_size), steps=None,
-            start_delay_secs=10, throttle_secs=0)
-        logger.info("start train and evaluate")
-        tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
-        logger.info("Early stopped, start evaluation...")
-        estimator.evaluate(input_fn=lambda: input_fn(te_files, num_epochs=1, batch_size=model_cfg.batch_size,
-                                                     field_size=model_cfg.field_size),
-                           checkpoint_path=get_third_nearest_checkpoint(estimator.model_dir))
-
-    elif model_cfg.task_type == 'eval':
-        estimator.evaluate(input_fn=lambda: input_fn(va_files, num_epochs=1, batch_size=model_cfg.batch_size,
-                                                     field_size=model_cfg.field_size))
-
-    elif model_cfg.task_type == 'infer':
-        preds = estimator.predict(input_fn=lambda: input_fn(te_files, num_epochs=1, batch_size=model_cfg.batch_size,
-                                                            field_size=model_cfg.field_size),
-                                  predict_keys="prob")
-        dump_pred(preds, model_cfg.data_dir)
-
-    elif model_cfg.task_type == 'profiling_train':
-        estimator.train(input_fn=lambda: input_fn(tr_files, num_epochs=1, batch_size=model_cfg.batch_size,
-                                                  field_size=model_cfg.field_size, perform_shuffle=True),
-                        hooks=[hook_stop])
-
-    elif model_cfg.task_type == 'profiling_infer':
-        preds = estimator.predict(input_fn=lambda: input_fn(te_files, num_epochs=1, batch_size=model_cfg.batch_size,
-                                                            field_size=model_cfg.field_size),
-                                  predict_keys="prob", hooks=[hook_stop])
-        dump_pred(preds, model_cfg.data_dir)
-    else:
-        raise ValueError(
-            "Invalid task_type. task_type must be one of "
-            "['train', 'eval', 'infer', 'profiling_train', 'profiling_infer']")
-
-
 if __name__ == "__main__":
     model_config = define_flags()
     logger = logging.getLogger()
@@ -333,4 +243,4 @@ if __name__ == "__main__":
 
     logger.info("FLAGS: " + str(model_config))
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
-    tf.compat.v1.app.run(main=lambda argv: main(argv[0]), argv=[model_config])
+    tf.compat.v1.app.run(main=lambda argv: main(argv[0], model_fn, logger), argv=[model_config])
