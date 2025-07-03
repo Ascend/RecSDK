@@ -119,7 +119,7 @@ def dump_pred(preds: List[Dict[str, float]], data_dir: str) -> None:
             fo.write("%f\n" % (prob['prob']))
 
 
-def main(model_cfg, model_fn, logger):
+def setup_environment(model_cfg, logger):
     # ------check Arguments------
     if model_cfg.dt_dir == "":
         model_cfg.dt_dir = (date.today() + timedelta(-1)).strftime('%Y%m%d')
@@ -143,6 +143,12 @@ def main(model_cfg, model_fn, logger):
                 raise RuntimeError("Error clearing existing model: {}".format(e)) from e
         else:
             logger.warning("Model directory does not exist, skipping deletion.")
+
+    return tr_files, va_files, te_files, train_size
+
+
+def main(model_cfg, model_fn, logger):
+    tr_files, va_files, te_files, train_size = setup_environment(model_cfg, logger)
 
     # ------ for NPU  ------
     config = NPURunConfig(
