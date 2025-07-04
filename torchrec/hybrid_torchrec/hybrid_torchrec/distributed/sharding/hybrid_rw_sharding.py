@@ -100,6 +100,16 @@ def bucketize_kjt_before_all2all(
     block_bucketize_row_pos: Optional[List[torch.Tensor]] = None,
     keep_original_indices: bool = False,
 ) -> Tuple[KeyedJaggedTensor, Optional[torch.Tensor]]:
+    """
+    :param kjt: 稀疏特征数据
+    :param num_buckets: 需要将表分桶至num_buckets个设备
+    :param block_sizes: kjt中每个feature对应了values中的多少个值。即每个feature对应kjt.lengths()切片之和
+    :param output_permute:
+    :param bucketize_pos:
+    :param block_bucketize_row_pos:
+    :param keep_original_indices:
+    :return:
+    """
     num_features = len(kjt.keys())
     assert_fx_safe(
         block_sizes.numel() == num_features,
