@@ -169,7 +169,7 @@ def build_feature_descriptions(model_config):
     return spec, feature_descriptions
 
 
-def setup_logger(model_config, MODEL_NAME):
+def setup_logger(model_config, model_name):
     logger = logging.getLogger()
     log_level = getattr(logging, model_config.log_level.upper(), logging.DEBUG)
     logger.setLevel(log_level)
@@ -181,7 +181,7 @@ def setup_logger(model_config, MODEL_NAME):
 
     # Define the timezone for China Standard Time
     china_tz = pytz.timezone('Asia/Shanghai')
-    logfile_na = MODEL_NAME + "_" + datetime.now(china_tz).strftime("%Y_%m_%d_%H_%M_%S") + ".log"
+    logfile_na = model_name + "_" + datetime.now(china_tz).strftime("%Y_%m_%d_%H_%M_%S") + ".log"
     logfile_path = os.path.join("../log/aliccp/", logfile_na)
     fh = logging.FileHandler(logfile_path)
     fh.setLevel(log_level)
