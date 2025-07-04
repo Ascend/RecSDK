@@ -158,11 +158,11 @@ def build_feature_descriptions(model_config):
         }
         for mul_fields in spec["multi_hot_fields"]:
             feature_description[mul_fields] = tf.io.FixedLenFeature(
-                [spec.get(f"{key_map[mode_type]}_max_length").get(mul_fields)],
+                [spec.get(f"{key_map.get(mode_type)}_max_length").get(mul_fields)],
                 tf.int64)
         for mul_fields in spec["special_fields"]:
             feature_description[mul_fields] = tf.io.FixedLenFeature(
-                [spec.get(f"{key_map[mode_type]}_max_length").get(mul_fields)],
+                [spec.get(f"{key_map.get(mode_type)}_max_length").get(mul_fields)],
                 tf.int64)
         feature_descriptions[mode_type] = feature_description
 
