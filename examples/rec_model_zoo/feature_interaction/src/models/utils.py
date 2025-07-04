@@ -22,8 +22,10 @@ import glob
 import shutil
 import random
 from typing import Dict, List, Tuple
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
+import logging
 
+import pytz
 import tensorflow as tf
 from npu_bridge.npu_init import NPUEstimator, NPURunConfig
 
@@ -145,6 +147,28 @@ def setup_environment(model_cfg, logger):
             logger.warning("Model directory does not exist, skipping deletion.")
 
     return tr_files, va_files, te_files, train_size
+
+
+def setup_logger(model_config, model_name):
+    logger = logging.getLogger()
+    log_level = getattr(logging, model_config.log_level.upper(), logging.DEBUG)
+    logger.setLevel(log_level)
+    console_hand = logging.StreamHandler()
+    formatter = logging.Formatter("%(levelname)s - %(asctime)s: %(message)s")
+    console_hand.setLevel(log_level)
+    console_hand.setFormatter(formatter)
+    logger.addHandler(console_hand)
+
+    # Define the timezone for China Standard Time
+    china_tz = pytz.timezone('Asia/Shanghai')
+    logfile_na = model_name + "_" + datetime.now(china_tz).strftime("%Y_%m_%d_%H_%M_%S") + ".log"
+    logfile_path = os.path.join("../log/criteo/", logfile_na)
+    fh = logging.FileHandler(logfile_path)
+    fh.setLevel(log_level)
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
+
+    return logger
 
 
 def main(model_cfg, model_fn, logger):
