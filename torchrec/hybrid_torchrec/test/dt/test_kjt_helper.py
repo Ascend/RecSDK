@@ -75,3 +75,52 @@ def test_unique_split(table_num, feature_names, input_size):
         assert (
             gloden == torch.concat(unique_results)
         ).all(), "kjt_helper split can not inverse unique"
+
+    # 功能验证
+    assert 'KeyedJaggedTensor' in str(kjt_helper)
+
+    assert torch.equal(kjt_helper.hash_indices, torch.concat(total_values))
+
+    assert kjt_helper.from_offsets_sync(
+        keys=keys,
+        values=torch.concat(total_values),
+        offsets=torch.tensor([1, 1])
+    ) == NotImplemented
+
+    assert kjt_helper.from_lengths_sync(
+        keys=keys,
+        values=torch.concat(total_values),
+        lengths=torch.Tensor(length).long()
+    ) == NotImplemented
+
+    assert kjt_helper.concat(['KeyedJaggedTensor']) == NotImplemented
+
+    assert kjt_helper.empty(is_weighted=False, lengths_dtype=torch.int32) == NotImplemented
+
+    assert kjt_helper.empty_like('KeyedJaggedTensor') == NotImplemented
+
+    assert kjt_helper.from_jt_dict({"feat": torch.tensor([1])}) == NotImplemented
+
+    assert kjt_helper.dist_init(
+        keys=['feat1', 'feat2'],
+        tensors=[torch.tensor([1]), torch.tensor([2])],
+        variable_stride_per_key=True,
+        num_workers=1,
+        recat=torch.tensor([1]),
+        stride_per_rank=[0]
+    ) == NotImplemented
+
+    assert kjt_helper.permute([1, 2, 3]) == NotImplemented
+
+    assert kjt_helper.to_dict() == NotImplemented
+
+    # 空列表分割
+    split_list = []
+    kjt_helper.split_with_segment_zero(
+        keys=["feature1", "feature2"],
+        split_list=split_list,
+        stride=4,
+        stride_per_key_per_rank=[2, 2])
+    # 验证分割结果
+    assert len(split_list) == 1
+    assert isinstance(split_list[0], KeyedJaggedTensorWithLookHelper)
