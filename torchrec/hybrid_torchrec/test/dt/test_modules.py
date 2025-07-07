@@ -84,24 +84,24 @@ class TestIsValidFeatname:
     @staticmethod
     def test_valid_feature_names():
         """测试合法特征名"""
-        assert is_valid_feat_name("feature_1") == True
-        assert is_valid_feat_name("FEATURE2") == True
-        assert is_valid_feat_name("_private_feat") == True
-        assert is_valid_feat_name("a" * 100) == True  # 长字符串测试
+        assert is_valid_feat_name("feature_1") is True
+        assert is_valid_feat_name("FEATURE2") is True
+        assert is_valid_feat_name("_private_feat") is True
+        assert is_valid_feat_name("a" * 100) is True  # 长字符串测试
 
     @staticmethod
     def test_invalid_feature_names():
         """测试非法字符"""
-        assert is_valid_feat_name("feature@") == False  # 特殊字符
-        assert is_valid_feat_name("space in") == False  # 空格
-        assert is_valid_feat_name("dash-ed") == False  # 连字符
+        assert is_valid_feat_name("feature@") is False  # 特殊字符
+        assert is_valid_feat_name("space in") is False  # 空格
+        assert is_valid_feat_name("dash-ed") is False  # 连字符
 
     @staticmethod
     def test_edge_cases():
         """边界条件测试"""
-        assert is_valid_feat_name("") == True  # 空字符串
-        assert is_valid_feat_name("_") == True  # 单下划线
-        assert is_valid_feat_name("1") == True  # 纯数字
+        assert is_valid_feat_name("") is True  # 空字符串
+        assert is_valid_feat_name("_") is True  # 单下划线
+        assert is_valid_feat_name("1") is True  # 纯数字
 
 
 class TestEmbeddingConfigValid:
