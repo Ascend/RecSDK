@@ -44,10 +44,11 @@ git apply dcnv2_recsdk_torch.patch
 
 在dlrm/torchrec_dlrm下运行如下脚本启动训练任务。`$insert_your_path_here`为数据集路径。
 
+注：以下脚本为参考shell脚本，请根据用户实际情况按需修改。
 ```shell
-export PREPROCESSED_DATASET=$insert_your_path_here
-export TOTAL_TRAINING_SAMPLES=4195197692 ;
-export GLOBAL_BATCH_SIZE=16384;
+PREPROCESSED_DATASET=$insert_your_path_here
+TOTAL_TRAINING_SAMPLES=4195197692 ;
+GLOBAL_BATCH_SIZE=16384;
 export WORLD_SIZE=8;
 torchx run -s local_cwd dist.ddp -j 1x${WORLD_SIZE} --script dlrm_main.py -- \
     --embedding_dim 128 \

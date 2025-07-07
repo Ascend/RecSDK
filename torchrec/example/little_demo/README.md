@@ -42,7 +42,7 @@ class TestModel(torch.nn.Module):
         ...
         return loss, result
 ```
-4. 定义稀疏表的优化器
+5. 定义稀疏表的优化器
 
 指定sparse侧的优化器
 ```python
@@ -57,7 +57,7 @@ apply_optimizer_in_backward(
     optimizer_kwargs=optimizer_kwargs,
 )
 ```
-5. 对稀疏表做分表
+6. 对稀疏表做分表
 
 创建sharder，并使用EmbeddingShardingPlanner创建分表计划，将模型、分表计划和sharder传入DistributedModelParallel中获得分布式模型。注意当前支持row-wise和fused模式。完整代码参考main.py。
 ```python
@@ -71,7 +71,7 @@ apply_optimizer_in_backward(
     )
 ```
 
-6. 整合优化器
+7. 整合优化器
 
 分离dense和sparse的参数，并组合成一个新的优化器。完整代码参考main.py。
 ```python
@@ -81,7 +81,7 @@ apply_optimizer_in_backward(
     )
     optimizer = CombinedOptimizer([ddp_model.fused_optimizer, dense_optimizer])
 ```
-7. 创建pipeline
+8. 创建pipeline
 
 完整代码参考main.py
 ```python
@@ -89,7 +89,7 @@ pipeline = HybridTrainPipelineSparseDist(
     ddp_model, optimizer, device, execute_all_batches=True
 )
 ```
-8. 使用pipeline进行训练
+9. 使用pipeline进行训练
 
 完整代码参考main.py
 ```python
