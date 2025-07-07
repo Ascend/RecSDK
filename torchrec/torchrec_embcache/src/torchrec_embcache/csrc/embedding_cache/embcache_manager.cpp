@@ -251,7 +251,7 @@ void EmbcacheManager::EvictFeatures()
         }
 
         // 获取当前表要淘汰的keys
-        std::vector<int64_t> evictFeatures = featureFilters[i].evictFeatureRecord.GetEvictKeys();
+        const std::vector<int64_t>& evictFeatures = featureFilters[i].evictFeatureRecord.GetEvictKeys();
         // 调用swapManager删除映射信息
         // 删除embeddingTables中的embedding待对应step的swap out emb update执行完成后触发
         swapManagers[i].RemoveKeys(evictFeatures);
@@ -265,6 +265,10 @@ void EmbcacheManager::EvictFeatures()
 void EmbcacheManager::RecordEmbeddingUpdateTimes()
 {
     embUpdateCount++;
+
+    if (NeedEvictEmbeddingTable()) {
+        RemoveEmbeddingTableInfo();
+    }
 }
 
 AsyncTask<void> EmbcacheManager::EmbeddingUpdateAsync(const SwapInfo& swapInfo, const at::Tensor& swapoutEmbs,
@@ -442,16 +446,15 @@ void EmbcacheManager::Load(const std::string& path, int rank)
         LOG(INFO) << "Start load, rank:" << rank << ", tableName:" << tableName;
         std::vector<int64_t> keys;
         std::string filePath = path + "/" + tableName + "/" + "rank" + std::to_string(rank);
-
         EmbcacheManager::ReadFile(filePath, keys, "key");
-        LOG(INFO) << "In load, rank:" << rank << ", tableName:" << tableName << ", keys size:" << keys.size();
 
         std::vector<std::vector<float>> embeddings;
         int32_t embDim = embConfigs[i].embDim;
-        EmbcacheManager::ReadFile(filePath, embeddings, "embeddings", embDim);
-
-        LOG(INFO) << "In load, rank:" << rank << ", tableName:" << tableName << ", keys size:" << keys.size();
-        TORCH_CHECK(keys.size() == embeddings.size(), "In load scene, keys size is not equal with embedding size.")
+        EmbcacheManager::ReadFile(filePath, embeddings, "embedding", embDim);
+        LOG(INFO) << "In load, rank:" << rank << ", tableName:" << tableName << ", keys size:" << keys.size()
+                  << ", embeddings size:" << embeddings.size();
+        TORCH_CHECK(keys.size() == embeddings.size(), "In load scene, keys size:", keys.size(),
+                    " is not equal with embedding size:", embeddings.size())
 
         std::vector<std::vector<float>> momentum1;
         if (optimNum > 0) {
@@ -619,6 +622,7 @@ void EmbcacheManager::RemoveEmbeddingTableInfo()
     for (int32_t i = 0; i < embNum; ++i) {
         auto& keys = featureFilters[i].evictFeatureRecord.GetEvictKeys();
         if (keys.empty()) {
+            LOG(INFO) << "Feature keys list is empty, skip to remove embedding from table:" << embConfigs[i].tableName;
             continue;
         }
 

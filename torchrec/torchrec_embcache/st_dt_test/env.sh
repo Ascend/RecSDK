@@ -28,9 +28,6 @@ export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
 # embcache related
 #----------------------------------------
 export WITH_EMBCACHE=1
-export INIT_LINEAR=1
-export ENABLE_GLOBAL_UNIQUE=0
-
 
 # 供参考：16GB=17179869184; 30GB=30*1024*1024*1024=32212254720;
 export EMBCACHE_SIZE_ON_DEVICE_MEM=$((1*1024*1024))

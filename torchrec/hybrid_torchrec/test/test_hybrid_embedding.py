@@ -84,10 +84,10 @@ def execute(rank: int, config: ExecuteConfig):
     embedding_config = generate_base_config(embedding_dims, num_embeddings)
 
     dataset = RandomRecDataset(
-        batch_size=BATCH_NUM,
-        lookup_len=lookup_len,
-        num_lookups=[num_embedding // 2 for num_embedding in num_embeddings],
-        num_tables=table_num,
+        BATCH_NUM,
+        lookup_len,
+        [num_embedding // 2 for num_embedding in num_embeddings],
+        table_num,
     )
     gloden_dataset_loader = DataLoader(
         dataset,

@@ -11,7 +11,7 @@
 TORCH_LIBRARY(hybrid, m)
 {
     m.class_<hybrid::IdsMapper>("IdsMapper")
-        .def(torch::init<int64_t>())
+        .def(torch::init<int64_t, bool>())
         .def("ids2indices_unique", &hybrid::IdsMapper::UniqueAndLookup)
         .def("ids2indices_unique_out", &hybrid::IdsMapper::UniqueAndLookupOut)
         .def_static("parallel_ids2indices_unique_out", &hybrid::IdsMapper::ParallelUniqueHashOut);

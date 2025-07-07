@@ -149,7 +149,7 @@ class EmbCacheHashTable(torch.nn.Module):
     def __init__(self, config: EmbeddingConfig, device: torch.device):
         super().__init__()
         self.config = config
-        self.ids2slot_dict = IdsMapper(self.config.num_embeddings)
+        self.ids2slot_dict = IdsMapper(self.config.num_embeddings, only_device_memory=False)
         self.vector_table = nn.Embedding(
             num_embeddings=config.num_embeddings,
             embedding_dim=config.embedding_dim,
@@ -173,14 +173,6 @@ class EmbCacheHashTable(torch.nn.Module):
         return values
 
 
-def _set_default_admit_and_evict_config(
-    tables: List[EmbCacheEmbeddingConfig | EmbeddingConfig],
-):
-    for table in tables:
-        if not hasattr(table, "admit_and_evict_config"):
-            table.admit_and_evict_config = AdmitAndEvictConfigPy()
-
-
 class EmbCacheEmbeddingCollection(EmbeddingCollection):
     def __init__(
         self,
@@ -195,7 +187,7 @@ class EmbCacheEmbeddingCollection(EmbeddingCollection):
         super().__init__(tables, device, need_indices)
         torch._C._log_api_usage_once(f"torchrec.modules.{self.__class__.__name__}")
         self.embeddings: nn.ModuleDict = nn.ModuleDict()
-        _set_default_admit_and_evict_config(tables)
+        self._convert_2_cache_embedding_config(tables)
         self._embedding_configs = tables
         self._embedding_dim: int = -1
         self._need_indices: bool = need_indices
@@ -203,7 +195,7 @@ class EmbCacheEmbeddingCollection(EmbeddingCollection):
             device if device is not None else torch.device("cpu")
         )
         self._optim_num = get_embedding_optim_num(embedding_optimizer_cls)
-        logger.debug("======  _optim_num: %", self._optim_num)
+        logger.debug("======  _optim_num: %d", self._optim_num)
 
         evict_step_intervals = set(
             config.admit_and_evict_config.evict_step_interval for config in tables
@@ -219,7 +211,7 @@ class EmbCacheEmbeddingCollection(EmbeddingCollection):
             raise
         logger.debug("======  embcache_size_on_device_mem: %s", embcache_size_on_device_mem)
 
-        cache_num_embeddings = self._caculate_caches(
+        cache_num_embeddings = self._calculate_caches(
             tables, embcache_size_on_device_mem, multi_hot_sizes, batch_size, world_size
         )
         # 开启准入时会预留offset 0位置，手动给计算后的表大小加1
@@ -262,7 +254,17 @@ class EmbCacheEmbeddingCollection(EmbeddingCollection):
         )
         self._feature_names: List[List[str]] = [table.feature_names for table in tables]
 
-    def _caculate_caches(
+    @staticmethod
+    def _convert_2_cache_embedding_config(tables: List[EmbCacheEmbeddingConfig | EmbeddingConfig]):
+        for i, ori_config in enumerate(tables):
+            if isinstance(ori_config, EmbCacheEmbeddingConfig):
+                continue
+            emb_cache_config = EmbCacheEmbeddingConfig(embedding_dim=ori_config.embedding_dim,
+                                                       num_embeddings=ori_config.num_embeddings)
+            emb_cache_config.__dict__.update(ori_config.__dict__)
+            tables[i] = emb_cache_config
+
+    def _calculate_caches(
         self,
         tables: List[EmbeddingConfig],
         max_device_mem_for_vectors: int,
@@ -618,6 +620,18 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
             batched_embedding_kernels.append(modules)
         return batched_embedding_kernels
 
+    @staticmethod
+    def _build_admit_and_evict_config(cache_ec_config: EmbCacheEmbeddingConfig):
+        aaec_py = cache_ec_config.admit_and_evict_config
+        logging.info("admit_and_evict_config info:%s", aaec_py)
+        aaec = AdmitAndEvictConfig(
+            admit_threshold=aaec_py.admit_threshold,
+            not_admitted_default_value=aaec_py.not_admitted_default_value,
+            evict_threshold=aaec_py.evict_threshold,
+            evict_step_interval=aaec_py.evict_step_interval,
+        )
+        return aaec
+
     def _create_embcache_mgr(self) -> EmbcacheManager:
         emb_configs = []
         for _, sharding_infos in self.sharding_type_to_sharding_infos.items():
@@ -625,11 +639,7 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
                 embedding_config = sharding_info.embedding_config
                 emb_original_config = self._table_name_to_config[embedding_config.name]
                 cpp_initializer_type = getattr(CppInitType, emb_original_config.initializer_type.name)
-                optim_num = 0
-                if (
-                    sharding_info.fused_params["optimizer"]
-                    == EmbOptimType.EXACT_ADAGRAD
-                ):
+                if sharding_info.fused_params["optimizer"] == EmbOptimType.EXACT_ADAGRAD:
                     optim_num = 1
                 elif sharding_info.fused_params["optimizer"] == EmbOptimType.ADAM:
                     optim_num = 2
@@ -648,9 +658,7 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
                     shard_rank = int(rank_part.split(":")[1])  # 获取 N
                     if shard_rank == rank:
                         # 找到了当前 rank 对应的 shard
-                        local_shard_size = shard_metadata.shard_sizes[
-                            0
-                        ]  # 获取第一个维度的大小
+                        local_shard_size = shard_metadata.shard_sizes[0]  # 获取第一个维度的大小
                         break
 
                 emb_configs.append(
@@ -663,9 +671,7 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
                         weight_init_max=embedding_config.get_weight_init_max(),
                         weight_init_mean=emb_original_config.weight_init_mean,
                         weight_init_stddev=emb_original_config.weight_init_stddev,
-                        admit_and_evict_config=self._build_admit_and_evict_config(
-                            embedding_config
-                        ),
+                        admit_and_evict_config=self._build_admit_and_evict_config(emb_original_config),
                     )
                 )
         return EmbcacheManager(emb_configs)
@@ -754,16 +760,3 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
             self._embcache_mgr.record_timestamp(
                 features.values(), features.offset_per_key(), features.timestamps
             )
-
-    def _build_admit_and_evict_config(self, embedding_config):
-        table_name = embedding_config.name
-        original_emb_config = self._table_name_to_config[table_name]
-        aaec_py = original_emb_config.admit_and_evict_config
-        aaec = AdmitAndEvictConfig(
-            admit_threshold=aaec_py.admit_threshold,
-            not_admitted_default_value=aaec_py.not_admitted_default_value,
-            evict_threshold=aaec_py.evict_threshold,
-            evict_step_interval=aaec_py.evict_step_interval,
-        )
-        logging.info("admit_and_evict_config info:%s", aaec_py)
-        return aaec

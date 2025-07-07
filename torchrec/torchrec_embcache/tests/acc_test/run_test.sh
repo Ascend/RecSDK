@@ -19,9 +19,6 @@ export LD_LIBRARY_PATH="$SITE_PACKAGES:$TORCH_LIB_PATH:$CUSTOM_LIB_PATH:$LD_LIBR
 
 export OMP_NUM_THREADS=12
 
-# 算子适配层文件libfbgemm_npu_api.so的路径
-export LIB_FBGEMM_NPU_API_SO_PATH="/path/to/libfbgemm_npu_api.so"
-
 #----------------------------------------
 # ascend related
 #----------------------------------------
@@ -34,8 +31,6 @@ export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
 # embcache related
 #----------------------------------------
 export WITH_EMBCACHE=1
-export INIT_LINEAR=1
-export ENABLE_GLOBAL_UNIQUE=0
 
 
 # 供参考：16GB=17179869184; 30GB=30*1024*1024*1024=32212254720;
@@ -58,6 +53,5 @@ pytest ./test_embedding_ec_cache_pipeline.py
 pytest ./test_save_and_load.py
 pytest ./test_kjt_with_time.py
 
-export ENABLE_GLOBAL_UNIQUE=1  # feature admit is related with global unique
 export DO_EC_LOCAL_UNIQUE=1
 pytest ./test_feature_filter.py

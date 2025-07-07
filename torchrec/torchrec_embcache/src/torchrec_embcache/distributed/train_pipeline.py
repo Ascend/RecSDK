@@ -131,9 +131,9 @@ class EmbCachePipelinedForward(PipelinedForward):
         ctx = self._context.module_contexts.pop(self._name)
         cur_stream = torch.get_device_module(self._device).current_stream()
         with torch_npu.npu.stream(self._context.memcpy_stream):
-            for a_data in data:
-                a_data = a_data.to(self._device, non_blocking=True)
-                a_data.record_stream(cur_stream)
+            for index, data_item in enumerate(data):
+                data[index] = data_item.to(self._device, non_blocking=True)
+                data[index].record_stream(cur_stream)
 
             for sharding_ctx in ctx.sharding_contexts:
                 if not isinstance(sharding_ctx, HybridSequenceShardingContext):

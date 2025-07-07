@@ -85,8 +85,11 @@ void IdsMapper::UniqueAndLookupOut(const torch::Tensor& globalIds, const torch::
         it = ids2indicesMap.find(key);
         if (it == ids2indicesMap.end()) {
             int64_t r = maxIndex++;
-            TORCH_CHECK(r < initMaxIndex, "Ids map reached maxIndex = ",
-                initMaxIndex, " please reallocate a larger buffer.");
+            // When `onlyDeviceMem` is true, `initMaxIndex` indicates a complete table size, else only a cache size.
+            if (onlyDeviceMem) {
+                TORCH_CHECK(r < initMaxIndex, "Ids map reached maxIndex = ",
+                            initMaxIndex, " please reallocate a larger buffer.")
+            }
             ids2indicesMap.insert_or_assign(key, r);
             indice2id.push_back(key);  // key's offset is r
             hashIndicesPtr[i] = r;

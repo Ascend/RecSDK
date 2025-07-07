@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import itertools
 import logging
 import os
+import shutil
 from typing import List
 
 import numpy as np
@@ -44,11 +45,6 @@ from model import ModelEc as Model
 from util import setup_logging
 
 _SAVE_PATH = "save_dir/sparse"
-
-lib_fbgemm_npu_api_so_path = os.getenv('LIB_FBGEMM_NPU_API_SO_PATH')
-if lib_fbgemm_npu_api_so_path is None:
-    raise RuntimeError("LIB_FBGEMM_NPU_API_SO_PATH environment variable is not set.")
-torch.ops.load_library(lib_fbgemm_npu_api_so_path)
 
 WORLD_SIZE_STR = str(os.environ.get("WORLD_SIZE", "2"))
 WORLD_SIZE = int(WORLD_SIZE_STR) if WORLD_SIZE_STR.isalnum() else 2
@@ -127,7 +123,7 @@ class ExecuteConfig:
     enable_evict: bool
 
 
-def execute(config: ExecuteConfig, rank: int):
+def execute(rank: int, config: ExecuteConfig):
     world_size = config.world_size
     table_num = config.table_num
     embedding_dims = config.embedding_dims
@@ -220,7 +216,7 @@ def _get_init_weight(table_dims: List[int]):
     return init_embs
 
 
-def _get_init_optimi_slot(table_dims: List[int]):
+def _get_init_optimizer_slot(table_dims: List[int]):
     init_slots = []
     for dim in table_dims:
         slot = torch.zeros((dim,))
@@ -274,7 +270,7 @@ class TestModel:
             optimizer_kwargs={"lr": 0.02},
         )
         # Shard
-        constrans = {
+        constrains = {
             f"table{i}": ParameterConstraints(sharding_types=[sharding_type])
             for i in range(table_num)
         }
@@ -292,7 +288,7 @@ class TestModel:
         shaders = [hash_shader]
         planner = EmbeddingShardingPlanner(
             topology=Topology(world_size=self.world_size, compute_device=self.device),
-            constraints=constrans,
+            constraints=constrains,
         )
         plan = planner.collective_plan(
             ec, shaders, dist.GroupMember.WORLD
@@ -331,7 +327,7 @@ class TestModel:
 
             save_dir = os.path.abspath("save_dir")
             if os.path.exists(save_dir):
-                os.rmdir(save_dir)
+                shutil.rmtree(save_dir, ignore_errors=True)
             os.makedirs(save_dir, exist_ok=True) 
 
             saver = Saver(rank=rank)
@@ -343,7 +339,7 @@ class TestModel:
 
     def _record_timestamp_info_cpu(self, batch, table_num, batch_id):
         sparse_tensor: KeyedJaggedTensorWithTimestamp = batch.sparse_features
-        values = sparse_tensor.values
+        values = sparse_tensor.values()
         timestamps = sparse_tensor.timestamps
         offset_per_key = sparse_tensor.offset_per_key()
         # init data structure
@@ -372,17 +368,13 @@ class TestModel:
         table_names = [c.name for c in self.emb_configs]
         table_num = len(table_names)
         emb_init_values: List[Tensor] = _get_init_weight(emb_dims)
-        logging.info("emb_init_values: %s", emb_init_values)
-        optimizer_init_values: List[Tensor] = _get_init_optimi_slot(emb_dims)
-        logging.info("optimizer_init_values: %s", optimizer_init_values)
+        optimizer_init_values: List[Tensor] = _get_init_optimizer_slot(emb_dims)
         for table_index in range(table_num):
             evict_ids_per_table = []
             last_timestamp = self.last_timestamp_for_table[table_index]
             for ids, ts in self.timestamps_for_table[table_index].items():
-                need_evict = False
                 if last_timestamp - ts > evict_threshold:
                     evict_ids_per_table.append(ids)
-                    need_evict = True
 
             table_name = table_names[table_index]
             # get slot tensor of Adagrad optimizer
@@ -394,7 +386,7 @@ class TestModel:
                 # step2 reset emb and optimizer slot as init value
                 with torch.no_grad():
                     # init emb
-                    embeddings[table_name].weight.data.copy_(emb_init_values[table_index])
+                    embeddings[table_name].weight[ids].data.copy_(emb_init_values[table_index])
                     # init optimizer slot
                     slot_tensor[ids].data.copy_(optimizer_init_values[table_index])
             logging.info("batchId:%d, table name:%s, evict ids num:%d",
@@ -426,8 +418,9 @@ class TestModel:
 
             # 1 record batch timestamp data
             self._record_timestamp_info_cpu(batch, table_num, i)
-            # evict emb and optimizer data
-            self._evict_embedding_cpu(evict_threshold, ec.embeddings, opt, i)
+            # 2 evict emb and optimizer data
+            if i > 0 and (i + 1) % EVICT_STEP_INTERVAL == 0:
+                self._evict_embedding_cpu(evict_threshold, ec.embeddings, opt, i)
 
         return results
 
@@ -508,14 +501,14 @@ def test_evict_correctness(config: ExecuteConfig):
 
 
 if __name__ == '__main__':
-    test_admit_count_correctness(ExecuteConfig(
-        world_size=2,
+    test_evict_correctness(ExecuteConfig(
+        world_size=WORLD_SIZE,
         table_num=2,
         embedding_dims=[128, 128],
         num_embeddings=[4000, 400],
         sharding_type="row_wise",
         lookup_len=128,
         device="npu",
-        enable_admit=True,
-        enable_evict=False
+        enable_admit=False,
+        enable_evict=True
     ))

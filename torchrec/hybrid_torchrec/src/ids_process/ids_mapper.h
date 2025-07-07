@@ -15,7 +15,6 @@
 #include <tuple>
 #include <vector>
 
-
 namespace hybrid {
 constexpr int64_t MIN_IDS_LENGTH = 65536;
 constexpr int64_t DOUBLE_INIT = 2;
@@ -23,7 +22,8 @@ constexpr int64_t PARTITION_LEN = 8192;
 class IdsMapper : public torch::CustomClassHolder {
 public:
     using Self = IdsMapper;
-    explicit IdsMapper(int64_t initMaxIndex) : initMaxIndex(initMaxIndex){};
+    explicit IdsMapper(int64_t initMaxIndex, bool onlyDeviceMem = true)
+        : initMaxIndex(initMaxIndex), onlyDeviceMem(onlyDeviceMem){};
     IdsMapper(const IdsMapper& other) = delete;
     IdsMapper& operator=(const IdsMapper& other)
     {
@@ -72,7 +72,7 @@ public:
         const torch::Tensor& uniqueOffset);
 
 private:
-    
+
     void UniqueProcessing(const torch::Tensor& hashIndices, const torch::Tensor& offset,
         const torch::Tensor& unique, const torch::Tensor& uniqueIds, const torch::Tensor& uniqueInverse,
         const torch::Tensor& uniqueOffset, int64_t tableId);
@@ -85,6 +85,7 @@ private:
 
     int64_t maxIndex = 0;
     int64_t initMaxIndex;
+    bool onlyDeviceMem = true;  // 是否仅使用device memory
 
     std::mutex insertMute;
     std::mutex allocMute;

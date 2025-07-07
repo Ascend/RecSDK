@@ -38,12 +38,6 @@ from torchrec.optim.apply_optimizer_in_backward import apply_optimizer_in_backwa
 from torchrec.optim.keyed import CombinedOptimizer
 
 
-lib_fbgemm_npu_api_so_path = os.getenv('LIB_FBGEMM_NPU_API_SO_PATH')
-if lib_fbgemm_npu_api_so_path is None:
-    raise RuntimeError("LIB_FBGEMM_NPU_API_SO_PATH environment variable is not set.")
-torch.ops.load_library(lib_fbgemm_npu_api_so_path)
-
-
 WORLD_SIZE = 2
 LOOP_TIMES = 200
 BATCH_NUM = 1000
@@ -88,7 +82,7 @@ def execute(rank: int, config: ExecuteConfig):
         pin_memory_device="npu",
         num_workers=1,
     )
-    embeding_config = []
+    embedding_configs = []
     for i in range(table_num):
         ebc_config = EmbeddingBagConfig(
             name=f"table{i}",
@@ -97,12 +91,14 @@ def execute(rank: int, config: ExecuteConfig):
             feature_names=[f"feat{i}"],
             pooling=pool_type,
             init_fn=weight_init,
+            weight_init_min=0.0,
+            weight_init_max=1.0,
         )
-        embeding_config.append(ebc_config)
+        embedding_configs.append(ebc_config)
 
     test_model = TestModel(rank, world_size, device)
-    golden_results = test_model.cpu_golden_loss(embeding_config, dataset_loader_golden)
-    test_results = test_model.test_loss(embeding_config, data_loader, sharding_type)
+    golden_results = test_model.cpu_golden_loss(embedding_configs, dataset_loader_golden)
+    test_results = test_model.test_loss(embedding_configs, data_loader, sharding_type)
     i = 0
     for golden, result in zip(golden_results, test_results):
         logging.debug("")

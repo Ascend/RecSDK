@@ -44,15 +44,8 @@ from torchrec.distributed.types import ShardingEnv
 from torchrec.optim.keyed import CombinedOptimizer
 
 
-lib_fbgemm_npu_api_so_path = os.getenv("LIB_FBGEMM_NPU_API_SO_PATH")
-if lib_fbgemm_npu_api_so_path is None:
-    raise RuntimeError("LIB_FBGEMM_NPU_API_SO_PATH environment variable is not set")
-torch.ops.load_library(lib_fbgemm_npu_api_so_path)
-
-
 _world_size_env = int(os.getenv('WORLD_SIZE', '2'))
 WORLD_SIZE = _world_size_env
-LOOP_TIMES = 10
 LOOP_TIMES = 500
 BATCH_NUM = 1000
 

@@ -40,7 +40,7 @@ from hybrid_torchrec.distributed.sharding.post_input_dist import (
 from hybrid_torchrec.sparse.jagged_tensor_with_looup_helper import (
     KeyedJaggedTensorWithLookHelper,
 )
-
+from torchrec_embcache.distributed.configs import EmbCacheEmbeddingBagConfig
 from torchrec_embcache.distributed.sharding.rw_sharding import (
     EmbCacheRwPooledEmbeddingSharding,
 )
@@ -131,7 +131,7 @@ class EmbCacheHashTable(torch.nn.Module):
     def __init__(self, config: EmbeddingBagConfig, device: torch.device):
         super().__init__()
         self.config = config
-        self.ids2slot_dict = IdsMapper(self.config.num_embeddings)
+        self.ids2slot_dict = IdsMapper(self.config.num_embeddings, only_device_memory=False)
         self.vector_table = torch.nn.EmbeddingBag(
             self.config.num_embeddings,
             self.config.embedding_dim,
@@ -227,6 +227,7 @@ class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
         torch._C._log_api_usage_once(f"torchrec.modules.{self.__class__.__name__}")
         self._is_weighted = is_weighted
         self.embedding_bags: nn.ModuleDict = nn.ModuleDict()
+        self._convert_2_cache_embedding_bag_config(tables)
         self._embedding_bag_configs = tables
         self._lengths_per_embedding: List[int] = []
         self._device: torch.device = (
@@ -239,7 +240,7 @@ class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
         embcache_size_on_device_mem = int(os.getenv("EMBCACHE_SIZE_ON_DEVICE_MEM", "17179869184"))
         logger.debug("======  embcache_size_on_device_mem: %s", embcache_size_on_device_mem)
 
-        cache_num_embeddings = self._caculate_caches(
+        cache_num_embeddings = self._calculate_caches(
             tables, embcache_size_on_device_mem, multi_hot_sizes, batch_size, world_size
         )
         logger.debug("table_num_embeddings: %s", cache_num_embeddings)
@@ -277,7 +278,17 @@ class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
         self._feature_names: List[List[str]] = [table.feature_names for table in tables]
         self.reset_parameters()
 
-    def _caculate_caches(
+    @staticmethod
+    def _convert_2_cache_embedding_bag_config(tables: List[EmbCacheEmbeddingBagConfig | EmbeddingBagConfig]):
+        for i, ori_config in enumerate(tables):
+            if isinstance(ori_config, EmbCacheEmbeddingBagConfig):
+                continue
+            emb_cache_config = EmbCacheEmbeddingBagConfig(embedding_dim=ori_config.embedding_dim,
+                                                          num_embeddings=ori_config.num_embeddings)
+            emb_cache_config.__dict__.update(ori_config.__dict__)
+            tables[i] = emb_cache_config
+
+    def _calculate_caches(
         self,
         tables: List[EmbeddingBagConfig],
         max_device_mem_for_vectors: int,
@@ -570,6 +581,8 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
                 modules.append(emb_module._emb_module)
             batched_embedding_kernels.append(modules)
         return batched_embedding_kernels
+
+
 
     def _create_embcache_mgr(self) -> EmbcacheManager:
         emb_configs = []

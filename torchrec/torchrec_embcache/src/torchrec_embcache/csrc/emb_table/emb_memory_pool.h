@@ -36,8 +36,7 @@ public:
         : embConfig(embConfig),
           maxBufferSize(bufferSize),
           totalLeftVocabSize(hostVocabSize),
-          numThreads(refillThreadNum),
-          initializerType(embConfig.initializerType)
+          numThreads(refillThreadNum)
     {
         itemSize = (embConfig.optimNum + 1) * embConfig.embDim * sizeof(float);
         maxExpandSize = maxBufferSize * itemSize;
@@ -93,7 +92,6 @@ private:
     uint64_t maxBufferSize;
     uint64_t totalLeftVocabSize;
     uint32_t numThreads;
-    InitializerType initializerType;
 
     std::atomic<uint64_t> currBufferSize{0};
     volatile std::atomic<bool> stop = false;
