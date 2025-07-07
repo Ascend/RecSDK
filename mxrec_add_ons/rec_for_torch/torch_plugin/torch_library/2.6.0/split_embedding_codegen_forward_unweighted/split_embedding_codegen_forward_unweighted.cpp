@@ -51,19 +51,19 @@ at::Tensor split_embedding_codegen_forward_unweighted_npu(const at::Tensor& dev_
         return at::Tensor();
     }
 
-    if (totalLen == 0) {
-        return at::Tensor();
-    }
     int64_t batchSizeRes = (offsets.size(0) - 1) % featCnt;
     TORCH_CHECK(batchSizeRes == 0, "offset size = ", offsets.size(0),
                 " is incorrect for feature count = ", featCnt)
     int64_t batchSize = (offsets.size(0) - 1) / featCnt;
-    auto output = at::full({batchSize, totalD}, 0.0, dev_weights.options());
-
+    at::Tensor output;
     if (static_cast<PoolingMode>(pooling_mode) == PoolingMode::NONE) {
-        output = at::full({totalLen, maxD}, 0.0, dev_weights.options());
+        output = at::empty({totalLen, maxD}, dev_weights.options());
+    } else {
+        output = at::full({batchSize, totalD}, 0.0, dev_weights.options());
     }
-
+    if (totalLen == 0) {
+        return output;
+    }
     int64_t experimental = static_cast<int64_t>(is_experimental);
     EXEC_NPU_CMD(aclnnSplitEmbeddingCodegenForwardUnweighted, dev_weights, uvm_weights,         lxu_cache_weights,
                  weights_placements, weights_offsets, D_offsets, indices, offsets, lxu_cache_locations, hash_indices,

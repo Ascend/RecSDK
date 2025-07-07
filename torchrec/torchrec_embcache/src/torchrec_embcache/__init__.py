@@ -19,9 +19,25 @@ logging.basicConfig(
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.append(current_dir)
+# 获取当前的LD_LIBRARY_PATH
+current_ld_path = os.environ.get("LD_LIBRARY_PATH", "")
+os.environ["LD_LIBRARY_PATH"] = f"{current_ld_path}:{current_dir}"
+from ctypes import cdll
+
+# 指定完整路径加载
+lib = cdll.LoadLibrary(f"{current_dir}/libglog.so.2")
 
 try:
-    import embcache_pybind
+    from embcache_pybind import (
+        EmbcacheManager,
+        EmbConfig,
+        AdmitAndEvictConfig,
+        AsyncSwapInfo,
+        AsyncSwapinTensor,
+        InitializerType,
+        SwapInfo,
+        SwapinTensor,
+    )
     logging.debug("Successfully imported embcache_pybind from %s", current_dir)
 except ImportError as e:
     logging.error("Error importing embcache_pybind from %s: %s", current_dir, e)
