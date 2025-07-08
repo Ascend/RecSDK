@@ -45,8 +45,12 @@ class TestHybridSplitTableBatchedEmbeddingBagsCodegen(unittest.TestCase):
         self.per_sample_weights = torch.Tensor([1.0, 2.0])
         self.batch_size_per_feature_per_rank = ([1, 1], [1, 1])
         tables = [[100, 32], [200, 64]]
-        self.embedding_specs = [
+        self.embedding_specs_npu = [
             (num_embeddings, embedding_dim, EmbeddingLocation.DEVICE, ComputeDevice.NPU)
+            for (num_embeddings, embedding_dim) in tables
+        ]
+        self.embedding_specs_cpu = [
+            (num_embeddings, embedding_dim, EmbeddingLocation.HOST, ComputeDevice.CPU)
             for (num_embeddings, embedding_dim) in tables
         ]
     
@@ -59,7 +63,7 @@ class TestHybridSplitTableBatchedEmbeddingBagsCodegen(unittest.TestCase):
         # 1. Mock 优化器调用
         with patch(f"hybrid_torchrec.hybrid_lookup_invoke.{mock_target}") as mock_invoke:
             tbe = HybridSplitTableBatchedEmbeddingBagsCodegen(
-                self.embedding_specs,
+                self.embedding_specs_npu,
                 optimizer=TORCH_OPTIMIZER_TO_FBGEMM[optim],
                 pooling_mode=PoolingMode.SUM,
                 device=torch.device("meta")
@@ -76,7 +80,7 @@ class TestHybridSplitTableBatchedEmbeddingBagsCodegen(unittest.TestCase):
     
     def test_forward_with_unsupported_optim(self):
         tbe = HybridSplitTableBatchedEmbeddingBagsCodegen(
-            self.embedding_specs,
+            self.embedding_specs_npu,
             optimizer=EmbOptimType.EXACT_ROWWISE_ADAGRAD,
             pooling_mode=PoolingMode.SUM,
             device=torch.device("meta")
@@ -87,3 +91,4 @@ class TestHybridSplitTableBatchedEmbeddingBagsCodegen(unittest.TestCase):
                    self.hash_indices,
                    self.unique_indices,
                    self.unique_inverse) == NotImplemented
+    

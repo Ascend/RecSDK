@@ -30,83 +30,23 @@ index 9582f844..c2cfa6b0 100644
          keywords=[
              "pytorch",
 diff --git a/torchrec/__init__.py b/torchrec/__init__.py
-index 29258f6f..b7940a1c 100644
+index 29258f6f..07f37d41 100644
 --- a/torchrec/__init__.py
 +++ b/torchrec/__init__.py
-@@ -1,36 +1,46 @@
--#!/usr/bin/env python3
--# Copyright (c) Meta Platforms, Inc. and affiliates.
--# All rights reserved.
--#
--# This source code is licensed under the BSD-style license found in the
--# LICENSE file in the root directory of this source tree.
+@@ -6,7 +6,8 @@
+ # LICENSE file in the root directory of this source tree.
+ 
+ # pyre-strict
 -
--# pyre-strict
--
--import torchrec.distributed  # noqa
--import torchrec.quant  # noqa
--from torchrec.fx import tracer  # noqa
--from torchrec.modules.embedding_configs import (  # noqa
--    DataType,
--    EmbeddingBagConfig,
--    EmbeddingConfig,
--    PoolingType,
--)
--from torchrec.modules.embedding_modules import (  # noqa
--    EmbeddingBagCollection,
--    EmbeddingBagCollectionInterface,
--    EmbeddingCollection,
--)  # noqa
--from torchrec.sparse.jagged_tensor import (  # noqa
--    JaggedTensor,
--    KeyedJaggedTensor,
--    KeyedTensor,
--)
--from torchrec.streamable import Multistreamable, Pipelineable  # noqa
--
--try:
--    # pyre-ignore[21]
--    # @manual=//torchrec/fb:version
--    from .version import __version__, github_version  # noqa
--except ImportError:
--    pass
-+#!/usr/bin/env python3
-+# Copyright (c) Meta Platforms, Inc. and affiliates.
-+# All rights reserved.
-+#
-+# This source code is licensed under the BSD-style license found in the
-+# LICENSE file in the root directory of this source tree.
-+
-+# pyre-strict
 +import enum
 +from fbgemm_gpu import split_table_batched_embeddings_ops_training
-+import torchrec.distributed  # noqa
-+import torchrec.quant  # noqa
-+from torchrec.fx import tracer  # noqa
-+from torchrec.modules.embedding_configs import (  # noqa
-+    DataType,
-+    EmbeddingBagConfig,
-+    EmbeddingConfig,
-+    PoolingType,
-+)
-+from torchrec.modules.embedding_modules import (  # noqa
-+    EmbeddingBagCollection,
-+    EmbeddingBagCollectionInterface,
-+    EmbeddingCollection,
-+)  # noqa
-+from torchrec.sparse.jagged_tensor import (  # noqa
-+    JaggedTensor,
-+    KeyedJaggedTensor,
-+    KeyedTensor,
-+)
-+from torchrec.streamable import Multistreamable, Pipelineable  # noqa
-+
-+try:
-+    # pyre-ignore[21]
-+    # @manual=//torchrec/fb:version
-+    from .version import __version__, github_version  # noqa
-+except ImportError:
-+    pass
+ import torchrec.distributed  # noqa
+ import torchrec.quant  # noqa
+ from torchrec.fx import tracer  # noqa
+@@ -34,3 +35,12 @@ try:
+     from .version import __version__, github_version  # noqa
+ except ImportError:
+     pass
 +
 +
 +class ComputeDevice(enum.IntEnum):
@@ -248,7 +188,7 @@ index 43eeda32..e1575133 100644
                      EmbeddingComputeKernel.FUSED_UVM.value,
                      EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
 diff --git a/torchrec/distributed/model_parallel.py b/torchrec/distributed/model_parallel.py
-index 5cbd2429..f0ace70b 100644
+index 5cbd2429..109f7a25 100644
 --- a/torchrec/distributed/model_parallel.py
 +++ b/torchrec/distributed/model_parallel.py
 @@ -48,6 +48,7 @@ from torchrec.distributed.utils import (
@@ -264,7 +204,7 @@ index 5cbd2429..f0ace70b 100644
          data_parallel_wrapper: Optional[DataParallelWrapper] = None,
      ) -> None:
 +        check(module is not None and isinstance(module, nn.Module), "module should be nn.Module")
-+        check(device == torch.device("npu"), "device should be npu")
++        check(device.type == "npu", "device should be npu")
 +        check(plan is not None and isinstance(plan, ShardingPlan), "device should be npu")
 +        check(sharders is not None and isinstance(sharders, List), "sharders should be List")
 +        for sharder in sharders:
@@ -417,7 +357,7 @@ index 52909970..fad9df2d 100644
      )
  
 diff --git a/torchrec/distributed/planner/types.py b/torchrec/distributed/planner/types.py
-index 4bb0a4f4..67aaccb1 100644
+index 4bb0a4f4..6d7d4ef8 100644
 --- a/torchrec/distributed/planner/types.py
 +++ b/torchrec/distributed/planner/types.py
 @@ -38,8 +38,10 @@ from torchrec.distributed.types import (
@@ -431,16 +371,16 @@ index 4bb0a4f4..67aaccb1 100644
  
  
  @dataclass(repr=True, eq=True)
-@@ -198,16 +200,31 @@ class Topology:
+@@ -197,17 +199,28 @@ class Topology:
+         Representation of a network of devices in a cluster.
          """
          # validate input
-         assert compute_device in [
+-        assert compute_device in [
 -            "cpu",
 -            "cuda",
 -            "mtia",
-+            "npu",
-         ], f"unsupported compute device {compute_device}"
- 
+-        ], f"unsupported compute device {compute_device}"
+-
 +        if world_size < 1 or world_size > MAX_WORLD_SIZE:
 +            raise ValueError(f"world_size must be in range [0, {MAX_WORLD_SIZE}], but got {world_size}")
 +        check(compute_device == "npu", "compute_device should be npu")
@@ -467,7 +407,7 @@ index 4bb0a4f4..67aaccb1 100644
              hbm_per_device = [hbm_cap if hbm_cap else HBM_CAP] * world_size
          ddr_cap_per_rank = [ddr_cap if ddr_cap else DDR_CAP] * world_size
  
-@@ -616,6 +633,28 @@ class ParameterConstraints:
+@@ -616,6 +629,28 @@ class ParameterConstraints:
      device_group: Optional[str] = None
      key_value_params: Optional[KeyValueParams] = None
  
@@ -720,7 +660,7 @@ index 10ffcdb2..3e199497 100644
          if hasattr(param, "_in_backward_optimizers") == include:
              yield fqn, param
 diff --git a/torchrec/sparse/jagged_tensor.py b/torchrec/sparse/jagged_tensor.py
-index 33665883..39394ae7 100644
+index 33665883..dd9b2035 100644
 --- a/torchrec/sparse/jagged_tensor.py
 +++ b/torchrec/sparse/jagged_tensor.py
 @@ -28,6 +28,7 @@ from torchrec.pt2.checks import (
@@ -809,7 +749,7 @@ index 6b88703d..2b331780 100644
 +    if not discriminant:
 +        raise ValueError(error_msg)
 diff --git a/version.txt b/version.txt
-index 9084fa2f..637502ca 100644
+index 9084fa2f..35d511d0 100644
 --- a/version.txt
 +++ b/version.txt
 @@ -1 +1 @@

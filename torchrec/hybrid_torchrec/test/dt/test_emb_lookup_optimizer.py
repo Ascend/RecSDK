@@ -86,22 +86,7 @@ class TestHybridOps(unittest.TestCase):
             use_homogeneous_placements=True
         )
 
-    def test_check_unique_valid_success(self):
-        """测试数据结构初始化"""
-        self.assertEqual(self.args.total_D, 10)
-        self.assertEqual(self.args.max_D, 5)
-        self.assertEqual(self.args.pooling_mode, 0)
-        self.assertIsNone(self.args.indice_weights)
-
-        # 抛出RuntimeError
-        with self.assertRaises(RuntimeError):
-            check_unique_valid(self.args)
-        # 验证分支
-        new_args = self.args._replace(hash_indices=None)
-        assert check_unique_valid(new_args) is None
-
-    def test_invoke(self):
-        # 测试CPU路径
+    def create_optimizer_args(self):
         optimizer_args = OptimizerArgs(
             gradient_clipping=False,
             max_gradient=1.0,
@@ -135,7 +120,25 @@ class TestHybridOps(unittest.TestCase):
             dev=torch.device('cpu:0'),  # 明确指定计算设备
             uvm=False  # 禁用统一虚拟内存
         )
+        return optimizer_args, momentum1
 
+    def test_check_unique_valid_success(self):
+        """测试数据结构初始化"""
+        self.assertEqual(self.args.total_D, 10)
+        self.assertEqual(self.args.max_D, 5)
+        self.assertEqual(self.args.pooling_mode, 0)
+        self.assertIsNone(self.args.indice_weights)
+
+        # 抛出RuntimeError
+        with self.assertRaises(RuntimeError):
+            check_unique_valid(self.args)
+        # 验证分支
+        new_args = self.args._replace(hash_indices=None)
+        assert check_unique_valid(new_args) is None
+
+    def test_invoke(self):
+        # 测试CPU路径
+        optimizer_args, momentum1 = self.create_optimizer_args()
         output = invoke(self.args, optimizer_args, momentum1)
         self.assertEqual(output.shape, (3, 10))
 
@@ -146,3 +149,19 @@ class TestHybridOps(unittest.TestCase):
         with pytest.raises(AttributeError, match=f"object has no attribute"):
             output2 = invoke(new_args2, optimizer_args, momentum1)
 
+    def test_invoke_with_vbe_failed(self):
+        optimizer_args, momentum1 = self.create_optimizer_args()
+        vbe_metadata = VBEMetadata(
+            B_offsets=torch.tensor([0, 3, 5], dtype=torch.long),
+            output_offsets_feature_rank=torch.tensor([0, 2, 4], dtype=torch.long),
+            B_offsets_rank_per_feature=torch.tensor([[0, 2], [3, 5]], dtype=torch.long),
+            max_B=4,
+            output_size=6
+        )
+
+        # 测试vbe分支
+        new_args = self.args._replace(vbe_metadata=vbe_metadata)
+
+        # 执行被测试代码会抛出异常
+        with pytest.raises(ValueError):
+            output2 = invoke(new_args, optimizer_args, momentum1)

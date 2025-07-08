@@ -264,11 +264,12 @@ class TestModel:
         return results
 
     def setup(self, rank: int, world_size: int):
-        os.environ["MASTER_ADDR"] = "127.0.0.1"
-        os.environ["MASTER_PORT"] = "6000"
-        os.environ["GLOO_SOCKET_IFNAME"] = "lo"
-        dist.init_process_group(self.pg_method, rank=rank, world_size=world_size)
-        os.environ["LOCAL_RANK"] = f"{rank}"
+        if not dist.is_initialized():
+            os.environ["MASTER_ADDR"] = "127.0.0.1"
+            os.environ["MASTER_PORT"] = "6000"
+            os.environ["GLOO_SOCKET_IFNAME"] = "lo"
+            dist.init_process_group(self.pg_method, rank=rank, world_size=world_size)
+            os.environ["LOCAL_RANK"] = f"{rank}"
 
     def test_shard_plan(
         self,
