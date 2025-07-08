@@ -1,24 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os
-import glob
 import random
-import shutil
 from datetime import datetime
-from functools import partial
-from typing import Dict, Tuple
 
 import tensorflow as tf
-from npu_bridge.npu_init import NPUEstimator, NPURunConfig
 
+import utils
 from utils import (
-    get_third_nearest_checkpoint,
-    json_file_load,
-    dump_pred_multi,
     embedding_lookup_sparse_fake,
-    build_feature_descriptions,
-    setup_logger
+    setup_logger,
+    build_optimizer,
+    main
 )
 
 tf.compat.v1.enable_control_flow_v2()
@@ -38,75 +31,15 @@ def define_flags():
     tf.app.flags.DEFINE_string("expert_layers", "512,256", "expert layers")
     tf.app.flags.DEFINE_string("tower_layers", "128,64", "tower layers")
     tf.app.flags.DEFINE_float("ctr_task_wgt", 0.5, "loss weight of ctr task")
-    tf.app.flags.DEFINE_string("data_dir", "../data/aliccp/cast50_padded/", "data dir")
     tf.app.flags.DEFINE_string("dt_dir", '', "data dt partition")
     tf.app.flags.DEFINE_string("model_dir", f"../checkpoint/aliccp/{MODEL_NAME}/", "code check point dir")
     tf.app.flags.DEFINE_string("servable_model_dir", f"../model/serving/{MODEL_NAME}/",
                                "export servable code for TensorFlow Serving")
-    tf.app.flags.DEFINE_string("task_type", "train", "task type")
     tf.app.flags.DEFINE_boolean("clear_existing_model", True, "clear existing code or not")
-    tf.app.flags.DEFINE_integer("max_seq_len", 50, "max length of sequence")
     tf.app.flags.DEFINE_integer("task_num", 2, "task num")
     tf.app.flags.DEFINE_integer("experts_num", 8, "Number of experts")
     tf.app.flags.DEFINE_string("log_level", "DEBUG", "log level {DEBUG, INFO, WARNING, ERROR, CRITICAL}")
     return model_conf
-
-
-def parse_example(mode_type: str, example: tf.Tensor) -> Tuple[Dict[str, tf.Tensor], Dict[str, tf.Tensor]]:
-    """
-    Parse a single example for the given mode type.
-
-    Args:
-        mode_type (str): The mode type (e.g., TRAIN, EVAL, PREDICT).
-        example (tf.Tensor): The serialized example to parse.
-
-    Returns:
-        Tuple[Dict[str, tf.Tensor], Dict[str, tf.Tensor]]: A tuple containing the
-        input dictionary and target dictionary.
-    """
-    # Parse the example using the feature descriptions for the given mode type
-    parsed_example = tf.io.parse_example(example, feature_descriptions.get(mode_type))
-
-    input_dict = {}
-    target = {"y": parsed_example["y"], "z": parsed_example["z"]}
-
-    # Extract one-hot fields from the parsed example
-    for index, key in enumerate(spec["one_hot_fields"]):
-        input_dict[key] = parsed_example["one_hot_fields"][:, index]
-
-    # Extract multi-hot fields from the parsed example
-    for key in spec["multi_hot_fields"]:
-        input_dict[key] = parsed_example[key]
-
-    # Extract special fields from the parsed example
-    for key in spec["special_fields"]:
-        input_dict[key] = parsed_example[key]
-
-    return input_dict, target
-
-
-
-def input_fn(filenames: list, mode_type: str, batch_size: int = 32, num_epochs: int = 1,
-             perform_shuffle: bool = False) -> tuple:
-    """
-    Input function to create a dataset for training, evaluation, or prediction.
-    """
-    dataset = tf.data.TFRecordDataset(filenames)
-    if perform_shuffle:
-        dataset = dataset.shuffle(buffer_size=500000)
-
-    dataset = dataset.repeat(num_epochs).batch(batch_size, drop_remainder=True).map(
-        partial(
-            parse_example,
-            mode_type,
-        ),
-        num_parallel_calls=10
-    ).prefetch(100)
-
-    iterator = tf.compat.v1.data.make_one_shot_iterator(dataset)
-    batch_features, batch_labels = iterator.get_next()
-
-    return batch_features, batch_labels
 
 
 def build_embedding_layer(features: dict, spec: dict, model_cfg: object) -> tf.Tensor:
@@ -307,48 +240,6 @@ def build_loss(labels: dict, y_ctr_prediction: tf.Tensor, y_ctcvr_prediction: tf
     return ctr_task_wgt * ctr_loss + (1 - ctr_task_wgt) * ctcvr_loss
 
 
-def build_optimizer(loss: tf.Tensor, model_cfg: object) -> tf.Operation:
-    """
-    Build the optimizer for training.
-
-    Args:
-        loss (tf.Tensor): The loss tensor to minimize.
-        model_cfg (object): The model configuration object containing optimizer settings.
-
-    Returns:
-        tf.Operation: The operation for applying gradients.
-
-    Raises:
-        ValueError: If the optimizer type is not supported.
-    """
-    if model_cfg.optimizer == "Adam":
-        optimizer = tf.compat.v1.train.AdamOptimizer(
-            learning_rate=model_cfg.learning_rate, beta1=0.9, beta2=0.999, epsilon=1e-8
-        )
-    elif model_cfg.optimizer == "Adagrad":
-        optimizer = tf.compat.v1.train.AdagradOptimizer(
-            learning_rate=model_cfg.learning_rate, initial_accumulator_value=1e-6
-        )
-    elif model_cfg.optimizer == "Momentum":
-        optimizer = tf.compat.v1.train.MomentumOptimizer(
-            learning_rate=model_cfg.learning_rate, momentum=0.95
-        )
-    elif model_cfg.optimizer == "SGD":
-        optimizer = tf.compat.v1.train.GradientDescentOptimizer(learning_rate=model_cfg.learning_rate)
-    else:
-        raise ValueError("Unsupported optimizer type: {}".format(model_cfg.optimizer))
-
-    gvs = optimizer.compute_gradients(loss)
-
-    def clip_grad(grad):
-        if grad is None:
-            return grad
-        return tf.clip_by_value(grad, -1, 1)
-
-    clipped_gradients = [(clip_grad(grad), var) for grad, var in gvs]
-    return optimizer.apply_gradients(clipped_gradients, global_step=tf.compat.v1.train.get_global_step())
-
-
 def model_fn(features: dict, labels: dict, mode: tf.estimator.ModeKeys,
              params: object) -> tf.estimator.EstimatorSpec:
     """
@@ -364,7 +255,7 @@ def model_fn(features: dict, labels: dict, mode: tf.estimator.ModeKeys,
         tf.estimator.EstimatorSpec: The EstimatorSpec object for the given mode.
     """
     # Build the embedding layer
-    x_deep = build_embedding_layer(features, spec, params)
+    x_deep = build_embedding_layer(features, utils.spec, params)
 
     # Build the experts
     experts = build_experts(x_deep, params)
@@ -407,95 +298,11 @@ def model_fn(features: dict, labels: dict, mode: tf.estimator.ModeKeys,
         raise ValueError("Unsupported mode: {}".format(mode))
 
 
-def main(model_cfg):
-    model_cfg.model_dir = model_cfg.model_dir + datetime.now(china_tz).strftime('%Y%m%d')
-
-    train_order = json_file_load("train_order", "./order.json")
-
-    tr_files = [
-        "%strain/data_train.csv.tfrecord.%s" % (model_cfg.data_dir, index)
-        for index in train_order["reading_order"]
-    ]
-    va_files = glob.glob("%sval/data_val.csv.tfrecord.*" % model_cfg.data_dir)
-    te_files = glob.glob("%stest/data_test.csv.tfrecord.*" % model_cfg.data_dir)
-
-    if model_cfg.clear_existing_model:
-        if os.path.exists(model_cfg.model_dir):
-            try:
-                shutil.rmtree(model_cfg.model_dir)
-            except PermissionError as e:
-                raise PermissionError("Permission denied: {}".format(e)) from e
-            except Exception as e:
-                raise RuntimeError("Error clearing existing model: {}".format(e)) from e
-
-    # ------ for NPU  ------
-    config = NPURunConfig(
-        model_dir=model_cfg.model_dir,
-        log_step_count_steps=100, save_summary_steps=100,
-        save_checkpoints_steps=spec["dataset_size"]["train"] // model_cfg.batch_size + 1,
-        session_config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
-    )
-    model = NPUEstimator(model_fn=model_fn, model_dir=model_cfg.model_dir, config=config, params=model_cfg)
-
-    hook = tf.estimator.experimental.stop_if_no_increase_hook(model, "auc_ctr",
-    max_steps_without_increase=spec["dataset_size"]["train"] // model_cfg.batch_size,
-    run_every_secs=None, run_every_steps=10)
-    hook_stop = tf.estimator.StopAtStepHook(last_step=200)
-
-    if model_cfg.task_type == "train":
-        train_spec = tf.estimator.TrainSpec(
-            input_fn=lambda: input_fn(tr_files, num_epochs=None, batch_size=model_cfg.batch_size, perform_shuffle=True,
-                                      mode_type=tf.estimator.ModeKeys.TRAIN),
-            hooks=[hook]
-        )
-
-        test_spec = tf.estimator.EvalSpec(
-            input_fn=lambda: input_fn(va_files, num_epochs=1, batch_size=model_cfg.batch_size,
-                                      mode_type=tf.estimator.ModeKeys.EVAL),
-            steps=None,
-            start_delay_secs=10,
-            throttle_secs=0
-        )
-        logger.info("start train and evaluate")
-        tf.estimator.train_and_evaluate(model, train_spec, test_spec)
-        logger.info("early stopped, start evaluating....")
-        model.evaluate(
-            input_fn=lambda: input_fn(te_files, num_epochs=1, batch_size=model_cfg.batch_size,
-                                      mode_type=tf.estimator.ModeKeys.PREDICT),
-            checkpoint_path=get_third_nearest_checkpoint(model.model_dir))
-
-    elif model_cfg.task_type == "eval":
-        model.evaluate(
-            input_fn=lambda: input_fn(te_files, num_epochs=1, batch_size=model_cfg.batch_size)
-        )
-
-    elif model_cfg.task_type == 'infer':
-        preds = model.predict(input_fn=lambda: input_fn(te_files, num_epochs=1, batch_size=model_cfg.batch_size,
-                                                        mode_type=tf.estimator.ModeKeys.PREDICT),
-                              predict_keys=["ctr", "cvr", "ctcvr"], hooks=[])
-        dump_pred_multi(preds, model_cfg.data_dir)
-
-    elif model_cfg.task_type == 'profiling_train':
-        model.train(
-            input_fn=lambda: input_fn(tr_files, num_epochs=1, batch_size=model_cfg.batch_size, perform_shuffle=True,
-                                      mode_type=tf.estimator.ModeKeys.TRAIN),
-            hooks=[hook_stop])
-
-    elif model_cfg.task_type == 'profiling_infer':
-        preds = model.predict(input_fn=lambda: input_fn(te_files, num_epochs=1, batch_size=model_cfg.batch_size,
-                                                        mode_type=tf.estimator.ModeKeys.PREDICT),
-                              predict_keys=["ctr", "cvr", "ctcvr"], hooks=[hook_stop])
-
-        dump_pred_multi(preds, model_cfg.data_dir)
-    else:
-        raise ValueError("Unsupported task type: {}".format(model_cfg.task_type))
-
-
 if __name__ == "__main__":
     model_config = define_flags()
     logger, china_tz = setup_logger(model_config, MODEL_NAME)
-    spec, feature_descriptions = build_feature_descriptions(model_config)
+    model_config.model_dir = model_config.model_dir + datetime.now(china_tz).strftime('%Y%m%d')
 
     logger.info("FLAGS: " + str(model_config))
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
-    tf.compat.v1.app.run(main=lambda argv: main(argv[0]), argv=[model_config])
+    tf.compat.v1.app.run(main=lambda argv: main(argv[0], model_fn, logger, "multi"), argv=[model_config])

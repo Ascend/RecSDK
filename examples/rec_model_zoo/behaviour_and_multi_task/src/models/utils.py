@@ -23,9 +23,16 @@ import json
 from typing import Dict, List
 import logging
 from datetime import datetime
+from functools import partial
+import shutil
 
 import pytz
 import tensorflow as tf
+from npu_bridge.npu_init import NPUEstimator, NPURunConfig
+
+tf.app.flags.DEFINE_string("data_dir", "../data/aliccp/cast50_padded/", "data dir")
+tf.app.flags.DEFINE_string("task_type", "train", "task type")
+tf.app.flags.DEFINE_integer("max_seq_len", 50, "max length of sequence")
 
 
 def get_third_nearest_checkpoint(path):
@@ -139,11 +146,12 @@ def embedding_lookup_sparse_fake(params: tf.Tensor, ids: tf.Tensor, combiner: st
         raise ValueError("combiner only supports 'sum' or 'mean'")
 
 
-def build_feature_descriptions(model_config):
+def build_feature_descriptions():
+    model_config = tf.app.flags.FLAGS
     spec_json_path = os.path.join(model_config.data_dir, "spec.json")
-    spec = json_file_load("spec", spec_json_path)
+    local_spec = json_file_load("spec", spec_json_path)
 
-    feature_descriptions = {}
+    local_feature_descriptions = {}
     for mode_type in [tf.estimator.ModeKeys.TRAIN, tf.estimator.ModeKeys.EVAL, tf.estimator.ModeKeys.PREDICT]:
         key_map = {
             tf.estimator.ModeKeys.TRAIN: "train",
@@ -154,19 +162,19 @@ def build_feature_descriptions(model_config):
         feature_description = {
             'y': tf.io.FixedLenFeature([], tf.float32),
             'z': tf.io.FixedLenFeature([], tf.float32),
-            'one_hot_fields': tf.io.FixedLenFeature([len(spec["one_hot_fields"])], tf.int64)
+            'one_hot_fields': tf.io.FixedLenFeature([len(local_spec["one_hot_fields"])], tf.int64)
         }
-        for mul_fields in spec["multi_hot_fields"]:
+        for mul_fields in local_spec["multi_hot_fields"]:
             feature_description[mul_fields] = tf.io.FixedLenFeature(
-                [spec.get(f"{key_map.get(mode_type)}_max_length").get(mul_fields)],
+                [local_spec.get(f"{key_map.get(mode_type)}_max_length").get(mul_fields)],
                 tf.int64)
-        for mul_fields in spec["special_fields"]:
+        for mul_fields in local_spec["special_fields"]:
             feature_description[mul_fields] = tf.io.FixedLenFeature(
-                [spec.get(f"{key_map.get(mode_type)}_max_length").get(mul_fields)],
+                [local_spec.get(f"{key_map.get(mode_type)}_max_length").get(mul_fields)],
                 tf.int64)
-        feature_descriptions[mode_type] = feature_description
+        local_feature_descriptions[mode_type] = feature_description
 
-    return spec, feature_descriptions
+    return local_spec, local_feature_descriptions
 
 
 def setup_logger(model_config, model_name):
@@ -189,3 +197,171 @@ def setup_logger(model_config, model_name):
     logger.addHandler(fh)
 
     return logger, china_tz
+
+
+def parse_example(mode, example):
+    parsed_example = tf.io.parse_example(example, feature_descriptions.get(mode))
+    input_data = {}
+    target = {"y": parsed_example["y"], "z": parsed_example["z"]}
+    for index, key in enumerate(spec["one_hot_fields"]):
+        input_data[key] = parsed_example["one_hot_fields"][:, index]
+    for key in spec["multi_hot_fields"]:
+        input_data[key] = parsed_example[key]
+    for key in spec["special_fields"]:
+        input_data[key] = parsed_example[key]
+    return input_data, target
+
+
+def input_fn(filenames, mode, batch_size=32, num_epochs=1, perform_shuffle=False):
+    dataset = tf.data.TFRecordDataset(filenames)
+    if perform_shuffle:
+        dataset = dataset.shuffle(buffer_size=500000)
+
+    dataset = dataset.repeat(num_epochs).batch(batch_size, drop_remainder=True).map(
+        partial(
+            parse_example,
+            mode,
+        ),
+        num_parallel_calls=10
+    ).prefetch(100)
+
+    iterator = tf.compat.v1.data.make_one_shot_iterator(dataset)
+    batch_features, batch_labels = iterator.get_next()
+
+    return batch_features, batch_labels
+
+
+def build_optimizer(loss: tf.Tensor, model_cfg: object) -> tf.Operation:
+    """
+    Build the optimizer for training.
+
+    Args:
+        loss (tf.Tensor): The loss tensor to minimize.
+        model_cfg (object): The model configuration object containing optimizer settings.
+
+    Returns:
+        tf.Operation: The operation for applying gradients.
+
+    Raises:
+        ValueError: If the optimizer type is not supported.
+    """
+    if model_cfg.optimizer == "Adam":
+        optimizer = tf.compat.v1.train.AdamOptimizer(
+            learning_rate=model_cfg.learning_rate, beta1=0.9, beta2=0.999, epsilon=1e-8
+        )
+    elif model_cfg.optimizer == "Adagrad":
+        optimizer = tf.compat.v1.train.AdagradOptimizer(
+            learning_rate=model_cfg.learning_rate, initial_accumulator_value=1e-6
+        )
+    elif model_cfg.optimizer == "Momentum":
+        optimizer = tf.compat.v1.train.MomentumOptimizer(
+            learning_rate=model_cfg.learning_rate, momentum=0.95
+        )
+    elif model_cfg.optimizer == "SGD":
+        optimizer = tf.compat.v1.train.GradientDescentOptimizer(learning_rate=model_cfg.learning_rate)
+    else:
+        raise ValueError("Unsupported optimizer type: {}".format(model_cfg.optimizer))
+
+    gvs = optimizer.compute_gradients(loss)
+
+    def clip_if_not_none(grad):
+        if grad is None:
+            return grad
+        return tf.clip_by_value(grad, -1, 1)
+
+    clipped_gradients = [(clip_if_not_none(grad), var) for grad, var in gvs]
+    return optimizer.apply_gradients(clipped_gradients, global_step=tf.compat.v1.train.get_global_step())
+
+
+def main(model_cfg, model_fn, logger, dump_func):
+    if dump_func == "prob":
+        dump_pred_func = dump_pred_prob
+        predict_keys = "prob"
+    elif dump_func == "multi":
+        dump_pred_func = dump_pred_multi
+        predict_keys = ["ctr", "cvr", "ctcvr"]
+    else:
+        raise ValueError(f"Unsupported dump_func: {dump_func}. Choose from ['prob', 'multi']")
+
+    train_order = json_file_load("order", "./order.json")
+    tr_files = []
+    for index in train_order["reading_order"]:
+        tr_files.append("%strain/data_train.csv.tfrecord.%s" % (model_cfg.data_dir, index))
+    va_files = glob.glob("%sval/data_val.csv.tfrecord.*" % model_cfg.data_dir)
+    te_files = glob.glob("%stest/data_test.csv.tfrecord.*" % model_cfg.data_dir)
+
+    if model_cfg.clear_existing_model:
+        if os.path.exists(model_cfg.model_dir):
+            try:
+                shutil.rmtree(model_cfg.model_dir)
+            except PermissionError as e:
+                raise PermissionError("Permission denied: {}".format(e)) from e
+            except Exception as e:
+                raise RuntimeError("Error clearing existing model: {}".format(e)) from e
+        else:
+            logger.warning("Model directory does not exist, skipping deletion.")
+
+    # ------ for NPU  ------
+    config = NPURunConfig(
+        model_dir=model_cfg.model_dir,
+        log_step_count_steps=100, save_summary_steps=100,
+        save_checkpoints_steps=spec["dataset_size"]["train"] // model_cfg.batch_size + 1,
+        session_config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
+    )
+    model = NPUEstimator(model_fn=model_fn, model_dir=model_cfg.model_dir, config=config, params=model_cfg)
+
+    hook = tf.estimator.experimental.stop_if_no_increase_hook(model, "auc_ctr",
+    max_steps_without_increase=spec["dataset_size"]["train"] // model_cfg.batch_size,
+    run_every_secs=None, run_every_steps=10)
+    hook_stop = tf.estimator.StopAtStepHook(last_step=200)
+
+    if model_cfg.task_type == "train":
+        train_spec = tf.estimator.TrainSpec(
+            input_fn=lambda: input_fn(tr_files, num_epochs=None, batch_size=model_cfg.batch_size, perform_shuffle=True,
+                                      mode=tf.estimator.ModeKeys.TRAIN),
+            hooks=[hook]
+        )
+
+        test_spec = tf.estimator.EvalSpec(
+            input_fn=lambda: input_fn(va_files, num_epochs=1, batch_size=model_cfg.batch_size,
+                                      mode=tf.estimator.ModeKeys.EVAL),
+            steps=None,
+            start_delay_secs=10,
+            throttle_secs=0
+        )
+        logger.info("start train and evaluate")
+        tf.estimator.train_and_evaluate(model, train_spec, test_spec)
+        logger.info("early stopped, start evaluating....")
+        model.evaluate(
+            input_fn=lambda: input_fn(te_files, num_epochs=1, batch_size=model_cfg.batch_size,
+                                      mode=tf.estimator.ModeKeys.PREDICT),
+            checkpoint_path=get_third_nearest_checkpoint(model.model_dir))
+
+    elif model_cfg.task_type == "eval":
+        model.evaluate(
+            input_fn=lambda: input_fn(te_files, num_epochs=1, batch_size=model_cfg.batch_size,
+                                      mode=tf.estimator.ModeKeys.EVAL),
+        )
+
+    elif model_cfg.task_type == 'infer':
+        preds = model.predict(input_fn=lambda: input_fn(te_files, num_epochs=1, batch_size=model_cfg.batch_size,
+                                                        mode=tf.estimator.ModeKeys.PREDICT),
+                              predict_keys=predict_keys, hooks=[])
+        dump_pred_func(preds, model_cfg.data_dir)
+
+    elif model_cfg.task_type == 'profiling_train':
+        model.train(
+            input_fn=lambda: input_fn(tr_files, num_epochs=1, batch_size=model_cfg.batch_size, perform_shuffle=True,
+                                      mode=tf.estimator.ModeKeys.TRAIN),
+            hooks=[hook_stop])
+
+    elif model_cfg.task_type == 'profiling_infer':
+        preds = model.predict(input_fn=lambda: input_fn(te_files, num_epochs=1, batch_size=model_cfg.batch_size,
+                                                        mode=tf.estimator.ModeKeys.PREDICT),
+                              predict_keys=predict_keys, hooks=[hook_stop])
+        dump_pred_func(preds, model_cfg.data_dir)
+    else:
+        raise ValueError("task_type should be 'train', 'eval', 'infer', 'profiling_train' or 'profiling_infer'")
+
+
+spec, feature_descriptions = build_feature_descriptions()
