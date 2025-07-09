@@ -30,6 +30,24 @@ import tensorflow as tf
 from npu_bridge.npu_init import NPUEstimator, NPURunConfig
 
 
+def define_common_flag(model_name):
+    tf.app.flags.DEFINE_integer("feature_size", 2100000, "Number of features")
+    tf.app.flags.DEFINE_integer("field_size", 39, "Number of fields")
+    tf.app.flags.DEFINE_integer("embedding_size", 10, "Embedding size")
+    tf.app.flags.DEFINE_integer("train_size", 33003326, "Number of instances in the train set")
+    tf.app.flags.DEFINE_integer("batch_size", 4096, "Number of batch size")
+    tf.app.flags.DEFINE_float("learning_rate", 0.001, "learning rate")
+    tf.app.flags.DEFINE_string("optimizer", 'Adam', "optimizer type {Adam, Adagrad, GD, Momentum}")
+    tf.app.flags.DEFINE_string("deep_layers", '400,400,400', "deep layers")
+    tf.app.flags.DEFINE_string("data_dir", '../data/criteo/', "data dir")
+    tf.app.flags.DEFINE_string("dt_dir", '', "data dt partition")
+    tf.app.flags.DEFINE_string("model_dir", f'../checkpoint/criteo/{model_name}/', "model check point dir")
+    tf.app.flags.DEFINE_string("servable_model_dir", '', "export servable model for TensorFlow Serving")
+    tf.app.flags.DEFINE_string("task_type", 'train', "task type")
+    tf.app.flags.DEFINE_string("log_level", "DEBUG", "log level {DEBUG, INFO, WARNING, ERROR, CRITICAL}")
+    tf.app.flags.DEFINE_boolean("clear_existing_model", True, "clear existing model or not")
+
+
 # ------ Load tfrecord dataset ------
 def input_fn(filenames: List[str], batch_size: int = 32, field_size: int = 39, num_epochs: int = 1,
              perform_shuffle: bool = False) -> Tuple[Dict[str, tf.Tensor], tf.Tensor]:
@@ -169,6 +187,56 @@ def setup_logger(model_config, model_name):
     logger.addHandler(fh)
 
     return logger
+
+
+def build_estimator_spec(y_list, mode, labels, params, learning_rate):
+    pred = tf.sigmoid(y_list[0])
+
+    predictions = {"prob": pred}
+    export_outputs = {
+        tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY: tf.estimator.export.PredictOutput(
+            predictions)}
+
+    if mode == tf.estimator.ModeKeys.PREDICT:
+        return tf.estimator.EstimatorSpec(
+            mode=mode,
+            predictions=predictions,
+            export_outputs=export_outputs)
+
+    # ------bulid loss------
+    loss = 0.0
+    for y in y_list:
+        loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=y, labels=labels))
+
+    log_loss = tf.compat.v1.losses.log_loss(labels, pred)
+    auc_metric = tf.compat.v1.metrics.auc(labels, pred)
+    loss_metric = tf.compat.v1.metrics.mean(log_loss)
+    eval_metric_ops = {
+        "auc": tf.compat.v1.metrics.auc(labels, pred),
+        "logloss": tf.compat.v1.metrics.mean(log_loss),
+        "stop_criterion": (auc_metric[0] - loss_metric[0], tf.group(auc_metric[1], loss_metric[1]))
+    }
+
+    # ------bulid optimizer------
+    optimizer = build_optimizer(params.optimizer, learning_rate)
+    train_op = optimizer.minimize(loss, global_step=tf.compat.v1.train.get_global_step())
+
+    if mode == tf.estimator.ModeKeys.EVAL:
+        return tf.estimator.EstimatorSpec(
+            mode=mode,
+            predictions=predictions,
+            loss=loss,
+            eval_metric_ops=eval_metric_ops,
+            train_op=train_op)
+
+    if mode == tf.estimator.ModeKeys.TRAIN:
+        return tf.estimator.EstimatorSpec(
+            mode=mode,
+            predictions=predictions,
+            loss=loss,
+            train_op=train_op)
+    else:
+        raise ValueError("Only support TRAIN, EVAL and PREDICT modes")
 
 
 def main(model_cfg, model_fn, logger):

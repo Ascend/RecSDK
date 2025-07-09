@@ -3,104 +3,10 @@
 
 import tensorflow as tf
 
-from utils import build_optimizer, main, setup_logger
+from utils import build_estimator_spec, main, setup_logger
+from autoint import define_flags, embedding_layer, multihead_attention
 
 MODEL_NAME = "AutoInt_plus"
-
-
-#################### CMD Arguments ####################
-def define_flags():
-    model_conf = tf.app.flags.FLAGS
-    tf.app.flags.DEFINE_integer("feature_size", 2100000, "Number of features")
-    tf.app.flags.DEFINE_integer("field_size", 39, "Number of fields")
-    tf.app.flags.DEFINE_integer("embedding_size", 10, "Embedding size")
-    tf.app.flags.DEFINE_integer("train_size", 33003326, "Number of instances in the train set")
-    tf.app.flags.DEFINE_integer("batch_size", 4096, "Number of batch size")
-    tf.app.flags.DEFINE_float("learning_rate", 0.001, "learning rate")
-    tf.app.flags.DEFINE_string("optimizer", 'Adam', "optimizer type {Adam, Adagrad, GD, Momentum}")
-    tf.app.flags.DEFINE_string("deep_layers", '400,400,400', "deep layers")
-    tf.app.flags.DEFINE_integer("attention_layers", 3, "Number of attention layers")
-    tf.app.flags.DEFINE_integer("att_embedding_size", 5, "Size of attention embedding")
-    tf.app.flags.DEFINE_integer("heads_num", 2, "Number of attention heads")
-    tf.app.flags.DEFINE_string("data_dir", '../data/criteo/', "data dir")
-    tf.app.flags.DEFINE_string("dt_dir", '', "data dt partition")
-    tf.app.flags.DEFINE_string("model_dir", f'../checkpoint/criteo/{MODEL_NAME}/', "model check point dir")
-    tf.app.flags.DEFINE_string("servable_model_dir", '', "export servable model for TensorFlow Serving")
-    tf.app.flags.DEFINE_string("task_type", 'train', "task type")
-    tf.app.flags.DEFINE_boolean("clear_existing_model", True, "clear existing model or not")
-    tf.app.flags.DEFINE_string("log_level", "DEBUG", "log level {DEBUG, INFO, WARNING, ERROR, CRITICAL}")
-    return model_conf
-
-
-def embedding_layer(feat_ids: tf.Tensor, feat_vals: tf.Tensor, feat_emb_deep: tf.Tensor, field_size: int,
-                    ) -> tf.Tensor:
-    """
-    Build the embedding layer.
-
-    Args:
-        feat_ids (tf.Tensor): Feature IDs.
-        feat_vals (tf.Tensor): Feature values.
-        feat_emb_deep (tf.Tensor): Embedding weights.
-        field_size (int): Number of fields.
-
-    Returns:
-        tf.Tensor: Embedding layer output.
-    """
-    embeddings_origin_deep = tf.nn.embedding_lookup(feat_emb_deep, feat_ids)  # None * F * E
-    feat_vals = tf.reshape(feat_vals, shape=[-1, field_size, 1])  # None * F * 1
-    embeddings = tf.multiply(embeddings_origin_deep, feat_vals)
-    return embeddings
-
-
-def multihead_attention(x: tf.Tensor, embedding_dim: int, att_embedding_size: int, heads_num: int,
-                        layer_index: int) -> tf.Tensor:
-    """
-    Build the multihead attention layer.
-
-    Args:
-        x (tf.Tensor): Input tensor.
-        embedding_dim (int): Embedding dimension.
-        att_embedding_size (int): Attention embedding size.
-        heads_num (int): Number of attention heads.
-        layer_index (int): Layer index.
-
-    Returns:
-        tf.Tensor: Multihead attention layer output.
-    """
-    w_q = tf.compat.v1.get_variable(name="weight_Q_%d" % layer_index,
-                                    shape=[embedding_dim, att_embedding_size * heads_num],
-                                    initializer=tf.random_normal_initializer(stddev=0.1))
-    w_k = tf.compat.v1.get_variable(name="weight_K_%d" % layer_index,
-                                    shape=[embedding_dim, att_embedding_size * heads_num],
-                                    initializer=tf.random_normal_initializer(stddev=0.1))
-    w_v = tf.compat.v1.get_variable(name="weight_V_%d" % layer_index,
-                                    shape=[embedding_dim, att_embedding_size * heads_num],
-                                    initializer=tf.random_normal_initializer(stddev=0.1))
-    w_res = tf.compat.v1.get_variable(name="weight_Res_%d" % layer_index,
-                                      shape=[embedding_dim, att_embedding_size * heads_num],
-                                      initializer=tf.random_normal_initializer(stddev=0.1))
-
-    query = tf.tensordot(x, w_q, axes=(-1, 0))
-    key = tf.tensordot(x, w_k, axes=(-1, 0))
-    value = tf.tensordot(x, w_v, axes=(-1, 0))
-
-    query = tf.stack(tf.split(query, heads_num, axis=2))
-    key = tf.stack(tf.split(key, heads_num, axis=2))
-    value = tf.stack(tf.split(value, heads_num, axis=2))
-
-    inner_product = tf.matmul(query, key, transpose_b=True)
-    inner_product /= att_embedding_size ** 0.5
-
-    normalized_att_scores = tf.nn.softmax(inner_product, axis=-1)
-
-    result = tf.matmul(normalized_att_scores, value)
-    result = tf.concat(tf.split(result, heads_num), axis=-1)
-    result = tf.squeeze(result, axis=0)
-
-    result += tf.tensordot(x, w_res, axes=(-1, 0))
-    result = tf.nn.relu(result)
-
-    return result
 
 
 def model_fn(features, labels, mode, params):
@@ -152,56 +58,18 @@ def model_fn(features, labels, mode, params):
     y += y_mlp
     y = tf.reshape(y, shape=[-1])
 
-    pred = tf.sigmoid(y)
-    predictions = {"prob": pred}
-    export_outputs = {
-        tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY: tf.estimator.export.PredictOutput(
-            predictions)}
-
-    if mode == tf.estimator.ModeKeys.PREDICT:
-        return tf.estimator.EstimatorSpec(
-            mode=mode,
-            predictions=predictions,
-            export_outputs=export_outputs)
-
-    # ------bulid loss------
-    loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=y, labels=labels))
-
-    # Provide an estimator spec for `ModeKeys.EVAL`
-    log_loss = tf.compat.v1.losses.log_loss(labels, pred)
-    auc_metric = tf.compat.v1.metrics.auc(labels, pred)
-    loss_metric = tf.compat.v1.metrics.mean(log_loss)
-    eval_metric_ops = {
-        "auc": tf.compat.v1.metrics.auc(labels, pred),
-        "logloss": tf.compat.v1.metrics.mean(log_loss),
-        "stop_criterion": (auc_metric[0] - loss_metric[0], tf.group(auc_metric[1], loss_metric[1]))
-    }
-
-    # ------bulid optimizer------
-    optimizer = build_optimizer(params.optimizer, learning_rate)
-    train_op = optimizer.minimize(loss, global_step=tf.compat.v1.train.get_global_step())
-
-    if mode == tf.estimator.ModeKeys.EVAL:
-        return tf.estimator.EstimatorSpec(
-            mode=mode,
-            predictions=predictions,
-            loss=loss,
-            eval_metric_ops=eval_metric_ops,
-            train_op=train_op)
-
-    # Provide an estimator spec for `ModeKeys.TRAIN` modes
-    if mode == tf.estimator.ModeKeys.TRAIN:
-        return tf.estimator.EstimatorSpec(
-            mode=mode,
-            predictions=predictions,
-            loss=loss,
-            train_op=train_op)
-    else:
-        raise ValueError("Only support TRAIN, EVAL and PREDICT modes")
+    return build_estimator_spec(
+        y_list=[y],
+        mode=mode,
+        labels=labels,
+        params=params,
+        learning_rate=learning_rate
+    )
 
 
 if __name__ == "__main__":
     model_config = define_flags()
+    model_config.model_dir = "../checkpoint/criteo/{MODEL_NAME}/"
     logger = setup_logger(model_config, MODEL_NAME)
 
     logger.info("FLAGS: " + str(model_config))
