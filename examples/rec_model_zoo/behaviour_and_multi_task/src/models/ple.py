@@ -5,14 +5,10 @@ import random
 from datetime import datetime
 
 import tensorflow as tf
+import pytz
 
-from utils import (
-    embedding_lookup_sparse_fake,
-    setup_logger,
-    build_optimizer,
-    main,
-    spec
-)
+from utils import embedding_lookup_sparse_fake, build_optimizer, main, spec
+from examples.rec_model_zoo.common import setup_logger
 
 tf.compat.v1.enable_control_flow_v2()
 tf.compat.v1.enable_resource_variables()
@@ -257,7 +253,8 @@ def model_fn(features, labels, mode, params):
 
 if __name__ == "__main__":
     model_config = define_flags()
-    logger, china_tz = setup_logger(model_config, MODEL_NAME)
+    logger = setup_logger(model_config, MODEL_NAME)
+    china_tz = pytz.timezone('Asia/Shanghai')
     if model_config.dt_dir == "":
         model_config.dt_dir = datetime.now(china_tz).strftime('%Y%m%d')
     model_config.model_dir = model_config.model_dir + datetime.now(china_tz).strftime('%Y%m%d')

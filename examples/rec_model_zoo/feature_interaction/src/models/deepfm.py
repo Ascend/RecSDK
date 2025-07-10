@@ -5,7 +5,9 @@ from typing import List
 
 import tensorflow as tf
 
-from utils import define_common_flag, build_estimator_spec, main, setup_logger
+from utils import define_common_flag, build_estimator_spec, main
+from examples.rec_model_zoo.common import setup_logger
+from fm import build_logistic_regression, build_factorization_machine
 
 MODEL_NAME = "DeepFM"
 
@@ -16,43 +18,6 @@ def define_flags():
     define_common_flag(MODEL_NAME)
 
     return model_conf
-
-
-def build_logistic_regression(feat_ids: tf.Tensor, feat_vals: tf.Tensor, feat_emb_lr: tf.Tensor) -> tf.Tensor:
-    """
-    Build the logistic regression model.
-
-    Args:
-        feat_ids (tf.Tensor): Feature IDs.
-        feat_vals (tf.Tensor): Feature values.
-        feat_emb_lr (tf.Tensor): Embedding weights for logistic regression.
-
-    Returns:
-        tf.Tensor: Logistic regression output.
-    """
-    with tf.compat.v1.variable_scope("Logistic-Regression"):
-        embeddings_origin_lr = tf.nn.embedding_lookup(feat_emb_lr, feat_ids)  # None * F * 1
-        embeddings_lr = tf.multiply(embeddings_origin_lr, feat_vals)
-        lr_bias = tf.compat.v1.get_variable(name='lr_bias', shape=[1], initializer=tf.constant_initializer(0.0))
-        first_order = tf.reduce_sum(embeddings_lr, axis=1) + lr_bias
-    return first_order
-
-
-def build_factorization_machine(embeddings_deep: tf.Tensor) -> tf.Tensor:
-    """
-    Build the factorization machine model.
-
-    Args:
-        embeddings_deep (tf.Tensor): Embedding layer output.
-
-    Returns:
-        tf.Tensor: Factorization machine output.
-    """
-    with tf.compat.v1.variable_scope("Factorization-Machine"):
-        square_of_sum = tf.square(tf.reduce_sum(embeddings_deep, axis=1, keepdims=True))
-        sum_of_square = tf.reduce_sum(embeddings_deep * embeddings_deep, axis=1, keepdims=True)
-        second_order = 0.5 * tf.reduce_sum(square_of_sum - sum_of_square, axis=2, keepdims=False)
-    return second_order
 
 
 def build_deep_layer(embeddings_deep: tf.Tensor, field_size: int, embedding_size: int, layers: List[int]) -> tf.Tensor:

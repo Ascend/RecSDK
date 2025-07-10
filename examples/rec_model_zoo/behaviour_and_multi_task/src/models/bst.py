@@ -8,14 +8,10 @@ from datetime import datetime
 
 import numpy as np
 import tensorflow as tf
+import pytz
 
-from utils import (
-    embedding_lookup_sparse_fake,
-    setup_logger,
-    build_optimizer,
-    main,
-    spec  
-)
+from utils import embedding_lookup_sparse_fake, build_optimizer, main, spec  
+from examples.rec_model_zoo.common import setup_logger
 
 tf.compat.v1.set_random_seed(2024)
 np.random.seed(2024)
@@ -479,7 +475,8 @@ def model_fn(features, labels, mode, params):
 
 if __name__ == "__main__":
     model_config = define_flags()
-    logger, china_tz = setup_logger(model_config, MODEL_NAME)
+    logger = setup_logger(model_config, MODEL_NAME)
+    china_tz = pytz.timezone('Asia/Shanghai')
     model_config.model_dir = model_config.model_dir + datetime.now(china_tz).strftime('%Y%m%d')
 
     logger.info("FLAGS: " + str(model_config))

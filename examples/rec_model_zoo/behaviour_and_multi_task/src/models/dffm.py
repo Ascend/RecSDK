@@ -7,13 +7,8 @@ from datetime import date, timedelta
 
 import tensorflow as tf
 
-from utils import (
-    embedding_lookup_sparse_fake,
-    setup_logger,
-    build_optimizer,
-    main,
-    spec
-)
+from utils import embedding_lookup_sparse_fake, build_optimizer, main, spec
+from examples.rec_model_zoo.common import setup_logger
 
 tf.compat.v1.set_random_seed(2024)
 random.seed(2024)
@@ -332,7 +327,7 @@ def dfub_layer(params, seqs, masks, embeddings_t: DFUBLayerEmbeddings, scope="ta
 
 if __name__ == "__main__":
     model_config = define_flags()
-    logger, china_tz = setup_logger(model_config, MODEL_NAME)
+    logger = setup_logger(model_config, MODEL_NAME)
     if model_config.dt_dir == "":
         model_config.dt_dir = (date.today() + timedelta(-1)).strftime('%Y%m%d')
     model_config.model_dir = model_config.model_dir + (date.today() + timedelta(-1)).strftime('%Y%m%d')

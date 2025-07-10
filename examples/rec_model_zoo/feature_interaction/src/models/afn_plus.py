@@ -4,7 +4,8 @@
 import numpy as np
 import tensorflow as tf
 
-from utils import define_common_flag, build_estimator_spec, main, setup_logger
+from utils import define_common_flag, build_estimator_spec, main
+from examples.rec_model_zoo.common import setup_logger
 
 MODEL_NAME = "AFN_plus"
 

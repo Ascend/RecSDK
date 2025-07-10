@@ -3,7 +3,8 @@
 
 import tensorflow as tf
 
-from utils import build_estimator_spec, main, setup_logger
+from utils import build_estimator_spec, main
+from examples.rec_model_zoo.common import setup_logger
 from autoint import define_flags, embedding_layer, multihead_attention
 
 MODEL_NAME = "AutoInt_plus"
