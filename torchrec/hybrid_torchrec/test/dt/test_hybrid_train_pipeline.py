@@ -62,6 +62,10 @@ def get_embedding_config(embedding_dims, num_embeddings, table_num):
     return embeding_config
 
 
+def mock_copy_to_npu(batch, context):
+    return batch
+
+
 class TestHybridTrainPipelineSparseDist(unittest.TestCase):
     def setUp(self):
         self.rank = 0
@@ -122,6 +126,8 @@ class TestHybridTrainPipelineSparseDist(unittest.TestCase):
     @patch("torchrec.distributed.planner.types.check", return_value=None)
     @patch("hybrid_torchrec.distributed.hybrid_train_pipeline.HybridTrainPipelineSparseDist.param_check", \
             return_value=None)
+    @patch("hybrid_torchrec.distributed.hybrid_train_pipeline.HybridTrainPipelineSparseDist._copy_to_npu", \
+            side_effect=mock_copy_to_npu)
     def test_hybrid_train_pipeline_init_success(self, *mocks):
         host_gp = dist.new_group(backend="gloo")
         host_env = ShardingEnv(world_size=self.world_size, rank=self.rank, pg=host_gp)
@@ -162,6 +168,9 @@ class TestHybridTrainPipelineSparseDist(unittest.TestCase):
             device=torch.device(self.device),
             return_loss=True,
         )
+        iter_ = iter(self.data_loader)
+        pipe._fill_pipeline(iter_)
+        assert(pipe._contexts[0][0].batch is not None)
 
     def test_hybrid_train_pipeline_context(self):
         iter_ = iter(self.data_loader)

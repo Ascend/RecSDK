@@ -29,6 +29,9 @@ from torch.utils.data.dataset import IterableDataset
 from hybrid_torchrec.distributed.sharding_plan import get_default_hybrid_sharders
 from hybrid_torchrec import HashEmbeddingBagCollection, HashEmbeddingBagConfig
 
+from dataset import RandomRecDataset, Batch
+from model import Model
+
 import torchrec.distributed.shard
 from torchrec import (
     EmbeddingBagConfig,
@@ -43,9 +46,6 @@ from torchrec.distributed.types import ShardingEnv
 from torchrec.optim.apply_optimizer_in_backward import apply_optimizer_in_backward
 from torchrec.streamable import Pipelineable
 from torchrec import KeyedJaggedTensor, JaggedTensor
-
-
-
 
 LOOP_TIMES = 8
 BATCH_NUM = 32
@@ -68,92 +68,6 @@ def generate_base_config(
         )
         test_table_configs.append(config)
     return test_table_configs
-
-
-@dataclass
-class Batch(Pipelineable):
-    sparse_features: KeyedJaggedTensor
-    labels: torch.Tensor
-
-    def __init__(self, sparse_features, labels) -> None:
-        self.sparse_features = sparse_features
-        self.labels = labels
-
-    def to(self, device: torch.device, non_blocking: bool = False) -> "Batch":
-        return Batch(
-            sparse_features=self.sparse_features.to(device, non_blocking=non_blocking),
-            labels=self.labels.to(device, non_blocking=non_blocking),
-        )
-
-    def record_stream(self, stream) -> None:
-        self.sparse_features.record_stream(stream)
-        self.labels.record_stream(stream)
-
-    def pin_memory(self) -> "Batch":
-        return Batch(
-            sparse_features=self.sparse_features.pin_memory(),
-            labels=self.labels.pin_memory(),
-        )
-
-
-class RandomRecDataset(IterableDataset[Batch]):
-    def __init__(self, batch_num, lookup_lens, num_embeddings, table_num):
-        super().__init__()
-        self.index = 0
-        self.lookup_lens = lookup_lens
-        self.num_embeddings = num_embeddings
-        self.table_num = table_num
-        self.batch_num = batch_num
-        torch.manual_seed(1)
-        self.data = [self.generate_one_batch() for _ in range(batch_num)]
-
-    def __iter__(self) -> Iterator[Batch]:
-        return iter(self.data)
-
-    def __len__(self) -> int:
-        return len(self.data)
-
-    def generate_one_batch(self) -> Batch:
-        input_dict = {}
-        feature_len = len(self.num_embeddings)
-        for ind in range(feature_len - 1, -1, -1):
-            name = f"feat{ind}"
-            id_range = self.num_embeddings[ind]
-            ids = torch.randint(0, id_range, (self.lookup_lens,))
-            lengths = torch.ones(self.lookup_lens).long()
-            input_dict[name] = JaggedTensor(values=ids, lengths=lengths)
-        kjt_tensor = KeyedJaggedTensor.from_jt_dict(input_dict)
-        label = torch.randint(0, 2, (self.lookup_lens,))
-        return Batch(kjt_tensor, label)
-
-
-def permute_values(kjt: KeyedJaggedTensor, feature_num) -> torch.Tensor:
-    keys_nums = feature_num
-    values = []
-    jt_dict = kjt.to_dict()
-    for k in range(keys_nums):
-        k = f"feat{k}"
-        jt = jt_dict[k]
-        values.append(jt)
-    values = torch.concat(values, dim=1)
-    return values
-
-
-class Model(torch.nn.Module):
-    def __init__(self, ebc, feature_num):
-        super().__init__()
-        self._ebc = ebc
-        self.feature_num = feature_num
-
-    @property
-    def ebc(self):
-        return self._ebc
-
-    def forward(self, batch: Batch):
-        result = self._ebc(batch.sparse_features)
-        result = permute_values(result, self.feature_num)
-        loss = result.sum()
-        return loss, result
 
 
 def setup_logging(rank):
