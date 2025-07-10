@@ -9,6 +9,7 @@ export RANK_ID=0
 export DEVICE_ID=0
 
 export PREPROCESSED_DATASET=/home/ma-user/work/ydz/EffBench/feature_interaction/data/criteo/
+export PYTHONPATH=$(cd ../../../../ && pwd):$PYTHONPATH
 
 models=("lr" "fm" "widedeep" "ipnn" "opnn" "pnn" "deepfm" "autoint" "autoint_plus" "fibinet" "dcnv2")
 

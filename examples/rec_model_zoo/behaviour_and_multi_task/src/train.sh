@@ -9,6 +9,7 @@ export RANK_ID=0
 export DEVICE_ID=0
 
 export PREPROCESSED_DATASET=/home/ma-user/work/ydz/EffBench/behaviour_and_multi_task/data/aliccp/aliccp_out/
+export PYTHONPATH=$(cd ../../../../ && pwd):$PYTHONPATH
 
 models=("din" "bst" "eta" "can" "dffm" "esmm" "sharedbottom" "mmoe" "ple" "dmt")
 

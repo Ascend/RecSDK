@@ -40,9 +40,9 @@ def setup_logger(model_config, model_name):
     china_tz = pytz.timezone('Asia/Shanghai')
     logfile_na = model_name + "_" + datetime.now(china_tz).strftime("%Y_%m_%d_%H_%M_%S") + ".log"
     if model_name in BEHAVIOUR_AND_MULTI_TASK:
-        logfile_path = os.path.join("./behaviour_and_multi_task/log/aliccp/", logfile_na)
+        logfile_path = os.path.join("../log/aliccp/", logfile_na)
     elif model_name in FEATURE_INTERACTION:
-        logfile_path = os.path.join("./feature_interaction/log/criteo/", logfile_na)
+        logfile_path = os.path.join("../log/criteo/", logfile_na)
     else:
         raise ValueError(f"Invalid model name: {model_name}")
     fh = logging.FileHandler(logfile_path)
