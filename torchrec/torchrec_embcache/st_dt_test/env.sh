@@ -6,15 +6,12 @@
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
 export LD_PRELOAD=/usr/lib64/libgomp.so.1
 
-SITE_PACKAGES=$(python3 -c "from distutils.sysconfig import get_python_lib; print(get_python_lib())")
+SITE_PACKAGES=$(python3 -c "import sysconfig; print(sysconfig.get_path('purelib'))")
 TORCH_LIB_PATH="$SITE_PACKAGES/torch/lib"
-CUSTOM_LIB_PATH="$SITE_PACKAGES/embedding_cache"
-export LD_LIBRARY_PATH="$TORCH_LIB_PATH:$CUSTOM_LIB_PATH:$LD_LIBRARY_PATH"
+CUSTOM_LIB_PATH="$SITE_PACKAGES/torchrec_embcache"
+export LD_LIBRARY_PATH="$SITE_PACKAGES:$TORCH_LIB_PATH:$CUSTOM_LIB_PATH:$LD_LIBRARY_PATH"
 
 export OMP_NUM_THREADS=12
-
-# 算子适配层文件libfbgemm_npu_api.so的路径
-export LIB_FBGEMM_NPU_API_SO_PATH="/path/to/libfbgemm_npu_api.so"
 
 #----------------------------------------
 # ascend related
@@ -30,7 +27,7 @@ export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
 export WITH_EMBCACHE=1
 
 # 供参考：16GB=17179869184; 30GB=30*1024*1024*1024=32212254720;
-export EMBCACHE_SIZE_ON_DEVICE_MEM=$((1*1024*1024))
+export EMBCACHE_SIZE_ON_DEVICE_MEM=$((2*1024*1024))
 
 # ENABLE_FAST_HASHMAP=false时，默认适用unordered_map
 export ENABLE_FAST_HASHMAP=false

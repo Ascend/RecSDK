@@ -24,7 +24,7 @@ from dt.conftest import MODULE_NAME
 from model import TestModel, generate_hash_config, HashConfig
 from torch.utils.data import DataLoader
 from torch.optim import Adam, Adagrad
-from torchrec_embcache.distributed.train_pipeline import AwaitableAdapter, EmbcacheTrainPipelineContext
+from torchrec_embcache.distributed.train_pipeline import AwaitableAdapter, EmbCacheTrainPipelineContext
 from util import (
     setup_logging,
     is_lookup_out_of_bound,
@@ -135,20 +135,27 @@ def execute(rank, config):
     device = config.get("device", "npu")
     sharding_type = config.get("sharding_type", "row_wise")
     optim = OPTIM_REGISTRY.get(config.get("optim", "Adagrad"), Adagrad)
-    feature_names_lst = config["feature_names_lst"]
+    feature_names_list = config["feature_names_list"]
     instances = config.get("instances", 1)
     pool_type = getattr(torchrec.PoolingType, pool_type)
     collection_type = config["collection_type"]
-    embedding_config = generate_hash_config(embedding_dims, num_embeddings, pool_type, feature_names_lst, 
-                                            create_weight_init(init_fn), collection_type)
+    hash_config = HashConfig(
+        embedding_dims=embedding_dims,
+        num_embeddings=num_embeddings,
+        pool_type=pool_type,
+        feature_names_list=feature_names_list,
+        init_fn=create_weight_init(init_fn),
+        collection_type=collection_type,
+    )
+    embedding_config = generate_hash_config(hash_config)
     generated_ids = []
     if dataset_class is BoundOutOfRangeRecDataset:
         for i in range(table_num):
             generated_ids.append([])
-            for _ in range(len(feature_names_lst[i])):
+            for _ in range(len(feature_names_list[i])):
                 generated_ids[i].append(list(range(num_embeddings[i] + OVER_COUNT)))
                 random.shuffle(generated_ids[i][-1])
-    dataset = dataset_class(batch_num, lookup_lens, num_embeddings, table_num, feature_names_lst, generated_ids)
+    dataset = dataset_class(batch_num, lookup_lens, num_embeddings, table_num, feature_names_list, generated_ids)
     data_loader = DataLoader(
         dataset,
         batch_size=None,
@@ -157,13 +164,13 @@ def execute(rank, config):
         num_workers=1,
     )
 
-    test_model = TestModel(rank, world_size, device, instances, feature_names_lst, batch_num, collection_type)
+    test_model = TestModel(rank, world_size, device, instances, feature_names_list, batch_num, collection_type)
     test_model.init_ddp_model(embedding_config, sharding_type, optim, lookup_lens)
     iter_ = iter(data_loader)
-    module_lst = getattr(test_model.module, collection_type)
-    context = EmbcacheTrainPipelineContext(index=0, version=1)
+    module_list = getattr(test_model.module, collection_type)
+    context = EmbCacheTrainPipelineContext(index=0, version=1)
 
-    for i, module in enumerate(module_lst):
+    for i, module in enumerate(module_list):
         name = f"module.{i}"
         ctx = module.create_context()
         features = next(iter_).sparse_features
@@ -173,26 +180,25 @@ def execute(rank, config):
     fuse_input_dist_splits(context)
 
     fused_splits_awaitables_dicts = []
-    for _, fused_splits_awaitables in context.fused_splits_awaitables:
-        for fused_splits_awaitable in fused_splits_awaitables:
-            output_lengths = fused_splits_awaitable.output_lengths
-            lengths = fused_splits_awaitable.lengths
-            if fused_splits_awaitable.splits_awaitable:
-                splits_tensors = fused_splits_awaitable.splits_awaitable.wait()
-            else:
-                splits_tensors = []
-            fused_splits_awaitables_dict = {
-                "output_lengths": output_lengths,
-                "lengths": lengths,
-                "splits_tensors": splits_tensors,
-            }
-            fused_splits_awaitables_dicts.append(fused_splits_awaitables_dict)
+    for fused_splits_awaitable in context.fused_splits_awaitables:
+        output_lengths = fused_splits_awaitable.output_lengths
+        lengths = fused_splits_awaitable.lengths
+        if fused_splits_awaitable.splits_awaitable:
+            splits_tensors = fused_splits_awaitable.splits_awaitable.wait()
+        else:
+            splits_tensors = []
+        fused_splits_awaitables_dict = {
+            "output_lengths": output_lengths,
+            "lengths": lengths,
+            "splits_tensors": splits_tensors,
+        }
+        fused_splits_awaitables_dicts.append(fused_splits_awaitables_dict)
 
     if not config["fname"].startswith("test_normal"):
         logging.debug("Skipping saving baseline for non-normal test: %s", config["fname"])
         return
 
-    save_folder = os.path.join(TEST_ROOT_DIR, "configs", MODULE_NAME, "compute_and_output_dist")
+    save_folder = os.path.join(TEST_ROOT_DIR, "configs", MODULE_NAME, "fuse_input_dist_splits")
     if not os.path.exists(save_folder):
         os.makedirs(save_folder, exist_ok=True)
     saved_file = os.path.join(save_folder, f"rank{rank}_{config['fname']}.pt")
@@ -207,7 +213,5 @@ def execute(rank, config):
         base_line = torch.load(saved_file, weights_only=False)
         for obj1, obj2 in zip(base_line, fused_splits_awaitables_dicts):
             attributes_to_compare = ["output_lengths", "lengths", "splits_tensors"]
-            assert (
-                are_features_equal(obj1, obj2, attributes_to_compare), 
+            assert are_features_equal(obj1, obj2, attributes_to_compare), \
                 "Fused splits awaitables are not equal: {} != {}".format(obj1, obj2)
-            )

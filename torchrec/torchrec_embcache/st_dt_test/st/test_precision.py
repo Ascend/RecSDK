@@ -18,13 +18,17 @@ from model import TestModel, generate_hash_config, HashConfig
 from torch.optim import Adam, Adagrad
 from torch.utils.data import DataLoader
 from util import (
+    setup_logging,
     is_lookup_out_of_bound,
     feature_name_exists,
-    setup_logging,
     create_weight_init,
     check_config,
+    TEST_ROOT_DIR,
     OVER_COUNT,
-    run_model_with_config
+    run_model_with_config,
+    DATASET_REGISTRY,
+    INIT_FN_REGISTRY,
+    OPTIM_REGISTRY
 )
 
 import torchrec
@@ -32,7 +36,7 @@ import torchrec
 
 @pytest.mark.functional
 def test_normal(config):
-    run_model_with_config(config)
+    run_model_with_config(config, execute)
 
 
 def execute(rank, config):
@@ -45,34 +49,35 @@ def execute(rank, config):
     batch_num = config["BATCH_NUM"]
     table_num = config["table_num"]
     lookup_lens = config["lookup_lens"]
-    dataset_class = globals()[config["RecDataset"] + "RecDataset"]
-    init_fn = globals()[config["init_fn"]]
+    dataset_class = DATASET_REGISTRY.get(config["RecDataset"] + "RecDataset", RandomRecDataset)
+    init_fn = INIT_FN_REGISTRY.get("init_linspace", create_weight_init("init_linspace"))
     world_size = config["WORLD_SIZE"]
     device = config.get("device", "npu")
     sharding_type = config.get("sharding_type", "row_wise")
-    optim = globals()[config.get("optim", "Adagrad")]
-    feature_names_lst = config["feature_names_lst"]
+    optim = OPTIM_REGISTRY.get(config.get("optim", "Adagrad"), Adagrad)
+    feature_names_list = config["feature_names_list"]
     instances = config.get("instances", 1)
     pool_type = getattr(torchrec.PoolingType, pool_type)
+    collection_type = config["collection_type"]
     hash_config = HashConfig(
-        embedding_dims=embedding_dims, 
-        num_embeddings=num_embeddings, 
-        pooling=pool_type, 
-        feature_names=feature_names_lst,
+        embedding_dims=embedding_dims,
+        num_embeddings=num_embeddings,
+        pool_type=pool_type,
+        feature_names_list=feature_names_list,
         init_fn=create_weight_init(init_fn),
-        collection_type="ec"
+        collection_type=collection_type,
     )
     embedding_config = generate_hash_config(hash_config)
     generated_ids = []
-    if isinstance(dataset_class, BoundOutOfRangeRecDataset):
+    if dataset_class is BoundOutOfRangeRecDataset:
         for i in range(table_num):
             generated_ids.append([])
-            for _ in range(len(feature_names_lst[i])):
+            for _ in range(len(feature_names_list[i])):
                 generated_ids[i].append(list(range(num_embeddings[i] + OVER_COUNT)))
                 random.shuffle(generated_ids[i][-1])
-    dataset_gloden = dataset_class(batch_num, lookup_lens, num_embeddings, table_num, feature_names_lst, generated_ids)
+    dataset_gloden = dataset_class(batch_num, lookup_lens, num_embeddings, table_num, feature_names_list, generated_ids)
     dataset = dataset_class(
-        batch_num, lookup_lens, num_embeddings, table_num, feature_names_lst, deepcopy(generated_ids)
+        batch_num, lookup_lens, num_embeddings, table_num, feature_names_list, deepcopy(generated_ids)
     )
     data_loader_gloden = DataLoader(
         dataset_gloden,
@@ -89,7 +94,9 @@ def execute(rank, config):
         num_workers=1,
     )
 
-    test_model = TestModel(rank, world_size, device, instances, feature_names_lst, batch_num, collection_type="ec")
+    test_model = TestModel(
+        rank, world_size, device, instances, feature_names_list, batch_num, collection_type=collection_type
+    )
 
     golden_results = test_model.cpu_golden_loss(embedding_config, data_loader_gloden, optim)
     test_model.init_ddp_model(embedding_config, sharding_type, optim, lookup_lens)

@@ -8,32 +8,32 @@ import yaml
 random.seed(4)
 
 
-def generate_feature_names_lst(features, tables):
-    feature_names_lst = []
+def generate_feature_names_list(features, tables):
+    feature_names_list = []
     for i in range(tables):
-        feature_names_lst.append([])
+        feature_names_list.append([])
         for j in range(features):
             feature_name = f"features{i*features+j}"
-            feature_names_lst[-1].append(feature_name)
-    return feature_names_lst
+            feature_names_list[-1].append(feature_name)
+    return feature_names_list
 
 
 def generate_num_embeddings(num_embeddings_message):
-    num_embedding_lst = []
+    num_embedding_list = []
     for message in num_embeddings_message:
         if isinstance(message, list):
             if message[0] == "range":
-                num_embedding_lst.extend(list(range(*message[1:])))
+                num_embedding_list.extend(list(range(*message[1:])))
             elif message[0] == "randint":
-                num_embedding_lst.append(random.randint(*message[1:]))
+                num_embedding_list.append(random.randint(*message[1:]))
         else:
-            num_embedding_lst.append(message)
-    return num_embedding_lst
+            num_embedding_list.append(message)
+    return num_embedding_list
 
 
 folder_path = sys.argv[1]
 with open(os.path.join(folder_path, "test_cases.jsonl")) as f:
-    for json_line in f.readlines():
+    for json_line in json.load(f):
         row = json.loads(json_line)
         test_case_name = row["test_case_name"]
         world_size = row["world_size"]
@@ -60,7 +60,7 @@ with open(os.path.join(folder_path, "test_cases.jsonl")) as f:
             "sharding_type": sharding_type,
             "init_fn": init_fn,
             "optim": optimizer,
-            "feature_names_lst": generate_feature_names_lst(feature_num, table_num),
+            "feature_names_list": generate_feature_names_list(feature_num, table_num),
             "lookup_lens": lookup_lens,
             "RecDataset": RecDataset,
             "is_bad_case": is_bad_case

@@ -21,12 +21,12 @@ from dataset import (
     FeatureNameNotInConfigRecDataset
 )
 from dt.conftest import MODULE_NAME
-from model import TestModel, generate_hash_config
+from model import TestModel, generate_hash_config, HashConfig
 from torch.utils.data import DataLoader
 from torch.optim import Adam, Adagrad
 from torchrec_embcache.distributed.train_pipeline import (
     AwaitableAdapter,
-    EmbcacheTrainPipelineContext,
+    EmbCacheTrainPipelineContext,
 )
 from util import (
     setup_logging,
@@ -138,20 +138,27 @@ def execute(rank, config):
     device = config.get("device", "npu")
     sharding_type = config.get("sharding_type", "row_wise")
     optim = OPTIM_REGISTRY.get(config.get("optim", "Adagrad"), Adagrad)
-    feature_names_lst = config["feature_names_lst"]
+    feature_names_list = config["feature_names_list"]
     instances = config.get("instances", 1)
     pool_type = getattr(torchrec.PoolingType, pool_type)
     collection_type = config["collection_type"]
-    embedding_config = generate_hash_config(embedding_dims, num_embeddings, pool_type, feature_names_lst, 
-                                            create_weight_init(init_fn), collection_type)
+    hash_config = HashConfig(
+        embedding_dims=embedding_dims,
+        num_embeddings=num_embeddings,
+        pool_type=pool_type,
+        feature_names_list=feature_names_list,
+        init_fn=create_weight_init(init_fn),
+        collection_type=collection_type,
+    )
+    embedding_config = generate_hash_config(hash_config)
     generated_ids = []
     if dataset_class is BoundOutOfRangeRecDataset:
         for i in range(table_num):
             generated_ids.append([])
-            for _ in range(len(feature_names_lst[i])):
+            for _ in range(len(feature_names_list[i])):
                 generated_ids[i].append(list(range(num_embeddings[i] + OVER_COUNT)))
                 random.shuffle(generated_ids[i][-1])
-    dataset = dataset_class(batch_num, lookup_lens, num_embeddings, table_num, feature_names_lst, generated_ids)
+    dataset = dataset_class(batch_num, lookup_lens, num_embeddings, table_num, feature_names_list, generated_ids)
     data_loader = DataLoader(
         dataset,
         batch_size=None,
@@ -160,13 +167,13 @@ def execute(rank, config):
         num_workers=1,
     )
 
-    test_model = TestModel(rank, world_size, device, instances, feature_names_lst, batch_num, collection_type)
+    test_model = TestModel(rank, world_size, device, instances, feature_names_list, batch_num, collection_type)
     test_model.init_ddp_model(embedding_config, sharding_type, optim, lookup_lens)
     iter_ = iter(data_loader)
-    module_lst = getattr(test_model.module, collection_type)
-    context = EmbcacheTrainPipelineContext(index=0, version=1)
+    module_list = getattr(test_model.module, collection_type)
+    context = EmbCacheTrainPipelineContext(index=0, version=1)
 
-    for i, module in enumerate(module_lst):
+    for i, module in enumerate(module_list):
         name = f"module.{i}"
         ctx = module.create_context()
         features = next(iter_).sparse_features
@@ -175,27 +182,35 @@ def execute(rank, config):
 
     fuse_input_dist_splits(context)
 
-    kjt_list_dict = {}
     for names, awaitable in context.fused_splits_awaitables:
         for name, request in zip(names, awaitable.wait()):
-            kjt_list_dict[name] = request.awaitables
+            context.input_dist_splits_requests[name] = AwaitableAdapter(request)
 
     features = []
-    for i, module in enumerate(module_lst):
+    for i, module in enumerate(module_list):
         name = f"module.{i}"
-        kjt_list = kjt_list_dict[name]
+        awaitable = context.input_dist_splits_requests[name]
+        kjt_list = awaitable.wait()
         post_waitable = module.post_input_dist(
-            context.module_contexts[name],
-            kjt_list,
+            context.module_contexts[name], 
+            kjt_list
         )
         for feature in post_waitable.wait().features:
-            features.append(feature)
+            feature_dict = {
+                "hash_indices": feature.hash_indices, 
+                "unique_ids": feature.unique_ids,
+                "unique_indices": feature.unique_indices,
+                "unique_inverse": feature.unique_inverse,
+                "unique_offset": feature.unique_offset,
+                "unique_offset_host": feature.unique_offset_host
+            }
+            features.append(feature_dict)
 
     if not config["fname"].startswith("test_normal"):
         logging.debug("Skipping saving baseline for non-normal test: %s", config["fname"])
         return
 
-    save_folder = os.path.join(TEST_ROOT_DIR, "configs", MODULE_NAME, "compute_and_output_dist")
+    save_folder = os.path.join(TEST_ROOT_DIR, "configs", MODULE_NAME, "post_input_dist")
     if not os.path.exists(save_folder):
         os.makedirs(save_folder, exist_ok=True)
     saved_file = os.path.join(save_folder, f"rank{rank}_{config['fname']}.pt")
@@ -217,7 +232,5 @@ def execute(rank, config):
                 "unique_offset", 
                 "unique_offset_host"
                 ]
-            assert (
-                are_features_equal(obj1, obj2, attributes_to_compare), 
+            assert are_features_equal(obj1, obj2, attributes_to_compare), \
                 "Features are not equal: {} != {}".format(obj1, obj2)
-            )

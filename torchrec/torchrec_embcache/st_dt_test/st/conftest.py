@@ -11,9 +11,7 @@ from util import generate_test_cases, get_all_configs
 
 
 CURRENT_FILE = Path(__file__).resolve()
-MODULE_NAME = CURRENT_FILE.parent.name[5:]
-TYPE_NAME = CURRENT_FILE.parent.parent.name
-MODULE_NAME = f"{TYPE_NAME}/{MODULE_NAME}"
+MODULE_NAME = CURRENT_FILE.parent.name
 
 
 ALL_CONFIGS = get_all_configs(MODULE_NAME)

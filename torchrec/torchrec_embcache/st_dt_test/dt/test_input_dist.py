@@ -26,7 +26,7 @@ from torch.utils.data import DataLoader
 from torch.optim import Adam, Adagrad
 from torchrec_embcache.distributed.train_pipeline import (
     AwaitableAdapter,
-    EmbcacheTrainPipelineContext,
+    EmbCacheTrainPipelineContext,
 )
 from util import (
     setup_logging,
@@ -190,20 +190,27 @@ def execute(rank, config):
     device = config.get("device", "npu")
     sharding_type = config.get("sharding_type", "row_wise")
     optim = OPTIM_REGISTRY.get(config.get("optim", "Adagrad"), Adagrad)
-    feature_names_lst = config["feature_names_lst"]
+    feature_names_list = config["feature_names_list"]
     instances = config.get("instances", 1)
     pool_type = getattr(torchrec.PoolingType, pool_type)
     collection_type = config["collection_type"]
-    embedding_config = generate_hash_config(embedding_dims, num_embeddings, pool_type, feature_names_lst, 
-                                            create_weight_init(init_fn), collection_type)
+    hash_config = HashConfig(
+        embedding_dims=embedding_dims,
+        num_embeddings=num_embeddings,
+        pool_type=pool_type,
+        feature_names_list=feature_names_list,
+        init_fn=create_weight_init(init_fn),
+        collection_type=collection_type,
+    )
+    embedding_config = generate_hash_config(hash_config)
     generated_ids = []
     if dataset_class is BoundOutOfRangeRecDataset:
         for i in range(table_num):
             generated_ids.append([])
-            for _ in range(len(feature_names_lst[i])):
+            for _ in range(len(feature_names_list[i])):
                 generated_ids[i].append(list(range(num_embeddings[i] + OVER_COUNT)))
                 random.shuffle(generated_ids[i][-1])
-    dataset = dataset_class(batch_num, lookup_lens, num_embeddings, table_num, feature_names_lst, generated_ids)
+    dataset = dataset_class(batch_num, lookup_lens, num_embeddings, table_num, feature_names_list, generated_ids)
     data_loader = DataLoader(
         dataset,
         batch_size=None,
@@ -212,29 +219,29 @@ def execute(rank, config):
         num_workers=1,
     )
 
-    test_model = TestModel(rank, world_size, device, instances, feature_names_lst, batch_num, collection_type)
+    test_model = TestModel(rank, world_size, device, instances, feature_names_list, batch_num, collection_type)
     test_model.init_ddp_model(embedding_config, sharding_type, optim, lookup_lens)
     iter_ = iter(data_loader)
-    module_lst = getattr(test_model.module, collection_type)
-    kjt_lst = []
-    for module in module_lst:
-        kjt_lst.append([])
+    module_list = getattr(test_model.module, collection_type)
+    kjt_list = []
+    for module in module_list:
+        kjt_list.append([])
         ctx = module.create_context()
         features = next(iter_).sparse_features
         awaitable = module.input_dist(ctx, features)
         for awaitable in awaitable.awaitables:
             kjt = awaitable.wait().wait().wait()
-            kjt_lst[-1].append(kjt)
+            kjt_list[-1].append(kjt)
 
     if not config["fname"].startswith("test_normal"):
         logging.debug("Skipping baseline check for %s", config["fname"])
         return
-    save_folder = os.path.join(TEST_ROOT_DIR, "configs", MODULE_NAME, "post_input_dist")
+    save_folder = os.path.join(TEST_ROOT_DIR, "configs", MODULE_NAME, "input_dist")
     if not os.path.exists(save_folder):
         os.makedirs(save_folder, exist_ok=True)
     saved_file = os.path.join(save_folder, f"rank{rank}_{config['fname']}.pt")
     if not os.path.exists(saved_file):
-        torch.save(kjt_lst, saved_file)
+        torch.save(kjt_list, saved_file)
         logging.warning(
             "No baseline file found. This might be because you're running this test for the first time. "
             "The current output is being saved to the baseline file for future comparison. "
@@ -242,5 +249,5 @@ def execute(rank, config):
         )
     else:
         base_line = torch.load(saved_file, weights_only=False)
-        assert_nested_kjt_equal(kjt_lst, base_line), "KJT lists are not equal. "
+        assert_nested_kjt_equal(kjt_list, base_line), "KJT lists are not equal. "
 

@@ -51,22 +51,16 @@ from torchrec.optim.apply_optimizer_in_backward import apply_optimizer_in_backwa
 from torchrec.optim.keyed import CombinedOptimizer
 
 
-lib_fbgemm_npu_api_so_path = os.getenv('LIB_FBGEMM_NPU_API_SO_PATH')
-if not lib_fbgemm_npu_api_so_path:
-    raise ValueError("LIB_FBGEMM_NPU_API_SO_PATH environment variable is not set.")
-torch.ops.load_library(lib_fbgemm_npu_api_so_path)
-
-
 OPTIMIZER_PARAM = {
     Adam: dict(lr=0.02),
     Adagrad: dict(lr=0.02, eps=1.0e-8),
 }
 
 
-def permute_values(kjt: KeyedJaggedTensor, feature_names_lst: List[List[str]]) -> torch.Tensor:
+def permute_values(kjt: KeyedJaggedTensor, feature_names_list: List[List[str]]) -> torch.Tensor:
     values = []
     jt_dict = kjt.to_dict()
-    for feature_name in itertools.chain(*feature_names_lst):
+    for feature_name in itertools.chain(*feature_names_list):
         jt = jt_dict[feature_name]
         values.append(jt)
     values = torch.concat(values, dim=1)
@@ -74,9 +68,9 @@ def permute_values(kjt: KeyedJaggedTensor, feature_names_lst: List[List[str]]) -
 
 
 # ec和ebc查询结果返回数据类型不一样
-def permute_values_ec(result: Dict, feature_num_lst: List[List[str]]) -> torch.Tensor:
+def permute_values_ec(result: Dict, feature_num_list: List[List[str]]) -> torch.Tensor:
     values = []
-    for feature_name in itertools.chain(*feature_num_lst):
+    for feature_name in itertools.chain(*feature_num_list):
         jt = result[feature_name].values()
         values.append(jt)
     values = torch.concat(values, dim=1)
@@ -87,12 +81,12 @@ class Model(torch.nn.Module):
     def __init__(
             self, 
             module: Union[EmbeddingCollection, EmbeddingBagCollection],
-            feature_names_lst: List[List[str]], 
+            feature_names_list: List[List[str]], 
             collection_type: str = "ebc"
         ):
         super().__init__()
         self._module = module
-        self.feature_names_lst = feature_names_lst
+        self.feature_names_list = feature_names_list
         self.collection_type = collection_type
 
     @property
@@ -111,7 +105,12 @@ class Model(torch.nn.Module):
         results = []
         for i, module in enumerate(self._module):
             result = module(getattr(batch, f"instance{i}_sparse_features"))
-            result = permute_values(result, self.feature_names_lst)
+            if self.collection_type == "ebc":
+                result = permute_values(result, self.feature_names_list)
+            elif self.collection_type == "ec":
+                result = permute_values_ec(result, self.feature_names_list)
+            else:
+                raise ValueError(f"collection type must be ec or ebc, find {self.collection_type} instead")
             results.append(result)
 
         result = torch.concat(results, dim=1)
@@ -144,7 +143,7 @@ class TestModel:
             world_size: int,
             device: str,
             instances: int = 1,
-            feature_names_lst: List[List[str]] = None,
+            feature_names_list: List[List[str]] = None,
             batch_num: int = 8,
             collection_type: str = "ec",
     ):
@@ -152,7 +151,7 @@ class TestModel:
         self.world_size = world_size
         self.device = device
         self.instances = instances
-        self.feature_names_lst = feature_names_lst
+        self.feature_names_list = feature_names_list
         self.pg_method = "hccl" if device == "npu" else "gloo"
         if device == "npu":
             torch_npu.npu.set_device(rank)
@@ -180,7 +179,7 @@ class TestModel:
             module.append(
                 COLLECTION_DICT[self.collection_type]["collection_cpu"](device="cpu", tables=embedding_config)
             )
-        module = COLLECTION_DICT[self.collection_type]["model"](module, self.feature_names_lst, self.collection_type)
+        module = COLLECTION_DICT[self.collection_type]["model"](module, self.feature_names_list, self.collection_type)
         model = DDP(module, device_ids=None, process_group=pg)
         opt = optim(module.parameters(), **OPTIMIZER_PARAM[optim])
 
@@ -234,7 +233,7 @@ class TestModel:
                         world_size=dist.get_world_size()
                     )
                 )
-        module = COLLECTION_DICT[self.collection_type]["model"](module, self.feature_names_lst, self.collection_type)
+        module = COLLECTION_DICT[self.collection_type]["model"](module, self.feature_names_list, self.collection_type)
         apply_optimizer_in_backward(
             optimizer_class=optim,
             params=module.parameters(),
@@ -290,7 +289,7 @@ class TestModel:
             npu_device=self.npu_device,
             return_loss=True,
         )
-        for _ in range(self.BATCH_NUM):
+        for _ in range(self.batch_num):
             out, loss = pipe.progress(iter_)
             results.append(loss.detach().cpu())
             results.append(out.detach().cpu())
@@ -312,7 +311,7 @@ class HashConfig:
     embedding_dims: List[int]
     num_embeddings: List[int]
     pool_type: torchrec.PoolingType
-    feature_names: List[List[str]]
+    feature_names_list: List[List[str]]
     init_fn: Callable
     collection_type: str
 
@@ -322,21 +321,23 @@ def generate_hash_config(hash_config: HashConfig):
     embedding_dims = hash_config.embedding_dims
     num_embeddings = hash_config.num_embeddings
     pool_type = hash_config.pool_type
-    feature_names = hash_config.feature_names
+    feature_names_list = hash_config.feature_names_list
     init_fn = hash_config.init_fn
     collection_type = hash_config.collection_type
-    for i, (table_dim, num_embedding, feature_name) in enumerate(zip(embedding_dims, num_embeddings, feature_names)):
+    for i, (table_dim, num_embedding, feature_names) in \
+        enumerate(zip(embedding_dims, num_embeddings, feature_names_list)):
         config_params = {
             "name": f"table{i}",
             "embedding_dim": table_dim,
             "num_embeddings": num_embedding,
-            "feature_names": feature_name,
+            "feature_names": feature_names,
             "init_fn": init_fn,
-            "pooling": pool_type,
+            "weight_init_min": 0.0,
+            "weight_init_max": 1.0,
             "initializer_type": InitializerType.LINEAR
         }
         if collection_type == "ebc":    
-            config = COLLECTION_DICT[collection_type]["config"](**config_params)
+            config = COLLECTION_DICT[collection_type]["config"](pooling=pool_type, **config_params)
         else:
             admit_and_evict_config = AdmitAndEvictConfig(admit_threshold=-1, 
                                                          not_admitted_default_value=0.99)

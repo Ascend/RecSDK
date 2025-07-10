@@ -23,6 +23,7 @@ from parse_configs import load_all_configs
 from torch.autograd.profiler import record_function
 from torch.optim import Adam, Adagrad
 from torchrec_embcache.distributed.sharding.rw_sharding import EmbCacheRwSparseFeaturesDistAwaitable
+from torchrec_embcache.distributed.utils import get_embedding_optim_num
 
 from torchrec.distributed.embedding_sharding import (
     FusedKJTListSplitsAwaitable, 
@@ -30,7 +31,6 @@ from torchrec.distributed.embedding_sharding import (
     KJTSplitsAllToAllMeta
 )
 from torchrec.distributed.train_pipeline.utils import TrainPipelineContext
-from torchrec.modules.embedding_modules import get_embedding_names_by_table
 
 
 OVER_COUNT = 10
@@ -99,8 +99,9 @@ def check_config(config):
         table_size += embedding_dim * num_embedding
     table_size = table_size * config["table_num"] / config["WORLD_SIZE"]
     # 查表的大小，lookup_lens*embedding_dim*len(feature_names)
+    dtype_size = 4 # default fp32
     lookup_size = 0
-    for embedding_dim, feature_names in zip(config["embedding_dims"], config["feature_names_lst"]):
+    for embedding_dim, feature_names in zip(config["embedding_dims"], config["feature_names_list"]):
         lookup_size += embedding_dim * len(feature_names)
     total_size = (table_size + lookup_size) * dtype_size / (1024 * 1024)  # Convert to MB
     max_size = int(os.getenv("MAX_TABLE_SIZE_MB", 65536))
@@ -112,14 +113,13 @@ def check_config(config):
 
     # 需要检查device缓存是否够用
     multi_hot_sizes = [1] * config["table_num"]
-    dtype_size = 4 # default fp32
     if config["optim"] == "Adagrad":
         embedding_optimizer_cls = torch.optim.Adagrad
     elif config["optim"] == "Adam":
         embedding_optimizer_cls = torch.optim.Adam
     else:
         raise ValueError(f"Unsupported optimizer: {config['optim']}")
-    optim_num = get_embedding_names_by_table(embedding_optimizer_cls)
+    optim_num = get_embedding_optim_num(embedding_optimizer_cls)
     # 由于同时训练换入换出，最少要能放下2倍的batch_size的emb + optim
     weight_and_optim_count = optim_num + 1
     min_mem = np.sum(
@@ -318,18 +318,16 @@ def compare_list(list1, list2):
     return True
 
 
-def are_features_equal(obj1, obj2):
-    attributes_to_compare = ["update_embs", "update_momentums1", "update_momentums2"]
-
+def are_features_equal(obj1, obj2, attributes_to_compare):
     for attr in attributes_to_compare:
-        value1 = getattr(obj1, attr, None)
-        value2 = getattr(obj2, attr, None)
+        value1 = obj1.get(attr, None)
+        value2 = obj2.get(attr, None)
 
         if value1 is None or value2 is None:
             logging.error(f"Attribute '{attr}' not found in one of the objects.")
             return False
         elif isinstance(value1, list):
-            if not compare_lists(value1, value2):
+            if not compare_list(value1, value2):
                 logging.debug("Lists are not equal: %s != %s", value1, value2)
                 return False
         elif isinstance(value1, torch.Tensor):

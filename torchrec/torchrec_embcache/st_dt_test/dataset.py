@@ -54,7 +54,7 @@ class RandomRecDataset(IterableDataset[Batch]):
             lookup_lens, 
             num_embeddings, 
             table_num, 
-            feature_names_lst=None, 
+            feature_names_list=None, 
             generated_ids=None, 
             instances=1
         ):
@@ -65,7 +65,7 @@ class RandomRecDataset(IterableDataset[Batch]):
         self.table_num = table_num
         self.batch_num = batch_num
         self.generated_ids = generated_ids
-        self.feature_names_lst = feature_names_lst if feature_names_lst else [[f"feat{i}"] for i in range(table_num)]
+        self.feature_names_list = feature_names_list if feature_names_list else [[f"feat{i}"] for i in range(table_num)]
         self.instances = instances
         torch.manual_seed(1)
         self.data = [self.generate_one_batch() for _ in range(batch_num)]
@@ -78,7 +78,7 @@ class RandomRecDataset(IterableDataset[Batch]):
 
     def generate_one_batch(self) -> Batch:
         input_dict = {}
-        for ind, feature_names in enumerate(self.feature_names_lst):
+        for ind, feature_names in enumerate(self.feature_names_list):
             id_range = self.num_embeddings[ind]
             for feature_name in feature_names:
                 ids = torch.randint(0, max(1, id_range), (self.lookup_lens,))
@@ -93,7 +93,7 @@ class FeatureNameNotInConfigRecDataset(RandomRecDataset):
 
     def generate_one_batch(self) -> Batch:
         input_dict = {}
-        for ind, feature_names in enumerate(self.feature_names_lst):
+        for ind, feature_names in enumerate(self.feature_names_list):
             feature_names = [f"error_{feature_name}" for feature_name in feature_names]
             id_range = self.num_embeddings[ind]
             for feature_name in feature_names:
@@ -109,7 +109,7 @@ class BoundOutOfRangeRecDataset(RandomRecDataset):
 
     def generate_one_batch(self) -> Batch:
         input_dict = {}
-        for ind, feature_names in enumerate(self.feature_names_lst):
+        for ind, feature_names in enumerate(self.feature_names_list):
             id_range = self.num_embeddings[ind]
             for i, feature_name in enumerate(feature_names):
                 ids = []
