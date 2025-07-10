@@ -118,7 +118,8 @@ class TestHybridShardedEmbeddingBagCollection:
     @patch("torchrec.distributed.model_parallel.check", return_value=None)
     @patch("torchrec.distributed.planner.types.check", return_value=None)
     def test_init(*mock):
-        hybrid_sharded_embedding_bag_collection()
+        result = hybrid_sharded_embedding_bag_collection()
+        assert result is not None
 
     @staticmethod
     @patch("torchrec.distributed.planner.ParameterConstraints.__post_init__", return_value=None)

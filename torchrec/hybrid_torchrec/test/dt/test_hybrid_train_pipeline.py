@@ -170,7 +170,7 @@ class TestHybridTrainPipelineSparseDist(unittest.TestCase):
         )
         iter_ = iter(self.data_loader)
         pipe._fill_pipeline(iter_)
-        assert(pipe._contexts[0][0].batch is not None)
+        assert pipe._contexts[0][0].batch is not None
 
     def test_hybrid_train_pipeline_context(self):
         iter_ = iter(self.data_loader)
