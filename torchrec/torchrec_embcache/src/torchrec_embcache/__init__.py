@@ -25,7 +25,7 @@ os.environ["LD_LIBRARY_PATH"] = f"{current_ld_path}:{current_dir}"
 from ctypes import cdll
 
 # 指定完整路径加载
-lib = cdll.LoadLibrary(f"{current_dir}/libglog.so.2")
+lib = cdll.LoadLibrary(f"{current_dir}/libglog.so")
 
 try:
     from embcache_pybind import (

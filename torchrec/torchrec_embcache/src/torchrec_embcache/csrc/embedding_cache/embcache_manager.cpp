@@ -22,8 +22,8 @@
 
 using namespace Embcache;
 
-EmbcacheManager::EmbcacheManager(const std::vector<EmbConfig>& embConfigs)
-    : embNum(embConfigs.size())
+EmbcacheManager::EmbcacheManager(const std::vector<EmbConfig>& embConfigs, bool needAccumulateOffset)
+    : embNum(embConfigs.size()), needAccumulateOffset(needAccumulateOffset)
 {
     for (const auto& config : embConfigs) {
         auto length = config.tableName.size();
@@ -110,15 +110,16 @@ SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std
         std::vector<int64_t>& swapinKeysi = std::get<SWAP_INFO_TUPLE_INDEX2>(tp);
         std::vector<int64_t>& swapinOffsi = std::get<SWAP_INFO_TUPLE_INDEX3>(tp);
         std::vector<int64_t>& batchOffsi = std::get<SWAP_INFO_TUPLE_INDEX4>(tp);
-
-        // 加上表外偏移
-        for (auto& off : swapoutOffsi) {
-            off += offPreSum;
+        if (needAccumulateOffset) {
+            // 加上表外偏移
+            for (auto& off : swapoutOffsi) {
+                off += offPreSum;
+            }
+            for (auto& off : swapinOffsi) {
+                off += offPreSum;
+            }
+            offPreSum += embConfigs[i].cacheSize;
         }
-        for (auto& off : swapinOffsi) {
-            off += offPreSum;
-        }
-        offPreSum += embConfigs[i].cacheSize;
 
         swapInfo.swapoutKeys.emplace_back(std::move(swapoutKeysi));
         swapInfo.swapinKeys.emplace_back(std::move(swapinKeysi));

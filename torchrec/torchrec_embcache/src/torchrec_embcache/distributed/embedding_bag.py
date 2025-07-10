@@ -220,6 +220,7 @@ class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
         batch_size: int,
         multi_hot_sizes: List[int], 
         is_weighted: bool = False,
+        need_accumulate_offset: bool = True,
         device: Optional[torch.device] = None,
         embedding_optimizer_cls: Type[torch.optim.Optimizer] = torch.optim.Adagrad,
     ) -> None:
@@ -227,6 +228,7 @@ class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
         torch._C._log_api_usage_once(f"torchrec.modules.{self.__class__.__name__}")
         self._is_weighted = is_weighted
         self.embedding_bags: nn.ModuleDict = nn.ModuleDict()
+        self.need_accumulate_offset: bool = need_accumulate_offset
         self._convert_2_cache_embedding_bag_config(tables)
         self._embedding_bag_configs = tables
         self._lengths_per_embedding: List[int] = []
@@ -487,7 +489,7 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
         self._memcpy_stream: Optional[torch_npu.npu.streams.Stream] = (
             torch_npu.npu.Stream(priority=-1)
         )
-        self._embcache_mgr = self._create_embcache_mgr()
+        self._embcache_mgr = self._create_embcache_mgr(module.need_accumulate_offset)
 
     @property
     def embcache_mgr(self):
@@ -584,7 +586,7 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
 
 
 
-    def _create_embcache_mgr(self) -> EmbcacheManager:
+    def _create_embcache_mgr(self, need_accumulate_offset: bool) -> EmbcacheManager:
         emb_configs = []
         for _, sharding_infos in self.sharding_type_to_sharding_infos.items():
             for sharding_info in sharding_infos:
@@ -632,4 +634,4 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
                         weight_init_stddev=emb_original_config.weight_init_stddev,
                     )
                 )
-        return EmbcacheManager(emb_configs)
+        return EmbcacheManager(emb_configs, need_accumulate_offset)

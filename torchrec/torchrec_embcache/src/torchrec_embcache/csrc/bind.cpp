@@ -18,7 +18,8 @@ using namespace Embcache;
 void AddEmbCacheManager(pybind11::module_& m)
 {
     py::class_<EmbcacheManager>(m, "EmbcacheManager")
-        .def(py::init<const std::vector<EmbConfig>&>(), py::arg("emb_configs"))
+        .def(py::init<const std::vector<EmbConfig>&, bool>(), py::arg("emb_configs"),
+             py::arg("need_accumulate_offset") = true)
         .def("compute_swap_info_async", &EmbcacheManager::ComputeSwapInfoAsync, py::arg("batch_keys"),
              py::arg("jagged_offs"))
         .def("save", &EmbcacheManager::Save, py::arg("path"), py::arg("rank"))
@@ -90,7 +91,9 @@ PYBIND11_MODULE(embcache_pybind, m)
         .def_readwrite("swapout_offs", &SwapInfo::swapoutOffs)
         .def_readwrite("swapin_keys", &SwapInfo::swapinKeys)
         .def_readwrite("swapin_offs", &SwapInfo::swapinOffs)
-        .def_readwrite("batch_offs", &SwapInfo::batchOffs);
+        .def_readwrite("batch_offs", &SwapInfo::batchOffs)
+        .def("get_swapin_keys_length", &SwapInfo::getSwapinKeysLength)
+        .def("get_swapout_keys_length", &SwapInfo::getSwapoutKeysLength);
 
     py::class_<SwapinTensor>(m, "SwapinTensor")
         .def(py::init<>())  // 默认构造函数

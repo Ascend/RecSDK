@@ -181,12 +181,14 @@ class EmbCacheEmbeddingCollection(EmbeddingCollection):
         batch_size: int,
         multi_hot_sizes: List[int],
         need_indices: bool = False,
+        need_accumulate_offset: bool = True,
         device: Optional[torch.device] = None,
         embedding_optimizer_cls: Type[torch.optim.Optimizer] = torch.optim.Adagrad,
     ) -> None:
         super().__init__(tables, device, need_indices)
         torch._C._log_api_usage_once(f"torchrec.modules.{self.__class__.__name__}")
         self.embeddings: nn.ModuleDict = nn.ModuleDict()
+        self.need_accumulate_offset: bool = need_accumulate_offset
         self._convert_2_cache_embedding_config(tables)
         self._embedding_configs = tables
         self._embedding_dim: int = -1
@@ -456,7 +458,7 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
         self._memcpy_stream: Optional[torch_npu.npu.streams.Stream] = (
             torch_npu.npu.Stream(priority=-1)
         )
-        self._embcache_mgr = self._create_embcache_mgr()
+        self._embcache_mgr = self._create_embcache_mgr(module.need_accumulate_offset)
         self._set_cache_mgr_for_ids_mapper()
         self._has_uninitialized_post_input_dist: bool = True
         self._post_input_dists: List[nn.Module] = []
@@ -632,7 +634,7 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
         )
         return aaec
 
-    def _create_embcache_mgr(self) -> EmbcacheManager:
+    def _create_embcache_mgr(self, need_accumulate_offset: bool) -> EmbcacheManager:
         emb_configs = []
         for _, sharding_infos in self.sharding_type_to_sharding_infos.items():
             for sharding_info in sharding_infos:
@@ -674,7 +676,7 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
                         admit_and_evict_config=self._build_admit_and_evict_config(emb_original_config),
                     )
                 )
-        return EmbcacheManager(emb_configs)
+        return EmbcacheManager(emb_configs, need_accumulate_offset)
 
     def create_table2hashmap(self, module):
         table2hashmap = {}

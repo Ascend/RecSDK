@@ -49,6 +49,26 @@ struct SwapInfo {
     std::vector<std::vector<int64_t>> swapinKeys;
     at::Tensor swapinOffs;
     at::Tensor batchOffs;
+    std::vector<int64_t> swapinKeysLength;
+    std::vector<int64_t> swapoutKeysLength;
+    const std::vector<int64_t>& getSwapinKeysLength()
+    {
+        if (swapinKeysLength.empty()) {
+            for (const auto& keys : swapinKeys) {
+                swapinKeysLength.emplace_back(keys.size());
+            }
+        }
+        return swapinKeysLength;
+    }
+    const std::vector<int64_t>& getSwapoutKeysLength()
+    {
+        if (swapoutKeysLength.empty()) {
+            for (const auto& keys : swapoutKeys) {
+                swapoutKeysLength.emplace_back(keys.size());
+            }
+        }
+        return swapoutKeysLength;
+    }
 };
 
 struct SwapinTensor {
@@ -59,7 +79,7 @@ struct SwapinTensor {
 
 class EmbcacheManager {
 public:
-    explicit EmbcacheManager(const std::vector<EmbConfig>& embConfigs);
+    explicit EmbcacheManager(const std::vector<EmbConfig>& embConfigs, bool needAccumulateOffset = true);
 
     AsyncTask<SwapInfo> ComputeSwapInfoAsync(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey);
 
@@ -136,6 +156,9 @@ private:
 
     bool enableFastHashMap = false;
     int32_t optimNum;
+
+    // 计算换入换出offset时是否要累加表外偏移. 逻辑上作为一个大表处理时设置为true，否则false
+    bool needAccumulateOffset = true;
 };
 }  // namespace Embcache
 #endif  // EMBEDDING_CACHE_EMBEDDING_MANAGER_H
