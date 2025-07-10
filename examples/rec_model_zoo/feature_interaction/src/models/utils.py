@@ -13,6 +13,28 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# MIT License
+#
+# Copyright (c) 2025 Huawei Technologies Co.,Ltd. All rights reserved.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 # ==============================================================================
 
 import re
@@ -22,10 +44,8 @@ import glob
 import shutil
 import random
 from typing import Dict, List, Tuple
-from datetime import date, timedelta, datetime
-import logging
+from datetime import date, timedelta
 
-import pytz
 import tensorflow as tf
 from npu_bridge.npu_init import NPUEstimator, NPURunConfig
 
@@ -165,28 +185,6 @@ def setup_environment(model_cfg, logger):
             logger.warning("Model directory does not exist, skipping deletion.")
 
     return tr_files, va_files, te_files, train_size
-
-
-def setup_logger(model_config, model_name):
-    logger = logging.getLogger()
-    log_level = getattr(logging, model_config.log_level.upper(), logging.DEBUG)
-    logger.setLevel(log_level)
-    console_hand = logging.StreamHandler()
-    formatter = logging.Formatter("%(levelname)s - %(asctime)s: %(message)s")
-    console_hand.setLevel(log_level)
-    console_hand.setFormatter(formatter)
-    logger.addHandler(console_hand)
-
-    # Define the timezone for China Standard Time
-    china_tz = pytz.timezone('Asia/Shanghai')
-    logfile_na = model_name + "_" + datetime.now(china_tz).strftime("%Y_%m_%d_%H_%M_%S") + ".log"
-    logfile_path = os.path.join("../log/criteo/", logfile_na)
-    fh = logging.FileHandler(logfile_path)
-    fh.setLevel(log_level)
-    fh.setFormatter(formatter)
-    logger.addHandler(fh)
-
-    return logger
 
 
 def build_estimator_spec(y_list, mode, labels, params, learning_rate):

@@ -6,14 +6,11 @@ import random
 from datetime import datetime, date, timedelta
 
 import tensorflow as tf
+import pytz
 
 import utils
-from utils import (
-    embedding_lookup_sparse_fake,
-    setup_logger,
-    build_optimizer,
-    main
-)
+from utils import embedding_lookup_sparse_fake, build_optimizer, main
+from examples.rec_model_zoo.common import setup_logger
 
 tf.compat.v1.set_random_seed(2024)
 random.seed(2024)
@@ -324,7 +321,8 @@ def model_fn(features, labels, mode, params):
 
 if __name__ == "__main__":
     model_config = define_flags()
-    logger, china_tz = setup_logger(model_config, MODEL_NAME)
+    logger = setup_logger(model_config, MODEL_NAME)
+    china_tz = pytz.timezone('Asia/Shanghai')
     if model_config.dt_dir == "":
         model_config.dt_dir = (date.today() + timedelta(-1)).strftime('%Y%m%d')
     model_config.model_dir = model_config.model_dir + datetime.now(china_tz).strftime('%Y%m%d')
