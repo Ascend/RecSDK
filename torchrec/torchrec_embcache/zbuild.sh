@@ -31,7 +31,7 @@ function build_whl_pkg_with_setup_func()
   rm -f src/torchrec_embcache/*.so*
   cp 3rdparty/securec/lib/libsecurec.so src/torchrec_embcache/
   cp cmake_build/install/embcache_pybind.so src/torchrec_embcache/
-  cp -a cmake_build/install/lib64/*.so* src/torchrec_embcache/   # for glog/gtest
+  cp -a cmake_build/install/lib*/*.so* src/torchrec_embcache/   # for glog/gtest
 
   python3 zsetup.py bdist_wheel
   check_ret_fn "python3 zsetup.py bdist_wheel"

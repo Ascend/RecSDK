@@ -3,7 +3,8 @@
 ## 1 拉取依赖
 
 ```bash
-git submodule update --init --recursive
+cd src/3rdparty
+bash produce_git_modules.sh
 ```
 
 ## 2编译+打whl包

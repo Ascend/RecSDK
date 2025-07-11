@@ -15,7 +15,6 @@ setup(
     },
     package_dir={"": "src"},
     packages=find_packages("src"),
-    install_requires=["torch"],
     python_requires=">=3.7",
     author="Huawei Inc",
     description="Embedding cache implementation",
