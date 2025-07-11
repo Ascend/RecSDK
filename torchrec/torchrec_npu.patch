@@ -698,7 +698,7 @@ index 33665883..dd9b2035 100644
 +        check(isinstance(values, torch.Tensor), "values should be torch.Tensor")
 +        check(isinstance(lengths, torch.Tensor), "lengths should be torch.Tensor")
 +
-+        check(values is not None and not is_out_range(values, 0, 2**31), "value should be [0, 2**31]")
++        check(values is not None and (values.is_floating_point() or not is_out_range(values, 0, 2**31)), "values should be int64 type in range [0, 2^31)")
 +        check(lengths is not None and not is_out_range(lengths, 0, MAX_LENGTH), f"value should be [0, {MAX_LENGTH}]")
 +        check(weights is None, "weights should be None")
 +        if offsets is not None:
@@ -716,7 +716,7 @@ index 33665883..dd9b2035 100644
 +        self.param_check()
 +    
 +    def param_check(self):
-+        if is_out_range(self._values, 0, 2**31):
++        if not self._values.is_floating_point() and is_out_range(self._values, 0, 2**31):
 +            raise ValueError(f"Element in value Tensor must be in range[0, {MAX_VALUE}]")
 +        if is_out_range(self._lengths, 0, MAX_LENGTH):
 +            raise ValueError(f"Element in value Tensor must be in range[0, {MAX_LENGTH}]")
