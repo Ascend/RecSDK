@@ -217,7 +217,17 @@ def parse_op_numpy_to_desc(dir_path: str, file_names: list) -> dict:
             op_desc,
         )
 
-    op_type_set = set([op_desc[0][OP_TYPE] for _, op_desc in op_desc_dict.items()])
+    op_type_set = set()
+    for _, op_desc in op_desc_dict.items():
+        try:
+            op_type = op_desc[0][OP_TYPE]
+        except KeyError:
+            op_type = None
+            logging.warning(
+                "Op desc may have been tampered, op_type not found in op_desc: %s",
+                op_desc,
+            )
+        op_type_set.add(op_type)
 
     if op_type_set == DYN_EXP_OP_LIST:
         use_dyn_exp = True

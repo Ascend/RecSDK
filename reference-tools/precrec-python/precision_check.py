@@ -317,15 +317,16 @@ def parsed_and_compare_data(
                         func_key,
                     )
                     compared_rank_id = rank_list[0]
-                    test_data.data_dict[step][rank_id][func_key] = test_data.data_dict[
-                        step
-                    ][compared_rank_id][func_key]
-                    golden_data.data_dict[step][rank_id][
-                        func_key
-                    ] = golden_data.data_dict[step][compared_rank_id][func_key]
-                    comparison_result_dict[step][rank_id][
-                        func_key
-                    ] = comparison_result_dict[step][compared_rank_id][func_key]
+                    # 使用 get 方法避免 KeyError
+                    test_data.data_dict[step][rank_id][func_key] = test_data.data_dict[step].get(
+                        compared_rank_id, {}
+                    ).get(func_key)
+                    golden_data.data_dict[step][rank_id][func_key] = golden_data.data_dict[step].get(
+                        compared_rank_id, {}
+                    ).get(func_key)
+                    comparison_result_dict[step][rank_id][func_key] = comparison_result_dict[step].get(
+                        compared_rank_id, {}
+                    ).get(func_key)
                     continue
                 test_parsed_data, golden_parsed_data = pared_single_data(
                     test_data, golden_data, func_key, step, rank_id

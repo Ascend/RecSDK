@@ -34,7 +34,7 @@ sparse_feat_len = [100]
 NUM = 0
 
 hot_zhanbi = sys.argv[1:][0]
-hot_zhanbi = float(hot_zhanbi)/10
+hot_zhanbi = float(hot_zhanbi) / 10
 logging.info("hot_ratio = %f", hot_zhanbi)
 
 tfpath = os.path.join("/home/insert/data", str(hot_zhanbi))
