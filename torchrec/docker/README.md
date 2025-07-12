@@ -38,10 +38,10 @@ docker run \
 -it \
 --name ${container_name} \
 --shm-size="300g" \
--v /etc/localtime:/etc/localtime \
+-v /etc/localtime:/etc/localtime:ro \
 -e ASCEND_VISIBLE_DEVICES=0-7 \
--v /etc/ascend_install.info:/etc/ascend_install.info \
--v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
+-v /etc/ascend_install.info:/etc/ascend_install.info:ro \
+-v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
 ${image_name} \
 /bin/bash
 ```
