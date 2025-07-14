@@ -121,7 +121,8 @@ public:
                             const std::string& loadItemName, int32_t embDim);
 
 private:
-    SwapInfo ComputeSwapInfo(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey);
+    SwapInfo ComputeSwapInfo(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey, 
+                             const std::vector<std::string>& tableNames = {});
 
     SwapinTensor EmbeddingLookup(const std::vector<std::vector<int64_t>>& swapinKeys);
 
@@ -143,9 +144,11 @@ private:
                                      std::ofstream& fileMomentum2SliceAttr, size_t count);
     void SaveFeatureCount(int32_t tableIndex, const std::string& filePrefix, const std::vector<int64_t>& saveKeys);
     void SaveFeatureTimestamp(int32_t tableIndex, const std::string& filePrefix);
+    int32_t GetEmbTableIndex(const std::string& tableName);
 
 private:
     int32_t embNum;
+    std::map<std::string, int32_t> embTableIndexMap_;
     std::vector<EmbConfig> embConfigs;
     std::vector<SwapManager> swapManagers;
     std::vector<std::unique_ptr<EmbTable>> embeddingTables;

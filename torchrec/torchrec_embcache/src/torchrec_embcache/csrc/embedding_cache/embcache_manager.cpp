@@ -41,6 +41,7 @@ EmbcacheManager::EmbcacheManager(const std::vector<EmbConfig>& embConfigs, bool 
     for (int32_t i = 0; i < embNum; i++) {
         LOG(INFO) << "The tableName:" << embConfigs[i].tableName << ", table index:" << i
                   << ", cacheSize is:" << embConfigs[i].cacheSize;
+        embTableIndexMap_[embConfigs[i].tableName] = i;
         int64_t memStartOffset = embConfigs[i].admitAndEvictConfig.IsAdmitEnabled() ? 1 : 0;
         swapManagers.emplace_back(embConfigs[i].cacheSize, memStartOffset);
 
@@ -63,6 +64,13 @@ EmbcacheManager::EmbcacheManager(const std::vector<EmbConfig>& embConfigs, bool 
     }
 }
 
+int32_t EmbcacheManager::GetEmbTableIndex(const std::string& tableName)
+{
+    auto it = embTableIndexMap_.find(tableName);
+    TORCH_CHECK(it != embTableIndexMap_.end(), "The table name:" + tableName + " is not found");
+    return it->second;
+}
+
 bool EmbcacheManager::EnableFastHashMap()
 {
     char* enableFastHashMapStr = getenv("ENABLE_FAST_HASHMAP");
@@ -81,12 +89,15 @@ bool EmbcacheManager::EnableFastHashMap()
     return false;
 }
 
-SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey)
+SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey,
+                                          const std::vector<std::string>& tableNames = {})
 {
     TimeCost getSwapInfoTC;
 
     TORCH_CHECK(batchKeys.is_contiguous(), "batchKeys must be contiguous")
     TORCH_CHECK(batchKeys.dtype() == torch::kInt64, "batchKeys must be of type int64_t")
+    std::vector<std::string>& curTableNames = tableNames.empty() ? embTableIndexMap_.keys() : tableNames;
+    TORCH_CHECK(curTableNames.size() == offsetPerKey.size(), "tableNames size must be equal to offsetPerKey size");
 
     auto* keyPtr = batchKeys.data_ptr<int64_t>();
     int64_t keyNum = batchKeys.numel();
@@ -96,14 +107,15 @@ SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std
     std::vector<int64_t> swapinOffs;
     std::vector<int64_t> batchOffs;
     SwapInfo swapInfo;
-    for (int64_t i = 0; i < embNum; i++) {
-        if (embConfigs[i].admitAndEvictConfig.IsAdmitEnabled()) {
-            featureFilters[i].CountFilter(keyPtr, offsetPerKey[i], offsetPerKey[i + 1]);
+    for (int64_t i = 0; i < curTableNames.size(); i++) {
+        int64_t idx = GetEmbTableIndex(curTableNames[i]);
+        if (embConfigs[idx].admitAndEvictConfig.IsAdmitEnabled()) {
+            featureFilters[idx].CountFilter(keyPtr, offsetPerKey[i], offsetPerKey[i + 1]);
         }
 
         // 取出每个表的 key
         std::vector<int64_t> batchKeysVec(keyPtr + offsetPerKey[i], keyPtr + offsetPerKey[i + 1]);
-        auto tp = swapManagers[i].ComputeSwapInfo(batchKeysVec);
+        auto tp = swapManagers[idx].ComputeSwapInfo(batchKeysVec);
 
         std::vector<int64_t>& swapoutKeysi = std::get<SWAP_INFO_TUPLE_INDEX0>(tp);
         std::vector<int64_t>& swapoutOffsi = std::get<SWAP_INFO_TUPLE_INDEX1>(tp);
@@ -118,7 +130,7 @@ SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std
             for (auto& off : swapinOffsi) {
                 off += offPreSum;
             }
-            offPreSum += embConfigs[i].cacheSize;
+            offPreSum += embConfigs[idx].cacheSize;
         }
 
         swapInfo.swapoutKeys.emplace_back(std::move(swapoutKeysi));
@@ -151,7 +163,8 @@ AsyncTask<SwapInfo> EmbcacheManager::ComputeSwapInfoAsync(const at::Tensor& batc
     return AsyncTask<SwapInfo>([this, batchKeys, offsetPerKey]() { return ComputeSwapInfo(batchKeys, offsetPerKey); });
 }
 
-SwapinTensor EmbcacheManager::EmbeddingLookup(const std::vector<std::vector<int64_t>>& swapinKeys)
+SwapinTensor EmbcacheManager::EmbeddingLookup(const std::vector<std::vector<int64_t>>& swapinKeys,
+                                              const std::vector<std::string>& tableNames = {})
 {
     TimeCost embeddingLookupTC;
 
@@ -171,14 +184,19 @@ SwapinTensor EmbcacheManager::EmbeddingLookup(const std::vector<std::vector<int6
     for (int32_t i = 0; i < optimNum; i++) {
         swapinTensor.swapinOptims.emplace_back(at::empty({embsSize}, floatPinnedOpt));
     }
+
+    std::vector<std::string>& curTableNames = tableNames.empty() ? embTableIndexMap_.keys() : tableNames;
+    TORCH_CHECK(curTableNames.size() == swapinKeys.size(), "tableNames size must be equal to swapinKeys size");
+
     std::vector<float*> swapinOptimsPtr(optimNum);
     for (uint64_t i = 0; i < swapinKeys.size(); i++) {
         for (int32_t j = 0; j < optimNum; j++) {
             swapinOptimsPtr[j] = swapinTensor.swapinOptims[j].data_ptr<float>() + jaggedOffsPtr[i];
         }
 
-        embeddingTables[i]->FindOrInsert(swapinKeys[i], swapinTensor.swapinEmbs.data_ptr<float>() + jaggedOffsPtr[i],
-                                         swapinOptimsPtr);
+        int32_t idx = GetEmbTableIndex(curTableNames[i]);
+        embeddingTables[idx]->FindOrInsert(swapinKeys[i], swapinTensor.swapinEmbs.data_ptr<float>() + jaggedOffsPtr[i],
+                                           swapinOptimsPtr);
     }
 
     LOG(INFO) << "The embeddingLookupTC(ms):" << embeddingLookupTC.ElapsedMS();
@@ -191,7 +209,8 @@ AsyncTask<SwapinTensor> EmbcacheManager::EmbeddingLookupAsync(const SwapInfo& sw
 }
 
 void EmbcacheManager::EmbeddingUpdate(const std::vector<std::vector<int64_t>>& swapoutKeys,
-                                      const at::Tensor& swapoutEmbs, const std::vector<at::Tensor>& swapoutOptims)
+                                      const at::Tensor& swapoutEmbs, const std::vector<at::Tensor>& swapoutOptims,
+                                      const std::vector<std::string>& tableNames = {})
 {
     TimeCost embeddingUpdateTC;
     for (auto& embedConfig : embConfigs) {
@@ -203,6 +222,9 @@ void EmbcacheManager::EmbeddingUpdate(const std::vector<std::vector<int64_t>>& s
     }
     TORCH_CHECK(swapoutEmbs.dtype() == torch::kFloat32)
 
+    std::vector<std::string>& curTableNames = tableNames.empty() ? embTableIndexMap_.keys() : tableNames;
+    TORCH_CHECK(curTableNames.size() == swapoutKeys.size(), "tableNames size must be equal to swapoutKeys size");
+
     auto* swapoutEmbsPtr = swapoutEmbs.data_ptr<float>();
     int64_t jaggedOff = 0;
     std::vector<float*> swapoutOptimPtrs(swapoutOptims.size());
@@ -211,8 +233,9 @@ void EmbcacheManager::EmbeddingUpdate(const std::vector<std::vector<int64_t>>& s
             swapoutOptimPtrs[j] = swapoutOptims[j].data_ptr<float>() + jaggedOff;
         }
 
-        embeddingTables[i]->InsertOrAssign(swapoutKeys[i], swapoutEmbsPtr + jaggedOff, swapoutOptimPtrs);
-        jaggedOff += swapoutKeys[i].size() * embConfigs[i].embDim;
+        int32_t idx = GetEmbTableIndex(curTableNames[i]);
+        embeddingTables[idx]->InsertOrAssign(swapoutKeys[i], swapoutEmbsPtr + jaggedOff, swapoutOptimPtrs);
+        jaggedOff += swapoutKeys[i].size() * embConfigs[idx].embDim;
     }
 
     LOG(INFO) << "The embeddingUpdateTC(ms):" << embeddingUpdateTC.ElapsedMS();
@@ -226,15 +249,19 @@ void EmbcacheManager::EmbeddingUpdate(const std::vector<std::vector<int64_t>>& s
 // input dist 之前，调用 RecordTimestamp. 后面淘汰时，要判断key是否在当前卡， 当前只能记录到当前卡上原始batch中的key
 // timestamp
 void EmbcacheManager::RecordTimestamp(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey,
-                                      const at::Tensor& timestamps)
+                                      const at::Tensor& timestamps, const std::vector<std::string>& tableNames = {})
 {
     LOG(INFO) << "Start invoke mgmt RecordTimestamp";
     TimeCost recordTimestampTC;
     const auto* keyPtr = batchKeys.data_ptr<int64_t>();
     const auto* timestampsPtr = timestamps.data_ptr<int64_t>();
+    std::vector<std::string>& curTableNames = tableNames.empty() ? embTableIndexMap_.keys() : tableNames;
+    TORCH_CHECK(curTableNames.size() == offsetPerKey.size(), "tableNames size must be equal to offsetPerKey size");
+
     for (int64_t i = 0; i < embNum; ++i) {
-        if (embConfigs[i].admitAndEvictConfig.IsEvictEnabled()) {
-            featureFilters[i].RecordTimestamp(keyPtr, offsetPerKey[i], offsetPerKey[i + 1], timestampsPtr);
+        int32_t idx = GetEmbTableIndex(curTableNames[i]);
+        if (embConfigs[idx].admitAndEvictConfig.IsEvictEnabled()) {
+            featureFilters[idx].RecordTimestamp(keyPtr, offsetPerKey[i], offsetPerKey[i + 1], timestampsPtr);
         }
     }
     LOG(INFO) << "The recordTimestampTC(ms):" << recordTimestampTC.ElapsedMS();
