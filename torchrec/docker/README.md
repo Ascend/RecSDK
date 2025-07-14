@@ -36,13 +36,13 @@ container_name=$1
 image_name=$2
 docker run \
 -it \
---name ${container_name} \
+--name "${container_name}" \
 --shm-size="300g" \
 -v /etc/localtime:/etc/localtime:ro \
 -e ASCEND_VISIBLE_DEVICES=0-7 \
 -v /etc/ascend_install.info:/etc/ascend_install.info:ro \
 -v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
-${image_name} \
+"${image_name}" \
 /bin/bash
 ```
 执行如下命令新建容器：
