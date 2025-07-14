@@ -521,7 +521,7 @@ class HybridShardedEmbeddingBagCollection(
 
         if ctx.variable_batch_per_feature:
             if ctx.inverse_indices is None:
-                raise (
+                raise ValueError(
                     "inverse indices must be provided from KJT if using variable batch size per feature."
                 )
             awaitable = VariableBatchEmbeddingBagCollectionAwaitable(
