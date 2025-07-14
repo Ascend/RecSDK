@@ -17,6 +17,7 @@
 
 from typing import List, Union
 import copy
+import csv
 import os
 import shutil
 import inspect
@@ -24,9 +25,28 @@ import inspect
 import toml
 import torch
 import torch.utils.benchmark as benchmark
+import torch_npu
 
 from utils.logger import default_logger
 from pattern.constant import TORCHINDUCTOR_CACHE_ENV
+
+STEP_COL_NAME = 'Step'
+OP_TIME_COL_NAME = 'Computing'
+PROF_STEP_DATA_FILE_NAME = "step_trace_time.csv"
+
+g_prof_config = torch_npu.profiler._ExperimentalConfig(
+    export_type=[
+        torch_npu.profiler.ExportType.Text,
+        torch_npu.profiler.ExportType.Db
+        ],
+    profiler_level=torch_npu.profiler.ProfilerLevel.Level0,
+    msprof_tx=False,
+    aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
+    l2_cache=False,
+    op_attr=False,
+    data_simplification=False,
+    record_op_args=False,
+    gc_detect_threshold=None)
 
 
 def load_config():
@@ -87,6 +107,127 @@ def perform_test(model: torch.nn.Module, input_list: list):
         raise ValueError("mode must be 'precision' or 'performance'")
 
 
+def log_avg_time(config: dict, module_name: str, avg_time: float):
+    """
+    打印平均运行时间。
+
+    参数:
+    - config (dict): 包含模型配置信息的字典，包括设备信息、模式等。
+    - avg_time (float): 模型平均耗时。
+    """
+    default_logger.info(
+        "[{}] avg time over {} with {} mode: {}".format(
+            module_name,
+            config["model_config"]["device"],
+            config["model_config"]["mode"],
+            avg_time
+        )
+    )
+
+
+def find_file(directory: str, filename: str) -> str:
+    """
+    指定目录下递归搜索文件路径。
+
+    参数:
+    - directory (str): 需要递归搜索的目录路径
+    - filename (str): 待搜索的文件名
+    """
+    for root, _, files in os.walk(directory):
+        if filename in files:
+            return os.path.join(root, filename)
+    return ""
+
+
+def get_op_avg_time(prof_output_dir: str, warmup_step_num: int, exec_step_num: int) -> float:
+    """
+    从指定的目录中读取算子耗时数据，并计算平均耗时。
+
+    参数:
+    - prof_output_dir (str): profile输出的目录
+    - warmup_step_num (int): warmup执行的次数
+    - exec_step_num (int): 待求平均的执行耗时
+
+    返回:
+    - float: 算子平均耗时
+    """
+    row_num = 0
+    op_time_sum = 0
+    prof_file = find_file(prof_output_dir, PROF_STEP_DATA_FILE_NAME)
+    if prof_file == "":
+        raise ValueError(f"未找到文件：{PROF_STEP_DATA_FILE_NAME}，profile数据生成异常")
+
+    default_logger.info(f"找到prof文件路径：{prof_file}")
+    # 读取CSV文件
+    with open(prof_file, 'r') as file:
+        # 创建CSV读取器
+        csv_reader = csv.DictReader(file)
+        # 读取数据行
+        for row in csv_reader:
+            if (int(row[STEP_COL_NAME]) < warmup_step_num):
+                continue
+            row_num += 1 # 统计行数
+            op_time_sum += float(row[OP_TIME_COL_NAME]) # 累加算子耗时
+
+        if (row_num != exec_step_num):
+            raise ValueError(f"step数量：{exec_step_num}，实际统计数量：{row_num}，profile数据生成异常")
+
+        return op_time_sum / row_num
+
+
+def performance_test_on_npu(model: torch.nn.Module, input_list: list, config: dict, module_name: str):
+    """
+    测试模型在npu上的性能。
+
+    此函数重点关注npu侧算子运行的总时间。
+
+    参数:
+    - model (torch.nn.Module): 需要测试性能的模型。
+    - input_list (list): 模型的输入数据列表。
+    - config (dict): 包含模型配置信息的字典，包括设备信息、模式等。
+
+    返回:
+    无返回值，直接打印模型在指定设备和模式下的平均运行时间。
+    """
+    # 切换为评估模式
+    model.eval()
+    with torch.no_grad():
+        model(*input_list) # 提前跑一次，确保模型能正常执行，否则导致profiler异常
+
+    warmup_step_num = int(config["test_config"]["warmup_step_num"])
+    exec_step_num = int(config["test_config"]["exec_step_num"])
+    prof_output_dir = os.path.join(config["test_config"]["prof_dir"], module_name + ".prof")
+    prof = torch_npu.profiler.profile(
+        activities=[
+            torch_npu.profiler.ProfilerActivity.CPU,
+            torch_npu.profiler.ProfilerActivity.NPU
+            ],
+        # wait必须设置为0，repeat必须设置为1，使profiler期望执行次数与实际执行次数匹配；
+        # 否则profiler对象无法正常析构，再次创建profiler将导致功能异常
+        schedule=torch_npu.profiler.schedule(wait=0, warmup=warmup_step_num, active=exec_step_num, repeat=1),
+        on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(prof_output_dir),
+        record_shapes=False,
+        profile_memory=False,
+        with_stack=False,
+        with_modules=False,
+        with_flops=False,
+        experimental_config=g_prof_config)
+
+    # 执行推理
+    all_step_num = warmup_step_num + exec_step_num
+    prof.start()
+    with torch.no_grad():
+        for _ in range(all_step_num):
+            model(*input_list)
+            prof.step()
+    prof.stop()
+
+    # 读取算子耗时
+    op_avg_time = get_op_avg_time(prof_output_dir, warmup_step_num, exec_step_num)
+    # 打印平均运行时间
+    log_avg_time(config, module_name, op_avg_time)
+
+
 def performance_test(model: torch.nn.Module, input_list: list, config: dict):
     """
     测试给定模型的性能。
@@ -126,6 +267,13 @@ def performance_test(model: torch.nn.Module, input_list: list, config: dict):
         # 如果模式不是'graph'或'eager'，抛出异常
         raise ValueError("mode must be 'graph' or 'eager'")
 
+    module_name = get_caller_module_name()
+
+    # npu采用算子耗时的统计方法，与其他硬件不同
+    if (config["model_config"]["device"] == "npu"):
+        performance_test_on_npu(model, input_list, config, module_name)
+        return
+
     # 准备benchmark需要的全局变量
     timer_globals = {
         "model": model,
@@ -134,18 +282,12 @@ def performance_test(model: torch.nn.Module, input_list: list, config: dict):
 
     # 创建benchmark计时器
     t0 = benchmark.Timer(stmt="model(*input_list)", globals=timer_globals)
+    # 预热
+    t0.timeit(config["test_config"]["warmup_step_num"])
     # 运行计时测试
-    m = t0.timeit(100)
+    m = t0.timeit(config["test_config"]["exec_step_num"])
     # 打印平均运行时间
-    module_name = get_caller_module_name()
-    default_logger.info(
-        "[{}] avg time over {} with {} mode: {}".format(
-            module_name,
-            config["model_config"]["device"],
-            config["model_config"]["mode"],
-            m.mean,
-        )
-    )
+    log_avg_time(config, module_name, m.mean)
 
 
 def precision_test(model_list: List[torch.nn.Module], input_list: list, config: dict):
