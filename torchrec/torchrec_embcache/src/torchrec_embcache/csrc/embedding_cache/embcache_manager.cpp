@@ -91,7 +91,7 @@ SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std
     TORCH_CHECK(batchKeys.dtype() == torch::kInt64, "batchKeys must be of type int64_t")
     const std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
     TORCH_CHECK(curTableIndices.size() + 1 == offsetPerKey.size(),
-                "tableIndices size must be equal to offsetPerKey size + 1");
+                "tableIndices size+1 must be equal to offsetPerKey size");
 
     auto* keyPtr = batchKeys.data_ptr<int64_t>();
     int64_t keyNum = batchKeys.numel();
@@ -183,8 +183,8 @@ SwapinTensor EmbcacheManager::EmbeddingLookup(const std::vector<std::vector<int6
     }
 
     const std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
-    TORCH_CHECK(curTableIndices.size() + 1 == swapinKeys.size(),
-                "tableIndices size must be equal to swapinKeys size + 1");
+    TORCH_CHECK(curTableIndices.size() == swapinKeys.size(),
+                "tableIndices size must be equal to swapinKeys size");
 
     std::vector<float*> swapinOptimsPtr(optimNum);
     for (uint64_t i = 0; i < swapinKeys.size(); i++) {
@@ -224,8 +224,8 @@ void EmbcacheManager::EmbeddingUpdate(const std::vector<std::vector<int64_t>>& s
     TORCH_CHECK(swapoutEmbs.dtype() == torch::kFloat32)
 
     const std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
-    TORCH_CHECK(curTableIndices.size() + 1 == swapoutKeys.size(),
-                "tableIndices size must be equal to swapoutKeys size + 1");
+    TORCH_CHECK(curTableIndices.size() == swapoutKeys.size(),
+                "tableIndices size must be equal to swapoutKeys size");
 
     auto* swapoutEmbsPtr = swapoutEmbs.data_ptr<float>();
     int64_t jaggedOff = 0;
@@ -259,7 +259,7 @@ void EmbcacheManager::RecordTimestamp(const at::Tensor& batchKeys, const std::ve
     const auto* timestampsPtr = timestamps.data_ptr<int64_t>();
     const std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
     TORCH_CHECK(curTableIndices.size() + 1 == offsetPerKey.size(),
-                "tableIndices size must be equal to offsetPerKey size + 1");
+                "tableIndices size+1 must be equal to offsetPerKey size");
 
     for (int64_t i = 0; i < embNum; ++i) {
         int32_t idx = curTableIndices[i];
