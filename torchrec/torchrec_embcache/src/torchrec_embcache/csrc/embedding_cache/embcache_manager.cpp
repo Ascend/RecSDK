@@ -83,13 +83,13 @@ bool EmbcacheManager::EnableFastHashMap()
 }
 
 SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey,
-                                          const std::vector<int32_t>& tableIndices = {})
+                                          const std::vector<int32_t>& tableIndices)
 {
     TimeCost getSwapInfoTC;
 
     TORCH_CHECK(batchKeys.is_contiguous(), "batchKeys must be contiguous")
     TORCH_CHECK(batchKeys.dtype() == torch::kInt64, "batchKeys must be of type int64_t")
-    std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
+    const std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
     TORCH_CHECK(curTableIndices.size() == offsetPerKey.size(), "tableIndices size must be equal to offsetPerKey size");
 
     auto* keyPtr = batchKeys.data_ptr<int64_t>();
@@ -151,13 +151,16 @@ SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std
 }
 
 AsyncTask<SwapInfo> EmbcacheManager::ComputeSwapInfoAsync(const at::Tensor& batchKeys,
-                                                          const std::vector<int64_t>& offsetPerKey)
+                                                          const std::vector<int64_t>& offsetPerKey,
+                                                          const std::vector<int32_t>& tableIndices)
 {
-    return AsyncTask<SwapInfo>([this, batchKeys, offsetPerKey]() { return ComputeSwapInfo(batchKeys, offsetPerKey); });
+    return AsyncTask<SwapInfo>([this, batchKeys, offsetPerKey, tableIndices]() {
+        return ComputeSwapInfo(batchKeys, offsetPerKey, tableIndices);
+    });
 }
 
 SwapinTensor EmbcacheManager::EmbeddingLookup(const std::vector<std::vector<int64_t>>& swapinKeys,
-                                              const std::vector<int32_t>& tableIndices = {})
+                                              const std::vector<int32_t>& tableIndices)
 {
     TimeCost embeddingLookupTC;
 
@@ -178,7 +181,7 @@ SwapinTensor EmbcacheManager::EmbeddingLookup(const std::vector<std::vector<int6
         swapinTensor.swapinOptims.emplace_back(at::empty({embsSize}, floatPinnedOpt));
     }
 
-    std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
+    const std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
     TORCH_CHECK(curTableIndices.size() == swapinKeys.size(), "tableIndices size must be equal to swapinKeys size");
 
     std::vector<float*> swapinOptimsPtr(optimNum);
@@ -196,14 +199,17 @@ SwapinTensor EmbcacheManager::EmbeddingLookup(const std::vector<std::vector<int6
     return swapinTensor;
 }
 
-AsyncTask<SwapinTensor> EmbcacheManager::EmbeddingLookupAsync(const SwapInfo& swapInfo)
+AsyncTask<SwapinTensor> EmbcacheManager::EmbeddingLookupAsync(const SwapInfo& swapInfo,
+                                                              const std::vector<int32_t>& tableIndices)
 {
-    return AsyncTask<SwapinTensor>([this, swapinKeys = swapInfo.swapinKeys]() { return EmbeddingLookup(swapinKeys); });
+    return AsyncTask<SwapinTensor>([this, swapinKeys = swapInfo.swapinKeys, tableIndices]() {
+        return EmbeddingLookup(swapinKeys, tableIndices);
+    });
 }
 
 void EmbcacheManager::EmbeddingUpdate(const std::vector<std::vector<int64_t>>& swapoutKeys,
                                       const at::Tensor& swapoutEmbs, const std::vector<at::Tensor>& swapoutOptims,
-                                      const std::vector<int32_t>& tableIndices = {})
+                                      const std::vector<int32_t>& tableIndices)
 {
     TimeCost embeddingUpdateTC;
     for (auto& embedConfig : embConfigs) {
@@ -215,7 +221,7 @@ void EmbcacheManager::EmbeddingUpdate(const std::vector<std::vector<int64_t>>& s
     }
     TORCH_CHECK(swapoutEmbs.dtype() == torch::kFloat32)
 
-    std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
+    const std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
     TORCH_CHECK(curTableIndices.size() == swapoutKeys.size(), "tableIndices size must be equal to swapoutKeys size");
 
     auto* swapoutEmbsPtr = swapoutEmbs.data_ptr<float>();
@@ -242,13 +248,13 @@ void EmbcacheManager::EmbeddingUpdate(const std::vector<std::vector<int64_t>>& s
 // input dist 之前，调用 RecordTimestamp. 后面淘汰时，要判断key是否在当前卡， 当前只能记录到当前卡上原始batch中的key
 // timestamp
 void EmbcacheManager::RecordTimestamp(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey,
-                                      const at::Tensor& timestamps, const std::vector<int32_t>& tableIndices = {})
+                                      const at::Tensor& timestamps, const std::vector<int32_t>& tableIndices)
 {
     LOG(INFO) << "Start invoke mgmt RecordTimestamp";
     TimeCost recordTimestampTC;
     const auto* keyPtr = batchKeys.data_ptr<int64_t>();
     const auto* timestampsPtr = timestamps.data_ptr<int64_t>();
-    std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
+    const std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
     TORCH_CHECK(curTableIndices.size() == offsetPerKey.size(), "tableIndices size must be equal to offsetPerKey size");
 
     for (int64_t i = 0; i < embNum; ++i) {
@@ -293,10 +299,11 @@ void EmbcacheManager::RecordEmbeddingUpdateTimes()
 }
 
 AsyncTask<void> EmbcacheManager::EmbeddingUpdateAsync(const SwapInfo& swapInfo, const at::Tensor& swapoutEmbs,
-                                                      const std::vector<at::Tensor>& swapoutOptims)
+                                                      const std::vector<at::Tensor>& swapoutOptims,
+                                                      const std::vector<int32_t>& tableIndices)
 {
-    return AsyncTask<void>([this, swapoutKeys = swapInfo.swapoutKeys, swapoutEmbs, swapoutOptims]() {
-        EmbeddingUpdate(swapoutKeys, swapoutEmbs, swapoutOptims);
+    return AsyncTask<void>([this, swapoutKeys = swapInfo.swapoutKeys, swapoutEmbs, swapoutOptims, tableIndices]() {
+        EmbeddingUpdate(swapoutKeys, swapoutEmbs, swapoutOptims, tableIndices);
     });
 }
 
