@@ -90,14 +90,14 @@ bool EmbcacheManager::EnableFastHashMap()
 }
 
 SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey,
-                                          const std::vector<std::string>& tableNames = {})
+                                          const std::vector<int32_t>& tableIndices = {})
 {
     TimeCost getSwapInfoTC;
 
     TORCH_CHECK(batchKeys.is_contiguous(), "batchKeys must be contiguous")
     TORCH_CHECK(batchKeys.dtype() == torch::kInt64, "batchKeys must be of type int64_t")
-    std::vector<std::string>& curTableNames = tableNames.empty() ? embTableIndexMap_.keys() : tableNames;
-    TORCH_CHECK(curTableNames.size() == offsetPerKey.size(), "tableNames size must be equal to offsetPerKey size");
+    std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndexMap_.keys() : tableIndices;
+    TORCH_CHECK(curTableIndices.size() == offsetPerKey.size(), "tableIndices size must be equal to offsetPerKey size");
 
     auto* keyPtr = batchKeys.data_ptr<int64_t>();
     int64_t keyNum = batchKeys.numel();
@@ -107,8 +107,8 @@ SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std
     std::vector<int64_t> swapinOffs;
     std::vector<int64_t> batchOffs;
     SwapInfo swapInfo;
-    for (int64_t i = 0; i < curTableNames.size(); i++) {
-        int64_t idx = GetEmbTableIndex(curTableNames[i]);
+    for (int64_t i = 0; i < curTableIndices.size(); i++) {
+        int64_t idx = curTableIndices[i];
         if (embConfigs[idx].admitAndEvictConfig.IsAdmitEnabled()) {
             featureFilters[idx].CountFilter(keyPtr, offsetPerKey[i], offsetPerKey[i + 1]);
         }
@@ -164,7 +164,7 @@ AsyncTask<SwapInfo> EmbcacheManager::ComputeSwapInfoAsync(const at::Tensor& batc
 }
 
 SwapinTensor EmbcacheManager::EmbeddingLookup(const std::vector<std::vector<int64_t>>& swapinKeys,
-                                              const std::vector<std::string>& tableNames = {})
+                                              const std::vector<int32_t>& tableIndices = {})
 {
     TimeCost embeddingLookupTC;
 
@@ -185,8 +185,8 @@ SwapinTensor EmbcacheManager::EmbeddingLookup(const std::vector<std::vector<int6
         swapinTensor.swapinOptims.emplace_back(at::empty({embsSize}, floatPinnedOpt));
     }
 
-    std::vector<std::string>& curTableNames = tableNames.empty() ? embTableIndexMap_.keys() : tableNames;
-    TORCH_CHECK(curTableNames.size() == swapinKeys.size(), "tableNames size must be equal to swapinKeys size");
+    std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndexMap_.keys() : tableIndices;
+    TORCH_CHECK(curTableIndices.size() == swapinKeys.size(), "tableIndices size must be equal to swapinKeys size");
 
     std::vector<float*> swapinOptimsPtr(optimNum);
     for (uint64_t i = 0; i < swapinKeys.size(); i++) {
@@ -194,7 +194,7 @@ SwapinTensor EmbcacheManager::EmbeddingLookup(const std::vector<std::vector<int6
             swapinOptimsPtr[j] = swapinTensor.swapinOptims[j].data_ptr<float>() + jaggedOffsPtr[i];
         }
 
-        int32_t idx = GetEmbTableIndex(curTableNames[i]);
+        int32_t idx = curTableIndices[i];
         embeddingTables[idx]->FindOrInsert(swapinKeys[i], swapinTensor.swapinEmbs.data_ptr<float>() + jaggedOffsPtr[i],
                                            swapinOptimsPtr);
     }
@@ -210,7 +210,7 @@ AsyncTask<SwapinTensor> EmbcacheManager::EmbeddingLookupAsync(const SwapInfo& sw
 
 void EmbcacheManager::EmbeddingUpdate(const std::vector<std::vector<int64_t>>& swapoutKeys,
                                       const at::Tensor& swapoutEmbs, const std::vector<at::Tensor>& swapoutOptims,
-                                      const std::vector<std::string>& tableNames = {})
+                                      const std::vector<int32_t>& tableIndices = {})
 {
     TimeCost embeddingUpdateTC;
     for (auto& embedConfig : embConfigs) {
@@ -222,8 +222,8 @@ void EmbcacheManager::EmbeddingUpdate(const std::vector<std::vector<int64_t>>& s
     }
     TORCH_CHECK(swapoutEmbs.dtype() == torch::kFloat32)
 
-    std::vector<std::string>& curTableNames = tableNames.empty() ? embTableIndexMap_.keys() : tableNames;
-    TORCH_CHECK(curTableNames.size() == swapoutKeys.size(), "tableNames size must be equal to swapoutKeys size");
+    std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndexMap_.keys() : tableIndices;
+    TORCH_CHECK(curTableIndices.size() == swapoutKeys.size(), "tableIndices size must be equal to swapoutKeys size");
 
     auto* swapoutEmbsPtr = swapoutEmbs.data_ptr<float>();
     int64_t jaggedOff = 0;
@@ -233,7 +233,7 @@ void EmbcacheManager::EmbeddingUpdate(const std::vector<std::vector<int64_t>>& s
             swapoutOptimPtrs[j] = swapoutOptims[j].data_ptr<float>() + jaggedOff;
         }
 
-        int32_t idx = GetEmbTableIndex(curTableNames[i]);
+        int32_t idx = curTableIndices[i];
         embeddingTables[idx]->InsertOrAssign(swapoutKeys[i], swapoutEmbsPtr + jaggedOff, swapoutOptimPtrs);
         jaggedOff += swapoutKeys[i].size() * embConfigs[idx].embDim;
     }
@@ -249,17 +249,17 @@ void EmbcacheManager::EmbeddingUpdate(const std::vector<std::vector<int64_t>>& s
 // input dist 之前，调用 RecordTimestamp. 后面淘汰时，要判断key是否在当前卡， 当前只能记录到当前卡上原始batch中的key
 // timestamp
 void EmbcacheManager::RecordTimestamp(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey,
-                                      const at::Tensor& timestamps, const std::vector<std::string>& tableNames = {})
+                                      const at::Tensor& timestamps, const std::vector<int32_t>& tableIndices = {})
 {
     LOG(INFO) << "Start invoke mgmt RecordTimestamp";
     TimeCost recordTimestampTC;
     const auto* keyPtr = batchKeys.data_ptr<int64_t>();
     const auto* timestampsPtr = timestamps.data_ptr<int64_t>();
-    std::vector<std::string>& curTableNames = tableNames.empty() ? embTableIndexMap_.keys() : tableNames;
-    TORCH_CHECK(curTableNames.size() == offsetPerKey.size(), "tableNames size must be equal to offsetPerKey size");
+    std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndexMap_.keys() : tableIndices;
+    TORCH_CHECK(curTableIndices.size() == offsetPerKey.size(), "tableIndices size must be equal to offsetPerKey size");
 
     for (int64_t i = 0; i < embNum; ++i) {
-        int32_t idx = GetEmbTableIndex(curTableNames[i]);
+        int32_t idx = curTableIndices[i];
         if (embConfigs[idx].admitAndEvictConfig.IsEvictEnabled()) {
             featureFilters[idx].RecordTimestamp(keyPtr, offsetPerKey[i], offsetPerKey[i + 1], timestampsPtr);
         }
