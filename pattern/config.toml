@@ -10,3 +10,6 @@ compile_fullgraph = true
  mode = "performance" # 测试性能还是精度，可选项["performance", "precision"]
  precision.golden = "cpu" # 精度基线，可选项["cpu", "npu", "cuda"]
  precision.target = "cpu" # 精度基线，可选项["cpu", "npu", "cuda"]
+ warmup_step_num = 20 # 模型warmup次数
+ exec_step_num = 1000 # 模型执行统计次数
+ prof_dir = "./prof" # profile结果输出目录
