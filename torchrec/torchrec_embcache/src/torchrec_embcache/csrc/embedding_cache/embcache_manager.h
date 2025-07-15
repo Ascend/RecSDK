@@ -145,11 +145,10 @@ private:
                                      std::ofstream& fileMomentum2SliceAttr, size_t count);
     void SaveFeatureCount(int32_t tableIndex, const std::string& filePrefix, const std::vector<int64_t>& saveKeys);
     void SaveFeatureTimestamp(int32_t tableIndex, const std::string& filePrefix);
-    int32_t GetEmbTableIndex(const std::string& tableName);
 
 private:
     int32_t embNum;
-    std::map<int32_t, int32_t> embTableIndexMap_;
+    std::vector<int32_t> embTableIndies_;
     std::vector<EmbConfig> embConfigs;
     std::vector<SwapManager> swapManagers;
     std::vector<std::unique_ptr<EmbTable>> embeddingTables;

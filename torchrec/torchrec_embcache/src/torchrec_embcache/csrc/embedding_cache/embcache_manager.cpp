@@ -41,7 +41,7 @@ EmbcacheManager::EmbcacheManager(const std::vector<EmbConfig>& embConfigs, bool 
     for (int32_t i = 0; i < embNum; i++) {
         LOG(INFO) << "The tableName:" << embConfigs[i].tableName << ", table index:" << i
                   << ", cacheSize is:" << embConfigs[i].cacheSize;
-        embTableIndexMap_[embConfigs[i].tableName] = i;
+        embTableIndies_.push_back(i);
         int64_t memStartOffset = embConfigs[i].admitAndEvictConfig.IsAdmitEnabled() ? 1 : 0;
         swapManagers.emplace_back(embConfigs[i].cacheSize, memStartOffset);
 
@@ -62,13 +62,6 @@ EmbcacheManager::EmbcacheManager(const std::vector<EmbConfig>& embConfigs, bool 
     for (auto& embedConfig : embConfigs) {
         TORCH_CHECK(embedConfig.optimNum == optimNum)
     }
-}
-
-int32_t EmbcacheManager::GetEmbTableIndex(const std::string& tableName)
-{
-    auto it = embTableIndexMap_.find(tableName);
-    TORCH_CHECK(it != embTableIndexMap_.end(), "The table name:" + tableName + " is not found");
-    return it->second;
 }
 
 bool EmbcacheManager::EnableFastHashMap()
@@ -96,7 +89,7 @@ SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std
 
     TORCH_CHECK(batchKeys.is_contiguous(), "batchKeys must be contiguous")
     TORCH_CHECK(batchKeys.dtype() == torch::kInt64, "batchKeys must be of type int64_t")
-    std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndexMap_.keys() : tableIndices;
+    std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
     TORCH_CHECK(curTableIndices.size() == offsetPerKey.size(), "tableIndices size must be equal to offsetPerKey size");
 
     auto* keyPtr = batchKeys.data_ptr<int64_t>();
@@ -185,7 +178,7 @@ SwapinTensor EmbcacheManager::EmbeddingLookup(const std::vector<std::vector<int6
         swapinTensor.swapinOptims.emplace_back(at::empty({embsSize}, floatPinnedOpt));
     }
 
-    std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndexMap_.keys() : tableIndices;
+    std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
     TORCH_CHECK(curTableIndices.size() == swapinKeys.size(), "tableIndices size must be equal to swapinKeys size");
 
     std::vector<float*> swapinOptimsPtr(optimNum);
@@ -222,7 +215,7 @@ void EmbcacheManager::EmbeddingUpdate(const std::vector<std::vector<int64_t>>& s
     }
     TORCH_CHECK(swapoutEmbs.dtype() == torch::kFloat32)
 
-    std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndexMap_.keys() : tableIndices;
+    std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
     TORCH_CHECK(curTableIndices.size() == swapoutKeys.size(), "tableIndices size must be equal to swapoutKeys size");
 
     auto* swapoutEmbsPtr = swapoutEmbs.data_ptr<float>();
@@ -255,7 +248,7 @@ void EmbcacheManager::RecordTimestamp(const at::Tensor& batchKeys, const std::ve
     TimeCost recordTimestampTC;
     const auto* keyPtr = batchKeys.data_ptr<int64_t>();
     const auto* timestampsPtr = timestamps.data_ptr<int64_t>();
-    std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndexMap_.keys() : tableIndices;
+    std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
     TORCH_CHECK(curTableIndices.size() == offsetPerKey.size(), "tableIndices size must be equal to offsetPerKey size");
 
     for (int64_t i = 0; i < embNum; ++i) {
