@@ -36,7 +36,7 @@ host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
 ```python
 class TestModel(torch.nn.Module):
     def __init__(self, table_names, feat_names, embed_dims, num_embeds):
-        self.ebc = HashEmbeddingBagCollectio(...)
+        self.ebc = HashEmbeddingBagCollection(...)
 
     def forward(self, batch: Batch):
         ...
