@@ -8,7 +8,7 @@ import tensorflow as tf
 import pytz
 
 import utils
-from utils import embedding_lookup_sparse_fake, setup_logger, build_optimizer, main
+from utils import embedding_lookup_sparse_fake, build_optimizer, main
 from examples.rec_model_zoo.common import setup_logger
 
 tf.compat.v1.enable_control_flow_v2()
