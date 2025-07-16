@@ -340,6 +340,14 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
         else:
             raise ValueError(f"Mixed dimensions are not supported.")
 
+    def get_momentum(self) -> Tensor:
+        result = []
+        if (self._optim_num > 0):
+            result.append(self.momentum1_dev)
+        if (self._optim_num > 1):
+            result.append(self.momentum2_dev)
+        return result
+
 
 class HybridBatchedFusedEmbeddingBag(
     BaseBatchedEmbeddingBag[torch.Tensor], FusedOptimizerModule
