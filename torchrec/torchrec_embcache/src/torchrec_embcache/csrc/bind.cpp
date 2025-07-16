@@ -21,15 +21,16 @@ void AddEmbCacheManager(pybind11::module_& m)
         .def(py::init<const std::vector<EmbConfig>&, bool>(), py::arg("emb_configs"),
              py::arg("need_accumulate_offset") = true)
         .def("compute_swap_info_async", &EmbcacheManager::ComputeSwapInfoAsync, py::arg("batch_keys"),
-             py::arg("jagged_offs"))
+             py::arg("jagged_offs"), py::arg("table_indices") = std::vector<int32_t>{})
         .def("save", &EmbcacheManager::Save, py::arg("path"), py::arg("rank"))
         .def("embedding_to_host", &EmbcacheManager::Embedding2Host, py::arg("weights_dev"), py::arg("momentum1_dev"))
-        .def("embedding_lookup_async", &EmbcacheManager::EmbeddingLookupAsync, py::arg("swap_info"))
+        .def("embedding_lookup_async", &EmbcacheManager::EmbeddingLookupAsync, py::arg("swap_info"),
+             py::arg("table_indices") = std::vector<int32_t>{})
         .def("embedding_update_async", &EmbcacheManager::EmbeddingUpdateAsync, py::arg("swap_info"),
-             py::arg("swapout_embs"), py::arg("swapout_optims"))
+             py::arg("swapout_embs"), py::arg("swapout_optims"), py::arg("table_indices") = std::vector<int32_t>{})
         .def("load", &EmbcacheManager::Load, py::arg("path"), py::arg("rank"))
         .def("record_timestamp", &EmbcacheManager::RecordTimestamp, py::arg("batch_keys"), py::arg("jagged_offs"),
-             py::arg("batch_timestamps"))
+             py::arg("batch_timestamps"), py::arg("table_indices") = std::vector<int32_t>{})
         .def("evict_features", &EmbcacheManager::EvictFeatures)
         .def("statistics_key_count", &EmbcacheManager::StatisticsKeyCount, py::arg("batch_keys"), py::arg("offset"),
              py::arg("batch_key_counts"), py::arg("table_index"))
