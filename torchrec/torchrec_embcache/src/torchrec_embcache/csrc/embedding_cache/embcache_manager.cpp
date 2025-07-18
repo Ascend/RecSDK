@@ -7,13 +7,15 @@
  */
 #include "embcache_manager.h"
 
-#include <c10/util/Exception.h>
 #include <exception>
 #include <fstream>
 #include <filesystem>
-#include <glog/logging.h>
 #include <sstream>
 #include <vector>
+
+#include <c10/util/Exception.h>
+#include <glog/logging.h>
+#include <ATen/Parallel.h>
 
 #include "glogger.h"
 
@@ -347,6 +349,93 @@ void EmbcacheManager::Embedding2Host(const at::Tensor& weightsDev, const std::ve
         jaggedOff += embConfigs[embIndex].cacheSize * embConfigs[embIndex].embDim;
         LOG(INFO) << "Embedding2Host, embIndex:" << embIndex << ", update key size:" << keys.size()
                   << ", jaggedOff:" << jaggedOff << ", currentTableOffset:" << currentTableOffset;
+    }
+}
+
+std::tuple<at::Tensor, std::vector<at::Tensor>> EmbcacheManager::GetDeviceSwapOutData(SwapInfo& swapInfo,
+    const at::Tensor& swapoutOffs, const std::vector<at::Tensor>& weightsDevs,
+    const std::vector<at::Tensor>& momentum1Devs, const std::vector<at::Tensor>& momentum2Devs,
+    const std::vector<int32_t>& tableIndices)
+{
+    const std::vector<int64_t>& keysLengthPreSum = swapInfo.GetSwapoutKeysLengthPreSum();
+    std::vector<int64_t> outEmbPreSumByDim(embConfigs.size() + 1, 0);
+    const std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
+    for (size_t i = 0; i < swapInfo.swapoutKeys.size(); ++i) {
+        auto keysSize = swapInfo.swapoutKeys[i].size();
+        auto tableIdx = curTableIndices[i];
+        outEmbPreSumByDim[i + 1] = outEmbPreSumByDim[i] + keysSize * embConfigs[tableIdx].embDim;
+    }
+    int64_t outEmbShapeFlatSize = outEmbPreSumByDim[outEmbPreSumByDim.size() - 1];
+
+    // output emb and optimizer tensor
+    at::Tensor outEmbTensor = at::empty({outEmbShapeFlatSize}, weightsDevs[0].options());
+    int64_t outOptimizerShapeFlat = embConfigs[0].optimNum == 0 ? 0 : outEmbShapeFlatSize;
+    std::vector<at::Tensor> outOptimizers(embConfigs[0].optimNum);
+    for (int32_t i = 0; i < embConfigs[0].optimNum; ++i) {
+        outOptimizers[i] = at::empty({outOptimizerShapeFlat}, weightsDevs[0].options());
+    }
+
+    // dispatch swap out
+    for (size_t i = 0; i < curTableIndices.size(); ++i) {
+        at::Tensor indices = swapoutOffs.slice(0, keysLengthPreSum[i], keysLengthPreSum[i + 1]);
+        if (keysLengthPreSum[i] == 0 && keysLengthPreSum[i + 1] == 0) {
+            // Current table don't need swap out, skip.
+            continue;
+        }
+        auto tableIdx = curTableIndices[i];
+        auto tableDim = embConfigs[tableIdx].embDim;
+        auto optimizerNum = embConfigs[tableIdx].optimNum;
+        at::Tensor outEmbedding = outEmbTensor.slice(0, outEmbPreSumByDim[i], outEmbPreSumByDim[i + 1]);
+        torch::index_select_out(outEmbedding, weightsDevs[tableIdx].view({-1, tableDim}), 0, indices);
+        if (optimizerNum > 0) {
+            at::Tensor outMomentum1 = outOptimizers[0].slice(0, outEmbPreSumByDim[i], outEmbPreSumByDim[i + 1]);
+            torch::index_select_out(outMomentum1, momentum1Devs[tableIdx].view({-1, tableDim}), 0, indices);
+        }
+        if (optimizerNum > 1) {
+            at::Tensor outMomentum2 = outOptimizers[1].slice(0, outEmbPreSumByDim[i], outEmbPreSumByDim[i + 1]);
+            torch::index_select_out(outMomentum2, momentum2Devs[tableIdx].view({-1, tableDim}), 0, indices);
+        }
+    }
+
+    return {outEmbTensor, outOptimizers};
+}
+
+void EmbcacheManager::SwapInEmbAndOptimizer(SwapInfo& swapInfo, const SwapinTensor& swapInTensor,
+    const at::Tensor& swapInOffsTensor, std::vector<at::Tensor>& weightsDevs,
+    std::vector<at::Tensor>& momentum1Devs, std::vector<at::Tensor>& momentum2Devs,
+    const std::vector<int32_t>& tableIndices)
+{
+    const auto& swapInEmbeddings = swapInTensor.swapinEmbs;
+    const auto& swapInOptimizers = swapInTensor.swapinOptims;
+    const auto& jaggedOffs = swapInTensor.jaggedOffs;
+    const auto* jaggedOffsPtr = jaggedOffs.data_ptr<int64_t>();
+    const auto& keysLengthPreSum = swapInfo.GetSwapinKeysLengthPreSum();
+    const auto& tbConfigs = this->embConfigs;
+    const std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
+    // swap in to device
+    for (size_t i = 0; i < curTableIndices.size(); ++i) {
+        if (jaggedOffsPtr[i] == 0 && jaggedOffsPtr[i + 1] == 0) {
+            continue;
+        }
+        auto tableIdx = curTableIndices[i];
+        auto tableDim = embConfigs[tableIdx].embDim;
+        auto optimizerNum = embConfigs[tableIdx].optimNum;
+        at::Tensor swapInIndices = swapInOffsTensor.slice(0, keysLengthPreSum[i], keysLengthPreSum[i + 1]);
+        at::Tensor swapInEmb = swapInEmbeddings.slice(0, jaggedOffsPtr[i], jaggedOffsPtr[i + 1])
+                                   .view({-1, tableDim});
+        weightsDevs[tableIdx].view({-1, tableDim}).index_put_({swapInIndices}, swapInEmb);
+        if (optimizerNum > 0) {
+            at::Tensor swapInMomentum1 = swapInOptimizers[0]
+                                             .slice(0, jaggedOffsPtr[i], jaggedOffsPtr[i + 1])
+                                             .view({-1, tableDim});
+            momentum1Devs[tableIdx].view({-1, tableDim}).index_put_({swapInIndices}, swapInMomentum1);
+        }
+        if (optimizerNum > 1) {
+            at::Tensor swapInMomentum2 = swapInOptimizers[1]
+                                             .slice(0, jaggedOffsPtr[i], jaggedOffsPtr[i + 1])
+                                             .view({-1, tableDim});
+            momentum2Devs[tableIdx].view({-1, tableDim}).index_put_({swapInIndices}, swapInMomentum2);
+        }
     }
 }
 

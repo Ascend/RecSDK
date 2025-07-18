@@ -49,25 +49,33 @@ struct SwapInfo {
     std::vector<std::vector<int64_t>> swapinKeys;
     at::Tensor swapinOffs;
     at::Tensor batchOffs;
-    std::vector<int64_t> swapinKeysLength;
-    std::vector<int64_t> swapoutKeysLength;
-    const std::vector<int64_t>& getSwapinKeysLength()
+    std::vector<int64_t> swapinKeysLengthPreSum;
+    std::vector<int64_t> swapoutKeysLengthPreSum;
+
+    const std::vector<int64_t>& GetSwapinKeysLengthPreSum()
     {
-        if (swapinKeysLength.empty()) {
+        if (swapinKeysLengthPreSum.empty()) {
+            uint64_t preSum = 0;
+            swapinKeysLengthPreSum.emplace_back(preSum);
             for (const auto& keys : swapinKeys) {
-                swapinKeysLength.emplace_back(keys.size());
+                preSum += keys.size();
+                swapinKeysLengthPreSum.emplace_back(preSum);
             }
         }
-        return swapinKeysLength;
+        return swapinKeysLengthPreSum;
     }
-    const std::vector<int64_t>& getSwapoutKeysLength()
+
+    const std::vector<int64_t>& GetSwapoutKeysLengthPreSum()
     {
-        if (swapoutKeysLength.empty()) {
+        if (swapoutKeysLengthPreSum.empty()) {
+            uint64_t preSum = 0;
+            swapoutKeysLengthPreSum.emplace_back(preSum);
             for (const auto& keys : swapoutKeys) {
-                swapoutKeysLength.emplace_back(keys.size());
+                preSum += keys.size();
+                swapoutKeysLengthPreSum.emplace_back(preSum);
             }
         }
-        return swapoutKeysLength;
+        return swapoutKeysLengthPreSum;
     }
 };
 
@@ -89,6 +97,16 @@ public:
     AsyncTask<void> EmbeddingUpdateAsync(const SwapInfo& swapInfo, const at::Tensor& swapoutEmbs,
                                          const std::vector<at::Tensor>& swapoutOptims,
                                          const std::vector<int32_t>& tableIndices);
+
+    std::tuple<at::Tensor, std::vector<at::Tensor>> GetDeviceSwapOutData(SwapInfo& swapInfo,
+        const at::Tensor& swapoutOffs, const std::vector<at::Tensor>& weightsDevs,
+        const std::vector<at::Tensor>& momentum1Devs, const std::vector<at::Tensor>& momentum2Devs,
+        const std::vector<int32_t>& tableIndices);
+
+    void SwapInEmbAndOptimizer(SwapInfo& swapInfo, const SwapinTensor& swapInTensor,
+        const at::Tensor& swapInOffsTensor, std::vector<at::Tensor>& weightsDevs,
+        std::vector<at::Tensor>& momentum1Devs, std::vector<at::Tensor>& momentum2Devs,
+        const std::vector<int32_t>& tableIndices);
 
     void Save(const std::string path, const int rank);
 
