@@ -213,7 +213,7 @@ def build_embeddings(features, params):
         return emb_weights, embeddings
 
 
-def build_dffi(embeddings, emb_weights, params):
+def build_dffi(embeddings, params):
     stack_emb = []
     for field_name in ["101", "109_14", "110_14", "127_14", "150_14", "121",
                        "122", "124", "125", "126", "127", "128", "129", "205",

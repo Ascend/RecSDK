@@ -53,7 +53,7 @@ BATCH_NUM = 32
 
 
 def set_distribute_env():
-    rank = int(os.environ["LOCAL_RANK"])
+    rank = int(os.environ.get("LOCAL_RANK", 0))
     torch.npu.set_device(rank)
     os.environ["MASTER_ADDR"] = "127.0.0.1"
     os.environ["MASTER_PORT"] = "6000"

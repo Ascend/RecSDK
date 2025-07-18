@@ -1,3 +1,6 @@
+# 免责声明
+本样例仅供参考，部署在生产环境可能造成安全问题，建议全面测试，并自行评估潜在风险。更多详细信息请参考Tensorflow serving官方部署指导手册。
+
 # 推理环境部署
 一、安装依赖包：</p>
 安装开发套件包Ascend-cann-toolkit_{version}_linux-{arch}.run</p>
@@ -17,115 +20,15 @@
 |java|jdk-11|
 |||
 
-二、编译serving
-1. 下载TF-serving源码：https://github.com/tensorflow/serving/archive/1.15.0.zip
-2. 解压后进入源码目录
-3. 添加TF-serving第三方依赖
+二、准备TF server
+请根据昇腾社区提供的指导手册安装部署TF server：https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/82RC1alpha003/migration/tfmigr1/atlastfserv_26_0001.html
 
-a.执行如下命令，在“serving-1.15.0/third_party”目录下创建“tf_adapter”文件夹并进入。
->cd third_party/<br>
-mkdir tf_adapter<br>
-cd tf_adapter<br>
-
-b.执行如下命令，在“tf_adapter”文件夹下拷贝存放“libpython3.7m.so.1.0”文件，并创建软链接。
-> cp /usr/local/python3.7.5/lib/libpython3.7m.so.1.0 .<br>
-ln -s libpython3.7m.so.1.0 libpython3.7m.so<br>
-
-c.执行如下命令，在“tf_adapter”文件夹下拷贝存放“_tf_adapter.so”文件，并将“_tf_adapter.so”文件拷贝一份为“lib_tf_adapter.so”。
->cp /home/HwHiAiUser/Ascend/tfplugin/latest/python/site-packages/npu_bridge/_tf_adapter.so .<br>
-cp _tf_adapter.so lib_tf_adapter.so<br>
-
-4. 编译空的libtensorflow_framework.so、_pywrap_tensorflow_internal.so文件.
-
-a. 在“tf_adapter”文件夹下，执行如下命令。
->vim CMakeLists.txt<br>
-
-b. 写入如下内容保存。
-```text
-file(TOUCH ${CMAKE_CURRENT_BINARY_DIR}/stub.c)
-add_library(_pywrap_tensorflow_internal SHARED ${CMAKE_CURRENT_BINARY_DIR}/stub.c)
-add_library(tensorflow_framework SHARED ${CMAKE_CURRENT_BINARY_DIR}/stub.c)
-```
-
-c.执行:wq!命令保存文件并退出。
-d.执行如下命令，编译出空的.so文件。
-> mkdir temp<br>
-cd temp<br>
-cmake ..<br>
-make<br>
-mv lib_pywrap_tensorflow_internal.so ../_pywrap_tensorflow_internal.so<br>
-mv libtensorflow_framework.so ../libtensorflow_framework.so<br>
-cd ..<br>
-ln -s libtensorflow_framework.so libtensorflow_framework.so.1<br>
-
-e.配置环境命令。
-```text
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(pwd)
-```
-
-5. 在“tf_adapter”文件夹下创建BUILD文件。 写入如下内容。
-```text
-licenses(["notice"])  # BSD/MIT.
-
-cc_import(
-    name = "tf_adapter",
-    shared_library = "lib_tf_adapter.so",
-    visibility = ["//visibility:public"]
-)
-
-cc_import(
-    name = "tf_python",
-    shared_library = "libpython3.7m.so",
-    visibility = ["//visibility:public"]
-)
-```
-
-6. 修改“serving-1.15.0/tensorflow_serving/model_servers/”路径下的BUILD文件，在“cc_binary”中添加如下加粗内容。
-
->cc_binary(<br>
-name = "tensorflow_model_server",<br>
-&nbsp;&nbsp;&nbsp;&nbsp; stamp = 1,<br>
-&nbsp;&nbsp;&nbsp;&nbsp; visibility = [<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ":testing",<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; "//tensorflow_serving:internal",<br>
-&nbsp;&nbsp;&nbsp;&nbsp; ],<br>
-&nbsp;&nbsp;&nbsp;&nbsp; deps = [<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ":tensorflow_model_server_main_lib",<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; __"//third_party/tf_adapter:tf_adapter",__<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; __"//third_party/tf_adapter:tf_python",__<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; __"@org_tensorflow//tensorflow/compiler/jit:xla_cpu_jit",__<br>
-&nbsp;&nbsp;&nbsp;&nbsp; ],<br>
-)<br>
-
-7. TF Serving,在TF Serving安装目录“serving-1.15.0”下执行如下命令，编译TF Serving。
-
-> bazel --output_user_root=/opt/tf_serving build -c opt --distdir=../depends --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" tensorflow_serving/model_servers:tensorflow_model_server<br>
-
-如果编译过程中遇到依赖包下载失败问题，可手动下载，TF serving编译依赖包(https://www.hiascend.com/document/detail/zh/canncommercial/80RC1/developmentguide/moddevg/onlineinfer1/atlastfserv_26_0011.html)
-
-8. 建立软连接。
-> ln -s /opt/tf_serving/{tf_serving_ID}/execroot/tf_serving/bazel-out/xxx-opt/bin/tensorflow_serving/model_servers/tensorflow_model_server /usr/local/bin/tensorflow_model_server<br>
-
-+ {tf_serving_ID}为一串如“063944eceea3e72745362a0b6eb12a3c”的无规则字符。请根据实际进行填写。
-+ xxx-opt为工具自动生成文件夹，具体显示请以实际为准。
-
-# 脚本工具介绍
-server.sh/client.sh
-启动服务脚本/客户端请求服务器脚本
-
-1. 启动tf-serving server方法
-进入目录 tf_serving_inerence
-> 更改server.sh中模型路径model_base_path为导出的savedModel路径，<br>
-> 更改可执行文件tensorflow_model_server的路径；<br>
-> 将编译tf_serving的第三方依赖tf_adapter路径加入环境变量,export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/xxx/xxx/serving-1.15.0/third_party/tf_adapter/,<br>
-> source /usr/local/Ascend/ascend-toolkit/set_env.sh<br>
-> sh server.sh<br>
-
-若日志中显示Running gRPC ModelServer at 0.0.0.0:xxxx则表示启动成功
-
-2.请求服务器方法
-执行脚本：sh client.sh
-推理成功会打印请求结果
+# 启动在线推理
+1. 启动server
+> 参考昇腾社区：https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/82RC1alpha003/migration/tfmigr1/atlastfserv_26_0005.html 启动TF Serving章节中的内容拉起server
+2. 发起请求
+> 执行脚本：sh client.sh
+> 推理成功会打印请求结果
 
 # 多流并行优化简介
 背景：
@@ -150,18 +53,9 @@ server.sh/client.sh
 + 图2多流并行开启后，device在整个时间轴内执行了约18个推理请求，相比图1中device在整个时间轴内仅仅只执行了5个请求，吞吐提升到3.6倍。<br>
 
 # 启动多流并行优化
-multistream_server.sh/client.sh
-启动多流并行服务脚本/客户端请求服务器脚本
-
-1. 启动tf-serving 多流并行server方法
-> 进入目录 tf_serving_inerence <br>
-> 更改server.sh中模型路径model_base_path为导出的savedModel路径，<br>
-> 更改可执行文件tensorflow_model_server的路径；<br>
-> 将编译tf_serving的第三方依赖tf_adapter路径加入环境变量,export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/xxx/xxx/serving-1.15.0/third_party/tf_adapter/ <br>
-> source /usr/local/Ascend/ascend-toolkit/set_env.sh <br>
-> sh multistream_server.sh <br>
-
-若日志中显示Running gRPC ModelServer at 0.0.0.0:xxxx则表示启动成功
+1. 启动server
+> 参考昇腾社区：https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/82RC1alpha003/migration/tfmigr1/atlastfserv_26_0005.html 启动TF Serving章节中的内容
+> 将启动命令中的config文件替换为本样例中的multi_stream.cfg，随后拉起server
 
 2. 多进程发起请求方法
 > 执行脚本：sh client.sh 20 <br>

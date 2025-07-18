@@ -18,8 +18,6 @@ import os
 from enum import Enum
 
 import tensorflow as tf
-from tensorflow.core.protobuf.rewriter_config_pb2 import RewriterConfig
-from npu_bridge.estimator.npu.npu_config import NPURunConfig
 
 SSD_DATA_PATH = ["ssd_data"]
 
@@ -141,63 +139,3 @@ class Config:
             self.ssd_vocab_size = 1000 * self.rank_size
         else:
             raise ValueError(f"get CACHE_MODE:{self.cache_mode}, expect in [HBM, DDR, SSD]")
-
-
-def sess_config(dump_data=False, dump_path="./dump_output", dump_steps="0|1|2"):
-    session_config = tf.ConfigProto(allow_soft_placement=False,
-                                    log_device_placement=False)
-    session_config.gpu_options.allow_growth = True
-    custom_op = session_config.graph_options.rewrite_options.custom_optimizers.add()
-    custom_op.name = "NpuOptimizer"
-    custom_op.parameter_map["mix_compile_mode"].b = False
-    custom_op.parameter_map["use_off_line"].b = True
-    custom_op.parameter_map["min_group_size"].b = 1
-    # 可选配置level0:pairwise;level1:pairwise
-    custom_op.parameter_map["HCCL_algorithm"].s = tf.compat.as_bytes("level0:fullmesh;level1:fullmesh")
-    custom_op.parameter_map["enable_data_pre_proc"].b = True
-    custom_op.parameter_map["iterations_per_loop"].i = 10
-    custom_op.parameter_map["precision_mode"].s = tf.compat.as_bytes("allow_mix_precision")
-    custom_op.parameter_map["hcom_parallel"].b = False
-    custom_op.parameter_map["op_precision_mode"].s = tf.compat.as_bytes("op_impl_mode.ini")
-    custom_op.parameter_map["op_execute_timeout"].i = 2000
-    custom_op.parameter_map["variable_memory_max_size"].s = tf.compat.as_bytes(
-        str(13 * 1024 * 1024 * 1024))  # total 31 need 13;
-    custom_op.parameter_map["graph_memory_max_size"].s = tf.compat.as_bytes(str(18 * 1024 * 1024 * 1024))  # need 25
-    custom_op.parameter_map["stream_max_parallel_num"].s = tf.compat.as_bytes("DNN_VM_AICPU:3,AIcoreEngine:3")
-
-    if dump_data:
-        custom_op.parameter_map["enable_dump"].b = True
-        custom_op.parameter_map["dump_path"].s = tf.compat.as_bytes(dump_path)
-        custom_op.parameter_map["dump_step"].s = tf.compat.as_bytes(dump_steps)
-        custom_op.parameter_map["dump_mode"].s = tf.compat.as_bytes("all")
-
-    session_config.graph_options.rewrite_options.remapping = RewriterConfig.OFF
-    session_config.graph_options.rewrite_options.memory_optimization = RewriterConfig.OFF
-
-    return session_config
-
-
-def get_npu_run_config():
-    session_config = tf.ConfigProto(allow_soft_placement=False,
-                                    log_device_placement=False)
-
-    session_config.gpu_options.allow_growth = True
-    custom_op = session_config.graph_options.rewrite_options.custom_optimizers.add()
-    custom_op.name = "NpuOptimizer"
-    session_config.graph_options.rewrite_options.remapping = RewriterConfig.OFF
-    session_config.graph_options.rewrite_options.memory_optimization = RewriterConfig.OFF
-
-    run_config = NPURunConfig(
-        save_summary_steps=1000,
-        save_checkpoints_steps=100,
-        keep_checkpoint_max=5,
-        session_config=session_config,
-        log_step_count_steps=20,
-        precision_mode='allow_mix_precision',
-        enable_data_pre_proc=True,
-        iterations_per_loop=1,
-        jit_compile=False,
-        op_compiler_cache_mode="enable",
-        HCCL_algorithm="level0:fullmesh;level1:fullmesh"  # 可选配置：level0:pairwise;level1:pairwise
-    )
-    return run_config
