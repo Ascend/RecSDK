@@ -28,7 +28,13 @@ list(FILTER ASCEND_LOAD_LIBRARY EXCLUDE REGEX ".*/(build|cmake)/.*")
 add_library(fbgemm_npu_api SHARED ${ASCEND_LOAD_LIBRARY})
 
 target_compile_features(fbgemm_npu_api PRIVATE cxx_std_17)
-target_compile_options(fbgemm_npu_api PRIVATE -D_GLIBCXX_USE_CXX11_ABI=1)
+
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm")
+    set(GLIBCXX_ABI 1)
+else()
+    set(GLIBCXX_ABI 0)
+endif()
+target_compile_options(fbgemm_npu_api PRIVATE -D_GLIBCXX_USE_CXX11_ABI=${GLIBCXX_ABI})
 
 include_directories(${PYTORCH_NPU_INSTALL_PATH}/include/third_party/acl/inc)
 include_directories(${PYTORCH_NPU_INSTALL_PATH}/include)
