@@ -11,7 +11,7 @@
 ```python
 @dataclass
 class Batch(Pipelineable):
-     ......
+    ...
 ```
 2. 定义Dataset
 
@@ -100,7 +100,19 @@ for i in range(10):
 
 
 ## 运行脚本
-```shell
+
+### 单机运行
+```bash
+WORLD_SIZE=1 RANK=0 python main.py
+```
+
+### 多机运行
+使用`torchx`运行分布式程序，缺少`torchx`需要执行下面命令安装:
+```bash
+pip install torchx
+```
+运行脚本启动训练：
+```bash
 bash bash.sh
 ```
 成功后出现demo done字样。
