@@ -27,6 +27,7 @@ num_server=1
 local_rank_size=8
 num_process=$((num_server * local_rank_size))
 export TRAIN_RANK_SIZE=$num_process
+project_root=$(cd "$cur_path/../../.." && pwd)
 
 ################# 参数配置 ######################
 export USE_DYNAMIC=0            # 0：静态shape；1：动态shape
@@ -40,7 +41,7 @@ echo "CACHE_MODE:${CACHE_MODE}"
 
 export HCCL_CONNECT_TIMEOUT=1200
 export DLRM_CRITEO_DATA_PATH=${dlrm_criteo_data_path}
-export PYTHONPATH=${rec_package_path}:${so_path}:$PYTHONPATH
+export PYTHONPATH=${rec_package_path}:${so_path}:${project_root}:$PYTHONPATH
 export LD_PRELOAD=/usr/lib64/libgomp.so.1:/usr/lib64/libstdc++.so.6
 export LD_LIBRARY_PATH=${so_path}:/usr/local/lib:$LD_LIBRARY_PATH
 export ASCEND_DEVICE_ID=0

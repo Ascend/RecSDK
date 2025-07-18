@@ -15,31 +15,28 @@
 # ==============================================================================
 
 import os
-import shutil
 import collections
 import time
 import warnings
-import random
 from glob import glob
 
 import tensorflow as tf
-from sklearn.metrics import roc_auc_score
-import numpy as np
+from npu_bridge.npu_init import *
 
 from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_ID_OFFSET
-from mx_rec.core.asc.helper import FeatureSpec, get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.core.feature_process import EvictHook
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache, GraphModifierHook
-from mx_rec.constants.constants import ASCEND_TIMESTAMP, LIBREC_EOS_OPS_SO
+from mx_rec.constants.constants import ASCEND_TIMESTAMP
 from mx_rec.util.initialize import ConfigInitializer, init, terminate_config_initializer
-from mx_rec.util.ops import import_host_pipeline_ops
 import mx_rec.util as mxrec_util
 from mx_rec.util.variable import get_dense_and_sparse_variable
-from npu_bridge.npu_init import *
-
-from config import sess_config, Config, SSD_DATA_PATH, CacheModeEnum
+import examples.model_common as cm
+from examples.model_common import (
+    sess_config, Config,
+    create_feature_spec_list, clear_saved_model, evaluate, evaluate_fix, make_batch_and_iterator
+)
 from demo_logger import logger
 from model import MyModel
 from optimizer import get_dense_and_sparse_optimizer
@@ -48,80 +45,8 @@ npu_plugin.set_device_sat_mode(0)
 
 dense_hashtable_seed = 128
 sparse_hashtable_seed = 128
-shuffle_seed = 128
-random.seed(shuffle_seed)
-
-
-def add_timestamp_func(batch):
-    timestamp = import_host_pipeline_ops().return_timestamp(tf.cast(batch['label'], dtype=tf.int64))
-    batch["timestamp"] = timestamp
-    return batch
-
-
-def make_batch_and_iterator(config, feature_spec_list, is_training, dump_graph, is_use_faae=False, **kwargs):
-    if config.USE_PIPELINE_TEST:
-        num_parallel = 1
-    else:
-        num_parallel = 8
-
-    def extract_fn(data_record):
-        features = {
-            # Extract features using the keys set during creation
-            'label': tf.compat.v1.FixedLenFeature(shape=(config.line_per_sample,), dtype=tf.int64),
-            'sparse_feature': tf.compat.v1.FixedLenFeature(shape=(26 * config.line_per_sample,), dtype=tf.int64),
-            'dense_feature': tf.compat.v1.FixedLenFeature(shape=(13 * config.line_per_sample,), dtype=tf.int64),
-        }
-        sample = tf.compat.v1.parse_single_example(data_record, features)
-        return sample
-
-    def reshape_fn(batch):
-        batch['label'] = tf.reshape(batch['label'], [-1, 1])
-        batch['dense_feature'] = tf.reshape(batch['dense_feature'], [-1, 13])
-        batch['sparse_feature'] = tf.reshape(batch['sparse_feature'], [-1, 26])
-        return batch
-
-    if is_training:
-        files_list = glob(os.path.join(config.data_path, config.train_file_pattern) + '/*.tfrecord')
-    else:
-        files_list = glob(os.path.join(config.data_path, config.test_file_pattern) + '/*.tfrecord')
-    dataset = tf.data.TFRecordDataset(files_list, num_parallel_reads=num_parallel)
-    batch_size = config.batch_size // config.line_per_sample
-
-    dataset = dataset.shard(config.rank_size, config.rank_id)
-    if is_training:
-        dataset = dataset.shuffle(batch_size * 1000, seed=shuffle_seed)
-        dataset = dataset.repeat(config.train_epoch)
-    else:
-        dataset = dataset.repeat(config.test_epoch)
-    dataset = dataset.map(extract_fn, num_parallel_calls=num_parallel).batch(batch_size,
-                                                                             drop_remainder=True)
-    dataset = dataset.map(reshape_fn, num_parallel_calls=num_parallel)
-
-    def map_fn(batch):
-        new_batch = batch
-        new_batch['sparse_feature'] = tf.concat([batch['dense_feature'], batch['sparse_feature']], axis=1)
-        return new_batch
-    dataset = dataset.map(map_fn, num_parallel_calls=num_parallel)
-
-    if is_use_faae:
-        dataset = dataset.map(add_timestamp_func)
-
-    if not MODIFY_GRAPH_FLAG:
-
-        # Enable EOSDataset manually.
-        librec = import_host_pipeline_ops(LIBREC_EOS_OPS_SO)
-        channel_id = 0 if is_training else 1
-        # 此处eos_map的调用必须先于insert_func,避免多卡数据不均匀的情况
-        dataset = dataset.eos_map(librec, channel_id, kwargs.get("max_train_steps", max_train_steps),
-                                  kwargs.get("max_eval_steps", eval_steps))
-        insert_fn = get_asc_insert_func(tgt_key_specs=feature_spec_list, is_training=is_training, dump_graph=dump_graph)
-        dataset = dataset.map(insert_fn)
-
-    dataset = dataset.prefetch(100)
-
-    iterator = dataset.make_initializable_iterator()
-    batch = iterator.get_next()
-    return batch, iterator
+cm.MODEL_NAME = "WideDeep"
+cm.logger = logger
 
 
 def model_forward(model_args):
@@ -154,7 +79,7 @@ def model_forward(model_args):
 
     # wide
     for wide_feature, wide_hash_table in zip(wide_feature_list, wide_hash_table_list):
-        if MODIFY_GRAPH_FLAG:
+        if cm.MODIFY_GRAPH_FLAG:
             wide_feature = batch["sparse_feature"]
         wide_embedding = sparse_lookup(wide_hash_table, wide_feature, cfg.send_count, dim=None, is_train=is_train,
                                   name="wide_embedding_lookup", modify_graph=modify_graph, batch=batch,
@@ -163,7 +88,7 @@ def model_forward(model_args):
 
     # deep
     for deep_feature, deep_hash_table in zip(deep_feature_list, deep_hash_table_list):
-        if MODIFY_GRAPH_FLAG:
+        if cm.MODIFY_GRAPH_FLAG:
             deep_feature = batch["sparse_feature"]
         deep_embedding = sparse_lookup(deep_hash_table, deep_feature, cfg.send_count, dim=None, is_train=is_train,
                                   name="deep_embedding_lookup", modify_graph=modify_graph, batch=batch,
@@ -187,175 +112,19 @@ def model_forward(model_args):
     return model_output
 
 
-def evaluate():
-    print("read_test dataset")
-    if not MODIFY_GRAPH_FLAG:
-        eval_label = eval_model.get("label")
-        sess.run([eval_iterator.initializer])
-    else:
-        # 在sess run模式下，若还是使用原来batch中的label去sess run，则会出现getnext超时报错，需要使用新数据集中的batch
-        eval_label = ConfigInitializer.get_instance().train_params_config.get_target_batch(False).get("label")
-        sess.run([ConfigInitializer.get_instance().train_params_config.get_initializer(False)])
-    log_loss_list = []
-    pred_list = []
-    label_list = []
-    eval_current_steps = 0
-    finished = False
-    print("eval begin")
-
-    while not finished:
-        try:
-            eval_current_steps += 1
-            eval_start = time.time()
-            eval_loss, pred, label = sess.run([eval_model.get("loss"), eval_model.get("pred"), eval_label])
-            eval_cost = time.time() - eval_start
-            qps_eval = (1 / eval_cost) * rank_size * cfg.batch_size
-            log_loss_list += list(eval_loss.reshape(-1))
-            pred_list += list(pred.reshape(-1))
-            label_list += list(label.reshape(-1))
-            print(f"eval current_steps: {eval_current_steps}, qps: {qps_eval}")
-            if eval_current_steps == eval_steps:
-                finished = True
-        except tf.errors.OutOfRangeError:
-            finished = True
-    auc = roc_auc_score(label_list, pred_list)
-    mean_log_loss = np.mean(log_loss_list)
-    return auc, mean_log_loss
-
-
-def evaluate_fix(step):
-    print("read_test dataset evaluate_fix")
-    if not MODIFY_GRAPH_FLAG:
-        sess.run([eval_iterator.initializer])
-    else:
-        sess.run([ConfigInitializer.get_instance().train_params_config.get_initializer(False)])
-    log_loss_list = []
-    pred_list = []
-    label_list = []
-    eval_current_steps = 0
-    finished = False
-    print("eval begin")
-    while not finished:
-        try:
-            eval_current_steps += 1
-            eval_loss, pred, label = sess.run([eval_model.get("loss"), eval_model.get("pred"), eval_model.get("label")])
-            log_loss_list += list(eval_loss.reshape(-1))
-            pred_list += list(pred.reshape(-1))
-            label_list += list(label.reshape(-1))
-            print(f"eval current_steps: {eval_current_steps}")
-
-            if eval_current_steps == eval_steps:
-                finished = True
-        except tf.errors.OutOfRangeError:
-            finished = True
-
-    label_numpy = np.array(label_list)
-    pred_numpy = np.array(pred_list)
-    if not os.path.exists(os.path.abspath(".") + f"/interval_{interval}/numpy_{step}"):
-        os.makedirs(os.path.abspath(".") + f"/interval_{interval}/numpy_{step}")
-
-    if os.path.exists(os.path.abspath(".") + f"/interval_{interval}/numpy_{step}/label_{rank_id}.npy"):
-        os.remove(os.path.abspath(".") + f"/interval_{interval}/numpy_{step}/label_{rank_id}.npy")
-    if os.path.exists(os.path.abspath(".") + f"/interval_{interval}/numpy_{step}/pred_{rank_id}.npy"):
-        os.remove(os.path.abspath(".") + f"/interval_{interval}/numpy_{step}/pred_{rank_id}.npy")
-    if os.path.exists(f"flag_{rank_id}.txt"):
-        os.remove(f"flag_{rank_id}.txt")
-    np.save(os.path.abspath(".") + f"/interval_{interval}/numpy_{step}/label_{rank_id}.npy", label_numpy)
-    np.save(os.path.abspath(".") + f"/interval_{interval}/numpy_{step}/pred_{rank_id}.npy", pred_numpy)
-    os.mknod(f"flag_{rank_id}.txt")
-    while True:
-        file_exists_list = [os.path.exists(f"flag_{i}.txt") for i in range(rank_size)]
-        if sum(file_exists_list) == rank_size:
-            print("All saved!!!!!!!!!!")
-            break
-        else:
-            print("Waitting for saving numpy!!!!!!!!")
-            time.sleep(1)
-            continue
-
-    auc = roc_auc_score(label_list, pred_list)
-    mean_log_loss = np.mean(log_loss_list)
-    return auc, mean_log_loss
-
-
-def create_feature_spec_list(use_timestamp=False):
-    access_threshold = None
-    eviction_threshold = None
-    if use_timestamp:
-        access_threshold = 1000
-        eviction_threshold = 180
-
-    feature_spec_list = [
-                    FeatureSpec("sparse_feature", table_name="wide_embeddings", batch_size=cfg.batch_size,
-                                     access_threshold=access_threshold, eviction_threshold=eviction_threshold),
-                    FeatureSpec("sparse_feature", table_name="deep_embeddings", batch_size=cfg.batch_size,
-                                     access_threshold=access_threshold, eviction_threshold=eviction_threshold)
-    ]
-
-    if use_multi_lookup:
-        feature_spec_list.extend([FeatureSpec("sparse_feature", table_name="wide_embeddings",
-                                             batch_size=cfg.batch_size,
-                                             access_threshold=access_threshold,
-                                             eviction_threshold=eviction_threshold),
-                                  FeatureSpec("sparse_feature", table_name="deep_embeddings",
-                                             batch_size=cfg.batch_size,
-                                             access_threshold=access_threshold,
-                                             eviction_threshold=eviction_threshold)])
-    if use_timestamp:
-        feature_spec_list.append(FeatureSpec("timestamp", is_timestamp=True))
-    return feature_spec_list
-
-
-def _del_related_dir(del_path: str) -> None:
-    if not os.path.isabs(del_path):
-        del_path = os.path.join(os.getcwd(), del_path)
-    dirs = glob(del_path)
-    for sub_dir in dirs:
-        shutil.rmtree(sub_dir, ignore_errors=True)
-        logger.info(f"Delete dir:{sub_dir}")
-
-
-def _clear_saved_model() -> None:
-    _del_related_dir("/root/ascend/log/*")
-    _del_related_dir("kernel*")
-    _del_related_dir("model_dir_rank*")
-    _del_related_dir("op_cache")
-
-    if os.getenv("CACHE_MODE", "") != CacheModeEnum.SSD.value:
-        return
-    logger.info("Current cache mode is SSD, and file overwrite is not allowed in SSD mode, deleting exist directory"
-                " then create empty directory for this use case.")
-    for sub_path in SSD_DATA_PATH:
-        _del_related_dir(sub_path)
-        os.makedirs(sub_path, mode=0o550, exist_ok=True)
-        logger.info(f"Create dir:{sub_path}")
-
-
 if __name__ == "__main__":
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     warnings.filterwarnings("ignore")
-    _clear_saved_model()
+    clear_saved_model()
 
-    rank_id = int(os.getenv("RANK_ID")) if os.getenv("RANK_ID") else None
-    rank_size = int(os.getenv("TRAIN_RANK_SIZE")) if os.getenv("TRAIN_RANK_SIZE") else None
-    interval = int(os.getenv("INTERVAL")) if os.getenv("INTERVAL") else None
-    max_train_steps = 1270
-    train_steps = 1120
-    eval_steps = 1080
-
-    try:
-        use_dynamic_expansion = bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0)))
-        use_multi_lookup = bool(int(os.getenv("USE_MULTI_LOOKUP", 0)))
-        MODIFY_GRAPH_FLAG = bool(int(os.getenv("USE_MODIFY_GRAPH", 0)))
-        use_faae = bool(int(os.getenv("USE_FAAE", 0)))
-    except ValueError as err:
-        raise ValueError("please correctly config USE_DYNAMIC_EXPANSION or USE_MULTI_LOOKUP or USE_FAAE "
-                         "or USE_MODIFY_GRAPH only 0 or 1 is supported.") from err
+    cm.max_train_steps = 1270
+    cm.train_steps = 1120
+    cm.eval_steps = 1080
 
     use_dynamic = bool(int(os.getenv("USE_DYNAMIC", 0)))
     logger.info(f"USE_DYNAMIC:{use_dynamic}")
-    init(train_steps=train_steps, eval_steps=eval_steps,
-         use_dynamic=use_dynamic, use_dynamic_expansion=use_dynamic_expansion)
+    init(train_steps=cm.train_steps, eval_steps=cm.eval_steps,
+         use_dynamic=use_dynamic, use_dynamic_expansion=cm.use_dynamic_expansion)
     IF_LOAD = False
     rank_id = mxrec_util.communication.hccl_ops.get_rank_id()
     filelist = glob(f"./saved-model/sparse-model-0")
@@ -366,22 +135,20 @@ if __name__ == "__main__":
     cfg = Config()
     feature_spec_list_train = None
     feature_spec_list_eval = None
-    if use_faae:
-        feature_spec_list_train = create_feature_spec_list(use_timestamp=True)
-        feature_spec_list_eval = create_feature_spec_list(use_timestamp=True)
+    if cm.use_faae:
+        feature_spec_list_train = create_feature_spec_list(cfg, use_timestamp=True)
+        feature_spec_list_eval = create_feature_spec_list(cfg, use_timestamp=True)
     else:
-        feature_spec_list_train = create_feature_spec_list(use_timestamp=False)
-        feature_spec_list_eval = create_feature_spec_list(use_timestamp=False)
+        feature_spec_list_train = create_feature_spec_list(cfg, use_timestamp=False)
+        feature_spec_list_eval = create_feature_spec_list(cfg, use_timestamp=False)
 
     train_batch, train_iterator = make_batch_and_iterator(cfg, feature_spec_list_train, is_training=True,
-                                                          dump_graph=True, is_use_faae=use_faae,
-                                                          max_train_steps=max_train_steps, max_eval_steps=eval_steps)
+                                                          dump_graph=True, is_use_faae=cm.use_faae)
     eval_batch, eval_iterator = make_batch_and_iterator(cfg, feature_spec_list_eval, is_training=False,
-                                                        dump_graph=False, is_use_faae=use_faae,
-                                                        max_train_steps=max_train_steps, max_eval_steps=eval_steps)
+                                                        dump_graph=False, is_use_faae=cm.use_faae)
     logger.info(f"train_batch: {train_batch}")
 
-    if use_faae:
+    if cm.use_faae:
         cfg.dev_vocab_size = cfg.dev_vocab_size // 2
 
     # 创表操作
@@ -404,22 +171,22 @@ if __name__ == "__main__":
         **cfg.get_emb_table_cfg()
     )
 
-    if use_faae:
+    if cm.use_faae:
         tf.compat.v1.add_to_collection(ASCEND_TIMESTAMP, train_batch["timestamp"])
 
     # 一表多查
-    wide_hashtable_list = [sparse_hashtable_wide, sparse_hashtable_wide] if use_multi_lookup else \
+    wide_hashtable_list = [sparse_hashtable_wide, sparse_hashtable_wide] if cm.use_multi_lookup else \
                           [sparse_hashtable_wide]
-    deep_hashtable_list = [sparse_hashtable_deep, sparse_hashtable_deep] if use_multi_lookup else \
+    deep_hashtable_list = [sparse_hashtable_deep, sparse_hashtable_deep] if cm.use_multi_lookup else \
                           [sparse_hashtable_deep]
 
 
     Forward = collections.namedtuple("Forward", ["feature_list", "wide_hash_table_list", "deep_hash_table_list",
                                                  "batch", "is_train", "modify_graph", "is_use_faae"])
     train_forward_args = Forward(feature_spec_list_train, wide_hashtable_list, deep_hashtable_list, train_batch,
-                                True, MODIFY_GRAPH_FLAG, use_faae)
+                                True, cm.MODIFY_GRAPH_FLAG, cm.use_faae)
     eval_forward_args = Forward(feature_spec_list_eval, wide_hashtable_list, deep_hashtable_list, eval_batch,
-                                False, MODIFY_GRAPH_FLAG, use_faae)
+                                False, cm.MODIFY_GRAPH_FLAG, cm.use_faae)
     train_model = model_forward(train_forward_args)
     eval_model = model_forward(eval_forward_args)
 
@@ -441,7 +208,7 @@ if __name__ == "__main__":
         # apply gradients: update variables
         train_ops.append(model_optimizer.apply_gradients(avg_grads))
 
-        if use_dynamic_expansion:
+        if cm.use_dynamic_expansion:
             train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET)
             train_emb_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)
             # do embedding optimization by addr
@@ -463,33 +230,33 @@ if __name__ == "__main__":
         cfg.learning_rate = [cfg.learning_rate[0], cfg.learning_rate[1]]
 
     saver = tf.train.Saver()
-    if MODIFY_GRAPH_FLAG:
+    if cm.MODIFY_GRAPH_FLAG:
         modify_graph_and_start_emb_cache(dump_graph=True)
     else:
         start_asc_pipeline()
 
     hook_list = []
-    if use_faae:
+    if cm.use_faae:
         hook_evict = EvictHook(evict_enable=True, evict_time_interval=120)
         hook_list.append(hook_evict)
-        if MODIFY_GRAPH_FLAG:  # 该场景添加hook处理校验问题
+        if cm.MODIFY_GRAPH_FLAG:  # 该场景添加hook处理校验问题
             hook_list.append(GraphModifierHook(modify_graph=False))
 
     # Disable dumping data during session: set dump_data=False in sess_config:
-    if use_faae:
+    if cm.use_faae:
         sess = tf.compat.v1.train.MonitoredTrainingSession(
             hooks=hook_list,
             config=sess_config(dump_data=False)
         )
         sess.graph._unsafe_unfinalize()
-        if not MODIFY_GRAPH_FLAG:
+        if not cm.MODIFY_GRAPH_FLAG:
             sess.run(train_iterator.initializer)
         else:
             sess.run(ConfigInitializer.get_instance().train_params_config.get_initializer(True))
     else:
         sess = tf.compat.v1.Session(config=sess_config(dump_data=False))
         sess.run(tf.compat.v1.global_variables_initializer())
-        if not MODIFY_GRAPH_FLAG:
+        if not cm.MODIFY_GRAPH_FLAG:
             sess.run(train_iterator.initializer)
         else:
             sess.run(ConfigInitializer.get_instance().train_params_config.get_initializer(True))
@@ -532,11 +299,11 @@ if __name__ == "__main__":
                     f"table[{sparse_hashtable_deep.table_name}], "
                     f"table size:{sparse_hashtable_deep.size()}, table capacity:{sparse_hashtable_deep.capacity()}")
 
-        if i % (train_steps // iteration_per_loop) == 0:
-            if interval is not None:
-                test_auc, test_mean_log_loss = evaluate_fix(i * iteration_per_loop)
+        if i % (cm.train_steps // iteration_per_loop) == 0:
+            if cm.interval is not None:
+                test_auc, test_mean_log_loss = evaluate_fix(i * iteration_per_loop, sess, eval_model, eval_iterator)
             else:
-                test_auc, test_mean_log_loss = evaluate()
+                test_auc, test_mean_log_loss = evaluate(sess, eval_model, eval_iterator, cfg)
             print("Test auc: {}; log_loss: {} ".format(test_auc, test_mean_log_loss))
             best_auc = max(best_auc, test_auc)
             logger.info(f"training step: {i * iteration_per_loop}, best auc: {best_auc}")
