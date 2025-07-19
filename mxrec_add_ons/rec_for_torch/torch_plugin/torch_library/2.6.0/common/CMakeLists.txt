@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.10)
 
 project(fbgemm_npu_api)
 
+find_package(OpenMP REQUIRED)
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
 include_directories(${Python3_INCLUDE_DIRS})
@@ -43,4 +44,4 @@ include_directories(${PYTORCH_INSTALL_PATH}/include/torch/csrc/distributed)
 include_directories(${PYTORCH_INSTALL_PATH}/include/torch/csrc/api/include)
 include_directories(${ASCEND_DRIVER_PATH}/kernel/libc_sec/include)
 
-target_link_libraries(fbgemm_npu_api PUBLIC c10 torch torch_cpu torch_npu c_sec)
+target_link_libraries(fbgemm_npu_api PUBLIC c10 torch torch_cpu torch_npu c_sec OpenMP::OpenMP_CXX)
