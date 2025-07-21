@@ -15,22 +15,13 @@
 
 namespace Embcache {
 
-void EmbMemoryPool::Stop()
-{
-    stop = true;
-    std::lock_guard<std::mutex> lock(producerMutex);
-    producerCv.notify_all();
-    fullCv.notify_all();
-}
-
 BeforePutFuncState EmbMemoryPool::GetNewValueToBeInserted(uint64_t& value, uint32_t maxRetry)
 {
     for (uint32_t i = 0; i < maxRetry; i++) {
         if (BufferBin.pop(value)) {
-            producerCv.notify_one();
+            GetEmbMemoryPool().enqueue([this] { Produce(); });
             return BeforePutFuncState::BEFORE_SUCCESS;
         }
-        producerCv.notify_one();
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     LOG(ERROR) << "Failed to get new address for embedding, it is likely due to refill thread "
@@ -41,10 +32,7 @@ BeforePutFuncState EmbMemoryPool::GetNewValueToBeInserted(uint64_t& value, uint3
 
 void EmbMemoryPool::GetValueToBeRecycled(uint64_t value)
 {
-    std::lock_guard<std::mutex> lock(producerMutex);
     recycleBin.push(value);
-    full = false;
-    fullCv.notify_one();
 }
 
 bool EmbMemoryPool::GetNewAddr(uint64_t& newAddr)
@@ -55,10 +43,7 @@ bool EmbMemoryPool::GetNewAddr(uint64_t& newAddr)
         uint64_t maxSize = std::min(maxExpandSize, totalLeftVocabSize * itemSize);
         uint64_t newSize =
             currentMemoryUint.capacity ? std::min(currentMemoryUint.capacity * dynamicExpandRatio, maxSize) : itemSize;
-        if (newSize == 0) {
-            if (recycleBin.GetLength() == 0) {
-                full = true;
-            }
+        if (newSize == 0) { // 所有hostVocabSize均已分配
             return false;
         }
         auto newAddress = reinterpret_cast<uint64_t>(malloc(newSize));
@@ -97,22 +82,6 @@ void EmbMemoryPool::Produce()
     }
 
     BufferBin.push(newAddr);
-}
-
-void EmbMemoryPool::ProducerWorker()
-{
-    std::unique_lock<std::mutex> lock(producerMutex);
-    while (!stop) {
-        if (full) {
-            fullCv.wait(lock);
-            continue;
-        }
-        if (BufferBin.GetLength() < embMemoryPoolSize) {
-            Produce();
-            continue;
-        }
-        producerCv.wait(lock);
-    }
 }
 
 }  // namespace Embcache

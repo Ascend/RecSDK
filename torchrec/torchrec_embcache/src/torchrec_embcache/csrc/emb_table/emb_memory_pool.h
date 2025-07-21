@@ -16,6 +16,7 @@
 #include <glog/logging.h>
 
 #include "common/common.h"
+#include "utils/thread_pool.h"
 #include "utils/safe_queue.h"
 
 namespace Embcache {
@@ -32,11 +33,10 @@ using EmExpandMemUint = struct EmExpandMemoryUint {
 
 class EmbMemoryPool {
 public:
-    EmbMemoryPool(const EmbConfig& embConfig, uint64_t bufferSize, uint64_t hostVocabSize, uint32_t refillThreadNum)
+    EmbMemoryPool(const EmbConfig& embConfig, uint64_t bufferSize, uint64_t hostVocabSize)
         : embConfig(embConfig),
           maxBufferSize(bufferSize),
-          totalLeftVocabSize(hostVocabSize),
-          numThreads(refillThreadNum)
+          totalLeftVocabSize(hostVocabSize)
     {
         itemSize = (embConfig.optimNum + 1) * embConfig.embDim * sizeof(float);
         maxExpandSize = maxBufferSize * itemSize;
@@ -44,9 +44,9 @@ public:
         if (poolSizeStr) {
             embMemoryPoolSize = atoi(poolSizeStr);
         }
-        LOG(WARNING) << "EmbMemoryPool embMemoryPoolSize:" << embMemoryPoolSize << " and numThreads:" << numThreads;
-        for (uint32_t i = 0; i < numThreads; i++) {
-            producerThreads.emplace_back([this] { ProducerWorker(); });
+        LOG(WARNING) << "EmbMemoryPool embMemoryPoolSize:" << embMemoryPoolSize;
+        for (int i = 0; i < embMemoryPoolSize; i++) {
+            Produce();
         }
     }
 
@@ -56,25 +56,10 @@ public:
 
     ~EmbMemoryPool()
     {
-        {
-            // Dont' remove brackets of this code block, otherwise may cause dead lock in ProducerWorker.
-            // To let producerThreads quit, we need:
-            //   1. stop is true;
-            //   2. Make sure all ProducerWorker thread run at wait(lock),
-            //      this condition will satisfy when we acquire lock below;
-            //   3. Release lock below (lock only valid in this code block);
-            //   4. Notify all thread, producerThread will get lock then return from wait, then meet stop flag, return.
-            stop = true;
-            std::lock_guard<std::mutex> lock(producerMutex);
-        }
-        producerCv.notify_all();
-        fullCv.notify_all();
-        for (auto& t : producerThreads) {
-            t.join();
-        }
+        for (const auto& memUint : expandedMemory) {
+            free(reinterpret_cast<void*>(memUint.address));
+            }
     }
-
-    void Stop();
 
     BeforePutFuncState GetNewValueToBeInserted(uint64_t& value, uint32_t maxRetry = 1000);
     void GetValueToBeRecycled(uint64_t value);
@@ -82,7 +67,6 @@ public:
 private:
     bool GetNewAddr(uint64_t& newAddr);
     void Produce();
-    void ProducerWorker();
 
 private:
     std::vector<EmExpandMemUint> expandedMemory;
@@ -91,20 +75,12 @@ private:
 private:
     uint64_t maxBufferSize;
     uint64_t totalLeftVocabSize;
-    uint32_t numThreads;
 
-    std::atomic<uint64_t> currBufferSize{0};
-    volatile std::atomic<bool> stop = false;
-    volatile std::atomic<bool> full = false;
-    std::mutex producerMutex;
     std::mutex getAddrMutex;
-    std::condition_variable producerCv;
-    std::condition_variable fullCv;
 
     SafeQueue<uint64_t> BufferBin;
     SafeQueue<uint64_t> recycleBin;
 
-    std::vector<std::thread> producerThreads;
     EmExpandMemUint currentMemoryUint{};
     uint64_t dynamicExpandRatio = 2;
 

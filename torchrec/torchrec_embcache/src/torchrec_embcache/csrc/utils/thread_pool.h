@@ -19,15 +19,34 @@
 #include <stdexcept>
 #include <thread>
 #include <vector>
+#include "common/constants.h"
 
 namespace Embcache {
 
 class ThreadPool {
 public:
-    static ThreadPool& GetInstance(size_t threads = 10)
+    explicit ThreadPool(size_t threads) : stopped_(false)
     {
-        static ThreadPool instance(threads);
-        return instance;
+        if (threads == 0) {
+            threads = 1;
+        }
+        for (size_t i = 0; i < threads; ++i) {
+            workers_.emplace_back([this] {
+                while (true) {
+                    std::function<void()> task;
+                    {
+                        std::unique_lock<std::mutex> lock(this->queue_mutex_);
+                        this->condition_.wait(lock, [this] { return this->stopped_ || !this->tasks_.empty(); });
+                        if (this->stopped_ && this->tasks_.empty()) {
+                            return;
+                        }
+                        task = std::move(this->tasks_.front());
+                        this->tasks_.pop();
+                    }
+                    task();
+                }
+            });
+        }
     }
 
     ThreadPool(const ThreadPool&) = delete;
@@ -63,35 +82,34 @@ public:
     }
 
 private:
-    explicit ThreadPool(size_t threads) : stopped_(false)
-    {
-        if (threads == 0) {
-            threads = 1;
-        }
-        for (size_t i = 0; i < threads; ++i) {
-            workers_.emplace_back([this] {
-                while (true) {
-                    std::function<void()> task;
-                    {
-                        std::unique_lock<std::mutex> lock(this->queue_mutex_);
-                        this->condition_.wait(lock, [this] { return this->stopped_ || !this->tasks_.empty(); });
-                        if (this->stopped_ && this->tasks_.empty()) {
-                            return;
-                        }
-                        task = std::move(this->tasks_.front());
-                        this->tasks_.pop();
-                    }
-                    task();
-                }
-            });
-        }
-    }
-
     std::vector<std::thread> workers_;
     std::queue<std::function<void()>> tasks_;
     std::mutex queue_mutex_;
     std::condition_variable condition_;
     std::atomic<bool> stopped_;
 };
+
+inline uint64_t GetEmbMemoryPoolThreadNum()
+{
+    uint64_t embMemoryPoolThreadNum = EmbMemPoolConfigConstants::refillThreadNum;
+    char* threadNumStr = getenv("EMB_MEMORY_POOL_THREAD_NUM");
+    if (threadNumStr) {
+        embMemoryPoolThreadNum = atoi(threadNumStr);
+    }
+    return embMemoryPoolThreadNum;
+}
+
+inline ThreadPool& GetEmbMemoryPool()
+{
+    static ThreadPool instance(GetEmbMemoryPoolThreadNum());
+    return instance;
+}
+
+inline ThreadPool& GetAsyncTaskPool()
+{
+    static ThreadPool instance(10);
+    return instance;
+}
+
 }  // namespace Embcache
 #endif  // EMBEDDING_CACHE_THREAD_POOL_H

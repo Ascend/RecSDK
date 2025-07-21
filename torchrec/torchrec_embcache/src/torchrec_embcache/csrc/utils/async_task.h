@@ -26,7 +26,7 @@ public:
     {
         auto task_ptr = std::make_shared<std::packaged_task<T()>>(std::forward<Func>(func));
         future_ = task_ptr->get_future();
-        ThreadPool::GetInstance().enqueue([task_ptr]() { (*task_ptr)(); });
+        GetAsyncTaskPool().enqueue([task_ptr]() { (*task_ptr)(); });
     }
 
     T get()

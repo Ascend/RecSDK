@@ -130,13 +130,8 @@ class EmbTableFastHashMap : public EmbTable {
 public:
     explicit EmbTableFastHashMap(const EmbConfig& embConfig) : EmbTable(embConfig)
     {
-        uint64_t embMemoryPoolThreadNum = EmbMemPoolConfigConstants::refillThreadNum;
-        char* threadNumStr = getenv("EMB_MEMORY_POOL_THREAD_NUM");
-        if (threadNumStr) {
-            embMemoryPoolThreadNum = atoi(threadNumStr);
-        }
         memPoolPtr = std::make_shared<EmbMemoryPool>(embConfig, EmbMemPoolConfigConstants::bufferSize,
-                                                     EmbMemPoolConfigConstants::hostVocabSize, embMemoryPoolThreadNum);
+                                                     EmbMemPoolConfigConstants::hostVocabSize);
         hostVocabSize = EmbMemPoolConfigConstants::hostVocabSize;
 
         fastHashMapPtr = std::make_shared<FastHashMap>();
@@ -153,7 +148,6 @@ public:
     ~EmbTableFastHashMap() override
     {
         fastHashMapPtr->Destroy();
-        memPoolPtr->Stop();
     }
 
     void FindOrInsert(const std::vector<int64_t>& keys, float* outEmbs, std::vector<float*> outOptims) override
