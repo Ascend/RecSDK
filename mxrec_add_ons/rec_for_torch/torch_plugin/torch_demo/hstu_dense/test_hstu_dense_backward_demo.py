@@ -138,7 +138,9 @@ class TestHstuJaggedDemo:
             )
 
         torch.npu.synchronize()
-        return q_grad.cpu(), k_grad.cpu(), v_grad.cpu(), bias_grad.cpu()
+        if enable_bias:
+            return q_grad.cpu(), k_grad.cpu(), v_grad.cpu(), bias_grad.cpu()
+        return q_grad.cpu(), k_grad.cpu(), v_grad.cpu(), None
 
     def golden_op_exec(self, grad, q, k, v, bias, mask, max_seq_len, seq_offset, mask_type, silu_scale, enable_bias,
                        data_type):

@@ -82,4 +82,10 @@ bool IsSameShape(const gert::Shape &shape0, const gert::Shape &shape1, int dim);
 
 bool BasicShapeCheck(int64_t batchSize, int64_t seqLen, int64_t headNum, int64_t dim);
 
+template<typename T>
+constexpr auto AlignUp(T a, T b) -> decltype(a + b)
+{
+    return (b == 0) ? 0 : (((a + b - 1) / b) * b);
+}
+
 #endif
