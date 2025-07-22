@@ -25,7 +25,7 @@ json_file=$onnx_path/json.hpp
 export PATH=$parent_dir:$PATH
 ai_core="ai_core-Ascend910B1"
 if [ "$#" -eq 1 ]; then
-  ai_core=$1
+  ai_core="$1"
 fi
 # 利用msopgen生成可编译文件
 rm -rf ./hstu_dense_forward
