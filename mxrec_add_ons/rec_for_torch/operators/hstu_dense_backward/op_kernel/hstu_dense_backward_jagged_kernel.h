@@ -18,6 +18,7 @@ See the License for the specific language governing permissions and
 #define HSTU_DENSE_BACKWARD_JAGGED_KERNEL_H
 
 #include "hstu_dense_backward_kernel.h"
+#include "hstu_dense_backward_kernel_common.h"
 
 namespace HstuDenseBackward {
 
@@ -26,7 +27,7 @@ struct JaggedTaskInfo {
     int64_t batchId;       // 基本块batch id
     int64_t headId;        // 基本块head id
     int64_t rowId;         // 基本块在当前qk矩阵中的行id，基本单位为blockHeight
-    int64_t colId;         // 基本块在当前qk急诊中的列id，基本单位为blockHeight
+    int64_t colId;         // 基本块在当前qk矩阵中的列id，基本单位为blockHeight
     int64_t accumId;       // 基本块累加id，用来获取q/k/v梯度的累加位置
     int64_t blockLimit;    // 基本块在当前batch_head下的最大block偏移，超过后需要切换block
     int64_t curSeqLen;     // 当前计算块的序列长度
@@ -34,6 +35,7 @@ struct JaggedTaskInfo {
     int64_t qkRightOffset; // 基本块qk/gv乘法的右矩阵内存偏移
     int64_t kGradLeftOffset; // 基本块q/k梯度计算的左矩阵内存偏移，v的左矩阵在缓存中，单独计算
     int64_t vGradRightOffset; // 基本块q/k/v梯度计算的右矩阵内存偏移
+    int64_t qGradRightOffset; // 不带bias场景下基本块q梯度计算的右矩阵内存偏移
     int64_t rowLine;          // 基本块需要计算的行数
     int64_t colLine;          // 基本块需要计算的列数
 };
@@ -64,7 +66,11 @@ public:
         this->PreInit();
 
         this->ComputeJaggedFirst();
-        this->ComputeJaggedSecond();
+        if (this->enableBias) {
+            this->ComputeJaggedSecond();
+        } else {
+            this->CopyQGradToOutput();
+        }
     }
 
     __aicore__ inline void PreInit()
@@ -177,8 +183,9 @@ public:
         computeTaskInfo[curTask].accumId += 1;
     }
 
-    __aicore__ inline void CalcBaseOffsetsJagged(int64_t curTaskId, bool isCol = true)
+    __aicore__ inline void CalcBaseOffsetsJagged(int64_t taskId, bool isCol = true)
     {
+        int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         computeTaskInfo[curTaskId].qkLeftOffset =
             backwardTilingData->seqOffset[computeTaskInfo[curTaskId].batchId] * this->headNum * this->headDim +
             computeTaskInfo[curTaskId].rowId * this->blockHeight * this->headNum * this->headDim +
@@ -189,17 +196,29 @@ public:
             computeTaskInfo[curTaskId].colId * this->blockHeight * this->headNum * this->headDim +
             computeTaskInfo[curTaskId].headId * this->headDim;
 
-        computeTaskInfo[curTaskId].kGradLeftOffset =
-            computeTaskInfo[curTaskId].batchId * this->headNum * this->biasGradSeqLen * this->biasGradSeqLen +
-            computeTaskInfo[curTaskId].headId * this->biasGradSeqLen * this->biasGradSeqLen +
-            computeTaskInfo[curTaskId].rowId * this->blockHeight * this->biasGradSeqLen +
-            computeTaskInfo[curTaskId].colId * this->blockHeight;
+        if (this->enableBias) {
+            computeTaskInfo[curTaskId].kGradLeftOffset =
+                computeTaskInfo[curTaskId].batchId * this->headNum * this->biasGradSeqLen * this->biasGradSeqLen +
+                computeTaskInfo[curTaskId].headId * this->biasGradSeqLen * this->biasGradSeqLen +
+                computeTaskInfo[curTaskId].rowId * this->blockHeight * this->biasGradSeqLen +
+                computeTaskInfo[curTaskId].colId * this->blockHeight;
+        } else {
+            computeTaskInfo[curTaskId].kGradLeftOffset =
+                (taskId % MID_USE_TIMES) * this->blockHeight * this->blockHeight;
+        }
 
         if (isCol) {
             computeTaskInfo[curTaskId].vGradRightOffset =
                 backwardTilingData->seqOffset[computeTaskInfo[curTaskId].batchId] * this->headNum * this->headDim +
                 computeTaskInfo[curTaskId].rowId * this->blockHeight * this->headNum * this->headDim +
                 computeTaskInfo[curTaskId].headId * this->headDim;
+
+            if (!this->enableBias) {
+                computeTaskInfo[curTaskId].qGradRightOffset =
+                    backwardTilingData->seqOffset[computeTaskInfo[curTaskId].batchId] * this->headNum * this->headDim +
+                    computeTaskInfo[curTaskId].colId * this->blockHeight * this->headNum * this->headDim +
+                    computeTaskInfo[curTaskId].headId * this->headDim;
+            }
 
             computeTaskInfo[curTaskId].rowLine =
                 computeTaskInfo[curTaskId].curSeqLen - computeTaskInfo[curTaskId].rowId * this->blockHeight;
@@ -249,14 +268,21 @@ public:
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midAccumIdx = computeTaskInfo[curTaskId].accumId % MID_USE_TIMES;
         int64_t outOffset = midAccumIdx * this->blockHeight * this->headDim;
+        int64_t qGradRightOffset = computeTaskInfo[curTaskId].vGradRightOffset;
+
+        if (!this->enableBias) {
+            outOffset =
+                backwardTilingData->seqOffset[computeTaskInfo[curTaskId].batchId] * this->headNum * this->headDim +
+                computeTaskInfo[curTaskId].headId * computeTaskInfo[curTaskId].curSeqLen * this->headDim +
+                computeTaskInfo[curTaskId].rowId * this->blockHeight * this->headDim;
+            qGradRightOffset = computeTaskInfo[curTaskId].qGradRightOffset;
+        }
 
         bool isNew = computeTaskInfo[curTaskId].colId == 0;
 
         this->qGradMatmul.SetTail(
             computeTaskInfo[curTaskId].rowLine, this->headDim, computeTaskInfo[curTaskId].colLine);
-        this->DoQGradMatmulImpl(computeTaskInfo[curTaskId].kGradLeftOffset,
-                                computeTaskInfo[curTaskId].vGradRightOffset,
-                                outOffset, isNew);
+        this->DoQGradMatmulImpl(computeTaskInfo[curTaskId].kGradLeftOffset, qGradRightOffset, outOffset, isNew);
     }
 
     __aicore__ inline void DoJaggedKGradMatmul(int64_t taskId)
@@ -365,6 +391,9 @@ public:
         if (taskId > 1) {
             DoJaggedVGradMatmul(taskId - TWO);
             DoJaggedKGradMatmul(taskId - TWO);
+            if (!this->enableBias) {
+                DoJaggedQGradMatmul(taskId - TWO);
+            }
         }
         if (taskId > 0) {
             VecScoreJagged(taskId - 1);
@@ -379,6 +408,10 @@ public:
             this->vGradMatmul.End();
             this->kGradMatmul.WaitIterateAll();
             this->kGradMatmul.End();
+            if (!this->enableBias) {
+                this->qGradMatmul.WaitIterateAll();
+                this->qGradMatmul.End();
+            }
             if (computeTaskInfo[(taskId - TWO) % COMPUTE_PIPE_NUM].accumId !=
                 computeTaskInfo[(taskId - 1) % COMPUTE_PIPE_NUM].accumId) {
                 DoTransJagged(taskId - TWO, this->vGradAccumTemp, this->vGrad);
@@ -392,11 +425,18 @@ public:
         if (taskId > 1) {
             DoJaggedVGradMatmul(taskId - TWO);
             DoJaggedKGradMatmul(taskId - TWO);
+            if (!this->enableBias) {
+                DoJaggedQGradMatmul(taskId - TWO);
+            }
             VecScoreJagged(taskId - 1);
             this->vGradMatmul.WaitIterateAll();
             this->vGradMatmul.End();
             this->kGradMatmul.WaitIterateAll();
             this->kGradMatmul.End();
+            if (!this->enableBias) {
+                this->qGradMatmul.WaitIterateAll();
+                this->qGradMatmul.End();
+            }
             if (computeTaskInfo[(taskId - TWO) % COMPUTE_PIPE_NUM].accumId !=
                 computeTaskInfo[(taskId - 1) % COMPUTE_PIPE_NUM].accumId) {
                 DoTransJagged(taskId - TWO, this->vGradAccumTemp, this->vGrad);
@@ -405,10 +445,17 @@ public:
 
             DoJaggedVGradMatmul(taskId - 1);
             DoJaggedKGradMatmul(taskId - 1);
+            if (!this->enableBias) {
+                DoJaggedQGradMatmul(taskId - 1);
+            }
             this->vGradMatmul.WaitIterateAll();
             this->vGradMatmul.End();
             this->kGradMatmul.WaitIterateAll();
             this->kGradMatmul.End();
+            if (!this->enableBias) {
+                this->qGradMatmul.WaitIterateAll();
+                this->qGradMatmul.End();
+            }
             DoTransJagged(taskId - 1, this->vGradAccumTemp, this->vGrad);
             DoTransJagged(taskId - 1, this->kGradAccumTemp, this->kGrad);
         }
@@ -417,10 +464,17 @@ public:
             VecScoreJagged(taskId - 1);
             DoJaggedVGradMatmul(taskId - 1);
             DoJaggedKGradMatmul(taskId - 1);
+            if (!this->enableBias) {
+                DoJaggedQGradMatmul(taskId - 1);
+            }
             this->vGradMatmul.WaitIterateAll();
             this->vGradMatmul.End();
             this->kGradMatmul.WaitIterateAll();
             this->kGradMatmul.End();
+            if (!this->enableBias) {
+                this->qGradMatmul.WaitIterateAll();
+                this->qGradMatmul.End();
+            }
             DoTransJagged(taskId - 1, this->vGradAccumTemp, this->vGrad);
             DoTransJagged(taskId - 1, this->kGradAccumTemp, this->kGrad);
         }
@@ -447,7 +501,7 @@ public:
                 int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
                 int64_t nextTaskId = (taskId + 1) % COMPUTE_PIPE_NUM;
                 computeTaskInfo[curTaskId].rowId = rowId;
-                CalcBaseOffsetsJagged(curTaskId);
+                CalcBaseOffsetsJagged(taskId);
 
                 FirstJaggedStagePipeline(taskId);
 
@@ -509,6 +563,15 @@ public:
 
         if (taskId > 0) {
             DoTransJagged(taskId - 1, this->kGradAccumTemp, this->qGrad, false);
+        }
+    }
+
+    __aicore__ inline void CopyQGradToOutput()
+    {
+        SyncAll();
+
+        if (GetBlockIdx() == 0) {
+            this->DoCopyQGrad(backwardTilingData->seqOffset);
         }
     }
 

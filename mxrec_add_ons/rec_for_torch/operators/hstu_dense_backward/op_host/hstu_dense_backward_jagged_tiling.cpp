@@ -185,24 +185,31 @@ ge::graphStatus GetJaggedBasicShapeInfo(gert::TilingContext *context, HstuDenseB
     int64_t maxSeqLen = tiling.get_maxSeqLen();
 
     auto gradShape = context->GetInputShape(INDEX_T::INDEX_0)->GetStorageShape();
-    auto attnBiasGradShape = context->GetOutputShape(INDEX_T::INDEX_3)->GetStorageShape();
 
     OPS_CHECK(gradShape.GetDimNum() != JAGGED_GRAD_DIM_NUM,
                 OPS_LOG_E("", "hstu jagged backward only support input with dim %d\n", JAGGED_GRAD_DIM_NUM),
-                return ge::GRAPH_FAILED);
-    OPS_CHECK(attnBiasGradShape.GetDim(INDEX_T::INDEX_2) < maxSeqLen,
-                OPS_LOG_E("", "attnBiasGrad get seqLen less than maxSeqLen\n"),
                 return ge::GRAPH_FAILED);
 
     int64_t seqLen = gradShape.GetDim(INDEX_T::INDEX_0);
     int64_t headNum = gradShape.GetDim(INDEX_T::INDEX_1);
     int64_t headDim = gradShape.GetDim(INDEX_T::INDEX_2);
-    int64_t biasGradSeqLen = attnBiasGradShape.GetDim(INDEX_T::INDEX_2);
+    int64_t biasGradSeqLen = 0;
+    auto attnBiasGradShape = context->GetOutputShape(INDEX_T::INDEX_3);
+    if (attnBiasGradShape != nullptr) {
+        biasGradSeqLen = attnBiasGradShape->GetStorageShape().GetDim(INDEX_T::INDEX_2);
+        OPS_CHECK(biasGradSeqLen < maxSeqLen,
+            OPS_LOG_E("", "attnBiasGrad get seqLen less than maxSeqLen\n"),
+            return ge::GRAPH_FAILED);
+    } else {
+        biasGradSeqLen = AlignUp(maxSeqLen, static_cast<int64_t>(BLOCK_256));
+        OPS_CHECK((biasGradSeqLen == 0), OPS_LOG_E("", "attnBiasGrad get seqLen error\n"), return ge::GRAPH_FAILED);
+    }
 
     tiling.set_seqLen(seqLen);
     tiling.set_headNum(headNum);
     tiling.set_headDim(headDim);
     tiling.set_biasGradSeqLen(biasGradSeqLen);
+    tiling.set_isNormal(0);
 
     int64_t batchSize = tiling.get_batchSize();
     OPS_CHECK(!BasicShapeCheck(batchSize, maxSeqLen, headNum, headDim),
@@ -340,15 +347,15 @@ ge::graphStatus JaggedInferShape(gert::InferShapeContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    int batchSize = seqOffsetLens - 1;
-
     gert::Shape *attnBiasGradShape = context->GetOutputShape(INDEX_T::INDEX_3);
-    OPS_CHECK_PTR_NULL(attnBiasGradShape, return ge::GRAPH_FAILED);
-    attnBiasGradShape->SetDimNum(BIAS_DIM_NUM);
-    attnBiasGradShape->SetDim(INDEX_T::INDEX_0, batchSize);
-    attnBiasGradShape->SetDim(INDEX_T::INDEX_1, qShape->GetDim(1));
-    attnBiasGradShape->SetDim(INDEX_T::INDEX_2, *maxSeqLen);
-    attnBiasGradShape->SetDim(INDEX_T::INDEX_3, *maxSeqLen);
+    if (attnBiasGradShape != nullptr) {
+        int batchSize = seqOffsetLens - 1;
+        attnBiasGradShape->SetDimNum(BIAS_DIM_NUM);
+        attnBiasGradShape->SetDim(INDEX_T::INDEX_0, batchSize);
+        attnBiasGradShape->SetDim(INDEX_T::INDEX_1, qShape->GetDim(1));
+        attnBiasGradShape->SetDim(INDEX_T::INDEX_2, *maxSeqLen);
+        attnBiasGradShape->SetDim(INDEX_T::INDEX_3, *maxSeqLen);
+    }
 
     return ge::GRAPH_SUCCESS;
 }
