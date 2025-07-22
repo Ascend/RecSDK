@@ -67,7 +67,7 @@ public:
         condition_.notify_one();
     }
 
-    ~ThreadPool()
+    void Stop()
     {
         {
             std::unique_lock<std::mutex> lock(queue_mutex_);

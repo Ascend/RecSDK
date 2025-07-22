@@ -58,7 +58,7 @@ public:
     {
         for (const auto& memUint : expandedMemory) {
             free(reinterpret_cast<void*>(memUint.address));
-            }
+        }
     }
 
     BeforePutFuncState GetNewValueToBeInserted(uint64_t& value, uint32_t maxRetry = 1000);
