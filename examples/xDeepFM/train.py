@@ -1,15 +1,21 @@
 """define train, infer, eval, test process"""
-from npu_bridge.npu_init import *
+import os
+import time
+import collections
+
 import numpy as np
-import os, time, collections
 import tensorflow as tf
-from IO.iterator import FfmIterator #, DinIterator, CCCFNetIterator
-from IO.ffm_cache import FfmCache
-from src.exDeepFM import ExtremeDeepFMModel
-import utils.util as util
-import utils.metric as metric
+import portalocker
+
+from npu_bridge.npu_init import *
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
+
+import utils.util as util
+import utils.metric as metric
+from IO.iterator import FfmIterator
+from IO.ffm_cache import FfmCache
+from src.exDeepFM import ExtremeDeepFMModel
 
 MODEL_MAP = {
     'exDeepFM': ExtremeDeepFMModel,
@@ -76,8 +82,7 @@ def run_infer(load_model, load_sess, filename, hparams, sample_num_file):
     # load sample num
     with open(sample_num_file, 'r') as f:
         sample_num = int(f.readlines()[0].strip())
-    if not os.path.exists(util.RES_DIR):
-        os.mkdir(util.RES_DIR)
+    util.make_dir_with_lock(util.RES_DIR)
     # In the run_eval function, get_initializer's parameter is set to true.
     initializer = ConfigInitializer.get_instance().train_params_config.get_initializer(True)
     load_sess.run(initializer, feed_dict={load_model.filenames: [filename]})
@@ -105,8 +110,7 @@ def cache_data(hparams, filename, flag):
     else:
         raise ValueError(
             "data format must be ffm, din, cccfnet, this format not defined {0}".format(hparams.data_format))
-    if not os.path.exists(util.CACHE_DIR):
-        os.mkdir(util.CACHE_DIR)
+    util.make_dir_with_lock(util.CACHE_DIR)
     if flag == 'train':
         hparams.train_file_cache = util.convert_cached_name(hparams.train_file, hparams.batch_size)
         cached_name = hparams.train_file_cache
@@ -130,17 +134,22 @@ def cache_data(hparams, filename, flag):
     else:
         raise ValueError("flag must be train, eval, test, infer")
     hparams.logger.info('cache filename: {}'.format(filename))
-    if not os.path.isfile(cached_name):
-        hparams.logger.info('has not cached file, begin cached...')
-        start_time = time.time()
-        sample_num, impression_id_list = cache_obj.write_tfrecord(filename, cached_name, hparams)
-        util.print_time("caced file used time", start_time)
-        hparams.logger.info("data sample num:{0}".format(sample_num))
-        with open(sample_num_path, 'w') as f:
-            f.write(str(sample_num) + '\n')
-        with open(impression_id_path, 'w') as f:
-            for impression_id in impression_id_list:
-                f.write(str(impression_id) + '\n')
+
+    if not os.path.exists(util.LOCK_FILE):
+        open(util.LOCK_FILE, 'w').close()
+
+    with portalocker.Lock(util.LOCK_FILE, 'w', flags=portalocker.LOCK_EX) as lock_fh:
+        if not os.path.isfile(cached_name):
+            hparams.logger.info('has not cached file, begin cached...')
+            start_time = time.time()
+            sample_num, impression_id_list = cache_obj.write_tfrecord(filename, cached_name, hparams)
+            util.print_time("cache file used time", start_time)
+            hparams.logger.info("data sample num:{0}".format(sample_num))
+            with open(sample_num_path, 'w') as f:
+                f.write(str(sample_num) + '\n')
+            with open(impression_id_path, 'w') as f:
+                for impression_id in impression_id_list:
+                    f.write(str(impression_id) + '\n')
 
 
 def train(hparams, scope=None, target_session=""):

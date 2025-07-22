@@ -1,10 +1,16 @@
 """define util function and  global variable"""
-from npu_bridge.npu_init import *
+import os
+import sys
+import time
+
+import yaml
+import portalocker
 import tensorflow as tf
-import os, sys
-import time, yaml
 from packaging import version
 
+from npu_bridge.npu_init import *
+
+LOCK_FILE = './dir.lock'
 RES_DIR = './res/'
 CACHE_DIR = './cache/'
 MODEL_DIR = './checkpoint/'
@@ -27,16 +33,21 @@ DIN_FORMAT_SPLIT = '#'
 USER_ID_SPLIT = '%'
 
 
-def check_and_mkdir():
-    def make_dir(DIR):
-        if not os.path.exists(DIR):
-            os.mkdir(DIR)
+def make_dir_with_lock(dirname):
+    if not os.path.exists(LOCK_FILE):
+        open(LOCK_FILE, 'w').close()
 
-    make_dir(RES_DIR)
-    make_dir(CACHE_DIR)
-    make_dir(MODEL_DIR)
-    make_dir(CONFIG_DIR)
-    make_dir(LOG_DIR)
+    with portalocker.Lock(LOCK_FILE, 'w', flags=portalocker.LOCK_EX) as lock_fh:
+        if not os.path.exists(dirname):
+            os.mkdir(dirname)
+
+
+def check_and_mkdir():
+    make_dir_with_lock(RES_DIR)
+    make_dir_with_lock(CACHE_DIR)
+    make_dir_with_lock(MODEL_DIR)
+    make_dir_with_lock(CONFIG_DIR)
+    make_dir_with_lock(LOG_DIR)
 
 
 def check_tensorflow_version():
