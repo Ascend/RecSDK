@@ -20,13 +20,13 @@ Rec SDK作为面向互联网市场搜索推荐广告的应用使能SDK产品，�
 
 ## 版本配套
 
-| 软件                | 版本            | 下载链接                                                                                                                          |
-|-------------------|---------------|-------------------------------------------------------------------------------------------------------------------------------|
-| Rec SDK           | 7.0.RC1       | https://gitee.com/ascend/RecSDK/releases/tag/7.0.RC1                                                                          |
-| CANN              | 8.1.RC1.beta1 | https://www.hiascend.com/developer/download/community/result?module=sdk+tf+cann&product=4&model=26                            |
-| TensorFlowAdapter | 8.1.RC1.beta1 | https://gitee.com/ascend/tensorflow/releases/tag/tfa_v0.0.36_8.1.RC1                                                          |
-| Driver            | 25.0.RC1      | https://www.hiascend.com/hardware/firmware-drivers/community?product=4&model=26&cann=8.1.RC1.beta1&driver=Ascend+HDK+25.0.RC1 |
-| Firmware          | 25.0.RC1      | https://www.hiascend.com/hardware/firmware-drivers/community?product=4&model=26&cann=8.1.RC1.beta1&driver=Ascend+HDK+25.0.RC1 |
+| 软件              | 版本              | 下载链接                                                                                                                      |
+|-------------------|------------------|-------------------------------------------------------------------------------------------------------------------------------|
+| Rec SDK           | 7.1.RC1          | https://gitee.com/ascend/RecSDK/releases/tag/7.1.RC1                                                                          |
+| CANN              | 8.2.RC1.alpha003 | https://www.hiascend.com/developer/download/community/result?module=cann                                                      |
+| TensorFlowAdapter | 8.1.RC1          | https://gitee.com/ascend/tensorflow/releases/tag/tfa_v0.0.36_8.1.RC1                                                          |
+| Driver            | 25.0.RC1         | https://www.hiascend.com/hardware/firmware-drivers/community?product=4&model=26&cann=8.1.RC1.beta1&driver=Ascend+HDK+25.0.RC1 |
+| Firmware          | 25.0.RC1         | https://www.hiascend.com/hardware/firmware-drivers/community?product=4&model=26&cann=8.1.RC1.beta1&driver=Ascend+HDK+25.0.RC1 |
 
 ## 支持的产品型号
 - Atlas 200T A2 Box16
@@ -35,7 +35,7 @@ Rec SDK作为面向互联网市场搜索推荐广告的应用使能SDK产品，�
 
 ## 安装方式
 
-安装前，请参考[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/81RC1beta1/softwareinst/instg/instg_0000.html?Mode=PmIns&InstallType=local&OS=Ubuntu&Software=cannToolKit)安装CANN开发套件软件包和TensorFlow适配昇腾插件。
+安装前，请参考[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/82RC1alpha003/softwareinst/instg/instg_0001.html?Mode=PmIns&OS=Ubuntu&Software=cannToolKit)安装CANN开发套件软件包和TensorFlow适配昇腾插件。
 
 CANN软件提供进程级环境变量设置脚本，供用户在进程中引用，以自动完成环境变量设置。用户进程结束后自动失效。可在程序启动的Shell脚本中使用如下命令设置CANN的相关环境变量，也可通过命令行执行如下命令（以root用户默认安装路径“/usr/local/Ascend”为例）：
 ```shell

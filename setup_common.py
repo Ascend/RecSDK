@@ -57,7 +57,7 @@ def run_setup(build_script_name, build_type):
     if env_version and re.match(r'^[0-9]+\.[0-9]+\.[A-Za-z]+[0-9]+$', env_version):
         VERSION = env_version
     else:
-        VERSION = "7.0.RC1"
+        VERSION = "7.2.RC1"
 
     INIT_FILE = "mx_rec/__init__.py"
     with open(INIT_FILE, 'r') as file:
