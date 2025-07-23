@@ -43,6 +43,7 @@ TILING_DATA_FIELD_DEF(float, beta1);
 TILING_DATA_FIELD_DEF(float, beta2);
 TILING_DATA_FIELD_DEF(float, beta1pow);
 TILING_DATA_FIELD_DEF(float, beta2pow);
+TILING_DATA_FIELD_DEF(float, beta2sqrt);
 TILING_DATA_FIELD_DEF(int64_t, iter);
 
 END_TILING_DATA_DEF;

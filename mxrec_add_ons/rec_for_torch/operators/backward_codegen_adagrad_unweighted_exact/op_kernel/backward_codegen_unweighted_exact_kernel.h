@@ -52,6 +52,7 @@ struct Args {
     GM_ADDR uniqueId;
     GM_ADDR uniqueHashSize;
     GM_ADDR uniqueInverse;
+    GM_ADDR indiceSizeCumsum;
 
     GM_ADDR out;
     GM_ADDR momentum1DevOut;

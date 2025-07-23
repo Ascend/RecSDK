@@ -26,6 +26,11 @@ using namespace BackwardCodegenUnweightedExact;
 
 namespace BackwardCodegenAdamUnweightedExact {
 
+constexpr int NUM_OUTPUTS = 3; // grad, momentum1, momentum2
+constexpr int GRAD_OFFSET_IDX = 0;
+constexpr int MOMENTUM1_OFFSET_IDX = 1;
+constexpr int MOMENTUM2_OFFSET_IDX = 2;
+    
 class BackwardCodegenAdamUnweightedExactKernel : public BackwardCodegenUnweightedExactKernel {
 public:
     __aicore__ inline BackwardCodegenAdamUnweightedExactKernel() {}
@@ -43,15 +48,16 @@ public:
         iter = tilingData.iter;
         beta1pow = tilingData.beta1pow;
         beta2pow = tilingData.beta2pow;
+        beta2sqrt = tilingData.beta2sqrt;
 
-        numOfOut = 3;  // 输出个数为3：grad, momentum1, momentum2
+        numOfOut = NUM_OUTPUTS;  // 输出个数为3：grad, momentum1, momentum2
         indicesNumOneBlock = blockLen / numOfOut / maxD;
         if (indicesNumOneBlock >= MAX_ARGS_PIPE_LEN) {
             indicesNumOneBlock = MAX_ARGS_PIPE_LEN;
         }
-        outIndex = 0 * maxD;   // grad偏移
-        outIndex1 = 1 * maxD;  // momentum1偏移
-        outIndex2 = 2 * maxD;  // momentum2偏移
+        outIndex = GRAD_OFFSET_IDX * maxD;   // grad偏移
+        outIndex1 = MOMENTUM1_OFFSET_IDX * maxD;  // momentum1偏移
+        outIndex2 = MOMENTUM2_OFFSET_IDX * maxD;  // momentum2偏移
     }
 
     __aicore__ inline void Tilling()
@@ -124,6 +130,7 @@ public:
         float oneMinusBeta1 = (1 - beta1);
         float oneMinusBeta2 = (1 - beta2);
         float minusLearningRate = -learning_rate;
+        float stepSize = minusLearningRate * beta2sqrt;
 
         LocalTensor<float> inputLt = queIn.DeQue<float>();
         LocalTensor<float> outLt = queOut.AllocTensor<float>();
@@ -145,16 +152,11 @@ public:
             Muls<float>(outLt[thisGradIndex], outLt[thisGradIndex], oneMinusBeta2, theArgs.embedDim);
             Add<float>(outLt[thisMoment2Index], outLt[thisMoment2Index], outLt[thisGradIndex], theArgs.embedDim);
 
-            // v_bias_corr = v / (1 - beta1 ** hyperparams['t'])
-            Muls<float>(outLt[thisMoment1Index], outLt[thisMoment1Index], beta1pow, theArgs.embedDim);
-            // s_bias_corr = s / (1 - beta2 ** hyperparams['t'])
-            Muls<float>(outLt[thisMoment2Index], outLt[thisMoment2Index], beta2pow, theArgs.embedDim);
-
-            // p[:] -= hyperparams['lr'] * v_bias_corr / (torch.sqrt(s_bias_corr) + eps)
-            Sqrt<float>(outLt[thisMoment2Index], outLt[thisMoment2Index], theArgs.embedDim);
-            Adds<float>(outLt[thisMoment2Index], outLt[thisMoment2Index], eps, theArgs.embedDim);
-            Div<float>(outLt[thisGradIndex], outLt[thisMoment1Index], outLt[thisMoment2Index], theArgs.embedDim);
-            Muls<float>(outLt[thisGradIndex], outLt[thisGradIndex], minusLearningRate, theArgs.embedDim);
+            // p[:] -= stepSize * v / (torch.sqrt(s) + eps)
+            Sqrt<float>(inputLt[thisMoment2Index], outLt[thisMoment2Index], theArgs.embedDim);
+            Adds<float>(inputLt[thisMoment2Index], inputLt[thisMoment2Index], eps, theArgs.embedDim);
+            Div<float>(outLt[thisGradIndex], outLt[thisMoment1Index], inputLt[thisMoment2Index], theArgs.embedDim);
+            Muls<float>(outLt[thisGradIndex], outLt[thisGradIndex], stepSize, theArgs.embedDim);
         }
 
         queOut.EnQue(outLt);
@@ -168,13 +170,18 @@ public:
         for (int64_t i = 0; i < cnt; i++) {
             UpdateArgs theArgs = updateArgs[i];
             int64_t thisGradIndex = i * maxD * numOfOut + outIndex;
+            DataCopy(weightsDevOutGT[theArgs.thisOutOffset], outLt[thisGradIndex], theArgs.embedDim);
+        }
+        SetAtomicNone();
+
+        for (int64_t i = 0; i < cnt; i++) {
+            UpdateArgs theArgs = updateArgs[i];
             int64_t thisMoment1Index = i * maxD * numOfOut + outIndex1;
             int64_t thisMoment2Index = i * maxD * numOfOut + outIndex2;
-            DataCopy(weightsDevOutGT[theArgs.thisOutOffset], outLt[thisGradIndex], theArgs.embedDim);
             DataCopy(momentum1DevOutGT[theArgs.thisOutOffset], outLt[thisMoment1Index], theArgs.embedDim);
             DataCopy(momentum2DevOutGT[theArgs.thisOutOffset], outLt[thisMoment2Index], theArgs.embedDim);
         }
-        SetAtomicNone();
+
         queOut.FreeTensor(outLt);
     }
 
@@ -220,6 +227,7 @@ private:
     float beta2;
     float beta1pow;
     float beta2pow;
+    float beta2sqrt;
     int64_t iter;
 
     int numOfOut;

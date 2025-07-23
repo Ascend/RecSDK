@@ -64,6 +64,10 @@ b) 算子参数说明：
 * momentum1_uvm: 预留参数不支持配置;
 * momentum1_placements: 预留参数不支持配置;
 * momentum1_offsets: 预留参数不支持配置;
+* unique_offsets: 每张表去重后的偏移量，可选参数;
+* unique_ids: 稀疏表查表的索引值，可选参数;
+* unique_inverse: 查询表的索引对应的unique_ids位置，可选参数;
+* indice_size_cumsum: 每张表的查表索引个数累加和，可选参数；
 
 * max_D: 表中最大的Embedding Dim;
 * total_hash_size_bits: hash表size和的int值用多少位bit表示;
@@ -90,6 +94,7 @@ c) 算子约束说明：
 * grad_output的dims为[batchsize, total]，dev_weights的dims为所有表的[embed_dim * embed_size]
   ，weights_offsets为表的个数[ num_embed ], weights_offsets的dims为[ num_embed+1 ], D_offsets的dim为[ num_embed+1 ],
   hash_size_cumsum为[ num_embed+1 ]。indices的dim0为offset最后一位的值。offsets为[batchsize, num_embed]，embed_dim长度需为8的倍数。
+* 配置unique_ids时，需同时配置unique_offsets, unique_inverse，配置后将使用unique信息进行参数更新。
 
 2. 算子逻辑
 
@@ -183,6 +188,10 @@ b) 算子参数说明：
 * momentum2_uvm: 预留参数不支持配置;
 * momentum2_placements: 预留参数不支持配置;
 * momentum2_offsets: 预留参数不支持配置;
+* unique_offsets: 每张表去重后的偏移量，可选参数;
+* unique_ids: 稀疏表查表的索引值，可选参数;
+* unique_inverse: 查询表的索引对应的unique_ids位置，可选参数;
+* indice_size_cumsum: 每张表的查表索引个数累加和，可选参数；
 
 
 * max_D: 表中最大的Embedding Dim;
@@ -215,6 +224,7 @@ c) 算子约束说明：
   ，weights_offsets为表的个数[ num_embed ], weights_offsets的dims为[ num_embed+1 ], D_offsets的dim为[ num_embed+1 ],
   hash_size_cumsum为[ num_embed+1 ]。
 * indices的dim0为offset最后一位的值。offsets为[batchsize, num_embed]，embed_dim长度需为8的倍数。
+* 配置unique_ids时，需同时配置unique_offsets, unique_inverse，配置后将使用unique信息进行参数更新。
 
 2. 算子逻辑
 

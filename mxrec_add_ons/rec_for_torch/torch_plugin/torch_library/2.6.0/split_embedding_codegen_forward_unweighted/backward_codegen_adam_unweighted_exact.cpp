@@ -384,15 +384,22 @@ at::Tensor split_embedding_backward_codegen_adam_unweighted_exact_npu(const Tens
     const int64_t t_max_D = max_D.guard_int(__FILE__, __LINE__);
 
     const at::OptionalDeviceGuard guard(device_of(dev_weights));
-    auto output = at::empty({dev_weights.size(0)}, dev_weights.options());
+    // unique查表，则需要将output的形状设置为(unique_ids.numel() * t_max_D)
+    int64_t totalEmbed = unique_ids.numel() == 0 ? dev_weights.size(0) : unique_ids.numel() * t_max_D;
+    auto output = at::empty({totalEmbed}, dev_weights.options().dtype(at::kFloat));
+
+    // EC查表，计算每张表的indices个数
+    int64_t batchs = (offsets.numel() - 1) / weights_offsets.numel();
+    at::Tensor table_offsets = torch::arange(D_offsets.size(0), offsets.device()) * batchs;
+    at::Tensor indice_size_cumsum = offsets.index_select(0, table_offsets.to(at::kLong));
 
     int optim_type = static_cast<int>(OptimizerType::ADAM);
     EXEC_NPU_CMD(aclnnBackwardCodegenAdagradUnweightedExact, grad_output, dev_weights, uvm_weights, lxu_cache_weights,
                  weights_placements, weights_offsets, D_offsets, hash_size_cumsum, indices, offsets,
                  lxu_cache_locations, momentum1_dev, momentum1_uvm, momentum1_placements, momentum1_offsets,
                  momentum2_dev, momentum2_uvm, momentum2_placements, momentum2_offsets, hash_indices, unique_ids,
-                 unique_offsets, unique_inverse, t_max_D, total_hash_size_bits, pooling_mode, BT_block_size,
-                 max_segment_length_per_warp, stochastic_rounding, info_B_num_bits, info_B_mask_int64,
+                 unique_offsets, unique_inverse, indice_size_cumsum, t_max_D, total_hash_size_bits, pooling_mode,
+                 BT_block_size, max_segment_length_per_warp, stochastic_rounding, info_B_num_bits, info_B_mask_int64,
                  use_uniq_cache_locations, use_homogeneous_placements, optim_type, eps, learning_rate, beta1, beta2,
                  iter, output, momentum1_dev, momentum2_dev, dev_weights);
 
