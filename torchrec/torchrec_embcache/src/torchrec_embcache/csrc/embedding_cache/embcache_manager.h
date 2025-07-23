@@ -19,6 +19,7 @@
 #include "feature_filter/feature_filter.h"
 #include "swap_manager.h"
 #include "utils/async_task.h"
+#include "utils/thread_pool.h"
 
 namespace Embcache {
 
@@ -88,6 +89,16 @@ struct SwapinTensor {
 class EmbcacheManager {
 public:
     explicit EmbcacheManager(const std::vector<EmbConfig>& embConfigs, bool needAccumulateOffset = true);
+
+    ~EmbcacheManager()
+    {
+        GetEmbMemoryPool().Stop();
+        GetAsyncTaskPool().Stop();
+    }
+
+    EmbcacheManager(const EmbcacheManager& cacheManager) = delete;
+
+    EmbcacheManager& operator=(const EmbcacheManager& cacheManager) = delete;
 
     AsyncTask<SwapInfo> ComputeSwapInfoAsync(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey,
                                              const std::vector<int32_t>& tableIndices);
