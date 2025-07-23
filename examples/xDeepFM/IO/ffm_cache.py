@@ -155,7 +155,8 @@ class FfmCache(BaseCache):
                 writer.write(serialized)
         except:
             raise ValueError('train data format must be libffm, for example 1 2:1:0.1 2:3:0.2 3:4:0.4')
-        writer.close()
+        finally:
+            writer.close()
         sort_feature_cnt = sorted(feature_cnt.items(), key=lambda x: x[0])
         with open(util.FEAT_COUNT_FILE, 'w') as f:
             for item in sort_feature_cnt:
