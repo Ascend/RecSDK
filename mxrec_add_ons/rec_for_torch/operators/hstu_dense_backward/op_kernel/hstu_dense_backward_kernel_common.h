@@ -122,7 +122,9 @@ __aicore__ inline void CopyQGradA1(const LocalTensor<int8_t> &aMatrix, const __g
     globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(const_cast<__gm__ void *>(gm)), useM * useK);
 
     HstuDenseBackwardTilingData *tilingP = reinterpret_cast<HstuDenseBackwardTilingData *>(tilingPtr);
-    int64_t biasGradSeqLen = tilingP->biasGradSeqLen;
+    int32_t isNormal = tilingP->isNormal;
+    int32_t enableBias = tilingP->enableBias;
+    int64_t copyBlockLen = (isNormal || enableBias) ? tilingP->biasGradSeqLen : tilingP->blockHeight;
 
     int32_t baseM = tilingP->qGradMatmul.baseM;
     int32_t baseN = tilingP->qGradMatmul.baseN;
@@ -130,9 +132,9 @@ __aicore__ inline void CopyQGradA1(const LocalTensor<int8_t> &aMatrix, const __g
 
     uint16_t alignedUseM = AlignUp(useM, ALIGN_16);
 
-    Nd2NzParams param{1, (uint16_t)useM, (uint16_t)useK, 0, (uint16_t)biasGradSeqLen, alignedUseM, 1, 0};
+    Nd2NzParams param{1, (uint16_t)useM, (uint16_t)useK, 0, (uint16_t)copyBlockLen, alignedUseM, 1, 0};
 
-    int64_t startIdx = row * baseM * biasGradSeqLen + col * baseK;
+    int64_t startIdx = row * baseM * copyBlockLen + col * baseK;
     DataCopy(aMatrix.ReinterpretCast<qType>(), globalGt[startIdx], param);
 };
 
@@ -146,7 +148,9 @@ __aicore__ inline void CopyKGradA1(const LocalTensor<int8_t> &aMatrix, const __g
     globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(const_cast<__gm__ void *>(gm)), useK * useM);
 
     HstuDenseBackwardTilingData *tilingP = reinterpret_cast<HstuDenseBackwardTilingData *>(tilingPtr);
-    int64_t biasGradSeqLen = tilingP->biasGradSeqLen;
+    int32_t isNormal = tilingP->isNormal;
+    int32_t enableBias = tilingP->enableBias;
+    int64_t copyBlockLen = (isNormal || enableBias) ? tilingP->biasGradSeqLen : tilingP->blockHeight;
 
     int32_t baseM = tilingP->kGradMatmul.baseM;
     int32_t baseN = tilingP->kGradMatmul.baseN;
@@ -154,9 +158,9 @@ __aicore__ inline void CopyKGradA1(const LocalTensor<int8_t> &aMatrix, const __g
 
     uint16_t alignedUseK = AlignUp(useK, ALIGN_16);
 
-    Nd2NzParams param{1, (uint16_t)useK, (uint16_t)useM, 0, (uint16_t)biasGradSeqLen, alignedUseK, 1, 0};
+    Nd2NzParams param{1, (uint16_t)useK, (uint16_t)useM, 0, (uint16_t)copyBlockLen, alignedUseK, 1, 0};
 
-    int64_t startIdx = col * baseK * biasGradSeqLen + row * baseM;
+    int64_t startIdx = col * baseK * copyBlockLen + row * baseM;
     DataCopy(aMatrix.ReinterpretCast<qType>(), globalGt[startIdx], param);
 };
 

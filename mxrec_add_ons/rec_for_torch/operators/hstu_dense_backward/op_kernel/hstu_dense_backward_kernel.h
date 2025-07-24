@@ -16,6 +16,7 @@ See the License for the specific language governing permissions and
 #ifndef HSTU_DENSE_BACKWARD_KERNEL_H
 #define HSTU_DENSE_BACKWARD_KERNEL_H
 
+#include "hstu_dense_backward_kernel_common.h"
 #include "hstu_dense_backward_kernel_interface.h"
 
 namespace HstuDenseBackward {
@@ -93,12 +94,16 @@ public:
 
     __aicore__ inline void DoQGradMatmulImpl(int64_t left, int64_t right, int64_t out, bool isNew)
     {
-        this->qGradMatmul.SetTensorA(this->attnBiasGrad[left]);
-        this->qGradMatmul.SetTensorB(this->k[right]);
-        if (isNew) {
-            this->qGradMatmul.template IterateAll<false>(this->kGradAccumTemp[out], 0, false, true);
+        if (this->isNormal || this->enableBias) {
+            this->qGradMatmul.SetTensorA(this->attnBiasGrad[left]);
+            this->qGradMatmul.SetTensorB(this->k[right]);
+            uint8_t enAtomic = isNew ? 0 : 1;
+            this->qGradMatmul.template IterateAll<false>(this->kGradAccumTemp[out], enAtomic, false, true);
         } else {
-            this->qGradMatmul.template IterateAll<false>(this->kGradAccumTemp[out], 1, false, true);
+            this->qGradMatmul.SetTensorA(this->biasGradTemp[left]);
+            this->qGradMatmul.SetTensorB(this->k[right]);
+            uint8_t enAtomic = 1;
+            this->qGradMatmul.template IterateAll<false>(this->qGradAccumTemp[out], enAtomic, false, true);
         }
     }
 
@@ -122,7 +127,12 @@ public:
 
     __aicore__ inline void DoKGradMatmulImpl(int64_t left, int64_t right, int64_t out, bool isNew)
     {
-        this->kGradMatmul.SetTensorA(this->attnBiasGrad[left], true);
+        if (this->isNormal || this->enableBias) {
+            this->kGradMatmul.SetTensorA(this->attnBiasGrad[left], true);
+        } else {
+            this->kGradMatmul.SetTensorA(this->biasGradTemp[left], true);
+        }
+        
         this->kGradMatmul.SetTensorB(this->q[right]);
         if (isNew) {
             this->kGradMatmul.template IterateAll<false>(this->kGradAccumTemp[out], 0, false, true);
@@ -263,7 +273,7 @@ public:
     }
 
     __aicore__ inline void ValidVecScore(int64_t thisLen, int64_t validRowNum, int64_t totalColNum, int64_t qkOffset,
-                                         int64_t curMaskOffset, int64_t curAttnBiasOffset, bool useMask)
+        int64_t curMaskOffset, int64_t curAttnBiasOffset, int64_t curBiasGradOutOffset, bool useMask)
     {
         int64_t gvOffset = qkOffset;
         int64_t scoreTempOffset = qkOffset;
@@ -297,8 +307,15 @@ public:
         LocalTensor<qType> outputScore = this->queueOutputScore.template DeQue<qType>();
         LocalTensor<qType> outputBias = this->queueOutputBias.template DeQue<qType>();
         DataCopy<qType>(this->scoreTemp[scoreTempOffset], outputScore, thisLen);
-        this->CopyOutPadding(this->attnBiasGrad[curAttnBiasOffset], outputBias, validRowNum, totalColNum,
-            this->biasGradSeqLen);
+
+        if (this->isNormal || this->enableBias) {
+            this->CopyOutPadding(this->attnBiasGrad[curAttnBiasOffset], outputBias, validRowNum, totalColNum,
+                this->biasGradSeqLen);
+        } else {
+            this->CopyOutPadding(this->biasGradTemp[curBiasGradOutOffset], outputBias, validRowNum, totalColNum,
+                this->blockHeight);
+        }
+        
         this->queueOutputScore.template FreeTensor(outputScore);
         this->queueOutputBias.template FreeTensor(outputBias);
     }
@@ -327,6 +344,8 @@ public:
 
             int64_t qkOffset = midResultIdx * this->blockHeight * this->blockHeight + baseOffset;
             int64_t curAttnBiasOffset = attnBiasOffset + startRowNum * this->biasGradSeqLen;
+            int64_t curBiasGradOutOffset =
+                midResultIdx * this->blockHeight * this->blockHeight + startRowNum * this->blockHeight;
             int64_t curMaskOffset = 0;
             if (IfMask(this->maskType, MaskType::MASK_TRIL)) {
                 curMaskOffset = maskOffset + baseOffset;
@@ -335,7 +354,8 @@ public:
             }
 
             if (validRowNum > 0) {
-                ValidVecScore(thisLen, validRowNum, totalColNum, qkOffset, curMaskOffset, curAttnBiasOffset, useMask);
+                ValidVecScore(thisLen, validRowNum, totalColNum, qkOffset, curMaskOffset, curAttnBiasOffset,
+                    curBiasGradOutOffset, useMask);
             }
 
             if (this->enableBias && IfMask(this->maskType, MaskType::MASK_TRIL) && !useMask) {
@@ -577,6 +597,59 @@ public:
 
         if (taskId > 0) {
             DoTrans(taskId - 1, this->kGradAccumTemp, this->qGrad, 0);
+        }
+    }
+
+    __aicore__ inline void DoCopyBlockQGrad(int64_t batchIdx, int64_t headIdx, int64_t curSeqLen,
+        const uint32_t *seqOffset)
+    {
+        int64_t totalLen = curSeqLen * this->headDim;
+        int64_t remain = totalLen;
+        int64_t thisLen = this->vecOnceDataNum;
+        while (remain > 0) {
+            if (thisLen > remain) {
+                thisLen = remain;
+            }
+
+            int64_t curOffset = (this->headNum * seqOffset[batchIdx] * this->headDim) + (headIdx * totalLen) +
+                (totalLen - remain);
+            LocalTensor<float> input = this->queueVecScoreQK.template AllocTensor<float>();
+            DataCopy<float>(input, this->qGradAccumTemp[curOffset], thisLen);
+            this->queueVecScoreQK.template EnQue(input);
+
+            LocalTensor<float> newInput = this->queueVecScoreQK.template DeQue<float>();
+            LocalTensor<qType> output = this->queueOutputTemp.template AllocTensor<qType>();
+            if (std::is_same<qType, float>::value) {
+                DataCopy(output.template ReinterpretCast<float>(), newInput, thisLen);
+            } else {
+                Cast(output, newInput, RoundMode::CAST_RINT, thisLen);
+            }
+            this->queueOutputTemp.template EnQue(output);
+            this->queueVecScoreQK.template FreeTensor(newInput);
+
+            LocalTensor<qType> newOutput = this->queueOutputTemp.template DeQue<qType>();
+
+            uint16_t blockCount = thisLen / this->headDim;
+            uint16_t blockLen = this->headDim * sizeof(qType) / DATA_ALIGN_BYTES;
+            uint16_t dstStride = (this->headNum - 1) * this->headDim * sizeof(qType) / DATA_ALIGN_BYTES;
+            DataCopyParams copyParams{blockCount, blockLen, 0, dstStride};
+
+            int64_t curOutOffset = seqOffset[batchIdx] * this->headNum * this->headDim +
+                headIdx * this->headDim + (totalLen - remain) * this->headNum;
+            DataCopy<qType>(this->qGrad[curOutOffset], newOutput, copyParams);
+            this->queueOutputTemp.template FreeTensor(newOutput);
+
+            remain = remain - thisLen;
+        }
+    }
+
+    __aicore__ inline void DoCopyQGrad(const uint32_t *seqOffset)
+    {
+        for (int64_t batchIdx = 0; batchIdx < this->batchSize; batchIdx++) {
+            int64_t curSeqLen = static_cast<int64_t>(seqOffset[batchIdx + 1] - seqOffset[batchIdx]);
+            for (int64_t headIdx = 0; headIdx < this->headNum; headIdx++) {
+                DoCopyBlockQGrad(batchIdx, headIdx, curSeqLen, seqOffset);
+            }
         }
     }
 };

@@ -61,6 +61,8 @@ ge::graphStatus GetNormalBasicShapeInfo(gert::TilingContext *context, HstuDenseB
     tiling.set_headDim(headDim);
     tiling.set_biasGradSeqLen(biasGradSeqLen);
 
+    tiling.set_isNormal(1);
+
     OPS_CHECK(!BasicShapeCheck(batchSize, seqLen, headNum, headDim),
         OPS_LOG_E("", "normal shape check failed\n"), return ge::GRAPH_FAILED);
 
@@ -75,14 +77,13 @@ ge::graphStatus CheckMaskTypeAndBias(gert::TilingContext *context,
     auto maxSeqLen = tiling.get_maxSeqLen();
     auto maskType = tiling.get_maskType();
 
-    auto attnBiasGradShape = context->GetOutputShape(INDEX_T::INDEX_3)->GetStorageShape();
-
     auto attnBias = context->GetOptionalInputTensor(INDEX_T::INDEX_5);
     if (attnBias == nullptr) {
         tiling.set_enableBias(0);
     } else {
         tiling.set_enableBias(1);
 
+        auto attnBiasGradShape = context->GetOutputShape(INDEX_T::INDEX_3)->GetStorageShape();
         auto attnBiasShape = context->GetInputShape(INDEX_T::INDEX_5)->GetStorageShape();
         OPS_CHECK(!IsSameShape(attnBiasShape, attnBiasGradShape, BIAS_DIM_NUM),
                     OPS_LOG_E("", "attnBias shape not equal with attnBiasGrad\n"),

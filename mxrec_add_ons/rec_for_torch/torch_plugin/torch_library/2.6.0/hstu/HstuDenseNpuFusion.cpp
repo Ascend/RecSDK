@@ -299,16 +299,18 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_jagged_bac
     if (denseAttnBias.defined()) {
         attnBiasGradOutput = at::empty_like(denseAttnBias);
     } else {
-        auto biasGradSeqLen = (maxSeqLen + 256 - 1) / 256 * 256; // get 256 bit aligned biasGrad space
-        attnBiasGradOutput = at::empty({batchSize, headNum, biasGradSeqLen, biasGradSeqLen},
-                                       at::device(denseGrad.device()).dtype(denseGrad.dtype()));
+        attnBiasGradOutput = at::Tensor();
     }
 
     const char *layout = "jagged";
     EXEC_NPU_CMD(aclnnHstuDenseBackward, denseGrad, denseQ, denseK, denseV, denseMask, denseAttnBias, layout, maskType,
         maxSeqLen, realSiluScale, acSeqOffset, qGradOutput, kGradOutput, vGradOutput, attnBiasGradOutput);
 
-    return std::make_tuple(qGradOutput, kGradOutput, vGradOutput, attnBiasGradOutput);
+    if (denseAttnBias.defined()) {
+        return std::make_tuple(qGradOutput, kGradOutput, vGradOutput, attnBiasGradOutput);
+    } else {
+        return std::make_tuple(qGradOutput, kGradOutput, vGradOutput, at::Tensor());
+    }
 }
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_backward_impl_npu(

@@ -24,9 +24,14 @@ See the License for the specific language governing permissions and
 namespace optiling {
 static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseBackwardTilingData &tiling)
 {
+    int64_t batchSize = tiling.get_batchSize();
+    int64_t headNum = tiling.get_headNum();
     int64_t headDim = tiling.get_headDim();
     int64_t blockHeight = tiling.get_blockHeight();
     int64_t dataTypeLength = tiling.get_dataTypeLength();
+    int64_t maxSeqLen = tiling.get_maxSeqLen();
+    int32_t enableBias = tiling.get_enableBias();
+    int32_t isNormal = tiling.get_isNormal();
 
     matmul_tiling::DataType dataType;
     ge::DataType gradType = context->GetInputTensor(INDEX_T::INDEX_0)->GetDataType();
@@ -62,6 +67,13 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
         maskTempSpace * dataTypeLength;
 
     int64_t workspaceSize = vecCoreNum * totalTempSpaceForOneVec;
+
+    if (!isNormal && !enableBias) {
+        int64_t biasGradTempSpace = blockHeight * blockHeight;
+        int64_t qGradAccumTempSpace = batchSize * headNum * maxSeqLen * headDim;
+        workspaceSize += biasGradTempSpace * dataTypeLength * MID_USE_TIMES * vecCoreNum +
+            qGradAccumTempSpace * sizeof(float);
+    }
 
     size_t *currentWorkspace = context->GetWorkspaceSizes(INDEX_T::INDEX_1);
     size_t systemWorkspaceSize = ascendPlatform.GetLibApiWorkSpaceSize();
@@ -122,6 +134,7 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
     }
 
     context->SetBlockDim(coreNum);
+    tiling.set_aivNum(vecCoreNum);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
@@ -237,7 +250,7 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("attn_bias_grad")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});

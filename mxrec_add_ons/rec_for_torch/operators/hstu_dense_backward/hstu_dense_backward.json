@@ -133,7 +133,7 @@
             },
             {
                 "name": "attn_bias_grad",
-                "param_type": "required",
+                "param_type": "optional",
                 "format": [
                     "ND",
                     "ND",

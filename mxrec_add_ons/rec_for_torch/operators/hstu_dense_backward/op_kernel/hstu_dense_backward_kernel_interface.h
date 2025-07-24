@@ -43,6 +43,8 @@ public:
 
         maskType = tilingData.maskType;
         enableBias = tilingData.enableBias;
+        isNormal = tilingData.isNormal;
+        aivNum = tilingData.aivNum;
 
         rowBlockNum = (seqLen + blockHeight - 1) / blockHeight;
         colBlockNum = (seqLen + blockHeight - 1) / blockHeight;
@@ -67,7 +69,9 @@ public:
         qGrad.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(args.qGrad), totalElementOfQ);
         kGrad.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(args.kGrad), totalElementOfQ);
         vGrad.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(args.vGrad), totalElementOfQ);
-        attnBiasGrad.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(args.attnBiasGrad), totalElementOfAttnBias);
+        if (isNormal || enableBias) {
+            attnBiasGrad.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(args.attnBiasGrad), totalElementOfAttnBias);
+        }
     }
 
     __aicore__ inline void InitPipe(Args &args)
@@ -79,11 +83,17 @@ public:
         int64_t kGradAccumTempSpace = blockHeight * headDim;
         int64_t scoreTempSpace = blockHeight * blockHeight;
         int64_t maskTempSpace = blockHeight * blockHeight;
+        int64_t biasGradTempSpace = blockHeight * blockHeight;
+        int64_t qGradAccumTempSpace = batchSize * headNum * maxSeqLen * headDim;
 
         int64_t totalTempSpaceForOneVec =
             MID_USE_TIMES * ((vGradAccumTempSpace + kGradAccumTempSpace) * sizeof(float) +
                              (qkMatmulTempSpace + gvMatmulTempSpace + scoreTempSpace) * sizeof(qType)) +
             maskTempSpace * sizeof(qType);
+
+        if (!isNormal && !enableBias) {
+            totalTempSpaceForOneVec += biasGradTempSpace * sizeof(qType) * MID_USE_TIMES;
+        }
 
         curAICWorkspace = reinterpret_cast<__gm__ uint8_t *>(workspace) + GetBlockIdx() * totalTempSpaceForOneVec;
 
@@ -105,6 +115,21 @@ public:
         curAICWorkspace += kGradAccumTempSpace * sizeof(float) * MID_USE_TIMES;
 
         maskTemp.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(curAICWorkspace), maskTempSpace);
+        curAICWorkspace += maskTempSpace * sizeof(qType);
+
+        if (!isNormal && !enableBias) {
+            biasGradTemp.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(curAICWorkspace),
+                biasGradTempSpace * MID_USE_TIMES);
+            curAICWorkspace += biasGradTempSpace * sizeof(qType) * MID_USE_TIMES;
+
+            qGradAccumTemp.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(
+                reinterpret_cast<__gm__ uint8_t *>(workspace) + aivNum * totalTempSpaceForOneVec), qGradAccumTempSpace);
+
+            // 所有核共享一片globalMemory，且存在累加操作，每次执行需要清理内存防止上次执行结果残留数据影响本次结果
+            // 多核执行后需要调用SyncAll保证多核间同步正常
+            InitGlobalMemory(qGradAccumTemp, qGradAccumTempSpace, static_cast<float>(0));
+            SyncAll();
+        }
 
         vecOnceDataNum = DATA_ALIGN_BYTES / sizeof(float) * blockHeight;
         pipe.InitBuffer(queueVecScoreQK, USE_BUFFER_NUM, vecOnceDataNum * sizeof(float));
@@ -272,6 +297,9 @@ public:
     int32_t enableBias;
     float siluScale;
 
+    int32_t isNormal;
+    uint32_t aivNum;
+
     // Tiling
     int64_t rowBlockNum;
     int64_t colBlockNum;
@@ -315,6 +343,8 @@ public:
     GlobalTensor<float> kGradAccumTemp;  // qGrad share temp space with kGrad
     GlobalTensor<float> vGradAccumTemp;
     GlobalTensor<qType> maskTemp;
+    GlobalTensor<float> qGradAccumTemp;
+    GlobalTensor<qType> biasGradTemp;
 
     // Matmul
     matmul::Matmul<matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>,
