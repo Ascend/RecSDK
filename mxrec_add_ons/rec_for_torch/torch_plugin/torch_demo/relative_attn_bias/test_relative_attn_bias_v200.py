@@ -65,9 +65,9 @@ def rab_time(num_layers, train_len, candidate_len, bs, dtype):
     rab_time_out = torch.ops.mxrec.relative_attn_bias_time(timestamps_weights=timestamps_weights,
                                                            timestamps=timestamps,
                                                            bucket_divisor=BUCKET_DIVISOR).to("cpu")
-    rab_time_out_golden = rab_time_golden(timestamps_weights=timestamps_weights.transpose(0, 1).to("cpu"),
-                                          timestamps=timestamps.to("cpu"),
-                                          bucket_divisor=BUCKET_DIVISOR)
+    rab_time_out_golden, _ = rab_time_golden(timestamps_weights=timestamps_weights.transpose(0, 1).to("cpu"),
+                                             timestamps=timestamps.to("cpu"),
+                                             bucket_divisor=BUCKET_DIVISOR)
     torch_npu.npu.synchronize()
 
     assert torch.allclose(rab_time_out_golden, rab_time_out)
