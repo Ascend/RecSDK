@@ -6,6 +6,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 #include <any>
+#include <cstdint>
 #include <vector>
 
 #include <pybind11/pybind11.h>
@@ -35,13 +36,12 @@ void AddEmbCacheManager(pybind11::module_& m)
         .def("statistics_key_count", &EmbcacheManager::StatisticsKeyCount, py::arg("batch_keys"), py::arg("offset"),
              py::arg("batch_key_counts"), py::arg("table_index"))
         .def("record_embedding_update_times", &EmbcacheManager::RecordEmbeddingUpdateTimes)
-        .def("get_device_swap_out_data", &EmbcacheManager::GetDeviceSwapOutData,
-             py::arg("swap_info"), py::arg("swapout_offs"), py::arg("weights_devs"), py::arg("momentum1_devs"),
-             py::arg("momentum2_devs"), py::arg("table_indices") = std::vector<int32_t>{})
-        .def("swap_in_emb_and_optimizer", &EmbcacheManager::SwapInEmbAndOptimizer,
-             py::arg("swap_info"), py::arg("swap_in_tensor"), py::arg("swap_in_offs_tensor"),
-             py::arg("weights_devs"), py::arg("momentum1_devs"), py::arg("momentum2_devs"),
-             py::arg("table_indices") = std::vector<int32_t>{});
+        .def("get_device_swap_out_data", &EmbcacheManager::GetDeviceSwapOutData, py::arg("swap_info"),
+             py::arg("swapout_offs"), py::arg("weights_devs"), py::arg("momentum1_devs"), py::arg("momentum2_devs"),
+             py::arg("table_indices") = std::vector<int32_t>{})
+        .def("swap_in_emb_and_optimizer", &EmbcacheManager::SwapInEmbAndOptimizer, py::arg("swap_info"),
+             py::arg("swap_in_tensor"), py::arg("swap_in_offs_tensor"), py::arg("weights_devs"),
+             py::arg("momentum1_devs"), py::arg("momentum2_devs"), py::arg("table_indices") = std::vector<int32_t>{});
 }
 
 void AddInitializerType(pybind11::module_& m)
@@ -57,13 +57,12 @@ void AddEmbConfigModule(pybind11::module_& m)
 {
     pybind11::class_<EmbConfig>(m, "EmbConfig")
         .def(py::init<>())
-        .def(pybind11::init<const std::string&, InitializerType, int32_t, int32_t, int64_t,
-                            float, float, float, float, AdmitAndEvictConfig>(),
-             py::arg("table_name"), py::arg("initializer_type"),
-             py::arg("emb_dim"), py::arg("optim_num"), py::arg("cache_size"),
-             py::arg("weight_init_min"), py::arg("weight_init_max"),
-             py::arg("weight_init_mean"), py::arg("weight_init_stddev"),
-             py::arg("admit_and_evict_config") = AdmitAndEvictConfig())
+        .def(pybind11::init<const std::string&, InitializerType, int32_t, int32_t, int64_t, float, float, float, float,
+                            AdmitAndEvictConfig, int32_t, int32_t>(),
+             py::arg("table_name"), py::arg("initializer_type"), py::arg("emb_dim"), py::arg("optim_num"),
+             py::arg("cache_size"), py::arg("weight_init_min"), py::arg("weight_init_max"), py::arg("weight_init_mean"),
+             py::arg("weight_init_stddev"), py::arg("admit_and_evict_config") = AdmitAndEvictConfig(),
+             py::arg("initializer_radom_pool_size") = -1, py::arg("seed") = 0)
         .def_readwrite("table_name", &EmbConfig::tableName)
         .def_readwrite("initializer_type", &EmbConfig::initializerType)
         .def_readwrite("emb_dim", &EmbConfig::embDim)

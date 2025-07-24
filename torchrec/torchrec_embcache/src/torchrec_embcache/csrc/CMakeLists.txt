@@ -1,5 +1,6 @@
 # Python3
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # PyTorch
 execute_process(

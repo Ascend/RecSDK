@@ -92,6 +92,8 @@ struct EmbConfig {
     float weightInitMean;  // 仅TRUNCATED_NORMAL使用
     float weightInitStddev;  // 仅TRUNCATED_NORMAL使用
     AdmitAndEvictConfig admitAndEvictConfig;
+    int32_t initializerRadomPoolSize;
+    int32_t seed;
 };
 
 }  // namespace Embcache

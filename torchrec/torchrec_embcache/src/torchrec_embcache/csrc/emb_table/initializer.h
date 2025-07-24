@@ -8,13 +8,18 @@
 #ifndef EMBEDDING_CACHE_EMB_TABLE_INITIALIZER_H
 #define EMBEDDING_CACHE_EMB_TABLE_INITIALIZER_H
 
+#include <c10/util/flat_hash_map.h>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <random>
 #include <algorithm>
+#include <vector>
 
 #include "common/common.h"
 
+using RandomVPool = std::vector<std::vector<float>>;
 namespace Embcache {
-
 struct WeightInitParam {
     float mean;
     float stddev;
@@ -70,11 +75,40 @@ public:
         if (cfg.initializerType == InitializerType::LINEAR) {
             Initializer::GenLinear(embeddingAddr, cfg.embDim, cfg.weightInitMin, cfg.weightInitMax);
         } else if (cfg.initializerType == InitializerType::TRUNCATED_NORMAL) {
-            WeightInitParam param = {cfg.weightInitMean, cfg.weightInitStddev,
-                                     cfg.weightInitMin, cfg.weightInitMax};
+            WeightInitParam param = {cfg.weightInitMean, cfg.weightInitStddev, cfg.weightInitMin, cfg.weightInitMax};
             Initializer::GenTruncatedNormal(embeddingAddr, cfg.embDim, param);
         } else {
             Initializer::GenUniform(embeddingAddr, cfg.embDim, cfg.weightInitMin, cfg.weightInitMax);
+        }
+    }
+
+    static void InitEmbeddingWeightsLimitPool(float* embeddingAddr, const EmbConfig& cfg)
+    {
+        static ska::flat_hash_map<int32_t, RandomVPool> staticPoolMap;
+        static std::default_random_engine engine;
+        if (staticPoolMap.find(cfg.embDim) == staticPoolMap.end()) {
+            engine.seed(abs(cfg.seed));
+            RandomVPool staticPool =
+                std::vector<std::vector<float>>(cfg.initializerRadomPoolSize, std::vector<float>(cfg.embDim));
+            for (int i = 0; i < cfg.initializerRadomPoolSize; i++) {
+                if (cfg.initializerType == InitializerType::LINEAR) {
+                    Initializer::GenLinear(staticPool[i].data(), cfg.embDim, cfg.weightInitMin, cfg.weightInitMax);
+                } else if (cfg.initializerType == InitializerType::TRUNCATED_NORMAL) {
+                    WeightInitParam param = {cfg.weightInitMean, cfg.weightInitStddev, cfg.weightInitMin,
+                                             cfg.weightInitMax};
+                    Initializer::GenTruncatedNormal(staticPool[i].data(), cfg.embDim, param);
+                } else {
+                    Initializer::GenUniform(staticPool[i].data(), cfg.embDim, cfg.weightInitMin, cfg.weightInitMax);
+                }
+            }
+            staticPoolMap.emplace(cfg.embDim, staticPool);
+        }
+        RandomVPool& staticPool = staticPoolMap.find(cfg.embDim)->second;
+        std::uniform_int_distribution<int> uDistribution(0, cfg.initializerRadomPoolSize - 1);
+        int randIndex = uDistribution(engine);
+        auto ret = memcpy_s(embeddingAddr, staticPool[randIndex].data(), cfg.embDim * sizeof(float));
+        if (ret != EOK) {
+            throw std::runtime_error("memset_s failed when init optimizer data.");
         }
     }
 };
