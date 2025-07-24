@@ -189,8 +189,12 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
     tilingData.set_offsetDataType(offsetDataType);
 
     if (optimType == ADAM) {
-        NormalAdamTilingFunc(context, tilingData);
+        ret = NormalAdamTilingFunc(context, tilingData);
+        if (ret != ge::GRAPH_SUCCESS) {
+            return ret;
+        }
     }
+
     if (uniqueId != nullptr) {
         ret = UniqueTilingFunc(context, tilingData);
         if (ret != ge::GRAPH_SUCCESS) {
