@@ -14,10 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from dataclasses import dataclass
 
 import tensorflow as tf
-from tensorflow_core.python.training import slot_creator
 
 from mx_rec import ASCEND_GLOBAL_HASHTABLE_COLLECTION
 from mx_rec.util.config_utils.feature_spec_utils import FeatureSpecConfig
@@ -25,7 +23,6 @@ from mx_rec.util.config_utils.optimizer_utils import OptimizerConfig
 
 
 class MockHybridManagerConfig:
-
     def __init__(self, **kwargs):
         self.kwargs = kwargs
         self.freeze = kwargs.get("freeze", False)
@@ -46,14 +43,17 @@ class MockHybridManagerConfig:
     def restore_host_data(self, path):
         pass
 
+    def get_load_offset(self, table_name):
+        return self.kwargs.get("load_offset")
+
 
 class MockSparseEmbedConfig:
-
     def __init__(self, **kwargs):
         self.kwargs = kwargs
         self.table_instance_dict = kwargs.get("table_instance_dict", {})
         self.dangling_table = kwargs.get("dangling_table", [])
         self.table_name_set = kwargs.get("table_name_set", set())
+        self.removing_var_list = kwargs.get("removing_var_list", [])
 
     @staticmethod
     def insert_dangling_table(table_name):
@@ -75,7 +75,6 @@ class MockSparseEmbedConfig:
 
 
 class MockTrainParamsConfig:
-
     def __init__(self, **kwargs):
         def _get_training_mode_channel_id(is_training):
             _dict = {True: 0, False: 1}
@@ -85,7 +84,7 @@ class MockTrainParamsConfig:
             pass
 
         def _get_merged_multi_lookup(is_training):
-            return kwargs.get('merged_multi_lookup', False)
+            return kwargs.get("merged_multi_lookup", False)
 
         def _insert_merged_multi_lookup(is_training, flag):
             pass
@@ -96,12 +95,15 @@ class MockTrainParamsConfig:
         def _set_target_batch(is_training, batch):
             pass
 
-        self.ascend_global_hashtable_collection = kwargs.get("ascend_global_hashtable_collection",
-                                                             ASCEND_GLOBAL_HASHTABLE_COLLECTION)
+        self.ascend_global_hashtable_collection = kwargs.get(
+            "ascend_global_hashtable_collection", ASCEND_GLOBAL_HASHTABLE_COLLECTION
+        )
         self.is_graph_modify_hook_running = kwargs.get("is_graph_modify_hook_running", True)
+        self.experimental_mode = kwargs.get("experimental_mode")
         self.bool_gauge_set = kwargs.get("bool_gauge_set", [])
         self.iterator_type = kwargs.get("iterator_type", "")
         self.sparse_dir = kwargs.get("sparse_dir", "")
+        self.dataset_element_spec = kwargs.get("dataset_element_spec", {})
 
         self.get_training_mode_channel_id = _get_training_mode_channel_id
         self.insert_training_mode_channel_id = _insert_training_mode_channel_id
@@ -128,6 +130,9 @@ class MockConfigInitializer:
         self.iterator_type = kwargs.get("iterator_type", "MakeIterator")
         self.sparse_dir = kwargs.get("sparse_dir", "")
         self.is_incremental_checkpoint = kwargs.get("is_incremental_checkpoint", False)
+        self.restore_model_version = kwargs.get("restore_model_version")
+        self.save_checkpoint_due_time = kwargs.get("save_checkpoint_due_time")
+        self.save_delta_checkpoints_secs = kwargs.get("save_delta_checkpoints_secs")
 
         self.hybrid_manager_config = MockHybridManagerConfig(**kwargs)
         self.sparse_embed_config = MockSparseEmbedConfig(**kwargs)
@@ -135,14 +140,16 @@ class MockConfigInitializer:
         self.optimizer_config = OptimizerConfig()
         self.feature_spec_config = FeatureSpecConfig()
 
+        self.use_lccl = False
+
     def get_instance(self):
         return self
 
 
 class MockGlobalEnv:
-
     def __init__(self, **kwargs):
-        self.tf_device = kwargs.get("tf_device", 'NPU')
+        self.tf_device = kwargs.get("tf_device", "NPU")
+        self.rank_table_file = kwargs.get("rank_table_file", "")
 
 
 class MockSparseEmbedding:
@@ -150,18 +157,32 @@ class MockSparseEmbedding:
     原始SparseEmbedding会调用很多接口，用MockSparseEmbedding防止mock过多接口
     """
 
-    def __init__(self, table_name="test_table", slice_device_vocabulary_size=10, embedding_size=5, init_param=1.,
-                 emb_initializer=tf.zeros_initializer()):
+    def __init__(
+        self,
+        table_name="test_table",
+        slice_device_vocabulary_size=10,
+        embedding_size=5,
+        init_param=1.0,
+        emb_initializer=tf.zeros_initializer(),
+    ):
         self.is_hbm = True
         self.is_dp = False
+        self.is_grad = True
         self.table_name = table_name
         self.slice_device_vocabulary_size = slice_device_vocabulary_size
         self.embedding_size = tf.TensorShape([embedding_size])
         self.init_param = init_param
         self.emb_initializer = emb_initializer
-        self.variable = tf.compat.v1.get_variable(table_name,
-                                                  shape=[slice_device_vocabulary_size, embedding_size],
-                                                  trainable=False, initializer=tf.ones_initializer())
+        self.padding_keys = [666]
+        self.padding_keys_len = 4096
+        self.padding_keys_mask = True
+        self.send_count = 4096
+        self.variable = tf.compat.v1.get_variable(
+            table_name,
+            shape=[slice_device_vocabulary_size, embedding_size],
+            trainable=False,
+            initializer=tf.ones_initializer(),
+        )
 
 
 class MockHostPipeLineOps:
@@ -258,8 +279,15 @@ class MockHybridMgmt:
     """
 
     def __init__(self, is_initialized=True):
-        def _mock_initialize(rank_info=0, emb_info=1, if_load=False, threshold_values=3,
-                             is_incremental_checkpoint=False):
+        def _mock_initialize(
+            rank_info=0, emb_info=1, if_load=False, threshold_values=3, is_incremental_checkpoint=False, use_lccl=False
+        ):
             return is_initialized
 
         self.initialize = _mock_initialize
+
+
+class MockFeatureSpec:
+    def __init__(self, **kwargs):
+        self.name = kwargs.get("name")
+        self.table_name = kwargs.get("table_name")

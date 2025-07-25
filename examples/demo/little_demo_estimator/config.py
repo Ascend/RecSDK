@@ -22,6 +22,29 @@ from enum import Enum
 import tensorflow as tf
 from mx_rec.util.communication.hccl_ops import get_rank_size
 
+GLOBAL_RANDOM_SEED = 128
+try:
+    RUN_MODE = os.getenv("RUN_MODE")
+    USE_DYNAMIC = bool(int(os.getenv("USE_DYNAMIC", 0)))
+    USE_DYNAMIC_EXPANSION = bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0)))
+    USE_MULTI_LOOKUP = bool(int(os.getenv("USE_MULTI_LOOKUP", 1)))
+    USE_MODIFY_GRAPH = bool(int(os.getenv("USE_MODIFY_GRAPH", 0)))
+    USE_TIMESTAMP = bool(int(os.getenv("USE_TIMESTAMP", 0)))
+    USE_ONE_SHOT = bool(int(os.getenv("USE_ONE_SHOT", 0)))
+    MULTI_LOOKUP_TIMES = int(os.getenv("MULTI_LOOKUP_TIMES", 2))
+    USE_DP = bool(int(os.getenv("USE_DP", 0)))
+    ENABLE_SLICER_TEST = bool(int(os.getenv("ENABLE_SLICER_TEST", 0)))
+    USE_TUPLE_DATA_FORMAT = bool(int(os.getenv("USE_TUPLE_DATA_FORMAT", 0)))
+    USE_DETERMINISTIC = bool(int(os.getenv("USE_DETERMINISTIC", 0)))
+    USE_EXPORT_SAVED_MODEL = bool(int(os.getenv("USE_EXPORT_SAVED_MODEL", 0)))
+except ValueError as err:
+    raise ValueError(
+        "please correctly config USE_DYNAMIC or USE_DYNAMIC_EXPANSION or "
+        "USE_MULTI_LOOKUP or USE_MODIFY_GRAPH or USE_TIMESTAMP or USE_ONE_SHOT or USE_DETERMINISTIC"
+        "or USE_DP or USE_TUPLE_DATA_FORMAT or USE_EXPORT_SAVED_MODEL only integer is supported, 0 is disable, "
+        "none 0 is enable"
+    ) from err
+
 
 class CacheModeEnum(Enum):
     HBM = "HBM"
@@ -38,23 +61,15 @@ class Config:
             self.generate_large_scale_config()
 
     def generate_simple_config(self):
-        try:
-            use_dp = bool(int(os.getenv("USE_DP", 0)))
-        except ValueError as err:
-            raise ValueError(
-                "please correctly config USE_DP only 0 or 1 is supported."
-            ) from err
-
-        self.batch_numbers = 8192
         self.batch_size = 4096
 
         self.key_type = tf.int64
         self.label_type = tf.float32
         self.value_type = tf.float32
 
-        self.item_range = 80000 * get_rank_size() if not use_dp else 80000
-        self.user_range = 200000 * get_rank_size() if not use_dp else 200000
-        self.category_range = 5000 * get_rank_size() if not use_dp else 5000
+        self.item_range = 80000 * get_rank_size() if not USE_DP else 80000
+        self.user_range = 200000 * get_rank_size() if not USE_DP else 200000
+        self.category_range = 5000 * get_rank_size() if not USE_DP else 5000
         self.item_feat_cnt = 16
         self.user_feat_cnt = 8
         self.category_feat_cnt = 3
@@ -68,12 +83,12 @@ class Config:
                 int(self.batch_size * self.item_feat_cnt * coefficient),
                 math.ceil(self.item_range / rank_size),
             )
-            if not use_dp
+            if not USE_DP
             else self.item_range
         )
         self.item_vocab_size = (
             max(self.item_send_cnt * rank_size * rank_size, self.item_range)
-            if not use_dp
+            if not USE_DP
             else max(self.item_send_cnt * rank_size, self.item_range)
         )
         self.user_send_cnt = (
@@ -81,12 +96,12 @@ class Config:
                 int(self.batch_size * self.user_feat_cnt * coefficient),
                 math.ceil(self.user_range / rank_size),
             )
-            if not use_dp
+            if not USE_DP
             else self.user_range
         )
         self.user_vocab_size = (
             max(self.user_send_cnt * rank_size * rank_size, self.user_range)
-            if not use_dp
+            if not USE_DP
             else max(self.user_send_cnt * rank_size, self.user_range)
         )
         self.category_send_cnt = (
@@ -94,7 +109,7 @@ class Config:
                 int(self.batch_size * self.category_feat_cnt * coefficient),
                 math.ceil(self.category_range / rank_size),
             )
-            if not use_dp
+            if not USE_DP
             else self.category_range
         )
 

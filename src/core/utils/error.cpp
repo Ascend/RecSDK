@@ -16,6 +16,7 @@ See the License for the specific language governing permissions and
 #include "error.h"
 
 #include <string>
+#include <unordered_map>
 
 #include "absl/strings/str_format.h"
 
@@ -30,75 +31,57 @@ std::string Error::ToString() const
 
 std::string Error::TypeAsString() const noexcept
 {
-    switch (this->err_) {
-        case ErrorType::NOT_FOUND:
-            return "NotFound";
-        case ErrorType::FILE_NOT_EXIST:
-            return "FileNotExist";
-        case ErrorType::NOT_SUPPORTED:
-            return "NotSupported";
-        case ErrorType::INVALID_ARGUMENT:
-            return "InvalidArgument";
-        case ErrorType::IO_ERROR:
-            return "IOError";
-        case ErrorType::ACL_ERROR:
-            return "AscendCLError";
-        case ErrorType::MPI_ERROR:
-            return "MPIError";
-        case ErrorType::CONSTRUCT_ERROR:
-            return "ConstructError";
-        case ErrorType::EXECUTION_ORDER_ERROR:
-            return "ExecuteOrderError";
-        case ErrorType::LOGIC_ERROR:
-            return "LogicError";
-        case ErrorType::LIST_EMPTY:
-            return "ListEmpty";
-        case ErrorType::NULL_PTR:
-            return "NullPtr";
-        case ErrorType::MEMORY_ERROR:
-            return "MemoryError";
-        case ErrorType::RESOURCE_NOT_ENOUGH:
-            return "ResourceNotEnough";
-        case ErrorType::HDFS_ERROR:
-            return "HdfsError";
-        default:
-            return "UnknownError";
+    static const auto errorTypeMap = std::unordered_map<ErrorType, std::string>{
+        {ErrorType::NOT_FOUND, "NotFound"},
+        {ErrorType::FILE_NOT_EXIST, "FileNotExist"},
+        {ErrorType::NOT_SUPPORTED, "NotSupported"},
+        {ErrorType::INVALID_ARGUMENT, "InvalidArgument"},
+        {ErrorType::IO_ERROR, "IOError"},
+        {ErrorType::ACL_ERROR, "AscendCLError"},
+        {ErrorType::MPI_ERROR, "MPIError"},
+        {ErrorType::CONSTRUCT_ERROR, "ConstructError"},
+        {ErrorType::EXECUTION_ORDER_ERROR, "ExecuteOrderError"},
+        {ErrorType::LOGIC_ERROR, "LogicError"},
+        {ErrorType::LIST_EMPTY, "ListEmpty"},
+        {ErrorType::NULL_PTR, "NullPtr"},
+        {ErrorType::MEMORY_ERROR, "MemoryError"},
+        {ErrorType::RESOURCE_NOT_ENOUGH, "ResourceNotEnough"},
+        {ErrorType::HDFS_ERROR, "HdfsError"}
+    };
+
+    auto it = errorTypeMap.find(this->err_);
+    if (it != errorTypeMap.end()) {
+        return it->second;
     }
+
+    return "UnknownError";
 }
 
 std::string Error::ModAsString() const noexcept
 {
-    switch (this->mod_) {
-        case ModuleName::M_CHECK_POINT:
-            return "CheckPoint";
-        case ModuleName::M_EMB_TABLE:
-            return "EmbTable";
-        case ModuleName::M_FILE_SYSTEM:
-            return "FileSystem";
-        case ModuleName::M_HD_TRANSFER:
-            return "HdTransfer";
-        case ModuleName::M_HYBRID_MGMT:
-            return "HybridMgmt";
-        case ModuleName::M_KEY_PROCESS:
-            return "KeyProcess";
-        case ModuleName::M_L3_STORAGE:
-            return "L3Storage";
-        case ModuleName::M_SSD_ENGINE:
-            return "SsdEngine";
-        case ModuleName::M_UTILS:
-            return "Utils";
-        case ModuleName::M_OCK_CTR:
-            return "AccCTR";
-        case ModuleName::M_ACL:
-            return "AscendCL";
-        case ModuleName::M_HYBRID_MGMT_BLOCK:
-            return "HybridMgmtBlock";
-        case ModuleName::M_FEATURE_ADMIT_AND_EVICT:
-            return "FeatureAdmitAndEvict";
-        case ModuleName::M_DATASET_OPS:
-            return "DatasetOps";
-        default:
-            return "UnknownModule";
+    static const auto moduleNameMap = std::unordered_map<ModuleName, std::string>{
+        {ModuleName::M_CHECK_POINT, "CheckPoint"},
+        {ModuleName::M_EMB_TABLE, "EmbTable"},
+        {ModuleName::M_FILE_SYSTEM, "FileSystem"},
+        {ModuleName::M_HD_TRANSFER, "HdTransfer"},
+        {ModuleName::M_HYBRID_MGMT, "HybridMgmt"},
+        {ModuleName::M_KEY_PROCESS, "KeyProcess"},
+        {ModuleName::M_L3_STORAGE, "L3Storage"},
+        {ModuleName::M_SSD_ENGINE, "SsdEngine"},
+        {ModuleName::M_UTILS, "Utils"},
+        {ModuleName::M_OCK_CTR, "AccCTR"},
+        {ModuleName::M_ACL, "AscendCL"},
+        {ModuleName::M_HYBRID_MGMT_BLOCK, "HybridMgmtBlock"},
+        {ModuleName::M_FEATURE_ADMIT_AND_EVICT, "FeatureAdmitAndEvict"},
+        {ModuleName::M_DATASET_OPS, "DatasetOps"},
+        {ModuleName::M_RMA_SHM_SVM, "RmaShmSvm"}
+    };
+
+    auto it = moduleNameMap.find(this->mod_);
+    if (it != moduleNameMap.end()) {
+        return it->second;
     }
+
+    return "UnknownModule";
 }
 }  // namespace MxRec

@@ -75,7 +75,8 @@ class WrongListTop : public std::exception {};
 class KeyProcess {
 public:
     bool Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
-                    const vector<ThresholdValue>& thresholdValues = {}, int seed = 0, bool isIncrementalCkpt = false);
+                    const vector<ThresholdValue>& thresholdValues = {},
+                    bool isIncrementalCkpt = false, bool useLccl = false);
 
     unique_ptr<vector<Tensor>> GetInfoVec(const EmbBaseInfo& info, ProcessedInfo type, bool& isEos);
 
@@ -228,6 +229,7 @@ GTEST_PRIVATE :
     map<EmbNameT, int> hotEmbTotCount;
     int hotEmbUpdateStep = HOT_EMB_UPDATE_STEP_DEFAULT;
     bool isWithFAAE;
+    bool enableLccl = false;
 
     atomic<int> readySendEosCnt[2];
     atomic<int> finishSendEosCnt[2];
@@ -237,6 +239,10 @@ GTEST_PRIVATE :
     void KeyProcessTask(int channel, int threadId);
 
     void KeyProcessTaskWithFastUnique(int channel, int threadId);
+
+    void PushResultBasedOnMemoryMode(unique_ptr <EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors,
+                                     int channel, unique_ptr<vector<Tensor>> keyCountTensors,
+                                     std::vector<emb_key_t>& lookupKeys);
 
     bool KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel, int threadId);
 
@@ -304,9 +310,13 @@ GTEST_PRIVATE :
     void PushResultDDR(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors,
                        std::vector<uint64_t>& uniqueKeys, std::vector<int32_t>& restoreVecSec);
 
-    void PushKeyCountHBM(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors);
+    void PushKeyCount(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors);
 
-    void PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys, int channel);
+    void PushGlobalUniqueTensors(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys, int channel,
+                                 const string& embName);
+
+    void PushPaddingKeysTensors(const unique_ptr<vector<Tensor>>& tensors, const string& embName, int channel,
+                                vector<emb_key_t>& offsetKeys);
 
     void PushGlobalUniqueTensorsForDp(const unique_ptr<vector<Tensor>>& tensors, KeysT& lookupKeys, int channel,
                                       KeysT& globalDpIdUniqueVec, const string& embName);

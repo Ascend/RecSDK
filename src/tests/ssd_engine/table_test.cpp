@@ -16,7 +16,14 @@ See the License for the specific language governing permissions and
 #include <gtest/gtest.h>
 #include <mpi.h>
 
+#include <emock/emock.hpp>
+
 #include "utils/common.h"
+
+#ifdef GTEST
+#define private public
+#endif
+
 #include "ssd_engine/table.h"
 
 using namespace std;
@@ -67,8 +74,8 @@ TEST(Table, WriteAndReadAndDeleteAndCompact)
         }
     }
 
-    LOG_INFO("n data:{} ,batch size:{} ,write cost(ms): {} ,QPS:{}",
-        nData, batchSize, writeCost.count(), float(nData) * 1000 / writeCost.count());
+    LOG_INFO("n data:{} ,batch size:{} ,write cost(ms): {} ,QPS:{}", nData, batchSize, writeCost.count(),
+             float(nData) * 1000 / writeCost.count());
 
     // read
     auto start = chrono::high_resolution_clock::now();
@@ -76,8 +83,8 @@ TEST(Table, WriteAndReadAndDeleteAndCompact)
     auto end = chrono::high_resolution_clock::now();
     auto readCost = chrono::duration_cast<std::chrono::milliseconds>(end - start);
 
-    LOG_INFO("n data:{} ,batch size:{} ,read cost(ms):{} ,QPS:{}",
-        nData, batchSize, readCost.count(), float(nData) * 1000 / readCost.count());
+    LOG_INFO("n data:{} ,batch size:{} ,read cost(ms):{} ,QPS:{}", nData, batchSize, readCost.count(),
+             float(nData) * 1000 / readCost.count());
 
     ASSERT_EQ(allEmbs, ret);
 
@@ -87,7 +94,7 @@ TEST(Table, WriteAndReadAndDeleteAndCompact)
 
     // delete
     tb->DeleteEmbeddings(allKeys);
-    for (emb_key_t k: allKeys) {
+    for (emb_key_t k : allKeys) {
         ASSERT_EQ(tb->IsKeyExist(k), false);
     }
 
@@ -100,7 +107,7 @@ TEST(Table, WriteAndReadAndDeleteAndCompact)
     ASSERT_EQ(fs::exists(oldDataFilePath), false);
     ASSERT_EQ(fs::exists(oldMetaFilePath), false);
 
-    for (const string& p: savePath) {
+    for (const string& p : savePath) {
         fs::remove_all(p);
     }
 }
@@ -138,7 +145,7 @@ TEST(Table, SaveAndLoad)
 
     ASSERT_EQ(embs, ret);
 
-    for (const string &p: savePath) {
+    for (const string& p : savePath) {
         fs::remove_all(p);
     }
 }
@@ -177,4 +184,128 @@ TEST(Table, GetTableUsage)
     auto tbLoad = make_shared<Table>(tbName, savePath, maxTableSize, compactThreshold, saveStep);
     uint64_t keyCntLoad = tbLoad->GetTableUsage();
     ASSERT_EQ(keyCntLoad, expectKeyCnt);
+}
+
+class TableTest : public testing::Test {
+protected:
+    void SetUp() override
+    {
+        MPI_Comm_rank(MPI_COMM_WORLD, &rankId_);
+        emock::GlobalMockObject().reset();
+    }
+
+private:
+    int rankId_;
+};
+
+TEST_F(TableTest, CreateTableOk)
+{
+    EMOCK(Table::CreateTableDir).expects(exactly(2));
+    EMOCK(Table::ThrowInvalidArgError).expects(once());
+
+    auto dirs = vector{"dir-0"s, "dir-1"s, "dir-2"s, "dir-3"s};
+    auto table = Table("test", dirs, 1024, 1, 0);
+    EXPECT_EQ(table.maxTableSize, 1024);
+}
+
+TEST_F(TableTest, SaveWithEmbInfoOk)
+{
+    class MockTable : public Table {
+    public:
+        MockTable(const string& name, vector<string>& saveDirs, uint64_t maxTableSize, double compactThreshold,
+                  int step)
+            : Table(name, saveDirs, maxTableSize, compactThreshold, step)
+        {
+        }
+
+        void Compact(bool fullCompact, const map<emb_key_t, KeyInfo>& keyInfo) override {}
+    };
+
+    EMOCK(MockTable::CreateTableDir).expects(exactly(2));
+    EMOCK(Table::ThrowInvalidArgError).expects(exactly(2));
+
+    auto name = "test-"s + std::to_string(rankId_);
+    auto step = 0;
+
+    auto dirs = vector{"dir-0"s, "dir-1"s, "dir-2"s, "dir-3"s};
+    auto keyInfo = std::map<emb_key_t, KeyInfo>();
+    auto table = MockTable(name, dirs, 1024, 1, step);
+
+    auto metaPath = fs::absolute("./" + name + ".meta" + "." + to_string(step));
+    auto metaFile = std::ofstream(metaPath);
+
+    table.curTablePath = "";
+    table.Save(0, keyInfo);
+
+    metaFile.close();
+    fs::remove(metaPath);
+}
+
+TEST_F(TableTest, CompactOk)
+{
+    EMOCK(Table::CreateTableDir).expects(exactly(2));
+    EMOCK(Table::ThrowInvalidArgError).expects(once());
+    EMOCK(&File::GetStaleDataCnt).expects(once()).will(returnValue(1));
+
+    auto dirs = vector{"dir-0"s, "dir-1"s, "dir-2"s, "dir-3"s};
+    auto keyInfo = std::map<emb_key_t, KeyInfo>();
+    auto table = Table("test", dirs, 1024, 1, 0);
+
+    table.staleDataFileSet = std::set<std::shared_ptr<File>>();
+    auto fileId = 0;
+    auto fileDir = "file-test-dir"s;
+    table.staleDataFileSet.emplace(std::make_shared<File>(fileId, fileDir));
+
+    table.Compact(true, keyInfo);
+}
+
+TEST_F(TableTest, SetTablePathToDiskWithSpaceOk)
+{
+    EMOCK(Table::CreateTableDir).expects(exactly(2));
+    EMOCK(Table::ThrowInvalidArgError).expects(once());
+
+    auto dirs = vector{"dir-0"s, "dir-1"s, "dir-2"s, "dir-3"s};
+    auto keyInfo = std::map<emb_key_t, KeyInfo>();
+    auto table = Table("test", dirs, 1024, 1, 0);
+
+    table.savePaths = vector<string>{"./"s, "./"s};
+    table.curSavePathIdx = 0;
+    table.diskAvailSpaceThreshold = 1;
+    EXPECT_THROW(table.SetTablePathToDiskWithSpace(), std::runtime_error);
+}
+
+TEST_F(TableTest, ExportKeysOk)
+{
+    EMOCK(Table::CreateTableDir).expects(exactly(2));
+    EMOCK(Table::ThrowInvalidArgError).expects(once());
+
+    auto dirs = vector{"dir-0"s, "dir-1"s, "dir-2"s, "dir-3"s};
+    auto keyInfo = std::map<emb_key_t, KeyInfo>();
+    auto table = Table("test", dirs, 1024, 1, 0);
+
+    auto fileId = 0;
+    auto fileDir = "file-test-dir"s;
+    table.keyToFile.emplace(0, std::make_unique<File>(fileId, fileDir));
+    auto keys = table.ExportKeys();
+
+    EXPECT_EQ(keys.size(), 1);
+}
+
+TEST_F(TableTest, CheckIsGreaterThanMaxSizeOk)
+{
+    EMOCK(Table::CreateTableDir).expects(exactly(2));
+    EMOCK(Table::ThrowInvalidArgError).expects(once());
+
+    auto dirs = vector{"dir-0"s, "dir-1"s, "dir-2"s, "dir-3"s};
+    auto keyInfo = std::map<emb_key_t, KeyInfo>();
+    auto table = Table("test", dirs, 1024, 1, 0);
+
+    table.totalKeyCnt = 1;
+    table.maxTableSize = 0;
+    EXPECT_THROW(table.CheckIsGraterThanMaxSize(), std::invalid_argument);
+}
+
+TEST_F(TableTest, ThrowInvalidArgErrorTest)
+{
+    EXPECT_THROW(Table::ThrowInvalidArgError(""), std::runtime_error);
 }

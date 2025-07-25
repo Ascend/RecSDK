@@ -25,8 +25,3 @@ def get_dense_and_sparse_variable():
     sparse_variables = tf.compat.v1.get_collection(
         ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection)
     return dense_variables, sparse_variables
-
-
-def get_config_via_var(variable):
-    table_instance = ConfigInitializer.get_instance().sparse_embed_config.get_table_instance(variable)
-    return table_instance

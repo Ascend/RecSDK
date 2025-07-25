@@ -99,8 +99,8 @@ public:
 private:
     __aicore__ inline void MoveProcess(const LocalTensor<int64_t> srcAddrLocal, const int turns, int addrNum)
     {
-        set_flag(PIPE_MTE2, PIPE_S, 0);
-        wait_flag(PIPE_MTE2, PIPE_S, 0);
+        set_flag(PIPE_MTE2, PIPE_S, EVENT_ID0);
+        wait_flag(PIPE_MTE2, PIPE_S, EVENT_ID0);
         LocalTensor<T> dataLocal;
 
         int64_t address = 0;

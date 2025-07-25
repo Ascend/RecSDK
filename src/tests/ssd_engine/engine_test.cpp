@@ -15,8 +15,14 @@ See the License for the specific language governing permissions and
 
 #include <gtest/gtest.h>
 #include <mpi.h>
+#include <emock/emock.hpp>
 
 #include "utils/common.h"
+
+#ifdef GTEST
+#define private public
+#endif
+
 #include "ssd_engine/ssd_engine.h"
 
 using namespace std;
@@ -37,7 +43,7 @@ TEST(SSDEngine, CreateAndWriteAndReadAndAutoCompactAndSave)
     int saveStep = 0;
 
     // create and start
-    SSDEngine *eng = new SSDEngine();
+    SSDEngine* eng = new SSDEngine();
     eng->SetCompactThreshold(compactThreshold);
     eng->SetCompactPeriod(compactPeriod);
     eng->Start();
@@ -86,21 +92,17 @@ TEST(SSDEngine, CreateAndWriteAndReadAndAutoCompactAndSave)
     ASSERT_EQ(fs::exists(oldMetaFilePath), false);
 
     // check saved data existence
-    string newDataFilePath =
-        savePath.front() + "/ssd_sparse_model_rank_" + GlogConfig::gRankId + "/" +
-        tbName + "/" + "1.data." + to_string(saveStep);
-    string newMetaFilePath =
-        savePath.front() + "/ssd_sparse_model_rank_" + GlogConfig::gRankId + "/" +
-        tbName + "/" + "1.meta." + to_string(saveStep);
-    string newTableMetaFilePath =
-        savePath.front() + "/ssd_sparse_model_rank_" + GlogConfig::gRankId + "/" +
-        tbName + "/" + tbName + ".meta." +
-        to_string(saveStep);
+    string newDataFilePath = savePath.front() + "/ssd_sparse_model_rank_" + GlogConfig::gRankId + "/" + tbName + "/" +
+                             "1.data." + to_string(saveStep);
+    string newMetaFilePath = savePath.front() + "/ssd_sparse_model_rank_" + GlogConfig::gRankId + "/" + tbName + "/" +
+                             "1.meta." + to_string(saveStep);
+    string newTableMetaFilePath = savePath.front() + "/ssd_sparse_model_rank_" + GlogConfig::gRankId + "/" + tbName +
+                                  "/" + tbName + ".meta." + to_string(saveStep);
     ASSERT_EQ(fs::exists(newDataFilePath), true);
     ASSERT_EQ(fs::exists(newMetaFilePath), true);
     ASSERT_EQ(fs::exists(newTableMetaFilePath), true);
 
-    for (const string& p: savePath) {
+    for (const string& p : savePath) {
         fs::remove_all(p + "/ssd_sparse_model_rank_" + GlogConfig::gRankId);
     }
 }
@@ -141,14 +143,43 @@ TEST(SSDEngine, LoadAndRead)
     shared_ptr<SSDEngine> engLoad = make_shared<SSDEngine>();
     engLoad->Start();
     engLoad->Load(tbName, savePath, maxTableSize, saveStep);
-    for (emb_cache_key_t k: keys) {
+    for (emb_cache_key_t k : keys) {
         ASSERT_EQ(engLoad->IsKeyExist(tbName, k), true);
     }
     auto ret = engLoad->FetchEmbeddings(tbName, keys);
     ASSERT_EQ(embeddings, ret);
     engLoad->Stop();
 
-    for (string p: savePath) {
+    for (string p : savePath) {
         fs::remove_all(p);
     }
+}
+
+class SSDEngineTest : public testing::Test {
+protected:
+    void SetUp() override
+    {
+        emock::GlobalMockObject::reset();
+    }
+
+private:
+};
+
+TEST_F(SSDEngineTest, SaveTest)
+{
+    EMOCK(&SSDEngine::CheckSSDEngineIsRunning).expects(once()).will(returnValue(true));
+
+    auto step = -1;
+    auto keyInfoMap = std::map<std::string, std::map<emb_key_t, KeyInfo>>();
+
+    auto engine = SSDEngine();
+    engine.Save(step, keyInfoMap);
+}
+
+TEST_F(SSDEngineTest, GetTableUsageTest)
+{
+    EMOCK(&SSDEngine::CheckSSDEngineIsRunning).expects(once()).will(returnValue(true));
+
+    auto engine = SSDEngine();
+    EXPECT_EQ(engine.GetTableUsage(""), -1);
 }

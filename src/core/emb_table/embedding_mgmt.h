@@ -72,6 +72,8 @@ public:
 
     int64_t GetCapacity(const std::string &name);
 
+    unordered_set<int64_t> GetPaddingKeysOffset(const std::string& name);
+
     std::map<EmbNameT, size_t> GetMaxOffset();
 
     KeyOffsetMemT GetKeyOffsetMap();
@@ -81,12 +83,14 @@ public:
     /**
      * 加载单个表
      */
-    void Load(const string& name, const string& filePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
+    void Load(const string& name, const string& filePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet,
+              vector<string> warmStartTables);
 
     /**
      * 加载所有表
      */
-    void Load(const string& filePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
+    void Load(const string& filePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet,
+              vector<string> warmStartTables);
 
     /**
      * 保存单个表
@@ -129,13 +133,18 @@ public:
     void SetHDTransferForEmbTable(HDTransfer* hdTransfer);
 
     void SetEmbCacheForEmbTable(const ock::ctr::EmbCacheManagerPtr& embCache);
+
+    void SyncLatestEmbedding(int pythonBatchId);
 private:
 
     EmbeddingMgmt();
 
     EmbeddingMgmt(const EmbeddingMgmt& mgmt) = delete;
+    
+    EmbeddingMgmt& operator=(const EmbeddingMgmt& other) = delete;
 
     std::unordered_map<std::string, std::shared_ptr<EmbeddingTable>> embeddings;
+    unique_ptr<ThreadPool> syncThreadPool = nullptr;
 };
 
 }

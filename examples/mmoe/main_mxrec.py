@@ -46,10 +46,10 @@ from optimizer import get_dense_and_sparse_optimizer
 
 npu_plugin.set_device_sat_mode(0)
 
-dense_hashtable_seed = 128
-sparse_hashtable_seed = 128
-shuffle_seed = 128
-random.seed(shuffle_seed)
+DENSE_HASHTABLE_SEED = 128
+SPARSE_HASHTABLE_SEED = 128
+SHUFFLE_SEED = 128
+random.seed(SHUFFLE_SEED)
 
 
 def add_timestamp_func(batch):
@@ -89,7 +89,7 @@ def make_batch_and_iterator(config, feature_spec_list, is_training, dump_graph, 
 
     dataset = dataset.shard(config.rank_size, config.rank_id)
     if is_training:
-        dataset = dataset.shuffle(batch_size * 1000, seed=shuffle_seed)
+        dataset = dataset.shuffle(batch_size * 1000, seed=SHUFFLE_SEED)
     if is_training:
         dataset = dataset.repeat(config.train_epoch)
     else:
@@ -139,7 +139,7 @@ def model_forward(feature_list, hash_table_list, batch, is_train, modify_graph):
                                         dense_feature=batch["dense_feature"],
                                         label=batch["label"],
                                         is_training=is_train,
-                                        seed=dense_hashtable_seed)
+                                        seed=DENSE_HASHTABLE_SEED)
     return model_output
 
 

@@ -59,7 +59,7 @@ EmbeddingDynamic::~EmbeddingDynamic()
 void EmbeddingDynamic::Key2Offset(std::vector<emb_key_t>& keys, int channel)
 {
     constexpr emb_key_t INVALID_DYNAMIC_EXPANSION_ADDR = 0; // 动态扩容算子中的无效地址是0
-    std::lock_guard<std::mutex> lk(mut_); // lock for PROCESS_THREAD
+    std::unique_lock<std::shared_mutex> lock(keyOffsetMutex_); // lock for PROCESS_THREAD
     for (emb_key_t& key : keys) {
         if (key == INVALID_KEY_VALUE) {
             key = INVALID_DYNAMIC_EXPANSION_ADDR;
@@ -73,6 +73,7 @@ void EmbeddingDynamic::Key2Offset(std::vector<emb_key_t>& keys, int channel)
         // 新值
         if (channel == TRAIN_CHANNEL_ID) {
             int64_t addr = GetEmptyEmbeddingAddress();
+            RecordPaddingKeysOffset(channel, key, addr);
             keyOffsetMap[key] = addr;
             key = addr;
             maxOffset++;
@@ -85,7 +86,7 @@ void EmbeddingDynamic::Key2Offset(std::vector<emb_key_t>& keys, int channel)
 
 void EmbeddingDynamic::Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel)
 {
-    std::lock_guard<std::mutex> lk(mut_); // lock for PROCESS_THREAD
+    std::unique_lock<std::shared_mutex> lock(keyOffsetMutex_); // lock for PROCESS_THREAD
     for (emb_key_t& key : keys) {
         if (key == INVALID_KEY_VALUE) {
             key = INVALID_DYNAMIC_EXPANSION_ADDR;
@@ -129,6 +130,8 @@ void EmbeddingDynamic::MallocEmbeddingBlock(int embNum)
     void *block = nullptr;
     aclError ec = aclrtMalloc(&block, embNum * extEmbSize_ * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST);
     if (ec != 0) {
+        LOG_ERROR("Failed to malloc device memory, please check whether the device memory is sufficient. "
+                  "aclrtMalloc error code:{}.", ec);
         throw std::bad_alloc();
     }
     memoryList_.push_back(block);
@@ -277,7 +280,8 @@ void EmbeddingDynamic::SaveOptimData(const string &savePath)
     }
 }
 
-void EmbeddingDynamic::Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet)
+void EmbeddingDynamic::Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet,
+                            const vector<string>& warmStartTables)
 {
     LoadKey(savePath);
     LoadEmbAndOptim(savePath);

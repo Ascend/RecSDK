@@ -3,7 +3,7 @@
 # Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
 # Some code is derived from Tensorflow, which is subject to the following copyright notice:
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
-# We pick up the code of Tensorflow to make the api of mxRec compatible with Tensorflow for model saving and loading.
+# We pick up the code of Tensorflow to make the api of Rec SDK compatible with Tensorflow for model saving and loading.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,9 +22,10 @@
 import os
 import time
 import logging
-from typing import Optional
+from typing import Optional, Dict, Callable
 
 import tensorflow as tf
+from tensorflow_estimator.python.estimator.mode_keys import ModeKeys
 from tensorflow.compat.v1.summary import FileWriter
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.core.protobuf import trackable_object_graph_pb2
@@ -52,7 +53,7 @@ from mpi4py import MPI
 from mx_rec.saver.saver import Saver as SparseSaver
 from mx_rec.saver.saver import check_file_system_is_valid, should_write_data, update_model_index, \
     write_delta_export_time_ms, get_model_type_by_version, get_base_and_delta_models, read_base_delta_and_write, \
-    clear_delta_models
+    clear_delta_models, read_base_delta_and_write_for_ssd, check_file_system_is_hdfs
 from mx_rec.util.communication.hccl_ops import get_rank_id
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.validator.validator import para_checker_decorator, ClassValidator, StringValidator, OptionalIntValidator, \
@@ -61,6 +62,8 @@ from mx_rec.util.log import logger
 from mx_rec.constants.constants import MAX_INT32, INVALID_CHARS, BASE_MODEL, DELTA_MODEL
 
 _FILENAME_SUFFIX = "filename_suffix"
+# The maximum path length in Linux is usually 4096 characters.
+_MAX_SAVE_PATH_LEN = 1024
 
 
 def get_sparse_vars(var_list):
@@ -117,7 +120,7 @@ def saver_init(self, var_list=None, reshape=False, sharded=False, max_to_keep=5,
     # mt customed parameter
     self._fid_version = fid_version
 
-    # mxRec Patch
+    # Rec SDK Patch
     # create sparse saver only when sparse_var_list is not None
     self.sparse_saver = None
     sparse_var_list = get_sparse_vars(var_list)
@@ -208,9 +211,44 @@ def check_characters_is_valid(characters: str) -> bool:
     return True
 
 
+def validate_and_configure_save_params(self, save_path, latest_filename):
+    if not check_characters_is_valid(save_path):
+        raise ValueError("save_path contains invalid characters such as newline, formfeed,"
+                         " carriage return, backspace, tab, vertical tab, and delete.")
+
+    if not check_file_system_is_valid(save_path):
+        raise ValueError("the path to save belong to invalid file system, only local file system supported. ")
+
+    if not self._is_built and not context.executing_eagerly():
+        raise RuntimeError("`build()` should be called before save if defer_build==True")
+
+    if latest_filename is None:
+        latest_filename = "checkpoint"
+
+    if self._write_version != saver_pb2.SaverDef.V2:
+        tf_logging.warning("TensorFlow's V1 checkpoint format has been deprecated.")
+
+    return latest_filename
+
+
+def validate_restore_path(save_path):
+    if not check_characters_is_valid(save_path):
+        raise ValueError("save_path contains invalid characters such as newline, "
+                         "formfeed, carriage return, backspace, tab, vertical tab, and delete.")
+
+    if not check_file_system_is_valid(save_path):
+        raise ValueError(f"the path to restore belong to invalid file system, only local file system supported. ")
+
+    if save_path.find("://") == -1:
+        directory_validator = DirectoryValidator("reading_path", save_path)
+        directory_validator.check_not_soft_link()
+        directory_validator.with_blacklist(exact_compare=False)
+        directory_validator.check()
+
+
 @para_checker_decorator(check_option_list=[
     ("sess", ClassValidator, {"classes": (tf.compat.v1.Session, tf.compat.v1.train.MonitoredSession)}),
-    ("save_path", StringValidator, {"min_len": 1, "max_len": 150}, ["check_string_length"]),
+    ("save_path", StringValidator, {"min_len": 1, "max_len": _MAX_SAVE_PATH_LEN}, ["check_string_length"]),
     ("global_step", ClassValidator, {"classes": (int, np.int64, type(None))}),
     ("global_step", OptionalIntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
     ("latest_filename", ClassValidator, {"classes": (str, type(None))}),
@@ -233,21 +271,8 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
         saved_model_type = DELTA_MODEL if save_delta else BASE_MODEL
         msg = f"Saving {saved_model_type} model by incremental checkpoint pattern."
     tf_logging.info(msg)
-    if not check_characters_is_valid(save_path):
-        raise ValueError("save_path contains invalid characters such as newline, formfeed,"
-                         " carriage return, backspace, tab, vertical tab, and delete.")
-
-    if not check_file_system_is_valid(save_path):
-        raise ValueError("the path to save belong to invalid file system, only local file system supported. ")
-
-    if not self._is_built and not context.executing_eagerly():
-        raise RuntimeError("`build()` should be called before save if defer_build==True")
-
-    if latest_filename is None:
-        latest_filename = "checkpoint"
-
-    if self._write_version != saver_pb2.SaverDef.V2:
-        tf_logging.warning("TensorFlow's V1 checkpoint format has been deprecated.")
+    
+    latest_filename = validate_and_configure_save_params(self, save_path, latest_filename)
 
     save_check(latest_filename, sess)
 
@@ -264,7 +289,10 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
     if self._is_empty:
         return model_checkpoint_path
 
-    # mxRec Patch
+    # Rec SDK Patch
+    # validate save_path first, not allow soft link in path for safety reason
+    validate_save_path(save_path)
+    
     # save sparse model, only run when self.sparse_saver is not None
     if not context.executing_eagerly() and self.sparse_saver:
         self.sparse_saver.save(sess, save_path=checkpoint_file, save_delta=save_delta)
@@ -301,9 +329,19 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
     return model_checkpoint_path
 
 
+def validate_save_path(save_path):
+    if not check_file_system_is_hdfs(save_path):
+        dir_validator = DirectoryValidator("save_path", save_path)
+        try:
+            dir_validator.check_not_soft_link()
+            dir_validator.check()
+        except ValueError as err:
+            raise ValueError(f"save_path:{save_path} can't contain soft link for safety reason") from err
+
+
 @para_checker_decorator(check_option_list=[
     ("sess", ClassValidator, {"classes": (tf.compat.v1.Session, tf.compat.v1.train.MonitoredSession)}),
-    ("save_path", StringValidator, {"min_len": 1, "max_len": 150}, ["check_string_length"]),
+    ("save_path", StringValidator, {"min_len": 1, "max_len": _MAX_SAVE_PATH_LEN}, ["check_string_length"]),
 ])
 def restore(self, sess, save_path):
     if save_path is None:
@@ -311,6 +349,9 @@ def restore(self, sess, save_path):
 
     is_incremental_checkpoint = ConfigInitializer.get_instance().is_incremental_checkpoint
     restore_model_version = ConfigInitializer.get_instance().restore_model_version
+    for _, table_instance in ConfigInitializer.get_instance().sparse_embed_config.table_instance_dict.items():
+        is_ssd = True if table_instance.slice_ssd_vocabulary_size else False
+        break
 
     directory, base_name = os.path.split(save_path)
     model_type = BASE_MODEL
@@ -326,6 +367,10 @@ def restore(self, sess, save_path):
 
         comm = MPI.COMM_WORLD
         rank = comm.Get_rank()
+        if model_type == DELTA_MODEL:
+            base_model, delta_models = get_base_and_delta_models(directory, str(restore_model_version))
+            if is_ssd:
+                read_base_delta_and_write_for_ssd(directory, base_model, delta_models, rank)
         comm.Barrier()
         if should_write_data(rank, save_path):
             if model_type == DELTA_MODEL:
@@ -339,18 +384,7 @@ def restore(self, sess, save_path):
 
     save_path = os.path.join(directory, base_name)
 
-    if not check_characters_is_valid(save_path):
-        raise ValueError("save_path contains invalid characters such as newline, "
-                         "formfeed, carriage return, backspace, tab, vertical tab, and delete.")
-
-    if not check_file_system_is_valid(save_path):
-        raise ValueError(f"the path to restore belong to invalid file system, only local file system supported. ")
-
-    if save_path.find("://") == -1:
-        directory_validator = DirectoryValidator("reading_path", save_path)
-        directory_validator.check_not_soft_link()
-        directory_validator.with_blacklist(exact_compare=False)
-        directory_validator.check()
+    validate_restore_path(save_path)
 
     checkpoint_prefix = compat.as_text(save_path)
     if self._is_empty:
@@ -362,7 +396,7 @@ def restore(self, sess, save_path):
     tf_logging.info("Restoring parameters from %s", checkpoint_prefix)
     try:
         if not context.executing_eagerly():
-            # mxRec Patch
+            # Rec SDK Patch
             # restore sparse model, only run when self.sparse_saver is not None
             if self.sparse_saver:
                 self.sparse_saver.restore(sess, save_path, model_type=model_type)
@@ -395,7 +429,7 @@ def restore(self, sess, save_path):
         raise _wrap_restore_error_with_msg(err, "a mismatch between the current graph and the graph") from err
 
 
-def object_graph_key_mapping(file_path):
+def object_graph_key_mapping(file_path):  # pragma: no cover
     reader = pywrap_tensorflow.NewCheckpointReader(file_path)
     obj_graph_str = reader.get_tensor(trackable.OBJECT_GRAPH_PROTO_KEY)
     obj_graph_proto = (trackable_object_graph_pb2.TrackableObjectGraph())
@@ -416,7 +450,7 @@ def _wrap_restore_error_with_msg(err, extra_verbiage):
 
 
 def saver_from_object_based_checkpoint(checkpoint_path, var_list=None, builder=None, names_to_keys=None,
-                                       cached_saver=None):
+                                       cached_saver=None):  # pragma: no cover
     if names_to_keys is None:
         try:
             names_to_keys = object_graph_key_mapping(checkpoint_path)
@@ -474,7 +508,7 @@ def build_var_list():
     return save_var_list
 
 
-class BaseSaverBuilder(object):
+class BaseSaverBuilder(object):  # pragma: no cover
     VariableSaveable = saveable_object_util.ReferenceVariableSaveable
     SaveSpec = saveable_object.SaveSpec
     ResourceVariableSaveable = saveable_object_util.ResourceVariableSaveable
@@ -500,7 +534,7 @@ class BaseSaverBuilder(object):
             raise RuntimeError("Unexpected write_version: " + self._write_version)
 
 
-class BulkSaverBuilder(BaseSaverBuilder):
+class BulkSaverBuilder(BaseSaverBuilder):  # pragma: no cover
     def bulk_restore(self, filename_tensor, saveables, preferred_shard, restore_sequentially):
         restore_specs = []
         del restore_sequentially
@@ -514,7 +548,7 @@ class BulkSaverBuilder(BaseSaverBuilder):
             return io_ops.restore_v2(filename_tensor, tensor_names, tensor_slices, tensor_dtypes)
 
 
-def patch_for_write_graph_func(func):
+def patch_for_write_graph_func(func):  # pragma: no cover
     def wrapper(*args, **kwargs):
         comm = MPI.COMM_WORLD
         rank = comm.Get_rank()
@@ -537,7 +571,7 @@ def patch_for_saver():
     training_util.write_graph = patch_for_write_graph_func(graph_io.write_graph)
 
 
-def _patch_for_summary_writer(func):
+def _patch_for_summary_writer(func):  # pragma: no cover
     def wrapper(*args, **kwargs):
         filename_suffix = kwargs.get(_FILENAME_SUFFIX, "")
         filename_suffix = filename_suffix or ""
@@ -679,7 +713,7 @@ def checkpoint_saver_hook_init(self, checkpoint_dir, save_secs=None, save_steps=
     self._save_graph_def = save_graph_def
 
 
-def after_run_checkpoint_saver_hook(self, run_context, run_values):
+def after_run_checkpoint_saver_hook(self, run_context, run_values):  # pragma: no cover
     stale_global_step = run_values.results
     if not self._timer.should_trigger_for_step(stale_global_step +
                                            self._steps_per_run):
@@ -693,12 +727,12 @@ def after_run_checkpoint_saver_hook(self, run_context, run_values):
         run_context.request_stop()
 
 
-def save_checkpoint_saver_hook(self, session, step, save_delta=False):
+def save_checkpoint_saver_hook(self, cur_session, step, save_delta=False):  # pragma: no cover
     logging.info("Saving checkpoints for %d into %s.", step, self._save_path)
 
     for listener in self._listeners:
-        listener.before_save(session, step)
-    self._get_saver().save(session, self._save_path, global_step=step,
+        listener.before_save(cur_session, step)
+    self._get_saver().save(cur_session, self._save_path, global_step=step,
                            is_incremental_checkpoint=self._timer._is_incremental_checkpoint,
                            save_delta=save_delta)
     self._summary_writer.add_session_log(
@@ -708,7 +742,7 @@ def save_checkpoint_saver_hook(self, session, step, save_delta=False):
 
     should_stop = False
     for listener in self._listeners:
-        if listener.after_save(session, step):
+        if listener.after_save(cur_session, step):
             logging.info(
                 "A CheckpointSaverListener requested that training be stopped. "
                 "listener: %s", listener)
@@ -722,3 +756,83 @@ def patch_for_checkpoint_saver_hook():
     checkpoint_saver_hook._save = save_checkpoint_saver_hook
     checkpoint_saver_hook.after_run = after_run_checkpoint_saver_hook
     logger.info("Class 'tf.compat.v1.train.CheckpointSaverHook' has been patched.")
+
+
+def _export_all_saved_models(
+    self,
+    export_dir_base: str,
+    input_receiver_fn_map: Dict[str, Callable],
+    assets_extra: Optional[Dict[str, str]] = None,
+    as_text: bool = False,
+    checkpoint_path: Optional[str] = None,
+    strip_default_attrs: bool = True,
+):  # pragma: no cover
+    """Exports multiple modes in the model function to a SavedModel."""
+
+    def _locate_latest_checkpoint() -> str:
+        if tf.__version__.startswith("1"):
+            return checkpoint_management.latest_checkpoint(self._model_dir)
+        return self.latest_checkpoint()
+
+    def _process_warm_start() -> str:
+        if not self._warm_start_settings:
+            raise ValueError("Couldn't find trained model at {}.".format(self._model_dir))
+
+        if not tf.compat.v1.gfile.IsDirectory(self._warm_start_settings.ckpt_to_initialize_from):
+            return self._warm_start_settings.ckpt_to_initialize_from
+
+        if tf.__version__.startswith("1"):
+            return checkpoint_management.latest_checkpoint(checkpoint_path)
+        return tf.train.latest_checkpoint(checkpoint_path)
+
+    def _process_meta_graph():
+        save_variables = True
+        for mode in [ModeKeys.TRAIN, ModeKeys.EVAL, ModeKeys.PREDICT]:
+            if not input_receiver_fn_map.get(mode):
+                continue
+
+            ConfigInitializer.get_instance().train_params_config.experimental_mode = mode
+            self._add_meta_graph_for_mode(
+                builder,
+                input_receiver_fn_map,
+                checkpoint_path,
+                save_variables,
+                mode=mode,
+                strip_default_attrs=strip_default_attrs,
+            )
+            save_variables = False
+
+        logger.info(
+            "The experimental mode is %s.", ConfigInitializer.get_instance().train_params_config.experimental_mode
+        )
+        if not save_variables:
+            return
+        raise ValueError("No valid modes for exporting found. Got {}.".format(input_receiver_fn_map.keys()))
+
+    with context.graph_mode():
+        if not checkpoint_path:
+            checkpoint_path = _locate_latest_checkpoint()
+        if not checkpoint_path:
+            checkpoint_path = _process_warm_start()
+
+        export_dir_base = tf.compat.as_bytes(export_dir_base)
+        builder = tf.compat.v1.saved_model.Builder(export_dir_base)
+
+        _process_meta_graph()
+
+        builder.save(as_text)
+
+        if assets_extra:
+            assets_extra_path = os.path.join(tf.compat.as_bytes(export_dir_base), tf.compat.as_bytes("assets.extra"))
+            for dest_relative, source in assets_extra.items():
+                dest_absolute = os.path.join(tf.compat.as_bytes(assets_extra_path), tf.compat.as_bytes(dest_relative))
+                dest_path = os.path.dirname(dest_absolute)
+                tf.compat.v1.gfile.MakeDirs(dest_path)
+                tf.compat.v1.gfile.Copy(source, dest_absolute)
+
+        return export_dir_base
+
+
+def patch_for_export_saved_model():
+    tf.compat.v1.estimator.Estimator._export_all_saved_models = _export_all_saved_models
+    logger.info("Function 'tf.compat.v1.estimator.Estimator._export_all_saved_models' has been patched.")

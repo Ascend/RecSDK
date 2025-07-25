@@ -30,14 +30,29 @@ from mx_rec.core.feature_process import EvictHook
 from tf_adapter import NPURunConfig, NPUEstimator, npu_hooks_append
 from nn_reader import input_fn
 from nn_model_input import get_model_fn
-from config import Config
+from config import (
+    Config, USE_DETERMINISTIC, GLOBAL_RANDOM_SEED, USE_DYNAMIC, USE_DYNAMIC_EXPANSION,
+    USE_MULTI_LOOKUP, USE_MODIFY_GRAPH, USE_TIMESTAMP, USE_DP, USE_ONE_SHOT, MULTI_LOOKUP_TIMES,
+    ENABLE_SLICER_TEST, RUN_MODE, USE_EXPORT_SAVED_MODEL
+)
 from demo_logger import logger
 from utils import FeatureSpecIns
 
+tf.compat.v1.disable_eager_execution()
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
 
 
-def main(params, config):
+def set_seed():
+    import random
+    import numpy as np
+
+    random.seed(GLOBAL_RANDOM_SEED)
+    np.random.seed(GLOBAL_RANDOM_SEED)
+    tf.compat.v2.random.set_seed(GLOBAL_RANDOM_SEED)
+    os.environ["PYTHONHASHSEED"] = str(GLOBAL_RANDOM_SEED)
+
+
+def main(params, config: Config):
     mg_session_config = tf.compat.v1.ConfigProto(allow_soft_placement=True, log_device_placement=False)
     run_config = NPURunConfig(
         model_dir=params.model_dir,
@@ -52,64 +67,65 @@ def main(params, config):
         op_precision_mode='./op_precision.ini',  # high performance
         op_compiler_cache_mode="enable",
         op_compiler_cache_dir="./op_cache",
-        HCCL_algorithm="level0:pairwise;level1:pairwise"
+        HCCL_algorithm="level0:pairwise;level1:pairwise",
+        tf_random_seed=GLOBAL_RANDOM_SEED if USE_DETERMINISTIC else None,
+        deterministic=1 if USE_DETERMINISTIC else 0
     )
 
     # access_threshold unit counts; eviction_threshold unit seconds
     access_and_evict = None
 
-    if not params.enable_slicer_test:
-        hooks_list = [GraphModifierHook(modify_graph=params.modify_graph)]
+    if not ENABLE_SLICER_TEST:
+        hooks_list = [GraphModifierHook(modify_graph=USE_MODIFY_GRAPH)]
     else:
         orphan_slicer_hook = OrphanLookupKeySlicerHook()
         lookup_slicer_hook = LookupSubgraphSlicerHook(op_types=["StringToNumber"])
-        hooks_list = [orphan_slicer_hook, lookup_slicer_hook, GraphModifierHook(modify_graph=params.modify_graph)]
+        hooks_list = [orphan_slicer_hook, lookup_slicer_hook, GraphModifierHook(modify_graph=USE_MODIFY_GRAPH)]
 
-    if params.use_timestamp:
+    if USE_TIMESTAMP:
         config_for_user_table = dict(access_threshold=config.access_threshold,
                                      eviction_threshold=config.eviction_threshold)
         config_for_item_table = dict(access_threshold=config.access_threshold,
                                      eviction_threshold=config.eviction_threshold)
         access_and_evict = dict(user_table=config_for_user_table, item_table=config_for_item_table)
-
-
         evict_hook = EvictHook(evict_enable=True, evict_time_interval=10)
         hooks_list.append(evict_hook)
-    create_fs_params = dict(cfg=config, use_timestamp=params.use_timestamp,
-                            use_multi_lookup=use_multi_lookup, multi_lookup_times=MULTI_LOOKUP_TIMES)
+
     est = NPUEstimator(
-        model_fn=get_model_fn(create_fs_params, config, access_and_evict),
+        model_fn=get_model_fn(config, access_and_evict),
         params=params,
         model_dir=params.model_dir,
         config=run_config
     )
 
-    if params.run_mode == 'train':
-        est.train(input_fn=lambda: input_fn(params, create_fs_params, config), max_steps=params.max_steps,
+    if RUN_MODE == 'train':
+        est.train(input_fn=lambda: input_fn(params, config), max_steps=params.max_steps,
                   hooks=npu_hooks_append(hooks_list))
 
-    elif params.run_mode == 'train_and_evaluate':
-        train_spec = tf.estimator.TrainSpec(input_fn=lambda: input_fn(params, create_fs_params, config,
-                                                                      use_one_shot=args.use_one_shot),
+    elif RUN_MODE == 'train_and_evaluate':
+        train_spec = tf.estimator.TrainSpec(input_fn=lambda: input_fn(params, config, use_one_shot=USE_ONE_SHOT),
                                             max_steps=params.max_steps, hooks=npu_hooks_append(hooks_list))
 
-        if not params.enable_slicer_test:
+        if not ENABLE_SLICER_TEST:
             # 在开启evict时，eval时不支持淘汰，所以无需加入evict hook
-            eval_hook_list = [GraphModifierHook(modify_graph=params.modify_graph)]
+            eval_hook_list = [GraphModifierHook(modify_graph=USE_MODIFY_GRAPH)]
         else:
             orphan_slicer_hook = OrphanLookupKeySlicerHook()
             lookup_slicer_hook = LookupSubgraphSlicerHook(op_types=["StringToNumber"])
             eval_hook_list = [orphan_slicer_hook, lookup_slicer_hook,
-                              GraphModifierHook(modify_graph=params.modify_graph)]
+                              GraphModifierHook(modify_graph=USE_MODIFY_GRAPH)]
 
-        eval_spec = tf.estimator.EvalSpec(input_fn=lambda: input_fn(params, create_fs_params, config, is_eval=True,
-                                                                    use_one_shot=args.use_one_shot),
+        eval_spec = tf.estimator.EvalSpec(input_fn=lambda: input_fn(params, config, is_eval=True,
+                                                                    use_one_shot=USE_ONE_SHOT),
                                           steps=params.eval_steps, hooks=npu_hooks_append(eval_hook_list),
                                           throttle_secs=0)
         tf.estimator.train_and_evaluate(est, train_spec=train_spec, eval_spec=eval_spec)
 
-    elif params.run_mode == 'predict':
-        results = est.predict(input_fn=lambda: input_fn(params, create_fs_params, config),
+        if USE_EXPORT_SAVED_MODEL:
+            _export_model("./model_path", config, est)
+
+    elif RUN_MODE == 'predict':
+        results = est.predict(input_fn=lambda: input_fn(params, config),
                               hooks=npu_hooks_append(hooks_list=hooks_list), yield_single_examples=False)
         output_pred1 = []
         output_pred2 = []
@@ -119,30 +135,28 @@ def main(params, config):
             output_pred1.append(res['task_1'][0])
             output_pred2.append(res['task_2'][0])
             labels.append(res['label'][0])
+    else:
+        raise ValueError(f"RUN_MODE not in [train, predict, train_and_evaluate]")
 
     terminate_config_initializer()
     logger.info("Demo done!")
 
 
-def create_feature_spec_list(use_timestamp=False):
-    access_threshold = cfg.access_threshold if use_timestamp else None
-    eviction_threshold = cfg.eviction_threshold if use_timestamp else None
-    feature_spec_list = [FeatureSpec("user_ids", table_name="user_table",
-                                     access_threshold=access_threshold,
-                                     eviction_threshold=eviction_threshold),
-                         FeatureSpec("item_ids", table_name="item_table",
-                                     access_threshold=access_threshold,
-                                     eviction_threshold=eviction_threshold)]
-    if use_multi_lookup:
-        # add `MULTI_LOOKUP_TIMES` times
-        for _ in range(MULTI_LOOKUP_TIMES):
-            feature_spec_list.append(FeatureSpec("user_ids", table_name="user_table",
-                                                 access_threshold=access_threshold,
-                                                 eviction_threshold=eviction_threshold,
-                                                 faae_coefficient=1))
-    if use_timestamp:
-        feature_spec_list.append(FeatureSpec("timestamp", is_timestamp=True))
-    return feature_spec_list
+def _export_model(save_path: str, config: Config, est: tf.compat.v1.estimator.Estimator):
+    _del_related_dir(save_path)
+
+    def _serving_input_fn():
+        inputs = {
+            "user_ids": tf.compat.v1.placeholder(shape=(None, config.user_feat_cnt), dtype=tf.int64, name="user_ids"),
+            "item_ids": tf.compat.v1.placeholder(shape=(None, config.item_feat_cnt), dtype=tf.int64, name="item_ids"),
+            "label_0": tf.compat.v1.placeholder(shape=(None,), dtype=tf.float32, name="label_0"),
+            "label_1": tf.compat.v1.placeholder(shape=(None,), dtype=tf.float32, name="label_1"),
+        }
+        return tf.estimator.export.ServingInputReceiver(features=inputs, receiver_tensors=inputs)
+
+    target_pb_path = os.path.abspath(save_path)
+    export_path = est.export_saved_model(target_pb_path, _serving_input_fn).decode("utf-8")
+    logger.info("The export saved model path is %s.", export_path)
 
 
 def _del_related_dir(del_path: str) -> None:
@@ -159,78 +173,50 @@ def _clear_saved_model() -> None:
     _del_related_dir("kernel*")
     _del_related_dir("export_graph")
 
-    mode = args.run_mode
-    if not mode.startswith("train"):
+    if not USE_EXPORT_SAVED_MODEL and not RUN_MODE.startswith("train"):
         return
-    logger.info("current mode contains train, will delete previous saved model data if exist.")
+    logger.warning("Current mode contains train, will delete previous saved model data if exist.")
     _del_related_dir("_rank*")
+    _del_related_dir("ssd_sparse_model_rank*")
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--run_mode', type=str, default='train_and_evaluate')  # 运行模式，在run.sh中进行配置
-    parser.add_argument('--model_ckpt_dir', type=str, default='')
+    parser.add_argument('--model_dir', type=str, default='_rank')
     parser.add_argument('--learning_rate', type=float, default=0.0008)
-    parser.add_argument('--use_timestamp', type=bool, default=False)  # 是否开启特征准入与淘汰
-    parser.add_argument('--use_dp', type=bool, default=False)  # 是否开启user table Dp特性
-    parser.add_argument('--modify_graph', type=bool, default=False)  # 是否开启自动改图
-    parser.add_argument('--use_multi_lookup', type=bool, default=True)  # 是否一表多查
-    parser.add_argument('--multi_lookup_times', type=int, default=2)  # 一表多查次数
     parser.add_argument('--max_data_generate_steps', type=int, default=200)  # 生成数据最大步数
     parser.add_argument('--max_steps', type=int, default=200)  # train的最大步数
     parser.add_argument('--train_steps', type=int, default=100)  # 训练train_steps步后进行eval
     parser.add_argument('--eval_steps', type=int, default=10)  # 每次eval的步数
     # 每隔step保存一次模型, 若在train_and_evaluate模式, 还会进行eval, 注: 若设为None, NPURunConfig内部会设默认值100
     parser.add_argument('--save_checkpoints_steps', type=int, default=200)
-    parser.add_argument('--use_one_shot', type=bool, default=False)  # 是否使用one shot iterator
-
     args, unknowns = parser.parse_known_args()
-    # get init configuration
-    try:
-        use_dynamic = bool(int(os.getenv("USE_DYNAMIC", 0)))
-        use_dynamic_expansion = bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0)))
-        use_multi_lookup = bool(int(os.getenv("USE_MULTI_LOOKUP", 1)))
-        MODIFY_GRAPH_FLAG = bool(int(os.getenv("USE_MODIFY_GRAPH", 0)))
-        USE_TIMESTAMP = bool(int(os.getenv("USE_TIMESTAMP", 0)))
-        USE_DP = bool(int(os.getenv("USE_DP", 0)))
-        args.use_one_shot = bool(int(os.getenv("USE_ONE_SHOT", 0)))
-        args.enable_slicer_test = bool(int(os.getenv("ENABLE_SLICER_TEST", 0)))
-    except ValueError as err:
-        raise ValueError("please correctly config USE_MPI or USE_DYNAMIC or USE_DYNAMIC_EXPANSION or "
-                         "USE_MULTI_LOOKUP or USE_MODIFY_GRAPH or USE_TIMESTAMP or USE_ONE_SHOT or USE_DP"
-                         "only 0 or 1 is supported.") from err
 
-    try:
-        MULTI_LOOKUP_TIMES = int(os.getenv("MULTI_LOOKUP_TIMES", 2))
-    except ValueError as err:
-        raise ValueError("please correctly config MULTI_LOOKUP_TIMES only int is supported.") from err
-
-    if args.run_mode == 'train':
+    if RUN_MODE == 'train':
         args.train_steps = -1
         args.eval_steps = -1
-    elif args.run_mode == 'predict':
+    elif RUN_MODE == 'predict':
         args.eval_steps = -1
-    elif args.run_mode == 'train_and_evaluate':
+    elif RUN_MODE == 'train_and_evaluate':
         args.save_checkpoints_steps = args.train_steps
+    else:
+        raise ValueError(f"RUN_MODE not in [train, predict, train_and_evaluate]")
+
     _clear_saved_model()
 
     # set init
+    if USE_DETERMINISTIC:
+        set_seed()
     init(train_steps=args.train_steps,
          eval_steps=args.eval_steps,
          save_steps=args.save_checkpoints_steps,
          max_steps=args.max_steps,
-         use_dynamic=use_dynamic,
-         use_dynamic_expansion=use_dynamic_expansion)
+         use_dynamic=USE_DYNAMIC,
+         use_dynamic_expansion=USE_DYNAMIC_EXPANSION)
 
-    args.model_dir = f"{args.model_ckpt_dir}_rank"
-    args.modify_graph = MODIFY_GRAPH_FLAG
-    args.use_timestamp = USE_TIMESTAMP
-    args.use_multi_lookup = use_multi_lookup
-    args.multi_lookup_times = MULTI_LOOKUP_TIMES
-    args.use_dp = USE_DP
     cfg = Config()
-    # multi lookup config, batch size: 32 * 128 = 4096
-    if use_multi_lookup and MULTI_LOOKUP_TIMES > 2:
+    # multi lookup config, batch size: 4096 (32 * 128)
+    if USE_MULTI_LOOKUP and MULTI_LOOKUP_TIMES > 2:
         cfg.batch_size = 32
     # init FeatureSpecIns
     FeatureSpecIns.set_instance()

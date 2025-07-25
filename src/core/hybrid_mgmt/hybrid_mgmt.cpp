@@ -73,7 +73,8 @@ void HybridMgmt::InitRankInfo(RankInfo& rankInfo, const vector<EmbInfo>& embInfo
 /// \param ifLoad 是否断点续训
 /// \return
 bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, int seed,
-                            const vector<ThresholdValue>& thresholdValues, bool ifLoad, bool isIncrementalCheckpoint)
+                            const vector<ThresholdValue>& thresholdValues, bool ifLoad,
+                            bool isIncrementalCheckpoint, bool useLccl)
 {
 #ifndef GTEST
     // 环境变量初始化
@@ -109,16 +110,17 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     mgmtRankInfo = rankInfo;
     mgmtEmbInfo = embInfos;
     isIncrementalCkpt = isIncrementalCheckpoint;
+    this->enableLccl = useLccl;
 
     // 进行acl资源初始化，设置当前训练进程的device，为每张表创建数据传输通道
     hdTransfer = Singleton<MxRec::HDTransfer>::GetInstance();
-    hdTransfer->Init(embInfos, rankInfo.deviceId, isIncrementalCheckpoint);
+    hdTransfer->Init(embInfos, rankInfo.deviceId, isIncrementalCheckpoint, useLccl);
 
     hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
     hybridMgmtBlock->SetRankInfo(rankInfo);
 
     // 启动数据处理线程
-    KEY_PROCESS_INSTANCE->Initialize(rankInfo, embInfos, thresholdValues, seed, isIncrementalCheckpoint);
+    KEY_PROCESS_INSTANCE->Initialize(rankInfo, embInfos, thresholdValues, isIncrementalCheckpoint, useLccl);
 
     isRunning = true;
     isL3StorageEnabled = rankInfo.isSSDEnabled;
@@ -163,7 +165,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
 /// 保存模型
 /// \param savePath 保存路径
 /// \return
-void HybridMgmt::Save(const string& savePath, bool saveDelta)
+void HybridMgmt::Save(const string& savePath, bool saveDelta, bool isSaveL3Storage)
 {
 #ifndef GTEST
     if (!isInitialized) {
@@ -186,19 +188,20 @@ void HybridMgmt::Save(const string& savePath, bool saveDelta)
     map<string, map<emb_key_t, KeyInfo>> keyInfoMap;
     GetDeltaModelKeys(savePath, saveDelta, keyInfoMap);
     EmbeddingMgmt::Instance()->Save(savePath, hybridMgmtBlock->pythonBatchId[TRAIN_CHANNEL_ID], saveDelta, keyInfoMap);
-    // after save key、embedding, reset deltaMap, isChanged->false, recentCount->0
-    if (isIncrementalCkpt) {
-        ResetDeltaInfo();
-    }
+
     if (!mgmtRankInfo.isDDR) {
         // hbm模式只保存必要的offset对应的内容
         offsetMapToSend = EmbeddingMgmt::Instance()->GetDeviceOffsets();
     }
 
-    if (isL3StorageEnabled) {
+    if (isL3StorageEnabled && isSaveL3Storage) {
         LOG_DEBUG(MGMT + "start save L3Storage data");
         auto step = GetStepFromPath(savePath);
-        cacheManager->Save(step);
+        if (saveDelta) {
+            cacheManager->Save(step, keyInfoMap);
+        } else {
+            cacheManager->Save(step);
+        }
     }
 
     // 保存特征准入淘汰相关的数据
@@ -213,6 +216,10 @@ void HybridMgmt::Save(const string& savePath, bool saveDelta)
     // 执行保存操作
     saveCkpt.SaveModel(savePath, saveData, mgmtRankInfo, mgmtEmbInfo);
     isFirstSave = false;
+    // after save key、embedding, reset deltaMap, isChanged->false, recentCount->0
+    if (isIncrementalCkpt) {
+        ResetDeltaInfo();
+    }
     LOG_INFO(MGMT + "End to save {} model.", saveModelType);
     // 数据处理线程释放锁
     KEY_PROCESS_INSTANCE->LoadSaveUnlock();
@@ -244,10 +251,10 @@ bool HybridMgmt::Load(const string& loadPath, vector<string> warmStartTables)
     BackUpTrainStatus();
 
     if (warmStartTables.size() == 0) {
-        EmbeddingMgmt::Instance()->Load(loadPath, trainKeysSet);
+        EmbeddingMgmt::Instance()->Load(loadPath, trainKeysSet, warmStartTables);
     } else {
         for (auto& tableName : warmStartTables) {
-            EmbeddingMgmt::Instance()->Load(tableName, loadPath, trainKeysSet);
+            EmbeddingMgmt::Instance()->Load(tableName, loadPath, trainKeysSet, warmStartTables);
         }
     }
 
@@ -271,7 +278,7 @@ bool HybridMgmt::Load(const string& loadPath, vector<string> warmStartTables)
 
     // 将加载的特征准入淘汰记录进行赋值
     FeatureAdmitAndEvict& featAdmitNEvict = KEY_PROCESS_INSTANCE->GetFeatAdmitAndEvict();
-    if (featAdmitNEvict.GetFunctionSwitch()) {
+    if (featAdmitNEvict.GetFunctionSwitch() && !loadData.noFeatAdmitAndEvictData) {
         LOG_DEBUG(MGMT + "Start host side load: feature admit and evict");
         featAdmitNEvict.LoadTableThresholds(loadData.table2Thresh);
         featAdmitNEvict.LoadHistoryRecords(loadData.histRec);
@@ -533,7 +540,8 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId, TaskType type)
 
     std::vector<std::future<bool>> remainResult;
     for (const auto& embInfo : mgmtEmbInfo) {
-        EmbBaseInfo info = {.batchId = batchId, .channelId = channelId, .name = embInfo.name, .isDp = embInfo.isDp};
+        EmbBaseInfo info = {.batchId = batchId, .channelId = channelId, .name = embInfo.name, .isDp = embInfo.isDp,
+                            .paddingKeysMask = embInfo.paddingKeysMask, .paddingKeys = embInfo.paddingKeys};
         switch (type) {
             case TaskType::HBM: {
                 std::future<bool> remainBatch = threadPool->enqueueWithFuture(
@@ -588,6 +596,7 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId, TaskType type)
 bool HybridMgmt::ProcessEmbInfoHBM(const EmbBaseInfo& info, bool isGrad)
 {
     bool remainBatchOut = true;
+#ifndef GTEST
     TimeCost parseKeysTc;
     LOG_DEBUG("ProcessEmbInfoHBM table:{}, batchId:{}, channel:{}", info.name, info.batchId, info.channelId);
 
@@ -626,6 +635,12 @@ bool HybridMgmt::ProcessEmbInfoHBM(const EmbBaseInfo& info, bool isGrad)
         SendUniqKeysAndRestoreVecHBM(info, infoVecs, isGrad);
     }
 
+    SendPaddingKeysMaskVecHBM(info, infoVecs, isGrad);
+
+    if (enableLccl && !mgmtRankInfo.useStatic) {
+        hdTransfer->Send(TransferChannel::RECVSHAPE, { infoVecs->back() }, info.channelId, info.name);
+        infoVecs->pop_back();
+    }
     // 发送恢复向量和hotPos
     TimeCost sendRestoreSyncTC;
     hdTransfer->Send(TransferChannel::RESTORE, *infoVecs, info.channelId, info.name, info.batchId);
@@ -634,7 +649,7 @@ bool HybridMgmt::ProcessEmbInfoHBM(const EmbBaseInfo& info, bool isGrad)
 
     LOG_INFO(MGMT + "table:{}, channelId:{} batchId:{}, embName:{}, ParseKeys with HBM mode end.", info.name,
              info.channelId, info.batchId, info.name);
-
+#endif
     return remainBatchOut;
 }
 
@@ -1039,34 +1054,78 @@ void HybridMgmt::LookUpSwapAddrs(const string& embName, int channelId)
     }
 }
 
+vector<Tensor> HybridMgmt::BuildSaveSwapTensor(vector<uint64_t> swapOutPos, bool isSyncRemain)
+{
+#ifndef GTEST
+    vector<Tensor> swapTensor;
+    swapTensor.emplace_back(Vec2TensorI32(swapOutPos));
+    swapTensor.emplace_back(Tensor(tensorflow::DT_INT32, {1}));
+    auto swapOutLen = swapTensor.back().flat<int32>();
+    swapOutLen(0) = swapOutPos.size();
+    swapTensor.emplace_back(Tensor(tensorflow::DT_BOOL, {1}));
+    auto swapRemainFlag = swapTensor.back().flat<bool>();
+    swapRemainFlag(0) = isSyncRemain;
+    return swapTensor;
+#endif
+}
+
 /// 导出npu的embedding
 void HybridMgmt::FetchDeviceEmb()
 {
+#ifndef GTEST
     // 数据处理线程上锁
     KEY_PROCESS_INSTANCE->LoadSaveLock();
 
     if (mgmtRankInfo.isDDR) {
-        // DDR模式保存host的emb表以及hashmap
-        LOG_DEBUG(MGMT + "start host side save: ddr mode");
+        LOG_INFO("Start FetchDeviceEmb.");
         for (const auto& embInfo : mgmtEmbInfo) {
-            std::vector<std::pair<uint64_t, uint64_t>> koVec;
+            LOG_INFO("Start send swapOutPos to device, table:{}.", embInfo.name);
+            vector<std::pair<uint64_t, uint64_t>> koVec;
             embCache->ExportDeviceKeyOffsetPairs(embInfo.name, koVec);
-            std::vector<uint64_t> swapOutPos;
+            vector<uint64_t> swapOutPos;
             for (const auto& p : koVec) {
                 swapOutPos.push_back(p.second);
             }
 
-            vector<Tensor> swapTensor;
-            swapTensor.emplace_back(Vec2TensorI32(swapOutPos));
-            swapTensor.emplace_back(Tensor(tensorflow::DT_INT32, {1}));
-            auto swapOutLen = swapTensor.back().flat<int32>();
-            swapOutLen(0) = swapOutPos.size();
-            LOG_DEBUG(MGMT + "save swapOutPos size:{}", swapOutPos.size());
-            // 发送SwapOutPos信息
-            hdTransfer->Send(TransferChannel::SAVE_H2D, swapTensor, TRAIN_CHANNEL_ID, embInfo.name);
+            if (swapOutPos.empty()) {
+                auto swapTensor = BuildSaveSwapTensor(swapOutPos, false);
+                hdTransfer->Send(TransferChannel::SAVE_H2D, swapTensor, TRAIN_CHANNEL_ID, embInfo.name);
+                LOG_INFO("Send empty swapOutPos to device, table:{}, isSyncRemain:{}.", embInfo.name, false);
+                continue;
+            }
+
+            auto oneEmbMemCost = static_cast<size_t>(embInfo.extEmbeddingSize) * sizeof(float);
+            auto totalSyncMem = oneEmbMemCost * swapOutPos.size();
+            auto syncCnt = static_cast<size_t>(totalSyncMem / MAX_OUTFEED_ENQUEUE_INPUT_SIZE) + 1;
+            auto onceSyncPosCnt = static_cast<size_t>(swapOutPos.size() / syncCnt);
+
+            bool isSyncRemain = true;
+            size_t syncPosRemain = swapOutPos.size();
+            size_t syncPosCnt = onceSyncPosCnt;
+            size_t syncBatchId = 0;
+            for (size_t startIdx = 0; startIdx < swapOutPos.size(); startIdx += syncPosCnt) {
+                syncPosCnt = std::min(syncPosRemain, onceSyncPosCnt);
+                vector<uint64_t> swapOutPosSlice(
+                    swapOutPos.begin() + startIdx,
+                    swapOutPos.begin() + startIdx + syncPosCnt
+                );
+
+                if (startIdx + syncPosCnt >= swapOutPos.size()) {
+                    isSyncRemain = false;
+                }
+                auto swapTensor = BuildSaveSwapTensor(swapOutPosSlice, isSyncRemain);
+                LOG_INFO("Send swapOutPos for syncing, table:{}, syncBatchId:{}, swapOutPosSlice.size:{},"
+                         " isSyncRemain:{}",
+                         embInfo.name, syncBatchId, swapOutPosSlice.size(), isSyncRemain);
+                hdTransfer->Send(TransferChannel::SAVE_H2D, swapTensor, TRAIN_CHANNEL_ID, embInfo.name);
+                ++syncBatchId;
+                syncPosRemain -= syncPosCnt;
+            }
         }
+        LOG_INFO("End FetchDeviceEmb.");
     }
     KEY_PROCESS_INSTANCE->LoadSaveUnlock();
+#endif
 }
 
 // 这里就是新增的embedding处理线程
@@ -1118,6 +1177,7 @@ void HybridMgmt::ReceiveKey()
 
 void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
 {
+#ifndef GTEST
     receiveKeyThreads.emplace_back([embInfo, this]() {
         while (isRunning) {
             TransferChannel transferName = TransferChannel::KEY_D2H;
@@ -1175,6 +1235,7 @@ void HybridMgmt::ReceiveKeyThread(const EmbInfo& embInfo)
             keyCountUpdateCv.notify_all();
         }
     });
+#endif
 }
 
 void HybridMgmt::UpdateDeltaInfo(const string& embName, vector<int64_t>& keyCountVec, int64_t timeStamp,
@@ -1220,15 +1281,26 @@ void HybridMgmt::EmbeddingLookUpAndSendDDR(int batchId, int index, const EmbInfo
                         .extEmbeddingSize = embInfo.extEmbeddingSize,
                         .channelId = channelId,
                         .name = embInfo.name};
-
-    vector<Tensor> h2dEmb;
-    auto isSuccess = EmbeddingLookUpDDR(info, h2dEmb);
-    if (!isSuccess) {
-        LOG_DEBUG("HybridMgmt is not running when [LookUpAndSendDDR], table:{}, batchId:{}, channel:{}", embInfo.name,
-                  batchId, channelId);
-        return;
+    if (GlobalEnv::useShmSwap) {
+        float *h2dEmb = nullptr;
+        std::array<int64_t, RMA_DIM_MAX> dims= {0, 0};
+        auto isSuccess = EmbeddingBuildAndSendDDR(info, h2dEmb, dims);
+        if (!isSuccess) {
+            LOG_DEBUG("HybridMgmt is not running when [LookUpAndSendDDR], table:{}, batchId:{}, channel:{}",
+                      embInfo.name, batchId, channelId);
+            return;
+        }
+    } else {
+        vector<Tensor> h2dEmb;
+        auto isSuccess = EmbeddingLookUpDDR(info, h2dEmb);
+        if (!isSuccess) {
+            LOG_DEBUG("HybridMgmt is not running when [LookUpAndSendDDR], "
+                      "table:{}, batchId:{}, channel:{}",
+                      embInfo.name, batchId, channelId);
+            return;
+        }
+        EmbeddingSendDDR(info, h2dEmb);
     }
-    EmbeddingSendDDR(info, h2dEmb);
 }
 
 void HybridMgmt::EmbeddingReceiveAndUpdateDDR(int batchId, int index, const EmbInfo& embInfo, int channelId)
@@ -1244,7 +1316,6 @@ void HybridMgmt::EmbeddingReceiveAndUpdateDDR(int batchId, int index, const EmbI
                         .extEmbeddingSize = embInfo.extEmbeddingSize,
                         .channelId = channelId,
                         .name = embInfo.name};
-
     float* ptr = nullptr;
     vector<float*> swapOutAddrs;
     auto isSuccess = EmbeddingReceiveDDR(info, ptr, swapOutAddrs);
@@ -1255,6 +1326,9 @@ void HybridMgmt::EmbeddingReceiveAndUpdateDDR(int batchId, int index, const EmbI
         return;
     }
     EmbeddingUpdateDDR(info, ptr, swapOutAddrs);
+    if (GlobalEnv::useShmSwap) {
+        hdTransfer->DequeueShm(TransferChannel::D2H, info.channelId, info.name);
+    }
 }
 
 void HybridMgmt::EmbeddingLookUpAndSendL3Storage(int batchId, int index, const EmbInfo& embInfo, int channelId)
@@ -1564,38 +1638,48 @@ bool HybridMgmt::EmbeddingReceiveDDR(const EmbTaskInfo& info, float*& ptr, vecto
     // 等待图执行发送d2h embedding过来
 
     // 区分通道接收
-    auto size = hdTransfer->RecvAcl(TransferChannel::D2H, info.channelId, info.name, info.threadIdx, info.batchId);
-    if (size == 0) {
+    int64_t dim0 = 0;
+    size_t size = 0;
+    if (GlobalEnv::useShmSwap) {
+        string recvName = info.name + "_" + TransferChannel2Str(TransferChannel::D2H) + "_" +
+                          std::to_string(info.channelId);
+        size = hdTransfer->RecvMteShm(recvName, ptr, dim0, info.batchId);
+    } else {
+        size = hdTransfer->RecvAcl(TransferChannel::D2H, info.channelId, info.name, info.threadIdx, info.batchId);
+    }
+    if (size == 0 && !GlobalEnv::useShmSwap) {
         LOG_WARN("Recv empty data, table:{}, channelId:{}, accumulate batchId:{}.",
                  info.name, info.channelId, info.batchId);
         return false;
     }
+    if (!GlobalEnv::useShmSwap) {
+        auto aclData = acltdtGetDataItem(hdTransfer->aclDatasets[info.name][info.threadIdx], 0);
+        if (aclData == nullptr) {
+            auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::ACL_ERROR,
+                               "Acl get tensor data from dataset failed in [EmbeddingReceiveDDR].");
+            LOG_ERROR(error.ToString());
+            throw runtime_error(error.ToString().c_str());
+        }
+        ptr = reinterpret_cast<float*>(acltdtGetDataAddrFromItem(aclData));
 
-    auto aclData = acltdtGetDataItem(hdTransfer->aclDatasets[info.name][info.threadIdx], 0);
-    if (aclData == nullptr) {
-        auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::ACL_ERROR,
-                           "Acl get tensor data from dataset failed in [EmbeddingReceiveDDR].");
-        LOG_ERROR(error.ToString());
-        throw runtime_error(error.ToString().c_str());
+        // 判断拿到的embedding个数是否与swapOutKeys个数相等
+        size_t dimNum = acltdtGetDimNumFromItem(aclData);
+        int64_t dims[dimNum];
+        acltdtGetDimsFromItem(aclData, dims, dimNum);
+        dim0 = dims[0];
     }
-    ptr = reinterpret_cast<float*>(acltdtGetDataAddrFromItem(aclData));
-
-    // 判断拿到的embedding个数是否与swapOutKeys个数相等
-    size_t dimNum = acltdtGetDimNumFromItem(aclData);
-    int64_t dims[dimNum];
-    acltdtGetDimsFromItem(aclData, dims, dimNum);
 
     LOG_DEBUG(MGMT + "In swap thread, finish receive d2h embedding, table:{}, channelId:{}, accumulate batchId:{}, "
                      "thread:{}, dims[0]:{}, swapOutAddrs size:{}, EmbeddingRecvTC(ms):{}",
-              info.name, info.channelId, info.batchId, info.threadIdx, dims[0], swapOutAddrs.size(),
+              info.name, info.channelId, info.batchId, info.threadIdx, dim0, swapOutAddrs.size(),
               EmbeddingRecvTC.ElapsedMS());
 
-    if (dims[0] != static_cast<int64_t>(swapOutAddrs.size())) {
+    if (dim0 != static_cast<int64_t>(swapOutAddrs.size())) {
         auto error =
             Error(ModuleName::M_HYBRID_MGMT, ErrorType::LOGIC_ERROR,
                   StringFormat(
                       "Receive swap-out emb num %d does not equal to swap-out addrs num %d in [EmbeddingReceiveDDR].",
-                      dims[0], swapOutAddrs.size()));
+                      dim0, swapOutAddrs.size()));
         LOG_ERROR(error.ToString());
         throw runtime_error(error.ToString().c_str());
     }
@@ -1667,6 +1751,40 @@ bool HybridMgmt::EmbeddingLookUpDDR(const EmbTaskInfo& info, vector<Tensor>& h2d
     }
 
     bool isSuccess = BuildH2DEmbedding(info, h2dEmb);
+    if (!isSuccess) {
+        return false;
+    }
+
+    hybridMgmtBlock->lastLookUpFinishStep[info.name][info.channelId]++;
+    string nextKey = MakeSwapCVName(info.cvNotifyIndex, info.name, info.channelId);
+    lastLookUpFinishCV[nextKey].notify_all();
+
+    LOG_DEBUG(MGMT + "In swap thread, finish embedding lookup, table:{}, channelId:{}, accumulate batchId:{}, "
+                     "thread:{}",
+              info.name, info.channelId, info.batchId, info.threadIdx);
+    return true;
+}
+bool HybridMgmt::EmbeddingBuildAndSendDDR(const EmbTaskInfo& info, float*& h2dEmb,
+                                          std::array<int64_t, RMA_DIM_MAX>& dims)
+{
+    string currentKey = MakeSwapCVName(info.threadIdx, info.name, info.channelId);
+    std::unique_lock<std::mutex> lastUpdateFinishLocker(lastUpdateFinishMutex[currentKey]);
+    lastUpdateFinishCV[currentKey].wait(lastUpdateFinishLocker, [info, this] {
+        return (hybridMgmtBlock->lastUpdateFinishStep[info.name][info.channelId] >= info.batchId) || mutexDestroy;
+    });
+    if (!isRunning) {
+        return false;
+    }
+
+    std::unique_lock<std::mutex> lastLookUpFinishLocker(lastLookUpFinishMutex[currentKey]);
+    lastLookUpFinishCV[currentKey].wait(lastLookUpFinishLocker, [info, this] {
+        return (hybridMgmtBlock->lastLookUpFinishStep[info.name][info.channelId] == info.batchId) || mutexDestroy;
+    });
+    if (!isRunning) {
+        return false;
+    }
+
+    bool isSuccess = BuildAndSendH2DEmbedding(info, h2dEmb, dims);
     if (!isSuccess) {
         return false;
     }
@@ -1901,6 +2019,7 @@ void HybridMgmt::EmbeddingUpdateL3Storage(const EmbTaskInfo& info, float* embPtr
 
 bool HybridMgmt::EmbeddingLookUpL3Storage(const EmbTaskInfo& info, vector<Tensor>& h2dEmb)
 {
+#ifndef GTEST
     string currentKey = MakeSwapCVName(info.threadIdx, info.name, info.channelId);
     std::unique_lock<std::mutex> lastUpdateFinishLocker(lastUpdateFinishMutex[currentKey]);
     lastUpdateFinishCV[currentKey].wait(lastUpdateFinishLocker, [info, this] {
@@ -1958,7 +2077,7 @@ bool HybridMgmt::EmbeddingLookUpL3Storage(const EmbTaskInfo& info, vector<Tensor
     hybridMgmtBlock->lastLookUpFinishStep[info.name][info.channelId]++;
     string nextKey = MakeSwapCVName(info.cvNotifyIndex, info.name, info.channelId);
     lastLookUpFinishCV[nextKey].notify_all();
-
+#endif
     return true;
 }
 
@@ -1986,6 +2105,7 @@ void HybridMgmt::EmbeddingSendL3Storage(const EmbTaskInfo& info, vector<Tensor>&
 void HybridMgmt::HandleDataSwapForL3Storage(const EmbBaseInfo& info, vector<uint64_t>& swapInKeys,
                                             vector<uint64_t>& swapOutKeys)
 {
+#ifndef GTEST
     TimeCost ProcessSwapInKeysTC;
     vector<emb_cache_key_t> L3StorageToDDRKeys;
     vector<emb_cache_key_t> DDRToL3StorageKeys;
@@ -2027,6 +2147,48 @@ void HybridMgmt::HandleDataSwapForL3Storage(const EmbBaseInfo& info, vector<uint
 
     // normal status
     EosL1Que[info.name][info.channelId].Pushv(false);
+#endif
+}
+bool HybridMgmt::BuildAndSendH2DEmbedding(const EmbTaskInfo& info, float*& h2dEmb,
+                                          std::array<int64_t, RMA_DIM_MAX>& dims)
+{
+    std::vector<float*> swapInAddrs = HBMSwapAddrsQue[info.name + SWAP_IN_STR][info.channelId].WaitAndPop();
+    if (!isRunning) {
+        return false;
+    }
+    dims[0] = swapInAddrs.size();
+    dims[1] = info.extEmbeddingSize;
+    std::string sendName = StringFormat("%s_%s_%d_%d",
+                                        info.name.c_str(), TransferChannel2Str(TransferChannel::H2D).c_str(),
+                                        info.channelId, mgmtRankInfo.deviceId);
+    auto dataHeader = MallocFromShm(sendName, dims);
+    h2dEmb = reinterpret_cast<float *>(GetDataAddr(dataHeader));
+    if (h2dEmb == nullptr) {
+        auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::INVALID_ARGUMENT,
+                           StringFormat("Failed to malloc memory from shm channel: %s.", sendName.c_str()));
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString());
+    }
+    TimeCost embeddingLookupTC = TimeCost();
+
+    uint64_t memSize = info.extEmbeddingSize * sizeof(float);
+#pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) shared(swapInAddrs, h2dEmb, info, memSize)
+    for (size_t i = 0; i < swapInAddrs.size(); i++) { // LCOV_EXCL_BR_LINE
+        auto rc = memcpy_s(h2dEmb + i * info.extEmbeddingSize, memSize, swapInAddrs[i], memSize);
+        if (rc != 0) {
+            auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::UNKNOWN,
+                               StringFormat("Memcpy_s failed when emb lookup, error code: %d. MemSize: %d. You can "
+                                            "query the meaning of security function error code.", rc, memSize));
+            LOG_ERROR(error.ToString());
+            throw runtime_error(error.ToString().c_str());
+        }
+    }
+    SetReadyLen(dataHeader, dims[0] * memSize);
+    LOG_DEBUG("[BuildAndSendH2DEmbedding] table:{}, channel:{}, thread:{}, accumulate batchId:{}, "
+              "emb size:{}, emb samples:{},embeddingLookupTC(ms):{}",
+              info.name.c_str(), info.channelId, info.threadIdx, info.batchId, swapInAddrs.size(),
+              FloatPtrToLimitStr(h2dEmb, swapInAddrs.size() * info.extEmbeddingSize), embeddingLookupTC.ElapsedMS());
+    return true;
 }
 
 bool HybridMgmt::BuildH2DEmbedding(const EmbTaskInfo& info, vector<Tensor>& h2dEmb)
@@ -2065,6 +2227,7 @@ bool HybridMgmt::BuildH2DEmbedding(const EmbTaskInfo& info, vector<Tensor>& h2dE
 vector<uint64_t> HybridMgmt::GetUniqueKeys(const EmbBaseInfo& info, bool& remainBatchOut, bool& isEos)
 {
     auto uniqueKeys = KEY_PROCESS_INSTANCE->GetUniqueKeys(info, isEos);
+#ifndef GTEST
     // DDR eos send in swap pipeline.
     if (isEos) {
         remainBatchOut = false;
@@ -2089,7 +2252,7 @@ vector<uint64_t> HybridMgmt::GetUniqueKeys(const EmbBaseInfo& info, bool& remain
             }
         }
     }
-
+#endif
     LOG_DEBUG("table:{}, channelId:{} batchId:{}, GetUniqueKeys end", info.name, info.channelId, info.batchId);
     return uniqueKeys;
 }
@@ -2109,6 +2272,7 @@ vector<int32_t> HybridMgmt::GetRestoreVecSec(const EmbBaseInfo& info, bool& rema
 
 void HybridMgmt::SendAll2AllVec(const EmbBaseInfo& info, bool& remainBatchOut)
 {
+#ifndef GTEST
     // The static shape and dp cases do not require all2all.
     if (!mgmtRankInfo.useStatic && !info.isDp) {
         bool isEos = false;  // useless, adapt to HBM mode
@@ -2126,10 +2290,12 @@ void HybridMgmt::SendAll2AllVec(const EmbBaseInfo& info, bool& remainBatchOut)
         LOG_DEBUG("table:{}, channelId:{}, batchId:{}, send all2all end, sendAll2AllTC(ms):{}", info.name,
                   info.channelId, info.batchId, sendAll2AllTC.ElapsedMS());
     }
+#endif
 }
 
 void HybridMgmt::SendRestoreVec(const EmbBaseInfo& info, bool& remainBatchOut)
 {
+#ifndef GTEST
     bool isEos = false;  // useless, adapt to HBM mode
     TimeCost getRestoreTC;
     unique_ptr<vector<Tensor>> infoVecs = KEY_PROCESS_INSTANCE->GetInfoVec(info, ProcessedInfo::RESTORE, isEos);
@@ -2147,6 +2313,7 @@ void HybridMgmt::SendRestoreVec(const EmbBaseInfo& info, bool& remainBatchOut)
     hdTransfer->Send(TransferChannel::RESTORE, *infoVecs, info.channelId, info.name, info.batchId);
     LOG_DEBUG("table:{}, channelId:{}, batchId:{}, send restore end, sendRestoreSyncTC(ms):{}", info.name,
               info.channelId, info.batchId, sendRestoreSyncTC.ElapsedMS());
+#endif
 }
 
 void HybridMgmt::SendLookupOffsets(const EmbBaseInfo& info, vector<uint64_t>& uniqueKeys,
@@ -2166,6 +2333,11 @@ void HybridMgmt::SendLookupOffsets(const EmbBaseInfo& info, vector<uint64_t>& un
     hdTransfer->Send(TransferChannel::LOOKUP, {Vec2TensorI32(lookupOffsets)}, info.channelId, info.name, info.batchId);
     LOG_DEBUG("table:{}, channelId:{}, batchId:{}, send lookupOffset, sendLookupOffsetsTC(ms):{}", info.name,
               info.channelId, info.batchId, sendLookupOffsetsTC.ElapsedMS());
+
+    // The first-order optimizer does not have a second USS, which needs to mask the lookupOffsets.
+    if (!mgmtRankInfo.useSumSameIdGradients) {
+        SendPaddingKeysMaskVecDDRL3(info, lookupOffsets);
+    }
 }
 
 void HybridMgmt::SendGlobalUniqueVec(const EmbBaseInfo& info, vector<uint64_t>& uniqueKeys,
@@ -2177,7 +2349,7 @@ void HybridMgmt::SendGlobalUniqueVec(const EmbBaseInfo& info, vector<uint64_t>& 
         return;
     }
     TimeCost sendUniqueKeysSyncTC;
-    hdTransfer->Send(TransferChannel::UNIQKEYS,
+    hdTransfer->Send(TransferChannel::UNIQKEYS, // LCOV_EXCL_BR_LINE
                      {mgmtRankInfo.useDynamicExpansion ? Vec2TensorI64(uniqueKeys) : Vec2TensorI32(uniqueKeys)},
                      info.channelId, info.name, info.batchId);
     LOG_DEBUG("table:{}, channelId:{}, batchId:{}, sendUniqueKeysSyncTC(ms):{}", info.name, info.channelId,
@@ -2188,6 +2360,9 @@ void HybridMgmt::SendGlobalUniqueVec(const EmbBaseInfo& info, vector<uint64_t>& 
                      info.batchId);
     LOG_DEBUG("table:{}, channelId:{}, batchId:{}, sendRestoreVecSecSyncTC(ms):{}", info.name, info.channelId,
               info.batchId, sendRestoreVecSecSyncTC.ElapsedMS());
+
+    // The second-order optimizer has a second USS, which needs to mask the uniqueKeys.
+    SendPaddingKeysMaskVecDDRL3(info, uniqueKeys);
 }
 
 void HybridMgmt::CheckLookupAddrSuccessDDR()
@@ -2206,7 +2381,9 @@ void HybridMgmt::GetSwapPairsAndKey2Offset(const EmbBaseInfo& info, vector<uint6
                                            pair<vector<uint64_t>, vector<uint64_t>>& swapOutKoPair)
 {
     TimeCost GetSwapPairsAndKey2OffsetTC;
-    int swapInCode = embCache->GetSwapPairsAndKey2Offset(info.name, uniqueKeys, swapInKoPair, swapOutKoPair);
+    EmbCache::EmbBaseInfo embBaseInfo(info.batchId, info.channelId, info.name, info.isDp, info.paddingKeysMask,
+                                      info.paddingKeys);
+    int swapInCode = embCache->GetSwapPairsAndKey2Offset(embBaseInfo, uniqueKeys, swapInKoPair, swapOutKoPair);
     if (swapInCode != H_OK) {
         auto error = Error(ModuleName::M_OCK_CTR, ErrorType::UNKNOWN,
                            StringFormat("Table:%s, [GetSwapPairsAndKey2Offset] failed! error code:%d.",
@@ -2299,7 +2476,7 @@ void HybridMgmt::GetDeltaModelKeys(const string& savePath, bool saveDelta,
         if (saveDelta) {
             for (auto& delta : deltaMap) {
                 auto& deltaInfo = delta.second;
-                for (auto& it : deltaInfo) {
+                for (auto& it : deltaInfo) { // LCOV_EXCL_BR_LINE
                     if (it.second.isChanged) {
                         keyInfoMap[delta.first][it.first] = it.second;
                     }
@@ -2324,4 +2501,50 @@ void HybridMgmt::InitPipelineMutexAndCV(const string& embTableName)
             lastRecvFinishCV[key];
         }
     }
+}
+
+void HybridMgmt::SendPaddingKeysMaskVecHBM(const EmbBaseInfo& info, const unique_ptr<vector<Tensor>>& infoVecs,
+                                           bool isGrad) const
+{
+    if (!isGrad || info.channelId != TRAIN_CHANNEL_ID || !info.paddingKeysMask) {
+        return;
+    }
+
+    TimeCost sendMaskSyncTC;
+    hdTransfer->Send(TransferChannel::MASK, {infoVecs->back()}, info.channelId, info.name, info.batchId);
+    infoVecs->pop_back();
+    LOG_DEBUG("In SendPaddingKeysMaskVecHBM, table:{}, channelId:{}, batchId:{}, sendMaskSyncTC(ms):{}.", info.name,
+              info.channelId, info.batchId, sendMaskSyncTC.ElapsedMS());
+}
+
+void HybridMgmt::SendPaddingKeysMaskVecDDRL3(const EmbBaseInfo& info, const vector<uint64_t>& offsetKeys) const
+{
+    if (info.channelId != TRAIN_CHANNEL_ID || !info.paddingKeysMask) {
+        return;
+    }
+
+    TimeCost sendMaskSyncTC;
+    auto paddingKeysOffset = embCache->GetPaddingKeysOffset(info.name);
+    std::vector<int64_t> paddingKeysMask(offsetKeys.size(), 1);
+    for (size_t i = 0; i < offsetKeys.size(); i++) {
+        uint64_t key = offsetKeys[i];
+        if (paddingKeysOffset.find(key) != paddingKeysOffset.end()) {
+            paddingKeysMask[i] = 0;
+        }
+    }
+
+    hdTransfer->Send(TransferChannel::MASK, {Vec2TensorI32(paddingKeysMask)}, info.channelId, info.name, info.batchId);
+    LOG_DEBUG("In SendPaddingKeysMaskVecDDRL3, table:{}, channelId:{}, batchId:{}, sendMaskSyncTC(ms):{}.", info.name,
+              info.channelId, info.batchId, sendMaskSyncTC.ElapsedMS());
+}
+
+void HybridMgmt::StartSyncThread()
+{
+    if (!mgmtRankInfo.isDDR) {
+        auto error = Error(ModuleName::M_HYBRID_MGMT, ErrorType::LOGIC_ERROR,
+                           "This function only use for syncing embedding from device to host in DDR/SSD mode.");
+        LOG_ERROR(error.ToString());
+        throw runtime_error(error.ToString().c_str());
+    }
+    EmbeddingMgmt::Instance()->SyncLatestEmbedding(hybridMgmtBlock->pythonBatchId[TRAIN_CHANNEL_ID]);
 }

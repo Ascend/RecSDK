@@ -1,10 +1,30 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """
 配置文件
 """
 from __future__ import absolute_import
 import os
 import json
+import logging
 import psutil
+
+logging.getLogger().setLevel(logging.INFO)
 
 
 def get_path():
@@ -56,14 +76,28 @@ def gen_config(server_str, local_rank_size, path=None):
         file_handle.write(conf_str)
 
 
-def set_ascend_env(rank, rank_size, local_rank_size, host, file=None, dev_id=-1, dev_index=-1):
+class AscendEnv:
+    def __init__(self, rank, rank_size, local_rank_size, host, file=None, dev_id=-1, dev_index=-1):
+        self.rank = rank
+        self.rank_size = rank_size
+        self.local_rank_size = local_rank_size
+        self.host = host
+        self.file = file
+        self.dev_id = dev_id
+        self.dev_index = dev_index
+
+
+def set_ascend_env(env: AscendEnv):
     """
     配置昇腾相关的参数和环境变量，生成hccl配置
     """
-    rank = str(rank)
-    rank_size = str(rank_size)
-    local_rank_size = int(local_rank_size)
-    host = str(host)
+    rank = str(env.rank)
+    rank_size = str(env.rank_size)
+    local_rank_size = int(env.local_rank_size)
+    host = str(env.host)
+    file = env.file
+    dev_id = env.dev_id
+    dev_index = env.dev_index
 
     os.environ["MOX_USE_NPU"] = "1"
     os.environ["FUSION_TENSOR_SIZE"] = "2000000000"
@@ -103,9 +137,9 @@ def set_ascend_env(rank, rank_size, local_rank_size, host, file=None, dev_id=-1,
 
 def bind_cpu():
     p = psutil.Process()
+    bind_start = 48
+    bind_count = 96
     try:
-        bind_start = 48
-        bind_count = 96
         p.cpu_affinity([bind_start + x for x in range(bind_count)])
     except IndexError:
-        print("error cpu bind info, skipped.")
+        logging.error("error cpu bind info, skipped.")

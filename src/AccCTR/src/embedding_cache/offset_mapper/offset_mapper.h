@@ -15,31 +15,39 @@ limitations under the License.
 #ifndef MXREC_OFFSET_MAPPER_H
 #define MXREC_OFFSET_MAPPER_H
 
-#include <iostream>
-#include <atomic>
-#include <cstring>
-#include <vector>
-#include <mutex>
-#include <bitset>
-#include <future>
-#include <cstdlib>
-#include <thread>
 #include <algorithm>
+#include <atomic>
+#include <bitset>
+#include <cstdlib>
+#include <cstring>
+#include <future>
+#include <iostream>
+#include <mutex>
 #include <queue>
+#include <thread>
+#include <unordered_set>
+#include <vector>
+
+#include "embedding_cache.h"
 #include "mapper_base.h"
 
 namespace EmbCache {
+constexpr int TRAIN_CHANNEL_ID = 0;
+
 class OffsetMapper : public MapperBase {
 public:
     OffsetMapper() = default;
 
     ~OffsetMapper() = default;
 
-    OffsetMapper(const OffsetMapper& other): maxCacheSize(other.maxCacheSize), useLength(other.useLength),
-                                             validPos(new LimitedSet(*other.validPos)),
-                                             evictPos(new LimitedSet(*other.evictPos)),
-                                             pos2Key(other.pos2Key), lastBatchPos(other.lastBatchPos),
-                                             evictSize(other.evictSize)
+    OffsetMapper(const OffsetMapper& other)
+        : maxCacheSize(other.maxCacheSize),
+          useLength(other.useLength),
+          validPos(new LimitedSet(*other.validPos)),
+          evictPos(new LimitedSet(*other.evictPos)),
+          pos2Key(other.pos2Key),
+          lastBatchPos(other.lastBatchPos),
+          evictSize(other.evictSize)
     {
     }
 
@@ -76,7 +84,7 @@ public:
         try {
             validPos = new LimitedSet(maxSize);
             evictPos = new LimitedSet(maxSize);
-        } catch (const std::bad_alloc &e) {
+        } catch (const std::bad_alloc& e) {
             return false;
         }
         return MapperBase::Initialize(reserve);
@@ -92,6 +100,9 @@ public:
             delete evictPos;
             evictPos = nullptr;
         }
+        pos2Key.clear();
+        lastBatchPos.clear();
+        useLength = 0;
         MapperBase::UnInitialize();
     }
 
@@ -112,7 +123,7 @@ public:
     std::vector<std::pair<uint64_t, uint64_t>> ExportSortedKVPairs()
     {
         auto koVec = ExportVec();
-        std::sort(koVec.begin(), koVec.end(), [](const auto &u, const auto &v) { return u.second < v.second; });
+        std::sort(koVec.begin(), koVec.end(), [](const auto& u, const auto& v) { return u.second < v.second; });
         return koVec;
     }
 
@@ -121,19 +132,19 @@ public:
         return maxCacheSize - useLength + evictSize;
     }
 
-    int GetSwapPairsAndKey2Offset(std::vector<uint64_t>& keys, KeyOffsetPair& swapInKoPair,
+    int GetSwapPairsAndKey2Offset(const EmbBaseInfo& info, std::vector<uint64_t>& keys, KeyOffsetPair& swapInKoPair,
                                   KeyOffsetPair& swapOutKoPair)
     {
         std::vector<uint64_t> swapInKeysID = FilterKeys(keys, swapInKoPair);
 
         uint64_t swapInCnt = 0;
-        auto ret = FindInUsedPos(keys, swapInCnt, swapInKeysID, swapInKoPair, swapOutKoPair);
+        auto ret = FindInUsedPos(info, keys, swapInCnt, swapInKeysID, swapInKoPair, swapOutKoPair);
         if (ret != ock::ctr::H_OK) {
             return ret;
         }
 
         // 剩下的Key从om中分配位置
-        ret = FindInOffsetMapper(keys, swapInKoPair, swapInCnt, swapInKeysID);
+        ret = FindInOffsetMapper(info, keys, swapInKoPair, swapInCnt, swapInKeysID);
         if (ret != ock::ctr::H_OK) {
             return ret;
         }
@@ -164,13 +175,14 @@ public:
         return useLength - evictSize;
     }
 
-    uint64_t FindInUsedPos(std::vector<uint64_t>& keys, uint64_t& swapInCnt, std::vector<uint64_t>& swapInKeysID,
-                            KeyOffsetPair& swapInKoPair, KeyOffsetPair& swapOutKoPair)
+    uint64_t FindInUsedPos(const EmbBaseInfo& info, std::vector<uint64_t>& keys, uint64_t& swapInCnt,
+                           std::vector<uint64_t>& swapInKeysID, KeyOffsetPair& swapInKoPair,
+                           KeyOffsetPair& swapOutKoPair)
     {
-        std::vector<uint64_t> &swapInKeys = swapInKoPair.first;
-        std::vector<uint64_t> &swapInPos = swapInKoPair.second;
-        std::vector<uint64_t> &swapOutKeys = swapOutKoPair.first;
-        std::vector<uint64_t> &swapOutPos = swapOutKoPair.second;
+        std::vector<uint64_t>& swapInKeys = swapInKoPair.first;
+        std::vector<uint64_t>& swapInPos = swapInKoPair.second;
+        std::vector<uint64_t>& swapOutKeys = swapOutKoPair.first;
+        std::vector<uint64_t>& swapOutPos = swapOutKoPair.second;
 
         // 换出量 = 换入量 - 剩余空间
         uint64_t swapOutNum = swapInKeys.size() <= GetFreeLength() ? 0 : swapInKeys.size() - GetFreeLength();
@@ -185,6 +197,7 @@ public:
             // 记录swapInPos
             swapInPos[swapInCnt] = pos;
             // key->offset
+            RecordPaddingKeysOffset(info, keys[swapInKeysID[swapInCnt]], pos);
             keys[swapInKeysID[swapInCnt]] = pos;
             // 放入新key-pos
             Put(swapInKeys[swapInCnt], pos);
@@ -203,6 +216,7 @@ public:
             // 记录swapInPos
             swapInPos[swapInCnt] = pos;
             // key->offset
+            RecordPaddingKeysOffset(info, keys[swapInKeysID[swapInCnt]], pos);
             keys[swapInKeysID[swapInCnt]] = pos;
             // 删除原key-pos，放入新key-pos
             uint64_t key = pos2Key[pos];
@@ -218,23 +232,31 @@ public:
         }
 
         if (swapOutCnt < swapOutNum) {
-            ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR, "max cache size is too small");
+            std::string errMsg = "Device cache overflow! Max cache size is too small when swap out from device. "
+                                 "Please set a grater value for `device_vocabulary_size` parameter "
+                                 "when invoke `create_table` function. Current table:" + info.name +
+                                 ", device_vocabulary_size:" + std::to_string(maxCacheSize);
+            ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR, errMsg);
             return ock::ctr::H_MAX_CACHESIZE_TOO_SMALL;
         }
 
         return ock::ctr::H_OK;
     }
 
-    int FindInOffsetMapper(std::vector<uint64_t>& keys, KeyOffsetPair& swapInKoPair, uint64_t swapInCnt,
-                           std::vector<uint64_t>& swapInKeysID)
+    int FindInOffsetMapper(const EmbBaseInfo& info, std::vector<uint64_t>& keys, KeyOffsetPair& swapInKoPair,
+                           uint64_t swapInCnt, std::vector<uint64_t>& swapInKeysID)
     {
-        std::vector<uint64_t> &swapInKeys = swapInKoPair.first;
-        std::vector<uint64_t> &swapInPos = swapInKoPair.second;
+        std::vector<uint64_t>& swapInKeys = swapInKoPair.first;
+        std::vector<uint64_t>& swapInPos = swapInKoPair.second;
 
         for (uint64_t i = swapInCnt; i < swapInKeys.size(); i++) {
             swapInPos[i] = useLength++;
             if (HM_UNLIKELY(swapInPos[i] >= maxCacheSize)) {
-                ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR, "max cache size is too small");
+                std::string errMsg = "Device cache overflow! Max cache size is too small when swap in device. "
+                                     "Please set a grater value for `device_vocabulary_size` parameter "
+                                     "when invoke `create_table` function. Current table:" + info.name +
+                                     ", device_vocabulary_size:" + std::to_string(maxCacheSize);
+                ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR, errMsg);
                 return ock::ctr::H_MAX_CACHESIZE_TOO_SMALL;
             }
             // 放入新key-pos
@@ -242,15 +264,16 @@ public:
             // 更新pos2Key
             pos2Key[swapInPos[i]] = swapInKeys[i];
             // key->offset
+            RecordPaddingKeysOffset(info, keys[swapInKeysID[i]], swapInPos[i]);
             keys[swapInKeysID[i]] = swapInPos[i];
         }
         return ock::ctr::H_OK;
     }
 
-    std::vector<uint64_t> FilterKeys(std::vector<uint64_t>& keys, KeyOffsetPair &swapInKoPair)
+    std::vector<uint64_t> FilterKeys(std::vector<uint64_t>& keys, KeyOffsetPair& swapInKoPair)
     {
-        std::vector<uint64_t> &swapInKeys = swapInKoPair.first;
-        std::vector<uint64_t> &swapInPos = swapInKoPair.second;
+        std::vector<uint64_t>& swapInKeys = swapInKoPair.first;
+        std::vector<uint64_t>& swapInPos = swapInKoPair.second;
 
         std::vector<uint64_t> swapInKeysID;
         for (uint64_t i = 0; i < keys.size(); i++) {
@@ -271,6 +294,23 @@ public:
         return swapInKeysID;
     }
 
+    void RecordPaddingKeysOffset(const EmbBaseInfo& info, uint64_t key, uint64_t offset)
+    {
+        if (info.channelId != TRAIN_CHANNEL_ID || !info.paddingKeysMask) {
+            return;
+        }
+
+        auto it = std::find(info.paddingKeys.begin(), info.paddingKeys.end(), key);
+        if (it != info.paddingKeys.end()) {
+            paddingKeysOffset.insert(offset);
+        }
+    }
+
+    std::unordered_set<uint64_t> GetPaddingKeysOffset()
+    {
+        return paddingKeysOffset;
+    }
+
 private:
     uint64_t maxCacheSize{};            // HBM可容纳embedding条数
     uint64_t useLength{};               // HBM存储的embedding条数
@@ -279,6 +319,9 @@ private:
     std::vector<uint64_t> pos2Key;      // HBM中每个位置对应的key
     std::vector<uint64_t> lastBatchPos; // 上个batch的keys在HBM中占用的pos
     uint64_t evictSize;                 // evictPos的长度
+    std::unordered_set<uint64_t> paddingKeysOffset;
 };
-}
-#endif // MXREC_OFFSET_MAPPER_H
+
+}  // namespace EmbCache
+
+#endif  // MXREC_OFFSET_MAPPER_H

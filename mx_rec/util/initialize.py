@@ -29,30 +29,42 @@ from mx_rec.util.framework_npu_env.tfa_env import set_ascend_env
 from mx_rec.util.global_env_conf import global_env
 from mx_rec.util.log import logger
 from mx_rec.util.perf_factory.bind_cpu import bind_cpu
-from mx_rec.validator.validator import para_checker_decorator, ClassValidator, \
-    IntValidator, ValueCompareValidator, StringValidator
+from mx_rec.validator.validator import (
+    para_checker_decorator,
+    ClassValidator,
+    IntValidator,
+    ValueCompareValidator,
+)
 
 
 class ConfigInitializer:
     _single_instance = None
 
-    @para_checker_decorator(check_option_list=[
-        ("max_steps", IntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
-        ("train_steps", IntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
-        ("eval_steps", IntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
-        ("save_steps", IntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
-        (["max_steps", "train_steps", "eval_steps"], ValueCompareValidator, {"target": 0},
-         ["check_at_least_one_not_equal_to_target"]),
-        ("if_load", ClassValidator, {"classes": (bool,)}),
-        ("use_dynamic", ClassValidator, {"classes": (bool,)}),
-        ("use_dynamic_expansion", ClassValidator, {"classes": (bool,)}),
-        ("bind_cpu", ClassValidator, {"classes": (bool,)}),
-        ("save_checkpoint_due_time", IntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
-        ("save_delta_checkpoints_secs", IntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
-        ("is_incremental_checkpoint", ClassValidator, {"classes": (bool,)}),
-        ("restore_model_version", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
-        ("recent_key_count_threshold", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"])
-    ])
+    @para_checker_decorator(
+        check_option_list=[
+            ("max_steps", IntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
+            ("train_steps", IntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
+            ("eval_steps", IntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
+            ("save_steps", IntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
+            (
+                ["max_steps", "train_steps", "eval_steps"],
+                ValueCompareValidator,
+                {"target": 0},
+                ["check_at_least_one_not_equal_to_target"],
+            ),
+            ("if_load", ClassValidator, {"classes": (bool,)}),
+            ("use_dynamic", ClassValidator, {"classes": (bool,)}),
+            ("use_dynamic_expansion", ClassValidator, {"classes": (bool,)}),
+            ("use_lccl", ClassValidator, {"classes": (bool,)}),
+            ("use_shm_swap", ClassValidator, {"classes": (bool,)}),
+            ("bind_cpu", ClassValidator, {"classes": (bool,)}),
+            ("save_checkpoint_due_time", IntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
+            ("save_delta_checkpoints_secs", IntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
+            ("is_incremental_checkpoint", ClassValidator, {"classes": (bool,)}),
+            ("restore_model_version", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
+            ("recent_key_count_threshold", IntValidator, {"min_value": 0, "max_value": MAX_INT32}, ["check_value"]),
+        ]
+    )
     @bind_cpu
     def __init__(self, **kwargs):
         self._modify_graph = False
@@ -66,6 +78,8 @@ class ConfigInitializer:
 
         self._use_static = not kwargs.get("use_dynamic", True)
         self._use_dynamic_expansion = kwargs.get("use_dynamic_expansion", False)
+        self._use_lccl = kwargs.get("use_lccl", False)
+        self._use_shm_swap = kwargs.get("use_shm_swap", False)
 
         self._is_terminated = False
 
@@ -81,6 +95,10 @@ class ConfigInitializer:
         self._is_incremental_checkpoint = kwargs.get("is_incremental_checkpoint", False)
         self._restore_model_version = kwargs.get("restore_model_version")
         self._recent_key_count_threshold = kwargs.get("recent_key_count_threshold", 0)
+
+    @property
+    def use_lccl(self):
+        return self._use_lccl
 
     @property
     def save_checkpoint_due_time(self):
@@ -143,6 +161,10 @@ class ConfigInitializer:
         return self._use_dynamic_expansion
 
     @property
+    def use_shm_swap(self):
+        return self._use_shm_swap
+
+    @property
     def sparse_embed_config(self):
         return self._sparse_embed_config
 
@@ -194,6 +216,14 @@ class ConfigInitializer:
     def if_load(self, flag):
         self._if_load = flag
 
+    @use_static.setter
+    def use_static(self, use_static):
+        self._use_static = use_static
+
+    @use_shm_swap.setter
+    def use_shm_swap(self, use_shm_swap):
+        self._use_shm_swap = use_shm_swap
+
     @staticmethod
     def get_instance():
         if ConfigInitializer._single_instance is None:
@@ -222,9 +252,12 @@ class ConfigInitializer:
 
 
 def init(**kwargs):
-    logger.info("The environment variables set for mxRec is: %s",
-                json.dumps(dataclasses.asdict(global_env), ensure_ascii=False))
+    logger.info(
+        "The environment variables set for mxRec is: %s.",
+        json.dumps(dataclasses.asdict(global_env), ensure_ascii=False),
+    )
     from mpi4py import MPI
+
     set_ascend_env()
     ConfigInitializer.set_instance(**kwargs)
     atexit.register(terminate_config_initializer)

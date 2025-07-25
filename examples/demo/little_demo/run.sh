@@ -65,8 +65,8 @@ if [ -n "$ip" ]; then
 fi
 
 cur_path=`pwd`
-mx_rec_package_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/mx_rec
-so_path=${mx_rec_package_path}/libasc
+rec_package_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/mx_rec
+so_path=${rec_package_path}/libasc
 # GLOG_stderrthreshold -2:TRACE -1:DEBUG 0:INFO 1:WARN 2.ERROR, 默认为INFO
 mpi_args='-x BIND_INFO="0:12 12:48 60:48" -x GLOG_stderrthreshold=0 -x GLOG_logtostderr=true -bind-to none -x NCCL_SOCKET_IFNAME=docker0 -mca btl_tcp_if_exclude docker0'
 interface="lo"
@@ -76,7 +76,7 @@ num_process=$((${num_server} * ${local_rank_size})) # 训练总的进程数，�
 
 export HCCL_CONNECT_TIMEOUT=1200 # HCCL集合通信 建链超时时间，取值范围[120,7200]
 export PYTHONPATH=${so_path}:$PYTHONPATH # 环境python安装路径
-export LD_PRELOAD=/usr/lib64/libgomp.so.1 # GNU OpenMP动态库路径. 不应该使用LD_PRELOAD这种方式加载！
+export LD_PRELOAD=/usr/lib64/libgomp.so.1:/usr/lib64/libstdc++.so.6 # GNU OpenMP动态库路径. 不应该使用LD_PRELOAD这种方式加载！预加载GNU C++标准库规避TLS段错误问题
 export LD_LIBRARY_PATH=${so_path}:/usr/local/lib:$LD_LIBRARY_PATH
 # 集合通信文件，格式请参考昇腾官网CANN文档，“准备资源配置文件”章节。
 export JOB_ID=10086
@@ -98,19 +98,12 @@ export USE_ONE_SHOT=0           # 0：MakeIterator；1：OneShotIterator
 export USE_DP=0                 # 0：关闭DP；1：开启user table DP
 export USE_COMBINE_FAAE=0       # 0: separate history when faae; 1: combine history when faae
 export USE_DETERMINISTIC=0      # 0：不开启确定性计算；1：开启确定性计算
+export USE_TUPLE_DATA_FORMAT=0  # 0：Dict数据格式；1：Tuple数据格式；限自动改图模式使能。
+export USE_PADDING_KEYS=0       # 0：不使用padding keys；1：使用padding keys
 ################# 性能调优相关 ####################
 export KEY_PROCESS_THREAD_NUM=6 #default 6, max 10
 export FAST_UNIQUE=0   #if use fast unique
 export MGMT_HBM_TASK_MODE=0 #if async h2d (get and send tensors)
-############## DUMP CANN计算图 ##############
-# export DUMP_GE_GRAPH=3
-# export DUMP_GRAPH_LEVEL=3
-# if [ "$USE_DYNAMIC_EXPANSION" == 1 ]; then
-#     dyn_scope="dyn"
-# else
-#     dyn_scope="nodyn"
-# fi
-# export DUMP_GRAPH_PATH=${cur_path}/${current_date_time}_${dyn_scope}_dumpgraph_${DUMP_GE_GRAPH}_${DUMP_GRAPH_LEVEL}
 ############## 精度对齐相关 ##############
 export PRECISION_CHECK=0
 if [ "$PRECISION_CHECK" == 1 ]; then
@@ -143,7 +136,7 @@ function rankTableSolution() {
   export RANK_SIZE=$num_process
   echo "RANK_TABLE_FILE=$RANK_TABLE_FILE"
   if [ ! -f "$RANK_TABLE_FILE" ];then
-    echo "the rank table file does not exit. Please reference {hccl_json_${local_rank_size}p.json} to correctly config rank table file"
+    echo "the rank table file does not exist. Please reference {hccl_json_${local_rank_size}p.json} to correctly config rank table file"
     exit 1
   fi
 }

@@ -16,13 +16,15 @@
 # ==============================================================================
 
 import os
+import re
 import stat
 import subprocess
+from pathlib import Path
 from setuptools import setup, find_packages
 import pkg_resources
 from setuptools.extern.packaging import version as packaging_version
 
-script_path = os.getcwd()
+script_path = Path(__file__).parent.absolute()
 
 
 # Patch Version class to preserve original version string
@@ -50,7 +52,10 @@ except IOError:
     LONG_DESCRIPTION = ""
 
 env_version = os.getenv("VERSION")
-VERSION = env_version if env_version is not None else '7.0.RC1'
+if env_version and re.match(r'^[0-9]+\.[0-9]+\.[A-Za-z]+[0-9]+$', env_version):
+    VERSION = env_version
+else:
+    VERSION = "7.1.RC1"
 
 INIT_FILE = "mx_rec/__init__.py"
 with open(INIT_FILE, 'r') as file:
@@ -77,7 +82,7 @@ setup(
     name='mx_rec',
     version=VERSION,
     author='HUAWEI Inc',
-    description='MindX SDK Recommend',
+    description='MindSDK Recommend',
     long_description=LONG_DESCRIPTION,
     # include mx_rec
     packages=find_packages(

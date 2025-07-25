@@ -1,0 +1,89 @@
+[
+    {
+        "op": "Permute2dSparseData",
+        "language": "cpp",
+        "input_desc": [
+            {
+                "name": "permute",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND", "ND"
+                ],
+                "type": [
+                    "int32", "int32", "int32", "int32"
+                ]
+            },
+            {
+                "name": "lengths",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND", "ND"
+                ],
+                "type": [
+                    "int64", "int32", "int64", "int32"
+                ]
+            },
+            {
+                "name": "values",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND", "ND"
+                ],
+                "type": [
+                    "int64", "int32", "fp32", "fp32"
+                ]
+            },
+            {
+                "name": "weights",
+                "param_type": "optional",
+                "format": [
+                    "ND","ND", "ND", "ND"
+                ],
+                "type": [
+                    "fp32", "fp32", "fp32", "fp32"
+                ],
+                "default_value": "None"
+            }
+        ],
+        "output_desc": [
+            {
+                "name": "permuted_lengths",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND", "ND"
+                ],
+                "type": [
+                    "int64", "int32", "int64", "int32"
+                ]
+            },
+            {
+                "name": "permuted_values",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND", "ND"
+                ],
+                "type": [
+                    "int64", "int32", "fp32", "fp32"
+                ]
+            },
+            {
+                "name": "permuted_weights",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND", "ND"
+                ],
+                "type": [
+                    "fp32", "fp32", "fp32", "fp32"
+                ]
+            }
+        ],
+        "attr": [
+            {
+              "name": "permutes_lengths_sum",
+			  "param_type": "optional",
+              "type": "int",
+              "default_value": 0
+            }
+        ]
+    }
+]

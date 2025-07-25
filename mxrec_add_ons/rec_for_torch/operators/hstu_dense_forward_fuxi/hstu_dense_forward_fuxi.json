@@ -1,0 +1,113 @@
+
+[
+    {
+        "op": "HstuDenseForwardFuxi",
+        "language": "cpp",
+        "input_desc": [
+            {
+                "name": "q",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "fp16", "fp32", "bf16"
+                ]
+            },
+            {
+                "name": "k",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "fp16", "fp32", "bf16"
+                ]
+            },
+            {
+                "name": "v",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "fp16", "fp32", "bf16"
+                ]
+            },
+            {
+                "name": "timestamp_bias",
+                "param_type": "optional",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "fp16", "fp32", "bf16"
+                ]
+            },
+            {
+                "name": "position_bias",
+                "param_type": "optional",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "fp16", "fp32", "bf16"
+                ]
+            },
+            {
+                "name": "mask",
+                "param_type": "optional",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "fp16", "fp32", "bf16"
+                ]
+            }
+
+        ],
+        "output_desc": [
+            {
+                "name": "attn_output",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "fp16", "fp32", "bf16"
+                ]
+            }
+        ],
+        "attr": [
+            {
+              "name": "mask_type",
+			  "param_type": "required",
+              "type": "int",
+              "default_value": 1
+            },
+            {
+                "name": "max_seq_len",
+                "param_type": "required",
+                "type": "int",
+                "default_value": 0
+            },
+            {
+                "name": "silu_scale",
+                "param_type": "required",
+                "type":"float",
+                "default_value": 0.01
+            },
+            {
+                "name": "layout",
+                "param_type": "optional",
+                "type": "string",
+                "default_value": "normal"
+            },
+            {
+                "name": "seq_offset",
+                "param_type": "optional",
+                "type": "list_int"
+            }
+        ]
+    }
+]

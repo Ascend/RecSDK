@@ -1,12 +1,12 @@
 # 说明文档
-本文档旨在指导用户根据已有镜像制作mxRec的训练镜像
+本文档旨在指导用户根据已有镜像制作Rec SDK的训练镜像
 
 ## 文档结构
 ```shell
 └── build_mxRec_images
     ├── centos_build    # 以AscendHub上CentOS开源镜像以及客户自己的镜像为基础镜像
     │   └── Dockerfile
-    ├── mxrec-build     # 以AscendHub上mxRec开源镜像为基础镜像
+    ├── mxrec-build     # 以AscendHub上Rec SDK开源镜像为基础镜像
     │   └── Dockerfile
     └── README.md       # 说明文档
 ```
@@ -18,15 +18,15 @@
 
 准备好基础镜像，如果用户没准好好基础镜像，可以从[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/)拉取基础
 镜像，建议拉取以下镜像作为基础镜像：
-* 优先拉取mxRec训练镜像，因为AscendHub上的mxRec训练镜像中已经安装gcc、cmake等基础依赖，无需再次安装。
-同时，镜像也安装了CANN以及mxRec包，但是版本较老。所以如果使用mxRec镜像作为基础镜像只需更新其中的CANN和mxRec包即可。
+* 优先拉取Rec SDK训练镜像，因为AscendHub上的Rec SDK训练镜像中已经安装gcc、cmake等基础依赖，无需再次安装。
+同时，镜像也安装了CANN以及Rec SDK包，但是版本较老。所以如果使用Rec SDK镜像作为基础镜像只需更新其中的CANN和Rec SDK包即可。
 * 其次从AscendHub上拉取[CentOS7.6.1810](https://www.hiascend.com/developer/ascendhub/detail/9353d9619c2a44db87845bce546c17bd)这个镜像
 * 最后，如果不用以上两个镜像，用户自己准备一个镜像作为基础镜像，建议这个镜像是CentOS 7.6.1810为基础。
 
 ## 准备依赖
 根据基础镜像的不同，需要下载的依赖也有所区别
-1. 以AscendHub上的mxRec训练镜像作为基础镜像，只需要下载[昇腾社区](https://www.hiascend.com/developer/download/community/result?module=sdk+cann)上最新版本配套的CANN和mxRec，其中CANN包括
-tookit和tfplugin。可以参考以下链接下载配套版本的CANN和mxRec：
+1. 以AscendHub上的Rec SDK训练镜像作为基础镜像，只需要下载[昇腾社区](https://www.hiascend.com/developer/download/community/result?module=sdk+cann)上最新版本配套的CANN和Rec SDK，其中CANN包括
+tookit和tfplugin。可以参考以下链接下载配套版本的CANN和Rec SDK：
 
 https://www.hiascend.com/zh/developer/download/community/result?module=sdk+cann
 
@@ -61,11 +61,11 @@ https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=8
 
 下载链接：[https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.5/src/hdf5-1.10.5.tar.gz](https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.5/src/hdf5-1.10.5.tar.gz)
 
-* CANN与mxRec
+* CANN与Rec SDK
 
-mxRec在[昇腾社区](https://www.hiascend.com/developer/download/community/result?module=sdk+cann)
-上发布的版本包与CANN都是配套的，所以用户需要从社区下载配套版本的mxRec和CANN。其中需要CANN包括toolkit和tfplugin。
-用户可以通过以下链接选择下载版本配套的mxRec和CANN：
+Rec SDK在[昇腾社区](https://www.hiascend.com/developer/download/community/result?module=sdk+cann)
+上发布的版本包与CANN都是配套的，所以用户需要从社区下载配套版本的Rec SDK和CANN。其中需要CANN包括toolkit和tfplugin。
+用户可以通过以下链接选择下载版本配套的Rec SDK和CANN：
 
 https://www.hiascend.com/zh/developer/download/community/result?module=sdk+cann
 
@@ -73,7 +73,7 @@ https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=8
 
 * Tensorflow（1.15.0/2.6.5）
 
-当前mxRec是基于tensorflow开发的，所以需要在环境中安装tensorflow。其中x86环境下可以通过pip或pip3命令直接安装。
+当前Rec SDK是基于tensorflow开发的，所以需要在环境中安装tensorflow。其中x86环境下可以通过pip或pip3命令直接安装。
 但是在arm环境下，tensorflow没有对应的whl包，无法直接用pip或pip3命令安装。用户可以从以下链接下载arm架构的tensorflow。
 
 [https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/index.html](https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/index.html)

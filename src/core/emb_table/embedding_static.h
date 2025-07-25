@@ -38,7 +38,8 @@ public:
 
     virtual int64_t capacity() const;
 
-    void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
+    void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet,
+              const vector<string>& warmStartTables);
 
     void Save(const string& savePath, const int pythonBatchId, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo);
 
@@ -47,6 +48,10 @@ public:
     void RecoverTrainStatus();
 
     vector<int64_t> GetDeviceOffset();
+
+    std::vector<size_t> FindKeyOffset(std::vector<emb_key_t>& keys);
+
+    void EmplaceKeyOffset(std::vector<emb_key_t>& keys, const std::vector<size_t>& newKeysIdx, int channel);
 
 GTEST_PRIVATE:
     void SaveKey(const string& savePath, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo);

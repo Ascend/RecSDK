@@ -17,7 +17,7 @@
 cur_path=$(dirname "$(readlink -f "$0")")
 
 so_path=$1
-mx_rec_package_path=$2
+rec_package_path=$2
 hccl_cfg_json=$3
 dlrm_criteo_data_path=$4
 ip=$5  # no ranktable时传入该参数
@@ -40,8 +40,8 @@ echo "CACHE_MODE:${CACHE_MODE}"
 
 export HCCL_CONNECT_TIMEOUT=1200
 export DLRM_CRITEO_DATA_PATH=${dlrm_criteo_data_path}
-export PYTHONPATH=${mx_rec_package_path}:${so_path}:$PYTHONPATH
-export LD_PRELOAD=/usr/lib64/libgomp.so.1
+export PYTHONPATH=${rec_package_path}:${so_path}:$PYTHONPATH
+export LD_PRELOAD=/usr/lib64/libgomp.so.1:/usr/lib64/libstdc++.so.6
 export LD_LIBRARY_PATH=${so_path}:/usr/local/lib:$LD_LIBRARY_PATH
 export ASCEND_DEVICE_ID=0
 export RANK_ID_START=0
@@ -50,7 +50,6 @@ export CUSTOMIZED_OPS_LIB_PATH=${so_path}/libcust_ops.so # Todo: please config
 export MXREC_LOG_LEVEL="INFO"
 export TF_CPP_MIN_LOG_LEVEL=3
 export ASCEND_GLOBAL_LOG_LEVEL=3
-#export USE_FAAE=1
 export ENABLE_FORCE_V2_CONTROL=1
 
 export PROFILING_OPTIONS='{"output":"/home/yz/profiling",

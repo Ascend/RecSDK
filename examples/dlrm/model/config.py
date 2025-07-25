@@ -1,6 +1,6 @@
 # coding=utf-8
-# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
-#
+# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+# Copyright (c) 2021; NVIDIA CORPORATION. All rights reserved.
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -93,6 +93,8 @@ class LearningRateScheduler:
 
         lr_sparse = self.base_lr_sparse * lr_factor_sparse
         lr_dense = self.base_lr_dense * lr_factor_dense
+        lr_sparse = tf.math.maximum(lr_sparse, tf.cast(0.0, tf.float32))
+        lr_sparse = tf.math.minimum(lr_sparse, tf.cast(10.0, tf.float32))
         return lr_dense, lr_sparse
 
 
@@ -130,6 +132,7 @@ class Config:
         self.USE_PIPELINE_TEST = False
         # False indicates use SGD optimizer, else use LazyAdam. If True, is incompatible with dynamic_expansion
         self.use_lazy_adam_optimizer = False
+        self.use_fusion_optim = False
 
         # 动态学习率
         GLOBAL_BATCH_SIZE = 8192 * 8

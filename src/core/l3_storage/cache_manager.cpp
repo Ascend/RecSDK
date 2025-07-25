@@ -171,6 +171,13 @@ void CacheManager::Load(const std::vector<EmbInfo> &mgmtEmbInfo, int step,
 #endif
 }
 
+void CacheManager::Save(int step, const map<string, map<emb_key_t, KeyInfo>>& keyInfoMap)
+{
+#ifndef GTEST
+    l3Storage->Save(step, keyInfoMap);
+#endif
+}
+
 void CacheManager::Save(int step)
 {
 #ifndef GTEST
@@ -258,7 +265,7 @@ void CacheManager::ProcessSwapInKeys(const string& tableName, const vector<emb_c
 
     // L3Storage--->DDR
     for (uint64_t key : L3StorageToDDRKeys) {
-        keyMapper.InsertDDRKey(key);
+        keyMapper.InsertDDRKey(key, false);
         keyMapper.RemoveL3StorageKey(key);
     }
     for (uint64_t key : firstSeenKeys) {

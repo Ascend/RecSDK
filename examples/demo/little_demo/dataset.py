@@ -20,6 +20,7 @@ from mx_rec.util.ops import import_host_pipeline_ops
 
 from random_data_generator import (get_data_generator,
                                    get_large_scale_data_generator)
+from demo_logger import logger
 
 
 def generate_dataset(cfg, use_timestamp=False, batch_number=100):
@@ -51,6 +52,28 @@ def add_timestamp_func(batch):
     timestamp = host_pipeline_ops.return_timestamp(tf.cast(batch['label_0'], tf.int64))
     batch["timestamp"] = timestamp
     return batch
+
+
+def generate_tuple_data_format_func(batch: dict) -> tuple:
+    """
+    Convert the dict data format to tuple format.
+
+    Args:
+        batch: The original batch.
+
+    Returns: The transformed tuple data format.
+
+    """
+
+    new_batch = [{}, {}]
+    for key, value in batch.items():
+        if "label" in key:
+            new_batch[1][key] = value
+        else:
+            new_batch[0][key] = value
+    logger.info("The transformed tuple data format is %s.", tuple(new_batch))
+
+    return tuple(new_batch)
 
 
 def generate_large_scale_data(cfg):

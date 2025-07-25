@@ -17,7 +17,7 @@
 
 import unittest
 from collections import defaultdict
-from unittest import TestCase
+from unittest import TestCase, mock
 from unittest.mock import patch, Mock, MagicMock
 from typing import Union, Callable
 
@@ -30,8 +30,11 @@ from mx_rec.constants.constants import (
     ASCEND_TIMESTAMP,
     ASCAnchorAttr,
 )
+from mx_rec.core.embedding import create_table
+from mx_rec.core.asc.swap_args import SwapArgs
 from mx_rec.graph.modifier import (
     GraphModifierHook,
+    replace_anchor_for_ddr_ssd,
     _GraphModifier,
     _AnchorRecord,
     _get_input_index_list,
@@ -67,13 +70,14 @@ class GetPreprocessingMapFuncTest(TestCase):
     def tearDown(self) -> None:
         tf.compat.v1.reset_default_graph()
 
-    def test_err_none_names_and_indexes(self):
+    def test_get_map_func_success(self):
         mock_graph_def = self._modifier._full_graph.as_graph_def()
         mock_input_names = []
         mock_output_names = []
 
-        with self.assertRaises(ValueError):
-            _GraphModifier._get_preprocessing_map_func(mock_graph_def, mock_input_names, mock_output_names)
+        self.assertTrue(
+            callable(_GraphModifier._get_preprocessing_map_func(mock_graph_def, mock_input_names, mock_output_names))
+        )
 
 
 class GetInputIndexListTest(TestCase):
@@ -90,7 +94,6 @@ class GetInputIndexListTest(TestCase):
             _get_input_index_list(
                 mock_cutting_point_list, mock_replace_ment_specs, mock_mapping_name_list, mock_base_count
             )
-
 
 
 class GetPassingTensorList(TestCase):
@@ -119,7 +122,6 @@ class GetPassingTensorList(TestCase):
         self.assertEqual(sub_src_tensors, expected["sub_src_tensors"])
 
 
-
 class GetSrcDatasetTest(TestCase):
     def setUp(self) -> None:
         self._modifier = _GraphModifier()
@@ -127,7 +129,11 @@ class GetSrcDatasetTest(TestCase):
     def tearDown(self) -> None:
         tf.compat.v1.reset_default_graph()
 
-    def test_ok_one_shot(self):
+    @patch("mx_rec.graph.modifier.ConfigInitializer")
+    def test_ok_one_shot(self, modifier_config_initializer):
+        mock_config_initializer = MockConfigInitializer(modify_graph=True)
+        modifier_config_initializer.get_instance = Mock(return_value=mock_config_initializer)
+
         mock_dataset = gen_mock_dataset()
         mock_prefetch_dataset = mock_dataset.prefetch(10)
         mock_iterator = mock_prefetch_dataset.make_one_shot_iterator()
@@ -357,6 +363,95 @@ class GraphModifierHookTest(TestCase):
             with tf.compat.v1.train.MonitoredSession(hooks=[GraphModifierHook(modify_graph=True)]) as sess:
                 sess.run(mock_iterator.initializer)
                 sess.run(mock_cutting_point)
+
+
+class TestReplaceAnchorForDDRSSD(unittest.TestCase):
+    _mock_config_init_default = MockConfigInitializer(use_dynamic_expansion=False, use_static=True)
+
+    def setUp(self):
+        tf.compat.v1.reset_default_graph()
+
+    def tearDown(self):
+        tf.compat.v1.reset_default_graph()
+
+    @mock.patch.multiple(
+        "mx_rec.core.emb.base_sparse_embedding",
+        get_rank_size=mock.MagicMock(return_value=1),
+        get_rank_id=mock.MagicMock(return_value=0),
+        get_device_id=mock.MagicMock(return_value=0),
+    )
+    @mock.patch("mx_rec.core.embedding.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.core.emb.base_sparse_embedding.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.validator.emb_validator.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.core.util.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.graph.modifier.ConfigInitializer", new=_mock_config_init_default)
+    def test_dev_continue(self):
+        test_table = create_table(
+            key_dtype=tf.int64,
+            dim=8,
+            name="test_table",
+            emb_initializer=tf.compat.v1.truncated_normal_initializer(),
+            device_vocabulary_size=8,
+        )
+        self._mock_config_init_default.get_instance().sparse_embed_config.kwargs = {"var": test_table}
+        replace_anchor_for_ddr_ssd(tf.compat.v1.get_default_graph(), 1, 0)
+        self.assertTrue(callable(replace_anchor_for_ddr_ssd))
+
+    @mock.patch.multiple(
+        "mx_rec.core.emb.base_sparse_embedding",
+        get_rank_size=mock.MagicMock(return_value=1),
+        get_rank_id=mock.MagicMock(return_value=0),
+        get_device_id=mock.MagicMock(return_value=0),
+    )
+    @mock.patch("mx_rec.core.embedding.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.core.emb.base_sparse_embedding.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.validator.emb_validator.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.core.util.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.graph.modifier.ConfigInitializer", new=_mock_config_init_default)
+    def test_opt_is_none_and_train_mode_err(self):
+        test_table = create_table(
+            key_dtype=tf.int64,
+            dim=8,
+            name="test_table",
+            emb_initializer=tf.compat.v1.truncated_normal_initializer(),
+            device_vocabulary_size=8,
+            host_vocabulary_size=16,
+        )
+        self._mock_config_init_default.get_instance().sparse_embed_config.kwargs = {"var": test_table}
+        with self.assertRaises(RuntimeError):
+            replace_anchor_for_ddr_ssd(tf.compat.v1.get_default_graph(), 1, 0)
+
+    @mock.patch.multiple(
+        "mx_rec.core.emb.base_sparse_embedding",
+        get_rank_size=mock.MagicMock(return_value=1),
+        get_rank_id=mock.MagicMock(return_value=0),
+        get_device_id=mock.MagicMock(return_value=0),
+    )
+    @mock.patch.multiple("mx_rec.graph.modifier.utils", replace_anchor_control=mock.MagicMock(return_value=None))
+    @mock.patch.multiple("mx_rec.graph.modifier", _get_swap_info=mock.MagicMock(return_value=None))
+    @mock.patch("mx_rec.core.embedding.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.core.emb.base_sparse_embedding.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.validator.emb_validator.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.core.util.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.graph.modifier.ConfigInitializer", new=_mock_config_init_default)
+    @mock.patch("mx_rec.graph.modifier.SwapArgs")
+    def test_opt_is_none_and_eval_mode_ok(self, swap_args):
+        test_table = create_table(
+            key_dtype=tf.int64,
+            dim=8,
+            name="test_table",
+            emb_initializer=tf.compat.v1.truncated_normal_initializer(),
+            device_vocabulary_size=8,
+            host_vocabulary_size=16,
+        )
+        self._mock_config_init_default.get_instance().sparse_embed_config.kwargs = {"var": test_table}
+        mock_swap_args = SwapArgs()
+        mock_swap_args.set_data("control", var_name="test_table", var_channel=1, control_ops=tf.no_op())
+        mock_swap_args.set_data("config", var_name="test_table", var_channel=1, swap_info=tf.no_op())
+        mock_swap_args.set_slot_control(var_name="test_table", control_ops=tf.no_op())
+        swap_args.return_value = mock_swap_args
+        replace_anchor_for_ddr_ssd(tf.compat.v1.get_default_graph(), 0, 1)
+        self.assertTrue(callable(replace_anchor_for_ddr_ssd))
 
 
 if __name__ == "__main__":

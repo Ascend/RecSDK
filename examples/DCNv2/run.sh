@@ -17,7 +17,7 @@
 cur_path=$(dirname "$(readlink -f "$0")")
 
 so_path=$1
-mx_rec_package_path=$2
+rec_package_path=$2
 hccl_cfg_json=$3
 dlrm_criteo_data_path=$4
 ip=$5  # 仅no ranktabke时使用，传入当前节点ip
@@ -36,6 +36,9 @@ export USE_FAAE=0               # 0：关闭准入淘汰；1：开启准入淘�
 export USE_DYNAMIC_EXPANSION=0  # 0：关闭动态扩容；1: 开启动态扩容
 export USE_MULTI_LOOKUP=0       # 0：一表一查；1：一表多查
 export USE_MODIFY_GRAPH=0       # 0：feature spec模式；1：自动改图模式
+export USE_LCCL=0               # 0：使用HCCL；1：使用LCCL
+export USE_SHM_SWAP=0           # 0：不使用pcie through； 1：使用pcie through，配合HUGE_TLB_ENABLE
+export HUGE_TLB_ENABLE=0        # 0：不开启大页内存；1：开启大页内存
 ################################################
 
 echo "CACHE_MODE:${CACHE_MODE}"
@@ -43,25 +46,21 @@ echo "CACHE_MODE:${CACHE_MODE}"
 export HCCL_CONNECT_TIMEOUT=1200
 
 export DLRM_CRITEO_DATA_PATH=${dlrm_criteo_data_path}
-export PYTHONPATH=${mx_rec_package_path}:${so_path}:${fore_path}:$PYTHONPATH
-export LD_PRELOAD=/usr/lib64/libgomp.so.1
+export PYTHONPATH=${rec_package_path}:${so_path}:${fore_path}:$PYTHONPATH
+export LD_PRELOAD=/usr/lib64/libgomp.so.1:/usr/lib64/libstdc++.so.6
 export LD_LIBRARY_PATH=${so_path}:/usr/local/lib:$LD_LIBRARY_PATH
 
 export ASCEND_DEVICE_ID=0
 export RANK_ID_START=0
 export JOB_ID=10086
 export CUSTOMIZED_OPS_LIB_PATH=${so_path}/libcust_ops.so # Todo: please config
-#export HOST_PIPELINE_OPS_LIB_PATH=${so_path}/libasc_ops.so # Todo: please config
 export MXREC_LOG_LEVEL="INFO"
 export TF_CPP_MIN_LOG_LEVEL=3
 export ASCEND_GLOBAL_LOG_LEVEL=3
-#export USE_FAAE=1
 export ENABLE_FORCE_V2_CONTROL=1
 
-#apply_gradient_strategy="direct_apply"
 apply_gradient_strategy="sum_same_id_gradients_and_apply"
 export APPLY_GRADIENTS_STRATEGY=${apply_gradient_strategy}
-#export USE_MULTI_LOOKUP=1
 
 export PROFILING_OPTIONS='{"output":"/home/yz/profiling",
                            "training_trace":"on",

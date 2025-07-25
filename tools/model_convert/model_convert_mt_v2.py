@@ -1,11 +1,34 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 import argparse
 import json
 import os
 import re
 from enum import Enum
+import logging
 
 import tensorflow as tf
 import numpy as np
+
+import common
+from common import generate_upper_dir, get_attribute_and_data_file
+
+logging.getLogger().setLevel(logging.INFO)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--input_path', type=str, required=True, help='path of the model file to be converted')
@@ -15,14 +38,8 @@ parser.add_argument('--estimator', type=int, choices=[0, 1], default=1, required
 parser.add_argument('--ddr', type=int, choices=[0, 1], default=0, required=False)
 parser.add_argument('--save_easy', type=int, choices=[0, 1], default=1, required=False)
 
-slice_prefix = "slice_"
-sparse_file_prefix = "sparse-"
-data_suffix = ".data"
-attribute_suffix = ".attribute"
 hbm_prefix_list = ["HashTable", "HBM"]
 ddr_prefix_list = ["HashTable", "DDR"]
-min_file_size = 1
-max_file_size = 1024 * 1024 * 1024 * 1024
 
 
 class DataAttr(Enum):
@@ -52,8 +69,22 @@ class ModelConverter:
         self._build_sparse_file_list()
         self._build_table_info_dict()
 
+    @staticmethod
+    def _get_key_array(sparse_file_path, table_name):
+        upper_dir = generate_upper_dir(sparse_file_path, hbm_prefix_list, table_name, "key")
+        attribute_data_dir, target_data_dir = get_attribute_and_data_file(upper_dir)
+        with tf.io.gfile.GFile(attribute_data_dir, "r") as fin:
+            emb_attributes = json.load(fin)
+        with tf.io.gfile.GFile(target_data_dir, "rb") as fin:
+            key_data = fin.read()
+            key_data = np.fromstring(key_data, dtype=emb_attributes.pop(DataAttr.DARATYPE.value))
+
+        data_shape = emb_attributes.pop(DataAttr.SHAPE.value)
+        key = key_data.reshape(data_shape)
+        return key
+
     def convert(self):
-        for table_name, emb_size in self.table_info_dict.items():
+        for table_name, _ in self.table_info_dict.items():
             result_key = np.array([])
             result_embedding = np.array([])
             for rank in range(self._rank_size):
@@ -96,19 +127,6 @@ class ModelConverter:
         key = key_offset_data[:, 0]
         return offset, key
 
-    def _get_key_array(self, sparse_file_path, table_name):
-        upper_dir = generate_upper_dir(sparse_file_path, hbm_prefix_list, table_name, "key")
-        attribute_data_dir, target_data_dir = get_attribute_and_data_file(upper_dir)
-        with tf.io.gfile.GFile(attribute_data_dir, "r") as fin:
-            emb_attributes = json.load(fin)
-        with tf.io.gfile.GFile(target_data_dir, "rb") as fin:
-            key_data = fin.read()
-            key_data = np.fromstring(key_data, dtype=emb_attributes.pop(DataAttr.DARATYPE.value))
-
-        data_shape = emb_attributes.pop(DataAttr.SHAPE.value)
-        key = key_data.reshape(data_shape)
-        return key
-
     def _get_embedding_array(self, sparse_file_path, table_name):
         upper_dir = generate_upper_dir(sparse_file_path, hbm_prefix_list, table_name, "embedding")
         attribute_data_dir, target_data_dir = get_attribute_and_data_file(upper_dir)
@@ -136,7 +154,7 @@ class ModelConverter:
     def _build_sparse_file_list(self):
         if self._is_estimator:
             latest_ckpt = self._get_latest_ckpt_name()
-            sparse_file_name = sparse_file_prefix + latest_ckpt
+            sparse_file_name = common.SPARSE_FILE_PREFIX + latest_ckpt
             for rank in range(self._rank_size):
                 sparse_file_path = os.path.join(self._input_model_path_list[rank], sparse_file_name)
                 self.sparse_file_list.append(sparse_file_path)
@@ -193,54 +211,11 @@ class ModelConverter:
                 self.table_info_dict[table_name] = data_shape[1]
 
 
-def get_attribute_and_data_file(table_path):
-    if not tf.io.gfile.exists(table_path):
-        raise FileNotFoundError(f"the input table path {table_path} does not exists.")
-
-    attribute_file_list = []
-    data_file_list = []
-    for file_name in tf.io.gfile.listdir(table_path):
-        if file_name.endswith(attribute_suffix):
-            attribute_file_list.append(file_name)
-        if file_name.endswith(data_suffix):
-            data_file_list.append(file_name)
-    if len(attribute_file_list) != 1:
-        raise AssertionError(f"under the table path {table_path}, ther must only one attribute file. "
-                             f"In fact, {len(attribute_file_list)} attribute file exists. ")
-    if len(data_file_list) != 1:
-        raise AssertionError(f"under the table path {table_path}, ther must only one data file. "
-                             f"In fact, {len(data_file_list)} data file exists. ")
-    attribute_file = os.path.join(table_path, attribute_file_list[0])
-    data_file = os.path.join(table_path, data_file_list[0])
-    return attribute_file, data_file
-
-
-def generate_upper_dir(sparse_file, dir_prefix_list, table_name, data_type):
-    temp_dir = sparse_file
-    for dir in dir_prefix_list:
-        temp_dir = os.path.join(temp_dir, dir)
-    return os.path.join(temp_dir, table_name, data_type)
-
-
-def generate_attribute_dir(sparse_file, dir_prefix_list, table_name, data_type, rank_id):
-    temp_dir = sparse_file
-    for dir in dir_prefix_list:
-        temp_dir = os.path.join(temp_dir, dir)
-    return os.path.join(temp_dir, table_name, data_type, f"{slice_prefix}{rank_id}{attribute_suffix}")
-
-
-def generate_data_dir(sparse_file, dir_prefix_list, table_name, data_type, rank_id):
-    temp_dir = sparse_file
-    for dir in dir_prefix_list:
-        temp_dir = os.path.join(temp_dir, dir)
-    return os.path.join(temp_dir, table_name, data_type, f"{slice_prefix}{rank_id}{data_suffix}")
-
-
 if __name__ == "__main__":
     args = parser.parse_args()
     convert_instance = ModelConverter(input_model_path=args.input_path, output_model_path=args.output_path,
                                       rank_size=args.rank_size,
                                       estimator=args.estimator, ddr=args.ddr, save_easy=args.save_easy)
     convert_instance.convert()
-    print(f"sparse table has been converted to numpy file. output path is {args.output_path}")
+    logging.info(f"sparse table has been converted to numpy file. output path is {args.output_path}")
 

@@ -15,11 +15,11 @@
 # ==============================================================================
 
 ##################################################################
-#   build_tf2.sh 编译MxRec
+#   build_tf2.sh 编译Rec SDK
 # 编译环境：Python3.7.5 GCC 7.3.0 CMake 3.20.6
 # 代码主要分为两部分：
-# 1、准备编译MxRec所需依赖：pybind11(v2.10.3) securec
-# 2、编译securec、AccCTR以及MxRec
+# 1、准备编译Rec SDK所需依赖：pybind11(v2.10.3) securec
+# 2、编译securec、AccCTR以及Rec SDK
 ##################################################################
 
 set -e
@@ -27,6 +27,8 @@ warn() { echo >&2 -e "\033[1;31m[WARN ][Depend  ] $1\033[1;37m" ; }
 ARCH="$(uname -m)"
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 MxRec_DIR=$(dirname "${SCRIPT_DIR}")
+
+export CC=$(which gcc)
 
 opensource_path="${MxRec_DIR}"/../opensource
 if [ ! -d ${opensource_path} ]; then
@@ -58,11 +60,11 @@ prepare_pybind
 prepare_securec
 
 # 配置tf2路径
-source /opt/buildtools/tf2_env/bin/activate
+[ -e /opt/buildtools/tf2_env/bin/activate ] && source /opt/buildtools/tf2_env/bin/activate
 tf2_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/tensorflow
-deactivate tf2_env
+[ -e /opt/buildtools/tf2_env/bin/activate ] && deactivate tf2_env
 
-# 配置MxRec C++代码路径和AccCTR路径
+# 配置Rec SDK C++代码路径和AccCTR路径
 src_path="${MxRec_DIR}"/src
 acc_ctr_path="${MxRec_DIR}"/src/AccCTR
 cd "${MxRec_DIR}"
@@ -111,7 +113,7 @@ function collect_so_file()
   mv "${src_path}"/libasc "${MxRec_DIR}"/mx_rec
 }
 
-# start to build MxRec
+# start to build Rec SDK
 echo "----------------          compile     securec           ----------------"
 compile_securec
 echo "----------------          compile     AccCTR            ----------------"

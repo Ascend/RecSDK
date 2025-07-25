@@ -14,7 +14,7 @@
 请参照昇腾社区CANN商用版文档先使用迁移工具进行NPU自动迁移：https://www.hiascend.com/document/detail/zh/canncommercial/700/modeldev/tfmigr1/tfmigr1_000009.html
 
 
-## 迁移mxRec
+## 迁移Rec SDK
 
 1、修改IO/iterator.py，把第30~41行
 
@@ -122,7 +122,12 @@ from mx_rec.core.embedding import sparse_lookup
          use_dynamic_expansion=False)
 ```
 
-5、修改train.py。把第35~57行
+5、修改train.py。在第11行添加
+```python
+from mx_rec.util.initialize import ConfigInitializer
+from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
+```
+把第35~57行
 ```python
     graph = tf.Graph()
     with graph.as_default():
@@ -183,7 +188,6 @@ from mx_rec.core.embedding import sparse_lookup
 ```
 ` ` ` `改为：
 ```python
-    from mx_rec.util.initialize import ConfigInitializer
     eval_label = ConfigInitializer.get_instance().train_params_config.get_target_batch(True).get("labels")
     initializer = ConfigInitializer.get_instance().train_params_config.get_initializer(True)
     load_sess.run(initializer, feed_dict={load_model.filenames: [filename]})
@@ -196,7 +200,6 @@ from mx_rec.core.embedding import sparse_lookup
 
 ` ` ` `在第223行添加
 ```python
-    from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
     modify_graph_and_start_emb_cache(dump_graph=True)
 ```
 ` ` ` `把第239行
@@ -205,11 +208,10 @@ from mx_rec.core.embedding import sparse_lookup
 ```
 ` ` ` `改为：
 ```python
-        from mx_rec.util.initialize import ConfigInitializer
         initializer = ConfigInitializer.get_instance().train_params_config.get_initializer(True)
         train_sess.run(initializer, feed_dict={train_model.filenames: [hparams.train_file_cache]})
 ```
-6、为了适配mxRec运行环境，添加了run.sh。
+6、为了适配Rec SDK运行环境，添加了run.sh。
 
 ## 适配其他代码
 
@@ -276,7 +278,7 @@ finish one epoch!
 at epoch 2 train info: loss:0.6748818755149841 eval info: auc:0.4832, logloss:0.6738 test info: auc:0.4832, logloss:0.6738
 at epoch 2 , train time: 0.1 eval time: 0.1
 ```
-2、mxRec:
+2、Rec SDK:
 ```log
 [1,0]<stdout>:step 1 , total_loss: 0.6931, data_loss: 0.6931
 [1,0]<stdout>:step 2 , total_loss: 0.6905, data_loss: 0.6905

@@ -27,6 +27,7 @@ public:
     EmbeddingDDR(const EmbInfo& info, const RankInfo& rankInfo, int inSeed);
 
     EmbeddingDDR(const EmbeddingDDR&) = delete;
+    
     EmbeddingDDR& operator=(const EmbeddingDDR&) = delete;
 
     ~EmbeddingDDR();
@@ -39,7 +40,8 @@ public:
 
     virtual void EvictKeys(const vector<emb_key_t>& keys);
 
-    void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet);
+    void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet,
+              const vector<string>& warmStartTables);
 
     void LoadKey(const string& savePath, vector<emb_cache_key_t>& keys);
 
@@ -68,15 +70,21 @@ public:
     void SetHDTransfer(HDTransfer* hdTransfer);
 
     void LoadKey(const string& savePath);
+
     void LoadEmbAndOptim(const string& savePath);
 
     void SaveKey(const string& savePath);
+
     void SaveEmbData(const string &savePath);
+
     void SaveOptimData(const string& savePath);
+
     void SaveEmbAndOptim(const string& savePath);
+
     void SetEmbCache(ock::ctr::EmbCacheManagerPtr embCache);
 
     void BackUpTrainStatus();
+
     void RecoverTrainStatus();
 
 GTEST_PRIVATE:
@@ -85,6 +93,8 @@ GTEST_PRIVATE:
 
     void EmbeddingUpdateWithSSD(const vector<uint64_t>& swapOutKeys, float* deviceDataPtr);
 
+    void BatchSynchronization(int pythonBatchId, vector<uint64_t>& swapOutKeys);
+   
     size_t maxOffsetOld { 0 };
     std::vector<size_t> evictPosChange;
     std::vector<size_t> evictDevPosChange;
@@ -101,6 +111,8 @@ GTEST_PRIVATE:
     HDTransfer *hdTransfer = nullptr;
     ock::ctr::EmbCacheManagerPtr embCache = nullptr;
     int deviceId = -1;
+    bool isSyncFinish = true;
+    static constexpr int MAX_WAIT_LOOP = 1800;
 };
 
 }

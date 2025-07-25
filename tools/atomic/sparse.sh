@@ -25,7 +25,6 @@ export TF_CPP_MIN_LOG_LEVEL=3
 export ASCEND_INSTALL_PATH=/usr/local/Ascend/latest/
 export ASCEND_HOME_PATH=${ASCEND_INSTALL_PATH}
 export ASCEND_LATEST_INSTALL_PATH=/usr/local/Ascend
-#export ASCEND_HOME_PATH=${ASCEND_INSTALL_PATH}/
 CANN_BIN_PATH=${ASCEND_HOME_PATH}/bin:${ASCEND_HOME_PATH}/compiler/ccec_compiler/bin
 CANN_PYTHONPATH=${ASCEND_HOME_PATH}/python/site-packages:${ASCEND_HOME_PATH}/opp/op_impl/built-in/ai_core/tbe #:${ASCEND_INSTALL_PATH}/tfplugin/latest/python/site-packages
 PYTHON_BIN_PATH=/usr/local/python3.7.5/bin/
@@ -42,7 +41,11 @@ export BETTER_EXCEPTIONS=1
 mpi_args='-x BIND_INFO="0:48 48:48 96:48" -x SPDLOG_LEVEL=debug -bind-to none'
 # rm logs
 rm *txt >/dev/null
-rm -rf /root/ascend/log/*
+log_dir="/root/ascend/log"
+if [[ -d "$log_dir" && "$(realpath "$log_dir")" == "/root/ascend/log" ]]; then
+    find "$log_dir" -type f -exec rm -f {} +
+fi
+
 
 # rm shm
 for i in $(ipcs -m | tail -n +4 | awk {'print $2'}); do

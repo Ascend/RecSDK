@@ -55,6 +55,7 @@ enum class ModuleName: uint8_t {
     M_HYBRID_MGMT_BLOCK,
     M_FEATURE_ADMIT_AND_EVICT,
     M_DATASET_OPS,
+    M_RMA_SHM_SVM,
 };
 
 class Error {

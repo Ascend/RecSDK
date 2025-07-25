@@ -101,8 +101,8 @@ public:
 private:
     __aicore__ inline void MoveProcess(const LocalTensor<int64_t> srcAddrLocal, const int turns, int addrNum)
     {
-        set_flag(PIPE_MTE2, PIPE_S, 0);
-        wait_flag(PIPE_MTE2, PIPE_S, 0);
+        set_flag(PIPE_MTE2, PIPE_S, EVENT_ID0);
+        wait_flag(PIPE_MTE2, PIPE_S, EVENT_ID0);
         LocalTensor<T> dataLocal = inQueue.AllocTensor<T>(); // Queue的大小可以容下一个循环的所有emb
         bool isFull = false;
         int nums = 0;

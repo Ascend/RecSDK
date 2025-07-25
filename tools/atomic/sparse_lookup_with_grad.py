@@ -1,34 +1,50 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 import os
 import sys
 import time
 import argparse
+import logging
+
 import numpy as np
 import tensorflow as tf
 from mpi4py import MPI  # must before emb_cache after SparseOps
 import psutil
-import sys
 from sklearn.metrics import roc_auc_score
-
 from tensorflow.python.ops import math_ops
 from tensorflow.python.framework import ops
 from tensorflow.core.protobuf.rewriter_config_pb2 import RewriterConfig
 from npu_bridge.hccl import hccl_ops
 from npu_bridge.estimator import npu_ops
 
+from sparse_ops.config import set_ascend_env, AscendEnv
+from sparse_ops.common import InputConfig, input_fn_tfrecord, USE_PIPELINE_TEST
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
 from mx_rec.core.asc.manager import start_asc_pipeline
-from mx_rec.core.asc.helper import FeatureSpec, get_asc_insert_func
+from mx_rec.core.asc.helper import FeatureSpec
 from mx_rec.util.initialize import get_rank_size, init, clear_channel, get_rank_id, set_if_load, \
     terminate_config_initializer
 from mx_rec.constants.constants import MxRecMode
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.util.initialize import get_ascend_global_hashtable_collection
 from mx_rec.optimizers.lazy_adam import CustomizedLazyAdam
-from sparse_ops.config import set_ascend_env
 
-USE_PIPELINE_TEST = False
-USE_STATIC = False
-USE_EXPANSION = False
+logging.getLogger().setLevel(logging.INFO)
 
 
 def create_hash_optimizer():
@@ -58,40 +74,6 @@ class WideDeep:
         return self.op
 
 
-def input_fn_tfrecord(feature_spec_list, rank_id, local_rank_id, rank_size, data_path, file_pattern, total_batch_size,
-                      num_epochs=1, perform_shuffle=False, training=True):
-    line_per_sample = 1024 * 8
-    total_batch_size = int(total_batch_size / line_per_sample)
-    num_parallel = 8
-
-    def extract_fn(data_record):
-        features = {
-            'label': tf.FixedLenFeature(shape=(line_per_sample,), dtype=tf.float32),
-            'feat_ids': tf.FixedLenFeature(shape=(128 * line_per_sample,), dtype=tf.int64)
-        }
-        sample = tf.parse_single_example(data_record, features)
-        return sample
-
-    def reshape_fn(batch):
-        batch['label'] = tf.reshape(batch['label'], [-1, ])
-        batch['feat_ids'] = tf.reshape(batch['feat_ids'], [-1, 128])
-        return batch
-
-    all_files = os.listdir(data_path)
-    files = [os.path.join(data_path, f) for f in all_files if f.startswith(file_pattern)]
-    dataset = tf.data.TFRecordDataset(files, num_parallel_reads=num_parallel)
-    batch_size = total_batch_size // rank_size
-    dataset = dataset.shard(rank_size, rank_id)
-    dataset = dataset.repeat(num_epochs)
-    dataset = dataset.map(extract_fn, num_parallel_calls=num_parallel).batch(batch_size,
-                                                                             drop_remainder=True)
-    dataset = dataset.map(reshape_fn, num_parallel_calls=num_parallel)
-    insert_fn = get_asc_insert_func(tgt_key_specs=feature_spec_list, is_training=True, dump_graph=False)
-    dataset = dataset.map(insert_fn)
-    dataset = dataset.prefetch(int(100))
-    return dataset
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='base')
     parser.add_argument('--local_rank_size')
@@ -106,9 +88,10 @@ if __name__ == '__main__':
     comm = MPI.COMM_WORLD
     rank_id = comm.Get_rank()
     rank_size = comm.Get_size()
-    print(f"rank {rank_id}/{rank_size}")
+    logging.info(f"rank {rank_id}/{rank_size}")
     local_rank_id = rank_id % local_rank_size
-    set_ascend_env(rank_id, rank_size, local_rank_size, host=args.hosts, file=args.hccl_json)
+    ascend_env = AscendEnv(rank_id, rank_size, local_rank_size, host=args.hosts, file=args.hccl_json)
+    set_ascend_env(ascend_env)
 
     # create session
     sess_config = tf.ConfigProto()
@@ -139,16 +122,13 @@ if __name__ == '__main__':
     np.random.seed(10086)
 
     my_dim = int(args.my_dim)
-    print("my_dim=", my_dim)
+    logging.info("my_dim=%d", my_dim)
 
     hot_zhanbi = args.chongfudu
     hot_zhanbi = float(hot_zhanbi) / 10
 
-    #    if hot_zhanbi == 0:
-    #       hot_zhanbi = int(hot_zhanbi)
-
     config = {
-        "data_path": "./data1/data" + str(hot_zhanbi) + "_" + str(float(args.new_key)) + "/",
+        "data_path": os.path.join(".", "data1", "data" + str(hot_zhanbi) + "_" + str(float(args.new_key))) + os.sep,
         "train_file_pattern": "tf",
         "test_file_pattern": "test",
         "batch_size": 1024 * 8,
@@ -179,15 +159,16 @@ if __name__ == '__main__':
     feature_spec_list = [
         FeatureSpec("feat_ids", feat_count=128, table_name="merged_sparse_embeddings", batch_size=config["batch_size"])]
     with tf.device('/cpu:0'):
-        train_dataset = input_fn_tfrecord(feature_spec_list=feature_spec_list,
-                                          rank_id=rank_id,
-                                          local_rank_id=local_rank_id,
-                                          rank_size=rank_size,
-                                          data_path=config["data_path"],
-                                          file_pattern=config["train_file_pattern"],
-                                          total_batch_size=int(rank_size * config["batch_size"]),
-                                          perform_shuffle=(not USE_PIPELINE_TEST),
-                                          num_epochs=config["train_epoch"])
+        input_config = InputConfig(feature_spec_list=feature_spec_list,
+                            rank_id=rank_id,
+                            local_rank_id=local_rank_id,
+                            rank_size=rank_size,
+                            data_path=config["data_path"],
+                            file_pattern=config["train_file_pattern"],
+                            total_batch_size=int(rank_size * config["batch_size"]),
+                            perform_shuffle=(not USE_PIPELINE_TEST),
+                            num_epochs=config["train_epoch"])
+        train_dataset = input_fn_tfrecord(input_config)
         train_iterator = train_dataset.make_initializable_iterator()
         train_next_iter = train_iterator.get_next()
 
@@ -224,8 +205,8 @@ if __name__ == '__main__':
         sess.run(tf.global_variables_initializer())
         sess.run([train_iterator.initializer])
         # build model
-        print("start build wdl(single domain) model")
-        print("=========start============")
+        logging.info("start build wdl(single domain) model")
+        logging.info("=========start============")
         # start run loop
         total_start_time = time.time()
         current_steps = 0
@@ -234,7 +215,7 @@ if __name__ == '__main__':
         while not train_finished:
             try:
                 current_steps += 1
-                print("current step =", current_steps)
+                logging.info("current step =%d", current_steps)
                 #
                 run_dict = {
                     "loss": model.op,
@@ -244,22 +225,23 @@ if __name__ == '__main__':
                 if current_steps == 1:
                     total_start_time = time.time()
                 start_time = time.time()
-                print("start sess run")
+                logging.info("start sess run")
                 results = sess.run(fetches=run_dict)
-                print("start sess run 1")
+                logging.info("start sess run 1")
                 end_time = time.time()
-                print(f"current_steps: {current_steps} ,step time:{(end_time - start_time) * 1000}")
+                logging.info(f"current_steps: {current_steps} ,step time:{(end_time - start_time) * 1000}")
                 if current_steps <= 5:
                     total_start_time = time.time()
                 if current_steps % print_steps == 0:
-                    print("----------" * 10)
+                    logging.info("----------" * 10)
                     try:
-                        print(
+                        logging.info(
                             f"current_steps: {current_steps} ,deep_loss:{results['deep_loss']},"
-                            f"e2etime per step:{(end_time - start_time) * 1000}")
+                            f"e2etime per step:{(end_time - start_time) * 1000}"
+                        )
                     except KeyError:
-                        print(f"current_steps: {current_steps}")
-                    print("----------" * 10)
+                        logging.error(f"current_steps: {current_steps}")
+                    logging.info("----------" * 10)
 
                 if current_steps >= stop_steps:
                     train_finished = True
@@ -268,8 +250,10 @@ if __name__ == '__main__':
                 train_finished = True
 
         # train_finished
-        print(
-            f"training {current_steps} steps, consume time: {(time.time() - total_start_time) / (current_steps - 5) * 1000} ")
+        logging.info(
+            f"training {current_steps} steps, consume time: "
+            f"{(time.time() - total_start_time) / (current_steps - 5) * 1000} "
+        )
 
         terminate_config_initializer()
         MPI.Finalize()

@@ -16,6 +16,7 @@
 # ==============================================================================
 
 from functools import reduce
+from typing import Union, List, Tuple, Dict
 
 import tensorflow as tf
 
@@ -135,7 +136,7 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, table_na
         if not isinstance(tgt_key_specs, (list, tuple)):
             tgt_key_specs = [tgt_key_specs]
 
-        def insert_fn_for_feature_specs(*args):
+        def insert_fn_for_feature_specs(*args):  # pragma: no cover
             data_src = args
             if len(args) == 1:
                 data_src = args[0]
@@ -165,7 +166,7 @@ def get_asc_insert_func_inner(tgt_key_specs=None, args_index_list=None, table_na
         logger.info("In insert found dangling table(s): %s which does not need to be provided to the EmbInfo.",
                     dangling_tables)
 
-        def insert_fn_for_arg_indexes(*args):
+        def insert_fn_for_arg_indexes(*args):  # pragma: no cover
             insert_tensors = get_target_tensors_with_args_indexes(args_index_list)
 
             logger.debug("do_insert without spec for %s", table_names)
@@ -318,9 +319,53 @@ def do_insert(args, insert_tensors, splits, table_names, input_dict):
         graph_def = tf.compat.v1.get_default_graph().as_graph_def()
         tf.compat.v1.train.write_graph(graph_def, "./export_graph", "pipeline_graph.pb", False)
 
-    # have to export read_emb_key_v2 op, other wise tensorflow will wipe out it by graph optimizing
+    # Have to export read_emb_key_v2 op, other wise tensorflow will wipe out it by graph optimizing.
+    if auto_change_graph:
+        # Args must be: tuple(origin_batch, tuple(read_emb_key_inputs)).
+        output_batch = insert_read_emb_key_op_with_modify_graph(args, pipeline_op)
+        logger.debug("In do_insert func, the output batch of modify graph is: %s.", output_batch)
+        return output_batch
     output_batch = export_read_emb_key_v2_op(args, pipeline_op)
     return output_batch
+
+
+def insert_read_emb_key_op_with_modify_graph(
+        batch: Union[Dict, List, Tuple], pipeline_op: tf.Tensor
+) -> Union[Dict, List, Tuple]:
+    """
+    Insert the read_emb_key operator on the original batch basis.
+
+    Args:
+        batch: the batch of read emb key input was inserted into the original batch.
+        pipeline_op: the read_emb_key operator.
+
+    Returns: Insert the batch after the operator.
+
+    """
+
+    if not isinstance(batch, tuple) or len(batch) < 2:
+        raise ValueError(
+            f"The shape must be tuple(origin_batch, tuple(read_emb_key_inputs)), but got: {batch}."
+        )
+
+    ori_dataset_spec = ConfigInitializer.get_instance().train_params_config.dataset_element_spec
+    if isinstance(ori_dataset_spec, dict):
+        original_batch = list(batch)[0]
+    else:
+        original_batch = list(batch)[:-1]
+    if not isinstance(original_batch, (list, tuple, dict)):
+        raise TypeError("Dataset batch must be dict/list/tuple type.")
+
+    if isinstance(original_batch, dict):
+        insert_key = get_valid_op_key(original_batch)
+        original_batch[insert_key] = pipeline_op
+    else:
+        original_batch.append(pipeline_op)
+
+    if isinstance(ori_dataset_spec, tuple):
+        original_batch = tuple(original_batch)
+
+    return original_batch
 
 
 def export_read_emb_key_v2_op(args, pipeline_op):
@@ -368,7 +413,7 @@ def get_valid_op_key(batch_dict: dict) -> str:
     return valid_key
 
 
-def get_target_tensors_with_args_indexes(args_index_list):
+def get_target_tensors_with_args_indexes(args_index_list):  # pragma: no cover
     insert_tensors = []
     graph = tf.compat.v1.get_default_graph()
     for index in args_index_list:

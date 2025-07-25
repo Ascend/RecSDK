@@ -30,6 +30,9 @@ namespace MxRec {
     int GlobalEnv::glogStderrthreshold = 0;  // 默认info级别
     bool GlobalEnv::useCombineFaae = false;
     bool GlobalEnv::recordKeyCount = false; // 默认不打开记录key count的开关
+    bool GlobalEnv::useShmSwap = false;     // By default, the switchover of shared memory is disabled
+    bool GlobalEnv::hugeTlbEnable = false;  // By default, the large page switch SHM_HUGETLB is not enabled
+    int GlobalEnv::ssdSaveCompactLevel = 2;  // 0:完全不压缩；1：只压缩超阈值的文件；2：所有文件都压缩
 
     /// 配置环境变量，Python侧已经做了变量值校验，CPP侧直接使用即可；bool类型，1代表true，0代表false
     void ConfigGlobalEnv()
@@ -61,7 +64,7 @@ namespace MxRec {
         // 设置是否使用fast unique库进行去重
         const char *envFastUnique = getenv(RecEnvNames::FAST_UNIQUE);
         if (envFastUnique != nullptr) {
-            GlobalEnv::fastUnique = (std::stoi(envFastUnique) == 1);
+            GlobalEnv::fastUnique = (std::stoi(envFastUnique) == 1); // LCOV_EXCL_BR_LINE
         }
 
         // 设置hot emb更新步数
@@ -79,20 +82,38 @@ namespace MxRec {
         // 设置特征准入统计模式
         const char *envFAAEMode = getenv(RecEnvNames::USE_COMBINE_FAAE);
         if (envFAAEMode != nullptr) {
-            GlobalEnv::useCombineFaae = (std::stoi(envFAAEMode) == 1);
+            GlobalEnv::useCombineFaae = (std::stoi(envFAAEMode) == 1); // LCOV_EXCL_BR_LINE
         }
 
         // 设置打开记录开关，记录batch中key与出现的count的数目
         const char *envRecordKeyCount = getenv(RecEnvNames::RECORD_KEY_COUNT);
         if (envRecordKeyCount != nullptr) {
-            GlobalEnv::recordKeyCount = (std::stoi(envRecordKeyCount) == 1);
+            GlobalEnv::recordKeyCount = (std::stoi(envRecordKeyCount) == 1); // LCOV_EXCL_BR_LINE
+        }
+
+        // Set the swap in/out switch of shared memory
+        const char *envUseShmSwap = getenv(RecEnvNames::USE_SHM_SWAP);
+        if (envUseShmSwap != nullptr) {
+            GlobalEnv::useShmSwap = (std::stoi(envUseShmSwap) == 1); // LCOV_EXCL_BR_LINE
+        }
+
+        // Enable or disable large pages of shared memory
+        const char *envHugeTlbEnable = getenv(RecEnvNames::HUGE_TLB_ENABLE);
+        if (envHugeTlbEnable != nullptr) {
+            GlobalEnv::hugeTlbEnable = (std::stoi(envHugeTlbEnable) == 1); // LCOV_EXCL_BR_LINE
+        }
+
+        // 设置SSD保存时的压缩等级
+        const char *envSsdSaveCompactLevel = getenv(RecEnvNames::SSD_SAVE_COMPACT_LEVEL);
+        if (envSsdSaveCompactLevel != nullptr) {
+            GlobalEnv::ssdSaveCompactLevel = std::stoi(envSsdSaveCompactLevel);
         }
     }
 
     void LogGlobalEnv()
     {
-        LOG_DEBUG("Environment variables are: [{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}], "
-                  "[{}: {}], [{}: {}], [{}: {}], [{}: {}].",
+        LOG_DEBUG("Environment variables are: [{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}], " // LCOV_EXCL_BR_LINE
+                  "[{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}], [{}: {}].",
                   RecEnvNames::ACL_TIMEOUT, GlobalEnv::aclTimeout,
                   RecEnvNames::HD_CHANNEL_SIZE, GlobalEnv::hdChannelSize,
                   RecEnvNames::KEY_PROCESS_THREAD_NUM, GlobalEnv::keyProcessThreadNum,
@@ -101,6 +122,9 @@ namespace MxRec {
                   RecEnvNames::HOT_EMB_UPDATE_STEP, GlobalEnv::hotEmbUpdateStep,
                   RecEnvNames::GLOG_STDERR_THRESHOLD, GlobalEnv::glogStderrthreshold,
                   RecEnvNames::USE_COMBINE_FAAE, GlobalEnv::useCombineFaae,
-                  RecEnvNames::RECORD_KEY_COUNT, GlobalEnv::recordKeyCount);
+                  RecEnvNames::RECORD_KEY_COUNT, GlobalEnv::recordKeyCount,
+                  RecEnvNames::USE_SHM_SWAP, GlobalEnv::useShmSwap,
+                  RecEnvNames::HUGE_TLB_ENABLE, GlobalEnv::hugeTlbEnable,
+                  RecEnvNames::SSD_SAVE_COMPACT_LEVEL, GlobalEnv::ssdSaveCompactLevel);
     }
 }

@@ -65,7 +65,7 @@ size_t EmbeddingTable::size() const
 
 void EmbeddingTable::EvictKeys(const std::vector<emb_cache_key_t>& keys)
 {
-    std::lock_guard<std::mutex> lk(mut_); // lock for PROCESS_THREAD
+    std::unique_lock<std::shared_mutex> lock(keyOffsetMutex_); // lock for PROCESS_THREAD
     size_t keySize = keys.size();
     for (size_t i = 0; i < keySize; i++) {
         emb_key_t key = keys[i];
@@ -141,7 +141,8 @@ vector<int64_t> EmbeddingTable::GetLoadOffset()
     return loadOffset;
 }
 
-void EmbeddingTable::Load(const string& filePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet)
+void EmbeddingTable::Load(const string& filePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet,
+                          const vector<string>& warmStartTables)
 {
 }
 
@@ -253,3 +254,23 @@ void EmbeddingTable::CheckReadKeyFileBytes(ssize_t readReturnCode, const string&
     }
 }
 
+unordered_set<int64_t> EmbeddingTable::GetPaddingKeysOffset()
+{
+    return paddingKeysOffset;
+}
+
+void EmbeddingTable::RecordPaddingKeysOffset(int channel, emb_key_t key, int64_t offset)
+{
+    if (channel != TRAIN_CHANNEL_ID || !embInfo_.paddingKeysMask) {
+        return;
+    }
+
+    auto it = std::find(embInfo_.paddingKeys.begin(), embInfo_.paddingKeys.end(), key);
+    if (it != embInfo_.paddingKeys.end()) {
+        paddingKeysOffset.insert(offset);
+    }
+}
+
+void EmbeddingTable::SyncLatestEmbedding(int pythonBatchId)
+{
+}

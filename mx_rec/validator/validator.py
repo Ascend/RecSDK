@@ -136,57 +136,62 @@ def para_checker_decorator(check_option_list: List[Tuple[Union[List[str], str],
                 logger.debug("[checker wrapper]func %s kwargs: %s", func.__name__, actual_args)
             # 执行每一个检查项
             for option in check_option_list:
-                optional_check_list = None
-                validator_kwargs = {}
-
-                # 解包每个检查项的：待检查参数名，检查器，检查器参数，特定的检查方法
-                option_num = len(option)
-                if option_num == 2:
-                    para_list_to_be_check, validator = option
-                elif option_num == 3:
-                    para_list_to_be_check, validator, validator_kwargs = option
-                else:
-                    para_list_to_be_check, validator, validator_kwargs, optional_check_list = option
-
-                if not isinstance(para_list_to_be_check, list):
-                    para_list_to_be_check = [para_list_to_be_check]
-
-                # 确认当前检查项需要检查的参数是否在函数参数中
-                paras = []
-                for para_to_be_check in para_list_to_be_check:
-                    if para_to_be_check not in actual_args:
-                        logger.debug("[checker wrapper]invalid para '%s' to be checked, "
-                                     "not passed to the function '%s'", para_to_be_check, func.__name__)
-                        continue
-                    paras.append(actual_args.get(para_to_be_check))
-
-                # 如果检查的参数不在传参中，跳过该检查项
-                if not paras:
-                    continue
-
-                # 更新检查器的参数
-                validator_kwargs.update(
-                    {
-                        "name": para_list_to_be_check[0] if len(para_list_to_be_check) == 1 else para_list_to_be_check,
-                        "value": paras[0] if len(paras) == 1 else paras
-                    }
-                )
-
-                validator_instance = validator(**validator_kwargs)
-
-                # 添加检查器特定的检查方法
-                if optional_check_list and len(optional_check_list) != 0:
-                    for optional_check in optional_check_list:
-                        getattr(validator_instance, optional_check)()
-
-                # 执行检查
-                validator_instance.check()
+                _handle_single_check_option(option, actual_args, func.__name__)
 
             for arg in args_with_default:
                 del kwargs[arg]
             return func(*args, **kwargs)
 
         return wrapper
+
+    def _handle_single_check_option(option, actual_args, func_name):
+        """
+        处理单个检查项，完全复刻原逻辑。
+        """
+        option_num = len(option)
+        optional_check_list = None
+        validator_kwargs = {}
+
+        if option_num == 2:
+            para_list_to_be_check, validator = option
+        elif option_num == 3:
+            para_list_to_be_check, validator, validator_kwargs = option
+        else:
+            para_list_to_be_check, validator, validator_kwargs, optional_check_list = option
+
+        if not isinstance(para_list_to_be_check, list):
+            para_list_to_be_check = [para_list_to_be_check]
+
+        # 确认当前检查项需要检查的参数是否在函数参数中
+        paras = []
+        for para_to_be_check in para_list_to_be_check:
+            if para_to_be_check not in actual_args:
+                logger.debug("[checker wrapper]invalid para '%s' to be checked, "
+                            "not passed to the function '%s'", para_to_be_check, func_name)
+                continue
+            paras.append(actual_args.get(para_to_be_check))
+
+        # 如果检查的参数不在传参中，跳过该检查项
+        if not paras:
+            return
+
+        # 更新检查器的参数
+        validator_kwargs.update(
+            {
+                "name": para_list_to_be_check[0] if len(para_list_to_be_check) == 1 else para_list_to_be_check,
+                "value": paras[0] if len(paras) == 1 else paras
+            }
+        )
+
+        validator_instance = validator(**validator_kwargs)
+
+        # 添加检查器特定的检查方法
+        if optional_check_list and len(optional_check_list) != 0:
+            for optional_check in optional_check_list:
+                getattr(validator_instance, optional_check)()
+
+        # 执行检查
+        validator_instance.check()
 
     return para_checker
 
@@ -589,7 +594,7 @@ class TensorShapeValidator(Validator):
 
 
 class LearningRateValidator(FloatValidator):
-    def __init__(self, name:str, value: Union[tf.Tensor, float], min_value: float, max_value: float):
+    def __init__(self, name: str, value: Union[tf.Tensor, float], min_value: float, max_value: float):
         if isinstance(value, tf.Tensor):
             sess = tf.Session() if tf.__version__.startswith("1.") else tf.compat.v1.Session()
             try:
@@ -617,6 +622,20 @@ class OptionalIntValidator(IntValidator):
             super(OptionalIntValidator, self).__init__(name, 0, None, None, None, None, msg)
         else:
             super(OptionalIntValidator, self).__init__(name, value, min_value, max_value,
+                                                       invalid_options, constrained_options, msg)
+
+
+class OptionalFloatValidator(FloatValidator):
+    """
+    Float type validator if value is not None
+    """
+
+    def __init__(self, name: str, value: float, min_value: float = None, max_value: float = None,
+                 invalid_options: List = None, constrained_options: List = None, msg: str = ""):
+        if not isinstance(value, float):
+            super(OptionalFloatValidator, self).__init__(name, 0.0, None, None, None, None, msg)
+        else:
+            super(OptionalFloatValidator, self).__init__(name, value, min_value, max_value,
                                                        invalid_options, constrained_options, msg)
 
 

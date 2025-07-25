@@ -4,26 +4,17 @@ import numpy as np
 import os, time, collections
 import tensorflow as tf
 from IO.iterator import FfmIterator #, DinIterator, CCCFNetIterator
-#from IO.din_cache import DinCache
 from IO.ffm_cache import FfmCache
-#from IO.cccfnet_cache import CCCFNetCache
-#from src.deep_fm import DeepfmModel
-#from src.deep_wide import DeepWideModel
-#from src.fm import FmModel
-#from src.dnn import DnnModel
-#from src.opnn import OpnnModel
-#from src.ipnn import IpnnModel
-#from src.lr import LrModel
-#from src.din import DinModel
-#from src.cccfnet import CCCFModel
-#from src.deepcross import DeepCrossModel
 from src.exDeepFM import ExtremeDeepFMModel
-#from src.cross import CrossModel
 import utils.util as util
 import utils.metric as metric
-# from utils.log import Log
+from mx_rec.util.initialize import ConfigInitializer
+from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
 
-# log = Log(hparams)
+MODEL_MAP = {
+    'exDeepFM': ExtremeDeepFMModel,
+}
+
 
 class TrainModel(collections.namedtuple("TrainModel", ("graph", "model", "iterator", "filenames"))):
     """define train class, include graph, model, iterator"""
@@ -33,7 +24,6 @@ class TrainModel(collections.namedtuple("TrainModel", ("graph", "model", "iterat
 def create_train_model(model_creator, hparams, scope=None):
     # feed train file name, valid file name, or test file name
     filenames = tf.placeholder(tf.string, shape=[None])
-    # src_dataset = tf.contrib.data.TFRecordDataset(filenames)
     src_dataset = tf.data.TFRecordDataset(filenames)
 
     if hparams.data_format == 'ffm':
@@ -62,7 +52,6 @@ def run_eval(load_model, load_sess, filename, sample_num_file, hparams, flag):
     # load sample num
     with open(sample_num_file, 'r') as f:
         sample_num = int(f.readlines()[0].strip())
-    from mx_rec.util.initialize import ConfigInitializer
     eval_label = ConfigInitializer.get_instance().train_params_config.get_target_batch(True).get("labels")
     initializer = ConfigInitializer.get_instance().train_params_config.get_initializer(True)
     load_sess.run(initializer, feed_dict={load_model.filenames: [filename]})
@@ -89,7 +78,9 @@ def run_infer(load_model, load_sess, filename, hparams, sample_num_file):
         sample_num = int(f.readlines()[0].strip())
     if not os.path.exists(util.RES_DIR):
         os.mkdir(util.RES_DIR)
-    load_sess.run(load_model.iterator.initializer, feed_dict={load_model.filenames: [filename]})
+    # In the run_eval function, get_initializer's parameter is set to true.
+    initializer = ConfigInitializer.get_instance().train_params_config.get_initializer(True)
+    load_sess.run(initializer, feed_dict={load_model.filenames: [filename]})
     preds = []
     while True:
         try:
@@ -99,7 +90,6 @@ def run_infer(load_model, load_sess, filename, hparams, sample_num_file):
             break
     preds = preds[:sample_num]
     hparams.res_name = util.convert_res_name(hparams.infer_file)
-    # print('result name:', hparams.res_name)
     with open(hparams.res_name, 'w') as out:
         out.write('\n'.join(map(str, preds)))
 
@@ -139,13 +129,13 @@ def cache_data(hparams, filename, flag):
         impression_id_path = util.INFER_IMPRESSION_ID
     else:
         raise ValueError("flag must be train, eval, test, infer")
-    print('cache filename:', filename)
+    hparams.logger.info('cache filename: {}'.format(filename))
     if not os.path.isfile(cached_name):
-        print('has not cached file, begin cached...')
+        hparams.logger.info('has not cached file, begin cached...')
         start_time = time.time()
         sample_num, impression_id_list = cache_obj.write_tfrecord(filename, cached_name, hparams)
         util.print_time("caced file used time", start_time)
-        print("data sample num:{0}".format(sample_num))
+        hparams.logger.info("data sample num:{0}".format(sample_num))
         with open(sample_num_path, 'w') as f:
             f.write(str(sample_num) + '\n')
         with open(impression_id_path, 'w') as f:
@@ -158,58 +148,9 @@ def train(hparams, scope=None, target_session=""):
     for key, val in params.items():
         hparams.logger.info(str(key) + ':' + str(val))
 
-    print('load and cache data...')
-    if hparams.train_file is not None:
-        cache_data(hparams, hparams.train_file, flag='train')
-    if hparams.eval_file is not None:
-        cache_data(hparams, hparams.eval_file, flag='eval')
-    if hparams.test_file is not None:
-        cache_data(hparams, hparams.test_file, flag='test')
-    if hparams.infer_file is not None:
-        cache_data(hparams, hparams.infer_file, flag='infer')
+    load_and_cache_data(hparams)
 
-    if hparams.model_type == 'deepFM':
-        model_creator = DeepfmModel
-        print("run deepfm model!")
-    elif hparams.model_type == 'deepWide':
-        model_creator = DeepWideModel
-        print("run deepWide model!")
-    elif hparams.model_type == 'dnn':
-        print("run dnn model!")
-        model_creator = DnnModel
-    elif hparams.model_type == 'ipnn':
-        print("run ipnn model!")
-        model_creator = IpnnModel
-    elif hparams.model_type == 'opnn':
-        print("run opnn model!")
-        model_creator = OpnnModel
-    elif hparams.model_type == 'din':
-        print("run din model!")
-        model_creator = DinModel
-    elif hparams.model_type == 'fm':
-        print("run fm model!")
-        model_creator = FmModel
-    elif hparams.model_type == 'lr':
-        print("run lr model!")
-        model_creator = LrModel
-    elif hparams.model_type == 'din':
-        print("run din model!")
-        model_creator = DinModel
-    elif hparams.model_type == 'cccfnet':
-        print("run cccfnet model!")
-        model_creator = CCCFModel
-    elif hparams.model_type == 'deepcross':
-        print("run deepcross model!")
-        model_creator = DeepCrossModel
-    elif hparams.model_type == 'exDeepFM':
-        print("run extreme deepFM model!")
-        model_creator = ExtremeDeepFMModel
-    elif hparams.model_type == 'cross':
-        print("run extreme cross model!")
-        model_creator = CrossModel
-
-    else:
-        raise ValueError("model type should be cccfnet, deepFM, deepWide, dnn, fm, lr, ipnn, opnn, din")
+    model_creator = get_model_creator(hparams.model_type, hparams.logger)
 
     # define train,eval,infer graph
     # define train session, eval session, infer session
@@ -218,7 +159,6 @@ def train(hparams, scope=None, target_session=""):
     gpuconfig.gpu_options.allow_growth = True
     tf.set_random_seed(1234)
 
-    from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
     modify_graph_and_start_emb_cache(dump_graph=True)
 
     train_sess = tf.Session(target=target_session, graph=train_model.graph, config=npu_config_proto(config_proto=gpuconfig))
@@ -229,15 +169,14 @@ def train(hparams, scope=None, target_session=""):
         checkpoint_path = hparams.load_model_name
         try:
             train_model.model.saver.restore(train_sess, checkpoint_path)
-            print('load model', checkpoint_path)
+            hparams.logger.info('load model: {}'.format(checkpoint_path))
         except:
             raise IOError("Failed to find any matching files for {0}".format(checkpoint_path))
-    print('total_loss = data_loss+regularization_loss, data_loss = {rmse or logloss ..}')
+    hparams.logger.info('total_loss = data_loss+regularization_loss, data_loss = {rmse or logloss ..}')
     writer = tf.summary.FileWriter(util.SUMMARIES_DIR, train_sess.graph)
     last_eval = 0
     for epoch in range(hparams.epochs):
         step = 0
-        from mx_rec.util.initialize import ConfigInitializer
         initializer = ConfigInitializer.get_instance().train_params_config.get_initializer(True)
         train_sess.run(initializer, feed_dict={train_model.filenames: [hparams.train_file_cache]})
 
@@ -255,10 +194,10 @@ def train(hparams, scope=None, target_session=""):
                 epoch_loss += step_loss
                 step += 1
                 if step % hparams.show_step == 0:
-                    print('step {0:d} , total_loss: {1:.4f}, data_loss: {2:.4f}' \
+                    hparams.logger.info('step {0:d} , total_loss: {1:.4f}, data_loss: {2:.4f}' \
                           .format(step, step_loss, step_data_loss))
             except tf.errors.OutOfRangeError:
-                print('finish one epoch!')
+                hparams.logger.info('finish one epoch!')
                 break
         train_end = time.time()
         train_time = train_end - train_start
@@ -266,11 +205,9 @@ def train(hparams, scope=None, target_session=""):
             checkpoint_path = train_model.model.saver.save(
                 sess=train_sess,
                 save_path=util.MODEL_DIR + 'epoch_' + str(epoch))
-            # print(checkpoint_path)
         train_res = dict()
         train_res["loss"] = epoch_loss / step
         eval_start = time.time()
-        # train_res = run_eval(train_model, train_sess, hparams.train_file_cache, util.TRAIN_NUM, hparams, flag='train')
         eval_res = run_eval(train_model, train_sess, hparams.eval_file_cache, util.EVAL_NUM, hparams, flag='eval')
         train_info = ', '.join(
             [str(item[0]) + ':' + str(item[1])
@@ -286,14 +223,10 @@ def train(hparams, scope=None, target_session=""):
         eval_end = time.time()
         eval_time = eval_end - eval_start
         if hparams.test_file is not None:
-            print('at epoch {0:d}'.format(
-                epoch) + ' train info: ' + train_info + ' eval info: ' + eval_info + ' test info: ' + test_info)
             hparams.logger.info('at epoch {0:d}'.format(
                 epoch) + ' train info: ' + train_info + ' eval info: ' + eval_info + ' test info: ' + test_info)
         else:
-            print('at epoch {0:d}'.format(epoch) + ' train info: ' + train_info + ' eval info: ' + eval_info)
             hparams.logger.info('at epoch {0:d}'.format(epoch) + ' train info: ' + train_info + ' eval info: ' + eval_info)
-        print('at epoch {0:d} , train time: {1:.1f} eval time: {2:.1f}'.format(epoch, train_time, eval_time))
 
         hparams.logger.info('at epoch {0:d} , train time: {1:.1f} eval time: {2:.1f}' \
                     .format(epoch, train_time, eval_time))
@@ -308,3 +241,23 @@ def train(hparams, scope=None, target_session=""):
     if hparams.infer_file is not None:
         run_infer(train_model, train_sess, hparams.infer_file_cache, hparams, util.INFER_NUM)
 
+
+def load_and_cache_data(hparams):
+    hparams.logger.info('load and cache data...')
+    if hparams.train_file is not None:
+        cache_data(hparams, hparams.train_file, flag='train')
+    if hparams.eval_file is not None:
+        cache_data(hparams, hparams.eval_file, flag='eval')
+    if hparams.test_file is not None:
+        cache_data(hparams, hparams.test_file, flag='test')
+    if hparams.infer_file is not None:
+        cache_data(hparams, hparams.infer_file, flag='infer')
+
+
+def get_model_creator(model_type, logger):
+    model_class = MODEL_MAP.get(model_type)
+    if model_class is None:
+        raise ValueError("model type should be one of: cccfnet, deepFM, deepWide, dnn, fm, lr, ipnn, opnn, din")
+    
+    logger.info(f"run {model_type} model!")
+    return model_class

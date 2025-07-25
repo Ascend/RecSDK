@@ -12,7 +12,7 @@
 |tensorflow-serving-api|1.15.0|
 |future|无特定版本要求|
 |bazel|0.24.1|
-|camake|3.14.0|
+|cmake|3.14.0|
 |swig|若操作系统为"aarch64"，软件安装版本需大于或等于3.0.12。若操作系统架构为"X86_64"，软件安装版本需大于或等于4.0.1|
 |java|jdk-11|
 |||
@@ -125,11 +125,53 @@ server.sh/client.sh
 
 2.请求服务器方法
 执行脚本：sh client.sh
-推理成功会打印端到端时延
+推理成功会打印请求结果
+
+# 多流并行优化简介
+背景：
+> 在推荐推理场景下，模型大多存在算子数量大，算子shape小的特点，且通常会要求单次推理时间在合理范围内尽可能的提高吞吐（单次推理的数据量*单位时间内的推理次数）。<br>
+> 用户在使用NPU执行推荐推理模型时，由于算子shape小，通常会出现算力利用率低从而导致性能不佳的情况。<br>
+
+优化方法：
+> 为了解决上诉问题，我们可以通过并行执行多个推理请求，在单次推理时延达标情况下极大提高吞吐。如下图所示：<br>
+
+
+### 图1：
+![单流执行示意图](single_stream_chart.png) 
+
+
+### 图2：
+![多流并行示意图](multi_stream_chart.png)
+
+
++ 图中上半部分为host，也就是cpu，下半部分是device，也就是NPU。开启多流并行时，host分多个threads下发任务（最新TFA版本支持1~16个stream，demo中默认设置了8个stream），device分多个stream执行任务（与host thread数量一致）。<br>
++ 上图中，一次推理请求有4个算子，假设单次推理数据量保持一致的情况下，device同一时间能并行处理3个算子（真实情况下，由npu调度模块根据device总核数以及每个算子需要使用的核数动态确定并行处理多少个算子）。<br>
++ 如图中时间点2，3，4，5，6，7处所示，图1中device只执行了一个算子或没有执行算子，算力利用率为33%或0%；图2中deivce同一时间执行了4个stream上的不同算子，算力利用率为100%或66%。<br>
++ 图2多流并行开启后，device在整个时间轴内执行了约18个推理请求，相比图1中device在整个时间轴内仅仅只执行了5个请求，吞吐提升到3.6倍。<br>
+
+# 启动多流并行优化
+multistream_server.sh/client.sh
+启动多流并行服务脚本/客户端请求服务器脚本
+
+1. 启动tf-serving 多流并行server方法
+> 进入目录 tf_serving_inerence <br>
+> 更改server.sh中模型路径model_base_path为导出的savedModel路径，<br>
+> 更改可执行文件tensorflow_model_server的路径；<br>
+> 将编译tf_serving的第三方依赖tf_adapter路径加入环境变量,export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/xxx/xxx/serving-1.15.0/third_party/tf_adapter/ <br>
+> source /usr/local/Ascend/ascend-toolkit/set_env.sh <br>
+> sh multistream_server.sh <br>
+
+若日志中显示Running gRPC ModelServer at 0.0.0.0:xxxx则表示启动成功
+
+2. 多进程发起请求方法
+> 执行脚本：sh client.sh 20 <br>
+> 此处20代表着起20个client进程向server发送请求 <br>
+> 此处的多线程发送请求是在模拟正式部署情况下多台机器上的client向server发送请求的情况。<br>
+> 推理成功会打印请求结果 <br>
 
 # 使用切图工具
 本工具是基于cann的一个混合计算功能，开发的一个生成配置文件的工具；生成的配置文件中的in_out_pair可以控制具体下沉那些算子到npu，从而提升模型运行性能；
-混合计算功能参考链接（https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC3alpha002/apiref/fmkadptapi/tfmigr1_tfadapi_0020.html#ZH-CN_TOPIC_0000001981222466__section189920476161）
+混合计算功能参考链接: [https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/81RC1beta1/migration/tfmigr1/tfmigr1_000074.html](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/81RC1beta1/migration/tfmigr1/tfmigr1_000074.html)
 1. 进入目录：mxrec/tools/graph_partition,修改gen_config.py中的模型目录
 2. 执行 python3 gen_config.py，使用生成的test1.cfg文件启动模型，使用方法如下：
 > python3 gen_config.py --output_path . --tags_name serve --output_filename test1.cfg --model_path savedmodel_path<br>

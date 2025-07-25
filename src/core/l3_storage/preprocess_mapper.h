@@ -45,7 +45,12 @@ namespace MxRec {
             return excludeDDRKeyCountMap.find(key) != excludeDDRKeyCountMap.end();
         }
 
-        bool InsertDDRKey(uint64_t key)
+        /**
+         * Records the frequency data of the key inserted into the DDR
+         * @param key key
+         * @param isNewKey default is true. When transfer key from ssd to ddr, this param should be false.
+         */
+        void InsertDDRKey(uint64_t key, bool isNewKey = true)
         {
             if (IsDDRKeyExist(key)) {
                 auto error = Error(ModuleName::M_L3_STORAGE, ErrorType::LOGIC_ERROR,
@@ -53,10 +58,9 @@ namespace MxRec {
                 LOG_ERROR(error.ToString());
                 throw std::invalid_argument(error.ToString());
             }
-
-            freq_num_t freq = excludeDDRKeyCountMap[key] + 1;
+            // Notice: if passed isNewKey incorrectly, will cause records error and process logic error.
+            freq_num_t freq = isNewKey ? 1 : excludeDDRKeyCountMap[key] + 1;
             lfuCache.PutWithInit(key, freq);
-            return true;
         }
 
         bool InsertL3StorageKey(uint64_t key)

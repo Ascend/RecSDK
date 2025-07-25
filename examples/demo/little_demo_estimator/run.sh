@@ -59,8 +59,8 @@ if [ -n "$ip" ]; then
 fi
 
 cur_path=`pwd`
-mx_rec_package_path="/usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec" # please config
-so_path=${mx_rec_package_path}/libasc
+rec_package_path="/usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec" # please config
+so_path=${rec_package_path}/libasc
 # GLOG_stderrthreshold -2:TRACE -1:DEBUG 0:INFO 1:WARN 2.ERROR, 默认为INFO
 mpi_args='-x BIND_INFO="0:12 12:48 60:48" -x GLOG_stderrthreshold=0 -x GLOG_logtostderr=true -bind-to none -x NCCL_SOCKET_IFNAME=docker0 -mca btl_tcp_if_exclude docker0'
 interface="lo"
@@ -70,7 +70,7 @@ num_process=$((${num_server} * ${local_rank_size})) # 训练总的进程数，�
 
 export HCCL_CONNECT_TIMEOUT=1200 # HCCL集合通信 建链超时时间，取值范围[120,7200]
 export PYTHONPATH=${so_path}:$PYTHONPATH # 环境python安装路径
-export LD_PRELOAD=/usr/lib64/libgomp.so.1 # GNU OpenMP动态库路径. 不应该使用LD_PRELOAD这种方式加载！
+export LD_PRELOAD=/usr/lib64/libgomp.so.1:/usr/lib64/libstdc++.so.6 # GNU OpenMP动态库路径. 不应该使用LD_PRELOAD这种方式加载！预加载GNU C++标准库规避TLS段错误问题
 export LD_LIBRARY_PATH=${so_path}:/usr/local/lib:$LD_LIBRARY_PATH
 # 集合通信文件，格式请参考昇腾官网CANN文档，“准备资源配置文件”章节。
 export JOB_ID=10086
@@ -80,7 +80,7 @@ export TF_CPP_MIN_LOG_LEVEL=3 # tensorflow日志级别,3对应FATAL
 # 设置应用类日志的全局日志级别及各模块日志级别，具体请参考昇腾官网CANN文档
 export ASCEND_GLOBAL_LOG_LEVEL=3 # “设置日志级别”章节0:debug, 1:info, 2:warning, 3:error, 4:NULL
 export MXREC_MODE="ASC"
-export USE_MODE="train_and_evaluate" # 支持[train, predict, train_and_evaluate],train相关模式将删除./_rank*目录
+export RUN_MODE="train_and_evaluate" # 支持[train, predict, train_and_evaluate],train相关模式将删除./_rank*目录
 export CACHE_MODE="HBM" # cache mode support: HBM, DDR, SSD
 
 ################# 参数配置 ######################
@@ -92,12 +92,15 @@ export USE_MODIFY_GRAPH=1       # 0：feature spec模式；1：自动改图模�
 export USE_TIMESTAMP=0          # 0：关闭特征准入淘汰；1：开启特征准入淘汰
 export USE_DP=0                 # 0：关闭DP；1：开启user table DP
 export USE_ONE_SHOT=0           # 0：MakeIterator；1：OneShotIterator
+export USE_TUPLE_DATA_FORMAT=0  # 0：Dict数据格式；1：Tuple数据格式；限自动改图模式使能。
+export USE_EXPORT_SAVED_MODEL=0 # 0：正常保存；1：调用export_saved_model接口保存。
 ################# 性能调优相关 ####################
 export KEY_PROCESS_THREAD_NUM=6 #default 6, max 10
 export FAST_UNIQUE=0   #if use fast unique
 export MGMT_HBM_TASK_MODE=0 #if async h2d (get and send tensors)
 ################## 测试配置项 #####################
 export ENABLE_SLICER_TEST=0
+export USE_DETERMINISTIC=0      # 0：不开启确定性计算；1：开启确定性计算
 
 # 帮助信息，不需要修改
 if [[ $1 == --help || $1 == -h ]];then
@@ -118,7 +121,7 @@ function rankTableSolution() {
   export RANK_SIZE=$num_process
   echo "RANK_TABLE_FILE=$RANK_TABLE_FILE"
   if [ ! -f "$RANK_TABLE_FILE" ];then
-    echo "the rank table file does not exit. Please reference {hccl_json_${local_rank_size}p.json} to correctly config rank table file"
+    echo "the rank table file does not exist. Please reference {hccl_json_${local_rank_size}p.json} to correctly config rank table file"
     exit 1
   fi
 }
@@ -156,6 +159,4 @@ fi
 echo "use horovod to start tasks"
 DATE=$(date +%Y-%m-%d-%H-%M-%S)
 horovodrun --network-interface ${interface} -np ${num_process} --mpi-args "${mpi_args}" --mpi -H localhost:${local_rank_size} \
-python3.7 ${py} \
---run_mode=$USE_MODE \
-2>&1 | tee "temp_${num_process}p_${KEY_PROCESS_THREAD_NUM}t_${DATE}.log"
+python3.7 ${py} 2>&1 | tee "temp_${num_process}p_${RUN_MODE}_${DATE}.log"

@@ -319,7 +319,9 @@ int EmbLocalTable::Scatter(const uint64_t startAddr, const vector<uint64_t>& key
                 auto rc = memcpy_s(reinterpret_cast<void*>(embAddr), memSize,  // 按顺序把新的embedding拷贝到对应地址中
                                    reinterpret_cast<void*>(addr), memSize);
                 if (rc != 0) {
-                    ExternalLogger::PrintLog(LogLevel::ERROR, "memcpy_s failed... dstSize: " + std::to_string(memSize));
+                    ExternalLogger::PrintLog(LogLevel::ERROR, "memcpy_s failed... dstSize: " + std::to_string(memSize)
+                                                                  + ", embAddr:" + std::to_string(embAddr)
+                                                                  + ", rc:" + std::to_string(rc));
                     ret = H_COPY_ERROR;
                     return;
                 }
@@ -401,7 +403,7 @@ bool EmbLocalTable::Deserialize(const vector<char>& buffer)
 
 uint32_t EmbLocalTable::GetUsage()
 {
-    return embMap.current_size;
+    return embMap.currentSize;
 }
 
 void EmbLocalTable::GetEmbTableInfos(std::vector<uint64_t>& keys, std::vector<std::vector<float>>& embeddings,
@@ -411,8 +413,14 @@ void EmbLocalTable::GetEmbTableInfos(std::vector<uint64_t>& keys, std::vector<st
 
     for (auto& p : kvVec) {
         std::vector<float> curEmbedding;
-        keys.emplace_back(p.first);
         auto* addr = reinterpret_cast<float*>(p.second);
+        if (addr == nullptr) {
+            ExternalLogger::PrintLog(
+                LogLevel::ERROR,
+                "The new key:" + std::to_string(p.first) + " is being inserted in parallel. Addr is null!");
+            throw std::runtime_error("GetEmbTableInfos fail. Addr is null");
+        }
+        keys.emplace_back(p.first);
         curEmbedding.insert(curEmbedding.end(), addr, reinterpret_cast<float*>((addr + embeddingSize)));
         embeddings.emplace_back(curEmbedding);
         if (extEmbeddingSize > embeddingSize) {
@@ -442,7 +450,10 @@ bool EmbLocalTable::LoadEmbTableInfos(const std::vector<uint64_t>& keys,
     for (uint64_t i = 0; i < keys.size(); i++) {
         uint64_t value = 0;
         if (FindAndPutIfNotFound(keys[i], value) != H_OK) {
-            ExternalLogger::PrintLog(LogLevel::ERROR, "FindAndPutIfNotFound failed!");
+            ExternalLogger::PrintLog(
+                LogLevel::ERROR,
+                "FindAndPutIfNotFound failed! Table:" + name + ", Try put keys' quantity:" +
+                std::to_string(keys.size()) + ", already put quantity:" + std::to_string(i) + ".");
             return false;
         }
         if (embeddings[i].size() != embeddingSize) {

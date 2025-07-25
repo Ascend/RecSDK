@@ -21,6 +21,7 @@ See the License for the specific language governing permissions and
 #include "emb_table/embedding_ddr.h"
 #include "file_system/file_system_handler.h"
 #include "utils/logger.h"
+#include "embedding_mgmt.h"
 
 using namespace MxRec;
 
@@ -82,6 +83,11 @@ KeyOffsetMemT EmbeddingMgmt::GetKeyOffsetMap()
     return keyOffsetMap;
 }
 
+unordered_set<int64_t> EmbeddingMgmt::GetPaddingKeysOffset(const std::string& name)
+{
+    return embeddings[name]->GetPaddingKeysOffset();
+}
+
 void EmbeddingMgmt::EvictKeys(const string& name, const vector<emb_cache_key_t>& keys)
 {
     LOG_INFO("Evict keys for table:{}", name);
@@ -115,18 +121,19 @@ int64_t EmbeddingMgmt::GetCapacity(const std::string &name)
 }
 
 void EmbeddingMgmt::Load(const string& name, const string& filePath,
-                         map<string, unordered_set<emb_cache_key_t>>& trainKeySet)
+                         map<string, unordered_set<emb_cache_key_t>>& trainKeySet, vector<string> warmStartTables)
 {
     embeddings[name]->SetFileSystemPtr(filePath);
-    embeddings[name]->Load(filePath, trainKeySet);
+    embeddings[name]->Load(filePath, trainKeySet, warmStartTables);
     embeddings[name]->UnsetFileSystemPtr();
 }
 
-void EmbeddingMgmt::Load(const string& filePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet)
+void EmbeddingMgmt::Load(const string& filePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet,
+                         vector<string> warmStartTables)
 {
     for (auto& tablePair: embeddings) {
         tablePair.second->SetFileSystemPtr(filePath);
-        tablePair.second->Load(filePath, trainKeySet);
+        tablePair.second->Load(filePath, trainKeySet, warmStartTables);
         tablePair.second->UnsetFileSystemPtr();
     }
 }
@@ -221,5 +228,21 @@ void EmbeddingMgmt::RecoverTrainStatus()
 {
     for (auto& table: embeddings) {
         table.second->RecoverTrainStatus();
+    }
+}
+
+void EmbeddingMgmt::SyncLatestEmbedding(int pythonBatchId)
+{
+    LOG_INFO("Start threads for syncing embedding, pythonBatchId(train):{}.", pythonBatchId);
+    if (syncThreadPool == nullptr) {
+        syncThreadPool = make_unique<ThreadPool>(embeddings.size());
+    }
+
+    for (const auto& table: embeddings) {
+        syncThreadPool->enqueue(
+            [table, pythonBatchId]() {
+                table.second->SyncLatestEmbedding(pythonBatchId);
+            }
+        );
     }
 }
