@@ -27,10 +27,7 @@ namespace optiling {
     TILING_DATA_FIELD_DEF(int64_t, lengthsT);
     TILING_DATA_FIELD_DEF(int64_t, lengthsB);
     TILING_DATA_FIELD_DEF(int64_t, valuesDim);
-
-    TILING_DATA_FIELD_DEF(int64_t, valueDataType);
-    TILING_DATA_FIELD_DEF(int64_t, permuteDataType);
-    TILING_DATA_FIELD_DEF(int64_t, lengthsDataType);
+    TILING_DATA_FIELD_DEF(bool, enableWeights);
 
     TILING_DATA_FIELD_DEF(int64_t, totalBatch);
     TILING_DATA_FIELD_DEF(int64_t, baseBatchLen);
