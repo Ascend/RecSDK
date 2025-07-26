@@ -70,7 +70,7 @@ void EmbMemoryPool::Produce()
     }
 
     // init embedding
-    if (embConfig.initializerRadomPoolSize == -1) {
+    if (embConfig.initializerRandomPoolSize == -1) {
         Initializer::InitEmbeddingWeights(reinterpret_cast<float*>(newAddr), embConfig);
     } else {
         Initializer::InitEmbeddingWeightsLimitPool(reinterpret_cast<float*>(newAddr), embConfig);

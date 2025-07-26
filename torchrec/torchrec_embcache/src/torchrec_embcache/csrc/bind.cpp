@@ -62,7 +62,7 @@ void AddEmbConfigModule(pybind11::module_& m)
              py::arg("table_name"), py::arg("initializer_type"), py::arg("emb_dim"), py::arg("optim_num"),
              py::arg("cache_size"), py::arg("weight_init_min"), py::arg("weight_init_max"), py::arg("weight_init_mean"),
              py::arg("weight_init_stddev"), py::arg("admit_and_evict_config") = AdmitAndEvictConfig(),
-             py::arg("initializer_radom_pool_size") = -1, py::arg("seed") = 0)
+             py::arg("initializer_random_pool_size") = -1, py::arg("seed") = 0)
         .def_readwrite("table_name", &EmbConfig::tableName)
         .def_readwrite("initializer_type", &EmbConfig::initializerType)
         .def_readwrite("emb_dim", &EmbConfig::embDim)
