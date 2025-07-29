@@ -129,7 +129,30 @@ public:
 
     FkvState Put(uint64_t key, uint64_t value);
 
-    bool Find(const uint64_t key, uint64_t &value);
+    bool Find(const uint64_t key, uint64_t &value)
+    {
+        if (HM_UNLIKELY(key == 0)) {
+            std::lock_guard<std::mutex> lock(zeroKeyMutex_);
+            if (zeroInside) {
+                value = zeroValue;
+                return true;
+            }
+            return false;
+        }
+        /* get bucket */
+        auto buck = &(mSubMaps[key % gSubMapCount][key % mBucketCount]);
+
+        /* loop all buckets linked */
+        while (buck != nullptr) {
+            if (buck->Find(key, value)) {
+                return true;
+            }
+
+            buck = buck->next;
+        }
+
+        return false;
+    }
 
     /* When used in muti thread, this function can only be used when keys are uniqued */
     FkvState FindAndDeleteIfFound(const uint64_t key, uint64_t &value,
