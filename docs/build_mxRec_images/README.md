@@ -25,17 +25,15 @@
 
 ## 准备依赖
 根据基础镜像的不同，需要下载的依赖也有所区别
-1. 以AscendHub上的Rec SDK训练镜像作为基础镜像，只需要下载[昇腾社区](https://www.hiascend.com/developer/download/community/result?module=sdk+cann)上最新版本配套的CANN和Rec SDK，其中CANN包括
-tookit和tfplugin。可以参考以下链接下载配套版本的CANN和Rec SDK：
+1. 以AscendHub上的Rec SDK训练镜像作为基础镜像，只需要下载[昇腾社区](https://www.hiascend.com/developer/download/community/result?module=sdk+cann)上最新版本配套的CANN、tfplugin、和Rec SDK安装包。可以参考以下链接下载配套版本的CANN和Rec SDK：
 
 https://www.hiascend.com/zh/developer/download/community/result?module=sdk+cann
 
-https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=8.0.RC3.alpha003&cann=8.0.RC3.alpha003
+https://www.hiascend.com/developer/download/community/result?module=tf+cann
 
 具体构建镜像步骤参考mxrec-build下的Dockerfile
 
-2. 以CentOS7.6.1810以及用户镜像作为基础镜像，这种情况下需要较多的依赖，同时用户需要确认自己镜像中是否已经安装以下
-依赖。由于需要安装许多依赖，建议按照Dockerfile中的步骤**手动安装**其中的依赖，比如gcc、cmake等。
+2. 以CentOS7.6.1810以及用户镜像作为基础镜像，这种情况下需要较多的依赖，同时用户需要确认自己镜像中是否已经安装以下依赖。由于需要安装许多依赖，建议按照Dockerfile中的步骤**手动安装**其中的依赖，比如gcc、cmake等。
 
 * gcc-7.3.0
 
@@ -63,13 +61,12 @@ https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=8
 
 * CANN与Rec SDK
 
-Rec SDK在[昇腾社区](https://www.hiascend.com/developer/download/community/result?module=sdk+cann)
-上发布的版本包与CANN都是配套的，所以用户需要从社区下载配套版本的Rec SDK和CANN。其中需要CANN包括toolkit和tfplugin。
+Rec SDK在[昇腾社区](https://www.hiascend.com/developer/download/community/result?module=sdk+cann)上发布的版本包与CANN都是配套的，所以用户需要从社区下载配套版本的Rec SDK、CANN与tf-plugin。
 用户可以通过以下链接选择下载版本配套的Rec SDK和CANN：
 
 https://www.hiascend.com/zh/developer/download/community/result?module=sdk+cann
 
-https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=8.0.RC3.alpha003&cann=8.0.RC3.alpha003
+https://www.hiascend.com/developer/download/community/result?module=tf+cann
 
 * Tensorflow（1.15.0/2.6.5）
 
@@ -80,9 +77,8 @@ https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=8
 
 * 安装CANN时需要的version.info、ascend_install.info
 
-在安装CANN包时需要两个文件，分别是version.info（驱动版本文件）、ascend_install.info（固件驱动安装参数），这两个
-文件可以参考物理机上对应的文件将其拷贝到同一个目录下。其中，version.info默认安装在/usr/local/Ascend/driver/version.info；
-ascend_install.info文件默认路径是/etc/ascend_install.info。
+在安装CANN包时需要两个文件，分别是version.info（驱动版本文件）、ascend_install.info（固件驱动安装参数），这两个文件可以参考物理机上对应的文件将其拷贝到同一个目录下。
+其中，version.info默认安装在/usr/local/Ascend/driver/version.info；ascend_install.info文件默认路径是/etc/ascend_install.info。
 
 具体构建镜像步骤参考centos-build下的Dockerfile
 
