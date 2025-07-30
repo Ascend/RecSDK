@@ -14,6 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 
+set -e
 
 msopgen_path=$(find /usr/local/Ascend/ -name msopgen | grep bin)
 parent_dir=$(dirname "$msopgen_path")
@@ -29,30 +30,25 @@ cp -rf op_host custom_op/
 
 cd custom_op
 
-
 if [ ! -f "CMakePresets.json" ]; then
   echo "当前目录下不存在cmake.json文件"
   exit 1
 fi
 
-
 sed -i 's/--nomd5/--nomd5 --nocrc/g' ./cmake/makeself.cmake
-
-
 sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
-
-cd cmake
-
-
-if [ ! -f "config.cmake" ]; then
-  echo "当前目录下不存在cmake.json文件"
-  exit 1
-fi
-
-
 sed -i 's:"customize":"lccl":g' CMakePresets.json
 
-cd ..
+cp -r ../../../mxrec_add_ons/rec_for_torch/operators/common ./op_host/
+if [ -f "op_host/CMakeLists.txt" ]; then
+    sed -i "1 i include(../../../../mxrec_add_ons/rec_for_torch/operators/cmake/func.cmake)" ./op_host/CMakeLists.txt
+
+    line1=$(awk '/tartet_compile_definitions(cust_optiling PRIVATE OP_TILING_LIB)/{print NR}' ./op_host/CMakeLists.txt)
+    sed -i "${line1}s/OP_TILING_LIB/OP_TILING_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
+    
+    line2=$(awk '/tartet_compile_definitions(cust_op_proto PRIVATE OP_PROTO_LIB)/{print NR}' ./op_host/CMakeLists.txt)
+    sed -i "${line2}s/OP_PROTO_LIB/OP_PROTO_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
+fi
 
 bash build.sh
 
