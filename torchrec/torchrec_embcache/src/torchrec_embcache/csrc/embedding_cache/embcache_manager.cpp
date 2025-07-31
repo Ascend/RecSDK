@@ -204,7 +204,7 @@ SwapinTensor EmbcacheManager::EmbeddingLookup(const std::vector<std::vector<int6
 
         int32_t idx = curTableIndices[i];
         embeddingTables_[idx]->FindOrInsert(swapinKeys[i], swapinTensor.swapinEmbs.data_ptr<float>() + jaggedOffsPtr[i],
-                                           swapinOptimsPtr);
+                                            swapinOptimsPtr);
     }
 
     LOG_INFO("The embeddingLookupTC(ms): {}", embeddingLookupTC.ElapsedMS());

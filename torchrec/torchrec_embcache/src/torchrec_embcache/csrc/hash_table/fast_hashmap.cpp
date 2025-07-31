@@ -5,10 +5,11 @@
  * This source code is licensed under the BSD-style license found in the
  * LICENSE file in the root directory of this source tree.
  */
+#include "fast_hashmap.h"
+
 #include "securec.h"
 
 #include "common/constants.h"
-#include "fast_hashmap.h"
 #include "utils/logger.h"
 
 namespace Embcache {

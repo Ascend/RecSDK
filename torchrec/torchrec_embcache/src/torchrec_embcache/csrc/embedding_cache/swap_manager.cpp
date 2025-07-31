@@ -42,28 +42,30 @@ ComputeSwapRet SwapManager::ComputeSwapInfo(const std::vector<int64_t>& keys)
 
     // 每个线程一个本地 missedIdx 缓冲
     std::vector<std::vector<int64_t>> missed_chunks(at::get_num_threads());
-    at::parallel_for(0, keys.size(), std::ceil(keys.size() * 1.0 / at::get_num_threads()),
-                     [&](int64_t begin, int64_t end) {
-                         const int tid = at::get_thread_num();
-                         auto& local_missed = missed_chunks[tid];
-                         local_missed.reserve(end - begin);
+    at::parallel_for(
+        0, keys.size(), std::ceil(keys.size() * 1.0 / at::get_num_threads()),
+        [&](int64_t begin, int64_t end) {
+            const int tid = at::get_thread_num();
+            auto& local_missed = missed_chunks[tid];
+            local_missed.reserve(end - begin);
 
-                         for (int64_t i = begin; i < end; ++i) {
-                             int64_t key = keys[i];
-                             if (key == INVALID_KEY) {
-                                 batchOffs[i] = OFFSET_OF_INVALID_KEY;
-                                 continue;
-                             }
-                             auto it = key2off_.find(key);
-                             if (it != key2off_.end()) {
-                                 int64_t off = it->second;
-                                 batchOffs[i] = off;
-                                 cache_[off].version = nowVersion_;
-                             } else {
-                                 local_missed.push_back(i);
-                             }
-                         }
-                     });
+            for (int64_t i = begin; i < end; ++i) {
+                int64_t key = keys[i];
+                if (key == INVALID_KEY) {
+                    batchOffs[i] = OFFSET_OF_INVALID_KEY;
+                    continue;
+                }
+                auto it = key2off_.find(key);
+                if (it != key2off_.end()) {
+                    int64_t off = it->second;
+                    batchOffs[i] = off;
+                    cache_[off].version = nowVersion_;
+                } else {
+                    local_missed.push_back(i);
+                }
+            }
+        }
+    );
 
     // 合并各线程 missed 结果
     missedIdx.clear();
