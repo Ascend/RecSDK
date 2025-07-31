@@ -45,8 +45,8 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 
 1. 算子分析
 
-a) 算子的主要功能是实现deberta模型中的disetangle_attention，解耦注意力的功能
-b) 算子参数说明：
+* a) 算子的主要功能是实现deberta模型中的disetangle_attention，解耦注意力的功能
+* b) 算子参数说明：
 
 | 名称            | 输入/输出 | 数据类型 | 数据格式     | 备注               |
 | --------------- | --------- | -------- | ------------ | ------------------ |
@@ -57,11 +57,11 @@ b) 算子参数说明：
 | pos_query_layer | 输入      | fp16     | (2s, n, d)   |                    |
 | relative_pos    | 输入      | int64    | (1,1,s,s)    |                    |
 | atten_mask      | 输入      | fp16     | (b, 1, s, s) |                    |
-| pos_attr_type   | 属性      | str      | N/A          | 'c2p', 'p2c', 'c2p|p2c' |
+| pos_attr_type   | 属性      | str      | N/A          | 'c2p', 'p2c', 'c2p\|p2c' |
 | score_scale     | 属性      | float    | N/A          |                    |
-| attn_outpus     | 输出      | fp16     | (b,n,s,d)    |                    |
-| attn_probs      | 输出      | fp16     | (b,n,s,s)    |                    |
-| attn_weights    | 输出      | fp16     | (b,n,s,s)    |                    |
+| atten_outputs     | 输出      | fp16     | (b,n,s,d)    |                    |
+| atten_probs      | 输出      | fp16     | (b,n,s,s)    |                    |
+| atten_weights    | 输出      | fp16     | (b,n,s,s)    |                    |
 
 ps: 
 
