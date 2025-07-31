@@ -38,10 +38,6 @@ enum class InitializerType : uint8_t {
     UNIFORM = 2,
 };
 
-// const char* const FVK_STATE_STR[] = {
-//     "FKV_EXIST",    "FKV_NOT_EXIST", "FKV_KEY_CONFLICT", "FKV_BEFORE_PUT_FUNC_FAIL", "FKV_BEFORE_REMOVE_FUNC_FAIL",
-//     "FKV_NO_SPACE", "FKV_FAIL"};
-
 enum class BeforePutFuncState {
     BEFORE_SUCCESS,
     BEFORE_NO_SPACE,

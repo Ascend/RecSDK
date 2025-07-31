@@ -1,20 +1,13 @@
-/* Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+/*
+ * Copyright (c) huawei Platforms, Inc. and affiliates.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-        http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-        limitations under the License.
-==============================================================================*/
-
-#ifndef  MXREC_LOGGER_H
-#define  MXREC_LOGGER_H
+#ifndef  EMBEDDING_CACHE_LOGGER_H
+#define  EMBEDDING_CACHE_LOGGER_H
 
 #include <cstdio>
 #include <ctime>
@@ -26,7 +19,7 @@ See the License for the specific language governing permissions and
 #include <queue>
 
 
-namespace MxRec {
+namespace Embcache {
 
 constexpr int YEAR_BASE = 1900;
 constexpr size_t DELIM_LEN = 2;
@@ -110,21 +103,21 @@ private:
     static int rank;
 };
 
-#define LOG_TRACE(args...) if (MxRec::Logger::GetLevel() <= MxRec::Logger::TRACE) \
-MxRec::Logger::Log(__FILE__, __LINE__, MxRec::Logger::TRACE, args)
+#define LOG_TRACE(args...) if (Embcache::Logger::GetLevel() <= Embcache::Logger::TRACE) \
+Embcache::Logger::Log(__FILE__, __LINE__, Embcache::Logger::TRACE, args)
 
-#define LOG_DEBUG(args...) if (MxRec::Logger::GetLevel() <= MxRec::Logger::DEBUG) \
-MxRec::Logger::Log(__FILE__, __LINE__, MxRec::Logger::DEBUG, args)
+#define LOG_DEBUG(args...) if (Embcache::Logger::GetLevel() <= Embcache::Logger::DEBUG) \
+Embcache::Logger::Log(__FILE__, __LINE__, Embcache::Logger::DEBUG, args)
 
-#define LOG_INFO(args...) if (MxRec::Logger::GetLevel() <= MxRec::Logger::INFO) \
-MxRec::Logger::Log(__FILE__, __LINE__, MxRec::Logger::INFO, args)
+#define LOG_INFO(args...) if (Embcache::Logger::GetLevel() <= Embcache::Logger::INFO) \
+Embcache::Logger::Log(__FILE__, __LINE__, Embcache::Logger::INFO, args)
 
-#define LOG_WARN(args...) if (MxRec::Logger::GetLevel() <= MxRec::Logger::WARN) \
-MxRec::Logger::Log(__FILE__, __LINE__, MxRec::Logger::WARN, args)
+#define LOG_WARN(args...) if (Embcache::Logger::GetLevel() <= Embcache::Logger::WARN) \
+Embcache::Logger::Log(__FILE__, __LINE__, Embcache::Logger::WARN, args)
 
-#define LOG_ERROR(args...) if (MxRec::Logger::GetLevel() <= MxRec::Logger::ERROR) \
-MxRec::Logger::Log(__FILE__, __LINE__, MxRec::Logger::ERROR, args)
+#define LOG_ERROR(args...) if (Embcache::Logger::GetLevel() <= Embcache::Logger::ERROR) \
+Embcache::Logger::Log(__FILE__, __LINE__, Embcache::Logger::ERROR, args)
 
 }
 
-#endif  // MXREC_LOGGER_H
+#endif  // EMBEDDING_CACHE_LOGGER_H

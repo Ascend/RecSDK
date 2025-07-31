@@ -16,7 +16,6 @@
 
 #include "common/common.h"
 #include "emb_table/emb_table.h"
-// #include "feature_filter/feature_filter.h"
 #include "swap_manager.h"
 #include "utils/async_task.h"
 #include "utils/thread_pool.h"
@@ -109,24 +108,6 @@ public:
                                          const std::vector<at::Tensor>& swapoutOptims,
                                          const std::vector<int32_t>& tableIndices);
 
-    /*
-    std::tuple<at::Tensor, std::vector<at::Tensor>> GetDeviceSwapOutData(SwapInfo& swapInfo,
-        const at::Tensor& swapoutOffs, const std::vector<at::Tensor>& weightsDevs,
-        const std::vector<at::Tensor>& momentum1Devs, const std::vector<at::Tensor>& momentum2Devs,
-        const std::vector<int32_t>& tableIndices);
-
-    void SwapInEmbAndOptimizer(SwapInfo& swapInfo, const SwapinTensor& swapInTensor,
-        const at::Tensor& swapInOffsTensor, std::vector<at::Tensor>& weightsDevs,
-        std::vector<at::Tensor>& momentum1Devs, std::vector<at::Tensor>& momentum2Devs,
-        const std::vector<int32_t>& tableIndices);
-
-    void Save(const std::string path, const int rank);
-
-    void Embedding2Host(const at::Tensor& weightsDev, const std::vector<at::Tensor>& momentumDev);
-
-    void Load(const std::string& path, int rank);
-    */
-
     void EvictFeatures();
 
     void RecordTimestamp(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey,
@@ -136,22 +117,6 @@ public:
                             int64_t tableIndex);
 
     void RecordEmbeddingUpdateTimes();
-
-    /**
-     * 读取指定文件。 示例：save_dir/sparse/table1/rank0/key/slice.data
-     * @tparam T 数据类型泛型
-     * @param filePath 示例：save_dir/sparse/table1/rank0
-     * @param dataOutputs 输出参数，读取到的数据集合
-     * @param loadItemName 读取哪一种类别文件，示例：key
-     * @param detailFileName 具体文件名称，示例：/slice.data
-     * @return code
-     */
-    // template <class T>
-    // static int32_t ReadFile(const std::string& filePath, std::vector<T>& dataOutputs, const std::string& loadItemName,
-    //                         const std::string& detailFileName = "/slice.data");
-    //
-    // static int32_t ReadFile(const std::string& filePath, std::vector<std::vector<float>>& embedding,
-    //                         const std::string& loadItemName, int32_t embDim);
 
 private:
     SwapInfo ComputeSwapInfo(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey,
@@ -164,24 +129,9 @@ private:
                          const std::vector<at::Tensor>& swapoutOptims, const std::vector<int32_t>& tableIndices);
 
     bool EnableFastHashMap();
-    /*
-    std::ofstream OpenFile(std::string path);
-    void WriteData(std::ofstream& file, const char* dataPtr, size_t bytes);
-    */
 
     bool NeedEvictEmbeddingTable();
     void RemoveEmbeddingTableInfo();
-    /*
-    void SaveFeatureAdmitAndEvictInfo(int32_t tableIndex, const std::string& filePrefix,
-                                      const std::vector<int64_t>& saveKeys);
-    void LoadFeatureAdmitAndEvictInfo(int32_t tableIndex, const std::string& filePrefix,
-                                      const std::vector<int64_t>& saveKeys);
-    std::string GetDevWeightsShape(const at::Tensor& weightsDev) const;
-    void WriteOptimizerAttributeFile(int32_t i, std::ofstream& fileMomentum1SliceAttr,
-                                     std::ofstream& fileMomentum2SliceAttr, size_t count);
-    void SaveFeatureCount(int32_t tableIndex, const std::string& filePrefix, const std::vector<int64_t>& saveKeys);
-    void SaveFeatureTimestamp(int32_t tableIndex, const std::string& filePrefix);
-    */
 
 private:
     int32_t embNum_;
@@ -189,7 +139,6 @@ private:
     std::vector<EmbConfig> embConfigs_;
     std::vector<SwapManager> swapManagers_;
     std::vector<std::unique_ptr<EmbTable>> embeddingTables_;
-    // std::vector<FeatureFilter> featureFilters;
 
     uint64_t swapCount_ = 0;       // ComputeSwapInfo 执行次数
     uint64_t embUpdateCount_ = 0;  // EmbeddingUpdate 执行次数
