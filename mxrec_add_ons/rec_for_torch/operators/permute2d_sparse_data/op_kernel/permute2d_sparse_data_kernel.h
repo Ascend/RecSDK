@@ -55,6 +55,7 @@ public:
         lengthsT = tilingData.lengthsT;
         lengthsB = tilingData.lengthsB;
         valuesDim = tilingData.valuesDim;
+        valuesOutDim = tilingData.valuesOutDim;
 
         totalBatch = tilingData.totalBatch;
         baseBatchLen = tilingData.baseBatchLen;
@@ -74,7 +75,7 @@ public:
         outWeights = args.out_weights;
         workspace = args.workspace;
 
-        // Calculate current core's tOffset.
+        // 计算分核
         if (GetBlockIdx() < tailSplitIndex) {
             lenOfThisCore = baseBatchLen + 1;
             tOffsetOfThisCore = GetBlockIdx() * (baseBatchLen + 1);
@@ -86,15 +87,17 @@ public:
         permuteGT.SetGlobalBuffer(permute, permuteDim0 * sizeof(int32_t));
         lengthsGT.SetGlobalBuffer(lengths, lengthsT * lengthsB * sizeof(LType));
         valuesGT.SetGlobalBuffer(values, valuesDim * sizeof(VType));
+        // 使用workspace共享lengths.sum(dim=1)和offsets计算结果, 因此为两份内存
+        offsetGT.SetGlobalBuffer((__gm__ int64_t*)workspace, 2 * (lengthsT + 1) * sizeof(int64_t));
 
         outLengthsGT.SetGlobalBuffer(outLengths, lengthsT * lengthsB * sizeof(LType));
-        outIndicesGT.SetGlobalBuffer(outIndices, valuesDim * sizeof(VType));
+        outIndicesGT.SetGlobalBuffer(outIndices, valuesOutDim * sizeof(VType));
 
         if (enableWeights) {
             weightsGT.SetGlobalBuffer(weights, valuesDim * sizeof(float));
-            outWeightsGT.SetGlobalBuffer(outWeights, valuesDim * sizeof(float));
+            outWeightsGT.SetGlobalBuffer(outWeights, valuesOutDim * sizeof(float));
         }
-        // Init pipe
+
         pipe.InitBuffer(inQueueX, USE_QUEUE_NUM, ubCanUsed / USE_QUEUE_NUM);
         blockLen = ubCanUsed / USE_QUEUE_NUM;
 
@@ -137,37 +140,61 @@ public:
         }
     }
 
+    __aicore__ void CalculateLengthSum()
+    {
+        // 使用ub保存计算的行总长度, 以避免Scalar单元写GM数据时产生Cache一致性问题
+        LocalTensor<int64_t> lengthsUb = inQueueX.AllocTensor<int64_t> ();
+        __gm__ LType* lengthsPtr = (__gm__ LType*)lengths;
+        // 计算分核信息, 当前core计算lengths[T, B]中的哪几行之和
+        int64_t rows;
+        int64_t start;
+        int64_t tailIndex = (lengthsT % coreNum);
+
+        if (GetBlockIdx() < tailIndex) {
+            rows = lengthsT / coreNum + 1;
+            start = GetBlockIdx() * rows;
+        } else {
+            rows = lengthsT / coreNum;
+            start = tailIndex * (rows + 1) + (GetBlockIdx() - tailIndex) * rows;
+        }
+        // 暂不考虑lengthsT过长情况, 默认UB可以装下lengthsT * sizeof(int64_t)
+        for (int64_t i = start; i < start + rows; i++) {
+            int64_t lineSum = 0;
+            int64_t offset = i * lengthsB;
+            for (int64_t j = 0; j < lengthsB; j++) {
+                lineSum += *(lengthsPtr + offset + j);
+            }
+            lengthsUb.SetValue(i - start, lineSum);
+        }
+        CpLocal2Gm(offsetGT[start], lengthsUb, rows);
+        pipe_barrier(PIPE_ALL);
+        SyncAll();
+
+        inQueueX.FreeTensor(lengthsUb);
+    }
+
     __aicore__ void CalculateOffsets()
     {
-        offsetPtr = (__gm__ int64_t*)workspace;
-        GlobalTensor<int64_t> offsetGT;
-        offsetGT.SetGlobalBuffer((__gm__ int64_t*)offsetPtr, (lengthsT + 1) * UB_ALIGN * UB_ALIGN);
-        __gm__ LType* lengthsPtr = (__gm__ LType*)lengths;
-        for (int64_t i = tOffsetOfThisCore; i < lenOfThisCore + tOffsetOfThisCore; i++) {
-            int64_t offsetT = 0;
-            for (int64_t j = 0; j < lengthsB; j++) {
-                offsetT += *(lengthsPtr  + i * lengthsB + j);
-            }
-            offsetGT.SetValue(i * UB_ALIGN, offsetT);
-        }
-
+        totalOffsetPtr = (__gm__ int64_t*)workspace + (lengthsT + 1);  // 第一段内存保存lengths.sum值
+        *(totalOffsetPtr) = 0;
         AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::ENTIRE_DATA_CACHE,
-                AscendC::DcciDst::CACHELINE_OUT>(offsetGT);
+                                          AscendC::DcciDst::CACHELINE_OUT>(offsetGT);
+
+        for (int64_t i = 1; i < lengthsT + 1; i++) {
+            *(totalOffsetPtr + i) = *(totalOffsetPtr + i - 1) + offsetGT.GetValue(i - 1);
+        }
     }
 
     __aicore__ void PermuteLengths()
     {
         permutePtr = (__gm__ int32_t*)permute;
+        int64_t totalLen = lengthsB;
+
         for (int64_t i = tOffsetOfThisCore; i < lenOfThisCore + tOffsetOfThisCore; i++) {
             int64_t ToffsetThisIndex = *(permutePtr + i);
-            int64_t ToffsetNextIndex = *(permutePtr + i) + 1;
-
             int64_t lengthsStartIndex = ToffsetThisIndex * lengthsB * sizeof(LType);
-            int64_t lengthsEndIndex = ToffsetNextIndex * lengthsB * sizeof(LType);
-
             int64_t outStartIndex = i * lengthsB * sizeof(LType);
-            int64_t outEndIndex = (i + 1) * lengthsB * sizeof(LType);
-            int64_t totalLen = lengthsEndIndex - lengthsStartIndex;
+
             int64_t remainLen = totalLen;
             while (remainLen > 0) {
                 int64_t thisLen = blockLen;
@@ -196,7 +223,10 @@ public:
         int64_t currentT = 0;
         for (int64_t i = 0; i < permuteDim0; i++) {
             currentT = *(permutePtr + i);
-            int64_t tLen = *(totalOffsetPtr + (currentT + 1) * UB_ALIGN) - *(totalOffsetPtr + currentT * UB_ALIGN);
+            int64_t startIndex = *(totalOffsetPtr + currentT);
+            int64_t endIndex = *(totalOffsetPtr + currentT + 1);
+
+            int64_t tLen = endIndex - startIndex;
             int64_t baseCoreLen = tLen / coreNum;
             int64_t tailLen = tLen % coreNum;
 
@@ -209,13 +239,10 @@ public:
                 offsetOfThisCore = tailLen * (baseCoreLen + 1) + (GetBlockIdx() - tailLen) * baseCoreLen;
             }
 
-            int64_t startIndex = *(totalOffsetPtr + currentT * UB_ALIGN);
-            int64_t endIndex = *(totalOffsetPtr + (currentT + 1) * UB_ALIGN);
-
             int64_t valuesStartIndex = (startIndex + offsetOfThisCore) * datasize;
             int64_t outValueStartIndex = (outValueOffset + offsetOfThisCore) * datasize;
 
-            int64_t remainLen =  valueLenOfThisCore * datasize;
+            int64_t remainLen = valueLenOfThisCore * datasize;
             while (remainLen > 0) {
                 int64_t thisLen = blockLen;
                 if (remainLen < blockLen) {
@@ -240,21 +267,8 @@ public:
 
     __aicore__ void Compute()
     {
+        CalculateLengthSum();
         CalculateOffsets();
-        pipe_barrier(PIPE_ALL);
-        SyncAll();
-        totalOffsetPtr = (__gm__ int64_t*)workspace + (lengthsT + 1) * UB_ALIGN +
-            GetBlockIdx() * (lengthsT + 1) * UB_ALIGN;
-        *(totalOffsetPtr) = 0;
-        GlobalTensor<int64_t> offsetGt;
-        offsetGt.SetGlobalBuffer((__gm__ int64_t*)offsetPtr, (lengthsT + 1) * UB_ALIGN * UB_ALIGN);
-        AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::ENTIRE_DATA_CACHE,
-                AscendC::DcciDst::CACHELINE_OUT>(offsetGt);
-
-        for (int64_t i = 1; i < lengthsT + 1; i++) {
-            *(totalOffsetPtr + i * UB_ALIGN) = *(totalOffsetPtr + (i - 1) * UB_ALIGN) +
-                offsetGt.GetValue((i - 1) * UB_ALIGN);
-        }
         PermuteLengths();
         PermuteData(outIndicesGT, valuesGT, sizeof(VType));
         if (enableWeights) {
@@ -278,6 +292,7 @@ private:
     int64_t lengthsT;
     int64_t lengthsB;
     int64_t valuesDim;
+    int64_t valuesOutDim;
     bool enableWeights;
 
     // Tiling
@@ -308,6 +323,7 @@ private:
     GlobalTensor<uint8_t> lengthsGT;
     GlobalTensor<uint8_t> valuesGT;
     GlobalTensor<uint8_t> weightsGT;
+    GlobalTensor<int64_t> offsetGT;
     GlobalTensor<uint8_t> outLengthsGT;
     GlobalTensor<uint8_t> outIndicesGT;
     GlobalTensor<uint8_t> outWeightsGT;

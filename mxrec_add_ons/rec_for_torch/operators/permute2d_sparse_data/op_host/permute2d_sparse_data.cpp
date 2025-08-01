@@ -37,6 +37,7 @@ namespace optiling {
     {
         Permute2dSparseDataTilingData tiling;
         OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
+        OPS_LOG_E_IF_NULL("context->GetAttrs", context->GetAttrs(), return ge::GRAPH_FAILED);
 
         bool enableWeights = (context->GetOptionalInputTensor(WEIGHTS_INDEX) != nullptr);
         tiling.set_enableWeights(enableWeights);
@@ -70,14 +71,16 @@ namespace optiling {
         }
 
         // set data dim
-        int64_t permuteDim0 = permuteShape.GetDim(0);
+        int64_t permuteDim0 = permuteShape.GetDim(0);  // permute[T]
         tiling.set_permuteDim0(permuteDim0);
-        int64_t lengthsT = permuteDim0;
+        int64_t lengthsT = lengthsShape.GetDim(0);  // lengths[T + T', B]
         tiling.set_lengthsT(lengthsT);
-        int64_t lengthsB = lengthsShape.GetDim(1);
+        int64_t lengthsB = lengthsShape.GetDim(1);  // lengths[T + T', B]
         tiling.set_lengthsB(lengthsB);
-        int64_t valuesDim = valuesShape.GetDim(0);
+        int64_t valuesDim = valuesShape.GetDim(0);  // values[L]
         tiling.set_valuesDim(valuesDim);
+        int64_t valuesOutDim = *context->GetAttrs()->GetInt(0);
+        tiling.set_valuesOutDim(valuesOutDim);
 
         // set coreNUm
         size_t coreNum = ascendPlatform.GetCoreNumAiv();
@@ -103,7 +106,9 @@ namespace optiling {
         // apply workspace
         size_t* currentWorkspace = context->GetWorkspaceSizes(1);
         size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
-        currentWorkspace[0] = systemWorkspacesSize + (lengthsT + 1) * GM_ALIGN + (lengthsT + 1) * GM_ALIGN * coreNum;
+        // 使用workspace共享lengths.sum(dim=1)和offsets计算结果, 因此为两份内存
+        size_t userWorkspacesSize = 2 * (lengthsT + 1) * sizeof(int64_t);
+        currentWorkspace[0] = systemWorkspacesSize + userWorkspacesSize;
 
         context->SetBlockDim(coreNum);
 
