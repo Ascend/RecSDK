@@ -43,8 +43,7 @@ ComputeSwapRet SwapManager::ComputeSwapInfo(const std::vector<int64_t>& keys)
     // 每个线程一个本地 missedIdx 缓冲
     std::vector<std::vector<int64_t>> missed_chunks(at::get_num_threads());
     at::parallel_for(
-        0, keys.size(), std::ceil(keys.size() * 1.0 / at::get_num_threads()),
-        [&](int64_t begin, int64_t end) {
+        0, keys.size(), std::ceil(keys.size() * 1.0 / at::get_num_threads()), [&](int64_t begin, int64_t end) {
             const int tid = at::get_thread_num();
             auto& local_missed = missed_chunks[tid];
             local_missed.reserve(end - begin);
