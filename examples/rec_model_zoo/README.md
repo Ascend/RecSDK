@@ -44,7 +44,7 @@ Profiling方法参考自[CANN官网](https://www.hiascend.com/document/detail/zh
 1. 添加环境变量:
     ```shell
     export PROFILING_MODE=true
-    export PROFILING_OPTIONS='{"output":"/home/ma-user/work/ydz/EffBench/feature_interaction/profiling/train","training_trace":"on","task_trace":"on","aicpu":"on","fp_point":"","bp_point":"","aic_metrics":"PipeUtilization"}'
+    export PROFILING_OPTIONS='{"output":"/home/ma-user/work/EffBench/feature_interaction/profiling/train","training_trace":"on","task_trace":"on","aicpu":"on","fp_point":"","bp_point":"","aic_metrics":"PipeUtilization"}'
     ```
 
 2. 若profiling模型的训练过程，运行`profiling_train.sh`脚本，以特征交互模型为例:
@@ -59,7 +59,7 @@ Profiling方法参考自[CANN官网](https://www.hiascend.com/document/detail/zh
     ```shell
     export MSPORF_TOOL=/usr/local/Ascend/ascend-toolkit/latest/tools/profiler/profiler_tool/analysis/msprof/msprof.py
     
-    python $MSPORF_TOOL import -dir <profile的output路径> (比如：/home/ma-user/work/ydz/EffBench/feature_interaction/profiling/train/PROF_000001_20241116222226387_LMAKGCJJFNJORPKC)
+    python $MSPORF_TOOL import -dir <profile的output路径> (比如：/home/ma-user/work/EffBench/feature_interaction/profiling/train/PROF_000001_20241116222226387_LMAKGCJJFNJORPKC)
     ```
 
 4. 查询性能数据信息，找到最大的`Iteration Number`对应的`Model ID`：
