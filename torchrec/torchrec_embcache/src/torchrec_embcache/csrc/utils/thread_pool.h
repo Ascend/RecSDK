@@ -19,7 +19,9 @@
 #include <stdexcept>
 #include <thread>
 #include <vector>
+
 #include "common/constants.h"
+#include "utils/logger.h"
 
 namespace Embcache {
 
@@ -89,19 +91,28 @@ private:
     std::atomic<bool> stopped_;
 };
 
-inline uint64_t GetEmbMemoryPoolThreadNum()
+inline uint64_t GetEmbMemoryPoolThreadPoolThreadNum()
 {
     uint64_t embMemoryPoolThreadNum = EmbMemPoolConfigConstants::refillThreadNum;
     char* threadNumStr = getenv("EMB_MEMORY_POOL_THREAD_NUM");
     if (threadNumStr) {
-        embMemoryPoolThreadNum = atoi(threadNumStr);
+        char* endptr = nullptr;
+        embMemoryPoolThreadNum = strtoul(threadNumStr, &endptr, 10);
+        if (endptr == threadNumStr || *endptr != '\0') {
+            LOG_ERROR("env EMB_MEMORY_POOL_THREAD_NUM is not a valid number");
+            throw std::runtime_error("env EMB_MEMORY_POOL_THREAD_NUM is not a valid number");
+        }
+        if (embMemoryPoolThreadNum == 0) {
+            LOG_ERROR("env EMB_MEMORY_POOL_THREAD_NUM = 0, it is invalid");
+            throw std::runtime_error("env EMB_MEMORY_POOL_THREAD_NUM is invalid");
+        }
     }
     return embMemoryPoolThreadNum;
 }
 
-inline ThreadPool& GetEmbMemoryPool()
+inline ThreadPool& GetEmbMemoryPoolThreadPool()
 {
-    static ThreadPool instance(GetEmbMemoryPoolThreadNum());
+    static ThreadPool instance(GetEmbMemoryPoolThreadPoolThreadNum());
     return instance;
 }
 

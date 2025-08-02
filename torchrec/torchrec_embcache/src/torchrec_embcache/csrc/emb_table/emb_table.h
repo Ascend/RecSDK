@@ -41,7 +41,6 @@ public:
     virtual void FindOrInsert(const std::vector<int64_t>& keys, float* outEmbs, std::vector<float*> outOptims) = 0;
     virtual void InsertOrAssign(const std::vector<int64_t>& keys, float* inEmbs, std::vector<float*> inOptims) = 0;
     virtual void RemoveEmbedding(const std::vector<int64_t>& keys) = 0;
-    virtual void ForEachKey(const std::function<void(const int64_t, const float*)>& callback) = 0;
 
 protected:
     EmbConfig config_;
@@ -57,6 +56,10 @@ public:
         std::lock_guard<std::mutex> lk(mtx_);
         auto embDim = config_.embDim;
         auto optimNum = config_.optimNum;
+        if (outOptims.size() != optimNum) {
+            LOG_ERROR("outOptims size {} is not equal to optimNum {}", outOptims.size(), optimNum);
+            throw std::runtime_error("outOptims size is not equal to optimNum");
+        }
         for (uint64_t i = 0; i < keys.size(); i++) {
             auto key = keys[i];
             auto it = table_.find(key);
@@ -68,19 +71,33 @@ public:
             auto& emb = it->second;
 
             size_t size = embDim * sizeof(float);
+            if (outEmbs == nullptr) {
+                LOG_ERROR("outEmbs is nullptr");
+                throw std::runtime_error("outEmbs is nullptr");
+            }
             auto rc = memcpy_s(outEmbs + i * embDim, size, emb.data(), size);
             if (rc != 0) {
                 LOG_ERROR("memcpy_s emb to outEmbs[{}] failed. ret: {}", i, rc);
                 throw std::runtime_error("memcpy_s emb to outEmbs failed.");
             }
+
             if (optimNum > 0) {
+                if (outOptims[0] == nullptr) {
+                    LOG_ERROR("outOptims[0] is nullptr");
+                    throw std::runtime_error("outOptims[0] is nullptr");
+                }
                 rc = memcpy_s(outOptims[0] + i * embDim, size, emb.data() + embDim, size);
                 if (rc != 0) {
                     LOG_ERROR("memcpy_s optim1 to outOptims[{}][0] failed. ret: {}", i, rc);
                     throw std::runtime_error("memcpy_s optim1 to outOptims[0] failed.");
                 }
             }
+
             if (optimNum > 1) {
+                if (outOptims[1] == nullptr) {
+                    LOG_ERROR("outOptims[1] is nullptr");
+                    throw std::runtime_error("outOptims[1] is nullptr");
+                }
                 rc = memcpy_s(outOptims[1] + i * embDim, size, emb.data() + optimNum * embDim, size);
                 if (rc != 0) {
                     LOG_ERROR("memcpy_s optim2 to outOptims[{}][1] failed. ret: {}", i, rc);
@@ -105,12 +122,21 @@ public:
             auto& emb = it->second;
 
             size_t size = embDim * sizeof(float);
+            if (inEmbs == nullptr) {
+                LOG_ERROR("inEmbs is nullptr");
+                throw std::runtime_error("inEmbs is nullptr");
+            }
             auto rc = memcpy_s(emb.data(), size, inEmbs + i * embDim, size);
             if (rc != 0) {
                 LOG_ERROR("memcpy_s emb[{}] to table failed. ret: {}", i, rc);
                 throw std::runtime_error("memcpy_s emb to table failed.");
             }
+
             if (optimNum > 0) {
+                if (inOptims[0] == nullptr) {
+                    LOG_ERROR("inOptims[0] is nullptr");
+                    throw std::runtime_error("inOptims[0] is nullptr");
+                }
                 rc = memcpy_s(emb.data() + embDim, size, inOptims[0] + i * embDim, size);
                 if (rc != 0) {
                     LOG_ERROR("memcpy_s optim1[{}] to table failed. ret: {}", i, rc);
@@ -119,6 +145,10 @@ public:
             }
 
             if (optimNum > 1) {
+                if (inOptims[1] == nullptr) {
+                    LOG_ERROR("inOptims[1] is nullptr");
+                    throw std::runtime_error("inOptims[1] is nullptr");
+                }
                 rc = memcpy_s(emb.data() + optimNum * embDim, size, inOptims[1] + i * embDim, size);
                 if (rc != 0) {
                     LOG_ERROR("memcpy_s optim2[{}] to table failed. ret: {}", i, rc);
@@ -133,15 +163,6 @@ public:
         std::lock_guard<std::mutex> lk(mtx_);
         for (auto key : keys) {
             table_.erase(key);
-        }
-    }
-
-    void ForEachKey(const std::function<void(const int64_t, const float*)>& callback) override
-    {
-        std::lock_guard<std::mutex> lk(mtx_);
-
-        for (const auto& [key, vec] : this->table_) {
-            callback(key, vec.data());
         }
     }
 
@@ -163,11 +184,21 @@ public:
         uint64_t fastHashMapReserveBucketNum = FAST_HASHMAP_RESERVE_BUCKET_NUM;
         char* fastHashMapReserveStr = getenv("FAST_HASHMAP_RESERVE_BUCKET_NUM");
         if (fastHashMapReserveStr) {
-            fastHashMapReserveBucketNum = atoi(fastHashMapReserveStr);
+            char* endptr = nullptr;
+            fastHashMapReserveBucketNum = strtoul(fastHashMapReserveStr, &endptr, 10);
+            if (endptr == fastHashMapReserveStr || *endptr != '\0') {
+                LOG_ERROR("env FAST_HASHMAP_RESERVE_BUCKET_NUM is not a valid number");
+                throw std::runtime_error("env FAST_HASHMAP_RESERVE_BUCKET_NUM is not a valid number");
+            }
         }
         fastHashMapPtr_->Init(fastHashMapReserveBucketNum);
         LOG_INFO("FAST_HASHMAP_RESERVE_BUCKET_NUM: {}", fastHashMapReserveBucketNum);
     }
+
+    EmbTableFastHashMap(const EmbTableFastHashMap&) = delete;
+    EmbTableFastHashMap& operator=(const EmbTableFastHashMap&) = delete;
+    EmbTableFastHashMap(EmbTableFastHashMap&&) = delete;
+    EmbTableFastHashMap& operator=(EmbTableFastHashMap&&) = delete;
 
     ~EmbTableFastHashMap() override
     {
@@ -203,20 +234,36 @@ public:
                     }
 
                     size_t size = embDim * sizeof(float);
-                    auto rc = memcpy_s(outEmbs + i * embDim, size, (float*)addrValue, size);
+                    if (outEmbs == nullptr) {
+                        LOG_ERROR("outEmbs is nullptr");
+                        throw std::runtime_error("outEmbs is nullptr");
+                    }
+                    auto rc = memcpy_s(outEmbs + i * embDim, size, reinterpret_cast<float*>(addrValue), size);
                     if (rc != 0) {
                         LOG_ERROR("memcpy_s emb[{}] to outEmbs failed. ret: {}", i, rc);
                         throw std::runtime_error("memcpy_s emb to outEmbs failed.");
                     }
+
                     if (optimNum > 0) {
-                        rc = memcpy_s(outOptims[0] + i * embDim, size, (float*)addrValue + embDim, size);
+                        if (outOptims[0] == nullptr) {
+                            LOG_ERROR("outOptims[0] is nullptr");
+                            throw std::runtime_error("outOptims[0] is nullptr");
+                        }
+                        rc = memcpy_s(outOptims[0] + i * embDim, size,
+                                      reinterpret_cast<float*>(addrValue) + embDim, size);
                         if (rc != 0) {
                             LOG_ERROR("memcpy_s optim1[{}] to outOptims[0] failed. ret: {}", i, rc);
                             throw std::runtime_error("memcpy_s optim1 to outOptims[0] failed.");
                         }
                     }
+
                     if (optimNum > 1) {
-                        rc = memcpy_s(outOptims[1] + i * embDim, size, (float*)addrValue + optimNum * embDim, size);
+                        if (outOptims[1] == nullptr) {
+                            LOG_ERROR("outOptims[1] is nullptr");
+                            throw std::runtime_error("outOptims[1] is nullptr");
+                        }
+                        rc = memcpy_s(outOptims[1] + i * embDim, size,
+                                      reinterpret_cast<float*>(addrValue) + optimNum * embDim, size);
                         if (rc != 0) {
                             LOG_ERROR("memcpy_s optim2[{}] to outOptims[1] failed. ret: {}", i, rc);
                             throw std::runtime_error("memcpy_s optim2 to outOptims[1] failed.");
@@ -268,7 +315,7 @@ public:
                         }
                     }
                     if (optimNum > 1) {
-                        rc = memcpy_s((float*)addrValue + embDim + embDim, size, inOptims[1] + i * embDim, size);
+                        rc = memcpy_s((float*)addrValue + optimNum * embDim, size, inOptims[1] + i * embDim, size);
                         if (rc != 0) {
                             LOG_ERROR("memcpy_s optim2[{}] to addrValue failed. ret: {}", i, rc);
                             throw std::runtime_error("memcpy_s optim2 to addrValue failed.");
@@ -289,13 +336,6 @@ public:
                 LOG_ERROR("remove embedding failed!");
                 throw std::runtime_error("remove embedding failed!");
             }
-        }
-    }
-
-    void ForEachKey(const std::function<void(const int64_t, const float*)>& callback) override
-    {
-        for (auto key : this->fastHashMapPtr_->Export()) {
-            callback(key.first, (float*)key.second);
         }
     }
 

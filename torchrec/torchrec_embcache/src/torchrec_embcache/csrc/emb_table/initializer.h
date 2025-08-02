@@ -110,6 +110,10 @@ public:
         RandomVPool& staticPool = staticPoolMap.find(cfg.embDim)->second;
         std::uniform_int_distribution<int> uDistribution(0, cfg.initializerRandomPoolSize - 1);
         int randIndex = uDistribution(engine);
+        if (embeddingAddr == nullptr) {
+            LOG_ERROR("embeddingAddr is nullptr");
+            throw std::runtime_error("embeddingAddr is nullptr");
+        }
         auto ret = memcpy_s(embeddingAddr, cfg.embDim * sizeof(float), staticPool[randIndex].data(),
                             cfg.embDim * sizeof(float));
         if (ret != 0) {

@@ -33,12 +33,6 @@ public:
         return true;
     }
 
-    uint64_t GetLength()
-    {
-        std::lock_guard<std::mutex> lk(mtx_);
-        return dataQueue_.size();
-    }
-
 private:
     std::mutex mtx_;
     std::queue<T> dataQueue_;

@@ -41,10 +41,19 @@ public:
         maxExpandSize_ = maxBufferSize_ * itemSize_;
         char* poolSizeStr = getenv("EMB_MEMORY_POOL_SIZE");
         if (poolSizeStr) {
-            embMemoryPoolSize_ = atoi(poolSizeStr);
+            char* endptr = nullptr;
+            embMemoryPoolSize_ = strtoul(poolSizeStr, &endptr, 10);
+            if (endptr == poolSizeStr || *endptr != '\0') {
+                LOG_ERROR("env EMB_MEMORY_POOL_SIZE is not a valid number");
+                throw std::runtime_error("env EMB_MEMORY_POOL_SIZE is not a valid number");
+            }
+            if (embMemoryPoolSize_ == 0) {
+                LOG_ERROR("env EMB_MEMORY_POOL_SIZE = 0, it is invalid");
+                throw std::runtime_error("env EMB_MEMORY_POOL_SIZE is invalid");
+            }
         }
         LOG_INFO("EmbMemoryPool embMemoryPoolSize: {}", embMemoryPoolSize_);
-        for (int i = 0; i < embMemoryPoolSize_; i++) {
+        for (uint64_t i = 0; i < embMemoryPoolSize_; i++) {
             Produce();
         }
     }
@@ -52,6 +61,10 @@ public:
     EmbMemoryPool(const EmbMemoryPool& pool) = delete;
 
     EmbMemoryPool& operator=(const EmbMemoryPool& pool) = delete;
+
+    EmbMemoryPool(EmbMemoryPool&& pool) = delete;
+
+    EmbMemoryPool& operator=(EmbMemoryPool&& pool) = delete;
 
     ~EmbMemoryPool()
     {

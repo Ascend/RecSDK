@@ -12,10 +12,10 @@ SCRIPT_PATH=$(cd $(dirname $0); pwd)
 function check_ret_fn()
 {
     if [ $? -ne 0 ]; then
-        echo "[FAIL] $@ failed"
+        echo "[FAIL] $@ failed" 1>&2
         exit 1
     else
-        echo "[SUCCESS] $@ successful"
+        echo "[SUCCESS] $@ successful" 
     fi 
 }
 
