@@ -61,7 +61,7 @@ public:
         Mul<float>(outLt[momentum1Offset], inputLt, inputLt, momentum1Offset);
     }
 
-    __aicore__ inline void CopyInNormal(int *updateArgs, int thisLen, int embedDim)
+    __aicore__ inline void CopyInNormal(int64_t *updateArgs, int thisLen, int embedDim)
     {
         __gm__ int64_t* weightsOffsetsPtr = (__gm__ int64_t*)weightsOffsets;
         LocalTensor<float> inputLt = queIn.template DeQue<float>();
@@ -74,7 +74,7 @@ public:
         queIn.template EnQue(inputLt);
     }
 
-    __aicore__ inline void CopyOutNormal(int *outOffset, int thisLen, int embedDim)
+    __aicore__ inline void CopyOutNormal(int64_t *outOffset, int thisLen, int embedDim)
     {
         LocalTensor<float> newOutLt = queOut.template DeQue<float>();
         SetAtomicAdd<float>();
@@ -114,7 +114,7 @@ public:
             CpGm2Local(inputLt, outGT[thisTableOffset * maxD], calcLen);
             queIn.template EnQue(inputLt);
             // CopyIn
-            int updateArgs[MAX_ARGS_PIPE_LEN];
+            int64_t updateArgs[MAX_ARGS_PIPE_LEN];
             CopyInNormal(updateArgs, thisLen, embedDim);
             // compute
             inputLt = queIn.template DeQue<float>();
