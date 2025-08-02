@@ -5,6 +5,7 @@ import math
 import json
 import argparse
 from collections import defaultdict
+from examples.util.path_validator import validate_save_path, validate_read_file
 
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -20,6 +21,7 @@ def parse_data(file_name, index_dict_in=None):
     index_dict_local = dict()
     flags = os.O_RDONLY
     modes = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH
+    validate_read_file(file_name)
     with os.fdopen(os.open(file_name, flags, modes), "r") as fp:
         rlines = fp.readlines()
         for line in rlines:
@@ -111,5 +113,6 @@ if __name__ == "__main__":
     json_str = json.dumps(index_dict, indent=4)
     flags = os.O_WRONLY | os.O_CREAT
     modes = stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
+    validate_save_path("keymap_train.json")
     with os.fdopen(os.open("keymap_train.json", flags, modes), "w") as json_file:
         json_file.write(json_str)

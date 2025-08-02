@@ -17,6 +17,7 @@
 
 import numpy as np
 
+from gen_data import data_generate
 from mx_rec.util.communication.hccl_ops import get_rank_id
 
 from demo_logger import logger
@@ -28,14 +29,7 @@ def get_data_generator(config, batch_number):
 
     def data_generator():
         if USE_DETERMINISTIC:
-            import pickle as pkl
-            try:
-                with open("data.dat", "rb") as f:
-                    data = pkl.load(f)
-            except FileNotFoundError as e:
-                raise ValueError(
-                    f"USE_DETERMINISTIC is true, user should use gen_data.py to generate offline data"
-                ) from e
+            data = data_generate()
             if len(data) < batch_number:
                 raise ValueError(
                     "Data not enough, make sure gen_data.py's parameter is same as model file,"

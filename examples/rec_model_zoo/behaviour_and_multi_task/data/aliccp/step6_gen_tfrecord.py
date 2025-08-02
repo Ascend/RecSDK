@@ -8,6 +8,7 @@ from multiprocessing import Pool
 
 import numpy as np
 import tensorflow as tf
+from examples.util.path_validator import validate_read_file
 
 
 parser = argparse.ArgumentParser(description='Parse arguments')
@@ -23,6 +24,7 @@ def chunkify_file(filepath, output_file_path, chunk_size):
     file_end = os.path.getsize(filepath)
     flags = os.O_RDONLY
     modes = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH
+    validate_read_file(filepath)
     fd = os.open(filepath, flags, modes)
     with os.fdopen(fd, "rb") as f:
         chunk_end = f.tell()
@@ -49,11 +51,13 @@ def gen_tfrecords(chunk_data):
     multi_hot_fields = set(["109_14", "110_14", "127_14", "150_14", "210", "853"])
     flags = os.O_RDONLY
     modes = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH
+    validate_read_file(max_length_file_path)
     max_length_file_info = json.load(os.fdopen(os.open(max_length_file_path, flags, modes), "r"))
 
     flags = os.O_RDONLY
     modes = stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
     tfrecord_out = tf.io.TFRecordWriter(out_file)
+    validate_read_file(input_file_path)
     with os.fdopen(os.open(input_file_path, flags, modes), "rb") as fi:
         fi.seek(chunk_start)
         chunk = fi.read(chunk_size)

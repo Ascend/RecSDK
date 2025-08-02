@@ -5,6 +5,7 @@ import math
 import json
 from multiprocessing import Process
 from collections import defaultdict
+from examples.util.path_validator import validate_save_path, validate_read_file
 
 parser = argparse.ArgumentParser(description='Parse arguments')
 parser.add_argument("--length", type=float, default=math.inf, help="max length for sequence fields")
@@ -15,6 +16,7 @@ args.length = math.inf if args.length == -1 else args.length
 
 
 def parse_data(file_name, write_name):
+    validate_read_file("./keymap_train_pruned.json")
     with open("./keymap_train_pruned.json") as f:
         map_dict: dict[str, list[int]] = json.load(f)
     map_map_dict: dict[str, dict[str, int]] = dict()
@@ -23,10 +25,12 @@ def parse_data(file_name, write_name):
     map_dict: dict[str, dict[str, int]] = map_map_dict
     flags = os.O_WRONLY | os.O_TRUNC | os.O_CREAT
     modes = stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
+    validate_save_path(write_name)
     with os.fdopen(os.open(write_name, flags, modes), "w") as write_file:
         line_count = 0
         flags = os.O_RDONLY
         modes = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH
+        validate_read_file(file_name)
         with os.fdopen(os.open(file_name, flags, modes), "r") as f:
             while True:
                 lines = f.readlines(int(1e9))
