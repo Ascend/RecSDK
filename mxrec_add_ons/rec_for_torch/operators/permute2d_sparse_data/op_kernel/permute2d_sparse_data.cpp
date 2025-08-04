@@ -24,6 +24,6 @@ extern "C" __global__ __aicore__ void permute2d_sparse_data(GM_ADDR permute, GM_
 {
     Permute2dSparseData::Args args{permute, lengths, values, weights, out_lengths,
         out_indices, out_weights, workspace, tiling};
-    Permute2dSparseData::Permute2dSparseDataKernel kernel(args);
+    Permute2dSparseData::Permute2dSparseDataKernel<DTYPE_LENGTHS, DTYPE_VALUES> kernel(args);
     kernel.Compute();
 }
