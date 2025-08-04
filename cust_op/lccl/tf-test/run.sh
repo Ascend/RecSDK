@@ -16,6 +16,14 @@
 local_rank_size=$1
 py=$2
 
+case "$py" in
+    all2all.py|all2all_uss.py|gather_all2all.py)
+        ;;
+    *)
+        echo "invalid py file '$py'"
+        exit 1
+        ;;
+esac
 rm -rf /root/atc_data/
 rm -rf /root/ascend/*
 rm -rf kernel_meta_*

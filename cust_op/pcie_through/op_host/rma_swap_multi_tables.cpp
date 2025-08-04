@@ -50,6 +50,10 @@ namespace optiling {
             return ge::GRAPH_FAILED;
         }
         auto tableNumAttr = attrs->GetInt(0);
+        if (tableNumAttr == nullptr) {
+            LOG_ERROR("Table get tableNumAttr is null");
+            return ge::GRAPH_FAILED;
+        }
         int tableNum = (int)(*tableNumAttr);
         if (tableNum <= 0) {
             LOG_ERROR("Table num: %d is invalid.", tableNum);
@@ -57,6 +61,10 @@ namespace optiling {
         }
         tiling.set_tableNum(tableNum);
         auto gmemAttrIn = attrs->GetStr(1);
+        if (gmemAttrIn == nullptr) {
+            LOG_ERROR("Table get gmemAttrIn is null");
+            return ge::GRAPH_FAILED;
+        }
         int32_t *shmSwapIn = (int32_t*)(std::stoul(gmemAttrIn));
         if (shmSwapIn == nullptr) {
             LOG_ERROR("Table get shmSwapIn is null");
@@ -64,6 +72,10 @@ namespace optiling {
         }
         tiling.set_shmSwapIn((uint64_t)shmSwapIn);
         auto gmemAttrOut = attrs->GetStr(2);
+        if (gmemAttrOut == nullptr) {
+            LOG_ERROR("Table get gmemAttrOut is null");
+            return ge::GRAPH_FAILED;
+        }
         int32_t *shmSwapOut = (int32_t *)(std::stoul(gmemAttrOut));
         if (shmSwapOut == nullptr) {
             LOG_ERROR("Table get shmSwapOut is null");
