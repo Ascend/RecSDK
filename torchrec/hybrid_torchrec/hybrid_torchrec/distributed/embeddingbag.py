@@ -969,8 +969,10 @@ def _apply_mean_pooling(
     """
     with record_function("## ebc apply mean pooling ##"):
         _keyed_tensor_value = keyed_tensor.values().clone()
+        if (isinstance(divisor, torch.Tensor)):
+            divisor = divisor.to(_keyed_tensor_value.device, non_blocking=True)
         mean_pooled_values = (
-            _keyed_tensor_value.to("cpu") / divisor
+            _keyed_tensor_value / divisor
         )  # [batch size, num_features * embedding dim]
         return KeyedTensor(
             keys=keyed_tensor.keys(),

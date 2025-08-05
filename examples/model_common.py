@@ -32,6 +32,8 @@ from mx_rec.core.asc.helper import FeatureSpec, get_asc_insert_func
 from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.util.initialize import ConfigInitializer
 
+from examples.util.path_validator import validate_read_file
+
 MODEL_NAME = None
 SSD_DATA_PATH = ["ssd_data"]
 SHUFFLE_SEED = 128
@@ -349,6 +351,9 @@ def make_batch_and_iterator(config, feature_spec_list, is_training, dump_graph, 
     else:
         files_list = glob(os.path.join(config.data_path, config.test_file_pattern) + '/*.tfrecord')
         device_files = files_list
+
+    for check_file in files_list:
+        validate_read_file(check_file)
 
     dataset = tf.data.TFRecordDataset(files_list, num_parallel_reads=num_parallel)
     dataset = dataset.shard(config.rank_size, config.rank_id)

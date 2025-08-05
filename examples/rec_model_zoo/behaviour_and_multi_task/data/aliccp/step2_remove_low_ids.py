@@ -3,6 +3,7 @@ import os
 import stat
 import argparse
 import math
+from examples.util.path_validator import validate_save_path, validate_read_file
 
 parser = argparse.ArgumentParser(description='Parse arguments')
 parser.add_argument("--length", type=float, default=math.inf, help="max length for sequence fields")
@@ -12,6 +13,7 @@ args = parser.parse_args()
 args.length = math.inf if args.length == -1 else args.length
 flags = os.O_RDONLY
 modes = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH
+validate_read_file("keymap_train.json")
 with os.fdopen(os.open("keymap_train.json", flags, modes), "r") as fp:
     obj = json.load(fp)
 new_dict = dict()
@@ -27,6 +29,7 @@ for key in obj.keys():
 json_str = json.dumps(new_dict, indent=4, sort_keys=True)
 flags = os.O_WRONLY | os.O_CREAT
 modes = stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
+validate_save_path("keymap_train_pruned.json")
 with os.fdopen(os.open("keymap_train_pruned.json", flags, modes), "w") as json_file:
     json_file.write(json_str)
 
@@ -37,5 +40,6 @@ for key in obj.keys():
     modes = stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
     voca_filename = "vocab_" + key
     voca_path = os.path.join("./aliccp_out/vocab", key)
+    validate_save_path(voca_path)
     with os.fdopen(os.open(voca_path, flags, modes), "w") as fp:
         fp.writelines([f"{val}\n" for val in new_dict[key]])

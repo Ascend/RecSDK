@@ -26,7 +26,7 @@ import tensorflow as tf
 import numpy as np
 
 import common
-from common import generate_upper_dir, get_attribute_and_data_file
+from common import generate_upper_dir, get_attribute_and_data_file, validate_read_file
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -130,9 +130,11 @@ class ModelConverter:
     def _get_embedding_array(self, sparse_file_path, table_name):
         upper_dir = generate_upper_dir(sparse_file_path, hbm_prefix_list, table_name, "embedding")
         attribute_data_dir, target_data_dir = get_attribute_and_data_file(upper_dir)
+        validate_read_file(attribute_data_dir)
         with tf.io.gfile.GFile(attribute_data_dir, "r") as fin:
             emb_attributes = json.load(fin)
 
+        validate_read_file(target_data_dir)
         with tf.io.gfile.GFile(target_data_dir, "rb") as fin:
             emb_data = fin.read()
             emb_data = np.fromstring(emb_data, dtype=emb_attributes.pop(DataAttr.DARATYPE.value))

@@ -14,6 +14,7 @@
 
 
 import os
+import sys
 import stat  
 import shutil
 import argparse
@@ -23,6 +24,10 @@ from typing import Dict, List, Optional
 import pandas as pd
 import numpy as np
 import tensorflow as tf
+
+# Temporarily add root project path to ENV
+sys.path.append(os.getcwd() + '/../../')
+from examples.util.path_validator import validate_read_file, validate_save_path
 
 # All column names of census dataset
 COLUMN_NAMES = [
@@ -108,10 +113,12 @@ def get_fea_map(fea_map_path: str = None, split_file_list: List = None) -> Dict[
         fea_map_path = os.path.join(os.path.dirname(split_file_list[0]), "fea_map.pkl")
     if os.path.exists(fea_map_path) and fea_map_path[-4:] == 'json':
         with open(fea_map_path, 'rb') as f:
+            validate_read_file(fea_map_path)
             fea_map = json.load(f)
         return fea_map
     fea_map = {}
     for file_open in split_file_list:
+        validate_read_file(file_open)
         fea_dataframe = pd.read_csv(file_open, names=COLUMN_NAMES, header=None)
         fea_unique_dataframe = dataframe_column_unique(fea_dataframe)
         
@@ -121,14 +128,6 @@ def get_fea_map(fea_map_path: str = None, split_file_list: List = None) -> Dict[
                 fea_map.setdefault(fea_column, {})
                 if fea_map.get(fea_column).get(fea_value) is None:
                     fea_map.get(fea_column).update({fea_value: len(fea_map.get(fea_column))})
-            
-    fea_map_path = os.path.join(os.path.dirname(split_file_list[0]), "fea_map.pkl")
-
-    modes = 0o640
-    flags = os.O_WRONLY | os.O_TRUNC | os.O_CREAT
-    with os.fdopen(os.open(fea_map_path, flags, modes), 'w') as fd:
-        json.dump(fea_map, fd)
-
     return fea_map
 
 
@@ -184,6 +183,7 @@ if __name__ == '__main__':
     if os.path.exists(output_path):
         shutil.rmtree(output_path)
     os.makedirs(output_path, exist_ok=True)
+    validate_save_path(output_path)
 
     # get txt_list
     file_path_dict = {'train': train_data_path, 'test': test_data_path}
@@ -193,6 +193,7 @@ if __name__ == '__main__':
     for class_usage, file_path in file_path_dict.items():
 
         # read data
+        validate_read_file(file_path)
         data_df = pd.read_csv(file_path, sep=',', header=None, names=COLUMN_NAMES)
 
         # data processing

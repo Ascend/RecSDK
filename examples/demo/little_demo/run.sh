@@ -31,14 +31,14 @@ else
   exit 1
 fi
 
-# 检查输入的python文件是否合法
-if [[ $py =~ ^[a-z0-9_]+\.py$ ]]; then
-  echo "File $py is a valid Python file"
-else
-  echo "File $py is not a Python file"
-  exit 1
-fi
-
+case "$py" in
+    main.py)
+        ;;
+    *)
+        echo "invalid py file '$py'"
+        exit 1
+        ;;
+esac
 # 判断IP地址是否有效
 if [ -n "$ip" ]; then
   if [[ $ip =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then

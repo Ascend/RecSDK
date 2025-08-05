@@ -3,6 +3,7 @@ import glob
 import json
 import stat
 from itertools import takewhile, repeat
+from examples.util.path_validator import validate_save_path, validate_read_file
 
 flags = {
     "input_dir": ".",
@@ -19,6 +20,7 @@ def iter_count(file_name):
     buffer = 1024 * 1024
     flags_ = os.O_RDONLY
     modes_ = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH
+    validate_read_file(file_name)
     fd = os.open(file_name, flags_, modes_)
     with os.fdopen(fd, "r") as f:
         buf_gen = takewhile(lambda x: x, (f.read(buffer) for _ in repeat(None)))
@@ -67,9 +69,12 @@ if __name__ == "__main__":
         filename = f"data_{key}_max_length.json"
         flags_key = os.O_RDONLY
         modes = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH
+        validate_read_file(filename)
         file_spec[f"{key}_max_length"] = json.load(os.fdopen(os.open(filename, flags_key, modes), "r"))
 
     flags_spec = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
     modes = stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
-    with os.fdopen(os.open(os.path.join(flags["output_dir"], "spec.json"), flags_spec, modes), "w") as fp:
+    spec_file = os.path.join(flags["output_dir"], "spec.json")
+    validate_save_path(spec_file)
+    with os.fdopen(os.open(spec_file, flags_spec, modes), "w") as fp:
         json.dump(file_spec, fp, indent=2)

@@ -444,31 +444,6 @@ FkvState MapperBase::Put(uint64_t key, uint64_t value)
     return FkvState::FKV_FAIL;
 }
 
-bool MapperBase::Find(const uint64_t key, uint64_t &value)
-{
-    if (HM_UNLIKELY(key == 0)) {
-        std::lock_guard<std::mutex> lock(zeroKeyMutex_);
-        if (zeroInside) {
-            value = zeroValue;
-            return true;
-        }
-        return false;
-    }
-    /* get bucket */
-    auto buck = &(mSubMaps[key % gSubMapCount][key % mBucketCount]);
-
-    /* loop all buckets linked */
-    while (buck != nullptr) {
-        if (buck->Find(key, value)) {
-            return true;
-        }
-
-        buck = buck->next;
-    }
-
-    return false;
-}
-
 FkvState MapperBase::FindAndDeleteIfFound(const uint64_t key, uint64_t &value,
     const std::function<BeforeRemoveFuncState(uint64_t)> &beforeRemoveFunc)
 {

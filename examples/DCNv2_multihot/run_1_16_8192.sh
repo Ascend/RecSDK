@@ -55,7 +55,11 @@ export HCCL_CONNECT_TIMEOUT=1200
 
 export DLRM_CRITEO_DATA_PATH=${dlrm_criteo_data_path}
 export PYTHONPATH=${mx_rec_package_path}:${so_path}:${fore_path}:${project_root}:$PYTHONPATH
-export LD_PRELOAD=/usr/lib64/libgomp.so.1:/usr/lib64/libstdc++.so.6
+if [ "$(uname -m)" == "aarch64" ]; then
+    export LD_PRELOAD=/usr/lib64/libgomp.so.1:/usr/lib64/libstdc++.so.6:/usr/local/python3.7.5/lib/python3.7/site-packages/scikit_learn.libs/libgomp-d22c30c5.so.1.0.0
+else
+    export LD_PRELOAD=/usr/lib64/libgomp.so.1:/usr/lib64/libstdc++.so.6
+fi
 export LD_LIBRARY_PATH=${so_path}:/usr/local/lib:$LD_LIBRARY_PATH
 
 export ASCEND_DEVICE_ID=0
@@ -70,7 +74,7 @@ export ENABLE_FORCE_V2_CONTROL=1
 apply_gradient_strategy="sum_same_id_gradients_and_apply"
 export APPLY_GRADIENTS_STRATEGY=${apply_gradient_strategy}
 
-export PROFILING_OPTIONS='{"output":"/home/yz/profiling",
+export PROFILING_OPTIONS='{"output":"./profiling",
                            "training_trace":"on",
                            "task_trace":"on",
                            "aicpu":"on",

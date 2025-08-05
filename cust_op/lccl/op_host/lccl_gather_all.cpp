@@ -30,6 +30,9 @@ namespace optiling {
         const auto* dim_ = attrs->GetAttrPointer<int64_t>(2);
         const auto* rank_ = attrs->GetAttrPointer<int64_t>(0);
         const auto* rank_Size_ = attrs->GetAttrPointer<int64_t>(1);
+        if (dim_ == nullptr || rank_ == nullptr || rank_Size_ == nullptr) {
+            return ge::GRAPH_FAILED;
+        }
         int dim = static_cast<int>(*dim_);
         int rank = static_cast<int>(*rank_);
         int rankSize = static_cast<int>(*rank_Size_);
@@ -62,6 +65,9 @@ namespace ge {
         gert::Shape* y_shape = context->GetOutputShape(0);
         const gert::Shape* rev_shape = context->GetInputShape(3);
         const gert::Shape* table_shape = context->GetInputShape(0);
+        if (y_shape == nullptr || rev_shape == nullptr || table_shape == nullptr) {
+            return ge::GRAPH_FAILED;
+        }
 
         y_shape->SetDim(0, rev_shape->GetDim(0));
         y_shape->SetDim(1, table_shape->GetDim(1));

@@ -8,7 +8,7 @@ export ASCEND_DEVICE_ID=0
 export RANK_ID=0
 export DEVICE_ID=0
 
-export PREPROCESSED_DATASET=/home/ma-user/work/ydz/EffBench/feature_interaction/data/criteo/
+export PREPROCESSED_DATASET=/home/ma-user/work/EffBench/feature_interaction/data/criteo/
 
 models=("lr" "fm" "widedeep" "ipnn" "opnn" "pnn" "deepfm" "autoint" "autoint_plus" "fibinet" "dcnv2")
 

@@ -15,6 +15,7 @@
 # limitations under the License.
 # ==============================================================================
 import itertools
+import random
 import sysconfig
 
 import pytest
@@ -30,12 +31,12 @@ PTYPE = [np.int32]
 LTYPE = [np.int64, np.int32]
 VTYPE = [np.int64, np.int32, np.float32]
 WTYPE = [None, np.float32]
-TYPE_LIST = itertools.product(PTYPE, LTYPE, VTYPE, WTYPE)
+TYPE_LIST = list(itertools.product(PTYPE, LTYPE, VTYPE, WTYPE))
 
 T = np.random.randint(2, 30, 4)
-EXTRA_T = [0, 3, 8]
+EXTRA_T = [True, False]
 B = [2048, 20480, 204800]
-SHAPE_LIST = itertools.product(T, EXTRA_T, B)
+SHAPE_LIST = list(itertools.product(T, EXTRA_T, B))
 
 
 def get_result(tensors: dict, device: str = 'cpu'):
@@ -63,13 +64,16 @@ def test_permute2d_sparse_data(types, shapes, enable_permuted_sum):
     """
     ptype, ltype, vtype, wtype = types
     t, extra_t, b = shapes
+    extra_t = random.randint(1, t) if extra_t else 0
 
-    permute = np.arange(t, dtype=ptype)
+    permute = np.arange(t + extra_t, dtype=ptype)
     np.random.shuffle(permute)
+    permute = permute[:t]
+
     lengths = np.ones((t + extra_t, b), dtype=ltype)
     values = np.arange(0, (t + extra_t) * b, dtype=vtype)
     weights = np.arange(0, (t + extra_t) * b, dtype=wtype) if wtype else None
-    permuted_lengths_sum = lengths[:t].sum() if enable_permuted_sum else None
+    permuted_lengths_sum = lengths[permute].sum() if enable_permuted_sum else None
     params = {
         'permute': permute,
         'lengths': lengths,

@@ -4,6 +4,7 @@ import json
 import os
 import stat
 from multiprocessing import Process
+from examples.util.path_validator import validate_save_path, validate_read_file
 
 parser = argparse.ArgumentParser(description='Parse arguments')
 parser.add_argument("--length", type=float, default=math.inf, help="max length for sequence fields")
@@ -26,12 +27,14 @@ def merge_data(common_file_name: str, skeleton_file_name: str, out_file_name: st
 
     flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
     modes = stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
+    validate_save_path(out_file_name)
     with os.fdopen(os.open(out_file_name, flags, modes), "w") as write_file:
         common_dict: dict[str, str] = dict()
         max_length_dict: dict[str, int] = dict(map(lambda s: [s, 0], fields_))
 
         flags = os.O_RDONLY
         modes = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH
+        validate_read_file(common_file_name)
         with os.fdopen(os.open(common_file_name, flags, modes), "r") as f:
             line_count = 0
             while True:
@@ -43,6 +46,7 @@ def merge_data(common_file_name: str, skeleton_file_name: str, out_file_name: st
                     cells = line.strip().split(",")
                     common_dict[cells[0]] = cells[1:]
 
+        validate_read_file(skeleton_file_name)
         with os.fdopen(os.open(skeleton_file_name, flags, modes), "r") as f:
             line_count = 0
             while True:
@@ -69,7 +73,9 @@ def merge_data(common_file_name: str, skeleton_file_name: str, out_file_name: st
                 write_file.writelines(lines_to_write)
     flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
     modes = stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
-    with os.fdopen(os.open(out_file_name.replace(".csv", "_max_length.json"), flags, modes), "w") as fp:
+    out_json_file_name = out_file_name.replace(".csv", "_max_length.json")
+    validate_save_path(out_json_file_name)
+    with os.fdopen(os.open(out_json_file_name, flags, modes), "w") as fp:
         json.dump(max_length_dict, fp, indent=4)
 
 

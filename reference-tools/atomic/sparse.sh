@@ -11,6 +11,14 @@ rm -rf /root/atc_data/*
 rm -rf /root/ascend/*
 rm -rf kernel_meta_*
 
+case "$py" in
+    gen_mt_data_0to1e.py|sparse_lookup.py|sparse_lookup_with_grad.py)
+        ;;
+    *)
+        echo "invalid py file '$py'"
+        exit 1
+        ;;
+esac
 
 export ALL2ALL=$5
 export HOST_PIPELINE_OPS_LIB_PATH=/usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec/libasc/libasc_ops.so

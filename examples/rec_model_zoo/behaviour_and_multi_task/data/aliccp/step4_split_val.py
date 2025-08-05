@@ -22,6 +22,7 @@ import stat
 import argparse
 import math
 import numpy as np
+from examples.util.path_validator import validate_save_path, validate_read_file
 
 parser = argparse.ArgumentParser(description='Parse arguments')
 parser.add_argument("--length", type=float, default=math.inf, help="max length for sequence fields")
@@ -37,6 +38,7 @@ def iter_count(file_name):
     buffer = 1024 * 1024
     flags_ = os.O_RDONLY
     modes_ = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH
+    validate_read_file(file_name)
     fd = os.open(file_name, flags_, modes_)
     with os.fdopen(fd, 'r') as f:
         buf_gen = takewhile(lambda x: x, (f.read(buffer) for _ in repeat(None)))
@@ -54,10 +56,13 @@ if __name__ == "__main__":
     flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
     modes = stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
 
+    validate_save_path("sample_skeleton_test_splitted_parsed.csv")
     with os.fdopen(os.open("sample_skeleton_test_splitted_parsed.csv", flags, modes), 'w') as testfile:
+        validate_save_path("sample_skeleton_val_splitted_parsed.csv")
         with  os.fdopen(os.open("sample_skeleton_val_splitted_parsed.csv", flags, modes), 'w') as valfile:
             flags = os.O_RDONLY
             modes = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH
+            validate_read_file("sample_skeleton_test_parsed.csv")
             fd = os.open("sample_skeleton_test_parsed.csv", flags, modes)
             with os.fdopen(fd, 'r') as f:
                 p = 0

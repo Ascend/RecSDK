@@ -8,7 +8,7 @@ export ASCEND_DEVICE_ID=0
 export RANK_ID=0
 export DEVICE_ID=0
 
-export PREPROCESSED_DATASET=/home/ma-user/work/ydz/EffBench/behaviour_and_multi_task/data/aliccp/aliccp_out/
+export PREPROCESSED_DATASET=/home/ma-user/work/EffBench/behaviour_and_multi_task/data/aliccp/aliccp_out/
 
 models=("din" "bst" "eta" "can" "dffm" "esmm" "sharedbottom" "mmoe" "ple" "dmt")
 

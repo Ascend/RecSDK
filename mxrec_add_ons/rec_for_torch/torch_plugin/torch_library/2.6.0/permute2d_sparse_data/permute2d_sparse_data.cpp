@@ -33,16 +33,10 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute2d_sparse_data_impl_npu(
     const auto B = lengths.size(1);
 
     int outValuesLen;
-    if (permute.size(0) == lengths.size(0)) {
-        outValuesLen = valuesConti.size(0);
-    } else if (permute.size(0) > lengths.size(0)) {
-        throw std::runtime_error("permute.size(0) must be less than or equal to lengths.size(0). "
-                                 "Got permute.size(0): " + std::to_string(permute.size(0)) +
-                                 ", lengths.size(0): " + std::to_string(lengths.size(0)));
-    } else if (permuted_lengths_sum.has_value() && permuted_lengths_sum.value() > 0) {
+    if (permuted_lengths_sum.has_value() && permuted_lengths_sum.value() > 0) {
         outValuesLen = static_cast<int>(permuted_lengths_sum.value());
     } else {
-        outValuesLen = lengthsConti.narrow(0, 0, T).sum().item<int>();
+        outValuesLen = lengthsConti.index_select(0, permuteConti).sum().item<int>();
     }
 
     at::Tensor outLengths = at::empty({T, B}, lengthsConti.options());

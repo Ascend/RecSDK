@@ -49,6 +49,24 @@ LCAL（Low Latency Collective Acceleration Library）
 * AllToAll通信量小于2GB
 * 使用时确保卡独占，若中途有其他进程抢占卡会导致算子被阻塞，最终超时导致运行失败
 
+## 环境变量配置
+
+### LCCL_DETERMINISTIC
+
+用于控制AllUss算子是否使用确定性计算模式。
+
+- **取值范围**: 0 或 1
+- **默认值**: 0（不开启确定性计算）
+- **说明**:
+  - `0`: 不开启确定性计算模式，使用标准AllUss算法
+  - `1`: 开启确定性计算模式，使用AllUssDeterministic算法
+  - `other value`: 其他无效值，默认不开启确定性计算
+- **设置方法**:
+  ```bash
+  export LCCL_DETERMINISTIC=1  # 开启确定性计算
+  export LCCL_DETERMINISTIC=0  # 关闭确定性计算（默认）
+  ```
+
 ## 使用方法（基于Rec SDK）
 
 1. 上传lccl文件夹到目标环境，并进入当前目录，执行指令对LCCL算子进行编译和部署
