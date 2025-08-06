@@ -34,7 +34,7 @@ WTYPE = [None, np.float32]
 TYPE_LIST = list(itertools.product(PTYPE, LTYPE, VTYPE, WTYPE))
 
 T = np.random.randint(2, 30, 4)
-EXTRA_T = [True, False]
+EXTRA_T = [1, 0, -1]
 B = [2048, 20480, 204800]
 SHAPE_LIST = list(itertools.product(T, EXTRA_T, B))
 
@@ -64,12 +64,9 @@ def test_permute2d_sparse_data(types, shapes, enable_permuted_sum):
     """
     ptype, ltype, vtype, wtype = types
     t, extra_t, b = shapes
-    extra_t = random.randint(1, t) if extra_t else 0
+    extra_t = random.randint(1, t - 1) * extra_t
 
-    permute = np.arange(t + extra_t, dtype=ptype)
-    np.random.shuffle(permute)
-    permute = permute[:t]
-
+    permute = np.random.choice(t + extra_t, t).astype(dtype=np.int32)
     lengths = np.ones((t + extra_t, b), dtype=ltype)
     values = np.arange(0, (t + extra_t) * b, dtype=vtype)
     weights = np.arange(0, (t + extra_t) * b, dtype=wtype) if wtype else None
