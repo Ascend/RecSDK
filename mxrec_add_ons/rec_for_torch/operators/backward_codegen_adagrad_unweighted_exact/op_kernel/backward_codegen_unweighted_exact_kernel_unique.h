@@ -205,7 +205,7 @@ public:
         for (int64_t i = 1; i <= this->weightsOffsetsDim0; i++) {
             Scheduler(tables[i] - lastIndices, offsetOfThisTable, thisLen);
             int64_t startIndices = offsetOfThisTable + lastIndices; // 上一张表的偏移+table_i的偏移
-
+            lastIndices = tables[i];
             if (thisLen <= 0) {
                 continue;
             }
@@ -227,7 +227,6 @@ public:
                 startIndices += thisLen;
                 thisLen = remain;
             }
-            lastIndices = tables[i];
         }
     }
 

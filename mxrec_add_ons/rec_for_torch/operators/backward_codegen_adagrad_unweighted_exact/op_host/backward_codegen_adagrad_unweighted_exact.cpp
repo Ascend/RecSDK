@@ -91,18 +91,23 @@ static ge::graphStatus NormalAdamTilingFunc(const gert::RuntimeAttrs* attrs,
     int64_t iter = *attrs->GetInt(ITER_INDEX);
 
     OPS_CHECK(beta1 == 1.0,
-                OPS_LOG_E("Tiling Debug", "beta1 can not be 1.0."),
-                return ge::GRAPH_FAILED);
+              OPS_LOG_E("Tiling Debug", "beta1 can not be 1.0."),
+              return ge::GRAPH_FAILED);
     OPS_CHECK(beta2 == 1.0,
-                OPS_LOG_E("Tiling Debug", "beta2 can not be 1.0."),
-                return ge::GRAPH_FAILED);
-    float _beta1 = 1 / (1 - pow(beta1, iter));
-    float _beta2 = 1 / (1 - pow(beta2, iter));
+              OPS_LOG_E("Tiling Debug", "beta2 can not be 1.0."),
+              return ge::GRAPH_FAILED);
+
+    float _beta1 = (1 - pow(beta1, iter));
+    float _beta2 = (1 - pow(beta2, iter));
+    float _beta2sqrt = sqrt(_beta2) / _beta1;
+    _beta1 = 1 / _beta1;
+    _beta2 = 1 / _beta2;
 
     tilingData.set_beta1(beta1);
     tilingData.set_beta2(beta2);
     tilingData.set_beta1pow(_beta1);
     tilingData.set_beta2pow(_beta2);
+    tilingData.set_beta2sqrt(_beta2sqrt);
     tilingData.set_iter(iter);
     return ge::GRAPH_SUCCESS;
 }

@@ -74,7 +74,7 @@ public:
         float minusLearningRate = -this->learning_rate;
         thisMoment1Index = totalLen * M1_INDEX;
         thisMoment2Index = totalLen * M2_INDEX;
-        stepSize = minusLearningRate / beta1pow;
+        stepSize = minusLearningRate * beta2sqrt;
 
         // v[:] = beta1 * v + (1 - beta1) * p.grad
         Muls<float>(outLt[thisMoment1Index], inputLt[thisMoment1Index], beta1, totalLen);
@@ -87,19 +87,14 @@ public:
         Muls<float>(outLt[thisGradIndex], outLt[thisGradIndex], oneMinusBeta2, totalLen);
         Add<float>(outLt[thisMoment2Index], outLt[thisMoment2Index], outLt[thisGradIndex], totalLen);
 
-        // v_bias_corr = v / (1 - beta1 ** hyperparams['t'])
-        Muls<float>(outLt[thisMoment1Index], outLt[thisMoment1Index], beta1pow, totalLen);
-        // s_bias_corr = s / (1 - beta2 ** hyperparams['t'])
-        Muls<float>(outLt[thisMoment2Index], outLt[thisMoment2Index], beta2pow, totalLen);
-
-        // p[:] -= hyperparams['lr'] * v_bias_corr / (torch.sqrt(s_bias_corr) + eps)
-        Sqrt<float>(outLt[thisMoment2Index], outLt[thisMoment2Index], totalLen);
-        Adds<float>(outLt[thisMoment2Index], outLt[thisMoment2Index], this->eps, totalLen);
-        Div<float>(outLt[thisGradIndex], outLt[thisMoment1Index], outLt[thisMoment2Index], totalLen);
-        Muls<float>(outLt[thisGradIndex], outLt[thisGradIndex], minusLearningRate, totalLen);
+        // p[:] -= stepSize * v / (torch.sqrt(s) + eps)
+        Sqrt<float>(inputLt[thisMoment2Index], outLt[thisMoment2Index], totalLen);
+        Adds<float>(inputLt[thisMoment2Index], inputLt[thisMoment2Index], this->eps, totalLen);
+        Div<float>(outLt[thisGradIndex], outLt[thisMoment1Index], inputLt[thisMoment2Index], totalLen);
+        Muls<float>(outLt[thisGradIndex], outLt[thisGradIndex], stepSize, totalLen);
     }
 
-    __aicore__ inline void CopyInNormal(int *updateArgs, int thisLen, int embedDim)
+    __aicore__ inline void CopyInNormal(int64_t *updateArgs, int thisLen, int embedDim)
     {
         __gm__ int64_t* weightsOffsetsPtr = (__gm__ int64_t*)this->weightsOffsets;
         LocalTensor<float> inputLt = this->queIn.template DeQue<float>();
@@ -113,7 +108,7 @@ public:
         this->queIn.template EnQue(inputLt);
     }
 
-    __aicore__ inline void CopyInDynamic(DynamicArgs*updateArgs, int64_t thisLen, int64_t embedDim)
+    __aicore__ inline void CopyInDynamic(DynamicArgs *updateArgs, int64_t thisLen, int64_t embedDim)
     {
         LocalTensor<float> inputLt = this->queIn.template DeQue<float>();
         for (int64_t i = 0; i < thisLen; i++) {
@@ -135,17 +130,21 @@ public:
         for (int32_t i = 0; i < thisLen; i++) {
             int thisGradIndex = i * this->maxD;
             dynamicWeightsGT.SetGlobalBuffer((__gm__ float*)updateArgs[i].weightsAddr, embedDim);
+            DataCopy(dynamicWeightsGT, newOutLt[thisGradIndex], embedDim);
+        }
+        SetAtomicNone();
+        for (int32_t i = 0; i < thisLen; i++) {
+            int thisGradIndex = i * this->maxD;
             dynamicM1GT.SetGlobalBuffer((__gm__ float*)updateArgs[i].m1Addr, embedDim);
             dynamicM2GT.SetGlobalBuffer((__gm__ float*)updateArgs[i].m2Addr, embedDim);
-            DataCopy(dynamicWeightsGT, newOutLt[thisGradIndex], embedDim);
             DataCopy(dynamicM1GT, newOutLt[thisMoment1Index + thisGradIndex], embedDim);
             DataCopy(dynamicM2GT, newOutLt[thisMoment2Index + thisGradIndex], embedDim);
         }
-        SetAtomicNone();
+        
         this->queOut.template FreeTensor(newOutLt);
     }
     
-    __aicore__ inline void CopyOutNormal(int *outOffset, int thisLen, int embedDim)
+    __aicore__ inline void CopyOutNormal(int64_t *outOffset, int thisLen, int embedDim)
     {
         LocalTensor<float> newOutLt = this->queOut.template DeQue<float>();
         SetAtomicAdd<float>();
@@ -192,7 +191,7 @@ public:
             
             if constexpr(std::is_same<wType, float>::value) {
                 // CopyIn
-                int updateArgs[MAX_ARGS_PIPE_LEN];
+                int64_t updateArgs[MAX_ARGS_PIPE_LEN];
                 CopyInNormal(updateArgs, thisLen, embedDim);
                 // compute
                 inputLt = this->queIn.template DeQue<float>();
