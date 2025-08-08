@@ -50,7 +50,7 @@ b) 算子参数说明：
 
 * dense: 输入的padded dense tensor；
 * offset: padded dense tensor中有效数据的偏移；
-* jagged_dim0: jagged tensor的第一维长度；
+* jagged_dim0: jagged tensor的第一维长度，该参数为可选参数；
 * jagged_dense: 输出值;
 
 c) 算子约束说明：

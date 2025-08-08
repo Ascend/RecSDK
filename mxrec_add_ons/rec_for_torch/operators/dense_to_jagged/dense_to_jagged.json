@@ -39,7 +39,7 @@
         "attr": [
             {
               "name": "jagged_dim",
-			  "param_type": "required",
+			  "param_type": "optional",
               "type": "int",
               "default_value": 0
             }

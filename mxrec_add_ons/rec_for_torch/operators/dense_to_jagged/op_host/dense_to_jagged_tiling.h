@@ -21,17 +21,22 @@ See the License for the specific language governing permissions and
 
 namespace optiling {
     BEGIN_TILING_DATA_DEF(DenseToJaggedTilling)
-        TILING_DATA_FIELD_DEF(int32_t, denseDim1);
-        TILING_DATA_FIELD_DEF(int32_t, denseDim2);
-        TILING_DATA_FIELD_DEF(int32_t, left);
-        TILING_DATA_FIELD_DEF(int32_t, singleCoreBatch);
-        TILING_DATA_FIELD_DEF(int32_t, singleLoopSize);
-        TILING_DATA_FIELD_DEF(int32_t, denseType);
-        TILING_DATA_FIELD_DEF(int32_t, offsetType);
-        TILING_DATA_FIELD_DEF(int64_t, denseTotal);
-        TILING_DATA_FIELD_DEF(int64_t, jaggedTotal);
+
+    TILING_DATA_FIELD_DEF(int32_t, denseDim1);
+    TILING_DATA_FIELD_DEF(int32_t, denseDim2);
+
+    TILING_DATA_FIELD_DEF(int32_t, left);
+    TILING_DATA_FIELD_DEF(int32_t, singleCoreBatch);
+    TILING_DATA_FIELD_DEF(int32_t, singleLoopSize);
+
+    TILING_DATA_FIELD_DEF(int32_t, denseType);
+    TILING_DATA_FIELD_DEF(int32_t, offsetType);
+
+    TILING_DATA_FIELD_DEF(int64_t, denseTotal);
+    TILING_DATA_FIELD_DEF(int64_t, jaggedTotal);
+
     END_TILING_DATA_DEF;
 
     REGISTER_TILING_DATA_CLASS(DenseToJagged, DenseToJaggedTilling)
-}
+}  // namespace optiling
 #endif
