@@ -174,15 +174,15 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Output("permuted_lengths")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT64, ge::DT_INT32})
+            .Follow("lengths", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
         this->Output("permuted_values")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT64, ge::DT_INT32, ge::DT_FLOAT})
+            .Follow("values", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
         this->Output("permuted_weights")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT})
+            .Follow("weights", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
 
         this->Attr("permuted_sum").Int(0);
