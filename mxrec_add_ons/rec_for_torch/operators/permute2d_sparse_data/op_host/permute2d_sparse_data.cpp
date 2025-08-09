@@ -60,13 +60,13 @@ namespace optiling {
         }
 
         // shape check
-        if ((permuteShape.GetDimNum() != 1) || (lengthsShape.GetDimNum() != SUPPORT_EMBEDDING_DIM_NUM) ||
-            (permuteShape.GetDim(0) > lengthsShape.GetDim(0)))  {
+        if ((permuteShape.GetDimNum() != 1) || (lengthsShape.GetDimNum() != SUPPORT_EMBEDDING_DIM_NUM))  {
             OPS_LOG_E("", "[ERROR]permute shape or lengths shape is error. ");
             return ge::GRAPH_FAILED;
         }
-        if (enableWeights && valuesShape != weightsShape) {
-            OPS_LOG_E("", "[ERROR]values shape or weights shape is error. ");
+        if (enableWeights && (valuesShape != weightsShape || valuesShape.GetDimNum() != 1)) {
+            OPS_LOG_E("", "[ERROR]values shape or weights shape is error. values.size() = %d, weights.size() = %d\n",
+                      valuesShape.GetDim(0), weightsShape.GetDim(0));
             return ge::GRAPH_FAILED;
         }
 
@@ -106,8 +106,9 @@ namespace optiling {
         // apply workspace
         size_t* currentWorkspace = context->GetWorkspaceSizes(1);
         size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
-        // 使用workspace共享lengths.sum(dim=1)和offsets计算结果, 因此为两份内存
-        size_t userWorkspacesSize = 2 * (lengthsT + 1) * sizeof(int64_t);
+        // 使用workspace共享lengths.sum(dim=1) + 各core计算的offsets结果
+        // 为保证workspace同步成功需要保证首地址的32位对齐,因此乘以64
+        size_t userWorkspacesSize = (lengthsT + 1) * GM_ALIGN * (coreNum + 1);
         currentWorkspace[0] = systemWorkspacesSize + userWorkspacesSize;
 
         context->SetBlockDim(coreNum);
@@ -173,15 +174,15 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Output("permuted_lengths")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT64, ge::DT_INT32})
+            .Follow("lengths", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
         this->Output("permuted_values")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT64, ge::DT_INT32, ge::DT_FLOAT})
+            .Follow("values", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
         this->Output("permuted_weights")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT})
+            .Follow("weights", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
 
         this->Attr("permuted_sum").Int(0);
