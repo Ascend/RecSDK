@@ -54,9 +54,10 @@ interface="lo"
 local_rank_size=1 # 每个节点使用的NPU卡数
 num_server=1 # 训练节点数
 num_process=$((${num_server} * ${local_rank_size})) # 训练总的进程数，等于使用的NPU卡的总数
+project_root=$(cd "$cur_path/../.." && pwd)
 
 export HCCL_CONNECT_TIMEOUT=1200 # HCCL集合通信 建链超时时间，取值范围[120,7200]
-export PYTHONPATH=${so_path}:$PYTHONPATH # 环境python安装路径
+export PYTHONPATH=${so_path}:${project_root}:$PYTHONPATH # 环境python安装路径
 if [ "$(uname -m)" == "aarch64" ]; then
     export LD_PRELOAD=/usr/lib64/libgomp.so.1:/usr/lib64/libstdc++.so.6:/usr/local/python3.7.5/lib/python3.7/site-packages/scikit_learn.libs/libgomp-d22c30c5.so.1.0.0
 else
