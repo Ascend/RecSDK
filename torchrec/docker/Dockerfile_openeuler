@@ -1,0 +1,139 @@
+# 阶段1：基础环境准备（缓存依赖安装）
+FROM openeuler-22.03-lts-sp4:latest
+WORKDIR /tmp
+COPY ./version.info ./
+COPY ./ascend_install.info ./
+
+# 安装系统依赖（缓存此层）
+RUN dnf install -y ca-certificates && \
+    dnf makecache && \
+    dnf -y install net-tools make wget unzip zlib-devel bzip2 bzip2-devel openssl-devel \
+    ncurses-devel openssh-clients openssh-server sqlite-devel openmpi-devel \
+    readline-devel tk-devel gdbm-devel libdb-devel xz-devel libffi-devel \
+    hdf5-devel patch pciutils vim findutils util-linux  dos2unix gcc-c++ automake autoconf \
+    m4 perl git e2fsprogs sudo && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf
+
+# 阶段2：下载源码（缓存下载结果）
+RUN wget https://mirrors.huaweicloud.com/gnu/gcc/gcc-11.2.0/gcc-11.2.0.tar.gz && \
+    tar -zxvf gcc-11.2.0.tar.gz && \
+    cd gcc-11.2.0 && \
+    wget https://mirrors.huaweicloud.com/gnu/gmp/gmp-6.1.0.tar.bz2 && \
+    wget https://mirrors.huaweicloud.com/gnu/mpfr/mpfr-3.1.6.tar.bz2 && \
+    wget https://mirrors.huaweicloud.com/gnu/mpc/mpc-1.0.3.tar.gz && \
+    wget https://gcc.gnu.org/pub/gcc/infrastructure/isl-0.18.tar.bz2 && \
+    cd .. && \
+    wget https://cmake.org/files/v3.22/cmake-3.22.6.tar.gz && \
+    wget https://mirrors.huaweicloud.com/python/3.11.0/Python-3.11.0.tar.xz && \
+    wget https://download.pytorch.org/whl/cpu/torch-2.6.0%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl && \
+    wget https://download.pytorch.org/whl/cpu/fbgemm_gpu-1.1.0%2Bcpu-cp311-cp311-manylinux2014_aarch64.whl
+
+# 编译 GCC 11.2.0
+RUN cd /tmp/gcc-11.2.0 && \
+    sed -i "246s/tar -xf \"\${ar}\"/tar --no-same-owner -xf \"\${ar}\"/" contrib/download_prerequisites && \
+    ./contrib/download_prerequisites && \
+    ./configure --enable-languages=c,c++ --disable-multilib --with-system-zlib --prefix=/usr/local/gcc11.2.0 && \
+    make -j $(nproc) && make install && \
+    find /tmp/gcc-11.2.0/ -name libstdc++.so.6.0.29 -exec cp {} /lib64/ \; && \
+    rm -rf /tmp/gcc-11.2.0*
+
+# 编译 CMake
+RUN tar -zxf /tmp/cmake-3.22.6.tar.gz && \
+    cd cmake-3.22.6 && \
+    ./bootstrap && make -j $(nproc) && make install && \
+    rm -rf /tmp/cmake-3.22.6*
+
+# 编译 Python 3.11.0 
+RUN tar -xvf /tmp/Python-3.11.0.tar.xz && \
+    cd Python-3.11.0 && \
+    mkdir -p build && cd build && \
+    ../configure --enable-shared --prefix=/usr/local/python3.11.0 && \
+    make -j $(nproc) && make install && \
+    rm -rf /tmp/Python-3.11.0*
+
+ENV PATH=/usr/local/python3.11.0/bin:$PATH \
+    LD_LIBRARY_PATH=/usr/local/python3.11.0/lib:$LD_LIBRARY_PATH
+
+# 配置 pip 源
+RUN mkdir -p ~/.pip && \
+    echo "[global]" > ~/.pip/pip.conf && \
+    echo "index-url = https://pypi.tuna.tsinghua.edu.cn/simple" >> ~/.pip/pip.conf && \
+    echo "extra-index-url = https://pypi.org/simple" >> ~/.pip/pip.conf && \
+    echo "               https://mirrors.aliyun.com/pypi/simple" >> ~/.pip/pip.conf && \
+    echo "               https://repo.huaweicloud.com/repository/pypi/simple" >> ~/.pip/pip.conf && \
+    echo "trusted-host = pypi.tuna.tsinghua.edu.cn pypi.org mirrors.aliyun.com repo.huaweicloud.com" >> ~/.pip/pip.conf && \
+    echo "timeout = 600" >> ~/.pip/pip.conf && \
+    echo "retries = 3" >> ~/.pip/pip.conf 
+
+# 注意：网络环境良好时建议合并安装以提高构建效率
+RUN pip3.11 install --upgrade pip
+RUN pip3.11 install numpy==1.25.0
+RUN pip3.11 install wheel
+RUN pip3.11 install decorator
+RUN pip3.11 install sympy==1.13.1
+RUN pip3.11 install cffi==1.17.1
+RUN pip3.11 install expecttest
+RUN pip3.11 install pybind11
+RUN pip3.11 install pyyaml
+RUN pip3.11 install psutil
+RUN pip3.11 install pathlib2
+RUN pip3.11 install pandas==2.2.3
+RUN pip3.11 install grpcio
+RUN pip3.11 install grpcio-tools==1.67.0
+RUN pip3.11 install protobuf==5.28.2
+RUN pip3.11 install scipy==1.14.1
+RUN pip3.11 install requests
+RUN pip3.11 install scikit-learn
+RUN pip3.11 install easydict
+RUN pip3.11 install attrs
+RUN pip3.11 install pytest
+RUN pip3.11 install pytest-cov
+RUN pip3.11 install pytest-html
+RUN pip3.11 install Cython
+RUN pip3.11 install absl-py
+RUN pip3.11 install gin-config
+RUN pip3.11 install torch-2.6.0+cpu-*.whl
+RUN pip3.11 install fbgemm_gpu-1.1.0+cpu-*.whl
+RUN pip3.11 install torch-npu==2.6.0
+RUN pip3.11 install tensorboard==2.18.0
+RUN pip3.11 install black
+RUN pip3.11 install cmake
+RUN pip3.11 install hypothesis==6.70.1
+RUN pip3.11 install iopath || \
+    (pip3.11 install --use-pep517 iopath || \
+     pip3.11 install --only-binary=:all: iopath)
+RUN pip3.11 install pyre-extensions
+RUN pip3.11 install scikit-build
+RUN pip3.11 install torchmetrics==1.0.3
+RUN pip3.11 install torchx
+RUN pip3.11 install tqdm
+RUN pip3.11 install usort
+RUN pip3.11 install parameterized
+
+COPY ./Ascend-cann-toolkit_*.run ./
+COPY ./Ascend-cann-kernels-*.run ./
+
+ENV PATH=/usr/local/gcc11.2.0/bin:/usr/local/python3.11.0/bin:$PATH \
+    LD_LIBRARY_PATH=/usr/local/gcc11.2.0/lib64:/usr/local/python3.11.0/lib:$LD_LIBRARY_PATH
+ARG ASCEND_BASE=/usr/local/Ascend
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ASCEND_BASE/driver/lib64
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ASCEND_BASE/driver/lib64/common
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ASCEND_BASE/driver/lib64/driver
+
+ARG TOOLKIT_PKG=Ascend-cann-toolkit*.run
+ARG KERNEL_PKG=Ascend-cann-kernels*.run
+# 删除旧的CANN
+RUN rm -rf $ASCEND_BASE/ascend-toolkit
+
+RUN umask 0027 && \
+   chmod +x $TOOLKIT_PKG && \
+   bash $TOOLKIT_PKG --quiet --install --install-path=$ASCEND_BASE && \
+   . $ASCEND_BASE/ascend-toolkit/set_env.sh && \
+   chmod +x $KERNEL_PKG && \
+   bash $KERNEL_PKG --quiet --install && \
+   rm -rf /root/.cache/pip && \
+   rm -f $TOOLKIT_PKG && rm -f $KERNEL_PKG
+
+# 验证
+RUN gcc --version && cmake --version && python3.11 --version
