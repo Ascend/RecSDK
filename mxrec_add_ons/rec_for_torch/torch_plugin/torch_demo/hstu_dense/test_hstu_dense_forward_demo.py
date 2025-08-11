@@ -239,6 +239,34 @@ class TestHstuJaggedDemo:
     def test_hstu_dens_forward_2048bs(self, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
                                       data_type):
         self.execute(2048, max_seq_len, head_num, head_dim, enable_bias, mask_type, silu_scale, data_type)
+    
+    @pytest.mark.parametrize("head_num", [255])
+    @pytest.mark.parametrize("max_seq_len", [16])
+    @pytest.mark.parametrize("head_dim", [256])
+    @pytest.mark.parametrize("enable_bias", [True])
+    @pytest.mark.parametrize("mask_type", [mask_custom])
+    @pytest.mark.parametrize("silu_scale", [1 / 1024])
+    @pytest.mark.parametrize("data_type", [torch.bfloat16])
+    @pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P.")
+    def test_hstu_dens_forward_head_num_255(self, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
+                                        data_type):
+        with pytest.raises(RuntimeError) as e_info:
+            self.execute(20, max_seq_len, head_num, head_dim, enable_bias, mask_type, silu_scale, data_type)
+        assert "head num must meet range[2 8] and mutiple of [2]. but get value 255" in str(e_info.value)
+    
+    @pytest.mark.parametrize("head_num", [2])
+    @pytest.mark.parametrize("max_seq_len", [16])
+    @pytest.mark.parametrize("head_dim", [255])
+    @pytest.mark.parametrize("enable_bias", [True])
+    @pytest.mark.parametrize("mask_type", [mask_custom])
+    @pytest.mark.parametrize("silu_scale", [1 / 1024])
+    @pytest.mark.parametrize("data_type", [torch.bfloat16])
+    @pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P.")
+    def test_hstu_dens_forward_head_dim_255(self, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
+                                        data_type):
+        with pytest.raises(RuntimeError) as e_info:
+            self.execute(20, max_seq_len, head_num, head_dim, enable_bias, mask_type, silu_scale, data_type)
+        assert "dim size must meet range[16 512] and mutiple of [16]. but get value 255" in str(e_info.value)
 
 
 class TestHstuNormalDemo:
