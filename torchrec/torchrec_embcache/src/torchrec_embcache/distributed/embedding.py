@@ -25,6 +25,45 @@ import numpy as np
 import torch_npu
 import torch
 from torch import distributed as dist, nn, Tensor
+
+from fbgemm_gpu.split_embedding_configs import EmbOptimType
+from fbgemm_gpu.split_table_batched_embeddings_ops_training import (
+    SplitTableBatchedEmbeddingBagsCodegen,
+)
+
+from hybrid_torchrec.modules.ids_process import IdsMapper
+from hybrid_torchrec.modules.ids_process import HashMapBase
+from hybrid_torchrec.distributed.sharding.post_input_dist import (
+    EMPTY_POST_INPUT_DIST,
+    PostInputKJTListAwaitable,
+)
+from hybrid_torchrec.distributed.sharding.sequence_sharding import (
+    HybridSequenceShardingContext,
+)
+from hybrid_torchrec.sparse.jagged_tensor_with_looup_helper import (
+    KeyedJaggedTensorWithLookHelper,
+)
+
+from torchrec_embcache.distributed.configs import (
+    EmbCacheEmbeddingConfig
+)
+from torchrec_embcache.distributed.sharding.rw_sequence_sharding import (
+    EmbCacheRwSequenceEmbeddingSharding,
+)
+from torchrec_embcache.sparse.jagged_tensor_with_timestamp import (
+    KeyedJaggedTensorWithTimestamp,
+)
+from torchrec_embcache.distributed.utils import get_embedding_optim_num
+from torchrec_embcache.embcache_pybind import (
+    EmbcacheManager,
+    EmbConfig,
+    AdmitAndEvictConfig,
+    AsyncSwapInfo,
+    AsyncSwapinTensor,
+    InitializerType as CppInitType,
+    SwapInfo,
+)
+
 from torchrec.distributed.types import (
     Awaitable,
     LazyAwaitable,
@@ -69,43 +108,6 @@ from torchrec.distributed.embedding import (
     get_ec_index_dedup,
 )
 
-from fbgemm_gpu.split_embedding_configs import EmbOptimType
-from fbgemm_gpu.split_table_batched_embeddings_ops_training import (
-    SplitTableBatchedEmbeddingBagsCodegen,
-)
-
-from hybrid_torchrec.modules.ids_process import IdsMapper
-from hybrid_torchrec.modules.ids_process import HashMapBase
-from hybrid_torchrec.distributed.sharding.post_input_dist import (
-    EMPTY_POST_INPUT_DIST,
-    PostInputKJTListAwaitable,
-)
-from hybrid_torchrec.distributed.sharding.sequence_sharding import (
-    HybridSequenceShardingContext,
-)
-from hybrid_torchrec.sparse.jagged_tensor_with_looup_helper import (
-    KeyedJaggedTensorWithLookHelper,
-)
-
-from torchrec_embcache.distributed.configs import (
-    EmbCacheEmbeddingConfig
-)
-from torchrec_embcache.distributed.sharding.rw_sequence_sharding import (
-    EmbCacheRwSequenceEmbeddingSharding,
-)
-from torchrec_embcache.sparse.jagged_tensor_with_timestamp import (
-    KeyedJaggedTensorWithTimestamp,
-)
-from torchrec_embcache.distributed.utils import get_embedding_optim_num
-from torchrec_embcache.embcache_pybind import (
-    EmbcacheManager,
-    EmbConfig,
-    AdmitAndEvictConfig,
-    AsyncSwapInfo,
-    AsyncSwapinTensor,
-    InitializerType as CppInitType,
-    SwapInfo,
-)
 
 
 logger: logging.Logger = logging.getLogger(__name__)

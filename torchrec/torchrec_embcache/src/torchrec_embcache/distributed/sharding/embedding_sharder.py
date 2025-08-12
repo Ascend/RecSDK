@@ -15,15 +15,6 @@ from typing import (
 )
 
 import torch
-from torchrec.distributed.types import (
-    ParameterSharding,
-    QuantizedCommCodecs,
-    ShardingEnv,
-    ShardingType,
-)
-from torchrec.distributed.embeddingbag import EmbeddingBagCollectionSharder
-from torchrec.distributed.embedding import EmbeddingCollectionSharder
-
 from torchrec_embcache.distributed.embedding_bag import (
     EmbCacheShardedEmbeddingBagCollection,
     EmbCacheEmbeddingBagCollection,
@@ -32,6 +23,15 @@ from torchrec_embcache.distributed.embedding import (
     EmbCacheShardedEmbeddingCollection,
     EmbCacheEmbeddingCollection,
 )
+
+from torchrec.distributed.types import (
+    ParameterSharding,
+    QuantizedCommCodecs,
+    ShardingEnv,
+    ShardingType,
+)
+from torchrec.distributed.embeddingbag import EmbeddingBagCollectionSharder
+from torchrec.distributed.embedding import EmbeddingCollectionSharder
 
 
 class EmbCacheEmbeddingBagCollectionSharder(EmbeddingBagCollectionSharder):
