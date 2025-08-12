@@ -8,6 +8,19 @@
 set -e
 
 SCRIPT_PATH=$(cd $(dirname $0); pwd)
+version_file="${SCRIPT_PATH}/version.txt"
+
+if [ ! -f "${version_file}" ]; then
+  VERSION="1.0.0"
+else
+  VERSION=$(head -n 1 "${version_file}")
+fi
+ARCH=$(uname -m)
+
+package_name="Ascend-mindxsdk-torchrec-embcache-"${VERSION}"-linux-"${ARCH}".tar.gz"
+if [ -f "${package_name}" ]; then
+  rm "${package_name}"
+fi
 
 function check_ret_fn()
 {
@@ -31,6 +44,29 @@ function build_with_cmake_func()
     make install
 
     check_ret_fn "build torchrec_embcache"
+    cd -
+}
+
+function build_whl_pkg_with_setup_func()
+{
+    rm -rf build
+    rm -rf dist
+    rm -rf *.egg-info
+
+    rm -f src/torchrec_embcache/*.so*
+    cp cmake_build/install/embcache_pybind.so src/torchrec_embcache/
+
+    python3 setup.py bdist_wheel --plat-name linux_"${ARCH}"
+    check_ret_fn "python3 setup.py bdist_wheel"
+}
+
+function build_tar_pkg_func()
+{
+    cp "${SCRIPT_PATH}/requirements.txt" dist/
+    tar -czvf "${package_name}" -C dist .
+    check_ret_fn "tar gz ${package_name}"
 }
 
 build_with_cmake_func
+build_whl_pkg_with_setup_func
+build_tar_pkg_func
