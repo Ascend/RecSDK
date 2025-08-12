@@ -131,29 +131,36 @@ SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std
         batchOffs.insert(batchOffs.end(), batchOffsi.begin(), batchOffsi.end());
     }
 
+    errno_t rc = EOK;
     auto longPinnedOpt = at::TensorOptions().dtype(at::kLong).device(at::kCPU).pinned_memory(true);
     swapInfo.swapoutOffs = at::empty({static_cast<int64_t>(swapoutOffs.size())}, longPinnedOpt);
     size_t swapoutOffsSize = swapoutOffs.size() * sizeof(int64_t);
-    auto rc = memcpy_s(swapInfo.swapoutOffs.data_ptr<int64_t>(), swapoutOffsSize, swapoutOffs.data(), swapoutOffsSize);
-    if (rc != 0) {
-        LOG_ERROR("memcpy_s swapoutOffs to swapInfo.swapoutOffs failed. ret: {}", rc);
-        throw std::runtime_error("memcpy_s swapoutOffs to swapInfo.swapoutOffs failed.");
+    if (swapoutOffsSize > 0) {
+        rc = memcpy_s(swapInfo.swapoutOffs.data_ptr<int64_t>(), swapoutOffsSize, swapoutOffs.data(), swapoutOffsSize);
+        if (rc != 0) {
+            LOG_ERROR("memcpy_s swapoutOffs to swapInfo.swapoutOffs failed. ret: {}", rc);
+            throw std::runtime_error("memcpy_s swapoutOffs to swapInfo.swapoutOffs failed.");
+        }
     }
 
     swapInfo.swapinOffs = at::empty({static_cast<int64_t>(swapinOffs.size())}, longPinnedOpt);
     size_t swapinOffsSize = swapinOffs.size() * sizeof(int64_t);
-    rc = memcpy_s(swapInfo.swapinOffs.data_ptr<int64_t>(), swapinOffsSize, swapinOffs.data(), swapinOffsSize);
-    if (rc != 0) {
-        LOG_ERROR("memcpy_s swapinOffs to swapInfo.swapinOffs failed. ret: {}", rc);
-        throw std::runtime_error("memcpy_s swapinOffs to swapInfo.swapinOffs failed.");
+    if (swapinOffsSize > 0) {
+        rc = memcpy_s(swapInfo.swapinOffs.data_ptr<int64_t>(), swapinOffsSize, swapinOffs.data(), swapinOffsSize);
+        if (rc != 0) {
+            LOG_ERROR("memcpy_s swapinOffs to swapInfo.swapinOffs failed. ret: {}", rc);
+            throw std::runtime_error("memcpy_s swapinOffs to swapInfo.swapinOffs failed.");
+        }
     }
 
     swapInfo.batchOffs = at::empty({static_cast<int64_t>(batchOffs.size())}, longPinnedOpt);
     size_t batchOffsSize = batchOffs.size() * sizeof(int64_t);
-    rc = memcpy_s(swapInfo.batchOffs.data_ptr<int64_t>(), batchOffsSize, batchOffs.data(), batchOffsSize);
-    if (rc != 0) {
-        LOG_ERROR("memcpy_s batchOffs to swapInfo.batchOffs failed. ret: {}", rc);
-        throw std::runtime_error("memcpy_s batchOffs to swapInfo.batchOffs failed.");
+    if (batchOffsSize > 0) {
+        rc = memcpy_s(swapInfo.batchOffs.data_ptr<int64_t>(), batchOffsSize, batchOffs.data(), batchOffsSize);
+        if (rc != 0) {
+            LOG_ERROR("memcpy_s batchOffs to swapInfo.batchOffs failed. ret: {}", rc);
+            throw std::runtime_error("memcpy_s batchOffs to swapInfo.batchOffs failed.");
+        }
     }
 
     swapCount_++;

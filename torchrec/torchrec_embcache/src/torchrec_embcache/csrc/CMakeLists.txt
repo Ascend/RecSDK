@@ -29,6 +29,7 @@ file(GLOB SOURCES
         ./hash_table/*.cpp
         ./feature_filter/*.cpp
         ./ops/*.cpp
+        ./utils/*.cpp
         ./bind.cpp
 )
 
