@@ -117,6 +117,7 @@ def execute(rank: int, config: ExecuteConfig):
         ), "golden and result is not closed"
         logging.debug("golden and result is closed")
 
+
 def weight_init(param: torch.nn.Parameter):
     if len(param.shape) != 2:
         return

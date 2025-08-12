@@ -8,9 +8,9 @@
 from typing import Dict
 
 import torch
-from torchrec import KeyedJaggedTensor
-
 from dataset import Batch
+
+from torchrec import KeyedJaggedTensor
 
 
 def permute_values(kjt: KeyedJaggedTensor, feature_num) -> torch.Tensor:
