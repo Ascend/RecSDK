@@ -54,16 +54,18 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
 
     JaggedToPaddedDenseTilingData tiling;
-    auto ascnedPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
 
     OPS_LOG_E_IF_NULL("valuesShape", context->GetInputShape(0), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("valuesTensor", context->GetInputTensor(0), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("offsetsShape", context->GetInputShape(1), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("offsetsTensor", context->GetInputTensor(1), return ge::GRAPH_FAILED);
 
     auto valuesShape = context->GetInputShape(0)->GetStorageShape();
     auto offsetsShape = context->GetInputShape(1)->GetStorageShape();
 
     uint64_t ubCanUsed;
-    ascnedPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubCanUsed);
+    ascendPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubCanUsed);
     ubCanUsed = ubCanUsed - RESERVER_UB_SIZE;
     ubCanUsed = ubCanUsed / UB_ALIGN / NUM_QUEUE * UB_ALIGN * NUM_QUEUE;
     tiling.set_ubCanUsed(ubCanUsed);
@@ -73,16 +75,16 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
         return ge::GRAPH_FAILED;
     }
 
-    size_t coreNum = ascnedPlatform.GetCoreNumAiv();
+    size_t coreNum = ascendPlatform.GetCoreNumAiv();
     if (coreNum == 0) {
         return ge::GRAPH_FAILED;
     }
-    
+
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
-    size_t systemWorkspacesSize = ascnedPlatform.GetLibApiWorkSpaceSize();
+    size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
     currentWorkspace[0] = systemWorkspacesSize;
     // tiling core
-    
+
     int64_t totalBatch = offsetsShape.GetDim(0) - 1;
     tiling.set_totalBatch(totalBatch);
     int64_t baseBatchLen = (offsetsShape.GetDim(0) - 1) / coreNum;
@@ -102,7 +104,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     context->SetBlockDim(coreNum);
 
     OPS_LOG_E_IF_NULL("context->GetRawTilingData(0)", context->GetRawTilingData(), return ge::GRAPH_FAILED);
-    
+
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
@@ -143,18 +145,15 @@ public:
         this->Input("values")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_INT64, ge::DT_FLOAT, ge::DT_INT64})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .FormatList({ge::FORMAT_ND});
         this->Input("offsets")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT64, ge::DT_INT64, ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .FormatList({ge::FORMAT_ND});
         this->Output("out")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_INT64, ge::DT_FLOAT, ge::DT_INT64})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .FormatList({ge::FORMAT_ND});
         this->Attr("max_length").Int();
         this->Attr("padding_value").Float();
 

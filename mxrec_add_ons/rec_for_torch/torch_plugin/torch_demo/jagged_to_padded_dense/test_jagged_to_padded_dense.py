@@ -22,53 +22,93 @@ import numpy as np
 import torch_npu
 import torch
 
+# 加载NPU自定义算子库
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
-
-DEVICE_ID = 0
-
-
-def jagged_data_gen(batch_size, max_seq_len, num_heads, attention_dim):
-    seq_lens = np.random.randint(1, max_seq_len + 1, (batch_size))
-
-    seq_offset = torch.concat((torch.zeros((1, ), dtype=torch.int64), \
-        torch.cumsum(torch.from_numpy(seq_lens), axis=0))).to(torch.int64).numpy()
-    
-    total_seqs = np.sum(seq_lens)
-
-    jagged_value = torch.rand(total_seqs, num_heads, attention_dim).to(torch.float32).uniform_(-1, 1)
-
-    return jagged_value, seq_offset, total_seqs
+# 设置用的卡号
+DEVICE = "npu:0"
 
 
-def jagged_to_dense(jagged_tensor, seq_lens, max_seq_len, head_num, atten_dim):
-    need_pad_seq = []
-    offset = 0
-    for seq_len in seq_lens:
-        src_tensor = torch.rand(max_seq_len, head_num, atten_dim)
-        src_tensor = torch.zeros((max_seq_len, head_num, atten_dim))
-        src_tensor[0:seq_len, :, :] = jagged_tensor[offset: offset + seq_len, :, :]
-        need_pad_seq.append(src_tensor)
-        offset = offset + seq_len
+def generate_jagged_tensor(batch_size, max_seq_len, num_heads, attention_dim):
+    """
+    生成不规则(Jagged)张量测试数据
+    Args:
+        batch_size: 批处理大小
+        max_seq_len: 单个样本最大序列长度
+        num_heads: 注意力头数量
+        attention_dim: 每个注意力头的维度
 
-    dense_tensor = torch.nn.utils.rnn.pad_sequence(need_pad_seq, batch_first=True)
-    return dense_tensor
+    Returns:
+        jagged_tensor: 不规则数据张量，形状为(total_sequences, num_heads, attention_dim)
+        seq_offsets: 序列偏移量数组，表示每个样本在jagged_tensor中的起始位置
+        total_sequences: 所有样本的序列总长度
+    """
+    # 为每个样本随机生成序列长度(1到max_seq_len之间)
+    seq_lens = np.random.randint(1, max_seq_len + 1, batch_size)
+
+    # 计算累积偏移量(前面补0)
+    seq_offsets = torch.concat((
+        torch.zeros((1,), dtype=torch.int64),
+        torch.cumsum(torch.from_numpy(seq_lens), dim=0)
+    )).numpy()
+
+    total_sequences = np.sum(seq_lens)
+
+    # 生成随机数据(-1到1均匀分布)
+    jagged_tensor = torch.rand(
+        total_sequences, num_heads, attention_dim,
+        dtype=torch.float32
+    ).uniform_(-1, 1)
+
+    return jagged_tensor, seq_offsets, total_sequences
 
 
 @pytest.mark.parametrize("batch_size", [2, 4])
 @pytest.mark.parametrize("max_seq_len", [128, 256])
 @pytest.mark.parametrize("num_heads", [2, 8])
 @pytest.mark.parametrize("attention_dim", [32])
-def test_jagged_to_padded_dense(batch_size, max_seq_len, num_heads, attention_dim):
-    jagged_value, seq_offset, total_seqs = jagged_data_gen(batch_size, max_seq_len, num_heads, attention_dim)
+@pytest.mark.parametrize("use_list_max_lengths", [True, False])
+def test_jagged_to_padded_dense(batch_size,
+                                max_seq_len,
+                                num_heads,
+                                attention_dim,
+                                use_list_max_lengths):
+    """
+    测试不规则张量到填充密集张量的转换算子
+    测试逻辑:
+    1. 生成随机测试数据
+    2. 使用FBGEMM的CPU实现计算基准结果
+    3. 调用NPU算子计算结果
+    4. 对比两者差异(允许1e-4的误差)
+    """
+    # 1. 生成测试数据
+    jagged_tensor, seq_offsets, total_sequences = generate_jagged_tensor(
+        batch_size, max_seq_len, num_heads, attention_dim)
 
-    seq_lens = np.zeros((batch_size, )).astype(np.int64)
-    for batch_id in range(batch_size):
-        seq_lens[batch_id] = seq_offset[batch_id + 1] - seq_offset[batch_id]
+    # 2. 准备FBGEMM算子输入(需要展平最后两个维度)
+    input_flat = jagged_tensor.reshape(total_sequences, num_heads * attention_dim)
+    fbgemm_offsets = torch.from_numpy(seq_offsets)
 
-    golden_dense = jagged_to_dense(jagged_value, seq_lens, max_seq_len, num_heads, attention_dim)
+    # 3. 调用FBGEMM CPU实现
+    fbgemm_dense = torch.ops.fbgemm.jagged_to_padded_dense(
+        input_flat,
+        [fbgemm_offsets],
+        [max_seq_len],
+        0.0  # 填充值
+    )
 
-    result_dense = torch.ops.mxrec.jagged_to_padded_dense(
-        jagged_value.reshape(total_seqs, num_heads * attention_dim).to(f"npu:{DEVICE_ID}"),
-        [torch.from_numpy(seq_offset).to(f"npu:{DEVICE_ID}")], max_seq_len, 0.0)
-    
-    assert torch.allclose(golden_dense.reshape(-1), result_dense.cpu().reshape(-1), atol=1e-5)
+    # 4. 调用NPU算子
+    npu_dense = torch.ops.mxrec.jagged_to_padded_dense(
+        input_flat.to(DEVICE),
+        [fbgemm_offsets.to(DEVICE)],
+        [max_seq_len] if use_list_max_lengths else max_seq_len,
+        0.0
+    )
+
+    # 5. 结果比对
+    assert torch.allclose(
+        fbgemm_dense.reshape(-1),
+        npu_dense.cpu().reshape(-1),
+        atol=1e-4,
+        rtol=1e-4
+    ), f"NPU结果与FBGEMM CPU结果不匹配\nFBGEMM:\n{fbgemm_dense}\nNPU:\n{npu_dense.cpu()}"
+

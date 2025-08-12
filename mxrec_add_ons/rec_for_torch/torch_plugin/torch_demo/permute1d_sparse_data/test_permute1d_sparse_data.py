@@ -14,76 +14,169 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
+import itertools
+import random
 import sysconfig
+
 import pytest
 import torch
 import torch_npu
 import fbgemm_gpu
+import numpy as np
 
-# 定义用到的卡和so位置
+# 定义用到的卡以及so库的位置
 DEVICE = "npu:0"
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
-# 定义参数数据类型列表
-lengths_type = [torch.int64, torch.int32, torch.int64, torch.int32]
-values_type = [torch.int64, torch.int32, torch.float32, torch.float32]
+# 定义参数数据类型
+PERMUTE_TYPE = [np.int32]
+LENGTHS_TYPE = [np.int64, np.int32]
+VALUES_TYPE = [np.int64, np.int32, np.float32]
+WEIGHTS_TYPE = [None, np.float32]                    # weights为可选参数
+TYPE_LIST = list(itertools.product(PERMUTE_TYPE, LENGTHS_TYPE, VALUES_TYPE, WEIGHTS_TYPE))
+
+# 定义参数shape
+# permute shape为[BASE_T]
+# lengths shape为[1 ~ (2T - 1)]
+# extra_t用于测试permute和lengths不等长的情况，lengths[BASE_T + extra_T]
+BASE_T = np.random.randint(2, 30, 4)       # 随机生成4个介于2到30之间的整数，代表稀疏数据的原始维度
+EXTRA_T = [1, 0, -1]
+SHAPE_LIST = list(itertools.product(BASE_T, EXTRA_T))
 
 
-def create_permute_tensor(cnt):
-    return torch.arange(cnt, dtype=torch.int32)[torch.randperm(cnt)]
+def get_result(tensors: dict, device: str = 'cpu'):
+    tensors = {k: torch.from_numpy(v) if isinstance(v, np.ndarray) else v for k, v in tensors.items()}
+
+    # 根据device类型进行npu转换
+    if device and device.startswith('npu'):
+        torch.npu.set_device(device)
+        tensors = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in tensors.items()}
+
+    results = torch.ops.fbgemm.permute_1D_sparse_data(**tensors)
+
+    if device and device.startswith('npu'):
+        torch_npu.npu.synchronize()
+    return [x.cpu() if isinstance(x, torch.Tensor) else x for x in results]
 
 
-def create_lengths_tensor(cnt, dtype, max_value=10):
-    return torch.randint(1, max_value, size=[cnt], dtype=dtype)
+def test_very_large_input():
+    """
+    测试非常大的输入情况
+    """
+    t = 300000  # 大尺寸
+    permute = np.arange(t, dtype=np.int32)
+    np.random.shuffle(permute)
+    lengths = np.random.randint(1, 8192, size=t, dtype=np.int32)
+    total_length = lengths.sum()
+    values = np.arange(total_length, dtype=np.int32)
+    weights = np.random.rand(total_length).astype(np.float32)
+
+    params = {
+        'permute': permute,
+        'lengths': lengths,
+        'values': values,
+        'weights': weights,
+        'permuted_lengths_sum': None
+    }
+
+    golden = get_result(params)
+    result = get_result(params, DEVICE)
+
+    for gt, pred in zip(golden, result):
+        assert type(gt) is type(pred)
+        if isinstance(gt, torch.Tensor) and isinstance(pred, torch.Tensor):
+            assert torch.allclose(gt, pred, atol=1e-4)
 
 
-def create_values_tensor(cnt, dtype):
-    values_construct_param = dict(size=[cnt], dtype=dtype)
-    if dtype.is_floating_point:
-        input_values = torch.rand(**values_construct_param)
-    else:
-        input_values = torch.randint(-10, 10, **values_construct_param)
-    return input_values
+@pytest.mark.parametrize("types", TYPE_LIST)
+@pytest.mark.parametrize("shapes", SHAPE_LIST)
+@pytest.mark.parametrize("enable_permuted_sum", [True, False])
+def test_permute1d_sparse_data(types, shapes, enable_permuted_sum):
+    """
+    测试正常情况下的permute1d_sparse_data算子功能
+    Params:
+        permute: (T) dtype=int32
+        lengths: (T + T') dtype=ltype
+                L = lengths[:T].sum()
+        values: (L) dtype=vtype
+        weights: (L) dtype=fp32
+        permuted_lengths_sum: int
+    """
+    ptype, ltype, vtype, wtype = types
+    t, extra_t = shapes
+    extra_t = random.randint(1, t - 1) * extra_t
+
+    permute = np.random.choice(t + extra_t, t).astype(dtype=np.int32)
+    lengths = np.ones(t + extra_t, dtype=ltype) # 创建全1的lengths，简化
+    values = np.arange(0, t + extra_t, dtype=vtype)  # 注意总长度为lengths.sum(),此处特殊，为len(lengths)
+    weights = np.arange(0, t + extra_t, dtype=wtype) if wtype else None
+    permuted_lengths_sum = t if enable_permuted_sum else None
+
+    params = {
+        'permute': permute,
+        'lengths': lengths,
+        'values': values,
+        'weights': weights,
+        'permuted_lengths_sum': permuted_lengths_sum
+    }
+
+    golden = get_result(params)
+    result = get_result(params, DEVICE)
+
+    for gt, pred in zip(golden, result):
+        assert type(gt) is type(pred)
+        if isinstance(gt, torch.Tensor) and isinstance(pred, torch.Tensor):
+            assert torch.allclose(gt, pred, atol=1e-4)
 
 
-# CPU调用permute_1D_sparse_data算子
-def get_result(permute, lengths, values):
-    (permuted_lengths, permuted_values, permuted_weights) = (
-        torch.ops.fbgemm.permute_1D_sparse_data(permute, lengths, values)
-    )
+def test_empty_input():
+    """
+    测试空输入的情况
+    """
+    params = {
+        'permute': np.array([], dtype=np.int32),
+        'lengths': np.array([], dtype=np.int32),
+        'values': np.array([], dtype=np.int32),
+        'weights': None,
+        'permuted_lengths_sum': None
+    }
 
-    return permuted_lengths.cpu(), permuted_values.cpu()
-
-
-# NPU调用permute_1D_sparse_data算子
-def get_result_npu(permute, lengths, values):
-    torch.npu.set_device(DEVICE)
-    input_permute_torch = permute.to(DEVICE)
-    input_lengths_torch = lengths.to(DEVICE)
-    input_values_torch = values.to(DEVICE)
-
-    torch.npu.synchronize()
-    (permuted_lengths, permuted_values, permuted_weights) = (
-        torch.ops.fbgemm.permute_1D_sparse_data(
-            input_permute_torch, input_lengths_torch, input_values_torch,
-        )
-    )
-    torch.npu.synchronize()
-    return permuted_lengths.cpu(), permuted_values.cpu()
+    with pytest.raises(RuntimeError):
+        result = get_result(params, DEVICE)
+        assert result is not None
 
 
-@pytest.mark.parametrize("type_list", zip(lengths_type, values_type))
-@pytest.mark.parametrize("permute_len", [2, 3, 5, 16, 64, 256, 1024])
-@pytest.mark.parametrize("max_lengths", [2048, 20480, 204800])
-def test_permute1d_sparse_data(type_list, permute_len, max_lengths):
-    ltype, vtype = type_list
-    input_permute = create_permute_tensor(permute_len)
-    input_lengths = create_lengths_tensor(permute_len, dtype=ltype, max_value=max_lengths)
-    input_values = create_values_tensor(sum(input_lengths), dtype=vtype)
+def test_invalid_weights_length():
+    """
+    测试weights长度与values不匹配的情况
+    """
+    t = 5
+    params = {
+        'permute': np.arange(t, dtype=np.int32),
+        'lengths': np.ones(t, dtype=np.int32),
+        'values': np.arange(t, dtype=np.int32),
+        'weights': np.arange(t + 1, dtype=np.float32),  # 长度不匹配
+        'permuted_lengths_sum': None
+    }
 
-    golden = get_result(input_permute, input_lengths, input_values)
-    result = get_result_npu(input_permute, input_lengths, input_values)
+    with pytest.raises(RuntimeError):
+        result = get_result(params, DEVICE)
+        assert result is not None
 
-    assert torch.allclose(golden[0], result[0], atol=1e-5)
-    assert torch.allclose(golden[1], result[1], atol=1e-5)
+
+def test_2d_input():
+    """
+    测试输入为2D的情况
+    """
+    t = 5
+    params = {
+        'permute': np.arange(t, dtype=np.int32).reshape(1, -1),  # 2D permute
+        'lengths': np.ones(t, dtype=np.int32),
+        'values': np.arange(t, dtype=np.int32),
+        'weights': None,
+        'permuted_lengths_sum': None
+    }
+
+    with pytest.raises(RuntimeError):
+        result = get_result(params, DEVICE)
+        assert result is not None

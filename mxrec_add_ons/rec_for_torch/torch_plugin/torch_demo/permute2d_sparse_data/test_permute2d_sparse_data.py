@@ -33,6 +33,8 @@ VTYPE = [np.int64, np.int32, np.float32]
 WTYPE = [None, np.float32]
 TYPE_LIST = list(itertools.product(PTYPE, LTYPE, VTYPE, WTYPE))
 
+# lengths shape为[1 ~ (2T - 1), B]
+# extra_t用于测试permute和lengths不等长的情况，lengths[T + extra_T, B]
 T = np.random.randint(2, 30, 4)
 EXTRA_T = [1, 0, -1]
 B = [2048, 20480, 204800]

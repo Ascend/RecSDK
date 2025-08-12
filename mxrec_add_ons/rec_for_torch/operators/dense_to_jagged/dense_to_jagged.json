@@ -38,10 +38,10 @@
         ],
         "attr": [
             {
-              "name": "jagged_dim",
-			  "param_type": "required",
-              "type": "int",
-              "default_value": 0
+                "name": "jagged_dim",
+                "param_type": "optional",
+                "type": "int",
+                "default_value": 0
             }
         ]
     }
