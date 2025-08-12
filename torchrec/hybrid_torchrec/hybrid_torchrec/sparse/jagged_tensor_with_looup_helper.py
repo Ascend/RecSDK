@@ -24,6 +24,7 @@ class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
         "_hash_indices",
         "_unique_offset",
         "_unique_indices",
+        "_unique_ids",
         "_unique_inverse",
         "_weights",
         "_lengths",
@@ -38,6 +39,8 @@ class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
         unique_indices: torch.Tensor = None,
         unique_offset: torch.Tensor = None,
         unique_offset_host: torch.Tensor = None,
+        unique_offset_list_single: torch.Tensor = None,
+        unique_ids: torch.Tensor = None,
         unique_inverse: torch.Tensor = None,
         weights: Optional[torch.Tensor] = None,
         lengths: Optional[torch.Tensor] = None,
@@ -72,10 +75,11 @@ class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
 
         self._hash_indices = hash_indices
         self._unique_offset = unique_offset
+        self._unique_ids = unique_ids
         self._unique_indices = unique_indices
         self._unique_inverse = unique_inverse
         self._unique_offset_host = unique_offset_host
-
+        self._unique_offset_list_single = unique_offset_list_single
 
     def __str__(self) -> str:
         if len(self._keys) == 0 or self._offsets is None and self._lengths is None:
@@ -108,6 +112,10 @@ class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
     @property
     def unique_indices(self) -> torch.Tensor:
         return self._unique_indices
+    
+    @unique_indices.setter
+    def unique_indices(self, value: torch.Tensor) -> None:
+        self._unique_indices = value
 
     @property
     def unique_offset(self) -> torch.Tensor:
@@ -120,11 +128,15 @@ class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
             return self._unique_offset.cpu().tolist()
         else:
             return self._unique_offset_host
+    
+    @property
+    def unique_ids(self) -> torch.Tensor:
+        return self._unique_ids
 
     @property
     def unique_inverse(self) -> torch.Tensor:
         return self._unique_inverse
-
+    
     @staticmethod
     def from_offsets_sync(
         keys: List[str],
@@ -217,6 +229,8 @@ class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
                                     if self._hash_indices is not None else None),
                     unique_offset=(self._unique_offset[start:end] - self._unique_offset[start]
                                    if self._unique_offset is not None else None),
+                    unique_ids=(self._unique_ids[start_unique_offset:end_unique_offset]
+                                if self._unique_ids is not None else None),
                     unique_inverse=(self._unique_inverse[start_offset:end_offset]
                                     if self._unique_inverse is not None else None),
                     weights=(None if self.weights_or_none() is None else self.weights()[start_offset:end_offset]),
@@ -253,6 +267,11 @@ class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
                 unique_offset=torch.tensor(
                     empty_int_list,
                     device=self.device(),
+                    dtype=self._values.dtype,
+                ),
+                unique_ids=torch.tensor(
+                    empty_int_list,
+                    device=torch.device('cpu'),
                     dtype=self._values.dtype,
                 ),
                 unique_inverse=torch.tensor(
@@ -292,6 +311,7 @@ class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
                 hash_indices=self._hash_indices,
                 unique_indices=self.unique_indices,
                 unique_offset=self._unique_offset,
+                unique_ids=self._unique_ids,
                 unique_inverse=self._unique_inverse,
                 weights=self.weights_or_none(),
                 lengths=self._lengths,
@@ -366,6 +386,7 @@ class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
             unique_indices=self.to_device_non_blocking(self._unique_indices, device, non_blocking),
             unique_offset=self.to_device_non_blocking(self._unique_offset, device, non_blocking),
             unique_offset_host=self.unique_offset_host,
+            unique_ids=self._unique_ids,
             unique_inverse=self.to_device_non_blocking(self._unique_inverse, device, non_blocking),
             weights=self.to_device_non_blocking(weights, device, non_blocking),
             lengths=self.to_device_non_blocking(lengths, device, non_blocking),
@@ -409,6 +430,7 @@ class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
                 else None
             ),
             unique_offset_host=self.unique_offset_host,
+            unique_ids=self._unique_ids,
             unique_inverse=(
                 self._unique_inverse.pin_memory()
                 if self._unique_inverse is not None

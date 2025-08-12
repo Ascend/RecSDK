@@ -33,6 +33,8 @@ class BucketParams:
     block_bucketize_pos: torch.Tensor = None
     return_bucket_mapping: bool = False
     keep_orig_idx: bool = False
+    do_unique: bool = False
+    return_count: bool = False
 
 
 class HashMapBase(torch.nn.Module):
@@ -51,10 +53,20 @@ class IdsMapper(HashMapBase):
     of ids stored in the IdsMapper.
     """
 
-    def __init__(self, n):
+    def __init__(self, embedding_num, only_device_memory: bool = True):
         super().__init__()
-        self.ids_mapper = torch.classes.hybrid.IdsMapper(n)
-        self.n = n
+        self.ids_mapper = torch.classes.hybrid.IdsMapper(embedding_num, only_device_memory)
+        self.embedding_num = embedding_num
+        self._cache_mgr = None
+    
+    def set_cache_mgr(self, cache_mgr):
+        self._cache_mgr = cache_mgr
+
+    def statistic_key_count(self, ids: torch.Tensor, offset: torch.Tensor, counts: torch.Tensor, table_i: int):
+        # cache manager内会判断表是否开启准入，开启时才记录count数据
+        self._cache_mgr.statistics_key_count(
+            ids, offset, counts, table_i
+        )
 
     def forward(self, ids: torch.Tensor):
         with record_function("## ids2indices ##"):
@@ -69,12 +81,13 @@ class IdsMapper(HashMapBase):
         hash_indices: torch.Tensor,
         offset: torch.Tensor,
         unique: torch.Tensor,
+        unique_ids: torch.Tensor,
         unique_inverse: torch.Tensor,
         unique_offset: List[int],
         table_id: int,
     ):
         self.ids_mapper.ids2indices_unique_out(
-            ids, hash_indices, offset, unique, unique_inverse, unique_offset, table_id
+            ids, hash_indices, offset, unique, unique_ids, unique_inverse, unique_offset, table_id
         )
 
 
@@ -91,5 +104,6 @@ def block_bucketize_sparse_features_cpu(bucket_params: BucketParams):
                                                                 bucket_params.max_b,
                                                                 bucket_params.block_bucketize_pos,
                                                                 bucket_params.return_bucket_mapping,
-                                                                bucket_params.keep_orig_idx)
-
+                                                                bucket_params.keep_orig_idx,
+                                                                bucket_params.do_unique,
+                                                                bucket_params.return_count)
