@@ -31,30 +31,48 @@ RUN mv /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list.d/debian.sou
     rm -rf /var/cache/apt/
 # 注：openssh-server为双机训练样例需要，仅单机训练时可去掉
 
-# 4.安装cmake-3.20.6
-# 下载地址: https://cmake.org/files/v3.20/cmake-3.20.6.tar.gz
-RUN wget https://cmake.org/files/v3.20/cmake-3.20.6.tar.gz && \
-    . /etc/profile && gcc -v && tar -zxf cmake-3.20.6.tar.gz && \
-    cd cmake-3.20.6 && \
-    ./bootstrap && make -j 32 && make install && cd .. && \
-    rm -rf cmake-3.20.6*
+# 编译安装 GCC 11.2.0
+RUN wget https://mirrors.huaweicloud.com/gnu/gcc/gcc-11.2.0/gcc-11.2.0.tar.gz && \
+    tar -zxvf gcc-11.2.0.tar.gz && \
+    cd gcc-11.2.0 && \
+    wget https://mirrors.huaweicloud.com/gnu/gmp/gmp-6.1.0.tar.bz2 && \
+    wget https://mirrors.huaweicloud.com/gnu/mpfr/mpfr-3.1.6.tar.bz2 && \
+    wget https://mirrors.huaweicloud.com/gnu/mpc/mpc-1.0.3.tar.gz && \
+    wget https://gcc.gnu.org/pub/gcc/infrastructure/isl-0.18.tar.bz2 && \
+    sed -i "246s/tar -xf \"\${ar}\"/tar --no-same-owner -xf \"\${ar}\"/" contrib/download_prerequisites && \
+    ./contrib/download_prerequisites && \
+    ./configure --enable-languages=c,c++ --disable-multilib --with-system-zlib --prefix=/usr/local/gcc11.2.0 && \
+    make -j $(nproc) && make install && \
+    find /tmp/gcc-11.2.0/ -name libstdc++.so.6.0.29 -exec cp {} /lib64/ \; && \
+    rm -rf /tmp/gcc-11.2.0* && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/local/gcc11.2.0/bin/gcc 100 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/local/gcc11.2.0/bin/g++ 100 && \
+    update-alternatives --set gcc /usr/local/gcc11.2.0/bin/gcc && \
+    update-alternatives --set g++ /usr/local/gcc11.2.0/bin/g++
 
-# 5.安装python3.11.9
-# 下载地址: https://mirrors.huaweicloud.com/python/3.11.9/Python-3.11.9.tgz
-RUN wget https://mirrors.huaweicloud.com/python/3.11.9/Python-3.11.9.tgz && \
-    . /etc/profile && gcc -v && tar -xvf Python-3.11.9.tgz && \
-    cd Python-3.11.9 && \
+
+# 4.安装cmake-3.22.6
+RUN wget https://cmake.org/files/v3.22/cmake-3.22.6.tar.gz && \
+    . /etc/profile && gcc -v && tar -zxf /tmp/cmake-3.22.6.tar.gz && \
+    cd cmake-3.22.6 && \
+    ./bootstrap && make -j $(nproc) && make install && \
+    rm -rf /tmp/cmake-3.22.6*
+
+# 5.安装python3.11.0
+RUN wget https://mirrors.huaweicloud.com/python/3.11.0/Python-3.11.0.tar.xz && \
+    . /etc/profile && gcc -v && tar -xvf /tmp/Python-3.11.0.tar.xz && \
+    cd Python-3.11.0 && \
     mkdir -p build && cd build && \
-    ../configure --enable-shared --prefix=/usr/local/python3.11.9 && \
-    make -j && make install && \
-    cd ../../ && rm -rf Python-3.11.9* && \
+    ../configure --enable-shared --prefix=/usr/local/python3.11.0 && \
+    make -j $(nproc) && make install && \
+    rm -rf /tmp/Python-3.11.0* && \
     ldconfig
 
-ENV PATH=$PATH:/usr/local/python3.11.9/bin \
-    LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/python3.11.9/lib
+ENV PATH=$PATH:/usr/local/python3.11.0/bin \
+    LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/python3.11.0/lib
 
-RUN ln -s /usr/local/python3.11.9/bin/python3 /usr/bin/python && \
-    ln -s /usr/local/python3.11.9/bin/pip3 /usr/bin/pip
+RUN ln -s /usr/local/python3.11.0/bin/python3 /usr/bin/python && \
+    ln -s /usr/local/python3.11.0/bin/pip3 /usr/bin/pip
 
 # 配置python源
 RUN mkdir ~/.pip && touch ~/.pip/pip.conf && \
