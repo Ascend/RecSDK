@@ -34,6 +34,8 @@ if [ -f "${package_name}" ]; then
 fi
 python3 setup.py bdist_wheel --plat-name linux_"${ARCH}"
 cp requirements.txt dist/
+
 build_torchrec_embcache
-cp "${TORCHREC_EMBCACHE_PATH}/dist/torchrec_embcache-*.whl" dist/
+cp ${TORCHREC_EMBCACHE_PATH}/dist/torchrec_embcache-*.whl dist/
+
 tar -czvf "${package_name}" -C dist .
