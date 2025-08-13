@@ -36,7 +36,7 @@ target_link_libraries(embcache_pybind PRIVATE
         pybind11::module
         ${TORCH_LIBRARIES}
         ${TORCH_PYTHON_LIBRARY}
-        c_sec
+        securec
 )
 
 find_package(OpenMP REQUIRED)

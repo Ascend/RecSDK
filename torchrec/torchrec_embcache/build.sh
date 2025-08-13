@@ -22,7 +22,14 @@ if [ -f "${package_name}" ]; then
   rm "${package_name}"
 fi
 
-python3 -m pip install pybind11
+
+function prepare_deps()
+{
+    python3 -m pip install pybind11
+    cd "${SCRIPT_PATH}/src/3rdparty"
+    git clone -b master https://gitee.com/Janisa/huawei_secure_c.git securec
+    cd -
+}
 
 function check_ret_fn()
 {
@@ -59,6 +66,7 @@ function build_whl_pkg_with_setup_func()
 
     rm -f src/torchrec_embcache/*.so*
     cp cmake_build/install/embcache_pybind.so src/torchrec_embcache/
+    cp src/3rdparty/securec/lib/libsecurec.so src/torchrec_embcache/
 
     python3 setup.py bdist_wheel --plat-name linux_"${ARCH}"
     check_ret_fn "python3 setup.py bdist_wheel"
@@ -71,6 +79,7 @@ function build_tar_pkg_func()
     check_ret_fn "tar gz ${package_name}"
 }
 
+prepare_deps
 build_with_cmake_func
 build_whl_pkg_with_setup_func
 build_tar_pkg_func
