@@ -71,14 +71,6 @@ function build_whl_pkg_with_setup_func()
     check_ret_fn "python3 setup.py bdist_wheel"
 }
 
-function build_tar_pkg_func()
-{
-    cp "${SCRIPT_PATH}/requirements.txt" dist/
-    tar -czvf "${package_name}" -C dist .
-    check_ret_fn "tar gz ${package_name}"
-}
-
 prepare_deps
 build_with_cmake_func
 build_whl_pkg_with_setup_func
-build_tar_pkg_func

@@ -2,6 +2,15 @@
 # Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
 
 set -e
+SCRIPT_PATH=$(cd $(dirname $0); pwd)
+TORCHREC_EMBCACHE_PATH="${SCRIPT_PATH}/../torchrec_embcache"
+
+function build_torchrec_embcache()
+{
+  cd ${TORCHREC_EMBCACHE_PATH}
+  bash build.sh
+  cd -
+}
 
 version_file="version.txt"
 
@@ -25,4 +34,6 @@ if [ -f "${package_name}" ]; then
 fi
 python3 setup.py bdist_wheel --plat-name linux_"${ARCH}"
 cp requirements.txt dist/
+build_torchrec_embcache
+cp "${TORCHREC_EMBCACHE_PATH}/dist/torchrec_embcache-*.whl" dist/
 tar -czvf "${package_name}" -C dist .
