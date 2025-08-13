@@ -54,9 +54,5 @@ add_subdirectory(3rdparty)
 include_directories(${PROJECT_SOURCE_DIR}/3rdparty/securec/include)
 link_directories(${PROJECT_SOURCE_DIR}/3rdparty/securec/lib)
 
-# set(ASCEND_DRIVER_PATH /usr/local/Ascend/driver)
-# include_directories(${ASCEND_DRIVER_PATH}/kernel/libc_sec/include) 
-# link_directories(${ASCEND_DRIVER_PATH}/lib64/common)
-
 # 主项目配置
 add_subdirectory(torchrec_embcache)
