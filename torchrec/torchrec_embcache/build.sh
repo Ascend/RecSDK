@@ -22,6 +22,8 @@ if [ -f "${package_name}" ]; then
   rm "${package_name}"
 fi
 
+python3 -m pip install pybind11
+
 function check_ret_fn()
 {
     if [ $? -ne 0 ]; then
