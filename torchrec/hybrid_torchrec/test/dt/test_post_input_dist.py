@@ -18,7 +18,7 @@ from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
 
 
 class MockHashMap(HashMapBase):
-    def __call__(self, values, _):
+    def __call__(self, values):
         unique, inverse = torch.unique(values, return_inverse=True)
         hash_indices = torch.arange(len(values))
         return hash_indices, unique, inverse

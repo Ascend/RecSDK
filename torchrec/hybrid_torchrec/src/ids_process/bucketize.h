@@ -13,7 +13,7 @@
 namespace hybrid {
 using BucketResult = std::tuple<at::Tensor, at::Tensor, std::optional<at::Tensor>,
                      std::optional<at::Tensor>,
-                     std::optional<at::Tensor>, std::optional<at::Tensor>>;
+                     std::optional<at::Tensor>, std::optional<at::Tensor>, at::Tensor>;
 BucketResult BlockBucketizeSparseFeaturesCpu(
     const at::Tensor& lengths, const at::Tensor& indices,
     const bool bucketizePos, const bool sequence,
@@ -22,6 +22,7 @@ BucketResult BlockBucketizeSparseFeaturesCpu(
     const std::optional<at::Tensor>& weights,
     const std::optional<at::Tensor>& batchSizePerFeature, const int64_t maxBatchSize,
     const std::optional<std::vector<at::Tensor>>& blockBucketizePos,
-    const bool returnBucketMapping, const bool keepOrigIdx);
+    const bool returnBucketMapping, const bool keepOrigIdx, const bool doUnique,
+    const bool returnCount);
 }
 #endif

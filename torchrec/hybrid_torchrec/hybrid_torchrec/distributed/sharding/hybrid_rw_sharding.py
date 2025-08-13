@@ -28,6 +28,7 @@ from hybrid_torchrec.modules.ids_process import (
     block_bucketize_sparse_features_cpu,
     BucketParams,
 )
+from hybrid_torchrec.sparse import KeyedJaggedTensorWithCount
 
 from torchrec.distributed.embedding_sharding import (
     BaseEmbeddingLookup,
@@ -99,7 +100,9 @@ def bucketize_kjt_before_all2all(
     bucketize_pos: bool = False,
     block_bucketize_row_pos: Optional[List[torch.Tensor]] = None,
     keep_original_indices: bool = False,
-) -> Tuple[KeyedJaggedTensor, Optional[torch.Tensor]]:
+    do_unique: bool = False,
+    enable_admit: bool = False,
+) -> Tuple[KeyedJaggedTensor, KeyedJaggedTensorWithCount, Optional[torch.Tensor]]:
     """
     :param kjt: 稀疏特征数据
     :param num_buckets: 需要将表分桶至num_buckets个设备
@@ -115,6 +118,8 @@ def bucketize_kjt_before_all2all(
         block_sizes.numel() == num_features,
         f"Expecting block sizes for {num_features} features, but {block_sizes.numel()} received.",
     )
+    # 开启local unique时且有表开启准入时，需返回counts数据并进行all2all
+    return_count = do_unique and enable_admit
     block_sizes_new_type = _fx_wrap_tensor_to_device_dtype(block_sizes, kjt.values())
     bucket_params = BucketParams( 
         kjt.lengths().view(-1),
@@ -127,7 +132,10 @@ def bucketize_kjt_before_all2all(
         batch_size_per_feature=_fx_wrap_batch_size_per_feature(kjt),
         max_b=_fx_wrap_max_B(kjt),
         block_bucketize_pos=block_bucketize_row_pos,  # each tensor should have the same dtype as kjt.lengths()
-        keep_orig_idx=keep_original_indices,)
+        keep_orig_idx=keep_original_indices,
+        do_unique=do_unique,
+        return_count=return_count,
+    )
     (
         bucketized_lengths,
         bucketized_indices,
@@ -135,7 +143,28 @@ def bucketize_kjt_before_all2all(
         pos,
         unbucketize_permute,
         _,
+        counts,
     ) = block_bucketize_sparse_features_cpu(bucket_params)
+
+    if return_count:
+        return (
+            KeyedJaggedTensorWithCount(
+                # duplicate keys will be resolved by AllToAll
+                keys=_fx_wrap_gen_list_n_times(kjt.keys(), num_buckets),
+                values=bucketized_indices,
+                counts=counts,
+                weights=pos if bucketize_pos else bucketized_weights,
+                lengths=bucketized_lengths.view(-1),
+                offsets=None,
+                stride=_fx_wrap_stride(kjt),
+                stride_per_key_per_rank=_fx_wrap_stride_per_key_per_rank(kjt, num_buckets),
+                length_per_key=None,
+                offset_per_key=None,
+                index_per_key=None,
+            ),
+            unbucketize_permute,
+        )
+
     return (
         KeyedJaggedTensor(
             # duplicate keys will be resolved by AllToAll

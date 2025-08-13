@@ -137,11 +137,12 @@ def test_ids2indices_out(input_size, pin_memory, num_mapper):
         hash_indices = torch.empty_like(ids, pin_memory=pin_memory)
         offsets = torch.LongTensor([0, input_size, input_size * 2, input_size * 3])
         unique = torch.empty_like(ids, pin_memory=pin_memory)
+        unique_ids = torch.empty_like(ids)
         unique_inverse = torch.empty_like(ids, pin_memory=pin_memory)
         unique_offset = torch.LongTensor([0 for _ in range(num_mapper + 1)])
         for i in range(num_mapper):
             mappers[i].ids2indices_unique_out(
-                ids, hash_indices, offsets, unique, unique_inverse, unique_offset, i
+                ids, hash_indices, offsets, unique, unique_ids, unique_inverse, unique_offset, i
             )
 
             start = offsets[i].item()
@@ -173,12 +174,13 @@ def test_ids2indices_out_ids_max_than_table_size(input_size, pin_memory, num_map
     offsets = torch.LongTensor([0, input_size * IDS_RANGE_TIMES, 
                                 input_size * 2 * IDS_RANGE_TIMES, input_size * 3 * IDS_RANGE_TIMES])
     unique = torch.empty_like(ids, pin_memory=pin_memory)
+    unique_ids = torch.empty_like(ids, pin_memory=pin_memory)
     unique_inverse = torch.empty_like(ids, pin_memory=pin_memory)
     unique_offset = torch.LongTensor([0 for _ in range(num_mapper + 1)])
     for i in range(num_mapper):
         with pytest.raises(RuntimeError):
             mappers[i].ids2indices_unique_out(
-                ids, hash_indices, offsets, unique, unique_inverse, unique_offset, i
+                ids, hash_indices, offsets, unique, unique_ids, unique_inverse, unique_offset, i
             )
 
 
@@ -199,12 +201,13 @@ def test_ids2indices_out_ids_smaller_than_0(input_size, pin_memory, num_mapper):
     hash_indices = torch.empty_like(ids, pin_memory=pin_memory)
     offsets = torch.LongTensor([0, input_size, input_size * 2, input_size * 3])
     unique = torch.empty_like(ids, pin_memory=pin_memory)
+    unique_ids = torch.empty_like(ids, pin_memory=pin_memory)
     unique_inverse = torch.empty_like(ids, pin_memory=pin_memory)
     unique_offset = torch.LongTensor([0 for _ in range(num_mapper + 1)])
     for i in range(num_mapper):
         with pytest.raises(RuntimeError):
             mappers[i].ids2indices_unique_out(
-                ids, hash_indices, offsets, unique, unique_inverse, unique_offset, i
+                ids, hash_indices, offsets, unique, unique_ids, unique_inverse, unique_offset, i
             )
 
 
@@ -225,12 +228,13 @@ def test_ids2indices_out_ids_unique_is_none(input_size, pin_memory, num_mapper):
     hash_indices = torch.empty_like(ids, pin_memory=pin_memory)
     offsets = torch.LongTensor([0, input_size, input_size * 2, input_size * 3])
     unique = None
+    unique_ids = torch.empty_like(ids, pin_memory=pin_memory)
     unique_inverse = torch.empty_like(ids, pin_memory=pin_memory)
     unique_offset = torch.LongTensor([0 for _ in range(num_mapper + 1)])
     for i in range(num_mapper):
         with pytest.raises(RuntimeError):
             mappers[i].ids2indices_unique_out(
-                ids, hash_indices, offsets, unique, unique_inverse, unique_offset, i
+                ids, hash_indices, offsets, unique, unique_ids, unique_inverse, unique_offset, i
             )
 
 
@@ -250,12 +254,13 @@ def test_ids2indices_out_ids_is_none(input_size, pin_memory, num_mapper):
     hash_indices = torch.empty_like(ids, pin_memory=pin_memory)
     offsets = torch.LongTensor([0, input_size, input_size * 2, input_size * 3])
     unique = torch.empty_like(ids, pin_memory=pin_memory)
+    unique_ids = torch.empty_like(ids, pin_memory=pin_memory)
     unique_inverse = torch.empty_like(ids, pin_memory=pin_memory)
     unique_offset = torch.LongTensor([0 for _ in range(num_mapper + 1)])
     for i in range(num_mapper):
         with pytest.raises(RuntimeError):
             mappers[i].ids2indices_unique_out(
-                None, hash_indices, offsets, unique, unique_inverse, unique_offset, i
+                None, hash_indices, offsets, unique, unique_ids, unique_inverse, unique_offset, i
             )
 
 
@@ -276,12 +281,13 @@ def test_ids2indices_out_ids_invalid_offset(input_size, pin_memory, num_mapper):
     hash_indices = torch.empty_like(ids, pin_memory=pin_memory)
     offsets = torch.LongTensor([0, input_size])
     unique = torch.empty_like(ids, pin_memory=pin_memory)
+    unique_ids = torch.empty_like(ids, pin_memory=pin_memory)
     unique_inverse = torch.empty_like(ids, pin_memory=pin_memory)
     unique_offset = torch.LongTensor([0 for _ in range(num_mapper + 1)])
     with pytest.raises(RuntimeError):
         for i in range(num_mapper):
             mappers[i].ids2indices_unique_out(
-                ids, hash_indices, offsets, unique, unique_inverse, unique_offset, i
+                ids, hash_indices, offsets, unique, unique_ids, unique_inverse, unique_offset, i
             )
 
 
@@ -302,12 +308,13 @@ def test_ids2indices_out_ids_hash_indices_is_none(input_size, pin_memory, num_ma
     hash_indices = None
     offsets = torch.LongTensor([0, input_size, input_size * 2, input_size * 3])
     unique = torch.empty_like(ids, pin_memory=pin_memory)
+    unique_ids = torch.empty_like(ids, pin_memory=pin_memory)
     unique_inverse = torch.empty_like(ids, pin_memory=pin_memory)
     unique_offset = torch.LongTensor([0 for _ in range(num_mapper + 1)])
     for i in range(num_mapper):
         with pytest.raises(RuntimeError):
             mappers[i].ids2indices_unique_out(
-                ids, hash_indices, offsets, unique, unique_inverse, unique_offset, i
+                ids, hash_indices, offsets, unique, unique_ids, unique_inverse, unique_offset, i
             )
 
 
@@ -346,6 +353,7 @@ def test_block_bucketize_sparse_features_cpu(input_size, mutil_hots, bucket_size
             pos,
             unbucketize_permute,
             _,
+            counts,
         ) = block_bucketize_sparse_features_cpu(params_in)
 
         params = BucketResult(bucketized_lengths,
@@ -397,6 +405,7 @@ def test_block_bucketize_sparse_features_cpu_invalid_bucket_size(input_size, mut
             pos,
             unbucketize_permute,
             _,
+            counts,
         ) = block_bucketize_sparse_features_cpu(params_in)
 
 
@@ -435,4 +444,5 @@ def test_block_bucketize_sparse_features_cpu_invalid_block_size(input_size, muti
             pos,
             unbucketize_permute,
             _,
+            counts,
         ) = block_bucketize_sparse_features_cpu(params_in)
