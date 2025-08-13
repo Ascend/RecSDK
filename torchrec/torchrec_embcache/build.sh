@@ -36,9 +36,11 @@ function build_with_cmake_func()
 {
     mkdir -p ${SCRIPT_PATH}/src/cmake_build
     cd ${SCRIPT_PATH}/src/cmake_build
+    torch_path=`python3 -c 'import torch;print(torch.utils.cmake_prefix_path)'`
     cmake ../ \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX=${SCRIPT_PATH}/cmake_build/install
+    -DCMAKE_INSTALL_PREFIX="${torch_path}"
+
 
     make -j8
     make install
