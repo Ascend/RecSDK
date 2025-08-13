@@ -66,7 +66,7 @@ function build_whl_pkg_with_setup_func()
 
     rm -f src/torchrec_embcache/*.so*
     cp src/cmake_build/torchrec_embcache/csrc/embcache_pybind.so src/torchrec_embcache/
-    cp src/3rdparty/securec/lib/libsecurec.so src/torchrec_embcache/
+    # cp src/3rdparty/securec/lib/libsecurec.so src/torchrec_embcache/
 
     python3 setup.py bdist_wheel --plat-name linux_"${ARCH}"
     check_ret_fn "python3 setup.py bdist_wheel"
