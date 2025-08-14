@@ -23,7 +23,7 @@ from pattern.util import perform_test
 class PatternModel(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.layer_norm = torch.nn.LayerNorm([640])
+        self.layer_norm = torch.nn.LayerNorm([640], dtype=torch.float16)
 
     def forward(self, inputs):
         concat01 = torch.cat(
