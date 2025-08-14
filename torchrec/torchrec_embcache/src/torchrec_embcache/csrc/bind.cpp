@@ -41,7 +41,8 @@ void AddEmbCacheManager(pybind11::module_& m)
              py::arg("table_indices") = std::vector<int32_t>{})
         .def("swap_in_emb_and_optimizer", &EmbcacheManager::SwapInEmbAndOptimizer, py::arg("swap_info"),
              py::arg("swap_in_tensor"), py::arg("swap_in_offs_tensor"), py::arg("weights_devs"),
-             py::arg("momentum1_devs"), py::arg("momentum2_devs"), py::arg("table_indices") = std::vector<int32_t>{});
+             py::arg("momentum1_devs"), py::arg("momentum2_devs"), py::arg("table_indices") = std::vector<int32_t>{})
+        .def("get_table", &EmbcacheManager::GetTable);
 }
 
 void AddInitializerType(pybind11::module_& m)

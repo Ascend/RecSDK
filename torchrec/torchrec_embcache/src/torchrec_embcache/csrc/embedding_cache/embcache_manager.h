@@ -151,6 +151,8 @@ public:
     static int32_t ReadFile(const std::string& filePath, std::vector<std::vector<float>>& embedding,
                             const std::string& loadItemName, int32_t embDim);
 
+    std::unordered_map<std::string, std::unordered_map<int64_t, std::vector<float>>> GetTable();
+
 private:
     SwapInfo ComputeSwapInfo(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey,
                              const std::vector<int32_t>& tableIndices);

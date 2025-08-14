@@ -900,3 +900,16 @@ void EmbcacheManager::StatisticsKeyCount(const at::Tensor& batchKeys, const torc
     TORCH_CHECK(end <= batchKeys.numel())
     featureFilters[tableIndex].StatisticsKeyCount(featureDataPtr, countDataPtr, start, end, isCountDataEmpty);
 }
+
+std::unordered_map<std::string, std::unordered_map<int64_t, std::vector<float>>> EmbcacheManager::GetTable()
+{
+    std::unordered_map<std::string, std::unordered_map<int64_t, std::vector<float>>> embedMap;
+    for (int32_t i = 0; i < embNum; i++) {
+        std::string tableName = embConfigs[i].tableName;
+        embeddingTables[i]->ForEachKey([&](const int64_t key, const float* value) {
+            std::vector<float> vec(value, value + embConfigs[i].embDim);
+            embedMap[tableName][key] = vec;
+        });
+    }
+    return embedMap;
+}
