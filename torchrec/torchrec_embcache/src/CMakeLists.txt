@@ -47,10 +47,12 @@ if(NOT CMAKE_INSTALL_PREFIX)
     message(STATUS "CMAKE_INSTALL_PREFIX set to default: ${CMAKE_INSTALL_PREFIX}")
 endif()
 
+
+add_subdirectory(3rdparty)
+
 # for securec
-set(ASCEND_DRIVER_PATH /usr/local/Ascend/driver)
-include_directories(${ASCEND_DRIVER_PATH}/kernel/libc_sec/include) 
-link_directories(${ASCEND_DRIVER_PATH}/lib64/common)
+include_directories(${PROJECT_SOURCE_DIR}/3rdparty/securec/include)
+link_directories(${PROJECT_SOURCE_DIR}/3rdparty/securec/lib)
 
 # 主项目配置
 add_subdirectory(torchrec_embcache)

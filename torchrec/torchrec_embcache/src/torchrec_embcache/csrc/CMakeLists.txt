@@ -1,14 +1,6 @@
 # Python3
-find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# PyTorch
-execute_process(
-  COMMAND ${Python3_EXECUTABLE} "-c" "import site; print(site.getsitepackages()[0])"
-  OUTPUT_VARIABLE Python3_SITELIB
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-set(Torch_DIR "${Python3_SITELIB}/torch/share/cmake/Torch")
 find_package(Torch REQUIRED)
 
 # pybind11
@@ -44,7 +36,7 @@ target_link_libraries(embcache_pybind PRIVATE
         pybind11::module
         ${TORCH_LIBRARIES}
         ${TORCH_PYTHON_LIBRARY}
-        c_sec
+        securec
 )
 
 find_package(OpenMP REQUIRED)
