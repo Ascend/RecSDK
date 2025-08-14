@@ -25,7 +25,7 @@ class PatternModel(torch.nn.Module):
         super().__init__()
 
     def forward(self, input0, input1):
-        tmp0 = input0[:, :, 139:]
+        tmp0 = input0[:, :, 129:]
         tmp1 = input1[:, :, 32:]
         return torch.sum(tmp0 * tmp1, dim=1)
 

@@ -34,7 +34,7 @@ class PatternModel(torch.nn.Module):
         slice_length = 128
 
         # shape -> [num_slices, slice_length]
-        indices = start_indices.view(-1, 1) + torch.arange(3)
+        indices = start_indices.view(-1, 1) + torch.arange(3, device=start_indices.device)
         # shape -> [batch, num_slices, slice_length]
         indices = indices.expand(batch_size, -1, -1)
         # shape -> [batch, num_slices, row, slice_length]

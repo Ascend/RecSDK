@@ -18,6 +18,7 @@
 from typing import List, Union
 import copy
 import csv
+import fnmatch
 import os
 import shutil
 import inspect
@@ -25,28 +26,15 @@ import inspect
 import toml
 import torch
 import torch.utils.benchmark as benchmark
-import torch_npu
 
 from utils.logger import default_logger
 from pattern.constant import TORCHINDUCTOR_CACHE_ENV
 
 STEP_COL_NAME = 'Step'
+STEP_ID_COL_NAME = 'Step Id'
 OP_TIME_COL_NAME = 'Computing'
 PROF_STEP_DATA_FILE_NAME = "step_trace_time.csv"
-
-g_prof_config = torch_npu.profiler._ExperimentalConfig(
-    export_type=[
-        torch_npu.profiler.ExportType.Text,
-        torch_npu.profiler.ExportType.Db
-        ],
-    profiler_level=torch_npu.profiler.ProfilerLevel.Level0,
-    msprof_tx=False,
-    aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
-    l2_cache=False,
-    op_attr=False,
-    data_simplification=False,
-    record_op_args=False,
-    gc_detect_threshold=None)
+PROF_KERNEL_DETAILS_FILE_NAME = "kernel_details.csv"
 
 
 def load_config():
@@ -107,12 +95,32 @@ def perform_test(model: torch.nn.Module, input_list: list):
         raise ValueError("mode must be 'precision' or 'performance'")
 
 
+def log_op_num(config: dict, module_name: str, op_num: int):
+    """
+    打印算子数。
+
+    参数:
+    - config (dict): 包含模型配置信息的字典，包括设备信息、模式等。
+    - module_name (str): 用例名称。
+    - op_num (int): 算子数。
+    """
+    default_logger.info(
+        "[{}] op num over {} with {} mode: {}".format(
+            module_name,
+            config["model_config"]["device"],
+            config["model_config"]["mode"],
+            op_num
+        )
+    )
+
+
 def log_avg_time(config: dict, module_name: str, avg_time: float):
     """
     打印平均运行时间。
 
     参数:
     - config (dict): 包含模型配置信息的字典，包括设备信息、模式等。
+    - module_name (str): 用例名称。
     - avg_time (float): 模型平均耗时。
     """
     default_logger.info(
@@ -134,9 +142,47 @@ def find_file(directory: str, filename: str) -> str:
     - filename (str): 待搜索的文件名
     """
     for root, _, files in os.walk(directory):
-        if filename in files:
-            return os.path.join(root, filename)
+        for file in files:
+            if fnmatch.fnmatch(file, filename):
+                return os.path.join(root, file)
     return ""
+
+
+def get_op_num(prof_output_dir: str) -> int:
+    """
+    从指定的目录中读取单次迭代算子数。
+
+    参数:
+    - prof_output_dir (str): profile输出的目录
+
+    返回:
+    - int: 算子数
+    """
+    prof_file = find_file(prof_output_dir, PROF_KERNEL_DETAILS_FILE_NAME)
+    if prof_file == "":
+        raise ValueError(f"can't find file:{PROF_KERNEL_DETAILS_FILE_NAME}")
+
+    default_logger.info(f"profiling file:{prof_file}")
+    # 读取CSV文件
+    step_id = None
+    op_num = 0
+    with open(prof_file, 'r', encoding='utf-8') as file:
+        # 创建CSV读取器
+        csv_reader = csv.DictReader(file)
+        # 读取数据行
+        for row in csv_reader:
+            cur_step = int(row[STEP_ID_COL_NAME])
+            if step_id is None:
+                step_id = cur_step
+                op_num = 1
+                continue
+
+            if step_id != cur_step:
+                break
+
+            op_num += 1
+
+    return op_num
 
 
 def get_op_avg_time(prof_output_dir: str, warmup_step_num: int, exec_step_num: int) -> float:
@@ -155,11 +201,11 @@ def get_op_avg_time(prof_output_dir: str, warmup_step_num: int, exec_step_num: i
     op_time_sum = 0
     prof_file = find_file(prof_output_dir, PROF_STEP_DATA_FILE_NAME)
     if prof_file == "":
-        raise ValueError(f"未找到文件：{PROF_STEP_DATA_FILE_NAME}，profile数据生成异常")
+        raise ValueError(f"can't find file:{PROF_STEP_DATA_FILE_NAME}")
 
-    default_logger.info(f"找到prof文件路径：{prof_file}")
+    default_logger.info(f"profiling file:{prof_file}")
     # 读取CSV文件
-    with open(prof_file, 'r') as file:
+    with open(prof_file, 'r', encoding='utf-8') as file:
         # 创建CSV读取器
         csv_reader = csv.DictReader(file)
         # 读取数据行
@@ -170,9 +216,77 @@ def get_op_avg_time(prof_output_dir: str, warmup_step_num: int, exec_step_num: i
             op_time_sum += float(row[OP_TIME_COL_NAME]) # 累加算子耗时
 
         if (row_num != exec_step_num):
-            raise ValueError(f"step数量：{exec_step_num}，实际统计数量：{row_num}，profile数据生成异常")
+            raise ValueError(f"step num:{exec_step_num}, row_num:{row_num}, data error!")
 
         return op_time_sum / row_num
+
+
+def performance_test_on_gpu(model: torch.nn.Module, input_list: list, config: dict, module_name: str):
+    """
+    测试模型在gpu上的性能。
+
+    此函数重点关注gpu侧算子运行的总时间。
+
+    参数:
+    - model (torch.nn.Module): 需要测试性能的模型。
+    - input_list (list): 模型的输入数据列表。
+    - config (dict): 包含模型配置信息的字典，包括设备信息、模式等。
+
+    返回:
+    无返回值，直接打印模型在指定设备和模式下的平均运行时间。
+    """
+    # 切换为评估模式
+    model.eval()
+    with torch.no_grad():
+        model(*input_list) # 提前跑一次，确保模型能正常执行，否则导致profiler异常
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+
+    warmup_step_num = int(config["test_config"]["warmup_step_num"])
+    exec_step_num = int(config["test_config"]["exec_step_num"])
+    prof_output_dir = os.path.join(config["test_config"]["prof_dir"], module_name + ".prof")
+    prof = torch.profiler.profile(
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.CUDA
+            ],
+        # wait必须设置为0，repeat必须设置为1，使profiler期望执行次数与实际执行次数匹配；
+        # 否则profiler对象无法正常析构，再次创建profiler将导致功能异常
+        schedule=torch.profiler.schedule(wait=0, warmup=warmup_step_num, active=exec_step_num, repeat=1),
+        on_trace_ready=torch.profiler.tensorboard_trace_handler(prof_output_dir),
+        record_shapes=False,
+        profile_memory=False,
+        with_stack=False,
+        with_modules=False,
+        with_flops=False)
+
+    # 执行推理
+    all_step_num = warmup_step_num + exec_step_num
+    prof.start()
+    with torch.no_grad():
+        for _ in range(all_step_num):
+            model(*input_list)
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            prof.step()
+    prof.stop()
+
+    # 处理json文件，得到kernel_details.csv和step_trace_time.csv
+    gpu_json_file = find_file(prof_output_dir, "*.trace.json")
+    if gpu_json_file == "":
+        raise ValueError(f"can't find file:*.trace.json")
+
+    from utils.parse_gpu_prof_json import parse_json
+    parse_json(gpu_json_file)
+
+    # 计算op数量
+    op_num = get_op_num(prof_output_dir)
+    # 读取算子耗时
+    op_avg_time = get_op_avg_time(prof_output_dir, warmup_step_num, exec_step_num)
+    # 打印平均运行时间
+    log_avg_time(config, module_name, op_avg_time)
+    # 打印算子数
+    log_op_num(config, module_name, op_num)
 
 
 def performance_test_on_npu(model: torch.nn.Module, input_list: list, config: dict, module_name: str):
@@ -189,10 +303,27 @@ def performance_test_on_npu(model: torch.nn.Module, input_list: list, config: di
     返回:
     无返回值，直接打印模型在指定设备和模式下的平均运行时间。
     """
+    import torch_npu
+    prof_config = torch_npu.profiler._ExperimentalConfig(
+        export_type=[
+            torch_npu.profiler.ExportType.Text,
+            torch_npu.profiler.ExportType.Db
+            ],
+        profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
+        msprof_tx=False,
+        aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
+        l2_cache=False,
+        op_attr=False,
+        data_simplification=False,
+        record_op_args=False,
+        gc_detect_threshold=None)
+
     # 切换为评估模式
     model.eval()
     with torch.no_grad():
         model(*input_list) # 提前跑一次，确保模型能正常执行，否则导致profiler异常
+        if torch.npu.is_available():
+            torch.npu.synchronize()
 
     warmup_step_num = int(config["test_config"]["warmup_step_num"])
     exec_step_num = int(config["test_config"]["exec_step_num"])
@@ -206,12 +337,12 @@ def performance_test_on_npu(model: torch.nn.Module, input_list: list, config: di
         # 否则profiler对象无法正常析构，再次创建profiler将导致功能异常
         schedule=torch_npu.profiler.schedule(wait=0, warmup=warmup_step_num, active=exec_step_num, repeat=1),
         on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(prof_output_dir),
-        record_shapes=False,
+        record_shapes=True,
         profile_memory=False,
         with_stack=False,
         with_modules=False,
         with_flops=False,
-        experimental_config=g_prof_config)
+        experimental_config=prof_config)
 
     # 执行推理
     all_step_num = warmup_step_num + exec_step_num
@@ -219,13 +350,19 @@ def performance_test_on_npu(model: torch.nn.Module, input_list: list, config: di
     with torch.no_grad():
         for _ in range(all_step_num):
             model(*input_list)
+            if torch.npu.is_available():
+                torch.npu.synchronize()
             prof.step()
     prof.stop()
 
+    # 计算op数量
+    op_num = get_op_num(prof_output_dir)
     # 读取算子耗时
     op_avg_time = get_op_avg_time(prof_output_dir, warmup_step_num, exec_step_num)
     # 打印平均运行时间
     log_avg_time(config, module_name, op_avg_time)
+    # 打印算子数
+    log_op_num(config, module_name, op_num)
 
 
 def performance_test(model: torch.nn.Module, input_list: list, config: dict):
@@ -243,12 +380,15 @@ def performance_test(model: torch.nn.Module, input_list: list, config: dict):
     返回:
     无返回值，直接打印模型在指定设备和模式下的平均运行时间。
     """
+    config_device = config["model_config"]["device"]
+    device = torch.device(config_device)
+    torch.set_default_device(device)
     # 将输入列表中的每个元素移动到指定设备
     input_list = [
-        move_to_device(i, config["model_config"]["device"]) for i in input_list
+        move_to_device(i, device) for i in input_list
     ]
     # 将模型移动到指定设备
-    model = model.to(config["model_config"]["device"])
+    model = model.to(device)
 
     # 根据配置信息中的模式进行模型编译或直接运行
     if config["model_config"]["mode"] == "graph":
@@ -270,8 +410,11 @@ def performance_test(model: torch.nn.Module, input_list: list, config: dict):
     module_name = get_caller_module_name()
 
     # npu采用算子耗时的统计方法，与其他硬件不同
-    if (config["model_config"]["device"] == "npu"):
+    if ("npu" in config_device):
         performance_test_on_npu(model, input_list, config, module_name)
+        return
+    elif ("cuda" in config_device):
+        performance_test_on_gpu(model, input_list, config, module_name)
         return
 
     # 准备benchmark需要的全局变量

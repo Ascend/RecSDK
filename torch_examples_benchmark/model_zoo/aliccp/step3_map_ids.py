@@ -33,7 +33,7 @@ args.length = math.inf if args.length == -1 else args.length
 
 
 def parse_data(file_name, write_name):
-    with open("./keymap_train_pruned.json") as f:
+    with open("./keymap_train_pruned.json", encoding='utf-8') as f:
         map_dict: dict[str, list[int]] = json.load(f)
     map_map_dict: dict[str, dict[str, int]] = dict()
     for field, l_val in map_dict.items():
