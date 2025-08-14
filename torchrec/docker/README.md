@@ -3,7 +3,11 @@
 ## 前提
 - 物理机上已经安装好对应CANN版本的驱动和固件
 - 物理机上已经安装docker，并且docker网络可用
-- 准备基础OS镜像：在物理机上使用命令`docker pull debian:12`从Dockerhub上拉取debian12镜像
+- 准备基础OS镜像：在物理机上使用命令
+  - debian: x86架构: `docker pull debian:12` 从Dockerhub上拉取镜像
+  - openeuler: arm架构: `wget https://mirrors.huaweicloud.com/openeuler/openEuler-22.03-LTS-SP4/docker_img/aarch64/openEuler-docker.aarch64.tar.xz && docker load -i openEuler-docker.aarch64.tar.xz`<br>
+  - centos: x86架构: `docker pull --platform=amd64 swr.cn-south-1.myhuaweicloud.com/ascendhub/centos:7.6.1810`<br>
+
 
 ### 构建步骤
 Step1: 新建`build_images`目录。
@@ -20,9 +24,9 @@ ascend_install.info默认安装路径为/etc/ascend_install.info。
 Step3：将Dockerfile移动到`build_images`目录中，并运行下面命令构建镜像。构建镜像的步骤在Dockerfile中有详细的说明，注释部分是安装CANN包与torchrec相关包的操作。
 ```dockerfile
 # 服务器能访问外网
-docker build -t recsdk_torch_base:v1.0-x86 -f Dockerfile .
+docker build -t recsdk_torch_base:v1.0-[x86|arm] -f Dockerfile_[centos|debian|openeuler] .
 # 服务器配置代理访问外网
-docker build -t recsdk_torch_base:v1.0-x86 -f Dockerfile --build-arg http_proxy=http://your_proxy --build-arg https_proxy=https://your_proxy .
+docker build -t recsdk_torch_base:v1.0-[x86|arm] -f Dockerfile_[centos|debian|openeuler] --build-arg http_proxy=http://your_proxy --build-arg https_proxy=https://your_proxy .
 ```
 **注意：**   
 1. 制作镜像时需确保服务器能访问外网，否则需要配置代理。
