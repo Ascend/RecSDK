@@ -323,10 +323,12 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
             module.embedding_configs()
         )
         self._table_names: List[str] = [
-            config.name for config in self._embedding_configs
+            config.name 
+            for config in self._embedding_configs
         ]
         self._table_name_to_config: Dict[str, EmbCacheEmbeddingConfig] = {
-            config.name: config for config in self._embedding_configs
+            config.name: config 
+            for config in self._embedding_configs
         }
         self.module_sharding_plan: EmbeddingModuleShardingPlan = cast(
             EmbeddingModuleShardingPlan,
@@ -503,7 +505,8 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
             for emb_table in lookup.grouped_configs[0].embedding_tables
         ]
         emb_names: List[str] = [
-            emb_table.name for emb_table in lookup.grouped_configs[0].embedding_tables
+            emb_table.name 
+            for emb_table in lookup.grouped_configs[0].embedding_tables
         ]
         emb_not_admitted_default_value: List[float] = []
         for emb_name in emb_names:
