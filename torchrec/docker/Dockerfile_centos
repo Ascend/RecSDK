@@ -8,7 +8,6 @@ COPY ./version.info ./
 COPY ./ascend_install.info ./
 COPY ./Ascend-cann-toolkit_*.run ./
 COPY ./Ascend-cann-kernels-*.run ./
-COPY ./torch_npu-2.6.0-cp311-cp311-*whl ./
 
 # 1.安装编译环境
 # wget -O /etc/yum.repos.d/CentOS-Base.repo https://mirrors.huaweicloud.com/repository/conf/CentOS-7-anon.repo
@@ -107,6 +106,7 @@ RUN pip3.11 install -U pip && \
     pip3.11 install gin-config && \
     pip3.11 install torch-2.6.0+cpu-*.whl && \
     pip3.11 install fbgemm_gpu-1.1.0+cpu-*.whl && \
+    pip3.11 install torch-npu==2.6.0 && \
     pip3.11 install tensorboard==2.18.0 && \
     pip3.11 install black && \
     pip3.11 install cmake && \
@@ -132,6 +132,7 @@ ARG KERNEL_PKG=Ascend-cann-kernels*.run
 RUN rm -rf $ASCEND_BASE/ascend-toolkit && \
     umask 0027 && \
     mkdir -p $ASCEND_BASE/driver && \
+    chmod 755 $ASCEND_BASE && \
     /usr/bin/cp -f version.info $ASCEND_BASE/driver/ && \
     /usr/bin/cp -f ascend_install.info /etc/ && \
     chmod +x $TOOLKIT_PKG && \
@@ -145,9 +146,5 @@ RUN rm -rf $ASCEND_BASE/ascend-toolkit && \
     rm -rf $ASCEND_BASE/driver && \
     rm -rf /etc/ascend_install.info
 
-# 8.安装torch_npu
-RUN pip3.11 install torch_npu-2.6.0-cp311-cp311-*whl && \
-    rm -rf /root/.cache/pip
-
-# 9.清理临时目录
+# 8.清理临时目录
 RUN rm -rf ./*

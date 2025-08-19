@@ -10,9 +10,9 @@
 
 
 ### 构建步骤
-Step1: 新建`build_images`目录。
+Step1：新建`build_images`目录。
 
-Step2：在`build_images`目录下准备CANN包。用户可以从[昇腾社区](https://www.hiascend.com/developer/download/community/result?module=pt+cann&product=4&model=26)下载**8.1.RC1.beta1**版本的[toolkit](https://www.hiascend.com/developer/download/community/result?module=cann&cann=8.1.RC1.beta1)包与[kernels](https://www.hiascend.com/developer/download/community/result?module=cann&cann=8.1.RC1.beta1)包。用户也可根据实际情况选择其他CANN包。
+Step2：在`build_images`目录下准备CANN包。用户可以从[昇腾社区](https://www.hiascend.com/developer/download/community/result?module=pt+cann&product=4&model=26)下载**8.2.RC1**版本的[toolkit](https://www.hiascend.com/developer/download/community/result?module=cann&cann=8.2.RC1)包与[kernels](https://www.hiascend.com/developer/download/community/result?module=cann&cann=8.2.RC1)包。用户也可根据实际情况选择其他CANN包。
 
 安装CANN包需要两个文件，分别是
 - version.info（驱动版本文件）
@@ -59,7 +59,6 @@ bash run_docker.sh 容器名 {镜像名称}:{版本名称}
 sudo su
 ```
 切换为root用户
-```
 
 ## 安装RecSDK相关的包
 参考RecSDK/README_TORCH.md进行源码的编译和安装
