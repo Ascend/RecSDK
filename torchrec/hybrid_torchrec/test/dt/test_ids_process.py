@@ -151,8 +151,10 @@ def test_ids2indices_out(input_size, pin_memory, num_mapper):
             unique_start = unique_offset[i].item()
             unique_end = unique_offset[i + 1].item()
             unique_this = unique[unique_start:unique_end]
+            unique_ids_this = unique_ids[unique_start:unique_end]
             unique_inverse_this = unique_inverse[start:end]
             verify_unique(indices, unique_this, unique_inverse_this)
+            verify_unique(indices, unique_ids_this, unique_inverse_this)
 
 
 @pytest.mark.parametrize("input_size", [10000])

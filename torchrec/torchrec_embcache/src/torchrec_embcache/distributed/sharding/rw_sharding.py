@@ -89,6 +89,7 @@ class EmbCacheRwSparseFeaturesDist(RwSparseFeaturesDist):
         need_pos: bool = False,
         keep_original_indices: bool = False,
         enable_admit: bool = False,
+        is_ec: bool = False,
     ) -> None:
         super().__init__(
             pg,
@@ -105,8 +106,7 @@ class EmbCacheRwSparseFeaturesDist(RwSparseFeaturesDist):
 
         # local unique只可用于EC(Embedding Collection / Sequence Embedding)
         yes_str = ("true", "1", "yes")
-        self._do_unique = os.environ.get("DO_EC_LOCAL_UNIQUE", "False").lower() in yes_str and \
-                          os.environ.get("USE_EC", "False").lower() in yes_str
+        self._do_unique = os.environ.get("DO_EC_LOCAL_UNIQUE", "False").lower() in yes_str and is_ec
 
         self._enable_admit = enable_admit
 
