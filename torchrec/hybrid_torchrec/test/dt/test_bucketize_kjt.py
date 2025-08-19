@@ -35,7 +35,7 @@ class TestBucketizeKJTBeforeAll2All:
         block_sizes = torch.tensor(block_sizes)
 
         bucketized, _ = bucketize_kjt_before_all2all(
-            kjt, world_size, block_sizes, do_unique=True,
+            kjt, world_size, block_sizes, output_permute=True, do_unique=True,
         )
 
         assert isinstance(bucketized, KeyedJaggedTensor)

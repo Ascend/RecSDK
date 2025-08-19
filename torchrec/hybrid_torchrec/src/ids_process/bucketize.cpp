@@ -199,7 +199,7 @@ void BlockBucketizeSparseFeaturesCpuKernel(const at::Tensor& lengths, const at::
 
     // 去重逻辑 (需要时启用)
     if constexpr (DoUnique) {
-        auto* idsCountData = GetSafeDataPtr<IndexT>(idsCounts, "idsCounts");
+        auto* idsCountData = ReturnCount ? GetSafeDataPtr<IndexT>(idsCounts, "idsCounts") : nullptr;
         int64_t uniqueSize = Deduplicate<OffsetT, IndexT, ReturnCount>(
             newLengthsData, newOffsetsData, offsetsData, indicesData, newIndicesData,
             unbucketizePermuteData, numFeatures, batchSize, bucketSize, idsCountData);
