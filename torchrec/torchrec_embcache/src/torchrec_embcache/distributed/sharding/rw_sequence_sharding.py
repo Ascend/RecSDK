@@ -70,6 +70,7 @@ class EmbCacheRwSequenceEmbeddingSharding(RwSequenceEmbeddingSharding):
             has_feature_processor=self._has_feature_processor,
             need_pos=self._need_pos,
             enable_admit=self._enable_admit,
+            is_ec=True,
         )
 
     def create_lookup(
