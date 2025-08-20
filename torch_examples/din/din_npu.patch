@@ -1,0 +1,144 @@
+diff --git a/requirements/runtime.txt b/requirements/runtime.txt
+index 31d5d4f..74e33d8 100644
+--- a/requirements/runtime.txt
++++ b/requirements/runtime.txt
+@@ -3,13 +3,11 @@ anytree
+ common_io @ https://tzrec.oss-cn-beijing.aliyuncs.com/third_party/common_io-0.4.1%2Btunnel-py2.py3-none-any.whl
+ fbgemm-gpu==1.1.0
+ graphlearn @ https://tzrec.oss-cn-beijing.aliyuncs.com/third_party/graphlearn-1.3.3-cp311-cp311-linux_x86_64.whl ; python_version=="3.11"
+-graphlearn @ https://tzrec.oss-cn-beijing.aliyuncs.com/third_party/graphlearn-1.3.3-cp310-cp310-linux_x86_64.whl ; python_version=="3.10"
+ grpcio-tools<1.63.0
+ numpy<2
+ pandas
+ psutil
+ pyfg @ https://tzrec.oss-cn-beijing.aliyuncs.com/third_party/pyfg-0.6.5-cp311-cp311-linux_x86_64.whl ; python_version=="3.11"
+-pyfg @ https://tzrec.oss-cn-beijing.aliyuncs.com/third_party/pyfg-0.6.5-cp310-cp310-linux_x86_64.whl ; python_version=="3.10"
+ pyodps>=0.12.2.1
+ scikit-learn
+ tensorboard
+diff --git a/tzrec/main.py b/tzrec/main.py
+index 9a3b7ad..c21d52a 100644
+--- a/tzrec/main.py
++++ b/tzrec/main.py
+@@ -12,6 +12,7 @@
+ import copy
+ import itertools
+ import json
++import logging
+ import os
+ import shutil
+ from collections import OrderedDict
+@@ -88,6 +89,18 @@ from tzrec.utils.plan_util import create_planner, get_default_sharders
+ from tzrec.utils.state_dict_util import fix_mch_state, init_parameters
+ from tzrec.version import __version__ as tzrec_version
+ 
++import torch_npu
++
++
++lib_fbgemm_npu_api_so_path = os.getenv("LIB_FBGEMM_NPU_API_SO_PATH")
++
++try:
++    torch.ops.load_library(lib_fbgemm_npu_api_so_path)
++except FileNotFoundError as e:
++    logging.error(f"libfbgemm_npu_api.so is not exist")
++except Exception as e:
++    logging.error(f"libfbgemm_npu_api.so failed to load: {e}")
++
+ 
+ def init_process_group() -> Tuple[torch.device, str]:
+     """Init process_group, device, rank, backend."""
+@@ -96,6 +109,10 @@ def init_process_group() -> Tuple[torch.device, str]:
+         device: torch.device = torch.device(f"cuda:{rank}")
+         backend = "nccl"
+         torch.cuda.set_device(device)
++    elif torch_npu.npu.is_available():
++        device: torch.device = torch.device(f"npu:{rank}")
++        backend = "hccl"
++        torch_npu.npu.set_device(device)
+     else:
+         device: torch.device = torch.device("cpu")
+         backend = "gloo"
+@@ -705,6 +722,7 @@ def train_and_evaluate(
+ 
+     model = DistributedModelParallel(
+         module=model,
++        sharders=get_default_sharders(),
+         device=device,
+         plan=plan,
+     )
+diff --git a/tzrec/utils/plan_util.py b/tzrec/utils/plan_util.py
+index 5edb550..07681cc 100644
+--- a/tzrec/utils/plan_util.py
++++ b/tzrec/utils/plan_util.py
+@@ -57,7 +57,7 @@ from torchrec.distributed.types import (
+ 
+ from tzrec.protos import feature_pb2
+ from tzrec.utils.logging_util import logger
+-
++import torch_npu
+ 
+ def _bytes_to_float_bin(num_bytes: Union[float, int], bin_size: float) -> float:
+     return float(num_bytes) / bin_size
+@@ -78,14 +78,11 @@ def create_planner(
+     if torch.cuda.is_available():
+         topo_kwargs["hbm_cap"] = torch.cuda.get_device_properties(device).total_memory
+ 
+-    ddr_cap_per_rank = int(float(psutil.virtual_memory().total) / local_world_size)
+-    topo_kwargs["ddr_cap"] = ddr_cap_per_rank
+     if "INTRA_NODE_BANDWIDTH" in os.environ:
+         topo_kwargs["intra_host_bw"] = float(os.environ["INTRA_NODE_BANDWIDTH"])
+     if "CROSS_NODE_BANDWIDTH" in os.environ:
+         topo_kwargs["inter_host_bw"] = float(os.environ["CROSS_NODE_BANDWIDTH"])
+     topology = Topology(
+-        local_world_size=local_world_size,
+         world_size=dist.get_world_size(),
+         compute_device=device.type,
+         **topo_kwargs,
+@@ -126,24 +123,27 @@ def create_planner(
+         global_constraints = ParameterConstraints(
+             sharding_types=list(global_constraints_cfg.sharding_types)
+             if len(global_constraints_cfg.sharding_types) > 0
+-            else None,
++            else [],
+             compute_kernels=list(global_constraints_cfg.compute_kernels)
+             if len(global_constraints_cfg.compute_kernels) > 0
+-            else None,
++            else [],
+         )
+-
++    # row_wise
++    constraints = {
++        f"{feature_name}_emb": ParameterConstraints(
++            sharding_types=["row_wise"],
++            compute_kernels=["fused"]
++        )
++        for feature_name in ["user_id", "cms_segid", "cms_group_id", "final_gender_code", "age_level",
++                             "pvalue_level", "shopping_level", "occupation", "new_user_class_level", "adgroup_id",
++                             "cate_id", "campaign_id", "customer", "brand", "price", "pid"
++                             ]
++    }
+     # build planner
+     planner = EmbeddingShardingPlanner(
+         topology=topology,
+         batch_size=batch_size,
+-        enumerator=EmbeddingEnumerator(
+-            topology=topology,
+-            batch_size=batch_size,
+-            fqn_constraints=fqn_constraints,
+-            global_constraints=global_constraints,
+-        ),
+-        storage_reservation=storage_reservation,
+-        proposer=[DynamicProgrammingProposer(), UniformProposer()],
++        constraints=constraints,
+         debug=True,
+     )
+     return planner
+@@ -153,6 +153,8 @@ def get_default_sharders() -> List[ModuleSharder[nn.Module]]:
+     """Get embedding module default sharder."""
+     if torch.cuda.is_available():
+         return _get_default_sharders()
++    elif torch_npu.npu.is_available():
++        return _get_default_sharders()
+     else:
+         # ShardedEmbeddingCollection is not supported yet.
+         sharders = []
