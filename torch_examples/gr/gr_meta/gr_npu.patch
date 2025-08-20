@@ -167,7 +167,7 @@ index 70bf80c..a65b43c 100644
      historical_ids = row["historical_ids"].to(device)  # [B, N]
      historical_ratings = row["historical_ratings"].to(device)
 diff --git a/generative_recommenders/modeling/sequential/hstu.py b/generative_recommenders/modeling/sequential/hstu.py
-index 7bae34d..09cae3b 100644
+index 7bae34d..939c7c7 100644
 --- a/generative_recommenders/modeling/sequential/hstu.py
 +++ b/generative_recommenders/modeling/sequential/hstu.py
 @@ -19,7 +19,11 @@ Implements HSTU (Hierarchical Sequential Transduction Unit) in
@@ -324,7 +324,7 @@ index 7bae34d..09cae3b 100644
 +                torch.einsum(
 +                    "bhnm,bmhd -> bnhd",
 +                    qk_attn,
-+                    torch.ops.fbgemm.jagged_to_padded_dense(v, [x_offsets], [n]).reshape(
++                    torch.ops.fbgemm.jagged_to_padded_dense(v, [x_offsets], [n], padding_value=0.0).reshape(
 +                        B, n, num_heads, linear_dim
 +                    ),
 +                ).reshape(B, n, num_heads * linear_dim),
@@ -386,7 +386,8 @@ index 7bae34d..09cae3b 100644
              attn_output = torch.ops.fbgemm.dense_to_jagged(
                  torch.bmm(
                      qk_attn,
-                     torch.ops.fbgemm.jagged_to_padded_dense(v, [x_offsets], [n]),
+-                    torch.ops.fbgemm.jagged_to_padded_dense(v, [x_offsets], [n]),
++                    torch.ops.fbgemm.jagged_to_padded_dense(v, [x_offsets], [n], padding_value=0.0),
                  ),
                  [x_offsets],
 +                prefetch_offset_shape
