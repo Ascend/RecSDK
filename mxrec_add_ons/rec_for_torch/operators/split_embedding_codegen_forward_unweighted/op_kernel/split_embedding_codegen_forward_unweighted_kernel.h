@@ -42,6 +42,7 @@ struct Args {
     GM_ADDR indices;
     GM_ADDR offsets;
     GM_ADDR hashIndices;
+    GM_ADDR offsetPerKey;
     GM_ADDR out;
     GM_ADDR tiling;
     GM_ADDR workspace;
@@ -59,8 +60,8 @@ public:
     __aicore__ inline SplitEmbeddingCodegenForwardUnweightedKernel(Args args)
     {
         GET_TILING_DATA(tilingData, args.tiling);
-       
         InitAddr(args);
+
         // Shape
         devWeightsDim0 = tilingData.devWeightsDim0;
         weightsOffsetsDim0 = tilingData.weightsOffsetsDim0;
@@ -107,6 +108,7 @@ public:
         offsetGT.SetGlobalBuffer((__gm__ int64_t*)offsets, offsetsDim0);
         dOffsetGT.SetGlobalBuffer((__gm__ int32_t*)dOffsets, dOffsetsDim0);
         weightOffsetGT.SetGlobalBuffer((__gm__ int64_t*)weightsOffsets, weightsOffsetsDim0);
+        offsetPerKeyGT.SetGlobalBuffer((__gm__ int64_t*)offsetPerKey, indicesDim0);
 
         outGT.SetGlobalBuffer((__gm__ float*)out, outDim0 * outDim1);
 
@@ -129,6 +131,7 @@ public:
         indices = args.indices;
         offsets = args.offsets;
         hashIndices = args.hashIndices;
+        offsetPerKey = args.offsetPerKey;
         out = args.out;
         workspace = args.workspace;
     }
@@ -176,7 +179,7 @@ public:
         queIn.EnQue(inputLt);
     }
 
-    __aicore__ inline void CopyOutEC(int64_t thisLen, int64_t startIndices)
+    __aicore__ inline void CopyOutNoPooling(int64_t thisLen, int64_t startIndices)
     {
         LocalTensor<float> inputLt = queIn.DeQue<float>();
         LocalTensor<float> outLt = queOut.AllocTensor<float>();
@@ -193,7 +196,7 @@ public:
         queOut.FreeTensor(outLt);
     }
 
-    __aicore__ inline void CopyOutECPad(int64_t thisLen, int64_t startIndices)
+    __aicore__ inline void CopyOutNoPoolingPad(int64_t thisLen, int64_t startIndices)
     {
         LocalTensor<float> inputLt = queIn.DeQue<float>();
         LocalTensor<float> outLt = queOut.AllocTensor<float>();
@@ -211,7 +214,7 @@ public:
         queOut.FreeTensor(outLt);
     }
 
-    __aicore__ inline void CopyOutEBC(int64_t outOffset, int64_t embedDim)
+    __aicore__ inline void CopyOutWithPooling(int64_t outOffset, int64_t embedDim)
     {
         auto outLt = queOut.DeQue<float>();
         SetAtomicAdd<float>();
@@ -237,7 +240,7 @@ public:
         queOut.EnQue(outLt);
     }
 
-    __aicore__ inline void ProcessEBC(int64_t remain, int64_t startIndices, int64_t embedDim,
+    __aicore__ inline void ProcessWithPooling(int64_t remain, int64_t startIndices, int64_t embedDim,
                                       int64_t thisWeightOffset, int64_t outOffset)
     {
         float meanLen = static_cast<float>(1) / static_cast<float>(remain);
@@ -253,14 +256,14 @@ public:
             // compute
             Pooling(meanLen, thisLen, embedDim);
             // copyout
-            CopyOutEBC(outOffset, embedDim);
+            CopyOutWithPooling(outOffset, embedDim);
 
             startIndices = startIndices + thisLen;
             thisLen = remain;
         }
     }
 
-    __aicore__ inline void ProcessEC(int64_t remain, int64_t startIndices, int64_t thisWeightOffset)
+    __aicore__ inline void ProcessNoPooling(int64_t remain, int64_t startIndices, int64_t thisWeightOffset)
     {
         int64_t thisLen = remain;
         while (remain > 0) {
@@ -268,12 +271,11 @@ public:
                 thisLen = indicesNumOneBlock;
             }
             remain -= thisLen;
-
             CopyInNormal(startIndices, thisLen, maxD, thisWeightOffset);
             if (alignMaxD == maxD) {
-                CopyOutEC(thisLen, startIndices);
+                CopyOutNoPooling(thisLen, startIndices);
             } else {
-                CopyOutECPad(thisLen, startIndices);
+                CopyOutNoPoolingPad(thisLen, startIndices);
             }
 
             startIndices = startIndices + thisLen;
@@ -281,15 +283,42 @@ public:
         }
     }
 
-    __aicore__ inline void Compute()
+    __aicore__ inline void Scheduler(const int64_t &totalLen, int64_t &offsetLen, int64_t &calcLen)
+    {
+        splitBaseLen = totalLen / GetBlockNum();
+        tailSplitIndex = totalLen % GetBlockNum();
+        if (GetBlockIdx() >= tailSplitIndex) {
+            calcLen = splitBaseLen;
+            offsetLen = tailSplitIndex * (splitBaseLen + 1) + (GetBlockIdx() -  tailSplitIndex) * splitBaseLen;
+        } else {
+            calcLen = splitBaseLen + 1;
+            offsetLen = GetBlockIdx() * (splitBaseLen + 1);
+        }
+    }
+
+    __aicore__ inline void ComputeNoPooling()
+    {
+        int64_t lastIndices = 0;
+        int64_t thisTableLen = 0;
+        for (int64_t i = 1; i <= weightsOffsetsDim0; i++) {
+            if (offsetPerKeyGT.GetValue(i) != lastIndices) {
+                Scheduler(offsetPerKeyGT.GetValue(i) - lastIndices, offsetOfThisCore, thisTableLen);
+                if (thisTableLen > 0) {
+                    int64_t thisTableOffset = offsetOfThisCore + lastIndices;
+                    int64_t thisWeightOffset = weightOffsetGT.GetValue(i - 1);
+                    ProcessNoPooling(thisTableLen, thisTableOffset, thisWeightOffset);
+                }
+                lastIndices = offsetPerKeyGT.GetValue(i);
+            }
+        }
+    }
+
+    __aicore__ inline void ComputeWithPooling()
     {
         if (lenOfThisCore == 0) {
             return;
         }
-        indicesNumOneBlock = blockLen / alignMaxD;
-        if (indicesNumOneBlock >= MAX_INDICS_ONE_BLOCK) {
-            indicesNumOneBlock = MAX_INDICS_ONE_BLOCK;
-        }
+        
         for (int64_t loop = 0; loop < lenOfThisCore; loop++) {
             int64_t i = (offsetOfThisCore + loop) / weightsOffsetsDim0;
             int64_t j = (offsetOfThisCore + loop) % weightsOffsetsDim0;
@@ -305,17 +334,25 @@ public:
             // dataCopy In params
             int64_t tableIndex = thisOffsetIndex / batchs;
             int64_t thisWeightOffset = weightOffsetGT.GetValue(tableIndex);
+            // dataCopy Out params
+            int64_t outBatchInd = thisOffsetIndex % outDim0;
+            int64_t outEmbedOffset = dOffsetGT.GetValue(tableIndex);
+            int64_t outOffset = outBatchInd * outDim1 + outEmbedOffset;
+            int64_t embedDim = dOffsetGT.GetValue(tableIndex + 1) - dOffsetGT.GetValue(tableIndex);
+            ProcessWithPooling(thisLen, startIndices, embedDim, thisWeightOffset, outOffset);
+        }
+    }
 
-            if (poolMode == NONE_POOL) {
-                ProcessEC(thisLen, startIndices, thisWeightOffset);
-            } else {
-                // dataCopy Out params
-                int64_t outBatchInd = thisOffsetIndex % outDim0;
-                int64_t outEmbedOffset = dOffsetGT.GetValue(tableIndex);
-                int64_t outOffset = outBatchInd * outDim1 + outEmbedOffset;
-                int64_t embedDim = dOffsetGT.GetValue(tableIndex + 1) - dOffsetGT.GetValue(tableIndex);
-                ProcessEBC(thisLen, startIndices, embedDim, thisWeightOffset, outOffset);
-            }
+    __aicore__ inline void Compute()
+    {
+        indicesNumOneBlock = blockLen / alignMaxD;
+        if (indicesNumOneBlock >= MAX_INDICS_ONE_BLOCK) {
+            indicesNumOneBlock = MAX_INDICS_ONE_BLOCK;
+        }
+        if (poolMode == NONE_POOL) {
+            ComputeNoPooling();
+        } else {
+            ComputeWithPooling();
         }
     }
 
@@ -328,6 +365,7 @@ private:
     GM_ADDR indices;
     GM_ADDR offsets;
     GM_ADDR hashIndices;
+    GM_ADDR offsetPerKey;
     GM_ADDR out;
     GM_ADDR workspace;
 
@@ -365,6 +403,10 @@ private:
     int64_t lenOfThisCore;
     int64_t offsetOfThisCore;
 
+    // dynamic
+    int64_t blockEmbNum;
+    bool isDynamic;
+
     // Tpipe
     TPipe pipe;
     TQue<TPosition::VECIN, 1> queIn;
@@ -378,6 +420,7 @@ private:
     GlobalTensor<int64_t> offsetGT;
     GlobalTensor<int32_t> dOffsetGT;
     GlobalTensor<int64_t> weightOffsetGT;
+    GlobalTensor<int64_t> offsetPerKeyGT;
 };
 }  // namespace SplitEmbeddingCodegenForwardUnweighted
 #endif

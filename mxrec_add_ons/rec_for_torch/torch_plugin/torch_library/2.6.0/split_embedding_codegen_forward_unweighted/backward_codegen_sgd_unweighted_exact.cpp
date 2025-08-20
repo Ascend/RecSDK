@@ -47,6 +47,7 @@ Tensor split_embedding_backward_codegen_sgd_unweighted_exact_cuda(const Tensor& 
                                                                   const Tensor& unique_ids,
                                                                   const Tensor& unique_offsets,
                                                                   const Tensor& unique_inverse,
+                                                                  const Tensor& offset_per_key,
                                                                   double learning_rate = 0);
 
 class SplitLookupSGD : public torch::autograd::Function<SplitLookupSGD> {
@@ -97,11 +98,17 @@ public:
         auto info_B_num_bits = max_B_;
         auto info_B_mask = T;
 
+        // EC查表，计算每张表的indices个数
+        int64_t batchs = (offsets.numel() - 1) / weights_offsets.numel();
+        at::Tensor table_offsets = torch::arange(D_offsets.size(0), offsets.device()) * batchs;
+        at::Tensor offset_per_key = offsets.index_select(0, table_offsets.to(at::kLong));
+
         ctx->save_for_backward({dev_weights, uvm_weights, lxu_cache_weights, weights_placements, weights_offsets,
                                 D_offsets, hash_size_cumsum, indices, offsets, indice_weights.value_or(Tensor()),
                                 feature_requires_grad.value_or(Tensor()), lxu_cache_locations,
                                 hash_indices.value_or(Tensor()), unique_ids.value_or(at::Tensor()),
-                                unique_offsets.value_or(at::Tensor()), unique_inverse.value_or(at::Tensor())});
+                                unique_offsets.value_or(at::Tensor()), unique_inverse.value_or(at::Tensor()),
+                                offset_per_key});
         ctx->saved_data["max_D"] = max_D;
         ctx->saved_data["pooling_mode"] = pooling_mode;
         ctx->saved_data["total_hash_size_bits"] = total_hash_size_bits;
@@ -125,7 +132,7 @@ public:
             return {embedding_codegen_forward_op.call(
                 flatten_dev_weights, uvm_weights, lxu_cache_weights, weights_placements, weights_offsets, D_offsets,
                 total_D, max_D, indices, offsets, pooling_mode, lxu_cache_locations, uvm_cache_stats_, output_dtype,
-                is_experimental, hash_indices.value_or(Tensor()))};
+                is_experimental, hash_indices.value_or(Tensor()), offset_per_key)};
         }
         return {at::Tensor()};
     }
@@ -151,6 +158,7 @@ public:
         auto unique_ids = *savedItr++;
         auto unique_offsets = *savedItr++;
         auto unique_inverse = *savedItr++;
+        auto offset_per_key = *savedItr++;
         auto max_D = ctx->saved_data["max_D"].toSymInt();
         auto pooling_mode = ctx->saved_data["pooling_mode"].toInt();
         auto total_hash_size_bits = ctx->saved_data["total_hash_size_bits"].toInt();
@@ -181,7 +189,7 @@ public:
             max_D, hash_size_cumsum, total_hash_size_bits, indices, offsets, pooling_mode, lxu_cache_locations,
             BT_block_size, max_segment_length_per_warp, stochastic_rounding, info_B_num_bits, info_B_mask_int64,
             use_uniq_cache_locations_bwd, use_homogeneous_placements, hash_indices, unique_ids, unique_offsets,
-            unique_inverse, learning_rate);
+            unique_inverse, offset_per_key, learning_rate);
         return {
             Tensor(),         // placeholder autograd tensor
             Variable(),       // output_dtype
@@ -296,6 +304,7 @@ at::Tensor split_embedding_backward_codegen_sgd_unweighted_exact_npu(const Tenso
                                                                      const at::Tensor& unique_ids,
                                                                      const at::Tensor& unique_offsets,
                                                                      const at::Tensor& unique_inverse,
+                                                                     const at::Tensor& offset_per_key,
                                                                      double learning_rate = 0)
 {
     const int64_t t_max_D = max_D.guard_int(__FILE__, __LINE__);
@@ -312,7 +321,7 @@ at::Tensor split_embedding_backward_codegen_sgd_unweighted_exact_npu(const Tenso
         aclnnBackwardCodegenAdagradUnweightedExact, grad_output, dev_weights, uvm_weights, lxu_cache_weights,
         weights_placements, weights_offsets, D_offsets, hash_size_cumsum, indices, offsets, lxu_cache_locations,
         _unused, _unused, _unused, _unused, _unused, _unused, _unused, _unused, hash_indices, unique_ids,
-        unique_offsets, unique_inverse, _unused, t_max_D, total_hash_size_bits, pooling_mode,
+        unique_offsets, unique_inverse, offset_per_key, t_max_D, total_hash_size_bits, pooling_mode,
         BT_block_size, max_segment_length_per_warp, stochastic_rounding, info_B_num_bits, info_B_mask_int64,
         use_uniq_cache_locations, use_homogeneous_placements, optim_type, beta, learning_rate, beta, beta, iter,
         output, _unused, _unused, dev_weights);
@@ -403,6 +412,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    Tensor unique_ids = None, "
           "    Tensor unique_offsets = None, "
           "    Tensor unique_inverse = None, "
+          "    Tensor offset_per_key = None, "
           "    float learning_rate = 0 "
           ") -> Tensor");
 

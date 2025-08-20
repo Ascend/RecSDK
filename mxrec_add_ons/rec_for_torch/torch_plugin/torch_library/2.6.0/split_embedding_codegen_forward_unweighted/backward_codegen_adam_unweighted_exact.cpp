@@ -55,6 +55,7 @@ Tensor split_embedding_backward_codegen_adam_unweighted_exact_cuda(const Tensor&
                                                                    const Tensor& unique_ids,
                                                                    const Tensor& unique_offsets,
                                                                    const Tensor& unique_inverse,
+                                                                   const Tensor& offset_per_key,
                                                                    double eps = 0,
                                                                    double learning_rate = 0,
                                                                    double beta1 = 0.9,
@@ -121,13 +122,19 @@ public:
         auto info_B_num_bits = max_B_;
         auto info_B_mask = T;
 
+        // EC查表，计算每张表的indices个数
+        int64_t batchs = (offsets.numel() - 1) / weights_offsets.numel();
+        at::Tensor table_offsets = torch::arange(D_offsets.size(0), offsets.device()) * batchs;
+        at::Tensor offset_per_key = offsets.index_select(0, table_offsets.to(at::kLong));
+
         ctx->save_for_backward({dev_weights, uvm_weights, lxu_cache_weights, weights_placements, weights_offsets,
                                 D_offsets, hash_size_cumsum, indices, offsets, indice_weights.value_or(Tensor()),
                                 feature_requires_grad.value_or(Tensor()), lxu_cache_locations,
                                 momentum1_dev, momentum1_uvm, momentum1_placements, momentum1_offsets,
                                 momentum2_dev, momentum2_uvm, momentum2_placements, momentum2_offsets,
                                 hash_indices.value_or(Tensor()), unique_ids.value_or(at::Tensor()),
-                                unique_offsets.value_or(at::Tensor()), unique_inverse.value_or(at::Tensor())});
+                                unique_offsets.value_or(at::Tensor()), unique_inverse.value_or(at::Tensor()),
+                                offset_per_key});
         ctx->saved_data["max_D"] = max_D;
         ctx->saved_data["pooling_mode"] = pooling_mode;
         ctx->saved_data["total_hash_size_bits"] = total_hash_size_bits;
@@ -156,7 +163,7 @@ public:
             return {embedding_codegen_forward_op.call(
                 flatten_dev_weights, uvm_weights, lxu_cache_weights, weights_placements, weights_offsets, D_offsets,
                 total_D, max_D, indices, offsets, pooling_mode, lxu_cache_locations, uvm_cache_stats_, output_dtype,
-                is_experimental, hash_indices.value_or(Tensor()))};
+                is_experimental, hash_indices.value_or(Tensor()), offset_per_key)};
         }
         return {at::Tensor()};
     }
@@ -190,6 +197,7 @@ public:
         auto unique_ids = *savedItr++;
         auto unique_offsets = *savedItr++;
         auto unique_inverse = *savedItr++;
+        auto offset_per_key = *savedItr++;
         auto max_D = ctx->saved_data["max_D"].toSymInt();
         auto pooling_mode = ctx->saved_data["pooling_mode"].toInt();
         auto total_hash_size_bits = ctx->saved_data["total_hash_size_bits"].toInt();
@@ -225,8 +233,8 @@ public:
             BT_block_size, max_segment_length_per_warp, stochastic_rounding, info_B_num_bits, info_B_mask_int64,
             use_uniq_cache_locations_bwd, use_homogeneous_placements, momentum1_dev, momentum1_uvm,
             momentum1_placements, momentum1_offsets, momentum2_dev, momentum2_uvm, momentum2_placements,
-            momentum2_offsets, hash_indices, unique_ids, unique_offsets, unique_inverse, eps, learning_rate, beta1,
-            beta2, iter);
+            momentum2_offsets, hash_indices, unique_ids, unique_offsets, unique_inverse, offset_per_key, eps,
+            learning_rate, beta1, beta2, iter);
         return {
             Tensor(),         // placeholder autograd tensor
             Variable(),       // output_dtype
@@ -265,6 +273,7 @@ public:
             Variable(),       // unique_ids
             Variable(),       // unique_offsets
             Variable(),       // unique_inverse
+            Variable(),       // offset_per_key
             Variable(),       // eps
             Variable(),       // learning_rate
             Variable(),       // beta1
@@ -375,6 +384,7 @@ at::Tensor split_embedding_backward_codegen_adam_unweighted_exact_npu(const Tens
                                                                       const at::Tensor& unique_ids,
                                                                       const at::Tensor& unique_offsets,
                                                                       const at::Tensor& unique_inverse,
+                                                                      const at::Tensor& offset_per_key,
                                                                       double eps = 0,
                                                                       double learning_rate = 0,
                                                                       double beta1 = 0,
@@ -388,17 +398,12 @@ at::Tensor split_embedding_backward_codegen_adam_unweighted_exact_npu(const Tens
     int64_t totalEmbed = unique_ids.numel() == 0 ? dev_weights.size(0) : unique_ids.numel() * t_max_D;
     auto output = at::empty({totalEmbed}, dev_weights.options().dtype(at::kFloat));
 
-    // EC查表，计算每张表的indices个数
-    int64_t batchs = (offsets.numel() - 1) / weights_offsets.numel();
-    at::Tensor table_offsets = torch::arange(D_offsets.size(0), offsets.device()) * batchs;
-    at::Tensor indice_size_cumsum = offsets.index_select(0, table_offsets.to(at::kLong));
-
     int optim_type = static_cast<int>(OptimizerType::ADAM);
     EXEC_NPU_CMD(aclnnBackwardCodegenAdagradUnweightedExact, grad_output, dev_weights, uvm_weights, lxu_cache_weights,
                  weights_placements, weights_offsets, D_offsets, hash_size_cumsum, indices, offsets,
                  lxu_cache_locations, momentum1_dev, momentum1_uvm, momentum1_placements, momentum1_offsets,
                  momentum2_dev, momentum2_uvm, momentum2_placements, momentum2_offsets, hash_indices, unique_ids,
-                 unique_offsets, unique_inverse, indice_size_cumsum, t_max_D, total_hash_size_bits, pooling_mode,
+                 unique_offsets, unique_inverse, offset_per_key, t_max_D, total_hash_size_bits, pooling_mode,
                  BT_block_size, max_segment_length_per_warp, stochastic_rounding, info_B_num_bits, info_B_mask_int64,
                  use_uniq_cache_locations, use_homogeneous_placements, optim_type, eps, learning_rate, beta1, beta2,
                  iter, output, momentum1_dev, momentum2_dev, dev_weights);
@@ -495,6 +500,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    Tensor unique_ids = None, "
           "    Tensor unique_offsets = None, "
           "    Tensor unique_inverse = None, "
+          "    Tensor offset_per_key = None, "
           "    float eps = 0, float learning_rate = 0, float beta1 = 0, float beta2 = 0, int iter = 0 "
           ") -> Tensor");
     m.impl("split_embedding_backward_codegen_adam_unweighted_exact_cuda",
