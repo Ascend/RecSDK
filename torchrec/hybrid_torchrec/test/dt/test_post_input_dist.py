@@ -5,15 +5,19 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
+import os
 from unittest.mock import patch
 
 import torch
+from torch import empty_like
 from hybrid_torchrec.distributed.sharding.post_input_dist import (
     split_keys_offset,
     do_unique_hash,
+    do_unique_hash_out,
     HashMapBase,
     KeyedJaggedTensorWithLookHelper
 )
+from hybrid_torchrec.modules.ids_process import IdsMapper
 from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
 
 
@@ -26,6 +30,11 @@ class MockHashMap(HashMapBase):
     @staticmethod
     def ids2indices_unique_out(*args, **kwargs):
         pass
+
+
+def empty_like_without_pin_memory(*args, **kwargs):
+    kwargs['pin_memory'] = False
+    return empty_like(*args, **kwargs)
 
 
 class TestDoUniqueHash:
@@ -83,6 +92,22 @@ class TestDoUniqueHash:
         )
         result = do_unique_hash(kjt, [2, 1], [MockHashMap(), MockHashMap()])
         assert len(result.unique_indices) == 9
+
+
+class TestDoUniqueHashOut:
+    @staticmethod
+    @patch("torch.empty_like", new=empty_like_without_pin_memory)
+    @patch("torch.Tensor.pin_memory", new=lambda self, *args, **kwargs: self)
+    def test_do_unique_hash_out_with_parallel():
+        with patch.dict(os.environ, {"ENABLE_PARALLEL_GLOBAL_UNIQUE": "1"}):
+            kjt = KeyedJaggedTensor(
+                keys=["f1"],
+                values=torch.tensor([1, 1, 2]),
+                lengths=torch.tensor([3]),
+                offsets=torch.tensor([0, 3])
+            )
+            result = do_unique_hash_out(kjt, [1], [IdsMapper(128)])
+            assert len(result.unique_indices) == 2
 
 
 class TestSplitKeysOffset:

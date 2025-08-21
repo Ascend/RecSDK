@@ -201,9 +201,8 @@ size_t IdsMapper::ProcessIds2Indices(IdsMapper& mapper, std::vector<int64_t>& un
         }
 
         int64_t hidx = hashIdxPtr[i];
-
         if (hidx >= static_cast<int64_t>(fullMap->size())) {
-            TORCH_CHECK(hidx > (INT64_MAX - 1) / 2, "hidx is too large: ", hidx);
+            TORCH_CHECK(hidx < (INT64_MAX - 1) / 2, "hidx is too large: ", hidx, ">=", (INT64_MAX - 1) / 2);
             fullMap->resize(hidx * EXPAND_CAPACITY_RATE + 1, -1);
             bitmap = fullMap->data();
         }
