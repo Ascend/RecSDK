@@ -13,7 +13,7 @@ pip3 install -r requirements.txt
 ```
 2.源码安装
 ```python
-git clone https://gitee.com/ascend/RecSDK.git
+git clone https://gitcode.com/ascend/RecSDK.git
 cd RecSDK/torchrec/hybrid_torchrec
 bash build_whl.sh
 cd ../../../

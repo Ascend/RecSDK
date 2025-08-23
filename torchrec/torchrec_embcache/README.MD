@@ -13,7 +13,7 @@ pip3 install -r requirements.txt
 
 2.源码安装
 ```python
-git clone https://gitee.com/ascend/RecSDK.git
+git clone https://gitcode.com/ascend/RecSDK.git
 cd RecSDK/torchrec/torchrec_embcache
 bash build.sh
 pip3 install ./dist/torchrec_embcache-*.whl
