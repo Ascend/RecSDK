@@ -133,6 +133,37 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
         return ge::GRAPH_FAILED;
     }
 
+    if (gradType == ge::DataType::DT_BF16) {
+        // matmul计算时，左矩阵一次拷入L1中的大小为depthA1*baseM*baseK，右矩阵一次拷入L1中的大小为depthB1*baseN*baseK
+        // 理论上在调用matmul.GetTiling时，matmul内部会自动算出最优depth值，但不能使所有场景性能最优
+        // 所以这里通过设置depth大小，调整一次拷入L1的数据多少，达到优化目的
+        // 经测试，depth=4时已有shape性能最佳，并不适用所有shape场景。后续有其他shape可通过该值调整获得最优性能。
+        int64_t depth = 4;
+
+        OPS_CHECK(depth * (qkMatmul.GetBaseM() * qkMatmul.GetBaseK() + qkMatmul.GetBaseK() * qkMatmul.GetBaseN()) >
+            L1_BUFFER_SIZE, OPS_LOG_E("", "The qkMatmul depth is set too high\n"), return ge::GRAPH_FAILED);
+        tiling.qkMatmul.set_depthA1(depth);
+        tiling.qkMatmul.set_depthB1(depth);
+
+        OPS_CHECK(depth * (qGradMatmul.GetBaseM() * qGradMatmul.GetBaseK() +
+            qGradMatmul.GetBaseK() * qGradMatmul.GetBaseN()) > L1_BUFFER_SIZE,
+            OPS_LOG_E("", "The qGradMatmul depth is set too high\n"), return ge::GRAPH_FAILED);
+        tiling.qGradMatmul.set_depthA1(depth);
+        tiling.qGradMatmul.set_depthB1(depth);
+
+        OPS_CHECK(depth * (kGradMatmul.GetBaseM() * kGradMatmul.GetBaseK() +
+            kGradMatmul.GetBaseK() * kGradMatmul.GetBaseN()) > L1_BUFFER_SIZE,
+            OPS_LOG_E("", "The kGradMatmul depth is set too high\n"), return ge::GRAPH_FAILED);
+        tiling.kGradMatmul.set_depthA1(depth);
+        tiling.kGradMatmul.set_depthB1(depth);
+
+        OPS_CHECK(depth * (vGradMatmul.GetBaseM() * vGradMatmul.GetBaseK() +
+            vGradMatmul.GetBaseK() * vGradMatmul.GetBaseN()) > L1_BUFFER_SIZE,
+            OPS_LOG_E("", "The vGradMatmul depth is set too high\n"), return ge::GRAPH_FAILED);
+        tiling.vGradMatmul.set_depthA1(depth);
+        tiling.vGradMatmul.set_depthB1(depth);
+    }
+
     context->SetBlockDim(coreNum);
     tiling.set_aivNum(vecCoreNum);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());

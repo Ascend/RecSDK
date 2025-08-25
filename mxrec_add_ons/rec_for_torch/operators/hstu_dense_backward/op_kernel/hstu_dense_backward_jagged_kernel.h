@@ -569,10 +569,7 @@ public:
     __aicore__ inline void CopyQGradToOutput()
     {
         SyncAll();
-
-        if (GetBlockIdx() == 0) {
-            this->DoCopyQGrad(backwardTilingData->seqOffset);
-        }
+        this->DoCopyQGrad(backwardTilingData->seqOffset);
     }
 
 protected:
