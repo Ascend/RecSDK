@@ -51,6 +51,8 @@ constexpr int BLOCK_256 = 256;
 
 constexpr int VCORE_NUM_IN_ONE_AIC = 2;
 
+constexpr int L1_BUFFER_SIZE = 512 * 1024;  // 512K
+
 enum class InputLayout { NORMAL = 0, JAGGED = 1 };
 enum class MaskType { MASK_TRIL = 0, MASK_TRIU = 1, MASK_NONE = 2, MASK_CUSTOM = 3 };
 

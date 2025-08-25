@@ -156,7 +156,18 @@ public:
 
             // 所有核共享一片globalMemory，且存在累加操作，每次执行需要清理内存防止上次执行结果残留数据影响本次结果
             // 多核执行后需要调用SyncAll保证多核间同步正常
-            InitGlobalMemory(qGradAccumTemp, qGradAccumTempSpace, static_cast<float>(0));
+            int64_t unitClear = qGradAccumTempSpace / aivNum;
+            int64_t leftClear = qGradAccumTempSpace % aivNum;
+            uint64_t globalOffset = GetBlockIdx() * unitClear;
+            uint64_t clearLen = unitClear;
+            if (GetBlockIdx() == aivNum - 1) {
+                clearLen += leftClear;
+            }
+            GlobalTensor<float> thisBlockQGrad;
+            thisBlockQGrad.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(
+                reinterpret_cast<__gm__ uint8_t *>(workspace) + aivNum * totalTempSpaceForOneVec +
+                globalOffset * sizeof(float)), clearLen);
+            InitGlobalMemory(thisBlockQGrad, clearLen, static_cast<float>(0));
             SyncAll();
         }
 
@@ -850,50 +861,72 @@ public:
         }
     }
 
+    __aicore__ inline void DoCopyBlockQGrad(int64_t thisBatchIdx, int64_t headIdx, int64_t curSeqLen,
+        const uint32_t *seqOffset)
+    {
+        int64_t totalLen = curSeqLen * headDim;
+        int64_t remain = totalLen;
+        int64_t thisLen = vecOnceDataNum;
+        while (remain > 0) {
+            if (thisLen > remain) {
+                thisLen = remain;
+            }
+
+            int64_t curOffset = (headNum * seqOffset[thisBatchIdx] * headDim) + (headIdx * totalLen) +
+                (totalLen - remain);
+            LocalTensor<float> input = queueVecScoreQK.AllocTensor<float>();
+            DataCopy<float>(input, qGradAccumTemp[curOffset], thisLen);
+            queueVecScoreQK.EnQue(input);
+
+            LocalTensor<float> newInput = queueVecScoreQK.DeQue<float>();
+            LocalTensor<qType> output = queueOutputTemp.AllocTensor<qType>();
+            if (std::is_same<qType, float>::value) {
+                DataCopy(output.template ReinterpretCast<float>(), newInput, thisLen);
+            } else {
+                Cast(output, newInput, RoundMode::CAST_RINT, thisLen);
+            }
+            queueOutputTemp.EnQue(output);
+            queueVecScoreQK.FreeTensor(newInput);
+
+            LocalTensor<qType> newOutput = queueOutputTemp.DeQue<qType>();
+
+            uint16_t blockCount = thisLen / headDim;
+            uint16_t blockLen = headDim * sizeof(qType) / DATA_ALIGN_BYTES;
+            uint16_t dstStride = (headNum - 1) * headDim * sizeof(qType) / DATA_ALIGN_BYTES;
+            DataCopyParams copyParams{blockCount, blockLen, 0, dstStride};
+
+            int64_t curOutOffset = seqOffset[thisBatchIdx] * headNum * headDim +
+                headIdx * headDim + (totalLen - remain) * headNum;
+            DataCopy<qType>(qGrad[curOutOffset], newOutput, copyParams);
+            queueOutputTemp.FreeTensor(newOutput);
+
+            remain = remain - thisLen;
+        }
+    }
+
     __aicore__ inline void DoCopyQGrad(const uint32_t *seqOffset)
     {
-        for (int64_t batchIdx = 0; batchIdx < batchSize; batchIdx++) {
-            int64_t curSeqLen = static_cast<int64_t>(seqOffset[batchIdx + 1] - seqOffset[batchIdx]);
-            for (int64_t headIdx = 0; headIdx < headNum; headIdx++) {
-                int64_t totalLen = curSeqLen * headDim;
-                int64_t remain = totalLen;
-                int64_t thisLen = vecOnceDataNum;
-                while (remain > 0) {
-                    if (thisLen > remain) {
-                        thisLen = remain;
-                    }
+        int64_t batchIdx = GetBlockIdx();
+        int64_t taskNum = batchSize * headNum;
+        int64_t coreTask = taskNum / aivNum;
+        int64_t coreSplitId = taskNum % aivNum;
 
-                    int64_t curOffset = (headNum * seqOffset[batchIdx] * headDim) + (headIdx * totalLen) +
-                        (totalLen - remain);
-                    LocalTensor<float> input = queueVecScoreQK.AllocTensor<float>();
-                    DataCopy<float>(input, qGradAccumTemp[curOffset], thisLen);
-                    queueVecScoreQK.EnQue(input);
+        int64_t taskNumOfThisCore = 0;
+        int64_t offsetOfThisCore = 0;
+        if (batchIdx >= coreSplitId) {
+            taskNumOfThisCore = coreTask;
+            offsetOfThisCore = coreSplitId * (coreTask + 1) + (batchIdx - coreSplitId) * coreTask;
+        } else {
+            taskNumOfThisCore = coreTask + 1;
+            offsetOfThisCore = batchIdx * (coreTask + 1);
+        }
 
-                    LocalTensor<float> newInput = queueVecScoreQK.DeQue<float>();
-                    LocalTensor<qType> output = queueOutputTemp.AllocTensor<qType>();
-                    if (std::is_same<qType, float>::value) {
-                        DataCopy(output.template ReinterpretCast<float>(), newInput, thisLen);
-                    } else {
-                        Cast(output, newInput, RoundMode::CAST_RINT, thisLen);
-                    }
-                    queueOutputTemp.EnQue(output);
-                    queueVecScoreQK.FreeTensor(newInput);
+        for (int64_t taskId = 0; taskId < taskNumOfThisCore; taskId++) {
+            int64_t thisBatchIdx = (offsetOfThisCore + taskId) / headNum;
+            int64_t headIdx = (offsetOfThisCore + taskId) % headNum;
 
-                    LocalTensor<qType> newOutput = queueOutputTemp.DeQue<qType>();
-
-                    uint16_t blockCount = thisLen / headDim;
-                    uint16_t blockLen = headDim * sizeof(qType) / DATA_ALIGN_BYTES;
-                    uint16_t dstStride = (headNum - 1) * headDim * sizeof(qType) / DATA_ALIGN_BYTES;
-                    DataCopyParams copyParams{blockCount, blockLen, 0, dstStride};
-
-                    int64_t curOutOffset = seqOffset[batchIdx] * headNum * headDim +
-                        headIdx * headDim + (totalLen - remain) * headNum;
-                    DataCopy<qType>(qGrad[curOutOffset], newOutput, copyParams);
-                    queueOutputTemp.FreeTensor(newOutput);
-
-                    remain = remain - thisLen;
-                }
-            }
+            int64_t curSeqLen = static_cast<int64_t>(seqOffset[thisBatchIdx + 1] - seqOffset[thisBatchIdx]);
+            DoCopyBlockQGrad(thisBatchIdx, headIdx, curSeqLen, seqOffset);
         }
     }
 
