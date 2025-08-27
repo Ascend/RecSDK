@@ -13,20 +13,19 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
-#include "utils/common.h"
-#include "random_normal_initializer.h"
+#include "constant_initializer.h"
+#include "log/logger.h"
 
+using namespace std;
 using namespace MxRec;
 
-RandomNormalInitializer::RandomNormalInitializer(int start, int len, NormalInitializerInfo& initInfo)
-    : start(start), len(len), mean(initInfo.mean), stddev(initInfo.stddev), seed(initInfo.seed),
-      initParam(initInfo.initK), generator(std::default_random_engine(seed)),
-      distribution(std::normal_distribution<float>(mean, stddev))
+ConstantInitializer::ConstantInitializer(int start, int len, float value, float initK)
+    : start(start), len(len), value(value)
 {
+    initParam = initK;
 }
 
-void RandomNormalInitializer::GenerateData(float* const emb, const int embSize)
+void ConstantInitializer::GenerateData(float* const emb, const int embSize)
 {
     if (len == 0) {
         return;
@@ -35,5 +34,5 @@ void RandomNormalInitializer::GenerateData(float* const emb, const int embSize)
         LOG_WARN("InitializeInfo start {} + len {} is larger than embedding size {}.", start, len, embSize);
         return;
     }
-    std::generate_n(emb + start, len, [this]() { return initParam * distribution(generator); });
+    std::fill_n(emb + start, len, initParam * value);
 }

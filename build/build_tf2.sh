@@ -113,7 +113,7 @@ function compile_common_so_file()
 {
     cd "${common_src_path}"
     chmod u+x build.sh
-    ./build.sh "$1" "${MxRec_DIR}" "YES"
+    ./build.sh "${MxRec_DIR}" "YES"
 }
 
 function collect_so_file()
@@ -147,7 +147,7 @@ function collect_so_file()
 echo "----------------          compile     securec           ----------------"
 compile_securec
 echo "----------------          compile common so files       ----------------"
-compile_common_so_file "${tf2_path}"
+compile_common_so_file
 echo "----------------          compile     AccCTR            ----------------"
 compile_acc_ctr_so_file
 echo "----------------          compile MxRec so files        ----------------"

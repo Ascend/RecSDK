@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "lcal_comm.h"
+
 
 #include <cstdint>
 #include <string>
@@ -26,10 +26,11 @@
 #include <runtime/dev.h>
 #include <runtime/mem.h>
 
-#include "comm_args.h"
-#include "lcal_api.h"
-#include "lcal_sock_exchange.h"
-#include "lcal_types.h"
+#include "lccl/include/lcal_comm.h"
+#include "lccl/include/comm_args.h"
+#include "lccl/include/lcal_api.h"
+#include "lccl/src/tools/socket/lcal_sock_exchange.h"
+#include "lccl/include/lcal_types.h"
 
 namespace Lcal {
 

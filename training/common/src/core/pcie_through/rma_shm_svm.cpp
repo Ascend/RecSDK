@@ -15,6 +15,7 @@
  */
 #include "rma_shm_svm.h"
 #include <unordered_map>
+#include <thread>
 #include <vector>
 #include <fstream>
 #include <cstdlib>
@@ -24,7 +25,8 @@
 #include <acl/acl.h>
 #include <driver/ascend_hal_define.h>
 #include "securec.h"
-#include "utils/common.h"
+#include "log/logger.h"
+#include "error/error.h"
 
 using namespace MxRec;
 using namespace std;
@@ -129,7 +131,12 @@ void* ShmMemSet(std::string& shmName, uint64_t memSize)
         struct shmid_ds buf;
         key_t key = IPC_PRIVATE;    // create new shared memory every time
         int shmId = -1;
-        if (GlobalEnv::hugeTlbEnable) {
+        bool HugeTlbEnable = false;
+        const char* EnvHugeTlbEnable = getenv(HUGE_TLB_ENABLE);
+        if (EnvHugeTlbEnable != nullptr) {
+            HugeTlbEnable = (std::stoi(EnvHugeTlbEnable) == 1);
+        }
+        if (HugeTlbEnable) {
             shmId = shmget(key, memSize, IPC_CREAT | SHM_WR_ALL | SHM_HUGETLB);
         } else {
             shmId = shmget(key, memSize, IPC_CREAT | SHM_WR_OWN);

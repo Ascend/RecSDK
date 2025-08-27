@@ -14,10 +14,9 @@
  * limitations under the License.
  */
 
-#include "lcal_sock_exchange.h"
+#include "lccl/src/tools/socket/lcal_sock_exchange.h"
 
 #include <vector>
-
 #include <mpi.h>
 #include <gtest/gtest.h>
 #include <emock/emock.hpp>

@@ -18,7 +18,7 @@ See the License for the specific language governing permissions and
 #include <string>
 #include <unordered_map>
 
-#include "absl/strings/str_format.h"
+#include "common_func/common_func.h"
 
 namespace MxRec {
 std::string Error::ToString() const
@@ -26,7 +26,7 @@ std::string Error::ToString() const
     std::string modName = this->ModAsString();
     std::string errType = this->TypeAsString();
 
-    return absl::StrFormat("Module: %s, Error Type: %s, Error Message: %s", modName, errType, this->msg_);
+    return StringFormat("Module: %s, Error Type: %s, Error Message: %s", modName, errType, this->msg_);
 }
 
 std::string Error::TypeAsString() const noexcept

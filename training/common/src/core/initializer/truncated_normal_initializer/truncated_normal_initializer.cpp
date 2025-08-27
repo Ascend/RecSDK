@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 ==============================================================================*/
 
 #include <algorithm>
-#include "utils/common.h"
+#include "log/logger.h"
 #include "truncated_normal_initializer.h"
 
 using namespace MxRec;
