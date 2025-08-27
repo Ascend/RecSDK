@@ -36,6 +36,7 @@ cmake -DCMAKE_BUILD_TYPE=Release \
     -DOMPI_PATH="$(whereis openmpi)" \
     -DPYTHON_PATH="$python_path" \
     -DASCEND_PATH="$ascend_path" \
+    -DSECUREC_PATH="$2"/../opensource/securec \
     -DCMAKE_INSTALL_PREFIX="$2"/cust_op_output \
     ..
 

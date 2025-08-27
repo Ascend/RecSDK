@@ -74,6 +74,12 @@ else ()
     message("ERROR no TF_PATH try `find / -name libtensorflow_framework.so.1`")
 endif ()
 
+if (DEFINED ASCEND_DRIVER_PYTH)
+    message(ASCEND_DRIVER_PATH ${ASCEND_DRIVER_PYTH})
+else ()
+    set(ASCEND_DRIVER_PATH /usr/local/Ascend/driver)
+endif ()
+
 if (${TF_PATH} MATCHES "tensorflow_core")
     message("== Enable tf1 ==")
     link_directories(PUBLIC ${ASCEND_PATH}/../../tfplugin/latest/python/site-packages/npu_bridge/)
