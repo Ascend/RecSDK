@@ -1,0 +1,583 @@
+/* Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+        limitations under the License.
+==============================================================================*/
+
+#ifndef COMMON_H
+#define COMMON_H
+
+#include <sys/stat.h>
+
+#include <algorithm>
+#include <chrono>
+#include <cstring>
+#include <fstream>
+#include <map>
+#include <random>
+#include <sstream>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
+#include "initializer/constant_initializer/constant_initializer.h"
+#include "initializer/initializer.h"
+#include "initializer/random_normal_initializer/random_normal_initializer.h"
+#include "initializer/truncated_normal_initializer/truncated_normal_initializer.h"
+#include "ock_ctr_common/include/embedding_cache.h"
+#include "ock_ctr_common/include/factory.h"
+#include "securec.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "utils/config.h"
+#include "log/logger.h"
+#include "error/error.h"
+#include "common_func/common_func.h"
+
+namespace MxRec {
+#define MGMT_CPY_THREADS 4
+#define PROFILING
+using namespace tensorflow;
+extern ock::ctr::FactoryPtr factory;
+constexpr int TRAIN_CHANNEL_ID = 0;
+constexpr int EVAL_CHANNEL_ID = 1;
+
+constexpr int MAX_CHANNEL_NUM = 2;
+constexpr int MAX_KEY_PROCESS_THREAD = 10;
+constexpr int MAX_QUEUE_NUM = MAX_CHANNEL_NUM * MAX_KEY_PROCESS_THREAD;
+constexpr int KEY_PROCESS_THREAD = 6;
+constexpr size_t MAX_VOCABULARY_SIZE = 1e10;
+constexpr int SSD_SIZE_INDEX = 2;
+constexpr int EMBEDDING_THREAD_NUM = 2;
+constexpr int HOST_TO_PREFILL_RATIO = 10;
+constexpr int KEY_COUNT_ELEMENT_NUM = 2;
+// for GLOG
+struct GlogConfig {
+    static int gGlogLevel;
+    static string gRankId;
+};
+
+// unique related config
+constexpr int MIN_UNIQUE_THREAD_NUM = 1;
+
+// validate file
+constexpr long long FILE_MAX_SIZE = 1LL << 40;
+constexpr int FILE_MIN_SIZE = 0;
+#ifdef GTEST
+constexpr int KEY_PROCESS_TIMEOUT = 3;
+#else
+constexpr int KEY_PROCESS_TIMEOUT = 120;
+#endif
+constexpr int GET_BATCH_TIMEOUT = 300;
+constexpr int EOS_TIMEOUT = 30;
+
+constexpr size_t DEFAULT_RANDOM_SEED = 10086;
+constexpr int64_t INVALID_KEY_VALUE = -1;
+constexpr int64_t INVALID_DYNAMIC_EXPANSION_ADDR = 0;
+constexpr int32_t INVALID_INDEX_VALUE = -1;
+constexpr int ALLTOALLVC_ALIGN = 128;
+constexpr int PROFILING_START_BATCH_ID = 100;
+constexpr int PROFILING_END_BATCH_ID = 200;
+constexpr int HOT_EMB_UPDATE_STEP_DEFAULT = 1000;
+constexpr float HOT_EMB_CACHE_PCT = static_cast<float>(1. / 3);  // hot emb cache percent
+// max data size for syncing device to host while saving
+constexpr int MAX_OUTFEED_ENQUEUE_INPUT_SIZE = 1024 * 1024 * 1024;  // 1GB
+
+const string COMBINE_HISTORY_NAME = "combine_table_history";
+const string SAVE_SPARSE_PATH_PREFIX = "sparse";
+
+using emb_key_t = int64_t;
+using emb_cache_key_t = uint64_t;
+using freq_num_t = int64_t;
+using EmbNameT = std::string;
+using KeysT = std::vector<emb_key_t>;
+using LookupKeyT = std::tuple<int, EmbNameT, KeysT>;  // batch_id quarry_lable keys_vector
+using UinqueKeyT = std::tuple<int, EmbNameT, bool, std::vector<uint64_t>>;
+using RestoreVecSecT = std::tuple<int, EmbNameT, std::vector<int32_t>>;
+using TensorInfoT = std::tuple<int, EmbNameT, bool, std::list<std::unique_ptr<std::vector<Tensor>>>::iterator>;
+
+namespace HybridOption {
+const unsigned int USE_STATIC = 0x001;
+const unsigned int USE_DYNAMIC_EXPANSION = 0x001 << 1;
+const unsigned int USE_SUM_SAME_ID_GRADIENTS = 0x001 << 2;
+};  // namespace HybridOption
+
+int GetThreadNumEnv();
+
+namespace UBSize {
+const int ASCEND910_PREMIUM_A = 262144;
+const int ASCEND910_PRO_B = 262144;
+const int ASCEND910_B2 = 196608;
+const int ASCEND910_B1 = 196608;
+const int ASCEND910_B3 = 196608;
+const int ASCEND910_B4 = 196608;
+const int ASCEND910_B41 = 196608;
+const int ASCEND910_9391 = 196608;
+const int ASCEND910_9392 = 196608;
+const int ASCEND910_9381 = 196608;
+const int ASCEND910_9382 = 196608;
+const int ASCEND910_9372 = 196608;
+const int ASCEND910_9361 = 196608;
+const int ASCEND920_A = 196608;
+const int ASCEND910_PRO_A = 262144;
+const int ASCEND910_B = 262144;
+const int ASCEND910_A = 262144;
+const int ASCEND910_B2C = 196608;
+};  // namespace UBSize
+
+inline int GetUBSize(int devID)
+{
+    const std::map<string, int> chipUbSizeList = {
+        {"910A", UBSize::ASCEND910_A},   {"910B", UBSize::ASCEND910_B},   {"920A", UBSize::ASCEND920_A},
+        {"910B1", UBSize::ASCEND910_B1}, {"910B2", UBSize::ASCEND910_B2},
+        {"910B3", UBSize::ASCEND910_B3}, {"910B4", UBSize::ASCEND910_B4},
+        {"910B4-1", UBSize::ASCEND910_B41},   {"910B2C", UBSize::ASCEND910_B2C},
+        {"910_9391", UBSize::ASCEND910_9391}, {"910_9392", UBSize::ASCEND910_9392},
+        {"910_9381", UBSize::ASCEND910_9381}, {"910_9382", UBSize::ASCEND910_9382},
+        {"910_9372", UBSize::ASCEND910_9372}, {"910_9361", UBSize::ASCEND910_9361}};
+    auto it = chipUbSizeList.find(GetChipName(devID));
+    if (it != chipUbSizeList.end()) {
+        return it->second;
+    }
+
+    throw std::runtime_error("unknown chip ub size" + GetChipName(devID));
+}
+
+template <class T>
+struct Batch {
+    size_t Size() const
+    {
+        return sample.size();
+    }
+
+    std::string UnParse() const
+    {
+        std::string s;
+        constexpr size_t maxDispLen = 20;
+        int maxLen = static_cast<int>(std::min(sample.size(), maxDispLen));
+        for (int i = 0; i < maxLen; i++) {
+            s += std::to_string(sample[i]) + " ";
+        }
+        return s;
+    }
+
+    std::vector<T> sample;
+    std::string name;
+    size_t batchSize;
+    int batchId;
+    int channel = 0;
+    bool isEos = false;
+    time_t timestamp{-1};
+};
+
+using EmbBatchT = Batch<int64_t>;
+
+struct RankInfo {
+    RankInfo() = default;
+
+    RankInfo(int rankId, int deviceId, int localRankSize, int option, const std::vector<int>& ctrlSteps);
+    RankInfo(int localRankSize, int option, const std::vector<int>& maxStep);
+
+    int rankId{};
+    int deviceId{};
+    int rankSize{};
+    int localRankId{};
+    int localRankSize{};
+    bool useStatic{false};
+    uint32_t option{};
+    bool isDDR{false};
+    bool isSSDEnabled{false};
+    bool useDynamicExpansion{false};
+    bool useSumSameIdGradients{true};
+    std::vector<int> ctrlSteps;  // 包含4个步数: train_steps, eval_steps, save_steps, max_train_steps
+};
+
+struct EmbBaseInfo {
+    int batchId;
+    int channelId;
+    string name;
+    bool isDp{false};
+    bool paddingKeysMask{false};
+    std::vector<int64_t> paddingKeys;
+};
+
+enum TensorIndex : uint32_t {
+    TENSOR_INDEX_0,
+    TENSOR_INDEX_1,
+    TENSOR_INDEX_2,
+    TENSOR_INDEX_3,
+    TENSOR_INDEX_4,
+    TENSOR_INDEX_5,
+    TENSOR_INDEX_6,
+    TENSOR_INDEX_7,
+    TENSOR_INDEX_8
+};
+
+struct RandomInfo {
+    RandomInfo() = default;
+
+    RandomInfo(int start, int len, float constantVal, float randomMin, float randomMax);
+
+    int start;
+    int len;
+    float constantVal;
+    float randomMin;
+    float randomMax;
+};
+
+struct EmbeddingSizeInfo {
+    size_t embeddingSize = 0;
+    size_t extendEmbSize = 0;
+    EmbeddingSizeInfo() = default;
+    EmbeddingSizeInfo(size_t embSize, size_t extendSize) : embeddingSize(embSize), extendEmbSize(extendSize) {}
+};
+
+struct OptimizerInfo {
+    OptimizerInfo() = default;
+    OptimizerInfo(std::string name, vector<std::string> params)
+    {
+        optimName = name;
+        optimParams = std::move(params);
+    }
+
+    std::string optimName;
+    vector<std::string> optimParams;
+};
+
+struct ThresholdValue {
+    ThresholdValue() = default;
+    ThresholdValue(EmbNameT name, int countThre, int timeThre, int faaeCoef, bool isSum)
+    {
+        tableName = name;
+        countThreshold = countThre;
+        timeThreshold = timeThre;
+        faaeCoefficient = faaeCoef;
+        isEnableSum = isSum;
+    }
+
+    EmbNameT tableName{""};  // embName
+    int countThreshold{
+        -1};  // 只配置count，即“只有准入、而没有淘汰”功能，对应SingleHostEmbTableStatus::SETS_ONLY_ADMIT状态
+    int timeThreshold{-1};  // 只配置time，配置错误；即准入是淘汰的前提，对应SingleHostEmbTableStatus::SETS_BOTH状态
+    int faaeCoefficient{1};  // 配置后,该表在准入时，count计数会乘以该系数
+    bool isEnableSum{true};  // 配置false,该表在准入时，count计数不会累加
+};
+
+struct FeatureItemInfo {
+    FeatureItemInfo() = default;
+    FeatureItemInfo(uint32_t cnt, time_t lastT) : count(cnt), lastTime(lastT) {}
+
+    uint32_t count{0};
+    time_t lastTime{0};
+};
+
+using HistoryRecords = absl::flat_hash_map<std::string, absl::flat_hash_map<int64_t, FeatureItemInfo>>;
+struct AdmitAndEvictData {
+    HistoryRecords historyRecords;                        // embName ---> {id, FeatureItemInfo} 映射
+    absl::flat_hash_map<std::string, time_t> timestamps;  // 用于特征准入&淘汰的时间戳
+};
+
+void SetLog(int rank);
+
+template <typename T>
+std::string VectorToString(const std::vector<T>& vec)
+{
+    constexpr size_t maxDispLen = 20;  // max display number
+    int maxLen = static_cast<int>(std::min(vec.size(), maxDispLen));
+
+    std::stringstream ss;
+    ss << "[";
+    for (size_t i = 0; i < maxLen; ++i) { // LCOV_EXCL_BR_LINE
+        ss << vec[i];
+        if (i != vec.size() - 1) { // LCOV_EXCL_BR_LINE
+            ss << ", ";
+        }
+    }
+    ss << "]";
+    return ss.str();
+}
+
+std::string FloatPtrToLimitStr(float* ptr, const size_t& prtSize);
+
+template <typename K, typename V>
+std::string MapToString(const std::map<K, V>& map)
+{
+    std::stringstream ss;
+    ss << "{";
+    for (auto it = map.begin(); it != map.end(); ++it) {
+        ss << it->first << ": " << it->second;
+        if (std::next(it) != map.end()) {
+            ss << ", ";
+        }
+    }
+    ss << "}";
+    return ss.str();
+}
+
+template <typename K, typename V>
+std::string MapToString(const absl::flat_hash_map<K, V>& map)
+{
+    std::stringstream ss;
+    ss << "{";
+    for (auto it = map.begin(); it != map.end(); ++it) {
+        ss << it->first << ": " << it->second;
+        if (std::next(it) != map.end()) {
+            ss << ", ";
+        }
+    }
+    ss << "}";
+    return ss.str();
+}
+
+void ValidateReadFile(const string& dataDir, size_t datasetSize);
+
+template <class T>
+inline Tensor Vec2TensorI32(const std::vector<T>& data)
+{
+    Tensor tmpTensor(tensorflow::DT_INT32, {static_cast<int>(data.size())});
+    auto tmpData = tmpTensor.flat<int32>();
+    for (int j = 0; j < static_cast<int>(data.size()); j++) {
+        tmpData(j) = static_cast<int>(data[j]);
+    }
+    return tmpTensor;
+}
+
+template <class T>
+inline Tensor Vec2TensorI64(const std::vector<T>& data)
+{
+    Tensor tmpTensor(tensorflow::DT_INT64, {static_cast<int>(data.size())});
+    auto tmpData = tmpTensor.flat<int64>();
+    for (int j = 0; j < static_cast<int>(data.size()); j++) {
+        tmpData(j) = static_cast<int64>(data[j]);
+    }
+    return tmpTensor;
+}
+
+struct EmbInfoParams {
+    std::string name;
+    int sendCount;
+    int embeddingSize;
+    int extEmbeddingSize;
+    bool isSave;
+    bool isGrad;
+    bool isDp;
+    bool paddingKeysMask;
+    EmbInfoParams() = default;
+
+    EmbInfoParams(const std::string& name, int sendCount, int embeddingSize, int extEmbeddingSize, bool isSave,
+                  bool isGrad, bool isDp, bool paddingKeysMask)
+        : name(name),
+          sendCount(sendCount),
+          embeddingSize(embeddingSize),
+          extEmbeddingSize(extEmbeddingSize),
+          isSave(isSave),
+          isGrad(isGrad),
+          isDp(isDp),
+          paddingKeysMask(paddingKeysMask)
+    {
+    }
+};
+
+struct EmbInfo {
+    EmbInfo() = default;
+
+    EmbInfo(const EmbInfoParams& embInfoParams, std::vector<size_t> vocabsize,
+            std::vector<EmbCache::InitializerInfo> initializeInfos, std::vector<std::string> ssdDataPath,
+            std::vector<int64_t> paddingKeys)
+        : name(embInfoParams.name),
+          sendCount(embInfoParams.sendCount),
+          embeddingSize(embInfoParams.embeddingSize),
+          extEmbeddingSize(embInfoParams.extEmbeddingSize),
+          isSave(embInfoParams.isSave),
+          isGrad(embInfoParams.isGrad),
+          isDp(embInfoParams.isDp),
+          paddingKeysMask(embInfoParams.paddingKeysMask),
+          devVocabSize(vocabsize[0]),
+          hostVocabSize(vocabsize[1]),
+          ssdVocabSize(vocabsize[SSD_SIZE_INDEX]),
+          initializeInfos(std::move(initializeInfos)),
+          ssdDataPath(std::move(ssdDataPath)),
+          paddingKeys(std::move(paddingKeys))
+    {
+    }
+
+    std::string name;
+    int sendCount;
+    int embeddingSize;
+    int extEmbeddingSize;
+    bool isSave;
+    bool isGrad;
+    bool isDp;
+    bool paddingKeysMask;
+    size_t devVocabSize;
+    size_t hostVocabSize;
+    size_t ssdVocabSize;
+    std::vector<EmbCache::InitializerInfo> initializeInfos;
+    std::vector<std::string> ssdDataPath;
+    std::vector<int64_t> paddingKeys;
+};
+
+struct HostEmbTable {
+    EmbInfo hostEmbInfo;
+    std::vector<std::vector<float>> embData;
+};
+
+struct All2AllInfo {
+    KeysT keyRecv;
+    vector<int> scAll;
+    vector<uint32_t> countRecv;
+    All2AllInfo() = default;
+    All2AllInfo(KeysT keyRecv, vector<int> scAll, vector<uint32_t> countRecv)
+        : keyRecv(keyRecv),
+          scAll(scAll),
+          countRecv(countRecv)
+    {
+    }
+};
+
+struct UniqueInfo {
+    vector<int32_t> restore;
+    vector<int32_t> hotPos;
+    All2AllInfo all2AllInfo;
+    UniqueInfo() = default;
+    UniqueInfo(vector<int32_t> restore, vector<int32_t> hotPos, All2AllInfo all2AllInfo)
+        : restore(restore),
+          hotPos(hotPos),
+          all2AllInfo(all2AllInfo)
+    {
+    }
+};
+
+struct KeySendInfo {
+    KeysT keySend;
+    vector<int32_t> keyCount;
+};
+
+struct KeyInfo {
+    int64_t lastUseTime;  // 最后使用时间
+    int64_t recentCount;  // 最近使用次数
+    bool isChanged;       // 是否有变更
+    int64_t batchID;      // batch id
+    int64_t totalCount;   // key总使用次数
+
+    KeyInfo() : lastUseTime(0), recentCount(0), isChanged(false), batchID(0), totalCount(0) {}
+};
+
+using EmbMemT = absl::flat_hash_map<std::string, HostEmbTable>;
+using OffsetMemT = std::map<EmbNameT, size_t>;
+using KeyOffsetMemT = std::map<EmbNameT, absl::flat_hash_map<emb_key_t, int64_t>>;
+using KeyCountMemT = std::map<EmbNameT, absl::flat_hash_map<emb_key_t, size_t>>;
+using Table2ThreshMemT = absl::flat_hash_map<std::string, ThresholdValue>;
+using trans_serialize_t = uint8_t;
+using OffsetMapT = std::map<EmbNameT, std::vector<int64_t>>;
+using OffsetT = std::vector<int64_t>;
+using AllKeyOffsetMapT = std::map<std::string, std::map<int64_t, int64_t>>;
+using KeyFreqMemT = unordered_map<std::string, unordered_map<emb_cache_key_t, freq_num_t>>;
+
+enum class CkptFeatureType {
+    HOST_EMB = 0,
+    EMB_HASHMAP = 1,
+    MAX_OFFSET = 2,
+    KEY_OFFSET_MAP = 3,
+    FEAT_ADMIT_N_EVICT = 4,
+    DDR_KEY_FREQ_MAP = 5,
+    EXCLUDE_DDR_KEY_FREQ_MAP = 6,
+    KEY_COUNT_MAP = 7,
+    EMB_LOCAL_TABLE = 8
+};
+
+struct CkptData {
+    EmbMemT* hostEmbs = nullptr;
+    OffsetMemT maxOffset;
+    KeyOffsetMemT keyOffsetMap;
+    OffsetMapT offsetMap;
+    KeyCountMemT keyCountMap;
+    Table2ThreshMemT table2Thresh;
+    AdmitAndEvictData histRec;
+    KeyFreqMemT ddrKeyFreqMaps;
+    KeyFreqMemT excludeDDRKeyFreqMaps;
+    bool noFeatAdmitAndEvictData {false};
+};
+
+struct CkptTransData {
+    std::vector<int64_t> int64Arr;
+    std::vector<int64_t> addressArr;
+    std::vector<int32_t> int32Arr;
+    std::vector<trans_serialize_t> transDataset;  // may all use this to transfer data
+    std::vector<size_t> attribute;                // may need to use other form for attributes
+    size_t datasetSize;
+    size_t attributeSize;
+};
+
+enum class CkptDataType {
+    EMB_INFO = 0,
+    EMB_DATA = 1,
+    EMB_HASHMAP = 2,
+    DEV_OFFSET = 3,
+    EMB_CURR_STAT = 4,
+    NDDR_OFFSET = 5,
+    NDDR_FEATMAP = 6,
+    TABLE_2_THRESH = 7,
+    HIST_REC = 8,
+    ATTRIBUTE = 9,
+    DDR_FREQ_MAP = 10,
+    EXCLUDE_FREQ_MAP = 11,
+    EVICT_POS = 12,
+    KEY_COUNT_MAP = 13
+};
+
+std::string CkptDataTypeName(CkptDataType type);
+
+enum CTRLogLevel {  // can't use enum class due to compatibility for AccCTR
+    DEBUG = 0,
+    INFO,
+    WARN,
+    ERROR,
+};
+
+static void CTRLog(int level, const char* msg)
+{
+    switch (level) {
+        case CTRLogLevel::DEBUG:
+            LOG_DEBUG(msg);
+            break;
+        case CTRLogLevel::INFO:
+            LOG_INFO(msg);
+            break;
+        case CTRLogLevel::WARN:
+            LOG_WARN(msg);
+            break;
+        case CTRLogLevel::ERROR:
+            LOG_ERROR(msg);
+            break;
+        default:
+            break;
+    }
+}
+
+ostream& operator<<(ostream& ss, MxRec::CkptDataType type);
+bool CheckFilePermission(const string& filePath);
+
+int GetStepFromPath(const string& loadPath);
+
+string MakeSwapCVName(int id, const string& tableName, int channelId);
+
+bool CheckFileExist(const string& filePath);
+
+void RenameFilePath(const string& filePath, const string& newFilePath);
+}  // end namespace MxRec
+
+#define KEY_PROCESS "\033[45m[KeyProcess]\033[0m "
+#ifdef GTEST
+#define GTEST_PRIVATE public
+#else
+#define GTEST_PRIVATE private
+#endif
+#endif
