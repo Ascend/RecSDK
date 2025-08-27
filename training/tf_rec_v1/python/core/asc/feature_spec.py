@@ -20,13 +20,13 @@ from functools import reduce
 
 import tensorflow as tf
 
+from rec_sdk_common.log import logger
+from rec_sdk_common.constants.constants import ValidatorParams
+from rec_sdk_common.validator.validator import ClassValidator, StringValidator, para_checker_decorator, \
+    OptionalStringValidator, OptionalIntValidator
 from mx_rec.util.atomic import AtomicInteger
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.normalization import fix_invalid_table_name
-from mx_rec.constants.constants import MAX_INT32
-from mx_rec.validator.validator import ClassValidator, StringValidator, para_checker_decorator, \
-    OptionalStringValidator, OptionalIntValidator
-from mx_rec.util.log import logger
 
 feature_spec_global_id = AtomicInteger()
 
@@ -44,14 +44,14 @@ class FeatureSpec:
         ("index_key", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
         ("index_key", OptionalIntValidator, {"min_value": 0, "max_value": 255}, ["check_value"]),
         ("index_key", ClassValidator, {"classes": (str, int, type(None))}),
-        ("access_threshold", OptionalIntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
+        ("access_threshold", OptionalIntValidator, {"min_value": -1, "max_value": ValidatorParams.MAX_INT32.value}, ["check_value"]),
         ("access_threshold", ClassValidator, {"classes": (int, type(None))}),
-        ("eviction_threshold", OptionalIntValidator, {"min_value": -1, "max_value": MAX_INT32}, ["check_value"]),
+        ("eviction_threshold", OptionalIntValidator, {"min_value": -1, "max_value": ValidatorParams.MAX_INT32.value}, ["check_value"]),
         ("eviction_threshold", ClassValidator, {"classes": (int, type(None))}),
         ("is_timestamp", ClassValidator, {"classes": (bool, type(None))}),
-        ("batch_size", OptionalIntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"]),
+        ("batch_size", OptionalIntValidator, {"min_value": 1, "max_value": ValidatorParams.MAX_INT32.value}, ["check_value"]),
         ("batch_size", ClassValidator, {"classes": (int, type(None))}),
-        ("faae_coefficient", OptionalIntValidator, {"min_value": 1, "max_value": MAX_INT32}, ["check_value"])
+        ("faae_coefficient", OptionalIntValidator, {"min_value": 1, "max_value": ValidatorParams.MAX_INT32.value}, ["check_value"])
     ])
     def __init__(self, name: str,
                  table_name: Optional[str] = None,

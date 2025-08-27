@@ -20,9 +20,9 @@ from typing import List
 import tensorflow as tf
 from tensorflow import Operation, Graph
 
-from mx_rec.util.log import logger
+from rec_sdk_common.log import logger
+from rec_sdk_common.validator.validator import ClassValidator, para_checker_decorator
 from mx_rec.graph.slicers import LookupSubgraphSlicer, OrphanLookupKeySlicer
-from mx_rec.validator.validator import ClassValidator, para_checker_decorator
 
 
 class LookupSubgraphSlicerHook(tf.estimator.SessionRunHook):

@@ -28,8 +28,8 @@ from tensorflow.python.training import adam
 from rec_sdk_common.validator.validator import(
     para_checker_decorator,
     StringValidator,
-    FloatValidator,
-    LearningRateValidator)
+    FloatValidator)
+from mx_rec.validator.validator import LearningRateValidator
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.optimizers.base import CustomizedOptimizer
 from mx_rec.util.ops import import_host_pipeline_ops

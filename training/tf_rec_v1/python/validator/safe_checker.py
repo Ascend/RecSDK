@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2024. Huawei Technologies Co.,Ltd. All rights reserved.
+# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,30 +15,17 @@
 # limitations under the License.
 # ==============================================================================
 
-__all__ = [
-    "StringValidator",
-    "IntValidator",
-    "FloatValidator",
-    "ClassValidator",
-    "DirectoryValidator",
-    "str_safe_check",
-    "int_safe_check",
-    "float_safe_check",
-    "class_safe_check",
-    "dir_safe_check",
-]
+from rec_sdk_common.constants.constants import ValidatorParams
+from mx_rec.validator.validator import FileValidator
 
-from rec_sdk_common.validator.validator import (
-    StringValidator,
-    IntValidator,
-    FloatValidator,
-    ClassValidator,
-    DirectoryValidator,
-)
-from rec_sdk_common.validator.safe_checker import (
-    str_safe_check,
-    int_safe_check,
-    float_safe_check,
-    class_safe_check,
-    dir_safe_check,
-)
+def file_safe_check(
+        name: str,
+        path: str,
+        unsupported_mode: int = 0o022,
+        min_size: int = ValidatorParams.FILE_MIN_SIZE.value,
+        max_size: int = ValidatorParams.FILE_MAX_SIZE.value,
+):
+    validator = FileValidator(name, path)
+    validator.check_not_soft_link().check_file_size(max_size, min_size).check_file_mode(
+        unsupported_mode
+    ).check_user_group().check()

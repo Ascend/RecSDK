@@ -35,9 +35,9 @@ from rec_sdk_common.validator.validator import (
     OrValidator,
     SSDFeatureValidator,
     StringValidator,
-    TensorShapeValidator,
     para_checker_decorator,
 )
+from mx_rec.validator.validator import TensorShapeValidator
 from mx_rec.constants.constants import (
     FLOAT32_BYTES,
     MAX_DEVICE_VOCABULARY_SIZE,
