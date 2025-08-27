@@ -12,6 +12,8 @@
 #include <cstddef>
 #include <string>
 
+#include "constants.h"
+
 namespace Embcache {
 
 #ifndef HM_UNLIKELY
@@ -50,14 +52,14 @@ enum class BeforeRemoveFuncState {
 };
 
 struct AdmitAndEvictConfig {
-    int32_t admitThreshold = -1;
+    int64_t admitThreshold = INVALID_KEY;
     float notAdmittedDefaultValue = 0.0;
 
     uint64_t evictThreshold = 0;  // unit: seconds
     uint64_t evictStepInterval = 0;
 
     AdmitAndEvictConfig() = default;
-    AdmitAndEvictConfig(int32_t admitThreshold, float notAdmittedDefaultValue, uint64_t evictThreshold,
+    AdmitAndEvictConfig(int64_t admitThreshold, float notAdmittedDefaultValue, uint64_t evictThreshold,
                         uint64_t evictStepInterval)
         : admitThreshold(admitThreshold),
           notAdmittedDefaultValue(notAdmittedDefaultValue),
@@ -66,7 +68,7 @@ struct AdmitAndEvictConfig {
 
     bool IsAdmitEnabled() const
     {
-        return admitThreshold != -1;
+        return admitThreshold != INVALID_KEY;
     }
 
     bool IsEvictEnabled() const
