@@ -23,23 +23,25 @@ link_libraries(stdc++fs)
 
 file(GLOB_RECURSE HOST_SRC ./*.cpp ./*.h)
 add_library(SRC SHARED ${HOST_SRC}
-        ${PROJECT_SOURCE_DIR}/../../../../src/core/hd_transfer/rma_shm_svm.cpp
-        ${PROJECT_SOURCE_DIR}/../../../../src/core/hd_transfer/rma_shm_svm.h
-        ${PROJECT_SOURCE_DIR}/../../../../src/core/utils/common.cpp
-        ${PROJECT_SOURCE_DIR}/../../../../src/core/utils/common.h
-        ${PROJECT_SOURCE_DIR}/../../../../src/core/utils/config.cpp
-        ${PROJECT_SOURCE_DIR}/../../../../src/core/utils/config.h
-        ${PROJECT_SOURCE_DIR}/../../../../src/core/utils/error.cpp
-        ${PROJECT_SOURCE_DIR}/../../../../src/core/utils/error.h
-        ${PROJECT_SOURCE_DIR}/../../../../src/core/utils/logger.cpp
-        ${PROJECT_SOURCE_DIR}/../../../../src/core/utils/logger.h)
+        ${PROJECT_SOURCE_DIR}/../../../../../training/common/src/core/common_func/common_func.cpp
+        ${PROJECT_SOURCE_DIR}/../../../../../training/common/src/core/pcie_through/rma_shm_svm.cpp
+        ${PROJECT_SOURCE_DIR}/../../../../../training/common/src/core/pcie_through/
+        ${PROJECT_SOURCE_DIR}/../../../../../training/tf_rec_v1/src/core/utils/common.cpp
+        ${PROJECT_SOURCE_DIR}/../../../../../training/tf_rec_v1/src/core/utils/common.h
+        ${PROJECT_SOURCE_DIR}/../../../../../training/tf_rec_v1/src/core/utils/config.cpp
+        ${PROJECT_SOURCE_DIR}/../../../../../training/tf_rec_v1/src/core/utils/config.h
+        ${PROJECT_SOURCE_DIR}/../../../../../training/common/src/core/error/error.cpp
+        ${PROJECT_SOURCE_DIR}/../../../../../training/common/src/core/error/error.h
+        ${PROJECT_SOURCE_DIR}/../../../../../training/common/src/core/log/logger.cpp
+        ${PROJECT_SOURCE_DIR}/../../../../../training/common/src/core/log/logger.h)
 
 target_include_directories(SRC
         PUBLIC
         ${SECUREC_PATH}/include
         ${ASCEND_DRIVER_PATH}/include
         ${ASCEND_DRIVER_PATH}/kernel/inc
-        ${PROJECT_SOURCE_DIR}/../../../../src/core
+        ${PROJECT_SOURCE_DIR}/../../../../../training/common/src/core
+        ${PROJECT_SOURCE_DIR}/../../../../../training/tf_rec_v1/src/core
         )
 
 target_link_directories(SRC

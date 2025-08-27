@@ -34,14 +34,12 @@ else ()
     message(STATUS "env LIB_PATH: ${LIB_PATH}")
 endif ()
 
-set(AUTO_GEN_PATH "../../lazy_adam/build_out/autogen")
 # Header path
 include_directories(
         ${INC_PATH}/runtime/include
         ${INC_PATH}/atc/include
         ../inc
         ${CUST_PKG_PATH}/include
-        ${AUTO_GEN_PATH}
 )
 
 # add host lib path

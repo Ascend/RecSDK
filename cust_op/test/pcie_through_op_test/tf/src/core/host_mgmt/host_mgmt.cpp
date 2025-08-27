@@ -15,10 +15,10 @@
  */
 
 #include "host_mgmt.h"
-#include "hd_transfer/rma_shm_svm.h"
+#include "pcie_through/rma_shm_svm.h"
 #include "utils/config.h"
-#include "utils/logger.h"
-#include "utils/error.h"
+#include "log/logger.h"
+#include "error/error.h"
 #include "rma_swap/rma_swap_test.h"
 #include "tdt_transfer/tdt_transfer.h"
 

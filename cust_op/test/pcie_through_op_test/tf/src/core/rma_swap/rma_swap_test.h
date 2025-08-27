@@ -29,7 +29,7 @@
 #include <acl/acl.h>
 #include "securec.h"
 
-#include "hd_transfer/rma_shm_svm.h"
+#include "pcie_through/rma_shm_svm.h"
 
 namespace TfTest {
 

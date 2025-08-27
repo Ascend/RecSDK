@@ -43,7 +43,7 @@ else
 fi
 echo "SCRIPT_DIR = " ${SCRIPT_DIR}
 pwd
-MxRec_DIR=$(dirname "${SCRIPT_DIR}")/../../../..
+MxRec_DIR=$(dirname "${SCRIPT_DIR}")/../../../../..
 echo "MxRec_DIR = " $MxRec_DIR
 
 opensource_path="${MxRec_DIR}"/../opensource
@@ -56,5 +56,6 @@ cmake -DCMAKE_BUILD_TYPE=Release \
       -DABSEIL_PATH="$tf1_path" \
       -DOMPI_PATH="$(whereis openmpi)" \
       -DPYTHON_PATH="$python_path" \
-      -DSECUREC_PATH="$opensource_path"/securec  ..
+      -DSECUREC_PATH="$opensource_path"/securec \
+      -DOPENSOURCE_DIR="$opensource_path"  ..
 make -j4

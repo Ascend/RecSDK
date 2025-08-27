@@ -18,7 +18,7 @@
 #include "lccl_all_uss_tiling.h"
 
 #include "register/op_def_registry.h"
-#include "common/ops_log.h"
+#include "ops_log.h"
 
 static int g_magic = 10;
 static int g_blockDim = 32;

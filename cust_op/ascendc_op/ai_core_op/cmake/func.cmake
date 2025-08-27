@@ -1,9 +1,13 @@
+set(CMAKE_FUNC_DIR "${CMAKE_CURRENT_LIST_DIR}")
+
 function(opbuild)
   message(STATUS "Opbuild generating sources")
   cmake_parse_arguments(OPBUILD "" "OUT_DIR;PROJECT_NAME;ACCESS_PREFIX;ENABLE_SOURCE" "OPS_SRC" ${ARGN})
   execute_process(COMMAND ${CMAKE_COMPILE} -g -fPIC -shared -std=c++11 ${OPBUILD_OPS_SRC}                   
                   -D_GLIBCXX_USE_CXX11_ABI=0 -DLOG_CPP
-                  -I ${ASCEND_CANN_PACKAGE_PATH}/include -L ${ASCEND_CANN_PACKAGE_PATH}/lib64 -lexe_graph -lregister -ltiling_api
+                  -I ${ASCEND_CANN_PACKAGE_PATH}/include
+                  -I ${CMAKE_FUNC_DIR}/../common
+                  -L ${ASCEND_CANN_PACKAGE_PATH}/lib64 -lexe_graph -lregister -ltiling_api
                   -o ${OPBUILD_OUT_DIR}/libascend_all_ops.so
                   RESULT_VARIABLE EXEC_RESULT
                   OUTPUT_VARIABLE EXEC_INFO
@@ -37,3 +41,5 @@ function(opbuild)
   endif()
   message(STATUS "Opbuild generating sources - done")
 endfunction()
+
+include_directories(${CMAKE_FUNC_DIR}/../common)

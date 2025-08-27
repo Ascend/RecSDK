@@ -32,7 +32,7 @@
 #include "acl/acl_tdt_queue.h"
 #include "tensorflow/core/framework/tensor.h"
 
-#include "utils/logger.h"
+#include "log/logger.h"
 
 using namespace std;
 using namespace tensorflow;
