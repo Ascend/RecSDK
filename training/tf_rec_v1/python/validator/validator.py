@@ -26,6 +26,7 @@ import tensorflow as tf
 
 from rec_sdk_common.validator.validator import Validator, IntValidator, FloatValidator, StringValidator
 from rec_sdk_common.constants.constants import FileParams
+from rec_sdk_common.log.log import LoggingProxy
 
 class TensorShapeValidator(Validator):
     def __init__(self, name: str, value: tf.TensorShape, int_checker_args: dict = None, msg: str = ""):

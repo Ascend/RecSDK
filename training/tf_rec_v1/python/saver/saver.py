@@ -42,12 +42,12 @@ from rec_sdk_common.constants.constants import (
 from rec_sdk_common.util.tf_adapter import npu_ops
 from rec_sdk_common.validator.validator import (
     DirectoryValidator,
-    FileValidator,
     para_checker_decorator,
     ClassValidator,
     IntValidator,
     OptionalStringValidator,
 )
+from mx_rec.validator.validator import FileValidator
 from mx_rec.constants.constants import (
     DataName,
     DataAttr,

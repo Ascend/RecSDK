@@ -22,8 +22,6 @@ import inspect
 import functools
 import stat
 
-import tensorflow as tf
-
 from rec_sdk_common.constants.constants import EnvOptionCommon, LogLevel, FileParams, RankTableParams, ValidatorParams
 from rec_sdk_common.log.log import LoggingProxy
 
