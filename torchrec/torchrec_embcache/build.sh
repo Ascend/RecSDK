@@ -26,9 +26,16 @@ fi
 function prepare_deps()
 {
     python3 -m pip install pybind11
-    cd "${SCRIPT_PATH}/src/3rdparty"
-    git clone -b master https://gitee.com/Janisa/huawei_secure_c.git securec
-    cd -
+
+    local securec_dir="${SCRIPT_PATH}/src/3rdparty/securec"
+    if [ ! -d "$securec_dir" ]; then
+        echo "Cloning huawei_secure_c..."
+        cd "${SCRIPT_PATH}/src/3rdparty"
+        git clone -b master https://gitee.com/Janisa/huawei_secure_c.git securec
+        cd -
+    else
+        echo "securec directory already exists, skipping clone."
+    fi
 }
 
 function check_ret_fn()

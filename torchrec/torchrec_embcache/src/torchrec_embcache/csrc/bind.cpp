@@ -13,6 +13,7 @@
 
 #include "embedding_cache/embcache_manager.h"
 #include "ops/restore.h"
+#include "common/constants.h"
 
 using namespace Embcache;
 
@@ -73,7 +74,7 @@ PYBIND11_MODULE(embcache_pybind, m)
 
     py::class_<AdmitAndEvictConfig>(m, "AdmitAndEvictConfig")
         .def(py::init<>())
-        .def(py::init<int32_t, float, uint64_t, uint64_t>(), py::arg("admit_threshold") = -1,
+        .def(py::init<int64_t, float, uint64_t, uint64_t>(), py::arg("admit_threshold") = INVALID_KEY,
              py::arg("not_admitted_default_value") = 0.0, py::arg("evict_threshold") = 0,
              py::arg("evict_step_interval") = 0)
         .def_readwrite("admit_threshold", &AdmitAndEvictConfig::admitThreshold)

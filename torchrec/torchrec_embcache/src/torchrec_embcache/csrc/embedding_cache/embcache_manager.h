@@ -10,12 +10,14 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <torch/extension.h>
 #include <vector>
 
 #include "common/common.h"
 #include "emb_table/emb_table.h"
+#include "feature_filter/feature_filter.h"
 #include "swap_manager.h"
 #include "utils/async_task.h"
 #include "utils/thread_pool.h"
@@ -129,6 +131,7 @@ private:
     std::vector<EmbConfig> embConfigs_;
     std::vector<SwapManager> swapManagers_;
     std::vector<std::unique_ptr<EmbTable>> embeddingTables_;
+    std::vector<std::unique_ptr<FeatureFilter>> featureFilters_;  // 索引直接对应表索引，未启用的为nullptr
 
     uint64_t swapCount_ = 0;       // ComputeSwapInfo 执行次数
     uint64_t embUpdateCount_ = 0;  // EmbeddingUpdate 执行次数
