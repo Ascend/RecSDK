@@ -284,6 +284,19 @@ def backward_codegen_adam_unweighted_exact(grad_output,
 
 ```
 
+### ADAM优化器环境变量介绍
+TF_ADAM_MODE: adam优化器的计算选择开关，根据环境变量设置对应的参数更新方式
+
+$$stepSize = lr * \frac{\sqrt{1 - {\beta_2}^t}}{(1 - {\beta_1}^t)}$$
+
+默认情况下计算公式为:
+
+$$ \hat{\theta} = stepSize * \frac{\hat{m}}{\sqrt{\hat{v}} + \sqrt{1-{\beta_2}^t}eps}$$
+
+设置环境变量**TF_ADAM_MODE=True** 计算公式:
+
+$$ \hat{\theta} = stepSize * \frac{\hat{m}}{\sqrt{\hat{v}}+ eps}$$
+
 ## backward_codegen_sgd_unweighted_exact融合算子介绍
 
 1. 算子分析
