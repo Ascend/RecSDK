@@ -29,7 +29,7 @@ from mx_rec.core.feature_process import EvictHook
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache, GraphModifierHook
 from mx_rec.constants.constants import ASCEND_TIMESTAMP
 from mx_rec.util.initialize import ConfigInitializer, init, terminate_config_initializer
-import mx_rec.util as mxrec_util
+import rec_sdk_common
 from mx_rec.util.variable import get_dense_and_sparse_variable
 import examples.model_common as cm
 from examples.model_common import (
@@ -88,7 +88,7 @@ if __name__ == "__main__":
     init(train_steps=cm.train_steps, eval_steps=cm.eval_steps,
          use_dynamic=use_dynamic, use_dynamic_expansion=cm.use_dynamic_expansion)
     IF_LOAD = False
-    rank_id = mxrec_util.communication.hccl_ops.get_rank_id()
+    rank_id = rec_sdk_common.communication.hccl.hccl_info.get_rank_id()
     filelist = glob(f"./saved-model/sparse-model-0")
     if filelist:
         IF_LOAD = True
@@ -142,7 +142,7 @@ if __name__ == "__main__":
         trainable_varibles.append(tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)[0])
     else:
         trainable_varibles.extend(sparse_variables)
-    rank_size = mxrec_util.communication.hccl_ops.get_rank_size()
+    rank_size = rec_sdk_common.communication.hccl.hccl_info.get_rank_size()
     train_ops = []
     # multi task training
     for loss, (dense_optimizer, sparse_optimizer) in zip([train_model.get("loss")], optimizer_list):

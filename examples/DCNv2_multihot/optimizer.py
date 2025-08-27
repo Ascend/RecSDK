@@ -19,7 +19,7 @@ import tensorflow as tf
 from delay_loss_scale import DenseLossScaleOptimizer, SparseLossScaleOptimizer
 
 from mx_rec.util.initialize import ConfigInitializer
-from mx_rec.util.log import logger
+from rec_sdk_common.log import logger
 
 
 def get_dense_and_sparse_optimizer_adam(cfg):

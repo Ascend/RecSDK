@@ -20,7 +20,7 @@ import math
 from enum import Enum
 
 import tensorflow as tf
-from mx_rec.util.communication.hccl_ops import get_rank_size
+from rec_sdk_common.communication.hccl.hccl_info import get_rank_size
 
 GLOBAL_RANDOM_SEED = 128
 try:

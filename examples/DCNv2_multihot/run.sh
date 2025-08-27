@@ -29,7 +29,8 @@ local_rank_size=16
 num_process=$((num_server * local_rank_size))
 export TRAIN_RANK_SIZE=$num_process
 project_root=$(cd "$cur_path/../.." && pwd)
-
+common_package_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/rec_sdk_common
+common_so_path=${common_package_path}/lib
 ################# 参数配置 ######################
 export BATCH_SIZE=8192
 export USE_DYNAMIC=0            # 0：静态shape；1：动态shape
@@ -45,13 +46,13 @@ echo "CACHE_MODE:${CACHE_MODE}"
 export HCCL_CONNECT_TIMEOUT=1200
 
 export DLRM_CRITEO_DATA_PATH=${dlrm_criteo_data_path}
-export PYTHONPATH=${mx_rec_package_path}:${so_path}:${fore_path}:${project_root}:$PYTHONPATH
+export PYTHONPATH=${mx_rec_package_path}:${so_path}:${common_so_path}:${fore_path}:${project_root}:$PYTHONPATH
 if [ "$(uname -m)" == "aarch64" ]; then
     export LD_PRELOAD=/usr/lib64/libgomp.so.1:/usr/lib64/libstdc++.so.6:/usr/local/python3.7.5/lib/python3.7/site-packages/scikit_learn.libs/libgomp-d22c30c5.so.1.0.0
 else
     export LD_PRELOAD=/usr/lib64/libgomp.so.1:/usr/lib64/libstdc++.so.6
 fi
-export LD_LIBRARY_PATH=${so_path}:/usr/local/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=${so_path}:${common_so_path}:/usr/local/lib:$LD_LIBRARY_PATH
 
 export ASCEND_DEVICE_ID=0
 export RANK_ID_START=0

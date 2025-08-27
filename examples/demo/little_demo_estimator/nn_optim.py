@@ -17,8 +17,8 @@
 
 
 import tensorflow as tf
-from mx_rec.util.tf_version_adapter import hccl_ops
-from mx_rec.util.communication.hccl_ops import get_rank_size
+from rec_sdk_common.util.tf_adapter import hccl_ops
+from rec_sdk_common.communication.hccl.hccl_info import get_rank_size
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.variable import get_dense_and_sparse_variable
 from mx_rec.optimizers.gradient_descent import create_hash_optimizer

@@ -15,10 +15,11 @@
 # limitations under the License.
 # ==============================================================================
 
-from mx_rec.util.communication.hccl_ops import get_rank_size
+from rec_sdk_common.communication.hccl.hccl_info import get_rank_size
 from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.core.asc.helper import get_asc_insert_func
 from mx_rec.util.initialize import ConfigInitializer
+from mx_rec.constants.constants import LIBREC_TF_REC_V1_CPU_SO
 
 from dataset import generate_dataset, generate_tuple_data_format_func
 from utils import FeatureSpecIns, create_feature_spec_list
@@ -43,7 +44,7 @@ def input_fn(params, cfg: Config, is_eval=False, use_one_shot=False):
             dataset = dataset.map(get_asc_insert_func(tgt_key_specs=feature_spec_list, is_training=False))
             channel_id = ConfigInitializer.get_instance().train_params_config.get_training_mode_channel_id(
                 False)
-            import_host_pipeline_ops().clear_channel(channel_id)
+            import_host_pipeline_ops(LIBREC_TF_REC_V1_CPU_SO).clear_channel(channel_id)
         else:
             FeatureSpecIns.get_instance().set_train_feature_spec_list(feature_spec_list)
             dataset = dataset.map(get_asc_insert_func(tgt_key_specs=feature_spec_list, is_training=True))

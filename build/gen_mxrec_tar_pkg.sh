@@ -58,10 +58,14 @@ function gen_tar_file()
 
 function clean()
 {
-  rm -rf "${MxRec_DIR}"/dist
-  rm -rf "${MxRec_DIR}"/mx_rec.egg-info
-  rm -rf "${MxRec_DIR}"/src/build
-  rm -rf "${MxRec_DIR}"/mx_rec/libasc
+  rm -rf "${MxRec_DIR}"/training/common/dist
+  rm -rf "${MxRec_DIR}"/training/tf_rec_v1/dist
+  rm -rf "${MxRec_DIR}"/training/common/mx_rec.egg-info
+  rm -rf "${MxRec_DIR}"/training/tf_rec_v1/mx_rec.egg-info
+  rm -rf "${MxRec_DIR}"/training/common/build
+  rm -rf "${MxRec_DIR}"/training/tf_rec_v1/build
+  rm -rf "${MxRec_DIR}"/training/common/python/lib
+  rm -rf "${MxRec_DIR}"/training/tf_rec_v1/python/libasc
   rm -rf "${MxRec_DIR}"/build/lib
   rm -rf "${MxRec_DIR}"/build/bdist.linux-${ARCH}
 }

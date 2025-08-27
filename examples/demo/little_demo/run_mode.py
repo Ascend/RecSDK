@@ -24,11 +24,11 @@ from typing import List
 
 import numpy as np
 import tensorflow as tf
-from mx_rec.constants.constants import BaseEnum
+from mx_rec.constants.constants import BaseEnum, LIBREC_TF_REC_V1_CPU_SO
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.ops import import_host_pipeline_ops
-from mx_rec.util.tf_version_adapter import hccl_ops
+from rec_sdk_common.util.tf_adapter import hccl_ops
 from mx_rec.util.variable import get_dense_and_sparse_variable
 
 from config import (PRECISION_CHECK, USE_DETERMINISTIC,
@@ -74,7 +74,7 @@ class RunMode:
         else:
             logger.debug(f"use one shot iterator and modify graph is `{self.is_modify_graph}`.")
         channel_id = ConfigInitializer.get_instance().train_params_config.get_training_mode_channel_id(False)
-        import_host_pipeline_ops().clear_channel(channel_id)
+        import_host_pipeline_ops(LIBREC_TF_REC_V1_CPU_SO).clear_channel(channel_id)
 
         if self.infer_steps == -1:
             self.infer_steps = sys.maxsize  # 消耗全部数据
@@ -193,7 +193,7 @@ class RunMode:
 
     def change_threshold(self):
         thres_tensor = tf.constant(60, dtype=tf.int32)
-        set_threshold_op = import_host_pipeline_ops().set_threshold(thres_tensor,
+        set_threshold_op = import_host_pipeline_ops(LIBREC_TF_REC_V1_CPU_SO).set_threshold(thres_tensor,
                                                                     emb_name=self.table_list[0].table_name,
                                                                     ids_name=self.table_list[0].table_name + "_lookup")
         self.session.run([set_threshold_op])
