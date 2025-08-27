@@ -45,6 +45,9 @@ class AdmitAndEvictConfig:
 
     def is_feature_evict_enabled(self) -> bool:
         return self.evict_threshold != _DEFAULT_EVICT_THRESHOLD
+    
+    def is_feature_filter_enabled(self) -> bool:
+         return self.is_feature_admit_enabled() or self.is_feature_evict_enabled()
 
 
 class InitializerType(str, Enum):
