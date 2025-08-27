@@ -57,3 +57,5 @@ pytest ./test_embedding_cache_pipeline.py
     export LOCAL_UNIQUE_PARALLEL_BATCH_NUM=4
     pytest ./test_embedding_ec_cache_pipeline.py
 )
+pytest ./test_feature_filter.py
+pytest ./test_kjt_with_time.py
