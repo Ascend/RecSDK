@@ -13,7 +13,7 @@ from torchrec.sparse.jagged_tensor import (
     JaggedTensor,
     KeyedJaggedTensor,
 )
-from torchrec.pt2.checks import  is_non_strict_exporting
+from torchrec.pt2.checks import is_non_strict_exporting
 
 T = TypeVar('T', bound='ExtendedJaggedTensor')
 K = TypeVar('K', bound='KeyedExtendedJaggedTensor')
@@ -40,7 +40,7 @@ class ExtendedJaggedTensor(JaggedTensor):
     """
     Base class for JaggedTensor with an additional tensor field.
     """
-    
+
     def __init__(
         self,
         values: torch.Tensor,
@@ -69,7 +69,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor):
     """
     Base class for KeyedJaggedTensor with an additional tensor field.
     """
-    
+
     def __init__(
         self,
         keys: List[str],
@@ -126,7 +126,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor):
                 _FIELD_KEYS: [],
                 _FIELD_VALUES: torch.empty(0, dtype=torch.int64),
             }
-            
+
             # 根据extra_field_name设置对应的参数
             if extra_field_name == _FIELD_TIMESTAMPS:
                 constructor_kwargs[_FIELD_TIMESTAMPS] = torch.empty(0, dtype=torch.int64)
@@ -136,16 +136,16 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor):
                 # 对于其他情况，使用通用的extra参数
                 constructor_kwargs[_FIELD_EXTRA] = torch.empty(0, dtype=torch.int64)
                 constructor_kwargs[_FIELD_EXTRA_FIELD_NAME] = extra_field_name
-            
+
             return cls(**constructor_kwargs)
-            
+
         kjt_keys = list(jt_dict.keys())
         kjt_vals_list: List[torch.Tensor] = []
         kjt_extra_list: List[torch.Tensor] = []
         kjt_lens_list: List[torch.Tensor] = []
         kjt_weights_list: List[torch.Tensor] = []
         stride_per_key: List[int] = []
-        
+
         for jt in jt_dict.values():
             stride_per_key.append(len(jt.lengths()))
             kjt_vals_list.append(jt.values())
@@ -154,7 +154,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor):
             weight = jt.weights_or_none()
             if weight is not None:
                 kjt_weights_list.append(weight)
-                
+
         kjt_vals = torch.concat(kjt_vals_list)
         kjt_lens = torch.concat(kjt_lens_list)
 
@@ -171,7 +171,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor):
             if all(s == stride_per_key[0] for s in stride_per_key)
             else (None, [[stride] for stride in stride_per_key])
         )
-        
+
         # 根据extra_field_name动态构造参数字典
         constructor_kwargs = {
             _FIELD_KEYS: kjt_keys,
@@ -181,7 +181,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor):
             _FIELD_STRIDE: kjt_stride,
             _FIELD_STRIDE_PER_KEY_PER_RANK: kjt_stride_per_key_per_rank,
         }
-        
+
         # 根据extra_field_name设置对应的参数
         if extra_field_name == _FIELD_TIMESTAMPS:
             constructor_kwargs[_FIELD_TIMESTAMPS] = kjt_extra
@@ -191,7 +191,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor):
             # 对于其他情况，使用通用的extra参数
             constructor_kwargs[_FIELD_EXTRA] = kjt_extra
             constructor_kwargs[_FIELD_EXTRA_FIELD_NAME] = extra_field_name
-        
+
         kjt = cls(**constructor_kwargs).sync()
         return kjt
 
@@ -208,7 +208,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor):
         start_offset = 0
         _length_per_key = self.length_per_key()
         _offset_per_key = self.offset_per_key()
-        
+
         for segment in segments:
             end = start + segment
             end_offset = _offset_per_key[end]
@@ -219,7 +219,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor):
                 if self.variable_stride_per_key()
                 else (self._stride, None)
             )
-            
+
             if segment == len(self._keys):
                 # no torch slicing required
                 # 根据extra_field_name动态构造参数字典
@@ -236,7 +236,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor):
                     _FIELD_INDEX_PER_KEY: self._index_per_key,
                     _FIELD_JT_DICT: self._jt_dict,
                 }
-                
+
                 # 根据extra_field_name设置对应的参数
                 if self._extra_field_name == _FIELD_TIMESTAMPS:
                     constructor_kwargs[_FIELD_TIMESTAMPS] = self._extra
@@ -246,7 +246,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor):
                     # 对于其他情况，使用通用的extra参数
                     constructor_kwargs[_FIELD_EXTRA] = self._extra
                     constructor_kwargs[_FIELD_EXTRA_FIELD_NAME] = self._extra_field_name
-                
+
                 split_list.append(cls_type(**constructor_kwargs))
             elif segment == 0:
                 # 根据extra_field_name动态构造参数字典
@@ -280,7 +280,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor):
                     _FIELD_INDEX_PER_KEY: None,
                     _FIELD_JT_DICT: None,
                 }
-                
+
                 # 根据extra_field_name设置对应的参数
                 if self._extra_field_name == _FIELD_TIMESTAMPS:
                     constructor_kwargs[_FIELD_TIMESTAMPS] = torch.tensor(
@@ -302,7 +302,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor):
                         dtype=self._extra.dtype if self._extra is not None else torch.int64,
                     )
                     constructor_kwargs[_FIELD_EXTRA_FIELD_NAME] = self._extra_field_name
-                
+
                 split_list.append(cls_type(**constructor_kwargs))
             else:
                 # 根据extra_field_name动态构造参数字典
@@ -328,7 +328,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor):
                     _FIELD_INDEX_PER_KEY: None,
                     _FIELD_JT_DICT: None,
                 }
-                
+
                 # 根据extra_field_name设置对应的参数
                 if self._extra_field_name == _FIELD_TIMESTAMPS:
                     constructor_kwargs[_FIELD_TIMESTAMPS] = (
@@ -350,7 +350,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor):
                         else None
                     )
                     constructor_kwargs[_FIELD_EXTRA_FIELD_NAME] = self._extra_field_name
-                
+
                 split_list.append(cls_type(**constructor_kwargs))
             start = end
             start_offset = end_offset
@@ -381,7 +381,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor):
             _FIELD_INDEX_PER_KEY: self._index_per_key,
             _FIELD_JT_DICT: None,
         }
-        
+
         # 根据extra_field_name设置对应的参数
         if self._extra_field_name == _FIELD_TIMESTAMPS:
             constructor_kwargs[_FIELD_TIMESTAMPS] = (
@@ -397,7 +397,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor):
                 self._extra.pin_memory() if self._extra is not None else None
             )
             constructor_kwargs[_FIELD_EXTRA_FIELD_NAME] = self._extra_field_name
-        
+
         return cls_type(**constructor_kwargs)
 
     def to_base(self, device: torch.device, non_blocking: bool, cls_type) -> "KeyedExtendedJaggedTensor":
@@ -441,7 +441,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor):
             _FIELD_INDEX_PER_KEY: index_per_key,
             _FIELD_JT_DICT: jt_dict,
         }
-        
+
         # 根据extra_field_name设置对应的参数
         if self._extra_field_name == _FIELD_TIMESTAMPS:
             constructor_kwargs[_FIELD_TIMESTAMPS] = (
@@ -463,7 +463,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor):
                 else None
             )
             constructor_kwargs[_FIELD_EXTRA_FIELD_NAME] = self._extra_field_name
-        
+
         return cls_type(**constructor_kwargs)
 
     @torch.jit.unused
