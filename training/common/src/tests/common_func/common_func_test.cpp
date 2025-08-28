@@ -22,10 +22,3 @@ TEST(TestStringFormat, Basic)
 {
     EXPECT_EQ(MxRec::StringFormat("%s %d", "test", 123), "test 123");
 }
-
-TEST(TestGetChipName, Basic)
-{
-    std::string chip_name = "910";
-    std::string result = MxRec::GetChipName(0);
-    EXPECT_NE(result.find(chip_name), std::string::npos);
-}

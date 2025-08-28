@@ -121,7 +121,7 @@ def sess_config(execute_type, dump_data=False, dump_path="./dump_output", dump_s
 
 
 def import_ops(so_pkg_name: str = CUSTOM_OPS_SO) -> ModuleType:
-    so_pkg_path = os.path.join("../../../framework/tf_plugin/build/src/", so_pkg_name)
+    so_pkg_path = os.path.join("../../../../framework/tf_plugin/build/src/", so_pkg_name)
     if os.path.exists(so_pkg_path):
         logging.info(f"Using the DEFAULT PATH `{so_pkg_path}` to get ops lib.")
         return tf.load_op_library(so_pkg_path)

@@ -43,32 +43,30 @@ def _get_rank_info_with_ranktable() -> Dict[int, int]:
             raise ValueError("rank table file is unable to parse as json") from e
         class_safe_check("ranktable_info", ranktable_info, (dict,))
 
-        if _get_chip_name() == ChipName.ASCEND_910B:
-            if RankTableInfo.SERVER_LIST.value not in ranktable_info:
-                raise AttributeError(f"Lack of attribute server_list.")
-            if not ranktable_info.get(RankTableInfo.SERVER_LIST.value):
-                raise ValueError(f"Server_list is empty.")
-            if RankTableInfo.DEVICE.value not in ranktable_info.get(RankTableInfo.SERVER_LIST.value)[0]:
-                raise AttributeError(f"Lack of attribute device.")
+        if RankTableInfo.SERVER_LIST.value not in ranktable_info:
+            raise AttributeError(f"Lack of attribute server_list.")
+        if not ranktable_info.get(RankTableInfo.SERVER_LIST.value):
+            raise ValueError(f"Server_list is empty.")
+        if RankTableInfo.DEVICE.value not in ranktable_info.get(RankTableInfo.SERVER_LIST.value)[0]:
+            raise AttributeError(f"Lack of attribute device.")
 
     rank_to_device_dict = dict()
-    if _get_chip_name() == ChipName.ASCEND_910B:
-        for server_list in ranktable_info.get(RankTableInfo.SERVER_LIST.value):
-            devices = server_list.get(RankTableInfo.DEVICE.value)
-            if devices is None:
-                raise ValueError("device is empty")
+    for server_list in ranktable_info.get(RankTableInfo.SERVER_LIST.value):
+        devices = server_list.get(RankTableInfo.DEVICE.value)
+        if devices is None:
+            raise ValueError("device is empty")
 
-            for device in devices:
-                if RankTableInfo.RANK_ID.value not in device or not device.get(RankTableInfo.RANK_ID.value).isdigit():
-                    raise ValueError(f"hccl_json rank_id wrong.")
-                rank_id = int(device.get(RankTableInfo.RANK_ID.value))
-                int_safe_check("rank_id", rank_id, min_value=0, max_value=CommParams.MAX_RANK_ID.value)
-                if RankTableInfo.DEVICE_ID.value not in device or not device.get(RankTableInfo.DEVICE_ID.value).isdigit():
-                    raise ValueError(f"hccl_json device_id wrong.")
-                import common_binding
-                logic_id = common_binding.get_logic_id(int(device.get(RankTableInfo.DEVICE_ID.value)))
-                int_safe_check("logic_id", logic_id, min_value=0, max_value=CommParams.MAX_LOGIC_ID.value)
-                rank_to_device_dict[rank_id] = logic_id
+        for device in devices:
+            if RankTableInfo.RANK_ID.value not in device or not device.get(RankTableInfo.RANK_ID.value).isdigit():
+                raise ValueError(f"hccl_json rank_id wrong.")
+            rank_id = int(device.get(RankTableInfo.RANK_ID.value))
+            int_safe_check("rank_id", rank_id, min_value=0, max_value=CommParams.MAX_RANK_ID.value)
+            if RankTableInfo.DEVICE_ID.value not in device or not device.get(RankTableInfo.DEVICE_ID.value).isdigit():
+                raise ValueError(f"hccl_json device_id wrong.")
+            import common_binding
+            logic_id = common_binding.get_logic_id(int(device.get(RankTableInfo.DEVICE_ID.value)))
+            int_safe_check("logic_id", logic_id, min_value=0, max_value=CommParams.MAX_LOGIC_ID.value)
+            rank_to_device_dict[rank_id] = logic_id
     return rank_to_device_dict
 
 
@@ -78,11 +76,10 @@ def _get_rank_info_without_ranktable() -> Dict[int, int]:
     :return: rank_id to logic_id mapping dictionary.
     """
     device_list = get_device_list()
-    if _get_chip_name() == ChipName.ASCEND_910B:
-        env_rank_size = os.getenv(CommonEnv.CM_WORKER_SIZE.value)
-        env_chief_device = os.getenv(CommonEnv.CM_CHIEF_DEVICE.value)
-        chief_device = int(env_chief_device)
-        rank_size = int(env_rank_size)
+    env_rank_size = os.getenv(CommonEnv.CM_WORKER_SIZE.value)
+    env_chief_device = os.getenv(CommonEnv.CM_CHIEF_DEVICE.value)
+    chief_device = int(env_chief_device)
+    rank_size = int(env_rank_size)
 
     if chief_device not in device_list:
         raise ValueError(f"The environment variable CM_CHIEF_DEVICE {chief_device} is not in the local device list. ")
