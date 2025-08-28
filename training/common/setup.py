@@ -26,9 +26,14 @@ def parse_args():
     parser.add_argument("--version", default="7.2.RC1")
     parser.add_argument("--discription", default="")
 
-    # 分离 setuptools 参数和自定义参数
     args, unknown = parser.parse_known_args()
-    sys.argv = [sys.argv[0]] + unknown  # 将剩余参数传回 setuptools
+    # 只允许特定的setuptools参数通过
+    allowed_args = []
+    for arg in unknown:
+        if arg == "bdist_wheel":
+            allowed_args.append(arg)
+
+    sys.argv = [sys.argv[0]] + allowed_args
     return args
 
 args = parse_args()

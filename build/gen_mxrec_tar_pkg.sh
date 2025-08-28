@@ -42,6 +42,11 @@ mv version.info "${SCRIPT_DIR}"/"${pkg_dir}"
 function gen_tar_file()
 {
   cd "${MxRec_DIR}"
+
+  if [ ! -d "./output" ]; then
+    mkdir -p "output"
+  fi
+
   # change dirs and files 's permission
   chmod 550 ./build/"${pkg_dir}"/tf1_whl
   chmod 550 ./build/"${pkg_dir}"/tf1_whl/mx_rec*.whl
