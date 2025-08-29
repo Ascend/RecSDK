@@ -14,8 +14,6 @@
 # limitations under the License.
 # ==============================================================================
 
-set -e
-
 # add mpirun env
 export OMPI_ALLOW_RUN_AS_ROOT=1
 export OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
@@ -139,12 +137,5 @@ cd "$(dirname "${PWD}")"
 
 COVERAGE_FILE=coverage.info
 REPORT_FOLDER=coverage_report
-lcov --rc lcov_branch_coverage=1 --filter branch -c -d build -o "${COVERAGE_FILE}"_tmp
-lcov -r "${COVERAGE_FILE}"_tmp 'ut/*' '7/ext*' '*7/bits*' 'platform/*' '/usr/local/*' '/usr/include/*' '/opt/buildtools/python-3.7.5/lib/python3.7/site-packages/tensorflow*' '/opt/rh/devtoolset-7/root/usr/lib/gcc/x86_64-redhat-linux/7/include/*' 'tests/*' --rc lcov_branch_coverage=1 --filter branch --ignore-errors unused,unused -o "${COVERAGE_FILE}"
-genhtml "${COVERAGE_FILE}" --output-directory "${REPORT_FOLDER}" --branch-coverage --filter branch
-[ -d "${COVERAGE_FILE}"_tmp ] && rm -rf "${COVERAGE_FILE}"_tmp
-[ -d "${COVERAGE_FILE}" ] && rm -rf "${COVERAGE_FILE}"
-
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    open ./"${REPORT_FOLDER}"/index.html
-fi
+lcov --rc lcov_branch_coverage=1 -c -d build -o "${COVERAGE_FILE}"_tmp
+lcov -r "${COVERAGE_FILE}"_tmp 'ut/*' '7/ext*' '*7/bits*' 'platform/*' '/usr/local/*' '/usr/include/*' '/opt/buildtools/python-3.7.5/lib/python3.7/site-packages/tensorflow*' '/opt/rh/devtoolset-7/root/usr/lib/gcc/x86_64-redhat-linux/7/include/*' 'tests/*' --rc lcov_branch_coverage=1 --ignore-errors unused,unused -o "${COVERAGE_FILE}"

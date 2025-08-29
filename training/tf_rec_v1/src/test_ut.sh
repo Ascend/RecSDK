@@ -40,8 +40,13 @@ ROOT_DIR=$(dirname "$(dirname "$(dirname "${CUR_DIR}")")")
 opensource_path="${ROOT_DIR}"/../opensource
 acc_ctr_path="${ROOT_DIR}"/training/tf_rec_v1/src/AccCTR
 common_src_path="${ROOT_DIR}"/training/common/src
+tf1_src_path="${ROOT_DIR}"/training/tf_rec_v1/src
 python_path="$(dirname "$(dirname "$(which python3.7)")")"
 tf_path="${python_path}"/lib/python3.7/site-packages/"${TF_DIR}"
+
+COVERAGE_FILE=coverage.info
+COVERAGE_COMMON_FILE=coverage_common.info
+COVERAGE_TF1_FILE=coverage_tf1.info
 
 export LD_LIBRARY_PATH="${acc_ctr_path}"/output/ock_ctr_common/lib:"${tf_path}/python":$LD_LIBRARY_PATH
 # add asan lib path
@@ -122,6 +127,22 @@ prepare_googletest
 prepare_emock
 prepare_securec
 compile_securec
+
+function common_dt() {
+    cd ${common_src_path}
+    chmod +x ./test_ut.sh
+    bash ./test_ut.sh
+    mv ./${COVERAGE_FILE} ${tf1_src_path}/${COVERAGE_COMMON_FILE}
+}
+
+
+common_dt
+function compile_common_so_file() {
+    cd "${common_src_path}"
+    chmod u+x build.sh
+    ./build.sh "${ROOT_DIR}" "YES"
+}
+
 compile_common_so_file 
 
 compile_acc_ctr_so_file()
@@ -172,13 +193,15 @@ fi
 
 cd "$(dirname "${PWD}")"
 
-COVERAGE_FILE=coverage.info
 REPORT_FOLDER=coverage_report
-lcov --rc lcov_branch_coverage=1 --filter branch -c -d build -o "${COVERAGE_FILE}"_tmp
-lcov -r "${COVERAGE_FILE}"_tmp 'ut/*' '/usr1/mxRec/src/core/hybrid_mgmt*' '/usr1/mxRec/src/core/emb_table*' '/usr1/mxRec/src/core/host_emb*' '7/ext*' '*7/bits*' 'platform/*' '/usr/local/*' '/usr/include/*' '/opt/buildtools/python-3.7.5/lib/python3.7/site-packages/tensorflow*' '/opt/rh/devtoolset-7/root/usr/lib/gcc/x86_64-redhat-linux/7/include/*' 'tests/*' '/usr1/mxRec/src/core/ock_ctr_common/include*' --rc lcov_branch_coverage=1 --filter branch --ignore-errors unused,unused -o "${COVERAGE_FILE}"
+lcov --rc lcov_branch_coverage=1 -c -d build -o "${COVERAGE_TF1_FILE}"_tmp
+lcov -r "${COVERAGE_TF1_FILE}"_tmp 'ut/*' '/usr1/mxRec/src/core/hybrid_mgmt*' '/usr1/mxRec/src/core/emb_table*' '/usr1/mxRec/src/core/host_emb*' '7/ext*' '*7/bits*' 'platform/*' '/usr/local/*' '/usr/include/*' '/opt/buildtools/python-3.7.5/lib/python3.7/site-packages/tensorflow*' '/opt/rh/devtoolset-7/root/usr/lib/gcc/x86_64-redhat-linux/7/include/*' 'tests/*' '/usr1/mxRec/src/core/ock_ctr_common/include*' --rc lcov_branch_coverage=1 --ignore-errors unused,unused -o "${COVERAGE_TF1_FILE}"
+lcov --rc lcov_branch_coverage=1  -a ${COVERAGE_TF1_FILE} -a ${COVERAGE_COMMON_FILE} -o ${COVERAGE_FILE}
 genhtml "${COVERAGE_FILE}" --output-directory "${REPORT_FOLDER}" --branch-coverage --filter branch
 [ -d "${COVERAGE_FILE}"_tmp ] && rm -rf "${COVERAGE_FILE}"_tmp
 [ -d "${COVERAGE_FILE}" ] && rm -rf "${COVERAGE_FILE}"
+[ -d "${COVERAGE_TF1_FILE}" ] && rm -rf "${COVERAGE_TF1_FILE}"
+[ -d "${COVERAGE_COMMON_FILE}" ] && rm -rf "${COVERAGE_COMMON_FILE}"
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
     open ./"${REPORT_FOLDER}"/index.html
