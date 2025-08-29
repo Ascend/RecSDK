@@ -28,5 +28,5 @@ target_link_directories(common_binding
         ${ASCEND_PATH}/fwkacllib/lib64
         ${ASCEND_PATH}/compiler/lib64
         ${ASCEND_PATH}/runtime/lib64)
-target_link_libraries(common_binding PUBLIC ascendcl ge_executor gert runtime ge_common acl_tdt_channel acl_tdt_queue drvdsmi_host)
+target_link_libraries(common_binding PUBLIC COMMON_ASC ascendcl ge_executor gert runtime ge_common acl_tdt_channel acl_tdt_queue drvdsmi_host)
 install(TARGETS common_binding LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX})

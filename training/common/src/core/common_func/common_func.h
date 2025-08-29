@@ -21,23 +21,23 @@ See the License for the specific language governing permissions and
 #include "securec.h"
 
 namespace MxRec {
-extern const int GLOG_MAX_BUF_SIZE;
-extern const char* HUGE_TLB_ENABLE;
+    extern const int GLOG_MAX_BUF_SIZE;
+    extern const char* HUGE_TLB_ENABLE;
 
-template <typename... Args>
-std::string StringFormat(const std::string& format, Args... args)
-{
-    auto size = static_cast<size_t>(GLOG_MAX_BUF_SIZE);
-    auto buf = std::make_unique<char[]>(size); // LCOV_EXCL_BR_LINE
-    memset_s(buf.get(), size, 0, size);
-    int nChar = snprintf_s(buf.get(), size, size - 1, format.c_str(), args...);
-    if (nChar == -1) { // LCOV_EXCL_BR_LINE
-        throw std::invalid_argument("StringFormat failed");
+    template <typename... Args>
+    std::string StringFormat(const std::string& format, Args... args)
+    {
+        auto size = static_cast<size_t>(GLOG_MAX_BUF_SIZE);
+        auto buf = std::make_unique<char[]>(size); // LCOV_EXCL_BR_LINE
+        memset_s(buf.get(), size, 0, size);
+        int nChar = snprintf_s(buf.get(), size, size - 1, format.c_str(), args...);
+        if (nChar == -1) { // LCOV_EXCL_BR_LINE
+            throw std::invalid_argument("StringFormat failed");
+        }
+        return std::string(buf.get(), buf.get() + nChar);
     }
-    return std::string(buf.get(), buf.get() + nChar);
-}
-
-std::string GetChipName(int devID);
+    uint32_t GetDeviceCount();
+    std::string GetChipName(uint32_t devID);
 }
 
 #endif //RECSDK_REFACTORING_COMMON_FUNC_H
