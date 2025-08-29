@@ -33,7 +33,10 @@ void AddEmbCacheManager(pybind11::module_& m)
         .def("evict_features", &EmbcacheManager::EvictFeatures)
         .def("statistics_key_count", &EmbcacheManager::StatisticsKeyCount, py::arg("batch_keys"), py::arg("offset"),
              py::arg("batch_key_counts"), py::arg("table_index"))
-        .def("record_embedding_update_times", &EmbcacheManager::RecordEmbeddingUpdateTimes);
+        .def("record_embedding_update_times", &EmbcacheManager::RecordEmbeddingUpdateTimes)
+        .def("embedding_to_host", &EmbcacheManager::Embedding2Host, py::arg("weights_dev"), py::arg("momentum_devs"))
+        .def("save", &EmbcacheManager::Save, py::arg("path"), py::arg("rank"))
+        .def("load", &EmbcacheManager::Load, py::arg("path"), py::arg("rank"));
 }
 
 void AddInitializerType(pybind11::module_& m)
