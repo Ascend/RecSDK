@@ -1,17 +1,21 @@
 # TorchRec-EmbCache NPU适配方案
 
 ## 说明
-本项目是基于开源项目TrochRec的1.1.0版本开发的embedding cache,（参考网站：https://github.com/pytorch/torchrec）为助力开发者快速应用TorchRec框架并适配到NPU进行模型训练和推理,
+本项目是基于开源项目TorchRec的1.1.0版本开发的embedding cache,（参考网站：https://github.com/pytorch/torchrec ）为助力开发者快速应用TorchRec框架并适配到NPU进行模型训练和推理,
 版本要求 Python >= 3.11, torchrec==1.1.0+npu, hybrid_torchrec==1.1.0+npu。
 
-1.下载whl包并安装
+1.环境准备
+
+参考 [Rec SDK文档](https://www.hiascend.com/document/detail/zh/mindsdk/71rc1/rec/recug/mxrectorch_0014.html) 的“安装 Rec SDK Torch”章节。
+
+2.下载whl包并安装
 ```python
 pip3 install torchrec_embcache-*.whl
 pip3 install fbgemm_gpu==1.1.0+cpu -i https://download.pytorch.org/whl/cpu
 pip3 install -r requirements.txt
 ```
 
-2.源码安装
+3.源码安装
 ```python
 git clone https://gitcode.com/ascend/RecSDK.git
 cd RecSDK/torchrec/torchrec_embcache
