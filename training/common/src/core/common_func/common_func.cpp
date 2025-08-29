@@ -15,6 +15,8 @@ See the License for the specific language governing permissions and
 
 #include <sstream>
 #include <dsmi_common_interface.h>
+#include <acl/acl_base.h>
+#include <acl/acl_rt.h>
 #include "log/logger.h"
 #include "common_func.h"
 
@@ -22,8 +24,21 @@ namespace MxRec {
     const int GLOG_MAX_BUF_SIZE = 1024;
     const char* HUGE_TLB_ENABLE = "HUGE_TLB_ENABLE";
 
-    std::string GetChipName(int devID)
+    uint32_t GetDeviceCount()
     {
+        uint32_t count;
+        aclError ec = aclrtGetDeviceCount(&count);
+        if (ec != 0) {
+            throw std::runtime_error("The failed to get device count.");
+        }
+        return count;
+    }
+
+    std::string GetChipName(uint32_t devID)
+    {
+        if (devID < 0 || devID > (GetDeviceCount() - 1)) {
+            throw std::runtime_error("The failed to get chip name.");
+        }
         int ret = 0;
         struct dsmi_chip_info_stru info = {{ 0 },
                                            { 0 },

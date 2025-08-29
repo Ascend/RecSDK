@@ -113,7 +113,7 @@ function prepare_pybind(){
 function compile_common_so_file() {
     cd "${common_src_path}"
     chmod u+x build.sh
-    ./build.sh "${tf_path}" "${ROOT_DIR}" "YES"
+    ./build.sh "${ROOT_DIR}" "YES"
 }
 
 prepare_pybind
