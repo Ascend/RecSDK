@@ -14,7 +14,9 @@ find_package(pybind11 REQUIRED)
 
 find_package(Threads REQUIRED)
 
-file(GLOB SOURCES
+add_compile_options(-D_GLIBCXX_USE_CXX11_ABI=0)
+
+file(GLOB_RECURSE SOURCES
         ./common/*.cpp
         ./emb_table/*.cpp
         ./embedding_cache/*.cpp
@@ -22,6 +24,7 @@ file(GLOB SOURCES
         ./feature_filter/*.cpp
         ./ops/*.cpp
         ./utils/*.cpp
+        ./file_system/*.cpp
         ./bind.cpp
 )
 

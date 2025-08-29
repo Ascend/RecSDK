@@ -27,6 +27,7 @@
 #include "utils/logger.h"
 
 namespace Embcache {
+constexpr long long EMB_SIZE_MAX = 1e9L;
 
 class EmbTable {
 public:
@@ -41,6 +42,7 @@ public:
     virtual void FindOrInsert(const std::vector<int64_t>& keys, float* outEmbs, std::vector<float*> outOptims) = 0;
     virtual void InsertOrAssign(const std::vector<int64_t>& keys, float* inEmbs, std::vector<float*> inOptims) = 0;
     virtual void RemoveEmbedding(const std::vector<int64_t>& keys) = 0;
+    virtual void ForEachKey(const std::function<void(const int64_t, const float*)>& callback) = 0;
 
 protected:
     EmbConfig config_;
@@ -163,6 +165,18 @@ public:
         std::lock_guard<std::mutex> lk(mtx_);
         for (auto key : keys) {
             table_.erase(key);
+        }
+    }
+
+    void ForEachKey(const std::function<void(const int64_t, const float*)>& callback) override
+    {
+        std::lock_guard<std::mutex> lk(mtx_);
+        if (this->table_.size() > EMB_SIZE_MAX) {
+            auto errMsg = Logger::Format("Emb size exceed limit, table:{}, max:{}.", config_.tableName, EMB_SIZE_MAX);
+            throw std::runtime_error(errMsg);
+        }
+        for (const auto& [key, vec] : this->table_) {
+            callback(key, vec.data());
         }
     }
 
@@ -336,6 +350,18 @@ public:
                 LOG_ERROR("remove embedding failed!");
                 throw std::runtime_error("remove embedding failed!");
             }
+        }
+    }
+
+    void ForEachKey(const std::function<void(const int64_t, const float*)>& callback) override
+    {
+        auto keyEmbList = this->fastHashMapPtr_->Export();
+        if (keyEmbList.size() > EMB_SIZE_MAX) {
+            auto errMsg = Logger::Format("Emb size exceed limit, table:{}, max:{}.", config_.tableName, EMB_SIZE_MAX);
+            throw std::runtime_error(errMsg);
+        }
+        for (auto key : keyEmbList) {
+            callback(key.first, (float*)key.second);
         }
     }
 

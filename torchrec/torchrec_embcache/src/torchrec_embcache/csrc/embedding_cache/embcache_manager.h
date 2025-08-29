@@ -14,6 +14,7 @@
 #include <string>
 #include <torch/extension.h>
 #include <vector>
+#include <memory>
 
 #include "common/common.h"
 #include "emb_table/emb_table.h"
@@ -21,6 +22,9 @@
 #include "swap_manager.h"
 #include "utils/async_task.h"
 #include "utils/thread_pool.h"
+#include "file_system/file_system_handler.h"
+
+using namespace MxRec;
 
 namespace Embcache {
 
@@ -30,9 +34,28 @@ constexpr int SWAP_INFO_TUPLE_INDEX1 = 1;
 constexpr int SWAP_INFO_TUPLE_INDEX2 = 2;
 constexpr int SWAP_INFO_TUPLE_INDEX3 = 3;
 constexpr int SWAP_INFO_TUPLE_INDEX4 = 4;
+constexpr int READ_FILE_FAILED = -1;
 constexpr size_t TABLE_NAME_LENGTH = 100;
 constexpr size_t READ_AND_WRITE_SIZE_PEER_TIME = 32768;
 
+const std::string RANK_STR_PATH = "/rank";
+const std::string EMBEDDING_STR_PATH = "/embedding";
+const std::string KEY_STR_PATH = "/key";
+const std::string ADMIT_STR_PATH = "/admit_count";
+const std::string EVICT_STR_PATH = "/evict_timestamp";
+const std::string MOMENTUM1_STR_PATH = "/momentum1";
+const std::string MOMENTUM2_STR_PATH = "/momentum2";
+const std::string SLICE_ATTR_PATH = "/slice.attribute";
+const std::string SLICE_DATA_PATH = "/slice.data";
+const std::string SLICE_EVICT_KEY_DATA_PATH = "/slice_evict_key.data";
+const std::string SLICE_EVICT_TS_DATA_PATH = "/slice_evict_ts.data";
+
+constexpr int KEY_ATTRIBUTE_DATA_LEN = 2;
+constexpr int EMB_ATTRIBUTE_DATA_LEN = 3;
+constexpr int64_t ATTR_VEC_INIT_VALUE = -1;
+constexpr long long KEY_SIZE_MAX = 1e9L;
+const std::string ATTR_SUFFIX = "attribute";
+const std::string DATA_SUFFIX = "data";
 
 struct SwapInfo {
     std::vector<std::vector<int64_t>> swapoutKeys;
@@ -77,6 +100,15 @@ struct SwapinTensor {
     at::Tensor jaggedOffs;                 // 区分每个表
 };
 
+struct TableRankParam {
+    TableRankParam(const std::string& tableName, int32_t tableIndex, int32_t embDim, int rank)
+        : tableName(tableName), tableIndex(tableIndex), embDim(embDim), rank(rank) {}
+    std::string tableName;
+    int32_t tableIndex;
+    int32_t embDim;
+    int rank;
+};
+
 class EmbcacheManager {
 public:
     explicit EmbcacheManager(const std::vector<EmbConfig>& embConfigs, bool needAccumulateOffset = true);
@@ -110,6 +142,12 @@ public:
 
     void RecordEmbeddingUpdateTimes();
 
+    void Save(const std::string& path, const int rank);
+
+    void Embedding2Host(const at::Tensor& weightsDev, const std::vector<at::Tensor>& momentumDev);
+
+    void Load(const std::string& path, int rank);
+
 private:
     SwapInfo ComputeSwapInfo(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey,
                              const std::vector<int32_t>& tableIndices);
@@ -124,6 +162,26 @@ private:
 
     bool NeedEvictEmbeddingTable();
     void RemoveEmbeddingTableInfo();
+
+    void WriteAttributeFile(int32_t tableIndex, const std::string& pathPrefix, size_t count,
+                            const std::shared_ptr<FileSystem>& fileSystemPtr);
+    void CreateMomentumDir(const std::string& pathPrefix, const std::shared_ptr<FileSystem>& fileSystemPtr) const;
+    void Check4Write(const std::shared_ptr<FileSystem>& fileSystemPtr, const std::string& filePath, int rank);
+    void WriteData(const std::shared_ptr<FileSystem>& fileSystemPtr, const std::string& filePath, const char* dataAddr,
+                   size_t dataSize);
+    static std::shared_ptr<FileSystem> GetFileSystem(const std::string& path);
+    void ReadKeysData(const std::shared_ptr<FileSystem>& fileSystemPtr, const string& filePrefix,
+                      std::vector<int64_t>& keys);
+    void ReadAttributeData(const std::shared_ptr<FileSystem>& fileSystemPtr, const string& filePath,
+                           std::vector<int64_t>& dataVec, int dataCount);
+    void CheckEmbeddingDim(const std::shared_ptr<FileSystem>& fileSystemPtr, const string& dataFilePath,
+                           const TableRankParam& tableParams);
+    void ReadEmbeddings(const std::shared_ptr<FileSystem>& fileSystemPtr, std::vector<std::vector<float>>& embeddings,
+                        const string& filePath, size_t vectorSize, const TableRankParam& tableParams);
+    static void RecordLoadDebugInfo(const vector<int64_t>& keys, const vector<std::vector<float>>& embeddings,
+                                    const vector<std::vector<float>>& momentum1,
+                                    const vector<std::vector<float>>& momentum2, const TableRankParam& tableParams);
+    static std::string GetDevWeightsShape(const at::Tensor& weightsDev);
 
 private:
     int32_t embNum_;
