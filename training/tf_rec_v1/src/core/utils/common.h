@@ -132,23 +132,7 @@ const int ASCEND910_A = 262144;
 const int ASCEND910_B2C = 196608;
 };  // namespace UBSize
 
-inline int GetUBSize(int devID)
-{
-    const std::map<string, int> chipUbSizeList = {
-        {"910A", UBSize::ASCEND910_A},   {"910B", UBSize::ASCEND910_B},   {"920A", UBSize::ASCEND920_A},
-        {"910B1", UBSize::ASCEND910_B1}, {"910B2", UBSize::ASCEND910_B2},
-        {"910B3", UBSize::ASCEND910_B3}, {"910B4", UBSize::ASCEND910_B4},
-        {"910B4-1", UBSize::ASCEND910_B41},   {"910B2C", UBSize::ASCEND910_B2C},
-        {"910_9391", UBSize::ASCEND910_9391}, {"910_9392", UBSize::ASCEND910_9392},
-        {"910_9381", UBSize::ASCEND910_9381}, {"910_9382", UBSize::ASCEND910_9382},
-        {"910_9372", UBSize::ASCEND910_9372}, {"910_9361", UBSize::ASCEND910_9361}};
-    auto it = chipUbSizeList.find(GetChipName(devID));
-    if (it != chipUbSizeList.end()) {
-        return it->second;
-    }
-
-    throw std::runtime_error("unknown chip ub size" + GetChipName(devID));
-}
+int GetUBSize(int devID);
 
 template <class T>
 struct Batch {
@@ -542,25 +526,7 @@ enum CTRLogLevel {  // can't use enum class due to compatibility for AccCTR
     ERROR,
 };
 
-static void CTRLog(int level, const char* msg)
-{
-    switch (level) {
-        case CTRLogLevel::DEBUG:
-            LOG_DEBUG(msg);
-            break;
-        case CTRLogLevel::INFO:
-            LOG_INFO(msg);
-            break;
-        case CTRLogLevel::WARN:
-            LOG_WARN(msg);
-            break;
-        case CTRLogLevel::ERROR:
-            LOG_ERROR(msg);
-            break;
-        default:
-            break;
-    }
-}
+void CTRLog(int level, const char* msg);
 
 ostream& operator<<(ostream& ss, MxRec::CkptDataType type);
 bool CheckFilePermission(const string& filePath);

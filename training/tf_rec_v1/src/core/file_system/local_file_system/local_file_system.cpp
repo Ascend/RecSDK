@@ -298,7 +298,12 @@ ssize_t LocalFileSystem::Read(const string& filePath, vector<vector<float>>& fil
         readBytesNum += embeddingSize * sizeof(float);
     }
 
-    fclose(fp);
+    if (fclose(fp) != 0) {
+        auto error = Error(ModuleName::M_FILE_SYSTEM, ErrorType::IO_ERROR,
+                           StringFormat("Failed to close file path: %s.", filePath.c_str()));
+        LOG_ERROR(error.ToString());
+        throw std::runtime_error(error.ToString());
+    }
     return readBytesNum;
 }
 
@@ -364,7 +369,12 @@ void LocalFileSystem::ReadEmbedding(const string& filePath, EmbeddingSizeInfo& e
         }
         i++;
     }
-    fclose(fp);
+    if (fclose(fp) != 0) {
+        auto error = Error(ModuleName::M_FILE_SYSTEM, ErrorType::IO_ERROR,
+                           StringFormat("Failed to close file path: %s.", filePath.c_str()));
+        LOG_ERROR(error.ToString());
+        throw std::runtime_error(error.ToString());
+    }
 #endif
 }
 

@@ -544,10 +544,11 @@ bool HybridMgmt::ParseKeys(int channelId, int& batchId, TaskType type)
                             .paddingKeysMask = embInfo.paddingKeysMask, .paddingKeys = embInfo.paddingKeys};
         switch (type) {
             case TaskType::HBM: {
-                std::future<bool> remainBatch = threadPool->enqueueWithFuture(
-                    [this, info, embInfo]() { return ProcessEmbInfoHBM(info, embInfo.isGrad); });
-                remainResult.push_back(std::move(remainBatch));
-            } break;
+                    std::future<bool> remainBatch = threadPool->enqueueWithFuture(
+                        [this, info, embInfo]() { return ProcessEmbInfoHBM(info, embInfo.isGrad); });
+                    remainResult.push_back(std::move(remainBatch));
+                }
+                break;
             case TaskType::DDR:
                 if (!isL3StorageEnabled) {
                     std::future<bool> remainBatch =
