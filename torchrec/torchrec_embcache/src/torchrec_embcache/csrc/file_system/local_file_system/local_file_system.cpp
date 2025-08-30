@@ -293,6 +293,12 @@ void LocalFileSystem::Valid4WriteDir(const string& fileDirPath)
         auto errMsg = Logger::Format("Directory path is symbol link and is invalid, file dir path:{}.", fileDirPath);
         throw std::runtime_error(errMsg);
     }
+    auto st = std::filesystem::status(filePathObj);
+    auto perms = st.permissions();
+    if ((perms & std::filesystem::perms::owner_write) == std::filesystem::perms::none) {
+        auto errMsg = Logger::Format("Permission error, don't have write permission for directory:{}.", fileDirPath);
+        throw std::runtime_error(errMsg);
+    }
 }
 
 bool MxRec::CheckFilePermission(const string& filePath)
