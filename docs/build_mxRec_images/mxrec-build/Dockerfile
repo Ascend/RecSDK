@@ -9,7 +9,7 @@ COPY ./Ascend-cann-toolkit_*.run ./
 COPY ./Ascend-cann-kernels-*.run ./
 COPY ./npu_bridge-1.15.0-*.whl ./
 COPY ./npu_device-2.6.5-*.whl ./
-COPY ./Ascend-mindxsdk-mxrec*.tar.gz ./
+COPY ./Ascend-recsdk-npu-ops*.tar.gz ./
 
 # please configure 根据实际情况选择安装需要的依赖，如果一些依赖不需要可以将对应代码去掉或注释
 # 1.设置驱动路径与CANN相关参数
@@ -40,7 +40,7 @@ ARG TF2_PLUGIN=npu_device-2.6.5-*.whl
 
 RUN pip3.7 install $TF1_PLUGIN --force-reinstall && \
     pip3.7 install $TF2_PLUGIN --force-reinstall && \
-    tar -zxvf Ascend-mindxsdk-mxrec*.tar.gz && \
+    tar -zxvf Ascend-recsdk-npu-ops*.tar.gz && \
     pip3.7 install mindxsdk-mxrec/{tf1|tf2}_whl/mx_rec-*.whl --force-reinstall && \
     rm -rf /root/.cache/pip
 

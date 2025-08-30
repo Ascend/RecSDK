@@ -27,7 +27,7 @@ import numpy as np
 from tensorflow.core.protobuf.rewriter_config_pb2 import RewriterConfig
 from npu_bridge.estimator.npu.npu_config import NPURunConfig
 
-from mx_rec.constants.constants import LIBREC_EOS_OPS_SO
+from mx_rec.constants.constants import LIBREC_EOS_OPS_SO, LIBREC_TF_REC_V1_CPU_SO
 from mx_rec.core.asc.helper import FeatureSpec, get_asc_insert_func
 from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.util.initialize import ConfigInitializer
@@ -327,7 +327,8 @@ def get_npu_run_config():
 
 
 def add_timestamp_func(batch):
-    timestamp = import_host_pipeline_ops().return_timestamp(tf.cast(batch['label'], dtype=tf.int64))
+    timestamp = import_host_pipeline_ops(LIBREC_TF_REC_V1_CPU_SO).return_timestamp(tf.cast(batch['label'],
+                                                                                           dtype=tf.int64))
     # tf.constant(np.random.randint(1,1688109060,1)), tf.int64))
     batch["timestamp"] = timestamp
     return batch

@@ -19,16 +19,20 @@ warn() { echo >&2 -e "\033[1;31m[WARN ][Depend  ] $1\033[1;37m" ; }
 ARCH="$(uname -m)"
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 MxRec_DIR=$(dirname "${SCRIPT_DIR}")
+Tf_Rec_V1_DIR=${MxRec_DIR}/training/tf_rec_v1/
 pkg_dir=mindxsdk-mxrec
 tf_version=$1
 
 function move_whl_file_2_pkg_dir() {
     mkdir -p "$SCRIPT_DIR"/"${pkg_dir}"/"${tf_version}"_whl
     rm -rf "$SCRIPT_DIR"/"${pkg_dir}"/"${tf_version}"_whl/*
-    mv ${MxRec_DIR}/dist/mx_rec*.whl "$SCRIPT_DIR"/"${pkg_dir}"/"${tf_version}"_whl
+    cp ${Tf_Rec_V1_DIR}/dist/*.whl "$SCRIPT_DIR"/"${pkg_dir}"/"${tf_version}"_whl
     cd "$SCRIPT_DIR"/"${pkg_dir}"/"${tf_version}"_whl
-    whl_file=$(ls .)
-    mv "$whl_file" "${whl_file/any/linux_${ARCH}}"
+    for whl in *.whl; do
+      new_name="${whl/any/linux_${ARCH}}"
+      echo "Renaming $whl to $new_name"
+      mv "$whl" "$new_name"
+    done
     cd -
 }
 

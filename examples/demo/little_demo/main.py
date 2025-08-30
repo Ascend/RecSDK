@@ -29,7 +29,7 @@ from mx_rec.core.asc.helper import get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
-from mx_rec.util.communication.hccl_ops import get_rank_size
+from rec_sdk_common.communication.hccl.hccl_info import get_rank_size
 from mx_rec.util.initialize import init, terminate_config_initializer
 from mx_rec.util.variable import get_dense_and_sparse_variable
 

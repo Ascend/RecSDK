@@ -18,7 +18,7 @@
 import numpy as np
 
 from gen_data import data_generate
-from mx_rec.util.communication.hccl_ops import get_rank_id
+from rec_sdk_common.communication.hccl.hccl_info import get_rank_id
 
 from demo_logger import logger
 from config import USE_DETERMINISTIC

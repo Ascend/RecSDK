@@ -65,8 +65,12 @@ tf2_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-package
 [ -e /opt/buildtools/tf2_env/bin/activate ] && deactivate tf2_env
 
 # 配置Rec SDK C++代码路径和AccCTR路径
-src_path="${MxRec_DIR}"/src
-acc_ctr_path="${MxRec_DIR}"/src/AccCTR
+cust_op_tf_plugin_path="${MxRec_DIR}"/cust_op/framework/tf_plugin
+common_src_path="${MxRec_DIR}"/training/common/src
+common_python_path="${MxRec_DIR}"/training/common/python
+tf_rec_v1_path="${MxRec_DIR}"/training/tf_rec_v1/python
+tf_rec_v1_src_path="${MxRec_DIR}"/training/tf_rec_v1/src
+acc_ctr_path="${tf_rec_v1_src_path}"/AccCTR
 cd "${MxRec_DIR}"
 
 function compile_securec()
@@ -82,9 +86,17 @@ function compile_securec()
     fi
 }
 
-function compile_so_file()
+function compile_recsdk_tf_npu_ops_tf_plugin_so_file()
 {
-  cd "${src_path}"
+  cd "${cust_op_tf_plugin_path}"
+  chmod u+x build.sh
+  ./build.sh "$1" "${MxRec_DIR}"
+  cd ${MxRec_DIR}
+}
+
+function compile_tf_rec_v1_so_file()
+{
+  cd "${tf_rec_v1_src_path}"
   chmod u+x build.sh
   ./build.sh "$1" "${MxRec_DIR}" "YES"
   cd ..
@@ -97,29 +109,50 @@ function compile_acc_ctr_so_file()
   ./build.sh "release"
 }
 
+function compile_common_so_file()
+{
+    cd "${common_src_path}"
+    chmod u+x build.sh
+    ./build.sh "${MxRec_DIR}" "YES"
+}
+
 function collect_so_file()
 {
-  cd "${src_path}"
-  rm -rf "${src_path}"/libasc
-  mkdir -p "${src_path}"/libasc
+  cd "${common_src_path}"
+  rm -rf "${common_src_path}"/lib
+  mkdir -p "${common_src_path}"/lib
+  chmod u+x lib
+  cp "${common_src_path}"/build/pybind/*.so ./lib
+  cp "${common_src_path}"/build/core/*.so ./lib
+  rm -rf "${common_python_path}"/lib
+  mv "${common_src_path}"/lib "${common_python_path}"
+  touch "${common_python_path}"/lib/__init__.py
+
+  cd "${tf_rec_v1_src_path}"
+  rm -rf "${tf_rec_v1_src_path}"/libasc
+  mkdir -p "${tf_rec_v1_src_path}"/libasc
   chmod u+x libasc
 
   cp ${acc_ctr_path}/output/ock_ctr_common/lib/* libasc
-  cp -df "${MxRec_DIR}"/output/*.so* libasc
+  cp -df "${MxRec_DIR}"/tf_rec_v1_output/*.so* libasc
+  cp -df "${MxRec_DIR}"/cust_op_output/*.so* libasc
   cp "${opensource_path}"/securec/lib/libsecurec.so libasc
   cd "${MxRec_DIR}"
-  touch "${src_path}"/libasc/__init__.py
-  rm -rf "${MxRec_DIR}"/mx_rec/libasc
-  mv "${src_path}"/libasc "${MxRec_DIR}"/mx_rec
+  touch "${tf_rec_v1_src_path}"/libasc/__init__.py
+  rm -rf "${tf_rec_v1_path}"/libasc
+  mv "${tf_rec_v1_src_path}"/libasc "${tf_rec_v1_path}"
 }
 
 # start to build Rec SDK
 echo "----------------          compile     securec           ----------------"
 compile_securec
+echo "----------------          compile common so files       ----------------"
+compile_common_so_file
 echo "----------------          compile     AccCTR            ----------------"
 compile_acc_ctr_so_file
 echo "----------------          compile MxRec so files        ----------------"
-compile_so_file "${tf2_path}"
+compile_recsdk_tf_npu_ops_tf_plugin_so_file "${tf2_path}"
+compile_tf_rec_v1_so_file "${tf2_path}"
 echo "---------------- collect so files and mv them to libasc ----------------"
 collect_so_file
 echo "----------------        compile MxRec success!!!!       ----------------"

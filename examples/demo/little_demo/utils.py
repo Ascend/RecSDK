@@ -20,7 +20,7 @@ import os
 import stat
 from datetime import datetime, timezone
 
-from mx_rec.util.communication.hccl_ops import get_rank_id, get_rank_size
+from rec_sdk_common.communication.hccl.hccl_info import get_rank_id, get_rank_size
 
 LOCAL_RANK_ID = get_rank_id()
 RANK_ZERO = 0

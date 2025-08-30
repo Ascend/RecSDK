@@ -524,7 +524,7 @@ sparse_hashtable_deep = create_table(
 # main_mxrec.py: 410~442行
 train_variables, emb_variables = get_dense_and_sparse_variable()
 
-rank_size = mxrec_util.communication.hccl_ops.get_rank_size()
+rank_size = rec_sdk_common.communication.hccl.hccl_info.get_rank_size()
 train_ops = []
 # multi task training
 for loss, (model_optimizer, emb_optimizer) in zip([train_model.get("loss")], optimizer_list):

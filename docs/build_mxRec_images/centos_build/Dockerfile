@@ -16,7 +16,7 @@ COPY ./Ascend-cann-toolkit_*.run ./
 COPY ./Ascend-cann-kernels-*.run ./
 COPY ./npu_bridge-1.15.0-*.whl ./
 COPY ./npu_device-2.6.5-*.whl ./
-COPY ./Ascend-mindxsdk-mxrec*.tar.gz ./
+COPY ./Ascend-recsdk-npu-ops*.tar.gz ./
 
 # 根据实际情况选择安装需要的依赖，如果一些依赖不需要可以将对应代码去掉或注释；同时，确保下载的依赖的包名与如下代码中的包名一致，
 # 否则在安装对应的依赖时可能出现找不到文件的错误。
@@ -176,7 +176,7 @@ RUN pip3.7 install tensorflow==${TF_VER} && \
     HOROVOD_WITH_MPI=1 HOROVOD_WITH_TENSORFLOW=1 pip3.7 install horovod --no-cache-dir && \
     pip3.7 install $TF1_PLUGIN --force-reinstall && \
     pip3.7 install $TF2_PLUGIN --force-reinstall && \
-    tar -zxvf Ascend-mindxsdk-mxrec*.tar.gz && \
+    tar -zxvf Ascend-recsdk-npu-ops*.tar.gz && \
     pip3.7 install mindxsdk-mxrec/{tf1|tf2}_whl/mx_rec-*.whl --force-reinstall && \
     rm -rf /root/.cache/pip
 

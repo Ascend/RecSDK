@@ -14,7 +14,7 @@
 | --------------------------------------------------- | ------------------ |
 | Ascend-mindxsdk-torchrec1.1.0-npu-linux-*.tar.gz    | torchrec昇腾适配包 |
 | Ascend-mindxsdk-hybrid-torchrec1.1.0-linux-*.tar.gz | RecSDK昇腾包       |
-| Ascend-mindxsdk-mxrec-add-ons-linux-*.tar.gz        | 算子包             |
+| Ascend-recsdk-npu-ops-\*-linux-\*.tar.gz            | 算子包             |
 | libfbgemm_npu_api.so                                     | 算子适配层         |
 
 ### 编译环境
@@ -46,32 +46,16 @@ tar zxvf Ascend-mindxsdk-hybrid-torchrec1.1.0-linux-*.tar.gz
 pip3 install hybrid_torchrec-1.1.0-py3-none-linux_*.whl
 ```
 
-### 编译Ascend-mindxsdk-mxrec-add-ons-linux-*.tar.gz  
-```
-cd RecSDK/mxrec_add_ons/build
-bash build.sh
-```
-
-生成的tar包在RecSDK/mxrec_add_ons/output下
-
-**安装方法**
-
-```
-tar zxvf Ascend-mindxsdk-mxrec-add-ons-linux-*.tar.gz  
-cd mindxsdk-mxrec-add-ons/mxrec_ops
-bash mxrec_opp_asynchronous_complete_cumsum.run
-bash mxrec_opp_backward_codegen_adagrad_unweighted_exact.run
-bash mxrec_opp_permute2d_sparse_data.run
-bash mxrec_opp_split_embedding_codegen_forward_unweighted.run
-```
+### 编译Ascend-recsdk-npu-ops-\*-linux-\*.tar.gz  
+方法见 RecSDK/cust_op/ascendc_op/build/README.md
 
 ### 编译libfbgemm_npu_api.so 
 
 ```
-cd RecSDK/mxrec_add_ons/rec_for_torch/torch_plugin/torch_library/2.6.0/common
+cd RecSDK/cust_op/framework/torch_plugin/torch_library/2.6.0/common/
 ```
 
-生成的tar包在RecSDK/mxrec_add_ons/rec_for_torch/torch_plugin/torch_library/2.6.0/common/build下
+生成的tar包在RecSDK/cust_op/framework/torch_plugin/torch_library/2.6.0/common/build下
 
 **安装方法**
 

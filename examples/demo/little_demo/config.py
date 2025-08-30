@@ -18,7 +18,7 @@ import math
 from enum import Enum
 
 import tensorflow as tf
-from mx_rec.util.communication.hccl_ops import get_rank_size
+from rec_sdk_common.communication.hccl.hccl_info import get_rank_size
 from tensorflow.core.protobuf.rewriter_config_pb2 import RewriterConfig
 
 from utils import (LOCAL_RANK_ID, PRECISION_CHECK_PATH, PRECISION_DUMP_STEP,

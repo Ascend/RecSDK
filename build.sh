@@ -28,10 +28,13 @@ remove()
 
 clean()
 {
-  remove "${ROOT_DIR}"/dist
+  remove "${ROOT_DIR}"/training/common/dist
+  remove "${ROOT_DIR}"/training/tf_rec_v1/dist
   remove "${ROOT_DIR}"/install
-  remove "${ROOT_DIR}"/mx_rec.egg-info
-  remove "${ROOT_DIR}"/src/build
+  remove "${ROOT_DIR}"/training/common/mx_rec.egg-info
+  remove "${ROOT_DIR}"/training/tf_rec_v1/mx_rec.egg-info
+  remove "${ROOT_DIR}"/training/common/build
+  remove "${ROOT_DIR}"/training/tf_rec_v1/build
   remove "${ROOT_DIR}"/build/bdist.linux-"$(arch)"
   remove "${ROOT_DIR}"/build/tf1_env
   remove "${ROOT_DIR}"/build/tf2_env

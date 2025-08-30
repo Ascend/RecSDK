@@ -48,6 +48,8 @@ fi
 cur_path=`pwd`
 rec_package_path="/usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec" # please config
 so_path=${rec_package_path}/libasc
+common_package_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/rec_sdk_common
+common_so_path=${common_package_path}/lib
 # GLOG_stderrthreshold -2:TRACE -1:DEBUG 0:INFO 1:WARN 2.ERROR, 默认为INFO
 mpi_args='-x BIND_INFO="0:12 12:48 60:48" -x GLOG_stderrthreshold=2 -x GLOG_logtostderr=true -bind-to none -x NCCL_SOCKET_IFNAME=docker0 -mca btl_tcp_if_exclude docker0'
 interface="lo"
@@ -57,13 +59,13 @@ num_process=$((${num_server} * ${local_rank_size})) # 训练总的进程数，�
 project_root=$(cd "$cur_path/../.." && pwd)
 
 export HCCL_CONNECT_TIMEOUT=1200 # HCCL集合通信 建链超时时间，取值范围[120,7200]
-export PYTHONPATH=${so_path}:${project_root}:$PYTHONPATH # 环境python安装路径
+export PYTHONPATH=${so_path}:${project_root}:${common_so_path}:$PYTHONPATH # 环境python安装路径
 if [ "$(uname -m)" == "aarch64" ]; then
     export LD_PRELOAD=/usr/lib64/libgomp.so.1:/usr/lib64/libstdc++.so.6:/usr/local/python3.7.5/lib/python3.7/site-packages/scikit_learn.libs/libgomp-d22c30c5.so.1.0.0
 else
     export LD_PRELOAD=/usr/lib64/libgomp.so.1:/usr/lib64/libstdc++.so.6
 fi
-export LD_LIBRARY_PATH=${so_path}:/usr/local/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=${so_path}:${common_so_path}:/usr/local/lib:$LD_LIBRARY_PATH
 # 集合通信文件，格式请参考昇腾官网CANN文档，“准备资源配置文件”章节。
 export JOB_ID=10086
 # 训练任务使用的NPU卡数总数

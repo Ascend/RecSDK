@@ -38,13 +38,15 @@ mxRec软件包可以通过[mxRec用户指南](https://www.hiascend.com/document/
 如下：
 ```shell
 ├── tf1_whl
+    └── rec_sdk_common-{version}-py3-none-linux_x86_64.whl  # version为版本号
 │   └── mx_rec-{version}-py3-none-linux_x86_64.whl  # version为版本号
 ├── tf2_whl
+    └── rec_sdk_common-{version}-py3-none-linux_x86_64.whl  # version为版本号
 │   └── mx_rec-{version}-py3-none-linux_x86_64.whl  # version为版本号
 └── version.info
 ```
 其中，tf1_whl和tf2_whl目录下分别是适配tf1和tf2的mxRec软件包，按照自己需要选择其中一个进行安装即可（用pip/pip3 install 软件包这种方式进行安装）。
-确认安装mxRec的目录，比如mxRec安装在 /usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec这个目录下。
+确认安装mxRec的目录，比如mxRec安装在 /usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec和rec_sdk_common目录下。
 
 ## 4.运行DCNv2模型
 执行完以上步骤之后，接下来就可以运行DCNv2模型，其中run.sh就是运行的脚本。 其中需要传入5个参数，分别对应：so_path、mx_rec_package_path、hccl_cfg_json、
