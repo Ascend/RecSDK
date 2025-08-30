@@ -21,6 +21,7 @@ import sys
 from setuptools import setup, find_packages
 import shutil
 
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", default="7.2.RC1")

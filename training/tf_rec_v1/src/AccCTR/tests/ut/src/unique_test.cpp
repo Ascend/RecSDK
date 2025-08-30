@@ -376,7 +376,6 @@ TEST_F(UniqueTest, DoEnhancedUniqueErr)
     conf.useSharding = true;
     conf.outputType = OutputType::ENHANCED;
 
-
     ASSERT_EQ(unique->Initialize(conf), 0);
 
     int inputLen = 6;

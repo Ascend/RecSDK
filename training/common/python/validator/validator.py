@@ -563,6 +563,7 @@ class IntValidator(NumValidator):
 
         self.register_checker(check_type, msg if msg else f"type of '{name}' is not int")
 
+
 class OptionalIntValidator(IntValidator):
     """
     Int type validator if value is not None

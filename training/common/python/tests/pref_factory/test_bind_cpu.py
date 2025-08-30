@@ -23,9 +23,10 @@ from rec_sdk_common.constants.constants import MPIParams
 from rec_sdk_common.log.log import LoggingProxy
 from rec_sdk_common.constants.constants import LogLevel
 
+
 class TestBindCpu(unittest.TestCase):
-    @mock.patch("os.environ", {MPIParams.OMPI_COMM_WORLD_LOCAL_SIZE.value : "1",
-                               MPIParams.OMPI_COMM_WORLD_RANK.value : "0"})
+    @mock.patch("os.environ", {MPIParams.OMPI_COMM_WORLD_LOCAL_SIZE.value: "1",
+                               MPIParams.OMPI_COMM_WORLD_RANK.value: "0"})
     @mock.patch.multiple(
         "rec_sdk_common.communication.hccl.hccl_info",
         get_local_rank_size=mock.MagicMock(return_value=1),

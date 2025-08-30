@@ -72,13 +72,13 @@ def main():
     # 6x + y =300
     # x + y = 90
     # x = 42 y =48
-    write_data('data30.txt', 42*10000, 48*10000, 6)
+    write_data('data30.txt', 42 * 10000, 48 * 10000, 6)
 
     # 300w id去重率40%
     # 6x + y =300
     # x + y = 120
     # x = 36 y =84
-    write_data('data40.txt', 36*10000, 84*10000, 6)
+    write_data('data40.txt', 36 * 10000, 84 * 10000, 6)
 
 
 def write_file(ids, file_name):

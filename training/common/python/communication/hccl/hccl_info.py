@@ -24,6 +24,7 @@ from rec_sdk_common.constants.constants import RankTableInfo
 from rec_sdk_common.validator.validator import StringValidator
 from rec_sdk_common.validator.safe_checker import str_safe_check
 
+
 def _comm_env_value_str2int(value: str, greater_or_equal: int = 0) -> int:
     str_safe_check("communication environment value", value)
 
@@ -34,6 +35,7 @@ def _comm_env_value_str2int(value: str, greater_or_equal: int = 0) -> int:
     if int_value < greater_or_equal:
         raise ValueError(f"the value must be greater than or equal to {greater_or_equal}, but got {int_value}")
     return int_value
+
 
 def get_rank_id() -> Optional[int]:
     """
@@ -59,6 +61,7 @@ def get_rank_size() -> Optional[int]:
         raise RuntimeError("Environment variable RANK_SIZE has not been exported, please init mpi/hccl first")
     return _comm_env_value_str2int(rank_size, 1)
 
+
 def get_local_rank_size() -> Optional[int]:
     """
     Get the local rank size of the default collective communication group
@@ -70,12 +73,14 @@ def get_local_rank_size() -> Optional[int]:
         raise RuntimeError("Environment variable LOCAL_RANK_SIZE has not been exported, please init mpi/hccl first")
     return _comm_env_value_str2int(local_rank_size, 1)
 
+
 def get_rank_to_device_dict() -> Dict[int, int]:
     rank_table_path = os.getenv(RankTableInfo.RANK_TABLE_FILE.value, "")
     if rank_table_path != "":
         return _get_rank_info_with_ranktable()
     
     return _get_rank_info_without_ranktable()
+
 
 def get_device_id() -> Optional[int]:
     """

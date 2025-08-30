@@ -198,6 +198,7 @@ class RecCPPLogLevel(Enum):
     WARN = "1"
     ERROR = "2"
 
+
 class Flag(Enum):
     TRUE = "1"
     FALSE = "0"

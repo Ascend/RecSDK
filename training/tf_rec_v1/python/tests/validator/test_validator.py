@@ -21,6 +21,7 @@ import tensorflow as tf
 from tensorflow.python.client.session import BaseSession
 from mx_rec.validator.validator import LearningRateValidator
 
+
 class ParameterCheckerTest(unittest.TestCase):
     def setUp(self):
         """

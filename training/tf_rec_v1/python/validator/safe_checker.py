@@ -18,6 +18,7 @@
 from rec_sdk_common.constants.constants import ValidatorParams
 from mx_rec.validator.validator import FileValidator
 
+
 def file_safe_check(
         name: str,
         path: str,

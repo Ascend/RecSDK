@@ -22,12 +22,14 @@ from typing import Dict, List
 from rec_sdk_common.constants.constants import RankTableInfo, ChipName, CommParams, CommonEnv, FileParams
 from rec_sdk_common.validator.safe_checker import class_safe_check, int_safe_check
 
+
 def _get_chip_name():
     import common_binding
     chipName = common_binding.get_chip_name(0)
     if "910B" in chipName:
         return ChipName.ASCEND_910B
     return ChipName.NONE
+
 
 def _get_rank_info_with_ranktable() -> Dict[int, int]:
     """

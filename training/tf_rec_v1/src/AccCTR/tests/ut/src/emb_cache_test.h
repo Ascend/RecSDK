@@ -33,14 +33,13 @@ protected:
     static void SetUpTestCase();
     static void TearDownTestCase();
 
-
     void SetUp() override;
 
     void TearDown() override;
 
-    static ock::ctr::EmbCacheManagerPtr SimpleCreateTable(std::string tableName, uint32_t hostVocabSize, uint32_t embeddingSize,
-        uint32_t extEmbeddingSize, uint32_t devVocabSize, std::pair<float, float> normalPara = { 0, 0.05 },
-        float constPara = 0.233);
+    static ock::ctr::EmbCacheManagerPtr SimpleCreateTable(std::string tableName, uint32_t hostVocabSize,
+            uint32_t embeddingSize, uint32_t extEmbeddingSize, uint32_t devVocabSize,
+            std::pair<float, float> normalPara = { 0, 0.05 }, float constPara = 0.233);
 
     static ock::ctr::EmbCacheManagerPtr ConstZeroCreateTable(std::string tableName, uint32_t hostVocabSize,
         uint32_t embeddingSize, uint32_t extEmbeddingSize, uint32_t devVocabSize, uint64_t prefillBufferSize = 50000,

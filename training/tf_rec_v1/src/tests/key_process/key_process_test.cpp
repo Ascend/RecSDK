@@ -611,10 +611,8 @@ TEST_F(KeyProcessTest, KeyProcessTaskHelperTest)
     auto queue = SingletonQueue<EmbBatchT>::GetInstances(0);
     auto batch = queue->GetOne();
 
-    KeysT batchKeys = { 1, 4, 23, 14, 16, 7, 2, 21, 21, 29 };
-    // split to rank0~rank3 data:{ { 4, 16 }, { 1, 21, 29 }, { 14, 2 }, { 23, 7 } }
-    // restore for rank0~rank3:{{0,1}, {0, 1, 2}, {0,1}, {0,1}}
-    vector<vector<int>> expectInfoVec = {{0,1}, {0, 1, 2}, {0,1}, {0,1}};
+    KeysT batchKeys = {1, 4, 23, 14, 16, 7, 2, 21, 21, 29 };
+    vector<vector<int>> expectInfoVec = {{0, 1}, {0, 1, 2}, {0, 1}, {0, 1}};
     batch->sample = std::move(batchKeys);
     batch->name = EMB_TABLE_0;
     batch->channel = 0;
@@ -670,7 +668,8 @@ TEST_F(KeyProcessTest, KeyProcessTaskHelperTest)
 
     vector<int32_t> restoreVecSec = process.GetRestoreVecSec(embBaseInfo);
     vector<vector<int32_t>> expectRestoreVecSec = {
-        {0,1,0,1,0,1,0,1}, {0,1,2,0,1,2,0,1,2,0,1,2}, {0,1,0,1,0,1,0,1}, {0,1,0,1,0,1,0,1}
+        {0, 1, 0, 1, 0, 1, 0, 1}, {0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2}, {0, 1, 0, 1, 0, 1, 0, 1},
+        {0, 1, 0, 1, 0, 1, 0, 1}
     };
     for (int i = 0; i < restoreVecSec.size(); i++) {
         ASSERT_EQ(restoreVecSec[i], expectRestoreVecSec[rankInfo.rankId][i]);

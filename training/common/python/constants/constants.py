@@ -23,17 +23,20 @@ class RankTableParams(Enum):
     MAX_RANK_SIZE = 4095
     MIN_RANK_SIZE = 0
 
+
 class FileParams(Enum):
     MIN_SIZE = 1
     MAX_SIZE = 1024 * 1024 * 1024 * 1024
     MAX_FILE_SIZE = 500 * 1024 * 1024 * 1024
     MAX_CONFIG_SIZE = 10 * 1024 * 1024
 
+
 class CommParams(Enum):
     MAX_RANK_ID = 65535
     MAX_LOCAL_ID = 15
     MAX_DEVICE_ID = 15
     MAX_LOGIC_ID = 15
+
 
 class ValidatorParams(Enum):
     MAX_INT32 = np.iinfo(np.int32).max
@@ -55,10 +58,12 @@ class ValidatorParams(Enum):
     FILE_MAX_SIZE = 1024 * 1024 * 1024 * 1024
     MAX_FILE_PATH_LENGTH = 1024
 
+
 class MPIParams(Enum):
     OMPI_COMM_WORLD_SIZE = "OMPI_COMM_WORLD_SIZE"
     OMPI_COMM_WORLD_LOCAL_SIZE = "OMPI_COMM_WORLD_LOCAL_SIZE"
     OMPI_COMM_WORLD_RANK = "OMPI_COMM_WORLD_RANK"
+
 
 class RankTableInfo(Enum):
     RANK_TABLE_FILE = "RANK_TABLE_FILE"
@@ -69,19 +74,23 @@ class RankTableInfo(Enum):
     DEVICE_ID = "device_id"
     DEVICE = "device"
 
+
 class NumCheckValueMethod(Enum):
     DEFAULT = "check_value"
     OPEN_INTERVAL = "check_value_for_open_interval"
     LEFT_OPEN_INTERVAL = "check_value_for_left_open_interval"
     RIGHT_OPEN_INTERVAL = "check_value_for_right_open_interval"
 
+
 class ChipName(Enum):
     ASCEND_910B = "ASCEND_910B"
     NONE = "NONE"
 
+
 class CommonEnv(Enum):
     CM_WORKER_SIZE = "CM_WORKER_SIZE"
     CM_CHIEF_DEVICE = "CM_CHIEF_DEVICE"
+
 
 class LogLevel(Enum):
     DEBUG = "DEBUG"
@@ -90,9 +99,11 @@ class LogLevel(Enum):
     ERROR = "ERROR"
     CRITICAL = "CRITICAL"
 
+
 class EnvOptionCommon(Enum):
     RECSDK_LOG_LEVEL = "MXREC_LOG_LEVEL"
-    DEVICE_TYPE = "TF_DEVICE"   #TF_DEVICE
+    DEVICE_TYPE = "TF_DEVICE"
+
 
 class DeviceType(Enum):
     CPU = "CPU"

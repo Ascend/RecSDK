@@ -495,7 +495,7 @@ TEST_F(EmbCacheTest, EMBEDDING_LOOKUP_300W)
     // 正确创建
     ASSERT_EQ(embCache->CreateCacheForTable(embCacheInfo, initializeInfos), H_OK);
     std::vector<uint64_t> lookupKeys;
-    float* addr;
+    float* addr = nullptr;
     lookupKeys = GenKeys(hostVocabSize, 123321);
     addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
     ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
@@ -544,7 +544,7 @@ TEST_F(EmbCacheTest, EMBEDDING_LOOKUP_AND_REMOVE)
     uint32_t devVocabSize = 2;
     embCache = SimpleCreateTable(tableName, hostVocabSize, embeddingSize, extEmbeddingSize, devVocabSize);
     std::vector<uint64_t> lookupKeys;
-    float* addr;
+    float* addr = nullptr;
 
     lookupKeys = {0, 1, 2, 3, 4};
     addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
@@ -591,7 +591,7 @@ TEST_F(EmbCacheTest, EMBEDDING_LOOKUP_AND_REMOVE_2)
     uint32_t devVocabSize = 2;
     embCache = SimpleCreateTable(tableName, hostVocabSize, embeddingSize, extEmbeddingSize, devVocabSize);
     std::vector<uint64_t> lookupKeys;
-    float* addr;
+    float* addr = nullptr;
 
     for (int i = 0; i < 100; i++) {
         for (int j = 0; j < 2; j++) {
@@ -620,7 +620,7 @@ TEST_F(EmbCacheTest, EMBEDDING_LOOKUP)
     uint32_t devVocabSize = 2;
     embCache = SimpleCreateTable(tableName, hostVocabSize, embeddingSize, extEmbeddingSize, devVocabSize);
     std::vector<uint64_t> lookupKeys;
-    float* addr;
+    float* addr = nullptr;
 
     lookupKeys = {0, 1, 2, 3, 4};
     addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
@@ -672,7 +672,7 @@ TEST_F(EmbCacheTest, EMBEDDING_LOOKUP_AND_REMOVE_300W)
     CTRLog(CTRLogLevel::INFO, "===========EMBEDDING_LOOKUP_AND_REMOVE_300W start=============");
     std::string tableName = "test_table";
     std::vector<uint64_t> lookupKeys;
-    float* newEmb;
+    float* newEmb = nullptr;
 
     // 300w个key
     uint32_t hostVocabSize = 3000000;
@@ -693,7 +693,7 @@ TEST_F(EmbCacheTest, EMBEDDING_LOOKUP_AND_REMOVE_300W)
     free(newEmb);
     CTRLog(CTRLogLevel::INFO, "EmbeddingUpdate done");
 
-    float* addr;
+    float* addr = nullptr;
     addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
     // 查询特殊数据
     ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
@@ -739,7 +739,7 @@ TEST_F(EmbCacheTest, EMBEDDING_UPDATE_300W)
     CTRLog(CTRLogLevel::INFO, "===========EMBEDDING_UPDATE_300W start=============");
     std::string tableName = "test_table";
     std::vector<uint64_t> lookupKeys;
-    float* newEmb;
+    float* newEmb = nullptr;
 
     // 300w个key
     uint32_t hostVocabSize = 3000000;
@@ -760,7 +760,7 @@ TEST_F(EmbCacheTest, EMBEDDING_UPDATE_300W)
     free(newEmb);
     CTRLog(CTRLogLevel::INFO, "EmbeddingUpdate done");
 
-    float* addr;
+    float* addr = nullptr;
     addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
     // 查询特殊数据
     ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
@@ -798,7 +798,7 @@ TEST_F(EmbCacheTest, EMBEDDING_UPDATE)
     uint32_t devVocabSize = 2;
     embCache = SimpleCreateTable(tableName, hostVocabSize, embeddingSize, extEmbeddingSize, devVocabSize);
     std::vector<uint64_t> lookupKeys;
-    float* newEmb;
+    float* newEmb = nullptr;
 
     lookupKeys = {0, 1, 2, 3, 4};
     newEmb = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
@@ -1152,8 +1152,8 @@ TEST_F(EmbCacheTest, REMOVE_KEYS)
     embCache = SimpleCreateTable(tableName, hostVocabSize, embeddingSize, extEmbeddingSize, devVocabSize);
     std::vector<uint64_t> lookupKeys;
     std::vector<uint64_t> removeKeys;
-    float* addr;
-    float* newEmb;
+    float* addr = nullptr;
+    float* newEmb = nullptr;
 
     for (uint32_t i = 0; i < hostVocabSize - 1; i++) {
         lookupKeys.emplace_back(i);
@@ -1432,7 +1432,7 @@ TEST_F(EmbCacheTest, DESERIALIZE)
     ASSERT_EQ(embCache->Deserialize(tableName, buffer), H_LOAD_ERROR);
 
     lookupKeys = {0, 1, 2, 3, 4};
-    float* newEmb;
+    float* newEmb = nullptr;
     newEmb = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
     for (uint32_t i = 0; i < lookupKeys.size() * extEmbeddingSize; i++) {
         newEmb[i] = 0.01f * i;
@@ -1459,7 +1459,7 @@ TEST_F(EmbCacheTest, SERIALIZE_DESERIALIZE)
 
     std::vector<uint64_t> lookupKeys;
     lookupKeys = {0, 1, 2, 3, 4};
-    float* newEmb;
+    float* newEmb = nullptr;
     newEmb = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
     for (uint32_t i = 0; i < lookupKeys.size() * extEmbeddingSize; i++) {
         newEmb[i] = 0.01f * i;
@@ -1584,8 +1584,8 @@ TEST_F(EmbCacheTest, EmbeddingRemove)
     embCache = SimpleCreateTable(tableName, hostVocabSize, embeddingSize, extEmbeddingSize, devVocabSize);
     std::vector<uint64_t> lookupKeys;
     std::vector<uint64_t> removeKeys;
-    float* addr;
-    float* newEmb;
+    float* addr = nullptr;
+    float* newEmb = nullptr;
 
     for (uint32_t i = 0; i < hostVocabSize - 1; i++) {
         lookupKeys.emplace_back(i);
@@ -1677,7 +1677,7 @@ TEST_F(EmbCacheTest, GET_EMB_TABLE_INFO)
 
     std::vector<uint64_t> lookupKeys;
     lookupKeys = {0, 1, 2, 3, 4};
-    float* newEmb;
+    float* newEmb = nullptr;
     newEmb = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
     for (uint32_t i = 0; i < lookupKeys.size() * extEmbeddingSize; i++) {
         newEmb[i] = 0.01f * i;
@@ -1743,7 +1743,7 @@ TEST_F(EmbCacheTest, GET_EMB_TABLE_INFO)
     embCache = SimpleCreateTable(tableName, hostVocabSize, embeddingSize, extEmbeddingSize, devVocabSize);
     std::vector<uint64_t> lookupKeys2;
     lookupKeys2 = {0, 1, 2, 3, 4};
-    float* newEmb2;
+    float* newEmb2 = nullptr;
     newEmb2 = (float*)malloc(lookupKeys2.size() * extEmbeddingSize * sizeof(float));
     for (uint32_t i = 0; i < lookupKeys2.size() * extEmbeddingSize; i++) {
         newEmb2[i] = 0.01f * i;

@@ -22,7 +22,8 @@ import tensorflow as tf
 from rec_sdk_common.log import logger
 from rec_sdk_common.constants.constants import ValidatorParams
 from rec_sdk_common.util.tf_adapter import npu_ops
-from rec_sdk_common.validator.validator import para_checker_decorator, ClassValidator, IntValidator, OptionalIntValidator
+from rec_sdk_common.validator.validator import para_checker_decorator, ClassValidator, \
+    IntValidator, OptionalIntValidator
 from mx_rec.constants.constants import DEFAULT_EVICT_TIME_INTERVAL, TRAIN_CHANNEL_ID
 from mx_rec.util.initialize import ConfigInitializer
 
@@ -32,8 +33,10 @@ class EvictHook(tf.compat.v1.train.SessionRunHook):
     @para_checker_decorator(
         check_option_list=[
             ("evict_enable", ClassValidator, {"classes": (bool, )}),
-            ("evict_time_interval", IntValidator, {"min_value": 1, "max_value": ValidatorParams.MAX_INT32.value}, ["check_value"]),
-            ("evict_step_interval", OptionalIntValidator, {"min_value": 1, "max_value": ValidatorParams.MAX_INT32.value}, ["check_value"]),
+            ("evict_time_interval", IntValidator,
+             {"min_value": 1, "max_value": ValidatorParams.MAX_INT32.value}, ["check_value"]),
+            ("evict_step_interval", OptionalIntValidator,
+             {"min_value": 1, "max_value": ValidatorParams.MAX_INT32.value}, ["check_value"]),
             ("evict_step_interval", ClassValidator, {"classes": (int, type(None))}),
         ]
     )
