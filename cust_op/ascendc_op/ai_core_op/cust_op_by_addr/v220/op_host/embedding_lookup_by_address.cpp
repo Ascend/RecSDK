@@ -175,14 +175,11 @@ namespace ge {
         embbedingType = *attr1Value;
         if (embbedingType == EMBEDDING_TYPE_INT32) {
             context->SetOutputDataType(0, ge::DataType(DT_INT32));
-        }
-        else if (embbedingType == EMBEDDING_TYPE_FLOAT32) {
+        } else if (embbedingType == EMBEDDING_TYPE_FLOAT32) {
             context->SetOutputDataType(0, ge::DataType(DT_FLOAT));
-        }
-        else if (embbedingType == EMBEDDING_TYPE_FLOAT16) {
+        } else if (embbedingType == EMBEDDING_TYPE_FLOAT16) {
             context->SetOutputDataType(0, ge::DataType(DT_FLOAT16));
-        }
-        else {
+        } else {
             context->SetOutputDataType(0, ge::DataType(DT_FLOAT));
         }
 
@@ -191,10 +188,10 @@ namespace ge {
 }
 
 namespace ops {
-    class EmbeddingLookupByAddress : public OpDef
-    {
+    class EmbeddingLookupByAddress : public OpDef {
     public:
-        EmbeddingLookupByAddress(const char *name) : OpDef(name) {
+        EmbeddingLookupByAddress(const char *name) : OpDef(name)
+        {
             this->Input("address")
                 .ParamType(REQUIRED)
                 .DataType({ge::DT_INT64, ge::DT_INT64, ge::DT_INT64})

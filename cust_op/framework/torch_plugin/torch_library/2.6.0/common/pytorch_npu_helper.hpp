@@ -84,7 +84,7 @@ inline void* GetOpApiLibHandler(const char* libName)
 inline std::vector<std::string> GetCustLibPath()
 {
     char* ascendOppPath = std::getenv("ASCEND_OPP_PATH");
-    if (ascendOppPath == NULL) {
+    if (ascendOppPath == nullptr) {
         ASCEND_LOGW("ASCEND_OPP_PATH is not set.");
         return std::vector<std::string>();
     }
@@ -539,7 +539,7 @@ typedef void (*ReleaseHugeMem)(void*, bool);
             auto workspace_tensor = at::empty({workspace_size}, options.dtype(kByte));                                 \
             workspace_addr = const_cast<void*>(workspace_tensor.storage().data());                                     \
         }                                                                                                              \
-        auto acl_call = [converted_params, workspace_addr, workspace_size, acl_stream, executor]() -> int {            \
+        auto acl_call = [converted_params, workspace_addr, workspace_size, acl_stream, executor]()->int {            \
             typedef int (*OpApiFunc)(void*, uint64_t, aclOpExecutor*, const aclrtStream);                              \
             OpApiFunc opApiFunc = reinterpret_cast<OpApiFunc>(opApiFuncAddr);                                          \
             auto api_ret = opApiFunc(workspace_addr, workspace_size, executor, acl_stream);                            \

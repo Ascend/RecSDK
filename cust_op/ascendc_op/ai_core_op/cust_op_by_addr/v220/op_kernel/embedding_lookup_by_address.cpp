@@ -26,77 +26,81 @@ template <typename T>
 class KernelEimtable
 {
 public:
-  __aicore__ inline KernelEimtable()
-  {
-  }
-  __aicore__ inline void Init(GM_ADDR address, GM_ADDR y)
-  {
-    needComputeAddrLen = singleCoreAddrLen;
-    if (block_idx == block_num - 1) // 最后一个core,需要多计算的addr长度
+    __aicore__ inline KernelEimtable()
     {
-        needComputeAddrLen = addrNums * sizeof(int64_t) - singleCoreAddrLen * (block_num - 1);
     }
-    loopCount = needComputeAddrLen / (addrNumPerLoop * sizeof(int64_t)); // 可能为0
+    __aicore__ inline void Init(GM_ADDR address, GM_ADDR y)
+    {
+        needComputeAddrLen = singleCoreAddrLen;
+        if (block_idx == block_num - 1) // 最后一个core,需要多计算的addr长度
+        {
+            needComputeAddrLen = addrNums * sizeof(int64_t) - singleCoreAddrLen * (block_num - 1);
+        }
+        loopCount = needComputeAddrLen / (addrNumPerLoop * sizeof(int64_t)); // 可能为0
 
-    // pipe alloc memory to queue, the unit is Bytes
-    pipe.InitBuffer(tbuf, addrNumPerLoop * sizeof(int64_t));
+        // pipe alloc memory to queue, the unit is Bytes
+        pipe.InitBuffer(tbuf, addrNumPerLoop * sizeof(int64_t));
 
-    pipe.InitBuffer(inQueue, pingpongNum, veclen);
-    pipe.InitBuffer(outQueue, pingpongNum, veclen);
+        pipe.InitBuffer(inQueue, pingpongNum, veclen);
+        pipe.InitBuffer(outQueue, pingpongNum, veclen);
 
 #ifdef L2_CACHE_HINT
-    // set `GlobalTensor` cache mode explicitly
+        // set `GlobalTensor` cache mode explicitly
     srcAddrGlobal.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL);
     dstDataGm.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL);
 #endif
 
-    // get start index for current core, core parallel block_indx block_dim，即使是最后一个核也应该多初始化一些，并对齐4的倍数
-    srcAddrGlobal.SetGlobalBuffer((__gm__ int64_t *)(address + block_idx * singleCoreAddrLen), needComputeAddrLen);
-    dstDataGm.SetGlobalBuffer((__gm__ T *)(y));
-  }
+        // get start index for current core, core parallel block_indx block_dim，即使是最后一个核也应该多初始化一些，并对齐4的倍数
+        srcAddrGlobal.SetGlobalBuffer((__gm__ int64_t *)(address + block_idx * singleCoreAddrLen), needComputeAddrLen);
+        dstDataGm.SetGlobalBuffer((__gm__ T *)(y));
+    }
 
-  __aicore__ inline void Init_param(GM_ADDR tiling)
-  {
-    GET_TILING_DATA(constData, tiling);
-
-    pingpongNum = constData.ping_pong_num;
-    addrNums = constData.addr_nums;
-    dim = constData.embedding_dim;
-    addrNumPerLoop = constData.addr_per_loop;
-    typeSize = constData.type_size;
-    embDimAligned = constData.emb_dim_aligned;
-
-    int singleCoreAddrNum = (int)(addrNums / block_num); // 有可能没有整除，最后的核会处理更多的数据
-    singleCoreAddrNum = singleCoreAddrNum & (~3); // & (~3) 代表取4的倍数向下取整，处理的地址占8字节，对齐32B的话，数量需要是4倍数
-
-    singleCoreAddrLen = singleCoreAddrNum * sizeof(int64_t);
-    veclen = addrNumPerLoop * typeSize * embDimAligned;  // 向上对齐32B
-    cache = constData.addr_per_loop;
-  }
-
-  __aicore__ inline void Process()
-  {
-
-    LocalTensor<int64_t> srcAddrLocal = tbuf.Get<int64_t>(addrNumPerLoop);
-
-    if (loopCount > 0)
+    __aicore__ inline void Init_param(GM_ADDR tiling)
     {
-        for (int32_t i = 0; i < loopCount; i++) {
-            DataCopy(srcAddrLocal, srcAddrGlobal[i * addrNumPerLoop], addrNumPerLoop);
-            MoveProcess(srcAddrLocal, i, addrNumPerLoop);
+        GET_TILING_DATA(constData, tiling);
+
+        pingpongNum = constData.ping_pong_num;
+        addrNums = constData.addr_nums;
+        dim = constData.embedding_dim;
+        addrNumPerLoop = constData.addr_per_loop;
+        typeSize = constData.type_size;
+        embDimAligned = constData.emb_dim_aligned;
+
+        int singleCoreAddrNum = (int)(addrNums / block_num); // 有可能没有整除，最后的核会处理更多的数据
+        singleCoreAddrNum = singleCoreAddrNum & (~3); // & (~3) 代表取4的倍数向下取整，处理的地址占8字节，对齐32B的话，数量需要是4倍数
+
+        singleCoreAddrLen = singleCoreAddrNum * sizeof(int64_t);
+        veclen = addrNumPerLoop * typeSize * embDimAligned;  // 向上对齐32B
+        cache = constData.addr_per_loop;
+    }
+
+    __aicore__ inline void Process()
+    {
+        LocalTensor<int64_t> srcAddrLocal = tbuf.Get<int64_t>(addrNumPerLoop);
+
+        if (loopCount > 0)
+        {
+            for (int32_t i = 0; i < loopCount; i++) {
+                DataCopy(srcAddrLocal, srcAddrGlobal[i * addrNumPerLoop], addrNumPerLoop);
+                MoveProcess(srcAddrLocal, i, addrNumPerLoop);
+            }
+        }
+        // 处理最后一张卡剩下的addr
+        int unProcess = (needComputeAddrLen / sizeof(int64_t)) % addrNumPerLoop;
+        if (unProcess)
+        {
+            int unProcessAligned = static_cast<int>
+            ((static_cast<unsigned int>(unProcess) + 3) & (~3U)); // 处理 addressList 不对齐32b的情况
+            // 地址列表访问越界，对齐考虑无问题，会自动多申请一部分，兼容
+            DataCopy(srcAddrLocal, srcAddrGlobal[loopCount * addrNumPerLoop], unProcessAligned);
+            MoveProcess(srcAddrLocal, loopCount, unProcess);
         }
     }
-    // 处理最后一张卡剩下的addr
-    int unProcess = (needComputeAddrLen / sizeof(int64_t)) % addrNumPerLoop;
-    if (unProcess)
-    {
-        int unProcessAligned = static_cast<int>
-                ((static_cast<unsigned int>(unProcess) + 3) & (~3U)); // 处理 addressList 不对齐32b的情况
-        // 地址列表访问越界，对齐考虑无问题，会自动多申请一部分，兼容
-        DataCopy(srcAddrLocal, srcAddrGlobal[loopCount * addrNumPerLoop], unProcessAligned);
-        MoveProcess(srcAddrLocal, loopCount, unProcess);
-    }
-  }
+
+public:
+    int32_t addrNumPerLoop, loopCount, singleCoreAddrLen, needComputeAddrLen, veclen, dim, pingpongNum, cache;
+    int32_t addrNums;
+    int32_t embDimAligned, typeSize, updateType;
 
 private:
     __aicore__ inline void MoveProcess(const LocalTensor<int64_t> srcAddrLocal, const int turns, int addrNum)
@@ -110,12 +114,10 @@ private:
         int times = embDimAligned >> 3; // >>3位运算：除以8。 embDimAligned一定是8的倍数，若地址无效时，每次填充8个0
         int tmpCache = cache - 1; // 设计初是一次cache执行多次copyin、一次compute和一次copyout，现状是一次loop就只对应一次cache
 
-        for (int i = 0; i < addrNum; i++)
-        {
+        for (int i = 0; i < addrNum; i++) {
             // 多次copyIn， 对应一次compute和copyOut，由cache决定
             dataLocal = isFull ? inQueue.AllocTensor<T>() : dataLocal;
             int64_t address = srcAddrLocal.GetValue(i);
-
             if (address != 0) {
 #ifdef L2_CACHE_HINT
                 srcDataBufferGm.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL);
@@ -178,18 +180,13 @@ private:
         outQueue.FreeTensor(dstLocal);
     }
 
-public:
-  int32_t addrNumPerLoop, loopCount, singleCoreAddrLen, needComputeAddrLen, veclen, dim, pingpongNum, cache;
-  int32_t addrNums;
-  int32_t embDimAligned, typeSize, updateType;
-
 private:
-  TPipe pipe;
-  TBuf<QuePosition::LCM> tbuf;
-  TQue<QuePosition::VECIN, 1> inQueue;
-  TQue<QuePosition::VECOUT, 1> outQueue;
-  GlobalTensor<T> srcDataBufferGm, dstDataGm;
-  GlobalTensor<int64_t> srcAddrGlobal;
+    TPipe pipe;
+    TBuf<QuePosition::LCM> tbuf;
+    TQue<QuePosition::VECIN, 1> inQueue;
+    TQue<QuePosition::VECOUT, 1> outQueue;
+    GlobalTensor<T> srcDataBufferGm, dstDataGm;
+    GlobalTensor<int64_t> srcAddrGlobal;
 };
 }
 

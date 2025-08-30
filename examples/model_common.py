@@ -327,7 +327,8 @@ def get_npu_run_config():
 
 
 def add_timestamp_func(batch):
-    timestamp = import_host_pipeline_ops(LIBREC_TF_REC_V1_CPU_SO).return_timestamp(tf.cast(batch['label'], dtype=tf.int64))
+    timestamp = import_host_pipeline_ops(LIBREC_TF_REC_V1_CPU_SO).return_timestamp(tf.cast(batch['label'],
+                                                                                           dtype=tf.int64))
     # tf.constant(np.random.randint(1,1688109060,1)), tf.int64))
     batch["timestamp"] = timestamp
     return batch

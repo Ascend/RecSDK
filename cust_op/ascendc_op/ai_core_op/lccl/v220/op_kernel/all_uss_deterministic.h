@@ -222,9 +222,7 @@ private:
             readQue[i].Init(
                 &sync, magic,
                 shareAddrs[rank] + IPC_DATA_OFFSET +
-                    (targetRank[i] * coreNumPerRank + blockIdx % coreNumPerRank) * queSize,
-                queLen, queElemLen
-            );
+                    (targetRank[i] * coreNumPerRank + blockIdx % coreNumPerRank) * queSize, queLen, queElemLen);
             // 当前核负责的数据长度和偏移
             revOffset[i] = 0;
             for (int j = 0; j < targetRank[i]; j++) {

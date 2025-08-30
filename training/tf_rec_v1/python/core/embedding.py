@@ -90,7 +90,8 @@ from mx_rec.validator.emb_validator import check_emb_multi_lookup_times
         (
             "ssd_data_path",
             ListValidator,
-            {"sub_checker": ClassValidator, "list_max_length": ValidatorParams.MAX_INT32.value, "sub_args": {"classes": str}},
+            {"sub_checker": ClassValidator, "list_max_length": ValidatorParams.MAX_INT32.value,
+             "sub_args": {"classes": str}},
             ["check_list_length"],
         ),
         ("is_save", ClassValidator, {"classes": (bool,)}),
@@ -112,7 +113,8 @@ from mx_rec.validator.emb_validator import check_emb_multi_lookup_times
         ("value_dtype", OptionValidator, {"options": [tf.float32]}),
         ("shard_num", IntValidator, {"min_value": 1, "max_value": 8192}, ["check_value"]),
         ("fusion_optimizer_var", ClassValidator, {"classes": (bool,)}),
-        ("hashtable_threshold", IntValidator, {"min_value": 0, "max_value": ValidatorParams.MAX_INT32.value}, ["check_value"]),
+        ("hashtable_threshold", IntValidator, {"min_value": 0, "max_value": ValidatorParams.MAX_INT32.value},
+         ["check_value"]),
     ]
 )
 def create_table(
@@ -241,7 +243,8 @@ def create_table(
         ("ids", ClassValidator, {"classes": (FeatureSpec, tf.Tensor)}),
         ("is_train", ClassValidator, {"classes": (bool,)}),
         ("send_count", ClassValidator, {"classes": (int, type(None))}),
-        ("send_count", OptionalIntValidator, {"min_value": 1, "max_value": ValidatorParams.MAX_INT32.value}, ["check_value"]),
+        ("send_count", OptionalIntValidator, {"min_value": 1,
+                                              "max_value": ValidatorParams.MAX_INT32.value}, ["check_value"]),
         ("name", ClassValidator, {"classes": (str, type(None))}),
         ("name", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
         ("modify_graph", ClassValidator, {"classes": (bool, type(None))}),
