@@ -17,8 +17,7 @@ See the License for the specific language governing permissions and
 #define EMBEDDING_UPDATE_BY_ADDRESS_TILING_H
 #include "register/tilingdata_base.h"
 
-namespace optiling
-{
+namespace optiling {
     BEGIN_TILING_DATA_DEF(TilingData2)
     TILING_DATA_FIELD_DEF(int32_t, update_dim);
     TILING_DATA_FIELD_DEF(int32_t, addr_nums);

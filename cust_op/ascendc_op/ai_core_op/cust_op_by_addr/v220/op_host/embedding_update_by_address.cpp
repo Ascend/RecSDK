@@ -163,10 +163,10 @@ namespace ge {
 }
 
 namespace ops {
-    class EmbeddingUpdateByAddress : public OpDef
-    {
+    class EmbeddingUpdateByAddress : public OpDef {
     public:
-        EmbeddingUpdateByAddress(const char *name) : OpDef(name) {
+        EmbeddingUpdateByAddress(const char *name) : OpDef(name)
+        {
             this->Input("address")
                 .ParamType(REQUIRED)
                 .DataType({ge::DT_INT64, ge::DT_INT64, ge::DT_INT64})

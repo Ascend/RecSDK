@@ -73,7 +73,6 @@ public:
 
     __aicore__ inline void Process()
     {
-
         LocalTensor<int64_t> srcAddrLocal = tbuf.Get<int64_t>(addrNumPerLoop);
 
         if (loopCount > 0)
@@ -92,6 +91,10 @@ public:
             MoveProcess(srcAddrLocal, loopCount, unProcess);
         }
     }
+
+public:
+    int32_t addrNumPerLoop, loopCount, singleCoreAddrLen, needComputeAddrLen, addrNums, cache, veclen, dim, pingpongNum;
+    int32_t inputDimAligned, typeSize, updateType;
 
 private:
     __aicore__ inline void MoveProcess(const LocalTensor<int64_t> srcAddrLocal, const int turns, int addrNum)
@@ -183,10 +186,6 @@ private:
         }
         outQueue.FreeTensor(dstLocal);
     }
-
-public:
-    int32_t addrNumPerLoop, loopCount, singleCoreAddrLen, needComputeAddrLen, addrNums, cache, veclen, dim, pingpongNum;
-    int32_t inputDimAligned, typeSize, updateType;
 
 private:
     TPipe pipe;
