@@ -47,6 +47,9 @@ class ValidatorParams(Enum):
     MAX_FLOAT32 = np.finfo(np.float32).max
     MIN_FLOAT32 = np.finfo(np.float32).min
     STR_MAX_LENGTH = MAX_INT32
+    MAX_UINT8 = np.iinfo(np.uint8).max
+    MIN_VALUE = 1
+    MIN_VALUE_NEGATIVE = -1
     STR_MIN_LENGTH = 0
     FILE_MIN_SIZE = 1
     FILE_MAX_SIZE = 1024 * 1024 * 1024 * 1024
@@ -74,6 +77,7 @@ class NumCheckValueMethod(Enum):
 
 class ChipName(Enum):
     ASCEND_910B = "ASCEND_910B"
+    NONE = "NONE"
 
 class CommonEnv(Enum):
     CM_WORKER_SIZE = "CM_WORKER_SIZE"

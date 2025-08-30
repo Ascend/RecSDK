@@ -27,6 +27,7 @@ def _get_chip_name():
     chipName = common_binding.get_chip_name(0)
     if "910B" in chipName:
         return ChipName.ASCEND_910B
+    return ChipName.NONE
 
 def _get_rank_info_with_ranktable() -> Dict[int, int]:
     """
