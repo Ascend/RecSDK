@@ -22,8 +22,7 @@ namespace {
     constexpr int32_t EMBEDDING_TYPE_FLOAT32 = 1;
 }
 
-namespace optiling
-{
+namespace optiling {
     constexpr int32_t BLOCK_DIM = 48;  // 910b一张卡48个vector核
     constexpr int32_t SIZE_OF_HALF = 2;
     constexpr int32_t SIZE_OF_FLOAT_OR_INT = 4;
@@ -121,12 +120,10 @@ namespace optiling
     }
 }
 
-namespace ge
-{
+namespace ge {
     constexpr int OUTPUT_DIMENSION = 2;
     static ge::graphStatus InferShape1(gert::InferShapeContext *context)
     {
-
         if (optiling::CheckNullPointer(context, "context") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -160,7 +157,6 @@ namespace ge
     }
     static ge::graphStatus InferDataType1(gert::InferDataTypeContext *context)
     {
-
         int64_t embbedingType;
         if (optiling::CheckNullPointer(context, "context") != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
@@ -177,21 +173,16 @@ namespace ge
         }
 
         embbedingType = *attr1Value;
-        if (embbedingType == EMBEDDING_TYPE_INT32)
-        {
+        if (embbedingType == EMBEDDING_TYPE_INT32) {
             context->SetOutputDataType(0, ge::DataType(DT_INT32));
         }
-        else if (embbedingType == EMBEDDING_TYPE_FLOAT32)
-        {
+        else if (embbedingType == EMBEDDING_TYPE_FLOAT32) {
             context->SetOutputDataType(0, ge::DataType(DT_FLOAT));
         }
-        else if (embbedingType == EMBEDDING_TYPE_FLOAT16)
-        {
-
+        else if (embbedingType == EMBEDDING_TYPE_FLOAT16) {
             context->SetOutputDataType(0, ge::DataType(DT_FLOAT16));
         }
-        else
-        {
+        else {
             context->SetOutputDataType(0, ge::DataType(DT_FLOAT));
         }
 
@@ -199,13 +190,11 @@ namespace ge
     }
 }
 
-namespace ops
-{
+namespace ops {
     class EmbeddingLookupByAddress : public OpDef
     {
     public:
-        EmbeddingLookupByAddress(const char *name) : OpDef(name)
-        {
+        EmbeddingLookupByAddress(const char *name) : OpDef(name) {
             this->Input("address")
                 .ParamType(REQUIRED)
                 .DataType({ge::DT_INT64, ge::DT_INT64, ge::DT_INT64})

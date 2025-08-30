@@ -22,8 +22,7 @@ namespace {
     constexpr int32_t EMBEDDING_TYPE_FLOAT32 = 1;
 }
 
-namespace optiling
-{
+namespace optiling {
     constexpr int32_t BLOCK_DIM = 48;  // 910b一张卡48个vector核
     constexpr int32_t SIZE_OF_HALF = 2;
     constexpr int32_t SIZE_OF_FLOAT_OR_INT = 4;
@@ -147,8 +146,7 @@ namespace optiling
     }
 }
 
-namespace ge
-{
+namespace ge {
     static ge::graphStatus InferShape(gert::InferShapeContext *context)
     {
         return GRAPH_SUCCESS;
@@ -164,13 +162,11 @@ namespace ge
     }
 }
 
-namespace ops
-{
+namespace ops {
     class EmbeddingUpdateByAddress : public OpDef
     {
     public:
-        EmbeddingUpdateByAddress(const char *name) : OpDef(name)
-        {
+        EmbeddingUpdateByAddress(const char *name) : OpDef(name) {
             this->Input("address")
                 .ParamType(REQUIRED)
                 .DataType({ge::DT_INT64, ge::DT_INT64, ge::DT_INT64})
