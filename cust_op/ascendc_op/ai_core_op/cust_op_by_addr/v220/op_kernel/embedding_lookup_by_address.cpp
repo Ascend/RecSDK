@@ -193,35 +193,31 @@ private:
 extern "C" __global__ __aicore__ void embedding_lookup_by_address(GM_ADDR address, GM_ADDR y, GM_ADDR usrWorkspace,
                                                                   GM_ADDR tiling)
 {
-  GET_TILING_DATA(constData, tiling);
+    GET_TILING_DATA(constData, tiling);
 
-  int32_t embeddingType = constData.embedding_type;
+    int32_t embeddingType = constData.embedding_type;
 
-  switch (embeddingType)
-  {
-  case 0:
-  {
-    AscendC::KernelEimtable<int32_t> op;
-    op.Init_param(tiling);
-    op.Init(address, y);
-    op.Process();
-  }
-  break;
-  case 2:
-  {
-    AscendC::KernelEimtable<half> op;
-    op.Init_param(tiling);
-    op.Init(address, y);
-    op.Process();
-  }
-  break;
-  default:
-  {
-    AscendC::KernelEimtable<float> op;
-    op.Init_param(tiling);
-    op.Init(address, y);
-    op.Process();
-  }
-  break;
-  }
+    switch (embeddingType) {
+        case 0: {
+                AscendC::KernelEimtable<int32_t> op;
+                op.Init_param(tiling);
+                op.Init(address, y);
+                op.Process();
+            }
+            break;
+        case 2: {
+                AscendC::KernelEimtable<half> op;
+                op.Init_param(tiling);
+                op.Init(address, y);
+                op.Process();
+            }
+            break;
+        default: {
+                AscendC::KernelEimtable<float> op;
+                op.Init_param(tiling);
+                op.Init(address, y);
+                op.Process();
+            }
+            break;
+    }
 }
