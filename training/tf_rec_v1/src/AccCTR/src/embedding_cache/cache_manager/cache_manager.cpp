@@ -30,9 +30,7 @@ int EmbCacheManagerImpl::CreateCacheForTable(const EmbCacheInfo& embCacheInfo,
                                              uint64_t prefillBufferSize, uint32_t refillThreadNum)
 {
     int checkTableNameRet = CheckCreateTableName(embCacheInfo.tableName);
-    if (checkTableNameRet != H_OK) {
-        return checkTableNameRet;
-    }
+    if (checkTableNameRet != H_OK) { return checkTableNameRet; }
 
     if (embCacheInfo.extEmbeddingSize == 0 || embCacheInfo.embeddingSize == 0 || embCacheInfo.vocabSize == 0 ||
         embCacheInfo.maxCacheSize == 0) {
@@ -41,9 +39,8 @@ int EmbCacheManagerImpl::CreateCacheForTable(const EmbCacheInfo& embCacheInfo,
     }
 
     if (embCacheInfo.vocabSize < embCacheInfo.maxCacheSize) {
-        ExternalLogger::PrintLog(LogLevel::ERROR, "host vocabSize:" + std::to_string(embCacheInfo.vocabSize) +
-        " must be greater than or equal to device vocabSize:" + std::to_string(embCacheInfo.maxCacheSize) +
-        ", please increase [host vocabSize] in [create_table] interface");
+        ExternalLogger::PrintLog(LogLevel::ERROR, "host vocabSize too small:" + std::to_string(embCacheInfo.vocabSize) +
+        " < " + std::to_string(embCacheInfo.maxCacheSize) + ", need increase host vocabSize in create_table interface");
         return H_HOST_VOCAB_SIZE_TOO_SMALL;
     }
 
@@ -60,9 +57,7 @@ int EmbCacheManagerImpl::CreateCacheForTable(const EmbCacheInfo& embCacheInfo,
         return H_EXT_EMBEDDING_SIZE_INVALID;
     }
 
-    if (!CheckInitializer(embCacheInfo.extEmbeddingSize, initializerInfos)) {
-        return H_INITIALIZER_INVALID;
-    }
+    if (!CheckInitializer(embCacheInfo.extEmbeddingSize, initializerInfos)) { return H_INITIALIZER_INVALID; }
 
     if ((prefillBufferSize < 1) || (prefillBufferSize > embCacheInfo.vocabSize)) {
         ExternalLogger::PrintLog(LogLevel::ERROR, "PrefillBufferSize: " + std::to_string(prefillBufferSize) +
@@ -70,9 +65,7 @@ int EmbCacheManagerImpl::CreateCacheForTable(const EmbCacheInfo& embCacheInfo,
         return H_PREFILL_BUFFER_SIZE_INVALID;
     }
 
-    if (!CheckValidThreadNum(refillThreadNum)) {
-        return H_THREAD_NUM_ERROR;
-    }
+    if (!CheckValidThreadNum(refillThreadNum)) { return H_THREAD_NUM_ERROR; }
 
     uint32_t reserveDevice = embCacheInfo.maxCacheSize / VOCAB_CACHE_RATIO;
     if (!offsetMappers[embCacheInfo.tableName].Initialize(reserveDevice, embCacheInfo.maxCacheSize)) {

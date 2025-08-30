@@ -23,8 +23,8 @@
 #include "common_func/common_func.h"
 
 namespace py = pybind11;
-namespace
-{
+namespace {
+
     int32_t GetLogicID(uint32_t phyid)
     {
         uint32_t logicId;

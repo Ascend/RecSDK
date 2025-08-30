@@ -81,19 +81,12 @@ public:
     }
     inline void lock() noexcept
     {
-        bool flag = true;
-        while (flag) {
-            if (!lock_.exchange(true, std::memory_order_acquire)) {
-                flag = false;
-                break;
-            }
-
+        while (lock_.exchange(true, std::memory_order_acquire)) {
             uint16_t counter = 0;
             while (lock_.load(std::memory_order_relaxed)) {
                 CpuPause();
                 if (++counter > maxSpinCountBeforeThreadYield) {
                     std::this_thread::yield();
-                    // reset counter
                     counter = 0;
                 }
             }

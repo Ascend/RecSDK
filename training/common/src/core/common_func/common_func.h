@@ -40,4 +40,4 @@ namespace MxRec {
     std::string GetChipName(uint32_t devID);
 }
 
-#endif //RECSDK_REFACTORING_COMMON_FUNC_H
+#endif // RECSDK_REFACTORING_COMMON_FUNC_H

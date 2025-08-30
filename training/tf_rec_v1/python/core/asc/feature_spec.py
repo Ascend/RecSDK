@@ -38,20 +38,20 @@ class FeatureSpec:
     use_timestamp_eval = False
 
     @para_checker_decorator(check_option_list=[
-        ("name", StringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
-        ("table_name", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
+        ("name", StringValidator, {"min_len": ValidatorParams.MIN_VALUE.value, "max_len": ValidatorParams.MAX_UINT8.value}, ["check_string_length"]),
+        ("table_name", OptionalStringValidator, {"min_len": ValidatorParams.MIN_VALUE.value, "max_len": ValidatorParams.MAX_UINT8.value}, ["check_string_length"]),
         ("table_name", ClassValidator, {"classes": (str, type(None))}),
-        ("index_key", OptionalStringValidator, {"min_len": 1, "max_len": 255}, ["check_string_length"]),
-        ("index_key", OptionalIntValidator, {"min_value": 0, "max_value": 255}, ["check_value"]),
+        ("index_key", OptionalStringValidator, {"min_len": ValidatorParams.MIN_VALUE.value, "max_len": ValidatorParams.MAX_UINT8.value}, ["check_string_length"]),
+        ("index_key", OptionalIntValidator, {"min_value": 0, "max_value": ValidatorParams.MAX_UINT8.value}, ["check_value"]),
         ("index_key", ClassValidator, {"classes": (str, int, type(None))}),
-        ("access_threshold", OptionalIntValidator, {"min_value": -1, "max_value": ValidatorParams.MAX_INT32.value}, ["check_value"]),
+        ("access_threshold", OptionalIntValidator, {"min_value": ValidatorParams.MIN_VALUE_NEGATIVE.value, "max_value": ValidatorParams.MAX_INT32.value}, ["check_value"]),
         ("access_threshold", ClassValidator, {"classes": (int, type(None))}),
-        ("eviction_threshold", OptionalIntValidator, {"min_value": -1, "max_value": ValidatorParams.MAX_INT32.value}, ["check_value"]),
+        ("eviction_threshold", OptionalIntValidator, {"min_value": ValidatorParams.MIN_VALUE_NEGATIVE.value, "max_value": ValidatorParams.MAX_INT32.value}, ["check_value"]),
         ("eviction_threshold", ClassValidator, {"classes": (int, type(None))}),
         ("is_timestamp", ClassValidator, {"classes": (bool, type(None))}),
-        ("batch_size", OptionalIntValidator, {"min_value": 1, "max_value": ValidatorParams.MAX_INT32.value}, ["check_value"]),
+        ("batch_size", OptionalIntValidator, {"min_value": ValidatorParams.MIN_VALUE.value, "max_value": ValidatorParams.MAX_INT32.value}, ["check_value"]),
         ("batch_size", ClassValidator, {"classes": (int, type(None))}),
-        ("faae_coefficient", OptionalIntValidator, {"min_value": 1, "max_value": ValidatorParams.MAX_INT32.value}, ["check_value"])
+        ("faae_coefficient", OptionalIntValidator, {"min_value": ValidatorParams.MIN_VALUE.value, "max_value": ValidatorParams.MAX_INT32.value}, ["check_value"])
     ])
     def __init__(self, name: str,
                  table_name: Optional[str] = None,

@@ -131,12 +131,12 @@ void* ShmMemSet(std::string& shmName, uint64_t memSize)
         struct shmid_ds buf;
         key_t key = IPC_PRIVATE;    // create new shared memory every time
         int shmId = -1;
-        bool HugeTlbEnable = false;
-        const char* EnvHugeTlbEnable = getenv(HUGE_TLB_ENABLE);
-        if (EnvHugeTlbEnable != nullptr) {
-            HugeTlbEnable = (std::stoi(EnvHugeTlbEnable) == 1);
+        bool hugeTlbEnable = false;
+        const char* envHugeTlbEnable = getenv(HUGE_TLB_ENABLE);
+        if (envHugeTlbEnable != nullptr) {
+            hugeTlbEnable = (std::stoi(envHugeTlbEnable) == 1);
         }
-        if (HugeTlbEnable) {
+        if (hugeTlbEnable) {
             shmId = shmget(key, memSize, IPC_CREAT | SHM_WR_ALL | SHM_HUGETLB);
         } else {
             shmId = shmget(key, memSize, IPC_CREAT | SHM_WR_OWN);
