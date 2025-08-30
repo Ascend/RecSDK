@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
+#ifndef MXREC_TF_PLUGINH
+#define MXREC_TF_PLUGINH
+
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -43,3 +46,5 @@ namespace MxRecTfPlugin {
         ~CustOps() override = default;
     };
 }
+
+#endif // MXREC_TF_PLUGINH
