@@ -35,4 +35,10 @@ TEST(TestGetShmAddr, Basic)
     }
 }
 
+TEST(TestGetShmAddr, MallocFromShm_nullptr)
+{
+    std::string chanName = "chanNameNone_test";
+    std::array<int64_t, RMA_DIM_MAX> dims= {2, 1};
 
+    EXPECT_THROW(MallocFromShm(chanName, dims), std::runtime_error);
+}

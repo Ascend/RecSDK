@@ -329,7 +329,8 @@ private:
     int id_;
 };
 
-EosDatasetOp::EosDatasetOp(OpKernelConstruction *ctx) : UnaryDatasetOpKernel(ctx) {
+EosDatasetOp::EosDatasetOp(OpKernelConstruction *ctx) : UnaryDatasetOpKernel(ctx)
+{
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &outputTypes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &outputShapes_));
 }
