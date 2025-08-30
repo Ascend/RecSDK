@@ -104,10 +104,10 @@ def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
         # 把所有的tensor和Operation取出来
         if isinstance(tensor_or_tensorlist, (list, tuple)):
             for i in tensor_or_tensorlist:
-                get_all_tensor(i, deep+1)
+                get_all_tensor(i, deep + 1)
         elif isinstance(tensor_or_tensorlist, dict):
             for k in tensor_or_tensorlist.keys():
-                get_all_tensor(tensor_or_tensorlist.get(k), deep+1)
+                get_all_tensor(tensor_or_tensorlist.get(k), deep + 1)
         elif isinstance(tensor_or_tensorlist, (tf.Tensor, tf.Operation, tf.sparse.SparseTensor)):
             name = tensor_or_tensorlist.name
             if ":" in name:

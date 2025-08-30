@@ -24,6 +24,7 @@ from packaging.version import Version
 import shutil
 import subprocess
 
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", default="7.2.RC1")

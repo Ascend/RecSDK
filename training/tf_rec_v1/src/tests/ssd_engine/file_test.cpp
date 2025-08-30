@@ -17,9 +17,9 @@ See the License for the specific language governing permissions and
 #include <stdexcept>
 #include <string>
 
+#include "gtest/gtest.h"
 #include "mpi.h"
 #include "emock/emock.hpp"
-#include "gtest/gtest.h"
 
 #include "utils/common.h"
 #include "error/error.h"

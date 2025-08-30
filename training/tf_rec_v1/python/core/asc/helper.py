@@ -36,6 +36,7 @@ from mx_rec.util.normalization import fix_invalid_table_name
 from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.constants.constants import LIBREC_TF_REC_V1_CPU_SO
 
+
 @para_checker_decorator(check_option_list=[
     (["tgt_key_specs", "args_index_list"], ValueCompareValidator, {"target": None},
      ["check_at_least_one_not_equal_to_target"]),

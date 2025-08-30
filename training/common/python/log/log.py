@@ -20,6 +20,7 @@ import logging
 
 from rec_sdk_common.constants.constants import LogLevel, EnvOptionCommon
 
+
 class LoggingProxy:
     _instance: logging.Logger = None
 
@@ -32,68 +33,28 @@ class LoggingProxy:
 
     @classmethod
     def info(cls, msg: str, *args, **kwargs):
-        """
-        Log 'msg % args' with severity 'INFO'.
-
-        To pass exception information, use the keyword argument exc_info with
-        a true value, e.g.
-
-        logger.info("Houston, we have a %s", "interesting problem", exc_info=1)
-        """
         cls._instance.info(msg, *args, **kwargs)
 
     @classmethod
     def debug(cls, msg: str, *args, **kwargs):
-        """
-        Log 'msg % args' with severity 'DEBUG'.
-
-        To pass exception information, use the keyword argument exc_info with
-        a true value, e.g.
-
-        logger.debug("Houston, we have a %s", "thorny problem", exc_info=1)
-        """
         cls._instance.debug(msg, *args, **kwargs)
 
     @classmethod
     def error(cls, msg: str, *args, **kwargs):
-        """
-        Log 'msg % args' with severity 'ERROR'.
-
-        To pass exception information, use the keyword argument exc_info with
-        a true value, e.g.
-
-        logger.error("Houston, we have a %s", "major problem", exc_info=1)
-        """
         cls._instance.error(msg, *args, **kwargs)
 
     @classmethod
     def warning(cls, msg: str, *args, **kwargs):
-        """
-        Log 'msg % args' with severity 'WARNING'.
-
-        To pass exception information, use the keyword argument exc_info with
-        a true value, e.g.
-
-        logger.warning("Houston, we have a %s", "bit of a problem", exc_info=1)
-        """
         cls._instance.warning(msg, *args, **kwargs)
 
     @classmethod
     def exception(cls, msg: str, *args, exc_info: bool = True, **kwargs):
-        """Convenience method for logging an ERROR with exception information."""
         cls._instance.error(msg, *args, exc_info=exc_info, **kwargs)
 
     @classmethod
     def critical(cls, msg: str, *args, **kwargs):
-        """
-        Log 'msg % args' with severity 'CRITICAL'.
-
-        To pass exception information, use the keyword argument exc_info with
-        a true value, e.g.
-
-        logger.critical("Houston, we have a %s", "major disaster", exc_info=1)
-        """
         cls._instance.critical(msg, *args, **kwargs)
+
 
 def _get_logger(log_level: str = LogLevel.INFO.value) -> logging.Logger:
     options = [i.value for i in list(LogLevel)]

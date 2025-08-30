@@ -28,6 +28,7 @@ from rec_sdk_common.validator.validator import Validator, IntValidator, FloatVal
 from rec_sdk_common.constants.constants import FileParams
 from rec_sdk_common.log.log import LoggingProxy
 
+
 class TensorShapeValidator(Validator):
     def __init__(self, name: str, value: tf.TensorShape, int_checker_args: dict = None, msg: str = ""):
         super().__init__(name, value)
@@ -53,6 +54,7 @@ class TensorShapeValidator(Validator):
         self.register_checker(check_tensor_shape,
                               self.msg if self.msg else f"type of '{self.name}' is not TensorShape or ndims is not 1")
 
+
 # Ensure that the passed parameter is a constant tensor or a tf.PlaceHolder that feeds a constant value. Otherwise,
 # an exception may occur.
 class LearningRateValidator(FloatValidator):
@@ -70,6 +72,7 @@ class LearningRateValidator(FloatValidator):
                 value = 0.0 if min_value is None else float(min_value)
 
         super().__init__(name, value, min_value=min_value, max_value=max_value)
+
 
 class FileValidator(StringValidator):
     """

@@ -18,7 +18,8 @@
 import unittest
 from unittest import mock
 
-from rec_sdk_common.communication.hccl.hccl_info import get_rank_id, get_rank_size, get_local_rank_size, get_device_id, get_min_device_id
+from rec_sdk_common.communication.hccl.hccl_info import get_rank_id, get_rank_size, \
+    get_local_rank_size, get_device_id, get_min_device_id
 from rec_sdk_common.constants.constants import MPIParams, RankTableInfo
 
 

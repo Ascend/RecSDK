@@ -68,8 +68,8 @@ class ParameterCheckerTest(unittest.TestCase):
             optional_check_list=["check_value"],
             list_max_length=3,
             sub_args={
-                "min_value":1,
-                "max_value":324
+                "min_value": 1,
+                "max_value": 324
             }).check_list_length().check().is_valid())
 
         try:

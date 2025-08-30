@@ -73,6 +73,7 @@ def class_safe_check(name: str, value: Any, classes: Union[Any, Tuple[Any]]):
     validator = ClassValidator(name, value, classes)
     validator.check()
 
+
 def dir_safe_check(name: str, directory: str) -> None:
     """
     Directory safety check

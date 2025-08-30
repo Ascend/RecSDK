@@ -25,7 +25,7 @@ import tensorflow as tf
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import adam
 
-from rec_sdk_common.validator.validator import(
+from rec_sdk_common.validator.validator import (
     para_checker_decorator,
     StringValidator,
     FloatValidator)
