@@ -19,7 +19,6 @@
 #include "utils/logger.h"
 #include "utils/string_tools.h"
 #include "utils/time_cost.h"
-#include "utils/string_tools.h"
 
 using namespace Embcache;
 
@@ -414,7 +413,7 @@ void EmbcacheManager::WriteData(const std::shared_ptr<FileSystem>& fileSystemPtr
         auto errMsg = Logger::Format(
             "Write data to file error, expect write bytes:{}, actual write bytes:{}, file:{}."
             " Please check whether the available disk space is sufficient.",
-            filePath, dataSize, writeBytes);
+            dataSize, writeBytes, filePath);
         LOG_ERROR(errMsg);
         throw std::runtime_error(errMsg);
     }
@@ -466,43 +465,66 @@ void EmbcacheManager::Load(const std::string& path, int rank)
         TableRankParam tableParams(embConfigs_[i].tableName, i, embConfigs_[i].embDim, rank);
         std::string filePrefix = path + "/" + tableName + "/rank" + std::to_string(rank);
 
-        // load key and embedding
+        // load key
         std::vector<int64_t> keys;
         std::string keyAttrFile = filePrefix + "/key/slice.attribute";
         std::string keysDataFile = filePrefix + "/key/slice.data";
         ReadKeysData(fileSystemPtr, keys, keyAttrFile, keysDataFile);
 
-        std::vector<std::vector<float>> embeddings;
-        std::string embFilePath = filePrefix + "/embedding/slice.data";
-        ReadEmbeddings(fileSystemPtr, embeddings, embFilePath, keys.size(), tableParams);
-
-        // load optimizer parameter
-        std::vector<std::vector<float>> momentum1;
-        if (optimNum_ > 0) {
-            std::string momentum1FilePath = filePrefix + "/momentum1/slice.data";
-            ReadEmbeddings(fileSystemPtr, momentum1, momentum1FilePath, keys.size(), tableParams);
-        }
-        std::vector<std::vector<float>> momentum2;
-        if (optimNum_ > 1) {
-            std::string momentum2FilePath = filePrefix + "/momentum2/slice.data";
-            ReadEmbeddings(fileSystemPtr, momentum2, momentum2FilePath, keys.size(), tableParams);
-        }
-        RecordLoadDebugInfo(keys, embeddings, momentum1, momentum2, tableParams);
-
-        for (size_t k = 0; k < keys.size(); k++) {
-            std::vector<int64_t> insertKey = {keys[k]};
-            std::vector<float*> momentum = {};
-            if (optimNum_ > 0) {
-                momentum.emplace_back(momentum1[k].data());
-            }
-            if (optimNum_ > 1) {
-                momentum.emplace_back(momentum2[k].data());
-            }
-            embeddingTables_[i]->InsertOrAssign(insertKey, embeddings[k].data(), momentum);
+        // load embedding and optimizer
+        auto loadCountOneTime = GetOneTimeLoadCount(embConfigs_[i].embDim);
+        for (size_t j = 0; j < keys.size(); j += loadCountOneTime) {
+            auto start = keys.begin() + static_cast<int64_t>(j);
+            auto end = keys.begin() + std::min(j + loadCountOneTime, keys.size());
+            std::vector<int64_t> sliceKeys(start, end);
+            tableParams.loadEmbeddingOffset = static_cast<int64_t>(j);
+            LoadEmbeddingAndOptimizer(fileSystemPtr, i, filePrefix, sliceKeys, tableParams);
         }
 
         // load feature filter related data
         LoadFeatureAdmitAndEvictInfo(fileSystemPtr, i, filePrefix, keys);
+    }
+}
+
+int32_t EmbcacheManager::GetOneTimeLoadCount(int32_t embDim)
+{
+    if (embDim == 0) {
+        throw std::runtime_error("embDim is zero.");
+    }
+    return MAX_EMB_DIM / embDim * ONE_TIME_LOAD_DIM_4096;
+}
+
+void EmbcacheManager::LoadEmbeddingAndOptimizer(const shared_ptr<FileSystem>& fileSystemPtr, int32_t tableIndex,
+                                                const string& filePrefix, const vector<int64_t>& keys,
+                                                const TableRankParam& tableParams)
+{
+    vector<vector<float>> embeddings;
+    string embFilePath = filePrefix + "/embedding/slice.data";
+    ReadEmbeddings(fileSystemPtr, embeddings, embFilePath, keys.size(), tableParams);
+
+    // load optimizer parameter
+    vector<vector<float>> momentum1;
+    if (optimNum_ > 0) {
+        string momentum1FilePath = filePrefix + "/momentum1/slice.data";
+        ReadEmbeddings(fileSystemPtr, momentum1, momentum1FilePath, keys.size(), tableParams);
+    }
+    vector<vector<float>> momentum2;
+    if (optimNum_ > 1) {
+            string momentum2FilePath = filePrefix + "/momentum2/slice.data";
+            ReadEmbeddings(fileSystemPtr, momentum2, momentum2FilePath, keys.size(), tableParams);
+    }
+    RecordLoadDebugInfo(keys, embeddings, momentum1, momentum2, tableParams);
+
+    for (size_t k = 0; k < keys.size(); k++) {
+        vector<int64_t> insertKey = {keys[k]};
+        vector<float*> momentum = {};
+        if (optimNum_ > 0) {
+            momentum.emplace_back(momentum1[k].data());
+        }
+        if (optimNum_ > 1) {
+            momentum.emplace_back(momentum2[k].data());
+        }
+        embeddingTables_[tableIndex]->InsertOrAssign(insertKey, embeddings[k].data(), momentum);
     }
 }
 
@@ -601,7 +623,7 @@ void EmbcacheManager::ReadEmbeddings(const std::shared_ptr<FileSystem>& fileSyst
         embeddings.emplace_back(tmp);
     }
     std::vector<int64_t> offsetVec(vectorSize);
-    std::iota(offsetVec.begin(), offsetVec.end(), 0);
+    std::iota(offsetVec.begin(), offsetVec.end(), tableParams.loadEmbeddingOffset);
     ssize_t readBytes;
     try {
         readBytes = fileSystemPtr->Read(filePath, embeddings, 0, offsetVec, embDim);
