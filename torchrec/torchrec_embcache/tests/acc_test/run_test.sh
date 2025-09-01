@@ -57,5 +57,12 @@ pytest ./test_embedding_cache_pipeline.py
     export LOCAL_UNIQUE_PARALLEL_BATCH_NUM=4
     pytest ./test_embedding_ec_cache_pipeline.py
 )
+
+(
+    export DO_EC_LOCAL_UNIQUE=1
+    pytest ./test_feature_filter.py
+)
+
 pytest ./test_feature_filter.py
 pytest ./test_kjt_with_time.py
+pytest ./test_save_and_load.py
