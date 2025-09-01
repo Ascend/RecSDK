@@ -54,6 +54,8 @@ constexpr int KEY_ATTRIBUTE_DATA_LEN = 2;
 constexpr int EMB_ATTRIBUTE_DATA_LEN = 3;
 constexpr int64_t ATTR_VEC_INIT_VALUE = -1;
 constexpr long long KEY_SIZE_MAX = 1e9L;
+constexpr int32_t MAX_EMB_DIM = 4096;
+constexpr int32_t ONE_TIME_LOAD_DIM_4096 = 300000;
 const std::string ATTR_SUFFIX = "attribute";
 const std::string DATA_SUFFIX = "data";
 
@@ -107,6 +109,9 @@ struct TableRankParam {
     int32_t tableIndex;
     int32_t embDim;
     int rank;
+
+    // load embedding offset every for loop, only use for loading data.
+    int64_t loadEmbeddingOffset = 0;
 };
 
 class EmbcacheManager {
@@ -195,6 +200,7 @@ private:
     void LoadFeatureAdmitAndEvictInfo(const std::shared_ptr<FileSystem>& fileSystemPtr,
                                       int32_t tableIndex, const std::string& filePrefix,
                                       const std::vector<int64_t>& saveKeys);
+    static int32_t GetOneTimeLoadCount(int32_t embDim);
 private:
     int32_t embNum_;
     std::vector<int32_t> embTableIndies_;
@@ -211,6 +217,9 @@ private:
 
     // 计算换入换出offset时是否要累加表外偏移. 逻辑上作为一个大表处理时设置为true，否则false
     bool needAccumulateOffset_ = true;
+    void LoadEmbeddingAndOptimizer(const shared_ptr<FileSystem>& fileSystemPtr, int32_t tableIndex,
+                                   const string& filePrefix, const vector<int64_t>& keys,
+                                   const TableRankParam& tableParams);
 };
 }  // namespace Embcache
 #endif  // EMBEDDING_CACHE_EMBEDDING_MANAGER_H
