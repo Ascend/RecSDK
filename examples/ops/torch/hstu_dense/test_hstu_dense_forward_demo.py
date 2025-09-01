@@ -14,14 +14,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
+import os
+import sys
 import subprocess
 import sysconfig
-
 import numpy as np
 import pytest
 import torch
 import torch.nn.functional as F
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+common_dir = os.path.abspath(os.path.join(current_dir, "..", "common"))
+sys.path.append(common_dir)
+from utils import allclose
 
 torch.npu.config.allow_internal_format = False
 
@@ -33,16 +38,9 @@ mask_triu: int = 1
 mask_none: int = 2
 mask_custom: int = 3
 
-
-def get_chip():
-    return False
-
-
-def skip_seq_len(seq_len):
-    block_len = 128
-    if get_chip() and seq_len % block_len:
-        return True
-    return False
+bfloat16_pre: float = 5e-3
+float16_pre: float = 1e-3
+float32_pre: float = 1e-4
 
 
 def jagged_data_gen(batch_size, max_seq_len, num_heads, attention_dim, data_type, mask_type):
@@ -54,14 +52,11 @@ def jagged_data_gen(batch_size, max_seq_len, num_heads, attention_dim, data_type
     max_seq_len = np.max(seq_lens)
     total_seqs = np.sum(seq_lens)
 
-    q = torch.rand(total_seqs, num_heads, attention_dim).to(torch.float32)
-    q = q.uniform_(-1, 1)
-    k = torch.rand(total_seqs, num_heads, attention_dim).to(torch.float32)
-    k = k.uniform_(-1, 1)
-    v = torch.rand(total_seqs, num_heads, attention_dim).to(torch.float32)
-    v = v.uniform_(-1, 1)
+    q = torch.rand(total_seqs, num_heads, attention_dim).to(torch.float32).uniform_(-1, 1)
+    k = torch.rand(total_seqs, num_heads, attention_dim).to(torch.float32).uniform_(-1, 1)
+    v = torch.rand(total_seqs, num_heads, attention_dim).to(torch.float32).uniform_(-1, 1)
 
-    rel_attn_bias = torch.zeros(batch_size, num_heads, max_seq_len, max_seq_len).to(torch.float32)
+    rel_attn_bias = torch.zeros(batch_size, num_heads, max_seq_len, max_seq_len).to(torch.float32).uniform_(-1, 1)
     for batch_id in range(batch_size):
         seq_len = seq_lens[batch_id]
         rel_attn_bias[batch_id, :, 0:seq_len, 0:seq_len] = torch.rand(seq_len, seq_len).to(torch.float32)
@@ -78,15 +73,11 @@ def jagged_data_gen(batch_size, max_seq_len, num_heads, attention_dim, data_type
 def generate_tensor(batch_size, max_seq_len, num_heads, attention_dim, data_type, mask_type):
     total_num = batch_size * max_seq_len * num_heads * attention_dim
 
-    q = torch.rand(total_num).reshape(batch_size, max_seq_len, num_heads, attention_dim)
-    k = torch.rand(total_num).reshape(batch_size, max_seq_len, num_heads, attention_dim)
-    v = torch.rand(total_num).reshape(batch_size, max_seq_len, num_heads, attention_dim)
-    rel_attn_bias = torch.rand(batch_size, num_heads, max_seq_len, max_seq_len)
-    if get_chip():
-        invalid_attn_mask = torch.randint(0, 2, (max_seq_len, max_seq_len))
-        invalid_attn_mask = torch.tril(invalid_attn_mask)
-        invalid_attn_mask = invalid_attn_mask.unsqueeze(0).unsqueeze(1).repeat(batch_size, 1, 1, 1)
-    elif mask_type == mask_tril:
+    q = torch.rand(total_num).reshape(batch_size, max_seq_len, num_heads, attention_dim).uniform_(-1, 1)
+    k = torch.rand(total_num).reshape(batch_size, max_seq_len, num_heads, attention_dim).uniform_(-1, 1)
+    v = torch.rand(total_num).reshape(batch_size, max_seq_len, num_heads, attention_dim).uniform_(-1, 1)
+    rel_attn_bias = torch.rand(batch_size, num_heads, max_seq_len, max_seq_len).uniform_(-1, 1)
+    if mask_type == mask_tril:
         invalid_attn_mask = 1 - torch.triu(torch.ones(batch_size, num_heads, max_seq_len, max_seq_len), diagonal=1)
     else:
         invalid_attn_mask = torch.randint(0, 2, size=(batch_size, num_heads, max_seq_len, max_seq_len))
@@ -196,11 +187,11 @@ class TestHstuJaggedDemo:
                                      data_type)
 
         if data_type == torch.bfloat16:
-            res = torch.allclose(output, gloden, 1e-2, 1e-2)
+            res = allclose(output, gloden, bfloat16_pre, bfloat16_pre)
         elif data_type == torch.float16:
-            res = torch.allclose(output, gloden, 1e-3, 1e-3)
+            res = allclose(output, gloden, float16_pre, float16_pre)
         else:
-            res = torch.allclose(output, gloden, 1e-4, 1e-4)
+            res = allclose(output, gloden, float32_pre, float32_pre)
         assert res
 
     @pytest.mark.parametrize("batch_size", [1, 16])
@@ -211,7 +202,6 @@ class TestHstuJaggedDemo:
     @pytest.mark.parametrize("mask_type", [mask_tril, mask_none, mask_custom])
     @pytest.mark.parametrize("silu_scale", [0, 1 / 1024])
     @pytest.mark.parametrize("data_type", [torch.float32, torch.float16, torch.bfloat16])
-    @pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P.")
     def test_hstu_dens_forward(self, batch_size, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
                                data_type):
         self.execute(batch_size, max_seq_len, head_num, head_dim, enable_bias, mask_type, silu_scale, data_type)
@@ -223,7 +213,6 @@ class TestHstuJaggedDemo:
     @pytest.mark.parametrize("mask_type", [mask_tril, mask_none, mask_custom])
     @pytest.mark.parametrize("silu_scale", [0, 1 / 1024])
     @pytest.mark.parametrize("data_type", [torch.float32, torch.float16, torch.bfloat16])
-    @pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P.")
     def test_hstu_dens_forward_128bs(self, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
                                      data_type):
         self.execute(128, max_seq_len, head_num, head_dim, enable_bias, mask_type, silu_scale, data_type)
@@ -235,7 +224,6 @@ class TestHstuJaggedDemo:
     @pytest.mark.parametrize("mask_type", [mask_tril, mask_none, mask_custom])
     @pytest.mark.parametrize("silu_scale", [0, 1 / 1024])
     @pytest.mark.parametrize("data_type", [torch.float32, torch.float16, torch.bfloat16])
-    @pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P.")
     def test_hstu_dens_forward_2048bs(self, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
                                       data_type):
         self.execute(2048, max_seq_len, head_num, head_dim, enable_bias, mask_type, silu_scale, data_type)
@@ -247,7 +235,6 @@ class TestHstuJaggedDemo:
     @pytest.mark.parametrize("mask_type", [mask_custom])
     @pytest.mark.parametrize("silu_scale", [1 / 1024])
     @pytest.mark.parametrize("data_type", [torch.bfloat16])
-    @pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P.")
     def test_hstu_dens_forward_head_num_255(self, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
                                         data_type):
         with pytest.raises(RuntimeError) as e_info:
@@ -261,7 +248,6 @@ class TestHstuJaggedDemo:
     @pytest.mark.parametrize("mask_type", [mask_custom])
     @pytest.mark.parametrize("silu_scale", [1 / 1024])
     @pytest.mark.parametrize("data_type", [torch.bfloat16])
-    @pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P.")
     def test_hstu_dens_forward_head_dim_255(self, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
                                         data_type):
         with pytest.raises(RuntimeError) as e_info:
@@ -286,10 +272,7 @@ class TestHstuNormalDemo:
 
         qk_attn = F.silu(qk_attn) * silu_scale
 
-        if get_chip():
-            mask = mask.repeat(1, num_heads, 1, 1)
-            qk_attn = qk_attn * mask
-        elif mask_type != mask_none:
+        if mask_type != mask_none:
             qk_attn = qk_attn * mask
 
         v = v.permute(0, 2, 1, 3)
@@ -325,36 +308,21 @@ class TestHstuNormalDemo:
         torch.npu.synchronize()
 
         if data_type == torch.bfloat16:
-            res = torch.allclose(output, gloden, 1e-2, 1e-2)
+            res = allclose(output, gloden, bfloat16_pre, bfloat16_pre)
         elif data_type == torch.float16:
-            res = torch.allclose(output, gloden, 1e-3, 1e-3)
+            res = allclose(output, gloden, float16_pre, float16_pre)
         else:
-            res = torch.allclose(output, gloden, 1e-4, 1e-4)
+            res = allclose(output, gloden, float32_pre, float32_pre)
         assert res
-
-    max_seq_len = [1, 15, 31, 256, 768, 1023, 4095]
-    paramFalse = pytest.param(False,
-                              marks=pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P."))
-    paramFp32 = pytest.param(torch.float32,
-                             marks=pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P."))
-    parambF16 = pytest.param(torch.bfloat16,
-                             marks=pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P."))
-    paramsSeqlen = []
-    for i in max_seq_len:
-        if skip_seq_len(i):
-            paramsSeqlen.append(
-                pytest.param(i, marks=pytest.mark.skipif(True, reason="This test case is Skipped for Ascend310P.")))
-        else:
-            paramsSeqlen.append(pytest.param(i))
 
     @pytest.mark.parametrize("batch_size", [1, 16])
     @pytest.mark.parametrize("head_num", [2, 4])
-    @pytest.mark.parametrize("max_seq_len", paramsSeqlen)
+    @pytest.mark.parametrize("max_seq_len", [1, 15, 31, 256, 768, 1023, 4095])
     @pytest.mark.parametrize("head_dim", [32, 64])
-    @pytest.mark.parametrize("enable_bias", [True, paramFalse])
+    @pytest.mark.parametrize("enable_bias", [True, False])
     @pytest.mark.parametrize("mask_type", [mask_tril, mask_none, mask_custom])
     @pytest.mark.parametrize("silu_scale", [1 / 256])
-    @pytest.mark.parametrize("data_type", [torch.float16, paramFp32, parambF16])
+    @pytest.mark.parametrize("data_type", [torch.float16, torch.float32, torch.bfloat16])
     def test_hstu_dens_normal(self, batch_size, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
                               data_type):
         self.execute(batch_size, max_seq_len, head_num, head_dim, enable_bias, mask_type, silu_scale, data_type)

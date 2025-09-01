@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import os
+import sys
 import sysconfig
 import pytest
 import torch
@@ -21,10 +23,19 @@ import torch_npu
 import torch.nn.functional as F
 import numpy as np
 
+current_dir = os.path.dirname(os.path.abspath(__file__))
+common_dir = os.path.abspath(os.path.join(current_dir, "..", "common"))
+sys.path.append(common_dir)
+from utils import allclose
+
 torch.npu.config.allow_internal_format = False
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
 device_id: int = 0
+
+bfloat16_pre: float = 5e-3
+float16_pre: float = 1e-3
+float32_pre: float = 1e-4
 
 
 def jagged_data_gen(batch_size, max_seq_len, num_heads, attention_dim, mask_type, data_type):
@@ -47,7 +58,7 @@ def jagged_data_gen(batch_size, max_seq_len, num_heads, attention_dim, mask_type
     elif mask_type == 2:
         mask = None
     else:
-        mask = torch.empty(batch_size, num_heads, max_seq_len, max_seq_len, dtype=data_type).uniform_(-1, 1)
+        mask = torch.randint(0, 2, size=(batch_size, num_heads, max_seq_len, max_seq_len)).to(data_type)
 
     return grad, q, k, v, bias, mask, max_seq_len, seq_offset
 
@@ -67,7 +78,7 @@ def generate_tensor(batch_size, max_seq_len, num_heads, attention_dim, mask_type
     elif mask_type == 2:
         mask = None
     else:
-        mask = torch.empty(batch_size, num_heads, max_seq_len, max_seq_len, dtype=data_type).uniform_(-1, 1)
+        mask = torch.randint(0, 2, size=(batch_size, num_heads, max_seq_len, max_seq_len)).to(data_type)
 
     return grad, q, k, v, bias, mask
 
@@ -106,9 +117,9 @@ class TestHstuJaggedDemo:
             seq_lens[i] = seq_offset[i + 1] - seq_offset[i]
 
         for batch, seq_len in enumerate(seq_lens):
-            equal = torch.allclose(bias_grad[batch, :, :seq_len, :seq_len],
-                                   bias_grad_golden[batch, :, :seq_len, :seq_len],
-                                   loss, loss)
+            equal = allclose(bias_grad[batch, :, :seq_len, :seq_len],
+                             bias_grad_golden[batch, :, :seq_len, :seq_len],
+                             loss, loss)
             if not equal:
                 return False
 
@@ -219,15 +230,15 @@ class TestHstuJaggedDemo:
         q_grad_golden, k_grad_golden, v_grad_golden, attn_bias_grad_golden = self.golden_op_exec(
             grad, q, k, v, bias, mask, max_seq_len, seq_offset, mask_type, silu_scale, enable_bias, data_type)
 
-        loss = 1e-4
+        loss = float32_pre
         if data_type == torch.float16:
-            loss = 1e-3
+            loss = float16_pre
         elif data_type == torch.bfloat16:
-            loss = 1e-2
+            loss = bfloat16_pre
 
-        q_res = torch.allclose(q_grad, q_grad_golden, loss, loss)
-        k_res = torch.allclose(k_grad, k_grad_golden, loss, loss)
-        v_res = torch.allclose(v_grad, v_grad_golden, loss, loss)
+        q_res = allclose(q_grad, q_grad_golden, loss, loss)
+        k_res = allclose(k_grad, k_grad_golden, loss, loss)
+        v_res = allclose(v_grad, v_grad_golden, loss, loss)
         bias_res = not enable_bias or self.compare_jagged_bias(attn_bias_grad, attn_bias_grad_golden, seq_offset, loss)
 
         assert q_res and k_res and v_res and bias_res
@@ -345,16 +356,16 @@ class TestHstuNormalDemo:
 
         torch.npu.synchronize()
 
-        loss = 1e-4
+        loss = float32_pre
         if data_type == torch.float16:
-            loss = 1e-3
+            loss = float16_pre
         elif data_type == torch.bfloat16:
-            loss = 1e-2
+            loss = bfloat16_pre
 
-        q_res = torch.allclose(q_grad, q_grad_golden, loss, loss)
-        k_res = torch.allclose(k_grad, k_grad_golden, loss, loss)
-        v_res = torch.allclose(v_grad, v_grad_golden, loss, loss)
-        bias_res = not enable_bias or torch.allclose(attn_bias_grad, attn_bias_grad_golden, loss, loss)
+        q_res = allclose(q_grad, q_grad_golden, loss, loss)
+        k_res = allclose(k_grad, k_grad_golden, loss, loss)
+        v_res = allclose(v_grad, v_grad_golden, loss, loss)
+        bias_res = not enable_bias or allclose(attn_bias_grad, attn_bias_grad_golden, loss, loss)
 
         assert q_res and k_res and v_res and bias_res
 
