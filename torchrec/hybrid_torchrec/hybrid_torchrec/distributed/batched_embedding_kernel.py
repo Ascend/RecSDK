@@ -344,6 +344,14 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
                 [indices], updates[1].reshape(-1, self.dims[0])
             )
 
+    def get_momentum(self) -> List[torch.Tensor]:
+        result = []
+        if self._optim_num > 0:
+            result.append(self.momentum1_dev)
+        if self._optim_num > 1:
+            result.append(self.momentum2_dev)
+        return result
+
 
 class HybridBatchedFusedEmbeddingBag(
     BaseBatchedEmbeddingBag[torch.Tensor], FusedOptimizerModule

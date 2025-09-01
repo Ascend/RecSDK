@@ -52,7 +52,7 @@ class Saver:
             return False
 
     @staticmethod
-    def _get_latest_load_path(path):
+    def get_latest_load_path(path):
         path = Path(path)
         dirs = [d for d in path.iterdir() if d.is_dir() and Saver.is_timestamp_format(d.name)]
         if not dirs:
@@ -90,7 +90,7 @@ class Saver:
         self._find_all_embed_cache_instance(module)
         self._check_emb_cache_instance_len()
         path = os.path.realpath(path)
-        path = self._get_latest_load_path(path)
+        path = self.get_latest_load_path(path)
         check_path(path)
         for mod in self.cache_module:
             mod.embcache_mgr.load(path, self.rank)

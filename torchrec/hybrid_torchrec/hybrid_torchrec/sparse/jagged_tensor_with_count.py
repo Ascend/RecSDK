@@ -5,25 +5,48 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
-from typing import Optional, Dict, List, Tuple
+
+from typing import Optional, Dict, List, Tuple, NamedTuple
 
 import torch
-
 from torch.autograd.profiler import record_function
 from torchrec.sparse.jagged_tensor import (
+    _pin_and_move,
     _permute_tensor_by_segments,
     _sum_by_splits,
     JaggedTensor,
-    KeyedJaggedTensor,
 )
-from torchrec.pt2.checks import is_non_strict_exporting
+from torchrec.pt2.checks import is_torchdynamo_compiling
+
 from .extended_jagged_tensor import ExtendedJaggedTensor, KeyedExtendedJaggedTensor
 
 
+class DistInitParams(NamedTuple):
+    """
+    Parameters for KeyedJaggedTensorWithCount.dist_init method.
+    
+    Attributes:
+        keys: List of keys
+        tensors: List of tensors
+        variable_stride_per_key: Whether to use variable stride per key
+        num_workers: Number of workers
+        recat: Recat tensor (optional)
+        stride_per_rank: Stride per rank (optional)
+        stagger: Stagger value (default: 1)
+    """
+    keys: List[str]
+    tensors: List[torch.Tensor]
+    variable_stride_per_key: bool
+    num_workers: int
+    recat: Optional[torch.Tensor]
+    stride_per_rank: Optional[List[int]]
+    stagger: int = 1
+
+
 class JaggedTensorWithCount(ExtendedJaggedTensor):
-    _fields = [
-        "_counts"
-    ]
+    """带有计数信息的JaggedTensor"""
+    
+    _fields = "_counts"
 
     def __init__(
         self,
@@ -39,20 +62,19 @@ class JaggedTensorWithCount(ExtendedJaggedTensor):
             weights=weights,
             lengths=lengths,
             offsets=offsets,
-            extra_field_name="counts"
         )
         # values中每个ids出现次数，分桶去重时会进行计算，input_dist all2all会做集合通信，post dist input时做count记录
         self._counts = counts
 
     @property
-    def counts(self):
-        return self._counts
+    def counts(self) -> Optional[torch.Tensor]:
+        return self._extra
 
 
-class KeyedJaggedTensorWithCount(KeyedExtendedJaggedTensor):
-    _fields = [
-        "_counts"
-    ]
+class KeyedJaggedTensorWithCount(KeyedExtendedJaggedTensor[JaggedTensorWithCount]):
+    """带有计数信息的KeyedJaggedTensor"""
+    
+    _fields = ["_counts"]
 
     def __init__(
         self,
@@ -91,178 +113,285 @@ class KeyedJaggedTensorWithCount(KeyedExtendedJaggedTensor):
             inverse_indices=inverse_indices,
             extra_field_name="counts"
         )
-        self._counts: torch.Tensor = counts
+        self._counts: Optional[torch.Tensor] = counts
 
     @property
-    def counts(self) -> torch.Tensor:
-        return self._counts
+    def counts(self) -> Optional[torch.Tensor]:
+        return self._extra
 
     @staticmethod
     def from_jt_dict(jt_dict: Dict[str, JaggedTensorWithCount]) -> "KeyedJaggedTensorWithCount":
         """
-        Constructs a KeyedJaggedTensorWithCount from a dictionary of JaggedTensorWithCounts.
-        Automatically calls `kjt.sync()` on newly created KJT.
-
-        Args:
-            jt_dict (Dict[str, JaggedTensorWithCount]): dictionary of JaggedTensorWithCounts.
-
-        Returns:
-            KeyedJaggedTensorWithCount: constructed KeyedJaggedTensorWithCount.
+        从JaggedTensorWithCount字典构造KeyedJaggedTensorWithCount
         """
-        return KeyedJaggedTensorWithCount.from_jt_dict_base(jt_dict, "counts")
+        return KeyedExtendedJaggedTensor.from_jt_dict(jt_dict, lambda jt: jt.counts)
 
     def split(self, segments: List[int]) -> List["KeyedJaggedTensorWithCount"]:
-        split_list: List[KeyedJaggedTensorWithCount] = []
-        start = 0
-        start_offset = 0
-        _length_per_key = self.length_per_key()
-        _offset_per_key = self.offset_per_key()
-        for segment in segments:
-            end = start + segment
-            end_offset = _offset_per_key[end]
-            keys: List[str] = self._keys[start:end]
-
-            stride, stride_per_key_per_rank = (
-                (None, self.stride_per_key_per_rank()[start:end])
-                if self.variable_stride_per_key()
-                else (self._stride, None)
-            )
-            if segment == len(self._keys):
-                # no torch slicing required
-                split_list.append(
-                    KeyedJaggedTensorWithCount(
-                        keys=self._keys,
-                        values=self._values,
-                        counts=self._counts,
-                        weights=self.weights_or_none(),
-                        lengths=self._lengths,
-                        offsets=self._offsets,
-                        stride=stride,
-                        stride_per_key_per_rank=stride_per_key_per_rank,
-                        length_per_key=self._length_per_key,
-                        offset_per_key=self._offset_per_key,
-                        index_per_key=self._index_per_key,
-                        jt_dict=self._jt_dict,
-                    )
-                )
-            elif segment == 0:
-                empty_int_list: List[int] = torch.jit.annotate(List[int], [])
-                split_list.append(
-                    KeyedJaggedTensorWithCount(
-                        keys=keys,
-                        values=torch.tensor(
-                            empty_int_list,
-                            device=self.device(),
-                            dtype=self._values.dtype,
-                        ),
-                        counts=torch.tensor(
-                            empty_int_list,
-                            device=self.device(),
-                            dtype=self._counts.dtype,
-                        ),
-                        weights=(
-                            None
-                            if self.weights_or_none() is None
-                            else torch.tensor(
-                                empty_int_list,
-                                device=self.device(),
-                                dtype=self.weights().dtype,
-                            )
-                        ),
-                        lengths=torch.tensor(
-                            empty_int_list, device=self.device(), dtype=torch.int
-                        ),
-                        offsets=torch.tensor(
-                            empty_int_list, device=self.device(), dtype=torch.int
-                        ),
-                        stride=stride,
-                        stride_per_key_per_rank=stride_per_key_per_rank,
-                        length_per_key=None,
-                        offset_per_key=None,
-                        index_per_key=None,
-                        jt_dict=None,
-                    )
-                )
-            else:
-                split_length_per_key = _length_per_key[start:end]
-                split_list.append(
-                    KeyedJaggedTensorWithCount(
-                        keys=keys,
-                        values=self._values[start_offset:end_offset],
-                        counts=(
-                            self._counts[start_offset:end_offset]
-                            if self._counts is not None
-                            else None
-                        ),
-                        weights=(
-                            None
-                            if self.weights_or_none() is None
-                            else self.weights()[start_offset:end_offset]
-                        ),
-                        lengths=self.lengths()[
-                            self.lengths_offset_per_key()[
-                                start
-                            ]: self.lengths_offset_per_key()[end]
-                        ],
-                        offsets=None,
-                        stride=stride,
-                        stride_per_key_per_rank=stride_per_key_per_rank,
-                        length_per_key=split_length_per_key,
-                        offset_per_key=None,
-                        index_per_key=None,
-                        jt_dict=None,
-                    )
-                )
-            start = end
-            start_offset = end_offset
-        return split_list
+        return super().split(segments, KeyedJaggedTensorWithCount)
 
     def permute(
-        self,
-        permute_order: List[int],
-        permuted_length_per_key: List[int],
+        self, indices: List[int], indices_tensor: Optional[torch.Tensor] = None
     ) -> "KeyedJaggedTensorWithCount":
-        permuted_length_per_key_sum = sum(permuted_length_per_key)
-        # 避免直接访问受保护的成员
-        if not torch.jit.is_scripting() and is_non_strict_exporting():
-            # 使用公共API替代受保护成员的访问
-            if permuted_length_per_key_sum <= 0:
-                raise ValueError("permuted_length_per_key_sum needs to be greater than 0")
+        return super().permute(
+            indices, 
+            indices_tensor, 
+            KeyedJaggedTensorWithCount,
+            _permute_tensor_by_segments  # 使用特定的permute函数
+        )
 
-        with record_function("KeyedJaggedTensorWithCount.permute"):
-            permuted_values = _permute_tensor_by_segments(
-                self._values,
-                self._offsets,
-                permute_order,
-                permuted_length_per_key,
+    def pin_memory(self) -> "KeyedJaggedTensorWithCount":
+        return super().pin_memory(KeyedJaggedTensorWithCount)
+
+    def to(
+        self, device: torch.device, non_blocking: bool = False
+    ) -> "KeyedJaggedTensorWithCount":
+        return super().to(device, non_blocking, KeyedJaggedTensorWithCount)
+
+    @torch.jit.unused
+    def record_stream(self, stream: torch.cuda.streams.Stream) -> None:
+        super().record_stream(stream)
+        if self._counts is not None:
+            self._counts.record_stream(stream)
+
+    def to_dict(self) -> Dict[str, JaggedTensor]:
+        # invoke base class's method, and will discard timestamp data.
+        return super().to_dict()
+
+    def dist_labels(self) -> List[str]:
+        labels = ["lengths", "values"]
+        if self.variable_stride_per_key():
+            labels.append("strides")
+        if self.weights_or_none() is not None:
+            labels.append("weights")
+        if self._counts is not None:
+            labels.append("counts")
+        return labels
+
+    def dist_splits(self, key_splits: List[int]) -> List[List[int]]:
+        batch_size_per_split = _sum_by_splits(self.stride_per_key(), key_splits)
+        length_per_split = _sum_by_splits(self.length_per_key(), key_splits)
+        splits = [batch_size_per_split, length_per_split]
+        if self.variable_stride_per_key():
+            splits.append(key_splits)
+        if self.weights_or_none() is not None:
+            splits.append(length_per_split)
+        if self._counts is not None:
+            splits.append(length_per_split)
+        return splits
+
+    def dist_tensors(self) -> List[torch.Tensor]:
+        tensors = [self.lengths(), self.values()]
+        if self.variable_stride_per_key():
+            strides = _pin_and_move(torch.tensor(self.stride_per_key()), self.device())
+            tensors.append(strides)
+        if self.weights_or_none() is not None:
+            tensors.append(self.weights())
+        if self._counts is not None:
+            tensors.append(self._counts)
+        return tensors
+
+    @staticmethod
+    def dist_init(params: DistInitParams) -> "KeyedJaggedTensorWithCount":
+        """
+        Initialize KeyedJaggedTensorWithCount with DistInitParams.
+        
+        Args:
+            params: DistInitParams object containing all necessary parameters
+            
+        Returns:
+            KeyedJaggedTensorWithCount: Initialized object
+        """
+        # The original largest length is 4, there is an extra counts params, the biggest length is 5.
+        if len(params.tensors) not in [2, 3, 4, 5]:
+            raise RuntimeError(f"tensors length must in [2, 3, 4, 5] but got:{len(params.tensors)}")
+        lengths = params.tensors[0]
+        values = params.tensors[1]
+        stride_per_rank_per_key = params.tensors[2] if params.variable_stride_per_key else None
+
+        # 仅当local unique且有表开启准入时，会使用KeyedJaggedTensorWithCount做all2all
+        # 此时会固定在tensors列表末尾传递counts数据
+        weights = (
+            params.tensors[-2]
+            if (params.variable_stride_per_key and len(params.tensors) == 5)
+               or (not params.variable_stride_per_key and len(params.tensors) == 4)
+            else None
+        )
+        counts = params.tensors[-1]
+
+        if params.variable_stride_per_key:
+            stride_per_key_per_rank_tensor: torch.Tensor = stride_per_rank_per_key.view(
+                params.num_workers, len(params.keys)
+            ).T.cpu()
+
+            strides_cumsum: torch.Tensor = (
+                torch.ops.fbgemm.asynchronous_complete_cumsum(stride_per_rank_per_key)
+            ).cpu()
+
+            cumsum_lengths = torch.ops.fbgemm.asynchronous_complete_cumsum(lengths)
+
+            n = strides_cumsum.size(0)
+            strides_cumsum_from_1 = torch.narrow(
+                strides_cumsum, dim=0, start=1, length=n - 1
             )
-            permuted_counts = _permute_tensor_by_segments(
-                self._counts,
-                self._offsets,
-                permute_order,
-                permuted_length_per_key,
+            strides_cumsum_to_minus_1 = torch.narrow(
+                strides_cumsum, dim=0, start=0, length=n - 1
             )
-            permuted_lengths = _sum_by_splits(
-                torch.ones_like(self._values),
-                self._offsets,
-                permute_order,
-                permuted_length_per_key,
-            )
-            permuted_offsets = torch.cumsum(
-                torch.cat([torch.tensor([0]), permuted_lengths]), dim=0
+            length_per_key_tensor = (
+                cumsum_lengths[strides_cumsum_from_1]
+                - cumsum_lengths[strides_cumsum_to_minus_1]
             )
 
-            return KeyedJaggedTensorWithCount(
-                keys=self._keys,
-                values=permuted_values,
-                counts=permuted_counts,
-                weights=None,
-                lengths=permuted_lengths,
-                offsets=permuted_offsets,
-                stride=self._stride,
-                stride_per_key_per_rank=self._stride_per_key_per_rank,
-                length_per_key=permuted_length_per_key,
-                offset_per_key=None,
-                index_per_key=self._index_per_key,
-                jt_dict=None,
+            with record_function("## all2all_data:recat_values ##"):
+                if params.recat is not None:
+                    new_lengths, _ = _permute_tensor_by_segments(
+                        lengths,
+                        stride_per_rank_per_key,
+                        torch.jit._unwrap_optional(params.recat),
+                        None,
+                    )
+                    new_values, new_weights = _permute_tensor_by_segments(
+                        values,
+                        length_per_key_tensor,
+                        torch.jit._unwrap_optional(params.recat),
+                        weights,
+                    )
+                    if counts is not None:
+                        new_counts, _ = _permute_tensor_by_segments(
+                            counts,
+                            length_per_key_tensor,
+                            torch.jit._unwrap_optional(params.recat),
+                            None,
+                        )
+
+            stride_per_key_per_rank = torch.jit.annotate(
+                List[List[int]], stride_per_key_per_rank_tensor.tolist()
             )
+
+            if not stride_per_key_per_rank:
+                stride_per_key_per_rank = [[0]] * len(params.keys)
+            if params.stagger > 1:
+                stride_per_key_per_rank_stagger: List[List[int]] = []
+                local_world_size = params.num_workers // params.stagger
+                for i in range(len(params.keys)):
+                    stride_per_rank_stagger: List[int] = []
+                    for j in range(local_world_size):
+                        stride_per_rank_stagger.extend(
+                            stride_per_key_per_rank[i][j::local_world_size]
+                        )
+                    stride_per_key_per_rank_stagger.append(stride_per_rank_stagger)
+                stride_per_key_per_rank = stride_per_key_per_rank_stagger
+
+            kjt = KeyedJaggedTensorWithCount(
+                keys=params.keys,
+                values=new_values,
+                counts=new_counts,
+                weights=new_weights,
+                lengths=lengths,
+                stride_per_key_per_rank=stride_per_key_per_rank,
+            )
+            return kjt.sync()
+        else:
+            with record_function("## all2all_data:recat_values ##"):
+                if params.recat is not None:
+                    stride = params.stride_per_rank[0]
+
+                    single_batch_per_rank = True
+                    new_counts = None
+                    if not is_torchdynamo_compiling():
+                        single_batch_per_rank = all(
+                            s == stride for s in params.stride_per_rank
+                        )
+                    if (
+                        single_batch_per_rank
+                        and is_torchdynamo_compiling()
+                        and not torch.jit.is_scripting()
+                    ):
+                        (
+                            new_lengths,
+                            new_values,
+                            new_weights,
+                        ) = torch.ops.fbgemm.permute_2D_sparse_data_input1D(
+                            torch.jit._unwrap_optional(params.recat),
+                            lengths,
+                            values,
+                            stride,
+                            weights,
+                            values.numel(),
+                        )
+                        if counts is not None:
+                            _, new_counts, _ = torch.ops.fbgemm.permute_2D_sparse_data_input1D(
+                                torch.jit._unwrap_optional(params.recat),
+                                lengths,
+                                counts,
+                                stride,
+                                None,
+                                counts.numel(),
+                            )
+                    elif single_batch_per_rank:
+                        (
+                            new_lengths,
+                            new_values,
+                            new_weights,
+                        ) = torch.ops.fbgemm.permute_2D_sparse_data(
+                            torch.jit._unwrap_optional(params.recat),
+                            lengths.view(-1, stride),
+                            values,
+                            weights,
+                            values.numel(),
+                        )
+                        if counts is not None:
+                            _, new_counts, _ = torch.ops.fbgemm.permute_2D_sparse_data(
+                                torch.jit._unwrap_optional(params.recat),
+                                lengths.view(-1, stride),
+                                counts,
+                                None,
+                                counts.numel(),
+                            )
+                        new_lengths = new_lengths.view(-1)
+                    else:  # variable batch size per rank
+                        (
+                            new_lengths,
+                            new_values,
+                            new_weights,
+                        ) = torch.ops.fbgemm.permute_1D_sparse_data(
+                            torch.jit._unwrap_optional(params.recat),
+                            lengths.view(-1),
+                            values,
+                            weights,
+                            values.numel(),
+                        )
+                        if counts is not None:
+                            _, new_counts, _ = torch.ops.fbgemm.permute_1D_sparse_data(
+                                torch.jit._unwrap_optional(params.recat),
+                                lengths.view(-1),
+                                counts,
+                                None,
+                                counts.numel(),
+                            )
+                else:
+                    new_lengths = lengths
+                    new_values = values
+                    new_weights = weights
+                    new_counts = counts
+            kjt = KeyedJaggedTensorWithCount(
+                keys=params.keys,
+                values=new_values,
+                counts=new_counts,
+                weights=new_weights,
+                lengths=new_lengths,
+                stride=sum(params.stride_per_rank),
+            )
+            return kjt.sync()
+
+    @staticmethod
+    def dist_init_with_params(params: DistInitParams) -> "KeyedJaggedTensorWithCount":
+        """
+        Alternative method to initialize KeyedJaggedTensorWithCount using DistInitParams.
+        
+        Args:
+            params: DistInitParams object containing all necessary parameters
+            
+        Returns:
+            KeyedJaggedTensorWithCount: Initialized object
+        """
+        return KeyedJaggedTensorWithCount.dist_init(params)
