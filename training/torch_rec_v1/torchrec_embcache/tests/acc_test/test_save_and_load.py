@@ -104,10 +104,10 @@ def execute(rank: int, config: ExecuteConfig):
         embedding_config.append(ebc_config)
 
     test_model = TestModel(rank, world_size, device)
-    golden_results = test_model.test_loss(
+    golden_results, _ = test_model.test_loss(
         embedding_config, dataset_loader_golden, sharding_type, training=True
     )
-    test_results = test_model.test_loss(
+    test_results, _ = test_model.test_loss(
         embedding_config, data_loader, sharding_type, training=False
     )
     i = 0
@@ -175,7 +175,7 @@ class TestModel:
         )
         # Shard
         constrains = {
-            f"table{i}": ParameterConstraints(sharding_types=[sharding_type])
+            f"table{i}": ParameterConstraints(sharding_types=[sharding_type], compute_kernels=["fused"])
             for i in range(table_num)
         }
         cpu_device = torch.device("cpu")
@@ -257,7 +257,9 @@ class TestModel:
                 results.append(loss.detach().cpu())
                 results.append(out.detach().cpu())
 
-        return results
+        # Must return ddp_model, it is necessary to maintain the reference count about static ThreadPool in C++ code,
+        # to facilitate the use of subsequent tasks.
+        return results, ddp_model
 
 
 params = {
