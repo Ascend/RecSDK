@@ -20,6 +20,7 @@ import warnings
 from glob import glob
 
 import tensorflow as tf
+from mpi4py import MPI
 from npu_bridge.npu_init import *
 
 from mx_rec.core.asc.manager import start_asc_pipeline
@@ -77,7 +78,10 @@ def model_forward(feature_list, hash_table_list, batch, is_train, modify_graph):
 if __name__ == "__main__":
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     warnings.filterwarnings("ignore")
+
+    comm = MPI.COMM_WORLD
     clear_saved_model()
+    comm.Barrier()
 
     cm.train_steps = 10000
     cm.eval_steps = 1360

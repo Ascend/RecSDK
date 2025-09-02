@@ -21,6 +21,7 @@ import warnings
 from glob import glob
 
 import tensorflow as tf
+from mpi4py import MPI
 from npu_bridge.npu_init import *
 
 from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_LOCAL_EMB, ASCEND_SPARSE_LOOKUP_ID_OFFSET
@@ -115,7 +116,10 @@ def model_forward(model_args):
 if __name__ == "__main__":
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     warnings.filterwarnings("ignore")
+
+    comm = MPI.COMM_WORLD
     clear_saved_model()
+    comm.Barrier()
 
     cm.max_train_steps = 1270
     cm.train_steps = 1120

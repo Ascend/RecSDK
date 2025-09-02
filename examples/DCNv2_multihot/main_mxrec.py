@@ -21,6 +21,7 @@ from glob import glob
 from typing import List, Tuple
 
 import tensorflow as tf
+from mpi4py import MPI
 from npu_bridge.npu_init import *
 
 from model import MyModel
@@ -114,7 +115,10 @@ def cal_average_grad(grads_info: List[Tuple[tf.Tensor, tf.Variable]], device_siz
 if __name__ == "__main__":
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     warnings.filterwarnings("ignore")
+
+    comm = MPI.COMM_WORLD
     clear_saved_model()
+    comm.Barrier()
 
     cm.train_steps = int(os.getenv("TRAIN_STEP"))
     cm.eval_steps = int(os.getenv("TEST_STEP"))

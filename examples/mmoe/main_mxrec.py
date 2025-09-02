@@ -20,6 +20,7 @@ import warnings
 
 import tensorflow as tf
 from sklearn.metrics import roc_auc_score
+from mpi4py import MPI
 import numpy as np
 from npu_bridge.npu_init import *
 
@@ -126,7 +127,10 @@ def evaluate():
 if __name__ == "__main__":
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     warnings.filterwarnings("ignore")
+
+    comm = MPI.COMM_WORLD
     clear_saved_model()
+    comm.Barrier()
 
     cm.train_steps = 1000
     cm.eval_steps = 1500

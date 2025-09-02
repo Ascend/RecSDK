@@ -22,6 +22,7 @@ from glob import glob
 
 import numpy as np
 import tensorflow as tf
+from mpi4py import MPI
 
 from mx_rec.constants.constants import ASCEND_TIMESTAMP
 from mx_rec.core.asc.feature_spec import FeatureSpec
@@ -29,7 +30,7 @@ from mx_rec.core.asc.helper import get_asc_insert_func
 from mx_rec.core.asc.manager import start_asc_pipeline
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
-from rec_sdk_common.communication.hccl.hccl_info import get_rank_size
+from rec_sdk_common.communication.hccl.hccl_info import get_rank_id, get_rank_size, get_local_rank_size
 from mx_rec.util.initialize import init, terminate_config_initializer
 from mx_rec.util.variable import get_dense_and_sparse_variable
 
@@ -173,9 +174,10 @@ def _del_related_dir(del_path: str) -> None:
     if not os.path.isabs(del_path):
         del_path = os.path.join(os.getcwd(), del_path)
     dirs = glob(del_path)
-    for sub_dir in dirs:
-        shutil.rmtree(sub_dir, ignore_errors=True)
-        logger.info(f"delete dir:{sub_dir}")
+    if get_rank_id() % get_local_rank_size() == 0:
+        for sub_dir in dirs:
+            shutil.rmtree(sub_dir, ignore_errors=True)
+            logger.info(f"delete dir:{sub_dir}")
 
 
 def _clear_saved_model() -> None:
@@ -211,7 +213,9 @@ def index_initializer(shape, dtype=None, partition_info=None):
 if __name__ == "__main__":
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     warnings.filterwarnings("ignore")
+    comm = MPI.COMM_WORLD
     _clear_saved_model()
+    comm.Barrier()
 
     use_mode = UseMode.mapping(os.getenv("USE_MODE"))
     # 最大数据集生成数量
