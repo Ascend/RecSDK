@@ -27,6 +27,7 @@ import numpy as np
 from tensorflow.core.protobuf.rewriter_config_pb2 import RewriterConfig
 from npu_bridge.estimator.npu.npu_config import NPURunConfig
 
+from rec_sdk_common.communication.hccl.hccl_info import get_rank_id, get_local_rank_size
 from mx_rec.constants.constants import LIBREC_EOS_OPS_SO, LIBREC_TF_REC_V1_CPU_SO
 from mx_rec.core.asc.helper import FeatureSpec, get_asc_insert_func
 from mx_rec.util.ops import import_host_pipeline_ops
@@ -582,9 +583,10 @@ def clear_saved_model() -> None:
         if not os.path.isabs(del_path):
             del_path = os.path.join(os.getcwd(), del_path)
         dirs = glob(del_path)
-        for sub_dir in dirs:
-            shutil.rmtree(sub_dir, ignore_errors=True)
-            logger.info(f"delete dir:{sub_dir}")
+        if get_rank_id() % get_local_rank_size() == 0:
+            for sub_dir in dirs:
+                shutil.rmtree(sub_dir, ignore_errors=True)
+                logger.info(f"delete dir:{sub_dir}")
 
     _del_related_dir("/root/ascend/log/*")
     if MODEL_NAME == "DLRM" or MODEL_NAME == "WideDeep" or MODEL_NAME == "MMOE":
