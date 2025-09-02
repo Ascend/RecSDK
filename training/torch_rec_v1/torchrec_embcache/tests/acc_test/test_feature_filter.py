@@ -274,7 +274,7 @@ class TestModel:
         )
         # Shard
         constrains = {
-            f"table{i}": ParameterConstraints(sharding_types=[sharding_type])
+            f"table{i}": ParameterConstraints(sharding_types=[sharding_type], compute_kernels=['fused'])
             for i in range(table_num)
         }
         rank = int(os.environ["LOCAL_RANK"])
