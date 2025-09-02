@@ -19,7 +19,7 @@ from hybrid_torchrec.sparse.extended_jagged_tensor import ExtendedJaggedTensor, 
 class JaggedTensorWithTimestamp(ExtendedJaggedTensor):
     """带有时间戳信息的JaggedTensor"""
     
-    _fields = ["_timestamps"]
+    _fields = "_timestamps"
 
     def __init__(
         self,
@@ -34,8 +34,7 @@ class JaggedTensorWithTimestamp(ExtendedJaggedTensor):
             extra=timestamps,
             weights=weights,
             lengths=lengths,
-            offsets=offsets,
-            extra_field_name="timestamps"
+            offsets=offsets
         )
         # 和values值对应的时间戳，size需和values相同, 仅在input dist前使用
         self._timestamps = timestamps
@@ -48,7 +47,7 @@ class JaggedTensorWithTimestamp(ExtendedJaggedTensor):
 class KeyedJaggedTensorWithTimestamp(KeyedExtendedJaggedTensor[JaggedTensorWithTimestamp]):
     """带有时间戳信息的KeyedJaggedTensor"""
     
-    _fields = ["_timestamps"]
+    _fields = "_timestamps"
 
     def __init__(
         self,
@@ -91,7 +90,7 @@ class KeyedJaggedTensorWithTimestamp(KeyedExtendedJaggedTensor[JaggedTensorWithT
             index_per_key=index_per_key,
             jt_dict=jt_dict,
             inverse_indices=inverse_indices,
-            extra_field_name="timestamps"
+            field_tensors={"_timestamps": timestamps} if timestamps is not None else {}
         )
         self._timestamps: Optional[torch.Tensor] = timestamps
 
@@ -106,7 +105,19 @@ class KeyedJaggedTensorWithTimestamp(KeyedExtendedJaggedTensor[JaggedTensorWithT
         """
         从JaggedTensorWithTimestamp字典构造KeyedJaggedTensorWithTimestamp
         """
-        return KeyedExtendedJaggedTensor.from_jt_dict(jt_dict, lambda jt: jt.timestamps)
+        # 创建一个实例用于调用_construct_from_jt_dict方法
+        dummy_instance = KeyedJaggedTensorWithTimestamp(
+            keys=[],
+            values=torch.tensor([]),
+            timestamps=None
+        )
+        
+        # 使用_construct_from_jt_dict方法创建实例
+        return dummy_instance._construct_from_jt_dict(
+            jt_dict,
+            KeyedJaggedTensorWithTimestamp,
+            lambda jt: jt.timestamps
+        )
 
     def split(self, segments: List[int]) -> List["KeyedJaggedTensorWithTimestamp"]:
         return super().split(segments, KeyedJaggedTensorWithTimestamp)
