@@ -26,7 +26,8 @@ std::string Error::ToString() const
     std::string modName = this->ModAsString();
     std::string errType = this->TypeAsString();
 
-    return StringFormat("Module: %s, Error Type: %s, Error Message: %s", modName, errType, this->msg_);
+    return StringFormat("Module: %s, Error Type: %s, Error Message: %s",
+                        modName.c_str(), errType.c_str(), this->msg_.c_str());
 }
 
 std::string Error::TypeAsString() const noexcept
