@@ -1,0 +1,150 @@
+# please configure 根据实际情况选择操作系统镜像
+FROM centos:7.6.1810
+
+WORKDIR /tmp
+
+COPY ./CentOS-Base.repo ./
+COPY ./version.info ./
+COPY ./ascend_install.info ./
+COPY ./Ascend-cann-toolkit_*.run ./
+COPY ./Ascend-cann-kernels-*.run ./
+
+# 1.安装编译环境
+# wget -O /etc/yum.repos.d/CentOS-Base.repo https://mirrors.huaweicloud.com/repository/conf/CentOS-7-anon.repo
+RUN mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.bak && \
+    cp -f ./CentOS-Base.repo /etc/yum.repos.d/ && \
+    yum makecache && \
+    yum -y install net-tools make wget unzip zlib-devel bzip2 bzip2-devel openssl-devel ncurses-devel openssh-clients \
+    openssh-server sqlite-devel openmpi-devel readline-devel tk-devel gdbm-devel db4-devel libpcap-devel xz-devel \
+    libffi-devel hdf5-devel patch pciutils lcov vim dos2unix gcc-c++ automake autoconf m4 perl git e2fsprogs sudo && \
+    yum clean all && \
+    rm -rf /var/cache/yum
+# 注： openssh-server为双机训练样例需要，仅单机训练可去掉
+
+# 2.安装gcc-11.2.0
+RUN source /etc/profile && \
+    wget https://mirrors.huaweicloud.com/gnu/gcc/gcc-11.2.0/gcc-11.2.0.tar.gz && \
+    tar -zxvf gcc-11.2.0.tar.gz && \
+    cd gcc-11.2.0 && \
+    wget https://mirrors.huaweicloud.com/gnu/gmp/gmp-6.1.0.tar.bz2 && \
+    wget https://mirrors.huaweicloud.com/gnu/mpfr/mpfr-3.1.6.tar.bz2 && \
+    wget https://mirrors.huaweicloud.com/gnu/mpc/mpc-1.0.3.tar.gz && \
+    wget https://gcc.gnu.org/pub/gcc/infrastructure/isl-0.18.tar.bz2 && \
+    sed -i "246s/tar -xf "${ar}"/tar --no-same-owner -xf "${ar}"/" contrib/download_prerequisites && \
+    ./contrib/download_prerequisites && \
+    ./configure --enable-languages=c,c++ --disable-multilib --with-system-zlib --prefix=/usr/local/gcc11.2.0 && \
+    make -j && make -j install && cd .. && \
+    find gcc-11.2.0/ -name libstdc++.so.6.0.29 -exec cp {} /lib64/ \; && \
+    rm -rf gcc-11.2.0*
+
+ENV LD_LIBRARY_PATH=/usr/local/gcc11.2.0/lib64:$LD_LIBRARY_PATH \
+    PATH=/usr/local/gcc11.2.0/bin:$PATH
+
+RUN mv /usr/bin/gcc /usr/bin/gcc.bak && \
+    mv /usr/bin/g++ /usr/bin/g++.bak && \
+    ln -s /usr/local/gcc11.2.0/bin/gcc /usr/bin/gcc && \
+    ln -s /usr/local/gcc11.2.0/bin/g++ /usr/bin/g++
+
+# 3.安装cmake-3.22.6
+RUN source /etc/profile && \
+    wget https://cmake.org/files/v3.22/cmake-3.22.6.tar.gz && \
+    gcc -v && tar -zxf cmake-3.22.6.tar.gz && \
+    cd cmake-3.22.6 && \
+    ./bootstrap && make -j 32 && make install && cd .. && \
+    rm -rf cmake-3.22.6*
+
+# 4.安装python3.11.0
+RUN source /etc/profile && \
+    wget https://mirrors.huaweicloud.com/python/3.11.0/Python-3.11.0.tar.xz && \
+    gcc -v && tar -xvf Python-3.11.0.tar.xz && \
+    cd Python-3.11.0 && \
+    mkdir -p build && cd build && \
+    ../configure --enable-shared --prefix=/usr/local/python3.11.0 && \
+    make -j && make install && \
+    cd ../../ && rm -rf Python-3.11.0* && \
+    ldconfig
+
+ENV PATH=$PATH:/usr/local/python3.11.0/bin \
+    LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/python3.11.0/lib
+
+# 配置python源
+RUN mkdir ~/.pip && touch ~/.pip/pip.conf && \
+    echo "[global]" > ~/.pip/pip.conf && \
+    echo "trusted-host=mirrors.aliyun.com" >> ~/.pip/pip.conf && \
+    echo "index-url=https://mirrors.aliyun.com/pypi/simple/" >> ~/.pip/pip.conf && \
+    echo "timeout=200" >> ~/.pip/pip.conf
+
+# 5.安装python包
+RUN wget https://download.pytorch.org/whl/cpu/torch-2.6.0%2Bcpu-cp311-cp311-linux_x86_64.whl && \
+    wget https://download.pytorch.org/whl/cpu/fbgemm_gpu-1.1.0%2Bcpu-cp311-cp311-manylinux2014_x86_64.whl
+
+RUN pip3.11 install -U pip && \
+    pip3.11 install numpy==1.25.0 && \
+    pip3.11 install wheel && \
+    pip3.11 install decorator && \
+    pip3.11 install sympy==1.13.1 && \
+    pip3.11 install cffi==1.17.1 && \
+    pip3.11 install expecttest && \
+    pip3.11 install pybind11 && \
+    pip3.11 install pyyaml && \
+    pip3.11 install psutil && \
+    pip3.11 install pathlib2 && \
+    pip3.11 install pandas==2.2.3 && \
+    pip3.11 install grpcio && \
+    pip3.11 install grpcio-tools==1.67.0 && \
+    pip3.11 install protobuf==5.28.2 && \
+    pip3.11 install scipy==1.14.1 && \
+    pip3.11 install requests && \
+    pip3.11 install scikit-learn && \
+    pip3.11 install easydict && \
+    pip3.11 install attrs && \
+    pip3.11 install pytest && \
+    pip3.11 install pytest-cov && \
+    pip3.11 install pytest-html && \
+    pip3.11 install Cython && \
+    pip3.11 install absl-py && \
+    pip3.11 install gin-config && \
+    pip3.11 install torch-2.6.0+cpu-*.whl && \
+    pip3.11 install fbgemm_gpu-1.1.0+cpu-*.whl && \
+    pip3.11 install torch-npu==2.6.0 && \
+    pip3.11 install tensorboard==2.18.0 && \
+    pip3.11 install black && \
+    pip3.11 install cmake && \
+    pip3.11 install hypothesis==6.70.1 && \
+    pip3.11 install iopath && \
+    pip3.11 install pyre-extensions && \
+    pip3.11 install scikit-build && \
+    pip3.11 install torchmetrics==1.0.3 && \
+    pip3.11 install torchx && \
+    pip3.11 install tqdm && \
+    pip3.11 install usort && \
+    rm -rf /root/.cache/pip
+
+# 6.设置驱动路径环境变量
+ARG ASCEND_BASE=/usr/local/Ascend
+ENV LD_LIBRARY_PATH=$ASCEND_BASE/driver/lib64:$ASCEND_BASE/driver/lib64/common:$ASCEND_BASE/driver/lib64/driver:$LD_LIBRARY_PATH
+
+# 7.安装ascend-toolkit与kernels算子包
+# CANN相关参数
+ARG TOOLKIT_PKG=Ascend-cann-toolkit*.run
+ARG KERNEL_PKG=Ascend-cann-kernels*.run
+
+RUN rm -rf $ASCEND_BASE/ascend-toolkit && \
+    umask 0027 && \
+    mkdir -p $ASCEND_BASE/driver && \
+    chmod 755 $ASCEND_BASE && \
+    /usr/bin/cp -f version.info $ASCEND_BASE/driver/ && \
+    /usr/bin/cp -f ascend_install.info /etc/ && \
+    chmod +x $TOOLKIT_PKG && \
+    bash $TOOLKIT_PKG --quiet --install --install-path=$ASCEND_BASE && \
+    source $ASCEND_BASE/ascend-toolkit/set_env.sh && \
+    chmod +x $KERNEL_PKG && \
+    bash $KERNEL_PKG --quiet --install && \
+    rm -rf /root/.cache/pip && \
+    rm -f $TOOLKIT_PKG && \
+    rm -f $KERNEL_PKG && \
+    rm -rf $ASCEND_BASE/driver && \
+    rm -rf /etc/ascend_install.info
+
+# 8.清理临时目录
+RUN rm -rf ./*
