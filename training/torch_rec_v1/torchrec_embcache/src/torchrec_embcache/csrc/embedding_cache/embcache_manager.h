@@ -55,7 +55,8 @@ constexpr int EMB_ATTRIBUTE_DATA_LEN = 3;
 constexpr int64_t ATTR_VEC_INIT_VALUE = -1;
 constexpr long long KEY_SIZE_MAX = 1e9L;
 constexpr int32_t MAX_EMB_DIM = 4096;
-constexpr int32_t ONE_TIME_LOAD_DIM_4096 = 300000;
+// load embedding count for one loop; about 5GB in size when use Adam: 100000*4096*4*3/(1024**3) = 4.58GB
+constexpr int32_t ONE_TIME_LOAD_DIM_4096 = 100000;
 const std::string ATTR_SUFFIX = "attribute";
 const std::string DATA_SUFFIX = "data";
 
