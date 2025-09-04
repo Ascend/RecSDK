@@ -6,6 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -61,16 +62,26 @@ class Saver:
         return os.path.join(os.path.realpath(path), latest_dir)
 
     @staticmethod
-    def _get_format_path(path):
-        return os.path.join(path, datetime.now(tz=timezone.utc).strftime(TIMESTAMP_FORMAT))
+    def _get_format_path():
+        return datetime.now(tz=timezone.utc).strftime(TIMESTAMP_FORMAT)
 
     def save(self, module: torch.nn.Module, path: str) -> None:
         check_path(path)
         if not isinstance(module, torch.nn.Module):
             raise ValueError(f"param `module` must an instance of torch.nn.Module, but got:{type(module)}")
 
+        if not dist.is_initialized():
+            raise ValueError("when save, the status of torch.distributed.is_initialized() must be True, but got False.")
+
         path = os.path.realpath(path)
-        path = Saver._get_format_path(path)
+        dist.barrier()
+        timestamp_data = int(Saver._get_format_path()) if self.rank == 0 else 0
+        timestamp_tensor = torch.tensor([timestamp_data], device="npu")
+        dist.broadcast(timestamp_tensor, src=0)
+        timestamp_str = str(timestamp_tensor[0].item())
+        logging.info("rank:%d, after broadcast, get current timestamp: %s", self.rank, timestamp_str)
+        path = os.path.join(path, timestamp_str)
+
         self.cache_module.clear()
         self._find_all_embed_cache_instance(module)
         self._check_emb_cache_instance_len()

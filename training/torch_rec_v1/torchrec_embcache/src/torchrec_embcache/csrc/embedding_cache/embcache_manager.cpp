@@ -402,6 +402,7 @@ void EmbcacheManager::Check4Write(const std::shared_ptr<FileSystem>& fileSystemP
             "Failed to get file system pointer, the fileSystemPtr is nullptr. Current rank:{}.", rank);
         throw std::runtime_error(errMsg);
     }
+    fileSystemPtr->CreateFileDir(filePath + "/file");  // only create file parent dir if not exist
     fileSystemPtr->Valid4WriteDir(filePath);
 }
 
@@ -766,8 +767,8 @@ void EmbcacheManager::RemoveEmbeddingTableInfo()
         }
 
         embeddingTables_[i]->RemoveEmbedding(keys);
-        LOG_INFO("Remove table embedding info, tableName: {}, remove key size: {}, detail keys: {}",
-                 embConfigs_[i].tableName, keys.size(), StringTools::ToString(keys));
+        LOG_TRACE("Remove table embedding info, tableName: {}, remove key size: {}, detail keys: {}",
+                  embConfigs_[i].tableName, keys.size(), StringTools::ToString(keys));
         featureFilters_[i]->evictFeatureRecord_.ClearEvictInfo();
     }
     LOG_INFO("RemoveEmbeddingTableInfo execution time: {} ms", removeEmbeddingTableTC.ElapsedMS());
