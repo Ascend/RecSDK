@@ -23,6 +23,6 @@ extern "C" __global__ __aicore__ void jagged_to_padded_dense(GM_ADDR values, GM_
                                                              GM_ADDR workspace, GM_ADDR tiling)
 {
     JaggedToPaddedDense::Args args{values, offsets, out, workspace, tiling};
-    JaggedToPaddedDense::JaggedToPaddedDenseKernel kernel(args);
+    JaggedToPaddedDense::JaggedToPaddedDenseKernel<DTYPE_VALUES, DTYPE_OFFSETS> kernel(args);
     kernel.Compute();
 }

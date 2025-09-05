@@ -26,28 +26,7 @@ constexpr int DATA_TYPE_INT32 = 4;
 constexpr int DATA_TYPE_FLOAT32 = 4;
 constexpr int NUM_QUEUE = 4;
 constexpr int UB_ALIGN = 32;
-constexpr int SUPORT_EMBEDDING_DIM_NUM = 2;
-
-static void SetTypeTiling(gert::TilingContext* context, JaggedToPaddedDenseTilingData& tiling)
-{
-    int64_t bytesOfDataType = 0;
-    ge::DataType dataType = context->GetInputTensor(0)->GetDataType();
-    if (dataType == ge::DataType::DT_FLOAT) {
-        bytesOfDataType = DATA_TYPE_FLOAT32;
-    } else {
-        bytesOfDataType = DATA_TYPE_INT64;
-    }
-
-    int64_t offsetDataType = 0;
-    ge::DataType offsetDataTypeGe = context->GetInputTensor(1)->GetDataType();
-    if (offsetDataTypeGe == ge::DataType::DT_INT64) {
-        offsetDataType = DATA_TYPE_INT64;
-    } else {
-        offsetDataType = DATA_TYPE_INT32;
-    }
-    tiling.set_bytesOfDataType(bytesOfDataType);
-    tiling.set_offsetDataType(offsetDataType);
-}
+constexpr int SUPPORT_EMBEDDING_DIM_NUM = 2;
 
 static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
@@ -70,8 +49,8 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     ubCanUsed = ubCanUsed / UB_ALIGN / NUM_QUEUE * UB_ALIGN * NUM_QUEUE;
     tiling.set_ubCanUsed(ubCanUsed);
 
-    if (valuesShape.GetDimNum() != SUPORT_EMBEDDING_DIM_NUM or offsetsShape.GetDimNum() != 1) {
-        printf("[ERROR]jagged_to_padded_dense_tiling is only used for values with rank-3 and offset rank-1");
+    if (valuesShape.GetDimNum() != SUPPORT_EMBEDDING_DIM_NUM or offsetsShape.GetDimNum() != 1) {
+        printf("[ERROR]jagged_to_padded_dense_tiling is only used for values with rank-2 and offset rank-1");
         return ge::GRAPH_FAILED;
     }
 
@@ -99,7 +78,6 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     tiling.set_offsetDim0(offsetDim0);
     int64_t outDim1 = *context->GetAttrs()->GetInt(0);
     tiling.set_outDim1(outDim1);
-    SetTypeTiling(context, tiling);
 
     context->SetBlockDim(coreNum);
 
@@ -144,15 +122,15 @@ public:
     {
         this->Input("values")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_INT64, ge::DT_FLOAT, ge::DT_INT64})
+            .DataTypeList({ge::DT_FLOAT, ge::DT_INT64, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
         this->Input("offsets")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT64, ge::DT_INT64, ge::DT_INT32, ge::DT_INT32})
+            .DataTypeList({ge::DT_INT64, ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
         this->Output("out")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_INT64, ge::DT_FLOAT, ge::DT_INT64})
+            .Follow("values", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
         this->Attr("max_length").Int();
         this->Attr("padding_value").Float();

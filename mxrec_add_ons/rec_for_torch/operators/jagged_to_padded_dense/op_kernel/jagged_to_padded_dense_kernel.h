@@ -35,6 +35,7 @@ struct Args {
     GM_ADDR tiling;
 };
 
+template <typename VALUE_TYPE, typename OFFSET_TYPE>
 class JaggedToPaddedDenseKernel {
 public:
     __aicore__ inline JaggedToPaddedDenseKernel(Args args)
@@ -48,15 +49,15 @@ public:
         offsetDim0 = tilingData.offsetDim0;
         outDim1 = tilingData.outDim1;
         ubCanUsed = tilingData.ubCanUsed;
-        bytesOfDataType = tilingData.bytesOfDataType;
-        offsetDataType = tilingData.offsetDataType;
+        bytesOfDataType = sizeof(VALUE_TYPE);
+        offsetDataType = sizeof(OFFSET_TYPE);
 
         values = args.values;
         offsets = args.offsets;
         out = args.out;
         workspace = args.workspace;
 
-        // caculate this offset
+        // calculate this offset
         if (GetBlockIdx() >= tailSplitIndex) {
             lenOfThisCore = baseBatchLen;
             offsetOfThisCore = tailSplitIndex * (baseBatchLen + 1) + (GetBlockIdx() - tailSplitIndex) * baseBatchLen;

@@ -58,7 +58,8 @@ c) 算子约束说明：
 
 * 支持的型号：Atlas A2系列产品;
 * 支持的CANN版本：8.2.RC1.alpha001及之后版本；
-* 支持的输入数据类型：values float32/int64, offset int64/int32；
+* values支持的输入数据类型：float32, float16, bfloat16, int32, int64;
+* offset支持的输入数据类型：int32, int64;
 * values为2维tensor，offset为1维tensor，max_length的元素值大于0
 * offset必须满足从0开始依次递增
 * 算子参数均会在NPU显存中存放，请根据显存大小合理设置参数长度。
