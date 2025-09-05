@@ -57,7 +57,7 @@ c) 算子约束说明：
 
 * 支持的型号：Atlas A2系列产品;
 * 支持的CANN版本：8.2.RC1.alpha001及之后版本；
-* 支持的输入数据类型：dense: float32/int64, offset: int64/int32；
+* 支持的输入数据类型：dense: float32/int64/bfloat16/float16/int32, offset: int64/int32；
 * dense为3维tensor；
 * offset为1维tensor，offset的长度必须为dense第一维长度加1，offset必须满足从0开始依次递增；
 * jagged_dim0的值，需与offset最后一个值相等
