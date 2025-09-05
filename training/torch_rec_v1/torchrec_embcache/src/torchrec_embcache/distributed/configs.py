@@ -11,6 +11,7 @@ from enum import Enum
 from typing import Optional
 
 from torchrec import EmbeddingConfig, EmbeddingBagConfig
+from hybrid_torchrec.constants import EMBEDDINGS_DIM_ALIGNMENT, MAX_EMBEDDINGS_DIM, MAX_NUM_EMBEDDINGS
 
 
 _DEFAULT_ADMIT_THRESHOLD: int = -1
@@ -56,6 +57,36 @@ class InitializerType(str, Enum):
     UNIFORM = "uniform"
 
 
+def check_embedding_config(config: EmbeddingConfig):
+    if config.num_embeddings < 1 or config.num_embeddings > MAX_NUM_EMBEDDINGS:
+        raise ValueError(
+            f"The num_embeddings should be in [1, {MAX_NUM_EMBEDDINGS}], but is {config.num_embeddings}"
+        )
+
+    if config.embedding_dim < EMBEDDINGS_DIM_ALIGNMENT or config.embedding_dim > MAX_EMBEDDINGS_DIM:
+        raise ValueError(
+            f"The embedding dim should be in [{EMBEDDINGS_DIM_ALIGNMENT}, {MAX_EMBEDDINGS_DIM}], "
+            f"but is {config.embedding_dim}"
+        )
+    
+    if config.embedding_dim % EMBEDDINGS_DIM_ALIGNMENT != 0:
+        raise ValueError(
+            f"The embedding dim should be a multiple of {EMBEDDINGS_DIM_ALIGNMENT}, but is {config.embedding_dim}"
+        )
+    
+    if config.weight_init_min is None:
+        config.weight_init_min = 0.0
+    
+    if config.weight_init_max is None:
+        config.weight_init_max = 1.0
+    
+    if config.weight_init_min >= config.weight_init_max:
+        raise ValueError(
+            f"The weight_init_min should be less than weight_init_max, "
+            f"but is {config.weight_init_min} >= {config.weight_init_max}"
+        )
+    
+
 @dataclass
 class EmbCacheEmbeddingBagConfig(EmbeddingBagConfig):
     weight_init_mean: Optional[float] = 0.0  # used for InitializerType.UNIFORM
@@ -64,6 +95,10 @@ class EmbCacheEmbeddingBagConfig(EmbeddingBagConfig):
     admit_and_evict_config: Optional[AdmitAndEvictConfig] = field(
         default_factory=lambda: AdmitAndEvictConfig()
     )
+
+    def __post_init__(self):
+        check_embedding_config(self)
+        super().__post_init__()
 
 
 @dataclass
@@ -74,3 +109,7 @@ class EmbCacheEmbeddingConfig(EmbeddingConfig):
     admit_and_evict_config: Optional[AdmitAndEvictConfig] = field(
         default_factory=lambda: AdmitAndEvictConfig()
     )
+
+    def __post_init__(self):
+        check_embedding_config(self)
+        super().__post_init__()
