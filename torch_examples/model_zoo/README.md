@@ -1,46 +1,10 @@
 # MMOE模型和ETA模型支持
 本文档主要介绍如何进行推荐系统模型中的mmoe模型和eta模型的数据预处理和模型训练。
 
+## 运行环境准备
+请参考：https://gitcode.com/Ascend/RecSDK/tree/develop/torch_examples/README.md
 
-## 版本配套说明
-本模型迁移依赖特定版本的CANN、PyTorch、驱动和固件,源码编译需使用指定版本的Python、GCC、CMake等工具,仅支持昇腾平台（Atlas 800T A2）,基于软件环境以RecSDK-Torch提供的基础镜像环境为准，主要的配套依赖如下表所示：
-
-| Python版本   | 主要配套依赖                                |
-|------------|---------------------------------------|
-| Python3.11 | torch==2.6.0<br/>torch_npu==2.6.0<br/> |
-
-### 基础镜像
-下载基础镜像地址为：https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5
-
-### 启动容器
-说明：以下启动命令仅作参考
-```shell
-#!/bin/bash
-container_name=$1
-image_name=$2
-docker run \
--it \
---name "${container_name}" \
--e ASCEND_VISIBLE_DEVICES=0-7 \
---shm-size="300g" \
--v /etc/localtime:/etc/localtime:ro \
--v /etc/ascend_install.info:/etc/ascend_install.info:ro \
--v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
-"${image_name}" \
-/bin/bash
-```
-执行如下命令新建容器：
-```shell
-source /etc/profile
-bash run_docker.sh 容器名 {镜像名称}:{版本名称}
-```
-
-### 设置环境变量
-进入容器后，设置环境变量
-```shell
-
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
-```
+说明:如果只执行mmoe和eta模型样例，可以忽略torchrec,hybrid_torchrec以及算子等依赖的安装。
 
 ## 模型运行
 
@@ -90,4 +54,3 @@ python3 eta.py --data_dir aliccp/aliccp_out/ --train_batch_num 2000 # 根据实�
 # 通过以下命令方式查看参数及默认值情况
 python3 mmoe.py  --help 
 ```
-

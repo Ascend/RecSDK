@@ -120,7 +120,7 @@ if __name__ == "__main__":
     index_dict = parse_data(os.path.join(train_data_path, "sample_skeleton_train.csv"))
     parse_ret = parse_data(os.path.join(train_data_path, "common_features_train.csv"), index_dict)
     logging.info("parse_data ret:%s", parse_ret)
-    index_dict.pop("index")
+    index_dict.pop("common_index")
 
     json_str = json.dumps(index_dict, indent=4)
     flags = os.O_WRONLY | os.O_CREAT
