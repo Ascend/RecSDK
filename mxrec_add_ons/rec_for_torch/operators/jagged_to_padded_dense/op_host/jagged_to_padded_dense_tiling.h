@@ -29,15 +29,10 @@ namespace optiling {
     TILING_DATA_FIELD_DEF(int64_t, valuesDim1);
     TILING_DATA_FIELD_DEF(int64_t, offsetDim0);
     TILING_DATA_FIELD_DEF(int64_t, outDim1);
-
     TILING_DATA_FIELD_DEF(int64_t, ubCanUsed);
-    TILING_DATA_FIELD_DEF(int64_t, bytesOfDataType);
-    TILING_DATA_FIELD_DEF(int64_t, offsetDataType);
-
     TILING_DATA_FIELD_DEF(float, paddingValue);
 
     END_TILING_DATA_DEF;
-
     REGISTER_TILING_DATA_CLASS(JaggedToPaddedDense, JaggedToPaddedDenseTilingData)
 }  // namespace optiling
 #endif
