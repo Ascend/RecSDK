@@ -120,7 +120,6 @@ class EmbCacheTrainPipelineContext(TrainPipelineContext):
 
 
 class EmbCachePipelinedForward(PipelinedForward):
-    # pyre-ignore [2, 24]
     def __call__(self, *input_feature, **kwargs) -> Awaitable:
         self._context.sparse_features_after_restore_future.pop(self._name).get()
         data = self._context.sparse_features_after_post_dist.pop(self._name)
@@ -216,7 +215,6 @@ def _fuse_input_dist_splits(context: TrainPipelineContext) -> None:
                 (
                     names,
                     FusedKJTListSplitsAwaitable(
-                        # pyre-ignore[6]
                         requests=[
                             context.input_dist_splits_requests[name] for name in names
                         ],
@@ -603,7 +601,6 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
             return
 
         self._init_pipelined_modules(
-            # pyre-ignore [6]
             self.batches[0],
             self.contexts[0],
             EmbCachePipelinedForward,
