@@ -46,6 +46,9 @@ python3 mmoe.py --data_dir aliccp/aliccp_out/ --train_batch_num 2000 --eval_batc
 
 # eta模型
 python3 eta.py --data_dir aliccp/aliccp_out/ --train_batch_num 2000 # 根据实际情况传入参数
+
+# dffm模型
+python3 dffm.py --data_dir aliccp/aliccp_out/ --train_batch_num 5 --test_batch_num 5 # 根据实际情况传入参数
 ```
 2.参数说明
 ```commandline
