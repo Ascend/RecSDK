@@ -9,6 +9,7 @@ import itertools
 import logging
 import os
 from dataclasses import dataclass
+from types import MethodType
 from typing import List
 
 import pytest
@@ -90,11 +91,11 @@ def execute(rank: int, config: ExecuteConfig):
             num_embeddings=num_embeddings[i],
             feature_names=[f"feat{i}"],
             pooling=pool_type,
-            init_fn=weight_init,
             weight_init_min=0.0,
             weight_init_max=1.0,
         )
         embedding_configs.append(ebc_config)
+        ebc_config.init_fn = MethodType(weight_init, ebc_config)
 
     test_model = TestModel(rank, world_size, device)
     golden_results = test_model.cpu_golden_loss(embedding_configs, dataset_loader_golden)
@@ -112,11 +113,12 @@ def execute(rank: int, config: ExecuteConfig):
         logging.debug("golden and result is closed")
 
 
-def weight_init(param: torch.nn.Parameter):
+def weight_init(self, param: torch.nn.Parameter):
     if len(param.shape) != 2:
         return
     torch.manual_seed(param.shape[1])
-    result = torch.linspace(0, 1, steps=param.shape[1]).unsqueeze(0).repeat(param.shape[0], 1)
+    result = torch.linspace(self.weight_init_min, self.weight_init_max, steps=param.shape[1])\
+        .unsqueeze(0).repeat(param.shape[0], 1)
     param.data.copy_(result)
 
 
@@ -257,7 +259,10 @@ params = {
     "table_num": [2],
     "embedding_dims": [[128, 128]],
     "num_embeddings": [[4000, 400]],
-    "pool_type": [torchrec.PoolingType.SUM],
+    "pool_type": [
+        torchrec.PoolingType.SUM,
+        torchrec.PoolingType.MEAN,
+    ],
     "sharding_type": ["row_wise"],
     "lookup_len": [128],  # batchsize
     "device": ["npu"],

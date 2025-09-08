@@ -6,9 +6,10 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from functools import partial
 import os
 from dataclasses import dataclass
-from typing import Any, cast, Dict, List, Optional, Mapping, Union, Type
+from typing import Any, cast, Dict, List, Optional, Mapping, Union, Type, Tuple
 from collections import defaultdict
 import logging
 import numpy as np
@@ -19,6 +20,11 @@ from torch import distributed as dist, nn
 from fbgemm_gpu.split_embedding_configs import EmbOptimType
 from fbgemm_gpu.split_table_batched_embeddings_ops_training import (
     SplitTableBatchedEmbeddingBagsCodegen,
+)
+from hybrid_torchrec.distributed.embeddingbag import (
+    _apply_mean_pooling,
+    _create_mean_pooling_divisor,
+    MeanPoolingConfig,
 )
 from hybrid_torchrec.modules.ids_process import IdsMapper
 from hybrid_torchrec.modules.ids_process import HashMapBase
@@ -54,6 +60,7 @@ from torchrec.distributed.embedding_types import (
     KJTList,
 )
 from torchrec.distributed.types import (
+    Awaitable,
     LazyAwaitable,
     QuantizedCommCodecs,
     EmbeddingModuleShardingPlan,
@@ -66,6 +73,7 @@ from torchrec.distributed.embedding_sharding import (
     EmbeddingSharding,
     EmbeddingShardingInfo,
     EmbeddingShardingContext,
+    KJTListSplitsAwaitable,
 )
 from torchrec.modules.embedding_configs import (
     DataType,
@@ -427,6 +435,7 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
         self._kt_key_ordering: Optional[torch.Tensor] = None
         # to support the FP16 hook
         self._create_output_dist()
+        self._dim_per_key_cpu = torch.tensor(self._embedding_dims, device="cpu")
 
         # forward pass flow control
         self._has_uninitialized_input_dist: bool = True
@@ -485,6 +494,39 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
     @property
     def embcache_mgr(self):
         return self._embcache_mgr
+    
+    def _init_mean_pooling_callback(
+        self,
+        input_feature_names: List[str],
+        inverse_indices: Optional[Tuple[List[str], torch.Tensor]],
+    ) -> None:
+        # account for shared features
+        feature_names: List[str] = [
+            feature_name
+            for sharding in self._embedding_shardings
+            for feature_name in sharding.feature_names()
+        ]
+
+        for i, key in enumerate(feature_names):
+            if key not in self._kjt_key_indices:  # index of first occurence
+                self._kjt_key_indices[key] = i
+
+        keyed_tensor_ordering = []
+        for key in self._embedding_names:
+            if "@" in key:
+                key = key.split("@")[0]
+            keyed_tensor_ordering.append(self._kjt_key_indices[key])
+        self._kt_key_ordering = torch.tensor(keyed_tensor_ordering, device=self._device)
+        self._kt_key_ordering_cpu = torch.tensor(keyed_tensor_ordering, device="cpu")
+        if inverse_indices:
+            key_to_inverse_index = {
+                name: i
+                for i, name in enumerate(inverse_indices[0])
+            }
+            self._kjt_inverse_order = torch.tensor(
+                [key_to_inverse_index[key] for key in feature_names],
+                device=self._device,
+            )
 
     def create_table2hashmap(self, module):
         table2hashmap = {}
@@ -492,6 +534,63 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
             hashmap = module.embedding_bags[name].ids2slot_dict
             table2hashmap[name] = hashmap
         return table2hashmap
+
+    def input_dist(
+        self, ctx: EmbeddingBagCollectionAwaitable, features: KeyedJaggedTensor
+    ) -> Awaitable[Awaitable[KJTList]]:
+        """
+        feature的顺序按照Dict[str, list[]]  shardType -> [t.feature_name for t in tables]
+        """
+        features = features.to("cpu")
+        ctx.variable_batch_per_feature = features.variable_stride_per_key()
+        ctx.inverse_indices = features.inverse_indices_or_none()
+        if self._has_uninitialized_input_dist:
+            self._create_input_dist(features.keys())
+            self._has_uninitialized_input_dist = False
+            if ctx.variable_batch_per_feature:
+                self._create_inverse_indices_permute_indices(ctx.inverse_indices)
+            if self._has_mean_pooling_callback:
+                self._init_mean_pooling_callback(features.keys(), ctx.inverse_indices)
+        with torch.no_grad():
+            if self._has_features_permute:
+                features = features.permute(
+                    self._features_order,
+                    self._features_order_tensor,
+                )
+            if self._has_mean_pooling_callback:
+                ctx.divisor = _create_mean_pooling_divisor(MeanPoolingConfig(
+                    lengths=features.lengths(),
+                    stride=features.stride(),
+                    keys=features.keys(),
+                    offsets=features.offsets(),
+                    pooling_type_to_rs_features=self._pooling_type_to_rs_features,
+                    stride_per_key=features.stride_per_key(),
+                    dim_per_key=self._dim_per_key_cpu,
+                    embedding_names=self._embedding_names,
+                    embedding_dims=self._embedding_dims,
+                    variable_batch_per_feature=ctx.variable_batch_per_feature,
+                    kjt_inverse_order=self._kjt_inverse_order,
+                    kjt_key_indices=self._kjt_key_indices,
+                    kt_key_ordering=self._kt_key_ordering_cpu,
+                    inverse_indices=ctx.inverse_indices,
+                    weights=features.weights_or_none(),
+                ))
+
+            features_by_shards = features.split(
+                self._feature_splits,
+            )
+            awaitables = []
+            for input_dist, features_by_shard in zip(
+                self._input_dists, features_by_shards
+            ):
+                awaitables.append(input_dist(features_by_shard))
+                ctx.sharding_contexts.append(
+                    EmbeddingShardingContext(
+                        batch_size_per_feature_pre_a2a=features_by_shard.stride_per_key(),
+                        variable_batch_per_feature=features_by_shard.variable_stride_per_key(),
+                    )
+                )
+            return KJTListSplitsAwaitable(awaitables, ctx)
 
     def compute_and_output_dist(
         self, ctx: EmbeddingBagCollectionContext, input_feat: KJTList
@@ -504,11 +603,20 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
             input_feat,
         ):
             awaitables.append(out_dist(lookup(features), sharding_ctx))
-        return EmbeddingBagCollectionAwaitable(
+
+        awaitable = EmbeddingBagCollectionAwaitable(
             awaitables=awaitables,
             embedding_dims=self._embedding_dims,
             embedding_names=self._embedding_names,
         )
+
+        # register callback if there are features that need mean pooling
+        if self._has_mean_pooling_callback:
+            awaitable.callbacks.append(
+                partial(_apply_mean_pooling, divisor=ctx.divisor)
+            )
+
+        return awaitable
 
     def post_input_dist(
         self, ctx: EmbeddingBagCollectionAwaitable, features: KJTList
