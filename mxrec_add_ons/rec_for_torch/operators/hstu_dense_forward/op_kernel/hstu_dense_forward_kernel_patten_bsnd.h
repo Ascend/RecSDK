@@ -186,6 +186,7 @@ public:
         svResultGt.SetGlobalBuffer(
             reinterpret_cast<__gm__ float*>(workspace) + oneCoreMidElem + GetBlockIdx() * oneBlockMidTransElem,
             oneCoreTransMidElem);
+
         // Init pipe total 32K * 5 = 160K
         pipe->InitBuffer(queIn, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
         pipe->InitBuffer(tmpBuff, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));

@@ -17,6 +17,7 @@ See the License for the specific language governing permissions and
 
 
 #include "hstu_dense_forward_kernel_patten_bsnd.h"
+#include "hstu_split_core_policy.h"
 
 using namespace AscendC;
 
@@ -79,6 +80,7 @@ private:
 
     JaggedTaskArgs computeTaskInfo[COMPUTE_PIPE_NUM];
     JaggedTaskArgs trasnTaskInfo[TRANS_PIPE_NUM];
+    GlobalTensor<int64_t> blockNumberGt;
 };
 
 template <typename qType>
@@ -366,25 +368,52 @@ template <typename qType>
 __aicore__ inline int
 HstuDenseForwardJaggedKernel<qType>::PreInit(const HstuDenseForwardTilingData *__restrict tilingDataPtr)
 {
-    this->maxSeqLen = tilingDataPtr->maxSeqLen;
-    this->sBlkId = tilingDataPtr->eachCoreStartBlockId[GetBlockIdx()];
-    this->eBlkId = tilingDataPtr->eachCoreEndBlockId[GetBlockIdx()];
-
-    if (this->sBlkId == this->eBlkId && this->eBlkId == 0) {
-        return -1;
-    }
-
-    for (auto i = 0; i < this->xDim0 + 1; i++) {
-        this->seqOffsets[i] = tilingDataPtr->seqOffset[i];
-    }
-
+    int blockId = GetBlockIdx();
+    uint32_t coreNum = GetBlockNum() * GetTaskRation();
     this->batchSize = this->xDim0;
     this->seqLen = this->xDim1;
     this->headNum = this->xDim2;
     this->headDim = this->xDim3;
+    this->maxSeqLen = tilingDataPtr->maxSeqLen;
+
+    uint32_t totalBatchSize = this->xDim0 * this->xDim2;
+    uint32_t totalGtSize = totalBatchSize + coreNum * CONST_2; // blocknum per batch, startblockid, endblockid
+    for (auto i = 0; i < this->xDim0 + 1; i++) {
+        this->seqOffsets[i] = tilingDataPtr->seqOffset[i];
+    }
+    blockNumberGt.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(this->workspace), totalGtSize);
+    if (GetBlockIdx() == 0) {
+        auto tmpLt = this->tmpBuff.template AllocTensor<int32_t>();
+        auto dstLt = this->queOut.template AllocTensor<int64_t>();
+        int32_t initVal = 0;
+        Duplicate(tmpLt, initVal, coreNum * CONST_2);
+        Cast(dstLt, tmpLt, RoundMode::CAST_NONE, coreNum * CONST_2);
+        DataCopy(blockNumberGt[totalBatchSize], dstLt, coreNum * CONST_2);
+
+        auto taskAssigner = BlockTaskAssign(this->seqOffsets,
+                                            coreNum,
+                                            this->blockHeight,
+                                            this->batchSize,
+                                            this->headNum,
+                                            blockNumberGt);
+        if (this->maskType == CausalMaskT::MASK_TRIL) {
+            taskAssigner.ComputeCausal();
+        } else {
+            taskAssigner.Compute();
+        }
+
+        this->tmpBuff.template FreeTensor(tmpLt);
+        this->queOut.template FreeTensor(dstLt);
+    }
+    SyncAll();
+    
+    this->sBlkId = blockNumberGt.GetValue(totalBatchSize + blockId);
+    this->eBlkId = blockNumberGt.GetValue(totalBatchSize + blockId + coreNum);
+    if (this->sBlkId == this->eBlkId && this->eBlkId == 0) {
+        return -1;
+    }
     return 0;
 }
-
 }
 
 #endif

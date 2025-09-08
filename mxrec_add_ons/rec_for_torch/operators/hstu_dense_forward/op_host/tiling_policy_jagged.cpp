@@ -34,216 +34,6 @@ constexpr bool JAGGED_TASK_ASSIGN_DEBUG = false;
 
 constexpr uint32_t CONST_2 = 2;
 
-namespace {
-    struct BlockTaskInfo {
-        uint32_t startBlockId = 0;
-        uint32_t endBlockId = 0;
-
-        friend std::ostream& operator<<(std::ostream& os, const BlockTaskInfo& blockTask)
-        {
-            return os << "startBlockId:" << blockTask.startBlockId << " " <<
-                         "endBlockId:" << blockTask.endBlockId << " ";
-        }
-    };
-
-    class BlockTaskAssign {
-    public:
-        BlockTaskAssign(uint32_t *seqOffsets,
-                        uint32_t coreNum, uint32_t blockLen, uint32_t batchSize, uint32_t headNum)
-        {
-#if JAGGED_TASK_ASSIGN_DEBUG
-            OPS_LOG_D("BlockTaskAssign coreNum:%d blockLen:%d batchSize:%d headNum:%d\n",
-                coreNum, blockLen, batchSize, headNum);
-            OPS_LOG_D("BlockTaskAssign seqOffsets:");
-            for (auto i = 0; i <= batchSize; i++) {
-                OPS_LOG_D("%d ", seqOffsets[i]);
-            }
-            OPS_LOG_D("\n");
-#endif
-            this->seqOffsets = seqOffsets;
-            this->coreNum = coreNum;
-            this->blockLen = blockLen;
-            this->batchSize = batchSize;
-            this->headNum = headNum;
-        }
-
-        void PreInit(
-            std::vector<BlockTaskInfo> &workTasks, std::vector<int> &workLoads, std::vector<int64_t> &blockNumber)
-        {
-            workTasks.resize(this->coreNum);
-            workLoads.resize(this->coreNum, 0);
-
-            // 得到每个batch 和 head的block个数
-            for (auto batchId = 0; batchId < batchSize; batchId++) {
-                auto batchBlockSize = this->seqOffsets[batchId + 1] - this->seqOffsets[batchId];
-
-                for (auto headId = 0; headId < headNum; headId++) {
-                    blockNumber[batchId * headNum + headId] =
-                        (batchBlockSize + blockLen - 1) / blockLen;
-                }
-            }
-        }
-
-        bool BatchSwitch(
-            std::vector<int64_t> &blockNumber,
-            uint32_t &batchId,
-            uint32_t totalBatchSize,
-            uint32_t &batchTaskNum)
-        {
-            if (blockNumber[batchId] == 0) {
-                batchId++;
-                if (batchId >= totalBatchSize) {
-                    return false;
-                }
-                batchTaskNum = blockNumber[batchId];
-            }
-            return true;
-        }
-
-        void Compute(std::vector<BlockTaskInfo> &workTasks, std::vector<int> &workLoads)
-        {
-            // 得到每个batch 和 head的block个数
-            uint32_t totalBatchSize = batchSize * headNum;
-            std::vector<int64_t> blockNumber(totalBatchSize, 0);
-            PreInit(workTasks, workLoads, blockNumber);
-
-            // 计算所有的task_num得到每个core 计算的task均值
-            int64_t totalTaskNumber = 0;
-            totalTaskNumber = std::accumulate(blockNumber.begin(),
-                                              blockNumber.end(),
-                                              totalTaskNumber,
-                                              [](int64_t val, int64_t x) {
-                                                  return val + x * x;
-                                              });
-
-            int64_t eachCoreTaskNumLimit = (totalTaskNumber + this->coreNum - 1) / this->coreNum;
-
-#if JAGGED_TASK_ASSIGN_DEBUG
-            int64_t total_block_number = 0;
-            total_block_number = std::accumulate(blockNumber.begin(),
-                                                 blockNumber.end(), total_block_number, [](int64_t val, int64_t x) {
-                        return val + x;
-                    });
-            OPS_LOG_D("eachCoreTaskNumLimit :%d totalTaskNumber:%d total_block_number:%d\n",
-                eachCoreTaskNumLimit, totalTaskNumber, total_block_number);
-#endif
-
-            // 遍历workers 计算得到每一个works的任务量
-            uint32_t batchId = 0;
-            uint32_t batchTaskNum = blockNumber[batchId];
-            uint32_t processBlockNum = 0;
-            uint32_t processTaskNum = 0;
-            for (int i = 0; i < this->coreNum && batchId < totalBatchSize; i++) {
-                BlockTaskInfo blockTask;
-                blockTask.startBlockId = processBlockNum;
-
-                while (workLoads[i] < eachCoreTaskNumLimit) {
-                    workLoads[i] += batchTaskNum;
-                    processTaskNum += batchTaskNum;
-                    processBlockNum++;
-                    blockNumber[batchId]--;
-                    if (!BatchSwitch(blockNumber, batchId, totalBatchSize, batchTaskNum)) {
-                        break;
-                    }
-                }
-
-                blockTask.endBlockId = processBlockNum;
-                workTasks[i] = blockTask;
-            }
-
-#if JAGGED_TASK_ASSIGN_DEBUG
-            OPS_LOG_D("processTaskNum :%d processBlockNum:%d\n", processTaskNum, processBlockNum);
-            assert(processTaskNum == totalTaskNumber);
-            assert(processBlockNum == total_block_number);
-#endif
-        }
-
-        bool BatchSwitchCausal(
-            std::vector<int64_t> &blockNumber,
-            uint32_t &batchId,
-            uint32_t &taskNum,
-            uint32_t totalBatchSize
-        )
-        {
-            if (blockNumber[batchId] == 0) {
-                batchId++;
-                taskNum = 1;
-                if (batchId >= totalBatchSize) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        void ComputeCausal(std::vector<BlockTaskInfo> &workTasks, std::vector<int> &workLoads)
-        {
-            // 得到每个batch 和 head的block个数
-            uint32_t totalBatchSize = batchSize * headNum;
-            std::vector<int64_t> blockNumber(totalBatchSize, 0);
-            PreInit(workTasks, workLoads, blockNumber);
-
-            // 计算所有的task_num得到每个core 计算的task均值
-            int64_t totalTaskNumber = 0;
-            totalTaskNumber = std::accumulate(blockNumber.begin(),
-                                              blockNumber.end(),
-                                              totalTaskNumber,
-                                              [](int64_t val, int64_t x) {
-                                                  return val + x * (x + 1) / CONST_2;
-                                              });
-
-            int64_t eachCoreTaskNumLimit = (totalTaskNumber + this->coreNum - 1) / this->coreNum;
-
-#if JAGGED_TASK_ASSIGN_DEBUG
-            int64_t total_block_number = 0;
-            total_block_number = std::accumulate(blockNumber.begin(),
-                                                 blockNumber.end(), total_block_number, [](int64_t val, int64_t x) {
-                        return val + x;
-                    });
-            OPS_LOG_D("eachCoreTaskNumLimit :%d totalTaskNumber:%d total_block_number:%d\n",
-                eachCoreTaskNumLimit, totalTaskNumber, total_block_number);
-#endif
-
-            // 遍历workers 计算得到每一个works的任务量
-            uint32_t batchId = 0;
-            uint32_t taskNum = 1;
-            uint32_t processBlockNum = 0;
-            uint32_t processTaskNum = 0;
-            for (int i = 0; i < this->coreNum && batchId < totalBatchSize; i++) {
-                BlockTaskInfo blockTask;
-                blockTask.startBlockId = processBlockNum;
-
-                while (workLoads[i] < eachCoreTaskNumLimit) {
-                    workLoads[i] += taskNum;
-                    processTaskNum += taskNum;
-
-                    taskNum++;
-                    processBlockNum++;
-                    blockNumber[batchId]--;
-                    if (!BatchSwitchCausal(blockNumber, batchId, taskNum, totalBatchSize)) {
-                        break;
-                    }
-                }
-
-                blockTask.endBlockId = processBlockNum;
-                workTasks[i] = blockTask;
-            }
-
-#if JAGGED_TASK_ASSIGN_DEBUG
-            OPS_LOG_D("processTaskNum :%d processBlockNum:%d\n", processTaskNum, processBlockNum);
-            assert(processTaskNum == totalTaskNumber);
-            assert(processBlockNum == total_block_number);
-#endif
-        }
-
-    private:
-        uint32_t *seqOffsets = nullptr;
-        uint32_t coreNum = 0;
-        uint32_t blockLen = 0;
-        uint32_t batchSize = 0;
-        uint32_t headNum = 0;
-    };
-}
-    
 namespace HstuDenseForward {
 
 REGISTER_POLICY(LAYOUT_TYPE::JAGGED, std::make_shared<TilingPolicyJagged>());
@@ -284,25 +74,6 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
     return true;
 }
 
-static void CallBlockAssign(
-    uint32_t *seqOffsets,
-    uint32_t coreNum,
-    std::vector<BlockTaskInfo> &workTasks,
-    std::vector<int> &workLoads,
-    optiling::HstuDenseForwardTilingData &tiling)
-{
-    uint32_t batchSize = tiling.get_batchSize();
-    uint32_t headNum = tiling.get_headNum();
-    uint32_t maskType = tiling.get_maskType();
-
-    auto taskAssigner = BlockTaskAssign(seqOffsets, coreNum, BLOCK_HEIGHT, batchSize, headNum);
-    if (maskType == 0) {
-        taskAssigner.ComputeCausal(workTasks, workLoads);
-    } else {
-        taskAssigner.Compute(workTasks, workLoads);
-    }
-}
-
 bool TilingPolicyJagged::TilingCore(gert::TilingContext* context, optiling::HstuDenseForwardTilingData &tiling)
 {
     const gert::RuntimeAttrs* attrs = context->GetAttrs();
@@ -318,13 +89,6 @@ bool TilingPolicyJagged::TilingCore(gert::TilingContext* context, optiling::Hstu
         return false;
     }
 
-#if JAGGED_TASK_ASSIGN_DEBUG
-    auto start = std::chrono::high_resolution_clock::now();
-#endif
-
-    std::vector<BlockTaskInfo> workTasks;
-    std::vector<int> workLoads;
-
     uint32_t seqOffsets[MAX_BATCH_SIZE + 1] = {0};
     for (auto i = 0; i < seqOffsetLens; i++) {
         seqOffsets[i] = seqOffsetData[i];
@@ -333,30 +97,7 @@ bool TilingPolicyJagged::TilingCore(gert::TilingContext* context, optiling::Hstu
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t coreNum = ascendPlatform.GetCoreNumAiv();
 
-    CallBlockAssign(seqOffsets, coreNum, workTasks, workLoads, tiling);
-
-#if JAGGED_TASK_ASSIGN_DEBUG
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::micro> elapsed = end - start;
-    std::cout << "BlockTaskAssign Elapsed time: " << elapsed.count() << " us\n";
-
-    for (auto i = 0; i < coreNum; i++) {
-        OPS_LOG_E("", "aicore :%d startBlockId:%d endBlockId:%d totalTaskNumber:%d\n",
-            i, workTasks[i].startBlockId, workTasks[i].endBlockId, workLoads[i]);
-    }
-#endif
-
-    uint32_t startBlockId[MAX_AIV_NUM] = {0};
-    uint32_t endBlockId[MAX_AIV_NUM] = {0};
-
-    for (auto i = 0; i < coreNum; i++) {
-        startBlockId[i] = workTasks[i].startBlockId;
-        endBlockId[i] = workTasks[i].endBlockId;
-    }
-
     tiling.set_seqOffset(seqOffsets);
-    tiling.set_eachCoreStartBlockId(startBlockId);
-    tiling.set_eachCoreEndBlockId(endBlockId);
 
     size_t aicCoreNum = ascendPlatform.GetCoreNumAic();
     context->SetBlockDim(aicCoreNum);
@@ -386,19 +127,11 @@ void TilingPolicyJagged::DumpTiling(optiling::HstuDenseForwardTilingData &tiling
     this->TilingPolicy::DumpTiling(tiling);
 
     uint32_t *seqOffset = tiling.get_seqOffset();
-    uint32_t *startBlockId = tiling.get_eachCoreStartBlockId();
-    uint32_t *endBlockId = tiling.get_eachCoreEndBlockId();
 
     OPS_LOG_D("seq offset:");
     for (auto i = 0; i < (tiling.get_batchSize() + 1); i++) {
         OPS_LOG_D("%d ", seqOffset[i]);
     }
     OPS_LOG_D("\n");
-
-    OPS_LOG_D("core block range:\n");
-    for (auto i = 0; i < MAX_AIV_NUM; i++) {
-        OPS_LOG_E("", "core_id:%d startBlockId:%d endBlockId:%d\n", i, startBlockId[i], endBlockId[i]);
-    }
 }
-
 }
