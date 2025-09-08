@@ -9,32 +9,7 @@
 #include <torch/library.h>
 
 #include "../common/pytorch_npu_helper.hpp"
-using namespace at;
-using namespace std;
-
-constexpr int EXPECTED_DIM_1D = 1;
-
-/**
- * 检查张量是否非空
- * @param tensor 要检查的张量
- * @param name 张量名称(用于错误信息)
- */
-void check_tensor_non_empty(const Tensor &tensor, const std::string &name)
-{
-    TORCH_CHECK(tensor.defined(), name, " tensor must be defined");
-    TORCH_CHECK(tensor.numel() > 0, name, " tensor must be non-empty");
-}
-
-/**
- * 检查张量维度是否符合预期
- * @param tensor 要检查的张量
- * @param expected_dim 期望的维度
- * @param name 张量名称(用于错误信息)
- */
-void check_tensor_dim(const Tensor &tensor, int64_t expected_dim, const std::string &name)
-{
-    TORCH_CHECK(tensor.dim() == expected_dim, name, " must be ", expected_dim, "D");
-}
+#include "../common/common_utils.h"
 
 /**
  * 验证permute1d_sparse_data的输入参数
@@ -52,14 +27,14 @@ void validate_permute1d_sparse_data_inputs(
     const c10::optional<int64_t> &permuted_lengths_sum)
 {
     // ============= 空值检查 =============
-    check_tensor_non_empty(permute, "permute");
-    check_tensor_non_empty(lengths, "lengths");
-    check_tensor_non_empty(values, "values");
+    CheckTensorNonEmpty(permute, "permute");
+    CheckTensorNonEmpty(lengths, "lengths");
+    CheckTensorNonEmpty(values, "values");
 
     // ============= 维度检查 =============
-    check_tensor_dim(permute, EXPECTED_DIM_1D, "permute");
-    check_tensor_dim(lengths, EXPECTED_DIM_1D, "lengths");
-    check_tensor_dim(values, EXPECTED_DIM_1D, "values");
+    CheckTensorDim(permute, EXPECTED_DIM_1D, "permute");
+    CheckTensorDim(lengths, EXPECTED_DIM_1D, "lengths");
+    CheckTensorDim(values, EXPECTED_DIM_1D, "values");
 
     // ============= 长度一致性检查 =============
     const auto permute_len = permute.size(0);
@@ -68,8 +43,8 @@ void validate_permute1d_sparse_data_inputs(
 
     // 检查weights张量(如果存在)
     if (weights.has_value()) {
-        check_tensor_non_empty(*weights, "weights");
-        check_tensor_dim(*weights, EXPECTED_DIM_1D, "weights");
+        CheckTensorNonEmpty(*weights, "weights");
+        CheckTensorDim(*weights, EXPECTED_DIM_1D, "weights");
         const auto weights_len = weights->size(0);
         TORCH_CHECK(weights_len == values_len,
             "weights and values length mismatch: ", weights_len, " vs ", values_len);
