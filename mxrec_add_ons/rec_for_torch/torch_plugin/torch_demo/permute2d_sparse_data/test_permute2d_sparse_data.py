@@ -40,6 +40,10 @@ EXTRA_T = [1, 0, -1]
 B = [2048, 20480, 204800]
 SHAPE_LIST = list(itertools.product(T, EXTRA_T, B))
 
+_ZERO_PERMUTE = list(itertools.product([0], [1], B))
+_ZERO_LENGTH = list(itertools.product(T, [1], [0]))
+_NOT_PERFORMED_SHAPES = _ZERO_PERMUTE + _ZERO_LENGTH
+
 
 def get_result(tensors: dict, device: str = 'cpu'):
     tensors = {k: torch.from_numpy(v) if isinstance(v, np.ndarray) else v for k, v in tensors.items()}
@@ -59,7 +63,7 @@ def test_permute2d_sparse_data(types, shapes, enable_permuted_sum):
     """
     Params:
         permute: (T) dtype=int32
-        lenghts: (T + T', B) dtype=ltype
+        lengths: (T + T', B) dtype=ltype
                  L = lengths[:T].sum()
         values: (L) dtype=vtype
         weights: (L) dtype=fp32
@@ -80,11 +84,43 @@ def test_permute2d_sparse_data(types, shapes, enable_permuted_sum):
         'weights': weights,
         'permuted_lengths_sum': permuted_lengths_sum
     }
-
     golden = get_result(params)
     result = get_result(params, DEVICE)
+    _check_result(golden, result)
 
+
+def _check_result(golden, result):
     for gt, pred in zip(golden, result):
         assert type(gt) is type(pred)
         if isinstance(gt, torch.Tensor) and isinstance(pred, torch.Tensor):
             assert torch.allclose(gt, pred, atol=1e-5)
+
+
+@pytest.mark.parametrize("types", TYPE_LIST)
+@pytest.mark.parametrize("shapes", _NOT_PERFORMED_SHAPES)
+@pytest.mark.parametrize("enable_permuted_sum", [True])
+def test_permute2d_sparse_data_for_not_performed(types, shapes, enable_permuted_sum):
+    t, extra_t, b = shapes
+    extra_t = random.randint(1, max(t - 1, 1)) * extra_t
+
+    ptype, ltype, vtype, wtype = types
+    permute = np.random.choice(t + extra_t, t).astype(dtype=np.int32)
+    lengths = np.ones((t + extra_t, b), dtype=ltype)
+
+    # Not perform permutation, the difference in values size and lengths size can be ignored.
+    values = np.arange(0, (t + extra_t) * 1, dtype=vtype)
+    weights = np.arange(0, (t + extra_t) * 1, dtype=wtype) if wtype else None
+    permuted_lengths_sum = lengths[permute].sum() if enable_permuted_sum else None
+    params = {
+        'permute': permute,
+        'lengths': lengths,
+        'values': values,
+        'weights': weights,
+        'permuted_lengths_sum': permuted_lengths_sum
+    }
+
+    # The golden need use original data, because there is a difference between cpu and gpu in fbgemm repo.
+    golden = (lengths, values, weights)
+    golden = [torch.from_numpy(v) if isinstance(v, np.ndarray) else v for v in golden]
+    result = get_result(params, DEVICE)
+    _check_result(golden, result)
