@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
+#include <limits>
 #include "asynchronous_complete_cumsum_tiling.h"
 #include "register/op_def_registry.h"
 
@@ -35,8 +36,12 @@ namespace optiling {
         auto inputShape0 =  context->GetInputShape(0);
         OPS_LOG_E_IF_NULL("inputShape0", inputShape0, return ge::GRAPH_FAILED);
 
-        uint32_t totalLength = context->GetInputShape(0)->GetOriginShape().GetShapeSize();
+        int64_t totalLength = context->GetInputShape(0)->GetOriginShape().GetShapeSize();
         uint32_t dimNum = context->GetInputShape(0)->GetOriginShape().GetDimNum();
+
+        OPS_CHECK(totalLength >= std::numeric_limits<int32_t>::max(),
+            OPS_LOG_E("", "AsynchronousCompleteCumsum only handles up to INT_MAX elements, but got %u.", totalLength),
+            return ge::GRAPH_FAILED);
 
         ge::DataType inputDatatype = inputTensor0->GetDataType();
         uint32_t embeddingType;
@@ -45,7 +50,7 @@ namespace optiling {
         } else if (inputDatatype == ge::DT_INT32) {
             embeddingType = EMBEDDING_TYPE_INT32;
         } else {
-            printf("[ERROR]Invalid data type. AsynchronousCompleteCumsum only support int64 and int32.");
+            OPS_LOG_E("", "Invalid data type. AsynchronousCompleteCumsum only support int64 and int32.");
             return ge::GRAPH_FAILED;
         }
 
@@ -54,7 +59,7 @@ namespace optiling {
         tiling.set_inputType(embeddingType);
 
         if (dimNum != 1) {
-            printf("[ERROR]AsynchronousCompleteCumsum required the dim of input-0 is 1 but %ld ", dimNum);
+            OPS_LOG_E("", "AsynchronousCompleteCumsum required the dim of input-0 is 1 but %ld ", dimNum);
             return ge::GRAPH_FAILED;
         }
         context->SetBlockDim(1);

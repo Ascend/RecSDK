@@ -35,9 +35,19 @@ def get_ops_result(t_in):
 
 @pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
 @pytest.mark.parametrize("device", ["cpu", "npu:0", "npu:5"])
-@pytest.mark.parametrize("length", [1, 10, 100, 1000, 10000])
+@pytest.mark.parametrize("length", [1, 10, 100, 1000, 10000, 2**31 - 2])
 def test_asynchronous_complete_cumsum(dtype, device, length):
     t_int = torch.randint(0, 100, (length,), dtype=dtype)
     golden = get_result(t_int)
     result = get_ops_result(t_int.to(device))
     assert torch.allclose(result, golden)
+
+
+@pytest.mark.parametrize("length", [2**31 - 1, 2**31])
+def test_asynchronous_complete_cumsum_exceed_limit(length):
+    """测试超过元素数量限制的情况"""
+    t_exceed = torch.randint(0, 100, (length,), dtype=torch.int32)
+    
+    # 验证NPU版本会抛出异常（与GPU版本对齐）
+    with pytest.raises(RuntimeError):
+        _ = get_ops_result(t_exceed.npu())
