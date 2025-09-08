@@ -31,6 +31,14 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute2d_sparse_data_impl_npu(
 
     const auto T = permute.size(0);
     const auto B = lengths.size(1);
+    // When permute num element = 0, or B = 0, permutation will not be performed. Return the input tensor.
+    if (permute.numel() == 0 || B == 0) {
+        return {
+            lengths.clone(),
+            values.clone(),
+            weights.has_value() ? std::make_optional(weights->clone()) : std::nullopt
+        };
+    }
 
     int outValuesLen;
     if (permuted_lengths_sum.has_value() && permuted_lengths_sum.value() > 0) {

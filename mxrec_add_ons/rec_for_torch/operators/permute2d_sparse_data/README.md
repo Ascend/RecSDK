@@ -46,6 +46,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 1. 算子分析
 
 a) 算子的主要功能是实现fbgemm的permute2d_sparse_data, 实现了对二维稀疏数据进行重排。
+
 b) 算子参数说明：
 
 * permute: 重排的顺序参数tensor;
