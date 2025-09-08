@@ -1,5 +1,5 @@
 /**
-* @file jagged_to_padded_dense.cpp
+ * @file jagged_to_padded_dense.cpp
  *
  * Copyright (C) 2025. Huawei Technologies Co., Ltd. All rights reserved.
  *
@@ -11,8 +11,7 @@
 #include <torch/library.h>
 
 #include "../common/pytorch_npu_helper.hpp"
-using tensor_list = std::vector<at::Tensor>;
-using namespace at;
+#include "../common/common_utils.h"
 
 namespace fbgemm_npu {
 at::Tensor dense_to_jagged_forward_npu(const at::Tensor& dense,
@@ -40,16 +39,15 @@ at::Tensor jagged_to_padded_dense_forward_npu_v1(const at::Tensor& values,
                                                  const int64_t max_lengths,
                                                  const double padding_value)
 {
-    TORCH_CHECK(values.dim() == 2,
-        "values must be a 2D tensor, but got ", values.dim(), "D tensor");
+    CheckTensorDim(values, EXPECTED_DIM_2D, "values");
     TORCH_CHECK(offsets.size() == 1,
         "offsets must contain exactly 1 tensor, but got ", offsets.size(), " tensors");
+
     const auto& offset_tensor = offsets[0];
-    TORCH_CHECK(offset_tensor.defined(),
-        "offset tensor must be defined (non-null)");
-    TORCH_CHECK(offset_tensor.dim() == 1,
-        "offset tensor must be 1D, but got ", offset_tensor.dim(), "D");
+    CheckTensorNonEmpty(offset_tensor, "offset_tensor");
+    CheckTensorDim(offset_tensor, EXPECTED_DIM_1D, "offset_tensor");
     TORCH_CHECK(max_lengths > 0, "max_lengths must be positive, but got ", max_lengths);
+
     const at::OptionalDeviceGuard guard(device_of(values));
     auto values_contin = values.contiguous();
     auto D = values.size(-1);
@@ -98,31 +96,109 @@ at::Tensor jagged_to_padded_dense_backward_npu(const at::Tensor& grad_output,
     return dense_to_jagged_forward_npu(grad_output, offsets, total_L);
 };
 
+// 自动求导Function类
+class JaggedToPaddedDenseV1 : public torch::autograd::Function<JaggedToPaddedDenseV1> {
+public:
+    static at::Tensor forward(AutogradContext* ctx,
+                             const at::Tensor& values,
+                             const tensor_list& offsets,
+                             const int64_t max_lengths,
+                             const double padding_value)
+    {
+        at::AutoDispatchBelowADInplaceOrView guard;
+        ctx->save_for_backward({values, offsets[0]});
+        ctx->saved_data["max_lengths"] = max_lengths;
+        ctx->saved_data["padding_value"] = padding_value;
+        return jagged_to_padded_dense_forward_npu_v1(values, offsets, max_lengths, padding_value);
+    }
+
+    static tensor_list backward(AutogradContext* ctx, tensor_list grad_outputs)
+    {
+        auto grad_output = grad_outputs[0];
+        auto saved = ctx->get_saved_variables();
+        auto values = saved[0];
+        auto offsets_tensor = saved[1];
+        tensor_list offsets = {offsets_tensor};
+
+        int64_t totalL = values.size(0);
+        auto grad_input = jagged_to_padded_dense_backward_npu(grad_output, offsets, totalL);
+        return {grad_input, Variable(), Variable(), Variable()};
+    }
+};
+
+class JaggedToPaddedDenseV2 : public torch::autograd::Function<JaggedToPaddedDenseV2> {
+public:
+    static at::Tensor forward(AutogradContext* ctx,
+                             const at::Tensor& values,
+                             const tensor_list& offsets,
+                             const at::IntArrayRef max_lengths,
+                             const double padding_value)
+    {
+        at::AutoDispatchBelowADInplaceOrView guard;
+        ctx->save_for_backward({values, offsets[0]});
+        ctx->saved_data["max_lengths"] = max_lengths[0];  // 保存第一个元素
+        ctx->saved_data["padding_value"] = padding_value;
+        return jagged_to_padded_dense_forward_npu_v2(values, offsets, max_lengths, padding_value);
+    }
+
+    static tensor_list backward(AutogradContext* ctx, tensor_list grad_outputs)
+    {
+        auto grad_output = grad_outputs[0];
+        auto saved = ctx->get_saved_variables();
+        auto values = saved[0];
+        auto offsets_tensor = saved[1];
+        tensor_list offsets = {offsets_tensor};
+
+        int64_t totalL = values.size(0);
+        auto grad_input = jagged_to_padded_dense_backward_npu(grad_output, offsets, totalL);
+        return {grad_input, Variable(), Variable(), Variable()};
+    }
+};
+
+// 自动求导接口
+at::Tensor jagged_to_padded_dense_npu_v1_autograd(const at::Tensor& values,
+                                                  const tensor_list& offsets,
+                                                  const int64_t max_lengths,
+                                                  const double padding_value)
+{
+    return JaggedToPaddedDenseV1::apply(values, offsets, max_lengths, padding_value);
+}
+
+at::Tensor jagged_to_padded_dense_npu_v2_autograd(const at::Tensor& values,
+                                                  const tensor_list& offsets,
+                                                  const at::IntArrayRef max_lengths,
+                                                  const double padding_value)
+{
+    return JaggedToPaddedDenseV2::apply(values, offsets, max_lengths, padding_value);
+}
+
 }  // namespace fbgemm_npu
 
 TORCH_LIBRARY_FRAGMENT(mxrec, m)
 {
     m.def("jagged_to_padded_dense.v1(Tensor values, "
-          "                       Tensor[] offsets, "
-          "                       int max_lengths, "
-          "                       float padding_value) -> Tensor");
+          "                          Tensor[] offsets, "
+          "                          int max_lengths, "
+          "                          float padding_value) -> Tensor");
     // 新增int[]的max_lengths
     m.def("jagged_to_padded_dense.v2(Tensor values, "
-          "                       Tensor[] offsets, "
-          "                       int[] max_lengths, "
-          "                       float padding_value) -> Tensor");
+          "                          Tensor[] offsets, "
+          "                          int[] max_lengths, "
+          "                          float padding_value) -> Tensor");
 
     m.def("jagged_to_padded_dense_forward.v1(Tensor values, "
-          "                               Tensor[] offsets, "
-          "                               int max_lengths, "
-          "                               float padding_value) -> Tensor");
+          "                                  Tensor[] offsets, "
+          "                                  int max_lengths, "
+          "                                  float padding_value) -> Tensor");
     // 新增int[]的max_lengths
     m.def("jagged_to_padded_dense_forward.v2(Tensor values, "
-          "                               Tensor[] offsets, "
-          "                               int[] max_lengths, "
-          "                               float padding_value) -> Tensor");
+          "                                  Tensor[] offsets, "
+          "                                  int[] max_lengths, "
+          "                                  float padding_value) -> Tensor");
 
-    m.def("jagged_to_padded_dense_backward(Tensor grad, Tensor[] offsets, int total_L) -> Tensor");
+    m.def("jagged_to_padded_dense_backward(Tensor grad, "
+          "                                Tensor[] offsets, "
+          "                                int total_L) -> Tensor");
 }
 
 TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
@@ -157,4 +233,17 @@ TORCH_LIBRARY_IMPL(fbgemm, PrivateUse1, m)
         torch::dispatch(c10::DispatchKey::PrivateUse1,
                       TORCH_FN(fbgemm_npu::jagged_to_padded_dense_forward_npu_v2)));
     m.impl("jagged_to_padded_dense_backward", &fbgemm_npu::jagged_to_padded_dense_backward_npu);
+}
+
+// 注册自动求导实现
+TORCH_LIBRARY_IMPL(mxrec, AutogradPrivateUse1, m)
+{
+    m.impl("jagged_to_padded_dense.v1", TORCH_FN(fbgemm_npu::jagged_to_padded_dense_npu_v1_autograd));
+    m.impl("jagged_to_padded_dense.v2", TORCH_FN(fbgemm_npu::jagged_to_padded_dense_npu_v2_autograd));
+}
+
+TORCH_LIBRARY_IMPL(fbgemm, AutogradPrivateUse1, m)
+{
+    m.impl("jagged_to_padded_dense.v1", TORCH_FN(fbgemm_npu::jagged_to_padded_dense_npu_v1_autograd));
+    m.impl("jagged_to_padded_dense.v2", TORCH_FN(fbgemm_npu::jagged_to_padded_dense_npu_v2_autograd));
 }
