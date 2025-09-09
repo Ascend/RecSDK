@@ -13,6 +13,10 @@ from hybrid_torchrec.constants import (
     MAX_EMBEDDINGS_DIM,
     MAX_NUM_EMBEDDINGS,
 )
+from torchrec_embcache.distributed.embedding import EmbCacheEmbeddingCollection
+from torchrec_embcache.distributed.embedding_bag import EmbCacheEmbeddingBagCollection
+
+from torchrec import EmbeddingBagConfig, EmbeddingConfig
 
 
 @pytest.mark.parametrize(
@@ -70,3 +74,11 @@ def test_embcache_embedding_config_invalid(kwargs, err_pattern):
     
     with pytest.raises(ValueError, match=err_pattern):
         EmbCacheEmbeddingBagConfig(**kwargs)
+
+    with pytest.raises(ValueError, match=err_pattern):
+        config = EmbeddingConfig(init_fn=lambda *args: None, **kwargs)
+        EmbCacheEmbeddingCollection([config], 1, 1, [1])
+    
+    with pytest.raises(ValueError, match=err_pattern):
+        config = EmbeddingBagConfig(init_fn=lambda *args: None, **kwargs)
+        EmbCacheEmbeddingBagCollection([config], 1, 1, [1])

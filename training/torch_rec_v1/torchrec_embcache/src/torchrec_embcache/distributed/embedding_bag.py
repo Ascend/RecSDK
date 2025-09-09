@@ -35,7 +35,7 @@ from hybrid_torchrec.distributed.sharding.post_input_dist import (
 from hybrid_torchrec.sparse.jagged_tensor_with_looup_helper import (
     KeyedJaggedTensorWithLookHelper,
 )
-from torchrec_embcache.distributed.configs import EmbCacheEmbeddingBagConfig
+from torchrec_embcache.distributed.configs import EmbCacheEmbeddingBagConfig, check_embedding_config
 from torchrec_embcache.distributed.sharding.rw_sharding import (
     EmbCacheRwPooledEmbeddingSharding,
 )
@@ -227,6 +227,9 @@ class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
         device: Optional[torch.device] = None,
         embedding_optimizer_cls: Type[torch.optim.Optimizer] = torch.optim.Adagrad,
     ) -> None:
+        for config in tables:
+            check_embedding_config(config)
+
         super().__init__(tables, is_weighted, device)
         torch._C._log_api_usage_once(f"torchrec.modules.{self.__class__.__name__}")
         self._is_weighted = is_weighted

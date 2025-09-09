@@ -12,10 +12,12 @@ from dataclasses import dataclass
 from types import MethodType
 from typing import List
 
+
 import pytest
 import torch
 import torch_npu
 import torch.multiprocessing as mp
+from torch.multiprocessing.spawn import ProcessRaisedException
 import torch.distributed as dist
 from dataset import RandomRecDataset, Batch
 from model import Model
@@ -24,6 +26,7 @@ from torch.utils.data import DataLoader
 from torchrec_embcache.distributed.embedding_bag import EmbCacheEmbeddingBagCollection
 from torchrec_embcache.distributed.train_pipeline import EmbCacheTrainPipelineSparseDist
 from torchrec_embcache.distributed.sharding.embedding_sharder import EmbCacheEmbeddingBagCollectionSharder
+from torchrec_embcache.distributed.configs import EmbCacheEmbeddingBagConfig
 from util import setup_logging
 
 import torchrec
@@ -54,6 +57,7 @@ class ExecuteConfig:
     sharding_type: str
     lookup_len: int
     device: str
+    err_pattern: str = ''
 
 
 def execute(rank: int, config: ExecuteConfig):
@@ -67,6 +71,21 @@ def execute(rank: int, config: ExecuteConfig):
     device = config.device
     setup_logging(rank)
     logging.info("this test %s", os.path.basename(__file__))
+
+    embedding_configs = []
+    for i in range(table_num):
+        ebc_config = EmbCacheEmbeddingBagConfig(
+            name=f"table{i}",
+            embedding_dim=embedding_dims[i],
+            num_embeddings=num_embeddings[i],
+            feature_names=[f"feat{i}"],
+            pooling=pool_type,
+            weight_init_min=0.0,
+            weight_init_max=1.0,
+        )
+        embedding_configs.append(ebc_config)
+        ebc_config.init_fn = MethodType(weight_init, ebc_config)
+
     dataset_golden = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num)
     dataset = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num)
     dataset_loader_golden = DataLoader(
@@ -83,19 +102,6 @@ def execute(rank: int, config: ExecuteConfig):
         pin_memory_device="npu",
         num_workers=1,
     )
-    embedding_configs = []
-    for i in range(table_num):
-        ebc_config = EmbeddingBagConfig(
-            name=f"table{i}",
-            embedding_dim=embedding_dims[i],
-            num_embeddings=num_embeddings[i],
-            feature_names=[f"feat{i}"],
-            pooling=pool_type,
-            weight_init_min=0.0,
-            weight_init_max=1.0,
-        )
-        embedding_configs.append(ebc_config)
-        ebc_config.init_fn = MethodType(weight_init, ebc_config)
 
     test_model = TestModel(rank, world_size, device)
     golden_results = test_model.cpu_golden_loss(embedding_configs, dataset_loader_golden)
@@ -272,10 +278,57 @@ params = {
 @pytest.mark.parametrize("config", [
     ExecuteConfig(*v) for v in itertools.product(*params.values())
 ])
-def test_hstu_dens_normal(config: ExecuteConfig):
+def test_pipeline_normal(config: ExecuteConfig):
     mp.spawn(
         execute,
         args=(config,),
         nprocs=WORLD_SIZE,
         join=True,
     )
+
+
+params_invalid_num_embeddings = {
+    "world_size": [WORLD_SIZE],
+    "table_num": [2],
+    "embedding_dims": [[128, 128]],
+    "num_embeddings": [[1000000000 + 1, 400]],
+    "pool_type": [
+        torchrec.PoolingType.SUM,
+    ],
+    "sharding_type": ["row_wise"],
+    "lookup_len": [128],  # batchsize
+    "device": ["npu"],
+    "err_pattern": ["The num_embeddings should be in"],
+}
+
+params_invalid_embedding_dim = {
+    "world_size": [WORLD_SIZE],
+    "table_num": [2],
+    "embedding_dims": [[128, 127]],
+    "num_embeddings": [[4000, 400]],
+    "pool_type": [
+        torchrec.PoolingType.SUM,
+    ],
+    "sharding_type": ["row_wise"],
+    "lookup_len": [128],  # batchsize
+    "device": ["npu"],
+    "err_pattern": ["The embedding dim should be a multiple of"],
+}
+
+
+@pytest.mark.parametrize("config", [
+    *(
+        ExecuteConfig(*v) for v in itertools.product(*params_invalid_num_embeddings.values())
+    ),
+    *(
+        ExecuteConfig(*v) for v in itertools.product(*params_invalid_embedding_dim.values())
+    ),
+])
+def test_pipeline_invalid(config: ExecuteConfig):
+    with pytest.raises(ProcessRaisedException, match=config.err_pattern):
+        mp.spawn(
+            execute,
+            args=(config,),
+            nprocs=WORLD_SIZE,
+            join=True,
+        )
