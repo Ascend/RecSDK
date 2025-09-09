@@ -16,6 +16,7 @@ import torch
 import torch_npu
 import torch.multiprocessing as mp
 import torch.distributed as dist
+from torch.multiprocessing.spawn import ProcessRaisedException
 from dataset import RandomRecDataset, Batch
 from model import ModelEc
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -54,6 +55,7 @@ class ExecuteConfig:
     lookup_len: int
     device: str
     admit_threshold: float
+    err_pattern: str = ''
 
 
 def execute(rank: int, config: ExecuteConfig):
@@ -67,6 +69,21 @@ def execute(rank: int, config: ExecuteConfig):
     admit_threshold = config.admit_threshold
     setup_logging(rank)
     logging.info("this test %s", os.path.basename(__file__))
+    embedding_configs = []
+    for i in range(table_num):
+        admit_and_evict_config = AdmitAndEvictConfig(admit_threshold=admit_threshold, not_admitted_default_value=0.99)
+        ec_config = EmbCacheEmbeddingConfig(
+            name=f"table{i}",
+            embedding_dim=embedding_dims[i],
+            num_embeddings=num_embeddings[i],
+            feature_names=[f"feat{i}"],
+            init_fn=weight_init,
+            weight_init_min=0.0,
+            weight_init_max=1.0,
+            admit_and_evict_config=admit_and_evict_config
+        )
+        embedding_configs.append(ec_config)
+
     dataset_golden = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num)
     dataset = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num)
     dataset_loader_golden = DataLoader(
@@ -83,21 +100,6 @@ def execute(rank: int, config: ExecuteConfig):
         pin_memory_device="npu",
         num_workers=1,
     )
-    embedding_configs = []
-    for i in range(table_num):
-        admit_and_evict_config = AdmitAndEvictConfig(admit_threshold=admit_threshold, not_admitted_default_value=0.99)
-        ec_config = EmbCacheEmbeddingConfig(
-            name=f"table{i}",
-            embedding_dim=embedding_dims[i],
-            num_embeddings=num_embeddings[i],
-            feature_names=[f"feat{i}"],
-            init_fn=weight_init,
-            weight_init_min=0.0,
-            weight_init_max=1.0,
-            admit_and_evict_config=admit_and_evict_config
-        )
-        embedding_configs.append(ec_config)
-
     test_model = TestModel(rank, world_size, device)
     golden_results = test_model.cpu_golden_loss(embedding_configs, dataset_loader_golden)
     test_results = test_model.test_loss(embedding_configs, data_loader, sharding_type)
@@ -274,3 +276,46 @@ def test_hstu_dens_normal(config: ExecuteConfig):
         nprocs=WORLD_SIZE,
         join=True,
     )
+
+
+params_invalid_num_embeddings = {
+    "world_size": [WORLD_SIZE],
+    "table_num": [2],
+    "embedding_dims": [[128, 128]],
+    "num_embeddings": [[1000000000 + 1, 400]],
+    "sharding_type": ["row_wise"],
+    "lookup_len": [128],  # batchsize
+    "device": ["npu"],
+    "admit_threshold": [-1], 
+    "err_pattern": ["The num_embeddings should be in"],
+}
+
+params_invalid_embedding_dim = {
+    "world_size": [WORLD_SIZE],
+    "table_num": [2],
+    "embedding_dims": [[128, 127]],
+    "num_embeddings": [[4000, 400]],
+    "sharding_type": ["row_wise"],
+    "lookup_len": [128],  # batchsize
+    "device": ["npu"],
+    "admit_threshold": [-1], 
+    "err_pattern": ["The embedding dim should be a multiple of"],
+}
+
+
+@pytest.mark.parametrize("config", [
+    *(
+        ExecuteConfig(*v) for v in itertools.product(*params_invalid_num_embeddings.values())
+    ),
+    *(
+        ExecuteConfig(*v) for v in itertools.product(*params_invalid_embedding_dim.values())
+    ),
+])
+def test_pipeline_invalid(config: ExecuteConfig):
+    with pytest.raises(ProcessRaisedException, match=config.err_pattern):
+        mp.spawn(
+            execute,
+            args=(config,),
+            nprocs=WORLD_SIZE,
+            join=True,
+        )

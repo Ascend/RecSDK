@@ -45,7 +45,8 @@ from hybrid_torchrec.sparse.jagged_tensor_with_looup_helper import (
 )
 
 from torchrec_embcache.distributed.configs import (
-    EmbCacheEmbeddingConfig
+    EmbCacheEmbeddingConfig,
+    check_embedding_config
 )
 from torchrec_embcache.distributed.sharding.rw_sequence_sharding import (
     EmbCacheRwSequenceEmbeddingSharding,
@@ -187,6 +188,9 @@ class EmbCacheEmbeddingCollection(EmbeddingCollection):
         device: Optional[torch.device] = None,
         embedding_optimizer_cls: Type[torch.optim.Optimizer] = torch.optim.Adagrad,
     ) -> None:
+        for config in tables:
+            check_embedding_config(config)
+
         super().__init__(tables, device, need_indices)
         torch._C._log_api_usage_once(f"torchrec.modules.{self.__class__.__name__}")
         self.embeddings: nn.ModuleDict = nn.ModuleDict()
