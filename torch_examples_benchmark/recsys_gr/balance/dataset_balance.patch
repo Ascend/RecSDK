@@ -1,0 +1,71 @@
+diff --git a/examples/hstu/dataset/sequence_dataset.py b/examples/hstu/dataset/sequence_dataset.py
+index 1a256dd..4153077 100644
+--- a/examples/hstu/dataset/sequence_dataset.py
++++ b/examples/hstu/dataset/sequence_dataset.py
+@@ -141,6 +141,66 @@ class SequenceDataset(IterableDataset[Batch]):
+ 
+         self._sample_ids = np.arange(self._num_samples)
+         self._shuffle_batch()
++        self._balance_batch()
++    def _balance_batch(self):
++        # 按global_batch为粒度切片遍历，每一个切片内进行排序，排序原则为：
++        # 每连续batch size的区块所含的batch长度累加长度均衡
++        if self._batch_size < 2:
++            return
++        ctx_len = len(self._contextual_feature_names)
++        factor = 2 if self._action_feature_name is not None else 1
++        max_cand = max(0, self._max_num_candidates)
++        cap_body = self._max_seqlen - ctx_len - max_cand
++
++        chunks = [self._sample_ids[i:i + self._global_batch_size] for i in range(0, self._num_samples, self._global_batch_size)]
++        col = self._seq_logs_frame[self._item_feature_name]
++        cost = 0 # seq len作为cost
++        for chunk in chunks:
++            start = time.perf_counter_ns()
++            vals = [col.iat[int(sid)] for sid in chunk]
++            vals_len = [self._fast_seq_len(x) for x in vals]
++            cost += (time.perf_counter_ns() - start)
++            cand_len = [min(max_cand, max(0, l)) for l in vals_len]
++            body_len = [max(0, l - c) for l, c in zip(vals_len, cand_len)]
++            trunc_body_len = [min(b, max(0, cap_body)) for b in body_len]
++            total_len = [tb + c for tb, c in zip(trunc_body_len, cand_len)]
++            costs = [factor * t + ctx_len for t in total_len]
++            self._balance_by_costs(chunk, costs)
++    
++    def _balance_by_costs(self, ids, costs):
++        """
++        针对一个sample_ids的costs进行排序，排序结果让batch_size块的总和负载均衡
++        排序算法策略：
++        1. 将2个列表拼在一起
++        2. 按照costs升序排列ids
++        3. 排序后，按照每个排序好的分块，贪心策略一大一小的顺序取序列分配给rank
++        """
++        if len(ids) < self._global_batch_size:
++            # 尾部不足一个global_batch,先不考虑负载均衡
++            return
++        if len(ids) != len(costs):
++            return
++        pairs = list(zip(ids, costs))
++        pairs.sort(key=lambda x: x[1])
++        idssort = [x[0] for x in pairs]
++        idsidx = 0
++        ranknum = self._world_size
++        # 按rank遍历分id
++        rank = self._rank
++        idsidx = rank * self._batch_size
++        for i in range(self._batch_size):
++            if idsidx % 2 == 0:
++                ids[idsidx] = idssort[i * ranknum + rank]
++            else:
++                ids[idsidx] = idssort[i * ranknum + (ranknum - rank) - 1]
++            idsidx += 1
++
++    def _fast_seq_len(self, x) -> int:
++        # 根据json字符串估算长度
++        s = x.strip()
++        if len(s) <= 2:
++            return 0
++        return s.count(',') + 1
+ 
+     def _filter_short_sequences(
+         self, item_feature_name: str, max_num_candidates: int
