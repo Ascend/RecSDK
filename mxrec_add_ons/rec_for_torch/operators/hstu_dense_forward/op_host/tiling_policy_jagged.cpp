@@ -22,6 +22,7 @@ See the License for the specific language governing permissions and
 #include <functional>
 #include <cassert>
 
+#include "../../../common/common_host.h"
 #include "register/op_def_registry.h"
 #include "tiling_policy_factory.h"
 #include "tiling_policy_jagged.h"
@@ -55,9 +56,9 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
     OPS_CHECK_PTR_NULL(seqOffsetData, return false);
 
     int64_t seqOffsetLens = seqOffset->GetSize();
-    batchSize = seqOffsetLens - 1;
-    OPS_CHECK(batchSize > MAX_BATCH_SIZE,
-        OPS_LOG_E("", "batch size is over limit %d", MAX_BATCH_SIZE), return false);
+    batchSize = GetBatchSizeFromJaggedOffset(seqOffsetData, seqOffsetLens);
+    OPS_CHECK((batchSize == 0 || batchSize > MAX_BATCH_SIZE),
+        OPS_LOG_E("", "batchSize limit (0, %d], but get %lld\n", MAX_BATCH_SIZE, batchSize), return false);
 
     auto queryShape = context->GetInputShape(INDEX_T::INDEX_0)->GetStorageShape();
     headNum = queryShape.GetDim(INDEX_T::INDEX_1);
