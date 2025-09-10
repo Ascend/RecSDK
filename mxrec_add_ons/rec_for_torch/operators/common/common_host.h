@@ -15,6 +15,8 @@ See the License for the specific language governing permissions and
 #ifndef COMMON_HOST_H
 #define COMMON_HOST_H
 
+#include <cstdint>
+
 int64_t GetBatchSizeFromJaggedOffset(const int64_t *seqOffsetData, int32_t seqOffsetLens)
 {
     if (seqOffsetData == nullptr || seqOffsetLens <= 0) {
