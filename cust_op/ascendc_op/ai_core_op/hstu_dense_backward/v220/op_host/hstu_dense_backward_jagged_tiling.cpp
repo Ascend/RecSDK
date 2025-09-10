@@ -17,8 +17,8 @@ See the License for the specific language governing permissions and
 #include <vector>
 #include <numeric>
 
+#include "common_host.h"
 #include "register/op_def_registry.h"
-
 #include "hstu_dense_backward_jagged_tiling.h"
 
 namespace {
@@ -161,13 +161,12 @@ ge::graphStatus GetJaggedAttrsInfo(const gert::RuntimeAttrs *attrs, HstuDenseBac
 
     auto *seqOffsetData = const_cast<int64_t *>(reinterpret_cast<const int64_t *>(seqOffset->GetData()));
     int seqOffsetLens = seqOffset->GetSize();
-    if (seqOffsetLens > (MAX_BATCH_SIZE + 1)) {
-        OPS_LOG_E("", "seqOffsetLens exceed limit %d\n", MAX_BATCH_SIZE + 1);
-        return ge::GRAPH_FAILED;
-    }
+    int64_t batchSize = GetBatchSizeFromJaggedOffset(seqOffsetData, seqOffsetLens);
+    OPS_CHECK((batchSize == 0 || batchSize > MAX_BATCH_SIZE),
+        OPS_LOG_E("", "batchSize limit (0, %d], but get %lld\n", MAX_BATCH_SIZE, batchSize), return ge::GRAPH_FAILED);
 
     uint32_t seqOffsets[MAX_BATCH_SIZE + 1] = {0};
-    for (auto i = 0; i < seqOffsetLens; i++) {
+    for (auto i = 0; i < batchSize + 1; i++) {
         seqOffsets[i] = seqOffsetData[i];
     }
     
@@ -175,7 +174,7 @@ ge::graphStatus GetJaggedAttrsInfo(const gert::RuntimeAttrs *attrs, HstuDenseBac
     tiling.set_maxSeqLen(*maxSeqLen);
     tiling.set_siluScale(*siluScale);
     tiling.set_seqOffset(seqOffsets);
-    tiling.set_batchSize(seqOffsetLens - 1);
+    tiling.set_batchSize(batchSize);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -343,14 +342,12 @@ ge::graphStatus JaggedInferShape(gert::InferShapeContext *context)
 
     auto *seqOffsetData = const_cast<int64_t *>(reinterpret_cast<const int64_t *>(seqOffset->GetData()));
     int seqOffsetLens = seqOffset->GetSize();
-    if (seqOffsetLens > MAX_BATCH_SIZE + 1) {
-        OPS_LOG_E("", "seqOffsetLens exceed limit %d\n", MAX_BATCH_SIZE + 1);
-        return ge::GRAPH_FAILED;
-    }
+    int64_t batchSize = GetBatchSizeFromJaggedOffset(seqOffsetData, seqOffsetLens);
+    OPS_CHECK((batchSize == 0 || batchSize > MAX_BATCH_SIZE),
+        OPS_LOG_E("", "batchSize limit (0, %d], but get %lld\n", MAX_BATCH_SIZE, batchSize), return ge::GRAPH_FAILED);
 
     gert::Shape *attnBiasGradShape = context->GetOutputShape(INDEX_T::INDEX_3);
     if (attnBiasGradShape != nullptr) {
-        int batchSize = seqOffsetLens - 1;
         attnBiasGradShape->SetDimNum(BIAS_DIM_NUM);
         attnBiasGradShape->SetDim(INDEX_T::INDEX_0, batchSize);
         attnBiasGradShape->SetDim(INDEX_T::INDEX_1, qShape->GetDim(1));
