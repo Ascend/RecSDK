@@ -38,9 +38,13 @@ float16_pre: float = 1e-3
 float32_pre: float = 1e-4
 
 
-def jagged_data_gen(batch_size, max_seq_len, num_heads, attention_dim, mask_type, data_type):
+def jagged_data_gen(batch_size, max_seq_len, num_heads, attention_dim, mask_type, data_type, repeat_offset):
     seq_lens = torch.randint(1, max_seq_len + 1, (batch_size,), dtype=torch.int64)
     seq_offset = torch.concat((torch.zeros((1,), dtype=torch.int64), torch.cumsum(seq_lens, axis=0))).numpy()
+
+    # 构造offset中有重复值
+    if repeat_offset:
+        seq_offset = np.append(seq_offset, seq_offset[-1])
 
     total_seqs = torch.sum(seq_lens)
 
@@ -220,9 +224,10 @@ class TestHstuJaggedDemo:
         return q_grad, k_grad, v_grad, bias_grad
 
 
-    def execute(self, batch_size, max_seq_len, head_num, head_dim, mask_type, silu_scale, enable_bias, data_type):
+    def execute(self, batch_size, max_seq_len, head_num, head_dim, mask_type, silu_scale, enable_bias, data_type,
+                repeat_offset):
         grad, q, k, v, bias, mask, max_seq_len, seq_offset = jagged_data_gen(
-            batch_size, max_seq_len, head_num, head_dim, mask_type, data_type)
+            batch_size, max_seq_len, head_num, head_dim, mask_type, data_type, repeat_offset)
 
         q_grad, k_grad, v_grad, attn_bias_grad = self.custom_op_exec(
             grad, q, k, v, bias, mask, seq_offset, mask_type, max_seq_len, silu_scale, enable_bias, data_type)
@@ -251,9 +256,11 @@ class TestHstuJaggedDemo:
     @pytest.mark.parametrize("silu_scale", [0.0, 1.0 / 256])
     @pytest.mark.parametrize("enable_bias", [True, False])
     @pytest.mark.parametrize("data_type", [torch.float16, torch.float32, torch.bfloat16])
+    @pytest.mark.parametrize("repeat_offset", [False, True])
     def test_hstu_dens_jagged(self, batch_size, max_seq_len, head_num, head_dim, mask_type, silu_scale, enable_bias,
-                              data_type):
-        self.execute(batch_size, max_seq_len, head_num, head_dim, mask_type, silu_scale, enable_bias, data_type)
+                              data_type, repeat_offset):
+        self.execute(batch_size, max_seq_len, head_num, head_dim, mask_type, silu_scale, enable_bias, data_type,
+                     repeat_offset)
 
     @pytest.mark.parametrize("max_seq_len", [16])
     @pytest.mark.parametrize("head_num", [2])

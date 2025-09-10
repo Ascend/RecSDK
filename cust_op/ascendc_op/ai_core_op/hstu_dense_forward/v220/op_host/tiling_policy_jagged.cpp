@@ -22,6 +22,7 @@ See the License for the specific language governing permissions and
 #include <functional>
 #include <cassert>
 
+#include "common_host.h"
 #include "register/op_def_registry.h"
 #include "tiling_policy_factory.h"
 #include "tiling_policy_jagged.h"
@@ -266,9 +267,9 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
     OPS_CHECK_PTR_NULL(seqOffsetData, return false);
 
     int64_t seqOffsetLens = seqOffset->GetSize();
-    batchSize = seqOffsetLens - 1;
-    OPS_CHECK(batchSize > MAX_BATCH_SIZE,
-              OPS_LOG_E("", "batch size is over limit %d", MAX_BATCH_SIZE), return false);
+    batchSize = GetBatchSizeFromJaggedOffset(seqOffsetData, seqOffsetLens);
+    OPS_CHECK((batchSize == 0 || batchSize > MAX_BATCH_SIZE),
+        OPS_LOG_E("", "batchSize limit (0, %d], but get %lld\n", MAX_BATCH_SIZE, batchSize), return false);
 
     if (!QKVShapeCheck(context, QKV_DIM)) {
         return false;
@@ -317,10 +318,9 @@ bool TilingPolicyJagged::TilingCore(gert::TilingContext* context, optiling::Hstu
 
     auto *seqOffsetData = const_cast<int64_t *>(reinterpret_cast<const int64_t *>(seqOffset->GetData()));
     int seqOffsetLens = seqOffset->GetSize();
-    if (seqOffsetLens > (MAX_BATCH_SIZE + 1)) {
-        OPS_LOG_E("", "seqOffsetLens exceed limit %d \n", MAX_BATCH_SIZE + 1);
-        return false;
-    }
+    int64_t batchSize = GetBatchSizeFromJaggedOffset(seqOffsetData, seqOffsetLens);
+    OPS_CHECK((batchSize == 0 || batchSize > MAX_BATCH_SIZE),
+        OPS_LOG_E("", "batchSize limit (0, %d], but get %lld\n", MAX_BATCH_SIZE, batchSize), return false);
 
 #if JAGGED_TASK_ASSIGN_DEBUG
     auto start = std::chrono::high_resolution_clock::now();
@@ -330,7 +330,7 @@ bool TilingPolicyJagged::TilingCore(gert::TilingContext* context, optiling::Hstu
     std::vector<int> workLoads;
 
     uint32_t seqOffsets[MAX_BATCH_SIZE + 1] = {0};
-    for (auto i = 0; i < seqOffsetLens; i++) {
+    for (auto i = 0; i < batchSize + 1; i++) {
         seqOffsets[i] = seqOffsetData[i];
     }
 
