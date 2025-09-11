@@ -32,9 +32,10 @@ ulimit -c 0
 mpi_path=/usr/local/openmpi/bin/
 mx_rec_package_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/mx_rec
 so_path=${mx_rec_package_path}/libasc
-tfa_path=/usr/local/Ascend/tfplugin/latest/python/site-packages/npu_bridge  # tf1
-# tfa_path=/usr/local/Ascend/tfplugin/latest/python/site-packages/npu_device/compat/v1  # tf2
-export LD_LIBRARY_PATH=${so_path}:${tfa_path}:/usr/local/lib:$LD_LIBRARY_PATH
+tfa_path=/usr/local/python3.7.5/lib/python3.7/site-packages/npu_bridge  # tf1
+# tfa_path=/usr/local/python3.7.5/lib/python3.7/site-packages/npu_device/compat/v1  # tf2
+rec_sdk_comm_path=/usr/local/python3.7.5/lib/python3.7/site-packages/rec_sdk_common/lib
+export LD_LIBRARY_PATH=${so_path}:${tfa_path}:${rec_sdk_comm_path}:/usr/local/lib:$LD_LIBRARY_PATH
 export PYTHONPATH=${so_path}:$PYTHONPATH
 export PATH=${mpi_path}/bin:$PATH
 export LD_PRELOAD=/lib64/libgomp.so.1
