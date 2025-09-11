@@ -16,6 +16,7 @@
 #include <c10/util/Exception.h>
 #include <ATen/Parallel.h>
 
+#include "utils/env_config.h"
 #include "utils/logger.h"
 #include "utils/string_tools.h"
 #include "utils/time_cost.h"
@@ -25,6 +26,9 @@ using namespace Embcache;
 EmbcacheManager::EmbcacheManager(const std::vector<EmbConfig>& embConfigs, bool needAccumulateOffset)
     : embNum_(embConfigs.size()), needAccumulateOffset_(needAccumulateOffset)
 {
+    ConfigGlobalEnv();
+    Logger::SetLevel(GlobalEnv::glogStderrthreshold);
+    LogGlobalEnv();
     for (const auto& config : embConfigs) {
         auto length = config.tableName.size();
         if (config.tableName.size() > TABLE_NAME_LENGTH) {
@@ -33,7 +37,6 @@ EmbcacheManager::EmbcacheManager(const std::vector<EmbConfig>& embConfigs, bool 
         }
     }
     this->embConfigs_ = embConfigs;
-    auto length = embConfigs[0].tableName.size();
     enableFastHashMap_ = EnableFastHashMap();
 
     // 初始化featureFilters_，大小为表数量
