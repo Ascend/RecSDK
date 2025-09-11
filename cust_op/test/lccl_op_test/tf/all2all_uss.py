@@ -197,7 +197,7 @@ if __name__ == "__main__":
                     comm.Barrier()
                     logging.info("alluss finished")
                     train_finished = True
-            except tf.errors.OutOfRangeError:
+            except tf.errors.OutOfRangeError as e:
                 comm.Barrier()
                 logging.info("alluss test failed with error:{e}")
                 train_finished = True

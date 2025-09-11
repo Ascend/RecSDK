@@ -191,7 +191,7 @@ if __name__ == "__main__":
                     comm.Barrier()
                     logging.info("gather finished")
                     train_finished = True
-            except tf.errors.OutOfRangeError:
+            except tf.errors.OutOfRangeError as e:
                 comm.Barrier()
                 logging.info("gather test failed with error:{e}")
                 train_finished = True
