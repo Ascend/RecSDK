@@ -238,8 +238,6 @@ def run_train_loop(sess, train_iterator, model, args, train_ops):
             results = sess.run(fetches=run_dict)
             end_time = time.time()
             logging.info(f"current_steps: {current_steps} ,step time:{(end_time - start_time) * 1000}")
-            if current_steps <= 5:
-                total_start_time = time.time()
             if current_steps % print_steps == 0:
                 logging.info("----------" * 10)
                 try:
@@ -260,7 +258,7 @@ def run_train_loop(sess, train_iterator, model, args, train_ops):
     # train_finished
     logging.info(
         f"training {current_steps} steps, consume time: "
-        f"{(time.time() - total_start_time) / (current_steps - 5) * 1000} "
+        f"{(time.time() - total_start_time) / current_steps * 1000} "
     )
 
     terminate_config_initializer()
