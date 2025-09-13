@@ -54,6 +54,7 @@ class RecEnv:
     use_combine_faae: str
     record_key_count: str
     ssd_save_compact_level: str
+    use_shm_swap: str
 
 
 def get_global_env_conf() -> RecEnv:
@@ -76,7 +77,8 @@ def get_global_env_conf() -> RecEnv:
         glog_stderrthreahold=os.getenv(EnvOption.GLOG_STDERRTHREAHOLD.value, RecCPPLogLevel.INFO.value),
         use_combine_faae=os.getenv(EnvOption.USE_COMBINE_FAAE.value, Flag.FALSE.value),
         record_key_count=os.getenv(EnvOption.RECORD_KEY_COUNT.value, Flag.FALSE.value),
-        ssd_save_compact_level=os.getenv(EnvOption.SSD_SAVE_COMPACT_LEVEL.value, SsdCompactLevel.FULL_COMPACT.value)
+        ssd_save_compact_level=os.getenv(EnvOption.SSD_SAVE_COMPACT_LEVEL.value, SsdCompactLevel.FULL_COMPACT.value),
+        use_shm_swap=os.getenv(EnvOption.USE_SHM_SWAP.value, Flag.FALSE.value)
     )
 
     return rec_env
@@ -102,7 +104,8 @@ def get_global_env_conf() -> RecEnv:
     ("use_combine_faae", OptionValidator, {"options": [i.value for i in list(Flag)]}),
     ("record_key_count", OptionValidator, {"options": [i.value for i in list(Flag)]}),
     ("ssd_save_compact_level", Convert2intValidator,
-     {"min_value": SsdCompactLevel.NO_COMPACT.value, "max_value": SsdCompactLevel.FULL_COMPACT.value}, ["check_value"])
+     {"min_value": SsdCompactLevel.NO_COMPACT.value, "max_value": SsdCompactLevel.FULL_COMPACT.value}, ["check_value"]),
+    ("use_shm_swap", OptionValidator, {"options": [i.value for i in list(Flag)]}),
 ])
 def check_env(**kwargs):
     pass

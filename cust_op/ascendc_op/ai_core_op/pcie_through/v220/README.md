@@ -41,15 +41,6 @@ bash run.sh
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
 ```
 
-2. 在init函数中传入use_shm_swap，代码示例：
-
-```python
-from mx_rec.util.initialize import init
-
-# 详细使用指导请参考Rec SDK用户指南。
-init(use_shm_swap=True, ...)
-```
-
 ## 功能介绍
 
 算子的主要功能是利用pcie_through, 在host和device交换数据量较大的场景，提升换入换出的性能。

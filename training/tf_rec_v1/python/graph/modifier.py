@@ -38,6 +38,7 @@ from mx_rec.constants.constants import (
     ASCEND_SPARSE_LOOKUP_ENTRANCE,
     ASCAnchorAttr,
     ASCEND_TIMESTAMP,
+    Flag,
     MAX_WHILE_SIZE,
     LIBREC_EOS_OPS_SO,
     TRAIN_CHANNEL_ID,
@@ -52,6 +53,7 @@ from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
 from mx_rec.graph.merge_lookup import do_merge_lookup
 from mx_rec.graph.utils import check_and_force_list, export_pb_graph
 from mx_rec.graph.constants import DeprecatedOp, AnchorDatasetOp, AnchorIteratorOp
+from mx_rec.util.global_env_conf import global_env
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.util.ops import import_host_pipeline_ops
 from mx_rec.util.perf import performance
@@ -715,8 +717,7 @@ def _get_swap_info(
         )
     swap_out_pos = swap_info.swap_out_pos
     swap_in_pos = swap_info.swap_in_pos
-    use_shm_swap = ConfigInitializer.get_instance().use_shm_swap
-    if use_shm_swap:
+    if global_env.use_shm_swap == Flag.TRUE.value:
         if use_static:
             length_out = tf.cast(swap_info.swap_out_len, dtype=tf.int64)
             swap_out_pos = swap_out_pos[: length_out]
