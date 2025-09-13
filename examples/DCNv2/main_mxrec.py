@@ -91,7 +91,7 @@ if __name__ == "__main__":
     logger.info(f"USE_DYNAMIC: {use_dynamic}")
     init(train_steps=cm.train_steps, eval_steps=cm.eval_steps,
          use_dynamic=use_dynamic, use_dynamic_expansion=cm.use_dynamic_expansion,
-         use_lccl=use_lccl, use_shm_swap=cm.use_shm_swap)
+         use_lccl=use_lccl)
     IF_LOAD = False
     rank_id = rec_sdk_common.communication.hccl.hccl_info.get_rank_id()
     filelist = glob("./saved-model/sparse-model-0")
