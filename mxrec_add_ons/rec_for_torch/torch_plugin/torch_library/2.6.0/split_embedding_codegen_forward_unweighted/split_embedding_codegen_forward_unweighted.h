@@ -38,6 +38,11 @@ enum class PoolingMode {
     NONE = 2
 };
 
+void copy_gm_to_gm(void* source_memory_ptr,
+                   const std::vector<torch::Tensor>& target_tensors,
+                   torch::Tensor size,
+                   torch::Tensor grad_accumulate_offsets_size);
+
 namespace fbgemm_npu_lookups {
 at::Tensor split_embedding_codegen_forward_unweighted_cuda(const at::Tensor& dev_weights,
                                                            const at::Tensor& uvm_weights,

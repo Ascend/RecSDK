@@ -55,12 +55,14 @@ Tensor split_embedding_backward_codegen_adam_unweighted_exact_cuda(const Tensor&
                                                                    const Tensor& unique_ids,
                                                                    const Tensor& unique_offsets,
                                                                    const Tensor& unique_inverse,
+                                                                   const Tensor& table_offsets,
                                                                    double eps = 0,
                                                                    double learning_rate = 0,
                                                                    double beta1 = 0.9,
                                                                    double beta2 = 0.999,
                                                                    int64_t iter = 0,
-                                                                   bool is_dynamic = false);
+                                                                   bool is_dynamic = false,
+                                                                   bool use_optimize = true);
 
 class SplitLookupAdam : public torch::autograd::Function<SplitLookupAdam> {
 public:
@@ -84,6 +86,7 @@ public:
                                                   const c10::optional<at::Tensor>& unique_ids,
                                                   const c10::optional<at::Tensor>& unique_offsets,
                                                   const c10::optional<at::Tensor>& unique_inverse,
+                                                  const c10::optional<at::Tensor>& table_offsets,
                                                   const Tensor& offsets,
                                                   const int64_t pooling_mode,
                                                   const std::optional<Tensor>& indice_weights,
@@ -109,7 +112,8 @@ public:
                                                   double beta1 = 0,
                                                   double beta2 = 0,
                                                   int64_t iter = 0,
-                                                  bool is_dynamic = false)
+                                                  bool is_dynamic = false,
+                                                  bool use_optimize = true)
     {
         const auto T = weights_offsets.size(0);
         if (T == 0) {
@@ -146,7 +150,8 @@ public:
                                 hash_indices.value_or(Tensor()),
                                 unique_ids.value_or(at::Tensor()),
                                 unique_offsets.value_or(at::Tensor()),
-                                unique_inverse.value_or(at::Tensor())});
+                                unique_inverse.value_or(at::Tensor()),
+                                table_offsets.value_or(at::Tensor())});
         ctx->saved_data["max_D"] = max_D;
         ctx->saved_data["pooling_mode"] = pooling_mode;
         ctx->saved_data["total_hash_size_bits"] = total_hash_size_bits;
@@ -164,6 +169,7 @@ public:
         ctx->saved_data["beta2"] = beta2;
         ctx->saved_data["iter"] = iter;
         ctx->saved_data["is_dynamic"] = is_dynamic;
+        ctx->saved_data["use_optimize"] = use_optimize;
 
         const auto& flatten_dev_weights = dev_weights;
         // not surport  indice_weights
@@ -210,6 +216,7 @@ public:
         auto unique_ids = *savedItr++;
         auto unique_offsets = *savedItr++;
         auto unique_inverse = *savedItr++;
+        auto table_offsets = *savedItr++;
         auto max_D = ctx->saved_data["max_D"].toSymInt();
         auto pooling_mode = ctx->saved_data["pooling_mode"].toInt();
         auto total_hash_size_bits = ctx->saved_data["total_hash_size_bits"].toInt();
@@ -226,6 +233,7 @@ public:
         auto beta2 = ctx->saved_data["beta2"].toDouble();
         auto iter = ctx->saved_data["iter"].toInt();
         auto is_dynamic = ctx->saved_data["is_dynamic"].toBool();
+        auto use_optimize = ctx->saved_data["use_optimize"].toBool();
 
         TORCH_CHECK_EQ(grad_outputs.size(), 1);
 
@@ -246,8 +254,8 @@ public:
             BT_block_size, max_segment_length_per_warp, stochastic_rounding, info_B_num_bits, info_B_mask_int64,
             use_uniq_cache_locations_bwd, use_homogeneous_placements, momentum1_dev, momentum1_uvm,
             momentum1_placements, momentum1_offsets, momentum2_dev, momentum2_uvm, momentum2_placements,
-            momentum2_offsets, hash_indices, unique_ids, unique_offsets, unique_inverse, eps, learning_rate, beta1,
-            beta2, iter, is_dynamic);
+            momentum2_offsets, hash_indices, unique_ids, unique_offsets, unique_inverse, table_offsets, eps,
+            learning_rate, beta1, beta2, iter, is_dynamic, use_optimize);
         return {
             Tensor(),         // placeholder autograd tensor
             Variable(),       // output_dtype
@@ -286,12 +294,14 @@ public:
             Variable(),       // unique_ids
             Variable(),       // unique_offsets
             Variable(),       // unique_inverse
+            Variable(),       // table_offsets
             Variable(),       // eps
             Variable(),       // learning_rate
             Variable(),       // beta1
             Variable(),       // beta2
             Variable(),       // iter
             Variable(),       // is_dynamic
+            Variable(),       // use_optimize
         };
     }
 };
@@ -330,6 +340,7 @@ Tensor split_embedding_codegen_lookup_adam_function(
     const c10::optional<at::Tensor>& unique_ids = c10::optional<at::Tensor>(),
     const c10::optional<at::Tensor>& unique_offsets = c10::optional<at::Tensor>(),
     const c10::optional<at::Tensor>& unique_inverse = c10::optional<at::Tensor>(),
+    const c10::optional<at::Tensor>& table_offsets = c10::optional<at::Tensor>(),
     double eps = 0,
     double learning_rate = 0,
     double beta1 = 0,
@@ -350,7 +361,8 @@ Tensor split_embedding_codegen_lookup_adam_function(
     const std::optional<Tensor>& uvm_cache_stats = c10::nullopt,
     const std::optional<Tensor>& prev_iter_dev = c10::nullopt,
     const bool apply_global_weight_decay = false,
-    const double gwd_lower_bound = 0)
+    const double gwd_lower_bound = 0,
+    bool use_optimize = true)
 {
     // Set to experimental if either the feature is enabled in JK, or the user specifies to use TBEv2
     const auto is_experimental = is_experimental_tbe;
@@ -358,11 +370,11 @@ Tensor split_embedding_codegen_lookup_adam_function(
     return SplitLookupAdam::apply(
         placeholder_autograd_tensor, output_dtype, dev_weights, uvm_weights, lxu_cache_weights, weights_placements,
         weights_offsets, D_offsets, total_D, max_D, hash_size_cumsum, total_hash_size_bits, indices, hash_indices,
-        unique_ids, unique_offsets, unique_inverse, offsets, pooling_mode, indice_weights, feature_requires_grad,
-        lxu_cache_locations, uvm_cache_stats, gradient_clipping, max_gradient, stochastic_rounding, is_experimental,
-        use_uniq_cache_locations_bwd, use_homogeneous_placements, momentum1_dev, momentum1_uvm, momentum1_placements,
-        momentum1_offsets, momentum2_dev, momentum2_uvm, momentum2_placements, momentum2_offsets, eps, learning_rate,
-        beta1, beta2, iter, is_dynamic)[0];
+        unique_ids, unique_offsets, unique_inverse, table_offsets, offsets, pooling_mode, indice_weights,
+        feature_requires_grad, lxu_cache_locations, uvm_cache_stats, gradient_clipping, max_gradient,
+        stochastic_rounding, is_experimental, use_uniq_cache_locations_bwd, use_homogeneous_placements, momentum1_dev,
+        momentum1_uvm, momentum1_placements, momentum1_offsets, momentum2_dev, momentum2_uvm, momentum2_placements,
+        momentum2_offsets, eps, learning_rate, beta1, beta2, iter, is_dynamic, use_optimize)[0];
 }
 
 at::Tensor split_embedding_backward_codegen_adam_unweighted_exact_npu(const Tensor& grad_output,
@@ -398,12 +410,14 @@ at::Tensor split_embedding_backward_codegen_adam_unweighted_exact_npu(const Tens
                                                                       const at::Tensor& unique_ids,
                                                                       const at::Tensor& unique_offsets,
                                                                       const at::Tensor& unique_inverse,
+                                                                      const at::Tensor& table_offsets,
                                                                       double eps = 0,
                                                                       double learning_rate = 0,
                                                                       double beta1 = 0,
                                                                       double beta2 = 0,
                                                                       int64_t iter = 0,
-                                                                      bool is_dynamic = false)
+                                                                      bool is_dynamic = false,
+                                                                      bool use_optimize = true)
 {
     const int64_t t_max_D = max_D.guard_int(__FILE__, __LINE__);
 
@@ -431,8 +445,8 @@ at::Tensor split_embedding_backward_codegen_adam_unweighted_exact_npu(const Tens
                  lxu_cache_weights, weights_placements, weights_offsets, D_offsets, hash_size_cumsum, indices, offsets,
                  lxu_cache_locations, momentum1_dev, momentum1_uvm, momentum1_placements, momentum1_offsets,
                  momentum2_dev, momentum2_uvm, momentum2_placements, momentum2_offsets, hash_indices, unique_ids,
-                 unique_offsets, unique_inverse, t_max_D, total_hash_size_bits, pooling_mode, BT_block_size,
-                 max_segment_length_per_warp, stochastic_rounding, info_B_num_bits, info_B_mask_int64,
+                 unique_offsets, unique_inverse, table_offsets, t_max_D, total_hash_size_bits, pooling_mode,
+                 BT_block_size, max_segment_length_per_warp, stochastic_rounding, info_B_num_bits, info_B_mask_int64,
                  use_uniq_cache_locations, use_homogeneous_placements, optim_type, adamEps, learning_rate, beta1, beta2,
                  iter, is_dynamic, output, momentum1_dev, momentum2_dev, dev_weights);
 
@@ -476,6 +490,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    Tensor? unique_ids = None, "
           "    Tensor? unique_offsets = None, "
           "    Tensor? unique_inverse = None, "
+          "    Tensor? table_offsets = None, "
           "    float eps = 0, "
           "    float learning_rate = 0, "
           "    float beta1 = 0, "
@@ -496,7 +511,8 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    Tensor? uvm_cache_stats=None, "
           "    Tensor? prev_iter_dev=None, "
           "    bool apply_global_weight_decay=False, "
-          "    float gwd_lower_bound=0 "
+          "    float gwd_lower_bound=0, "
+          "    bool use_optimize = True"
           ") -> Tensor");
 
     m.impl("split_embedding_codegen_lookup_adam_function",
@@ -543,8 +559,10 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    Tensor unique_ids = None, "
           "    Tensor unique_offsets = None, "
           "    Tensor unique_inverse = None, "
+          "    Tensor table_offsets = None, "
           "    float eps = 0, float learning_rate = 0, float beta1 = 0, float beta2 = 0, int iter = 0, "
-          "    bool is_dynamic = False"
+          "    bool is_dynamic = False, "
+          "    bool use_optimize = True"
           ") -> Tensor");
     m.impl("split_embedding_backward_codegen_adam_unweighted_exact_cuda",
            torch::dispatch(c10::DispatchKey::Autograd,

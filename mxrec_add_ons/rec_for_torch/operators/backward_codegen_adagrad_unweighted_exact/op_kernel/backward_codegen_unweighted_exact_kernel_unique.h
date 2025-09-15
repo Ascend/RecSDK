@@ -69,10 +69,12 @@ public:
         uniqueId = args.uniqueId;
         uniqueInverse = args.uniqueInverse;
         uniqueHashSize = args.uniqueHashSize;
-        
+        table_indices_offsets = args.table_indices_offsets;
+
         uniqueHashDim0 = tilingData.uniqueHashDim0;
         
         uniqueHashSizeGT.SetGlobalBuffer((__gm__ int64_t*)uniqueHashSize, this->uniqueHashDim0);
+        tableIndicesOffsetsGT.SetGlobalBuffer((__gm__ int64_t*)table_indices_offsets, this->weightsOffsetsDim0 + 1);
         uniqueInverseGT.SetGlobalBuffer((__gm__ int64_t*)uniqueInverse, this->indicesDim0);
 
         offsetsGT.SetGlobalBuffer((__gm__ int64_t*)this->offsets, this->offsetsDim0);
@@ -149,7 +151,7 @@ public:
     {
         int batches = (this->offsetsDim0 - 1) / this->weightsOffsetsDim0;
         for (size_t i = 0; i <= this->weightsOffsetsDim0; i++) {
-            tables[i] = offsetsGT.GetValue(batches * i);
+            tables[i] = tableIndicesOffsetsGT.GetValue(i);
         }
     }
 
@@ -277,6 +279,7 @@ public:
 
     GM_ADDR uniqueId;
     GM_ADDR uniqueHashSize;
+    GM_ADDR table_indices_offsets;
     GM_ADDR uniqueInverse;
     int64_t uniqueIdDim0;
     int64_t uniqueHashDim0;
@@ -289,6 +292,7 @@ public:
     GlobalTensor<int64_t> indicesGT;
     GlobalTensor<int64_t> offsetsGT;
     GlobalTensor<int32_t> dOffsetsGT;
+    GlobalTensor<int64_t> tableIndicesOffsetsGT;
 };
 }  // namespace BackwardCodegenUnweightedExactUnique
 #endif
