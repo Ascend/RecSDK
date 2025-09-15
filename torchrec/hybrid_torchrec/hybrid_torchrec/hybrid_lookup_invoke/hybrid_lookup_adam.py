@@ -5,7 +5,6 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
-from typing import Optional
 
 import torch
 from fbgemm_gpu.split_embedding_codegen_lookup_invokers.lookup_adagrad import (
@@ -85,4 +84,7 @@ def invoke(
         use_homogeneous_placements=common_args.use_homogeneous_placements,
         apply_global_weight_decay=False,
         gwd_lower_bound=0.0,
+        use_optimize=common_args.use_optimize,
+        # grad_accumulate
+        table_offsets=common_args.table_offsets
     )
