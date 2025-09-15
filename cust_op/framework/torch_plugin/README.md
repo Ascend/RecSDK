@@ -6,8 +6,9 @@
 | torch==2.6.0 | torch_npu==2.6.0<br/>fbgemm+gpu==1.1.0+cpu<br/>torchrec==1.1.0+npu<br/>hybrid_torchrec==1.1.0 |
 
 ## 运行样例算子
-### 1.安装自定义算子
-- 下载recsdk-npu-ops软件包,在recsdk-npu-ops/recsdk_ops/目录下安装所需执行的算子。
+### 1.编译和安装自定义算子
+- 编译Ascend-recsdk-npu-ops-*-linux-*.tar.gz软件包，编译方式：RecSDK/cust_op/ascendc_op/build/README.md
+- 解压压缩包后，在recsdk-npu-ops/recsdk_ops/目录下安装执行所需的算子。
 
 以下算子支持单算子直调：
 ```bash

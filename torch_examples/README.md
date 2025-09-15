@@ -40,9 +40,10 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 ```
 
 ## 安装依赖
-说明：容器中已经安装好torchrec,hybrid_torchrec以及算子等依赖。如需重新安装依赖需确保网络通畅，可选择（1）通过获取安装包或者（2）源码编译的方式。
+说明：容器中已经安装好torchrec,hybrid_torchrec等依赖。如需重新安装依赖需确保网络通畅。
 
-1.获取安装包安装
+### 1.安装训练框架相关包
+#### 方式1：获取安装包安装
 
 获取地址：https://gitcode.com/Ascend/RecSDK/releases
 ```shell
@@ -56,7 +57,20 @@ pip3 install -r requirements.txt
 # 安装hybrid_torchrec
 tar -zxvf Ascend-mindxsdk-hybrid-torchrec-1.1.0-*.tar.gz
 pip3 install hybrid_torchrec-1.1.0-*.whl
+```
 
+#### 方式2：源码编译安装
+（1）编译安装torchrec
+参考：https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/torchrec_npu/README.md
+
+（2）编译安装hybrid_torchrec
+参考：https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/hybrid_torchrec/README.MD
+
+
+### 2.安装自定义算子和算子适配层
+源码编译Ascend-recsdk-npu-ops*.tar.gz软件包，参考：https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/ascendc_op/build/README.md
+
+```
 # 安装所需算子
 tar -zxvf Ascend-recsdk-npu-ops-*.tar.gz
 cd recsdk-npu-ops/recsdk_ops/
@@ -76,18 +90,4 @@ cd ../../
 cd recsdk-npu-ops/torch_plugin/torch_library/2.6.0/common
 bash build_ops.sh
 ```
-2.源码编译安装
-
-（1）编译安装torchrec
-参考：https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/torchrec_npu/README.md
-
-（2）编译安装hybrid_torchrec
-参考：https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/hybrid_torchrec/README.MD
-
-（3）编译安装算子和适配文件
-参考：https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/ascendc_op/build/README.md
-
-编译完成后生成的tar包在 RecSDK/cust_op/ascendc_op/output下,安装算子和算子适配文件请参考以上安装方法。
-
-
 注意：执行完"编译算子适配文件"步骤后，融合算子的依赖包libfbgemm_npu_api.so会生成在同目录下的build文件夹下，同时也会生成在python默认安装的site-package路径中，也可以将该so包拷贝到指定的目录下，在后续模型运行时会配置该文件的路径 。

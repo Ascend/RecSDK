@@ -17,6 +17,7 @@ COPY ./Ascend-cann-kernels-*.run ./
 COPY ./npu_bridge-1.15.0-*.whl ./
 COPY ./npu_device-2.6.5-*.whl ./
 COPY ./Ascend-recsdk-npu-ops*.tar.gz ./
+# 注：Ascend-recsdk-npu-ops*.tar.gz文件需源码编译，参考：RecSDK/cust_op/ascendc_op/build/README.md
 
 # 根据实际情况选择安装需要的依赖，如果一些依赖不需要可以将对应代码去掉或注释；同时，确保下载的依赖的包名与如下代码中的包名一致，
 # 否则在安装对应的依赖时可能出现找不到文件的错误。

@@ -16,7 +16,7 @@
 # ==============================================================================
 import os
 import sys
-from pathlib import Path
+import sysconfig
 import numpy as np
 import pytest
 import torch
@@ -29,9 +29,7 @@ sys.path.append(common_dir)
 from utils import allclose
 
 torch.npu.config.allow_internal_format = False
-CURR_DIR = Path(__file__).resolve().parent
-torch.ops.load_library(str(CURR_DIR.parent.parent.parent.parent / 
-                           "cust_op/framework/torch_plugin/torch_library/2.6.0/hstu_dense_backward_fuxi/build/libhstu_dense_fuxi_backward_ops.so"))
+torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
 device_id: int = 0
 mask_tril: int = 0
