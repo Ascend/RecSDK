@@ -19,6 +19,9 @@ from enum import Enum
 
 import tensorflow as tf
 
+from rec_sdk_common.communication.hccl.hccl_info import get_rank_id
+
+
 SSD_DATA_PATH = ["ssd_data"]
 
 
@@ -49,7 +52,13 @@ class LearningRateScheduler:
 
 class Config:
     def __init__(self, ) -> None:
-        self.rank_id = int(os.getenv("OMPI_COMM_WORLD_RANK")) if os.getenv("OMPI_COMM_WORLD_RANK") else None
+        try:
+            self.rank_id = get_rank_id()
+        except RuntimeError:
+            self.rank_id = None
+        except ValueError as exp:
+            raise ValueError(f"Config get_rank_id ValueError:{exp}") from exp
+
         tmp = os.getenv("TRAIN_RANK_SIZE")
         if tmp is None:
             raise ValueError("please export TRAIN_RANK_SIZE")
