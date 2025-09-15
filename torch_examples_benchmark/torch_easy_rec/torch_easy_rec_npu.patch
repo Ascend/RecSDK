@@ -1,0 +1,606 @@
+diff --git a/requirements/runtime.txt b/requirements/runtime.txt
+index 31d5d4f..74e33d8 100644
+--- a/requirements/runtime.txt
++++ b/requirements/runtime.txt
+@@ -3,13 +3,11 @@ anytree
+ common_io @ https://tzrec.oss-cn-beijing.aliyuncs.com/third_party/common_io-0.4.1%2Btunnel-py2.py3-none-any.whl
+ fbgemm-gpu==1.1.0
+ graphlearn @ https://tzrec.oss-cn-beijing.aliyuncs.com/third_party/graphlearn-1.3.3-cp311-cp311-linux_x86_64.whl ; python_version=="3.11"
+-graphlearn @ https://tzrec.oss-cn-beijing.aliyuncs.com/third_party/graphlearn-1.3.3-cp310-cp310-linux_x86_64.whl ; python_version=="3.10"
+ grpcio-tools<1.63.0
+ numpy<2
+ pandas
+ psutil
+ pyfg @ https://tzrec.oss-cn-beijing.aliyuncs.com/third_party/pyfg-0.6.5-cp311-cp311-linux_x86_64.whl ; python_version=="3.11"
+-pyfg @ https://tzrec.oss-cn-beijing.aliyuncs.com/third_party/pyfg-0.6.5-cp310-cp310-linux_x86_64.whl ; python_version=="3.10"
+ pyodps>=0.12.2.1
+ scikit-learn
+ tensorboard
+diff --git a/tzrec/datasets/sampler.py b/tzrec/datasets/sampler.py
+index a4d523a..e322a2c 100644
+--- a/tzrec/datasets/sampler.py
++++ b/tzrec/datasets/sampler.py
+@@ -93,8 +93,11 @@ def _bootstrap(group_size: int, local_rank: int, group_rank: int) -> str:
+     ) -> str:
+         comm_tensor = torch.zeros([group_size, 5], dtype=torch.int32)
+         comm_tensor[group_rank] = addr_tensor
+-        if dist.get_backend() == dist.Backend.NCCL:
++        dist_backend = dist.get_backend()
++        if dist_backend == dist.Backend.NCCL:
+             comm_tensor = comm_tensor.cuda()
++        if dist_backend == 'hccl':
++            comm_tensor = comm_tensor.npu()
+         dist.all_reduce(comm_tensor, op=dist.ReduceOp.MAX)
+         cluster_server_info = ",".join([tensor_to_addr(t) for t in comm_tensor])
+         return cluster_server_info
+diff --git a/tzrec/main.py b/tzrec/main.py
+index 9a3b7ad..bad552f 100644
+--- a/tzrec/main.py
++++ b/tzrec/main.py
+@@ -12,6 +12,7 @@
+ import copy
+ import itertools
+ import json
++import logging
+ import os
+ import shutil
+ from collections import OrderedDict
+@@ -88,6 +89,18 @@ from tzrec.utils.plan_util import create_planner, get_default_sharders
+ from tzrec.utils.state_dict_util import fix_mch_state, init_parameters
+ from tzrec.version import __version__ as tzrec_version
+ 
++import torch_npu
++
++
++lib_fbgemm_npu_api_so_path = os.getenv("LIB_FBGEMM_NPU_API_SO_PATH")
++
++try:
++    torch.ops.load_library(lib_fbgemm_npu_api_so_path)
++except FileNotFoundError as e:
++    logging.error(f"libfbgemm_npu_api.so is not exist")
++except Exception as e:
++    logging.error(f"libfbgemm_npu_api.so failed to load: {e}")
++
+ 
+ def init_process_group() -> Tuple[torch.device, str]:
+     """Init process_group, device, rank, backend."""
+@@ -96,6 +109,10 @@ def init_process_group() -> Tuple[torch.device, str]:
+         device: torch.device = torch.device(f"cuda:{rank}")
+         backend = "nccl"
+         torch.cuda.set_device(device)
++    elif torch_npu.npu.is_available():
++        device: torch.device = torch.device(f"npu")
++        backend = "hccl"
++        torch_npu.npu.set_device(device)
+     else:
+         device: torch.device = torch.device("cpu")
+         backend = "gloo"
+@@ -445,15 +462,34 @@ def _train_and_evaluate(
+     if train_config.is_profiling:
+         if is_rank_zero:
+             logger.info(str(model))
+-        prof = torch.profiler.profile(
+-            schedule=torch.profiler.schedule(wait=1, warmup=1, active=10, repeat=1),
+-            on_trace_ready=torch.profiler.tensorboard_trace_handler(
+-                os.path.join(model_dir, "train_eval_trace")
+-            ),
+-            record_shapes=True,
+-            profile_memory=True,
+-            with_stack=True,
++        experimental_config = torch_npu.profiler._ExperimentalConfig(
++            export_type=[
++                torch_npu.profiler.ExportType.Text,
++                torch_npu.profiler.ExportType.Db
++                ],
++            profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
++            msprof_tx=False,
++            aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
++            l2_cache=False,
++            op_attr=False,
++            data_simplification=False,
++            record_op_args=False,
++            gc_detect_threshold=None
+         )
++        prof = torch_npu.profiler.profile(
++            activities=[
++                torch_npu.profiler.ProfilerActivity.CPU,
++                torch_npu.profiler.ProfilerActivity.NPU
++                ],
++            schedule=torch_npu.profiler.schedule(wait=1, warmup=1, active=1, repeat=1, skip_first=1),
++            on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(os.path.join(model_dir, "train_eval_trace")),
++            record_shapes=False,
++            profile_memory=False,
++            with_stack=False,
++            with_modules=False,
++            with_flops=False,
++            experimental_config=experimental_config)
++            
+         prof.start()
+ 
+     last_ckpt_step = -1
+@@ -705,6 +741,7 @@ def train_and_evaluate(
+ 
+     model = DistributedModelParallel(
+         module=model,
++        sharders=get_default_sharders(),
+         device=device,
+         plan=plan,
+     )
+diff --git a/tzrec/models/dcn.py b/tzrec/models/dcn.py
+new file mode 100644
+index 0000000..ee2e704
+--- /dev/null
++++ b/tzrec/models/dcn.py
+@@ -0,0 +1,73 @@
++# Copyright (c) 2025, Alibaba Group;
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#    http://www.apache.org/licenses/LICENSE-2.0
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++from typing import Any, Dict, List, Optional
++
++import torch
++from torch import nn
++
++from tzrec.datasets.utils import Batch
++from tzrec.features.feature import BaseFeature
++from tzrec.models.rank_model import RankModel
++from tzrec.modules.interaction import Cross
++from tzrec.modules.mlp import MLP
++from tzrec.protos.model_pb2 import ModelConfig
++from tzrec.utils.config_util import config_to_kwargs
++
++
++class DCNV1(RankModel):
++    """Deep cross network v1.
++
++    Args:
++        model_config (ModelConfig): an instance of ModelConfig.
++        features (list): list of features.
++        labels (list): list of label names.
++        sample_weights (list): sample weight names.
++    """
++
++    def __init__(
++        self,
++        model_config: ModelConfig,
++        features: List[BaseFeature],
++        labels: List[str],
++        sample_weights: Optional[List[str]] = None,
++        **kwargs: Any,
++    ) -> None:
++        super().__init__(model_config, features, labels, sample_weights, **kwargs)
++        self.init_input()
++        self.group_name = self.embedding_group.group_names()[0]
++        feature_dim = self.embedding_group.group_total_dim(self.group_name)
++        self.cross = Cross(
++            input_dim=feature_dim, **config_to_kwargs(self._model_config.cross)
++        )
++        self.deep = MLP(
++            in_features=feature_dim, **config_to_kwargs(self._model_config.deep)
++        )
++        final_dnn_input_dim = self.cross.output_dim() + self.deep.output_dim()
++        self.final_dnn = MLP(
++            in_features=final_dnn_input_dim,
++            **config_to_kwargs(self._model_config.final),
++        )
++        self.output_linear = nn.Linear(
++            self.final_dnn.output_dim(), self._num_class, bias=False
++        )
++
++    def predict(self, batch: Batch) -> Dict[str, torch.Tensor]:
++        """Forward method."""
++        feature_dict = self.build_input(batch)
++        features = feature_dict[self.group_name]
++
++        cross_out = self.cross(features)
++        deep_out = self.deep(features)
++
++        concat = torch.concat([cross_out, deep_out], dim=-1)
++        out = self.output_linear(self.final_dnn(concat))
++        return self._output_to_prediction(out)
+\ No newline at end of file
+diff --git a/tzrec/models/xdeepfm.py b/tzrec/models/xdeepfm.py
+new file mode 100644
+index 0000000..c5ecd27
+--- /dev/null
++++ b/tzrec/models/xdeepfm.py
+@@ -0,0 +1,86 @@
++# Copyright (c) 2024, Alibaba Group;
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#    http://www.apache.org/licenses/LICENSE-2.0
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++from typing import Any, Dict, List, Optional
++
++import torch
++from torch import nn
++
++from tzrec.datasets.utils import Batch
++from tzrec.features.feature import BaseFeature
++from tzrec.models.rank_model import RankModel
++from tzrec.modules.interaction import CIN
++from tzrec.modules.mlp import MLP
++from tzrec.protos.model_pb2 import ModelConfig
++from tzrec.utils.config_util import config_to_kwargs
++
++
++class xDeepFM(RankModel):
++    """XDeepFM model.
++
++    Args:
++        model_config (ModelConfig): an instance of ModelConfig.
++        features (list): list of features.
++        labels (list): list of label names.
++        sample_weights (list): sample weight names.
++    """
++
++    def __init__(
++        self,
++        model_config: ModelConfig,
++        features: List[BaseFeature],
++        labels: List[str],
++        sample_weights: Optional[List[str]] = None,
++        **kwargs: Any,
++    ) -> None:
++        super().__init__(model_config, features, labels, sample_weights, **kwargs)
++        self.wide_embedding_dim = self._model_config.wide_embedding_dim
++        self.wide_init_fn = self._model_config.wide_init_fn
++        self.init_input()
++        deep_feature_dim = self.embedding_group.group_total_dim("deep")
++        self.deep = MLP(
++            in_features=deep_feature_dim, **config_to_kwargs(self._model_config.deep)
++        )
++        self.feature_num = len(self.embedding_group.group_dims("wide"))
++        self.cin = CIN(
++            feature_num=self.feature_num, **config_to_kwargs(self._model_config.cin)
++        )
++
++        self.final = MLP(
++            in_features=self.deep.output_dim() + self.cin.output_dim(),
++            **config_to_kwargs(self._model_config.final),
++        )
++        self.output_mlp = nn.Linear(self.final.output_dim(), self._num_class)
++
++    def predict(self, batch: Batch) -> Dict[str, torch.Tensor]:
++        """Forward the model.
++
++        Args:
++            batch (Batch): input batch data.
++
++        Return:
++            predictions (dict): a dict of predicted result.
++        """
++        grouped_features = self.build_input(batch)
++
++        # Wide
++        wide_feat = grouped_features["wide"]
++        wide_feat = wide_feat.reshape(-1, self.feature_num, self.wide_embedding_dim)
++        cin_feat = self.cin(wide_feat)
++
++        # Deep
++        deep_feat = grouped_features["deep"]
++        deep_feat = self.deep(deep_feat)
++
++        all_feat = torch.cat([cin_feat, deep_feat], dim=1)
++        y = self.final(all_feat)
++        y = self.output_mlp(y)
++        return self._output_to_prediction(y)
+\ No newline at end of file
+diff --git a/tzrec/modules/interaction.py b/tzrec/modules/interaction.py
+index 3b6cd3a..882ac2b 100644
+--- a/tzrec/modules/interaction.py
++++ b/tzrec/modules/interaction.py
+@@ -97,3 +97,145 @@ class InteractionArch(nn.Module):
+         interactions_flat = interactions[:, self.triu_indices[0], self.triu_indices[1]]
+ 
+         return interactions_flat
++
++
++class Cross(nn.Module):
++    """Cross Layer in Deep & Cross Network to learn explicit feature interactions.
++
++    Ref: https://arxiv.org/pdf/1708.05123
++
++    Args:
++        input_dim(int): input tensor dimension
++        cross_num(int): number of cross layers
++    """
++
++    def __init__(self, input_dim: int, cross_num: int = 3) -> None:
++        super().__init__()
++        self.cross_num = cross_num
++        self._input_dim = input_dim
++        self.w = nn.ModuleList()
++        self.b = nn.ParameterList()
++        for _ in range(cross_num):
++            self.w.append(nn.Linear(input_dim, 1, bias=False))
++            self.b.append(nn.Parameter(torch.empty(input_dim)))
++
++        self.reset_parameters()
++
++    def output_dim(self) -> int:
++        """Output dimension of the module."""
++        return self._input_dim
++
++    def reset_parameters(self) -> None:
++        """Initialize parameters."""
++        for i in range(self.cross_num):
++            nn.init.xavier_uniform_(self.w[i].weight)
++            nn.init.zeros_(self.b[i])
++
++    def forward(self, x: torch.Tensor) -> torch.Tensor:
++        """Forward."""
++        x1 = x
++        for i in range(self.cross_num):
++            x1 = self.w[i](x1) * x + self.b[i] + x1
++
++        return x1
++
++
++class CrossV2(nn.Module):
++    """Cross network v2.
++
++    Args:
++        input_dim (int): input tensor dimension.
++        cross_num (int): number of cross layers.
++        low_rank (int): W dimension
++    """
++
++    def __init__(self, input_dim: int, cross_num: int = 3, low_rank: int = 32) -> None:
++        super(CrossV2, self).__init__()
++        self.cross_num = cross_num
++        self._low_rank = low_rank
++        self._input_dim = input_dim
++
++        self.u_kernels = nn.ModuleList(
++            [
++                nn.Linear(self._input_dim, self._low_rank, bias=False)
++                for _ in range(cross_num)
++            ]
++        )
++        self.v_kernels = nn.ModuleList(
++            [
++                nn.Linear(self._low_rank, self._input_dim, bias=True)
++                for _ in range(cross_num)
++            ]
++        )
++
++    def output_dim(self) -> int:
++        """Output dimension of the module."""
++        return self._input_dim
++
++    def forward(self, input: torch.Tensor) -> torch.Tensor:
++        """Forward the module.
++
++        Args:
++            input (torch.Tensor): tensor with shape [batch_size, input_dim].
++        """
++        x_0 = input
++        x_l = x_0
++        for i in range(self.cross_num):
++            x_l_v = self.u_kernels[i](x_l)
++            x_l_w = self.v_kernels[i](x_l_v)
++            x_l = x_0 * x_l_w + x_l  # (batch_size, input_dim)
++
++        return x_l
++
++
++class CIN(nn.Module):
++    """CIN module for XDeepFM.
++
++    Args:
++        feature_num (int): feature_num
++        cin_layer_size(list[int]): cin_layer_size
++    """
++
++    def __init__(self, feature_num: int, cin_layer_size: List[int]) -> None:
++        super(CIN, self).__init__()
++        self.feature_num = feature_num
++        self.cin_layer_size = cin_layer_size
++
++        self.cin_layers = nn.ModuleList()
++        for i, layer_size in enumerate(cin_layer_size):
++            in_channels = (
++                feature_num * self.cin_layer_size[i - 1]
++                if i > 0
++                else feature_num * feature_num
++            )
++            self.cin_layers.append(
++                nn.Conv1d(
++                    in_channels=in_channels, out_channels=layer_size, kernel_size=1
++                )
++            )
++
++    def output_dim(self) -> int:
++        """Output dimension of the module."""
++        return sum(self.cin_layer_size)
++
++    def forward(self, input: torch.Tensor) -> torch.Tensor:
++        """Forward the module.
++
++        Args:
++            input (torch.Tensor): tensor with shape [batch_size, field_num, embed_dim].
++        """
++        batch_size, field_num, embed_dim = input.shape
++        x_vec = input
++        x_out = []
++        for i, _ in enumerate(self.cin_layer_size):
++            z = torch.einsum("bhd,bfd->bhfd", x_vec, input)
++            if i > 0:
++                h = field_num * self.cin_layer_size[i - 1]
++            else:
++                h = field_num * field_num
++            z = z.view(batch_size, h, embed_dim)
++            z = self.cin_layers[i](z)  # (batch_size, cin_layer_size[i], embed_dim)
++            x_vec = z
++            x_out.append(torch.sum(x_vec, dim=2))
++
++        return torch.cat(x_out, dim=1)
+\ No newline at end of file
+diff --git a/tzrec/protos/model.proto b/tzrec/protos/model.proto
+index 7471541..fb5193c 100644
+--- a/tzrec/protos/model.proto
++++ b/tzrec/protos/model.proto
+@@ -46,6 +46,9 @@ message ModelConfig {
+         MultiTower multi_tower = 102;
+         MultiTowerDIN multi_tower_din = 103;
+         MaskNet mask_net = 104;
++        DCNV1 dcn_v1 = 106;
++        DCNV2 dcn_v2 = 107;
++        xDeepFM xdeepfm = 108;
+ 
+         SimpleMultiTask simple_multi_task = 200;
+         MMoE mmoe = 201;
+diff --git a/tzrec/protos/models/rank_model.proto b/tzrec/protos/models/rank_model.proto
+index ec16ef1..2b3e52f 100644
+--- a/tzrec/protos/models/rank_model.proto
++++ b/tzrec/protos/models/rank_model.proto
+@@ -39,3 +39,28 @@ message DLRM {
+ message MaskNet {
+     required MaskNetModule mask_net_module = 1;
+ }
++
++
++message DCNV1 {
++    required Cross cross = 1;
++    required MLP deep = 2;
++    required MLP final = 3;
++}
++
++
++message DCNV2 {
++    optional MLP backbone = 1;
++    required CrossV2 cross = 2;
++    optional MLP deep = 3;
++    required MLP final = 4;
++}
++
++
++message xDeepFM {
++    required CIN cin = 1;
++    required MLP deep = 2;
++    required MLP final = 3;
++    optional uint32 wide_embedding_dim = 4 [default = 16];
++    // wide embedding init function, e.g. "nn.init.uniform_,a=-0.01,b=0.01"
++    optional string wide_init_fn = 5;
++}
+\ No newline at end of file
+diff --git a/tzrec/protos/module.proto b/tzrec/protos/module.proto
+index 6afc023..04db95a 100644
+--- a/tzrec/protos/module.proto
++++ b/tzrec/protos/module.proto
+@@ -34,6 +34,25 @@ message  VariationalDropout{
+ }
+ 
+ 
++message Cross {
++    // number of cross layers
++    optional uint32 cross_num = 1 [default=3];
++}
++
++message CrossV2 {
++    // number of cross layers
++    optional uint32 cross_num = 1 [default=3];
++    // Matrix decomposition with minimal rank.
++    optional uint32 low_rank = 2 [default=32];
++}
++
++
++message CIN {
++    // every layer size
++    repeated uint32 cin_layer_size = 1;
++}
++
++
+ message B2ICapsule{
+     // max number of high capsules Default: 5
+     optional uint32 max_k = 1 [default = 5];
+diff --git a/tzrec/utils/plan_util.py b/tzrec/utils/plan_util.py
+index 5edb550..07681cc 100644
+--- a/tzrec/utils/plan_util.py
++++ b/tzrec/utils/plan_util.py
+@@ -57,7 +57,7 @@ from torchrec.distributed.types import (
+ 
+ from tzrec.protos import feature_pb2
+ from tzrec.utils.logging_util import logger
+-
++import torch_npu
+ 
+ def _bytes_to_float_bin(num_bytes: Union[float, int], bin_size: float) -> float:
+     return float(num_bytes) / bin_size
+@@ -78,14 +78,11 @@ def create_planner(
+     if torch.cuda.is_available():
+         topo_kwargs["hbm_cap"] = torch.cuda.get_device_properties(device).total_memory
+ 
+-    ddr_cap_per_rank = int(float(psutil.virtual_memory().total) / local_world_size)
+-    topo_kwargs["ddr_cap"] = ddr_cap_per_rank
+     if "INTRA_NODE_BANDWIDTH" in os.environ:
+         topo_kwargs["intra_host_bw"] = float(os.environ["INTRA_NODE_BANDWIDTH"])
+     if "CROSS_NODE_BANDWIDTH" in os.environ:
+         topo_kwargs["inter_host_bw"] = float(os.environ["CROSS_NODE_BANDWIDTH"])
+     topology = Topology(
+-        local_world_size=local_world_size,
+         world_size=dist.get_world_size(),
+         compute_device=device.type,
+         **topo_kwargs,
+@@ -126,24 +123,27 @@ def create_planner(
+         global_constraints = ParameterConstraints(
+             sharding_types=list(global_constraints_cfg.sharding_types)
+             if len(global_constraints_cfg.sharding_types) > 0
+-            else None,
++            else [],
+             compute_kernels=list(global_constraints_cfg.compute_kernels)
+             if len(global_constraints_cfg.compute_kernels) > 0
+-            else None,
++            else [],
+         )
+-
++    # row_wise
++    constraints = {
++        f"{feature_name}_emb": ParameterConstraints(
++            sharding_types=["row_wise"],
++            compute_kernels=["fused"]
++        )
++        for feature_name in ["user_id", "cms_segid", "cms_group_id", "final_gender_code", "age_level",
++                             "pvalue_level", "shopping_level", "occupation", "new_user_class_level", "adgroup_id",
++                             "cate_id", "campaign_id", "customer", "brand", "price", "pid"
++                             ]
++    }
+     # build planner
+     planner = EmbeddingShardingPlanner(
+         topology=topology,
+         batch_size=batch_size,
+-        enumerator=EmbeddingEnumerator(
+-            topology=topology,
+-            batch_size=batch_size,
+-            fqn_constraints=fqn_constraints,
+-            global_constraints=global_constraints,
+-        ),
+-        storage_reservation=storage_reservation,
+-        proposer=[DynamicProgrammingProposer(), UniformProposer()],
++        constraints=constraints,
+         debug=True,
+     )
+     return planner
+@@ -153,6 +153,8 @@ def get_default_sharders() -> List[ModuleSharder[nn.Module]]:
+     """Get embedding module default sharder."""
+     if torch.cuda.is_available():
+         return _get_default_sharders()
++    elif torch_npu.npu.is_available():
++        return _get_default_sharders()
+     else:
+         # ShardedEmbeddingCollection is not supported yet.
+         sharders = []
