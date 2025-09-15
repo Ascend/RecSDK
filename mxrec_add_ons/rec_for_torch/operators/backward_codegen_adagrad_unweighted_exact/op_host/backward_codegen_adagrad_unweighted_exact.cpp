@@ -55,6 +55,7 @@ constexpr int BETA1_INDEX = 13;
 constexpr int BETA2_INDEX = 14;
 constexpr int ITER_INDEX = 15;
 constexpr int IS_DYNAMIC_INDEX = 16;
+constexpr int USE_OPTIMIZE_INDEX = 17;
 
 // tilling key index
 constexpr int NORMAL_ADAGRAD = 1;
@@ -240,6 +241,8 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     tiling.set_eps(eps);
     tiling.set_learningRate(learningRate);
+    bool useOptimize = static_cast<bool>(*attrs->GetInt(USE_OPTIMIZE_INDEX));
+    tiling.set_useOptimize(useOptimize);
 
     context->SetBlockDim(coreNum);
 
@@ -383,6 +386,11 @@ public:
             .DataType({ge::DT_INT64, ge::DT_INT64})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Input("table_indices_offsets")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_INT64, ge::DT_INT64})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("out")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
@@ -420,6 +428,7 @@ public:
         this->Attr("beta2").Float();
         this->Attr("iter").Int();
         this->Attr("is_dynamic").Bool();
+        this->Attr("use_optimize").Bool();
 
         this->SetInferShape(ge::InferShape);
 

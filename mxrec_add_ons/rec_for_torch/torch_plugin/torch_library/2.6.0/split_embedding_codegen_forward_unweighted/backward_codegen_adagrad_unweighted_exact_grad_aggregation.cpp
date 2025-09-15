@@ -1,7 +1,7 @@
 /**
  * @file backward_codegen_adagrad_unweighted_exact.cpp
  *
- * Copyright (C) 2025. Huawei Technologies Co., Ltd. All rights reserved.
+ * Copyright (C) Huawei Technologies Co., Ltd. 2025. All rights reserved.
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -22,20 +22,22 @@ using namespace at;
 
 
 namespace fbgemm_npu_lookups {
-Tensor split_embedding_backward_codegen_adagrad_unweighted_exact_cuda(
+Tensor split_embedding_backward_codegen_adagrad_unweighted_exact_cuda_grad_aggregation(
     const Tensor& grad_output, const Tensor& dev_weights, const Tensor& uvm_weights, const Tensor& lxu_cache_weights,
     const Tensor& weights_placements, const Tensor& weights_offsets, const Tensor& D_offsets, const c10::SymInt max_D,
     const Tensor& hash_size_cumsum, const int64_t total_hash_size_bits, const Tensor& indices, const Tensor& offsets,
-    const int64_t pooling_mode, const Tensor& lxu_cache_locations, const int64_t BT_block_size,
-    const int64_t max_segment_length_per_warp, const bool stochastic_rounding, const int64_t info_B_num_bits,
-    const int64_t info_B_mask_int64, const bool use_uniq_cache_locations, const bool use_homogeneous_placements,
-    Tensor momentum1_dev, Tensor momentum1_uvm, Tensor momentum1_placements, Tensor momentum1_offsets,
-    const tensor_list& grad_accumulate, const Tensor& grad_accumulate_offsets, const Tensor& hash_indices,
-    const Tensor& unique_ids, const Tensor& unique_offsets, const Tensor& unique_inverse, const Tensor& table_offsets,
-    double eps = 0, double learning_rate = 0, bool is_dynamic = false, const int64_t iteration = 0,
-    bool use_optimize = true);
+    const Tensor& indices_multi_step, const Tensor& offsets_multi_step, const int64_t pooling_mode,
+    const Tensor& lxu_cache_locations, const int64_t BT_block_size, const int64_t max_segment_length_per_warp,
+    const bool stochastic_rounding, const int64_t info_B_num_bits, const int64_t info_B_mask_int64,
+    const bool use_uniq_cache_locations, const bool use_homogeneous_placements, Tensor momentum1_dev,
+    Tensor momentum1_uvm, Tensor momentum1_placements, Tensor momentum1_offsets, const tensor_list& grad_accumulate,
+    const Tensor& grad_accumulate_offsets, const Tensor& hash_indices, const Tensor& unique_ids,
+    const Tensor& unique_offsets, const Tensor& unique_inverse, const Tensor& table_offsets,
+    const Tensor& table_offsets_multi, const Tensor& unique_multi_step, const Tensor& unique_offset_multi_step,
+    const Tensor& unique_inverse_multi_step, double eps = 0, double learning_rate = 0, bool is_dynamic = false,
+    const int64_t iteration = 0, const bool use_optimize = true);
 
-class SplitLookupAdagrad : public torch::autograd::Function<SplitLookupAdagrad> {
+class SplitLookupAdagrad_grad_aggregation : public torch::autograd::Function<SplitLookupAdagrad_grad_aggregation> {
 public:
     static constexpr bool isTraceable = true;
 
@@ -47,27 +49,27 @@ public:
         const int64_t total_hash_size_bits, const Tensor& indices, const c10::optional<Tensor>& hash_indices,
         const c10::optional<at::Tensor>& unique_ids, const c10::optional<at::Tensor>& unique_offsets,
         const c10::optional<at::Tensor>& unique_inverse, const c10::optional<at::Tensor>& table_offsets,
-        const Tensor& offsets, const int64_t pooling_mode, const std::optional<Tensor>& indice_weights,
-        const std::optional<Tensor>& feature_requires_grad, const Tensor& lxu_cache_locations,
-        std::optional<Tensor> uvm_cache_stats, const bool gradient_clipping, const double max_gradient,
-        const bool stochastic_rounding, const bool is_experimental, const bool use_uniq_cache_locations_bwd,
-        const bool use_homogeneous_placements, Tensor momentum1_dev, Tensor momentum1_uvm, Tensor momentum1_placements,
-        Tensor momentum1_offsets, const tensor_list& grad_accumulate, const Tensor& grad_accumulate_offsets,
-        double eps = 0, double learning_rate = 0, bool is_dynamic = false, const int64_t iteration = 0,
-        bool use_optimize = true)
+        const c10::optional<at::Tensor>& table_offsets_multi, const Tensor& offsets, const Tensor& indices_multi_step,
+        const Tensor& offsets_multi_step, const c10::optional<at::Tensor>& unique_multi_step,
+        const c10::optional<at::Tensor>& unique_offset_multi_step,
+        const c10::optional<at::Tensor>& unique_inverse_multi_step, const int64_t pooling_mode,
+        const std::optional<Tensor>& indice_weights, const std::optional<Tensor>& feature_requires_grad,
+        const Tensor& lxu_cache_locations, std::optional<Tensor> uvm_cache_stats, const bool gradient_clipping,
+        const double max_gradient, const bool stochastic_rounding, const bool is_experimental,
+        const bool use_uniq_cache_locations_bwd, const bool use_homogeneous_placements, Tensor momentum1_dev,
+        Tensor momentum1_uvm, Tensor momentum1_placements, Tensor momentum1_offsets, const tensor_list& grad_accumulate,
+        const Tensor& grad_accumulate_offsets, double eps = 0, double learning_rate = 0, bool is_dynamic = false,
+        const int64_t iteration = 0, const bool use_optimize = true)
     {
         const auto T = weights_offsets.size(0);
         if (T == 0) {
             return {at::Tensor()};
         }
-
         const auto max_B_ = offsets.size(0) / T;
-        // NOTE: The `local_uvm_cache_stats` variable held by the nn.Module has dtype int32_t
         const auto uvm_cache_stats_ = uvm_cache_stats.value_or(at::empty({0}, uvm_weights.options().dtype(at::kInt)));
 
         auto info_B_num_bits = max_B_;
         auto info_B_mask = T;
-
         std::vector<at::Tensor> saved_tensors;
         saved_tensors.push_back(dev_weights);
         saved_tensors.push_back(uvm_weights);
@@ -90,13 +92,22 @@ public:
         saved_tensors.push_back(unique_offsets.has_value() ? unique_offsets.value() : at::Tensor());
         saved_tensors.push_back(unique_inverse.has_value() ? unique_inverse.value() : at::Tensor());
         saved_tensors.push_back(table_offsets.has_value() ? table_offsets.value() : at::Tensor());
+        saved_tensors.push_back(table_offsets_multi.has_value() ? table_offsets_multi.value() : at::Tensor());
+
+        saved_tensors.push_back(indices_multi_step);
+        saved_tensors.push_back(offsets_multi_step);
+        saved_tensors.push_back(unique_multi_step.has_value() ? unique_multi_step.value() : at::Tensor());
+        saved_tensors.push_back(unique_offset_multi_step.has_value() ? unique_offset_multi_step.value() : at::Tensor());
+        saved_tensors.push_back(unique_inverse_multi_step.has_value()
+                                ? unique_inverse_multi_step.value()
+                                : at::Tensor());
         saved_tensors.push_back(grad_accumulate_offsets);
         saved_tensors.insert(
             saved_tensors.end(),
             grad_accumulate.begin(),
             grad_accumulate.end()
         );
-
+        // 保存显式创建的 vector
         ctx->save_for_backward(saved_tensors);
         ctx->saved_data["max_D"] = max_D;
         ctx->saved_data["pooling_mode"] = pooling_mode;
@@ -114,6 +125,7 @@ public:
         ctx->saved_data["is_dynamic"] = is_dynamic;
         ctx->saved_data["iteration"] = iteration;
         ctx->saved_data["use_optimize"] = use_optimize;
+
         const auto& flatten_dev_weights = dev_weights;
         // not surport  indice_weights
         if (!indice_weights) {
@@ -121,7 +133,6 @@ public:
                 torch::Dispatcher::singleton()
                     .findSchemaOrThrow("fbgemm::split_embedding_codegen_forward_unweighted_cuda", "")
                     .typed<decltype(split_embedding_codegen_forward_unweighted_cuda)>();
-
             return {embedding_codegen_forward_op.call(
                 flatten_dev_weights, uvm_weights, lxu_cache_weights, weights_placements, weights_offsets, D_offsets,
                 total_D, max_D, indices, offsets, pooling_mode, lxu_cache_locations, uvm_cache_stats_, output_dtype,
@@ -156,8 +167,15 @@ public:
         auto unique_offsets = *savedItr++;
         auto unique_inverse = *savedItr++;
         auto table_offsets = *savedItr++;
+        auto table_offsets_multi = *savedItr++;
+        auto indices_multi_step = *savedItr++;
+        auto offsets_multi_step = *savedItr++;
+        auto unique_multi_step = *savedItr++;
+        auto unique_offset_multi_step = *savedItr++;
+        auto unique_inverse_multi_step = *savedItr++;
         auto grad_accumulate_offsets = *savedItr++;
         tensor_list grad_accumulate(savedItr, std::end(saved));
+
         auto max_D = ctx->saved_data["max_D"].toSymInt();
         auto pooling_mode = ctx->saved_data["pooling_mode"].toInt();
         auto total_hash_size_bits = ctx->saved_data["total_hash_size_bits"].toInt();
@@ -175,6 +193,7 @@ public:
         auto use_optimize = ctx->saved_data["use_optimize"].toBool();
 
         TORCH_CHECK_EQ(grad_outputs.size(), 1);
+        TORCH_CHECK(max_gradient > 0, " The max_gradient must be > 0 ");
         constexpr int32_t BT_block_size = 32;
         constexpr int32_t max_segment_length_per_warp = 32;
 
@@ -183,15 +202,19 @@ public:
 
         static auto embedding_codegen_unweighted_backward_op =
             torch::Dispatcher::singleton()
-                .findSchemaOrThrow("fbgemm::split_embedding_backward_codegen_adagrad_unweighted_exact_cuda", "")
-                .typed<decltype(split_embedding_backward_codegen_adagrad_unweighted_exact_cuda)>();
+                .findSchemaOrThrow(
+                "fbgemm::split_embedding_backward_codegen_adagrad_unweighted_exact_cuda_grad_aggregation", "")
+                .typed<decltype(split_embedding_backward_codegen_adagrad_unweighted_exact_cuda_grad_aggregation)>();
         const auto grad_dev_weights = embedding_codegen_unweighted_backward_op.call(
             grad_output, dev_weights, uvm_weights, lxu_cache_weights, weights_placements, weights_offsets, D_offsets,
-            max_D, hash_size_cumsum, total_hash_size_bits, indices, offsets, pooling_mode, lxu_cache_locations,
-            BT_block_size, max_segment_length_per_warp, stochastic_rounding, info_B_num_bits, info_B_mask_int64,
-            use_uniq_cache_locations_bwd, use_homogeneous_placements, momentum1_dev, momentum1_uvm,
-            momentum1_placements, momentum1_offsets, grad_accumulate, grad_accumulate_offsets, hash_indices, unique_ids,
-            unique_offsets, unique_inverse, table_offsets, eps, learning_rate, is_dynamic, iteration, use_optimize);
+            max_D, hash_size_cumsum, total_hash_size_bits, indices, offsets, indices_multi_step, offsets_multi_step,
+            pooling_mode, lxu_cache_locations, BT_block_size, max_segment_length_per_warp, stochastic_rounding,
+            info_B_num_bits, info_B_mask_int64, use_uniq_cache_locations_bwd, use_homogeneous_placements, momentum1_dev,
+            momentum1_uvm, momentum1_placements, momentum1_offsets, grad_accumulate, grad_accumulate_offsets,
+            hash_indices, unique_ids, unique_offsets, unique_inverse, table_offsets, table_offsets_multi,
+            unique_multi_step, unique_offset_multi_step, unique_inverse_multi_step, eps, learning_rate, is_dynamic,
+            iteration, use_optimize);
+
         return {
             Tensor(),          // placeholder autograd tensor
             Variable(),        // output_dtype
@@ -228,33 +251,42 @@ public:
             Variable(),        // unique_offsets
             Variable(),        // unique_inverse
             Variable(),        // table_offsets
+            Variable(),        // table_offsets_multi
             Variable(),        // eps
             Variable(),        // learning_rate
             Variable(),        // is_dynamic
             Variable(),        // iteration
             Variable(),        // grad_accumulate_offsets
             Variable(),        // use_optimize
+            Variable(),        // indices_multi_step
+            Variable(),        // offsets_multi_step
+            Variable(),        // unique_multi_step
+            Variable(),        // unique_offset_multi_step
+            Variable(),        // unique_inverse_multi_step
         };
     }
 };
 
 ///@ingroup embedding-cuda
-Tensor split_embedding_codegen_lookup_adagrad_function(
+Tensor split_embedding_codegen_lookup_adagrad_function_grad_aggregation(
     const Tensor& placeholder_autograd_tensor, const Tensor& dev_weights, const Tensor& uvm_weights,
     const Tensor& lxu_cache_weights, const Tensor& weights_placements, const Tensor& weights_offsets,
     const Tensor& D_offsets, const c10::SymInt total_D, const c10::SymInt max_D, const Tensor& hash_size_cumsum,
-    const int64_t total_hash_size_bits, const Tensor& indices, const Tensor& offsets, const int64_t pooling_mode,
-    const std::optional<Tensor>& indice_weights, const std::optional<Tensor>& feature_requires_grad,
-    const Tensor& lxu_cache_locations, const bool gradient_clipping, const double max_gradient,
-    const bool stochastic_rounding, Tensor momentum1_dev, Tensor momentum1_uvm, Tensor momentum1_placements,
-    Tensor momentum1_offsets, const tensor_list& grad_accumulate, const Tensor& grad_accumulate_offsets,
-    const c10::optional<Tensor>& hash_indices = c10::optional<Tensor>(),
+    const int64_t total_hash_size_bits, const Tensor& indices, const Tensor& offsets, const Tensor& indices_multi_step,
+    const Tensor& offsets_multi_step, const int64_t pooling_mode, const std::optional<Tensor>& indice_weights,
+    const std::optional<Tensor>& feature_requires_grad, const Tensor& lxu_cache_locations, const bool gradient_clipping,
+    const double max_gradient, const bool stochastic_rounding, Tensor momentum1_dev, Tensor momentum1_uvm,
+    Tensor momentum1_placements, Tensor momentum1_offsets, const tensor_list& grad_accumulate,
+    const Tensor& grad_accumulate_offsets, const c10::optional<Tensor>& hash_indices = c10::optional<Tensor>(),
     const c10::optional<at::Tensor>& unique_ids = c10::optional<at::Tensor>(),
     const c10::optional<at::Tensor>& unique_offsets = c10::optional<at::Tensor>(),
     const c10::optional<at::Tensor>& unique_inverse = c10::optional<at::Tensor>(),
     const c10::optional<at::Tensor>& table_offsets = c10::optional<at::Tensor>(),
-    double eps = 0,
-    double learning_rate = 0, const int64_t output_dtype = static_cast<int64_t>(SparseType::FP32),
+    const c10::optional<at::Tensor>& table_offsets_multi = c10::optional<at::Tensor>(),
+    const c10::optional<at::Tensor>& unique_multi_step = c10::optional<Tensor>(),
+    const c10::optional<at::Tensor>& unique_offset_multi_step = c10::optional<Tensor>(),
+    const c10::optional<at::Tensor>& unique_inverse_multi_step = c10::optional<Tensor>(),
+    double eps = 0, double learning_rate = 0, const int64_t output_dtype = static_cast<int64_t>(SparseType::FP32),
     const std::optional<Tensor>& B_offsets = c10::nullopt,
     const std::optional<Tensor>& vbe_output_offsets_feature_rank = c10::nullopt,
     const std::optional<Tensor>& vbe_B_offsets_rank_per_feature = c10::nullopt, const c10::SymInt max_B = -1,
@@ -264,32 +296,35 @@ Tensor split_embedding_codegen_lookup_adagrad_function(
     const std::optional<Tensor>& uvm_cache_stats = c10::nullopt,
     const std::optional<Tensor>& prev_iter_dev = c10::nullopt, const int64_t iter = 0,
     const bool apply_global_weight_decay = false, const double gwd_lower_bound = 0, const bool is_dynamic = false,
-    bool use_optimize = true)
+    const bool use_optimize = true)
 {
-    // Set to experimental if either the feature is enabled in JK, or the user specifies to use TBEv2
     const auto is_experimental = is_experimental_tbe;
-    return SplitLookupAdagrad::apply(
+    return SplitLookupAdagrad_grad_aggregation::apply(
         placeholder_autograd_tensor, output_dtype, dev_weights, uvm_weights, lxu_cache_weights, weights_placements,
         weights_offsets, D_offsets, total_D, max_D, hash_size_cumsum, total_hash_size_bits, indices, hash_indices,
-        unique_ids, unique_offsets, unique_inverse, table_offsets, offsets, pooling_mode, indice_weights,
-        feature_requires_grad, lxu_cache_locations, uvm_cache_stats, gradient_clipping, max_gradient,
+        unique_ids, unique_offsets, unique_inverse, table_offsets, table_offsets_multi, offsets, indices_multi_step,
+        offsets_multi_step, unique_multi_step, unique_offset_multi_step, unique_inverse_multi_step, pooling_mode,
+        indice_weights, feature_requires_grad, lxu_cache_locations, uvm_cache_stats, gradient_clipping, max_gradient,
         stochastic_rounding, is_experimental, use_uniq_cache_locations_bwd, use_homogeneous_placements, momentum1_dev,
         momentum1_uvm, momentum1_placements, momentum1_offsets, grad_accumulate, grad_accumulate_offsets, eps,
         learning_rate, is_dynamic, iter, use_optimize)[0];
 }
 
-at::Tensor split_embedding_backward_codegen_adagrad_unweighted_exact_npu(
+
+at::Tensor split_embedding_backward_codegen_adagrad_unweighted_exact_npu_grad_aggregation(
     const Tensor& grad_output, const Tensor& dev_weights, const Tensor& uvm_weights, const Tensor& lxu_cache_weights,
     const Tensor& weights_placements, const Tensor& weights_offsets, const Tensor& D_offsets, const c10::SymInt max_D,
     const Tensor& hash_size_cumsum, const int64_t total_hash_size_bits, const Tensor& indices, const Tensor& offsets,
-    const int64_t pooling_mode, const Tensor& lxu_cache_locations, const int64_t BT_block_size,
-    const int64_t max_segment_length_per_warp, const bool stochastic_rounding, const int64_t info_B_num_bits,
-    const int64_t info_B_mask_int64, const bool use_uniq_cache_locations, const bool use_homogeneous_placements,
-    Tensor momentum1_dev, Tensor momentum1_uvm, Tensor momentum1_placements, Tensor momentum1_offsets,
-    const tensor_list& grad_accumulate,  const Tensor& grad_accumulate_offsets, const Tensor& hash_indices,
-    const at::Tensor& unique_ids, const at::Tensor& unique_offsets, const at::Tensor& unique_inverse,
-    const at::Tensor& table_offsets, double eps = 0, double learning_rate = 0, bool is_dynamic = false,
-    const int64_t iteration = 0, bool use_optimize = true)
+    const Tensor& indices_multi_step, const Tensor& offsets_multi_step, const int64_t pooling_mode,
+    const Tensor& lxu_cache_locations, const int64_t BT_block_size, const int64_t max_segment_length_per_warp,
+    const bool stochastic_rounding, const int64_t info_B_num_bits, const int64_t info_B_mask_int64,
+    const bool use_uniq_cache_locations, const bool use_homogeneous_placements, Tensor momentum1_dev,
+    Tensor momentum1_uvm, Tensor momentum1_placements, Tensor momentum1_offsets, const tensor_list& grad_accumulate,
+    const Tensor& grad_accumulate_offsets, const Tensor& hash_indices, const at::Tensor& unique_ids,
+    const at::Tensor& unique_offsets, const at::Tensor& unique_inverse, const at::Tensor& table_offsets,
+    const at::Tensor& table_offsets_multi, const at::Tensor& unique_multi_step,
+    const at::Tensor& unique_offset_multi_step, const at::Tensor& unique_inverse_multi_step, double eps = 0,
+    double learning_rate = 0, bool is_dynamic = false, const int64_t iteration = 0, const bool use_optimize = true)
 {
     const int64_t t_max_D = max_D.guard_int(__FILE__, __LINE__);
     const at::OptionalDeviceGuard guard(device_of(dev_weights));
@@ -310,20 +345,59 @@ at::Tensor split_embedding_backward_codegen_adagrad_unweighted_exact_npu(
         info_B_num_bits, info_B_mask_int64, use_uniq_cache_locations, use_homogeneous_placements, optim_type,
         eps, learning_rate, beta, beta, iter, is_dynamic, use_optimize, output, momentum1_dev, _unused, dev_weights);
 
-    // 拷贝输出至grad_accumulate
-    if (!use_optimize) {
-        Tensor unique_offsets_size = unique_offsets * t_max_D * output.element_size();
-        Tensor grad_accumulate_offsets_size = grad_accumulate_offsets * output.element_size();
-        void* new_tensor_device_ptr = output.data_ptr();
-        copy_gm_to_gm(new_tensor_device_ptr, grad_accumulate, unique_offsets_size, grad_accumulate_offsets_size);
+    Tensor unique_offsets_size = unique_offsets * t_max_D * output.element_size();
+    Tensor grad_accumulate_offsets_size = grad_accumulate_offsets * output.element_size();
+
+    void* new_tensor_device_ptr = output.data_ptr(); // 获取output的设备指针
+    copy_gm_to_gm(
+        new_tensor_device_ptr,
+        grad_accumulate,
+        unique_offsets_size,
+        grad_accumulate_offsets_size); // 将数据从new_tensor_device_ptr拷贝至grad_accumulate
+    for (size_t i = 0; i < grad_accumulate.size(); ++i) {
+        auto pre_grad_ptr = grad_accumulate[i].data_ptr();
+        at::Tensor cpu_tensor = grad_accumulate[i].cpu().contiguous();
     }
+
+    std::vector<torch::Tensor> reshaped_tensors;
+    Tensor unique_offset_slice = unique_offsets * t_max_D;
+    for (size_t i = 0; i < grad_accumulate.size(); ++i) {
+        auto slice_size = unique_offset_slice[i+1].item<int64_t>() -
+                          unique_offset_slice[i].item<int64_t>() +
+                          grad_accumulate_offsets[i].item<int64_t>();
+        auto contig = grad_accumulate[i].slice(0, 0, slice_size).view({-1, t_max_D});
+        reshaped_tensors.push_back(contig);
+    }
+    torch::Tensor grad_last_step = torch::cat(reshaped_tensors, 0);
+
+    const int64_t t_max_D_last = max_D.guard_int(__FILE__, __LINE__);
+    int64_t uniqueSize_last = static_cast<int64_t>(unique_multi_step.numel());
+    int64_t totalEmbed_last = uniqueSize_last == 0 ? dev_weights.size(0) : uniqueSize_last * t_max_D_last;
+    auto output_last = at::empty({totalEmbed_last}, dev_weights.options());
+    int optim_type_last = static_cast<int>(OptimizerType::ADAGRAD);
+    const auto _unused_last = Tensor();
+    double beta_last = 0;
+    int64_t iter_last = 0;
+
+    bool use_optimize_last_step = true;
+
+    EXEC_NPU_CMD(aclnnBackwardCodegenAdagradUnweightedExact, grad_last_step, dev_weights, uvm_weights,
+        lxu_cache_weights, weights_placements, weights_offsets, D_offsets, hash_size_cumsum, indices_multi_step,
+        offsets_multi_step, lxu_cache_locations, momentum1_dev, momentum1_uvm, momentum1_placements,
+        momentum1_offsets, _unused_last, _unused_last, _unused_last, _unused_last, hash_indices, unique_multi_step,
+        unique_offset_multi_step, unique_inverse_multi_step, table_offsets_multi, t_max_D_last, total_hash_size_bits,
+        pooling_mode, BT_block_size, max_segment_length_per_warp, stochastic_rounding, info_B_num_bits,
+        info_B_mask_int64, use_uniq_cache_locations, use_homogeneous_placements, optim_type_last, eps, learning_rate,
+        beta_last, beta_last, iter_last, is_dynamic, use_optimize_last_step, output_last, momentum1_dev, _unused_last,
+        dev_weights);
+
     return at::Tensor();
 }
 };  // namespace fbgemm_npu_lookups
 
 TORCH_LIBRARY_FRAGMENT(fbgemm, m)
 {
-    m.def("split_embedding_codegen_lookup_adagrad_function("
+    m.def("split_embedding_codegen_lookup_adagrad_function_grad_aggregation("
           "    Tensor placeholder_autograd_tensor, "
           "    Tensor(a!) dev_weights, "
           "    Tensor(b!) uvm_weights, "
@@ -337,6 +411,8 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    int total_hash_size_bits, "
           "    Tensor indices, "
           "    Tensor offsets, "
+          "    Tensor indices_multi_step, "
+          "    Tensor offsets_multi_step, "
           "    int pooling_mode, "
           "    Tensor? indice_weights, "
           "    Tensor? feature_requires_grad, "
@@ -353,6 +429,10 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    Tensor? unique_offsets = None, "
           "    Tensor? unique_inverse = None, "
           "    Tensor? table_offsets = None, "
+          "    Tensor? table_offsets_multi = None, "
+          "    Tensor? unique_multi_step = None, "
+          "    Tensor? unique_offset_multi_step = None, "
+          "    Tensor? unique_inverse_multi_step = None, "
           "    float eps = 0, float learning_rate = 0, "
           "    int output_dtype=0, "
           "    Tensor? B_offsets=None, "
@@ -373,18 +453,18 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    bool use_optimize = True"
           ") -> Tensor");
 
-    m.impl("split_embedding_codegen_lookup_adagrad_function",
+    m.impl("split_embedding_codegen_lookup_adagrad_function_grad_aggregation",
            torch::dispatch(c10::DispatchKey::Autograd,
-                           TORCH_FN(fbgemm_npu_lookups::split_embedding_codegen_lookup_adagrad_function)));
+                   TORCH_FN(fbgemm_npu_lookups::split_embedding_codegen_lookup_adagrad_function_grad_aggregation)));
 
-    m.impl("split_embedding_codegen_lookup_adagrad_function",
+    m.impl("split_embedding_codegen_lookup_adagrad_function_grad_aggregation",
            torch::dispatch(c10::DispatchKey::PrivateUse1,
-                           TORCH_FN(fbgemm_npu_lookups::split_embedding_codegen_lookup_adagrad_function)));
+                   TORCH_FN(fbgemm_npu_lookups::split_embedding_codegen_lookup_adagrad_function_grad_aggregation)));
 }
 
 TORCH_LIBRARY_FRAGMENT(fbgemm, m)
 {
-    m.def("split_embedding_backward_codegen_adagrad_unweighted_exact_cuda("
+    m.def("split_embedding_backward_codegen_adagrad_unweighted_exact_cuda_grad_aggregation("
           "    Tensor grad_output, "
           "    Tensor(a!) dev_weights, "
           "    Tensor(b!) uvm_weights, "
@@ -397,6 +477,8 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    int total_hash_size_bits, "
           "    Tensor indices, "
           "    Tensor offsets, "
+          "    Tensor indices_multi_step, "
+          "    Tensor offsets_multi_step, "
           "    int pooling_mode, "
           "    Tensor lxu_cache_locations, "
           "    int unused_, "
@@ -415,6 +497,10 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    Tensor unique_offsets = None, "
           "    Tensor unique_inverse = None, "
           "    Tensor table_offsets = None, "
+          "    Tensor table_offsets_multi = None, "
+          "    Tensor unique_multi_step = None, "
+          "    Tensor unique_offset_multi_step = None, "
+          "    Tensor unique_inverse_multi_step = None, "
           "    float eps = 0, float learning_rate = 0, "
           "    bool is_dynamic = False, "
           "    int iteration = 0,"
@@ -422,7 +508,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           ") -> Tensor");
 
     m.impl(
-        "split_embedding_backward_codegen_adagrad_unweighted_exact_cuda",
+        "split_embedding_backward_codegen_adagrad_unweighted_exact_cuda_grad_aggregation",
         torch::dispatch(c10::DispatchKey::PrivateUse1,
-                        TORCH_FN(fbgemm_npu_lookups::split_embedding_backward_codegen_adagrad_unweighted_exact_npu)));
+        TORCH_FN(fbgemm_npu_lookups::split_embedding_backward_codegen_adagrad_unweighted_exact_npu_grad_aggregation)));
 }
