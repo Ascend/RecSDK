@@ -94,22 +94,25 @@ seq_offset = torch.concat((torch.zeros((1, ), dtype=torch.int64), \
 
 ## 使用方式
 
-### 下载软件包并解压
+### 编译和安装算子
+上传hstu_dense_backward_fuxi文件夹到目标环境，并进入当前目录，执行指令对算子进行编译和部署
 
-tar -zxvf Ascend-recsdk-npu-ops-v220-linux-aarch64.tar.gz
+```shell
+bash run.sh
+```
 
-### 部署安装算子
+注：需先在环境中设置CANN相关环境变量，再执行算子编译和安装指令。使用默认路径安装CANN时设置环境变量指令如下：
 
-进入解压后的recsdk_ops目录
-执行./mxrec_opps_hstu_dense_backward_fuxi.run 完成算子安装部署
-
+```shell
+source /usr/local/Ascend/ascend-toolkit/set_env.sh
+```
 ### 编译torch适配层SO
-
-进入解压后的torch_library/2.6.0/hstu_dense_backward_fuxi目录
-执行 build build_ops.sh命令完成torch适配层编译
+将RecSDK/cust_op/framework/torch_plugin/torch_library目录上传至目标环境；<br>
+进入torch_library/2.6.0/common目录；<br>
+执行`bash build_ops.sh`命令完成torch适配层编译；<br>
 
 ### 执行样例
 
-进入解压后的torch_demo/hstu_dense_backward_fuxi目录
-执行pytest test_hstu_dense_backward_fuxi.py
-该样例只能作为精度测试不能作为性能测试的基准
+将RecSDK/examples/ops/torch/hstu_dense_backward_fuxi目录上传至目标环境，并进入目录；<br>
+执行`pytest test_hstu_dense_backward_fuxi.py`<br>
+该样例只能作为精度测试不能作为性能测试的基准；<br>
