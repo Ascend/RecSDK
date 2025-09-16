@@ -26,7 +26,16 @@ export PATH=$parent_dir:$PATH
 ai_core="ai_core-Ascend910B1"
 if [ "$#" -eq 1 ]; then
   ai_core="$1"
+  if [ "$1" = "ai_core-Ascend910B1" ] || 
+    [ "$1" = "ai_core-Ascend910_93" ] || 
+    [ "$1" = "ai_core-Ascend310P3" ]; then
+    echo "ai_core $1"
+  else
+    echo "ai-core $1 must be one of [ai_core-Ascend910B1 ai_core-Ascend910_93 ai_core-Ascend310P3]"
+    exit 1  
+  fi
 fi
+
 # 利用msopgen生成可编译文件
 rm -rf ./hstu_dense_forward_fuxi
 python3 /usr/local/Ascend/ascend-toolkit/latest/python/site-packages/bin/msopgen gen -i hstu_dense_forward_fuxi.json -f tf -c ${ai_core} -lan cpp -out ./hstu_dense_forward_fuxi -m 0 -op HstuDenseForwardFuxi
