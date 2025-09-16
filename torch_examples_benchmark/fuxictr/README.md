@@ -1,8 +1,6 @@
 ## FuxiCTR模型库具有以下依赖项：
 GitHub地址：https://github.com/reczoo/FuxiCTR/
 
-Python 3.9+
-pytorch 1.10.0--2.1.2（用于 torch 模型）
 请通过 安装其他必需的软件包。pip install -r requirements.txt
 
 可能出现sklearn版本过高的情况 可通过降版本至 sklearn<1.5 解决
