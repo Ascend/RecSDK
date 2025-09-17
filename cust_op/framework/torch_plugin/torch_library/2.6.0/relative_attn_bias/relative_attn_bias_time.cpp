@@ -10,6 +10,7 @@
 #include <torch/library.h>
 
 #include "../common/pytorch_npu_helper.hpp"
+#include "../common/common_utils.h"
 using torch::autograd::AutogradContext;
 using torch::autograd::Function;
 using torch::autograd::Variable;
@@ -24,6 +25,9 @@ std::tuple<at::Tensor, at::Tensor> relative_attn_bias_time_impl(const Tensor& ti
 {
     auto timestampsConti = timestamps.contiguous();
     auto timestampsWeightsConti = timestampsWeights.contiguous();
+    check_tensor_non_empty(timestampsConti, "timestampsConti");
+    check_tensor_non_empty(timestampsWeightsConti, "timestampsWeightsConti");
+
     const int numLayers = timestampsWeights.size(0);
     const int bs = timestampsConti.size(0);
     const int s = timestampsConti.size(1);
@@ -40,6 +44,9 @@ std::tuple<at::Tensor, at::Tensor> relative_attn_bias_time_impl(const Tensor& ti
 Tensor relative_attn_bias_time_backward_impl(const Tensor& rabTimeGrad, const Tensor& bucketTimestamps,
                                              const int64_t numBuckets)
 {
+    check_tensor_non_empty(rabTimeGrad, "rabTimeGrad");
+    check_tensor_non_empty(bucketTimestamps, "bucketTimestamps");
+
     const int numLayers = rabTimeGrad.size(0);  // rabTimeGrad(n, b, 2s, 2s)
     const int batchsize = rabTimeGrad.size(1);  // rabTimeGrad(n, b, 2s, 2s)
     const int sx2 = rabTimeGrad.size(2);        // rabTimeGrad(n, b, 2s, 2s)

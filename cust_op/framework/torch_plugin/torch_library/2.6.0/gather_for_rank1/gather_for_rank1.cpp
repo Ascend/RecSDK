@@ -11,6 +11,7 @@
 #include <torch/library.h>
 
 #include "../common/pytorch_npu_helper.hpp"
+#include "../common/common_utils.h"
 using torch::autograd::AutogradContext;
 using torch::autograd::Function;
 using torch::autograd::Variable;
@@ -20,6 +21,9 @@ using namespace at;
 // 为NPU设备注册前向实现
 at::Tensor gather_for_rank1_impl_npu(const at::Tensor& x, const at::Tensor& index)
 {
+    check_tensor_non_empty(x, "x");
+    check_tensor_non_empty(index, "index");
+
     TORCH_CHECK(x.dim() == 1, "The x should be 1D");
     TORCH_CHECK(index.dim() == 1, "The index should be 1D");
     auto x_conti = x.contiguous();
@@ -35,6 +39,10 @@ tensor_list gather_for_rank1_backward_impl_npu(
     const at::Tensor& x,
     const at::Tensor& index)
 {
+    check_tensor_non_empty(grady, "grady");
+    check_tensor_non_empty(x, "x");
+    check_tensor_non_empty(index, "index");
+
     auto grady_conti = grady.contiguous();
     auto index_conti = index.contiguous();
     at::Tensor gradx = at::zeros_like(x);

@@ -106,6 +106,8 @@ namespace optiling {
         // apply workspace
         size_t* currentWorkspace = context->GetWorkspaceSizes(1);
         size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
+        OPS_LOG_E_IF_NULL("currentWorkspace", currentWorkspace, return ge::GRAPH_FAILED);
+
         // 使用workspace共享lengths.sum(dim=1) + 各core计算的offsets结果
         // 为保证workspace同步成功需要保证首地址的32位对齐,因此乘以64
         size_t userWorkspacesSize = (lengthsT + 1) * GM_ALIGN * (coreNum + 1);

@@ -221,6 +221,7 @@ ge::graphStatus GetJaggedBasicShapeInfo(gert::TilingContext *context, HstuDenseB
 ge::graphStatus InitJaggedTilingKey(gert::TilingContext *context, HstuDenseBackwardTilingData &tiling)
 {
     int64_t dataTypeLength = 0;
+    OPS_LOG_E_IF_NULL("grad", context->GetInputTensor(INDEX_T::INDEX_0), return ge::GRAPH_FAILED);
     ge::DataType gradType = context->GetInputTensor(INDEX_T::INDEX_0)->GetDataType();
     if (gradType == ge::DataType::DT_FLOAT) {
         dataTypeLength = DATA_TYPE_LENGTH_FLOAT;

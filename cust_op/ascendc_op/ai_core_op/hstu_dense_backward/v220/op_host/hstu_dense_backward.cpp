@@ -78,6 +78,8 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
     }
 
     size_t *currentWorkspace = context->GetWorkspaceSizes(INDEX_T::INDEX_1);
+    OPS_LOG_E_IF_NULL("currentWorkspace", currentWorkspace, return ge::GRAPH_FAILED);
+
     size_t systemWorkspaceSize = ascendPlatform.GetLibApiWorkSpaceSize();
     currentWorkspace[0] = workspaceSize + systemWorkspaceSize;
 

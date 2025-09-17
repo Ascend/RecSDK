@@ -19,6 +19,7 @@ See the License for the specific language governing permissions and
 #include <torch/library.h>
 
 #include "../common/pytorch_npu_helper.hpp"
+#include "../common/common_utils.h"
 using torch::autograd::AutogradContext;
 using torch::autograd::Function;
 using tensor_list = std::vector<at::Tensor>;
@@ -89,6 +90,7 @@ at::Tensor hstu_dense_normal_forward_impl_npu(
     double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
 
     const char *layout = "normal";
+    
     EXEC_NPU_CMD(aclnnHstuDenseForward,
         denseQ,
         denseK,
@@ -168,6 +170,10 @@ at::Tensor hstu_dense_forward_impl_npu(
     TORCH_CHECK(layout == "normal" || layout == "jagged",
         "The layout should be normal/jagged but got ", layout);
 
+    check_tensor_non_empty(q, "q");
+    check_tensor_non_empty(k, "k");
+    check_tensor_non_empty(v, "v");
+
     TORCH_CHECK(q.scalar_type() == at::kHalf || q.scalar_type() == at::kFloat || q.scalar_type() == at::kBFloat16,
                 "float16, float32 or bfloat16 tensor expected but got a tensor with dtype: ", q.scalar_type());
 
@@ -226,6 +232,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_normal_bac
         attnBiasGradOutput = at::empty({batchSize, headNum, biasGradSeqLen, biasGradSeqLen},
                                        at::device(denseGrad.device()).dtype(denseGrad.dtype()));
     }
+    check_tensor_non_empty(attnBiasGradOutput, "attnBiasGradOutput");
 
     const char *layout = "normal";
     EXEC_NPU_CMD(aclnnHstuDenseBackward,
@@ -298,10 +305,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_jagged_bac
     at::Tensor attnBiasGradOutput;
     if (denseAttnBias.defined()) {
         attnBiasGradOutput = at::empty_like(denseAttnBias);
+        check_tensor_non_empty(denseAttnBias, "denseAttnBias");
     } else {
         attnBiasGradOutput = at::Tensor();
     }
-
+    
     const char *layout = "jagged";
     EXEC_NPU_CMD(aclnnHstuDenseBackward, denseGrad, denseQ, denseK, denseV, denseMask, denseAttnBias, layout, maskType,
         maxSeqLen, realSiluScale, acSeqOffset, qGradOutput, kGradOutput, vGradOutput, attnBiasGradOutput);
@@ -328,6 +336,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_backward_i
 {
     TORCH_CHECK(layout == "normal" || layout == "jagged",
         "The layout should be normal/jagged but got ", layout);
+    
+    check_tensor_non_empty(grad, "grad");
+    check_tensor_non_empty(q, "q");
+    check_tensor_non_empty(k, "k");
+    check_tensor_non_empty(v, "v");
 
     TORCH_CHECK(q.scalar_type() == at::kHalf || q.scalar_type() == at::kFloat || q.scalar_type() == at::kBFloat16,
                 "float16, float32 or bfloat16 tensor expected but got a tensor with dtype: ", q.scalar_type());

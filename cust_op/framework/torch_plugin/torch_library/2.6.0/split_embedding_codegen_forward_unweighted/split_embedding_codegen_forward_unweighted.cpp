@@ -11,7 +11,9 @@
 #include <torch/library.h>
 #include "torch/extension.h"
 #include "../common/pytorch_npu_helper.hpp"
+#include "split_embedding_codegen_common_utils.h"
 #include "split_embedding_codegen_forward_unweighted.h"
+
 using torch::autograd::Function;
 using torch::autograd::AutogradContext;
 using torch::autograd::variable_list;
@@ -44,18 +46,19 @@ at::Tensor split_embedding_codegen_forward_unweighted_npu(const at::Tensor& dev_
 
     const at::OptionalDeviceGuard guard(device_of(dev_weights));
 
-    int64_t featCnt = weights_placements.size(0);
-    int32_t totalLen = indices.numel();
-    if (featCnt == 0) {
-        return at::Tensor();
-    }
+    validate_forward_data_inputs(dev_weights, weights_offsets, D_offsets, indices,
+                                 offsets, hash_indices, offset_per_key);
 
-    if (totalLen == 0) {
-        return at::Tensor();
-    }
+    int64_t featCnt = weights_offsets.size(0);
+    int32_t totalLen = indices.numel();
+
+    TORCH_CHECK(featCnt > 0, "weights_offsets size must be great than 0.");
+    TORCH_CHECK(totalLen > 0, "indices can not be empty tensor.");
+    TORCH_CHECK(offsets.size(0) > 1, "offsets dim_0 must be great than 1.");
+
     int64_t batchSizeRes = (offsets.size(0) - 1) % featCnt;
     TORCH_CHECK(batchSizeRes == 0, "offset size = ", offsets.size(0),
-                " is incorrect for feature count = ", featCnt)
+                " is incorrect for feature count = ", featCnt);
     int64_t batchSize = (offsets.size(0) - 1) / featCnt;
     auto output = at::full({batchSize, totalD}, 0.0, dev_weights.options());
 

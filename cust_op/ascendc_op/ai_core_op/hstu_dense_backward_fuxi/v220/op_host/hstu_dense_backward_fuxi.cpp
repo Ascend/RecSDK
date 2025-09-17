@@ -32,6 +32,7 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
     int64_t batchSize = tiling.get_batchSize();
 
     matmul_tiling::DataType dataType;
+    OPS_LOG_E_IF_NULL("query", context->GetInputTensor(INDEX_T::INDEX_0), return ge::GRAPH_FAILED);
     ge::DataType gradType = context->GetInputTensor(INDEX_T::INDEX_0)->GetDataType();
     if (gradType == ge::DataType::DT_FLOAT) {
         dataType = matmul_tiling::DataType::DT_FLOAT;
@@ -76,6 +77,8 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
     int64_t workspaceSize = vecCoreNum * totalTempSpaceForOneVec + attnBiasGradTempSpace;
 
     size_t *currentWorkspace = context->GetWorkspaceSizes(INDEX_T::INDEX_1);
+    OPS_LOG_E_IF_NULL("currentWorkspace", currentWorkspace, return ge::GRAPH_FAILED);
+
     size_t systemWorkspaceSize = ascendPlatform.GetLibApiWorkSpaceSize();
     currentWorkspace[0] = workspaceSize + systemWorkspaceSize;
 

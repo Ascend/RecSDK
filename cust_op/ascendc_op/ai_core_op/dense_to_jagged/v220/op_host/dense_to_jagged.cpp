@@ -67,6 +67,8 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     auto ascnedPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     // 通过框架获取workspace的指针，GetWorkspaceSizes入参为所需workspace的块数。当前限制使用一块。
     size_t *currentWorkspace = context->GetWorkspaceSizes(1);
+    OPS_LOG_E_IF_NULL("currentWorkspace", currentWorkspace, return ge::GRAPH_FAILED);
+
     // 如需要使用系统workspace需要调用GetLibApiWorkSpaceSize获取系统workspace的大小。
     size_t systemWorkspacesSize = ascnedPlatform.GetLibApiWorkSpaceSize();
     // 设置总的workspace的数值大小，总的workspace空间由框架来申请并管理。
