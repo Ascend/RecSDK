@@ -18,15 +18,39 @@ msopgen_path=$(find /usr/local/Ascend/ -name msopgen | grep bin)
 parent_dir=$(dirname "$msopgen_path")
 export PATH=$parent_dir:$PATH
 
-ai_core="ai_core-ascend910b1"
+
+VALID_AI_CORES=(
+    "ai_core-Ascend910B1"
+    "ai_core-Ascend910B2"
+    "ai_core-Ascend910B3"
+    "ai_core-Ascend910B4"
+    "ai_core-Ascend910_93"
+    "ai_core-Ascend310P3"
+)
+
+validate_ai_core() {
+    local input_core="$1"
+    for valid_core in "${VALID_AI_CORES[@]}"; do
+        if [ "$input_core" = "$valid_core" ]; then
+            echo "ai_core $input_core"
+            return 0
+        fi
+    done
+    echo "ai core must in : [${VALID_AI_CORES[*]}]" >&2
+    exit 1
+    return 1
+}
+
+ai_core="ai_core-Ascend910B1"
 if [ "$#" -eq 1 ]; then
-    ai_core=${1,,} # to lowercase
+  ai_core="$1"
+  validate_ai_core $ai_core
 fi
 
 rm -rf ./pcie_through
-if [ "${ai_core}" == "ai_core-ascend910b1" ]; then
+if [ "${ai_core}" == "ai_core-Ascend910B1" ]; then
   msopgen gen -i emb_custom.json -f tf -c ai_core-ascend910b1 -lan cpp -out ./pcie_through -m 0 -op RmaSwapMultiTables
-elif [ "${ai_core}" == "ai_core-ascend910_93" ]; then
+elif [ "${ai_core}" == "ai_core-Ascend910_93" ]; then
   msopgen gen -i emb_custom.json -f tf -c ai_core-ascend910_93 -lan cpp -out ./pcie_through -m 0 -op RmaSwapMultiTables
 else
   echo "Unsupported chip type ${ai_core}"
@@ -53,7 +77,7 @@ if [ ! -f "config.cmake" ]; then
   exit 1
 fi
 
-if [ "${ai_core}" == "ai_core-ascend910b1" ]; then
+if [ "${ai_core}" == "ai_core-Ascend910B1" ]; then
   sed -i 's:set(ASCEND_COMPUTE_UNIT ascend910b):set(ASCEND_COMPUTE_UNIT ascend910b ascend910):g' config.cmake
 elif [ "${ai_core}" == "ai_core-ascend910_93" ]; then
   sed -i 's:set(ASCEND_COMPUTE_UNIT ascend910_93):set(ASCEND_COMPUTE_UNIT ascend910_93 ascend910):g' config.cmake

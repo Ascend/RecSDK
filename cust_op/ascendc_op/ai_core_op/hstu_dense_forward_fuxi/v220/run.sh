@@ -23,10 +23,35 @@ onnx_path=$(dirname "$(readlink -f "$0")")/../../../build/scripts/onnx_plugin
 json_file=$onnx_path/json.hpp
 
 export PATH=$parent_dir:$PATH
+
+VALID_AI_CORES=(
+    "ai_core-Ascend910B1"
+    "ai_core-Ascend910B2"
+    "ai_core-Ascend910B3"
+    "ai_core-Ascend910B4"
+    "ai_core-Ascend910_93"
+    "ai_core-Ascend310P3"
+)
+
+validate_ai_core() {
+    local input_core="$1"
+    for valid_core in "${VALID_AI_CORES[@]}"; do
+        if [ "$input_core" = "$valid_core" ]; then
+            echo "ai_core $input_core"
+            return 0
+        fi
+    done
+    echo "ai core must in : [${VALID_AI_CORES[*]}]" >&2
+    exit 1
+    return 1
+}
+
 ai_core="ai_core-Ascend910B1"
 if [ "$#" -eq 1 ]; then
   ai_core="$1"
+  validate_ai_core $ai_core
 fi
+
 # 利用msopgen生成可编译文件
 rm -rf ./hstu_dense_forward_fuxi
 python3 /usr/local/Ascend/ascend-toolkit/latest/python/site-packages/bin/msopgen gen -i hstu_dense_forward_fuxi.json -f tf -c ${ai_core} -lan cpp -out ./hstu_dense_forward_fuxi -m 0 -op HstuDenseForwardFuxi
