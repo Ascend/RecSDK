@@ -59,6 +59,9 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     OPS_CHECK(denseShape.GetDim(DIM0) != offsetShape.GetDim(DIM0) - 1,
         OPS_LOG_E("[ERROR]", "dense shape[0] != offset shape[0] - 1"), return ge::GRAPH_FAILED);
 
+    OPS_CHECK(offsetShape.GetDim(DIM0) > std::numeric_limits<int>::max(),
+        OPS_LOG_E("[ERROR]", "offset shape[0] > %d\n", std::numeric_limits<int>::max()), return ge::GRAPH_FAILED);
+
     // Platform configuration
     size_t usrSize = 0;
     auto ascnedPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());

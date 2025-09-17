@@ -78,7 +78,13 @@ at::Tensor hstu_dense_normal_forward_impl_npu(
     TORCH_CHECK(MaskCheck(maskType, maskNpu.defined()), "maskType check failed");
 
     bool useRab = (timestampBias.has_value() && positionBias.has_value());
-    uint32_t outDim2 = useRab ? (CONST_3 * headNum * headDim) : (headNum * headDim);
+    uint64_t tempDim = static_cast<uint64_t>(headNum) * static_cast<uint64_t>(headDim);
+    if (useRab) {
+        tempDim = static_cast<uint64_t>(CONST_3) * tempDim;
+    }
+    TORCH_CHECK(tempDim <= std::numeric_limits<uint32_t>::max(),
+        "tempDim limit (0, %u], but get %llu\n", std::numeric_limits<uint32_t>::max(), tempDim);
+    uint32_t outDim2 = static_cast<uint32_t>(tempDim);
     auto attnOutput = at::empty({batchSize, seqLen, outDim2}, q.options());
 
     const char *layout = "normal";

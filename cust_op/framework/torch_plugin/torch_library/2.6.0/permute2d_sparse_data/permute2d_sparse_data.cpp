@@ -34,9 +34,16 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute2d_sparse_data_impl_npu(
 
     int outValuesLen;
     if (permuted_lengths_sum.has_value() && permuted_lengths_sum.value() > 0) {
-        outValuesLen = static_cast<int>(permuted_lengths_sum.value());
+        int64_t permuted_lengths_sum_value = permuted_lengths_sum.value();
+        TORCH_CHECK(permuted_lengths_sum_value <= std::numeric_limits<int>::max(),
+            "permuted_lengths_sum limit (0, %d], but get %lld\n", std::numeric_limits<int>::max(),
+            permuted_lengths_sum_value);
+        outValuesLen = static_cast<int>(permuted_lengths_sum_value);
     } else {
-        outValuesLen = lengthsConti.index_select(0, permuteConti).sum().item<int>();
+        int64_t sum_value = lengthsConti.index_select(0, permuteConti).sum().item<int64_t>();
+        TORCH_CHECK(sum_value > 0 && sum_value <= std::numeric_limits<int>::max(),
+            "sum_value limit (0, %d], but get %lld\n", std::numeric_limits<int>::max(), sum_value);
+        outValuesLen = static_cast<int>(sum_value);
     }
 
     at::Tensor outLengths = at::empty({T, B}, lengthsConti.options());
