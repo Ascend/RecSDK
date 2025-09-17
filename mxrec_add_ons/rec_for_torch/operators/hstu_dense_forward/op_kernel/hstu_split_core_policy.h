@@ -17,9 +17,7 @@ See the License for the specific language governing permissions and
 #define HSTU_SPLIT_CORE_POLICY_H
 
 #include <unistd.h>
-
 #include <cstdint>
-#include <type_traits>
 
 #include "kernel_log.h"
 #include "kernel_operator.h"
@@ -27,154 +25,131 @@ See the License for the specific language governing permissions and
 
 using namespace AscendC;
 
-
 namespace HstuDenseForward {
-    constexpr int CONST_2 = 2;
-    class BlockTaskAssign {
-    public:
-        __aicore__ inline BlockTaskAssign(uint32_t *seqOffsets, uint32_t coreNum, uint32_t blockLen,
-                                          uint32_t batchSize, uint32_t headNum, GlobalTensor<int64_t> &blockNumberGt)
-        {
-            this->seqOffsets = seqOffsets;
-            this->coreNum = coreNum;
-            this->blockLen = blockLen;
-            this->batchSize = batchSize;
-            this->headNum = headNum;
-            this->blockNumberGt = blockNumberGt;
-        }
-
-        __aicore__ inline void PreInit()
-        {
-            // 得到每个batch 和 head的block个数
-            for (auto batchId = 0; batchId < batchSize; batchId++) {
-                auto batchBlockSize = this->seqOffsets[batchId + 1] - this->seqOffsets[batchId];
-
-                for (auto headId = 0; headId < headNum; headId++) {
-                    blockNumberGt.SetValue(batchId * headNum + headId,
-                        (batchBlockSize + blockLen - 1) / blockLen);
-                }
-            }
-        }
-
-        __aicore__ inline bool BatchSwitch(
-            uint32_t &batchId,
-            uint32_t totalBatchSize,
-            uint32_t &batchTaskNum)
-        {
-            if (blockNumberGt.GetValue(batchId) == 0) {
-                batchId++;
-                if (batchId >= totalBatchSize) {
-                    return false;
-                }
-                batchTaskNum = blockNumberGt.GetValue(batchId);
-            }
-            return true;
-        }
-
-        __aicore__ inline void Compute()
-        {
-            uint32_t totalBatchSize = 0;
-            int64_t eachCoreTaskNumLimit = 0;
-            InitAndComputeLimit(false, totalBatchSize, eachCoreTaskNumLimit);
-
-            // 遍历workers 计算得到每一个works的任务量
-            uint32_t batchId = 0;
-            uint32_t batchTaskNum = blockNumberGt.GetValue(batchId);
-            uint32_t processBlockNum = 0;
-            uint32_t processTaskNum = 0;
-            uint32_t workLoads = 0;
-            for (int i = 0; i < this->coreNum && batchId < totalBatchSize; i++) {
-                blockNumberGt.SetValue(totalBatchSize + i, processBlockNum);
-                workLoads = 0;
-                while (workLoads < eachCoreTaskNumLimit) {
-                    workLoads += batchTaskNum;
-                    processTaskNum += batchTaskNum;
-                    processBlockNum++;
-                    blockNumberGt.SetValue(batchId, blockNumberGt.GetValue(batchId) - 1);
-                    if (!BatchSwitch(batchId, totalBatchSize, batchTaskNum)) {
-                        break;
-                    }
-                }
-                blockNumberGt.SetValue(totalBatchSize + i + this->coreNum, processBlockNum);
-            }
-            DataCacheCleanAndInvalid<int64_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(blockNumberGt);
-        }
-
-        __aicore__ inline bool BatchSwitchCausal(
-            uint32_t &batchId,
-            uint32_t &taskNum,
-            uint32_t totalBatchSize
-        )
-        {
-            if (blockNumberGt.GetValue(batchId) == 0) {
-                batchId++;
-                taskNum = 1;
-                if (batchId >= totalBatchSize) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        __aicore__ inline  void ComputeCausal()
-        {
-            uint32_t totalBatchSize = 0;
-            int64_t eachCoreTaskNumLimit = 0;
-            InitAndComputeLimit(true, totalBatchSize, eachCoreTaskNumLimit);
-
-            // 遍历workers 计算得到每一个works的任务量（因果场景）
-            uint32_t batchId = 0;
-            uint32_t taskNum = 1;
-            uint32_t processBlockNum = 0;
-            uint32_t processTaskNum = 0;
-            uint32_t workLoads = 0;
-            for (int i = 0; i < this->coreNum && batchId < totalBatchSize; i++) {
-                blockNumberGt.SetValue(totalBatchSize + i, processBlockNum);
-                workLoads = 0;
-                while (workLoads < eachCoreTaskNumLimit) {
-                    workLoads += taskNum;
-                    processTaskNum += taskNum;
-                    taskNum++;
-                    processBlockNum++;
-                    blockNumberGt.SetValue(batchId, blockNumberGt.GetValue(batchId) - 1);
-                    if (!BatchSwitchCausal(batchId, taskNum, totalBatchSize)) {
-                        break;
-                    }
-                }
-                blockNumberGt.SetValue(totalBatchSize + i + this->coreNum, processBlockNum);
-            }
-            DataCacheCleanAndInvalid<int64_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(blockNumberGt);
-        }
-
-    private:
-        __aicore__ inline void InitAndComputeLimit(
-            bool isCausal,
-            uint32_t &totalBatchSize,
-            int64_t &eachCoreTaskNumLimit)
-        {
-            // 得到每个batch 和 head的block个数
-            totalBatchSize = batchSize * headNum;
-            PreInit();
-
-            // 计算所有的task_num得到每个core 计算的task均值
-            int64_t totalTaskNumber = 0;
-            for (uint32_t i = 0; i < totalBatchSize; i++) {
-                auto n = blockNumberGt.GetValue(i);
-                if (isCausal) {
-                    totalTaskNumber += n * (n + 1) / CONST_2;
-                } else {
-                    totalTaskNumber += n * n;
-                }
-            }
-            eachCoreTaskNumLimit = (totalTaskNumber + this->coreNum - 1) / this->coreNum;
-        }
-
-        uint32_t *seqOffsets = nullptr;
-        uint32_t coreNum = 0;
-        uint32_t blockLen = 0;
-        uint32_t batchSize = 0;
-        uint32_t headNum = 0;
-        GlobalTensor<int64_t>blockNumberGt;
-    };
+template <typename T>
+__aicore__ inline T CeilDiv(T dividend, T divisor)
+{
+    if (divisor == 0) {
+        return 0;
+    }
+    return (dividend + divisor - 1) / divisor;
 }
+
+template <typename oType>
+class BlockTaskAssign {
+public:
+    __aicore__ inline BlockTaskAssign(CausalMaskT maskType,
+                                      uint32_t coreNum,
+                                      int64_t blockLen,
+                                      int64_t batchSize,
+                                      int64_t headNum,
+                                      GlobalTensor<oType>& seqOffsetsGt,
+                                      GlobalTensor<int64_t>& blockNumberGt)
+    {
+        this->maskType = maskType;
+        this->coreNum = coreNum;
+        this->blockLen = blockLen;
+        this->batchSize = batchSize;
+        this->headNum = headNum;
+        this->seqOffsetsGt = seqOffsetsGt;
+
+        this->blockNumberGt = blockNumberGt;
+        this->bxn = batchSize * headNum;
+    }
+
+    __aicore__ inline void Compute()
+    {
+        // 计算总任务量
+        uint32_t totalTaskNum = 0;
+        for (auto batchId = 0; batchId < batchSize; batchId++) {
+            int64_t seqlen = seqOffsetsGt.GetValue(batchId + 1) - seqOffsetsGt.GetValue(batchId);
+            int64_t numBlk = CeilDiv(seqlen, blockLen);
+
+            uint32_t seqTaskNum = ComputeSeqTaskNum(seqlen, numBlk);
+            totalTaskNum += headNum * seqTaskNum;
+
+            // blockNumberGt 前batchSize x headNum (bxn)个位置记录每个batch每个head的block数
+            for (auto headId = 0; headId < headNum; headId++) {
+                blockNumberGt.SetValue(batchId * headNum + headId, numBlk);
+            }
+        }
+        int64_t eachCoreTaskNumLimit = CeilDiv(totalTaskNum, this->coreNum);
+
+        // 遍历workers 计算得到每一个works的任务量
+        bool initFlag = false;
+        uint32_t batchId = 0;
+        uint32_t taskNum = Get1stTaskNum(batchId, initFlag);
+        uint32_t processBlockNum = 0;  // 记录Qblock数
+        for (uint32_t i = 0; i < this->coreNum && batchId < bxn; i++) {
+            blockNumberGt.SetValue(bxn + i, processBlockNum);  // corei的startblockid
+            uint32_t workLoads = 0;
+            while (workLoads < eachCoreTaskNumLimit && batchId < bxn) {
+                // 更新状态
+                workLoads += taskNum;
+                processBlockNum++;
+                // 更新任务数
+                UpdateTaskNum(taskNum, initFlag);
+                // 更新待分配的Qblock数
+                blockNumberGt.SetValue(batchId, blockNumberGt.GetValue(batchId) - 1);
+                if (blockNumberGt.GetValue(batchId) == 0) {
+                    batchId++;
+                    taskNum = Get1stTaskNum(batchId, initFlag);
+                }
+            }
+            blockNumberGt.SetValue(bxn + i + this->coreNum, processBlockNum);  // corei的endblockid
+        }
+        DataCacheCleanAndInvalid<int64_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(blockNumberGt);
+    }
+
+private:
+    __aicore__ inline uint32_t ComputeSeqTaskNum(int64_t seqlen, int64_t numBlk)
+    {
+        uint32_t seqTaskNum;
+        if (maskType == CausalMaskT::MASK_TRIL) {
+            seqTaskNum = numBlk * (numBlk + 1) / 2;
+        } else {
+            seqTaskNum = numBlk * numBlk;
+        }
+        return seqTaskNum;
+    }
+
+    __aicore__ inline uint32_t Get1stTaskNum(int64_t batchId, bool& initFlag)
+    {
+        initFlag = true;
+        if (batchId >= bxn) {
+            return 0;
+        }
+        // 得到batch的第一个Q block对应的计算量
+        if (maskType == CausalMaskT::MASK_TRIL) {
+            uint32_t taskNum = 1;
+            int64_t batch = batchId / headNum;
+            return taskNum;
+        } else {
+            return blockNumberGt.GetValue(batchId);
+        }
+    }
+
+    __aicore__ inline void UpdateTaskNum(uint32_t& taskNum, bool& initFlag)
+    {
+        if (maskType != CausalMaskT::MASK_TRIL) {
+            return;
+        }
+        if (initFlag) {
+            initFlag = false;
+            taskNum = 1;
+        }
+        taskNum++;
+    }
+
+    CausalMaskT maskType;
+    uint32_t coreNum;
+    int64_t blockLen;
+    int64_t batchSize;
+    int64_t headNum;
+    uint32_t bxn;  // 总序列数
+
+    GlobalTensor<oType> seqOffsetsGt;
+    GlobalTensor<int64_t> blockNumberGt;
+};
+}  // namespace HstuDenseForward
 #endif
