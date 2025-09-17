@@ -144,7 +144,6 @@ class TestHstuJaggedDemo:
         torch.npu.synchronize()
         return output.cpu().to(data_type).reshape(-1)
 
-
     def gloden_op_exec(self, q, k, v, seq_offset, bias, mask, max_seq_len, enable_bias, mask_type, silu_scale,
                        data_type):
         head_nums = q.shape[1]
