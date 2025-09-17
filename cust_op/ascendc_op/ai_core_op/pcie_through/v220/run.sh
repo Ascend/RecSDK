@@ -18,7 +18,7 @@ msopgen_path=$(find /usr/local/Ascend/ -name msopgen | grep bin)
 parent_dir=$(dirname "$msopgen_path")
 export PATH=$parent_dir:$PATH
 
-ai_core="ai_core-ascend910b1"
+ai_core="ai_core-Ascend910B1"
 if [ "$#" -eq 1 ]; then
   ai_core="$1"
   if [ "$1" = "ai_core-Ascend910B1" ] || 
@@ -32,8 +32,8 @@ if [ "$#" -eq 1 ]; then
 fi
 
 rm -rf ./pcie_through
-if [ "${ai_core}" == "ai_core-ascend910b1" ]; then
-  msopgen gen -i emb_custom.json -f tf -c ai_core-ascend910b1 -lan cpp -out ./pcie_through -m 0 -op RmaSwapMultiTables
+if [ "${ai_core}" == "ai_core-Ascend910B1" ]; then
+  msopgen gen -i emb_custom.json -f tf -c ai_core-Ascend910B1 -lan cpp -out ./pcie_through -m 0 -op RmaSwapMultiTables
 elif [ "${ai_core}" == "ai_core-ascend910_93" ]; then
   msopgen gen -i emb_custom.json -f tf -c ai_core-ascend910_93 -lan cpp -out ./pcie_through -m 0 -op RmaSwapMultiTables
 else
@@ -61,7 +61,7 @@ if [ ! -f "config.cmake" ]; then
   exit 1
 fi
 
-if [ "${ai_core}" == "ai_core-ascend910b1" ]; then
+if [ "${ai_core}" == "ai_core-Ascend910B1" ]; then
   sed -i 's:set(ASCEND_COMPUTE_UNIT ascend910b):set(ASCEND_COMPUTE_UNIT ascend910b ascend910):g' config.cmake
 elif [ "${ai_core}" == "ai_core-ascend910_93" ]; then
   sed -i 's:set(ASCEND_COMPUTE_UNIT ascend910_93):set(ASCEND_COMPUTE_UNIT ascend910_93 ascend910):g' config.cmake

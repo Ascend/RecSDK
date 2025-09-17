@@ -22,7 +22,7 @@ msopgen_path=$(find /usr/local/Ascend/ -name msopgen | grep bin)
 parent_dir=$(dirname "$msopgen_path")
 export PATH=$parent_dir:$PATH
 
-ai_core="ai_core-ascend910b1"
+ai_core="ai_core-Ascend910B1"
 if [ "$#" -eq 1 ]; then
   ai_core="$1"
   if [ "$1" = "ai_core-Ascend910B1" ] || 
