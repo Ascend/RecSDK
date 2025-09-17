@@ -343,6 +343,10 @@ FkvState FastHashMap::PutKeyValue(uint64_t key, uint64_t& value, NetHashBucket* 
          * could trigger page fault, that is quite slow. In this case, spin lock
          * could occupy too much CPU
          */
+        if (buck == nullptr) {
+            LOG_ERROR("buck is nullptr");
+            return FkvState::FKV_FAIL;
+        }
 
         auto& lock = buck->spinLock;
         lock.Lock();

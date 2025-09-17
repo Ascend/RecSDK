@@ -25,6 +25,8 @@
 
 namespace Embcache {
 
+constexpr uint64_t MAX_EMB_MEMORY_POOL_THREAD_NUM = 1024;
+
 class ThreadPool {
 public:
     explicit ThreadPool(size_t threads) : stopped_(false)
@@ -102,8 +104,9 @@ inline uint64_t GetEmbMemoryPoolThreadPoolThreadNum()
             LOG_ERROR("env EMB_MEMORY_POOL_THREAD_NUM is not a valid number");
             throw std::runtime_error("env EMB_MEMORY_POOL_THREAD_NUM is not a valid number");
         }
-        if (embMemoryPoolThreadNum == 0) {
-            LOG_ERROR("env EMB_MEMORY_POOL_THREAD_NUM = 0, it is invalid");
+        if (embMemoryPoolThreadNum == 0 || embMemoryPoolThreadNum > MAX_EMB_MEMORY_POOL_THREAD_NUM) {
+            LOG_ERROR("env EMB_MEMORY_POOL_THREAD_NUM should be in [1, {}], {} is invalid",
+                      MAX_EMB_MEMORY_POOL_THREAD_NUM, embMemoryPoolThreadNum);
             throw std::runtime_error("env EMB_MEMORY_POOL_THREAD_NUM is invalid");
         }
     }

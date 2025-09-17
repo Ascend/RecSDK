@@ -249,6 +249,8 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
         custom_model_fwd: Optional[
             Callable[[Optional[In]], Tuple[torch.Tensor, Out]]
         ] = None,
+        custom_model_zero_grad: Optional[Callable] = None,
+        custom_model_bwd: Optional[Callable] = None,
     ) -> None:
         super().__init__(
             model=model,
@@ -284,6 +286,8 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
                 f"but got {local_unique_parallel_batch_num}."
             )
         self.local_unique_parallel_batch_num = int(local_unique_parallel_batch_num)
+        self._zero_grad = self._optimizer.zero_grad if custom_model_zero_grad is None else custom_model_zero_grad
+        self._custom_model_bwd = custom_model_bwd
 
     def _init_pipelined_modules(
         self,
@@ -662,7 +666,7 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
 
         if self._model.training:
             with record_function("## zero_grad ##"):
-                self._optimizer.zero_grad()
+                self._zero_grad()
 
         # wait batch_ip2
         if len(self.batches) >= 4:
@@ -719,7 +723,10 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
         if self._model.training:
             # backward
             with record_function("## backward ##"):
-                torch.sum(losses, dim=0).backward()
+                if self._custom_model_bwd is not None:
+                    self._custom_model_bwd(losses=losses, output=output)
+                else:
+                    torch.sum(losses, dim=0).backward()
             # update
             with record_function("## optimizer ##"):
                 self._optimizer.step()
