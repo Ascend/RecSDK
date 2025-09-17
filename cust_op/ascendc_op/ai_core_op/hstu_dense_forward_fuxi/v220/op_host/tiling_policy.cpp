@@ -224,6 +224,19 @@ bool TilingPolicy::TilingHeighLevelApi(gert::TilingContext* context, optiling::H
         return false;
     }
 
+    auto findResult = matmul_tiling::DTYPE_BYTE_TAB.find(dataType);
+    if (findResult == matmul_tiling::DTYPE_BYTE_TAB.end()) {
+        OPS_LOG_E("", "dataType not in DTYPE_BYTE_TAB");
+        return ge::GRAPH_FAILED;
+    }
+    int dataTypeLength = findResult->second;
+    if (!CheckBaseMNK(tiling.qkMatmul, dataTypeLength, sizeof(float)) ||
+        !CheckBaseMNK(tiling.svMatmul, dataTypeLength, sizeof(float)) ||
+        !CheckBaseMNK(tiling.pvMatmul, dataTypeLength, sizeof(float)) ||
+        !CheckBaseMNK(tiling.tvMatmul, dataTypeLength, sizeof(float))) {
+        return ge::GRAPH_FAILED;
+    }
+
     tiling.set_qkBaseM(tiling.qkMatmul.get_baseM());
     tiling.set_qkBaseN(tiling.qkMatmul.get_baseN());
 

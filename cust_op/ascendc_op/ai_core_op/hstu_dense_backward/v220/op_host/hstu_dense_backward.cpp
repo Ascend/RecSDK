@@ -21,6 +21,8 @@ See the License for the specific language governing permissions and
 #include "hstu_dense_backward_normal_tiling.h"
 #include "hstu_dense_backward_jagged_tiling.h"
 
+#include "matmul_check.h"
+using namespace MatmulTilingCheck;
 namespace optiling {
 static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseBackwardTilingData &tiling)
 {
@@ -130,6 +132,13 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
         qGradMatmul.GetTiling(tiling.qGradMatmul) == -1 ||
         kGradMatmul.GetTiling(tiling.kGradMatmul) == -1 ||
         vGradMatmul.GetTiling(tiling.vGradMatmul) == -1) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (!CheckBaseMNK(tiling.qkMatmul, dataTypeLength, dataTypeLength) ||
+        !CheckBaseMNK(tiling.qGradMatmul, dataTypeLength, sizeof(float)) ||
+        !CheckBaseMNK(tiling.kGradMatmul, dataTypeLength, sizeof(float)) ||
+        !CheckBaseMNK(tiling.vGradMatmul, dataTypeLength, sizeof(float))) {
         return ge::GRAPH_FAILED;
     }
 

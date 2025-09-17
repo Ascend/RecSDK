@@ -16,7 +16,9 @@ See the License for the specific language governing permissions and
 
 #include <cstdint>
 #include "register/op_def_registry.h"
+#include "matmul_check.h"
 #include "tiling_policy.h"
+using namespace MatmulTilingCheck;
 
 namespace HstuDenseForward {
 
@@ -233,6 +235,17 @@ bool TilingPolicy::TilingHeighLevelApi(gert::TilingContext *context, optiling::H
 
     if (qkMatmul.GetTiling(tiling.qkMatmul) == -1 || svMatmul.GetTiling(tiling.svMatmul) == -1) {
         return false;
+    }
+
+    auto findResult = matmul_tiling::DTYPE_BYTE_TAB.find(dataType);
+    if (findResult == matmul_tiling::DTYPE_BYTE_TAB.end()) {
+        OPS_LOG_E("", "dataType not in DTYPE_BYTE_TAB");
+        return ge::GRAPH_FAILED;
+    }
+    int dataTypeLength = findResult->second;
+    if (!CheckBaseMNK(tiling.qkMatmul, dataTypeLength, dataTypeLength) ||
+        !CheckBaseMNK(tiling.svMatmul, dataTypeLength, sizeof(float))) {
+        return ge::GRAPH_FAILED;
     }
 
     tiling.set_qkBaseM(tiling.qkMatmul.get_baseM());

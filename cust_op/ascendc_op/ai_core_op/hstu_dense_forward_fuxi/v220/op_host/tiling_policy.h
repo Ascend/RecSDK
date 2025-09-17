@@ -19,6 +19,8 @@ See the License for the specific language governing permissions and
 #include "register/op_def_registry.h"
 #include "hstu_dense_forward_fuxi_tiling.h"
 #include "ops_log.h"
+#include "matmul_check.h"
+using namespace MatmulTilingCheck;
 
 namespace HstuDenseForwardFuxi {
 
