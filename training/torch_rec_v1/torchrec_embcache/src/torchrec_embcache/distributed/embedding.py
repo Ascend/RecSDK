@@ -55,6 +55,7 @@ from torchrec_embcache.sparse.jagged_tensor_with_timestamp import (
     KeyedJaggedTensorWithTimestamp,
 )
 from torchrec_embcache.distributed.utils import get_embedding_optim_num
+from torchrec_embcache.distributed.sharding.rw_sharding import EmbCacheRwSparseFeaturesDistAwaitable
 from torchrec_embcache.embcache_pybind import (
     EmbcacheManager,
     EmbConfig,
@@ -63,11 +64,13 @@ from torchrec_embcache.embcache_pybind import (
     AsyncSwapinTensor,
     InitializerType as CppInitType,
     SwapInfo,
+    restore_async,
 )
 
 from torchrec.distributed.types import (
     Awaitable,
     LazyAwaitable,
+    Out,
     QuantizedCommCodecs,
     EmbeddingModuleShardingPlan,
     ShardingEnv,
@@ -384,6 +387,7 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
         }
 
         self._device = npu_device
+        self._cpu_device = cpu_device
         self._input_dists: List[nn.Module] = []
         self._lookups: List[nn.Module] = []
         self._create_lookups()
@@ -726,9 +730,14 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
                 features = pad_vbe_kjt_lengths(unpadded_features)
 
             if self._features_order:
+                if self._features_order_tensor is not None and self._features_order_tensor.device != features.device():
+                    features_order_tensor = self._features_order_tensor.to(features.device()) 
+                else:
+                    features_order_tensor = self._features_order_tensor
+
                 features = features.permute(
                     self._features_order,
-                    self._features_order_tensor,
+                    features_order_tensor,
                 )
 
             self._record_timestamp_data(features)
@@ -759,3 +768,67 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
             self._embcache_mgr.record_timestamp(
                 features.values(), features.offset_per_key(), features.timestamps
             )
+
+    def forward(self, *args, **kwargs) -> LazyAwaitable[Out]:
+        """
+        Executes the input dist, compute, and output dist steps.
+
+        Args:
+            *args: input.
+            **kwargs: keyword arguments.
+
+        Returns:
+            LazyAwaitable[Out]: awaitable of output from output dist.
+        """
+        ctx = self.create_context()
+        kjt_list_split_awaitable = self.input_dist(ctx, *args, **kwargs)
+        for ind, awaitable in enumerate(kjt_list_split_awaitable.awaitables):
+            if isinstance(awaitable, EmbCacheRwSparseFeaturesDistAwaitable):
+                kjt_list_split_awaitable.awaitables[ind] = awaitable.wait()
+
+        dist_input = kjt_list_split_awaitable.wait().wait()
+        post_dist_input = self.post_input_dist(ctx, dist_input).wait()
+        swap_info = self.compute_swap_info_async(post_dist_input).get()
+
+        _stb_eb_codegen = self.get_batched_embedding_kernels()[0][0]
+        # swapout and host_update
+        swapout_offs = swap_info.swapout_offs.to(self._device, non_blocking=True)
+        swapout_embs = _stb_eb_codegen.gather_embs(swapout_offs).to(self._cpu_device)
+        swapout_optims = []
+        for momentum in _stb_eb_codegen.gather_momentum(swapout_offs):
+            swapout_optims.append(momentum.to(self._cpu_device))
+        self.host_embedding_update_async(swap_info, swapout_embs, swapout_optims).get()
+
+        # host_lookup and swapin
+        swapin_tensor = self.host_embedding_lookup_async(swap_info).get()
+        swap_embs = swapin_tensor.swapin_embs.to(self._device, non_blocking=True)
+        swapin_optims = []
+        for optim in swapin_tensor.swapin_optims:
+            swapin_optims.append(optim.to(self._device, non_blocking=True))
+        swapin_offs = swap_info.swapin_offs.to(self._device, non_blocking=True)
+        _stb_eb_codegen.scatter_update_embs(swapin_offs, swap_embs)
+        _stb_eb_codegen.scatter_update_momentum(swapin_offs, swapin_optims)
+
+        # restore and key2offset
+        restore_async(
+            swap_info.batch_offs,
+            post_dist_input[0].unique_inverse,
+            post_dist_input[0].unique_offset,
+            post_dist_input[0].offset_per_key(),
+            post_dist_input[0].hash_indices,
+        ).get()
+        post_dist_input[0].unique_indices = swap_info.batch_offs
+        post_dist_input[0] = post_dist_input[0].to(self._device, non_blocking=True)
+
+        for sharding_ctx in ctx.sharding_contexts:
+            sharding_ctx.sparse_features_recat = None
+            # 因查表前卸载到cpu,查表时要to device.
+            if sharding_ctx.unbucketize_permute_tensor is not None:
+                sharding_ctx.unbucketize_permute_tensor = (
+                    sharding_ctx.unbucketize_permute_tensor.to(self._device, non_blocking=True)
+                )
+            sharding_ctx.features_before_input_dist = (
+                sharding_ctx.features_before_input_dist.to(self._device, non_blocking=True)
+            )
+        
+        return self.compute_and_output_dist(ctx, post_dist_input)

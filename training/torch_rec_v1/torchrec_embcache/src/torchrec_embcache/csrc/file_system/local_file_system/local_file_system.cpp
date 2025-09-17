@@ -321,7 +321,7 @@ bool MxRec::CheckFilePermission(const string& filePath)
         int maxPerm = (maxMode & mask) >> ((i - 1) * perPermWidth);
         mask = mask >> perPermWidth;
         if (curPerm > maxPerm) {
-            LOG_ERROR("File permission wrong, file:%s, type:{}, current permission:{}, required no greater than:{}.",
+            LOG_ERROR("File permission wrong, file:{}, type:{}, current permission:{}, required no greater than:{}.",
                       filePath, permMsg[i - 1], curPerm, maxPerm);
             return false;
         }

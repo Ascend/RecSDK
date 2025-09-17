@@ -368,8 +368,7 @@ void EmbcacheManager::Save(const std::string& path, const int rank)
             }
             // 2. write embedding
             WriteData(fileSystemPtr, embDataFile, reinterpret_cast<const char*>(value), embDim * sizeof(float));
-            LOG_TRACE("In save, table:{}, key:{}, embedding.dim:{}, detail embedding:{}.", tableName, key, embDim,
-                      StringTools::ToString(value, embDim));
+            LOG_TRACE("In save, table:{}, key:{}, embedding.dim:{}.", tableName, key, embDim);
 
             // 3. write momentum
             if (optimNum_ > 0) {
