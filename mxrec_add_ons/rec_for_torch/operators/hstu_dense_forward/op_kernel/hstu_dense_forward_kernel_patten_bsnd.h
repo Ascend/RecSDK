@@ -47,11 +47,25 @@ constexpr int TRANS_PIPE_NUM = 4;
 constexpr int INVALID_TASK_ID = -1;
 
 struct Args {
+    // hstu normal
     GM_ADDR q;
     GM_ADDR k;
     GM_ADDR v;
     GM_ADDR attnBias;
     GM_ADDR mask;
+    // jagged
+    GM_ADDR seqOffsetQ;
+    GM_ADDR seqOffsetK;
+    // page
+    GM_ADDR seqOffsetT;
+    GM_ADDR kvCache;
+    GM_ADDR pageOffsets;
+    GM_ADDR pageIds;
+    GM_ADDR lastPageLen;
+    // mask
+    GM_ADDR numContext;
+    GM_ADDR numTarget;
+
     GM_ADDR attnOutput;
     GM_ADDR workspace;
     GM_ADDR tiling;
@@ -138,9 +152,13 @@ public:
         v = args.v;
         attnBias = args.attnBias;
         mask = args.mask;
+        seqOffsetQ = args.seqOffsetQ;
+
         attnOutput = args.attnOutput;
         workspace = args.workspace;
 
+        numContext = args.numContext;
+        numTarget = args.numTarget;
         // Batch Size
         xDim0 = tilingDataPtr->batchSize;
         // Seq Len
@@ -158,6 +176,7 @@ public:
 
         // attr
         siluScale = tilingDataPtr->siluScale;
+        targetGroupSize = tilingDataPtr->targetGroupSize;
         maskType = static_cast<CausalMaskT>(tilingDataPtr->maskType);
         enableBias = (tilingDataPtr->enableBias == 1);
 
@@ -569,6 +588,11 @@ public:
     GM_ADDR v;
     GM_ADDR attnBias;
     GM_ADDR mask;
+    GM_ADDR seqOffsetQ;
+
+    GM_ADDR numContext;
+    GM_ADDR numTarget;
+
     GM_ADDR attnOutput;
     GM_ADDR workspace;
     GM_ADDR tiling;
@@ -596,6 +620,7 @@ public:
     float siluScale;
     CausalMaskT maskType;
     bool enableBias;
+    int64_t targetGroupSize;
 
     // Tpipe
     TPipe *pipe;

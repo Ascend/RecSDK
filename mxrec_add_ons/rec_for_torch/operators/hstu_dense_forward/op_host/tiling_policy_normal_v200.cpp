@@ -121,7 +121,7 @@ bool TilingPolicyNormalv200::TilingKeySet(gert::TilingContext* context, optiling
 {
     ge::DataType qTypeGe = context->GetInputTensor(0)->GetDataType();
     if (qTypeGe == ge::DataType::DT_FLOAT16) {
-        context->SetTilingKey(FLOAT16_TILING_KEY);
+        context->SetTilingKey(NORMAL_TILING_KEY);
     } else {
         OPS_LOG_E("", "invalid datatype, only support fp16.\n");
         return false;

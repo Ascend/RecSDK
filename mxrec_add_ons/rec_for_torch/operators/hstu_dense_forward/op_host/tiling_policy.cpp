@@ -139,16 +139,22 @@ bool TilingPolicy::TilingAttribute(gert::TilingContext *context, optiling::HstuD
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OPS_CHECK_PTR_NULL(attrs, return false);
 
-    const uint32_t *maskType = attrs->GetAttrPointer<uint32_t>(INDEX_T::INDEX_0);
+    const uint32_t *maskType = attrs->GetAttrPointer<uint32_t>(ATTR_INDEX_T::MASKTYPE_INDEX);
     OPS_CHECK_PTR_NULL(maskType, return false);
 
-    const uint32_t *maxSeqLen = attrs->GetAttrPointer<uint32_t>(INDEX_T::INDEX_1);
+    const uint32_t *maxSeqLen = attrs->GetAttrPointer<uint32_t>(ATTR_INDEX_T::MAX_SEQ_Q_INDEX);
     OPS_CHECK_PTR_NULL(maxSeqLen, return false);
 
-    const float *siluScale = attrs->GetAttrPointer<float>(INDEX_T::INDEX_2);
+    const uint32_t *maxSeqLenk = attrs->GetAttrPointer<uint32_t>(ATTR_INDEX_T::MAX_SEQ_K_INDEX);
+    OPS_CHECK_PTR_NULL(maxSeqLenk, return false);
+
+    const float *siluScale = attrs->GetAttrPointer<float>(ATTR_INDEX_T::SILU_SCALE_INDEX);
     OPS_CHECK_PTR_NULL(siluScale, return false);
 
-    auto biasTensor = context->GetOptionalInputTensor(INDEX_T::INDEX_4);
+    const uint32_t *targetGroupSize = attrs->GetAttrPointer<uint32_t>(ATTR_INDEX_T::TARGET_GROUP_SIZE_INDEX);
+    OPS_CHECK_PTR_NULL(targetGroupSize, return false);
+
+    auto biasTensor = context->GetOptionalInputTensor(INPUT_INDEX_T::ATTN_BIAS_INDEX);
     if (biasTensor == nullptr) {
         tiling.set_enableBias(0);
     } else {
@@ -158,6 +164,9 @@ bool TilingPolicy::TilingAttribute(gert::TilingContext *context, optiling::HstuD
     tiling.set_maskType(*maskType);
     tiling.set_siluScale(*siluScale);
     tiling.set_maxSeqLen(*maxSeqLen);
+    tiling.set_maxSeqLenq(*maxSeqLen);
+    tiling.set_maxSeqLenk(*maxSeqLenk);
+    tiling.set_targetGroupSize(*targetGroupSize);
     return true;
 }
 
@@ -166,7 +175,7 @@ bool TilingPolicy::TilingHeighLevelApi(gert::TilingContext *context, optiling::H
     int64_t dim = tiling.get_dim();
 
     matmul_tiling::DataType dataType;
-    ge::DataType qTypeGe = context->GetInputTensor(0)->GetDataType();
+    ge::DataType qTypeGe = context->GetInputTensor(INPUT_INDEX_T::Q_INDEX)->GetDataType();
     if (qTypeGe == ge::DataType::DT_FLOAT) {
         dataType = matmul_tiling::DataType::DT_FLOAT;
     } else if (qTypeGe == ge::DataType::DT_FLOAT16) {

@@ -33,8 +33,6 @@ constexpr bool JAGGED_TASK_ASSIGN_DEBUG = false;
 #include <chrono>
 #endif
 
-constexpr uint32_t CONST_2 = 2;
-
 namespace HstuDenseForward {
 
 REGISTER_POLICY(LAYOUT_TYPE::JAGGED, std::make_shared<TilingPolicyJagged>());
@@ -46,23 +44,23 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
     int64_t headDIM;
     int64_t seqLens;
 
-    const gert::RuntimeAttrs* attrs = context->GetAttrs();
-    OPS_CHECK_PTR_NULL(attrs, return false);
+    auto seqOffsetQShape = context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX)->GetStorageShape();
+    batchSize = seqOffsetQShape.GetDim(0) - 1;
 
-    const auto seqOffset = attrs->GetAttrPointer<gert::ContinuousVector>(INDEX_T::INDEX_4);
-    OPS_CHECK_PTR_NULL(seqOffset, return false);
-
-    auto *seqOffsetData = const_cast<int64_t *>(reinterpret_cast<const int64_t *>(seqOffset->GetData()));
-    OPS_CHECK_PTR_NULL(seqOffsetData, return false);
-
-    int64_t seqOffsetLens = seqOffset->GetSize();
-    batchSize = GetBatchSizeFromJaggedOffset(seqOffsetData, seqOffsetLens);
     OPS_CHECK((batchSize == 0 || batchSize > MAX_BATCH_SIZE),
-        OPS_LOG_E("", "batchSize limit (0, %d], but get %lld\n", MAX_BATCH_SIZE, batchSize), return false);
+              OPS_LOG_E("", "batchSize limit (0, %d], but get %lld\n", MAX_BATCH_SIZE, batchSize), return false);
 
-    auto queryShape = context->GetInputShape(INDEX_T::INDEX_0)->GetStorageShape();
-    headNum = queryShape.GetDim(INDEX_T::INDEX_1);
-    headDIM = queryShape.GetDim(INDEX_T::INDEX_2);
+    auto qShape = context->GetInputShape(INPUT_INDEX_T::Q_INDEX)->GetStorageShape();
+    auto kShape = context->GetInputShape(INPUT_INDEX_T::K_INDEX)->GetStorageShape();
+    auto vShape = context->GetInputShape(INPUT_INDEX_T::V_INDEX)->GetStorageShape();
+
+    OPS_CHECK(qShape.GetDimNum() != JAGGED_DIM_NUM,
+              OPS_LOG_E("", "Jagged QKV should have 3 dimensions, but get %d", qShape.GetDimNum()), return false);
+    OPS_CHECK(!(qShape == kShape && qShape == vShape), OPS_LOG_E("", "Q, K, V shape mismatch"), return false);
+
+    // Q: [bs, n, d]
+    headNum = qShape.GetDim(1);
+    headDIM = qShape.GetDim(2);
     seqLens = tiling.get_maxSeqLen();
 
     tiling.set_batchSize(batchSize);
@@ -71,34 +69,26 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
     tiling.set_seqLen(seqLens);
 
     OPS_CHECK(!GeneralShapeCheck(batchSize, seqLens, headNum, headDIM),
-        OPS_LOG_E("", "Jagged Shape Check failed"), return false);
+              OPS_LOG_E("", "Jagged Shape Check failed"), return false);
+
+    uint32_t masktype = tiling.get_maskType();
+    if (masktype == 0) {
+        auto numCtxShape = context->GetInputShape(INPUT_INDEX_T::NUM_CONTEXT_INDEX)->GetStorageShape();
+        auto numTargetShape = context->GetInputShape(INPUT_INDEX_T::NUM_TARGET_INDEX)->GetStorageShape();
+        int64_t batchSizeCtx = numCtxShape.GetDim(0);
+        OPS_CHECK(batchSizeCtx != batchSize,
+                  OPS_LOG_E("", "The length of num_context expect %lld, but get %lld", batchSize, batchSizeCtx),
+                  return false);
+        OPS_CHECK(numCtxShape != numTargetShape, OPS_LOG_E("", "num_context, num_target shape mismatch"), return false);
+    }
+
     return true;
 }
 
 bool TilingPolicyJagged::TilingCore(gert::TilingContext* context, optiling::HstuDenseForwardTilingData &tiling)
 {
-    const gert::RuntimeAttrs* attrs = context->GetAttrs();
-    OPS_CHECK_PTR_NULL(attrs, return false);
-
-    const auto seqOffset = attrs->GetAttrPointer<gert::ContinuousVector>(INDEX_T::INDEX_4);
-    OPS_CHECK_PTR_NULL(seqOffset, return false);
-
-    auto *seqOffsetData = const_cast<int64_t *>(reinterpret_cast<const int64_t *>(seqOffset->GetData()));
-    int seqOffsetLens = seqOffset->GetSize();
-    if (seqOffsetLens > (MAX_BATCH_SIZE + 1)) {
-        OPS_LOG_E("", "seqOffsetLens exceed limit %d \n", MAX_BATCH_SIZE + 1);
-        return false;
-    }
-
-    uint32_t seqOffsets[MAX_BATCH_SIZE + 1] = {0};
-    for (auto i = 0; i < seqOffsetLens; i++) {
-        seqOffsets[i] = seqOffsetData[i];
-    }
-
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t coreNum = ascendPlatform.GetCoreNumAiv();
-
-    tiling.set_seqOffset(seqOffsets);
 
     size_t aicCoreNum = ascendPlatform.GetCoreNumAic();
     context->SetBlockDim(aicCoreNum);
@@ -108,31 +98,12 @@ bool TilingPolicyJagged::TilingCore(gert::TilingContext* context, optiling::Hstu
 
 bool TilingPolicyJagged::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData &tiling)
 {
-    ge::DataType qTypeGe = context->GetInputTensor(0)->GetDataType();
-    if (qTypeGe == ge::DataType::DT_FLOAT) {
-        context->SetTilingKey(JAGGED_FLOAT_TILING_KEY);
-    } else if (qTypeGe == ge::DataType::DT_FLOAT16) {
-        context->SetTilingKey(JAGGED_FLOAT16_TILING_KEY);
-    } else if (qTypeGe == ge::DataType::DT_BF16) {
-        context->SetTilingKey(JAGGED_BF16_TILING_KEY);
-    } else {
-        OPS_LOG_E("", "invalid datatype, only support fp32, fp16, bf16");
-        return false;
-    }
-
+    context->SetTilingKey(JAGGED_TILING_KEY);
     return true;
 }
 
 void TilingPolicyJagged::DumpTiling(optiling::HstuDenseForwardTilingData &tiling)
 {
     this->TilingPolicy::DumpTiling(tiling);
-
-    uint32_t *seqOffset = tiling.get_seqOffset();
-
-    OPS_LOG_D("seq offset:");
-    for (auto i = 0; i < (tiling.get_batchSize() + 1); i++) {
-        OPS_LOG_D("%d ", seqOffset[i]);
-    }
-    OPS_LOG_D("\n");
 }
-}
+}  // namespace HstuDenseForward
