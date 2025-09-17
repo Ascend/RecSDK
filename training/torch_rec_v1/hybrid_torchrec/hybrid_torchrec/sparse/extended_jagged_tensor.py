@@ -50,10 +50,10 @@ class ExtendedJaggedTensor(JaggedTensor):
 
 class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
     """扩展的KeyedJaggedTensor基类，用于处理带有额外字段的KeyedJaggedTensor"""
-    
+
     # 子类需要定义_fields属性，例如_fields = "_counts"
     _fields: str = ""
-    
+
     def __init__(
         self,
         keys: List[str],
@@ -121,6 +121,8 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
         start_offset = 0
         _length_per_key = self.length_per_key()
         _offset_per_key = self.offset_per_key()
+        if len(segments) > len(_length_per_key):
+            raise ValueError("len of segments should be < len(keys)")
 
         for segment in segments:
             end = start + segment
@@ -160,7 +162,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
                         device=self.device(),
                         dtype=self._extra.dtype,
                     )
-                
+
                 split_list.append(
                     constructor(
                         keys=keys,
@@ -199,7 +201,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
                 sliced_extra = None
                 if self._extra is not None:
                     sliced_extra = self._extra[start_offset:end_offset]
-                
+
                 split_list.append(
                     constructor(
                         keys=keys,
@@ -248,7 +250,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
         permuted_stride_per_key_per_rank: List[List[int]] = []
         permuted_length_per_key: List[int] = []
         permuted_length_per_key_sum = 0
-        
+
         for index in indices:
             key = self.keys()[index]
             permuted_keys.append(key)
@@ -283,7 +285,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
                 indices_tensor,
                 self.weights_or_none(),
             )
-            
+
             # 处理额外字段
             if extra_permute_func:
                 permuted_extra, _ = extra_permute_func(
@@ -299,7 +301,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
                     indices_tensor,
                     self.weights_or_none(),
                 )
-                
+
         elif is_torchdynamo_compiling() and not torch.jit.is_scripting():
             (
                 permuted_lengths,
@@ -313,7 +315,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
                 self.weights_or_none(),
                 permuted_length_per_key_sum,
             )
-            
+
             if self.extra is not None:
                 _, permuted_extra, _ = torch.ops.fbgemm.permute_2D_sparse_data_input1D(
                     indices_tensor,
@@ -325,7 +327,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
                 )
             else:
                 permuted_extra = None
-                
+
         else:
             (
                 permuted_lengths,
@@ -338,7 +340,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
                 self.weights_or_none(),
                 permuted_length_per_key_sum,
             )
-            
+
             if self.extra is not None:
                 _, permuted_extra, _ = torch.ops.fbgemm.permute_2D_sparse_data(
                     indices_tensor,
@@ -349,11 +351,11 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
                 )
             else:
                 permuted_extra = None
-                
+
         stride_per_key_per_rank = (
             permuted_stride_per_key_per_rank if self.variable_stride_per_key() else None
         )
-        
+
         result = constructor(
             keys=permuted_keys,
             values=permuted_values,
@@ -418,7 +420,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
         kjt_lens_list: List[torch.Tensor] = []
         kjt_weights_list: List[torch.Tensor] = []
         stride_per_key: List[int] = []
-        
+
         for jt in jt_dict.values():
             stride_per_key.append(len(jt.lengths()))
             kjt_vals_list.append(jt.values())
@@ -427,7 +429,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
             weight = jt.weights_or_none()
             if weight is not None:
                 kjt_weights_list.append(weight)
-                
+
         kjt_vals = torch.concat(kjt_vals_list)
         kjt_lens = torch.concat(kjt_lens_list)
 
@@ -441,13 +443,13 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
         kjt_weights = (
             torch.concat(kjt_weights_list) if len(kjt_weights_list) > 0 else None
         )
-        
+
         kjt_stride, kjt_stride_per_key_per_rank = (
             (stride_per_key[0], None)
             if all(s == stride_per_key[0] for s in stride_per_key)
             else (None, [[stride] for stride in stride_per_key])
         )
-        
+
         kjt = constructor(
             keys=kjt_keys,
             values=kjt_vals,

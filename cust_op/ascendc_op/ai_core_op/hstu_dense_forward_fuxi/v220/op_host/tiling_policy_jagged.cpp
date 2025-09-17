@@ -305,7 +305,8 @@ bool TilingPolicyJagged::TilingCore(gert::TilingContext* context, optiling::Hstu
 
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t coreNum = ascendPlatform.GetCoreNumAiv();
-
+    OPS_CHECK(coreNum > MAX_AIV_NUM, OPS_LOG_E("", "vecCoreNum %d should be < %d\n", coreNum, MAX_AIV_NUM),
+              return ge::GRAPH_FAILED);
     CallBlockAssign(seqOffsets, coreNum, workTasks, workLoads, tiling);
 
     uint32_t startBlockId[MAX_AIV_NUM] = {0};

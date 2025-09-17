@@ -16,6 +16,8 @@ from torchrec.distributed.types import ModuleSharder, ShardingEnv
 
 
 def get_default_hybrid_sharders(host_env: ShardingEnv) -> List[ModuleSharder[nn.Module]]:
+    if host_env is None:
+        raise ValueError("host_env should not be None")
     if host_env.process_group is None:
         raise RuntimeError("process_group should not be None")
     if host_env.process_group._get_backend_name() != "gloo":

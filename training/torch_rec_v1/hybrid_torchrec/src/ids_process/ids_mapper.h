@@ -27,11 +27,15 @@ namespace hybrid {
 constexpr int64_t MIN_IDS_LENGTH = 65536;
 constexpr int64_t DOUBLE_INIT = 2;
 constexpr int64_t PARTITION_LEN = 8192;
+constexpr int64_t MAX_INDEX_LEN = 1000000000;
 class IdsMapper : public torch::CustomClassHolder {
 public:
     using Self = IdsMapper;
     explicit IdsMapper(int64_t initMaxIndex, bool onlyDeviceMem = true)
-        : initMaxIndex(initMaxIndex), onlyDeviceMem(onlyDeviceMem){};
+        : initMaxIndex(initMaxIndex), onlyDeviceMem(onlyDeviceMem)
+        {
+            TORCH_CHECK(initMaxIndex <= MAX_INDEX_LEN, "initMaxIndex should be < ", MAX_INDEX_LEN);
+        };
     IdsMapper(const IdsMapper& other) = delete;
     IdsMapper& operator=(const IdsMapper& other)
     {

@@ -248,7 +248,8 @@ ge::graphStatus TilingCore(gert::TilingContext *context,
 {
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t vecCoreNum = ascendPlatform.GetCoreNumAiv();
-
+    OPS_CHECK(vecCoreNum > MAX_AIV_NUM, OPS_LOG_E("", "vecCoreNum %d should be < %d\n", vecCoreNum, MAX_AIV_NUM),
+              return ge::GRAPH_FAILED);
     uint32_t batchSize = tiling.get_batchSize();
     uint32_t headNum = tiling.get_headNum();
     uint32_t blockHeight = tiling.get_blockHeight();
