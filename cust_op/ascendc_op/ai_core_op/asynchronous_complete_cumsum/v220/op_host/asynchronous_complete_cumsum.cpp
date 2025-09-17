@@ -78,9 +78,19 @@ namespace ge {
         gert::Shape* yShape = context->GetOutputShape(0);
         OPS_LOG_E_IF_NULL("yShape", yShape, return ge::GRAPH_FAILED);
 
-        int64_t inputLength = xShape->GetShapeSize();
+        int64_t inputLength = xShape->GetDim(0);
+        int64_t outputDim = 0;
+        if (inputLength == -1) {
+            // 动态shape下，输出shape为-1，输出shape也为-1
+            outputDim = -1;
+        } else {
+            OPS_CHECK(inputLength <= 0 || inputLength >= std::numeric_limits<int64_t>::max(),
+                OPS_LOG_E("[ERROR]", "inputLength limit (0, %lld), but get %lld\n", std::numeric_limits<int64_t>::max(),
+                inputLength), return ge::GRAPH_FAILED);
+            outputDim = inputLength + 1;
+        }
         yShape->SetDimNum(1);
-        yShape->SetDim(0, inputLength+1);
+        yShape->SetDim(0, outputDim);
         return GRAPH_SUCCESS;
     }
 }

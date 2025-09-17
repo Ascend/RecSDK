@@ -118,9 +118,11 @@ __aicore__ inline void CopyQKA1(const LocalTensor<int8_t> &aMatrix, const __gm__
 
     uint16_t alignedUseM = AlignUp(useM, ALIGN_16);
 
-    Nd2NzParams param{1, (uint16_t)useM, (uint16_t)useK, 0, (uint16_t)(headNum * headDim), alignedUseM, 1, 0};
+    Nd2NzParams param{1, static_cast<uint16_t>(useM), static_cast<uint16_t>(useK), 0,
+        static_cast<uint16_t>(headNum * headDim), alignedUseM, 1, 0};
 
-    int64_t startIdx = row * baseM * headNum * headDim + col * baseK;
+    int64_t startIdx = static_cast<int64_t>(row) * static_cast<int64_t>(baseM) * headNum * headDim +
+                       static_cast<int64_t>(col) * static_cast<int64_t>(baseK);
     DataCopy(aMatrix.ReinterpretCast<qType>(), globalGt[startIdx], param);
 };
 
@@ -143,9 +145,11 @@ __aicore__ inline void CopyQKB1(const LocalTensor<int8_t> &bMatrix, const __gm__
 
     uint16_t alignedUseN = AlignUp(useN, ALIGN_16);
 
-    Nd2NzParams param{1, (uint16_t)useN, (uint16_t)useK, 0, (uint16_t)(headNum * headDim), alignedUseN, 1, 0};
+    Nd2NzParams param{1, static_cast<uint16_t>(useN), static_cast<uint16_t>(useK), 0,
+        static_cast<uint16_t>(headNum * headDim), alignedUseN, 1, 0};
 
-    int64_t startIdx = col * baseN * headNum * headDim + row * baseK;
+    int64_t startIdx = static_cast<int64_t>(col) * static_cast<int64_t>(baseN) * headNum * headDim +
+                       static_cast<int64_t>(row) * static_cast<int64_t>(baseK);
     DataCopy(bMatrix.ReinterpretCast<qType>(), globalGt[startIdx], param);
 };
 
@@ -167,9 +171,11 @@ __aicore__ inline void CopyQGradA1(const LocalTensor<int8_t> &aMatrix, const __g
 
     uint16_t alignedUseM = AlignUp(useM, ALIGN_16);
 
-    Nd2NzParams param{1, (uint16_t)useM, (uint16_t)useK, 0, (uint16_t)biasGradSeqLen, alignedUseM, 1, 0};
+    Nd2NzParams param{1, static_cast<uint16_t>(useM), static_cast<uint16_t>(useK), 0,
+        static_cast<uint16_t>(biasGradSeqLen), alignedUseM, 1, 0};
 
-    int64_t startIdx = row * baseM * biasGradSeqLen + col * baseK;
+    int64_t startIdx = static_cast<int64_t>(row) * static_cast<int64_t>(baseM) * biasGradSeqLen +
+                       static_cast<int64_t>(col) * static_cast<int64_t>(baseK);
     DataCopy(aMatrix.ReinterpretCast<qType>(), globalGt[startIdx], param);
 };
 
@@ -191,9 +197,11 @@ __aicore__ inline void CopyKGradA1(const LocalTensor<int8_t> &aMatrix, const __g
 
     uint16_t alignedUseK = AlignUp(useK, ALIGN_16);
 
-    Nd2NzParams param{1, (uint16_t)useK, (uint16_t)useM, 0, (uint16_t)biasGradSeqLen, alignedUseK, 1, 0};
+    Nd2NzParams param{1, static_cast<uint16_t>(useK), static_cast<uint16_t>(useM), 0,
+        static_cast<uint16_t>(biasGradSeqLen), alignedUseK, 1, 0};
 
-    int64_t startIdx = col * baseK * biasGradSeqLen + row * baseM;
+    int64_t startIdx = static_cast<int64_t>(col) * static_cast<int64_t>(baseK) * biasGradSeqLen +
+                       static_cast<int64_t>(row) * static_cast<int64_t>(baseM);
     DataCopy(aMatrix.ReinterpretCast<qType>(), globalGt[startIdx], param);
 };
 
@@ -215,9 +223,11 @@ __aicore__ inline void CopyVGradB1(const LocalTensor<int8_t> &bMatrix, const __g
 
     uint16_t alignedUseK = AlignUp(useK, ALIGN_16);
 
-    Nd2NzParams param{1, (uint16_t)useK, (uint16_t)useN, 0, (uint16_t)(headNum * headDim), alignedUseK, 1, 0};
+    Nd2NzParams param{1, static_cast<uint16_t>(useK), static_cast<uint16_t>(useN), 0,
+        static_cast<uint16_t>(headNum * headDim), alignedUseK, 1, 0};
 
-    int64_t startIdx = row * baseK * headNum * headDim + col * baseN;
+    int64_t startIdx = static_cast<int64_t>(row) * static_cast<int64_t>(baseK) * headNum * headDim +
+                       static_cast<int64_t>(col) * static_cast<int64_t>(baseN);
     DataCopy(bMatrix.ReinterpretCast<qType>(), globalGt[startIdx], param);
 };
 } // namespace HstuDenseBackwardFuxi

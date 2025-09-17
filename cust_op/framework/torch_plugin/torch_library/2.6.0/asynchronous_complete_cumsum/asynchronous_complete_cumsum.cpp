@@ -18,7 +18,10 @@ at::Tensor asynchronous_complete_cumsum_npu(const at::Tensor &offset)
 {
     const at::OptionalDeviceGuard guard(device_of(offset));
     auto offset_contin = offset.contiguous();
-    auto output = at::empty({offset.size(0) + 1}, offset.options());
+    int64_t offset_size = offset.size(0);
+    TORCH_CHECK(offset_size > 0 && offset_size < std::numeric_limits<int64_t>::max(),
+        "offset.size(0) limit (0, %lld), but get %lld\n", std::numeric_limits<int64_t>::max(), offset_size);
+    auto output = at::empty({offset_size + 1}, offset.options());
 
     EXEC_NPU_CMD(aclnnAsynchronousCompleteCumsum, offset_contin, output);
     return output;
