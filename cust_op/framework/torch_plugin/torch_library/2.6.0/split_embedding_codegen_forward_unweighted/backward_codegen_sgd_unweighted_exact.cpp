@@ -11,6 +11,7 @@
 #include <torch/library.h>
 #include "torch/extension.h"
 #include "split_embedding_codegen_forward_unweighted.h"
+#include "split_embedding_codegen_common_utils.h"
 #include "../common/pytorch_npu_helper.hpp"
 
 using torch::autograd::Function;
@@ -87,10 +88,7 @@ public:
                                                   double learning_rate = 0)
     {
         const auto T = weights_offsets.size(0);
-        if (T == 0) {
-            return {at::Tensor()};
-        }
-
+        TORCH_CHECK(T > 0, "Weights_offsets size must be great than 0.");
         const auto max_B_ = offsets.size(0) / T;
         // NOTE: The `local_uvm_cache_stats` variable held by the nn.Module has dtype int32_t
         const auto uvm_cache_stats_ = uvm_cache_stats.value_or(at::empty({0}, uvm_weights.options().dtype(at::kInt)));
@@ -123,18 +121,16 @@ public:
         ctx->saved_data["learning_rate"] = learning_rate;
         const auto& flatten_dev_weights = dev_weights;
         // not surport  indice_weights
-        if (!indice_weights) {
-            static auto embedding_codegen_forward_op =
-                torch::Dispatcher::singleton()
-                    .findSchemaOrThrow("fbgemm::split_embedding_codegen_forward_unweighted_cuda", "")
-                    .typed<decltype(split_embedding_codegen_forward_unweighted_cuda)>();
+        TORCH_CHECK(!indice_weights, "indice_weights is unsupported.");
+        static auto embedding_codegen_forward_op =
+            torch::Dispatcher::singleton()
+                .findSchemaOrThrow("fbgemm::split_embedding_codegen_forward_unweighted_cuda", "")
+                .typed<decltype(split_embedding_codegen_forward_unweighted_cuda)>();
 
-            return {embedding_codegen_forward_op.call(
-                flatten_dev_weights, uvm_weights, lxu_cache_weights, weights_placements, weights_offsets, D_offsets,
-                total_D, max_D, indices, offsets, pooling_mode, lxu_cache_locations, uvm_cache_stats_, output_dtype,
-                is_experimental, hash_indices.value_or(Tensor()), offset_per_key)};
-        }
-        return {at::Tensor()};
+        return {embedding_codegen_forward_op.call(
+            flatten_dev_weights, uvm_weights, lxu_cache_weights, weights_placements, weights_offsets, D_offsets,
+            total_D, max_D, indices, offsets, pooling_mode, lxu_cache_locations, uvm_cache_stats_, output_dtype,
+            is_experimental, hash_indices.value_or(Tensor()), offset_per_key)};
     }
 
     static torch::autograd::variable_list backward(torch::autograd::AutogradContext* ctx,
@@ -310,10 +306,16 @@ at::Tensor split_embedding_backward_codegen_sgd_unweighted_exact_npu(const Tenso
     const int64_t t_max_D = max_D.guard_int(__FILE__, __LINE__);
 
     const at::OptionalDeviceGuard guard(device_of(dev_weights));
+    const auto _unused = at::Tensor();
+
+    validate_backward_data_inputs(grad_output, dev_weights, weights_offsets, D_offsets, hash_size_cumsum, indices,
+                                  offsets, _unused, _unused, hash_indices, unique_ids, unique_offsets,
+                                  unique_inverse, offset_per_key, 0);
+
     auto output = at::empty({dev_weights.size(0)}, dev_weights.options());
 
     int optim_type = static_cast<int>(OptimizerType::SGD);
-    const auto _unused = at::Tensor();
+
     const int iter = 0;
     const float beta = 0;
 

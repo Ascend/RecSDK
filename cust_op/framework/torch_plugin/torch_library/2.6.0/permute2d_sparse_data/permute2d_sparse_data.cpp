@@ -11,11 +11,29 @@
 #include <torch/library.h>
 
 #include "../common/pytorch_npu_helper.hpp"
+#include "../common/common_utils.h"
 using torch::autograd::AutogradContext;
 using torch::autograd::Function;
 using tensor_list = std::vector<at::Tensor>;
 using namespace at;
 using namespace std;
+constexpr int EXPECTED_DIM_2D = 2;
+/**
+ * 验证permute2d_sparse_data的输入参数
+ * @param permute 排列索引张量
+ * @param lengths 长度张量
+ * @param values 值张量
+ */
+void validate_permute2d_sparse_data_inputs(
+    const Tensor &permute,
+    const Tensor &lengths,
+    const Tensor &values)
+{
+    // ============= 空值检查 =============
+    check_tensor_non_empty(permute, "permute");
+    check_tensor_non_empty(lengths, "lengths");
+    check_tensor_non_empty(values, "values");
+}
 
 tuple<Tensor, Tensor, c10::optional<Tensor>> permute2d_sparse_data_impl_npu(
     const Tensor &permute,
@@ -24,6 +42,7 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute2d_sparse_data_impl_npu(
     const c10::optional<Tensor> &weights,
     const c10::optional<int64_t> &permuted_lengths_sum)
 {
+    validate_permute2d_sparse_data_inputs(permute, lengths, values);
     auto permuteConti = permute.contiguous();
     auto lengthsConti = lengths.contiguous();
     auto valuesConti = values.contiguous();

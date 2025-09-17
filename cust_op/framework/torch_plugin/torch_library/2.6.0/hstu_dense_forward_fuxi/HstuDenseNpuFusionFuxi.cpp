@@ -11,6 +11,7 @@
 #include <torch/library.h>
 
 #include "../common/pytorch_npu_helper.hpp"
+#include "../common/common_utils.h"
 using torch::autograd::AutogradContext;
 using torch::autograd::Function;
 using tensor_list = std::vector<at::Tensor>;
@@ -171,6 +172,10 @@ at::Tensor hstu_dense_forward_impl_npu(
     c10::optional<at::IntArrayRef> seqOffset)
 {
     TORCH_CHECK(layout == "normal" || layout == "jagged", "The layout should be normal or jagged but got ", layout);
+
+    check_tensor_non_empty(q, "q");
+    check_tensor_non_empty(k, "k");
+    check_tensor_non_empty(v, "v");
 
     TORCH_CHECK(q.scalar_type() == at::kHalf || q.scalar_type() == at::kFloat || q.scalar_type() == at::kBFloat16,
         "float16, float32 or bfloat16 tensor expected but got a tensor with dtype: ", q.scalar_type());

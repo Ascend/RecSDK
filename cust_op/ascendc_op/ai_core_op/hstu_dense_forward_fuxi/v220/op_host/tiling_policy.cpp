@@ -172,6 +172,7 @@ bool TilingPolicy::TilingHeighLevelApi(gert::TilingContext* context, optiling::H
     int64_t dim = tiling.get_dim();
 
     matmul_tiling::DataType dataType;
+    OPS_LOG_E_IF_NULL("query", context->GetInputTensor(0), return ge::GRAPH_FAILED);
     ge::DataType qTypeGe = context->GetInputTensor(0)->GetDataType();
     if (qTypeGe == ge::DataType::DT_FLOAT) {
         dataType = matmul_tiling::DataType::DT_FLOAT;
@@ -183,6 +184,8 @@ bool TilingPolicy::TilingHeighLevelApi(gert::TilingContext* context, optiling::H
 
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
+    OPS_LOG_E_IF_NULL("currentWorkspace", currentWorkspace, return ge::GRAPH_FAILED);
+
     size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
     size_t coreNum = ascendPlatform.GetCoreNumAic();
 

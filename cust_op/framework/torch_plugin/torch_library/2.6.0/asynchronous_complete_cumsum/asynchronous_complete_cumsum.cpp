@@ -9,6 +9,7 @@
 #include <torch/library.h>
 
 #include "../common/pytorch_npu_helper.hpp"
+#include "../common/common_utils.h"
 using torch::autograd::AutogradContext;
 using torch::autograd::Function;
 using tensor_list = std::vector<at::Tensor>;
@@ -17,6 +18,7 @@ using namespace at;
 at::Tensor asynchronous_complete_cumsum_npu(const at::Tensor &offset)
 {
     const at::OptionalDeviceGuard guard(device_of(offset));
+    check_tensor_non_empty(offset, "offset");
     auto offset_contin = offset.contiguous();
     int64_t offset_size = offset.size(0);
     TORCH_CHECK(offset_size > 0 && offset_size < std::numeric_limits<int64_t>::max(),

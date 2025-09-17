@@ -181,6 +181,7 @@ bool TilingPolicyNormalv200Fuxi::TilingHeighLevelApi(gert::TilingContext* contex
     int64_t dim = tiling.get_dim();
 
     matmul_tiling::DataType dataType;
+    OPS_LOG_E_IF_NULL("query", context->GetInputTensor(0), return ge::GRAPH_FAILED);
     ge::DataType qTypeGe = context->GetInputTensor(0)->GetDataType();
     if (qTypeGe == ge::DataType::DT_FLOAT16) {
         dataType = matmul_tiling::DataType::DT_FLOAT16;
@@ -188,6 +189,8 @@ bool TilingPolicyNormalv200Fuxi::TilingHeighLevelApi(gert::TilingContext* contex
 
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
+    OPS_LOG_E_IF_NULL("currentWorkspace", currentWorkspace, return ge::GRAPH_FAILED);
+
     size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
     size_t coreNum = ascendPlatform.GetCoreNumAic();
 
@@ -225,6 +228,7 @@ bool TilingPolicyNormalv200Fuxi::TilingHeighLevelApi(gert::TilingContext* contex
 bool TilingPolicyNormalv200Fuxi::TilingKeySet(gert::TilingContext* context,
     optiling::HstuDenseForwardFuxiTilingData &tiling)
 {
+    OPS_LOG_E_IF_NULL("query", context->GetInputTensor(0), return ge::GRAPH_FAILED);
     ge::DataType qTypeGe = context->GetInputTensor(0)->GetDataType();
     if (qTypeGe == ge::DataType::DT_FLOAT16) {
         context->SetTilingKey(FLOAT16_TILING_KEY);
