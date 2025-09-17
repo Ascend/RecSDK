@@ -6,50 +6,50 @@ index 1ce33aa..1e3cb89 100644
  import torch.nn as nn
  import numpy as np
  import torch
-+import torch_npu^M
++import torch_npu
  import os, sys
  import logging
  from fuxictr.pytorch.layers import FeatureEmbeddingDict
 @@ -155,13 +156,42 @@ class BaseModel(nn.Module):
-
+ 
          logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
          logging.info("************ Epoch=1 start ************")
-+        experimental_config = torch_npu.profiler._ExperimentalConfig(^M
-+            export_type=[^M
-+                torch_npu.profiler.ExportType.Text,^M
-+                torch_npu.profiler.ExportType.Db^M
-+            ],^M
-+            profiler_level=torch_npu.profiler.ProfilerLevel.Level1,^M
-+            msprof_tx=False,^M
-+            aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,^M
-+            l2_cache=False,^M
-+            op_attr=False,^M
-+            data_simplification=False,^M
-+            record_op_args=False^M
-+        )^M
-+        prof = torch_npu.profiler.profile(^M
-+            activities=[^M
-+                        torch_npu.profiler.ProfilerActivity.CPU,^M
-+                        torch_npu.profiler.ProfilerActivity.NPU^M
-+                        ],^M
-+            schedule=torch_npu.profiler.schedule(wait=1, warmup=1, active=7, repeat=1),^M
-+            on_trace_ready=torch_npu.profiler.tensorboard_trace_handler("./result"),^M
-+                record_shapes=False,^M
-+                profile_memory=False,^M
-+                with_stack=False,^M
-+                with_modules=False,^M
-+                with_flops=False,^M
-+            experimental_config=experimental_config)^M
-+        prof.start()^M
++        experimental_config = torch_npu.profiler._ExperimentalConfig(
++            export_type=[
++                torch_npu.profiler.ExportType.Text,
++                torch_npu.profiler.ExportType.Db
++            ],
++            profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
++            msprof_tx=False,
++            aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
++            l2_cache=False,
++            op_attr=False,
++            data_simplification=False,
++            record_op_args=False
++        )
++        prof = torch_npu.profiler.profile(
++            activities=[
++                        torch_npu.profiler.ProfilerActivity.CPU,
++                        torch_npu.profiler.ProfilerActivity.NPU
++                        ],
++            schedule=torch_npu.profiler.schedule(wait=1, warmup=1, active=7, repeat=1),
++            on_trace_ready=torch_npu.profiler.tensorboard_trace_handler("./result"),
++                record_shapes=False,
++                profile_memory=False,
++                with_stack=False,
++                with_modules=False,
++                with_flops=False,
++            experimental_config=experimental_config)
++        prof.start()
          for epoch in range(epochs):
              self._epoch_index = epoch
              self.train_epoch(data_generator)
-+            prof.step()^M
++            prof.step()
              if self._stop_training:
                  break
              else:
                  logging.info("************ Epoch={} end ************".format(self._epoch_index + 1))
-+        prof.stop()^M
++        prof.stop()
          logging.info("Training finished.")
          logging.info("Load best model: {}".format(self.checkpoint))
          self.load_weights(self.checkpoint)
@@ -57,22 +57,23 @@ diff --git a/fuxictr/pytorch/torch_utils.py b/fuxictr/pytorch/torch_utils.py
 index 4b220ce..4066fe5 100644
 --- a/fuxictr/pytorch/torch_utils.py
 +++ b/fuxictr/pytorch/torch_utils.py
-@@ -20,6 +20,7 @@ import sys
+@@ -20,6 +20,7 @@
+ import sys
  import os
  import numpy as np
  import torch
-+import torch_npu^M
++import torch_npu
  from torch import nn
  import random
  from functools import partial
 @@ -35,8 +36,8 @@ def seed_everything(seed=1029):
      torch.backends.cudnn.deterministic = True
  
- def get_device(gpu=-1):
+ def get_device(npu=-1):
 -    if gpu >= 0 and torch.cuda.is_available():
 -        device = torch.device("cuda:" + str(gpu))
-+    if gpu >= 0 and torch.npu.is_available():^M
-+        device = torch.device("npu")^M
++    if npu >= 0 and torch.npu.is_available():
++        device = torch.device("npu")
      else:
          device = torch.device("cpu")
      return device

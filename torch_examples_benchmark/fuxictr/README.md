@@ -1,7 +1,8 @@
 ## FuxiCTR模型库具有以下依赖项：
 GitHub地址：https://github.com/reczoo/FuxiCTR/
 
-请通过 安装其他必需的软件包。pip install -r requirements.txt
+请通过下面指令安装其他必需的软件包。
+pip install -r requirements.txt 
 
 可能出现sklearn版本过高的情况 可通过降版本至 sklearn<1.5 解决
 详情见 https://github.com/reczoo/FuxiCTR/issue/156

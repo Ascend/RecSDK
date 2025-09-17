@@ -1,7 +1,5 @@
 # DMR模型NPU适配说明
 
-## 适配说明
-
 本样例的适配对象为FuxiCTR提供用于点击率预测的开源库里 Alibaba开源的DMR(Deep Match to Rank Model)模型, 将其迁移至NPU侧训练。
 模型参考的开源链接为: https://github.com/reczoo/FuxiCTR/tree/main/model_zoo/DMR
 克隆源码并固定版本为:Commits on Jun 17, 2025，提交的SHA-1 hash值（提交ID）：b7dff73
