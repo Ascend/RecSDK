@@ -17,8 +17,10 @@ See the License for the specific language governing permissions and
 #include <cstdint>
 
 #include "register/op_def_registry.h"
+#include "matmul_check.h"
 #include "tiling_policy_factory.h"
 #include "tiling_policy_normal_v200.h"
+using namespace MatmulTilingCheck;
 
 namespace HstuDenseForward {
 REGISTER_POLICY(LAYOUT_TYPE::NORMALV200, std::make_shared<TilingPolicyNormalv200>());
@@ -52,7 +54,6 @@ bool TilingPolicyNormalv200::TilingHeighLevelApi(gert::TilingContext* context,
                                                  optiling::HstuDenseForwardTilingData &tiling)
 {
     int64_t dim = tiling.get_dim();
-
     matmul_tiling::DataType dataType;
     ge::DataType qTypeGe = context->GetInputTensor(0)->GetDataType();
     if (qTypeGe == ge::DataType::DT_FLOAT16) {
@@ -101,6 +102,17 @@ bool TilingPolicyNormalv200::TilingHeighLevelApi(gert::TilingContext* context,
 
     if (qkMatmul.GetTiling(tiling.qkMatmul) == -1 || svMatmul.GetTiling(tiling.svMatmul) == -1) {
         return false;
+    }
+
+    auto findResult = matmul_tiling::DTYPE_BYTE_TAB.find(dataType);
+    if (findResult == matmul_tiling::DTYPE_BYTE_TAB.end()) {
+        OPS_LOG_E("", "dataType not in DTYPE_BYTE_TAB");
+        return ge::GRAPH_FAILED;
+    }
+    int dataTypeLength = findResult->second;
+    if (!CheckBaseMNK(tiling.qkMatmul, dataTypeLength, dataTypeLength) ||
+        !CheckBaseMNK(tiling.svMatmul, dataTypeLength, sizeof(float))) {
+        return ge::GRAPH_FAILED;
     }
 
     int qkTransLength = tiling.qkMatmul.get_transLength();
