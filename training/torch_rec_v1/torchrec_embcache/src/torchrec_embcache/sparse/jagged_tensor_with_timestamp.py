@@ -120,12 +120,12 @@ class KeyedJaggedTensorWithTimestamp(KeyedExtendedJaggedTensor[JaggedTensorWithT
         )
 
     def split(self, segments: List[int]) -> List["KeyedJaggedTensorWithTimestamp"]:
-        return super().split(segments, KeyedJaggedTensorWithTimestamp)
+        return self.split_extend(segments, KeyedJaggedTensorWithTimestamp)
 
     def permute(
         self, indices: List[int], indices_tensor: Optional[torch.Tensor] = None
     ) -> "KeyedJaggedTensorWithTimestamp":
-        return super().permute(
+        return self.permute_extend(
             indices, 
             indices_tensor, 
             KeyedJaggedTensorWithTimestamp,
@@ -133,4 +133,4 @@ class KeyedJaggedTensorWithTimestamp(KeyedExtendedJaggedTensor[JaggedTensorWithT
         )
 
     def pin_memory(self) -> "KeyedJaggedTensorWithTimestamp":
-        return super().pin_memory(KeyedJaggedTensorWithTimestamp)
+        return self.pin_memory_extend(KeyedJaggedTensorWithTimestamp)

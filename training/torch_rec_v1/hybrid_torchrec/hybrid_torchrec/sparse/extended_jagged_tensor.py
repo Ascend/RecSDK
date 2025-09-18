@@ -114,7 +114,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
     def extra(self) -> Optional[torch.Tensor]:
         return self._extra
 
-    def split(self, segments: List[int], constructor: Callable[..., KT]) -> List[KT]:
+    def split_extend(self, segments: List[int], constructor: Callable[..., KT]) -> List[KT]:
         """通用的split方法，子类需要提供构造函数"""
         split_list: List[KT] = []
         start = 0
@@ -230,7 +230,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
             start_offset = end_offset
         return split_list
 
-    def permute(
+    def permute_extend(
         self, 
         indices: List[int], 
         indices_tensor: Optional[torch.Tensor],
@@ -375,7 +375,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
         )
         return result
 
-    def pin_memory(self, constructor: Callable[..., KT]) -> KT:
+    def pin_memory_extend(self, constructor: Callable[..., KT]) -> KT:
         """通用的pin_memory方法"""
         weights = self._weights
         lengths = self._lengths

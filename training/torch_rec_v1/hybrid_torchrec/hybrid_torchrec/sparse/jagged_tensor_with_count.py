@@ -117,12 +117,12 @@ class KeyedJaggedTensorWithCount(KeyedExtendedJaggedTensor[JaggedTensorWithCount
         )
 
     def split(self, segments: List[int]) -> List["KeyedJaggedTensorWithCount"]:
-        return super().split(segments, KeyedJaggedTensorWithCount)
+        return self.split_extend(segments, KeyedJaggedTensorWithCount)
 
     def permute(
         self, indices: List[int], indices_tensor: Optional[torch.Tensor] = None
     ) -> "KeyedJaggedTensorWithCount":
-        return super().permute(
+        return self.permute_extend(
             indices, 
             indices_tensor, 
             KeyedJaggedTensorWithCount,
@@ -130,7 +130,7 @@ class KeyedJaggedTensorWithCount(KeyedExtendedJaggedTensor[JaggedTensorWithCount
         )
 
     def pin_memory(self) -> "KeyedJaggedTensorWithCount":
-        return super().pin_memory(KeyedJaggedTensorWithCount)
+        return self.pin_memory_extend(KeyedJaggedTensorWithCount)
 
     def to(
         self, device: torch.device, non_blocking: bool = False
