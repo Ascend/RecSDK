@@ -40,6 +40,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset, DataLoader, ConcatDataset
 from sklearn.metrics import roc_auc_score
 
+from util.path_check import check_input_path_valid
 
 for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)
@@ -74,7 +75,6 @@ def parse_arguments():
                         choices=["Adam", "Adagrad", "GD", "Momentum"], help="")
     parser.add_argument('--early_stop_patience', type=int, default=5, help="")
     parser.add_argument("--data_dir", type=str, default="/aliccp/aliccp_out", help="data dir")
-    parser.add_argument("--dt_dir", type=str, default='', help="data dt partition")
     parser.add_argument("--model_dir", type=str, default=f"./", help="code check point dir")
     parser.add_argument("--clear_existing_model", action="store_true", help="")
     parser.add_argument("--task_type", type=str, default="train",
@@ -488,7 +488,7 @@ def evaluate(model: ETA, dataloader, device):
 
     auc = roc_auc_score(all_labels, all_probs)
 
-    return{
+    return {
         'loss': avg_loss,
         'auc': auc,
     }
@@ -517,6 +517,8 @@ def collate_fn(batch):
 
 
 def main(args):
+    check_input_path_valid(args.model_dir)
+    check_input_path_valid(args.data_dir)
     args.model_dir = args.model_dir + datetime.now(china_tz).strftime('%Y%m%d')
     logger.info("Preparing for data loaders...")
     train_order = json_file_load("train_order", "./order.json")

@@ -23,6 +23,7 @@ import stat
 import json
 import argparse
 from multiprocessing import Pool
+import re
 
 import numpy as np
 import torch
@@ -128,6 +129,13 @@ def gen_torch_dataset(chunk_data):
             hf.create_dataset(field, data=torch.stack([s[field] for s in samples]).numpy())
 
 
+def validate_filename(filename: str) -> bool:
+    illegal_pattern = r'[\/\\:*?"<>|.]'
+    if re.search(illegal_pattern, filename):
+        return False
+    return True
+
+
 def gen_torch_dataset_chunk(chunk_data):
     gen_torch_dataset(chunk_data)
 
@@ -138,6 +146,8 @@ file_list = glob.glob(os.path.join(".", "data_*.csv"))
 tasks = []
 for file in file_list:
     part = os.path.basename(file).split("_")[1].split(".")[0]
+    if not validate_filename(part):
+        raise ValueError(f"Invalid file name: {file}")
     output_folder = os.path.join("./aliccp_out", part)
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
