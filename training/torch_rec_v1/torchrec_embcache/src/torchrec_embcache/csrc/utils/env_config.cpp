@@ -54,7 +54,7 @@ namespace Embcache {
         auto flag = ParseEnv2Int(EnvVariableNames::GLOG_STDERRTHRESHOLD, logLevel);
         if (flag) {
             if (logLevel < Logger::TRACE || logLevel > Logger::ERROR) {
-                auto errMsg = Logger::Format("log level by env value:{} is invalid, it muse in range:[{}, {}]",
+                auto errMsg = Logger::Format("log level by env value:{} is invalid, it must be in range:[{}, {}]",
                                              logLevel, Logger::TRACE, Logger::ERROR);
                 throw std::runtime_error(errMsg);
             }

@@ -193,8 +193,8 @@ class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
         ebc = EmbeddingBagCollection(tables=[table_0, table_1])
 
         #        0       1        2  <-- batch
-        # "f1"   [0,1] None    [2]
-        # "f2"   [3]    [4]    [5,6,7]
+        # "f1"   [0,1] None    [2]   <-- key=f1, and jagged tensor
+        # "f2"   [3]    [4]    [5,6,7]  <-- key=f2, and jagged tensor
         #  ^
         # feature
 

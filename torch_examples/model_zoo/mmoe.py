@@ -681,7 +681,8 @@ def main(args):
         torch.save(model.load_state_dict, "mmoe.pth")
         logger.info("early stopped, start evaluating....")
 
-        evaluate(model, te_files, device)
+        avg_test_loss = evaluate(model, te_files, device)
+        logger.info("early stopped, end evaluating, avg_test_loss:%s", avg_test_loss)
     else:
         raise ValueError("Unsupported task type: {}".format(args.task_type))
 

@@ -575,7 +575,8 @@ def main(args):
                                  collate_fn=collate_fn,
                                  prefetch_factor=100,
                                  num_workers=10)
-        evaluate(model, test_loader, device)
+        ret = evaluate(model, test_loader, device)
+        logger.info("early stopped, end evaluating, result:%s", ret)
     else:
         raise ValueError("Unsupported task type: {}".format(args.task_type))
 
