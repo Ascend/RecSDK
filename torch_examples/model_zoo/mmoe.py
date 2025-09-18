@@ -36,6 +36,8 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset, ConcatDataset
 from sklearn.metrics import roc_auc_score
 
+from util.path_check import check_input_path_valid
+
 for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)
 logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -99,11 +101,8 @@ def define_flags():
     parser.add_argument('--tower_layers', type=str, default="128,64", help="tower layers")
     parser.add_argument('--ctr_task_wgt', type=float, default=0.5, help="loss weight of ctr task")
     parser.add_argument('--data_dir', type=str, default="alicpp/aliccp_out", help="Data directory")
-    parser.add_argument('--dt_dir', type=str, default="", help="Data dt partition")
     parser.add_argument('--model_dir', type=str, default=f"./",
                         help="Model checkpoint directory")
-    parser.add_argument('--servable_model_dir', type=str, default=f"./",
-                        help="Export servable model for pytorch Serving")
     parser.add_argument('--task_type', type=str, default="train", choices=["train", "eval", "predict"],
                         help="Task type")
     parser.add_argument('--clear_existing_model', action="store_true", help="Clear existing model or not")
@@ -646,6 +645,8 @@ def pre_deal_dataset(dataset):
 
 
 def main(args):
+    check_input_path_valid(args.model_dir)
+    check_input_path_valid(args.data_dir)
     args.model_dir = args.model_dir + datetime.now(china_tz).strftime('%Y%m%d')
 
     train_order = json_file_load("train_order", "./order.json")
