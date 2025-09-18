@@ -83,10 +83,10 @@ def run_setup(build_script_name, build_type):
 
     common_dir = os.path.join(script_path, "training/common")
     subprocess.run(["python3", "setup.py", "bdist_wheel", f"--version={VERSION}",
-                    f"--discription={LONG_DESCRIPTION}"], cwd=common_dir)
+                    f"--discription={LONG_DESCRIPTION}"], cwd=common_dir, shell=False)
     tf_rec_v1_dir = os.path.join(script_path, "training/tf_rec_v1")
     subprocess.run(["python3", "setup.py", "bdist_wheel", f"--version={VERSION}",
-                    f"--discription={LONG_DESCRIPTION}"], cwd=tf_rec_v1_dir)
+                    f"--discription={LONG_DESCRIPTION}"], cwd=tf_rec_v1_dir, shell=False)
     move_whl_script = os.path.join(script_path, "./build/move_whl_file_2_pkg_dir.sh")
     res = subprocess.run([move_whl_script, build_type], shell=False)
     if res.returncode:
