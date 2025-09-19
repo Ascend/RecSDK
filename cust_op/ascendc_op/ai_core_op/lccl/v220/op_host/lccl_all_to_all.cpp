@@ -32,6 +32,10 @@ namespace optiling {
         int rank = static_cast<int>(*rank_);
         int rankSize = static_cast<int>(*rankSize_);
 
+        if (rankSize <= 0) {
+            printf("rankSize cannot be smaller than 1\n");
+            return ge::GRAPH_FAILED;
+        }
         tiling.set_rank(rank);
         tiling.set_rankSize(rankSize);
 
