@@ -22,12 +22,34 @@ See the License for the specific language governing permissions and
 #include "external_logger.h"
 
 namespace ock {
+namespace {
+int ParamLengthCheck(const size_t length)
+{
+    if (OCK_PREDICT_FALSE(length == 0)) { // 检查 length 是否为 0，避免无效操作
+        ExternalLogger::PrintLog(LogLevel::ERROR, "Length is 0.");
+        return H_INVALID_PARAM;
+    }
+
+    // 检查 length 是否过大（防止整数溢出）
+    constexpr size_t MAX_SAFE_LENGTH = SIZE_MAX / sizeof(int32_t);
+    if (OCK_PREDICT_FALSE(length > MAX_SAFE_LENGTH)) {
+        ExternalLogger::PrintLog(LogLevel::ERROR, "Length exceeds maximum safe limit.");
+        return H_INVALID_PARAM;
+    }
+    return H_OK;
+}
+}
 // Less
 template <> int Less<int64_t>(int64_t *input0, int64_t *input1, bool *output, const size_t length)
 {
     if (OCK_PREDICT_FALSE(input0 == nullptr || input1 == nullptr || output == nullptr)) {
         ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter verification failed for the Less Op.");
         return H_POINTER_NULL;
+    }
+    auto ret = ParamLengthCheck(length);
+    if (ret != H_OK) {
+        ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter length check failed.");
+        return ret;
     }
     asm volatile("cbz     %[len], 2f\n\t"
         "mov     x4, 0\n\t"
@@ -49,7 +71,7 @@ template <> int Less<int64_t>(int64_t *input0, int64_t *input1, bool *output, co
         // 若仍有元素未被运算，跳转至位置2：
         "b.any    3b\n\t"
         "2:\n\t"
-        : [ in0 ] "+r"(input0), [ in1 ] "+r"(input1), [ out ] "+r"(output)
+        : [ in0 ] "r"(input0), [ in1 ] "r"(input1), [ out ] "r"(output)
         : [ len ] "r"(length)
         : "p0", "p1", "p2", "z0", "z1", "x4", "x5", "memory");
     return H_OK;
@@ -60,6 +82,11 @@ template <> int Less<int32_t>(int32_t *input0, int32_t *input1, bool *output, co
     if (OCK_PREDICT_FALSE(input0 == nullptr || input1 == nullptr || output == nullptr)) {
         ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter verification failed for the Less Op.");
         return H_POINTER_NULL;
+    }
+    auto ret = ParamLengthCheck(length);
+    if (ret != H_OK) {
+        ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter length check failed.");
+        return ret;
     }
     asm volatile("cbz     %[len], 2f\n\t"
         "mov     x4, 0\n\t"
@@ -81,7 +108,7 @@ template <> int Less<int32_t>(int32_t *input0, int32_t *input1, bool *output, co
         // 若仍有元素未被运算，跳转至位置2：
         "b.any    3b\n\t"
         "2:\n\t"
-        : [ in0 ] "+r"(input0), [ in1 ] "+r"(input1), [ out ] "+r"(output)
+        : [ in0 ] "r"(input0), [ in1 ] "r"(input1), [ out ] "r"(output)
         : [ len ] "r"(length)
         : "p0", "p1", "p2", "z0", "z1", "x4", "x5", "memory");
     return H_OK;
@@ -93,6 +120,11 @@ template <> int Less<int64_t>(int64_t *input0, int64_t input1, bool *output, con
     if (OCK_PREDICT_FALSE(input0 == nullptr || output == nullptr)) {
         ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter verification failed for the Less Op.");
         return H_POINTER_NULL;
+    }
+    auto ret = ParamLengthCheck(length);
+    if (ret != H_OK) {
+        ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter length check failed.");
+        return ret;
     }
     asm volatile("cbz     %[len], 2f\n\t"
         "mov     x4, 0\n\t"
@@ -114,7 +146,7 @@ template <> int Less<int64_t>(int64_t *input0, int64_t input1, bool *output, con
         // 若仍有元素未被运算，跳转至位置2：
         "b.any    3b\n\t"
         "2:\n\t"
-        : [ in0 ] "+r"(input0), [ in1 ] "+r"(input1), [ out ] "+r"(output)
+        : [ in0 ] "r"(input0), [ in1 ] "r"(input1), [ out ] "r"(output)
         : [ len ] "r"(length)
         : "p0", "p1", "p2", "z0", "z1", "x4", "x5", "memory");
     return H_OK;
@@ -126,11 +158,16 @@ template <> int Less<int32_t>(int32_t *input0, int32_t input1, bool *output, con
         ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter verification failed for the Less Op.");
         return H_POINTER_NULL;
     }
+    auto ret = ParamLengthCheck(length);
+    if (ret != H_OK) {
+        ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter length check failed.");
+        return ret;
+    }
     asm volatile("cbz     %[len], 2f\n\t"
         "mov     x4, 0\n\t"
         // 获取单个sve寄存器可容纳的int32_t数据个数
         "cntw    x5\n\t"
-        "mov     z1.s, w1\n\t"
+        "mov     z1.s, %w[in1]\n\t"
         "ptrue   p2.b, all\n\t"
         "whilelo p0.s, xzr, %[len]\n\t"
         "3:\n\t"
@@ -146,9 +183,9 @@ template <> int Less<int32_t>(int32_t *input0, int32_t input1, bool *output, con
         // 若仍有元素未被运算，跳转至位置2：
         "b.any    3b\n\t"
         "2:\n\t"
-        : [ in0 ] "+r"(input0), [ in1 ] "+r"(input1), [ out ] "+r"(output)
+        : [ in0 ] "r"(input0), [ in1 ] "r"(input1), [ out ] "r"(output)
         : [ len ] "r"(length)
-        : "p0", "p1", "p2", "z0", "z1", "x4", "x5", "w1", "memory");
+        : "p0", "p1", "p2", "z0", "z1", "x4", "x5", "memory");
     return H_OK;
 }
 
@@ -158,6 +195,11 @@ template <> int Less<int64_t>(int64_t input0, int64_t *input1, bool *output, con
     if (OCK_PREDICT_FALSE(input1 == nullptr || output == nullptr)) {
         ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter verification failed for the Less Op.");
         return H_POINTER_NULL;
+    }
+    auto ret = ParamLengthCheck(length);
+    if (ret != H_OK) {
+        ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter length check failed.");
+        return ret;
     }
     asm volatile("cbz     %[len], 2f\n\t"
         "mov     x4, 0\n\t"
@@ -179,7 +221,7 @@ template <> int Less<int64_t>(int64_t input0, int64_t *input1, bool *output, con
         // 若仍有元素未被运算，跳转至位置2：
         "b.any    3b\n\t"
         "2:\n\t"
-        : [ in0 ] "+r"(input0), [ in1 ] "+r"(input1), [ out ] "+r"(output)
+        : [ in0 ] "r"(input0), [ in1 ] "r"(input1), [ out ] "r"(output)
         : [ len ] "r"(length)
         : "p0", "p1", "p2", "z0", "z1", "x4", "x5", "memory");
     return H_OK;
@@ -191,11 +233,16 @@ template <> int Less<int32_t>(int32_t input0, int32_t *input1, bool *output, con
         ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter verification failed for the Less Op.");
         return H_POINTER_NULL;
     }
+    auto ret = ParamLengthCheck(length);
+    if (ret != H_OK) {
+        ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter length check failed.");
+        return ret;
+    }
     asm volatile("cbz     %[len], 2f\n\t"
         "mov     x4, 0\n\t"
         // 获取单个sve寄存器可容纳的int32_t数据个数
         "cntw    x5\n\t"
-        "mov     z1.s, w1\n\t"
+        "mov     z1.s, %w[in0]\n\t"
         "ptrue   p2.b, all\n\t"
         "whilelo p0.s, xzr, %[len]\n\t"
         "3:\n\t"
@@ -211,9 +258,9 @@ template <> int Less<int32_t>(int32_t input0, int32_t *input1, bool *output, con
         // 若仍有元素未被运算，跳转至位置2：
         "b.any    3b\n\t"
         "2:\n\t"
-        : [ in1 ] "+r"(input1), [ in0 ] "+r"(input0), [ out ] "+r"(output)
+        : [ in1 ] "r"(input1), [ in0 ] "r"(input0), [ out ] "r"(output)
         : [ len ] "r"(length)
-        : "p0", "p1", "p2", "z0", "z1", "x4", "x5", "w1", "memory");
+        : "p0", "p1", "p2", "z0", "z1", "x4", "x5", "memory");
     return H_OK;
 }
 
@@ -223,6 +270,11 @@ template <> int Greater<int64_t>(int64_t *input0, int64_t *input1, bool *output,
     if (OCK_PREDICT_FALSE(input0 == nullptr || input1 == nullptr || output == nullptr)) {
         ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter verification failed for the Greater Op.");
         return H_POINTER_NULL;
+    }
+    auto ret = ParamLengthCheck(length);
+    if (ret != H_OK) {
+        ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter length check failed.");
+        return ret;
     }
     asm volatile("cbz     %[len], 1f\n\t"
         "mov     x4, 0\n\t"
@@ -244,7 +296,7 @@ template <> int Greater<int64_t>(int64_t *input0, int64_t *input1, bool *output,
         // 若仍有元素未被运算，跳转至位置2：
         "b.any    2b\n\t"
         "1:\n\t"
-        : [ in0 ] "+r"(input0), [ in1 ] "+r"(input1), [ out ] "+r"(output)
+        : [ in0 ] "r"(input0), [ in1 ] "r"(input1), [ out ] "r"(output)
         : [ len ] "r"(length)
         : "p0", "p1", "p2", "z0", "z1", "x4", "x5", "memory");
     return H_OK;
@@ -255,6 +307,11 @@ template <> int Greater<int32_t>(int32_t *input0, int32_t *input1, bool *output,
     if (OCK_PREDICT_FALSE(input0 == nullptr || input1 == nullptr || output == nullptr)) {
         ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter verification failed for the Greater Op.");
         return H_POINTER_NULL;
+    }
+    auto ret = ParamLengthCheck(length);
+    if (ret != H_OK) {
+        ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter length check failed.");
+        return ret;
     }
     asm volatile("cbz     %[len], 1f\n\t"
         "mov     x4, 0\n\t"
@@ -276,7 +333,7 @@ template <> int Greater<int32_t>(int32_t *input0, int32_t *input1, bool *output,
         // 若仍有元素未被运算，跳转至位置2：
         "b.any    2b\n\t"
         "1:\n\t"
-        : [ in0 ] "+r"(input0), [ in1 ] "+r"(input1), [ out ] "+r"(output)
+        : [ in0 ] "r"(input0), [ in1 ] "r"(input1), [ out ] "r"(output)
         : [ len ] "r"(length)
         : "p0", "p1", "p2", "z0", "z1", "x4", "x5", "memory");
     return H_OK;
@@ -288,6 +345,11 @@ template <> int Greater<int64_t>(int64_t *input0, int64_t input1, bool *output, 
     if (OCK_PREDICT_FALSE(input0 == nullptr || output == nullptr)) {
         ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter verification failed for the Greater Op.");
         return H_POINTER_NULL;
+    }
+    auto ret = ParamLengthCheck(length);
+    if (ret != H_OK) {
+        ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter length check failed.");
+        return ret;
     }
     asm volatile("cbz     %[len], 1f\n\t"
         "mov     x4, 0\n\t"
@@ -309,7 +371,7 @@ template <> int Greater<int64_t>(int64_t *input0, int64_t input1, bool *output, 
         // 若仍有元素未被运算，跳转至位置2：
         "b.any    2b\n\t"
         "1:\n\t"
-        : [ in0 ] "+r"(input0), [ in1 ] "+r"(input1), [ out ] "+r"(output)
+        : [ in0 ] "r"(input0), [ in1 ] "r"(input1), [ out ] "r"(output)
         : [ len ] "r"(length)
         : "p0", "p1", "p2", "z0", "z1", "x4", "x5", "memory");
     return H_OK;
@@ -321,11 +383,16 @@ template <> int Greater<int32_t>(int32_t *input0, int32_t input1, bool *output, 
         ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter verification failed for the Greater Op.");
         return H_POINTER_NULL;
     }
+    auto ret = ParamLengthCheck(length);
+    if (ret != H_OK) {
+        ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter length check failed.");
+        return ret;
+    }
     asm volatile("cbz     %[len], 1f\n\t"
         "mov     x4, 0\n\t"
         // 获取单个sve寄存器可容纳的int32_t数据个数
         "cntw    x5\n\t"
-        "mov     z1.s, w1\n\t"
+        "mov     z1.s, %w[in1]\n\t"
         "ptrue   p2.b, all\n\t"
         "whilelo p0.s, xzr, %[len]\n\t"
         "2:\n\t"
@@ -341,9 +408,9 @@ template <> int Greater<int32_t>(int32_t *input0, int32_t input1, bool *output, 
         // 若仍有元素未被运算，跳转至位置2：
         "b.any    2b\n\t"
         "1:\n\t"
-        : [ in0 ] "+r"(input0), [ in1 ] "+r"(input1), [ out ] "+r"(output)
+        : [ in0 ] "r"(input0), [ in1 ] "r"(input1), [ out ] "r"(output)
         : [ len ] "r"(length)
-        : "p0", "p1", "p2", "z0", "z1", "x4", "x5", "w1", "memory");
+        : "p0", "p1", "p2", "z0", "z1", "x4", "x5", "memory");
     return H_OK;
 }
 
@@ -353,6 +420,11 @@ template <> int Greater<int64_t>(int64_t input0, int64_t *input1, bool *output, 
     if (OCK_PREDICT_FALSE(input1 == nullptr || output == nullptr)) {
         ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter verification failed for the Greater Op.");
         return H_POINTER_NULL;
+    }
+    auto ret = ParamLengthCheck(length);
+    if (ret != H_OK) {
+        ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter length check failed.");
+        return ret;
     }
     asm volatile("cbz     %[len], 1f\n\t"
         "mov     x4, 0\n\t"
@@ -374,7 +446,7 @@ template <> int Greater<int64_t>(int64_t input0, int64_t *input1, bool *output, 
         // 若仍有元素未被运算，跳转至位置2：
         "b.any    2b\n\t"
         "1:\n\t"
-        : [ in0 ] "+r"(input0), [ in1 ] "+r"(input1), [ out ] "+r"(output)
+        : [ in0 ] "r"(input0), [ in1 ] "r"(input1), [ out ] "r"(output)
         : [ len ] "r"(length)
         : "p0", "p1", "p2", "z0", "z1", "x4", "x5", "memory");
     return H_OK;
@@ -386,11 +458,16 @@ template <> int Greater<int32_t>(int32_t input0, int32_t *input1, bool *output, 
         ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter verification failed for the Greater Op.");
         return H_POINTER_NULL;
     }
+    auto ret = ParamLengthCheck(length);
+    if (ret != H_OK) {
+        ExternalLogger::PrintLog(LogLevel::ERROR, "Parameter length check failed.");
+        return ret;
+    }
     asm volatile("cbz     %[len], 1f\n\t"
         "mov     x4, 0\n\t"
         // 获取单个sve寄存器可容纳的int32_t数据个数
         "cntw    x5\n\t"
-        "mov     z1.s, w1\n\t"
+        "mov     z1.s, %w[in0]\n\t"
         "ptrue   p2.b, all\n\t"
         "whilelo p0.s, xzr, %[len]\n\t"
         "2:\n\t"
@@ -406,9 +483,9 @@ template <> int Greater<int32_t>(int32_t input0, int32_t *input1, bool *output, 
         // 若仍有元素未被运算，跳转至位置2：
         "b.any    2b\n\t"
         "1:\n\t"
-        : [ in1 ] "+r"(input1), [ in0 ] "+r"(input0), [ out ] "+r"(output)
+        : [ in1 ] "r"(input1), [ in0 ] "r"(input0), [ out ] "r"(output)
         : [ len ] "r"(length)
-        : "p0", "p1", "p2", "z0", "z1", "x4", "x5", "w1", "memory");
+        : "p0", "p1", "p2", "z0", "z1", "x4", "x5", "memory");
     return H_OK;
 }
 } // namespace ock
