@@ -51,7 +51,6 @@ def check_path(value: str, need_exist: bool = False, is_dir: bool = False, **kwa
     sensitive_words: List[str] = kwargs.get("sensitive_words", [])
 
     check_str_type(value)
-    value = os.path.realpath(value)
     if os.path.abspath(value) != os.path.realpath(value):
         raise ValueError(f"soft link or relative path can't be a path param, got:{value}")
     if not Path(value).is_absolute():
@@ -61,7 +60,7 @@ def check_path(value: str, need_exist: bool = False, is_dir: bool = False, **kwa
         raise ValueError(f"expected path exist, but got:{value}")
 
     black_dirs = black_dirs or _DEFAULT_BLACK_DIRS
-    is_start_with_black_dirs = any([value.startswith(item) for item in black_dirs])
+    is_start_with_black_dirs = any([os.path.realpath(value).startswith(item) for item in black_dirs])
     if is_start_with_black_dirs:
         raise ValueError(f"path can't start with black dirs, but got:{value}")
 
