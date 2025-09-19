@@ -48,15 +48,16 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 获取地址：https://gitcode.com/Ascend/RecSDK/releases
 ```shell
 # 如果已经安装,请先卸载
-pip3 uninstall -y hybrid_torchrec torchrec
+pip3 uninstall -y hybrid_torchrec torchrec torchrec_embcache
 # 安装torchrec
 tar -zxvf Ascend-mindxsdk-torchrec-1.1.0-npu-*.tar.gz
 pip3 install torchrec-1.1.0+npu-*.whl
 pip3 install -r requirements.txt
 
-# 安装hybrid_torchrec
+# 安装hybrid_torchrec和torchrec_embcache
 tar -zxvf Ascend-mindxsdk-hybrid-torchrec-1.1.0-*.tar.gz
 pip3 install hybrid_torchrec-1.1.0-*.whl
+pip3 install torchrec_embcache-1.1.0-*.whl
 ```
 
 #### 方式2：源码编译安装

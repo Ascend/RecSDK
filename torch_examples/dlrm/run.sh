@@ -12,10 +12,15 @@ export OMP_NUM_THREADS=12
 export WORLD_SIZE=8
 export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 
+#---------------------------------------------
+# train with ec
+#---------------------------------------------
+# 仅使用embcache模式运行模型时才支持EC，可设置USE_EC=1,DO_EC_LOCAL_UNIQUE=1其他场景环境变量不起作用。
+export USE_EC=0
+export DO_EC_LOCAL_UNIQUE=0
+
 # 数据集位置，根据实际情况修改
 export PREPROCESSED_DATASET="/path/to/data"
-# 算子适配文件.so路径，根据实际情况修改
-export LIB_FBGEMM_NPU_API_SO_PATH="/path/to/libfbgemm_npu_api.so"
 
 export TOTAL_TRAINING_SAMPLES=4195197692
 export GLOBAL_BATCH_SIZE=16384
@@ -44,19 +49,21 @@ function run_dlrm_model(){
     --learning_rate 0.005 \
     --pin_memory \
     --mmap_mode \
-    2>&1 |tee ${model}_use_ec_${use_ec}_$(date '+%Y%m%d_%H%M%S').log
+    2>&1 |tee ${model}_use_ec_${USE_EC}_$(date '+%Y%m%d_%H%M%S').log
 }
 
-MODES=("torchrec" "hybrid_torchrec")
+MODES=("torchrec" "hybrid_torchrec" "embcache")
 
 for model in "${MODES[@]}"; do
   # 重置环境变量
   export WITH_TORCHREC=0
   export WITH_HYBRID_TORCHREC=0
+  export WITH_EMBCACHE=0
   # 设置当前模式
   case $model in
     "torchrec") export WITH_TORCHREC=1 ;;
     "hybrid_torchrec") export WITH_HYBRID_TORCHREC=1 ;;
+    "embcache") export WITH_EMBCACHE=1 ;;
   esac
   echo "MODEL_TYPE: $model "
   run_dlrm_model # 执行模型
