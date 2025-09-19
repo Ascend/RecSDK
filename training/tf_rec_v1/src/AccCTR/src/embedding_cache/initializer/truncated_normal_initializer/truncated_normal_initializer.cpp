@@ -78,6 +78,12 @@ void TruncatedNormalInitializer::GenerateData(float* emb, int embSize)
     if (len == 0) {
         return;
     }
+
+    if (emb == nullptr) {
+        ExternalLogger::PrintLog(LogLevel::ERROR, "emb is nullptr.");
+        return;
+    }
+
     if (embSize != INVALID_EMB_SIZE && embSize < static_cast<int>(start + len)) {
         ExternalLogger::PrintLog(LogLevel::WARN,
                                  "InitializeInfo start " + std::to_string(start) + " + len " + std::to_string(len) +
