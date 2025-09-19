@@ -110,6 +110,10 @@ static ge::graphStatus TilingCore(gert::TilingContext* context, SgdTilingData &t
 
     auto bs = tilingData.get_batchSize();
     uint32_t actualCoreNum = (bs >= aivCoreNum) ? aivCoreNum : bs;
+    if (actualCoreNum == 0) {
+        printf("actualCoreNum size is zero\n");
+        return ge::GRAPH_FAILED;
+    }
     uint32_t splitNextCoreProcBs = bs / actualCoreNum;
     uint32_t splitPrevCoreProcBs = splitNextCoreProcBs + 1;
     uint32_t splitCoreIndex = bs % actualCoreNum;
