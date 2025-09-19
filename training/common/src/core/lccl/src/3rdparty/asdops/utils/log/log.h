@@ -73,6 +73,8 @@ public:
                 level = LogLevel::WARN;
             } else if (log_level_str == "ERROR") {
                 level = LogLevel::ERROR;
+            } else {
+                level = LogLevel::INFO;
             }
         }
         return level;
