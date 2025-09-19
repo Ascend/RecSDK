@@ -70,7 +70,6 @@ day_23_labels.npy
 
 ```shell
 # 环境参数配置说明（根据实际情况修改）
-export LIB_FBGEMM_NPU_API_SO_PATH="/path/to/libfbgemm_npu_api.so"                     # 此处需添加为python默认的安装包site-package下的libfbgemm_npu_api.so路径。
 export PREPROCESSED_DATASET="/path/to/data"                                           # 数据集文件路径
 export WORLD_SIZE=8                                                                   # 运行npu卡数，默认8卡
 export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7                                      # 可用npu卡编号，与WORLD_SIZE数量保持一致
