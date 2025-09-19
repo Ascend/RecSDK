@@ -80,5 +80,19 @@ fi
 
 bash build.sh
 
+# 获取系统ID
+os_id=$(cat /etc/os-release | sed -n 's/^ID=//p' | sed 's/^"//;s/"$//')
+if [ -z "${os_id}" ]; then
+    echo "ERROR: get os_id failed"
+    exit 1
+fi
 
-bash ./build_out/custom_opp*.run
+# 获取架构
+arch=$(uname -m)
+if [ -z "${arch}" ]; then
+    echo "ERROR: get arch failed"
+    exit 1
+fi
+
+# 安装编译成功的算子包
+bash ./build_out/custom_opp_${os_id}_${arch}.run

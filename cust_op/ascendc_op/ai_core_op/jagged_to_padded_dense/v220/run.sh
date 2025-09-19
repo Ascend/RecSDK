@@ -97,5 +97,19 @@ sed -i "${line2}s/OP_PROTO_LIB/OP_PROTO_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
 
 bash build.sh
 
-# # 安装编译成功的算子包
-bash ./build_out/custom_opp*.run
+# 获取系统ID
+os_id=$(cat /etc/os-release | sed -n 's/^ID=//p' | sed 's/^"//;s/"$//')
+if [ -z "${os_id}" ]; then
+    echo "ERROR: get os_id failed"
+    exit 1
+fi
+
+# 获取架构
+arch=$(uname -m)
+if [ -z "${arch}" ]; then
+    echo "ERROR: get arch failed"
+    exit 1
+fi
+
+# 安装编译成功的算子包
+bash ./build_out/custom_opp_${os_id}_${arch}.run
