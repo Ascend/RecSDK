@@ -89,6 +89,8 @@ def get_global_env_conf() -> RecEnv:
     ("rank_table_file", DirectoryValidator, {}, ["check_exists_if_not_empty"]),
     ("cm_worker_size", Convert2intValidator, {"min_value": MIN_CM_WORKER_SIZE, "max_value": MAX_CM_WORKER_SIZE},
      ["check_value"]),
+    ("cm_chief_device", Convert2intValidator, {"min_value": MIN_CM_WORKER_SIZE, "max_value": (MAX_CM_WORKER_SIZE - 1)},
+     ["check_value"]),
     ("tf_device", OptionValidator, {"options": [i.value for i in list(DeviceType)]}),
     ("acl_timeout", Convert2intValidator, {"min_value": -1, "max_value": ValidatorParams.MAX_INT32.value}, ["check_value"]),
     ("hd_channel_size", Convert2intValidator,
