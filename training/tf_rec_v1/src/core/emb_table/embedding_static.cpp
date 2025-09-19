@@ -175,7 +175,7 @@ void EmbeddingStatic::SaveKey(const string& savePath, bool saveDelta, const map<
     ssize_t res = fileSystemPtr_->Write(ss.str(), reinterpret_cast<const char *>(deviceKey.data()), writeSize);
     if (res == -1) {
         auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::LOGIC_ERROR,
-                           StringFormat("Save keys failed. An error occurred while writing file, table:%s",
+                           StringFormat("Save keys failed. An error occurred while writing file %s, table:%s",
                                         ss.str().c_str(), name.c_str()));
         LOG_ERROR(error.ToString());
         throw std::runtime_error(error.ToString());
