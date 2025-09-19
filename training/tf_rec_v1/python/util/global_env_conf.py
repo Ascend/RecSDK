@@ -34,7 +34,8 @@ from mx_rec.constants.constants import EnvOption, Flag, EMPTY_STR, \
     DEFAULT_HD_CHANNEL_SIZE, DEFAULT_KP_THREAD_NUM, DEFAULT_FAST_UNIQUE_THREAD_NUM, RecCPPLogLevel, \
     MIN_HD_CHANNEL_SIZE, MAX_HD_CHANNEL_SIZE, MIN_KP_THREAD_NUM, MAX_KP_THREAD_NUM, \
     MIN_FAST_UNIQUE_THREAD_NUM, MAX_FAST_UNIQUE_THREAD_NUM, DEFAULT_HOT_EMB_UPDATE_STEP, MIN_HOT_EMB_UPDATE_STEP, \
-    MAX_HOT_EMB_UPDATE_STEP, MAX_CM_WORKER_SIZE, MIN_CM_WORKER_SIZE, DEFAULT_CM_WORKER_SIZE, SsdCompactLevel
+    MAX_HOT_EMB_UPDATE_STEP, MAX_CM_WORKER_SIZE, MIN_CM_WORKER_SIZE, DEFAULT_CM_WORKER_SIZE, DEFAULT_CM_CHIEF_DEVICE, \
+    SsdCompactLevel
 
 
 @dataclass
@@ -65,7 +66,7 @@ def get_global_env_conf() -> RecEnv:
     rec_env = RecEnv(
         mxrec_log_level=os.getenv(EnvOptionCommon.RECSDK_LOG_LEVEL.value, LogLevel.INFO.value),
         rank_table_file=os.getenv(RankTableInfo.RANK_TABLE_FILE.value, EMPTY_STR),
-        cm_chief_device=os.getenv(CommonEnv.CM_CHIEF_DEVICE.value),
+        cm_chief_device=os.getenv(CommonEnv.CM_CHIEF_DEVICE.value, DEFAULT_CM_CHIEF_DEVICE),
         cm_worker_size=os.getenv(CommonEnv.CM_WORKER_SIZE.value, DEFAULT_CM_WORKER_SIZE),
         tf_device=os.getenv(EnvOptionCommon.DEVICE_TYPE.value, DeviceType.NONE.value),
         acl_timeout=os.getenv(EnvOption.ACL_TIMEOUT.value, "-1"),
