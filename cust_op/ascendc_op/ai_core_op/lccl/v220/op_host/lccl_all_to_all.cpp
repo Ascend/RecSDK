@@ -35,8 +35,11 @@ namespace optiling {
         int rankSize = static_cast<int>(*rankSize_);
 
         OPS_CHECK(rankSize <= 0 || rankSize > LCAL_MAX_RANK_SIZE,
-            OPS_LOG_E("[ERROR]", "rankSize is invalid: It must be at least 1 and must not exceed the maximum supported rank size."), 
+            OPS_LOG_E("[ERROR]", "Invalid rankSize: %d\n"
+            "Valid range: must be at least 1 and not exceed %d (maximum supported rank size).",
+            rankSize, LCAL_MAX_RANK_SIZE),
             return ge::GRAPH_FAILED);
+
 
         tiling.set_rank(rank);
         tiling.set_rankSize(rankSize);
