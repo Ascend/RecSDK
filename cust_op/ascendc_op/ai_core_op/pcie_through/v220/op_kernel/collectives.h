@@ -104,6 +104,9 @@ public:
     __attribute__((always_inline)) inline __aicore__ uint64_t GetMinFlag(__ubuf__ uint64_t* ctrlFlagsUB,
         __gm__ uint64_t** ctrlFlagGMs, int32_t num)
     {
+        if (num <= 0 || ctrlFlagGMs == nullptr) {
+            return LLONG_MAX;
+        }
         uint64_t minFlag = LLONG_MAX;
         for (int i = 0; i < num; ++i) {
             uint64_t val = GetFlag2(ctrlFlagsUB, ctrlFlagGMs[i]);
