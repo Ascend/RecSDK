@@ -16,6 +16,7 @@
 
 #include <string>
 #include "lccl_all_uss_tiling.h"
+#include "lccl_comm_def.h"
 
 #include "register/op_def_registry.h"
 #include "ops_log.h"
