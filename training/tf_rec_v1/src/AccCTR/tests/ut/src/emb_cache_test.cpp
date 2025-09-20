@@ -147,13 +147,18 @@ TEST_F(EmbCacheTest, InitializerInfo)
 
     // 传入的std::string不为"constant_initializer" 日志打印"Invalid Initializer Type."
     std::string not_a_initializer_name = "not_a_initializer_name";
-    EmbCache::InitializerInfo constantInitializeInfo =
-        EmbCache::InitializerInfo(not_a_initializer_name, embeddingSize, embeddingSize, constantInitializerInfo);
+    EmbCache::InitializerInfo constantInitializeInfo;
+    EXPECT_THROW(
+        constantInitializeInfo = EmbCache::InitializerInfo(
+            not_a_initializer_name, embeddingSize, embeddingSize, constantInitializerInfo),
+        std::invalid_argument);
 
     // 传入的std::string不为"constant_initializer" 日志打印"Invalid Initializer Type."
     not_a_initializer_name = "";
-    constantInitializeInfo =
-        EmbCache::InitializerInfo(not_a_initializer_name, embeddingSize, embeddingSize, constantInitializerInfo);
+    EXPECT_THROW(
+        constantInitializeInfo = EmbCache::InitializerInfo(
+            not_a_initializer_name, embeddingSize, embeddingSize, constantInitializerInfo),
+        std::invalid_argument);
 
     // 正确初始化InitializeInfo结构体，无日志信息反馈
     std::string constantInitializeName = "constant_initializer";
@@ -163,14 +168,19 @@ TEST_F(EmbCacheTest, InitializerInfo)
     // 传入的std::string不为"random_normal_initializer"或truncated_normal_initializer 日志打印"Invalid Initializer
     // Type."
     not_a_initializer_name = "not_a_initializer_name";
-    EmbCache::InitializerInfo normalInitializeInfo =
-        EmbCache::InitializerInfo(not_a_initializer_name, embeddingSize, embeddingSize, normalInitializerInfo);
+    EmbCache::InitializerInfo normalInitializeInfo;
+    EXPECT_THROW(
+        normalInitializeInfo = EmbCache::InitializerInfo(
+            not_a_initializer_name, embeddingSize, embeddingSize, normalInitializerInfo),
+        std::invalid_argument);
 
     // 传入的std::string不为"random_normal_initializer"或truncated_normal_initializer 日志打印"Invalid Initializer
     // Type."
     not_a_initializer_name = "";
-    normalInitializeInfo =
-        EmbCache::InitializerInfo(not_a_initializer_name, embeddingSize, embeddingSize, normalInitializerInfo);
+    EXPECT_THROW(
+        normalInitializeInfo = EmbCache::InitializerInfo(
+            not_a_initializer_name, embeddingSize, embeddingSize, normalInitializerInfo),
+        std::invalid_argument);
 
     // 正确初始化InitializeInfo结构体，无日志信息反馈
     std::string normalInitializeName = "random_normal_initializer";
@@ -239,8 +249,10 @@ TEST_F(EmbCacheTest, CreateCacheForTable)
 
     embCacheInfo.extEmbeddingSize = extEmbeddingSize;
     std::string not_a_initializer_name = "not_a_initializer_name";
-    constantInitializeInfo =
-        EmbCache::InitializerInfo(not_a_initializer_name, embeddingSize, embeddingSize, constantInitializerInfo);
+    EXPECT_THROW(
+        constantInitializeInfo = EmbCache::InitializerInfo(
+            not_a_initializer_name, embeddingSize, embeddingSize, constantInitializerInfo),
+        std::invalid_argument);
     initializeInfos = {normalInitializeInfo, constantInitializeInfo};
 
     // 传入的Initializer的name不符要求 日志打印出"Invalid Initializer Type.\nInitializer is nullptr"
