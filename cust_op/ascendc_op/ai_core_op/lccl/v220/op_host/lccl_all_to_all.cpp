@@ -15,6 +15,7 @@
  */
 
 #include "lccl_all_to_all_tiling.h"
+#include "lccl_comm_def.h"
 
 #include "register/op_def_registry.h"
 #include "ops_log.h"
