@@ -18,7 +18,7 @@
 #include "lccl_comm_def.h"
 
 #include "register/op_def_registry.h"
-
+#include "ops_log.h"
 
 static int g_magic = 8;
 static int g_blockDim = 32;
@@ -39,6 +39,11 @@ namespace optiling {
         int rankSize = static_cast<int>(*rank_Size_);
 
         const gert::StorageShape* rev_shape = context->GetInputShape(4); // get emb row num
+
+        OPS_CHECK(rankSize <= 0,
+            OPS_LOG_E("[ERROR]", "rankSize cannot be smaller than 1"), return ge::GRAPH_FAILED);
+        OPS_CHECK(rankSize > LCAL_MAX_RANK_SIZE,
+            OPS_LOG_E("[ERROR]", "rankSize exceeds maximum supported rank size"), return ge::GRAPH_FAILED);
 
         tiling.set_rank(rank);
         tiling.set_dim(dim);
