@@ -20,8 +20,7 @@ See the License for the specific language governing permissions and
 using namespace MxRec;
 
 TruncatedNormalInitializer::TruncatedNormalInitializer(int start, int len, NormalInitializerInfo& initInfo)
-    : start(start), len(len), seed(initInfo.seed), generator(std::default_random_engine(initInfo.seed)),
-      distribution(std::normal_distribution<float>(initInfo.mean, initInfo.stddev))
+    : start(start), len(len), seed(initInfo.seed), generator(std::default_random_engine(initInfo.seed))
 {
     initParam = initInfo.initK;
     // 校验stddev mean值范围
@@ -38,7 +37,8 @@ TruncatedNormalInitializer::TruncatedNormalInitializer(int start, int len, Norma
         LOG_WARN("truncated normal stddev param is greater than 100, and will use 100.");
         stddev = TRUNCATED_NORMAL_STDDEV_MAX;
     } else if (initInfo.stddev < TRUNCATED_NORMAL_STDDEV_MIN) {
-        LOG_WARN("truncated normal stddev param is less than -100, and will use -100.");
+        LOG_WARN("truncated normal stddev param is less than {}, and will use {}.",
+            TRUNCATED_NORMAL_STDDEV_MIN, TRUNCATED_NORMAL_STDDEV_MIN);
         stddev = TRUNCATED_NORMAL_STDDEV_MIN;
     } else {
         stddev = initInfo.stddev;
