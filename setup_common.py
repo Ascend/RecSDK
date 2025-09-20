@@ -26,6 +26,34 @@ from setuptools import setup, find_packages
 import pkg_resources
 from setuptools.extern.packaging import version as packaging_version
 
+UNSUPPORTED_FILE_MODE_MASK = 0o022
+
+
+def validate_read_file(read_file_path):
+    """
+    Validate file before reading，including validating soft link, file size
+    :param read_file_path: the file path to be validated
+    """
+    # para type check
+    if not isinstance(read_file_path, str):
+        raise ValueError("parameter value's type is not str")
+
+    # link file check
+    if (os.path.abspath(read_file_path) != os.path.realpath(read_file_path)):
+        raise ValueError(f"soft link or relative path: {read_file_path} should not be in the path parameter")
+
+    stat_info = os.stat(read_file_path)
+    # user group check
+    process_uid = os.geteuid()
+    process_gid = os.getegid()
+    if not ((process_uid == stat_info.st_uid) or (process_gid == stat_info.st_gid)):
+        raise ValueError(f"Invalid log file user or group, path: {read_file_path}.")
+
+    # file mode check
+    mode = stat.S_IMODE(stat_info.st_mode)
+    if ((mode & UNSUPPORTED_FILE_MODE_MASK) != 0):
+        raise ValueError(f"Current file:{read_file_path}, mode {oct(mode)} is unsupported")
+
 
 # Patch Version class to preserve original version string
 class NoNormalizeVersion(packaging_version.Version):
@@ -77,6 +105,11 @@ def run_setup(build_script_name, build_type):
 
     # compile so files
     build_script = os.path.join(script_path, build_script_name)
+    try:
+        validate_read_file(build_script)
+    except ValueError as e:
+        raise ValueError(f"Build script validation failed: {e}") from e
+    
     res = subprocess.run([build_script], shell=False)
     if res.returncode:
         raise RuntimeError("compile so files failed!")
