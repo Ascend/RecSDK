@@ -15,6 +15,7 @@
  */
 
 #include "lccl_gather_all_tiling.h"
+#include "lccl_comm_def.h"
 
 #include "register/op_def_registry.h"
 
