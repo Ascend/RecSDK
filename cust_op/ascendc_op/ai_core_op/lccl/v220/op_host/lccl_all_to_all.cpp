@@ -40,7 +40,6 @@ namespace optiling {
             rankSize, LCAL_MAX_RANK_SIZE),
             return ge::GRAPH_FAILED);
 
-
         tiling.set_rank(rank);
         tiling.set_rankSize(rankSize);
 
