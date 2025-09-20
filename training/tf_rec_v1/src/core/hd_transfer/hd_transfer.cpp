@@ -127,15 +127,23 @@ void HDTransfer::CreateChannel(const uint32_t localRankId, const string& embName
         std::string sendName =
             StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channel).c_str(), channelNum);
 
+        acltdtChannelHandle* handle = nullptr;
         if (TransferChannel2Str(channel) == "all2all" || TransferChannel2Str(channel) == "restore" ||
             TransferChannel2Str(channel) == "lookup" || TransferChannel2Str(channel) == "restore_second" ||
             TransferChannel2Str(channel) == "uniquekeys" || TransferChannel2Str(channel) == "evict" ||
             TransferChannel2Str(channel) == "swap" || TransferChannel2Str(channel) == "mask" ||
             TransferChannel2Str(channel) == "recvshape") {
-            transferChannels[sendName] = TDT_CREATE_CHANNEL(localRankId, sendName.c_str(), channelSize);
+            handle = TDT_CREATE_CHANNEL(localRankId, sendName.c_str(), channelSize);
         } else {
-            transferChannels[sendName] = TDT_CREATE_CHANNEL(localRankId, sendName.c_str(), PING_PONG_SIZE);
+            handle = TDT_CREATE_CHANNEL(localRankId, sendName.c_str(), PING_PONG_SIZE);
         }
+
+        if (handle == nullptr) {
+            LOG_ERROR("Create channel failed, channelName:{}.", sendName);
+            throw runtime_error("Create channel failed.");
+        }
+        
+        transferChannels[sendName] = handle;
         LOG_INFO("Create channel:{}", sendName);
     }
     LOG_INFO("End create channel.");
@@ -151,7 +159,12 @@ void HDTransfer::CreateChannelForIncrementalCkpt(const uint32_t localRankId, con
     int c = static_cast<int>(TransferChannel::KEY_D2H);
     auto channel = static_cast<TransferChannel>(c);
     std::string sendName = StringFormat("%s_%s_%d", embName.c_str(), TransferChannel2Str(channel).c_str(), channelNum);
-    transferChannels[sendName] = TDT_CREATE_CHANNEL(localRankId, sendName.c_str(), PING_PONG_SIZE);
+    acltdtChannelHandle* handle = TDT_CREATE_CHANNEL(localRankId, sendName.c_str(), PING_PONG_SIZE);
+    if (handle == nullptr) {
+        LOG_ERROR("Create channel failed, channelName:{}.", sendName);
+        throw runtime_error("Create channel failed.");
+    }
+    transferChannels[sendName] = handle;
     LOG_INFO("Create channel:{}.", sendName);
 #endif
 }
