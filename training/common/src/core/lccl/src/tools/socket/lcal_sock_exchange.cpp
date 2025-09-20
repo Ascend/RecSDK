@@ -24,6 +24,7 @@
 #include <fstream>
 #include <sstream>
 #include <securec.h>
+#include <stdexcept>
 
 #include <unistd.h>
 #include <sys/types.h>
@@ -39,6 +40,22 @@ namespace Lcal {
 const std::string LCAL_DEFAULT_SOCK_IP = "127.0.0.1";
 constexpr uint16_t LCAL_DEFAULT_SOCK_PORT = 10067;
 constexpr uint32_t LCAL_MAX_BACK_LOG = 65535;
+
+int ValidateIPv4Address(const std::string &ip)
+{
+    struct in_addr addr4 {};
+    int ret = inet_pton(AF_INET, ip.c_str(), &addr4);
+    if (ret != 1) {
+        ASD_LOG(ERROR) << "Invalid IPv4 address: " << ip;
+        return LCAL_ERROR_INTERNAL;
+    }
+    // 禁止 0.0.0.0 抛异常
+    if (addr4.s_addr == 0) {
+        ASD_LOG(ERROR) << "All-zero IP (0.0.0.0) is not allowed.";
+        throw std::invalid_argument("LCAL_COMM_ID IP must not be 0.0.0.0");
+    }
+    return LCAL_SUCCESS;
+}
 
 int ParseIpAndPort(const char* input, std::string& ip, uint16_t& port)
 {
@@ -60,6 +77,11 @@ int ParseIpAndPort(const char* input, std::string& ip, uint16_t& port)
     const unsigned short maxPort = 65535;
     if (portStream.fail() || portStream.bad() || port > maxPort) {
         ASD_LOG(ERROR) << "Invalid port number.";
+        return LCAL_ERROR_INTERNAL;
+    }
+
+    // Strictly validate IPv4 and forbid 0.0.0.0 (throws)
+    if (ValidateIPv4Address(ip) != LCAL_SUCCESS) {
         return LCAL_ERROR_INTERNAL;
     }
     return LCAL_SUCCESS;

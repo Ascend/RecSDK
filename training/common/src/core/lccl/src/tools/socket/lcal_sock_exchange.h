@@ -106,6 +106,8 @@ GTEST_PRIVATE:
     LcalBootstrap lcalCommId_ = {};
 };
 
+int ValidateIPv4Address(const std::string &ip);
+
 int ParseIpAndPort(const char* input, std::string& ip, uint16_t& port);
 
 int GetAddrFromString(LcalSocketAddress* ua, const char* ipPortPair);
