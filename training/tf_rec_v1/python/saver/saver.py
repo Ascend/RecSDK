@@ -251,12 +251,12 @@ class Saver(object):
         if not tf.io.gfile.exists(reading_path):
             raise FileExistsError(f"Given dir {reading_path} does not exist, please double check.")
 
+        file_validator = FileValidator("reading_path", reading_path)
+        if not check_file_system_is_hdfs(reading_path):
+            file_validator.check_not_soft_link()
+        file_validator.check()
         self._restore(sess, reading_path, warm_start_tables)
         if model_type == DELTA_MODEL:
-            file_validator = FileValidator("reading_path", reading_path)
-            if not check_file_system_is_hdfs(reading_path):
-                file_validator.check_not_soft_link()
-            file_validator.check()
             try:
                 tf.io.gfile.rmtree(reading_path)
             except tf.errors.NotFoundError:
