@@ -19,7 +19,25 @@
 #include "rma_log.h"
 #include "rma_swap_multi_tables_tiling.h"
 
+#include <stdexcept>
+
 constexpr int32_t BLOCK_DIM = 48;
+
+namespace {
+    int32_t* ValidateAndConvertGmemAttr(const std::string &gmemAttr)
+    {
+        try {
+            int32_t* shmSwap = reinterpret_cast<int32_t*>(std::stoul(gmemAttr));
+            return shmSwap;
+        } catch (std::invalid_argument const& ex) {
+            LOG_ERROR("Validate gmemAttr invalid");
+            return nullptr;
+        } catch (std::out_of_range const& ex) {
+            LOG_ERROR("Validate gmemAttr out of range");
+            return nullptr;
+        }
+    }
+}
 
 namespace optiling {
     constexpr int32_t RMA_DIM_MAX = 2;
@@ -65,7 +83,7 @@ namespace optiling {
             LOG_ERROR("Table get gmemAttrIn is null");
             return ge::GRAPH_FAILED;
         }
-        int32_t *shmSwapIn = (int32_t*)(std::stoul(gmemAttrIn));
+        int32_t* shmSwapIn = ValidateAndConvertGmemAttr(gmemAttrIn);
         if (shmSwapIn == nullptr) {
             LOG_ERROR("Table get shmSwapIn is null");
             return ge::GRAPH_FAILED;
@@ -76,7 +94,7 @@ namespace optiling {
             LOG_ERROR("Table get gmemAttrOut is null");
             return ge::GRAPH_FAILED;
         }
-        int32_t *shmSwapOut = (int32_t *)(std::stoul(gmemAttrOut));
+        int32_t* shmSwapOut = ValidateAndConvertGmemAttr(gmemAttrOut);
         if (shmSwapOut == nullptr) {
             LOG_ERROR("Table get shmSwapOut is null");
             return ge::GRAPH_FAILED;

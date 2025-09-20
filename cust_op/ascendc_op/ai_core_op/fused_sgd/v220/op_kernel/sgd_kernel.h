@@ -60,6 +60,7 @@ public:
 private:
     __aicore__ inline void InitUbBuffer(uint32_t ubFreeByteSize)
     {
+        ASSERT(Base::alignDimSize * (UB_BUFFER_SIZE * sizeof(T1)) + sizeof(T2) != 0);
         Base::nLoopBs = ubFreeByteSize / (Base::alignDimSize * (UB_BUFFER_SIZE * sizeof(T1)) + sizeof(T2));
         Base::nLoopBs = Base::nLoopBs / Base::T2_DATA_BLOCK * Base::T2_DATA_BLOCK;
         ASSERT(Base::nLoopBs != 0 && "nLoopBs cant be zeros!");
@@ -138,6 +139,7 @@ public:
 private:
     __aicore__ inline void InitUbBuffer(uint32_t ubFreeByteSize)
     {
+        ASSERT(Base::alignDimSize * (UB_BUFFER_SIZE * sizeof(T1)) + sizeof(T2) != 0);
         Base::nLoopBs = ubFreeByteSize / (Base::alignDimSize * (UB_BUFFER_SIZE * sizeof(T1)) + sizeof(T2));
         Base::nLoopBs = Base::nLoopBs / Base::T2_DATA_BLOCK * Base::T2_DATA_BLOCK;
         ASSERT(Base::nLoopBs != 0 && "nLoopBs cant be zeros!");
@@ -157,7 +159,7 @@ private:
         varUb = varQue.template AllocTensor<T1>();
         for (int i = 0; i < cnt; i++) {
             int64_t indices = Base::indicesUb.GetValue(i);
-            if (likely(indices >= 0)) {
+            if (likely(indices >= 0) && indices < Base::tableSize) {
                 this->template DataCopyIn<T1>(varUb[i * Base::alignDimSize], inputVarGm[indices * Base::dimSize], 1,
                                               Base::dimSize, Base::isDimAlign);
             }
