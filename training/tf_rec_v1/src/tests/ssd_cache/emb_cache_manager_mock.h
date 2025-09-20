@@ -33,20 +33,10 @@ public:
                                                 KeyOffsetPair& swapInKoPair,
                                                 KeyOffsetPair& swapOutKoPair));
 
-    MOCK_METHOD4(EmbeddingLookup, int(const std::string& tableName,
-                                      const std::vector<uint64_t>& keys,
-                                      float* embAddr,
-                                      uint32_t threadNum));
-
     MOCK_METHOD4(EmbeddingLookupAddrs, int(const std::string& tableName,
                                            const std::vector<uint64_t>& keys,
                                            std::vector<float*>& addrs,
                                            uint32_t threadNum));
-
-    MOCK_METHOD4(EmbeddingLookupAndRemove, int(const std::string& tableName,
-                                               const std::vector<uint64_t>& keys,
-                                               float* embAddr,
-                                               uint32_t threadNum));
 
     MOCK_METHOD4(EmbeddingUpdate, int(const std::string& tableName,
                                       const std::vector<uint64_t>& keys,
