@@ -13,57 +13,22 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
+#include "asynchronous_complete_cumsum_kernel.h"
 #include "kernel_operator.h"
 
-using namespace AscendC;
+// Kernel入口函数
+extern "C" __global__ __aicore__ void asynchronous_complete_cumsum(
+    GM_ADDR x, GM_ADDR y, GM_ADDR workspace, GM_ADDR tiling)
+{
+    GET_TILING_DATA(tilingData, tiling);
+    AsynchronousCompleteCumsum::Args args{x, y, workspace, tiling};
 
-namespace {
-    constexpr int32_t EMBEDDING_TYPE_INT64 = 0;
-    constexpr int32_t EMBEDDING_TYPE_INT32 = 1;
-}
-
-extern "C" __global__ __aicore__ void asynchronous_complete_cumsum(GM_ADDR x, GM_ADDR y, GM_ADDR workspace,
-                                                                   GM_ADDR tiling) {
-    GET_TILING_DATA(tiling_data, tiling);
-    int64_t totalLen = tiling_data.totalLength;
-    uint32_t inputType = tiling_data.inputType;
-
-    switch (inputType)
-    {
-        case EMBEDDING_TYPE_INT64:
-        {
-            __gm__ int64_t* xPtr = (__gm__ int64_t*) x;
-            __gm__ int64_t* yPtr = (__gm__ int64_t*) y;
-            *(yPtr) = 0;
-            for (int i=1; i<totalLen+1; i++) {
-                *(yPtr+i) = *(xPtr+i-1) + *(yPtr+i-1);
-            }
-            break;
-        }
-
-        case EMBEDDING_TYPE_INT32:
-        {
-            __gm__ int32_t* xPtr = (__gm__ int32_t*) x;
-            __gm__ int32_t* yPtr = (__gm__ int32_t*) y;
-            *(yPtr) = 0;
-            for (int i=1; i<totalLen+1; i++) {
-                *(yPtr+i) = *(xPtr+i-1) + *(yPtr+i-1);
-            }
-            break;
-        }
-
-        default:
-        {
-            break;
-        }
+    // 根据数据类型选择对应的kernel实例
+    if (TILING_KEY_IS(1)) {  // TYPE_INT32
+        AsynchronousCompleteCumsum::AsynchronousCompleteCumsumKernel<int32_t, false> kernel(args);
+        kernel.Compute();
+    } else if (TILING_KEY_IS(0)) {  // TYPE_INT64
+        AsynchronousCompleteCumsum::AsynchronousCompleteCumsumKernel<int64_t, true> kernel(args);
+        kernel.Compute();
     }
-
-    AscendC::GlobalTensor<int32_t> global;
-    global.SetGlobalBuffer((__gm__ int32_t*)y, totalLen);
-#ifdef SUPPORT_V200
-    AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::ENTIRE_DATA_CACHE>(global);
-#else
-    AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::ENTIRE_DATA_CACHE,
-        AscendC::DcciDst::CACHELINE_OUT>(global);
-#endif
 }
