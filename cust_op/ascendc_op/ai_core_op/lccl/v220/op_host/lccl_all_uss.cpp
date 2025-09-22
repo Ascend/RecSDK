@@ -44,6 +44,13 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
         rankSize, LCAL_MAX_RANK_SIZE),
         return ge::GRAPH_FAILED);
 
+    OPS_CHECK(rank < 0 || rank >= rankSize,
+        OPS_LOG_E("[ERROR]", "Invalid rank: %d\n"
+        "Valid range: must be at least 0 and not exceed rank size %d.",
+        rank, rankSize),
+        return ge::GRAPH_FAILED
+    )
+
     tiling.set_rank(rank);
     tiling.set_dim(dim);
     tiling.set_rankSize(rankSize);
