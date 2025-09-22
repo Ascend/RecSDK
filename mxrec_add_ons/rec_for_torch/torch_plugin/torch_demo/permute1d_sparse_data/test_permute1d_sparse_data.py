@@ -149,7 +149,6 @@ def test_empty_input(is_mxrec):
 
     with pytest.raises(RuntimeError):
         result = get_result(params, DEVICE, is_mxrec)
-        assert result is not None
 
 
 @pytest.mark.parametrize("is_mxrec", [True, False])
@@ -168,7 +167,6 @@ def test_invalid_weights_length(is_mxrec):
 
     with pytest.raises(RuntimeError):
         result = get_result(params, DEVICE, is_mxrec)
-        assert result is not None
 
 
 @pytest.mark.parametrize("is_mxrec", [True, False])
@@ -187,4 +185,3 @@ def test_2d_input(is_mxrec):
 
     with pytest.raises(RuntimeError):
         result = get_result(params, DEVICE, is_mxrec)
-        assert result is not None

@@ -75,7 +75,7 @@ class JaggedToPaddedDense(torch.autograd.Function):
             grad_values = torch.ops.mxrec.jagged_to_padded_dense_backward(grad_output.to(DEVICE), offsets, total_L)
         else:
             grad_values = torch.ops.fbgemm.jagged_to_padded_dense_backward(grad_output.to(DEVICE), offsets, total_L)
-        return grad_values, None, None, None
+        return grad_values, None, None, None, None
 
 
 def generate_jagged_tensor(batch_size, max_seq_len, num_heads, attention_dim, data_types):

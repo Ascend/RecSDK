@@ -159,7 +159,7 @@ def get_tolerance(dense_dtype):
 def run_test(denses, offsets, types, use_output_size=False, is_mxrec=False):
     """运行测试的核心逻辑"""
     # 获取结果
-    golden_result = get_result(torch.device("cpu"), denses, offsets, types, use_output_size)
+    golden_result = get_result(torch.device("cpu"), denses, offsets, types, use_output_size, False)
     npu_result = get_result(torch.device(DEVICE), denses, offsets, types, use_output_size, is_mxrec)
 
     # 根据数据类型获取相应的容差值
