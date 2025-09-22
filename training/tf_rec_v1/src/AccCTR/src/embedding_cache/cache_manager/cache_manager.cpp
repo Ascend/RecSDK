@@ -97,30 +97,6 @@ int EmbCacheManagerImpl::GetSwapPairsAndKey2Offset(const EmbBaseInfo& info, std:
     return offsetMappers[info.name].GetSwapPairsAndKey2Offset(info, keys, swapInKoPair, swapOutKoPair);
 }
 
-int EmbCacheManagerImpl::EmbeddingLookup(const std::string& tableName, const std::vector<uint64_t>& keys,
-                                         float* embAddr, uint32_t threadNum)
-{
-    int checkTableNameRet = CheckValidTableName(tableName);
-    if (checkTableNameRet != H_OK) {
-        return checkTableNameRet;
-    }
-
-    if (!CheckValidThreadNum(threadNum)) {
-        return H_THREAD_NUM_ERROR;
-    }
-
-    if (keys.empty()) {
-        return H_OK;
-    }
-
-    if (embAddr == nullptr) {
-        ExternalLogger::PrintLog(LogLevel::ERROR, "embAddr is nullptr");
-        return H_ADDRESS_NULL;
-    }
-
-    return embTables[tableName].Gather(reinterpret_cast<uint64_t>(embAddr), keys, threadNum);
-}
-
 int EmbCacheManagerImpl::EmbeddingLookupAddrs(const std::string& tableName, const std::vector<uint64_t>& keys,
                                               std::vector<float*>& addrs, uint32_t threadNum)
 {
@@ -138,31 +114,6 @@ int EmbCacheManagerImpl::EmbeddingLookupAddrs(const std::string& tableName, cons
     }
 
     return embTables[tableName].GatherAddrs(keys, addrs, threadNum);
-}
-
-// 如果多线程使用，严格保证传入的key线程间不会重复(unique key)，否则可能出现未定义结果
-int EmbCacheManagerImpl::EmbeddingLookupAndRemove(const std::string& tableName, const std::vector<uint64_t>& keys,
-                                                  float* embAddr, uint32_t threadNum)
-{
-    int checkTableNameRet = CheckValidTableName(tableName);
-    if (checkTableNameRet != H_OK) {
-        return checkTableNameRet;
-    }
-
-    if (!CheckValidThreadNum(threadNum)) {
-        return H_THREAD_NUM_ERROR;
-    }
-
-    if (keys.empty()) {
-        return H_OK;
-    }
-
-    if (embAddr == nullptr) {
-        ExternalLogger::PrintLog(LogLevel::ERROR, "embAddr is nullptr");
-        return H_ADDRESS_NULL;
-    }
-
-    return embTables[tableName].GatherAndRemove(reinterpret_cast<uint64_t>(embAddr), keys, threadNum);
 }
 
 int EmbCacheManagerImpl::EmbeddingUpdate(const std::string& tableName, const std::vector<uint64_t>& keys,

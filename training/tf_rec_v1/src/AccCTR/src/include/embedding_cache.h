@@ -210,17 +210,6 @@ public:
                                           KeyOffsetPair& swapInKoPair, KeyOffsetPair& swapOutKoPair) = 0;
 
     /* *
-     * 查询Embedding
-     * @Param tableName: 表名
-     * @Param keys: 待查询的keys
-     * @Param embAddr: 申请出来存放embedding的空间首地址
-     * @Param threadNum: 线程数
-     * @Return errorCode
-     */
-    virtual int EmbeddingLookup(const std::string& tableName, const std::vector<uint64_t>& keys, float* embAddr,
-                                uint32_t threadNum = DEFAULE_LOOKUP_THREAD_NUM) = 0;
-
-    /* *
      * 查询Embedding的地址
      * @Param tableName: 表名
      * @Param keys: 待查询的keys
@@ -230,18 +219,6 @@ public:
      */
     virtual int EmbeddingLookupAddrs(const std::string& tableName, const std::vector<uint64_t>& keys,
                                      std::vector<float*>& addrs, uint32_t threadNum = DEFAULE_LOOKUP_THREAD_NUM) = 0;
-
-    /* *
-     * 查询Embedding并且在查询完成之后删除embedding对应的key。如果多线程使用，严格保证传入的key线程间不会重复(unique
-     * key)，否则可能出现未定义结果
-     * @Param tableName: 表名
-     * @Param keys: 待查询的keys
-     * @Param embAddr: 申请出来存放embedding的空间首地址
-     * @Param threadNum: 线程数
-     * @Return errorCode
-     */
-    virtual int EmbeddingLookupAndRemove(const std::string& tableName, const std::vector<uint64_t>& keys,
-                                         float* embAddr, uint32_t threadNum = DEFAULE_LOOKUP_THREAD_NUM) = 0;
 
     /* *
      * 更新Embedding

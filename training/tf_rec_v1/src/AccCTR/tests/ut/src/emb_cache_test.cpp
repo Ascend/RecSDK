@@ -507,10 +507,9 @@ TEST_F(EmbCacheTest, EMBEDDING_LOOKUP_300W)
     // 正确创建
     ASSERT_EQ(embCache->CreateCacheForTable(embCacheInfo, initializeInfos), H_OK);
     std::vector<uint64_t> lookupKeys;
-    float* addr = nullptr;
+    std::vector<float*> addrs;
     lookupKeys = GenKeys(hostVocabSize, 123321);
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs), H_OK);
 
     long double sum = 0.0;
     long double cnt = 0.0;
@@ -518,79 +517,31 @@ TEST_F(EmbCacheTest, EMBEDDING_LOOKUP_300W)
     for (uint32_t i = 0; i < lookupKeys.size(); i++) {
         // normalInitializer 生成数据
         for (uint32_t j = 0; j < embeddingSize; j++) {
-            sum += addr[i * extEmbeddingSize + j];
+            sum += addrs[i][j];
             cnt++;
         }
 
         // constantInitializer 生成数据
         for (uint32_t j = embeddingSize; j < 2 * embeddingSize; j++) {
-            ASSERT_LE(std::abs(addr[i * extEmbeddingSize + j] - 0.233), 1e-6f);
+            ASSERT_LE(std::abs(addrs[i][j] - 0.233), 1e-6f);
         }
         // truncatedNormalInitializer 生成数据
         for (uint32_t j = 2 * embeddingSize; j < 3 * embeddingSize; j++) {
             // 在[-2*stddev, 2*stddev]范围中
-            ASSERT_LE(std::abs(addr[i * extEmbeddingSize + j]), 0.1f + 1e-6f);
+            ASSERT_LE(std::abs(addrs[i][j]), 0.1f + 1e-6f);
         }
     }
 
     long double mean = sum / cnt;
     for (uint32_t i = 0; i < lookupKeys.size(); ++i) {
         for (uint32_t j = 0; j < embeddingSize; j++) {
-            accum += (addr[i * extEmbeddingSize + j] - mean) * (addr[i * extEmbeddingSize + j] - mean);
+            accum += (addrs[i][j] - mean) * (addrs[i][j] - mean);
         }
     }
     long double stdev = sqrt(accum / cnt);
     ASSERT_LE(std::abs(mean), 5e-6f);
     ASSERT_LE(std::abs(stdev - 0.05), 5e-6f);
-    free(addr);
     CTRLog(CTRLogLevel::INFO, "===========GenerateData end=============");
-}
-
-TEST_F(EmbCacheTest, EMBEDDING_LOOKUP_AND_REMOVE)
-{
-    CTRLog(CTRLogLevel::INFO, "===========EMBEDDING_LOOKUP_AND_REMOVE start=============");
-    std::string tableName = "test_table";
-    uint32_t hostVocabSize = 5;
-    uint32_t embeddingSize = 13;
-    uint32_t extEmbeddingSize = 26;
-    uint32_t devVocabSize = 2;
-    embCache = SimpleCreateTable(tableName, hostVocabSize, embeddingSize, extEmbeddingSize, devVocabSize);
-    std::vector<uint64_t> lookupKeys;
-    float* addr = nullptr;
-
-    lookupKeys = {0, 1, 2, 3, 4};
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
-    ASSERT_EQ(embCache->EmbeddingLookupAndRemove(tableName, lookupKeys, addr), H_OK);
-    free(addr);
-
-    // lookupkeys 为空
-    lookupKeys = {};
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
-    ASSERT_EQ(embCache->EmbeddingLookupAndRemove(tableName, lookupKeys, addr), H_OK);
-    free(addr);
-
-    lookupKeys = {0};
-    addr = nullptr;
-    ASSERT_EQ(embCache->EmbeddingLookupAndRemove("not_a_table", lookupKeys, addr), H_TABLE_NOT_EXIST);
-
-    ASSERT_EQ(embCache->EmbeddingLookupAndRemove(tooLongTableName, lookupKeys, addr), H_TABLE_NAME_TOO_LONG);
-
-    lookupKeys = {0};
-    addr = nullptr;
-    ASSERT_EQ(embCache->EmbeddingLookupAndRemove(tableName, lookupKeys, addr), H_ADDRESS_NULL);
-
-    lookupKeys = {0, 1, 4};
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
-    uint32_t threadNum = std::thread::hardware_concurrency();
-    ASSERT_EQ(embCache->EmbeddingLookupAndRemove(tableName, lookupKeys, addr, threadNum + 1), H_THREAD_NUM_ERROR);
-    ASSERT_EQ(embCache->EmbeddingLookupAndRemove(tableName, lookupKeys, addr, threadNum), H_OK);
-    // 单线程lookup
-    ASSERT_EQ(embCache->EmbeddingLookupAndRemove(tableName, lookupKeys, addr, 1), H_OK);
-    ASSERT_EQ(embCache->EmbeddingLookupAndRemove(tableName, lookupKeys, addr, 0), H_THREAD_NUM_ERROR);
-    free(addr);
-    embCache->Destroy();
-
-    CTRLog(CTRLogLevel::INFO, "===========EMBEDDING_LOOKUP_AND_REMOVE end=============");
 }
 
 TEST_F(EmbCacheTest, EMBEDDING_LOOKUP_AND_REMOVE_2)
@@ -603,7 +554,7 @@ TEST_F(EmbCacheTest, EMBEDDING_LOOKUP_AND_REMOVE_2)
     uint32_t devVocabSize = 2;
     embCache = SimpleCreateTable(tableName, hostVocabSize, embeddingSize, extEmbeddingSize, devVocabSize);
     std::vector<uint64_t> lookupKeys;
-    float* addr = nullptr;
+    std::vector<float*> addrs;
 
     for (int i = 0; i < 100; i++) {
         for (int j = 0; j < 2; j++) {
@@ -611,14 +562,11 @@ TEST_F(EmbCacheTest, EMBEDDING_LOOKUP_AND_REMOVE_2)
         }
     }
 
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
-    ASSERT_EQ(embCache->EmbeddingLookupAndRemove(tableName, lookupKeys, addr, 1), H_OK);
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
-    ASSERT_EQ(embCache->EmbeddingLookupAndRemove(tableName, lookupKeys, addr), H_OK);
-    free(addr);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs), H_OK);
+    ASSERT_EQ(embCache->RemoveEmbsByKeys(tableName, lookupKeys), H_OK);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs), H_OK);
+    ASSERT_EQ(embCache->RemoveEmbsByKeys(tableName, lookupKeys), H_OK);
     embCache->Destroy();
-
     CTRLog(CTRLogLevel::INFO, "===========EMBEDDING_LOOKUP_AND_REMOVE_2 end=============");
 }
 
@@ -632,48 +580,39 @@ TEST_F(EmbCacheTest, EMBEDDING_LOOKUP)
     uint32_t devVocabSize = 2;
     embCache = SimpleCreateTable(tableName, hostVocabSize, embeddingSize, extEmbeddingSize, devVocabSize);
     std::vector<uint64_t> lookupKeys;
-    float* addr = nullptr;
+    std::vector<float*> addrs;
 
     lookupKeys = {0, 1, 2, 3, 4};
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
-    free(addr);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs), H_OK);
+    addrs.clear();
 
     // lookupkeys 为空
     lookupKeys = {};
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
-    free(addr);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs), H_OK);
+    addrs.clear();
 
     lookupKeys = {0};
-    addr = nullptr;
-    ASSERT_EQ(embCache->EmbeddingLookup("not_a_table", lookupKeys, addr), H_TABLE_NOT_EXIST);
-
-    ASSERT_EQ(embCache->EmbeddingLookup(tooLongTableName, lookupKeys, addr), H_TABLE_NAME_TOO_LONG);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs("not_a_table", lookupKeys, addrs), H_TABLE_NOT_EXIST);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tooLongTableName, lookupKeys, addrs), H_TABLE_NAME_TOO_LONG);
 
     lookupKeys = {5};
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_HOST_VOCAB_SIZE_TOO_SMALL);
-    free(addr);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs), H_HOST_VOCAB_SIZE_TOO_SMALL);
+    addrs.clear();
 
     lookupKeys = {0};
-    addr = nullptr;
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_ADDRESS_NULL);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs), H_OK);
 
     lookupKeys = {0, 1, 4};
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
-    free(addr);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs), H_OK);
+    addrs.clear();
 
     lookupKeys = {0, 1, 4};
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
     uint32_t threadNum = std::thread::hardware_concurrency();
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr, threadNum + 1), H_THREAD_NUM_ERROR);
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr, threadNum), H_OK);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs, threadNum + 1), H_THREAD_NUM_ERROR);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs, threadNum), H_OK);
     // 单线程lookup
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr, 1), H_OK);
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr, 0), H_THREAD_NUM_ERROR);
-    free(addr);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs, 1), H_OK);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs, 0), H_THREAD_NUM_ERROR);
     embCache->Destroy();
 
     CTRLog(CTRLogLevel::INFO, "===========EMBEDDING_LOOKUP end=============");
@@ -705,43 +644,31 @@ TEST_F(EmbCacheTest, EMBEDDING_LOOKUP_AND_REMOVE_300W)
     free(newEmb);
     CTRLog(CTRLogLevel::INFO, "EmbeddingUpdate done");
 
-    float* addr = nullptr;
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
+    std::vector<float*> addrs;
     // 查询特殊数据
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
-    CTRLog(CTRLogLevel::INFO, "EmbeddingLookup done");
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs), H_OK);
+    CTRLog(CTRLogLevel::INFO, "EmbeddingLookupAddrs done");
     for (uint32_t i = 0; i < lookupKeys.size(); i++) {
         for (uint32_t j = 0; j < extEmbeddingSize; j++) {
             // 验证表中数据正确性
-            ASSERT_LE(std::abs(addr[i * extEmbeddingSize + j] - (i + 0.01f * j)), 1e-6f);
+            ASSERT_LE(std::abs(addrs[i][j] - (i + 0.01f * j)), 1e-6f);
         }
     }
-    free(addr);
-    addr = nullptr;
 
     // Remove之后再Lookup，观察这些embedding是不是被正确remove
     // 首先确认EmbeddingLookupAndRemove不会报错
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
-    ASSERT_EQ(embCache->EmbeddingLookupAndRemove(tableName, lookupKeys, addr, 4), H_OK);
-    for (uint32_t i = 0; i < lookupKeys.size(); i++) {
-        for (uint32_t j = 0; j < extEmbeddingSize; j++) {
-            // 验证表中数据正确性
-            ASSERT_LE(std::abs(addr[i * extEmbeddingSize + j] - (i + 0.01f * j)), 1e-6f);
-        }
-    }
-    free(addr);
-    addr = nullptr;
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
+    ASSERT_EQ(embCache->RemoveEmbsByKeys(tableName, lookupKeys), H_OK);
+
+    addrs.clear();
     // 然后再lookup，并确保lookup不会报错
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs), H_OK);
     // 因为用const zero初始化， EmbeddingLookupAndRemove之后再lookup，结果应该全是0
     for (uint32_t i = 0; i < lookupKeys.size(); i++) {
         for (uint32_t j = 0; j < extEmbeddingSize; j++) {
             // 验证表中数据正确性
-            ASSERT_LE(std::abs(addr[i * extEmbeddingSize + j] - 0), 1e-6f);
+            ASSERT_LE(std::abs(addrs[i][j] - 0), 1e-6f);
         }
     }
-    free(addr);
 
     CTRLog(CTRLogLevel::INFO, "===========EMBEDDING_LOOKUP_AND_REMOVE_300W end=============");
 }
@@ -772,30 +699,28 @@ TEST_F(EmbCacheTest, EMBEDDING_UPDATE_300W)
     free(newEmb);
     CTRLog(CTRLogLevel::INFO, "EmbeddingUpdate done");
 
-    float* addr = nullptr;
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
+    std::vector<float*> addrs;
     // 查询特殊数据
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
-    CTRLog(CTRLogLevel::INFO, "EmbeddingLookup done");
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs), H_OK);
+    CTRLog(CTRLogLevel::INFO, "EmbeddingLookupAddrs done");
     for (uint32_t i = 0; i < lookupKeys.size(); i++) {
         for (uint32_t j = 0; j < extEmbeddingSize; j++) {
             // 验证表中数据正确性
-            ASSERT_LE(std::abs(addr[i * extEmbeddingSize + j] - (i + 0.01f * j)), 1e-6f);
+            ASSERT_LE(std::abs(addrs[i][j] - (i + 0.01f * j)), 1e-6f);
         }
     }
     // Remove之后再Lookup，观察这些embedding是不是被正确remove
     // 首先确认remove不会报错
     ASSERT_EQ(embCache->RemoveEmbsByKeys(tableName, lookupKeys), H_OK);
     // 然后再lookup，并确保lookup不会报错
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs), H_OK);
     // 因为用const zero初始化， 删除之后再lookup，结果应该全是0
     for (uint32_t i = 0; i < lookupKeys.size(); i++) {
         for (uint32_t j = 0; j < extEmbeddingSize; j++) {
             // 验证表中数据正确性
-            ASSERT_LE(std::abs(addr[i * extEmbeddingSize + j] - 0), 1e-6f);
+            ASSERT_LE(std::abs(addrs[i][j] - 0), 1e-6f);
         }
     }
-    free(addr);
 
     CTRLog(CTRLogLevel::INFO, "===========EMBEDDING_UPDATE_300W end=============");
 }
@@ -1164,7 +1089,6 @@ TEST_F(EmbCacheTest, REMOVE_KEYS)
     embCache = SimpleCreateTable(tableName, hostVocabSize, embeddingSize, extEmbeddingSize, devVocabSize);
     std::vector<uint64_t> lookupKeys;
     std::vector<uint64_t> removeKeys;
-    float* addr = nullptr;
     float* newEmb = nullptr;
 
     for (uint32_t i = 0; i < hostVocabSize - 1; i++) {
@@ -1173,9 +1097,8 @@ TEST_F(EmbCacheTest, REMOVE_KEYS)
             removeKeys.emplace_back(i + j);
         }
     }
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
-    free(addr);
+    std::vector<float*> addrs;
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs), H_OK);
 
     // 表存在
     ASSERT_EQ(embCache->RemoveEmbsByKeys(tableName, lookupKeys), H_OK);
@@ -1193,9 +1116,7 @@ TEST_F(EmbCacheTest, REMOVE_KEYS)
 
     // 判断embLocalTable是否remove掉记录信息
     lookupKeys = {0, 1, 4};
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
-    free(addr);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs), H_OK);
 
     newEmb = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
     for (uint32_t i = 0; i < lookupKeys.size() * extEmbeddingSize; i++) {
@@ -1204,28 +1125,25 @@ TEST_F(EmbCacheTest, REMOVE_KEYS)
     ASSERT_EQ(embCache->EmbeddingUpdate(tableName, lookupKeys, newEmb), H_OK);
     free(newEmb);
 
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs), H_OK);
     bool ret1 = true;
-    for (uint32_t i = 0; i < lookupKeys.size() * extEmbeddingSize; i++) {
-        if (fabs(addr[i] - 999.99f) > 0.0000001) {
+    for (uint32_t i = 0; i < lookupKeys.size(); i++) {
+        if (fabs(addrs[i][0] - 999.99f) > 0.0000001) {
             ret1 = false;
         }
     }
-    free(addr);
     ASSERT_EQ(ret1, true);
 
     ASSERT_EQ(embCache->RemoveEmbsByKeys(tableName, lookupKeys), H_OK);
 
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
+    addrs.clear();
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs), H_OK);
     bool ret2 = true;
     for (uint32_t i = 0; i < lookupKeys.size() * extEmbeddingSize; i++) {
-        if (fabs(addr[i] - 999.99f) <= 0.0000001) {
+        if (fabs(addrs[i][0] - 999.99f) <= 0.0000001) {
             ret2 = false;
         }
     }
-    free(addr);
     ASSERT_EQ(ret2, true);
 
     // 判断offsetMapper是否remove掉记录信息
@@ -1596,7 +1514,6 @@ TEST_F(EmbCacheTest, EmbeddingRemove)
     embCache = SimpleCreateTable(tableName, hostVocabSize, embeddingSize, extEmbeddingSize, devVocabSize);
     std::vector<uint64_t> lookupKeys;
     std::vector<uint64_t> removeKeys;
-    float* addr = nullptr;
     float* newEmb = nullptr;
 
     for (uint32_t i = 0; i < hostVocabSize - 1; i++) {
@@ -1605,15 +1522,15 @@ TEST_F(EmbCacheTest, EmbeddingRemove)
             removeKeys.emplace_back(i + j);
         }
     }
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
+    std::vector<float*> addrs;
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs), H_OK);
     // 表存在
     ASSERT_EQ(embCache->EmbeddingRemove(tableName, lookupKeys), H_OK);
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs), H_OK);
     // 单线程
     ASSERT_EQ(embCache->EmbeddingRemove(tableName, lookupKeys, 1), H_OK);
 
-    free(addr);
+    addrs.clear();
     // REMOVE空keys
     std::vector<uint64_t> emptyRemoveKeys;
     ASSERT_EQ(embCache->EmbeddingRemove(tableName, emptyRemoveKeys), H_OK);
@@ -1630,9 +1547,8 @@ TEST_F(EmbCacheTest, EmbeddingRemove)
 
     // 判断embLocalTable是否remove掉记录信息
     lookupKeys = {0, 1, 4};
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
-    free(addr);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs), H_OK);
+    addrs.clear();
 
     newEmb = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
     for (uint32_t i = 0; i < lookupKeys.size() * extEmbeddingSize; i++) {
@@ -1641,28 +1557,26 @@ TEST_F(EmbCacheTest, EmbeddingRemove)
     ASSERT_EQ(embCache->EmbeddingUpdate(tableName, lookupKeys, newEmb), H_OK);
     free(newEmb);
 
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs), H_OK);
     bool ret1 = true;
-    for (uint32_t i = 0; i < lookupKeys.size() * extEmbeddingSize; i++) {
-        if (fabs(addr[i] - 999.99f) > 0.0000001) {
+    for (uint32_t i = 0; i < lookupKeys.size(); i++) {
+        if (fabs(addrs[i][0] - 999.99f) > 0.0000001) {
             ret1 = false;
         }
     }
-    free(addr);
+    addrs.clear();
     ASSERT_EQ(ret1, true);
 
     ASSERT_EQ(embCache->EmbeddingRemove(tableName, lookupKeys), H_OK);
 
-    addr = (float*)malloc(lookupKeys.size() * extEmbeddingSize * sizeof(float));
-    ASSERT_EQ(embCache->EmbeddingLookup(tableName, lookupKeys, addr), H_OK);
+    ASSERT_EQ(embCache->EmbeddingLookupAddrs(tableName, lookupKeys, addrs), H_OK);
     bool ret2 = true;
-    for (uint32_t i = 0; i < lookupKeys.size() * extEmbeddingSize; i++) {
-        if (fabs(addr[i] - 999.99f) <= 0.0000001) {
+    for (uint32_t i = 0; i < lookupKeys.size(); i++) {
+        if (fabs(addrs[i][0] - 999.99f) <= 0.0000001) {
             ret2 = false;
         }
     }
-    free(addr);
+    addrs.clear();
     ASSERT_EQ(ret2, true);
 
     // 判断offsetMapper是否remove掉记录信息

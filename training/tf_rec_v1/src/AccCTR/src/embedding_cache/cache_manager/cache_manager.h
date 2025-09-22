@@ -39,9 +39,6 @@ public:
     int GetSwapPairsAndKey2Offset(const EmbBaseInfo& info, std::vector<uint64_t>& keys,
                                   KeyOffsetPair& swapInKoPair, KeyOffsetPair& swapOutKoPair) override;
 
-    int EmbeddingLookup(const std::string& tableName, const std::vector<uint64_t>& keys, float* embAddr,
-                        uint32_t threadNum) override;
-
     int EmbeddingLookupAddrs(const std::string& tableName, const std::vector<uint64_t>& keys,
                              std::vector<float*>& addrs, uint32_t threadNum) override;
 
@@ -49,9 +46,6 @@ public:
                         uint32_t threadNum) override;
 
     int EmbeddingRemove(const std::string& tableName, const std::vector<uint64_t>& keys, uint32_t threadNum) override;
-
-    int EmbeddingLookupAndRemove(const std::string& tableName, const std::vector<uint64_t>& keys, float* embAddr,
-                                 uint32_t threadNum) override;
 
     int RemoveEmbsByKeys(const std::string& tableName, const std::vector<uint64_t>& keys) override;
 
