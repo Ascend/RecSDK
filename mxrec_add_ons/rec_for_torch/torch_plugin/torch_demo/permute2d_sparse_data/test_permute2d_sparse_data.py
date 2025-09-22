@@ -45,21 +45,25 @@ _ZERO_LENGTH = list(itertools.product(T, [1], [0]))
 _NOT_PERFORMED_SHAPES = _ZERO_PERMUTE + _ZERO_LENGTH
 
 
-def get_result(tensors: dict, device: str = 'cpu'):
+def get_result(tensors: dict, device: str = 'cpu', is_mxrec: bool = False):
     tensors = {k: torch.from_numpy(v) if isinstance(v, np.ndarray) else v for k, v in tensors.items()}
 
     if device and device.startswith('npu'):
         torch.npu.set_device(device)
         tensors = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in tensors.items()}
 
-    results = torch.ops.fbgemm.permute_2D_sparse_data(**tensors)
+    if is_mxrec:
+        results = torch.ops.mxrec.permute_2D_sparse_data(**tensors)
+    else:
+        results = torch.ops.fbgemm.permute_2D_sparse_data(**tensors)
     return [x.cpu() if isinstance(x, torch.Tensor) else x for x in results]
 
 
 @pytest.mark.parametrize("types", TYPE_LIST)
 @pytest.mark.parametrize("shapes", SHAPE_LIST)
 @pytest.mark.parametrize("enable_permuted_sum", [True, False])
-def test_permute2d_sparse_data(types, shapes, enable_permuted_sum):
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_permute2d_sparse_data(types, shapes, enable_permuted_sum, is_mxrec):
     """
     Params:
         permute: (T) dtype=int32
@@ -85,7 +89,7 @@ def test_permute2d_sparse_data(types, shapes, enable_permuted_sum):
         'permuted_lengths_sum': permuted_lengths_sum
     }
     golden = get_result(params)
-    result = get_result(params, DEVICE)
+    result = get_result(params, DEVICE, is_mxrec)
     _check_result(golden, result)
 
 
@@ -99,7 +103,8 @@ def _check_result(golden, result):
 @pytest.mark.parametrize("types", TYPE_LIST)
 @pytest.mark.parametrize("shapes", _NOT_PERFORMED_SHAPES)
 @pytest.mark.parametrize("enable_permuted_sum", [True])
-def test_permute2d_sparse_data_for_not_performed(types, shapes, enable_permuted_sum):
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_permute2d_sparse_data_for_not_performed(types, shapes, enable_permuted_sum, is_mxrec):
     t, extra_t, b = shapes
     extra_t = random.randint(1, max(t - 1, 1)) * extra_t
 
@@ -122,5 +127,5 @@ def test_permute2d_sparse_data_for_not_performed(types, shapes, enable_permuted_
     # The golden need use original data, because there is a difference between cpu and gpu in fbgemm repo.
     golden = (lengths, values, weights)
     golden = [torch.from_numpy(v) if isinstance(v, np.ndarray) else v for v in golden]
-    result = get_result(params, DEVICE)
+    result = get_result(params, DEVICE, is_mxrec)
     _check_result(golden, result)

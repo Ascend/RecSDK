@@ -201,6 +201,19 @@ TORCH_LIBRARY_FRAGMENT(mxrec, m)
           "                                int total_L) -> Tensor");
 }
 
+TORCH_LIBRARY_FRAGMENT(fbgemm, m)
+{
+    m.def("jagged_to_padded_dense.v1(Tensor values, "
+          "                          Tensor[] offsets, "
+          "                          int max_lengths, "
+          "                          float padding_value) -> Tensor");
+
+    m.def("jagged_to_padded_dense_forward.v1(Tensor values, "
+          "                                  Tensor[] offsets, "
+          "                                  int max_lengths, "
+          "                                  float padding_value) -> Tensor");
+}
+
 TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
 {
     m.impl("jagged_to_padded_dense.v1",
@@ -223,13 +236,13 @@ TORCH_LIBRARY_IMPL(fbgemm, PrivateUse1, m)
     m.impl("jagged_to_padded_dense.v1",
         torch::dispatch(c10::DispatchKey::PrivateUse1,
                       TORCH_FN(fbgemm_npu::jagged_to_padded_dense_npu_v1)));
-    m.impl("jagged_to_padded_dense.v2",
+    m.impl("jagged_to_padded_dense",
         torch::dispatch(c10::DispatchKey::PrivateUse1,
                       TORCH_FN(fbgemm_npu::jagged_to_padded_dense_npu_v2)));
     m.impl("jagged_to_padded_dense_forward.v1",
         torch::dispatch(c10::DispatchKey::PrivateUse1,
                       TORCH_FN(fbgemm_npu::jagged_to_padded_dense_forward_npu_v1)));
-    m.impl("jagged_to_padded_dense_forward.v2",
+    m.impl("jagged_to_padded_dense_forward",
         torch::dispatch(c10::DispatchKey::PrivateUse1,
                       TORCH_FN(fbgemm_npu::jagged_to_padded_dense_forward_npu_v2)));
     m.impl("jagged_to_padded_dense_backward", &fbgemm_npu::jagged_to_padded_dense_backward_npu);
@@ -245,5 +258,5 @@ TORCH_LIBRARY_IMPL(mxrec, AutogradPrivateUse1, m)
 TORCH_LIBRARY_IMPL(fbgemm, AutogradPrivateUse1, m)
 {
     m.impl("jagged_to_padded_dense.v1", TORCH_FN(fbgemm_npu::jagged_to_padded_dense_npu_v1_autograd));
-    m.impl("jagged_to_padded_dense.v2", TORCH_FN(fbgemm_npu::jagged_to_padded_dense_npu_v2_autograd));
+    m.impl("jagged_to_padded_dense", TORCH_FN(fbgemm_npu::jagged_to_padded_dense_npu_v2_autograd));
 }
