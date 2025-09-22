@@ -20,6 +20,7 @@ import threading
 import glob
 import struct
 import subprocess
+import traceback
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Union, Generator, Tuple
@@ -225,10 +226,21 @@ class Saver(object):
         comm = MPI.COMM_WORLD
         rank = comm.Get_rank()
         comm.Barrier()
-        if should_write_data(rank, saving_path):
-            table_list = self.save_op_dict.keys()
-            for table_name in table_list:
-                self.merge_sparse_file(saving_path, table_name)
+        merge_success = 1
+        try:
+            if should_write_data(rank, saving_path):
+                table_list = self.save_op_dict.keys()
+                for table_name in table_list:
+                    self.merge_sparse_file(saving_path, table_name)
+        except Exception as err:
+            merge_success = 0
+            err_msg = f"[rank {rank}] merge_sparse_file failed: {err}\n{traceback.format_exc()}"
+            logger.error(err_msg)
+
+        merge_success = comm.bcast(merge_success, root=0)
+        if not merge_success:
+            logger.error("MPI job aborted due to merge_sparse_file failed")
+            comm.Abort(1)
         comm.Barrier()
 
         logger.info("sparse model was saved in dir '%s' .", saving_path)
