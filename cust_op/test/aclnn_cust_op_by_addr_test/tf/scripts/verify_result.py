@@ -37,8 +37,8 @@ def verify_result(real_result, golden):
     result_atol = np.less_equal(diff, loss)  # 绝对误差大于loss的为False
     result_rtol = np.less_equal(diff / np.add(deno, minimum), loss)  # 相对误差大于loss的为False
     if not result_rtol.all() and not result_atol.all():
-        if np.sum(result_rtol == False) > real_result.size * loss and \
-                np.sum(result_atol == False) > real_result.size * loss:  # 误差允许为1000000个里出现一个
+        if np.sum(~result_rtol) > real_result.size * loss and \
+                np.sum(~result_atol) > real_result.size * loss:  # 误差允许为1000000个里出现一个
             logging.error("result error")
             sys.exit(-1)
     logging.info("test pass")
@@ -46,4 +46,7 @@ def verify_result(real_result, golden):
 
 
 if __name__ == '__main__':
-    verify_result(sys.argv[1], sys.argv[2])
+    try:
+        verify_result(sys.argv[1], sys.argv[2])
+    except Exception as e:
+        logging.error(f"an error occurred during verification:{e}", exc_info=True)

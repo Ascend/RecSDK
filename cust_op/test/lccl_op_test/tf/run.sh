@@ -15,6 +15,7 @@
 # ==============================================================================
 local_rank_size=$1
 py=$2
+version=${3:-tf1}
 
 case "$py" in
     all2all.py|all2all_uss.py|gather_all2all.py)
@@ -24,6 +25,16 @@ case "$py" in
         exit 1
         ;;
 esac
+
+case "$version" in
+    tf1|tf2)
+            ;;
+    *)
+        echo "invalid version '$version'"
+        exit 1
+        ;;
+esac
+
 rm -rf /root/atc_data/
 rm -rf /root/ascend/*
 rm -rf kernel_meta_*
@@ -32,9 +43,13 @@ ulimit -c 0
 mpi_path=/usr/local/openmpi/bin/
 mx_rec_package_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/mx_rec
 so_path=${mx_rec_package_path}/libasc
-tfa_path=/usr/local/python3.7.5/lib/python3.7/site-packages/npu_bridge  # tf1
-# tfa_path=/usr/local/python3.7.5/lib/python3.7/site-packages/npu_device/compat/v1  # tf2
-rec_sdk_comm_path=/usr/local/python3.7.5/lib/python3.7/site-packages/rec_sdk_common/lib
+site_pkgs=$(python3.7 -c 'import site; print(site.getsitepackages()[0])')
+if [ "$version" == "tf1" ]; then
+    tfa_path="${site_pkgs}/npu_bridge"
+else
+    tfa_path="${site_pkgs}/npu_device/compat/v1"
+fi
+rec_sdk_comm_path="${site_pkgs}/rec_sdk_common/lib"
 export LD_LIBRARY_PATH=${so_path}:${tfa_path}:${rec_sdk_comm_path}:/usr/local/lib:$LD_LIBRARY_PATH
 export PYTHONPATH=${so_path}:$PYTHONPATH
 export PATH=${mpi_path}/bin:$PATH
@@ -59,6 +74,5 @@ echo run in $host_string
 
 interface="lo"
 mpi_args='-x BIND_INFO="0:48 48:48 96:48" -bind-to none'
-env
 horovodrun --network-interface ${interface} -np ${num_process} --mpi-args "${mpi_args}" --mpi -H localhost:${local_rank_size} \
     python3.7 ${py} --local_rank_size ${local_rank_size} --hccl_json hccl_json_${local_rank_size}p.json | tee temp.log

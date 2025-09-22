@@ -96,7 +96,7 @@ class WideDeep:
         return self.gather_all_result
 
 
-def verify_result(real_result:np.array, golden:np.array):
+def verify_result(real_result: np.ndarray, golden: np.ndarray):
     loss = 1e-4
     minimum = 10e-10
 
@@ -177,7 +177,7 @@ if __name__ == "__main__":
         while not train_finished:
             try:
                 current_steps += 1
-                logging.info("current step = {current_steps}")
+                logging.info(f"current step = {current_steps}")
                 run_dict = {
                     "gather_all_result": model.gather_all_result,
                 }
@@ -193,7 +193,7 @@ if __name__ == "__main__":
                     train_finished = True
             except tf.errors.OutOfRangeError as e:
                 comm.Barrier()
-                logging.info("gather test failed with error:{e}")
+                logging.info(f"gather test failed with error:{e}")
                 train_finished = True
         MPI.Finalize()
         
