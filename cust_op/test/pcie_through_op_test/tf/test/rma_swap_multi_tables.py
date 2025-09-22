@@ -83,7 +83,7 @@ def main(unused_argv):
     for _ in range(table_num):
         tables.append(np.random.uniform(-2, 2, size=table_shape_split_params).astype(table_dtype_params))
     tables = [tf.convert_to_tensor(table, tf.float32) for table in tables]
-    with tf.device('/device:NPU:' + str(device_id)):
+    with tf.device(f'/device:NPU:{device_id}'):
         tables = [tf.Variable(table) for table in tables]
 
     logging.info("====================")

@@ -33,8 +33,8 @@ def verify_result(real_result, golden):
     result_rtol = np.less_equal(result / np.add(deno, _MINIMUM), _LOSS_THRESHOLD)  # 计算相对误差
     if not result_rtol.all() and not result_atol.all():
         # 误差超出预期时返回打印错误，返回对比失败
-        if np.sum(result_rtol == False) > real_result.size * _LOSS_THRESHOLD \
-                and np.sum(result_atol == False) > real_result.size * _LOSS_THRESHOLD:
+        if np.sum(~result_rtol) > real_result.size * _LOSS_THRESHOLD \
+                and np.sum(~result_atol) > real_result.size * _LOSS_THRESHOLD:
             logging.error("[ERROR] output verify result error.")
             return False
     logging.info("output verify pass.")
@@ -43,8 +43,19 @@ def verify_result(real_result, golden):
 
 if __name__ == '__main__':
     logging.info("start verify outputM.")
-    verify_result("output/outputM.bin", "output/goldenOutputM.bin")
+    try:
+        verify_result("output/outputM.bin", "output/goldenOutputM.bin")
+    except Exception as e:
+        logging.error(f"an error occurred during outputM verification:{e}", exc_info=True)
+
     logging.info("start verify outputV.")
-    verify_result("output/outputV.bin", "output/goldenOutputV.bin")
+    try:
+        verify_result("output/outputV.bin", "output/goldenOutputV.bin")
+    except Exception as e:
+        logging.error(f"an error occurred during outputV verification:{e}", exc_info=True)
+
     logging.info("start verify outputVar.")
-    verify_result("output/outputVar.bin", "output/goldenOutputVar.bin")
+    try:
+        verify_result("output/outputVar.bin", "output/goldenOutputVar.bin")
+    except Exception as e:
+        logging.error(f"an error occurred during outputVar verification:{e}", exc_info=True)

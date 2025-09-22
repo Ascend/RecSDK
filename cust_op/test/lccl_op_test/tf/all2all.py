@@ -93,7 +93,7 @@ class WideDeep:
         return self.all2all_result
 
 
-def verify_result(real_result:np.array, golden:np.array):
+def verify_result(real_result: np.ndarray, golden: np.ndarray):
     loss = 1e-4
     minimum = 10e-10
 

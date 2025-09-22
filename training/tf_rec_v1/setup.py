@@ -28,9 +28,9 @@ import subprocess
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", default="7.2.RC1")
-    parser.add_argument("--discription", default="")
+    parser.add_argument("--description", default="")
 
-    args, unknown = parser.parse_known_args()
+    paras, unknown = parser.parse_known_args()
     # 只允许特定的setuptools参数通过
     allowed_args = []
     for arg in unknown:
@@ -38,7 +38,7 @@ def parse_args():
             allowed_args.append(arg)
 
     sys.argv = [sys.argv[0]] + allowed_args
-    return args
+    return paras
 
 args = parse_args()
 
@@ -56,14 +56,14 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 source_path = os.path.join(current_dir, "..", "common", "rec_sdk_common")
 dest_path = os.path.join(current_dir, "rec_sdk_common")
 
-if(os.path.exists(source_path)):
+if os.path.exists(source_path):
     shutil.copytree(source_path, dest_path)
 setup(
     name='mx_rec',
     version=args.version,
     author='HUAWEI Inc',
     description='MindSDK Recommend',
-    long_description=args.discription,
+    long_description=args.description,
     # include mx_rec
     packages=find_packages(
         where=".",
