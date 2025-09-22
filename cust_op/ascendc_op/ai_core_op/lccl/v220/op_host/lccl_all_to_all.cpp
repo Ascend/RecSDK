@@ -15,8 +15,10 @@
  */
 
 #include "lccl_all_to_all_tiling.h"
+#include "lccl_comm_def.h"
 
 #include "register/op_def_registry.h"
+#include "ops_log.h"
 
 static int g_magic = 9;
 static int g_blockDim = 32;
@@ -31,6 +33,12 @@ namespace optiling {
         const auto* rankSize_ = attrs->GetAttrPointer<int64_t>(1);
         int rank = static_cast<int>(*rank_);
         int rankSize = static_cast<int>(*rankSize_);
+
+        OPS_CHECK(rankSize <= 0 || rankSize > LCAL_MAX_RANK_SIZE,
+            OPS_LOG_E("[ERROR]", "Invalid rankSize: %d\n"
+            "Valid range: must be at least 1 and not exceed %d (maximum supported rank size).",
+            rankSize, LCAL_MAX_RANK_SIZE),
+            return ge::GRAPH_FAILED);
 
         tiling.set_rank(rank);
         tiling.set_rankSize(rankSize);
