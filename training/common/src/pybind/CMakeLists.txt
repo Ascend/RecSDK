@@ -15,6 +15,7 @@
 
 cmake_minimum_required(VERSION 3.20)
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_SKIP_RPATH TRUE)
 
 pybind11_add_module(common_binding common_binding.cpp)
 set_target_properties(common_binding PROPERTIES LINK_FLAGS "-Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack")
