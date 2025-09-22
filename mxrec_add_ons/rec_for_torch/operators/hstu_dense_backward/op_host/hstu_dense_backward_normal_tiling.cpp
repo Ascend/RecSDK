@@ -33,6 +33,11 @@ ge::graphStatus GetNormalAttrsInfo(const gert::RuntimeAttrs *attrs, HstuDenseBac
     OPS_CHECK_PTR_NULL(siluScale, return ge::GRAPH_FAILED);
     tiling.set_siluScale(*siluScale);
 
+    const auto targetGroupSizePtr = attrs->GetAttrPointer<int32_t>(INDEX_T::INDEX_5);
+    if (targetGroupSizePtr != nullptr)
+        tiling.set_targetGroupSize(*targetGroupSizePtr);
+    else
+        tiling.set_targetGroupSize(0);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -87,6 +92,20 @@ ge::graphStatus CheckMaskTypeAndBias(gert::TilingContext *context,
         OPS_CHECK(!IsSameShape(attnBiasShape, attnBiasGradShape, BIAS_DIM_NUM),
                     OPS_LOG_E("", "attnBias shape not equal with attnBiasGrad\n"),
                     return ge::GRAPH_FAILED);
+    }
+
+    auto contextMask = context->GetOptionalInputTensor(INDEX_T::INDEX_6);
+    if (contextMask == nullptr) {
+        tiling.set_enableContextMask(0);
+    } else {
+        tiling.set_enableContextMask(1);
+    }
+
+    auto targetMask = context->GetOptionalInputTensor(INDEX_T::INDEX_6);
+    if (contextMask == nullptr) {
+        tiling.set_enableTargetMask(0);
+    } else {
+        tiling.set_enableTargetMask(1);
     }
 
     if (IfMask(maskType, MaskType::MASK_CUSTOM)) {
