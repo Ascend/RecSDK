@@ -159,6 +159,13 @@ ge::graphStatus GetJaggedAttrsInfo(const gert::RuntimeAttrs *attrs, HstuDenseBac
     const auto seqOffset = attrs->GetAttrPointer<gert::ContinuousVector>(INDEX_T::INDEX_4);
     OPS_CHECK_PTR_NULL(seqOffset, return ge::GRAPH_FAILED);
 
+    const auto targetGroupSizePtr = attrs->GetAttrPointer<int32_t>(INDEX_T::INDEX_5);
+    if (targetGroupSizePtr != nullptr) {
+        tiling.set_targetGroupSize(*targetGroupSizePtr);
+    } else {
+        tiling.set_targetGroupSize(0);
+    }
+
     auto *seqOffsetData = const_cast<int64_t *>(reinterpret_cast<const int64_t *>(seqOffset->GetData()));
     int seqOffsetLens = seqOffset->GetSize();
     int64_t batchSize = GetBatchSizeFromJaggedOffset(seqOffsetData, seqOffsetLens);

@@ -16,6 +16,7 @@ See the License for the specific language governing permissions and
 #ifndef HSTU_DENSE_BACKWARD_KERNEL_H
 #define HSTU_DENSE_BACKWARD_KERNEL_H
 
+#include <cstdint>
 #include "hstu_dense_backward_kernel_common.h"
 
 namespace HstuDenseBackward {
@@ -71,11 +72,14 @@ public:
         maxSeqLen = tilingData.maxSeqLen;
         biasGradSeqLen = tilingData.biasGradSeqLen;
         siluScale = tilingData.siluScale;
+        targetGroupSize = tilingData.targetGroupSize;
 
         blockHeight = tilingData.blockHeight;
 
         maskType = tilingData.maskType;
         enableBias = tilingData.enableBias;
+        enableContextMask = tilingData.enableContextMask;
+        enableTargetMask = tilingData.enableTargetMask;
         isNormal = tilingData.isNormal;
         aivNum = tilingData.aivNum;
 
@@ -94,6 +98,12 @@ public:
         v.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(args.v), totalElementOfQ);
         if (enableBias) {
             attnBias.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(args.attnBias), totalElementOfAttnBias);
+        }
+        if (enableContextMask) {
+            numContextGt.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(args.numContext), batchSize);
+        }
+        if (enableTargetMask) {
+            numTargetGt.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(args.numTarget), batchSize);
         }
         if (IfMask(maskType, MaskType::MASK_CUSTOM)) {
             mask.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(args.mask), totalElementOfAttnBias);
@@ -944,7 +954,10 @@ public:
     // Attr
     int32_t maskType;
     int32_t enableBias;
+    int32_t enableContextMask;
+    int32_t enableTargetMask;
     float siluScale;
+    int32_t targetGroupSize;
 
     int32_t isNormal;
     uint32_t aivNum;
@@ -980,6 +993,8 @@ public:
     GlobalTensor<qType> v;
     GlobalTensor<qType> attnBias;
     GlobalTensor<qType> mask;
+    GlobalTensor<int64_t> numContextGt;
+    GlobalTensor<int64_t> numTargetGt;
 
     GlobalTensor<qType> qGrad;
     GlobalTensor<qType> kGrad;

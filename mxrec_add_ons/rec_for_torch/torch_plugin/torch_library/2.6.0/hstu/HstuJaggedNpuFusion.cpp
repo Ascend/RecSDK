@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include "c10/core/ScalarType.h"
 #include "hstu_common.h"
+#include "torch/types.h"
 
 namespace hstu {
 
@@ -105,12 +108,27 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
     TORCH_CHECK(grad.dim() == dim, "The grad should be 3D in jagged layout");
 
     auto acSeqOffset = seqOffset;
+
+    // 判断是否为int64类型
+    auto seqOffsetCpu = seqOffset.to(torch::kInt64).detach().cpu().contiguous();
+    auto data_ptr = seqOffsetCpu.data_ptr<int64_t>();
+    auto seqOffsetList = std::vector<int64_t>(data_ptr, data_ptr + seqOffsetCpu.numel());
+    at::IntArrayRef seqOffsetListSafRef = seqOffsetList;
+
+    // 判断NumContext为int64类型
     TORCH_CHECK(acSeqOffset.size(0) >= CONST_2, "acSeqOffset params error should have at least two element.");
 
     auto acAttnBias = attnBias.value_or(at::Tensor());
     auto acMask = mask.value_or(at::Tensor());
     auto acNumContext = numContext.value_or(at::Tensor());
+    if (acNumContext.defined()) {
+        acNumContext = acNumContext.to(torch::kInt64);
+    }
     auto acNumTarget = numTarget.value_or(at::Tensor());
+    if (acNumTarget.defined()) {
+        acNumTarget = acNumTarget.to(torch::kInt64);
+    }
+
     auto acTargetGroupSize = targetGroupSize.value_or(0);
 
     auto denseGrad = grad.contiguous();
@@ -148,6 +166,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
     }
 
     const char *layout = "jagged";
+
     EXEC_NPU_CMD(aclnnHstuDenseBackward,
                  denseGrad,
                  denseQ,
@@ -161,7 +180,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
                  maskType,
                  maxSeqLen,
                  realSiluScale,
-                 acSeqOffset,
+                 seqOffsetListSafRef,
                  acTargetGroupSize,
                  qGradOutput,
                  kGradOutput,

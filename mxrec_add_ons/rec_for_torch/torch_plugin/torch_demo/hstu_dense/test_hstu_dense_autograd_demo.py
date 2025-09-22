@@ -137,9 +137,9 @@ class TestHstuAutogradNormal:
         bias.retain_grad()
 
         if enable_bias:
-            output = torch.ops.mxrec.hstu_dense(q, k, v, mask, bias, mask_type, max_seq_len, silu_scale, "normal")
+            output = torch.ops.mxrec.hstu_dense(q, k, v, mask, bias, mask_type, max_seq_len, silu_scale)
         else:
-            output = torch.ops.mxrec.hstu_dense(q, k, v, mask, None, mask_type, max_seq_len, silu_scale, "normal")
+            output = torch.ops.mxrec.hstu_dense(q, k, v, mask, None, mask_type, max_seq_len, silu_scale)
 
         torch.npu.synchronize()
 
@@ -255,6 +255,7 @@ class TestHstuAutogradJagged:
                                requires_grad=True).to(f"npu:{device_id}").to(data_type)
         v = torch.nn.Parameter(torch.Tensor(v).reshape(total_seqs, num_heads, attention_dim), \
                                requires_grad=True).to(f"npu:{device_id}").to(data_type)
+        seq_offset = torch.LongTensor(seq_offset).to(f"npu:{device_id}")
         bias = torch.nn.Parameter(torch.Tensor(bias), requires_grad=True).to(f"npu:{device_id}").to(data_type)
         mask = torch.Tensor(mask).to(f"npu:{device_id}").to(data_type)
 
@@ -264,11 +265,9 @@ class TestHstuAutogradJagged:
         bias.retain_grad()
 
         if enable_bias:
-            output = torch.ops.mxrec.hstu_dense(q, k, v, mask, bias, mask_type, max_seq_len, silu_scale, "jagged", \
-                                                seq_offset)
+            output = torch.ops.mxrec.hstu_jagged(q, k, v, mask, bias, mask_type, max_seq_len, silu_scale, seq_offset)
         else:
-            output = torch.ops.mxrec.hstu_dense(q, k, v, mask, None, mask_type, max_seq_len, silu_scale, "jagged", \
-                                                seq_offset)
+            output = torch.ops.mxrec.hstu_jagged(q, k, v, mask, None, mask_type, max_seq_len, silu_scale, seq_offset)
 
         torch.npu.synchronize()
 

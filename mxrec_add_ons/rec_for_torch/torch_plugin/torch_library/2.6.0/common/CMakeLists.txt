@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 project(fbgemm_npu_api)
 
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)

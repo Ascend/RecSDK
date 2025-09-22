@@ -236,61 +236,60 @@ public:
     {
         this->Input("grad")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
+            .FormatList({ge::FORMAT_ND});
         this->Input("q")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .Follow("grad", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
         this->Input("k")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .Follow("grad", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
         this->Input("v")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .Follow("grad", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
         this->Input("mask")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .Follow("grad", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
         this->Input("attn_bias")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .Follow("grad", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
+        this->Input("num_context")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32, ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND});
+        this->Input("num_target")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT16})
+            .FormatList({ge::FORMAT_ND});
 
         this->Output("q_grad")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .ParamType(OPTIONAL)
+            .Follow("grad", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
         this->Output("k_grad")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .ParamType(OPTIONAL)
+            .Follow("grad", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
         this->Output("v_grad")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .ParamType(OPTIONAL)
+            .Follow("grad", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
         this->Output("attn_bias_grad")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .Follow("grad", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
 
         this->Attr("layout").String("normal");
         this->Attr("mask_type").Int();
         this->Attr("max_seq_len").Int();
         this->Attr("silu_scale").Float();
         this->Attr("seq_offsets").AttrType(OPTIONAL).ListInt();
+        this->Attr("target_group_size").AttrType(OPTIONAL).Int(0);
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
