@@ -26,7 +26,7 @@ namespace tensorflow {
         .Input("lr: float32")
         .Attr("beta1: float")
         .Attr("beta2: float")
-        .Attr("epsilon: float = 1e-7")
+        .Attr("epsilon: float")
         .Output("output_m: float32")
         .Output("output_v: float32")
         .Output("output_var: float32")

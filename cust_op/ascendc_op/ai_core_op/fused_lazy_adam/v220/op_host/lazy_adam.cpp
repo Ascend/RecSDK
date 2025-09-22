@@ -17,6 +17,8 @@ See the License for the specific language governing permissions and
 #include "register/op_def_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 
+#include <cmath>
+
 namespace optiling {
 constexpr int BLOCK_SIZE = 32;
 constexpr int RESERVE_UB_SIZE = 20 * 1024;
@@ -71,6 +73,10 @@ static ge::graphStatus LazyAdamTilingFunc(gert::TilingContext* context)
     float beta1 = *attrs->GetAttrPointer<float>(0);
     float beta2 = *attrs->GetAttrPointer<float>(1);
     float epsilon = *attrs->GetAttrPointer<float>(2);
+    if (std::abs(epsilon) < 1e-8) {
+        printf("epsilon is zero\n");
+        return ge::GRAPH_FAILED;
+    }
 
     auto platformInfo = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t coreNum = platformInfo.GetCoreNum();

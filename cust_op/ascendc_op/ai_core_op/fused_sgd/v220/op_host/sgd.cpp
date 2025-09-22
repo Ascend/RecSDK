@@ -19,6 +19,13 @@ See the License for the specific language governing permissions and
 #include "register/op_def_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 
+namespace {
+uint64_t AlignUp(uint32_t value, uint64_t alignment)
+{
+    return (value + alignment -1) & ~(alignment - 1);
+}
+}
+
 namespace optiling {
 
 constexpr uint32_t MAX_DIM_SIZE = 1024;
@@ -127,6 +134,32 @@ static ge::graphStatus TilingCore(gert::TilingContext* context, SgdTilingData &t
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus CheckTilingDataValid(SgdTilingData &tilingData)
+{
+    constexpr uint32_t ASCENDC_ONE_BLK_SIZE = 32;
+    constexpr uint32_t UB_BUFFER_SIZE = 2;
+    constexpr uint32_t GRADIENT_INDEX = 0;
+    constexpr uint32_t INDICES_INDEX = 1;
+    constexpr uint32_t DTYPE_GRADIENT_SIZE = 4;
+    constexpr uint32_t DTYPE_INDICES_SIZE = 4;
+    constexpr uint32_t DTYPE_GRADIENT_DATA_BLOCK = ASCENDC_ONE_BLK_SIZE / DTYPE_GRADIENT_SIZE;
+    constexpr uint32_t DTYPE_INDICES_DATA_BLOCK = ASCENDC_ONE_BLK_SIZE / DTYPE_INDICES_SIZE;
+
+    auto AlignDimSize = AlignUp(tilingData.get_dimSize(), DTYPE_GRADIENT_DATA_BLOCK);
+    auto LoopBs = AlignDimSize * (UB_BUFFER_SIZE * DTYPE_GRADIENT_SIZE) + DTYPE_INDICES_SIZE;
+    if (LoopBs == 0) {
+        printf("LoopBs is zero\n");
+        return ge::GRAPH_FAILED;
+    }
+    LoopBs = tilingData.get_ubFreeSize() / LoopBs;
+    LoopBs = LoopBs / DTYPE_INDICES_DATA_BLOCK * DTYPE_INDICES_DATA_BLOCK;
+    if (LoopBs == 0) {
+        printf("LoopBs is zero\n");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
     if (CheckNullPointer(context, "context") != ge::GRAPH_SUCCESS) {
@@ -146,6 +179,9 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
         return ge::GRAPH_FAILED;
     }
 
+    if (CheckTilingDataValid(tilingData) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     return ge::GRAPH_SUCCESS;
