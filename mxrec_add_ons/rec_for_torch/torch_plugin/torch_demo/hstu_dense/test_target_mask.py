@@ -1,8 +1,12 @@
+import os
+from copy import deepcopy
 from dataclasses import dataclass
-import itertools
 
 import pytest
 import torch
+
+MAX_NUM_TARGET = 512
+BLOCK_HEIGHT: int = 256
 
 
 @dataclass
@@ -20,11 +24,15 @@ class ScoreShapeParam:
     num_context: int = 0
     num_history: int = 0
     target_group_size: int = 0
-    block_h: int = 0
-    block_w: int = 0
+    block_h: int = BLOCK_HEIGHT
+    block_w: int = BLOCK_HEIGHT
 
 
 def _check_param_valid(seq_len, num_target, num_context, target_group_size) -> bool:
+    if num_target is None:
+        return True
+    if num_context is None:
+        return True
     if seq_len < num_target + num_context:
         return False
     if target_group_size > num_target:
@@ -125,9 +133,7 @@ def process_one_block_of_target_mask(
             or target_mask_end_on_score <= col_on_score_range[0]
         ):
             continue
-        mask_len = (
-            min(col_on_score_range[1], target_mask_end_on_score) - mask_col_start_in_score
-        )
+        mask_len = min(col_on_score_range[1], target_mask_end_on_score) - mask_col_start_in_score
         block_mask_this_line = block_mask[row_id_on_block, :]
         _duplicate(block_mask_this_line[mask_start_in_block:], 0, mask_len)
 
@@ -145,15 +151,15 @@ def _compute_target_mask_one_block_npu(
     for row_id_on_block in range(block_param.block_h):
         row_on_score = row_id_on_block + block_param.block_id_q * block_param.block_h
         block_mask_this_line = block_mask[row_id_on_block, :]
-        if _is_this_line_on_context(row_on_score, param):
+        if param.num_context is not None and _is_this_line_on_context(row_on_score, param):
             _process_line_on_context(block_mask_this_line, col_on_score_range, param)
         else:
             # 滿足causul的条件一定不满足在context
             _process_line_with_causal(
                 block_mask_this_line, row_on_score, col_on_score_range, param
             )
-
-    process_one_block_of_target_mask(block_mask, block_param, param)
+    if param.num_target is not None:
+        process_one_block_of_target_mask(block_mask, block_param, param)
     return block_mask
 
 
@@ -173,14 +179,14 @@ def _compute_target_mask_one_block_gpu(
             col_on_score = (
                 col_id_on_block + block_param.block_id_k * block_param.block_w
             )
-            if GPUSmit.is_this_point_in_context(
-                row_on_score, param.num_context, col_on_score, param.num_history
+            if param.num_context is not None and GPUSmit.is_this_point_in_context(
+                    row_on_score, param.num_context, col_on_score, param.num_history
             ):
                 continue
             if GPUSmit.is_this_point_in_casual_mask(row_on_score, col_on_score):
                 block_mask[row_id_on_block][col_id_on_block] = 0
-            if GPUSmit.is_this_point_in_target_mask(
-                row_on_score, col_on_score, param.num_history, param.target_group_size
+            if param.num_context is not None and GPUSmit.is_this_point_in_target_mask(
+                    row_on_score, col_on_score, param.num_history, param.target_group_size
             ):
                 block_mask[row_id_on_block][col_id_on_block] = 0
     return block_mask
@@ -188,7 +194,7 @@ def _compute_target_mask_one_block_gpu(
 
 def compute_target_mask_each_block_concat(
     score_shape_param: ScoreShapeParam, use_npu
-) -> list[torch.Tensor]:
+) -> torch.Tensor:
     block_num_on_q = (
         score_shape_param.seq_len + score_shape_param.block_h - 1
     ) // score_shape_param.block_h
@@ -220,9 +226,7 @@ def compute_target_mask_each_block_concat(
             score_mask_blocks[block_id_q], dim=1
         )
     score_mask = torch.concat(score_mask_blocks, dim=0)
-    score_mask_without_padding = score_mask[
-        : score_shape_param.seq_len, : score_shape_param.seq_len
-    ]
+    score_mask_without_padding = score_mask[:score_shape_param.seq_len, :score_shape_param.seq_len]
     return score_mask_without_padding
 
 
@@ -234,41 +238,38 @@ def write_tensor2file(tensor: torch.Tensor):
             f.write(one_line_str + "\n")
 
 
-test_param_all = {
-    "seq_len": [64],
-    "num_target": [16],
-    "num_context": [16],
-    "target_group_size": [4],
-    "block_height": [8],
-    "block_weight": [8],
-}
+def cached_create_causal_mask(param: ScoreShapeParam) -> torch.Tensor:
+    cached_file = f"cached_target_mask{param.target_group_size}.pt"
+    if os.path.exists(cached_file):
+        mask = torch.tril(torch.ones(param.seq_len, param.seq_len))
+        mask[:param.num_context, :param.seq_len - param.num_target] = 1
+        if param.num_target > 0:
+            target_mask = torch.load(cached_file)
+            mask[-param.num_target:, -param.num_target:] = target_mask[:param.num_target, :param.num_target]
+        return mask
+    else:
+        _param = deepcopy(param)
+        _param.num_target = MAX_NUM_TARGET
+        _param.seq_len += MAX_NUM_TARGET - param.num_target
+        mask = compute_target_mask_each_block_concat(_param, use_npu=False)
+        torch.save(mask[-MAX_NUM_TARGET:, -MAX_NUM_TARGET:], cached_file)
+        return mask[:param.seq_len, :param.seq_len]
 
 
-@dataclass
-class TestParam:
-    seq_len: int
-    num_target: int
-    num_context: int
-    target_group_size: int
-    block_height: int
-    block_weight: int
-
-
-@pytest.mark.parametrize(
-    "test_param", [TestParam(*v) for v in itertools.product(*test_param_all.values())]
-)
-def test_hstu_target_mask(test_param: TestParam):
-    seq_len = test_param.seq_len
-    num_target = test_param.num_target
-    num_context = test_param.num_context
-    target_group_size = test_param.target_group_size
-    block_height = test_param.block_height
-    block_weight = test_param.block_weight
-
+@pytest.mark.parametrize("seq_len", [64])
+@pytest.mark.parametrize("num_target", [16])
+@pytest.mark.parametrize("num_context", [16])
+@pytest.mark.parametrize("target_group_size", [4])
+@pytest.mark.parametrize("block_height", [8])
+@pytest.mark.parametrize("block_weight", [8])
+def test_hstu_target_mask(seq_len, num_target, num_context, target_group_size, block_height, block_weight):
     is_valid = _check_param_valid(seq_len, num_target, num_context, target_group_size)
     if not is_valid:
         raise RuntimeError("param is not valid")
-    num_history = seq_len - num_target
+    if num_target is not None:
+        num_history = seq_len - num_target
+    else:
+        num_history = seq_len
     score_shape_param = ScoreShapeParam(
         seq_len,
         num_target,
@@ -283,8 +284,8 @@ def test_hstu_target_mask(test_param: TestParam):
     write_tensor2file(result_npu)
     assert torch.allclose(
         result_gpu, result_npu, 1e-4, 1e-4
-    ), f"gloden {result_gpu} result {result_npu} not close"
+    ), f"golden {result_gpu} result {result_npu} not close"
 
 
 if __name__ == "__main__":
-    reuslt = test_hstu_target_mask(TestParam(65, 31, 17, 5, 8, 8))
+    result = test_hstu_target_mask(65, None, None, None, 8, 8)

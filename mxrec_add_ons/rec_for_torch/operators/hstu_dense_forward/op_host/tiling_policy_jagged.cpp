@@ -44,7 +44,7 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
     int64_t headDIM;
     int64_t seqLens;
 
-    auto seqOffsetQShape = context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX)->GetStorageShape();
+    auto seqOffsetQShape = context->GetOptionalInputShape(INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX)->GetStorageShape();
     batchSize = seqOffsetQShape.GetDim(0) - 1;
 
     OPS_CHECK((batchSize == 0 || batchSize > MAX_BATCH_SIZE),
@@ -73,8 +73,8 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
 
     uint32_t masktype = tiling.get_maskType();
     if (masktype == 0) {
-        auto numCtxShape = context->GetInputShape(INPUT_INDEX_T::NUM_CONTEXT_INDEX)->GetStorageShape();
-        auto numTargetShape = context->GetInputShape(INPUT_INDEX_T::NUM_TARGET_INDEX)->GetStorageShape();
+        auto numCtxShape = context->GetOptionalInputShape(INPUT_INDEX_T::NUM_CONTEXT_INDEX)->GetStorageShape();
+        auto numTargetShape = context->GetOptionalInputShape(INPUT_INDEX_T::NUM_TARGET_INDEX)->GetStorageShape();
         int64_t batchSizeCtx = numCtxShape.GetDim(0);
         OPS_CHECK(batchSizeCtx != batchSize,
                   OPS_LOG_E("", "The length of num_context expect %lld, but get %lld", batchSize, batchSizeCtx),

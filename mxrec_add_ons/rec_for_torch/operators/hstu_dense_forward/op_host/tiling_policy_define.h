@@ -80,6 +80,8 @@ constexpr int COMPUTE_PIPE_NUM = 3;
 constexpr int TRANS_PIPE_NUM = 4;
 constexpr int TRANS_TASK_NUM = 3;
 
+constexpr int MAX_NUM_CONTEXT = BLOCK_HEIGHT;
+constexpr int MAX_NUM_TARGET = 512;
 }
 
 #endif

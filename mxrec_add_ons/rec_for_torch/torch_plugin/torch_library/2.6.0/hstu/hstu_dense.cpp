@@ -155,16 +155,29 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_backward_i
 
 TORCH_LIBRARY_FRAGMENT(mxrec, m)
 {
-    m.def("hstu_dense(Tensor q, Tensor k, Tensor v, Tensor? mask=None, Tensor? attnBias=None, \
-           int maskType=0, int maxSeqLen=0, float siluScale=0.0) -> Tensor");
-    m.def("hstu_dense_backward(Tensor grad, Tensor q, Tensor k, Tensor v, Tensor? mask, Tensor? attnBias, \
-           int maskType=0, int maxSeqLen=0, float siluScale=0.0) -> (Tensor, Tensor, Tensor, Tensor)");
+    m.def("hstu_dense(Tensor q, "
+          "           Tensor k, "
+          "           Tensor v, "
+          "           Tensor? mask=None, "
+          "           Tensor? attn_bias=None, "
+          "           int mask_type=0, "
+          "           int max_seq_len=0, "
+          "           float silu_scale=0.0) -> Tensor");
+    m.def("hstu_dense_backward(Tensor grad, "
+          "                    Tensor q, "
+          "                    Tensor k, "
+          "                    Tensor v, "
+          "                    Tensor? mask, "
+          "                    Tensor? attn_bias, "
+          "                    int mask_type=0, "
+          "                    int max_seq_len=0, "
+          "                    float silu_scale=0.0) -> (Tensor, Tensor, Tensor, Tensor)");
 }
 
 TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
 {
-    m.impl("hstu_dense", &hstu_dense_forward_impl_npu);
-    m.impl("hstu_dense_backward", &hstu_dense_backward_impl_npu);
+    m.impl("hstu_dense", TORCH_FN(hstu_dense_forward_impl_npu));
+    m.impl("hstu_dense_backward", TORCH_FN(hstu_dense_backward_impl_npu));
 }
 
 class HstuDenseNpuFusion : public torch::autograd::Function<HstuDenseNpuFusion> {
@@ -233,6 +246,6 @@ at::Tensor hstu_dense_autograd(const at::Tensor& q,
 
 TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
 {
-    m.impl("hstu_dense", &hstu_dense_autograd);
+    m.impl("hstu_dense", TORCH_FN(hstu_dense_autograd));
 }
 }

@@ -16,28 +16,38 @@ See the License for the specific language governing permissions and
 #include "hstu_common.h"
 
 namespace hstu {
-at::Tensor hstu_varlen_forward_impl_npu(const at::Tensor& q,
-                                        const at::Tensor& k,
-                                        const at::Tensor& v,
-                                        const c10::optional<at::Tensor>& mask,
-                                        const c10::optional<at::Tensor>& attnBias,
-                                        const int64_t maskType,
-                                        const int64_t maxSeqLen,
-                                        const int64_t maxSeqLenK,
-                                        const double siluScale,
-                                        const at::Tensor& seqOffset,
-                                        const at::Tensor& seqOffsetK)
+at::Tensor hstu_paged_forward_impl_npu(
+    const at::Tensor& q,
+    const at::Tensor& k,
+    const at::Tensor& v,
+    const at::Tensor& kvCache,
+    const c10::optional<at::Tensor>& mask,
+    const c10::optional<at::Tensor>& attnBias,
+    const int64_t maskType,
+    const int64_t maxSeqLen,
+    const int64_t maxSeqLenK,
+    const double siluScale,
+    const at::Tensor& seqOffset,
+    const at::Tensor& seqOffsetK,
+    const at::Tensor& seqOffsetT,
+    const at::Tensor& pageOffsets,
+    const at::Tensor& pageIds,
+    const at::Tensor& lastPageLen,
+    const at::Tensor& numTarget)
 {
     TORCH_CHECK(q.dim() == CONST_3, "The q should be 3D in jagged layout");
 
     auto acSeqOffset = seqOffset;
     auto acSeqOffsetK = seqOffsetK;
-    TORCH_CHECK(acSeqOffset.size(0) >= CONST_2, "acSeqOffset params error should have at least two element.");
+    auto acSeqOffsetT = seqOffsetT;
+    TORCH_CHECK(acSeqOffset.size(0) >= CONST_2, "acSeqOffsetq params error should have at least two element.");
     TORCH_CHECK(acSeqOffsetK.size(0) >= CONST_2, "acSeqOffsetK params error should have at least two element.");
+    TORCH_CHECK(acSeqOffsetT.size(0) >= CONST_2, "acSeqOffsetT params error should have at least two element.");
 
     auto denseQ = q.contiguous();
     auto denseK = k.contiguous();
     auto denseV = v.contiguous();
+    auto denseKvCache = kvCache.contiguous();
     auto denseBias = c10::value_or_else(attnBias, [] { return at::Tensor(); });
     auto maskNpu = c10::value_or_else(mask, [] { return at::Tensor(); });
 
@@ -48,16 +58,10 @@ at::Tensor hstu_varlen_forward_impl_npu(const at::Tensor& q,
     auto attnOutput = at::empty_like(denseQ);
     double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
 
-    const auto _acSeqOffsetT = at::Tensor();
-    const auto _kvCacheNpu = at::Tensor();
-    const auto _pageOffsets = at::Tensor();
-    const auto _pageIds = at::Tensor();
-    const auto _lastPageLen = at::Tensor();
     const auto _numContext = at::Tensor();
-    const auto _numTarget = at::Tensor();
-    const auto _actTargetGroupSize = int();
+    const auto _actargetGroupSize = int();
 
-    const char *layout = "jagged";
+    const char *layout = "paged";
     EXEC_NPU_CMD(aclnnHstuDenseForward,
                  denseQ,
                  denseK,
@@ -66,32 +70,46 @@ at::Tensor hstu_varlen_forward_impl_npu(const at::Tensor& q,
                  denseBias,
                  acSeqOffset,
                  acSeqOffsetK,
-                 _acSeqOffsetT,
-                 _kvCacheNpu,
-                 _pageOffsets,
-                 _pageIds,
-                 _lastPageLen,
+                 acSeqOffsetT,
+                 denseKvCache,
+                 pageOffsets,
+                 pageIds,
+                 lastPageLen,
                  _numContext,
-                 _numTarget,
+                 numTarget,
                  maskType,
                  maxSeqLen,
                  maxSeqLenK,
                  realSiluScale,
                  layout,
-                 _actTargetGroupSize,
+                 _actargetGroupSize,
                  attnOutput);
     return attnOutput;
 }
 
 TORCH_LIBRARY_FRAGMENT(mxrec, m)
 {
-    m.def("hstu_varlen(Tensor q, Tensor k, Tensor v, Tensor? mask=None, Tensor? attnBias=None, \
-           int maskType=0, int maxSeqLen=0, int maxSeqLenK=0, float siluScale=0.0, Tensor seqOffset=None, \
-           Tensor seqOffsetK=None) -> Tensor");
+    m.def("hstu_paged(Tensor q, "
+          "           Tensor k, "
+          "           Tensor v, "
+          "           Tensor kv_cache=None, "
+          "           Tensor? mask=None, "
+          "           Tensor? attn_bias=None,"
+          "           int mask_type=0, "
+          "           int max_seq_len=0, "
+          "           int max_seq_len_k=0, "
+          "           float silu_scale=0.0, "
+          "           Tensor seq_offset=None, "
+          "           Tensor seq_offset_k=None, "
+          "           Tensor seq_offset_t=None, "
+          "           Tensor page_offsets=None, "
+          "           Tensor page_ids=None, "
+          "           Tensor last_page_len=None, "
+          "           Tensor num_target=None) -> Tensor");
 }
 
 TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
 {
-    m.impl("hstu_varlen", &hstu_varlen_forward_impl_npu);
+    m.impl("hstu_paged", TORCH_FN(hstu_paged_forward_impl_npu));
 }
 }

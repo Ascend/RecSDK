@@ -111,15 +111,15 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Input("seq_offset_q")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT64, ge::DT_INT32})
+            .DataType({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("seq_offset_k")
             .ParamType(OPTIONAL)
-            .Follow("seq_offset_q", FollowType::DTYPE)
+            .DataType({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("seq_offset_t")
             .ParamType(OPTIONAL)
-            .Follow("seq_offset_q", FollowType::DTYPE)
+            .DataType({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("kv_cache")
             .ParamType(OPTIONAL)
@@ -127,23 +127,23 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Input("page_offsets")
             .ParamType(OPTIONAL)
-            .Follow("seq_offset_q", FollowType::DTYPE)
+            .DataType({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("page_ids")
             .ParamType(OPTIONAL)
-            .Follow("seq_offset_q", FollowType::DTYPE)
+            .DataType({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("last_page_len")
             .ParamType(OPTIONAL)
-            .Follow("seq_offset_q", FollowType::DTYPE)
+            .DataType({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("num_context")
             .ParamType(OPTIONAL)
-            .Follow("seq_offset_q", FollowType::DTYPE)
+            .DataType({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("num_target")
             .ParamType(OPTIONAL)
-            .Follow("seq_offset_q", FollowType::DTYPE)
+            .DataType({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Output("attn_output")
             .ParamType(REQUIRED)

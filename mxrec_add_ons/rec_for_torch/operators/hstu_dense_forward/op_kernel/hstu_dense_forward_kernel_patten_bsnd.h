@@ -25,16 +25,13 @@ See the License for the specific language governing permissions and
 #include "lib/matmul_intf.h"
 
 #include "hstu_dense_causal_mask.h"
+#include "hstu_common_const.h"
 
 using namespace AscendC;
 
 namespace HstuDenseForward {
 
-constexpr uint32_t MAX_BATCH_SIZE = 2048;
-constexpr int USE_QUEUE_NUM = 1;
-constexpr int DATA_ALIGN_BYTES = 32;
 constexpr int VEC_PER_PROCESS = 32;
-constexpr int MAX_INDICS_ONE_BLOCK = 100;
 constexpr int UB_SIZE = 170 * 1024;  // 170KB
 constexpr int QUEUE_IN_NUM = 2;
 constexpr int SPLIT_CORE = 2;
@@ -43,8 +40,6 @@ constexpr int ALIGN_16 = 16;
 constexpr int VCORE_NUM_IN_ONE_AIC = 2;
 constexpr int COMPUTE_PIPE_NUM = 3;
 constexpr int TRANS_PIPE_NUM = 4;
-
-constexpr int INVALID_TASK_ID = -1;
 
 struct Args {
     // hstu normal
@@ -392,10 +387,11 @@ public:
         return needMask;
     }
 
+    template<typename MaskInfoType>
     __aicore__ inline bool DoMaskInitOptional(
         LocalTensor<qType>& inMaskLt,
         LocalTensor<float>& inMaskLtFp32,
-        uint32_t causalMask,
+        MaskInfoType& maskinfo,
         int64_t maskOffset,
         int64_t thisLen,
         int64_t blockOffset,
@@ -405,9 +401,21 @@ public:
         bool needMask = false;
         if (maskType == CausalMaskT::MASK_TRIL) {
             inMaskLtFp32 = queMaskIn.AllocTensor<float>();
-            needMask = GenMask(
-                inMaskLtFp32, causalMask, thisLen,
-                ((causalMask == 1) ? (blockOffset) : n), scale);
+            if constexpr (std::is_same<MaskInfoType, uint32_t>::value) {
+                // 处理 uint32_t 类型
+                needMask = GenMask(
+                    inMaskLtFp32,
+                    maskinfo,
+                    thisLen,
+                    ((maskinfo > 0) ? (blockOffset) : n),  // blockOffset为行号
+                    scale);
+            } else {
+                // 处理 BlockMaskParams 类型
+                BlockMaskGenerator blkMaskGen(maskinfo);
+                needMask =
+                    blkMaskGen.GenMask(inMaskLtFp32, blockOffset, thisLen / this->blockHeight, this->blockHeight);
+            }
+
             queMaskIn.EnQue(inMaskLtFp32);
         } else if (maskType == CausalMaskT::MASK_CUSTOME) {
             int64_t thisMaskOffset = maskOffset + blockOffset * xDim1;
@@ -438,12 +446,13 @@ public:
         }
     }
 
+    template<typename MaskInfoType>
     __aicore__ inline void VecScoreImpl(
         int64_t taskId,
         int64_t biasOffset,
         int64_t maskOffset,
         float scale,
-        uint32_t causalMask,
+        MaskInfoType& maskinfo,
         uint32_t m,
         uint32_t n)
     {
@@ -478,8 +487,8 @@ public:
             int64_t blockOffset = (total - remain) / blockHeight;
             DoBiasCopyOptional(biasLt, biasOffset, thisLen, blockOffset, n);
 
-            bool needMask = DoMaskInitOptional(inMaskLt, inMaskLtFp32, causalMask,
-                maskOffset, thisLen, blockOffset, scale, n);
+            bool needMask =
+                DoMaskInitOptional(inMaskLt, inMaskLtFp32, maskinfo, maskOffset, thisLen, blockOffset, scale, n);
 
             if (enableBias) {
                 CalcuScoreWithFloat32(inLt, biasLt, inMaskLt, inMaskLtFp32, tmpLt, tmpLtFp32,

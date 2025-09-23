@@ -19,9 +19,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from test_common_utils import init, get_chip, allclose, mask_tril, mask_none, mask_custom
-
-init()
+from test_common_utils import get_chip, allclose, MaskType, jagged_to_dense, dense_to_jagged
 
 
 def valen_data_gen(batch_size, max_seq_len, num_heads, attention_dim, data_type, mask_type):
@@ -50,7 +48,7 @@ def valen_data_gen(batch_size, max_seq_len, num_heads, attention_dim, data_type,
         seq_len_k = seq_lens_k[batch_id]
         rel_attn_bias[batch_id, :, 0:seq_len, 0:seq_len_k] = torch.rand(seq_len, seq_len_k).to(torch.float32)
 
-    if mask_type == mask_tril:
+    if mask_type == MaskType.TRIL:
         invalid_attn_mask = 1 - torch.triu(torch.ones(batch_size, num_heads, max_seq_len, max_seq_len_k), diagonal=1)
     else:
         invalid_attn_mask = torch.randint(0, 2, size=(batch_size, num_heads, max_seq_len, max_seq_len_k))
@@ -60,29 +58,6 @@ def valen_data_gen(batch_size, max_seq_len, num_heads, attention_dim, data_type,
 
 
 class TestHstuVarlenDemo:
-    @staticmethod
-    def jagged_to_dense(jagged_tensor, seq_lens, head_nums, atten_dim):
-        need_pad_seq = []
-        offset = 0
-        for seq_len in seq_lens:
-            src_tensor = jagged_tensor[offset: offset + seq_len, :, :].reshape(seq_len, head_nums, atten_dim)
-            need_pad_seq.append(src_tensor)
-            offset = offset + seq_len
-
-        dense_tensor = torch.nn.utils.rnn.pad_sequence(need_pad_seq, batch_first=True)
-        return dense_tensor
-
-    @staticmethod
-    def dense_to_jagged(q, dense_tensor, seq_lens):
-        tensor = torch.zeros_like(q).cpu()
-
-        offset = 0
-        for batch_id, seq_len in enumerate(seq_lens):
-            tensor[offset: offset + seq_len, :, :] = dense_tensor[batch_id, 0: seq_len, :, :]
-            offset = offset + seq_len
-
-        return tensor
-
     @staticmethod
     def custom_op_exec(q, k, v, seq_offset, seq_offset_k, bias, mask, max_seq_len, max_seq_len_k, enable_bias,
                        mask_type, silu_scale, data_type):
@@ -107,8 +82,9 @@ class TestHstuVarlenDemo:
         torch.npu.synchronize()
         return output.cpu().to(data_type).reshape(-1)
 
-    def gloden(self, q, k, v, seq_offset, seq_offset_k, bias, mask, max_seq_len, enable_bias, mask_type, silu_scale,
-               data_type):
+    @staticmethod
+    def golden_op_exec(q, k, v, seq_offset, seq_offset_k, bias, mask, max_seq_len, enable_bias, mask_type, silu_scale,
+                       data_type):
         head_nums = q.shape[1]
         head_dim = q.shape[2]
         batch_size = bias.shape[0]
@@ -121,9 +97,9 @@ class TestHstuVarlenDemo:
 
         silu_scale = 1 / max_seq_len if silu_scale == 0 else silu_scale
 
-        q_dens = self.jagged_to_dense(q, seq_lens, head_nums, head_dim).to(data_type).to("npu")
-        k_dens = self.jagged_to_dense(k, seq_lens_k, head_nums, head_dim).to(data_type).to("npu")
-        v_dens = self.jagged_to_dense(v, seq_lens_k, head_nums, head_dim).to(data_type).to("npu")
+        q_dens = jagged_to_dense(q, seq_lens, head_nums, head_dim).to(data_type).to("npu")
+        k_dens = jagged_to_dense(k, seq_lens_k, head_nums, head_dim).to(data_type).to("npu")
+        v_dens = jagged_to_dense(v, seq_lens_k, head_nums, head_dim).to(data_type).to("npu")
         mask = mask.to(data_type).to("npu")
         attn_bias = bias.to(data_type).to("npu")
 
@@ -139,18 +115,18 @@ class TestHstuVarlenDemo:
 
         qk_attn = F.silu(qk_attn) * silu_scale
 
-        if mask_type != mask_none:
+        if mask_type != MaskType.NONE:
             qk_attn = qk_attn * mask
 
         v_dens = v_dens.permute(0, 2, 1, 3)
 
         qk_attn = qk_attn.to(data_type)
-        atten_output = torch.matmul(qk_attn, v_dens)
-        atten_output = atten_output.permute(0, 2, 1, 3).cpu()
-        atten_output = self.dense_to_jagged(q, atten_output, seq_lens)
+        attn_output = torch.matmul(qk_attn, v_dens)
+        attn_output = attn_output.permute(0, 2, 1, 3).cpu()
+        attn_output = dense_to_jagged(q, attn_output, seq_lens)
 
         torch.npu.synchronize()
-        return atten_output.to(data_type).reshape(-1)
+        return attn_output.to(data_type).reshape(-1)
 
     def execute(self, batch_size, max_seq_len, head_num, head_dim, enable_bias, mask_type, silu_scale, data_type):
         q, k, v, seq_offset, seq_offset_k, bias, mask, max_seq_len, max_seq_len_k = valen_data_gen(
@@ -158,15 +134,15 @@ class TestHstuVarlenDemo:
         )
         output = self.custom_op_exec(q, k, v, seq_offset, seq_offset_k, bias, mask, max_seq_len, max_seq_len_k,
                                      enable_bias, mask_type, silu_scale, data_type)
-        gloden_res = self.gloden(q, k, v, seq_offset, seq_offset_k, bias, mask, max_seq_len, enable_bias,
-                                 mask_type, silu_scale, data_type)
+        golden = self.golden_op_exec(q, k, v, seq_offset, seq_offset_k, bias, mask, max_seq_len, enable_bias,
+                                     mask_type, silu_scale, data_type)
 
         if data_type == torch.bfloat16:
-            res = allclose(output, gloden_res, 1e-2, 1e-2)
+            res = allclose(output, golden, 1e-2, 1e-2)
         elif data_type == torch.float16:
-            res = allclose(output, gloden_res, 1e-3, 1e-3)
+            res = allclose(output, golden, 1e-3, 1e-3)
         else:
-            res = allclose(output, gloden_res, 1e-4, 1e-4)
+            res = allclose(output, golden, 1e-4, 1e-4)
         assert res
 
     @pytest.mark.parametrize("batch_size", [1, 16])
@@ -174,34 +150,34 @@ class TestHstuVarlenDemo:
     @pytest.mark.parametrize("max_seq_len", [15, 1024])
     @pytest.mark.parametrize("head_dim", [16, 128])
     @pytest.mark.parametrize("enable_bias", [True, False])
-    @pytest.mark.parametrize("mask_type", [mask_tril, mask_none, mask_custom])
+    @pytest.mark.parametrize("mask_type", [MaskType.TRIL, MaskType.NONE, MaskType.CUSTOM])
     @pytest.mark.parametrize("silu_scale", [0, 1 / 1024])
     @pytest.mark.parametrize("data_type", [torch.float32, torch.float16, torch.bfloat16])
     @pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P.")
-    def test_hstu_dens_forward(self, batch_size, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
-                               data_type):
+    def test_hstu_varlen_forward(self, batch_size, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
+                                 data_type):
         self.execute(batch_size, max_seq_len, head_num, head_dim, enable_bias, mask_type, silu_scale, data_type)
 
     @pytest.mark.parametrize("head_num", [2])
     @pytest.mark.parametrize("max_seq_len", [2570])
     @pytest.mark.parametrize("head_dim", [256])
     @pytest.mark.parametrize("enable_bias", [True, False])
-    @pytest.mark.parametrize("mask_type", [mask_tril, mask_none, mask_custom])
+    @pytest.mark.parametrize("mask_type", [MaskType.TRIL, MaskType.NONE, MaskType.CUSTOM])
     @pytest.mark.parametrize("silu_scale", [0, 1 / 1024])
     @pytest.mark.parametrize("data_type", [torch.float32, torch.float16, torch.bfloat16])
     @pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P.")
-    def test_hstu_dens_forward_128bs(self, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
-                                     data_type):
+    def test_hstu_varlen_forward_128bs(self, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
+                                       data_type):
         self.execute(128, max_seq_len, head_num, head_dim, enable_bias, mask_type, silu_scale, data_type)
 
     @pytest.mark.parametrize("head_num", [2])
     @pytest.mark.parametrize("max_seq_len", [16])
     @pytest.mark.parametrize("head_dim", [256])
     @pytest.mark.parametrize("enable_bias", [True, False])
-    @pytest.mark.parametrize("mask_type", [mask_tril, mask_none, mask_custom])
+    @pytest.mark.parametrize("mask_type", [MaskType.TRIL, MaskType.NONE, MaskType.CUSTOM])
     @pytest.mark.parametrize("silu_scale", [0, 1 / 1024])
     @pytest.mark.parametrize("data_type", [torch.float32, torch.float16, torch.bfloat16])
     @pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P.")
-    def test_hstu_dens_forward_2048bs(self, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
-                                      data_type):
+    def test_hstu_varlen_forward_2048bs(self, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
+                                        data_type):
         self.execute(2048, max_seq_len, head_num, head_dim, enable_bias, mask_type, silu_scale, data_type)
