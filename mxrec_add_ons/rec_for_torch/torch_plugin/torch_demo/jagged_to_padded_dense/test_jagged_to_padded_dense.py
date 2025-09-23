@@ -139,14 +139,14 @@ test_params = {
     "use_list_max_lengths": [True, False],
     "values_data_type": _VALUES_DATA_TYPES,
     "offsets_data_type": [torch.int32, torch.int64],
-    "is_mxrec": [True, False],
 }
 
 
 @pytest.mark.parametrize("config", [
     ExecuteConfig(*v) for v in itertools.product(*test_params.values())
 ])
-def test_jagged_to_padded_dense(config: ExecuteConfig):
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_jagged_to_padded_dense(config: ExecuteConfig, is_mxrec: bool):
     """
     测试不规则张量到填充密集张量的转换算子
     测试逻辑:
@@ -163,7 +163,6 @@ def test_jagged_to_padded_dense(config: ExecuteConfig):
     use_list_max_lengths = config.use_list_max_lengths
     values_data_type = config.values_data_type
     offsets_data_type = config.offsets_data_type
-    is_mxrec = config.is_mxrec
 
     # 1. 生成测试数据
     data_types = (values_data_type, offsets_data_type)
