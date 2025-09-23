@@ -28,30 +28,43 @@ torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 DEVICE = "npu:0"
 
 
-def jagged_to_padded_dense_wrapper(values, offsets, max_lengths, padding_value):
-    return JaggedToPaddedDense.apply(values, offsets, max_lengths, padding_value)
+def jagged_to_padded_dense_wrapper(values, offsets, max_lengths, padding_value, is_mxrec):
+    return JaggedToPaddedDense.apply(values, offsets, max_lengths, padding_value, is_mxrec)
 
 
 class JaggedToPaddedDense(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, values, offsets, max_lengths, padding_value):
+    def forward(ctx, values, offsets, max_lengths, padding_value, is_mxrec):
         ctx.save_for_backward(*offsets)
         ctx.total_L = values.shape[0]
-        return torch.ops.mxrec.jagged_to_padded_dense_forward(
-            values=values.to(DEVICE),
-            offsets=offsets,
-            max_lengths=max(max_lengths),
-            padding_value=padding_value,
-        )
+        ctx.is_mxrec = is_mxrec
+        if is_mxrec:
+            return torch.ops.mxrec.jagged_to_padded_dense_forward(
+                values=values.to(DEVICE),
+                offsets=offsets,
+                max_lengths=max(max_lengths),
+                padding_value=padding_value,
+            )
+        else:
+            return torch.ops.fbgemm.jagged_to_padded_dense_forward(
+                values=values.to(DEVICE),
+                offsets=offsets,
+                max_lengths=max(max_lengths),
+                padding_value=padding_value,
+            )
 
     @staticmethod
     def backward(ctx, grad_output):
         offsets = list(ctx.saved_tensors)
         total_L = ctx.total_L
+        is_mxrec = ctx.is_mxrec
         if total_L is None:
             total_L = offsets[0][-1].item()
-        grad_values = torch.ops.mxrec.jagged_to_padded_dense_backward(grad_output.to(DEVICE), offsets, total_L)
-        return grad_values, None, None, None
+        if is_mxrec:
+            grad_values = torch.ops.mxrec.jagged_to_padded_dense_backward(grad_output.to(DEVICE), offsets, total_L)
+        else:
+            grad_values = torch.ops.fbgemm.jagged_to_padded_dense_backward(grad_output.to(DEVICE), offsets, total_L)
+        return grad_values, None, None, None, None
 
 
 def generate_jagged_tensor(batch_size, max_seq_len, num_heads, attention_dim):
@@ -93,11 +106,13 @@ def generate_jagged_tensor(batch_size, max_seq_len, num_heads, attention_dim):
 @pytest.mark.parametrize("num_heads", [2, 8])
 @pytest.mark.parametrize("attention_dim", [32])
 @pytest.mark.parametrize("use_list_max_lengths", [True, False])
+@pytest.mark.parametrize("is_mxrec", [True, False])
 def test_jagged_to_padded_dense(batch_size,
                                 max_seq_len,
                                 num_heads,
                                 attention_dim,
-                                use_list_max_lengths):
+                                use_list_max_lengths,
+                                is_mxrec):
     """
     测试不规则张量到填充密集张量的转换算子
     测试逻辑:
@@ -125,12 +140,20 @@ def test_jagged_to_padded_dense(batch_size,
     )
 
     # 4. 调用NPU算子
-    npu_dense = torch.ops.mxrec.jagged_to_padded_dense(
-        input_flat.to(DEVICE),
-        [fbgemm_offsets.to(DEVICE)],
-        [max_seq_len] if use_list_max_lengths else max_seq_len,
-        0.0
-    )
+    if is_mxrec:
+        npu_dense = torch.ops.mxrec.jagged_to_padded_dense(
+            input_flat.to(DEVICE),
+            [fbgemm_offsets.to(DEVICE)],
+            [max_seq_len] if use_list_max_lengths else max_seq_len,
+            0.0
+        )
+    else:
+        npu_dense = torch.ops.fbgemm.jagged_to_padded_dense(
+            input_flat.to(DEVICE),
+            [fbgemm_offsets.to(DEVICE)],
+            [max_seq_len] if use_list_max_lengths else max_seq_len,
+            0.0
+        )
 
     # 5. 前向传播结果比对
     assert torch.allclose(
@@ -146,19 +169,28 @@ def test_jagged_to_padded_dense(batch_size,
     input_flat_npu_py = input_flat.clone().to(DEVICE).requires_grad_(True)
 
     # 7. 计算NPU前向传播
-    npu_dense_for_grad = torch.ops.mxrec.jagged_to_padded_dense(
-        input_flat_npu,
-        [fbgemm_offsets.to(DEVICE)],
-        [max_seq_len] if use_list_max_lengths else max_seq_len,
-        0.0
-    )
+    if is_mxrec:
+        npu_dense_for_grad = torch.ops.mxrec.jagged_to_padded_dense(
+            input_flat_npu,
+            [fbgemm_offsets.to(DEVICE)],
+            [max_seq_len] if use_list_max_lengths else max_seq_len,
+            0.0
+        )
+    else:
+        npu_dense_for_grad = torch.ops.fbgemm.jagged_to_padded_dense(
+            input_flat_npu,
+            [fbgemm_offsets.to(DEVICE)],
+            [max_seq_len] if use_list_max_lengths else max_seq_len,
+            0.0
+        )
 
     # 8. 计算NPU python实现前向传播
     npu_py_dense_for_grad = jagged_to_padded_dense_wrapper(
         input_flat_npu_py,
         [fbgemm_offsets.to(DEVICE)],
         [max_seq_len],
-        0.0
+        0.0,
+        is_mxrec
     )
 
     # 9. 生成随机梯度(与输出形状相同)

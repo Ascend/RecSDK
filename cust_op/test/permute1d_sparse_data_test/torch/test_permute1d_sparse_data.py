@@ -44,7 +44,7 @@ EXTRA_T = [1, 0, -1]
 SHAPE_LIST = list(itertools.product(BASE_T, EXTRA_T))
 
 
-def get_result(tensors: dict, device: str = 'cpu'):
+def get_result(tensors: dict, device: str = 'cpu', is_mxrec: bool = False):
     tensors = {k: torch.from_numpy(v) if isinstance(v, np.ndarray) else v for k, v in tensors.items()}
 
     # 根据device类型进行npu转换
@@ -52,14 +52,18 @@ def get_result(tensors: dict, device: str = 'cpu'):
         torch.npu.set_device(device)
         tensors = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in tensors.items()}
 
-    results = torch.ops.fbgemm.permute_1D_sparse_data(**tensors)
+    if is_mxrec:
+        results = torch.ops.mxrec.permute_1D_sparse_data(**tensors)
+    else:
+        results = torch.ops.fbgemm.permute_1D_sparse_data(**tensors)
 
     if device and device.startswith('npu'):
         torch_npu.npu.synchronize()
     return [x.cpu() if isinstance(x, torch.Tensor) else x for x in results]
 
 
-def test_very_large_input():
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_very_large_input(is_mxrec):
     """
     测试非常大的输入情况
     """
@@ -80,7 +84,7 @@ def test_very_large_input():
     }
 
     golden = get_result(params)
-    result = get_result(params, DEVICE)
+    result = get_result(params, DEVICE, is_mxrec)
 
     for gt, pred in zip(golden, result):
         assert type(gt) is type(pred)
@@ -91,7 +95,8 @@ def test_very_large_input():
 @pytest.mark.parametrize("types", TYPE_LIST)
 @pytest.mark.parametrize("shapes", SHAPE_LIST)
 @pytest.mark.parametrize("enable_permuted_sum", [True, False])
-def test_permute1d_sparse_data(types, shapes, enable_permuted_sum):
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_permute1d_sparse_data(types, shapes, enable_permuted_sum, is_mxrec):
     """
     测试正常情况下的permute1d_sparse_data算子功能
     Params:
@@ -121,7 +126,7 @@ def test_permute1d_sparse_data(types, shapes, enable_permuted_sum):
     }
 
     golden = get_result(params)
-    result = get_result(params, DEVICE)
+    result = get_result(params, DEVICE, is_mxrec)
 
     for gt, pred in zip(golden, result):
         assert type(gt) is type(pred)
@@ -129,7 +134,8 @@ def test_permute1d_sparse_data(types, shapes, enable_permuted_sum):
             assert torch.allclose(gt, pred, atol=1e-4)
 
 
-def test_empty_input():
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_empty_input(is_mxrec):
     """
     测试空输入的情况
     """
@@ -142,11 +148,12 @@ def test_empty_input():
     }
 
     with pytest.raises(RuntimeError):
-        result = get_result(params, DEVICE)
+        result = get_result(params, DEVICE, is_mxrec)
         assert result is not None
 
 
-def test_invalid_weights_length():
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_invalid_weights_length(is_mxrec):
     """
     测试weights长度与values不匹配的情况
     """
@@ -160,11 +167,12 @@ def test_invalid_weights_length():
     }
 
     with pytest.raises(RuntimeError):
-        result = get_result(params, DEVICE)
+        result = get_result(params, DEVICE, is_mxrec)
         assert result is not None
 
 
-def test_2d_input():
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_2d_input(is_mxrec):
     """
     测试输入为2D的情况
     """
@@ -178,5 +186,5 @@ def test_2d_input():
     }
 
     with pytest.raises(RuntimeError):
-        result = get_result(params, DEVICE)
+        result = get_result(params, DEVICE, is_mxrec)
         assert result is not None

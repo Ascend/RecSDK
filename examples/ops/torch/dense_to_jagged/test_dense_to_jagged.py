@@ -38,8 +38,8 @@ OFFSET_DATATYPE = [torch.int32, torch.int64]  # 偏移量数据类型
 TYPE_LIST = list(itertools.product(DENSE_DATATYPE, OFFSET_DATATYPE))
 
 
-def dense_to_jagged_wrapper(dense, offsets, total_L=None):
-    return DenseToJagged.apply(dense, offsets, total_L)
+def dense_to_jagged_wrapper(dense, offsets, is_mxrec, total_L=None):
+    return DenseToJagged.apply(dense, offsets, is_mxrec, total_L)
 
 
 def jagged_to_padded_dense(values, offsets, max_lengths, padding_value):
@@ -53,11 +53,15 @@ def jagged_to_padded_dense(values, offsets, max_lengths, padding_value):
 
 class DenseToJagged(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, dense, offsets, total_L=None):
+    def forward(ctx, dense, offsets, is_mxrec, total_L=None):
         ctx.save_for_backward(*offsets)
+        ctx.is_mxrec = is_mxrec
         if total_L is None:
             total_L = offsets[0][-1].item()
-        out0, out1 = torch.ops.mxrec.dense_to_jagged(dense.to(DEVICE), offsets, total_L)
+        if is_mxrec:
+            out0, out1 = torch.ops.mxrec.dense_to_jagged(dense.to(DEVICE), offsets, total_L)
+        else:
+            out0, out1 = torch.ops.fbgemm.dense_to_jagged(dense.to(DEVICE), offsets, total_L)
         ctx.dense_shape = dense.shape
         return out0.to(DEVICE), out1
 
@@ -65,16 +69,25 @@ class DenseToJagged(torch.autograd.Function):
     def backward(ctx, grad_out0, grad_out1):
         offsets = list(ctx.saved_tensors)
         max_len = ctx.dense_shape[1]
-        grad_dense = torch.ops.mxrec.jagged_to_padded_dense(
-            values=grad_out0.to(DEVICE),
-            offsets=offsets,
-            max_lengths=max([max_len]),
-            padding_value=0.0,
-        )
-        return grad_dense, None, None
+        is_mxrec = ctx.is_mxrec
+        if is_mxrec:
+            grad_dense = torch.ops.mxrec.jagged_to_padded_dense(
+                values=grad_out0.to(DEVICE),
+                offsets=offsets,
+                max_lengths=max([max_len]),
+                padding_value=0.0,
+            )
+        else:
+            grad_dense = torch.ops.fbgemm.jagged_to_padded_dense(
+                values=grad_out0.to(DEVICE),
+                offsets=offsets,
+                max_lengths=max([max_len]),
+                padding_value=0.0,
+            )
+        return grad_dense, None, None, None
 
 
-def get_result(device, denses, offsets, types, output_size=None):
+def get_result(device, denses, offsets, types, output_size=None, is_mxrec=False):
     dense_datatype, offset_datatype = types
     dense_torch = torch.from_numpy(denses).to(dense_datatype).to(device)
     offsets_torch = torch.from_numpy(offsets).to(offset_datatype).to(device)
@@ -83,14 +96,18 @@ def get_result(device, denses, offsets, types, output_size=None):
     jagged_id_offset = torch.ops.fbgemm.asynchronous_complete_cumsum(offsets_torch)
 
     # 执行核心操作：稠密张量→不规则张量
-    jagged_embedding = torch.ops.fbgemm.dense_to_jagged(dense_torch, [jagged_id_offset], output_size)[0]
+    if is_mxrec:
+        jagged_embedding = torch.ops.mxrec.dense_to_jagged(dense_torch, [jagged_id_offset], output_size)[0]
+    else:
+        jagged_embedding = torch.ops.fbgemm.dense_to_jagged(dense_torch, [jagged_id_offset], output_size)[0]
     return jagged_embedding.cpu()
 
 
 @pytest.mark.parametrize("dims", DIM_LIST)
 @pytest.mark.parametrize("types", TYPE_LIST)
 @pytest.mark.parametrize("output_size_type", ["none", "exact"])  # 测试不同output_size场景
-def test_dense_to_jagged(dims, types, output_size_type):
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_dense_to_jagged(dims, types, output_size_type, is_mxrec):
     dense_dim0, dense_dim1, dense_dim2 = dims
     # 1. 生成随机输入数据
     denses = np.random.randn(dense_dim0, dense_dim1, dense_dim2).astype(np.float32)
@@ -106,7 +123,7 @@ def test_dense_to_jagged(dims, types, output_size_type):
 
     # 2. 分别获取CPU和NPU结果
     golden_result = get_result(torch.device("cpu"), denses, offsets, types, output_size)
-    npu_result = get_result(torch.device(DEVICE), denses, offsets, types, output_size)
+    npu_result = get_result(torch.device(DEVICE), denses, offsets, types, output_size, is_mxrec)
 
     # 3. 结果比对（允许1e-4的误差）
     # 正常情况应该完全匹配
@@ -126,16 +143,24 @@ def test_dense_to_jagged(dims, types, output_size_type):
     input_dense_npu_py = dense_torch.clone().to(torch.float32).to(DEVICE).requires_grad_(True)
 
     # 7. 计算NPU前向传播
-    npu_jagged_for_grad = torch.ops.mxrec.dense_to_jagged(
-        input_dense_npu,
-        [jagged_id_offset.to(DEVICE)],
-        output_size
-    )[0]
+    if is_mxrec:
+        npu_jagged_for_grad = torch.ops.mxrec.dense_to_jagged(
+            input_dense_npu,
+            [jagged_id_offset.to(DEVICE)],
+            output_size
+        )[0]
+    else:
+        npu_jagged_for_grad = torch.ops.fbgemm.dense_to_jagged(
+            input_dense_npu,
+            [jagged_id_offset.to(DEVICE)],
+            output_size
+        )[0]
 
     # 8. 计算NPU python实现前向传播
     npu_py_jagged_for_grad = dense_to_jagged_wrapper(
         input_dense_npu_py,
         [jagged_id_offset.to(DEVICE)],
+        is_mxrec,
         output_size
     )[0]
 
@@ -162,7 +187,8 @@ def test_dense_to_jagged(dims, types, output_size_type):
 # 专门测试异常情况的测试用例
 @pytest.mark.parametrize("dims", [(128, 210, 8)])  # 固定维度简化测试
 @pytest.mark.parametrize("types", [(torch.float32, torch.int32)])  # 固定类型简化测试
-def test_dense_to_jagged_edge_cases(dims, types):
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_dense_to_jagged_edge_cases(dims, types, is_mxrec):
     dense_dim0, dense_dim1, dense_dim2 = dims
     # 1. 生成随机输入数据
     denses = np.random.randn(dense_dim0, dense_dim1, dense_dim2).astype(np.float32)
@@ -173,16 +199,16 @@ def test_dense_to_jagged_edge_cases(dims, types):
 
     # 测试output_size为0的情况
     with pytest.raises(RuntimeError):
-        _ = get_result(torch.device(DEVICE), denses, offsets, types, 0)
+        _ = get_result(torch.device(DEVICE), denses, offsets, types, 0, is_mxrec)
 
     # 测试output_size为负数的情况
     with pytest.raises(RuntimeError):
-        _ = get_result(torch.device(DEVICE), denses, offsets, types, -1)
+        _ = get_result(torch.device(DEVICE), denses, offsets, types, -1, is_mxrec)
 
     # 测试大于actual_size的output_size情况
     with pytest.raises(RuntimeError):
-        _ = get_result(torch.device(DEVICE), denses, offsets, types, actual_size + 10)
+        _ = get_result(torch.device(DEVICE), denses, offsets, types, actual_size + 10, is_mxrec)
 
     # 测试小于actual_size的output_size情况
     with pytest.raises(RuntimeError):
-        _ = get_result(torch.device(DEVICE), denses, offsets, types, max(1, actual_size - 10))
+        _ = get_result(torch.device(DEVICE), denses, offsets, types, max(1, actual_size - 10), is_mxrec)

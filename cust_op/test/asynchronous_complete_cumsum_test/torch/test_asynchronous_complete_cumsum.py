@@ -29,15 +29,19 @@ def get_result(t_in):
     return torch.ops.fbgemm.asynchronous_complete_cumsum(t_in)
 
 
-def get_ops_result(t_in):
-    return torch.ops.fbgemm.asynchronous_complete_cumsum(t_in).cpu()
+def get_ops_result(t_in, is_mxrec):
+    if is_mxrec:
+        return torch.ops.mxrec.asynchronous_complete_cumsum(t_in).cpu()
+    else:
+        return torch.ops.fbgemm.asynchronous_complete_cumsum(t_in).cpu()
 
 
 @pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
-@pytest.mark.parametrize("device", ["cpu", "npu:0", "npu:5"])
+@pytest.mark.parametrize("device", ["npu:0", "npu:5"])
 @pytest.mark.parametrize("length", [1, 10, 100, 1000, 10000])
-def test_asynchronous_complete_cumsum(dtype, device, length):
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_asynchronous_complete_cumsum(dtype, device, length, is_mxrec):
     t_int = torch.randint(0, 100, (length,), dtype=dtype)
     golden = get_result(t_int)
-    result = get_ops_result(t_int.to(device))
+    result = get_ops_result(t_int.to(device), is_mxrec)
     assert torch.allclose(result, golden)

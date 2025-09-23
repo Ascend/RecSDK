@@ -41,21 +41,25 @@ B = [2048, 20480, 204800]
 SHAPE_LIST = list(itertools.product(T, EXTRA_T, B))
 
 
-def get_result(tensors: dict, device: str = 'cpu'):
+def get_result(tensors: dict, device: str = 'cpu', is_mxrec: bool = False):
     tensors = {k: torch.from_numpy(v) if isinstance(v, np.ndarray) else v for k, v in tensors.items()}
 
     if device and device.startswith('npu'):
         torch.npu.set_device(device)
         tensors = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in tensors.items()}
 
-    results = torch.ops.fbgemm.permute_2D_sparse_data(**tensors)
+    if is_mxrec:
+        results = torch.ops.mxrec.permute_2D_sparse_data(**tensors)
+    else:
+        results = torch.ops.fbgemm.permute_2D_sparse_data(**tensors)
     return [x.cpu() if isinstance(x, torch.Tensor) else x for x in results]
 
 
 @pytest.mark.parametrize("types", TYPE_LIST)
 @pytest.mark.parametrize("shapes", SHAPE_LIST)
 @pytest.mark.parametrize("enable_permuted_sum", [True, False])
-def test_permute2d_sparse_data(types, shapes, enable_permuted_sum):
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_permute2d_sparse_data(types, shapes, enable_permuted_sum, is_mxrec):
     """
     Params:
         permute: (T) dtype=int32
@@ -82,7 +86,7 @@ def test_permute2d_sparse_data(types, shapes, enable_permuted_sum):
     }
 
     golden = get_result(params)
-    result = get_result(params, DEVICE)
+    result = get_result(params, DEVICE, is_mxrec)
 
     for gt, pred in zip(golden, result):
         assert type(gt) is type(pred)
