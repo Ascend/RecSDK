@@ -73,7 +73,7 @@ static ge::graphStatus LazyAdamTilingFunc(gert::TilingContext* context)
     float beta1 = *attrs->GetAttrPointer<float>(0);
     float beta2 = *attrs->GetAttrPointer<float>(1);
     float epsilon = *attrs->GetAttrPointer<float>(2);
-    if (std::abs(epsilon) < 1e-8) {
+    if (std::abs(epsilon) < 1e-8f) {
         printf("epsilon is zero\n");
         return ge::GRAPH_FAILED;
     }

@@ -24,6 +24,7 @@ export PATH=$parent_dir:$PATH
 
 
 VALID_AI_CORES=(
+    "ai_core-Ascend910"
     "ai_core-Ascend910B1"
     "ai_core-Ascend910B2"
     "ai_core-Ascend910B3"
