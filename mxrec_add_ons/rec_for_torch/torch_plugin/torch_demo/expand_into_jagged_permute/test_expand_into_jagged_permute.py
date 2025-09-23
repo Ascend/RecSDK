@@ -38,19 +38,27 @@ OUTPUT_OFFSETS_KEY = 'output_offsets'
 OUTPUT_SIZE_KEY = 'output_size'
 
 
-def get_expand_into_jagged_permute_result(tensors: dict, device: str = 'cpu'):
+def get_expand_into_jagged_permute_result(tensors: dict, device: str = 'cpu', is_mxrec: bool = False):
     tensors = {k: torch.from_numpy(v) if isinstance(v, np.ndarray) else v for k, v in tensors.items()}
     # 根据device类型进行npu转换
     if device and device.startswith('npu'):
         torch.npu.set_device(device)
         tensors = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in tensors.items()}
 
-    result = torch.ops.fbgemm.expand_into_jagged_permute(
-        tensors[PERMUTE_KEY],
-        tensors[INPUT_OFFSETS_KEY],
-        tensors[OUTPUT_OFFSETS_KEY],
-        tensors[OUTPUT_SIZE_KEY]
-    )
+    if is_mxrec:
+        result = torch.ops.mxrec.expand_into_jagged_permute(
+            tensors[PERMUTE_KEY],
+            tensors[INPUT_OFFSETS_KEY],
+            tensors[OUTPUT_OFFSETS_KEY],
+            tensors[OUTPUT_SIZE_KEY]
+        )
+    else:
+        result = torch.ops.fbgemm.expand_into_jagged_permute(
+            tensors[PERMUTE_KEY],
+            tensors[INPUT_OFFSETS_KEY],
+            tensors[OUTPUT_OFFSETS_KEY],
+            tensors[OUTPUT_SIZE_KEY]
+        )
     if device and device.startswith('npu'):
         torch_npu.npu.synchronize()
     return result.cpu() if isinstance(result, torch.Tensor) else result
@@ -80,7 +88,8 @@ def generate_test_data(num_features, max_batch_size):
 
 
 @pytest.mark.parametrize("types", TYPE_LIST)
-def test_expand_into_jagged_permute_basic(types):
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_expand_into_jagged_permute_basic(types, is_mxrec):
     """测试基本功能"""
     ptype, otype = types
     # 简单测试用例
@@ -97,7 +106,7 @@ def test_expand_into_jagged_permute_basic(types):
     }
 
     golden = get_expand_into_jagged_permute_result(params)
-    result = get_expand_into_jagged_permute_result(params, DEVICE)
+    result = get_expand_into_jagged_permute_result(params, DEVICE, is_mxrec)
     # 验证结果类型和形状
     assert isinstance(result, torch.Tensor)
     assert result.shape[0] == output_size
@@ -107,7 +116,8 @@ def test_expand_into_jagged_permute_basic(types):
 
 @pytest.mark.parametrize("num_features", [10, 50, 100])
 @pytest.mark.parametrize("max_batch_size", [5, 20, 50])
-def test_expand_into_jagged_permute_random(num_features, max_batch_size):
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_expand_into_jagged_permute_random(num_features, max_batch_size, is_mxrec):
     """测试随机生成的测试用例"""
     test_data = generate_test_data(num_features, max_batch_size)
     params = {
@@ -118,7 +128,7 @@ def test_expand_into_jagged_permute_random(num_features, max_batch_size):
     }
 
     golden = get_expand_into_jagged_permute_result(params)
-    result = get_expand_into_jagged_permute_result(params, DEVICE)
+    result = get_expand_into_jagged_permute_result(params, DEVICE, is_mxrec)
     # 验证结果类型和形状
     assert isinstance(result, torch.Tensor)
     assert result.shape[0] == test_data[OUTPUT_SIZE_KEY]
@@ -126,7 +136,8 @@ def test_expand_into_jagged_permute_random(num_features, max_batch_size):
     assert torch.allclose(result, golden, atol=1e-4)
 
 
-def test_expand_into_jagged_permute_large_input():
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_expand_into_jagged_permute_large_input(is_mxrec):
     """测试非常大的输入情况"""
     num_features = 10000
     max_batch_size = 100
@@ -139,11 +150,12 @@ def test_expand_into_jagged_permute_large_input():
     }
 
     golden = get_expand_into_jagged_permute_result(params)
-    result = get_expand_into_jagged_permute_result(params, DEVICE)
+    result = get_expand_into_jagged_permute_result(params, DEVICE, is_mxrec)
     assert torch.allclose(result, golden, atol=1e-4)
 
 
-def test_expand_into_jagged_permute_empty_input():
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_expand_into_jagged_permute_empty_input(is_mxrec):
     """测试空输入的情况"""
     # 对于空输入，permute应该为空，input_offsets应该为[0]
     params = {
@@ -154,10 +166,11 @@ def test_expand_into_jagged_permute_empty_input():
     }
 
     with pytest.raises(RuntimeError):
-        get_expand_into_jagged_permute_result(params, DEVICE)
+        get_expand_into_jagged_permute_result(params, DEVICE, is_mxrec)
 
 
-def test_expand_into_jagged_permute_invalid_output_size():
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_expand_into_jagged_permute_invalid_output_size(is_mxrec):
     """测试输出大小不匹配的情况"""
     permute = np.array([0, 1], dtype=np.int32)
     input_offsets = np.array([0, 2, 5], dtype=np.int32)
@@ -172,10 +185,11 @@ def test_expand_into_jagged_permute_invalid_output_size():
     }
 
     with pytest.raises(RuntimeError):
-        get_expand_into_jagged_permute_result(params, DEVICE)
+        get_expand_into_jagged_permute_result(params, DEVICE, is_mxrec)
 
 
-def test_expand_into_jagged_permute_mismatched_offsets():
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_expand_into_jagged_permute_mismatched_offsets(is_mxrec):
     """测试偏移量不匹配的情况"""
     permute = np.array([0, 1], dtype=np.int32)
     input_offsets = np.array([0, 2, 5], dtype=np.int32)    # 特征长度: [2, 3]
@@ -189,10 +203,11 @@ def test_expand_into_jagged_permute_mismatched_offsets():
     }
 
     with pytest.raises(RuntimeError):
-        get_expand_into_jagged_permute_result(params, DEVICE)
+        get_expand_into_jagged_permute_result(params, DEVICE, is_mxrec)
 
 
-def test_expand_into_jagged_permute_non_monotonic_offsets():
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_expand_into_jagged_permute_non_monotonic_offsets(is_mxrec):
     """测试非单调递增偏移量"""
     permute = np.array([0, 1], dtype=np.int32)
     input_offsets = np.array([0, 2, 5], dtype=np.int32)
@@ -206,10 +221,11 @@ def test_expand_into_jagged_permute_non_monotonic_offsets():
     }
 
     with pytest.raises(RuntimeError):
-        get_expand_into_jagged_permute_result(params, DEVICE)
+        get_expand_into_jagged_permute_result(params, DEVICE, is_mxrec)
 
 
-def test_expand_into_jagged_permute_size_mismatch():
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_expand_into_jagged_permute_size_mismatch(is_mxrec):
     """测试permute和input_offsets大小不匹配的情况"""
     permute = np.array([0, 1, 2], dtype=np.int32)  # 3个元素
     input_offsets = np.array([0, 2, 5], dtype=np.int32)  # 3个元素，但需要4个元素才能匹配
@@ -221,10 +237,11 @@ def test_expand_into_jagged_permute_size_mismatch():
     }
 
     with pytest.raises(RuntimeError):
-        get_expand_into_jagged_permute_result(params, DEVICE)
+        get_expand_into_jagged_permute_result(params, DEVICE, is_mxrec)
 
 
-def test_expand_into_jagged_permute_2d_input():
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_expand_into_jagged_permute_2d_input(is_mxrec):
     """测试输入为2D的情况"""
     params = {
         PERMUTE_KEY: np.array([[0, 1], [1, 0]], dtype=np.int32),  # 2D permute
@@ -234,10 +251,11 @@ def test_expand_into_jagged_permute_2d_input():
     }
 
     with pytest.raises(RuntimeError):
-        get_expand_into_jagged_permute_result(params, DEVICE)
+        get_expand_into_jagged_permute_result(params, DEVICE, is_mxrec)
 
 
-def test_expand_into_jagged_permute_dtype_mismatch():
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_expand_into_jagged_permute_dtype_mismatch(is_mxrec):
     """测试数据类型不匹配的情况"""
     params = {
         PERMUTE_KEY: np.array([0, 1], dtype=np.int32),
@@ -247,10 +265,11 @@ def test_expand_into_jagged_permute_dtype_mismatch():
     }
 
     with pytest.raises(RuntimeError):
-        get_expand_into_jagged_permute_result(params, DEVICE)
+        get_expand_into_jagged_permute_result(params, DEVICE, is_mxrec)
 
 
-def test_expand_into_jagged_permute_identity_permute():
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_expand_into_jagged_permute_identity_permute(is_mxrec):
     """测试恒等permute的情况"""
     num_features = 5
     permute = np.arange(num_features, dtype=np.int32)  # 恒等permute
@@ -267,11 +286,12 @@ def test_expand_into_jagged_permute_identity_permute():
     }
 
     golden = get_expand_into_jagged_permute_result(params)
-    result = get_expand_into_jagged_permute_result(params, DEVICE)
+    result = get_expand_into_jagged_permute_result(params, DEVICE, is_mxrec)
     assert torch.allclose(result, golden, atol=1e-4)
 
 
-def test_expand_into_jagged_permute_single_feature():
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_expand_into_jagged_permute_single_feature(is_mxrec):
     """测试单特征的情况"""
     permute = np.array([0], dtype=np.int32)
     input_offsets = np.array([0, 5], dtype=np.int32)  # 单个特征有5个batch
@@ -285,5 +305,5 @@ def test_expand_into_jagged_permute_single_feature():
     }
 
     golden = get_expand_into_jagged_permute_result(params)
-    result = get_expand_into_jagged_permute_result(params, DEVICE)
+    result = get_expand_into_jagged_permute_result(params, DEVICE, is_mxrec)
     assert torch.allclose(result, golden, atol=1e-4)
