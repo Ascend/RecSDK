@@ -350,6 +350,18 @@ void TestFloorModHelper(size_t length)
     ret = FloorMod(input[0], mod, static_cast<T *>(nullptr), length);
     ASSERT_EQ(ret, H_POINTER_NULL);
 
+    // 除零校验
+    mod[0] = static_cast<T>(0.0);
+
+    ret = FloorMod(input, mod, output, length);
+    ASSERT_EQ(ret, H_DIV_BY_ZERO);
+
+    ret = FloorMod(input, mod[0], output, length);
+    ASSERT_EQ(ret, H_DIV_BY_ZERO);
+
+    ret = FloorMod(input[0], mod, output, length);
+    ASSERT_EQ(ret, H_DIV_BY_ZERO);
+
     delete[] output;
     delete[] input;
     delete[] answer;

@@ -23,7 +23,8 @@ using RecBaseCode = enum : int {
     H_POINTER_NULL = 2,
     H_USING_EMPTY_KEY = 3,
     H_USING_DELETED_KEY = 4,
-    H_INVALID_PARAMETER = 5
+    H_INVALID_PARAMETER = 5,
+    H_DIV_BY_ZERO = 6
 };
 }
 #endif // RECBASE_ERROR_CODE_H
