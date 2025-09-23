@@ -37,19 +37,26 @@ at::Tensor hstu_jagged_forward_impl_npu(
     TORCH_CHECK(q.dim() == CONST_3, "The q should be 3D in jagged layout");
 
     auto acSeqOffset = seqOffset;
-    TORCH_CHECK(acSeqOffset.size(0) >= CONST_2, "acSeqOffset params error should have at least two element.");
+    auto batchsize = acSeqOffset.size(0);
+    TORCH_CHECK(batchsize >= CONST_2, "acSeqOffset params error should have at least two element.");
 
     auto denseQ = q.contiguous();
     auto denseK = k.contiguous();
     auto denseV = v.contiguous();
     auto denseBias = c10::value_or_else(attnBias, [] {return at::Tensor(); });
     auto maskNpu = c10::value_or_else(mask, [] {return at::Tensor(); });
-    auto acNumContext = c10::value_or_else(numContext, [] {return at::Tensor(); });
-    auto acNumTarget = c10::value_or_else(numTarget, [] {return at::Tensor(); });
+
+    auto _zeros = at::zeros({batchsize}, acSeqOffset.options());
+    auto acNumContext = numContext.value_or(_zeros).to(torch::kInt64);
+    auto acNumTarget = numTarget.value_or(_zeros).to(torch::kInt64);
     auto acTargetGroupSize = targetGroupSize.value_or(0);
 
     TORCH_CHECK(MaxSeqLenCheck(maxSeqLen), "MaxSeqLen check failed");
     TORCH_CHECK(MaskCheck(maskType, maskNpu.defined()), "maskType check failed");
+    if (static_cast<uint32_t>(maskType) == MASK_TYPE_CUSTOM) {
+        // mask dim 2 must be equal to maxSeqLen
+        TORCH_CHECK(maskNpu.size(2) == maxSeqLen, "mask size 2 should be equal to maxSeqLen\n");
+    }
 
     auto attnOutput = at::empty_like(denseQ);
     double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
@@ -148,7 +155,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
 
     if (static_cast<uint32_t>(maskType) == MASK_TYPE_CUSTOM) {
         TORCH_CHECK(denseMask.defined(), "use maskType:MASK_CUSTOM, but no mask given\n");
-        // mask dim 2 must be equalto maxSeqLen
+        // mask dim 2 must be equal to maxSeqLen
         TORCH_CHECK(denseMask.size(2) == maxSeqLen, "mask size 2 should be equal to maxSeqLen\n");
     }
 
@@ -196,18 +203,37 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
 
 TORCH_LIBRARY_FRAGMENT(mxrec, m)
 {
-    m.def("hstu_jagged(Tensor q, Tensor k, Tensor v, Tensor? mask=None, Tensor? attnBias=None, \
-           int maskType=0, int maxSeqLen=0, float siluScale=0.0, Tensor seqOffset=None, \
-           Tensor? numContext=None, Tensor? numTarget=None, int? targetGroupSize=0) -> Tensor");
-    m.def("hstu_jagged_backward(Tensor grad, Tensor q, Tensor k, Tensor v, Tensor? mask=None, Tensor? attnBias=None, \
-           int maskType=0, int maxSeqLen=0, float siluScale=0.0, Tensor seqOffset=None, Tensor? numContext=None, \
-           Tensor? numTarget=None, int? targetGroupSize=0) -> (Tensor, Tensor, Tensor, Tensor)");
+    m.def("hstu_jagged.equal(Tensor q, "
+          "            Tensor k, "
+          "            Tensor v, "
+          "            Tensor? mask=None, "
+          "            Tensor? attn_bias=None, "
+          "            int mask_type=0, "
+          "            int max_seq_len=0, "
+          "            float silu_scale=0.0, "
+          "            Tensor seq_offset=None, "
+          "            Tensor? num_context=None, "
+          "            Tensor? num_target=None, "
+          "            int? target_group_size=0) -> Tensor");
+    m.def("hstu_jagged_backward.equal(Tensor grad, "
+          "                     Tensor q, "
+          "                     Tensor k, "
+          "                     Tensor v, "
+          "                     Tensor? mask=None, "
+          "                     Tensor? attn_bias=None, "
+          "                     int mask_type=0, "
+          "                     int max_seq_len=0, "
+          "                     float silu_scale=0.0, "
+          "                     Tensor seq_offset=None, "
+          "                     Tensor? num_context=None, "
+          "                     Tensor? num_target=None, "
+          "                     int? target_group_size=0) -> (Tensor, Tensor, Tensor, Tensor)");
 }
 
 TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
 {
-    m.impl("hstu_jagged", &hstu_jagged_forward_impl_npu);
-    m.impl("hstu_jagged_backward", &hstu_jagged_backward_impl_npu);
+    m.impl("hstu_jagged.equal", TORCH_FN(hstu_jagged_forward_impl_npu));
+    m.impl("hstu_jagged_backward.equal", TORCH_FN(hstu_jagged_backward_impl_npu));
 }
 
 class HstuJaggedNpuFusion : public torch::autograd::Function<HstuJaggedNpuFusion> {
@@ -297,6 +323,6 @@ at::Tensor hstu_jagged_autograd(const at::Tensor& q,
 
 TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
 {
-    m.impl("hstu_jagged", &hstu_jagged_autograd);
+    m.impl("hstu_jagged.equal", TORCH_FN(hstu_jagged_autograd));
 }
 }

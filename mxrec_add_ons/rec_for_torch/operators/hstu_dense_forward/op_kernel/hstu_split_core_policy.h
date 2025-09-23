@@ -43,7 +43,10 @@ public:
                                       int64_t blockLen,
                                       int64_t batchSize,
                                       int64_t headNum,
+                                      int64_t tgsize,
                                       GlobalTensor<oType>& seqOffsetsGt,
+                                      GlobalTensor<oType>& numContextGt,
+                                      GlobalTensor<oType>& numTargetGt,
                                       GlobalTensor<int64_t>& blockNumberGt)
     {
         this->maskType = maskType;
@@ -51,7 +54,10 @@ public:
         this->blockLen = blockLen;
         this->batchSize = batchSize;
         this->headNum = headNum;
+        this->tgsize = tgsize;
         this->seqOffsetsGt = seqOffsetsGt;
+        this->numContextGt = numContextGt;
+        this->numTargetGt = numTargetGt;
 
         this->blockNumberGt = blockNumberGt;
         this->bxn = batchSize * headNum;
@@ -64,8 +70,10 @@ public:
         for (auto batchId = 0; batchId < batchSize; batchId++) {
             int64_t seqlen = seqOffsetsGt.GetValue(batchId + 1) - seqOffsetsGt.GetValue(batchId);
             int64_t numBlk = CeilDiv(seqlen, blockLen);
+            int64_t numCtx = numContextGt.GetValue(batchId);
+            int64_t numTg = numTargetGt.GetValue(batchId);
 
-            uint32_t seqTaskNum = ComputeSeqTaskNum(seqlen, numBlk);
+            uint32_t seqTaskNum = ComputeSeqTaskNum(seqlen, numBlk, numCtx, numTg);
             totalTaskNum += headNum * seqTaskNum;
 
             // blockNumberGt 前batchSize x headNum (bxn)个位置记录每个batch每个head的block数
@@ -102,11 +110,14 @@ public:
     }
 
 private:
-    __aicore__ inline uint32_t ComputeSeqTaskNum(int64_t seqlen, int64_t numBlk)
+    __aicore__ inline uint32_t ComputeSeqTaskNum(int64_t seqlen, int64_t numBlk, int64_t numCtx, int64_t numTg)
     {
         uint32_t seqTaskNum;
         if (maskType == CausalMaskT::MASK_TRIL) {
             seqTaskNum = numBlk * (numBlk + 1) / 2;
+            if (numCtx > 0) {
+                seqTaskNum += CeilDiv(seqlen - numTg, blockLen) - 1;  // -1避免重复计算
+            }
         } else {
             seqTaskNum = numBlk * numBlk;
         }
@@ -123,6 +134,12 @@ private:
         if (maskType == CausalMaskT::MASK_TRIL) {
             uint32_t taskNum = 1;
             int64_t batch = batchId / headNum;
+            int64_t numCtx = numContextGt.GetValue(batch);
+            int64_t numTg = numTargetGt.GetValue(batch);
+            if (numCtx > 0) {
+                int64_t seqlen = seqOffsetsGt.GetValue(batch + 1) - seqOffsetsGt.GetValue(batch);
+                taskNum = CeilDiv(seqlen - numTg, blockLen);
+            }
             return taskNum;
         } else {
             return blockNumberGt.GetValue(batchId);
@@ -146,9 +163,12 @@ private:
     int64_t blockLen;
     int64_t batchSize;
     int64_t headNum;
+    int64_t tgsize;
     uint32_t bxn;  // 总序列数
 
     GlobalTensor<oType> seqOffsetsGt;
+    GlobalTensor<oType> numContextGt;
+    GlobalTensor<oType> numTargetGt;
     GlobalTensor<int64_t> blockNumberGt;
 };
 }  // namespace HstuDenseForward

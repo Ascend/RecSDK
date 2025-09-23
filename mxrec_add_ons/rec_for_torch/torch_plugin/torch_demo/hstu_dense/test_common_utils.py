@@ -14,29 +14,77 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import dataclasses
 import sysconfig
+from enum import Enum
+
 import torch
 
+BLOCK_HEIGHT: int = 256
+MAX_NUM_TARGET: int = 512
+
+torch.npu.config.allow_internal_format = False
+torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
+
 device_id: int = 0
-mask_tril: int = 0
-mask_triu: int = 1
-mask_none: int = 2
-mask_custom: int = 3
+torch.npu.set_device(device_id)
 
 
-def init():
-    torch.npu.config.allow_internal_format = False
-    torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
-
-    torch.npu.set_device(device_id)
+class MaskType(int, Enum):
+    TRIL = 0  # 下三角掩码
+    TRIU = 1  # 上三角掩码
+    NONE = 2  # 无掩码
+    CUSTOM = 3  # 自定义掩码
 
 
 def get_chip():
     return False
 
 
-def allclose(tensor, other, atol, ratio):
+def allclose(tensor: torch.Tensor, other: torch.Tensor, atol: float, ratio: float) -> bool:
     assert tensor.shape == other.shape
     diff = (torch.abs(tensor - other) > atol)
     diff_count = torch.sum(diff)
-    return diff_count / tensor.numel() < ratio
+    return (diff_count / tensor.numel()) < ratio
+
+
+def jagged_to_dense(jagged_tensor, seq_lens, head_nums, attn_dim):
+    need_pad_seq = []
+    offset = 0
+    for seq_len in seq_lens:
+        src_tensor = jagged_tensor[offset: offset + seq_len, :, :].reshape(seq_len, head_nums, attn_dim)
+        need_pad_seq.append(src_tensor)
+        offset = offset + seq_len
+
+    dense_tensor = torch.nn.utils.rnn.pad_sequence(need_pad_seq, batch_first=True)
+    return dense_tensor
+
+
+def dense_to_jagged(q, dense_tensor, seq_lens):
+    tensor = torch.zeros_like(q).cpu()
+
+    offset = 0
+    for batch_id, seq_len in enumerate(seq_lens):
+        tensor[offset: offset + seq_len, :, :] = dense_tensor[batch_id, 0: seq_len, :, :]
+        offset = offset + seq_len
+
+    return tensor
+
+
+@dataclasses.dataclass
+class QKVShapeInfo:
+    float_type: torch.dtype
+    int_type: torch.dtype
+    batch_size: int
+    num_heads: int
+    attention_dim: int
+    max_seq_len: int
+    min_seq_len: int = 1
+
+
+@dataclasses.dataclass
+class MaskGenInfo:
+    mask_type: int | MaskType
+    max_num_context: int
+    max_num_target: int
+    target_group_size: int

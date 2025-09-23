@@ -20,6 +20,7 @@ See the License for the specific language governing permissions and
 #else
     #include "hstu_dense_forward_kernel_patten_bsnd.h"
 #endif
+#include "hstu_dense_causal_mask.h"
 namespace HstuDenseForward {
 
 struct QkMatmulArgs {
@@ -87,7 +88,7 @@ public:
                      scoreArgs.qSeqId * this->blockHeight * this->xDim1 + \
                      scoreArgs.kSeqId * this->blockHeight;
 #endif
-        int causalMask = ((scoreArgs.qSeqId == scoreArgs.kSeqId) &&
+        uint32_t causalMask = ((scoreArgs.qSeqId == scoreArgs.kSeqId) &&
             (this->maskType == CausalMaskT::MASK_TRIL)) ? 1 : 0;
 
         int64_t m = (scoreArgs.qSeqId != (seqBlockNumQk - 1)) ? this->blockHeight :
@@ -95,7 +96,8 @@ public:
         int64_t n = (scoreArgs.kSeqId != (seqBlockNumQk - 1)) ? this->blockHeight :
                                                                 (this->xDim1 - scoreArgs.kSeqId * this->blockHeight);
 
-        this->VecScoreImpl(scoreArgs.taskId, attnBiasOffset, maskOffset, this->siluScale, causalMask, m, n);
+        this->template VecScoreImpl<uint32_t>(scoreArgs.taskId, attnBiasOffset, maskOffset, this->siluScale,
+                                              causalMask, m, n);
     }
 
     __aicore__ inline void DoQkMatmul(QkMatmulArgs& qkPosArgs)

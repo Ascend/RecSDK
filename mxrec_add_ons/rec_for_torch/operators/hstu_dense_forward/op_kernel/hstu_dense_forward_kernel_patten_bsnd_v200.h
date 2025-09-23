@@ -25,15 +25,12 @@ See the License for the specific language governing permissions and
 #include "lib/matmul_intf.h"
 
 #include "hstu_dense_causal_mask.h"
+#include "hstu_common_const.h"
 
 using namespace AscendC;
 
 namespace HstuDenseForward {
 
-constexpr uint32_t MAX_BATCH_SIZE = 2048;
-constexpr int USE_QUEUE_NUM = 1;
-constexpr int DATA_ALIGN_BYTES = 32;
-constexpr int MAX_INDICS_ONE_BLOCK = 100;
 constexpr int UB_SIZE = 248 * 1024;  // 248KB
 constexpr int ACCU_BLOCK_SINGLE_ELEMENTS = 24;
 constexpr int QUEUE_IN_NUM = 1;
@@ -45,13 +42,26 @@ constexpr int VCORE_NUM_IN_ONE_AIC = 1;
 constexpr int COMPUTE_PIPE_NUM = 1;
 constexpr int TRANS_PIPE_NUM = 1;
 
-constexpr int INVALID_TASK_ID = -1;
 struct Args {
+    // hstu normal
     GM_ADDR q;
     GM_ADDR k;
     GM_ADDR v;
     GM_ADDR attnBias;
-    GM_ADDR attnMask;
+    GM_ADDR mask;
+    // jagged
+    GM_ADDR seqOffsetQ;
+    GM_ADDR seqOffsetK;
+    // page
+    GM_ADDR seqOffsetT;
+    GM_ADDR kvCache;
+    GM_ADDR pageOffsets;
+    GM_ADDR pageIds;
+    GM_ADDR lastPageLen;
+    // mask
+    GM_ADDR numContext;
+    GM_ADDR numTarget;
+
     GM_ADDR attnOutput;
     GM_ADDR workspace;
     GM_ADDR tiling;
