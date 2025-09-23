@@ -26,6 +26,8 @@ See the License for the specific language governing permissions and
 #include <future>
 #include <memory>
 
+#include "common_func/common_func.h"
+#include "error/error.h"
 #include "log/logger.h"
 
 namespace MxRec {
@@ -34,6 +36,12 @@ class ThreadPool {
 public:
     explicit ThreadPool(size_t num) : stop(false)
     {
+        if (num == 0) {
+            auto error = Error(ModuleName::M_UTILS, ErrorType::INVALID_ARGUMENT,
+                               StringFormat("ThreadPool size must be greater than 0"));
+            LOG_ERROR(error.ToString());
+            throw std::invalid_argument(error.ToString());
+        }
         LOG_INFO("ThreadPool init num: {}", num);
         for (size_t i = 0; i < num; i++) {
             threads.emplace_back([this] {

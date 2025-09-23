@@ -16,9 +16,11 @@ See the License for the specific language governing permissions and
 #ifndef RECBASE_FLOOR_MOD_H
 #define RECBASE_FLOOR_MOD_H
 
+#include <arm_sve.h>
 #include <cstdlib>
 
 namespace ock {
+inline int CheckSveHasZeroElement(const svbool_t pg_, svbool_t v_);
 
 template <typename T> int FloorMod(T *input, T *mod, T *output, size_t length);
 

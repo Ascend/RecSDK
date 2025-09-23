@@ -45,6 +45,11 @@ void ExternalLogger::PrintLog(LogLevel level, const std::string &message)
 
 int SetExternalLogFunc(ExternalLog logFunc)
 {
+    if (logFunc == nullptr) {
+        std::cout << "Invalid external log function pointer" << std::endl;
+        return H_POINTER_NULL;
+    }
+
     auto logger = ExternalLogger::Instance();
     if (logger == nullptr) {
         std::cout << "Failed to create logger instance" << std::endl;
