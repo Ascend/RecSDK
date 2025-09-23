@@ -83,7 +83,7 @@ def jagged_data_gen(
 
     if mask_type == 0:
         if num_context is None and num_target is None:
-            mask = torch.tril(torch.ones(batch_size, num_heads, max_seq_len, max_seq_len), diagonal=1)
+            mask = torch.tril(torch.ones(batch_size, num_heads, max_seq_len, max_seq_len))
         else:
             mask = torch.zeros(batch_size, num_heads, max_seq_len, max_seq_len)
             for sample_id, seq_len in enumerate(seq_lens):
@@ -172,11 +172,16 @@ class TestHstuJaggedDemo:
         num_target,
         target_group_size,
     ):
+        batch_size = len(seq_offset) - 1
         grad_npu = grad.to(f"npu:{device_id}")
         q_npu = q.to(f"npu:{device_id}")
         k_npu = k.to(f"npu:{device_id}")
         v_npu = v.to(f"npu:{device_id}")
         seq_offset = torch.LongTensor(seq_offset).to(f"npu:{device_id}")
+        if (num_context is not None):
+            num_context = torch.LongTensor([num_context for _ in range(batch_size)]).to(f"npu:{device_id}")
+        if (num_target is not None):
+            num_target = torch.LongTensor([num_target for _ in range(batch_size)]).to(f"npu:{device_id}")
         bias_npu = bias.to(f"npu:{device_id}")
 
         mask_npu = None
@@ -195,8 +200,8 @@ class TestHstuJaggedDemo:
                 max_seq_len,
                 silu_scale,
                 seq_offset,
-                None,
-                None,
+                num_context,
+                num_target,
                 target_group_size,
             )
         else:
@@ -211,8 +216,8 @@ class TestHstuJaggedDemo:
                 max_seq_len,
                 silu_scale,
                 seq_offset,
-                None,
-                None,
+                num_context,
+                num_target,
                 target_group_size,
             )
 
