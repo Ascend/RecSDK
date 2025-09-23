@@ -19,7 +19,9 @@ See the License for the specific language governing permissions and
 
 #include "hstu_dense_backward_kernel.h"
 #include "hstu_dense_backward_kernel_common.h"
+#include "hstu_mask.h"
 
+using HstuDenseBackward::BlockMaskParams;
 namespace HstuDenseBackward {
 
 struct JaggedTaskInfo {
@@ -293,7 +295,7 @@ public:
 
         bool isNew = false;
         if (IfMask(this->maskType, MaskType::MASK_TRIL)) {
-            isNew = computeTaskInfo[curTaskId].rowId == computeTaskInfo[curTaskId].colId;
+            isNew = this->blockMaskParams[curTaskId].IsFirstBlockNeedOverride();
         } else {
             isNew = computeTaskInfo[curTaskId].rowId == 0;
         }
@@ -316,7 +318,7 @@ public:
 
         bool isNew = false;
         if (IfMask(this->maskType, MaskType::MASK_TRIL)) {
-            isNew = computeTaskInfo[curTaskId].rowId == computeTaskInfo[curTaskId].colId;
+            isNew = this->blockMaskParams[curTaskId].IsFirstBlockNeedOverride();
         } else {
             isNew = computeTaskInfo[curTaskId].rowId == 0;
         }
@@ -352,7 +354,7 @@ public:
 
         bool useMask = false;
         if (IfMask(this->maskType, MaskType::MASK_TRIL)) {
-            useMask = computeTaskInfo[curTaskId].rowId == computeTaskInfo[curTaskId].colId;
+            useMask = this->blockMaskParams[curTaskId].NeedMask();
         } else if (IfMask(this->maskType, MaskType::MASK_CUSTOM)) {
             useMask = true;
         }
@@ -494,7 +496,19 @@ public:
             int64_t rowLimit = computeTaskInfo[taskId % COMPUTE_PIPE_NUM].blockLimit;
 
             for (int64_t rowId = 0; rowId < rowLimit; rowId++) {
-                if (IfMask(this->maskType, MaskType::MASK_TRIL) && rowId < colId) {
+                auto& args = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM];
+
+                this->blockMaskParams[taskId % COMPUTE_PIPE_NUM] = {static_cast<uint32_t>(rowId),
+                                                                    static_cast<uint32_t>(colId),
+                                                                    static_cast<uint32_t>(args.curSeqLen),
+                                                                    this->blockHeight,
+                                                                    this->GetNumContext(args.batchId),
+                                                                    this->GetNumTarget(args.batchId),
+                                                                    this->targetGroupSize,
+                                                                    1};
+
+                BlockMaskParams& maskinfo = this->blockMaskParams[taskId % COMPUTE_PIPE_NUM];
+                if (IfMask(this->maskType, MaskType::MASK_TRIL) && maskinfo.NoComputation()) {
                     continue;
                 }
 
@@ -543,7 +557,17 @@ public:
             int64_t colLimit = computeTaskInfo[taskId % COMPUTE_PIPE_NUM].blockLimit;
 
             for (int64_t colId = 0; colId < colLimit; colId++) {
-                if (IfMask(this->maskType, MaskType::MASK_TRIL) && rowId < colId) {
+                auto args = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM];
+                this->blockMaskParams[taskId % COMPUTE_PIPE_NUM] = {static_cast<uint32_t>(rowId),
+                                                                    static_cast<uint32_t>(colId),
+                                                                    static_cast<uint32_t>(args.curSeqLen),
+                                                                    this->blockHeight,
+                                                                    this->GetNumContext(args.batchId),
+                                                                    this->GetNumTarget(args.batchId),
+                                                                    this->targetGroupSize,
+                                                                    1};
+                BlockMaskParams& maskinfo = this->blockMaskParams[taskId % COMPUTE_PIPE_NUM];
+                if (IfMask(this->maskType, MaskType::MASK_TRIL) && maskinfo.NoComputation()) {
                     continue;
                 }
 

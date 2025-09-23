@@ -18,6 +18,7 @@ See the License for the specific language governing permissions and
 
 #include <cstdint>
 #include "hstu_dense_backward_kernel_common.h"
+#include "hstu_mask.h"
 
 namespace HstuDenseBackward {
 
@@ -298,7 +299,7 @@ public:
 
         bool isNew = false;
         if (IfMask(maskType, MaskType::MASK_TRIL)) {
-            isNew = taskInfo[curTaskId].rowId == taskInfo[curTaskId].colId;
+            isNew = this->blockMaskParams[curTaskId].IsFirstBlockNeedOverride();
         } else {
             isNew = taskInfo[curTaskId].rowId == 0;
         }
@@ -334,7 +335,7 @@ public:
 
         bool isNew = false;
         if (IfMask(maskType, MaskType::MASK_TRIL)) {
-            isNew = taskInfo[curTaskId].rowId == taskInfo[curTaskId].colId;
+            isNew = this->blockMaskParams[curTaskId].IsFirstBlockNeedOverride();
         } else {
             isNew = taskInfo[curTaskId].rowId == 0;
         }
@@ -412,7 +413,7 @@ public:
         if (!std::is_same<qType, float>::value) {
             CastQType2Float(inputQK, inputQK.template ReinterpretCast<qType>(), outputMidTemp, thisLen);
             CastQType2Float(inputGV, inputGV.template ReinterpretCast<qType>(), outputMidTemp, thisLen);
-            if (useMask) {
+            if (useMask && IfMask(maskType, MaskType::MASK_CUSTOM)) {
                 CastQType2Float(inputMask, inputMask.template ReinterpretCast<qType>(), outputMidTemp, thisLen);
             }
             if (enableBias) {
@@ -512,7 +513,7 @@ public:
 
         bool useMask = false;
         if (IfMask(maskType, MaskType::MASK_TRIL)) {
-            useMask = taskInfo[curTaskId].rowId == taskInfo[curTaskId].colId;
+            useMask = blockMaskParams[curTaskId].NeedMask();
         } else if (IfMask(maskType, MaskType::MASK_CUSTOM)) {
             useMask = true;
         }
@@ -548,7 +549,8 @@ public:
     }
 
     __aicore__ inline void ValidVecScore(int64_t thisLen, int64_t validRowNum, int64_t totalColNum, int64_t qkOffset,
-        int64_t curMaskOffset, int64_t curAttnBiasOffset, int64_t curBiasGradOutOffset, bool useMask)
+                                         int64_t curMaskOffset, int64_t curAttnBiasOffset, int64_t curBiasGradOutOffset,
+                                         bool useMask, BlockMaskGenerator& generator, int64_t rowInBlock)
     {
         int64_t gvOffset = qkOffset;
         int64_t scoreTempOffset = qkOffset;
@@ -562,7 +564,7 @@ public:
         if (useMask) {
             LocalTensor<float> inputMask = queueVecScoreMask.AllocTensor<float>();
             if (IfMask(maskType, MaskType::MASK_TRIL)) {
-                DataCopy<qType>(inputMask.template ReinterpretCast<qType>(), maskTemp[curMaskOffset], thisLen);
+                generator.GenMask(inputMask, rowInBlock, thisLen / blockHeight, blockHeight);
             }
             if (IfMask(maskType, MaskType::MASK_CUSTOM)) {
                 CopyInPadding(inputMask.template ReinterpretCast<qType>(), mask[curMaskOffset], validRowNum,
@@ -602,6 +604,7 @@ public:
         int64_t total = blockHeight * blockHeight;
         int64_t remain = total;
         int64_t thisLen = vecOnceDataNum;
+        BlockMaskGenerator generator(&blockMaskParams[curTaskId]);
         while (remain > 0) {
             if (remain < thisLen) {
                 thisLen = remain;
@@ -627,10 +630,11 @@ public:
 
             if (validRowNum > 0) {
                 ValidVecScore(thisLen, validRowNum, totalColNum, qkOffset, curMaskOffset, curAttnBiasOffset,
-                    curBiasGradOutOffset, useMask);
+                              curBiasGradOutOffset, useMask, generator, startRowNum);
             }
 
-            if (enableBias && IfMask(maskType, MaskType::MASK_TRIL) && !useMask) {
+            if (enableBias && IfMask(maskType, MaskType::MASK_TRIL) &&
+                blockMaskParams[curTaskId].DiagonalNoComputation()) {
                 LocalTensor<qType> outputTempTensor = queueOutputTemp.AllocTensor<qType>();
                 Duplicate<qType>(outputTempTensor, 0, thisLen);
                 queueOutputTemp.EnQue(outputTempTensor);
@@ -776,6 +780,22 @@ public:
         }
     }
 
+    __aicore__ inline int64_t GetNumContext(int64_t batchId)
+    {
+        if (enableContextMask) {
+            return numContextGt.GetValue(batchId);
+        }
+        return 0;
+    }
+
+    __aicore__ inline int64_t GetNumTarget(int64_t batchId)
+    {
+        if (enableTargetMask) {
+            return numTargetGt.GetValue(batchId);
+        }
+        return 0;
+    }
+
     __aicore__ inline void ComputeFirst()
     {
         int64_t taskId = 0;
@@ -794,7 +814,13 @@ public:
             colLine = colLine > blockHeight ? blockHeight : colLine;
 
             for (int64_t rowId = 0; rowId < rowBlockNum; rowId++) {
-                if (IfMask(maskType, MaskType::MASK_TRIL) && rowId < colId) {
+                this->blockMaskParams[taskId % COMPUTE_PIPE_NUM] = {
+                    static_cast<uint32_t>(rowId),  static_cast<uint32_t>(colId),
+                    static_cast<uint32_t>(seqLen), this->blockHeight,
+                    GetNumContext(batchId),        GetNumTarget(batchId),
+                    this->targetGroupSize,         1};
+                if (IfMask(maskType, MaskType::MASK_TRIL) &&
+                    this->blockMaskParams[taskId % COMPUTE_PIPE_NUM].NoComputation()) {
                     continue;
                 }
 
@@ -847,7 +873,13 @@ public:
             rowLine = rowLine > blockHeight ? blockHeight : rowLine;
 
             for (int64_t colId = 0; colId < colBlockNum; colId++) {
-                if (IfMask(maskType, MaskType::MASK_TRIL) && rowId < colId) {
+                this->blockMaskParams[taskId % COMPUTE_PIPE_NUM] = {
+                    static_cast<uint32_t>(rowId),  static_cast<uint32_t>(colId),
+                    static_cast<uint32_t>(seqLen), this->blockHeight,
+                    GetNumContext(batchId),        GetNumTarget(batchId),
+                    this->targetGroupSize,         1};
+                if (IfMask(maskType, MaskType::MASK_TRIL) &&
+                    this->blockMaskParams[taskId % COMPUTE_PIPE_NUM].NoComputation()) {
                     continue;
                 }
 
@@ -957,7 +989,6 @@ public:
     int32_t enableContextMask;
     int32_t enableTargetMask;
     float siluScale;
-    int32_t targetGroupSize;
 
     int32_t isNormal;
     uint32_t aivNum;
@@ -971,6 +1002,10 @@ public:
 
     // task
     BlockInfo taskInfo[COMPUTE_PIPE_NUM];
+
+    // MaskType
+    int64_t targetGroupSize;
+    BlockMaskParams blockMaskParams[COMPUTE_PIPE_NUM];
 
     // Tpipe
     TPipe pipe;
