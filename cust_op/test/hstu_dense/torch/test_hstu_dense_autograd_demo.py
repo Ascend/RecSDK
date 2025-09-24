@@ -23,7 +23,7 @@ import torch
 import torch.nn.functional as F
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
-common_dir = os.path.abspath(os.path.join(current_dir, "..", "common"))
+common_dir = os.path.abspath(os.path.join(current_dir, "..", "..", "common"))
 sys.path.append(common_dir)
 from utils import allclose
 

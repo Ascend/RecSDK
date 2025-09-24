@@ -244,7 +244,7 @@ class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
         self._optim_num = get_embedding_optim_num(embedding_optimizer_cls)
         logger.debug("======  _optim_num: %s", self._optim_num)
 
-        # 16GB = 16*1024*1024*1024 = 17179869184
+        # 16GB -> 16*1024*1024*1024 -> 17179869184
         embcache_size_on_device_mem = int(os.getenv("EMBCACHE_SIZE_ON_DEVICE_MEM", "17179869184"))
         logger.debug("======  embcache_size_on_device_mem: %s", embcache_size_on_device_mem)
 
@@ -258,7 +258,6 @@ class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
             embedding_config.num_embeddings = int(cache_num_embeddings[index])
             embedding_config.cache = int(cache_num_embeddings[index])
 
-            # for embedding_config in tables:
             if embedding_config.name in table_names:
                 raise ValueError(f"Duplicate table name {embedding_config.name}")
             table_names.add(embedding_config.name)

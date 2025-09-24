@@ -214,7 +214,7 @@ class EmbCacheEmbeddingCollection(EmbeddingCollection):
         if len(evict_step_intervals) > 1:
             raise ValueError("all table must have the same evict_step_interval param.")
 
-        # 16GB = 16*1024*1024*1024 = 17179869184
+        # 16GB -> 16*1024*1024*1024 -> 17179869184
         try:
             embcache_size_on_device_mem = int(os.getenv("EMBCACHE_SIZE_ON_DEVICE_MEM", "17179869184"))
         except ValueError as err:
