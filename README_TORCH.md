@@ -68,3 +68,7 @@ else
   echo "ERROR site-package path"
 fi
 ```
+
+## Benchmark
+
+位于develop_torch_benchmark分支，包含性能测试工具、模型。该分支仅供参考，不作为对外交付特性。
