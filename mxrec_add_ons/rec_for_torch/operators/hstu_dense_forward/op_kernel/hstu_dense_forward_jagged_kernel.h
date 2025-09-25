@@ -158,7 +158,7 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType>::ComputeAllBlo
             auto taskinfo = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM];
             BlockMaskParams maskinfo = {
                 taskinfo.qSeqId,
-                static_cast<uint32_t> kSeqId,
+                static_cast<uint32_t>(kSeqId),
                 taskinfo.actualSeqLen,
                 this->blockHeight,
                 taskinfo.numContext,
