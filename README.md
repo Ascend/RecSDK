@@ -156,8 +156,14 @@ Rec SDK所支持的使用环境、功能特性、API接口与使用样例请参�
 
 ## 样例
 
+### 镜像
+
 Rec SDK框架基础镜像，基于TensorFlow 1.15.0、tensorflow2.6.5制作的基础镜像，安装Rec SDK后即可开始训练，以及样例使用介绍。
 
 1. https://www.hiascend.com/developer/ascendhub/detail/rec_sdk-tf1
 
 2. https://www.hiascend.com/developer/ascendhub/detail/rec_sdk-tf2
+
+### 模型、工具
+
+位于develop_examples_and_tools分支，包含模型样例、工具。该分支仅供参考，不作为对外交付特性。
