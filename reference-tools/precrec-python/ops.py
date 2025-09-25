@@ -246,13 +246,13 @@ def find_match_op_dump_data(dump_data_path: str, rank_id: int, step: int) -> str
     """
     Find op path for given rank and step.
     """
-    # target path example /xxxx/20240724_141123/03dump_op/20240724141134/0/ge_default_20240724141135_31/4/0
+    # target path example /xxxx/20240724_141123/03dump_op/20240724141134/0/ge_default_20240724141135/4/0
     pattern_str = (
         f"^{re.escape(dump_data_path)}/"  # match precision check data path:/xxxx/20240724_141123
         r"04dump_op/"  # match 04dump_op
         r"\d{14}/"  # match date: 20240724141134
         f"{re.escape(str(rank_id))}/"  # match rankid: 0
-        r"ge_default_\d{14}_\d+/"  # match ge_default_{data}_{time}
+        r"ge_default_\d{14}/"  # match ge_default_20240724141135
         r"\d+/"  # match model id: 4
         f"{re.escape(str(step-1))}"  # match step: 0
     )
