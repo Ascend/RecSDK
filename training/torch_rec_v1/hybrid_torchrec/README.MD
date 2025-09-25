@@ -14,7 +14,7 @@
 
 2.下载whl包并安装
 
-```python
+```shell
 pip3 install hybrid_torchrec-1.1.0+npu-*.whl
 pip3 install fbgemm_gpu==1.1.0+cpu -i https://download.pytorch.org/whl/cpu
 pip3 install -r requirements.txt
@@ -22,12 +22,12 @@ pip3 install -r requirements.txt
 
 3.源码安装
 
-```python
+```shell
 git clone https://gitcode.com/ascend/RecSDK.git
-cd RecSDK/torchrec/hybrid_torchrec
+cd RecSDK/training/torch_rec_v1/hybrid_torchrec
 bash build_whl.sh
-cd ../../../
-pip3 install RecSDK/torchrec/hybrid_torchrec/dist/hybrid_torchrec-1.1.0+npu-*.whl
+cd dist
+pip3 install hybrid_torchrec-*.whl
 ```
 
 如果pip3 uninstall hybrid_torchrec提示file找不到，请换一个执行路径，不要在子目录有hybrid_torchrec的路径下执行该命令

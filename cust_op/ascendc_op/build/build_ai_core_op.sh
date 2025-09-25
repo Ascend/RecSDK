@@ -134,7 +134,7 @@ function get_tar_pkg() {
 }
 
 
-# start to build mxrec-add-ons
+# start to build recsdk-npu-ops
 make_output_dir
 echo "----------------          compile  custom ops for torchrec             ----------------"
 compile_ops
