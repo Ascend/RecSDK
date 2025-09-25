@@ -9,16 +9,16 @@
 参考 [Rec SDK文档](https://www.hiascend.com/document/detail/zh/mindsdk/71rc1/rec/recug/mxrectorch_0014.html) 的“安装 Rec SDK Torch”章节。
 
 2.下载whl包并安装
-```python
+```shell
 pip3 install torchrec_embcache-*.whl
 pip3 install fbgemm_gpu==1.1.0+cpu -i https://download.pytorch.org/whl/cpu
 pip3 install -r requirements.txt
 ```
 
 3.源码安装
-```python
+```shell
 git clone https://gitcode.com/ascend/RecSDK.git
-cd RecSDK/torchrec/torchrec_embcache
+cd RecSDK/training/torch_rec_v1/torchrec_embcache
 bash build.sh
 pip3 install ./dist/torchrec_embcache-*.whl
 ```
