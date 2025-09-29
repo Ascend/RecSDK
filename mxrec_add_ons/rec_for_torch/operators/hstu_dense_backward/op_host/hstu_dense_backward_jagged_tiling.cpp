@@ -21,145 +21,23 @@ See the License for the specific language governing permissions and
 #include "register/op_def_registry.h"
 #include "hstu_dense_backward_jagged_tiling.h"
 
-namespace {
-struct BlockTaskInfo {
-    uint32_t startBlockId = 0;
-    uint32_t endBlockId = 0;
-
-    friend std::ostream &operator<<(std::ostream &os, const BlockTaskInfo &blockTask)
-    {
-        return os << "startBlockId:" << blockTask.startBlockId << " " << "endBlockId:" << blockTask.endBlockId << " ";
-    }
-};
-
-class BlockTaskAssign {
-public:
-    BlockTaskAssign(uint32_t *seqOffsets, uint32_t coreNum, uint32_t blockLen, uint32_t batchSize, uint32_t headNum)
-    {
-        this->seqOffsets = seqOffsets;
-        this->coreNum = coreNum;
-        this->blockLen = blockLen;
-        this->batchSize = batchSize;
-        this->headNum = headNum;
-    }
-
-    void PreInit(std::vector<BlockTaskInfo> &workTasks, std::vector<int> &workLoads, std::vector<int64_t> &blockNumber)
-    {
-        workTasks.resize(this->coreNum);
-        workLoads.resize(this->coreNum, 0);
-
-        for (auto batchId = 0; batchId < batchSize; batchId++) {
-            auto batchBlockSize = this->seqOffsets[batchId + 1] - this->seqOffsets[batchId];
-            
-            for (auto headId = 0; headId < headNum; headId++) {
-                blockNumber[batchId * headNum + headId] = (batchBlockSize + blockLen - 1) / blockLen;
-            }
-        }
-    }
-
-    void Compute(std::vector<BlockTaskInfo> &workTasks, std::vector<int> &workLoads)
-    {
-        uint32_t totalBatchSize = batchSize * headNum;
-        std::vector<int64_t> blockNumber(totalBatchSize, 0);
-        PreInit(workTasks, workLoads, blockNumber);
-
-        int64_t totalTaskNumber = 0;
-        totalTaskNumber = std::accumulate(blockNumber.begin(), blockNumber.end(), totalTaskNumber,
-                                          [](int64_t val, int64_t x) { return val + x * x; });
-
-        int64_t eachCoreTaskNumLimit = (totalTaskNumber + this->coreNum - 1) / this->coreNum;
-
-        uint32_t batchId = 0;
-        uint32_t batchTaskNum = blockNumber[batchId];
-        uint32_t processBlockNum = 0;
-        for (int i = 0; i < this->coreNum && batchId < totalBatchSize; i++) {
-            BlockTaskInfo blockTask;
-            blockTask.startBlockId = processBlockNum;
-
-            while (workLoads[i] < eachCoreTaskNumLimit) {
-                workLoads[i] += batchTaskNum;
-                processBlockNum++;
-                blockNumber[batchId]--;
-                if (blockNumber[batchId] == 0 && batchId + 1 >= totalBatchSize) {
-                    batchId++;
-                    break;
-                }
-                if (blockNumber[batchId] == 0) {
-                    batchId++;
-                    batchTaskNum = blockNumber[batchId];
-                }
-            }
-
-            blockTask.endBlockId = processBlockNum;
-            workTasks[i] = blockTask;
-        }
-    }
-
-    void ComputeCausal(std::vector<BlockTaskInfo> &workTasks, std::vector<int> &workLoads, bool isCol)
-    {
-        uint32_t totalBatchSize = batchSize * headNum;
-        std::vector<int64_t> blockNumber(totalBatchSize, 0);
-        PreInit(workTasks, workLoads, blockNumber);
-
-        int64_t totalTaskNumber = 0;
-        constexpr int two = 2;
-        totalTaskNumber = std::accumulate(blockNumber.begin(), blockNumber.end(), totalTaskNumber,
-                                          [](int64_t val, int64_t x) { return val + x * (x + 1) / two; });
-
-        int64_t eachCoreTaskNumLimit = (totalTaskNumber + this->coreNum - 1) / this->coreNum;
-
-        uint32_t batchId = 0;
-        uint32_t processBlockNum = 0;
-        uint32_t taskNum = isCol ? blockNumber[0] : 1;
-        for (int i = 0; i < this->coreNum && batchId < totalBatchSize; i++) {
-            BlockTaskInfo blockTask;
-            blockTask.startBlockId = processBlockNum;
-
-            while (workLoads[i] < eachCoreTaskNumLimit) {
-                workLoads[i] += taskNum;
-                taskNum = isCol ? taskNum - 1 : taskNum + 1;
-                processBlockNum++;
-                blockNumber[batchId]--;
-                if (blockNumber[batchId] == 0 && batchId + 1 >= totalBatchSize) {
-                    batchId++;
-                    break;
-                }
-                if (blockNumber[batchId] == 0) {
-                    batchId++;
-                    taskNum = isCol ? blockNumber[batchId] : 1;
-                }
-            }
-
-            blockTask.endBlockId = processBlockNum;
-            workTasks[i] = blockTask;
-        }
-    }
-
-private:
-    uint32_t *seqOffsets = nullptr;
-    uint32_t coreNum = 0;
-    uint32_t blockLen = 0;
-    uint32_t batchSize = 0;
-    uint32_t headNum = 0;
-};
-} // namespace
 
 namespace optiling {
 ge::graphStatus GetJaggedAttrsInfo(const gert::RuntimeAttrs *attrs, HstuDenseBackwardTilingData &tiling)
 {
-    const int32_t *maskType = attrs->GetAttrPointer<int32_t>(INDEX_T::INDEX_1);
+    const int32_t *maskType = attrs->GetAttrPointer<int32_t>(ATTR_INDEX_T::MASK_TYPE_INDEX);
     OPS_CHECK_PTR_NULL(maskType, return ge::GRAPH_FAILED);
 
-    const int32_t *maxSeqLen = attrs->GetAttrPointer<int32_t>(INDEX_T::INDEX_2);
+    const int32_t *maxSeqLen = attrs->GetAttrPointer<int32_t>(ATTR_INDEX_T::MAX_SEQ_LEN_INDEX);
     OPS_CHECK_PTR_NULL(maxSeqLen, return ge::GRAPH_FAILED);
 
-    const float *siluScale = attrs->GetAttrPointer<float>(INDEX_T::INDEX_3);
+    const float *siluScale = attrs->GetAttrPointer<float>(ATTR_INDEX_T::SILU_SCALE_INDEX);
     OPS_CHECK_PTR_NULL(siluScale, return ge::GRAPH_FAILED);
 
-    const auto seqOffset = attrs->GetAttrPointer<gert::ContinuousVector>(INDEX_T::INDEX_4);
+    const auto seqOffset = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_INDEX_T::SEQ_OFFSET_INDEX);
     OPS_CHECK_PTR_NULL(seqOffset, return ge::GRAPH_FAILED);
 
-    const auto targetGroupSizePtr = attrs->GetAttrPointer<int32_t>(INDEX_T::INDEX_5);
+    const auto targetGroupSizePtr = attrs->GetAttrPointer<int32_t>(ATTR_INDEX_T::TARGET_GROUP_SIZE_INDEX);
     if (targetGroupSizePtr != nullptr) {
         tiling.set_targetGroupSize(*targetGroupSizePtr);
     } else {
@@ -190,7 +68,7 @@ ge::graphStatus GetJaggedBasicShapeInfo(gert::TilingContext *context, HstuDenseB
 {
     int64_t maxSeqLen = tiling.get_maxSeqLen();
 
-    auto gradShape = context->GetInputShape(INDEX_T::INDEX_0)->GetStorageShape();
+    auto gradShape = context->GetInputShape(INPUT_INDEX_T::GRAD_INDEX)->GetStorageShape();
 
     OPS_CHECK(gradShape.GetDimNum() != JAGGED_GRAD_DIM_NUM,
                 OPS_LOG_E("", "hstu jagged backward only support input with dim %d\n", JAGGED_GRAD_DIM_NUM),
@@ -252,44 +130,6 @@ ge::graphStatus InitJaggedTilingKey(gert::TilingContext *context, HstuDenseBackw
 ge::graphStatus TilingCore(gert::TilingContext *context,
                            HstuDenseBackwardTilingData &tiling)
 {
-    auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    size_t vecCoreNum = ascendPlatform.GetCoreNumAiv();
-
-    uint32_t batchSize = tiling.get_batchSize();
-    uint32_t headNum = tiling.get_headNum();
-    uint32_t blockHeight = tiling.get_blockHeight();
-    auto maskType = tiling.get_maskType();
-    auto seqOffsets = tiling.get_seqOffset();
-
-    std::vector<BlockTaskInfo> colWorkTasks;
-    std::vector<int> colWorkLoads;
-    std::vector<BlockTaskInfo> rowWorkTasks;
-    std::vector<int> rowWorkLoads;
-
-    auto taskAssigner = BlockTaskAssign(seqOffsets, vecCoreNum, blockHeight, batchSize, headNum);
-    if (IfMask(maskType, MaskType::MASK_TRIL)) {
-        taskAssigner.ComputeCausal(colWorkTasks, colWorkLoads, true);
-        taskAssigner.ComputeCausal(rowWorkTasks, rowWorkLoads, false);
-    } else {
-        taskAssigner.Compute(colWorkTasks, colWorkLoads);
-        rowWorkTasks = colWorkTasks;
-        rowWorkLoads = colWorkLoads;
-    }
-    uint32_t startColBlockId[MAX_AIV_NUM] = {0};
-    uint32_t endColBlockId[MAX_AIV_NUM] = {0};
-    uint32_t startRowBlockId[MAX_AIV_NUM] = {0};
-    uint32_t endRowBlockId[MAX_AIV_NUM] = {0};
-    for (auto i = 0; i < vecCoreNum; i++) {
-        startColBlockId[i] = colWorkTasks[i].startBlockId;
-        endColBlockId[i] = colWorkTasks[i].endBlockId;
-        startRowBlockId[i] = rowWorkTasks[i].startBlockId;
-        endRowBlockId[i] = rowWorkTasks[i].endBlockId;
-    }
-    tiling.set_eachCoreStartColBlockId(startColBlockId);
-    tiling.set_eachCoreEndColBlockId(endColBlockId);
-    tiling.set_eachCoreStartRowBlockId(startRowBlockId);
-    tiling.set_eachCoreEndRowBlockId(endRowBlockId);
-
     return ge::GRAPH_SUCCESS;
 }
 

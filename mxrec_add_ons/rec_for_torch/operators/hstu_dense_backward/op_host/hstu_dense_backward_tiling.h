@@ -38,10 +38,6 @@ TILING_DATA_FIELD_DEF(int64_t, blockHeight);
 TILING_DATA_FIELD_DEF(int64_t, dataTypeLength);
 
 TILING_DATA_FIELD_DEF_ARR(uint32_t, (MAX_BATCH_SIZE + 1), seqOffset);
-TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_AIV_NUM, eachCoreStartColBlockId);
-TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_AIV_NUM, eachCoreEndColBlockId);
-TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_AIV_NUM, eachCoreStartRowBlockId);
-TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_AIV_NUM, eachCoreEndRowBlockId);
 
 TILING_DATA_FIELD_DEF(int32_t, maskType);
 TILING_DATA_FIELD_DEF(int32_t, enableBias);
