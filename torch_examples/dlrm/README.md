@@ -8,13 +8,13 @@
 
 ```shell
 ├── dlrm_npu.patch         # 模型迁移适配patch文件
-├── generate_data.patch    # 随机生成模型样例
-├── README.md              # 样例迁移说明文档
+├── generate_data.py       # 随机生成模型数据脚本
+├── README.md              # 迁移样例说明文档
 └── run.sh                 # 模型运行脚本
 ```
 
 ## 运行环境准备
-请参考：https://gitcode.com/Ascend/RecSDK/tree/develop/torch_examples/README.md
+请参考：RecSDK/torch_examples/README.md
 
 
 ## dlrm源码适配
