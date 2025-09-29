@@ -22,6 +22,7 @@ See the License for the specific language governing permissions and
 #include "kernel_log.h"
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
+#include "hstu_common_const.h"
 
 using namespace AscendC;
 
@@ -35,6 +36,78 @@ __aicore__ inline T CeilDiv(T dividend, T divisor)
     return (dividend + divisor - 1) / divisor;
 }
 
+class SeqTask {
+public:
+    __aicore__ inline SeqTask(int64_t seqLen, int64_t numCtx, int64_t numTg, int64_t blockLen)
+    {
+        this->seqLen_ = seqLen;
+        this->numBlk_ = CeilDiv(seqLen, blockLen);
+        this->numCtx_ = numCtx;
+        this->numTg_ = numTg;
+        this->blockLen_ = blockLen;
+    }
+
+    __aicore__ inline uint32_t Get(CausalMaskT maskType)
+    {
+        this->taskNum_ = (blockQCount_ == INIT_BLOCK_Q_COUNT) ? Get1st(maskType) : GetNext(maskType);
+        blockQCount_++;
+        return this->taskNum_;
+    }
+
+    template <typename oType>
+    __aicore__ inline static SeqTask Create(int64_t seqId,
+                                            GlobalTensor<oType>& seqOffsetsGt,
+                                            GlobalTensor<oType>& numContextGt,
+                                            GlobalTensor<oType>& numTargetGt,
+                                            int64_t blockLen)
+    {
+        int64_t seqLen = seqOffsetsGt.GetValue(seqId + 1) - seqOffsetsGt.GetValue(seqId);
+        int64_t numCtx = numContextGt.GetValue(seqId);
+        int64_t numTg = numTargetGt.GetValue(seqId);
+
+        return SeqTask(seqLen, numCtx, numTg, blockLen);
+    }
+
+private:
+    int64_t seqLen_;
+    int64_t numBlk_;
+    int64_t numCtx_;
+    int64_t numTg_;
+    int64_t blockLen_;
+
+    constexpr static uint32_t INIT_BLOCK_Q_COUNT = 0;
+    uint32_t taskNum_ = INIT_BLOCK_Q_COUNT;
+    uint32_t blockQCount_ = INIT_BLOCK_Q_COUNT;
+
+    __aicore__ inline uint32_t Get1st(CausalMaskT maskType)
+    {
+        if (maskType != CausalMaskT::MASK_TRIL) {
+            uint32_t taskNum = CeilDiv(seqLen_, blockLen_);
+            return taskNum;
+        }
+
+        uint32_t taskNum = 1;
+        if (numCtx_ > 0) {
+            // context mask特殊处理
+            taskNum = CeilDiv(seqLen_ - numTg_, blockLen_);
+        }
+        return taskNum;
+    }
+
+    __aicore__ inline uint32_t GetNext(CausalMaskT maskType)
+    {
+        if (maskType != CausalMaskT::MASK_TRIL) {
+            return this->taskNum_;
+        }
+        if (blockQCount_ == INIT_BLOCK_Q_COUNT + 1) {
+            // 去除context mask的特殊处理，回到causal mask的正常逻辑
+            this->taskNum_ = 1;
+        }
+        this->taskNum_++;
+        return this->taskNum_;
+    }
+};
+
 template <typename oType>
 class BlockTaskAssign {
 public:
@@ -46,8 +119,7 @@ public:
                                       int64_t tgsize,
                                       GlobalTensor<oType>& seqOffsetsGt,
                                       GlobalTensor<oType>& numContextGt,
-                                      GlobalTensor<oType>& numTargetGt,
-                                      GlobalTensor<int64_t>& blockNumberGt)
+                                      GlobalTensor<oType>& numTargetGt)
     {
         this->maskType = maskType;
         this->coreNum = coreNum;
@@ -59,11 +131,10 @@ public:
         this->numContextGt = numContextGt;
         this->numTargetGt = numTargetGt;
 
-        this->blockNumberGt = blockNumberGt;
         this->bxn = batchSize * headNum;
     }
 
-    __aicore__ inline void Compute()
+    __aicore__ inline void Compute(int (&result)[2], int coreId)
     {
         // 计算总任务量
         uint32_t totalTaskNum = 0;
@@ -76,86 +147,67 @@ public:
             uint32_t seqTaskNum = ComputeSeqTaskNum(seqlen, numBlk, numCtx, numTg);
             totalTaskNum += headNum * seqTaskNum;
 
-            // blockNumberGt 前batchSize x headNum (bxn)个位置记录每个batch每个head的block数
             for (auto headId = 0; headId < headNum; headId++) {
-                blockNumberGt.SetValue(batchId * headNum + headId, numBlk);
+                blockNumber_[batchId * headNum + headId] = numBlk;
             }
         }
         int64_t eachCoreTaskNumLimit = CeilDiv(totalTaskNum, this->coreNum);
 
-        // 遍历workers 计算得到每一个works的任务量
-        bool initFlag = false;
+        // 为指定核心分配任务
         uint32_t batchId = 0;
-        uint32_t taskNum = Get1stTaskNum(batchId, initFlag);
-        uint32_t processBlockNum = 0;  // 记录Qblock数
-        for (uint32_t i = 0; i < this->coreNum && batchId < bxn; i++) {
-            blockNumberGt.SetValue(bxn + i, processBlockNum);  // corei的startblockid
-            uint32_t workLoads = 0;
-            while (workLoads < eachCoreTaskNumLimit && batchId < bxn) {
-                // 更新状态
-                workLoads += taskNum;
-                processBlockNum++;
-                // 更新任务数
-                UpdateTaskNum(taskNum, initFlag);
-                // 更新待分配的Qblock数
-                blockNumberGt.SetValue(batchId, blockNumberGt.GetValue(batchId) - 1);
-                if (blockNumberGt.GetValue(batchId) == 0) {
-                    batchId++;
-                    taskNum = Get1stTaskNum(batchId, initFlag);
-                }
-            }
-            blockNumberGt.SetValue(bxn + i + this->coreNum, processBlockNum);  // corei的endblockid
+        uint32_t processedBlocks = 0;
+        
+        SeqTask seqTask = SeqTask::Create(batchId / headNum, seqOffsetsGt, numContextGt, numTargetGt, blockLen);
+        for (int core = 0; core < coreId && batchId < bxn; core++) {
+            processedBlocks += AssignQBlocksToCore(batchId, seqTask, eachCoreTaskNumLimit);
         }
-        DataCacheCleanAndInvalid<int64_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(blockNumberGt);
+        
+        // 记录当前core的Q block范围
+        result[0] = processedBlocks;
+        
+        // 计算当前core的Q block范围
+        processedBlocks += AssignQBlocksToCore(batchId, seqTask, eachCoreTaskNumLimit);
+        
+        result[1] = processedBlocks;
     }
 
 private:
-    __aicore__ inline uint32_t ComputeSeqTaskNum(int64_t seqlen, int64_t numBlk, int64_t numCtx, int64_t numTg)
+    __aicore__ inline uint32_t AssignQBlocksToCore(uint32_t& batchId, SeqTask& seqTask, uint32_t taskLimit)
+    {
+        // 如果没有更多Q block可分配，直接返回0
+        if (blockNumber_[batchId] == 0) {
+            return 0;
+        }
+        
+        uint32_t assignedQBlocks = 0;
+        uint32_t workload = 0;
+        
+        while (workload < taskLimit && batchId < bxn) {
+            workload += seqTask.Get(maskType);
+            assignedQBlocks++;
+            blockNumber_[batchId]--;
+            
+            if (blockNumber_[batchId] == 0) {
+                // 移动到下一个batch
+                batchId++;
+                seqTask = SeqTask::Create(batchId / headNum, seqOffsetsGt, numContextGt, numTargetGt, blockLen);
+            }
+        }
+        return assignedQBlocks;
+    }
+
+    __aicore__ inline uint32_t ComputeSeqTaskNum(int64_t seqLen, int64_t numBlk, int64_t numCtx, int64_t numTg)
     {
         uint32_t seqTaskNum;
         if (maskType == CausalMaskT::MASK_TRIL) {
             seqTaskNum = numBlk * (numBlk + 1) / 2;
             if (numCtx > 0) {
-                seqTaskNum += CeilDiv(seqlen - numTg, blockLen) - 1;  // -1避免重复计算
+                seqTaskNum += CeilDiv(seqLen - numTg, blockLen) - 1;  // -1避免重复计算
             }
         } else {
             seqTaskNum = numBlk * numBlk;
         }
         return seqTaskNum;
-    }
-
-    __aicore__ inline uint32_t Get1stTaskNum(int64_t batchId, bool& initFlag)
-    {
-        initFlag = true;
-        if (batchId >= bxn) {
-            return 0;
-        }
-        // 得到batch的第一个Q block对应的计算量
-        if (maskType == CausalMaskT::MASK_TRIL) {
-            uint32_t taskNum = 1;
-            int64_t batch = batchId / headNum;
-            int64_t numCtx = numContextGt.GetValue(batch);
-            int64_t numTg = numTargetGt.GetValue(batch);
-            if (numCtx > 0) {
-                int64_t seqlen = seqOffsetsGt.GetValue(batch + 1) - seqOffsetsGt.GetValue(batch);
-                taskNum = CeilDiv(seqlen - numTg, blockLen);
-            }
-            return taskNum;
-        } else {
-            return blockNumberGt.GetValue(batchId);
-        }
-    }
-
-    __aicore__ inline void UpdateTaskNum(uint32_t& taskNum, bool& initFlag)
-    {
-        if (maskType != CausalMaskT::MASK_TRIL) {
-            return;
-        }
-        if (initFlag) {
-            initFlag = false;
-            taskNum = 1;
-        }
-        taskNum++;
     }
 
     CausalMaskT maskType;
@@ -169,7 +221,7 @@ private:
     GlobalTensor<oType> seqOffsetsGt;
     GlobalTensor<oType> numContextGt;
     GlobalTensor<oType> numTargetGt;
-    GlobalTensor<int64_t> blockNumberGt;
+    uint8_t blockNumber_[MAX_BATCH_SIZE * MAX_HEAD_NUM] = {0};
 };
 }  // namespace HstuDenseForward
 #endif

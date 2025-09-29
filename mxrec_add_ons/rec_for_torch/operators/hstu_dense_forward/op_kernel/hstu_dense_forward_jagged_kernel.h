@@ -82,7 +82,6 @@ private:
     BlockMaskParams maskTaskInfo[COMPUTE_PIPE_NUM];
     JaggedTaskArgs computeTaskInfo[COMPUTE_PIPE_NUM];
     JaggedTaskArgs transTaskInfo[TRANS_PIPE_NUM];
-    GlobalTensor<int64_t> blockNumberGt;
     GlobalTensor<oType> seqOffsetsGt;
     GlobalTensor<oType> numContextGt;
     GlobalTensor<oType> numTargetGt;
@@ -390,34 +389,18 @@ __aicore__ inline int HstuDenseForwardJaggedKernel<qType, oType>::PreInit(
     this->headDim = this->xDim3;
     this->maxSeqLen = tilingDataPtr->maxSeqLen;
 
-    uint32_t bxn = this->batchSize * this->headNum;
-    uint32_t totalGtSize = bxn + coreNum * 2;  // blocknum per batch, startblockid, endblockid
-
     seqOffsetsGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->seqOffsetQ), this->batchSize + 1);
     numContextGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->numContext), this->batchSize);
     numTargetGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->numTarget), this->batchSize);
-    blockNumberGt.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(this->workspace), totalGtSize);
-    if (blockId == 0) {
-        auto tmpLt = this->tmpBuff.template AllocTensor<int32_t>();
-        auto dstLt = this->queOut.template AllocTensor<int64_t>();
-        // 清空blockNumberGt，防止任务量较少时，blockNumberGt中存在脏数据
-        Duplicate(tmpLt, static_cast<int32_t>(0), coreNum * 2);
-        Cast(dstLt, tmpLt, RoundMode::CAST_NONE, coreNum * 2);
-        DataCopy(blockNumberGt[bxn], dstLt, coreNum * 2);
 
-        this->tmpBuff.template FreeTensor(tmpLt);
-        this->queOut.template FreeTensor(dstLt);
+    int blocks[2] = {0}; // start block id, end block id
+    auto taskAssigner =
+        BlockTaskAssign(this->maskType, coreNum, this->blockHeight, this->batchSize, this->headNum,
+                        this->targetGroupSize, seqOffsetsGt, numContextGt, numTargetGt);
+    taskAssigner.Compute(blocks, blockId);
 
-        auto taskAssigner =
-            BlockTaskAssign(this->maskType, coreNum, this->blockHeight, this->batchSize, this->headNum,
-                            this->targetGroupSize, seqOffsetsGt, numContextGt, numTargetGt, blockNumberGt);
-        taskAssigner.Compute();
-    }
-    SyncAll();
-    DataCacheCleanAndInvalid<int64_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(blockNumberGt);
-
-    this->sBlkId = blockNumberGt.GetValue(bxn + blockId);
-    this->eBlkId = blockNumberGt.GetValue(bxn + blockId + coreNum);
+    this->sBlkId = blocks[0];
+    this->eBlkId = blocks[1];
     if (this->sBlkId == this->eBlkId && this->eBlkId == 0) {
         return -1;
     }

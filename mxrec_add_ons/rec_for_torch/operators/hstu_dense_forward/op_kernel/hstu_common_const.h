@@ -11,6 +11,7 @@
 namespace HstuDenseForward {
 
 constexpr uint32_t MAX_BATCH_SIZE = 2048;
+constexpr uint32_t MAX_HEAD_NUM = 8;
 constexpr int USE_QUEUE_NUM = 1;
 constexpr int DATA_ALIGN_BYTES = 32;
 constexpr int MAX_INDICS_ONE_BLOCK = 100;
