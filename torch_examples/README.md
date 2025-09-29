@@ -75,6 +75,7 @@ pip3 install torchrec_embcache-1.1.0-*.whl
 # 安装所需算子
 tar -zxvf Ascend-recsdk-npu-ops-*.tar.gz
 cd recsdk-npu-ops/recsdk_ops/
+unset ASCEND_CUSTOM_OPP_PATH
 bash mxrec_opp_backward_codegen_adagrad_unweighted_exact.run
 bash mxrec_opp_split_embedding_codegen_forward_unweighted.run
 bash mxrec_opp_permute2d_sparse_data.run

@@ -2,7 +2,7 @@
 
 ## 前提条件
 
-需要用户构建容器基础环境，参考RecSDK/torchrec/docker/README.md。
+需要用户构建容器基础环境，请参考：RecSDK/torch_examples/README.md
 
 ## 模型介绍
 
@@ -118,16 +118,12 @@ for i in range(10):
 
 ## 运行脚本
 
-### 单机运行
+### 单卡运行
 ```bash
 WORLD_SIZE=1 RANK=0 python main.py
 ```
 
-### 多机运行
-使用`torchx`运行分布式程序，缺少`torchx`需要执行下面命令安装:
-```bash
-pip install torchx
-```
+### 多卡运行
 运行脚本启动训练：
 ```bash
 bash bash.sh
