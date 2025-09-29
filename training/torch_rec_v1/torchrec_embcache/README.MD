@@ -28,6 +28,3 @@ pip3 install ./dist/torchrec_embcache-*.whl
 TorchRec介绍: https://pytorch.org/torchrec
 
 TorchRec开源项目:https://github.com/pytorch/torchrec
-
-## 免责申明
-参考设计不属于商用发布产品，仅供用户参考。如需使用，需要用户自行完成产品化，并进行安全防护，华为不承担安全责任。
