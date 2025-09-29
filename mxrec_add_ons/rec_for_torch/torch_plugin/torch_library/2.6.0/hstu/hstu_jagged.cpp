@@ -37,8 +37,8 @@ at::Tensor hstu_jagged_forward_impl_npu(
     TORCH_CHECK(q.dim() == CONST_3, "The q should be 3D in jagged layout");
 
     auto acSeqOffset = seqOffset;
-    auto batchsize = acSeqOffset.size(0);
-    TORCH_CHECK(batchsize >= CONST_2, "acSeqOffset params error should have at least two element.");
+    auto batchsize = acSeqOffset.size(0) - 1;
+    TORCH_CHECK(acSeqOffset.size(0) >= CONST_2, "acSeqOffset params error should have at least two element.");
 
     auto denseQ = q.contiguous();
     auto denseK = k.contiguous();

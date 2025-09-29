@@ -194,8 +194,7 @@ bool TilingPolicy::TilingHeighLevelApi(gert::TilingContext *context, optiling::H
 
     int64_t oneBlockMidTransElem = BLOCK_HEIGHT * dim * TRANS_PIPE_NUM;
     int64_t oneCoreTransMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidTransElem;
-    int64_t blockNumberSize = tiling.get_batchSize() * tiling.get_headNum() * sizeof(int64_t);
-    int64_t workspaceSize = (oneCoreMidElem + oneCoreTransMidElem) * sizeof(float) + blockNumberSize;
+    int64_t workspaceSize = (oneCoreMidElem + oneCoreTransMidElem) * sizeof(float);
     currentWorkspace[0] = workspaceSize + systemWorkspacesSize;
 
     // apply qk
