@@ -20,6 +20,7 @@ See the License for the specific language governing permissions and
 #include "hstu_dense_backward_kernel.h"
 #include "hstu_dense_backward_kernel_common.h"
 #include "hstu_mask.h"
+#include "hstu_split_core_policy.h"
 
 using HstuDenseBackward::BlockMaskParams;
 namespace HstuDenseBackward {
@@ -77,10 +78,28 @@ public:
 
     __aicore__ inline void PreInit()
     {
-        startColBlock = backwardTilingData->eachCoreStartColBlockId[GetBlockIdx()];
-        endColBlock = backwardTilingData->eachCoreEndColBlockId[GetBlockIdx()];
-        startRowBlock = backwardTilingData->eachCoreStartRowBlockId[GetBlockIdx()];
-        endRowBlock = backwardTilingData->eachCoreEndRowBlockId[GetBlockIdx()];
+        const int blockId = GetBlockIdx();
+        int64_t bxn = this->batchSize * this->headNum;
+        auto coreNum = backwardTilingData->aivNum;
+
+        ASCENDC_ASSERT((backwardTilingData->seqOffset != nullptr), "seqOffset is nullptr");
+        auto taskAssigner =
+            BlockTaskAssign(backwardTilingData->seqOffset, coreNum, this->blockHeight, this->batchSize, this->headNum);
+        int colBlock[2] = {0};
+        int rowBlock[2] = {0};
+        if (this->maskType == static_cast<int32_t>(MaskType::MASK_TRIL)) {
+            taskAssigner.ComputeCausal(colBlock, blockId, true);
+            taskAssigner.ComputeCausal(rowBlock, blockId, false);
+        } else {
+            taskAssigner.Compute(colBlock, blockId, true);
+            rowBlock[0] = colBlock[0];
+            rowBlock[1] = colBlock[1];
+        }
+
+        startColBlock = colBlock[0];
+        endColBlock = colBlock[1];
+        startRowBlock = rowBlock[0];
+        endRowBlock = rowBlock[1];
     }
 
     __aicore__ inline void GenerateFirstTask(bool isCol = true)
@@ -343,7 +362,7 @@ public:
             computeTaskInfo[curTaskId].headId * this->biasGradSeqLen * this->biasGradSeqLen +
             computeTaskInfo[curTaskId].colId * this->blockHeight * this->biasGradSeqLen +
             computeTaskInfo[curTaskId].rowId * this->blockHeight;
-        
+
         int64_t maskOffset = 0;
         if (IfMask(this->maskType, MaskType::MASK_CUSTOM)) {
             maskOffset = computeTaskInfo[curTaskId].batchId * this->headNum * this->maxSeqLen * this->maxSeqLen +

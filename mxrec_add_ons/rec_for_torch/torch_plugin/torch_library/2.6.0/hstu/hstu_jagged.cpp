@@ -204,30 +204,30 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
 TORCH_LIBRARY_FRAGMENT(mxrec, m)
 {
     m.def("hstu_jagged.equal(Tensor q, "
-          "            Tensor k, "
-          "            Tensor v, "
-          "            Tensor? mask=None, "
-          "            Tensor? attn_bias=None, "
-          "            int mask_type=0, "
-          "            int max_seq_len=0, "
-          "            float silu_scale=0.0, "
-          "            Tensor seq_offset=None, "
-          "            Tensor? num_context=None, "
-          "            Tensor? num_target=None, "
-          "            int? target_group_size=0) -> Tensor");
+          "                  Tensor k, "
+          "                  Tensor v, "
+          "                  Tensor? mask=None, "
+          "                  Tensor? attn_bias=None, "
+          "                  int mask_type=0, "
+          "                  int max_seq_len=0, "
+          "                  float silu_scale=0.0, "
+          "                  Tensor seq_offset=None, "
+          "                  Tensor? num_context=None, "
+          "                  Tensor? num_target=None, "
+          "                  int? target_group_size=0) -> Tensor");
     m.def("hstu_jagged_backward.equal(Tensor grad, "
-          "                     Tensor q, "
-          "                     Tensor k, "
-          "                     Tensor v, "
-          "                     Tensor? mask=None, "
-          "                     Tensor? attn_bias=None, "
-          "                     int mask_type=0, "
-          "                     int max_seq_len=0, "
-          "                     float silu_scale=0.0, "
-          "                     Tensor seq_offset=None, "
-          "                     Tensor? num_context=None, "
-          "                     Tensor? num_target=None, "
-          "                     int? target_group_size=0) -> (Tensor, Tensor, Tensor, Tensor)");
+          "                           Tensor q, "
+          "                           Tensor k, "
+          "                           Tensor v, "
+          "                           Tensor? mask=None, "
+          "                           Tensor? attn_bias=None, "
+          "                           int mask_type=0, "
+          "                           int max_seq_len=0, "
+          "                           float silu_scale=0.0, "
+          "                           Tensor seq_offset=None, "
+          "                           Tensor? num_context=None, "
+          "                           Tensor? num_target=None, "
+          "                           int? target_group_size=0) -> (Tensor, Tensor, Tensor, Tensor)");
 }
 
 TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
