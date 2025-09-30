@@ -115,14 +115,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
     TORCH_CHECK(grad.dim() == dim, "The grad should be 3D in jagged layout");
 
     auto acSeqOffset = seqOffset;
-
-    // 判断是否为int64类型
-    auto seqOffsetCpu = seqOffset.to(torch::kInt64).detach().cpu().contiguous();
-    auto data_ptr = seqOffsetCpu.data_ptr<int64_t>();
-    auto seqOffsetList = std::vector<int64_t>(data_ptr, data_ptr + seqOffsetCpu.numel());
-    at::IntArrayRef seqOffsetListSafRef = seqOffsetList;
-
-    // 判断NumContext为int64类型
     TORCH_CHECK(acSeqOffset.size(0) >= CONST_2, "acSeqOffset params error should have at least two element.");
 
     auto acAttnBias = attnBias.value_or(at::Tensor());
@@ -181,13 +173,13 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
                  denseV,
                  denseMask,
                  denseAttnBias,
+                 acSeqOffset,
                  denseNumContext,
                  denseNumTarget,
                  layout,
                  maskType,
                  maxSeqLen,
                  realSiluScale,
-                 seqOffsetListSafRef,
                  acTargetGroupSize,
                  qGradOutput,
                  kGradOutput,

@@ -30,10 +30,11 @@ __aicore__ inline T CeilDiv(T dividend, T divisor)
     return (dividend + divisor - 1) / divisor;
 }
 
+template <typename oType>
 class BlockTaskAssign {
 public:
-    __aicore__ inline BlockTaskAssign(uint32_t* seqOffsets, uint32_t coreNum, uint32_t blockLen, uint32_t batchSize,
-                                      uint32_t headNum)
+    __aicore__ inline BlockTaskAssign(GlobalTensor<oType>& seqOffsets, uint32_t coreNum, uint32_t blockLen,
+                                      uint32_t batchSize, uint32_t headNum)
     {
         this->seqOffsets = seqOffsets;
         this->coreNum = coreNum;
@@ -49,7 +50,7 @@ public:
         uint8_t blockNumber[MAX_BXN];
         uint32_t totalTaskNumber = 0;
         for (auto batchId = 0; batchId < batchSize; batchId++) {
-            uint32_t batchBlockSize = this->seqOffsets[batchId + 1] - this->seqOffsets[batchId];
+            uint32_t batchBlockSize = this->seqOffsets.GetValue(batchId + 1) - this->seqOffsets.GetValue(batchId);
             uint32_t blk = CeilDiv(batchBlockSize, blockLen);
             uint32_t batchOffset = batchId * headNum;
             for (auto headId = 0; headId < headNum; headId++) {
@@ -94,7 +95,7 @@ public:
         uint32_t totalTaskNumber = 0;
         uint8_t blockNumber[MAX_BXN];
         for (auto batchId = 0; batchId < batchSize; batchId++) {
-            auto batchBlockSize = this->seqOffsets[batchId + 1] - this->seqOffsets[batchId];
+            uint32_t batchBlockSize = this->seqOffsets.GetValue(batchId + 1) - this->seqOffsets.GetValue(batchId);
             uint32_t blk = CeilDiv(batchBlockSize, blockLen);
             uint32_t batchOffset = batchId * headNum;
             for (auto headId = 0; headId < headNum; headId++) {
@@ -135,7 +136,7 @@ public:
     }
 
 private:
-    uint32_t *seqOffsets = nullptr;
+    GlobalTensor<oType> seqOffsets;
     uint32_t coreNum = 0;
     uint32_t blockLen = 0;
     uint32_t batchSize = 0;

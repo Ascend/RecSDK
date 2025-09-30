@@ -74,8 +74,9 @@ constexpr int K_INDEX = 2;
 constexpr int V_INDEX = 3;
 constexpr int MASK_INDEX = 4;
 constexpr int ATTN_BIAS_INDEX = 5;
-constexpr int NUM_CONTEXT_INDEX = 6;
-constexpr int NUM_TARGET_INDEX = 7;
+constexpr int SEQ_OFFSET_INDEX = 6;
+constexpr int NUM_CONTEXT_INDEX = 7;
+constexpr int NUM_TARGET_INDEX = 8;
 } // namespace INPUT_INDEX_T
 
 namespace OUTPUT_INDEX_T {
@@ -91,8 +92,7 @@ constexpr int LAYOUT_INDEX = 0;
 constexpr int MASK_TYPE_INDEX = 1;
 constexpr int MAX_SEQ_LEN_INDEX = 2;
 constexpr int SILU_SCALE_INDEX = 3;
-constexpr int SEQ_OFFSET_INDEX = 4;
-constexpr int TARGET_GROUP_SIZE_INDEX = 5;
+constexpr int TARGET_GROUP_SIZE_INDEX = 4;
 } // namespace ATTR_INDEX_T
 
 struct ShapeRange {

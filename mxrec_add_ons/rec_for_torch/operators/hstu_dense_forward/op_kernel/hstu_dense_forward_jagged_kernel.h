@@ -23,6 +23,32 @@ using namespace AscendC;
 
 namespace HstuDenseForward {
 
+template <typename oType>
+__aicore__ inline int64_t GetBatchSizeFromJaggedOffset(GlobalTensor<oType>& seqOffsetData, int32_t seqOffsetLens)
+{
+    if (seqOffsetLens <= 0) {
+        return 0;
+    }
+    
+    // 二分法找出有效batch
+    int64_t maxValue = seqOffsetData.GetValue(seqOffsetLens - 1);
+    int32_t left = 0;
+    int32_t right = seqOffsetLens - 1;
+    int32_t firstMaxIdx = seqOffsetLens - 1;
+    while (left <= right) {
+        int32_t mid = left + (right - left) / 2;  // 二分法除以2找到剩余中间位置
+        if (seqOffsetData.GetValue(mid) == maxValue) {
+            firstMaxIdx = mid;
+            right = mid - 1;
+        } else if (seqOffsetData.GetValue(mid) < maxValue) {
+            left = mid + 1;
+        }
+    }
+
+    int64_t batchSize = static_cast<int64_t>(firstMaxIdx);
+    return batchSize;
+}
+
 struct JaggedTaskArgs {
     uint32_t batchId = 0;         // 该基本块所属的batch
     uint32_t headId = 0;          // 该基本块所属的head
@@ -381,15 +407,18 @@ template <typename qType, typename oType>
 __aicore__ inline int HstuDenseForwardJaggedKernel<qType, oType>::PreInit(
     const HstuDenseForwardTilingData* __restrict tilingDataPtr)
 {
+    seqOffsetsGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->seqOffsetQ), this->xDim0 + 1);
+    auto validBatchSize = GetBatchSizeFromJaggedOffset(seqOffsetsGt, this->xDim0 + 1);
+    ASCENDC_ASSERT((validBatchSize > 0 && validBatchSize <= MAX_BATCH_SIZE), "batchSize exceed limit of (0, 20480]\n");
+
     const int blockId = GetBlockIdx();
     const uint32_t coreNum = GetBlockNum() * GetTaskRation();
-    this->batchSize = this->xDim0;
+    this->batchSize = validBatchSize;
     this->seqLen = this->xDim1;
     this->headNum = this->xDim2;
     this->headDim = this->xDim3;
     this->maxSeqLen = tilingDataPtr->maxSeqLen;
 
-    seqOffsetsGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->seqOffsetQ), this->batchSize + 1);
     numContextGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->numContext), this->batchSize);
     numTargetGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->numTarget), this->batchSize);
 

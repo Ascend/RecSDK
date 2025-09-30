@@ -22,21 +22,22 @@ See the License for the specific language governing permissions and
 #include "hstu_dense_backward_kernel.h"
 
 extern "C" __global__ __aicore__ void hstu_dense_backward(GM_ADDR grad, GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mask,
-                                                          GM_ADDR attnBias, GM_ADDR numContext, GM_ADDR numTarget,
-                                                          GM_ADDR qGrad, GM_ADDR kGrad, GM_ADDR vGrad,
-                                                          GM_ADDR attnBiasGrad, GM_ADDR workspace, GM_ADDR tiling)
+                                                          GM_ADDR attnBias, GM_ADDR seqOffset, GM_ADDR numContext,
+                                                          GM_ADDR numTarget, GM_ADDR qGrad, GM_ADDR kGrad,
+                                                          GM_ADDR vGrad, GM_ADDR attnBiasGrad, GM_ADDR workspace,
+                                                          GM_ADDR tiling)
 {
-    HstuDenseBackward::Args args{grad,      q,     k,     v,     mask,         attnBias,  numContext,
+    HstuDenseBackward::Args args{grad,      q,     k,     v,     mask,         attnBias,  seqOffset, numContext,
                                  numTarget, qGrad, kGrad, vGrad, attnBiasGrad, workspace, tiling};
 
     if (TILING_KEY_IS(5)) {
-        HstuDenseBackward::HstuDenseBackwardJaggedKernel<float> kernel;
+        HstuDenseBackward::HstuDenseBackwardJaggedKernel<float, DTYPE_SEQ_OFFSET_Q> kernel;
         kernel.Compute(args);
     } else if (TILING_KEY_IS(4)) {
-        HstuDenseBackward::HstuDenseBackwardJaggedKernel<bfloat16_t> kernel;
+        HstuDenseBackward::HstuDenseBackwardJaggedKernel<bfloat16_t, DTYPE_SEQ_OFFSET_Q> kernel;
         kernel.Compute(args);
     } else if (TILING_KEY_IS(3)) {
-        HstuDenseBackward::HstuDenseBackwardJaggedKernel<half> kernel;
+        HstuDenseBackward::HstuDenseBackwardJaggedKernel<half, DTYPE_SEQ_OFFSET_Q> kernel;
         kernel.Compute(args);
     } else if (TILING_KEY_IS(2)) {
         HstuDenseBackward::HstuDenseBackwardKernel<float> kernel;
