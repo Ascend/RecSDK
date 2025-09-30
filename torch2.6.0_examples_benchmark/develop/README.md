@@ -40,7 +40,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 ```
 
 ## 安装依赖
-说明：容器中已经安装好torchrec,hybrid_torchrec等依赖。如需重新安装依赖需确保网络通畅。
+说明：容器中已经安装好torchrec,hybrid_torchrec,torchrec_embcache及算子等依赖。如需重新安装依赖需确保网络通畅。
 
 ### 1.安装训练框架相关包
 #### 方式1：获取安装包安装
@@ -62,14 +62,16 @@ pip3 install torchrec_embcache-1.1.0-*.whl
 
 #### 方式2：源码编译安装
 （1）编译安装torchrec
-参考：https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/torchrec_npu/README.md
+参考：[Torchrec NPU适配说明](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/torchrec_npu/README.md)
 
 （2）编译安装hybrid_torchrec
-参考：https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/hybrid_torchrec/README.MD
+参考：[Hybrid-torchrec NPU适配说明](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/hybrid_torchrec/README.MD)
 
+（3）编译安装torchrec_embcache
+参考：[Torchrec-embcachec NPU适配说明](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/torchrec_embcache/README.MD)
 
 ### 2.安装自定义算子和算子适配层
-源码编译Ascend-recsdk-npu-ops*.tar.gz软件包，参考：https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/ascendc_op/build/README.md
+源码编译Ascend-recsdk-npu-ops*.tar.gz软件包，参考：[算子编译安装说明](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/ascendc_op/build/README.md)
 
 ```
 # 安装所需算子
