@@ -9,7 +9,7 @@
 
 ## 运行环境准备
 
-请参考：https://gitcode.com/Ascend/RecSDK/tree/develop/torch_examples/README.md
+请参考：[模型样例运行环境说明](../README.md)
 
 ## 安装依赖项：
 
