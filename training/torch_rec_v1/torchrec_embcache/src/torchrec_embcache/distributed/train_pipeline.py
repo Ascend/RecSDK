@@ -653,8 +653,14 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
                 return
             self.start_sparse_data_dist(self.batches[4 + i], self.contexts[4 + i])
 
-    def progress(self, dataloader_iter: Iterator[In]) -> Out:
-        self._global_steps += 1
+    def _model_backward(self, losses, output):
+        with record_function("## backward ##"):
+            if self._custom_model_bwd is not None:
+                self._custom_model_bwd(losses=losses, output=output)
+            else:
+                torch.sum(losses, dim=0).backward()
+    
+    def _pre_process(self, dataloader_iter: Iterator[In]):
         if not self._model_attached:
             self.attach(self._model)
 
@@ -667,6 +673,10 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
         if self._model.training:
             with record_function("## zero_grad ##"):
                 self._zero_grad()
+
+    def progress(self, dataloader_iter: Iterator[In]) -> Out:
+        self._global_steps += 1
+        self._pre_process(dataloader_iter)
 
         # wait batch_ip2
         if len(self.batches) >= 4:
@@ -722,11 +732,7 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
 
         if self._model.training:
             # backward
-            with record_function("## backward ##"):
-                if self._custom_model_bwd is not None:
-                    self._custom_model_bwd(losses=losses, output=output)
-                else:
-                    torch.sum(losses, dim=0).backward()
+            self._model_backward(losses, output)
             # update
             with record_function("## optimizer ##"):
                 self._optimizer.step()
