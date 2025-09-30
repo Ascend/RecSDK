@@ -38,6 +38,7 @@ bool TilingPolicyNormal::TilingShape(gert::TilingContext* context, optiling::Hst
     int64_t batchSize = qShape.GetDim(0);
     tiling.set_batchSize(batchSize);
     int64_t seqLen = qShape.GetDim(1);
+    tiling.set_maxSeqLenk(seqLen);
     tiling.set_seqLen(seqLen);
     int64_t headNum = qShape.GetDim(2);
     tiling.set_headNum(headNum);

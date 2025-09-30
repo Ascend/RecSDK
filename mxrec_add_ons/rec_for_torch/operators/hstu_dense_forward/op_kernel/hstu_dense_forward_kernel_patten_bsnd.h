@@ -148,6 +148,7 @@ public:
         attnBias = args.attnBias;
         mask = args.mask;
         seqOffsetQ = args.seqOffsetQ;
+        seqOffsetK = args.seqOffsetK;
 
         attnOutput = args.attnOutput;
         workspace = args.workspace;
@@ -158,6 +159,8 @@ public:
         xDim0 = tilingDataPtr->batchSize;
         // Seq Len
         xDim1 = tilingDataPtr->seqLen;
+        this->maxSeqLenQ = tilingDataPtr->maxSeqLenq;
+        this->maxSeqLenK = tilingDataPtr->maxSeqLenk;
         // Head Num
         xDim2 = tilingDataPtr->headNum;
         // Embedding Dim
@@ -353,19 +356,19 @@ public:
     {
         bool align = false;
         uint16_t alignOfN = AlignUp(blockLen, ElementOfBlock);
-        align = (xDim1 % ElementOfBlock == 0) && (alignOfN == blockLen);
+        align = (maxSeqLenK % ElementOfBlock == 0) && (alignOfN == blockLen);
 
         uint16_t dstStride = (blockHeight - alignOfN) * sizeof(qType) / DATA_ALIGN_BYTES;
 
         if (align) {
             uint16_t copyLen = alignOfN * sizeof(qType) / DATA_ALIGN_BYTES;
-            uint16_t srcStride = (xDim1 - blockLen) * sizeof(qType) / DATA_ALIGN_BYTES;
+            uint16_t srcStride = (maxSeqLenK - blockLen) * sizeof(qType) / DATA_ALIGN_BYTES;
 
             DataCopyParams copyParms = { copyBlock, copyLen, srcStride, dstStride };
             DataCopy(lt, gt[offset], copyParms);
         } else {
             uint16_t copyLenBytes = blockLen * sizeof(qType);
-            uint16_t srcStrideBytes = (xDim1 - blockLen) * sizeof(qType);
+            uint16_t srcStrideBytes = (maxSeqLenK - blockLen) * sizeof(qType);
 
             uint8_t padLens = alignOfN - blockLen;
             DataCopyParams copyParms = { copyBlock, copyLenBytes, srcStrideBytes, dstStride };
@@ -418,7 +421,7 @@ public:
 
             queMaskIn.EnQue(inMaskLtFp32);
         } else if (maskType == CausalMaskT::MASK_CUSTOME) {
-            int64_t thisMaskOffset = maskOffset + blockOffset * xDim1;
+            int64_t thisMaskOffset = maskOffset + blockOffset * maxSeqLenK;
             inMaskLt = queMaskIn.AllocTensor<qType>();
             DataCopyMayPad(inMaskLt, attnMaskGt,
                 (uint16_t)(thisLen / blockHeight), n, thisMaskOffset);
@@ -438,7 +441,7 @@ public:
         uint32_t n)
     {
         if (enableBias) {
-            int64_t thisBiasOffset = biasOffset + blockOffset * xDim1;
+            int64_t thisBiasOffset = biasOffset + blockOffset * maxSeqLenK;
             biasLt = biasIn.AllocTensor<qType>();
             DataCopyMayPad(biasLt, attnBiasGt,
                 (uint16_t)(thisLen / blockHeight), n, thisBiasOffset);
@@ -598,6 +601,7 @@ public:
     GM_ADDR attnBias;
     GM_ADDR mask;
     GM_ADDR seqOffsetQ;
+    GM_ADDR seqOffsetK;
 
     GM_ADDR numContext;
     GM_ADDR numTarget;
@@ -611,6 +615,8 @@ public:
     int64_t xDim1;
     int64_t xDim2;
     int64_t xDim3;
+    int64_t maxSeqLenQ;
+    int64_t maxSeqLenK;
 
     // Tiling
     int64_t blockHeight;

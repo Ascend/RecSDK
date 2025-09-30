@@ -49,7 +49,11 @@ def valen_data_gen(batch_size, max_seq_len, num_heads, attention_dim, data_type,
         rel_attn_bias[batch_id, :, 0:seq_len, 0:seq_len_k] = torch.rand(seq_len, seq_len_k).to(torch.float32)
 
     if mask_type == MaskType.TRIL:
-        invalid_attn_mask = 1 - torch.triu(torch.ones(batch_size, num_heads, max_seq_len, max_seq_len_k), diagonal=1)
+        invalid_attn_mask = torch.zeros(size=(batch_size, num_heads, max_seq_len, max_seq_len_k))
+        for i, (seq_len, seq_len_k) in enumerate(zip(seq_lens, seq_lens_k)):
+            delta_qk = seq_len_k - seq_len
+            invalid_attn_mask[i, :, :, :] = torch.tril(torch.ones(1, num_heads, max_seq_len, max_seq_len_k),
+                                                       diagonal=delta_qk)
     else:
         invalid_attn_mask = torch.randint(0, 2, size=(batch_size, num_heads, max_seq_len, max_seq_len_k))
     invalid_attn_mask = invalid_attn_mask.cpu().to(torch.float32)
@@ -70,12 +74,13 @@ class TestHstuVarlenDemo:
         seq_offset_k = seq_offset_k.to("npu")
 
         if enable_bias:
-            output = torch.ops.mxrec.hstu_varlen(
+            # 函数重载：hstu_jagged -> hstu_jagged.delta
+            output = torch.ops.mxrec.hstu_jagged(
                 q_npu, k_npu, v_npu, mask_npu, bias_npu, mask_type, max_seq_len, max_seq_len_k, silu_scale,
                 seq_offset, seq_offset_k
             )
         else:
-            output = torch.ops.mxrec.hstu_varlen(
+            output = torch.ops.mxrec.hstu_jagged(
                 q_npu, k_npu, v_npu, mask_npu, None, mask_type, max_seq_len, max_seq_len_k, silu_scale,
                 seq_offset, seq_offset_k
             )

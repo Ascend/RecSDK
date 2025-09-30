@@ -53,6 +53,7 @@ at::Tensor hstu_dense_forward_impl_npu(
     const auto _acTargetGroupSize = int();
 
     const char *layout = "normal";
+    const int64_t isDeltaQK = 0;
     EXEC_NPU_CMD(aclnnHstuDenseForward,
                  denseQ,
                  denseK,
@@ -74,6 +75,7 @@ at::Tensor hstu_dense_forward_impl_npu(
                  realSiluScale,
                  layout,
                  _acTargetGroupSize,
+                 isDeltaQK,
                  attnOutput);
     return attnOutput;
 }

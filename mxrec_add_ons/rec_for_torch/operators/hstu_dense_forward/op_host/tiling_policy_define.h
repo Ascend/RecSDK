@@ -59,6 +59,7 @@ namespace ATTR_INDEX_T {
     constexpr int SILU_SCALE_INDEX = 3;
     constexpr int LAYOUT_INDEX = 4;
     constexpr int TARGET_GROUP_SIZE_INDEX = 5;
+    constexpr int IS_DELTA_QK_INDEX = 6;
 }
 
 
@@ -67,6 +68,7 @@ constexpr int JAGGED_TILING_KEY = 1;
 
 constexpr int NORMAL_DIM_NUM = 4;
 constexpr int JAGGED_DIM_NUM = 3;
+constexpr int CONTEXT_DIM_NUM = 1;
 
 constexpr int MAX_AIV_NUM = 48;
 constexpr int MAX_BATCH_SIZE = 2048;
