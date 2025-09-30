@@ -2,7 +2,7 @@
 
 ## 前提条件
 
-需要用户构建容器基础环境，请参考：RecSDK/torch_examples/README.md
+需要用户构建容器基础环境，请参考：[torch_examples README](../README.md)
 
 ## 模型介绍
 
