@@ -258,6 +258,10 @@ public:
             .ParamType(OPTIONAL)
             .Follow("grad", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
+        this->Input("seq_offset_q")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND});
         this->Input("num_context")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32, ge::DT_INT64})
@@ -288,7 +292,6 @@ public:
         this->Attr("mask_type").Int();
         this->Attr("max_seq_len").Int();
         this->Attr("silu_scale").Float();
-        this->Attr("seq_offsets").AttrType(OPTIONAL).ListInt();
         this->Attr("target_group_size").AttrType(OPTIONAL).Int(0);
 
         OpAICoreConfig aicore_config;

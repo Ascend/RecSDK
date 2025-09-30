@@ -47,6 +47,7 @@ struct Args {
     GM_ADDR v;
     GM_ADDR mask;
     GM_ADDR attnBias;
+    GM_ADDR seqOffset;
     GM_ADDR numContext;
     GM_ADDR numTarget;
 

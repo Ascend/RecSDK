@@ -37,8 +37,6 @@ TILING_DATA_FIELD_DEF(int64_t, headDim);
 TILING_DATA_FIELD_DEF(int64_t, blockHeight);
 TILING_DATA_FIELD_DEF(int64_t, dataTypeLength);
 
-TILING_DATA_FIELD_DEF_ARR(uint32_t, (MAX_BATCH_SIZE + 1), seqOffset);
-
 TILING_DATA_FIELD_DEF(int32_t, maskType);
 TILING_DATA_FIELD_DEF(int32_t, enableBias);
 TILING_DATA_FIELD_DEF(int32_t, enableContextMask);
