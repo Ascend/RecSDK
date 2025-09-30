@@ -190,21 +190,7 @@ class KeyedJaggedTensorWithCount(KeyedExtendedJaggedTensor[JaggedTensorWithCount
         stride_per_rank: Optional[List[int]],
         stagger: int = 1,
     ) -> "KeyedJaggedTensorWithCount":
-        # The original largest length is 4, there is an extra counts params, the biggest length is 5.
-        if len(tensors) not in [2, 3, 4, 5]:
-            raise RuntimeError(f"tensors length must in [2, 3, 4, 5] but got:{len(tensors)}")
-        lengths = tensors[0]
-        values = tensors[1]
-        stride_per_rank_per_key = tensors[2] if variable_stride_per_key else None
-
-        # 仅当local unique且有表开启准入时，会使用KeyedJaggedTensorWithCount做all2all
-        # 此时会固定在tensors列表末尾传递counts数据
-        weights = (
-            tensors[-2]
-            if (variable_stride_per_key and len(tensors) == 5)
-            or (not variable_stride_per_key and len(tensors) == 4)
-            else None
-        )
+        lengths, values, stride_per_rank_per_key, weights = unpack_tensors(tensors, variable_stride_per_key)
         counts = tensors[-1]
 
         if variable_stride_per_key:
@@ -371,3 +357,23 @@ class KeyedJaggedTensorWithCount(KeyedExtendedJaggedTensor[JaggedTensorWithCount
                 stride=sum(stride_per_rank),
             )
             return kjt.sync()
+
+
+def unpack_tensors(tensors: List[torch.Tensor], variable_stride_per_key: bool):
+    # The original largest length is 4, there is an extra counts params, the biggest length is 5.
+    if len(tensors) not in [2, 3, 4, 5]:
+        raise RuntimeError(f"tensors length must in [2, 3, 4, 5] but got:{len(tensors)}")
+
+    lengths = tensors[0]
+    values = tensors[1]
+    stride_per_rank_per_key = tensors[2] if variable_stride_per_key else None
+
+    # 仅当local unique且有表开启准入时，会使用KeyedJaggedTensorWithCount做all2all
+    # 此时会固定在tensors列表末尾传递counts数据
+    weights = (
+        tensors[-2]
+        if (variable_stride_per_key and len(tensors) == 5)
+        or (not variable_stride_per_key and len(tensors) == 4)
+        else None
+    )
+    return lengths, values, stride_per_rank_per_key, weights
